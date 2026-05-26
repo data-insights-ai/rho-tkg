@@ -173,6 +173,17 @@ type HistoryRollbackTrimCapability interface {
 	TrimRelHistoryFrom(id types.RelID, minVersion uint32) error
 }
 
+// MetaKVCapability is OPTIONAL. Backends that can persist arbitrary
+// key/value metadata implement it so the graph layer can stamp schema
+// versions, migration markers, and other one-shot bookkeeping that has to
+// survive restarts. The key namespace is shared between graph-layer markers
+// (e.g. "schema_version") and any backend-specific entries — callers MUST
+// use distinct keys. MetaGet on a missing key returns nil, nil.
+type MetaKVCapability interface {
+	MetaGet(key string) ([]byte, error)
+	MetaSet(key string, value []byte) error
+}
+
 // HistoryVersionPageCapability is OPTIONAL. Backends that can page through an
 // individual entity's history chain implement it so export and other streaming
 // readers do not have to materialize every version for one heavily updated

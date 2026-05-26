@@ -96,6 +96,51 @@ func extractTemporal(props map[string]any) (validFrom, validTo, createdAt types.
 	return validFrom, validTo, createdAt, filtered, nil
 }
 
+// extractTemporalTracked is the update-path mirror of extractTemporal. Returns
+// per-field presence flags so update paths can distinguish "caller did not
+// supply" from "caller supplied 0". tkg_created_at is rejected on update paths
+// (it's per-entity, not per-version); only tkg_valid_from and tkg_valid_to are
+// accepted.
+func extractTemporalTracked(props map[string]any) (updateTemporal, map[string]any, error) {
+	_, hasVF := props["tkg_valid_from"]
+	_, hasVT := props["tkg_valid_to"]
+	if !hasVF && !hasVT {
+		return updateTemporal{}, props, nil
+	}
+
+	tmp := updateTemporal{
+		hasValidFrom: hasVF,
+		hasValidTo:   hasVT,
+		present:      true,
+	}
+	if hasVF {
+		v, err := parseInstant(props["tkg_valid_from"], "tkg_valid_from")
+		if err != nil {
+			return updateTemporal{}, nil, err
+		}
+		tmp.validFrom = v
+	}
+	if hasVT {
+		v, err := parseInstant(props["tkg_valid_to"], "tkg_valid_to")
+		if err != nil {
+			return updateTemporal{}, nil, err
+		}
+		tmp.validTo = v
+	}
+	if tmp.hasValidFrom && tmp.hasValidTo && tmp.validFrom != 0 && tmp.validTo != 0 && tmp.validFrom >= tmp.validTo {
+		return updateTemporal{}, nil, fmt.Errorf("%w: tkg_valid_from %d must be before tkg_valid_to %d",
+			ErrInvalidTimeRange, tmp.validFrom, tmp.validTo)
+	}
+
+	filtered := make(map[string]any, len(props))
+	for k, v := range props {
+		if k != "tkg_valid_from" && k != "tkg_valid_to" {
+			filtered[k] = v
+		}
+	}
+	return tmp, filtered, nil
+}
+
 // parseInstant converts a property value to types.Instant (Unix milliseconds).
 func parseInstant(v any, key string) (types.Instant, error) {
 	if v == nil {

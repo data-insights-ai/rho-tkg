@@ -78,8 +78,16 @@ type RelWire struct {
 
 // PropertyWire is the msgpack wire format for a single property key-value pair.
 // Type carries the original Go type tag so exact types survive msgpack round-trips.
+//
+// KeyToken (msgpack `kt`, omitempty) is the optional registry-allocated
+// uint16 token for Key. When KeyToken != 0 the decoder resolves the actual
+// key string via the PropertyKeyRegistry and Key may be empty (saves bytes
+// on the wire). When KeyToken == 0, Key is the authoritative source — this
+// keeps reads of pre-tokenization data correct and lets the encoder fall
+// back to raw keys when the registry is full.
 type PropertyWire struct {
-	Key           string `msgpack:"k"`
+	Key           string `msgpack:"k,omitempty"`
+	KeyToken      uint16 `msgpack:"kt,omitempty"`
 	Value         any    `msgpack:"v"`
 	Type          byte   `msgpack:"t"`            // property type tag for faithful reconstruction
 	Nil           bool   `msgpack:"n,omitempty"`  // typed nil slice/map marker

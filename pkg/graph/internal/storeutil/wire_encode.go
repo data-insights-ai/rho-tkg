@@ -359,7 +359,16 @@ func (w RelWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 // EncodeMsgpack writes PropertyWire with the same map keys as the struct tags
 // in wire.go while avoiding per-property reflective omitempty checks.
 func (p PropertyWire) EncodeMsgpack(enc *msgpack.Encoder) error {
-	fields := 3 // k, v, t
+	// Required: v + t. Optional (omitempty): k, kt, n, ct, cp.
+	// Key and KeyToken alternate: in V2 rows with tokenization, k is empty
+	// and kt holds the registry token; V1 rows have k set, kt == 0.
+	fields := 2 // v, t
+	if p.Key != "" {
+		fields++
+	}
+	if p.KeyToken != 0 {
+		fields++
+	}
 	if p.Nil {
 		fields++
 	}
@@ -372,8 +381,15 @@ func (p PropertyWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 	if err := enc.EncodeMapLen(fields); err != nil {
 		return err
 	}
-	if err := encodeStringStringField(enc, "k", p.Key); err != nil {
-		return err
+	if p.Key != "" {
+		if err := encodeStringStringField(enc, "k", p.Key); err != nil {
+			return err
+		}
+	}
+	if p.KeyToken != 0 {
+		if err := encodeStringUint16Field(enc, "kt", p.KeyToken); err != nil {
+			return err
+		}
 	}
 	if err := enc.EncodeString("v"); err != nil {
 		return err
@@ -398,6 +414,13 @@ func (p PropertyWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 		return encodeStringBoolField(enc, "cp", p.CustomPointer)
 	}
 	return nil
+}
+
+func encodeStringUint16Field(enc *msgpack.Encoder, key string, value uint16) error {
+	if err := enc.EncodeString(key); err != nil {
+		return err
+	}
+	return enc.EncodeUint16(value)
 }
 
 func encodeStringAnyField(enc *msgpack.Encoder, key string, value any) error {

@@ -138,6 +138,9 @@ func (c *Core) isNodeValidAt(n *types.Node, t types.Instant) bool {
 func (c *Core) resolveNodeVersionAt(chain []*types.Node, t types.Instant) (*types.Node, error) {
 	for i := len(chain) - 1; i >= 0; i-- {
 		entry := chain[i]
+		if eclipsedNodeBounds(entry) {
+			continue // cascade-eclipsed rows are invisible to VT queries
+		}
 		vStart, vEnd := c.nodeVersionBounds(chain, i)
 
 		// Check: vStart <= t AND (vEnd == 0 OR vEnd > t).
@@ -148,7 +151,62 @@ func (c *Core) resolveNodeVersionAt(chain []*types.Node, t types.Instant) (*type
 	return nil, storepkg.ErrNoVersionValidAt
 }
 
+// versionVisibleAtTx reports whether a version's transaction interval
+// contains txAt. txAt == 0 means "no TX filter" (return true unconditionally —
+// preserves pre-bitemporal behaviour). A version without TemporalMetadata is
+// treated as visible to all TX times.
+func versionVisibleAtTx(tm *types.TemporalMetadata, txAt types.Instant) bool {
+	if txAt == 0 {
+		return true
+	}
+	if tm == nil {
+		return true
+	}
+	if tm.TxFrom != 0 && tm.TxFrom > txAt {
+		return false
+	}
+	if tm.TxTo != 0 && tm.TxTo <= txAt {
+		return false
+	}
+	return true
+}
+
+// filterNodeChainByTxAt returns the subset of chain whose TX interval contains
+// txAt. txAt == 0 returns chain unchanged (no allocation).
+func filterNodeChainByTxAt(chain []*types.Node, txAt types.Instant) []*types.Node {
+	if txAt == 0 {
+		return chain
+	}
+	out := make([]*types.Node, 0, len(chain))
+	for _, entry := range chain {
+		if versionVisibleAtTx(entry.Temporal(), txAt) {
+			out = append(out, entry)
+		}
+	}
+	return out
+}
+
+// filterRelChainByTxAt is the relationship counterpart of filterNodeChainByTxAt.
+func filterRelChainByTxAt(chain []*types.Relationship, txAt types.Instant) []*types.Relationship {
+	if txAt == 0 {
+		return chain
+	}
+	out := make([]*types.Relationship, 0, len(chain))
+	for _, entry := range chain {
+		if versionVisibleAtTx(entry.Temporal(), txAt) {
+			out = append(out, entry)
+		}
+	}
+	return out
+}
+
 // nodeVersionBounds computes the effective [vStart, vEnd) for chain[i].
+//
+// Phase 3: vEnd uses the NEXT version's effective ValidFrom when explicit,
+// not next.UpdatedAt. This auto-tiles timelines whenever the caller supplies
+// tkg_valid_from on Update (Phase 2). When the next version has no explicit
+// ValidFrom, fall back to UpdatedAt (preserves TX-time-as-VT-time semantics
+// for callers who haven't adopted explicit valid-time).
 func (c *Core) nodeVersionBounds(chain []*types.Node, i int) (types.Instant, types.Instant) {
 	entry := chain[i]
 	var vStart, vEnd types.Instant
@@ -164,23 +222,31 @@ func (c *Core) nodeVersionBounds(chain []*types.Node, i int) (types.Instant, typ
 		}
 	}
 
-	// Determine version end.
-	if i < len(chain)-1 {
-		next := chain[i+1]
-		if tm := next.Temporal(); tm != nil && tm.UpdatedAt != 0 {
+	// Determine version end. Use next's effective ValidFrom when set
+	// (timeline tiles cleanly); otherwise fall back to next.UpdatedAt.
+	// Skip eclipsed rows (cascade-marked zero-length intervals) — they are
+	// invisible to VT queries and must not contribute to vEnd derivation.
+	for j := i + 1; j < len(chain); j++ {
+		next := chain[j]
+		if eclipsedNodeBounds(next) {
+			continue
+		}
+		if tm := next.Temporal(); tm != nil && tm.ValidFrom != 0 {
+			vEnd = tm.ValidFrom
+		} else if tm := next.Temporal(); tm != nil && tm.UpdatedAt != 0 {
 			vEnd = tm.UpdatedAt
 		} else {
 			vEnd = c.nodeValidFrom(next)
 		}
+		break
 	}
-	// vEnd == 0 means open-ended (current version).
+	// vEnd == 0 means open-ended (no future non-eclipsed version).
 
-	// Explicit ValidFrom/ValidTo override derived values. A create-time
-	// ValidFrom is copied into later versions by ordinary property updates; do
-	// not let that inherited value make the latest version valid all the way
-	// back to the genesis window.
+	// Post-migration: every non-zero ValidFrom is caller-supplied. Pre-
+	// migration: keep the legacy inheritance heuristic for back-compat
+	// (stores without MetaKVCapability never migrate).
 	if tm := entry.Temporal(); tm != nil {
-		if tm.ValidFrom != 0 && !nodeVersionInheritedValidFrom(chain, i, tm) {
+		if tm.ValidFrom != 0 && (c.bitemporalMigrated || !nodeInheritedValidFrom(chain, i, tm)) {
 			vStart = tm.ValidFrom
 		}
 		if tm.ValidTo != 0 {
@@ -191,7 +257,7 @@ func (c *Core) nodeVersionBounds(chain []*types.Node, i int) (types.Instant, typ
 	return vStart, vEnd
 }
 
-func nodeVersionInheritedValidFrom(chain []*types.Node, i int, tm *types.TemporalMetadata) bool {
+func nodeInheritedValidFrom(chain []*types.Node, i int, tm *types.TemporalMetadata) bool {
 	if i == 0 || tm.UpdatedAt == 0 {
 		return false
 	}
@@ -203,6 +269,9 @@ func nodeVersionInheritedValidFrom(chain []*types.Node, i int, tm *types.Tempora
 func (c *Core) resolveRelVersionAt(chain []*types.Relationship, t types.Instant) (*types.Relationship, error) {
 	for i := len(chain) - 1; i >= 0; i-- {
 		entry := chain[i]
+		if eclipsedRelBounds(entry) {
+			continue
+		}
 		vStart, vEnd := c.relVersionBounds(chain, i)
 
 		if vStart <= t && (vEnd == 0 || vEnd > t) {
@@ -213,6 +282,7 @@ func (c *Core) resolveRelVersionAt(chain []*types.Relationship, t types.Instant)
 }
 
 // relVersionBounds computes the effective [vStart, vEnd) for chain[i].
+// See nodeVersionBounds for the Phase 3 vEnd-from-next.ValidFrom rationale.
 func (c *Core) relVersionBounds(chain []*types.Relationship, i int) (types.Instant, types.Instant) {
 	entry := chain[i]
 	var vStart, vEnd types.Instant
@@ -227,17 +297,23 @@ func (c *Core) relVersionBounds(chain []*types.Relationship, i int) (types.Insta
 		}
 	}
 
-	if i < len(chain)-1 {
-		next := chain[i+1]
-		if tm := next.Temporal(); tm != nil && tm.UpdatedAt != 0 {
+	for j := i + 1; j < len(chain); j++ {
+		next := chain[j]
+		if eclipsedRelBounds(next) {
+			continue
+		}
+		if tm := next.Temporal(); tm != nil && tm.ValidFrom != 0 {
+			vEnd = tm.ValidFrom
+		} else if tm := next.Temporal(); tm != nil && tm.UpdatedAt != 0 {
 			vEnd = tm.UpdatedAt
 		} else {
 			vEnd = c.relValidFrom(next)
 		}
+		break
 	}
 
 	if tm := entry.Temporal(); tm != nil {
-		if tm.ValidFrom != 0 && !relVersionInheritedValidFrom(chain, i, tm) {
+		if tm.ValidFrom != 0 && (c.bitemporalMigrated || !relInheritedValidFrom(chain, i, tm)) {
 			vStart = tm.ValidFrom
 		}
 		if tm.ValidTo != 0 {
@@ -248,7 +324,7 @@ func (c *Core) relVersionBounds(chain []*types.Relationship, i int) (types.Insta
 	return vStart, vEnd
 }
 
-func relVersionInheritedValidFrom(chain []*types.Relationship, i int, tm *types.TemporalMetadata) bool {
+func relInheritedValidFrom(chain []*types.Relationship, i int, tm *types.TemporalMetadata) bool {
 	if i == 0 || tm.UpdatedAt == 0 {
 		return false
 	}
@@ -581,6 +657,9 @@ func hasTemporalFilter(opts storepkg.QueryOpts) bool {
 	if opts.ValidAt != 0 {
 		return true
 	}
+	if opts.TxAt != 0 {
+		return true
+	}
 	return opts.ValidStart > 0 && opts.ValidEnd > 0
 }
 
@@ -593,7 +672,22 @@ func hasTemporalFilter(opts storepkg.QueryOpts) bool {
 // pred. pred==nil means "any overlapping version".
 func (c *Core) findNodeVersionForOpts(id types.NodeID, opts storepkg.QueryOpts, pred func(*types.Node) bool) (*types.Node, error) {
 	if opts.ValidAt != 0 {
-		n, err := c.nodeAtLocked(id, opts.ValidAt)
+		n, err := c.nodeAtLockedTx(id, opts.ValidAt, opts.TxAt)
+		if err != nil {
+			return nil, err
+		}
+		if pred != nil && !pred(n) {
+			return nil, storepkg.ErrNoVersionValidAt
+		}
+		return n, nil
+	}
+	if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+		return c.findNodeVersionMatchingDuringTx(id, opts.ValidStart, opts.ValidEnd, opts.TxAt, pred)
+	}
+	if opts.TxAt != 0 {
+		// TX-only filter: return version visible at txAt as of "now" valid time
+		// — i.e. whatever was current-or-most-recent at txAt.
+		n, err := c.nodeAtLockedTx(id, resolveOpenEndInstant(0)-1, opts.TxAt)
 		if err != nil {
 			return nil, err
 		}
@@ -608,7 +702,20 @@ func (c *Core) findNodeVersionForOpts(id types.NodeID, opts storepkg.QueryOpts, 
 // findRelVersionForOpts is the relationship counterpart of findNodeVersionForOpts.
 func (c *Core) findRelVersionForOpts(id types.RelID, opts storepkg.QueryOpts, pred func(*types.Relationship) bool) (*types.Relationship, error) {
 	if opts.ValidAt != 0 {
-		r, err := c.relAtLocked(id, opts.ValidAt)
+		r, err := c.relAtLockedTx(id, opts.ValidAt, opts.TxAt)
+		if err != nil {
+			return nil, err
+		}
+		if pred != nil && !pred(r) {
+			return nil, storepkg.ErrNoVersionValidAt
+		}
+		return r, nil
+	}
+	if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+		return c.findRelVersionMatchingDuringTx(id, opts.ValidStart, opts.ValidEnd, opts.TxAt, pred)
+	}
+	if opts.TxAt != 0 {
+		r, err := c.relAtLockedTx(id, resolveOpenEndInstant(0)-1, opts.TxAt)
 		if err != nil {
 			return nil, err
 		}
@@ -633,13 +740,15 @@ func (c *Core) findRelVersionForOpts(id types.RelID, opts storepkg.QueryOpts, pr
 // version. Scanning all overlapping versions is the only correct semantic for
 // "did this node match the predicate at any point during [start, end)?".
 func (c *Core) findNodeVersionMatchingDuring(id types.NodeID, start, end types.Instant, pred func(*types.Node) bool) (*types.Node, error) {
-	// Callers must resolve end == 0 to a concrete bound BEFORE invoking
-	// this function; see resolveOpenEndInstant. Per-call substitution
-	// here would cause time drift across a long iteration: each ID
-	// would see a different `nowInstant()`, so an entity created
-	// between iterations could be included or excluded
-	// non-deterministically. The entry-point resolution gives every
-	// candidate the same upper bound.
+	return c.findNodeVersionMatchingDuringTx(id, start, end, 0, pred)
+}
+
+// findNodeVersionMatchingDuringTx is the bitemporal variant: it filters the
+// chain to versions visible at txAt before scanning for valid-time overlap.
+// txAt == 0 → no TX filter (equivalent to findNodeVersionMatchingDuring).
+// Callers must resolve end == 0 to a concrete bound via resolveOpenEndInstant
+// before invoking.
+func (c *Core) findNodeVersionMatchingDuringTx(id types.NodeID, start, end, txAt types.Instant, pred func(*types.Node) bool) (*types.Node, error) {
 	current, err := c.getCurrentNode(id)
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
@@ -660,7 +769,15 @@ func (c *Core) findNodeVersionMatchingDuring(id types.NodeID, start, end types.I
 		chain = append(chain, current)
 	}
 
+	chain = filterNodeChainByTxAt(chain, txAt)
+	if len(chain) == 0 {
+		return nil, storepkg.ErrNoVersionValidAt
+	}
+
 	for i := len(chain) - 1; i >= 0; i-- {
+		if eclipsedNodeBounds(chain[i]) {
+			continue
+		}
 		vStart, vEnd := c.nodeVersionBounds(chain, i)
 		// Overlap: vStart < end AND (vEnd == 0 OR vEnd > start).
 		if vStart < end && (vEnd == 0 || vEnd > start) {
@@ -675,7 +792,11 @@ func (c *Core) findNodeVersionMatchingDuring(id types.NodeID, start, end types.I
 
 // findRelVersionMatchingDuring is the relationship counterpart.
 func (c *Core) findRelVersionMatchingDuring(id types.RelID, start, end types.Instant, pred func(*types.Relationship) bool) (*types.Relationship, error) {
-	// See findNodeVersionMatchingDuring: callers must pre-resolve end == 0.
+	return c.findRelVersionMatchingDuringTx(id, start, end, 0, pred)
+}
+
+// findRelVersionMatchingDuringTx is the bitemporal variant. See findNodeVersionMatchingDuringTx.
+func (c *Core) findRelVersionMatchingDuringTx(id types.RelID, start, end, txAt types.Instant, pred func(*types.Relationship) bool) (*types.Relationship, error) {
 	current, err := c.getCurrentRelationship(id)
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, err
@@ -696,7 +817,15 @@ func (c *Core) findRelVersionMatchingDuring(id types.RelID, start, end types.Ins
 		chain = append(chain, current)
 	}
 
+	chain = filterRelChainByTxAt(chain, txAt)
+	if len(chain) == 0 {
+		return nil, storepkg.ErrNoVersionValidAt
+	}
+
 	for i := len(chain) - 1; i >= 0; i-- {
+		if eclipsedRelBounds(chain[i]) {
+			continue
+		}
 		vStart, vEnd := c.relVersionBounds(chain, i)
 		if vStart < end && (vEnd == 0 || vEnd > start) {
 			if pred == nil || pred(chain[i]) {

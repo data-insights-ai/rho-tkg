@@ -35,15 +35,31 @@ import (
 //   - batch_queue.go   — Add/Update/Delete queue methods
 //   - batch_execute.go — Execute (the under-lock replay)
 type BatchBuilder struct {
-	g           *Core
-	mu          sync.Mutex
-	done        bool
-	nodes       []pendingNode
-	rels        []pendingRel
-	nodeUpdates []pendingNodeUpdate
-	relUpdates  []pendingRelUpdate
-	nodeDeletes []types.NodeID
-	relDeletes  []types.RelID
+	g            *Core
+	mu           sync.Mutex
+	done         bool
+	nodes        []pendingNode
+	rels         []pendingRel
+	nodeUpdates  []pendingNodeUpdate
+	relUpdates   []pendingRelUpdate
+	nodeDeletes  []types.NodeID
+	relDeletes   []types.RelID
+	nodeCascades []pendingNodeCascade
+	relCascades  []pendingRelCascade
+}
+
+type pendingNodeCascade struct {
+	id        types.NodeID
+	validFrom types.Instant
+	validTo   types.Instant
+	props     map[string]any
+}
+
+type pendingRelCascade struct {
+	id        types.RelID
+	validFrom types.Instant
+	validTo   types.Instant
+	props     map[string]any
 }
 
 // pendingNode and pendingRel keep private queued entities plus the

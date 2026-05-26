@@ -5,6 +5,8 @@
 package temporal
 
 import (
+	"context"
+
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/grapherr"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
 )
@@ -35,6 +37,21 @@ type Ops interface {
 	RelAsOf(id types.RelID, txTime types.Instant) (*types.Relationship, error)
 	NodesAsOf(txTime types.Instant) ([]*types.Node, error)
 	RelsAsOf(txTime types.Instant) ([]*types.Relationship, error)
+
+	// Bitemporal point-in-time (valid time AT a given transaction time).
+	// txAt == 0 means "no TX filter" — semantically equivalent to NodeAt /
+	// NodesAt / RelAt / RelsAt respectively.
+	NodeAtTx(id types.NodeID, validAt, txAt types.Instant) (*types.Node, error)
+	RelAtTx(id types.RelID, validAt, txAt types.Instant) (*types.Relationship, error)
+	NodesAtTx(validAt, txAt types.Instant) ([]*types.Node, error)
+	RelsAtTx(validAt, txAt types.Instant) ([]*types.Relationship, error)
+
+	// Cascade / timeline edit. Convenience wrapper that calls Update with
+	// tkg_valid_from / tkg_valid_to in the props map. Adjacent versions'
+	// effective intervals tile via the resolver's vEnd-from-next.ValidFrom
+	// derivation. Mid-history overlap is not handled by the MVP.
+	SetNodeVersionInterval(ctx context.Context, id types.NodeID, validFrom, validTo types.Instant, props map[string]any) (*types.Node, error)
+	SetRelVersionInterval(ctx context.Context, id types.RelID, validFrom, validTo types.Instant, props map[string]any) (*types.Relationship, error)
 
 	// Snapshot/Diff
 	Snapshot(t types.Instant) (*GraphSnapshot, error)
@@ -242,6 +259,63 @@ func (a *API) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 		return nil, err
 	}
 	return ops.RelsAsOf(txTime)
+}
+
+// NodeAtTx returns the node version valid at validAt as known at txAt
+// (bitemporal point query). txAt == 0 is equivalent to NodeAt(id, validAt).
+func (a *API) NodeAtTx(id types.NodeID, validAt, txAt types.Instant) (*types.Node, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.NodeAtTx(id, validAt, txAt)
+}
+
+// RelAtTx is the relationship counterpart of NodeAtTx.
+func (a *API) RelAtTx(id types.RelID, validAt, txAt types.Instant) (*types.Relationship, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.RelAtTx(id, validAt, txAt)
+}
+
+// NodesAtTx returns nodes valid at validAt as known at txAt.
+// txAt == 0 is equivalent to NodesAt(validAt).
+func (a *API) NodesAtTx(validAt, txAt types.Instant) ([]*types.Node, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.NodesAtTx(validAt, txAt)
+}
+
+// RelsAtTx is the relationship counterpart of NodesAtTx.
+func (a *API) RelsAtTx(validAt, txAt types.Instant) ([]*types.Relationship, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.RelsAtTx(validAt, txAt)
+}
+
+// SetNodeVersionInterval declares node id is in state props for [validFrom, validTo).
+// validTo == 0 means open-ended. Adjacent versions' intervals tile via the resolver.
+func (a *API) SetNodeVersionInterval(ctx context.Context, id types.NodeID, validFrom, validTo types.Instant, props map[string]any) (*types.Node, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.SetNodeVersionInterval(ctx, id, validFrom, validTo, props)
+}
+
+// SetRelVersionInterval is the relationship counterpart of SetNodeVersionInterval.
+func (a *API) SetRelVersionInterval(ctx context.Context, id types.RelID, validFrom, validTo types.Instant, props map[string]any) (*types.Relationship, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.SetRelVersionInterval(ctx, id, validFrom, validTo, props)
 }
 
 // Snapshot captures the graph state at t.

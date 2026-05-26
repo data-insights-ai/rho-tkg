@@ -14,6 +14,7 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 	"github.com/dgraph-io/badger/v4/options"
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/index"
+	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/registry"
 	badger "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/badger"
 )
 
@@ -419,6 +420,75 @@ func New(cfg Config) (*Store, error) {
 	}
 
 	return ts, nil
+}
+
+// MetaGet delegates to the reference shard (which is always present and
+// persistent). The graph-layer schema_version marker lives there.
+func (ts *Store) MetaGet(key string) ([]byte, error) {
+	if ts == nil {
+		return nil, ErrNilStore
+	}
+	if ts.refShard == nil {
+		return nil, ErrStoreClosed
+	}
+	return ts.refShard.MetaGet(key)
+}
+
+// MetaSet delegates to the reference shard.
+func (ts *Store) MetaSet(key string, value []byte) error {
+	if ts == nil {
+		return ErrNilStore
+	}
+	if ts.refShard == nil {
+		return ErrStoreClosed
+	}
+	return ts.refShard.MetaSet(key, value)
+}
+
+// SavePropertyKeyRegistry delegates to the reference shard. Property keys
+// are shared across event + reference shards (they index the same Property
+// type), so a single canonical registry stored on refShard is sufficient.
+func (ts *Store) SavePropertyKeyRegistry(reg *registrypkg.PropertyKeyRegistry) error {
+	if ts == nil {
+		return ErrNilStore
+	}
+	if ts.refShard == nil {
+		return ErrStoreClosed
+	}
+	return ts.refShard.SavePropertyKeyRegistry(reg)
+}
+
+// LoadPropertyKeyRegistry delegates to the reference shard.
+func (ts *Store) LoadPropertyKeyRegistry(reg *registrypkg.PropertyKeyRegistry) (bool, error) {
+	if ts == nil {
+		return false, ErrNilStore
+	}
+	if ts.refShard == nil {
+		return false, ErrStoreClosed
+	}
+	return ts.refShard.LoadPropertyKeyRegistry(reg)
+}
+
+// SetPropertyKeyRegistry installs the property-key registry on every shard
+// (reference + each event shard). Wire encoders + decoders consult the
+// registry to dictionary-encode property keys on disk.
+func (ts *Store) SetPropertyKeyRegistry(reg *registrypkg.PropertyKeyRegistry) {
+	if ts == nil {
+		return
+	}
+	if ts.refShard != nil {
+		ts.refShard.SetPropertyKeyRegistry(reg)
+	}
+	ts.mu.RLock()
+	for _, es := range ts.eventShards {
+		if es != nil && es.store != nil {
+			es.store.SetPropertyKeyRegistry(reg)
+		}
+	}
+	ts.mu.RUnlock()
+	if arc := ts.refArchive.Load(); arc != nil {
+		arc.SetPropertyKeyRegistry(reg)
+	}
 }
 
 // Close closes all shards and saves the catalog. Idempotent via sync.Once.

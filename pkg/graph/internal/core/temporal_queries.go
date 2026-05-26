@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -280,6 +281,14 @@ func (t *TempOps) NodeAt(id types.NodeID, at types.Instant) (*types.Node, error)
 }
 
 func (c *Core) nodeAtLocked(id types.NodeID, at types.Instant) (*types.Node, error) {
+	return c.nodeAtLockedTx(id, at, 0)
+}
+
+// nodeAtLockedTx is the bitemporal variant of nodeAtLocked: it filters the
+// version chain to only versions visible at txAt (TxFrom <= txAt < TxTo)
+// before resolving the valid-time match. txAt == 0 returns the same chain as
+// nodeAtLocked (no TX filter — current behaviour).
+func (c *Core) nodeAtLockedTx(id types.NodeID, validAt, txAt types.Instant) (*types.Node, error) {
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return nil, err
 	}
@@ -287,7 +296,6 @@ func (c *Core) nodeAtLocked(id types.NodeID, at types.Instant) (*types.Node, err
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
 	}
-	// current may be nil for deleted entities.
 
 	history, err := c.getNodeHistory(id)
 	if err != nil {
@@ -298,14 +306,17 @@ func (c *Core) nodeAtLocked(id types.NodeID, at types.Instant) (*types.Node, err
 		return nil, storepkg.ErrNodeNotFound
 	}
 
-	// Build chain: history (ascending version order) + current (if exists).
 	chain := make([]*types.Node, 0, len(history)+1)
 	chain = append(chain, history...)
 	if current != nil {
 		chain = append(chain, current)
 	}
 
-	return c.resolveNodeVersionAt(chain, at)
+	chain = filterNodeChainByTxAt(chain, txAt)
+	if len(chain) == 0 {
+		return nil, storepkg.ErrNoVersionValidAt
+	}
+	return c.resolveNodeVersionAt(chain, validAt)
 }
 
 // RelAt returns the version of a relationship that was valid at the given instant.
@@ -332,6 +343,11 @@ func (t *TempOps) RelAt(id types.RelID, at types.Instant) (*types.Relationship, 
 }
 
 func (c *Core) relAtLocked(id types.RelID, at types.Instant) (*types.Relationship, error) {
+	return c.relAtLockedTx(id, at, 0)
+}
+
+// relAtLockedTx is the bitemporal variant of relAtLocked. See nodeAtLockedTx.
+func (c *Core) relAtLockedTx(id types.RelID, validAt, txAt types.Instant) (*types.Relationship, error) {
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return nil, err
 	}
@@ -339,7 +355,6 @@ func (c *Core) relAtLocked(id types.RelID, at types.Instant) (*types.Relationshi
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, err
 	}
-	// current may be nil for deleted entities.
 
 	history, err := c.getRelHistory(id)
 	if err != nil {
@@ -350,14 +365,17 @@ func (c *Core) relAtLocked(id types.RelID, at types.Instant) (*types.Relationshi
 		return nil, storepkg.ErrRelNotFound
 	}
 
-	// Build chain: history (ascending version order) + current (if exists).
 	chain := make([]*types.Relationship, 0, len(history)+1)
 	chain = append(chain, history...)
 	if current != nil {
 		chain = append(chain, current)
 	}
 
-	return c.resolveRelVersionAt(chain, at)
+	chain = filterRelChainByTxAt(chain, txAt)
+	if len(chain) == 0 {
+		return nil, storepkg.ErrNoVersionValidAt
+	}
+	return c.resolveRelVersionAt(chain, validAt)
 }
 
 // NeighborsAt returns all neighbor nodes reachable from nodeID via
@@ -832,6 +850,185 @@ func (t *TempOps) RelsByTypePropertyDuring(relType, key string, value any, start
 	if err != nil {
 		return nil, err
 	}
+	return result, nil
+}
+
+// --- Cascade / timeline edit (Phase 3) ---
+
+// SetNodeVersionInterval declares that node `id` is in state `props` for the
+// valid-time interval [validFrom, validTo). validTo == 0 means open-ended.
+//
+// Full cascade: classifies every existing version vs the target interval and
+// applies one of five actions per overlap (keep / closeRight / openLeft /
+// eclipse / split). Existing history rows whose ValidFrom/ValidTo are
+// adjusted are written back in place; their hashes are unaffected because
+// TemporalMetadata is not part of the content hash. Split fragments get
+// freshly-allocated version numbers. Mid-history insertion (backdating with
+// existing versions on either side) is supported.
+//
+// Atomicity is bounded by the entity lock: a crash mid-cascade leaves
+// partial state. The committed-rows view from queries remains consistent
+// because each store write is itself atomic and the resolver tolerates the
+// interleavings the partial state can produce.
+func (t *TempOps) SetNodeVersionInterval(ctx context.Context, id types.NodeID, validFrom, validTo types.Instant, props map[string]any) (*types.Node, error) {
+	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	var (
+		result  *types.Node
+		opErr   error
+	)
+	_, closeErr := c.runUnderRLock(func() {
+		result, opErr = c.cascadeNodeVersionInterval(ctx, id, validFrom, validTo, props)
+	})
+	if closeErr != nil {
+		return nil, closeErr
+	}
+	if opErr != nil {
+		return nil, opErr
+	}
+	return result, nil
+}
+
+// SetRelVersionInterval is the relationship counterpart of SetNodeVersionInterval.
+func (t *TempOps) SetRelVersionInterval(ctx context.Context, id types.RelID, validFrom, validTo types.Instant, props map[string]any) (*types.Relationship, error) {
+	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	var (
+		result *types.Relationship
+		opErr  error
+	)
+	_, closeErr := c.runUnderRLock(func() {
+		result, opErr = c.cascadeRelVersionInterval(ctx, id, validFrom, validTo, props)
+	})
+	if closeErr != nil {
+		return nil, closeErr
+	}
+	if opErr != nil {
+		return nil, opErr
+	}
+	return result, nil
+}
+
+// --- Bitemporal point queries (valid time + transaction time) ---
+
+// NodeAtTx returns the version of a node valid at validAt as known at txAt.
+// txAt == 0 means "no TX filter" — equivalent to NodeAt(id, validAt).
+// Filters the version chain to entries whose TX interval contains txAt before
+// resolving the valid-time match. Returns ErrNoVersionValidAt if no version
+// satisfies both axes, ErrNodeNotFound if the node never existed.
+func (t *TempOps) NodeAtTx(id types.NodeID, validAt, txAt types.Instant) (*types.Node, error) {
+	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return nil, err
+	}
+	var result *types.Node
+	err := c.readUnderRLock(func() error {
+		n, err := c.nodeAtLockedTx(id, validAt, txAt)
+		result = n
+		return err
+	})
+	return result, err
+}
+
+// RelAtTx is the relationship counterpart of NodeAtTx.
+func (t *TempOps) RelAtTx(id types.RelID, validAt, txAt types.Instant) (*types.Relationship, error) {
+	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storepkg.ValidateRelID(id); err != nil {
+		return nil, err
+	}
+	var result *types.Relationship
+	err := c.readUnderRLock(func() error {
+		r, err := c.relAtLockedTx(id, validAt, txAt)
+		result = r
+		return err
+	})
+	return result, err
+}
+
+// NodesAtTx returns all nodes valid at validAt as known at txAt.
+// txAt == 0 → equivalent to NodesAt(validAt).
+func (t *TempOps) NodesAtTx(validAt, txAt types.Instant) ([]*types.Node, error) {
+	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	var result []*types.Node
+	err := c.readUnderRLock(func() error {
+		nodes, err := c.nodesAtLockedTx(validAt, txAt)
+		result = nodes
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (c *Core) nodesAtLockedTx(validAt, txAt types.Instant) ([]*types.Node, error) {
+	var result []*types.Node
+	err := c.forEachKnownNodeID(func(id types.NodeID) error {
+		n, err := c.nodeAtLockedTx(id, validAt, txAt)
+		if err != nil {
+			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
+				return nil
+			}
+			return err
+		}
+		result = append(result, n)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	storeutil.SortNodesByID(result)
+	return result, nil
+}
+
+// RelsAtTx returns all relationships valid at validAt as known at txAt.
+func (t *TempOps) RelsAtTx(validAt, txAt types.Instant) ([]*types.Relationship, error) {
+	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	var result []*types.Relationship
+	err := c.readUnderRLock(func() error {
+		rels, err := c.relsAtLockedTx(validAt, txAt)
+		result = rels
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (c *Core) relsAtLockedTx(validAt, txAt types.Instant) ([]*types.Relationship, error) {
+	var result []*types.Relationship
+	err := c.forEachKnownRelID(func(id types.RelID) error {
+		r, err := c.relAtLockedTx(id, validAt, txAt)
+		if err != nil {
+			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
+				return nil
+			}
+			return err
+		}
+		result = append(result, r)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	storeutil.SortRelsByID(result)
 	return result, nil
 }
 

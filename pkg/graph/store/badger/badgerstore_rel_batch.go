@@ -38,7 +38,7 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		if err := storecontract.ValidateRelationshipWrite(r); err != nil {
 			return err
 		}
-		data, err := storepkg.MarshalRelWire(r)
+		data, err := bs.marshalRelBytes(r)
 		if err != nil {
 			return fmt.Errorf("graph: marshal relationship: %w", err)
 		}

@@ -30,13 +30,13 @@ func (bs *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion 
 	_, prefetchErr := bs.prefetchRel(rid)
 
 	// Serialize current state.
-	data, err := marshalRelToBytes(current)
+	data, err := bs.marshalRelToBytes(current)
 	if err != nil {
 		return fmt.Errorf("graph: marshal relationship: %w", err)
 	}
 
 	// Serialize history snapshot.
-	histData, err := marshalRelToBytes(prevState)
+	histData, err := bs.marshalRelToBytes(prevState)
 	if err != nil {
 		return fmt.Errorf("graph: marshal rel version: %w", err)
 	}
@@ -94,7 +94,7 @@ func (bs *Store) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombs
 	}
 	id := rid.SnowflakeID()
 	// Serialize tombstone OUTSIDE lock (B3: no I/O under write lock).
-	tombData, err := marshalRelToBytes(tombstone)
+	tombData, err := bs.marshalRelToBytes(tombstone)
 	if err != nil {
 		return fmt.Errorf("graph: marshal rel tombstone: %w", err)
 	}
@@ -128,8 +128,8 @@ func (bs *Store) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombs
 	return nil
 }
 
-func marshalRelToBytes(r *types.Relationship) ([]byte, error) {
-	return storepkg.MarshalRelWire(r)
+func (bs *Store) marshalRelToBytes(r *types.Relationship) ([]byte, error) {
+	return bs.marshalRelBytes(r)
 }
 
 func (bs *Store) PutRelVersion(rid types.RelID, version uint32, r *types.Relationship) error {
@@ -140,7 +140,7 @@ func (bs *Store) PutRelVersion(rid types.RelID, version uint32, r *types.Relatio
 		return err
 	}
 	id := rid.SnowflakeID()
-	data, err := marshalRelToBytes(r)
+	data, err := bs.marshalRelToBytes(r)
 	if err != nil {
 		return fmt.Errorf("graph: marshal rel version: %w", err)
 	}
@@ -175,7 +175,7 @@ func (bs *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relation
 		if err := msgpack.Unmarshal(op.value, &w); err != nil {
 			return nil, fmt.Errorf("graph: unmarshal rel version: %w", err)
 		}
-		r, err := decodeRelHistoryWireForKey(w, id, uint64(version))
+		r, err := bs.decodeRelHistoryWireForKey(w, id, uint64(version))
 		if err != nil {
 			return nil, fmt.Errorf("graph: decode rel version: %w", err)
 		}
@@ -197,7 +197,7 @@ func (bs *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relation
 			if err := msgpack.Unmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal rel version: %w", err)
 			}
-			decoded, err := decodeRelHistoryWireForKey(w, id, uint64(version))
+			decoded, err := bs.decodeRelHistoryWireForKey(w, id, uint64(version))
 			if err != nil {
 				return fmt.Errorf("graph: decode rel version: %w", err)
 			}
@@ -302,7 +302,7 @@ func (bs *Store) getRelHistoryByPrefix(prefix []byte) ([]*types.Relationship, er
 		if err := msgpack.Unmarshal(entries[k], &w); err != nil {
 			return nil, fmt.Errorf("graph: unmarshal rel version: %w", err)
 		}
-		r, err := decodeRelHistoryWireForKey(w, expectedID, historyVersionFromKey([]byte(k)))
+		r, err := bs.decodeRelHistoryWireForKey(w, expectedID, historyVersionFromKey([]byte(k)))
 		if err != nil {
 			return nil, fmt.Errorf("graph: decode rel version: %w", err)
 		}
@@ -329,7 +329,7 @@ func (bs *Store) relHistoryVersionsFromPrefix(prefix []byte, startVersion uint32
 		if err := msgpack.Unmarshal(data, &w); err != nil {
 			return fmt.Errorf("graph: unmarshal rel version: %w", err)
 		}
-		r, err := decodeRelHistoryWireForKey(w, expectedID, historyVersionFromKey([]byte(key)))
+		r, err := bs.decodeRelHistoryWireForKey(w, expectedID, historyVersionFromKey([]byte(key)))
 		if err != nil {
 			return fmt.Errorf("graph: decode rel version: %w", err)
 		}

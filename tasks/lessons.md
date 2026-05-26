@@ -512,3 +512,180 @@ AsOf, stats, search). Path B (v4.1.0) will drop `c.mu.Lock` from tx
 lifetime entirely and eliminate the whole bug class — but until then,
 this rule remains load-bearing.
 
+
+## 32. Don't Conflate Transaction Time With Valid Time In The Resolver
+
+```
+BAD:  vEnd = next.UpdatedAt  // TX time of the supersede
+GOOD: vEnd = next.ValidFrom  // VT of the next state — falls back to UpdatedAt when unset
+```
+
+Bitemporal storage keeps TxFrom/TxTo independent of ValidFrom/ValidTo,
+but the resolver historically used the next version's UpdatedAt
+(transaction time) as the *valid-time* end of the prior version. Two
+consequences:
+
+- Caller-supplied `tkg_valid_from` on the next version did not close the
+  prior version's tile — the prior interval ran up to the supersede TX
+  time, leaving a gap between TX time and the new VT.
+- `NodesAtTx(validAt, txAt)` queries that should reconstruct the
+  historical "as known then" view fell back to the current VT
+  derivation.
+
+Fix in `nodeVersionBounds` / `relVersionBounds`: when computing `vEnd`,
+prefer `next.ValidFrom` over `next.UpdatedAt`. Keep `UpdatedAt` as the
+fallback so callers who haven't adopted explicit valid-time still see
+TX-as-VT semantics.
+
+## 33. Update Must Not Inherit Valid-Time From The Previous Version
+
+The pre-bitemporal Update path deep-copied the previous version then
+left its TemporalMetadata.ValidFrom intact. The resolver had to detect
+this with `nodeVersionInheritedValidFrom` ("is this row's ValidFrom
+suspiciously equal to prev's?") and ignore it. The detector was a
+heuristic that breaks the moment a Phase 2 caller explicitly sets
+ValidFrom equal to prev's value.
+
+Rule: after `prevState := current.DeepCopy()`, clear
+`current.Temporal().ValidFrom` and `current.Temporal().ValidTo` before
+re-applying caller-supplied values. `ValidFrom != 0` on a non-genesis
+version then literally means "caller-supplied" — no heuristic needed.
+
+The legacy detector stays as a back-compat shim for pre-Phase-1 data
+on disk; it is harmless on new data because the predicate fails on
+`tm.ValidFrom == 0`.
+
+## 34. AsOf TX Queries Default To Now — Pass TxAt For Bitemporal Reads
+
+`QueryOpts.TxAt == 0` means "no TX filter" (any version matches by VT
+regardless of when it was written). This preserves backward-compat for
+every existing query, but it is NOT bitemporally correct "as of now":
+it returns whatever VT-matches across the union of all history rows,
+including writes that haven't yet happened in the caller's logical
+timeline.
+
+For genuine bitemporal point queries set `TxAt` explicitly. The
+no-filter default exists to keep pre-bitemporal call sites working
+unchanged — new bitemporal call sites should make their TX intent
+explicit.
+
+
+
+## 35. Cascade Edit Rewrites History Rows In Place
+
+```
+BAD:  cascade leaves overlapping history rows alone, relies on resolver
+      precedence to pick the "right" version → ambiguous, surprising
+GOOD: cascade classifies each overlapping version (close/open/eclipse/split)
+      and rewrites the affected rows directly via PutNodeVersion;
+      eclipsed rows use a zero-width sentinel (ValidTo = ValidFrom + 1)
+```
+
+The MVP cascade just added a new version and relied on resolver
+latest-wins precedence to mask earlier versions — that surfaced
+overlapping history rows with the same `ValidFrom`, which the
+inheritance heuristic mistook for inherited values and dropped.
+
+The full cascade rewrites every affected history row in place. Temporal
+metadata is not part of the content hash (per
+`integrity.computeNodeHashWithBuffer`), so mutating `ValidFrom` /
+`ValidTo` on a frozen history row preserves the hash chain.
+
+Split fragments need fresh version numbers (allocate as `maxVersion+1+i`).
+Eclipsed rows must be invisible to VT queries — use `ValidTo ==
+ValidFrom + 1` (the store rejects `ValidFrom == ValidTo`) and add an
+explicit skip in `resolveNodeVersionAt` / `resolveRelVersionAt` so the
+1-instant width does not cause spurious matches.
+
+The new-current decision: the cascade row becomes current iff
+`newVT == 0 AND no surviving post-cascade row has a later open-ended
+ValidFrom`. Otherwise it lands in history.
+
+## 36. Migration-Gated Resolver Heuristics Need A Runtime Flag
+
+When you migrate persistent data to eliminate a resolver heuristic, the
+heuristic must remain in code for stores that cannot run the migration:
+backends without the new capability, mock stores in tests, and any
+caller passing an injected store the migration cannot detect or write to.
+
+Pattern: a `c.bitemporalMigrated bool` flag set by the post-`New`
+migration runner. The resolver consults `if c.flag || !heuristic(...)`
+to bypass the heuristic only when the migration has actually run on this
+particular core. Removing the heuristic outright breaks tests that
+construct cores with mock stores whose iteration deliberately errors.
+
+
+
+## 37. Capacity-Soft Token Registries Don't Fail Writes
+
+```
+BAD:  registry.GetOrCreate(key) returns ErrRegistryFull at 65536 entries
+      → wire encode fails → entity write fails → caller cannot persist
+GOOD: registry.GetOrCreate(key) returns (0, nil) at capacity, sticky
+      warn-once; encoder treats 0 as "fall back to raw key on wire"
+```
+
+Property-key cardinality is harder to bound than label cardinality
+(UUID-keyed properties, dynamic schema, etc.). Refusing the write at
+capacity turns a soft-degradation case into a hard outage. The
+PropertyKeyRegistry returns token 0 on overflow; encoders MUST treat 0
+as "no token assigned, write the raw key string." Storage savings
+degrade gracefully without breaking persistence.
+
+## 38. Validation Hooks Are The Right Place For Side Indexes
+
+Adding a side index (e.g. property-key registry, cardinality stats)
+requires hooking into a path that sees every entity mutation. The
+attractive candidates — `types.PropertySlice.Set`, the wire encoder —
+have downsides: `Set` lives in `pkg/types` which is fundamental
+(circular dep risk), and the wire encoder is called at the store level
+without Core context.
+
+The validation layer on Core (`validateOwnedPropertyEntryForCreate`,
+`validatePropertyUpdates`) is the natural seam: it sees every property
+key on Add and Update, and runs with Core in scope. Hooking the
+registry update there is one line per validator and stays out of the
+type layer entirely.
+
+
+
+## 39. Custom EncodeMsgpack Bypasses Struct Tags
+
+```
+BAD:  added a new msgpack-tagged field to PropertyWire; assumed msgpack.Marshal
+      would serialize it. EncodeMsgpack on the same type hand-wrote fields
+      and silently dropped the new one.
+GOOD: when adding a tagged field to a struct that implements EncodeMsgpack,
+      update the custom encoder to emit the new field too. Round-trip tests
+      via msgpack.Marshal alone will not catch the gap when the project uses
+      the custom encoder in production paths.
+```
+
+The custom `(PropertyWire) EncodeMsgpack` in `wire_encode.go` exists
+"to avoid per-property reflective omitempty checks." Any new field added
+to PropertyWire must also be appended to that custom encoder, with its
+omitempty semantics replicated by hand. The struct tag alone is not
+sufficient.
+
+Audit recipe when adding a wire field:
+
+```bash
+grep -nE "EncodeMsgpack|EncodeMapLen" pkg/graph/internal/storeutil/
+```
+
+Every type listed there has a custom encoder you must update.
+
+## 40. Load Registry Before Index Rebuild
+
+When the store backend rebuilds an in-memory index from persisted rows
+on `New()`, it must already have any registry needed to decode those
+rows. For property-key tokenization specifically: load the property-key
+registry from meta KV BEFORE `loadIndexes` calls
+`bs.decodeNodeWireForKey`. Without this, tokenized rows fail decoding
+during the rebuild — the node ID is dropped from the live-node map and
+later `GetNode(id)` returns ErrNodeNotFound for a row that physically
+exists on disk.
+
+The rule generalises: any backend-internal decode that runs during
+init must have its dependencies resolved before that init runs.
+

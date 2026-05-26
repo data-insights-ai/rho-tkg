@@ -278,6 +278,80 @@ func (b *BatchBuilder) UpdateRelationship(id types.RelID, updates map[string]any
 	return nil
 }
 
+// SetNodeVersionInterval queues a full cascade for node `id` over
+// [validFrom, validTo). Mirrors g.Temporal().SetNodeVersionInterval but
+// executed as part of Batch.Execute. Each cascade is its own
+// entity-lock-bounded write inside Execute; failures are tracked per-op.
+func (b *BatchBuilder) SetNodeVersionInterval(id types.NodeID, validFrom, validTo types.Instant, props map[string]any) error {
+	if err := b.lockOpen(); err != nil {
+		return err
+	}
+	defer b.mu.Unlock()
+
+	if err := b.g.checkOpen(); err != nil {
+		return err
+	}
+	b.g.mu.RLock()
+	defer b.g.mu.RUnlock()
+	if b.g.closed.Load() {
+		return ErrGraphClosed
+	}
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return err
+	}
+	if validFrom == 0 {
+		return ErrInvalidTimeRange
+	}
+	if validTo != 0 && validFrom >= validTo {
+		return ErrInvalidTimeRange
+	}
+	// Defensive copy of props — the caller may mutate the map after queueing.
+	var cp map[string]any
+	if props != nil {
+		cp = make(map[string]any, len(props))
+		for k, v := range props {
+			cp[k] = v
+		}
+	}
+	b.nodeCascades = append(b.nodeCascades, pendingNodeCascade{id: id, validFrom: validFrom, validTo: validTo, props: cp})
+	return nil
+}
+
+// SetRelVersionInterval queues a relationship cascade. See SetNodeVersionInterval.
+func (b *BatchBuilder) SetRelVersionInterval(id types.RelID, validFrom, validTo types.Instant, props map[string]any) error {
+	if err := b.lockOpen(); err != nil {
+		return err
+	}
+	defer b.mu.Unlock()
+
+	if err := b.g.checkOpen(); err != nil {
+		return err
+	}
+	b.g.mu.RLock()
+	defer b.g.mu.RUnlock()
+	if b.g.closed.Load() {
+		return ErrGraphClosed
+	}
+	if err := storepkg.ValidateRelID(id); err != nil {
+		return err
+	}
+	if validFrom == 0 {
+		return ErrInvalidTimeRange
+	}
+	if validTo != 0 && validFrom >= validTo {
+		return ErrInvalidTimeRange
+	}
+	var cp map[string]any
+	if props != nil {
+		cp = make(map[string]any, len(props))
+		for k, v := range props {
+			cp[k] = v
+		}
+	}
+	b.relCascades = append(b.relCascades, pendingRelCascade{id: id, validFrom: validFrom, validTo: validTo, props: cp})
+	return nil
+}
+
 // DeleteNode queues a node for deletion (cascade via Graph.Nodes.Delete).
 // Returns ErrBatchDone if Execute has already started, or ErrGraphClosed if
 // the underlying graph has been closed since the builder was constructed

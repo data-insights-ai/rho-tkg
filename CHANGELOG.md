@@ -6,6 +6,143 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added — bitemporal queries + caller-controlled valid time on Update
+
+Five-phase bitemporal rollout. Storage was already bitemporal (separate
+TxFrom / TxTo / ValidFrom / ValidTo per version), but the write API and
+resolver conflated transaction time with valid time. This release adds
+the second axis to the read API, lets callers control valid time on
+Update, and tiles version timelines via the resolver.
+
+**Phase 0 — bitemporal queries (read-only).**
+- `QueryOpts.TxAt types.Instant` filters the version chain to entries
+  visible at the given transaction time (`TxFrom <= TxAt < TxTo`).
+  `TxAt == 0` keeps today's "no TX filter" behaviour.
+- `QueryOpts.IncludeEclipsed bool` reserved field; not consulted yet.
+- New `TempOps.NodeAtTx` / `RelAtTx` / `NodesAtTx` / `RelsAtTx` —
+  bitemporal point queries. `txAt == 0` matches the existing
+  valid-time-only variants.
+- All `*ByLabel` / `*ByType` queries that take `QueryOpts` now honour
+  `TxAt` automatically via `findNodeVersionForOpts`.
+
+**Phase 1 — resolver de-conflation (no schema bump).**
+- `updateNodePreparedInternal` / `updateRelationshipPreparedInternal`
+  no longer copy `ValidFrom` / `ValidTo` from the previous version.
+  New non-genesis versions have `ValidFrom == 0`, so the resolver
+  derives `vStart` from `UpdatedAt` cleanly.
+- `nodeVersionInheritedValidFrom` / `relVersionInheritedValidFrom`
+  remain as back-compat shims for pre-Phase-1 data. They are harmless
+  on new data (predicate fails on `tm.ValidFrom == 0`).
+- No on-disk schema change; no migration.
+
+**Phase 2 — Update accepts `tkg_valid_from` / `tkg_valid_to`.**
+- Standalone, batch, and tx Update paths all accept the two shadow keys
+  via the new `extractTemporalTracked` extractor and `updateTemporal`
+  struct (mirrors `updateProvenance`).
+- **`UpdateInPlace`** (both nodes + rels) also accepts the temporal
+  shadow keys. Because UpdateInPlace preserves version (no chain entry),
+  the temporal coords overwrite the current row's `TemporalMetadata`
+  directly. Useful for data-fix corrections without polluting history.
+- `tkg_created_at` remains rejected on Update (`ErrReservedPrefix`) —
+  per-entity, not per-version.
+- New sentinel `ErrValidFromBeforePrevious` (re-exported on
+  `pkg/graph`): caller-supplied `tkg_valid_from` must be strictly
+  greater than the previous version's effective `ValidFrom`. Applies to
+  the version-bumping `Update`; `UpdateInPlace` does not enforce this
+  (it's a direct rewrite, not a new tile).
+
+**Phase 3 — full cascade timeline edit.**
+- Resolver `nodeVersionBounds` / `relVersionBounds` derive each
+  version's `vEnd` from `next.ValidFrom` when explicit (fall back to
+  `next.UpdatedAt`), skipping eclipsed rows. Adjacent versions tile
+  automatically once the caller sets explicit `ValidFrom`.
+- New `TempOps.SetNodeVersionInterval(id, validFrom, validTo, props)`
+  and `SetRelVersionInterval` — full cascade implementation.
+  Classifies every existing history version vs the target interval and
+  applies one of five actions:
+  - **keep** — no overlap, untouched
+  - **closeRight** — close existing at `newVF`
+  - **openLeft** — re-open existing from `newVT`
+  - **eclipse** — existing fully contained → zero-width sentinel
+    (`ValidTo = ValidFrom + 1`); resolver skips eclipsed rows
+  - **split** — existing spans target → left fragment keeps original
+    version, right fragment gets a fresh version
+- Existing history rows rewritten in place via `PutNodeVersion` /
+  `PutRelVersion`. Hashes preserved because `TemporalMetadata` is not
+  part of the content hash.
+- Mid-history insertion (backdating between existing versions)
+  supported. Atomicity bounded by the entity lock — partial-state
+  crashes are visible to readers but resolver tolerates them.
+
+**Property-key tokenization (report 6.5).**
+- New `registrypkg.PropertyKeyRegistry` (`internal/registry/property_key_registry.go`)
+  mirrors `LabelRegistry` for property keys. Capacity-soft: when the
+  uint16 ceiling is reached, `GetOrCreate` returns `(0, nil)` so wire
+  encoders fall back to raw-key writes instead of failing.
+- New optional `propertyKeyPersister` interface on the Store contract;
+  implemented on `badger.Store` (via `MetaKey("property_keys")`),
+  `tiered.Store` (delegates to refShard), and the in-memory backend (no
+  persistence needed). Registry is loaded on `Core.New` and saved on
+  `Core.Close` alongside the existing label / reltype registries.
+- Registry is populated automatically via `validateOwnedPropertyEntryForCreate`
+  and `validatePropertyUpdates` — every distinct property key seen on
+  Add or Update gets a token.
+- New `g.Stats().PropertyKeyCount()` exposes the current cardinality
+  for monitoring against the uint16 ceiling.
+- **Wire-format integration.** New `PropertyWire.KeyToken uint16
+  msgpack:"kt,omitempty"` field. Encoder (`MarshalNodeWireWithKeys` /
+  `MarshalRelWireWithKeys`) tokenizes property keys via the registry
+  and omits the string Key when a token is allocated. Decoder
+  (`ResolvePropertyKeyTokens`) resolves tokens back to keys via the
+  registry. V1 reads (Key string only) keep working — Key is preferred
+  when both are present. Backends gain `SetPropertyKeyRegistry` via a
+  new `propertyKeyRegistrySetter` capability; `Core.New` installs the
+  loaded registry on the store after persistence load.
+- **Critical init ordering**: `badger.New` loads the persisted
+  property-key registry BEFORE `loadIndexes` so index rebuild can decode
+  tokenized rows. Without this, V2 rows would silently drop from the
+  live-node map.
+- Custom `EncodeMsgpack` on `PropertyWire` (`wire_encode.go`) updated to
+  emit the new `kt` field with omitempty semantics.
+
+**Phase 1 proper — bitemporal data migration.**
+- New OPTIONAL `MetaKVCapability` interface on the Store contract
+  (`MetaGet` / `MetaSet`). Implemented on `memory.Store`, `badger.Store`
+  (via existing `MetaKey` pattern), `tiered.Store` (delegates to the
+  reference shard).
+- One-shot, idempotent migration runs in `Core.New`: for every node +
+  rel history row with `Version > 0`, clear `ValidFrom` iff it equals
+  the immediately-preceding version's `ValidFrom`. Gated by
+  `meta/schema_version` key.
+- After successful migration the resolver's inheritance heuristic is
+  bypassed via `c.bitemporalMigrated`. Backends without `MetaKVCapability`
+  (or stores where migration fails) keep the heuristic active —
+  back-compat preserved.
+
+**Phase 4 — docs + lessons.**
+- Three new entries in `tasks/lessons.md`: TX vs VT separation in the
+  resolver; valid-time tiling via `next.ValidFrom`; Update no longer
+  inherits valid-time.
+- `CLAUDE.md` shadow-properties table notes Update support; temporal
+  queries section gains the AsOf-TX paragraph.
+- README "What's new" updated.
+
+### Migration notes
+
+- No on-disk format change. Existing Badger / Tiered DBs work
+  unchanged.
+- Pre-Phase-1 data with inherited `ValidFrom` on history rows continues
+  to resolve correctly via the back-compat shim
+  (`nodeVersionInheritedValidFrom`). Heuristic-free behaviour requires
+  data rewritten by post-Phase-1 code; no automatic rewrite is
+  performed.
+- Existing query callers that ignore `QueryOpts.TxAt` see no behaviour
+  change — `TxAt == 0` is the no-filter default.
+- Edge case: a Phase 2 caller who sets `tkg_valid_from` exactly equal
+  to the previous version's `ValidFrom` will be rejected with
+  `ErrValidFromBeforePrevious`. The strict-greater-than rule keeps the
+  back-compat shim from misclassifying an explicit value as inherited.
+
 ## [4.2.3] - 2026-05-15
 
 ### Changed - Full documentation sync (2026-05-15)

@@ -56,7 +56,7 @@ Execute these three phases in order when reviewing a merge request.
 Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4`
 Go: 1.26.1 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v4.2.3 (docs sync; same code as v4.2.2 — consumer-ergonomics aliases on graph package: QueryOpts, ShardDepth, DistanceMetric, ErrIndex*/ErrTemporalIndex*/ErrNodeExists/ErrRelExists). Thin `*Graph` façade — only `New` / `Close` plus 14 sub-API accessor methods: `g.Nodes()`, `g.Rels()`, `g.Temporal()`, `g.Index()`, `g.Events()`, `g.Constraints()`, `g.IO()`, `g.Admin()`, `g.Tier()`, `g.Stats()`, `g.Hash()`, `g.Resolve()`, `g.Tx()`, `g.Batch()`. The accessors are nil-safe (calling on a nil or zero-value `*Graph` returns nil; chained calls fail closed with `ErrNilGraph`). Implementation lives on `*core.Core` in `pkg/graph/internal/core/`.
+Status: v4.2.3 + `[Unreleased]` bitemporal additions — Update accepts `tkg_valid_from` / `tkg_valid_to`, `QueryOpts.TxAt` + `NodeAtTx` / `RelAtTx` / `NodesAtTx` / `RelsAtTx` for bitemporal point queries, `SetNodeVersionInterval` / `SetRelVersionInterval` for tile-clean timeline edits, resolver no longer conflates TX with VT in `vEnd` derivation, new sentinel `ErrValidFromBeforePrevious`. See `CHANGELOG.md` `[Unreleased]` for details and lessons 32–34. Thin `*Graph` façade — only `New` / `Close` plus 14 sub-API accessor methods: `g.Nodes()`, `g.Rels()`, `g.Temporal()`, `g.Index()`, `g.Events()`, `g.Constraints()`, `g.IO()`, `g.Admin()`, `g.Tier()`, `g.Stats()`, `g.Hash()`, `g.Resolve()`, `g.Tx()`, `g.Batch()`. The accessors are nil-safe (calling on a nil or zero-value `*Graph` returns nil; chained calls fail closed with `ErrNilGraph`). Implementation lives on `*core.Core` in `pkg/graph/internal/core/`.
 
 See `CHANGELOG.md` `[4.0.0]` for the v3.4.0 → v4.0.0 migration recipe; `[4.1.0]` for the tx-isolation change (Path B); `[4.2.0]` for the field→method conversion; `[4.2.1]`/`[4.2.2]` for the consumer-ergonomics alias additions.
 
@@ -255,6 +255,7 @@ Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID`
 - **Effective valid-from**: Derived from explicit `ValidFrom` or snowflake ID timestamp. Every entity is queryable temporally without `SetTemporal()`.
 - **Point-in-time**: `effectiveValidFrom <= t AND (ValidTo == 0 OR ValidTo > t)`.
 - **Interval overlap**: `effectiveValidFrom < end AND (ValidTo == 0 OR ValidTo > start)`.
+- **Bitemporal (since `[Unreleased]`)**: `QueryOpts.TxAt` filters the chain to versions visible at the given TX time (`TxFrom <= TxAt < TxTo`). `TxAt == 0` keeps "no TX filter" backward-compat. Bitemporal point queries: `g.Temporal().NodeAtTx(id, validAt, txAt)` and counterparts. The resolver computes `vEnd` from `next.ValidFrom` (falls back to `next.UpdatedAt`), so adjacent versions auto-tile once the caller supplies explicit `tkg_valid_from` on Update. See lessons 32–34.
 - **History-aware merging**: Temporal queries merge current + history IDs via lazy ForEach iterators (two-phase: collect IDs under store locks, process after release).
 - **ForEach for OOM-safe iteration**: Never materialize all per-shard slices + merge. Use `ForEach*ID` callbacks. Constraint: callback must NOT call store methods (deadlock via B15). Two-phase: collect IDs, then process. ~83% memory reduction.
 - **Deleted entity verification**: Any verification reading entity state must tolerate deletion — if entity has history but no current state, proceed using history alone.
@@ -327,7 +328,7 @@ Two independent registries with independent token namespaces. Methods: `GetOrCre
 |---|---|---|---|
 | `tkg_labels` | `[]string` | Node | Structural |
 | `tkg_type` | `string` | Relationship | Structural |
-| `tkg_valid_from`, `tkg_valid_to` | `Instant` | Both | Temporal |
+| `tkg_valid_from`, `tkg_valid_to` | `Instant` | Both | Temporal — accepted by Add **and** Update (since `[Unreleased]`); rejected by `UpdateInPlace` |
 | `tkg_tx_from`, `tkg_tx_to` | `Instant` | Both | Temporal |
 | `tkg_created_at` | `Instant` | Both | Temporal (auto-derived from snowflake ID when unset) |
 | `tkg_updated_at`, `tkg_deleted_at` | `Instant` | Both | Temporal |

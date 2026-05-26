@@ -78,6 +78,7 @@ var (
 	ErrValueTooLarge            = core.ErrValueTooLarge
 	ErrNameTooLong              = core.ErrNameTooLong
 	ErrSelfLoop                 = core.ErrSelfLoop
+	ErrValidFromBeforePrevious  = core.ErrValidFromBeforePrevious
 )
 
 // IO sentinels (R4-F8). Re-exported so external callers can write

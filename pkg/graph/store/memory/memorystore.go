@@ -85,6 +85,9 @@ type Store struct {
 
 	// Vector indexes — in-memory brute-force k-NN index on node properties.
 	vectorIndexes map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex
+
+	// Meta KV — schema-version marker and other graph-layer bookkeeping.
+	metaKV map[string][]byte
 }
 
 // New creates an empty Store with all indexes initialized.
@@ -132,6 +135,9 @@ func (ms *Store) ensureInitialized() {
 		if ms.vectorIndexes == nil {
 			ms.vectorIndexes = make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex)
 		}
+		if ms.metaKV == nil {
+			ms.metaKV = make(map[string][]byte)
+		}
 		ms.initialized.Store(true)
 	})
 }
@@ -161,6 +167,41 @@ func (ms *Store) Clear() error {
 	ms.temporalIndexes = make(map[uint16]*indexpkg.TemporalIndex)
 	ms.hfIndexes = make(map[uint16]*indexpkg.HighFrequencyIndex)
 	ms.vectorIndexes = make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex)
+	return nil
+}
+
+// MetaGet returns the bytes stored under key, or (nil, nil) if absent.
+func (ms *Store) MetaGet(key string) ([]byte, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	if err := ms.checkOpenLocked(); err != nil {
+		return nil, err
+	}
+	v, ok := ms.metaKV[key]
+	if !ok {
+		return nil, nil
+	}
+	out := make([]byte, len(v))
+	copy(out, v)
+	return out, nil
+}
+
+// MetaSet stores value under key, overwriting any previous value.
+func (ms *Store) MetaSet(key string, value []byte) error {
+	if ms == nil {
+		return ErrNilStore
+	}
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	if err := ms.checkOpenLocked(); err != nil {
+		return err
+	}
+	cp := make([]byte, len(value))
+	copy(cp, value)
+	ms.metaKV[key] = cp
 	return nil
 }
 

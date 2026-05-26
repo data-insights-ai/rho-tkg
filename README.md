@@ -31,7 +31,15 @@ Detailed documentation has been split into the `docs/` directory:
 - [Design Invariants](docs/design.md) — Protocol guarantees, referential integrity, defensive copying, and error sentinels.
 - [Specifications](docs/SPEC.md) — Formal specifications and algorithms.
 
-### What's new in v4 (v4.0.0 → v4.2.2)
+### What's new in v4 (v4.0.0 → `[Unreleased]`)
+
+**`[Unreleased]` — bitemporal queries and caller-controlled valid time on Update.** Five-phase rollout closing the bitemporal gap:
+
+- `QueryOpts.TxAt` filters the version chain to entries visible at a transaction time. New bitemporal point queries `g.Temporal().NodeAtTx(id, validAt, txAt)` (plus `RelAtTx`, `NodesAtTx`, `RelsAtTx`). `TxAt == 0` keeps current backward-compatible "no TX filter" behaviour.
+- `g.Nodes().Update(id, {tkg_valid_from: t, ...})` and the Rel counterpart now accept caller-supplied valid time. Same for batch (`BatchBuilder.UpdateNode`) and tx (`GraphTx.UpdateNode`). New sentinel `graph.ErrValidFromBeforePrevious` rejects backwards-in-time on the immediate predecessor.
+- Resolver no longer conflates transaction time with valid time when computing version bounds: `vEnd` derives from `next.ValidFrom` when explicit (falls back to `next.UpdatedAt`). Adjacent versions auto-tile once the caller supplies explicit `tkg_valid_from` on Update.
+- New convenience `g.Temporal().SetNodeVersionInterval(id, vF, vT, props)` / `SetRelVersionInterval` for tile-clean timeline edits.
+- No on-disk schema change; existing Badger / Tiered DBs work unchanged.
 
 **v4.2.2 — consumer-ergonomics alias additions.** `graph.ErrNodeExists` and `graph.ErrRelExists` aliased so consumers can run `errors.Is(err, graph.ErrNodeExists)` without importing `pkg/graph/store` for those two sentinels.
 

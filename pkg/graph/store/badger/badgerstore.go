@@ -15,6 +15,7 @@ import (
 	"github.com/dgraph-io/badger/v4/options"
 	"github.com/vmihailenco/msgpack/v5"
 	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/index"
+	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/registry"
 	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
@@ -167,6 +168,11 @@ type Store struct {
 	// Counters (atomic — persisted atomically via flush WriteBatch).
 	nodeCount atomic.Int64
 	relCount  atomic.Int64
+
+	// Optional property-key registry — when set by Core.New, wire marshal /
+	// unmarshal dictionary-encodes property keys into uint16 tokens. nil
+	// preserves the pre-tokenization (V1) on-disk format.
+	propKeyReg atomic.Pointer[registrypkg.PropertyKeyRegistry]
 
 	// Write buffer (own mutex, swapped on flush).
 	// Map keyed by string(op.key) for last-write-wins deduplication.
@@ -333,6 +339,15 @@ func New(cfg Config) (*Store, error) {
 		logger:          cfg.Logger,
 	}
 
+	// Load the property-key registry BEFORE loadIndexes so the index
+	// rebuild can resolve tokenized property keys when decoding stored
+	// node/rel rows. Without this, rows written under tokenization would
+	// fail validation during loadIndexes and silently drop from the
+	// in-memory liveness map.
+	if cfg := readPropertyKeyRegistryFromMeta(bs); cfg != nil {
+		bs.propKeyReg.Store(cfg)
+	}
+
 	if err := bs.loadIndexes(); err != nil {
 		_ = db.Close() // best-effort cleanup
 		return nil, fmt.Errorf("graph: load indexes: %w", err)
@@ -385,7 +400,7 @@ func (bs *Store) loadIndexes() error {
 				if err := msgpack.Unmarshal(val, &w); err != nil {
 					return fmt.Errorf("graph: unmarshal node: %w", err)
 				}
-				decoded, err := decodeNodeWireForKey(w, nid.SnowflakeID())
+				decoded, err := bs.decodeNodeWireForKey(w, nid.SnowflakeID())
 				if err != nil {
 					return fmt.Errorf("graph: decode node: %w", err)
 				}
@@ -464,7 +479,7 @@ func (bs *Store) loadIndexes() error {
 				if err := msgpack.Unmarshal(val, &w); err != nil {
 					return fmt.Errorf("graph: unmarshal relationship: %w", err)
 				}
-				decoded, err := decodeRelWireForKey(w, rid.SnowflakeID())
+				decoded, err := bs.decodeRelWireForKey(w, rid.SnowflakeID())
 				if err != nil {
 					return fmt.Errorf("graph: decode relationship: %w", err)
 				}
@@ -1039,4 +1054,39 @@ func (bs *Store) IndexRebuildStats() IndexRebuildStats {
 		HFSkipped:       bs.indexRebuildHFSkips.Load(),
 		VectorSkipped:   bs.indexRebuildVectorSkips.Load(),
 	}
+}
+
+
+// SetPropertyKeyRegistry installs the property-key registry on the Store.
+// Once set, subsequent writes dictionary-encode property keys via the
+// registry; reads resolve tokens back to key strings. Safe to call before
+// any writes; effective from the next marshal/unmarshal onward. Pass nil
+// to disable tokenization (preserves the pre-tokenization wire format).
+func (bs *Store) SetPropertyKeyRegistry(reg *registrypkg.PropertyKeyRegistry) {
+	if bs == nil {
+		return
+	}
+	bs.propKeyReg.Store(reg)
+}
+
+// marshalNodeBytes encodes a node via MarshalNodeWireWithKeys using the
+// currently-installed property-key registry (nil-safe).
+func (bs *Store) marshalNodeBytes(n *types.Node) ([]byte, error) {
+	return storepkg.MarshalNodeWireWithKeys(n, bs.propKeyReg.Load())
+}
+
+// marshalRelBytes encodes a relationship via MarshalRelWireWithKeys.
+func (bs *Store) marshalRelBytes(r *types.Relationship) ([]byte, error) {
+	return storepkg.MarshalRelWireWithKeys(r, bs.propKeyReg.Load())
+}
+
+// resolveNodeWireKeys is a no-op when no registry is installed; otherwise
+// it walks the wire's property slice and replaces any tokenized keys with
+// their resolved strings. Call after msgpack.Unmarshal of NodeWire.
+func (bs *Store) resolveNodeWireKeys(w *storepkg.NodeWire) error {
+	return storepkg.ResolvePropertyKeyTokens(w.Properties, bs.propKeyReg.Load())
+}
+
+func (bs *Store) resolveRelWireKeys(w *storepkg.RelWire) error {
+	return storepkg.ResolvePropertyKeyTokens(w.Properties, bs.propKeyReg.Load())
 }

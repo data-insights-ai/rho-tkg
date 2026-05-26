@@ -30,12 +30,12 @@ func (bs *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 		return err
 	}
 	id := nid.SnowflakeID()
-	data, err := marshalNodeToBytes(updatedNode)
+	data, err := bs.marshalNodeToBytes(updatedNode)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node: %w", err)
 	}
 
-	histData, err := marshalNodeToBytes(prevState)
+	histData, err := bs.marshalNodeToBytes(prevState)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node version: %w", err)
 	}
@@ -136,12 +136,12 @@ func (bs *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 		return err
 	}
 	id := nid.SnowflakeID()
-	data, err := marshalNodeToBytes(updatedNode)
+	data, err := bs.marshalNodeToBytes(updatedNode)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node: %w", err)
 	}
 
-	histData, err := marshalNodeToBytes(prevState)
+	histData, err := bs.marshalNodeToBytes(prevState)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node version: %w", err)
 	}
@@ -244,13 +244,13 @@ func (bs *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 	id := nid.SnowflakeID()
 
 	// Serialize current state.
-	data, err := marshalNodeToBytes(current)
+	data, err := bs.marshalNodeToBytes(current)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node: %w", err)
 	}
 
 	// Serialize history snapshot.
-	histData, err := marshalNodeToBytes(prevState)
+	histData, err := bs.marshalNodeToBytes(prevState)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node version: %w", err)
 	}
@@ -335,7 +335,7 @@ func (bs *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 	}
 	id := nid.SnowflakeID()
 	// Serialize all tombstones OUTSIDE lock (B3).
-	nodeData, err := marshalNodeToBytes(nodeTombstone)
+	nodeData, err := bs.marshalNodeToBytes(nodeTombstone)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node tombstone: %w", err)
 	}
@@ -347,7 +347,7 @@ func (bs *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 		if err := storecontract.ValidateRelationshipHistoryVersionSnapshot(rt.ID, rt.PrevVersion, rt.Tombstone); err != nil {
 			return err
 		}
-		data, err := marshalRelToBytes(rt.Tombstone)
+		data, err := bs.marshalRelToBytes(rt.Tombstone)
 		if err != nil {
 			return fmt.Errorf("graph: marshal rel tombstone: %w", err)
 		}
@@ -456,8 +456,8 @@ func (bs *Store) validateDeleteNodeRelTombstonesLocked(nid types.NodeID, relTomb
 	return nil
 }
 
-func marshalNodeToBytes(n *types.Node) ([]byte, error) {
-	return storepkg.MarshalNodeWire(n)
+func (bs *Store) marshalNodeToBytes(n *types.Node) ([]byte, error) {
+	return bs.marshalNodeBytes(n)
 }
 
 func (bs *Store) PutNodeVersion(nid types.NodeID, version uint32, n *types.Node) error {
@@ -468,7 +468,7 @@ func (bs *Store) PutNodeVersion(nid types.NodeID, version uint32, n *types.Node)
 		return err
 	}
 	id := nid.SnowflakeID()
-	data, err := marshalNodeToBytes(n)
+	data, err := bs.marshalNodeToBytes(n)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node version: %w", err)
 	}
@@ -503,7 +503,7 @@ func (bs *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 		if err := msgpack.Unmarshal(op.value, &w); err != nil {
 			return nil, fmt.Errorf("graph: unmarshal node version: %w", err)
 		}
-		n, err := decodeNodeHistoryWireForKey(w, id, uint64(version))
+		n, err := bs.decodeNodeHistoryWireForKey(w, id, uint64(version))
 		if err != nil {
 			return nil, fmt.Errorf("graph: decode node version: %w", err)
 		}
@@ -525,7 +525,7 @@ func (bs *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 			if err := msgpack.Unmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal node version: %w", err)
 			}
-			decoded, err := decodeNodeHistoryWireForKey(w, id, uint64(version))
+			decoded, err := bs.decodeNodeHistoryWireForKey(w, id, uint64(version))
 			if err != nil {
 				return fmt.Errorf("graph: decode node version: %w", err)
 			}
@@ -633,7 +633,7 @@ func (bs *Store) getNodeHistoryByPrefix(prefix []byte) ([]*types.Node, error) {
 		if err := msgpack.Unmarshal(entries[k], &w); err != nil {
 			return nil, fmt.Errorf("graph: unmarshal node version: %w", err)
 		}
-		n, err := decodeNodeHistoryWireForKey(w, expectedID, historyVersionFromKey([]byte(k)))
+		n, err := bs.decodeNodeHistoryWireForKey(w, expectedID, historyVersionFromKey([]byte(k)))
 		if err != nil {
 			return nil, fmt.Errorf("graph: decode node version: %w", err)
 		}
@@ -660,7 +660,7 @@ func (bs *Store) nodeHistoryVersionsFromPrefix(prefix []byte, startVersion uint3
 		if err := msgpack.Unmarshal(data, &w); err != nil {
 			return fmt.Errorf("graph: unmarshal node version: %w", err)
 		}
-		n, err := decodeNodeHistoryWireForKey(w, expectedID, historyVersionFromKey([]byte(key)))
+		n, err := bs.decodeNodeHistoryWireForKey(w, expectedID, historyVersionFromKey([]byte(key)))
 		if err != nil {
 			return fmt.Errorf("graph: decode node version: %w", err)
 		}

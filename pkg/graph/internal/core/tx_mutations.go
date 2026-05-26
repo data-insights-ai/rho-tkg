@@ -188,11 +188,11 @@ func (tx *GraphTx) UpdateNode(id types.NodeID, updates map[string]any) (*types.N
 		return n, err
 	}
 
-	prov, preparedUpdates, err := tx.g.prepareUpdateProperties(updates, "update node")
+	prov, tmp, preparedUpdates, err := tx.g.prepareUpdateProperties(updates, "update node")
 	if err != nil {
 		return nil, err
 	}
-	if preparedUpdateCanBeReadOnlyNoOp(prov) {
+	if preparedUpdateCanBeReadOnlyNoOp(prov, tmp) {
 		current, err := tx.g.getCurrentNode(id)
 		if err != nil {
 			return nil, err
@@ -210,7 +210,7 @@ func (tx *GraphTx) UpdateNode(id types.NodeID, updates map[string]any) (*types.N
 		}
 	}
 
-	n, mutated, err := tx.g.updateNodePreparedInternal(context.Background(), id, prov, preparedUpdates)
+	n, mutated, err := tx.g.updateNodePreparedInternal(context.Background(), id, prov, tmp, preparedUpdates)
 	if err == nil && mutated {
 		tx.g.publishEvent(eventspkg.EventNodeUpdate, types.EntityID(id), tx.g.now(), eventspkg.PriorityNormal)
 	}
@@ -240,11 +240,11 @@ func (tx *GraphTx) UpdateRelationship(id types.RelID, updates map[string]any) (*
 		return r, err
 	}
 
-	prov, preparedUpdates, err := tx.g.prepareUpdateProperties(updates, "update relationship")
+	prov, tmp, preparedUpdates, err := tx.g.prepareUpdateProperties(updates, "update relationship")
 	if err != nil {
 		return nil, err
 	}
-	if preparedUpdateCanBeReadOnlyNoOp(prov) {
+	if preparedUpdateCanBeReadOnlyNoOp(prov, tmp) {
 		current, err := tx.g.getCurrentRelationship(id)
 		if err != nil {
 			return nil, err
@@ -262,8 +262,55 @@ func (tx *GraphTx) UpdateRelationship(id types.RelID, updates map[string]any) (*
 		}
 	}
 
-	r, mutated, err := tx.g.updateRelationshipPreparedInternal(context.Background(), id, prov, preparedUpdates)
+	r, mutated, err := tx.g.updateRelationshipPreparedInternal(context.Background(), id, prov, tmp, preparedUpdates)
 	if err == nil && mutated {
+		tx.g.publishEvent(eventspkg.EventRelUpdate, types.EntityID(id), tx.g.now(), eventspkg.PriorityNormal)
+	}
+	return r, err
+}
+
+// SetNodeVersionInterval runs the full cascade timeline edit inside the
+// transaction. The cascade reads + writes multiple history rows under the
+// entity lock. Rollback support is partial: the tx snapshot captures the
+// current row (restored on rollback), but per-version history-row edits
+// made by the cascade are NOT undone. Callers that need full rollback for
+// cascades should run the cascade OUTSIDE the tx.
+func (tx *GraphTx) SetNodeVersionInterval(id types.NodeID, validFrom, validTo types.Instant, props map[string]any) (*types.Node, error) {
+	if err := tx.lockActiveCore(); err != nil {
+		return nil, err
+	}
+	defer tx.unlockActiveCore()
+
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return nil, err
+	}
+	if err := tx.snapshotNodeLocked(id.SnowflakeID()); err != nil {
+		return nil, err
+	}
+
+	n, err := tx.g.cascadeNodeVersionInterval(context.Background(), id, validFrom, validTo, props)
+	if err == nil && n != nil {
+		tx.g.publishEvent(eventspkg.EventNodeUpdate, types.EntityID(id), tx.g.now(), eventspkg.PriorityNormal)
+	}
+	return n, err
+}
+
+// SetRelVersionInterval is the relationship counterpart of SetNodeVersionInterval.
+func (tx *GraphTx) SetRelVersionInterval(id types.RelID, validFrom, validTo types.Instant, props map[string]any) (*types.Relationship, error) {
+	if err := tx.lockActiveCore(); err != nil {
+		return nil, err
+	}
+	defer tx.unlockActiveCore()
+
+	if err := storepkg.ValidateRelID(id); err != nil {
+		return nil, err
+	}
+	if err := tx.snapshotRelLocked(id.SnowflakeID()); err != nil {
+		return nil, err
+	}
+
+	r, err := tx.g.cascadeRelVersionInterval(context.Background(), id, validFrom, validTo, props)
+	if err == nil && r != nil {
 		tx.g.publishEvent(eventspkg.EventRelUpdate, types.EntityID(id), tx.g.now(), eventspkg.PriorityNormal)
 	}
 	return r, err

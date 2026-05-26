@@ -271,3 +271,104 @@ func (bs *Store) LoadRelTypeRegistry(reg *registrypkg.RelTypeRegistry) (bool, er
 	}
 	return true, reg.ImportNames(names)
 }
+
+
+// MetaGet returns the bytes stored under storepkg.MetaKey(key), or (nil, nil) if absent.
+func (bs *Store) MetaGet(key string) ([]byte, error) {
+	if err := bs.checkOpen(); err != nil {
+		return nil, err
+	}
+	var out []byte
+	err := bs.db.View(func(txn *badgerv4.Txn) error {
+		item, err := txn.Get(storepkg.MetaKey(key))
+		if err == badgerv4.ErrKeyNotFound {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		return item.Value(func(val []byte) error {
+			out = make([]byte, len(val))
+			copy(out, val)
+			return nil
+		})
+	})
+	if err != nil {
+		return nil, fmt.Errorf("graph: meta get %q: %w", key, err)
+	}
+	return out, nil
+}
+
+// MetaSet stores value under storepkg.MetaKey(key).
+func (bs *Store) MetaSet(key string, value []byte) error {
+	if err := bs.checkWritable(); err != nil {
+		return err
+	}
+	return bs.db.Update(func(txn *badgerv4.Txn) error {
+		return txn.Set(storepkg.MetaKey(key), value)
+	})
+}
+
+
+// SavePropertyKeyRegistry persists the property-key registry to the Badger store.
+func (bs *Store) SavePropertyKeyRegistry(reg *registrypkg.PropertyKeyRegistry) error {
+	if err := bs.checkWritable(); err != nil {
+		return err
+	}
+	if reg == nil {
+		return fmt.Errorf("graph: nil property-key registry")
+	}
+	names := reg.ExportNames()
+	data, err := msgpack.Marshal(names)
+	if err != nil {
+		return fmt.Errorf("graph: marshal property-key registry: %w", err)
+	}
+	return bs.db.Update(func(txn *badgerv4.Txn) error {
+		return txn.Set(storepkg.MetaKey("property_keys"), data)
+	})
+}
+
+// LoadPropertyKeyRegistry loads the property-key registry from the Badger store.
+// Returns false if no saved data exists (fresh database).
+func (bs *Store) LoadPropertyKeyRegistry(reg *registrypkg.PropertyKeyRegistry) (bool, error) {
+	if err := bs.checkOpen(); err != nil {
+		return false, err
+	}
+	if reg == nil {
+		return false, fmt.Errorf("graph: nil property-key registry")
+	}
+	var names []string
+	err := bs.db.View(func(txn *badgerv4.Txn) error {
+		item, err := txn.Get(storepkg.MetaKey("property_keys"))
+		if err == badgerv4.ErrKeyNotFound {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		return item.Value(func(val []byte) error {
+			return msgpack.Unmarshal(val, &names)
+		})
+	})
+	if err != nil {
+		return false, fmt.Errorf("graph: load property-key registry: %w", err)
+	}
+	if names == nil {
+		return false, nil
+	}
+	return true, reg.ImportNames(names)
+}
+
+
+// readPropertyKeyRegistryFromMeta loads the persisted property-key registry
+// directly from the meta KV. Called by New BEFORE loadIndexes so the index
+// rebuild can resolve tokenized property keys. Returns nil if no registry
+// has been persisted yet (fresh store).
+func readPropertyKeyRegistryFromMeta(bs *Store) *registrypkg.PropertyKeyRegistry {
+	reg := registrypkg.NewPropertyKeyRegistry()
+	found, err := bs.LoadPropertyKeyRegistry(reg)
+	if err != nil || !found {
+		return nil
+	}
+	return reg
+}

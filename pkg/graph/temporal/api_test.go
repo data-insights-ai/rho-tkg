@@ -1,6 +1,7 @@
 package temporal
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -38,6 +39,18 @@ func TestAPINilReceiversReturnErrNilGraph(t *testing.T) {
 		{name: "RelAsOf", run: func() error { _, err := nilAPI.RelAsOf(relID, 1); return err }},
 		{name: "NodesAsOf", run: func() error { _, err := nilAPI.NodesAsOf(1); return err }},
 		{name: "RelsAsOf", run: func() error { _, err := nilAPI.RelsAsOf(1); return err }},
+		{name: "NodeAtTx", run: func() error { _, err := nilAPI.NodeAtTx(nodeID, 1, 2); return err }},
+		{name: "RelAtTx", run: func() error { _, err := nilAPI.RelAtTx(relID, 1, 2); return err }},
+		{name: "NodesAtTx", run: func() error { _, err := nilAPI.NodesAtTx(1, 2); return err }},
+		{name: "RelsAtTx", run: func() error { _, err := nilAPI.RelsAtTx(1, 2); return err }},
+		{name: "SetNodeVersionInterval", run: func() error {
+			_, err := nilAPI.SetNodeVersionInterval(context.Background(), nodeID, 1, 2, nil)
+			return err
+		}},
+		{name: "SetRelVersionInterval", run: func() error {
+			_, err := nilAPI.SetRelVersionInterval(context.Background(), relID, 1, 2, nil)
+			return err
+		}},
 		{name: "Snapshot", run: func() error { _, err := nilAPI.Snapshot(1); return err }},
 		{name: "Diff", run: func() error { _, err := nilAPI.Diff(1, 2); return err }},
 		{name: "DiffCallback", run: func() error { return nilAPI.DiffCallback(1, 2, DiffHandlers{}) }},
@@ -94,6 +107,18 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "RelAsOf", run: func() error { _, err := api.RelAsOf(relID, 1); return err }},
 		{name: "NodesAsOf", run: func() error { _, err := api.NodesAsOf(1); return err }},
 		{name: "RelsAsOf", run: func() error { _, err := api.RelsAsOf(1); return err }},
+		{name: "NodeAtTx", run: func() error { _, err := api.NodeAtTx(nodeID, 1, 2); return err }},
+		{name: "RelAtTx", run: func() error { _, err := api.RelAtTx(relID, 1, 2); return err }},
+		{name: "NodesAtTx", run: func() error { _, err := api.NodesAtTx(1, 2); return err }},
+		{name: "RelsAtTx", run: func() error { _, err := api.RelsAtTx(1, 2); return err }},
+		{name: "SetNodeVersionInterval", run: func() error {
+			_, err := api.SetNodeVersionInterval(context.Background(), nodeID, 1, 2, nil)
+			return err
+		}},
+		{name: "SetRelVersionInterval", run: func() error {
+			_, err := api.SetRelVersionInterval(context.Background(), relID, 1, 2, nil)
+			return err
+		}},
 		{name: "Snapshot", run: func() error { _, err := api.Snapshot(1); return err }},
 		{name: "Diff", run: func() error { _, err := api.Diff(1, 2); return err }},
 		{name: "DiffCallback", run: func() error { return api.DiffCallback(1, 2, DiffHandlers{}) }},
@@ -135,6 +160,8 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		"NodeAt", "NodesAt", "NodesByLabelAt", "RelAt", "RelsAt", "RelsByTypeAt",
 		"NeighborsAt", "OutgoingRelsAt", "IncomingRelsAt", "NodesByLabelPropertyAt", "RelsByTypePropertyAt", "NodesDuring", "RelsDuring",
 		"NodesByLabelPropertyDuring", "RelsByTypePropertyDuring", "NodeAsOf", "RelAsOf", "NodesAsOf", "RelsAsOf",
+		"NodeAtTx", "RelAtTx", "NodesAtTx", "RelsAtTx",
+		"SetNodeVersionInterval", "SetRelVersionInterval",
 		"Snapshot", "Diff", "DiffCallback", "NodeInterval", "RelInterval", "RelateNodes", "RelateRels",
 	}
 	if len(ops.calls) != len(wantCalls) {
@@ -275,6 +302,36 @@ func (s *temporalOpsSpy) NodesAsOf(txTime types.Instant) ([]*types.Node, error) 
 
 func (s *temporalOpsSpy) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 	s.record("RelsAsOf")
+	return nil, s.err
+}
+
+func (s *temporalOpsSpy) NodeAtTx(id types.NodeID, validAt, txAt types.Instant) (*types.Node, error) {
+	s.record("NodeAtTx")
+	return nil, s.err
+}
+
+func (s *temporalOpsSpy) RelAtTx(id types.RelID, validAt, txAt types.Instant) (*types.Relationship, error) {
+	s.record("RelAtTx")
+	return nil, s.err
+}
+
+func (s *temporalOpsSpy) NodesAtTx(validAt, txAt types.Instant) ([]*types.Node, error) {
+	s.record("NodesAtTx")
+	return nil, s.err
+}
+
+func (s *temporalOpsSpy) RelsAtTx(validAt, txAt types.Instant) ([]*types.Relationship, error) {
+	s.record("RelsAtTx")
+	return nil, s.err
+}
+
+func (s *temporalOpsSpy) SetNodeVersionInterval(ctx context.Context, id types.NodeID, validFrom, validTo types.Instant, props map[string]any) (*types.Node, error) {
+	s.record("SetNodeVersionInterval")
+	return nil, s.err
+}
+
+func (s *temporalOpsSpy) SetRelVersionInterval(ctx context.Context, id types.RelID, validFrom, validTo types.Instant, props map[string]any) (*types.Relationship, error) {
+	s.record("SetRelVersionInterval")
 	return nil, s.err
 }
 

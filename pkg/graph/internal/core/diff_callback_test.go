@@ -566,6 +566,12 @@ func newDiffScanTrackingGraph(t *testing.T, st *diffScanTrackingStore) *Core {
 		t.Fatalf("New: %v", err)
 	}
 	t.Cleanup(func() { _ = g.Close() })
+	// The bitemporal migration scans history at New(); reset counters so
+	// tests measure only the operations they exercise.
+	st.nodeIDScans = 0
+	st.nodeHistScans = 0
+	st.relIDScans = 0
+	st.relHistScans = 0
 	return g
 }
 

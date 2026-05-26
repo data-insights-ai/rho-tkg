@@ -63,17 +63,17 @@ func (c *Core) updateNodeInternal(ctx context.Context, id types.NodeID, updates 
 
 	// The no-op check above uses the original map length; after extraction
 	// the remaining updates may be empty (metadata-only update).
-	prov, updates, err := c.prepareUpdateProperties(updates, "update node")
+	prov, tmp, updates, err := c.prepareUpdateProperties(updates, "update node")
 	if err != nil {
 		return nil, false, err
 	}
-	return c.updateNodePreparedInternal(ctx, id, prov, updates)
+	return c.updateNodePreparedInternal(ctx, id, prov, tmp, updates)
 }
 
 // updateNodePreparedInternal applies a non-empty caller update after provenance
 // extraction and property validation have already run. The prepared properties
 // may be empty for metadata-only updates.
-func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, prov updateProvenance, updates map[string]any) (*types.Node, bool, error) {
+func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, prov updateProvenance, tmp updateTemporal, updates map[string]any) (*types.Node, bool, error) {
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return nil, false, err
 	}
@@ -94,12 +94,22 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 	if err != nil {
 		return nil, false, err
 	}
-	if !nodePreparedUpdateMutates(current, prov, updates) {
+	if !nodePreparedUpdateMutates(current, prov, tmp, updates) {
 		c.opNodeReads.Add(1)
 		return current, false, nil
 	}
 	if err := rejectClosedNodeMutation(current); err != nil {
 		return nil, false, err
+	}
+	// Phase 2: validate caller-supplied ValidFrom against the previous version's
+	// effective ValidFrom. New ValidFrom must be strictly greater — otherwise
+	// the prev tile's implicit ValidTo would land before its own ValidFrom,
+	// corrupting the timeline. Bitemporal backdating uses Phase 3's cascade.
+	if tmp.hasValidFrom && tmp.validFrom != 0 {
+		prevEff := c.nodeValidFrom(current)
+		if tmp.validFrom <= prevEff {
+			return nil, false, fmt.Errorf("%w: %d <= prev %d", ErrValidFromBeforePrevious, tmp.validFrom, prevEff)
+		}
 	}
 	if err := c.checkpointDirtyRegistriesBeforeMutation("update node"); err != nil {
 		return nil, false, err
@@ -147,6 +157,17 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 	if tm == nil {
 		tm = &types.TemporalMetadata{}
 		current.SetTemporal(tm)
+	}
+	// Phase 1: stop inheriting ValidFrom/ValidTo from the previous version
+	// (clear to 0 so non-genesis resolver bounds use UpdatedAt). Phase 2:
+	// honour caller-supplied tkg_valid_from / tkg_valid_to from `tmp`.
+	tm.ValidFrom = 0
+	tm.ValidTo = 0
+	if tmp.hasValidFrom {
+		tm.ValidFrom = tmp.validFrom
+	}
+	if tmp.hasValidTo {
+		tm.ValidTo = tmp.validTo
 	}
 	tm.UpdatedAt = now
 
@@ -249,7 +270,14 @@ func (c *Core) updateNodeInPlaceInternal(ctx context.Context, id types.NodeID, u
 		return current, false, err
 	}
 
-	// Phase 1: Pre-validate before acquiring entity lock.
+	// Phase 1: Pre-validate before acquiring entity lock. Strip reserved
+	// temporal keys (tkg_valid_from / tkg_valid_to) into `tmp` so they pass
+	// validation; UpdateInPlace honours them as direct rewrites of the
+	// current row's TemporalMetadata (no version chain entry).
+	tmp, updates, err := extractTemporalTracked(updates)
+	if err != nil {
+		return nil, false, err
+	}
 	if err := c.validatePropertyUpdates(updates, "update node in place"); err != nil {
 		return nil, false, err
 	}
@@ -270,7 +298,7 @@ func (c *Core) updateNodeInPlaceInternal(ctx context.Context, id types.NodeID, u
 	if err != nil {
 		return nil, false, err
 	}
-	if !nodePropertyUpdatesMutate(current, updates) {
+	if !tmp.present && !nodePropertyUpdatesMutate(current, updates) {
 		c.opNodeReads.Add(1)
 		return current, false, nil
 	}
@@ -317,6 +345,12 @@ func (c *Core) updateNodeInPlaceInternal(ctx context.Context, id types.NodeID, u
 		current.SetTemporal(tm)
 	}
 	tm.UpdatedAt = now
+	if tmp.hasValidFrom {
+		tm.ValidFrom = tmp.validFrom
+	}
+	if tmp.hasValidTo {
+		tm.ValidTo = tmp.validTo
+	}
 
 	nodeLabels := c.nodeLabelsUnlocked(current)
 	hash, err := integrity.ComputeNodeHashChecked(current, nodeLabels)
@@ -338,8 +372,8 @@ func (c *Core) updateNodeInPlaceInternal(ctx context.Context, id types.NodeID, u
 	return current, true, nil
 }
 
-func nodePreparedUpdateMutates(current *types.Node, prov updateProvenance, updates map[string]any) bool {
-	if prov.present {
+func nodePreparedUpdateMutates(current *types.Node, prov updateProvenance, tmp updateTemporal, updates map[string]any) bool {
+	if prov.present || tmp.present {
 		return true
 	}
 	return nodePropertyUpdatesMutate(current, updates)

@@ -150,6 +150,9 @@ func (c *Core) validateOwnedPropertyEntryForCreate(key string, val any) error {
 			return fmt.Errorf("graph: property %q: %w", key, err)
 		}
 	}
+	if c.propKeys != nil && !types.IsShadowKey(key) {
+		_, _ = c.propKeys.GetOrCreate(key)
+	}
 	return c.validatePropertyValueLimitTyped(key, val, 0)
 }
 
@@ -158,6 +161,9 @@ func (c *Core) validateOwnedPropertyEntryForCreate(key string, val any) error {
 func (c *Core) validatePropertyEntryLimits(key string, val any) error {
 	if err := c.validatePropertyKeyLength(key); err != nil {
 		return err
+	}
+	if c.propKeys != nil && !types.IsShadowKey(key) {
+		_, _ = c.propKeys.GetOrCreate(key)
 	}
 	return c.validatePropertyValueLimitTyped(key, val, 0)
 }
@@ -300,32 +306,49 @@ type updateProvenance struct {
 	present          bool
 }
 
+// updateTemporal carries caller-supplied tkg_valid_from / tkg_valid_to from an
+// Update map. Per-field presence flags distinguish "caller did not supply"
+// from "caller supplied 0" (which is a valid sentinel meaning "open/unset").
+// The collective `present` flag gates the "this update is non-empty" check.
+type updateTemporal struct {
+	validFrom    types.Instant
+	validTo      types.Instant
+	hasValidFrom bool
+	hasValidTo   bool
+	present      bool
+}
+
 type preparedUpdateProperties struct {
 	provenance  updateProvenance
+	temporal    updateTemporal
 	properties  map[string]any
 	originalLen int
 }
 
-func (c *Core) prepareUpdateProperties(updates map[string]any, operation string) (updateProvenance, map[string]any, error) {
+func (c *Core) prepareUpdateProperties(updates map[string]any, operation string) (updateProvenance, updateTemporal, map[string]any, error) {
 	prov, filtered, err := extractProvenanceTracked(updates)
 	if err != nil {
-		return updateProvenance{}, nil, err
+		return updateProvenance{}, updateTemporal{}, nil, err
+	}
+	tmp, filtered, err := extractTemporalTracked(filtered)
+	if err != nil {
+		return updateProvenance{}, updateTemporal{}, nil, err
 	}
 	if err := c.validatePropertyUpdates(filtered, operation); err != nil {
-		return updateProvenance{}, nil, err
+		return updateProvenance{}, updateTemporal{}, nil, err
 	}
-	return prov, filtered, nil
+	return prov, tmp, filtered, nil
 }
 
-func preparedUpdateCanBeReadOnlyNoOp(prov updateProvenance) bool {
-	return !prov.present
+func preparedUpdateCanBeReadOnlyNoOp(prov updateProvenance, tmp updateTemporal) bool {
+	return !prov.present && !tmp.present
 }
 
 func (c *Core) prepareQueuedUpdateProperties(updates map[string]any, operation string) (preparedUpdateProperties, error) {
 	if updates == nil {
 		return preparedUpdateProperties{}, nil
 	}
-	prov, filtered, err := c.prepareUpdateProperties(updates, operation)
+	prov, tmp, filtered, err := c.prepareUpdateProperties(updates, operation)
 	if err != nil {
 		return preparedUpdateProperties{}, err
 	}
@@ -339,6 +362,7 @@ func (c *Core) prepareQueuedUpdateProperties(updates map[string]any, operation s
 	}
 	return preparedUpdateProperties{
 		provenance:  prov,
+		temporal:    tmp,
 		properties:  cloned,
 		originalLen: len(updates),
 	}, nil
@@ -358,6 +382,14 @@ func (c *Core) validatePropertyUpdates(updates map[string]any, operation string)
 			}
 		} else if err := c.validatePropertyKeyLength(key); err != nil {
 			return err
+		}
+		// Register the key in the property-key registry so subsequent wire
+		// reads / monitoring see consistent cardinality. The wire encoder
+		// doesn't consult the registry yet (deferred until call-site
+		// threading lands); for now this populates the registry so
+		// consumers can monitor growth via g.Stats().PropertyKeyCount().
+		if c.propKeys != nil {
+			_, _ = c.propKeys.GetOrCreate(key)
 		}
 	}
 	return nil

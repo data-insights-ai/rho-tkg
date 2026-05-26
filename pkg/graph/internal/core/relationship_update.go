@@ -62,17 +62,17 @@ func (c *Core) updateRelationshipInternal(ctx context.Context, id types.RelID, u
 		return current, false, err
 	}
 
-	prov, updates, err := c.prepareUpdateProperties(updates, "update relationship")
+	prov, tmp, updates, err := c.prepareUpdateProperties(updates, "update relationship")
 	if err != nil {
 		return nil, false, err
 	}
-	return c.updateRelationshipPreparedInternal(ctx, id, prov, updates)
+	return c.updateRelationshipPreparedInternal(ctx, id, prov, tmp, updates)
 }
 
 // updateRelationshipPreparedInternal applies a non-empty caller update after
 // provenance extraction and property validation have already run. The prepared
 // properties may be empty for metadata-only updates.
-func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.RelID, prov updateProvenance, updates map[string]any) (*types.Relationship, bool, error) {
+func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.RelID, prov updateProvenance, tmp updateTemporal, updates map[string]any) (*types.Relationship, bool, error) {
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return nil, false, err
 	}
@@ -94,12 +94,18 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 	if err := checkCtx(ctx); err != nil {
 		return nil, false, err
 	}
-	if !relPreparedUpdateMutates(current, prov, updates) {
+	if !relPreparedUpdateMutates(current, prov, tmp, updates) {
 		c.opRelReads.Add(1)
 		return current, false, nil
 	}
 	if err := rejectClosedRelMutation(current); err != nil {
 		return nil, false, err
+	}
+	if tmp.hasValidFrom && tmp.validFrom != 0 {
+		prevEff := c.relValidFrom(current)
+		if tmp.validFrom <= prevEff {
+			return nil, false, fmt.Errorf("%w: %d <= prev %d", ErrValidFromBeforePrevious, tmp.validFrom, prevEff)
+		}
 	}
 	if err := c.checkpointDirtyRegistriesBeforeMutation("update relationship"); err != nil {
 		return nil, false, err
@@ -147,6 +153,15 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 	if tm == nil {
 		tm = &types.TemporalMetadata{}
 		current.SetTemporal(tm)
+	}
+	// Phase 1/2: stop inheriting valid-time; honour caller tkg_valid_from/to.
+	tm.ValidFrom = 0
+	tm.ValidTo = 0
+	if tmp.hasValidFrom {
+		tm.ValidFrom = tmp.validFrom
+	}
+	if tmp.hasValidTo {
+		tm.ValidTo = tmp.validTo
 	}
 	tm.UpdatedAt = now
 
@@ -348,7 +363,12 @@ func (c *Core) updateRelInPlaceInternal(ctx context.Context, id types.RelID, upd
 		return current, false, err
 	}
 
-	// Phase 1: Pre-validate before acquiring entity lock.
+	// Phase 1: Pre-validate before acquiring entity lock. Extract reserved
+	// temporal keys for direct rewrite of the row's TemporalMetadata.
+	tmp, updates, err := extractTemporalTracked(updates)
+	if err != nil {
+		return nil, false, err
+	}
 	if err := c.validatePropertyUpdates(updates, "update relationship in place"); err != nil {
 		return nil, false, err
 	}
@@ -369,7 +389,7 @@ func (c *Core) updateRelInPlaceInternal(ctx context.Context, id types.RelID, upd
 	if err := checkCtx(ctx); err != nil {
 		return nil, false, err
 	}
-	if !relPropertyUpdatesMutate(current, updates) {
+	if !tmp.present && !relPropertyUpdatesMutate(current, updates) {
 		c.opRelReads.Add(1)
 		return current, false, nil
 	}
@@ -417,6 +437,12 @@ func (c *Core) updateRelInPlaceInternal(ctx context.Context, id types.RelID, upd
 		current.SetTemporal(tm)
 	}
 	tm.UpdatedAt = now
+	if tmp.hasValidFrom {
+		tm.ValidFrom = tmp.validFrom
+	}
+	if tmp.hasValidTo {
+		tm.ValidTo = tmp.validTo
+	}
 
 	relTypeName := c.relTypeUnlocked(current)
 	hash, err := integrity.ComputeRelHashChecked(current, relTypeName)
@@ -442,8 +468,8 @@ func (c *Core) updateRelInPlaceInternal(ctx context.Context, id types.RelID, upd
 	return current, true, nil
 }
 
-func relPreparedUpdateMutates(current *types.Relationship, prov updateProvenance, updates map[string]any) bool {
-	if prov.present {
+func relPreparedUpdateMutates(current *types.Relationship, prov updateProvenance, tmp updateTemporal, updates map[string]any) bool {
+	if prov.present || tmp.present {
 		return true
 	}
 	return relPropertyUpdatesMutate(current, updates)

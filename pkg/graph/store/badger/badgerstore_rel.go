@@ -30,7 +30,7 @@ func (bs *Store) PutRelationship(r *types.Relationship) error {
 	endID := endNID.SnowflakeID()
 	relType := r.TypeToken().Value()
 
-	data, err := storepkg.MarshalRelWire(r)
+	data, err := bs.marshalRelBytes(r)
 	if err != nil {
 		return fmt.Errorf("graph: marshal relationship: %w", err)
 	}
@@ -139,7 +139,7 @@ func (bs *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
 			if err := msgpack.Unmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal relationship: %w", err)
 			}
-			decoded, err := decodeRelWireForKey(w, id)
+			decoded, err := bs.decodeRelWireForKey(w, id)
 			if err != nil {
 				return fmt.Errorf("graph: decode relationship: %w", err)
 			}
@@ -171,7 +171,7 @@ func (bs *Store) ReplaceRelationship(r *types.Relationship) error {
 
 	old, prefetchErr := bs.prefetchRel(rid)
 
-	data, err := storepkg.MarshalRelWire(r)
+	data, err := bs.marshalRelBytes(r)
 	if err != nil {
 		return fmt.Errorf("graph: marshal relationship: %w", err)
 	}
@@ -379,7 +379,7 @@ func (bs *Store) getRelLocked(rid types.RelID) (*types.Relationship, error) {
 			if err := msgpack.Unmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal relationship: %w", err)
 			}
-			decoded, err := decodeRelWireForKey(w, id)
+			decoded, err := bs.decodeRelWireForKey(w, id)
 			if err != nil {
 				return fmt.Errorf("graph: decode relationship: %w", err)
 			}
@@ -425,7 +425,7 @@ func (bs *Store) prefetchRel(rid types.RelID) (*types.Relationship, error) {
 			if err := msgpack.Unmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal relationship: %w", err)
 			}
-			decoded, err := decodeRelWireForKey(w, id)
+			decoded, err := bs.decodeRelWireForKey(w, id)
 			if err != nil {
 				return fmt.Errorf("graph: decode relationship: %w", err)
 			}

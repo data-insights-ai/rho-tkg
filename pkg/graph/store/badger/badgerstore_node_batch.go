@@ -387,7 +387,7 @@ func (bs *Store) PutNodesBatch(nodes []*types.Node) error {
 		if err := storecontract.ValidateNodeWrite(n); err != nil {
 			return err
 		}
-		data, err := storepkg.MarshalNodeWire(n)
+		data, err := bs.marshalNodeBytes(n)
 		if err != nil {
 			return fmt.Errorf("graph: marshal node: %w", err)
 		}

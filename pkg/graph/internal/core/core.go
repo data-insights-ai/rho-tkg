@@ -42,6 +42,7 @@ import (
 type Core struct {
 	labels             *registrypkg.LabelRegistry
 	relTypes           *registrypkg.RelTypeRegistry
+	propKeys           *registrypkg.PropertyKeyRegistry
 	nodeIDGen          *snowflake.Node
 	relIDGen           *snowflake.Node
 	store              storepkg.MandatoryStore
@@ -61,6 +62,10 @@ type Core struct {
 	vectorRowsTrust    bool
 	storeRowsTrust     bool
 	nativeAdjacency    bool
+	// bitemporalMigrated is true after the one-shot inherited-ValidFrom
+	// migration has run successfully on this store. When false, the resolver
+	// keeps the legacy inheritance heuristic active for back-compat.
+	bitemporalMigrated bool
 	entityLocks        *locks.Manager
 	validation         ValidationLimits
 	constraints        ConstraintSet
@@ -156,6 +161,13 @@ var (
 	ErrValueTooLarge     = errors.New("graph: property value too large")
 	ErrNameTooLong       = errors.New("graph: name too long")
 	ErrSelfLoop          = errors.New("graph: self-loop relationship not allowed; set AllowSelfLoops in ValidationLimits to permit")
+
+	// ErrValidFromBeforePrevious is returned by Update when the caller-supplied
+	// tkg_valid_from is <= the previous version's effective ValidFrom. This
+	// would create a backwards interval on the previous version's tile and is
+	// rejected. Bitemporally correct backdating must use Phase 3's cascade
+	// edit (SetVersionInterval) instead.
+	ErrValidFromBeforePrevious = errors.New("graph: tkg_valid_from must be greater than previous version's effective ValidFrom")
 )
 
 // Re-exports of registry errors and index errors used by methods on *Core.
@@ -650,8 +662,29 @@ func (c *Core) persistRegistries() error {
 			return fmt.Errorf("graph: save registries: %w", err)
 		}
 	}
+	if pk, ok := c.store.(propertyKeyPersister); ok {
+		if err := pk.SavePropertyKeyRegistry(c.propKeys); err != nil {
+			c.registryDirty.Store(true)
+			return fmt.Errorf("graph: save property-key registry: %w", err)
+		}
+	}
 	c.registryDirty.Store(false)
 	return nil
+}
+
+// propertyKeyPersister matches the badger.Store / tiered.Store property-key
+// persistence shape. OPTIONAL — backends without persisted property-key
+// registries are skipped.
+type propertyKeyPersister interface {
+	SavePropertyKeyRegistry(*registrypkg.PropertyKeyRegistry) error
+	LoadPropertyKeyRegistry(*registrypkg.PropertyKeyRegistry) (bool, error)
+}
+
+// propertyKeyRegistrySetter matches the badger.Store / tiered.Store shape
+// for installing the property-key registry on the store. The store uses
+// the registry to tokenize property keys on the wire. OPTIONAL.
+type propertyKeyRegistrySetter interface {
+	SetPropertyKeyRegistry(*registrypkg.PropertyKeyRegistry)
 }
 
 func (c *Core) persistRegistriesIfDirtyLocked() error {
@@ -741,6 +774,7 @@ func New(config Config) (*Core, error) {
 	c := &Core{
 		labels:         registrypkg.NewLabelRegistry(),
 		relTypes:       registrypkg.NewRelTypeRegistry(),
+		propKeys:       registrypkg.NewPropertyKeyRegistry(),
 		nodeIDGen:      nodeGen,
 		relIDGen:       relGen,
 		entityLocks:    locks.NewManager(),
@@ -884,6 +918,23 @@ func New(config Config) (*Core, error) {
 			setTieredLabelRegistryIfSupported(store, c.labels)
 		}
 	}
+
+	if pk, ok := store.(propertyKeyPersister); ok {
+		loaded := registrypkg.NewPropertyKeyRegistry()
+		if found, err := pk.LoadPropertyKeyRegistry(loaded); err != nil {
+			return nil, fmt.Errorf("graph: load property-key registry: %w", err)
+		} else if found {
+			c.propKeys = loaded
+		}
+	}
+	// Install the registry on the store so the wire encoder / decoder
+	// dictionary-encode property keys. Optional capability — backends
+	// without it keep the pre-tokenization on-disk format.
+	if setter, ok := store.(propertyKeyRegistrySetter); ok {
+		setter.SetPropertyKeyRegistry(c.propKeys)
+	}
+
+	c.runBitemporalMigrationBestEffort()
 
 	return c, nil
 }

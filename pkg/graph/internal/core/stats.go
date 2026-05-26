@@ -103,6 +103,22 @@ func (s *StatOps) NodeCountByLabel(label string) (int, error) { return s.c.Nodes
 // RelCountByType forwards to Core.Rels.CountByType.
 func (s *StatOps) RelCountByType(typeName string) (int, error) { return s.c.Rels.CountByType(typeName) }
 
+// PropertyKeyCount returns the number of distinct property keys registered
+// in the property-key registry. Useful for monitoring cardinality growth
+// against the uint16 ceiling (65535). When the registry approaches its
+// capacity the wire encoder falls back to writing raw keys instead of
+// dictionary-encoded tokens.
+func (s *StatOps) PropertyKeyCount() (int, error) {
+	c := s.c
+	if err := c.checkOpen(); err != nil {
+		return 0, err
+	}
+	if c.propKeys == nil {
+		return 0, nil
+	}
+	return c.propKeys.Len(), nil
+}
+
 // AllLabelCounts returns a map of label name to node count for all registered labels.
 // Labels with zero nodes are omitted.
 func (s *StatOps) AllLabelCounts() (map[string]int, error) {

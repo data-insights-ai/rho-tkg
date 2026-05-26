@@ -9,7 +9,10 @@ import (
 	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
 )
 
-func decodeNodeWireForKey(w storepkg.NodeWire, expected snowflake.ID) (*types.Node, error) {
+func (bs *Store) decodeNodeWireForKey(w storepkg.NodeWire, expected snowflake.ID) (*types.Node, error) {
+	if err := bs.resolveNodeWireKeys(&w); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidStoreMutation, err)
+	}
 	n, err := storepkg.WireToNodeChecked(w)
 	if err != nil {
 		return nil, err
@@ -20,8 +23,8 @@ func decodeNodeWireForKey(w storepkg.NodeWire, expected snowflake.ID) (*types.No
 	return n, nil
 }
 
-func decodeNodeHistoryWireForKey(w storepkg.NodeWire, expected snowflake.ID, version uint64) (*types.Node, error) {
-	n, err := decodeNodeWireForKey(w, expected)
+func (bs *Store) decodeNodeHistoryWireForKey(w storepkg.NodeWire, expected snowflake.ID, version uint64) (*types.Node, error) {
+	n, err := bs.decodeNodeWireForKey(w, expected)
 	if err != nil {
 		return nil, err
 	}
@@ -31,7 +34,10 @@ func decodeNodeHistoryWireForKey(w storepkg.NodeWire, expected snowflake.ID, ver
 	return n, nil
 }
 
-func decodeRelWireForKey(w storepkg.RelWire, expected snowflake.ID) (*types.Relationship, error) {
+func (bs *Store) decodeRelWireForKey(w storepkg.RelWire, expected snowflake.ID) (*types.Relationship, error) {
+	if err := bs.resolveRelWireKeys(&w); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidStoreMutation, err)
+	}
 	r, err := storepkg.WireToRelChecked(w)
 	if err != nil {
 		return nil, err
@@ -42,8 +48,8 @@ func decodeRelWireForKey(w storepkg.RelWire, expected snowflake.ID) (*types.Rela
 	return r, nil
 }
 
-func decodeRelHistoryWireForKey(w storepkg.RelWire, expected snowflake.ID, version uint64) (*types.Relationship, error) {
-	r, err := decodeRelWireForKey(w, expected)
+func (bs *Store) decodeRelHistoryWireForKey(w storepkg.RelWire, expected snowflake.ID, version uint64) (*types.Relationship, error) {
+	r, err := bs.decodeRelWireForKey(w, expected)
 	if err != nil {
 		return nil, err
 	}

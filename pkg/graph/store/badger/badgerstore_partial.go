@@ -49,7 +49,7 @@ func (bs *Store) PutRelEntityAndOut(r *types.Relationship) error {
 	endID := r.EndNodeID().SnowflakeID()
 	relType := r.TypeToken().Value()
 
-	data, err := storepkg.MarshalRelWire(r)
+	data, err := bs.marshalRelBytes(r)
 	if err != nil {
 		return fmt.Errorf("graph: marshal relationship: %w", err)
 	}

@@ -25,7 +25,7 @@ func (bs *Store) PutNode(n *types.Node) error {
 	nid := n.InternalID()
 	id := nid.SnowflakeID() // LRU is keyed by raw snowflake.ID (Tier D — see lru.go).
 
-	data, err := storepkg.MarshalNodeWire(n)
+	data, err := bs.marshalNodeBytes(n)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node: %w", err)
 	}
@@ -125,7 +125,7 @@ func (bs *Store) GetNode(nid types.NodeID) (*types.Node, error) {
 			if err := msgpack.Unmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal node: %w", err)
 			}
-			decoded, err := decodeNodeWireForKey(w, id)
+			decoded, err := bs.decodeNodeWireForKey(w, id)
 			if err != nil {
 				return fmt.Errorf("graph: decode node: %w", err)
 			}
@@ -193,7 +193,7 @@ func (bs *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
 			if err := msgpack.Unmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal node: %w", err)
 			}
-			decoded, err := decodeNodeWireForKey(w, id)
+			decoded, err := bs.decodeNodeWireForKey(w, id)
 			if err != nil {
 				return fmt.Errorf("graph: decode node: %w", err)
 			}
@@ -389,7 +389,7 @@ func (bs *Store) ReplaceNode(n *types.Node) error {
 	nid := n.InternalID()
 	id := nid.SnowflakeID()
 
-	data, err := storepkg.MarshalNodeWire(n)
+	data, err := bs.marshalNodeBytes(n)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node: %w", err)
 	}
@@ -464,7 +464,7 @@ func (bs *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 		return err
 	}
 	id := nid.SnowflakeID()
-	data, err := storepkg.MarshalNodeWire(updatedNode)
+	data, err := bs.marshalNodeBytes(updatedNode)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node: %w", err)
 	}
@@ -554,7 +554,7 @@ func (bs *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 		return err
 	}
 	id := nid.SnowflakeID()
-	data, err := storepkg.MarshalNodeWire(updatedNode)
+	data, err := bs.marshalNodeBytes(updatedNode)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node: %w", err)
 	}
@@ -646,7 +646,7 @@ func (bs *Store) loadNodeFromBadger(txn *badgerv4.Txn, id snowflake.ID) (*types.
 		if err := msgpack.Unmarshal(val, &w); err != nil {
 			return fmt.Errorf("graph: unmarshal node: %w", err)
 		}
-		decoded, err := decodeNodeWireForKey(w, id)
+		decoded, err := bs.decodeNodeWireForKey(w, id)
 		if err != nil {
 			return fmt.Errorf("graph: decode node: %w", err)
 		}
@@ -694,7 +694,7 @@ func (bs *Store) prefetchNode(nid types.NodeID) (*types.Node, error) {
 			if err := msgpack.Unmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal node: %w", err)
 			}
-			decoded, err := decodeNodeWireForKey(w, id)
+			decoded, err := bs.decodeNodeWireForKey(w, id)
 			if err != nil {
 				return fmt.Errorf("graph: decode node: %w", err)
 			}
@@ -736,7 +736,7 @@ func (bs *Store) getNodeLocked(nid types.NodeID) (*types.Node, error) {
 			if err := msgpack.Unmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal node: %w", err)
 			}
-			decoded, err := decodeNodeWireForKey(w, id)
+			decoded, err := bs.decodeNodeWireForKey(w, id)
 			if err != nil {
 				return fmt.Errorf("graph: decode node: %w", err)
 			}

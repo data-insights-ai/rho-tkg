@@ -32,9 +32,21 @@ type QueryOpts struct {
 
 	// Temporal filters — zero values = no filter (backward-compatible).
 	// ValidAt takes precedence if both ValidAt and ValidStart/ValidEnd are set.
-	ValidAt    types.Instant // Point-in-time filter. 0 = disabled.
+	ValidAt    types.Instant // Point-in-time filter (valid time). 0 = disabled.
 	ValidStart types.Instant // Interval filter start. Both must be > 0 for interval filter.
 	ValidEnd   types.Instant // Interval filter end. 0 = disabled.
+
+	// TxAt restricts the chain to versions visible at the given transaction
+	// time: TxFrom <= TxAt AND (TxTo == 0 OR TxTo > TxAt). 0 = no TX filter
+	// (current behaviour: any version regardless of when it was written).
+	// Combine with ValidAt / ValidStart / ValidEnd for bitemporal queries.
+	TxAt types.Instant
+
+	// IncludeEclipsed includes history rows that were superseded by a cascade
+	// edit (Phase 3+). Default false: eclipsed rows are skipped for valid-time
+	// queries. Reserved field; pre-cascade builds treat all history rows as
+	// non-eclipsed.
+	IncludeEclipsed bool
 
 	// Depth controls which shard tiers to query. 0 (DepthAll) = all tiers.
 	// Single-shard stores accept only the defined enum values, but all valid

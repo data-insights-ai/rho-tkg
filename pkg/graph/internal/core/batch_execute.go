@@ -450,7 +450,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		if pu.update.originalLen == 0 {
 			_, mutated, err = b.g.updateNodeInternal(context.Background(), pu.id, pu.update.properties)
 		} else {
-			_, mutated, err = b.g.updateNodePreparedInternal(context.Background(), pu.id, pu.update.provenance, pu.update.properties)
+			_, mutated, err = b.g.updateNodePreparedInternal(context.Background(), pu.id, pu.update.provenance, pu.update.temporal, pu.update.properties)
 		}
 		if err != nil {
 			result.Failed++
@@ -474,7 +474,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		if pu.update.originalLen == 0 {
 			_, mutated, err = b.g.updateRelationshipInternal(context.Background(), pu.id, pu.update.properties)
 		} else {
-			_, mutated, err = b.g.updateRelationshipPreparedInternal(context.Background(), pu.id, pu.update.provenance, pu.update.properties)
+			_, mutated, err = b.g.updateRelationshipPreparedInternal(context.Background(), pu.id, pu.update.provenance, pu.update.temporal, pu.update.properties)
 		}
 		if err != nil {
 			result.Failed++
@@ -486,6 +486,36 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		} else if mutated {
 			result.Updated++
 			b.g.publishEvent(eventspkg.EventRelUpdate, types.EntityID(pu.id), b.g.now(), eventspkg.PriorityNormal)
+		}
+	}
+
+	// 4b. Cascade timeline edits — node, then rel.
+	for _, pc := range b.nodeCascades {
+		_, err := b.g.cascadeNodeVersionInterval(context.Background(), pc.id, pc.validFrom, pc.validTo, pc.props)
+		if err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, BatchError{
+				Op:  "SetNodeVersionInterval",
+				ID:  types.EntityID(pc.id),
+				Err: err,
+			})
+		} else {
+			result.Updated++
+			b.g.publishEvent(eventspkg.EventNodeUpdate, types.EntityID(pc.id), b.g.now(), eventspkg.PriorityNormal)
+		}
+	}
+	for _, pc := range b.relCascades {
+		_, err := b.g.cascadeRelVersionInterval(context.Background(), pc.id, pc.validFrom, pc.validTo, pc.props)
+		if err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, BatchError{
+				Op:  "SetRelVersionInterval",
+				ID:  types.EntityID(pc.id),
+				Err: err,
+			})
+		} else {
+			result.Updated++
+			b.g.publishEvent(eventspkg.EventRelUpdate, types.EntityID(pc.id), b.g.now(), eventspkg.PriorityNormal)
 		}
 	}
 
