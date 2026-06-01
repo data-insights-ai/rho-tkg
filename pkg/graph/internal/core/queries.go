@@ -365,6 +365,79 @@ func (c *Core) incomingRelsForNodesLocked(nodeIDs []types.NodeID, typeName strin
 // Incoming returns all incoming relationships to the given node.
 // If typeName is empty, all types are returned. If typeName is non-empty, only
 // relationships of that type are returned (nil if the type is not registered).
+// OutgoingDegree returns the number of outgoing relationships from nodeID,
+// optionally filtered by type. It uses the store's DegreeCapability fast-path
+// (count from the adjacency index, no entity materialization) when available,
+// and otherwise falls back to len(Outgoing(...)).
+func (r *RelOps) OutgoingDegree(nodeID types.NodeID, typeName string) (int, error) {
+	return r.degree(nodeID, typeName, true)
+}
+
+// IncomingDegree returns the number of incoming relationships to nodeID,
+// optionally filtered by type. See OutgoingDegree for semantics.
+func (r *RelOps) IncomingDegree(nodeID types.NodeID, typeName string) (int, error) {
+	return r.degree(nodeID, typeName, false)
+}
+
+func (r *RelOps) degree(nodeID types.NodeID, typeName string, outgoing bool) (int, error) {
+	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return 0, err
+	}
+	if typeName != "" {
+		if err := c.validateRelTypeQueryName(typeName); err != nil {
+			return 0, err
+		}
+	}
+	if err := storepkg.ValidateNodeID(nodeID); err != nil {
+		return 0, err
+	}
+	var result int
+	err := c.readUnderRLock(func() error {
+		var err error
+		result, err = c.degreeLocked(nodeID, typeName, outgoing)
+		return err
+	})
+	return result, err
+}
+
+// degreeLocked is the lock-free body of OutgoingDegree/IncomingDegree.
+func (c *Core) degreeLocked(nodeID types.NodeID, typeName string, outgoing bool) (int, error) {
+	var tok uint16
+	if typeName != "" {
+		t, ok := c.lookupRelTypeQueryToken(typeName)
+		if !ok {
+			// Unknown type → zero, but still surface a missing-node error to
+			// match the adjacency methods' contract.
+			return 0, c.validateRequestedNodesExist([]types.NodeID{nodeID})
+		}
+		tok = t
+	}
+	if !c.storeRowsTrust {
+		if err := c.validateRequestedNodesExist([]types.NodeID{nodeID}); err != nil {
+			return 0, err
+		}
+	}
+	if dc, ok := c.store.(storepkg.DegreeCapability); ok {
+		if outgoing {
+			return dc.OutgoingDegree(nodeID, tok)
+		}
+		return dc.IncomingDegree(nodeID, tok)
+	}
+	// Fallback: materialize and count (validated rows).
+	var rels []*types.Relationship
+	var err error
+	if outgoing {
+		rels, err = c.store.OutgoingRelationships(nodeID, tok)
+	} else {
+		rels, err = c.store.IncomingRelationships(nodeID, tok)
+	}
+	if err != nil {
+		return 0, err
+	}
+	return len(rels), nil
+}
+
 func (r *RelOps) Incoming(nodeID types.NodeID, typeName string) ([]*types.Relationship, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {

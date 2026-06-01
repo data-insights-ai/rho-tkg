@@ -38,6 +38,8 @@ type Ops interface {
 	Incoming(nodeID types.NodeID, typeName string) ([]*types.Relationship, error)
 	OutgoingForNodes(nodeIDs []types.NodeID, typeName string) (map[types.NodeID][]*types.Relationship, error)
 	IncomingForNodes(nodeIDs []types.NodeID, typeName string) (map[types.NodeID][]*types.Relationship, error)
+	OutgoingDegree(nodeID types.NodeID, typeName string) (int, error)
+	IncomingDegree(nodeID types.NodeID, typeName string) (int, error)
 
 	SetProperty(ctx context.Context, id types.RelID, key string, value any) error
 	DeleteProperty(ctx context.Context, id types.RelID, key string) error
@@ -206,6 +208,27 @@ func (a *API) Incoming(nodeID types.NodeID, typeName string) ([]*types.Relations
 		return nil, err
 	}
 	return ops.Incoming(nodeID, typeName)
+}
+
+// OutgoingDegree returns the count of outgoing relationships from nodeID
+// (optionally type-filtered) without materializing them. O(1)/O(degree) on the
+// adjacency index via the store's DegreeCapability, with a len(Outgoing) fallback.
+func (a *API) OutgoingDegree(nodeID types.NodeID, typeName string) (int, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, err
+	}
+	return ops.OutgoingDegree(nodeID, typeName)
+}
+
+// IncomingDegree returns the count of incoming relationships to nodeID
+// (optionally type-filtered) without materializing them. See OutgoingDegree.
+func (a *API) IncomingDegree(nodeID types.NodeID, typeName string) (int, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, err
+	}
+	return ops.IncomingDegree(nodeID, typeName)
 }
 
 // OutgoingForNodes returns outgoing relationships for the given set of node IDs.

@@ -96,6 +96,21 @@ type AdjacencyCapability interface {
 	IncomingRelationshipsForNodes(nodeIDs []types.NodeID, typeToken uint16) (map[types.NodeID][]*types.Relationship, error)
 }
 
+// DegreeCapability is an OPTIONAL fast-path for counting a node's relationships
+// without materializing them. It returns the number of adjacency-index entries
+// for the node (type-filtered), which equals the count of the corresponding
+// AdjacencyCapability result in normal operation. The two can differ only by
+// transient, crash-induced orphan index entries (an in/out index key persisted
+// while its entity write was lost mid cross-shard write); those are reconciled
+// by repair/restart — the same consistency model adjacency reads rely on.
+//
+// Backends that do not implement this interface are served by the graph layer
+// via len(Outgoing/IncomingRelationships), so the capability is purely additive.
+type DegreeCapability interface {
+	OutgoingDegree(nodeID types.NodeID, typeToken uint16) (int, error)
+	IncomingDegree(nodeID types.NodeID, typeToken uint16) (int, error)
+}
+
 // BulkReadCapability is the unfiltered/label-filtered listing surface. The
 // graph layer uses it for export, snapshot, and the `*ByLabel` /
 // `*ByType` query shapes.

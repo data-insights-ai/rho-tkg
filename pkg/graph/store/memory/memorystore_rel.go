@@ -414,6 +414,68 @@ func (ms *Store) OutgoingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 // If typeToken is 0, returns all incoming; otherwise filters by type.
 // Results are sorted by snowflake.ID for deterministic output.
 // Returns ErrNodeNotFound if the requested node does not exist.
+// OutgoingDegree counts outgoing relationships from nid (type-filtered) without
+// materializing them. See store.DegreeCapability.
+func (ms *Store) OutgoingDegree(nid types.NodeID, typeToken uint16) (int, error) {
+	if ms == nil {
+		return 0, ErrNilStore
+	}
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	if err := ms.checkOpenLocked(); err != nil {
+		return 0, err
+	}
+	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return 0, err
+	}
+	if _, ok := ms.nodes[nid]; !ok {
+		return 0, ErrNodeNotFound
+	}
+	return ms.degreeLocked(ms.outIdx[nid], typeToken), nil
+}
+
+// IncomingDegree counts incoming relationships to nid (type-filtered) without
+// materializing them. See store.DegreeCapability.
+func (ms *Store) IncomingDegree(nid types.NodeID, typeToken uint16) (int, error) {
+	if ms == nil {
+		return 0, ErrNilStore
+	}
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	if err := ms.checkOpenLocked(); err != nil {
+		return 0, err
+	}
+	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return 0, err
+	}
+	if _, ok := ms.nodes[nid]; !ok {
+		return 0, ErrNodeNotFound
+	}
+	return ms.degreeLocked(ms.inIdx[nid], typeToken), nil
+}
+
+// degreeLocked counts entries in an adjacency set, optionally filtered by type
+// token via typeIdx. Caller holds ms.mu.
+func (ms *Store) degreeLocked(set map[types.RelID]struct{}, typeToken uint16) int {
+	if len(set) == 0 {
+		return 0
+	}
+	if typeToken == 0 {
+		return len(set)
+	}
+	typeSet := ms.typeIdx[typeToken]
+	if len(typeSet) == 0 {
+		return 0
+	}
+	n := 0
+	for relID := range set {
+		if _, ok := typeSet[relID]; ok {
+			n++
+		}
+	}
+	return n
+}
+
 func (ms *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
 	if ms == nil {
 		return nil, ErrNilStore

@@ -365,6 +365,20 @@ func (s *relOpsSpy) Incoming(nodeID types.NodeID, typeName string) ([]*types.Rel
 	return nil, s.err
 }
 
+func (s *relOpsSpy) OutgoingDegree(nodeID types.NodeID, typeName string) (int, error) {
+	s.record("OutgoingDegree")
+	s.lastNodeID = nodeID
+	s.lastType = typeName
+	return 0, s.err
+}
+
+func (s *relOpsSpy) IncomingDegree(nodeID types.NodeID, typeName string) (int, error) {
+	s.record("IncomingDegree")
+	s.lastNodeID = nodeID
+	s.lastType = typeName
+	return 0, s.err
+}
+
 func (s *relOpsSpy) OutgoingForNodes(nodeIDs []types.NodeID, typeName string) (map[types.NodeID][]*types.Relationship, error) {
 	s.record("OutgoingForNodes")
 	if len(nodeIDs) > 0 {

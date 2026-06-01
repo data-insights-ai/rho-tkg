@@ -229,6 +229,72 @@ func (bs *Store) OutgoingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 // IncomingRelationships returns relationships ending at the given node.
 // If typeToken is 0, returns all incoming; otherwise filters by type.
 // Results are sorted by snowflake.ID for deterministic output.
+// OutgoingDegree returns the number of outgoing relationships from nid
+// (type-filtered) by counting adjacency-index entries — no entity resolution,
+// no DeepCopy. See store.DegreeCapability for the exact/orphan semantics.
+func (bs *Store) OutgoingDegree(nid types.NodeID, typeToken uint16) (int, error) {
+	if err := bs.checkOpen(); err != nil {
+		return 0, err
+	}
+	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return 0, err
+	}
+	if err := bs.ensureNodeRowLive(nid); err != nil {
+		return 0, err
+	}
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
+	if _, ok := bs.nodeIDs[nid]; !ok {
+		return 0, ErrNodeNotFound
+	}
+	set := bs.outIdx[nid]
+	if typeToken == 0 {
+		return len(set), nil
+	}
+	typeSet := bs.typeIdx[typeToken]
+	if len(typeSet) == 0 {
+		return 0, nil
+	}
+	n := 0
+	for id := range set {
+		if _, ok := typeSet[id]; ok {
+			n++
+		}
+	}
+	return n, nil
+}
+
+// IncomingDegree returns the number of incoming relationships to nid
+// (type-filtered) by counting adjacency-index entries — no entity resolution,
+// no DeepCopy. See store.DegreeCapability for the exact/orphan semantics.
+func (bs *Store) IncomingDegree(nid types.NodeID, typeToken uint16) (int, error) {
+	if err := bs.checkOpen(); err != nil {
+		return 0, err
+	}
+	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return 0, err
+	}
+	if err := bs.ensureNodeRowLive(nid); err != nil {
+		return 0, err
+	}
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
+	if _, ok := bs.nodeIDs[nid]; !ok {
+		return 0, ErrNodeNotFound
+	}
+	set := bs.inIdx[nid]
+	if typeToken == 0 {
+		return len(set), nil
+	}
+	n := 0
+	for _, tok := range set {
+		if tok == typeToken {
+			n++
+		}
+	}
+	return n, nil
+}
+
 func (bs *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err

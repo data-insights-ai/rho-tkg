@@ -601,6 +601,57 @@ func (ts *Store) OutgoingRelationshipsForNodes(nodeIDs []types.NodeID, typeToken
 	return result, nil
 }
 
+// OutgoingDegree counts a node's outgoing relationships (type-filtered) from the
+// owning shard's adjacency index, without resolving entities. See
+// store.DegreeCapability.
+func (ts *Store) OutgoingDegree(nid types.NodeID, typeToken uint16) (int, error) {
+	if err := ts.checkOpen(); err != nil {
+		return 0, err
+	}
+	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return 0, err
+	}
+	shard, checkin, err := ts.shardForNodeIDChecked(nid)
+	if err != nil {
+		return 0, err
+	}
+	defer checkin()
+	live, liveErr := nodeRowLive(shard, nid)
+	if liveErr != nil {
+		return 0, liveErr
+	}
+	if !live {
+		return 0, ErrNodeNotFound
+	}
+	return shard.OutgoingDegree(nid, typeToken)
+}
+
+// IncomingDegree counts a node's incoming relationships (type-filtered) from the
+// owning shard's adjacency index, without resolving entities. The in/out index
+// is co-located with the node on its owning shard, so this is a single-shard
+// lookup. See store.DegreeCapability.
+func (ts *Store) IncomingDegree(nid types.NodeID, typeToken uint16) (int, error) {
+	if err := ts.checkOpen(); err != nil {
+		return 0, err
+	}
+	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return 0, err
+	}
+	shard, checkin, err := ts.shardForNodeIDChecked(nid)
+	if err != nil {
+		return 0, err
+	}
+	defer checkin()
+	live, liveErr := nodeRowLive(shard, nid)
+	if liveErr != nil {
+		return 0, liveErr
+	}
+	if !live {
+		return 0, ErrNodeNotFound
+	}
+	return shard.IncomingDegree(nid, typeToken)
+}
+
 func (ts *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
