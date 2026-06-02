@@ -116,6 +116,23 @@ type Config struct {
 	// Only effective when Compression is options.ZSTD.
 	// Zero keeps the Badger default (1).
 	ZSTDCompressionLevel int
+	// PropertyKeyRegistry, when non-nil, is the property-key token registry the
+	// store uses to tokenize on write and resolve tokens on read — supplied by
+	// an owner (e.g. the tiered store) that holds ONE canonical registry for all
+	// shards. When non-nil it is installed BEFORE loadIndexes so row decoding can
+	// resolve tokenized property keys, and the store does NOT load its own copy
+	// from meta. When nil, the store loads its own registry from its meta
+	// (standalone behavior). The store never persists a registry it was handed;
+	// persistence is the owner's responsibility (single canonical copy).
+	PropertyKeyRegistry *registrypkg.PropertyKeyRegistry
+	// OnPropertyKeyGrow, when non-nil, is invoked from flush() — BEFORE the row
+	// WriteBatch — whenever the registry has grown since the last commit, i.e.
+	// write-ahead persistence of the registry to its canonical location. The
+	// tiered store sets this to commit the shared registry to the reference
+	// shard (with fsync). When nil, the store persists the registry to its own
+	// meta (standalone behavior). A non-nil error aborts the flush so a batch of
+	// rows can never become durable before the registry entries it depends on.
+	OnPropertyKeyGrow func() error
 }
 
 // writeOpType indicates the type of deferred write operation.
@@ -173,6 +190,19 @@ type Store struct {
 	// unmarshal dictionary-encodes property keys into uint16 tokens. nil
 	// preserves the pre-tokenization (V1) on-disk format.
 	propKeyReg atomic.Pointer[registrypkg.PropertyKeyRegistry]
+
+	// onPropertyKeyGrow is the write-ahead hook fired from flush() when the
+	// registry has grown since the last commit (see Config.OnPropertyKeyGrow).
+	// Never nil after New: defaults to persisting this store's own registry when
+	// none is supplied.
+	onPropertyKeyGrow func() error
+
+	// persistedKeyLen is the property-key-registry length last committed via
+	// onPropertyKeyGrow — the write-ahead watermark. A flush whose registry is
+	// longer commits it before writing the row WriteBatch. Read lock-free on the
+	// hot path; advanced only under persistKeyMu after a successful commit.
+	persistedKeyLen atomic.Int64
+	persistKeyMu    sync.Mutex
 
 	// Write buffer (own mutex, swapped on flush).
 	// Map keyed by string(op.key) for last-write-wins deduplication.
@@ -344,8 +374,35 @@ func New(cfg Config) (*Store, error) {
 	// node/rel rows. Without this, rows written under tokenization would
 	// fail validation during loadIndexes and silently drop from the
 	// in-memory liveness map.
-	if cfg := readPropertyKeyRegistryFromMeta(bs); cfg != nil {
-		bs.propKeyReg.Store(cfg)
+	// An owner-supplied registry (tiered store) is the single canonical instance
+	// shared by all shards; use it directly so loadIndexes can resolve tokenized
+	// property keys. Otherwise (standalone store) load this store's own meta copy.
+	if cfg.PropertyKeyRegistry != nil {
+		bs.propKeyReg.Store(cfg.PropertyKeyRegistry)
+	} else if reg := readPropertyKeyRegistryFromMeta(bs); reg != nil {
+		bs.propKeyReg.Store(reg)
+	}
+	// Seed the write-ahead watermark to the already-persisted length: the
+	// canonical registry handed in by the tiered store is loaded from durable
+	// meta, and a standalone store's own meta copy is durable too. Only growth
+	// beyond this needs a new commit.
+	if reg := bs.propKeyReg.Load(); reg != nil {
+		bs.persistedKeyLen.Store(int64(reg.Len()))
+	}
+
+	// Write-ahead registry hook. The tiered store supplies one that commits the
+	// shared registry to the reference shard; a standalone store defaults to
+	// committing its own registry to its own meta. flush() invokes it before the
+	// row WriteBatch, so every token a durable row references is itself durable —
+	// recovery can always resolve every persisted row.
+	bs.onPropertyKeyGrow = cfg.OnPropertyKeyGrow
+	if bs.onPropertyKeyGrow == nil {
+		bs.onPropertyKeyGrow = func() error {
+			if reg := bs.propKeyReg.Load(); reg != nil {
+				return bs.SavePropertyKeyRegistry(reg)
+			}
+			return nil
+		}
 	}
 
 	if err := bs.loadIndexes(); err != nil {
@@ -1056,7 +1113,6 @@ func (bs *Store) IndexRebuildStats() IndexRebuildStats {
 	}
 }
 
-
 // SetPropertyKeyRegistry installs the property-key registry on the Store.
 // Once set, subsequent writes dictionary-encode property keys via the
 // registry; reads resolve tokens back to key strings. Safe to call before
@@ -1067,6 +1123,27 @@ func (bs *Store) SetPropertyKeyRegistry(reg *registrypkg.PropertyKeyRegistry) {
 		return
 	}
 	bs.propKeyReg.Store(reg)
+	// Re-seed the write-ahead watermark to the new registry's length. Core.New
+	// installs the canonical registry here after loading it from durable meta
+	// (or freshly empty), so its current length is already persisted — only
+	// later growth needs a commit.
+	bs.persistKeyMu.Lock()
+	if reg != nil {
+		bs.persistedKeyLen.Store(int64(reg.Len()))
+	} else {
+		bs.persistedKeyLen.Store(0)
+	}
+	bs.persistKeyMu.Unlock()
+}
+
+// PropertyKeyRegistry returns the store's currently-installed property-key
+// registry (nil if none). The tiered store reads the reference shard's registry
+// via this to obtain the single canonical instance shared across all shards.
+func (bs *Store) PropertyKeyRegistry() *registrypkg.PropertyKeyRegistry {
+	if bs == nil {
+		return nil
+	}
+	return bs.propKeyReg.Load()
 }
 
 // marshalNodeBytes encodes a node via MarshalNodeWireWithKeys using the
@@ -1078,6 +1155,58 @@ func (bs *Store) marshalNodeBytes(n *types.Node) ([]byte, error) {
 // marshalRelBytes encodes a relationship via MarshalRelWireWithKeys.
 func (bs *Store) marshalRelBytes(r *types.Relationship) ([]byte, error) {
 	return storepkg.MarshalRelWireWithKeys(r, bs.propKeyReg.Load())
+}
+
+// persistRegistryIfGrew write-ahead commits the property-key registry to durable
+// storage whenever it has grown since the last commit. Called from flush()
+// BEFORE the row WriteBatch is written, so every batch of rows is preceded by a
+// durable registry covering all of their tokens — a crash can never leave a
+// tokenized row durable while its token is absent from the registry (which would
+// make the row undecodable on reload → counter mismatch → fatal).
+//
+// Growth is measured against bs.persistedKeyLen (a watermark), NOT against any
+// per-marshal diff: the registry is SHARED with the core engine, which allocates
+// tokens during property validation — strictly before the store marshals — so a
+// before/after diff at marshal time is always zero. The watermark captures "has
+// any token been allocated since we last committed", regardless of which layer
+// allocated it.
+//
+// Persisting here (once per ~100ms flush cycle) rather than per row keeps the
+// fsync cost at O(flush cycles), not O(keys) — critical for high-cardinality
+// key workloads. A failure is propagated so the caller aborts the flush and
+// requeues the rows rather than committing rows ahead of their registry.
+func (bs *Store) persistRegistryIfGrew() error {
+	reg := bs.propKeyReg.Load()
+	if reg == nil || bs.onPropertyKeyGrow == nil {
+		return nil
+	}
+	// Skip during shutdown. The closing flush (flushLoop on stopCh + the explicit
+	// final flush) runs with closing=true, when SavePropertyKeyRegistry's
+	// checkWritable rejects writes. Close-time durability is already guaranteed:
+	// Core.Close persists all registries (core.go) BEFORE store.Close, so every
+	// row in the closing flush has its tokens durable. Re-persisting here would
+	// only fail with ErrStoreClosed.
+	if bs.closing.Load() {
+		return nil
+	}
+	if int64(reg.Len()) <= bs.persistedKeyLen.Load() {
+		return nil // fast path: nothing new since last commit
+	}
+	bs.persistKeyMu.Lock()
+	defer bs.persistKeyMu.Unlock()
+	cur := int64(reg.Len()) // re-read under lock; may have grown further
+	if cur <= bs.persistedKeyLen.Load() {
+		return nil // another writer committed it while we waited
+	}
+	if err := bs.onPropertyKeyGrow(); err != nil {
+		return err
+	}
+	// The hook exported names AFTER we read cur, so it persisted at least cur
+	// keys. Advancing the watermark to cur (never beyond what we verified) keeps
+	// it a safe lower bound — an under-count only risks a redundant future
+	// commit, never a skipped one.
+	bs.persistedKeyLen.Store(cur)
+	return nil
 }
 
 // resolveNodeWireKeys is a no-op when no registry is installed; otherwise

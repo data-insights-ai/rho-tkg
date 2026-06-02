@@ -6,6 +6,65 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.3.1] - 2026-06-02
+
+### Fixed — property-key registry crash on tiered reload (`node counter does not match N live rows`)
+
+The property-key tokenization shipped in 4.3.0 could fatal a tiered store on
+reopen with `node counter does not match N live rows`. Two independent causes,
+both fixed:
+
+- **Per-shard empty registry (propagation).** The single canonical property-key
+  registry was persisted only on the reference shard, but on reopen each *event*
+  shard loaded its own (empty) meta copy. Tokenized event rows then failed to
+  decode during `loadIndexes`, dropped from the live-node map, and the persisted
+  counter no longer matched — fatal. The tiered store now injects the **one
+  canonical registry instance** into every shard at open (hot, warm, lazy
+  cold/archive, and rotation-created shards), so all tokenized rows decode.
+- **Missing write-ahead durability.** New property-key tokens are allocated by
+  the core engine during validation but were only persisted at `Close`. A crash
+  between a tokenized row flushing and `Close` left the row durable while its
+  token was not — undecodable on reload → same fatal. `flush()` now write-aheads
+  the registry (with `fsync`) to its canonical location **before** the row
+  `WriteBatch`, so every durable row's tokens are themselves durable. Cost is
+  O(flush cycles), not O(keys): a lock-free length watermark skips the common
+  no-growth case, and the `fsync` fires only on the rare cycle where a genuinely
+  new key first appears.
+
+### Added
+
+- `badger.Config.PropertyKeyRegistry` — lets an owner (the tiered store) install
+  ONE canonical registry shared by all shards; installed before `loadIndexes` so
+  row decoding can resolve tokens. When nil, the store loads its own meta copy
+  (standalone behaviour, unchanged).
+- `badger.Config.OnPropertyKeyGrow` — write-ahead hook invoked from `flush()`
+  before the row `WriteBatch` when the registry has grown; the tiered store wires
+  it to commit the shared registry to the reference shard with `fsync`.
+- `badger.Store.PropertyKeyRegistry()` — accessor the tiered store uses to obtain
+  the reference shard's canonical registry instance.
+
+### Migration notes
+
+- No on-disk format change. Existing Badger / Tiered DBs work unchanged. Stores
+  written by 4.3.0 that were not yet reopened are recovered correctly on the
+  first open under 4.3.1 (all rows decode against the injected canonical
+  registry).
+- `SavePropertyKeyRegistry` now `fsync`s on disk-backed, async-write stores. The
+  extra `fsync` only occurs when the property-key set grows (rare; bounded by the
+  schema). In-memory and `SyncWrites` stores are unaffected.
+
+## [4.3.0] - 2026-06-01
+
+### Added — O(1) relationship degree (count-from-index fast path)
+
+- New `DegreeCapability` on the Store contract: `IncomingDegree` /
+  `OutgoingDegree` count a node's relationships of a given type directly from the
+  relationship index entries, without resolving the relationship entities.
+  Implemented on `badger.Store`, `memory.Store`, and `tiered.Store`.
+- `RelOps` degree queries use the capability when available and fall back to the
+  traversal count otherwise, so callers get O(1) degree on backends that support
+  it with no behaviour change elsewhere.
+
 ### Added — bitemporal queries + caller-controlled valid time on Update
 
 Five-phase bitemporal rollout. Storage was already bitemporal (separate

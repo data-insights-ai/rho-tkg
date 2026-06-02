@@ -31,9 +31,11 @@ Detailed documentation has been split into the `docs/` directory:
 - [Design Invariants](docs/design.md) — Protocol guarantees, referential integrity, defensive copying, and error sentinels.
 - [Specifications](docs/SPEC.md) — Formal specifications and algorithms.
 
-### What's new in v4 (v4.0.0 → `[Unreleased]`)
+### What's new in v4 (v4.0.0 → v4.3.1)
 
-**`[Unreleased]` — bitemporal queries and caller-controlled valid time on Update.** Five-phase rollout closing the bitemporal gap:
+**v4.3.1 — property-key registry crash fix (tiered reload).** Fixes a `node counter does not match N live rows` fatal on reopening a tiered store that used the 4.3.0 property-key tokenization. Two causes: event shards loaded their own (empty) registry instead of the single canonical one (now injected into every shard at open), and new tokens were only persisted at `Close` (now write-ahead `fsync`ed in `flush()` before the row batch). No on-disk change; 4.3.0 DBs recover on first open. Adds `badger.Config.PropertyKeyRegistry`, `badger.Config.OnPropertyKeyGrow`, `badger.Store.PropertyKeyRegistry()`.
+
+**v4.3.0 — O(1) relationship degree + bitemporal queries.** `DegreeCapability` (`IncomingDegree` / `OutgoingDegree`) counts a node's relationships of a type from index entries without resolving entities; `RelOps` uses it with a traversal fallback. Plus the five-phase bitemporal rollout closing the bitemporal gap:
 
 - `QueryOpts.TxAt` filters the version chain to entries visible at a transaction time. New bitemporal point queries `g.Temporal().NodeAtTx(id, validAt, txAt)` (plus `RelAtTx`, `NodesAtTx`, `RelsAtTx`). `TxAt == 0` keeps current backward-compatible "no TX filter" behaviour.
 - `g.Nodes().Update(id, {tkg_valid_from: t, ...})` and the Rel counterpart now accept caller-supplied valid time. Same for batch (`BatchBuilder.UpdateNode`) and tx (`GraphTx.UpdateNode`). New sentinel `graph.ErrValidFromBeforePrevious` rejects backwards-in-time on the immediate predecessor.

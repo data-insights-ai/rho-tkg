@@ -272,7 +272,6 @@ func (bs *Store) LoadRelTypeRegistry(reg *registrypkg.RelTypeRegistry) (bool, er
 	return true, reg.ImportNames(names)
 }
 
-
 // MetaGet returns the bytes stored under storepkg.MetaKey(key), or (nil, nil) if absent.
 func (bs *Store) MetaGet(key string) ([]byte, error) {
 	if err := bs.checkOpen(); err != nil {
@@ -309,7 +308,6 @@ func (bs *Store) MetaSet(key string, value []byte) error {
 	})
 }
 
-
 // SavePropertyKeyRegistry persists the property-key registry to the Badger store.
 func (bs *Store) SavePropertyKeyRegistry(reg *registrypkg.PropertyKeyRegistry) error {
 	if err := bs.checkWritable(); err != nil {
@@ -323,9 +321,29 @@ func (bs *Store) SavePropertyKeyRegistry(reg *registrypkg.PropertyKeyRegistry) e
 	if err != nil {
 		return fmt.Errorf("graph: marshal property-key registry: %w", err)
 	}
-	return bs.db.Update(func(txn *badgerv4.Txn) error {
+	if err := bs.db.Update(func(txn *badgerv4.Txn) error {
 		return txn.Set(storepkg.MetaKey("property_keys"), data)
-	})
+	}); err != nil {
+		return fmt.Errorf("graph: persist property-key registry: %w", err)
+	}
+	// Write-ahead durability: the registry MUST reach stable storage before any
+	// row that references its newly-assigned tokens. Entity rows are buffered
+	// (bs.pending) and flushed asynchronously to a DIFFERENT Badger DB (the
+	// event shard) under SyncWrites=false, so plain db.Update ordering is not
+	// enough — without an fsync here a crash could leave a tokenized row durable
+	// while its token is still in an unsynced refShard buffer, making the row
+	// undecodable on reload (counter mismatch → fatal). New keys are rare
+	// (bounded by the schema), so this fsync amortizes to near-zero.
+	//
+	// Skip when SyncWrites is on (db.Update already fsynced) or in InMemory mode
+	// (no WAL — mt.wal is nil, so db.Sync would nil-panic, and there is nothing
+	// to make durable).
+	if !bs.syncWrites && !bs.inMemory {
+		if err := bs.db.Sync(); err != nil {
+			return fmt.Errorf("graph: sync property-key registry: %w", err)
+		}
+	}
+	return nil
 }
 
 // LoadPropertyKeyRegistry loads the property-key registry from the Badger store.
@@ -358,7 +376,6 @@ func (bs *Store) LoadPropertyKeyRegistry(reg *registrypkg.PropertyKeyRegistry) (
 	}
 	return true, reg.ImportNames(names)
 }
-
 
 // readPropertyKeyRegistryFromMeta loads the persisted property-key registry
 // directly from the meta KV. Called by New BEFORE loadIndexes so the index

@@ -127,14 +127,15 @@ func (es *EventShard) currentTier() ShardTier {
 // Event entities (Signal, Alert) live in time-windowed event shards.
 // Phase 3a: exactly one hot event shard. Phases 3b-3e add warm/cold/archive.
 type Store struct {
-	mu                sync.RWMutex                // protects hotShard + eventShards during rotation
-	refShard          *BadgerStore                // reference shard (always hot)
-	refActiveReqs     atomic.Int64                // refcount for refShard — Close spin-waits on this before refShard.Close()
-	refArchive        atomic.Pointer[BadgerStore] // nil until first archive/restore or DepthAll with archive catalog; atomic so reads need not hold archiveMu
-	archiveMu         sync.Mutex                  // serializes lazy-open of refArchive (single-flight)
-	archiveActiveReqs atomic.Int64                // refcount for refArchive — Close spin-waits on this before archive.Close()
-	eventShards       map[string]*EventShard      // name -> event shard
-	hotShard          *EventShard                 // convenience pointer to current hot shard
+	mu                sync.RWMutex                                    // protects hotShard + eventShards during rotation
+	refShard          *BadgerStore                                    // reference shard (always hot)
+	propKeyReg        atomic.Pointer[registrypkg.PropertyKeyRegistry] // single canonical property-key registry, injected into every shard at open
+	refActiveReqs     atomic.Int64                                    // refcount for refShard — Close spin-waits on this before refShard.Close()
+	refArchive        atomic.Pointer[BadgerStore]                     // nil until first archive/restore or DepthAll with archive catalog; atomic so reads need not hold archiveMu
+	archiveMu         sync.Mutex                                      // serializes lazy-open of refArchive (single-flight)
+	archiveActiveReqs atomic.Int64                                    // refcount for refArchive — Close spin-waits on this before archive.Close()
+	eventShards       map[string]*EventShard                          // name -> event shard
+	hotShard          *EventShard                                     // convenience pointer to current hot shard
 	ontology          *OntologyMapping
 	catalog           *ShardCatalog
 	regFile           string // path to registry.msgpack
@@ -270,6 +271,13 @@ func New(cfg Config) (*Store, error) {
 		return nil, fmt.Errorf("graph: open reference shard: %w", err)
 	}
 	ts.refShard = refStore
+	// The reference shard holds the single canonical property-key registry
+	// (persisted only here). Capture it so every other shard — opened now,
+	// lazily (cold/archive), or after rotation — decodes tokenized rows with the
+	// SAME instance, instead of its own (empty) per-shard meta copy.
+	if reg := refStore.PropertyKeyRegistry(); reg != nil {
+		ts.propKeyReg.Store(reg)
+	}
 
 	// Register reference shard in catalog if new.
 	if _, ok := ts.catalog.GetShard("reference"); !ok {
@@ -476,6 +484,10 @@ func (ts *Store) SetPropertyKeyRegistry(reg *registrypkg.PropertyKeyRegistry) {
 	if ts == nil {
 		return
 	}
+	// Track the current canonical instance so shards opened LATER (lazy cold/
+	// archive, rotation) inject it at open — closing the gap where SetProperty-
+	// KeyRegistry only reached already-open shards.
+	ts.propKeyReg.Store(reg)
 	if ts.refShard != nil {
 		ts.refShard.SetPropertyKeyRegistry(reg)
 	}
@@ -874,6 +886,28 @@ func (ts *Store) openBadgerStore(name string, readOnly bool) (*BadgerStore, erro
 	}
 	if !ts.inMemory {
 		cfg.Dir = filepath.Join(ts.dataDir, name)
+	}
+	// Inject the canonical property-key registry so this shard's loadIndexes can
+	// resolve tokenized property keys at open. Nil while the reference shard
+	// itself is being opened (it loads the canonical copy from its own meta);
+	// set for every shard opened afterwards — hot, warm, lazy cold/archive, and
+	// rotation-created shards (all route through here).
+	if reg := ts.propKeyReg.Load(); reg != nil {
+		cfg.PropertyKeyRegistry = reg
+	}
+	// Write-ahead hook: before a flush persists rows that reference newly-
+	// allocated property-key tokens, commit the shared registry to the reference
+	// shard (with fsync) ahead of the row WriteBatch. Set only for non-reference
+	// shards (ts.refShard is nil while the reference shard itself is opening — it
+	// falls back to committing its own meta, which is the canonical copy).
+	if ts.refShard != nil {
+		cfg.OnPropertyKeyGrow = func() error {
+			reg := ts.propKeyReg.Load()
+			if reg == nil {
+				return nil
+			}
+			return ts.refShard.SavePropertyKeyRegistry(reg)
+		}
 	}
 	return NewBadgerStore(cfg)
 }

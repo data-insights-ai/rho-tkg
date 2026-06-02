@@ -99,6 +99,15 @@ func (bs *Store) flush() error {
 		return nil
 	}
 
+	// Step 1.5: Write-ahead the property-key registry. Any token referenced by
+	// the rows about to be flushed must already be durable, so persist (and
+	// fsync) the registry BEFORE the row WriteBatch. On failure, requeue the ops
+	// and abort — rows must never become durable ahead of their registry.
+	if err := bs.persistRegistryIfGrew(); err != nil {
+		bs.requeueOps(ops)
+		return fmt.Errorf("graph: write-ahead property-key registry: %w", err)
+	}
+
 	// Step 2: Write all ops + counters to Badger via WriteBatch (blind writes, no OCC).
 	wb := bs.db.NewWriteBatch()
 	defer wb.Cancel() // no-op if Flush already called
