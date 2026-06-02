@@ -659,7 +659,7 @@ func (bs *Store) loadIndexes() error {
 			return err
 		}
 		liveNodeCount := int64(len(bs.nodeIDs))
-		nodeCount, err = reconcilePersistedCounter("node", nodeCount, liveNodeCount, int64(len(nodeEntityIDs)))
+		nodeCount, err = reconcilePersistedCounter("node", nodeCount, liveNodeCount, int64(len(nodeEntityIDs)), bs.logger)
 		if err != nil {
 			return err
 		}
@@ -670,7 +670,7 @@ func (bs *Store) loadIndexes() error {
 			return err
 		}
 		liveRelCount := int64(len(bs.relIDs))
-		relCount, err = reconcilePersistedCounter("relationship", relCount, liveRelCount, int64(len(relEntityIDs)))
+		relCount, err = reconcilePersistedCounter("relationship", relCount, liveRelCount, int64(len(relEntityIDs)), bs.logger)
 		if err != nil {
 			return err
 		}
@@ -892,7 +892,22 @@ func (bs *Store) loadIndexes() error {
 	})
 }
 
-func reconcilePersistedCounter(name string, persisted, liveRows, rawEntityRows int64) (int64, error) {
+// reconcilePersistedCounter resolves a persisted entity counter against the rows
+// actually present after an index rebuild. Entity rows are authoritative:
+//
+//   - persisted == 0: counter never written (pre-counter store) — trust rows.
+//   - persisted == liveRows: consistent.
+//   - persisted == rawEntityRows && rawEntityRows > liveRows: counter matches the
+//     raw row count but some rows are soft-deleted / undecodable — trust liveRows.
+//   - persisted < liveRows && liveRows == rawEntityRows: every entity row decoded
+//     cleanly and is current, yet the counter undercounts. No data is missing —
+//     the counter lost increments in an unclean shutdown. Heal UP to liveRows
+//     (warn so the operator knows a crash was recovered).
+//
+// Any other case — notably persisted > liveRows, where the counter claims more
+// rows than exist (rows genuinely missing → data loss) — stays fatal: it surfaces
+// real corruption instead of silently masking it.
+func reconcilePersistedCounter(name string, persisted, liveRows, rawEntityRows int64, logger badgerv4.Logger) (int64, error) {
 	if persisted == 0 {
 		return liveRows, nil
 	}
@@ -900,6 +915,13 @@ func reconcilePersistedCounter(name string, persisted, liveRows, rawEntityRows i
 		return liveRows, nil
 	}
 	if persisted == rawEntityRows && rawEntityRows > liveRows {
+		return liveRows, nil
+	}
+	if persisted < liveRows && liveRows == rawEntityRows {
+		if logger != nil {
+			logger.Warningf("graph: %s counter %d undercounts %d clean live rows — healing up to the live row count (lost increments from an unclean shutdown)",
+				name, persisted, liveRows)
+		}
 		return liveRows, nil
 	}
 	return 0, fmt.Errorf("%w: %s counter %d does not match %d live rows",

@@ -945,6 +945,70 @@ func TestBadgerStoreLoadRejectsMismatchedPersistedCounters(t *testing.T) {
 	}
 }
 
+// TestBadgerStoreLoadHealsUndercountedPersistedCounters covers the recovery
+// direction of the counter reconcile: an unclean shutdown (SIGKILL) can leave a
+// persisted counter BELOW the number of clean, current rows actually on disk —
+// increments that were live in memory but whose counter write was lost. Because
+// every entity row decodes cleanly (liveRows == rawEntityRows) no data is
+// missing, so reopen must heal the counter UP to the live row count rather than
+// fatal. The opposite direction (counter > live rows = rows missing) stays fatal
+// and is covered by TestBadgerStoreLoadRejectsMismatchedPersistedCounters.
+func TestBadgerStoreLoadHealsUndercountedPersistedCounters(t *testing.T) {
+	dir := t.TempDir()
+	bs1, err := New(Config{Dir: dir})
+	if err != nil {
+		t.Fatalf("open 1: %v", err)
+	}
+	// 5 nodes + 2 relationships, all clean and current.
+	for i := int64(1); i <= 5; i++ {
+		putTestNode(t, bs1, i, 1, nil)
+	}
+	putTestRel(t, bs1, 100, 1, 1, 2)
+	putTestRel(t, bs1, 101, 1, 2, 3)
+	if err := bs1.Close(); err != nil {
+		t.Fatalf("close 1: %v", err)
+	}
+
+	// Simulate lost increments: rewrite BOTH counters below the true row counts.
+	updateRawBadgerDir(t, dir, func(txn *badgerv4.Txn) error {
+		var nc, rc [8]byte
+		binary.BigEndian.PutUint64(nc[:], 2) // true is 5
+		binary.BigEndian.PutUint64(rc[:], 1) // true is 2
+		if err := txn.Set(counterNodeCountKey, nc[:]); err != nil {
+			return err
+		}
+		return txn.Set(counterRelCountKey, rc[:])
+	})
+
+	// Reopen — must NOT fatal; counters heal up to the live row counts.
+	bs2, err := New(Config{Dir: dir})
+	if err != nil {
+		t.Fatalf("open with undercounted counters = %v, want heal to live rows", err)
+	}
+	defer bs2.Close()
+
+	nc, err := bs2.NodeCount()
+	if err != nil {
+		t.Fatalf("NodeCount: %v", err)
+	}
+	if nc != 5 {
+		t.Fatalf("NodeCount after undercount heal = %d, want 5", nc)
+	}
+	rc, err := bs2.RelationshipCount()
+	if err != nil {
+		t.Fatalf("RelationshipCount: %v", err)
+	}
+	if rc != 2 {
+		t.Fatalf("RelationshipCount after undercount heal = %d, want 2", rc)
+	}
+	// Every node must still be readable (heal must not have dropped rows).
+	for i := int64(1); i <= 5; i++ {
+		if _, err := bs2.GetNode(types.NodeID(snowflake.ID(i))); err != nil {
+			t.Fatalf("GetNode(%d) after heal: %v", i, err)
+		}
+	}
+}
+
 func TestBadgerStoreReadsRejectMismatchedWireIDs(t *testing.T) {
 	dir := t.TempDir()
 	bs1, err := New(Config{Dir: dir})

@@ -31,7 +31,9 @@ Detailed documentation has been split into the `docs/` directory:
 - [Design Invariants](docs/design.md) — Protocol guarantees, referential integrity, defensive copying, and error sentinels.
 - [Specifications](docs/SPEC.md) — Formal specifications and algorithms.
 
-### What's new in v4 (v4.0.0 → v4.3.1)
+### What's new in v4 (v4.0.0 → v4.3.2)
+
+**v4.3.2 — heal an undercounted entity counter on reopen.** A hard crash can leave a shard's persisted node/rel counter below the number of clean rows actually present (lost increments). With all rows decoding cleanly (`liveRows == rawEntityRows`) no data is missing, so reopen now heals the counter up to the live row count (with a warning) instead of fataling. The opposite direction — counter > live rows (rows actually missing) — stays fatal. Together with 4.3.1 this fully recovers tiered stores left inconsistent by an unclean shutdown.
 
 **v4.3.1 — property-key registry crash fix (tiered reload).** Fixes a `node counter does not match N live rows` fatal on reopening a tiered store that used the 4.3.0 property-key tokenization. Two causes: event shards loaded their own (empty) registry instead of the single canonical one (now injected into every shard at open), and new tokens were only persisted at `Close` (now write-ahead `fsync`ed in `flush()` before the row batch). No on-disk change; 4.3.0 DBs recover on first open. Adds `badger.Config.PropertyKeyRegistry`, `badger.Config.OnPropertyKeyGrow`, `badger.Store.PropertyKeyRegistry()`.
 

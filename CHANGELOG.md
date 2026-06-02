@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.3.2] - 2026-06-02
+
+### Fixed — heal an undercounted persisted node/rel counter on reopen
+
+A hard crash (SIGKILL / `docker kill`) can leave a shard's persisted entity
+counter BELOW the number of clean, current rows actually on disk — increments
+that were live in memory but whose counter write was lost. Because every entity
+row decodes cleanly (`liveRows == rawEntityRows`), no data is missing, yet
+`reconcilePersistedCounter` previously fataled this with `counter N does not
+match M live rows`, making the store impossible to reopen.
+
+`reconcilePersistedCounter` now heals an **undercount** up to the live row count
+(`persisted < liveRows && liveRows == rawEntityRows`), logging a warning so the
+operator knows a crash was recovered. The opposite direction — `persisted >
+liveRows`, where the counter claims more rows than exist (rows genuinely missing
+→ data loss) — stays fatal, preserving the corruption detector
+(`TestBadgerStoreLoadRejectsMismatchedPersistedCounters`).
+
+This, together with the 4.3.1 property-key registry fix, recovers tiered stores
+left inconsistent by an unclean shutdown: both the tokenized-row decode and the
+counter divergence are now resolved on open. Verified against a real 372,986-node
+crash dump (all nodes, 2,885 cases, properties intact).
+
 ## [4.3.1] - 2026-06-02
 
 ### Fixed — property-key registry crash on tiered reload (`node counter does not match N live rows`)
