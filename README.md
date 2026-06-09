@@ -31,7 +31,9 @@ Detailed documentation has been split into the `docs/` directory:
 - [Design Invariants](docs/design.md) — Protocol guarantees, referential integrity, defensive copying, and error sentinels.
 - [Specifications](docs/SPEC.md) — Formal specifications and algorithms.
 
-### What's new in v4 (v4.0.0 → v4.3.2)
+### What's new in v4 (v4.0.0 → v4.4.0)
+
+**v4.4.0 — repository moved to GitHub, Go module path renamed.** The canonical repository is now [`github.com/data-insights-ai/rho-tkg`](https://github.com/data-insights-ai/rho-tkg) and the Go module path is `github.com/data-insights-ai/rho-tkg/v4` (was `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4`). The `/v4` major-version suffix is unchanged — this is a host move, not a major bump. Consumers must replace the import path and re-run `go mod tidy`; the public API is otherwise unchanged.
 
 **v4.3.2 — heal an undercounted entity counter on reopen.** A hard crash can leave a shard's persisted node/rel counter below the number of clean rows actually present (lost increments). With all rows decoding cleanly (`liveRows == rawEntityRows`) no data is missing, so reopen now heals the counter up to the live row count (with a warning) instead of fataling. The opposite direction — counter > live rows (rows actually missing) — stays fatal. Together with 4.3.1 this fully recovers tiered stores left inconsistent by an unclean shutdown.
 
