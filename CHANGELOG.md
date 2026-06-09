@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.4.2] - 2026-06-09
+
+### Documentation — pin down valid-time vs transaction-time semantics
+
+Added a "Three timestamps, three claims" section to `CLAUDE.md`, `AGENTS.md`,
+and `docs/architecture.md` (Temporal Queries), pinning down the bitemporal
+contract that a consumer analysis briefly misread as a bug:
+
+- `tkg_tx_from` — "the DB recorded this fact at T". Asserted by the system,
+  unconditionally: every Add allocates `TemporalMetadata` and stamps `TxFrom`.
+- `tkg_created_at` — "the entity record came into existence at T".
+  System-derived from the snowflake ID timestamp (the shadow resolver applies
+  this fallback); caller may override at Add.
+- `tkg_valid_from` — "the fact holds **in the world** from T". A domain
+  assertion only a recorder/curator with actual knowledge can make.
+  `0` = no world-time claim made.
+
+The docs now also state the two-doors asymmetry explicitly: the shadow
+resolver returns the RAW asserted valid-from — `(Instant(0), ok=true)` when
+never asserted (check the zero value, not `ok`) — while temporal queries use
+the EFFECTIVE valid-from (explicit `ValidFrom`, else snowflake fallback).
+This is deliberate, not a missing fallback: shadow props report
+stored/asserted state, queries report effective state. Writers must never
+default `tkg_valid_from := now()` — that conflates TX with VT (lesson 32).
+
+Also fixed two stale `since [Unreleased]` references in `CLAUDE.md` that
+should have read `since v4.3.0` (bitemporal support), and annotated the
+Shadow Properties tables with the VT/TX category of each temporal key.
+
+Documentation-only — no code or public-API changes.
+
 ## [4.4.1] - 2026-06-09
 
 ### Fixed — sync stale doc version strings missed in the 4.4.0 release

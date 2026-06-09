@@ -56,7 +56,7 @@ Execute these three phases in order when reviewing a merge request.
 Module: `github.com/data-insights-ai/rho-tkg/v4`
 Go: 1.26.1 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v4.4.1 — docs-consistency patch syncing stale `Status:`/version strings (AGENTS.md, docs/architecture.md) that were missed in the 4.4.0 release; documentation-only, no code or API changes (see `CHANGELOG.md` `[4.4.1]`). v4.4.0 moved the repository to `github.com/data-insights-ai/rho-tkg`; Go module path renamed `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4` → `github.com/data-insights-ai/rho-tkg/v4` (public API unchanged, `/v4` suffix unchanged; see `CHANGELOG.md` `[4.4.0]`). Bitemporal support shipped in v4.3.0 — Update accepts `tkg_valid_from` / `tkg_valid_to`, `QueryOpts.TxAt` + `NodeAtTx` / `RelAtTx` / `NodesAtTx` / `RelsAtTx` for bitemporal point queries, `SetNodeVersionInterval` / `SetRelVersionInterval` for tile-clean timeline edits, resolver no longer conflates TX with VT in `vEnd` derivation, new sentinel `ErrValidFromBeforePrevious`. See `CHANGELOG.md` `[4.3.0]` for details and lessons 32–34. Thin `*Graph` façade — only `New` / `Close` plus 14 sub-API accessor methods: `g.Nodes()`, `g.Rels()`, `g.Temporal()`, `g.Index()`, `g.Events()`, `g.Constraints()`, `g.IO()`, `g.Admin()`, `g.Tier()`, `g.Stats()`, `g.Hash()`, `g.Resolve()`, `g.Tx()`, `g.Batch()`. The accessors are nil-safe (calling on a nil or zero-value `*Graph` returns nil; chained calls fail closed with `ErrNilGraph`). Implementation lives on `*core.Core` in `pkg/graph/internal/core/`.
+Status: v4.4.2 — documentation: pinned down valid-time vs transaction-time semantics ("Three timestamps, three claims" in Temporal Queries; shadow resolver returns RAW asserted `tkg_valid_from` — `(Instant(0), ok=true)` when never asserted — while temporal queries use the EFFECTIVE valid-from with snowflake fallback; see `CHANGELOG.md` `[4.4.2]`). v4.4.1 synced stale doc version strings. v4.4.0 moved the repository to `github.com/data-insights-ai/rho-tkg`; Go module path renamed `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4` → `github.com/data-insights-ai/rho-tkg/v4` (public API unchanged, `/v4` suffix unchanged; see `CHANGELOG.md` `[4.4.0]`). Bitemporal support shipped in v4.3.0 — Update accepts `tkg_valid_from` / `tkg_valid_to`, `QueryOpts.TxAt` + `NodeAtTx` / `RelAtTx` / `NodesAtTx` / `RelsAtTx` for bitemporal point queries, `SetNodeVersionInterval` / `SetRelVersionInterval` for tile-clean timeline edits, resolver no longer conflates TX with VT in `vEnd` derivation, new sentinel `ErrValidFromBeforePrevious`. See `CHANGELOG.md` `[4.3.0]` for details and lessons 32–34. Thin `*Graph` façade — only `New` / `Close` plus 14 sub-API accessor methods: `g.Nodes()`, `g.Rels()`, `g.Temporal()`, `g.Index()`, `g.Events()`, `g.Constraints()`, `g.IO()`, `g.Admin()`, `g.Tier()`, `g.Stats()`, `g.Hash()`, `g.Resolve()`, `g.Tx()`, `g.Batch()`. The accessors are nil-safe (calling on a nil or zero-value `*Graph` returns nil; chained calls fail closed with `ErrNilGraph`). Implementation lives on `*core.Core` in `pkg/graph/internal/core/`.
 
 See `CHANGELOG.md` `[4.0.0]` for the v3.4.0 → v4.0.0 migration recipe; `[4.1.0]` for the tx-isolation change (Path B); `[4.2.0]` for the field→method conversion; `[4.2.1]`/`[4.2.2]` for the consumer-ergonomics alias additions.
 
@@ -252,10 +252,20 @@ Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID`
 
 ### Temporal Queries
 
+- **Three timestamps, three claims (VT vs TX)**: Do not conflate them.
+
+  | Timestamp | Claim | Who can assert it | State on an unstamped entity |
+  |---|---|---|---|
+  | `tkg_tx_from` | "the DB recorded this fact at T" | the system — automatically | always stamped: every Add allocates `TemporalMetadata` and sets `TxFrom` |
+  | `tkg_created_at` | "the entity record came into existence at T" | system-derived (snowflake ID timestamp); caller may override at Add | always derivable — the shadow resolver applies the snowflake fallback |
+  | `tkg_valid_from` | "the fact holds **in the world** from T" | only the domain — a recorder/curator with actual knowledge | `0` = no world-time claim made |
+
+  Writers must NEVER default `tkg_valid_from := now()` without domain knowledge — that silently conflates TX with VT (lesson 32): recording latency leaks into world-time semantics and backfilled facts become indistinguishable from real assertions. If a consumer wants "unstamped ⇒ valid since recorded", implement it as an explicit, flagged heuristic on the consumer side (lesson 36 pattern), not by stamping at write time and not by changing the shadow resolver.
+- **Two doors, two views (asserted vs effective)**: The shadow resolver (`g.Resolve().NodeProperty(n, "tkg_valid_from")`, `shadow.go`) returns the RAW asserted value — `(Instant(0), ok=true)` when never asserted. `ok` is true because `TemporalMetadata` always exists (TxFrom stamping); consumers must check the zero value, not `ok`. Temporal queries instead use the EFFECTIVE valid-from (`nodeValidFrom`/`relValidFrom`: explicit `ValidFrom`, else snowflake fallback) — so an entity with unset `ValidFrom` is "eternal" through the shadow door but time-bounded through the query door. This asymmetry is deliberate: shadow props report *stored/asserted* state, temporal queries report *effective* state. `tkg_created_at` is the only temporal shadow key with a fallback in the resolver.
 - **Effective valid-from**: Derived from explicit `ValidFrom` or snowflake ID timestamp. Every entity is queryable temporally without `SetTemporal()`.
 - **Point-in-time**: `effectiveValidFrom <= t AND (ValidTo == 0 OR ValidTo > t)`.
 - **Interval overlap**: `effectiveValidFrom < end AND (ValidTo == 0 OR ValidTo > start)`.
-- **Bitemporal (since `[Unreleased]`)**: `QueryOpts.TxAt` filters the chain to versions visible at the given TX time (`TxFrom <= TxAt < TxTo`). `TxAt == 0` keeps "no TX filter" backward-compat. Bitemporal point queries: `g.Temporal().NodeAtTx(id, validAt, txAt)` and counterparts. The resolver computes `vEnd` from `next.ValidFrom` (falls back to `next.UpdatedAt`), so adjacent versions auto-tile once the caller supplies explicit `tkg_valid_from` on Update. See lessons 32–34.
+- **Bitemporal (since v4.3.0)**: `QueryOpts.TxAt` filters the chain to versions visible at the given TX time (`TxFrom <= TxAt < TxTo`). `TxAt == 0` keeps "no TX filter" backward-compat. Bitemporal point queries: `g.Temporal().NodeAtTx(id, validAt, txAt)` and counterparts. The resolver computes `vEnd` from `next.ValidFrom` (falls back to `next.UpdatedAt`), so adjacent versions auto-tile once the caller supplies explicit `tkg_valid_from` on Update. See lessons 32–34.
 - **History-aware merging**: Temporal queries merge current + history IDs via lazy ForEach iterators (two-phase: collect IDs under store locks, process after release).
 - **ForEach for OOM-safe iteration**: Never materialize all per-shard slices + merge. Use `ForEach*ID` callbacks. Constraint: callback must NOT call store methods (deadlock via B15). Two-phase: collect IDs, then process. ~83% memory reduction.
 - **Deleted entity verification**: Any verification reading entity state must tolerate deletion — if entity has history but no current state, proceed using history alone.
@@ -328,9 +338,9 @@ Two independent registries with independent token namespaces. Methods: `GetOrCre
 |---|---|---|---|
 | `tkg_labels` | `[]string` | Node | Structural |
 | `tkg_type` | `string` | Relationship | Structural |
-| `tkg_valid_from`, `tkg_valid_to` | `Instant` | Both | Temporal — accepted by Add **and** Update (since `[Unreleased]`); rejected by `UpdateInPlace` |
-| `tkg_tx_from`, `tkg_tx_to` | `Instant` | Both | Temporal |
-| `tkg_created_at` | `Instant` | Both | Temporal (auto-derived from snowflake ID when unset) |
+| `tkg_valid_from`, `tkg_valid_to` | `Instant` | Both | Temporal — world-time (VT) assertion, caller-only, NO fallback: resolves to `(Instant(0), ok=true)` when never asserted. Accepted by Add **and** Update (since v4.3.0); rejected by `UpdateInPlace` |
+| `tkg_tx_from`, `tkg_tx_to` | `Instant` | Both | Temporal — transaction time (TX), stamped by the system: every Add sets `TxFrom` |
+| `tkg_created_at` | `Instant` | Both | Temporal (auto-derived from snowflake ID when unset — the only temporal shadow key with a resolver fallback) |
 | `tkg_updated_at`, `tkg_deleted_at` | `Instant` | Both | Temporal |
 | `tkg_created_by`, `tkg_updated_by` | `string` | Both | Provenance |
 | `tkg_version` | `uint32` | Both | Provenance |

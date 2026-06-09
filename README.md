@@ -31,7 +31,9 @@ Detailed documentation has been split into the `docs/` directory:
 - [Design Invariants](docs/design.md) — Protocol guarantees, referential integrity, defensive copying, and error sentinels.
 - [Specifications](docs/SPEC.md) — Formal specifications and algorithms.
 
-### What's new in v4 (v4.0.0 → v4.4.1)
+### What's new in v4 (v4.0.0 → v4.4.2)
+
+**v4.4.2 — documentation: valid-time vs transaction-time semantics pinned down.** The docs (CLAUDE.md, AGENTS.md, docs/architecture.md) now state the bitemporal contract explicitly: `tkg_tx_from` is a system claim ("recorded at T", stamped on every Add), `tkg_created_at` is system-derived (snowflake fallback), and `tkg_valid_from` is a world-time domain assertion — `0` means no claim was made. The shadow resolver returns the raw asserted value (`(Instant(0), ok=true)` when unset) while temporal queries use the effective valid-from with snowflake fallback — a deliberate asymmetry, not a missing fallback. No code or public-API changes.
 
 **v4.4.1 — documentation-consistency patch.** Synced two version strings (`AGENTS.md` `Status:` line and the `docs/architecture.md` title) that were left at `v4.3.2` in the 4.4.0 release, which had broken the docs-consistency test. No code or public-API changes.
 

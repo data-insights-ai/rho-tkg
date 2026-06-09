@@ -1,4 +1,4 @@
-# Architecture — tkg/v4 (v4.4.1)
+# Architecture — tkg/v4 (v4.4.2)
 
 Temporal Knowledge Graph v4 is a pure Go library providing the core graph engine for temporal knowledge graphs. It is the low-level storage and type layer — no main binary, no HTTP server, no query language.
 
@@ -87,11 +87,11 @@ Read-only virtual properties dispatched by the graph layer from internal metadat
 |-----|------|------------|----------|
 | `tkg_labels` | `[]string` | Node | Structural |
 | `tkg_type` | `string` | Relationship | Structural |
-| `tkg_valid_from` | `Instant` | Both | Temporal |
-| `tkg_valid_to` | `Instant` | Both | Temporal |
-| `tkg_tx_from` | `Instant` | Both | Temporal |
-| `tkg_tx_to` | `Instant` | Both | Temporal |
-| `tkg_created_at` | `Instant` | Both | Temporal (auto-derived from snowflake ID when unset) |
+| `tkg_valid_from` | `Instant` | Both | Temporal — world-time (VT) assertion, caller-only, NO fallback: resolves to `(Instant(0), ok=true)` when never asserted |
+| `tkg_valid_to` | `Instant` | Both | Temporal — world-time (VT) assertion, caller-only, NO fallback |
+| `tkg_tx_from` | `Instant` | Both | Temporal — transaction time (TX), stamped by the system on every Add |
+| `tkg_tx_to` | `Instant` | Both | Temporal — transaction time (TX) |
+| `tkg_created_at` | `Instant` | Both | Temporal (auto-derived from snowflake ID when unset — the only temporal shadow key with a resolver fallback) |
 | `tkg_updated_at` | `Instant` | Both | Temporal |
 | `tkg_deleted_at` | `Instant` | Both | Temporal |
 | `tkg_created_by` | `string` | Both | Provenance |
@@ -182,6 +182,16 @@ for in-flight `Initializable.Init` callbacks before invoking provider `Close`.
 `g.Tx` and `g.Batch` are in-package types because their wrapped values (`*GraphTx`, `*BatchBuilder`) live in `pkg/graph/internal/core` and can't be moved into a sibling sub-API package without either re-homing the underlying types or accepting an import cycle.
 
 ### Temporal Queries
+
+**Three timestamps, three claims (VT vs TX).** The bitemporal model rests on keeping these distinct:
+
+| Timestamp | Claim | Who can assert it | State on an unstamped entity |
+|---|---|---|---|
+| `tkg_tx_from` | "the DB recorded this fact at T" | the system — automatically | always stamped: every Add allocates `TemporalMetadata` and sets `TxFrom` |
+| `tkg_created_at` | "the entity record came into existence at T" | system-derived (snowflake ID timestamp); caller may override at Add | always derivable — the shadow resolver applies the snowflake fallback |
+| `tkg_valid_from` | "the fact holds **in the world** from T" | only the domain — a recorder/curator with actual knowledge | `0` = no world-time claim made |
+
+Two doors expose two deliberate views of valid-time. The shadow resolver (`g.Resolve().NodeProperty(n, "tkg_valid_from")`) returns the RAW asserted value — `(Instant(0), ok=true)` when never asserted (`ok` is true because `TemporalMetadata` always exists; check the zero value, not `ok`). Temporal queries use the EFFECTIVE valid-from (explicit `ValidFrom`, else snowflake ID timestamp), so an entity with unset `ValidFrom` is "eternal" through the shadow door but time-bounded through the query door. Shadow props report *stored/asserted* state; temporal queries report *effective* state. Writers must never default `tkg_valid_from := now()` without domain knowledge — that conflates TX with VT; consumers wanting "unstamped ⇒ valid since recorded" should implement it as an explicit, flagged heuristic on their side.
 
 Point-in-time: `GetNodesValidAt(t)`, `GetRelationshipsValidAt(t)`, `GetNodesByLabelValidAt(label, t)`
 Interval: `GetNodesValidDuring(start, end)`, `GetRelationshipsValidDuring(start, end)`
