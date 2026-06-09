@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/memory"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // Phase 1 proper — bitemporal migration tests.
@@ -95,7 +95,7 @@ func TestBitemporalMigration_ClearsInheritedValidFrom(t *testing.T) {
 func TestBitemporalMigration_PreservesExplicitValidFrom(t *testing.T) {
 	// History row vf=5000, current row with DIFFERENT vf=7000 → not inherited.
 	st := memory.New()
-	id := types.NodeID(1 << 30 | 1)
+	id := types.NodeID(1<<30 | 1)
 
 	hist := types.NewNode(id, 1, nil)
 	hist.SetVersion(0)

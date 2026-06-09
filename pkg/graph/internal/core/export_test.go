@@ -1,21 +1,21 @@
 package core
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"io"
 	"sync/atomic"
 	"testing"
 
+	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/vmihailenco/msgpack/v5"
-	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/io"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/memory"
 
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 type exportPagingTrackingStore struct {
@@ -419,7 +419,7 @@ func TestImport_IdempotentRegistry(t *testing.T) {
 
 	// Destination already has the "Foo" label registered (from a prior node add).
 	dst, _ := New(Config{Store: memory.New()})
-	defer dst.Close()                   //nolint:errcheck
+	defer dst.Close()                                         //nolint:errcheck
 	dst.Nodes.Add(context.Background(), []string{"Foo"}, nil) //nolint:errcheck
 
 	// Importing with a pre-populated registry must not fail.
@@ -431,7 +431,7 @@ func TestImport_IdempotentRegistry(t *testing.T) {
 // TestExport_Writer_Error verifies that ExportGraph propagates a write error.
 func TestExport_Writer_Error(t *testing.T) {
 	g, _ := New(Config{Store: memory.New()})
-	defer g.Close()                 //nolint:errcheck
+	defer g.Close()                                       //nolint:errcheck
 	g.Nodes.Add(context.Background(), []string{"X"}, nil) //nolint:errcheck
 
 	// errWriter fails after 0 bytes written.

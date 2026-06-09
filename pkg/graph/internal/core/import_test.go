@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/memory"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
-	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/io"
+	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 func TestImportNodeWithID_Basic(t *testing.T) {

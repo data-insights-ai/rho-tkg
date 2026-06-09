@@ -20,8 +20,8 @@ import (
 	"strconv"
 	"time"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // commas formats an integer with thousand separators: 1234567 -> "1,234,567".

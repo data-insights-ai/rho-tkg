@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"sync"
 
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
-	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/events"
-	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/registry"
+	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
+	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // nodeSnapshot captures pre-mutation state for rollback.

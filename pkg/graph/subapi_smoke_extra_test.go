@@ -20,13 +20,13 @@ import (
 	"testing"
 	"time"
 
-	graphpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/events"
-	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/index"
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/tiered"
-	temporalpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/temporal"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/index"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
+	temporalpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 func TestSubAPISmoke_NodesAllWrappers(t *testing.T) {

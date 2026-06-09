@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/memory"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // newTestGraph is declared in batch_test.go (same package).

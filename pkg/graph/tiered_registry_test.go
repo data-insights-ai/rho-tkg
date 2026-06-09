@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	graphpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph"
-	tieredpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/tiered"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	tieredpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // TestTieredEventShardTokenizedReload reproduces the production failure: event

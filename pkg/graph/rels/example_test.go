@@ -2,8 +2,8 @@ package rels_test
 
 import (
 	"context"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph"
-	_ "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/rels" // godoc anchor: ExampleAPI_<method> resolves against rels.API
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	_ "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/rels" // godoc anchor: ExampleAPI_<method> resolves against rels.API
 )
 
 // ExampleAPI_Add demonstrates the most common operation: creating a directed

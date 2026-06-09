@@ -16,12 +16,12 @@
 package core
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"errors"
 	"testing"
 
-	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/io"
+	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 )
 
 // R4-F11: a stream that emits an entity record before any registry

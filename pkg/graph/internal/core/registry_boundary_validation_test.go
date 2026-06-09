@@ -5,10 +5,10 @@ import (
 	"errors"
 	"testing"
 
-	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/registry"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/badger"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/tiered"
-	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/io"
+	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
+	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 )
 
 func TestImportRejectsRegistryNamesOverGraphLimit(t *testing.T) {

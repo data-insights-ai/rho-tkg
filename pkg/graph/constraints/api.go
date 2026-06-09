@@ -3,8 +3,8 @@
 package constraints
 
 import (
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/grapherr"
-	temporalpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/temporal"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
+	temporalpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 )
 
 // Ops is the subset of *core.ConstraintOps the constraints sub-API forwards to.

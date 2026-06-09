@@ -9,7 +9,7 @@ import (
 	"context"
 	"testing"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/badger"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 )
 
 func TestInjectedBadgerStore_RegistriesRehydrated(t *testing.T) {

@@ -173,8 +173,8 @@ For workloads with distinct reference data (Case, User) and high-volume events (
 
 ```go
 import (
-    "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph"
-    "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/tiered"
+    "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+    "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 )
 
 ts, err := tiered.New(tiered.Config{

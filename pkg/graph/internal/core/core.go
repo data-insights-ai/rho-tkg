@@ -20,17 +20,17 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"github.com/dgraph-io/badger/v4/options"
 
-	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/events"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/generatedcreate"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/grapherr"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/locks"
-	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/registry"
-	snowflakepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/snowflake"
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/badger"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/memory"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/tiered"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/locks"
+	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
+	snowflakepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/snowflake"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // =============================================================================
@@ -81,13 +81,13 @@ type Core struct {
 	// class introduced in v3.4 (see lesson 31). The tx code path takes a
 	// brief c.mu.RLock around each mutation/read so the *Internal/*Locked
 	// helpers run with a non-zero lock context they expect.
-	txMu               sync.Mutex
-	registryMu         sync.Mutex
-	registryDirty      atomic.Bool
-	relTypeCache       map[string]uint16
-	relTypeCacheMu     sync.RWMutex
-	closeOnce          sync.Once
-	closed             atomic.Bool
+	txMu           sync.Mutex
+	registryMu     sync.Mutex
+	registryDirty  atomic.Bool
+	relTypeCache   map[string]uint16
+	relTypeCacheMu sync.RWMutex
+	closeOnce      sync.Once
+	closed         atomic.Bool
 
 	// clock is the time source used by every mutation path that stamps
 	// TxFrom / UpdatedAt / DeletedAt / event.Timestamp. Defaults to
@@ -135,23 +135,23 @@ type Core struct {
 // =============================================================================
 
 var (
-	ErrNoLabels                 = errors.New("graph: node requires at least one label")
-	ErrNilNode                  = types.ErrNilNode
-	ErrNilRelationship          = types.ErrNilRelationship
-	ErrZeroID                   = errors.New("graph: zero ID is not valid for import")
-	ErrInvalidID                = errors.New("graph: invalid ID is not valid for import")
-	ErrVersionOverflow          = errors.New("graph: entity version overflow")
-	ErrNotTieredStore           = errors.New("graph: operation requires tiered.Store")
-	ErrAlreadyClosed            = errors.New("graph: entity already closed")
-	ErrGraphClosed              = errors.New("graph: graph is closed")
-	ErrNilGraph                 = grapherr.ErrNilGraph
-	ErrNilStore                 = storepkg.ErrNilStore
-	ErrNilContext               = errors.New("graph: context must not be nil")
-	ErrNilTxCallback            = errors.New("graph: transaction callback must not be nil")
-	ErrLabelNotFound            = errors.New("graph: node does not have the specified label")
-	ErrLastLabel                = errors.New("graph: cannot remove the last label from a node")
-	ErrBatchFailed              = errors.New("graph: batch execution had failed operations")
-	ErrBatchDone                = errors.New("graph: batch already executed")
+	ErrNoLabels        = errors.New("graph: node requires at least one label")
+	ErrNilNode         = types.ErrNilNode
+	ErrNilRelationship = types.ErrNilRelationship
+	ErrZeroID          = errors.New("graph: zero ID is not valid for import")
+	ErrInvalidID       = errors.New("graph: invalid ID is not valid for import")
+	ErrVersionOverflow = errors.New("graph: entity version overflow")
+	ErrNotTieredStore  = errors.New("graph: operation requires tiered.Store")
+	ErrAlreadyClosed   = errors.New("graph: entity already closed")
+	ErrGraphClosed     = errors.New("graph: graph is closed")
+	ErrNilGraph        = grapherr.ErrNilGraph
+	ErrNilStore        = storepkg.ErrNilStore
+	ErrNilContext      = errors.New("graph: context must not be nil")
+	ErrNilTxCallback   = errors.New("graph: transaction callback must not be nil")
+	ErrLabelNotFound   = errors.New("graph: node does not have the specified label")
+	ErrLastLabel       = errors.New("graph: cannot remove the last label from a node")
+	ErrBatchFailed     = errors.New("graph: batch execution had failed operations")
+	ErrBatchDone       = errors.New("graph: batch already executed")
 )
 
 var (

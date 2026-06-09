@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
-	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/events"
+	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 func newTxTestGraph(t *testing.T) *Core {

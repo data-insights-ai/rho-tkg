@@ -6,8 +6,8 @@ import (
 	"reflect"
 	"testing"
 
-	collisionone "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types/internal/collisionone"
-	collisiontwo "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types/internal/collisiontwo"
+	collisionone "github.com/data-insights-ai/rho-tkg/v4/pkg/types/internal/collisionone"
+	collisiontwo "github.com/data-insights-ai/rho-tkg/v4/pkg/types/internal/collisiontwo"
 )
 
 // Modification rationale: spatialStub originally had no HashableValue or

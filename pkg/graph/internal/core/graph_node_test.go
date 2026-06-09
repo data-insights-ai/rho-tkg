@@ -7,12 +7,12 @@ import (
 	"sync"
 	"testing"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/memory"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 type nodeCreateFailAfterInstallStore struct {
@@ -1387,7 +1387,7 @@ func TestGraphGetNodesByIDsDuplicatesReturnIndependentRows(t *testing.T) {
 		t.Fatal("GetNodesByIDs returned aliased rows for duplicate node IDs")
 	}
 	afterSnap, _ := g.Stats.Get()
-	if after := afterSnap.NodesRead; after != before+int64(len(got))  {
+	if after := afterSnap.NodesRead; after != before+int64(len(got)) {
 		t.Fatalf("NodesRead after duplicate GetByIDs = %d, want %d", after, before+int64(len(got)))
 	}
 }

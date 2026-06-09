@@ -6,7 +6,7 @@ import (
 	"math"
 	"time"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // nowInstant returns the current wall-clock time as a types.Instant (Unix

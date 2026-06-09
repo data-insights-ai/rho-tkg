@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed — repository moved to GitHub, Go module path renamed
+
+The canonical repository moved from
+`gitlab2024.bds421-cloud.com/bds421/rho/tkg` to
+[`github.com/data-insights-ai/rho-tkg`](https://github.com/data-insights-ai/rho-tkg).
+Accordingly the **`go.mod` module path** was renamed from
+`gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4` to
+`github.com/data-insights-ai/rho-tkg/v4`. The major-version suffix (`/v4`) is
+unchanged — this is a host move, not a major bump.
+
+All 387 Go source files were updated to the new import path, alongside `go.mod`
+and the current-state docs (`README.md`, `CLAUDE.md`, `AGENTS.md`,
+`docs/architecture.md`, `docs/persistence.md`). Historical CHANGELOG entries
+retain their original `gitlab2024…` references as accurate snapshots of those
+releases.
+
+**Consumer migration:** replace
+`gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4` with
+`github.com/data-insights-ai/rho-tkg/v4` in every import and in `go.mod`
+(`go mod edit -replace` or a direct find-and-replace), then `go mod tidy`. The
+public API is otherwise unchanged.
+
 ## [4.3.2] - 2026-06-02
 
 ### Fixed — heal an undercounted persisted node/rel counter on reopen

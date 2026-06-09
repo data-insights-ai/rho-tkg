@@ -7,8 +7,8 @@ import (
 	"sort"
 	"time"
 
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/vmihailenco/msgpack/v5"
-	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
 )
 
 // temporalIndexFileData is the store-level serialization format for temporal

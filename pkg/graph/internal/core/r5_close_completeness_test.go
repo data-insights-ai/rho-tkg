@@ -14,11 +14,11 @@ import (
 	"testing"
 	"time"
 
-	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/events"
-	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/io"
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
-	temporalpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/temporal"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
+	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	temporalpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // closedGraph returns a freshly-created graph that has been Close()d.

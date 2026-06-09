@@ -7,21 +7,21 @@ import (
 	"testing"
 	"time"
 
-	graphpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph"
-	adminpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/admin"
-	tierpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/tier"
-	constraintspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/constraints"
-	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/events"
-	hashpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/hash"
-	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/index"
-	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/io"
-	nodespkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/nodes"
-	relspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/rels"
-	resolvepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/resolve"
-	statspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/stats"
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
-	temporalpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/temporal"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	adminpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin"
+	constraintspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/constraints"
+	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
+	hashpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/hash"
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/index"
+	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
+	nodespkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/nodes"
+	relspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/rels"
+	resolvepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/resolve"
+	statspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/stats"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	temporalpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
+	tierpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/tier"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 func TestSubAPIZeroValuesReturnErrNilGraph(t *testing.T) {
@@ -47,7 +47,12 @@ func TestSubAPIZeroValuesReturnErrNilGraph(t *testing.T) {
 			requireNil(t, got)
 			return err
 		}},
-		{name: "Nodes.Get", fn: func(t *testing.T) error { var a nodespkg.API; got, err := a.Get(context.Background(), 0); requireNil(t, got); return err }},
+		{name: "Nodes.Get", fn: func(t *testing.T) error {
+			var a nodespkg.API
+			got, err := a.Get(context.Background(), 0)
+			requireNil(t, got)
+			return err
+		}},
 		{name: "Nodes.GetWithContext", fn: func(t *testing.T) error {
 			var a nodespkg.API
 			got, err := a.Get(ctx, 0)
@@ -186,7 +191,12 @@ func TestSubAPIZeroValuesReturnErrNilGraph(t *testing.T) {
 			requireFalse(t, ok)
 			return err
 		}},
-		{name: "Rels.Get", fn: func(t *testing.T) error { var a relspkg.API; got, err := a.Get(context.Background(), 0); requireNil(t, got); return err }},
+		{name: "Rels.Get", fn: func(t *testing.T) error {
+			var a relspkg.API
+			got, err := a.Get(context.Background(), 0)
+			requireNil(t, got)
+			return err
+		}},
 		{name: "Rels.GetWithContext", fn: func(t *testing.T) error {
 			var a relspkg.API
 			got, err := a.Get(ctx, 0)

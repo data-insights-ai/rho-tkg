@@ -8,12 +8,12 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/memory"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 type relCreateFailAfterInstallStore struct {
@@ -1370,7 +1370,7 @@ func TestGraphGetRelsByIDsDuplicatesReturnIndependentRows(t *testing.T) {
 		t.Fatal("GetRelationshipsByIDs returned aliased rows for duplicate relationship IDs")
 	}
 	afterSnap, _ := g.Stats.Get()
-	if after := afterSnap.RelsRead; after != before+int64(len(got))  {
+	if after := afterSnap.RelsRead; after != before+int64(len(got)) {
 		t.Fatalf("RelsRead after duplicate GetByIDs = %d, want %d", after, before+int64(len(got)))
 	}
 }

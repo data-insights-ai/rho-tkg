@@ -11,15 +11,15 @@
 package core
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"errors"
 	"sync"
 	"testing"
 	"time"
 
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // withTimeout runs fn in a goroutine and fails the test if it takes

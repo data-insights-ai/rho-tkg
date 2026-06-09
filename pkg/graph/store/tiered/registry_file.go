@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
+	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/vmihailenco/msgpack/v5"
-	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/registry"
 )
 
 // RegistryFileData is the msgpack wire format for a registry file.

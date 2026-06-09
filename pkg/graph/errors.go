@@ -1,10 +1,10 @@
 package graph
 
 import (
-	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/index"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/core"
-	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/registry"
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/index"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core"
+	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
 // ErrCapabilityNotSupported is the capability-missing sentinel — returned
@@ -54,31 +54,31 @@ var (
 
 // Sentinel errors re-exported from pkg/graph/internal/core for the public API.
 var (
-	ErrNoLabels         = core.ErrNoLabels
-	ErrNilNode          = core.ErrNilNode
-	ErrNilRelationship  = core.ErrNilRelationship
-	ErrZeroID           = core.ErrZeroID
-	ErrInvalidID        = core.ErrInvalidID
-	ErrVersionOverflow  = core.ErrVersionOverflow
-	ErrNotTieredStore   = core.ErrNotTieredStore
-	ErrAlreadyClosed    = core.ErrAlreadyClosed
-	ErrGraphClosed      = core.ErrGraphClosed
-	ErrNilGraph         = core.ErrNilGraph
-	ErrNilStore         = core.ErrNilStore
-	ErrNilContext       = core.ErrNilContext
-	ErrNilTxCallback    = core.ErrNilTxCallback
-	ErrInvalidTimeRange = core.ErrInvalidTimeRange
-	ErrLabelNotFound    = core.ErrLabelNotFound
-	ErrLastLabel        = core.ErrLastLabel
-	ErrBatchFailed      = core.ErrBatchFailed
-	ErrBatchDone        = core.ErrBatchDone
-	ErrTooManyLabels            = core.ErrTooManyLabels
-	ErrTooManyProperties        = core.ErrTooManyProperties
-	ErrKeyTooLong               = core.ErrKeyTooLong
-	ErrValueTooLarge            = core.ErrValueTooLarge
-	ErrNameTooLong              = core.ErrNameTooLong
-	ErrSelfLoop                 = core.ErrSelfLoop
-	ErrValidFromBeforePrevious  = core.ErrValidFromBeforePrevious
+	ErrNoLabels                = core.ErrNoLabels
+	ErrNilNode                 = core.ErrNilNode
+	ErrNilRelationship         = core.ErrNilRelationship
+	ErrZeroID                  = core.ErrZeroID
+	ErrInvalidID               = core.ErrInvalidID
+	ErrVersionOverflow         = core.ErrVersionOverflow
+	ErrNotTieredStore          = core.ErrNotTieredStore
+	ErrAlreadyClosed           = core.ErrAlreadyClosed
+	ErrGraphClosed             = core.ErrGraphClosed
+	ErrNilGraph                = core.ErrNilGraph
+	ErrNilStore                = core.ErrNilStore
+	ErrNilContext              = core.ErrNilContext
+	ErrNilTxCallback           = core.ErrNilTxCallback
+	ErrInvalidTimeRange        = core.ErrInvalidTimeRange
+	ErrLabelNotFound           = core.ErrLabelNotFound
+	ErrLastLabel               = core.ErrLastLabel
+	ErrBatchFailed             = core.ErrBatchFailed
+	ErrBatchDone               = core.ErrBatchDone
+	ErrTooManyLabels           = core.ErrTooManyLabels
+	ErrTooManyProperties       = core.ErrTooManyProperties
+	ErrKeyTooLong              = core.ErrKeyTooLong
+	ErrValueTooLarge           = core.ErrValueTooLarge
+	ErrNameTooLong             = core.ErrNameTooLong
+	ErrSelfLoop                = core.ErrSelfLoop
+	ErrValidFromBeforePrevious = core.ErrValidFromBeforePrevious
 )
 
 // IO sentinels (R4-F8). Re-exported so external callers can write

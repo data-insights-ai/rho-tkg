@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
-	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/index"
-	storeutil "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/storeutil"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // --- Public temporal query methods ---
@@ -876,8 +876,8 @@ func (t *TempOps) SetNodeVersionInterval(ctx context.Context, id types.NodeID, v
 		return nil, err
 	}
 	var (
-		result  *types.Node
-		opErr   error
+		result *types.Node
+		opErr  error
 	)
 	_, closeErr := c.runUnderRLock(func() {
 		result, opErr = c.cascadeNodeVersionInterval(ctx, id, validFrom, validTo, props)

@@ -9,9 +9,9 @@
 package admin
 
 import (
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/grapherr"
-	snowflakepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/snowflake"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
+	snowflakepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/snowflake"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // IDComponents is the snowflake decomposition (alias of internal/snowflake.IDComponents).

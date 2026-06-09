@@ -8,12 +8,12 @@ import (
 	"sort"
 	"testing"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/memory"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/integrity"
-	lockspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/locks"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity"
+	lockspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/locks"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // benchGraph creates an in-memory graph for benchmarking.

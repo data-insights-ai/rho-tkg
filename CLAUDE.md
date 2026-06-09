@@ -53,7 +53,7 @@ Execute these three phases in order when reviewing a merge request.
 
 **Temporal Knowledge Graph v4** — internal Go library providing the core graph engine for temporal knowledge graphs. Pure library (no main binary, no HTTP server, no query language).
 
-Module: `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4`
+Module: `github.com/data-insights-ai/rho-tkg/v4`
 Go: 1.26.1 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
 Status: v4.2.3 + `[Unreleased]` bitemporal additions — Update accepts `tkg_valid_from` / `tkg_valid_to`, `QueryOpts.TxAt` + `NodeAtTx` / `RelAtTx` / `NodesAtTx` / `RelsAtTx` for bitemporal point queries, `SetNodeVersionInterval` / `SetRelVersionInterval` for tile-clean timeline edits, resolver no longer conflates TX with VT in `vEnd` derivation, new sentinel `ErrValidFromBeforePrevious`. See `CHANGELOG.md` `[Unreleased]` for details and lessons 32–34. Thin `*Graph` façade — only `New` / `Close` plus 14 sub-API accessor methods: `g.Nodes()`, `g.Rels()`, `g.Temporal()`, `g.Index()`, `g.Events()`, `g.Constraints()`, `g.IO()`, `g.Admin()`, `g.Tier()`, `g.Stats()`, `g.Hash()`, `g.Resolve()`, `g.Tx()`, `g.Batch()`. The accessors are nil-safe (calling on a nil or zero-value `*Graph` returns nil; chained calls fail closed with `ErrNilGraph`). Implementation lives on `*core.Core` in `pkg/graph/internal/core/`.

@@ -6,9 +6,9 @@ package tiered
 import (
 	"fmt"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/ontology"
-	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
-	badger "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/badger"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ontology"
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	badger "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 )
 
 // Aliases for unqualified use of types/values that the moved file contents

@@ -5,8 +5,8 @@ import (
 	"sync"
 	"testing"
 
-	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/events"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // captureBus is a sync EventBus that records every Publish for assertion.

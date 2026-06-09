@@ -6,8 +6,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	temporalpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/temporal"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	temporalpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // Add appends a constraint to the current constraint set.
@@ -295,15 +295,15 @@ func (c *Core) validatePropertyValueLimitTyped(key string, val any, depth int) e
 // Update wiped all four fields if any were restated, since extractProvenance
 // returned zeros for missing fields).
 type updateProvenance struct {
-	authorID         string
-	signature        []byte
-	authorizedBy     string
-	authLevel        uint8
-	hasAuthorID      bool
-	hasSignature     bool
-	hasAuthorizedBy  bool
-	hasAuthLevel     bool
-	present          bool
+	authorID        string
+	signature       []byte
+	authorizedBy    string
+	authLevel       uint8
+	hasAuthorID     bool
+	hasSignature    bool
+	hasAuthorizedBy bool
+	hasAuthLevel    bool
+	present         bool
 }
 
 // updateTemporal carries caller-supplied tkg_valid_from / tkg_valid_to from an

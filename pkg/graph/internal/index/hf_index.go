@@ -5,7 +5,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // HighFrequencyIndex is a time-bucketed index providing O(1) amortized insertion.

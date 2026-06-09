@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/grapherr"
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
@@ -27,7 +27,10 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 		{name: "AddWithContext", run: func() error { _, err := nilAPI.Add(ctx, "KNOWS", nil, nil, nil); return err }},
 		{name: "AddByID", run: func() error { _, err := nilAPI.AddByID(context.Background(), "KNOWS", nodeID, nodeID, nil); return err }},
 		{name: "AddByIDWithContext", run: func() error { _, err := nilAPI.AddByID(ctx, "KNOWS", nodeID, nodeID, nil); return err }},
-		{name: "AddByIDIfAbsent", run: func() error { _, _, err := nilAPI.AddByIDIfAbsent(context.Background(), "KNOWS", nodeID, nodeID, nil); return err }},
+		{name: "AddByIDIfAbsent", run: func() error {
+			_, _, err := nilAPI.AddByIDIfAbsent(context.Background(), "KNOWS", nodeID, nodeID, nil)
+			return err
+		}},
 		{name: "AddByIDIfAbsentWithContext", run: func() error {
 			_, _, err := nilAPI.AddByIDIfAbsent(ctx, "KNOWS", nodeID, nodeID, nil)
 			return err
@@ -52,7 +55,10 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 		{name: "IncomingForNodes", run: func() error { _, err := nilAPI.IncomingForNodes([]types.NodeID{nodeID}, "KNOWS"); return err }},
 		{name: "SetProperty", run: func() error { return nilAPI.SetProperty(ctx, relID, "since", 2026) }},
 		{name: "DeleteProperty", run: func() error { return nilAPI.DeleteProperty(ctx, relID, "since") }},
-		{name: "CompareAndSetProperty", run: func() error { _, err := nilAPI.CompareAndSetProperty(context.Background(), relID, "since", 2025, 2026); return err }},
+		{name: "CompareAndSetProperty", run: func() error {
+			_, err := nilAPI.CompareAndSetProperty(context.Background(), relID, "since", 2025, 2026)
+			return err
+		}},
 		{name: "CompareAndSetPropertyWithContext", run: func() error {
 			_, err := nilAPI.CompareAndSetProperty(ctx, relID, "since", 2025, 2026)
 			return err
@@ -110,7 +116,10 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		name string
 		run  func() error
 	}{
-		{name: "Add", run: func() error { _, err := api.Add(context.Background(), "KNOWS", nil, nil, map[string]any{"since": 2026}); return err }},
+		{name: "Add", run: func() error {
+			_, err := api.Add(context.Background(), "KNOWS", nil, nil, map[string]any{"since": 2026})
+			return err
+		}},
 		{name: "AddWithContext", run: func() error { _, err := api.Add(ctx, "KNOWS", nil, nil, nil); return err }},
 		{name: "AddByID", run: func() error { _, err := api.AddByID(context.Background(), "KNOWS", nodeID, nodeID, nil); return err }},
 		{name: "AddByIDWithContext", run: func() error { _, err := api.AddByID(ctx, "KNOWS", nodeID, nodeID, nil); return err }},
@@ -131,7 +140,10 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "Get", run: func() error { _, err := api.Get(context.Background(), relID); return err }},
 		{name: "GetWithContext", run: func() error { _, err := api.Get(ctx, relID); return err }},
 		{name: "GetByIDs", run: func() error { _, err := api.GetByIDs([]types.RelID{relID}); return err }},
-		{name: "Update", run: func() error { _, err := api.Update(context.Background(), relID, map[string]any{"since": 2027}); return err }},
+		{name: "Update", run: func() error {
+			_, err := api.Update(context.Background(), relID, map[string]any{"since": 2027})
+			return err
+		}},
 		{name: "UpdateWithContext", run: func() error { _, err := api.Update(ctx, relID, nil); return err }},
 		{name: "UpdateInPlace", run: func() error { _, err := api.UpdateInPlace(context.Background(), relID, nil); return err }},
 		{name: "UpdateInPlaceWithContext", run: func() error { _, err := api.UpdateInPlace(ctx, relID, nil); return err }},

@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	graphpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph"
-	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/registry"
-	tieredpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/tiered"
+	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
+	tieredpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 )
 
 // TestWriteAheadRegistryCrash verifies the write-ahead durability of the

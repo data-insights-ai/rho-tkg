@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
-	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/registry"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // History-aware tiered routing has four shapes:
@@ -28,11 +28,11 @@ import (
 // the same microsecond can hand out identical snowflake IDs because each
 // fresh generator starts at step=0.
 type branchTestEnv struct {
-	ts       *Store
-	nodeGen  *snowflake.Node
-	relGen   *snowflake.Node
-	caseTok  uint16
-	signTok  uint16
+	ts      *Store
+	nodeGen *snowflake.Node
+	relGen  *snowflake.Node
+	caseTok uint16
+	signTok uint16
 }
 
 func newBranchTestEnv(t *testing.T) *branchTestEnv {

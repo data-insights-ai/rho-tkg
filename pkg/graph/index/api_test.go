@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/events"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/grapherr"
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 func TestAPINilReceiversReturnErrNilGraphOrNil(t *testing.T) {
@@ -124,12 +124,12 @@ type indexOpsSpy struct {
 	err       error
 	providers []string
 
-	calls              []string
-	vectorDims         int
-	vectorMetric       storepkg.DistanceMetric
-	query              []float32
-	k                  int
-	opts               storepkg.QueryOpts
+	calls          []string
+	vectorDims     int
+	vectorMetric   storepkg.DistanceMetric
+	query          []float32
+	k              int
+	opts           storepkg.QueryOpts
 	providerName   string
 	unregisterName string
 }
@@ -215,4 +215,3 @@ func (p testIndexProvider) Name() string {
 func (testIndexProvider) OnEvent(events.Event) error { return nil }
 
 func (testIndexProvider) Close() error { return nil }
-

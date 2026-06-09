@@ -13,15 +13,15 @@
 package core
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/memory"
-	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/io"
+	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 )
 
 func TestImport_StagingFile_RemovedAfterReturn(t *testing.T) {

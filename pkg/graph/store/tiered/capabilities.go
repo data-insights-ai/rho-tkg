@@ -1,8 +1,8 @@
 package tiered
 
 import (
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/generatedcreate"
-	storecontract "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate"
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
 // Compile-time assertions: tiered.Store satisfies every capability interface

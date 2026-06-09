@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/vmihailenco/msgpack/v5"
-	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/registry"
 )
 
 func TestRegistryFile_SaveLoadRoundTrip(t *testing.T) {

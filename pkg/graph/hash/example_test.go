@@ -2,8 +2,8 @@ package hash_test
 
 import (
 	"context"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph"
-	_ "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/hash" // godoc anchor: ExampleAPI_<method> resolves against hash.API
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	_ "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/hash" // godoc anchor: ExampleAPI_<method> resolves against hash.API
 )
 
 // ExampleAPI_VerifyNodeChain demonstrates verifying the hash chain of a

@@ -1,4 +1,4 @@
-module gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4
+module github.com/data-insights-ai/rho-tkg/v4
 
 go 1.26.1
 

@@ -14,7 +14,7 @@ For the full product with Cypher queries, Vadalog reasoning, and an HTTP server,
 ## Module
 
 ```
-gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4
+github.com/data-insights-ai/rho-tkg/v4
 ```
 
 **Go:** 1.26.1

@@ -30,21 +30,21 @@
 package graph
 
 import (
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/admin"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/constraints"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/events"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/hash"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/index"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/core"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/io"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/nodes"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/rels"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/resolve"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/stats"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/temporal"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/tier"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/constraints"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/hash"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/index"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/nodes"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/rels"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/resolve"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/stats"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/tier"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // Graph is the thin façade providing sub-API accessors over an internal Core.

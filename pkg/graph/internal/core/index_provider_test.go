@@ -11,13 +11,13 @@ import (
 	"testing"
 	"time"
 
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/memory"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 
-	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/events"
-	indexpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/index"
+	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/index"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // mockIndexProvider implements the new (Phase 6) indexpkg.IndexProvider interface.
@@ -60,7 +60,6 @@ func (m *mockIndexProvider) capturedEvents() []eventspkg.Event {
 	copy(out, m.events)
 	return out
 }
-
 
 // initializableProvider implements both indexpkg.IndexProvider and indexpkg.Initializable.
 // Tests verify the bulk-load callback receives a usable indexpkg.GraphReader and

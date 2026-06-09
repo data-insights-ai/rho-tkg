@@ -2,8 +2,8 @@
 package hash
 
 import (
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/grapherr"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // Ops is the subset of *core.HashOps the hash sub-API forwards to.

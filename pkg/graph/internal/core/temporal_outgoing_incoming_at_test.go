@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/memory"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // TestOutgoingRelsAt_HappyPath asserts the basic case: at time t the function
@@ -292,8 +292,8 @@ type relCandidateSpyStore struct {
 
 type atomicCount struct{ n int64 }
 
-func (a *atomicCount) Inc()        { a.n++ }
-func (a *atomicCount) Get() int64  { return a.n }
+func (a *atomicCount) Inc()       { a.n++ }
+func (a *atomicCount) Get() int64 { return a.n }
 
 func (s *relCandidateSpyStore) ForEachDeletedNodeID(fn func(types.NodeID) bool) error {
 	s.deletedNodeCalls.Inc()
@@ -379,4 +379,3 @@ func relIDsOf(rels []*types.Relationship) []types.RelID {
 	}
 	return out
 }
-

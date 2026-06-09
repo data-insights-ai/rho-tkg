@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/registry"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 func TestQueryEventShardsBoundsConcurrency(t *testing.T) {

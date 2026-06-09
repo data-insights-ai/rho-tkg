@@ -6,8 +6,8 @@ import (
 	"sync"
 	"testing"
 
-	graphpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // assertDegreeMatches asserts IncomingDegree(hub, typ) == len(Incoming) == want.

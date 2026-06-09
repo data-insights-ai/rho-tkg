@@ -2,7 +2,7 @@
 // graph layer has generated a fresh snowflake ID itself.
 package generatedcreate
 
-import "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+import "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 
 // Proof is intentionally defined in an internal package. Public Store callers
 // outside pkg/graph cannot name this type, so the generated-ID fast path cannot

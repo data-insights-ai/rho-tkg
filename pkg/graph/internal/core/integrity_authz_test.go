@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // newAuthzGraph returns a minimal in-memory Graph suitable for authorization tests.

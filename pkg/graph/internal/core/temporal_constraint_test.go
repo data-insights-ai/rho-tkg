@@ -5,10 +5,10 @@ import (
 	"errors"
 	"testing"
 
-	temporalpkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/temporal"
+	temporalpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 
-	storeutil "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/storeutil"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 func addRelWithinEndpointsConstraint(t *testing.T, g *Core) {

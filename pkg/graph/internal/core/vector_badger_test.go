@@ -7,7 +7,7 @@ import (
 	"errors"
 	"testing"
 
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
 // --- tiered.Store: RemoveNodeLabelToken, CreateVectorIndex, DropVectorIndex, SearchNearestNodes ---

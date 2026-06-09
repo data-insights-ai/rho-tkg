@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	registrypkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/registry"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/memory"
+	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 )
 
 func newCoreForRegistryRollbackTest(t *testing.T) *Core {

@@ -1,6 +1,6 @@
 package memory
 
-import "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+import "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 
 // GetNodeHistoryEntry returns a deep copy of the stored history entry for the
 // given node ID and version. Returns nil if no entry exists. Acquires the

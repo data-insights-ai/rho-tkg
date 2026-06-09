@@ -5,12 +5,12 @@ import (
 	"errors"
 	"fmt"
 
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
-	eventspkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/events"
+	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/integrity"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // =============================================================================

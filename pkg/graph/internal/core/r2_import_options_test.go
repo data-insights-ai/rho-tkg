@@ -5,8 +5,8 @@
 package core
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"math"
@@ -17,8 +17,8 @@ import (
 	"testing"
 	"time"
 
-	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/io"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store/memory"
+	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 )
 
 func TestImportWithOptions_StagingDirHonored(t *testing.T) {

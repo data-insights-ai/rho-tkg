@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/grapherr"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 )
 
 func TestAPINilReceiversReturnErrNilGraph(t *testing.T) {

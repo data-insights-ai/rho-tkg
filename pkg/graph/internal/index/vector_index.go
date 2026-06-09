@@ -7,8 +7,8 @@ import (
 	"sync"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // knnEntry is a candidate result for k-nearest-neighbor search.

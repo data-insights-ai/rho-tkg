@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/generatedcreate"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 func TestTieredStoreGeneratedRelationshipWithEndpointHashesInvalidProofFallback(t *testing.T) {

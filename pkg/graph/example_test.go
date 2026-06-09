@@ -3,7 +3,7 @@ package graph_test
 import (
 	"context"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 )
 
 // ExampleTxAPI_Run demonstrates the closure-style transaction helper: open

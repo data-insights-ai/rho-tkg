@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/grapherr"
-	storepkg "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/store"
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
@@ -42,7 +42,10 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 		{name: "CountByLabel", run: func() error { _, err := nilAPI.CountByLabel("Node"); return err }},
 		{name: "SetProperty", run: func() error { return nilAPI.SetProperty(ctx, id, "name", "Ada") }},
 		{name: "DeleteProperty", run: func() error { return nilAPI.DeleteProperty(ctx, id, "name") }},
-		{name: "CompareAndSetProperty", run: func() error { _, err := nilAPI.CompareAndSetProperty(context.Background(), id, "name", "old", "new"); return err }},
+		{name: "CompareAndSetProperty", run: func() error {
+			_, err := nilAPI.CompareAndSetProperty(context.Background(), id, "name", "old", "new")
+			return err
+		}},
 		{name: "CompareAndSetPropertyWithContext", run: func() error {
 			_, err := nilAPI.CompareAndSetProperty(ctx, id, "name", "old", "new")
 			return err
@@ -105,12 +108,18 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		name string
 		run  func() error
 	}{
-		{name: "Add", run: func() error { _, err := api.Add(context.Background(), []string{"Node"}, map[string]any{"name": "Ada"}); return err }},
+		{name: "Add", run: func() error {
+			_, err := api.Add(context.Background(), []string{"Node"}, map[string]any{"name": "Ada"})
+			return err
+		}},
 		{name: "AddWithContext", run: func() error { _, err := api.Add(ctx, []string{"Node"}, nil); return err }},
 		{name: "Get", run: func() error { _, err := api.Get(context.Background(), id); return err }},
 		{name: "GetWithContext", run: func() error { _, err := api.Get(ctx, id); return err }},
 		{name: "GetByIDs", run: func() error { _, err := api.GetByIDs([]types.NodeID{id}); return err }},
-		{name: "Update", run: func() error { _, err := api.Update(context.Background(), id, map[string]any{"name": "Grace"}); return err }},
+		{name: "Update", run: func() error {
+			_, err := api.Update(context.Background(), id, map[string]any{"name": "Grace"})
+			return err
+		}},
 		{name: "UpdateWithContext", run: func() error { _, err := api.Update(ctx, id, nil); return err }},
 		{name: "UpdateInPlace", run: func() error { _, err := api.UpdateInPlace(context.Background(), id, nil); return err }},
 		{name: "UpdateInPlaceWithContext", run: func() error { _, err := api.UpdateInPlace(ctx, id, nil); return err }},

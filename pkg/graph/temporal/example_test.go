@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph"
-	_ "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/temporal" // godoc anchor: ExampleAPI_<method> resolves against temporal.API
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/types"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	_ "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal" // godoc anchor: ExampleAPI_<method> resolves against temporal.API
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // ExampleAPI_NodesAt demonstrates a point-in-time query against the graph.

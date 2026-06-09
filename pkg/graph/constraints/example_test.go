@@ -1,9 +1,9 @@
 package constraints_test
 
 import (
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph"
-	_ "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/constraints" // godoc anchor: ExampleAPI_<method> resolves against constraints.API
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/temporal"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	_ "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/constraints" // godoc anchor: ExampleAPI_<method> resolves against constraints.API
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 )
 
 // ExampleAPI_Add demonstrates registering a temporal constraint that

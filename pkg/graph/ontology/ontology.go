@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/registry"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 )
 
 // EntityClass distinguishes reference entities (long-lived, low-churn) from

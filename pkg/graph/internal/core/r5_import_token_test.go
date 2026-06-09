@@ -10,14 +10,14 @@
 package core
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"errors"
 	"testing"
 
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
+	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	"github.com/vmihailenco/msgpack/v5"
-	storeutil "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/internal/storeutil"
-	tkgio "gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4/pkg/graph/io"
 )
 
 // R5-F3: a node record whose PrimaryLabel exceeds the registry's
