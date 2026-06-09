@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.4.1] - 2026-06-09
+
+### Fixed — sync stale doc version strings missed in the 4.4.0 release
+
+The 4.4.0 entry claimed the current-state docs were updated, but two version
+strings were left at `v4.3.2`: `AGENTS.md` (`Status:`) and `docs/architecture.md`
+(the title heading). `TestDocsMetadataMatchesSourceOfTruth` — which asserts those
+two files carry the latest CHANGELOG version — failed as a result.
+
+Both are now bumped to the current release, and the `Status:` lines in
+`CLAUDE.md` and `README.md` updated to match. Documentation-only change — no code
+or public-API changes.
+
 ## [4.4.0] - 2026-06-09
 
 ### Changed — repository moved to GitHub, Go module path renamed

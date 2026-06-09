@@ -31,7 +31,9 @@ Detailed documentation has been split into the `docs/` directory:
 - [Design Invariants](docs/design.md) — Protocol guarantees, referential integrity, defensive copying, and error sentinels.
 - [Specifications](docs/SPEC.md) — Formal specifications and algorithms.
 
-### What's new in v4 (v4.0.0 → v4.4.0)
+### What's new in v4 (v4.0.0 → v4.4.1)
+
+**v4.4.1 — documentation-consistency patch.** Synced two version strings (`AGENTS.md` `Status:` line and the `docs/architecture.md` title) that were left at `v4.3.2` in the 4.4.0 release, which had broken the docs-consistency test. No code or public-API changes.
 
 **v4.4.0 — repository moved to GitHub, Go module path renamed.** The canonical repository is now [`github.com/data-insights-ai/rho-tkg`](https://github.com/data-insights-ai/rho-tkg) and the Go module path is `github.com/data-insights-ai/rho-tkg/v4` (was `gitlab2024.bds421-cloud.com/bds421/rho/tkg/v4`). The `/v4` major-version suffix is unchanged — this is a host move, not a major bump. Consumers must replace the import path and re-run `go mod tidy`; the public API is otherwise unchanged.
 

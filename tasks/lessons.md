@@ -689,3 +689,19 @@ exists on disk.
 The rule generalises: any backend-internal decode that runs during
 init must have its dependencies resolved before that init runs.
 
+## 41. A Version Bump Is Not Done Until Every Doc-Consistency Target Matches
+
+`TestDocsMetadataMatchesSourceOfTruth` derives the "current version" from
+the first numeric `## [x.y.z]` heading in `CHANGELOG.md` and then asserts
+`AGENTS.md` (`Status: vX.Y.Z`) and `docs/architecture.md` (title `(vX.Y.Z)`)
+contain it, plus the `go.mod` Go version in README/AGENTS/architecture. The
+4.4.0 release wrote a CHANGELOG entry claiming those docs were updated but
+left both at `v4.3.2`, so the test failed on a clean checkout.
+
+Rule: any commit that adds a numbered CHANGELOG heading MUST, in the same
+commit, bump the `Status:` line in `AGENTS.md` AND the `(vX.Y.Z)` title in
+`docs/architecture.md` (and the `Status:` lines in `CLAUDE.md`/`README.md`
+for human consistency). Run `go test -run TestDocsMetadataMatchesSourceOfTruth
+./pkg/graph/internal/core/` before committing a release. "The CHANGELOG says I
+updated the docs" is not evidence the docs were updated — the test is.
+
