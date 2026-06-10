@@ -62,7 +62,7 @@ func (bs *Store) PutRelEntityAndOut(r *types.Relationship) error {
 	}
 
 	// Update in-memory state.
-	bs.relCache.Put(id, r.DeepCopy())
+	bs.relCache.Put(id, freezeRelCopy(r))
 	bs.relIDs[rid] = struct{}{}
 
 	// Type index.

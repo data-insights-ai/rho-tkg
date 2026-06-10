@@ -38,7 +38,7 @@ func (ms *Store) PutNode(n *types.Node) error {
 		return err
 	}
 
-	ms.nodes[nid] = n.DeepCopy()
+	ms.nodes[nid] = freezeNodeCopy(n)
 
 	ms.addNodeLabelIndexes(nid, n)
 
@@ -221,7 +221,7 @@ func (ms *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
-	ms.nodes[nid] = updatedNode.DeepCopy()
+	ms.nodes[nid] = freezeNodeCopy(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
 	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, updatedNode, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, updatedNode, rawID)
@@ -273,7 +273,7 @@ func (ms *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
-	ms.nodes[nid] = updatedNode.DeepCopy()
+	ms.nodes[nid] = freezeNodeCopy(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
 	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, updatedNode, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, updatedNode, rawID)
@@ -318,7 +318,7 @@ func (ms *Store) ReplaceNode(n *types.Node) error {
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
-	ms.nodes[nid] = n.DeepCopy()
+	ms.nodes[nid] = freezeNodeCopy(n)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, n, rawID)
 	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, n, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, n, rawID)
@@ -425,7 +425,7 @@ func (ms *Store) PutNodesBatch(nodes []*types.Node) error {
 	// Phase 2: apply — all validated, safe to mutate.
 	for i, n := range nodes {
 		id := n.ID()
-		ms.nodes[id] = n.DeepCopy()
+		ms.nodes[id] = freezeNodeCopy(n)
 
 		ms.addNodeLabelIndexes(id, n)
 		rawID := id.SnowflakeID()

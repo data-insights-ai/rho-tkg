@@ -44,7 +44,7 @@ func (bs *Store) PutNode(n *types.Node) error {
 	}
 
 	// Update in-memory state.
-	bs.nodeCache.Put(id, n.DeepCopy())
+	bs.nodeCache.Put(id, freezeNodeCopy(n))
 	bs.nodeIDs[nid] = struct{}{}
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(n)
 	bs.bumpNodeRevLocked(nid)
@@ -138,6 +138,7 @@ func (bs *Store) GetNode(nid types.NodeID) (*types.Node, error) {
 	}
 
 	// Populate cache as clean (evictable).
+	n.Freeze() // shared between cache and caller
 	bs.nodeCache.LoadClean(id, n)
 	return n.DeepCopy(), nil
 }
@@ -205,6 +206,7 @@ func (bs *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
 		return "", err
 	}
 	hash = badgerNodeIntegrityHash(n)
+	n.Freeze() // shared between cache and caller
 	bs.nodeCache.LoadClean(id, n)
 	bs.idxMu.Lock()
 	if _, exists := bs.nodeIDs[nid]; exists {
@@ -433,7 +435,7 @@ func (bs *Store) ReplaceNode(n *types.Node) error {
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
-	bs.nodeCache.Put(id, n.DeepCopy())
+	bs.nodeCache.Put(id, freezeNodeCopy(n))
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(n)
 	bs.bumpNodeRevLocked(nid)
 	indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, n, id)
@@ -519,7 +521,7 @@ func (bs *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 	bs.getOrCreateLabelCounter(tok).Add(-1)
 
 	// Update cache and property/temporal/vector indexes for the new node state.
-	bs.nodeCache.Put(id, updatedNode.DeepCopy())
+	bs.nodeCache.Put(id, freezeNodeCopy(updatedNode))
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
 	bs.bumpNodeRevLocked(nid)
 	indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, updatedNode, id)
@@ -606,7 +608,7 @@ func (bs *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 	set[nid] = struct{}{}
 	bs.getOrCreateLabelCounter(tok).Add(1)
 
-	bs.nodeCache.Put(id, updatedNode.DeepCopy())
+	bs.nodeCache.Put(id, freezeNodeCopy(updatedNode))
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
 	bs.bumpNodeRevLocked(nid)
 	indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, updatedNode, id)
@@ -705,6 +707,7 @@ func (bs *Store) prefetchNode(nid types.NodeID) (*types.Node, error) {
 	if err != nil {
 		return nil, err
 	}
+	n.Freeze() // shared between cache and caller
 	bs.nodeCache.LoadClean(id, n)
 	return n, nil
 }
@@ -747,6 +750,7 @@ func (bs *Store) getNodeLocked(nid types.NodeID) (*types.Node, error) {
 	if err != nil {
 		return nil, err
 	}
+	n.Freeze() // shared between cache and caller
 	bs.nodeCache.LoadClean(id, n)
 	return n, nil
 }

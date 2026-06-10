@@ -1366,8 +1366,13 @@ func TestGraphGetRelsByIDsDuplicatesReturnIndependentRows(t *testing.T) {
 			copies = append(copies, r)
 		}
 	}
-	if len(copies) != 2 || copies[0] == copies[1] {
-		t.Fatal("GetRelationshipsByIDs returned aliased rows for duplicate relationship IDs")
+	if len(copies) != 2 {
+		t.Fatalf("duplicate relationship ID rows = %d, want 2", len(copies))
+	}
+	// Duplicate rows may alias one frozen store entry; aliasing a MUTABLE
+	// row is the corruption hazard this test pins against.
+	if copies[0] == copies[1] && !copies[0].IsFrozen() {
+		t.Fatal("GetRelationshipsByIDs returned aliased mutable rows for duplicate relationship IDs")
 	}
 	afterSnap, _ := g.Stats.Get()
 	if after := afterSnap.RelsRead; after != before+int64(len(got)) {

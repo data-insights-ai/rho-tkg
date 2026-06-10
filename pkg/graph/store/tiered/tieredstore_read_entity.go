@@ -261,7 +261,7 @@ func (ts *Store) getNodesByIDsWithDuplicates(ids, unique []types.NodeID) ([]*typ
 		if !ok {
 			return nil, fmt.Errorf("graph: get nodes by IDs %d: %w", id, ErrNodeNotFound)
 		}
-		result = append(result, node.DeepCopy())
+		result = append(result, node)
 	}
 	if len(result) == 0 {
 		return nil, nil
@@ -302,7 +302,7 @@ func (ts *Store) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relationship
 		if !ok {
 			return nil, fmt.Errorf("graph: get relationships by IDs %d: %w", id, ErrRelNotFound)
 		}
-		result = append(result, rel.DeepCopy())
+		result = append(result, rel)
 	}
 	if len(result) == 0 {
 		return nil, nil
@@ -458,6 +458,9 @@ func collectRelationshipsFromStore(store *BadgerStore, ids []types.RelID, found 
 		if !ok {
 			continue
 		}
+		// The row fans out to every duplicate slot of the caller's result —
+		// freeze it so the aliased rows cannot corrupt one another.
+		rel.Freeze()
 		found[id] = rel
 		delete(pending, id)
 	}
@@ -473,6 +476,8 @@ func collectPendingRelationshipsFromStore(store *BadgerStore, found map[types.Re
 		if !ok {
 			continue
 		}
+		// See collectRelationshipsFromStore — frozen because rows fan out.
+		rel.Freeze()
 		found[id] = rel
 		delete(pending, id)
 	}
@@ -695,7 +700,7 @@ func (ts *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 	}
 	for _, relID := range typedRelIDs {
 		if r, ok := found[relID]; ok && relationshipMatchesIncoming(r, nid, typeToken) {
-			result = append(result, r.DeepCopy())
+			result = append(result, r)
 		}
 	}
 	if len(result) == 0 {
@@ -786,7 +791,7 @@ func (ts *Store) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 	}
 	for _, ref := range refs {
 		if r, ok := found[ref.relID]; ok && relationshipMatchesIncoming(r, ref.nodeID, typeToken) {
-			result[ref.nodeID] = append(result[ref.nodeID], r.DeepCopy())
+			result[ref.nodeID] = append(result[ref.nodeID], r)
 		}
 	}
 

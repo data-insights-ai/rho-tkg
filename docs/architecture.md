@@ -1,4 +1,4 @@
-# Architecture — tkg/v4 (v4.4.2)
+# Architecture — tkg/v4 (v4.5.0)
 
 Temporal Knowledge Graph v4 is a pure Go library providing the core graph engine for temporal knowledge graphs. It is the low-level storage and type layer — no main binary, no HTTP server, no query language.
 
@@ -723,9 +723,9 @@ Used by: `DeleteNodeCascade`, `CreatePropertyIndex` (all-or-nothing); `BatchBuil
 
 Write operations update in-memory state immediately, queue write ops into `map[string]writeOp` (dedup by key). Background flush loop drains via Badger WriteBatch. Counters in the same WriteBatch for atomic crash recovery. `Close()` calls `flush()` unconditionally (even if flushLoop never started).
 
-### Deep-Copy at Store Boundary
+### Deep-Copy / Frozen Rows at Store Boundary (since v4.5.0)
 
-Entities deep-copied on both Put and Get. Cache and caller never share pointers. Internal locked methods (`getNodeLocked`) skip the copy when the caller already holds the write lock.
+`Put*` deep-copies before caching and freezes the cached entry (`types.Node.Freeze()` / `types.Relationship.Freeze()`). Point reads (`GetNode`/`GetRelationship`) deep-copy on return, so callers get mutable, independent copies. Plural/scan reads (`*ByLabel*`, `All*`, `Get*ByIDs`, adjacency traversals, temporal/index scans) return the shared frozen pointer directly — zero-copy. Frozen entities reject mutation: error-returning mutators return `ErrFrozenNode`/`ErrFrozenRelationship`, void/bool mutators panic, and `DeepCopy()` is the thaw operation. Rows for duplicate requested IDs may alias the same frozen pointer. Internal locked methods (`getNodeLocked`) skip the copy when the caller already holds the write lock.
 
 ### Temporal Data Is Append-Only
 

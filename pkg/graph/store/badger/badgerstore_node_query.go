@@ -114,7 +114,7 @@ func (bs *Store) fetchNodesByLabelIDs(token uint16, ids []types.NodeID, opts Que
 		if hasTemporal && !storepkg.MatchesTemporalFilter(id, n.Temporal(), opts) {
 			continue
 		}
-		nodes = append(nodes, n.DeepCopy())
+		nodes = append(nodes, n)
 		if opts.Limit > 0 && len(nodes) >= opts.Limit {
 			break
 		}
@@ -187,7 +187,7 @@ func (bs *Store) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
 		if err != nil {
 			return nil, fmt.Errorf("graph: get nodes by IDs %d: %w", id, err)
 		}
-		nodes = append(nodes, n.DeepCopy())
+		nodes = append(nodes, n)
 	}
 
 	if len(nodes) == 0 {
@@ -213,7 +213,7 @@ func (bs *Store) getNodesByIDsWithDuplicates(ids, unique []types.NodeID) ([]*typ
 		if n == nil {
 			return nil, fmt.Errorf("graph: get nodes by IDs %d: %w", id, ErrNodeNotFound)
 		}
-		nodes = append(nodes, n.DeepCopy())
+		nodes = append(nodes, n)
 	}
 	if len(nodes) == 0 {
 		return nil, nil
@@ -347,7 +347,7 @@ func (bs *Store) fetchNodesByLabelPropertyIDs(labelToken uint16, propKey, target
 			if hasTemporal && !storepkg.MatchesTemporalFilter(nid.SnowflakeID(), n.Temporal(), opts) {
 				continue
 			}
-			result = append(result, n.DeepCopy())
+			result = append(result, n)
 			if opts.Limit > 0 && len(result) >= opts.Limit {
 				break
 			}

@@ -60,7 +60,7 @@ func (ms *Store) SetNodeForTest(id types.NodeID, n *types.Node) {
 	if _, exists := ms.nodes[id]; !exists {
 		return
 	}
-	ms.nodes[id] = n.DeepCopy()
+	ms.nodes[id] = freezeNodeCopy(n)
 }
 
 // HFIndexPointQueryForTest returns the high-frequency index candidates for t.

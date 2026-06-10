@@ -42,8 +42,13 @@ func TestTieredStore_GetNodesByIDsShardBatchedContract(t *testing.T) {
 			signalCopies = append(signalCopies, n)
 		}
 	}
-	if len(signalCopies) != 2 || signalCopies[0] == signalCopies[1] {
-		t.Fatal("GetNodesByIDs returned aliased pointers for duplicate node IDs")
+	if len(signalCopies) != 2 {
+		t.Fatalf("duplicate node ID rows = %d, want 2", len(signalCopies))
+	}
+	// Duplicate rows may alias one frozen cache entry; aliasing a MUTABLE
+	// row is the corruption hazard this test pins against.
+	if signalCopies[0] == signalCopies[1] && !signalCopies[0].IsFrozen() {
+		t.Fatal("GetNodesByIDs returned aliased mutable rows for duplicate node IDs")
 	}
 
 	missing := types.NodeID(gen.Generate())
@@ -159,8 +164,8 @@ func TestTieredStore_GetRelationshipsByIDsShardBatchedContract(t *testing.T) {
 	if countTieredRelID(got, crossRel.ID()) != 2 {
 		t.Fatalf("GetRelationshipsByIDs duplicate crossRel count = %d, want 2", countTieredRelID(got, crossRel.ID()))
 	}
-	if got[1] == got[2] {
-		t.Fatal("GetRelationshipsByIDs returned aliased pointers for duplicate relationship IDs")
+	if got[1] == got[2] && !got[1].IsFrozen() {
+		t.Fatal("GetRelationshipsByIDs returned aliased mutable rows for duplicate relationship IDs")
 	}
 
 	missing := types.RelID(relGen.Generate())
@@ -198,8 +203,8 @@ func TestTieredStore_GetRelationshipsByIDsIncludesArchivedRelationships(t *testi
 	if got[0].ID() != rel.ID() || got[1].ID() != rel.ID() {
 		t.Fatalf("GetRelationshipsByIDs archived rel IDs = %v", tieredMergeRelIDs(got))
 	}
-	if got[0] == got[1] {
-		t.Fatal("GetRelationshipsByIDs returned aliased pointers for duplicate archived relationship IDs")
+	if got[0] == got[1] && !got[0].IsFrozen() {
+		t.Fatal("GetRelationshipsByIDs returned aliased mutable rows for duplicate archived relationship IDs")
 	}
 }
 

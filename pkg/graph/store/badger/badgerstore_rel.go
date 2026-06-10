@@ -57,7 +57,7 @@ func (bs *Store) PutRelationship(r *types.Relationship) error {
 	}
 
 	// Update in-memory state.
-	bs.relCache.Put(id, r.DeepCopy())
+	bs.relCache.Put(id, freezeRelCopy(r))
 	bs.relIDs[rid] = struct{}{}
 
 	// Type index.
@@ -152,6 +152,7 @@ func (bs *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
 	}
 
 	// Populate cache as clean.
+	r.Freeze() // shared between cache and caller
 	bs.relCache.LoadClean(id, r)
 	return r.DeepCopy(), nil
 }
@@ -196,7 +197,7 @@ func (bs *Store) ReplaceRelationship(r *types.Relationship) error {
 		return err
 	}
 
-	bs.relCache.Put(id, r.DeepCopy())
+	bs.relCache.Put(id, freezeRelCopy(r))
 	bs.appendOps(writeOp{opType: writeOpSet, key: storepkg.RelKey(id), value: data})
 	bs.idxMu.Unlock()
 
@@ -390,6 +391,7 @@ func (bs *Store) getRelLocked(rid types.RelID) (*types.Relationship, error) {
 	if err != nil {
 		return nil, err
 	}
+	r.Freeze() // shared between cache and caller
 	bs.relCache.LoadClean(id, r)
 	return r, nil
 }
@@ -436,6 +438,7 @@ func (bs *Store) prefetchRel(rid types.RelID) (*types.Relationship, error) {
 	if err != nil {
 		return nil, err
 	}
+	r.Freeze() // shared between cache and caller
 	bs.relCache.LoadClean(id, r)
 	return r, nil
 }

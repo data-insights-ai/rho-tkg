@@ -36,7 +36,8 @@ type Node struct {
 	integrity    *NodeIntegrity    // 8B, offset 64
 	version      uint32            // 4B, offset 72
 	primaryLabel labelToken        // 2B, offset 76
-	// 2B trailing padding → 80B total
+	frozen       bool              // 1B, offset 78 — occupies former trailing padding
+	// 1B trailing padding → 80B total
 }
 
 // NewNode creates a Node with the given typed node ID, primary label token,
@@ -174,12 +175,42 @@ func (n *Node) LabelTokenRawAt(i int) uint16 {
 	return uint16(n.extraLabels[i])
 }
 
+// Freeze marks the node immutable. After freezing, error-returning mutators
+// return ErrFrozenNode and void/bool mutators panic — mutating a frozen node
+// is a programming error, never a recoverable condition. Stores freeze the
+// entries they cache so query paths can return shared pointers instead of
+// per-row deep copies; callers that need to mutate a fetched node must thaw
+// it first via DeepCopy, which always returns a mutable copy.
+func (n *Node) Freeze() {
+	if n == nil {
+		return
+	}
+	n.frozen = true
+}
+
+// IsFrozen reports whether the node has been frozen against mutation.
+func (n *Node) IsFrozen() bool {
+	if n == nil {
+		return false
+	}
+	return n.frozen
+}
+
+// panicFrozenNode is the shared failure for void/bool mutators that have no
+// error channel. A silent no-op would corrupt store caches invisibly.
+func panicFrozenNode(method string) {
+	panic("types: " + method + " called on a frozen node — DeepCopy it first")
+}
+
 // SetProperties replaces the node's property slice.
 // The input is validated, canonicalized by key, and deep-copied before being
 // installed. If a key appears more than once, the last value wins.
 func (n *Node) SetProperties(ps PropertySlice) error {
 	if n == nil {
 		return ErrNilNode
+	}
+	if n.frozen {
+		return ErrFrozenNode
 	}
 	canonical, err := canonicalPropertySlice(ps)
 	if err != nil {
@@ -198,6 +229,10 @@ func (n *Node) SetOwnedProperties(ps OwnedPropertySlice) error {
 	if n == nil {
 		return ErrNilNode
 	}
+	if n.frozen {
+		// Reject BEFORE consuming ps — the caller keeps ownership on error.
+		return ErrFrozenNode
+	}
 	if ps.ps == nil {
 		n.properties = nil
 		return nil
@@ -212,6 +247,9 @@ func (n *Node) SetOwnedProperties(ps OwnedPropertySlice) error {
 func (n *Node) SetProperty(key string, value any) error {
 	if n == nil {
 		return ErrNilNode
+	}
+	if n.frozen {
+		return ErrFrozenNode
 	}
 	return n.properties.Set(key, value)
 }
@@ -271,6 +309,9 @@ func (n *Node) DeleteProperty(key string) (bool, error) {
 	if n == nil {
 		return false, ErrNilNode
 	}
+	if n.frozen {
+		return false, ErrFrozenNode
+	}
 	return n.properties.Delete(key)
 }
 
@@ -329,6 +370,9 @@ func (n *Node) SetVersion(v uint32) {
 	if n == nil {
 		return
 	}
+	if n.frozen {
+		panicFrozenNode("SetVersion")
+	}
 	n.version = v
 }
 
@@ -347,6 +391,9 @@ func (n *Node) Temporal() *TemporalMetadata {
 func (n *Node) SetTemporal(tm *TemporalMetadata) {
 	if n == nil {
 		return
+	}
+	if n.frozen {
+		panicFrozenNode("SetTemporal")
 	}
 	n.temporal = tm
 }
@@ -367,6 +414,9 @@ func (n *Node) SetIntegrity(ig *NodeIntegrity) {
 	if n == nil {
 		return
 	}
+	if n.frozen {
+		panicFrozenNode("SetIntegrity")
+	}
 	n.integrity = ig
 }
 
@@ -376,6 +426,9 @@ func (n *Node) SetIntegrity(ig *NodeIntegrity) {
 func (n *Node) AddLabelTokenRaw(tok uint16) bool {
 	if n == nil || tok == 0 {
 		return false
+	}
+	if n.frozen {
+		panicFrozenNode("AddLabelTokenRaw")
 	}
 	if uint16(n.primaryLabel) == tok {
 		return false
@@ -396,6 +449,9 @@ func (n *Node) AddLabelTokenRaw(tok uint16) bool {
 func (n *Node) RemoveLabelTokenRaw(tok uint16) bool {
 	if n == nil || tok == 0 {
 		return false
+	}
+	if n.frozen {
+		panicFrozenNode("RemoveLabelTokenRaw")
 	}
 	// Case 1: removing an extra label.
 	if uint16(n.primaryLabel) != tok {
@@ -430,6 +486,9 @@ func (n *Node) SetLabelTokensRaw(primary uint16, extras []uint16) {
 	if n == nil {
 		return
 	}
+	if n.frozen {
+		panicFrozenNode("SetLabelTokensRaw")
+	}
 	n.primaryLabel = labelToken(primary)
 	n.extraLabels = nil
 	if len(extras) == 0 {
@@ -451,6 +510,8 @@ func (n *Node) SetLabelTokensRaw(primary uint16, extras []uint16) {
 // DeepCopy returns a fully independent clone of the node.
 // All nested reference types (extraLabels, properties, temporal, integrity)
 // are deep-copied so mutations to the copy never affect the original.
+// The copy is always mutable, even when n is frozen — DeepCopy is the thaw
+// operation for entities fetched from store caches.
 func (n *Node) DeepCopy() *Node {
 	if n == nil {
 		return nil

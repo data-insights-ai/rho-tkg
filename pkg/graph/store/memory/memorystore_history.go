@@ -73,7 +73,7 @@ func (ms *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
-	ms.nodes[nid] = updatedNode.DeepCopy()
+	ms.nodes[nid] = freezeNodeCopy(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
 	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, updatedNode, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, updatedNode, rawID)
@@ -143,7 +143,7 @@ func (ms *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
-	ms.nodes[nid] = updatedNode.DeepCopy()
+	ms.nodes[nid] = freezeNodeCopy(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
 	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, updatedNode, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, updatedNode, rawID)
@@ -711,7 +711,7 @@ func (ms *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
-	ms.nodes[nid] = current.DeepCopy()
+	ms.nodes[nid] = freezeNodeCopy(current)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, current, rawID)
 	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, current, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, current, rawID)
@@ -764,7 +764,7 @@ func (ms *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion 
 	inner[prevVersion] = prevState.DeepCopy()
 
 	// Replace current entity.
-	ms.rels[id] = current.DeepCopy()
+	ms.rels[id] = freezeRelCopy(current)
 	return nil
 }
 

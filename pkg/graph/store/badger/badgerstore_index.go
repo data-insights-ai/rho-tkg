@@ -690,7 +690,7 @@ func (bs *Store) SearchNearestNodes(labelToken uint16, propertyKey string, query
 		if hasTemporal && !storepkg.MatchesTemporalFilter(id, n.Temporal(), opts) {
 			continue
 		}
-		result = append(result, n.DeepCopy())
+		result = append(result, n)
 	}
 	if len(result) == 0 {
 		return nil, nil

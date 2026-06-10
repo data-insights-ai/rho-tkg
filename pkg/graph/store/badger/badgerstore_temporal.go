@@ -79,7 +79,7 @@ func (bs *Store) fetchNodesWithTemporalFilter(ids []types.NodeID, opts QueryOpts
 		if hasTemporal && !storepkg.MatchesTemporalFilter(id, n.Temporal(), opts) {
 			continue
 		}
-		nodes = append(nodes, n.DeepCopy())
+		nodes = append(nodes, n)
 	}
 	return nodes, nil
 }
@@ -107,7 +107,7 @@ func (bs *Store) fetchNodesWithTemporalFilterPage(ids []types.NodeID, opts Query
 		if hasTemporal && !storepkg.MatchesTemporalFilter(id, n.Temporal(), opts) {
 			continue
 		}
-		nodes = append(nodes, n.DeepCopy())
+		nodes = append(nodes, n)
 		if opts.Limit > 0 && len(nodes) >= opts.Limit {
 			break
 		}
@@ -173,7 +173,7 @@ func (bs *Store) fetchRelsWithTemporalFilter(ids []types.RelID, opts QueryOpts) 
 		if hasTemporal && !storepkg.MatchesTemporalFilter(id, r.Temporal(), opts) {
 			continue
 		}
-		rels = append(rels, r.DeepCopy())
+		rels = append(rels, r)
 	}
 	return rels, nil
 }
@@ -236,7 +236,7 @@ func (bs *Store) fetchRelsWithTemporalFilterPage(ids []types.RelID, opts QueryOp
 		if hasTemporal && !storepkg.MatchesTemporalFilter(id, r.Temporal(), opts) {
 			continue
 		}
-		rels = append(rels, r.DeepCopy())
+		rels = append(rels, r)
 		if opts.Limit > 0 && len(rels) >= opts.Limit {
 			break
 		}

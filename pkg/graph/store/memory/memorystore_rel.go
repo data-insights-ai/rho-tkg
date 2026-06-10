@@ -45,7 +45,7 @@ func (ms *Store) PutRelationship(r *types.Relationship) error {
 		return ErrRelExists
 	}
 
-	ms.rels[id] = r.DeepCopy()
+	ms.rels[id] = freezeRelCopy(r)
 
 	// Type index.
 	tv := r.TypeToken().Value()
@@ -123,7 +123,7 @@ func (ms *Store) PutRelationshipGeneratedIDWithEndpointHashes(r *types.Relations
 	ig.FromNodeHash = fromHash
 	ig.ToNodeHash = toHash
 
-	ms.rels[id] = r.DeepCopy()
+	ms.rels[id] = freezeRelCopy(r)
 
 	tv := r.TypeToken().Value()
 	if ms.typeIdx[tv] == nil {
@@ -192,7 +192,7 @@ func (ms *Store) ReplaceRelationship(r *types.Relationship) error {
 	if err := storecontract.ValidateRelationshipReplacement(old, r); err != nil {
 		return err
 	}
-	ms.rels[id] = r.DeepCopy()
+	ms.rels[id] = freezeRelCopy(r)
 	return nil
 }
 
@@ -329,7 +329,7 @@ func (ms *Store) OutgoingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 			continue
 		}
 		if relationshipMatchesOutgoing(r, nid, typeToken) {
-			result = append(result, r.DeepCopy())
+			result = append(result, r)
 		}
 	}
 	storepkg.SortRelsByID(result)
@@ -393,7 +393,7 @@ func (ms *Store) OutgoingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 				continue
 			}
 			if relationshipMatchesOutgoing(r, nid, typeToken) {
-				rels = append(rels, r.DeepCopy())
+				rels = append(rels, r)
 			}
 		}
 		if len(rels) > 0 {
@@ -516,7 +516,7 @@ func (ms *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 			continue
 		}
 		if relationshipMatchesIncoming(r, nid, typeToken) {
-			result = append(result, r.DeepCopy())
+			result = append(result, r)
 		}
 	}
 	storepkg.SortRelsByID(result)
@@ -579,7 +579,7 @@ func (ms *Store) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 				continue
 			}
 			if relationshipMatchesIncoming(r, nid, typeToken) {
-				rels = append(rels, r.DeepCopy())
+				rels = append(rels, r)
 			}
 		}
 		if len(rels) > 0 {
@@ -659,7 +659,7 @@ func (ms *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		startID := r.StartNodeID()
 		endID := r.EndNodeID()
 
-		ms.rels[id] = r.DeepCopy()
+		ms.rels[id] = freezeRelCopy(r)
 
 		tv := r.TypeToken().Value()
 		if ms.typeIdx[tv] == nil {

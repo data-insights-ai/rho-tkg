@@ -98,7 +98,7 @@ func (bs *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 	bs.getOrCreateLabelCounter(tok).Add(-1)
 
 	// Update cache and property/temporal/vector indexes for the new node state.
-	bs.nodeCache.Put(id, updatedNode.DeepCopy())
+	bs.nodeCache.Put(id, freezeNodeCopy(updatedNode))
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
 	bs.bumpNodeRevLocked(nid)
 	indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, updatedNode, id)
@@ -204,7 +204,7 @@ func (bs *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 	bs.getOrCreateLabelCounter(tok).Add(1)
 
 	// Update cache and property/temporal/vector indexes for the new node state.
-	bs.nodeCache.Put(id, updatedNode.DeepCopy())
+	bs.nodeCache.Put(id, freezeNodeCopy(updatedNode))
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
 	bs.bumpNodeRevLocked(nid)
 	indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, updatedNode, id)
@@ -301,7 +301,7 @@ func (bs *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
-	bs.nodeCache.Put(id, current.DeepCopy())
+	bs.nodeCache.Put(id, freezeNodeCopy(current))
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(current)
 	bs.bumpNodeRevLocked(nid)
 	indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, current, id)

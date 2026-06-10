@@ -6,6 +6,49 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.5.0] - 2026-06-10
+
+### Performance — frozen rows: zero-copy scan reads
+
+Store query/scan paths no longer deep-copy every returned row. Cache and
+canonical-map entries are now **frozen** (`types.Node.Freeze()` /
+`types.Relationship.Freeze()`) when published, and scan paths return the
+shared frozen pointer directly. Measured on a read-heavy graph workload
+(5k nodes / 25k rels, BadgerInMemory): label-scan aggregation
+−19% time / −35% allocations, 2-hop traversal −14%, var-length −10%.
+
+Contract changes:
+
+- **Frozen entities.** `Freeze()`/`IsFrozen()` added to `types.Node` and
+  `types.Relationship` (the flag occupies former struct padding — sizes are
+  unchanged, pinned by `TestFrozen_FlagFitsInPadding`). Error-returning
+  mutators (`SetProperty`, `DeleteProperty`, `SetProperties`,
+  `SetOwnedProperties`) return the new sentinels `types.ErrFrozenNode` /
+  `types.ErrFrozenRelationship` on frozen entities; void/bool mutators
+  (`SetVersion`, `SetTemporal`, `SetIntegrity`, `SetTypeTokenRaw`,
+  `Add/Remove/SetLabelTokensRaw`) panic — a silent no-op would corrupt
+  store caches invisibly. `DeepCopy()` always returns a mutable copy and is
+  the thaw operation.
+- **Scan reads return frozen rows.** All plural/scan reads (`*ByLabel*`,
+  `AllNodes`/`AllRelationships`, `GetNodesByIDs`/`GetRelationshipsByIDs`,
+  `Outgoing`/`Incoming` traversals, temporal and index scans) on memory,
+  badger, and tiered stores return shared frozen pointers. Rows for
+  duplicate requested IDs may alias the same pointer — harmless because
+  frozen. Callers that mutated scan results must `DeepCopy()` first.
+- **Point reads stay mutable.** `GetNode`/`GetRelationship` still return
+  independent deep copies — graph-core write flows mutate what they fetch.
+- Memory/badger/tiered publish sites freeze at `Put`/`LoadClean`; badger
+  decode paths freeze in place because the decoded object is shared between
+  the cache and the caller. Tiered relationship fan-out
+  (`collectRelationshipsFromStore`) freezes before installing into the
+  shared result map (previously aliased mutable rows across duplicate
+  slots — latent corruption hazard, now impossible).
+- Duplicate-ID contract tests now pin "aliasing is only legal when frozen"
+  instead of "rows never alias".
+
+Validated by the full test suite and race detector across all three store
+backends (memory, badger, tiered).
+
 ## [4.4.2] - 2026-06-09
 
 ### Documentation — pin down valid-time vs transaction-time semantics

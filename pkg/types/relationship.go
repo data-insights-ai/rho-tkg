@@ -35,7 +35,8 @@ type Relationship struct {
 	integrity  *RelIntegrity     // 8B, offset 56
 	version    uint32            // 4B, offset 64
 	relType    relTypeToken      // 2B, offset 68
-	// 2B trailing padding → 72B total
+	frozen     bool              // 1B, offset 70 — occupies former trailing padding
+	// 1B trailing padding → 72B total
 }
 
 // NewRelationship creates a Relationship with typed IDs for all parties.
@@ -95,7 +96,38 @@ func (r *Relationship) SetTypeTokenRaw(tok uint16) {
 	if r == nil {
 		return
 	}
+	if r.frozen {
+		panicFrozenRelationship("SetTypeTokenRaw")
+	}
 	r.relType = relTypeToken(tok)
+}
+
+// Freeze marks the relationship immutable. After freezing, error-returning
+// mutators return ErrFrozenRelationship and void mutators panic — mutating a
+// frozen relationship is a programming error, never a recoverable condition.
+// Stores freeze the entries they cache so query paths can return shared
+// pointers instead of per-row deep copies; callers that need to mutate a
+// fetched relationship must thaw it first via DeepCopy, which always returns
+// a mutable copy.
+func (r *Relationship) Freeze() {
+	if r == nil {
+		return
+	}
+	r.frozen = true
+}
+
+// IsFrozen reports whether the relationship has been frozen against mutation.
+func (r *Relationship) IsFrozen() bool {
+	if r == nil {
+		return false
+	}
+	return r.frozen
+}
+
+// panicFrozenRelationship is the shared failure for void mutators that have
+// no error channel. A silent no-op would corrupt store caches invisibly.
+func panicFrozenRelationship(method string) {
+	panic("types: " + method + " called on a frozen relationship — DeepCopy it first")
 }
 
 // StartNodeID returns the source node's opaque internal ID.
@@ -121,6 +153,9 @@ func (r *Relationship) SetProperties(ps PropertySlice) error {
 	if r == nil {
 		return ErrNilRelationship
 	}
+	if r.frozen {
+		return ErrFrozenRelationship
+	}
 	canonical, err := canonicalPropertySlice(ps)
 	if err != nil {
 		return err
@@ -139,6 +174,10 @@ func (r *Relationship) SetOwnedProperties(ps OwnedPropertySlice) error {
 	if r == nil {
 		return ErrNilRelationship
 	}
+	if r.frozen {
+		// Reject BEFORE consuming ps — the caller keeps ownership on error.
+		return ErrFrozenRelationship
+	}
 	if ps.ps == nil {
 		r.properties = nil
 		return nil
@@ -153,6 +192,9 @@ func (r *Relationship) SetOwnedProperties(ps OwnedPropertySlice) error {
 func (r *Relationship) SetProperty(key string, value any) error {
 	if r == nil {
 		return ErrNilRelationship
+	}
+	if r.frozen {
+		return ErrFrozenRelationship
 	}
 	return r.properties.Set(key, value)
 }
@@ -211,6 +253,9 @@ func (r *Relationship) Float32SlicePropertyCopy(key string) ([]float32, bool) {
 func (r *Relationship) DeleteProperty(key string) (bool, error) {
 	if r == nil {
 		return false, ErrNilRelationship
+	}
+	if r.frozen {
+		return false, ErrFrozenRelationship
 	}
 	return r.properties.Delete(key)
 }
@@ -271,6 +316,9 @@ func (r *Relationship) SetVersion(v uint32) {
 	if r == nil {
 		return
 	}
+	if r.frozen {
+		panicFrozenRelationship("SetVersion")
+	}
 	r.version = v
 }
 
@@ -289,6 +337,9 @@ func (r *Relationship) Temporal() *TemporalMetadata {
 func (r *Relationship) SetTemporal(tm *TemporalMetadata) {
 	if r == nil {
 		return
+	}
+	if r.frozen {
+		panicFrozenRelationship("SetTemporal")
 	}
 	r.temporal = tm
 }
@@ -309,12 +360,17 @@ func (r *Relationship) SetIntegrity(ig *RelIntegrity) {
 	if r == nil {
 		return
 	}
+	if r.frozen {
+		panicFrozenRelationship("SetIntegrity")
+	}
 	r.integrity = ig
 }
 
 // DeepCopy returns a fully independent clone of the relationship.
 // All nested reference types (properties, temporal, integrity) are deep-copied
 // so mutations to the copy never affect the original.
+// The copy is always mutable, even when r is frozen — DeepCopy is the thaw
+// operation for entities fetched from store caches.
 func (r *Relationship) DeepCopy() *Relationship {
 	if r == nil {
 		return nil

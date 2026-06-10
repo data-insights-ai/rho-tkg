@@ -31,7 +31,9 @@ Detailed documentation has been split into the `docs/` directory:
 - [Design Invariants](docs/design.md) — Protocol guarantees, referential integrity, defensive copying, and error sentinels.
 - [Specifications](docs/SPEC.md) — Formal specifications and algorithms.
 
-### What's new in v4 (v4.0.0 → v4.4.2)
+### What's new in v4 (v4.0.0 → v4.5.0)
+
+**v4.5.0 — performance: frozen rows, zero-copy scan reads.** Store query/scan paths no longer deep-copy every returned row. Cache and canonical-map entries are frozen (`types.Node.Freeze()` / `types.Relationship.Freeze()`) when published, and plural/scan reads (`*ByLabel*`, `All*`, `Get*ByIDs`, adjacency traversals, temporal/index scans) on all three store backends return the shared frozen pointer directly. Point reads (`GetNode`/`GetRelationship`) still return mutable deep copies. Frozen entities reject mutation — error-returning mutators return `types.ErrFrozenNode`/`types.ErrFrozenRelationship`, void/bool mutators panic, and `DeepCopy()` is the thaw operation. On a read-heavy workload (5k nodes / 25k rels, BadgerInMemory): label-scan aggregation −19% time / −35% allocations, 2-hop traversal −14%, var-length −10%. Callers that mutated scan results must `DeepCopy()` first.
 
 **v4.4.2 — documentation: valid-time vs transaction-time semantics pinned down.** The docs (CLAUDE.md, AGENTS.md, docs/architecture.md) now state the bitemporal contract explicitly: `tkg_tx_from` is a system claim ("recorded at T", stamped on every Add), `tkg_created_at` is system-derived (snowflake fallback), and `tkg_valid_from` is a world-time domain assertion — `0` means no claim was made. The shadow resolver returns the raw asserted value (`(Instant(0), ok=true)` when unset) while temporal queries use the effective valid-from with snowflake fallback — a deliberate asymmetry, not a missing fallback. No code or public-API changes.
 

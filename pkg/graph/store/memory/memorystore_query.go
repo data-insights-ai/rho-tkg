@@ -117,7 +117,7 @@ func (ms *Store) nodesByLabelFromIDs(token uint16, ids []types.NodeID, opts Quer
 			if hasTemporal && !storepkg.MatchesTemporalFilter(id.SnowflakeID(), n.Temporal(), opts) {
 				continue
 			}
-			result = append(result, n.DeepCopy())
+			result = append(result, n)
 			if opts.Limit > 0 && len(result) >= opts.Limit {
 				break
 			}
@@ -179,7 +179,7 @@ func (ms *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Rel
 			if hasTemporal && !storepkg.MatchesTemporalFilter(id.SnowflakeID(), r.Temporal(), opts) {
 				continue
 			}
-			result = append(result, r.DeepCopy())
+			result = append(result, r)
 			if opts.Limit > 0 && len(result) >= opts.Limit {
 				break
 			}
@@ -593,7 +593,7 @@ func (ms *Store) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 	result := make([]*types.Node, 0, len(ids))
 	for _, id := range ids {
 		if n, ok := ms.nodes[id]; ok {
-			result = append(result, n.DeepCopy())
+			result = append(result, n)
 		}
 	}
 	return result, nil
@@ -630,7 +630,7 @@ func (ms *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error)
 	result := make([]*types.Relationship, 0, len(ids))
 	for _, id := range ids {
 		if r, ok := ms.rels[id]; ok {
-			result = append(result, r.DeepCopy())
+			result = append(result, r)
 		}
 	}
 	return result, nil
@@ -663,7 +663,7 @@ func (ms *Store) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
 		if !ok {
 			return nil, fmt.Errorf("graph: get nodes by IDs %d: %w", id, ErrNodeNotFound)
 		}
-		result = append(result, n.DeepCopy())
+		result = append(result, n)
 	}
 	if len(result) == 0 {
 		return nil, nil
@@ -699,7 +699,7 @@ func (ms *Store) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relationship
 		if !ok {
 			return nil, fmt.Errorf("graph: get relationships by IDs %d: %w", id, ErrRelNotFound)
 		}
-		result = append(result, r.DeepCopy())
+		result = append(result, r)
 	}
 	if len(result) == 0 {
 		return nil, nil

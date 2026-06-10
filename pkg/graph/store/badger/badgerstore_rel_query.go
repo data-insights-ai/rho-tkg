@@ -64,7 +64,7 @@ func (bs *Store) fetchRelationshipsByTypeIDs(token uint16, ids []types.RelID, op
 		if hasTemporal && !storepkg.MatchesTemporalFilter(id, r.Temporal(), opts) {
 			continue
 		}
-		rels = append(rels, r.DeepCopy())
+		rels = append(rels, r)
 		if opts.Limit > 0 && len(rels) >= opts.Limit {
 			break
 		}
@@ -127,7 +127,7 @@ func (bs *Store) OutgoingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 			return nil, fmt.Errorf("graph: query relationship %d: %w", rid.SnowflakeID(), err)
 		}
 		if relationshipMatchesOutgoing(r, nid, typeToken) {
-			rels = append(rels, r.DeepCopy())
+			rels = append(rels, r)
 		}
 	}
 
@@ -211,7 +211,7 @@ func (bs *Store) OutgoingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 				return nil, fmt.Errorf("graph: query relationship %d: %w", rid.SnowflakeID(), err)
 			}
 			if relationshipMatchesOutgoing(r, nid, typeToken) {
-				rels = append(rels, r.DeepCopy())
+				rels = append(rels, r)
 			}
 		}
 		if len(rels) > 0 {
@@ -333,7 +333,7 @@ func (bs *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 			return nil, fmt.Errorf("graph: query relationship %d: %w", rid.SnowflakeID(), err)
 		}
 		if relationshipMatchesIncoming(r, nid, typeToken) {
-			rels = append(rels, r.DeepCopy())
+			rels = append(rels, r)
 		}
 	}
 
@@ -409,7 +409,7 @@ func (bs *Store) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 				return nil, fmt.Errorf("graph: query relationship %d: %w", rid.SnowflakeID(), err)
 			}
 			if relationshipMatchesIncoming(r, nid, typeToken) {
-				rels = append(rels, r.DeepCopy())
+				rels = append(rels, r)
 			}
 		}
 		if len(rels) > 0 {
@@ -529,7 +529,7 @@ func (bs *Store) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relationship
 		if err != nil {
 			return nil, fmt.Errorf("graph: get relationships by IDs %d: %w", id, err)
 		}
-		rels = append(rels, r.DeepCopy())
+		rels = append(rels, r)
 	}
 
 	if len(rels) == 0 {
@@ -555,7 +555,7 @@ func (bs *Store) getRelationshipsByIDsWithDuplicates(ids, unique []types.RelID) 
 		if r == nil {
 			return nil, fmt.Errorf("graph: get relationships by IDs %d: %w", id, ErrRelNotFound)
 		}
-		rels = append(rels, r.DeepCopy())
+		rels = append(rels, r)
 	}
 	if len(rels) == 0 {
 		return nil, nil

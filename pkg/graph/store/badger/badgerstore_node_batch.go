@@ -425,7 +425,7 @@ func (bs *Store) PutNodesBatch(nodes []*types.Node) error {
 	for i, n := range nodes {
 		nd := serialized[i]
 
-		bs.nodeCache.Put(nd.id, n.DeepCopy())
+		bs.nodeCache.Put(nd.id, freezeNodeCopy(n))
 		bs.nodeIDs[nd.nid] = struct{}{}
 		bs.nodeHashes[nd.nid] = badgerNodeIntegrityHash(n)
 		bs.bumpNodeRevLocked(nd.nid)

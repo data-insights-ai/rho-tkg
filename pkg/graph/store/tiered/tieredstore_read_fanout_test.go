@@ -271,8 +271,8 @@ func TestRelationshipReadsCloseTransientColdShard(t *testing.T) {
 	if len(rels) != 2 || rels[0].ID() != rel.ID() || rels[1].ID() != rel.ID() {
 		t.Fatalf("GetRelationshipsByIDs cold relationship = %v, want duplicate %d", tieredMergeRelIDs(rels), rel.ID())
 	}
-	if rels[0] == rels[1] {
-		t.Fatal("GetRelationshipsByIDs returned aliased pointers for duplicate cold relationship IDs")
+	if rels[0] == rels[1] && !rels[0].IsFrozen() {
+		t.Fatal("GetRelationshipsByIDs returned aliased mutable rows for duplicate cold relationship IDs")
 	}
 	assertColdShardClosedForTest(t, cold, "GetRelationshipsByIDs")
 }

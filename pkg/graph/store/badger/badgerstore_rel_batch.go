@@ -93,7 +93,7 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 	for i, r := range rels {
 		rd := serialized[i]
 
-		bs.relCache.Put(rd.id, r.DeepCopy())
+		bs.relCache.Put(rd.id, freezeRelCopy(r))
 		bs.relIDs[rd.rid] = struct{}{}
 
 		if bs.typeIdx[rd.relType] == nil {

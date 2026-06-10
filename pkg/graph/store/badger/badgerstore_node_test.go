@@ -1451,8 +1451,13 @@ func TestBadgerStoreGetNodesByIDsDuplicatesReturnIndependentCopies(t *testing.T)
 			copies = append(copies, n)
 		}
 	}
-	if len(copies) != 2 || copies[0] == copies[1] {
-		t.Fatal("GetNodesByIDs returned aliased pointers for duplicate node IDs")
+	if len(copies) != 2 {
+		t.Fatalf("duplicate node ID rows = %d, want 2", len(copies))
+	}
+	// Duplicate rows may alias one frozen cache entry; aliasing a MUTABLE
+	// row is the corruption hazard this test pins against.
+	if copies[0] == copies[1] && !copies[0].IsFrozen() {
+		t.Fatal("GetNodesByIDs returned aliased mutable rows for duplicate node IDs")
 	}
 }
 

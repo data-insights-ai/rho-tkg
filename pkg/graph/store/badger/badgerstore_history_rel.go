@@ -69,7 +69,7 @@ func (bs *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion 
 		return err
 	}
 
-	bs.relCache.Put(id, current.DeepCopy())
+	bs.relCache.Put(id, freezeRelCopy(current))
 
 	// Single appendOps call — atomic in the pending buffer.
 	histKey := storepkg.HistRelKey(id, uint64(prevVersion))
