@@ -259,10 +259,13 @@ func (c *Core) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName
 		}
 		for _, r := range existing {
 			if r.EndNodeID() == endID {
-				if !c.storeRowsTrust {
-					return r.DeepCopy(), false, nil
-				}
-				return r, false, nil
+				// Always hand back a mutable deep copy: since frozen rows
+				// (v4.5.0) the store's plural read returns shared FROZEN
+				// pointers, and returning one here would make the found
+				// branch behave differently from the created branch (whose
+				// result is fresh and mutable). One row — the copy is
+				// negligible next to the scan that found it.
+				return r.DeepCopy(), false, nil
 			}
 		}
 	}

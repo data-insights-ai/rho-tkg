@@ -10,6 +10,7 @@ import (
 	"os"
 	"reflect"
 
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
@@ -144,6 +145,12 @@ func importStageCapExceeded(staged, recordSize, cap int64) bool {
 func readImportStageRecord(r io.Reader, staged, cap int64) (tag byte, data []byte, recordSize int64, err error) {
 	var header [5]byte
 	if _, err := io.ReadFull(r, header[:]); err != nil {
+		if errors.Is(err, io.ErrUnexpectedEOF) {
+			// Partial header: the stream was cut mid-record — structural
+			// corruption, not a clean end-of-stream (io.EOF stays untouched
+			// as the caller's termination signal).
+			return 0, nil, 0, fmt.Errorf("%w: truncated record header: %v", ErrCorruptExport, err)
+		}
 		return 0, nil, 0, err
 	}
 	length := binary.BigEndian.Uint32(header[1:5])
@@ -156,9 +163,52 @@ func readImportStageRecord(r io.Reader, staged, cap int64) (tag byte, data []byt
 	}
 	data = make([]byte, length)
 	if _, err := io.ReadFull(r, data); err != nil {
-		return 0, nil, 0, fmt.Errorf("record body (tag=0x%02x, len=%d): %w", header[0], length, err)
+		// A record body shorter than its declared length is always
+		// structural corruption (truncated or lying stream) — classify it so
+		// consumers can errors.Is(err, ErrCorruptExport).
+		return 0, nil, 0, fmt.Errorf("%w: record body (tag=0x%02x, len=%d): %v", ErrCorruptExport, header[0], length, err)
 	}
 	return header[0], data, recordSize, nil
+}
+
+// verifyImportedNodeHash recomputes the content hash of an imported node row
+// and compares it with the hash the stream claims. Import reads untrusted
+// bytes (lesson 6): without this check a transport bit-flip in a property
+// value imports cleanly and produces a graph whose hash chain no longer
+// verifies. Rows without integrity state are exempt (hashes are unkeyed, so
+// this is corruption detection, not tamper-proofing).
+func (c *Core) verifyImportedNodeHash(n *types.Node, id int64, kind string) error {
+	ig := n.Integrity()
+	if ig == nil || ig.Hash == "" {
+		return nil
+	}
+	hash, err := integrity.ComputeNodeHashChecked(n, c.nodeLabelsUnlocked(n))
+	if err != nil {
+		return fmt.Errorf("import: %s %d: %w: recompute hash: %v", kind, id, ErrCorruptExport, err)
+	}
+	if hash != ig.Hash {
+		return fmt.Errorf("import: %s %d: %w: content does not match its integrity hash", kind, id, ErrCorruptExport)
+	}
+	return nil
+}
+
+// verifyImportedRelHash is the relationship counterpart of
+// verifyImportedNodeHash. FromNodeHash/ToNodeHash are not part of the
+// content hash and are not checked here; chain links are covered by
+// Verify*Chain.
+func (c *Core) verifyImportedRelHash(r *types.Relationship, id int64, kind string) error {
+	ig := r.Integrity()
+	if ig == nil || ig.Hash == "" {
+		return nil
+	}
+	hash, err := integrity.ComputeRelHashChecked(r, c.relTypeUnlocked(r))
+	if err != nil {
+		return fmt.Errorf("import: %s %d: %w: recompute hash: %v", kind, id, ErrCorruptExport, err)
+	}
+	if hash != ig.Hash {
+		return fmt.Errorf("import: %s %d: %w: content does not match its integrity hash", kind, id, ErrCorruptExport)
+	}
+	return nil
 }
 
 func (c *Core) importTargetEmptyLocked() (bool, error) {
@@ -394,6 +444,46 @@ func (c *Core) importReplayRecordsLocked(readRecord func() (byte, []byte, error)
 		return fmt.Errorf("%w: header relationship count %d but stream contained %d current relationship records",
 			ErrCorruptExport, header.RelCount, seenRecords.relRecords)
 	}
+
+	// Final trust-boundary pass: verify the full hash chain of every imported
+	// entity. The per-record content-hash checks cannot see LINK corruption
+	// (a transport flip inside a stored PrevHash string leaves every row's
+	// content hash valid while the chain no longer verifies) — and an import
+	// must never succeed while producing a graph that fails its own
+	// integrity verification. History-only entities (deleted on the source)
+	// are collected from the history records too.
+	verifyNodes := make(map[types.NodeID]struct{}, len(seenRecords.nodes))
+	for id := range seenRecords.nodes {
+		verifyNodes[id] = struct{}{}
+	}
+	for key := range seenRecords.nodeHist {
+		verifyNodes[key.id] = struct{}{}
+	}
+	for id := range verifyNodes {
+		valid, err := c.verifyNodeChainLocked(id)
+		if err != nil {
+			return fmt.Errorf("import: verify node chain %d: %w", id.SnowflakeID(), err)
+		}
+		if !valid {
+			return fmt.Errorf("import: node %d: %w: imported hash chain does not verify", id.SnowflakeID(), ErrCorruptExport)
+		}
+	}
+	verifyRels := make(map[types.RelID]struct{}, len(seenRecords.rels))
+	for id := range seenRecords.rels {
+		verifyRels[id] = struct{}{}
+	}
+	for key := range seenRecords.relHist {
+		verifyRels[key.id] = struct{}{}
+	}
+	for id := range verifyRels {
+		valid, err := c.verifyRelChainLocked(id)
+		if err != nil {
+			return fmt.Errorf("import: verify rel chain %d: %w", id.SnowflakeID(), err)
+		}
+		if !valid {
+			return fmt.Errorf("import: rel %d: %w: imported hash chain does not verify", id.SnowflakeID(), ErrCorruptExport)
+		}
+	}
 	return nil
 }
 
@@ -496,6 +586,9 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 		if err := c.validatePropertySliceLimits(n.Properties()); err != nil {
 			return fmt.Errorf("import: node %d: %w", wn.ID, err)
 		}
+		if err := c.verifyImportedNodeHash(n, wn.ID, "node"); err != nil {
+			return err
+		}
 		if err := seen.recordNode(n.ID()); err != nil {
 			return err
 		}
@@ -530,6 +623,9 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 		}
 		if err := c.validatePropertySliceLimits(n.Properties()); err != nil {
 			return fmt.Errorf("import: node history %d: %w", wn.ID, err)
+		}
+		if err := c.verifyImportedNodeHash(n, wn.ID, "node history"); err != nil {
+			return err
 		}
 		id := types.NodeID(wn.ID) //nolint:gosec — ID from our own serialization
 		if err := seen.recordNodeHist(id, n.Version()); err != nil {
@@ -574,6 +670,9 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 		if err := c.validatePropertySliceLimits(rel.Properties()); err != nil {
 			return fmt.Errorf("import: rel %d: %w", wr.ID, err)
 		}
+		if err := c.verifyImportedRelHash(rel, wr.ID, "rel"); err != nil {
+			return err
+		}
 		if err := seen.recordRel(rel.ID()); err != nil {
 			return err
 		}
@@ -608,6 +707,9 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 		}
 		if err := c.validatePropertySliceLimits(rel.Properties()); err != nil {
 			return fmt.Errorf("import: rel history %d: %w", wr.ID, err)
+		}
+		if err := c.verifyImportedRelHash(rel, wr.ID, "rel history"); err != nil {
+			return err
 		}
 		id := types.RelID(wr.ID) //nolint:gosec — ID from our own serialization
 		if err := seen.recordRelHist(id, rel.Version()); err != nil {

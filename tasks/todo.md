@@ -275,3 +275,107 @@ lessons.md: lesson 42 (deep-copy mutation doors).
   second decode path now.
 - **tier package returning `tiered.*` types**: changing is breaking; noted in
   docs as a v5 cleanup.
+
+
+# Round 2 — break-the-system analysis (2026-06-10, post-v4.6.0)
+
+Fresh adversarial round against the v4.5.0 frozen-rows + v4.6.0 tree.
+Two parallel audits (graph-core mutation-after-plural-read; pointer escape
+hatches on frozen entities) + a break-the-system test battery. Three real
+bugs found and fixed, all pinned by failing-first tests:
+
+1. **Frozen-row cache poisoning** (critical, silent): `Temporal()` /
+   `Integrity()` returned shared pointers with exported fields on frozen
+   scan rows that alias the canonical cache entry; writes through them
+   corrupted query results process-wide on all backends. Fix: copy-on-frozen
+   in both accessors (Signature cloned). Tests: frozen_poisoning_test.go.
+2. **Bitemporal supersession retraction** (lesson 43): the TX-visibility
+   predicate's `< TxTo` clause made every superseded version unable to
+   answer historical VT at later txAt — flagship 4.3.0 tiling scenario
+   returned ErrNoVersionValidAt. Fix: recorded-by-then predicate
+   (TxFrom <= txAt). Tests: bitemporal_supersession_test.go (node+rel),
+   TestNodeAtTxSeesPreMutationLabelState; predicate unit pins updated.
+3. **AddByIDIfAbsent found-branch frozen** (asymmetry): found branch now
+   DeepCopies like the created branch returns mutable.
+
+Also added (all adversarial, no happy-path): reader-vs-writer race stress
+over shared frozen rows (the detector for any future missed DeepCopy door),
+GetProperty reference-value independence pins ([]string/map/[]float32),
+frozen adjacency fail-fast pins (error + panic + thaw), bitemporal TX-axis
+label-door cross-check. Verified safe by audit (no test needed): delete
+cascades, temporal cascade (history reads return mutable rows), property
+CAS, CloseVersion, export/import, tx/batch rollback, tiered archive/repair.
+
+Docs: lesson 43; CLAUDE.md bitemporal bullet; architecture.md store-boundary
+frozen-guard + TX-visibility paragraphs; CHANGELOG [Unreleased].
+Gate: full suite 33/33 green; -race green on types/graph/core/memory/badger.
+
+
+# Round 3 — break-the-system analysis (2026-06-10, post-round-2)
+
+Targets chosen by the round-2 lesson (cross-door tests find real bugs):
+Snapshot/Diff vs resolver, the tx door, import/export under hostile
+streams, lifecycle storms. Two real gaps found and fixed:
+
+1. **Import truncation unclassifiable**: mid-record EOF surfaced raw,
+   matching no documented sentinel → now wraps ErrCorruptExport (clean
+   io.EOF at a boundary stays the end-of-stream signal).
+2. **Import laundered transport corruption** (lesson 44): bit-flipped
+   streams imported cleanly and the graph failed its own Verify*Chain.
+   Import now recomputes per-row content hashes AND runs the full chain
+   verification over every imported entity post-replay; mismatch →
+   ErrCorruptExport + rollback (zero partial state pinned at many
+   truncation/flip offsets).
+
+Held under attack (tests added, no bugs): tx rollback restores EXACT pre-tx
+state under a hostile mixed transaction (update+delete+create+new-label/type
++import-over-deleted-ID, fingerprint comparison incl. histories, registries,
+hash chains, temporal resolution); tx-door temporal contracts (VT tiling +
+lesson-43 bitemporal queries through committed txs); Snapshot/Diff agree
+exactly with the per-ID resolver incl. endpoint-validity filtering and
+DiffCallback ≡ Diff; export/import round-trip fidelity (VT/TX/provenance/
+history/hash chains/deleted-entity history); lifecycle storm (tx runners +
+writers + scanners vs mid-flight Close — bounded termination, fail-closed
+error family only, idempotent Close).
+
+Gate: full suite 33/33; -race green on graph/core/io.
+
+
+# Round 4 — break-the-system analysis (2026-06-10, post-round-3)
+
+Targets: the cross-doors and subsystems untouched by rounds 1-3 — indexed
+vs. unindexed query equivalence (lesson 11's 3-phase build, lesson 23's
+float-equality keys), constraint enforcement parity across all five creation
+doors, pagination, hostile event handlers, and the tiered store under
+rotation/archive/repair.
+
+**No bugs found this round — every subsystem held:**
+
+- Property index ≡ brute force (twin-graph design, identical op streams):
+  exact agreement on an adversarial value matrix (int 10 vs float 10 vs
+  string "10", NaN, ±0.0), through value mutations, deletes, and adds; and
+  after an index BUILT UNDER CONCURRENT WRITES (lesson 11's exact risk).
+- Temporal index ≡ brute force on the adversarial timeline (explicit
+  closed/open VT, snowflake fallback, label churn, deletion) for point,
+  interval, and Allen-meets boundary queries.
+- Pagination: paged union == unpaged exact set (plain + temporal opts, with
+  index active); hostile negative cursor → ErrInvalidQueryCursor.
+- ConstraintRelWithinEndpoints: all four violation clauses rejected through
+  all five doors (Add/AddByID/IfAbsent/tx/batch) with classifiable
+  sentinels, zero rel-type token leaks, legal window accepted everywhere.
+- Events: panicking handler breaks neither mutations nor sibling handlers;
+  re-entrant read+write handlers don't deadlock (nested events terminate);
+  rolled-back tx delivers ZERO events, committed tx exactly its buffered
+  count.
+- Tiered: ForceRotate + cross-shard rels (ref→event and event→event across
+  the rotation boundary) + post-rotation mutations of old-shard rows +
+  deletion with cross-shard history (B32) + hash chains across shards;
+  RunRepair reports ZERO fixes on the healthy graph (false-positive check)
+  while actually scanning cross-shard rels, twice; Archive/Restore round
+  trip preserves state/history/adjacency/chains, Archive(event) fails with
+  ErrNotReferenceEntity; primary-label class flips rejected through the
+  label doors with ErrPrimaryLabelClassMutation.
+
+Tests: index_cross_door_test.go, constraint_door_equivalence_test.go (core),
+events_hostile_test.go, tiered_adversarial_test.go.
+Gate: full suite 33/33; -race green on graph/core.

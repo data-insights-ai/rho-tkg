@@ -383,8 +383,12 @@ func TestVersionVisibleAtTx_Helper(t *testing.T) {
 		{"before TxFrom invisible", &types.TemporalMetadata{TxFrom: 10}, 5, false},
 		{"at TxFrom visible", &types.TemporalMetadata{TxFrom: 10}, 10, true},
 		{"between visible", &types.TemporalMetadata{TxFrom: 10, TxTo: 20}, 15, true},
-		{"at TxTo invisible (half-open)", &types.TemporalMetadata{TxFrom: 10, TxTo: 20}, 20, false},
-		{"after TxTo invisible", &types.TemporalMetadata{TxFrom: 10, TxTo: 20}, 25, false},
+		// Lesson 43: TxTo marks supersession-as-current-record, NOT
+		// retraction. A superseded version stays visible at later txAt so it
+		// can keep answering historical valid-time — the previous predicate
+		// excluded it and broke NodeAtTx(oldVT, now) after any update.
+		{"at TxTo still visible (superseded, not retracted)", &types.TemporalMetadata{TxFrom: 10, TxTo: 20}, 20, true},
+		{"after TxTo still visible (superseded, not retracted)", &types.TemporalMetadata{TxFrom: 10, TxTo: 20}, 25, true},
 		{"open-ended TxTo visible far future", &types.TemporalMetadata{TxFrom: 10, TxTo: 0}, 1000, true},
 	}
 	for _, tc := range tests {

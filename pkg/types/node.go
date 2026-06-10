@@ -390,9 +390,20 @@ func (n *Node) SetVersion(v uint32) {
 // held by store caches and version-history snapshots, so an external write
 // silently corrupts cached graph state and temporal-query results. Treat as
 // strictly read-only.
+//
+// FROZEN entities return an independent copy instead: frozen scan rows alias
+// the store's canonical cache entry, and the shared pointer was the one
+// escape hatch the frozen guard could not cover (TemporalMetadata fields are
+// exported, so writes through the pointer bypass every mutator check).
+// Copying on frozen rows makes such writes harmless. Unfrozen entities keep
+// the shared pointer — the graph layer mutates it on rows it owns.
 func (n *Node) Temporal() *TemporalMetadata {
 	if n == nil {
 		return nil
+	}
+	if n.frozen && n.temporal != nil {
+		cp := *n.temporal
+		return &cp
 	}
 	return n.temporal
 }
@@ -415,9 +426,15 @@ func (n *Node) SetTemporal(tm *TemporalMetadata) {
 // MUST NOT be mutated outside pkg/graph/internal/core: the same pointer is
 // held by store caches, and the hash chain is computed from this state — an
 // external write silently breaks Verify*Chain. Treat as strictly read-only.
+//
+// FROZEN entities return an independent deep copy (Signature bytes cloned)
+// instead — see Temporal() for the rationale.
 func (n *Node) Integrity() *NodeIntegrity {
 	if n == nil {
 		return nil
+	}
+	if n.frozen {
+		return n.integrity.DeepCopy()
 	}
 	return n.integrity
 }

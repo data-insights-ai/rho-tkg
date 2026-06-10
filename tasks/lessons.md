@@ -739,3 +739,58 @@ NodesByLabelAt, ByLabel+QueryOpts, and per-ID NodeAt on a dataset where the
 label held historically but not on the current version. Single-door tests
 cannot catch it because all doors share the broken resolver input.
 
+## 43. Superseded Is Not Retracted — TxTo Must Not Bound Valid-Time Answerability
+
+```
+BAD:  visibleAtTx := TxFrom <= txAt && (TxTo == 0 || txAt < TxTo)
+      // every update hides the prior version from ALL later txAt:
+      // NodeAtTx(oldVT, now) returns nothing after one tiled update
+GOOD: visibleAtTx := TxFrom <= txAt   // recorded-by-then
+      // the resolver's vEnd derivation over the filtered chain
+      // reconstructs the belief state as of txAt
+```
+
+TxTo marks when a version stopped being the CURRENT record. For bitemporal
+point queries that is supersession, not retraction: the row remains the
+authority for its valid-time slot in every later belief state. Bounding
+visibility by TxTo conflated the two (lesson 32's bug class, in the
+visibility rule itself) and silently broke the flagship 4.3.0 scenario —
+no test had ever asked the (historical VT, current txAt) question; the only
+pins were unit-level boundary checks on the predicate.
+
+Detector pattern: after an explicit-VT update (v0 VT=[1000,∞) → v1
+VT=[2000,∞)), assert NodeAtTx(1500, now) == v0 content, NodeAtTx(2500, now)
+== v1, NodeAtTx(2500, txBetween) == v0 (as believed then), and
+NodeAtTx(*, txBeforeFirstRecord) == nothing. Also the frozen-row poisoning
+pattern from the same round: every pointer an accessor returns from a frozen
+scan row must be independent (Temporal()/Integrity() copy-on-frozen) —
+flag-guarded methods do not guard pointer escapes.
+
+## 44. A Trust Boundary That Stores Hashes Must Verify Them On Entry
+
+```
+BAD:  import validates structure (tokens, temporal ranges, property shapes)
+      but stores the stream's rows verbatim — a transport bit flip in a
+      property value or a PrevHash string imports cleanly and the graph
+      fails its own Verify*Chain afterwards
+GOOD: recompute each imported row's content hash against the hash the
+      stream claims, AND run the existing chain verification over every
+      imported entity after replay (content checks cannot see LINK
+      corruption); any mismatch → ErrCorruptExport + rollback
+```
+
+Structural validation proves the bytes decode into a well-formed entity;
+it proves nothing about whether the entity is the one that was exported.
+When the format carries its own integrity state, "untrusted input" (lesson
+6) includes verifying that state — otherwise the trust boundary launders
+corruption into a store whose verification feature then reports it as if
+the GRAPH were corrupt. Classification matters too: every structural
+failure mode (including truncation mid-record) must wrap the documented
+sentinel, or consumers cannot distinguish corrupt input from I/O errors.
+
+Detector pattern: export a graph with history + integrity, then (a)
+truncate the stream at many offsets, (b) flip single bytes at spread
+positions. Every attempt must either fail with errors.Is(ErrCorruptExport)
+and leave ZERO partial state, or import a graph whose every entity passes
+Verify*Chain. There is no third outcome.
+

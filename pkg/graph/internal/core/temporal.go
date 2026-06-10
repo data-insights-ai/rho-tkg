@@ -147,10 +147,22 @@ func (c *Core) resolveNodeVersionAt(chain []*types.Node, t types.Instant) (*type
 	return nil, storepkg.ErrNoVersionValidAt
 }
 
-// versionVisibleAtTx reports whether a version's transaction interval
-// contains txAt. txAt == 0 means "no TX filter" (return true unconditionally —
-// preserves pre-bitemporal behaviour). A version without TemporalMetadata is
-// treated as visible to all TX times.
+// versionVisibleAtTx reports whether a version participates in valid-time
+// resolution as of transaction time txAt: the version must have been
+// RECORDED by then (TxFrom <= txAt). txAt == 0 means "no TX filter" (return
+// true unconditionally — preserves pre-bitemporal behaviour). A version
+// without TemporalMetadata is treated as visible to all TX times.
+//
+// Deliberately NOT bounded by TxTo (lesson 43). TxTo marks when the version
+// was SUPERSEDED as the current record — superseded is not retracted: the
+// row remains the authority for its valid-time slot in every later belief
+// state. Excluding rows with TxTo <= txAt (the previous predicate) made
+// every superseded version unable to answer historical valid-time at any
+// later txAt, which broke the flagship bitemporal scenario: after a tiled
+// explicit-VT update, NodeAtTx(oldVT, now) returned nothing. The resolver's
+// vEnd derivation over the TxFrom-filtered chain reconstructs the belief
+// state as of txAt: versions recorded later than txAt are absent, so the
+// then-latest version is open-ended exactly as it was believed to be then.
 func versionVisibleAtTx(tm *types.TemporalMetadata, txAt types.Instant) bool {
 	if txAt == 0 {
 		return true
@@ -159,9 +171,6 @@ func versionVisibleAtTx(tm *types.TemporalMetadata, txAt types.Instant) bool {
 		return true
 	}
 	if tm.TxFrom != 0 && tm.TxFrom > txAt {
-		return false
-	}
-	if tm.TxTo != 0 && tm.TxTo <= txAt {
 		return false
 	}
 	return true

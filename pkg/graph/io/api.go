@@ -40,7 +40,10 @@ var (
 	// ErrCorruptExport wraps every structural-validity failure on
 	// import (token 0 in primary label, token outside [1, 65535],
 	// malformed MsgPack, missing records, count mismatches, duplicate
-	// stream records, unknown record tags, etc.). Distinct from
+	// stream records, unknown record tags, truncated record headers or
+	// bodies, and rows whose content does not match their integrity hash
+	// or whose imported hash chain does not verify — import recomputes
+	// both, since the stream is untrusted input). Distinct from
 	// ErrIncompatibleExport: the format version matches but a record is
 	// malformed.
 	ErrCorruptExport = errors.New("graph: corrupt export record")

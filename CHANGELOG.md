@@ -6,6 +6,90 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.6.1] - 2026-06-10
+
+Break-the-system rounds 2–4 (post-v4.6.0 adversarial campaign): four real
+defects found and fixed in rounds 2–3, round 4 found none — the batteries
+from all rounds are now permanent regression detectors. Round-by-round
+record in `tasks/todo.md`; new lessons 43 and 44 in `tasks/lessons.md`.
+
+### Added — round-4 adversarial test batteries (no defects found)
+
+A fourth break-the-system round attacked the remaining cross-doors:
+indexed-vs-unindexed query equivalence on twin graphs (including the
+lesson-23 float-equality matrix and an index built under concurrent
+writes), pagination union-vs-unpaged exactness with hostile cursors,
+`ConstraintRelWithinEndpoints` parity across all five creation doors,
+hostile event handlers (panicking, re-entrant read+write, tx
+rollback/commit delivery), and the tiered store under forced rotation,
+cross-shard relationships, archive/restore round trips, class-flip
+rejection, and repair false-positive checks. Every subsystem held; the
+batteries are now permanent regression detectors
+(`index_cross_door_test.go`, `constraint_door_equivalence_test.go`,
+`events_hostile_test.go`, `tiered_adversarial_test.go`).
+
+### Fixed — import is now a real trust boundary (hostile streams fail closed, classified)
+
+Two gaps found by the round-3 hostile-stream battery
+(`io_adversarial_test.go`):
+
+- **Truncated streams were unclassifiable.** A stream cut mid-record
+  surfaced as a raw `unexpected EOF` matching neither `ErrCorruptExport`
+  nor `ErrIncompatibleExport`, although the io contract promises
+  `ErrCorruptExport` wraps every structural-validity failure. Truncated
+  record headers and bodies now classify as `ErrCorruptExport` (clean
+  `io.EOF` at a record boundary remains the end-of-stream signal).
+- **Transport corruption could import cleanly.** A single bit flip in a
+  property value (or in a stored `PrevHash` link) produced a graph that
+  imported successfully but failed its own `Verify*Chain`. Import now
+  (1) recomputes every imported row's content hash against the hash the
+  stream claims (node/rel, current/history) and (2) runs a full
+  hash-chain verification pass over every imported entity after replay —
+  link corruption included. Any mismatch fails the import with
+  `ErrCorruptExport` and the existing rollback restores the pre-import
+  state (zero partial rows, verified by truncation/bit-flip tests at many
+  offsets). See lesson 44.
+
+### Fixed — frozen scan rows can no longer poison the canonical cache
+
+The v4.5.0 frozen-row guard covered entity METHODS, but `Temporal()` and
+`Integrity()` returned the shared internal pointer — and on a frozen SCAN row
+that pointer aliases the store's canonical cache entry. `TemporalMetadata`
+and the integrity structs have exported fields (plus the `Signature` []byte
+backing), so one careless reader writing `row.Temporal().ValidTo = x` (or
+flipping signature bytes) silently corrupted query results for every
+subsequent reader, on all three backends — exactly the silent-corruption
+class the frozen design exists to prevent. On a FROZEN entity those
+accessors now return independent copies (Signature cloned); unfrozen
+entities keep the shared-pointer contract the graph layer relies on. Found
+by the new break-the-system battery (`frozen_poisoning_test.go`,
+`frozen_adversarial_test.go` — including a reader-vs-writer race stress that
+detects any internal in-place mutation of published rows).
+
+### Fixed — bitemporal point queries after supersession (lesson 43)
+
+`NodeAtTx(validAt, txAt)` (and `RelAtTx` / `NodesAtTx` / `RelsAtTx` /
+`QueryOpts.TxAt`) treated every supersession as a retraction: the visibility
+predicate `TxFrom <= txAt < TxTo` excluded superseded versions from all
+later txAt, so after ANY update the prior version could no longer answer
+historical valid-time — including the flagship 4.3.0 scenario (explicit-VT
+tiled update, then `NodeAtTx(oldVT, now)` → `ErrNoVersionValidAt`). No test
+had ever asked the (historical VT, current txAt) question. The predicate is
+now recorded-by-then (`TxFrom <= txAt`): TxTo marks when a version stopped
+being the CURRENT record; the row remains the authority for its valid-time
+slot in every later belief state. Belief reconstruction at a past txAt is
+unchanged (versions recorded later are still absent, so the then-latest
+version is open-ended exactly as believed then). Regression tests:
+`bitemporal_supersession_test.go` (node + rel),
+`TestNodeAtTxSeesPreMutationLabelState`.
+
+### Fixed — `AddByIDIfAbsent` found-branch returns a mutable result again
+
+Since v4.5.0 the found branch handed back the store's frozen shared row
+(while the created branch returned a fresh mutable relationship) — an
+incidental asymmetry from the frozen-rows migration. The found branch now
+deep-copies (one row; negligible next to the scan that found it).
+
 ## [4.6.0] - 2026-06-10
 
 Architecture-review remediation release: every issue from the 2026-06-10
