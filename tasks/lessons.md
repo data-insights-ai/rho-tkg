@@ -705,3 +705,37 @@ for human consistency). Run `go test -run TestDocsMetadataMatchesSourceOfTruth
 ./pkg/graph/internal/core/` before committing a release. "The CHANGELOG says I
 updated the docs" is not evidence the docs were updated — the test is.
 
+## 42. Lesson 33 Applies To EVERY Deep-Copy Mutation Door, Not Just Update
+
+```
+BAD:  fix "clear inherited ValidFrom/ValidTo after DeepCopy" in
+      updateNodeInternal only
+GOOD: grep every mutation that DeepCopies current and writes *WithHistory;
+      each one must clear the inherited world-time claim (unless its
+      semantics are "close the interval": delete tombstones, CloseVersion)
+```
+
+The 4.3.0 fix for inherited valid-time landed on the Update door. The same
+deep-copy-then-stamp pattern existed in `addNodeLabelInternal`,
+`removeNodeLabelInternal`, and both property-CAS sites — so a label or
+property mutation after an explicit-`tkg_valid_from` Add produced a new
+current version that silently claimed the previous version's interval, and
+every historical query (named, generic, per-ID — all three doors agreed,
+all three wrong) resolved to the post-mutation state.
+
+Audit recipe when fixing any version-boundary temporal bug:
+
+```bash
+rg -n 'WithHistory\(' pkg/graph/internal/core/*.go
+```
+
+Every hit that creates a NEW version from a deep copy of current owes the
+lesson-33 clear. Delete paths and CloseVersion set ValidTo deliberately —
+their semantics close the current interval rather than open a new state.
+
+The detector for this whole class is the cross-door equivalence test
+(`TestTemporalTwoDoorsAgreeOnLabelQueries`): exact-set agreement between
+NodesByLabelAt, ByLabel+QueryOpts, and per-ID NodeAt on a dataset where the
+label held historically but not on the current version. Single-door tests
+cannot catch it because all doors share the broken resolver input.
+

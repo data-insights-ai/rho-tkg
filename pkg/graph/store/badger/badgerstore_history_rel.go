@@ -79,10 +79,7 @@ func (bs *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion 
 	)
 	bs.idxMu.Unlock()
 
-	if bs.syncWrites {
-		return bs.flush()
-	}
-	return nil
+	return bs.flushIfNeeded()
 }
 
 func (bs *Store) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombstone *types.Relationship) error {
@@ -122,10 +119,7 @@ func (bs *Store) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombs
 	bs.appendOps(writeOp{opType: writeOpSet, key: histKey, value: tombData})
 	bs.idxMu.Unlock()
 
-	if bs.syncWrites {
-		return bs.flush()
-	}
-	return nil
+	return bs.flushIfNeeded()
 }
 
 func (bs *Store) marshalRelToBytes(r *types.Relationship) ([]byte, error) {
@@ -146,10 +140,7 @@ func (bs *Store) PutRelVersion(rid types.RelID, version uint32, r *types.Relatio
 	}
 	key := storepkg.HistRelKey(id, uint64(version))
 	bs.appendOps(writeOp{opType: writeOpSet, key: key, value: data})
-	if bs.syncWrites {
-		return bs.flush()
-	}
-	return nil
+	return bs.flushIfNeeded()
 }
 
 func (bs *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relationship, error) {

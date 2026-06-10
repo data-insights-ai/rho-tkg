@@ -237,10 +237,7 @@ func (bs *Store) PurgeOrphanRelationshipIndexes(rid types.RelID) error {
 	if err != nil {
 		return err
 	}
-	if bs.syncWrites {
-		return bs.flush()
-	}
-	return nil
+	return bs.flushIfNeeded()
 }
 
 func (bs *Store) purgeOrphanRelIDLocked(rid types.RelID) error {
@@ -454,10 +451,7 @@ func (bs *Store) PutNodesBatch(nodes []*types.Node) error {
 	bs.nodeCount.Add(int64(len(nodes)))
 	bs.idxMu.Unlock()
 
-	if bs.syncWrites {
-		return bs.flush()
-	}
-	return nil
+	return bs.flushIfNeeded()
 }
 
 // DeleteNodesBatch deletes multiple nodes atomically using two-phase validation.
@@ -566,10 +560,7 @@ func (bs *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 	bs.nodeCount.Add(-int64(len(typedIDs)))
 	bs.idxMu.Unlock()
 
-	if bs.syncWrites {
-		return bs.flush()
-	}
-	return nil
+	return bs.flushIfNeeded()
 }
 
 func uniqueNodeIDs(ids []types.NodeID) []types.NodeID {

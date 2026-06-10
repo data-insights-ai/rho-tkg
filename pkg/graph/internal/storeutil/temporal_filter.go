@@ -28,13 +28,13 @@ func EntityValidFrom(id snowflake.ID, tm *types.TemporalMetadata) types.Instant 
 // Interval:      from < end AND (to == 0 OR to > start)
 func MatchesTemporalFilter(id snowflake.ID, tm *types.TemporalMetadata, opts storepkg.QueryOpts) bool {
 	if opts.ValidAt != 0 {
-		return matchesPointInTime(id, tm, opts.ValidAt)
+		return MatchesPointInTime(id, tm, opts.ValidAt)
 	}
 	if opts.ValidStart > 0 && opts.ValidEnd > 0 {
 		if opts.ValidStart >= opts.ValidEnd {
 			return false
 		}
-		return matchesInterval(id, tm, opts.ValidStart, opts.ValidEnd)
+		return MatchesInterval(id, tm, opts.ValidStart, opts.ValidEnd)
 	}
 	return true // no filter
 }
@@ -44,8 +44,15 @@ func HasTemporalFilter(opts storepkg.QueryOpts) bool {
 	return opts.ValidAt != 0 || (opts.ValidStart > 0 && opts.ValidEnd > 0)
 }
 
-// matchesPointInTime checks: from <= t AND (to == 0 OR to > t).
-func matchesPointInTime(id snowflake.ID, tm *types.TemporalMetadata, t types.Instant) bool {
+// MatchesPointInTime checks: from <= t AND (to == 0 OR to > t), with from
+// derived via EntityValidFrom (explicit ValidFrom, else snowflake fallback).
+//
+// This function and MatchesInterval are the CANONICAL entity-level temporal
+// predicates. The store backends use them for query push-down and the core
+// graph layer delegates its nodeValidFrom/relValidFrom/validity helpers here
+// — the semantics must never be redefined elsewhere (lesson 17: a fix behind
+// one door must not miss the other).
+func MatchesPointInTime(id snowflake.ID, tm *types.TemporalMetadata, t types.Instant) bool {
 	from := EntityValidFrom(id, tm)
 	if from > t {
 		return false
@@ -56,8 +63,10 @@ func matchesPointInTime(id snowflake.ID, tm *types.TemporalMetadata, t types.Ins
 	return true
 }
 
-// matchesInterval checks: from < end AND (to == 0 OR to > start).
-func matchesInterval(id snowflake.ID, tm *types.TemporalMetadata, start, end types.Instant) bool {
+// MatchesInterval checks: from < end AND (to == 0 OR to > start), with from
+// derived via EntityValidFrom. See MatchesPointInTime for the canonical-
+// predicate contract.
+func MatchesInterval(id snowflake.ID, tm *types.TemporalMetadata, start, end types.Instant) bool {
 	from := EntityValidFrom(id, tm)
 	if from >= end {
 		return false

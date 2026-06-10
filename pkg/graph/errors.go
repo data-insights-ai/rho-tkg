@@ -1,3 +1,12 @@
+// This file is the CANONICAL consumer surface for sentinel errors: every
+// sentinel a public Graph operation can return is re-exported here, so
+// `errors.Is(err, graph.ErrX)` always works with a single import. Each
+// variable below is a pure alias of the one canonical declaration (store,
+// internal/core, io, index, or registry — see the import each block aliases
+// from); sub-packages that re-export the same sentinels alias those same
+// values. NEVER redeclare a sentinel with errors.New on a second surface —
+// the message would match while errors.Is silently stops working.
+// TestSentinelAliasesShareIdentity enforces this.
 package graph
 
 import (
@@ -13,6 +22,13 @@ import (
 // implement. Callers MUST check via errors.Is(err, ErrCapabilityNotSupported);
 // the wrapping message is diagnostic only.
 var ErrCapabilityNotSupported = storepkg.ErrCapabilityNotSupported
+
+// ErrWireFormatVersionUnsupported is the on-disk format sentinel — returned
+// when a store directory (or an individual persisted row) declares a wire
+// format version newer than this binary supports. The store fails closed at
+// open instead of misdecoding data written by a newer release. Aliases
+// store.ErrWireFormatVersionUnsupported.
+var ErrWireFormatVersionUnsupported = storepkg.ErrWireFormatVersionUnsupported
 
 // Store entity sentinels re-exported for public Graph API callers.
 // Graph methods return ErrNodeNotFound / ErrRelNotFound for missing current

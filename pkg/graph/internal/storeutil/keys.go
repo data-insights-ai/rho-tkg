@@ -177,6 +177,14 @@ var HighFrequencyIndexDefsKey = MetaKey("high_frequency_index_defs")
 // VectorIndexDefsKey is the Badger key for persisting vector index definitions.
 var VectorIndexDefsKey = MetaKey("vector_index_defs")
 
+// WireFormatVersionKey is the Badger key for the store-level on-disk format
+// marker: a single big-endian uint16 holding the highest wire format version
+// any row in this store may carry. Stamped at open when absent; a marker
+// greater than CurrentWireFormatVersion makes open fail closed with
+// store.ErrWireFormatVersionUnsupported. Absence means "pre-versioning
+// store" and is equivalent to version 1.
+var WireFormatVersionKey = MetaKey("wire_format_version")
+
 // --- Parser functions ---
 
 // ParseIDFromKey extracts the 8-byte big-endian snowflake.ID at the given offset.

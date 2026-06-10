@@ -412,11 +412,12 @@ All resolve to user-meaningful data. No internal implementation details exposed.
 ### 9.1 Msgpack Wire Formats
 
 ```go
-type nodeWire struct {
+type NodeWire struct {
+    FormatVersion uint8 `msgpack:"fv,omitempty"`  // per-row wire format version; absent = legacy = 1
     ID           int64 `msgpack:"id"`            // snowflake, fixed 8B
     PrimaryLabel int   `msgpack:"pl"`            // varint (1-3B)
     ExtraLabels  []int `msgpack:"el,omitempty"`  // omitted when nil
-    Properties   []propertyWire `msgpack:"p,omitempty"`
+    Properties   []PropertyWire `msgpack:"p,omitempty"`
     Version      int   `msgpack:"v"`
     // temporal fields (omitted when no temporal metadata):
     HasTemporal  bool    `msgpack:"ht,omitempty"`
@@ -430,29 +431,61 @@ type nodeWire struct {
     CreatedBy    string  `msgpack:"cb,omitempty"`
     UpdatedBy    string  `msgpack:"ub,omitempty"`
     BaseEntityID int64   `msgpack:"be,omitempty"`
-    // integrity fields (omitted when no integrity):
-    Hash         string  `msgpack:"h,omitempty"`
-    PrevHash     string  `msgpack:"ph,omitempty"`
+    // integrity + provenance fields (omitted when unset):
+    Hash               string `msgpack:"h,omitempty"`
+    PrevHash           string `msgpack:"ph,omitempty"`
+    AuthorID           string `msgpack:"aid,omitempty"`
+    Signature          []byte `msgpack:"sig,omitempty"`
+    AuthorizedBy       string `msgpack:"aby,omitempty"`
+    AuthorizationLevel uint8  `msgpack:"al,omitempty"`
 }
 
-type relWire struct {
+type RelWire struct {
+    FormatVersion uint8 `msgpack:"fv,omitempty"` // per-row wire format version; absent = legacy = 1
     ID      int64 `msgpack:"id"`    // snowflake, fixed 8B
     RelType int   `msgpack:"rt"`    // varint (1-3B)
     StartID int64 `msgpack:"s"`     // snowflake, fixed 8B
     EndID   int64 `msgpack:"e"`     // snowflake, fixed 8B
-    Properties []propertyWire `msgpack:"p,omitempty"`
+    Properties []PropertyWire `msgpack:"p,omitempty"`
     Version    int `msgpack:"v"`
-    // same temporal + integrity fields as nodeWire...
+    // same temporal + integrity/provenance fields as NodeWire, plus:
+    FromNodeHash string `msgpack:"fnh,omitempty"` // start-node hash at write time
+    ToNodeHash   string `msgpack:"tnh,omitempty"` // end-node hash at write time
 }
 
-type propertyWire struct {
-    Key           string `msgpack:"k"`
+type PropertyWire struct {
+    Key           string `msgpack:"k,omitempty"`  // empty when KeyToken carries the key
+    KeyToken      uint16 `msgpack:"kt,omitempty"` // property-key registry token; 0 = raw Key on the wire
     Value         any    `msgpack:"v"`
     Type          byte   `msgpack:"t"`
+    Nil           bool   `msgpack:"n,omitempty"`  // typed nil slice/map marker
     CustomType    string `msgpack:"ct,omitempty"`
     CustomPointer bool   `msgpack:"cp,omitempty"`
 }
 ```
+
+All three types have hand-written `EncodeMsgpack` implementations (hot-path
+optimization — no reflective omitempty checks). Any new field must be added
+to the custom encoder as well as the struct tag (lesson 39).
+
+### 9.1a Wire Format Versioning
+
+The row format is versioned at two levels (since 4.6.0):
+
+- **Per row**: `FormatVersion` (`fv`). Absent (all pre-4.6.0 rows) decodes as
+  0 and is treated as version 1 — the layouts are identical. A checked decode
+  of a row whose version exceeds `storeutil.CurrentWireFormatVersion` fails
+  closed with `store.ErrWireFormatVersionUnsupported`; rows are never
+  zero-fill-misdecoded.
+- **Per store**: the badger meta key `wire_format_version` (big-endian
+  uint16) is verified at open BEFORE any row decode — newer marker fails the
+  open with the same sentinel; absent marker (pre-versioning directory) is
+  stamped on read-write opens; lower marker is raised. A present-but-
+  unparsable marker is corruption and fails the open. Tiered shards inherit
+  the check per shard.
+
+Bump protocol: a `CurrentWireFormatVersion` bump must update the custom
+encoders, the decode path, and the marker logic together.
 
 Checked wire reconstruction and direct Store history writes reject finite
 temporal intervals where both `ValidFrom` and `ValidTo` are present but

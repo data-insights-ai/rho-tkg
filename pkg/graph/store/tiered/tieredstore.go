@@ -599,15 +599,16 @@ func (ts *Store) Close() error {
 
 // recordBackgroundError appends a background-task failure to the store's
 // sticky error set. Once recorded, every subsequent checkout/read/write path
-// returns the combined error via backgroundError() and the store is
-// effectively poisoned — there is no clear/reset path. This is intentional
-// "fail loud" behavior for catalog-save corruption, idle-shard close
-// failures, and rotation errors that compromise persistence integrity.
+// returns the combined error via backgroundError() and the store fails
+// closed. This is intentional "fail loud" behavior for catalog-save
+// corruption, idle-shard close failures, and rotation errors that compromise
+// persistence integrity.
 //
 // Operational note: a transient OS-level close error (e.g., an NFS hiccup
-// during idle-shard close) currently produces the same poison effect as a
-// catalog-save failure. If your deployment cannot tolerate this conflation,
-// run on local storage and avoid network filesystems for the data dir.
+// during idle-shard close) produces the same poison effect as a catalog-save
+// failure. Once the underlying condition is fixed, RecoverBackgroundError
+// re-probes the persistence path and clears the gate without a
+// close/re-open cycle.
 func (ts *Store) recordBackgroundError(err error) {
 	if err == nil {
 		return
@@ -617,13 +618,47 @@ func (ts *Store) recordBackgroundError(err error) {
 	ts.bgErrMu.Unlock()
 }
 
-// backgroundError returns the sticky background-error set. Once non-nil,
-// stays non-nil for the store's lifetime — there is no recovery from a
-// background error, callers must close the store and re-open.
+// backgroundError returns the sticky background-error set. Once non-nil it
+// stays non-nil until either the store is closed and re-opened, or an
+// operator runs RecoverBackgroundError after fixing the underlying condition.
 func (ts *Store) backgroundError() error {
 	ts.bgErrMu.Lock()
 	defer ts.bgErrMu.Unlock()
 	return ts.bgErr
+}
+
+// RecoverBackgroundError attempts to clear the sticky background error after
+// the operator has fixed the underlying condition (e.g. the filesystem came
+// back after the NFS hiccup that failed an idle-shard close). It re-probes
+// the persistence path by atomically saving the shard catalog — the same
+// write machinery whose failure modes the background error guards. On a
+// successful probe the recorded error is cleared and the store is usable
+// again WITHOUT a close/re-open cycle; on a failed probe the original error
+// is retained (with the probe failure joined in) and returned.
+//
+// Recovery clears the lifecycle gate only — it does not re-verify shard
+// data. After close failures on cold shards, run VerifyShard / RunRepair
+// before trusting the affected shards for critical reads.
+//
+// Returns nil when there was no background error to clear.
+func (ts *Store) RecoverBackgroundError() error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
+	ts.bgErrMu.Lock()
+	defer ts.bgErrMu.Unlock()
+	if ts.bgErr == nil {
+		return nil
+	}
+	if probeErr := ts.catalog.Save(); probeErr != nil {
+		ts.bgErr = errors.Join(ts.bgErr, fmt.Errorf("graph: background-error recovery probe (catalog save): %w", probeErr))
+		return ts.bgErr
+	}
+	cleared := ts.bgErr
+	ts.bgErr = nil
+	slog.Warn("tiered store background error cleared after successful recovery probe",
+		"cleared", cleared.Error())
+	return nil
 }
 
 func (ts *Store) checkOpen() error {

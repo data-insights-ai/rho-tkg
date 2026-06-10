@@ -89,10 +89,7 @@ func (bs *Store) PutRelationship(r *types.Relationship) error {
 	bs.getOrCreateTypeCounter(relType).Add(1)
 	bs.idxMu.Unlock()
 
-	if bs.syncWrites {
-		return bs.flush()
-	}
-	return nil
+	return bs.flushIfNeeded()
 }
 
 // GetRelationship retrieves a relationship by its snowflake ID.
@@ -201,10 +198,7 @@ func (bs *Store) ReplaceRelationship(r *types.Relationship) error {
 	bs.appendOps(writeOp{opType: writeOpSet, key: storepkg.RelKey(id), value: data})
 	bs.idxMu.Unlock()
 
-	if bs.syncWrites {
-		return bs.flush()
-	}
-	return nil
+	return bs.flushIfNeeded()
 }
 
 // DeleteRelationship removes a relationship and cleans up type + adjacency indexes.
@@ -239,10 +233,7 @@ func (bs *Store) DeleteRelationship(rid types.RelID) error {
 	if err != nil {
 		return err
 	}
-	if bs.syncWrites {
-		return bs.flush()
-	}
-	return nil
+	return bs.flushIfNeeded()
 }
 
 // RelDeleteInfo holds pre-read relationship metadata for two-phase cascade delete.

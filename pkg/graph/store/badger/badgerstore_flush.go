@@ -26,11 +26,42 @@ func (bs *Store) appendOps(ops ...writeOp) {
 	bs.wbMu.Unlock()
 }
 
-func (bs *Store) flushIfSyncWrites() error {
-	if !bs.syncWrites {
-		return nil
+// flushIfNeeded is the post-mutation flush hook called by every write path
+// AFTER idxMu is released (flush takes idxMu.RLock — calling it under
+// idxMu.Lock would self-deadlock).
+//
+//   - SyncWrites mode: every mutation flushes synchronously (unchanged).
+//   - Async mode: when the pending write buffer reaches MaxPendingWrites the
+//     WRITER flushes synchronously — backpressure instead of unbounded
+//     growth. Without this bound, a sustained burst faster than the flush
+//     interval grows the pending map and the dirty (never-evictable) cache
+//     entries without limit until OOM. The flush error surfaces to the
+//     writer (fail closed); the failed ops are requeued for the next cycle.
+func (bs *Store) flushIfNeeded() error {
+	if bs.syncWrites {
+		return bs.flush()
 	}
-	return bs.flush()
+	if bs.maxPending > 0 && bs.pendingLen() >= bs.maxPending {
+		return bs.flush()
+	}
+	return nil
+}
+
+// pendingLen returns the current size of the pending write buffer.
+func (bs *Store) pendingLen() int {
+	bs.wbMu.Lock()
+	n := len(bs.pending)
+	bs.wbMu.Unlock()
+	return n
+}
+
+// PendingWriteCount reports the number of queued-but-unflushed write
+// operations. Together with the cache Len/CleanCount accessors this is the
+// operator-visible write-pressure signal: a value pinned near
+// MaxPendingWrites means writers are outrunning the flush cycle and paying
+// synchronous-flush backpressure.
+func (bs *Store) PendingWriteCount() int {
+	return bs.pendingLen()
 }
 
 // flushLoop periodically drains the write buffer to Badger.

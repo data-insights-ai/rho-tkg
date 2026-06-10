@@ -770,7 +770,13 @@ func TestBadgerStore_DeleteNodeCascade_UsesPrefetchedRelInfoAfterLRUEviction(t *
 
 func waitForNodeCacheHits(t *testing.T, bs *Store, ids ...snowflake.ID) {
 	t.Helper()
-	deadline := time.Now().Add(200 * time.Millisecond)
+	// Generous deadline: this wait is the failure detector — if the batch
+	// delete wrongly prefetched under the idxMu write lock it would block
+	// forever against the test's RLock and never populate the cache, so a
+	// longer deadline still catches the regression. 200ms proved flaky
+	// under fully-parallel -race runs (instrumentation slows wall-clock
+	// scheduling 5-20x).
+	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		allHit := true
 		for _, id := range ids {
@@ -789,7 +795,13 @@ func waitForNodeCacheHits(t *testing.T, bs *Store, ids ...snowflake.ID) {
 
 func waitForRelCacheHits(t *testing.T, bs *Store, ids ...snowflake.ID) {
 	t.Helper()
-	deadline := time.Now().Add(200 * time.Millisecond)
+	// Generous deadline: this wait is the failure detector — if the batch
+	// delete wrongly prefetched under the idxMu write lock it would block
+	// forever against the test's RLock and never populate the cache, so a
+	// longer deadline still catches the regression. 200ms proved flaky
+	// under fully-parallel -race runs (instrumentation slows wall-clock
+	// scheduling 5-20x).
+	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		allHit := true
 		for _, id := range ids {

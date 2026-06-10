@@ -90,6 +90,9 @@ func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID) ([]types
 	}
 
 	const maxRetries = 10
+	// Captured from the final attempt so retry exhaustion can report WHAT
+	// kept changing, not just that it did (contention diagnosis).
+	var lastLockSet, lastObserved int
 	for range maxRetries {
 		// Phase A: read under node lock only. The closure pattern keeps
 		// the lock under defer so a panic from a custom Store does not
@@ -193,6 +196,8 @@ func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID) ([]types
 			allIDs2 := collectDeleteIDs(id.SnowflakeID(), outRels2, inRels2)
 			if !sameIDSet(allIDs, allIDs2) {
 				// Adjacency changed — retry after releasing locks.
+				lastLockSet = len(allIDs)
+				lastObserved = len(allIDs2)
 				retry = true
 				return
 			}
@@ -214,7 +219,8 @@ func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID) ([]types
 		}
 	}
 
-	return nil, fmt.Errorf("graph: delete node %d: adjacency changed after %d retries", id, maxRetries)
+	return nil, fmt.Errorf("graph: delete node %d: adjacency changed after %d retries (final attempt locked %d entities but observed %d under lock — concurrent relationship churn on this node; retry once writers settle)",
+		id, maxRetries, lastLockSet, lastObserved)
 }
 
 // collectDeleteIDs builds a deduplicated slice of all entity IDs involved in a

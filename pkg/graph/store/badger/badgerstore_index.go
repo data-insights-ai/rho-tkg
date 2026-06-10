@@ -104,7 +104,7 @@ func (bs *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) erro
 	liveIdx.Mutated = nil // stop tracking — index creation complete
 	bs.persistPropertyIndexDefs()
 	bs.idxMu.Unlock()
-	return bs.flushIfSyncWrites()
+	return bs.flushIfNeeded()
 }
 
 // DropPropertyIndex removes a property index.
@@ -131,7 +131,7 @@ func (bs *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error 
 	delete(bs.propertyIndexes, key)
 	bs.persistPropertyIndexDefs()
 	bs.idxMu.Unlock()
-	return bs.flushIfSyncWrites()
+	return bs.flushIfNeeded()
 }
 
 // propIdxDef is the serialization format for property index definitions.
@@ -247,7 +247,7 @@ func (bs *Store) CreateTemporalIndex(labelToken uint16) error {
 	liveTI.ClearMutationTracking()
 	bs.persistTemporalIndexDefs()
 	bs.idxMu.Unlock()
-	return bs.flushIfSyncWrites()
+	return bs.flushIfNeeded()
 }
 
 func deletePropertyIndexIfCurrent(idxs map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex, key indexpkg.PropertyIndexKey, expected *indexpkg.PropertyIndex) {
@@ -304,7 +304,7 @@ func (bs *Store) DropTemporalIndex(labelToken uint16) error {
 	delete(bs.temporalIndexes, labelToken)
 	bs.persistTemporalIndexDefs()
 	bs.idxMu.Unlock()
-	return bs.flushIfSyncWrites()
+	return bs.flushIfNeeded()
 }
 
 // CreateHighFrequencyIndex creates a time-bucketed high-frequency index on nodes
@@ -389,7 +389,7 @@ func (bs *Store) CreateHighFrequencyIndex(labelToken uint16, bucketSize time.Dur
 	liveHFI.ClearMutationTracking()
 	bs.persistHighFrequencyIndexDefs()
 	bs.idxMu.Unlock()
-	return bs.flushIfSyncWrites()
+	return bs.flushIfNeeded()
 }
 
 // DropHighFrequencyIndex removes the high-frequency index for the given label token.
@@ -411,7 +411,7 @@ func (bs *Store) DropHighFrequencyIndex(labelToken uint16) error {
 	delete(bs.hfIndexes, labelToken)
 	bs.persistHighFrequencyIndexDefs()
 	bs.idxMu.Unlock()
-	return bs.flushIfSyncWrites()
+	return bs.flushIfNeeded()
 }
 
 func deleteHighFrequencyIndexIfCurrent(idxs map[uint16]*indexpkg.HighFrequencyIndex, labelToken uint16, expected *indexpkg.HighFrequencyIndex) {
@@ -586,7 +586,7 @@ func (bs *Store) CreateVectorIndex(labelToken uint16, propertyKey string, dims i
 	vi.ClearMutationTracking()
 	bs.persistVectorIndexDefs()
 	bs.idxMu.Unlock()
-	return bs.flushIfSyncWrites()
+	return bs.flushIfNeeded()
 }
 
 // DropVectorIndex removes a vector index.
@@ -612,7 +612,7 @@ func (bs *Store) DropVectorIndex(labelToken uint16, propertyKey string) error {
 	delete(bs.vectorIndexes, key)
 	bs.persistVectorIndexDefs()
 	bs.idxMu.Unlock()
-	return bs.flushIfSyncWrites()
+	return bs.flushIfNeeded()
 }
 
 // SearchNearestNodes returns the k nodes with vectors closest to query

@@ -3,6 +3,7 @@ package tiered
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -160,6 +161,18 @@ func (ts *Store) runRepairStores(stores []namedStore) (*RepairResult, error) {
 			}
 			result.MissingInEntries++
 		}
+	}
+
+	// Repaired inconsistencies are evidence of an earlier crash window or a
+	// partially-failed cross-shard write — surface them so operators learn a
+	// repair happened without inspecting the result programmatically.
+	if result.OrphanedInEntries > 0 || result.StaleInEntries > 0 || result.MissingInEntries > 0 {
+		slog.Warn("tiered store repair fixed cross-shard inconsistencies",
+			"orphaned_in_entries", result.OrphanedInEntries,
+			"stale_in_entries", result.StaleInEntries,
+			"missing_in_entries", result.MissingInEntries,
+			"shards_scanned", result.ShardsScanned,
+			"cross_shard_rels_checked", result.CrossShardRelsChecked)
 	}
 
 	return result, nil

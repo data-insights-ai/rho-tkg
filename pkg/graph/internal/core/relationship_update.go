@@ -231,6 +231,9 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 // unbounded loop here lets a hostile concurrent workload deadlock the caller.
 func (c *Core) lockRelationshipCurrentEndpoints(ctx context.Context, id types.RelID) (*types.Relationship, types.NodeID, types.NodeID, error) {
 	const maxRetries = 10
+	// Captured from the final attempt so retry exhaustion can report WHAT
+	// kept changing, not just that it did (contention diagnosis).
+	var lastPeekStart, lastPeekEnd, lastLockedStart, lastLockedEnd types.NodeID
 	for range maxRetries {
 		if err := checkCtx(ctx); err != nil {
 			return nil, 0, 0, err
@@ -257,12 +260,15 @@ func (c *Core) lockRelationshipCurrentEndpoints(ctx context.Context, id types.Re
 			return nil, 0, 0, err
 		}
 		if lockedCurrent.StartNodeID() != startID || lockedCurrent.EndNodeID() != endID {
+			lastPeekStart, lastPeekEnd = startID, endID
+			lastLockedStart, lastLockedEnd = lockedCurrent.StartNodeID(), lockedCurrent.EndNodeID()
 			c.entityLocks.UnlockThree(id.SnowflakeID(), startID.SnowflakeID(), endID.SnowflakeID())
 			continue
 		}
 		return lockedCurrent, startID, endID, nil
 	}
-	return nil, 0, 0, fmt.Errorf("graph: relationship %d: endpoints changed after %d retries", id, maxRetries)
+	return nil, 0, 0, fmt.Errorf("graph: relationship %d: endpoints changed after %d retries (final attempt peeked %d->%d but locked row had %d->%d — concurrent delete/import churn on this rel ID; retry once writers settle)",
+		id, maxRetries, lastPeekStart, lastPeekEnd, lastLockedStart, lastLockedEnd)
 }
 
 func (c *Core) refreshRelationshipEndpointHashes(rel *types.Relationship, relIG *types.RelIntegrity) error {

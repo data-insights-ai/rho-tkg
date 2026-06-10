@@ -6,6 +6,164 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.6.0] - 2026-06-10
+
+Architecture-review remediation release: every issue from the 2026-06-10
+full architecture review fixed (see `tasks/todo.md` for the phase-by-phase
+record and `docs/architecture.md` "Deferred Architectural Decisions" for the
+consciously deferred items).
+
+Also hardened two flaky test deadlines: the v3.0.56 cache-miss-prefetch
+regression tests used a 200ms wall-clock wait that intermittently timed out
+under fully-parallel `-race` runs; the wait (which is itself the failure
+detector — a wrongly-ordered prefetch blocks forever) now allows 5s.
+
+### Added — on-disk wire format versioning (fail closed on newer data)
+
+The persisted row format was previously unversioned: a future schema change
+would have decoded old rows silently with zero-filled fields, and data written
+by a newer release would have been misread instead of rejected. Two layers of
+protection, both backward compatible with every existing store directory:
+
+- **Per-row version.** `NodeWire`/`RelWire` now carry `FormatVersion`
+  (`msgpack:"fv"`, emitted by the hand-written encoders too — lesson 39).
+  Rows written before versioning decode with `FormatVersion == 0` and are
+  treated as version 1 (identical layout). Checked decodes of a row with a
+  version newer than the binary supports fail closed with the new sentinel
+  `store.ErrWireFormatVersionUnsupported` (re-exported as
+  `graph.ErrWireFormatVersionUnsupported`).
+- **Store-level marker.** The badger backend writes a `wire_format_version`
+  meta key at open (absent on pre-versioning directories ⇒ stamped; lower ⇒
+  raised on read-write open; read-only opens never write). A marker written
+  by a newer release makes `New()` fail closed with the same sentinel before
+  a single row is decoded. A marker that exists but cannot be parsed is
+  treated as corruption and also fails the open. Tiered shards inherit the
+  check per shard.
+- **Load-time fail-closed.** `loadIndexes` tolerates corrupt rows (skip +
+  warn, as before) but now distinguishes a future per-row format version:
+  that is not damage but newer data, and the open fails closed instead of
+  silently dropping the row and healing the entity counter down (which would
+  have been data loss masquerading as a clean open).
+
+Bump protocol documented on `storeutil.CurrentWireFormatVersion`: a version
+bump must update the custom encoders, the decode path, and the marker logic
+together.
+
+### Fixed — label/property mutations no longer inherit the previous version's valid time
+
+Lesson 33 ("Update must not inherit valid-time from the previous version")
+was fixed on the `Update` door in 4.3.0 but the same deep-copy-then-stamp
+pattern lived on in four other mutation doors: `AddLabel`, `RemoveLabel`, and
+the node/rel property mutations (`SetProperty` / `DeleteProperty` /
+`CompareAndSetProperty`). The new current version kept the previous version's
+explicit `tkg_valid_from`, so it covered the previous version's world-time
+interval and historical queries resolved to the POST-mutation state:
+
+```
+n := Add(labels=[Thing], tkg_valid_from=1000)
+RemoveLabel(n, "Thing")
+NodesByLabelAt("Thing", 1200)   // before: n missing — the label-less current
+                                // version claimed [1000, ∞) and shadowed the
+                                // genesis version. after: n returned.
+```
+
+All four sites now clear `ValidFrom`/`ValidTo` on the new version (these
+mutations accept no caller-supplied valid time), matching the Update path.
+Tx and batch doors route through the same internals and are fixed with it.
+Found by the new cross-door equivalence test
+(`TestTemporalTwoDoorsAgreeOnLabelQueries`), which asserts the named door
+(`NodesByLabelAt`), the generic door (`ByLabel` + temporal `QueryOpts`), and
+the per-ID resolver (`NodeAt`) return the exact same set on an adversarial
+dataset, on memory AND badger. Regression tests per door in
+`inherited_validtime_regression_test.go`. See lesson 42.
+
+### Changed — temporal predicates have a single canonical definition
+
+The effective-valid-from derivation and the point/interval predicates were
+defined twice: once in the core graph layer (`nodeValidFrom`, `isNodeValidAt`)
+and once in `storeutil` (`EntityValidFrom`, `MatchesTemporalFilter`) for the
+store-level push-down — a semantic-drift hazard across the layer boundary.
+The core helpers now delegate to the storeutil predicates, which are exported
+as the canonical definitions (`MatchesPointInTime`, `MatchesInterval`) with
+boundary-exact direct tests. No behavior change: the Core ID generators and
+the shared snowflake layout were verified identical (same epoch, microsecond
+precision, 5/10 bit split).
+
+### Added — bounded async write buffer (badger backend)
+
+The badger backend's async write pipeline had no ceiling: dirty cache entries
+are never evicted (correct for the flush design) and the pending-op map grew
+without limit, so a sustained write burst faster than the 100ms flush
+interval grew memory until OOM. New `Config.MaxPendingWrites` (default
+`DefaultMaxPendingWrites` = 100,000 ops; negative disables; ignored under
+`SyncWrites`): when the pending buffer reaches the bound, the writing call
+flushes synchronously — backpressure instead of unbounded growth — and a
+failing backpressure flush surfaces its error to the writer (ops are requeued
+for retry, nothing is dropped). `Store.PendingWriteCount()` exposes the
+pressure signal. Tiered shards inherit the default per shard. The 20 inline
+`if bs.syncWrites { flush }` sites and `flushIfSyncWrites` were unified into
+one `flushIfNeeded` hook so the bound covers every write path.
+
+### Added — sentinel anti-drift guard; hardened doc contracts
+
+- `pkg/graph/errors.go` is now documented as the canonical consumer surface
+  for sentinel errors, and a new identity test
+  (`TestSentinelAliasesShareIdentity` + behavioral counterpart) asserts that
+  every exported sentinel surface (graph, store, io, index, tiered aliases)
+  shares the SAME error value as its canonical declaration — replacing an
+  alias with a fresh `errors.New` (same message, broken `errors.Is`) now
+  fails the build instead of silently breaking consumers. Audit confirmed no
+  existing duplicates: store/core/io/index each own their sentinels and
+  every other surface aliases them.
+- Doc contracts hardened where misuse silently corrupts state:
+  `Node/Relationship.Temporal()`/`Integrity()` now state MUST-NOT-mutate
+  outside the graph layer (shared pointers feed store caches and the hash
+  chain); `AppendPropertyHashBytes` documents its panic-recovery contract;
+  `Index().CreateVector` documents that entries (not definitions) are
+  rebuilt on restart; the `Store` interface documents the sharded-backend
+  primary-label class-immutability invariant (B33).
+
+### Changed — `types` sentinel messages carry the right package prefix
+
+`types.ErrNilNode` / `types.ErrNilRelationship` messages were prefixed
+`graph:` although they are declared (and can be returned) by `pkg/types`.
+Now `types:`. Sentinel identities are unchanged — `errors.Is` checks are
+unaffected; only the message text differs.
+
+### Added — tiered store background-error recovery + repair/contention observability
+
+- `tiered.Store.RecoverBackgroundError()`: the sticky background error
+  (recorded on idle/transient cold-shard close failures) previously poisoned
+  the store for the process lifetime — a transient NFS hiccup required a full
+  close/re-open. Recovery re-probes the persistence path with an atomic
+  catalog save: on success the gate clears in place; on failure the original
+  cause is retained (probe failure joined in) and returned. Fail-closed
+  defaults are unchanged — recovery is explicit and operator-driven, and it
+  clears the lifecycle gate only (run `VerifyShard`/`RunRepair` for data
+  confidence).
+- `RunRepair` now logs a warning with exact counts when it fixed cross-shard
+  inconsistencies — repaired residue from a crash window is operator-visible
+  instead of silent.
+- The bounded TOCTOU retry loops (node delete, relationship endpoint lock)
+  now report what kept changing on the final attempt when they exhaust their
+  10 retries, instead of a bare "changed after 10 retries".
+
+### Changed — relationship creation has a single shared kernel
+
+Relationship creation was implemented four times: `Add`, `AddByID`,
+`AddByIDIfAbsent`, and inline in `BatchBuilder.Execute` — each carrying its
+own copy of the endpoint-hash/constraint ladder, rel-type token allocation
+with registry rollback, persistence, and partial-failure handling. The MR
+protocol's "standalone fixes must also land in batch paths" rule existed to
+compensate for this by process. All four doors now share
+`relationship_create_kernel.go` (`prepareRelCreate`, `relEndpointHashLadder`,
+`createRelWithTypeRollback`), so an invariant added to creation semantics
+lands behind every door by construction. No behavior change; the new
+door-equivalence suite (`batch_door_equivalence_test.go`) pins self-loop
+policy, missing-endpoint rollback (including rel-type token rollback),
+valid-time stamping/resolution, integrity/endpoint-hash capture, and
+reserved-prefix rejection to identical outcomes across doors.
+
 ## [4.5.0] - 2026-06-10
 
 ### Performance — frozen rows: zero-copy scan reads

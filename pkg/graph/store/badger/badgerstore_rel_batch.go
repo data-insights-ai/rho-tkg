@@ -122,10 +122,7 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 	bs.relCount.Add(int64(len(rels)))
 	bs.idxMu.Unlock()
 
-	if bs.syncWrites {
-		return bs.flush()
-	}
-	return nil
+	return bs.flushIfNeeded()
 }
 
 // DeleteRelationshipsBatch deletes multiple relationships atomically using two-phase validation.
@@ -205,10 +202,7 @@ func (bs *Store) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
 
 	bs.idxMu.Unlock()
 
-	if bs.syncWrites {
-		return bs.flush()
-	}
-	return nil
+	return bs.flushIfNeeded()
 }
 
 func uniqueRelIDs(ids []types.RelID) []types.RelID {

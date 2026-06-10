@@ -6,6 +6,9 @@ import "github.com/vmihailenco/msgpack/v5"
 // wire.go, but avoids reflective omitempty checks on hot write paths.
 func (w NodeWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 	fields := 3 // id, pl, v
+	if w.FormatVersion != 0 {
+		fields++
+	}
 	if len(w.ExtraLabels) > 0 {
 		fields++
 	}
@@ -66,6 +69,11 @@ func (w NodeWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 
 	if err := enc.EncodeMapLen(fields); err != nil {
 		return err
+	}
+	if w.FormatVersion != 0 {
+		if err := encodeStringUint8Field(enc, "fv", w.FormatVersion); err != nil {
+			return err
+		}
 	}
 	if err := encodeStringInt64Field(enc, "id", w.ID); err != nil {
 		return err
@@ -176,6 +184,9 @@ func (w NodeWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 // wire.go, but avoids reflective omitempty checks on hot write paths.
 func (w RelWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 	fields := 5 // id, rt, s, e, v
+	if w.FormatVersion != 0 {
+		fields++
+	}
 	if len(w.Properties) > 0 {
 		fields++
 	}
@@ -239,6 +250,11 @@ func (w RelWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 
 	if err := enc.EncodeMapLen(fields); err != nil {
 		return err
+	}
+	if w.FormatVersion != 0 {
+		if err := encodeStringUint8Field(enc, "fv", w.FormatVersion); err != nil {
+			return err
+		}
 	}
 	if err := encodeStringInt64Field(enc, "id", w.ID); err != nil {
 		return err

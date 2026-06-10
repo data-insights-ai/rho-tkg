@@ -1,4 +1,4 @@
-# Architecture — tkg/v4 (v4.5.0)
+# Architecture — tkg/v4 (v4.6.0)
 
 Temporal Knowledge Graph v4 is a pure Go library providing the core graph engine for temporal knowledge graphs. It is the low-level storage and type layer — no main binary, no HTTP server, no query language.
 
@@ -193,6 +193,14 @@ for in-flight `Initializable.Init` callbacks before invoking provider `Close`.
 
 Two doors expose two deliberate views of valid-time. The shadow resolver (`g.Resolve().NodeProperty(n, "tkg_valid_from")`) returns the RAW asserted value — `(Instant(0), ok=true)` when never asserted (`ok` is true because `TemporalMetadata` always exists; check the zero value, not `ok`). Temporal queries use the EFFECTIVE valid-from (explicit `ValidFrom`, else snowflake ID timestamp), so an entity with unset `ValidFrom` is "eternal" through the shadow door but time-bounded through the query door. Shadow props report *stored/asserted* state; temporal queries report *effective* state. Writers must never default `tkg_valid_from := now()` without domain knowledge — that conflates TX with VT; consumers wanting "unstamped ⇒ valid since recorded" should implement it as an explicit, flagged heuristic on their side.
 
+**Canonical temporal predicates.** The effective-valid-from derivation and the point/interval predicates are defined ONCE, in `storeutil` (`EntityValidFrom`, `MatchesPointInTime`, `MatchesInterval`); the core graph layer delegates its `nodeValidFrom`/`relValidFrom`/validity helpers there and the store backends use the same functions for query push-down. Never redefine these semantics elsewhere — the cross-door equivalence test (`TestTemporalTwoDoorsAgreeOnLabelQueries`) asserts the named door, the generic `QueryOpts` door, and the per-ID resolver return identical sets.
+
+**Valid-time inheritance is cleared on every version boundary.** Every mutation that creates a new version by deep-copying the current one (Update, AddLabel/RemoveLabel, property mutations) clears the inherited `ValidFrom`/`ValidTo` before stamping, so `ValidFrom != 0` on a non-genesis version always means "caller-supplied" (lessons 33 and 42). Delete tombstones and `CloseVersion` set `ValidTo` deliberately — closing semantics, not inheritance.
+
+**Cascade interval edits (`SetNodeVersionInterval`) are not wire-atomic — by design.** The cascade classifies overlapping history rows (keep/close/open/eclipse/split) and rewrites them sequentially under the entity lock. A crash mid-cascade leaves a partially rewritten timeline, which is tolerated because (a) each row write is itself atomic, (b) eclipsed rows (`ValidTo == ValidFrom+1`) are unconditionally invisible to the resolver, and (c) the new current row is installed last, atomically. There is no in-progress marker; do not "fix" the missing atomicity without accounting for these three invariants.
+
+**Bitemporal back-compat shims and their sunset.** Two shims remain for pre-4.3.0 data: the inherited-valid-from detector (`nodeInheritedValidFrom`, bypassed once the post-open migration has run — `bitemporalMigrated`) and the `UpdatedAt`-as-`vEnd` fallback for rows without explicit valid-time. Retirement condition: the detector can be deleted once every supported backend requires `MetaKVCapability` (so the migration always runs) — revisit at the next major version. The `UpdatedAt` fallback is permanent API surface: it is what gives unstamped entities TX-as-VT semantics.
+
 Point-in-time: `GetNodesValidAt(t)`, `GetRelationshipsValidAt(t)`, `GetNodesByLabelValidAt(label, t)`
 Interval: `GetNodesValidDuring(start, end)`, `GetRelationshipsValidDuring(start, end)`
 Version-specific: `GetNodeAt(id, t)`, `GetRelAt(id, t)`
@@ -360,10 +368,43 @@ The implementation is split across themed files (none over 1500 LOC):
 - `badgerstore_history.go` — version history methods, including the cursor-paginated `AllNodeHistoryIDsFrom` / `AllRelHistoryIDsFrom`.
 - `badgerstore_temporal.go` — temporal-filter helpers (`filter*ByTemporalPeek`, `fetch*WithTemporalFilter`).
 - `badgerstore_meta.go` — counts, registry persistence, cache hit/miss accessors.
-- `badgerstore_flush.go` — async write batch + flush loop + dirty tracking.
+- `badgerstore_flush.go` — async write batch + flush loop + dirty tracking + write-pressure backpressure.
+- `badgerstore_format.go` — on-disk wire-format version marker (verify/stamp at open).
 
 
 Persistent Store using Badger v4 with async batch persistence.
+
+### On-Disk Format Versioning
+
+Two layers, both backward compatible with pre-versioning directories:
+
+- **Per-row version**: `NodeWire`/`RelWire` carry `FormatVersion` (`fv`).
+  Absent (legacy rows) decodes as 0 and is treated as version 1. A checked
+  decode of a row with a version newer than
+  `storeutil.CurrentWireFormatVersion` fails closed with
+  `store.ErrWireFormatVersionUnsupported` — never zero-filled misdecoding.
+- **Store-level marker**: the meta key `wire_format_version` is verified at
+  open BEFORE any row is decoded. Newer marker → `New()` fails closed with
+  the same sentinel; absent → stamped (read-write opens only); lower →
+  raised. A present-but-unparsable marker is corruption and fails the open.
+  Tiered shards inherit the check per shard.
+- `loadIndexes` still tolerates corrupt rows (skip + warn + counter
+  reconcile), but a FUTURE per-row version is not damage — it fails the open
+  instead of silently dropping the row.
+
+Bump protocol (documented on `CurrentWireFormatVersion`): a version bump must
+update the custom msgpack encoders (lesson 39), the decode path, and the
+marker logic together.
+
+### Write-Pressure Bound
+
+`Config.MaxPendingWrites` (default 100,000 ops; negative disables; moot under
+`SyncWrites`) bounds the async write buffer: dirty cache entries are never
+evicted by design, so without a bound a sustained burst faster than
+`FlushInterval` grows memory without limit. At the bound, the writing call
+flushes synchronously (backpressure); a failing backpressure flush surfaces
+its error to the writer and requeues the ops. `Store.PendingWriteCount()`
+exposes the pressure signal.
 
 ### Key Architecture
 
@@ -655,7 +696,8 @@ Cross-shard split writes use `badgerstore_partial.go` helpers: `putRelEntityAndO
 - `RebuildCatalog()` -- reconstructs catalog from backing stores, including closed cold event shards opened for counting; save failures restore the pre-rebuild in-memory catalog
 - `VerifyShard(name)` -- hash chain verification with immutable-shard caching; cache updates persist the catalog or roll back the in-memory cache fields and return an error
 - `Clear()` -- clears every shard, including closed cold event shards and restarted warm shards, then resets persisted verification/count cache fields
-- `RunRepair()` -- Phase 1: detect+delete orphaned in/ entries by scanning each shard's incoming-index entries directly, including entries whose end node row is missing. Phase 2: detect+re-create missing in/ entries. Endpoint resolution uses the already-pinned shard snapshot, not fresh live routing.
+- `RunRepair()` -- Phase 1: detect+delete orphaned in/ entries by scanning each shard's incoming-index entries directly, including entries whose end node row is missing. Phase 2: detect+re-create missing in/ entries. Endpoint resolution uses the already-pinned shard snapshot, not fresh live routing. Logs a warning with exact counts whenever it fixed anything — repaired residue from a crash window is operator-visible.
+- `RecoverBackgroundError()` -- operator-driven recovery from the sticky background error (recorded on idle/transient cold-shard close failures). Re-probes persistence via an atomic catalog save; success clears the gate in place (no close/re-open), failure retains the original cause joined with the probe failure. Clears the lifecycle gate only — run `VerifyShard`/`RunRepair` for data confidence.
 - `MigrateFromBadger(src, dst)` -- copies all entities into an empty destination with automatic ontology routing, loading registries from the source BadgerStore, preflighting entity tokens and relationship endpoints, and saving registries to the destination TieredStore only after success; failures roll back inserted destination entities, restore ontology routing, and restore/remove the destination registry file to match its pre-migration state; nil stores/non-empty destinations/missing source registry metadata for non-empty data return `ErrInvalidStoreMutation`, and closed stores return `ErrStoreClosed`
 
 ---
@@ -938,3 +980,31 @@ After v3.4.0 (Option 3) and v4.2.0 (field→method), `pkg/graph/` is a thin faç
 | `pkg/graph/resolve` | `g.Resolve` | ~6 wrappers — shadow-property + registry resolution. |
 
 `g.Tx` (`TxAPI` in `subapi.go`) and `g.Batch` (`BatchAPI`) live in the `pkg/graph` package itself because they wrap the pkg/graph-private `*GraphTx` / `*BatchBuilder` types. `TxAPI.Run` / `TxAPI.RunContext` add closure-style transaction helpers on top of `Begin`.
+
+---
+
+## Deferred Architectural Decisions (2026-06-10 review)
+
+Recorded so future readers know these are conscious choices, not oversights:
+
+- **Core sub-packaging**: `internal/core` is one ~20K-LOC package; the
+  sub-Ops decomposition is namespacing, not separation. Splitting into
+  `core/tx`, `core/temporal`, `core/mutate` is a multi-week, behavior-neutral
+  restructure — planned as its own effort. The shared relationship-create
+  kernel removed the most acute intra-core duplication.
+- **`pkg/graph/hash` / `pkg/graph/io` renames**: both shadow stdlib package
+  names and force `tkghash`/`tkgio` aliasing on consumers. Renaming is
+  breaking — v5 item.
+- **Iteration-capability matrix**: the history × deleted × depth × paged
+  optional-interface grid grows combinatorially; a parameterized iteration
+  interface is a breaking store-contract redesign — v5 item.
+- **Eclipsed-row explicit wire flag**: the zero-width `ValidTo==ValidFrom+1`
+  sentinel works but is an in-band magic value; an explicit flag becomes
+  cheap at the next wire-format version bump (the versioning machinery now
+  exists) — schedule together.
+- **`tier` package returning `tiered.*` types** (forces the tiered import on
+  consumers) and `RecoverBackgroundError` exposure via `g.Tier()`: both are
+  additive-but-coupled API changes — bundle with the next planned API pass.
+- **StoreStats interface extension** (pending-write/dirty counts): widening
+  the type-asserted optional interface breaks out-of-tree implementers;
+  pressure visibility shipped as `badger.Store.PendingWriteCount()` instead.

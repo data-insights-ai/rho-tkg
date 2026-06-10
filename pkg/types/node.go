@@ -325,6 +325,12 @@ func (n *Node) PropertyCount() int {
 
 // AppendPropertyHashBytes appends this node's properties using the integrity
 // hash byte layout without exposing or defensive-copying the property slice.
+//
+// PANIC CONTRACT: when PropertyHashNeedsRecover() reports true (registered
+// custom types or unknown values present), the caller MUST wrap this call in
+// panic recovery — a custom HashBytes implementation may panic. The graph
+// layer's integrity package (ComputeNodeHashChecked) is the reference
+// pattern; do not call this directly on untrusted data without it.
 func (n *Node) AppendPropertyHashBytes(buf []byte) []byte {
 	if n == nil {
 		return buf
@@ -378,8 +384,12 @@ func (n *Node) SetVersion(v uint32) {
 
 // Temporal returns the node's temporal metadata (nil until set by the graph layer).
 // The returned pointer is shared with the node — the graph layer needs mutation
-// access, so no defensive copy is made. Callers outside the graph layer should
-// treat it as read-only.
+// access, so no defensive copy is made.
+//
+// MUST NOT be mutated outside pkg/graph/internal/core: the same pointer is
+// held by store caches and version-history snapshots, so an external write
+// silently corrupts cached graph state and temporal-query results. Treat as
+// strictly read-only.
 func (n *Node) Temporal() *TemporalMetadata {
 	if n == nil {
 		return nil
@@ -400,8 +410,11 @@ func (n *Node) SetTemporal(tm *TemporalMetadata) {
 
 // Integrity returns the node's integrity metadata (nil until set by the graph layer).
 // The returned pointer is shared with the node — the graph layer needs mutation
-// access, so no defensive copy is made. Callers outside the graph layer should
-// treat it as read-only.
+// access, so no defensive copy is made.
+//
+// MUST NOT be mutated outside pkg/graph/internal/core: the same pointer is
+// held by store caches, and the hash chain is computed from this state — an
+// external write silently breaks Verify*Chain. Treat as strictly read-only.
 func (n *Node) Integrity() *NodeIntegrity {
 	if n == nil {
 		return nil

@@ -90,7 +90,7 @@ func (bs *Store) truncateHistoryByPrefix(prefix []byte, keepVersions int) error 
 		ops[i] = writeOp{opType: writeOpDelete, key: []byte(k)}
 	}
 	bs.appendOps(ops...)
-	return bs.flushIfSyncWrites()
+	return bs.flushIfNeeded()
 }
 
 func (bs *Store) trimHistoryFromPrefix(prefix []byte, minVersion uint32) error {
@@ -144,7 +144,7 @@ func (bs *Store) trimHistoryFromPrefix(prefix []byte, minVersion uint32) error {
 		ops = append(ops, writeOp{opType: writeOpDelete, key: []byte(k)})
 	}
 	bs.appendOps(ops...)
-	return bs.flushIfSyncWrites()
+	return bs.flushIfNeeded()
 }
 
 func historyIDSeekKey(prefix byte, after snowflake.ID) []byte {

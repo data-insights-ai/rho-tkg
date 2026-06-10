@@ -3,6 +3,7 @@ package storeutil
 import (
 	"fmt"
 
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	"github.com/vmihailenco/msgpack/v5"
 )
@@ -11,6 +12,20 @@ const (
 	maxWireUint16 = 1<<16 - 1
 	maxWireUint32 = 1<<32 - 1
 )
+
+// CurrentWireFormatVersion is the per-row format version written into every
+// NodeWire/RelWire from this release on. Rows persisted before versioning
+// existed decode with FormatVersion == 0 and are treated as version 1 — the
+// two layouts are identical, the explicit field simply makes future layouts
+// self-describing. Decoding a row with a version GREATER than this constant
+// fails closed with store.ErrWireFormatVersionUnsupported instead of silently
+// zero-filling fields this binary does not know about.
+//
+// Bump this constant ONLY together with: (1) the custom EncodeMsgpack
+// emitters in wire_encode.go (lesson 39 — struct tags alone do nothing),
+// (2) a decode path for the new layout, and (3) the store-level marker logic
+// in the badger backend.
+const CurrentWireFormatVersion = 1
 
 // NodeWire is the msgpack wire format for Node entities.
 // All token values are stored as int (maps to msgpack integer).
@@ -23,6 +38,10 @@ const (
 // at the deserialization boundary (WireToNode / WireToRel). Tier D — see
 // keys.go for the chokepoint invariant.
 type NodeWire struct {
+	// FormatVersion is the per-row wire format version. 0 means the row was
+	// written before versioning existed (decode as version 1). See
+	// CurrentWireFormatVersion for the bump protocol.
+	FormatVersion      uint8          `msgpack:"fv,omitempty"`
 	ID                 int64          `msgpack:"id"`
 	PrimaryLabel       int            `msgpack:"pl"`
 	ExtraLabels        []int          `msgpack:"el,omitempty"`
@@ -49,6 +68,10 @@ type NodeWire struct {
 
 // RelWire is the msgpack wire format for Relationship entities.
 type RelWire struct {
+	// FormatVersion is the per-row wire format version. 0 means the row was
+	// written before versioning existed (decode as version 1). See
+	// CurrentWireFormatVersion for the bump protocol.
+	FormatVersion      uint8          `msgpack:"fv,omitempty"`
 	ID                 int64          `msgpack:"id"`
 	RelType            int            `msgpack:"rt"`
 	StartID            int64          `msgpack:"s"`
@@ -113,9 +136,10 @@ func NodeToWireChecked(n *types.Node) (NodeWire, error) {
 	}
 
 	w := NodeWire{
-		ID:           int64(n.ID().SnowflakeID()),
-		PrimaryLabel: int(n.PrimaryLabelToken().Value()),
-		Version:      int(n.Version()),
+		FormatVersion: CurrentWireFormatVersion,
+		ID:            int64(n.ID().SnowflakeID()),
+		PrimaryLabel:  int(n.PrimaryLabelToken().Value()),
+		Version:       int(n.Version()),
 	}
 
 	extras := n.ExtraLabelTokens()
@@ -258,11 +282,12 @@ func RelToWireChecked(r *types.Relationship) (RelWire, error) {
 	}
 
 	w := RelWire{
-		ID:      int64(r.ID().SnowflakeID()),
-		RelType: int(r.TypeToken().Value()),
-		StartID: int64(r.StartNodeID().SnowflakeID()),
-		EndID:   int64(r.EndNodeID().SnowflakeID()),
-		Version: int(r.Version()),
+		FormatVersion: CurrentWireFormatVersion,
+		ID:            int64(r.ID().SnowflakeID()),
+		RelType:       int(r.TypeToken().Value()),
+		StartID:       int64(r.StartNodeID().SnowflakeID()),
+		EndID:         int64(r.EndNodeID().SnowflakeID()),
+		Version:       int(r.Version()),
 	}
 
 	props, err := propertiesToWireChecked(r.Properties())
@@ -477,6 +502,10 @@ func ValidateNodeWire(w NodeWire) error {
 }
 
 func validateNodeWireFields(w NodeWire) error {
+	if w.FormatVersion > CurrentWireFormatVersion {
+		return fmt.Errorf("node wire: row format version %d, this binary supports up to %d: %w",
+			w.FormatVersion, CurrentWireFormatVersion, storepkg.ErrWireFormatVersionUnsupported)
+	}
 	if w.ID <= 0 {
 		return fmt.Errorf("node wire: id must be positive, got %d", w.ID)
 	}
@@ -543,6 +572,10 @@ func ValidateRelWire(w RelWire) error {
 }
 
 func validateRelWireFields(w RelWire) error {
+	if w.FormatVersion > CurrentWireFormatVersion {
+		return fmt.Errorf("relationship wire: row format version %d, this binary supports up to %d: %w",
+			w.FormatVersion, CurrentWireFormatVersion, storepkg.ErrWireFormatVersionUnsupported)
+	}
 	if w.ID <= 0 {
 		return fmt.Errorf("relationship wire: id must be positive, got %d", w.ID)
 	}

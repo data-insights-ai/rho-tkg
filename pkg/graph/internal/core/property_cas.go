@@ -165,6 +165,13 @@ func (c *Core) compareAndSetPropertyInternal(ctx context.Context, id types.NodeI
 		tm = &types.TemporalMetadata{}
 		current.SetTemporal(tm)
 	}
+	// Lesson 33, property-mutation door: the new version inherited the
+	// previous version's world-time claim via the in-place mutation of the
+	// current row. Clear it — property mutations accept no caller-supplied
+	// valid time, and an inherited ValidFrom would let this version cover
+	// the previous version's interval in historical queries.
+	tm.ValidFrom = 0
+	tm.ValidTo = 0
 	tm.UpdatedAt = now
 
 	// TxTo on previous version.
@@ -334,6 +341,13 @@ func (c *Core) compareAndSetRelPropertyInternal(ctx context.Context, id types.Re
 		tm = &types.TemporalMetadata{}
 		current.SetTemporal(tm)
 	}
+	// Lesson 33, property-mutation door: the new version inherited the
+	// previous version's world-time claim via the in-place mutation of the
+	// current row. Clear it — property mutations accept no caller-supplied
+	// valid time, and an inherited ValidFrom would let this version cover
+	// the previous version's interval in historical queries.
+	tm.ValidFrom = 0
+	tm.ValidTo = 0
 	tm.UpdatedAt = now
 	if ptm := prevState.Temporal(); ptm == nil {
 		ptm2 := &types.TemporalMetadata{}

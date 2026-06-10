@@ -270,6 +270,12 @@ func (r *Relationship) PropertyCount() int {
 
 // AppendPropertyHashBytes appends this relationship's properties using the
 // integrity hash byte layout without exposing or defensive-copying the slice.
+//
+// PANIC CONTRACT: when PropertyHashNeedsRecover() reports true (registered
+// custom types or unknown values present), the caller MUST wrap this call in
+// panic recovery — a custom HashBytes implementation may panic. The graph
+// layer's integrity package (ComputeRelHashChecked) is the reference
+// pattern; do not call this directly on untrusted data without it.
 func (r *Relationship) AppendPropertyHashBytes(buf []byte) []byte {
 	if r == nil {
 		return buf
@@ -324,8 +330,12 @@ func (r *Relationship) SetVersion(v uint32) {
 
 // Temporal returns the relationship's temporal metadata (nil until set by the graph layer).
 // The returned pointer is shared with the relationship — the graph layer needs
-// mutation access, so no defensive copy is made. Callers outside the graph layer
-// should treat it as read-only.
+// mutation access, so no defensive copy is made.
+//
+// MUST NOT be mutated outside pkg/graph/internal/core: the same pointer is
+// held by store caches and version-history snapshots, so an external write
+// silently corrupts cached graph state and temporal-query results. Treat as
+// strictly read-only.
 func (r *Relationship) Temporal() *TemporalMetadata {
 	if r == nil {
 		return nil
@@ -346,8 +356,11 @@ func (r *Relationship) SetTemporal(tm *TemporalMetadata) {
 
 // Integrity returns the relationship's integrity metadata (nil until set by the graph layer).
 // The returned pointer is shared with the relationship — the graph layer needs
-// mutation access, so no defensive copy is made. Callers outside the graph layer
-// should treat it as read-only.
+// mutation access, so no defensive copy is made.
+//
+// MUST NOT be mutated outside pkg/graph/internal/core: the same pointer is
+// held by store caches, and the hash chain is computed from this state — an
+// external write silently breaks Verify*Chain. Treat as strictly read-only.
 func (r *Relationship) Integrity() *RelIntegrity {
 	if r == nil {
 		return nil

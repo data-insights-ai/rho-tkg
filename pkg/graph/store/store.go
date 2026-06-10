@@ -21,6 +21,14 @@ import (
 // HighFrequencyIndex are embedded here for the current full Store contract;
 // newer optional helper capabilities such as FilteredVectorSearchCapability
 // and DepthHistoryIterationCapability are type-asserted directly by callers.
+//
+// Sharded-backend invariant: any implementation that routes entities to
+// physical shards by primary-label ontology class (the in-tree example is
+// tiered.Store) MUST reject label mutations that would change the primary
+// label's class (reference <-> event) — otherwise the live row stays on its
+// original shard while later history snapshots route elsewhere, fragmenting
+// the version chain. Single-shard backends (memory, badger) need no guard.
+// See tiered.ErrPrimaryLabelClassMutation and lessons.md B33.
 type Store interface {
 	Lifecycle
 	NodeCRUDCapability

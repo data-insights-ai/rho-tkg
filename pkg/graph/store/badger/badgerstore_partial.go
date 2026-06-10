@@ -89,7 +89,7 @@ func (bs *Store) PutRelEntityAndOut(r *types.Relationship) error {
 	bs.relCount.Add(1)
 	bs.getOrCreateTypeCounter(relType).Add(1)
 	bs.idxMu.Unlock()
-	return bs.flushIfSyncWrites()
+	return bs.flushIfNeeded()
 }
 
 // PutRelIncoming writes only the incoming adjacency key (0x06) for a
@@ -120,7 +120,7 @@ func (bs *Store) PutRelIncoming(endID, startID snowflake.ID, relType uint16, rel
 	}
 	bs.appendOps(op)
 	bs.idxMu.Unlock()
-	return bs.flushIfSyncWrites()
+	return bs.flushIfNeeded()
 }
 
 // DeleteRelEntityAndOut removes the relationship entity (0x02), type index
@@ -191,7 +191,7 @@ func (bs *Store) DeleteRelEntityAndOut(id snowflake.ID) (RelDeleteInfo, error) {
 	bs.getOrCreateTypeCounter(info.RelType).Add(-1)
 
 	bs.idxMu.Unlock()
-	return info, bs.flushIfSyncWrites()
+	return info, bs.flushIfNeeded()
 }
 
 // DeleteRelIncoming removes only the incoming adjacency key (0x06) for a
@@ -228,7 +228,7 @@ func (bs *Store) DeleteRelIncoming(info RelDeleteInfo) error {
 	}
 	bs.appendOps(op)
 	bs.idxMu.Unlock()
-	return bs.flushIfSyncWrites()
+	return bs.flushIfNeeded()
 }
 
 // DeleteIncomingByRelID removes a specific relationship from the inIdx of
@@ -255,7 +255,7 @@ func (bs *Store) DeleteIncomingByRelID(endNodeID snowflake.ID, relID snowflake.I
 	if err := bs.scanAndDeleteIncomingPersisted(endNodeID, relID); err != nil {
 		return err
 	}
-	return bs.flushIfSyncWrites()
+	return bs.flushIfNeeded()
 }
 
 // ScanAndDeleteIncoming scans Badger for the 0x06 key matching (endNodeID, relID)
@@ -272,7 +272,7 @@ func (bs *Store) ScanAndDeleteIncoming(endNodeID, relID snowflake.ID) error {
 	if err := bs.scanAndDeleteIncomingPersisted(endNodeID, relID); err != nil {
 		return err
 	}
-	return bs.flushIfSyncWrites()
+	return bs.flushIfNeeded()
 }
 
 func (bs *Store) scanAndDeleteIncomingPersisted(endNodeID, relID snowflake.ID) error {

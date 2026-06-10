@@ -7,7 +7,6 @@ import (
 	"time"
 
 	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -268,7 +267,6 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			outErr     error
 			refresh    error
 			constraint error
-			typeErr    error
 			txNow      types.Instant
 			committed  bool
 		)
@@ -335,54 +333,18 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 				}
 			}
 
-			typeToken, relTypeSnapshot, allocatedRelType, tErr := b.g.getOrCreateRelTypeWithSnapshot(pr.typeName)
-			if tErr != nil {
-				typeErr = fmt.Errorf("graph: batch relationship type: %w", tErr)
-				return
-			}
-			relTypeFinished := false
-			finishRelType := func(err error) error {
-				relTypeFinished = true
-				return b.g.restoreNewRelTypeOnError(relTypeSnapshot, allocatedRelType, pr.typeName, err)
-			}
-			finishRelCreateError := func(err error) (error, bool) {
-				relTypeFinished = true
-				partialLive := false
-				err = b.g.restoreNewRelTypeCreateOnError(relTypeSnapshot, allocatedRelType, pr.typeName, err, func() error {
-					return b.g.deletePartialRelationshipForRollback(pr.rel)
-				}, &partialLive)
-				return err, partialLive
-			}
-			defer func() {
-				if !relTypeFinished {
-					_ = b.g.restoreNewRelTypeCreateOnError(relTypeSnapshot, allocatedRelType, pr.typeName, fmt.Errorf("panic during batch relationship create"), func() error {
-						return b.g.deletePartialRelationshipForRollback(pr.rel)
-					}, nil)
-				}
-			}()
-			setPendingRelationshipType(pr, typeToken)
-
-			if storeCanCaptureEndpointHashes {
-				fromHash, toHash, err := b.g.endpointHashWrite.PutRelationshipGeneratedIDWithEndpointHashes(pr.rel, generatedcreate.FreshGraphID)
-				if err != nil {
-					outErr, committed = finishRelCreateError(err)
-					return
-				}
-				pr.relIntegrity.FromNodeHash = fromHash
-				pr.relIntegrity.ToNodeHash = toHash
-			} else {
-				outErr = b.g.putGeneratedRelationship(pr.rel)
-				if outErr != nil {
-					outErr, committed = finishRelCreateError(outErr)
-					return
-				}
-			}
-			committed = true
-			if tErr := finishRelType(nil); tErr != nil {
-				typeErr = tErr
-				return
-			}
-			b.g.rememberRelType(pr.typeName, typeToken)
+			// Persist through the shared create kernel — the same token
+			// allocation / rollback / endpoint-hash-capture sequence as the
+			// standalone doors, so an invariant added there cannot miss the
+			// batch path. rel != nil from the kernel means the row is live
+			// (clean success or partial-live failure) — that maps onto the
+			// batch's committed flag.
+			rel, kerr := b.g.createRelWithTypeRollback(pr.typeName, storeCanCaptureEndpointHashes, func(typeToken uint16) (*types.Relationship, *types.RelIntegrity, error) {
+				setPendingRelationshipType(pr, typeToken)
+				return pr.rel, pr.relIntegrity, nil
+			})
+			committed = rel != nil
+			outErr = kerr
 		}()
 		syncPendingRelationshipResult(pr)
 
@@ -402,21 +364,6 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 				Op:  "AddRelationship",
 				ID:  types.EntityID(pr.rel.ID()),
 				Err: constraint,
-			})
-			continue
-		}
-
-		if typeErr != nil {
-			if committed {
-				result.Created++
-				b.g.opRelAdds.Add(1)
-				b.g.publishEvent(eventspkg.EventRelCreate, types.EntityID(pr.rel.ID()), txNow, eventspkg.PriorityHigh)
-			}
-			result.Failed++
-			result.Errors = append(result.Errors, BatchError{
-				Op:  "AddRelationship",
-				ID:  types.EntityID(pr.rel.ID()),
-				Err: typeErr,
 			})
 			continue
 		}

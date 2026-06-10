@@ -80,6 +80,13 @@ const (
 	DefaultFlushInterval  = 100 * time.Millisecond
 	DefaultGCInterval     = 5 * time.Minute
 	DefaultGCDiscardRatio = 0.5
+	// DefaultMaxPendingWrites bounds the async write buffer: when the
+	// pending-op count reaches this threshold the writing goroutine flushes
+	// synchronously instead of growing the buffer (and the never-evictable
+	// dirty cache entries behind it) without limit. Generous enough that a
+	// workload must sustain ~1M ops/s against the 100ms flush interval to
+	// ever hit it.
+	DefaultMaxPendingWrites = 100_000
 )
 
 // Config configures a Store instance.
@@ -108,6 +115,15 @@ type Config struct {
 	// Eliminates the async flush window at the cost of higher write latency.
 	// Ignored in ReadOnly mode.
 	SyncWrites bool
+	// MaxPendingWrites bounds the async write buffer. When the pending-op
+	// count reaches this threshold, the mutating call flushes synchronously
+	// (backpressure) instead of letting the buffer — and the dirty,
+	// never-evictable cache entries behind it — grow without limit under a
+	// write burst faster than FlushInterval. Default:
+	// DefaultMaxPendingWrites. Negative disables the bound (pre-4.5
+	// unbounded behavior). Ignored when SyncWrites is true (every write
+	// already flushes).
+	MaxPendingWrites int
 	// Compression sets the SSTable compression algorithm.
 	// Valid values: options.None (0), options.Snappy (1), options.ZSTD (2).
 	// Zero keeps the Badger default (Snappy).
@@ -253,6 +269,7 @@ type Store struct {
 	inMemory   bool
 	readOnly   bool
 	syncWrites bool
+	maxPending int // async write-buffer bound; 0 disables (see Config.MaxPendingWrites)
 	flushInt   time.Duration
 	gcInt      time.Duration
 	gcRatio    float64
@@ -320,6 +337,15 @@ func New(cfg Config) (*Store, error) {
 		return nil, fmt.Errorf("graph: badger open: %w", err)
 	}
 
+	// Enforce the on-disk format contract before decoding a single row: a
+	// directory stamped by a newer release must fail closed here, not surface
+	// as per-row decode failures (which loadIndexes would conflate with
+	// corruption / counter mismatch).
+	if err := verifyAndStampWireFormatVersion(db, cfg.ReadOnly); err != nil {
+		_ = db.Close() // best-effort cleanup
+		return nil, err
+	}
+
 	capacity := cfg.CacheCapacity
 	if capacity <= 0 {
 		capacity = DefaultCacheCapacity
@@ -330,6 +356,13 @@ func New(cfg Config) (*Store, error) {
 	}
 	if cfg.SyncWrites && !cfg.ReadOnly {
 		flushInt = 0 // disable periodic flush; each write flushes synchronously
+	}
+	maxPending := cfg.MaxPendingWrites
+	if maxPending == 0 {
+		maxPending = DefaultMaxPendingWrites
+	}
+	if maxPending < 0 || (cfg.SyncWrites && !cfg.ReadOnly) {
+		maxPending = 0 // explicitly unbounded, or moot under SyncWrites
 	}
 	gcInt := cfg.GCInterval
 	if gcInt == 0 && !cfg.InMemory {
@@ -360,6 +393,7 @@ func New(cfg Config) (*Store, error) {
 		inMemory:        cfg.InMemory,
 		readOnly:        cfg.ReadOnly,
 		syncWrites:      cfg.SyncWrites && !cfg.ReadOnly,
+		maxPending:      maxPending,
 		flushInt:        flushInt,
 		gcInt:           gcInt,
 		gcRatio:         gcRatio,
@@ -442,6 +476,7 @@ func (bs *Store) loadIndexes() error {
 		valueOpts.PrefetchValues = true
 		it := txn.NewIterator(valueOpts)
 		prefix := []byte{storepkg.KeyNode}
+		var loadErr error
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 			item := it.Item()
 			key := item.Key()
@@ -464,6 +499,16 @@ func (bs *Store) loadIndexes() error {
 				n = decoded
 				return nil
 			}); err != nil {
+				// Corrupt rows are tolerated (skipped + counted) so one
+				// damaged value cannot brick the store. A FUTURE format
+				// version is not damage — it is a newer release's data and
+				// silently dropping it would be data loss masquerading as a
+				// clean open. Fail closed instead (break first: the iterator
+				// must be closed before returning from the View closure).
+				if errors.Is(err, storecontract.ErrWireFormatVersionUnsupported) {
+					loadErr = fmt.Errorf("graph: node %d: %w", nid.SnowflakeID(), err)
+					break
+				}
 				if bs.logger != nil {
 					bs.logger.Warningf("graph: node-index rebuild skipped node %d: %v", nid.SnowflakeID(), err)
 				}
@@ -482,6 +527,9 @@ func (bs *Store) loadIndexes() error {
 			decodedNodeLabels[nid] = labels
 		}
 		it.Close()
+		if loadErr != nil {
+			return loadErr
+		}
 
 		// Scan label index: keyLabel(1B) + token(2B) + nodeID(8B).
 		// Only rows with a local node entity key may populate labelIdx. If
@@ -543,6 +591,12 @@ func (bs *Store) loadIndexes() error {
 				r = decoded
 				return nil
 			}); err != nil {
+				// Same contract as the node scan: tolerate corruption, fail
+				// closed on a future per-row format version.
+				if errors.Is(err, storecontract.ErrWireFormatVersionUnsupported) {
+					loadErr = fmt.Errorf("graph: relationship %d: %w", rid.SnowflakeID(), err)
+					break
+				}
 				if bs.logger != nil {
 					bs.logger.Warningf("graph: relationship-index rebuild skipped rel %d: %v", rid.SnowflakeID(), err)
 				}
@@ -560,6 +614,9 @@ func (bs *Store) loadIndexes() error {
 			bs.addRelationshipIndexesFromRow(info)
 		}
 		it.Close()
+		if loadErr != nil {
+			return loadErr
+		}
 
 		// Scan reltype index: keyRelType(1B) + token(2B) + relID(8B).
 		// Only rows with a local entity key may populate the type index.

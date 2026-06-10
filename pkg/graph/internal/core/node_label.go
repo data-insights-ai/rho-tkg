@@ -146,6 +146,13 @@ func (c *Core) addNodeLabelInternal(id types.NodeID, label string) (bool, error)
 		tm = &types.TemporalMetadata{}
 		copy.SetTemporal(tm)
 	}
+	// Lesson 33, label-mutation door: the deep copy inherited the previous
+	// version's world-time claim. Clear it — label mutations accept no
+	// caller-supplied valid time, and an inherited ValidFrom would let this
+	// version cover the previous version's interval in historical queries
+	// (hiding the at-t label state the history row exists to preserve).
+	tm.ValidFrom = 0
+	tm.ValidTo = 0
 	tm.UpdatedAt = now
 	tm.TxFrom = now
 
@@ -257,6 +264,13 @@ func (c *Core) removeNodeLabelInternal(id types.NodeID, label string) error {
 		tm = &types.TemporalMetadata{}
 		copy.SetTemporal(tm)
 	}
+	// Lesson 33, label-mutation door: the deep copy inherited the previous
+	// version's world-time claim. Clear it — label mutations accept no
+	// caller-supplied valid time, and an inherited ValidFrom would let this
+	// version cover the previous version's interval in historical queries
+	// (hiding the at-t label state the history row exists to preserve).
+	tm.ValidFrom = 0
+	tm.ValidTo = 0
 	tm.UpdatedAt = now
 	tm.TxFrom = now
 

@@ -100,6 +100,12 @@ func (a *API) DeleteTemporal(label string) error {
 
 // CreateVector creates a vector (kNN) index. Existing indexed vectors with
 // non-finite coordinates are rejected with ErrInvalidVectorValue.
+//
+// Persistence: vector index DEFINITIONS survive restart, but the index
+// entries do not — on reopen the index is rebuilt by scanning every node
+// carrying the indexed label/property. For large graphs this is the dominant
+// restart cost; budget reopen latency accordingly (and prefer recomputable
+// embeddings — there is no persistent per-entity vector cache).
 func (a *API) CreateVector(label, propertyKey string, dims int, metric storepkg.DistanceMetric) error {
 	ops, err := a.ready()
 	if err != nil {

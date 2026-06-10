@@ -35,4 +35,12 @@ var (
 	// — the wrapping message identifies the missing capability for
 	// diagnostics, but the sentinel is the contract.
 	ErrCapabilityNotSupported = errors.New("graph: store does not support this capability")
+
+	// ErrWireFormatVersionUnsupported is returned when persisted data declares
+	// an on-disk format version newer than this binary supports — either a
+	// store-level format marker written by a newer release, or an individual
+	// entity row carrying a newer per-row format version. The store fails
+	// closed instead of misdecoding fields it does not know about. Upgrade the
+	// binary; never strip the marker by hand.
+	ErrWireFormatVersionUnsupported = errors.New("graph: on-disk wire format version not supported by this binary")
 )

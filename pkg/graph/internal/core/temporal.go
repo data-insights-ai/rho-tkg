@@ -3,6 +3,7 @@ package core
 import (
 	"errors"
 
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -39,20 +40,21 @@ func normalizeDuringRange(start, end types.Instant) (types.Instant, error) {
 
 // nodeValidFrom returns the effective valid-from time for a node.
 // Uses explicit ValidFrom if set, falls back to snowflake ID timestamp.
+//
+// Delegates to storeutil.EntityValidFrom — the single canonical definition
+// shared with the store-level temporal push-down. The Core generators and
+// snowflakepkg.Layout are configured identically (same epoch, microsecond
+// precision, 5/10 bit split), so the derivation is the same; defining it
+// twice is exactly the drift the delegation prevents.
 func (c *Core) nodeValidFrom(n *types.Node) types.Instant {
-	if tm := n.Temporal(); tm != nil && tm.ValidFrom != 0 {
-		return tm.ValidFrom
-	}
-	return types.Instant(c.nodeIDGen.CreatedAt(n.ID().SnowflakeID()).UnixMilli())
+	return storeutil.EntityValidFrom(n.ID().SnowflakeID(), n.Temporal())
 }
 
 // relValidFrom returns the effective valid-from time for a relationship.
 // Uses explicit ValidFrom if set, falls back to snowflake ID timestamp.
+// Delegates to storeutil.EntityValidFrom — see nodeValidFrom.
 func (c *Core) relValidFrom(r *types.Relationship) types.Instant {
-	if tm := r.Temporal(); tm != nil && tm.ValidFrom != 0 {
-		return tm.ValidFrom
-	}
-	return types.Instant(c.relIDGen.CreatedAt(r.ID().SnowflakeID()).UnixMilli())
+	return storeutil.EntityValidFrom(r.ID().SnowflakeID(), r.Temporal())
 }
 
 func validInstantAfter(at, start types.Instant) types.Instant {
@@ -123,15 +125,9 @@ func rejectClosedRelMutation(r *types.Relationship) error {
 
 // isNodeValidAt checks if a node is valid at the given instant.
 // Valid when: effectiveValidFrom <= t AND (ValidTo == 0 OR ValidTo > t).
+// Delegates to the canonical predicate in storeutil — see nodeValidFrom.
 func (c *Core) isNodeValidAt(n *types.Node, t types.Instant) bool {
-	from := c.nodeValidFrom(n)
-	if from > t {
-		return false
-	}
-	if tm := n.Temporal(); tm != nil && tm.ValidTo != 0 {
-		return tm.ValidTo > t
-	}
-	return true
+	return storeutil.MatchesPointInTime(n.ID().SnowflakeID(), n.Temporal(), t)
 }
 
 // resolveNodeVersionAt finds the version valid at time t from a pre-built chain.

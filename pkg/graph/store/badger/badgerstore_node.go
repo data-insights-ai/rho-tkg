@@ -74,10 +74,7 @@ func (bs *Store) PutNode(n *types.Node) error {
 	bs.nodeCount.Add(1)
 	bs.idxMu.Unlock()
 
-	if bs.syncWrites {
-		return bs.flush()
-	}
-	return nil
+	return bs.flushIfNeeded()
 }
 
 // GetNode retrieves a node by its snowflake ID.
@@ -371,10 +368,7 @@ func (bs *Store) DeleteNode(nid types.NodeID) error {
 	bs.nodeCount.Add(-1)
 	bs.idxMu.Unlock()
 
-	if bs.syncWrites {
-		return bs.flush()
-	}
-	return nil
+	return bs.flushIfNeeded()
 }
 
 // ReplaceNode overwrites an existing node's data in-place.
@@ -448,10 +442,7 @@ func (bs *Store) ReplaceNode(n *types.Node) error {
 	bs.appendOps(writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data})
 	bs.idxMu.Unlock()
 
-	if bs.syncWrites {
-		return bs.flush()
-	}
-	return nil
+	return bs.flushIfNeeded()
 }
 
 // RemoveNodeLabelToken removes tok from the label index for id and persists updatedNode.
@@ -539,10 +530,7 @@ func (bs *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 	)
 	bs.idxMu.Unlock()
 
-	if bs.syncWrites {
-		return bs.flush()
-	}
-	return nil
+	return bs.flushIfNeeded()
 }
 
 // AddNodeLabelToken adds tok to the label index for id and persists updatedNode.
@@ -625,10 +613,7 @@ func (bs *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 	)
 	bs.idxMu.Unlock()
 
-	if bs.syncWrites {
-		return bs.flush()
-	}
-	return nil
+	return bs.flushIfNeeded()
 }
 
 // NodesByLabel returns nodes with the given label token, with optional pagination

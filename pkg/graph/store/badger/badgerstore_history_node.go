@@ -118,10 +118,7 @@ func (bs *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 	)
 	bs.idxMu.Unlock()
 
-	if bs.syncWrites {
-		return bs.flush()
-	}
-	return nil
+	return bs.flushIfNeeded()
 }
 
 func (bs *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, updatedNode *types.Node,
@@ -224,10 +221,7 @@ func (bs *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 	)
 	bs.idxMu.Unlock()
 
-	if bs.syncWrites {
-		return bs.flush()
-	}
-	return nil
+	return bs.flushIfNeeded()
 }
 
 func (bs *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32, prevState *types.Node) error {
@@ -320,10 +314,7 @@ func (bs *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 	)
 	bs.idxMu.Unlock()
 
-	if bs.syncWrites {
-		return bs.flush()
-	}
-	return nil
+	return bs.flushIfNeeded()
 }
 
 func (bs *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32, nodeTombstone *types.Node, relTombstones []RelTombstone) error {
@@ -474,10 +465,7 @@ func (bs *Store) PutNodeVersion(nid types.NodeID, version uint32, n *types.Node)
 	}
 	key := storepkg.HistNodeKey(id, uint64(version))
 	bs.appendOps(writeOp{opType: writeOpSet, key: key, value: data})
-	if bs.syncWrites {
-		return bs.flush()
-	}
-	return nil
+	return bs.flushIfNeeded()
 }
 
 func (bs *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, error) {
