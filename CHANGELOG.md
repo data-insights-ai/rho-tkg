@@ -4,6 +4,46 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Performance — concurrent-scan cache, traversal decode, temporal index, key encoding
+
+A downstream cross-engine benchmark round drove a sequence of read/write
+path optimizations:
+
+- **Scan-resistant, non-promoting entity cache.** The LRU `index.Cache.Get`
+  took an exclusive `sync.Mutex` on every cache HIT (for `MoveToFront`
+  recency promotion), so a warm 100k-node label scan paid 100k exclusive
+  acquisitions and concurrent scanners on the same label serialized.
+  `Cache.mu` is now a `sync.RWMutex` with a new `GetNoPromote` (RLock, no
+  promote); the badger scan paths (`prefetchNodeScan`/`prefetchRelScan`) use
+  it while point reads keep promoting. Sharded cache gains the same method.
+  Mutex delay 27.52s → 0.77s (~36x); concurrent scaling restored.
+- **Endpoint-carrying adjacency index — skip the relationship decode.** The
+  in-memory adjacency index now carries the opposite endpoint (`outIdx`:
+  relID→end node; `inIdx`: relID→{start node, type}); a new streaming
+  `ForEachAdjacentEndpoint` yields `(relID, otherEndpoint)` with no
+  relationship-row decode (RAM map or disk adjacency key offset 11). One-hop
+  expand alloc/query dropped ~60x downstream.
+- **`badger DetectConflicts=false`.** The store serializes writes through its
+  own buffer and guards same-entity mutations with the entity-lock manager, so
+  it owns conflict semantics above Badger (every `db.Update` meta write is a
+  blind Set); the per-key conflict oracle is dead weight on every commit.
+- **Maxto-augmented temporal interval index.** `QueryAt`/`QueryOverlap`
+  scanned every interval starting before the probe filtering on `To` — O(n).
+  The sorted-by-From slice is augmented with `subMax[i]` (max effective upper
+  bound over the implicit balanced BST rooted at `i`, open-ended → +∞); a
+  stabbing query prunes expired subtrees (`subMax <= probe`) and right
+  subtrees whose froms all exceed the probe → output-sensitive O(log n + k).
+  `Remove` marks dirty to rebuild the augmentation. Bench (100k entries, 16
+  live, late probe): `QueryAt` 157 ns/op. Equivalence-gated vs brute force.
+- **Single-alloc numeric property index keys.** `IndexablePropertyValueKey`
+  built numeric/float keys as `prefix + strconv.FormatX(...)` (two allocs);
+  appending prefix+digits into one stack buffer folds it to one allocation
+  with byte-identical output.
+- **Inline `PropertySlice` binary search** (drop the `sort.Search` closure)
+  and an **opt-in `QueryOpts.NoSort`** scan lever (default off).
+
 ## [4.8.0] - 2026-06-12
 
 ### Added — per-instance Badger footprint tuning (vlog / memtable / block cache / compactors)
