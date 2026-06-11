@@ -304,8 +304,13 @@ func IndexablePropertyValueKey(v any) string {
 		return "s:" + val
 	case TemporalValue:
 		// Type-prefixed key encoding: a temporal never collides with the
-		// plain string carrying the same ISO rendering.
-		return "tv:" + strconv.FormatUint(uint64(val.Kind), 10) + ":" + val.Value
+		// plain string carrying the same ISO rendering. Built in one buffer
+		// (single alloc) instead of three concatenations.
+		var buf [48]byte
+		b := strconv.AppendUint(append(buf[:0], "tv:"...), uint64(val.Kind), 10)
+		b = append(b, ':')
+		b = append(b, val.Value...)
+		return string(b)
 	case int:
 		return appendIntKey("i:", int64(val))
 	case int8:
