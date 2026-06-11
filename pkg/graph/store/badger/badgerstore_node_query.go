@@ -82,7 +82,12 @@ func (bs *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 		return nil, nil
 	}
 
-	storepkg.SortNodeIDs(nids)
+	// Order-independent consumers set NoSort to drop the O(n log n) sort
+	// (the term that makes large label scans grow superlinearly). Keyset
+	// pagination (After > 0) needs sorted order, so keep the sort then.
+	if !opts.NoSort || opts.After != 0 {
+		storepkg.SortNodeIDs(nids)
+	}
 
 	// Temporal pre-filter via Peek (zero allocation for cache hits).
 	nids = bs.filterNodeIDsByTemporalPeek(nids, opts)

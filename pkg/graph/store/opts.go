@@ -52,4 +52,13 @@ type QueryOpts struct {
 	// Single-shard stores accept only the defined enum values, but all valid
 	// depth values see the full single shard.
 	Depth ShardDepth
+
+	// NoSort skips the O(n log n) node-ID sort that label scans apply before
+	// materialisation. Order-independent consumers (aggregation, count,
+	// unordered RETURN without ORDER BY — openCypher leaves such order
+	// undefined) set it to drop the sort term, which dominates large scans
+	// (the sort makes an O(|V|) scan grow at ~|V|^1.2). HONOURED ONLY when
+	// After == 0: keyset pagination (After > 0) requires sorted order, so a
+	// paginated query keeps the sort regardless of this flag.
+	NoSort bool
 }
