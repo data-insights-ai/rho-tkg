@@ -225,6 +225,34 @@ type Config struct {
 	SyncWrites           bool
 	Compression          options.CompressionType
 	ZSTDCompressionLevel int
+	// CacheCapacity is the per-entity-cache (nodes, rels) soft limit for the
+	// badger-backed store constructed from BadgerDir/BadgerInMemory.
+	// 0 means the store default (10,000). Size it to the scan working set:
+	// label scans over more nodes than the cache holds decode every miss
+	// from badger (~3µs/row) instead of hitting the cache (~0.1µs/row).
+	// Ignored when Store is provided explicitly.
+	CacheCapacity int
+	// CacheBudgetBytes bounds each entity cache (nodes, rels) of the
+	// badger-backed store by estimated resident BYTES instead of entry
+	// count alone — entries vary 100B-64KB, so CacheCapacity cannot bound
+	// memory under mixed payloads. Soft limit (dirty entries are never
+	// evicted). 0 disables byte accounting. When set and CacheCapacity is
+	// 0, the byte budget alone governs. Ignored when Store is provided
+	// explicitly.
+	CacheBudgetBytes int64
+	// LabelIndexOnDisk keeps the badger-backed store's label→nodes index
+	// out of RAM: label scans iterate the persisted label keyspace instead
+	// of an in-memory map (~50-100B per label entry — the memory ceiling
+	// at hundreds of millions of nodes). Existing data directories need no
+	// migration. Trade-off: label snapshots cost a disk prefix iteration.
+	// Ignored when Store is provided explicitly.
+	LabelIndexOnDisk bool
+	// AdjacencyIndexOnDisk is the adjacency sibling of LabelIndexOnDisk:
+	// outgoing/incoming snapshots come from the persisted adjacency
+	// keyspaces instead of the in-memory maps (~2 map entries per
+	// relationship — the largest index maps). No migration needed.
+	// Ignored when Store is provided explicitly.
+	AdjacencyIndexOnDisk bool
 }
 
 // ValidationDefaults returns the resolved validation limits (for testing).
@@ -810,6 +838,10 @@ func New(config Config) (*Core, error) {
 				SyncWrites:           config.SyncWrites,
 				Compression:          config.Compression,
 				ZSTDCompressionLevel: config.ZSTDCompressionLevel,
+				CacheCapacity:        config.CacheCapacity,
+				CacheBudgetBytes:     config.CacheBudgetBytes,
+				LabelIndexOnDisk:     config.LabelIndexOnDisk,
+				AdjacencyIndexOnDisk: config.AdjacencyIndexOnDisk,
 			})
 			if err != nil {
 				return nil, fmt.Errorf("graph: badger store: %w", err)

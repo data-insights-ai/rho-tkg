@@ -2,6 +2,7 @@ package badger
 
 import (
 	"fmt"
+	"log/slog"
 	"sort"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -71,11 +72,13 @@ func (bs *Store) PutRelEntityAndOut(r *types.Relationship) error {
 	}
 	bs.typeIdx[relType][rid] = struct{}{}
 
-	// Outgoing adjacency only.
-	if bs.outIdx[startNID] == nil {
-		bs.outIdx[startNID] = make(map[types.RelID]struct{})
+	// Outgoing adjacency only (RAM mirror; disk mode relies on the OutKey op).
+	if !bs.adjOnDisk {
+		if bs.outIdx[startNID] == nil {
+			bs.outIdx[startNID] = make(map[types.RelID]struct{})
+		}
+		bs.outIdx[startNID][rid] = struct{}{}
 	}
-	bs.outIdx[startNID][rid] = struct{}{}
 
 	// NO inIdx update — the in/ key lives in the endpoint's shard.
 
@@ -109,10 +112,12 @@ func (bs *Store) PutRelIncoming(endID, startID snowflake.ID, relType uint16, rel
 
 	bs.idxMu.Lock()
 
-	if bs.inIdx[endNID] == nil {
-		bs.inIdx[endNID] = make(map[types.RelID]uint16)
+	if !bs.adjOnDisk {
+		if bs.inIdx[endNID] == nil {
+			bs.inIdx[endNID] = make(map[types.RelID]uint16)
+		}
+		bs.inIdx[endNID][rid] = relType
 	}
-	bs.inIdx[endNID][rid] = relType
 
 	op := writeOp{
 		opType: writeOpSet,
@@ -170,11 +175,14 @@ func (bs *Store) DeleteRelEntityAndOut(id snowflake.ID) (RelDeleteInfo, error) {
 		}
 	}
 
-	// Outgoing adjacency cleanup only.
-	if set, exists := bs.outIdx[startNID]; exists {
-		delete(set, rid)
-		if len(set) == 0 {
-			delete(bs.outIdx, startNID)
+	// Outgoing adjacency cleanup only (RAM mirror; disk mode relies on the
+	// OutKey delete op).
+	if !bs.adjOnDisk {
+		if set, exists := bs.outIdx[startNID]; exists {
+			delete(set, rid)
+			if len(set) == 0 {
+				delete(bs.outIdx, startNID)
+			}
 		}
 	}
 
@@ -209,15 +217,17 @@ func (bs *Store) DeleteRelIncoming(info RelDeleteInfo) error {
 
 	bs.idxMu.Lock()
 
-	if set, exists := bs.inIdx[endNID]; exists {
-		if tok, ok := set[rid]; ok {
-			if tok != info.RelType {
-				bs.idxMu.Unlock()
-				return ErrRelNotFound
-			}
-			delete(set, rid)
-			if len(set) == 0 {
-				delete(bs.inIdx, endNID)
+	if !bs.adjOnDisk {
+		if set, exists := bs.inIdx[endNID]; exists {
+			if tok, ok := set[rid]; ok {
+				if tok != info.RelType {
+					bs.idxMu.Unlock()
+					return ErrRelNotFound
+				}
+				delete(set, rid)
+				if len(set) == 0 {
+					delete(bs.inIdx, endNID)
+				}
 			}
 		}
 	}
@@ -315,6 +325,9 @@ func (bs *Store) deleteIncomingMemoryEntry(endNodeID, relID snowflake.ID) {
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()
 
+	if bs.adjOnDisk {
+		return // no RAM mirror; the caller queued the persisted-key delete
+	}
 	set, exists := bs.inIdx[endNID]
 	if !exists {
 		return
@@ -385,20 +398,24 @@ func (bs *Store) IncomingRelIDs(nodeID snowflake.ID, typeToken uint16) []snowfla
 		return nil
 	}
 	bs.idxMu.RLock()
-	set := bs.inIdx[types.NodeID(nodeID)]
-	if len(set) == 0 {
-		bs.idxMu.RUnlock()
+	rids, err := bs.adjacentRelIDsSnapshotLocked(types.NodeID(nodeID), typeToken, true)
+	bs.idxMu.RUnlock()
+	if err != nil {
+		// Signature predates the disk arm and cannot surface errors; an
+		// empty result makes the repair caller re-derive from entity rows
+		// rather than trust a partial index view. Log loudly — silent nil
+		// here would read as "no incoming entries".
+		slog.Error("graph: IncomingRelIDs adjacency scan failed", "node", nodeID, "err", err)
+		return nil
+	}
+	if len(rids) == 0 {
 		return nil
 	}
 
-	ids := make([]snowflake.ID, 0, len(set))
-	for relID, tok := range set {
-		if typeToken == 0 || tok == typeToken {
-			ids = append(ids, relID.SnowflakeID())
-		}
+	ids := make([]snowflake.ID, 0, len(rids))
+	for _, rid := range rids {
+		ids = append(ids, rid.SnowflakeID())
 	}
-	bs.idxMu.RUnlock()
-
 	storepkg.SortSnowflakeIDs(ids)
 	return ids
 }
@@ -411,13 +428,20 @@ func (bs *Store) IncomingIndexEntries() []IncomingIndexEntry {
 	}
 	bs.idxMu.RLock()
 	entries := make([]IncomingIndexEntry, 0)
-	for endID, set := range bs.inIdx {
-		for relID, relType := range set {
-			entries = append(entries, IncomingIndexEntry{
-				EndID:   endID.SnowflakeID(),
-				RelID:   relID.SnowflakeID(),
-				RelType: relType,
-			})
+	if bs.adjOnDisk {
+		// Disk arm: full KeyIn keyspace scan (repair surface — the
+		// materializing walk is the contract; pending in-keys are merged
+		// so unflushed entries are visible like the map was).
+		entries = bs.incomingIndexEntriesFromKeyspaceLocked()
+	} else {
+		for endID, set := range bs.inIdx {
+			for relID, relType := range set {
+				entries = append(entries, IncomingIndexEntry{
+					EndID:   endID.SnowflakeID(),
+					RelID:   relID.SnowflakeID(),
+					RelType: relType,
+				})
+			}
 		}
 	}
 	bs.idxMu.RUnlock()
@@ -438,17 +462,20 @@ func (bs *Store) OutgoingRelIDs(nodeID snowflake.ID) []snowflake.ID {
 		return nil
 	}
 	bs.idxMu.RLock()
-	set := bs.outIdx[types.NodeID(nodeID)]
-	if len(set) == 0 {
-		bs.idxMu.RUnlock()
+	rids, err := bs.adjacentRelIDsSnapshotLocked(types.NodeID(nodeID), 0, false)
+	bs.idxMu.RUnlock()
+	if err != nil {
+		// See IncomingRelIDs: error-free signature predates the disk arm.
+		slog.Error("graph: OutgoingRelIDs adjacency scan failed", "node", nodeID, "err", err)
 		return nil
 	}
-	ids := make([]snowflake.ID, 0, len(set))
-	for relID := range set {
-		ids = append(ids, relID.SnowflakeID())
+	if len(rids) == 0 {
+		return nil
 	}
-	bs.idxMu.RUnlock()
-
+	ids := make([]snowflake.ID, 0, len(rids))
+	for _, rid := range rids {
+		ids = append(ids, rid.SnowflakeID())
+	}
 	storepkg.SortSnowflakeIDs(ids)
 	return ids
 }

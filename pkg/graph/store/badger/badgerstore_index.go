@@ -49,12 +49,11 @@ func (bs *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) erro
 	liveIdx := indexpkg.NewPropertyIndex()
 	liveIdx.Mutated = make(map[snowflake.ID]struct{})
 	bs.propertyIndexes[key] = liveIdx
-	var nids []types.NodeID
-	if nodeIDs, ok := bs.labelIdx[labelToken]; ok {
-		nids = make([]types.NodeID, 0, len(nodeIDs))
-		for id := range nodeIDs {
-			nids = append(nids, id)
-		}
+	nids, idErr := bs.labelNodeIDsSnapshotLocked(labelToken)
+	if idErr != nil {
+		delete(bs.propertyIndexes, key)
+		bs.idxMu.Unlock()
+		return idErr
 	}
 	bs.idxMu.Unlock()
 
@@ -95,10 +94,9 @@ func (bs *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) erro
 			if _, alive := bs.nodeIDs[types.NodeID(id)]; !alive {
 				continue // node deleted during Phase 2
 			}
-			if liveIdx.Entries[vk] == nil {
-				liveIdx.Entries[vk] = make(map[snowflake.ID]struct{})
-			}
-			liveIdx.Entries[vk][id] = struct{}{}
+			// AddKey, not a direct Entries write — the index's ordered
+			// numeric view is maintained inside AddKey.
+			liveIdx.AddKey(id, vk)
 		}
 	}
 	liveIdx.Mutated = nil // stop tracking — index creation complete
@@ -193,12 +191,11 @@ func (bs *Store) CreateTemporalIndex(labelToken uint16) error {
 	liveTI.Building = true
 	liveTI.Mutated = make(map[snowflake.ID]struct{})
 	bs.temporalIndexes[labelToken] = liveTI
-	var nids []types.NodeID
-	if nodeIDs, ok := bs.labelIdx[labelToken]; ok {
-		nids = make([]types.NodeID, 0, len(nodeIDs))
-		for id := range nodeIDs {
-			nids = append(nids, id)
-		}
+	nids, idErr := bs.labelNodeIDsSnapshotLocked(labelToken)
+	if idErr != nil {
+		delete(bs.temporalIndexes, labelToken)
+		bs.idxMu.Unlock()
+		return idErr
 	}
 	bs.idxMu.Unlock()
 
@@ -338,12 +335,11 @@ func (bs *Store) CreateHighFrequencyIndex(labelToken uint16, bucketSize time.Dur
 	liveHFI := indexpkg.NewHighFrequencyIndex(bucketSize, 0)
 	liveHFI.Mutated = make(map[snowflake.ID]struct{})
 	bs.hfIndexes[labelToken] = liveHFI
-	var nids []types.NodeID
-	if nodeIDs, ok := bs.labelIdx[labelToken]; ok {
-		nids = make([]types.NodeID, 0, len(nodeIDs))
-		for id := range nodeIDs {
-			nids = append(nids, id)
-		}
+	nids, idErr := bs.labelNodeIDsSnapshotLocked(labelToken)
+	if idErr != nil {
+		delete(bs.hfIndexes, labelToken)
+		bs.idxMu.Unlock()
+		return idErr
 	}
 	bs.idxMu.Unlock()
 
@@ -528,12 +524,11 @@ func (bs *Store) CreateVectorIndex(labelToken uint16, propertyKey string, dims i
 
 	// Snapshot only nodes carrying this label for population scan. Scanning
 	// all nodeIDs would force full-row reads for unrelated labels.
-	var nids []types.NodeID
-	if nodeIDs, ok := bs.labelIdx[labelToken]; ok {
-		nids = make([]types.NodeID, 0, len(nodeIDs))
-		for id := range nodeIDs {
-			nids = append(nids, id)
-		}
+	nids, idErr := bs.labelNodeIDsSnapshotLocked(labelToken)
+	if idErr != nil {
+		delete(bs.vectorIndexes, key)
+		bs.idxMu.Unlock()
+		return idErr
 	}
 	bs.idxMu.Unlock()
 

@@ -73,13 +73,11 @@ func (bs *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 		}
 	}
 
-	set := bs.labelIdx[token]
-	nids := make([]types.NodeID, 0, len(set))
-	for id := range set {
-		nids = append(nids, id)
-	}
+	nids, idErr := bs.labelNodeIDsSnapshotLocked(token)
 	bs.idxMu.RUnlock()
-
+	if idErr != nil {
+		return nil, idErr
+	}
 	if len(nids) == 0 {
 		return nil, nil
 	}
@@ -101,7 +99,7 @@ func (bs *Store) fetchNodesByLabelIDs(token uint16, ids []types.NodeID, opts Que
 	nodes := make([]*types.Node, 0, capForLimit(opts.Limit))
 	for _, nid := range ids {
 		id := nid.SnowflakeID()
-		n, err := bs.prefetchNode(nid)
+		n, err := bs.prefetchNodeScan(nid)
 		if err != nil {
 			if errors.Is(err, ErrNodeNotFound) {
 				continue // orphaned index entry
@@ -307,17 +305,14 @@ func (bs *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 	// Fallback: snapshot label IDs, release lock, then scan properties.
 	slog.Debug("graph: NodesByLabelAndProperty using full label scan (no property index)",
 		"labelToken", labelToken, "propertyKey", propKey)
-	labelIDs := bs.labelIdx[labelToken]
-	if len(labelIDs) == 0 {
-		bs.idxMu.RUnlock()
+	nids, idErr := bs.labelNodeIDsSnapshotLocked(labelToken)
+	bs.idxMu.RUnlock()
+	if idErr != nil {
+		return nil, idErr
+	}
+	if len(nids) == 0 {
 		return nil, nil
 	}
-
-	nids := make([]types.NodeID, 0, len(labelIDs))
-	for id := range labelIDs {
-		nids = append(nids, id)
-	}
-	bs.idxMu.RUnlock()
 
 	// Sort label IDs, apply cursor skip, scan in order for property matches.
 	storepkg.SortNodeIDs(nids)
@@ -333,7 +328,7 @@ func (bs *Store) fetchNodesByLabelPropertyIDs(labelToken uint16, propKey, target
 	hasTemporal := storepkg.HasTemporalFilter(opts)
 	var result []*types.Node
 	for _, nid := range nids {
-		n, err := bs.prefetchNode(nid)
+		n, err := bs.prefetchNodeScan(nid)
 		if err != nil {
 			if errors.Is(err, ErrNodeNotFound) {
 				continue // orphaned index entry

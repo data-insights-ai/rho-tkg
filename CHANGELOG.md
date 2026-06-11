@@ -4,7 +4,252 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [4.7.0] - 2026-06-11
+
+### Performance — scan-resistant entity cache + configurable capacity
+
+Two changes to the badger store's read path, driven by a downstream
+cross-engine benchmark finding a 12x per-row regression on label scans just
+past the 10k cache capacity (and ~17x over linear at 100k nodes):
+
+- **Scans no longer fill the LRU.** Full-cardinality scans (label scans,
+  the by-label-and-property fallback, AllNodes/AllRelationships, by-type,
+  temporal range) read through new `prefetchNodeScan`/`prefetchRelScan`
+  variants that serve cache hits but do NOT insert decoded entries on miss.
+  Fill-on-miss during a sequential scan larger than the cache evicts
+  exactly the entries the next pass needs (100% steady-state miss rate)
+  and flushes hot point-read entries as collateral. Point reads, adjacency
+  (Outgoing/Incoming), and GetByIDs keep the filling `prefetchNode`/
+  `prefetchRel` because callers revisit them. Pinned by
+  `TestScanLargerThanCache_CorrectAndCachePreserving` (correctness across
+  repeated over-capacity scans + point reads after).
+- **`core.Config`/`graph.Config` gains `CacheCapacity`** — previously the
+  badger store constructed via `BadgerDir`/`BadgerInMemory` was locked to
+  the 10k default with no way to size it to the working set. 0 keeps the
+  default; ignored when `Store` is supplied explicitly.
+
+Measured downstream (cross-engine latency benchmark, 100k nodes / 500k rels,
+cache sized to the dataset): label-scan aggregation 430ms → 40ms,
+filtered scan 417ms → 40ms, var-length traversal 1.49ms → 0.6ms p50.
+
+### Fixed — flush cycle walked the entire entity cache (ingestion stall at large capacities)
+
+`Cache.CollectDirty` iterated EVERY cached entry (clean included) under the
+cache mutex once per 100ms flush cycle — O(cache size), not O(dirty). With
+a multi-million-entry `CacheCapacity` the walk starved writers and
+ingestion stalled: a 1M-node UNWIND load with 2M capacity hung
+indefinitely (vs flat ~31k rows/s at the 10k default — the capacity knob
+looked like the culprit but the flusher was). The cache now maintains a
+dirty-set index, making CollectDirty O(dirty), sorted by key for
+deterministic flush batches. Same load after the fix: ~100-176k rows/s,
+~16s total. Invariant pinned by `TestCache_DirtySetMatchesFullScan`
+(2,000-op random sequence, dirty set vs full scan after every op);
+suite + race clean.
+
+### Added — ordered numeric index view + streaming range scans
+
+Every property index now transparently maintains an ORDERED view of its
+numeric values (sorted distinct float64 sort keys + per-key ID buckets,
+`property_index_range.go`): `WHERE n.age > $x` shapes binary-search the
+view instead of scanning the label. The view is an over-selecting
+candidate filter by design (float64 keys, ulp-widened bounds) — consumers
+post-filter with exact comparison semantics. Self-protecting: past 100k
+distinct numeric keys the view disables itself (sorted-slice maintenance
+would go quadratic; a B-tree lifts the cap later) and range queries report
+unsupported. Index creation backfill now routes through AddKey so the
+view covers pre-existing nodes.
+
+Exposed as `ForEachNodeByLabelPropertyRange` on the badger store and
+`g.Nodes().ForEachByLabelPropertyRange` on the facade (optional
+capability; `ErrIndexNotFound` signals fallback). Pinned by
+`TestForEachByLabelPropertyRange` (candidate completeness vs a ByLabel
+reference, bound inclusivity, mixed int/float keys, delete maintenance,
+early stop, no-index signal). Measured downstream:
+filtered-scan 19ms → 10.2ms at 100k — parity with Memgraph.
+
+### Added — streaming label scans (`ForEachByLabel`)
+
+`g.Nodes().ForEachByLabel(label, opts, fn)` streams a label's nodes in
+snowflake-ID order without materializing the result slice — peak memory
+O(1) in the label's cardinality, the requirement for scan pipelines
+(count/filter/aggregate) over very large labels where `ByLabel`'s
+`[]*types.Node` materialization alone is hundreds of MB. Backed by an
+OPTIONAL store capability (`ForEachNodeByLabel`, implemented by the memory
+and badger stores; others fall back to the materializing path), wired
+through `core.NodeOps` and the nodes sub-API.
+
+Isolation is deliberately RELAXED relative to `ByLabel`: the ID set is
+snapshotted, then rows are fetched and fn runs without graph locks — fn
+may call back into the graph (pinned by `TestForEachByLabel_CallbackReentry`),
+concurrent writers are neither blocked nor observed atomically, and rows
+are shared frozen pointers. Temporal-filter queries route through the
+history-aware materializing path. New sentinel `grapherr.ErrNilCallback`
+for nil callbacks. Pinned by the `TestForEachByLabel_*` suite (equality
+with ByLabel across an over-capacity cache, early stop, Limit, temporal
+fallback, unknown label).
+
+### Added — streaming relationship scans (`ForEachByType`, `ForEachOutgoing`, `ForEachIncoming`)
+
+The rel-side mirror of `ForEachByLabel` (enterprise-scale ceiling 2 —
+slice-materializing query APIs):
+
+- **`g.Rels().ForEachByType(typeName, opts, fn)`** streams a type's
+  relationships in snowflake-ID order — peak memory O(1) in the type's
+  cardinality, for scan pipelines over very large rel types where
+  `ByType`'s slice materialization alone is hundreds of MB.
+- **`g.Rels().ForEachOutgoing(nodeID, typeName, fn)` /
+  `ForEachIncoming`** stream a node's adjacency (optionally type-filtered)
+  for hub-degree consumers — power-law hubs with 100k+ edges no longer
+  force a full adjacency slice per visit. `ErrNodeNotFound` parity with
+  the materializing siblings, including under an unregistered type name.
+
+Same contract as the node side throughout: OPTIONAL store capabilities
+(`ForEachRelByType` / `ForEachOutgoingRel` / `ForEachIncomingRel`,
+implemented by the memory and badger stores; others fall back to the
+materializing path), relaxed isolation (ID-set snapshot, then lock-free
+fetch — fn may call back into the graph), frozen shared rows, no-fill
+scan reads on the badger arm, temporal filters routed through the
+history-aware materializing path. Pinned by the `TestForEachRel*` /
+`TestForEachAdjacent_*` suites — every probe runs against BOTH in-tree
+stores (equality with the materializing sibling past the badger cache
+capacity, early stop + Limit, callback re-entry, temporal fallback,
+missing node, unregistered type, nil callback).
+
+### Added — byte-budgeted entity caches (`CacheBudgetBytes`)
+
+Enterprise-scale ceiling 4: `CacheCapacity` counts ENTRIES, but entries
+vary 100B-64KB, so a count alone cannot bound memory under mixed payloads.
+`Config.CacheBudgetBytes` (badger store + `graph.Config` plumb) bounds
+each entity cache (nodes, rels) by estimated resident bytes:
+
+- The LRU tracks per-entry size (`NewCacheWithBudget` — a sizer estimate
+  plus fixed per-entry overhead) and evicts clean LRU entries while EITHER
+  the count capacity or the byte budget is exceeded. Soft limits as
+  before: dirty entries are never evicted, so write pressure can
+  temporarily exceed the budget; the flush cycle sheds back down.
+- Sizing uses new `types.(*Node/​*Relationship).ApproxHeapBytes()` —
+  allocation-free O(properties) resident-heap estimates (struct layouts,
+  string/slice/map payload bytes; registered custom types fall back to a
+  pessimistic constant).
+- `CacheBudgetBytes` with `CacheCapacity` 0 makes the byte budget alone
+  govern (count limit effectively unbounded). 0 disables byte accounting
+  — the default path is byte-for-byte unchanged.
+- Eviction now also runs after `MarkFlushed`, after value-growing `Put`
+  updates, and after tombstone inserts — previously only inserts evicted,
+  which let a grown update or a flush-clean batch leave the cache over
+  its limits until the next insert.
+
+Pinned by the `TestCacheBudget_*` LRU suite (full-scan accounting
+invariant over 2,000 random ops with both eviction triggers churning,
+bytes-not-count eviction, dirty-exceeds-then-flush-sheds, update resize
+deltas, tombstone lifecycle, off-switches) plus store-level
+`TestCacheBudgetBytes_*` (mixed-payload point reads stay correct and
+within budget end-to-end; dirty writes exceed then flush sheds) and the
+`TestApproxHeapBytes_*` estimator probes (nil-safety, payload
+monotonicity, recursion bound, unknown-type fallback).
+
+### Added — disk-resident label index (`LabelIndexOnDisk`, opt-in)
+
+Enterprise-scale ceiling 1: the in-memory `labelIdx` map costs ~50-100B of
+permanent RAM per label entry — THE memory ceiling at hundreds of millions
+of nodes. The persisted label keyspace (`KeyLabel + token + nodeID`) has
+always been written transactionally with node rows in the same flush
+batch; `Config.LabelIndexOnDisk` (badger store + `graph.Config` plumb)
+stops materializing the RAM map and answers label snapshots from that
+keyspace directly:
+
+- All label consumers (NodesByLabel, ForEachNodeByLabel, the
+  by-label-and-property fallback, property/temporal/HF/vector index
+  backfills, the delete-scrub fallback) route through one snapshot helper
+  (`labelNodeIDsSnapshotLocked`) — the disk arm prefix-iterates the
+  keyspace and overlays the unflushed write buffer, so reads see writes
+  immediately, exactly as the map did (idxMu → wbMu, the flush cycle's
+  established lock order).
+- Existing data directories need NO migration — the keyspace is already
+  complete (loadIndexes has always used it as the persisted source of
+  truth). Open builds the map transiently for the index/counter rebuilds,
+  then drops it; making open fully streaming is the documented follow-up.
+- Per-label counts stay O(1) (the counter map is independent and tiny).
+- Trade-off: each label snapshot costs a disk prefix iteration instead of
+  a map copy — opt in when the working set's RAM matters more than label
+  scan latency (the entity cache in front is unaffected).
+
+Pinned by the `TestLabelIndexOnDisk_*` suite (both-arms parity:
+identical mutation sequences compared against the map mode after EVERY
+operation, pre-flush — pending-overlay visibility — and post-flush;
+map-stays-empty RAM guarantee; legacy-directory reopen with the flag;
+property-index backfill interplay).
+
+### Added — disk-resident adjacency index (`AdjacencyIndexOnDisk`, opt-in)
+
+The adjacency sibling of `LabelIndexOnDisk`: the
+`OutKey`/`InKey` keyspaces have always been written transactionally with
+relationship rows, so the opt-in stops materializing the `outIdx`/`inIdx`
+maps (~2 entries per relationship — the largest index maps) and answers
+adjacency from the keyspaces:
+
+- One snapshot helper (`adjacentRelIDsSnapshotLocked`) behind every
+  consumer — Outgoing/Incoming (single + ForNodes batched), both degree
+  queries, the streaming `ForEach*Rel` arms, the TieredStore repair
+  surface (`IncomingRelIDs`/`OutgoingRelIDs`/`IncomingIndexEntries`), and
+  the node-delete cascade collectors. Typed queries use an 11-byte prefix
+  (node + relType), replacing the in-memory mode's full typeIdx
+  intersection. Pending (unflushed) ops are overlaid, so reads see writes
+  immediately.
+- The connected-relationships guard on non-cascade `DeleteNode` consults
+  the keyspace (`nodeHasAdjacentRelsLocked`) — with empty RAM maps the old
+  `len(map)` check would have let connected nodes delete through, leaving
+  dangling relationships (caught during implementation, pinned by
+  `TestAdjacencyOnDisk_ConnectedNodeDeleteStillRejected`).
+- Open builds the maps transiently for counter rebuilds, then drops them
+  (same discipline as the label index). Legacy directories reopen with the
+  flag with no migration.
+
+Pinned by the `TestAdjacencyOnDisk_*` parity suite (both modes through
+identical mutation sequences pre/post-flush, cascade delete, degree
+parity, maps-stay-empty, legacy-dir reopen).
+
+### Added — storage-typed temporal property values (`types.TemporalValue`)
+
+A first-class temporal property kind: `types.TemporalValue{Kind, Value}`
+carries a temporal category (date / local time / zoned time / local
+datetime / zoned datetime / duration — wire-stable ordinals) plus the
+canonical ISO-8601 rendering. Engines layered on the graph previously
+stored temporals as plain strings and had to GUESS on read whether a
+string was a temporal — which mistyped genuine string properties that
+merely look like dates and broke their literal equality (the downstream
+a downstream consumer bug this fixes).
+
+Full property-pipeline support: validation (kind range, bounded
+rendering, graph size limits), deep copy (value type), integrity hashing
+(type-prefixed — never collides with the equal-rendering string), wire
+round-trip (`ptTemporal = 26`, encoded `[kind, iso]` — additive within
+wire format version 1, same compatibility class as previous tag
+additions), index value keys (`tv:<kind>:<iso>` — type-prefixed per the
+key-encoding rule), and heap-size estimation. Export/import round-trips
+through the shared wire structs unchanged. Pinned by `TestTemporalValue_*`
+(shape rejection, property round-trip, index-key and hash distinctness
+from the equal string) and a badger write→flush→evict→decode round-trip
+asserting the temporal comes back typed AND the same-rendering string
+comes back a plain string.
+
+### Performance — reflection sorts removed, ordered-view key cap lifted
+
+- **`slices.SortFunc` everywhere hot**: the storeutil ID/row
+  sorts (`SortNodesByID`, `SortRelsByID`, `SortNodeIDs`, `SortRelIDs`,
+  `SortSnowflakeIDs`) and the flush cycle's dirty-batch sort went from
+  `sort.Slice` (reflect.Swapper + boxed comparator — ~14% of var-length
+  traversal in the 2026-06 profile) to monomorphized generic sorts.
+  Measured downstream: 2Hop 164→152 allocs/op, VarLength 199→157.
+- **Ordered numeric view: 100k distinct-key cap LIFTED**: the
+  flat sorted `[]float64` (O(D) memmove per new key — the reason for the
+  cap) became a chunked sorted set (`orderedKeys` — a flat-directory B+
+  tree, 4KB half-chunks, O(log chunks + chunk) insert/remove). Range
+  push-down now stays active at any cardinality; `rangeDisabled` is gone.
+  Pinned by a 200×100-op model-equivalence churn probe (split aliasing,
+  directory order, lost keys), chunk-boundary iteration probes, and
+  `TestRangeNodeIDs_Past100kDistinctKeys` (150k keys: supported, exact,
+  delete-consistent).
 
 ## [4.6.1] - 2026-06-10
 

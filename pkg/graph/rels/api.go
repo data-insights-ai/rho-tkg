@@ -31,11 +31,14 @@ type Ops interface {
 
 	All(opts storepkg.QueryOpts) ([]*types.Relationship, error)
 	ByType(typeName string, opts storepkg.QueryOpts) ([]*types.Relationship, error)
+	ForEachByType(typeName string, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 	Count() (int, error)
 	CountByType(typeName string) (int, error)
 
 	Outgoing(nodeID types.NodeID, typeName string) ([]*types.Relationship, error)
 	Incoming(nodeID types.NodeID, typeName string) ([]*types.Relationship, error)
+	ForEachOutgoing(nodeID types.NodeID, typeName string, fn func(*types.Relationship) bool) error
+	ForEachIncoming(nodeID types.NodeID, typeName string, fn func(*types.Relationship) bool) error
 	OutgoingForNodes(nodeIDs []types.NodeID, typeName string) (map[types.NodeID][]*types.Relationship, error)
 	IncomingForNodes(nodeIDs []types.NodeID, typeName string) (map[types.NodeID][]*types.Relationship, error)
 	OutgoingDegree(nodeID types.NodeID, typeName string) (int, error)
@@ -174,6 +177,21 @@ func (a *API) ByType(typeName string, opts storepkg.QueryOpts) ([]*types.Relatio
 	return ops.ByType(typeName, opts)
 }
 
+// ForEachByType streams relationships of the given type to fn in
+// snowflake-ID order; fn returning false stops the scan early. The
+// streaming sibling of ByType for scan consumers that must not materialize
+// the full result slice. RELAXED isolation: rows are fetched and fn runs
+// without graph locks held — concurrent writers are neither blocked nor
+// observed atomically. Rows are shared frozen pointers; fn must not mutate
+// them.
+func (a *API) ForEachByType(typeName string, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachByType(typeName, opts, fn)
+}
+
 // Count returns the total relationship count.
 func (a *API) Count() (int, error) {
 	ops, err := a.ready()
@@ -208,6 +226,28 @@ func (a *API) Incoming(nodeID types.NodeID, typeName string) ([]*types.Relations
 		return nil, err
 	}
 	return ops.Incoming(nodeID, typeName)
+}
+
+// ForEachOutgoing streams outgoing relationships from nodeID (optionally
+// type-filtered; empty typeName means all types) to fn in snowflake-ID
+// order; fn returning false stops the scan early. The streaming sibling of
+// Outgoing for hub-degree adjacency consumers — same relaxed isolation and
+// frozen-row contract as ForEachByType.
+func (a *API) ForEachOutgoing(nodeID types.NodeID, typeName string, fn func(*types.Relationship) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachOutgoing(nodeID, typeName, fn)
+}
+
+// ForEachIncoming is ForEachOutgoing for the incoming direction.
+func (a *API) ForEachIncoming(nodeID types.NodeID, typeName string, fn func(*types.Relationship) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachIncoming(nodeID, typeName, fn)
 }
 
 // OutgoingDegree returns the count of outgoing relationships from nodeID

@@ -55,10 +55,12 @@ func (bs *Store) PutNode(n *types.Node) error {
 	ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data})
 	for i := 0; i < labelCount; i++ {
 		tok := n.LabelTokenRawAt(i)
-		if bs.labelIdx[tok] == nil {
-			bs.labelIdx[tok] = make(map[types.NodeID]struct{})
+		if !bs.labelOnDisk {
+			if bs.labelIdx[tok] == nil {
+				bs.labelIdx[tok] = make(map[types.NodeID]struct{})
+			}
+			bs.labelIdx[tok][nid] = struct{}{}
 		}
-		bs.labelIdx[tok][nid] = struct{}{}
 		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tok, id)})
 		bs.getOrCreateLabelCounter(tok).Add(1)
 	}
@@ -322,7 +324,10 @@ func (bs *Store) DeleteNode(nid types.NodeID) error {
 		bs.idxMu.Unlock()
 		return ErrNodeNotFound
 	}
-	if len(bs.outIdx[nid]) != 0 || len(bs.inIdx[nid]) != 0 {
+	if connected, cErr := bs.nodeHasAdjacentRelsLocked(nid); cErr != nil {
+		bs.idxMu.Unlock()
+		return cErr
+	} else if connected {
 		bs.idxMu.Unlock()
 		return fmt.Errorf("%w: node %d has connected relationships", ErrInvalidStoreMutation, nid)
 	}
@@ -345,10 +350,12 @@ func (bs *Store) DeleteNode(nid types.NodeID) error {
 	allTokens := collectNodeLabelTokens(n)
 	for _, tok := range allTokens {
 		ops = append(ops, writeOp{opType: writeOpDelete, key: storepkg.LabelIndexKey(tok, id)})
-		if set, exists := bs.labelIdx[tok]; exists {
-			delete(set, nid)
-			if len(set) == 0 {
-				delete(bs.labelIdx, tok)
+		if !bs.labelOnDisk {
+			if set, exists := bs.labelIdx[tok]; exists {
+				delete(set, nid)
+				if len(set) == 0 {
+					delete(bs.labelIdx, tok)
+				}
 			}
 		}
 		bs.getOrCreateLabelCounter(tok).Add(-1)
@@ -503,10 +510,12 @@ func (bs *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
 
 	// Remove tok from the in-memory label index.
-	if set, ok := bs.labelIdx[tok]; ok {
-		delete(set, nid)
-		if len(set) == 0 {
-			delete(bs.labelIdx, tok)
+	if !bs.labelOnDisk {
+		if set, ok := bs.labelIdx[tok]; ok {
+			delete(set, nid)
+			if len(set) == 0 {
+				delete(bs.labelIdx, tok)
+			}
 		}
 	}
 	bs.getOrCreateLabelCounter(tok).Add(-1)
@@ -588,12 +597,14 @@ func (bs *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
 
-	set, ok := bs.labelIdx[tok]
-	if !ok {
-		set = make(map[types.NodeID]struct{})
-		bs.labelIdx[tok] = set
+	if !bs.labelOnDisk {
+		set, ok := bs.labelIdx[tok]
+		if !ok {
+			set = make(map[types.NodeID]struct{})
+			bs.labelIdx[tok] = set
+		}
+		set[nid] = struct{}{}
 	}
-	set[nid] = struct{}{}
 	bs.getOrCreateLabelCounter(tok).Add(1)
 
 	bs.nodeCache.Put(id, freezeNodeCopy(updatedNode))
@@ -648,13 +659,40 @@ func (bs *Store) loadNodeFromBadger(txn *badgerv4.Txn, id snowflake.ID) (*types.
 // falls back to label scan + property filter.
 // Results are sorted by snowflake.ID for deterministic output.
 func (bs *Store) prefetchNode(nid types.NodeID) (*types.Node, error) {
+	n, miss, err := bs.prefetchNodeNoFill(nid)
+	if err != nil || !miss {
+		return n, err
+	}
+	bs.nodeCache.LoadClean(nid.SnowflakeID(), n)
+	return n, nil
+}
+
+// prefetchNodeScan is prefetchNode WITHOUT the cache fill on miss. Large
+// sequential scans (label, AllNodes, temporal range) must not insert into
+// the LRU: once the scanned cardinality exceeds the cache capacity,
+// fill-on-miss evicts exactly the entries the next pass needs (100%
+// steady-state miss rate — measured as a 12x per-row regression at 12k
+// nodes through the 10k default cache) and flushes hot point-read entries
+// as collateral. Cache hits are still served; misses pay one badger decode
+// and leave the cache untouched. The returned node is frozen either way.
+func (bs *Store) prefetchNodeScan(nid types.NodeID) (*types.Node, error) {
+	n, _, err := bs.prefetchNodeNoFill(nid)
+	return n, err
+}
+
+// prefetchNodeNoFill is the shared core: cache lookup, then badger decode.
+// miss=true means n was decoded from badger (a cache-fill candidate);
+// miss=false means it came from the cache. The decoded node is frozen
+// before return because callers may publish it into the cache, and cache
+// entries must never be mutable.
+func (bs *Store) prefetchNodeNoFill(nid types.NodeID) (n *types.Node, miss bool, err error) {
 	id := nid.SnowflakeID()
 	v, status := bs.nodeCache.Get(id)
 	switch status {
 	case indexpkg.CacheHit:
-		return v, nil
+		return v, false, nil
 	case indexpkg.CacheDeleted:
-		return nil, ErrNodeNotFound
+		return nil, false, ErrNodeNotFound
 	}
 
 	// Cache miss — check existence before incurring Badger I/O.
@@ -662,13 +700,12 @@ func (bs *Store) prefetchNode(nid types.NodeID) (*types.Node, error) {
 	_, exists := bs.nodeIDs[nid]
 	bs.idxMu.RUnlock()
 	if !exists {
-		return nil, ErrNodeNotFound
+		return nil, false, ErrNodeNotFound
 	}
 
 	// Node exists in-memory but not in cache (flushed + evicted from LRU).
 	// Read from Badger without holding any lock.
-	var n *types.Node
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err = bs.db.View(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.NodeKey(id))
 		if err == badgerv4.ErrKeyNotFound {
 			return ErrNodeNotFound
@@ -690,11 +727,10 @@ func (bs *Store) prefetchNode(nid types.NodeID) (*types.Node, error) {
 		})
 	})
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	n.Freeze() // shared between cache and caller
-	bs.nodeCache.LoadClean(id, n)
-	return n, nil
+	return n, true, nil
 }
 
 // getNodeLocked retrieves a node from cache or Badger.

@@ -1,6 +1,8 @@
 package storeutil
 
 import (
+	"cmp"
+	"slices"
 	"sort"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -169,56 +171,44 @@ func PaginateNodeIDs(ids []types.NodeID, after types.EntityID, limit int) []type
 	return out
 }
 
+// All sorts below use the generic slices package, NOT sort.Slice —
+// sort.Slice goes through reflect.Swapper and an interface-boxed
+// comparator (~14% of var-length traversal time in the 2026-06 profile);
+// slices.SortFunc monomorphizes to direct comparisons and inlined swaps.
+
 // SortNodesByID sorts nodes by snowflake.ID for deterministic output.
 // Order is time-dominant (ms timestamp in high bits) with nodeField and step as tiebreakers.
 func SortNodesByID(nodes []*types.Node) {
-	if len(nodes) < 2 {
-		return
-	}
-	sort.Slice(nodes, func(i, j int) bool {
-		return nodes[i].ID() < nodes[j].ID()
+	slices.SortFunc(nodes, func(a, b *types.Node) int {
+		return cmp.Compare(a.ID(), b.ID())
 	})
 }
 
 // SortRelsByID sorts relationships by snowflake.ID for deterministic output.
 // Order is time-dominant (ms timestamp in high bits) with nodeField and step as tiebreakers.
 func SortRelsByID(rels []*types.Relationship) {
-	if len(rels) < 2 {
-		return
-	}
-	sort.Slice(rels, func(i, j int) bool {
-		return rels[i].ID() < rels[j].ID()
+	slices.SortFunc(rels, func(a, b *types.Relationship) int {
+		return cmp.Compare(a.ID(), b.ID())
 	})
 }
 
 // SortNodeIDs sorts node IDs by the underlying snowflake value.
 func SortNodeIDs(ids []types.NodeID) {
-	if len(ids) < 2 {
-		return
-	}
-	sort.Slice(ids, func(i, j int) bool {
-		return ids[i].SnowflakeID() < ids[j].SnowflakeID()
+	slices.SortFunc(ids, func(a, b types.NodeID) int {
+		return cmp.Compare(a.SnowflakeID(), b.SnowflakeID())
 	})
 }
 
 // SortRelIDs sorts relationship IDs by the underlying snowflake value.
 func SortRelIDs(ids []types.RelID) {
-	if len(ids) < 2 {
-		return
-	}
-	sort.Slice(ids, func(i, j int) bool {
-		return ids[i].SnowflakeID() < ids[j].SnowflakeID()
+	slices.SortFunc(ids, func(a, b types.RelID) int {
+		return cmp.Compare(a.SnowflakeID(), b.SnowflakeID())
 	})
 }
 
 // SortSnowflakeIDs sorts raw snowflake IDs.
 func SortSnowflakeIDs(ids []snowflake.ID) {
-	if len(ids) < 2 {
-		return
-	}
-	sort.Slice(ids, func(i, j int) bool {
-		return ids[i] < ids[j]
-	})
+	slices.Sort(ids)
 }
 
 // PaginateRelIDs is the typed equivalent of PaginateIDs for []types.RelID.
