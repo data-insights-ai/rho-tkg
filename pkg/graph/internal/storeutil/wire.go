@@ -453,7 +453,7 @@ func validatePropertyWire(p PropertyWire, index int, prev string) (types.Propert
 	if index > 0 && p.Key <= prev {
 		return types.Property{}, fmt.Errorf("property[%d] key %q is not in strict sorted order after %q", index, p.Key, prev)
 	}
-	if p.Type > ptCustom {
+	if p.Type > ptTemporal {
 		return types.Property{}, fmt.Errorf("property[%d] key %q has unknown type tag %d", index, p.Key, p.Type)
 	}
 	if p.Type != ptCustom && (p.CustomType != "" || p.CustomPointer) {

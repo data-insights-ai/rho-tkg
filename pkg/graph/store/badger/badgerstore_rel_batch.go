@@ -101,15 +101,17 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		}
 		bs.typeIdx[rd.relType][rd.rid] = struct{}{}
 
-		if bs.outIdx[rd.startNID] == nil {
-			bs.outIdx[rd.startNID] = make(map[types.RelID]struct{})
-		}
-		bs.outIdx[rd.startNID][rd.rid] = struct{}{}
+		if !bs.adjOnDisk {
+			if bs.outIdx[rd.startNID] == nil {
+				bs.outIdx[rd.startNID] = make(map[types.RelID]struct{})
+			}
+			bs.outIdx[rd.startNID][rd.rid] = struct{}{}
 
-		if bs.inIdx[rd.endNID] == nil {
-			bs.inIdx[rd.endNID] = make(map[types.RelID]uint16)
+			if bs.inIdx[rd.endNID] == nil {
+				bs.inIdx[rd.endNID] = make(map[types.RelID]uint16)
+			}
+			bs.inIdx[rd.endNID][rd.rid] = rd.relType
 		}
-		bs.inIdx[rd.endNID][rd.rid] = rd.relType
 
 		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.RelKey(rd.id), value: rd.data})
 		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.RelTypeIndexKey(rd.relType, rd.id)})

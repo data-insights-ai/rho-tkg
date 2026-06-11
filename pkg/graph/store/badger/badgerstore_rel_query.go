@@ -51,7 +51,7 @@ func (bs *Store) fetchRelationshipsByTypeIDs(token uint16, ids []types.RelID, op
 	rels := make([]*types.Relationship, 0, capForLimit(opts.Limit))
 	for _, rid := range ids {
 		id := rid.SnowflakeID()
-		r, err := bs.prefetchRel(rid)
+		r, err := bs.prefetchRelScan(rid)
 		if err != nil {
 			if errors.Is(err, ErrRelNotFound) {
 				continue // index orphan or tombstone
@@ -93,25 +93,11 @@ func (bs *Store) OutgoingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 		bs.idxMu.RUnlock()
 		return nil, ErrNodeNotFound
 	}
-	set := bs.outIdx[nid]
-	var typeSet map[types.RelID]struct{}
-	if typeToken != 0 {
-		typeSet = bs.typeIdx[typeToken]
-		if len(typeSet) == 0 {
-			bs.idxMu.RUnlock()
-			return nil, nil
-		}
-	}
-	rids := make([]types.RelID, 0, len(set))
-	for id := range set {
-		if typeToken != 0 {
-			if _, ok := typeSet[id]; !ok {
-				continue
-			}
-		}
-		rids = append(rids, id)
-	}
+	rids, idErr := bs.adjacentRelIDsSnapshotLocked(nid, typeToken, false)
 	bs.idxMu.RUnlock()
+	if idErr != nil {
+		return nil, idErr
+	}
 
 	if len(rids) == 0 {
 		return nil, nil
@@ -157,10 +143,6 @@ func (bs *Store) OutgoingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 
 	// Phase 1: snapshot matching relIDs per node under single read lock.
 	bs.idxMu.RLock()
-	var typeSet map[types.RelID]struct{}
-	if typeToken != 0 {
-		typeSet = bs.typeIdx[typeToken]
-	}
 	perNode := make(map[types.NodeID][]types.RelID, len(typedNodeIDs))
 	seen := make(map[types.NodeID]struct{}, len(typedNodeIDs))
 	for _, nid := range typedNodeIDs {
@@ -172,21 +154,10 @@ func (bs *Store) OutgoingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 			bs.idxMu.RUnlock()
 			return nil, ErrNodeNotFound
 		}
-		set := bs.outIdx[nid]
-		if len(set) == 0 {
-			continue
-		}
-		if typeToken != 0 && len(typeSet) == 0 {
-			continue
-		}
-		ids := make([]types.RelID, 0, len(set))
-		for id := range set {
-			if typeToken != 0 {
-				if _, ok := typeSet[id]; !ok {
-					continue
-				}
-			}
-			ids = append(ids, id)
+		ids, idErr := bs.adjacentRelIDsSnapshotLocked(nid, typeToken, false)
+		if idErr != nil {
+			bs.idxMu.RUnlock()
+			return nil, idErr
 		}
 		if len(ids) > 0 {
 			perNode[nid] = ids
@@ -247,6 +218,13 @@ func (bs *Store) OutgoingDegree(nid types.NodeID, typeToken uint16) (int, error)
 	if _, ok := bs.nodeIDs[nid]; !ok {
 		return 0, ErrNodeNotFound
 	}
+	if bs.adjOnDisk {
+		rids, err := bs.adjacentRelIDsSnapshotLocked(nid, typeToken, false)
+		if err != nil {
+			return 0, err
+		}
+		return len(rids), nil
+	}
 	set := bs.outIdx[nid]
 	if typeToken == 0 {
 		return len(set), nil
@@ -282,6 +260,13 @@ func (bs *Store) IncomingDegree(nid types.NodeID, typeToken uint16) (int, error)
 	if _, ok := bs.nodeIDs[nid]; !ok {
 		return 0, ErrNodeNotFound
 	}
+	if bs.adjOnDisk {
+		rids, err := bs.adjacentRelIDsSnapshotLocked(nid, typeToken, true)
+		if err != nil {
+			return 0, err
+		}
+		return len(rids), nil
+	}
 	set := bs.inIdx[nid]
 	if typeToken == 0 {
 		return len(set), nil
@@ -310,14 +295,11 @@ func (bs *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 		bs.idxMu.RUnlock()
 		return nil, ErrNodeNotFound
 	}
-	set := bs.inIdx[nid]
-	rids := make([]types.RelID, 0, len(set))
-	for id, tok := range set {
-		if typeToken == 0 || tok == typeToken {
-			rids = append(rids, id)
-		}
-	}
+	rids, idErr := bs.adjacentRelIDsSnapshotLocked(nid, typeToken, true)
 	bs.idxMu.RUnlock()
+	if idErr != nil {
+		return nil, idErr
+	}
 
 	if len(rids) == 0 {
 		return nil, nil
@@ -376,15 +358,10 @@ func (bs *Store) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 			bs.idxMu.RUnlock()
 			return nil, ErrNodeNotFound
 		}
-		set := bs.inIdx[nid]
-		if len(set) == 0 {
-			continue
-		}
-		ids := make([]types.RelID, 0, len(set))
-		for id, tok := range set {
-			if typeToken == 0 || tok == typeToken {
-				ids = append(ids, id)
-			}
+		ids, idErr := bs.adjacentRelIDsSnapshotLocked(nid, typeToken, true)
+		if idErr != nil {
+			bs.idxMu.RUnlock()
+			return nil, idErr
 		}
 		if len(ids) > 0 {
 			perNode[nid] = ids

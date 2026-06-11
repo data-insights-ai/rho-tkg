@@ -208,6 +208,14 @@ func (c *Core) validatePropertyValueLimitTyped(key string, val any, depth int) e
 			return fmt.Errorf("%w: key %q (%d > %d)", ErrValueTooLarge, key, len(v), c.validation.MaxPropertyValueSize)
 		}
 		return nil
+	case types.TemporalValue:
+		// Shape (kind range, bounded rendering) is enforced by
+		// types.ValidatePropertyValue; the rendering also honors the
+		// graph-level size limit like any string.
+		if len(v.Value) > c.validation.MaxPropertyValueSize {
+			return fmt.Errorf("%w: key %q (%d > %d)", ErrValueTooLarge, key, len(v.Value), c.validation.MaxPropertyValueSize)
+		}
+		return nil
 	case []int:
 		if len(v) > 0 && depth+1 > maxPropertyValueLimitDepth {
 			return fmt.Errorf("%w: key %q", types.ErrMaxDepthExceeded, key)

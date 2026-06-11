@@ -66,12 +66,12 @@ func TestFrozen_NodeErrorMutatorsReject(t *testing.T) {
 // error channel, and a silent no-op would corrupt store caches invisibly.
 func TestFrozen_NodeVoidMutatorsPanic(t *testing.T) {
 	calls := map[string]func(n *Node){
-		"SetVersion":         func(n *Node) { n.SetVersion(7) },
-		"SetTemporal":        func(n *Node) { n.SetTemporal(&TemporalMetadata{}) },
-		"SetIntegrity":       func(n *Node) { n.SetIntegrity(&NodeIntegrity{}) },
-		"AddLabelTokenRaw":   func(n *Node) { n.AddLabelTokenRaw(9) },
+		"SetVersion":          func(n *Node) { n.SetVersion(7) },
+		"SetTemporal":         func(n *Node) { n.SetTemporal(&TemporalMetadata{}) },
+		"SetIntegrity":        func(n *Node) { n.SetIntegrity(&NodeIntegrity{}) },
+		"AddLabelTokenRaw":    func(n *Node) { n.AddLabelTokenRaw(9) },
 		"RemoveLabelTokenRaw": func(n *Node) { n.RemoveLabelTokenRaw(2) },
-		"SetLabelTokensRaw":  func(n *Node) { n.SetLabelTokensRaw(3, nil) },
+		"SetLabelTokensRaw":   func(n *Node) { n.SetLabelTokensRaw(3, nil) },
 	}
 	for name, call := range calls {
 		t.Run(name, func(t *testing.T) {

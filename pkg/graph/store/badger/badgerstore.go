@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -99,6 +100,31 @@ type Config struct {
 	Logger badgerv4.Logger
 	// CacheCapacity is the per-cache (nodes, rels) soft limit. Default: 10,000.
 	CacheCapacity int
+	// CacheBudgetBytes bounds each entity cache (nodes, rels) by estimated
+	// resident BYTES instead of entry count alone — entries vary 100B-64KB,
+	// so a count capacity alone cannot bound memory under mixed payloads.
+	// Clean LRU entries are evicted while the estimate exceeds the budget;
+	// like CacheCapacity this is a soft limit (dirty entries are never
+	// evicted). 0 disables byte accounting. When set and CacheCapacity is 0,
+	// the count limit is effectively unbounded and the byte budget governs.
+	CacheBudgetBytes int64
+	// LabelIndexOnDisk keeps the label→nodes index OUT of RAM: label
+	// snapshots are answered from the persisted label keyspace (written
+	// transactionally with node rows since the format's inception — no
+	// migration needed) via badger prefix iterators, with unflushed writes
+	// overlaid. Saves the in-memory labelIdx map (~50-100B per label entry
+	// — THE memory ceiling at hundreds of millions of nodes) at the cost
+	// of disk iteration per label scan. See badgerstore_label_disk.go.
+	LabelIndexOnDisk bool
+	// AdjacencyIndexOnDisk is the adjacency sibling of LabelIndexOnDisk:
+	// outgoing/incoming snapshots are answered from the persisted
+	// OutKey/InKey keyspaces (also written transactionally with rel rows
+	// since inception — no migration). Saves the outIdx/inIdx maps (~2
+	// entries per relationship — the largest index maps) at the cost of a
+	// disk prefix iteration per adjacency read; typed queries use an
+	// 11-byte prefix that replaces the in-memory typeIdx intersection.
+	// See badgerstore_adjacency_disk.go.
+	AdjacencyIndexOnDisk bool
 	// FlushInterval is the time between async write batches. Default: 100ms.
 	// Zero disables periodic flushing (manual flush only — for testing).
 	FlushInterval time.Duration
@@ -189,7 +215,9 @@ type Store struct {
 	nodeRevs    map[types.NodeID]uint64   // live node row revision for safe prefetch handoff
 	nextNodeRev uint64
 	relIDs      map[types.RelID]struct{}                  // O(1) rel existence check
-	labelIdx    map[uint16]map[types.NodeID]struct{}      // labelToken → set(nodeID)
+	labelIdx    map[uint16]map[types.NodeID]struct{}      // labelToken → set(nodeID); EMPTY in labelOnDisk mode
+	labelOnDisk bool                                      // answer label snapshots from the persisted keyspace
+	adjOnDisk   bool                                      // answer adjacency snapshots from the persisted keyspaces
 	typeIdx     map[uint16]map[types.RelID]struct{}       // relTypeToken → set(relID)
 	outIdx      map[types.NodeID]map[types.RelID]struct{} // startNodeID → set(relID)
 	inIdx       map[types.NodeID]map[types.RelID]uint16   // endNodeID → relID → typeToken
@@ -296,6 +324,27 @@ var (
 
 // New opens a Badger database with the given configuration and
 // rebuilds in-memory indexes from persisted data.
+// newNodeCache / newRelCache construct the entity caches, byte-budgeted
+// when budget > 0 (sized by the entities' approximate resident heap
+// footprint — see types.ApproxHeapBytes).
+func newNodeCache(capacity int, budget int64) *indexpkg.Cache[*types.Node] {
+	if budget <= 0 {
+		return indexpkg.NewCache[*types.Node](capacity)
+	}
+	return indexpkg.NewCacheWithBudget(capacity, budget, func(n *types.Node) int64 {
+		return int64(n.ApproxHeapBytes())
+	})
+}
+
+func newRelCache(capacity int, budget int64) *indexpkg.Cache[*types.Relationship] {
+	if budget <= 0 {
+		return indexpkg.NewCache[*types.Relationship](capacity)
+	}
+	return indexpkg.NewCacheWithBudget(capacity, budget, func(r *types.Relationship) int64 {
+		return int64(r.ApproxHeapBytes())
+	})
+}
+
 func New(cfg Config) (*Store, error) {
 	if cfg.FlushInterval < 0 {
 		return nil, fmt.Errorf("graph: FlushInterval must not be negative")
@@ -349,6 +398,11 @@ func New(cfg Config) (*Store, error) {
 	capacity := cfg.CacheCapacity
 	if capacity <= 0 {
 		capacity = DefaultCacheCapacity
+		if cfg.CacheBudgetBytes > 0 {
+			// Byte budget governs; don't let the default count capacity
+			// evict underneath it.
+			capacity = math.MaxInt
+		}
 	}
 	flushInt := cfg.FlushInterval
 	if flushInt == 0 {
@@ -383,14 +437,16 @@ func New(cfg Config) (*Store, error) {
 		typeIdx:         make(map[uint16]map[types.RelID]struct{}),
 		outIdx:          make(map[types.NodeID]map[types.RelID]struct{}),
 		inIdx:           make(map[types.NodeID]map[types.RelID]uint16),
-		nodeCache:       indexpkg.NewCache[*types.Node](capacity),
-		relCache:        indexpkg.NewCache[*types.Relationship](capacity),
+		nodeCache:       newNodeCache(capacity, cfg.CacheBudgetBytes),
+		relCache:        newRelCache(capacity, cfg.CacheBudgetBytes),
 		pending:         make(map[string]writeOp),
 		propertyIndexes: make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex),
 		temporalIndexes: make(map[uint16]*indexpkg.TemporalIndex),
 		hfIndexes:       make(map[uint16]*indexpkg.HighFrequencyIndex),
 		vectorIndexes:   make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex),
 		inMemory:        cfg.InMemory,
+		labelOnDisk:     cfg.LabelIndexOnDisk,
+		adjOnDisk:       cfg.AdjacencyIndexOnDisk,
 		readOnly:        cfg.ReadOnly,
 		syncWrites:      cfg.SyncWrites && !cfg.ReadOnly,
 		maxPending:      maxPending,
@@ -462,6 +518,32 @@ func New(cfg Config) (*Store, error) {
 // loadIndexes rebuilds in-memory indexes and counters from Badger.
 // Single db.View() scan of all index key prefixes (keys-only, no values).
 func (bs *Store) loadIndexes() error {
+	err := bs.loadIndexesScan()
+	if err != nil {
+		return err
+	}
+	if bs.labelOnDisk {
+		// Disk-resident label index: the map was built transiently above
+		// because the open-path rebuilds (per-label counters, property/
+		// temporal/HF/vector index backfills) walk it — drop it now for the
+		// steady-state RAM win. Runtime label snapshots come from the
+		// persisted keyspace (badgerstore_label_disk.go). Open-path peak
+		// memory still includes the transient map; making open fully
+		// streaming is the documented follow-up.
+		bs.labelIdx = make(map[uint16]map[types.NodeID]struct{})
+	}
+	if bs.adjOnDisk {
+		// Same transient-then-drop discipline for the adjacency maps
+		// (badgerstore_adjacency_disk.go) — the open-path counter rebuilds
+		// walked them above; runtime snapshots come from the OutKey/InKey
+		// keyspaces.
+		bs.outIdx = make(map[types.NodeID]map[types.RelID]struct{})
+		bs.inIdx = make(map[types.NodeID]map[types.RelID]uint16)
+	}
+	return nil
+}
+
+func (bs *Store) loadIndexesScan() error {
 	return bs.db.View(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
@@ -1082,10 +1164,10 @@ func (bs *Store) Clear() error {
 		return true
 	})
 
-	// Re-create LRU caches with same capacity.
+	// Re-create LRU caches with same capacity and byte budget.
 	cap := bs.nodeCache.Cap()
-	bs.nodeCache = indexpkg.NewCache[*types.Node](cap)
-	bs.relCache = indexpkg.NewCache[*types.Relationship](cap)
+	bs.nodeCache = newNodeCache(cap, bs.nodeCache.Budget())
+	bs.relCache = newRelCache(cap, bs.relCache.Budget())
 
 	// Clear pending buffer. (flushMu serializes us against flush(), so any
 	// snapshot that happens after this point sees an empty buffer.)

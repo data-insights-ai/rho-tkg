@@ -50,6 +50,7 @@ const (
 	ptMapStrStr  byte = 23
 	ptSliceF32   byte = 24
 	ptCustom     byte = 25
+	ptTemporal   byte = 26 // types.TemporalValue — encoded as [kind, iso-string]
 )
 
 const (
@@ -125,6 +126,8 @@ func validatePropertyWireValue(v any, tag byte) error {
 		if _, ok := v.(string); ok {
 			return nil
 		}
+	case ptTemporal:
+		return validateWireTemporal(v)
 	case ptSliceStr:
 		return validateWireStringSlice(v)
 	case ptSliceInt:
@@ -406,6 +409,11 @@ func PropertyTypeTag(v any) byte {
 func propertyToWire(p types.Property) (PropertyWire, error) {
 	tag := PropertyTypeTag(p.Value)
 	pw := PropertyWire{Key: p.Key, Type: tag}
+	if tag == ptTemporal {
+		tv := p.Value.(types.TemporalValue)
+		pw.Value = []any{int(tv.Kind), tv.Value}
+		return pw, nil
+	}
 	if tag != ptCustom {
 		if tag == ptUnknown && p.Value != nil {
 			return PropertyWire{}, fmt.Errorf("%w: unsupported property wire value %T", types.ErrUnsupportedValueType, p.Value)
@@ -469,6 +477,29 @@ func hashBytesChecked(v types.HashableValue) (hash []byte, err error) {
 // value using the stored type tag. Msgpack destroys type fidelity: []string
 // becomes []any, int64 becomes int8 for small values, etc. The type tag
 // reverses this loss.
+// validateWireTemporal checks the [kind, iso-string] pair shape a
+// ptTemporal value decodes to (msgpack turns the encode-side []any into
+// []any of integer + string).
+func validateWireTemporal(v any) error {
+	pair, ok := v.([]any)
+	if !ok || len(pair) != 2 {
+		return fmt.Errorf("temporal wire value has shape %T, want [kind, string]", v)
+	}
+	kind, ok := wireUint64(pair[0])
+	if !ok {
+		return fmt.Errorf("temporal wire kind has type %T, want integer", pair[0])
+	}
+	iso, ok := pair[1].(string)
+	if !ok {
+		return fmt.Errorf("temporal wire rendering has type %T, want string", pair[1])
+	}
+	tv := types.TemporalValue{Kind: types.TemporalKind(kind), Value: iso}
+	if kind > 255 {
+		return fmt.Errorf("temporal wire kind %d out of range", kind)
+	}
+	return tv.Validate()
+}
+
 func reconstructPropertyWireValue(p PropertyWire) (any, error) {
 	if p.Nil {
 		if p.Value != nil {
@@ -482,6 +513,14 @@ func reconstructPropertyWireValue(p PropertyWire) (any, error) {
 			return nil, fmt.Errorf("custom property %q value has type %T, want []byte", p.CustomType, p.Value)
 		}
 		return reconstructCustomPropertyValue(data, p.CustomType, p.CustomPointer)
+	}
+	if p.Type == ptTemporal {
+		if err := validateWireTemporal(p.Value); err != nil {
+			return nil, fmt.Errorf("temporal property %q: %w", p.Key, err)
+		}
+		pair := p.Value.([]any)
+		kind, _ := wireUint64(pair[0])
+		return types.TemporalValue{Kind: types.TemporalKind(kind), Value: pair[1].(string)}, nil
 	}
 	return reconstructTypedValue(p.Value, p.Type), nil
 }

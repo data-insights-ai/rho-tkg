@@ -3,6 +3,7 @@ package core
 import (
 	"errors"
 
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
@@ -66,6 +67,124 @@ func (n *NodeOps) ByLabel(label string, opts storepkg.QueryOpts) ([]*types.Node,
 		return nil, err
 	}
 	return result, nil
+}
+
+// nodeLabelScanner is the OPTIONAL store capability behind
+// NodeOps.ForEachByLabel — streaming label scans whose peak memory stays
+// O(1) in the label's cardinality. Implemented by the in-tree memory and
+// badger stores; stores without it fall back to the materializing path.
+type nodeLabelScanner interface {
+	ForEachNodeByLabel(token uint16, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
+}
+
+// ForEachByLabel streams nodes carrying the given label to fn in
+// snowflake-ID order; fn returning false stops the scan early. The
+// streaming sibling of ByLabel for scan consumers (count/filter/aggregate
+// pipelines) that must not materialize the full result slice.
+//
+// Isolation is RELAXED relative to ByLabel: the scan capability snapshots
+// the ID set, then fetches rows and calls fn without holding graph locks —
+// fn may call back into the graph, and concurrent writers are neither
+// blocked nor observed atomically (deleted rows are skipped, new rows are
+// not seen). Rows are shared frozen pointers; fn must not mutate them.
+//
+// Temporal-filter queries and non-native stores route through the
+// materializing ByLabel path (history-aware version walking needs the full
+// machinery), so streaming currently applies to the plain current-state
+// scan — exactly the shape whose materialization cost scales with label
+// cardinality.
+func (n *NodeOps) ForEachByLabel(label string, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
+	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
+	if fn == nil {
+		return grapherr.ErrNilCallback
+	}
+	if err := c.validateIndexLabel(label); err != nil {
+		return err
+	}
+	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+		return err
+	}
+
+	scanner, native := c.store.(nodeLabelScanner)
+	if !native || !c.storeRowsTrust || hasTemporalFilter(opts) {
+		nodes, err := n.ByLabel(label, opts)
+		if err != nil {
+			return err
+		}
+		for _, nd := range nodes {
+			if !fn(nd) {
+				return nil
+			}
+		}
+		return nil
+	}
+
+	var tok uint16
+	var ok bool
+	if err := c.readUnderRLock(func() error {
+		tok, ok = c.labels.Lookup(label)
+		return nil
+	}); err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+	// Deliberately outside c.mu — see the isolation note above.
+	return scanner.ForEachNodeByLabel(tok, opts, fn)
+}
+
+// nodeRangeScanner is the OPTIONAL store capability behind
+// NodeOps.ForEachByLabelPropertyRange — streaming numeric range scans over
+// a property index's ordered view (ordered range view). Implemented by the badger store.
+type nodeRangeScanner interface {
+	ForEachNodeByLabelPropertyRange(token uint16, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
+}
+
+// ForEachByLabelPropertyRange streams nodes carrying the label whose
+// NUMERIC propKey value lies within [min, max] (per the inclusivity
+// flags), in snowflake-ID order. The candidates come from the property
+// index's ordered numeric view, which OVER-SELECTS by design (float64
+// sort keys, ulp-widened bounds): fn must re-check its predicate with
+// exact comparison semantics. Returns storepkg.ErrIndexNotFound when no
+// property index with a usable ordered view exists for (label, propKey)
+// or the store lacks the capability — callers fall back to a label scan.
+// Same relaxed isolation and frozen-row contract as ForEachByLabel;
+// temporal-filter opts route through the store's per-row temporal check.
+func (n *NodeOps) ForEachByLabelPropertyRange(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
+	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
+	if fn == nil {
+		return grapherr.ErrNilCallback
+	}
+	if err := c.validateIndexLabel(label); err != nil {
+		return err
+	}
+	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+		return err
+	}
+	scanner, native := c.store.(nodeRangeScanner)
+	if !native || !c.storeRowsTrust {
+		return storepkg.ErrIndexNotFound
+	}
+	var tok uint16
+	var ok bool
+	if err := c.readUnderRLock(func() error {
+		tok, ok = c.labels.Lookup(label)
+		return nil
+	}); err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+	// Deliberately outside c.mu — see ForEachByLabel's isolation note.
+	return scanner.ForEachNodeByLabelPropertyRange(tok, propKey, min, max, inclMin, inclMax, opts, fn)
 }
 
 // nodesByLabelLocked is the lock-free body of NodeOps.ByLabel. Callers must
@@ -187,6 +306,159 @@ func (c *Core) relsByTypeLocked(typeName string, opts storepkg.QueryOpts) ([]*ty
 	storeutil.SortRelsByID(result)
 	result = storeutil.PaginateRels(result, opts.After, opts.Limit)
 	return result, nil
+}
+
+// relTypeScanner is the OPTIONAL store capability behind
+// RelOps.ForEachByType — streaming type scans whose peak memory stays O(1)
+// in the type's cardinality. Implemented by the in-tree memory and badger
+// stores; stores without it fall back to the materializing path.
+type relTypeScanner interface {
+	ForEachRelByType(token uint16, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
+}
+
+// ForEachByType streams relationships carrying the given type to fn in
+// snowflake-ID order; fn returning false stops the scan early. The
+// streaming sibling of ByType for scan consumers (count/filter/aggregate
+// pipelines) that must not materialize the full result slice.
+//
+// Isolation is RELAXED relative to ByType: the scan capability snapshots
+// the ID set, then fetches rows and calls fn without holding graph locks —
+// fn may call back into the graph, and concurrent writers are neither
+// blocked nor observed atomically (deleted rows are skipped, new rows are
+// not seen). Rows are shared frozen pointers; fn must not mutate them.
+//
+// Temporal-filter queries and non-native stores route through the
+// materializing ByType path (history-aware version walking needs the full
+// machinery), so streaming currently applies to the plain current-state
+// scan — exactly the shape whose materialization cost scales with type
+// cardinality.
+func (r *RelOps) ForEachByType(typeName string, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
+	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
+	if fn == nil {
+		return grapherr.ErrNilCallback
+	}
+	if err := c.validateRelTypeQueryName(typeName); err != nil {
+		return err
+	}
+	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+		return err
+	}
+
+	scanner, native := c.store.(relTypeScanner)
+	if !native || !c.storeRowsTrust || hasTemporalFilter(opts) {
+		rels, err := r.ByType(typeName, opts)
+		if err != nil {
+			return err
+		}
+		for _, rel := range rels {
+			if !fn(rel) {
+				return nil
+			}
+		}
+		return nil
+	}
+
+	var tok uint16
+	var ok bool
+	if err := c.readUnderRLock(func() error {
+		tok, ok = c.lookupRelTypeQueryToken(typeName)
+		return nil
+	}); err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+	// Deliberately outside c.mu — see the isolation note above.
+	return scanner.ForEachRelByType(tok, opts, fn)
+}
+
+// relAdjacencyScanner is the OPTIONAL store capability behind
+// RelOps.ForEachOutgoing / ForEachIncoming — streaming adjacency scans for
+// hub-degree consumers (BFS expansion around power-law hubs) that must not
+// materialize a hub's full adjacency slice.
+type relAdjacencyScanner interface {
+	ForEachOutgoingRel(nid types.NodeID, typeToken uint16, fn func(*types.Relationship) bool) error
+	ForEachIncomingRel(nid types.NodeID, typeToken uint16, fn func(*types.Relationship) bool) error
+}
+
+// ForEachOutgoing streams the node's outgoing relationships (optionally
+// type-filtered; empty typeName means all types) to fn in snowflake-ID
+// order; fn returning false stops the scan early. The streaming sibling of
+// Outgoing — same relaxed isolation and frozen-row contract as
+// ForEachByType. Unregistered typeName streams nothing (after verifying the
+// node exists, matching Outgoing).
+func (r *RelOps) ForEachOutgoing(nodeID types.NodeID, typeName string, fn func(*types.Relationship) bool) error {
+	return r.forEachAdjacent(nodeID, typeName, false, fn)
+}
+
+// ForEachIncoming is ForEachOutgoing for the incoming direction.
+func (r *RelOps) ForEachIncoming(nodeID types.NodeID, typeName string, fn func(*types.Relationship) bool) error {
+	return r.forEachAdjacent(nodeID, typeName, true, fn)
+}
+
+func (r *RelOps) forEachAdjacent(nodeID types.NodeID, typeName string, incoming bool, fn func(*types.Relationship) bool) error {
+	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
+	if fn == nil {
+		return grapherr.ErrNilCallback
+	}
+	if typeName != "" {
+		if err := c.validateRelTypeQueryName(typeName); err != nil {
+			return err
+		}
+	}
+	if err := storepkg.ValidateNodeID(nodeID); err != nil {
+		return err
+	}
+
+	scanner, native := c.store.(relAdjacencyScanner)
+	if !native || !c.storeRowsTrust {
+		var rels []*types.Relationship
+		var err error
+		if incoming {
+			rels, err = r.Incoming(nodeID, typeName)
+		} else {
+			rels, err = r.Outgoing(nodeID, typeName)
+		}
+		if err != nil {
+			return err
+		}
+		for _, rel := range rels {
+			if !fn(rel) {
+				return nil
+			}
+		}
+		return nil
+	}
+
+	var tok uint16
+	if typeName != "" {
+		var ok bool
+		if err := c.readUnderRLock(func() error {
+			tok, ok = c.lookupRelTypeQueryToken(typeName)
+			return nil
+		}); err != nil {
+			return err
+		}
+		if !ok {
+			// Unregistered type: mirror Outgoing/Incoming — the node-exists
+			// check still applies, then nothing matches.
+			return c.readUnderRLock(func() error {
+				return c.validateRequestedNodesExist([]types.NodeID{nodeID})
+			})
+		}
+	}
+	// Deliberately outside c.mu — see ForEachByType's isolation note.
+	if incoming {
+		return scanner.ForEachIncomingRel(nodeID, tok, fn)
+	}
+	return scanner.ForEachOutgoingRel(nodeID, tok, fn)
 }
 
 // Outgoing returns all outgoing relationships from the given node.

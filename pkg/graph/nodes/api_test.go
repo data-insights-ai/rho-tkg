@@ -314,6 +314,21 @@ func (s *nodeOpsSpy) ByLabel(label string, opts storepkg.QueryOpts) ([]*types.No
 	return nil, s.err
 }
 
+func (s *nodeOpsSpy) ForEachByLabel(label string, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
+	s.record("ForEachByLabel")
+	s.lastLabel = label
+	s.lastOpts = opts
+	return s.err
+}
+
+func (s *nodeOpsSpy) ForEachByLabelPropertyRange(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
+	s.record("ForEachByLabelPropertyRange")
+	s.lastLabel = label
+	s.lastKey = propKey
+	s.lastOpts = opts
+	return s.err
+}
+
 func (s *nodeOpsSpy) ByLabelAndProperty(label, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	s.record("ByLabelAndProperty")
 	s.lastLabel = label

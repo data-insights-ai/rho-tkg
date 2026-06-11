@@ -69,7 +69,7 @@ func (bs *Store) fetchNodesWithTemporalFilter(ids []types.NodeID, opts QueryOpts
 	nodes := make([]*types.Node, 0, len(ids))
 	for _, nid := range ids {
 		id := nid.SnowflakeID()
-		n, err := bs.prefetchNode(nid)
+		n, err := bs.prefetchNodeScan(nid)
 		if err != nil {
 			if errors.Is(err, ErrNodeNotFound) {
 				continue
@@ -97,7 +97,7 @@ func (bs *Store) fetchNodesWithTemporalFilterPage(ids []types.NodeID, opts Query
 	nodes := make([]*types.Node, 0, capForLimit(opts.Limit))
 	for _, nid := range ids {
 		id := nid.SnowflakeID()
-		n, err := bs.prefetchNode(nid)
+		n, err := bs.prefetchNodeScan(nid)
 		if err != nil {
 			if errors.Is(err, ErrNodeNotFound) {
 				continue
@@ -138,7 +138,7 @@ func (bs *Store) filterNodeIDsByTemporalFetch(ids []types.NodeID, opts QueryOpts
 		case indexpkg.CacheDeleted:
 			continue
 		case indexpkg.CacheMiss:
-			n, err := bs.prefetchNode(nid)
+			n, err := bs.prefetchNodeScan(nid)
 			if err != nil {
 				if errors.Is(err, ErrNodeNotFound) {
 					continue
@@ -163,7 +163,7 @@ func (bs *Store) fetchRelsWithTemporalFilter(ids []types.RelID, opts QueryOpts) 
 	rels := make([]*types.Relationship, 0, len(ids))
 	for _, rid := range ids {
 		id := rid.SnowflakeID()
-		r, err := bs.prefetchRel(rid)
+		r, err := bs.prefetchRelScan(rid)
 		if err != nil {
 			if errors.Is(err, ErrRelNotFound) {
 				continue
@@ -197,7 +197,7 @@ func (bs *Store) filterRelIDsByTemporalFetch(ids []types.RelID, opts QueryOpts) 
 		case indexpkg.CacheDeleted:
 			continue
 		case indexpkg.CacheMiss:
-			r, err := bs.prefetchRel(rid)
+			r, err := bs.prefetchRelScan(rid)
 			if err != nil {
 				if errors.Is(err, ErrRelNotFound) {
 					continue
@@ -226,7 +226,7 @@ func (bs *Store) fetchRelsWithTemporalFilterPage(ids []types.RelID, opts QueryOp
 	rels := make([]*types.Relationship, 0, capForLimit(opts.Limit))
 	for _, rid := range ids {
 		id := rid.SnowflakeID()
-		r, err := bs.prefetchRel(rid)
+		r, err := bs.prefetchRelScan(rid)
 		if err != nil {
 			if errors.Is(err, ErrRelNotFound) {
 				continue

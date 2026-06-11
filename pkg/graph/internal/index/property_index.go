@@ -15,6 +15,10 @@ type PropertyIndexKey struct {
 type PropertyIndex struct {
 	Entries map[string]map[snowflake.ID]struct{}
 	Mutated map[snowflake.ID]struct{} // non-nil during index creation Phase 2
+
+	// Ordered numeric view — see property_index_range.go.
+	numKeys    orderedKeys
+	numBuckets map[float64]map[snowflake.ID]struct{}
 }
 
 // NewPropertyIndex creates an empty property index.
@@ -49,6 +53,7 @@ func (pi *PropertyIndex) AddKey(id snowflake.ID, vk string) {
 		pi.Entries[vk] = make(map[snowflake.ID]struct{})
 	}
 	pi.Entries[vk][id] = struct{}{}
+	pi.addOrdered(id, vk)
 	if pi.Mutated != nil {
 		pi.Mutated[id] = struct{}{}
 	}
@@ -77,6 +82,7 @@ func (pi *PropertyIndex) removeKey(id snowflake.ID, vk string) {
 			delete(pi.Entries, vk)
 		}
 	}
+	pi.removeOrdered(id, vk)
 	if pi.Mutated != nil {
 		pi.Mutated[id] = struct{}{}
 	}
@@ -167,6 +173,7 @@ func PurgeNodeFromAllPropertyIndexes(indexes map[PropertyIndexKey]*PropertyIndex
 				delete(idx.Entries, valKey)
 			}
 		}
+		idx.purgeOrdered(id)
 		if idx.Mutated != nil {
 			idx.Mutated[id] = struct{}{}
 		}

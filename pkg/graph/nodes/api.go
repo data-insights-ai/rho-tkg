@@ -30,6 +30,8 @@ type Ops interface {
 
 	All(opts storepkg.QueryOpts) ([]*types.Node, error)
 	ByLabel(label string, opts storepkg.QueryOpts) ([]*types.Node, error)
+	ForEachByLabel(label string, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
+	ForEachByLabelPropertyRange(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
 	ByLabelAndProperty(label, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error)
 	Count() (int, error)
 	CountByLabel(label string) (int, error)
@@ -160,6 +162,34 @@ func (a *API) ByLabel(label string, opts storepkg.QueryOpts) ([]*types.Node, err
 		return nil, err
 	}
 	return ops.ByLabel(label, opts)
+}
+
+// ForEachByLabel streams nodes carrying the given label to fn in
+// snowflake-ID order without materializing the result slice; fn returning
+// false stops early. Isolation is relaxed relative to ByLabel: rows are
+// fetched and fn runs without graph locks held (fn may call back into the
+// graph; concurrent writes are neither blocked nor observed atomically).
+// Rows are shared frozen pointers — never mutate them.
+func (a *API) ForEachByLabel(label string, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachByLabel(label, opts, fn)
+}
+
+// ForEachByLabelPropertyRange streams nodes whose NUMERIC propKey value
+// lies within [min, max] from the property index's ordered view (ordered range view).
+// The view over-selects (float64 sort keys, ulp-widened bounds) — fn must
+// re-check its predicate exactly. Returns graph.ErrIndexNotFound when no
+// usable ordered view exists; callers fall back to a label scan. Same
+// relaxed isolation and frozen-row contract as ForEachByLabel.
+func (a *API) ForEachByLabelPropertyRange(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachByLabelPropertyRange(label, propKey, min, max, inclMin, inclMax, opts, fn)
 }
 
 // ByLabelAndProperty returns nodes carrying the label whose property matches value.

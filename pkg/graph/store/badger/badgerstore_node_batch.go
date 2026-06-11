@@ -46,20 +46,24 @@ func (bs *Store) prefetchCascadeDeleteRows(nid types.NodeID) (cascadeDeletePrefe
 		bs.idxMu.RUnlock()
 		return cascadeDeletePrefetch{}, ErrNodeNotFound
 	}
-	relIDs := make([]types.RelID, 0, len(bs.outIdx[nid])+len(bs.inIdx[nid]))
-	seen := make(map[types.RelID]struct{}, len(bs.outIdx[nid])+len(bs.inIdx[nid]))
-	for relID := range bs.outIdx[nid] {
-		seen[relID] = struct{}{}
-		relIDs = append(relIDs, relID)
+	out, outErr := bs.adjacentRelIDsSnapshotLocked(nid, 0, false)
+	in, inErr := bs.adjacentRelIDsSnapshotLocked(nid, 0, true)
+	bs.idxMu.RUnlock()
+	if outErr != nil {
+		return cascadeDeletePrefetch{}, fmt.Errorf("graph: cascade adjacency snapshot: %w", outErr)
 	}
-	for relID := range bs.inIdx[nid] {
+	if inErr != nil {
+		return cascadeDeletePrefetch{}, fmt.Errorf("graph: cascade adjacency snapshot: %w", inErr)
+	}
+	relIDs := make([]types.RelID, 0, len(out)+len(in))
+	seen := make(map[types.RelID]struct{}, len(out)+len(in))
+	for _, relID := range append(out, in...) {
 		if _, ok := seen[relID]; ok {
-			continue
+			continue // dedup self-loops
 		}
 		seen[relID] = struct{}{}
 		relIDs = append(relIDs, relID)
 	}
-	bs.idxMu.RUnlock()
 
 	// A corrupt or missing node row still uses cascadeDeleteInner's cleanup
 	// path, which scrubs indexes and returns the corruption error.
@@ -91,12 +95,18 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePr
 		return nil, nil, ErrNodeNotFound
 	}
 
-	// Collect all connected relIDs (dedup self-loops).
+	// Collect all connected relIDs (dedup self-loops). Caller holds
+	// idxMu.Lock, satisfying the snapshot helper's lock contract.
 	relIDs := make(map[types.RelID]struct{})
-	for relID := range bs.outIdx[nid] {
-		relIDs[relID] = struct{}{}
+	out, outErr := bs.adjacentRelIDsSnapshotLocked(nid, 0, false)
+	if outErr != nil {
+		return nil, nil, fmt.Errorf("graph: cascade adjacency snapshot: %w", outErr)
 	}
-	for relID := range bs.inIdx[nid] {
+	in, inErr := bs.adjacentRelIDsSnapshotLocked(nid, 0, true)
+	if inErr != nil {
+		return nil, nil, fmt.Errorf("graph: cascade adjacency snapshot: %w", inErr)
+	}
+	for _, relID := range append(out, in...) {
 		relIDs[relID] = struct{}{}
 	}
 
@@ -149,14 +159,27 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePr
 		// ALL label sets to prevent orphaned index entries (perma-leak).
 		// O(L) where L is total distinct labels — bounded, corruption-only path.
 		ops := []writeOp{{opType: writeOpDelete, key: storepkg.NodeKey(id)}}
-		for tok, set := range bs.labelIdx {
-			if _, exists := set[nid]; exists {
-				delete(set, nid)
-				if len(set) == 0 {
-					delete(bs.labelIdx, tok)
-				}
+		if bs.labelOnDisk {
+			// Disk mode: derive the node's tokens from the persisted
+			// keyspace (O(keyspace) — corruption-only path).
+			toks, scanErr := bs.nodeLabelTokensFromKeyspaceLocked(nid)
+			if scanErr != nil {
+				return toDelete, fmt.Errorf("graph: cascade scrub scan: %w (after: %w)", scanErr, err), nil
+			}
+			for _, tok := range toks {
 				ops = append(ops, writeOp{opType: writeOpDelete, key: storepkg.LabelIndexKey(tok, id)})
 				bs.getOrCreateLabelCounter(tok).Add(-1)
+			}
+		} else {
+			for tok, set := range bs.labelIdx {
+				if _, exists := set[nid]; exists {
+					delete(set, nid)
+					if len(set) == 0 {
+						delete(bs.labelIdx, tok)
+					}
+					ops = append(ops, writeOp{opType: writeOpDelete, key: storepkg.LabelIndexKey(tok, id)})
+					bs.getOrCreateLabelCounter(tok).Add(-1)
+				}
 			}
 		}
 		// Property, temporal, and vector indexes: node data unavailable, brute-force purge.
@@ -181,10 +204,12 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePr
 	allTokens := collectNodeLabelTokens(n)
 	for _, tok := range allTokens {
 		ops = append(ops, writeOp{opType: writeOpDelete, key: storepkg.LabelIndexKey(tok, id)})
-		if set, exists := bs.labelIdx[tok]; exists {
-			delete(set, nid)
-			if len(set) == 0 {
-				delete(bs.labelIdx, tok)
+		if !bs.labelOnDisk {
+			if set, exists := bs.labelIdx[tok]; exists {
+				delete(set, nid)
+				if len(set) == 0 {
+					delete(bs.labelIdx, tok)
+				}
 			}
 		}
 		bs.getOrCreateLabelCounter(tok).Add(-1)
@@ -431,10 +456,12 @@ func (bs *Store) PutNodesBatch(nodes []*types.Node) error {
 		labelCount := n.LabelTokenCount()
 		for j := 0; j < labelCount; j++ {
 			tok := n.LabelTokenRawAt(j)
-			if bs.labelIdx[tok] == nil {
-				bs.labelIdx[tok] = make(map[types.NodeID]struct{})
+			if !bs.labelOnDisk {
+				if bs.labelIdx[tok] == nil {
+					bs.labelIdx[tok] = make(map[types.NodeID]struct{})
+				}
+				bs.labelIdx[tok][nd.nid] = struct{}{}
 			}
-			bs.labelIdx[tok][nd.nid] = struct{}{}
 			ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tok, nd.id)})
 			bs.getOrCreateLabelCounter(tok).Add(1)
 		}
@@ -484,7 +511,10 @@ func (bs *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 			bs.idxMu.RUnlock()
 			return ErrNodeNotFound
 		}
-		if len(bs.outIdx[nid]) != 0 || len(bs.inIdx[nid]) != 0 {
+		if connected, cErr := bs.nodeHasAdjacentRelsLocked(nid); cErr != nil {
+			bs.idxMu.RUnlock()
+			return cErr
+		} else if connected {
 			bs.idxMu.RUnlock()
 			return fmt.Errorf("%w: node %d has connected relationships", ErrInvalidStoreMutation, nid)
 		}
@@ -511,7 +541,10 @@ func (bs *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 			bs.idxMu.Unlock()
 			return ErrNodeNotFound
 		}
-		if len(bs.outIdx[nid]) != 0 || len(bs.inIdx[nid]) != 0 {
+		if connected, cErr := bs.nodeHasAdjacentRelsLocked(nid); cErr != nil {
+			bs.idxMu.Unlock()
+			return cErr
+		} else if connected {
 			bs.idxMu.Unlock()
 			return fmt.Errorf("%w: node %d has connected relationships", ErrInvalidStoreMutation, nid)
 		}
@@ -537,10 +570,12 @@ func (bs *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 		allTokens := collectNodeLabelTokens(n)
 		for _, tok := range allTokens {
 			ops = append(ops, writeOp{opType: writeOpDelete, key: storepkg.LabelIndexKey(tok, id)})
-			if set, exists := bs.labelIdx[tok]; exists {
-				delete(set, nid)
-				if len(set) == 0 {
-					delete(bs.labelIdx, tok)
+			if !bs.labelOnDisk {
+				if set, exists := bs.labelIdx[tok]; exists {
+					delete(set, nid)
+					if len(set) == 0 {
+						delete(bs.labelIdx, tok)
+					}
 				}
 			}
 			bs.getOrCreateLabelCounter(tok).Add(-1)

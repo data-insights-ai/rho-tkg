@@ -89,10 +89,12 @@ func (bs *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
 
 	// Remove tok from the in-memory label index.
-	if set, ok := bs.labelIdx[tok]; ok {
-		delete(set, nid)
-		if len(set) == 0 {
-			delete(bs.labelIdx, tok)
+	if !bs.labelOnDisk {
+		if set, ok := bs.labelIdx[tok]; ok {
+			delete(set, nid)
+			if len(set) == 0 {
+				delete(bs.labelIdx, tok)
+			}
 		}
 	}
 	bs.getOrCreateLabelCounter(tok).Add(-1)
@@ -192,12 +194,14 @@ func (bs *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
 
 	// Add tok to the in-memory label index.
-	set, ok := bs.labelIdx[tok]
-	if !ok {
-		set = make(map[types.NodeID]struct{})
-		bs.labelIdx[tok] = set
+	if !bs.labelOnDisk {
+		set, ok := bs.labelIdx[tok]
+		if !ok {
+			set = make(map[types.NodeID]struct{})
+			bs.labelIdx[tok] = set
+		}
+		set[nid] = struct{}{}
 	}
-	set[nid] = struct{}{}
 	bs.getOrCreateLabelCounter(tok).Add(1)
 
 	// Update cache and property/temporal/vector indexes for the new node state.
@@ -400,10 +404,15 @@ func (bs *Store) validateDeleteNodeRelTombstonesLocked(nid types.NodeID, relTomb
 	}
 
 	relIDs := make(map[types.RelID]struct{})
-	for relID := range bs.outIdx[nid] {
-		relIDs[relID] = struct{}{}
+	out, outErr := bs.adjacentRelIDsSnapshotLocked(nid, 0, false)
+	if outErr != nil {
+		return fmt.Errorf("graph: tombstone adjacency snapshot: %w", outErr)
 	}
-	for relID := range bs.inIdx[nid] {
+	in, inErr := bs.adjacentRelIDsSnapshotLocked(nid, 0, true)
+	if inErr != nil {
+		return fmt.Errorf("graph: tombstone adjacency snapshot: %w", inErr)
+	}
+	for _, relID := range append(out, in...) {
 		relIDs[relID] = struct{}{}
 	}
 

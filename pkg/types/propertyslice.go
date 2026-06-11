@@ -124,6 +124,9 @@ func copyValidatedPropertyValue(key string, value any) (copied any, err error) {
 	if isScalarPropertyValue(value) {
 		return value, nil
 	}
+	if tv, ok := value.(TemporalValue); ok {
+		return tv, nil // value type — assignment is the deep copy
+	}
 	defer func() {
 		if r := recover(); r != nil {
 			copied = nil
@@ -291,6 +294,10 @@ func IndexablePropertyValueKey(v any) string {
 	switch val := v.(type) {
 	case string:
 		return "s:" + val
+	case TemporalValue:
+		// Type-prefixed key encoding: a temporal never collides with the
+		// plain string carrying the same ISO rendering.
+		return "tv:" + strconv.FormatUint(uint64(val.Kind), 10) + ":" + val.Value
 	case int:
 		return "i:" + strconv.FormatInt(int64(val), 10)
 	case int8:
@@ -577,6 +584,9 @@ func ValidatePropertyValue(v any) error {
 	}
 	if isScalarPropertyValue(v) {
 		return nil
+	}
+	if tv, ok := v.(TemporalValue); ok {
+		return tv.Validate()
 	}
 	return validateReflectValue(reflect.ValueOf(v), 0)
 }

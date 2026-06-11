@@ -66,15 +66,18 @@ func (bs *Store) PutRelationship(r *types.Relationship) error {
 	}
 	bs.typeIdx[relType][rid] = struct{}{}
 
-	// Adjacency indexes.
-	if bs.outIdx[startNID] == nil {
-		bs.outIdx[startNID] = make(map[types.RelID]struct{})
+	// Adjacency indexes (RAM mirror — the persisted OutKey/InKey ops below
+	// are the durable truth; disk mode skips the mirror).
+	if !bs.adjOnDisk {
+		if bs.outIdx[startNID] == nil {
+			bs.outIdx[startNID] = make(map[types.RelID]struct{})
+		}
+		bs.outIdx[startNID][rid] = struct{}{}
+		if bs.inIdx[endNID] == nil {
+			bs.inIdx[endNID] = make(map[types.RelID]uint16)
+		}
+		bs.inIdx[endNID][rid] = relType
 	}
-	bs.outIdx[startNID][rid] = struct{}{}
-	if bs.inIdx[endNID] == nil {
-		bs.inIdx[endNID] = make(map[types.RelID]uint16)
-	}
-	bs.inIdx[endNID][rid] = relType
 
 	// Build write ops.
 	ops := []writeOp{
@@ -283,15 +286,19 @@ func (bs *Store) relDeleteInfoStillIndexedLocked(info RelDeleteInfo) bool {
 	} else if _, ok := set[rid]; !ok {
 		return false
 	}
-	if set, exists := bs.outIdx[startNID]; !exists {
-		return false
-	} else if _, ok := set[rid]; !ok {
-		return false
-	}
-	if set, exists := bs.inIdx[endNID]; !exists {
-		return false
-	} else if tok, ok := set[rid]; !ok || tok != info.RelType {
-		return false
+	// Disk mode keeps no adjacency RAM mirror to verify against; relIDs +
+	// typeIdx membership above remain the TOCTOU currency check.
+	if !bs.adjOnDisk {
+		if set, exists := bs.outIdx[startNID]; !exists {
+			return false
+		} else if _, ok := set[rid]; !ok {
+			return false
+		}
+		if set, exists := bs.inIdx[endNID]; !exists {
+			return false
+		} else if tok, ok := set[rid]; !ok || tok != info.RelType {
+			return false
+		}
 	}
 	return true
 }
@@ -318,17 +325,20 @@ func (bs *Store) deleteRelByInfo(info RelDeleteInfo) {
 		}
 	}
 
-	// Adjacency cleanup.
-	if set, exists := bs.outIdx[startNID]; exists {
-		delete(set, rid)
-		if len(set) == 0 {
-			delete(bs.outIdx, startNID)
+	// Adjacency cleanup (RAM mirror only — the delete ops below remove the
+	// persisted keys; disk mode has no mirror).
+	if !bs.adjOnDisk {
+		if set, exists := bs.outIdx[startNID]; exists {
+			delete(set, rid)
+			if len(set) == 0 {
+				delete(bs.outIdx, startNID)
+			}
 		}
-	}
-	if set, exists := bs.inIdx[endNID]; exists {
-		delete(set, rid)
-		if len(set) == 0 {
-			delete(bs.inIdx, endNID)
+		if set, exists := bs.inIdx[endNID]; exists {
+			delete(set, rid)
+			if len(set) == 0 {
+				delete(bs.inIdx, endNID)
+			}
 		}
 	}
 
@@ -388,24 +398,47 @@ func (bs *Store) getRelLocked(rid types.RelID) (*types.Relationship, error) {
 }
 
 func (bs *Store) prefetchRel(rid types.RelID) (*types.Relationship, error) {
+	r, miss, err := bs.prefetchRelNoFill(rid)
+	if err != nil || !miss {
+		return r, err
+	}
+	bs.relCache.LoadClean(rid.SnowflakeID(), r)
+	return r, nil
+}
+
+// prefetchRelScan is prefetchRel WITHOUT the cache fill on miss — the
+// relationship mirror of prefetchNodeScan; see that comment for the LRU
+// sequential-scan pathology it prevents. Used by full-cardinality scans
+// (by-type, AllRelationships, temporal range); adjacency reads
+// (Outgoing/Incoming) keep the filling prefetchRel because traversals
+// revisit them.
+func (bs *Store) prefetchRelScan(rid types.RelID) (*types.Relationship, error) {
+	r, _, err := bs.prefetchRelNoFill(rid)
+	return r, err
+}
+
+// prefetchRelNoFill is the shared core: cache lookup, then badger decode.
+// miss=true means r was decoded from badger (a cache-fill candidate). The
+// decoded relationship is frozen before return because callers may publish
+// it into the cache, and cache entries must never be mutable.
+func (bs *Store) prefetchRelNoFill(rid types.RelID) (r *types.Relationship, miss bool, err error) {
 	id := rid.SnowflakeID()
 	v, status := bs.relCache.Get(id)
 	switch status {
 	case indexpkg.CacheHit:
-		return v, nil
+		return v, false, nil
 	case indexpkg.CacheDeleted:
-		return nil, ErrRelNotFound
+		return nil, false, ErrRelNotFound
 	}
 
 	bs.idxMu.RLock()
 	_, exists := bs.relIDs[rid]
 	bs.idxMu.RUnlock()
 	if !exists {
-		return nil, ErrRelNotFound
+		return nil, false, ErrRelNotFound
 	}
 
-	var r *types.Relationship
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	err = bs.db.View(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.RelKey(id))
 		if err == badgerv4.ErrKeyNotFound {
 			return ErrRelNotFound
@@ -427,9 +460,8 @@ func (bs *Store) prefetchRel(rid types.RelID) (*types.Relationship, error) {
 		})
 	})
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	r.Freeze() // shared between cache and caller
-	bs.relCache.LoadClean(id, r)
-	return r, nil
+	return r, true, nil
 }

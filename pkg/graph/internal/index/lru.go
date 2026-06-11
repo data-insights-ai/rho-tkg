@@ -1,7 +1,9 @@
 package index
 
 import (
+	"cmp"
 	"container/list"
+	"slices"
 	"sync"
 	"sync/atomic"
 
@@ -22,9 +24,16 @@ const (
 type Entry[V any] struct {
 	Key      snowflake.ID
 	Value    V
+	Size     int64  // accounted bytes (sizer estimate + per-entry overhead); 0 when byte budgeting is off
 	DirtyVer uint64 // 0 = clean; >0 = dirty (monotonic mutation version)
 	Deleted  bool   // tombstone — entity has been deleted
 }
+
+// perEntryOverhead approximates the cache's own per-entry cost — the
+// list.Element, the items/dirtySet map bucket shares, and the Entry struct.
+// Added to every sizer estimate so a byte budget reflects resident memory,
+// not just payload bytes.
+const perEntryOverhead = 160
 
 // Cache is a generic LRU cache with dirty tracking and tombstone support.
 // Clean entries are evicted when capacity is exceeded; dirty entries are never
@@ -42,10 +51,14 @@ type Cache[V any] struct {
 	capacity   int // soft limit — dirty entries can exceed
 	cleanCount int // number of evictable entries (DirtyVer == 0, !Deleted)
 	items      map[snowflake.ID]*list.Element
-	order      *list.List   // front = most recent, back = LRU
-	nextVer    uint64       // monotonic dirty version counter
-	hits       atomic.Int64 // total cache hits (CacheHit + CacheDeleted)
-	misses     atomic.Int64 // total cache misses (CacheMiss)
+	dirtySet   map[snowflake.ID]*list.Element // entries with DirtyVer > 0 — flush-cycle index
+	order      *list.List                     // front = most recent, back = LRU
+	nextVer    uint64                         // monotonic dirty version counter
+	budget     int64                          // byte budget; 0 = count-only eviction
+	totalBytes int64                          // accounted bytes across all entries
+	sizer      func(V) int64                  // value-size estimator; nil = byte budgeting off
+	hits       atomic.Int64                   // total cache hits (CacheHit + CacheDeleted)
+	misses     atomic.Int64                   // total cache misses (CacheMiss)
 }
 
 // NewCache creates an LRU cache with the given capacity.
@@ -58,8 +71,25 @@ func NewCache[V any](capacity int) *Cache[V] {
 	return &Cache[V]{
 		capacity: capacity,
 		items:    make(map[snowflake.ID]*list.Element, capacity),
+		dirtySet: make(map[snowflake.ID]*list.Element),
 		order:    list.New(),
 	}
+}
+
+// NewCacheWithBudget creates an LRU cache bounded by BOTH an entry-count
+// capacity and a byte budget: clean LRU entries are evicted while either
+// limit is exceeded. sizer estimates a value's resident bytes (the cache
+// adds perEntryOverhead per entry). Both limits are SOFT — dirty entries
+// are never evicted, so the cache may exceed them under write pressure.
+// budget <= 0 or a nil sizer disables byte accounting (capacity-only,
+// identical to NewCache).
+func NewCacheWithBudget[V any](capacity int, budget int64, sizer func(V) int64) *Cache[V] {
+	c := NewCache[V](capacity)
+	if budget > 0 && sizer != nil {
+		c.budget = budget
+		c.sizer = sizer
+	}
+	return c
 }
 
 // ensureInitializedLocked makes the zero value behave like NewCache(1).
@@ -70,6 +100,9 @@ func (c *Cache[V]) ensureInitializedLocked() {
 	}
 	if c.items == nil {
 		c.items = make(map[snowflake.ID]*list.Element, c.capacity)
+	}
+	if c.dirtySet == nil {
+		c.dirtySet = make(map[snowflake.ID]*list.Element)
 	}
 	if c.order == nil {
 		c.order = list.New()
@@ -103,9 +136,29 @@ func (c *Cache[V]) Get(key snowflake.ID) (V, CacheStatus) {
 	return entry.Value, CacheHit
 }
 
+// entrySizeLocked estimates a value's accounted bytes. Returns 0 when byte
+// budgeting is off so totalBytes stays 0 and overBudgetLocked never fires.
+func (c *Cache[V]) entrySizeLocked(value V) int64 {
+	if c.sizer == nil {
+		return 0
+	}
+	return c.sizer(value) + perEntryOverhead
+}
+
+// resizeEntryLocked re-accounts an entry whose value changed.
+func (c *Cache[V]) resizeEntryLocked(entry *Entry[V], value V) {
+	size := c.entrySizeLocked(value)
+	c.totalBytes += size - entry.Size
+	entry.Size = size
+}
+
+func (c *Cache[V]) overBudgetLocked() bool {
+	return c.budget > 0 && c.totalBytes > c.budget
+}
+
 // Put inserts or updates a value in the cache, marking it dirty.
 // Moves the entry to the front. Triggers eviction of LRU clean entries
-// if the cache exceeds capacity.
+// if the cache exceeds capacity or the byte budget.
 func (c *Cache[V]) Put(key snowflake.ID, value V) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -119,15 +172,22 @@ func (c *Cache[V]) Put(key snowflake.ID, value V) {
 			c.cleanCount-- // was clean, now dirty
 		}
 		entry.Value = value
+		c.resizeEntryLocked(entry, value)
 		entry.DirtyVer = c.nextVer
 		entry.Deleted = false
+		c.dirtySet[key] = el
 		c.order.MoveToFront(el)
+		// Updates never change the entry COUNT, but growing the value can
+		// exceed the byte budget — shed clean LRU entries to compensate.
+		c.evictClean()
 		return
 	}
 
-	entry := &Entry[V]{Key: key, Value: value, DirtyVer: c.nextVer}
+	entry := &Entry[V]{Key: key, Value: value, DirtyVer: c.nextVer, Size: c.entrySizeLocked(value)}
+	c.totalBytes += entry.Size
 	el := c.order.PushFront(entry)
 	c.items[key] = el
+	c.dirtySet[key] = el
 
 	c.evictClean()
 }
@@ -150,6 +210,7 @@ func (c *Cache[V]) MarkDeleted(key snowflake.ID) {
 		}
 		entry.Deleted = true
 		entry.DirtyVer = c.nextVer
+		c.dirtySet[key] = el
 		c.order.MoveToFront(el)
 		return
 	}
@@ -157,9 +218,16 @@ func (c *Cache[V]) MarkDeleted(key snowflake.ID) {
 	// Insert tombstone for a key not currently cached.
 	var zero V
 	entry := &Entry[V]{Key: key, Deleted: true, DirtyVer: c.nextVer, Value: zero}
+	if c.sizer != nil {
+		entry.Size = perEntryOverhead
+		c.totalBytes += entry.Size
+	}
 	el := c.order.PushFront(entry)
 	c.items[key] = el
-	// No eviction — this is a dirty entry.
+	c.dirtySet[key] = el
+	// The tombstone itself is dirty and unevictable, but its insertion can
+	// push the cache over a limit — shed clean LRU entries to compensate.
+	c.evictClean()
 }
 
 // LoadClean inserts an entry loaded from Badger (not dirty, immediately evictable).
@@ -173,7 +241,8 @@ func (c *Cache[V]) LoadClean(key snowflake.ID, value V) {
 		return // in-memory state takes precedence
 	}
 
-	entry := &Entry[V]{Key: key, Value: value} // DirtyVer 0 = clean
+	entry := &Entry[V]{Key: key, Value: value, Size: c.entrySizeLocked(value)} // DirtyVer 0 = clean
+	c.totalBytes += entry.Size
 	el := c.order.PushFront(entry)
 	c.items[key] = el
 	c.cleanCount++
@@ -190,13 +259,20 @@ func (c *Cache[V]) CollectDirty() []Entry[V] {
 	defer c.mu.Unlock()
 	c.ensureInitializedLocked()
 
-	var dirty []Entry[V]
-	for el := c.order.Front(); el != nil; el = el.Next() {
+	// Iterate the dirty index, not the whole LRU list — pre-fix this walked
+	// EVERY cached entry under c.mu per flush cycle (100ms): with a
+	// multi-million-entry cache the walk starved writers and collapsed
+	// ingestion (measured: 1M-node load stalled indefinitely at 2M capacity,
+	// flat ~31k rows/s at 10k capacity). Sorted by key for deterministic
+	// flush batches.
+	dirty := make([]Entry[V], 0, len(c.dirtySet))
+	for _, el := range c.dirtySet {
 		entry := el.Value.(*Entry[V])
-		if entry.DirtyVer > 0 {
-			dirty = append(dirty, *entry) // copy with DirtyVer snapshot
-		}
+		dirty = append(dirty, *entry) // copy with DirtyVer snapshot
 	}
+	// slices.SortFunc, not sort.Slice — this runs once per 100ms flush
+	// cycle and reflection sorting showed up in ingestion profiles.
+	slices.SortFunc(dirty, func(a, b Entry[V]) int { return cmp.Compare(a.Key, b.Key) })
 	return dirty
 }
 
@@ -221,14 +297,17 @@ func (c *Cache[V]) MarkFlushed(flushed map[snowflake.ID]uint64) {
 			continue // re-dirtied since collection; leave dirty
 		}
 		entry.DirtyVer = 0 // mark clean
+		delete(c.dirtySet, id)
 		// Clean tombstones can be removed — the delete has been persisted.
 		if entry.Deleted {
+			c.totalBytes -= entry.Size
 			c.order.Remove(el)
 			delete(c.items, id)
 		} else {
 			c.cleanCount++ // dirty → clean, not deleted
 		}
 	}
+	c.evictClean() // newly clean entries may put the cache over a limit
 }
 
 // Peek returns a cached value WITHOUT deep-copy or MRU promotion.
@@ -283,8 +362,10 @@ func (c *Cache[V]) ResetForTest() {
 	defer c.mu.Unlock()
 	c.ensureInitializedLocked()
 	c.items = make(map[snowflake.ID]*list.Element, c.capacity)
+	c.dirtySet = make(map[snowflake.ID]*list.Element)
 	c.order.Init()
 	c.cleanCount = 0
+	c.totalBytes = 0
 }
 
 // EvictForTest removes the entry for key without touching Badger or
@@ -307,9 +388,26 @@ func (c *Cache[V]) EvictForTest(key snowflake.ID) bool {
 	if !entry.Deleted && entry.DirtyVer == 0 {
 		c.cleanCount--
 	}
+	c.totalBytes -= entry.Size
 	c.order.Remove(el)
 	delete(c.items, key)
+	delete(c.dirtySet, key)
 	return true
+}
+
+// Bytes returns the accounted byte total across all entries (sizer
+// estimates + per-entry overhead). Always 0 when byte budgeting is off.
+func (c *Cache[V]) Bytes() int64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.totalBytes
+}
+
+// Budget returns the configured byte budget (0 = byte budgeting off).
+func (c *Cache[V]) Budget() int64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.budget
 }
 
 // Hits returns the total number of cache hits (CacheHit + CacheDeleted) since creation.
@@ -318,20 +416,22 @@ func (c *Cache[V]) Hits() int64 { return c.hits.Load() }
 // Misses returns the total number of cache misses (CacheMiss) since creation.
 func (c *Cache[V]) Misses() int64 { return c.misses.Load() }
 
-// evictClean removes LRU clean entries until the cache is at capacity.
+// evictClean removes LRU clean entries until the cache is within BOTH
+// limits: the entry-count capacity and (when configured) the byte budget.
 // Only clean (DirtyVer == 0, !Deleted) entries are candidates for eviction.
 // Maintains cleanCount for O(1) early exit when no clean entries exist;
 // otherwise O(N) single-pass backward scan.
 // Must be called with c.mu held.
 func (c *Cache[V]) evictClean() {
-	if c.cleanCount == 0 || len(c.items) <= c.capacity {
+	if c.cleanCount == 0 || (len(c.items) <= c.capacity && !c.overBudgetLocked()) {
 		return
 	}
 	el := c.order.Back()
-	for len(c.items) > c.capacity && el != nil && c.cleanCount > 0 {
+	for (len(c.items) > c.capacity || c.overBudgetLocked()) && el != nil && c.cleanCount > 0 {
 		prev := el.Prev() // save before potential removal
 		entry := el.Value.(*Entry[V])
 		if entry.DirtyVer == 0 && !entry.Deleted {
+			c.totalBytes -= entry.Size
 			c.order.Remove(el)
 			delete(c.items, entry.Key)
 			c.cleanCount--

@@ -152,6 +152,15 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "Import", run: func() error { _, err := api.Import(ctx, relID, "KNOWS", nil, nil, nil); return err }},
 		{name: "All", run: func() error { _, err := api.All(opts); return err }},
 		{name: "ByType", run: func() error { _, err := api.ByType("KNOWS", opts); return err }},
+		{name: "ForEachByType", run: func() error {
+			return api.ForEachByType("KNOWS", opts, func(*types.Relationship) bool { return true })
+		}},
+		{name: "ForEachOutgoing", run: func() error {
+			return api.ForEachOutgoing(nodeID, "KNOWS", func(*types.Relationship) bool { return true })
+		}},
+		{name: "ForEachIncoming", run: func() error {
+			return api.ForEachIncoming(nodeID, "KNOWS", func(*types.Relationship) bool { return true })
+		}},
 		{name: "Count", run: func() error { _, err := api.Count(); return err }},
 		{name: "CountByType", run: func() error { _, err := api.CountByType("KNOWS"); return err }},
 		{name: "Outgoing", run: func() error { _, err := api.Outgoing(nodeID, "KNOWS"); return err }},
@@ -197,7 +206,8 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		"Add", "Add", "AddByID", "AddByID",
 		"AddByIDIfAbsent", "AddByIDIfAbsent", "Get", "Get", "GetByIDs",
 		"Update", "Update", "UpdateInPlace", "UpdateInPlace",
-		"Delete", "Delete", "Import", "All", "ByType", "Count", "CountByType",
+		"Delete", "Delete", "Import", "All", "ByType",
+		"ForEachByType", "ForEachOutgoing", "ForEachIncoming", "Count", "CountByType",
 		"Outgoing", "Incoming", "OutgoingForNodes", "IncomingForNodes", "SetProperty", "DeleteProperty",
 		"CompareAndSetProperty", "CompareAndSetProperty",
 		"CloseVersion", "History", "VersionAfter", "VersionBefore", "HasType", "Type", "NextID",
@@ -350,6 +360,27 @@ func (s *relOpsSpy) ByType(typeName string, opts storepkg.QueryOpts) ([]*types.R
 	s.lastType = typeName
 	s.lastOpts = opts
 	return nil, s.err
+}
+
+func (s *relOpsSpy) ForEachByType(typeName string, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
+	s.record("ForEachByType")
+	s.lastType = typeName
+	s.lastOpts = opts
+	return s.err
+}
+
+func (s *relOpsSpy) ForEachOutgoing(nodeID types.NodeID, typeName string, fn func(*types.Relationship) bool) error {
+	s.record("ForEachOutgoing")
+	s.lastNodeID = nodeID
+	s.lastType = typeName
+	return s.err
+}
+
+func (s *relOpsSpy) ForEachIncoming(nodeID types.NodeID, typeName string, fn func(*types.Relationship) bool) error {
+	s.record("ForEachIncoming")
+	s.lastNodeID = nodeID
+	s.lastType = typeName
+	return s.err
 }
 
 func (s *relOpsSpy) Count() (int, error) {

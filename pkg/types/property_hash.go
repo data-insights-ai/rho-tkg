@@ -37,6 +37,7 @@ const (
 	propertyHashTypeMapStrStr  byte = 23
 	propertyHashTypeSliceF32   byte = 24
 	propertyHashTypeCustom     byte = 25
+	propertyHashTypeTemporal   byte = 26
 )
 
 const propertyHashNilContainerLen = ^uint32(0)
@@ -93,6 +94,8 @@ func PropertyHashTypeTag(v any) byte {
 		return propertyHashTypeMapStrAny
 	case map[string]string:
 		return propertyHashTypeMapStrStr
+	case TemporalValue:
+		return propertyHashTypeTemporal
 	default:
 		if _, _, ok := RegisteredPropertyStructWireType(v); ok {
 			return propertyHashTypeCustom
@@ -164,6 +167,10 @@ func appendPropertyValueHashBytes(buf []byte, v any, depth int) []byte {
 	case string:
 		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val))) // #nosec G115
 		buf = append(buf, val...)
+	case TemporalValue:
+		buf = append(buf, byte(val.Kind))
+		buf = binary.BigEndian.AppendUint32(buf, uint32(len(val.Value))) // #nosec G115
+		buf = append(buf, val.Value...)
 	case []string:
 		if val == nil {
 			return appendNilPropertyContainerHash(buf)
