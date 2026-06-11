@@ -1371,9 +1371,9 @@ func TestBadgerStoreOutgoingForNodesOrphanSkipped(t *testing.T) {
 	// Manually re-inject the orphan into outIdx to simulate stale index.
 	bs.idxMu.Lock()
 	if bs.outIdx[types.NodeID(10)] == nil {
-		bs.outIdx[types.NodeID(10)] = make(map[types.RelID]struct{})
+		bs.outIdx[types.NodeID(10)] = make(map[types.RelID]types.NodeID)
 	}
-	bs.outIdx[types.NodeID(10)][types.RelID(100)] = struct{}{}
+	bs.outIdx[types.NodeID(10)][types.RelID(100)] = types.NodeID(30)
 	bs.idxMu.Unlock()
 
 	got, err := bs.OutgoingRelationshipsForNodes([]types.NodeID{types.NodeID(10)}, 0)
@@ -1404,9 +1404,9 @@ func TestBadgerStoreIncomingForNodesOrphanSkipped(t *testing.T) {
 	// Manually re-inject the orphan into inIdx.
 	bs.idxMu.Lock()
 	if bs.inIdx[types.NodeID(30)] == nil {
-		bs.inIdx[types.NodeID(30)] = make(map[types.RelID]uint16)
+		bs.inIdx[types.NodeID(30)] = make(map[types.RelID]inEdge)
 	}
-	bs.inIdx[types.NodeID(30)][types.RelID(100)] = 5
+	bs.inIdx[types.NodeID(30)][types.RelID(100)] = inEdge{start: types.NodeID(10), typ: 5}
 	bs.idxMu.Unlock()
 
 	got, err := bs.IncomingRelationshipsForNodes([]types.NodeID{types.NodeID(30)}, 0)

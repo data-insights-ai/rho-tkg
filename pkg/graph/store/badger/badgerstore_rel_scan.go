@@ -148,3 +148,43 @@ func (bs *Store) forEachAdjacentRel(nid types.NodeID, typeToken uint16, incoming
 	}
 	return nil
 }
+
+// ForEachAdjacentEndpoint streams (relID, otherEndpoint) for nid's adjacency in
+// the given direction WITHOUT decoding any relationship row — the endpoint
+// comes straight from the adjacency index value (RAM) or key (disk). It is the
+// fast path for traversals that need only the neighbour and the relationship's
+// identity, not its properties (the dominant per-edge cost in profiling was the
+// msgpack rel decode). fn returning false stops the scan. Order is unspecified
+// (the adjacency map is unordered); consumers needing order must sort. Relaxed
+// isolation matches the other scan APIs: a relationship deleted after the
+// snapshot may still be yielded — the consumer's per-target node fetch (which
+// returns ErrNodeNotFound for a vanished endpoint) is the backstop.
+func (bs *Store) ForEachAdjacentEndpoint(nid types.NodeID, typeToken uint16, incoming bool, fn func(rel types.RelID, other types.NodeID) bool) error {
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return err
+	}
+	if err := bs.ensureNodeRowLive(nid); err != nil {
+		return err
+	}
+
+	bs.idxMu.RLock()
+	if _, ok := bs.nodeIDs[nid]; !ok {
+		bs.idxMu.RUnlock()
+		return ErrNodeNotFound
+	}
+	metas, err := bs.adjacentRelMetasSnapshotLocked(nid, typeToken, incoming)
+	bs.idxMu.RUnlock()
+	if err != nil {
+		return err
+	}
+
+	for _, m := range metas {
+		if !fn(m.rel, m.other) {
+			return nil
+		}
+	}
+	return nil
+}

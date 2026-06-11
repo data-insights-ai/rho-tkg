@@ -506,7 +506,7 @@ func TestBadgerStore_OutgoingRelationships_VerifiesFetchedRowStartNode(t *testin
 
 	wrongStart := types.NodeID(snowflake.ID(10091))
 	bs.idxMu.Lock()
-	bs.outIdx[wrongStart] = map[types.RelID]struct{}{rel.ID(): {}}
+	bs.outIdx[wrongStart] = map[types.RelID]types.NodeID{rel.ID(): rel.EndNodeID()}
 	bs.idxMu.Unlock()
 
 	got, err := bs.OutgoingRelationships(wrongStart, 4)
@@ -533,7 +533,7 @@ func TestBadgerStore_OutgoingRelationshipsForNodes_VerifiesFetchedRowStartNode(t
 
 	wrongStart := types.NodeID(snowflake.ID(10101))
 	bs.idxMu.Lock()
-	bs.outIdx[wrongStart] = map[types.RelID]struct{}{rel.ID(): {}}
+	bs.outIdx[wrongStart] = map[types.RelID]types.NodeID{rel.ID(): rel.EndNodeID()}
 	bs.idxMu.Unlock()
 
 	got, err := bs.OutgoingRelationshipsForNodes([]types.NodeID{wrongStart}, 4)
@@ -558,7 +558,7 @@ func TestBadgerStore_IncomingRelationships_TypeFilterVerifiesFetchedRowType(t *t
 	bs.RelCacheForTest().ResetForTest()
 
 	bs.idxMu.Lock()
-	bs.inIdx[rel.EndNodeID()][rel.ID()] = 4
+	bs.inIdx[rel.EndNodeID()][rel.ID()] = inEdge{start: rel.StartNodeID(), typ: 4}
 	bs.idxMu.Unlock()
 
 	got, err := bs.IncomingRelationships(rel.EndNodeID(), 4)
@@ -583,7 +583,7 @@ func TestBadgerStore_IncomingRelationshipsForNodes_TypeFilterVerifiesFetchedRowT
 	bs.RelCacheForTest().ResetForTest()
 
 	bs.idxMu.Lock()
-	bs.inIdx[rel.EndNodeID()][rel.ID()] = 4
+	bs.inIdx[rel.EndNodeID()][rel.ID()] = inEdge{start: rel.StartNodeID(), typ: 4}
 	bs.idxMu.Unlock()
 
 	got, err := bs.IncomingRelationshipsForNodes([]types.NodeID{rel.EndNodeID()}, 4)
@@ -610,7 +610,7 @@ func TestBadgerStore_IncomingRelationships_VerifiesFetchedRowEndNode(t *testing.
 
 	wrongEnd := types.NodeID(snowflake.ID(10112))
 	bs.idxMu.Lock()
-	bs.inIdx[wrongEnd] = map[types.RelID]uint16{rel.ID(): 4}
+	bs.inIdx[wrongEnd] = map[types.RelID]inEdge{rel.ID(): {start: rel.StartNodeID(), typ: 4}}
 	bs.idxMu.Unlock()
 
 	got, err := bs.IncomingRelationships(wrongEnd, 4)
@@ -637,7 +637,7 @@ func TestBadgerStore_IncomingRelationshipsForNodes_VerifiesFetchedRowEndNode(t *
 
 	wrongEnd := types.NodeID(snowflake.ID(10122))
 	bs.idxMu.Lock()
-	bs.inIdx[wrongEnd] = map[types.RelID]uint16{rel.ID(): 4}
+	bs.inIdx[wrongEnd] = map[types.RelID]inEdge{rel.ID(): {start: rel.StartNodeID(), typ: 4}}
 	bs.idxMu.Unlock()
 
 	got, err := bs.IncomingRelationshipsForNodes([]types.NodeID{wrongEnd}, 4)

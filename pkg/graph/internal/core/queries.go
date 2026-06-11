@@ -461,6 +461,81 @@ func (r *RelOps) forEachAdjacent(nodeID types.NodeID, typeName string, incoming 
 	return scanner.ForEachOutgoingRel(nodeID, tok, fn)
 }
 
+// relEndpointScanner is the OPTIONAL store capability behind
+// RelOps.ForEachAdjacentEndpoint — streaming adjacency that yields the OTHER
+// endpoint (and the relationship's id) WITHOUT decoding the relationship row.
+type relEndpointScanner interface {
+	ForEachAdjacentEndpoint(nid types.NodeID, typeToken uint16, incoming bool, fn func(rel types.RelID, other types.NodeID) bool) error
+}
+
+// ForEachAdjacentEndpoint streams (relID, otherEndpoint) for the node's
+// adjacency in the given direction WITHOUT decoding relationship rows — for
+// traversals that need only the neighbour, not the relationship's properties
+// (the dominant per-edge cost on the disk-backed store is the rel-row decode).
+// Stores without the native capability fall back to decoding via
+// Outgoing/Incoming and projecting the endpoint (correct, identical results —
+// the in-memory store pays no decode anyway). Same relaxed isolation as
+// ForEachOutgoing; fn returning false stops the scan.
+func (r *RelOps) ForEachAdjacentEndpoint(nodeID types.NodeID, typeName string, incoming bool, fn func(rel types.RelID, other types.NodeID) bool) error {
+	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
+	if fn == nil {
+		return grapherr.ErrNilCallback
+	}
+	if typeName != "" {
+		if err := c.validateRelTypeQueryName(typeName); err != nil {
+			return err
+		}
+	}
+	if err := storepkg.ValidateNodeID(nodeID); err != nil {
+		return err
+	}
+
+	scanner, native := c.store.(relEndpointScanner)
+	if !native {
+		// Fallback: decode the rels and project the OTHER endpoint.
+		var rels []*types.Relationship
+		var err error
+		if incoming {
+			rels, err = r.Incoming(nodeID, typeName)
+		} else {
+			rels, err = r.Outgoing(nodeID, typeName)
+		}
+		if err != nil {
+			return err
+		}
+		for _, rel := range rels {
+			other := rel.EndNodeID()
+			if incoming {
+				other = rel.StartNodeID()
+			}
+			if !fn(rel.InternalID(), other) {
+				return nil
+			}
+		}
+		return nil
+	}
+
+	var tok uint16
+	if typeName != "" {
+		var ok bool
+		if err := c.readUnderRLock(func() error {
+			tok, ok = c.lookupRelTypeQueryToken(typeName)
+			return nil
+		}); err != nil {
+			return err
+		}
+		if !ok {
+			return c.readUnderRLock(func() error {
+				return c.validateRequestedNodesExist([]types.NodeID{nodeID})
+			})
+		}
+	}
+	return scanner.ForEachAdjacentEndpoint(nodeID, tok, incoming, fn)
+}
+
 // Outgoing returns all outgoing relationships from the given node.
 // If typeName is empty, all types are returned. If typeName is non-empty, only
 // relationships of that type are returned (nil if the type is not registered).
