@@ -143,6 +143,131 @@ func TestStoreContract_CurrentVisibility(t *testing.T) {
 	})
 }
 
+// TestStoreContract_TransactionTimeAsOf is the memory↔badger↔tiered parity gate
+// for the transaction-time query capability (Pattern 34). Memory and badger both
+// run their NATIVE NodeAsOf/RelAsOf/NodesAsOf/RelsAsOf here; tiered runs the
+// mandatory fallback — so a divergence in the badger reverse-scan implementation
+// (wrong version selected, an expired/not-yet version mis-classified, a deleted
+// entity wrongly visible, or the bulk union miscounting) fails this test against
+// the memory oracle. Exercises every arm: current-match fast path, history-scan,
+// not-yet-created, deleted-before/after, and the bulk two-pass union.
+func TestStoreContract_TransactionTimeAsOf(t *testing.T) {
+	runStoreContract(t, "transaction-time AsOf", func(t *testing.T, backend storeContractBackend) {
+		g := newContractGraph(t, backend)
+		clk := useTestClock(t, g)
+		ctx := context.Background()
+
+		assertNodeVer := func(label string, id types.NodeID, at types.Instant, wantVer uint32) {
+			t.Helper()
+			got, err := g.Temporal.NodeAsOf(id, at)
+			if err != nil {
+				t.Fatalf("%s: NodeAsOf(%d, %d) = %v, want version %d", label, id, at, err, wantVer)
+			}
+			if got.Version() != wantVer {
+				t.Fatalf("%s: NodeAsOf(%d, %d) version = %d, want %d", label, id, at, got.Version(), wantVer)
+			}
+		}
+		assertNoNodeVer := func(label string, id types.NodeID, at types.Instant) {
+			t.Helper()
+			if _, err := g.Temporal.NodeAsOf(id, at); !errors.Is(err, ErrNoVersionAsOf) {
+				t.Fatalf("%s: NodeAsOf(%d, %d) = %v, want ErrNoVersionAsOf", label, id, at, err)
+			}
+		}
+
+		// Live node L: three versions (v0,v1,v2), never deleted.
+		l0, err := g.Nodes.Add(ctx, []string{"Doc"}, map[string]any{"v": int64(0)})
+		if err != nil {
+			t.Fatalf("Add L: %v", err)
+		}
+		lid := l0.ID()
+		ltx0 := l0.Temporal().TxFrom
+		clk.Advance(4 * time.Millisecond)
+		l1, err := g.Nodes.Update(ctx, lid, map[string]any{"v": int64(1)})
+		if err != nil {
+			t.Fatalf("Update L v1: %v", err)
+		}
+		ltx1 := l1.Temporal().TxFrom
+		clk.Advance(4 * time.Millisecond)
+		l2, err := g.Nodes.Update(ctx, lid, map[string]any{"v": int64(2)})
+		if err != nil {
+			t.Fatalf("Update L v2: %v", err)
+		}
+		ltx2 := l2.Temporal().TxFrom
+
+		// Deleted node D: one version then deleted.
+		clk.Advance(4 * time.Millisecond)
+		d0, err := g.Nodes.Add(ctx, []string{"Doc"}, map[string]any{"v": int64(0)})
+		if err != nil {
+			t.Fatalf("Add D: %v", err)
+		}
+		did := d0.ID()
+		dtx0 := d0.Temporal().TxFrom
+		clk.Advance(4 * time.Millisecond)
+		delTime := clk.PeekInstant()
+		clk.Advance(1 * time.Millisecond)
+		if err := g.Nodes.Delete(ctx, did); err != nil {
+			t.Fatalf("Delete D: %v", err)
+		}
+
+		// L: before-create, history versions, and the current-match fast path.
+		assertNoNodeVer("L before create", lid, ltx0-1)
+		assertNodeVer("L at v0", lid, ltx0+(ltx1-ltx0)/2, 0)  // history scan
+		assertNodeVer("L at v1", lid, ltx1+(ltx2-ltx1)/2, 1)  // history scan
+		assertNodeVer("L far future", lid, ltx2+1_000_000, 2) // current-match arm
+
+		// D: visible before its delete, gone after.
+		assertNodeVer("D before delete", did, dtx0+1, 0) // history scan (current is gone)
+		assertNoNodeVer("D after delete", did, delTime+10)
+
+		assertOnlyNode := func(label string, nodes []*types.Node, want types.NodeID) {
+			t.Helper()
+			if len(nodes) != 1 || nodes[0].ID() != want {
+				got := make([]types.NodeID, len(nodes))
+				for i, n := range nodes {
+					got[i] = n.ID()
+				}
+				t.Fatalf("%s = %v, want only %d", label, got, want)
+			}
+		}
+		// Bulk NodesAsOf when only L's v0 existed (before D was created): {L}.
+		atV0 := ltx0 + (ltx1-ltx0)/2
+		bulk, err := g.Temporal.NodesAsOf(atV0)
+		if err != nil {
+			t.Fatalf("NodesAsOf(atV0): %v", err)
+		}
+		assertOnlyNode("NodesAsOf(atV0)", bulk, lid)
+		// Bulk far future: L live (v2), D deleted -> {L}.
+		bulkNow, err := g.Temporal.NodesAsOf(ltx2 + 1_000_000)
+		if err != nil {
+			t.Fatalf("NodesAsOf(future): %v", err)
+		}
+		assertOnlyNode("NodesAsOf(future)", bulkNow, lid)
+
+		// Relationship AsOf: current-match arm + before-create miss.
+		clk.Advance(4 * time.Millisecond)
+		m0, err := g.Nodes.Add(ctx, []string{"Doc"}, map[string]any{"v": int64(0)})
+		if err != nil {
+			t.Fatalf("Add M: %v", err)
+		}
+		rel, err := g.Rels.Add(ctx, "LINKS", l2, m0, nil)
+		if err != nil {
+			t.Fatalf("Add rel: %v", err)
+		}
+		rid := rel.ID()
+		rtx := rel.Temporal().TxFrom
+		got, err := g.Temporal.RelAsOf(rid, rtx+1_000_000)
+		if err != nil {
+			t.Fatalf("RelAsOf future: %v", err)
+		}
+		if got.ID() != rid {
+			t.Fatalf("RelAsOf future = %d, want %d", got.ID(), rid)
+		}
+		if _, err := g.Temporal.RelAsOf(rid, rtx-1); !errors.Is(err, ErrNoVersionAsOf) {
+			t.Fatalf("RelAsOf before create = %v, want ErrNoVersionAsOf", err)
+		}
+	})
+}
+
 func TestStoreContract_HistoryVisibility(t *testing.T) {
 	runStoreContract(t, "history visibility", func(t *testing.T, backend storeContractBackend) {
 		g := newContractGraph(t, backend)
