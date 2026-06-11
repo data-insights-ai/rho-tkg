@@ -37,10 +37,12 @@ path optimizations:
   subtrees whose froms all exceed the probe → output-sensitive O(log n + k).
   `Remove` marks dirty to rebuild the augmentation. Bench (100k entries, 16
   live, late probe): `QueryAt` 157 ns/op. Equivalence-gated vs brute force.
-- **Single-alloc numeric property index keys.** `IndexablePropertyValueKey`
-  built numeric/float keys as `prefix + strconv.FormatX(...)` (two allocs);
-  appending prefix+digits into one stack buffer folds it to one allocation
-  with byte-identical output.
+- **Single-alloc property index keys (numeric, float, temporal).**
+  `IndexablePropertyValueKey` built numeric/float keys as
+  `prefix + strconv.FormatX(...)` (two allocs) and temporal keys as
+  `"tv:" + FormatUint(kind) + ":" + value` (~four allocs) on every
+  property-equality lookup; appending into one stack buffer folds each to a
+  single allocation with byte-identical output.
 - **Inline `PropertySlice` binary search** (drop the `sort.Search` closure)
   and an **opt-in `QueryOpts.NoSort`** scan lever (default off).
 

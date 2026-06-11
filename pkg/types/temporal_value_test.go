@@ -2,6 +2,7 @@ package types
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -64,6 +65,12 @@ func TestTemporalValue_IndexKeyDistinctFromString(t *testing.T) {
 	kDur := IndexablePropertyValueKey(TemporalValue{Kind: TemporalDuration, Value: iso})
 	if kTemporal == kDur {
 		t.Fatalf("different temporal kinds collide: %q", kTemporal)
+	}
+
+	// Byte-identity of the encoding: `tv:<kind>:<value>`. Pins the
+	// single-buffer build against the prior three-concatenation form.
+	if want := fmt.Sprintf("tv:%d:%s", TemporalDate, iso); kTemporal != want {
+		t.Fatalf("temporal index key = %q, want %q", kTemporal, want)
 	}
 }
 
