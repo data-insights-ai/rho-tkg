@@ -64,6 +64,13 @@ func validateTuningConfig(cfg Config) error {
 // applied only when non-zero, so zero preserves Badger's stock default.
 func buildBadgerOptions(cfg Config) badgerv4.Options {
 	opts := badgerv4.DefaultOptions(cfg.Dir)
+	// This store serializes all writes through its own buffer (appendOps → one
+	// WriteBatch) and guards same-entity mutations with the 256-shard entity-lock
+	// manager, so it owns conflict semantics above Badger. Every db.Update meta
+	// write is a blind Set (no read-modify-write), so no path relies on Badger's
+	// per-commit read-conflict oracle (key fingerprinting on every txn) — it is
+	// pure overhead here; disable it. (L1 / OPT11: "single cheapest write win".)
+	opts = opts.WithDetectConflicts(false)
 	if cfg.InMemory {
 		opts = opts.WithInMemory(true)
 	}
