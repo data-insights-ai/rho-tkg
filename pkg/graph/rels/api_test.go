@@ -376,6 +376,13 @@ func (s *relOpsSpy) ForEachOutgoing(nodeID types.NodeID, typeName string, fn fun
 	return s.err
 }
 
+func (s *relOpsSpy) ForEachAdjacentEndpoint(nodeID types.NodeID, typeName string, incoming bool, fn func(rel types.RelID, other types.NodeID) bool) error {
+	s.record("ForEachAdjacentEndpoint")
+	s.lastNodeID = nodeID
+	s.lastType = typeName
+	return s.err
+}
+
 func (s *relOpsSpy) ForEachIncoming(nodeID types.NodeID, typeName string, fn func(*types.Relationship) bool) error {
 	s.record("ForEachIncoming")
 	s.lastNodeID = nodeID

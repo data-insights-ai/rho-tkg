@@ -1349,9 +1349,9 @@ func TestBadgerStoreCascadeDeletePropagatesCorruptRelError(t *testing.T) {
 	// but has corrupted data in Badger.
 	bs.idxMu.Lock()
 	if bs.outIdx[types.NodeID(nodeID)] == nil {
-		bs.outIdx[types.NodeID(nodeID)] = make(map[types.RelID]struct{})
+		bs.outIdx[types.NodeID(nodeID)] = make(map[types.RelID]types.NodeID)
 	}
-	bs.outIdx[types.NodeID(nodeID)][types.RelID(relID)] = struct{}{}
+	bs.outIdx[types.NodeID(nodeID)][types.RelID(relID)] = types.NodeID(0)
 	if bs.typeIdx[1] == nil {
 		bs.typeIdx[1] = make(map[types.RelID]struct{})
 	}
@@ -1398,13 +1398,13 @@ func TestBadgerStoreCascadeDeleteAtomicOnCorruption(t *testing.T) {
 	bs.idxMu.Lock()
 	bs.relIDs[types.RelID(corruptRelID)] = struct{}{}
 	if bs.outIdx[types.NodeID(10)] == nil {
-		bs.outIdx[types.NodeID(10)] = make(map[types.RelID]struct{})
+		bs.outIdx[types.NodeID(10)] = make(map[types.RelID]types.NodeID)
 	}
-	bs.outIdx[types.NodeID(10)][types.RelID(corruptRelID)] = struct{}{}
+	bs.outIdx[types.NodeID(10)][types.RelID(corruptRelID)] = types.NodeID(0)
 	if bs.inIdx[types.NodeID(20)] == nil {
-		bs.inIdx[types.NodeID(20)] = make(map[types.RelID]uint16)
+		bs.inIdx[types.NodeID(20)] = make(map[types.RelID]inEdge)
 	}
-	bs.inIdx[types.NodeID(20)][types.RelID(corruptRelID)] = 0
+	bs.inIdx[types.NodeID(20)][types.RelID(corruptRelID)] = inEdge{}
 	bs.relCount.Add(1)
 	bs.idxMu.Unlock()
 
@@ -1458,8 +1458,8 @@ func TestBadgerStoreCascadeDeletePurgesOrphanAdjacency(t *testing.T) {
 
 	bs.idxMu.Lock()
 	bs.relIDs[orphan] = struct{}{} // simulate pre-existing in-memory orphan state
-	bs.outIdx[types.NodeID(10)] = map[types.RelID]struct{}{orphan: {}}
-	bs.inIdx[types.NodeID(20)] = map[types.RelID]uint16{orphan: 7}
+	bs.outIdx[types.NodeID(10)] = map[types.RelID]types.NodeID{orphan: types.NodeID(20)}
+	bs.inIdx[types.NodeID(20)] = map[types.RelID]inEdge{orphan: {start: types.NodeID(10), typ: 7}}
 	bs.typeIdx[7] = map[types.RelID]struct{}{orphan: {}}
 	bs.getOrCreateTypeCounter(7).Store(1)
 	bs.relCount.Store(1)
@@ -1519,8 +1519,8 @@ func TestBadgerStorePurgeOrphanRelationshipIndexes(t *testing.T) {
 	typeKey := storepkg.RelTypeIndexKey(7, orphan.SnowflakeID())
 
 	bs.idxMu.Lock()
-	bs.outIdx[types.NodeID(10)] = map[types.RelID]struct{}{orphan: {}}
-	bs.inIdx[types.NodeID(20)] = map[types.RelID]uint16{orphan: 7}
+	bs.outIdx[types.NodeID(10)] = map[types.RelID]types.NodeID{orphan: types.NodeID(20)}
+	bs.inIdx[types.NodeID(20)] = map[types.RelID]inEdge{orphan: {start: types.NodeID(10), typ: 7}}
 	bs.typeIdx[7] = map[types.RelID]struct{}{orphan: {}}
 	bs.getOrCreateTypeCounter(7).Store(1)
 	bs.idxMu.Unlock()

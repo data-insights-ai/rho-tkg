@@ -243,13 +243,13 @@ type Store struct {
 	nodeHashes  map[types.NodeID]string   // current node integrity hash for live endpoint validation
 	nodeRevs    map[types.NodeID]uint64   // live node row revision for safe prefetch handoff
 	nextNodeRev uint64
-	relIDs      map[types.RelID]struct{}                  // O(1) rel existence check
-	labelIdx    map[uint16]map[types.NodeID]struct{}      // labelToken → set(nodeID); EMPTY in labelOnDisk mode
-	labelOnDisk bool                                      // answer label snapshots from the persisted keyspace
-	adjOnDisk   bool                                      // answer adjacency snapshots from the persisted keyspaces
-	typeIdx     map[uint16]map[types.RelID]struct{}       // relTypeToken → set(relID)
-	outIdx      map[types.NodeID]map[types.RelID]struct{} // startNodeID → set(relID)
-	inIdx       map[types.NodeID]map[types.RelID]uint16   // endNodeID → relID → typeToken
+	relIDs      map[types.RelID]struct{}                      // O(1) rel existence check
+	labelIdx    map[uint16]map[types.NodeID]struct{}          // labelToken → set(nodeID); EMPTY in labelOnDisk mode
+	labelOnDisk bool                                          // answer label snapshots from the persisted keyspace
+	adjOnDisk   bool                                          // answer adjacency snapshots from the persisted keyspaces
+	typeIdx     map[uint16]map[types.RelID]struct{}           // relTypeToken → set(relID)
+	outIdx      map[types.NodeID]map[types.RelID]types.NodeID // startNodeID → relID → endNodeID
+	inIdx       map[types.NodeID]map[types.RelID]inEdge       // endNodeID → relID → {startNodeID, typeToken}
 
 	// Entity caches (internal sync, N-way sharded — see indexpkg.ShardedCache).
 	// Typed as the EntityCache interface so the concrete sharded implementation
@@ -489,8 +489,8 @@ func New(cfg Config) (*Store, error) {
 		relIDs:          make(map[types.RelID]struct{}),
 		labelIdx:        make(map[uint16]map[types.NodeID]struct{}),
 		typeIdx:         make(map[uint16]map[types.RelID]struct{}),
-		outIdx:          make(map[types.NodeID]map[types.RelID]struct{}),
-		inIdx:           make(map[types.NodeID]map[types.RelID]uint16),
+		outIdx:          make(map[types.NodeID]map[types.RelID]types.NodeID),
+		inIdx:           make(map[types.NodeID]map[types.RelID]inEdge),
 		nodeCache:       newNodeCache(capacity, cfg.CacheBudgetBytes),
 		relCache:        newRelCache(capacity, cfg.CacheBudgetBytes),
 		pending:         make(map[string]writeOp),
@@ -591,8 +591,8 @@ func (bs *Store) loadIndexes() error {
 		// (badgerstore_adjacency_disk.go) — the open-path counter rebuilds
 		// walked them above; runtime snapshots come from the OutKey/InKey
 		// keyspaces.
-		bs.outIdx = make(map[types.NodeID]map[types.RelID]struct{})
-		bs.inIdx = make(map[types.NodeID]map[types.RelID]uint16)
+		bs.outIdx = make(map[types.NodeID]map[types.RelID]types.NodeID)
+		bs.inIdx = make(map[types.NodeID]map[types.RelID]inEdge)
 	}
 	return nil
 }
@@ -807,9 +807,9 @@ func (bs *Store) loadIndexesScan() error {
 			}
 			startNID := types.NodeID(startID)
 			if bs.outIdx[startNID] == nil {
-				bs.outIdx[startNID] = make(map[types.RelID]struct{})
+				bs.outIdx[startNID] = make(map[types.RelID]types.NodeID)
 			}
-			bs.outIdx[startNID][relID] = struct{}{}
+			bs.outIdx[startNID][relID] = types.NodeID(endID)
 		}
 		it.Close()
 
@@ -840,9 +840,9 @@ func (bs *Store) loadIndexesScan() error {
 			}
 			endNID := types.NodeID(endID)
 			if bs.inIdx[endNID] == nil {
-				bs.inIdx[endNID] = make(map[types.RelID]uint16)
+				bs.inIdx[endNID] = make(map[types.RelID]inEdge)
 			}
-			bs.inIdx[endNID][relID] = relType
+			bs.inIdx[endNID][relID] = inEdge{start: types.NodeID(startID), typ: relType}
 		}
 		it.Close()
 
@@ -1145,17 +1145,17 @@ func (bs *Store) addRelationshipIndexesFromRow(info RelDeleteInfo) {
 	if _, startLocal := bs.nodeIDs[types.NodeID(info.StartID)]; startLocal {
 		startNID := types.NodeID(info.StartID)
 		if bs.outIdx[startNID] == nil {
-			bs.outIdx[startNID] = make(map[types.RelID]struct{})
+			bs.outIdx[startNID] = make(map[types.RelID]types.NodeID)
 		}
-		bs.outIdx[startNID][rid] = struct{}{}
+		bs.outIdx[startNID][rid] = types.NodeID(info.EndID)
 	}
 
 	if _, endLocal := bs.nodeIDs[types.NodeID(info.EndID)]; endLocal {
 		endNID := types.NodeID(info.EndID)
 		if bs.inIdx[endNID] == nil {
-			bs.inIdx[endNID] = make(map[types.RelID]uint16)
+			bs.inIdx[endNID] = make(map[types.RelID]inEdge)
 		}
-		bs.inIdx[endNID][rid] = relType
+		bs.inIdx[endNID][rid] = inEdge{start: types.NodeID(info.StartID), typ: relType}
 	}
 }
 
@@ -1197,8 +1197,8 @@ func (bs *Store) Clear() error {
 	bs.relIDs = make(map[types.RelID]struct{})
 	bs.labelIdx = make(map[uint16]map[types.NodeID]struct{})
 	bs.typeIdx = make(map[uint16]map[types.RelID]struct{})
-	bs.outIdx = make(map[types.NodeID]map[types.RelID]struct{})
-	bs.inIdx = make(map[types.NodeID]map[types.RelID]uint16)
+	bs.outIdx = make(map[types.NodeID]map[types.RelID]types.NodeID)
+	bs.inIdx = make(map[types.NodeID]map[types.RelID]inEdge)
 
 	// Reset atomic counters. Clear sync.Map contents via Range+Delete
 	// rather than struct reassignment (review L1): concurrent readers

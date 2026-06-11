@@ -272,8 +272,8 @@ func (bs *Store) IncomingDegree(nid types.NodeID, typeToken uint16) (int, error)
 		return len(set), nil
 	}
 	n := 0
-	for _, tok := range set {
-		if tok == typeToken {
+	for _, ie := range set {
+		if ie.typ == typeToken {
 			n++
 		}
 	}

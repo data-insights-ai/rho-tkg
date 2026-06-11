@@ -70,13 +70,13 @@ func (bs *Store) PutRelationship(r *types.Relationship) error {
 	// are the durable truth; disk mode skips the mirror).
 	if !bs.adjOnDisk {
 		if bs.outIdx[startNID] == nil {
-			bs.outIdx[startNID] = make(map[types.RelID]struct{})
+			bs.outIdx[startNID] = make(map[types.RelID]types.NodeID)
 		}
-		bs.outIdx[startNID][rid] = struct{}{}
+		bs.outIdx[startNID][rid] = endNID
 		if bs.inIdx[endNID] == nil {
-			bs.inIdx[endNID] = make(map[types.RelID]uint16)
+			bs.inIdx[endNID] = make(map[types.RelID]inEdge)
 		}
-		bs.inIdx[endNID][rid] = relType
+		bs.inIdx[endNID][rid] = inEdge{start: startNID, typ: relType}
 	}
 
 	// Build write ops.
@@ -296,7 +296,7 @@ func (bs *Store) relDeleteInfoStillIndexedLocked(info RelDeleteInfo) bool {
 		}
 		if set, exists := bs.inIdx[endNID]; !exists {
 			return false
-		} else if tok, ok := set[rid]; !ok || tok != info.RelType {
+		} else if tok, ok := set[rid]; !ok || tok.typ != info.RelType {
 			return false
 		}
 	}

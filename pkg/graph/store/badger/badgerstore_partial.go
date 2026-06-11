@@ -75,9 +75,9 @@ func (bs *Store) PutRelEntityAndOut(r *types.Relationship) error {
 	// Outgoing adjacency only (RAM mirror; disk mode relies on the OutKey op).
 	if !bs.adjOnDisk {
 		if bs.outIdx[startNID] == nil {
-			bs.outIdx[startNID] = make(map[types.RelID]struct{})
+			bs.outIdx[startNID] = make(map[types.RelID]types.NodeID)
 		}
-		bs.outIdx[startNID][rid] = struct{}{}
+		bs.outIdx[startNID][rid] = types.NodeID(endID)
 	}
 
 	// NO inIdx update — the in/ key lives in the endpoint's shard.
@@ -114,9 +114,9 @@ func (bs *Store) PutRelIncoming(endID, startID snowflake.ID, relType uint16, rel
 
 	if !bs.adjOnDisk {
 		if bs.inIdx[endNID] == nil {
-			bs.inIdx[endNID] = make(map[types.RelID]uint16)
+			bs.inIdx[endNID] = make(map[types.RelID]inEdge)
 		}
-		bs.inIdx[endNID][rid] = relType
+		bs.inIdx[endNID][rid] = inEdge{start: types.NodeID(startID), typ: relType}
 	}
 
 	op := writeOp{
@@ -220,7 +220,7 @@ func (bs *Store) DeleteRelIncoming(info RelDeleteInfo) error {
 	if !bs.adjOnDisk {
 		if set, exists := bs.inIdx[endNID]; exists {
 			if tok, ok := set[rid]; ok {
-				if tok != info.RelType {
+				if tok.typ != info.RelType {
 					bs.idxMu.Unlock()
 					return ErrRelNotFound
 				}
@@ -439,7 +439,7 @@ func (bs *Store) IncomingIndexEntries() []IncomingIndexEntry {
 				entries = append(entries, IncomingIndexEntry{
 					EndID:   endID.SnowflakeID(),
 					RelID:   relID.SnowflakeID(),
-					RelType: relType,
+					RelType: relType.typ,
 				})
 			}
 		}

@@ -39,6 +39,7 @@ type Ops interface {
 	Incoming(nodeID types.NodeID, typeName string) ([]*types.Relationship, error)
 	ForEachOutgoing(nodeID types.NodeID, typeName string, fn func(*types.Relationship) bool) error
 	ForEachIncoming(nodeID types.NodeID, typeName string, fn func(*types.Relationship) bool) error
+	ForEachAdjacentEndpoint(nodeID types.NodeID, typeName string, incoming bool, fn func(rel types.RelID, other types.NodeID) bool) error
 	OutgoingForNodes(nodeIDs []types.NodeID, typeName string) (map[types.NodeID][]*types.Relationship, error)
 	IncomingForNodes(nodeIDs []types.NodeID, typeName string) (map[types.NodeID][]*types.Relationship, error)
 	OutgoingDegree(nodeID types.NodeID, typeName string) (int, error)
@@ -248,6 +249,18 @@ func (a *API) ForEachIncoming(nodeID types.NodeID, typeName string, fn func(*typ
 		return err
 	}
 	return ops.ForEachIncoming(nodeID, typeName, fn)
+}
+
+// ForEachAdjacentEndpoint streams (relID, otherEndpoint) for nodeID's adjacency
+// in the given direction WITHOUT decoding relationship rows — for traversals
+// that need only the neighbour, not the relationship's properties. fn returning
+// false stops the scan. See core.RelOps.ForEachAdjacentEndpoint.
+func (a *API) ForEachAdjacentEndpoint(nodeID types.NodeID, typeName string, incoming bool, fn func(rel types.RelID, other types.NodeID) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachAdjacentEndpoint(nodeID, typeName, incoming, fn)
 }
 
 // OutgoingDegree returns the count of outgoing relationships from nodeID
