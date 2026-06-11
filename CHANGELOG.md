@@ -42,6 +42,18 @@ path optimizations:
   `"tv:" + FormatUint(kind) + ":" + value` (~four allocs) on every
   property-equality lookup; appending into one stack buffer folds each to a
   single allocation with byte-identical output.
+- **Native badger transaction-time query (reverse-scan AsOf).** The
+  mandatory-store fallback answered `NodeAsOf`/`RelAsOf`/`NodesAsOf`/`RelsAsOf`
+  by materializing an entity's whole version history (every version decoded +
+  deep-copied) then linear-scanning. The badger store now implements the
+  optional `TransactionTimeQueryCapability` directly (auto-enabled, no wiring
+  change): history keys order by ascending version and version tracks `TxFrom`
+  monotonically, so a reverse iterator visits versions newest-first and stops
+  at the first one visible at the query time — O(versions newer than the query)
+  vs O(all versions). The current row is checked first via the cache-backed
+  point read; the reverse scan merges the pending-write overlay. Selection
+  mirrors the memory backend exactly (3-backend parity contract test); no
+  on-disk format change.
 - **Inline `PropertySlice` binary search** (drop the `sort.Search` closure)
   and an **opt-in `QueryOpts.NoSort`** scan lever (default off).
 
