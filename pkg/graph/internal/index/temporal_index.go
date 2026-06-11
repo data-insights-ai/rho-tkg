@@ -1,6 +1,7 @@
 package index
 
 import (
+	"math"
 	"sort"
 	"sync"
 
@@ -9,6 +10,19 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
+// maxInstant is the effective upper bound for an open-ended interval (To == 0).
+// Treating "still valid" as +∞ lets the same comparison drive both finite and
+// open intervals through the interval-tree pruning.
+const maxInstant = types.Instant(math.MaxInt64)
+
+// effTo maps a stored upper bound to its effective value: open-ended (0) is +∞.
+func effTo(to types.Instant) types.Instant {
+	if to == 0 {
+		return maxInstant
+	}
+	return to
+}
+
 // IntervalEntry is a single entry in the temporal index.
 type IntervalEntry struct {
 	From types.Instant
@@ -16,25 +30,32 @@ type IntervalEntry struct {
 	ID   snowflake.ID
 }
 
-// TemporalIndex is a sorted-slice interval index keyed by (from ASC, id ASC).
+// TemporalIndex is a maxTo-augmented interval index keyed by (from ASC, id ASC).
+//
+// Entries is kept sorted by (From ASC, ID ASC). On top of it the index treats the
+// sorted slice as the in-order traversal of an implicit balanced BST (the root of
+// any sub-range is its midpoint — no node allocation). subMax[i] holds the maximum
+// effective upper bound (open-ended treated as +∞) over the subtree rooted at i.
+// That augmentation lets a stabbing query prune any subtree whose intervals have
+// all expired (maxTo <= probe) in O(1), giving output-sensitive O(log n + k) queries
+// instead of the previous O(n) scan over every interval that started before the probe.
 //
 // Add/Remove are called under the store's write lock (ms.mu.Lock / bs.idxMu.Lock).
 // QueryAt/QueryOverlap are called under the store's read lock (RLock), which allows
 // multiple goroutines to query concurrently. sortIfDirty is protected by sortMu so
-// that concurrent readers do not race on the sort transition.
+// that concurrent readers do not race on the sort/augmentation transition.
 //
 // Complexity:
-//   - Add:          O(1) amortized append; sort deferred to first query after write
+//   - Add:          O(1) amortized append; sort + augmentation deferred to first query
 //   - Remove:       O(n) linear scan
-//   - QueryAt:      O(n log n) sort (once per dirty batch) + O(log n) binary search + O(k)
+//   - QueryAt:      O(n log n) sort + O(n) augmentation (once per dirty batch),
+//     then O(log n + k) per stabbing query
 //   - QueryOverlap: same as QueryAt
-//
-// The O(n) query bound is acceptable for v3 (small-to-medium label sets).
-// A future version may augment with maxTo for O(log n + k) stabbing queries.
 type TemporalIndex struct {
-	sortMu   sync.Mutex      // serialises concurrent sort transitions under RLock
+	sortMu   sync.Mutex      // serialises concurrent sort/augmentation transitions under RLock
 	Entries  []IntervalEntry // sorted by (From ASC, ID ASC) when not dirty
-	dirty    bool            // true when entries have been appended but not yet sorted
+	subMax   []types.Instant // subMax[i] = max effective To over the implicit subtree rooted at i
+	dirty    bool            // true when entries changed but slice not yet sorted/augmented
 	Building bool            // true while CreateTemporalIndex is still backfilling
 	Mutated  map[snowflake.ID]struct{}
 }
@@ -95,9 +116,10 @@ func (ti *TemporalIndex) ClearMutationTracking() {
 	ti.Mutated = nil
 }
 
-// sortIfDirty sorts entries by (From ASC, ID ASC) if the index has been
-// modified since the last sort. Called at the start of every query.
-// sortMu serialises concurrent callers holding only the store's read lock.
+// sortIfDirty sorts entries by (From ASC, ID ASC) and rebuilds the maxTo
+// augmentation if the index has been modified since the last query. Called at the
+// start of every query. sortMu serialises concurrent callers holding only the
+// store's read lock so that the sort/augmentation transition is observed atomically.
 func (ti *TemporalIndex) sortIfDirty() {
 	if ti == nil {
 		return
@@ -113,11 +135,47 @@ func (ti *TemporalIndex) sortIfDirty() {
 		}
 		return ti.Entries[i].ID < ti.Entries[j].ID
 	})
+	ti.buildSubMax()
 	ti.dirty = false
 }
 
+// buildSubMax populates subMax over the implicit balanced BST whose in-order
+// traversal is the sorted Entries slice. Must be called with Entries already
+// sorted and under sortMu.
+func (ti *TemporalIndex) buildSubMax() {
+	n := len(ti.Entries)
+	if cap(ti.subMax) >= n {
+		ti.subMax = ti.subMax[:n]
+	} else {
+		ti.subMax = make([]types.Instant, n)
+	}
+	if n > 0 {
+		ti.fillSubMax(0, n)
+	}
+}
+
+// fillSubMax computes and stores the maximum effective upper bound over the
+// implicit subtree covering Entries[lo:hi] (root = midpoint), returning that max.
+func (ti *TemporalIndex) fillSubMax(lo, hi int) types.Instant {
+	if lo >= hi {
+		return 0
+	}
+	mid := int(uint(lo+hi) >> 1)
+	m := effTo(ti.Entries[mid].To)
+	if l := ti.fillSubMax(lo, mid); l > m {
+		m = l
+	}
+	if r := ti.fillSubMax(mid+1, hi); r > m {
+		m = r
+	}
+	ti.subMax[mid] = m
+	return m
+}
+
 // Remove deletes the entry for id. Linear scan — O(n).
-// No-op if id is not present.
+// No-op if id is not present. The filtered slice stays sorted, but the maxTo
+// augmentation now spans a stale length, so the index is marked dirty to force a
+// rebuild on the next query.
 func (ti *TemporalIndex) Remove(id snowflake.ID) {
 	if ti == nil {
 		return
@@ -131,13 +189,14 @@ func (ti *TemporalIndex) Remove(id snowflake.ID) {
 		out = append(out, e)
 	}
 	ti.Entries = out
+	ti.dirty = true
 }
 
 // QueryAt returns IDs of all entries valid at instant t.
 // Condition: from <= t AND (to == 0 OR to > t).
 //
-// Algorithm: binary search finds the rightmost position where from <= t,
-// then scans leftward from that position collecting matches.
+// Walks the implicit balanced BST, pruning whole subtrees whose intervals have all
+// expired (subMax <= t) and right subtrees whose froms all exceed t. O(log n + k).
 // Returns a sorted slice of IDs.
 func (ti *TemporalIndex) QueryAt(t types.Instant) []snowflake.ID {
 	if ti == nil || len(ti.Entries) == 0 {
@@ -145,29 +204,42 @@ func (ti *TemporalIndex) QueryAt(t types.Instant) []snowflake.ID {
 	}
 	ti.sortIfDirty()
 
-	// Find the first index where From > t.
-	// All entries at index < pos have From <= t.
-	pos := sort.Search(len(ti.Entries), func(i int) bool {
-		return ti.Entries[i].From > t
-	})
-	if pos == 0 {
-		return nil // no entries with From <= t
-	}
-
 	var ids []snowflake.ID
-	for i := 0; i < pos; i++ {
-		e := ti.Entries[i]
-		if e.To == 0 || e.To > t {
-			ids = append(ids, e.ID)
-		}
+	ti.stabAt(0, len(ti.Entries), t, &ids)
+	if ids == nil {
+		return nil
 	}
 	storepkg.SortSnowflakeIDs(ids)
 	return ids
 }
 
+// stabAt collects entries containing point t (from <= t AND effTo > t) over the
+// implicit subtree covering Entries[lo:hi].
+func (ti *TemporalIndex) stabAt(lo, hi int, t types.Instant, out *[]snowflake.ID) {
+	if lo >= hi {
+		return
+	}
+	mid := int(uint(lo+hi) >> 1)
+	if ti.subMax[mid] <= t {
+		return // every interval in this subtree expired at/before t
+	}
+	ti.stabAt(lo, mid, t, out)
+	e := ti.Entries[mid]
+	if e.From <= t {
+		if effTo(e.To) > t {
+			*out = append(*out, e.ID)
+		}
+		// Right subtree froms are >= e.From <= t, so some may still satisfy from <= t.
+		ti.stabAt(mid+1, hi, t, out)
+	}
+	// e.From > t: every right-subtree from is even larger — skip it.
+}
+
 // QueryOverlap returns IDs of all entries whose interval overlaps [start, end).
 // Condition: from < end AND (to == 0 OR to > start).
 //
+// Walks the implicit balanced BST, pruning subtrees with subMax <= start (all end
+// before the query) and right subtrees whose froms all reach end. O(log n + k).
 // Returns a sorted slice of IDs.
 func (ti *TemporalIndex) QueryOverlap(start, end types.Instant) []snowflake.ID {
 	if ti == nil || len(ti.Entries) == 0 || start >= end {
@@ -175,24 +247,34 @@ func (ti *TemporalIndex) QueryOverlap(start, end types.Instant) []snowflake.ID {
 	}
 	ti.sortIfDirty()
 
-	// Find the first index where From >= end.
-	// All entries at index < pos have From < end.
-	pos := sort.Search(len(ti.Entries), func(i int) bool {
-		return ti.Entries[i].From >= end
-	})
-	if pos == 0 {
-		return nil
-	}
-
 	var ids []snowflake.ID
-	for i := 0; i < pos; i++ {
-		e := ti.Entries[i]
-		if e.To == 0 || e.To > start {
-			ids = append(ids, e.ID)
-		}
+	ti.stabOverlap(0, len(ti.Entries), start, end, &ids)
+	if ids == nil {
+		return nil
 	}
 	storepkg.SortSnowflakeIDs(ids)
 	return ids
+}
+
+// stabOverlap collects entries overlapping [start, end) (from < end AND effTo > start)
+// over the implicit subtree covering Entries[lo:hi].
+func (ti *TemporalIndex) stabOverlap(lo, hi int, start, end types.Instant, out *[]snowflake.ID) {
+	if lo >= hi {
+		return
+	}
+	mid := int(uint(lo+hi) >> 1)
+	if ti.subMax[mid] <= start {
+		return // every interval in this subtree ends at/before start
+	}
+	ti.stabOverlap(lo, mid, start, end, out)
+	e := ti.Entries[mid]
+	if e.From < end {
+		if effTo(e.To) > start {
+			*out = append(*out, e.ID)
+		}
+		ti.stabOverlap(mid+1, hi, start, end, out)
+	}
+	// e.From >= end: every right-subtree from is >= e.From >= end — skip it.
 }
 
 // Len returns the number of entries in the index.
