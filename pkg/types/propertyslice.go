@@ -307,25 +307,25 @@ func IndexablePropertyValueKey(v any) string {
 		// plain string carrying the same ISO rendering.
 		return "tv:" + strconv.FormatUint(uint64(val.Kind), 10) + ":" + val.Value
 	case int:
-		return "i:" + strconv.FormatInt(int64(val), 10)
+		return appendIntKey("i:", int64(val))
 	case int8:
-		return "i8:" + strconv.FormatInt(int64(val), 10)
+		return appendIntKey("i8:", int64(val))
 	case int16:
-		return "i16:" + strconv.FormatInt(int64(val), 10)
+		return appendIntKey("i16:", int64(val))
 	case int32:
-		return "i32:" + strconv.FormatInt(int64(val), 10)
+		return appendIntKey("i32:", int64(val))
 	case int64:
-		return "i64:" + strconv.FormatInt(val, 10)
+		return appendIntKey("i64:", val)
 	case uint:
-		return "u:" + strconv.FormatUint(uint64(val), 10)
+		return appendUintKey("u:", uint64(val))
 	case uint8:
-		return "u8:" + strconv.FormatUint(uint64(val), 10)
+		return appendUintKey("u8:", uint64(val))
 	case uint16:
-		return "u16:" + strconv.FormatUint(uint64(val), 10)
+		return appendUintKey("u16:", uint64(val))
 	case uint32:
-		return "u32:" + strconv.FormatUint(uint64(val), 10)
+		return appendUintKey("u32:", uint64(val))
 	case uint64:
-		return "u64:" + strconv.FormatUint(val, 10)
+		return appendUintKey("u64:", val)
 	case float32:
 		if val == 0 {
 			return "f32:0"
@@ -333,7 +333,7 @@ func IndexablePropertyValueKey(v any) string {
 		if math.IsNaN(float64(val)) {
 			return "f32:nan"
 		}
-		return "f32:" + strconv.FormatFloat(float64(val), 'g', -1, 32)
+		return appendFloatKey("f32:", float64(val), 32)
 	case float64:
 		if val == 0 {
 			return "f64:0"
@@ -341,7 +341,7 @@ func IndexablePropertyValueKey(v any) string {
 		if math.IsNaN(val) {
 			return "f64:nan"
 		}
-		return "f64:" + strconv.FormatFloat(val, 'g', -1, 64)
+		return appendFloatKey("f64:", val, 64)
 	case bool:
 		if val {
 			return "b:true"
@@ -350,6 +350,29 @@ func IndexablePropertyValueKey(v any) string {
 	default:
 		return ""
 	}
+}
+
+// appendIntKey / appendUintKey / appendFloatKey build a "prefix:number" index
+// key in a single heap allocation. The previous `prefix + strconv.FormatX(...)`
+// form allocated twice — once for the formatted number, once for the
+// concatenation — on every numeric property-equality lookup. Appending the
+// prefix and the digits into one stack buffer collapses that to the single
+// string() allocation, with byte-identical output. The buffers are sized for
+// the longest output (≤4-byte prefix + ≤24 digits/exponent) so the slice never
+// escapes to the heap before the string conversion.
+func appendIntKey(prefix string, val int64) string {
+	var buf [32]byte
+	return string(strconv.AppendInt(append(buf[:0], prefix...), val, 10))
+}
+
+func appendUintKey(prefix string, val uint64) string {
+	var buf [32]byte
+	return string(strconv.AppendUint(append(buf[:0], prefix...), val, 10))
+}
+
+func appendFloatKey(prefix string, val float64, bitSize int) string {
+	var buf [40]byte
+	return string(strconv.AppendFloat(append(buf[:0], prefix...), val, 'g', -1, bitSize))
 }
 
 // PropertyValueEqual compares two property values with the exact equality
