@@ -659,7 +659,7 @@ func (bs *Store) loadNodeFromBadger(txn *badgerv4.Txn, id snowflake.ID) (*types.
 // falls back to label scan + property filter.
 // Results are sorted by snowflake.ID for deterministic output.
 func (bs *Store) prefetchNode(nid types.NodeID) (*types.Node, error) {
-	n, miss, err := bs.prefetchNodeNoFill(nid)
+	n, miss, err := bs.prefetchNodeNoFill(nid, true) // point read: promote
 	if err != nil || !miss {
 		return n, err
 	}
@@ -676,7 +676,7 @@ func (bs *Store) prefetchNode(nid types.NodeID) (*types.Node, error) {
 // as collateral. Cache hits are still served; misses pay one badger decode
 // and leave the cache untouched. The returned node is frozen either way.
 func (bs *Store) prefetchNodeScan(nid types.NodeID) (*types.Node, error) {
-	n, _, err := bs.prefetchNodeNoFill(nid)
+	n, _, err := bs.prefetchNodeNoFill(nid, false) // scan: no promote
 	return n, err
 }
 
@@ -685,9 +685,20 @@ func (bs *Store) prefetchNodeScan(nid types.NodeID) (*types.Node, error) {
 // miss=false means it came from the cache. The decoded node is frozen
 // before return because callers may publish it into the cache, and cache
 // entries must never be mutable.
-func (bs *Store) prefetchNodeNoFill(nid types.NodeID) (n *types.Node, miss bool, err error) {
+func (bs *Store) prefetchNodeNoFill(nid types.NodeID, promote bool) (n *types.Node, miss bool, err error) {
 	id := nid.SnowflakeID()
-	v, status := bs.nodeCache.Get(id)
+	// Point reads promote the hit to MRU (Get, exclusive lock + MoveToFront);
+	// scan reads do not (GetNoPromote, read lock, no recency write) — a
+	// full-cardinality scan must neither pay one exclusive lock per row (the
+	// concurrent-scan serialization point) nor evict hot point-read entries
+	// with rows it touches once.
+	var v *types.Node
+	var status indexpkg.CacheStatus
+	if promote {
+		v, status = bs.nodeCache.Get(id)
+	} else {
+		v, status = bs.nodeCache.GetNoPromote(id)
+	}
 	switch status {
 	case indexpkg.CacheHit:
 		return v, false, nil

@@ -37,10 +37,12 @@ func (bs *Store) UnlockFlushMuForTest() { bs.flushMu.Unlock() }
 // pkg/graph can write malformed entries directly. Not for production use.
 func (bs *Store) DBForTest() *badgerv4.DB { return bs.db }
 
-// NodeCacheForTest / RelCacheForTest return the LRU caches so tests can call
+// NodeCacheForTest / RelCacheForTest return the entity caches so tests can call
 // EvictForTest / ResetForTest from outside the package. Not for production use.
-func (bs *Store) NodeCacheForTest() *indexpkg.Cache[*types.Node]        { return bs.nodeCache }
-func (bs *Store) RelCacheForTest() *indexpkg.Cache[*types.Relationship] { return bs.relCache }
+func (bs *Store) NodeCacheForTest() indexpkg.EntityCache[*types.Node] { return bs.nodeCache }
+func (bs *Store) RelCacheForTest() indexpkg.EntityCache[*types.Relationship] {
+	return bs.relCache
+}
 
 // LabelIndexForTest snapshots the current label-index entry for the given
 // label token. The returned slice is a fresh copy and safe to inspect outside
