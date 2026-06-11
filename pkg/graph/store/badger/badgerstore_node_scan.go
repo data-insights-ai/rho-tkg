@@ -48,7 +48,11 @@ func (bs *Store) ForEachNodeByLabel(token uint16, opts QueryOpts, fn func(*types
 	if len(nids) == 0 {
 		return nil
 	}
-	storepkg.SortNodeIDs(nids)
+	// Order-independent streaming consumers set NoSort to drop the
+	// O(n log n) sort; pagination (After > 0) still needs sorted order.
+	if !opts.NoSort || opts.After != 0 {
+		storepkg.SortNodeIDs(nids)
+	}
 	nids = bs.filterNodeIDsByTemporalPeek(nids, opts)
 	nids = storepkg.PaginateNodeIDs(nids, opts.After, 0)
 
