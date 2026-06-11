@@ -384,6 +384,12 @@ func New(cfg Config) (*Store, error) {
 	}
 
 	opts := badgerv4.DefaultOptions(cfg.Dir)
+	// tkgd appends immutable versions with self-assigned snowflake IDs and
+	// serializes all writes through its own write buffer (appendOps → one
+	// WriteBatch), so it owns conflict semantics at the graph layer. Badger's
+	// per-commit read-conflict oracle (key fingerprinting on every txn) is then
+	// pure overhead — disable it. (L1 / OPT11: "single cheapest write win".)
+	opts = opts.WithDetectConflicts(false)
 	if cfg.InMemory {
 		opts = opts.WithInMemory(true)
 	}
