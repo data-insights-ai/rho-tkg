@@ -47,7 +47,7 @@ const perEntryOverhead = 160
 //
 // All methods are thread-safe via internal mutex.
 type Cache[V any] struct {
-	mu         sync.Mutex
+	mu         sync.RWMutex
 	capacity   int // soft limit — dirty entries can exceed
 	cleanCount int // number of evictable entries (DirtyVer == 0, !Deleted)
 	items      map[snowflake.ID]*list.Element
@@ -126,6 +126,42 @@ func (c *Cache[V]) Get(key snowflake.ID) (V, CacheStatus) {
 	entry := el.Value.(*Entry[V])
 	c.order.MoveToFront(el)
 
+	if entry.Deleted {
+		var zero V
+		c.hits.Add(1)
+		return zero, CacheDeleted
+	}
+
+	c.hits.Add(1)
+	return entry.Value, CacheHit
+}
+
+// GetNoPromote looks up a key WITHOUT promoting it to most-recently-used.
+// Unlike Get it takes only a READ lock and never touches the recency list, so
+// concurrent callers do not serialize on the exclusive mutex. Intended for
+// full-cardinality SCAN reads (ForEachByLabel / ForEachByType): a large scan
+// must not pay one exclusive Lock + MoveToFront per row, and scanned rows are
+// not "hot" — promoting them would evict genuinely hot point-read entries (the
+// same rationale as the no-cache-fill scan path). Point reads keep using Get so
+// revisited entries stay warm.
+//
+// Sound under RLock: it reads only c.items (the map) and the entry's
+// Value/Deleted fields, which are mutated only by writers (Put, MarkDeleted,
+// eviction, flush) that hold the EXCLUSIVE Lock. RLock excludes Lock, so no
+// torn read of the map, the recency list, or an entry is possible. It never
+// touches c.order / c.totalBytes / cleanCount; hits/misses are atomic.
+func (c *Cache[V]) GetNoPromote(key snowflake.ID) (V, CacheStatus) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	el, ok := c.items[key]
+	if !ok {
+		var zero V
+		c.misses.Add(1)
+		return zero, CacheMiss
+	}
+
+	entry := el.Value.(*Entry[V])
 	if entry.Deleted {
 		var zero V
 		c.hits.Add(1)

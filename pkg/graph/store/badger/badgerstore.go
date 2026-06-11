@@ -8,6 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
+	"runtime"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -248,9 +251,11 @@ type Store struct {
 	outIdx      map[types.NodeID]map[types.RelID]struct{} // startNodeID → set(relID)
 	inIdx       map[types.NodeID]map[types.RelID]uint16   // endNodeID → relID → typeToken
 
-	// Entity caches (internal sync via entityLRU mutex).
-	nodeCache *indexpkg.Cache[*types.Node]
-	relCache  *indexpkg.Cache[*types.Relationship]
+	// Entity caches (internal sync, N-way sharded — see indexpkg.ShardedCache).
+	// Typed as the EntityCache interface so the concrete sharded implementation
+	// is the single swap point in newNodeCache / newRelCache.
+	nodeCache indexpkg.EntityCache[*types.Node]
+	relCache  indexpkg.EntityCache[*types.Relationship]
 
 	// Counters (atomic — persisted atomically via flush WriteBatch).
 	nodeCount atomic.Int64
@@ -353,22 +358,41 @@ var (
 // newNodeCache / newRelCache construct the entity caches, byte-budgeted
 // when budget > 0 (sized by the entities' approximate resident heap
 // footprint — see types.ApproxHeapBytes).
-func newNodeCache(capacity int, budget int64) *indexpkg.Cache[*types.Node] {
-	if budget <= 0 {
-		return indexpkg.NewCache[*types.Node](capacity)
+// cacheShards is the shard count for the entity caches, derived once from
+// GOMAXPROCS so concurrent label scans (one Get per node) spread across shards
+// instead of serializing on a single mutex. Floored at 16 and rounded to a
+// power of two (see indexpkg.ShardHint). The TOTAL capacity/budget passed to the
+// sharded constructors is split evenly across shards, so the configured soft
+// limit is preserved.
+func cacheShards() int {
+	// TKG_CACHE_SHARDS overrides the derived shard count (1 disables
+	// sharding — the pre-sharding single-mutex behaviour — for A/B
+	// measurement and as a kill switch). Invalid / unset uses the
+	// GOMAXPROCS-derived default.
+	if v := os.Getenv("TKG_CACHE_SHARDS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 1 {
+			return n // raw (NewShardedCache rounds to a power of two); 1 = no sharding
+		}
 	}
-	return indexpkg.NewCacheWithBudget(capacity, budget, func(n *types.Node) int64 {
-		return int64(n.ApproxHeapBytes())
-	})
+	return indexpkg.ShardHint(runtime.GOMAXPROCS(0))
 }
 
-func newRelCache(capacity int, budget int64) *indexpkg.Cache[*types.Relationship] {
+func newNodeCache(capacity int, budget int64) indexpkg.EntityCache[*types.Node] {
 	if budget <= 0 {
-		return indexpkg.NewCache[*types.Relationship](capacity)
+		return indexpkg.NewShardedCache[*types.Node](capacity, cacheShards())
 	}
-	return indexpkg.NewCacheWithBudget(capacity, budget, func(r *types.Relationship) int64 {
+	return indexpkg.NewShardedCacheWithBudget(capacity, budget, func(n *types.Node) int64 {
+		return int64(n.ApproxHeapBytes())
+	}, cacheShards())
+}
+
+func newRelCache(capacity int, budget int64) indexpkg.EntityCache[*types.Relationship] {
+	if budget <= 0 {
+		return indexpkg.NewShardedCache[*types.Relationship](capacity, cacheShards())
+	}
+	return indexpkg.NewShardedCacheWithBudget(capacity, budget, func(r *types.Relationship) int64 {
 		return int64(r.ApproxHeapBytes())
-	})
+	}, cacheShards())
 }
 
 func New(cfg Config) (*Store, error) {

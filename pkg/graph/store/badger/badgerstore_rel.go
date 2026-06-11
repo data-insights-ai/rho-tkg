@@ -398,7 +398,7 @@ func (bs *Store) getRelLocked(rid types.RelID) (*types.Relationship, error) {
 }
 
 func (bs *Store) prefetchRel(rid types.RelID) (*types.Relationship, error) {
-	r, miss, err := bs.prefetchRelNoFill(rid)
+	r, miss, err := bs.prefetchRelNoFill(rid, true) // point read: promote
 	if err != nil || !miss {
 		return r, err
 	}
@@ -413,7 +413,7 @@ func (bs *Store) prefetchRel(rid types.RelID) (*types.Relationship, error) {
 // (Outgoing/Incoming) keep the filling prefetchRel because traversals
 // revisit them.
 func (bs *Store) prefetchRelScan(rid types.RelID) (*types.Relationship, error) {
-	r, _, err := bs.prefetchRelNoFill(rid)
+	r, _, err := bs.prefetchRelNoFill(rid, false) // scan: no promote
 	return r, err
 }
 
@@ -421,9 +421,17 @@ func (bs *Store) prefetchRelScan(rid types.RelID) (*types.Relationship, error) {
 // miss=true means r was decoded from badger (a cache-fill candidate). The
 // decoded relationship is frozen before return because callers may publish
 // it into the cache, and cache entries must never be mutable.
-func (bs *Store) prefetchRelNoFill(rid types.RelID) (r *types.Relationship, miss bool, err error) {
+func (bs *Store) prefetchRelNoFill(rid types.RelID, promote bool) (r *types.Relationship, miss bool, err error) {
 	id := rid.SnowflakeID()
-	v, status := bs.relCache.Get(id)
+	// Point reads promote (Get); scan reads do not (GetNoPromote) — see
+	// prefetchNodeNoFill for the concurrent-scan serialization this avoids.
+	var v *types.Relationship
+	var status indexpkg.CacheStatus
+	if promote {
+		v, status = bs.relCache.Get(id)
+	} else {
+		v, status = bs.relCache.GetNoPromote(id)
+	}
 	switch status {
 	case indexpkg.CacheHit:
 		return v, false, nil
