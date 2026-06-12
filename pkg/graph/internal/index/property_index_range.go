@@ -177,6 +177,7 @@ func (pi *PropertyIndex) addOrdered(id snowflake.ID, vk string) {
 		pi.numKeys.insert(k)
 	}
 	bucket[id] = struct{}{}
+	pi.noteNumericPrecision(vk) // R1: flag >2^53 integers (float64 key collision)
 }
 
 // removeOrdered removes id from vk's numeric bucket, if any.

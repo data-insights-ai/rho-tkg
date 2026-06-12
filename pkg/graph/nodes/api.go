@@ -32,6 +32,7 @@ type Ops interface {
 	ByLabel(label string, opts storepkg.QueryOpts) ([]*types.Node, error)
 	ForEachByLabel(label string, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
 	ForEachByLabelPropertyRange(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
+	RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
 	ByLabelAndProperty(label, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error)
 	Count() (int, error)
 	CountByLabel(label string) (int, error)
@@ -190,6 +191,20 @@ func (a *API) ForEachByLabelPropertyRange(label, propKey string, min, max float6
 		return err
 	}
 	return ops.ForEachByLabelPropertyRange(label, propKey, min, max, inclMin, inclMax, opts, fn)
+}
+
+// RangeCardinality returns the count of the label's nodes whose numeric propKey
+// value lies within [min, max] (inclusivity per flags) from the property index's
+// bit-sliced index (R1) — an O(bitmap) popcount, NO node scan. The second return
+// is exact: false means the index declined (absent / poisoned / non-integer
+// bounds / temporal opts) and the caller must scan-and-count. The bounds must
+// already capture the WHOLE predicate. See core.NodeOps.RangeCardinality.
+func (a *API) RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, false, err
+	}
+	return ops.RangeCardinality(label, propKey, min, max, inclMin, inclMax, opts)
 }
 
 // ByLabelAndProperty returns nodes carrying the label whose property matches value.

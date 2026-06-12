@@ -17,6 +17,29 @@ import (
 
 // --- Property indexes ---
 
+// NodeRangeCardinality returns the COUNT of the label's nodes whose numeric
+// propertyKey value lies within [min, max] (per the inclusivity flags) from the
+// property index's bit-sliced index (R1) — an O(bitmap) popcount, no node scan.
+// exact=false declines (no usable index / poisoned / non-integer bounds) and the
+// caller scans-and-counts. Mirrors the badger store's method so both backends
+// answer `count(p) WHERE p.k > x` identically.
+func (ms *Store) NodeRangeCardinality(labelToken uint16, propertyKey string, min, max float64, inclMin, inclMax bool) (int64, bool, error) {
+	if ms == nil {
+		return 0, false, ErrNilStore
+	}
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	if err := ms.checkOpenLocked(); err != nil {
+		return 0, false, err
+	}
+	idx, ok := ms.propertyIndexes[indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}]
+	if !ok {
+		return 0, false, nil
+	}
+	count, exact := idx.RangeCardinality(min, max, inclMin, inclMax)
+	return count, exact, nil
+}
+
 // CreatePropertyIndex creates a property index for the given label token and property key.
 // Scans all existing nodes with that label to populate the index.
 // Returns ErrIndexExists if the index already exists.

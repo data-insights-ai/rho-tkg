@@ -69,6 +69,46 @@ func (n *NodeOps) ByLabel(label string, opts storepkg.QueryOpts) ([]*types.Node,
 	return result, nil
 }
 
+// nodeRangeCardinalityScanner is the OPTIONAL store capability behind
+// NodeOps.RangeCardinality — an O(bitmap) range-count from the property index's
+// bit-sliced index (R1), with no node scan.
+type nodeRangeCardinalityScanner interface {
+	NodeRangeCardinality(labelToken uint16, propKey string, min, max float64, inclMin, inclMax bool) (int64, bool, error)
+}
+
+// RangeCardinality returns the count of the label's nodes whose numeric propKey
+// value lies in [min,max] (inclusivity per flags), computed from the bit-sliced
+// index with NO node scan. exact=false declines — the caller must scan-and-count
+// — when the store lacks the capability, the index is poisoned/absent, the
+// bounds are not exact integers, or a temporal filter is set (the BSI is
+// valid-time agnostic). The bounds MUST capture the whole predicate; the caller
+// enforces that (only the count-over-pure-range fast path may use this).
+func (n *NodeOps) RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
+	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return 0, false, err
+	}
+	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 {
+		return 0, false, nil // temporal — the BSI cannot answer; caller scans
+	}
+	scanner, native := c.store.(nodeRangeCardinalityScanner)
+	if !native {
+		return 0, false, nil
+	}
+	var tok uint16
+	var ok bool
+	if err := c.readUnderRLock(func() error {
+		tok, ok = c.lookupLabelLocked(label)
+		return nil
+	}); err != nil {
+		return 0, false, err
+	}
+	if !ok {
+		return 0, false, nil // unknown label — caller scans (finds zero)
+	}
+	return scanner.NodeRangeCardinality(tok, propKey, min, max, inclMin, inclMax)
+}
+
 // nodeLabelScanner is the OPTIONAL store capability behind
 // NodeOps.ForEachByLabel — streaming label scans whose peak memory stays
 // O(1) in the label's cardinality. Implemented by the in-tree memory and
