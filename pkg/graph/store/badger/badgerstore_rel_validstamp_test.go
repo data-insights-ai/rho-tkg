@@ -10,6 +10,55 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
+// TestRelValidStamp_LazyBuild pins that the stamp index is NOT maintained until
+// the first temporal traversal (so non-temporal / tiered workloads pay nothing),
+// and that the lazy build captures the existing rels correctly. A non-temporal
+// scan must never trigger the build.
+func TestRelValidStamp_LazyBuild(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+	putTestNode(t, bs, 1, 1, nil)
+	putTestNode(t, bs, 2, 1, nil)
+	if err := bs.PutRelationship(newTemporalRel(100, 0, 1, 100, 200, 1)); err != nil {
+		t.Fatalf("put 100: %v", err)
+	}
+	if err := bs.PutRelationship(newTemporalRel(101, 0, 1, 100, 0, 1)); err != nil {
+		t.Fatalf("put 101: %v", err)
+	}
+
+	// No temporal traversal yet → the index must be unbuilt (zero memory).
+	if bs.relValidIdx != nil || bs.relValidIdxBuilt.Load() {
+		t.Fatal("relValidIdx must be nil/unbuilt before any temporal traversal (lazy)")
+	}
+
+	// A NON-temporal endpoint scan must not build it either.
+	if err := bs.ForEachAdjacentEndpointAt(types.NodeID(snowflake.ID(1)), 0, false, QueryOpts{}, func(types.RelID, types.NodeID) bool {
+		return true
+	}); err != nil {
+		t.Fatalf("non-temporal scan: %v", err)
+	}
+	if bs.relValidIdx != nil || bs.relValidIdxBuilt.Load() {
+		t.Fatal("a non-temporal scan must not build the stamp index")
+	}
+
+	// The first TEMPORAL traversal builds it AND returns the correct edges.
+	got := map[int64]bool{}
+	if err := bs.ForEachAdjacentEndpointAt(types.NodeID(snowflake.ID(1)), 0, false, QueryOpts{ValidAt: 150},
+		func(rel types.RelID, _ types.NodeID) bool {
+			got[int64(rel)] = true
+			return true
+		}); err != nil {
+		t.Fatalf("temporal scan: %v", err)
+	}
+	if bs.relValidIdx == nil || !bs.relValidIdxBuilt.Load() {
+		t.Fatal("first temporal traversal must build the stamp index")
+	}
+	// At t=150 both rels are valid ([100,200) and [100,open)).
+	if len(got) != 2 || !got[100] || !got[101] {
+		t.Fatalf("temporal result = %v, want {100,101} — lazy build missed an existing rel", got)
+	}
+}
+
 // OPT15 divergence gate. The inline-stamp temporal traversal
 // (ForEachAdjacentEndpointAt) must return EXACTLY the set the decode path
 // returns, at every query time, after every create / version-close / delete.

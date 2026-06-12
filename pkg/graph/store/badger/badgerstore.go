@@ -250,7 +250,8 @@ type Store struct {
 	typeIdx     map[uint16]map[types.RelID]struct{}           // relTypeToken → set(relID)
 	outIdx      map[types.NodeID]map[types.RelID]types.NodeID // startNodeID → relID → endNodeID
 	inIdx       map[types.NodeID]map[types.RelID]inEdge       // endNodeID → relID → {startNodeID, typeToken}
-	relValidIdx map[types.RelID]relValidStamp                 // relID → effective {validFrom, validTo} for inline-stamp temporal traversal (OPT15)
+	relValidIdx      map[types.RelID]relValidStamp            // relID → effective {validFrom, validTo} for inline-stamp temporal traversal (OPT15); nil until lazily built on the first temporal traversal
+	relValidIdxBuilt atomic.Bool                              // fast-path "already built" check outside idxMu
 
 	// Entity caches (internal sync, N-way sharded — see indexpkg.ShardedCache).
 	// Typed as the EntityCache interface so the concrete sharded implementation
@@ -492,8 +493,10 @@ func New(cfg Config) (*Store, error) {
 		typeIdx:         make(map[uint16]map[types.RelID]struct{}),
 		outIdx:          make(map[types.NodeID]map[types.RelID]types.NodeID),
 		inIdx:           make(map[types.NodeID]map[types.RelID]inEdge),
-		relValidIdx:     make(map[types.RelID]relValidStamp),
-		nodeCache:       newNodeCache(capacity, cfg.CacheBudgetBytes),
+		// relValidIdx is built LAZILY on the first temporal traversal — a graph
+		// that never does temporal adjacency (or a tiered store, which does not
+		// expose the capability) pays nothing for the per-rel stamps.
+		nodeCache: newNodeCache(capacity, cfg.CacheBudgetBytes),
 		relCache:        newRelCache(capacity, cfg.CacheBudgetBytes),
 		pending:         make(map[string]writeOp),
 		propertyIndexes: make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex),
@@ -750,7 +753,8 @@ func (bs *Store) loadIndexesScan() error {
 			info := relDeleteInfoFromRelationship(r)
 			decodedRelInfo[rid] = info
 			bs.addRelationshipIndexesFromRow(info)
-			bs.setRelValidStampLocked(rid, r) // OPT15: inline valid-time stamp from the decoded row
+			// OPT15 relValidIdx is built lazily on the first temporal traversal,
+			// not during load — see ensureRelValidIdxBuilt.
 		}
 		it.Close()
 		if loadErr != nil {
@@ -1202,7 +1206,8 @@ func (bs *Store) Clear() error {
 	bs.typeIdx = make(map[uint16]map[types.RelID]struct{})
 	bs.outIdx = make(map[types.NodeID]map[types.RelID]types.NodeID)
 	bs.inIdx = make(map[types.NodeID]map[types.RelID]inEdge)
-	bs.relValidIdx = make(map[types.RelID]relValidStamp)
+	bs.relValidIdx = nil // OPT15: drop the lazy stamp index; rebuilt on next temporal traversal
+	bs.relValidIdxBuilt.Store(false)
 
 	// Reset atomic counters. Clear sync.Map contents via Range+Delete
 	// rather than struct reassignment (review L1): concurrent readers

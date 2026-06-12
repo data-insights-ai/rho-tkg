@@ -27,6 +27,14 @@ import (
 // to the decode path" — so it is correct even on a partial/cross-shard store
 // where an incoming edge's entity lives on another shard (no local stamp ->
 // miss -> decode, exactly as the existing scan already degrades).
+//
+// LAZY: the index is nil until the first temporal traversal builds it
+// (ensureRelValidIdxBuilt). Until then setRelValidStampLocked is a no-op, so a
+// graph that never does temporal adjacency — or a tiered store, which does not
+// expose ForEachAdjacentEndpointAt at all — pays NOTHING for the per-rel stamps
+// (no memory, no per-write cost). Once built, every rel lifecycle site keeps it
+// fresh incrementally (the divergence gate covers that), and the build captures
+// the current rel set in one pass.
 
 // relValidStamp is one relationship's inline valid-time interval. vf is the
 // EFFECTIVE valid-from: EntityValidFrom has already resolved the snowflake-ID
@@ -47,13 +55,49 @@ type relValidStamp struct {
 // results. That bug class is exactly what the divergence gate
 // (badgerstore_rel_validstamp_test.go) is built to catch.
 func (bs *Store) setRelValidStampLocked(rid types.RelID, r *types.Relationship) {
+	if bs.relValidIdx == nil {
+		return // not built yet — temporal traversal will build it on first use
+	}
+	bs.relValidIdx[rid] = relValidStampFor(rid, r)
+}
+
+// relValidStampFor computes a rel's effective valid interval (EntityValidFrom
+// resolves the snowflake fallback; vt==0 is open-ended).
+func relValidStampFor(rid types.RelID, r *types.Relationship) relValidStamp {
 	tm := r.Temporal()
 	vf := storepkg.EntityValidFrom(rid.SnowflakeID(), tm)
 	var vt types.Instant
 	if tm != nil {
 		vt = tm.ValidTo
 	}
-	bs.relValidIdx[rid] = relValidStamp{vf: int64(vf), vt: int64(vt)}
+	return relValidStamp{vf: int64(vf), vt: int64(vt)}
+}
+
+// ensureRelValidIdxBuilt builds the inline stamp index from the current rel set
+// on the first temporal traversal, decoding each live rel once. After this every
+// lifecycle site maintains it incrementally. The atomic flag keeps the steady
+// state lock-free; the build itself runs under idxMu.Lock so it is consistent
+// with concurrent mutations (a writer either contributes a stamp post-build or
+// is captured by the build, never lost).
+func (bs *Store) ensureRelValidIdxBuilt() {
+	if bs.relValidIdxBuilt.Load() {
+		return
+	}
+	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
+	if bs.relValidIdx != nil {
+		return // built by a racing caller while we waited for the lock
+	}
+	idx := make(map[types.RelID]relValidStamp, len(bs.relIDs))
+	for rid := range bs.relIDs {
+		r, err := bs.getRelLocked(rid)
+		if err != nil {
+			continue // gone since the snapshot — a miss falls back to a decode
+		}
+		idx[rid] = relValidStampFor(rid, r)
+	}
+	bs.relValidIdx = idx
+	bs.relValidIdxBuilt.Store(true)
 }
 
 // ForEachAdjacentEndpointAt is ForEachAdjacentEndpoint with an inline temporal
@@ -83,6 +127,9 @@ func (bs *Store) ForEachAdjacentEndpointAt(nid types.NodeID, typeToken uint16, i
 	}
 
 	hasTemporal := storepkg.HasTemporalFilter(opts)
+	if hasTemporal {
+		bs.ensureRelValidIdxBuilt() // lazy first-use build (no-op once built)
+	}
 
 	bs.idxMu.RLock()
 	if _, ok := bs.nodeIDs[nid]; !ok {
@@ -170,6 +217,9 @@ func (bs *Store) ForEachAdjacentRelAt(nid types.NodeID, typeToken uint16, incomi
 	}
 
 	hasTemporal := storepkg.HasTemporalFilter(opts)
+	if hasTemporal {
+		bs.ensureRelValidIdxBuilt() // lazy first-use build (no-op once built)
+	}
 
 	bs.idxMu.RLock()
 	if _, ok := bs.nodeIDs[nid]; !ok {
