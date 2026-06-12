@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [4.9.0] - 2026-06-12
 
 ### Fixed — append-only cascade: bitemporal corrections no longer corrupt transaction time
 
@@ -120,6 +120,17 @@ path optimizations:
   decode-free). Equivalence pinned by `TestRelValidStamp_DivergenceVsDecode`
   (random create/close/replace/delete sequences, inline vs decode vs oracle
   after every mutation) — the gate fails when any lifecycle site is removed.
+- **O(buckets) range cardinality from the sorted index (R1).** A `count`
+  over a numeric range predicate (`WHERE age > $x`) previously over-selected
+  the matching node IDs through the ordered view and then re-fetched/decoded
+  every one just to count it — catastrophic on a broad predicate. The new
+  `RangeCardinality(label, key, min, max, inclMin, inclMax, opts)` (exposed on
+  `g.Nodes()`, both backends) sums the per-key bucket sizes over the sorted
+  numeric index in the requested range — a popcount-style walk with zero node
+  fetches. It declines (`exact=false`, caller falls back) on temporal opts, a
+  poisoned/imprecise index (integers above 2^53 that collide under the float64
+  key), or a missing capability. Equivalence-gated by `TestRangeCardinality_VsBruteForce`
+  (200 random trials) and the cross-backend `RangeCardinality` divergence suite.
 
 ## [4.8.0] - 2026-06-12
 
