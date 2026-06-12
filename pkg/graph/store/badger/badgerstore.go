@@ -238,20 +238,20 @@ type Store struct {
 
 	// In-memory indexes (source of truth while running).
 	// Protected by idxMu for concurrent read/write access.
-	idxMu       sync.RWMutex
-	nodeIDs     map[types.NodeID]struct{} // O(1) node existence check
-	nodeHashes  map[types.NodeID]string   // current node integrity hash for live endpoint validation
-	nodeRevs    map[types.NodeID]uint64   // live node row revision for safe prefetch handoff
-	nextNodeRev uint64
-	relIDs      map[types.RelID]struct{}                      // O(1) rel existence check
-	labelIdx    map[uint16]map[types.NodeID]struct{}          // labelToken → set(nodeID); EMPTY in labelOnDisk mode
-	labelOnDisk bool                                          // answer label snapshots from the persisted keyspace
-	adjOnDisk   bool                                          // answer adjacency snapshots from the persisted keyspaces
-	typeIdx     map[uint16]map[types.RelID]struct{}           // relTypeToken → set(relID)
-	outIdx      map[types.NodeID]map[types.RelID]types.NodeID // startNodeID → relID → endNodeID
-	inIdx       map[types.NodeID]map[types.RelID]inEdge       // endNodeID → relID → {startNodeID, typeToken}
-	relValidIdx      map[types.RelID]relValidStamp            // relID → effective {validFrom, validTo} for inline-stamp temporal traversal (OPT15); nil until lazily built on the first temporal traversal
-	relValidIdxBuilt atomic.Bool                              // fast-path "already built" check outside idxMu
+	idxMu            sync.RWMutex
+	nodeIDs          map[types.NodeID]struct{} // O(1) node existence check
+	nodeHashes       map[types.NodeID]string   // current node integrity hash for live endpoint validation
+	nodeRevs         map[types.NodeID]uint64   // live node row revision for safe prefetch handoff
+	nextNodeRev      uint64
+	relIDs           map[types.RelID]struct{}                      // O(1) rel existence check
+	labelIdx         map[uint16]map[types.NodeID]struct{}          // labelToken → set(nodeID); EMPTY in labelOnDisk mode
+	labelOnDisk      bool                                          // answer label snapshots from the persisted keyspace
+	adjOnDisk        bool                                          // answer adjacency snapshots from the persisted keyspaces
+	typeIdx          map[uint16]map[types.RelID]struct{}           // relTypeToken → set(relID)
+	outIdx           map[types.NodeID]map[types.RelID]types.NodeID // startNodeID → relID → endNodeID
+	inIdx            map[types.NodeID]map[types.RelID]inEdge       // endNodeID → relID → {startNodeID, typeToken}
+	relValidIdx      map[types.RelID]relValidStamp                 // relID → effective {validFrom, validTo} for inline-stamp temporal traversal (OPT15); nil until lazily built on the first temporal traversal
+	relValidIdxBuilt atomic.Bool                                   // fast-path "already built" check outside idxMu
 
 	// Entity caches (internal sync, N-way sharded — see indexpkg.ShardedCache).
 	// Typed as the EntityCache interface so the concrete sharded implementation
@@ -484,19 +484,19 @@ func New(cfg Config) (*Store, error) {
 	}
 
 	bs := &Store{
-		db:              db,
-		nodeIDs:         make(map[types.NodeID]struct{}),
-		nodeHashes:      make(map[types.NodeID]string),
-		nodeRevs:        make(map[types.NodeID]uint64),
-		relIDs:          make(map[types.RelID]struct{}),
-		labelIdx:        make(map[uint16]map[types.NodeID]struct{}),
-		typeIdx:         make(map[uint16]map[types.RelID]struct{}),
-		outIdx:          make(map[types.NodeID]map[types.RelID]types.NodeID),
-		inIdx:           make(map[types.NodeID]map[types.RelID]inEdge),
+		db:         db,
+		nodeIDs:    make(map[types.NodeID]struct{}),
+		nodeHashes: make(map[types.NodeID]string),
+		nodeRevs:   make(map[types.NodeID]uint64),
+		relIDs:     make(map[types.RelID]struct{}),
+		labelIdx:   make(map[uint16]map[types.NodeID]struct{}),
+		typeIdx:    make(map[uint16]map[types.RelID]struct{}),
+		outIdx:     make(map[types.NodeID]map[types.RelID]types.NodeID),
+		inIdx:      make(map[types.NodeID]map[types.RelID]inEdge),
 		// relValidIdx is built LAZILY on the first temporal traversal — a graph
 		// that never does temporal adjacency (or a tiered store, which does not
 		// expose the capability) pays nothing for the per-rel stamps.
-		nodeCache: newNodeCache(capacity, cfg.CacheBudgetBytes),
+		nodeCache:       newNodeCache(capacity, cfg.CacheBudgetBytes),
 		relCache:        newRelCache(capacity, cfg.CacheBudgetBytes),
 		pending:         make(map[string]writeOp),
 		propertyIndexes: make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex),
