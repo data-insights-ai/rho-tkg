@@ -314,6 +314,13 @@ func (s *nodeOpsSpy) ByLabel(label string, opts storepkg.QueryOpts) ([]*types.No
 	return nil, s.err
 }
 
+func (s *nodeOpsSpy) RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
+	s.record("RangeCardinality")
+	s.lastLabel = label
+	s.lastOpts = opts
+	return 0, false, s.err
+}
+
 func (s *nodeOpsSpy) ForEachByLabel(label string, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
 	s.record("ForEachByLabel")
 	s.lastLabel = label

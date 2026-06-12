@@ -19,6 +19,12 @@ type PropertyIndex struct {
 	// Ordered numeric view — see property_index_range.go.
 	numKeys    orderedKeys
 	numBuckets map[float64]map[snowflake.ID]struct{}
+
+	// numImprecise is set when an integer value larger than 2^53 has been
+	// indexed, so its float64 sort key may collide with a neighbour. While set,
+	// RangeCardinality declines (the sorted-bucket sum could miscount near the
+	// collision) and the caller falls back to the over-select+exact-recheck scan.
+	numImprecise bool
 }
 
 // NewPropertyIndex creates an empty property index.

@@ -22,6 +22,27 @@ import (
 // propKey) or its ordered view is unavailable (cardinality-capped) —
 // callers fall back to a label scan. Same isolation and frozen-row
 // contract as ForEachNodeByLabel.
+// NodeRangeCardinality returns the COUNT of the label's nodes whose numeric
+// propKey value lies within [min, max] (per the inclusivity flags), computed
+// from the property index's bit-sliced index (R1) as an O(bitmap) popcount with
+// no node fetches. exact=false declines (no usable index / poisoned / bounds not
+// exact integers) and the caller must scan-and-count. This answers
+// `count(p) WHERE p.k > x` without re-fetching every candidate node.
+func (bs *Store) NodeRangeCardinality(token uint16, propKey string, min, max float64, inclMin, inclMax bool) (int64, bool, error) {
+	if err := bs.checkOpen(); err != nil {
+		return 0, false, err
+	}
+	bs.idxMu.RLock()
+	idx, ok := bs.propertyIndexes[indexpkg.PropertyIndexKey{LabelToken: token, PropertyKey: propKey}]
+	var count int64
+	exact := false
+	if ok {
+		count, exact = idx.RangeCardinality(min, max, inclMin, inclMax)
+	}
+	bs.idxMu.RUnlock()
+	return count, exact, nil
+}
+
 func (bs *Store) ForEachNodeByLabelPropertyRange(token uint16, propKey string, min, max float64, inclMin, inclMax bool, opts QueryOpts, fn func(*types.Node) bool) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
