@@ -4,7 +4,30 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [4.9.0] - 2026-06-12
+## [Unreleased]
+
+### Added — X5 columnar DocValues capability
+
+A per-`(label, property)` columnar value store aligned to a sorted NodeID
+ordinal vector, so a consumer's grouped aggregation can stream group keys and
+aggregate args from dense columns instead of fetching and decoding each node.
+On the badger backend this removes the per-node msgpack decode that dominates a
+label-scan aggregation (downstream A/B: a 100k grouped aggregation 206ms → 8.8ms,
+~23x; memory backend 12.2ms → 8.8ms).
+
+- **`g.Nodes().ForEachDocValues(label, propKeys, fn) (gen, ok, err)`** streams the
+  requested columns in ordinal order; `ok=false` declines (no capability, unknown/
+  empty/over-cap label, or a non-uniformly-numeric/string property) and the caller
+  falls back. **`g.Nodes().NodeMutationEpoch()`** is the staleness counter the
+  caller re-checks after the lock-free scan (Gate 2).
+- Columns are **immutable once built**, cover the **full label membership** (the
+  unfiltered scan set — never valid-time filtered, so a non-temporal aggregation
+  counts expired-but-not-deleted nodes), carry a present bitset for absent
+  properties, preserve int64-vs-float64 type, and dictionary-encode strings. A
+  per-store node-mutation epoch is bumped on **every** node write including deletes,
+  so a property edit (which never touches the label index) correctly invalidates a
+  cached column. Both memory and badger backends; declines on tiered and on the
+  on-disk label index. Values boxed once at build → allocation-free reads.
 
 ### Fixed — append-only cascade: bitemporal corrections no longer corrupt transaction time
 
