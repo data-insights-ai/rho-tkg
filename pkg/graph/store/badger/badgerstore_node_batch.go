@@ -334,6 +334,7 @@ func (bs *Store) purgeOrphanRelIDLocked(rid types.RelID) error {
 		delete(bs.relIDs, rid)
 		bs.relCount.Add(-1)
 	}
+	delete(bs.relValidIdx, rid) // OPT15: drop the inline valid-time stamp on node-cascade rel purge
 	bs.relCache.MarkDeleted(rawID)
 	if len(ops) > 0 {
 		bs.appendOps(ops...)

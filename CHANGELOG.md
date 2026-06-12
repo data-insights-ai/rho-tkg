@@ -56,6 +56,28 @@ path optimizations:
   on-disk format change.
 - **Inline `PropertySlice` binary search** (drop the `sort.Search` closure)
   and an **opt-in `QueryOpts.NoSort`** scan lever (default off).
+- **Inline valid-time adjacency stamps — temporal traversal without the
+  decode (OPT15, LiveGraph VLDB 2020).** A `validAt`/interval adjacency
+  traversal msgpack-decoded EVERY incident relationship row just to read its
+  valid interval and apply `MatchesTemporalFilter`; on a hub whose edges are
+  mostly expired versions almost all of those decodes are rejected. A small
+  parallel `relValidIdx` (relID → effective `{validFrom, validTo}`, NOT a
+  change to `outIdx`'s value type) lets the new streaming
+  `ForEachAdjacentEndpointAt` reject (or admit) an edge from the inline stamp
+  with no decode, applying the temporal predicate under the snapshot lock so
+  only survivors leave the locked section. Stored `validFrom` is the EFFECTIVE
+  value (`EntityValidFrom` resolves the snowflake fallback), so the fast path
+  reuses the canonical `MatchesTemporalFilter` via a synthetic
+  `TemporalMetadata` and can never drift from the decode path's semantics.
+  Soundness is "a hit must be fresh; a stampless edge (cross-shard incoming)
+  falls back to a decode" — the stamp is seeded/refreshed/dropped at every rel
+  lifecycle site including the in-place `ReplaceRelationship`/
+  `ReplaceRelWithHistory` version-close paths (which move `valid_to` while
+  leaving adjacency untouched). Bench (4k-edge hub, ~90% expired, cache under
+  pressure): decode path 315µs / 299 allocs → inline 79µs / 2 allocs (~4x,
+  decode-free). Equivalence pinned by `TestRelValidStamp_DivergenceVsDecode`
+  (random create/close/replace/delete sequences, inline vs decode vs oracle
+  after every mutation) — the gate fails when any lifecycle site is removed.
 
 ## [4.7.0] - 2026-06-11
 

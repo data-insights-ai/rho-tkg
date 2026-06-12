@@ -70,6 +70,9 @@ func (bs *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion 
 	}
 
 	bs.relCache.Put(id, freezeRelCopy(current))
+	// OPT15: refresh the inline valid-time stamp — a history version-close moves
+	// valid_to while leaving endpoints/type (and thus adjacency) unchanged.
+	bs.setRelValidStampLocked(rid, current)
 
 	// Single appendOps call — atomic in the pending buffer.
 	histKey := storepkg.HistRelKey(id, uint64(prevVersion))

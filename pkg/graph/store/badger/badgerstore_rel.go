@@ -78,6 +78,7 @@ func (bs *Store) PutRelationship(r *types.Relationship) error {
 		}
 		bs.inIdx[endNID][rid] = inEdge{start: startNID, typ: relType}
 	}
+	bs.setRelValidStampLocked(rid, r) // OPT15: inline valid-time stamp
 
 	// Build write ops.
 	ops := []writeOp{
@@ -199,6 +200,10 @@ func (bs *Store) ReplaceRelationship(r *types.Relationship) error {
 
 	bs.relCache.Put(id, freezeRelCopy(r))
 	bs.appendOps(writeOp{opType: writeOpSet, key: storepkg.RelKey(id), value: data})
+	// OPT15: a version update rewrites the row in place — endpoints/type are
+	// immutable (no adjacency change) but valid_to may move, so the inline stamp
+	// MUST be refreshed here or a temporal traversal reads a stale interval.
+	bs.setRelValidStampLocked(rid, r)
 	bs.idxMu.Unlock()
 
 	return bs.flushIfNeeded()
@@ -316,6 +321,7 @@ func (bs *Store) deleteRelByInfo(info RelDeleteInfo) {
 	// Update in-memory state.
 	bs.relCache.MarkDeleted(info.ID)
 	delete(bs.relIDs, rid)
+	delete(bs.relValidIdx, rid) // OPT15: drop the inline valid-time stamp
 
 	// Type index cleanup.
 	if set, exists := bs.typeIdx[info.RelType]; exists {
