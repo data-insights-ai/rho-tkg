@@ -39,99 +39,6 @@ import (
 // temporal queries find the appropriate version.
 // =============================================================================
 
-type cascadeAction int
-
-const (
-	cascadeKeep cascadeAction = iota
-	cascadeCloseRight
-	cascadeOpenLeft
-	cascadeEclipse
-	cascadeSplit
-)
-
-type nodeCascadeOp struct {
-	action        cascadeAction
-	origVersion   uint32
-	original      *types.Node // for diagnostics only
-	modified      *types.Node // close-right / open-left / eclipse / split-left
-	splitRight    *types.Node // split only
-	splitRightVer uint32
-}
-
-type relCascadeOp struct {
-	action        cascadeAction
-	origVersion   uint32
-	original      *types.Relationship
-	modified      *types.Relationship
-	splitRight    *types.Relationship
-	splitRightVer uint32
-}
-
-// classifyNodeOverlap categorises an existing version vs the cascade target.
-// Caller-supplied newVT == 0 means open-ended on the right.
-func classifyNodeOverlap(vf, vt, newVF, newVT types.Instant) cascadeAction {
-	rightOpen := vt == 0
-	newRightOpen := newVT == 0
-
-	// no overlap: existing ends before newVF
-	if !rightOpen && vt <= newVF {
-		return cascadeKeep
-	}
-	// no overlap: existing starts after newVT
-	if !newRightOpen && vf >= newVT {
-		return cascadeKeep
-	}
-
-	startedBefore := vf < newVF
-	startedAtOrAfter := vf >= newVF
-	endedAtOrBefore := !rightOpen && (newRightOpen || vt <= newVT)
-	endedAfter := rightOpen || (!newRightOpen && vt > newVT)
-
-	switch {
-	case startedBefore && endedAfter && !newRightOpen:
-		return cascadeSplit
-	case startedBefore && endedAtOrBefore:
-		return cascadeCloseRight
-	case startedBefore && endedAfter && newRightOpen:
-		// vf < newVF, new open-ended → existing must close at newVF
-		return cascadeCloseRight
-	case startedAtOrAfter && endedAtOrBefore:
-		return cascadeEclipse
-	case startedAtOrAfter && endedAfter:
-		return cascadeOpenLeft
-	}
-	return cascadeKeep
-}
-
-// nodeEffectiveBounds returns the explicit (vf, vt) on the version's
-// TemporalMetadata, falling back to nodeValidFrom(snowflake-derived) when
-// ValidFrom is unset.
-func (c *Core) nodeEffectiveBounds(n *types.Node) (types.Instant, types.Instant) {
-	tm := n.Temporal()
-	vf := c.nodeValidFrom(n)
-	var vt types.Instant
-	if tm != nil {
-		if tm.ValidFrom != 0 {
-			vf = tm.ValidFrom
-		}
-		vt = tm.ValidTo
-	}
-	return vf, vt
-}
-
-func (c *Core) relEffectiveBounds(r *types.Relationship) (types.Instant, types.Instant) {
-	tm := r.Temporal()
-	vf := c.relValidFrom(r)
-	var vt types.Instant
-	if tm != nil {
-		if tm.ValidFrom != 0 {
-			vf = tm.ValidFrom
-		}
-		vt = tm.ValidTo
-	}
-	return vf, vt
-}
-
 // eclipsedNodeBounds returns whether a node's temporal metadata represents
 // a cascade-eclipsed (near-zero-length, 1-instant) interval. Sentinel:
 // ValidTo == ValidFrom + 1. The store rejects ValidFrom == ValidTo, so we
@@ -204,10 +111,10 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 		maxVersion = current.Version()
 	}
 	nextVersion := maxVersion + 1
+	now := c.now()
 
 	// Pick the most recent non-eclipsed version as the template for
-	// labels/integrity carry-over for the new row. Current preferred; else
-	// the latest history row.
+	// labels/integrity carry-over for the inserted row.
 	var template *types.Node
 	if current != nil && !eclipsedNodeBounds(current) {
 		template = current
@@ -223,70 +130,53 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 		return nil, fmt.Errorf("%w: cascade requires at least one non-eclipsed version", storepkg.ErrNodeNotFound)
 	}
 
-	// Build chain (history first, ascending by version, then current) so we
-	// can derive each version's EFFECTIVE bounds via the resolver — same
-	// algorithm as nodeVersionBounds (vEnd uses next.ValidFrom when set,
-	// skipping eclipsed rows).
-	chain := make([]*types.Node, 0, len(history)+1)
-	chain = append(chain, history...)
+	// APPEND-ONLY (audited correction). The cascade records, AT `now`, a new
+	// belief: "[newVF, newVT) is `props`". Transaction time is append-only and
+	// monotonic, so we NEVER mutate an existing row's stored valid-interval or
+	// transaction stamps (doing so would make a row claim the DB believed a
+	// world-boundary at a past TxFrom it actually decided now — corrupting
+	// NodeAtTx at earlier txAt). Instead we append two fresh-TxFrom rows and
+	// leave every existing row untouched; the resolver tiles the TxFrom-filtered
+	// chain by valid-from and, on overlap, the newer belief wins
+	// (resolveNodeVersionAt). Existing rows therefore reconstruct the
+	// pre-correction belief exactly, and the appended rows the post-correction
+	// belief — no holes, no leaks.
+	preChain := make([]*types.Node, 0, len(history)+1)
+	preChain = append(preChain, history...)
 	if current != nil {
-		chain = append(chain, current)
+		preChain = append(preChain, current)
 	}
 
-	ops := make([]nodeCascadeOp, 0)
-	for i, v := range chain {
-		if eclipsedNodeBounds(v) {
-			continue
-		}
-		vf, vt := c.nodeVersionBounds(chain, i)
-		action := classifyNodeOverlap(vf, vt, newVF, newVT)
-		if action == cascadeKeep {
-			continue
-		}
-		op := nodeCascadeOp{action: action, origVersion: v.Version(), original: v}
-		switch action {
-		case cascadeCloseRight:
-			modified := v.DeepCopy()
-			ensureNodeTemporal(modified)
-			modified.Temporal().ValidFrom = vf
-			modified.Temporal().ValidTo = newVF
-			op.modified = modified
-		case cascadeOpenLeft:
-			modified := v.DeepCopy()
-			ensureNodeTemporal(modified)
-			modified.Temporal().ValidFrom = newVT
-			modified.Temporal().ValidTo = vt
-			op.modified = modified
-		case cascadeEclipse:
-			modified := v.DeepCopy()
-			ensureNodeTemporal(modified)
-			// Eclipse marker: keep original ValidFrom, set ValidTo = VF + 1.
-			// This preserves the row's identity for the legacy inheritance
-			// heuristic (which compares to prev's ValidFrom) and lets the
-			// resolver skip the row via eclipsedNodeBounds() == VT == VF+1.
-			modified.Temporal().ValidFrom = vf
-			modified.Temporal().ValidTo = vf + 1
-			op.modified = modified
-		case cascadeSplit:
-			left := v.DeepCopy()
-			ensureNodeTemporal(left)
-			left.Temporal().ValidFrom = vf
-			left.Temporal().ValidTo = newVF
-			op.modified = left
-
-			right := v.DeepCopy()
-			ensureNodeTemporal(right)
-			right.Temporal().ValidFrom = newVT
-			right.Temporal().ValidTo = vt
-			right.SetVersion(nextVersion)
-			op.splitRight = right
-			op.splitRightVer = nextVersion
+	// Resumption: re-assert, from newVT onward, whatever value held AT newVT in
+	// the pre-correction belief, so the part of the timeline after the
+	// correction is unchanged. Open-ended (newVT == 0) corrections need none.
+	var resumption *types.Node
+	if newVT != 0 {
+		if src, err := c.resolveNodeVersionAt(append([]*types.Node(nil), preChain...), newVT); err == nil && src != nil {
+			resumption = src.DeepCopy()
+			ensureNodeTemporal(resumption)
+			resumption.SetVersion(nextVersion)
 			nextVersion++
+			resumption.Temporal().ValidFrom = newVT
+			resumption.Temporal().ValidTo = 0 // open; tiles to the next existing version
+			resumption.Temporal().UpdatedAt = now
+			resumption.Temporal().TxFrom = now
+			rLabels := c.nodeLabelsUnlocked(resumption)
+			rHash, err := integrity.ComputeNodeHashChecked(resumption, rLabels)
+			if err != nil {
+				return nil, fmt.Errorf("graph: cascade compute resumption hash: %w", err)
+			}
+			rPrev := ""
+			if ig := src.Integrity(); ig != nil {
+				rPrev = ig.Hash
+			}
+			resumption.SetIntegrity(nodeIntegrityWithHash(resumption.Integrity(), rHash, rPrev))
+		} else if err != nil && !errors.Is(err, storepkg.ErrNoVersionValidAt) {
+			return nil, fmt.Errorf("graph: cascade resolve resumption source: %w", err)
 		}
-		ops = append(ops, op)
 	}
 
-	// Build the new version from template, applying caller props.
+	// The inserted interval [newVF, newVT) carrying the corrected state.
 	newVer := template.DeepCopy()
 	newVer.SetVersion(nextVersion)
 	nextVersion++
@@ -307,12 +197,9 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 	ensureNodeTemporal(newVer)
 	newVer.Temporal().ValidFrom = newVF
 	newVer.Temporal().ValidTo = newVT
-	now := c.now()
 	newVer.Temporal().UpdatedAt = now
 	newVer.Temporal().TxFrom = now
 
-	// Compute hash + chain from the row this new version directly supersedes
-	// on the VT axis (latest non-eclipsed predecessor).
 	prevHash := ""
 	if ig := template.Integrity(); ig != nil {
 		prevHash = ig.Hash
@@ -324,89 +211,53 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 	}
 	newVer.SetIntegrity(nodeIntegrityWithHash(newVer.Integrity(), hash, prevHash))
 
-	// Decide whether the new version becomes the new current row. It does
-	// if its interval is the rightmost open-ended (newVT == 0) AND its
-	// ValidFrom is the latest among all post-cascade open-ended intervals.
-	becomesCurrent := newVT == 0
-	if becomesCurrent {
-		for _, op := range ops {
-			if op.modified == nil {
-				continue
-			}
-			tm := op.modified.Temporal()
-			if tm != nil && tm.ValidTo == 0 && tm.ValidFrom > newVF {
-				becomesCurrent = false
-				break
-			}
-		}
+	appended := []*types.Node{newVer}
+	if resumption != nil {
+		appended = append(appended, resumption)
 	}
 
-	// Write all modifications + the new version. Sequential under the entity
-	// lock; not atomic at the wire level (a crash mid-cascade leaves partial
-	// state). Acceptable trade-off pending a future ReplaceNodeWithCascade
-	// store API.
-	for _, op := range ops {
-		if op.modified == nil {
+	// The new "current" row is the rightmost open-ended tile of the
+	// post-correction belief (the value at "now"). Build the post chain, sort by
+	// valid-from, and take the last row whose tiled interval is open-ended.
+	postChain := make([]*types.Node, 0, len(preChain)+len(appended))
+	postChain = append(postChain, preChain...)
+	postChain = append(postChain, appended...)
+	c.sortNodeChainForResolve(postChain)
+	var newCurrent *types.Node
+	for i := range postChain {
+		if eclipsedNodeBounds(postChain[i]) {
 			continue
 		}
-		// If the modified row IS the current row, we'd need ReplaceNode
-		// (which goes through the "current" KV slot, not history).
-		// Detect by Version() matching current's version. Otherwise it's
-		// strictly a history row write.
-		if current != nil && op.origVersion == current.Version() {
-			if becomesCurrent && newVT == 0 {
-				// new version takes current; demote modified to history
-				if err := c.store.PutNodeVersion(id, op.origVersion, op.modified); err != nil {
-					return nil, fmt.Errorf("graph: cascade demote current to history: %w", err)
-				}
-			} else {
-				// modified row stays as current
-				if err := c.store.ReplaceNode(op.modified); err != nil {
-					return nil, fmt.Errorf("graph: cascade replace current: %w", err)
-				}
-			}
-		} else {
-			if err := c.store.PutNodeVersion(id, op.origVersion, op.modified); err != nil {
-				return nil, fmt.Errorf("graph: cascade put history: %w", err)
-			}
-		}
-		if op.splitRight != nil {
-			if err := c.store.PutNodeVersion(id, op.splitRightVer, op.splitRight); err != nil {
-				return nil, fmt.Errorf("graph: cascade put split-right: %w", err)
-			}
+		if _, vEnd := c.nodeVersionBounds(postChain, i); vEnd == 0 {
+			newCurrent = postChain[i] // sorted asc → last open-ended wins
 		}
 	}
 
-	// Write the new version itself.
-	if becomesCurrent {
-		// If current wasn't modified by the cascade ops (i.e., current's
-		// interval was outside the cascade target), we still need to demote
-		// it to history because the new version takes over the current slot.
-		if current != nil && !cascadeModifiedVersion(ops, current.Version()) {
+	// Write: append the new rows, never touching existing ones. The store keeps
+	// one "current" KV slot; place newCurrent there (demoting the prior current
+	// to a history row — its bytes are unchanged, only its slot moves).
+	curIsNew := newCurrent != nil && (newCurrent == newVer || newCurrent == resumption)
+	for _, r := range appended {
+		if r == newCurrent {
+			continue // written via ReplaceNode below
+		}
+		if err := c.store.PutNodeVersion(id, r.Version(), r); err != nil {
+			return nil, fmt.Errorf("graph: cascade put appended version: %w", err)
+		}
+	}
+	if curIsNew {
+		if current != nil {
 			if err := c.store.PutNodeVersion(id, current.Version(), current); err != nil {
-				return nil, fmt.Errorf("graph: cascade archive existing current: %w", err)
+				return nil, fmt.Errorf("graph: cascade demote current to history: %w", err)
 			}
 		}
-		if err := c.store.ReplaceNode(newVer); err != nil {
-			return nil, fmt.Errorf("graph: cascade replace with new current: %w", err)
-		}
-	} else {
-		if err := c.store.PutNodeVersion(id, newVer.Version(), newVer); err != nil {
-			return nil, fmt.Errorf("graph: cascade put new history row: %w", err)
+		if err := c.store.ReplaceNode(newCurrent); err != nil {
+			return nil, fmt.Errorf("graph: cascade replace current: %w", err)
 		}
 	}
 
 	c.opNodeUpdates.Add(1)
 	return newVer, nil
-}
-
-func cascadeModifiedVersion(ops []nodeCascadeOp, v uint32) bool {
-	for _, op := range ops {
-		if op.modified != nil && op.origVersion == v {
-			return true
-		}
-	}
-	return false
 }
 
 func ensureNodeTemporal(n *types.Node) {
@@ -471,6 +322,7 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 		maxVersion = current.Version()
 	}
 	nextVersion := maxVersion + 1
+	now := c.now()
 
 	var template *types.Relationship
 	if current != nil && !eclipsedRelBounds(current) {
@@ -487,59 +339,44 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 		return nil, fmt.Errorf("%w: cascade requires at least one non-eclipsed version", storepkg.ErrRelNotFound)
 	}
 
-	chain := make([]*types.Relationship, 0, len(history)+1)
-	chain = append(chain, history...)
+	// APPEND-ONLY (audited correction) — mirror of cascadeNodeVersionInterval.
+	// Never mutate an existing row's stored interval or transaction stamps;
+	// append fresh-TxFrom rows and let the resolver tile by valid-from with the
+	// newer belief winning on overlap. See the node cascade for the rationale.
+	preChain := make([]*types.Relationship, 0, len(history)+1)
+	preChain = append(preChain, history...)
 	if current != nil {
-		chain = append(chain, current)
+		preChain = append(preChain, current)
 	}
 
-	ops := make([]relCascadeOp, 0)
-	for i, v := range chain {
-		if eclipsedRelBounds(v) {
-			continue
-		}
-		vf, vt := c.relVersionBounds(chain, i)
-		action := classifyNodeOverlap(vf, vt, newVF, newVT)
-		if action == cascadeKeep {
-			continue
-		}
-		op := relCascadeOp{action: action, origVersion: v.Version(), original: v}
-		switch action {
-		case cascadeCloseRight:
-			modified := v.DeepCopy()
-			ensureRelTemporal(modified)
-			modified.Temporal().ValidFrom = vf
-			modified.Temporal().ValidTo = newVF
-			op.modified = modified
-		case cascadeOpenLeft:
-			modified := v.DeepCopy()
-			ensureRelTemporal(modified)
-			modified.Temporal().ValidFrom = newVT
-			modified.Temporal().ValidTo = vt
-			op.modified = modified
-		case cascadeEclipse:
-			modified := v.DeepCopy()
-			ensureRelTemporal(modified)
-			modified.Temporal().ValidFrom = vf
-			modified.Temporal().ValidTo = vf + 1
-			op.modified = modified
-		case cascadeSplit:
-			left := v.DeepCopy()
-			ensureRelTemporal(left)
-			left.Temporal().ValidFrom = vf
-			left.Temporal().ValidTo = newVF
-			op.modified = left
-
-			right := v.DeepCopy()
-			ensureRelTemporal(right)
-			right.Temporal().ValidFrom = newVT
-			right.Temporal().ValidTo = vt
-			right.SetVersion(nextVersion)
-			op.splitRight = right
-			op.splitRightVer = nextVersion
+	var resumption *types.Relationship
+	if newVT != 0 {
+		if src, err := c.resolveRelVersionAt(append([]*types.Relationship(nil), preChain...), newVT); err == nil && src != nil {
+			resumption = src.DeepCopy()
+			ensureRelTemporal(resumption)
+			resumption.SetVersion(nextVersion)
 			nextVersion++
+			resumption.Temporal().ValidFrom = newVT
+			resumption.Temporal().ValidTo = 0
+			resumption.Temporal().UpdatedAt = now
+			resumption.Temporal().TxFrom = now
+			rType := c.relTypeUnlocked(resumption)
+			rHash, err := integrity.ComputeRelHashChecked(resumption, rType)
+			if err != nil {
+				return nil, fmt.Errorf("graph: cascade compute rel resumption hash: %w", err)
+			}
+			rPrev := ""
+			if ig := src.Integrity(); ig != nil {
+				rPrev = ig.Hash
+			}
+			rIG := relIntegrityWithHash(resumption.Integrity(), rHash, rPrev)
+			if err := c.refreshRelationshipEndpointHashes(resumption, rIG); err != nil {
+				return nil, fmt.Errorf("graph: cascade refresh rel resumption endpoint hashes: %w", err)
+			}
+			resumption.SetIntegrity(rIG)
+		} else if err != nil && !errors.Is(err, storepkg.ErrNoVersionValidAt) {
+			return nil, fmt.Errorf("graph: cascade resolve rel resumption source: %w", err)
 		}
-		ops = append(ops, op)
 	}
 
 	newVer := template.DeepCopy()
@@ -562,7 +399,6 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 	ensureRelTemporal(newVer)
 	newVer.Temporal().ValidFrom = newVF
 	newVer.Temporal().ValidTo = newVT
-	now := c.now()
 	newVer.Temporal().UpdatedAt = now
 	newVer.Temporal().TxFrom = now
 
@@ -581,70 +417,45 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 	}
 	newVer.SetIntegrity(relIG)
 
-	becomesCurrent := newVT == 0
-	if becomesCurrent {
-		for _, op := range ops {
-			if op.modified == nil {
-				continue
-			}
-			tm := op.modified.Temporal()
-			if tm != nil && tm.ValidTo == 0 && tm.ValidFrom > newVF {
-				becomesCurrent = false
-				break
-			}
-		}
+	appended := []*types.Relationship{newVer}
+	if resumption != nil {
+		appended = append(appended, resumption)
 	}
 
-	for _, op := range ops {
-		if op.modified == nil {
+	postChain := make([]*types.Relationship, 0, len(preChain)+len(appended))
+	postChain = append(postChain, preChain...)
+	postChain = append(postChain, appended...)
+	c.sortRelChainForResolve(postChain)
+	var newCurrent *types.Relationship
+	for i := range postChain {
+		if eclipsedRelBounds(postChain[i]) {
 			continue
 		}
-		if current != nil && op.origVersion == current.Version() {
-			if becomesCurrent && newVT == 0 {
-				if err := c.store.PutRelVersion(id, op.origVersion, op.modified); err != nil {
-					return nil, fmt.Errorf("graph: cascade demote rel current: %w", err)
-				}
-			} else {
-				if err := c.store.ReplaceRelationship(op.modified); err != nil {
-					return nil, fmt.Errorf("graph: cascade replace rel current: %w", err)
-				}
-			}
-		} else {
-			if err := c.store.PutRelVersion(id, op.origVersion, op.modified); err != nil {
-				return nil, fmt.Errorf("graph: cascade put rel history: %w", err)
-			}
-		}
-		if op.splitRight != nil {
-			if err := c.store.PutRelVersion(id, op.splitRightVer, op.splitRight); err != nil {
-				return nil, fmt.Errorf("graph: cascade put rel split-right: %w", err)
-			}
+		if _, vEnd := c.relVersionBounds(postChain, i); vEnd == 0 {
+			newCurrent = postChain[i]
 		}
 	}
 
-	if becomesCurrent {
-		if current != nil && !cascadeModifiedRelVersion(ops, current.Version()) {
+	curIsNew := newCurrent != nil && (newCurrent == newVer || newCurrent == resumption)
+	for _, r := range appended {
+		if r == newCurrent {
+			continue
+		}
+		if err := c.store.PutRelVersion(id, r.Version(), r); err != nil {
+			return nil, fmt.Errorf("graph: cascade put appended rel version: %w", err)
+		}
+	}
+	if curIsNew {
+		if current != nil {
 			if err := c.store.PutRelVersion(id, current.Version(), current); err != nil {
-				return nil, fmt.Errorf("graph: cascade archive rel current: %w", err)
+				return nil, fmt.Errorf("graph: cascade demote rel current: %w", err)
 			}
 		}
-		if err := c.store.ReplaceRelationship(newVer); err != nil {
-			return nil, fmt.Errorf("graph: cascade replace rel: %w", err)
-		}
-	} else {
-		if err := c.store.PutRelVersion(id, newVer.Version(), newVer); err != nil {
-			return nil, fmt.Errorf("graph: cascade put new rel history: %w", err)
+		if err := c.store.ReplaceRelationship(newCurrent); err != nil {
+			return nil, fmt.Errorf("graph: cascade replace rel current: %w", err)
 		}
 	}
 
 	c.opRelUpdates.Add(1)
 	return newVer, nil
-}
-
-func cascadeModifiedRelVersion(ops []relCascadeOp, v uint32) bool {
-	for _, op := range ops {
-		if op.modified != nil && op.origVersion == v {
-			return true
-		}
-	}
-	return false
 }

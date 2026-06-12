@@ -2,6 +2,7 @@ package core
 
 import (
 	"errors"
+	"sort"
 
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -147,19 +148,81 @@ func (t *TempOps) RelMatchesValidTime(r *types.Relationship, opts storepkg.Query
 
 // resolveNodeVersionAt finds the version valid at time t from a pre-built chain.
 func (c *Core) resolveNodeVersionAt(chain []*types.Node, t types.Instant) (*types.Node, error) {
-	for i := len(chain) - 1; i >= 0; i-- {
+	c.sortNodeChainForResolve(chain)
+	var best *types.Node
+	for i := range chain {
 		entry := chain[i]
 		if eclipsedNodeBounds(entry) {
 			continue // cascade-eclipsed rows are invisible to VT queries
 		}
 		vStart, vEnd := c.nodeVersionBounds(chain, i)
 
-		// Check: vStart <= t AND (vEnd == 0 OR vEnd > t).
+		// Check: vStart <= t AND (vEnd == 0 OR vEnd > t). When two versions'
+		// effective intervals both cover t (an append-only cascade overlays an
+		// older, wider-valid row with a newer, narrower correction), the newer
+		// BELIEF wins — higher TxFrom, then higher version.
 		if vStart <= t && (vEnd == 0 || vEnd > t) {
-			return entry, nil
+			if best == nil || nodeBeliefNewerThan(entry, best) {
+				best = entry
+			}
 		}
 	}
-	return nil, storepkg.ErrNoVersionValidAt
+	if best == nil {
+		return nil, storepkg.ErrNoVersionValidAt
+	}
+	return best, nil
+}
+
+// beliefTx is a version's transaction-time belief instant (0 when unstamped).
+func beliefTx(tm *types.TemporalMetadata) types.Instant {
+	if tm == nil {
+		return 0
+	}
+	return tm.TxFrom
+}
+
+// nodeBeliefNewerThan reports whether version a represents a strictly later
+// BELIEF than b: higher TxFrom, or equal TxFrom and higher version. The
+// tiebreaker on equal TxFrom (two rows recorded in the same millisecond) keeps
+// selection deterministic across backends.
+func nodeBeliefNewerThan(a, b *types.Node) bool {
+	ta, tb := beliefTx(a.Temporal()), beliefTx(b.Temporal())
+	if ta != tb {
+		return ta > tb
+	}
+	return a.Version() > b.Version()
+}
+
+// nodeSortValidFrom returns the effective valid-from used to ORDER a version
+// within its chain for tiling: explicit ValidFrom, else (legacy TX-as-VT) a
+// non-genesis row's UpdatedAt, else the snowflake fallback. Mirrors
+// nodeVersionBounds' vStart derivation so a chain sorted by this key tiles via
+// next.ValidFrom correctly.
+func (c *Core) nodeSortValidFrom(n *types.Node) types.Instant {
+	tm := n.Temporal()
+	if tm != nil && tm.ValidFrom != 0 {
+		return tm.ValidFrom
+	}
+	if n.Version() != 0 && tm != nil && tm.UpdatedAt != 0 {
+		return tm.UpdatedAt
+	}
+	return c.nodeValidFrom(n)
+}
+
+// sortNodeChainForResolve orders a (txAt-filtered) chain by effective valid-from
+// ascending, version ascending — the order nodeVersionBounds' next-version
+// tiling assumes. Normal histories are already in this order (Update rejects
+// backdated valid-from), so this is a no-op for them; an append-only cascade
+// correction interleaves a later-version row at an earlier valid-from, and this
+// restores the tiling invariant.
+func (c *Core) sortNodeChainForResolve(chain []*types.Node) {
+	sort.SliceStable(chain, func(a, b int) bool {
+		va, vb := c.nodeSortValidFrom(chain[a]), c.nodeSortValidFrom(chain[b])
+		if va != vb {
+			return va < vb
+		}
+		return chain[a].Version() < chain[b].Version()
+	})
 }
 
 // versionVisibleAtTx reports whether a version participates in valid-time
@@ -286,8 +349,12 @@ func nodeInheritedValidFrom(chain []*types.Node, i int, tm *types.TemporalMetada
 }
 
 // resolveRelVersionAt finds the version valid at time t from a pre-built chain.
+// See resolveNodeVersionAt: chain is ordered by effective valid-from and, on an
+// overlap, the newer belief (higher TxFrom, then version) wins.
 func (c *Core) resolveRelVersionAt(chain []*types.Relationship, t types.Instant) (*types.Relationship, error) {
-	for i := len(chain) - 1; i >= 0; i-- {
+	c.sortRelChainForResolve(chain)
+	var best *types.Relationship
+	for i := range chain {
 		entry := chain[i]
 		if eclipsedRelBounds(entry) {
 			continue
@@ -295,10 +362,47 @@ func (c *Core) resolveRelVersionAt(chain []*types.Relationship, t types.Instant)
 		vStart, vEnd := c.relVersionBounds(chain, i)
 
 		if vStart <= t && (vEnd == 0 || vEnd > t) {
-			return entry, nil
+			if best == nil || relBeliefNewerThan(entry, best) {
+				best = entry
+			}
 		}
 	}
-	return nil, storepkg.ErrNoVersionValidAt
+	if best == nil {
+		return nil, storepkg.ErrNoVersionValidAt
+	}
+	return best, nil
+}
+
+// relBeliefNewerThan mirrors nodeBeliefNewerThan for relationships.
+func relBeliefNewerThan(a, b *types.Relationship) bool {
+	ta, tb := beliefTx(a.Temporal()), beliefTx(b.Temporal())
+	if ta != tb {
+		return ta > tb
+	}
+	return a.Version() > b.Version()
+}
+
+// relSortValidFrom mirrors nodeSortValidFrom for relationships.
+func (c *Core) relSortValidFrom(r *types.Relationship) types.Instant {
+	tm := r.Temporal()
+	if tm != nil && tm.ValidFrom != 0 {
+		return tm.ValidFrom
+	}
+	if r.Version() != 0 && tm != nil && tm.UpdatedAt != 0 {
+		return tm.UpdatedAt
+	}
+	return c.relValidFrom(r)
+}
+
+// sortRelChainForResolve mirrors sortNodeChainForResolve for relationships.
+func (c *Core) sortRelChainForResolve(chain []*types.Relationship) {
+	sort.SliceStable(chain, func(a, b int) bool {
+		va, vb := c.relSortValidFrom(chain[a]), c.relSortValidFrom(chain[b])
+		if va != vb {
+			return va < vb
+		}
+		return chain[a].Version() < chain[b].Version()
+	})
 }
 
 // relVersionBounds computes the effective [vStart, vEnd) for chain[i].
@@ -794,6 +898,10 @@ func (c *Core) findNodeVersionMatchingDuringTx(id types.NodeID, start, end, txAt
 		return nil, storepkg.ErrNoVersionValidAt
 	}
 
+	// Order by effective valid-from so next-version tiling is correct after an
+	// append-only cascade (see sortNodeChainForResolve). Scan highest-valid-from
+	// first to preserve the "most-recent overlapping match" semantic.
+	c.sortNodeChainForResolve(chain)
 	for i := len(chain) - 1; i >= 0; i-- {
 		if eclipsedNodeBounds(chain[i]) {
 			continue
@@ -842,6 +950,7 @@ func (c *Core) findRelVersionMatchingDuringTx(id types.RelID, start, end, txAt t
 		return nil, storepkg.ErrNoVersionValidAt
 	}
 
+	c.sortRelChainForResolve(chain)
 	for i := len(chain) - 1; i >= 0; i-- {
 		if eclipsedRelBounds(chain[i]) {
 			continue

@@ -834,4 +834,37 @@ exit 0 — an in-process test cannot observe `os.Exit`. Mutation-verify every
 test fails (a clean Close truncates files, so on-disk size checks must run
 while the store is OPEN; `db.Opts()` witnesses BlockCacheSize/NumCompactors
 that leave no file footprint).
+## 46. A Correction Is A New Belief — Never Mutate A Stored Row To Express It
+
+The cascade (`SetNodeVersionInterval`) expressed a valid-time correction by
+rewriting and splitting existing version rows IN PLACE, changing their stored
+`ValidFrom`/`ValidTo` while preserving their original `TxFrom`. That is a
+contradiction in a bitemporal store: transaction time is an append-only,
+monotonic ledger of *when the DB learned each fact*. A row whose asserted
+world-interval was decided *now* but whose `TxFrom` still reads the original
+write time claims the DB believed a boundary it had not yet decided — so
+`NodeAtTx(_, oldTxAt)` reconstructs a belief that never existed: holes where the
+mutated row no longer covers, leaks where a later decision appears early. It also
+created two TX-open rows with overlapping transaction-time intervals, which broke
+the native `NodeAsOf` early-stop (it assumes version order == TxFrom order) and
+silently diverged it from the memory/tiered backends.
+
+Rule: a correction recorded at `now` must be expressed ONLY by appending fresh
+rows stamped `TxFrom = UpdatedAt = now`; existing rows are immutable. This is the
+same discipline a normal `Update` already follows (it appends a new version and
+never edits a prior row's stored fact). The resolver then reconstructs any belief
+state by filtering the chain to `TxFrom <= txAt` and tiling what remains — so the
+untouched rows ARE the older belief and the appended rows the newer one. For the
+resolver to tile a non-monotonic chain (a correction can land at an earlier
+valid-from than a later version), it must order by effective valid-from (not
+array/version order) and break valid-time overlaps by the newer belief (higher
+`TxFrom`, then version). This pairs with lesson 43: `TxTo` does not bound
+answerability (a superseded row still answers its valid slot), and `TxFrom` must
+never be back-dated on a row the DB is writing now.
+
+Detector pattern (two-phase, all backends): create state, record a correction at
+a later tx, then query `*AtTx` at a `txAt` BEFORE the correction — every
+world-time the entity covered then must still resolve to its pre-correction
+value, with no holes and no leaked corrected value. A single-backend or
+single-txAt test passes the buggy in-place cascade.
 

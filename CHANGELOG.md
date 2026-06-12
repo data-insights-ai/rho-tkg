@@ -6,6 +6,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed — append-only cascade: bitemporal corrections no longer corrupt transaction time
+
+`SetNodeVersionInterval` / `SetRelVersionInterval` (the cascade timeline edit)
+rewrote and split existing version rows **in place** while preserving their
+original `TxFrom`, leaving `TxTo` untouched. That made a row claim the DB
+believed a world-boundary at a past transaction time it actually decided *now*,
+which (1) left a **hole** in `NodeAtTx`/`RelAtTx` at any `txAt` before the
+correction (the inserted interval's slot returned nothing), (2) could **leak** a
+correction into belief states recorded before it was made, and (3) made the
+native badger `NodeAsOf` reverse-scan diverge from the memory/tiered selection
+(overlapping transaction-time intervals broke the early-stop's monotonicity
+assumption). See `tasks/lessons.md` 45.
+
+The cascade is now **append-only**: it never mutates an existing row's stored
+valid-interval or transaction stamps. It appends the inserted tile and a
+"resumption" tile (re-asserting the value that held at `validTo`) — both stamped
+`TxFrom = UpdatedAt = now` — and recomputes the current KV slot as the rightmost
+open tile. Existing rows are untouched, so they reconstruct the pre-correction
+belief exactly and the appended rows the post-correction belief: no holes, no
+leaks, monotonic transaction time.
+
+Supporting resolver change: `resolveNodeVersionAt` / `resolveRelVersionAt` (and
+the `*MatchingDuring` paths) now order the TxFrom-filtered chain by **effective
+valid-from** (version as tiebreaker) before tiling, and on an overlap select the
+**newer belief** (higher `TxFrom`, then version) rather than the highest version
+in array order. This is a no-op for monotonic histories — normal `Update` rejects
+backdated valid-from (`ErrValidFromBeforePrevious`) — so only append-only cascade
+chains are affected. Gated by `TestCascade_BeliefIsConsistentPerTxAt`
+(node + rel × memory/badger/tiered) and `TestCascade_CorrectionSpanningBoundary`
+(an interval correction spanning an existing valid-time boundary). `lesson 43`
+(`TxTo` does not bound valid-time answerability) is unchanged and still holds.
+
 ### Performance — concurrent-scan cache, traversal decode, temporal index, key encoding
 
 A downstream cross-engine benchmark round drove a sequence of read/write
