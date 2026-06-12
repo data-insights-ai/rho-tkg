@@ -390,6 +390,13 @@ func (s *relOpsSpy) ForEachAdjacentEndpointAt(nodeID types.NodeID, typeName stri
 	return s.err
 }
 
+func (s *relOpsSpy) ForEachAdjacentRelAt(nodeID types.NodeID, typeName string, incoming bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
+	s.record("ForEachAdjacentRelAt")
+	s.lastNodeID = nodeID
+	s.lastType = typeName
+	return s.err
+}
+
 func (s *relOpsSpy) ForEachIncoming(nodeID types.NodeID, typeName string, fn func(*types.Relationship) bool) error {
 	s.record("ForEachIncoming")
 	s.lastNodeID = nodeID

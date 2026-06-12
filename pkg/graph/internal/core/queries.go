@@ -621,6 +621,83 @@ func (r *RelOps) ForEachAdjacentEndpointAt(nodeID types.NodeID, typeName string,
 	return scanner.ForEachAdjacentEndpointAt(nodeID, tok, incoming, opts, fn)
 }
 
+// relRelScannerAt is the OPTIONAL store capability behind
+// RelOps.ForEachAdjacentRelAt — the decode-arm sibling of relEndpointScannerAt.
+// It streams DECODED relationship rows for edges passing the opts temporal
+// filter while SKIPPING the decode of inline-stamp-rejected edges (OPT15).
+type relRelScannerAt interface {
+	ForEachAdjacentRelAt(nid types.NodeID, typeToken uint16, incoming bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
+}
+
+// ForEachAdjacentRelAt streams the DECODED relationships for the node's adjacency
+// in the given direction, yielding only edges whose valid interval passes the
+// opts temporal filter — skipping the msgpack decode of expired edges when the
+// store carries inline valid-time stamps. Stores without the native capability
+// fall back to decoding via Outgoing/Incoming and applying the canonical
+// MatchesTemporalFilter. With no temporal filter this is exactly
+// ForEachOutgoing/ForEachIncoming. fn returning false stops the scan.
+func (r *RelOps) ForEachAdjacentRelAt(nodeID types.NodeID, typeName string, incoming bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
+	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
+	if fn == nil {
+		return grapherr.ErrNilCallback
+	}
+	if typeName != "" {
+		if err := c.validateRelTypeQueryName(typeName); err != nil {
+			return err
+		}
+	}
+	if err := storepkg.ValidateNodeID(nodeID); err != nil {
+		return err
+	}
+	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+		return err
+	}
+
+	scanner, native := c.store.(relRelScannerAt)
+	if !native {
+		// Fallback: decode via Outgoing/Incoming, apply the canonical filter.
+		var rels []*types.Relationship
+		var err error
+		if incoming {
+			rels, err = r.Incoming(nodeID, typeName)
+		} else {
+			rels, err = r.Outgoing(nodeID, typeName)
+		}
+		if err != nil {
+			return err
+		}
+		for _, rel := range rels {
+			if !storeutil.MatchesTemporalFilter(rel.InternalID().SnowflakeID(), rel.Temporal(), opts) {
+				continue
+			}
+			if !fn(rel) {
+				return nil
+			}
+		}
+		return nil
+	}
+
+	var tok uint16
+	if typeName != "" {
+		var ok bool
+		if err := c.readUnderRLock(func() error {
+			tok, ok = c.lookupRelTypeQueryToken(typeName)
+			return nil
+		}); err != nil {
+			return err
+		}
+		if !ok {
+			return c.readUnderRLock(func() error {
+				return c.validateRequestedNodesExist([]types.NodeID{nodeID})
+			})
+		}
+	}
+	return scanner.ForEachAdjacentRelAt(nodeID, tok, incoming, opts, fn)
+}
+
 // Outgoing returns all outgoing relationships from the given node.
 // If typeName is empty, all types are returned. If typeName is non-empty, only
 // relationships of that type are returned (nil if the type is not registered).

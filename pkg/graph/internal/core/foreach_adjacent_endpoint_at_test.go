@@ -46,7 +46,7 @@ func TestRelMatchesValidTime_UnsetValidFromUsesSnowflakeFallback(t *testing.T) {
 		t.Fatal("rel with unset valid_from must NOT be valid at t=1 (raw-epoch semantics leaked — should use snowflake fallback)")
 	}
 	// A far-future query time is after creation → valid (open-ended, no valid_to).
-	if !g.Temporal.RelMatchesValidTime(rel, storepkg.QueryOpts{ValidAt: types.Instant(1<<62)}) {
+	if !g.Temporal.RelMatchesValidTime(rel, storepkg.QueryOpts{ValidAt: types.Instant(1 << 62)}) {
 		t.Fatal("open-ended rel must be valid at a far-future time")
 	}
 	// No temporal filter → always matches.
@@ -160,6 +160,23 @@ func TestForEachAdjacentEndpointAt_ParityBothBackends(t *testing.T) {
 				for rel, end := range oracle {
 					if g2, ok := got[rel]; !ok || g2 != end {
 						t.Fatalf("t=%d: rel %d want end %d got %d present=%v", qt, rel, end, g2, ok)
+					}
+				}
+
+				// Decode-arm sibling: ForEachAdjacentRelAt must yield the same rels.
+				gotRel := map[types.RelID]types.NodeID{}
+				if err := g.Rels.ForEachAdjacentRelAt(hub.ID(), "LINK", false, opts, func(r *types.Relationship) bool {
+					gotRel[r.InternalID()] = r.EndNodeID()
+					return true
+				}); err != nil {
+					t.Fatalf("ForEachAdjacentRelAt t=%d: %v", qt, err)
+				}
+				if len(gotRel) != len(oracle) {
+					t.Fatalf("relAt t=%d: size mismatch got=%d oracle=%d", qt, len(gotRel), len(oracle))
+				}
+				for rel, end := range oracle {
+					if g2, ok := gotRel[rel]; !ok || g2 != end {
+						t.Fatalf("relAt t=%d: rel %d want end %d got %d present=%v", qt, rel, end, g2, ok)
 					}
 				}
 			}
