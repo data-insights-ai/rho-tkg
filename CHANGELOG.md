@@ -4,6 +4,104 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.8.0] - 2026-06-12
+
+### Added — per-instance Badger footprint tuning (vlog / memtable / block cache / compactors)
+
+One Badger instance opens per shard, and Badger's stock per-instance sizes are
+sized for a monolithic DB: a ~2 GB apparent value-log file, a ~64 MB memtable
+arena allocated upfront in heap, a 256 MB block-cache bound, and 4 compactor
+goroutines — **multiplied by shard count**. A tiered deployment with a reference
+shard plus a dozen weekly event shards therefore pre-creates tens of GB of
+apparent disk and gigabytes of heap arenas even when every shard holds little
+data. Four new knobs bound that footprint:
+
+- **`badger.Config`** gains `ValueLogFileSize`, `MemTableSize`, `BlockCacheSize`,
+  `NumCompactors`. Validated at `New`: vlog `[1MB, 2GB)`, memtable `[8MB, 1GB]`
+  (the 8 MB floor is a real Badger constraint — `Open` fails unless the 1 MB
+  `ValueThreshold` is ≤ 15% of the memtable), block cache `>= 0`, compactors `0`
+  or `>= 2`. Out-of-range values fail at `New` with a message naming the field,
+  instead of surfacing as a cryptic Badger error deep inside `Open`.
+- **`tiered.Config`** gains the same four fields, passed through to **every**
+  shard (reference, hot, warm, lazy cold/archive, rotation-created) via a single
+  new `badgerCfg` choke point.
+- **`graph.Config`** (`core.Config`) gains the same four fields for the store it
+  constructs from `BadgerDir`/`BadgerInMemory` (ignored when `Store` is supplied).
+
+**Zero keeps Badger's stock defaults** — a deliberate decision for a library
+with external consumers: silent default changes would be a behavioral surprise,
+so the owner (the SOC, a downstream service) opts in explicitly. The knobs are
+applied through one shared options builder (`buildBadgerOptions`) so the normal
+open and the WAL-migration open can never drift.
+
+### Added — per-shard entity-cache byte budget on `tiered.Config` (`CacheBudgetBytes`)
+
+`CacheBudgetBytes` (added to `badger.Config` in 4.7.0) is now plumbed through
+`tiered.Config` to every shard. `CacheCapacity` alone is an **entry count**
+(default 10,000 per cache, two caches per shard), so many open shards can pin
+hundreds of thousands of entities in heap regardless of their size; the byte
+budget bounds that directly. Soft limit (dirty entries are never evicted); `0`
+disables byte accounting. (`CacheCapacity` itself was already a per-shard
+`tiered.Config` field — the SOC can lower it today, same as the `ColdAfter`
+quick win below.)
+
+### Fixed — shrinking the memtable on an existing data dir could terminate the process
+
+Badger replays each `.mem` WAL into a skiplist arena sized by the **current**
+`MemTableSize`; a WAL written under a larger memtable overflows it, and Badger
+raises that overflow via `y.AssertTruef` → `log.Fatal` → **`os.Exit`** —
+**not** a recoverable error or panic. So the first time a service shrinks
+`MemTableSize` on a data dir that still holds live WALs (copied from a running
+server, or left by a crash — a clean `Close` deletes WALs, which is why no unit
+test against a clean store ever saw it), the open **terminates the whole
+process**.
+
+- **`badger.MigrateOversizedWAL(cfg)`** (new, exported) flushes such WALs at
+  their original size (recoverable exactly, since Badger creates each WAL at 2×
+  the memtable that wrote it) before the real open. `New` runs it automatically,
+  gated on `MemTableSize > 0 && !InMemory && !ReadOnly`.
+- **Tiered recovery probe fix.** `openBadgerStoreWithRecovery` probes a warm/cold
+  shard read-only first — but a **read-only** open replays WALs into the same
+  bounded arena (`openMemTables` runs before Badger's read-only branch), so it
+  hits the same `os.Exit`, and "Arena too small" is not `ErrTruncateNeeded` so
+  the probe could not recover it. The migration now runs **before** the
+  read-only probe (idempotent; a no-op on clean dirs, stock sizes, and in-memory
+  shards). Without this, reopening a tiered store on a snapshotted/crashed
+  DataDir with a tuned-down memtable would crash the host service.
+
+### Tests — break-the-system, mutation-validated
+
+Every new test was validated by mutation: the implementation was temporarily
+broken and the relevant test confirmed to fail. Coverage: a boundary table
+(zero=stock, floors, caps, negatives, `MinInt64`); **footprint-applied** tests
+that assert the on-disk WAL/vlog apparent sizes are exactly `2×` the configured
+value (a dropped `With…Size` leaves the stock 128 MB / ~2 GB — caught here and
+nowhere else, since a clean close truncates the vlog); reopen-across-tuning-change
+(byte-identical, incl. a >1 MB vlog value, both directions); the live-WAL
+migration reproduction; a **subprocess** test proving a bare read-only open on an
+oversized WAL exits the process; a concurrent flush storm at the memtable floor
+(`-race`); and the tiered suite — footprint + cache-budget passthrough to
+reference/hot/warm shards (incl. the recovery-reopen path), validation surfacing
+at `New`, a cold-shard cross-shard retro-link write (§4d safety check), and the
+faithful tiered oversized-WAL warm-reopen migration.
+
+### Note — `ColdAfter` / `IdleTimeout`
+
+No code change: `tiered.Config` already exposes `ColdAfter` (demote warm shards
+to cold) and `IdleTimeout` (close idle cold shards). Setting `ColdAfter` closes
+old event shards outright (lazy reopen on access) — a zero-tkg-change win for
+deployments that never tune it. The cold-shard write path that enabling it
+exercises (retro-linking a current entity to an old signal on a cold shard) is
+verified by `TestTieredColdShardRetroLinkWrite` and the existing
+`TestTieredStore_ColdShard_*` suite.
+
+### Changed — dependencies
+
+- Badger `v4.9.1` → `v4.9.2`. The footprint facts this release relies on are
+  unchanged in 4.9.2 (WAL created at `2×MemTableSize`, vlog at
+  `2×ValueLogFileSize`, `db.Opts()` public, arena overflow via
+  `log.Fatal`/`os.Exit`) — pinned by the `Footprint`/`OversizedWAL` suites.
+
 ## [4.7.0] - 2026-06-11
 
 ### Performance — scan-resistant entity cache + configurable capacity

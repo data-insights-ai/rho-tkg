@@ -52,6 +52,26 @@ type Config struct {
 	// Only effective when Compression is options.ZSTD.
 	// Zero keeps the Badger default (1).
 	ZSTDCompressionLevel int
+	// ValueLogFileSize / MemTableSize / BlockCacheSize / NumCompactors tune each
+	// shard's Badger per-instance footprint. ONE Badger instance opens per
+	// shard, so stock sizes multiply by shard count — a deployment with a
+	// reference shard plus a dozen weekly event shards pre-creates tens of GB of
+	// apparent vlog and allocates a memtable arena per shard even when every
+	// shard holds little data. Zero keeps Badger's stock defaults. Validated
+	// per-shard at open (same bounds as badger.Config) — an out-of-range value
+	// surfaces when the reference shard opens in New.
+	ValueLogFileSize int64 // bytes; valid [1MB, 2GB)
+	MemTableSize     int64 // bytes; valid [8MB, 1GB]
+	BlockCacheSize   int64 // bytes; >= 0
+	NumCompactors    int   // 0 = badger default (4); minimum 2
+	// CacheBudgetBytes bounds EACH shard's entity caches (nodes, rels) by
+	// estimated resident BYTES rather than entry count. With one cache pair per
+	// open shard, CacheCapacity alone (an entry count, default 10,000 per cache)
+	// can pin hundreds of thousands of entities in heap across many shards
+	// regardless of their size; this knob bounds that by bytes. Soft limit
+	// (dirty entries are never evicted). 0 disables byte accounting. When set
+	// and CacheCapacity is 0, the byte budget alone governs.
+	CacheBudgetBytes int64
 }
 
 // EventShard wraps a BadgerStore with metadata for an event shard.
@@ -150,6 +170,11 @@ type Store struct {
 	idleTimeout       time.Duration
 	compression       options.CompressionType
 	zstdLevel         int
+	valueLogFileSize  int64 // per-shard Badger footprint knobs; 0 = stock default
+	memTableSize      int64
+	blockCacheSize    int64
+	numCompactors     int
+	cacheBudgetBytes  int64         // per-shard entity-cache byte budget; 0 = off
 	closeCh           chan struct{} // signals idle-close goroutine to stop
 	closeOnce         sync.Once
 	lifecycleMu       sync.RWMutex // blocks Close while long sequential store-wide operations release per-shard pins
@@ -221,20 +246,25 @@ func New(cfg Config) (*Store, error) {
 	}
 
 	ts := &Store{
-		eventShards:   make(map[string]*EventShard),
-		ontology:      NewOntologyMapping(cfg.RefLabels),
-		dataDir:       cfg.DataDir,
-		inMemory:      cfg.InMemory,
-		shardWindow:   window,
-		cacheCap:      cacheCap,
-		flushInt:      flushInt,
-		coldAfter:     cfg.ColdAfter,
-		idleTimeout:   idleTimeout,
-		compression:   cfg.Compression,
-		zstdLevel:     cfg.ZSTDCompressionLevel,
-		closeCh:       make(chan struct{}),
-		hfIdxBuckets:  make(map[uint16]time.Duration),
-		vectorIndexes: make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex),
+		eventShards:      make(map[string]*EventShard),
+		ontology:         NewOntologyMapping(cfg.RefLabels),
+		dataDir:          cfg.DataDir,
+		inMemory:         cfg.InMemory,
+		shardWindow:      window,
+		cacheCap:         cacheCap,
+		flushInt:         flushInt,
+		coldAfter:        cfg.ColdAfter,
+		idleTimeout:      idleTimeout,
+		compression:      cfg.Compression,
+		zstdLevel:        cfg.ZSTDCompressionLevel,
+		valueLogFileSize: cfg.ValueLogFileSize,
+		memTableSize:     cfg.MemTableSize,
+		blockCacheSize:   cfg.BlockCacheSize,
+		numCompactors:    cfg.NumCompactors,
+		cacheBudgetBytes: cfg.CacheBudgetBytes,
+		closeCh:          make(chan struct{}),
+		hfIdxBuckets:     make(map[uint16]time.Duration),
+		vectorIndexes:    make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex),
 	}
 
 	// Create directory layout for disk-backed stores.
@@ -911,13 +941,29 @@ func (ts *Store) resetCatalogAfterClear() error {
 // For disk-backed stores, name is the relative path under DataDir.
 // readOnly opens Badger in read-only mode (no flushLoop, no gcLoop).
 func (ts *Store) openBadgerStore(name string, readOnly bool) (*BadgerStore, error) {
+	return NewBadgerStore(ts.badgerCfg(name, readOnly))
+}
+
+// badgerCfg builds the per-shard BadgerStoreConfig from the tiered store's
+// configuration. It is the SINGLE source of truth for shard options — shared by
+// openBadgerStore and by the explicit WAL migration in
+// openBadgerStoreWithRecovery — so a migration open and the real open can never
+// diverge. The per-instance footprint knobs and the per-shard cache byte budget
+// pass through to every shard opened through here: reference, hot, warm, lazy
+// cold/archive, and rotation-created.
+func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 	cfg := BadgerStoreConfig{
 		InMemory:             ts.inMemory,
 		CacheCapacity:        ts.cacheCap,
+		CacheBudgetBytes:     ts.cacheBudgetBytes,
 		FlushInterval:        ts.flushInt,
 		ReadOnly:             readOnly,
 		Compression:          ts.compression,
 		ZSTDCompressionLevel: ts.zstdLevel,
+		ValueLogFileSize:     ts.valueLogFileSize,
+		MemTableSize:         ts.memTableSize,
+		BlockCacheSize:       ts.blockCacheSize,
+		NumCompactors:        ts.numCompactors,
 	}
 	if !ts.inMemory {
 		cfg.Dir = filepath.Join(ts.dataDir, name)
@@ -944,7 +990,7 @@ func (ts *Store) openBadgerStore(name string, readOnly bool) (*BadgerStore, erro
 			return ts.refShard.SavePropertyKeyRegistry(reg)
 		}
 	}
-	return NewBadgerStore(cfg)
+	return cfg
 }
 
 // openBadgerStoreWithRecovery opens a writable BadgerStore for a warm/cold event
@@ -952,6 +998,17 @@ func (ts *Store) openBadgerStore(name string, readOnly bool) (*BadgerStore, erro
 // is recovered by a read-write open, but the returned handle must be mutable:
 // existing event entities keep routing to their owner shard after rotation.
 func (ts *Store) openBadgerStoreWithRecovery(name string) (*BadgerStore, error) {
+	// Flush any oversized WAL BEFORE the read-only probe. A read-only open
+	// replays WALs into the same MemTableSize-bounded arena as a writable one
+	// (badger openMemTables runs before its read-only branch), so an oversized
+	// WAL — left when MemTableSize was shrunk on an existing dir — fails the
+	// probe with "Arena too small". That is not ErrTruncateNeeded, so without
+	// this the probe would abort recovery before the writable open is ever
+	// tried. Idempotent and a no-op on clean dirs, stock memtable sizes, and
+	// in-memory shards.
+	if err := badger.MigrateOversizedWAL(ts.badgerCfg(name, false)); err != nil {
+		return nil, fmt.Errorf("graph: WAL migration %s: %w", name, err)
+	}
 	probe, err := ts.openBadgerStore(name, true)
 	if err == nil {
 		if err := probe.Close(); err != nil {

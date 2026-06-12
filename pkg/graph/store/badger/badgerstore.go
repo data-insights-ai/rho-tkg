@@ -158,6 +158,32 @@ type Config struct {
 	// Only effective when Compression is options.ZSTD.
 	// Zero keeps the Badger default (1).
 	ZSTDCompressionLevel int
+	// ValueLogFileSize / MemTableSize / BlockCacheSize / NumCompactors tune
+	// Badger's per-instance footprint. ZERO KEEPS BADGER'S STOCK DEFAULTS
+	// (1GB vlog / 64MB memtable / 256MB block cache / 4 compactors) — a
+	// deliberate choice for this library: silent default changes would be a
+	// behavioral surprise for external consumers, so the owner (e.g. the
+	// tiered store, or a downstream service) opts in explicitly. One Badger
+	// instance opens per shard, so stock sizes multiply by shard count: a
+	// handful of nearly-empty shards still pre-create GBs of apparent vlog and
+	// allocate tens of MB of memtable arena each. These knobs bound that.
+	//
+	// ValueLogFileSize is validated to [1MB, 2GB) (Badger's own range). The
+	// vlog FILE appears at 2x this while open (sparse — apparent, not
+	// allocated) and is truncated to content on clean close.
+	ValueLogFileSize int64 // bytes; valid [1MB, 2GB)
+	// MemTableSize is the RAM knob: a heap arena of ~size+slack is allocated
+	// upfront per open instance, and the WAL file appears at 2x this. Validated
+	// to [8MB, 1GB] — the 8MB floor is a real Badger constraint (Open fails
+	// unless ValueThreshold (1MB) <= 15% of MemTableSize). Shrinking this on an
+	// existing data dir triggers a one-time WAL migration (see New).
+	MemTableSize int64 // bytes; valid [8MB, 1GB]
+	// BlockCacheSize bounds the Ristretto block cache (filled lazily, not
+	// pre-allocated). Must be >= 0; 0 keeps the stock default.
+	BlockCacheSize int64 // bytes; >= 0
+	// NumCompactors sets the compactor goroutine count. 0 keeps the stock
+	// default (4); any non-zero value must be >= 2 (Badger's minimum).
+	NumCompactors int
 	// PropertyKeyRegistry, when non-nil, is the property-key token registry the
 	// store uses to tokenize on write and resolve tokens on read — supplied by
 	// an owner (e.g. the tiered store) that holds ONE canonical registry for all
@@ -358,30 +384,34 @@ func New(cfg Config) (*Store, error) {
 	if !cfg.InMemory && cfg.Dir == "" {
 		return nil, fmt.Errorf("graph: Dir required when InMemory is false")
 	}
-
-	opts := badgerv4.DefaultOptions(cfg.Dir)
-	if cfg.InMemory {
-		opts = opts.WithInMemory(true)
-	}
-	if cfg.ReadOnly {
-		opts = opts.WithReadOnly(true)
-	}
-	if cfg.Logger != nil {
-		opts = opts.WithLogger(cfg.Logger)
-	} else {
-		opts = opts.WithLogger(nil) // suppress default Badger logs
-	}
-	if cfg.SyncWrites && !cfg.ReadOnly {
-		opts = opts.WithSyncWrites(true)
-	}
-	if cfg.Compression != 0 {
-		opts = opts.WithCompression(cfg.Compression)
-	}
-	if cfg.ZSTDCompressionLevel > 0 {
-		opts = opts.WithZSTDCompressionLevel(cfg.ZSTDCompressionLevel)
+	if err := validateTuningConfig(cfg); err != nil {
+		return nil, err
 	}
 
-	db, err := badgerv4.Open(opts)
+	// Shrinking MemTableSize on a data dir that still holds WAL files written
+	// under a LARGER memtable bricks the open: Badger replays each WAL into an
+	// arena sized by the CURRENT MemTableSize and fails with "Arena too small"
+	// (not a recoverable sentinel) before a single row is read. Flush such WALs
+	// at their original size first. Gated on MemTableSize > 0 (no tuning => no
+	// shrink), and on a writable on-disk store (the read-only probe must not
+	// write — the tiered recovery path migrates explicitly before its probe).
+	if cfg.MemTableSize > 0 && !cfg.InMemory && !cfg.ReadOnly {
+		if err := MigrateOversizedWAL(cfg); err != nil {
+			return nil, err
+		}
+	}
+	// A read-only open cannot flush, so it cannot migrate an oversized WAL —
+	// and replaying one into the tuned arena would os.Exit (log.Fatal "Arena
+	// too small"). Fail closed with a returned error instead of crashing the
+	// process. (The tiered store never reaches here for a recoverable shard: it
+	// migrates before its read-only probe.)
+	if cfg.MemTableSize > 0 && !cfg.InMemory && cfg.ReadOnly {
+		if err := guardReadOnlyOversizedWAL(cfg); err != nil {
+			return nil, err
+		}
+	}
+
+	db, err := badgerv4.Open(buildBadgerOptions(cfg))
 	if err != nil {
 		return nil, fmt.Errorf("graph: badger open: %w", err)
 	}

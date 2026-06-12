@@ -794,3 +794,44 @@ positions. Every attempt must either fail with errors.Is(ErrCorruptExport)
 and leave ZERO partial state, or import a graph whose every entity passes
 Verify*Chain. There is no third outcome.
 
+## 45. Shrinking A Resource Bound Must Account For State Written Under The Old Bound — And A Dependency's Assertion Failure May Be os.Exit, Not An Error
+
+```
+BAD:  gate := MemTableSize > 0 && !InMemory && !ReadOnly   // migrate only here
+      // a read-only open over an oversized WAL still replays it -> os.Exit
+GOOD: writable path migrates; read-only / above-cap paths detect the unsafe
+      condition BEFORE the dependency open and fail closed (ErrOversizedWAL)
+```
+
+Two reusable rules from the Badger memtable-shrink work (lesson source:
+[4.8.0]):
+
+1. **State written under the old bound may be unopenable under the new one.**
+   Badger creates each WAL at 2x the MemTableSize that wrote it and replays it
+   into an arena sized by the CURRENT MemTableSize. Shrink the memtable on a
+   dir that still holds live WALs (copied from a running server, or left by a
+   crash — a clean Close deletes WALs, so unit tests never see it) and the
+   open fails. Any "make the bound smaller" change owes a migration path for
+   data persisted under the larger bound. `MigrateOversizedWAL` flushes such
+   WALs at their recovered original size first.
+
+2. **A dependency's invariant violation may terminate the process, not return.**
+   Badger raises "Arena too small" via `y.AssertTruef` → `log.Fatal` →
+   `os.Exit` — it is NOT a recoverable error and NOT a panic you can
+   `recover()`. So a "probe" open (e.g. the tiered read-only recovery probe)
+   is useless against it: a read-only open replays WALs into the same bounded
+   arena and os.Exits identically. The fix is to detect the unsafe condition
+   with cheap, non-destructive code (scan `.mem` file sizes — Badger decides
+   on apparent size) BEFORE handing the dir to the dependency, then either
+   migrate (writable path) or fail closed with a returned sentinel
+   (`ErrOversizedWAL`) on paths that cannot migrate (read-only, or a WAL
+   recovered-size above the 1GB cap from a foreign/older writer).
+
+Test the os.Exit faithfully with a subprocess (`os.Args[0]` re-exec + an env
+flag) that performs the RAW dependency open and assert the child does not
+exit 0 — an in-process test cannot observe `os.Exit`. Mutation-verify every
+"the knob is applied" test by dropping the `With…` call and confirming the
+test fails (a clean Close truncates files, so on-disk size checks must run
+while the store is OPEN; `db.Opts()` witnesses BlockCacheSize/NumCompactors
+that leave no file footprint).
+

@@ -4,7 +4,7 @@ go 1.26.1
 
 require (
 	github.com/bds421/rho-snowflake-2026 v1.3.2
-	github.com/dgraph-io/badger/v4 v4.9.1
+	github.com/dgraph-io/badger/v4 v4.9.2
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 )
 
@@ -22,7 +22,6 @@ require (
 	go.opentelemetry.io/otel v1.37.0 // indirect
 	go.opentelemetry.io/otel/metric v1.37.0 // indirect
 	go.opentelemetry.io/otel/trace v1.37.0 // indirect
-	golang.org/x/net v0.43.0 // indirect
 	golang.org/x/sys v0.35.0 // indirect
 	google.golang.org/protobuf v1.36.7 // indirect
 )

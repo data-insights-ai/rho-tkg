@@ -253,6 +253,18 @@ type Config struct {
 	// relationship — the largest index maps). No migration needed.
 	// Ignored when Store is provided explicitly.
 	AdjacencyIndexOnDisk bool
+	// ValueLogFileSize / MemTableSize / BlockCacheSize / NumCompactors tune
+	// Badger's per-instance footprint for the store constructed from
+	// BadgerDir/BadgerInMemory. Zero keeps Badger's stock defaults (1GB vlog /
+	// 64MB memtable / 256MB block cache / 4 compactors). The defaults multiply
+	// per open instance, so these matter most when many stores share a process.
+	// Validated at construction: ValueLogFileSize [1MB, 2GB), MemTableSize
+	// [8MB, 1GB], BlockCacheSize >= 0, NumCompactors 0 or >= 2. Ignored when
+	// Store is provided explicitly.
+	ValueLogFileSize int64
+	MemTableSize     int64
+	BlockCacheSize   int64
+	NumCompactors    int
 }
 
 // ValidationDefaults returns the resolved validation limits (for testing).
@@ -842,6 +854,10 @@ func New(config Config) (*Core, error) {
 				CacheBudgetBytes:     config.CacheBudgetBytes,
 				LabelIndexOnDisk:     config.LabelIndexOnDisk,
 				AdjacencyIndexOnDisk: config.AdjacencyIndexOnDisk,
+				ValueLogFileSize:     config.ValueLogFileSize,
+				MemTableSize:         config.MemTableSize,
+				BlockCacheSize:       config.BlockCacheSize,
+				NumCompactors:        config.NumCompactors,
 			})
 			if err != nil {
 				return nil, fmt.Errorf("graph: badger store: %w", err)
