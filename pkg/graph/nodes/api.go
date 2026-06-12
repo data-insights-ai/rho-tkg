@@ -33,6 +33,8 @@ type Ops interface {
 	ForEachByLabel(label string, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
 	ForEachByLabelPropertyRange(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
 	RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
+	ForEachDocValues(label string, propKeys []string, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error)
+	NodeMutationEpoch() uint64
 	ByLabelAndProperty(label, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error)
 	Count() (int, error)
 	CountByLabel(label string) (int, error)
@@ -206,6 +208,31 @@ func (a *API) RangeCardinality(label, propKey string, min, max float64, inclMin,
 		return 0, false, err
 	}
 	return ops.RangeCardinality(label, propKey, min, max, inclMin, inclMax, opts)
+}
+
+// ForEachDocValues (X5) streams the requested property columns for a label's nodes
+// from a cached columnar snapshot, avoiding the per-node fetch+decode in grouped
+// aggregation. ok=false means the column path is unusable (no capability, unknown/
+// empty/over-cap label, or a non-buildable property) and the caller must fall back.
+// gen is the snapshot's node-mutation epoch; re-check NodeMutationEpoch()==gen
+// after consuming the rows to detect a concurrent writer (Gate 2).
+// See core.NodeOps.ForEachDocValues.
+func (a *API) ForEachDocValues(label string, propKeys []string, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, false, err
+	}
+	return ops.ForEachDocValues(label, propKeys, fn)
+}
+
+// NodeMutationEpoch returns the store's node-mutation epoch (0 if the backend
+// lacks the DocValues capability) — the consumer's Gate-2 staleness check.
+func (a *API) NodeMutationEpoch() uint64 {
+	ops, err := a.ready()
+	if err != nil {
+		return 0
+	}
+	return ops.NodeMutationEpoch()
 }
 
 // ByLabelAndProperty returns nodes carrying the label whose property matches value.

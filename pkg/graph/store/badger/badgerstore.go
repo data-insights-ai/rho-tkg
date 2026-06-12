@@ -253,6 +253,15 @@ type Store struct {
 	relValidIdx      map[types.RelID]relValidStamp                 // relID → effective {validFrom, validTo} for inline-stamp temporal traversal (OPT15); nil until lazily built on the first temporal traversal
 	relValidIdxBuilt atomic.Bool                                   // fast-path "already built" check outside idxMu
 
+	// X5 DocValues: cached per-label columnar snapshots + a global node-mutation
+	// epoch bumped on EVERY node write (incl. deletes). nextNodeRev above misses
+	// deletes, so DocValues keeps its own counter. docMu guards docColumns only
+	// (the build itself runs lock-free, keyed on nodeEpoch — see
+	// ForEachDocValues). atomic so the epoch reads need no lock.
+	nodeEpoch  atomic.Uint64
+	docMu      sync.Mutex
+	docColumns map[uint16]*indexpkg.LabelDocValues
+
 	// Entity caches (internal sync, N-way sharded — see indexpkg.ShardedCache).
 	// Typed as the EntityCache interface so the concrete sharded implementation
 	// is the single swap point in newNodeCache / newRelCache.
@@ -1201,6 +1210,10 @@ func (bs *Store) Clear() error {
 	bs.nodeHashes = make(map[types.NodeID]string)
 	bs.nodeRevs = make(map[types.NodeID]uint64)
 	bs.nextNodeRev = 0
+	bs.nodeEpoch.Add(1) // X5: invalidate cached columns built before Clear
+	bs.docMu.Lock()
+	bs.docColumns = nil
+	bs.docMu.Unlock()
 	bs.relIDs = make(map[types.RelID]struct{})
 	bs.labelIdx = make(map[uint16]map[types.NodeID]struct{})
 	bs.typeIdx = make(map[uint16]map[types.RelID]struct{})

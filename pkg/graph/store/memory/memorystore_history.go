@@ -22,6 +22,7 @@ func (ms *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
+	defer ms.bumpNodeEpoch()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
@@ -92,6 +93,7 @@ func (ms *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
+	defer ms.bumpNodeEpoch()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
@@ -200,6 +202,7 @@ func (ms *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
+	defer ms.bumpNodeEpoch()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
@@ -315,6 +318,7 @@ func (ms *Store) PutNodeVersion(nid types.NodeID, version uint32, n *types.Node)
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
+	defer ms.bumpNodeEpoch()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
@@ -668,6 +672,7 @@ func (ms *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
+	defer ms.bumpNodeEpoch()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err

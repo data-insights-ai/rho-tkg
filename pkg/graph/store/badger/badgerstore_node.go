@@ -258,7 +258,13 @@ func (bs *Store) bumpNodeRevLocked(nid types.NodeID) {
 		bs.nextNodeRev = 1
 	}
 	bs.nodeRevs[nid] = bs.nextNodeRev
+	bs.nodeEpoch.Add(1) // X5: every non-delete node write invalidates cached columns
 }
+
+// bumpNodeEpoch marks every cached DocValues column stale. bumpNodeRevLocked
+// covers the non-delete writes; the delete and version-write paths (which do NOT
+// call it) call this directly. A spurious bump is safe — it only forces a rebuild.
+func (bs *Store) bumpNodeEpoch() { bs.nodeEpoch.Add(1) }
 
 func (bs *Store) deleteNodeRevLocked(nid types.NodeID) {
 	delete(bs.nodeRevs, nid)
@@ -304,6 +310,7 @@ func (bs *Store) DeleteNode(nid types.NodeID) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
+	defer bs.bumpNodeEpoch()
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return err
 	}

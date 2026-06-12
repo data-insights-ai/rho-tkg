@@ -325,6 +325,7 @@ func (bs *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
+	defer bs.bumpNodeEpoch()
 	if err := storecontract.ValidateNodeHistoryVersionSnapshot(nid, prevNodeVersion, nodeTombstone); err != nil {
 		return err
 	}
@@ -464,6 +465,7 @@ func (bs *Store) PutNodeVersion(nid types.NodeID, version uint32, n *types.Node)
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
+	defer bs.bumpNodeEpoch()
 	if err := storecontract.ValidateNodeHistoryVersionSnapshot(nid, version, n); err != nil {
 		return err
 	}

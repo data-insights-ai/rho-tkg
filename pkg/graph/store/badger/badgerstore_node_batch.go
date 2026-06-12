@@ -18,6 +18,7 @@ func (bs *Store) DeleteNodeCascade(nid types.NodeID) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
+	defer bs.bumpNodeEpoch()
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return err
 	}
@@ -494,6 +495,7 @@ func (bs *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 	if len(typedIDs) == 0 {
 		return nil
 	}
+	defer bs.bumpNodeEpoch()
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}

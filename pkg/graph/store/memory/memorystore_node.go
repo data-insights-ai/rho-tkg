@@ -19,6 +19,7 @@ func (ms *Store) PutNode(n *types.Node) error {
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
+	defer ms.bumpNodeEpoch()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
@@ -150,6 +151,7 @@ func (ms *Store) DeleteNode(nid types.NodeID) error {
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
+	defer ms.bumpNodeEpoch()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
@@ -186,6 +188,7 @@ func (ms *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
+	defer ms.bumpNodeEpoch()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
@@ -240,6 +243,7 @@ func (ms *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
+	defer ms.bumpNodeEpoch()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
@@ -293,6 +297,7 @@ func (ms *Store) ReplaceNode(n *types.Node) error {
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
+	defer ms.bumpNodeEpoch()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
@@ -337,6 +342,7 @@ func (ms *Store) DeleteNodeCascade(nid types.NodeID) error {
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
+	defer ms.bumpNodeEpoch()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
@@ -390,6 +396,7 @@ func (ms *Store) PutNodesBatch(nodes []*types.Node) error {
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
+	defer ms.bumpNodeEpoch()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
@@ -451,6 +458,7 @@ func (ms *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
+	defer ms.bumpNodeEpoch()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err

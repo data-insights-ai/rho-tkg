@@ -321,6 +321,17 @@ func (s *nodeOpsSpy) RangeCardinality(label, propKey string, min, max float64, i
 	return 0, false, s.err
 }
 
+func (s *nodeOpsSpy) ForEachDocValues(label string, propKeys []string, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error) {
+	s.record("ForEachDocValues")
+	s.lastLabel = label
+	return 0, false, s.err
+}
+
+func (s *nodeOpsSpy) NodeMutationEpoch() uint64 {
+	s.record("NodeMutationEpoch")
+	return 0
+}
+
 func (s *nodeOpsSpy) ForEachByLabel(label string, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
 	s.record("ForEachByLabel")
 	s.lastLabel = label

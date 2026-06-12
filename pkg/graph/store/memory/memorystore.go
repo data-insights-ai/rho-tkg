@@ -88,7 +88,22 @@ type Store struct {
 
 	// Meta KV — schema-version marker and other graph-layer bookkeeping.
 	metaKV map[string][]byte
+
+	// X5 DocValues: cached per-label columnar snapshots (labelToken -> immutable
+	// LabelDocValues), and a global node-mutation epoch bumped on EVERY node write
+	// so a cached column can detect staleness. The epoch is deliberately coarse
+	// (any node mutation invalidates every column): a per-label counter is an
+	// optimization, but a single missed mutation path would silently serve a stale
+	// aggregate (critique H2), so correctness picks the impossible-to-under-fire
+	// global counter. atomic so ForEachDocValues can read it without the lock.
+	nodeEpoch  atomic.Uint64
+	docColumns map[uint16]*indexpkg.LabelDocValues
 }
+
+// bumpNodeEpoch marks every cached DocValues column potentially stale. Called by
+// every node-mutation path (add/replace/label-change/delete/batch). A spurious
+// bump (on a no-op or errored mutation) is safe — it only forces a rebuild.
+func (ms *Store) bumpNodeEpoch() { ms.nodeEpoch.Add(1) }
 
 // New creates an empty Store with all indexes initialized.
 func New() *Store {
@@ -138,6 +153,9 @@ func (ms *Store) ensureInitialized() {
 		if ms.metaKV == nil {
 			ms.metaKV = make(map[string][]byte)
 		}
+		if ms.docColumns == nil {
+			ms.docColumns = make(map[uint16]*indexpkg.LabelDocValues)
+		}
 		ms.initialized.Store(true)
 	})
 }
@@ -167,6 +185,8 @@ func (ms *Store) Clear() error {
 	ms.temporalIndexes = make(map[uint16]*indexpkg.TemporalIndex)
 	ms.hfIndexes = make(map[uint16]*indexpkg.HighFrequencyIndex)
 	ms.vectorIndexes = make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex)
+	ms.docColumns = make(map[uint16]*indexpkg.LabelDocValues)
+	ms.bumpNodeEpoch() // any cached column from before Clear is now invalid
 	return nil
 }
 
