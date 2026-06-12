@@ -145,3 +145,90 @@ func (bs *Store) ForEachAdjacentEndpointAt(nid types.NodeID, typeToken uint16, i
 	}
 	return nil
 }
+
+// ForEachAdjacentRelAt is the decode-arm sibling of ForEachAdjacentEndpointAt:
+// it streams the DECODED relationship rows for nid's adjacency in the given
+// direction, but uses the inline valid-time stamps to SKIP the msgpack decode of
+// any edge the temporal filter already rejects — so a traversal that needs the
+// relationship (its properties / identity) still pays the decode only for edges
+// valid at the query time, not for the expired versions on the same hub. A
+// stampless edge (cross-shard incoming) falls back to a decode + the canonical
+// filter. With no temporal filter set this is exactly ForEachOutgoingRel /
+// ForEachIncomingRel. fn returning false stops the scan; rows are frozen.
+func (bs *Store) ForEachAdjacentRelAt(nid types.NodeID, typeToken uint16, incoming bool, opts QueryOpts, fn func(*types.Relationship) bool) error {
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateQueryOpts(opts); err != nil {
+		return err
+	}
+	if err := bs.ensureNodeRowLive(nid); err != nil {
+		return err
+	}
+
+	hasTemporal := storepkg.HasTemporalFilter(opts)
+
+	bs.idxMu.RLock()
+	if _, ok := bs.nodeIDs[nid]; !ok {
+		bs.idxMu.RUnlock()
+		return ErrNodeNotFound
+	}
+	rids, snapErr := bs.adjacentRelIDsSnapshotLocked(nid, typeToken, incoming)
+	// Mark rids whose inline stamp PROVES the edge out-of-window, under the same
+	// lock as the snapshot — those are skipped below WITHOUT a decode (the win).
+	var skipDecode map[types.RelID]struct{}
+	if snapErr == nil && hasTemporal {
+		for _, rid := range rids {
+			if s, ok := bs.relValidIdx[rid]; ok {
+				tm := types.TemporalMetadata{ValidFrom: types.Instant(s.vf), ValidTo: types.Instant(s.vt)}
+				if !storepkg.MatchesTemporalFilter(rid.SnowflakeID(), &tm, opts) {
+					if skipDecode == nil {
+						skipDecode = make(map[types.RelID]struct{})
+					}
+					skipDecode[rid] = struct{}{}
+				}
+			}
+		}
+	}
+	bs.idxMu.RUnlock()
+	if snapErr != nil {
+		return snapErr
+	}
+
+	if len(rids) == 0 {
+		return nil
+	}
+	storepkg.SortRelIDs(rids)
+
+	for _, rid := range rids {
+		if _, skip := skipDecode[rid]; skip {
+			continue // inline stamp proved out-of-window — no decode
+		}
+		r, err := bs.prefetchRelScan(rid)
+		if err != nil {
+			if errors.Is(err, ErrRelNotFound) {
+				continue // deleted since snapshot, or orphaned index entry
+			}
+			return fmt.Errorf("graph: scan relationship %d: %w", rid.SnowflakeID(), err)
+		}
+		match := relationshipMatchesOutgoing(r, nid, typeToken)
+		if incoming {
+			match = relationshipMatchesIncoming(r, nid, typeToken)
+		}
+		if !match {
+			continue
+		}
+		// Valid-stamped edges always pass this re-check (cheap int compares on the
+		// already-decoded row); it is the ONLY temporal check for a stampless edge.
+		if hasTemporal && !storepkg.MatchesTemporalFilter(rid.SnowflakeID(), r.Temporal(), opts) {
+			continue
+		}
+		if !fn(r) {
+			return nil
+		}
+	}
+	return nil
+}

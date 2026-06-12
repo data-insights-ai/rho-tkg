@@ -208,8 +208,24 @@ func verifyPoint(t *testing.T, bs *Store, rels []*relRec, nodeBase int64, numNod
 				t.Fatalf("fast scan node %d incoming=%v: %v", ni, incoming, err)
 			}
 
+			// Decode-arm fast path: ForEachAdjacentRelAt yields decoded rels but
+			// skips decoding the inline-stamp-rejected ones — its rel set must
+			// still equal the oracle.
+			relScanSet := map[int64]int64{}
+			if err := bs.ForEachAdjacentRelAt(nid, 0, incoming, opts, func(r *types.Relationship) bool {
+				if incoming {
+					relScanSet[int64(r.ID())] = int64(r.StartNodeID())
+				} else {
+					relScanSet[int64(r.ID())] = int64(r.EndNodeID())
+				}
+				return true
+			}); err != nil {
+				t.Fatalf("rel scan node %d incoming=%v: %v", ni, incoming, err)
+			}
+
 			assertSetEqual(t, oracle, decodeSet, fmt.Sprintf("decode vs oracle node=%d incoming=%v t=%d", ni, incoming, qt))
-			assertSetEqual(t, oracle, fastSet, fmt.Sprintf("FAST vs oracle node=%d incoming=%v t=%d", ni, incoming, qt))
+			assertSetEqual(t, oracle, fastSet, fmt.Sprintf("FAST endpoint vs oracle node=%d incoming=%v t=%d", ni, incoming, qt))
+			assertSetEqual(t, oracle, relScanSet, fmt.Sprintf("FAST relscan vs oracle node=%d incoming=%v t=%d", ni, incoming, qt))
 		}
 	}
 }
