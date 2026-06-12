@@ -77,12 +77,14 @@ type nodeRangeCardinalityScanner interface {
 }
 
 // RangeCardinality returns the count of the label's nodes whose numeric propKey
-// value lies in [min,max] (inclusivity per flags), computed from the bit-sliced
-// index with NO node scan. exact=false declines — the caller must scan-and-count
-// — when the store lacks the capability, the index is poisoned/absent, the
-// bounds are not exact integers, or a temporal filter is set (the BSI is
-// valid-time agnostic). The bounds MUST capture the whole predicate; the caller
-// enforces that (only the count-over-pure-range fast path may use this).
+// value lies in [min,max] (inclusivity per flags), summed directly from the
+// property index's sorted per-value bucket sizes — O(distinct values in range),
+// NO node scan. exact=false declines — the caller must scan-and-count — when the
+// store lacks the capability, the index is absent, the index is poisoned (it
+// holds an integer magnitude past 2^53, where float64 sort keys can collide), or
+// a temporal filter is set (the index is valid-time agnostic). Fractional values
+// and bounds are counted exactly. The bounds MUST capture the whole predicate;
+// the caller enforces that (only the count-over-pure-range fast path may use this).
 func (n *NodeOps) RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
 	c := n.c
 	if err := c.checkOpen(); err != nil {

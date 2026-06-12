@@ -18,11 +18,11 @@ import (
 // --- Property indexes ---
 
 // NodeRangeCardinality returns the COUNT of the label's nodes whose numeric
-// propertyKey value lies within [min, max] (per the inclusivity flags) from the
-// property index's bit-sliced index (R1) — an O(bitmap) popcount, no node scan.
-// exact=false declines (no usable index / poisoned / non-integer bounds) and the
-// caller scans-and-counts. Mirrors the badger store's method so both backends
-// answer `count(p) WHERE p.k > x` identically.
+// propertyKey value lies within [min, max] (per the inclusivity flags), summed
+// from the property index's sorted per-value bucket sizes (R1) — O(distinct
+// values in range), no node scan. exact=false declines (no usable index /
+// poisoned by an integer past 2^53) and the caller scans-and-counts. Mirrors the
+// badger store's method so both backends answer `count(p) WHERE p.k > x` identically.
 func (ms *Store) NodeRangeCardinality(labelToken uint16, propertyKey string, min, max float64, inclMin, inclMax bool) (int64, bool, error) {
 	if ms == nil {
 		return 0, false, ErrNilStore

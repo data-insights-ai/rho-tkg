@@ -90,6 +90,71 @@ func TestTemporalIndex_AugmentEquivalence(t *testing.T) {
 	}
 }
 
+// TestTemporalIndex_AugmentEquivalence_WithRemovals fuzzes the post-Remove
+// rebuild: Remove shrinks the sorted slice, which invalidates every positional
+// subMax index and forces a full augmentation rebuild on the next query. The
+// plain AugmentEquivalence gate only ever Adds (unique IDs), so the shrink path
+// is never exercised against brute force. Here each trial interleaves Adds and
+// Removes, keeping the reference in sync, then probes — so a stale or
+// mis-sized subMax after a shrink surfaces as a mismatch.
+func TestTemporalIndex_AugmentEquivalence_WithRemovals(t *testing.T) {
+	t.Parallel()
+	rng := rand.New(rand.NewSource(0xDECAF))
+
+	for trial := 0; trial < 200; trial++ {
+		ti := NewTemporalIndex()
+		live := make(map[snowflake.ID]IntervalEntry)
+		nextID := snowflake.ID(1)
+
+		ops := rng.Intn(80) + 1
+		for op := 0; op < ops; op++ {
+			// ~30% removals once there is something to remove.
+			if len(live) > 0 && rng.Intn(10) < 3 {
+				// Remove a random live ID.
+				victim := snowflake.ID(0)
+				pick := rng.Intn(len(live))
+				i := 0
+				for id := range live {
+					if i == pick {
+						victim = id
+						break
+					}
+					i++
+				}
+				ti.Remove(victim)
+				delete(live, victim)
+				continue
+			}
+			id := nextID
+			nextID++
+			from := types.Instant(rng.Intn(50))
+			var to types.Instant
+			if rng.Intn(3) != 0 {
+				to = from + types.Instant(rng.Intn(30))
+			}
+			ti.Add(id, from, to)
+			live[id] = IntervalEntry{From: from, To: to, ID: id}
+		}
+
+		ref := make([]IntervalEntry, 0, len(live))
+		for _, e := range live {
+			ref = append(ref, e)
+		}
+
+		for probe := 0; probe < 40; probe++ {
+			tp := types.Instant(rng.Intn(60) - 5)
+			if got, want := ti.QueryAt(tp), refQueryAt(ref, tp); !eqIDs(got, want) {
+				t.Fatalf("trial %d (post-remove) QueryAt(%d) = %v, want %v", trial, tp, got, want)
+			}
+			a := types.Instant(rng.Intn(60) - 5)
+			b := types.Instant(rng.Intn(60) - 5)
+			if got, want := ti.QueryOverlap(a, b), refQueryOverlap(ref, a, b); !eqIDs(got, want) {
+				t.Fatalf("trial %d (post-remove) QueryOverlap(%d,%d) = %v, want %v", trial, a, b, got, want)
+			}
+		}
+	}
+}
+
 // BenchmarkTemporalIndex_QueryAt_ManyExpired exercises the case the old O(n) scan
 // handled worst: a large index where most intervals started before the probe but
 // already expired, plus a handful still live. The augmentation prunes the expired

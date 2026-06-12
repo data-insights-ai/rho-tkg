@@ -194,11 +194,12 @@ func (a *API) ForEachByLabelPropertyRange(label, propKey string, min, max float6
 }
 
 // RangeCardinality returns the count of the label's nodes whose numeric propKey
-// value lies within [min, max] (inclusivity per flags) from the property index's
-// bit-sliced index (R1) — an O(bitmap) popcount, NO node scan. The second return
-// is exact: false means the index declined (absent / poisoned / non-integer
-// bounds / temporal opts) and the caller must scan-and-count. The bounds must
-// already capture the WHOLE predicate. See core.NodeOps.RangeCardinality.
+// value lies within [min, max] (inclusivity per flags), summed from the property
+// index's sorted per-value bucket sizes (R1) — O(distinct values in range), NO
+// node scan. The second return is exact: false means the index declined (absent /
+// poisoned by an integer past 2^53 / temporal opts) and the caller must
+// scan-and-count. Fractional values and bounds are counted exactly. The bounds
+// must already capture the WHOLE predicate. See core.NodeOps.RangeCardinality.
 func (a *API) RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
 	ops, err := a.ready()
 	if err != nil {

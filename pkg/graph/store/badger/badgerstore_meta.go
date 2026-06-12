@@ -298,7 +298,11 @@ func (bs *Store) MetaGet(key string) ([]byte, error) {
 	return out, nil
 }
 
-// MetaSet stores value under storepkg.MetaKey(key).
+// MetaSet stores value under storepkg.MetaKey(key). This is a BLIND overwrite
+// (last-writer-wins), NOT a read-modify-write primitive: the badger store runs
+// with DetectConflicts=false (see New), so concurrent same-key writers do not
+// error — they must be serialized above the store (registry keys are guarded by
+// the core registry lock; other meta keys are written single-threaded).
 func (bs *Store) MetaSet(key string, value []byte) error {
 	if err := bs.checkWritable(); err != nil {
 		return err

@@ -161,8 +161,9 @@ func (s *ShardedCache[V]) Get(key snowflake.ID) (V, CacheStatus) {
 }
 
 // GetNoPromote routes a non-promoting read to the key's shard. See
-// Cache.GetNoPromote — used by the scan path so concurrent label/type scans
-// take only the shard's read lock and never serialize on MoveToFront.
+// Cache.GetNoPromote — used by every prefetch*Scan path (label, type, all,
+// temporal, numeric-range) so concurrent scans take only the shard's read lock
+// and never serialize on MoveToFront.
 func (s *ShardedCache[V]) GetNoPromote(key snowflake.ID) (V, CacheStatus) {
 	return s.shardFor(key).GetNoPromote(key)
 }

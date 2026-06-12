@@ -139,7 +139,8 @@ func (c *Cache[V]) Get(key snowflake.ID) (V, CacheStatus) {
 // GetNoPromote looks up a key WITHOUT promoting it to most-recently-used.
 // Unlike Get it takes only a READ lock and never touches the recency list, so
 // concurrent callers do not serialize on the exclusive mutex. Intended for
-// full-cardinality SCAN reads (ForEachByLabel / ForEachByType): a large scan
+// full-cardinality SCAN reads (every prefetch*Scan path — label, type, all,
+// temporal, and numeric-range scans, not only ForEachByLabel / ForEachByType): a large scan
 // must not pay one exclusive Lock + MoveToFront per row, and scanned rows are
 // not "hot" — promoting them would evict genuinely hot point-read entries (the
 // same rationale as the no-cache-fill scan path). Point reads keep using Get so

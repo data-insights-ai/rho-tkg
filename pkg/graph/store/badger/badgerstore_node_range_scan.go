@@ -23,10 +23,10 @@ import (
 // callers fall back to a label scan. Same isolation and frozen-row
 // contract as ForEachNodeByLabel.
 // NodeRangeCardinality returns the COUNT of the label's nodes whose numeric
-// propKey value lies within [min, max] (per the inclusivity flags), computed
-// from the property index's bit-sliced index (R1) as an O(bitmap) popcount with
-// no node fetches. exact=false declines (no usable index / poisoned / bounds not
-// exact integers) and the caller must scan-and-count. This answers
+// propKey value lies within [min, max] (per the inclusivity flags), summed from
+// the property index's sorted per-value bucket sizes (R1) — O(distinct values in
+// range), no node fetches. exact=false declines (no usable index / poisoned by an
+// integer past 2^53) and the caller must scan-and-count. This answers
 // `count(p) WHERE p.k > x` without re-fetching every candidate node.
 func (bs *Store) NodeRangeCardinality(token uint16, propKey string, min, max float64, inclMin, inclMax bool) (int64, bool, error) {
 	if err := bs.checkOpen(); err != nil {
