@@ -8,6 +8,7 @@ import (
 	"context"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -63,6 +64,9 @@ type Ops interface {
 	RelInterval(r *types.Relationship) (start, end types.Instant, err error)
 	RelateNodes(a, b *types.Node) (types.AllenRelation, error)
 	RelateRels(a, b *types.Relationship) (types.AllenRelation, error)
+
+	// Canonical valid-time predicate for a materialized relationship.
+	RelMatchesValidTime(r *types.Relationship, opts storepkg.QueryOpts) bool
 }
 
 // API is the temporal sub-API accessor.
@@ -361,6 +365,20 @@ func (a *API) RelInterval(r *types.Relationship) (start, end types.Instant, err 
 		return 0, 0, err
 	}
 	return ops.RelInterval(r)
+}
+
+// RelMatchesValidTime reports whether r passes the valid-time filter in opts
+// (ValidAt point, ValidStart/ValidEnd interval, or no filter) using the
+// canonical effective-valid-from predicate shared with the store push-down and
+// the node path. Returns false (no match) on a not-ready graph or nil rel — a
+// post-filter consumer treats either as "excluded", which is the safe default.
+// See core.TempOps.RelMatchesValidTime.
+func (a *API) RelMatchesValidTime(r *types.Relationship, opts storepkg.QueryOpts) bool {
+	ops, err := a.ready()
+	if err != nil {
+		return false
+	}
+	return ops.RelMatchesValidTime(r, opts)
 }
 
 // RelateNodes returns the Allen relation between the validity intervals of x and y.

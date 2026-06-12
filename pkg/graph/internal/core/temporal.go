@@ -130,6 +130,21 @@ func (c *Core) isNodeValidAt(n *types.Node, t types.Instant) bool {
 	return storeutil.MatchesPointInTime(n.ID().SnowflakeID(), n.Temporal(), t)
 }
 
+// RelMatchesValidTime reports whether r passes the valid-time filter in opts
+// (ValidAt point, ValidStart/ValidEnd interval, or no filter), using the SAME
+// canonical storeutil.MatchesTemporalFilter predicate the store push-down uses.
+// Exposed so a consumer that already holds a materialized relationship (e.g. a
+// query engine post-filtering a traversal) decides validity with effective
+// valid-from (snowflake fallback when ValidFrom==0) — never the raw shadow
+// value — keeping relationship valid-time semantics identical to the node path
+// and the store. A nil relationship never matches.
+func (t *TempOps) RelMatchesValidTime(r *types.Relationship, opts storepkg.QueryOpts) bool {
+	if r == nil {
+		return false
+	}
+	return storeutil.MatchesTemporalFilter(r.ID().SnowflakeID(), r.Temporal(), opts)
+}
+
 // resolveNodeVersionAt finds the version valid at time t from a pre-built chain.
 func (c *Core) resolveNodeVersionAt(chain []*types.Node, t types.Instant) (*types.Node, error) {
 	for i := len(chain) - 1; i >= 0; i-- {

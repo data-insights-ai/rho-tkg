@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -67,6 +68,13 @@ func TestAPINilReceiversReturnErrNilGraph(t *testing.T) {
 	api := New((*temporalOpsSpy)(nil))
 	if _, err := api.NodeAt(nodeID, 1); !errors.Is(err, grapherr.ErrNilGraph) {
 		t.Fatalf("typed-nil NodeAt = %v, want ErrNilGraph", err)
+	}
+
+	// RelMatchesValidTime returns bool, not error: a not-ready graph must report
+	// "not valid" (false), the safe default for a post-filter consumer.
+	var nilGraphAPI *API
+	if nilGraphAPI.RelMatchesValidTime(nil, storepkg.QueryOpts{}) {
+		t.Fatal("nil-graph RelMatchesValidTime = true, want false")
 	}
 }
 
@@ -150,6 +158,12 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 			}
 			return err
 		}},
+		{name: "RelMatchesValidTime", run: func() error {
+			if !api.RelMatchesValidTime(nil, storepkg.QueryOpts{}) {
+				t.Fatal("RelMatchesValidTime forwarded result = false, want true")
+			}
+			return wantErr // not error-returning; satisfy the loop's errors.Is(wantErr) check
+		}},
 	} {
 		if err := tc.run(); !errors.Is(err, wantErr) {
 			t.Fatalf("%s = %v, want %v", tc.name, err, wantErr)
@@ -163,6 +177,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		"NodeAtTx", "RelAtTx", "NodesAtTx", "RelsAtTx",
 		"SetNodeVersionInterval", "SetRelVersionInterval",
 		"Snapshot", "Diff", "DiffCallback", "NodeInterval", "RelInterval", "RelateNodes", "RelateRels",
+		"RelMatchesValidTime",
 	}
 	if len(ops.calls) != len(wantCalls) {
 		t.Fatalf("calls = %v, want %v", ops.calls, wantCalls)
@@ -368,4 +383,9 @@ func (s *temporalOpsSpy) RelateNodes(a, b *types.Node) (types.AllenRelation, err
 func (s *temporalOpsSpy) RelateRels(a, b *types.Relationship) (types.AllenRelation, error) {
 	s.record("RelateRels")
 	return s.relation, s.err
+}
+
+func (s *temporalOpsSpy) RelMatchesValidTime(r *types.Relationship, opts storepkg.QueryOpts) bool {
+	s.record("RelMatchesValidTime")
+	return true
 }
