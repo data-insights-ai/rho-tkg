@@ -82,6 +82,11 @@ func (bs *Store) PutRelEntityAndOut(r *types.Relationship) error {
 
 	// NO inIdx update — the in/ key lives in the endpoint's shard.
 
+	// OPT15: the rel entity lives on THIS shard, so its inline stamp is
+	// maintainable here (the cross-shard incoming leg, PutRelIncoming, has no
+	// entity and intentionally leaves no stamp — readers miss and decode).
+	bs.setRelValidStampLocked(rid, r)
+
 	ops := []writeOp{
 		{opType: writeOpSet, key: storepkg.RelKey(id), value: data},
 		{opType: writeOpSet, key: storepkg.RelTypeIndexKey(relType, id)},
@@ -166,6 +171,7 @@ func (bs *Store) DeleteRelEntityAndOut(id snowflake.ID) (RelDeleteInfo, error) {
 	// Update in-memory state.
 	bs.relCache.MarkDeleted(id)
 	delete(bs.relIDs, rid)
+	delete(bs.relValidIdx, rid) // OPT15: drop the inline valid-time stamp
 
 	// Type index cleanup.
 	if set, exists := bs.typeIdx[info.RelType]; exists {

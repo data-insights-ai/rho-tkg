@@ -250,6 +250,7 @@ type Store struct {
 	typeIdx     map[uint16]map[types.RelID]struct{}           // relTypeToken → set(relID)
 	outIdx      map[types.NodeID]map[types.RelID]types.NodeID // startNodeID → relID → endNodeID
 	inIdx       map[types.NodeID]map[types.RelID]inEdge       // endNodeID → relID → {startNodeID, typeToken}
+	relValidIdx map[types.RelID]relValidStamp                 // relID → effective {validFrom, validTo} for inline-stamp temporal traversal (OPT15)
 
 	// Entity caches (internal sync, N-way sharded — see indexpkg.ShardedCache).
 	// Typed as the EntityCache interface so the concrete sharded implementation
@@ -491,6 +492,7 @@ func New(cfg Config) (*Store, error) {
 		typeIdx:         make(map[uint16]map[types.RelID]struct{}),
 		outIdx:          make(map[types.NodeID]map[types.RelID]types.NodeID),
 		inIdx:           make(map[types.NodeID]map[types.RelID]inEdge),
+		relValidIdx:     make(map[types.RelID]relValidStamp),
 		nodeCache:       newNodeCache(capacity, cfg.CacheBudgetBytes),
 		relCache:        newRelCache(capacity, cfg.CacheBudgetBytes),
 		pending:         make(map[string]writeOp),
@@ -748,6 +750,7 @@ func (bs *Store) loadIndexesScan() error {
 			info := relDeleteInfoFromRelationship(r)
 			decodedRelInfo[rid] = info
 			bs.addRelationshipIndexesFromRow(info)
+			bs.setRelValidStampLocked(rid, r) // OPT15: inline valid-time stamp from the decoded row
 		}
 		it.Close()
 		if loadErr != nil {
@@ -1199,6 +1202,7 @@ func (bs *Store) Clear() error {
 	bs.typeIdx = make(map[uint16]map[types.RelID]struct{})
 	bs.outIdx = make(map[types.NodeID]map[types.RelID]types.NodeID)
 	bs.inIdx = make(map[types.NodeID]map[types.RelID]inEdge)
+	bs.relValidIdx = make(map[types.RelID]relValidStamp)
 
 	// Reset atomic counters. Clear sync.Map contents via Range+Delete
 	// rather than struct reassignment (review L1): concurrent readers
