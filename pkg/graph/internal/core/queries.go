@@ -536,6 +536,91 @@ func (r *RelOps) ForEachAdjacentEndpoint(nodeID types.NodeID, typeName string, i
 	return scanner.ForEachAdjacentEndpoint(nodeID, tok, incoming, fn)
 }
 
+// relEndpointScannerAt is the OPTIONAL store capability behind
+// RelOps.ForEachAdjacentEndpointAt — the temporal sibling of relEndpointScanner.
+// It yields the OTHER endpoint of edges passing the opts temporal filter while
+// rejecting expired edges from inline valid-time stamps WITHOUT decoding the
+// relationship row (OPT15).
+type relEndpointScannerAt interface {
+	ForEachAdjacentEndpointAt(nid types.NodeID, typeToken uint16, incoming bool, opts storepkg.QueryOpts, fn func(rel types.RelID, other types.NodeID) bool) error
+}
+
+// ForEachAdjacentEndpointAt streams (relID, otherEndpoint) for the node's
+// adjacency in the given direction, yielding only edges whose valid interval
+// passes the opts temporal filter (ValidAt / ValidStart+ValidEnd) — WITHOUT
+// decoding relationship rows when the store carries inline valid-time stamps.
+// Stores without the native capability fall back to decoding via
+// Outgoing/Incoming and applying the canonical MatchesTemporalFilter (correct,
+// identical results — the in-memory store pays no decode anyway). With no
+// temporal filter set this is exactly ForEachAdjacentEndpoint. fn returning
+// false stops the scan.
+func (r *RelOps) ForEachAdjacentEndpointAt(nodeID types.NodeID, typeName string, incoming bool, opts storepkg.QueryOpts, fn func(rel types.RelID, other types.NodeID) bool) error {
+	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
+	if fn == nil {
+		return grapherr.ErrNilCallback
+	}
+	if typeName != "" {
+		if err := c.validateRelTypeQueryName(typeName); err != nil {
+			return err
+		}
+	}
+	if err := storepkg.ValidateNodeID(nodeID); err != nil {
+		return err
+	}
+	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+		return err
+	}
+
+	scanner, native := c.store.(relEndpointScannerAt)
+	if !native {
+		// Fallback: decode the rels, apply the canonical temporal predicate, and
+		// project the OTHER endpoint.
+		var rels []*types.Relationship
+		var err error
+		if incoming {
+			rels, err = r.Incoming(nodeID, typeName)
+		} else {
+			rels, err = r.Outgoing(nodeID, typeName)
+		}
+		if err != nil {
+			return err
+		}
+		for _, rel := range rels {
+			if !storeutil.MatchesTemporalFilter(rel.InternalID().SnowflakeID(), rel.Temporal(), opts) {
+				continue
+			}
+			other := rel.EndNodeID()
+			if incoming {
+				other = rel.StartNodeID()
+			}
+			if !fn(rel.InternalID(), other) {
+				return nil
+			}
+		}
+		return nil
+	}
+
+	var tok uint16
+	if typeName != "" {
+		var ok bool
+		if err := c.readUnderRLock(func() error {
+			tok, ok = c.lookupRelTypeQueryToken(typeName)
+			return nil
+		}); err != nil {
+			return err
+		}
+		if !ok {
+			return c.readUnderRLock(func() error {
+				return c.validateRequestedNodesExist([]types.NodeID{nodeID})
+			})
+		}
+	}
+	return scanner.ForEachAdjacentEndpointAt(nodeID, tok, incoming, opts, fn)
+}
+
 // Outgoing returns all outgoing relationships from the given node.
 // If typeName is empty, all types are returned. If typeName is non-empty, only
 // relationships of that type are returned (nil if the type is not registered).

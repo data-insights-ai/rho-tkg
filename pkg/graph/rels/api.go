@@ -40,6 +40,7 @@ type Ops interface {
 	ForEachOutgoing(nodeID types.NodeID, typeName string, fn func(*types.Relationship) bool) error
 	ForEachIncoming(nodeID types.NodeID, typeName string, fn func(*types.Relationship) bool) error
 	ForEachAdjacentEndpoint(nodeID types.NodeID, typeName string, incoming bool, fn func(rel types.RelID, other types.NodeID) bool) error
+	ForEachAdjacentEndpointAt(nodeID types.NodeID, typeName string, incoming bool, opts storepkg.QueryOpts, fn func(rel types.RelID, other types.NodeID) bool) error
 	OutgoingForNodes(nodeIDs []types.NodeID, typeName string) (map[types.NodeID][]*types.Relationship, error)
 	IncomingForNodes(nodeIDs []types.NodeID, typeName string) (map[types.NodeID][]*types.Relationship, error)
 	OutgoingDegree(nodeID types.NodeID, typeName string) (int, error)
@@ -261,6 +262,19 @@ func (a *API) ForEachAdjacentEndpoint(nodeID types.NodeID, typeName string, inco
 		return err
 	}
 	return ops.ForEachAdjacentEndpoint(nodeID, typeName, incoming, fn)
+}
+
+// ForEachAdjacentEndpointAt streams (relID, otherEndpoint) for nodeID's
+// adjacency in the given direction, yielding only edges valid under the opts
+// temporal filter and rejecting expired edges from inline valid-time stamps
+// WITHOUT decoding relationship rows (OPT15). fn returning false stops the scan.
+// See core.RelOps.ForEachAdjacentEndpointAt.
+func (a *API) ForEachAdjacentEndpointAt(nodeID types.NodeID, typeName string, incoming bool, opts storepkg.QueryOpts, fn func(rel types.RelID, other types.NodeID) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachAdjacentEndpointAt(nodeID, typeName, incoming, opts, fn)
 }
 
 // OutgoingDegree returns the count of outgoing relationships from nodeID
