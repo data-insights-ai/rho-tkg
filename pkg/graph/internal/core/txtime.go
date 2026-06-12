@@ -83,8 +83,12 @@ func (c *Core) nodeAsOfLocked(id types.NodeID, txTime types.Instant) (*types.Nod
 			continue
 		}
 		if tm.TxFrom <= txTime && (tm.TxTo == 0 || tm.TxTo > txTime) {
-			// Take the latest qualifying version (highest TxFrom among candidates).
-			if best == nil || tm.TxFrom > best.Temporal().TxFrom {
+			// Highest (TxFrom, version) qualifying — the version tiebreak keeps
+			// this fallback (used by tiered) deterministic and consistent with the
+			// memory/badger native paths when an append-only cascade leaves
+			// several open tiles sharing one TxFrom.
+			if best == nil || tm.TxFrom > best.Temporal().TxFrom ||
+				(tm.TxFrom == best.Temporal().TxFrom && v.Version() > best.Version()) {
 				best = v
 			}
 		}
@@ -157,7 +161,9 @@ func (c *Core) relAsOfLocked(id types.RelID, txTime types.Instant) (*types.Relat
 			continue
 		}
 		if tm.TxFrom <= txTime && (tm.TxTo == 0 || tm.TxTo > txTime) {
-			if best == nil || tm.TxFrom > best.Temporal().TxFrom {
+			// Highest (TxFrom, version) — see nodeAsOfLocked for the tiebreak.
+			if best == nil || tm.TxFrom > best.Temporal().TxFrom ||
+				(tm.TxFrom == best.Temporal().TxFrom && v.Version() > best.Version()) {
 				best = v
 			}
 		}

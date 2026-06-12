@@ -178,8 +178,7 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 
 	// The inserted interval [newVF, newVT) carrying the corrected state.
 	newVer := template.DeepCopy()
-	newVer.SetVersion(nextVersion)
-	nextVersion++
+	newVer.SetVersion(nextVersion) // last allocation; no further increment needed
 	for key, val := range props {
 		if val == nil {
 			if _, err := newVer.DeleteProperty(key); err != nil {
@@ -380,8 +379,7 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 	}
 
 	newVer := template.DeepCopy()
-	newVer.SetVersion(nextVersion)
-	nextVersion++
+	newVer.SetVersion(nextVersion) // last allocation; no further increment needed
 	for key, val := range props {
 		if val == nil {
 			if _, err := newVer.DeleteProperty(key); err != nil {

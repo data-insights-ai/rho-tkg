@@ -148,19 +148,35 @@ func (t *TempOps) RelMatchesValidTime(r *types.Relationship, opts storepkg.Query
 
 // resolveNodeVersionAt finds the version valid at time t from a pre-built chain.
 func (c *Core) resolveNodeVersionAt(chain []*types.Node, t types.Instant) (*types.Node, error) {
-	c.sortNodeChainForResolve(chain)
+	// Monotonic histories (the overwhelming common case — Update rejects
+	// backdated valid-from) tile without overlap, so iterate newest-first and
+	// return the first covering version: O(1) for a current-state query, no
+	// belief scan. Only a non-monotonic chain (an append-only cascade
+	// correction) needs the overlay, and only it pays the sort + full scan.
+	if !c.sortNodeChainForResolve(chain) {
+		for i := len(chain) - 1; i >= 0; i-- {
+			entry := chain[i]
+			if eclipsedNodeBounds(entry) {
+				continue
+			}
+			vStart, vEnd := c.nodeVersionBounds(chain, i)
+			if vStart <= t && (vEnd == 0 || vEnd > t) {
+				return entry, nil
+			}
+		}
+		return nil, storepkg.ErrNoVersionValidAt
+	}
+
+	// Cascade chain: effective intervals can overlap (an older, wider-valid row
+	// under a newer, narrower correction), so the newer BELIEF wins — higher
+	// TxFrom, then version.
 	var best *types.Node
 	for i := range chain {
 		entry := chain[i]
 		if eclipsedNodeBounds(entry) {
-			continue // cascade-eclipsed rows are invisible to VT queries
+			continue
 		}
 		vStart, vEnd := c.nodeVersionBounds(chain, i)
-
-		// Check: vStart <= t AND (vEnd == 0 OR vEnd > t). When two versions'
-		// effective intervals both cover t (an append-only cascade overlays an
-		// older, wider-valid row with a newer, narrower correction), the newer
-		// BELIEF wins — higher TxFrom, then higher version.
 		if vStart <= t && (vEnd == 0 || vEnd > t) {
 			if best == nil || nodeBeliefNewerThan(entry, best) {
 				best = entry
@@ -211,18 +227,25 @@ func (c *Core) nodeSortValidFrom(n *types.Node) types.Instant {
 
 // sortNodeChainForResolve orders a (txAt-filtered) chain by effective valid-from
 // ascending, version ascending — the order nodeVersionBounds' next-version
-// tiling assumes. Normal histories are already in this order (Update rejects
-// backdated valid-from), so this is a no-op for them; an append-only cascade
-// correction interleaves a later-version row at an earlier valid-from, and this
-// restores the tiling invariant.
-func (c *Core) sortNodeChainForResolve(chain []*types.Node) {
-	sort.SliceStable(chain, func(a, b int) bool {
-		va, vb := c.nodeSortValidFrom(chain[a]), c.nodeSortValidFrom(chain[b])
-		if va != vb {
-			return va < vb
+// tiling assumes. It returns true iff it actually had to reorder, i.e. the chain
+// was non-monotonic (only an append-only cascade produces that — Update rejects
+// backdated valid-from). The common monotonic case is detected by an O(n) scan
+// and returns false without sorting, so callers can take their fast path.
+func (c *Core) sortNodeChainForResolve(chain []*types.Node) bool {
+	for i := 1; i < len(chain); i++ {
+		pa, pb := c.nodeSortValidFrom(chain[i-1]), c.nodeSortValidFrom(chain[i])
+		if pa > pb || (pa == pb && chain[i-1].Version() > chain[i].Version()) {
+			sort.SliceStable(chain, func(a, b int) bool {
+				va, vb := c.nodeSortValidFrom(chain[a]), c.nodeSortValidFrom(chain[b])
+				if va != vb {
+					return va < vb
+				}
+				return chain[a].Version() < chain[b].Version()
+			})
+			return true
 		}
-		return chain[a].Version() < chain[b].Version()
-	})
+	}
+	return false
 }
 
 // versionVisibleAtTx reports whether a version participates in valid-time
@@ -352,7 +375,20 @@ func nodeInheritedValidFrom(chain []*types.Node, i int, tm *types.TemporalMetada
 // See resolveNodeVersionAt: chain is ordered by effective valid-from and, on an
 // overlap, the newer belief (higher TxFrom, then version) wins.
 func (c *Core) resolveRelVersionAt(chain []*types.Relationship, t types.Instant) (*types.Relationship, error) {
-	c.sortRelChainForResolve(chain)
+	if !c.sortRelChainForResolve(chain) {
+		for i := len(chain) - 1; i >= 0; i-- {
+			entry := chain[i]
+			if eclipsedRelBounds(entry) {
+				continue
+			}
+			vStart, vEnd := c.relVersionBounds(chain, i)
+			if vStart <= t && (vEnd == 0 || vEnd > t) {
+				return entry, nil
+			}
+		}
+		return nil, storepkg.ErrNoVersionValidAt
+	}
+
 	var best *types.Relationship
 	for i := range chain {
 		entry := chain[i]
@@ -360,7 +396,6 @@ func (c *Core) resolveRelVersionAt(chain []*types.Relationship, t types.Instant)
 			continue
 		}
 		vStart, vEnd := c.relVersionBounds(chain, i)
-
 		if vStart <= t && (vEnd == 0 || vEnd > t) {
 			if best == nil || relBeliefNewerThan(entry, best) {
 				best = entry
@@ -394,15 +429,23 @@ func (c *Core) relSortValidFrom(r *types.Relationship) types.Instant {
 	return c.relValidFrom(r)
 }
 
-// sortRelChainForResolve mirrors sortNodeChainForResolve for relationships.
-func (c *Core) sortRelChainForResolve(chain []*types.Relationship) {
-	sort.SliceStable(chain, func(a, b int) bool {
-		va, vb := c.relSortValidFrom(chain[a]), c.relSortValidFrom(chain[b])
-		if va != vb {
-			return va < vb
+// sortRelChainForResolve mirrors sortNodeChainForResolve for relationships,
+// returning true iff it had to reorder (a cascade chain).
+func (c *Core) sortRelChainForResolve(chain []*types.Relationship) bool {
+	for i := 1; i < len(chain); i++ {
+		pa, pb := c.relSortValidFrom(chain[i-1]), c.relSortValidFrom(chain[i])
+		if pa > pb || (pa == pb && chain[i-1].Version() > chain[i].Version()) {
+			sort.SliceStable(chain, func(a, b int) bool {
+				va, vb := c.relSortValidFrom(chain[a]), c.relSortValidFrom(chain[b])
+				if va != vb {
+					return va < vb
+				}
+				return chain[a].Version() < chain[b].Version()
+			})
+			return true
 		}
-		return chain[a].Version() < chain[b].Version()
-	})
+	}
+	return false
 }
 
 // relVersionBounds computes the effective [vStart, vEnd) for chain[i].

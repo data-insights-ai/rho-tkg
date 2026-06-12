@@ -38,6 +38,15 @@ chains are affected. Gated by `TestCascade_BeliefIsConsistentPerTxAt`
 (an interval correction spanning an existing valid-time boundary). `lesson 43`
 (`TxTo` does not bound valid-time answerability) is unchanged and still holds.
 
+`NodeAsOf` / `RelAsOf` selection is now deterministic across backends: a cascade
+leaves several tiles open (`TxTo == 0`) sharing one `TxFrom`, and the memory and
+core-fallback selectors previously broke that tie by Go map order — diverging
+from the badger native reverse-scan (which selects by descending version). All
+three now select the highest `(TxFrom, version)`. Gated by
+`TestCascade_NodeAsOfParityAcrossBackends`. The resolver's per-query chain sort
+short-circuits on already-ordered chains (an O(n) check), so normal monotonic
+histories pay nothing and only cascade-edited chains incur the sort.
+
 ### Performance — concurrent-scan cache, traversal decode, temporal index, key encoding
 
 A downstream cross-engine benchmark round drove a sequence of read/write

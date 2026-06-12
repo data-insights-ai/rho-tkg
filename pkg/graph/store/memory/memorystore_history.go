@@ -893,7 +893,13 @@ func nodeAsOfLocked(current *types.Node, history map[uint32]*types.Node, txTime 
 		if tm == nil || tm.TxFrom == 0 {
 			continue
 		}
-		if tm.TxFrom <= txTime && (tm.TxTo == 0 || tm.TxTo > txTime) && (best == nil || tm.TxFrom > bestTx) {
+		// Pick the highest (TxFrom, version) visible at txTime. The version
+		// tiebreak is load-bearing: an append-only cascade leaves several tiles
+		// open (TxTo==0) sharing one TxFrom, and Go map iteration order is
+		// random — without a deterministic tiebreak this diverged from the
+		// badger native reverse-scan (which selects by descending version).
+		if tm.TxFrom <= txTime && (tm.TxTo == 0 || tm.TxTo > txTime) &&
+			(best == nil || tm.TxFrom > bestTx || (tm.TxFrom == bestTx && v.Version() > best.Version())) {
 			best = v
 			bestTx = tm.TxFrom
 		}
@@ -913,7 +919,10 @@ func relAsOfLocked(current *types.Relationship, history map[uint32]*types.Relati
 		if tm == nil || tm.TxFrom == 0 {
 			continue
 		}
-		if tm.TxFrom <= txTime && (tm.TxTo == 0 || tm.TxTo > txTime) && (best == nil || tm.TxFrom > bestTx) {
+		// Highest (TxFrom, version) visible at txTime — see nodeAsOfLocked for
+		// why the version tiebreak is required for cross-backend determinism.
+		if tm.TxFrom <= txTime && (tm.TxTo == 0 || tm.TxTo > txTime) &&
+			(best == nil || tm.TxFrom > bestTx || (tm.TxFrom == bestTx && v.Version() > best.Version())) {
 			best = v
 			bestTx = tm.TxFrom
 		}
