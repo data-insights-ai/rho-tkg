@@ -66,13 +66,16 @@ type docColumn struct {
 	typ     ColType
 	present bitset // 1 = node has the property; 0 = absent/null
 
-	// ColNumeric: numF is always populated; numI + numIsInt preserve int64 type.
-	numF     []float64
-	numI     []int64
-	numIsInt bitset // 1 = this row's value was int64; read back as int64
+	// ColNumeric: the int64/float64 value boxed ONCE at build (its dynamic type
+	// preserves int64-vs-float64, so the consumer's int64-precise accumulators stay
+	// bit-exact above 2^53). Boxing at build, not per read, is what keeps the hot
+	// path allocation-free — the per-node path it replaces already holds boxed
+	// values, so this matches its memory without re-boxing every row.
+	boxed []any
 
-	// ColString: codes[ord] indexes into dict (sorted, deduplicated terms).
-	dict  []string
+	// ColString: codes[ord] indexes into dict (deduplicated terms, each boxed ONCE
+	// at build so valueAt returns an `any` without re-boxing the string per read).
+	dict  []any
 	codes []uint32
 }
 
@@ -152,14 +155,13 @@ func (l *LabelDocValues) ForEachRow(propKeys []string, fn func(id types.NodeID, 
 	return true
 }
 
-// valueAt reconstructs the typed Go value at an ordinal whose present bit is set.
+// valueAt returns the typed Go value at an ordinal whose present bit is set. Both
+// arms are allocation-free: numeric values were boxed at build, strings are
+// returned from the dictionary (a string header copy, no heap allocation).
 func (c *docColumn) valueAt(ord int) any {
 	switch c.typ {
 	case ColNumeric:
-		if c.numIsInt.get(ord) {
-			return c.numI[ord]
-		}
-		return c.numF[ord]
+		return c.boxed[ord]
 	case ColString:
 		return c.dict[c.codes[ord]]
 	default:
@@ -226,26 +228,25 @@ func buildColumn(ids []types.NodeID, key string, n int, getProp func(types.NodeI
 }
 
 func buildNumericColumn(ids []types.NodeID, key string, n int, present bitset, getProp func(types.NodeID, string) (any, bool)) *docColumn {
-	c := &docColumn{typ: ColNumeric, present: present, numF: make([]float64, n), numI: make([]int64, n), numIsInt: newBitset(n)}
+	c := &docColumn{typ: ColNumeric, present: present, boxed: make([]any, n)}
 	for ord, id := range ids {
 		if !present.get(ord) {
 			continue
 		}
 		v, _ := getProp(id, key)
+		// Normalize to int64/float64 (the consumer's accumulator fast-path types)
+		// and box once; the boxed dynamic type preserves int64-vs-float64.
 		switch x := v.(type) {
 		case int64:
-			c.numI[ord], c.numF[ord] = x, float64(x)
-			c.numIsInt.set(ord)
+			c.boxed[ord] = x
 		case int:
-			c.numI[ord], c.numF[ord] = int64(x), float64(x)
-			c.numIsInt.set(ord)
+			c.boxed[ord] = int64(x)
 		case int32:
-			c.numI[ord], c.numF[ord] = int64(x), float64(x)
-			c.numIsInt.set(ord)
+			c.boxed[ord] = int64(x)
 		case float64:
-			c.numF[ord] = x
+			c.boxed[ord] = x
 		case float32:
-			c.numF[ord] = float64(x)
+			c.boxed[ord] = float64(x)
 		}
 	}
 	return c
@@ -263,7 +264,7 @@ func buildStringColumn(ids []types.NodeID, key string, n int, present bitset, ge
 		code, ok := dictIdx[str]
 		if !ok {
 			code = uint32(len(c.dict))
-			c.dict = append(c.dict, str)
+			c.dict = append(c.dict, s) // box the original `any` once (s holds str)
 			dictIdx[str] = code
 		}
 		c.codes[ord] = code
