@@ -11,6 +11,50 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
+// TempOps.RelMatchesValidTime must use the EFFECTIVE valid-from (snowflake
+// fallback when ValidFrom is unset) — the canonical predicate the store and the
+// node path use — NOT the raw shadow value. An edge created WITHOUT an explicit
+// tkg_valid_from is therefore valid only from its creation time, so a query at
+// t=1 (1970) excludes it. A raw reading (valid_from==0 => valid since epoch)
+// would WRONGLY include it. This is the property that makes a query engine's
+// relationship valid-time filtering consistent with its node filtering.
+func TestRelMatchesValidTime_UnsetValidFromUsesSnowflakeFallback(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	g, err := New(Config{Store: memory.New()})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	a, err := g.Nodes.Add(ctx, []string{"N"}, nil)
+	if err != nil {
+		t.Fatalf("add a: %v", err)
+	}
+	b, err := g.Nodes.Add(ctx, []string{"N"}, nil)
+	if err != nil {
+		t.Fatalf("add b: %v", err)
+	}
+	// No tkg_valid_from in props — ValidFrom stays 0, so the effective valid-from
+	// is the rel's snowflake creation time (≈ now, well after 1970).
+	rel, err := g.Rels.Add(ctx, "LINK", a, b, nil)
+	if err != nil {
+		t.Fatalf("add rel: %v", err)
+	}
+
+	if g.Temporal.RelMatchesValidTime(rel, storepkg.QueryOpts{ValidAt: types.Instant(1)}) {
+		t.Fatal("rel with unset valid_from must NOT be valid at t=1 (raw-epoch semantics leaked — should use snowflake fallback)")
+	}
+	// A far-future query time is after creation → valid (open-ended, no valid_to).
+	if !g.Temporal.RelMatchesValidTime(rel, storepkg.QueryOpts{ValidAt: types.Instant(1<<62)}) {
+		t.Fatal("open-ended rel must be valid at a far-future time")
+	}
+	// No temporal filter → always matches.
+	if !g.Temporal.RelMatchesValidTime(rel, storepkg.QueryOpts{}) {
+		t.Fatal("no temporal filter must match")
+	}
+}
+
 // RelOps.ForEachAdjacentEndpointAt has two arms: the native inline-stamp store
 // capability (badger) and the decode-then-filter fallback (memory, no native
 // capability). Both must return EXACTLY the edges the canonical decode path
