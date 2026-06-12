@@ -110,21 +110,42 @@ func NewShardedCacheWithBudget[V any](
 		n = capacity
 	}
 
-	perShardCap := capacity / n
-	if perShardCap < 1 {
-		perShardCap = 1 // NewCache also floors at 1
-	}
-	var perShardBudget int64
-	if budget > 0 && sizer != nil {
-		perShardBudget = budget / int64(n)
-		if perShardBudget < 1 {
-			perShardBudget = 1
-		}
+	// Distribute capacity (and budget) so the AGGREGATE equals the requested
+	// total EXACTLY: the first `capRem` shards get one extra slot. A plain
+	// capacity/n floor silently loses the remainder (e.g. 250/16 -> 240), which
+	// both undersizes the cache and trips exact-capacity assertions (a tiered
+	// per-shard tuning test caught this). When capacity >= n (always, given the
+	// tiny-capacity clamp above for capacity >= 1) the per-shard floor never
+	// fires and the sum is capBase*n + capRem == capacity.
+	capBase := capacity / n
+	capRem := capacity % n
+	hasBudget := budget > 0 && sizer != nil
+	var budBase, budRem int64
+	if hasBudget {
+		budBase = budget / int64(n)
+		budRem = budget % int64(n)
 	}
 
 	shards := make([]*Cache[V], n)
 	for i := range shards {
-		shards[i] = NewCacheWithBudget(perShardCap, perShardBudget, sizer)
+		c := capBase
+		if i < capRem {
+			c++
+		}
+		if c < 1 {
+			c = 1 // NewCache also floors at 1 (covers capacity == 0)
+		}
+		var b int64
+		if hasBudget {
+			b = budBase
+			if int64(i) < budRem {
+				b++
+			}
+			if b < 1 {
+				b = 1
+			}
+		}
+		shards[i] = NewCacheWithBudget(c, b, sizer)
 	}
 	return &ShardedCache[V]{shards: shards, mask: uint64(n - 1)}
 }
@@ -262,8 +283,10 @@ func (s *ShardedCache[V]) CleanCount() int {
 
 // Cap returns the aggregate capacity (sum of shard caps), so the Clear()
 // round-trip (newCache(old.Cap(), old.Budget())) rebuilds an identically-sized
-// cache. Off the requested total by < N only when capacity/N had a remainder or
-// hit the per-shard floor of 1.
+// cache. The constructor distributes the remainder across shards, so this
+// equals the requested total exactly for any capacity >= the shard count; it
+// rounds up to the shard count only in the degenerate capacity==0 case (the
+// per-shard floor of 1).
 func (s *ShardedCache[V]) Cap() int {
 	n := 0
 	for _, sh := range s.shards {
