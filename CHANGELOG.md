@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [4.9.1] - 2026-06-13
 
 ### Added — X5 columnar DocValues capability
 
@@ -28,6 +28,32 @@ label-scan aggregation (downstream A/B: a 100k grouped aggregation 206ms → 8.8
   so a property edit (which never touches the label index) correctly invalidates a
   cached column. Both memory and badger backends; declines on tiered and on the
   on-disk label index. Values boxed once at build → allocation-free reads.
+- **Multi-label intersection columns** — `g.Nodes().ForEachDocValuesMulti(labels, propKeys, fn)`
+  streams the same dense columns for a label INTERSECTION (`(p:A:B)` patterns),
+  keyed by an order-independent token-tuple, with the same epoch-validated
+  immutable-snapshot model as the single-label path. **`g.Nodes().DocValuesSnapshot(label,
+  propKeys)`** returns a random-access `types.NodeColumnReader` for point lookups
+  over a column (the expand-aggregation arm that reads adjacency, not just
+  membership). A distinct **`g.Rels().RelMutationEpoch()`** counter, bumped on every
+  edge write, is the staleness gate for adjacency-reading aggregations — kept
+  separate from the node epoch so node-only column caches do not rebuild on
+  edge-heavy writes. Both backends; declines on tiered / on-disk index.
+
+### Performance — resident entity cache (no-evict mode for in-memory stores)
+
+`graph.Config.ResidentCache` keeps every decoded node/relationship resident in the
+entity cache with no LRU eviction, removing the decode-on-eviction re-`msgpack`
+cost that made a deep-traversal working set larger than the cache scale
+super-linearly. Downstream A/B (cypher k-hop path benchmark): a sustained path
+walk went from 663 → 850 → 1190 ns/path (growing with N) to a flat 189 → 225 →
+239 (~5x at the largest size; the deterministic 28375 decode-misses drop to 0).
+The in-memory store already holds every row in RAM, so for `BadgerInMemory` the
+resident set costs no extra memory. Opt-in (`graph.Config.ResidentCache`, off by
+default — LRU eviction preserved for disk-backed use); plumbed through
+`badger.Config` / `core.Config` and `Cache.SetNoEvict()` on the LRU and sharded
+caches.
+
+## [4.9.0] - 2026-06-12
 
 ### Fixed — append-only cascade: bitemporal corrections no longer corrupt transaction time
 
