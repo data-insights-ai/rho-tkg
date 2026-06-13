@@ -327,6 +327,20 @@ func (s *nodeOpsSpy) ForEachDocValues(label string, propKeys []string, fn func(t
 	return 0, false, s.err
 }
 
+func (s *nodeOpsSpy) ForEachDocValuesMulti(labels []string, propKeys []string, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error) {
+	s.record("ForEachDocValuesMulti")
+	if len(labels) > 0 {
+		s.lastLabel = labels[0]
+	}
+	return 0, false, s.err
+}
+
+func (s *nodeOpsSpy) DocValuesSnapshot(label string, propKeys []string) (types.NodeColumnReader, uint64, bool, error) {
+	s.record("DocValuesSnapshot")
+	s.lastLabel = label
+	return nil, 0, false, s.err
+}
+
 func (s *nodeOpsSpy) NodeMutationEpoch() uint64 {
 	s.record("NodeMutationEpoch")
 	return 0

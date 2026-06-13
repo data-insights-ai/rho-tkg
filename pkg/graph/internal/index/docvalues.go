@@ -3,6 +3,7 @@ package index
 import (
 	"cmp"
 	"slices"
+	"strings"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -29,6 +30,23 @@ import (
 // build (the consumer falls back to the per-node path), bounding column memory
 // rather than silently truncating. 10M numeric rows ≈ 165 MB/column.
 const MaxDocValuesNodes = 10_000_000
+
+// MultiLabelKey encodes a label-token tuple into an order-independent cache key
+// for a label-intersection column (multi-label patterns like (p:A:B)). Tokens are
+// sorted so (A,B) and (B,A) — the same intersection — share one cache entry, then
+// packed little-endian into a string (2 bytes per uint16). A 0-length tuple yields
+// "" (callers never pass that — a multi-label pattern has ≥2 labels).
+func MultiLabelKey(toks []uint16) string {
+	s := slices.Clone(toks)
+	slices.Sort(s)
+	var b strings.Builder
+	b.Grow(len(s) * 2)
+	for _, t := range s {
+		b.WriteByte(byte(t))
+		b.WriteByte(byte(t >> 8))
+	}
+	return b.String()
+}
 
 // UnionKeys returns the deduplicated union of two property-key slices, used to keep
 // a label's columns at one epoch across rebuilds as queries request different
@@ -154,6 +172,67 @@ func (l *LabelDocValues) ForEachRow(propKeys []string, fn func(id types.NodeID, 
 	}
 	return true
 }
+
+// lookup returns the ordinal of id via binary search on the sorted nodeIDs, or
+// (-1, false) if id is not a member. Uses the SAME comparator BuildLabelDocValues
+// sorted with (cmp.Compare on SnowflakeID) — a hand-rolled raw-int64 or unsigned
+// compare would disagree on the sort order and miss members (Pattern 12 sibling).
+func (l *LabelDocValues) lookup(id types.NodeID) (int, bool) {
+	return slices.BinarySearchFunc(l.nodeIDs, id, func(a, target types.NodeID) int {
+		return cmp.Compare(a.SnowflakeID(), target.SnowflakeID())
+	})
+}
+
+// PointSnapshot is a LabelDocValues bound to a fixed requested-property order for
+// RANDOM-ACCESS point lookups (the expand-aggregation target side). cols[i] is the
+// column for the caller's i-th requested propKey, so Row fills the caller's buffers
+// in REQUESTED order regardless of internal storage order (buildColumnsLocked unions
+// keys and does not preserve request order — Pattern 12). Implements
+// types.NodeColumnReader.
+type PointSnapshot struct {
+	l    *LabelDocValues
+	cols []*docColumn
+}
+
+// NewPointSnapshot binds propKeys to their columns for point lookups, or returns
+// ok=false if ANY requested key is not a usable (numeric/string) column — mirroring
+// HasAll exactly, so the consumer declines the WHOLE query to the per-node path
+// rather than reading an unbuildable column as spurious nulls (critique Trap B).
+func (l *LabelDocValues) NewPointSnapshot(propKeys []string) (*PointSnapshot, bool) {
+	cols := make([]*docColumn, len(propKeys))
+	for i, k := range propKeys {
+		c, ok := l.cols[k]
+		if !ok || c.typ == colUnbuildable {
+			return nil, false
+		}
+		cols[i] = c
+	}
+	return &PointSnapshot{l: l, cols: cols}, true
+}
+
+// Row fills vals/present for id's bound columns and reports membership. Returns
+// false (buffers untouched) when id is not a label member — the expand path's b:T
+// filter. For a member, a cleared present bit yields a nil value (the absent-
+// property shape); Row still returns TRUE so the row is counted (an all-absent but
+// BUILDABLE column must count every member — critique Trap B').
+func (s *PointSnapshot) Row(id types.NodeID, vals []any, present []bool) bool {
+	ord, ok := s.l.lookup(id)
+	if !ok {
+		return false
+	}
+	for i, c := range s.cols {
+		if !c.present.get(ord) {
+			vals[i], present[i] = nil, false
+			continue
+		}
+		present[i] = true
+		vals[i] = c.valueAt(ord)
+	}
+	return true
+}
+
+// Epoch is the snapshot's build epoch, for the consumer's Gate-2 staleness check.
+func (s *PointSnapshot) Epoch() uint64 { return s.l.epoch }
 
 // valueAt returns the typed Go value at an ordinal whose present bit is set. Both
 // arms are allocation-free: numeric values were boxed at build, strings are

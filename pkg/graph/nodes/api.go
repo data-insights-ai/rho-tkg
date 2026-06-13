@@ -34,6 +34,8 @@ type Ops interface {
 	ForEachByLabelPropertyRange(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
 	RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
 	ForEachDocValues(label string, propKeys []string, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error)
+	ForEachDocValuesMulti(labels []string, propKeys []string, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error)
+	DocValuesSnapshot(label string, propKeys []string) (types.NodeColumnReader, uint64, bool, error)
 	NodeMutationEpoch() uint64
 	ByLabelAndProperty(label, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error)
 	Count() (int, error)
@@ -223,6 +225,33 @@ func (a *API) ForEachDocValues(label string, propKeys []string, fn func(types.No
 		return 0, false, err
 	}
 	return ops.ForEachDocValues(label, propKeys, fn)
+}
+
+// ForEachDocValuesMulti (X5) streams the requested property columns for a LABEL
+// INTERSECTION (multi-label patterns like (p:A:B)) from a cached columnar snapshot
+// over the intersection membership, avoiding the per-node fetch+decode. ok=false
+// means the column path is unusable (no capability, an unknown label, an empty/
+// over-cap intersection, or a non-buildable property) and the caller falls back.
+// See core.NodeOps.ForEachDocValuesMulti.
+func (a *API) ForEachDocValuesMulti(labels []string, propKeys []string, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, false, err
+	}
+	return ops.ForEachDocValuesMulti(labels, propKeys, fn)
+}
+
+// DocValuesSnapshot (X5) returns a random-access point-lookup handle over a label's
+// cached column snapshot — the expand-aggregation target side (fetch b's properties
+// by ID without materializing b). ok=false means unusable (no capability, unknown/
+// empty/over-cap label, or an unbuildable requested property — critique Trap B) and
+// the caller falls back. See core.NodeOps.DocValuesSnapshot.
+func (a *API) DocValuesSnapshot(label string, propKeys []string) (types.NodeColumnReader, uint64, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, 0, false, err
+	}
+	return ops.DocValuesSnapshot(label, propKeys)
 }
 
 // NodeMutationEpoch returns the store's node-mutation epoch (0 if the backend

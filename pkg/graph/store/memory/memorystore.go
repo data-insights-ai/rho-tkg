@@ -96,14 +96,30 @@ type Store struct {
 	// optimization, but a single missed mutation path would silently serve a stale
 	// aggregate (critique H2), so correctness picks the impossible-to-under-fire
 	// global counter. atomic so ForEachDocValues can read it without the lock.
-	nodeEpoch  atomic.Uint64
+	nodeEpoch atomic.Uint64
+	// relEpoch is a DISTINCT generation counter bumped on every relationship write
+	// (add/replace/delete/batch). The X5 expand-aggregation column path reads
+	// ADJACENCY (not just node membership), so its staleness re-check (Gate 2) must
+	// see edge mutations too — nodeEpoch alone would wave through a torn aggregate
+	// from a concurrent edge insert. Kept separate from nodeEpoch so node-only
+	// scan/projection column caches do not rebuild on edge-heavy writes.
+	relEpoch   atomic.Uint64
 	docColumns map[uint16]*indexpkg.LabelDocValues
+	// docColumnsMulti caches columns for a LABEL INTERSECTION (multi-label
+	// patterns like (p:A:B)), keyed by the order-independent token-tuple key
+	// (indexpkg.MultiLabelKey). Same epoch-validated immutable-snapshot model as
+	// docColumns; separate map so the single-label path stays keyed by uint16.
+	docColumnsMulti map[string]*indexpkg.LabelDocValues
 }
 
 // bumpNodeEpoch marks every cached DocValues column potentially stale. Called by
 // every node-mutation path (add/replace/label-change/delete/batch). A spurious
 // bump (on a no-op or errored mutation) is safe — it only forces a rebuild.
 func (ms *Store) bumpNodeEpoch() { ms.nodeEpoch.Add(1) }
+
+// bumpRelEpoch marks the adjacency view stale for the X5 expand-aggregation column
+// path. Called by every relationship-mutation path. A spurious bump is safe.
+func (ms *Store) bumpRelEpoch() { ms.relEpoch.Add(1) }
 
 // New creates an empty Store with all indexes initialized.
 func New() *Store {
@@ -156,6 +172,9 @@ func (ms *Store) ensureInitialized() {
 		if ms.docColumns == nil {
 			ms.docColumns = make(map[uint16]*indexpkg.LabelDocValues)
 		}
+		if ms.docColumnsMulti == nil {
+			ms.docColumnsMulti = make(map[string]*indexpkg.LabelDocValues)
+		}
 		ms.initialized.Store(true)
 	})
 }
@@ -186,7 +205,9 @@ func (ms *Store) Clear() error {
 	ms.hfIndexes = make(map[uint16]*indexpkg.HighFrequencyIndex)
 	ms.vectorIndexes = make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex)
 	ms.docColumns = make(map[uint16]*indexpkg.LabelDocValues)
+	ms.docColumnsMulti = make(map[string]*indexpkg.LabelDocValues)
 	ms.bumpNodeEpoch() // any cached column from before Clear is now invalid
+	ms.bumpRelEpoch()  // and the adjacency view (X5 expand path)
 	return nil
 }
 

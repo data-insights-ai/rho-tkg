@@ -443,6 +443,11 @@ func (s *relOpsSpy) IncomingDegree(nodeID types.NodeID, typeName string) (int, e
 	return 0, s.err
 }
 
+func (s *relOpsSpy) RelMutationEpoch() uint64 {
+	s.record("RelMutationEpoch")
+	return 0
+}
+
 func (s *relOpsSpy) OutgoingForNodes(nodeIDs []types.NodeID, typeName string) (map[types.NodeID][]*types.Relationship, error) {
 	s.record("OutgoingForNodes")
 	if len(nodeIDs) > 0 {

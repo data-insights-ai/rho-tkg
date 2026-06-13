@@ -46,6 +46,7 @@ type Ops interface {
 	IncomingForNodes(nodeIDs []types.NodeID, typeName string) (map[types.NodeID][]*types.Relationship, error)
 	OutgoingDegree(nodeID types.NodeID, typeName string) (int, error)
 	IncomingDegree(nodeID types.NodeID, typeName string) (int, error)
+	RelMutationEpoch() uint64
 
 	SetProperty(ctx context.Context, id types.RelID, key string, value any) error
 	DeleteProperty(ctx context.Context, id types.RelID, key string) error
@@ -309,6 +310,17 @@ func (a *API) IncomingDegree(nodeID types.NodeID, typeName string) (int, error) 
 		return 0, err
 	}
 	return ops.IncomingDegree(nodeID, typeName)
+}
+
+// RelMutationEpoch returns the store's relationship-mutation epoch (0 if the backend
+// lacks the capability) — the X5 expand-aggregation column path's Gate-2 adjacency
+// staleness check. See core.RelOps.RelMutationEpoch.
+func (a *API) RelMutationEpoch() uint64 {
+	ops, err := a.ready()
+	if err != nil {
+		return 0
+	}
+	return ops.RelMutationEpoch()
 }
 
 // OutgoingForNodes returns outgoing relationships for the given set of node IDs.

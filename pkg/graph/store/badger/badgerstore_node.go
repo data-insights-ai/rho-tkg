@@ -266,6 +266,11 @@ func (bs *Store) bumpNodeRevLocked(nid types.NodeID) {
 // call it) call this directly. A spurious bump is safe — it only forces a rebuild.
 func (bs *Store) bumpNodeEpoch() { bs.nodeEpoch.Add(1) }
 
+// bumpRelEpoch marks the adjacency view stale for the X5 expand-aggregation column
+// path (which reads edges, not just node membership). Called by every relationship
+// mutation. A spurious bump is safe — it only forces a Gate-2 fall-back.
+func (bs *Store) bumpRelEpoch() { bs.relEpoch.Add(1) }
+
 func (bs *Store) deleteNodeRevLocked(nid types.NodeID) {
 	delete(bs.nodeRevs, nid)
 }

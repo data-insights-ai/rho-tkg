@@ -15,6 +15,17 @@ func (bs *Store) NodeMutationEpoch() uint64 {
 	return bs.nodeEpoch.Load()
 }
 
+// RelMutationEpoch returns the global relationship-mutation epoch — bumped on every
+// edge write. The X5 expand-aggregation column path samples it before the scan and
+// re-checks it after (Gate 2): a concurrent edge insert/delete advances it and the
+// consumer discards the torn aggregate. Distinct from NodeMutationEpoch.
+func (bs *Store) RelMutationEpoch() uint64 {
+	if bs == nil {
+		return 0
+	}
+	return bs.relEpoch.Load()
+}
+
 // ForEachDocValues streams the requested property columns for a label's nodes in
 // ordinal order from a cached columnar snapshot, building it if stale.
 //
@@ -62,6 +73,162 @@ func (bs *Store) ForEachDocValues(labelToken uint16, propKeys []string,
 	}
 	col.ForEachRow(propKeys, fn)
 	return col.Epoch(), true, nil
+}
+
+// DocValuesSnapshot returns a RANDOM-ACCESS point-lookup handle over a single
+// label's column snapshot (the X5 expand-aggregation target side), building it if
+// stale. Same lock-free epoch-keyed build and decline contract as ForEachDocValues;
+// declines in LabelIndexOnDisk mode, on an empty/over-cap label, or when a requested
+// property is not a uniformly numeric/string column (critique Trap B). gen is the
+// snapshot epoch for the consumer's Gate-2 (paired with RelMutationEpoch).
+func (bs *Store) DocValuesSnapshot(labelToken uint16, propKeys []string) (snap types.NodeColumnReader, gen uint64, ok bool, err error) {
+	if bs == nil {
+		return nil, 0, false, ErrStoreClosed
+	}
+	if err := bs.checkOpen(); err != nil {
+		return nil, 0, false, err
+	}
+	if bs.labelOnDisk {
+		return nil, 0, false, nil
+	}
+
+	cur := bs.nodeEpoch.Load()
+	bs.docMu.Lock()
+	col := bs.docColumns[labelToken]
+	bs.docMu.Unlock()
+
+	if col == nil || col.Epoch() != cur || !col.HasAll(propKeys) {
+		built, declined := bs.buildLabelColumns(labelToken, propKeys)
+		if declined {
+			return nil, 0, false, nil
+		}
+		col = built
+	}
+
+	ps, pok := col.NewPointSnapshot(propKeys)
+	if !pok {
+		return nil, col.Epoch(), false, nil // an unbuildable key → decline (Trap B)
+	}
+	return ps, col.Epoch(), true, nil
+}
+
+// ForEachDocValuesMulti streams the requested property columns for a LABEL
+// INTERSECTION (a multi-label pattern like (p:A:B)) in ordinal order from a cached
+// columnar snapshot, building it if stale. Same lock-free, epoch-keyed build and
+// decline contract as ForEachDocValues; membership is the INTERSECTION of the
+// in-RAM label indexes (no valid-time filter; critique C1). Declines in
+// LabelIndexOnDisk mode, on an empty intersection / over-cap, or for a
+// non-numeric/string column.
+func (bs *Store) ForEachDocValuesMulti(toks []uint16, propKeys []string,
+	fn func(id types.NodeID, vals []any, present []bool) bool) (gen uint64, ok bool, err error) {
+	if bs == nil {
+		return 0, false, ErrStoreClosed
+	}
+	if err := bs.checkOpen(); err != nil {
+		return 0, false, err
+	}
+	if bs.labelOnDisk {
+		return 0, false, nil // membership not materialized in RAM → fall back
+	}
+
+	cur := bs.nodeEpoch.Load()
+	key := indexpkg.MultiLabelKey(toks)
+	bs.docMu.Lock()
+	col := bs.docColumnsMulti[key]
+	bs.docMu.Unlock()
+
+	if col == nil || col.Epoch() != cur || !col.HasAll(propKeys) {
+		built, declined := bs.buildMultiColumns(toks, key, propKeys)
+		if declined {
+			return 0, false, nil // empty intersection / over-cap → fall back
+		}
+		col = built
+	}
+
+	if !col.HasAll(propKeys) {
+		return col.Epoch(), false, nil
+	}
+	col.ForEachRow(propKeys, fn)
+	return col.Epoch(), true, nil
+}
+
+// buildMultiColumns builds a fresh immutable snapshot over a label intersection,
+// mirroring buildLabelColumns (lock-free, epoch-stamped, cached only if the epoch
+// held). declined=true means an empty intersection or over-cap.
+func (bs *Store) buildMultiColumns(toks []uint16, key string, requested []string) (col *indexpkg.LabelDocValues, declined bool) {
+	gen := bs.nodeEpoch.Load()
+
+	bs.idxMu.RLock()
+	set := bs.intersectLabelsLocked(toks)
+	n := len(set)
+	if n == 0 || n > indexpkg.MaxDocValuesNodes {
+		bs.idxMu.RUnlock()
+		return nil, true
+	}
+	ids := make([]types.NodeID, 0, n)
+	for id := range set {
+		ids = append(ids, id)
+	}
+	bs.idxMu.RUnlock()
+
+	keys := requested
+	bs.docMu.Lock()
+	if old := bs.docColumnsMulti[key]; old != nil {
+		keys = indexpkg.UnionKeys(old.Keys(), requested)
+	}
+	bs.docMu.Unlock()
+
+	getProp := func(id types.NodeID, key string) (any, bool) {
+		nd, err := bs.GetNode(id)
+		if err != nil || nd == nil {
+			return nil, false
+		}
+		return nd.GetProperty(key)
+	}
+	col = indexpkg.BuildLabelDocValues(gen, ids, keys, getProp)
+
+	bs.docMu.Lock()
+	if bs.nodeEpoch.Load() == gen {
+		if bs.docColumnsMulti == nil {
+			bs.docColumnsMulti = make(map[string]*indexpkg.LabelDocValues)
+		}
+		bs.docColumnsMulti[key] = col
+	}
+	bs.docMu.Unlock()
+	return col, false
+}
+
+// intersectLabelsLocked returns the node IDs present in EVERY label token, driven
+// by the smallest set (O(min |label|) probes). Returns nil if any token is
+// unknown/empty. Must hold bs.idxMu (read lock).
+func (bs *Store) intersectLabelsLocked(toks []uint16) map[types.NodeID]struct{} {
+	if len(toks) == 0 {
+		return nil
+	}
+	var smallest map[types.NodeID]struct{}
+	for _, t := range toks {
+		s := bs.labelIdx[t]
+		if len(s) == 0 {
+			return nil
+		}
+		if smallest == nil || len(s) < len(smallest) {
+			smallest = s
+		}
+	}
+	out := make(map[types.NodeID]struct{}, len(smallest))
+	for id := range smallest {
+		inAll := true
+		for _, t := range toks {
+			if _, ok := bs.labelIdx[t][id]; !ok {
+				inAll = false
+				break
+			}
+		}
+		if inAll {
+			out[id] = struct{}{}
+		}
+	}
+	return out
 }
 
 // buildLabelColumns builds a fresh immutable snapshot over the full label

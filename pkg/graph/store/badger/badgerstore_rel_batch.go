@@ -21,6 +21,7 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
+	defer bs.bumpRelEpoch() // X5 expand path: adjacency view changed
 
 	// Pre-serialize all relationships outside the lock.
 	type relData struct {
@@ -143,6 +144,7 @@ func (bs *Store) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
+	defer bs.bumpRelEpoch() // X5 expand path: adjacency view changed
 	for _, id := range typedIDs {
 		if err := storecontract.ValidateRelID(id); err != nil {
 			return err

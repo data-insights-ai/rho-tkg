@@ -178,3 +178,110 @@ func TestDocValues_Immutable(t *testing.T) {
 		t.Fatalf("old epoch = %d, want 1", old.Epoch())
 	}
 }
+
+// TestMultiLabelKey_OrderIndependentAndCollisionFree pins the multi-label cache-key
+// contract (Pattern 12: unambiguous encoding). Token order must not change the key
+// (same intersection → one cache entry), and distinct token tuples must never
+// collide — the fixed 2-byte-per-token packing makes {0x0102} and {1, 2}
+// distinguishable by length, which a delimiter-free %v join would not.
+func TestMultiLabelKey_OrderIndependentAndCollisionFree(t *testing.T) {
+	if MultiLabelKey([]uint16{3, 1, 2}) != MultiLabelKey([]uint16{1, 2, 3}) {
+		t.Fatal("MultiLabelKey is order-dependent — (A,B,C) and (C,A,B) must share a cache entry")
+	}
+	if MultiLabelKey([]uint16{1, 2}) != MultiLabelKey([]uint16{2, 1}) {
+		t.Fatal("MultiLabelKey({1,2}) != MultiLabelKey({2,1})")
+	}
+	seen := map[string][]uint16{}
+	for _, toks := range [][]uint16{
+		{0x0102}, {1, 2}, {2, 1}, {1, 2, 3}, {258}, {1}, {2}, {0, 0},
+	} {
+		k := MultiLabelKey(toks)
+		if prev, ok := seen[k]; ok {
+			// Allowed only if they are the same sorted tuple (e.g. {1,2} vs {2,1}).
+			if MultiLabelKey(prev) != MultiLabelKey(toks) || len(prev) != len(toks) {
+				t.Fatalf("key collision: %v and %v both encode to %q", prev, toks, k)
+			}
+		}
+		seen[k] = toks
+	}
+}
+
+// TestPointSnapshot_OrderAndComparator pins the expand target-side point lookup
+// (critique implementer traps P1/P2): Row fills the caller's buffers in REQUESTED
+// propKeys order (not internal storage order), and lookup finds every member of a
+// shuffled-ID column (the binary search must use the same SnowflakeID comparator
+// the column sorted with).
+func TestPointSnapshot_OrderAndComparator(t *testing.T) {
+	// IDs deliberately out of order; columns store them sorted.
+	ids := []types.NodeID{50, 10, 30, 20, 40}
+	props := map[types.NodeID]map[string]any{
+		10: {"amt": int64(1), "city": "a"},
+		20: {"amt": int64(2), "city": "b"},
+		30: {"amt": int64(3), "city": "c"},
+		40: {"amt": int64(4), "city": "d"},
+		50: {"amt": int64(5), "city": "e"},
+	}
+	col := BuildLabelDocValues(1, ids, []string{"amt", "city"}, getter(props))
+
+	// Request the keys in the REVERSE of storage/sorted order to catch an order bug.
+	snap, ok := col.NewPointSnapshot([]string{"city", "amt"})
+	if !ok {
+		t.Fatal("NewPointSnapshot declined a buildable column")
+	}
+	vals := make([]any, 2)
+	present := make([]bool, 2)
+	for id := types.NodeID(10); id <= 50; id += 10 {
+		if !snap.Row(id, vals, present) {
+			t.Fatalf("Row(%d) reported non-member — binary search missed a member", id)
+		}
+		// vals[0] is "city" (requested first), vals[1] is "amt".
+		wantCity := props[id]["city"].(string)
+		wantAmt := props[id]["amt"].(int64)
+		if vals[0] != wantCity || vals[1] != wantAmt {
+			t.Fatalf("Row(%d) requested-order mismatch: got (%v,%v) want (%q,%d)", id, vals[0], vals[1], wantCity, wantAmt)
+		}
+	}
+	// A non-member returns false (the b:T filter on the expand path).
+	if snap.Row(999, vals, present) {
+		t.Fatal("Row(999) reported a non-member as present")
+	}
+}
+
+// TestPointSnapshot_DeclineUnbuildable pins critique Trap B: any unbuildable
+// requested key makes NewPointSnapshot decline (ok=false) so the consumer falls
+// back, rather than reading the column as spurious nulls.
+func TestPointSnapshot_DeclineUnbuildable(t *testing.T) {
+	ids := []types.NodeID{1, 2}
+	props := map[types.NodeID]map[string]any{
+		1: {"score": int64(5)},
+		2: {"score": []any{int64(1)}}, // mixed numeric/list → unbuildable
+	}
+	col := BuildLabelDocValues(1, ids, []string{"score"}, getter(props))
+	if _, ok := col.NewPointSnapshot([]string{"score"}); ok {
+		t.Fatal("NewPointSnapshot accepted an unbuildable (mixed-type) column — Trap B")
+	}
+}
+
+// TestPointSnapshot_AllAbsentBuildable pins critique Trap B': an all-absent but
+// BUILDABLE column still treats every member as present-for-counting (Row returns
+// true with present=false), so count(*) over the expand counts every edge.
+func TestPointSnapshot_AllAbsentBuildable(t *testing.T) {
+	ids := []types.NodeID{1, 2, 3}
+	// Members exist but NONE has "amt" — a buildable (numeric) all-absent column.
+	props := map[types.NodeID]map[string]any{1: {"other": int64(1)}, 2: {"other": int64(2)}, 3: {"other": int64(3)}}
+	col := BuildLabelDocValues(1, ids, []string{"amt"}, getter(props))
+	snap, ok := col.NewPointSnapshot([]string{"amt"})
+	if !ok {
+		t.Fatal("NewPointSnapshot declined an all-absent buildable column — must stay buildable (Trap B')")
+	}
+	vals := make([]any, 1)
+	present := make([]bool, 1)
+	for _, id := range ids {
+		if !snap.Row(id, vals, present) {
+			t.Fatalf("Row(%d) reported non-member — an all-absent column must still count members", id)
+		}
+		if present[0] || vals[0] != nil {
+			t.Fatalf("Row(%d) absent property should be (nil,false), got (%v,%v)", id, vals[0], present[0])
+		}
+	}
+}

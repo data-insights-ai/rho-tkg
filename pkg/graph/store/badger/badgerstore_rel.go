@@ -19,6 +19,7 @@ func (bs *Store) PutRelationship(r *types.Relationship) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
+	defer bs.bumpRelEpoch() // X5 expand path: adjacency view changed
 	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
 		return err
 	}
@@ -165,6 +166,7 @@ func (bs *Store) ReplaceRelationship(r *types.Relationship) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
+	defer bs.bumpRelEpoch() // X5 expand path: adjacency view changed
 	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
 		return err
 	}
@@ -215,6 +217,7 @@ func (bs *Store) DeleteRelationship(rid types.RelID) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
+	defer bs.bumpRelEpoch() // X5 expand path: adjacency view changed
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return err
 	}

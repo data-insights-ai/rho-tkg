@@ -22,6 +22,7 @@ func (ms *Store) PutRelationship(r *types.Relationship) error {
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
+	defer ms.bumpRelEpoch()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
@@ -86,6 +87,7 @@ func (ms *Store) PutRelationshipGeneratedIDWithEndpointHashes(r *types.Relations
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
+	defer ms.bumpRelEpoch()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return "", "", err
@@ -176,6 +178,7 @@ func (ms *Store) ReplaceRelationship(r *types.Relationship) error {
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
+	defer ms.bumpRelEpoch()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
@@ -204,6 +207,7 @@ func (ms *Store) DeleteRelationship(rid types.RelID) error {
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
+	defer ms.bumpRelEpoch()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
@@ -620,6 +624,7 @@ func (ms *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
+	defer ms.bumpRelEpoch()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
@@ -692,6 +697,7 @@ func (ms *Store) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
+	defer ms.bumpRelEpoch()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
