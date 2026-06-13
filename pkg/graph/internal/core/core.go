@@ -240,6 +240,15 @@ type Config struct {
 	// 0, the byte budget alone governs. Ignored when Store is provided
 	// explicitly.
 	CacheBudgetBytes int64
+	// ResidentCache keeps every decoded node/rel resident in the badger-backed
+	// store's entity caches: clean entries are never evicted and fetches skip
+	// LRU promotion. For an in-memory store (BadgerInMemory) the backing data
+	// already lives in RAM, so re-decoding on cache miss is pure waste that
+	// makes graph-larger-than-cache traversal scale super-linearly; resident
+	// mode restores linear (Memgraph-like) big-O at the cost of holding the
+	// decoded working set resident. Overrides CacheCapacity/CacheBudgetBytes
+	// eviction. Ignored when Store is provided explicitly.
+	ResidentCache bool
 	// LabelIndexOnDisk keeps the badger-backed store's label→nodes index
 	// out of RAM: label scans iterate the persisted label keyspace instead
 	// of an in-memory map (~50-100B per label entry — the memory ceiling
@@ -852,6 +861,7 @@ func New(config Config) (*Core, error) {
 				ZSTDCompressionLevel: config.ZSTDCompressionLevel,
 				CacheCapacity:        config.CacheCapacity,
 				CacheBudgetBytes:     config.CacheBudgetBytes,
+				ResidentCache:        config.ResidentCache,
 				LabelIndexOnDisk:     config.LabelIndexOnDisk,
 				AdjacencyIndexOnDisk: config.AdjacencyIndexOnDisk,
 				ValueLogFileSize:     config.ValueLogFileSize,

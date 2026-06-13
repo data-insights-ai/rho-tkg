@@ -48,8 +48,9 @@ const perEntryOverhead = 160
 // All methods are thread-safe via internal mutex.
 type Cache[V any] struct {
 	mu         sync.RWMutex
-	capacity   int // soft limit — dirty entries can exceed
-	cleanCount int // number of evictable entries (DirtyVer == 0, !Deleted)
+	capacity   int  // soft limit — dirty entries can exceed
+	noEvict    bool // resident mode: clean entries are never evicted (see SetNoEvict)
+	cleanCount int  // number of evictable entries (DirtyVer == 0, !Deleted)
 	items      map[snowflake.ID]*list.Element
 	dirtySet   map[snowflake.ID]*list.Element // entries with DirtyVer > 0 — flush-cycle index
 	order      *list.List                     // front = most recent, back = LRU
@@ -124,7 +125,10 @@ func (c *Cache[V]) Get(key snowflake.ID) (V, CacheStatus) {
 	}
 
 	entry := el.Value.(*Entry[V])
-	c.order.MoveToFront(el)
+	// Resident mode keeps no eviction order, so the LRU promotion is pure cost.
+	if !c.noEvict {
+		c.order.MoveToFront(el)
+	}
 
 	if entry.Deleted {
 		var zero V
@@ -383,6 +387,19 @@ func (c *Cache[V]) Len() int {
 	return len(c.items)
 }
 
+// SetNoEvict puts the cache into resident mode: clean entries are never
+// evicted, so a value decoded once stays decoded. Intended for in-memory stores
+// where the backing data already lives in RAM and re-decoding on cache miss is
+// pure waste that makes large-graph traversal scale super-linearly. The caller
+// owns the memory trade-off (the decoded working set stays resident). Callers
+// in resident mode should fetch via GetNoPromote — with no eviction there is no
+// LRU order to maintain, so the per-fetch MoveToFront write-lock is pure cost.
+func (c *Cache[V]) SetNoEvict() {
+	c.mu.Lock()
+	c.noEvict = true
+	c.mu.Unlock()
+}
+
 // CleanCount returns the number of clean (evictable) entries in the cache.
 func (c *Cache[V]) CleanCount() int {
 	c.mu.Lock()
@@ -460,6 +477,14 @@ func (c *Cache[V]) Misses() int64 { return c.misses.Load() }
 // otherwise O(N) single-pass backward scan.
 // Must be called with c.mu held.
 func (c *Cache[V]) evictClean() {
+	// Resident mode: decoded entries are kept for the process lifetime. For an
+	// in-memory store this turns the per-fetch decode-on-miss (msgpack unmarshal
+	// + wire-decode) — which makes graph-larger-than-cache traversal scale
+	// super-linearly — into a one-time decode, restoring linear (Memgraph-like)
+	// big-O at the cost of holding the decoded working set resident.
+	if c.noEvict {
+		return
+	}
 	if c.cleanCount == 0 || (len(c.items) <= c.capacity && !c.overBudgetLocked()) {
 		return
 	}

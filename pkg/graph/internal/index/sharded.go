@@ -18,6 +18,7 @@ import (
 type EntityCache[V any] interface {
 	Get(key snowflake.ID) (V, CacheStatus)
 	GetNoPromote(key snowflake.ID) (V, CacheStatus)
+	SetNoEvict()
 	Peek(key snowflake.ID) (V, CacheStatus)
 	Put(key snowflake.ID, value V)
 	MarkDeleted(key snowflake.ID)
@@ -179,6 +180,14 @@ func (s *ShardedCache[V]) shardFor(key snowflake.ID) *Cache[V] {
 
 func (s *ShardedCache[V]) Get(key snowflake.ID) (V, CacheStatus) {
 	return s.shardFor(key).Get(key)
+}
+
+// SetNoEvict puts every shard into resident mode (clean entries never evicted).
+// See Cache.SetNoEvict.
+func (s *ShardedCache[V]) SetNoEvict() {
+	for _, sh := range s.shards {
+		sh.SetNoEvict()
+	}
 }
 
 // GetNoPromote routes a non-promoting read to the key's shard. See

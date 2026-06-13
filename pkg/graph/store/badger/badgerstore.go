@@ -111,6 +111,14 @@ type Config struct {
 	// evicted). 0 disables byte accounting. When set and CacheCapacity is 0,
 	// the count limit is effectively unbounded and the byte budget governs.
 	CacheBudgetBytes int64
+	// ResidentCache keeps every decoded node/rel resident (clean entries are
+	// never evicted, and fetches skip LRU promotion). For an in-memory store
+	// the backing data already lives in RAM, so re-decoding on cache miss is
+	// pure waste that makes graph-larger-than-cache traversal scale
+	// super-linearly; resident mode restores linear (Memgraph-like) big-O at
+	// the cost of holding the decoded working set resident. Ignores
+	// CacheCapacity/CacheBudgetBytes for eviction.
+	ResidentCache bool
 	// LabelIndexOnDisk keeps the label→nodes index OUT of RAM: label
 	// snapshots are answered from the persisted label keyspace (written
 	// transactionally with node rows since the format's inception — no
@@ -258,15 +266,26 @@ type Store struct {
 	// deletes, so DocValues keeps its own counter. docMu guards docColumns only
 	// (the build itself runs lock-free, keyed on nodeEpoch — see
 	// ForEachDocValues). atomic so the epoch reads need no lock.
-	nodeEpoch  atomic.Uint64
+	nodeEpoch atomic.Uint64
+	// relEpoch: DISTINCT generation counter bumped on every relationship write. The
+	// X5 expand-aggregation column path reads ADJACENCY, so its Gate-2 re-check must
+	// see edge mutations (nodeEpoch alone would wave through a torn aggregate from a
+	// concurrent edge insert). Separate from nodeEpoch so node-only column caches do
+	// not rebuild on edge-heavy writes.
+	relEpoch   atomic.Uint64
 	docMu      sync.Mutex
 	docColumns map[uint16]*indexpkg.LabelDocValues
+	// docColumnsMulti caches label-INTERSECTION columns (multi-label patterns like
+	// (p:A:B)), keyed by the order-independent token-tuple key (MultiLabelKey).
+	// Same docMu guard + lock-free epoch-keyed build as docColumns.
+	docColumnsMulti map[string]*indexpkg.LabelDocValues
 
 	// Entity caches (internal sync, N-way sharded — see indexpkg.ShardedCache).
 	// Typed as the EntityCache interface so the concrete sharded implementation
 	// is the single swap point in newNodeCache / newRelCache.
 	nodeCache indexpkg.EntityCache[*types.Node]
 	relCache  indexpkg.EntityCache[*types.Relationship]
+	resident  bool // ResidentCache: caches never evict; fetches skip LRU promotion
 
 	// Counters (atomic — persisted atomically via flush WriteBatch).
 	nodeCount atomic.Int64
@@ -507,6 +526,7 @@ func New(cfg Config) (*Store, error) {
 		// expose the capability) pays nothing for the per-rel stamps.
 		nodeCache:       newNodeCache(capacity, cfg.CacheBudgetBytes),
 		relCache:        newRelCache(capacity, cfg.CacheBudgetBytes),
+		resident:        cfg.ResidentCache,
 		pending:         make(map[string]writeOp),
 		propertyIndexes: make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex),
 		temporalIndexes: make(map[uint16]*indexpkg.TemporalIndex),
@@ -525,6 +545,15 @@ func New(cfg Config) (*Store, error) {
 		flushDone:       make(chan struct{}),
 		gcDone:          make(chan struct{}),
 		logger:          cfg.Logger,
+	}
+
+	// Resident mode: keep every decoded node/rel resident so a cache miss never
+	// re-decodes (msgpack unmarshal + wire-decode) the same entity twice — the
+	// per-fetch decode is what makes graph-larger-than-cache traversal scale
+	// super-linearly. GetNode/GetRel additionally fetch via GetNoPromote here.
+	if bs.resident {
+		bs.nodeCache.SetNoEvict()
+		bs.relCache.SetNoEvict()
 	}
 
 	// Load the property-key registry BEFORE loadIndexes so the index
@@ -1211,8 +1240,10 @@ func (bs *Store) Clear() error {
 	bs.nodeRevs = make(map[types.NodeID]uint64)
 	bs.nextNodeRev = 0
 	bs.nodeEpoch.Add(1) // X5: invalidate cached columns built before Clear
+	bs.relEpoch.Add(1)  // and the adjacency view (X5 expand path)
 	bs.docMu.Lock()
 	bs.docColumns = nil
+	bs.docColumnsMulti = nil
 	bs.docMu.Unlock()
 	bs.relIDs = make(map[types.RelID]struct{})
 	bs.labelIdx = make(map[uint16]map[types.NodeID]struct{})
