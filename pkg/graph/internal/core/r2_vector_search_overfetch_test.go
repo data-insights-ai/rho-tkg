@@ -111,7 +111,11 @@ func TestSearchNearest_TemporalFilteredPath_PropagatesCandidateResolutionError(t
 		t.Fatalf("CreateVector: %v", err)
 	}
 
-	_, err = g.Index.SearchNearest("Doc", "embedding", []float32{1, 0}, 1, storepkg.QueryOpts{ValidAt: nowInstant() + 1_000})
+	// Query a HISTORICAL valid time (before the node's valid-from) so candidate
+	// resolution must read history — the current-row fast path (nodeAtLockedTx)
+	// answers current/future valid times from the open current row without
+	// touching history, which would otherwise never trigger the injected fault.
+	_, err = g.Index.SearchNearest("Doc", "embedding", []float32{1, 0}, 1, storepkg.QueryOpts{ValidAt: nowInstant() - 1_000_000})
 	if !errors.Is(err, errBoom) {
 		t.Fatalf("SearchNearest filtered path error = %v, want %v", err, errBoom)
 	}
@@ -144,7 +148,10 @@ func TestSearchNearest_TemporalOverfetchPath_PropagatesCandidateResolutionError(
 		t.Fatalf("CreateVector: %v", err)
 	}
 
-	_, err = g.Index.SearchNearest("Doc", "embedding", []float32{1, 0}, 1, storepkg.QueryOpts{ValidAt: nowInstant() + 1_000})
+	// Historical valid time forces candidate resolution to read history (see the
+	// filtered-path test) so the injected fault is exercised; current/future
+	// valid times are answered from the open current row without a history read.
+	_, err = g.Index.SearchNearest("Doc", "embedding", []float32{1, 0}, 1, storepkg.QueryOpts{ValidAt: nowInstant() - 1_000_000})
 	if !errors.Is(err, errBoom) {
 		t.Fatalf("SearchNearest overfetch path error = %v, want %v", err, errBoom)
 	}

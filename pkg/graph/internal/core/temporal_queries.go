@@ -288,6 +288,30 @@ func (c *Core) nodeAtLocked(id types.NodeID, at types.Instant) (*types.Node, err
 // version chain to only versions visible at txAt (TxFrom <= txAt < TxTo)
 // before resolving the valid-time match. txAt == 0 returns the same chain as
 // nodeAtLocked (no TX filter — current behaviour).
+// nodeCurrentAnswersAt reports whether the live current row alone answers a
+// point query NodeAt(validAt) / NodeAtTx(validAt, txAt), letting the caller skip
+// the full-history materialize + decode + scan. True on a migrated store (no
+// legacy inherited-ValidFrom demotion, so the standalone valid-from matches the
+// chain's) when current is the OPEN tile — the resolver guarantees exactly one,
+// carrying the max valid-from and the highest belief — is visible at txAt
+// (recorded by then, lesson 43), and its open interval covers validAt. No other
+// version can then outrank it for validAt: closed tiles end at or before the
+// open tile's valid-from, so none covers validAt, and no live row has a higher
+// belief over the open tail.
+func (c *Core) nodeCurrentAnswersAt(current *types.Node, validAt, txAt types.Instant) bool {
+	if !c.bitemporalMigrated {
+		return false
+	}
+	tm := current.Temporal()
+	if tm == nil || tm.ValidTo != 0 {
+		return false
+	}
+	if txAt != 0 && (tm.TxFrom == 0 || tm.TxFrom > txAt) {
+		return false
+	}
+	return validAt >= c.nodeSortValidFrom(current)
+}
+
 func (c *Core) nodeAtLockedTx(id types.NodeID, validAt, txAt types.Instant) (*types.Node, error) {
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return nil, err
@@ -295,6 +319,11 @@ func (c *Core) nodeAtLockedTx(id types.NodeID, validAt, txAt types.Instant) (*ty
 	current, err := c.getCurrentNode(id)
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
+	}
+	// Fast path: skip loading the version history when the current row alone
+	// answers the query (the common "recent valid-time, current belief" case).
+	if current != nil && c.nodeCurrentAnswersAt(current, validAt, txAt) {
+		return current, nil
 	}
 
 	history, err := c.getNodeHistory(id)
@@ -347,6 +376,21 @@ func (c *Core) relAtLocked(id types.RelID, at types.Instant) (*types.Relationshi
 }
 
 // relAtLockedTx is the bitemporal variant of relAtLocked. See nodeAtLockedTx.
+// relCurrentAnswersAt mirrors nodeCurrentAnswersAt for relationships.
+func (c *Core) relCurrentAnswersAt(current *types.Relationship, validAt, txAt types.Instant) bool {
+	if !c.bitemporalMigrated {
+		return false
+	}
+	tm := current.Temporal()
+	if tm == nil || tm.ValidTo != 0 {
+		return false
+	}
+	if txAt != 0 && (tm.TxFrom == 0 || tm.TxFrom > txAt) {
+		return false
+	}
+	return validAt >= c.relSortValidFrom(current)
+}
+
 func (c *Core) relAtLockedTx(id types.RelID, validAt, txAt types.Instant) (*types.Relationship, error) {
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return nil, err
@@ -354,6 +398,9 @@ func (c *Core) relAtLockedTx(id types.RelID, validAt, txAt types.Instant) (*type
 	current, err := c.getCurrentRelationship(id)
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, err
+	}
+	if current != nil && c.relCurrentAnswersAt(current, validAt, txAt) {
+		return current, nil
 	}
 
 	history, err := c.getRelHistory(id)
