@@ -923,3 +923,47 @@ aborts) — assert the POSITIVE contract instead (SafeUnmarshal returns
 ErrCorruptWire on a 200000-deep blob); removing the guard fatal-crashes the test
 binary, which is the signal.
 
+## 48. Allocate Proportional To Bytes DELIVERED, Not To An Untrusted Size/Count Field
+
+```
+BAD:  data = make([]byte, length)   // length is an attacker-controlled header field
+      if _, err := io.ReadFull(r, data); err != nil { ... }
+GOOD: var b bytes.Buffer; b.Grow(min(length, cap))
+      io.CopyN(&b, r, int64(length))  // grows with what actually arrives
+```
+
+A length/count read from an untrusted stream is a CLAIM, not a fact, until the
+bytes behind it arrive. Pre-allocating the claimed size lets a tiny input
+amplify into a huge allocation — a memory-exhaustion DoS at the trust boundary.
+The import framing had TWO such sites, both found by fuzzing `Import`
+end-to-end (`FuzzImport`) — the fuzzer didn't crash but STALLED at 0 execs/sec,
+the signature of repeated giant allocations / GC thrash, not a hang:
+
+1. `readImportStageRecord` did `make([]byte, length)` for the per-record
+   declared length (<= maxExportRecordSize = 128 MiB). A 5-byte record header
+   claiming 128 MiB on an empty body forced a 128 MiB allocation before the
+   truncation was even detected (~25-million-x amplification). Fixed with
+   `io.CopyN` into a `bytes.Buffer` (pre-reserving at most a 64 KiB cap), so the
+   buffer grows only with bytes actually read; a short stream returns
+   ErrCorruptExport having allocated ~nothing.
+2. `reserve()` pre-sized SIX replay/rollback maps and slices from the export
+   HEADER's node/rel COUNTS, capped only at `importPreallocLimit` = 1<<20. A
+   ~20-byte header claiming 1M+1M counts forced ~312 MiB of map allocation
+   before a single entity record was read. The maps are created empty in their
+   constructors and grow naturally, so the count is a pure pre-sizing hint —
+   lowered the cap to 4096 (common-case optimization kept; hostile amplification
+   bounded to ~hundreds of KiB).
+
+Rule: any `make(T, n)` / `Grow(n)` / map-capacity hint where `n` derives from an
+untrusted decoded length or count must be bounded by either (a) the bytes that
+have actually been delivered, or (b) a small constant cap — never the raw
+declared value, even when a "max" cap exists (128 MiB / 1M are themselves DoS
+sizes from a tiny input). This is the allocation-time twin of lesson 6.
+
+Detector: `runtime.ReadMemStats(&m).TotalAlloc` is cumulative (GC never lowers
+it), so a regression test can feed a tiny lying header and assert the alloc
+delta stays far below the declared size — a deterministic mutation pin
+(reverting the fix makes the delta jump to the declared 128 MiB / 312 MiB).
+Fuzz a streaming/replay boundary END-TO-END, not just the leaf decoder, and read
+a frozen exec rate as a DoS signal even when nothing crashes.
+

@@ -23,6 +23,25 @@ test to make a pass look clean.
   `safe_decode_test.go` (panic-recover, deep-nesting rejection, legit-depth pin).
 - **Re-fuzzed post-fix:** ~17M execs, 0 crashes.
 
+### Import trust boundary, end-to-end framing + replay (pass 2, v4.9.3)
+- **Attack:** new `FuzzImport` harness driving the full pipeline (record framing
+  → staging → Phase-2 replay → rollback → hash-verify) with real-export seeds +
+  adversarial framing seeds. The fuzzer did not crash — it STALLED at 0 execs/sec
+  (the GC-thrash signature of repeated giant allocations), which led to the bugs.
+- **Found (2 serious — memory-amplification DoS):**
+  1. `readImportStageRecord` did `make([]byte, declaredLength)` (≤128 MiB) before
+     reading — a 5-byte header claiming 128 MiB forced a 128 MiB allocation.
+  2. `reserve()` pre-sized 6 replay/rollback maps+slices from the header's
+     untrusted node/rel counts (cap 1<<20) — a ~20-byte header claiming 1M+1M
+     counts forced ~312 MiB.
+- **Fix:** body read via `io.CopyN` into a growing buffer (≤64 KiB pre-reserve,
+  grows with bytes actually present); `importPreallocLimit` lowered 1<<20→4096.
+  Both fail closed with `ErrCorruptExport`.
+- **Regression:** `import_fuzz_test.go` (`FuzzImport`), `import_amplification_test.go`
+  (3 `runtime.TotalAlloc`-bounded mutation pins).
+- **Re-fuzzed post-fix:** steady throughput; every cached corpus entry imports
+  in < 1 ms (verified by a per-input timing sweep).
+
 ## Still untested / weak (attack next)
 
 - **Tiered crash-fault injection:** process kill between cross-shard split-writes
@@ -30,10 +49,6 @@ test to make a pass look clean.
   under partial writes is asserted only on the happy path.
 - **Clock-skew vs rotation boundaries:** hot→warm rotation alignment, cold
   demotion, and `ShardWindow` edges under non-monotonic / skewed wall clock.
-- **Import stream end-to-end fuzzing:** the export/import record framing
-  (`import.go` tag/length/header loop) beyond the per-row wire decode now covered
-  — truncation/bit-flip is covered by lesson-44 tests but the framing parser
-  itself is not fuzzed.
 - **Other decoders:** tiered catalog/registry/index metadata files
   (`registry_file.go`, `temporal_index_file.go`, `vector_index_file.go`) decode
   flat typed structs (reviewed: no interface/deeply-nestable field, outside the

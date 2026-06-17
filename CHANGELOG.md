@@ -4,6 +4,38 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.9.3] - 2026-06-17
+
+### Fixed — import framing: untrusted size/count fields no longer amplify into huge allocations
+
+Fuzzing `Import` end-to-end (a new `FuzzImport` harness) surfaced a
+memory-exhaustion DoS at the import trust boundary: the framing/replay path
+allocated proportional to **declared** sizes from the (untrusted) stream rather
+than to bytes actually delivered. The fuzzer did not crash — it STALLED at 0
+execs/sec, the signature of repeated giant allocations and GC thrash. Two sites:
+
+1. **Per-record body.** `readImportStageRecord` did `make([]byte, length)` for
+   the declared record length (up to `maxExportRecordSize` = 128 MiB) *before*
+   reading the body. A 5-byte record header claiming 128 MiB on an empty stream
+   forced a 128 MiB allocation before the truncation was detected (~25-million×
+   amplification). Now read via `io.CopyN` into a `bytes.Buffer` (pre-reserving
+   at most 64 KiB): the buffer grows only with bytes actually present, and a
+   short stream returns `ErrCorruptExport` having allocated essentially nothing.
+2. **Header counts.** `reserve()` pre-sized six replay/rollback maps and slices
+   from the export header's node/rel counts, capped only at `importPreallocLimit`
+   = 1<<20. A ~20-byte header declaring 1M+1M counts forced ~312 MiB of map
+   allocation before any entity record was read. The maps are created empty and
+   grow naturally, so the count is a pure pre-sizing hint — `importPreallocLimit`
+   lowered to 4096 (common-case optimization kept; hostile amplification bounded
+   to ~hundreds of KiB).
+
+Tests added: `import_fuzz_test.go` (`FuzzImport` — full pipeline: framing +
+replay + rollback + hash-verify, real-export seeds + adversarial framing seeds)
+and `import_amplification_test.go` (three `runtime.TotalAlloc`-bounded mutation
+pins: oversized empty body, oversized lying body, 1M-count header). Re-fuzzed
+post-fix with steady throughput and no slow input (every cached corpus entry
+imports in < 1 ms). See `tasks/lessons.md` 48.
+
 ## [4.9.2] - 2026-06-17
 
 ### Fixed — wire decode trust boundary: hostile/corrupt msgpack can no longer crash the process

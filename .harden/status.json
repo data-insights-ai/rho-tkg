@@ -1,13 +1,12 @@
 {
-  "targeted_area": "wire decode trust boundary (storeutil NodeWire/RelWire checked decode + msgpack decode-panic and fatal stack-overflow on the any-typed PropertyWire.Value)",
+  "targeted_area": "import trust boundary, end-to-end (record framing + staging + replay): untrusted size/count fields amplifying into huge allocations (per-record body make([]byte, declaredLength) and header-count map/slice prealloc)",
   "new_serious_bugs": 2,
-  "tests_added": 7,
+  "tests_added": 4,
   "untested_surface_remaining": true,
   "remaining_areas": [
     "tiered crash-fault injection between cross-shard split-writes / mid-flush / mid-cascade",
     "clock-skew vs hot->warm rotation and cold-demotion boundaries",
-    "import stream record-framing parser fuzzing (beyond per-row wire decode)",
-    "fuzz the tiered metadata decoders and badger meta decodes independently",
+    "fuzz the tiered metadata decoders (registry/temporal-index/vector-index files) independently",
     "property/vector index query paths under adversarial values (NaN/Inf/huge-dim)",
     "long-running concurrency soak under the race detector",
     "resource-exhaustion latency/alloc cliffs on huge-but-valid inputs"

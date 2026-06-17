@@ -29,7 +29,28 @@ var (
 )
 
 const importMemoryStageLimit = 8 << 20 // 8 MiB before spilling to temp file.
-const importPreallocLimit = 1 << 20    // avoid trusting unbounded header counts for map capacity.
+
+// importPreallocLimit bounds the capacity reserved for the replay/rollback maps
+// and slices from the export HEADER's declared node/rel counts. Those counts are
+// untrusted (a header is a few bytes and is not validated against the actual
+// record stream until replay completes), so reserving the declared count would
+// let a ~20-byte header declaring 1M+1M counts amplify into hundreds of MiB of
+// map/slice allocation — a memory-exhaustion DoS at the import trust boundary.
+// The maps are created empty in newImportReplaySeen/newImportRollback and grow
+// naturally during replay, so this is a pure pre-sizing hint: a small cap keeps
+// the common-case optimization while bounding hostile amplification (a header
+// lying about 1M counts now reserves at most ~this many entries, ~hundreds of
+// KiB, not hundreds of MiB). See lessons.md 48.
+const importPreallocLimit = 4096
+
+// importBodyPreallocCap bounds the buffer pre-allocated for an inbound record
+// body. A record header may DECLARE up to maxExportRecordSize (128 MiB) while
+// the stream actually carries only a few bytes; pre-allocating the declared
+// length would let ~5 hostile bytes amplify into a 128 MiB allocation (a
+// memory-exhaustion DoS at the import trust boundary). We instead grow the body
+// buffer with the bytes actually read, pre-reserving at most this cap. See
+// lessons.md 48.
+const importBodyPreallocCap int64 = 64 << 10 // 64 KiB
 
 // Import reads a portable graph snapshot from r and restores it into c,
 // honouring the staging-directory and size-cap options. Pass tkgio.ImportOptions{}
@@ -161,14 +182,20 @@ func readImportStageRecord(r io.Reader, staged, cap int64) (tag byte, data []byt
 	if importStageCapExceeded(staged, recordSize, cap) {
 		return 0, nil, 0, fmt.Errorf("%w: staged %d bytes + record %d bytes > cap %d", ErrImportSizeLimit, staged, recordSize, cap)
 	}
-	data = make([]byte, length)
-	if _, err := io.ReadFull(r, data); err != nil {
+	// Read the body proportional to bytes actually present, not the declared
+	// length: io.CopyN grows the buffer with the data it reads and reports a
+	// short stream as an error, so a header lying about a 128 MiB length on a
+	// tiny stream costs ~64 KiB, not 128 MiB. (lessons.md 48)
+	var body bytes.Buffer
+	body.Grow(int(min(int64(length), importBodyPreallocCap)))
+	got, rerr := io.CopyN(&body, r, int64(length))
+	if rerr != nil {
 		// A record body shorter than its declared length is always
 		// structural corruption (truncated or lying stream) — classify it so
 		// consumers can errors.Is(err, ErrCorruptExport).
-		return 0, nil, 0, fmt.Errorf("%w: record body (tag=0x%02x, len=%d): %v", ErrCorruptExport, header[0], length, err)
+		return 0, nil, 0, fmt.Errorf("%w: record body (tag=0x%02x, len=%d, got=%d): %v", ErrCorruptExport, header[0], length, got, rerr)
 	}
-	return header[0], data, recordSize, nil
+	return header[0], body.Bytes(), recordSize, nil
 }
 
 // verifyImportedNodeHash recomputes the content hash of an imported node row
