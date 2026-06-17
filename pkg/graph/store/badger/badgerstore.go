@@ -22,7 +22,6 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 	"github.com/dgraph-io/badger/v4/options"
-	"github.com/vmihailenco/msgpack/v5"
 )
 
 // Store-contract sentinel error aliases for readability inside this package.
@@ -668,7 +667,7 @@ func (bs *Store) loadIndexesScan() error {
 			var n *types.Node
 			if err := item.Value(func(val []byte) error {
 				var w storepkg.NodeWire
-				if err := msgpack.Unmarshal(val, &w); err != nil {
+				if err := storepkg.SafeUnmarshal(val, &w); err != nil {
 					return fmt.Errorf("graph: unmarshal node: %w", err)
 				}
 				decoded, err := bs.decodeNodeWireForKey(w, nid.SnowflakeID())
@@ -760,7 +759,7 @@ func (bs *Store) loadIndexesScan() error {
 			var r *types.Relationship
 			if err := item.Value(func(val []byte) error {
 				var w storepkg.RelWire
-				if err := msgpack.Unmarshal(val, &w); err != nil {
+				if err := storepkg.SafeUnmarshal(val, &w); err != nil {
 					return fmt.Errorf("graph: unmarshal relationship: %w", err)
 				}
 				decoded, err := bs.decodeRelWireForKey(w, rid.SnowflakeID())
@@ -927,7 +926,7 @@ func (bs *Store) loadIndexesScan() error {
 		if err == nil {
 			var defs []propIdxDef
 			if e := item.Value(func(val []byte) error {
-				return msgpack.Unmarshal(val, &defs)
+				return storepkg.SafeUnmarshal(val, &defs)
 			}); e != nil {
 				return fmt.Errorf("graph: load property index definitions: %w", e)
 			}
@@ -978,7 +977,7 @@ func (bs *Store) loadIndexesScan() error {
 		if err == nil {
 			var tokens []uint16
 			if e := item.Value(func(val []byte) error {
-				return msgpack.Unmarshal(val, &tokens)
+				return storepkg.SafeUnmarshal(val, &tokens)
 			}); e != nil {
 				return fmt.Errorf("graph: load temporal index definitions: %w", e)
 			}
@@ -1019,7 +1018,7 @@ func (bs *Store) loadIndexesScan() error {
 		if err == nil {
 			var defs []hfIdxDef
 			if e := item.Value(func(val []byte) error {
-				return msgpack.Unmarshal(val, &defs)
+				return storepkg.SafeUnmarshal(val, &defs)
 			}); e != nil {
 				return fmt.Errorf("graph: load high-frequency index definitions: %w", e)
 			}
@@ -1072,7 +1071,7 @@ func (bs *Store) loadIndexesScan() error {
 		if err == nil {
 			var defs []vectorIdxDef
 			if e := item.Value(func(val []byte) error {
-				return msgpack.Unmarshal(val, &defs)
+				return storepkg.SafeUnmarshal(val, &defs)
 			}); e != nil {
 				return fmt.Errorf("graph: load vector index definitions: %w", e)
 			}

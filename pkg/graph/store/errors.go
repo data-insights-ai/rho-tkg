@@ -43,4 +43,15 @@ var (
 	// closed instead of misdecoding fields it does not know about. Upgrade the
 	// binary; never strip the marker by hand.
 	ErrWireFormatVersionUnsupported = errors.New("graph: on-disk wire format version not supported by this binary")
+
+	// ErrCorruptWire is returned when msgpack decoding of a persisted or
+	// imported row fails in a way that indicates corrupt or hostile bytes —
+	// in particular when the underlying msgpack decoder PANICS rather than
+	// returning an error. The vmihailenco/msgpack decoder can panic via reflect
+	// on certain malformed inputs (e.g. a duplicate map key for an
+	// interface-typed struct field such as PropertyWire.Value), so the store
+	// trust boundary recovers and converts that panic into this sentinel: a
+	// single corrupt or adversarial row must never crash the process. Wraps the
+	// recovered panic value for diagnostics; callers match with errors.Is.
+	ErrCorruptWire = errors.New("graph: corrupt wire data")
 )

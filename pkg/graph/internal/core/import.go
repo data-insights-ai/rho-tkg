@@ -354,7 +354,7 @@ func (c *Core) importReplayRecordsLocked(readRecord func() (byte, []byte, error)
 				return fmt.Errorf("%w: duplicate header record", ErrCorruptExport)
 			}
 			var hdr exportHeader
-			if err := msgpack.Unmarshal(data, &hdr); err != nil {
+			if err := storeutil.SafeUnmarshal(data, &hdr); err != nil {
 				return fmt.Errorf("%w: unmarshal header: %v", ErrCorruptExport, err)
 			}
 			if hdr.Version != exportFormatVersion {
@@ -379,7 +379,7 @@ func (c *Core) importReplayRecordsLocked(readRecord func() (byte, []byte, error)
 				return fmt.Errorf("%w: duplicate registry record", ErrCorruptExport)
 			}
 			var reg tiered.RegistryFileData
-			if err := msgpack.Unmarshal(data, &reg); err != nil {
+			if err := storeutil.SafeUnmarshal(data, &reg); err != nil {
 				return fmt.Errorf("%w: unmarshal registry: %v", ErrCorruptExport, err)
 			}
 			if err := c.validateRegistryNames("label", reg.Labels); err != nil {
@@ -573,7 +573,7 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 	switch tag {
 	case exportTagNode:
 		var wn storeutil.NodeWire
-		if err := msgpack.Unmarshal(data, &wn); err != nil {
+		if err := storeutil.SafeUnmarshal(data, &wn); err != nil {
 			return fmt.Errorf("%w: unmarshal node: %v", ErrCorruptExport, err)
 		}
 		n, err := storeutil.WireToNodeChecked(wn)
@@ -611,7 +611,7 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 
 	case exportTagNodeHist:
 		var wn storeutil.NodeWire
-		if err := msgpack.Unmarshal(data, &wn); err != nil {
+		if err := storeutil.SafeUnmarshal(data, &wn); err != nil {
 			return fmt.Errorf("%w: unmarshal node history: %v", ErrCorruptExport, err)
 		}
 		n, err := storeutil.WireToNodeChecked(wn)
@@ -657,7 +657,7 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 
 	case exportTagRel:
 		var wr storeutil.RelWire
-		if err := msgpack.Unmarshal(data, &wr); err != nil {
+		if err := storeutil.SafeUnmarshal(data, &wr); err != nil {
 			return fmt.Errorf("%w: unmarshal rel: %v", ErrCorruptExport, err)
 		}
 		rel, err := storeutil.WireToRelChecked(wr)
@@ -695,7 +695,7 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 
 	case exportTagRelHist:
 		var wr storeutil.RelWire
-		if err := msgpack.Unmarshal(data, &wr); err != nil {
+		if err := storeutil.SafeUnmarshal(data, &wr); err != nil {
 			return fmt.Errorf("%w: unmarshal rel history: %v", ErrCorruptExport, err)
 		}
 		rel, err := storeutil.WireToRelChecked(wr)

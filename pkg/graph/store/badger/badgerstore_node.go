@@ -12,7 +12,6 @@ import (
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
-	"github.com/vmihailenco/msgpack/v5"
 )
 
 func (bs *Store) PutNode(n *types.Node) error {
@@ -121,7 +120,7 @@ func (bs *Store) GetNode(nid types.NodeID) (*types.Node, error) {
 		}
 		return item.Value(func(val []byte) error {
 			var w storepkg.NodeWire
-			if err := msgpack.Unmarshal(val, &w); err != nil {
+			if err := storepkg.SafeUnmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal node: %w", err)
 			}
 			decoded, err := bs.decodeNodeWireForKey(w, id)
@@ -190,7 +189,7 @@ func (bs *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
 		}
 		return item.Value(func(val []byte) error {
 			var w storepkg.NodeWire
-			if err := msgpack.Unmarshal(val, &w); err != nil {
+			if err := storepkg.SafeUnmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal node: %w", err)
 			}
 			decoded, err := bs.decodeNodeWireForKey(w, id)
@@ -653,7 +652,7 @@ func (bs *Store) loadNodeFromBadger(txn *badgerv4.Txn, id snowflake.ID) (*types.
 	var n *types.Node
 	err = item.Value(func(val []byte) error {
 		var w storepkg.NodeWire
-		if err := msgpack.Unmarshal(val, &w); err != nil {
+		if err := storepkg.SafeUnmarshal(val, &w); err != nil {
 			return fmt.Errorf("graph: unmarshal node: %w", err)
 		}
 		decoded, err := bs.decodeNodeWireForKey(w, id)
@@ -738,7 +737,7 @@ func (bs *Store) prefetchNodeNoFill(nid types.NodeID, promote bool) (n *types.No
 		}
 		return item.Value(func(val []byte) error {
 			var w storepkg.NodeWire
-			if err := msgpack.Unmarshal(val, &w); err != nil {
+			if err := storepkg.SafeUnmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal node: %w", err)
 			}
 			decoded, err := bs.decodeNodeWireForKey(w, id)
@@ -780,7 +779,7 @@ func (bs *Store) getNodeLocked(nid types.NodeID) (*types.Node, error) {
 		}
 		return item.Value(func(val []byte) error {
 			var w storepkg.NodeWire
-			if err := msgpack.Unmarshal(val, &w); err != nil {
+			if err := storepkg.SafeUnmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal node: %w", err)
 			}
 			decoded, err := bs.decodeNodeWireForKey(w, id)

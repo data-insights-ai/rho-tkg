@@ -12,7 +12,6 @@ import (
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
-	"github.com/vmihailenco/msgpack/v5"
 )
 
 func (bs *Store) PutRelationship(r *types.Relationship) error {
@@ -138,7 +137,7 @@ func (bs *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
 		}
 		return item.Value(func(val []byte) error {
 			var w storepkg.RelWire
-			if err := msgpack.Unmarshal(val, &w); err != nil {
+			if err := storepkg.SafeUnmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal relationship: %w", err)
 			}
 			decoded, err := bs.decodeRelWireForKey(w, id)
@@ -387,7 +386,7 @@ func (bs *Store) getRelLocked(rid types.RelID) (*types.Relationship, error) {
 		}
 		return item.Value(func(val []byte) error {
 			var w storepkg.RelWire
-			if err := msgpack.Unmarshal(val, &w); err != nil {
+			if err := storepkg.SafeUnmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal relationship: %w", err)
 			}
 			decoded, err := bs.decodeRelWireForKey(w, id)
@@ -465,7 +464,7 @@ func (bs *Store) prefetchRelNoFill(rid types.RelID, promote bool) (r *types.Rela
 		}
 		return item.Value(func(val []byte) error {
 			var w storepkg.RelWire
-			if err := msgpack.Unmarshal(val, &w); err != nil {
+			if err := storepkg.SafeUnmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal relationship: %w", err)
 			}
 			decoded, err := bs.decodeRelWireForKey(w, id)

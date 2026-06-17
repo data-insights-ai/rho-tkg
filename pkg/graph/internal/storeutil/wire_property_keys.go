@@ -85,7 +85,7 @@ func MarshalRelWireWithKeys(r *types.Relationship, reg *registrypkg.PropertyKeyR
 // (V1) rows pass through unchanged.
 func UnmarshalNodeWireWithKeys(data []byte, reg *registrypkg.PropertyKeyRegistry) (NodeWire, error) {
 	var w NodeWire
-	if err := msgpack.Unmarshal(data, &w); err != nil {
+	if err := SafeUnmarshal(data, &w); err != nil {
 		return NodeWire{}, err
 	}
 	if err := ResolvePropertyKeyTokens(w.Properties, reg); err != nil {
@@ -97,7 +97,7 @@ func UnmarshalNodeWireWithKeys(data []byte, reg *registrypkg.PropertyKeyRegistry
 // UnmarshalRelWireWithKeys decodes a RelWire and resolves tokenized keys.
 func UnmarshalRelWireWithKeys(data []byte, reg *registrypkg.PropertyKeyRegistry) (RelWire, error) {
 	var w RelWire
-	if err := msgpack.Unmarshal(data, &w); err != nil {
+	if err := SafeUnmarshal(data, &w); err != nil {
 		return RelWire{}, err
 	}
 	if err := ResolvePropertyKeyTokens(w.Properties, reg); err != nil {

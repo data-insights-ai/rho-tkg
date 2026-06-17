@@ -4,6 +4,50 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.9.2] - 2026-06-17
+
+### Fixed — wire decode trust boundary: hostile/corrupt msgpack can no longer crash the process
+
+The on-disk / import decode boundary decodes untrusted msgpack bytes into
+`NodeWire` / `RelWire` before any validation runs. Two crafted-input classes
+made the `vmihailenco/msgpack/v5` decoder take down the **whole process**
+instead of returning an error — a denial of service on the exact trust
+boundary v4.6.1 hardened (lesson 44). Both were found this pass by a new fuzz
+harness (`FuzzWireToNodeChecked`) and independently confirmed by an adversarial
+decode audit:
+
+1. **Decoder panic via reflect.** A msgpack map that repeats a key bound to the
+   interface-typed `PropertyWire.Value` field makes the second decode target an
+   unaddressable `reflect.Value`, panicking with
+   `reflect: reflect.Value.SetString/SetInt using unaddressable value`. An
+   ~17-byte row triggers it. The panic fires *inside* `msgpack.Unmarshal`,
+   upstream of `WireToNodeChecked` — so every store-read and import decode site
+   (`(*badger.Store).GetNode` inside `db.View`, the importer at `import.go`)
+   panicked rather than classifying the row as corrupt.
+2. **Fatal stack overflow.** `PropertyWire.Value` is `any`; the decoder recurses
+   once per nesting level when decoding a deeply-nested array/map into it. A
+   ~hundreds-of-thousands-deep blob aborts the process with
+   `fatal error: stack overflow` — which is **not** a panic and **cannot** be
+   recovered, so it must be prevented before the decoder runs.
+
+Fix: a new `storeutil.SafeUnmarshal` is now the decode used at every untrusted
+-bytes site. It (a) runs `guardMsgpackDepth`, a non-recursive scan of the
+msgpack token stream that rejects nesting beyond `maxWireDecodeDepth` (64 — far
+above the property allowlist's 32-level limit, far below the overflow point)
+*before* handing bytes to the decoder, and (b) recovers any decoder panic. Both
+failures now return the new sentinel `store.ErrCorruptWire` (wrapped as
+`ErrCorruptExport` at the import boundary, preserving lesson 44 classification).
+Rerouted: `UnmarshalNodeWireWithKeys` / `UnmarshalRelWireWithKeys`, the custom
+-property blob decode (`reconstructCustomPropertyValue`), every `NodeWire` /
+`RelWire` / meta decode in the badger backend, and the node/rel/header/registry
+decodes in core import. (Tiered's catalog/registry/index metadata files decode
+flat typed structs with no interface or deeply-nestable field and are outside
+this bug class — reviewed, unchanged.) `msgpack.Marshal` is panic-free and
+needs no wrapper. New regression battery: `wire_fuzz_test.go` (three fuzz
+targets + crasher corpus seed) and `safe_decode_test.go` (panic-recover,
+deep-nesting rejection, and a guard-accepts-legitimate-depth pin). See
+`tasks/lessons.md` 47.
+
 ## [4.9.1] - 2026-06-13
 
 ### Added — X5 columnar DocValues capability

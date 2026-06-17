@@ -11,7 +11,6 @@ import (
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
-	"github.com/vmihailenco/msgpack/v5"
 )
 
 // Node-history methods (R5-F9 split out from badgerstore_history.go).
@@ -499,7 +498,7 @@ func (bs *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 			return nil, ErrVersionNotFound
 		}
 		var w storepkg.NodeWire
-		if err := msgpack.Unmarshal(op.value, &w); err != nil {
+		if err := storepkg.SafeUnmarshal(op.value, &w); err != nil {
 			return nil, fmt.Errorf("graph: unmarshal node version: %w", err)
 		}
 		n, err := bs.decodeNodeHistoryWireForKey(w, id, uint64(version))
@@ -521,7 +520,7 @@ func (bs *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 		}
 		return item.Value(func(val []byte) error {
 			var w storepkg.NodeWire
-			if err := msgpack.Unmarshal(val, &w); err != nil {
+			if err := storepkg.SafeUnmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal node version: %w", err)
 			}
 			decoded, err := bs.decodeNodeHistoryWireForKey(w, id, uint64(version))
@@ -629,7 +628,7 @@ func (bs *Store) getNodeHistoryByPrefix(prefix []byte) ([]*types.Node, error) {
 	result := make([]*types.Node, 0, len(keys))
 	for _, k := range keys {
 		var w storepkg.NodeWire
-		if err := msgpack.Unmarshal(entries[k], &w); err != nil {
+		if err := storepkg.SafeUnmarshal(entries[k], &w); err != nil {
 			return nil, fmt.Errorf("graph: unmarshal node version: %w", err)
 		}
 		n, err := bs.decodeNodeHistoryWireForKey(w, expectedID, historyVersionFromKey([]byte(k)))
@@ -656,7 +655,7 @@ func (bs *Store) nodeHistoryVersionsFromPrefix(prefix []byte, startVersion uint3
 	}
 	emit := func(key string, data []byte) error {
 		var w storepkg.NodeWire
-		if err := msgpack.Unmarshal(data, &w); err != nil {
+		if err := storepkg.SafeUnmarshal(data, &w); err != nil {
 			return fmt.Errorf("graph: unmarshal node version: %w", err)
 		}
 		n, err := bs.decodeNodeHistoryWireForKey(w, expectedID, historyVersionFromKey([]byte(key)))

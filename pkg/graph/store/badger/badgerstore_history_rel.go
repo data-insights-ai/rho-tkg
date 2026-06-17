@@ -9,7 +9,6 @@ import (
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
-	"github.com/vmihailenco/msgpack/v5"
 )
 
 // Relationship-history methods (R5-F9 split out from badgerstore_history.go).
@@ -166,7 +165,7 @@ func (bs *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relation
 			return nil, ErrVersionNotFound
 		}
 		var w storepkg.RelWire
-		if err := msgpack.Unmarshal(op.value, &w); err != nil {
+		if err := storepkg.SafeUnmarshal(op.value, &w); err != nil {
 			return nil, fmt.Errorf("graph: unmarshal rel version: %w", err)
 		}
 		r, err := bs.decodeRelHistoryWireForKey(w, id, uint64(version))
@@ -188,7 +187,7 @@ func (bs *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relation
 		}
 		return item.Value(func(val []byte) error {
 			var w storepkg.RelWire
-			if err := msgpack.Unmarshal(val, &w); err != nil {
+			if err := storepkg.SafeUnmarshal(val, &w); err != nil {
 				return fmt.Errorf("graph: unmarshal rel version: %w", err)
 			}
 			decoded, err := bs.decodeRelHistoryWireForKey(w, id, uint64(version))
@@ -293,7 +292,7 @@ func (bs *Store) getRelHistoryByPrefix(prefix []byte) ([]*types.Relationship, er
 	result := make([]*types.Relationship, 0, len(keys))
 	for _, k := range keys {
 		var w storepkg.RelWire
-		if err := msgpack.Unmarshal(entries[k], &w); err != nil {
+		if err := storepkg.SafeUnmarshal(entries[k], &w); err != nil {
 			return nil, fmt.Errorf("graph: unmarshal rel version: %w", err)
 		}
 		r, err := bs.decodeRelHistoryWireForKey(w, expectedID, historyVersionFromKey([]byte(k)))
@@ -320,7 +319,7 @@ func (bs *Store) relHistoryVersionsFromPrefix(prefix []byte, startVersion uint32
 	}
 	emit := func(key string, data []byte) error {
 		var w storepkg.RelWire
-		if err := msgpack.Unmarshal(data, &w); err != nil {
+		if err := storepkg.SafeUnmarshal(data, &w); err != nil {
 			return fmt.Errorf("graph: unmarshal rel version: %w", err)
 		}
 		r, err := bs.decodeRelHistoryWireForKey(w, expectedID, historyVersionFromKey([]byte(key)))

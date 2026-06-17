@@ -9,7 +9,6 @@ import (
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
-	"github.com/vmihailenco/msgpack/v5"
 )
 
 // TransactionTimeQueryCapability (NodeAsOf / RelAsOf / NodesAsOf / RelsAsOf).
@@ -204,7 +203,7 @@ func (bs *Store) NodeAsOf(nid types.NodeID, txTime types.Instant) (*types.Node, 
 	var result *types.Node
 	scanErr := bs.reverseScanHistoryVersion(storepkg.HistNodePrefix(id), func(version uint64, val []byte) (bool, error) {
 		var w storepkg.NodeWire
-		if err := msgpack.Unmarshal(val, &w); err != nil {
+		if err := storepkg.SafeUnmarshal(val, &w); err != nil {
 			return false, fmt.Errorf("graph: unmarshal node version: %w", err)
 		}
 		n, err := bs.decodeNodeHistoryWireForKey(w, id, version)
@@ -251,7 +250,7 @@ func (bs *Store) RelAsOf(rid types.RelID, txTime types.Instant) (*types.Relation
 	var result *types.Relationship
 	scanErr := bs.reverseScanHistoryVersion(storepkg.HistRelPrefix(id), func(version uint64, val []byte) (bool, error) {
 		var w storepkg.RelWire
-		if err := msgpack.Unmarshal(val, &w); err != nil {
+		if err := storepkg.SafeUnmarshal(val, &w); err != nil {
 			return false, fmt.Errorf("graph: unmarshal rel version: %w", err)
 		}
 		r, err := bs.decodeRelHistoryWireForKey(w, id, version)

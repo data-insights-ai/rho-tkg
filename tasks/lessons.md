@@ -868,3 +868,58 @@ world-time the entity covered then must still resolve to its pre-correction
 value, with no holes and no leaked corrected value. A single-backend or
 single-txAt test passes the buggy in-place cascade.
 
+## 47. The Decode Step Is Part Of The Trust Boundary — And `recover()` Cannot Catch A Fatal Stack Overflow
+
+```
+BAD:  msgpack.Unmarshal(diskBytes, &NodeWire{})  // raw, at every store/import read
+GOOD: storeutil.SafeUnmarshal(diskBytes, &w)     // depth-guard THEN recover
+```
+
+Lesson 6/44 said "the store is the trust boundary; verify untrusted bytes." The
+miss: the *very first* step — `msgpack.Unmarshal` itself — was assumed to only
+ever return an error on bad input. It does not. The vmihailenco/msgpack/v5
+decoder turns hostile/corrupt bytes into a **process crash** two ways, both
+upstream of `WireToNodeChecked`/`ValidateNodeWire` so every careful validator
+ran too late:
+
+1. **Reflect panic.** A msgpack map that repeats a key bound to an
+   interface-typed struct field (`PropertyWire.Value any`) makes the second
+   decode target an unaddressable `reflect.Value` → `panic: reflect:
+   reflect.Value.SetString/SetInt using unaddressable value`. ~17 bytes.
+2. **Fatal stack overflow.** `Value any` decodes deeply-nested arrays/maps by
+   recursing once per level; a hundreds-of-thousands-deep blob aborts with
+   `fatal error: stack overflow`. This is NOT a panic — `recover()` cannot
+   catch it. It must be prevented BEFORE the decoder runs.
+
+So the fix is two-layered and the ORDER matters: `SafeUnmarshal` first runs
+`guardMsgpackDepth` (a non-recursive scan of the msgpack token stream — explicit
+pending-count stack, never recursion — that rejects nesting beyond
+`maxWireDecodeDepth`=64, far above the 32-level property allowlist, far below the
+overflow point), THEN `defer recover()` around the decode for the panic class.
+Both return the new `store.ErrCorruptWire` sentinel. The guard is deliberately
+NOT a full validator — over-permissive is fine (msgpack + recover backstop it);
+it only must never UNDER-count depth and must keep its cursor aligned by skipping
+scalar payloads exactly.
+
+Why depth 64 and not lower: legitimate wire is map(1)→"p" array(2)→PropertyWire
+map(3)→value, and a value nested to the allowlist's 32-level limit sits at ~35;
+64 leaves headroom so the guard never rejects data that would pass validation.
+Pin it with a "guard accepts a depth-30 property + every seed entity" test —
+lowering the cap below ~36 must fail that test.
+
+Audit recipe (every fix needs the grep): `grep -rn 'msgpack.Unmarshal(' pkg/ |
+grep -v _test`. Every hit decoding persisted or imported bytes owes
+`SafeUnmarshal`. `msgpack.Marshal` is panic-free and needs no wrapper. Decodes
+into flat typed structs with no interface or deeply-nestable field (tiered
+catalog/registry/index metadata) are outside this class but routing them is
+harmless (SafeUnmarshal returns the raw error on the normal path, preserving
+`errors.Is`).
+
+Detector: a fuzz target that feeds arbitrary bytes to the decode boundary and
+asserts "never panics, returns entity-or-error" (`FuzzWireToNodeChecked`). It
+found the panic on its own first run; the saved crasher stays as a corpus seed.
+A fatal-overflow regression can't be a normal failing assertion (the process
+aborts) — assert the POSITIVE contract instead (SafeUnmarshal returns
+ErrCorruptWire on a 200000-deep blob); removing the guard fatal-crashes the test
+binary, which is the signal.
+

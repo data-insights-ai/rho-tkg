@@ -583,7 +583,7 @@ func reconstructCustomPropertyValue(data []byte, typeName string, pointer bool) 
 	if !ok {
 		return nil, fmt.Errorf("custom property type %q is not registered", typeName)
 	}
-	if err := msgpack.Unmarshal(data, target); err != nil {
+	if err := SafeUnmarshal(data, target); err != nil {
 		return nil, fmt.Errorf("unmarshal custom property %s: %w", typeName, err)
 	}
 	if pointer {

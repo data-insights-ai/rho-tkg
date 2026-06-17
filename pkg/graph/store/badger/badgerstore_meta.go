@@ -211,7 +211,7 @@ func (bs *Store) LoadLabelRegistry(reg *registrypkg.LabelRegistry) (bool, error)
 			return err
 		}
 		return item.Value(func(val []byte) error {
-			return msgpack.Unmarshal(val, &names)
+			return storepkg.SafeUnmarshal(val, &names)
 		})
 	})
 	if err != nil {
@@ -260,7 +260,7 @@ func (bs *Store) LoadRelTypeRegistry(reg *registrypkg.RelTypeRegistry) (bool, er
 			return err
 		}
 		return item.Value(func(val []byte) error {
-			return msgpack.Unmarshal(val, &names)
+			return storepkg.SafeUnmarshal(val, &names)
 		})
 	})
 	if err != nil {
@@ -369,7 +369,7 @@ func (bs *Store) LoadPropertyKeyRegistry(reg *registrypkg.PropertyKeyRegistry) (
 			return err
 		}
 		return item.Value(func(val []byte) error {
-			return msgpack.Unmarshal(val, &names)
+			return storepkg.SafeUnmarshal(val, &names)
 		})
 	})
 	if err != nil {
