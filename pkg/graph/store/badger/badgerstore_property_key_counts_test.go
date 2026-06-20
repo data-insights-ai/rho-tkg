@@ -110,3 +110,49 @@ func TestBadgerStoreNodeCountByLabelAndPropertyKeyRebuildsOnOpen(t *testing.T) {
 		t.Fatalf("label 9 id after reopen = (%d, %v), want (0, nil)", got, err)
 	}
 }
+
+func TestBadgerStoreNodeCountByLabelAndPropertyKeyErrors(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	if _, err := bs.NodeCountByLabelAndPropertyKey(0, "id"); err == nil {
+		t.Fatal("token 0 should be rejected")
+	}
+	if _, err := bs.NodeCountByLabelAndPropertyKey(1, "tkg_version"); err == nil {
+		t.Fatal("shadow property key should be rejected")
+	}
+	if err := bs.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if _, err := bs.NodeCountByLabelAndPropertyKey(1, "id"); err == nil {
+		t.Fatal("closed store should error")
+	}
+}
+
+// TestBadgerStoreAdjustNodePropertyKeyCountsGuards covers the defensive guards
+// in adjustNodePropertyKeyCounts that ordinary mutation paths never hit: a nil
+// node, a zero delta, and a node whose only label token is the reserved 0.
+func TestBadgerStoreAdjustNodePropertyKeyCountsGuards(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	// nil node and zero delta are no-ops.
+	bs.adjustNodePropertyKeyCounts(nil, 1)
+	zeroDelta := types.NewNode(types.NodeID(snowflake.ID(301)), 1, nil)
+	if err := zeroDelta.SetProperty("id", int64(1)); err != nil {
+		t.Fatalf("SetProperty zeroDelta.id: %v", err)
+	}
+	bs.adjustNodePropertyKeyCounts(zeroDelta, 0)
+
+	// A node whose only label token is the reserved 0 contributes nothing.
+	zeroTok := types.NewNode(types.NodeID(snowflake.ID(302)), 0, nil)
+	if err := zeroTok.SetProperty("id", int64(1)); err != nil {
+		t.Fatalf("SetProperty zeroTok.id: %v", err)
+	}
+	bs.adjustNodePropertyKeyCounts(zeroTok, 1)
+
+	// None of the guarded calls created a counter for (label 1, "id").
+	if got, err := bs.NodeCountByLabelAndPropertyKey(1, "id"); err != nil || got != 0 {
+		t.Fatalf("count after guarded adjusts = (%d, %v), want (0, nil)", got, err)
+	}
+}

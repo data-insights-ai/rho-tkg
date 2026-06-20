@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -170,6 +171,93 @@ func TestGraphStats_NodeCountByLabelAndPropertyKey(t *testing.T) {
 	}
 	if got, err := g.Stats.NodeCountByLabelAndPropertyKey("StatsPropUser", "id"); err != nil || got != 0 {
 		t.Fatalf("User/id after delete node = (%d, %v), want (0, nil)", got, err)
+	}
+}
+
+func TestGraphStats_NodeCountByLabelAndPropertyKeyErrors(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{})
+	ctx := context.Background()
+	if _, err := g.Nodes.Add(ctx, []string{"StatsErrPerson"}, map[string]any{"id": int64(1)}); err != nil {
+		t.Fatalf("seed Add: %v", err)
+	}
+
+	// Empty label is rejected before any store access.
+	if _, err := g.Stats.NodeCountByLabelAndPropertyKey("", "id"); err == nil {
+		t.Fatal("empty label should be rejected")
+	}
+	// Reserved shadow property key is rejected.
+	if _, err := g.Stats.NodeCountByLabelAndPropertyKey("StatsErrPerson", "tkg_version"); err == nil {
+		t.Fatal("shadow property key should be rejected")
+	}
+	// Closed graph surfaces ErrGraphClosed.
+	if err := g.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if _, err := g.Stats.NodeCountByLabelAndPropertyKey("StatsErrPerson", "id"); !errors.Is(err, ErrGraphClosed) {
+		t.Fatalf("closed graph = %v, want ErrGraphClosed", err)
+	}
+}
+
+// TestGraphStats_NodeCountByLabelAndPropertyKeyCapabilityMissing pins the
+// behaviour on a backend that satisfies only MandatoryStore: the optional
+// NodePropertyKeyStatsCapability is absent, so the call surfaces the typed
+// sentinel rather than silently returning 0.
+func TestGraphStats_NodeCountByLabelAndPropertyKeyCapabilityMissing(t *testing.T) {
+	t.Parallel()
+	g := newMandatoryOnlyGraph(t)
+	ctx := context.Background()
+	if _, err := g.Nodes.Add(ctx, []string{"Person"}, map[string]any{"id": int64(1)}); err != nil {
+		t.Fatalf("seed Add: %v", err)
+	}
+	if _, err := g.Stats.NodeCountByLabelAndPropertyKey("Person", "id"); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
+		t.Fatalf("capability-missing = %v, want ErrCapabilityNotSupported", err)
+	}
+}
+
+// propKeyStatsFaultStore satisfies MandatoryStore (via the embedded memory
+// store) AND NodePropertyKeyStatsCapability, but returns a caller-controlled
+// count/error from the capability method so the core wrapper's error and
+// invariant-validation branches are observable.
+type propKeyStatsFaultStore struct {
+	storepkg.MandatoryStore
+	count int
+	err   error
+}
+
+func (s *propKeyStatsFaultStore) NodeCountByLabelAndPropertyKey(uint16, string) (int, error) {
+	return s.count, s.err
+}
+
+func TestGraphStats_NodeCountByLabelAndPropertyKeyStoreFaults(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	// A store error propagates unchanged.
+	errBoom := errors.New("prop-key stats boom")
+	gErr, err := New(Config{Store: &propKeyStatsFaultStore{MandatoryStore: memory.New(), err: errBoom}})
+	if err != nil {
+		t.Fatalf("New (err store): %v", err)
+	}
+	t.Cleanup(func() { _ = gErr.Close() })
+	if _, err := gErr.Nodes.Add(ctx, []string{"Person"}, nil); err != nil {
+		t.Fatalf("seed Add (err store): %v", err)
+	}
+	if _, err := gErr.Stats.NodeCountByLabelAndPropertyKey("Person", "id"); !errors.Is(err, errBoom) {
+		t.Fatalf("store error = %v, want errBoom", err)
+	}
+
+	// A negative count from the store is rejected as an invariant violation.
+	gNeg, err := New(Config{Store: &propKeyStatsFaultStore{MandatoryStore: memory.New(), count: -1}})
+	if err != nil {
+		t.Fatalf("New (neg store): %v", err)
+	}
+	t.Cleanup(func() { _ = gNeg.Close() })
+	if _, err := gNeg.Nodes.Add(ctx, []string{"Person"}, nil); err != nil {
+		t.Fatalf("seed Add (neg store): %v", err)
+	}
+	if _, err := gNeg.Stats.NodeCountByLabelAndPropertyKey("Person", "id"); err == nil {
+		t.Fatal("negative store count should be rejected")
 	}
 }
 

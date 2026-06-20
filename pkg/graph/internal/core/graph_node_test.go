@@ -9,6 +9,7 @@ import (
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -1361,6 +1362,126 @@ func TestGraphForEachNodes(t *testing.T) {
 	}
 	if visits != 1 {
 		t.Fatalf("ForEach() early stop visits = %d, want 1", visits)
+	}
+}
+
+func TestGraphForEachNodes_NilCallbackAndClosed(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{Store: memory.New()})
+	if err := g.Nodes.ForEach(storepkg.QueryOpts{}, nil); !errors.Is(err, grapherr.ErrNilCallback) {
+		t.Fatalf("ForEach(nil) err = %v, want ErrNilCallback", err)
+	}
+	if err := g.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if err := g.Nodes.ForEach(storepkg.QueryOpts{}, func(*types.Node) bool { return true }); err == nil {
+		t.Fatal("ForEach on a closed graph should error")
+	}
+}
+
+func TestGraphForEachNodes_InvalidOpts(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{Store: memory.New()})
+	if err := g.Nodes.ForEach(storepkg.QueryOpts{Limit: -1}, func(*types.Node) bool { return true }); err == nil {
+		t.Fatal("ForEach with a negative limit should be rejected")
+	}
+}
+
+// TestGraphForEachNodes_FallbackPaths covers the All-backed fallback that runs
+// for paginated and temporal opts (the fast-path ID scan only serves
+// current-state, unpaginated queries).
+func TestGraphForEachNodes_FallbackPaths(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{Store: memory.New()})
+	ctx := context.Background()
+	for i := 0; i < 3; i++ {
+		if _, err := g.Nodes.Add(ctx, []string{"Person"}, map[string]any{"i": int64(i)}); err != nil {
+			t.Fatalf("Add %d: %v", i, err)
+		}
+	}
+
+	// Pagination forces the fallback; Limit caps the visited count.
+	visited := 0
+	if err := g.Nodes.ForEach(storepkg.QueryOpts{Limit: 2}, func(*types.Node) bool {
+		visited++
+		return true
+	}); err != nil {
+		t.Fatalf("ForEach(Limit:2): %v", err)
+	}
+	if visited != 2 {
+		t.Fatalf("ForEach(Limit:2) visited = %d, want 2", visited)
+	}
+
+	// Fallback early-stop.
+	visited = 0
+	if err := g.Nodes.ForEach(storepkg.QueryOpts{Limit: 3}, func(*types.Node) bool {
+		visited++
+		return false
+	}); err != nil {
+		t.Fatalf("ForEach fallback early stop: %v", err)
+	}
+	if visited != 1 {
+		t.Fatalf("fallback early stop visited = %d, want 1", visited)
+	}
+
+	// Temporal opts also force the fallback and must still surface all live
+	// nodes. ValidAt is set far in the future (well past the nodes' snowflake
+	// effective valid-from) so every live node qualifies.
+	visited = 0
+	if err := g.Nodes.ForEach(storepkg.QueryOpts{ValidAt: 1 << 50}, func(*types.Node) bool {
+		visited++
+		return true
+	}); err != nil {
+		t.Fatalf("ForEach(ValidAt): %v", err)
+	}
+	if visited != 3 {
+		t.Fatalf("ForEach(ValidAt) visited = %d, want 3", visited)
+	}
+}
+
+// TestGraphForEachNodes_FastPathSkipsDeletedRow proves the fast path tolerates a
+// row that vanishes mid-iteration. forEachNodeID snapshots IDs up front
+// (two-phase) and invokes callbacks outside store locks, so deleting the
+// not-yet-visited node makes its later GetNode return ErrNodeNotFound, which the
+// fast path skips instead of failing.
+func TestGraphForEachNodes_FastPathSkipsDeletedRow(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{Store: memory.New()})
+	ctx := context.Background()
+	a, err := g.Nodes.Add(ctx, []string{"Person"}, map[string]any{"n": "a"})
+	if err != nil {
+		t.Fatalf("Add a: %v", err)
+	}
+	b, err := g.Nodes.Add(ctx, []string{"Person"}, map[string]any{"n": "b"})
+	if err != nil {
+		t.Fatalf("Add b: %v", err)
+	}
+
+	var seen []types.NodeID
+	dropped := false
+	err = g.Nodes.ForEach(storepkg.QueryOpts{}, func(n *types.Node) bool {
+		seen = append(seen, n.ID())
+		if !dropped {
+			dropped = true
+			other := b.ID()
+			if n.ID() == b.ID() {
+				other = a.ID()
+			}
+			if delErr := g.Nodes.Delete(ctx, other); delErr != nil {
+				t.Fatalf("Delete during iteration: %v", delErr)
+			}
+		}
+		return true
+	})
+	if err != nil {
+		t.Fatalf("ForEach with concurrent delete: %v", err)
+	}
+	if len(seen) != 1 {
+		t.Fatalf("ForEach saw %d nodes, want 1 (the deleted row must be skipped)", len(seen))
 	}
 }
 
