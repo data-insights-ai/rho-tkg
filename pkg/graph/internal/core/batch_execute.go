@@ -567,6 +567,9 @@ func restoreQueuedPendingNodeLabels(nodes []pendingNode) {
 }
 
 func syncPendingNodeResult(pn pendingNode) {
+	if pn.result == nil {
+		return
+	}
 	*pn.result = *pn.node
 }
 

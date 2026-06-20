@@ -1632,7 +1632,10 @@ func TestMandatoryBulkReadRowsRejectInvalidExternalRows(t *testing.T) {
 	if history, err := g.Nodes.History(a.ID()); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || history != nil {
 		t.Fatalf("Nodes.History nil row = (%v, %v), want nil, ErrInvalidStoreMutation", history, err)
 	}
-	if node, err := g.Temporal.NodeAt(a.ID(), a.Temporal().TxFrom); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || node != nil {
+	// Query a historical instant (before the node's valid-from) so NodeAt must
+	// read history and reject the injected nil row — the current-row fast path
+	// answers current/future valid times without a history read.
+	if node, err := g.Temporal.NodeAt(a.ID(), 1); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || node != nil {
 		t.Fatalf("NodeAt nil history row = (%v, %v), want nil, ErrInvalidStoreMutation", node, err)
 	}
 	if valid, err := g.Hash.VerifyNodeChain(a.ID()); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || valid {
@@ -1656,7 +1659,8 @@ func TestMandatoryBulkReadRowsRejectInvalidExternalRows(t *testing.T) {
 	if history, err := g.Rels.History(rel.ID()); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || history != nil {
 		t.Fatalf("Rels.History nil row = (%v, %v), want nil, ErrInvalidStoreMutation", history, err)
 	}
-	if gotRel, err := g.Temporal.RelAt(rel.ID(), rel.Temporal().TxFrom); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || gotRel != nil {
+	// Historical instant forces the history read (see the NodeAt case above).
+	if gotRel, err := g.Temporal.RelAt(rel.ID(), 1); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || gotRel != nil {
 		t.Fatalf("RelAt nil history row = (%v, %v), want nil, ErrInvalidStoreMutation", gotRel, err)
 	}
 	if valid, err := g.Hash.VerifyRelChain(rel.ID()); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || valid {

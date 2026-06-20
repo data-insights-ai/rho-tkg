@@ -229,6 +229,21 @@ func (c *Core) nodeCountByLabel(tok uint16) (int, error) {
 	return count, nil
 }
 
+func (c *Core) nodeCountByLabelAndPropertyKey(tok uint16, propertyKey string) (int, error) {
+	stats, ok := c.store.(storepkg.NodePropertyKeyStatsCapability)
+	if !ok {
+		return 0, storepkg.ErrCapabilityNotSupported
+	}
+	count, err := stats.NodeCountByLabelAndPropertyKey(tok, propertyKey)
+	if err != nil {
+		return 0, err
+	}
+	if err := validateStoreCount("NodeCountByLabelAndPropertyKey", count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 func (c *Core) relCountByType(tok uint16) (int, error) {
 	count, err := c.store.RelCountByType(tok)
 	if err != nil {

@@ -17,11 +17,31 @@ import (
 // (R5-F5: queue methods must respect the same lifecycle gate as standalone
 // mutations).
 func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.Node, error) {
+	nodes, err := b.addNodes(labels, props, 1, true)
+	if err != nil {
+		return nil, err
+	}
+	return nodes[0], nil
+}
+
+// AddNodes queues count node creations with the same labels and properties.
+// It is the write-only counterpart to AddNode: no caller-visible node skeletons
+// are returned, so the queued nodes cannot be used as relationship endpoints.
+// Execute still persists ordinary nodes and reports ordinary batch results.
+func (b *BatchBuilder) AddNodes(labels []string, props map[string]any, count int) error {
+	_, err := b.addNodes(labels, props, count, false)
+	return err
+}
+
+func (b *BatchBuilder) addNodes(labels []string, props map[string]any, count int, keepResults bool) ([]*types.Node, error) {
 	if err := b.lockOpen(); err != nil {
 		return nil, err
 	}
 	defer b.mu.Unlock()
 
+	if count < 0 {
+		return nil, fmt.Errorf("%w: negative node count %d", storepkg.ErrInvalidStoreMutation, count)
+	}
 	if err := b.g.checkOpen(); err != nil {
 		return nil, err
 	}
@@ -32,6 +52,9 @@ func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.No
 	}
 	if err := b.g.validateNodeCreateLabels(labels); err != nil {
 		return nil, err
+	}
+	if count == 0 {
+		return nil, nil
 	}
 
 	// Extract reserved provenance fields before property validation (tkg_ prefix is rejected).
@@ -49,8 +72,7 @@ func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.No
 	if err := b.g.validateProperties(props); err != nil {
 		return nil, err
 	}
-
-	ps, err := types.NewOwnedPropertySlice(props)
+	baseProps, err := types.NewPropertySlice(props)
 	if err != nil {
 		return nil, fmt.Errorf("graph: batch node properties: %w", err)
 	}
@@ -59,46 +81,58 @@ func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.No
 	if err != nil {
 		return nil, fmt.Errorf("graph: batch label: %w", err)
 	}
-
-	id := b.g.nextNodeID()
-	n := types.NewNode(id, labelTokens.primary, labelTokens.extras)
-	if err := n.SetOwnedProperties(ps); err != nil {
-		return nil, fmt.Errorf("graph: batch node properties: %w", err)
-	}
-
-	hash, err := integrity.ComputeNodeHashChecked(n, canonicalLabels)
+	hashSuffix, err := integrity.PrecomputeNodeHashSuffixChecked(canonicalLabels, baseProps)
 	if err != nil {
 		return nil, fmt.Errorf("graph: batch node hash: %w", err)
 	}
-	nodeIntegrity := &types.NodeIntegrity{
-		Hash:               hash,
-		PrevHash:           "",
-		AuthorID:           authorID,
-		Signature:          sig,
-		AuthorizedBy:       authorizedBy,
-		AuthorizationLevel: authLevel,
-	}
-	n.SetIntegrity(nodeIntegrity)
 
-	// Build caller-provided temporal metadata (TxFrom is stamped in Execute
-	// so the recorded transaction time reflects when the batch actually
-	// commits, not when AddNode was queued — see Execute()).
-	temporal := &types.TemporalMetadata{
-		ValidFrom: validFrom,
-		ValidTo:   validTo,
-		CreatedAt: createdAt,
+	var results []*types.Node
+	if keepResults {
+		results = make([]*types.Node, 0, count)
 	}
+	for i := 0; i < count; i++ {
+		id := b.g.nextNodeID()
+		n := types.NewNode(id, labelTokens.primary, labelTokens.extras)
+		if err := n.SetProperties(baseProps); err != nil {
+			return nil, fmt.Errorf("graph: batch node properties: %w", err)
+		}
 
-	b.nodes = append(b.nodes, pendingNode{
-		node:               n,
-		result:             n.DeepCopy(),
-		labels:             canonicalLabels,
-		queuedPrimaryToken: labelTokens.primary,
-		queuedExtraTokens:  append([]uint16(nil), labelTokens.extras...),
-		nodeIntegrity:      nodeIntegrity,
-		temporal:           temporal,
-	})
-	return b.nodes[len(b.nodes)-1].result, nil
+		hash := integrity.ComputeNodeHashFromSuffix(n.ID(), n.Version(), hashSuffix)
+		nodeIntegrity := &types.NodeIntegrity{
+			Hash:               hash,
+			PrevHash:           "",
+			AuthorID:           authorID,
+			Signature:          sig,
+			AuthorizedBy:       authorizedBy,
+			AuthorizationLevel: authLevel,
+		}
+		n.SetIntegrity(nodeIntegrity)
+
+		// Build caller-provided temporal metadata (TxFrom is stamped in
+		// Execute so the recorded transaction time reflects when the batch
+		// actually commits, not when the node was queued).
+		temporal := &types.TemporalMetadata{
+			ValidFrom: validFrom,
+			ValidTo:   validTo,
+			CreatedAt: createdAt,
+		}
+
+		var result *types.Node
+		if keepResults {
+			result = n.DeepCopy()
+			results = append(results, result)
+		}
+		b.nodes = append(b.nodes, pendingNode{
+			node:               n,
+			result:             result,
+			labels:             canonicalLabels,
+			queuedPrimaryToken: labelTokens.primary,
+			queuedExtraTokens:  append([]uint16(nil), labelTokens.extras...),
+			nodeIntegrity:      nodeIntegrity,
+			temporal:           temporal,
+		})
+	}
+	return results, nil
 }
 
 // AddRelationship queues a relationship for creation. The type name and

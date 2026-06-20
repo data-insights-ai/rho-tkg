@@ -197,6 +197,24 @@ func TestComputeNodeHash_FixedVectorBoolProp(t *testing.T) {
 	}
 }
 
+func TestComputeNodeHashFromSuffixMatchesComputeNodeHash(t *testing.T) {
+	n := newNodeForHash(t, 99, 3, map[string]any{
+		"name": "Alice",
+		"age":  int64(42),
+	})
+	labels := []string{"Person", "Actor"}
+	props := n.Properties()
+	suffix, err := PrecomputeNodeHashSuffixChecked(labels, props)
+	if err != nil {
+		t.Fatalf("PrecomputeNodeHashSuffixChecked: %v", err)
+	}
+	got := ComputeNodeHashFromSuffix(n.ID(), n.Version(), suffix)
+	want := ComputeNodeHash(n, labels)
+	if got != want {
+		t.Fatalf("suffix hash = %q, want ComputeNodeHash %q", got, want)
+	}
+}
+
 // TestComputeRelHash_FixedVectorEmpty pins the rel digest for KNOWS, no props.
 func TestComputeRelHash_FixedVectorEmpty(t *testing.T) {
 	r := types.NewRelationship(

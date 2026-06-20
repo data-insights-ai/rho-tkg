@@ -41,6 +41,7 @@ type Ops interface {
 	NodeCount() (int, error)
 	RelCount() (int, error)
 	NodeCountByLabel(label string) (int, error)
+	NodeCountByLabelAndPropertyKey(label, propertyKey string) (int, error)
 	RelCountByType(typeName string) (int, error)
 	AllLabelCounts() (map[string]int, error)
 	AllRelTypeCounts() (map[string]int, error)
@@ -124,6 +125,16 @@ func (a *API) NodeCountByLabel(label string) (int, error) {
 		return 0, err
 	}
 	return ops.NodeCountByLabel(label)
+}
+
+// NodeCountByLabelAndPropertyKey returns the count of current nodes carrying
+// label with an indexable scalar propertyKey value.
+func (a *API) NodeCountByLabelAndPropertyKey(label, propertyKey string) (int, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, err
+	}
+	return ops.NodeCountByLabelAndPropertyKey(label, propertyKey)
 }
 
 // RelCountByType returns the count of relationships of the given type.

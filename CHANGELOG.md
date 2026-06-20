@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Performance — temporal point queries skip history when the current row answers
+
+`NodeAt` / `NodeAtTx` / `RelAt` / `RelAtTx` (and the plural `NodesAt` / temporal
+`ByLabel` paths that call them per entity) materialized and decoded an entity's
+**entire** version chain on every query, even when the query asks for a
+current/recent valid time that the live current row already answers. On the
+badger backend that is the dominant cost — O(versions) of msgpack decode per
+entity per query.
+
+`nodeAtLockedTx` / `relAtLockedTx` now short-circuit: on a migrated store, when
+the current row is the open tile (the resolver guarantees exactly one, carrying
+the max valid-from and highest belief), is visible at `txAt` (recorded by then —
+lesson 43), and its open interval covers `validAt`, it is returned without
+loading history. No other version can outrank it for that `validAt` (closed tiles
+end at or before the open tile's valid-from; no live row has a higher belief over
+the open tail). Historical valid times still fall through to the full
+materialize+scan, and append-only cascade chains keep the existing belief overlay.
+
+Benchmark (badger in-memory, `NodeAt` at the latest valid time): flat **~95–215
+ns / 4 allocs** regardless of history depth, vs the historical (slow-path) query
+on the same entity growing 20µs→290µs / 187→5160 allocs from depth 8→256 — the
+fast path no longer scales with chain length. Gated by
+`TestNodeAt_CurrentRowFastPathSkipsHistory` (a history-faulting store proves the
+read is skipped for current/future valid times and still surfaces for historical
+ones).
+
 ## [4.9.3] - 2026-06-17
 
 ### Fixed — import framing: untrusted size/count fields no longer amplify into huge allocations

@@ -184,6 +184,9 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePr
 			}
 		}
 		// Property, temporal, and vector indexes: node data unavailable, brute-force purge.
+		// Leave property-key counters conservatively positive: without the row
+		// we cannot know which keys to decrement, and positive overcounts only
+		// cause extra scans while undercounts could make planners prune matches.
 		indexpkg.PurgeNodeFromAllPropertyIndexes(bs.propertyIndexes, id)
 		indexpkg.PurgeNodeFromAllTemporalIndexes(bs.temporalIndexes, id)
 		indexpkg.PurgeNodeFromAllHighFrequencyIndexes(bs.hfIndexes, id)
@@ -216,6 +219,7 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePr
 		bs.getOrCreateLabelCounter(tok).Add(-1)
 	}
 
+	bs.removeNodePropertyKeyCounts(n)
 	indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, n, id)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, n, id)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, n, id)
@@ -467,6 +471,7 @@ func (bs *Store) PutNodesBatch(nodes []*types.Node) error {
 			ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tok, nd.id)})
 			bs.getOrCreateLabelCounter(tok).Add(1)
 		}
+		bs.addNodePropertyKeyCounts(n)
 		indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, n, nd.id)
 		indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, n, nd.id)
 		indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, n, nd.id)
@@ -584,6 +589,7 @@ func (bs *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 			bs.getOrCreateLabelCounter(tok).Add(-1)
 		}
 
+		bs.removeNodePropertyKeyCounts(n)
 		indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, n, id)
 		indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, n, id)
 		indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, n, id)

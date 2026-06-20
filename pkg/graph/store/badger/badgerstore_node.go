@@ -64,6 +64,7 @@ func (bs *Store) PutNode(n *types.Node) error {
 		bs.getOrCreateLabelCounter(tok).Add(1)
 	}
 
+	bs.addNodePropertyKeyCounts(n)
 	indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, n, id)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, n, id)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, n, id)
@@ -372,6 +373,7 @@ func (bs *Store) DeleteNode(nid types.NodeID) error {
 		bs.getOrCreateLabelCounter(tok).Add(-1)
 	}
 
+	bs.removeNodePropertyKeyCounts(n)
 	indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, n, id)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, n, id)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, n, id)
@@ -443,6 +445,7 @@ func (bs *Store) ReplaceNode(n *types.Node) error {
 	}
 
 	// Update property, temporal, and vector indexes: remove old entries, add new.
+	bs.removeNodePropertyKeyCounts(old)
 	indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, old, id)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
@@ -450,6 +453,7 @@ func (bs *Store) ReplaceNode(n *types.Node) error {
 	bs.nodeCache.Put(id, freezeNodeCopy(n))
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(n)
 	bs.bumpNodeRevLocked(nid)
+	bs.addNodePropertyKeyCounts(n)
 	indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, n, id)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, n, id)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, n, id)
@@ -515,6 +519,7 @@ func (bs *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 	}
 
 	// Update property, temporal, and vector indexes using the current old node state.
+	bs.removeNodePropertyKeyCounts(old)
 	indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, old, id)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
@@ -535,6 +540,7 @@ func (bs *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 	bs.nodeCache.Put(id, freezeNodeCopy(updatedNode))
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
 	bs.bumpNodeRevLocked(nid)
+	bs.addNodePropertyKeyCounts(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, updatedNode, id)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, updatedNode, id)
@@ -603,6 +609,7 @@ func (bs *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 		return err
 	}
 
+	bs.removeNodePropertyKeyCounts(old)
 	indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, old, id)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
@@ -621,6 +628,7 @@ func (bs *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 	bs.nodeCache.Put(id, freezeNodeCopy(updatedNode))
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
 	bs.bumpNodeRevLocked(nid)
+	bs.addNodePropertyKeyCounts(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, updatedNode, id)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, updatedNode, id)

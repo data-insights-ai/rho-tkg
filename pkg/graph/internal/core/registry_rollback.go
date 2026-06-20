@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"slices"
 
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 )
@@ -190,6 +191,8 @@ func (c *Core) getOrCreateBatchNodeLabelsWithSnapshot(nodes []pendingNode) ([]no
 	c.registryMu.Lock()
 	snapshot := c.labels.ExportNames()
 	out := make([]nodeLabelTokens, len(nodes))
+	var previousLabels []string
+	var previousTokens nodeLabelTokens
 	fail := func(err error) ([]nodeLabelTokens, []string, []string, bool, error) {
 		allocated := newlyAllocatedNames(snapshot, c.labels.ExportNames())
 		if len(allocated) > 0 {
@@ -207,6 +210,10 @@ func (c *Core) getOrCreateBatchNodeLabelsWithSnapshot(nodes []pendingNode) ([]no
 		if len(pn.labels) == 0 {
 			return fail(ErrNoLabels)
 		}
+		if slices.Equal(previousLabels, pn.labels) {
+			out[i] = previousTokens
+			continue
+		}
 		primary, err := c.labels.GetOrCreate(pn.labels[0])
 		if err != nil {
 			return fail(fmt.Errorf("graph: batch primary label: %w", err))
@@ -222,6 +229,8 @@ func (c *Core) getOrCreateBatchNodeLabelsWithSnapshot(nodes []pendingNode) ([]no
 			}
 			out[i].extras = append(out[i].extras, tok)
 		}
+		previousLabels = pn.labels
+		previousTokens = out[i]
 	}
 
 	allocated := newlyAllocatedNames(snapshot, c.labels.ExportNames())

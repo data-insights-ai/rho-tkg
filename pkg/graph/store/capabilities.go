@@ -218,6 +218,15 @@ type StatsCapability interface {
 	RelCountByType(token uint16) (int, error)
 }
 
+// NodePropertyKeyStatsCapability is an OPTIONAL statistics surface for stores
+// that maintain per-label property-key presence counts. The count is over
+// current nodes carrying labelToken with an indexable scalar propertyKey value.
+// It is intentionally key-presence only, not value-selectivity, so planners can
+// cheaply skip labels that cannot satisfy scalar equality lookups.
+type NodePropertyKeyStatsCapability interface {
+	NodeCountByLabelAndPropertyKey(labelToken uint16, propertyKey string) (int, error)
+}
+
 // IterationCapability is the iteration surface (ForEach + paginated AllIDs).
 // Distinct from BulkReadCapability because iteration returns IDs only — no
 // entity deserialisation, no deep copy. The graph layer uses iteration in

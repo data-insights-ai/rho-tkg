@@ -42,6 +42,7 @@ func (ms *Store) PutNode(n *types.Node) error {
 	ms.nodes[nid] = freezeNodeCopy(n)
 
 	ms.addNodeLabelIndexes(nid, n)
+	ms.addNodePropertyKeyCounts(n)
 
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, n, rawID)
 	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, n, rawID)
@@ -169,6 +170,7 @@ func (ms *Store) DeleteNode(nid types.NodeID) error {
 	}
 
 	ms.removeNodeLabelIndexes(nid, n)
+	ms.removeNodePropertyKeyCounts(n)
 
 	rawID := nid.SnowflakeID()
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, n, rawID)
@@ -220,11 +222,13 @@ func (ms *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 	}
 
 	// Update property, temporal, and vector indexes (properties may have changed due to hash update).
+	ms.removeNodePropertyKeyCounts(old)
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = freezeNodeCopy(updatedNode)
+	ms.addNodePropertyKeyCounts(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
 	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, updatedNode, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, updatedNode, rawID)
@@ -273,11 +277,13 @@ func (ms *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 	}
 	set[nid] = struct{}{}
 
+	ms.removeNodePropertyKeyCounts(old)
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = freezeNodeCopy(updatedNode)
+	ms.addNodePropertyKeyCounts(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
 	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, updatedNode, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, updatedNode, rawID)
@@ -319,11 +325,13 @@ func (ms *Store) ReplaceNode(n *types.Node) error {
 	if err != nil {
 		return err
 	}
+	ms.removeNodePropertyKeyCounts(old)
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = freezeNodeCopy(n)
+	ms.addNodePropertyKeyCounts(n)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, n, rawID)
 	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, n, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, n, rawID)
@@ -374,6 +382,7 @@ func (ms *Store) DeleteNodeCascade(nid types.NodeID) error {
 	}
 
 	ms.removeNodeLabelIndexes(nid, n)
+	ms.removeNodePropertyKeyCounts(n)
 
 	rawID := nid.SnowflakeID()
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, n, rawID)
@@ -435,6 +444,7 @@ func (ms *Store) PutNodesBatch(nodes []*types.Node) error {
 		ms.nodes[id] = freezeNodeCopy(n)
 
 		ms.addNodeLabelIndexes(id, n)
+		ms.addNodePropertyKeyCounts(n)
 		rawID := id.SnowflakeID()
 		indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, n, rawID)
 		indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, n, rawID)
@@ -487,6 +497,7 @@ func (ms *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 	for _, id := range typedIDs {
 		n := ms.nodes[id]
 		ms.removeNodeLabelIndexes(id, n)
+		ms.removeNodePropertyKeyCounts(n)
 		rawID := id.SnowflakeID()
 		indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, n, rawID)
 		indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, n, rawID)

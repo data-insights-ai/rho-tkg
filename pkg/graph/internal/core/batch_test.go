@@ -88,6 +88,42 @@ func TestBatchBuilderAddNode(t *testing.T) {
 	}
 }
 
+func TestBatchBuilderAddNodes(t *testing.T) {
+	t.Parallel()
+	g := newTestGraph(t)
+	b, _ := NewBatchBuilder(g)
+
+	if err := b.AddNodes([]string{"Bulk", "Imported"}, map[string]any{"kind": "fast"}, 3); err != nil {
+		t.Fatalf("AddNodes: %v", err)
+	}
+	result, err := b.Execute()
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if result.Created != 3 {
+		t.Fatalf("Created = %d, want 3", result.Created)
+	}
+	nodes, err := g.Nodes.ByLabel("Bulk", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("ByLabel: %v", err)
+	}
+	if len(nodes) != 3 {
+		t.Fatalf("Bulk nodes = %d, want 3", len(nodes))
+	}
+	for _, n := range nodes {
+		if got, ok := n.GetProperty("kind"); !ok || got != "fast" {
+			t.Fatalf("kind = %v (%v), want fast", got, ok)
+		}
+		labels := g.Nodes.Labels(n)
+		if len(labels) != 2 || labels[0] != "Bulk" || labels[1] != "Imported" {
+			t.Fatalf("labels = %v, want [Bulk Imported]", labels)
+		}
+		if ig := n.Integrity(); ig == nil || ig.Hash == "" {
+			t.Fatalf("node %d missing integrity", n.ID())
+		}
+	}
+}
+
 func TestBatchBuilderAddNodeInvalidLabels(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
@@ -1244,6 +1280,9 @@ func TestBatchBuilderAfterExecuteReturnsErrBatchDone(t *testing.T) {
 
 	if _, err := b.AddNode([]string{"Person"}, nil); !errors.Is(err, ErrBatchDone) {
 		t.Fatalf("AddNode after Execute: got %v, want ErrBatchDone", err)
+	}
+	if err := b.AddNodes([]string{"Person"}, nil, 1); !errors.Is(err, ErrBatchDone) {
+		t.Fatalf("AddNodes after Execute: got %v, want ErrBatchDone", err)
 	}
 	if _, err := b.AddRelationship("REL", nil, nil, nil); !errors.Is(err, ErrBatchDone) {
 		t.Fatalf("AddRelationship after Execute: got %v, want ErrBatchDone", err)
