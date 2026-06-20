@@ -4,7 +4,42 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [4.9.4] - 2026-06-20
+
+### Added — node property-key presence stats, streaming ForEach, bulk AddNodes
+
+- **`g.Stats().NodeCountByLabelAndPropertyKey(label, propertyKey)`** returns the
+  number of current nodes that carry `label` AND an indexable scalar value for
+  `propertyKey`, as an O(1) read backed by per-`(label, propertyKey)` presence
+  counters. It is **key-presence only, not value-selectivity** — a planner can
+  cheaply prune labels that cannot satisfy a scalar-equality lookup without
+  scanning. Exposed through the new optional
+  `store.NodePropertyKeyStatsCapability`; the core type-asserts it and returns
+  `ErrCapabilityNotSupported` on a backend that does not implement it. Counters
+  are maintained on every node-mutation door (`PutNode` / `DeleteNode` /
+  `ReplaceNode` / `Add`+`RemoveNodeLabelToken`) and rebuilt during index load so
+  they survive restart. Implemented for the memory, badger, and tiered backends;
+  the tiered backend folds the reference, archive, and per-event-shard counts
+  into one cross-shard total.
+
+- **`g.Nodes().ForEach(opts, fn)`** streams all nodes matching `opts` to `fn`
+  without materializing the full result slice: for current-state, unpaginated
+  scans it walks the store node-ID iterator and fetches one row at a time, so
+  peak memory is O(1) in graph cardinality (`fn` returning false stops early).
+  Temporal and paginated scans fall back to `All` to preserve the existing
+  history-aware and ordering semantics. Isolation matches `ForEachByLabel`: the
+  ID set is snapshotted by the store iterator, then each row is fetched and `fn`
+  is called without holding graph locks, so a concurrently deleted row is skipped
+  rather than surfaced as an error.
+
+- **`BatchBuilder.AddNodes(labels, props, count)`** queues `count` node creations
+  with identical labels and properties as a write-only bulk path (no
+  caller-visible node skeletons, so the queued nodes cannot be used as
+  relationship endpoints; `Execute` still persists ordinary nodes and reports
+  ordinary batch results). Enabled by hash-suffix precomputation
+  (`integrity.PrecomputeNodeHashSuffixChecked` / `ComputeNodeHashFromSuffix`):
+  the static label+property tail of the node hash is encoded once and reused per
+  node instead of re-encoding it for every node in the batch.
 
 ### Performance — temporal point queries skip history when the current row answers
 
