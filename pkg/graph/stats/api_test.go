@@ -18,6 +18,7 @@ func TestAPINilReceiversReturnErrNilGraph(t *testing.T) {
 		{name: "NodeCount", fn: nilAPI.NodeCount},
 		{name: "RelCount", fn: nilAPI.RelCount},
 		{name: "NodeCountByLabel", fn: func() (int, error) { return nilAPI.NodeCountByLabel("Person") }},
+		{name: "NodeCountByLabelAndPropertyKey", fn: func() (int, error) { return nilAPI.NodeCountByLabelAndPropertyKey("Person", "id") }},
 		{name: "RelCountByType", fn: func() (int, error) { return nilAPI.RelCountByType("KNOWS") }},
 	} {
 		got, err := check.fn()
@@ -76,6 +77,7 @@ func TestAPIForwardsMethodsAndMapsSnapshotCounters(t *testing.T) {
 		nodeCount:        10,
 		relCount:         20,
 		nodeCountByLabel: 3,
+		nodePropKeyCount: 2,
 		relCountByType:   4,
 		labelCounts:      map[string]int{"Person": 3},
 		relTypeCounts:    map[string]int{"KNOWS": 4},
@@ -91,6 +93,9 @@ func TestAPIForwardsMethodsAndMapsSnapshotCounters(t *testing.T) {
 	}
 	if got, err := api.NodeCountByLabel("Person"); got != 3 || err != nil {
 		t.Fatalf("NodeCountByLabel = (%d, %v), want (3, nil)", got, err)
+	}
+	if got, err := api.NodeCountByLabelAndPropertyKey("Person", "id"); got != 2 || err != nil {
+		t.Fatalf("NodeCountByLabelAndPropertyKey = (%d, %v), want (2, nil)", got, err)
 	}
 	if got, err := api.RelCountByType("KNOWS"); got != 4 || err != nil {
 		t.Fatalf("RelCountByType = (%d, %v), want (4, nil)", got, err)
@@ -175,6 +180,7 @@ func TestAPIPropagatesOpsErrors(t *testing.T) {
 		nodeCountErr:        opErr,
 		relCountErr:         opErr,
 		nodeCountByLabelErr: opErr,
+		nodePropKeyCountErr: opErr,
 		relCountByTypeErr:   opErr,
 		allLabelCountsErr:   opErr,
 		allRelTypeCountsErr: opErr,
@@ -187,6 +193,7 @@ func TestAPIPropagatesOpsErrors(t *testing.T) {
 		{name: "NodeCount", err: mustErr(api.NodeCount())},
 		{name: "RelCount", err: mustErr(api.RelCount())},
 		{name: "NodeCountByLabel", err: mustErr(api.NodeCountByLabel("Person"))},
+		{name: "NodeCountByLabelAndPropertyKey", err: mustErr(api.NodeCountByLabelAndPropertyKey("Person", "id"))},
 		{name: "RelCountByType", err: mustErr(api.RelCountByType("KNOWS"))},
 	} {
 		if !errors.Is(check.err, opErr) {
@@ -207,6 +214,7 @@ type statsOpsSpy struct {
 	nodeCount        int
 	relCount         int
 	nodeCountByLabel int
+	nodePropKeyCount int
 	relCountByType   int
 	labelCounts      map[string]int
 	relTypeCounts    map[string]int
@@ -215,17 +223,21 @@ type statsOpsSpy struct {
 	nodeCountErr        error
 	relCountErr         error
 	nodeCountByLabelErr error
+	nodePropKeyCountErr error
 	relCountByTypeErr   error
 	allLabelCountsErr   error
 	allRelTypeCountsErr error
 	snapshotErr         error
 
-	nodeLabelArg string
-	relTypeArg   string
+	nodeLabelArg   string
+	nodePropLabel  string
+	nodePropKeyArg string
+	relTypeArg     string
 
 	nodeCountCalls        int
 	relCountCalls         int
 	nodeCountByLabelCalls int
+	nodePropKeyCountCalls int
 	relCountByTypeCalls   int
 	allLabelCountsCalls   int
 	allRelTypeCountsCalls int
@@ -246,6 +258,13 @@ func (s *statsOpsSpy) NodeCountByLabel(label string) (int, error) {
 	s.nodeCountByLabelCalls++
 	s.nodeLabelArg = label
 	return s.nodeCountByLabel, s.nodeCountByLabelErr
+}
+
+func (s *statsOpsSpy) NodeCountByLabelAndPropertyKey(label, propertyKey string) (int, error) {
+	s.nodePropKeyCountCalls++
+	s.nodePropLabel = label
+	s.nodePropKeyArg = propertyKey
+	return s.nodePropKeyCount, s.nodePropKeyCountErr
 }
 
 func (s *statsOpsSpy) RelCountByType(typeName string) (int, error) {

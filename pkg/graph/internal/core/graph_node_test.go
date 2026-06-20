@@ -1329,6 +1329,41 @@ func TestGraphAllNodesEmpty(t *testing.T) {
 	}
 }
 
+func TestGraphForEachNodes(t *testing.T) {
+	t.Parallel()
+
+	g, _ := New(Config{Store: memory.New()})
+	n1, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Alice"})
+	n2, _ := g.Nodes.Add(context.Background(), []string{"Person"}, map[string]any{"name": "Bob"})
+	n3, _ := g.Nodes.Add(context.Background(), []string{"City"}, map[string]any{"name": "Vienna"})
+
+	seen := make(map[types.NodeID]bool)
+	err := g.Nodes.ForEach(storepkg.QueryOpts{}, func(n *types.Node) bool {
+		seen[n.ID()] = true
+		return true
+	})
+	if err != nil {
+		t.Fatalf("ForEach() returned error: %v", err)
+	}
+	for _, id := range []types.NodeID{n1.ID(), n2.ID(), n3.ID()} {
+		if !seen[id] {
+			t.Fatalf("ForEach() missed node %v; seen=%v", id, seen)
+		}
+	}
+
+	visits := 0
+	err = g.Nodes.ForEach(storepkg.QueryOpts{}, func(*types.Node) bool {
+		visits++
+		return false
+	})
+	if err != nil {
+		t.Fatalf("ForEach() early stop returned error: %v", err)
+	}
+	if visits != 1 {
+		t.Fatalf("ForEach() early stop visits = %d, want 1", visits)
+	}
+}
+
 func TestGraphGetNodesByIDs(t *testing.T) {
 	t.Parallel()
 

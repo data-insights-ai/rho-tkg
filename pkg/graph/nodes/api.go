@@ -29,6 +29,7 @@ type Ops interface {
 	AddByIDIfAbsent(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, bool, error)
 
 	All(opts storepkg.QueryOpts) ([]*types.Node, error)
+	ForEach(opts storepkg.QueryOpts, fn func(*types.Node) bool) error
 	ByLabel(label string, opts storepkg.QueryOpts) ([]*types.Node, error)
 	ForEachByLabel(label string, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
 	ForEachByLabelPropertyRange(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
@@ -158,6 +159,17 @@ func (a *API) All(opts storepkg.QueryOpts) ([]*types.Node, error) {
 		return nil, err
 	}
 	return ops.All(opts)
+}
+
+// ForEach streams all nodes matching opts to fn without materializing the full
+// result slice when the backend can provide a current-state ID scan. fn returning
+// false stops early.
+func (a *API) ForEach(opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEach(opts, fn)
 }
 
 // ByLabel returns nodes carrying the given label.

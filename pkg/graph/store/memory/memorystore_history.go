@@ -70,11 +70,13 @@ func (ms *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 	}
 
 	// Update property, temporal, and vector indexes.
+	ms.removeNodePropertyKeyCounts(old)
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = freezeNodeCopy(updatedNode)
+	ms.addNodePropertyKeyCounts(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
 	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, updatedNode, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, updatedNode, rawID)
@@ -141,11 +143,13 @@ func (ms *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 	set[nid] = struct{}{}
 
 	// Update property, temporal, and vector indexes.
+	ms.removeNodePropertyKeyCounts(old)
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = freezeNodeCopy(updatedNode)
+	ms.addNodePropertyKeyCounts(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
 	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, updatedNode, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, updatedNode, rawID)
@@ -300,6 +304,7 @@ func (ms *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 	}
 
 	rawID := nid.SnowflakeID()
+	ms.removeNodePropertyKeyCounts(n)
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, n, rawID)
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, n, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, n, rawID)
@@ -712,11 +717,13 @@ func (ms *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 	}
 	inner[prevVersion] = prevState.DeepCopy()
 
+	ms.removeNodePropertyKeyCounts(old)
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = freezeNodeCopy(current)
+	ms.addNodePropertyKeyCounts(current)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, current, rawID)
 	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, current, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, current, rawID)

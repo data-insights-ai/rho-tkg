@@ -208,6 +208,69 @@ func (ts *Store) NodeCountByLabel(token uint16) (int, error) {
 	return total, nil
 }
 
+func (ts *Store) NodeCountByLabelAndPropertyKey(token uint16, propertyKey string) (int, error) {
+	if err := ts.checkOpen(); err != nil {
+		return 0, err
+	}
+	if err := storecontract.ValidateLabelToken(token); err != nil {
+		return 0, err
+	}
+	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
+		return 0, err
+	}
+
+	total := 0
+	ref, refCheckin, err := ts.checkoutRefShard()
+	if err != nil {
+		return 0, err
+	}
+	n, err := ref.NodeCountByLabelAndPropertyKey(token, propertyKey)
+	refCheckin()
+	if err != nil {
+		return 0, err
+	}
+	total += n
+
+	archive, archiveCheckin, archiveErr := ts.checkoutArchive()
+	if archiveErr != nil {
+		return 0, archiveErr
+	}
+	if archive != nil {
+		an, err := archive.NodeCountByLabelAndPropertyKey(token, propertyKey)
+		archiveCheckin()
+		if err != nil {
+			return 0, err
+		}
+		total += an
+	}
+
+	ts.mu.RLock()
+	eventShards := ts.eventShardSnapshot(DepthAll)
+	ts.mu.RUnlock()
+
+	type result struct {
+		count int
+		err   error
+	}
+	results := make([]result, len(eventShards))
+	queryEventShards(eventShards, func(i int, es *EventShard) {
+		store, release, err := es.checkoutStoreForRead(ts)
+		if err != nil {
+			results[i].err = err
+			return
+		}
+		defer release()
+		results[i].count, results[i].err = store.NodeCountByLabelAndPropertyKey(token, propertyKey)
+	})
+	for _, r := range results {
+		if r.err != nil {
+			return 0, r.err
+		}
+		total += r.count
+	}
+	return total, nil
+}
+
 // --- ID enumeration ---
 
 func (ts *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {

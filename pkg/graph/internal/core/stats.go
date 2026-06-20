@@ -1,5 +1,7 @@
 package core
 
+import storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+
 // GraphStats holds operation counters and optional cache metrics for a Graph.
 // Cache metrics are populated only when the underlying store is a BadgerStore;
 // they are zero for MemoryStore and tiered.Store.
@@ -99,6 +101,31 @@ func (s *StatOps) RelCount() (int, error) { return s.c.Rels.Count() }
 
 // NodeCountByLabel forwards to Core.Nodes.CountByLabel.
 func (s *StatOps) NodeCountByLabel(label string) (int, error) { return s.c.Nodes.CountByLabel(label) }
+
+// NodeCountByLabelAndPropertyKey returns the number of current nodes carrying
+// label with an indexable scalar propertyKey value. Missing labels return 0.
+func (s *StatOps) NodeCountByLabelAndPropertyKey(label, propertyKey string) (int, error) {
+	c := s.c
+	if err := c.validateIndexLabel(label); err != nil {
+		return 0, err
+	}
+	if err := storepkg.ValidateIndexPropertyKey(propertyKey); err != nil {
+		return 0, err
+	}
+	c.mu.RLock()
+	if c.closed.Load() {
+		c.mu.RUnlock()
+		return 0, ErrGraphClosed
+	}
+	tok, ok := c.labels.Lookup(label)
+	if !ok {
+		c.mu.RUnlock()
+		return 0, nil
+	}
+	count, err := c.nodeCountByLabelAndPropertyKey(tok, propertyKey)
+	c.mu.RUnlock()
+	return count, err
+}
 
 // RelCountByType forwards to Core.Rels.CountByType.
 func (s *StatOps) RelCountByType(typeName string) (int, error) { return s.c.Rels.CountByType(typeName) }

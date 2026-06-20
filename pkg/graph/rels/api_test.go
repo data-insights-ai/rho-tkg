@@ -51,6 +51,9 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 		{name: "CountByType", run: func() error { _, err := nilAPI.CountByType("KNOWS"); return err }},
 		{name: "Outgoing", run: func() error { _, err := nilAPI.Outgoing(nodeID, "KNOWS"); return err }},
 		{name: "Incoming", run: func() error { _, err := nilAPI.Incoming(nodeID, "KNOWS"); return err }},
+		{name: "ForEachAdjacentEndpoint", run: func() error {
+			return nilAPI.ForEachAdjacentEndpoint(nodeID, "KNOWS", false, func(types.RelID, types.NodeID) bool { return true })
+		}},
 		{name: "OutgoingForNodes", run: func() error { _, err := nilAPI.OutgoingForNodes([]types.NodeID{nodeID}, "KNOWS"); return err }},
 		{name: "IncomingForNodes", run: func() error { _, err := nilAPI.IncomingForNodes([]types.NodeID{nodeID}, "KNOWS"); return err }},
 		{name: "SetProperty", run: func() error { return nilAPI.SetProperty(ctx, relID, "since", 2026) }},
@@ -161,6 +164,9 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "ForEachIncoming", run: func() error {
 			return api.ForEachIncoming(nodeID, "KNOWS", func(*types.Relationship) bool { return true })
 		}},
+		{name: "ForEachAdjacentEndpoint", run: func() error {
+			return api.ForEachAdjacentEndpoint(nodeID, "KNOWS", false, func(types.RelID, types.NodeID) bool { return true })
+		}},
 		{name: "Count", run: func() error { _, err := api.Count(); return err }},
 		{name: "CountByType", run: func() error { _, err := api.CountByType("KNOWS"); return err }},
 		{name: "Outgoing", run: func() error { _, err := api.Outgoing(nodeID, "KNOWS"); return err }},
@@ -207,7 +213,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		"AddByIDIfAbsent", "AddByIDIfAbsent", "Get", "Get", "GetByIDs",
 		"Update", "Update", "UpdateInPlace", "UpdateInPlace",
 		"Delete", "Delete", "Import", "All", "ByType",
-		"ForEachByType", "ForEachOutgoing", "ForEachIncoming", "Count", "CountByType",
+		"ForEachByType", "ForEachOutgoing", "ForEachIncoming", "ForEachAdjacentEndpoint", "Count", "CountByType",
 		"Outgoing", "Incoming", "OutgoingForNodes", "IncomingForNodes", "SetProperty", "DeleteProperty",
 		"CompareAndSetProperty", "CompareAndSetProperty",
 		"CloseVersion", "History", "VersionAfter", "VersionBefore", "HasType", "Type", "NextID",

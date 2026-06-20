@@ -93,6 +93,51 @@ func computeNodeHashWithBuffer(buf []byte, n *types.Node, labels []string) (stri
 	buf = binary.BigEndian.AppendUint64(buf, uint64(n.ID().SnowflakeID())) // #nosec G115 — snowflake IDs use 63 bits
 	buf = binary.BigEndian.AppendUint32(buf, n.Version())
 
+	buf = appendNodeLabelHashBytes(buf, labels)
+	buf = n.AppendPropertyHashBytes(buf)
+
+	sum := sha256.Sum256(buf)
+	var hexBuf [64]byte
+	hex.Encode(hexBuf[:], sum[:])
+
+	return string(hexBuf[:]), buf
+}
+
+// PrecomputeNodeHashSuffixChecked returns the byte suffix contributed by labels
+// and properties in ComputeNodeHash's wire layout. Callers that create many
+// nodes with identical labels/properties can hash id/version plus this suffix
+// without re-encoding the static tail each time.
+func PrecomputeNodeHashSuffixChecked(labels []string, props types.PropertySlice) (suffix []byte, err error) {
+	if propertySliceNeedsHashRecover(props) {
+		defer func() {
+			if r := recover(); r != nil {
+				suffix = nil
+				err = fmt.Errorf("%w: compute node hash suffix panic: %v", types.ErrUnsupportedValueType, r)
+			}
+		}()
+	}
+	buf := appendNodeLabelHashBytes(nil, labels)
+	return props.AppendHashBytes(buf), nil
+}
+
+// ComputeNodeHashFromSuffix computes the same digest as ComputeNodeHash for a
+// node with id/version and a suffix produced by PrecomputeNodeHashSuffixChecked.
+func ComputeNodeHashFromSuffix(id types.NodeID, version uint32, suffix []byte) string {
+	bp := hashBufPool.Get().(*[]byte)
+	buf := (*bp)[:0]
+	buf = binary.BigEndian.AppendUint64(buf, uint64(id.SnowflakeID())) // #nosec G115 — snowflake IDs use 63 bits
+	buf = binary.BigEndian.AppendUint32(buf, version)
+	buf = append(buf, suffix...)
+
+	sum := sha256.Sum256(buf)
+	var hexBuf [64]byte
+	hex.Encode(hexBuf[:], sum[:])
+
+	putHashBuffer(bp, buf)
+	return string(hexBuf[:])
+}
+
+func appendNodeLabelHashBytes(buf []byte, labels []string) []byte {
 	// Defensive sort — caller may pass unsorted labels. The single-label
 	// create path is already canonical, so avoid an otherwise guaranteed
 	// one-element slice allocation there.
@@ -108,13 +153,7 @@ func computeNodeHashWithBuffer(buf []byte, n *types.Node, labels []string) (stri
 		buf = append(buf, label...)
 	}
 
-	buf = n.AppendPropertyHashBytes(buf)
-
-	sum := sha256.Sum256(buf)
-	var hexBuf [64]byte
-	hex.Encode(hexBuf[:], sum[:])
-
-	return string(hexBuf[:]), buf
+	return buf
 }
 
 // ComputeRelHash computes a SHA-256 hash of the relationship's content.

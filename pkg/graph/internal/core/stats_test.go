@@ -110,6 +110,69 @@ func TestGraphStats_RelCounters(t *testing.T) {
 	}
 }
 
+func TestGraphStats_NodeCountByLabelAndPropertyKey(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{})
+	ctx := context.Background()
+
+	a, err := g.Nodes.Add(ctx, []string{"StatsPropPerson", "StatsPropUser"}, map[string]any{
+		"id":   int64(1),
+		"name": "Ada",
+	})
+	if err != nil {
+		t.Fatalf("AddNode a: %v", err)
+	}
+	b, err := g.Nodes.Add(ctx, []string{"StatsPropPerson"}, map[string]any{
+		"id": int64(2),
+	})
+	if err != nil {
+		t.Fatalf("AddNode b: %v", err)
+	}
+	c, err := g.Nodes.Add(ctx, []string{"StatsPropOther"}, map[string]any{
+		"tags": []string{"not", "indexable"},
+	})
+	if err != nil {
+		t.Fatalf("AddNode c: %v", err)
+	}
+
+	if got, err := g.Stats.NodeCountByLabelAndPropertyKey("StatsPropPerson", "id"); err != nil || got != 2 {
+		t.Fatalf("Person/id count = (%d, %v), want (2, nil)", got, err)
+	}
+	if got, err := g.Stats.NodeCountByLabelAndPropertyKey("StatsPropUser", "id"); err != nil || got != 1 {
+		t.Fatalf("User/id count = (%d, %v), want (1, nil)", got, err)
+	}
+	if got, err := g.Stats.NodeCountByLabelAndPropertyKey("StatsPropOther", "tags"); err != nil || got != 0 {
+		t.Fatalf("Other/tags count = (%d, %v), want (0, nil)", got, err)
+	}
+	if got, err := g.Stats.NodeCountByLabelAndPropertyKey("StatsPropMissing", "id"); err != nil || got != 0 {
+		t.Fatalf("missing label count = (%d, %v), want (0, nil)", got, err)
+	}
+
+	if err := g.Nodes.DeleteProperty(ctx, b.ID(), "id"); err != nil {
+		t.Fatalf("DeleteProperty b.id: %v", err)
+	}
+	if got, err := g.Stats.NodeCountByLabelAndPropertyKey("StatsPropPerson", "id"); err != nil || got != 1 {
+		t.Fatalf("Person/id after delete property = (%d, %v), want (1, nil)", got, err)
+	}
+
+	if err := g.Nodes.SetProperty(ctx, c.ID(), "id", int64(3)); err != nil {
+		t.Fatalf("SetProperty c.id: %v", err)
+	}
+	if got, err := g.Stats.NodeCountByLabelAndPropertyKey("StatsPropOther", "id"); err != nil || got != 1 {
+		t.Fatalf("Other/id after set property = (%d, %v), want (1, nil)", got, err)
+	}
+
+	if err := g.Nodes.Delete(ctx, a.ID()); err != nil {
+		t.Fatalf("DeleteNode a: %v", err)
+	}
+	if got, err := g.Stats.NodeCountByLabelAndPropertyKey("StatsPropPerson", "id"); err != nil || got != 0 {
+		t.Fatalf("Person/id after delete node = (%d, %v), want (0, nil)", got, err)
+	}
+	if got, err := g.Stats.NodeCountByLabelAndPropertyKey("StatsPropUser", "id"); err != nil || got != 0 {
+		t.Fatalf("User/id after delete node = (%d, %v), want (0, nil)", got, err)
+	}
+}
+
 func TestGraphStats_NodeCascadeDeleteCountsRelationships(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)

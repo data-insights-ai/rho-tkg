@@ -76,6 +76,11 @@ type Store struct {
 	// Property indexes — label+property → value → set of node IDs.
 	propertyIndexes map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex
 
+	// Property-key presence counts — label+property → current node count.
+	// Counts only indexable scalar property values because that is the lookup
+	// surface used by property equality indexes and planner pruning.
+	propertyKeyCounts map[uint16]map[string]int
+
 	// Temporal indexes — labelToken → interval index for temporal push-down.
 	temporalIndexes map[uint16]*indexpkg.TemporalIndex
 
@@ -157,6 +162,9 @@ func (ms *Store) ensureInitialized() {
 		if ms.propertyIndexes == nil {
 			ms.propertyIndexes = make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex)
 		}
+		if ms.propertyKeyCounts == nil {
+			ms.propertyKeyCounts = make(map[uint16]map[string]int)
+		}
 		if ms.temporalIndexes == nil {
 			ms.temporalIndexes = make(map[uint16]*indexpkg.TemporalIndex)
 		}
@@ -201,6 +209,7 @@ func (ms *Store) Clear() error {
 	ms.nodeHistory = make(map[types.NodeID]map[uint32]*types.Node)
 	ms.relHistory = make(map[types.RelID]map[uint32]*types.Relationship)
 	ms.propertyIndexes = make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex)
+	ms.propertyKeyCounts = make(map[uint16]map[string]int)
 	ms.temporalIndexes = make(map[uint16]*indexpkg.TemporalIndex)
 	ms.hfIndexes = make(map[uint16]*indexpkg.HighFrequencyIndex)
 	ms.vectorIndexes = make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex)

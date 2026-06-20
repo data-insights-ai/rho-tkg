@@ -328,6 +328,11 @@ type Store struct {
 	labelCounts sync.Map // map[uint16]*atomic.Int64
 	typeCounts  sync.Map // map[uint16]*atomic.Int64
 
+	// Per-label property-key presence counters — O(1) reads via atomic.Int64.
+	// Keys are indexpkg.PropertyIndexKey. Counts only indexable scalar property
+	// values because the planner uses this to prune scalar equality lookups.
+	propertyKeyCounts sync.Map // map[indexpkg.PropertyIndexKey]*atomic.Int64
+
 	// Property indexes — in-memory only. Definitions persisted, data rebuilt on startup.
 	propertyIndexes map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex
 
@@ -702,6 +707,7 @@ func (bs *Store) loadIndexesScan() error {
 			bs.nodeHashes[nid] = badgerNodeIntegrityHash(n)
 			bs.bumpNodeRevLocked(nid)
 			labels := bs.addNodeIndexesFromRow(nid, collectNodeLabelTokens(n))
+			bs.addNodePropertyKeyCounts(n)
 			decodedNodeLabels[nid] = labels
 		}
 		it.Close()
@@ -1267,6 +1273,10 @@ func (bs *Store) Clear() error {
 	})
 	bs.typeCounts.Range(func(k, _ any) bool {
 		bs.typeCounts.Delete(k)
+		return true
+	})
+	bs.propertyKeyCounts.Range(func(k, _ any) bool {
+		bs.propertyKeyCounts.Delete(k)
 		return true
 	})
 

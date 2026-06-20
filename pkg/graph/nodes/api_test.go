@@ -36,6 +36,7 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 		{name: "Import", run: func() error { _, err := nilAPI.Import(ctx, id, []string{"Node"}, nil); return err }},
 		{name: "AddByIDIfAbsent", run: func() error { _, _, err := nilAPI.AddByIDIfAbsent(ctx, id, []string{"Node"}, nil); return err }},
 		{name: "All", run: func() error { _, err := nilAPI.All(opts); return err }},
+		{name: "ForEach", run: func() error { return nilAPI.ForEach(opts, func(*types.Node) bool { return true }) }},
 		{name: "ByLabel", run: func() error { _, err := nilAPI.ByLabel("Node", opts); return err }},
 		{name: "ByLabelAndProperty", run: func() error { _, err := nilAPI.ByLabelAndProperty("Node", "name", "Ada", opts); return err }},
 		{name: "Count", run: func() error { _, err := nilAPI.Count(); return err }},
@@ -128,6 +129,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "Import", run: func() error { _, err := api.Import(ctx, id, []string{"Node"}, nil); return err }},
 		{name: "AddByIDIfAbsent", run: func() error { _, _, err := api.AddByIDIfAbsent(ctx, id, []string{"Node"}, nil); return err }},
 		{name: "All", run: func() error { _, err := api.All(opts); return err }},
+		{name: "ForEach", run: func() error { return api.ForEach(opts, func(*types.Node) bool { return true }) }},
 		{name: "ByLabel", run: func() error { _, err := api.ByLabel("Node", opts); return err }},
 		{name: "ByLabelAndProperty", run: func() error { _, err := api.ByLabelAndProperty("Node", "name", "Ada", opts); return err }},
 		{name: "Count", run: func() error { _, err := api.Count(); return err }},
@@ -180,7 +182,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 	wantCalls := []string{
 		"Add", "Add", "Get", "Get", "GetByIDs",
 		"Update", "Update", "UpdateInPlace", "UpdateInPlace",
-		"Delete", "Delete", "Import", "AddByIDIfAbsent", "All", "ByLabel", "ByLabelAndProperty",
+		"Delete", "Delete", "Import", "AddByIDIfAbsent", "All", "ForEach", "ByLabel", "ByLabelAndProperty",
 		"Count", "CountByLabel", "SetProperty", "DeleteProperty",
 		"CompareAndSetProperty", "CompareAndSetProperty",
 		"AddLabel", "RemoveLabel", "CloseVersion", "History", "VersionAfter", "VersionBefore",
@@ -349,6 +351,12 @@ func (s *nodeOpsSpy) NodeMutationEpoch() uint64 {
 func (s *nodeOpsSpy) ForEachByLabel(label string, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
 	s.record("ForEachByLabel")
 	s.lastLabel = label
+	s.lastOpts = opts
+	return s.err
+}
+
+func (s *nodeOpsSpy) ForEach(opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
+	s.record("ForEach")
 	s.lastOpts = opts
 	return s.err
 }

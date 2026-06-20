@@ -1123,6 +1123,58 @@ func (c *Core) allNodesLocked(opts storepkg.QueryOpts) ([]*types.Node, error) {
 	return result, nil
 }
 
+// ForEach streams all nodes matching opts to fn. For current-state unpaginated
+// scans it walks the store's node-ID iterator and fetches one row at a time, so
+// peak memory is O(1) in graph cardinality. Temporal and paginated scans fall
+// back to All to preserve the existing history-aware and ordering semantics.
+//
+// Isolation is relaxed, matching ForEachByLabel: the ID set is snapshotted by
+// the store iterator, then each row is fetched and fn is called without holding
+// graph locks. Concurrently deleted rows may be skipped; concurrently created
+// rows are not guaranteed to be seen.
+func (n *NodeOps) ForEach(opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
+	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
+	if fn == nil {
+		return grapherr.ErrNilCallback
+	}
+	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+		return err
+	}
+
+	if !c.storeRowsTrust || hasTemporalFilter(opts) || opts.After != 0 || opts.Limit != 0 {
+		nodes, err := n.All(opts)
+		if err != nil {
+			return err
+		}
+		for _, nd := range nodes {
+			if !fn(nd) {
+				return nil
+			}
+		}
+		return nil
+	}
+
+	var iterErr error
+	err := c.forEachNodeID(func(id types.NodeID) bool {
+		nd, getErr := c.store.GetNode(id)
+		if getErr != nil {
+			if errors.Is(getErr, storepkg.ErrNodeNotFound) {
+				return true
+			}
+			iterErr = getErr
+			return false
+		}
+		return fn(nd)
+	})
+	if err != nil {
+		return err
+	}
+	return iterErr
+}
+
 // All returns all relationships in the store, with optional
 // pagination.
 //
