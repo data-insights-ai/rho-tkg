@@ -51,7 +51,7 @@ func (c *Core) deletePartialNodeForRollback(n *types.Node) error {
 // while a tx holds c.mu.Lock.
 func (n *NodeOps) Add(ctx context.Context, labels []string, props map[string]any) (*types.Node, error) {
 	c := n.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return nil, err
 	}
 	if err := checkCtx(ctx); err != nil {
@@ -215,7 +215,7 @@ func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[s
 // while a tx holds c.mu.Lock.
 func (n *NodeOps) Import(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, error) {
 	c := n.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return nil, err
 	}
 	if err := checkCtx(ctx); err != nil {
@@ -248,7 +248,7 @@ func (n *NodeOps) Import(ctx context.Context, id types.NodeID, labels []string, 
 // while a tx holds c.mu.Lock.
 func (n *NodeOps) AddByIDIfAbsent(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, bool, error) {
 	c := n.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return nil, false, err
 	}
 	if err := checkCtx(ctx); err != nil {

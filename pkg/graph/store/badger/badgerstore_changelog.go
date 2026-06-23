@@ -77,6 +77,36 @@ func (bs *Store) appendOpsLogged(tag storecontract.ChangeTag, payload []byte, op
 
 // historyVersionNodePayload builds a ChangeNodeHistoryVersion body for an
 // explicit-version history write (PutNodeVersion). nil when the log is disabled.
+// logNodePut / logRelPut build a ChangeNodePut/ChangeRelPut body (untokenized
+// wire + WithHistory bit) for the new current state and buffer it. No-op when
+// the log is disabled. Called by every node/rel-put door UNDER idxMu.Lock (so
+// the record is buffered atomically with the entity ops); the wire conversion of
+// an already-validated node cannot fail in practice, so the returned error is a
+// defensive guard the caller surfaces after releasing the lock.
+func (bs *Store) logNodePut(n *types.Node, withHistory bool) error {
+	if !bs.logEnabled {
+		return nil
+	}
+	payload, err := storepkg.NodePutPayload(n, withHistory)
+	if err != nil {
+		return fmt.Errorf("graph: encode change-log: %w", err)
+	}
+	bs.logChangeRaw(storecontract.ChangeNodePut, payload)
+	return nil
+}
+
+func (bs *Store) logRelPut(r *types.Relationship, withHistory bool) error {
+	if !bs.logEnabled {
+		return nil
+	}
+	payload, err := storepkg.RelPutPayload(r, withHistory)
+	if err != nil {
+		return fmt.Errorf("graph: encode change-log: %w", err)
+	}
+	bs.logChangeRaw(storecontract.ChangeRelPut, payload)
+	return nil
+}
+
 func (bs *Store) historyVersionNodePayload(version uint32, n *types.Node) ([]byte, error) {
 	if !bs.logEnabled {
 		return nil, nil

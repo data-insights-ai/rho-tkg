@@ -119,9 +119,12 @@ func (bs *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
 		writeOp{opType: writeOpDelete, key: storepkg.LabelIndexKey(tok, id)},
 	)
-	bs.logChangeRaw(storecontract.ChangeNodePut, data)
+	logErr := bs.logNodePut(updatedNode, true)
 	bs.idxMu.Unlock()
 
+	if logErr != nil {
+		return logErr
+	}
 	return bs.flushIfNeeded()
 }
 
@@ -227,9 +230,12 @@ func (bs *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
 		writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tok, id)},
 	)
-	bs.logChangeRaw(storecontract.ChangeNodePut, data)
+	logErr := bs.logNodePut(updatedNode, true)
 	bs.idxMu.Unlock()
 
+	if logErr != nil {
+		return logErr
+	}
 	return bs.flushIfNeeded()
 }
 
@@ -323,9 +329,12 @@ func (bs *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 		writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data},
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
 	)
-	bs.logChangeRaw(storecontract.ChangeNodePut, data)
+	logErr := bs.logNodePut(current, true)
 	bs.idxMu.Unlock()
 
+	if logErr != nil {
+		return logErr
+	}
 	return bs.flushIfNeeded()
 }
 

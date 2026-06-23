@@ -18,7 +18,7 @@ import (
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (n *NodeOps) AddLabel(ctx context.Context, id types.NodeID, label string) error {
 	c := n.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return err
 	}
 	if err := checkCtx(ctx); err != nil {
@@ -171,7 +171,7 @@ func (c *Core) addNodeLabelInternal(id types.NodeID, label string) (bool, error)
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (n *NodeOps) RemoveLabel(ctx context.Context, id types.NodeID, label string) error {
 	c := n.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return err
 	}
 	if err := checkCtx(ctx); err != nil {

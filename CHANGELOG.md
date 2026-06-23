@@ -6,6 +6,69 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added — log-shipped read replicas: replica apply engine + read-only gate (horizontal-scaling Phase 1)
+
+Read scale-out and HA on top of the Phase-0 change-log: a graph can now be
+opened as a **log-shipped read replica** that bootstraps from a snapshot and
+tails a primary's change-feed to a **byte-exact** copy. See
+`tasks/horizontal-scaling.md`.
+
+- **`g.Replication().ApplyChange(rec)` / `ApplyChanges(recs)`** apply change-log
+  records received from a primary's feed, reproducing the primary's rows
+  **exactly** — the supplied wire is written VERBATIM through foreign-ID store
+  doors, so the integrity hash, version, `TxFrom`, and all temporal metadata are
+  reconstructed from the record, never re-minted or re-stamped. The apply path
+  reuses the import trust pipeline per record (`SafeUnmarshal` → `WireTo*Checked`
+  → token-in-registry validation → property-limit validation → hash
+  recompute-**and-compare**) and is **idempotent** under at-least-once
+  redelivery (an identical row is a no-op; a delete tolerates a missing entity).
+  `AppliedLSN()` / `SetAppliedLSN(lsn)` are the durable replica watermark
+  (`meta/replica_applied_lsn`), distinct from the store's own `last_lsn`; a
+  replica resumes tailing from `AppliedLSN()` after restart.
+- **`graph.Config.ReadOnlyReplica bool`** marks a graph as a replica: every USER
+  mutation door (node/rel create, update, delete, label/property mutation,
+  version-interval edits, index/schema management, `Tx().Begin`, `Batch.Execute`,
+  `Admin().Reset`) fails closed with the new **`ErrReadOnlyReplica`** sentinel,
+  while reads, the bootstrap importer (`g.IO().Import`), and the apply path stay
+  open. It is a CORE-layer gate (`c.checkWritable()`), deliberately NOT the
+  badger `ReadOnly` store mode — which would disable the change-log and the
+  apply path's own writes.
+- **`ChangeNodePut` / `ChangeRelPut` reshaped** (Phase-0 record format, still
+  unreleased): the body is now `storeutil.NodePutBody` / `RelPutBody` carrying
+  the new-current wire plus a **`WithHistory` bit** that records whether the
+  originating door wrote a version-history row (`ReplaceNodeWithHistory` /
+  `*NodeLabelTokenWithHistory`) versus an in-place replace or create. A replica
+  needs this one bit to reproduce the primary's history depth exactly: with it
+  set it applies `ReplaceNodeWithHistory` (regenerating the exact prior row from
+  its in-sync local current, which equals the primary's pre-mutation state by
+  LSN ordering); without it, `ReplaceNode` (no history) or `PutNode`. The
+  put-record wire is now built **untokenized** (`NodeToWireChecked`, property
+  keys as strings) in BOTH backends, so badger and memory feeds are now
+  byte-identical even for **property-bearing** entities (closing the Phase-0
+  property-key tokenization caveat) and the records carry no property-key
+  registry dependency. Create-vs-update is inferred from local existence; a
+  label mutation is detected by diffing the local label set against the wire and
+  routed to the matching label-token door.
+- **Bootstrap + tail flow**: bootstrap a replica with `g.IO().Import` from a
+  primary export (registry + entities + history), `SetAppliedLSN` to the
+  snapshot's `LastCommittedLSN`, then loop `ForEachChange(AppliedLSN())` →
+  `ApplyChange`. Records are total-ordered by LSN, so the replica's local
+  current row always equals the primary's pre-mutation state when a record
+  applies — the invariant that makes regenerated history rows byte-exact.
+- **Tests**: end-to-end byte-exact convergence (bootstrap + tail covering
+  create / with-history update / in-place update / label add+remove / new rel /
+  rel with-history update / connected-node cascade delete, asserted by integrity
+  hash + version + full per-entity version history, including the deleted node's
+  tombstone chain); idempotent double-apply (history depth unchanged); read-only
+  gate parity across every mutation door with `errors.Is(ErrReadOnlyReplica)`.
+
+Deferred to the next Phase-1 increment (documented in `tasks/horizontal-scaling.md`):
+gapless snapshot→tail handoff via an export-header `SnapshotLSN` (today the test
+uses `LastCommittedLSN()` post-export, exact when no concurrent writer); lazy
+**token-registry refetch** for labels/rel-types allocated AFTER the snapshot
+(today a post-snapshot token fails closed with a clear validation error); and
+failover (ID-slot lease + promotion-by-reopen).
+
 ### Added — durable ordered change-log (op-log) + `g.Replication()` (horizontal-scaling Phase 0)
 
 The topology-agnostic foundation for horizontal scaling: a durable, ordered

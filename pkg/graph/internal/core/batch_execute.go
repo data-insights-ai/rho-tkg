@@ -28,7 +28,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		return nil, err
 	}
 
-	if err := b.g.checkOpen(); err != nil {
+	if err := b.g.checkWritable(); err != nil {
 		b.mu.Unlock()
 		return nil, err
 	}

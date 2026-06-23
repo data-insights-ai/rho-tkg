@@ -18,7 +18,7 @@ func (co *ConstraintOps) Add(constraint temporalpkg.TemporalConstraint) error {
 		return ErrNilGraph
 	}
 	c := co.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return err
 	}
 	c.mu.Lock()
@@ -40,7 +40,7 @@ func (co *ConstraintOps) Set(cs ConstraintSet) error {
 		return ErrNilGraph
 	}
 	c := co.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return err
 	}
 	c.mu.Lock()

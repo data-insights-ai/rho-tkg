@@ -79,6 +79,7 @@ var (
 	ErrNotTieredStore          = core.ErrNotTieredStore
 	ErrAlreadyClosed           = core.ErrAlreadyClosed
 	ErrGraphClosed             = core.ErrGraphClosed
+	ErrReadOnlyReplica         = core.ErrReadOnlyReplica
 	ErrNilGraph                = core.ErrNilGraph
 	ErrNilStore                = core.ErrNilStore
 	ErrNilContext              = core.ErrNilContext

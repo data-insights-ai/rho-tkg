@@ -20,7 +20,7 @@ import (
 // while a tx holds c.mu.Lock.
 func (n *NodeOps) Update(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
 	c := n.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return nil, err
 	}
 	if err := checkCtx(ctx); err != nil {
@@ -229,7 +229,7 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 // (panic-safe) for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (n *NodeOps) UpdateInPlace(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
 	c := n.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return nil, err
 	}
 	if err := checkCtx(ctx); err != nil {

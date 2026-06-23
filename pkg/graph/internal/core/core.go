@@ -60,6 +60,7 @@ type Core struct {
 	deletedIter        storepkg.DeletedIterationCapability
 	deletedDepthIter   storepkg.DepthDeletedIterationCapability
 	changeFeed         storepkg.ChangeFeedCapability
+	readOnlyReplica    bool
 	vectorRowsTrust    bool
 	storeRowsTrust     bool
 	nativeAdjacency    bool
@@ -146,6 +147,7 @@ var (
 	ErrNotTieredStore  = errors.New("graph: operation requires tiered.Store")
 	ErrAlreadyClosed   = errors.New("graph: entity already closed")
 	ErrGraphClosed     = errors.New("graph: graph is closed")
+	ErrReadOnlyReplica = errors.New("graph: read-only replica (writes go to the primary)")
 	ErrNilGraph        = grapherr.ErrNilGraph
 	ErrNilStore        = storepkg.ErrNilStore
 	ErrNilContext      = errors.New("graph: context must not be nil")
@@ -284,6 +286,14 @@ type Config struct {
 	// overhead). Ignored when Store is supplied explicitly (enable it on the
 	// injected store directly, e.g. badger.Config.ChangeLog / memory.WithChangeLog).
 	ChangeLog bool
+	// ReadOnlyReplica marks this graph as a log-shipped read replica: every USER
+	// mutation door fails closed with ErrReadOnlyReplica, while the replica apply
+	// path (g.Replication().ApplyChange) and the bootstrap importer (g.IO().Import)
+	// stay open so the replica converges to its primary. Reads are unaffected.
+	// Distinct from the badger ReadOnly store mode (which disables the change-log
+	// and the write buffer entirely); a replica is a normal writable store that
+	// the core gates above the store layer.
+	ReadOnlyReplica bool
 }
 
 // ValidationDefaults returns the resolved validation limits (for testing).
@@ -856,16 +866,17 @@ func New(config Config) (*Core, error) {
 	}
 
 	c := &Core{
-		labels:         registrypkg.NewLabelRegistry(),
-		relTypes:       registrypkg.NewRelTypeRegistry(),
-		propKeys:       registrypkg.NewPropertyKeyRegistry(),
-		nodeIDGen:      nodeGen,
-		relIDGen:       relGen,
-		entityLocks:    locks.NewManager(),
-		validation:     v,
-		indexProviders: make(map[string]*indexProviderEntry),
-		relTypeCache:   make(map[string]uint16),
-		clock:          time.Now,
+		labels:          registrypkg.NewLabelRegistry(),
+		relTypes:        registrypkg.NewRelTypeRegistry(),
+		propKeys:        registrypkg.NewPropertyKeyRegistry(),
+		nodeIDGen:       nodeGen,
+		relIDGen:        relGen,
+		entityLocks:     locks.NewManager(),
+		validation:      v,
+		indexProviders:  make(map[string]*indexProviderEntry),
+		relTypeCache:    make(map[string]uint16),
+		clock:           time.Now,
+		readOnlyReplica: config.ReadOnlyReplica,
 	}
 	c.Nodes = &NodeOps{c: c}
 	c.Rels = &RelOps{c: c}

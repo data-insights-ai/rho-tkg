@@ -45,7 +45,7 @@ func (r *RelOps) Get(ctx context.Context, id types.RelID) (*types.Relationship, 
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (r *RelOps) Delete(ctx context.Context, id types.RelID) error {
 	c := r.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return err
 	}
 	if err := checkCtx(ctx); err != nil {

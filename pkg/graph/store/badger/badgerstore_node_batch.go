@@ -491,13 +491,28 @@ func (bs *Store) PutNodesBatch(nodes []*types.Node) error {
 		}
 	}
 
-	bs.appendOps(ops...)
-	// One ChangeNodePut per node (each carries its own pre-marshaled wire), under
-	// the same idxMu.Lock as the ops so the records and ops snapshot together.
-	for i := range serialized {
-		bs.logChangeRaw(storecontract.ChangeNodePut, serialized[i].data)
+	// Pre-build the per-node change-log payloads BEFORE enqueuing ops, so an
+	// (in practice impossible) encode error aborts the batch with zero side
+	// effects rather than leaving ops enqueued with a partial feed.
+	var putPayloads [][]byte
+	if bs.logEnabled {
+		putPayloads = make([][]byte, len(nodes))
+		for i := range nodes {
+			p, err := storepkg.NodePutPayload(nodes[i], false)
+			if err != nil {
+				bs.idxMu.Unlock()
+				return fmt.Errorf("graph: encode change-log: %w", err)
+			}
+			putPayloads[i] = p
+		}
 	}
+	bs.appendOps(ops...)
 	bs.nodeCount.Add(int64(len(nodes)))
+	// One ChangeNodePut per node (create => WithHistory false), under the same
+	// idxMu.Lock as the ops so the records and ops snapshot together.
+	for i := range putPayloads {
+		bs.logChangeRaw(storecontract.ChangeNodePut, putPayloads[i])
+	}
 	bs.idxMu.Unlock()
 
 	return bs.flushIfNeeded()

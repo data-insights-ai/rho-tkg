@@ -239,7 +239,7 @@ func (v lockedHashVerifier) VerifyRelChain(id types.RelID) (bool, error) {
 // Acquires the graph write lock to prevent concurrent operations.
 func (a *AdminOps) Reset() error {
 	c := a.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return err
 	}
 	c.mu.Lock()

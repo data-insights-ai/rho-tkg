@@ -50,7 +50,7 @@ func (ms *Store) PutNode(n *types.Node) error {
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
-	return ms.logNodePutLocked(n)
+	return ms.logNodePutLocked(n, false)
 }
 
 // GetNode retrieves a node by its snowflake ID.
@@ -235,7 +235,7 @@ func (ms *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
-	return ms.logNodePutLocked(updatedNode)
+	return ms.logNodePutLocked(updatedNode, false)
 }
 
 // AddNodeLabelToken adds tok to the label index for id and persists updatedNode.
@@ -290,7 +290,7 @@ func (ms *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
-	return ms.logNodePutLocked(updatedNode)
+	return ms.logNodePutLocked(updatedNode, false)
 }
 
 // ReplaceNode overwrites an existing node's data in-place.
@@ -338,7 +338,7 @@ func (ms *Store) ReplaceNode(n *types.Node) error {
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
-	return ms.logNodePutLocked(n)
+	return ms.logNodePutLocked(n, false)
 }
 
 // DeleteNodeCascade atomically removes a node and all connected relationships.
@@ -464,7 +464,7 @@ func (ms *Store) PutNodesBatch(nodes []*types.Node) error {
 		if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates[i], rawID); err != nil {
 			return err
 		}
-		if err := ms.logNodePutLocked(n); err != nil {
+		if err := ms.logNodePutLocked(n, false); err != nil {
 			return err
 		}
 	}

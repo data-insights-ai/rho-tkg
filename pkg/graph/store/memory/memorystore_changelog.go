@@ -43,11 +43,11 @@ func (ms *Store) logChangeLocked(tag storecontract.ChangeTag, payload []byte) {
 // and append it, all under ms.mu (held by the calling door). Each is a no-op
 // when the log is disabled, so a door can unconditionally `return ms.logXLocked(...)`.
 
-func (ms *Store) logNodePutLocked(n *types.Node) error {
+func (ms *Store) logNodePutLocked(n *types.Node, withHistory bool) error {
 	if !ms.logEnabled {
 		return nil
 	}
-	p, err := storeutil.MarshalNodeWire(n)
+	p, err := storeutil.NodePutPayload(n, withHistory)
 	if err != nil {
 		return changeLogEncodeErr(err)
 	}
@@ -55,11 +55,11 @@ func (ms *Store) logNodePutLocked(n *types.Node) error {
 	return nil
 }
 
-func (ms *Store) logRelPutLocked(r *types.Relationship) error {
+func (ms *Store) logRelPutLocked(r *types.Relationship, withHistory bool) error {
 	if !ms.logEnabled {
 		return nil
 	}
-	p, err := storeutil.MarshalRelWire(r)
+	p, err := storeutil.RelPutPayload(r, withHistory)
 	if err != nil {
 		return changeLogEncodeErr(err)
 	}

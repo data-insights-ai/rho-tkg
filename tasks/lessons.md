@@ -1013,3 +1013,97 @@ Corollaries that bit during implementation:
   buffer's LSN/watermark without a non-monotonic-watermark hazard** — defer such
   records rather than bolt them on.
 
+## 50. A Replica Must REPRODUCE The Primary's Rows, Not Re-Derive Them — And One Bit Of Provenance Decides History Depth
+
+Phase-1 read replicas apply a primary's change-feed. The defining constraint:
+the replica must be a BYTE-EXACT copy — same integrity hash, version, `TxFrom`,
+temporal metadata — because the hash chains those fields together and any
+divergence cascades to every later version. That forces several rules.
+
+- **Apply writes the wire VERBATIM through foreign-ID store doors; it NEVER calls
+  the normal create/update doors.** `NodeOps.Add`/`Update` re-mint IDs, re-stamp
+  `TxFrom`, and recompute the hash — correct for an origin write, fatal for a
+  replica. The apply path (`apply_record.go`) reuses the *import* trust pipeline
+  (`WireTo*Checked` reconstructs the entity verbatim → token-validate →
+  prop-limits → hash recompute-AND-COMPARE) and then calls `PutNode` /
+  `ReplaceNode` / `ReplaceNodeWithHistory` / `Delete*` / `PutNodeVersion` /
+  `Truncate*`/`Trim*` / label-token doors, all of which marshal the supplied
+  entity as-is. The hash is VERIFIED, never STAMPED. Use the integrity hash as
+  the convergence oracle in tests — equal hash proves equal canonical content +
+  prev-hash, i.e. byte-exact reproduction including the chain.
+
+- **A bare new-current row is ambiguous about provenance; carry the one missing
+  bit at the door.** Phase-0's `ChangeNodePut` was emitted identically by create,
+  in-place `ReplaceNode` (no history row), `ReplaceNodeWithHistory` (history row),
+  AND label mutations. A replica reconstructing history from its own current row
+  manufactures phantom rows for in-place updates and loses real ones for
+  with-history updates — either way history depth diverges. The fix is exactly
+  ONE bit (`NodePutBody.WithHistory`): the replica regenerates the EXACT prior
+  history row from its in-sync local current (which, by LSN total-ordering,
+  equals the primary's pre-mutation state), so it never needs the prior bytes
+  shipped. Create-vs-update is inferred from local existence; a label change is a
+  one-token diff of the local label set vs the wire. Lesson: when a log record
+  must drive a state machine on the consumer, audit whether the record carries
+  enough to disambiguate which TRANSITION produced it — not just the resulting
+  state. The cheapest fix is usually a provenance bit at the emitting door, set
+  identically across backends, not re-deriving on the consumer.
+
+- **Reshaping the record to be UNTOKENIZED removed a whole sync problem.**
+  Building the put-record wire via `NodeToWireChecked` (property keys as strings)
+  instead of the backend's tokenized storage bytes made badger and memory feeds
+  byte-identical even for property-bearing entities (closing the Phase-0 caveat)
+  AND dropped the property-key registry from the replica's dependency set (only
+  label/rel-type tokens remain, since those are part of the logical row). Prefer
+  the backend-independent representation for a cross-node protocol; storage-local
+  encodings (token dictionaries) leak coupling.
+
+- **The read-only gate is a CORE-layer concern, not the store's `ReadOnly`
+  mode.** Badger `ReadOnly` disables the change-log and rejects the apply path's
+  own writes — useless for a replica that must keep applying. Add a core
+  `checkWritable()` (= `checkOpen` + replica flag → `ErrReadOnlyReplica`) called
+  by every USER mutation door; reads, the bootstrap importer, and `ApplyChange`
+  call only `checkOpen`. Converting `checkOpen`→`checkWritable` per-door is
+  error-prone: file-scope the rename ONLY in files that are purely mutation
+  (`node_add`/`node_update`/`relationship_*`/`node_label`/`graph_indexes` —
+  index management is all-mutation), and edit door-by-door where reads share the
+  file (`node_delete`/`relationship_delete` have `Get`; `crud`'s `History` is a
+  read; `temporal_queries` is mostly reads). `SetProperty`/`DeleteProperty`
+  delegate to `Update`, so they inherit the gate for free — don't double-gate.
+
+- **A watermark advanced AFTER the door commits is safe ONLY if apply is
+  idempotent.** The applied-LSN is a separate `MetaSet` after each record's door
+  commits (no co-commit — that would need a new batch-apply store capability), so
+  a crash in between replays the last record. Every handler must absorb that:
+  identical row → no-op (`nodeWireMatches`/`relWireMatches`, which must work
+  against the untokenized wire), delete → tolerate not-found. Prove it with a
+  double-apply test asserting history depth is unchanged — re-applying a
+  with-history `NodePut` must NOT append a second history row.
+
+Two bugs an adversarial review caught (both now fixed + tested):
+
+- **A separate-path watermark can OUTRUN buffered data → permanent record loss.**
+  The data door writes through the async write buffer (`flushIfNeeded` is a NO-OP
+  without `SyncWrites` — the row sits in RAM), but the watermark `MetaSet` writes
+  straight to Badger. A crash in between recovers the ADVANCED watermark while the
+  entity write is lost, and the replica resumes past the gap — permanent
+  divergence. The direction matters: a watermark BEHIND the data is harmless
+  (idempotent re-apply); AHEAD is fatal. Rule: when a progress marker lives on a
+  different durability path than the work it records, FLUSH the work to that same
+  path BEFORE advancing the marker. Fix here: `flushStoreLocked()` (drains the
+  buffer to the backend WAL) before `setAppliedLSNLocked`; batch apply flushes
+  ONCE then advances to the last LSN. Also add a monotonicity guard (`rec.LSN <=
+  applied` → skip) so a stale/out-of-order redelivery can't regress the row OR
+  the watermark. InMemory-only tests hide this entirely — add a disk-backed,
+  non-`SyncWrites` restart-resume test.
+
+- **Gate-completeness is enumerated, not pattern-matched.** The read-only gate
+  conversion missed `CompareAndSetProperty` and `CloseVersion` (both genuine
+  writers — `ReplaceNode`/`ReplaceNodeWithHistory` under the hood) because they
+  live in files (`property_cas.go`, `version_chain.go`) whose OTHER methods are
+  reads, so the file-scope `perl` sweep skipped them and the door-by-door pass
+  overlooked them. A write door is not always in an obviously-named file. Audit
+  by what the method DOES (does its body reach a `store.Put/Replace/Delete`
+  door?), grepping mutation verbs across EVERY `*Ops` method, and back it with a
+  gate test that exercises each door by name — a gate with a hole is invisible
+  until the missing door is tested.
+

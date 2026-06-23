@@ -18,7 +18,7 @@ import (
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (n *NodeOps) CompareAndSetProperty(ctx context.Context, id types.NodeID, key string, expected, newVal any) (bool, error) {
 	c := n.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return false, err
 	}
 	if err := checkCtx(ctx); err != nil {
@@ -211,7 +211,7 @@ func (c *Core) compareAndSetPropertyInternal(ctx context.Context, id types.NodeI
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (r *RelOps) CompareAndSetProperty(ctx context.Context, id types.RelID, key string, expected, newVal any) (bool, error) {
 	c := r.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return false, err
 	}
 	if err := checkCtx(ctx); err != nil {

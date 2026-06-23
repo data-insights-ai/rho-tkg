@@ -919,7 +919,7 @@ func (t *TempOps) RelsByTypePropertyDuring(relType, key string, value any, start
 // interleavings the partial state can produce.
 func (t *TempOps) SetNodeVersionInterval(ctx context.Context, id types.NodeID, validFrom, validTo types.Instant, props map[string]any) (*types.Node, error) {
 	c := t.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return nil, err
 	}
 	var (
@@ -941,7 +941,7 @@ func (t *TempOps) SetNodeVersionInterval(ctx context.Context, id types.NodeID, v
 // SetRelVersionInterval is the relationship counterpart of SetNodeVersionInterval.
 func (t *TempOps) SetRelVersionInterval(ctx context.Context, id types.RelID, validFrom, validTo types.Instant, props map[string]any) (*types.Relationship, error) {
 	c := t.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return nil, err
 	}
 	var (

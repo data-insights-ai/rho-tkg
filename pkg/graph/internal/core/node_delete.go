@@ -51,7 +51,7 @@ func (n *NodeOps) Get(ctx context.Context, id types.NodeID) (*types.Node, error)
 // while a tx holds c.mu.Lock.
 func (n *NodeOps) Delete(ctx context.Context, id types.NodeID) error {
 	c := n.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return err
 	}
 	if err := checkCtx(ctx); err != nil {

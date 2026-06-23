@@ -73,10 +73,13 @@ func (bs *Store) PutNode(n *types.Node) error {
 		return err
 	}
 	bs.appendOps(ops...)
-	bs.logChangeRaw(storecontract.ChangeNodePut, data)
 	bs.nodeCount.Add(1)
+	logErr := bs.logNodePut(n, false)
 	bs.idxMu.Unlock()
 
+	if logErr != nil {
+		return logErr
+	}
 	return bs.flushIfNeeded()
 }
 
@@ -472,9 +475,12 @@ func (bs *Store) ReplaceNode(n *types.Node) error {
 		return err
 	}
 	bs.appendOps(writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data})
-	bs.logChangeRaw(storecontract.ChangeNodePut, data)
+	logErr := bs.logNodePut(n, false)
 	bs.idxMu.Unlock()
 
+	if logErr != nil {
+		return logErr
+	}
 	return bs.flushIfNeeded()
 }
 
@@ -565,9 +571,12 @@ func (bs *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 		writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data},
 		writeOp{opType: writeOpDelete, key: storepkg.LabelIndexKey(tok, id)},
 	)
-	bs.logChangeRaw(storecontract.ChangeNodePut, data)
+	logErr := bs.logNodePut(updatedNode, false)
 	bs.idxMu.Unlock()
 
+	if logErr != nil {
+		return logErr
+	}
 	return bs.flushIfNeeded()
 }
 
@@ -653,9 +662,12 @@ func (bs *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 		writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data},
 		writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tok, id)},
 	)
-	bs.logChangeRaw(storecontract.ChangeNodePut, data)
+	logErr := bs.logNodePut(updatedNode, false)
 	bs.idxMu.Unlock()
 
+	if logErr != nil {
+		return logErr
+	}
 	return bs.flushIfNeeded()
 }
 

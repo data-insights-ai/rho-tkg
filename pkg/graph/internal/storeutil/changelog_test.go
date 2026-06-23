@@ -116,7 +116,8 @@ func sampleRelWire() RelWire {
 func TestChangeBody_RoundTrip(t *testing.T) {
 	t.Run("NodePut", func(t *testing.T) {
 		w := sampleNodeWire()
-		p, err := MarshalChangeBody(w)
+		body := NodePutBody{Wire: w, WithHistory: true}
+		p, err := MarshalChangeBody(body)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -124,20 +125,21 @@ func TestChangeBody_RoundTrip(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !reflect.DeepEqual(got, w) {
-			t.Fatalf("got %+v want %+v", got, w)
+		if !reflect.DeepEqual(got, body) {
+			t.Fatalf("got %+v want %+v", got, body)
 		}
 	})
 
 	t.Run("RelPut", func(t *testing.T) {
 		w := sampleRelWire()
-		p, _ := MarshalChangeBody(w)
+		body := RelPutBody{Wire: w, WithHistory: true}
+		p, _ := MarshalChangeBody(body)
 		got, err := DecodeRelPut(p)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !reflect.DeepEqual(got, w) {
-			t.Fatalf("got %+v want %+v", got, w)
+		if !reflect.DeepEqual(got, body) {
+			t.Fatalf("got %+v want %+v", got, body)
 		}
 	})
 
