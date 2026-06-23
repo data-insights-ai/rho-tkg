@@ -32,13 +32,13 @@ func (c *Core) applyChangeRecordLocked(rec storepkg.ChangeRecord) error {
 		if err != nil {
 			return err
 		}
-		return c.applyNodePutLocked(body)
+		return c.applyNodePutLocked(body, rec)
 	case storepkg.ChangeRelPut:
 		body, err := storeutil.DecodeRelPut(rec.Payload)
 		if err != nil {
 			return err
 		}
-		return c.applyRelPutLocked(body)
+		return c.applyRelPutLocked(body, rec)
 	case storepkg.ChangeNodeDelete:
 		body, err := storeutil.DecodeNodeDelete(rec.Payload)
 		if err != nil {
@@ -56,13 +56,13 @@ func (c *Core) applyChangeRecordLocked(rec storepkg.ChangeRecord) error {
 		if err != nil {
 			return err
 		}
-		return c.applyNodeHistoryVersionLocked(body)
+		return c.applyNodeHistoryVersionLocked(body, rec)
 	case storepkg.ChangeRelHistoryVersion:
 		body, err := storeutil.DecodeHistoryVersionRel(rec.Payload)
 		if err != nil {
 			return err
 		}
-		return c.applyRelHistoryVersionLocked(body)
+		return c.applyRelHistoryVersionLocked(body, rec)
 	case storepkg.ChangeNodeHistoryTruncate:
 		body, err := storeutil.DecodeHistoryTruncate(rec.Payload)
 		if err != nil {
@@ -95,9 +95,154 @@ func applyTokenSyncErr(err error) error {
 	return fmt.Errorf("%w — replica token registry is behind the primary (a label/rel-type was registered after this replica's bootstrap snapshot; lazy registry refetch is a deferred Phase-1 feature)", err)
 }
 
-func (c *Core) applyNodePutLocked(body storeutil.NodePutBody) error {
-	if err := validateNodeTokensInRegistry(&body.Wire, c.labels); err != nil {
+// appendNamer is the append-only grow surface the refetch hook drives. Both
+// LabelRegistry and RelTypeRegistry satisfy it (PropertyKeyRegistry is tokenized
+// locally from untokenized record wires and is never synced from the primary).
+type appendNamer interface {
+	ExportNames() []string
+	AppendNames(prefix, suffix []string) (bool, error)
+}
+
+// appendRegistrySuffix extends reg with the tail of target beyond reg's current
+// length. No-op when the primary is not ahead on this registry. Returns an error
+// if the primary's names do not append-only-extend the replica's (divergence).
+func appendRegistrySuffix(reg appendNamer, target []string, kind string) error {
+	current := reg.ExportNames()
+	// The primary must append-only-EXTEND us: our current names must be a prefix
+	// of target. Verify the overlap in EVERY case (not just the grow branch) — a
+	// corrupt/foreign/misconfigured source that diverges within the prefix region
+	// must fail closed, not silently graft a mismatched suffix onto our names.
+	if len(target) < len(current) {
+		return fmt.Errorf("graph: apply: %s %w (primary registry shorter: %d < %d)", kind, storepkg.ErrRegistryDiverged, len(target), len(current))
+	}
+	for i := range current {
+		if target[i] != current[i] {
+			return fmt.Errorf("graph: apply: %s %w (mismatch at token %d)", kind, storepkg.ErrRegistryDiverged, i)
+		}
+	}
+	if len(target) == len(current) {
+		return nil // prefix verified equal; nothing to append
+	}
+	suffix := target[len(current):]
+	ok, err := reg.AppendNames(current, suffix)
+	if err != nil {
+		return fmt.Errorf("graph: apply: append %s registry: %w", kind, err)
+	}
+	if !ok {
+		// AppendNames re-verifies current==reg under its own lock; (false) here
+		// means the registry changed between our ExportNames and the append (we
+		// hold c.registryMu, so this should not occur) — fail closed.
+		return fmt.Errorf("graph: apply: %s %w (registry changed during append)", kind, storepkg.ErrRegistryDiverged)
+	}
+	return nil
+}
+
+// refetchRegistriesLocked pulls the primary's registry snapshot and
+// append-only-extends the replica's label + rel-type registries from it, then
+// persists. Caller holds c.mu.Lock; the source is called OUTSIDE c.registryMu
+// (it is the remote/primary Core, taking only its OWN locks), and the local grow
+// + persist happen under c.registryMu (the established registry lock order:
+// c.mu -> c.registryMu). On a persist failure the in-memory grow is rolled back
+// so the in-memory registry never runs ahead of durable storage (which would
+// leave an applied entity referencing an unpersisted token after a crash).
+func (c *Core) refetchRegistriesLocked(src storepkg.ReplicationSource, rec storepkg.ChangeRecord) error {
+	snap, err := src.RegistrySnapshot()
+	if err != nil {
+		return fmt.Errorf("graph: apply change LSN %d: registry refetch: %w", rec.LSN, err)
+	}
+	if snap == nil {
+		return fmt.Errorf("graph: apply change LSN %d: registry refetch returned nil snapshot", rec.LSN)
+	}
+	// The primary's snapshot must already contain the missing token: its capture
+	// LSN must be at or beyond the record we are applying.
+	if snap.CapturedAtLSN < rec.LSN {
+		return fmt.Errorf("graph: apply change LSN %d: %w (captured at LSN %d); retry after the primary commits", rec.LSN, storepkg.ErrPrimaryRegistryStale, snap.CapturedAtLSN)
+	}
+
+	c.registryMu.Lock()
+	defer c.registryMu.Unlock()
+
+	labelSnap := c.labels.ExportNames()
+	relSnap := c.relTypes.ExportNames()
+	restore := func() {
+		if alloc := newlyAllocatedNames(labelSnap, c.labels.ExportNames()); len(alloc) > 0 {
+			_, _ = c.labels.RollbackNames(labelSnap, alloc...)
+		}
+		if alloc := newlyAllocatedNames(relSnap, c.relTypes.ExportNames()); len(alloc) > 0 {
+			_, _ = c.relTypes.RollbackNames(relSnap, alloc...)
+		}
+	}
+	if err := appendRegistrySuffix(c.labels, snap.Labels, "label"); err != nil {
+		restore()
+		return err
+	}
+	if err := appendRegistrySuffix(c.relTypes, snap.RelTypes, "rel-type"); err != nil {
+		restore()
+		return err
+	}
+	// persistRegistries writes label+reltype (SaveRegistries, one atomic txn) and
+	// property keys (SavePropertyKeyRegistry). On the badger backend under default
+	// !SyncWrites this commits to the LSM without an fsync, so a crash can lose
+	// the grow — but that is recovered, not corrupting: tokens are stored
+	// numerically in rows (the row stays decodable), and the watermark advances
+	// only AFTER the entity flush, so a lost grow re-fetches and re-applies
+	// idempotently from the unadvanced watermark. After a successful refetch in a
+	// batch the durable registry may legitimately LEAD the watermark (a later
+	// record in the same batch can fail); that is the safe direction for an
+	// append-only registry (AppendNames is a no-op once the tokens are present).
+	// On persist failure we roll the in-memory grow back so in-memory == disk.
+	if err := c.persistRegistries(); err != nil {
+		restore()
+		return fmt.Errorf("graph: apply change LSN %d: persist grown registry: %w", rec.LSN, err)
+	}
+	return nil
+}
+
+// validateNodeTokensWithRefetch validates a node wire's label tokens against the
+// local registry; on an unresolved token, if a ReplicationSource is configured,
+// it refetches the primary's registry, append-only-extends, and re-validates.
+// Without a source (or if still unresolved after a refetch) it fails closed via
+// applyTokenSyncErr, exactly as before this capability existed.
+func (c *Core) validateNodeTokensWithRefetch(w *storeutil.NodeWire, rec storepkg.ChangeRecord) error {
+	origErr := validateNodeTokensInRegistry(w, c.labels)
+	if origErr == nil {
+		return nil
+	}
+	src := c.replicationSource()
+	if src == nil {
+		return applyTokenSyncErr(origErr)
+	}
+	if err := c.refetchRegistriesLocked(src, rec); err != nil {
+		return err
+	}
+	if err := validateNodeTokensInRegistry(w, c.labels); err != nil {
 		return applyTokenSyncErr(err)
+	}
+	return nil
+}
+
+// validateRelTokensWithRefetch is the relationship counterpart.
+func (c *Core) validateRelTokensWithRefetch(w *storeutil.RelWire, rec storepkg.ChangeRecord) error {
+	origErr := validateRelTokensInRegistry(w, c.relTypes)
+	if origErr == nil {
+		return nil
+	}
+	src := c.replicationSource()
+	if src == nil {
+		return applyTokenSyncErr(origErr)
+	}
+	if err := c.refetchRegistriesLocked(src, rec); err != nil {
+		return err
+	}
+	if err := validateRelTokensInRegistry(w, c.relTypes); err != nil {
+		return applyTokenSyncErr(err)
+	}
+	return nil
+}
+
+func (c *Core) applyNodePutLocked(body storeutil.NodePutBody, rec storepkg.ChangeRecord) error {
+	if err := c.validateNodeTokensWithRefetch(&body.Wire, rec); err != nil {
+		return err
 	}
 	n, err := storeutil.WireToNodeChecked(body.Wire)
 	if err != nil {
@@ -157,9 +302,9 @@ func (c *Core) applyNodeLabelChangeLocked(local, n *types.Node, added, removed u
 	}
 }
 
-func (c *Core) applyRelPutLocked(body storeutil.RelPutBody) error {
-	if err := validateRelTokensInRegistry(&body.Wire, c.relTypes); err != nil {
-		return applyTokenSyncErr(err)
+func (c *Core) applyRelPutLocked(body storeutil.RelPutBody, rec storepkg.ChangeRecord) error {
+	if err := c.validateRelTokensWithRefetch(&body.Wire, rec); err != nil {
+		return err
 	}
 	r, err := storeutil.WireToRelChecked(body.Wire)
 	if err != nil {
@@ -260,9 +405,9 @@ func (c *Core) applyRelDeleteLocked(body storeutil.RelDeleteBody) error {
 	return c.store.DeleteRelWithHistory(id, local.Version(), tomb)
 }
 
-func (c *Core) applyNodeHistoryVersionLocked(body storeutil.HistoryVersionNodeBody) error {
-	if err := validateNodeTokensInRegistry(&body.Wire, c.labels); err != nil {
-		return applyTokenSyncErr(err)
+func (c *Core) applyNodeHistoryVersionLocked(body storeutil.HistoryVersionNodeBody, rec storepkg.ChangeRecord) error {
+	if err := c.validateNodeTokensWithRefetch(&body.Wire, rec); err != nil {
+		return err
 	}
 	n, err := storeutil.WireToNodeChecked(body.Wire)
 	if err != nil {
@@ -277,9 +422,9 @@ func (c *Core) applyNodeHistoryVersionLocked(body storeutil.HistoryVersionNodeBo
 	return c.store.PutNodeVersion(n.InternalID(), uint32(body.Version), n) // #nosec G115 — version from our own wire
 }
 
-func (c *Core) applyRelHistoryVersionLocked(body storeutil.HistoryVersionRelBody) error {
-	if err := validateRelTokensInRegistry(&body.Wire, c.relTypes); err != nil {
-		return applyTokenSyncErr(err)
+func (c *Core) applyRelHistoryVersionLocked(body storeutil.HistoryVersionRelBody, rec storepkg.ChangeRecord) error {
+	if err := c.validateRelTokensWithRefetch(&body.Wire, rec); err != nil {
+		return err
 	}
 	r, err := storeutil.WireToRelChecked(body.Wire)
 	if err != nil {

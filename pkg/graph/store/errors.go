@@ -36,6 +36,20 @@ var (
 	// diagnostics, but the sentinel is the contract.
 	ErrCapabilityNotSupported = errors.New("graph: store does not support this capability")
 
+	// ErrPrimaryRegistryStale is returned by the replica apply path when a
+	// refetched primary RegistrySnapshot has CapturedAtLSN < the record being
+	// applied — the primary's registry has not yet caught up to the record. It is
+	// RETRYABLE: a replication driver should pause and retry after the primary
+	// commits. Distinct from ErrRegistryDiverged (which is fatal).
+	ErrPrimaryRegistryStale = errors.New("graph: primary registry snapshot is stale for this record")
+
+	// ErrRegistryDiverged is returned by the replica apply path when a refetched
+	// primary registry does NOT append-only-extend the replica's (the replica's
+	// names are not a prefix of the primary's). This is FATAL — the two
+	// registries have irreconcilably diverged; the replica must be re-bootstrapped.
+	// Not retryable.
+	ErrRegistryDiverged = errors.New("graph: replica registry diverged from primary")
+
 	// ErrWireFormatVersionUnsupported is returned when persisted data declares
 	// an on-disk format version newer than this binary supports — either a
 	// store-level format marker written by a newer release, or an individual

@@ -266,3 +266,74 @@ func (r *RelTypeRegistry) RollbackNames(snapshot []string, allocated ...string) 
 	r.nextToken = uint16(len(snapshot)) // #nosec G115 — snapshot came from a capacity-bounded registry
 	return true, nil
 }
+
+// AppendNames extends the registry by the suffix names when its current contents
+// exactly equal prefix. The relationship-type counterpart of
+// LabelRegistry.AppendNames — the append-only grow a log-shipped replica uses to
+// sync a primary's newly-allocated rel-type names. Returns (false, nil) without
+// mutating on prefix divergence; an error on malformed suffix / capacity. See
+// LabelRegistry.AppendNames for the full contract. Write-locked.
+func (r *RelTypeRegistry) AppendNames(prefix []string, suffix []string) (bool, error) {
+	r.ensureInitialized()
+
+	if len(prefix) == 0 {
+		return false, errors.New("graph: append: prefix must not be empty")
+	}
+	if prefix[0] != "" {
+		return false, errors.New("graph: append: prefix[0] must be empty (reserved)")
+	}
+	if len(suffix) == 0 {
+		return true, nil
+	}
+	if (len(prefix)-1)+len(suffix) > int(TokenCapacityMax) {
+		return false, fmt.Errorf("graph: reltype append: %d entries exceeds registry capacity (%d)",
+			(len(prefix)-1)+len(suffix), TokenCapacityMax)
+	}
+
+	pset := make(map[string]struct{}, len(prefix)-1)
+	for i := 1; i < len(prefix); i++ {
+		pset[prefix[i]] = struct{}{}
+	}
+	sset := make(map[string]struct{}, len(suffix))
+	for i, name := range suffix {
+		if isBlankName(name) {
+			return false, fmt.Errorf("graph: reltype append: empty name at suffix index %d", i)
+		}
+		if _, dup := sset[name]; dup {
+			return false, fmt.Errorf("graph: reltype append: duplicate name %q in suffix", name)
+		}
+		if _, clash := pset[name]; clash {
+			return false, fmt.Errorf("graph: reltype append: suffix name %q already in prefix", name)
+		}
+		sset[name] = struct{}{}
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if len(r.toName) != len(prefix) {
+		return false, nil
+	}
+	for i := range prefix {
+		if r.toName[i] != prefix[i] {
+			return false, nil
+		}
+	}
+
+	base := len(r.toName)
+	r.toName = append(r.toName, suffix...)
+	for i, name := range suffix {
+		r.toToken[name] = uint16(base + i) // #nosec G115 — bounded by capacity check above
+	}
+	r.nextToken = uint16(len(r.toName)) // #nosec G115 — bounded by capacity check above
+
+	if len(r.toName) > tokenCapacityWarning {
+		r.warnOnce.Do(func() {
+			slog.Warn("reltype registry approaching capacity",
+				"count", len(r.toName)-1,
+				"max", TokenCapacityMax,
+			)
+		})
+	}
+	return true, nil
+}

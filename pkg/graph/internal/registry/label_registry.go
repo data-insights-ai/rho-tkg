@@ -309,3 +309,82 @@ func (r *LabelRegistry) RollbackNames(snapshot []string, allocated ...string) (b
 	r.nextToken = uint16(len(snapshot)) // #nosec G115 — snapshot came from a capacity-bounded registry
 	return true, nil
 }
+
+// AppendNames extends the registry by the suffix names, provided the registry's
+// current contents exactly equal prefix (the snapshot the caller observed). It
+// is the append-only GROW operation a log-shipped replica uses to extend its
+// token registry with a primary's newly-allocated names — ImportNames is
+// load-only (it rejects a non-empty registry), and the registry is gap-free and
+// monotone, so a replica that has seen token T needs only the name-suffix up to
+// T. Returns (false, nil) WITHOUT mutating when the registry has diverged from
+// prefix (a local allocation happened since the snapshot); returns an error on a
+// malformed suffix or capacity overflow. Write-locked. The inverse of
+// RollbackNames (which shrinks back to a snapshot); this grows past one.
+func (r *LabelRegistry) AppendNames(prefix []string, suffix []string) (bool, error) {
+	r.ensureInitialized()
+
+	if len(prefix) == 0 {
+		return false, errors.New("graph: append: prefix must not be empty")
+	}
+	if prefix[0] != "" {
+		return false, errors.New("graph: append: prefix[0] must be empty (reserved)")
+	}
+	if len(suffix) == 0 {
+		return true, nil // nothing to append (prefix-equality still asserted below)
+	}
+	if (len(prefix)-1)+len(suffix) > int(TokenCapacityMax) {
+		return false, fmt.Errorf("graph: label append: %d entries exceeds registry capacity (%d)",
+			(len(prefix)-1)+len(suffix), TokenCapacityMax)
+	}
+
+	// Validate the suffix before locking: non-blank, no dups within the suffix,
+	// no collision with a prefix name.
+	pset := make(map[string]struct{}, len(prefix)-1)
+	for i := 1; i < len(prefix); i++ {
+		pset[prefix[i]] = struct{}{}
+	}
+	sset := make(map[string]struct{}, len(suffix))
+	for i, name := range suffix {
+		if isBlankName(name) {
+			return false, fmt.Errorf("graph: label append: empty name at suffix index %d", i)
+		}
+		if _, dup := sset[name]; dup {
+			return false, fmt.Errorf("graph: label append: duplicate name %q in suffix", name)
+		}
+		if _, clash := pset[name]; clash {
+			return false, fmt.Errorf("graph: label append: suffix name %q already in prefix", name)
+		}
+		sset[name] = struct{}{}
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// The registry's current contents must exactly equal the caller's observed
+	// prefix; otherwise it diverged locally and we must not append.
+	if len(r.toLabel) != len(prefix) {
+		return false, nil
+	}
+	for i := range prefix {
+		if r.toLabel[i] != prefix[i] {
+			return false, nil
+		}
+	}
+
+	base := len(r.toLabel)
+	r.toLabel = append(r.toLabel, suffix...)
+	for i, name := range suffix {
+		r.toToken[name] = uint16(base + i) // #nosec G115 — bounded by capacity check above
+	}
+	r.nextToken = uint16(len(r.toLabel)) // #nosec G115 — bounded by capacity check above
+
+	if len(r.toLabel) > tokenCapacityWarning {
+		r.warnOnce.Do(func() {
+			slog.Warn("label registry approaching capacity",
+				"count", len(r.toLabel)-1,
+				"max", TokenCapacityMax,
+			)
+		})
+	}
+	return true, nil
+}

@@ -18,6 +18,7 @@ type fakeOps struct {
 	forEach    int
 	applied    []store.ChangeRecord
 	appliedLSN uint64
+	lease      *store.IDSlotLeaseRecord
 }
 
 func (f *fakeOps) ChangeFeed(afterLSN uint64, limit int) ([]store.ChangeRecord, error) {
@@ -62,6 +63,28 @@ func (f *fakeOps) ApplyChanges(recs []store.ChangeRecord) (uint64, error) {
 func (f *fakeOps) AppliedLSN() (uint64, error)    { return f.appliedLSN, f.err }
 func (f *fakeOps) SetAppliedLSN(lsn uint64) error { f.appliedLSN = lsn; return f.err }
 
+func (f *fakeOps) RegistrySnapshot() (*store.RegistrySnapshot, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &store.RegistrySnapshot{CapturedAtLSN: f.lastLSN}, nil
+}
+
+func (f *fakeOps) IDSlotLease() (*store.IDSlotLeaseRecord, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.lease, nil
+}
+
+func (f *fakeOps) SetIDSlotLease(rec *store.IDSlotLeaseRecord) error {
+	if f.err != nil {
+		return f.err
+	}
+	f.lease = rec
+	return nil
+}
+
 func TestAPI_ForwardsToOps(t *testing.T) {
 	ops := &fakeOps{
 		feed:    []store.ChangeRecord{{LSN: 1, Tag: store.ChangeNodePut}, {LSN: 2, Tag: store.ChangeRelPut}},
@@ -101,6 +124,13 @@ func TestAPI_ForwardsToOps(t *testing.T) {
 	if got, _ := api.AppliedLSN(); got != 42 {
 		t.Fatalf("AppliedLSN after Set = %d, want 42", got)
 	}
+	snap, err := api.RegistrySnapshot()
+	if err != nil || snap == nil || snap.CapturedAtLSN != 2 {
+		t.Fatalf("RegistrySnapshot = (%+v, %v), want CapturedAtLSN 2", snap, err)
+	}
+	// *API satisfies store.ReplicationSource (so a primary's g.Replication() can
+	// be a replica's source directly).
+	var _ store.ReplicationSource = api
 }
 
 func TestAPI_PropagatesOpsError(t *testing.T) {
@@ -111,6 +141,15 @@ func TestAPI_PropagatesOpsError(t *testing.T) {
 	}
 	if _, err := api.ChangeFeed(0, 0); !errors.Is(err, sentinel) {
 		t.Fatalf("ChangeFeed err = %v, want boom", err)
+	}
+	if _, err := api.RegistrySnapshot(); !errors.Is(err, sentinel) {
+		t.Fatalf("RegistrySnapshot err = %v, want boom", err)
+	}
+	if _, err := api.IDSlotLease(); !errors.Is(err, sentinel) {
+		t.Fatalf("IDSlotLease err = %v, want boom", err)
+	}
+	if err := api.SetIDSlotLease(&store.IDSlotLeaseRecord{Slot: 1}); !errors.Is(err, sentinel) {
+		t.Fatalf("SetIDSlotLease err = %v, want boom", err)
 	}
 }
 
@@ -127,5 +166,17 @@ func TestAPI_NilAndZeroValueFailClosed(t *testing.T) {
 	}
 	if err := nilAPI.ForEachChange(0, func(store.ChangeRecord) bool { return true }); err == nil {
 		t.Fatalf("nil API ForEachChange = nil err, want ErrNilGraph")
+	}
+	if _, err := nilAPI.RegistrySnapshot(); err == nil {
+		t.Fatalf("nil API RegistrySnapshot = nil err, want ErrNilGraph")
+	}
+	if _, err := nilAPI.IDSlotLease(); err == nil {
+		t.Fatalf("nil API IDSlotLease = nil err, want ErrNilGraph")
+	}
+	if err := nilAPI.SetIDSlotLease(&store.IDSlotLeaseRecord{Slot: 1}); err == nil {
+		t.Fatalf("nil API SetIDSlotLease = nil err, want ErrNilGraph")
+	}
+	if _, err := nilAPI.AppliedLSN(); err == nil {
+		t.Fatalf("nil API AppliedLSN = nil err, want ErrNilGraph")
 	}
 }

@@ -23,6 +23,16 @@ import (
 // the wrapping message is diagnostic only.
 var ErrCapabilityNotSupported = storepkg.ErrCapabilityNotSupported
 
+// ErrPrimaryRegistryStale (RETRYABLE) and ErrRegistryDiverged (FATAL) classify
+// a replica token-refetch failure during ApplyChange/ApplyChanges: stale means
+// the primary's registry snapshot has not yet caught up to the record (pause and
+// retry); diverged means the replica's registry is not a prefix of the primary's
+// (re-bootstrap required). Check with errors.Is to branch retry-vs-abort.
+var (
+	ErrPrimaryRegistryStale = storepkg.ErrPrimaryRegistryStale
+	ErrRegistryDiverged     = storepkg.ErrRegistryDiverged
+)
+
 // ErrWireFormatVersionUnsupported is the on-disk format sentinel — returned
 // when a store directory (or an individual persisted row) declares a wire
 // format version newer than this binary supports. The store fails closed at
