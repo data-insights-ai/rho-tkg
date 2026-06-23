@@ -83,7 +83,7 @@ func (ms *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
-	return ms.logNodePutLocked(updatedNode)
+	return ms.logNodePutLocked(updatedNode, true)
 }
 
 // AddNodeLabelTokenWithHistory atomically adds tok to the label index,
@@ -156,7 +156,7 @@ func (ms *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
-	return ms.logNodePutLocked(updatedNode)
+	return ms.logNodePutLocked(updatedNode, true)
 }
 
 // DeleteRelWithHistory atomically writes a relationship tombstone history entry
@@ -733,7 +733,7 @@ func (ms *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
-	return ms.logNodePutLocked(current)
+	return ms.logNodePutLocked(current, true)
 }
 
 // ReplaceRelWithHistory atomically replaces a relationship and writes a version history entry.
@@ -780,7 +780,7 @@ func (ms *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion 
 
 	// Replace current entity.
 	ms.rels[id] = freezeRelCopy(current)
-	return ms.logRelPutLocked(current)
+	return ms.logRelPutLocked(current, true)
 }
 
 // NodeAsOf returns the node version visible at txTime without materializing

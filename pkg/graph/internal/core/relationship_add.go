@@ -61,7 +61,7 @@ func (c *Core) deletePartialRelationshipForRollback(r *types.Relationship) error
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (r *RelOps) Add(ctx context.Context, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
 	c := r.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return nil, err
 	}
 	if err := checkCtx(ctx); err != nil {
@@ -101,7 +101,7 @@ func (c *Core) addRelationshipInternal(ctx context.Context, typeName string, sta
 // the input form so callers do not need to carry endpoint node objects.
 func (r *RelOps) AddByID(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error) {
 	c := r.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return nil, err
 	}
 	if err := checkCtx(ctx); err != nil {
@@ -188,7 +188,7 @@ func (c *Core) createRelationshipLocked(ctx context.Context, typeName string, st
 // Endpoint and constraint behaviour matches AddByID.
 func (r *RelOps) AddByIDIfAbsent(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, bool, error) {
 	c := r.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return nil, false, err
 	}
 	if err := checkCtx(ctx); err != nil {

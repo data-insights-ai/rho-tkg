@@ -12,10 +12,12 @@ import (
 // behaviour can be tested directly (the end-to-end wiring is covered in the
 // graph package).
 type fakeOps struct {
-	feed    []store.ChangeRecord
-	lastLSN uint64
-	err     error
-	forEach int
+	feed       []store.ChangeRecord
+	lastLSN    uint64
+	err        error
+	forEach    int
+	applied    []store.ChangeRecord
+	appliedLSN uint64
 }
 
 func (f *fakeOps) ChangeFeed(afterLSN uint64, limit int) ([]store.ChangeRecord, error) {
@@ -36,6 +38,29 @@ func (f *fakeOps) ForEachChange(afterLSN uint64, fn func(store.ChangeRecord) boo
 }
 
 func (f *fakeOps) LastCommittedLSN() (uint64, error) { return f.lastLSN, f.err }
+
+func (f *fakeOps) ApplyChange(rec store.ChangeRecord) error {
+	if f.err != nil {
+		return f.err
+	}
+	f.applied = append(f.applied, rec)
+	f.appliedLSN = rec.LSN
+	return nil
+}
+
+func (f *fakeOps) ApplyChanges(recs []store.ChangeRecord) (uint64, error) {
+	var last uint64
+	for _, r := range recs {
+		if err := f.ApplyChange(r); err != nil {
+			return last, err
+		}
+		last = r.LSN
+	}
+	return last, nil
+}
+
+func (f *fakeOps) AppliedLSN() (uint64, error)    { return f.appliedLSN, f.err }
+func (f *fakeOps) SetAppliedLSN(lsn uint64) error { f.appliedLSN = lsn; return f.err }
 
 func TestAPI_ForwardsToOps(t *testing.T) {
 	ops := &fakeOps{
@@ -58,6 +83,23 @@ func TestAPI_ForwardsToOps(t *testing.T) {
 	}
 	if n != 2 {
 		t.Fatalf("ForEachChange visited %d, want 2", n)
+	}
+
+	if err := api.ApplyChange(store.ChangeRecord{LSN: 7, Tag: store.ChangeNodePut}); err != nil {
+		t.Fatalf("ApplyChange: %v", err)
+	}
+	last, err := api.ApplyChanges([]store.ChangeRecord{{LSN: 8}, {LSN: 9}})
+	if err != nil || last != 9 {
+		t.Fatalf("ApplyChanges = (%d, %v), want (9, nil)", last, err)
+	}
+	if got, _ := api.AppliedLSN(); got != 9 {
+		t.Fatalf("AppliedLSN = %d, want 9", got)
+	}
+	if err := api.SetAppliedLSN(42); err != nil {
+		t.Fatalf("SetAppliedLSN: %v", err)
+	}
+	if got, _ := api.AppliedLSN(); got != 42 {
+		t.Fatalf("AppliedLSN after Set = %d, want 42", got)
 	}
 }
 

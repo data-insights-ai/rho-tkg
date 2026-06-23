@@ -108,15 +108,15 @@ func TestChangeLog_NodePutRelPutParity(t *testing.T) {
 			if err != nil {
 				t.Fatalf("DecodeNodePut: %v", err)
 			}
-			if nw.ID != 1 || nw.PrimaryLabel != 10 {
-				t.Fatalf("node wire = {id:%d pl:%d}, want {1 10}", nw.ID, nw.PrimaryLabel)
+			if nw.Wire.ID != 1 || nw.Wire.PrimaryLabel != 10 || nw.WithHistory {
+				t.Fatalf("node put = {id:%d pl:%d wh:%v}, want {1 10 false}", nw.Wire.ID, nw.Wire.PrimaryLabel, nw.WithHistory)
 			}
 			// RelPut payload decodes to the right rel wire.
 			rw, err := storepkg.DecodeRelPut(recs[2].Payload)
 			if err != nil {
 				t.Fatalf("DecodeRelPut: %v", err)
 			}
-			if rw.ID != 100 || rw.StartID != 1 || rw.EndID != 2 || rw.RelType != 5 {
+			if rw.Wire.ID != 100 || rw.Wire.StartID != 1 || rw.Wire.EndID != 2 || rw.Wire.RelType != 5 {
 				t.Fatalf("rel wire = %+v, want {id:100 s:1 e:2 rt:5}", rw)
 			}
 		})
@@ -145,11 +145,11 @@ func TestChangeLog_TwoPhase_PutThenReplaceRemembersBoth(t *testing.T) {
 	}
 	v0, _ := storepkg.DecodeNodePut(recs[0].Payload)
 	v1, _ := storepkg.DecodeNodePut(recs[1].Payload)
-	if v0.Version != 0 {
-		t.Fatalf("record[0] version = %d, want 0 (original state)", v0.Version)
+	if v0.Wire.Version != 0 || v0.WithHistory {
+		t.Fatalf("record[0] = {v:%d wh:%v}, want {0 false} (create)", v0.Wire.Version, v0.WithHistory)
 	}
-	if v1.Version != 1 {
-		t.Fatalf("record[1] version = %d, want 1 (replaced state)", v1.Version)
+	if v1.Wire.Version != 1 || !v1.WithHistory {
+		t.Fatalf("record[1] = {v:%d wh:%v}, want {1 true} (replace-with-history)", v1.Wire.Version, v1.WithHistory)
 	}
 }
 
@@ -486,13 +486,13 @@ func TestChangeLog_LabelTokenMutations(t *testing.T) {
 	}
 	nw, _ := storepkg.DecodeNodePut(recs[1].Payload)
 	hasExtra := false
-	for _, e := range nw.ExtraLabels {
+	for _, e := range nw.Wire.ExtraLabels {
 		if e == 20 {
 			hasExtra = true
 		}
 	}
 	if !hasExtra {
-		t.Fatalf("updated NodePut wire missing label 20: extras=%v", nw.ExtraLabels)
+		t.Fatalf("updated NodePut wire missing label 20: extras=%v", nw.Wire.ExtraLabels)
 	}
 }
 
@@ -870,8 +870,8 @@ func TestChangeLog_ReplaceDoors(t *testing.T) {
 		t.Fatalf("ReplaceRelWithHistory tags = %v, want [RelPut]", tagSeq(recs))
 	}
 	rw, _ := storepkg.DecodeRelPut(recs[0].Payload)
-	if rw.Version != 1 {
-		t.Fatalf("replaced rel version = %d, want 1", rw.Version)
+	if rw.Wire.Version != 1 || !rw.WithHistory {
+		t.Fatalf("replaced rel = {v:%d wh:%v}, want {1 true}", rw.Wire.Version, rw.WithHistory)
 	}
 }
 
@@ -900,13 +900,13 @@ func TestChangeLog_LabelTokenWithHistoryDoors(t *testing.T) {
 	}
 	nw, _ := storepkg.DecodeNodePut(recs[0].Payload)
 	has := false
-	for _, e := range nw.ExtraLabels {
+	for _, e := range nw.Wire.ExtraLabels {
 		if e == 20 {
 			has = true
 		}
 	}
 	if !has {
-		t.Fatalf("with-history label-add NodePut missing label 20: %v", nw.ExtraLabels)
+		t.Fatalf("with-history label-add NodePut missing label 20: %v", nw.Wire.ExtraLabels)
 	}
 
 	// RemoveNodeLabelToken (plain): one NodePut without label 20.

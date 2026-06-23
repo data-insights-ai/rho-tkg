@@ -86,8 +86,8 @@ func TestMemoryChangeLog_BasicFeed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeNodePut: %v", err)
 	}
-	if nw.ID != 1 {
-		t.Fatalf("node put wire id = %d, want 1", nw.ID)
+	if nw.Wire.ID != 1 {
+		t.Fatalf("node put wire id = %d, want 1", nw.Wire.ID)
 	}
 }
 

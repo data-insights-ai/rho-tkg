@@ -79,9 +79,12 @@ func (bs *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion 
 		writeOp{opType: writeOpSet, key: storepkg.RelKey(id), value: data},
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
 	)
-	bs.logChangeRaw(storecontract.ChangeRelPut, data)
+	logErr := bs.logRelPut(current, true)
 	bs.idxMu.Unlock()
 
+	if logErr != nil {
+		return logErr
+	}
 	return bs.flushIfNeeded()
 }
 

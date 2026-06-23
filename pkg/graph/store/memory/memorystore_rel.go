@@ -67,7 +67,7 @@ func (ms *Store) PutRelationship(r *types.Relationship) error {
 	}
 	ms.inIdx[endID][id] = struct{}{}
 
-	return ms.logRelPutLocked(r)
+	return ms.logRelPutLocked(r, false)
 }
 
 // PutRelationshipGeneratedIDWithEndpointHashes stores a graph-generated
@@ -143,7 +143,7 @@ func (ms *Store) PutRelationshipGeneratedIDWithEndpointHashes(r *types.Relations
 	}
 	ms.inIdx[endID][id] = struct{}{}
 
-	if err := ms.logRelPutLocked(r); err != nil {
+	if err := ms.logRelPutLocked(r, false); err != nil {
 		return "", "", err
 	}
 	return fromHash, toHash, nil
@@ -199,7 +199,7 @@ func (ms *Store) ReplaceRelationship(r *types.Relationship) error {
 		return err
 	}
 	ms.rels[id] = freezeRelCopy(r)
-	return ms.logRelPutLocked(r)
+	return ms.logRelPutLocked(r, false)
 }
 
 // DeleteRelationship removes a relationship and cleans up type + adjacency indexes.
@@ -688,7 +688,7 @@ func (ms *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		}
 		ms.inIdx[endID][id] = struct{}{}
 
-		if err := ms.logRelPutLocked(r); err != nil {
+		if err := ms.logRelPutLocked(r, false); err != nil {
 			return err
 		}
 	}

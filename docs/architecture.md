@@ -497,6 +497,31 @@ data batch and a decorator would lose native-store trust. The log alone does not
 converge a replica from empty — bootstrap from a full export snapshot (registry
 included), then tail the feed. See `tasks/horizontal-scaling.md`.
 
+### Read replicas: apply engine + read-only gate (Phase 1, opt-in)
+
+A graph opened with `graph.Config.ReadOnlyReplica` is a log-shipped read replica.
+It is seeded by `g.IO().Import` from a primary export, records the snapshot's
+`LastCommittedLSN` via `SetAppliedLSN`, then loops `ForEachChange(AppliedLSN())`
+→ `ApplyChange(rec)` to tail the primary. `ApplyChange` (`apply_record.go`,
+under `c.mu.Lock`) reproduces the primary's rows VERBATIM: it runs the same
+import-trust pipeline per record (`WireTo*Checked` rebuilds version / `TxFrom` /
+temporal / integrity exactly → token-in-registry validation → property-limit
+validation → hash recompute-**and-compare**) and writes through a foreign-ID
+store door (`PutNode` / `ReplaceNode` / `ReplaceNodeWithHistory` / `Delete*` /
+`PutNodeVersion` / `Truncate*` / `Trim*` / label-token doors) that persists the
+supplied entity byte-for-byte — never `NodeOps.Add/Update`, which would re-mint
+IDs and re-stamp metadata. The `ChangeNodePut` / `ChangeRelPut` record carries a
+`WithHistory` bit so the replica knows whether to write a history row; create vs
+in-place vs label-mutation is inferred from local state + a label-token diff.
+Apply is idempotent (identical row = no-op; missing-entity delete = no-op), so the
+applied-LSN watermark (`meta/replica_applied_lsn`) can advance via a separate
+`MetaSet` after each door commits — a crash in that window simply replays. Writes
+fail closed with `ErrReadOnlyReplica` via a core-layer `checkWritable()` gate on
+every user mutation door; reads, the bootstrap importer, and `ApplyChange`
+remain open. Deferred to the next increment: gapless export-header `SnapshotLSN`,
+lazy token-registry refetch for labels/rel-types created after the snapshot, and
+failover (ID-slot lease + promotion-by-reopen).
+
 **ReadOnly mode:** `BadgerStoreConfig.ReadOnly` opens Badger read-only and skips flush/GC goroutines. TieredStore does not use read-only Badger handles for warm/cold owner shards: existing event entities still update/delete on their original shard after rotation and restart.
 
 **ForEach iterators:**

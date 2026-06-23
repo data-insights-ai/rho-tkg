@@ -15,7 +15,7 @@ import (
 // Resolves or creates the label token. Returns storepkg.ErrIndexExists if the index already exists.
 func (i *IndexOps) CreateProperty(label, propertyKey string) error {
 	c := i.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return err
 	}
 	return c.readUnderRLock(func() error {
@@ -59,7 +59,7 @@ func (i *IndexOps) CreateProperty(label, propertyKey string) error {
 // Resolves the label name to a token. Returns storepkg.ErrIndexNotFound if the index does not exist.
 func (i *IndexOps) DeleteProperty(label, propertyKey string) error {
 	c := i.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return err
 	}
 	return c.readUnderRLock(func() error {
@@ -87,7 +87,7 @@ func (i *IndexOps) DeleteProperty(label, propertyKey string) error {
 // Resolves or creates the label token so the index applies to future matching nodes.
 func (i *IndexOps) CreateTemporal(label string) error {
 	c := i.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return err
 	}
 	return c.readUnderRLock(func() error {
@@ -128,7 +128,7 @@ func (i *IndexOps) CreateTemporal(label string) error {
 // Returns storepkg.ErrTemporalIndexNotFound if the index does not exist.
 func (i *IndexOps) DeleteTemporal(label string) error {
 	c := i.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return err
 	}
 	return c.readUnderRLock(func() error {
@@ -161,7 +161,7 @@ func (i *IndexOps) DeleteTemporal(label string) error {
 // In-memory indexes are rebuilt from current store state when this method runs.
 func (i *IndexOps) CreateHighFrequency(label string, bucketSize time.Duration) error {
 	c := i.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return err
 	}
 	return c.readUnderRLock(func() error {
@@ -205,7 +205,7 @@ func (i *IndexOps) CreateHighFrequency(label string, bucketSize time.Duration) e
 // Returns storepkg.ErrTemporalIndexNotFound if no high-frequency index exists.
 func (i *IndexOps) DeleteHighFrequency(label string) error {
 	c := i.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return err
 	}
 	return c.readUnderRLock(func() error {
@@ -232,7 +232,7 @@ func (i *IndexOps) DeleteHighFrequency(label string) error {
 // Returns ErrVectorIndexExists if the index already exists.
 func (i *IndexOps) CreateVector(label, propertyKey string, dims int, metric storepkg.DistanceMetric) error {
 	c := i.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return err
 	}
 	return c.readUnderRLock(func() error {
@@ -279,7 +279,7 @@ func (i *IndexOps) CreateVector(label, propertyKey string, dims int, metric stor
 // Returns ErrVectorIndexNotFound if the index does not exist.
 func (i *IndexOps) DeleteVector(label, propertyKey string) error {
 	c := i.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return err
 	}
 	return c.readUnderRLock(func() error {

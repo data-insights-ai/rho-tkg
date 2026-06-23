@@ -15,6 +15,10 @@ type Ops interface {
 	ChangeFeed(afterLSN uint64, limit int) ([]store.ChangeRecord, error)
 	ForEachChange(afterLSN uint64, fn func(store.ChangeRecord) bool) error
 	LastCommittedLSN() (uint64, error)
+	ApplyChange(rec store.ChangeRecord) error
+	ApplyChanges(recs []store.ChangeRecord) (uint64, error)
+	AppliedLSN() (uint64, error)
+	SetAppliedLSN(lsn uint64) error
 }
 
 // API is the replication sub-API accessor.
@@ -63,4 +67,48 @@ func (a *API) LastCommittedLSN() (uint64, error) {
 		return 0, err
 	}
 	return ops.LastCommittedLSN()
+}
+
+// ApplyChange applies one change-log record from a primary's feed to this
+// replica, reproducing the primary's row exactly and advancing the applied-LSN
+// watermark. It bypasses the read-only-replica write gate (it is the replica's
+// only write path). Use it to tail a primary: read AppliedLSN, pull records with
+// LSN > it from the primary's ForEachChange, and ApplyChange each in order.
+func (a *API) ApplyChange(rec store.ChangeRecord) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ApplyChange(rec)
+}
+
+// ApplyChanges applies a batch of records in ascending LSN order, returning the
+// highest LSN durably applied. On the first failing record it stops and returns
+// (lastApplied, err); resume from lastApplied (apply is idempotent).
+func (a *API) ApplyChanges(recs []store.ChangeRecord) (uint64, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, err
+	}
+	return ops.ApplyChanges(recs)
+}
+
+// AppliedLSN returns the highest LSN this replica has durably applied (0 when
+// none). On restart, a driver resumes tailing the primary from this watermark.
+func (a *API) AppliedLSN() (uint64, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, err
+	}
+	return ops.AppliedLSN()
+}
+
+// SetAppliedLSN overwrites the durable applied-LSN watermark — used to record the
+// snapshot LSN after a bootstrap import, before tailing begins.
+func (a *API) SetAppliedLSN(lsn uint64) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.SetAppliedLSN(lsn)
 }

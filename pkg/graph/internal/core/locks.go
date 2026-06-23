@@ -17,6 +17,25 @@ func (c *Core) checkOpen() error {
 	return nil
 }
 
+// checkWritable is the gate for every USER mutation door (node/rel create,
+// update, delete, label/property mutation, version-interval edits, index/schema
+// changes, tx begin, batch execute, admin reset). It is checkOpen plus the
+// read-only-replica guard: a replica accepts changes ONLY through the replica
+// apply path (ApplyChange, which calls store doors directly and does NOT route
+// through this gate), so direct user writes are rejected with ErrReadOnlyReplica
+// to keep the replica byte-identical to its primary. Read paths use checkOpen,
+// never this; the bootstrap importer (IOOps.Import) also uses checkOpen so a
+// fresh replica can be seeded.
+func (c *Core) checkWritable() error {
+	if c.closed.Load() {
+		return ErrGraphClosed
+	}
+	if c.readOnlyReplica {
+		return ErrReadOnlyReplica
+	}
+	return nil
+}
+
 // runUnderRLock acquires c.mu for read, runs fn under a defer-backed
 // RUnlock, and returns the event publisher captured under the lock plus
 // any closed-state error. Mutation entry points use this so dispatchEvent

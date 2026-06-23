@@ -96,7 +96,7 @@ func (n *NodeOps) VersionAfter(id types.NodeID, version uint32) (*types.Node, er
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (n *NodeOps) CloseVersion(ctx context.Context, id types.NodeID, t types.Instant) error {
 	c := n.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return err
 	}
 	if err := checkCtx(ctx); err != nil {
@@ -317,7 +317,7 @@ func (c *Core) requireRelHistoryUnlocked(id types.RelID) error {
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (r *RelOps) CloseVersion(ctx context.Context, id types.RelID, t types.Instant) error {
 	c := r.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return err
 	}
 	if err := checkCtx(ctx); err != nil {

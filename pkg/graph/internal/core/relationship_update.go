@@ -21,7 +21,7 @@ import (
 // Acquires c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (r *RelOps) Update(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	c := r.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return nil, err
 	}
 	if err := checkCtx(ctx); err != nil {
@@ -328,7 +328,7 @@ func (c *Core) refreshNodeHash(id types.NodeID) (string, error) {
 // c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
 func (r *RelOps) UpdateInPlace(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	c := r.c
-	if err := c.checkOpen(); err != nil {
+	if err := c.checkWritable(); err != nil {
 		return nil, err
 	}
 	if err := checkCtx(ctx); err != nil {

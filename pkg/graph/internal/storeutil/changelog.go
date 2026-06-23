@@ -17,7 +17,7 @@ import (
 // A persisted change-log value is: tag(1 byte) || msgpack(body). The body shape
 // is determined by the tag:
 //
-//	ChangeNodePut / ChangeRelPut                     -> bare NodeWire / RelWire
+//	ChangeNodePut / ChangeRelPut                     -> NodePutBody / RelPutBody
 //	ChangeNodeDelete                                 -> NodeDeleteBody
 //	ChangeRelDelete                                  -> RelDeleteBody
 //	ChangeNodeHistoryVersion                         -> HistoryVersionNodeBody
@@ -25,6 +25,27 @@ import (
 //	ChangeNodeHistoryTruncate / ChangeRelHistoryTruncate -> HistoryTruncateBody
 //	ChangeMeta                                       -> MetaBody
 //	ChangeClear                                      -> (no body; empty payload)
+
+// NodePutBody is the ChangeNodePut payload. Wire is the new CURRENT node state
+// (built via NodeToWireChecked, so property keys are STRINGS — untokenized — and
+// the record is backend-independent and registry-free for property keys).
+// WithHistory records whether the originating door wrote a version-history row
+// (ReplaceNodeWithHistory / *NodeLabelTokenWithHistory) vs an in-place replace or
+// create (PutNode / ReplaceNode / label-token-without-history). A replica needs
+// this one bit to reproduce the primary's history depth exactly: with it set it
+// applies ReplaceNodeWithHistory (regenerating the exact prior row from its
+// in-sync local current); without it, ReplaceNode (no history) or PutNode.
+type NodePutBody struct {
+	Wire        NodeWire `msgpack:"w"`
+	WithHistory bool     `msgpack:"wh,omitempty"`
+}
+
+// RelPutBody is the ChangeRelPut payload — the relationship counterpart of
+// NodePutBody (WithHistory set by ReplaceRelWithHistory).
+type RelPutBody struct {
+	Wire        RelWire `msgpack:"w"`
+	WithHistory bool    `msgpack:"wh,omitempty"`
+}
 
 // NodeDeleteBody is the ChangeNodeDelete payload. A node delete has two shapes:
 //   - hard cascade (WithHistory == false): the node and its connected
@@ -37,7 +58,11 @@ import (
 // CascadedRelIDs contains exactly the relationship rows the cascade REMOVED
 // (orphan-only adjacency entries with no current row are purged but excluded),
 // SORTED ascending — so the record is deterministic and byte-identical across
-// backends regardless of internal map-iteration order.
+// backends regardless of internal map-iteration order. It is INFORMATIONAL for
+// CDC/audit consumers (and for cross-checking): the in-process replica applier
+// does NOT consume it — a hard cascade re-derives adjacency via
+// DeleteNodeCascade and a with-history cascade uses RelTombstones, both of which
+// match the primary by LSN total-ordering.
 type NodeDeleteBody struct {
 	ID             int64     `msgpack:"id"`
 	WithHistory    bool      `msgpack:"wh,omitempty"`
@@ -167,27 +192,47 @@ func RelDeleteWithHistoryPayload(id snowflake.ID, tombstone *types.Relationship)
 	return MarshalChangeBody(RelDeleteBody{ID: int64(id), WithHistory: true, Tombstone: &tw})
 }
 
+// NodePutPayload builds a ChangeNodePut body from the new current node, carrying
+// the WithHistory bit. The wire is built via NodeToWireChecked (untokenized
+// property keys), so the record is backend-independent.
+func NodePutPayload(n *types.Node, withHistory bool) ([]byte, error) {
+	w, err := NodeToWireChecked(n)
+	if err != nil {
+		return nil, err
+	}
+	return MarshalChangeBody(NodePutBody{Wire: w, WithHistory: withHistory})
+}
+
+// RelPutPayload is the relationship counterpart of NodePutPayload.
+func RelPutPayload(r *types.Relationship, withHistory bool) ([]byte, error) {
+	w, err := RelToWireChecked(r)
+	if err != nil {
+		return nil, err
+	}
+	return MarshalChangeBody(RelPutBody{Wire: w, WithHistory: withHistory})
+}
+
 // --- Decoders (used by the replica-apply path; all fail closed) ---
 //
 // Every decoder routes through SafeUnmarshal: a corrupt or hostile body must
 // return store.ErrCorruptWire, never panic the process (lesson 47).
 
 // DecodeNodePut decodes a ChangeNodePut payload.
-func DecodeNodePut(payload []byte) (NodeWire, error) {
-	var w NodeWire
-	if err := SafeUnmarshal(payload, &w); err != nil {
-		return NodeWire{}, fmt.Errorf("change-log: node put body: %w", err)
+func DecodeNodePut(payload []byte) (NodePutBody, error) {
+	var b NodePutBody
+	if err := SafeUnmarshal(payload, &b); err != nil {
+		return NodePutBody{}, fmt.Errorf("change-log: node put body: %w", err)
 	}
-	return w, nil
+	return b, nil
 }
 
 // DecodeRelPut decodes a ChangeRelPut payload.
-func DecodeRelPut(payload []byte) (RelWire, error) {
-	var w RelWire
-	if err := SafeUnmarshal(payload, &w); err != nil {
-		return RelWire{}, fmt.Errorf("change-log: rel put body: %w", err)
+func DecodeRelPut(payload []byte) (RelPutBody, error) {
+	var b RelPutBody
+	if err := SafeUnmarshal(payload, &b); err != nil {
+		return RelPutBody{}, fmt.Errorf("change-log: rel put body: %w", err)
 	}
-	return w, nil
+	return b, nil
 }
 
 // DecodeNodeDelete decodes a ChangeNodeDelete payload.

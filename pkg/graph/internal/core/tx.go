@@ -132,6 +132,10 @@ func (c *Core) BeginTx() (*GraphTx, error) {
 		c.txMu.Unlock()
 		return nil, ErrGraphClosed
 	}
+	if c.readOnlyReplica {
+		c.txMu.Unlock()
+		return nil, ErrReadOnlyReplica
+	}
 	tx := &GraphTx{
 		g:               c,
 		labelSnapshot:   c.labels.ExportNames(),

@@ -122,12 +122,26 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		bs.getOrCreateTypeCounter(rd.relType).Add(1)
 	}
 
-	bs.appendOps(ops...)
-	// One ChangeRelPut per relationship (each carries its own pre-marshaled wire).
-	for i := range serialized {
-		bs.logChangeRaw(storecontract.ChangeRelPut, serialized[i].data)
+	// Pre-build the per-rel change-log payloads BEFORE enqueuing ops (see
+	// PutNodesBatch) so an encode error aborts with zero side effects.
+	var putPayloads [][]byte
+	if bs.logEnabled {
+		putPayloads = make([][]byte, len(rels))
+		for i := range rels {
+			p, err := storepkg.RelPutPayload(rels[i], false)
+			if err != nil {
+				bs.idxMu.Unlock()
+				return fmt.Errorf("graph: encode change-log: %w", err)
+			}
+			putPayloads[i] = p
+		}
 	}
+	bs.appendOps(ops...)
 	bs.relCount.Add(int64(len(rels)))
+	// One ChangeRelPut per relationship (create => WithHistory false).
+	for i := range putPayloads {
+		bs.logChangeRaw(storecontract.ChangeRelPut, putPayloads[i])
+	}
 	bs.idxMu.Unlock()
 
 	return bs.flushIfNeeded()

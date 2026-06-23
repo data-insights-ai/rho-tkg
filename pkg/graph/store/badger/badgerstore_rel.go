@@ -89,11 +89,14 @@ func (bs *Store) PutRelationship(r *types.Relationship) error {
 	}
 
 	bs.appendOps(ops...)
-	bs.logChangeRaw(storecontract.ChangeRelPut, data)
 	bs.relCount.Add(1)
 	bs.getOrCreateTypeCounter(relType).Add(1)
+	logErr := bs.logRelPut(r, false)
 	bs.idxMu.Unlock()
 
+	if logErr != nil {
+		return logErr
+	}
 	return bs.flushIfNeeded()
 }
 
@@ -202,13 +205,16 @@ func (bs *Store) ReplaceRelationship(r *types.Relationship) error {
 
 	bs.relCache.Put(id, freezeRelCopy(r))
 	bs.appendOps(writeOp{opType: writeOpSet, key: storepkg.RelKey(id), value: data})
-	bs.logChangeRaw(storecontract.ChangeRelPut, data)
 	// OPT15: a version update rewrites the row in place — endpoints/type are
 	// immutable (no adjacency change) but valid_to may move, so the inline stamp
 	// MUST be refreshed here or a temporal traversal reads a stale interval.
 	bs.setRelValidStampLocked(rid, r)
+	logErr := bs.logRelPut(r, false)
 	bs.idxMu.Unlock()
 
+	if logErr != nil {
+		return logErr
+	}
 	return bs.flushIfNeeded()
 }
 

@@ -34,6 +34,25 @@ only in Phase 1, only for Bolt routing and the read-your-writes watermark.
 
 ---
 
+## Implementation status (`[Unreleased]`)
+
+**Phase 0 — DONE & merged** (commit `0bb83f9`): durable ordered change-log + `g.Replication().ChangeFeed/ForEachChange/LastCommittedLSN`.
+
+**Phase 1 — base-layer apply engine DONE** (this increment): a graph opens as a
+log-shipped read replica and converges byte-exact via bootstrap + tail.
+- `graph.Config.ReadOnlyReplica` + `ErrReadOnlyReplica` + core `checkWritable()` gate on every user mutation door (reads / `IO().Import` / apply stay open).
+- `g.Replication().ApplyChange`/`ApplyChanges` (verbatim foreign-ID-door apply, reusing the import trust pipeline; idempotent) + `AppliedLSN`/`SetAppliedLSN` watermark (`meta/replica_applied_lsn`).
+- `ChangeNodePut`/`ChangeRelPut` reshaped to `NodePutBody`/`RelPutBody` with the `WithHistory` bit (replica reproduces history depth exactly); put-record wire built untokenized → byte-identical cross-backend feeds + no propkey-registry dependency.
+- Tests: end-to-end byte-exact convergence (all record kinds incl. cascade delete + deleted-entity history), idempotent double-apply, read-only gate parity.
+
+**Phase 1 — remaining (next increment), still base-layer + a thin sigma follow-up:**
+- Gapless handoff: export-header `SnapshotLSN` read under the export lock (today the bootstrap uses `LastCommittedLSN()` post-export — exact with no concurrent writer, racy under one).
+- Lazy token-registry refetch: a `RegistrySnapshot()` on the replication API + an apply-path hook that, on an unknown label/rel-type token (allocated AFTER the snapshot), refetches the primary's name-suffix, `AppendNames`, persists registry-before-row, retries once, else fails closed. Today a post-snapshot token fails closed with a clear `validate*TokensInRegistry` error.
+- Failover: durable ID-slot lease (`meta/id_slot_lease`, last-writer-wins hint) + promotion = Close+New with `ReadOnlyReplica:false` and the leased `SnowflakeNodeID`; the external orchestrator (sigma) owns slot assignment.
+- sigma: Bolt ROUTE per-role lists + session-scoped read-your-writes LSN watermark (consumer-side, thin).
+
+---
+
 ## Readiness map (file:line-grounded; the "why" behind the shape)
 
 ### 5 hard blockers
