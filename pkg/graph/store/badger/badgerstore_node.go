@@ -73,6 +73,7 @@ func (bs *Store) PutNode(n *types.Node) error {
 		return err
 	}
 	bs.appendOps(ops...)
+	bs.logChangeRaw(storecontract.ChangeNodePut, data)
 	bs.nodeCount.Add(1)
 	bs.idxMu.Unlock()
 
@@ -321,6 +322,14 @@ func (bs *Store) DeleteNode(nid types.NodeID) error {
 	}
 	id := nid.SnowflakeID()
 
+	// Build the change-log delete record up front (DeleteNode is unconnected-only
+	// — no cascade rels, no tombstone), so a marshal error aborts before any op
+	// is enqueued.
+	delPayload, err := bs.buildChangePayload(storepkg.NodeDeleteBody{ID: int64(id)})
+	if err != nil {
+		return fmt.Errorf("graph: encode change-log: %w", err)
+	}
+
 	// Pre-fetch node state before acquiring the write lock to avoid holding
 	// idxMu.Lock() during Badger disk I/O on cache misses (B3: lock scope rule).
 	// prefetchNode checks the cache and falls through to db.View without any lock.
@@ -385,6 +394,7 @@ func (bs *Store) DeleteNode(nid types.NodeID) error {
 	delete(bs.nodeHashes, nid)
 	bs.deleteNodeRevLocked(nid)
 	bs.appendOps(ops...)
+	bs.logChangeRaw(storecontract.ChangeNodeDelete, delPayload)
 	bs.nodeCount.Add(-1)
 	bs.idxMu.Unlock()
 
@@ -462,6 +472,7 @@ func (bs *Store) ReplaceNode(n *types.Node) error {
 		return err
 	}
 	bs.appendOps(writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data})
+	bs.logChangeRaw(storecontract.ChangeNodePut, data)
 	bs.idxMu.Unlock()
 
 	return bs.flushIfNeeded()
@@ -554,6 +565,7 @@ func (bs *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 		writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data},
 		writeOp{opType: writeOpDelete, key: storepkg.LabelIndexKey(tok, id)},
 	)
+	bs.logChangeRaw(storecontract.ChangeNodePut, data)
 	bs.idxMu.Unlock()
 
 	return bs.flushIfNeeded()
@@ -641,6 +653,7 @@ func (bs *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 		writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data},
 		writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tok, id)},
 	)
+	bs.logChangeRaw(storecontract.ChangeNodePut, data)
 	bs.idxMu.Unlock()
 
 	return bs.flushIfNeeded()

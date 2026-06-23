@@ -477,9 +477,25 @@ delete has a cleanup-and-return-corruption fallback.
 | `0x06` | `/<8B endID>/<2B relType>/<8B startID>/<8B relID>` | 27B | Incoming adjacency |
 | `0x07` | `/<8B nodeID>/<8B version>` | 17B | Node version history |
 | `0x08` | `/<8B relID>/<8B version>` | 17B | Rel version history |
-| `0x0F` | `/meta/*` | var | Counters, registry tokens, property index defs |
+| `0x09` | `/<8B LSN>` | 9B | Change-log (op-log) record — opt-in (`ChangeLog`); value = `tag(1B) ‖ msgpack(body)` |
+| `0x0F` | `/meta/*` | var | Counters, registry tokens, property index defs, `last_lsn` watermark |
 
 All IDs stored as big-endian uint64 for correct sort order and temporal clustering.
+
+### Change-log / op-log (`ChangeFeedCapability`, opt-in)
+
+With `ChangeLog` enabled, every committed mutation appends a framed record under
+`0x09/<LSN>` (big-endian LSN, so a prefix scan yields ascending commit order),
+in the SAME `WriteBatch` as the data and counters, plus a `last_lsn` watermark —
+so a record and its mutation commit atomically and the LSN allocator reseeds
+crash-consistently at open. The log is the topology-agnostic foundation for
+horizontal scaling (CDC / audit / PITR today; read-replica streaming next) and
+is surfaced through `g.Replication()` (`ChangeFeed` / `ForEachChange` /
+`LastCommittedLSN`). It is emitted IN-BACKEND (badger + memory) rather than via a
+`Store` decorator, because crash-safety requires co-committing the record in the
+data batch and a decorator would lose native-store trust. The log alone does not
+converge a replica from empty — bootstrap from a full export snapshot (registry
+included), then tail the feed. See `tasks/horizontal-scaling.md`.
 
 **ReadOnly mode:** `BadgerStoreConfig.ReadOnly` opens Badger read-only and skips flush/GC goroutines. TieredStore does not use read-only Badger handles for warm/cold owner shards: existing event entities still update/delete on their original shard after rotation and restart.
 

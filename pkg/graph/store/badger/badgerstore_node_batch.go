@@ -241,7 +241,17 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePr
 func (bs *Store) cascadeDeleteLocked(nid types.NodeID, prefetched cascadeDeletePrefetch) ([]RelDeleteInfo, error, error) {
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()
-	return bs.cascadeDeleteInner(nid, prefetched)
+	deleted, corruptErr, fatalErr := bs.cascadeDeleteInner(nid, prefetched)
+	// Emit the single hard-cascade ChangeNodeDelete under the SAME lock as the
+	// cascade ops (cascadeDeleteInner / deleteRelByInfo emit nothing themselves,
+	// so the node-cascade and with-history-delete paths each emit exactly one
+	// logical record). Skipped on a fatal error (no ops were committed).
+	if fatalErr == nil {
+		if logErr := bs.logCascadeNodeDelete(nid.SnowflakeID(), deleted); logErr != nil {
+			return deleted, corruptErr, logErr
+		}
+	}
+	return deleted, corruptErr, fatalErr
 }
 
 // PurgeOrphanRelationshipIndexes removes type and adjacency index entries for
@@ -482,6 +492,11 @@ func (bs *Store) PutNodesBatch(nodes []*types.Node) error {
 	}
 
 	bs.appendOps(ops...)
+	// One ChangeNodePut per node (each carries its own pre-marshaled wire), under
+	// the same idxMu.Lock as the ops so the records and ops snapshot together.
+	for i := range serialized {
+		bs.logChangeRaw(storecontract.ChangeNodePut, serialized[i].data)
+	}
 	bs.nodeCount.Add(int64(len(nodes)))
 	bs.idxMu.Unlock()
 
@@ -510,6 +525,19 @@ func (bs *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 		}
 	}
 	typedIDs = uniqueNodeIDs(typedIDs)
+
+	// Pre-build the change-log delete records (DeleteNodesBatch is unconnected-only
+	// — hard deletes, no tombstone), so a marshal error aborts before any op.
+	delPayloads := make([][]byte, len(typedIDs))
+	if bs.logEnabled {
+		for i, nid := range typedIDs {
+			p, err := storepkg.MarshalChangeBody(storepkg.NodeDeleteBody{ID: int64(nid.SnowflakeID())})
+			if err != nil {
+				return fmt.Errorf("graph: encode change-log: %w", err)
+			}
+			delPayloads[i] = p
+		}
+	}
 
 	// Phase 1a: validate cheap in-memory state under a read lock. Node row
 	// prefetch below may hit Badger, so keep that I/O outside idxMu.Lock().
@@ -599,6 +627,7 @@ func (bs *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 		delete(bs.nodeHashes, nid)
 		bs.deleteNodeRevLocked(nid)
 		bs.appendOps(ops...)
+		bs.logChangeRaw(storecontract.ChangeNodeDelete, delPayloads[i])
 	}
 
 	bs.nodeCount.Add(-int64(len(typedIDs)))

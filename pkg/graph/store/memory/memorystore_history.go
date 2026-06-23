@@ -83,7 +83,7 @@ func (ms *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
-	return nil
+	return ms.logNodePutLocked(updatedNode)
 }
 
 // AddNodeLabelTokenWithHistory atomically adds tok to the label index,
@@ -156,7 +156,7 @@ func (ms *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
-	return nil
+	return ms.logNodePutLocked(updatedNode)
 }
 
 // DeleteRelWithHistory atomically writes a relationship tombstone history entry
@@ -194,7 +194,10 @@ func (ms *Store) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombs
 	}
 	inner[prevVersion] = tombstone.DeepCopy()
 
-	return ms.deleteRelLocked(rid)
+	if err := ms.deleteRelLocked(rid); err != nil {
+		return err
+	}
+	return ms.logRelDeleteWithHistoryLocked(rid.SnowflakeID(), tombstone)
 }
 
 // DeleteNodeWithHistory atomically writes tombstone history entries for the node
@@ -310,7 +313,7 @@ func (ms *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, n, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, n, rawID)
 	delete(ms.nodes, nid)
-	return nil
+	return ms.logNodeDeleteWithHistoryLocked(nid.SnowflakeID(), nodeTombstone, relTombstones)
 }
 
 // --- Version history ---
@@ -338,7 +341,7 @@ func (ms *Store) PutNodeVersion(nid types.NodeID, version uint32, n *types.Node)
 		ms.nodeHistory[nid] = inner
 	}
 	inner[version] = n.DeepCopy()
-	return nil
+	return ms.logNodeHistoryVersionLocked(version, n)
 }
 
 // GetNodeVersion retrieves a node snapshot at the given version.
@@ -473,7 +476,7 @@ func (ms *Store) TruncateNodeHistory(nid types.NodeID, keepVersions int) error {
 
 	if keepVersions == 0 {
 		delete(ms.nodeHistory, nid)
-		return nil
+		return ms.logHistoryTruncateLocked(storecontract.ChangeNodeHistoryTruncate, nid.SnowflakeID(), false, 0)
 	}
 
 	if len(inner) <= keepVersions {
@@ -490,7 +493,7 @@ func (ms *Store) TruncateNodeHistory(nid types.NodeID, keepVersions int) error {
 	for _, v := range versions[:len(versions)-keepVersions] {
 		delete(inner, v)
 	}
-	return nil
+	return ms.logHistoryTruncateLocked(storecontract.ChangeNodeHistoryTruncate, nid.SnowflakeID(), false, int64(keepVersions))
 }
 
 // PutRelVersion stores a relationship snapshot at the given version.
@@ -515,7 +518,7 @@ func (ms *Store) PutRelVersion(rid types.RelID, version uint32, r *types.Relatio
 		ms.relHistory[rid] = inner
 	}
 	inner[version] = r.DeepCopy()
-	return nil
+	return ms.logRelHistoryVersionLocked(version, r)
 }
 
 // GetRelVersion retrieves a relationship snapshot at the given version.
@@ -650,7 +653,7 @@ func (ms *Store) TruncateRelHistory(rid types.RelID, keepVersions int) error {
 
 	if keepVersions == 0 {
 		delete(ms.relHistory, rid)
-		return nil
+		return ms.logHistoryTruncateLocked(storecontract.ChangeRelHistoryTruncate, rid.SnowflakeID(), false, 0)
 	}
 
 	if len(inner) <= keepVersions {
@@ -666,7 +669,7 @@ func (ms *Store) TruncateRelHistory(rid types.RelID, keepVersions int) error {
 	for _, v := range versions[:len(versions)-keepVersions] {
 		delete(inner, v)
 	}
-	return nil
+	return ms.logHistoryTruncateLocked(storecontract.ChangeRelHistoryTruncate, rid.SnowflakeID(), false, int64(keepVersions))
 }
 
 // ReplaceNodeWithHistory atomically replaces a node and writes a version history entry.
@@ -730,7 +733,7 @@ func (ms *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
-	return nil
+	return ms.logNodePutLocked(current)
 }
 
 // ReplaceRelWithHistory atomically replaces a relationship and writes a version history entry.
@@ -777,7 +780,7 @@ func (ms *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion 
 
 	// Replace current entity.
 	ms.rels[id] = freezeRelCopy(current)
-	return nil
+	return ms.logRelPutLocked(current)
 }
 
 // NodeAsOf returns the node version visible at txTime without materializing
@@ -1008,15 +1011,20 @@ func (ms *Store) TrimNodeHistoryFrom(nid types.NodeID, minVersion uint32) error 
 		return err
 	}
 	inner := ms.nodeHistory[nid]
+	deleted := false
 	for version := range inner {
 		if version >= minVersion {
 			delete(inner, version)
+			deleted = true
 		}
 	}
 	if len(inner) == 0 {
 		delete(ms.nodeHistory, nid)
 	}
-	return nil
+	if !deleted {
+		return nil
+	}
+	return ms.logHistoryTruncateLocked(storecontract.ChangeNodeHistoryTruncate, nid.SnowflakeID(), true, int64(minVersion))
 }
 
 // TrimRelHistoryFrom removes all relationship history entries at or after
@@ -1035,13 +1043,18 @@ func (ms *Store) TrimRelHistoryFrom(rid types.RelID, minVersion uint32) error {
 		return err
 	}
 	inner := ms.relHistory[rid]
+	deleted := false
 	for version := range inner {
 		if version >= minVersion {
 			delete(inner, version)
+			deleted = true
 		}
 	}
 	if len(inner) == 0 {
 		delete(ms.relHistory, rid)
 	}
-	return nil
+	if !deleted {
+		return nil
+	}
+	return ms.logHistoryTruncateLocked(storecontract.ChangeRelHistoryTruncate, rid.SnowflakeID(), true, int64(minVersion))
 }

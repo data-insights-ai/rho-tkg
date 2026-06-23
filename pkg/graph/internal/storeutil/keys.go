@@ -23,15 +23,16 @@ import (
 // All snowflake IDs are stored as big-endian uint64 (cast from int64) for correct
 // sort order. Tokens are stored as big-endian uint16.
 const (
-	KeyNode     byte = 0x01 // + 8B nodeID                              =  9B
-	KeyRel      byte = 0x02 // + 8B relID                               =  9B
-	KeyLabel    byte = 0x03 // + 2B labelToken + 8B nodeID              = 11B
-	KeyRelType  byte = 0x04 // + 2B relTypeToken + 8B relID             = 11B
-	KeyOut      byte = 0x05 // + 8B start + 2B type + 8B end + 8B rel   = 27B
-	KeyIn       byte = 0x06 // + 8B end + 2B type + 8B start + 8B rel   = 27B
-	KeyHistNode byte = 0x07 // + 8B nodeID + 8B version              = 17B
-	KeyHistRel  byte = 0x08 // + 8B relID + 8B version               = 17B
-	KeyMeta     byte = 0x0F // + variable (rare, only registry keys)
+	KeyNode      byte = 0x01 // + 8B nodeID                              =  9B
+	KeyRel       byte = 0x02 // + 8B relID                               =  9B
+	KeyLabel     byte = 0x03 // + 2B labelToken + 8B nodeID              = 11B
+	KeyRelType   byte = 0x04 // + 2B relTypeToken + 8B relID             = 11B
+	KeyOut       byte = 0x05 // + 8B start + 2B type + 8B end + 8B rel   = 27B
+	KeyIn        byte = 0x06 // + 8B end + 2B type + 8B start + 8B rel   = 27B
+	KeyHistNode  byte = 0x07 // + 8B nodeID + 8B version              = 17B
+	KeyHistRel   byte = 0x08 // + 8B relID + 8B version               = 17B
+	KeyChangeLog byte = 0x09 // + 8B LSN                               =  9B
+	KeyMeta      byte = 0x0F // + variable (rare, only registry keys)
 )
 
 // Key size constants — byte counts for the Badger key layout.
@@ -42,6 +43,7 @@ const (
 	SizeRelTypeIdx = 1 + 2 + 8         // 11B
 	SizeAdjacency  = 1 + 8 + 2 + 8 + 8 // 27B
 	SizeHistKey    = 1 + 8 + 8         // 17B
+	SizeChangeLog  = 1 + 8             // 9B
 )
 
 // PutUint64 writes v as big-endian at buf[off..off+8].
@@ -155,6 +157,33 @@ func HistRelPrefix(relID snowflake.ID) []byte {
 	return b
 }
 
+// --- Change-log keys ---
+
+// ChangeLogKey returns the 9-byte key for a change-log record at the given LSN.
+// The LSN is the monotonic cluster commit sequence; big-endian encoding makes a
+// prefix scan over KeyChangeLog yield records in ascending LSN (commit) order.
+func ChangeLogKey(lsn uint64) []byte {
+	b := make([]byte, SizeChangeLog)
+	b[0] = KeyChangeLog
+	binary.BigEndian.PutUint64(b[1:], lsn)
+	return b
+}
+
+// ChangeLogPrefix returns the 1-byte prefix for scanning all change-log records.
+func ChangeLogPrefix() []byte {
+	return []byte{KeyChangeLog}
+}
+
+// ChangeLogLSNFromKey extracts the LSN from a change-log key. Returns
+// (0, false) when the key is not a well-formed KeyChangeLog key — callers must
+// check the bool before trusting the LSN.
+func ChangeLogLSNFromKey(key []byte) (uint64, bool) {
+	if len(key) != SizeChangeLog || key[0] != KeyChangeLog {
+		return 0, false
+	}
+	return binary.BigEndian.Uint64(key[1:]), true
+}
+
 // --- Meta keys ---
 
 // MetaKey returns a variable-length key for metadata entries.
@@ -184,6 +213,13 @@ var VectorIndexDefsKey = MetaKey("vector_index_defs")
 // store.ErrWireFormatVersionUnsupported. Absence means "pre-versioning
 // store" and is equivalent to version 1.
 var WireFormatVersionKey = MetaKey("wire_format_version")
+
+// LastLSNKey is the Badger key for the durable change-log watermark: a single
+// big-endian uint64 holding the highest LSN committed to the change-log. It is
+// written in the SAME WriteBatch as the change-log records it covers, so after
+// a crash the marker and the maximum KeyChangeLog key are always consistent.
+// Absent (or zero) means an empty change-log; the LSN allocator seeds from 0.
+var LastLSNKey = MetaKey("last_lsn")
 
 // --- Parser functions ---
 

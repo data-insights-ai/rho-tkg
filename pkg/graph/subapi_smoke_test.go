@@ -160,6 +160,14 @@ func TestSubAPISmoke(t *testing.T) {
 	_ = g.Events().SetSync(nil) // tolerated; clears
 	_ = g.Events().GetSync()
 
+	// Replication: accessor reachable end-to-end. The default (memory) backend
+	// implements the capability, so with no change-log enabled the watermark is
+	// an empty 0 (not an error — ErrCapabilityNotSupported is the tiered case,
+	// covered in replication_test.go).
+	if lsn, err := g.Replication().LastCommittedLSN(); err != nil || lsn != 0 {
+		t.Errorf("Replication().LastCommittedLSN() = (%d, %v), want (0, nil)", lsn, err)
+	}
+
 	// Constraints
 	cs := g.Constraints().Get()
 	if err := g.Constraints().Set(cs); err != nil {

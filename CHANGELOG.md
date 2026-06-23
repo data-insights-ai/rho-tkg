@@ -4,6 +4,54 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added — durable ordered change-log (op-log) + `g.Replication()` (horizontal-scaling Phase 0)
+
+The topology-agnostic foundation for horizontal scaling: a durable, ordered
+**change-log (op-log)** that records every committed mutation, usable today as
+change-data-capture, an audit trail, and point-in-time recovery, and as the
+basis for read-replica streaming (Phase 1). See `tasks/horizontal-scaling.md`.
+
+- **`graph.Config.ChangeLog bool`** (opt-in, default off — zero overhead) enables
+  the change-log on the badger-backed store. Every committed mutation appends a
+  framed record under a new `KeyChangeLog` (`0x09`) keyspace, tagged with a
+  **monotonic cluster LSN**, in the **same Badger `WriteBatch` as the data and
+  counters** — so a record and the mutation it describes commit atomically (no
+  committed-but-unlogged window). The LSN allocator is seeded from a durable
+  `meta/last_lsn` watermark at open, so LSNs continue strictly monotonic across
+  restart and are never reissued.
+- **`g.Replication()`** is a new nil-safe sub-API exposing
+  `ChangeFeed(afterLSN, limit)`, `ForEachChange(afterLSN, fn)` (OOM-safe;
+  callback runs outside store locks), and `LastCommittedLSN()` (the
+  read-your-writes watermark). It forwards to the new optional
+  `store.ChangeFeedCapability`; backends without a change-log (tiered) return
+  `ErrCapabilityNotSupported`.
+- **Record taxonomy** (`store.ChangeTag` / `store.ChangeRecord`): `NodePut` /
+  `RelPut` (new current state), `NodeDelete` / `RelDelete` (hard-cascade vs
+  with-history sub-kinds), `NodeHistoryVersion` / `RelHistoryVersion`
+  (explicit-version writes — import, bitemporal-cascade correction, migration,
+  tx-rollback restore), `NodeHistoryTruncate` / `RelHistoryTruncate`, and
+  `Clear`. Record bodies reuse the existing `NodeWire`/`RelWire` format (no wire
+  version bump) and are decoded through `SafeUnmarshal` (a corrupt `0x09` row
+  fails closed with `ErrCorruptWire`, never a process crash).
+- **Memory backend parity** via `memory.WithChangeLog()` (in-RAM, non-durable —
+  a testing/parity facility). Both backends route record bodies through one set
+  of `storeutil` builders, so their feeds are **byte-identical for property-free
+  entities** and decode-equivalent otherwise (badger tokenizes property keys on
+  the wire while memory keeps key strings) — proven by a cross-backend parity
+  test over property-free entities; a `Clear()` wipes the feed
+  and re-anchors it with a `Clear` marker at a fresh monotonic LSN.
+
+Design decision: the log is emitted **in-backend** (not as a `Store` decorator)
+because crash-safety requires co-committing the record in the data `WriteBatch`,
+and a decorator would also be treated as an untrusted store and lose the
+frozen-pointer zero-copy scan path. The change-log **alone does not converge a
+replica from empty**: a replica bootstraps from a full snapshot (export, including
+the token registry) and then tails the feed. Deferred to a later phase:
+`MetaSet` (`ChangeMeta` tag reserved), the tiered backend's change-log, and
+LSN-watermark-driven log GC.
+
 ## [4.9.4] - 2026-06-20
 
 ### Added — node property-key presence stats, streaming ForEach, bulk AddNodes

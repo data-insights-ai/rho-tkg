@@ -123,6 +123,10 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 	}
 
 	bs.appendOps(ops...)
+	// One ChangeRelPut per relationship (each carries its own pre-marshaled wire).
+	for i := range serialized {
+		bs.logChangeRaw(storecontract.ChangeRelPut, serialized[i].data)
+	}
 	bs.relCount.Add(int64(len(rels)))
 	bs.idxMu.Unlock()
 
@@ -151,6 +155,20 @@ func (bs *Store) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
 		}
 	}
 	typedIDs = uniqueRelIDs(typedIDs)
+
+	// Pre-build the change-log delete records (hard deletes, no tombstone), so a
+	// marshal error aborts before any op is enqueued. Indexed by typedIDs order,
+	// which the infos slice below preserves.
+	delPayloads := make([][]byte, len(typedIDs))
+	if bs.logEnabled {
+		for i, rid := range typedIDs {
+			p, err := storepkg.MarshalChangeBody(storepkg.RelDeleteBody{ID: int64(rid.SnowflakeID())})
+			if err != nil {
+				return fmt.Errorf("graph: encode change-log: %w", err)
+			}
+			delPayloads[i] = p
+		}
+	}
 
 	// Phase 1a: validate existence under a read lock. Relationship row prefetch
 	// may hit Badger, so keep that I/O outside idxMu.Lock().
@@ -200,9 +218,12 @@ func (bs *Store) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
 		}
 	}
 
-	// Phase 2: apply — all validated, mutations cannot fail.
-	for _, info := range infos {
+	// Phase 2: apply — all validated, mutations cannot fail. One ChangeRelDelete
+	// per relationship, under the same lock as the ops (deleteRelByInfo emits no
+	// record itself).
+	for i, info := range infos {
 		bs.deleteRelByInfo(info)
+		bs.logChangeRaw(storecontract.ChangeRelDelete, delPayloads[i])
 	}
 
 	bs.idxMu.Unlock()

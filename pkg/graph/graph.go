@@ -39,6 +39,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/nodes"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/rels"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/replication"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/resolve"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/stats"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -65,6 +66,7 @@ type Graph struct {
 	stats       *stats.API
 	hash        *hash.API
 	resolve     *resolve.API
+	replication *replication.API
 	tx          *TxAPI
 	batch       *BatchAPI
 }
@@ -159,6 +161,17 @@ func (g *Graph) Hash() *hash.API {
 	return g.hash
 }
 
+// Replication returns the change-log / replication sub-API (durable op-log:
+// CDC, audit, point-in-time recovery, read-replica streaming foundation).
+// Nil-safe. Its methods return ErrCapabilityNotSupported on a backend without a
+// change-log (e.g. tiered, or badger/memory opened without it enabled).
+func (g *Graph) Replication() *replication.API {
+	if g == nil {
+		return nil
+	}
+	return g.replication
+}
+
 // Resolve returns the shadow-property resolution sub-API. Nil-safe.
 func (g *Graph) Resolve() *resolve.API {
 	if g == nil {
@@ -249,6 +262,7 @@ func New(cfg Config) (*Graph, error) {
 	g.stats = stats.New(c.Stats)
 	g.hash = hash.New(c.Hash)
 	g.resolve = resolve.New(c.Resolve)
+	g.replication = replication.New(c.Repl)
 	g.tx = &TxAPI{c: c}
 	g.batch = &BatchAPI{c: c}
 	return g, nil

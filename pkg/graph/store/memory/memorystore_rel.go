@@ -67,7 +67,7 @@ func (ms *Store) PutRelationship(r *types.Relationship) error {
 	}
 	ms.inIdx[endID][id] = struct{}{}
 
-	return nil
+	return ms.logRelPutLocked(r)
 }
 
 // PutRelationshipGeneratedIDWithEndpointHashes stores a graph-generated
@@ -143,6 +143,9 @@ func (ms *Store) PutRelationshipGeneratedIDWithEndpointHashes(r *types.Relations
 	}
 	ms.inIdx[endID][id] = struct{}{}
 
+	if err := ms.logRelPutLocked(r); err != nil {
+		return "", "", err
+	}
 	return fromHash, toHash, nil
 }
 
@@ -196,7 +199,7 @@ func (ms *Store) ReplaceRelationship(r *types.Relationship) error {
 		return err
 	}
 	ms.rels[id] = freezeRelCopy(r)
-	return nil
+	return ms.logRelPutLocked(r)
 }
 
 // DeleteRelationship removes a relationship and cleans up type + adjacency indexes.
@@ -216,7 +219,10 @@ func (ms *Store) DeleteRelationship(rid types.RelID) error {
 		return err
 	}
 
-	return ms.deleteRelLocked(rid)
+	if err := ms.deleteRelLocked(rid); err != nil {
+		return err
+	}
+	return ms.logRelHardDeleteLocked(rid.SnowflakeID())
 }
 
 // deleteRelLocked removes a relationship and cleans up indexes.
@@ -681,6 +687,10 @@ func (ms *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 			ms.inIdx[endID] = make(map[types.RelID]struct{})
 		}
 		ms.inIdx[endID][id] = struct{}{}
+
+		if err := ms.logRelPutLocked(r); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -722,6 +732,9 @@ func (ms *Store) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
 	// Phase 2: apply — all validated, safe to mutate.
 	for _, id := range typedIDs {
 		if err := ms.deleteRelLocked(id); err != nil {
+			return err
+		}
+		if err := ms.logRelHardDeleteLocked(id.SnowflakeID()); err != nil {
 			return err
 		}
 	}

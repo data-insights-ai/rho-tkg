@@ -1,0 +1,231 @@
+package memory
+
+import (
+	"fmt"
+	"sort"
+
+	snowflake "github.com/bds421/rho-snowflake-2026"
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+)
+
+func changeLogEncodeErr(err error) error {
+	return fmt.Errorf("graph: encode change-log: %w", err)
+}
+
+// Option configures a memory Store at construction.
+type Option func(*Store)
+
+// WithChangeLog enables the in-memory change-log (op-log): every committed
+// mutation appends a record to an ordered in-RAM slice, exposed via
+// store.ChangeFeedCapability. Off by default (zero overhead). The memory log is
+// NOT durable — it is a parity/testing facility so the change-feed contract can
+// be exercised without disk; the durable op-log is the badger backend.
+func WithChangeLog() Option {
+	return func(ms *Store) { ms.logEnabled = true }
+}
+
+// logChangeLocked appends one change-log record. The caller MUST hold ms.mu
+// (every mutation door does), so the LSN assignment and the append are atomic
+// and totally ordered. payload is the tag-specific msgpack body; it is copied so
+// the stored record never aliases caller memory. No-op when the log is disabled.
+func (ms *Store) logChangeLocked(tag storecontract.ChangeTag, payload []byte) {
+	if !ms.logEnabled {
+		return
+	}
+	ms.logSeq++
+	cp := append([]byte(nil), payload...)
+	ms.changeLog = append(ms.changeLog, storecontract.ChangeRecord{LSN: ms.logSeq, Tag: tag, Payload: cp})
+}
+
+// The log*Locked helpers build a record body via the shared storeutil builders
+// and append it, all under ms.mu (held by the calling door). Each is a no-op
+// when the log is disabled, so a door can unconditionally `return ms.logXLocked(...)`.
+
+func (ms *Store) logNodePutLocked(n *types.Node) error {
+	if !ms.logEnabled {
+		return nil
+	}
+	p, err := storeutil.MarshalNodeWire(n)
+	if err != nil {
+		return changeLogEncodeErr(err)
+	}
+	ms.logChangeLocked(storecontract.ChangeNodePut, p)
+	return nil
+}
+
+func (ms *Store) logRelPutLocked(r *types.Relationship) error {
+	if !ms.logEnabled {
+		return nil
+	}
+	p, err := storeutil.MarshalRelWire(r)
+	if err != nil {
+		return changeLogEncodeErr(err)
+	}
+	ms.logChangeLocked(storecontract.ChangeRelPut, p)
+	return nil
+}
+
+// logNodeHardDeleteLocked records a hard node delete (no tombstone/history).
+// cascadedRelIDs (raw snowflake IDs of relationships removed by a cascade) are
+// sorted so the record is deterministic and byte-identical to the badger feed.
+func (ms *Store) logNodeHardDeleteLocked(id snowflake.ID, cascadedRelIDs []int64) error {
+	if !ms.logEnabled {
+		return nil
+	}
+	sort.Slice(cascadedRelIDs, func(i, j int) bool { return cascadedRelIDs[i] < cascadedRelIDs[j] })
+	p, err := storeutil.MarshalChangeBody(storeutil.NodeDeleteBody{ID: int64(id), CascadedRelIDs: cascadedRelIDs})
+	if err != nil {
+		return changeLogEncodeErr(err)
+	}
+	ms.logChangeLocked(storecontract.ChangeNodeDelete, p)
+	return nil
+}
+
+func (ms *Store) logRelHardDeleteLocked(id snowflake.ID) error {
+	if !ms.logEnabled {
+		return nil
+	}
+	p, err := storeutil.MarshalChangeBody(storeutil.RelDeleteBody{ID: int64(id)})
+	if err != nil {
+		return changeLogEncodeErr(err)
+	}
+	ms.logChangeLocked(storecontract.ChangeRelDelete, p)
+	return nil
+}
+
+func (ms *Store) logNodeDeleteWithHistoryLocked(id snowflake.ID, nodeTombstone *types.Node, relTombstones []RelTombstone) error {
+	if !ms.logEnabled {
+		return nil
+	}
+	p, err := storeutil.NodeDeleteWithHistoryPayload(id, nodeTombstone, relTombstones)
+	if err != nil {
+		return changeLogEncodeErr(err)
+	}
+	ms.logChangeLocked(storecontract.ChangeNodeDelete, p)
+	return nil
+}
+
+func (ms *Store) logRelDeleteWithHistoryLocked(id snowflake.ID, tombstone *types.Relationship) error {
+	if !ms.logEnabled {
+		return nil
+	}
+	p, err := storeutil.RelDeleteWithHistoryPayload(id, tombstone)
+	if err != nil {
+		return changeLogEncodeErr(err)
+	}
+	ms.logChangeLocked(storecontract.ChangeRelDelete, p)
+	return nil
+}
+
+func (ms *Store) logNodeHistoryVersionLocked(version uint32, n *types.Node) error {
+	if !ms.logEnabled {
+		return nil
+	}
+	p, err := storeutil.NodeHistoryVersionPayload(version, n)
+	if err != nil {
+		return changeLogEncodeErr(err)
+	}
+	ms.logChangeLocked(storecontract.ChangeNodeHistoryVersion, p)
+	return nil
+}
+
+func (ms *Store) logRelHistoryVersionLocked(version uint32, r *types.Relationship) error {
+	if !ms.logEnabled {
+		return nil
+	}
+	p, err := storeutil.RelHistoryVersionPayload(version, r)
+	if err != nil {
+		return changeLogEncodeErr(err)
+	}
+	ms.logChangeLocked(storecontract.ChangeRelHistoryVersion, p)
+	return nil
+}
+
+// logHistoryTruncateLocked records a node/rel history truncate (isTrim=false) or
+// trim-from (isTrim=true). Only call when something was actually removed.
+func (ms *Store) logHistoryTruncateLocked(tag storecontract.ChangeTag, id snowflake.ID, isTrim bool, bound int64) error {
+	if !ms.logEnabled {
+		return nil
+	}
+	p, err := storeutil.MarshalChangeBody(storeutil.HistoryTruncateBody{ID: int64(id), IsTrim: isTrim, Bound: bound})
+	if err != nil {
+		return changeLogEncodeErr(err)
+	}
+	ms.logChangeLocked(tag, p)
+	return nil
+}
+
+// LastCommittedLSN returns the highest change-log LSN, or 0 when the log is
+// empty/disabled. The memory store has no async buffer, so every appended record
+// is immediately "committed".
+func (ms *Store) LastCommittedLSN() (uint64, error) {
+	if ms == nil {
+		return 0, ErrNilStore
+	}
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	if err := ms.checkOpenLocked(); err != nil {
+		return 0, err
+	}
+	return ms.logSeq, nil
+}
+
+// snapshotChangesLocked copies the records with LSN > afterLSN (up to limit;
+// <=0 = all). The caller holds at least an RLock. Payloads are copied so the
+// returned records never alias the stored log.
+func (ms *Store) snapshotChangesLocked(afterLSN uint64, limit int) []storecontract.ChangeRecord {
+	var out []storecontract.ChangeRecord
+	for _, rec := range ms.changeLog {
+		if rec.LSN <= afterLSN {
+			continue
+		}
+		cp := append([]byte(nil), rec.Payload...)
+		out = append(out, storecontract.ChangeRecord{LSN: rec.LSN, Tag: rec.Tag, Payload: cp})
+		if limit > 0 && len(out) >= limit {
+			break
+		}
+	}
+	return out
+}
+
+// ChangeFeed returns up to limit records with LSN > afterLSN in ascending order.
+// limit <= 0 returns all. Payloads are owned copies.
+func (ms *Store) ChangeFeed(afterLSN uint64, limit int) ([]storecontract.ChangeRecord, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	if err := ms.checkOpenLocked(); err != nil {
+		return nil, err
+	}
+	return ms.snapshotChangesLocked(afterLSN, limit), nil
+}
+
+// ForEachChange streams records with LSN > afterLSN in ascending order. The
+// callback is invoked OUTSIDE the store lock (a snapshot is taken first) so it
+// may re-enter Store methods; returning false stops early.
+func (ms *Store) ForEachChange(afterLSN uint64, fn func(storecontract.ChangeRecord) bool) error {
+	if ms == nil {
+		return ErrNilStore
+	}
+	if fn == nil {
+		return ErrInvalidStoreMutation
+	}
+	ms.mu.RLock()
+	if err := ms.checkOpenLocked(); err != nil {
+		ms.mu.RUnlock()
+		return err
+	}
+	snapshot := ms.snapshotChangesLocked(afterLSN, 0)
+	ms.mu.RUnlock()
+
+	for _, rec := range snapshot {
+		if !fn(rec) {
+			return nil
+		}
+	}
+	return nil
+}
