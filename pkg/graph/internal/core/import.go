@@ -384,8 +384,8 @@ func (c *Core) importReplayRecordsLocked(readRecord func() (byte, []byte, error)
 			if err := storeutil.SafeUnmarshal(data, &hdr); err != nil {
 				return fmt.Errorf("%w: unmarshal header: %v", ErrCorruptExport, err)
 			}
-			if hdr.Version != exportFormatVersion {
-				return fmt.Errorf("%w: got %d, want %d", ErrIncompatibleExport, hdr.Version, exportFormatVersion)
+			if hdr.Version < exportFormatVersionMin || hdr.Version > exportFormatVersion {
+				return fmt.Errorf("%w: got %d, want %d..%d", ErrIncompatibleExport, hdr.Version, exportFormatVersionMin, exportFormatVersion)
 			}
 			if hdr.NodeCount < 0 {
 				return fmt.Errorf("%w: negative node count %d", ErrCorruptExport, hdr.NodeCount)
@@ -509,6 +509,22 @@ func (c *Core) importReplayRecordsLocked(readRecord func() (byte, []byte, error)
 		}
 		if !valid {
 			return fmt.Errorf("import: rel %d: %w: imported hash chain does not verify", id.SnowflakeID(), ErrCorruptExport)
+		}
+	}
+
+	// Bootstrap handoff: record the snapshot's change-log LSN as this graph's
+	// initial applied watermark, so a replica tails the primary from exactly
+	// where the snapshot ends (no gap, no re-apply). Flush the imported data to
+	// durable storage BEFORE advancing the watermark (mirrors the apply-path
+	// durability ordering) so a crash can't leave the watermark ahead of the
+	// bootstrap data. v1 snapshots / no-change-log sources carry SnapshotLSN 0
+	// and leave the watermark untouched. Non-MetaKV backends no-op.
+	if header.SnapshotLSN > 0 {
+		if err := c.flushStoreLocked(); err != nil {
+			return fmt.Errorf("import: flush before snapshot watermark: %w", err)
+		}
+		if err := c.setAppliedLSNLocked(header.SnapshotLSN); err != nil {
+			return fmt.Errorf("import: record snapshot watermark: %w", err)
 		}
 	}
 	return nil

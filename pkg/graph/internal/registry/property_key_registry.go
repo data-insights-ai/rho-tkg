@@ -214,3 +214,76 @@ func (r *PropertyKeyRegistry) ImportNames(names []string) error {
 	}
 	return nil
 }
+
+// AppendNames extends the registry by the suffix keys when its current contents
+// exactly equal prefix. The property-key counterpart of
+// LabelRegistry.AppendNames, added for three-way registry parity. (The replica
+// apply path tokenizes property keys LOCALLY from untokenized record wires, so
+// it does not strictly need to sync property-key tokens — but RegistrySnapshot
+// ships them and this keeps the grow primitive uniform across all registries.)
+// Returns (false, nil) without mutating on prefix divergence; an error on a
+// malformed suffix / capacity overflow. Write-locked.
+func (r *PropertyKeyRegistry) AppendNames(prefix []string, suffix []string) (bool, error) {
+	r.ensureInitialized()
+
+	if len(prefix) == 0 {
+		return false, errors.New("graph: append: prefix must not be empty")
+	}
+	if prefix[0] != "" {
+		return false, errors.New("graph: append: prefix[0] must be empty (reserved)")
+	}
+	if len(suffix) == 0 {
+		return true, nil
+	}
+	if (len(prefix)-1)+len(suffix) > int(TokenCapacityMax) {
+		return false, fmt.Errorf("graph: property-key append: %d entries exceeds registry capacity (%d)",
+			(len(prefix)-1)+len(suffix), TokenCapacityMax)
+	}
+
+	pset := make(map[string]struct{}, len(prefix)-1)
+	for i := 1; i < len(prefix); i++ {
+		pset[prefix[i]] = struct{}{}
+	}
+	sset := make(map[string]struct{}, len(suffix))
+	for i, name := range suffix {
+		if isBlankName(name) {
+			return false, fmt.Errorf("graph: property-key append: empty name at suffix index %d", i)
+		}
+		if _, dup := sset[name]; dup {
+			return false, fmt.Errorf("graph: property-key append: duplicate name %q in suffix", name)
+		}
+		if _, clash := pset[name]; clash {
+			return false, fmt.Errorf("graph: property-key append: suffix name %q already in prefix", name)
+		}
+		sset[name] = struct{}{}
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if len(r.toKey) != len(prefix) {
+		return false, nil
+	}
+	for i := range prefix {
+		if r.toKey[i] != prefix[i] {
+			return false, nil
+		}
+	}
+
+	base := len(r.toKey)
+	r.toKey = append(r.toKey, suffix...)
+	for i, name := range suffix {
+		r.toToken[name] = uint16(base + i) // #nosec G115 — bounded by capacity check above
+	}
+	r.nextToken = uint16(len(r.toKey)) // #nosec G115 — bounded by capacity check above
+
+	if len(r.toKey) > tokenCapacityWarning {
+		r.warnOnce.Do(func() {
+			slog.Warn("property-key registry approaching capacity",
+				"count", len(r.toKey)-1,
+				"max", TokenCapacityMax,
+			)
+		})
+	}
+	return true, nil
+}

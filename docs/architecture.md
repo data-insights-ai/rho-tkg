@@ -518,9 +518,27 @@ applied-LSN watermark (`meta/replica_applied_lsn`) can advance via a separate
 `MetaSet` after each door commits — a crash in that window simply replays. Writes
 fail closed with `ErrReadOnlyReplica` via a core-layer `checkWritable()` gate on
 every user mutation door; reads, the bootstrap importer, and `ApplyChange`
-remain open. Deferred to the next increment: gapless export-header `SnapshotLSN`,
-lazy token-registry refetch for labels/rel-types created after the snapshot, and
-failover (ID-slot lease + promotion-by-reopen).
+remain open.
+
+Three further primitives complete the Phase-1 base layer. **Gapless handoff:** the
+export header (v2; importers accept v1 and v2) carries `SnapshotLSN`, captured via
+`LastCommittedLSN()` under the same `c.mu.Lock` as the entity snapshot; import
+records it as the replica's initial applied watermark, so a bootstrap needs no
+separate post-export LSN read. **Token-registry refetch:** when an applied record
+references a label/rel-type token the primary registered after the bootstrap,
+`g.Replication().RegistrySnapshot()` (a `store.ReplicationSource` injected via
+`Config.ReplicationSource` / `g.SetReplicationSource` — a primary's
+`g.Replication()` satisfies it in-process) returns the primary's registries plus
+the LSN they are complete as-of; the apply path guards `CapturedAtLSN >= rec.LSN`,
+append-only-extends the replica's registries (`AppendNames`, prefix-guarded,
+persist-then-rollback on failure), and re-validates. Property keys are tokenized
+locally (records carry string keys), so only labels/rel-types are synced.
+**Failover lease:** `g.Replication().IDSlotLease()` / `SetIDSlotLease()` persist a
+durable snowflake-slot hint (MetaKV; `SafeUnmarshal` on read; last-writer-wins,
+not CAS); promotion is by reopen (`Close()` + `New()` under the leased
+`SnowflakeNodeID`, since the generators are built only in `New`). The
+network/orchestration half (Bolt routing, read-your-writes bookmarks, slot
+assignment) lives in sigma — rho-tkg exposes the primitives.
 
 **ReadOnly mode:** `BadgerStoreConfig.ReadOnly` opens Badger read-only and skips flush/GC goroutines. TieredStore does not use read-only Badger handles for warm/cold owner shards: existing event entities still update/delete on their original shard after rotation and restart.
 

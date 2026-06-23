@@ -45,11 +45,16 @@ log-shipped read replica and converges byte-exact via bootstrap + tail.
 - `ChangeNodePut`/`ChangeRelPut` reshaped to `NodePutBody`/`RelPutBody` with the `WithHistory` bit (replica reproduces history depth exactly); put-record wire built untokenized → byte-identical cross-backend feeds + no propkey-registry dependency.
 - Tests: end-to-end byte-exact convergence (all record kinds incl. cascade delete + deleted-entity history), idempotent double-apply, read-only gate parity.
 
-**Phase 1 — remaining (next increment), still base-layer + a thin sigma follow-up:**
-- Gapless handoff: export-header `SnapshotLSN` read under the export lock (today the bootstrap uses `LastCommittedLSN()` post-export — exact with no concurrent writer, racy under one).
-- Lazy token-registry refetch: a `RegistrySnapshot()` on the replication API + an apply-path hook that, on an unknown label/rel-type token (allocated AFTER the snapshot), refetches the primary's name-suffix, `AppendNames`, persists registry-before-row, retries once, else fails closed. Today a post-snapshot token fails closed with a clear `validate*TokensInRegistry` error.
-- Failover: durable ID-slot lease (`meta/id_slot_lease`, last-writer-wins hint) + promotion = Close+New with `ReadOnlyReplica:false` and the leased `SnowflakeNodeID`; the external orchestrator (sigma) owns slot assignment.
-- sigma: Bolt ROUTE per-role lists + session-scoped read-your-writes LSN watermark (consumer-side, thin).
+**Phase 1 — base layer COMPLETE** (this increment): the deferred items above are done.
+- Gapless handoff: export header bumped to v2 with `SnapshotLSN`, read via `LastCommittedLSN()` UNDER the export's `c.mu.Lock` (gapless); import records it as the replica's initial applied watermark (flush-before-watermark). Importers accept v1 OR v2.
+- Lazy token-registry refetch: `g.Replication().RegistrySnapshot()` (`store.RegistrySnapshot{Labels,RelTypes,PropKeys,CapturedAtLSN}`, LSN-before-names capture) + `store.ReplicationSource` (`Config.ReplicationSource` / `g.SetReplicationSource`; a primary's `g.Replication()` satisfies it in-process) + the apply-path hook (`validate*TokensWithRefetch`) that refetches on an unknown label/rel-type token, guards `CapturedAtLSN >= rec.LSN`, append-only-extends via the new registry `AppendNames(prefix,suffix)` grow primitive (all 3 registries; persist-then-rollback on failure), and re-validates. Property keys are NOT synced (untokenized in records → tokenized locally).
+- Failover: `store.IDSlotLeaseRecord` + `g.Replication().IDSlotLease()`/`SetIDSlotLease()` (`meta/id_slot_lease`, `SafeUnmarshal` read, slot 0-15 validated, last-writer-wins hint); promotion = Close+New with the leased `SnowflakeNodeID`. The orchestrator owns slot assignment + the reopen trigger. (`UseLeasedSlot` auto-read-at-New was intentionally NOT built — it would require reordering `New` to construct the store before the immutable generators; the orchestrator reads the lease and passes the slot explicitly.)
+- Tests: AppendNames per-registry (parity, prefix-divergence, capacity, malformed); v1/v2/too-new version range; SnapshotLSN watermark round-trip + no-changelog; refetch happy-path (post-snapshot label + rel-type resolve, byte-exact converge) + no-source fail-closed + RegistrySnapshot-no-changelog; lease round-trip + range-reject + promotion-by-reopen (slot bits + no collision).
+
+**Phase 1 — remaining = sigma only (the network/orchestration half):**
+- Bolt ROUTE per-role lists (write→primary, read→replicas); the transport that carries `RegistrySnapshot`/`ApplyChange` over the wire (a `store.ReplicationSource` impl + a tail loop).
+- Session-scoped read-your-writes LSN watermark (consumer-side; compare a session bookmark against a replica's `AppliedLSN()`).
+- Promotion orchestration: decide the new slot, write the lease (serialized), trigger Close+New. rho-tkg exposes all the primitives; sigma coordinates.
 
 ---
 

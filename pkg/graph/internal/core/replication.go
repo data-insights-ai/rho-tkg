@@ -4,6 +4,9 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"github.com/vmihailenco/msgpack/v5"
+
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
@@ -14,6 +17,10 @@ import (
 // MetaSet after each record's door commits; the at-most-one-record crash window
 // it opens is closed by idempotent re-apply, not co-commit.
 const replicaAppliedLSNMeta = "replica_applied_lsn"
+
+// idSlotLeaseMeta is the MetaKV key holding the durable snowflake-slot lease
+// (an orchestrator hint for failover). Distinct from replicaAppliedLSNMeta.
+const idSlotLeaseMeta = "id_slot_lease"
 
 // changeFeedOrErr returns the store's change-feed capability or a wrapped
 // ErrCapabilityNotSupported when the backend does not provide one (e.g. tiered,
@@ -55,6 +62,123 @@ func (r *ReplOps) LastCommittedLSN() (uint64, error) {
 		return 0, err
 	}
 	return cf.LastCommittedLSN()
+}
+
+// RegistrySnapshot captures this graph's full token registries plus the
+// change-log LSN they are complete as-of, for a replica to append-only-extend
+// its own registry on an unresolved token. Returns ErrCapabilityNotSupported
+// when there is no change-log (without an LSN the snapshot cannot anchor the
+// replica's CapturedAtLSN >= record-LSN guard).
+//
+// The LSN is read BEFORE the names so CapturedAtLSN can never exceed the names'
+// coverage: any mutation committed at/below this LSN allocated its token before
+// committing, hence before the (later) names read under registryMu — so the
+// returned names already contain every token up to CapturedAtLSN.
+func (r *ReplOps) RegistrySnapshot() (*storepkg.RegistrySnapshot, error) {
+	if r == nil || r.c == nil {
+		return nil, ErrNilGraph
+	}
+	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	if c.changeFeed == nil {
+		return nil, fmt.Errorf("graph: registry snapshot: %w", storepkg.ErrCapabilityNotSupported)
+	}
+	lsn, err := c.changeFeed.LastCommittedLSN()
+	if err != nil {
+		return nil, fmt.Errorf("graph: registry snapshot: LSN: %w", err)
+	}
+	c.registryMu.Lock()
+	snap := &storepkg.RegistrySnapshot{
+		Labels:        c.labels.ExportNames(),
+		RelTypes:      c.relTypes.ExportNames(),
+		PropKeys:      c.propKeys.ExportNames(),
+		CapturedAtLSN: lsn,
+	}
+	c.registryMu.Unlock()
+	return snap, nil
+}
+
+// IDSlotLease returns the durable snowflake-slot lease, or (nil, nil) when none
+// has been recorded. ErrCapabilityNotSupported when the backend cannot persist
+// metadata (a custom store without MetaKVCapability; all in-tree backends —
+// memory, badger, tiered — persist it). The persisted bytes are decoded through
+// SafeUnmarshal (untrusted-bytes trust boundary) — a corrupt lease fails closed,
+// never panics — and the slot is re-validated against the 0-15 range the write
+// path enforces, so a foreign/out-of-range record fails closed at read time
+// rather than being carried into a New() that would reject it.
+func (r *ReplOps) IDSlotLease() (*storepkg.IDSlotLeaseRecord, error) {
+	if r == nil || r.c == nil {
+		return nil, ErrNilGraph
+	}
+	if err := r.c.checkOpen(); err != nil {
+		return nil, err
+	}
+	mk, ok := r.c.store.(storepkg.MetaKVCapability)
+	if !ok {
+		return nil, fmt.Errorf("graph: id-slot lease: %w", storepkg.ErrCapabilityNotSupported)
+	}
+	v, err := mk.MetaGet(idSlotLeaseMeta)
+	if err != nil {
+		return nil, fmt.Errorf("graph: read id-slot lease: %w", err)
+	}
+	if len(v) == 0 {
+		return nil, nil
+	}
+	var rec storepkg.IDSlotLeaseRecord
+	if err := storeutil.SafeUnmarshal(v, &rec); err != nil {
+		return nil, fmt.Errorf("graph: decode id-slot lease: %w", err)
+	}
+	if rec.Slot < 0 || rec.Slot > 15 {
+		return nil, fmt.Errorf("graph: id-slot lease: persisted slot %d out of range 0-15", rec.Slot)
+	}
+	return &rec, nil
+}
+
+// SetIDSlotLease persists the snowflake-slot lease (an orchestrator-supplied
+// failover hint). The slot is validated against the 0-15 range New accepts.
+// last-writer-wins (not CAS) — the orchestrator must serialize writes.
+func (r *ReplOps) SetIDSlotLease(rec *storepkg.IDSlotLeaseRecord) error {
+	if r == nil || r.c == nil {
+		return ErrNilGraph
+	}
+	if err := r.c.checkOpen(); err != nil {
+		return err
+	}
+	if rec == nil {
+		return fmt.Errorf("graph: set id-slot lease: nil record")
+	}
+	if rec.Slot < 0 || rec.Slot > 15 {
+		return fmt.Errorf("graph: set id-slot lease: slot %d out of range 0-15", rec.Slot)
+	}
+	mk, ok := r.c.store.(storepkg.MetaKVCapability)
+	if !ok {
+		return fmt.Errorf("graph: id-slot lease: %w", storepkg.ErrCapabilityNotSupported)
+	}
+	b, err := msgpack.Marshal(rec)
+	if err != nil {
+		return fmt.Errorf("graph: encode id-slot lease: %w", err)
+	}
+	if err := mk.MetaSet(idSlotLeaseMeta, b); err != nil {
+		return fmt.Errorf("graph: persist id-slot lease: %w", err)
+	}
+	return nil
+}
+
+// SetReplicationSource sets (or clears, with nil) the primary handle the apply
+// path uses to refetch the registry on an unresolved token. Safe to call after
+// New (e.g. once a driver has dialed the primary).
+func (c *Core) SetReplicationSource(src storepkg.ReplicationSource) {
+	c.replSourceMu.Lock()
+	c.replSource = src
+	c.replSourceMu.Unlock()
+}
+
+func (c *Core) replicationSource() storepkg.ReplicationSource {
+	c.replSourceMu.RLock()
+	defer c.replSourceMu.RUnlock()
+	return c.replSource
 }
 
 // ApplyChange applies one change-log record received from a primary's feed,

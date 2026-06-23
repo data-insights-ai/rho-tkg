@@ -62,12 +62,47 @@ tails a primary's change-feed to a **byte-exact** copy. See
   tombstone chain); idempotent double-apply (history depth unchanged); read-only
   gate parity across every mutation door with `errors.Is(ErrReadOnlyReplica)`.
 
-Deferred to the next Phase-1 increment (documented in `tasks/horizontal-scaling.md`):
-gapless snapshot→tail handoff via an export-header `SnapshotLSN` (today the test
-uses `LastCommittedLSN()` post-export, exact when no concurrent writer); lazy
-**token-registry refetch** for labels/rel-types allocated AFTER the snapshot
-(today a post-snapshot token fails closed with a clear validation error); and
-failover (ID-slot lease + promotion-by-reopen).
+Phase-1 base layer completed (this increment):
+
+- **Gapless bootstrap→tail handoff** — the export header (bumped to format v2,
+  importers accept v1 **and** v2) carries `SnapshotLSN`, the change-log LSN
+  captured under the SAME `c.mu.Lock` as the entity snapshot; import records it
+  as the replica's initial applied watermark (flush-before-watermark), so a
+  bootstrap no longer needs a separate, racy `LastCommittedLSN()` call. Sources
+  with no change-log export `SnapshotLSN` 0.
+- **Lazy token-registry refetch** — a label / rel-type the primary registers
+  AFTER a replica's bootstrap snapshot is now resolved automatically instead of
+  failing closed. `g.Replication().RegistrySnapshot()` returns the primary's
+  token registries + the LSN they are complete as-of (`store.RegistrySnapshot{Labels,
+  RelTypes, PropKeys, CapturedAtLSN}`; the LSN is read BEFORE the names so it can
+  never exceed their coverage). A new `store.ReplicationSource` interface
+  (`graph.Config.ReplicationSource` / `g.SetReplicationSource`; a primary's
+  `g.Replication()` satisfies it directly in-process) lets the replica's apply
+  path, on an unresolved token, refetch the primary's registry, guard
+  `CapturedAtLSN >= rec.LSN`, **append-only-extend** its own registry, persist,
+  and re-validate. Two new sentinels classify a refetch failure for a driver:
+  `ErrPrimaryRegistryStale` (retryable — the primary hasn't caught up) and
+  `ErrRegistryDiverged` (fatal — the replica's names aren't a prefix of the
+  primary's; re-bootstrap). The new `(*LabelRegistry|*RelTypeRegistry|*PropertyKeyRegistry).AppendNames(prefix, suffix)`
+  grow primitive (prefix-equality-checked; `(false, nil)` on divergence) is the
+  registry-internal mechanism (`ImportNames` is load-only — it rejects a
+  non-empty registry). A persist failure rolls the in-memory grow back so the
+  registry never runs ahead of durable storage. Property keys are NOT synced
+  (records carry untokenized string keys; the replica tokenizes locally).
+- **Failover ID-slot lease** — `store.IDSlotLeaseRecord` + `g.Replication().IDSlotLease()` /
+  `SetIDSlotLease()` persist/read the orchestrator's durable snowflake-slot
+  assignment (MetaKV; `SafeUnmarshal` on read; slot range-validated; last-writer-wins,
+  NOT a consensus primitive — the orchestrator serializes writes). Promotion is
+  by reopen: the orchestrator reads the lease, `Close()`s, and `New()`s with
+  `Config{SnowflakeNodeID: lease.Slot, ReadOnlyReplica: false}` (the snowflake
+  generators are built only in `New`, so promotion is always a reopen). A
+  promoted node and the node it replaces hold different slots, so their minted
+  IDs never collide.
+
+Still deferred (the network/orchestration half, in sigma): the Bolt ROUTE
+per-role lists, the session read-your-writes watermark, and the promotion
+orchestration that decides slots and triggers the reopen. rho-tkg exposes the
+primitives; sigma drives them.
 
 ### Added — durable ordered change-log (op-log) + `g.Replication()` (horizontal-scaling Phase 0)
 

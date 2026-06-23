@@ -61,6 +61,8 @@ type Core struct {
 	deletedDepthIter   storepkg.DepthDeletedIterationCapability
 	changeFeed         storepkg.ChangeFeedCapability
 	readOnlyReplica    bool
+	replSource         storepkg.ReplicationSource
+	replSourceMu       sync.RWMutex
 	vectorRowsTrust    bool
 	storeRowsTrust     bool
 	nativeAdjacency    bool
@@ -294,6 +296,13 @@ type Config struct {
 	// and the write buffer entirely); a replica is a normal writable store that
 	// the core gates above the store layer.
 	ReadOnlyReplica bool
+	// ReplicationSource is the replica's handle to its primary's token registry.
+	// When set, the apply path refetches and append-only-extends its registry on
+	// a token the primary allocated after the replica's bootstrap snapshot,
+	// instead of failing closed. nil = fail closed (the behaviour before this
+	// capability existed). Also settable post-New via g.SetReplicationSource.
+	// In-process, a primary's g.Replication() satisfies store.ReplicationSource.
+	ReplicationSource storepkg.ReplicationSource
 }
 
 // ValidationDefaults returns the resolved validation limits (for testing).
@@ -877,6 +886,7 @@ func New(config Config) (*Core, error) {
 		relTypeCache:    make(map[string]uint16),
 		clock:           time.Now,
 		readOnlyReplica: config.ReadOnlyReplica,
+		replSource:      config.ReplicationSource,
 	}
 	c.Nodes = &NodeOps{c: c}
 	c.Rels = &RelOps{c: c}

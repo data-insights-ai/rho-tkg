@@ -19,6 +19,9 @@ type Ops interface {
 	ApplyChanges(recs []store.ChangeRecord) (uint64, error)
 	AppliedLSN() (uint64, error)
 	SetAppliedLSN(lsn uint64) error
+	RegistrySnapshot() (*store.RegistrySnapshot, error)
+	IDSlotLease() (*store.IDSlotLeaseRecord, error)
+	SetIDSlotLease(rec *store.IDSlotLeaseRecord) error
 }
 
 // API is the replication sub-API accessor.
@@ -111,4 +114,40 @@ func (a *API) SetAppliedLSN(lsn uint64) error {
 		return err
 	}
 	return ops.SetAppliedLSN(lsn)
+}
+
+// RegistrySnapshot captures this graph's token registries plus the change-log
+// LSN they are complete as-of, for a replica to extend its own registry on an
+// unresolved token. Returns ErrCapabilityNotSupported when there is no
+// change-log. *API satisfies store.ReplicationSource, so a primary's
+// g.Replication() can be handed directly to a replica's g.SetReplicationSource.
+func (a *API) RegistrySnapshot() (*store.RegistrySnapshot, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.RegistrySnapshot()
+}
+
+// IDSlotLease returns the durable snowflake-slot lease (an orchestrator failover
+// hint), or (nil, nil) when none is recorded; ErrCapabilityNotSupported when the
+// backend cannot persist metadata. See store.IDSlotLeaseRecord for the
+// promotion-by-reopen flow.
+func (a *API) IDSlotLease() (*store.IDSlotLeaseRecord, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.IDSlotLease()
+}
+
+// SetIDSlotLease persists the snowflake-slot lease. It is a last-writer-wins
+// durable hint, not a consensus primitive — the orchestrator must serialize
+// writes. The slot is validated against the 0-15 range.
+func (a *API) SetIDSlotLease(rec *store.IDSlotLeaseRecord) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.SetIDSlotLease(rec)
 }

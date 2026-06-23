@@ -20,8 +20,14 @@ import (
 //   - import.go — Import path + per-record validators
 
 // Export format version. Increment when the record layout changes in a
-// backward-incompatible way.
-const exportFormatVersion byte = 1
+// backward-incompatible way. v2 adds exportHeader.SnapshotLSN (the change-log
+// LSN captured atomically with the snapshot, for a gapless replica handoff);
+// importers accept BOTH v1 (no SnapshotLSN) and v2.
+const exportFormatVersion byte = 2
+
+// exportFormatVersionMin is the oldest export-stream version this build can
+// import. v1 snapshots (pre-SnapshotLSN) remain readable.
+const exportFormatVersionMin byte = 1
 
 // exportBatchSize is the page size for paginated entity queries during export.
 // Caps per-page allocations to ~80-100 KB for nodes, preventing the OOM
@@ -51,6 +57,12 @@ type exportHeader struct {
 	ExportedAt int64 `msgpack:"at"`
 	NodeCount  int64 `msgpack:"nc"`
 	RelCount   int64 `msgpack:"rc"`
+	// SnapshotLSN is the change-log LSN captured under the SAME c.mu.Lock as the
+	// entity snapshot (gapless — no mutation can interleave), so a bootstrapping
+	// replica records it as its initial applied watermark and tails from there
+	// without re-applying or gapping. Zero when the source had no change-log
+	// (omitted on the wire; absent in v1 snapshots).
+	SnapshotLSN uint64 `msgpack:"lsn,omitempty"`
 }
 
 // IO sentinels — canonical declarations live in pkg/graph/io so external
@@ -117,6 +129,17 @@ func (c *Core) exportLocked(w io.Writer) error {
 		ExportedAt: time.Now().UnixMilli(),
 		NodeCount:  int64(nc),
 		RelCount:   int64(rc),
+	}
+	// Capture the change-log LSN UNDER the held c.mu.Lock, atomically with the
+	// entity snapshot above — so the SnapshotLSN exactly bounds what this export
+	// contains and a replica can tail from it gaplessly. Nil change-feed (no
+	// change-log) leaves it 0 (omitted on the wire).
+	if c.changeFeed != nil {
+		lsn, lerr := c.changeFeed.LastCommittedLSN()
+		if lerr != nil {
+			return fmt.Errorf("export: change-log LSN: %w", lerr)
+		}
+		hdr.SnapshotLSN = lsn
 	}
 	if err := marshalAndWrite(w, exportTagHeader, &hdr); err != nil {
 		return fmt.Errorf("export: header: %w", err)

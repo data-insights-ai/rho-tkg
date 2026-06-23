@@ -1107,3 +1107,66 @@ Two bugs an adversarial review caught (both now fixed + tested):
   gate test that exercises each door by name — a gate with a hole is invisible
   until the missing door is tested.
 
+
+## 51. Syncing An Append-Only Registry Across Nodes: Capture-Order, Prefix-Guard, And Persist-Before-Use
+
+Phase-1 replicas resolve a label/rel-type the primary registered AFTER their
+bootstrap by refetching the primary's registry and growing their own. Four
+things make it correct; each is a trap if skipped.
+
+- **Capture the anchor LSN BEFORE the names, never after.** `RegistrySnapshot`
+  returns the registries plus a `CapturedAtLSN` the replica checks against the
+  record that triggered the refetch (`CapturedAtLSN >= rec.LSN`). If you read the
+  names first and the LSN second, a token allocated+committed in between makes
+  `CapturedAtLSN` claim coverage the names don't have → the replica appends an
+  incomplete registry and the missing token never resolves. Reading the LSN
+  first guarantees `CapturedAtLSN <= names coverage` (a mutation committed at/below
+  that LSN allocated its token before committing, hence before the later
+  names read under `registryMu`); extra tokens beyond the LSN are harmless.
+
+- **The grow primitive must be prefix-guarded — `ImportNames` is load-only.** A
+  registry that bootstrapped non-empty cannot be re-imported (`ImportNames`
+  rejects a non-empty registry). The new `AppendNames(prefix, suffix)` asserts
+  the registry's CURRENT contents DeepEqual the caller's observed `prefix`, then
+  appends `suffix` at contiguous indices; on any divergence it returns
+  `(false, nil)` WITHOUT mutating. That guard is the linchpin: the registry is
+  gap-free/monotone, so a wrong guard would silently place suffix tokens at the
+  wrong indices and corrupt every later token resolution. Add it to all three
+  registries (parity), even the one (`PropertyKeyRegistry`) the hook doesn't use.
+
+- **Persist the grow BEFORE the row that needs it; roll back on persist failure.**
+  The refetch grows the in-memory registry, then `persistRegistries()`, all under
+  `registryMu`, BEFORE the entity store door runs. If the persist fails, the
+  in-memory grow MUST be rolled back (`RollbackNames`) so in-memory == disk —
+  otherwise a later retry sees the token already resolvable in RAM, skips the
+  refetch+persist, writes the entity, and a crash then leaves a row referencing a
+  token that was never persisted (a dangling token on restart). Same
+  flush-before-watermark discipline as the apply path, one level down.
+
+- **Don't sync what's tokenized locally.** Records carry UNTOKENIZED property
+  keys (string keys), so a replica tokenizes them in its OWN independent
+  property-key registry — its propkey tokens need not match the primary's. The
+  refetch therefore syncs ONLY labels + rel-types (which appear as tokens in the
+  wire and MUST match). Appending the primary's propkeys would fail the
+  prefix-guard against the replica's divergent propkey registry. `RegistrySnapshot`
+  still ships `PropKeys` (a full snapshot for any consumer), but the hook ignores
+  them. Know which tokens are part of the logical row vs a storage-local detail.
+
+Lock ordering: the refetch runs UNDER the apply's `c.mu.Lock` and takes ONLY
+`c.registryMu` (order `c.mu → registryMu`, matching the existing
+`getOrCreate*Persisted` path); it calls the source (a DIFFERENT/primary Core,
+taking only ITS locks) and never re-takes `c.mu` — so even a self-pointing
+source can't deadlock (distinct mutexes), and the `CapturedAtLSN` guard catches
+the self-misconfiguration.
+
+Failover plumbing belongs in the library; the coordination does not. The ID-slot
+lease is persisted/read by rho-tkg (`SafeUnmarshal` on read — it's an
+untrusted-bytes site; slot range-validated at write) but is last-writer-wins
+(`DetectConflicts=false`), NOT a consensus primitive. The external orchestrator
+serializes writes, assigns slots, and triggers promotion = `Close()`+`New()`
+under the leased slot (snowflake generators are immutable post-`New`, so
+promotion is always a reopen). A promoted node and the node it replaces must
+hold DIFFERENT slots — that slot difference, not the lease's durability, is what
+prevents minted-ID collisions in a split-brain window. Ship the durable hint and
+the reopen path; leave "who holds the lease, and when" to the layer that can
+actually coordinate.

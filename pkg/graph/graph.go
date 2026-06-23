@@ -196,6 +196,30 @@ func (g *Graph) Batch() *BatchAPI {
 	return g.batch
 }
 
+// SetReplicationSource sets (or clears, with nil) this graph's handle to its
+// primary's token registry, used by the replica apply path to resolve a token
+// the primary allocated after the bootstrap snapshot. A primary's
+// g.Replication() satisfies store.ReplicationSource, so a replica can be wired
+// with replica.SetReplicationSource(primary.Replication()) in-process. Nil-safe.
+func (g *Graph) SetReplicationSource(src store.ReplicationSource) {
+	if g == nil || g.core == nil {
+		return
+	}
+	g.core.SetReplicationSource(src)
+}
+
+// ReplicationSource aliases store.ReplicationSource — the primary handle a
+// replica resolves unknown tokens through. See SetReplicationSource.
+type ReplicationSource = store.ReplicationSource
+
+// RegistrySnapshot aliases store.RegistrySnapshot — a primary's token registries
+// at a known change-log LSN, returned by g.Replication().RegistrySnapshot().
+type RegistrySnapshot = store.RegistrySnapshot
+
+// IDSlotLeaseRecord aliases store.IDSlotLeaseRecord — the durable snowflake-slot
+// failover hint persisted/read via g.Replication().SetIDSlotLease/IDSlotLease.
+type IDSlotLeaseRecord = store.IDSlotLeaseRecord
+
 // Config aliases core.Config for the public API.
 type Config = core.Config
 
