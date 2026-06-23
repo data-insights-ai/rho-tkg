@@ -119,6 +119,7 @@ func (bs *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
 		writeOp{opType: writeOpDelete, key: storepkg.LabelIndexKey(tok, id)},
 	)
+	bs.logChangeRaw(storecontract.ChangeNodePut, data)
 	bs.idxMu.Unlock()
 
 	return bs.flushIfNeeded()
@@ -226,6 +227,7 @@ func (bs *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
 		writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tok, id)},
 	)
+	bs.logChangeRaw(storecontract.ChangeNodePut, data)
 	bs.idxMu.Unlock()
 
 	return bs.flushIfNeeded()
@@ -321,6 +323,7 @@ func (bs *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 		writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data},
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
 	)
+	bs.logChangeRaw(storecontract.ChangeNodePut, data)
 	bs.idxMu.Unlock()
 
 	return bs.flushIfNeeded()
@@ -357,6 +360,14 @@ func (bs *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 			data: data,
 		})
 	}
+	// Build the with-history delete record (node tombstone + rel tombstones +
+	// cascaded rel IDs) before taking the lock, so a marshal error aborts before
+	// any op is enqueued.
+	delPayload, err := bs.nodeDeleteWithHistoryPayload(id, nodeTombstone, relTombstones)
+	if err != nil {
+		return fmt.Errorf("graph: encode change-log: %w", err)
+	}
+
 	prefetched, err := bs.prefetchCascadeDeleteRows(nid)
 	if err != nil {
 		return err
@@ -396,6 +407,7 @@ func (bs *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 		ops = append(ops, writeOp{opType: writeOpSet, key: e.key, value: e.data})
 	}
 	bs.appendOps(ops...)
+	bs.logChangeRaw(storecontract.ChangeNodeDelete, delPayload)
 	bs.idxMu.Unlock()
 
 	if corruptErr == nil && bs.syncWrites {
@@ -479,8 +491,14 @@ func (bs *Store) PutNodeVersion(nid types.NodeID, version uint32, n *types.Node)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node version: %w", err)
 	}
+	logPayload, err := bs.historyVersionNodePayload(version, n)
+	if err != nil {
+		return fmt.Errorf("graph: encode change-log: %w", err)
+	}
 	key := storepkg.HistNodeKey(id, uint64(version))
-	bs.appendOps(writeOp{opType: writeOpSet, key: key, value: data})
+	// PutNodeVersion holds no idxMu, so enqueue the op and its record together
+	// under one wbMu critical section (appendOpsLogged) for snapshot atomicity.
+	bs.appendOpsLogged(storecontract.ChangeNodeHistoryVersion, logPayload, writeOp{opType: writeOpSet, key: key, value: data})
 	return bs.flushIfNeeded()
 }
 
@@ -759,7 +777,11 @@ func (bs *Store) TruncateNodeHistory(nid types.NodeID, keepVersions int) error {
 	}
 	id := nid.SnowflakeID()
 	prefix := storepkg.HistNodePrefix(id)
-	return bs.truncateHistoryByPrefix(prefix, keepVersions)
+	payload, err := bs.buildChangePayload(storepkg.HistoryTruncateBody{ID: int64(id), Bound: int64(keepVersions)})
+	if err != nil {
+		return fmt.Errorf("graph: encode change-log: %w", err)
+	}
+	return bs.truncateHistoryByPrefix(prefix, keepVersions, storecontract.ChangeNodeHistoryTruncate, payload)
 }
 
 // TrimNodeHistoryFrom removes node history entries at or after minVersion.
@@ -770,8 +792,13 @@ func (bs *Store) TrimNodeHistoryFrom(nid types.NodeID, minVersion uint32) error 
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return err
 	}
-	prefix := storepkg.HistNodePrefix(nid.SnowflakeID())
-	return bs.trimHistoryFromPrefix(prefix, minVersion)
+	id := nid.SnowflakeID()
+	prefix := storepkg.HistNodePrefix(id)
+	payload, err := bs.buildChangePayload(storepkg.HistoryTruncateBody{ID: int64(id), IsTrim: true, Bound: int64(minVersion)})
+	if err != nil {
+		return fmt.Errorf("graph: encode change-log: %w", err)
+	}
+	return bs.trimHistoryFromPrefix(prefix, minVersion, storecontract.ChangeNodeHistoryTruncate, payload)
 }
 
 func (bs *Store) ForEachNodeHistoryID(fn func(types.NodeID) bool) error {

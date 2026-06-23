@@ -50,7 +50,7 @@ func (ms *Store) PutNode(n *types.Node) error {
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
-	return nil
+	return ms.logNodePutLocked(n)
 }
 
 // GetNode retrieves a node by its snowflake ID.
@@ -178,7 +178,7 @@ func (ms *Store) DeleteNode(nid types.NodeID) error {
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, n, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, n, rawID)
 	delete(ms.nodes, nid)
-	return nil
+	return ms.logNodeHardDeleteLocked(nid.SnowflakeID(), nil)
 }
 
 // RemoveNodeLabelToken removes tok from the label index for id and stores updatedNode.
@@ -235,7 +235,7 @@ func (ms *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
-	return nil
+	return ms.logNodePutLocked(updatedNode)
 }
 
 // AddNodeLabelToken adds tok to the label index for id and persists updatedNode.
@@ -290,7 +290,7 @@ func (ms *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
-	return nil
+	return ms.logNodePutLocked(updatedNode)
 }
 
 // ReplaceNode overwrites an existing node's data in-place.
@@ -338,7 +338,7 @@ func (ms *Store) ReplaceNode(n *types.Node) error {
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
-	return nil
+	return ms.logNodePutLocked(n)
 }
 
 // DeleteNodeCascade atomically removes a node and all connected relationships.
@@ -374,6 +374,17 @@ func (ms *Store) DeleteNodeCascade(nid types.NodeID) error {
 		relIDs[relID] = struct{}{}
 	}
 
+	// Capture the rel IDs whose CURRENT ROW actually exists BEFORE deleting:
+	// CascadedRelIDs is defined as the rel rows the cascade removes (orphan-only
+	// adjacency entries are purged but not "removed rows"), matching the badger
+	// backend so the change-log record is identical across backends.
+	cascaded := make([]int64, 0, len(relIDs))
+	for relID := range relIDs {
+		if _, ok := ms.rels[relID]; ok {
+			cascaded = append(cascaded, int64(relID.SnowflakeID()))
+		}
+	}
+
 	// Delete each relationship (lock-free inner call).
 	for relID := range relIDs {
 		if err := ms.deleteRelOrPurgeOrphanLocked(relID); err != nil {
@@ -390,7 +401,8 @@ func (ms *Store) DeleteNodeCascade(nid types.NodeID) error {
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, n, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, n, rawID)
 	delete(ms.nodes, nid)
-	return nil
+
+	return ms.logNodeHardDeleteLocked(nid.SnowflakeID(), cascaded)
 }
 
 // --- Batch operations ---
@@ -452,6 +464,9 @@ func (ms *Store) PutNodesBatch(nodes []*types.Node) error {
 		if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates[i], rawID); err != nil {
 			return err
 		}
+		if err := ms.logNodePutLocked(n); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -504,6 +519,9 @@ func (ms *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 		indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, n, rawID)
 		indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, n, rawID)
 		delete(ms.nodes, id)
+		if err := ms.logNodeHardDeleteLocked(id.SnowflakeID(), nil); err != nil {
+			return err
+		}
 	}
 
 	return nil

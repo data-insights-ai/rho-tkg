@@ -17,7 +17,7 @@ import (
 // Per-entity history methods live in badgerstore_history_node.go and
 // badgerstore_history_rel.go.
 
-func (bs *Store) truncateHistoryByPrefix(prefix []byte, keepVersions int) error {
+func (bs *Store) truncateHistoryByPrefix(prefix []byte, keepVersions int, logTag storecontract.ChangeTag, logPayload []byte) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
 	}
@@ -89,11 +89,14 @@ func (bs *Store) truncateHistoryByPrefix(prefix []byte, keepVersions int) error 
 	for i, k := range toDelete {
 		ops[i] = writeOp{opType: writeOpDelete, key: []byte(k)}
 	}
-	bs.appendOps(ops...)
+	// Emit the truncation record atomically with the delete ops (this helper
+	// holds no idxMu). The record is produced only when something is actually
+	// deleted — the no-op early returns above emit nothing.
+	bs.appendOpsLogged(logTag, logPayload, ops...)
 	return bs.flushIfNeeded()
 }
 
-func (bs *Store) trimHistoryFromPrefix(prefix []byte, minVersion uint32) error {
+func (bs *Store) trimHistoryFromPrefix(prefix []byte, minVersion uint32, logTag storecontract.ChangeTag, logPayload []byte) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
 	}
@@ -143,7 +146,7 @@ func (bs *Store) trimHistoryFromPrefix(prefix []byte, minVersion uint32) error {
 	for k := range keySet {
 		ops = append(ops, writeOp{opType: writeOpDelete, key: []byte(k)})
 	}
-	bs.appendOps(ops...)
+	bs.appendOpsLogged(logTag, logPayload, ops...)
 	return bs.flushIfNeeded()
 }
 

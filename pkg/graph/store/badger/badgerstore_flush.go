@@ -7,10 +7,12 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log/slog"
+	"sort"
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
@@ -47,10 +49,17 @@ func (bs *Store) flushIfNeeded() error {
 	return nil
 }
 
-// pendingLen returns the current size of the pending write buffer.
+// pendingLen returns the current size of the pending write buffer. When the
+// change-log is enabled it also counts buffered (uncoalesced) log records: the
+// entity-op map last-write-wins coalesces a hot key down to one entry, but each
+// write still appends a record, so a hot-key burst would otherwise grow
+// pendingLog without backpressure between flush ticks.
 func (bs *Store) pendingLen() int {
 	bs.wbMu.Lock()
 	n := len(bs.pending)
+	if bs.logEnabled {
+		n += len(bs.pendingLog)
+	}
 	bs.wbMu.Unlock()
 	return n
 }
@@ -112,34 +121,47 @@ func (bs *Store) flush() error {
 	bs.flushMu.Lock()
 	defer bs.flushMu.Unlock()
 
-	// Step 1: Atomically snapshot dirty cache versions, pending ops, and counters.
-	// idxMu.RLock blocks writers (who hold idxMu.Lock) during this phase,
-	// ensuring no writer is between cache.Put and appendOps.
+	// Step 1: Atomically snapshot dirty cache versions, pending ops, pending
+	// change-log records, and counters. idxMu.RLock blocks writers (who hold
+	// idxMu.Lock) during this phase, ensuring no writer is between cache.Put and
+	// appendOps and that a change-log record and the entity ops it describes are
+	// snapshotted together (no committed-but-unlogged window).
 	bs.idxMu.RLock()
 	nodeDirty := bs.nodeCache.CollectDirty()
 	relDirty := bs.relCache.CollectDirty()
 	bs.wbMu.Lock()
 	ops := bs.pending
 	bs.pending = make(map[string]writeOp)
+	logs := bs.pendingLog
+	bs.pendingLog = nil
 	bs.wbMu.Unlock()
 	nc := bs.nodeCount.Load()
 	rc := bs.relCount.Load()
 	bs.idxMu.RUnlock()
 
-	if len(ops) == 0 {
+	if len(ops) == 0 && len(logs) == 0 {
 		return nil
+	}
+
+	// requeue restores BOTH the entity ops and the change-log records after any
+	// post-snapshot failure, so a failed flush loses nothing and re-commits
+	// intact (the change-log write re-sorts by LSN) on the next cycle.
+	requeue := func() {
+		bs.requeueOps(ops)
+		bs.requeueLog(logs)
 	}
 
 	// Step 1.5: Write-ahead the property-key registry. Any token referenced by
 	// the rows about to be flushed must already be durable, so persist (and
-	// fsync) the registry BEFORE the row WriteBatch. On failure, requeue the ops
-	// and abort — rows must never become durable ahead of their registry.
+	// fsync) the registry BEFORE the row WriteBatch. On failure, requeue and
+	// abort — rows must never become durable ahead of their registry.
 	if err := bs.persistRegistryIfGrew(); err != nil {
-		bs.requeueOps(ops)
+		requeue()
 		return fmt.Errorf("graph: write-ahead property-key registry: %w", err)
 	}
 
-	// Step 2: Write all ops + counters to Badger via WriteBatch (blind writes, no OCC).
+	// Step 2: Write all ops + counters + change-log records to Badger via one
+	// WriteBatch (blind writes, no OCC).
 	wb := bs.db.NewWriteBatch()
 	defer wb.Cancel() // no-op if Flush already called
 
@@ -147,12 +169,12 @@ func (bs *Store) flush() error {
 		switch op.opType {
 		case writeOpSet:
 			if err := wb.SetEntry(badgerv4.NewEntry(op.key, op.value)); err != nil {
-				bs.requeueOps(ops)
+				requeue()
 				return fmt.Errorf("graph: write batch set: %w", err)
 			}
 		case writeOpDelete:
 			if err := wb.Delete(op.key); err != nil {
-				bs.requeueOps(ops)
+				requeue()
 				return fmt.Errorf("graph: write batch delete: %w", err)
 			}
 		}
@@ -162,25 +184,49 @@ func (bs *Store) flush() error {
 	ncBuf := make([]byte, 8)
 	binary.BigEndian.PutUint64(ncBuf, uint64(nc)) // #nosec G115 — intentional int64→uint64 for binary encoding
 	if err := wb.SetEntry(badgerv4.NewEntry(counterNodeCountKey, ncBuf)); err != nil {
-		bs.requeueOps(ops)
+		requeue()
 		return fmt.Errorf("graph: write batch set counter: %w", err)
 	}
 	rcBuf := make([]byte, 8)
 	binary.BigEndian.PutUint64(rcBuf, uint64(rc)) // #nosec G115 — intentional int64→uint64 for binary encoding
 	if err := wb.SetEntry(badgerv4.NewEntry(counterRelCountKey, rcBuf)); err != nil {
-		bs.requeueOps(ops)
+		requeue()
 		return fmt.Errorf("graph: write batch set counter: %w", err)
+	}
+
+	// Change-log records ride the SAME batch as the data they describe and the
+	// counters, so a record commits atomically with its mutation. Sorted by LSN
+	// so a requeue interleave can never persist them out of order; LastLSNKey
+	// captures the highest LSN in this batch (crash-consistent with the records).
+	if len(logs) > 0 {
+		sort.Slice(logs, func(i, j int) bool { return logs[i].lsn < logs[j].lsn })
+		var maxLSN uint64
+		for _, r := range logs {
+			if err := wb.SetEntry(badgerv4.NewEntry(storepkg.ChangeLogKey(r.lsn), r.value)); err != nil {
+				requeue()
+				return fmt.Errorf("graph: write batch set change-log: %w", err)
+			}
+			if r.lsn > maxLSN {
+				maxLSN = r.lsn
+			}
+		}
+		lsnBuf := make([]byte, 8)
+		binary.BigEndian.PutUint64(lsnBuf, maxLSN)
+		if err := wb.SetEntry(badgerv4.NewEntry(storepkg.LastLSNKey, lsnBuf)); err != nil {
+			requeue()
+			return fmt.Errorf("graph: write batch set lsn watermark: %w", err)
+		}
 	}
 
 	// Guard against blocking forever: Badger v4's WriteBatch.Flush() hangs
 	// when called after db.Close() (WaitForMark blocks on a stopped oracle).
 	if bs.dbClosed.Load() {
 		wb.Cancel()
-		bs.requeueOps(ops)
+		requeue()
 		return fmt.Errorf("graph: write batch flush: %w", badgerv4.ErrDBClosed)
 	}
 	if err := wb.Flush(); err != nil {
-		bs.requeueOps(ops)
+		requeue()
 		return fmt.Errorf("graph: write batch flush: %w", err)
 	}
 
@@ -190,6 +236,19 @@ func (bs *Store) flush() error {
 	bs.markCacheFlushed(nodeDirty, relDirty)
 
 	return nil
+}
+
+// requeueLog merges change-log records back into the pending buffer after a
+// failed flush. Records keep their original LSNs; the next flush re-sorts by
+// LSN before writing, so order survives an interleave with any
+// concurrently-appended newer records.
+func (bs *Store) requeueLog(failed []pendingLogRecord) {
+	if len(failed) == 0 {
+		return
+	}
+	bs.wbMu.Lock()
+	bs.pendingLog = append(failed, bs.pendingLog...)
+	bs.wbMu.Unlock()
 }
 
 // requeueOps merges failed write ops back into the pending buffer.

@@ -115,6 +115,15 @@ type Store struct {
 	// (indexpkg.MultiLabelKey). Same epoch-validated immutable-snapshot model as
 	// docColumns; separate map so the single-label path stays keyed by uint16.
 	docColumnsMulti map[string]*indexpkg.LabelDocValues
+
+	// Change-log (op-log) — opt-in via WithChangeLog. logEnabled gates all record
+	// production. logSeq is the monotonic LSN, changeLog the ordered in-RAM record
+	// slice; both are guarded by ms.mu (every mutation door holds it), so LSN
+	// assignment and append are atomic and totally ordered. Not durable — a
+	// parity/testing facility (see memorystore_changelog.go).
+	logEnabled bool
+	logSeq     uint64
+	changeLog  []storecontract.ChangeRecord
 }
 
 // bumpNodeEpoch marks every cached DocValues column potentially stale. Called by
@@ -126,9 +135,14 @@ func (ms *Store) bumpNodeEpoch() { ms.nodeEpoch.Add(1) }
 // path. Called by every relationship-mutation path. A spurious bump is safe.
 func (ms *Store) bumpRelEpoch() { ms.relEpoch.Add(1) }
 
-// New creates an empty Store with all indexes initialized.
-func New() *Store {
+// New creates an empty Store with all indexes initialized. Options (e.g.
+// WithChangeLog) are applied before initialization. The variadic signature is
+// backward-compatible with existing New() callers.
+func New(opts ...Option) *Store {
 	s := &Store{}
+	for _, opt := range opts {
+		opt(s)
+	}
 	s.ensureInitialized()
 	return s
 }
@@ -217,6 +231,10 @@ func (ms *Store) Clear() error {
 	ms.docColumnsMulti = make(map[string]*indexpkg.LabelDocValues)
 	ms.bumpNodeEpoch() // any cached column from before Clear is now invalid
 	ms.bumpRelEpoch()  // and the adjacency view (X5 expand path)
+	// Drop the change-log records (the store is now empty) and re-anchor with a
+	// ChangeClear marker at a fresh, still-monotonic LSN — mirrors badger.Clear.
+	ms.changeLog = nil
+	ms.logChangeLocked(storecontract.ChangeClear, nil)
 	return nil
 }
 

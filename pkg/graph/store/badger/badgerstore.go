@@ -194,6 +194,15 @@ type Config struct {
 	// NumCompactors sets the compactor goroutine count. 0 keeps the stock
 	// default (4); any non-zero value must be >= 2 (Badger's minimum).
 	NumCompactors int
+	// ChangeLog enables the durable, ordered change-log (op-log): every
+	// committed mutation appends a framed record under the KeyChangeLog
+	// keyspace in the SAME WriteBatch as the data, tagged with a monotonic
+	// cluster LSN. Off by default (zero overhead — the write path is
+	// byte-for-byte identical). Surfaces store.ChangeFeedCapability for
+	// change-data-capture / audit / point-in-time recovery and as the
+	// foundation for read-replica streaming. Ignored in ReadOnly mode (a
+	// read-only shard never mutates). See badgerstore_changelog.go.
+	ChangeLog bool
 	// PropertyKeyRegistry, when non-nil, is the property-key token registry the
 	// store uses to tokenize on write and resolve tokens on read — supplied by
 	// an owner (e.g. the tiered store) that holds ONE canonical registry for all
@@ -226,6 +235,18 @@ type writeOp struct {
 	opType writeOpType
 	key    []byte
 	value  []byte // nil for deletes and index entries
+}
+
+// pendingLogRecord is a change-log record buffered for the next flush. value is
+// the fully framed on-disk value (tag byte || msgpack body); lsn is its
+// monotonic cluster sequence. Unlike pending (the entity-op map, which
+// last-write-wins coalesces by key), pendingLog is an append-only slice — every
+// committed mutation appears in the feed, never coalesced. Guarded by wbMu, the
+// same lock as pending, so a record and its entity ops are snapshotted together
+// by flush() (no committed-but-unlogged window).
+type pendingLogRecord struct {
+	lsn   uint64
+	value []byte
 }
 
 // Store implements the Store interface using Badger as the durable backing store.
@@ -380,6 +401,16 @@ type Store struct {
 	// blocking indefinitely — Badger v4 hangs in WaitForMark when the DB
 	// is closed while a WriteBatch is in progress.
 	dbClosed atomic.Bool
+
+	// Change-log (op-log) — opt-in via Config.ChangeLog. logEnabled gates ALL
+	// record production (zero overhead when off). logSeq is the monotonic LSN
+	// allocator, seeded at open from LastLSNKey (or the max KeyChangeLog key),
+	// advanced only under wbMu so LSN order is a total commit order. pendingLog
+	// is the append-only buffer of framed records awaiting flush, guarded by
+	// wbMu so a record and its entity ops snapshot together.
+	logEnabled bool
+	logSeq     atomic.Uint64
+	pendingLog []pendingLogRecord
 }
 
 var (
@@ -541,6 +572,7 @@ func New(cfg Config) (*Store, error) {
 		adjOnDisk:       cfg.AdjacencyIndexOnDisk,
 		readOnly:        cfg.ReadOnly,
 		syncWrites:      cfg.SyncWrites && !cfg.ReadOnly,
+		logEnabled:      cfg.ChangeLog && !cfg.ReadOnly,
 		maxPending:      maxPending,
 		flushInt:        flushInt,
 		gcInt:           gcInt,
@@ -919,6 +951,18 @@ func (bs *Store) loadIndexesScan() error {
 		}
 		bs.relCount.Store(relCount)
 
+		// Seed the change-log LSN allocator so new LSNs continue strictly
+		// monotonic across restart and no LSN is ever reissued. LastLSNKey
+		// commits in the same WriteBatch as the records it covers, so it is
+		// crash-consistent with the maximum KeyChangeLog key; fall back to
+		// scanning the max key when the marker is absent (defensive — a fresh
+		// store has neither and seeds 0).
+		lastLSN, err := seedLogLSN(txn)
+		if err != nil {
+			return err
+		}
+		bs.logSeq.Store(lastLSN)
+
 		// Rebuild per-label and per-type counters from index sizes.
 		for token, set := range bs.labelIdx {
 			bs.getOrCreateLabelCounter(token).Store(int64(len(set)))
@@ -1286,9 +1330,14 @@ func (bs *Store) Clear() error {
 	bs.relCache = newRelCache(cap, bs.relCache.Budget())
 
 	// Clear pending buffer. (flushMu serializes us against flush(), so any
-	// snapshot that happens after this point sees an empty buffer.)
+	// snapshot that happens after this point sees an empty buffer.) Drop any
+	// buffered change-log records too — DropAll below wipes the KeyChangeLog
+	// keyspace, so a stale record left in pendingLog would be re-flushed as a
+	// phantom after the wipe. logSeq is intentionally left monotonic so
+	// post-Clear LSNs never collide with a consumer's pre-Clear watermark.
 	bs.wbMu.Lock()
 	bs.pending = make(map[string]writeOp)
+	bs.pendingLog = nil
 	bs.wbMu.Unlock()
 
 	// Clear all secondary index maps. Leaving these populated leaks
@@ -1301,8 +1350,17 @@ func (bs *Store) Clear() error {
 	bs.hfIndexes = make(map[uint16]*indexpkg.HighFrequencyIndex)
 	bs.vectorIndexes = make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex)
 
-	// Drop all data from Badger — atomically removes all KV pairs.
-	return bs.db.DropAll()
+	// Drop all data from Badger — atomically removes all KV pairs (including the
+	// KeyChangeLog keyspace and LastLSNKey).
+	if err := bs.db.DropAll(); err != nil {
+		return err
+	}
+	// Re-anchor the change-log after the wipe with a fresh ChangeClear marker so
+	// a tailing consumer learns the store was reset.
+	if bs.logEnabled {
+		return bs.writeClearMarker()
+	}
+	return nil
 }
 
 // Close stops background goroutines, performs a final flush (including counters),

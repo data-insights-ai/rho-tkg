@@ -79,6 +79,7 @@ func (bs *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion 
 		writeOp{opType: writeOpSet, key: storepkg.RelKey(id), value: data},
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
 	)
+	bs.logChangeRaw(storecontract.ChangeRelPut, data)
 	bs.idxMu.Unlock()
 
 	return bs.flushIfNeeded()
@@ -96,6 +97,11 @@ func (bs *Store) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombs
 	tombData, err := bs.marshalRelToBytes(tombstone)
 	if err != nil {
 		return fmt.Errorf("graph: marshal rel tombstone: %w", err)
+	}
+	// Build the with-history rel-delete record before the lock.
+	delPayload, err := bs.relDeleteWithHistoryPayload(id, tombstone)
+	if err != nil {
+		return fmt.Errorf("graph: encode change-log: %w", err)
 	}
 	histKey := storepkg.HistRelKey(id, uint64(prevVersion))
 	if _, err := bs.prefetchRelDeleteInfo(rid); err != nil {
@@ -117,8 +123,9 @@ func (bs *Store) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombs
 		return err
 	}
 	info := relDeleteInfoFromRelationship(r)
-	bs.deleteRelByInfo(info) // appends delete ops to pending under lock
+	bs.deleteRelByInfo(info) // appends delete ops to pending under lock (no record — emitted here)
 	bs.appendOps(writeOp{opType: writeOpSet, key: histKey, value: tombData})
+	bs.logChangeRaw(storecontract.ChangeRelDelete, delPayload)
 	bs.idxMu.Unlock()
 
 	return bs.flushIfNeeded()
@@ -140,8 +147,14 @@ func (bs *Store) PutRelVersion(rid types.RelID, version uint32, r *types.Relatio
 	if err != nil {
 		return fmt.Errorf("graph: marshal rel version: %w", err)
 	}
+	logPayload, err := bs.historyVersionRelPayload(version, r)
+	if err != nil {
+		return fmt.Errorf("graph: encode change-log: %w", err)
+	}
 	key := storepkg.HistRelKey(id, uint64(version))
-	bs.appendOps(writeOp{opType: writeOpSet, key: key, value: data})
+	// PutRelVersion holds no idxMu, so enqueue the op and its record together
+	// under one wbMu critical section (appendOpsLogged) for snapshot atomicity.
+	bs.appendOpsLogged(storecontract.ChangeRelHistoryVersion, logPayload, writeOp{opType: writeOpSet, key: key, value: data})
 	return bs.flushIfNeeded()
 }
 
@@ -417,7 +430,11 @@ func (bs *Store) TruncateRelHistory(rid types.RelID, keepVersions int) error {
 	}
 	id := rid.SnowflakeID()
 	prefix := storepkg.HistRelPrefix(id)
-	return bs.truncateHistoryByPrefix(prefix, keepVersions)
+	payload, err := bs.buildChangePayload(storepkg.HistoryTruncateBody{ID: int64(id), Bound: int64(keepVersions)})
+	if err != nil {
+		return fmt.Errorf("graph: encode change-log: %w", err)
+	}
+	return bs.truncateHistoryByPrefix(prefix, keepVersions, storecontract.ChangeRelHistoryTruncate, payload)
 }
 
 // TrimRelHistoryFrom removes relationship history entries at or after minVersion.
@@ -428,8 +445,13 @@ func (bs *Store) TrimRelHistoryFrom(rid types.RelID, minVersion uint32) error {
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return err
 	}
-	prefix := storepkg.HistRelPrefix(rid.SnowflakeID())
-	return bs.trimHistoryFromPrefix(prefix, minVersion)
+	id := rid.SnowflakeID()
+	prefix := storepkg.HistRelPrefix(id)
+	payload, err := bs.buildChangePayload(storepkg.HistoryTruncateBody{ID: int64(id), IsTrim: true, Bound: int64(minVersion)})
+	if err != nil {
+		return fmt.Errorf("graph: encode change-log: %w", err)
+	}
+	return bs.trimHistoryFromPrefix(prefix, minVersion, storecontract.ChangeRelHistoryTruncate, payload)
 }
 
 func (bs *Store) ForEachRelHistoryID(fn func(types.RelID) bool) error {

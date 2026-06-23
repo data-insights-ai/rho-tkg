@@ -1,0 +1,139 @@
+package store
+
+// ChangeTag identifies the kind of mutation a change-log record describes. It
+// is the first byte of a persisted change-log value (followed by the
+// tag-specific msgpack body) and the discriminator a replica-apply path
+// switches on. Tags are append-only: never renumber an existing tag, because
+// the value is durable on disk.
+type ChangeTag byte
+
+// Change-log record tags. The body layout for each tag is defined alongside the
+// wire format in internal/storeutil (the bodies reference the NodeWire/RelWire
+// types); current-state Put records carry a bare NodeWire/RelWire payload.
+const (
+	// ChangeNodePut / ChangeRelPut carry the new CURRENT state of an entity
+	// (a bare NodeWire / RelWire). Emitted by create, replace, replace-with-
+	// history, and label-token mutation doors. Apply = upsert the current row.
+	ChangeNodePut ChangeTag = 1
+	ChangeRelPut  ChangeTag = 2
+
+	// ChangeNodeDelete / ChangeRelDelete describe a delete. The body carries a
+	// sub-kind (hard-cascade vs with-history): a hard cascade removes the
+	// current rows with no tombstone/history; a with-history delete appends
+	// tombstone version rows. ChangeNodeDelete additionally carries the
+	// relationship tombstones for a cascade-with-history node delete.
+	ChangeNodeDelete ChangeTag = 3
+	ChangeRelDelete  ChangeTag = 4
+
+	// ChangeNodeHistoryVersion / ChangeRelHistoryVersion append a history row at
+	// an EXPLICIT version (not the current row). Emitted by PutNodeVersion /
+	// PutRelVersion — the import, bitemporal-cascade-correction, migration, and
+	// transaction-rollback-restore paths.
+	ChangeNodeHistoryVersion ChangeTag = 5
+	ChangeRelHistoryVersion  ChangeTag = 6
+
+	// ChangeNodeHistoryTruncate / ChangeRelHistoryTruncate mirror a history
+	// truncation (keep the N most recent versions) or a trim-from (drop versions
+	// at or above a minimum). The body carries the entity ID and the bound plus
+	// a flag distinguishing truncate (keep-count) from trim (min-version).
+	ChangeNodeHistoryTruncate ChangeTag = 7
+	ChangeRelHistoryTruncate  ChangeTag = 8
+
+	// ChangeMeta is RESERVED for a MetaSet (schema / migration markers) record;
+	// no door emits it yet (deferred to Phase 1 — a synchronous meta write cannot
+	// share the async buffer's LSN/watermark without a non-monotonic-watermark
+	// hazard). Body = key+value (MetaBody).
+	ChangeMeta ChangeTag = 9
+
+	// ChangeClear marks a full store clear (DropAll). A replica applying it must
+	// clear its own state. Carries no body.
+	ChangeClear ChangeTag = 10
+)
+
+// String renders the tag for diagnostics and tests.
+func (t ChangeTag) String() string {
+	switch t {
+	case ChangeNodePut:
+		return "NodePut"
+	case ChangeRelPut:
+		return "RelPut"
+	case ChangeNodeDelete:
+		return "NodeDelete"
+	case ChangeRelDelete:
+		return "RelDelete"
+	case ChangeNodeHistoryVersion:
+		return "NodeHistoryVersion"
+	case ChangeRelHistoryVersion:
+		return "RelHistoryVersion"
+	case ChangeNodeHistoryTruncate:
+		return "NodeHistoryTruncate"
+	case ChangeRelHistoryTruncate:
+		return "RelHistoryTruncate"
+	case ChangeMeta:
+		return "Meta"
+	case ChangeClear:
+		return "Clear"
+	default:
+		return "ChangeTag(unknown)"
+	}
+}
+
+// Valid reports whether t is a known change tag.
+func (t ChangeTag) Valid() bool {
+	return t >= ChangeNodePut && t <= ChangeClear
+}
+
+// ChangeRecord is one entry of the durable ordered change-log (op-log). LSN is
+// the monotonic cluster commit sequence (gap-free, ascending == commit order);
+// Tag is the mutation kind; Payload is the tag-specific msgpack body (decoded
+// by the consumer / replica-apply path). The Payload is owned by the caller —
+// implementations return a copy, never an alias into store-internal buffers.
+type ChangeRecord struct {
+	LSN     uint64
+	Tag     ChangeTag
+	Payload []byte
+}
+
+// ChangeFeedCapability is OPTIONAL. Backends that maintain a durable, ordered
+// change-log (op-log) expose it so a primary can stream committed mutations and
+// a replica resume from a checkpoint. It is the topology-agnostic foundation
+// for replication; on its own it is also usable as change-data-capture, an
+// audit trail, and point-in-time recovery.
+//
+// Semantics:
+//   - Records are returned in ascending LSN order; LSNs are strictly monotonic
+//     across the lifetime of a store (preserved across restart) and gap-free on
+//     the happy path. A failed flush can leave a permanent gap (the LSN was
+//     consumed but its record never committed) — consumers must tolerate gaps
+//     and rely only on monotonic ascending order.
+//   - Only DURABLY-COMMITTED records are visible: a record buffered but not yet
+//     flushed is not surfaced. A consumer resumes from LastCommittedLSN.
+//   - The feed is MUTATION-LEVEL: a rolled-back transaction appears as its
+//     forward operations followed by its compensating operations. Replaying the
+//     full ordered feed still converges a replica to the primary's state, but a
+//     CDC consumer observes the intermediate (later-undone) operations.
+//   - The change-log ALONE does not converge a replica from empty: a replica
+//     bootstraps from a full snapshot (export, including the token registry)
+//     and then tails the feed from the snapshot's LSN. Tokens referenced by a
+//     record are resolvable from the snapshot plus the record's own wire bytes.
+//
+// Callbacks passed to ForEachChange are invoked OUTSIDE backend locks (the same
+// contract as IterationCapability.ForEachNodeID), so callback code may re-enter
+// Store methods. A nil callback returns ErrInvalidStoreMutation.
+type ChangeFeedCapability interface {
+	// ChangeFeed returns up to limit committed records with LSN > afterLSN, in
+	// ascending LSN order. limit <= 0 returns all available records (callers
+	// concerned with memory should prefer ForEachChange or pass a positive
+	// limit). Payloads are owned copies.
+	ChangeFeed(afterLSN uint64, limit int) ([]ChangeRecord, error)
+
+	// ForEachChange streams committed records with LSN > afterLSN in ascending
+	// LSN order, invoking fn for each. Returning false from fn stops iteration
+	// early. The ChangeRecord (including Payload) passed to fn is valid only for
+	// the duration of the call; copy Payload to retain it.
+	ForEachChange(afterLSN uint64, fn func(ChangeRecord) bool) error
+
+	// LastCommittedLSN returns the highest durably-committed LSN, or 0 when the
+	// change-log is empty.
+	LastCommittedLSN() (uint64, error)
+}

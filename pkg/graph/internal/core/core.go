@@ -59,6 +59,7 @@ type Core struct {
 	depthHistory       storepkg.DepthHistoryIterationCapability
 	deletedIter        storepkg.DeletedIterationCapability
 	deletedDepthIter   storepkg.DepthDeletedIterationCapability
+	changeFeed         storepkg.ChangeFeedCapability
 	vectorRowsTrust    bool
 	storeRowsTrust     bool
 	nativeAdjacency    bool
@@ -128,6 +129,7 @@ type Core struct {
 	IO          *IOOps
 	Resolve     *ResolveOps
 	Stats       *StatOps
+	Repl        *ReplOps
 }
 
 // =============================================================================
@@ -274,6 +276,14 @@ type Config struct {
 	MemTableSize     int64
 	BlockCacheSize   int64
 	NumCompactors    int
+	// ChangeLog enables the durable, ordered change-log (op-log) on the
+	// badger-backed store constructed from BadgerDir/BadgerInMemory: every
+	// committed mutation appends a framed record tagged with a monotonic cluster
+	// LSN, surfaced via g.Replication() (store.ChangeFeedCapability) for
+	// change-data-capture / audit / point-in-time recovery. Off by default (zero
+	// overhead). Ignored when Store is supplied explicitly (enable it on the
+	// injected store directly, e.g. badger.Config.ChangeLog / memory.WithChangeLog).
+	ChangeLog bool
 }
 
 // ValidationDefaults returns the resolved validation limits (for testing).
@@ -672,6 +682,31 @@ func depthDeletedIterationCapability(store storepkg.MandatoryStore) storepkg.Dep
 	return cap
 }
 
+// changeFeedCapability resolves the optional change-log capability. Only the
+// exact native single-shard backends (memory, badger) own a coherent global
+// LSN sequence. A wrapper that merely EMBEDS a native store (e.g. a future
+// sharded backend, or tiered if it ever embedded a shard) would promote the
+// badger ChangeFeed methods and expose ONE shard's per-shard log as if it were
+// the cluster feed — force nil there so such a backend must implement a real
+// global feed itself. The current tiered.Store holds shards as named fields
+// (no promotion), so it already type-asserts false and declines the capability.
+func changeFeedCapability(store storepkg.MandatoryStore) storepkg.ChangeFeedCapability {
+	cap, ok := store.(storepkg.ChangeFeedCapability)
+	if !ok {
+		return nil
+	}
+	switch store.(type) {
+	case *memory.Store, *badger.Store:
+		return cap
+	default:
+		if embedsNativeCapability(store, reflect.TypeOf((*storepkg.ChangeFeedCapability)(nil)).Elem(),
+			"ChangeFeed", "ForEachChange", "LastCommittedLSN") {
+			return nil
+		}
+		return cap
+	}
+}
+
 func nativeAdjacencyReadsValidateNodeExistence(store storepkg.MandatoryStore) bool {
 	switch store.(type) {
 	case *memory.Store, *badger.Store, *tiered.Store:
@@ -840,6 +875,7 @@ func New(config Config) (*Core, error) {
 	c.Admin = &AdminOps{c: c}
 	c.Constraints = &ConstraintOps{c: c}
 	c.Hash = &HashOps{c: c}
+	c.Repl = &ReplOps{c: c}
 	c.IO = &IOOps{c: c}
 	c.Resolve = &ResolveOps{c: c}
 	c.Stats = &StatOps{c: c}
@@ -868,6 +904,7 @@ func New(config Config) (*Core, error) {
 				MemTableSize:         config.MemTableSize,
 				BlockCacheSize:       config.BlockCacheSize,
 				NumCompactors:        config.NumCompactors,
+				ChangeLog:            config.ChangeLog,
 			})
 			if err != nil {
 				return nil, fmt.Errorf("graph: badger store: %w", err)
@@ -914,6 +951,7 @@ func New(config Config) (*Core, error) {
 	c.filteredVector = filteredVectorSearchCapability(store)
 	c.depthHistory = depthHistoryIterationCapability(store)
 	c.deletedIter = deletedIterationCapability(store)
+	c.changeFeed = changeFeedCapability(store)
 	c.deletedDepthIter = depthDeletedIterationCapability(store)
 	c.vectorRowsTrust = isExactNativeStore(store)
 	c.storeRowsTrust = isExactNativeStore(store)

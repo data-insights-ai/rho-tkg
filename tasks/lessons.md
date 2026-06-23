@@ -967,3 +967,49 @@ delta stays far below the declared size — a deterministic mutation pin
 Fuzz a streaming/replay boundary END-TO-END, not just the leaf decoder, and read
 a frozen exec rate as a DoS signal even when nothing crashes.
 
+## 49. A Change-Log Must Be Emitted In-Backend And Co-Committed — A Decorator Cannot Be Crash-Safe
+
+The horizontal-scaling Phase-0 design first proposed a `ChangeLogStore`
+*decorator* wrapping `MandatoryStore`. Two code-grounded facts killed it:
+
+1. **Atomicity.** Crash-safety requires the change-log record to commit in the
+   SAME Badger `WriteBatch` as the entity rows + counters (the existing
+   "counters in same batch" rule). A decorator sits ABOVE the `Store` interface
+   and cannot reach the inner backend's `WriteBatch`; it could only do a second,
+   separate durable write — reintroducing exactly the committed-but-unlogged
+   window the feature exists to avoid.
+2. **Trust.** `core.New` discovers native backends by reflection
+   (`isExactNativeStore`); a decorator is none of `*memory`/`*badger`/`*tiered`,
+   so it is treated as UNTRUSTED and the frozen-pointer zero-copy scan path is
+   silently disabled (every scan row deep-copied).
+
+Rule: a write-observer / op-log / CDC seam that must be crash-consistent with the
+data belongs INSIDE each backend (co-committed in the same atomic write), exposed
+as an OPTIONAL capability the core type-asserts — never as a Store wrapper.
+
+Corollaries that bit during implementation:
+- **The LSN + record must enqueue under one lock window with the entity ops.**
+  Doors that hold `idxMu.Lock` across `appendOps` can log right after; doors that
+  do NOT (`PutNodeVersion`/`PutRelVersion`, history truncate) need a combined
+  `appendOpsLogged` so a background flush cannot snapshot the op without its
+  record. Audit EVERY early-return-after-snapshot in `flush()` — each must
+  requeue the log records too, and the empty-batch guard must check
+  `len(ops)==0 && len(logs)==0` or a log-only flush silently drops records.
+- **Shared, multi-`appendOps` doors must not each emit.** `deleteRelByInfo` /
+  `cascadeDeleteInner` are reused by several doors; they stay record-free and the
+  PUBLIC door emits exactly one logical record (one `NodeDelete` per cascade,
+  not one `RelDelete` per edge). Build the payload from the door's own data.
+- **Parity by construction, not by duplication.** Two backends emitting the same
+  feed must share ONE set of record-body builders (`storeutil`), then a
+  cross-backend test asserts byte-identical feeds. (Caveat: badger tokenizes
+  property KEYS on the wire while memory keeps strings, so property-bearing
+  payloads are semantically equal but not byte-identical — assert byte-parity on
+  property-free entities, decode-equivalence otherwise.)
+- **The op-log alone does not converge a replica.** Token allocation lives in the
+  CORE layer (the backend only ever sees tokenized rows), so a per-token
+  registry record is impossible in-backend — ship the registry in a full
+  snapshot and have the replica bootstrap from it, then tail the feed.
+- **A synchronous side path (`MetaSet` via its own txn) cannot share the async
+  buffer's LSN/watermark without a non-monotonic-watermark hazard** — defer such
+  records rather than bolt them on.
+

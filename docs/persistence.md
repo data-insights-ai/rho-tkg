@@ -199,3 +199,19 @@ Directory layout: `data/meta/` (catalog + registry + store-level index definitio
 ## Tiered background-error recovery
 
 Idle/transient cold-shard close failures set a sticky background error and the tiered store fails closed on every subsequent path. `tiered.Store.RecoverBackgroundError()` re-probes the persistence path with an atomic catalog save once the operator has fixed the underlying condition; on success the gate clears in place (no close/re-open). It clears the lifecycle gate only — run `VerifyShard`/`RunRepair` before trusting affected shards for critical reads.
+
+## Change-log / op-log (opt-in, `ChangeLog`)
+
+With `graph.Config.ChangeLog` (or `badger.Config.ChangeLog` / `memory.WithChangeLog()`) enabled, every committed mutation appends a durable, ordered record to the change-log: the topology-agnostic foundation for horizontal scaling (change-data-capture, audit trail, point-in-time recovery today; read-replica streaming next). Off by default with zero write-path overhead.
+
+**On-disk layout.** Records live under the `0x09/<8B big-endian LSN>` keyspace, value = `tag(1 byte) ‖ msgpack(body)`. A big-endian LSN makes a prefix scan yield ascending commit order. A `meta/last_lsn` watermark records the highest committed LSN.
+
+**Atomicity.** The badger backend appends each record (and the `last_lsn` watermark) in the SAME `WriteBatch` as the entity rows and counters, so a record and the mutation it describes commit atomically — there is no committed-but-unlogged window, and on restart the LSN allocator reseeds from `last_lsn` (crash-consistent with the maximum `0x09` key), so LSNs stay strictly monotonic and are never reissued. With the async write buffer, only durably-flushed records are visible to the feed; backpressure counts buffered records so a hot-key workload cannot grow the (uncoalesced) log buffer without bound.
+
+**Record tags** (`store.ChangeTag`): `NodePut`/`RelPut` (new current state), `NodeDelete`/`RelDelete` (a `WithHistory` flag distinguishes a hard cascade from a tombstone-appending delete; node deletes carry the cascaded relationship IDs), `NodeHistoryVersion`/`RelHistoryVersion` (explicit-version writes from import, bitemporal-cascade correction, migration, and transaction-rollback restore), `NodeHistoryTruncate`/`RelHistoryTruncate`, and `Clear`. Bodies reuse the `NodeWire`/`RelWire` format (so no on-disk wire-format bump) and are read back through `SafeUnmarshal` — a corrupt `0x09` value fails closed with `ErrCorruptWire`, never a process crash.
+
+**Reading.** `g.Replication().ChangeFeed(afterLSN, limit)` returns committed records in ascending LSN order; `ForEachChange(afterLSN, fn)` streams them OOM-safe with the callback invoked outside store locks; `LastCommittedLSN()` is the watermark a session reads after a write for read-your-writes routing. Backends without a change-log (the tiered store) return `ErrCapabilityNotSupported`.
+
+**Replication model.** The change-log ALONE does not converge a replica from empty: a replica bootstraps from a full export snapshot (which includes the token registry) and then tails the feed from the snapshot's LSN. The memory backend implements the same capability (in-RAM, non-durable) for testing; both backends share one set of record-body builders, so their feeds are byte-identical for property-free entities and decode-equivalent for property-bearing ones (badger tokenizes property keys on the wire while memory keeps key strings).
+
+**Deferred.** `MetaSet` does not yet emit a record (the `ChangeMeta` tag is reserved); the tiered backend does not implement the change-log; and LSN-watermark-driven log GC (pruning records below the minimum replica-acked LSN) lands with read replicas. See `tasks/horizontal-scaling.md`.

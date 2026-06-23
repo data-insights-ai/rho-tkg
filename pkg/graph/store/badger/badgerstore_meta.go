@@ -303,6 +303,13 @@ func (bs *Store) MetaGet(key string) ([]byte, error) {
 // with DetectConflicts=false (see New), so concurrent same-key writers do not
 // error — they must be serialized above the store (registry keys are guarded by
 // the core registry lock; other meta keys are written single-threaded).
+// Change-log note: MetaSet does NOT emit a ChangeMeta record (tag reserved for
+// Phase 1). It commits synchronously via its own transaction — distinct from the
+// async pending/flush path that owns the LSN allocator and the LastLSNKey
+// watermark — and reconciling a synchronous meta write with the buffered LSN
+// sequence (without lowering the watermark or leaving a gap under a concurrent
+// entity write) is designed alongside meta replication in Phase 1. A replica
+// receives schema/migration markers via the base snapshot it bootstraps from.
 func (bs *Store) MetaSet(key string, value []byte) error {
 	if err := bs.checkWritable(); err != nil {
 		return err

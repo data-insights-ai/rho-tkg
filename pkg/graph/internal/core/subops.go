@@ -46,3 +46,8 @@ type ResolveOps struct{ c *Core }
 
 // StatOps groups counter / count-by-label statistics.
 type StatOps struct{ c *Core }
+
+// ReplOps groups the change-log / replication surface (g.Replication()). It
+// forwards to the store's optional ChangeFeedCapability and returns
+// ErrCapabilityNotSupported when the backend does not provide one.
+type ReplOps struct{ c *Core }
