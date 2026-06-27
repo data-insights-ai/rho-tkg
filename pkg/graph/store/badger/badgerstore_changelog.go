@@ -280,6 +280,16 @@ func (bs *Store) LastCommittedLSN() (uint64, error) {
 	return lsn, nil
 }
 
+// ChangeLogEnabled reports whether this store is recording mutations to its
+// change-log (store.ChangeLogStatusCapability). False when opened without the
+// change-log — the feed methods still work but return empty.
+func (bs *Store) ChangeLogEnabled() bool {
+	if bs == nil {
+		return false
+	}
+	return bs.logEnabled
+}
+
 // ChangeFeed returns up to limit committed records with LSN > afterLSN, in
 // ascending LSN order. limit <= 0 returns all available records. Payloads are
 // owned copies, safe to retain.

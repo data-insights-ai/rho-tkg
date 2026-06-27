@@ -1170,3 +1170,85 @@ hold DIFFERENT slots — that slot difference, not the lease's durability, is wh
 prevents minted-ID collisions in a split-brain window. Ship the durable hint and
 the reopen path; leave "who holds the lease, and when" to the layer that can
 actually coordinate.
+
+## 52. Delta Backups Reuse The Op-Log, Not A Diff — And A Hash Oracle Hides Non-Hashed Divergence
+
+`ExportSince` / `ImportMerge` (node-level incremental backups) frame the
+change-log feed into the export stream and replay it through the replica-apply
+doors. Five reusable lessons fell out of building it.
+
+- **Key a delta off the change-log (TX-ordered op-log), never a temporal DIFF.**
+  Two independent reasons. (1) A *valid-time* diff (`Temporal().Diff`) silently
+  DROPS backdated/backfilled writes — a fact recorded now with an old
+  `valid_from` is "unchanged" by a VT diff, so a backup misses it. The cursor
+  must be transaction-monotonic (the LSN), not application time. (2) A
+  state-endpoint diff (state-at-since vs state-at-now) cannot reconstruct the
+  PRIMITIVE mutations between the endpoints: a label-set change must be replayed
+  as per-token `Add/RemoveNodeLabelToken` (a `ReplaceNode` does NOT reindex
+  labels), and a cascade delete needs the exact connected-rel tombstones
+  (`DeleteNodeWithHistory` requires one per live edge). The op-log already
+  records those primitives in order and the apply path already replays them
+  correctly — reuse it; don't re-derive.
+
+- **A hash-equality convergence oracle cannot see a non-hashed-field divergence.**
+  The replica byte-exactness claim (lesson 50) was verified only by integrity
+  hash, which excludes `TxFrom`/`TxTo` (lesson 43). A WithHistory put record
+  carries only the NEW version and regenerates the superseded prior row from the
+  consumer's local current — which has `TxTo = 0`, while the origin stamped
+  `prev.TxTo = now` (= the new version's `TxFrom`). So replicas/deltas were
+  hash-exact but NOT byte-exact in that one field; the hash oracle was blind to
+  it. A byte-level export comparison caught it. Fix: reproduce
+  `prev.TxTo = next.TxFrom` at the apply door (`reproduceSuperseded*TxTo`) — every
+  WithHistory emitter uses one monotonic `now` for both, so the equality holds
+  universally. Rule: when reproducing rows across a boundary, assert the
+  reproduction with a check that includes fields the hash omits, or the byte/
+  field gap ships invisibly.
+
+- **A change-feed shows only DURABLY-COMMITTED records — flush before reading it.**
+  Badger's async write buffer holds committed-but-unflushed rows; `ChangeFeed` /
+  `LastCommittedLSN` (and thus the export-header `SnapshotLSN`) surface only
+  flushed records. Reading the feed without flushing yields a delta missing the
+  most recent mutations, and a full export stamps a stale (often 0) snapshot LSN
+  so a replica / first delta resumes from 0 and re-ships the whole graph. Both
+  `Export` and `ExportSince` now `flushStoreLocked()` before reading. (Memory has
+  no buffer, so memory-only tests never expose this — add a badger/disk path.)
+  Same family as lesson 50's "flush the work to its durability path before
+  advancing the marker."
+
+- **A "present but disabled" optional capability needs a status probe.** The
+  in-tree backends implement `ChangeFeedCapability` UNCONDITIONALLY (the methods
+  exist, returning an empty feed when the log is off), so a nil-interface check
+  cannot tell "recording" from "off." A delta from a disabled log would silently
+  record nothing — a data-loss footgun. Added `store.ChangeLogStatusCapability`
+  (`ChangeLogEnabled() bool`); `ExportSince`/`Watermark` fail closed when off.
+  Rule: if a capability can be present-but-inert, expose an explicit status, don't
+  infer activity from the interface being satisfied.
+
+- **The integrity hash chain is a DAG, not a line — verification must match.**
+  `VerifyNodeChain`/`VerifyRelChain` checked `v_k.PrevHash == v_{k-1}.Hash` in
+  VERSION order. But a bitemporal correction (`SetNodeVersionInterval`) appends a
+  version whose `PrevHash` links to the version it supersedes ON THE VALID-TIME
+  axis (a fresh-numbered row pointing back to a possibly-lower version) — a DAG,
+  as `temporal_cascade.go` explicitly documents. The linear check rejected every
+  cascade-corrected graph, so it failed its OWN verification and a full
+  `Export`+`Import` of it died with `ErrCorruptExport` — such graphs could not be
+  backed up at all (found via the delta round-trip test; the bug long predated it).
+  Fix: verify linkage as "every non-genesis `PrevHash` ∈ {hashes of all versions}"
+  (genesis empty; lowest retained version may dangle for truncation), keeping the
+  per-version content-hash recompute as the tamper evidence. Lesson: when a
+  feature documents a non-linear structure (the cascade's VT-axis PrevHash), the
+  VALIDATOR for that structure must be written to the same model — a validator
+  silently assuming linearity is a latent rejector of valid data, invisible until
+  something round-trips the non-linear case end to end.
+
+- **A purge-and-recreate rollback must clear version history too.** The merge
+  rollback purges each touched entity and re-creates it from a pre-merge snapshot
+  via the CREATE doors (which rebuild every index correctly, sidestepping the
+  label-immutability of `ReplaceNode`). But `DeleteNodeCascade` clears the current
+  row + adjacency + indexes and NOT the `0x07` history keyspace, so a rolled-back
+  update left a stale history row → partial state. Truncate history (`Truncate*History(id,0)`)
+  in the purge step, mirroring `restoreImportNodeHistory`. Also: a delta's
+  registry merge is a BIDIRECTIONAL prefix check (an OLDER delta re-applied after
+  a newer one already grew the base is a no-op, not a divergence) — distinct from
+  replication's append-only `appendRegistrySuffix`, where the primary is always
+  ahead of the replica.

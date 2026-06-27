@@ -4,7 +4,90 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [4.10.0] - 2026-06-27
+
+### Fixed — hash-chain verification rejected bitemporal-cascade-corrected graphs
+
+`VerifyNodeChain` / `VerifyRelChain` (and therefore the import trust boundary,
+full `Export`+`Import`, replica apply, and the new delta merge) assumed a strictly
+LINEAR hash chain (`v_k.PrevHash == v_{k-1}.Hash` in version order). But a
+bitemporal correction (`SetNodeVersionInterval` / `SetRelVersionInterval`) appends
+a version whose `PrevHash` links to whichever version it supersedes ON THE
+VALID-TIME AXIS — a hash DAG, exactly as `temporal_cascade.go` documents. So any
+graph that used a cascade correction failed its own chain verification, and a
+full `Export`+`Import` of it failed with `ErrCorruptExport` — i.e. **such graphs
+could not be backed up/restored at all**. Fixed: linkage is now verified as
+"every non-genesis version's `PrevHash` matches the hash of SOME version in the
+set" (genesis carries an empty `PrevHash`; the lowest retained version may dangle
+for truncation), while the per-version CONTENT-hash recompute (the tamper
+evidence) is unchanged — so corrupt/garbage `PrevHash` and altered content are
+still detected. Applies to both the in-memory (rows) and badger (paged) verify
+paths. See lesson 52.
+
+### Added — delta export / merge: node-level incremental backups (`ExportSince` / `ImportMerge`)
+
+Incremental backups built on the Phase-0/1 change-log: instead of re-exporting a
+whole graph when one node changes, ship only what changed since a cursor and
+merge it onto a base. The public surface lives on `g.IO()`.
+
+- **`g.IO().Watermark() (Cursor, error)`** returns an opaque `io.Cursor`
+  (`{LSN, Epoch}`) marking the graph's current change-log point. `Cursor.Epoch`
+  is a durable per-graph lineage id (`meta/graph_epoch`, minted on first use) so
+  a cursor from a different graph (e.g. a tenant restored from scratch) is
+  detectable rather than silently producing a wrong delta.
+- **`g.IO().ExportSince(w, since Cursor) error`** writes a DELTA stream — only
+  the mutations committed after `since` — framed exactly like `Export` (delta
+  header, full token registry, then one change record per committed mutation,
+  the change-log records carried verbatim). The body is produced under the export
+  write lock against one consistent point. Returns **`ErrCursorUnknown`** when
+  the cursor is from another graph (epoch mismatch) or ahead of the log (the
+  caller falls back to a full `Export`); declines with a wrapped
+  `store.ErrCapabilityNotSupported` when the graph has no change-log.
+- **`g.IO().ImportMerge(r, MergeOptions) error`** merges a delta onto a base,
+  reproducing the source's rows VERBATIM by replaying each change record through
+  the same foreign-ID apply doors the replica-apply path uses (`WireTo*Checked` →
+  token-in-registry validation → property-limits → hash recompute-**and-compare**,
+  then a full hash-chain verification of every touched entity). Unlike `Import`
+  it does not require an empty target. The delta's registry is **append-only
+  merged** onto the base (bidirectional prefix check — a re-applied OLDER delta
+  is a no-op, not a divergence). Applying the same (or overlapping) delta more
+  than once is **idempotent**. `MergeOptions.ExpectBase` asserts the delta's
+  `From` cursor (proving restore-chain order → **`ErrDeltaBaseMismatch`**);
+  `MergeOptions.Strict` turns an update/tombstone for an entity absent from the
+  base into `ErrDeltaBaseMismatch`. Any failure rolls the touched subgraph back
+  to its pre-merge state (purge-and-recreate from captured snapshots).
+- **`io.HeaderOf(r) (DeltaHeader, error)`** decodes only the leading header
+  record (no entity/change records consumed), so a caller can route a stream
+  (full vs delta) and read the base cursor before merging. A FULL export's header
+  now also carries the lineage epoch, so `HeaderOf(fullExport).To = {SnapshotLSN,
+  Epoch}` is a complete, gapless base cursor for the first delta in a chain.
+- **Wire**: a new delta export-record tag (`0x07`, `changeRecordWire` = LSN +
+  change tag + verbatim payload); the export header gains additive, omitempty
+  delta fields (`IsDelta`, `From*/To*`, `Epoch`) — a full export stays byte-
+  identical to v2 (fields zero/omitted). Delta streams stamp format version 3;
+  importers accept v1–v3, and a v2 reader fails closed on a v3 delta.
+- **Why the change-log, not a temporal diff**: the cursor is the change-log LSN
+  (monotonic, store-owned), NOT valid/transaction time. A valid-time diff would
+  silently drop **backdated/backfilled** writes from a backup. The change records
+  are the primitive mutations the apply path already replays correctly (label-
+  token changes, cascade deletes, history versions), which a state-endpoint diff
+  cannot reconstruct. Requires a change-log (`graph.Config.ChangeLog` on badger,
+  or an injected `memory.WithChangeLog()`); declines on the tiered backend.
+- **Fixed (shared apply path)**: a WithHistory put record regenerated the
+  superseded prior version from the local current but did NOT restore its `TxTo`
+  (= the new version's `TxFrom`), so a replica / delta-merge was only HASH-exact,
+  not BYTE-exact, in that one non-hashed field. `applyChangeRecordLocked` now
+  reproduces it, making replication's "byte-exact temporal metadata" claim
+  actually hold. `Export` and `ExportSince` now flush the async write buffer
+  before reading the change feed / `SnapshotLSN`, so a badger source with
+  buffered writes no longer stamps a stale (0) snapshot LSN (a replica / first
+  delta would otherwise resume from 0 and re-ship the whole graph).
+- **New optional `store.ChangeLogStatusCapability` (`ChangeLogEnabled() bool`)**,
+  implemented by memory + badger: `ExportSince`/`Watermark` fail closed when the
+  change-log is present-but-disabled (the in-tree backends expose the feed methods
+  unconditionally), so a delta is never silently empty.
+- **Sentinels**: `ErrCursorUnknown`, `ErrDeltaBaseMismatch` (re-exported from
+  `pkg/graph`). See lessons 52.
 
 ### Added — log-shipped read replicas: replica apply engine + read-only gate (horizontal-scaling Phase 1)
 

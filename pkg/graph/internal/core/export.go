@@ -22,12 +22,21 @@ import (
 // Export format version. Increment when the record layout changes in a
 // backward-incompatible way. v2 adds exportHeader.SnapshotLSN (the change-log
 // LSN captured atomically with the snapshot, for a gapless replica handoff);
-// importers accept BOTH v1 (no SnapshotLSN) and v2.
+// importers accept v1 (no SnapshotLSN), v2, and v3. A FULL Export still stamps
+// v2 — its wire is byte-identical to before because the v3 delta fields are
+// omitempty and a full export leaves them zero — so a v2 reader keeps importing
+// full snapshots written by this build.
 const exportFormatVersion byte = 2
 
-// exportFormatVersionMin is the oldest export-stream version this build can
-// import. v1 snapshots (pre-SnapshotLSN) remain readable.
+// exportFormatVersionDelta is the version ExportSince stamps. A delta stream
+// carries change records (exportTagChange) a pre-v3 reader does not understand,
+// so it is a distinct version a v2 reader fails closed on (ErrIncompatibleExport)
+// rather than mis-applying.
+const exportFormatVersionDelta byte = 3
+
+// exportFormatVersionMin / Max bound the versions Import / ImportMerge accept.
 const exportFormatVersionMin byte = 1
+const exportFormatVersionMax byte = 3
 
 // exportBatchSize is the page size for paginated entity queries during export.
 // Caps per-page allocations to ~80-100 KB for nodes, preventing the OOM
@@ -49,6 +58,7 @@ const (
 	exportTagNodeHist byte = 0x04 // node history entry (nodeWire)
 	exportTagRel      byte = 0x05 // current relationship (relWire)
 	exportTagRelHist  byte = 0x06 // relationship history entry (relWire)
+	exportTagChange   byte = 0x07 // delta change record (changeRecordWire); ExportSince only
 )
 
 // exportHeader is the first record written in the export stream.
@@ -63,6 +73,26 @@ type exportHeader struct {
 	// without re-applying or gapping. Zero when the source had no change-log
 	// (omitted on the wire; absent in v1 snapshots).
 	SnapshotLSN uint64 `msgpack:"lsn,omitempty"`
+
+	// Delta-stream fields (v3, ExportSince). A full Export leaves all of these
+	// zero, so they are omitted on the wire and the full-export header stays
+	// byte-identical to v2. IsDelta is the discriminator; From/To carry the
+	// change-log cursor the delta spans (From, To] and the graph lineage Epoch.
+	// The msgpack field tags MUST stay in lock-step with io.headerWire (HeaderOf
+	// decodes a header through that mirror).
+	IsDelta   bool   `msgpack:"d,omitempty"`
+	FromLSN   uint64 `msgpack:"fl,omitempty"`
+	FromEpoch uint64 `msgpack:"fe,omitempty"`
+	ToLSN     uint64 `msgpack:"tl,omitempty"`
+	ToEpoch   uint64 `msgpack:"te,omitempty"`
+
+	// Epoch is the graph lineage id (see graphEpochMeta). On a FULL export it is
+	// stamped (when the change-log is active) alongside SnapshotLSN so
+	// HeaderOf(fullExport).To = {SnapshotLSN, Epoch} is a complete base cursor for
+	// the first delta in a chain — no separate Watermark() call, hence no gap if
+	// a mutation commits between the export and that call. A delta carries the
+	// lineage in ToEpoch/FromEpoch instead, leaving this zero.
+	Epoch uint64 `msgpack:"ep,omitempty"`
 }
 
 // IO sentinels — canonical declarations live in pkg/graph/io so external
@@ -75,6 +105,8 @@ var (
 	ErrIncompatibleRegistry = tkgio.ErrIncompatibleRegistry
 	ErrCorruptExport        = tkgio.ErrCorruptExport
 	ErrNilWriter            = tkgio.ErrNilWriter
+	ErrCursorUnknown        = tkgio.ErrCursorUnknown
+	ErrDeltaBaseMismatch    = tkgio.ErrDeltaBaseMismatch
 )
 
 // maxExportRecordSize caps the per-record allocation in readExportRecord.
@@ -115,6 +147,17 @@ func (c *Core) exportLocked(w io.Writer) error {
 	if isNilInterfaceValue(w) {
 		return ErrNilWriter
 	}
+	// Drain the async write buffer so the change-log's LastCommittedLSN reflects
+	// every mutation that the (cache-sourced) entity snapshot below contains.
+	// Without this, a badger source with buffered writes stamps SnapshotLSN=0
+	// while the snapshot holds the buffered rows, so a replica / first delta would
+	// resume from 0 and re-ship the whole graph (idempotent but wasteful). No-op
+	// on the memory backend. Only needed when a change-log is present.
+	if c.changeFeed != nil {
+		if err := c.flushStoreLocked(); err != nil {
+			return fmt.Errorf("export: flush before snapshot LSN: %w", err)
+		}
+	}
 	// --- Header ---
 	nc, err := c.nodeCount()
 	if err != nil {
@@ -140,6 +183,17 @@ func (c *Core) exportLocked(w io.Writer) error {
 			return fmt.Errorf("export: change-log LSN: %w", lerr)
 		}
 		hdr.SnapshotLSN = lsn
+	}
+	// Stamp the lineage epoch when the change-log is active, so a full export's
+	// header carries the complete base cursor {SnapshotLSN, Epoch} for a delta
+	// chain. Only meaningful with a change-log (deltas require one); omitted
+	// otherwise.
+	if c.changeLogActive() {
+		epoch, eerr := c.graphEpochLocked()
+		if eerr != nil {
+			return fmt.Errorf("export: graph epoch: %w", eerr)
+		}
+		hdr.Epoch = epoch
 	}
 	if err := marshalAndWrite(w, exportTagHeader, &hdr); err != nil {
 		return fmt.Errorf("export: header: %w", err)

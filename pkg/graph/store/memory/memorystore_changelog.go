@@ -172,6 +172,16 @@ func (ms *Store) LastCommittedLSN() (uint64, error) {
 	return ms.logSeq, nil
 }
 
+// ChangeLogEnabled reports whether this store is recording mutations to its
+// change-log (store.ChangeLogStatusCapability). False when constructed without
+// WithChangeLog — the feed methods still work but return empty.
+func (ms *Store) ChangeLogEnabled() bool {
+	if ms == nil {
+		return false
+	}
+	return ms.logEnabled
+}
+
 // snapshotChangesLocked copies the records with LSN > afterLSN (up to limit;
 // <=0 = all). The caller holds at least an RLock. Payloads are copied so the
 // returned records never alias the stored log.

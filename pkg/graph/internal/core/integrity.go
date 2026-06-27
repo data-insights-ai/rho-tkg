@@ -59,28 +59,84 @@ func (c *Core) verifyNodeChainLocked(id types.NodeID) (bool, error) {
 	return c.verifyNodeChainRowsLocked(current, history)
 }
 
+// chainEntryMeta is the per-version integrity summary the linkage check operates
+// on, decoupled from the node/relationship row type.
+type chainEntryMeta struct {
+	version  uint32
+	hash     string
+	prevHash string
+}
+
+// verifyChainLinkage validates the integrity hash linkage across a version set.
+//
+// The chain is a DAG, not a linear list. A bitemporal correction
+// (SetNodeVersionInterval / SetRelVersionInterval) appends a version whose
+// PrevHash points to whichever version it supersedes ON THE VALID-TIME AXIS, not
+// to the immediately higher version number (see temporal_cascade.go: "joins the
+// chain via PrevHash from whichever row it directly supersedes on the VT axis").
+// So linkage is "every non-genesis version's PrevHash equals the Hash of SOME
+// version in the set" — a real predecessor exists — rather than the stricter (and
+// for corrected data, WRONG) "== the version-order predecessor". The genesis
+// version (version 0) must carry an empty PrevHash; the lowest retained version
+// may have a dangling PrevHash (its predecessor was truncated away), tolerated to
+// match the pre-DAG behavior. Per-version CONTENT hashes are verified separately
+// by the caller — that is the tamper-evidence on content; this checks structure.
+func verifyChainLinkage(metas []chainEntryMeta) bool {
+	hashSet := make(map[string]struct{}, len(metas))
+	minVersion := ^uint32(0)
+	for _, m := range metas {
+		hashSet[m.hash] = struct{}{}
+		if m.version < minVersion {
+			minVersion = m.version
+		}
+	}
+	for _, m := range metas {
+		if m.version == 0 {
+			if m.prevHash != "" {
+				return false
+			}
+			continue
+		}
+		if m.version == minVersion {
+			// Lowest retained version: its predecessor may have been truncated.
+			continue
+		}
+		if m.prevHash == "" {
+			return false
+		}
+		if _, ok := hashSet[m.prevHash]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
 func (c *Core) verifyNodeChainRowsLocked(current *types.Node, history []*types.Node) (bool, error) {
 	if current == nil && len(history) == 0 {
 		return false, storepkg.ErrNodeNotFound
 	}
 
-	var prev *types.Node
+	metas := make([]chainEntryMeta, 0, len(history)+1)
 	for _, entry := range history {
-		valid, err := c.verifyNodeChainEntryLocked(entry, prev)
-		if err != nil || !valid {
-			return valid, err
+		m, ok, err := c.verifyNodeChainEntryContentLocked(entry)
+		if err != nil || !ok {
+			return ok, err
 		}
-		prev = entry
+		metas = append(metas, m)
 	}
 	if current != nil {
-		return c.verifyNodeChainEntryLocked(current, prev)
+		m, ok, err := c.verifyNodeChainEntryContentLocked(current)
+		if err != nil || !ok {
+			return ok, err
+		}
+		metas = append(metas, m)
 	}
-	return true, nil
+	return verifyChainLinkage(metas), nil
 }
 
 func (c *Core) verifyNodeChainPagedLocked(id types.NodeID, current *types.Node, pager storepkg.HistoryVersionPageCapability) (bool, error) {
 	var (
-		prev        *types.Node
+		metas       = make([]chainEntryMeta, 0)
 		seenHistory bool
 		start       uint32
 	)
@@ -93,11 +149,11 @@ func (c *Core) verifyNodeChainPagedLocked(id types.NodeID, current *types.Node, 
 			break
 		}
 		for _, entry := range history {
-			valid, err := c.verifyNodeChainEntryLocked(entry, prev)
-			if err != nil || !valid {
-				return valid, err
+			m, ok, err := c.verifyNodeChainEntryContentLocked(entry)
+			if err != nil || !ok {
+				return ok, err
 			}
-			prev = entry
+			metas = append(metas, m)
 			seenHistory = true
 		}
 		if len(history) < hashVerifyHistoryVersionBatchSize {
@@ -113,47 +169,35 @@ func (c *Core) verifyNodeChainPagedLocked(id types.NodeID, current *types.Node, 
 		return false, storepkg.ErrNodeNotFound
 	}
 	if current != nil {
-		return c.verifyNodeChainEntryLocked(current, prev)
+		m, ok, err := c.verifyNodeChainEntryContentLocked(current)
+		if err != nil || !ok {
+			return ok, err
+		}
+		metas = append(metas, m)
 	}
-	return true, nil
+	return verifyChainLinkage(metas), nil
 }
 
-func (c *Core) verifyNodeChainEntryLocked(entry, prev *types.Node) (bool, error) {
+// verifyNodeChainEntryContentLocked recomputes a node version's content hash and
+// compares it with the stored hash (the tamper-evidence check), returning the
+// entry's integrity meta for the separate linkage pass.
+func (c *Core) verifyNodeChainEntryContentLocked(entry *types.Node) (chainEntryMeta, bool, error) {
 	if entry == nil {
-		return false, ErrNilNode
+		return chainEntryMeta{}, false, ErrNilNode
 	}
 	ig := entry.Integrity()
 	if ig == nil {
-		return false, nil
+		return chainEntryMeta{}, false, nil
 	}
-
-	if entry.Version() == 0 {
-		// Genesis: PrevHash must be empty.
-		if ig.PrevHash != "" {
-			return false, nil
-		}
-	} else if prev != nil {
-		// Non-genesis with predecessor in chain: verify PrevHash link.
-		prevIG := prev.Integrity()
-		if prevIG == nil {
-			return false, nil
-		}
-		if ig.PrevHash != prevIG.Hash {
-			return false, nil
-		}
-	}
-	// else: first visible entry has version != 0, so history was truncated;
-	// skip the missing predecessor link and still verify content integrity.
-
 	labels := c.nodeLabelsUnlocked(entry)
 	computed, err := integrity.ComputeNodeHashChecked(entry, labels)
 	if err != nil {
-		return false, err
+		return chainEntryMeta{}, false, err
 	}
 	if ig.Hash != computed {
-		return false, nil
+		return chainEntryMeta{}, false, nil
 	}
-	return true, nil
+	return chainEntryMeta{version: entry.Version(), hash: ig.Hash, prevHash: ig.PrevHash}, true, nil
 }
 
 // VerifyRelChain verifies the full hash chain for a relationship.
@@ -217,23 +261,27 @@ func (c *Core) verifyRelChainRowsLocked(current *types.Relationship, history []*
 	}
 	typeName := c.relTypeUnlocked(typeSource)
 
-	var prev *types.Relationship
+	metas := make([]chainEntryMeta, 0, len(history)+1)
 	for _, entry := range history {
-		valid, err := verifyRelChainEntry(entry, prev, typeName)
-		if err != nil || !valid {
-			return valid, err
+		m, ok, err := verifyRelChainEntryContent(entry, typeName)
+		if err != nil || !ok {
+			return ok, err
 		}
-		prev = entry
+		metas = append(metas, m)
 	}
 	if current != nil {
-		return verifyRelChainEntry(current, prev, typeName)
+		m, ok, err := verifyRelChainEntryContent(current, typeName)
+		if err != nil || !ok {
+			return ok, err
+		}
+		metas = append(metas, m)
 	}
-	return true, nil
+	return verifyChainLinkage(metas), nil
 }
 
 func (c *Core) verifyRelChainPagedLocked(id types.RelID, current *types.Relationship, pager storepkg.HistoryVersionPageCapability) (bool, error) {
 	var (
-		prev          *types.Relationship
+		metas         = make([]chainEntryMeta, 0)
 		seenHistory   bool
 		start         uint32
 		typeName      string
@@ -260,11 +308,11 @@ func (c *Core) verifyRelChainPagedLocked(id types.RelID, current *types.Relation
 			typeNameReady = true
 		}
 		for _, entry := range history {
-			valid, err := verifyRelChainEntry(entry, prev, typeName)
-			if err != nil || !valid {
-				return valid, err
+			m, ok, err := verifyRelChainEntryContent(entry, typeName)
+			if err != nil || !ok {
+				return ok, err
 			}
-			prev = entry
+			metas = append(metas, m)
 			seenHistory = true
 		}
 		if len(history) < hashVerifyHistoryVersionBatchSize {
@@ -280,45 +328,33 @@ func (c *Core) verifyRelChainPagedLocked(id types.RelID, current *types.Relation
 		return false, storepkg.ErrRelNotFound
 	}
 	if current != nil {
-		return verifyRelChainEntry(current, prev, typeName)
+		m, ok, err := verifyRelChainEntryContent(current, typeName)
+		if err != nil || !ok {
+			return ok, err
+		}
+		metas = append(metas, m)
 	}
-	return true, nil
+	return verifyChainLinkage(metas), nil
 }
 
-func verifyRelChainEntry(entry, prev *types.Relationship, typeName string) (bool, error) {
+// verifyRelChainEntryContent is the relationship counterpart of
+// verifyNodeChainEntryContentLocked.
+func verifyRelChainEntryContent(entry *types.Relationship, typeName string) (chainEntryMeta, bool, error) {
 	if entry == nil {
-		return false, ErrNilRelationship
+		return chainEntryMeta{}, false, ErrNilRelationship
 	}
 	ig := entry.Integrity()
 	if ig == nil {
-		return false, nil
+		return chainEntryMeta{}, false, nil
 	}
-
-	if entry.Version() == 0 {
-		// Genesis: PrevHash must be empty.
-		if ig.PrevHash != "" {
-			return false, nil
-		}
-	} else if prev != nil {
-		// Non-genesis with predecessor in chain: verify PrevHash link.
-		prevIG := prev.Integrity()
-		if prevIG == nil {
-			return false, nil
-		}
-		if ig.PrevHash != prevIG.Hash {
-			return false, nil
-		}
-	}
-	// else: first visible entry has version != 0, so history was truncated.
-
 	computed, err := integrity.ComputeRelHashChecked(entry, typeName)
 	if err != nil {
-		return false, err
+		return chainEntryMeta{}, false, err
 	}
 	if ig.Hash != computed {
-		return false, nil
+		return chainEntryMeta{}, false, nil
 	}
-	return true, nil
+	return chainEntryMeta{version: entry.Version(), hash: ig.Hash, prevHash: ig.PrevHash}, true, nil
 }
 
 func hashVerifyHistoryVersionPageCapability(store storepkg.MandatoryStore) storepkg.HistoryVersionPageCapability {
