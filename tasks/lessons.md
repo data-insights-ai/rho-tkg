@@ -1504,3 +1504,70 @@ batch is intricate to scope because it KEEPS successful ops on a partial failure
 record must have its data cleaned up or the feed orphans a record → divergence; do
 that wiring only with full batch-partial-failure understanding.
 
+## 56. A Purge-And-Recreate Rollback Must Capture EVERY Door's Full Side-Effect Footprint — A Capture Branch That Forgets Adjacency Turns Rollback Into Data Loss
+
+`ImportMerge`'s rollback does NOT invert each applied door surgically (label-index
+rebuilds and cascades make that error-prone). Instead it PURGES every touched
+entity (`DeleteRelationship` + `DeleteNodeCascade`, clearing all indexes) and
+RE-CREATES it from a pre-merge snapshot through the CREATE doors. `DeleteNodeCascade`
+deletes the node AND every edge attached to it — so the rollback can only be lossless
+if `captureMergeRecord` snapshotted EVERY edge the cascade will drop, including edges
+the delta itself never touched. The module even states this invariant in a comment:
+"capture records every touched node's full adjacency — even edges the delta did not
+change." A break-rounds campaign found the invariant was VIOLATED for two record
+kinds: the `ChangeNodeHistoryVersion` and `ChangeNodeHistoryTruncate` capture
+branches called only `captureNode(id)`, never `captureNodeAdjacency(id)` — unlike
+`ChangeNodePut` / `ChangeNodeDelete`. Reachability is real and was already exercised
+elsewhere: a `SetNodeVersionInterval` cascade on a bounded PAST interval leaves the
+node's open-ended current row in place, so it emits ONLY bare
+`ChangeNodeHistoryVersion` records — no `ChangeNodePut`, no rel record. A node whose
+only window record is that bare history-version had its UNCHANGED edge cascade-deleted
+during rollback's purge and never restored (it was not in `relOrder`): silent edge
+data loss on a rolled-back merge.
+
+Fix: both history branches now `captureNodeAdjacency(id)` too. Rules:
+- **When rollback is "purge the entity + recreate from snapshot," the capture pass
+  must record the TRANSITIVE closure the purge will destroy, not just the entity the
+  record names.** `DeleteNodeCascade` destroys adjacency → capture adjacency, for
+  EVERY record kind that can be the sole record touching a node.
+- **Audit by symmetry across the type switch (rule 3 / lesson A1).** The defect was
+  one `switch` arm missing a call its sibling arms all make. Grep the capture switch:
+  every node-touching arm must reach the same adjacency-capture as `ChangeNodePut`.
+- **The corruption test must use a node whose ONLY record is the under-tested kind,
+  and must ASSERT that precondition** (decode the change feed: a `ChangeNodePut` for
+  the node would capture adjacency and mask the bug). A precondition assertion is what
+  separates a real break-test from one that silently passes for the wrong reason.
+
+## 57. A Multi-Buffer Overlay Must Resolve Set-vs-Delete PER KEY At EVERY Reader Door — A "Running Max" Reader Can't Be Un-Bumped By A Later Delete
+
+The badger commit-window overlay has TWO buffers: `flushing` (rows mid-commit,
+swapped out of `pending`) and `pending` (newer). `rangePending` visits flushing then
+pending so a newer op wins — but only if each reader RESOLVES set-vs-delete per key.
+`pendingHistoryIDOverlay` (behind `AllNodeHistoryIDs`) does: it tracks a `pendingSets`
+id-set and, on a DELETE, `delete(pendingSets, id)` — so a flushing SET masked by a
+pending DELETE drops out. `maxHistoryID` (behind `MaxNodeHistoryID`/`MaxRelHistoryID`)
+did NOT: it computed a RUNNING MAX over SET keys and recorded DELETEs into a
+`pendingDeletes` map that was applied ONLY to the persisted Badger reverse-scan. With
+Badger empty, a flushing SET for id 500 bumped the running max to 500 and the pending
+DELETE for that same key never un-bumped it — so `MaxNodeHistoryID` returned 500 while
+`AllNodeHistoryIDs` returned none. Two doors onto the SAME overlay, contradicting each
+other. (Ironic: the comment on `maxHistoryID` claimed it had closed exactly this
+cross-door inconsistency — it added flushing VISIBILITY but not flushing
+DELETE-MASKING.)
+
+Root cause is the shape of the accumulator: a scalar running max is monotonic, so it
+structurally CANNOT represent "this candidate was later deleted." The fix is to track
+the surviving SET keys (a set), apply DELETEs to that set per key exactly like the
+sibling overlay, THEN take the max. Rules:
+- **When two reader doors share one overlay, they must share one resolution.** Prefer
+  literally reusing the resolver (`pendingHistoryIDOverlay`) over a parallel
+  hand-rolled scan; a parallel scan is where the two doors drift.
+- **A running min/max/count over a multi-op buffer is a red flag.** A later DELETE/
+  un-set for an already-counted key cannot retract a scalar accumulator. Collect the
+  surviving keys, resolve set-vs-delete, then reduce.
+- **Test cross-door AGREEMENT, not each door alone (rule 17 generalized).** The bug
+  hid because every existing test asserted on `GetNodeHistory`/`GetNodeVersion` or on
+  `All*` — never on `Max*` with a flushing-SET-masked-by-pending-DELETE and Badger
+  empty. The pinning test asserts `Max*` and `All*` return consistent answers for the
+  same overlay state.
+

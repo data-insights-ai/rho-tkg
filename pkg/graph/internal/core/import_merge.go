@@ -278,7 +278,14 @@ func (c *Core) captureMergeRecord(mrb *mergeRollback, rec storepkg.ChangeRecord,
 		}
 		id := types.NodeID(body.Wire.ID)
 		tn[id] = struct{}{}
-		return mrb.captureNode(id)
+		if err := mrb.captureNode(id); err != nil {
+			return err
+		}
+		// Rollback purges the node with DeleteNodeCascade (dropping ALL its
+		// edges); capture its adjacency so unchanged edges this record did not
+		// touch are restored too — otherwise a rolled-back merge silently
+		// destroys them. Same invariant as ChangeNodePut/ChangeNodeDelete.
+		return mrb.captureNodeAdjacency(id)
 
 	case storepkg.ChangeRelPut:
 		body, err := storeutil.DecodeRelPut(rec.Payload)
@@ -336,7 +343,12 @@ func (c *Core) captureMergeRecord(mrb *mergeRollback, rec storepkg.ChangeRecord,
 		}
 		id := types.NodeID(body.ID)
 		tn[id] = struct{}{}
-		return mrb.captureNode(id)
+		if err := mrb.captureNode(id); err != nil {
+			return err
+		}
+		// Same as ChangeNodeHistoryVersion: capture adjacency so the cascade
+		// purge in rollback does not drop edges this truncate did not touch.
+		return mrb.captureNodeAdjacency(id)
 
 	case storepkg.ChangeRelHistoryTruncate:
 		body, err := storeutil.DecodeHistoryTruncate(rec.Payload)

@@ -12,6 +12,7 @@ import (
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // newDeltaGraph builds a change-log-enabled graph (the precondition for
@@ -701,6 +702,119 @@ func TestImportMerge_RelCorruptionRollsBack(t *testing.T) {
 	}
 	if after := exportBody(t, base); !bytes.Equal(before, after) {
 		t.Fatal("corrupt rel delta left partial state (rel rollback incomplete)")
+	}
+}
+
+// --- A node whose ONLY delta record is a bare ChangeNodeHistoryVersion (a
+// SetNodeVersionInterval cascade on a bounded PAST interval, which leaves the
+// open-ended current row untouched) must still have its UNCHANGED adjacency
+// captured for rollback. The merge rollback purges every touched node with
+// DeleteNodeCascade (dropping ALL its edges) and re-creates only the edges it
+// captured; the ChangeNodeHistoryVersion capture branch must therefore record
+// the node's adjacency too, exactly like ChangeNodePut/ChangeNodeDelete — or a
+// rolled-back merge silently DESTROYS an edge the delta never touched.
+func TestImportMerge_HistoryVersionCorruptionPreservesEdges(t *testing.T) {
+	ctx := context.Background()
+	src := newDeltaGraph(t, 0)
+	a, _ := src.Nodes.Add(ctx, []string{"Person"}, map[string]any{"name": "alice"})
+	b, _ := src.Nodes.Add(ctx, []string{"Person"}, nil)
+	edge, _ := src.Rels.Add(ctx, "KNOWS", a, b, nil) // a-[KNOWS]->b, never touched by the cascade
+	c0, _ := src.IO.Watermark()
+
+	base := newPlainGraph(t, 1)
+	fullExportInto(t, src, base)
+	before := exportBody(t, base)
+
+	// Bounded PAST interval: the cascade appends history rows but leaves a's
+	// open-ended current row in place, so the change feed carries ONLY
+	// ChangeNodeHistoryVersion record(s) for a — no ChangeNodePut, no rel record.
+	if _, err := src.Temporal.SetNodeVersionInterval(ctx, a.ID(), 1000, 2000, map[string]any{"name": "v1"}); err != nil {
+		t.Fatalf("interval: %v", err)
+	}
+	// A trailing higher-LSN record so corrupting the tail aborts AFTER a's
+	// history-version record was captured + applied (a is in nodeOrder).
+	if _, err := src.Nodes.Add(ctx, []string{"Org"}, map[string]any{"name": "acme"}); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+
+	// Precondition (guards against a false pass): the window must touch a ONLY via
+	// a bare ChangeNodeHistoryVersion. If a ChangeNodePut for a appeared, the
+	// ChangeNodePut capture branch would record adjacency and the bug would not
+	// reproduce; if the edge were touched it would be captured directly.
+	recs, err := src.changeFeed.ChangeFeed(c0.LSN, 0)
+	if err != nil {
+		t.Fatalf("ChangeFeed: %v", err)
+	}
+	sawBareHistoryForA := false
+	for _, rec := range recs {
+		switch rec.Tag {
+		case storepkg.ChangeNodePut:
+			body, derr := storeutil.DecodeNodePut(rec.Payload)
+			if derr != nil {
+				t.Fatalf("decode node put: %v", derr)
+			}
+			if types.NodeID(body.Wire.ID) == a.ID() {
+				t.Fatalf("setup broken: a got a ChangeNodePut (LSN %d) — its capture branch records adjacency, so the bug cannot reproduce", rec.LSN)
+			}
+		case storepkg.ChangeNodeHistoryVersion:
+			body, derr := storeutil.DecodeHistoryVersionNode(rec.Payload)
+			if derr != nil {
+				t.Fatalf("decode node history version: %v", derr)
+			}
+			if types.NodeID(body.Wire.ID) == a.ID() {
+				sawBareHistoryForA = true
+			}
+		case storepkg.ChangeRelPut, storepkg.ChangeRelDelete:
+			t.Fatalf("setup broken: a rel record (tag %d, LSN %d) touched the edge — it would be captured directly", rec.Tag, rec.LSN)
+		}
+	}
+	if !sawBareHistoryForA {
+		t.Fatal("setup broken: no ChangeNodeHistoryVersion for a in the delta window")
+	}
+
+	delta := exportSinceBytes(t, src, c0)
+	corrupt := make([]byte, len(delta))
+	copy(corrupt, delta)
+	corrupt[len(corrupt)-1] ^= 0xFF
+
+	if err := base.IO.ImportMerge(bytes.NewReader(corrupt), tkgio.MergeOptions{}); err == nil {
+		t.Fatal("ImportMerge(corrupt) succeeded, want error")
+	}
+	// The untouched edge must survive the rollback's purge-and-recreate of a.
+	if _, err := base.getCurrentRelationship(edge.ID()); err != nil {
+		t.Fatalf("a-[KNOWS]->b edge lost after rolled-back merge: %v "+
+			"(ChangeNodeHistoryVersion capture must record node adjacency)", err)
+	}
+	if after := exportBody(t, base); !bytes.Equal(before, after) {
+		t.Fatal("corrupt history-version delta left state diverged (rollback dropped the untouched edge)")
+	}
+}
+
+// A BADGER store opened with ChangeLog:false still satisfies ChangeFeedCapability
+// (the backend always implements the feed methods, so c.changeFeed != nil), so the
+// present-but-DISABLED case must fail closed through the ChangeLogStatusCapability
+// probe — Watermark and ExportSince must return ErrCapabilityNotSupported and emit
+// NOTHING, never a silently-empty delta a backup pipeline would mistake for "no
+// changes". Existing ExportSince tests all run on enabled logs or memory.
+func TestExportSince_BadgerChangeLogDisabledFailsClosed(t *testing.T) {
+	g, err := New(Config{BadgerInMemory: true, ChangeLog: false, SnowflakeNodeID: 0})
+	if err != nil {
+		t.Fatalf("New badger: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+	if _, err := g.Nodes.Add(context.Background(), []string{"A"}, map[string]any{"n": "a"}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	if _, err := g.IO.Watermark(); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
+		t.Fatalf("Watermark on a disabled change-log = %v, want ErrCapabilityNotSupported", err)
+	}
+	var buf bytes.Buffer
+	if err := g.IO.ExportSince(&buf, tkgio.Cursor{}); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
+		t.Fatalf("ExportSince on a disabled change-log = %v, want ErrCapabilityNotSupported", err)
+	}
+	if buf.Len() != 0 {
+		t.Fatalf("ExportSince wrote %d bytes on a disabled change-log; must emit nothing", buf.Len())
 	}
 }
 

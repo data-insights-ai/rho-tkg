@@ -251,6 +251,153 @@ func TestReplicaApplyChanges_RejectsMisorderedBatch(t *testing.T) {
 	}
 }
 
+// Apply reproduces a primary row's temporal metadata (TxFrom / ValidFrom)
+// VERBATIM — it must never re-stamp from the replica's own clock. The
+// integrity-hash convergence oracle is BLIND to these fields (TxFrom is not
+// hashed), so a re-stamping regression would pass every hash-based test in this
+// file. This reads the applied replica row's Temporal() directly. The explicit
+// world-time (ValidFrom) is a fixed PAST value no wall-clock stamp could
+// coincidentally reproduce.
+func TestReplicaApply_ReproducesTemporalVerbatim(t *testing.T) {
+	ctx := context.Background()
+	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
+	if err != nil {
+		t.Fatalf("primary New: %v", err)
+	}
+	defer primary.Close()
+	mustAdd(t, primary, []string{"A"}, map[string]any{"n": "seed"}) // seed token A
+
+	replica, err := graph.New(graph.Config{SnowflakeNodeID: 2, BadgerInMemory: true, ReadOnlyReplica: true})
+	if err != nil {
+		t.Fatalf("replica New: %v", err)
+	}
+	defer replica.Close()
+	var snap bytes.Buffer
+	if err := primary.IO().Export(&snap); err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+	if err := replica.IO().Import(&snap, tkgio.ImportOptions{}); err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	lsn0, _ := primary.Replication().LastCommittedLSN()
+	if err := replica.Replication().SetAppliedLSN(lsn0); err != nil {
+		t.Fatalf("SetAppliedLSN: %v", err)
+	}
+
+	// Create the node under test AFTER bootstrap (so it travels via the apply
+	// path, not the snapshot import), with an explicit PAST world-time.
+	vf := types.Instant(1_700_000_000_000)
+	a := mustAdd(t, primary, []string{"A"}, map[string]any{"n": "a", "tkg_valid_from": vf})
+
+	pn, err := primary.Nodes().Get(ctx, a.ID())
+	if err != nil {
+		t.Fatalf("primary Get: %v", err)
+	}
+	pt := pn.Temporal()
+	if pt.ValidFrom != vf {
+		t.Fatalf("setup: primary ValidFrom = %d, want %d", pt.ValidFrom, vf)
+	}
+	if pt.TxFrom == 0 {
+		t.Fatal("setup: primary TxFrom unset")
+	}
+
+	var recs []store.ChangeRecord
+	if err := primary.Replication().ForEachChange(lsn0, func(rec store.ChangeRecord) bool {
+		recs = append(recs, rec)
+		return true
+	}); err != nil {
+		t.Fatalf("ForEachChange: %v", err)
+	}
+	if _, err := replica.Replication().ApplyChanges(recs); err != nil {
+		t.Fatalf("ApplyChanges: %v", err)
+	}
+
+	rn, err := replica.Nodes().Get(ctx, a.ID())
+	if err != nil {
+		t.Fatalf("replica Get: %v", err)
+	}
+	rt := rn.Temporal()
+	if rt.ValidFrom != pt.ValidFrom {
+		t.Fatalf("replica ValidFrom = %d, want %d (apply must reproduce world-time verbatim)", rt.ValidFrom, pt.ValidFrom)
+	}
+	if rt.TxFrom != pt.TxFrom {
+		t.Fatalf("replica TxFrom = %d, want %d (apply must reproduce TxFrom verbatim, NOT re-stamp from the replica clock)", rt.TxFrom, pt.TxFrom)
+	}
+}
+
+// At-least-once redelivery of a WithHistory label-add NodePut must no-op via the
+// nodeWireMatches guard, which runs BEFORE labelTokenDiff would re-route it to the
+// label-add door (whose ValidateNodeLabelAddition rejects an already-present
+// token). The existing idempotent-reapply test is watermark-gated (the second
+// pass is skipped at LSN<=watermark, never reaching nodeWireMatches); this rolls
+// the watermark back to simulate a crash that lost the watermark advance, so the
+// redelivered record actually re-enters the apply path.
+func TestReplicaApply_LabelAddRedeliveryNoOps(t *testing.T) {
+	ctx := context.Background()
+	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
+	if err != nil {
+		t.Fatalf("primary New: %v", err)
+	}
+	defer primary.Close()
+	// Seed BOTH tokens A and B into the bootstrap snapshot so the post-bootstrap
+	// label-add record reuses known tokens (no refetch needed).
+	mustAdd(t, primary, []string{"A", "B"}, map[string]any{"n": "seed"})
+	a := mustAdd(t, primary, []string{"A"}, map[string]any{"n": "a"})
+
+	replica, err := graph.New(graph.Config{SnowflakeNodeID: 2, BadgerInMemory: true, ReadOnlyReplica: true})
+	if err != nil {
+		t.Fatalf("replica New: %v", err)
+	}
+	defer replica.Close()
+	var snap bytes.Buffer
+	if err := primary.IO().Export(&snap); err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+	if err := replica.IO().Import(&snap, tkgio.ImportOptions{}); err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	lsn0, _ := primary.Replication().LastCommittedLSN()
+	if err := replica.Replication().SetAppliedLSN(lsn0); err != nil {
+		t.Fatalf("SetAppliedLSN: %v", err)
+	}
+
+	// AddLabel emits a WithHistory single-add ChangeNodePut for a (label set {A,B}).
+	if err := primary.Nodes().AddLabel(ctx, a.ID(), "B"); err != nil {
+		t.Fatalf("AddLabel: %v", err)
+	}
+
+	var recs []store.ChangeRecord
+	if err := primary.Replication().ForEachChange(lsn0, func(rec store.ChangeRecord) bool {
+		recs = append(recs, rec)
+		return true
+	}); err != nil {
+		t.Fatalf("ForEachChange: %v", err)
+	}
+	if len(recs) == 0 {
+		t.Fatal("no records emitted by AddLabel")
+	}
+
+	if _, err := replica.Replication().ApplyChanges(recs); err != nil {
+		t.Fatalf("ApplyChanges pass 1: %v", err)
+	}
+	hist1 := mustNodeHistory(t, replica, a.ID())
+
+	// Roll the watermark back so the redelivered records re-enter the apply path
+	// (LSN > watermark) instead of being skipped by the watermark guard.
+	if err := replica.Replication().SetAppliedLSN(lsn0); err != nil {
+		t.Fatalf("SetAppliedLSN rollback: %v", err)
+	}
+	if _, err := replica.Replication().ApplyChanges(recs); err != nil {
+		t.Fatalf("redelivered label-add ApplyChanges must no-op, got: %v "+
+			"(nodeWireMatches must short-circuit before the label-add door rejects the already-present token)", err)
+	}
+	hist2 := mustNodeHistory(t, replica, a.ID())
+	if len(hist1) != len(hist2) {
+		t.Fatalf("redelivery changed history depth %d -> %d (not idempotent)", len(hist1), len(hist2))
+	}
+	assertConverged(t, "after label-add redelivery", primary, replica)
+}
+
 // A disk-backed replica WITHOUT SyncWrites (async write buffer) must persist its
 // applied data AND watermark across a restart, and resume tailing from the
 // watermark — the durability-ordering path (flush-before-watermark) that keeps

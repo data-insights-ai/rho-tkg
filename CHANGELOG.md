@@ -6,6 +6,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed — break-rounds campaign on the change-log / replica / delta surface
+
+A 3-round adversarial break-the-system campaign (per-tx change-log buffer, replica
+apply, commit-window overlay, `Clear()` LSN-reuse, delta export/merge) found two
+real defects in the released v4.10.0/v4.10.1 surface; both are fixed test-first.
+
+- **Delta-merge rollback silently dropped an untouched relationship (HIGH).** A
+  node whose ONLY delta record was a bare `ChangeNodeHistoryVersion` /
+  `ChangeNodeHistoryTruncate` (e.g. a `SetNodeVersionInterval` cascade on a
+  bounded PAST interval, which leaves the open-ended current row untouched) had
+  its adjacency NOT captured by `captureMergeRecord` — unlike `ChangeNodePut` /
+  `ChangeNodeDelete`. A corrupt/rolled-back merge then purges that node with
+  `DeleteNodeCascade` (dropping ALL its edges) and re-creates only the edges it
+  captured, so an edge the delta never touched was destroyed and never restored —
+  violating the module's own stated capture invariant. Both history branches now
+  call `captureNodeAdjacency`. Pinned by
+  `TestImportMerge_HistoryVersionCorruptionPreservesEdges`.
+- **`MaxNodeHistoryID`/`MaxRelHistoryID` disagreed with `AllNodeHistoryIDs` during
+  the badger commit window (MEDIUM).** When the only history key for an id lived in
+  `flushing` as a SET and a pending DELETE masked that exact key (a mid-commit
+  concurrent trim) with Badger empty, `maxHistoryID` bumped the max from the
+  flushing SET but the pending DELETE only populated `pendingDeletes` (applied to
+  the Badger scan alone), so it never un-bumped the buffer-derived max —
+  `Max*HistoryID` returned the deleted id while `All*HistoryIDs` (via
+  `pendingHistoryIDOverlay`) correctly returned none. `maxHistoryID` now resolves
+  set-vs-delete PER KEY exactly like `pendingHistoryIDOverlay`. Pinned by
+  `TestFlushingOverlay_PendingDeleteMasksMax_{Node,Rel}DoorsAgree`.
+
+### Added — break-rounds coverage (no behavior change)
+
+- Replica apply reproduces a primary row's temporal metadata (`TxFrom`/`ValidFrom`)
+  VERBATIM, asserted by reading the applied row's `Temporal()` directly — the
+  integrity-hash convergence oracle is blind to those fields
+  (`TestReplicaApply_ReproducesTemporalVerbatim`).
+- At-least-once redelivery of a WithHistory label-add `NodePut` no-ops via the
+  `nodeWireMatches` guard before the label-add door would reject the already-present
+  token (the existing idempotent-reapply test is watermark-gated and never reaches
+  it) — `TestReplicaApply_LabelAddRedeliveryNoOps`.
+- A badger store opened with `ChangeLog:false` fails closed on `Watermark` /
+  `ExportSince` with `ErrCapabilityNotSupported` (present-but-disabled, never a
+  silently-empty delta) — `TestExportSince_BadgerChangeLogDisabledFailsClosed`.
+
 ## [4.10.1] - 2026-06-30
 
 ### Fixed — change-log / replica hardening + per-transaction change-log buffer

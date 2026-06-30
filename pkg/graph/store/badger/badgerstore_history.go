@@ -213,26 +213,37 @@ func (bs *Store) pendingHistoryVersionOverlay(prefix []byte, startVersion uint32
 
 func (bs *Store) maxHistoryID(prefix byte) (snowflake.ID, error) {
 	var maxID snowflake.ID
-	pendingDeletes := make(map[string]struct{})
 
 	// Consult BOTH buffers; ignoring `flushing` under-reported the max while
 	// AllNodeHistoryIDsFrom (which goes through pendingHistoryIDOverlay) did
-	// consult it — an inconsistency between the two doors.
+	// consult it — an inconsistency between the two doors. Resolve set-vs-delete
+	// PER KEY the same way pendingHistoryIDOverlay does (rangePending visits
+	// flushing before pending, so a newer op wins): a running max cannot be
+	// un-bumped, so track the surviving SET keys and a key DELETE removes its
+	// candidate — otherwise a flushing SET masked by a pending DELETE would
+	// inflate the max above what AllNodeHistoryIDs reports (the same id).
+	pendingSets := make(map[string]struct{})
+	pendingDeletes := make(map[string]struct{})
 	bs.rangePending(func(k string, op writeOp) {
 		if len(k) != storepkg.SizeHistKey || k[0] != prefix {
 			return
 		}
 		if op.opType == writeOpDelete {
 			pendingDeletes[k] = struct{}{}
+			delete(pendingSets, k)
 			return
 		}
 		if op.opType == writeOpSet {
-			id := storepkg.ParseIDFromKey([]byte(k), 1)
-			if id > maxID {
-				maxID = id
-			}
+			pendingSets[k] = struct{}{}
+			delete(pendingDeletes, k)
 		}
 	})
+	for k := range pendingSets {
+		id := storepkg.ParseIDFromKey([]byte(k), 1)
+		if id > maxID {
+			maxID = id
+		}
+	}
 
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions

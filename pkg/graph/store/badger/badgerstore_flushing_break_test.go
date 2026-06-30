@@ -212,6 +212,64 @@ func TestFlushingOverlay_PendingDeleteWinsOverFlushingSet(t *testing.T) {
 	}
 }
 
+// MaxNodeHistoryID and AllNodeHistoryIDs are two doors onto the same overlay and
+// MUST agree. When the ONLY history key for an id lives in `flushing` as a SET
+// and a pending DELETE masks that exact key (a mid-commit concurrent trim) with
+// Badger empty, AllNodeHistoryIDs() returns [] (pendingHistoryIDOverlay drops the
+// id). MaxNodeHistoryID must therefore return 0 — it must not inflate the max
+// from a flushing SET that a newer pending DELETE has already removed.
+func TestFlushingOverlay_PendingDeleteMasksMax_NodeDoorsAgree(t *testing.T) {
+	bs := newFlushParkStore(t, nil)
+	n := types.NewNode(types.NodeID(500), 10, nil)
+	if err := bs.PutNodeVersion(types.NodeID(500), 0, n); err != nil {
+		t.Fatalf("PutNodeVersion: %v", err)
+	}
+	parkPendingIntoFlushing(t, bs) // HistNodeKey(500,0) now lives ONLY in flushing as a SET
+	bs.appendOps(writeOp{opType: writeOpDelete, key: storepkg.HistNodeKey(snowflake.ID(500), 0)})
+
+	all, err := bs.AllNodeHistoryIDs()
+	if err != nil {
+		t.Fatalf("AllNodeHistoryIDs: %v", err)
+	}
+	if len(all) != 0 {
+		t.Fatalf("AllNodeHistoryIDs = %v, want [] (pending DELETE masks the only flushing SET)", all)
+	}
+	maxID, err := bs.MaxNodeHistoryID()
+	if err != nil {
+		t.Fatalf("MaxNodeHistoryID: %v", err)
+	}
+	if maxID != types.NodeID(0) {
+		t.Fatalf("MaxNodeHistoryID = %d, want 0 (Max* door must agree with AllNodeHistoryIDs; the flushing SET is delete-masked in pending)", maxID)
+	}
+}
+
+// Relationship mirror — MaxRelHistoryID shares the maxHistoryID helper, so the
+// same flushing-SET-masked-by-pending-DELETE inconsistency applies to rels.
+func TestFlushingOverlay_PendingDeleteMasksMax_RelDoorsAgree(t *testing.T) {
+	bs := newFlushParkStore(t, nil)
+	r := types.NewRelationship(types.RelID(500), 5, types.NodeID(1), types.NodeID(2))
+	if err := bs.PutRelVersion(types.RelID(500), 0, r); err != nil {
+		t.Fatalf("PutRelVersion: %v", err)
+	}
+	parkPendingIntoFlushing(t, bs)
+	bs.appendOps(writeOp{opType: writeOpDelete, key: storepkg.HistRelKey(snowflake.ID(500), 0)})
+
+	all, err := bs.AllRelHistoryIDs()
+	if err != nil {
+		t.Fatalf("AllRelHistoryIDs: %v", err)
+	}
+	if len(all) != 0 {
+		t.Fatalf("AllRelHistoryIDs = %v, want []", all)
+	}
+	maxID, err := bs.MaxRelHistoryID()
+	if err != nil {
+		t.Fatalf("MaxRelHistoryID: %v", err)
+	}
+	if maxID != types.RelID(0) {
+		t.Fatalf("MaxRelHistoryID = %d, want 0 (Max* door must agree with AllRelHistoryIDs)", maxID)
+	}
+}
+
 // SYSTEM PROPERTY: the disk-resident adjacency overlay must surface a rel whose
 // index SETs are parked in `flushing`, across the incoming, typed-outgoing, and
 // metas readers — and the type filter must still exclude non-matching types.
