@@ -1123,6 +1123,18 @@ func restoreImportRelHistory(c *Core, id types.RelID, snap importRelSnapshot) er
 }
 
 func (rb *importRollback) restoreRegistries() error {
+	// When the change-log is enabled, keep the token registries APPEND-ONLY across
+	// import rollback (lesson 51/54). A partial change-log-enabled import emits
+	// records IN-BACKEND eagerly (import is not yet wrapped in a TxChangeLogScope —
+	// see tasks/todo.md), so a token an emitted record references must NOT be
+	// de-allocated here — that would poison the feed and stall replicas (the same
+	// bug class the per-tx buffer fixes for the tx path). An allocated-but-unused
+	// token is harmless; the partial-import create+delete churn still converges on a
+	// replica. (A read-only replica has the log OFF, so its bootstrap import emits
+	// nothing and this branch is moot — the common case.)
+	if rb.c.changeLogEnabled {
+		return nil
+	}
 	labels := registrypkg.NewLabelRegistry()
 	if err := labels.ImportNames(rb.labels); err != nil {
 		return err

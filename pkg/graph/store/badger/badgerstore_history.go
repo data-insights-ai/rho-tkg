@@ -52,8 +52,10 @@ func (bs *Store) truncateHistoryByPrefix(prefix []byte, keepVersions int, logTag
 	for _, k := range allKeys {
 		keySet[k] = struct{}{}
 	}
-	bs.wbMu.Lock()
-	for k, op := range bs.pending {
+	// Merge BOTH buffers (rangePending = flushing ++ pending) so a version a
+	// concurrent flush is mid-committing is counted, not dropped from the
+	// retention set.
+	bs.rangePending(func(k string, op writeOp) {
 		if len(k) == storepkg.SizeHistKey && k[:len(prefixStr)] == prefixStr {
 			if op.opType == writeOpDelete {
 				delete(keySet, k)
@@ -61,8 +63,7 @@ func (bs *Store) truncateHistoryByPrefix(prefix []byte, keepVersions int, logTag
 				keySet[k] = struct{}{}
 			}
 		}
-	}
-	bs.wbMu.Unlock()
+	})
 
 	if len(keySet) == 0 {
 		return nil
@@ -127,17 +128,15 @@ func (bs *Store) trimHistoryFromPrefix(prefix []byte, minVersion uint32, logTag 
 	for _, k := range persisted {
 		keySet[k] = struct{}{}
 	}
-	bs.wbMu.Lock()
-	for k := range bs.pending {
+	bs.rangePending(func(k string, op writeOp) {
 		if len(k) != storepkg.SizeHistKey || k[:len(prefixStr)] != prefixStr {
-			continue
+			return
 		}
 		if historyVersionFromKey([]byte(k)) < uint64(minVersion) {
-			continue
+			return
 		}
 		keySet[k] = struct{}{}
-	}
-	bs.wbMu.Unlock()
+	})
 
 	if len(keySet) == 0 {
 		return nil
@@ -191,25 +190,23 @@ func (bs *Store) pendingHistoryVersionOverlay(prefix []byte, startVersion uint32
 	entries := make(map[string][]byte)
 	deletes := make(map[string]struct{})
 
-	bs.wbMu.Lock()
-	for k, op := range bs.pending {
+	bs.rangePending(func(k string, op writeOp) {
 		if len(k) != storepkg.SizeHistKey || k[:len(prefixStr)] != prefixStr {
-			continue
+			return
 		}
 		if historyVersionFromKey([]byte(k)) < uint64(startVersion) {
-			continue
+			return
 		}
 		if op.opType == writeOpDelete {
 			delete(entries, k)
 			deletes[k] = struct{}{}
-			continue
+			return
 		}
 		cp := make([]byte, len(op.value))
 		copy(cp, op.value)
 		entries[k] = cp
 		delete(deletes, k)
-	}
-	bs.wbMu.Unlock()
+	})
 
 	return entries, deletes
 }
@@ -218,14 +215,16 @@ func (bs *Store) maxHistoryID(prefix byte) (snowflake.ID, error) {
 	var maxID snowflake.ID
 	pendingDeletes := make(map[string]struct{})
 
-	bs.wbMu.Lock()
-	for k, op := range bs.pending {
+	// Consult BOTH buffers; ignoring `flushing` under-reported the max while
+	// AllNodeHistoryIDsFrom (which goes through pendingHistoryIDOverlay) did
+	// consult it — an inconsistency between the two doors.
+	bs.rangePending(func(k string, op writeOp) {
 		if len(k) != storepkg.SizeHistKey || k[0] != prefix {
-			continue
+			return
 		}
 		if op.opType == writeOpDelete {
 			pendingDeletes[k] = struct{}{}
-			continue
+			return
 		}
 		if op.opType == writeOpSet {
 			id := storepkg.ParseIDFromKey([]byte(k), 1)
@@ -233,8 +232,7 @@ func (bs *Store) maxHistoryID(prefix byte) (snowflake.ID, error) {
 				maxID = id
 			}
 		}
-	}
-	bs.wbMu.Unlock()
+	})
 
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
@@ -271,23 +269,55 @@ func (bs *Store) pendingHistoryIDOverlay(prefix byte, after snowflake.ID) (map[s
 	pendingSets := make(map[snowflake.ID]struct{})
 	pendingDeletes := make(map[string]struct{})
 
-	bs.wbMu.Lock()
-	for k, op := range bs.pending {
+	// rangePending visits flushing (older, in-flight) then pending (newer), so a
+	// newer op for the same key is applied last and wins. Resolve set-vs-delete
+	// per key so an id can never end up in BOTH result maps.
+	bs.rangePending(func(k string, op writeOp) {
 		if len(k) != storepkg.SizeHistKey || k[0] != prefix {
-			continue
+			return
 		}
 		if op.opType == writeOpDelete {
 			pendingDeletes[k] = struct{}{}
-			continue
+			id := storepkg.ParseIDFromKey([]byte(k), 1)
+			delete(pendingSets, id)
+			return
 		}
 		id := storepkg.ParseIDFromKey([]byte(k), 1)
+		delete(pendingDeletes, k)
 		if id > after {
 			pendingSets[id] = struct{}{}
 		}
-	}
-	bs.wbMu.Unlock()
+	})
 
 	return pendingSets, pendingDeletes
+}
+
+// rangePending invokes fn for every buffered write op, OLDEST-first: the
+// in-flight `flushing` snapshot (being committed by a concurrent flush) before
+// the current `pending` entries. Visiting pending last means a newer op for the
+// same key wins under each reader's last-write-wins overlay logic. Held under
+// wbMu for the call; fn must not re-enter the write buffer.
+func (bs *Store) rangePending(fn func(k string, op writeOp)) {
+	bs.wbMu.Lock()
+	defer bs.wbMu.Unlock()
+	for k, op := range bs.flushing {
+		fn(k, op)
+	}
+	for k, op := range bs.pending {
+		fn(k, op)
+	}
+}
+
+// lookupPending resolves a single buffered key, pending (newer) taking
+// precedence over flushing (older, in-flight). Returns (op, true) when buffered.
+func (bs *Store) lookupPending(key string) (writeOp, bool) {
+	bs.wbMu.Lock()
+	defer bs.wbMu.Unlock()
+	if op, ok := bs.pending[key]; ok {
+		return op, true
+	}
+	op, ok := bs.flushing[key]
+	return op, ok
 }
 
 func capForLimit(limit int) int {

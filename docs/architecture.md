@@ -152,7 +152,7 @@ All mutations enforce `ValidationLimits` (5 configurable limits with defaults). 
 
 ### Sub-API Accessors (v3.4.0 introduced; v4.2.0 converted to methods)
 
-The 130+ implementation methods on `*core.Core` are reachable through 14 sub-API accessor methods on `*Graph`. The thin `*Graph` façade itself (in `pkg/graph/graph.go`) only exposes `New`, `Close`, plus the 14 accessor methods listed below; the old form `g.AddNode(...)` was removed in v3.4.0, and the supported public form is `g.Nodes().Add(...)`. The earlier `Graph.Core()` escape hatch was removed during the post-v3.4.0 cleanup; `*core.Core` is again strictly internal. Until v4.2.0 these accessors were exported fields (`g.Nodes` etc.); v4.2.0 converted them to nil-safe methods so `(*Graph)(nil).Nodes()` returns nil and chained calls fail closed with `ErrNilGraph`.
+The 130+ implementation methods on `*core.Core` are reachable through 15 sub-API accessor methods on `*Graph`. The thin `*Graph` façade itself (in `pkg/graph/graph.go`) only exposes `New`, `Close`, plus the 15 accessor methods listed below; the old form `g.AddNode(...)` was removed in v3.4.0, and the supported public form is `g.Nodes().Add(...)`. The earlier `Graph.Core()` escape hatch was removed during the post-v3.4.0 cleanup; `*core.Core` is again strictly internal. Until v4.2.0 these accessors were exported fields (`g.Nodes` etc.); v4.2.0 converted them to nil-safe methods so `(*Graph)(nil).Nodes()` returns nil and chained calls fail closed with `ErrNilGraph`.
 
 | Field | Package | Wraps |
 |-------|---------|-------|
@@ -167,7 +167,8 @@ The 130+ implementation methods on `*core.Core` are reachable through 14 sub-API
 | `g.Tier` | `pkg/graph/tier` | Tiered-store admin: `Archive`, `Restore`, `ForceRotate`, `ListShards`, `RebuildCatalog`, `Repair`, `VerifyShard` (reuses `core.AdminOps`) |
 | `g.Stats` | `pkg/graph/stats` | Count helpers |
 | `g.Hash` | `pkg/graph/hash` | Hash-chain verification (shadows stdlib `hash` — alias as `tkghash` if both are imported) |
-| `g.Resolve` | `pkg/graph/resolve` | Shadow-property + registry resolution |
+| `g.Replication` | `pkg/graph/replication` | Change-log / op-log: `ChangeFeed`, `ForEachChange`, `LastCommittedLSN`; replica apply (`ApplyChange`/`ApplyChanges`, `AppliedLSN`/`SetAppliedLSN`), `RegistrySnapshot`, `IDSlotLease`/`SetIDSlotLease` |
+| `g.Resolve` | `pkg/graph/resolve` | Shadow-property accessors (`NodeProperty`, `RelProperty`) |
 | `g.Tx` | `pkg/graph/subapi.go` (in-package `TxAPI`) | `Begin()` / `Run(fn)` / `RunContext(ctx, fn)` |
 | `g.Batch` | `pkg/graph/subapi.go` (in-package `BatchAPI`) | `New()` returns a `*BatchBuilder` |
 
@@ -262,7 +263,7 @@ Most point and query reads acquire `g.mu.RLock()`: they are blocked while a tx/b
 
 ---
 
-## Store Interface (`pkg/graph/store.go`)
+## Store Interface (`pkg/graph/store/store.go`)
 
 Pure persistence contract — no string resolution, no referential integrity, no shadow properties. The interface is composed from capability sub-interfaces in `pkg/graph/store/capabilities.go`; consult `pkg/graph/store/store.go` for the full embedding and method count. The graph layer depends on `MandatoryStore` (the always-required subset); optional capabilities are type-asserted on demand.
 
@@ -270,12 +271,15 @@ Pure persistence contract — no string resolution, no referential integrity, no
 
 ```go
 type QueryOpts struct {
-    Limit      int            // 0 = no limit
-    After      types.EntityID // Cursor: return IDs > After (0 = from start)
-    ValidAt    types.Instant  // Point-in-time filter (0 = disabled)
-    ValidStart types.Instant  // Interval filter start (0 = disabled)
-    ValidEnd   types.Instant  // Interval filter end (0 = disabled)
-    Depth      ShardDepth     // Shard tier filter (0 = all tiers)
+    Limit           int            // 0 = no limit
+    After           types.EntityID // Cursor: return IDs > After (0 = from start)
+    ValidAt         types.Instant  // Point-in-time filter (0 = disabled)
+    ValidStart      types.Instant  // Interval filter start (0 = disabled)
+    ValidEnd        types.Instant  // Interval filter end (0 = disabled)
+    TxAt            types.Instant  // Bitemporal: restrict chain to TxFrom <= TxAt (0 = no TX filter)
+    IncludeEclipsed bool           // Include cascade-superseded history rows (reserved; default false)
+    Depth           ShardDepth     // Shard tier filter (0 = all tiers)
+    NoSort          bool           // Skip the label-scan ID sort (honoured only when After == 0)
 }
 
 type ShardDepth byte
@@ -330,7 +334,7 @@ non-positive bound is treated as no interval filter.
 
 `ErrNodeNotFound`, `ErrRelNotFound`, `ErrNodeExists`, `ErrRelExists`, `ErrVersionNotFound`, `ErrNoVersionValidAt`, `ErrIndexExists`, `ErrIndexNotFound`, `ErrTxDone`
 
-**Graph-layer sentinel errors** (not in Store interface unless noted): `ErrSelfLoop` — returned by `AddRelationshipWithContext` / `ImportRelationshipWithID` when `startID == endID && !g.validation.AllowSelfLoops`; `ErrInvalidID` — returned by import-by-ID APIs for negative caller-supplied IDs; `ErrVersionOverflow` — returned by versioned mutations when the current entity version is already `math.MaxUint32`; `ErrNilNode` and `ErrNilRelationship` — aliases of the type-layer nil entity sentinels, returned by graph methods and entity methods with error channels; `ErrNilGraph` — returned by nil, zero-value, or typed-nil graph façade and sub-API entry points with error returns; `ErrNilContext` and `ErrNilTxCallback` — returned by public context and transaction-helper boundary checks; `ErrNilReader` and `ErrNilWriter` — returned by IO import/export boundary checks; `ErrNilStore` — aliases the Store-layer sentinel returned by `graph.New` for typed nil `Config.Store` values and by nil concrete in-tree Store lifecycle receivers.
+**Graph-layer sentinel errors** (not in Store interface unless noted): `ErrSelfLoop` — returned by `AddRelationshipWithContext` / `ImportRelationshipWithID` when `startID == endID && !g.validation.AllowSelfLoops`; `ErrInvalidID` — returned by import-by-ID APIs for negative caller-supplied IDs; `ErrVersionOverflow` — returned by versioned mutations when the current entity version is already `math.MaxUint32`; `ErrNilNode` and `ErrNilRelationship` — aliases of the type-layer nil entity sentinels, returned by graph methods and entity methods with error channels; `ErrNilGraph` — returned by nil, zero-value, or typed-nil graph façade and sub-API entry points with error returns; `ErrNilContext` and `ErrNilTxCallback` — returned by public context and transaction-helper boundary checks; `ErrNilReader` and `ErrNilWriter` — returned by IO import/export boundary checks; `ErrNilStore` — aliases the Store-layer sentinel returned by `graph.New` for typed nil `Config.Store` values and by nil concrete in-tree Store lifecycle receivers; `ErrReadOnlyReplica` — returned by the core-layer `checkWritable()` gate on every user mutation door (and `Tx().Begin` / `Batch.Execute` / `Admin().Reset`) when the graph was opened with `Config.ReadOnlyReplica` (reads, bootstrap import, and `ApplyChange` stay open).
 
 ---
 
@@ -763,21 +767,21 @@ Cross-shard split writes use `badgerstore_partial.go` helpers: `putRelEntityAndO
 
 ---
 
-## Entity Lock Manager (`pkg/graph/entity_locks.go`)
+## Entity Lock Manager (`pkg/graph/internal/locks/entity_locks.go`)
 
 256-shard mutex array for write-skew prevention. 2KB total.
 
 ```go
-type entityLockManager struct {
-    shards [256]sync.Mutex
+type Manager struct {
+    shards [ShardCount]sync.Mutex // ShardCount == 256
 }
 
-func shardIndex(id snowflake.ID) uint8 {
-    return uint8(snowflakeLayout.Decompose(id).Time) & (entityLockShards - 1)
+func ShardIndex(id snowflake.ID) uint8 {
+    return uint8(snowflakepkg.Layout.Decompose(id).Time) & (ShardCount - 1)
 }
 ```
 
-Extracts low 8 bits of the snowflake timestamp via `snowflakeLayout.Decompose()`. Entities created >256µs apart distribute across shards.
+Extracts low 8 bits of the snowflake timestamp via `Layout.Decompose()`. Entities created >256µs apart distribute across shards.
 
 | Method | Use case | Deadlock prevention |
 |--------|----------|---------------------|
@@ -987,15 +991,15 @@ Import treats record streams as untrusted input. `ImportOptions.MaxStagedBytes =
 
 ## File Map (`pkg/graph/`)
 
-After v3.4.0 (Option 3) and v4.2.0 (field→method), `pkg/graph/` is a thin façade: the `Graph` type holds a `*core.Core` plus 14 unexported sub-API pointers exposed via nil-safe accessor methods. All implementation lives in `pkg/graph/internal/core/`. The 130+ public methods that used to live directly on `*Graph` were removed — customers use the sub-APIs (`g.Nodes().Add`, `g.Temporal().NodesAt`, etc.).
+After v3.4.0 (Option 3) and v4.2.0 (field→method), `pkg/graph/` is a thin façade: the `Graph` type holds a `*core.Core` plus 15 unexported sub-API pointers exposed via nil-safe accessor methods. All implementation lives in `pkg/graph/internal/core/`. The 130+ public methods that used to live directly on `*Graph` were removed — customers use the sub-APIs (`g.Nodes().Add`, `g.Temporal().NodesAt`, etc.).
 
 #### `pkg/graph/` (4 production files + 1 smoke test)
 
 | File | Purpose |
 |------|---------|
-| `graph.go` | `Graph` thin façade: `core *core.Core` + 14 unexported sub-API pointers. Public methods: `New`, `Close`, and 14 nil-safe accessor methods (`Nodes() *nodes.API`, etc.). Plus `Config`, `ValidationLimits`, `IDComponents`, `ConstraintSet`, `QueryOpts`, `ShardDepth`, `DistanceMetric` type aliases re-exported. |
+| `graph.go` | `Graph` thin façade: `core *core.Core` + 15 unexported sub-API pointers. Public methods: `New`, `Close`, and 15 nil-safe accessor methods (`Nodes() *nodes.API`, etc.). Plus `Config`, `ValidationLimits`, `IDComponents`, `ConstraintSet`, `QueryOpts`, `ShardDepth`, `DistanceMetric` type aliases re-exported. |
 | `subapi.go` | `TxAPI` and `BatchAPI` — sub-API accessors for `g.Tx` and `g.Batch`, kept in-package because they wrap `*GraphTx` / `*BatchBuilder` declared in `internal/core`. |
-| `errors.go` | Public sentinel re-exports: 12 store sentinels, vector-index sentinels, registry sentinels, IndexProvider sentinels. Canonical declarations in `internal/core/core.go`. |
+| `errors.go` | Public sentinel re-exports (the canonical consumer surface for `errors.Is`): store sentinels (including the replica/change-log set — `ErrCapabilityNotSupported`, `ErrPrimaryRegistryStale`, `ErrRegistryDiverged`, `ErrWireFormatVersionUnsupported`), vector-index sentinels, registry sentinels, IndexProvider sentinels, IO sentinels, and the `internal/core` graph-layer sentinels (including `ErrReadOnlyReplica`). Each alias points at its one canonical declaration (store / index / registry / io / core). |
 | `subapi_smoke_test.go` | `TestSubAPISmoke` — exercises every sub-API accessor end-to-end. |
 | `doc.go` | Package documentation. |
 
@@ -1003,7 +1007,7 @@ After v3.4.0 (Option 3) and v4.2.0 (field→method), `pkg/graph/` is a thin faç
 
 | Package | Purpose |
 |---------|---------|
-| `pkg/graph/store` | `Store` interface, `QueryOpts`, `ShardDepth`, `RelTombstone`, `DistanceMetric`, 13 store sentinels. |
+| `pkg/graph/store` | `Store` interface, `QueryOpts`, `ShardDepth`, `RelTombstone`, `DistanceMetric`, `ChangeFeedCapability` + `ChangeRecord`/`ChangeTag`, `ReplicationSource` + `RegistrySnapshot`/`IDSlotLeaseRecord`, 30 store sentinels. |
 | `pkg/graph/store/memory` | `memory.Store`, `memory.New()`. |
 | `pkg/graph/store/badger` | `badger.Store`, `badger.Config`, `badger.New()`. |
 | `pkg/graph/store/tiered` | `tiered.Store`, `tiered.Config`, `tiered.New()`, `MigrateFromBadger`, `ShardInfo`, `VerifyResult`, `RepairResult`. |
@@ -1016,7 +1020,7 @@ After v3.4.0 (Option 3) and v4.2.0 (field→method), `pkg/graph/` is a thin faç
 
 | Package | Purpose |
 |---|---|
-| `internal/core` | (v3.4.0) `Core` type holding all unexported state and ~130 method bodies that previously lived on `*Graph`. ~7.5K LOC of implementation across 27 files; ~28K LOC of internal tests across 53 test files. |
+| `internal/core` | (v3.4.0) `Core` type holding all unexported state and ~130 method bodies that previously lived on `*Graph`. ~21K LOC of implementation across 56 files; ~62K LOC of internal tests across 142 test files. |
 | `internal/snowflake` | Snowflake `Epoch`, `Layout`, `IDComponents`, `DecomposeID`. Single source of truth for ID-bit decomposition. |
 | `internal/storeutil` | (renamed from `internal/store` in v3.3.0) Store-internal helpers: key encoding, msgpack wire types, pagination helpers, temporal-filter push-down. The public Store contract lives in `pkg/graph/store`. |
 | `internal/locks` | 256-shard entity-lock `Manager`, `LockEntity`/`LockTwo`/`LockMany` in ascending order. |
@@ -1035,10 +1039,12 @@ After v3.4.0 (Option 3) and v4.2.0 (field→method), `pkg/graph/` is a thin faç
 | `pkg/graph/events` | `g.Events` | ~3 wrappers — sync/async EventBus management. Coexists with `EventBus`, `AsyncEventBus`, `Event`, … in the same package. |
 | `pkg/graph/constraints` | `g.Constraints` | ~3 wrappers — temporal-constraint set management. |
 | `pkg/graph/io` | `g.IO` | ~2 wrappers — Export / Import. Shadows stdlib `io`; alias as `tkgio` at consumer sites that also need stdlib `io`. |
-| `pkg/graph/admin` | `g.Admin` | ~9 wrappers — tiered-store admin (archive, repair, shards, rotate, reset). |
-| `pkg/graph/stats` | `g.Stats` | ~6 wrappers — count helpers. |
+| `pkg/graph/admin` | `g.Admin` | 3 wrappers — backend-agnostic admin (`Reset`, `DecomposeNodeID`, `DecomposeRelID`). |
+| `pkg/graph/tier` | `g.Tier` | ~7 wrappers — tiered-store admin (archive, restore, rotate, shards, rebuild-catalog, repair, verify-shard). Reuses `core.AdminOps`. |
+| `pkg/graph/replication` | `g.Replication` | Change-log / op-log + replica apply: `ChangeFeed`, `ForEachChange`, `LastCommittedLSN`, `ApplyChange`/`ApplyChanges`, `AppliedLSN`/`SetAppliedLSN`, `RegistrySnapshot`, `IDSlotLease`/`SetIDSlotLease`. |
+| `pkg/graph/stats` | `g.Stats` | ~7 wrappers — count helpers (including `NodeCountByLabelAndPropertyKey`). |
 | `pkg/graph/hash` | `g.Hash` | ~2 wrappers — hash-chain verification. Shadows stdlib `hash`; alias as `tkghash` at consumer sites that also need stdlib `hash`. |
-| `pkg/graph/resolve` | `g.Resolve` | ~6 wrappers — shadow-property + registry resolution. |
+| `pkg/graph/resolve` | `g.Resolve` | 2 wrappers — shadow-property accessors (`NodeProperty`, `RelProperty`). |
 
 `g.Tx` (`TxAPI` in `subapi.go`) and `g.Batch` (`BatchAPI`) live in the `pkg/graph` package itself because they wrap the pkg/graph-private `*GraphTx` / `*BatchBuilder` types. `TxAPI.Run` / `TxAPI.RunContext` add closure-style transaction helpers on top of `Begin`.
 

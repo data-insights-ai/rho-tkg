@@ -373,6 +373,18 @@ func (c *Core) restoreNewLabelsOnError(snapshot, allocated []string, err error) 
 	if err == nil {
 		return c.persistRegistries()
 	}
+	// When the change-log is on, the token registries are APPEND-ONLY across an
+	// error rollback (lesson 51/54): a label this op allocated may already be
+	// referenced by a durable change-log record — most acutely a partial BATCH,
+	// which emits ChangeNodePut for the nodes it created, then this path runs the
+	// delete cleanup AND would de-allocate the label. De-allocating poisons the
+	// feed (a replica, even with a refetch source, can never resolve the token —
+	// the primary rolled it back too) and the number gets reused for a different
+	// name. The token is already persisted (allocated via getOrCreate*Persisted)
+	// and an allocated-but-unused token is harmless, so keep it.
+	if c.changeLogEnabled {
+		return err
+	}
 	if ok, rbErr := c.labels.RollbackNames(snapshot, allocated...); rbErr != nil {
 		return fmt.Errorf("%w; additionally failed to restore label registry: %v", err, rbErr)
 	} else if !ok {
@@ -394,6 +406,12 @@ func (c *Core) restoreNewRelTypeOnError(snapshot []string, allocated bool, typeN
 	}
 	if err == nil {
 		return c.persistRegistries()
+	}
+	// Append-only across rollback when the change-log is on — a rel-type this op
+	// allocated may already be referenced by a durable change-log record; see
+	// restoreNewLabelsOnError. Keep the (already-persisted) token.
+	if c.changeLogEnabled {
+		return err
 	}
 	if ok, rbErr := c.relTypes.RollbackNames(snapshot, typeName); rbErr != nil {
 		return fmt.Errorf("%w; additionally failed to restore reltype registry: %v", err, rbErr)

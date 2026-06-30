@@ -30,10 +30,10 @@ func (bs *Store) DeleteNodeCascade(nid types.NodeID) error {
 	if err != nil {
 		return err
 	}
-	if corruptErr == nil && bs.syncWrites {
-		return bs.flush()
+	if corruptErr != nil {
+		return corruptErr
 	}
-	return corruptErr
+	return bs.flushIfNeeded()
 }
 
 type cascadeDeletePrefetch struct {
@@ -319,6 +319,20 @@ func (bs *Store) purgeOrphanRelIDLocked(rid types.RelID) error {
 			copy(keyCopy, key)
 			bs.pending[k] = writeOp{opType: writeOpDelete, key: keyCopy}
 			continue
+		}
+	}
+	// A matching index key parked in `flushing` is mid-commit: gone from `pending`
+	// (swapped out) and not yet in Badger (so relationshipIndexKeysForRel's View
+	// missed it). Queue an explicit delete so a later flush removes it once the
+	// in-flight commit lands the key — otherwise it orphans a persisted index key.
+	for k, op := range bs.flushing {
+		if op.opType != writeOpSet || !relationshipIndexKeyMatchesRelID([]byte(k), rawID) {
+			continue
+		}
+		if _, has := bs.pending[k]; !has {
+			keyCopy := make([]byte, len(k))
+			copy(keyCopy, k)
+			bs.pending[k] = writeOp{opType: writeOpDelete, key: keyCopy}
 		}
 	}
 	bs.wbMu.Unlock()

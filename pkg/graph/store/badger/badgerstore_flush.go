@@ -132,6 +132,11 @@ func (bs *Store) flush() error {
 	bs.wbMu.Lock()
 	ops := bs.pending
 	bs.pending = make(map[string]writeOp)
+	// Park the in-flight snapshot so overlay readers (history / adjacency /
+	// label-index) still see these rows during the commit window — between this
+	// swap and wb.Flush() the rows are no longer in `pending` and not yet visible
+	// in a Badger View. Cleared after a successful commit; merged back on failure.
+	bs.flushing = ops
 	logs := bs.pendingLog
 	bs.pendingLog = nil
 	bs.wbMu.Unlock()
@@ -149,6 +154,11 @@ func (bs *Store) flush() error {
 	requeue := func() {
 		bs.requeueOps(ops)
 		bs.requeueLog(logs)
+		// The ops are back in `pending`; drop the in-flight snapshot so readers
+		// don't double-count and the next flush re-parks a fresh snapshot.
+		bs.wbMu.Lock()
+		bs.flushing = nil
+		bs.wbMu.Unlock()
 	}
 
 	// Step 1.5: Write-ahead the property-key registry. Any token referenced by
@@ -229,6 +239,16 @@ func (bs *Store) flush() error {
 		requeue()
 		return fmt.Errorf("graph: write batch flush: %w", err)
 	}
+
+	// Commit succeeded: the rows are now durable in Badger, so overlay readers
+	// (history / label-disk / adjacency-disk via rangePending/lookupPending) must
+	// stop consulting the parked snapshot. Leaving it set lets a stale overlay
+	// linger — most visibly, a Clear() that wipes the history keyspace would let
+	// these entries resurface as phantom history IDs. flushMu serializes flush(),
+	// so bs.flushing is still exactly this `ops`; clear it under wbMu.
+	bs.wbMu.Lock()
+	bs.flushing = nil
+	bs.wbMu.Unlock()
 
 	// Step 3: Mark cache entries clean — version-aware.
 	// Only clears dirty on entries whose dirtyVer matches the snapshot.

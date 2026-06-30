@@ -84,15 +84,16 @@ func (c *Core) applyChangeRecordLocked(rec storepkg.ChangeRecord) error {
 
 // applyTokenSyncErr annotates a token-not-in-registry failure with its likely
 // operational cause on a replica: the primary registered a label / rel-type
-// AFTER this replica's bootstrap snapshot, and lazy registry refetch is a
-// deferred Phase-1 feature — so until it lands, the primary must not register
-// new tokens while a replica is catching up. (The wrapped ErrCorruptExport is
+// AFTER this replica's bootstrap snapshot, and the lazy registry refetch could
+// not resolve it. This is reached when NO ReplicationSource is configured (the
+// replica has no door to refetch the primary's registry), or when a refetch ran
+// but the token was still absent afterward. (The wrapped ErrCorruptExport is
 // preserved for errors.Is.)
 func applyTokenSyncErr(err error) error {
 	if err == nil {
 		return nil
 	}
-	return fmt.Errorf("%w — replica token registry is behind the primary (a label/rel-type was registered after this replica's bootstrap snapshot; lazy registry refetch is a deferred Phase-1 feature)", err)
+	return fmt.Errorf("%w — replica token registry is behind the primary (a label/rel-type was registered after this replica's bootstrap snapshot; configure a ReplicationSource via Config.ReplicationSource / g.SetReplicationSource so the replica can refetch the primary's registry)", err)
 }
 
 // appendNamer is the append-only grow surface the refetch hook drives. Both
@@ -265,8 +266,8 @@ func (c *Core) applyNodePutLocked(body storeutil.NodePutBody, rec storepkg.Chang
 	if nodeWireMatches(local, &body.Wire) {
 		return nil // already applied (idempotent redelivery)
 	}
-	if added, removed, changed := labelTokenDiff(local, n); changed {
-		return c.applyNodeLabelChangeLocked(local, n, added, removed, body.WithHistory)
+	if added, removed, addedN, removedN := labelTokenDiff(local, n); addedN+removedN > 0 {
+		return c.applyNodeLabelChangeLocked(local, n, added, removed, addedN, removedN, body.WithHistory)
 	}
 	if body.WithHistory {
 		return c.store.ReplaceNodeWithHistory(n, local.Version(), local)
@@ -277,29 +278,28 @@ func (c *Core) applyNodePutLocked(body storeutil.NodePutBody, rec storepkg.Chang
 // applyNodeLabelChangeLocked routes a NodePut whose label set differs from the
 // local row to the matching label-token door (a label mutation on the primary
 // went through Add/RemoveNodeLabelToken{,WithHistory}, which ReplaceNode rejects).
-func (c *Core) applyNodeLabelChangeLocked(local, n *types.Node, added, removed uint16, withHistory bool) error {
+func (c *Core) applyNodeLabelChangeLocked(local, n *types.Node, added, removed uint16, addedN, removedN int, withHistory bool) error {
 	id := n.InternalID()
-	// Every label-token door mutates exactly one token, so a label-mutation
-	// NodePut differs from the local row by exactly one added OR one removed
-	// token. A simultaneous add+remove is not representable as a single
-	// label-token door op — fail closed rather than silently apply only one.
-	if added != 0 && removed != 0 {
-		return fmt.Errorf("graph: apply: node %d label change adds token %d AND removes token %d (not a single-token mutation)", body64(id), added, removed)
+	// Every label-token door mutates exactly one token, so a well-formed
+	// label-mutation NodePut differs from the local row by exactly one added OR
+	// one removed token. Anything else — multiple added, multiple removed, or a
+	// simultaneous add+remove — is not representable as a single label-token door
+	// op. Such a record cannot come from a correct contiguous feed (it implies a
+	// gap or a hand-crafted record); fail closed rather than silently apply one
+	// token and leave the label index diverged from the row.
+	if addedN+removedN != 1 {
+		return fmt.Errorf("graph: apply: node %d label change is not a single-token mutation (%d added, %d removed) — a well-formed feed emits one label-token door op per record", body64(id), addedN, removedN)
 	}
-	switch {
-	case added != 0:
+	if addedN == 1 {
 		if withHistory {
 			return c.store.AddNodeLabelTokenWithHistory(id, added, n, local.Version(), local)
 		}
 		return c.store.AddNodeLabelToken(id, added, n)
-	case removed != 0:
-		if withHistory {
-			return c.store.RemoveNodeLabelTokenWithHistory(id, removed, n, local.Version(), local)
-		}
-		return c.store.RemoveNodeLabelToken(id, removed, n)
-	default:
-		return fmt.Errorf("graph: apply: node %d label change with no token diff", body64(n.InternalID()))
 	}
+	if withHistory {
+		return c.store.RemoveNodeLabelTokenWithHistory(id, removed, n, local.Version(), local)
+	}
+	return c.store.RemoveNodeLabelToken(id, removed, n)
 }
 
 func (c *Core) applyRelPutLocked(body storeutil.RelPutBody, rec storepkg.ChangeRecord) error {
@@ -458,10 +458,14 @@ func (c *Core) applyHistoryTruncateLocked(isNode bool, body storeutil.HistoryTru
 	return c.store.TruncateRelHistory(types.RelID(body.ID), int(body.Bound))
 }
 
-// labelTokenDiff reports the single label token added or removed between the
-// local row and the incoming node (a label-mutation NodePut differs by exactly
-// one token; a non-label update has changed == false).
-func labelTokenDiff(local, n *types.Node) (added, removed uint16, changed bool) {
+// labelTokenDiff reports the label tokens added and removed between the local
+// row and the incoming node, with their counts. A well-formed label-mutation
+// NodePut differs by exactly one token (each label-token door mutates one token);
+// the counts let the caller fail closed on a multi-token diff instead of silently
+// applying only one. A non-label update has addedN == removedN == 0. When a count
+// exceeds 1, the returned added/removed token is an arbitrary one of them — the
+// caller must treat addedN+removedN != 1 as an error, not act on the token.
+func labelTokenDiff(local, n *types.Node) (added, removed uint16, addedN, removedN int) {
 	lset := make(map[uint16]struct{}, local.LabelTokenCount())
 	for i := 0; i < local.LabelTokenCount(); i++ {
 		lset[local.LabelTokenRawAt(i)] = struct{}{}
@@ -472,15 +476,15 @@ func labelTokenDiff(local, n *types.Node) (added, removed uint16, changed bool) 
 	}
 	for t := range nset {
 		if _, ok := lset[t]; !ok {
-			added, changed = t, true
+			added, addedN = t, addedN+1
 		}
 	}
 	for t := range lset {
 		if _, ok := nset[t]; !ok {
-			removed, changed = t, true
+			removed, removedN = t, removedN+1
 		}
 	}
-	return added, removed, changed
+	return added, removed, addedN, removedN
 }
 
 func body64(id types.NodeID) int64 { return int64(id.SnowflakeID()) }

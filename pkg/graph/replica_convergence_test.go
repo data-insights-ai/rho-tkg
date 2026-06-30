@@ -3,6 +3,7 @@ package graph_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
@@ -184,6 +185,72 @@ func TestReplicaConvergence_IdempotentReapply(t *testing.T) {
 	assertConverged(t, "after double-apply", primary, replica)
 }
 
+// ApplyChanges enforces strictly-ascending LSN order: a record below the running
+// maximum must fail the batch (not be silently swallowed by the watermark skip,
+// which would leave a permanent gap in coverage). The successful prefix before
+// the out-of-order record is still flushed and watermarked.
+func TestReplicaApplyChanges_RejectsMisorderedBatch(t *testing.T) {
+	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
+	if err != nil {
+		t.Fatalf("primary New: %v", err)
+	}
+	defer primary.Close()
+	// Seed a node so label "A"'s token is in the bootstrap snapshot registry; the
+	// post-bootstrap records then reuse the known token (no refetch needed).
+	mustAdd(t, primary, []string{"A"}, map[string]any{"n": "seed"})
+
+	replica, err := graph.New(graph.Config{SnowflakeNodeID: 2, BadgerInMemory: true, ReadOnlyReplica: true})
+	if err != nil {
+		t.Fatalf("replica New: %v", err)
+	}
+	defer replica.Close()
+	var snap bytes.Buffer
+	if err := primary.IO().Export(&snap); err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+	if err := replica.IO().Import(&snap, tkgio.ImportOptions{}); err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+	lsn0, err := primary.Replication().LastCommittedLSN()
+	if err != nil {
+		t.Fatalf("LastCommittedLSN: %v", err)
+	}
+	if err := replica.Replication().SetAppliedLSN(lsn0); err != nil {
+		t.Fatalf("SetAppliedLSN: %v", err)
+	}
+
+	// Three INDEPENDENT NodePuts past the snapshot, so they can be reordered
+	// without a cross-record dependency error.
+	mustAdd(t, primary, []string{"A"}, map[string]any{"n": "x"})
+	mustAdd(t, primary, []string{"A"}, map[string]any{"n": "y"})
+	mustAdd(t, primary, []string{"A"}, map[string]any{"n": "z"})
+
+	var recs []store.ChangeRecord
+	if err := primary.Replication().ForEachChange(lsn0, func(rec store.ChangeRecord) bool {
+		recs = append(recs, rec)
+		return true
+	}); err != nil {
+		t.Fatalf("ForEachChange: %v", err)
+	}
+	if len(recs) < 3 {
+		t.Fatalf("got %d records past snapshot, want >= 3", len(recs))
+	}
+
+	// Misordered batch: r1 arrives AFTER r2 (below the running maximum).
+	mis := []store.ChangeRecord{recs[0], recs[2], recs[1]}
+	applied, err := replica.Replication().ApplyChanges(mis)
+	if !errors.Is(err, store.ErrChangesNotAscending) {
+		t.Fatalf("ApplyChanges err = %v, want wrapping ErrChangesNotAscending", err)
+	}
+	// The strictly-ascending prefix (r0, r2) was applied, flushed and watermarked.
+	if applied != recs[2].LSN {
+		t.Fatalf("applied LSN = %d, want %d (successful prefix watermarked)", applied, recs[2].LSN)
+	}
+	if got, _ := replica.Replication().AppliedLSN(); got != recs[2].LSN {
+		t.Fatalf("persisted watermark = %d, want %d", got, recs[2].LSN)
+	}
+}
+
 // A disk-backed replica WITHOUT SyncWrites (async write buffer) must persist its
 // applied data AND watermark across a restart, and resume tailing from the
 // watermark — the durability-ordering path (flush-before-watermark) that keeps
@@ -201,8 +268,15 @@ func TestReplicaConvergence_DurableRestartResume(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	// Replica: disk-backed, async buffer (no SyncWrites) — the case where
-	// flushIfNeeded is a no-op and the watermark MetaSet must not outrun the data.
+	// Replica: disk-backed, async buffer (no SyncWrites) — the case where the
+	// watermark MetaSet must not outrun the data. NOTE: this test exercises a
+	// GRACEFUL restart (replica.Close() flushes both data and watermark), so it
+	// pins persistence + resume but does NOT by itself distinguish flush-before-
+	// watermark ordering from watermark-before-flush — Close() would flush both
+	// either way. A true crash injection is not expressible at the graph façade
+	// (Badger's dir lock forbids reopening without Close, and there is no abandon
+	// hook). The flush-before-watermark ordering is guaranteed structurally by
+	// ApplyChange/ApplyChanges (flushStoreLocked precedes setAppliedLSNLocked).
 	replica, err := graph.New(graph.Config{SnowflakeNodeID: 2, BadgerDir: dir, ReadOnlyReplica: true})
 	if err != nil {
 		t.Fatalf("replica New: %v", err)
@@ -310,6 +384,96 @@ func TestReplicaApply_SkipsStaleLSN(t *testing.T) {
 	}
 }
 
+// Covers the apply handlers the byte-exact tail test does not reach: a standalone
+// relationship delete (applyRelDeleteLocked) and version-interval timeline edits
+// that emit history-version records (applyNodeHistoryVersionLocked /
+// applyRelHistoryVersionLocked). Full convergence — including version-history
+// parity for every live and deleted entity — is the oracle.
+func TestReplicaConvergence_RelDeleteAndVersionInterval(t *testing.T) {
+	ctx := context.Background()
+	primary, err := graph.New(graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true})
+	if err != nil {
+		t.Fatalf("primary New: %v", err)
+	}
+	defer primary.Close()
+
+	a := mustAdd(t, primary, []string{"A"}, map[string]any{"n": "a"})
+	b := mustAdd(t, primary, []string{"A"}, map[string]any{"n": "b", "tkg_valid_from": types.Instant(1000)})
+	c := mustAdd(t, primary, []string{"A"}, map[string]any{"n": "c"})
+	r1, err := primary.Rels().AddByID(ctx, "KNOWS", a.ID(), b.ID(), map[string]any{"tkg_valid_from": types.Instant(1000), "w": int64(1)})
+	if err != nil {
+		t.Fatalf("seed rel r1: %v", err)
+	}
+	r2, err := primary.Rels().AddByID(ctx, "KNOWS", a.ID(), c.ID(), nil)
+	if err != nil {
+		t.Fatalf("seed rel r2: %v", err)
+	}
+
+	var snap bytes.Buffer
+	if err := primary.IO().Export(&snap); err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+	lsn0, err := primary.Replication().LastCommittedLSN()
+	if err != nil {
+		t.Fatalf("LastCommittedLSN: %v", err)
+	}
+	replica, err := graph.New(graph.Config{SnowflakeNodeID: 2, BadgerInMemory: true, ReadOnlyReplica: true})
+	if err != nil {
+		t.Fatalf("replica New: %v", err)
+	}
+	defer replica.Close()
+	if err := replica.IO().Import(&snap, tkgio.ImportOptions{}); err != nil {
+		t.Fatalf("replica Import: %v", err)
+	}
+	if err := replica.Replication().SetAppliedLSN(lsn0); err != nil {
+		t.Fatalf("SetAppliedLSN: %v", err)
+	}
+	assertConverged(t, "after bootstrap", primary, replica)
+
+	// 1. Standalone relationship delete (saves a tombstone version) →
+	//    ChangeRelDelete{WithHistory} → applyRelDeleteLocked.
+	if err := primary.Rels().Delete(ctx, r2.ID()); err != nil {
+		t.Fatalf("Delete r2: %v", err)
+	}
+	// 2. Node version-interval edit tiles the timeline → ChangeNodeHistoryVersion
+	//    → applyNodeHistoryVersionLocked.
+	if _, err := primary.Temporal().SetNodeVersionInterval(ctx, b.ID(), types.Instant(2000), types.Instant(0), map[string]any{"n": "b-tiled"}); err != nil {
+		t.Fatalf("SetNodeVersionInterval: %v", err)
+	}
+	// 3. Rel version-interval edit → ChangeRelHistoryVersion →
+	//    applyRelHistoryVersionLocked.
+	if _, err := primary.Temporal().SetRelVersionInterval(ctx, r1.ID(), types.Instant(2000), types.Instant(0), map[string]any{"w": int64(2)}); err != nil {
+		t.Fatalf("SetRelVersionInterval: %v", err)
+	}
+
+	from, err := replica.Replication().AppliedLSN()
+	if err != nil {
+		t.Fatalf("AppliedLSN: %v", err)
+	}
+	var recs []store.ChangeRecord
+	if err := primary.Replication().ForEachChange(from, func(rec store.ChangeRecord) bool {
+		recs = append(recs, rec)
+		return true
+	}); err != nil {
+		t.Fatalf("ForEachChange: %v", err)
+	}
+	if len(recs) == 0 {
+		t.Fatal("no change records past the snapshot LSN — nothing to tail")
+	}
+	if _, err := replica.Replication().ApplyChanges(recs); err != nil {
+		t.Fatalf("ApplyChanges: %v", err)
+	}
+
+	assertConverged(t, "after rel-delete + version-interval tail", primary, replica)
+
+	// The deleted rel's tombstone history must replicate byte-for-byte too.
+	pHist := mustRelHistory(t, primary, r2.ID())
+	rHist := mustRelHistory(t, replica, r2.ID())
+	if len(pHist) != len(rHist) {
+		t.Fatalf("deleted rel r2 history depth: primary %d, replica %d", len(pHist), len(rHist))
+	}
+}
+
 // --- helpers ---
 
 func mustAdd(t *testing.T, g *graph.Graph, labels []string, props map[string]any) *types.Node {
@@ -326,6 +490,15 @@ func mustNodeHistory(t *testing.T, g *graph.Graph, id types.NodeID) []*types.Nod
 	h, err := g.Nodes().History(id)
 	if err != nil {
 		t.Fatalf("Nodes().History(%v): %v", id, err)
+	}
+	return h
+}
+
+func mustRelHistory(t *testing.T, g *graph.Graph, id types.RelID) []*types.Relationship {
+	t.Helper()
+	h, err := g.Rels().History(id)
+	if err != nil {
+		t.Fatalf("Rels().History(%v): %v", id, err)
 	}
 	return h
 }

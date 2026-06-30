@@ -419,10 +419,10 @@ func (bs *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 	bs.logChangeRaw(storecontract.ChangeNodeDelete, delPayload)
 	bs.idxMu.Unlock()
 
-	if corruptErr == nil && bs.syncWrites {
-		return bs.flush()
+	if corruptErr != nil {
+		return corruptErr
 	}
-	return corruptErr
+	return bs.flushIfNeeded()
 }
 
 func (bs *Store) validateDeleteNodeRelTombstonesLocked(nid types.NodeID, relTombstones []RelTombstone, prefetched map[types.RelID]RelDeleteInfo) error {
@@ -521,10 +521,11 @@ func (bs *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 	id := nid.SnowflakeID()
 	key := storepkg.HistNodeKey(id, uint64(version))
 
-	// Check pending buffer for unflushed writes.
-	bs.wbMu.Lock()
-	op, found := bs.pending[string(key)]
-	bs.wbMu.Unlock()
+	// Check the write buffer (pending + the snapshot a concurrent flush is
+	// mid-committing) for an unflushed write. Consulting only `pending` would
+	// miss a row parked in `flushing` during the commit window and wrongly
+	// return ErrVersionNotFound for a version that was just written.
+	op, found := bs.lookupPending(string(key))
 
 	if found {
 		if op.opType == writeOpDelete {
@@ -632,9 +633,10 @@ func (bs *Store) getNodeHistoryByPrefix(prefix []byte) ([]*types.Node, error) {
 		return nil, err
 	}
 
-	// Merge pending buffer entries (pending wins).
-	bs.wbMu.Lock()
-	for k, op := range bs.pending {
+	// Merge buffered entries (rangePending = flushing ++ pending; pending wins).
+	// Consulting only `pending` would drop a version parked in `flushing` during
+	// the commit window.
+	bs.rangePending(func(k string, op writeOp) {
 		if len(k) == storepkg.SizeHistKey && k[:len(prefixStr)] == prefixStr {
 			if op.opType == writeOpDelete {
 				delete(entries, k)
@@ -644,8 +646,7 @@ func (bs *Store) getNodeHistoryByPrefix(prefix []byte) ([]*types.Node, error) {
 				entries[k] = cp
 			}
 		}
-	}
-	bs.wbMu.Unlock()
+	})
 
 	if len(entries) == 0 {
 		return nil, nil

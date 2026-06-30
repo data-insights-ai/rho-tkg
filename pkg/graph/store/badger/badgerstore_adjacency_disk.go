@@ -52,14 +52,16 @@ func (bs *Store) adjacentRelIDsSnapshotLocked(nid types.NodeID, typeToken uint16
 	// Pending overlay: unflushed adjacency ops must be visible (adds) and
 	// authoritative (deletes) over the committed keyspace.
 	var adds, dels map[types.RelID]struct{}
-	bs.wbMu.Lock()
-	for k, op := range bs.pending {
+	// rangePending = flushing ++ pending, so an adjacency op a concurrent flush is
+	// mid-committing is visible. Set/delete are symmetric so a rel in BOTH buffers
+	// during the requeue window resolves to the newer (pending-visited-last) op.
+	bs.rangePending(func(k string, op writeOp) {
 		if len(k) != storepkg.SizeAdjacency || k[0] != keyTag {
-			continue
+			return
 		}
 		kb := []byte(k)
 		if !hasPrefix(kb, prefix) {
-			continue
+			return
 		}
 		rid := types.RelID(storepkg.ParseIDFromKey(kb, 19))
 		if op.opType == writeOpSet {
@@ -67,14 +69,15 @@ func (bs *Store) adjacentRelIDsSnapshotLocked(nid types.NodeID, typeToken uint16
 				adds = make(map[types.RelID]struct{})
 			}
 			adds[rid] = struct{}{}
+			delete(dels, rid)
 		} else {
 			if dels == nil {
 				dels = make(map[types.RelID]struct{})
 			}
 			dels[rid] = struct{}{}
+			delete(adds, rid)
 		}
-	}
-	bs.wbMu.Unlock()
+	})
 
 	var rids []types.RelID
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
@@ -128,14 +131,16 @@ func (bs *Store) adjacentRelMetasSnapshotLocked(nid types.NodeID, typeToken uint
 
 	var adds map[types.RelID]types.NodeID
 	var dels map[types.RelID]struct{}
-	bs.wbMu.Lock()
-	for k, op := range bs.pending {
+	// rangePending = flushing ++ pending, so an adjacency op a concurrent flush is
+	// mid-committing is visible. Set/delete are symmetric so a rel in BOTH buffers
+	// during the requeue window resolves to the newer (pending-visited-last) op.
+	bs.rangePending(func(k string, op writeOp) {
 		if len(k) != storepkg.SizeAdjacency || k[0] != keyTag {
-			continue
+			return
 		}
 		kb := []byte(k)
 		if !hasPrefix(kb, prefix) {
-			continue
+			return
 		}
 		rid := types.RelID(storepkg.ParseIDFromKey(kb, 19))
 		if op.opType == writeOpSet {
@@ -143,14 +148,15 @@ func (bs *Store) adjacentRelMetasSnapshotLocked(nid types.NodeID, typeToken uint
 				adds = make(map[types.RelID]types.NodeID)
 			}
 			adds[rid] = types.NodeID(storepkg.ParseIDFromKey(kb, 11))
+			delete(dels, rid)
 		} else {
 			if dels == nil {
 				dels = make(map[types.RelID]struct{})
 			}
 			dels[rid] = struct{}{}
+			delete(adds, rid)
 		}
-	}
-	bs.wbMu.Unlock()
+	})
 
 	var metas []adjMeta
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
@@ -342,13 +348,13 @@ func (bs *Store) incomingIndexEntriesFromKeyspaceLocked() []IncomingIndexEntry {
 		return nil
 	}
 
-	bs.wbMu.Lock()
-	for k, op := range bs.pending {
+	// rangePending = flushing ++ pending (pending visited last wins on `merged`),
+	// so an adjacency op a concurrent flush is mid-committing is visible.
+	bs.rangePending(func(k string, op writeOp) {
 		if ik, ok := decode([]byte(k)); ok {
 			merged[ik] = op.opType == writeOpSet
 		}
-	}
-	bs.wbMu.Unlock()
+	})
 
 	entries := make([]IncomingIndexEntry, 0, len(merged))
 	for ik, present := range merged {

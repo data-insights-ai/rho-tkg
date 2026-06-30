@@ -137,3 +137,43 @@ type ChangeFeedCapability interface {
 	// change-log is empty.
 	LastCommittedLSN() (uint64, error)
 }
+
+// ChangeLogStatus is an optional capability: a store that can report whether its
+// change-log is actually ENABLED — distinct from merely implementing the feed
+// methods (a badger/memory store always implements ChangeFeedCapability but only
+// EMITS records when its log is on). Core uses it to gate behavior that must hold
+// only when records are really being emitted (e.g. keeping the token registries
+// append-only across tx rollback, so a rolled-back-but-already-logged token is
+// never de-allocated). A store that does not implement this is treated as
+// log-disabled.
+type ChangeLogStatus interface {
+	ChangeLogEnabled() bool
+}
+
+// TxChangeLogScope is an optional capability that lets a transaction (or batch)
+// buffer the change-log records its mutations produce, so a ROLLED-BACK tx emits
+// NOTHING to the feed (mirroring the in-memory txEventBuffer for events). It is
+// the proper fix for the rolled-back-token-poisoning / transient-replica-phantom /
+// CDC-asymmetry that arise because the change-log is otherwise a physical redo log
+// that records a rolled-back tx's forward AND reverse mutations.
+//
+// Lifecycle (the core, holding c.txMu, drives it):
+//   - BeginLogScope opens a per-tx record buffer.
+//   - SetLogDivert(true)/(false) brackets EACH tx mutation; the core calls these
+//     only while it holds the EXCLUSIVE write lock that guards the mutation, so a
+//     concurrent standalone mutation (which holds only a shared read lock) can
+//     never observe diversion active and have its own record misrouted into the
+//     tx's buffer. Records produced while diverted carry NO LSN.
+//   - CommitLogScope mints contiguous LSNs for the buffered records at COMMIT time
+//     (so a rolled-back tx burns no LSN and leaves no feed gap) and co-commits
+//     them with the tx's pending data in one atomic batch.
+//   - DiscardLogScope drops the buffer; the rolled-back tx emits nothing.
+//
+// A store that does not implement this (e.g. tiered) makes the core emit records
+// eagerly as before. All methods are no-ops when the change-log is disabled.
+type TxChangeLogScope interface {
+	BeginLogScope() error
+	SetLogDivert(on bool)
+	CommitLogScope() error
+	DiscardLogScope() error
+}

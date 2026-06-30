@@ -227,6 +227,12 @@ func (r *ReplOps) ApplyChange(rec storepkg.ChangeRecord) error {
 // watermark never runs ahead of durable data. On the first failing record it
 // stops, still flushes + records the watermark for the successful prefix, and
 // returns (lastApplied, err); the caller resumes from lastApplied.
+//
+// Ascending LSN order is a caller contract AND is enforced: a record whose LSN
+// is not strictly greater than the previous record's stops the batch with an
+// error (the successful prefix is still flushed and watermarked). Without this
+// guard a misordered record below the running maximum would be silently swallowed
+// by the watermark skip, leaving a permanent gap in the replica's coverage.
 func (r *ReplOps) ApplyChanges(recs []storepkg.ChangeRecord) (uint64, error) {
 	if r == nil || r.c == nil {
 		return 0, ErrNilGraph
@@ -242,9 +248,15 @@ func (r *ReplOps) ApplyChanges(recs []storepkg.ChangeRecord) (uint64, error) {
 		return 0, err
 	}
 	last := applied
+	var prevLSN uint64
 	var applyErr error
 	for i := range recs {
 		rec := recs[i]
+		if prevLSN != 0 && rec.LSN <= prevLSN {
+			applyErr = fmt.Errorf("graph: apply changes: %w (LSN %d after %d)", storepkg.ErrChangesNotAscending, rec.LSN, prevLSN)
+			break
+		}
+		prevLSN = rec.LSN
 		if rec.LSN <= last {
 			continue // already applied / stale
 		}

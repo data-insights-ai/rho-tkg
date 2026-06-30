@@ -47,13 +47,16 @@ func (bs *Store) labelNodeIDsSnapshotLocked(token uint16) ([]types.NodeID, error
 	// Pending overlay: unflushed label-index ops must be visible (adds)
 	// and authoritative (deletes) over the committed keyspace.
 	var adds, dels map[types.NodeID]struct{}
-	bs.wbMu.Lock()
-	for k, op := range bs.pending {
+	// rangePending = flushing ++ pending, so a label add/remove a concurrent flush
+	// is mid-committing is visible. Set/delete are kept symmetric (each removes the
+	// node from the other set) so a node that appears in BOTH buffers during the
+	// requeue window resolves to the newer (pending-visited-last) op.
+	bs.rangePending(func(k string, op writeOp) {
 		if len(k) != storepkg.SizeLabelIdx || k[0] != storepkg.KeyLabel {
-			continue
+			return
 		}
 		if binary.BigEndian.Uint16([]byte(k[1:3])) != token {
-			continue
+			return
 		}
 		nid := types.NodeID(storepkg.ParseIDFromKey([]byte(k), 3))
 		if op.opType == writeOpSet {
@@ -61,14 +64,15 @@ func (bs *Store) labelNodeIDsSnapshotLocked(token uint16) ([]types.NodeID, error
 				adds = make(map[types.NodeID]struct{})
 			}
 			adds[nid] = struct{}{}
+			delete(dels, nid)
 		} else {
 			if dels == nil {
 				dels = make(map[types.NodeID]struct{})
 			}
 			dels[nid] = struct{}{}
+			delete(adds, nid)
 		}
-	}
-	bs.wbMu.Unlock()
+	})
 
 	var nids []types.NodeID
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
@@ -114,13 +118,14 @@ func labelIndexPrefix(token uint16) []byte {
 // unknown). O(whole label keyspace); error-path only. Caller holds idxMu.
 func (bs *Store) nodeLabelTokensFromKeyspaceLocked(nid types.NodeID) ([]uint16, error) {
 	tokens := make(map[uint16]struct{})
-	bs.wbMu.Lock()
-	for k, op := range bs.pending {
+	// rangePending = flushing ++ pending (pending visited last wins on the shared
+	// `tokens` map), so a label op a concurrent flush is mid-committing is visible.
+	bs.rangePending(func(k string, op writeOp) {
 		if len(k) != storepkg.SizeLabelIdx || k[0] != storepkg.KeyLabel {
-			continue
+			return
 		}
 		if types.NodeID(storepkg.ParseIDFromKey([]byte(k), 3)) != nid {
-			continue
+			return
 		}
 		tok := binary.BigEndian.Uint16([]byte(k[1:3]))
 		if op.opType == writeOpSet {
@@ -128,8 +133,7 @@ func (bs *Store) nodeLabelTokensFromKeyspaceLocked(nid types.NodeID) ([]uint16, 
 		} else {
 			delete(tokens, tok)
 		}
-	}
-	bs.wbMu.Unlock()
+	})
 
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions

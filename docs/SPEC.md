@@ -63,7 +63,7 @@ type relTypeToken uint16  // interned type string, max 65,535 distinct types
 |----------|---------------|-----------|
 | Globally unique | No (per-process only) | Yes (node ID embedded) |
 | Distributed-safe | No (collision on multi-instance) | Yes (no coordination) |
-| Time-ordered | No (arbitrary sequence) | Yes (41-bit ms timestamp) |
+| Time-ordered | No (arbitrary sequence) | Yes (48-bit µs timestamp) |
 | Crash recovery | Required (scan max key) | Not needed (stateless generation) |
 | Counter persistence | Required (`meta/next_node_id`) | Not needed |
 | Temporal locality in LSM | No (random distribution) | Yes (recent IDs cluster — better Badger compaction) |
@@ -141,7 +141,7 @@ No crash recovery logic for counters. No max-key scan on startup. The startup se
 
 ### 3.5 Badger Key Ordering
 
-Snowflake IDs are roughly time-ordered (41-bit timestamp in the high bits). When stored as big-endian int64 in Badger keys, this means:
+Snowflake IDs are roughly time-ordered (48-bit µs timestamp in the high bits). When stored as big-endian int64 in Badger keys, this means:
 
 - Recently created entities cluster together in the LSM tree
 - Prefix scans over recent data hit fewer SSTables
@@ -644,7 +644,7 @@ matches, err := g.Nodes().ByLabelAndProperty("User", "external_id", "user:alice"
 
 ## 12. Public API (v3.4 sub-API surface)
 
-`tkg/v4` is a pure library: there is no Cypher engine, no HTTP server, and no query language. All access is through the thin `*graph.Graph` façade and its 14 sub-API accessor methods (`g.Nodes()`, `g.Rels()`, `g.Temporal()`, …). Cypher integration is a concern of the consuming product (`rho/tkgd-v3`), not this library.
+`tkg/v4` is a pure library: there is no Cypher engine, no HTTP server, and no query language. All access is through the thin `*graph.Graph` façade and its 15 sub-API accessor methods (`g.Nodes()`, `g.Rels()`, `g.Temporal()`, …). Cypher integration is a concern of the consuming product (`rho/tkgd-v3`), not this library.
 
 ### 12.1 Node Creation
 

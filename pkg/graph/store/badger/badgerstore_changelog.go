@@ -13,7 +13,7 @@ import (
 )
 
 // This file implements the in-backend change-log (op-log): the write-side
-// record producer (logChangeRaw / writeClearMarker), the restart LSN seed
+// record producer (logChangeRaw / clearAndReanchorChangeLog), the restart LSN seed
 // (seedLogLSN / maxChangeLogLSN), and the read side (the
 // store.ChangeFeedCapability methods). Records are persisted by flush() in the
 // same WriteBatch as the data; this file only buffers them and reads them back.
@@ -38,6 +38,14 @@ func (bs *Store) logChangeRaw(tag storecontract.ChangeTag, payload []byte) {
 	}
 	value := storepkg.EncodeChangeValue(tag, payload)
 	bs.wbMu.Lock()
+	if bs.scopeActive {
+		// Per-tx scope open: buffer WITHOUT an LSN (logSeq untouched). LSNs are
+		// minted at CommitLogScope; a rolled-back scope (DiscardLogScope) emits
+		// nothing and burns no LSN. See the scopeLog field doc.
+		bs.scopeLog = append(bs.scopeLog, value)
+		bs.wbMu.Unlock()
+		return
+	}
 	lsn := bs.logSeq.Add(1)
 	bs.pendingLog = append(bs.pendingLog, pendingLogRecord{lsn: lsn, value: value})
 	bs.wbMu.Unlock()
@@ -69,8 +77,14 @@ func (bs *Store) appendOpsLogged(tag storecontract.ChangeTag, payload []byte, op
 	}
 	if bs.logEnabled {
 		value := storepkg.EncodeChangeValue(tag, payload)
-		lsn := bs.logSeq.Add(1)
-		bs.pendingLog = append(bs.pendingLog, pendingLogRecord{lsn: lsn, value: value})
+		if bs.scopeActive {
+			// Per-tx scope: buffer the record without an LSN (see logChangeRaw).
+			// The entity ops still go to pending (data flows normally).
+			bs.scopeLog = append(bs.scopeLog, value)
+		} else {
+			lsn := bs.logSeq.Add(1)
+			bs.pendingLog = append(bs.pendingLog, pendingLogRecord{lsn: lsn, value: value})
+		}
 	}
 	bs.wbMu.Unlock()
 }
@@ -168,12 +182,41 @@ func (bs *Store) relDeleteWithHistoryPayload(id snowflake.ID, tombstone *types.R
 	return storepkg.RelDeleteWithHistoryPayload(id, tombstone)
 }
 
-// writeClearMarker re-anchors the change-log after a Clear() DropAll, which
-// removed every KeyChangeLog record and LastLSNKey. A fresh ChangeClear record
-// at a new (still strictly monotonic) LSN tells a tailing consumer that
-// everything before it is gone and it must reset its state. Called from Clear()
-// while holding idxMu.Lock and flushMu, so no concurrent writer/flush can race.
-func (bs *Store) writeClearMarker() error {
+// clearAndReanchorChangeLog wipes the store while keeping the durable change-log
+// watermark (LastLSNKey) continuously present, then re-anchors the log with a
+// fresh ChangeClear record at a new (still strictly monotonic) LSN. Called from
+// Clear() while holding idxMu.Lock and flushMu, so no concurrent writer/flush can
+// race.
+//
+// Why not db.DropAll() + a separate marker write: DropAll wipes LastLSNKey too,
+// so a crash AFTER DropAll commits but BEFORE the marker is flushed reopens the
+// store with neither change-log records nor a watermark — seedLogLSN then reseeds
+// the LSN allocator to 0, so post-Clear LSNs collide with a consumer's pre-Clear
+// watermark, silently leaving the consumer stuck (it never sees LSNs <= its
+// checkpoint). Here LastLSNKey is never dropped: the data/history/change-log
+// keyspaces are dropped by prefix (meta left intact), then ONE atomic WriteBatch
+// deletes the stale metadata keys (registries, counters, index defs, …) EXCEPT
+// LastLSNKey and overwrites LastLSNKey with the new watermark alongside the
+// marker. A crash at any point leaves LastLSNKey at its old (or new) value, never
+// absent, so the allocator never moves backward. See lesson 52.
+func (bs *Store) clearAndReanchorChangeLog() error {
+	// Step ordering is dictated by two durable invariants that must hold at EVERY
+	// crash point: (a) LastLSNKey is never absent (watermark monotonicity), and
+	// (b) the persisted entity counters never exceed the live rows — loadIndexes
+	// treats persisted > liveRows as fatal data loss (reconcilePersistedCounter),
+	// while persisted == 0 (absent) safely trusts the live rows. So the counter
+	// keys MUST be removed BEFORE the data is dropped; if the order were reversed,
+	// a crash between the data drop and the counter delete would leave the counter
+	// claiming rows that no longer exist, and the store would refuse to reopen.
+
+	// Steps 1-3: wipe data + all meta except LastLSNKey (shared with the
+	// change-log-disabled Clear arm so BOTH preserve the watermark — lesson 52).
+	if err := bs.clearDataPreservingLastLSN(); err != nil {
+		return err
+	}
+
+	// 4. Write the fresh ChangeClear marker and overwrite LastLSNKey with the new
+	//    (still strictly monotonic) watermark, atomically.
 	lsn := bs.logSeq.Add(1)
 	value := storepkg.EncodeChangeValue(storecontract.ChangeClear, nil)
 	lsnBuf := make([]byte, 8)
@@ -195,6 +238,95 @@ func (bs *Store) writeClearMarker() error {
 		return fmt.Errorf("graph: clear marker flush: %w", err)
 	}
 	return nil
+}
+
+// clearDataPreservingLastLSN wipes every data / index / history / change-log
+// keyspace and all metadata EXCEPT LastLSNKey, which stays continuously durable.
+// Shared by both Clear() arms so the LSN watermark is never absent across a Clear
+// (lesson 52): a future change-log-enabled reopen reseeds the allocator FROM it,
+// never from 0, so post-Clear LSNs cannot collide with a consumer's pre-Clear
+// checkpoint. The entity-counter meta keys are deleted BEFORE the data drop, so a
+// crash between the two leaves the counters absent (reconcilePersistedCounter then
+// trusts the live rows) rather than claiming rows that no longer exist (which
+// would fatal the reopen). Called under idxMu.Lock + flushMu.
+func (bs *Store) clearDataPreservingLastLSN() error {
+	// 1. Collect every metadata key except LastLSNKey. Scanning (rather than a
+	//    hard-coded list) also reaps dynamically-set meta keys (registries,
+	//    index defs, the replica watermark, the id-slot lease, …).
+	lastLSN := string(storepkg.LastLSNKey)
+	var metaKeys [][]byte
+	if err := bs.db.View(func(txn *badgerv4.Txn) error {
+		opts := badgerv4.DefaultIteratorOptions
+		opts.PrefetchValues = false
+		opts.Prefix = []byte{storepkg.KeyMeta}
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		for it.Rewind(); it.Valid(); it.Next() {
+			k := it.Item().KeyCopy(nil)
+			if string(k) == lastLSN {
+				continue
+			}
+			metaKeys = append(metaKeys, k)
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("graph: clear scan meta: %w", err)
+	}
+
+	// 2. Delete the stale meta keys (incl. the entity counters) and flush. After
+	//    this the counters are absent → reconcilePersistedCounter trusts the live
+	//    rows, so a crash here (data still present) reopens consistently.
+	if len(metaKeys) > 0 {
+		wbMeta := bs.db.NewWriteBatch()
+		defer wbMeta.Cancel()
+		for _, k := range metaKeys {
+			if err := wbMeta.Delete(k); err != nil {
+				return fmt.Errorf("graph: clear delete meta: %w", err)
+			}
+		}
+		if bs.dbClosed.Load() {
+			wbMeta.Cancel()
+			return fmt.Errorf("graph: clear delete meta: %w", badgerv4.ErrDBClosed)
+		}
+		if err := wbMeta.Flush(); err != nil {
+			return fmt.Errorf("graph: clear delete meta: %w", err)
+		}
+	}
+
+	// 3. Bulk-drop every data / index / history / change-log-record keyspace.
+	//    KeyMeta (which holds LastLSNKey) is deliberately left intact.
+	if err := bs.db.DropPrefix(
+		[]byte{storepkg.KeyNode}, []byte{storepkg.KeyRel},
+		[]byte{storepkg.KeyLabel}, []byte{storepkg.KeyRelType},
+		[]byte{storepkg.KeyOut}, []byte{storepkg.KeyIn},
+		[]byte{storepkg.KeyHistNode}, []byte{storepkg.KeyHistRel},
+		[]byte{storepkg.KeyChangeLog},
+	); err != nil {
+		return fmt.Errorf("graph: clear drop data: %w", err)
+	}
+	return nil
+}
+
+// lastLSNKeyPresent reports whether a durable LastLSNKey exists on disk — i.e.
+// whether a prior change-log-enabled session left a watermark that a Clear must
+// preserve even when the log is currently disabled.
+func (bs *Store) lastLSNKeyPresent() (bool, error) {
+	present := false
+	err := bs.db.View(func(txn *badgerv4.Txn) error {
+		_, gerr := txn.Get(storepkg.LastLSNKey)
+		if gerr == badgerv4.ErrKeyNotFound {
+			return nil
+		}
+		if gerr != nil {
+			return gerr
+		}
+		present = true
+		return nil
+	})
+	if err != nil {
+		return false, fmt.Errorf("graph: probe last_lsn: %w", err)
+	}
+	return present, nil
 }
 
 // seedLogLSN reads the durable change-log watermark within the open-time
@@ -248,6 +380,89 @@ func maxChangeLogLSN(txn *badgerv4.Txn) uint64 {
 		}
 	}
 	return 0
+}
+
+// ChangeLogEnabled reports whether this store's change-log is on (records are
+// actually emitted). Satisfies store.ChangeLogStatus. The store always implements
+// the ChangeFeedCapability methods, so this is the only reliable enabled-probe.
+func (bs *Store) ChangeLogEnabled() bool { return bs.logEnabled }
+
+// --- store.TxChangeLogScope: per-transaction change-log buffer ---
+//
+// A tx/batch opens a scope (BeginLogScope), brackets each of its mutations with
+// SetLogDivert(true/false) (the core calls these UNDER its exclusive c.mu.Lock,
+// so a concurrent standalone mutation on c.mu.RLock can never see divert active
+// and misroute its record), then CommitLogScope (emit) or DiscardLogScope (drop).
+// Records buffered while diverted carry NO LSN — they get contiguous LSNs minted
+// at commit, so a rolled-back tx burns no LSN and emits nothing.
+
+// BeginLogScope opens the per-tx record buffer. No-op when the change-log is off.
+func (bs *Store) BeginLogScope() error {
+	if !bs.logEnabled {
+		return nil
+	}
+	bs.wbMu.Lock()
+	defer bs.wbMu.Unlock()
+	if bs.scopeLog != nil || bs.scopeActive {
+		return fmt.Errorf("graph: %w: change-log scope already open", storecontract.ErrInvalidStoreMutation)
+	}
+	bs.scopeLog = make([][]byte, 0, 8)
+	return nil
+}
+
+// SetLogDivert toggles record diversion into the open scope buffer for the
+// duration of a single tx mutation. The core calls SetLogDivert(true) after it
+// takes the exclusive c.mu.Lock that guards the mutation and SetLogDivert(false)
+// before releasing it — so the window in which scopeActive is true is exactly the
+// window in which no concurrent standalone (c.mu.RLock) mutation can run.
+func (bs *Store) SetLogDivert(on bool) {
+	if !bs.logEnabled {
+		return
+	}
+	bs.wbMu.Lock()
+	bs.scopeActive = on
+	bs.wbMu.Unlock()
+}
+
+// CommitLogScope mints contiguous LSNs for the buffered records (newest LSNs at
+// this instant — the tx logically commits now, after every record that committed
+// during its body), appends them to pendingLog, then flushes so they co-commit
+// with the tx's still-pending data + counters + LastLSNKey in one WriteBatch.
+func (bs *Store) CommitLogScope() error {
+	if !bs.logEnabled {
+		return nil
+	}
+	bs.wbMu.Lock()
+	buffered := bs.scopeLog
+	bs.scopeLog = nil
+	bs.scopeActive = false
+	for _, value := range buffered {
+		lsn := bs.logSeq.Add(1)
+		bs.pendingLog = append(bs.pendingLog, pendingLogRecord{lsn: lsn, value: value})
+	}
+	bs.wbMu.Unlock()
+	if len(buffered) == 0 {
+		return nil
+	}
+	// Flush so the just-minted records co-commit with the tx's pending data. If a
+	// concurrent flushLoop tick drains pendingLog first, the records still commit
+	// (it drains ALL of pendingLog) and this flush is a no-op — either way the
+	// records ride one WriteBatch with the pending data + counters + watermark.
+	return bs.flush()
+}
+
+// DiscardLogScope drops the buffered records (a rolled-back tx emits nothing) and
+// clears the scope. logSeq is never advanced, so no LSN is burned and no gap is
+// left for a tailing replica.
+func (bs *Store) DiscardLogScope() error {
+	if !bs.logEnabled {
+		return nil
+	}
+	bs.wbMu.Lock()
+	bs.scopeLog = nil
+	bs.scopeActive = false
+	bs.wbMu.Unlock()
+	return nil
 }
 
 // LastCommittedLSN returns the highest durably-committed change-log LSN, or 0

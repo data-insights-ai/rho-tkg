@@ -1170,3 +1170,254 @@ hold DIFFERENT slots — that slot difference, not the lease's durability, is wh
 prevents minted-ID collisions in a split-brain window. Ship the durable hint and
 the reopen path; leave "who holds the lease, and when" to the layer that can
 actually coordinate.
+
+## 52. A Reset That Wipes A Durable Watermark Must Keep The Watermark Continuously Present — Order The Wipe So No Crash Point Is Inconsistent
+
+`Clear()` with the change-log enabled used `db.DropAll()` (atomic, wipes the
+WHOLE keyspace incl. `LastLSNKey`) then wrote a fresh `ChangeClear` marker at a
+new LSN. The gap: a crash AFTER the DropAll commit but BEFORE the marker flush
+reopens the store with neither change-log records NOR a watermark, so the LSN
+allocator reseeds from 0 — and post-`Clear` LSNs then collide with a tailing
+consumer's pre-`Clear` watermark. The consumer is checkpointed ABOVE those reused
+LSNs, so it never sees the new records: silent, permanent strand.
+
+The fix (`clearAndReanchorChangeLog`) never lets `LastLSNKey` be absent: it
+`DropPrefix`es every data / index / history / change-log-record keyspace and
+deliberately leaves `KeyMeta` (which holds `LastLSNKey`) intact, then overwrites
+`LastLSNKey` with the new watermark alongside the marker in one atomic batch. At
+every crash point the watermark holds its old OR new value, never nothing, so the
+allocator is monotone.
+
+Two ordering invariants make it crash-correct, and both are easy to get wrong:
+
+- **Delete the stale meta keys (entity counters, registries, index defs) BEFORE
+  dropping the data, not after.** `loadIndexes` treats a persisted counter that
+  EXCEEDS the live row count as fatal data loss (`reconcilePersistedCounter`),
+  while an ABSENT counter safely trusts the live rows. Drop the data first and a
+  crash before the counter delete reopens with a counter claiming rows that no
+  longer exist — the store refuses to open. Counters-first means a crash there
+  leaves data present + counters absent = consistent.
+- **Scan for the meta keys to delete rather than hard-coding a list**, so
+  dynamically-set meta (the replica watermark, the id-slot lease, future keys)
+  is reaped too — but skip `LastLSNKey` explicitly. A wipe that forgets a new
+  meta key leaks pre-`Clear` state into a logically-empty store.
+
+General rule: when a "reset" must preserve ONE durable invariant (here, watermark
+monotonicity), you cannot express it as wipe-everything-then-rewrite — the
+rewrite is a second transaction and the crash window between them violates the
+invariant. Keep the invariant's key continuously present and mutate it in place.
+
+**Fix EVERY door to the invariant, not just the one in front of you.** The first
+fix only guarded the change-log-ENABLED `Clear()` arm. But the durable watermark
+outlives the config flag: a store run with the log ON leaves `LastLSNKey` on disk,
+and the log-DISABLED `Clear()` arm was a bare `DropAll` that wiped it — so
+`ChangeLog`-on → reopen `ChangeLog`-off + `Clear` → reopen `ChangeLog`-on reseeded
+the allocator to 0 and reused LSNs a consumer had already passed, the identical
+silent-divergence bug through a sibling door (a break-test audit found it; the
+failing test showed pre-`Clear` watermark 2, post-reopen write LSN 1). The
+invariant is "the watermark is never absent if it was ever present" — that is a
+property of the DATA on disk, not of the current session's config, so every reset
+path must honor it regardless of whether THIS session produces records. Both arms
+now share one `clearDataPreservingLastLSN` helper that preserves `LastLSNKey`
+whenever present; only a never-logged store (no watermark to protect) still
+`DropAll`s. When you fix a durability invariant, grep for every code path that
+deletes/overwrites its key and confirm each preserves it — a config-gated branch
+is exactly where the second door hides.
+
+## 53. A Swap-Out Commit-Window Buffer Must Be Cleared On Success AND Consulted By EVERY Reader — Or It Both Drops And Resurrects Rows
+
+The badger async flush snapshots the `pending` write buffer and swaps in a fresh
+empty map under `wbMu`, then releases `idxMu` and commits the WriteBatch with NO
+lock held. For the whole commit window (registry persist + batch build +
+`wb.Flush()`, i.e. milliseconds) a just-written row is GONE from `pending` and
+NOT YET in a Badger `View`. Any overlay reader that reads only `pending` and
+falls through to a `View` momentarily DROPS that row — a latent read-your-writes
+hole. The intended fix parks the swapped-out snapshot in a second map
+(`flushing`) and unions `flushing ++ pending` in a shared helper
+(`rangePending` / `lookupPending`). It was both incomplete and self-harming:
+
+- **Incomplete: only ONE of ~13 overlay readers was routed through the helper.**
+  The single-key version lookups, the history scans, `Max*HistoryID`, the
+  truncate/trim retention scans, the AsOf version-chain overlay, and the on-disk
+  label/adjacency overlays all still read `pending` directly — so they kept
+  dropping in-flight rows. A partial fix of a latent bug reads like a fix while
+  the bug still fires behind every door you didn't touch. **Audit EVERY reader of
+  the buffer, not just the one that motivated the change** (`grep 'range
+  bs.pending\|bs.pending\['`), and route them through ONE helper so the
+  union logic has a single definition — divergence between "readers that consult
+  the snapshot" and "readers that don't" is itself the bug class (`Max*HistoryID`
+  disagreed with `All*HistoryIDsFrom`).
+
+- **Self-harming: the snapshot was never cleared on a successful commit** (only
+  on the failed-flush requeue), so after a normal flush `flushing` retained the
+  just-committed batch until the next flush overwrote it — and under `SyncWrites`
+  there is no periodic flush, so it persisted indefinitely. Combined with a
+  `Clear()` that reset `pending` but not `flushing`, the wiped history keys
+  RESURRECTED as phantom IDs through the one reader that DID consult `flushing`.
+  A commit-window buffer has a precise lifetime: populated between the swap and
+  the commit, EMPTY otherwise. Clear it on success, on the failure requeue, AND
+  in any `Clear()`/reset that wipes the underlying keyspace — anything that holds
+  it past the commit turns "make in-flight rows visible" into "make committed-or-
+  deleted rows visible."
+
+Two more traps the completion surfaced:
+
+- **The delete-set-computing MUTATORS need the snapshot too, not just the
+  read-only readers.** Cascade delete and incoming-repair compute "which index
+  keys exist" from a Badger `View` + `pending` to decide what to delete; a key
+  parked in `flushing` is in neither, so they queue no delete and ORPHAN a
+  persisted index key once the in-flight commit lands it. They can't rewrite a
+  `flushing` entry in place (it's committing) — queue an explicit delete into
+  `pending` so a later flush removes it after the commit.
+- **Why only SOME readers were exposed:** in RAM mode the in-memory index maps
+  (`labelIdx` / `inIdx` / `outIdx`) are synchronous and still hold a parked op's
+  key, so RAM-mode readers were always correct — only the history readers (no RAM
+  mirror) and the on-disk label/adjacency overlays read the buffer directly and
+  were exposed. When a buffer has a synchronous shadow for most consumers, the
+  few that read it raw are exactly where the window bites; enumerate them
+  deliberately. When the helper unions two buffers, make set/delete SYMMETRIC
+  (each op removes the key from the other set) so a key present in both during the
+  requeue window resolves to the newer (visited-last) op.
+
+Test the window deterministically without real concurrency: a white-box helper
+that performs the exact `pending`→`flushing` swap WITHOUT committing reproduces
+the mid-commit state, so every reader can be asserted to still see the row, and
+`Clear()`-then-read can be asserted to NOT (failing-first verified by reverting
+each fix).
+
+## 54. The Change-Log Is A PHYSICAL Redo Log, Not A LOGICAL Transaction Log — A Rolled-Back Tx Ships Its Churn To The Feed
+
+The op-log is emitted IN-BACKEND on every store mutation (`logChangeRaw` inside
+`PutNode`/`DeleteNodeCascade`/…). A `GraphTx` applies its mutations to the store
+IMMEDIATELY during the tx body (it is not a staged write set — `Rollback` undoes
+them by reverse store calls, which is only possible because they were applied),
+so each tx-body write emits a record AND each rollback reverse-write emits a
+record. A break-test audit confirmed it concretely: a tx that creates a node then
+`Rollback()`s leaves TWO records past the pre-tx watermark — `ChangeNodePut`
+(LSN N) then a hard-cascade `ChangeNodeDelete` (LSN N+1) — even though the final
+local state is empty.
+
+Consequences, none of which is a convergence bug but all of which are contract:
+- **Replicas CONVERGE but transiently materialize uncommitted state.** A replica
+  tailing create-then-hard-delete ends in the correct final state (phantom
+  absent), but between applying the two records it holds a node that no committed
+  primary state ever contained. "Eventually byte-exact," not transactionally
+  isolated.
+- **Asymmetric with events.** The EventBus BUFFERS tx events and DISCARDS them on
+  rollback (subscribers never see rolled-back mutations — `txEventBuffer`). The
+  change-log does the opposite. So the change-feed is NOT a logical committed-tx
+  CDC source; a consumer that treats it as one will see aborted-tx churn.
+- **"Records every committed mutation" means BACKEND-committed, not
+  tx-committed.** Both the tx-body put and the rollback delete are committed to
+  the backend `WriteBatch`; the log faithfully records both. The word "committed"
+  in the feature's prose is about the store, not the transaction.
+- **This is the ONLY public primary door that emits a hard-cascade
+  `ChangeNodeDelete` (WithHistory=false).** Every standalone/transactional delete
+  door routes to `DeleteNodeWithHistory`; the hard path is reached only by
+  rollback (tx/add/import) and the replica apply itself. So the apply
+  `!WithHistory` node-delete branch is live precisely BECAUSE of rollback churn —
+  test it with a real rolled-back-tx record, not only a synthetic body.
+
+**The SERIOUS bug this surfaced (BUG, not contract): a rolled-back tx that
+allocated a new token POISONED the feed and permanently stalled replicas.** I
+first wrote this lesson off as "converges, no behavior change, just document it."
+That was wrong, and a deeper analysis (forced by the user — "this is production
+code, analyse") proved it. A tx that allocates a NEW label / rel-type token emits
+a durable `ChangeNodePut`/`ChangeRelPut` referencing it, then `Rollback()` →
+`restoreRegistries()` rebuilt the registry from the pre-tx snapshot, DE-allocating
+the token. The feed now permanently referenced a token the primary no longer held.
+A replica — EVEN WITH a `ReplicationSource` — could never resolve it (the refetch
+finds it absent, because the primary rolled it back too) → **stuck forever at that
+LSN**; and the next committed allocation REUSED the number for a different name →
+silent divergence. Confirmed by a failing test: pre-rollback the replica stalls
+with "rel type token 1 not in registry (size 0)". The same poison exists in the
+whole de-allocation FAMILY — standalone `restoreNewLabelsOnError` /
+`restoreNewRelTypeOnError`, the batch partial-failure path (it deletes the nodes it
+already created — whose puts referenced the token — then de-allocates), and index
+creation (funnels through the same leaf).
+
+Fix: **registries are APPEND-ONLY across rollback when the change-log is ENABLED.**
+The de-allocation chokepoints (`restoreRegistries` for tx, `restoreNewLabelsOnError`
+/ `restoreNewRelTypeOnError` for standalone/batch/index) keep tx-allocated tokens
+when `c.changeLogEnabled` — an allocated-but-unused token is harmless (it was
+already persisted; `GetOrCreate` returns it again later), and keeping it makes
+every emitted feed record resolvable, so replicas converge. When the log is OFF the
+old exact-rollback behavior is preserved. The gate signal is NOT `changeFeed != nil`
+(a badger/memory store ALWAYS implements the feed methods — that flag is true even
+when the log is off); it is the new `store.ChangeLogStatus.ChangeLogEnabled()`
+optional probe, captured into `c.changeLogEnabled` at `New`. The `getOrCreate*`
+persist-failure rollbacks are deliberately NOT gated — they fire BEFORE any record
+is emitted (a failed persist), and must de-allocate to keep in-memory == disk.
+
+Residual (genuinely just contract, not a bug): the rolled-back ENTITY churn still
+ships (create+delete records), so replicas converge but transiently materialize the
+uncommitted entity, and the feed is not a logical committed-tx CDC source (asymmetric
+with events, which discard on rollback). Eliminating that too would need a tx-level
+change-log buffer mirroring `txEventBuffer` — a deliberate future design change.
+Lesson: when a rolled-back/aborted operation feeds a replicated log, audit BOTH what
+it emits AND what it RETRACTS from shared monotone state (the registry) — a retraction
+of something already in the durable feed is the subtle, fatal half.
+
+Completeness check (do this for every "gate the de-allocation" fix): there were SIX
+`RollbackNames` sites. Only the TWO that can fire AFTER a record was emitted
+(`restoreNewLabelsOnError` / `restoreNewRelTypeOnError`, the entity-failure
+rollbacks) are gated. The other FOUR (`getOrCreate*` allocation/persist-failure
+`fail` closures) fire DURING allocation, BEFORE any entity write — there is no
+emitted record to orphan, and they MUST still de-allocate to keep in-memory ==
+disk. Gating a pre-record site would be a bug (a token in RAM but not on disk).
+Classify each de-allocation by "could a durable record already reference this
+token?" — gate iff yes.
+
+Accepted tradeoff (minor — do not overstate it): keeping tokens append-only leaves
+an unused token after a rolled-back NEW-name allocation. But a token is per DISTINCT
+NAME, not per request — once a name leaks a token, every later rolled-back-or-
+committed use of that name REUSES it. So the accumulation is bounded by the number
+of distinct schema names ever ATTEMPTED (dozens-to-thousands for a real schema,
+against a 65535 space), not by traffic; exhausting the space needs 65535 distinct
+names, which exhausts it with or without rollback. It is also symmetric and
+consistent (primary and replica both carry the unused token — not divergence) and
+fails CLOSED (registry warns at 60K, errors at 65535). For any stable schema it is
+negligible.
+
+The genuinely better solution (NOW IMPLEMENTED for the TX path): the leak is a
+symptom of the change-log being a PHYSICAL redo log while a transaction is LOGICALLY
+atomic. Make the change-log logical for txs — a per-tx log buffer that mirrors
+`txEventBuffer`: buffer the tx's records, DISCARD on Rollback, EMIT on Commit. A
+rolled-back tx then emits nothing, so the token can be safely de-allocated (no leak)
+AND the other two residuals vanish (no transient phantom on replicas, feed becomes a
+true committed-tx CDC source). Shipped as the optional `store.TxChangeLogScope`
+capability (badger + memory) wired into `GraphTx` Begin/Commit/Rollback; LSNs are
+minted AT commit (a rolled-back tx burns none → no feed gap); the tx
+`restoreRegistries` reverted to EXACT de-allocation (the stopgap is gone for the tx
+path). Two implementation lessons worth keeping:
+
+- **Records are emitted IN-BACKEND, so the store cannot distinguish a tx call from a
+  concurrent standalone call** (both hold the SHARED `c.mu.RLock` under Path B — and
+  events dodge this only because they dispatch in the WRAPPER, not in-backend). A
+  store-global "divert" flag would misroute a concurrent standalone's record into
+  the tx's buffer. The fix is NOT threading a scope handle through ~18 mutation
+  methods: it is to have the change-log-enabled tx take `c.mu.Lock` (EXCLUSIVE)
+  PER-MUTATION (not per-lifetime — that re-creates the lesson-31 in-tx-read
+  deadlock) and toggle the divert flag under it. The exclusive Lock excludes any
+  concurrent standalone RLock, so the flag is true only when no standalone can emit.
+  Reads stay on RLock (concurrent). Verified by a `-race` test that FAILS (records
+  misrouted, feed under-counts) when the lock is reverted to RLock.
+- **Co-commit (lesson 49) is preserved only at COMMIT, not during the body.** The
+  accepted variant buffers RECORDS but lets the tx's DATA flow to pending and flush
+  normally (so in-tx reads + concurrent standalone durability are untouched). A
+  crash between a mid-tx data flush and CommitLogScope leaves committed-but-unlogged
+  data — but it is invisible to the feed (the watermark never advanced for it) and
+  no worse than a tx's pre-existing SyncWrites non-atomicity, so accept+document it.
+  Fully closing it would need a staged-write-set tx (defer DATA too) — a far larger
+  change rejected here.
+
+Still on the stopgap (their token-poison is PREVENTED by the append-only skip, so
+these are improvement-not-bug follow-ups, `tasks/todo.md`): `Batch.Execute` and
+`IO().Import` emit records eagerly (not through a scope), so their token-deallocation
+chokepoints KEEP the append-only skip — reverting it there would re-poison the feed.
+Import's `restoreRegistries` is now gated on `changeLogEnabled` (same as the others);
+a read-only replica's bootstrap import has the log OFF so emits nothing anyway. The
+batch is intricate to scope because it KEEPS successful ops on a partial failure
+(not all-or-nothing), so it must commit its scope, and a failed op that emitted a
+record must have its data cleaned up or the feed orphans a record → divergence; do
+that wiring only with full batch-partial-failure understanding.

@@ -50,6 +50,14 @@ var (
 	// Not retryable.
 	ErrRegistryDiverged = errors.New("graph: replica registry diverged from primary")
 
+	// ErrChangesNotAscending is returned by ApplyChanges when the supplied batch
+	// is not in strictly ascending LSN order. Ascending order is a caller
+	// contract; the batch path enforces it so a record below the running maximum
+	// is not silently swallowed by the watermark skip (which would leave a
+	// permanent gap in the replica's coverage). The successful prefix before the
+	// out-of-order record is still flushed and watermarked.
+	ErrChangesNotAscending = errors.New("graph: change records not in ascending LSN order")
+
 	// ErrWireFormatVersionUnsupported is returned when persisted data declares
 	// an on-disk format version newer than this binary supports — either a
 	// store-level format marker written by a newer release, or an individual

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -995,4 +996,162 @@ func TestChangeLog_ClearReAnchors(t *testing.T) {
 	if recs[0].LSN <= beforeLSN {
 		t.Fatalf("Clear marker LSN %d <= pre-Clear watermark %d (must stay monotonic)", recs[0].LSN, beforeLSN)
 	}
+}
+
+// TestChangeLog_ClearOnDiskWipesAllAndKeepsWatermark exercises the on-disk
+// (non-DropAll) Clear path used when the change-log is enabled. It guards two
+// things at once: (1) the DropPrefix + selective-meta-delete rewrite must wipe
+// data, indexes AND metadata (registries) exactly as DropAll did — no leakage;
+// (2) the durable watermark (LastLSNKey) must survive Clear+Close+Reopen so the
+// LSN allocator resumes strictly above the pre-Clear watermark (lesson 52).
+func TestChangeLog_ClearOnDiskWipesAllAndKeepsWatermark(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	bs, err := New(Config{Dir: dir, ChangeLog: true, SyncWrites: true})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	putTestNode(t, bs, 1, 10, nil)
+	putTestNode(t, bs, 2, 10, nil)
+	putTestRel(t, bs, 100, 5, 1, 2)
+	// Seed a real registry and a custom meta sentinel — both must be wiped.
+	labels := registrypkg.NewLabelRegistry()
+	if _, err := labels.GetOrCreate("Person"); err != nil {
+		t.Fatalf("GetOrCreate: %v", err)
+	}
+	relTypes := registrypkg.NewRelTypeRegistry()
+	if err := bs.SaveRegistries(labels, relTypes); err != nil {
+		t.Fatalf("SaveRegistries: %v", err)
+	}
+	if err := bs.MetaSet("custom_sentinel", []byte("present")); err != nil {
+		t.Fatalf("MetaSet: %v", err)
+	}
+	beforeLSN, _ := bs.LastCommittedLSN()
+	if beforeLSN == 0 {
+		t.Fatal("pre-Clear watermark must be > 0")
+	}
+
+	if err := bs.Clear(); err != nil {
+		t.Fatalf("Clear: %v", err)
+	}
+
+	// Clear marker emitted strictly above the pre-Clear watermark.
+	if lsn, _ := bs.LastCommittedLSN(); lsn <= beforeLSN {
+		t.Fatalf("post-Clear LSN %d <= pre-Clear %d (must stay monotonic)", lsn, beforeLSN)
+	}
+	// Data gone.
+	if got, gerr := bs.GetNode(types.NodeID(snowflake.ID(1))); gerr == nil && got != nil {
+		t.Fatal("node survived Clear")
+	}
+	// Metadata gone — registry and the custom sentinel.
+	if found, lerr := bs.LoadLabelRegistry(registrypkg.NewLabelRegistry()); lerr != nil {
+		t.Fatalf("LoadLabelRegistry: %v", lerr)
+	} else if found {
+		t.Fatal("label registry survived Clear (meta leakage from DropPrefix rewrite)")
+	}
+	if v, merr := bs.MetaGet("custom_sentinel"); merr != nil {
+		t.Fatalf("MetaGet: %v", merr)
+	} else if v != nil {
+		t.Fatal("custom meta sentinel survived Clear")
+	}
+
+	afterClearLSN, _ := bs.LastCommittedLSN()
+	if err := bs.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// Reopen: the watermark must persist and the allocator must NOT reuse LSNs.
+	reopened, err := New(Config{Dir: dir, ChangeLog: true, SyncWrites: true})
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer reopened.Close()
+	if lsn, _ := reopened.LastCommittedLSN(); lsn != afterClearLSN {
+		t.Fatalf("post-reopen watermark = %d, want %d (must persist across Clear+reopen)", lsn, afterClearLSN)
+	}
+	putTestNode(t, reopened, 3, 10, nil)
+	if err := reopened.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	if lsn, _ := reopened.LastCommittedLSN(); lsn != afterClearLSN+1 {
+		t.Fatalf("post-Clear write LSN = %d, want %d (no reuse)", lsn, afterClearLSN+1)
+	}
+}
+
+// TestChangeLog_ClearCrashAfterDataDropKeepsWatermark simulates a crash in the
+// middle of Clear — after the data/change-log keyspaces are dropped but BEFORE
+// the marker WriteBatch (which carries the new watermark) is flushed. The fix
+// (lesson 52) drops data via DropPrefix and deliberately leaves LastLSNKey
+// intact, so the watermark is never absent. With the old db.DropAll() Clear,
+// LastLSNKey would be gone at this point and a reopen would reseed the LSN
+// allocator to 0, colliding with a consumer's pre-Clear watermark.
+func TestChangeLog_ClearCrashAfterDataDropKeepsWatermark(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	bs, err := New(Config{Dir: dir, ChangeLog: true, SyncWrites: true})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	putTestNode(t, bs, 1, 10, nil)
+	putTestNode(t, bs, 2, 10, nil)
+	putTestNode(t, bs, 3, 10, nil)
+	beforeLSN, _ := bs.LastCommittedLSN()
+	if beforeLSN != 3 {
+		t.Fatalf("pre-crash watermark = %d, want 3", beforeLSN)
+	}
+
+	// Simulate clearAndReanchorChangeLog up to (but not including) the marker
+	// batch (step 4): delete the entity-counter meta keys (step 2), then drop the
+	// data/history/change-log-record keyspaces (step 3), leaving the meta keyspace
+	// — and therefore LastLSNKey — intact. Then "crash" (close before the marker
+	// batch). loadIndexes must reopen cleanly (counters absent → trust live rows)
+	// AND resume the LSN allocator above the pre-crash watermark.
+	if err := bs.db.Update(func(txn *badgerv4.Txn) error {
+		if err := txn.Delete(counterNodeCountKey); err != nil {
+			return err
+		}
+		return txn.Delete(counterRelCountKey)
+	}); err != nil {
+		t.Fatalf("delete counters: %v", err)
+	}
+	if err := bs.db.DropPrefix(
+		[]byte{storepkg.KeyNode}, []byte{storepkg.KeyRel},
+		[]byte{storepkg.KeyLabel}, []byte{storepkg.KeyRelType},
+		[]byte{storepkg.KeyOut}, []byte{storepkg.KeyIn},
+		[]byte{storepkg.KeyHistNode}, []byte{storepkg.KeyHistRel},
+		[]byte{storepkg.KeyChangeLog},
+	); err != nil {
+		t.Fatalf("DropPrefix: %v", err)
+	}
+	if err := bs.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// Reopen: even though every change-log record was dropped, the watermark must
+	// survive so the allocator resumes ABOVE the pre-crash watermark.
+	reopened, err := New(Config{Dir: dir, ChangeLog: true, SyncWrites: true})
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer reopened.Close()
+	if lsn, _ := reopened.LastCommittedLSN(); lsn != beforeLSN {
+		t.Fatalf("post-crash watermark = %d, want %d (LastLSNKey must survive a mid-Clear crash)", lsn, beforeLSN)
+	}
+	putTestNode(t, reopened, 4, 10, nil)
+	if err := reopened.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	recs, _ := reopened.ChangeFeed(beforeLSN, 0)
+	if len(recs) != 1 || recs[0].LSN != beforeLSN+1 {
+		t.Fatalf("post-crash write LSN = %v, want [%d] (no collision with pre-crash watermark)", lsnSeq(recs), beforeLSN+1)
+	}
+}
+
+func lsnSeq(recs []storecontract.ChangeRecord) []uint64 {
+	out := make([]uint64, len(recs))
+	for i, r := range recs {
+		out[i] = r.LSN
+	}
+	return out
 }

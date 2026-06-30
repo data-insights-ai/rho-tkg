@@ -60,6 +60,8 @@ type Core struct {
 	deletedIter        storepkg.DeletedIterationCapability
 	deletedDepthIter   storepkg.DepthDeletedIterationCapability
 	changeFeed         storepkg.ChangeFeedCapability
+	changeLogEnabled   bool                      // store's change-log actually on (records emitted)
+	txLogScope         storepkg.TxChangeLogScope // per-tx record buffer (nil when off / unsupported)
 	readOnlyReplica    bool
 	replSource         storepkg.ReplicationSource
 	replSourceMu       sync.RWMutex
@@ -726,6 +728,27 @@ func changeFeedCapability(store storepkg.MandatoryStore) storepkg.ChangeFeedCapa
 	}
 }
 
+// changeLogStatusEnabled reports whether the store's change-log is actually on
+// (records are emitted). A store always implements ChangeFeedCapability's methods
+// but only EMITS when its log is enabled; this optional probe is the only reliable
+// signal. A store that does not implement store.ChangeLogStatus is log-disabled.
+func changeLogStatusEnabled(store storepkg.MandatoryStore) bool {
+	s, ok := store.(storepkg.ChangeLogStatus)
+	return ok && s.ChangeLogEnabled()
+}
+
+// txChangeLogScope resolves the per-tx change-log buffer capability. Returns nil
+// when the change-log is off or the backend does not implement it (tiered) — the
+// core then emits records eagerly as before. Resolving it only when enabled keeps
+// the tx/batch paths zero-cost on a non-change-log graph.
+func txChangeLogScope(store storepkg.MandatoryStore, enabled bool) storepkg.TxChangeLogScope {
+	if !enabled {
+		return nil
+	}
+	s, _ := store.(storepkg.TxChangeLogScope)
+	return s
+}
+
 func nativeAdjacencyReadsValidateNodeExistence(store storepkg.MandatoryStore) bool {
 	switch store.(type) {
 	case *memory.Store, *badger.Store, *tiered.Store:
@@ -973,6 +996,8 @@ func New(config Config) (*Core, error) {
 	c.depthHistory = depthHistoryIterationCapability(store)
 	c.deletedIter = deletedIterationCapability(store)
 	c.changeFeed = changeFeedCapability(store)
+	c.changeLogEnabled = changeLogStatusEnabled(store)
+	c.txLogScope = txChangeLogScope(store, c.changeLogEnabled)
 	c.deletedDepthIter = depthDeletedIterationCapability(store)
 	c.vectorRowsTrust = isExactNativeStore(store)
 	c.storeRowsTrust = isExactNativeStore(store)

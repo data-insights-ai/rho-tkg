@@ -56,10 +56,36 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	var batchEvents []eventspkg.Event
 	b.g.txEventBuffer = &batchEvents
 
+	// Open the per-tx change-log scope for the batch (it holds c.mu.Lock + c.txMu
+	// for the whole Execute, so diversion can stay ON the whole time — no concurrent
+	// standalone mutation can run). Unlike a tx, a partially-failed batch KEEPS its
+	// successful ops, so the scope is COMMITTED at the end (success or partial
+	// failure); the failed-op create+delete churn (from deletePartialBatchNodes
+	// cleanup) converges on a replica. The append-only token stopgap is kept for the
+	// batch (its records are emitted), so de-allocated tokens are never poisoned.
+	scopeOpen := false
+	scopeCommitted := false
+	if b.g.txLogScope != nil {
+		if err := b.g.txLogScope.BeginLogScope(); err != nil {
+			b.g.txEventBuffer = nil
+			b.g.mu.Unlock()
+			b.g.txMu.Unlock()
+			b.mu.Unlock()
+			return nil, err
+		}
+		b.g.txLogScope.SetLogDivert(true)
+		scopeOpen = true
+	}
+
 	unlocked := false
 	builderUnlocked := false
 	defer func() {
 		if !unlocked {
+			// Early-return / panic path: the scope was opened but not committed —
+			// drop it so a later batch/tx can open a fresh one (nothing emitted).
+			if scopeOpen && !scopeCommitted {
+				_ = b.g.txLogScope.DiscardLogScope()
+			}
 			b.g.txEventBuffer = nil
 			b.g.mu.Unlock()
 			b.g.txMu.Unlock()
@@ -498,6 +524,20 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	}
 
 	result.Duration = time.Since(start)
+
+	// Commit the batch's change-log records: mint their LSNs at commit time and
+	// co-commit them. Always commit (even on partial failure) because the batch
+	// KEEPS its successful ops — discarding would lose records for committed data
+	// and diverge a replica. A CommitLogScope error leaves committed-but-unlogged
+	// data (documented residual); surface it as the batch error if nothing else
+	// failed.
+	if scopeOpen {
+		if err := b.g.txLogScope.CommitLogScope(); err != nil && result.Failed == 0 {
+			result.Errors = append(result.Errors, BatchError{Op: "commit-change-log", Err: err})
+			result.Failed++
+		}
+		scopeCommitted = true
+	}
 
 	// Capture event publisher and clear buffer before releasing lock.
 	ep := b.g.events

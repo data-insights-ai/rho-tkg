@@ -34,9 +34,76 @@ func (ms *Store) logChangeLocked(tag storecontract.ChangeTag, payload []byte) {
 	if !ms.logEnabled {
 		return
 	}
-	ms.logSeq++
 	cp := append([]byte(nil), payload...)
+	if ms.scopeActive {
+		// Per-tx scope open: buffer WITHOUT advancing logSeq (LSN minted at commit).
+		// A rolled-back scope (DiscardLogScope) emits nothing.
+		ms.scopeLog = append(ms.scopeLog, storecontract.ChangeRecord{Tag: tag, Payload: cp})
+		return
+	}
+	ms.logSeq++
 	ms.changeLog = append(ms.changeLog, storecontract.ChangeRecord{LSN: ms.logSeq, Tag: tag, Payload: cp})
+}
+
+// --- store.TxChangeLogScope (parallel to the badger backend) ---
+
+// BeginLogScope opens the per-tx record buffer. No-op when the log is off.
+func (ms *Store) BeginLogScope() error {
+	if !ms.logEnabled {
+		return nil
+	}
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	if ms.scopeLog != nil || ms.scopeActive {
+		return fmt.Errorf("graph: %w: change-log scope already open", storecontract.ErrInvalidStoreMutation)
+	}
+	ms.scopeLog = make([]storecontract.ChangeRecord, 0, 8)
+	return nil
+}
+
+// SetLogDivert toggles record diversion for one tx mutation. The core calls it
+// only under its exclusive write lock, so a concurrent standalone (read lock)
+// mutation can never see diversion active. See the badger sibling.
+func (ms *Store) SetLogDivert(on bool) {
+	if !ms.logEnabled {
+		return
+	}
+	ms.mu.Lock()
+	ms.scopeActive = on
+	ms.mu.Unlock()
+}
+
+// CommitLogScope mints contiguous LSNs for the buffered records (at commit time)
+// and splices them into the durable-order log under ms.mu — atomic (memory has no
+// flush; the splice IS the commit).
+func (ms *Store) CommitLogScope() error {
+	if !ms.logEnabled {
+		return nil
+	}
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	buffered := ms.scopeLog
+	ms.scopeLog = nil
+	ms.scopeActive = false
+	for i := range buffered {
+		ms.logSeq++
+		rec := buffered[i]
+		rec.LSN = ms.logSeq
+		ms.changeLog = append(ms.changeLog, rec)
+	}
+	return nil
+}
+
+// DiscardLogScope drops the buffered records; logSeq is never advanced.
+func (ms *Store) DiscardLogScope() error {
+	if !ms.logEnabled {
+		return nil
+	}
+	ms.mu.Lock()
+	ms.scopeLog = nil
+	ms.scopeActive = false
+	ms.mu.Unlock()
+	return nil
 }
 
 // The log*Locked helpers build a record body via the shared storeutil builders
@@ -156,6 +223,10 @@ func (ms *Store) logHistoryTruncateLocked(tag storecontract.ChangeTag, id snowfl
 	ms.logChangeLocked(tag, p)
 	return nil
 }
+
+// ChangeLogEnabled reports whether this store's change-log is on. Satisfies
+// store.ChangeLogStatus.
+func (ms *Store) ChangeLogEnabled() bool { return ms != nil && ms.logEnabled }
 
 // LastCommittedLSN returns the highest change-log LSN, or 0 when the log is
 // empty/disabled. The memory store has no async buffer, so every appended record

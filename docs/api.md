@@ -26,7 +26,7 @@ Temporal shadow inputs accepted through props (`tkg_valid_from`, `tkg_valid_to`,
 
 ## Graph Layer (`pkg/graph`) — v4.2 sub-API surface
 
-`*graph.Graph` is a thin façade. Its only direct methods are `New(Config) (*Graph, error)`, `Close() error`, and 14 nil-safe sub-API accessor methods. Every sub-API is reached through its accessor method (v4.2.0 converted these from exported fields to methods):
+`*graph.Graph` is a thin façade. Its only direct methods are `New(Config) (*Graph, error)`, `Close() error`, and 15 nil-safe sub-API accessor methods. Every sub-API is reached through its accessor method (v4.2.0 converted these from exported fields to methods):
 
 Nil or zero-value graph façade entry points return nil for the sub-API (no panic). Calling a sub-API method on that nil receiver returns `ErrNilGraph` from error-returning methods and zero values from no-error helpers. Construct operational graphs with `graph.New`.
 
@@ -43,6 +43,7 @@ Nil or zero-value graph façade entry points return nil for the sub-API (no pani
 | `g.Tier()` | `pkg/graph/tier` | Archive/Restore, ForceRotate, ListShards, RebuildCatalog, Repair, VerifyShard — tiered-only; returns `ErrNotTieredStore` on memory/badger |
 | `g.Stats()` | `pkg/graph/stats` | NodeCount, RelCount, NodeCountByLabel, RelCountByType, AllLabelCounts, AllRelTypeCounts, full GraphStats snapshot |
 | `g.Hash()` | `pkg/graph/hash` | VerifyNodeChain, VerifyRelChain (shadows stdlib `hash` — alias as `tkghash` at consumer sites that also import stdlib `hash`) |
+| `g.Replication()` | `pkg/graph/replication` | Change-log / op-log: ChangeFeed, ForEachChange, LastCommittedLSN; replica apply: ApplyChange, ApplyChanges, AppliedLSN, SetAppliedLSN, RegistrySnapshot, IDSlotLease, SetIDSlotLease — returns `ErrCapabilityNotSupported` on a backend without a change-log |
 | `g.Resolve()` | `pkg/graph/resolve` | NodeProperty / RelProperty (shadow keys) — v4.0 dropped the token methods |
 | `g.Tx()` | `pkg/graph` (in-package) | Begin, Run(fn), RunContext(ctx, fn) — Run/RunContext are panic-safe |
 | `g.Batch()` | `pkg/graph` (in-package) | New() returns a *BatchBuilder; Run(fn) is the closure-style equivalent |

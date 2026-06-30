@@ -148,6 +148,16 @@ func (c *Core) BeginTx() (*GraphTx, error) {
 		deletedRelSet:   make(map[snowflake.ID]struct{}),
 	}
 	c.txEventBuffer = &tx.pendingEvents
+	if c.txLogScope != nil {
+		// Open the per-tx change-log buffer: every mutation's record is diverted
+		// (under lockActiveCoreWrite's exclusive lock) into it and emitted on Commit
+		// / dropped on Rollback, so a rolled-back tx ships nothing to the feed.
+		if err := c.txLogScope.BeginLogScope(); err != nil {
+			c.txEventBuffer = nil
+			c.txMu.Unlock()
+			return nil, err
+		}
+	}
 	return tx, nil
 }
 
@@ -372,6 +382,74 @@ func (tx *GraphTx) unlockActiveCore() {
 	tx.mu.Unlock()
 }
 
+// lockActiveCoreWrite is the MUTATION variant of lockActiveCore. When a per-tx
+// change-log scope is active it takes c.mu.Lock (EXCLUSIVE) instead of RLock and
+// turns on record diversion (SetLogDivert) — so for the duration of this single
+// mutation no concurrent standalone mutation (which holds only c.mu.RLock) can run
+// and have its own change-log record misrouted into this tx's buffer. The lock is
+// per-mutation (acquired+released around one mutation method), NOT held for the tx
+// lifetime, so in-tx reads (which take their own brief lock) never deadlock
+// against it (lesson 31). When there is no scope it is exactly lockActiveCore.
+func (tx *GraphTx) lockActiveCoreWrite() error {
+	if err := tx.lockActive(); err != nil {
+		return err
+	}
+	if tx.g.txLogScope == nil {
+		tx.g.mu.RLock()
+		if tx.g.closed.Load() {
+			tx.g.mu.RUnlock()
+			tx.mu.Unlock()
+			return ErrGraphClosed
+		}
+		return nil
+	}
+	tx.g.mu.Lock()
+	if tx.g.closed.Load() {
+		tx.g.mu.Unlock()
+		tx.mu.Unlock()
+		return ErrGraphClosed
+	}
+	tx.g.txLogScope.SetLogDivert(true)
+	return nil
+}
+
+// lockActiveCoreWriteContext is lockActiveCoreWrite with context cancellation.
+func (tx *GraphTx) lockActiveCoreWriteContext(ctx context.Context) error {
+	if err := tx.lockActiveContext(ctx); err != nil {
+		return err
+	}
+	if tx.g.txLogScope == nil {
+		tx.g.mu.RLock()
+		if tx.g.closed.Load() {
+			tx.g.mu.RUnlock()
+			tx.mu.Unlock()
+			return ErrGraphClosed
+		}
+		return nil
+	}
+	tx.g.mu.Lock()
+	if tx.g.closed.Load() {
+		tx.g.mu.Unlock()
+		tx.mu.Unlock()
+		return ErrGraphClosed
+	}
+	tx.g.txLogScope.SetLogDivert(true)
+	return nil
+}
+
+// unlockActiveCoreWrite reverses lockActiveCoreWrite (turns off diversion and
+// releases the exclusive lock when a scope is active; otherwise releases RLock).
+func (tx *GraphTx) unlockActiveCoreWrite() {
+	if tx.g.txLogScope == nil {
+		tx.g.mu.RUnlock()
+		tx.mu.Unlock()
+		return
+	}
+	tx.g.txLogScope.SetLogDivert(false)
+	tx.g.mu.Unlock()
+	tx.mu.Unlock()
+}
+
 // lockActiveCoreContext is the ctx-honouring variant of lockActiveCore.
 // Same release semantics — defer unlockActiveCore.
 func (tx *GraphTx) lockActiveCoreContext(ctx context.Context) error {
@@ -434,6 +512,19 @@ func (tx *GraphTx) Commit() error {
 		tx.g.mu.Unlock()
 		return err
 	}
+	// Emit the tx's buffered change-log records: mint their LSNs at commit time
+	// (so this committing tx orders after everything committed during its body and
+	// a rolled-back tx would have burned none) and co-commit them with the tx's
+	// pending data. AFTER persistRegistries so any label/rel-type token a record
+	// references is already durable. On error the tx is NOT marked done (its data
+	// is in pending but unlogged — not yet durable-as-committed); the caller can
+	// retry. The scope's own records remain buffered for the retry.
+	if tx.g.txLogScope != nil {
+		if err := tx.g.txLogScope.CommitLogScope(); err != nil {
+			tx.g.mu.Unlock()
+			return err
+		}
+	}
 	tx.done = true
 
 	// Capture event publisher and buffer before unlocking.
@@ -486,6 +577,15 @@ func (tx *GraphTx) Rollback() error {
 	// Discard buffered events — rolled-back mutations should never reach subscribers.
 	tx.g.txEventBuffer = nil
 	tx.pendingEvents = nil
+
+	// Keep change-log diversion ON across the reverse mutations below so their
+	// records (DeleteNodeCascade, ReplaceNode, PutNodeVersion, Truncate*) ALSO land
+	// in the scope buffer, then drop the whole buffer (forward + reverse) with
+	// DiscardLogScope before unlocking — a rolled-back tx emits NOTHING. Rollback
+	// holds c.mu.Lock, so no concurrent standalone mutation can run while diverted.
+	if tx.g.txLogScope != nil {
+		tx.g.txLogScope.SetLogDivert(true)
+	}
 
 	var firstErr error
 	capture := func(err error) {
@@ -550,6 +650,12 @@ func (tx *GraphTx) Rollback() error {
 	capture(tx.restoreRegistries())
 	if firstErr == nil {
 		tx.g.restoreOpCounters(tx.opSnapshot)
+	}
+
+	// Drop the buffered forward + reverse records (also clears diversion). No LSN
+	// was burned, so the feed has no gap.
+	if tx.g.txLogScope != nil {
+		capture(tx.g.txLogScope.DiscardLogScope())
 	}
 
 	return firstErr
@@ -809,6 +915,14 @@ func (tx *GraphTx) restoreRelSnapshotHistory(id types.RelID, snap relSnapshot) e
 }
 
 func (tx *GraphTx) restoreRegistries() error {
+	// Restore the exact pre-tx registry, de-allocating any label/rel-type token
+	// this tx allocated. This is safe even with the change-log enabled BECAUSE the
+	// per-tx change-log scope (store.TxChangeLogScope) discarded the tx's buffered
+	// records on rollback — the rolled-back tx emitted NOTHING, so no durable feed
+	// record references the de-allocated token. (Before the per-tx buffer existed,
+	// the tx body's puts emitted records in-backend immediately, so de-allocating
+	// here poisoned the feed and stalled replicas — lesson 54; the append-only
+	// STOPGAP that guarded this is now superseded by the buffer for the tx path.)
 	labels := registrypkg.NewLabelRegistry()
 	if err := labels.ImportNames(tx.labelSnapshot); err != nil {
 		return err

@@ -361,6 +361,22 @@ func (bs *Store) deletePendingIncoming(endNodeID, relID snowflake.ID) {
 			bs.pending[k] = writeOp{opType: writeOpDelete, key: op.key}
 		}
 	}
+	// A matching SET parked in `flushing` is mid-commit and cannot be rewritten in
+	// place (it is about to land in Badger). Queue an explicit delete into pending
+	// so a later flush removes it after the in-flight commit — otherwise the repair
+	// scan (scanAndDeleteIncomingPersisted, a Badger View) misses the not-yet-
+	// committed key and the incoming entry orphans during the commit window.
+	for k, op := range bs.flushing {
+		key := []byte(k)
+		if len(key) != storepkg.SizeAdjacency || key[0] != storepkg.KeyIn || op.opType != writeOpSet {
+			continue
+		}
+		if storepkg.ParseIDFromKey(key, 1) == endNodeID && storepkg.ParseRelIDFromAdjKey(key) == relID {
+			if _, has := bs.pending[k]; !has {
+				bs.pending[k] = writeOp{opType: writeOpDelete, key: op.key}
+			}
+		}
+	}
 }
 
 func validateIncomingDeleteTarget(endNodeID, relID snowflake.ID) error {

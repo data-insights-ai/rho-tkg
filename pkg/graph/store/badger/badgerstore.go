@@ -333,6 +333,16 @@ type Store struct {
 	// Map keyed by string(op.key) for last-write-wins deduplication.
 	wbMu    sync.Mutex
 	pending map[string]writeOp
+	// flushing holds the snapshot a concurrent flush() is mid-committing to
+	// Badger. flush() parks `pending` here under wbMu BEFORE the WriteBatch
+	// commit and clears it only AFTER the commit succeeds (or merges it back on
+	// failure). Readers must consult BOTH maps: between the swap and the commit a
+	// row lives ONLY in `flushing` — it is no longer in `pending` and not yet
+	// visible in a Badger View. Entity point reads survive this window via the
+	// resident dirty cache, but history / adjacency / label-index overlay scans
+	// read the buffer directly and would otherwise drop in-flight rows. Always go
+	// through rangePending / lookupPending so `flushing` is included.
+	flushing map[string]writeOp
 
 	// flushMu serializes concurrent flush() executions end-to-end.
 	// Without this, two concurrent flush() calls can both snapshot atomic
@@ -411,6 +421,18 @@ type Store struct {
 	logEnabled bool
 	logSeq     atomic.Uint64
 	pendingLog []pendingLogRecord
+
+	// Per-transaction change-log scope (store.TxChangeLogScope). When a tx/batch
+	// opens a scope, scopeActive diverts record production into scopeLog — the
+	// records are buffered WITHOUT an LSN (logSeq is NOT advanced) and NOT placed
+	// in pendingLog. On CommitLogScope they get contiguous LSNs minted at commit
+	// time (so a rolled-back tx burns no LSN and leaves no gap) and co-commit with
+	// the tx's data via flush(); on DiscardLogScope they are dropped (a rolled-back
+	// tx emits nothing). All guarded by wbMu. scopeActive is toggled by the core
+	// ONLY while it holds c.mu.Lock around a tx mutation, so a concurrent standalone
+	// mutation (c.mu.RLock) can never observe it true and misroute its own record.
+	scopeActive bool
+	scopeLog    [][]byte // framed record values (tag‖payload), LSN assigned at commit
 }
 
 var (
@@ -1338,6 +1360,10 @@ func (bs *Store) Clear() error {
 	bs.wbMu.Lock()
 	bs.pending = make(map[string]writeOp)
 	bs.pendingLog = nil
+	// Drop any snapshot a just-completed flush parked (the success path clears it,
+	// but a leaked/in-flight snapshot must not survive the wipe below — otherwise
+	// rangePending would resurface pre-Clear history keys as phantom IDs).
+	bs.flushing = nil
 	bs.wbMu.Unlock()
 
 	// Clear all secondary index maps. Leaving these populated leaks
@@ -1350,17 +1376,28 @@ func (bs *Store) Clear() error {
 	bs.hfIndexes = make(map[uint16]*indexpkg.HighFrequencyIndex)
 	bs.vectorIndexes = make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex)
 
-	// Drop all data from Badger — atomically removes all KV pairs (including the
-	// KeyChangeLog keyspace and LastLSNKey).
-	if err := bs.db.DropAll(); err != nil {
+	// When the change-log is enabled, wipe via DropPrefix while keeping
+	// LastLSNKey continuously durable (clearAndReanchorChangeLog), so a crash
+	// mid-Clear cannot reseed the LSN allocator to 0 and collide with a tailing
+	// consumer's pre-Clear watermark (lesson 52).
+	if bs.logEnabled {
+		return bs.clearAndReanchorChangeLog()
+	}
+	// Change-log disabled now — but a PRIOR change-log-enabled session may have
+	// left a durable LastLSNKey. A bare DropAll would wipe it, and a FUTURE
+	// change-log-enabled reopen would then reseed the LSN allocator to 0 and
+	// REUSE LSNs a consumer already checkpointed past (the same silent-divergence
+	// hole lesson 52 closes, reached through the log-disabled Clear door). So
+	// preserve LastLSNKey whenever it is present; only a never-logged store
+	// (no watermark to protect) takes the single atomic DropAll.
+	hasLSN, err := bs.lastLSNKeyPresent()
+	if err != nil {
 		return err
 	}
-	// Re-anchor the change-log after the wipe with a fresh ChangeClear marker so
-	// a tailing consumer learns the store was reset.
-	if bs.logEnabled {
-		return bs.writeClearMarker()
+	if hasLSN {
+		return bs.clearDataPreservingLastLSN()
 	}
-	return nil
+	return bs.db.DropAll()
 }
 
 // Close stops background goroutines, performs a final flush (including counters),

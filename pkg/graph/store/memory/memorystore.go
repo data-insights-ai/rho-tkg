@@ -124,6 +124,15 @@ type Store struct {
 	logEnabled bool
 	logSeq     uint64
 	changeLog  []storecontract.ChangeRecord
+
+	// Per-transaction change-log scope (store.TxChangeLogScope), parallel to the
+	// badger backend. While scopeActive (toggled by the core's SetLogDivert under
+	// its exclusive write lock), logChangeLocked buffers the record into scopeLog
+	// (LSN zero) WITHOUT advancing logSeq; CommitLogScope splices them into
+	// changeLog with contiguous LSNs minted at commit; DiscardLogScope drops them
+	// (a rolled-back tx emits nothing). All under ms.mu.
+	scopeActive bool
+	scopeLog    []storecontract.ChangeRecord
 }
 
 // bumpNodeEpoch marks every cached DocValues column potentially stale. Called by

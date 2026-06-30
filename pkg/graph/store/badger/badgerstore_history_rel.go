@@ -171,10 +171,11 @@ func (bs *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relation
 	id := rid.SnowflakeID()
 	key := storepkg.HistRelKey(id, uint64(version))
 
-	// Check pending buffer.
-	bs.wbMu.Lock()
-	op, found := bs.pending[string(key)]
-	bs.wbMu.Unlock()
+	// Check the write buffer (pending + the snapshot a concurrent flush is
+	// mid-committing). Consulting only `pending` would miss a row parked in
+	// `flushing` during the commit window and wrongly return ErrVersionNotFound
+	// for a version that was just written.
+	op, found := bs.lookupPending(string(key))
 
 	if found {
 		if op.opType == writeOpDelete {
@@ -281,8 +282,10 @@ func (bs *Store) getRelHistoryByPrefix(prefix []byte) ([]*types.Relationship, er
 		return nil, err
 	}
 
-	bs.wbMu.Lock()
-	for k, op := range bs.pending {
+	// Merge buffered entries (rangePending = flushing ++ pending; pending wins).
+	// Consulting only `pending` would drop a version parked in `flushing` during
+	// the commit window.
+	bs.rangePending(func(k string, op writeOp) {
 		if len(k) == storepkg.SizeHistKey && k[:len(prefixStr)] == prefixStr {
 			if op.opType == writeOpDelete {
 				delete(entries, k)
@@ -292,8 +295,7 @@ func (bs *Store) getRelHistoryByPrefix(prefix []byte) ([]*types.Relationship, er
 				entries[k] = cp
 			}
 		}
-	}
-	bs.wbMu.Unlock()
+	})
 
 	if len(entries) == 0 {
 		return nil, nil

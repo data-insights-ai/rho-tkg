@@ -36,10 +36,14 @@ type QueryOpts struct {
 	ValidStart types.Instant // Interval filter start. Both must be > 0 for interval filter.
 	ValidEnd   types.Instant // Interval filter end. 0 = disabled.
 
-	// TxAt restricts the chain to versions visible at the given transaction
-	// time: TxFrom <= TxAt AND (TxTo == 0 OR TxTo > TxAt). 0 = no TX filter
-	// (current behaviour: any version regardless of when it was written).
-	// Combine with ValidAt / ValidStart / ValidEnd for bitemporal queries.
+	// TxAt restricts the chain to versions recorded by the given transaction
+	// time: TxFrom <= TxAt only. 0 = no TX filter (current behaviour: any
+	// version regardless of when it was written). TxTo deliberately does NOT
+	// bound visibility — superseded is not retracted, so a version remains the
+	// authority for its valid-time slot at every later TxAt (see lesson 43; the
+	// old TxTo-bounded predicate made NodeAtTx(oldVT, now) return nothing after
+	// any update). Combine with ValidAt / ValidStart / ValidEnd for bitemporal
+	// queries.
 	TxAt types.Instant
 
 	// IncludeEclipsed includes history rows that were superseded by a cascade
