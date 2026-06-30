@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.10.3] - 2026-06-30
+
 ### Fixed — deep break-rounds campaign (fuzz / crash-fault / concurrency)
 
 A second 3-round adversarial campaign over the previously un-mined lenses
