@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.10.2] - 2026-06-30
+
 ### Fixed — break-rounds campaign on the change-log / replica / delta surface
 
 A 3-round adversarial break-the-system campaign (per-tx change-log buffer, replica
