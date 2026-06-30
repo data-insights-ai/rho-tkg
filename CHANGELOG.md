@@ -69,7 +69,7 @@ Three defects found while reviewing the Phase-0/1 op-log + replica working tree.
   now APPEND-ONLY across rollback when the change-log is enabled — the de-allocation
   chokepoints keep tx-allocated tokens (already persisted; an unused token is
   harmless), so every emitted feed record stays resolvable and replicas converge;
-  log-off behavior (exact rollback) is unchanged. New `store.ChangeLogStatus`
+  log-off behavior (exact rollback) is unchanged. The `store.ChangeLogStatusCapability`
   optional probe (`ChangeLogEnabled()`) gates it — `changeFeed != nil` is NOT a
   valid signal (the backends always implement the feed methods). The
   `getOrCreate*` persist-failure rollbacks are intentionally not gated (they fire

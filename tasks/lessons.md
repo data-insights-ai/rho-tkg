@@ -1426,7 +1426,7 @@ already persisted; `GetOrCreate` returns it again later), and keeping it makes
 every emitted feed record resolvable, so replicas converge. When the log is OFF the
 old exact-rollback behavior is preserved. The gate signal is NOT `changeFeed != nil`
 (a badger/memory store ALWAYS implements the feed methods — that flag is true even
-when the log is off); it is the new `store.ChangeLogStatus.ChangeLogEnabled()`
+when the log is off); it is the `store.ChangeLogStatusCapability.ChangeLogEnabled()`
 optional probe, captured into `c.changeLogEnabled` at `New`. The `getOrCreate*`
 persist-failure rollbacks are deliberately NOT gated — they fire BEFORE any record
 is emitted (a failed persist), and must de-allocate to keep in-memory == disk.
