@@ -185,6 +185,30 @@ func TestReplicaApply_CorruptRecordFailsClosed(t *testing.T) {
 		return store.ChangeRecord{Tag: store.ChangeNodePut, Payload: payload}
 	}()
 
+	// Tamper the wire ID to 0: the body still decodes (valid msgpack) and the
+	// PrimaryLabel token is still valid, so the apply path reaches
+	// WireToNodeChecked, whose field validation rejects "id must be positive".
+	// That apply-step trust-boundary rejection must classify as ErrCorruptExport
+	// — like the bootstrap-import sibling (import.go) and the hash-mismatch case —
+	// not escape as a bare unclassified error a consumer's errors.Is misses.
+	tamperedZeroIDPut := func() store.ChangeRecord {
+		var body map[string]any
+		if err := msgpack.Unmarshal(realPut.Payload, &body); err != nil {
+			t.Fatalf("decode captured NodePut body: %v", err)
+		}
+		wire, ok := body["w"].(map[string]any)
+		if !ok {
+			t.Fatalf("captured NodePut body has no wire map, got %T", body["w"])
+		}
+		wire["id"] = int64(0)
+		body["w"] = wire
+		payload, err := msgpack.Marshal(body)
+		if err != nil {
+			t.Fatalf("re-marshal tampered body: %v", err)
+		}
+		return store.ChangeRecord{Tag: store.ChangeNodePut, Payload: payload}
+	}()
+
 	cases := []struct {
 		name     string
 		rec      store.ChangeRecord
@@ -204,6 +228,14 @@ func TestReplicaApply_CorruptRecordFailsClosed(t *testing.T) {
 			// ErrCorruptExport family (recompute-AND-COMPARE on apply).
 			name:     "wrong_integrity_hash_is_ErrCorruptExport",
 			rec:      tamperedHashPut,
+			wantWrap: graph.ErrCorruptExport,
+		},
+		{
+			// Decodes fine and the token is valid, but the wire fails field
+			// validation (id must be positive) at WireToNodeChecked — an apply-step
+			// trust-boundary rejection that must classify as ErrCorruptExport.
+			name:     "invalid_wire_field_is_ErrCorruptExport",
+			rec:      tamperedZeroIDPut,
 			wantWrap: graph.ErrCorruptExport,
 		},
 		{

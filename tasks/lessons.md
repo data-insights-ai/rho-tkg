@@ -1571,3 +1571,52 @@ sibling overlay, THEN take the max. Rules:
   empty. The pinning test asserts `Max*` and `All*` return consistent answers for the
   same overlay state.
 
+## 58. A Contract That Spans A FAMILY Of Sibling Doors Must Land In EVERY Door — Audit The Family, Don't Patch One
+
+A second break-rounds campaign found two defects that are the same shape: a
+contract that should hold uniformly across a family of doors had drifted in one.
+
+- **Trust-boundary error CLASSIFICATION.** The untrusted-stream contract is
+  "every decode/validation rejection wraps `ErrCorruptExport`." The bootstrap
+  import wraps it (`import.go` `WireToNodeChecked` → `ErrCorruptExport`), and the
+  sibling `verifyImportedNodeHash` wraps it — but the SHARED replica-apply /
+  delta-merge path (`applyChangeRecordLocked`'s doors) returned the
+  `WireTo{Node,Rel}Checked` error BARE. So `errors.Is(err, ErrCorruptExport)`
+  worked for a hash mismatch but not for a malformed wire (`id == 0`), through the
+  same logical boundary. Fix: wrap at ALL SEVEN `WireTo*Checked` apply sites.
+- **Name-admission POLICY.** A registry has three name doors — `GetOrCreate`
+  (create), `ImportNames` (load), `AppendNames` (replica grow). The Label/RelType
+  registries reject blank (all-whitespace) names in all three via `isBlankName`;
+  the PropertyKeyRegistry rejected blank only in `AppendNames`, while `GetOrCreate`
+  guarded merely `== ""`. So a blank key the create door minted was one the grow
+  door refused. Fix: tighten `GetOrCreate` to `isBlankName` to match the grow door
+  and the siblings.
+
+Rules this yields:
+- **Find the family, then grep it.** A door fix is suspect until you have listed
+  its siblings (the other `WireTo*Checked` sites; the other name doors; the other
+  registries) and confirmed the contract holds in each. The same `errors.Is`
+  classification, the same validation predicate, the same ordering — applied
+  everywhere or nowhere.
+- **The fix DIRECTION is set by the existing shared test, not by the loosest
+  door.** I first "fixed" the blank-name split by LOOSENING `AppendNames` — and
+  the shared `TestAppendNames_RejectsMalformedSuffix` (which runs over all three
+  registries) went red, revealing the codebase's encoded intent is REJECT-blank.
+  A pre-existing parametric test across the family is the oracle for which way a
+  divergence should be reconciled; let it veto the wrong direction.
+- **Reconcile toward intent, but don't break load back-compat.** Tightening the
+  CREATE door is safe (new data only) when the consuming layer degrades
+  gracefully — the wire encoder ignores `GetOrCreate`'s error and falls back to
+  the raw key on token 0, so rejecting a blank key costs nothing. Tightening the
+  LOAD door (`ImportNames`) is NOT safe: a registry persisted before the guard may
+  hold a blank token, so load stays lenient (strict-on-create, lenient-on-load is
+  a deliberate, documented asymmetry — pin it so a later "tidy-up" can't turn it
+  into a hard load failure for legacy data).
+- **Make the un-expressible invariant expressible.** The flush-before-watermark
+  ordering (the durable applied-LSN must never lead the durable data) was asserted
+  only by code-reading ("not expressible at the graph façade"). A
+  `Config.Store` decorator embedding a real backend and overriding ONE method
+  (`Flush()` injects a one-shot failure; `MetaGet`/`MetaSet` forwarded so the
+  watermark store is independent of the failed data flush) turns a
+  previously-structural-only guarantee into an executable break-test.
+

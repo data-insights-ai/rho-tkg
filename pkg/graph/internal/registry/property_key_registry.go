@@ -66,9 +66,17 @@ func (r *PropertyKeyRegistry) ensureInitialized() {
 // Returns (0, nil) — NOT an error — when the registry is full. Callers
 // (the wire encoder) treat token 0 as "fall back to writing the raw key
 // string in the wire format" so high-cardinality workloads still complete.
-// Returns ErrEmptyName if key is empty.
+// Returns ErrEmptyName if key is blank (empty or all-whitespace).
+//
+// Blank rejection matches the sibling registries' GetOrCreate and this
+// registry's own AppendNames (the replica grow door), so a blank key can never
+// be tokenized — the wire encoder already ignores this error and falls back to
+// the raw key (token 0), so a degenerate blank key still round-trips, it just
+// never enters the token table to later diverge the grow door. (ImportNames
+// stays lenient so a legacy registry that tokenized a blank key before this
+// guard still loads.)
 func (r *PropertyKeyRegistry) GetOrCreate(key string) (uint16, error) {
-	if key == "" {
+	if isBlankName(key) {
 		return 0, ErrEmptyName
 	}
 	r.ensureInitialized()
@@ -247,7 +255,7 @@ func (r *PropertyKeyRegistry) AppendNames(prefix []string, suffix []string) (boo
 	sset := make(map[string]struct{}, len(suffix))
 	for i, name := range suffix {
 		if isBlankName(name) {
-			return false, fmt.Errorf("graph: property-key append: empty name at suffix index %d", i)
+			return false, fmt.Errorf("graph: property-key append: blank name at suffix index %d", i)
 		}
 		if _, dup := sset[name]; dup {
 			return false, fmt.Errorf("graph: property-key append: duplicate name %q in suffix", name)

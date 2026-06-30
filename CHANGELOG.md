@@ -6,6 +6,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed — deep break-rounds campaign (fuzz / crash-fault / concurrency)
+
+A second 3-round adversarial campaign over the previously un-mined lenses
+(change-record/apply decoder fuzz, crash-fault & watermark-ordering torn state,
+deep concurrency) found two more defects on the v4.10.x surface; both fixed
+test-first.
+
+- **Apply-path wire rejection escaped `ErrCorruptExport` classification (LOW).**
+  In `applyChangeRecordLocked`'s doors, a `storeutil.WireTo{Node,Rel}Checked`
+  field-validation failure (e.g. a record whose decoded wire has `id == 0`)
+  returned a bare error, unlike the bootstrap-import path and the sibling
+  `verifyImported*Hash` check, both of which wrap `ErrCorruptExport`. A consumer
+  classifying replica-apply / `ImportMerge` failures via
+  `errors.Is(err, ErrCorruptExport)` mis-classified this untrusted-stream
+  rejection. All seven `WireTo*Checked` apply sites now wrap `ErrCorruptExport`.
+  Pinned by a new sub-case of `TestReplicaApply_CorruptRecordFailsClosed`.
+- **`PropertyKeyRegistry.GetOrCreate` admitted blank (all-whitespace) keys while
+  `AppendNames` rejected them (MEDIUM-consistency).** The create door guarded only
+  `key == ""`, but the grow door (and the Label/RelType registries' three doors)
+  reject all-whitespace via `isBlankName` — so a blank key the create door minted
+  could not pass the grow door. `GetOrCreate` now rejects blank via `isBlankName`
+  (write-safe: the wire encoder already ignores this error and falls back to the
+  raw key on token 0, so a degenerate blank key still round-trips, it just never
+  enters the token table). `ImportNames` stays intentionally lenient (empty-only)
+  so a registry that tokenized a blank key before this guard still loads. Pinned
+  by `TestPropertyKeyRegistry_BlankNameRejectedByCreateAndGrow` and
+  `TestPropertyKeyRegistry_ImportTolerantOfLegacyBlankKey`. Lesson 58.
+
+### Added — deep break-rounds coverage (no behavior change)
+
+- The durable applied-LSN watermark never leads the durable data: a flaky-flush
+  store decorator injects a post-apply flush failure and asserts `ApplyChange`
+  returns the error with the watermark unmoved, then converges on a clean retry —
+  making the flush-before-watermark crash invariant (previously "not expressible
+  at the graph façade") executable. `TestReplicaApply_FlushFailureDoesNotAdvanceWatermark`.
+
 ## [4.10.2] - 2026-06-30
 
 ### Fixed — break-rounds campaign on the change-log / replica / delta surface
