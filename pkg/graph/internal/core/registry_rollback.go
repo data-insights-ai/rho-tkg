@@ -374,7 +374,7 @@ func (c *Core) restoreNewLabelsOnError(snapshot, allocated []string, err error) 
 		return c.persistRegistries()
 	}
 	// When the change-log is on, the token registries are APPEND-ONLY across an
-	// error rollback (lesson 51/54): a label this op allocated may already be
+	// error rollback (lesson 51/55): a label this op allocated may already be
 	// referenced by a durable change-log record — most acutely a partial BATCH,
 	// which emits ChangeNodePut for the nodes it created, then this path runs the
 	// delete cleanup AND would de-allocate the label. De-allocating poisons the

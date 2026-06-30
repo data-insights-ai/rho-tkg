@@ -9,10 +9,10 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 )
 
-// The import header guard accepts the v1 (pre-SnapshotLSN) and v2 formats and
-// rejects anything outside [min, current] — the backward-compat gate for the
-// format bump. A too-new header must fail with ErrIncompatibleExport so an old
-// build refuses a newer snapshot instead of silently mis-reading it.
+// The import header guard accepts v1 (pre-SnapshotLSN), v2 (full export), and
+// v3 (delta) formats and rejects anything outside [min, max] — the backward-compat
+// gate for the format bump. A too-new header must fail with ErrIncompatibleExport
+// so an old build refuses a newer snapshot instead of silently mis-reading it.
 func TestImport_HeaderVersionRange(t *testing.T) {
 	build := func(ver uint8) []byte {
 		var buf bytes.Buffer
@@ -31,10 +31,10 @@ func TestImport_HeaderVersionRange(t *testing.T) {
 		ver     uint8
 		wantErr bool
 	}{
-		{exportFormatVersionMin, false}, // v1 — backward-compat
-		{exportFormatVersion, false},    // v2 — current
-		{exportFormatVersion + 1, true}, // too new
-		{0, true},                       // below min
+		{exportFormatVersionMin, false},    // v1 — backward-compat
+		{exportFormatVersion, false},       // v2 — current full export
+		{exportFormatVersionMax + 1, true}, // too new
+		{0, true},                          // below min
 	}
 	for _, tc := range cases {
 		dst := newTestGraph(t)

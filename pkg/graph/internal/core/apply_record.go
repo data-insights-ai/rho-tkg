@@ -270,9 +270,46 @@ func (c *Core) applyNodePutLocked(body storeutil.NodePutBody, rec storepkg.Chang
 		return c.applyNodeLabelChangeLocked(local, n, added, removed, addedN, removedN, body.WithHistory)
 	}
 	if body.WithHistory {
+		reproduceSupersededNodeTxTo(local, n)
 		return c.store.ReplaceNodeWithHistory(n, local.Version(), local)
 	}
 	return c.store.ReplaceNode(n)
+}
+
+// reproduceSupersededNodeTxTo restores the ONE field a WithHistory put record
+// does not carry: the superseded prior version's TxTo. Every WithHistory emitter
+// (Update, label-token mutation) stamps prev.TxTo = the new version's TxFrom (a
+// single monotonic `now`), but the record carries only the NEW version, so a
+// replica / delta-merge regenerating the prior history row from its in-sync local
+// current must restore that field for a BYTE-exact (not merely hash-exact)
+// reproduction. TxTo is not part of the integrity hash, so this never alters the
+// verified chain — which is exactly why a hash-only convergence oracle cannot see
+// the gap. No-op when the new version carries no TxFrom (defensive).
+func reproduceSupersededNodeTxTo(prev, next *types.Node) {
+	nt := next.Temporal()
+	if nt == nil || nt.TxFrom == 0 {
+		return
+	}
+	pt := prev.Temporal()
+	if pt == nil {
+		pt = &types.TemporalMetadata{}
+		prev.SetTemporal(pt)
+	}
+	pt.TxTo = nt.TxFrom
+}
+
+// reproduceSupersededRelTxTo is the relationship counterpart.
+func reproduceSupersededRelTxTo(prev, next *types.Relationship) {
+	nt := next.Temporal()
+	if nt == nil || nt.TxFrom == 0 {
+		return
+	}
+	pt := prev.Temporal()
+	if pt == nil {
+		pt = &types.TemporalMetadata{}
+		prev.SetTemporal(pt)
+	}
+	pt.TxTo = nt.TxFrom
 }
 
 // applyNodeLabelChangeLocked routes a NodePut whose label set differs from the
@@ -292,11 +329,13 @@ func (c *Core) applyNodeLabelChangeLocked(local, n *types.Node, added, removed u
 	}
 	if addedN == 1 {
 		if withHistory {
+			reproduceSupersededNodeTxTo(local, n)
 			return c.store.AddNodeLabelTokenWithHistory(id, added, n, local.Version(), local)
 		}
 		return c.store.AddNodeLabelToken(id, added, n)
 	}
 	if withHistory {
+		reproduceSupersededNodeTxTo(local, n)
 		return c.store.RemoveNodeLabelTokenWithHistory(id, removed, n, local.Version(), local)
 	}
 	return c.store.RemoveNodeLabelToken(id, removed, n)
@@ -328,6 +367,7 @@ func (c *Core) applyRelPutLocked(body storeutil.RelPutBody, rec storepkg.ChangeR
 		return nil
 	}
 	if body.WithHistory {
+		reproduceSupersededRelTxTo(local, r)
 		return c.store.ReplaceRelWithHistory(r, local.Version(), local)
 	}
 	return c.store.ReplaceRelationship(r)

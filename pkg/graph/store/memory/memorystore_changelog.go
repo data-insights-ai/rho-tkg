@@ -224,10 +224,6 @@ func (ms *Store) logHistoryTruncateLocked(tag storecontract.ChangeTag, id snowfl
 	return nil
 }
 
-// ChangeLogEnabled reports whether this store's change-log is on. Satisfies
-// store.ChangeLogStatus.
-func (ms *Store) ChangeLogEnabled() bool { return ms != nil && ms.logEnabled }
-
 // LastCommittedLSN returns the highest change-log LSN, or 0 when the log is
 // empty/disabled. The memory store has no async buffer, so every appended record
 // is immediately "committed".
@@ -241,6 +237,16 @@ func (ms *Store) LastCommittedLSN() (uint64, error) {
 		return 0, err
 	}
 	return ms.logSeq, nil
+}
+
+// ChangeLogEnabled reports whether this store is recording mutations to its
+// change-log (store.ChangeLogStatusCapability). False when constructed without
+// WithChangeLog — the feed methods still work but return empty.
+func (ms *Store) ChangeLogEnabled() bool {
+	if ms == nil {
+		return false
+	}
+	return ms.logEnabled
 }
 
 // snapshotChangesLocked copies the records with LSN > afterLSN (up to limit;

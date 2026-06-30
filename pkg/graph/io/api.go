@@ -79,6 +79,9 @@ type ImportOptions struct {
 type Ops interface {
 	Export(w io.Writer) error
 	Import(r io.Reader, opts ImportOptions) error
+	Watermark() (Cursor, error)
+	ExportSince(w io.Writer, since Cursor) error
+	ImportMerge(r io.Reader, opts MergeOptions) error
 }
 
 // API is the io sub-API accessor.
@@ -119,4 +122,56 @@ func (a *API) Import(r io.Reader, opts ImportOptions) error {
 		return err
 	}
 	return ops.Import(r, opts)
+}
+
+// Watermark returns a Cursor marking the graph's CURRENT change-log point. It is
+// the value to (1) store alongside a full or delta backup as the parent cursor
+// for the NEXT delta, and (2) pass as `since` to a later ExportSince to get
+// everything committed after this point.
+//
+// Returns a wrapped store.ErrCapabilityNotSupported when the graph has no
+// change-log (graph.Config.ChangeLog) or the backend exposes no change-feed; the
+// caller then performs a full Export rather than a delta. ErrNilGraph /
+// ErrGraphClosed on a not-ready or closed graph.
+func (a *API) Watermark() (Cursor, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return Cursor{}, err
+	}
+	return ops.Watermark()
+}
+
+// ExportSince writes a DELTA stream to w: only the mutations committed after
+// `since`, framed like Export plus a delta header so ImportMerge can apply it
+// onto a base. See the package-level delta documentation for semantics.
+//
+// Returns ErrCursorUnknown when `since` is from another graph, ahead of the log,
+// or predates retained history (the caller falls back to a full Export); a
+// wrapped store.ErrCapabilityNotSupported when the graph has no change-log;
+// ErrNilWriter / ErrNilGraph / ErrGraphClosed as appropriate.
+func (a *API) ExportSince(w io.Writer, since Cursor) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ExportSince(w, since)
+}
+
+// ImportMerge reads a stream produced by ExportSince (a delta) and MERGES it
+// into the current graph, reproducing the source's rows verbatim through the
+// same trust pipeline Import uses (per-record hash recompute-and-compare plus a
+// full hash-chain verification after replay, rolling back all touched rows on
+// any failure). Unlike Import it does not require an empty target. Applying the
+// same delta more than once is a no-op (idempotent).
+//
+// Pass MergeOptions{} for the lenient default. Errors mirror Import
+// (ErrNilReader, ErrImportSizeLimit, ErrIncompatibleExport,
+// ErrIncompatibleRegistry, ErrCorruptExport) plus ErrDeltaBaseMismatch when the
+// delta is applied onto the wrong base (ExpectBase / Strict).
+func (a *API) ImportMerge(r io.Reader, opts MergeOptions) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ImportMerge(r, opts)
 }

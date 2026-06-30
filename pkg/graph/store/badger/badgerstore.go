@@ -1379,7 +1379,7 @@ func (bs *Store) Clear() error {
 	// When the change-log is enabled, wipe via DropPrefix while keeping
 	// LastLSNKey continuously durable (clearAndReanchorChangeLog), so a crash
 	// mid-Clear cannot reseed the LSN allocator to 0 and collide with a tailing
-	// consumer's pre-Clear watermark (lesson 52).
+	// consumer's pre-Clear watermark (lesson 53).
 	if bs.logEnabled {
 		return bs.clearAndReanchorChangeLog()
 	}
@@ -1387,7 +1387,7 @@ func (bs *Store) Clear() error {
 	// left a durable LastLSNKey. A bare DropAll would wipe it, and a FUTURE
 	// change-log-enabled reopen would then reseed the LSN allocator to 0 and
 	// REUSE LSNs a consumer already checkpointed past (the same silent-divergence
-	// hole lesson 52 closes, reached through the log-disabled Clear door). So
+	// hole lesson 53 closes, reached through the log-disabled Clear door). So
 	// preserve LastLSNKey whenever it is present; only a never-logged store
 	// (no watermark to protect) takes the single atomic DropAll.
 	hasLSN, err := bs.lastLSNKeyPresent()

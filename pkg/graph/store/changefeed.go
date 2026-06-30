@@ -138,15 +138,18 @@ type ChangeFeedCapability interface {
 	LastCommittedLSN() (uint64, error)
 }
 
-// ChangeLogStatus is an optional capability: a store that can report whether its
-// change-log is actually ENABLED — distinct from merely implementing the feed
-// methods (a badger/memory store always implements ChangeFeedCapability but only
-// EMITS records when its log is on). Core uses it to gate behavior that must hold
-// only when records are really being emitted (e.g. keeping the token registries
-// append-only across tx rollback, so a rolled-back-but-already-logged token is
-// never de-allocated). A store that does not implement this is treated as
-// log-disabled.
-type ChangeLogStatus interface {
+// ChangeLogStatusCapability is OPTIONAL. A backend that exposes
+// ChangeFeedCapability whether or not its change-log is actually recording (the
+// in-tree memory and badger stores always expose the feed methods, returning an
+// empty feed when the log is disabled) implements this so a consumer can tell
+// "recording" from "present but off". ExportSince / Watermark use it to fail
+// closed when the log is disabled — a delta that silently recorded nothing would
+// be a data-loss footgun in a backup. A feed backend that does not implement it
+// is assumed active (it opted into exposing the feed). Core also uses it to gate
+// the per-tx change-log buffer and the append-only-registry behavior.
+type ChangeLogStatusCapability interface {
+	// ChangeLogEnabled reports whether this store is recording committed
+	// mutations to its change-log.
 	ChangeLogEnabled() bool
 }
 

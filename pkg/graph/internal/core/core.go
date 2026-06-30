@@ -731,9 +731,10 @@ func changeFeedCapability(store storepkg.MandatoryStore) storepkg.ChangeFeedCapa
 // changeLogStatusEnabled reports whether the store's change-log is actually on
 // (records are emitted). A store always implements ChangeFeedCapability's methods
 // but only EMITS when its log is enabled; this optional probe is the only reliable
-// signal. A store that does not implement store.ChangeLogStatus is log-disabled.
+// signal. A store that does not implement store.ChangeLogStatusCapability is
+// log-disabled.
 func changeLogStatusEnabled(store storepkg.MandatoryStore) bool {
-	s, ok := store.(storepkg.ChangeLogStatus)
+	s, ok := store.(storepkg.ChangeLogStatusCapability)
 	return ok && s.ChangeLogEnabled()
 }
 

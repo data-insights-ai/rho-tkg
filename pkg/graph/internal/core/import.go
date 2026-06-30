@@ -384,8 +384,13 @@ func (c *Core) importReplayRecordsLocked(readRecord func() (byte, []byte, error)
 			if err := storeutil.SafeUnmarshal(data, &hdr); err != nil {
 				return fmt.Errorf("%w: unmarshal header: %v", ErrCorruptExport, err)
 			}
-			if hdr.Version < exportFormatVersionMin || hdr.Version > exportFormatVersion {
-				return fmt.Errorf("%w: got %d, want %d..%d", ErrIncompatibleExport, hdr.Version, exportFormatVersionMin, exportFormatVersion)
+			if hdr.Version < exportFormatVersionMin || hdr.Version > exportFormatVersionMax {
+				return fmt.Errorf("%w: got %d, want %d..%d", ErrIncompatibleExport, hdr.Version, exportFormatVersionMin, exportFormatVersionMax)
+			}
+			if hdr.IsDelta {
+				// A delta stream carries change records that the full-import
+				// replay does not apply; it must go through ImportMerge.
+				return fmt.Errorf("%w: delta stream — use ImportMerge", ErrIncompatibleExport)
 			}
 			if hdr.NodeCount < 0 {
 				return fmt.Errorf("%w: negative node count %d", ErrCorruptExport, hdr.NodeCount)
@@ -1124,7 +1129,7 @@ func restoreImportRelHistory(c *Core, id types.RelID, snap importRelSnapshot) er
 
 func (rb *importRollback) restoreRegistries() error {
 	// When the change-log is enabled, keep the token registries APPEND-ONLY across
-	// import rollback (lesson 51/54). A partial change-log-enabled import emits
+	// import rollback (lesson 51/55). A partial change-log-enabled import emits
 	// records IN-BACKEND eagerly (import is not yet wrapped in a TxChangeLogScope —
 	// see tasks/todo.md), so a token an emitted record references must NOT be
 	// de-allocated here — that would poison the feed and stall replicas (the same

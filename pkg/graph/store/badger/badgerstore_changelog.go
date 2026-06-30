@@ -198,7 +198,7 @@ func (bs *Store) relDeleteWithHistoryPayload(id snowflake.ID, tombstone *types.R
 // deletes the stale metadata keys (registries, counters, index defs, …) EXCEPT
 // LastLSNKey and overwrites LastLSNKey with the new watermark alongside the
 // marker. A crash at any point leaves LastLSNKey at its old (or new) value, never
-// absent, so the allocator never moves backward. See lesson 52.
+// absent, so the allocator never moves backward. See lesson 53.
 func (bs *Store) clearAndReanchorChangeLog() error {
 	// Step ordering is dictated by two durable invariants that must hold at EVERY
 	// crash point: (a) LastLSNKey is never absent (watermark monotonicity), and
@@ -210,7 +210,7 @@ func (bs *Store) clearAndReanchorChangeLog() error {
 	// claiming rows that no longer exist, and the store would refuse to reopen.
 
 	// Steps 1-3: wipe data + all meta except LastLSNKey (shared with the
-	// change-log-disabled Clear arm so BOTH preserve the watermark — lesson 52).
+	// change-log-disabled Clear arm so BOTH preserve the watermark — lesson 53).
 	if err := bs.clearDataPreservingLastLSN(); err != nil {
 		return err
 	}
@@ -243,7 +243,7 @@ func (bs *Store) clearAndReanchorChangeLog() error {
 // clearDataPreservingLastLSN wipes every data / index / history / change-log
 // keyspace and all metadata EXCEPT LastLSNKey, which stays continuously durable.
 // Shared by both Clear() arms so the LSN watermark is never absent across a Clear
-// (lesson 52): a future change-log-enabled reopen reseeds the allocator FROM it,
+// (lesson 53): a future change-log-enabled reopen reseeds the allocator FROM it,
 // never from 0, so post-Clear LSNs cannot collide with a consumer's pre-Clear
 // checkpoint. The entity-counter meta keys are deleted BEFORE the data drop, so a
 // crash between the two leaves the counters absent (reconcilePersistedCounter then
@@ -382,11 +382,6 @@ func maxChangeLogLSN(txn *badgerv4.Txn) uint64 {
 	return 0
 }
 
-// ChangeLogEnabled reports whether this store's change-log is on (records are
-// actually emitted). Satisfies store.ChangeLogStatus. The store always implements
-// the ChangeFeedCapability methods, so this is the only reliable enabled-probe.
-func (bs *Store) ChangeLogEnabled() bool { return bs.logEnabled }
-
 // --- store.TxChangeLogScope: per-transaction change-log buffer ---
 //
 // A tx/batch opens a scope (BeginLogScope), brackets each of its mutations with
@@ -493,6 +488,16 @@ func (bs *Store) LastCommittedLSN() (uint64, error) {
 		return 0, err
 	}
 	return lsn, nil
+}
+
+// ChangeLogEnabled reports whether this store is recording mutations to its
+// change-log (store.ChangeLogStatusCapability). False when opened without the
+// change-log — the feed methods still work but return empty.
+func (bs *Store) ChangeLogEnabled() bool {
+	if bs == nil {
+		return false
+	}
+	return bs.logEnabled
 }
 
 // ChangeFeed returns up to limit committed records with LSN > afterLSN, in

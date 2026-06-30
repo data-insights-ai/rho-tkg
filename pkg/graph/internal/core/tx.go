@@ -921,7 +921,7 @@ func (tx *GraphTx) restoreRegistries() error {
 	// records on rollback — the rolled-back tx emitted NOTHING, so no durable feed
 	// record references the de-allocated token. (Before the per-tx buffer existed,
 	// the tx body's puts emitted records in-backend immediately, so de-allocating
-	// here poisoned the feed and stalled replicas — lesson 54; the append-only
+	// here poisoned the feed and stalled replicas — lesson 55; the append-only
 	// STOPGAP that guarded this is now superseded by the buffer for the tx path.)
 	labels := registrypkg.NewLabelRegistry()
 	if err := labels.ImportNames(tx.labelSnapshot); err != nil {

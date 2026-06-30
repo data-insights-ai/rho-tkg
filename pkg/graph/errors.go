@@ -121,6 +121,13 @@ var (
 	ErrImportSizeLimit      = core.ErrImportSizeLimit
 )
 
+// Delta export/merge sentinels (ExportSince / ImportMerge). Re-exported so
+// callers can `errors.Is(err, ErrCursorUnknown)` from pkg/graph directly.
+var (
+	ErrCursorUnknown     = core.ErrCursorUnknown
+	ErrDeltaBaseMismatch = core.ErrDeltaBaseMismatch
+)
+
 // ErrNoVersionAsOf is the bitemporal sentinel returned by g.Temporal().NodeAsOf
 // / RelAsOf when no version was committed at or before the supplied
 // transaction time.

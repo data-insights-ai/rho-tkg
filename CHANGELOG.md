@@ -6,6 +6,201 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.10.1] - 2026-06-30
+
+### Fixed — change-log / replica hardening + per-transaction change-log buffer
+
+
+Three defects found while reviewing the Phase-0/1 op-log + replica working tree.
+
+- **Badger commit-window overlay was incomplete and leaked.** `flush()` releases
+  `idxMu` BEFORE the WriteBatch commit, so for the whole commit window a
+  just-written row is gone from the `pending` buffer and not yet visible in a
+  Badger `View`. A `flushing` map parks the swapped-out snapshot so overlay
+  readers still see those rows during the window — but only ONE reader
+  (`pendingHistoryIDOverlay`) had been routed through it, and the snapshot was
+  never cleared on a successful commit (nor by `Clear()`). Consequences: history
+  point reads (`GetNodeVersion` / `GetRelVersion`), history scans (`GetNodeHistory`
+  / `GetRelHistory`, `MaxNodeHistoryID` / `MaxRelHistoryID`, truncate/trim
+  retention sets, the `AsOf` version-chain overlay) and the on-disk label /
+  adjacency overlays (`LabelIndexOnDisk` / `AdjacencyIndexOnDisk`) momentarily
+  DROPPED an in-flight row; and a stale snapshot left after a successful flush let
+  `Clear()` RESURRECT phantom history IDs the wipe had removed (visible to history
+  scans, history export, and the import empty-probe). Now every overlay reader
+  consults both buffers via `rangePending` / `lookupPending` (the latter had been
+  dead code), the cascade-delete and incoming-repair MUTATORS that compute delete
+  sets also consult `flushing` (otherwise they orphan a persisted index key during
+  the window), and `flushing` is cleared on commit success, on `Clear()`, and on
+  the failed-flush requeue. Memory and tiered backends are unaffected (no async
+  commit window). See lesson 54.
+- **`Clear()` could reseed the LSN allocator to 0 after a crash.** With the
+  change-log enabled, `Clear()` now wipes via `DropPrefix` while keeping
+  `LastLSNKey` continuously durable (`clearAndReanchorChangeLog`) instead of
+  `DropAll` + a separate marker write — so a crash mid-`Clear` can no longer leave
+  the store with neither change-log records nor a watermark, which would reseed
+  the LSN allocator to 0 and silently strand a tailing consumer below its
+  pre-`Clear` checkpoint. Stale entity-counter meta keys are deleted BEFORE the
+  data drop so a mid-`Clear` crash never leaves a counter claiming rows that no
+  longer exist. The change-log-**disabled** `Clear()` arm now ALSO preserves
+  `LastLSNKey` whenever a prior change-log-enabled session left one — it used a
+  bare `DropAll`, which wiped the watermark, so a `ChangeLog`-on → reopen
+  `ChangeLog`-off + `Clear` → reopen `ChangeLog`-on sequence reseeded the LSN
+  allocator to 0 and reused LSNs a consumer had already checkpointed past (the same
+  silent-divergence hole through a sibling door). Both `Clear()` arms now share one
+  `clearDataPreservingLastLSN` helper; only a never-logged store still takes the
+  atomic `DropAll`. See lesson 53.
+- **`ApplyChanges` silently swallowed a misordered batch.** New sentinel
+  **`store.ErrChangesNotAscending`**: a record whose LSN is not strictly greater
+  than the previous record's now stops the batch (the strictly-ascending prefix is
+  still flushed and watermarked) instead of being skipped by the already-applied
+  watermark check, which would leave a permanent gap in the replica's coverage.
+- **A rolled-back transaction that allocated a new token poisoned the change-log
+  feed and permanently stalled replicas (fixed).** A tx that allocates a NEW
+  label/rel-type token emits a durable `ChangeNodePut`/`ChangeRelPut` referencing
+  it, then `Rollback()` (`restoreRegistries`) DE-allocated the token by rebuilding
+  the registry from the pre-tx snapshot — so the feed permanently referenced a
+  token the primary no longer held. A replica, **even with a `ReplicationSource`**,
+  could never resolve it (the refetch finds it absent — the primary rolled it back
+  too) and stalled forever at that LSN; the number was then reused for a different
+  name → silent divergence. The same poison existed in the whole token-deallocation
+  family: standalone `restoreNewLabelsOnError`/`restoreNewRelTypeOnError`, the batch
+  partial-failure path (deletes already-created nodes whose puts referenced the
+  token, then de-allocates), and index creation. **Fix:** the token registries are
+  now APPEND-ONLY across rollback when the change-log is enabled — the de-allocation
+  chokepoints keep tx-allocated tokens (already persisted; an unused token is
+  harmless), so every emitted feed record stays resolvable and replicas converge;
+  log-off behavior (exact rollback) is unchanged. New `store.ChangeLogStatus`
+  optional probe (`ChangeLogEnabled()`) gates it — `changeFeed != nil` is NOT a
+  valid signal (the backends always implement the feed methods). The
+  `getOrCreate*` persist-failure rollbacks are intentionally not gated (they fire
+  before any record is emitted). Pinned by convergence + white-box tests; see
+  lesson 55. The residual physical-redo-log property (rolled-back ENTITY churn
+  still ships; replicas converge but transiently materialize the uncommitted
+  entity; feed is not a logical committed-tx CDC source) is documented, not a bug.
+- **Per-transaction change-log buffer (proper fix; supersedes the stopgap for the
+  TX path).** New optional `store.TxChangeLogScope` capability (`BeginLogScope` /
+  `SetLogDivert` / `CommitLogScope` / `DiscardLogScope`, on badger + memory). A
+  `GraphTx` now BUFFERS the change-log records its mutations produce and emits them
+  only on `Commit` (with LSNs minted AT commit, so a rolled-back tx burns none and
+  leaves no feed gap) / DISCARDS them on `Rollback` — mirroring `txEventBuffer` for
+  events. So a **rolled-back tx emits NOTHING** to the feed: no token-poison (the
+  tx `restoreRegistries` reverts to EXACT pre-tx-registry rollback again — the
+  append-only stopgap is no longer needed there), no transient replica phantom, no
+  CDC-asymmetry residual. The concurrency lever: a change-log-enabled tx takes
+  `c.mu.Lock` (EXCLUSIVE) **per-mutation** (not per-lifetime — no in-tx-read
+  deadlock) and toggles diversion under it, so a concurrent standalone mutation
+  (shared `c.mu.RLock`) can never have its own record misrouted into the tx's
+  buffer (pinned by a `-race` test, fail-first verified). Gated on the change-log
+  being enabled — non-change-log graphs are untouched (full Path B write
+  concurrency). `Batch.Execute` ALSO uses the scope (it holds the global write lock
+  for its whole duration, so diversion stays on the whole batch); because a batch
+  KEEPS its successful ops on a partial failure it always COMMITS the scope (records
+  emitted atomically at batch-end), and the failed-op create+delete cleanup churn
+  converges. `IO().Import` rollback is guarded by the append-only stopgap (gated on
+  the change-log being enabled); a read-only replica's bootstrap import emits
+  nothing anyway. The standalone token-deallocation path and the batch/import paths
+  keep the append-only stopgap (they emit through-the-scope-then-commit or eagerly,
+  so de-allocating a referenced token would poison). The accepted residual: a
+  change-log-enabled tx's DATA still
+  flushes during the body (records buffered), so a crash between a mid-tx data
+  flush and commit can leave committed-but-unlogged data — invisible to the feed
+  (watermark not advanced), and no worse than a tx's pre-existing SyncWrites
+  non-atomicity. See lesson 55.
+- **Replica apply fails closed on a multi-token label diff.** A `NodePut` whose
+  label set differs from the replica's local row is routed to the matching
+  label-token door; a correct contiguous feed only ever differs by ONE token (each
+  label-token door mutates one token). The diff helper previously collapsed a
+  multi-token difference to one arbitrary token, so a malformed/gapped feed could
+  silently apply one token and leave the label index diverged from the row. The
+  apply path now reports the added/removed counts and rejects any diff that is not
+  exactly one token (defense-in-depth at the apply trust boundary).
+
+
+## [4.10.0] - 2026-06-27
+
+### Fixed — hash-chain verification rejected bitemporal-cascade-corrected graphs
+
+`VerifyNodeChain` / `VerifyRelChain` (and therefore the import trust boundary,
+full `Export`+`Import`, replica apply, and the new delta merge) assumed a strictly
+LINEAR hash chain (`v_k.PrevHash == v_{k-1}.Hash` in version order). But a
+bitemporal correction (`SetNodeVersionInterval` / `SetRelVersionInterval`) appends
+a version whose `PrevHash` links to whichever version it supersedes ON THE
+VALID-TIME AXIS — a hash DAG, exactly as `temporal_cascade.go` documents. So any
+graph that used a cascade correction failed its own chain verification, and a
+full `Export`+`Import` of it failed with `ErrCorruptExport` — i.e. **such graphs
+could not be backed up/restored at all**. Fixed: linkage is now verified as
+"every non-genesis version's `PrevHash` matches the hash of SOME version in the
+set" (genesis carries an empty `PrevHash`; the lowest retained version may dangle
+for truncation), while the per-version CONTENT-hash recompute (the tamper
+evidence) is unchanged — so corrupt/garbage `PrevHash` and altered content are
+still detected. Applies to both the in-memory (rows) and badger (paged) verify
+paths. See lesson 52.
+
+### Added — delta export / merge: node-level incremental backups (`ExportSince` / `ImportMerge`)
+
+Incremental backups built on the Phase-0/1 change-log: instead of re-exporting a
+whole graph when one node changes, ship only what changed since a cursor and
+merge it onto a base. The public surface lives on `g.IO()`.
+
+- **`g.IO().Watermark() (Cursor, error)`** returns an opaque `io.Cursor`
+  (`{LSN, Epoch}`) marking the graph's current change-log point. `Cursor.Epoch`
+  is a durable per-graph lineage id (`meta/graph_epoch`, minted on first use) so
+  a cursor from a different graph (e.g. a tenant restored from scratch) is
+  detectable rather than silently producing a wrong delta.
+- **`g.IO().ExportSince(w, since Cursor) error`** writes a DELTA stream — only
+  the mutations committed after `since` — framed exactly like `Export` (delta
+  header, full token registry, then one change record per committed mutation,
+  the change-log records carried verbatim). The body is produced under the export
+  write lock against one consistent point. Returns **`ErrCursorUnknown`** when
+  the cursor is from another graph (epoch mismatch) or ahead of the log (the
+  caller falls back to a full `Export`); declines with a wrapped
+  `store.ErrCapabilityNotSupported` when the graph has no change-log.
+- **`g.IO().ImportMerge(r, MergeOptions) error`** merges a delta onto a base,
+  reproducing the source's rows VERBATIM by replaying each change record through
+  the same foreign-ID apply doors the replica-apply path uses (`WireTo*Checked` →
+  token-in-registry validation → property-limits → hash recompute-**and-compare**,
+  then a full hash-chain verification of every touched entity). Unlike `Import`
+  it does not require an empty target. The delta's registry is **append-only
+  merged** onto the base (bidirectional prefix check — a re-applied OLDER delta
+  is a no-op, not a divergence). Applying the same (or overlapping) delta more
+  than once is **idempotent**. `MergeOptions.ExpectBase` asserts the delta's
+  `From` cursor (proving restore-chain order → **`ErrDeltaBaseMismatch`**);
+  `MergeOptions.Strict` turns an update/tombstone for an entity absent from the
+  base into `ErrDeltaBaseMismatch`. Any failure rolls the touched subgraph back
+  to its pre-merge state (purge-and-recreate from captured snapshots).
+- **`io.HeaderOf(r) (DeltaHeader, error)`** decodes only the leading header
+  record (no entity/change records consumed), so a caller can route a stream
+  (full vs delta) and read the base cursor before merging. A FULL export's header
+  now also carries the lineage epoch, so `HeaderOf(fullExport).To = {SnapshotLSN,
+  Epoch}` is a complete, gapless base cursor for the first delta in a chain.
+- **Wire**: a new delta export-record tag (`0x07`, `changeRecordWire` = LSN +
+  change tag + verbatim payload); the export header gains additive, omitempty
+  delta fields (`IsDelta`, `From*/To*`, `Epoch`) — a full export stays byte-
+  identical to v2 (fields zero/omitted). Delta streams stamp format version 3;
+  importers accept v1–v3, and a v2 reader fails closed on a v3 delta.
+- **Why the change-log, not a temporal diff**: the cursor is the change-log LSN
+  (monotonic, store-owned), NOT valid/transaction time. A valid-time diff would
+  silently drop **backdated/backfilled** writes from a backup. The change records
+  are the primitive mutations the apply path already replays correctly (label-
+  token changes, cascade deletes, history versions), which a state-endpoint diff
+  cannot reconstruct. Requires a change-log (`graph.Config.ChangeLog` on badger,
+  or an injected `memory.WithChangeLog()`); declines on the tiered backend.
+- **Fixed (shared apply path)**: a WithHistory put record regenerated the
+  superseded prior version from the local current but did NOT restore its `TxTo`
+  (= the new version's `TxFrom`), so a replica / delta-merge was only HASH-exact,
+  not BYTE-exact, in that one non-hashed field. `applyChangeRecordLocked` now
+  reproduces it, making replication's "byte-exact temporal metadata" claim
+  actually hold. `Export` and `ExportSince` now flush the async write buffer
+  before reading the change feed / `SnapshotLSN`, so a badger source with
+  buffered writes no longer stamps a stale (0) snapshot LSN (a replica / first
+  delta would otherwise resume from 0 and re-ship the whole graph).
+- **New optional `store.ChangeLogStatusCapability` (`ChangeLogEnabled() bool`)**,
+  implemented by memory + badger: `ExportSince`/`Watermark` fail closed when the
+  change-log is present-but-disabled (the in-tree backends expose the feed methods
+  unconditionally), so a delta is never silently empty.
+- **Sentinels**: `ErrCursorUnknown`, `ErrDeltaBaseMismatch` (re-exported from
+  `pkg/graph`). See lessons 52.
+
 ### Added — log-shipped read replicas: replica apply engine + read-only gate (horizontal-scaling Phase 1)
 
 Read scale-out and HA on top of the Phase-0 change-log: a graph can now be
@@ -149,112 +344,6 @@ replica from empty**: a replica bootstraps from a full snapshot (export, includi
 the token registry) and then tails the feed. Deferred to a later phase:
 `MetaSet` (`ChangeMeta` tag reserved), the tiered backend's change-log, and
 LSN-watermark-driven log GC.
-
-### Fixed — change-log / replica hardening (architecture review)
-
-Three defects found while reviewing the Phase-0/1 op-log + replica working tree.
-
-- **Badger commit-window overlay was incomplete and leaked.** `flush()` releases
-  `idxMu` BEFORE the WriteBatch commit, so for the whole commit window a
-  just-written row is gone from the `pending` buffer and not yet visible in a
-  Badger `View`. A `flushing` map parks the swapped-out snapshot so overlay
-  readers still see those rows during the window — but only ONE reader
-  (`pendingHistoryIDOverlay`) had been routed through it, and the snapshot was
-  never cleared on a successful commit (nor by `Clear()`). Consequences: history
-  point reads (`GetNodeVersion` / `GetRelVersion`), history scans (`GetNodeHistory`
-  / `GetRelHistory`, `MaxNodeHistoryID` / `MaxRelHistoryID`, truncate/trim
-  retention sets, the `AsOf` version-chain overlay) and the on-disk label /
-  adjacency overlays (`LabelIndexOnDisk` / `AdjacencyIndexOnDisk`) momentarily
-  DROPPED an in-flight row; and a stale snapshot left after a successful flush let
-  `Clear()` RESURRECT phantom history IDs the wipe had removed (visible to history
-  scans, history export, and the import empty-probe). Now every overlay reader
-  consults both buffers via `rangePending` / `lookupPending` (the latter had been
-  dead code), the cascade-delete and incoming-repair MUTATORS that compute delete
-  sets also consult `flushing` (otherwise they orphan a persisted index key during
-  the window), and `flushing` is cleared on commit success, on `Clear()`, and on
-  the failed-flush requeue. Memory and tiered backends are unaffected (no async
-  commit window). See lesson 53.
-- **`Clear()` could reseed the LSN allocator to 0 after a crash.** With the
-  change-log enabled, `Clear()` now wipes via `DropPrefix` while keeping
-  `LastLSNKey` continuously durable (`clearAndReanchorChangeLog`) instead of
-  `DropAll` + a separate marker write — so a crash mid-`Clear` can no longer leave
-  the store with neither change-log records nor a watermark, which would reseed
-  the LSN allocator to 0 and silently strand a tailing consumer below its
-  pre-`Clear` checkpoint. Stale entity-counter meta keys are deleted BEFORE the
-  data drop so a mid-`Clear` crash never leaves a counter claiming rows that no
-  longer exist. The change-log-**disabled** `Clear()` arm now ALSO preserves
-  `LastLSNKey` whenever a prior change-log-enabled session left one — it used a
-  bare `DropAll`, which wiped the watermark, so a `ChangeLog`-on → reopen
-  `ChangeLog`-off + `Clear` → reopen `ChangeLog`-on sequence reseeded the LSN
-  allocator to 0 and reused LSNs a consumer had already checkpointed past (the same
-  silent-divergence hole through a sibling door). Both `Clear()` arms now share one
-  `clearDataPreservingLastLSN` helper; only a never-logged store still takes the
-  atomic `DropAll`. See lesson 52.
-- **`ApplyChanges` silently swallowed a misordered batch.** New sentinel
-  **`store.ErrChangesNotAscending`**: a record whose LSN is not strictly greater
-  than the previous record's now stops the batch (the strictly-ascending prefix is
-  still flushed and watermarked) instead of being skipped by the already-applied
-  watermark check, which would leave a permanent gap in the replica's coverage.
-- **A rolled-back transaction that allocated a new token poisoned the change-log
-  feed and permanently stalled replicas (fixed).** A tx that allocates a NEW
-  label/rel-type token emits a durable `ChangeNodePut`/`ChangeRelPut` referencing
-  it, then `Rollback()` (`restoreRegistries`) DE-allocated the token by rebuilding
-  the registry from the pre-tx snapshot — so the feed permanently referenced a
-  token the primary no longer held. A replica, **even with a `ReplicationSource`**,
-  could never resolve it (the refetch finds it absent — the primary rolled it back
-  too) and stalled forever at that LSN; the number was then reused for a different
-  name → silent divergence. The same poison existed in the whole token-deallocation
-  family: standalone `restoreNewLabelsOnError`/`restoreNewRelTypeOnError`, the batch
-  partial-failure path (deletes already-created nodes whose puts referenced the
-  token, then de-allocates), and index creation. **Fix:** the token registries are
-  now APPEND-ONLY across rollback when the change-log is enabled — the de-allocation
-  chokepoints keep tx-allocated tokens (already persisted; an unused token is
-  harmless), so every emitted feed record stays resolvable and replicas converge;
-  log-off behavior (exact rollback) is unchanged. New `store.ChangeLogStatus`
-  optional probe (`ChangeLogEnabled()`) gates it — `changeFeed != nil` is NOT a
-  valid signal (the backends always implement the feed methods). The
-  `getOrCreate*` persist-failure rollbacks are intentionally not gated (they fire
-  before any record is emitted). Pinned by convergence + white-box tests; see
-  lesson 54. The residual physical-redo-log property (rolled-back ENTITY churn
-  still ships; replicas converge but transiently materialize the uncommitted
-  entity; feed is not a logical committed-tx CDC source) is documented, not a bug.
-- **Per-transaction change-log buffer (proper fix; supersedes the stopgap for the
-  TX path).** New optional `store.TxChangeLogScope` capability (`BeginLogScope` /
-  `SetLogDivert` / `CommitLogScope` / `DiscardLogScope`, on badger + memory). A
-  `GraphTx` now BUFFERS the change-log records its mutations produce and emits them
-  only on `Commit` (with LSNs minted AT commit, so a rolled-back tx burns none and
-  leaves no feed gap) / DISCARDS them on `Rollback` — mirroring `txEventBuffer` for
-  events. So a **rolled-back tx emits NOTHING** to the feed: no token-poison (the
-  tx `restoreRegistries` reverts to EXACT pre-tx-registry rollback again — the
-  append-only stopgap is no longer needed there), no transient replica phantom, no
-  CDC-asymmetry residual. The concurrency lever: a change-log-enabled tx takes
-  `c.mu.Lock` (EXCLUSIVE) **per-mutation** (not per-lifetime — no in-tx-read
-  deadlock) and toggles diversion under it, so a concurrent standalone mutation
-  (shared `c.mu.RLock`) can never have its own record misrouted into the tx's
-  buffer (pinned by a `-race` test, fail-first verified). Gated on the change-log
-  being enabled — non-change-log graphs are untouched (full Path B write
-  concurrency). `Batch.Execute` ALSO uses the scope (it holds the global write lock
-  for its whole duration, so diversion stays on the whole batch); because a batch
-  KEEPS its successful ops on a partial failure it always COMMITS the scope (records
-  emitted atomically at batch-end), and the failed-op create+delete cleanup churn
-  converges. `IO().Import` rollback is guarded by the append-only stopgap (gated on
-  the change-log being enabled); a read-only replica's bootstrap import emits
-  nothing anyway. The standalone token-deallocation path and the batch/import paths
-  keep the append-only stopgap (they emit through-the-scope-then-commit or eagerly,
-  so de-allocating a referenced token would poison). The accepted residual: a
-  change-log-enabled tx's DATA still
-  flushes during the body (records buffered), so a crash between a mid-tx data
-  flush and commit can leave committed-but-unlogged data — invisible to the feed
-  (watermark not advanced), and no worse than a tx's pre-existing SyncWrites
-  non-atomicity. See lesson 54.
-- **Replica apply fails closed on a multi-token label diff.** A `NodePut` whose
-  label set differs from the replica's local row is routed to the matching
-  label-token door; a correct contiguous feed only ever differs by ONE token (each
-  label-token door mutates one token). The diff helper previously collapsed a
-  multi-token difference to one arbitrary token, so a malformed/gapped feed could
-  silently apply one token and leave the label index diverged from the row. The
-  apply path now reports the added/removed counts and rejects any diff that is not
-  exactly one token (defense-in-depth at the apply trust boundary).
 
 ## [4.9.4] - 2026-06-20
 
