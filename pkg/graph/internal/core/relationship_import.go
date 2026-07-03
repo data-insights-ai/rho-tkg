@@ -68,7 +68,11 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 	if err != nil {
 		return nil, err
 	}
-	validFrom, validTo, createdAt, props, err := extractTemporal(props)
+	validFrom, validTo, createdAt, txFromOverride, props, err := extractTemporal(props)
+	if err != nil {
+		return nil, err
+	}
+	txFromOverride, err = c.resolveBackfillTxFrom(txFromOverride)
 	if err != nil {
 		return nil, err
 	}
@@ -200,6 +204,9 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 	r.SetIntegrity(ig)
 
 	txNow := c.now()
+	if txFromOverride != 0 {
+		txNow = txFromOverride
+	}
 	tm := r.Temporal()
 	if tm == nil {
 		tm = &types.TemporalMetadata{}

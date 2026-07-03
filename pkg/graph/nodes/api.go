@@ -20,6 +20,7 @@ import (
 // Ops is the subset of *core.NodeOps the nodes sub-API forwards to.
 type Ops interface {
 	Add(ctx context.Context, labels []string, props map[string]any) (*types.Node, error)
+	AddWithTx(ctx context.Context, labels []string, props map[string]any, txFrom types.Instant) (*types.Node, error)
 	Get(ctx context.Context, id types.NodeID) (*types.Node, error)
 	GetByIDs(ids []types.NodeID) ([]*types.Node, error)
 	Update(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error)
@@ -83,6 +84,17 @@ func (a *API) Add(ctx context.Context, labels []string, props map[string]any) (*
 		return nil, err
 	}
 	return ops.Add(ctx, labels, props)
+}
+
+// AddWithTx creates a node like Add but stamps the caller-supplied txFrom as
+// its transaction time (backfill). Requires the graph to be opened with
+// Config.AllowTxBackfill; see NodeOps.AddWithTx and §4.1.
+func (a *API) AddWithTx(ctx context.Context, labels []string, props map[string]any, txFrom types.Instant) (*types.Node, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.AddWithTx(ctx, labels, props, txFrom)
 }
 
 // Get returns the node with the given ID, honoring ctx.

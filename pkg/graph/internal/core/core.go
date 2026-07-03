@@ -63,11 +63,18 @@ type Core struct {
 	changeLogEnabled   bool                      // store's change-log actually on (records emitted)
 	txLogScope         storepkg.TxChangeLogScope // per-tx record buffer (nil when off / unsupported)
 	readOnlyReplica    bool
-	replSource         storepkg.ReplicationSource
-	replSourceMu       sync.RWMutex
-	vectorRowsTrust    bool
-	storeRowsTrust     bool
-	nativeAdjacency    bool
+	// allowTxBackfill enables the privileged transaction-time backfill door:
+	// when true, create doors honor a caller-supplied tkg_tx_from (or
+	// AddWithTx) instead of stamping c.now(), so a re-ingest can faithfully
+	// reproduce a historical knowledge time (Erkenntniszeit) addressable via
+	// AS OF SYSTEM TIME. Off by default (production rejects backfill with
+	// ErrTxBackfillDisabled). Wired from Config.AllowTxBackfill; set once in New.
+	allowTxBackfill bool
+	replSource      storepkg.ReplicationSource
+	replSourceMu    sync.RWMutex
+	vectorRowsTrust bool
+	storeRowsTrust  bool
+	nativeAdjacency bool
 	// bitemporalMigrated is true after the one-shot inherited-ValidFrom
 	// migration has run successfully on this store. When false, the resolver
 	// keeps the legacy inheritance heuristic active for back-compat.
@@ -87,8 +94,13 @@ type Core struct {
 	// class introduced in v3.4 (see lesson 31). The tx code path takes a
 	// brief c.mu.RLock around each mutation/read so the *Internal/*Locked
 	// helpers run with a non-zero lock context they expect.
-	txMu           sync.Mutex
-	registryMu     sync.Mutex
+	txMu       sync.Mutex
+	registryMu sync.Mutex
+	// asofMu serializes the read-modify-write of the durable named as-of-tag
+	// map (asof_tags MetaKV entry) so concurrent TagAsOf/RemoveAsOfTag calls
+	// cannot lose updates. Taken only by the WRITERS; readers (ResolveAsOf /
+	// AsOfTags) are lock-free because MetaGet returns an atomic snapshot.
+	asofMu         sync.Mutex
 	registryDirty  atomic.Bool
 	relTypeCache   map[string]uint16
 	relTypeCacheMu sync.RWMutex
@@ -176,6 +188,28 @@ var (
 	// rejected. Bitemporally correct backdating must use Phase 3's cascade
 	// edit (SetVersionInterval) instead.
 	ErrValidFromBeforePrevious = errors.New("graph: tkg_valid_from must be greater than previous version's effective ValidFrom")
+
+	// ErrTxBackfillDisabled is returned by a create door when a caller supplies
+	// a transaction-time override (tkg_tx_from property or AddWithTx) but the
+	// graph was not opened with Config.AllowTxBackfill. TxFrom is normally
+	// system-stamped; backdating it is a privileged, deliberately-gated ingest
+	// operation (§4.1 — reproduce a historical Erkenntniszeit).
+	ErrTxBackfillDisabled = errors.New("graph: transaction-time backfill is disabled (set Config.AllowTxBackfill to permit tkg_tx_from / AddWithTx)")
+
+	// ErrInvalidTxFrom is returned when a backfilled transaction time is not a
+	// positive Unix-millisecond instant not in the future (0 means "unset — use
+	// the system clock"; a negative value is malformed; a value greater than the
+	// current clock is incoherent — a knowledge/transaction time cannot exceed
+	// wall-clock at write, and the feature is backfill).
+	ErrInvalidTxFrom = errors.New("graph: backfilled tkg_tx_from must be a positive instant not in the future")
+
+	// ErrInvalidAsOfTag is returned by TagAsOf for a blank tag name or a
+	// non-positive instant.
+	ErrInvalidAsOfTag = errors.New("graph: as-of tag requires a non-blank name and a positive instant")
+
+	// ErrTooManyAsOfTags is returned by TagAsOf when the durable tag registry
+	// is at capacity (maxAsOfTags distinct names).
+	ErrTooManyAsOfTags = errors.New("graph: too many as-of tags")
 )
 
 // Re-exports of registry errors and index errors used by methods on *Core.
@@ -305,6 +339,18 @@ type Config struct {
 	// capability existed). Also settable post-New via g.SetReplicationSource.
 	// In-process, a primary's g.Replication() satisfies store.ReplicationSource.
 	ReplicationSource storepkg.ReplicationSource
+	// AllowTxBackfill opens the privileged transaction-time backfill door on
+	// this graph: create doors (Add/Import, rel create, batch create, and the
+	// explicit AddWithTx) honor a caller-supplied tkg_tx_from and stamp it as
+	// the entity's TxFrom instead of the system clock. It is the "audit flag,
+	// import scope" gate from §4.1 — enable it only in a controlled re-ingest
+	// so a documented historical Erkenntniszeit (e.g. 2026-01-15 12:00) is
+	// reproducible via AS OF SYSTEM TIME; leave off in production, where any
+	// tkg_tx_from is rejected with ErrTxBackfillDisabled. Backfill applies to
+	// CREATES only — updates/deletes keep the monotonic system TxFrom (a
+	// correction recorded now is stamped now). TxFrom is not part of the
+	// integrity hash, so a backfilled row still verifies and replicates verbatim.
+	AllowTxBackfill bool
 }
 
 // ValidationDefaults returns the resolved validation limits (for testing).
@@ -910,6 +956,7 @@ func New(config Config) (*Core, error) {
 		relTypeCache:    make(map[string]uint16),
 		clock:           time.Now,
 		readOnlyReplica: config.ReadOnlyReplica,
+		allowTxBackfill: config.AllowTxBackfill,
 		replSource:      config.ReplicationSource,
 	}
 	c.Nodes = &NodeOps{c: c}

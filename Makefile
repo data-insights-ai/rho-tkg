@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := build
 
-.PHONY: build test test-v test-race test-integration bench bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large bench-compare cover cover-gate vet fmt fmt-check lint security vulncheck check ci clean
+.PHONY: build test test-v test-race test-integration bench bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large bench-compare cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker ci-docker check ci clean
 
 BENCH_COUNT ?= 1
 BENCH_TIME ?= 1s
@@ -122,6 +122,29 @@ security:
 # Known vulnerability check
 vulncheck:
 	govulncheck $$(go list ./...)
+
+# --- Dockerized lint/security/vulncheck ------------------------------------
+# golangci-lint, gosec, and govulncheck are often NOT installed on the host.
+# Docker is always available here, so run them inside the go.mod-matching
+# toolchain image (guarantees Go-version compatibility) with cached named
+# volumes so repeated runs are fast. GO_IMAGE auto-tracks go.mod.
+GO_VERSION := $(shell awk '/^go /{print $$2}' go.mod)
+GO_IMAGE   ?= golang:$(GO_VERSION)
+DOCKER_GO  = docker run --rm -v "$(CURDIR)":/src -w /src \
+	-v rho-tkg-gocache:/go -v rho-tkg-buildcache:/root/.cache/go-build $(GO_IMAGE)
+
+lint-docker:
+	$(DOCKER_GO) sh -c 'go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest && golangci-lint run ./...'
+
+security-docker:
+	$(DOCKER_GO) sh -c 'go install github.com/securego/gosec/v2/cmd/gosec@latest && gosec -quiet ./...'
+
+vulncheck-docker:
+	$(DOCKER_GO) sh -c 'go install golang.org/x/vuln/cmd/govulncheck@latest && govulncheck ./...'
+
+# Full CI gate using the dockerized tools for the three host-optional binaries
+# (fmt-check/vet/build/test-race/cover-gate run natively on the host).
+ci-docker: fmt-check vet lint-docker build test-race security-docker vulncheck-docker cover-gate
 
 # Quick pre-commit check
 check: vet build test

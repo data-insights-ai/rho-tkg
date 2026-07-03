@@ -1,6 +1,11 @@
 # Horizontal Scaling Plan — rho-tkg (base layer)
 
-Status: PLANNING (2026-06-23). No code written yet. This is the "beyond one box"
+Status: Phase 0 and the rho-tkg half of Phase 1 **SHIPPED** in `CHANGELOG.md`
+`[4.10.0]`–`[4.11.0]` (durable change-log, log-shipped read replicas, gapless
+bootstrap, lazy registry refetch, failover lease, plus node-level delta
+export/merge; see "Implementation status" below). The remaining Phase-1 work is
+sigma-side (Bolt routing + read-your-writes watermark + promotion orchestration);
+Phase 2 (partitioning) is deferred, out of scope. This is the "beyond one box"
 companion to sigma-tkgd's `docs/design-enterprise-scale.md`, which shipped the four
 single-node ceilings (on-disk label/adjacency indexes, streaming `ForEach*` scans,
 byte-budgeted caches, columnar frames) and explicitly deferred sharding as "a
@@ -34,7 +39,7 @@ only in Phase 1, only for Bolt routing and the read-your-writes watermark.
 
 ---
 
-## Implementation status (`[Unreleased]`)
+## Implementation status (shipped in `[4.10.0]`–`[4.11.0]`)
 
 **Phase 0 — DONE & merged** (commit `0bb83f9`): durable ordered change-log + `g.Replication().ChangeFeed/ForEachChange/LastCommittedLSN`.
 

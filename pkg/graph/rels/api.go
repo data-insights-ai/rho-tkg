@@ -20,6 +20,7 @@ import (
 // Ops is the subset of *core.RelOps the rels sub-API forwards to.
 type Ops interface {
 	Add(ctx context.Context, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error)
+	AddWithTx(ctx context.Context, typeName string, startNode, endNode *types.Node, props map[string]any, txFrom types.Instant) (*types.Relationship, error)
 	AddByID(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error)
 	AddByIDIfAbsent(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, bool, error)
 	Get(ctx context.Context, id types.RelID) (*types.Relationship, error)
@@ -86,6 +87,17 @@ func (a *API) Add(ctx context.Context, typeName string, startNode, endNode *type
 		return nil, err
 	}
 	return ops.Add(ctx, typeName, startNode, endNode, props)
+}
+
+// AddWithTx creates a relationship like Add but stamps the caller-supplied
+// txFrom as its transaction time (backfill). Requires the graph to be opened
+// with Config.AllowTxBackfill; see RelOps.AddWithTx and §4.1.
+func (a *API) AddWithTx(ctx context.Context, typeName string, startNode, endNode *types.Node, props map[string]any, txFrom types.Instant) (*types.Relationship, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.AddWithTx(ctx, typeName, startNode, endNode, props, txFrom)
 }
 
 // AddByID creates a relationship by node IDs honoring ctx.

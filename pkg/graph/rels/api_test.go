@@ -25,6 +25,7 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 	}{
 		{name: "Add", run: func() error { _, err := nilAPI.Add(context.Background(), "KNOWS", nil, nil, nil); return err }},
 		{name: "AddWithContext", run: func() error { _, err := nilAPI.Add(ctx, "KNOWS", nil, nil, nil); return err }},
+		{name: "AddWithTx", run: func() error { _, err := nilAPI.AddWithTx(ctx, "KNOWS", nil, nil, nil, 1000); return err }},
 		{name: "AddByID", run: func() error { _, err := nilAPI.AddByID(context.Background(), "KNOWS", nodeID, nodeID, nil); return err }},
 		{name: "AddByIDWithContext", run: func() error { _, err := nilAPI.AddByID(ctx, "KNOWS", nodeID, nodeID, nil); return err }},
 		{name: "AddByIDIfAbsent", run: func() error {
@@ -124,6 +125,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 			return err
 		}},
 		{name: "AddWithContext", run: func() error { _, err := api.Add(ctx, "KNOWS", nil, nil, nil); return err }},
+		{name: "AddWithTx", run: func() error { _, err := api.AddWithTx(ctx, "KNOWS", nil, nil, nil, 1000); return err }},
 		{name: "AddByID", run: func() error { _, err := api.AddByID(context.Background(), "KNOWS", nodeID, nodeID, nil); return err }},
 		{name: "AddByIDWithContext", run: func() error { _, err := api.AddByID(ctx, "KNOWS", nodeID, nodeID, nil); return err }},
 		{name: "AddByIDIfAbsent", run: func() error {
@@ -209,7 +211,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 	}
 
 	wantCalls := []string{
-		"Add", "Add", "AddByID", "AddByID",
+		"Add", "Add", "AddWithTx", "AddByID", "AddByID",
 		"AddByIDIfAbsent", "AddByIDIfAbsent", "Get", "Get", "GetByIDs",
 		"Update", "Update", "UpdateInPlace", "UpdateInPlace",
 		"Delete", "Delete", "Import", "All", "ByType",
@@ -254,6 +256,12 @@ func (s *relOpsSpy) record(name string) { s.calls = append(s.calls, name) }
 
 func (s *relOpsSpy) Add(ctx context.Context, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
 	s.record("Add")
+	s.lastType = typeName
+	return nil, s.err
+}
+
+func (s *relOpsSpy) AddWithTx(ctx context.Context, typeName string, startNode, endNode *types.Node, props map[string]any, txFrom types.Instant) (*types.Relationship, error) {
+	s.record("AddWithTx")
 	s.lastType = typeName
 	return nil, s.err
 }

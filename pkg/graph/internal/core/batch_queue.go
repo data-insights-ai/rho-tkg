@@ -64,7 +64,11 @@ func (b *BatchBuilder) addNodes(labels []string, props map[string]any, count int
 	}
 
 	// Extract reserved temporal fields before property validation (tkg_ prefix is rejected).
-	validFrom, validTo, createdAt, props, err := extractTemporal(props)
+	validFrom, validTo, createdAt, txFromOverride, props, err := extractTemporal(props)
+	if err != nil {
+		return nil, err
+	}
+	txFromOverride, err = b.g.resolveBackfillTxFrom(txFromOverride)
 	if err != nil {
 		return nil, err
 	}
@@ -130,6 +134,7 @@ func (b *BatchBuilder) addNodes(labels []string, props map[string]any, count int
 			queuedExtraTokens:  append([]uint16(nil), labelTokens.extras...),
 			nodeIntegrity:      nodeIntegrity,
 			temporal:           temporal,
+			backfillTxFrom:     txFromOverride,
 		})
 	}
 	return results, nil
@@ -170,7 +175,11 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 	}
 
 	// Extract reserved temporal fields before property validation (tkg_ prefix is rejected).
-	validFrom, validTo, createdAt, props, err := extractTemporal(props)
+	validFrom, validTo, createdAt, txFromOverride, props, err := extractTemporal(props)
+	if err != nil {
+		return nil, err
+	}
+	txFromOverride, err = b.g.resolveBackfillTxFrom(txFromOverride)
 	if err != nil {
 		return nil, err
 	}
@@ -250,6 +259,7 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 		queuedTypeToken: typeToken,
 		relIntegrity:    ig,
 		temporal:        rtm,
+		backfillTxFrom:  txFromOverride,
 	})
 	return b.rels[len(b.rels)-1].result, nil
 }

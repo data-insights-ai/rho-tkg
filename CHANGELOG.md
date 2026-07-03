@@ -6,6 +6,89 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.11.0] - 2026-07-02
+
+### Added — transaction-time backfill at ingest (§4.1)
+
+`TxFrom` (the Erkenntniszeit / knowledge time — "the DB recorded this fact at T")
+is normally system-stamped with the monotonic clock on every create. That makes
+a fresh re-ingest un-reproducible: loading a dataset today stamps `TxFrom = load
+time`, so a documented historical knowledge state (e.g. **2026-01-15 12:00**) is
+not addressable via `AS OF SYSTEM TIME`. A new **privileged, gated backfill door**
+closes that gap for a controlled re-ingest.
+
+- **`Config.AllowTxBackfill bool`** (off by default) is the audit/import-scope
+  gate. When set, the create doors honor a caller-supplied transaction time and
+  stamp it as the entity's `TxFrom` instead of `c.now()`. In production (gate
+  off) any backfill attempt is rejected with the new **`ErrTxBackfillDisabled`**.
+- **`g.Nodes().AddWithTx(ctx, labels, props, txFrom)`** and
+  **`g.Rels().AddWithTx(ctx, type, start, end, props, txFrom)`** are the explicit
+  ergonomic doors; `txFrom` must be a positive instant **not in the future**
+  (**`ErrInvalidTxFrom`**) — a knowledge/transaction time is "when the DB learned
+  a fact" and cannot exceed wall-clock at write, and a future value (e.g. from
+  `Instant`'s Unix-**milli** unit vs the snowflake layer's **micro**second unit)
+  would stamp a genesis whose TX interval INVERTS once it is superseded
+  (`TxFrom > TxTo`), rendering it invisible to every AS-OF query yet still passing
+  `Verify*Chain` (TxFrom is not hashed). The bound is checked at every create door.
+- The carrier is the reserved property **`tkg_tx_from`** (now caller-settable on
+  create doors under the gate, previously always system-only). It is extracted in
+  the one shared `extractTemporal` helper, so backfill lands uniformly across the
+  WHOLE create-door family — standalone node `Add`/`Import`, relationship
+  `Add`/`Import` (via the create kernel), and the `BatchBuilder` node/rel create
+  paths (per-entity distinct backfill instants supported). `AddWithTx` simply
+  injects `tkg_tx_from` and reuses `Add`.
+- **Create-only by design.** Updates, deletes, label/property mutations, and
+  version-interval corrections keep the monotonic system `TxFrom` (a correction
+  recorded now is stamped now — lessons 20/46); `tkg_tx_from` on an Update is
+  rejected as a reserved key. `TxFrom` is not part of the integrity hash, so a
+  backfilled row still passes `Verify*Chain` and replicates VERBATIM through the
+  existing replica-apply / delta pipeline (lesson 52 reproduces `TxFrom` exactly).
+  The change-log LSN stays monotonic-by-commit; only the stored `TxFrom` is
+  backdated — the two axes stay independent and correct. A batch node that
+  survives a partial-failure (partial-live) create emits its `EventNodeCreate`
+  with the real commit clock, never the backdated backfill instant (the persisted
+  `TxFrom` is the backfill value; the EVENT timestamp is wall-clock).
+
+### Added — named knowledge-time (Erkenntniszeit) marks (§4.2)
+
+A small durable alias registry so `AS OF SYSTEM TIME $tag` can run against a
+documented, stable knowledge time by name instead of a magic number.
+
+- On `g.Temporal()`: **`TagAsOf(name, at)`**, **`ResolveAsOf(name) (Instant, bool,
+  error)`**, **`AsOfTags() map[string]Instant`**, **`RemoveAsOfTag(name)`** (remove
+  is idempotent). `at` is a transaction-time instant used with `TxAt` /
+  `AS OF SYSTEM TIME`. New sentinels **`ErrInvalidAsOfTag`** (blank name /
+  non-positive instant / over-length) and **`ErrTooManyAsOfTags`** (bounded at
+  4096 marks).
+- Stored as one msgpack map under a new `asof_tags` MetaKV key (decoded through
+  `storeutil.SafeUnmarshal` — a corrupt blob fails closed, never panics). The load
+  door RE-VALIDATES each decoded entry against the write-door invariants (positive
+  instant, non-blank name) and fails closed with `ErrCorruptWire`; a non-positive
+  instant is especially dangerous because `Instant(0)` aliases the "no TX filter"
+  sentinel, so an un-checked corrupt entry would silently resolve to CURRENT belief
+  instead of the named knowledge time. Durable
+  across a Close/reopen of the same data dir; reaped by `Admin().Reset()` on every
+  backend (badger's scan-reap already covers it, and core now reaps it explicitly
+  so memory — whose `Clear` preserves `metaKV` — is consistent). Requires a
+  MetaKV-capable backend (every in-tree store); declines with
+  `ErrCapabilityNotSupported` otherwise. Rejected on a read-only replica
+  (`checkWritable`); reads stay open (`checkOpen`). Not carried by Export/Import —
+  tags are store-local metadata, like the graph epoch and the failover lease.
+
+Both features are fully backward-compatible: the gate is off by default and no
+existing call site changes behavior. New sentinels are re-exported from
+`pkg/graph`. See lesson 59.
+
+### Added — dev tooling (dockerized lint/security/vulncheck)
+
+`golangci-lint`, `gosec`, and `govulncheck` are often not installed on the host,
+so `make lint` / `security` / `vulncheck` fail with "command not found". New
+Makefile targets run them inside the go.mod-matching `golang:<version>` Docker
+image (guaranteeing Go-version compatibility) with cached named volumes:
+`make lint-docker` / `security-docker` / `vulncheck-docker`, and `make ci-docker`
+for the full gate. `GO_IMAGE` auto-tracks the `go` line in `go.mod`. Documented in
+CLAUDE.md ("Running lint/security/vulncheck via Docker"). No library change.
+
 ## [4.10.3] - 2026-06-30
 
 ### Fixed — deep break-rounds campaign (fuzz / crash-fault / concurrency)

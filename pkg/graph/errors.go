@@ -106,6 +106,12 @@ var (
 	ErrNameTooLong             = core.ErrNameTooLong
 	ErrSelfLoop                = core.ErrSelfLoop
 	ErrValidFromBeforePrevious = core.ErrValidFromBeforePrevious
+	// §4.1 transaction-time backfill.
+	ErrTxBackfillDisabled = core.ErrTxBackfillDisabled
+	ErrInvalidTxFrom      = core.ErrInvalidTxFrom
+	// §4.2 named as-of (Erkenntniszeit) tags.
+	ErrInvalidAsOfTag  = core.ErrInvalidAsOfTag
+	ErrTooManyAsOfTags = core.ErrTooManyAsOfTags
 )
 
 // IO sentinels (R4-F8). Re-exported so external callers can write

@@ -59,6 +59,10 @@ func TestAPINilReceiversReturnErrNilGraph(t *testing.T) {
 		{name: "RelInterval", run: func() error { _, _, err := nilAPI.RelInterval(nil); return err }},
 		{name: "RelateNodes", run: func() error { _, err := nilAPI.RelateNodes(nil, nil); return err }},
 		{name: "RelateRels", run: func() error { _, err := nilAPI.RelateRels(nil, nil); return err }},
+		{name: "TagAsOf", run: func() error { return nilAPI.TagAsOf("x", 1) }},
+		{name: "ResolveAsOf", run: func() error { _, _, err := nilAPI.ResolveAsOf("x"); return err }},
+		{name: "AsOfTags", run: func() error { _, err := nilAPI.AsOfTags(); return err }},
+		{name: "RemoveAsOfTag", run: func() error { return nilAPI.RemoveAsOfTag("x") }},
 	} {
 		if err := tc.run(); !errors.Is(err, grapherr.ErrNilGraph) {
 			t.Fatalf("%s = %v, want ErrNilGraph", tc.name, err)
@@ -164,6 +168,10 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 			}
 			return wantErr // not error-returning; satisfy the loop's errors.Is(wantErr) check
 		}},
+		{name: "TagAsOf", run: func() error { return api.TagAsOf("x", 1) }},
+		{name: "ResolveAsOf", run: func() error { _, _, err := api.ResolveAsOf("x"); return err }},
+		{name: "AsOfTags", run: func() error { _, err := api.AsOfTags(); return err }},
+		{name: "RemoveAsOfTag", run: func() error { return api.RemoveAsOfTag("x") }},
 	} {
 		if err := tc.run(); !errors.Is(err, wantErr) {
 			t.Fatalf("%s = %v, want %v", tc.name, err, wantErr)
@@ -178,6 +186,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		"SetNodeVersionInterval", "SetRelVersionInterval",
 		"Snapshot", "Diff", "DiffCallback", "NodeInterval", "RelInterval", "RelateNodes", "RelateRels",
 		"RelMatchesValidTime",
+		"TagAsOf", "ResolveAsOf", "AsOfTags", "RemoveAsOfTag",
 	}
 	if len(ops.calls) != len(wantCalls) {
 		t.Fatalf("calls = %v, want %v", ops.calls, wantCalls)
@@ -383,6 +392,26 @@ func (s *temporalOpsSpy) RelateNodes(a, b *types.Node) (types.AllenRelation, err
 func (s *temporalOpsSpy) RelateRels(a, b *types.Relationship) (types.AllenRelation, error) {
 	s.record("RelateRels")
 	return s.relation, s.err
+}
+
+func (s *temporalOpsSpy) TagAsOf(name string, at types.Instant) error {
+	s.record("TagAsOf")
+	return s.err
+}
+
+func (s *temporalOpsSpy) ResolveAsOf(name string) (types.Instant, bool, error) {
+	s.record("ResolveAsOf")
+	return 0, false, s.err
+}
+
+func (s *temporalOpsSpy) AsOfTags() (map[string]types.Instant, error) {
+	s.record("AsOfTags")
+	return nil, s.err
+}
+
+func (s *temporalOpsSpy) RemoveAsOfTag(name string) error {
+	s.record("RemoveAsOfTag")
+	return s.err
 }
 
 func (s *temporalOpsSpy) RelMatchesValidTime(r *types.Relationship, opts storepkg.QueryOpts) bool {

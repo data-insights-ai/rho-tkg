@@ -76,6 +76,11 @@ type pendingNode struct {
 	nodeIntegrity      *types.NodeIntegrity    // aliases node.integrity
 	temporal           *types.TemporalMetadata // ValidFrom/ValidTo/CreatedAt at queue time;
 	// TxFrom stamped + SetTemporal applied inside Execute
+	// backfillTxFrom is a privileged transaction-time override captured at
+	// queue time (0 = none). Kept SEPARATE from temporal.TxFrom (which Execute
+	// resets to 0 on the rollback/retry path) so a re-stamp restores the
+	// backfill value, not the system clock (§4.1).
+	backfillTxFrom types.Instant
 }
 
 type pendingRel struct {
@@ -89,6 +94,8 @@ type pendingRel struct {
 	// FromNodeHash/ToNodeHash mutated under per-rel endpoint locks in Execute
 	temporal *types.TemporalMetadata // ValidFrom/ValidTo/CreatedAt at queue time;
 	// TxFrom stamped + SetTemporal applied inside Execute
+	// backfillTxFrom: see pendingNode.backfillTxFrom (§4.1).
+	backfillTxFrom types.Instant
 }
 
 type pendingNodeUpdate struct {

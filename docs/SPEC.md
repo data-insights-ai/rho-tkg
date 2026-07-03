@@ -4,9 +4,20 @@
 
 **Date:** 2026-02-16
 **Version:** 1.2 (Final)
-**Status:** Approved for Implementation
+**Status:** Implemented (shipped through v4.11.0)
 **Breaking Change:** Yes — Major version bump required
 **Migration:** None — existing data will be regenerated
+
+> **Reconciled to the implementation (2026-07-03):** the mechanics sections
+> (§6 registries, §10 Badger key layout, §12 public API) have been brought in
+> line with the shipped code — the store uses **1-byte binary key prefixes**
+> `0x01`–`0x0F` (not string prefixes), a **third property-key registry** exists,
+> and every door is **ctx-first**. Sections §13 (startup) and §15 (implementation
+> phases) retain the original pre-implementation plan; the authoritative current
+> file/package layout is `docs/architecture.md`. Illustrative struct names below
+> (lowercase `labelRegistry`, etc.) are design-time sketches — the real types live
+> in `pkg/graph/internal/registry` (`LabelRegistry`, `RelTypeRegistry`,
+> `PropertyKeyRegistry`).
 
 ---
 
@@ -82,7 +93,7 @@ type Graph struct {
     // ...
 }
 
-func NewGraph(config Config) (*Graph, error) {
+func New(config Config) (*Graph, error) {  // package graph — invoked as graph.New(...)
     nodeGen, err := snowflake.NewNode(config.SnowflakeNodeID*2,
         snowflake.WithEpoch(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)),
         snowflake.WithMicroseconds(),
@@ -275,7 +286,16 @@ func (r *Relationship) InternalID() relID
 
 ## 6. Registries
 
-Two independent registries with independent token namespaces. A label `"KNOWS"` and a relationship type `"KNOWS"` receive independent tokens in their respective registries.
+**Three** independent registries, each with its own token namespace: the **label**
+registry, the **relationship-type** registry, and the **property-key** registry
+(which interns property KEY strings so wire rows store a `uint16` token instead of
+repeating the key). A label `"KNOWS"` and a relationship type `"KNOWS"` receive
+independent tokens in their respective registries. §6.1–6.2 detail the label and
+rel-type registries; the property-key registry has the same shape and thread
+safety but degrades softly at capacity — `GetOrCreate` returns token **0** (a
+sticky warn-once) instead of an error, and the wire encoder treats token 0 as "no
+token, write the raw key string," so persistence never fails on property-key
+exhaustion. Blank / all-whitespace names are rejected on create in all three.
 
 ### 6.1 Label Registry
 
@@ -315,23 +335,24 @@ Same method signatures as label registry, with `relTypeToken`.
 
 ### 6.4 Growth Warning
 
-Both registries log a warning via `slog.Logger` when token count exceeds 60,000 (92% of uint16):
+All three registries log a warning via `slog.Logger` when token count exceeds 60,000 (92% of uint16):
 
 ```
 [tkg] WARN | Label registry approaching capacity: 60001/65535 tokens
 [tkg] WARN | Relationship type registry approaching capacity: 60001/65535 tokens
 ```
 
-Informational only. `GetOrCreate` returns an error at the uint16 limit.
+Informational only. The label and rel-type `GetOrCreate` return an error at the uint16 limit; the property-key `GetOrCreate` returns token 0 (soft degradation — the encoder falls back to the raw key string) so a property write never fails on registry exhaustion.
 
 ### 6.5 Persistence (Badger)
 
 ```
 meta/label_tokens    -> msgpack([]string)    // index = labelToken value
 meta/reltype_tokens  -> msgpack([]string)    // index = relTypeToken value
+meta/property_keys   -> msgpack([]string)    // index = propKeyToken value
 ```
 
-Updated atomically when a new token is registered.
+(All three persist under the `0x0F` `KeyMeta` prefix — see §10.7.) Updated atomically when a new token is registered.
 
 ---
 
@@ -403,7 +424,7 @@ The following are **removed** — internal IDs are not user-meaningful:
 | `tkg_auth_level` | `Integrity.AuthorizationLevel` | `uint8` | Both | Authorization |
 | `tkg_base_entity` | `Temporal.BaseEntityID` | `entityID` | Both | Version chain |
 
-All resolve to user-meaningful data. No internal implementation details exposed. Resolution happens in the Graph layer, not on the entity. Caller-supplied provenance/authorization shadow inputs are type-checked before mutation; invalid non-nil values error instead of being stripped as zero-value metadata. `tkg_auth_level` accepts bounded integer-valued numeric inputs and stores the tier as `uint8`. Caller-supplied temporal shadow inputs accept safe integer-valued millisecond inputs and store them as `Instant`; float inputs must be inside that float type's contiguous exact integer range. If both `tkg_valid_from` and `tkg_valid_to` are supplied, the finite interval must be half-open and non-empty (`valid_from < valid_to`); direct Store writes enforce the same shape on `Temporal.ValidFrom`/`ValidTo`.
+All resolve to user-meaningful data. No internal implementation details exposed. Resolution happens in the Graph layer, not on the entity. Caller-supplied provenance/authorization shadow inputs are type-checked before mutation; invalid non-nil values error instead of being stripped as zero-value metadata. `tkg_auth_level` accepts bounded integer-valued numeric inputs and stores the tier as `uint8`. Caller-supplied temporal shadow inputs accept safe integer-valued millisecond inputs and store them as `Instant`; float inputs must be inside that float type's contiguous exact integer range. If both `tkg_valid_from` and `tkg_valid_to` are supplied, the finite interval must be half-open and non-empty (`valid_from < valid_to`); direct Store writes enforce the same shape on `Temporal.ValidFrom`/`ValidTo`. `tkg_tx_from` (the transaction time / Erkenntniszeit) is normally system-stamped and read-only, but is caller-settable on CREATE doors — and only there — when the graph is opened with `Config.AllowTxBackfill` (the §4.1 backfill gate; ergonomic form `g.Nodes()/g.Rels().AddWithTx(…, txFrom)`); it must be a positive instant not in the future (`ErrInvalidTxFrom`), and when the gate is off it is rejected (`ErrTxBackfillDisabled`). Update/delete paths always keep the monotonic system `TxFrom`.
 
 ---
 
@@ -537,10 +558,12 @@ All keys use fixed-width binary encoding. Snowflake IDs are stored as big-endian
 
 ### 10.1 Primary Entities
 
+Keys use a single **1-byte binary prefix** (`0x01`–`0x0F`), not string prefixes.
+
 | Key | Value | Key size |
 |-----|-------|----------|
-| `n/<8B nodeID>` | `msgpack(nodeWire)` | 9B |
-| `r/<8B relID>` | `msgpack(relWire)` | 9B |
+| `0x01/<8B nodeID>` | `msgpack(nodeWire)` | 9B |
+| `0x02/<8B relID>` | `msgpack(relWire)` | 9B |
 
 Node updates that need the previous entity state must read that state before
 mutating indexes. If the in-memory ID set still contains the node after the
@@ -550,50 +573,58 @@ error and must be returned. It must not be converted into a silent overwrite.
 ### 10.2 Label Index
 
 ```
-l/<2B labelToken>/<8B nodeID>  -> empty     (10B key)
+0x03/<2B labelToken>/<8B nodeID>  -> empty     (11B key)
 ```
 
 ### 10.3 Relationship Type Index
 
 ```
-rt/<2B relTypeToken>/<8B relID>  -> empty   (10B key)
+0x04/<2B relTypeToken>/<8B relID>  -> empty   (11B key)
 ```
 
 ### 10.4 Adjacency Indexes
 
 ```
-out/<8B startNodeID>/<2B relTypeToken>/<8B endNodeID>/<8B relID>  -> empty  (26B)
-in/<8B endNodeID>/<2B relTypeToken>/<8B startNodeID>/<8B relID>   -> empty  (26B)
+0x05/<8B startNodeID>/<2B relTypeToken>/<8B endNodeID>/<8B relID>  -> empty  (27B)
+0x06/<8B endNodeID>/<2B relTypeToken>/<8B startNodeID>/<8B relID>   -> empty  (27B)
 ```
 
 Enables prefix scans:
-- All outgoing from node X: `out/<X>/`
-- All outgoing of type T from X: `out/<X>/<T>/`
-- All incoming to node Y: `in/<Y>/`
+- All outgoing from node X: `0x05/<X>/`
+- All outgoing of type T from X: `0x05/<X>/<T>/`
+- All incoming to node Y: `0x06/<Y>/`
 - Repair scans the complete `in/` index, not only entries reachable from live node rows.
 
 ### 10.5 History
 
 ```
-h/n/<8B nodeID>/<8B version>  -> msgpack(nodeWire)
-h/r/<8B relID>/<8B version>   -> msgpack(relWire)
+0x07/<8B nodeID>/<8B version>  -> msgpack(nodeWire)   (17B key)
+0x08/<8B relID>/<8B version>   -> msgpack(relWire)    (17B key)
 ```
 
-### 10.6 Temporal Index
+### 10.6 Change-Log (op-log, opt-in `graph.Config.ChangeLog`)
 
 ```
-tv/n/<8B validFrom sortkey>/<8B nodeID>  -> empty
-tv/r/<8B validFrom sortkey>/<8B relID>   -> empty
+0x09/<8B LSN>  -> tag(1B) ‖ msgpack(body)   (9B key)
 ```
+
+The temporal, property, and vector indexes are **in-memory** structures rebuilt
+from entity rows on open — they are NOT persisted keyspaces.
 
 ### 10.7 Metadata
 
+`0x0F/<name>` (the `KeyMeta` prefix + a name string):
+
 ```
-meta/label_tokens    -> msgpack([]string)
-meta/reltype_tokens  -> msgpack([]string)
+0x0F/label_tokens     -> msgpack([]string)   // index = labelToken value
+0x0F/reltype_tokens   -> msgpack([]string)   // index = relTypeToken value
+0x0F/property_keys    -> msgpack([]string)   // index = propKeyToken value
+0x0F/last_lsn         -> 8B big-endian LSN watermark (with ChangeLog)
 ```
 
-**Note:** No `meta/next_node_id` or `meta/next_rel_id` — snowflake generation is stateless.
+Plus per-index property-index definitions, counters, and other bookkeeping.
+
+**Note:** No `0x0F/next_node_id` or `0x0F/next_rel_id` — snowflake generation is stateless.
 
 ---
 
@@ -651,28 +682,30 @@ matches, err := g.Nodes().ByLabelAndProperty("User", "external_id", "user:alice"
 ```go
 g, err := graph.New(graph.Config{Store: memory.New()})
 // ...
-n, err := g.Nodes().Add([]string{"User"}, map[string]any{"name": "Alice"})
+n, err := g.Nodes().Add(ctx, []string{"User"}, map[string]any{"name": "Alice"})
 // Snowflake ID assigned automatically; n.ID() is the typed wrapper.
-// Context-aware variant: g.Nodes().Add(ctx, labels, props).
+// ctx is REQUIRED on every create / read / mutation door (v4.0 collapsed the
+// old *WithContext pairs into a single ctx-first method).
+// Privileged transaction-time backfill (§8.2): g.Nodes().AddWithTx(ctx, labels, props, txFrom).
 ```
 
 ### 12.2 Relationship Creation
 
 ```go
-a, _ := g.Nodes().Add([]string{"User"}, map[string]any{"name": "Alice"})
-b, _ := g.Nodes().Add([]string{"User"}, map[string]any{"name": "Bob"})
-r, err := g.Rels().Add("KNOWS", a, b, nil)
+a, _ := g.Nodes().Add(ctx, []string{"User"}, map[string]any{"name": "Alice"})
+b, _ := g.Nodes().Add(ctx, []string{"User"}, map[string]any{"name": "Bob"})
+r, err := g.Rels().Add(ctx, "KNOWS", a, b, nil)
 // ID-form variant with the same endpoint verification and hash capture:
-//   g.Rels().AddByID("KNOWS", a.ID(), b.ID(), nil)
+//   g.Rels().AddByID(ctx, "KNOWS", a.ID(), b.ID(), nil)
 // Atomic check-then-create:
-//   g.Rels().AddByIDIfAbsent("KNOWS", a.ID(), b.ID(), nil)
+//   g.Rels().AddByIDIfAbsent(ctx, "KNOWS", a.ID(), b.ID(), nil)
 ```
 
 ### 12.3 Node Retrieval
 
 ```go
 // By ID:
-n, err := g.Nodes().Get(a.ID())
+n, err := g.Nodes().Get(ctx, a.ID())
 
 // By label + property (uses the property index when present, falls back to
 // label scan + property filter when PropertyIndexCapability is absent; scalar
@@ -694,12 +727,14 @@ candidate rows are storage/corruption errors and must be returned to the caller.
 
 ```
 1. Open Badger
-2. Load meta/label_tokens    -> rebuild labelRegistry.toToken map
-3. Load meta/reltype_tokens  -> rebuild relTypeRegistry.toToken map
-4. Initialize snowflake generators (nodeIDGen, relIDGen)
-5. Load entities into RAM cache (warm boot)
-   - Deserialize nodeWire/relWire
-   - Entities are complete after deserialization (no injection needed)
+2. Load meta/{label_tokens, reltype_tokens, property_keys}
+   -> rebuild the three registries' toToken maps
+   (property_keys BEFORE index rebuild — tokenized rows need it to decode)
+3. Initialize snowflake generators (nodeIDGen, relIDGen)
+4. Load entities into RAM cache + rebuild in-memory indexes (label, adjacency,
+   property, temporal, vector) from entity rows
+   - Deserialize nodeWire/relWire (complete after deserialization; no injection)
+5. With ChangeLog: reseed the LSN allocator from the meta/last_lsn watermark
 6. Ready
 ```
 
@@ -754,6 +789,13 @@ candidate rows are storage/corruption errors and must be returned to the caller.
 ---
 
 ## 15. Implementation Phases
+
+> **Historical (the original pre-implementation plan, now complete).** The file
+> paths below (`pkg/types/model.go`, `pkg/graph/label_registry.go`, …) are the
+> plan as written; the shipped layout differs — types live in `pkg/types/node.go`
+> / `relationship.go`, registries in `pkg/graph/internal/registry/`, and the
+> implementation lives on `*core.Core` in `pkg/graph/internal/core/`. See
+> `docs/architecture.md` for the authoritative current file/package tables.
 
 ### Phase 1: Core Types & Registries
 

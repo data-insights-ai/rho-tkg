@@ -57,43 +57,94 @@ func checkCtx(ctx context.Context) error {
 	}
 }
 
+// resolveBackfillTxFrom validates a caller-supplied transaction-time override
+// from a create door (the tkg_tx_from property or AddWithTx). It returns 0 —
+// "no override, stamp the system clock" — when txFrom is 0. Otherwise the value
+// must be a positive instant NOT IN THE FUTURE (ErrInvalidTxFrom): a knowledge /
+// transaction time is "when the DB learned a fact", which cannot exceed the
+// wall clock at write — the feature is BACKfill, and a future value (e.g. from
+// Unix-ms vs the snowflake layer's microsecond unit confusion) would produce an
+// inverted TX interval on the version once it is superseded, invisible to every
+// AS-OF query yet passing Verify*Chain (TxFrom is not hashed). A valid override
+// is honored ONLY when the graph was opened with Config.AllowTxBackfill,
+// otherwise ErrTxBackfillDisabled. Value validation precedes the gate check so a
+// malformed value is rejected as malformed regardless of privilege. Backfill is
+// create-only and TxFrom is not part of the integrity hash, so honoring a valid
+// override never affects the hash chain (§4.1).
+func (c *Core) resolveBackfillTxFrom(txFrom types.Instant) (types.Instant, error) {
+	if txFrom == 0 {
+		return 0, nil
+	}
+	if txFrom < 0 || txFrom > c.now() {
+		return 0, ErrInvalidTxFrom
+	}
+	if !c.allowTxBackfill {
+		return 0, ErrTxBackfillDisabled
+	}
+	return txFrom, nil
+}
+
+// withBackfillTxFrom returns a shallow copy of props with tkg_tx_from set to
+// txFrom, so the AddWithTx ergonomic doors reuse the standard create path (the
+// gate is enforced there via resolveBackfillTxFrom). The caller's map is never
+// mutated; an explicit txFrom overrides any tkg_tx_from already present.
+func withBackfillTxFrom(props map[string]any, txFrom types.Instant) map[string]any {
+	out := make(map[string]any, len(props)+1)
+	for k, v := range props {
+		out[k] = v
+	}
+	out["tkg_tx_from"] = txFrom
+	return out
+}
+
 // extractTemporal removes the reserved temporal keys (tkg_valid_from,
-// tkg_valid_to, tkg_created_at) from the props map and returns their values
-// plus a filtered props map without those keys.
+// tkg_valid_to, tkg_created_at, tkg_tx_from) from the props map and returns
+// their values plus a filtered props map without those keys.
 // If none of the reserved keys are present, the original map is returned
 // unchanged (no allocation). The caller's original map is never mutated.
-func extractTemporal(props map[string]any) (validFrom, validTo, createdAt types.Instant, filtered map[string]any, err error) {
+//
+// tkg_tx_from is the transaction-time backfill override: extraction here is
+// pure (no gate check — extractTemporal has no Core handle). Each create door
+// funnels the returned txFrom through c.resolveBackfillTxFrom, which enforces
+// Config.AllowTxBackfill and rejects it in production. A returned txFrom of 0
+// means "unset — stamp the system clock" (§4.1).
+func extractTemporal(props map[string]any) (validFrom, validTo, createdAt, txFrom types.Instant, filtered map[string]any, err error) {
 	_, hasVF := props["tkg_valid_from"]
 	_, hasVT := props["tkg_valid_to"]
 	_, hasCA := props["tkg_created_at"]
-	if !hasVF && !hasVT && !hasCA {
-		return 0, 0, 0, props, nil
+	_, hasTF := props["tkg_tx_from"]
+	if !hasVF && !hasVT && !hasCA && !hasTF {
+		return 0, 0, 0, 0, props, nil
 	}
 
 	validFrom, err = parseInstant(props["tkg_valid_from"], "tkg_valid_from")
 	if err != nil {
-		return 0, 0, 0, nil, err
+		return 0, 0, 0, 0, nil, err
 	}
 	validTo, err = parseInstant(props["tkg_valid_to"], "tkg_valid_to")
 	if err != nil {
-		return 0, 0, 0, nil, err
+		return 0, 0, 0, 0, nil, err
 	}
 	createdAt, err = parseInstant(props["tkg_created_at"], "tkg_created_at")
 	if err != nil {
-		return 0, 0, 0, nil, err
+		return 0, 0, 0, 0, nil, err
+	}
+	txFrom, err = parseInstant(props["tkg_tx_from"], "tkg_tx_from")
+	if err != nil {
+		return 0, 0, 0, 0, nil, err
 	}
 	if validFrom != 0 && validTo != 0 && validFrom >= validTo {
-		return 0, 0, 0, nil, fmt.Errorf("%w: tkg_valid_from %d must be before tkg_valid_to %d",
+		return 0, 0, 0, 0, nil, fmt.Errorf("%w: tkg_valid_from %d must be before tkg_valid_to %d",
 			ErrInvalidTimeRange, validFrom, validTo)
 	}
 
 	filtered = make(map[string]any, len(props))
 	for k, v := range props {
-		if k != "tkg_valid_from" && k != "tkg_valid_to" && k != "tkg_created_at" {
+		if k != "tkg_valid_from" && k != "tkg_valid_to" && k != "tkg_created_at" && k != "tkg_tx_from" {
 			filtered[k] = v
 		}
 	}
-	return validFrom, validTo, createdAt, filtered, nil
+	return validFrom, validTo, createdAt, txFrom, filtered, nil
 }
 
 // extractTemporalTracked is the update-path mirror of extractTemporal. Returns

@@ -83,6 +83,18 @@ func (r *RelOps) Add(ctx context.Context, typeName string, startNode, endNode *t
 	return rel, err
 }
 
+// AddWithTx is the relationship counterpart of NodeOps.AddWithTx: it creates a
+// relationship exactly like Add but stamps the caller-supplied txFrom as the
+// relationship's TxFrom instead of the system clock (§4.1). Requires
+// Config.AllowTxBackfill (else ErrTxBackfillDisabled); txFrom must be positive
+// (else ErrInvalidTxFrom) and overrides any tkg_tx_from in props.
+func (r *RelOps) AddWithTx(ctx context.Context, typeName string, startNode, endNode *types.Node, props map[string]any, txFrom types.Instant) (*types.Relationship, error) {
+	if txFrom <= 0 {
+		return nil, ErrInvalidTxFrom
+	}
+	return r.Add(ctx, typeName, startNode, endNode, withBackfillTxFrom(props, txFrom))
+}
+
 // addRelationshipInternal is the lock-free implementation of RelOps.Add.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 func (c *Core) addRelationshipInternal(ctx context.Context, typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
@@ -292,17 +304,25 @@ func (c *Core) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName
 
 func (c *Core) newRelConstraintProbe(id types.RelID, startID, endID types.NodeID, validFrom, validTo, createdAt types.Instant) *types.Relationship {
 	r := types.NewRelationship(id, nonZeroRelTypeProbeToken, startID, endID)
-	c.applyRelCreateTemporal(r, validFrom, validTo, createdAt)
+	// The probe is a throwaway used only for temporal-constraint checking, so
+	// its transaction time is irrelevant — pass no backfill override.
+	c.applyRelCreateTemporal(r, validFrom, validTo, createdAt, 0)
 	return r
 }
 
-func (c *Core) applyRelCreateTemporal(r *types.Relationship, validFrom, validTo, createdAt types.Instant) {
+// applyRelCreateTemporal stamps a NEW relationship's temporal metadata. TxFrom
+// is the system clock unless txFrom != 0 (a privileged backfill, gated in
+// prepareRelCreate) — mirrors the node create doors (§4.1).
+func (c *Core) applyRelCreateTemporal(r *types.Relationship, validFrom, validTo, createdAt, txFrom types.Instant) {
 	rtm := r.Temporal()
 	if rtm == nil {
 		rtm = &types.TemporalMetadata{}
 		r.SetTemporal(rtm)
 	}
 	rtm.TxFrom = c.now()
+	if txFrom != 0 {
+		rtm.TxFrom = txFrom
+	}
 	if validFrom != 0 {
 		rtm.ValidFrom = validFrom
 	}

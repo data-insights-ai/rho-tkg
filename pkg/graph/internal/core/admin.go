@@ -234,9 +234,9 @@ func (v lockedHashVerifier) VerifyRelChain(id types.RelID) (bool, error) {
 	return v.c.verifyRelChainLocked(id)
 }
 
-// Reset clears all entities, indexes, history, and counters from the graph
-// while preserving registries (label and relationship type tokens).
-// Acquires the graph write lock to prevent concurrent operations.
+// Reset clears all entities, indexes, history, counters, and named as-of tags
+// (§4.2) from the graph while preserving registries (label and relationship
+// type tokens). Acquires the graph write lock to prevent concurrent operations.
 func (a *AdminOps) Reset() error {
 	c := a.c
 	if err := c.checkWritable(); err != nil {
@@ -248,6 +248,9 @@ func (a *AdminOps) Reset() error {
 		return ErrGraphClosed
 	}
 	if err := c.store.Clear(); err != nil {
+		return err
+	}
+	if err := c.reapAsOfTagsForReset(); err != nil {
 		return err
 	}
 	c.restoreOpCounters(opCounterSnapshot{})

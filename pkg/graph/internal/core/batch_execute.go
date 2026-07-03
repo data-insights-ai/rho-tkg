@@ -164,10 +164,16 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			// Stamp TxFrom at execute time so the recorded transaction time
 			// reflects when the batch actually commits, not when AddNode was
 			// queued. Mirrors addNodeInternal which stamps TxFrom inside the
-			// single function call window.
+			// single function call window. A privileged backfill (gated at
+			// queue time) stamps the caller's transaction time instead (§4.1);
+			// the event timestamp below still uses the real commit clock.
 			txNow := b.g.now()
 			for _, pn := range b.nodes {
-				pn.temporal.TxFrom = txNow
+				ts := txNow
+				if pn.backfillTxFrom != 0 {
+					ts = pn.backfillTxFrom
+				}
+				pn.temporal.TxFrom = ts
 				pn.node.SetTemporal(pn.temporal)
 			}
 
@@ -216,10 +222,11 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			} else {
 				result.Created += len(b.nodes)
 				b.g.opNodeAdds.Add(int64(len(b.nodes)))
+				// The event timestamp is the real commit clock, never the stored
+				// TxFrom — which may be a backdated §4.1 backfill value. Mirrors
+				// the happy path (b.g.now()) and the rel partial-live branch.
+				txNow = b.g.now()
 				for _, pn := range b.nodes {
-					if pn.temporal != nil {
-						txNow = pn.temporal.TxFrom
-					}
 					b.g.publishEvent(eventspkg.EventNodeCreate, types.EntityID(pn.node.ID()), txNow, eventspkg.PriorityHigh)
 				}
 			}
@@ -349,7 +356,13 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			pr.rel.SetIntegrity(pr.relIntegrity)
 
 			txNow = b.g.now()
-			pr.temporal.TxFrom = txNow
+			ts := txNow
+			if pr.backfillTxFrom != 0 {
+				// Privileged transaction-time backfill (gated at queue time,
+				// §4.1). The event timestamp below still uses the real clock.
+				ts = pr.backfillTxFrom
+			}
+			pr.temporal.TxFrom = ts
 			pr.rel.SetTemporal(pr.temporal)
 
 			if startNode != nil || endNode != nil {

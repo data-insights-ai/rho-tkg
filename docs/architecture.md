@@ -1,4 +1,4 @@
-# Architecture — tkg/v4 (v4.10.3)
+# Architecture — tkg/v4 (v4.11.0)
 
 Temporal Knowledge Graph v4 is a pure Go library providing the core graph engine for temporal knowledge graphs. It is the low-level storage and type layer — no main binary, no HTTP server, no query language.
 
@@ -14,11 +14,10 @@ License: Apache-2.0
 
 ```
                         Graph
-                          |
-          +---------------+---------------+
-          |               |               |
-    labelRegistry   relTypeRegistry   entityLockManager
-                          |                (256 shards)
+          +---------------+----------------+----------------------+-------------------+
+          |               |                |                      |
+    labelRegistry   relTypeRegistry  propertyKeyRegistry   entityLockManager
+                          |                                       (256 shards)
                         Store
                           |
             +-------------+-------------+
@@ -89,7 +88,7 @@ Read-only virtual properties dispatched by the graph layer from internal metadat
 | `tkg_type` | `string` | Relationship | Structural |
 | `tkg_valid_from` | `Instant` | Both | Temporal — world-time (VT) assertion, caller-only, NO fallback: resolves to `(Instant(0), ok=true)` when never asserted |
 | `tkg_valid_to` | `Instant` | Both | Temporal — world-time (VT) assertion, caller-only, NO fallback |
-| `tkg_tx_from` | `Instant` | Both | Temporal — transaction time (TX), stamped by the system on every Add |
+| `tkg_tx_from` | `Instant` | Both | Temporal — transaction time (TX), stamped by the system on every Add; caller-settable on CREATE doors only under `Config.AllowTxBackfill` (backfill, §4.1) |
 | `tkg_tx_to` | `Instant` | Both | Temporal — transaction time (TX) |
 | `tkg_created_at` | `Instant` | Both | Temporal (auto-derived from snowflake ID when unset — the only temporal shadow key with a resolver fallback) |
 | `tkg_updated_at` | `Instant` | Both | Temporal |
@@ -188,7 +187,7 @@ for in-flight `Initializable.Init` callbacks before invoking provider `Close`.
 
 | Timestamp | Claim | Who can assert it | State on an unstamped entity |
 |---|---|---|---|
-| `tkg_tx_from` | "the DB recorded this fact at T" | the system — automatically | always stamped: every Add allocates `TemporalMetadata` and sets `TxFrom` |
+| `tkg_tx_from` | "the DB recorded this fact at T" | the system — automatically (or a privileged backfill under `Config.AllowTxBackfill`, §4.1) | always stamped: every Add allocates `TemporalMetadata` and sets `TxFrom` |
 | `tkg_created_at` | "the entity record came into existence at T" | system-derived (snowflake ID timestamp); caller may override at Add | always derivable — the shadow resolver applies the snowflake fallback |
 | `tkg_valid_from` | "the fact holds **in the world** from T" | only the domain — a recorder/curator with actual knowledge | `0` = no world-time claim made |
 
@@ -371,7 +370,7 @@ The implementation is split across themed files (none over 1500 LOC):
 - `badgerstore_node.go` — node CRUD (`PutNode`, `GetNode`, `DeleteNode`, `ReplaceNode`, label-token mutations) plus node queries and node-batch ops.
 - `badgerstore_rel.go` — relationship CRUD plus rel queries (`Outgoing*`, `Incoming*`) and rel-batch ops.
 - `badgerstore_index.go` — property / temporal / high-frequency / vector index management.
-- `badgerstore_history.go` — version history methods, including the cursor-paginated `AllNodeHistoryIDsFrom` / `AllRelHistoryIDsFrom`.
+- `badgerstore_history.go` (+ `badgerstore_history_node.go` / `badgerstore_history_rel.go`) — version history methods, including the cursor-paginated `AllNodeHistoryIDsFrom` / `AllRelHistoryIDsFrom`.
 - `badgerstore_temporal.go` — temporal-filter helpers (`filter*ByTemporalPeek`, `fetch*WithTemporalFilter`).
 - `badgerstore_meta.go` — counts, registry persistence, cache hit/miss accessors.
 - `badgerstore_flush.go` — async write batch + flush loop + dirty tracking + write-pressure backpressure.
@@ -795,17 +794,18 @@ Lock ordering: entity locks -> `idxMu`. Always.
 
 ## Registries (`pkg/graph`)
 
-Two independent registries with independent token namespaces.
+Three independent registries with independent token namespaces (label, rel-type, property-key).
 
 ```
-labelRegistry:    map[string]labelToken   + []string reverse lookup
-relTypeRegistry:  map[string]relTypeToken + []string reverse lookup
+labelRegistry:       map[string]labelToken   + []string reverse lookup
+relTypeRegistry:     map[string]relTypeToken + []string reverse lookup
+propertyKeyRegistry: map[string]propKeyToken + []string reverse lookup
 ```
 
 - Thread-safe: `sync.RWMutex`, double-check on write miss
 - `GetOrCreate(string)` rejects empty strings (`ErrEmptyName`)
 - Growth warning at 60K tokens (92% of uint16), error at 65535
-- **BadgerStore persistence:** Inside Badger as `meta/label_tokens` and `meta/reltype_tokens` (msgpack)
+- **BadgerStore persistence:** Inside Badger as `meta/label_tokens`, `meta/reltype_tokens`, and `meta/property_keys` (msgpack)
 - **TieredStore persistence:** Flat msgpack file at `data/meta/registry.msgpack` (atomic write via write-tmp+rename with raw-file rollback on write failure)
 - Loaded on `Graph.New()`, saved on `Graph.Close()`
 - Registry-creating public APIs run under the graph lifecycle lock and re-check `closed` after acquiring it, so token allocation cannot race `Graph.Close()` registry persistence.
@@ -1024,7 +1024,7 @@ After v3.4.0 (Option 3) and v4.2.0 (field→method), `pkg/graph/` is a thin faç
 | `internal/snowflake` | Snowflake `Epoch`, `Layout`, `IDComponents`, `DecomposeID`. Single source of truth for ID-bit decomposition. |
 | `internal/storeutil` | (renamed from `internal/store` in v3.3.0) Store-internal helpers: key encoding, msgpack wire types, pagination helpers, temporal-filter push-down. The public Store contract lives in `pkg/graph/store`. |
 | `internal/locks` | 256-shard entity-lock `Manager`, `LockEntity`/`LockTwo`/`LockMany` in ascending order. |
-| `internal/registry` | `LabelRegistry`, `RelTypeRegistry`. Internal types — not part of public API. |
+| `internal/registry` | `LabelRegistry`, `RelTypeRegistry`, `PropertyKeyRegistry`. Internal types — not part of public API. |
 | `internal/index` | In-memory indexes only: property index, vector index, high-frequency temporal index, `OntologyMapping`. |
 | `internal/integrity` | Pure SHA-256 hash primitives — `ComputeNodeHash`, `ComputeRelHash`. Five fixed-vector anchors lock the on-disk hash format. |
 

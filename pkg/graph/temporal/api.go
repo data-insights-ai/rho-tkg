@@ -67,6 +67,13 @@ type Ops interface {
 
 	// Canonical valid-time predicate for a materialized relationship.
 	RelMatchesValidTime(r *types.Relationship, opts storepkg.QueryOpts) bool
+
+	// Named knowledge-time (Erkenntniszeit) marks (§4.2). The instant is a
+	// transaction time used with AS OF SYSTEM TIME / TxAt.
+	TagAsOf(name string, at types.Instant) error
+	ResolveAsOf(name string) (types.Instant, bool, error)
+	AsOfTags() (map[string]types.Instant, error)
+	RemoveAsOfTag(name string) error
 }
 
 // API is the temporal sub-API accessor.
@@ -397,4 +404,43 @@ func (a *API) RelateRels(x, y *types.Relationship) (types.AllenRelation, error) 
 		return 0, err
 	}
 	return ops.RelateRels(x, y)
+}
+
+// TagAsOf registers (or overwrites) a named knowledge-time (Erkenntniszeit)
+// mark: name → a transaction-time instant addressable via AS OF SYSTEM TIME /
+// TxAt. See core.TempOps.TagAsOf and §4.2.
+func (a *API) TagAsOf(name string, at types.Instant) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.TagAsOf(name, at)
+}
+
+// ResolveAsOf returns the transaction-time instant registered under name; ok is
+// false (nil error) when no such tag exists.
+func (a *API) ResolveAsOf(name string) (types.Instant, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, false, err
+	}
+	return ops.ResolveAsOf(name)
+}
+
+// AsOfTags returns a snapshot copy of every registered name → instant mark.
+func (a *API) AsOfTags() (map[string]types.Instant, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.AsOfTags()
+}
+
+// RemoveAsOfTag deletes a named mark (idempotent).
+func (a *API) RemoveAsOfTag(name string) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.RemoveAsOfTag(name)
 }

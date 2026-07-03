@@ -1,4 +1,4 @@
-# Lessons - tkg/v3
+# Lessons - tkg/v4
 
 Actionable rules distilled from real bugs. Keep this file short. Add a new
 entry only when a fresh issue exposes a reusable pattern that is not already
@@ -1619,4 +1619,103 @@ Rules this yields:
   (`Flush()` injects a one-shot failure; `MetaGet`/`MetaSet` forwarded so the
   watermark store is independent of the failed data flush) turns a
   previously-structural-only guarantee into an executable break-test.
+
+## 59. A Privileged Override Of A System-Controlled Field Lands At The Shared Seam, Scoped To Where The Invariant It Relaxes Actually Binds
+
+Two additive features (§4.1 transaction-time backfill, §4.2 named as-of tags) that
+each turned a design constraint into a small, safe control surface. The reusable
+patterns:
+
+- **Relax a system invariant only where it binds — not everywhere the value is
+  written.** `TxFrom` is system-stamped on EVERY mutation door (create, update,
+  delete, cascade, label, CAS, version). The monotonicity invariant (lesson 20/46:
+  "a correction recorded now is stamped now") binds the SUPERSESSION doors — an
+  update/correction must carry a real, current TX time or the belief-state
+  reconstruction goes wrong. It does NOT bind the CREATE doors: a first write of a
+  never-before-seen entity can legitimately assert "the DB learned this at T" for a
+  backdated T (that is exactly what the binary import path already did). So backfill
+  is CREATE-only by design, and the audit found the split cleanly: the 6 create
+  doors are exactly the 6 that call the shared `extractTemporal` helper; every other
+  `TxFrom = now` site is a supersession write that must keep the clock. Before adding
+  a caller override for a system-controlled field, enumerate its write sites and ask
+  per-site "does the invariant I'm relaxing actually bind HERE?" — relax only those.
+
+- **Land the feature at the ONE shared seam so the whole door family inherits it —
+  the constructive form of lesson 58.** Lesson 58 said "a contract that spans a
+  family must land in every door; audit the family." The cheapest way to satisfy
+  that for a NEW capability is to add it at the seam the family already funnels
+  through, not to touch each door. Extracting `tkg_tx_from` inside `extractTemporal`
+  (shared by node Add/Import, the rel create kernel, and both batch-queue create
+  paths) covered standalone + import + batch + tx in one edit; each door then only
+  needs a 3-line gate call (`resolveBackfillTxFrom`) and to honor the override where
+  it already stamps `TxFrom`. `AddWithTx` is a 3-line wrapper that injects the
+  property and reuses `Add` — no second code path. When the family shares a kernel
+  or an extraction helper, put the new bit THERE and the family-completeness
+  obligation is discharged by construction.
+
+- **Gate a privileged write with a Config flag; make the malformed-input error take
+  precedence over the disabled-gate error.** `Config.AllowTxBackfill` (off by
+  default) is the "audit flag, import scope" boundary — a deliberate, auditable
+  opt-in on graph open, not a per-call permission. `resolveBackfillTxFrom` orders its
+  checks `value==0 → none`, `value invalid → ErrInvalidTxFrom`, `!gate → ErrTxBackfillDisabled`:
+  a malformed value is malformed regardless of privilege, so it wins. Test both
+  orderings (invalid-value with gate ON *and* OFF both return the invalid-value
+  sentinel).
+
+- **A privileged override of a system-controlled value needs BOTH bounds — and the
+  upper bound is the one adversarial review finds, because happy-path tests only
+  exercise the "obvious" direction.** The first cut of the backfill guard checked
+  only `txFrom > 0` (the lower bound — reject negative/unset). An adversarial pass
+  (two independent lenses) caught the missing UPPER bound: a *future* `TxFrom` is
+  incoherent (a knowledge/transaction time is "when the DB learned a fact" and
+  cannot exceed wall-clock at write — the feature is *back*fill), and it silently
+  corrupts bitemporal state — once the version is superseded, `Update` stamps the
+  successor's `TxFrom = now < the future value` and the predecessor's `TxTo = now`,
+  producing an INVERTED TX interval (`TxFrom > TxTo`) that is invisible to every
+  AS-OF query yet passes `Verify*Chain` (TxFrom is not hashed) and replicates. The
+  realistic trigger is a unit footgun (`Instant` is Unix-**milli**; the snowflake
+  layer is **micro**second — `time.Now().UnixMicro()` is ~1000× too large → year
+  58000). Every original test used a PAST instant, so the gap was invisible. Rule:
+  when a door accepts a value that feeds a monotonic/ordered axis, bound it on BOTH
+  sides against the system's own clock, and write at least one test per bound;
+  "positive" is not "valid" for a time that must be ≤ now.
+
+- **A non-hashed field is invisible to the hash/VerifyChain oracle — pin its
+  reproduction by reading it directly (lesson 52, applied to tests).** `TxFrom` is
+  not part of the integrity hash, so `VerifyNodeChain` passing proves nothing about
+  whether the backfilled `TxFrom` round-tripped. The verbatim test re-fetches the
+  stored row and asserts `Temporal().TxFrom == backfilled` exactly; the flagship test
+  asserts the WHOLE point (`NodeAsOf(id, knowledgeTime)` sees the backfilled row while
+  a no-backfill control returns `ErrNoVersionAsOf`). Mutation-verify by neutering the
+  stamp override → both fail.
+
+- **A durable-metadata registry's lifecycle must be made backend-consistent at the
+  CORE layer when store `Clear` semantics diverge.** The `asof_tags` MetaKV entry
+  surfaced a pre-existing split: badger's `Clear` scan-reaps all meta except the LSN
+  watermark (lesson 53), but memory's `Clear` preserves the whole `metaKV`. Rather
+  than redesign either store's `Clear`, `Admin().Reset()` reaps the tag registry
+  explicitly (`MetaSet(asof_tags, nil)` under `asofMu`) so the contract ("a reset
+  graph has no tags") holds on every backend. When a new durable meta key needs a
+  specific lifecycle and the backends' reset paths disagree, enforce it once at the
+  layer above the store, don't depend on each backend's `Clear` internals. Persisted
+  meta is untrusted bytes: decode through `SafeUnmarshal` (fail closed on a corrupt
+  blob), and serialize the read-modify-write with a dedicated mutex while keeping
+  reads lock-free (MetaGet is an atomic snapshot).
+
+- **Fail-closed on load means re-validating decoded VALUES against the write-door
+  invariants, not just structural decode — especially when a value can alias a
+  sentinel.** `SafeUnmarshal` proves the bytes decode into a well-formed
+  `map[string]int64`; it proves nothing about whether the values satisfy what the
+  write door (`tagAsOf`) enforces (`at > 0`, non-blank name). A corrupt disk row or
+  foreign writer carrying `{"tag": 0}` decoded cleanly and `resolveAsOf` returned
+  `(Instant(0), true, nil)` — and `Instant(0)` ALIASES the "no TX filter" sentinel,
+  so a consumer's `AS OF SYSTEM TIME $tag` silently returned CURRENT belief instead
+  of the named knowledge time (a silent wrong answer, not a crash — the most
+  dangerous kind). Because the key is NEW (no legacy data can hold an invalid
+  entry, unlike lesson 58's propkey blank-name where load stays lenient), the load
+  door mirrors the write door EXACTLY and fails closed (`ErrCorruptWire`). Rule:
+  when a decoded value can equal a control sentinel downstream, the load path must
+  re-assert the write-door invariant on it; "it decoded" is not "it is valid," and
+  the structural-corruption test (wrong msgpack shape) does not cover the
+  value-level case.
 

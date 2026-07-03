@@ -73,6 +73,22 @@ func (n *NodeOps) Add(ctx context.Context, labels []string, props map[string]any
 	return node, err
 }
 
+// AddWithTx is the privileged transaction-time backfill door. It creates a node
+// exactly like Add but stamps the caller-supplied txFrom as the node's TxFrom
+// (its Erkenntniszeit / knowledge time) instead of the system clock, so a
+// re-ingest can reproduce a documented historical knowledge state addressable
+// via AS OF SYSTEM TIME (§4.1). Requires the graph to be opened with
+// Config.AllowTxBackfill — otherwise ErrTxBackfillDisabled. txFrom must be a
+// positive instant (ErrInvalidTxFrom otherwise) and overrides any tkg_tx_from
+// in props. Backfill affects TxFrom only; set tkg_valid_from / tkg_created_at
+// in props to backdate world- and creation-time too.
+func (n *NodeOps) AddWithTx(ctx context.Context, labels []string, props map[string]any, txFrom types.Instant) (*types.Node, error) {
+	if txFrom <= 0 {
+		return nil, ErrInvalidTxFrom
+	}
+	return n.Add(ctx, labels, withBackfillTxFrom(props, txFrom))
+}
+
 // addNodeInternal is the lock-free implementation of NodeOps.Add.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[string]any) (*types.Node, error) {
@@ -89,7 +105,11 @@ func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[s
 		return nil, err
 	}
 
-	validFrom, validTo, createdAt, props, err := extractTemporal(props)
+	validFrom, validTo, createdAt, txFromOverride, props, err := extractTemporal(props)
+	if err != nil {
+		return nil, err
+	}
+	txFromOverride, err = c.resolveBackfillTxFrom(txFromOverride)
 	if err != nil {
 		return nil, err
 	}
@@ -170,8 +190,13 @@ func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[s
 
 	// Set transaction time + merge caller-provided temporal metadata.
 	// TxFrom/TxTo are NOT hashed — must be set AFTER hash computation.
+	// A privileged backfill (txFromOverride != 0, gated above) stamps the
+	// caller's transaction time instead of the system clock (§4.1).
 	{
 		txNow := c.now()
+		if txFromOverride != 0 {
+			txNow = txFromOverride
+		}
 		ntm := n.Temporal()
 		if ntm == nil {
 			ntm = &types.TemporalMetadata{}
@@ -334,7 +359,11 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 	if err != nil {
 		return nil, err
 	}
-	validFrom, validTo, createdAt, props, err := extractTemporal(props)
+	validFrom, validTo, createdAt, txFromOverride, props, err := extractTemporal(props)
+	if err != nil {
+		return nil, err
+	}
+	txFromOverride, err = c.resolveBackfillTxFrom(txFromOverride)
 	if err != nil {
 		return nil, err
 	}
@@ -430,6 +459,9 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 	})
 
 	txNow := c.now()
+	if txFromOverride != 0 {
+		txNow = txFromOverride
+	}
 	tm := n.Temporal()
 	if tm == nil {
 		tm = &types.TemporalMetadata{}

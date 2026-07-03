@@ -24,6 +24,7 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 	}{
 		{name: "Add", run: func() error { _, err := nilAPI.Add(context.Background(), []string{"Node"}, nil); return err }},
 		{name: "AddWithContext", run: func() error { _, err := nilAPI.Add(ctx, []string{"Node"}, nil); return err }},
+		{name: "AddWithTx", run: func() error { _, err := nilAPI.AddWithTx(ctx, []string{"Node"}, nil, 1000); return err }},
 		{name: "Get", run: func() error { _, err := nilAPI.Get(context.Background(), id); return err }},
 		{name: "GetWithContext", run: func() error { _, err := nilAPI.Get(ctx, id); return err }},
 		{name: "GetByIDs", run: func() error { _, err := nilAPI.GetByIDs([]types.NodeID{id}); return err }},
@@ -114,6 +115,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 			return err
 		}},
 		{name: "AddWithContext", run: func() error { _, err := api.Add(ctx, []string{"Node"}, nil); return err }},
+		{name: "AddWithTx", run: func() error { _, err := api.AddWithTx(ctx, []string{"Node"}, nil, 1000); return err }},
 		{name: "Get", run: func() error { _, err := api.Get(context.Background(), id); return err }},
 		{name: "GetWithContext", run: func() error { _, err := api.Get(ctx, id); return err }},
 		{name: "GetByIDs", run: func() error { _, err := api.GetByIDs([]types.NodeID{id}); return err }},
@@ -180,7 +182,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 	}
 
 	wantCalls := []string{
-		"Add", "Add", "Get", "Get", "GetByIDs",
+		"Add", "Add", "AddWithTx", "Get", "Get", "GetByIDs",
 		"Update", "Update", "UpdateInPlace", "UpdateInPlace",
 		"Delete", "Delete", "Import", "AddByIDIfAbsent", "All", "ForEach", "ByLabel", "ByLabelAndProperty",
 		"Count", "CountByLabel", "SetProperty", "DeleteProperty",
@@ -224,6 +226,14 @@ func (s *nodeOpsSpy) record(name string) { s.calls = append(s.calls, name) }
 
 func (s *nodeOpsSpy) Add(ctx context.Context, labels []string, props map[string]any) (*types.Node, error) {
 	s.record("Add")
+	if len(labels) > 0 {
+		s.lastLabel = labels[0]
+	}
+	return nil, s.err
+}
+
+func (s *nodeOpsSpy) AddWithTx(ctx context.Context, labels []string, props map[string]any, txFrom types.Instant) (*types.Node, error) {
+	s.record("AddWithTx")
 	if len(labels) > 0 {
 		s.lastLabel = labels[0]
 	}

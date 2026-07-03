@@ -33,6 +33,7 @@ type relCreatePrep struct {
 	validFrom    types.Instant
 	validTo      types.Instant
 	createdAt    types.Instant
+	txFrom       types.Instant // privileged transaction-time backfill (0 = system clock)
 }
 
 // prepareRelCreate validates the create inputs in the canonical order:
@@ -49,7 +50,11 @@ func (c *Core) prepareRelCreate(typeName string, props map[string]any, startID, 
 	if err != nil {
 		return prep, err
 	}
-	validFrom, validTo, createdAt, props, err := extractTemporal(props)
+	validFrom, validTo, createdAt, txFrom, props, err := extractTemporal(props)
+	if err != nil {
+		return prep, err
+	}
+	txFrom, err = c.resolveBackfillTxFrom(txFrom)
 	if err != nil {
 		return prep, err
 	}
@@ -79,6 +84,7 @@ func (c *Core) prepareRelCreate(typeName string, props map[string]any, startID, 
 		validFrom:    validFrom,
 		validTo:      validTo,
 		createdAt:    createdAt,
+		txFrom:       txFrom,
 	}, nil
 }
 
@@ -154,7 +160,7 @@ func (c *Core) buildRelFromSpec(ctx context.Context, spec relCreateSpec) func(ty
 		ig.FromNodeHash = spec.fromHash
 		ig.ToNodeHash = spec.toHash
 		r.SetIntegrity(ig)
-		c.applyRelCreateTemporal(r, spec.validFrom, spec.validTo, spec.createdAt)
+		c.applyRelCreateTemporal(r, spec.validFrom, spec.validTo, spec.createdAt, spec.txFrom)
 		if err := checkCtx(ctx); err != nil {
 			return nil, nil, err
 		}
