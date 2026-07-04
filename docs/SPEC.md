@@ -4,7 +4,7 @@
 
 **Date:** 2026-02-16
 **Version:** 1.2 (Final)
-**Status:** Implemented (shipped through v4.11.0)
+**Status:** Implemented (shipped through v4.11.1)
 **Breaking Change:** Yes — Major version bump required
 **Migration:** None — existing data will be regenerated
 

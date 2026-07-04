@@ -1719,3 +1719,44 @@ patterns:
   the structural-corruption test (wrong msgpack shape) does not cover the
   value-level case.
 
+
+## 60. A Retroactive In-Place Stamp Must Be Un-Applied At Every Belief-Reconstruction Door — Delete Is A Transaction-Time Tombstone
+
+The hard-Delete door stamps `DeletedAt`/`ValidTo`/`TxTo` IN PLACE on the entity's
+final version before moving it to history. That is a retroactive edit of a stored
+row: a reader reconstructing the belief state at an earlier `txAt` sees stamps
+that did not exist at that pin. Lesson 43 solved this for `TxTo` by weakening the
+VISIBILITY predicate (`TxFrom <= txAt` only, "superseded ≠ retracted") — but the
+delete-stamped `ValidTo` slips past visibility and kills the row in VALID-TIME
+COVERAGE instead (`nodeVersionBounds` overrides `vEnd` with `ValidTo`). The result:
+every generic `QueryOpts.TxAt` read (`ByLabel`/`ByType`/`All`, `NodesAtTx`,
+`NodeAtTx`) silently dropped deleted entities at every pin, while the named as-of
+door (`NodeAsOf`/`NodesAsOf`) — which normalizes post-pin stamps away via
+`normalizeTemporalVisibleAtTxTime` — resurrected them correctly. Two doors, same
+shape, divergent for months (rule 17); found from the CONSUMER side when
+sigma-tkgd's Tyla `AS OF` pinning cross-probed the two doors (2026-07-03).
+
+Rules:
+
+- **When a mutation retroactively stamps a stored row, every belief-reconstruction
+  path needs the matching un-apply.** Enumerate the fields the mutation writes
+  (`DeletedAt`, `ValidTo`, `TxTo`), then enumerate every reader that reconstructs
+  "as known at T" and check EACH stamp is disregarded when recorded after T.
+  Visibility-predicate fixes (lesson 43) don't cover stamps consumed by a
+  DIFFERENT axis (valid-time coverage vs tx-time visibility).
+- **Land the un-apply at the seam the family funnels through** (constructive
+  lesson 58/59 form): all four chain-based TxAt resolutions (`nodeAtLockedTx`,
+  `relAtLockedTx`, `find{Node,Rel}VersionMatchingDuringTx`) share
+  `filter{Node,Rel}ChainByTxAt` — normalizing there fixed every generic door in
+  one edit, reusing the named door's own `normalizeTemporalVisibleAtTxTime` so
+  the two doors cannot drift again.
+- **Never normalize in place on chain rows — deep-copy first.** Chain rows can be
+  shared frozen store rows, and `Temporal()` is the documented mutation-access
+  exception that frozen entities do NOT protect (the v4.6.1 poisoning family).
+- **Test-clock discipline for TxAt tests:** `Core.now()` has a monotonic ≥1ms
+  floor, so a mutation burst outruns the wall clock — (a) a slept wall-clock pin
+  can land BEFORE the last write's logical stamp (derive pins from the entities'
+  own `TxFrom` instead), and (b) the TxAt-only door probes valid time at WALL now
+  (`resolveOpenEndInstant`), so assertions flip while stamps are still "in the
+  future" (wait until the wall clock passes every minted stamp before asserting).
+  Both produced flakes in the first cut of `bitemporal_tombstone_test.go`.

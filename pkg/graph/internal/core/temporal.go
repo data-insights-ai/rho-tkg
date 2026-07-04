@@ -279,29 +279,54 @@ func versionVisibleAtTx(tm *types.TemporalMetadata, txAt types.Instant) bool {
 
 // filterNodeChainByTxAt returns the subset of chain whose TX interval contains
 // txAt. txAt == 0 returns chain unchanged (no allocation).
+//
+// Lesson 43 extended to DeletedAt (lesson 60): a hard Delete is a
+// TRANSACTION-TIME tombstone. Delete stamps DeletedAt/ValidTo/TxTo in place on
+// the final version, so a row visible at an earlier txAt still carries
+// post-txAt delete stamps — and the delete-stamped ValidTo then fails
+// valid-time coverage in the resolver, silently rewriting history for every
+// pinned scan (`ByLabel`/`ByType`/`All` with QueryOpts.TxAt) and for
+// NodeAtTx/RelAtTx. A surviving row whose DeletedAt post-dates txAt is
+// therefore DEEP-COPIED (chain rows may be shared frozen store rows — never
+// mutate them) and normalized to the belief state as of txAt via the same
+// normalizeTemporalVisibleAtTxTime the named as-of door (NodeAsOf/NodesAsOf)
+// already applies, keeping the two doors consistent (testing rule 17).
 func filterNodeChainByTxAt(chain []*types.Node, txAt types.Instant) []*types.Node {
 	if txAt == 0 {
 		return chain
 	}
 	out := make([]*types.Node, 0, len(chain))
 	for _, entry := range chain {
-		if versionVisibleAtTx(entry.Temporal(), txAt) {
-			out = append(out, entry)
+		tm := entry.Temporal()
+		if !versionVisibleAtTx(tm, txAt) {
+			continue
 		}
+		if tm != nil && tm.DeletedAt > txAt {
+			entry = entry.DeepCopy()
+			normalizeTemporalVisibleAtTxTime(entry.Temporal(), txAt)
+		}
+		out = append(out, entry)
 	}
 	return out
 }
 
-// filterRelChainByTxAt is the relationship counterpart of filterNodeChainByTxAt.
+// filterRelChainByTxAt is the relationship counterpart of filterNodeChainByTxAt,
+// including the post-txAt delete-tombstone normalization (see there).
 func filterRelChainByTxAt(chain []*types.Relationship, txAt types.Instant) []*types.Relationship {
 	if txAt == 0 {
 		return chain
 	}
 	out := make([]*types.Relationship, 0, len(chain))
 	for _, entry := range chain {
-		if versionVisibleAtTx(entry.Temporal(), txAt) {
-			out = append(out, entry)
+		tm := entry.Temporal()
+		if !versionVisibleAtTx(tm, txAt) {
+			continue
 		}
+		if tm != nil && tm.DeletedAt > txAt {
+			entry = entry.DeepCopy()
+			normalizeTemporalVisibleAtTxTime(entry.Temporal(), txAt)
+		}
+		out = append(out, entry)
 	}
 	return out
 }

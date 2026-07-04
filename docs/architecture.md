@@ -1,4 +1,4 @@
-# Architecture — tkg/v4 (v4.11.0)
+# Architecture — tkg/v4 (v4.11.1)
 
 Temporal Knowledge Graph v4 is a pure Go library providing the core graph engine for temporal knowledge graphs. It is the low-level storage and type layer — no main binary, no HTTP server, no query language.
 
@@ -836,7 +836,7 @@ Write operations update in-memory state immediately, queue write ops into `map[s
 
 ### Temporal Data Is Append-Only
 
-History is never physically deleted. Delete paths save tombstone versions (with `DeletedAt`/`ValidTo`) before deletion. Past-time queries reconstruct deleted entities from history.
+History is never physically deleted. Delete paths save tombstone versions (with `DeletedAt`/`ValidTo`) before deletion. Past-time queries reconstruct deleted entities from history — including transaction-time reads: a delete is a transaction-time tombstone, so any `TxAt`/as-of read pinned BEFORE the delete returns the entity in its pre-delete belief state (the post-pin `DeletedAt`/`ValidTo`/`TxTo` stamps are normalized away on a copy), and any pin at or after the delete excludes it (v4.11.1, lesson 60).
 
 For single-shard stores, the tombstone write and the entity deletion are combined in a single atomic Store call (`DeleteNodeWithHistory` / `DeleteRelWithHistory`). All ops land in one Badger `WriteBatch.Flush()` under the same `idxMu.Lock()`, eliminating the crash window that previously existed between N+2 separate store calls. Tiered stores preserve that per-shard atomicity, preflight relationship tombstone coverage before the first delete, and add rollback around plain and history-carrying pre-node relationship deletes when a later step fails before the node is removed. Rollback failures are surfaced with the primary error.
 

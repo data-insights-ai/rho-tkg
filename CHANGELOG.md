@@ -6,6 +6,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.11.1] - 2026-07-04
+
+### Fixed — hard Delete is a transaction-time tombstone in the generic TxAt door (lesson 60)
+
+A hard-deleted entity vanished from every **generic** transaction-time read at
+EVERY pin — `ByLabel`/`ByType`/`All` with `QueryOpts.TxAt`, `NodesAtTx`/`RelsAtTx`,
+and `NodeAtTx`/`RelAtTx` — even at pins **before** the delete, while the **named**
+as-of door (`NodeAsOf`/`NodesAsOf`/`RelAsOf`/`RelsAsOf`) correctly reconstructed the
+pre-delete belief state (rule 17: two doors, same shape, one had the bug). That was
+retroactive history rewriting: a delete recorded at T+1 silently changed what "as
+known at T" returned, contradicting `docs/architecture.md`'s "past-time queries
+reconstruct deleted entities from history" and breaking downstream `AS OF SYSTEM
+TIME` reproducibility (found by sigma-tkgd's Tyla transaction-time pinning, probed
+2026-07-03).
+
+Mechanism: Delete stamps `DeletedAt`/`ValidTo`/`TxTo` **in place** on the final
+version before moving it to history, so the tombstone row — correctly kept by the
+`TxFrom <= txAt` visibility predicate (lesson 43) — carried a post-pin
+`ValidTo = DeletedAt` that failed valid-time coverage in the resolver
+(`nodeVersionBounds`' `vEnd = ValidTo` override), dropping the entity.
+
+Fix: `filterNodeChainByTxAt`/`filterRelChainByTxAt` — the one seam every
+chain-based TxAt resolution funnels through (`nodeAtLockedTx`/`relAtLockedTx` and
+`find*VersionMatchingDuringTx`, node + rel) — now detect a surviving row whose
+`DeletedAt` post-dates `txAt`, DEEP-COPY it (chain rows may be shared frozen store
+rows — never mutated), and normalize it to the belief state as of the pin via the
+same `normalizeTemporalVisibleAtTxTime` the named as-of door already applies. The
+two doors now agree by construction. Pins at or after the delete keep excluding the
+entity (its delete-stamped valid time no longer covers the query instant).
+Regressions in `bitemporal_tombstone_test.go`: both backends, node + rel mirrors
+(direct delete AND `DeleteNode` cascade tombstones), supersession-then-delete
+(pinned read returns the belief current at the pin), post-delete-pin negative
+assertions, ValidAt+TxAt combination, and no-delete-stamp assertions on returned
+rows. Also documents the two test-clock hazards (monotonic-floor stamps outrunning
+the wall clock vs the TxAt-only door's implicit valid-at-wall-now probe) that made
+naive sleep-based pins flaky.
+
 ## [4.11.0] - 2026-07-02
 
 ### Added — transaction-time backfill at ingest (§4.1)
