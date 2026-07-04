@@ -1760,3 +1760,36 @@ Rules:
   (`resolveOpenEndInstant`), so assertions flip while stamps are still "in the
   future" (wait until the wall clock passes every minted stamp before asserting).
   Both produced flakes in the first cut of `bitemporal_tombstone_test.go`.
+
+## 61. A "Current Transaction Time" Reader Must Consult The Commit Clock (Wall-Dominated), Not The Session High-Water Mark — The Latter Resets To Zero On Reopen
+
+`Temporal().NowTx()` must return an instant that covers every committed write and
+precedes every future one, so a caller can pin an AS-OF read at it. The tempting
+implementation — return the in-memory monotonic high-water mark
+(`c.lastInstant.Load()`) — is a PURE read but WRONG across a Close/reopen: the
+high-water mark is **session-local** (cross-session monotonicity rides the wall
+clock, not a persisted watermark — `lastInstant` is deliberately not seeded on
+open, because `Core.now()`'s `observed = wall.now()` already dominates every
+historical stamp). So after reopening a graph that already holds data it returns 0.
+
+And 0 is not an innocuous stale value: `QueryOpts.TxAt == 0` means "no TX filter",
+so a pin of 0 resolves to CURRENT belief and silently INCLUDES writes made after
+the pin was taken — the precise anachronism the pin exists to prevent.
+
+The fix is to return `c.now()` (advancing the clock by one tick). It consults the
+same monotonic-floor-over-wall-clock the mutation stamps use, so: (a) the wall
+clock dominates every historical stamp, making the value correct on a fresh
+session/reopen; (b) advancing RESERVES the instant, guaranteeing the next mutation
+is stamped STRICTLY greater — a non-advancing peek can collide with a
+same-millisecond future write, which would then leak past the pin. The "cost" — a
+read that advances a monotonic counter — is harmless (no entity is stamped with
+it) and is exactly what buys the strict, reopen-safe separation.
+
+- **Rule:** a primitive that returns "the current logical time of a monotonic,
+  wall-dominated clock" must READ THROUGH the clock (advancing when strict
+  ordering against future writes is required), never a session-local cached
+  high-water mark that resets on reopen — especially when the zero value of the
+  returned type is an overloaded "no filter" sentinel downstream.
+- **Test:** the reopen regression (`TestNowTx_ReopenSafe`, on-disk badger) is what
+  pins the choice — it fails the instant someone "optimizes" `NowTx` back to a pure
+  `lastInstant.Load()`.

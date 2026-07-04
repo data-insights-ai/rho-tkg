@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.11.2] - 2026-07-04
+
+### Added — `Temporal().NowTx()`: the current transaction-time pin (lesson 61)
+
+`g.Temporal().NowTx() (types.Instant, error)` returns the graph's current
+transaction-time instant — the pin a caller hands to the AS-OF reads
+(`QueryOpts.TxAt` / `NodeAtTx` / `NodesAtTx` / `NodesAsOf`) or names via `TagAsOf`
+to snapshot "everything committed so far". Every entity already committed has
+`TxFrom <= NowTx()`, and every subsequent mutation is stamped strictly greater, so
+pinning at `NowTx()` includes all prior writes and excludes every later one. This
+closes a real gap: a consumer had no way to **obtain** a current transaction
+instant — every temporal reader took one as input, none returned it, so `TagAsOf`
+(which needs an `at`) and any "snapshot as of now" had to hand-derive a pin, unsafely.
+
+Semantics (probed in `pkg/graph/internal/core/nowtx_test.go` — both backends,
+node+rel parity, `-race`): reading `NowTx()` **advances the commit clock by one
+tick** (reserving the instant) — that reservation is what makes the separation
+strict (the next mutation is `> NowTx()`), and because it consults the same
+monotonic-floor clock mutations use (`Core.now()`), not a bare wall-clock read, the
+value is **correct across a Close/reopen**. The session high-water mark
+(`lastInstant`) resets to 0 on reopen, so a pure `lastInstant.Load()` would return
+0 — an `AS OF SYSTEM TIME 0` = "no filter" pin that would silently INCLUDE future
+writes, the exact anachronism the pin prevents; a bare wall-clock pin is likewise
+unsafe because a burst of mutations can outrun the wall. Errors on a nil/closed
+graph. Additive, backward-compatible: new method on `g.Temporal()` and its internal
+`Ops` interface. See lesson 61.
+
 ## [4.11.1] - 2026-07-04
 
 ### Fixed — hard Delete is a transaction-time tombstone in the generic TxAt door (lesson 60)

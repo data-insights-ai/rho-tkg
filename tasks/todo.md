@@ -14,6 +14,24 @@ This file tracks **only open work**.
 
 ---
 
+## HP (hallucination-prevention) forward work — see `tasks/hp-workplan-2026-07-04.md`
+
+rho-tkg is **sufficient** for the current HP milestone (v4.11.1: sound as-of pinning incl.
+the delete-tombstone fix + tamper-evident anchors). The critical path is *sigma-tkgd*
+HP1.2/HP1.3, which needs no new rho-tkg API — so these are **demand-ordered**, pulled when
+runtime scale / a later phase makes them bite. Full rationale + break-tests in the workplan.
+
+- [ ] **RT-1 Tx-aware adjacency push-down** (closes HP1.1-resid a) — `OutgoingForNodesAtTx`/
+      `IncomingForNodesAtTx` threading `QueryOpts.TxAt` (today `OutgoingForNodes`/`IncomingForNodes`
+      take no opts — `queries.go:801,861`, `rels/api.go:339,348` — so pinned edge reads pay a full
+      `ByType` scan). Pattern-34 divergence probe vs. the scan door. **Runtime-scale perf; non-blocking.**
+- [ ] **RT-2 TxAt-door valid-time guardrail** — a naive `QueryOpts{TxAt}` silently valid-filters at
+      wall-now and empties the pinned EDB of past-valid facts (sigma Hardening-pass-7 footgun; safe
+      `pinnedOpts` pattern exists). Make the pinned door explicit/fail-loud. Small, high-leverage.
+- [ ] **RT-3** (hold for HP Phase 2.5) dry-run constraint validation (validate-without-write).
+- [ ] **RT-4** (hold for HP Phase 3.9) wire the unused vector index (`vector_search.go:54`) + fuzzy resolver.
+- [ ] **RT-5** (hold for audit) whole-graph merkle/snapshot root.
+
 ## Remaining follow-ups (optional, lower priority)
 
 - [ ] **Import-under-a-scope** (proper fix beyond the import stopgap): wrap

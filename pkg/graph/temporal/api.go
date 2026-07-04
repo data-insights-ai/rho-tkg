@@ -34,6 +34,7 @@ type Ops interface {
 	RelsByTypePropertyDuring(relType, key string, value any, start, end types.Instant) ([]*types.Relationship, error)
 
 	// Bitemporal (transaction time)
+	NowTx() (types.Instant, error)
 	NodeAsOf(id types.NodeID, txTime types.Instant) (*types.Node, error)
 	RelAsOf(id types.RelID, txTime types.Instant) (*types.Relationship, error)
 	NodesAsOf(txTime types.Instant) ([]*types.Node, error)
@@ -252,6 +253,24 @@ func (a *API) RelAsOf(id types.RelID, txTime types.Instant) (*types.Relationship
 		return nil, err
 	}
 	return ops.RelAsOf(id, txTime)
+}
+
+// NowTx returns the current transaction-time instant — the pin to pass to the
+// AS-OF reads (QueryOpts.TxAt / NodeAtTx / NodesAsOf) or to name via TagAsOf, to
+// snapshot everything committed so far. Every committed entity has TxFrom <=
+// NowTx(); every later mutation is stamped strictly greater. Reading it advances
+// the commit clock by one tick (reserving the instant), which is what makes the
+// separation strict and the value correct across a Close/reopen — a bare
+// wall-clock pin is unsafe because a burst of mutations can outrun the wall.
+//
+//	pin, _ := g.Temporal().NowTx()
+//	_ = g.Temporal().TagAsOf("snapshot", pin) // address it by name later
+func (a *API) NowTx() (types.Instant, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, err
+	}
+	return ops.NowTx()
 }
 
 // NodesAsOf returns nodes known at transaction time txTime.

@@ -178,6 +178,29 @@ func (c *Core) relAsOfLocked(id types.RelID, txTime types.Instant) (*types.Relat
 // Collects all known node IDs (current + history) using ForEach iterators,
 // calls GetNodeAsOf per ID, skips ErrNoVersionAsOf.
 // Returns nil, nil if no nodes existed at txTime.
+// NowTx returns the current transaction-time instant of the graph's commit
+// clock — the pin to hand to the AS-OF reads (QueryOpts.TxAt / NodeAtTx /
+// NodesAsOf, or a named TagAsOf) to snapshot "everything committed so far".
+// Every entity already committed has TxFrom <= NowTx(), and every subsequent
+// mutation is stamped strictly greater, so pinning at NowTx() includes all
+// prior writes and excludes every later one.
+//
+// Reading it ADVANCES the commit clock by one tick (reserving the instant):
+// that reservation is what guarantees the strict separation, and — because it
+// consults the same monotonic-floor clock mutations use, not a bare wall-clock
+// read — the value is correct even right after a Close/reopen, where the
+// session's in-memory high-water mark (lastInstant) starts fresh yet the wall
+// clock still dominates every historical stamp (lesson 61). A bare wall-clock
+// pin is unsafe: a burst of mutations can outrun the wall, so a slept pin can
+// land BEFORE the last write's logical stamp.
+func (t *TempOps) NowTx() (types.Instant, error) {
+	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return 0, err
+	}
+	return c.now(), nil
+}
+
 func (t *TempOps) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 	c := t.c
 	if err := c.checkOpen(); err != nil {
