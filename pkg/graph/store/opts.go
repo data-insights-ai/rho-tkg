@@ -44,7 +44,37 @@ type QueryOpts struct {
 	// old TxTo-bounded predicate made NodeAtTx(oldVT, now) return nothing after
 	// any update). Combine with ValidAt / ValidStart / ValidEnd for bitemporal
 	// queries.
+	//
+	// WARNING — TxAt is NOT a "belief state as of T" pin. Setting TxAt WITHOUT a
+	// valid-time filter (ValidAt / ValidStart / ValidEnd) does NOT return
+	// "everything known at T": the generic scan doors (ByLabel / ByType / All)
+	// still apply an IMPLICIT valid-at-wall-now filter, so any entity whose fact
+	// was only valid in the PAST (explicit tkg_valid_to before now) is silently
+	// dropped even though it was well and truly known at T. To reconstruct the
+	// pure knowledge-time belief state ("everything recorded by T, regardless of
+	// world-time"), use TxPin instead — it resolves each entity through the same
+	// as-of resolution as g.Temporal().NodesAsOf/RelsAsOf with NO valid-time
+	// filtering. TxAt is for genuine BITEMPORAL queries where you also pin a
+	// world-time coordinate.
 	TxAt types.Instant
+
+	// TxPin is a BELIEF-STATE pin: pure knowledge-time (transaction-time)
+	// resolution with NO valid-time filtering. Setting TxPin to T makes the
+	// generic scan doors (ByLabel / ByType / All) return exactly the belief
+	// state recorded by T — identical semantics to g.Temporal().NodesAsOf(T) /
+	// RelsAsOf(T), only reached through the generic QueryOpts door and post-
+	// filtered by label/type/property. Every entity whose newest belief was
+	// recorded by T is included (including facts valid only in the past, and
+	// entities deleted AFTER T but visible at T); entities whose decisive belief
+	// was superseded or hard-deleted by T are absent. 0 = disabled.
+	//
+	// TxPin is mutually exclusive with every valid-time filter (ValidAt /
+	// ValidStart / ValidEnd) AND with TxAt: setting TxPin together with any of
+	// them is a query error (ErrConflictingTemporalOpts) rather than a silent
+	// mis-resolution. Reach for TxAt (+ a valid-time coordinate) for genuine
+	// bitemporal point/interval queries; reach for TxPin for "the whole graph as
+	// it was believed at T".
+	TxPin types.Instant
 
 	// IncludeEclipsed includes history rows that were superseded by a cascade
 	// edit (Phase 3+). Default false: eclipsed rows are skipped for valid-time

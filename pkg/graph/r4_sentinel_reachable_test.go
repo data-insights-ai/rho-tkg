@@ -21,16 +21,17 @@ func TestSentinels_ReachableFromPublicPackages(t *testing.T) {
 	t.Parallel()
 	// IO sentinels via pkg/graph re-exports.
 	for name, s := range map[string]error{
-		"graph.ErrNilReader":            graphpkg.ErrNilReader,
-		"graph.ErrNilWriter":            graphpkg.ErrNilWriter,
-		"graph.ErrNilGraph":             graphpkg.ErrNilGraph,
-		"graph.ErrNilStore":             graphpkg.ErrNilStore,
-		"graph.ErrIncompatibleExport":   graphpkg.ErrIncompatibleExport,
-		"graph.ErrIncompatibleRegistry": graphpkg.ErrIncompatibleRegistry,
-		"graph.ErrCorruptExport":        graphpkg.ErrCorruptExport,
-		"graph.ErrImportSizeLimit":      graphpkg.ErrImportSizeLimit,
-		"graph.ErrNoVersionAsOf":        graphpkg.ErrNoVersionAsOf,
-		"graph.ErrTxDone":               graphpkg.ErrTxDone,
+		"graph.ErrNilReader":               graphpkg.ErrNilReader,
+		"graph.ErrNilWriter":               graphpkg.ErrNilWriter,
+		"graph.ErrNilGraph":                graphpkg.ErrNilGraph,
+		"graph.ErrNilStore":                graphpkg.ErrNilStore,
+		"graph.ErrIncompatibleExport":      graphpkg.ErrIncompatibleExport,
+		"graph.ErrIncompatibleRegistry":    graphpkg.ErrIncompatibleRegistry,
+		"graph.ErrCorruptExport":           graphpkg.ErrCorruptExport,
+		"graph.ErrImportSizeLimit":         graphpkg.ErrImportSizeLimit,
+		"graph.ErrNoVersionAsOf":           graphpkg.ErrNoVersionAsOf,
+		"graph.ErrConflictingTemporalOpts": graphpkg.ErrConflictingTemporalOpts,
+		"graph.ErrTxDone":                  graphpkg.ErrTxDone,
 	} {
 		if s == nil {
 			t.Errorf("%s is nil — sentinel must be a non-nil error value", name)

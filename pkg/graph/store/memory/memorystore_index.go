@@ -250,9 +250,19 @@ func (ms *Store) DropHighFrequencyIndex(labelToken uint16) error {
 }
 
 // CreateVectorIndex creates a vector similarity index for nodes with the given label token,
-// on the given property key, expecting vectors of length dims.
+// on the given property key, expecting vectors of length dims. The index
+// defaults to the approximate HNSW engine; use CreateVectorIndexWithOptions
+// for the brute-force escape hatch or HNSW tuning.
 // Scans existing nodes with that label to populate the index. Returns ErrVectorIndexExists on duplicate.
 func (ms *Store) CreateVectorIndex(labelToken uint16, propertyKey string, dims int, metric DistanceMetric) error {
+	return ms.CreateVectorIndexWithOptions(labelToken, propertyKey, dims, metric, storecontract.VectorIndexOptions{})
+}
+
+// CreateVectorIndexWithOptions is CreateVectorIndex with additional control
+// over the search engine (opts.UseBruteForce) and HNSW tuning (opts.M /
+// EfConstruction / EfSearch). A zero-value opts is identical to
+// CreateVectorIndex (documented HNSW defaults).
+func (ms *Store) CreateVectorIndexWithOptions(labelToken uint16, propertyKey string, dims int, metric DistanceMetric, opts storecontract.VectorIndexOptions) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -271,12 +281,16 @@ func (ms *Store) CreateVectorIndex(labelToken uint16, propertyKey string, dims i
 	if err := indexpkg.ValidateVectorIndexConfig(dims, metric); err != nil {
 		return err
 	}
+	if err := indexpkg.ValidateVectorIndexOptions(opts); err != nil {
+		return err
+	}
 
 	key := indexpkg.VectorIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
 	if _, exists := ms.vectorIndexes[key]; exists {
 		return ErrVectorIndexExists
 	}
 	vi := &indexpkg.VectorIndex{Dims: dims, Metric: metric}
+	indexpkg.ApplyVectorIndexOptions(vi, opts)
 	ms.vectorIndexes[key] = vi
 
 	// Populate from nodes carrying this label. Keep this backfill shape aligned

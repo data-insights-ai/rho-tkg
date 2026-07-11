@@ -5,7 +5,10 @@
 // snapshot.
 package stats
 
-import "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
+import (
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+)
 
 // GraphStats holds operation counters and optional cache metrics for a Graph.
 // Cache metrics are populated only when the underlying store is a BadgerStore;
@@ -42,7 +45,9 @@ type Ops interface {
 	RelCount() (int, error)
 	NodeCountByLabel(label string) (int, error)
 	NodeCountByLabelAndPropertyKey(label, propertyKey string) (int, error)
+	PropertyStats(label, propertyKey string) (storepkg.PropertyStats, error)
 	RelCountByType(typeName string) (int, error)
+	RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
 	AllLabelCounts() (map[string]int, error)
 	AllRelTypeCounts() (map[string]int, error)
 	SnapshotCounters() (
@@ -137,6 +142,26 @@ func (a *API) NodeCountByLabelAndPropertyKey(label, propertyKey string) (int, er
 	return ops.NodeCountByLabelAndPropertyKey(label, propertyKey)
 }
 
+// PropertyStats returns NDV (estimated distinct-value count via a
+// HyperLogLog sketch), exact Min/Max (for scalar-ordered value families —
+// numeric and string, see store.NodePropertyStatsCapability), and Count (the
+// same presence count NodeCountByLabelAndPropertyKey returns) for label's
+// current nodes carrying propertyKey.
+//
+// Missing/unpopulated (label, propertyKey) pairs return a zero-value
+// PropertyStats, not an error — matching NodeCountByLabelAndPropertyKey's
+// "unregistered → 0" convention. Backends without the optional
+// store.NodePropertyStatsCapability (e.g. tiered.Store — see
+// docs/query-planners.md "Tiered limitation (v1)") return
+// store.ErrCapabilityNotSupported; check with errors.Is.
+func (a *API) PropertyStats(label, propertyKey string) (storepkg.PropertyStats, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.PropertyStats{}, err
+	}
+	return ops.PropertyStats(label, propertyKey)
+}
+
 // RelCountByType returns the count of relationships of the given type.
 func (a *API) RelCountByType(typeName string) (int, error) {
 	ops, err := a.ready()
@@ -144,6 +169,29 @@ func (a *API) RelCountByType(typeName string) (int, error) {
 		return 0, err
 	}
 	return ops.RelCountByType(typeName)
+}
+
+// RangeCardinality is an additive alias forwarding to the SAME core op
+// Nodes().RangeCardinality uses (core.NodeOps.RangeCardinality) — identical
+// signature and semantics, so a query planner reading only g.Stats() need
+// not also import the nodes sub-API for this one statistic.
+//
+// It returns the count of the label's nodes whose numeric propKey value lies
+// within [min,max] (inclusivity per flags), summed directly from the
+// property index's sorted per-value bucket sizes — O(distinct values in
+// range), NO node scan. The second return is exact: false means the fast
+// path declined (no store capability, no/poisoned index, or a temporal
+// filter set in opts — the index is valid-time agnostic) and the caller must
+// scan-and-count instead (e.g. via ForEachByLabel). The bounds MUST already
+// capture the whole predicate. See core.NodeOps.RangeCardinality and
+// nodes.API.RangeCardinality — Nodes().RangeCardinality itself is untouched
+// by this alias.
+func (a *API) RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, false, err
+	}
+	return ops.RangeCardinality(label, propKey, min, max, inclMin, inclMax, opts)
 }
 
 // AllLabelCounts returns counts per label.

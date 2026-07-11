@@ -91,7 +91,12 @@ func (n *NodeOps) AddWithTx(ctx context.Context, labels []string, props map[stri
 
 // addNodeInternal is the lock-free implementation of NodeOps.Add.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
-func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[string]any) (*types.Node, error) {
+//
+// heldStripes lists value-lock stripes the caller ALREADY holds (GetOrCreateByKey
+// holds the keyed value's stripe across the create); the unique kernel skips
+// re-locking those to avoid a non-reentrant self-deadlock, still checking their
+// values under the caller's held lock. Standalone / tx callers pass none.
+func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[string]any, heldStripes ...uint8) (*types.Node, error) {
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
@@ -217,6 +222,15 @@ func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[s
 	if err := checkCtx(ctx); err != nil {
 		return nil, finishLabels(err)
 	}
+
+	// Unique-constraint enforcement (standalone create door). Hold the value
+	// stripe(s) across the index check + store write so concurrent same-value
+	// creates serialize to exactly one winner.
+	uniqueRelease, uniqueErr := c.enforceUniqueForNodeHeld(n, nil, id, heldStripes)
+	if uniqueErr != nil {
+		return nil, finishLabels(uniqueErr)
+	}
+	defer uniqueRelease()
 
 	if err := c.putGeneratedNode(n); err != nil {
 		err, partialLive := finishNodeCreateError(err)
@@ -481,6 +495,15 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 	if err := checkCtx(ctx); err != nil {
 		return nil, finishLabels(err)
 	}
+
+	// Unique-constraint enforcement (standalone import / AddByIDIfAbsent create
+	// door). The entity lock is already held above; take value stripe(s) after
+	// it (entity -> value order) across the check + PutNode.
+	uniqueRelease, uniqueErr := c.enforceUniqueForNode(n, nil, id)
+	if uniqueErr != nil {
+		return nil, finishLabels(uniqueErr)
+	}
+	defer uniqueRelease()
 
 	if err := c.store.PutNode(n); err != nil {
 		err, partialLive := finishNodeCreateError(err)

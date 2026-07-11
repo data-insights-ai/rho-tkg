@@ -73,6 +73,14 @@ type ImportOptions struct {
 	// means unlimited; negative values are invalid. When exceeded,
 	// Import returns an error during Phase 1 with no live graph mutation.
 	MaxStagedBytes int64
+
+	// SkipUniqueValidation disables the post-replay unique-constraint check.
+	// By default (ADR-0002 Decision 4: default-strict) Import validates the
+	// replayed current state against every ACTIVE unique constraint and rolls
+	// the whole import back with ErrUniqueViolation if a stream carries two
+	// current nodes sharing a constrained value. Set this for a TRUSTED restore
+	// (e.g. re-importing an export the graph itself produced) to skip that scan.
+	SkipUniqueValidation bool
 }
 
 // Ops is the subset of *core.IOOps the io sub-API forwards to.

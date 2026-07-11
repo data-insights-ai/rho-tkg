@@ -19,6 +19,11 @@ type fakeOps struct {
 	applied    []store.ChangeRecord
 	appliedLSN uint64
 	lease      *store.IDSlotLeaseRecord
+	// disabled simulates a present-but-disabled change-log: ChangeLogActive
+	// returns false while the feed methods themselves stay reachable. Zero
+	// value (false) means "active" so every fakeOps literal that predates this
+	// field keeps its original ForEachChange-driven behavior.
+	disabled bool
 }
 
 func (f *fakeOps) ChangeFeed(afterLSN uint64, limit int) ([]store.ChangeRecord, error) {
@@ -39,6 +44,8 @@ func (f *fakeOps) ForEachChange(afterLSN uint64, fn func(store.ChangeRecord) boo
 }
 
 func (f *fakeOps) LastCommittedLSN() (uint64, error) { return f.lastLSN, f.err }
+
+func (f *fakeOps) ChangeLogActive() bool { return !f.disabled }
 
 func (f *fakeOps) ApplyChange(rec store.ChangeRecord) error {
 	if f.err != nil {

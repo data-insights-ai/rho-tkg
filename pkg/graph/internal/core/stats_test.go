@@ -261,6 +261,215 @@ func TestGraphStats_NodeCountByLabelAndPropertyKeyStoreFaults(t *testing.T) {
 	}
 }
 
+func TestGraphStats_PropertyStats(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{})
+	ctx := context.Background()
+
+	a, err := g.Nodes.Add(ctx, []string{"PropStatsPerson"}, map[string]any{"score": int64(10)})
+	if err != nil {
+		t.Fatalf("AddNode a: %v", err)
+	}
+	b, err := g.Nodes.Add(ctx, []string{"PropStatsPerson"}, map[string]any{"score": int64(30)})
+	if err != nil {
+		t.Fatalf("AddNode b: %v", err)
+	}
+	if _, err := g.Nodes.Add(ctx, []string{"PropStatsPerson"}, map[string]any{"score": int64(20)}); err != nil {
+		t.Fatalf("AddNode c: %v", err)
+	}
+
+	stats, err := g.Stats.PropertyStats("PropStatsPerson", "score")
+	if err != nil {
+		t.Fatalf("PropertyStats: %v", err)
+	}
+	if stats.Count != 3 {
+		t.Fatalf("Count = %d, want 3", stats.Count)
+	}
+	if stats.Min != int64(10) {
+		t.Fatalf("Min = %v, want int64(10)", stats.Min)
+	}
+	if stats.Max != int64(30) {
+		t.Fatalf("Max = %v, want int64(30)", stats.Max)
+	}
+	if stats.NDV < 1 || stats.NDV > 10 {
+		t.Fatalf("NDV = %d, want a small positive estimate (3 distinct values)", stats.NDV)
+	}
+
+	// Missing label → zero-value stats, not an error.
+	missing, err := g.Stats.PropertyStats("PropStatsMissing", "score")
+	if err != nil {
+		t.Fatalf("PropertyStats missing label: %v", err)
+	}
+	if missing != (storepkg.PropertyStats{}) {
+		t.Fatalf("missing-label stats = %+v, want zero value", missing)
+	}
+
+	// Delete-the-extremum: b holds the max (30); after deleting it the
+	// reported max must reflect the surviving nodes, not the stale 30.
+	if err := g.Nodes.Delete(ctx, b.ID()); err != nil {
+		t.Fatalf("DeleteNode b: %v", err)
+	}
+	after, err := g.Stats.PropertyStats("PropStatsPerson", "score")
+	if err != nil {
+		t.Fatalf("PropertyStats after delete: %v", err)
+	}
+	if after.Max != int64(20) {
+		t.Fatalf("Max after delete-the-extremum = %v, want int64(20)", after.Max)
+	}
+	if after.Count != 2 {
+		t.Fatalf("Count after delete = %d, want 2", after.Count)
+	}
+
+	if err := g.Nodes.Delete(ctx, a.ID()); err != nil {
+		t.Fatalf("DeleteNode a: %v", err)
+	}
+}
+
+func TestGraphStats_PropertyStatsErrors(t *testing.T) {
+	t.Parallel()
+	g, _ := New(Config{})
+	ctx := context.Background()
+	if _, err := g.Nodes.Add(ctx, []string{"PropStatsErrPerson"}, map[string]any{"id": int64(1)}); err != nil {
+		t.Fatalf("seed Add: %v", err)
+	}
+
+	if _, err := g.Stats.PropertyStats("", "id"); err == nil {
+		t.Fatal("empty label should be rejected")
+	}
+	if _, err := g.Stats.PropertyStats("PropStatsErrPerson", "tkg_version"); err == nil {
+		t.Fatal("shadow property key should be rejected")
+	}
+	if err := g.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if _, err := g.Stats.PropertyStats("PropStatsErrPerson", "id"); !errors.Is(err, ErrGraphClosed) {
+		t.Fatalf("closed graph = %v, want ErrGraphClosed", err)
+	}
+}
+
+// TestGraphStats_PropertyStatsCapabilityMissing pins the behaviour on a
+// backend that satisfies only MandatoryStore: the optional
+// NodePropertyStatsCapability is absent, so the call surfaces the typed
+// sentinel rather than silently returning zero-value stats.
+func TestGraphStats_PropertyStatsCapabilityMissing(t *testing.T) {
+	t.Parallel()
+	g := newMandatoryOnlyGraph(t)
+	ctx := context.Background()
+	if _, err := g.Nodes.Add(ctx, []string{"Person"}, map[string]any{"id": int64(1)}); err != nil {
+		t.Fatalf("seed Add: %v", err)
+	}
+	if _, err := g.Stats.PropertyStats("Person", "id"); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
+		t.Fatalf("capability-missing = %v, want ErrCapabilityNotSupported", err)
+	}
+}
+
+// propStatsFaultStore satisfies MandatoryStore (via the embedded memory
+// store) AND NodePropertyStatsCapability, but returns a caller-controlled
+// PropertyStats/error from the capability method so the core wrapper's error
+// branch is observable.
+type propStatsFaultStore struct {
+	storepkg.MandatoryStore
+	stats storepkg.PropertyStats
+	err   error
+}
+
+func (s *propStatsFaultStore) NodePropertyStats(uint16, string) (storepkg.PropertyStats, error) {
+	return s.stats, s.err
+}
+
+// TestGraphStats_PropertyStatsTiered pins the ADR-0005 §3.1 parity fix:
+// tiered.Store now implements the richer NodePropertyStatsCapability (a
+// cross-shard NDV/min/max/count fold — see
+// docs/query-planners.md "Tiered NDV fold"), so g.Stats.PropertyStats must
+// return real statistics through the graph-layer label-string door exactly
+// like the presence-only NodeCountByLabelAndPropertyKey sibling always did —
+// not ErrCapabilityNotSupported. Deep cross-shard/adversarial coverage of the
+// fold itself (same-value-two-shards NDV, min/max spanning shards, cold
+// shards) lives at the tiered-store level
+// (pkg/graph/store/tiered/tieredstore_property_stats_test.go); this test only
+// pins the graph-layer wiring plus the delete-the-extremum rescan through the
+// label-string door.
+func TestGraphStats_PropertyStatsTiered(t *testing.T) {
+	t.Parallel()
+	g, _ := newTestTieredGraph(t)
+	ctx := context.Background()
+
+	if _, err := g.Nodes.Add(ctx, []string{"Case"}, map[string]any{"id": int64(1)}); err != nil {
+		t.Fatalf("seed Add a: %v", err)
+	}
+	b, err := g.Nodes.Add(ctx, []string{"Case"}, map[string]any{"id": int64(3)})
+	if err != nil {
+		t.Fatalf("seed Add b: %v", err)
+	}
+
+	// The presence-only sibling still works on tiered.
+	if _, err := g.Stats.NodeCountByLabelAndPropertyKey("Case", "id"); err != nil {
+		t.Fatalf("NodeCountByLabelAndPropertyKey (sibling) on tiered: %v", err)
+	}
+
+	stats, err := g.Stats.PropertyStats("Case", "id")
+	if err != nil {
+		t.Fatalf("PropertyStats on tiered: %v", err)
+	}
+	if stats.Count != 2 {
+		t.Fatalf("Count = %d, want 2", stats.Count)
+	}
+	if stats.Min != int64(1) {
+		t.Fatalf("Min = %v, want int64(1)", stats.Min)
+	}
+	if stats.Max != int64(3) {
+		t.Fatalf("Max = %v, want int64(3)", stats.Max)
+	}
+	if stats.NDV < 1 {
+		t.Fatalf("NDV = %d, want a positive estimate", stats.NDV)
+	}
+
+	// Delete-the-extremum: b holds the max (3); the NEXT PropertyStats read
+	// must reflect the surviving nodes, not the stale 3 (rule 15 two-phase
+	// shape via a mutation-then-query check).
+	if err := g.Nodes.Delete(ctx, b.ID()); err != nil {
+		t.Fatalf("DeleteNode b: %v", err)
+	}
+	after, err := g.Stats.PropertyStats("Case", "id")
+	if err != nil {
+		t.Fatalf("PropertyStats after delete: %v", err)
+	}
+	if after.Max != int64(1) {
+		t.Fatalf("Max after delete-the-extremum = %v, want int64(1)", after.Max)
+	}
+	if after.Count != 1 {
+		t.Fatalf("Count after delete = %d, want 1", after.Count)
+	}
+
+	// Missing label → zero-value stats, not an error (matches the
+	// non-tiered convention pinned in TestGraphStats_PropertyStats).
+	missing, err := g.Stats.PropertyStats("NoSuchTieredLabel", "id")
+	if err != nil {
+		t.Fatalf("PropertyStats missing label: %v", err)
+	}
+	if missing != (storepkg.PropertyStats{}) {
+		t.Fatalf("missing-label stats = %+v, want zero value", missing)
+	}
+}
+
+func TestGraphStats_PropertyStatsStoreFaultPropagates(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	errBoom := errors.New("prop stats boom")
+	gErr, err := New(Config{Store: &propStatsFaultStore{MandatoryStore: memory.New(), err: errBoom}})
+	if err != nil {
+		t.Fatalf("New (err store): %v", err)
+	}
+	t.Cleanup(func() { _ = gErr.Close() })
+	if _, err := gErr.Nodes.Add(ctx, []string{"Person"}, nil); err != nil {
+		t.Fatalf("seed Add (err store): %v", err)
+	}
+	if _, err := gErr.Stats.PropertyStats("Person", "id"); !errors.Is(err, errBoom) {
+		t.Fatalf("store error = %v, want errBoom", err)
+	}
+}
+
 func TestGraphStats_NodeCascadeDeleteCountsRelationships(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)

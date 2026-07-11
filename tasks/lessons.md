@@ -1793,3 +1793,232 @@ it) and is exactly what buys the strict, reopen-safe separation.
 - **Test:** the reopen regression (`TestNowTx_ReopenSafe`, on-disk badger) is what
   pins the choice — it fails the instant someone "optimizes" `NowTx` back to a pure
   `lastInstant.Load()`.
+
+## 62. An As-Of Resolver Must Not Fall Through Past A Retracted Newest Belief To An Older Open-TxTo Row — And "Newest" Is By Version, Not TxFrom
+
+The named as-of door (`NodeAsOf`/`NodesAsOf` and mirrors) answers "the record
+recorded-current at txTime". The chain-scanning resolvers (memory-native
+`nodeAsOfLocked`, the core fallback used by tiered) selected the newest version
+whose TX interval COVERED the pin (`TxFrom <= txAt && (TxTo == 0 || TxTo > txAt)`).
+That coverage filter is the bug: the v4.9.0 append-only cascade
+(`SetNodeVersionInterval`) demotes the prior current to history WITHOUT stamping
+its `TxTo`, so a superseded genesis keeps `TxTo == 0`; a later hard Delete
+tombstones only the FINAL version. At a pin AT/AFTER the delete the filter
+EXCLUDED the retracted newest belief and fell through to the still-open genesis,
+reporting the entity PRESENT — while badger's native reverse-scan stops at the
+first (newest) recorded-by-then version and, finding it retracted, reports ABSENT.
+Repro: `Add(valid_from=1000)` → `SetNodeVersionInterval(id, 2000, 0)` →
+`Delete(id)` → `NodesAsOf(far-future)` was present on memory/tiered, absent on
+badger. Badger is correct.
+
+The deeper trap, surfaced by the generative oracle once the doors were being
+cross-checked: "newest belief" is the highest **version** with `TxFrom <= txAt`,
+NOT the highest `TxFrom`. An `Update` derives its stamp via
+`validInstantAfter(now, versionStart)`, which can bump `TxFrom` ABOVE a LATER
+cascade row's plain `c.now()` stamp — so a higher-version row can carry a lower
+`TxFrom`. Selecting by `(TxFrom, version)` then disagrees with badger's
+version-ordered reverse-scan on exactly that inversion. Version = allocation
+order = authoritative recency.
+
+Rules:
+
+- **Select the decisive belief, then judge its retraction — never filter it out
+  during selection.** The newest recorded-by-txAt version is decisive: if it is
+  superseded or deleted by the pin (`TxTo != 0 && TxTo <= txAt`, or
+  `DeletedAt != 0 && DeletedAt <= txAt`) the entity is ABSENT. A coverage filter
+  that skips it and keeps scanning resurrects a stale open-`TxTo` row.
+- **"Newest" in an append-only bitemporal chain is by version, not `TxFrom`.** A
+  monotonic-looking `TxFrom` is not: `validInstantAfter` and the append-only
+  cascade both break `TxFrom`↔version co-monotonicity. Mirror the store's own
+  recency order (badger scans by descending version); a `(TxFrom, version)` proxy
+  is wrong on the inversion.
+- **Fix in the READ path only.** The append-only cascade discipline (never mutate
+  stored rows; leave the demoted row's `TxTo == 0`) stays — align the resolver
+  with the native reverse-scan, do not re-stamp on write.
+- **Test:** `asof_cascade_delete_test.go` (all three backends — memory/badger/
+  tiered — node+rel mirrors: absent at/after the delete pin, corrected shape
+  between cascade and delete, original belief before it), plus an as-of clause in
+  the bitemporal oracle harness cross-checking `NodesAsOf`/`RelsAsOf` against the
+  version-ordered rule on both backends now that they agree.
+
+## 63. An Unlocked Collect Window Before A Rebuild-Commit Needs A Write-Generation Guard; And A Rescan That Fetches Cache-Cold Rows Must Not Run Under The Caller-Held Write Lock
+
+Two coupled defects on badger's `NodePropertyStats` deferred Min/Max rescan, both
+about the SAME `sync.RWMutex` non-reentrancy fact seen from opposite sides.
+
+**(a) The self-deadlock (found during development).** The obvious design — hold
+`idxMu.Lock()` for the whole call, including the rescan — deadlocks: the rescan
+fetches the label's current node bodies, and a cache-cold fetch
+(`prefetchNodeScan` → `prefetchNodeNoFill`) takes `idxMu.RLock()` itself. A
+`sync.RWMutex` is not reentrant, so a `Lock`-held goroutine re-`RLock`ing (with a
+writer possibly queued) hangs. So the node-fetch loop MUST run with `idxMu`
+released — the memory backend can hold one lock only because its lookups are
+direct in-process map reads.
+
+**(b) The stale-rescan-overwrite (found by an adversarial verifier).** Releasing
+the lock for the collect opened a lost-update window: a concurrent `PutNode`
+landing a NEW live extremum between the unlocked collect and the `Rescan` commit
+was OVERWRITTEN by the stale snapshot, and because `Rescan` clears `dirty`, the
+wrong EXACT value persisted forever (until an unrelated delete happened to
+re-arm dirty). It is NOT a data race — every access is lock-ordered — so
+`go test -race` never flags it; it is a logic/ordering bug that only a
+deterministic interleaving through the real door reproduces (a test hook that
+pauses between collect and commit, lands the extremum, resumes → returned Max=2
+vs true 999999).
+
+The fix is an optimistic-retry keyed on a per-accumulator **write generation**
+bumped under the lock on every `Observe`/`Forget`
+(`PropertyStatsAccumulator.WriteGen`): read the generation under the lock BEFORE
+the collect, re-read it under the lock BEFORE committing; if it moved, discard
+the stale values and redo the collect (bounded — lesson 24). On exhaustion,
+return the LIVE snapshot WITHOUT committing a stale rescan and leave the pair
+`dirty` so a later quiescent read reconciles (`Observe` keeps Min/Max
+monotonically correct for additions, so the fallback never under-reports a live
+extremum). Never "solve" exhaustion by holding the write lock across the collect
+— that reintroduces defect (a).
+
+- **Rule:** whenever a read releases a lock to gather inputs and then re-takes it
+  to COMMIT a rebuilt cache/aggregate, guard the window with a write-generation
+  counter bumped under the lock by every mutator — re-check it before committing
+  and redo the gather if it moved. A committed rebuild from a stale gather is a
+  silent lost update, invisible to the race detector. And never widen a lock to
+  cover a sub-call that re-takes the same non-reentrant lock (RWMutex is not
+  reentrant); the coarse-lock "fix" for a race can be a deadlock.
+- **Test:** a deterministic collect→commit interleaving through the real public
+  door (`TestBadgerStoreNodePropertyStatsStaleRescanOverwrite`, the red test),
+  the bounded-retry exhaustion fallback
+  (`TestBadgerStoreNodePropertyStatsRescanGenerationExhaustion`), and the
+  concurrent-storm test upgraded to assert VALUE correctness against a
+  sequentially-computed ground truth (not just no-error). The pre-existing
+  concurrent test only checked "no deadlock / no error" and sailed straight past
+  the overwrite.
+
+## 64. A Scan-Then-Overlay Reader Drops A Row Across The Commit Window — Snapshot The Overlay BEFORE The Badger View, Not After
+
+Lesson 54 said "every overlay reader must consult `flushing`." That is necessary
+but NOT sufficient: a reader that consults `flushing` at the WRONG TIME still
+drops rows. The badger full-history readers (`getNodeHistoryByPrefix` /
+`getRelHistoryByPrefix`) did it in the wrong order — Badger `db.View` scan FIRST,
+then `rangePending` (flushing ++ pending) merge SECOND — and lost an in-flight
+version across `flush()`'s commit:
+
+1. Reader opens `db.View` at snapshot Ts. A version parked in `flushing` (swapped
+   out of `pending`, not yet committed) is NOT in that Badger snapshot.
+2. A concurrent `flush()` commits the parked row to Badger and THEN clears
+   `flushing` (flush order is: swap → `wb.Flush()` → `flushing = nil`, so a row is
+   in `flushing` until strictly AFTER it lands in Badger).
+3. Reader's `rangePending` runs at Tr > Ts, sees `flushing` already cleared and
+   `pending` empty → no merge.
+4. The row is in NEITHER view — the reader's older Badger snapshot (before the
+   commit) nor the now-cleared overlay. **Dropped.**
+
+It is load-dependent EXACTLY because the drop needs the flush's commit+clear to
+land in the (Ts, Tr) gap: on an idle machine that gap is sub-microsecond and the
+flush rarely lands in it (a prior session saw it 2/30); under heavy load the
+flush goroutine is descheduled mid-window and the gap widens, so it fires. It is
+NOT a data race — every buffer access is `wbMu`-locked — so `-race` does not flag
+it; only a deterministic interleaving reproduces it.
+
+The symptom shape at the public doors: two temporal doors that resolve through
+the SAME per-ID function (`nodeAtLockedTx` / `relAtLockedTx`, which reads
+`GetNode*History`) disagree (`Nodes.All(point)` vs `NodesAtTx`, `Rels.All` vs
+`RelsAtTx`) because they call the reader at slightly different instants and one
+catches the drop; and `NodeAtTx` returns `ErrNodeNotFound` for an entity whose
+`History()` returned rows moments earlier — the resolver's internal history read
+hit the window, the standalone `History()` did not.
+
+**The fix is ORDERING, not just "consult flushing": snapshot the overlay (into a
+local map) BEFORE opening the Badger `View`, then merge the local overlay
+snapshot (which is strictly newer than any committed Badger state) over the scan
+results.** Capturing the overlay at Ta and opening the View at Tb ≥ Ta closes the
+window: a row committed after Ta was still in `flushing` at Ta (in the snapshot);
+a row committed before Ta is durable and in the View. The already-correct
+`*HistoryVersionsFromPrefix` readers (and `maxHistoryID`, the
+`pendingHistory*Overlay`-backed ID scans) were ALREADY overlay-first — the bug was
+the divergence between two members of the same reader family (lesson 54's
+"divergence between readers is itself the bug class," now sharpened from WHICH
+buffer to WHEN it is read).
+
+Rules:
+- **A cache-side overlay + a snapshot-isolated store are two clocks.** When a read
+  combines a point-in-time store snapshot (Badger `View`, MVCC) with a mutable
+  side buffer, read the MUTABLE buffer FIRST and the immutable snapshot SECOND.
+  The reverse order lets a row slip out of the buffer and into a store state the
+  snapshot predates.
+- **Audit BOTH the readers and the delete-set-computing mutators.** The same
+  scan-first order in retention/purge/repair mutators
+  (`truncateHistoryByPrefix` / `trimHistoryFromPrefix`, on-disk
+  `maintainPropertyIndexesPurge` / `purgePropertyKeyDiskEntriesLocked` /
+  `incomingIndexEntriesFromKeyspaceLocked`) drops a key from the computed
+  delete/retention set → an ORPHANED index entry or a distorted keepVersions
+  window, not a wrong read but the same window. All were reordered overlay-first.
+  For a mutator whose merge is "set-vs-delete wins" (the incoming-index scrub),
+  overlay-first means the scan must only FILL keys the overlay did not resolve
+  (else the scan resurrects a parked delete); for one that only appends delete
+  ops (the property purges), a plain block-swap suffices (duplicate delete ops
+  coalesce).
+- **Entity POINT reads (`GetNode`/`GetRelationship`) are exempt for a real
+  reason, and it is worth stating why they don't need this:** every entity write
+  does `cache.Put` (dirty) BEFORE `appendOps`, and `markCacheFlushed` runs AFTER
+  the commit, so a row is dirty-in-cache for the whole window it is in
+  `flushing` — a cache HIT covers it, and a cache MISS means the row is clean =
+  already durable in Badger. The invariant "entity in `flushing` ⇒ dirty in
+  cache" is what makes the point-read cache-only path sound; the history/index
+  keyspaces have no such synchronous cache shadow, which is why only they were
+  exposed (the same "synchronous shadow for most consumers" observation as
+  lesson 54).
+- **Test the WINDOW, not just the presence.** The existing flushing tests parked
+  rows into `flushing` and never committed — they proved "consult flushing" but
+  could never catch the scan→commit→clear drop. The deterministic reproduction
+  needs a hook that fires INSIDE the reader's scan→merge gap and lands a full
+  flush commit there (`historyScanTestHook` + `commitFlushingToBadger`): red on
+  the old order, green on the new. A full-stack oracle-harness run under a tiny
+  flush interval is a useful -race guard but CANNOT deterministically hit a
+  sub-microsecond window (it passed even with the bug present) — the in-reader
+  hook is the real reproduction.
+
+## 65. HyperLogLog Accuracy Tests (And Any Test Asserting An NDV Bound) Must Feed Well-Distributed Values, Never Short Sequential Integers
+
+Writing the ADR-0005 §3.1 tiered cross-shard NDV fold test (two event shards,
+50 distinct `int64` values each, 25-value overlap, true union 75), the first
+draft used plain sequential values `0..74` and got `NDV == 7` — an order of
+magnitude under the true 75, even though the register-max MERGE itself
+(`HyperLogLog.Merge`) was correct (Min/Max/Count all folded exactly right;
+only NDV was wrong). Isolating it (`AddString(fmt.Sprintf("%d", i))` for
+`i := 0..n`) reproduced the undercount on a SINGLE unmerged sketch too:
+n=1000 sequential decimal strings estimate ~90, n=10000 estimate ~862 — both
+roughly 11x under. `AddString` hashes with FNV-1a (`hash/fnv`), and FNV-1a is
+documented to avalanche poorly on short inputs that differ only in their
+low-order byte — which is exactly what `"0"`, `"1"`, `"2"`, … `"9973"` are:
+almost every consecutive pair differs by one ASCII digit, so their 64-bit FNV
+digests correlate heavily in the TOP bits `HyperLogLog.addHash` uses for the
+register index (`idx := hash >> (64-precision)`), collapsing thousands of
+logically-distinct inputs into a handful of registers. Feeding the SAME
+count of RANDOM strings (`rand`-suffixed) or sequential integers spaced by a
+moderate PRIME step (`i*97`) estimates correctly (n=75 distinct → ~74-75
+either way) — the sketch itself is fine; the input distribution was
+adversarial for this specific hash choice.
+
+This is NOT a new defect this WP introduced — `hyperloglog_test.go`'s own
+accuracy regression (the "<5% at 10k, <3% at 100k" claim) already only feeds
+RANDOM strings (`rand.NewPCG`-seeded), so it never exercised this input
+shape; and the existing badger/memory `NodePropertyStats` concurrent tests
+already use small sequential ints (worker-local `0..opsPerWorker-1`) but only
+assert an UPPER bound on NDV (`got.NDV > everDistinct+8` fails, `got.NDV < 1`
+fails — nothing catches an under-estimate), so they silently tolerate
+whatever the true estimate happens to be. Nobody had asserted a LOWER bound
+against sequential-int inputs before, so nobody had noticed.
+
+Rule: **any test that asserts NDV is CLOSE TO a known true distinct count
+(not just "positive" or "not absurdly high") must feed well-distributed
+values** — real random strings, hashed/salted values, or integers spaced by a
+prime step large enough to scatter their decimal encodings — never a tight
+run of consecutive small integers. This is a test-authoring rule (documented
+in `crossShardPropStatsStep`'s doc comment,
+`pkg/graph/store/tiered/tieredstore_property_stats_test.go`), not a
+production-code fix: the hash choice, its documented accuracy contract (only
+claimed against random inputs), and the existing loose concurrent-test bounds
+are all out of scope for the ADR-0005 §3.1 brief and are left as they are.
+A future session tightening those concurrent tests' NDV bounds should feed
+scattered values too, or the tightened bound will flake red for a reason that
+has nothing to do with the thing under test.

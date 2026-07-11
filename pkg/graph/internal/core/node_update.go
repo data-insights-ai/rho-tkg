@@ -212,6 +212,15 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 		return nil, false, err
 	}
 
+	// Unique-constraint enforcement (standalone update door). Entity lock held;
+	// take value stripe(s) across the check + write. prevState supplies the old
+	// value so a changed constrained value also holds the freed value's stripe.
+	uniqueRelease, uniqueErr := c.enforceUniqueForNode(current, prevState, id)
+	if uniqueErr != nil {
+		return nil, false, uniqueErr
+	}
+	defer uniqueRelease()
+
 	// Atomic replace + history — single store call prevents orphaned history entries.
 	if err := c.store.ReplaceNodeWithHistory(current, prevVersion, prevState); err != nil {
 		return nil, false, err
@@ -319,6 +328,16 @@ func (c *Core) updateNodeInPlaceInternal(ctx context.Context, id types.NodeID, u
 		return nil, false, err
 	}
 
+	// Capture the pre-mutation state so a constrained value CHANGED in place
+	// still holds the freed old-value stripe (ADR-0002 Decision 3). Unlike
+	// Update, UpdateInPlace mutates `current` directly and writes no history
+	// row, so without this snapshot enforceUniqueForNode could not see the old
+	// value to lock its stripe.
+	var prevState *types.Node
+	if c.hasUniqueConstraints.Load() {
+		prevState = current.DeepCopy()
+	}
+
 	for key, val := range updates {
 		if val == nil {
 			if _, err := current.DeleteProperty(key); err != nil {
@@ -362,6 +381,16 @@ func (c *Core) updateNodeInPlaceInternal(ctx context.Context, id types.NodeID, u
 	if err := checkCtx(ctx); err != nil {
 		return nil, false, err
 	}
+
+	// Unique-constraint enforcement (standalone in-place update door). Entity
+	// lock held; take value stripe(s) across the check + write. prevState (nil
+	// when no constraints exist) supplies the old value so a changed constrained
+	// value also holds the freed value's stripe.
+	uniqueRelease, uniqueErr := c.enforceUniqueForNode(current, prevState, id)
+	if uniqueErr != nil {
+		return nil, false, uniqueErr
+	}
+	defer uniqueRelease()
 
 	// ReplaceNode instead of ReplaceNodeWithHistory — no history entry written.
 	if err := c.store.ReplaceNode(current); err != nil {

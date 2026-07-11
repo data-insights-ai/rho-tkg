@@ -58,6 +58,10 @@ func TestBadgerTuningBoundaries(t *testing.T) {
 		{"block cache positive", func(c *Config) { c.BlockCacheSize = 1 << 20 }, ""},
 		{"block cache negative", func(c *Config) { c.BlockCacheSize = -1 }, "BlockCacheSize"},
 
+		{"index cache zero keeps default", func(c *Config) { c.IndexCacheSize = 0 }, ""},
+		{"index cache positive", func(c *Config) { c.IndexCacheSize = 1 << 20 }, ""},
+		{"index cache negative", func(c *Config) { c.IndexCacheSize = -1 }, "IndexCacheSize"},
+
 		{"compactors zero keeps default", func(c *Config) { c.NumCompactors = 0 }, ""},
 		{"compactors at minimum 2", func(c *Config) { c.NumCompactors = minNumCompactors }, ""},
 		{"compactors below minimum", func(c *Config) { c.NumCompactors = 1 }, "NumCompactors"},
@@ -67,6 +71,7 @@ func TestBadgerTuningBoundaries(t *testing.T) {
 			c.ValueLogFileSize = 64 << 20
 			c.MemTableSize = 16 << 20
 			c.BlockCacheSize = 32 << 20
+			c.IndexCacheSize = 8 << 20
 			c.NumCompactors = 2
 		}, ""},
 	}

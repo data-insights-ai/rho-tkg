@@ -28,6 +28,13 @@ import (
 // range), no node fetches. exact=false declines (no usable index / poisoned by an
 // integer past 2^53) and the caller must scan-and-count. This answers
 // `count(p) WHERE p.k > x` without re-fetching every candidate node.
+//
+// Disk mode (PropertyIndexOnDisk) always declines (exact=false): the
+// persisted keyspace does not maintain the RAM ordered view's per-value
+// bucket sizes, so an O(1) exact sum isn't available there. Callers already
+// handle decline by falling back to ForEachNodeByLabelPropertyRange + an
+// exact count, so this is a pure availability difference, never a wrong
+// answer.
 func (bs *Store) NodeRangeCardinality(token uint16, propKey string, min, max float64, inclMin, inclMax bool) (int64, bool, error) {
 	if err := bs.checkOpen(); err != nil {
 		return 0, false, err
@@ -36,7 +43,7 @@ func (bs *Store) NodeRangeCardinality(token uint16, propKey string, min, max flo
 	idx, ok := bs.propertyIndexes[indexpkg.PropertyIndexKey{LabelToken: token, PropertyKey: propKey}]
 	var count int64
 	exact := false
-	if ok {
+	if ok && !bs.propIdxOnDisk {
 		count, exact = idx.RangeCardinality(min, max, inclMin, inclMax)
 	}
 	bs.idxMu.RUnlock()
@@ -55,10 +62,18 @@ func (bs *Store) ForEachNodeByLabelPropertyRange(token uint16, propKey string, m
 	idx, ok := bs.propertyIndexes[indexpkg.PropertyIndexKey{LabelToken: token, PropertyKey: propKey}]
 	var nids []types.NodeID
 	supported := false
+	var rangeErr error
 	if ok {
-		nids, supported = idx.RangeNodeIDs(min, max, inclMin, inclMax)
+		if bs.propIdxOnDisk {
+			nids, supported, rangeErr = bs.propertyIndexDiskRangeLocked(propKey, min, max)
+		} else {
+			nids, supported = idx.RangeNodeIDs(min, max, inclMin, inclMax)
+		}
 	}
 	bs.idxMu.RUnlock()
+	if rangeErr != nil {
+		return fmt.Errorf("graph: range-scan property index: %w", rangeErr)
+	}
 	if !ok || !supported {
 		return storecontract.ErrIndexNotFound
 	}

@@ -3,12 +3,14 @@ package store_test
 import (
 	"bytes"
 	"testing"
+	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -74,6 +76,26 @@ func applyParityScenario(t *testing.T, s feedStore) {
 	must(s.DeleteNodeCascade(types.NodeID(1)), "DeleteNodeCascade")
 }
 
+// newParityTieredStore builds a single-shard-deterministic tiered fixture with
+// the change-log enabled. The scenario uses label token 10 (an EVENT label — not
+// in RefLabels) and rel token 5, so every node/rel routes to the ONE hot event
+// shard; the reference shard stays empty. LSN interleaving is therefore
+// deterministic and the store-global feed byte-matches the single-shard backends.
+func newParityTieredStore(t *testing.T) *tiered.Store {
+	t.Helper()
+	ts, err := tiered.New(tiered.Config{
+		InMemory:      true,
+		RefLabels:     []string{"Ref"}, // not used by the scenario → all rows on hot shard
+		ShardWindow:   7 * 24 * time.Hour,
+		FlushInterval: 1<<63 - 1,
+		ChangeLog:     true,
+	})
+	if err != nil {
+		t.Fatalf("tiered.New: %v", err)
+	}
+	return ts
+}
+
 func TestChangeFeedParity_BadgerVsMemory(t *testing.T) {
 	bs, err := badger.New(badger.Config{InMemory: true, ChangeLog: true, SyncWrites: true})
 	if err != nil {
@@ -82,9 +104,12 @@ func TestChangeFeedParity_BadgerVsMemory(t *testing.T) {
 	defer bs.Close()
 	ms := memory.New(memory.WithChangeLog())
 	defer ms.Close()
+	ts := newParityTieredStore(t)
+	defer ts.Close()
 
 	applyParityScenario(t, bs)
 	applyParityScenario(t, ms)
+	applyParityScenario(t, ts)
 
 	if err := bs.Flush(); err != nil {
 		t.Fatalf("badger Flush: %v", err)
@@ -98,22 +123,29 @@ func TestChangeFeedParity_BadgerVsMemory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("memory ChangeFeed: %v", err)
 	}
+	tf, err := ts.ChangeFeed(0, 0) // barriers internally
+	if err != nil {
+		t.Fatalf("tiered ChangeFeed: %v", err)
+	}
 
-	if len(bf) != len(mf) {
-		t.Fatalf("feed length: badger=%d memory=%d", len(bf), len(mf))
+	if len(bf) != len(mf) || len(bf) != len(tf) {
+		t.Fatalf("feed length: badger=%d memory=%d tiered=%d", len(bf), len(mf), len(tf))
 	}
 	if len(bf) == 0 {
 		t.Fatalf("empty feed — scenario produced no records")
 	}
 	for i := range bf {
-		if bf[i].LSN != mf[i].LSN {
-			t.Errorf("record[%d] LSN: badger=%d memory=%d", i, bf[i].LSN, mf[i].LSN)
+		if bf[i].LSN != mf[i].LSN || bf[i].LSN != tf[i].LSN {
+			t.Errorf("record[%d] LSN: badger=%d memory=%d tiered=%d", i, bf[i].LSN, mf[i].LSN, tf[i].LSN)
 		}
-		if bf[i].Tag != mf[i].Tag {
-			t.Errorf("record[%d] Tag: badger=%v memory=%v", i, bf[i].Tag, mf[i].Tag)
+		if bf[i].Tag != mf[i].Tag || bf[i].Tag != tf[i].Tag {
+			t.Errorf("record[%d] Tag: badger=%v memory=%v tiered=%v", i, bf[i].Tag, mf[i].Tag, tf[i].Tag)
 		}
 		if !bytes.Equal(bf[i].Payload, mf[i].Payload) {
 			t.Errorf("record[%d] (tag %v) payload bytes differ: badger=%x memory=%x", i, bf[i].Tag, bf[i].Payload, mf[i].Payload)
+		}
+		if !bytes.Equal(bf[i].Payload, tf[i].Payload) {
+			t.Errorf("record[%d] (tag %v) payload bytes differ: badger=%x tiered=%x", i, bf[i].Tag, bf[i].Payload, tf[i].Payload)
 		}
 	}
 

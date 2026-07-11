@@ -252,6 +252,68 @@ func TestMemoryStore_VectorIndex_CreateBackfillsFromLabelIndexOnly(t *testing.T)
 	}
 }
 
+func TestMemoryStore_VectorIndex_CreateWithOptionsAppliesTuning(t *testing.T) {
+	t.Parallel()
+
+	ms := New()
+	labelTok := uint16(9)
+	key := "vec"
+
+	n1 := types.NewNode(types.NodeID(snowflake.ID(201)), labelTok, nil)
+	if err := n1.SetProperty(key, []float32{1, 0, 0}); err != nil {
+		t.Fatalf("SetProperty n1: %v", err)
+	}
+	if err := ms.PutNode(n1); err != nil {
+		t.Fatalf("PutNode n1: %v", err)
+	}
+	n2 := types.NewNode(types.NodeID(snowflake.ID(202)), labelTok, nil)
+	if err := n2.SetProperty(key, []float32{0, 1, 0}); err != nil {
+		t.Fatalf("SetProperty n2: %v", err)
+	}
+	if err := ms.PutNode(n2); err != nil {
+		t.Fatalf("PutNode n2: %v", err)
+	}
+
+	opts := storepkg.VectorIndexOptions{UseBruteForce: true, M: 8, EfConstruction: 50, EfSearch: 10}
+	if err := ms.CreateVectorIndexWithOptions(labelTok, key, 3, storepkg.DistanceCosine, opts); err != nil {
+		t.Fatalf("CreateVectorIndexWithOptions: %v", err)
+	}
+
+	got, ok := ms.VectorIndexOptionsForTest(labelTok, key)
+	if !ok {
+		t.Fatal("VectorIndexOptionsForTest: index not found")
+	}
+	if got != opts {
+		t.Fatalf("VectorIndexOptionsForTest = %+v, want %+v", got, opts)
+	}
+
+	results, err := ms.SearchNearestNodes(labelTok, key, []float32{1, 0, 0}, 1, QueryOpts{})
+	if err != nil {
+		t.Fatalf("SearchNearestNodes: %v", err)
+	}
+	if len(results) != 1 || results[0].ID() != n1.ID() {
+		t.Fatalf("SearchNearestNodes (brute force tuning applied) = %#v, want n1", results)
+	}
+}
+
+func TestMemoryStore_VectorIndex_CreateWithOptionsZeroValueMatchesPlainCreate(t *testing.T) {
+	t.Parallel()
+
+	ms := New()
+	labelTok := uint16(9)
+	key := "vec"
+	if err := ms.CreateVectorIndex(labelTok, key, 3, storepkg.DistanceCosine); err != nil {
+		t.Fatalf("CreateVectorIndex: %v", err)
+	}
+	got, ok := ms.VectorIndexOptionsForTest(labelTok, key)
+	if !ok {
+		t.Fatal("VectorIndexOptionsForTest: index not found")
+	}
+	if got != (storepkg.VectorIndexOptions{}) {
+		t.Fatalf("VectorIndexOptionsForTest after plain CreateVectorIndex = %+v, want zero value", got)
+	}
+}
+
 func TestMemoryStore_VectorIndex_CreateRejectsInvalidConfig(t *testing.T) {
 	t.Parallel()
 

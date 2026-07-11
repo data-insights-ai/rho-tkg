@@ -461,36 +461,49 @@ func (ts *Store) DeleteNodeCascade(nid types.NodeID) error {
 		return err
 	}
 
+	// When every connected relationship is FULLY LOCAL to the node's shard
+	// (both endpoints route here, so the rel entity AND both adjacency entries
+	// live on this shard), the shard's own DeleteNodeCascade removes the node and
+	// all its edges in ONE atomic op and emits ONE cascade change-log record
+	// (ChangeNodeDelete with CascadedRelIDs) — byte-identical to the single-shard
+	// backends (ADR-0005 §2.4: same-shard rels fold into the shard cascade). Only a
+	// TRULY cross-shard neighborhood needs the per-relationship split-delete path
+	// below, which emits one ChangeRelDelete per edge. Deleting local edges
+	// individually here would double-process them and diverge the feed.
+	localOnly := ts.cascadeNeighborhoodLocalToShard(shard, relSnapshots)
+
 	// Deduplicate and delete each relationship (cross-shard aware).
 	seen := make(map[snowflake.ID]struct{}, len(outRels)+len(inRels))
 	committedRels := make([]*types.Relationship, 0, len(relSnapshots))
-	for _, relID := range outRels {
-		if _, ok := seen[relID]; ok {
-			continue
+	if !localOnly {
+		for _, relID := range outRels {
+			if _, ok := seen[relID]; ok {
+				continue
+			}
+			seen[relID] = struct{}{}
+			snap := relSnapshots[relID]
+			if snap == nil {
+				continue
+			}
+			if err := ts.DeleteRelationship(types.RelID(relID)); err != nil {
+				return ts.wrapPlainRelationshipRollbackError(err, committedRels)
+			}
+			committedRels = append(committedRels, snap)
 		}
-		seen[relID] = struct{}{}
-		snap := relSnapshots[relID]
-		if snap == nil {
-			continue
+		for _, relID := range inRels {
+			if _, ok := seen[relID]; ok {
+				continue
+			}
+			seen[relID] = struct{}{}
+			snap := relSnapshots[relID]
+			if snap == nil {
+				continue
+			}
+			if err := ts.DeleteRelationship(types.RelID(relID)); err != nil {
+				return ts.wrapPlainRelationshipRollbackError(err, committedRels)
+			}
+			committedRels = append(committedRels, snap)
 		}
-		if err := ts.DeleteRelationship(types.RelID(relID)); err != nil {
-			return ts.wrapPlainRelationshipRollbackError(err, committedRels)
-		}
-		committedRels = append(committedRels, snap)
-	}
-	for _, relID := range inRels {
-		if _, ok := seen[relID]; ok {
-			continue
-		}
-		seen[relID] = struct{}{}
-		snap := relSnapshots[relID]
-		if snap == nil {
-			continue
-		}
-		if err := ts.DeleteRelationship(types.RelID(relID)); err != nil {
-			return ts.wrapPlainRelationshipRollbackError(err, committedRels)
-		}
-		committedRels = append(committedRels, snap)
 	}
 
 	// Delete the node itself. Use the shard-level cascade path even after
@@ -510,6 +523,31 @@ func (ts *Store) DeleteNodeCascade(nid types.NodeID) error {
 	}
 	ts.removeNodeFromVectorIndexes(old, id)
 	return nil
+}
+
+// cascadeNeighborhoodLocalToShard reports whether every connected relationship is
+// stored entirely on shard — i.e. BOTH endpoints route to shard, so the rel
+// entity and both adjacency entries live there. Only then can the shard's own
+// DeleteNodeCascade purge the whole neighborhood in one atomic op (and emit one
+// cascade record). A rel whose snapshot is nil (a stale adjacency entry with no
+// live entity) is treated as local — the shard cascade purges the dangling entry
+// anyway. A routing error is treated as NON-local so the robust per-relationship
+// split-delete path runs instead. Endpoint shards are compared by pointer
+// identity against shard (each *EventShard / refShard is a stable instance).
+func (ts *Store) cascadeNeighborhoodLocalToShard(shard *BadgerStore, relSnapshots map[snowflake.ID]*types.Relationship) bool {
+	onShard := func(nid types.NodeID) bool {
+		s, err := ts.shardForNodeID(nid)
+		return err == nil && s == shard
+	}
+	for _, snap := range relSnapshots {
+		if snap == nil {
+			continue
+		}
+		if !onShard(snap.StartNodeID()) || !onShard(snap.EndNodeID()) {
+			return false
+		}
+	}
+	return true
 }
 
 func (ts *Store) snapshotConnectedRelationships(outRels, inRels []snowflake.ID) (map[snowflake.ID]*types.Relationship, error) {

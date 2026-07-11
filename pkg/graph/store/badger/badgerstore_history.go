@@ -10,6 +10,7 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
@@ -24,7 +25,14 @@ func (bs *Store) truncateHistoryByPrefix(prefix []byte, keepVersions int, logTag
 	if err := storecontract.ValidateHistoryRetention(keepVersions); err != nil {
 		return err
 	}
-	prefixStr := string(prefix)
+	// Snapshot the write-buffer overlay BEFORE the Badger scan. A concurrent
+	// flush() commits a parked version to Badger and THEN clears `flushing`, so a
+	// scan-first reader that reads Badger at Ts and the overlay at Tr > Ts would
+	// miss a version committed in (Ts, Tr) — invisible to both the older Badger
+	// snapshot and the cleared overlay — under-counting the retention set (the
+	// version escapes deletion / distorts the keepVersions window). Capturing the
+	// overlay first closes the window. See lesson 64.
+	overlayEntries, overlayDeletes := bs.pendingHistoryVersionOverlay(prefix, 0)
 
 	// Collect all keys from Badger.
 	var allKeys []string
@@ -48,22 +56,18 @@ func (bs *Store) truncateHistoryByPrefix(prefix []byte, keepVersions int, logTag
 	}
 
 	// Merge in pending buffer keys.
-	keySet := make(map[string]struct{}, len(allKeys))
+	keySet := make(map[string]struct{}, len(allKeys)+len(overlayEntries))
 	for _, k := range allKeys {
 		keySet[k] = struct{}{}
 	}
-	// Merge BOTH buffers (rangePending = flushing ++ pending) so a version a
-	// concurrent flush is mid-committing is counted, not dropped from the
-	// retention set.
-	bs.rangePending(func(k string, op writeOp) {
-		if len(k) == storepkg.SizeHistKey && k[:len(prefixStr)] == prefixStr {
-			if op.opType == writeOpDelete {
-				delete(keySet, k)
-			} else {
-				keySet[k] = struct{}{}
-			}
-		}
-	})
+	// Apply the pre-scan overlay snapshot (strictly newer than committed Badger):
+	// a set adds a version to the retention set, a delete removes it.
+	for k := range overlayEntries {
+		keySet[k] = struct{}{}
+	}
+	for k := range overlayDeletes {
+		delete(keySet, k)
+	}
 
 	if len(keySet) == 0 {
 		return nil
@@ -97,12 +101,134 @@ func (bs *Store) truncateHistoryByPrefix(prefix []byte, keepVersions int, logTag
 	return bs.flushIfNeeded()
 }
 
+// historyTruncateDeleteKeys computes the set of history keys that a
+// keepVersions truncation would delete for prefix (keeping the newest
+// keepVersions versions), merging the pre-scan write-buffer overlay exactly as
+// truncateHistoryByPrefix does (see the lesson-64 note there). It performs no
+// writes — the caller decides how to commit the deletes.
+func (bs *Store) historyTruncateDeleteKeys(prefix []byte, keepVersions int) ([]string, error) {
+	if err := bs.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateHistoryRetention(keepVersions); err != nil {
+		return nil, err
+	}
+	overlayEntries, overlayDeletes := bs.pendingHistoryVersionOverlay(prefix, 0)
+
+	var allKeys []string
+	err := bs.db.View(func(txn *badgerv4.Txn) error {
+		opts := badgerv4.DefaultIteratorOptions
+		opts.PrefetchValues = false
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			key := it.Item().KeyCopy(nil)
+			if len(key) != storepkg.SizeHistKey {
+				continue
+			}
+			allKeys = append(allKeys, string(key))
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	keySet := make(map[string]struct{}, len(allKeys)+len(overlayEntries))
+	for _, k := range allKeys {
+		keySet[k] = struct{}{}
+	}
+	for k := range overlayEntries {
+		keySet[k] = struct{}{}
+	}
+	for k := range overlayDeletes {
+		delete(keySet, k)
+	}
+	if len(keySet) == 0 {
+		return nil, nil
+	}
+
+	sorted := make([]string, 0, len(keySet))
+	for k := range keySet {
+		sorted = append(sorted, k)
+	}
+	sort.Strings(sorted)
+
+	if keepVersions == 0 {
+		return sorted, nil
+	}
+	if len(sorted) > keepVersions {
+		return sorted[:len(sorted)-keepVersions], nil
+	}
+	return nil, nil
+}
+
+// CompactNodeHistory implements store.HistoryCompactionCapability: it trims the
+// oldest node history versions (keeping the newest keepVersions) AND applies the
+// compaction meta writes (the per-entity stub) in the SAME WriteBatch, so a crash
+// never separates the trim from its stub. The graph watermark is routed
+// separately by the graph layer (store-level MetaSet). No change-log record is
+// emitted (compaction over a change-log-enabled graph is refused a layer up).
+func (bs *Store) CompactNodeHistory(nid types.NodeID, keepVersions int, metaWrites []storecontract.MetaWrite) error {
+	if err := bs.checkWritable(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return err
+	}
+	prefix := storepkg.HistNodePrefix(nid.SnowflakeID())
+	return bs.compactHistoryByPrefix(prefix, keepVersions, metaWrites)
+}
+
+// CompactRelHistory is the relationship mirror of CompactNodeHistory.
+func (bs *Store) CompactRelHistory(rid types.RelID, keepVersions int, metaWrites []storecontract.MetaWrite) error {
+	if err := bs.checkWritable(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateRelID(rid); err != nil {
+		return err
+	}
+	prefix := storepkg.HistRelPrefix(rid.SnowflakeID())
+	return bs.compactHistoryByPrefix(prefix, keepVersions, metaWrites)
+}
+
+// compactHistoryByPrefix builds the history-delete ops + the compaction meta
+// writes and commits them together in one WriteBatch (forced synchronous flush).
+// appendOps installs all ops under a single wbMu window, so a concurrent flush
+// snapshot sees either all of them or none — the trim and the stub are atomic.
+func (bs *Store) compactHistoryByPrefix(prefix []byte, keepVersions int, metaWrites []storecontract.MetaWrite) error {
+	deleteKeys, err := bs.historyTruncateDeleteKeys(prefix, keepVersions)
+	if err != nil {
+		return err
+	}
+	ops := make([]writeOp, 0, len(deleteKeys)+len(metaWrites))
+	for _, k := range deleteKeys {
+		ops = append(ops, writeOp{opType: writeOpDelete, key: []byte(k)})
+	}
+	for _, w := range metaWrites {
+		mk := storepkg.MetaKey(w.Key)
+		if w.Value == nil {
+			ops = append(ops, writeOp{opType: writeOpDelete, key: mk})
+			continue
+		}
+		ops = append(ops, writeOp{opType: writeOpSet, key: mk, value: append([]byte(nil), w.Value...)})
+	}
+	if len(ops) == 0 {
+		return nil
+	}
+	bs.appendOps(ops...)
+	return bs.flush()
+}
+
 func (bs *Store) trimHistoryFromPrefix(prefix []byte, minVersion uint32, logTag storecontract.ChangeTag, logPayload []byte) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
 	}
-	prefixStr := string(prefix)
 	startKey := historyVersionSeekKey(prefix, minVersion)
+
+	// Snapshot the overlay (versions >= minVersion) BEFORE the Badger scan to
+	// close the commit-window drop — see truncateHistoryByPrefix / lesson 64.
+	overlayEntries, overlayDeletes := bs.pendingHistoryVersionOverlay(prefix, minVersion)
 
 	var persisted []string
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
@@ -124,19 +250,19 @@ func (bs *Store) trimHistoryFromPrefix(prefix []byte, minVersion uint32, logTag 
 		return err
 	}
 
-	keySet := make(map[string]struct{}, len(persisted))
+	keySet := make(map[string]struct{}, len(persisted)+len(overlayEntries)+len(overlayDeletes))
 	for _, k := range persisted {
 		keySet[k] = struct{}{}
 	}
-	bs.rangePending(func(k string, op writeOp) {
-		if len(k) != storepkg.SizeHistKey || k[:len(prefixStr)] != prefixStr {
-			return
-		}
-		if historyVersionFromKey([]byte(k)) < uint64(minVersion) {
-			return
-		}
+	// Every buffered key at or past minVersion is a trim target (a parked delete
+	// key is already being removed — folding it in is idempotent, matching the
+	// prior rangePending behavior that added regardless of op type).
+	for k := range overlayEntries {
 		keySet[k] = struct{}{}
-	})
+	}
+	for k := range overlayDeletes {
+		keySet[k] = struct{}{}
+	}
 
 	if len(keySet) == 0 {
 		return nil

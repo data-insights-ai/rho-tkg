@@ -7,6 +7,7 @@ import (
 
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/index"
+	core "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	tieredpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -58,6 +59,22 @@ func TestSentinelAliasesShareIdentity(t *testing.T) {
 		"IncompatibleExport/graph=io":   {graphpkg.ErrIncompatibleExport, tkgio.ErrIncompatibleExport},
 		"IncompatibleRegistry/graph=io": {graphpkg.ErrIncompatibleRegistry, tkgio.ErrIncompatibleRegistry},
 		"CorruptExport/graph=io":        {graphpkg.ErrCorruptExport, tkgio.ErrCorruptExport},
+		"BackupExists/graph=io":         {graphpkg.ErrBackupExists, tkgio.ErrBackupExists},
+
+		// pkg/graph aliases of unique-constraint sentinels (ADR-0002; core
+		// owns the canonical declarations).
+		"UniqueViolation/graph=core":             {graphpkg.ErrUniqueViolation, core.ErrUniqueViolation},
+		"UniqueViolationExisting/graph=core":     {graphpkg.ErrUniqueViolationExisting, core.ErrUniqueViolationExisting},
+		"UniqueConstraintExists/graph=core":      {graphpkg.ErrUniqueConstraintExists, core.ErrUniqueConstraintExists},
+		"UniqueConstraintNotFound/graph=core":    {graphpkg.ErrUniqueConstraintNotFound, core.ErrUniqueConstraintNotFound},
+		"UniqueUnsupportedType/graph=core":       {graphpkg.ErrUniqueUnsupportedType, core.ErrUniqueUnsupportedType},
+		"UniqueEventLabelUnsupported/graph=core": {graphpkg.ErrUniqueEventLabelUnsupported, core.ErrUniqueEventLabelUnsupported},
+
+		// History retention & compaction (ADR-0001) graph aliases of core.
+		"HistoryCompacted/graph=core":           {graphpkg.ErrHistoryCompacted, core.ErrHistoryCompacted},
+		"CompactionProtectedTag/graph=core":     {graphpkg.ErrCompactionProtectedTag, core.ErrCompactionProtectedTag},
+		"InvalidRetentionPolicy/graph=core":     {graphpkg.ErrInvalidRetentionPolicy, core.ErrInvalidRetentionPolicy},
+		"CompactionChangeLogEnabled/graph=core": {graphpkg.ErrCompactionChangeLogEnabled, core.ErrCompactionChangeLogEnabled},
 
 		// pkg/graph aliases of index-provider sentinels.
 		"ProviderExists/graph=index":    {graphpkg.ErrIndexProviderExists, indexpkg.ErrIndexProviderExists},

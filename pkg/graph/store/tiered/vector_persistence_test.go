@@ -12,6 +12,7 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	"github.com/vmihailenco/msgpack/v5"
 )
@@ -37,6 +38,60 @@ func TestTieredStore_VectorIndex_DefinitionSurvivesRestart(t *testing.T) {
 	}
 	if len(results) != 1 || results[0].ID() != types.NodeID(snowflake.ID(101)) {
 		t.Fatalf("SearchNearestNodes after reopen = %#v, want node 101", results)
+	}
+
+	// A definition created via plain CreateVectorIndex carries zero-value
+	// (default HNSW) tuning; confirm that specifically survives the reopen
+	// rather than just asserting search still resolves.
+	gotOpts, ok := ts.VectorIndexOptionsForTest(labelTok, "vec")
+	if !ok {
+		t.Fatal("VectorIndexOptionsForTest after reopen: index not found")
+	}
+	if gotOpts != (storecontract.VectorIndexOptions{}) {
+		t.Fatalf("VectorIndexOptionsForTest after reopen = %+v, want zero-value default tuning", gotOpts)
+	}
+}
+
+// TestTieredStore_VectorIndex_NonDefaultOptionsSurviveRestart is the
+// non-default-tuning counterpart to
+// TestTieredStore_VectorIndex_DefinitionSurvivesRestart: it proves the
+// documented contract (tiered persists UseBruteForce/M/EfConstruction/
+// EfSearch, not just Dims/Metric, in the vector index definition file — see
+// vectorIdxDef in vector_index_file.go and CLAUDE.md "Vector Indexes") by
+// creating the index through CreateVectorIndexWithOptions with every tunable
+// field set to a non-default, non-zero value, reopening the store, and
+// asserting the SAME options come back via VectorIndexOptionsForTest — not
+// merely that search still resolves the pre-existing definition.
+func TestTieredStore_VectorIndex_NonDefaultOptionsSurviveRestart(t *testing.T) {
+	dir := t.TempDir()
+	opts := storecontract.VectorIndexOptions{UseBruteForce: true, M: 8, EfConstruction: 50, EfSearch: 10}
+	labelTok := createDiskTieredVectorIndexWithOptions(t, dir, opts)
+
+	ts, err := New(Config{
+		DataDir:       dir,
+		RefLabels:     []string{"Case", "User"},
+		ShardWindow:   7 * 24 * time.Hour,
+		FlushInterval: 1<<63 - 1,
+	})
+	if err != nil {
+		t.Fatalf("open 2: %v", err)
+	}
+	defer ts.Close()
+
+	gotOpts, ok := ts.VectorIndexOptionsForTest(labelTok, "vec")
+	if !ok {
+		t.Fatal("VectorIndexOptionsForTest after reopen: index not found")
+	}
+	if gotOpts != opts {
+		t.Fatalf("VectorIndexOptionsForTest after reopen = %+v, want %+v", gotOpts, opts)
+	}
+
+	results, err := ts.SearchNearestNodes(labelTok, "vec", []float32{1, 0, 0}, 1, QueryOpts{})
+	if err != nil {
+		t.Fatalf("SearchNearestNodes after reopen: %v", err)
+	}
+	if len(results) != 1 || results[0].ID() != types.NodeID(snowflake.ID(101)) {
+		t.Fatalf("SearchNearestNodes after reopen (brute force tuning) = %#v, want node 101", results)
 	}
 }
 
@@ -414,6 +469,15 @@ func TestTieredStoreVectorIndexLoadRejectsDuplicateDefinition(t *testing.T) {
 
 func createDiskTieredVectorIndex(t *testing.T, dir string) uint16 {
 	t.Helper()
+	return createDiskTieredVectorIndexWithOptions(t, dir, storecontract.VectorIndexOptions{})
+}
+
+// createDiskTieredVectorIndexWithOptions is createDiskTieredVectorIndex with
+// control over the engine/tuning options passed to
+// CreateVectorIndexWithOptions, so restart-persistence tests can verify a
+// non-default choice (not just Dims/Metric) survives a reopen.
+func createDiskTieredVectorIndexWithOptions(t *testing.T, dir string, opts storecontract.VectorIndexOptions) uint16 {
+	t.Helper()
 	ts, err := New(Config{
 		DataDir:       dir,
 		RefLabels:     []string{"Case", "User"},
@@ -439,8 +503,8 @@ func createDiskTieredVectorIndex(t *testing.T, dir string) uint16 {
 	if err := ts.PutNode(n2); err != nil {
 		t.Fatalf("PutNode 2: %v", err)
 	}
-	if err := ts.CreateVectorIndex(caseTok, "vec", 3, DistanceCosine); err != nil {
-		t.Fatalf("CreateVectorIndex: %v", err)
+	if err := ts.CreateVectorIndexWithOptions(caseTok, "vec", 3, DistanceCosine, opts); err != nil {
+		t.Fatalf("CreateVectorIndexWithOptions: %v", err)
 	}
 	if err := ts.Close(); err != nil {
 		t.Fatalf("close 1: %v", err)

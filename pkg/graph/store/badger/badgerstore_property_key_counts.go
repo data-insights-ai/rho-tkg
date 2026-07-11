@@ -47,13 +47,15 @@ func (bs *Store) adjustNodePropertyKeyCounts(n *types.Node, delta int64) {
 	if labelCount == 0 {
 		return
 	}
-	n.ForEachIndexablePropertyValueKey(func(propertyKey, _ string) bool {
+	n.ForEachIndexablePropertyValueKey(func(propertyKey, valueKey string) bool {
+		value, _ := n.GetProperty(propertyKey)
 		for i := 0; i < labelCount; i++ {
 			tok := n.LabelTokenRawAt(i)
 			if tok == 0 {
 				continue
 			}
 			bs.getOrCreatePropertyKeyCounter(tok, propertyKey).Add(delta)
+			bs.adjustNodePropertyStatsOne(tok, propertyKey, valueKey, value, delta)
 		}
 		return true
 	})
@@ -66,4 +68,29 @@ func (bs *Store) getOrCreatePropertyKeyCounter(labelToken uint16, propertyKey st
 	}
 	v, _ := bs.propertyKeyCounts.LoadOrStore(key, &atomic.Int64{})
 	return v.(*atomic.Int64)
+}
+
+// adjustNodePropertyStatsOne folds one (label, property key) observation
+// into the NDV+min/max accumulator (bs.propertyStats), maintained on the
+// SAME node-mutation doors as the presence counter above (same caller, same
+// loop iteration) — see memory.Store.adjustNodePropertyStatsOne for the
+// identical counterpart. Caller MUST already hold bs.idxMu (any mode is
+// fine for a fresh map read; every actual mutation call site here holds
+// idxMu.Lock() — see the grep audit in badgerstore_property_stats.go).
+// delta>0 means the value is ENTERING the population (Observe); delta<0
+// means it is LEAVING (Forget).
+func (bs *Store) adjustNodePropertyStatsOne(labelToken uint16, propertyKey, valueKey string, value any, delta int64) {
+	key := indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
+	if delta > 0 {
+		acc := bs.propertyStats[key]
+		if acc == nil {
+			acc = indexpkg.NewPropertyStatsAccumulator()
+			bs.propertyStats[key] = acc
+		}
+		acc.Observe(valueKey, value)
+		return
+	}
+	if acc := bs.propertyStats[key]; acc != nil {
+		acc.Forget(value)
+	}
 }

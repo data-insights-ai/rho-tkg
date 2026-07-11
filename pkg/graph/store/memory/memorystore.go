@@ -81,6 +81,12 @@ type Store struct {
 	// surface used by property equality indexes and planner pruning.
 	propertyKeyCounts map[uint16]map[string]int
 
+	// Property-key NDV + exact min/max stats — label+property → accumulator.
+	// Maintained on the SAME node-mutation doors as propertyKeyCounts (see
+	// adjustNodePropertyKeyCounts in memorystore_property_key_counts.go);
+	// backs the optional store.NodePropertyStatsCapability.
+	propertyStats map[uint16]map[string]*indexpkg.PropertyStatsAccumulator
+
 	// Temporal indexes — labelToken → interval index for temporal push-down.
 	temporalIndexes map[uint16]*indexpkg.TemporalIndex
 
@@ -188,6 +194,9 @@ func (ms *Store) ensureInitialized() {
 		if ms.propertyKeyCounts == nil {
 			ms.propertyKeyCounts = make(map[uint16]map[string]int)
 		}
+		if ms.propertyStats == nil {
+			ms.propertyStats = make(map[uint16]map[string]*indexpkg.PropertyStatsAccumulator)
+		}
 		if ms.temporalIndexes == nil {
 			ms.temporalIndexes = make(map[uint16]*indexpkg.TemporalIndex)
 		}
@@ -233,6 +242,7 @@ func (ms *Store) Clear() error {
 	ms.relHistory = make(map[types.RelID]map[uint32]*types.Relationship)
 	ms.propertyIndexes = make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex)
 	ms.propertyKeyCounts = make(map[uint16]map[string]int)
+	ms.propertyStats = make(map[uint16]map[string]*indexpkg.PropertyStatsAccumulator)
 	ms.temporalIndexes = make(map[uint16]*indexpkg.TemporalIndex)
 	ms.hfIndexes = make(map[uint16]*indexpkg.HighFrequencyIndex)
 	ms.vectorIndexes = make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex)

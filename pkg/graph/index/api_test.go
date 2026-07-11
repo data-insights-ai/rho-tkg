@@ -26,6 +26,9 @@ func TestAPINilReceiversReturnErrNilGraphOrNil(t *testing.T) {
 		{name: "CreateTemporal", run: func() error { return nilAPI.CreateTemporal("Node") }},
 		{name: "DropTemporal", run: func() error { return nilAPI.DeleteTemporal("Node") }},
 		{name: "CreateVector", run: func() error { return nilAPI.CreateVector("Node", "embedding", 3, storepkg.DistanceCosine) }},
+		{name: "CreateVectorWithOptions", run: func() error {
+			return nilAPI.CreateVectorWithOptions("Node", "embedding", 3, storepkg.DistanceCosine, storepkg.VectorIndexOptions{UseBruteForce: true})
+		}},
 		{name: "DropVector", run: func() error { return nilAPI.DeleteVector("Node", "embedding") }},
 		{name: "RegisterProvider", run: func() error { return nilAPI.RegisterProvider(testIndexProvider{}) }},
 		{name: "UnregisterProvider", run: func() error { return nilAPI.UnregisterProvider("geo") }},
@@ -75,6 +78,9 @@ func TestAPIForwardsMethodsAndErrors(t *testing.T) {
 		{name: "CreateTemporal", run: func() error { return api.CreateTemporal("Node") }},
 		{name: "DropTemporal", run: func() error { return api.DeleteTemporal("Node") }},
 		{name: "CreateVector", run: func() error { return api.CreateVector("Node", "embedding", 3, storepkg.DistanceEuclidean) }},
+		{name: "CreateVectorWithOptions", run: func() error {
+			return api.CreateVectorWithOptions("Node", "embedding", 3, storepkg.DistanceCosine, storepkg.VectorIndexOptions{UseBruteForce: true, M: 8})
+		}},
 		{name: "DropVector", run: func() error { return api.DeleteVector("Node", "embedding") }},
 		{name: "RegisterProvider", run: func() error { return api.RegisterProvider(provider) }},
 		{name: "UnregisterProvider", run: func() error { return api.UnregisterProvider("geo") }},
@@ -97,7 +103,7 @@ func TestAPIForwardsMethodsAndErrors(t *testing.T) {
 
 	wantCalls := []string{
 		"CreateProperty", "DropProperty", "CreateHighFrequency", "DropHighFrequency",
-		"CreateTemporal", "DropTemporal", "CreateVector", "DropVector",
+		"CreateTemporal", "DropTemporal", "CreateVector", "CreateVectorWithOptions", "DropVector",
 		"RegisterProvider", "UnregisterProvider",
 		"SearchNearest", "Providers", "Providers",
 	}
@@ -112,6 +118,11 @@ func TestAPIForwardsMethodsAndErrors(t *testing.T) {
 	if ops.vectorMetric != storepkg.DistanceEuclidean || ops.vectorDims != 3 {
 		t.Fatalf("CreateVector forwarded dims/metric = %d/%d", ops.vectorDims, ops.vectorMetric)
 	}
+	wantOpts := storepkg.VectorIndexOptions{UseBruteForce: true, M: 8}
+	if ops.vectorOptsMetric != storepkg.DistanceCosine || ops.vectorOptsDims != 3 || ops.vectorOpts != wantOpts {
+		t.Fatalf("CreateVectorWithOptions forwarded dims/metric/opts = %d/%d/%+v, want 3/%d/%+v",
+			ops.vectorOptsDims, ops.vectorOptsMetric, ops.vectorOpts, storepkg.DistanceCosine, wantOpts)
+	}
 	if len(ops.query) != len(query) || ops.k != 4 || ops.opts != opts {
 		t.Fatalf("SearchNearest forwarded query/k/opts = %v/%d/%+v", ops.query, ops.k, ops.opts)
 	}
@@ -124,14 +135,17 @@ type indexOpsSpy struct {
 	err       error
 	providers []string
 
-	calls          []string
-	vectorDims     int
-	vectorMetric   storepkg.DistanceMetric
-	query          []float32
-	k              int
-	opts           storepkg.QueryOpts
-	providerName   string
-	unregisterName string
+	calls            []string
+	vectorDims       int
+	vectorMetric     storepkg.DistanceMetric
+	vectorOptsDims   int
+	vectorOptsMetric storepkg.DistanceMetric
+	vectorOpts       storepkg.VectorIndexOptions
+	query            []float32
+	k                int
+	opts             storepkg.QueryOpts
+	providerName     string
+	unregisterName   string
 }
 
 func (s *indexOpsSpy) record(name string) { s.calls = append(s.calls, name) }
@@ -170,6 +184,14 @@ func (s *indexOpsSpy) CreateVector(label, propertyKey string, dims int, metric s
 	s.record("CreateVector")
 	s.vectorDims = dims
 	s.vectorMetric = metric
+	return s.err
+}
+
+func (s *indexOpsSpy) CreateVectorWithOptions(label, propertyKey string, dims int, metric storepkg.DistanceMetric, opts storepkg.VectorIndexOptions) error {
+	s.record("CreateVectorWithOptions")
+	s.vectorOptsDims = dims
+	s.vectorOptsMetric = metric
+	s.vectorOpts = opts
 	return s.err
 }
 

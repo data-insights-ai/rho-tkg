@@ -900,24 +900,13 @@ func nodeAsOfLocked(current *types.Node, history map[uint32]*types.Node, txTime 
 	if nodeMatchesTxTime(current, txTime) {
 		return current
 	}
-
-	var best *types.Node
-	var bestTx types.Instant
-	for _, v := range history {
-		tm := v.Temporal()
-		if tm == nil || tm.TxFrom == 0 {
-			continue
-		}
-		// Pick the highest (TxFrom, version) visible at txTime. The version
-		// tiebreak is load-bearing: an append-only cascade leaves several tiles
-		// open (TxTo==0) sharing one TxFrom, and Go map iteration order is
-		// random — without a deterministic tiebreak this diverged from the
-		// badger native reverse-scan (which selects by descending version).
-		if tm.TxFrom <= txTime && (tm.TxTo == 0 || tm.TxTo > txTime) &&
-			(best == nil || tm.TxFrom > bestTx || (tm.TxFrom == bestTx && v.Version() > best.Version())) {
-			best = v
-			bestTx = tm.TxFrom
-		}
+	// History arm: the shared as-of selection rule (newest belief by version with
+	// TxFrom<=txTime, absent if that decisive belief was retracted/deleted by the
+	// pin — lesson 62). The current fast path above already returned the live row
+	// when it is the answer, so history alone is the candidate set here.
+	best, ok := storeutil.SelectAsOf(nodeHistoryVersionSlice(history), txTime)
+	if !ok {
+		return nil
 	}
 	return best
 }
@@ -926,23 +915,36 @@ func relAsOfLocked(current *types.Relationship, history map[uint32]*types.Relati
 	if relMatchesTxTime(current, txTime) {
 		return current
 	}
-
-	var best *types.Relationship
-	var bestTx types.Instant
-	for _, v := range history {
-		tm := v.Temporal()
-		if tm == nil || tm.TxFrom == 0 {
-			continue
-		}
-		// Highest (TxFrom, version) visible at txTime — see nodeAsOfLocked for
-		// why the version tiebreak is required for cross-backend determinism.
-		if tm.TxFrom <= txTime && (tm.TxTo == 0 || tm.TxTo > txTime) &&
-			(best == nil || tm.TxFrom > bestTx || (tm.TxFrom == bestTx && v.Version() > best.Version())) {
-			best = v
-			bestTx = tm.TxFrom
-		}
+	best, ok := storeutil.SelectAsOf(relHistoryVersionSlice(history), txTime)
+	if !ok {
+		return nil
 	}
 	return best
+}
+
+// nodeHistoryVersionSlice flattens a version-keyed history map into the slice
+// storeutil.SelectAsOf consumes. Map iteration order is irrelevant — SelectAsOf
+// selects by version ordinal, not slice position.
+func nodeHistoryVersionSlice(history map[uint32]*types.Node) []*types.Node {
+	if len(history) == 0 {
+		return nil
+	}
+	out := make([]*types.Node, 0, len(history))
+	for _, v := range history {
+		out = append(out, v)
+	}
+	return out
+}
+
+func relHistoryVersionSlice(history map[uint32]*types.Relationship) []*types.Relationship {
+	if len(history) == 0 {
+		return nil
+	}
+	out := make([]*types.Relationship, 0, len(history))
+	for _, v := range history {
+		out = append(out, v)
+	}
+	return out
 }
 
 func nodeMatchesTxTime(n *types.Node, txTime types.Instant) bool {

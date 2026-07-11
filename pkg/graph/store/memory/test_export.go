@@ -1,6 +1,10 @@
 package memory
 
-import "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+import (
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+)
 
 // GetNodeHistoryEntry returns a deep copy of the stored history entry for the
 // given node ID and version. Returns nil if no entry exists. Acquires the
@@ -76,4 +80,25 @@ func (ms *Store) HFIndexPointQueryForTest(token uint16, t types.Instant) []types
 		return nil
 	}
 	return hfi.PointQuery(t)
+}
+
+// VectorIndexOptionsForTest returns the engine/tuning options currently in
+// effect for the vector index at (labelToken, propertyKey) — i.e. what
+// CreateVectorIndexWithOptions actually applied — and whether the index
+// exists. Exported so callers outside this package (core, io, cross-backend
+// parity tests) can assert that a non-default VectorIndexOptions took effect
+// without reaching into the unexported vectorIndexes map. Not for production use.
+func (ms *Store) VectorIndexOptionsForTest(labelToken uint16, propertyKey string) (storecontract.VectorIndexOptions, bool) {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	vi, ok := ms.vectorIndexes[indexpkg.VectorIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}]
+	if !ok {
+		return storecontract.VectorIndexOptions{}, false
+	}
+	return storecontract.VectorIndexOptions{
+		UseBruteForce:  vi.BruteForce,
+		M:              vi.HNSWM,
+		EfConstruction: vi.HNSWEfConstruction,
+		EfSearch:       vi.HNSWEfSearch,
+	}, true
 }

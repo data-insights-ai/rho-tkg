@@ -4,8 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
-
-	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
 // graphEpochMeta is the MetaKV key holding this graph's durable lineage id — a
@@ -24,8 +22,8 @@ const graphEpochMeta = "graph_epoch"
 // is a read-then-write that two concurrent first-callers would otherwise race
 // into two divergent epochs.
 func (c *Core) graphEpochLocked() (uint64, error) {
-	mk, ok := c.store.(storepkg.MetaKVCapability)
-	if !ok {
+	mk := c.metaKV
+	if mk == nil {
 		return 0, nil
 	}
 	v, err := mk.MetaGet(graphEpochMeta)

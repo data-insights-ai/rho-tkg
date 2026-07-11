@@ -250,7 +250,12 @@ func (bs *Store) RelHistoryVersionsFrom(rid types.RelID, startVersion uint32, li
 
 func (bs *Store) getRelHistoryByPrefix(prefix []byte) ([]*types.Relationship, error) {
 	expectedID := storepkg.ParseIDFromKey(prefix, 1)
-	prefixStr := string(prefix)
+
+	// Snapshot the overlay BEFORE the Badger scan to close the commit-window drop
+	// (a flush that commits a parked row to Badger and clears `flushing` between a
+	// scan-first reader's Badger snapshot and its overlay read loses the row).
+	// Mirror of getNodeHistoryByPrefix — see lesson 64.
+	overlay, overlayDeletes := bs.pendingHistoryVersionOverlay(prefix, 0)
 
 	entries := make(map[string][]byte)
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
@@ -282,20 +287,18 @@ func (bs *Store) getRelHistoryByPrefix(prefix []byte) ([]*types.Relationship, er
 		return nil, err
 	}
 
-	// Merge buffered entries (rangePending = flushing ++ pending; pending wins).
-	// Consulting only `pending` would drop a version parked in `flushing` during
-	// the commit window.
-	bs.rangePending(func(k string, op writeOp) {
-		if len(k) == storepkg.SizeHistKey && k[:len(prefixStr)] == prefixStr {
-			if op.opType == writeOpDelete {
-				delete(entries, k)
-			} else {
-				cp := make([]byte, len(op.value))
-				copy(cp, op.value)
-				entries[k] = cp
-			}
-		}
-	})
+	if bs.historyScanTestHook != nil {
+		bs.historyScanTestHook()
+	}
+
+	// Merge the pre-scan overlay snapshot (strictly newer than committed Badger):
+	// a delete masks a scanned row, a set overwrites it.
+	for k := range overlayDeletes {
+		delete(entries, k)
+	}
+	for k, v := range overlay {
+		entries[k] = v
+	}
 
 	if len(entries) == 0 {
 		return nil, nil

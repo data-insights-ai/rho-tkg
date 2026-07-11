@@ -8,7 +8,12 @@ the badger `flushing` commit-window overlay fix, `Clear()` LSN-reanchor durabili
 the `ApplyChanges` ascending-LSN guard, the multi-token-label-diff apply hardening,
 and the rolled-back-token append-only stopgap. All released in `CHANGELOG.md`
 `[4.10.1]`–`[4.10.3]` and captured in `tasks/lessons.md` 49–58. The §4.1
-transaction-time backfill + §4.2 named as-of tags shipped in `[4.11.0]` (lesson 59).
+transaction-time backfill + §4.2 named as-of tags shipped in `[4.11.0]` (lesson 59). Tx-aware
+adjacency push-down — `g.Rels().OutgoingForNodesAtTx(nodeIDs, typeName, txAt)` /
+`IncomingForNodesAtTx(...)` resolve pinned adjacency through the adjacency index + the
+deleted-relationship fold instead of a full history-aware `ByType` scan, agreeing with a pinned
+`ByType` scan filtered by endpoint by construction (`txAt == 0` delegates to the existing
+`OutgoingForNodes`/`IncomingForNodes` verbatim). See `CHANGELOG.md` `[Unreleased]`.
 
 This file tracks **only open work**.
 
@@ -21,13 +26,15 @@ the delete-tombstone fix + tamper-evident anchors). The critical path is *sigma-
 HP1.2/HP1.3, which needs no new rho-tkg API — so these are **demand-ordered**, pulled when
 runtime scale / a later phase makes them bite. Full rationale + break-tests in the workplan.
 
-- [ ] **RT-1 Tx-aware adjacency push-down** (closes HP1.1-resid a) — `OutgoingForNodesAtTx`/
-      `IncomingForNodesAtTx` threading `QueryOpts.TxAt` (today `OutgoingForNodes`/`IncomingForNodes`
-      take no opts — `queries.go:801,861`, `rels/api.go:339,348` — so pinned edge reads pay a full
-      `ByType` scan). Pattern-34 divergence probe vs. the scan door. **Runtime-scale perf; non-blocking.**
-- [ ] **RT-2 TxAt-door valid-time guardrail** — a naive `QueryOpts{TxAt}` silently valid-filters at
-      wall-now and empties the pinned EDB of past-valid facts (sigma Hardening-pass-7 footgun; safe
-      `pinnedOpts` pattern exists). Make the pinned door explicit/fail-loud. Small, high-leverage.
+- [x] **RT-1 Tx-aware adjacency push-down** — CLOSED by `g.Rels().OutgoingForNodesAtTx`/
+      `IncomingForNodesAtTx`: pinned adjacency resolves through the live adjacency index + the
+      deleted-rel fold, re-resolving each candidate through the same chain seam as the generic
+      `TxAt` door; divergence-probed against the pinned `ByType` scan on all three backends.
+- [x] **RT-2 TxAt-door valid-time guardrail** — CLOSED by `QueryOpts.TxPin`: a belief-state pin doing
+      pure knowledge-time resolution with no valid-time filter (identical to `NodesAsOf`) through the
+      generic `ByLabel`/`ByType`/`All` door; the `TxAt`-alone door keeps its behaviour but its godoc now
+      warns loudly, and mixing `TxPin` with any other temporal filter returns `ErrConflictingTemporalOpts`.
+
 - [ ] **RT-3** (hold for HP Phase 2.5) dry-run constraint validation (validate-without-write).
 - [ ] **RT-4** (hold for HP Phase 3.9) wire the unused vector index (`vector_search.go:54`) + fuzzy resolver.
 - [ ] **RT-5** (hold for audit) whole-graph merkle/snapshot root.

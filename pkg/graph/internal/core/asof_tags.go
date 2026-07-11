@@ -51,8 +51,8 @@ func validateAsOfTagName(name string) error {
 // ErrCapabilityNotSupported. Every in-tree backend implements it; a store that
 // cannot persist metadata cannot hold durable tags.
 func (c *Core) asofMetaKV() (storepkg.MetaKVCapability, error) {
-	mk, ok := c.store.(storepkg.MetaKVCapability)
-	if !ok {
+	mk := c.metaKV
+	if mk == nil {
 		return nil, fmt.Errorf("graph: as-of tags: %w", storepkg.ErrCapabilityNotSupported)
 	}
 	return mk, nil
@@ -183,8 +183,8 @@ func (c *Core) asOfTags() (map[string]types.Instant, error) {
 // store. No-op when the backend cannot persist metadata. Serialized with tag
 // writers via asofMu (Reset holds c.mu.Lock, but tag writers do not take c.mu).
 func (c *Core) reapAsOfTagsForReset() error {
-	mk, ok := c.store.(storepkg.MetaKVCapability)
-	if !ok {
+	mk := c.metaKV
+	if mk == nil {
 		return nil
 	}
 	c.asofMu.Lock()

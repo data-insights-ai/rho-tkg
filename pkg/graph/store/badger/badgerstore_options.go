@@ -19,6 +19,37 @@ import (
 // MemTableSize to migrate the dir first.
 var ErrOversizedWAL = errors.New("graph: oversized WAL cannot be opened at the configured MemTableSize")
 
+// ErrInvalidEncryptionKeyLength is returned when Config.EncryptionKey is set
+// to a length other than 0 (disabled), 16, 24, or 32 bytes — the AES key
+// sizes Badger accepts (AES-128/192/256).
+var ErrInvalidEncryptionKeyLength = errors.New("graph: EncryptionKey length must be 0 (disabled), 16, 24, or 32 bytes (AES-128/192/256)")
+
+// ErrEncryptionRequiresBlockCache is returned when Config.EncryptionKey is
+// set but Config.BlockCacheSize is 0. Badger PANICS at Open (not a returned
+// error) when compression or encryption is enabled and its resolved
+// BlockCacheSize is zero — verified against the Badger v4.9.2 source
+// (db.go's checkAndSetOptions: "BlockCacheSize should be set since
+// compression/encryption are enabled"). New() fails closed with this error
+// instead of letting that panic escape; set Config.BlockCacheSize to a
+// positive value (e.g. Badger's own stock default, 256MB) to proceed.
+var ErrEncryptionRequiresBlockCache = errors.New("graph: EncryptionKey is set but BlockCacheSize is 0; Badger requires a non-zero BlockCacheSize when encryption is enabled — set Config.BlockCacheSize")
+
+// ErrEncryptionRequiresIndexCache is returned when Config.EncryptionKey is
+// set but Config.IndexCacheSize is 0. Unlike BlockCacheSize (whose Badger
+// stock default of 256MB already satisfies Badger's Open-time check),
+// Badger's stock IndexCacheSize default is ALSO 0 — so encrypting a store
+// without an explicit IndexCacheSize opens successfully but PANICS the
+// first time an encrypted SSTable is created (memtable flush or
+// compaction): table.go's fetchIndex() unconditionally requires a non-nil
+// IndexCache for any table whose data key is set (shouldDecrypt() ==
+// true), i.e. every table an encrypted store writes. Verified empirically
+// (a live write-flush cycle under EncryptionKey with IndexCacheSize == 0
+// panics "Index Cache must be set for encrypted workloads"; the identical
+// cycle with IndexCacheSize > 0 succeeds). New() fails closed with this
+// error instead of letting that panic escape at the first flush; set
+// Config.IndexCacheSize to a positive value to proceed.
+var ErrEncryptionRequiresIndexCache = errors.New("graph: EncryptionKey is set but IndexCacheSize is 0; Badger panics on the first encrypted SSTable flush without a non-zero IndexCacheSize — set Config.IndexCacheSize")
+
 // Per-instance footprint tuning bounds. A non-zero Config knob outside its
 // range is rejected at New() with a message naming the field, so a bad value
 // fails loudly at construction instead of deep inside Badger's Open (or, for
@@ -51,8 +82,31 @@ func validateTuningConfig(cfg Config) error {
 	if cfg.BlockCacheSize < 0 {
 		return fmt.Errorf("graph: BlockCacheSize %d must not be negative", cfg.BlockCacheSize)
 	}
+	if cfg.IndexCacheSize < 0 {
+		return fmt.Errorf("graph: IndexCacheSize %d must not be negative", cfg.IndexCacheSize)
+	}
 	if cfg.NumCompactors != 0 && cfg.NumCompactors < minNumCompactors {
 		return fmt.Errorf("graph: NumCompactors %d must be 0 (badger default) or at least 2", cfg.NumCompactors)
+	}
+	return nil
+}
+
+// validateEncryptionConfig rejects an EncryptionKey length Badger cannot use,
+// and a combination that would otherwise reach Badger's Open and PANIC (see
+// ErrEncryptionRequiresBlockCache). Zero-length key (encryption disabled)
+// always validates regardless of BlockCacheSize.
+func validateEncryptionConfig(cfg Config) error {
+	switch len(cfg.EncryptionKey) {
+	case 0, 16, 24, 32:
+		// ok
+	default:
+		return fmt.Errorf("%w: got %d bytes", ErrInvalidEncryptionKeyLength, len(cfg.EncryptionKey))
+	}
+	if len(cfg.EncryptionKey) > 0 && cfg.BlockCacheSize == 0 {
+		return ErrEncryptionRequiresBlockCache
+	}
+	if len(cfg.EncryptionKey) > 0 && cfg.IndexCacheSize == 0 {
+		return ErrEncryptionRequiresIndexCache
 	}
 	return nil
 }
@@ -100,8 +154,17 @@ func buildBadgerOptions(cfg Config) badgerv4.Options {
 	if cfg.BlockCacheSize > 0 {
 		opts = opts.WithBlockCacheSize(cfg.BlockCacheSize)
 	}
+	if cfg.IndexCacheSize > 0 {
+		opts = opts.WithIndexCacheSize(cfg.IndexCacheSize)
+	}
 	if cfg.NumCompactors > 0 {
 		opts = opts.WithNumCompactors(cfg.NumCompactors)
+	}
+	if len(cfg.EncryptionKey) > 0 {
+		opts = opts.WithEncryptionKey(cfg.EncryptionKey)
+	}
+	if cfg.EncryptionKeyRotation > 0 {
+		opts = opts.WithEncryptionKeyRotationDuration(cfg.EncryptionKeyRotation)
 	}
 	return opts
 }

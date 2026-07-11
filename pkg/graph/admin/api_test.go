@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -55,6 +56,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 type adminOpsSpy struct {
 	resetCalls       int
 	decomposeIDCalls int
+	compactCalls     int
 }
 
 func (s *adminOpsSpy) Reset() error {
@@ -70,4 +72,14 @@ func (s *adminOpsSpy) DecomposeNodeID(id types.NodeID) IDComponents {
 func (s *adminOpsSpy) DecomposeRelID(id types.RelID) IDComponents {
 	s.decomposeIDCalls++
 	return IDComponents{NodeID: 7}
+}
+
+func (s *adminOpsSpy) CompactHistoryNodes(ctx context.Context, policy RetentionPolicy) (CompactReport, error) {
+	s.compactCalls++
+	return CompactReport{}, nil
+}
+
+func (s *adminOpsSpy) CompactHistoryRels(ctx context.Context, policy RetentionPolicy) (CompactReport, error) {
+	s.compactCalls++
+	return CompactReport{}, nil
 }

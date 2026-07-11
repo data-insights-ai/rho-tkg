@@ -13,6 +13,7 @@ import (
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/index"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
+	iopkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
@@ -106,12 +107,26 @@ var (
 	ErrNameTooLong             = core.ErrNameTooLong
 	ErrSelfLoop                = core.ErrSelfLoop
 	ErrValidFromBeforePrevious = core.ErrValidFromBeforePrevious
+	// Generic-door belief-state pin conflict (QueryOpts.TxPin).
+	ErrConflictingTemporalOpts = core.ErrConflictingTemporalOpts
 	// §4.1 transaction-time backfill.
 	ErrTxBackfillDisabled = core.ErrTxBackfillDisabled
 	ErrInvalidTxFrom      = core.ErrInvalidTxFrom
 	// §4.2 named as-of (Erkenntniszeit) tags.
 	ErrInvalidAsOfTag  = core.ErrInvalidAsOfTag
 	ErrTooManyAsOfTags = core.ErrTooManyAsOfTags
+	// Unique property constraints (ADR-0002).
+	ErrUniqueViolation             = core.ErrUniqueViolation
+	ErrUniqueViolationExisting     = core.ErrUniqueViolationExisting
+	ErrUniqueConstraintExists      = core.ErrUniqueConstraintExists
+	ErrUniqueConstraintNotFound    = core.ErrUniqueConstraintNotFound
+	ErrUniqueUnsupportedType       = core.ErrUniqueUnsupportedType
+	ErrUniqueEventLabelUnsupported = core.ErrUniqueEventLabelUnsupported
+	// History retention & compaction (ADR-0001).
+	ErrHistoryCompacted           = core.ErrHistoryCompacted
+	ErrCompactionProtectedTag     = core.ErrCompactionProtectedTag
+	ErrInvalidRetentionPolicy     = core.ErrInvalidRetentionPolicy
+	ErrCompactionChangeLogEnabled = core.ErrCompactionChangeLogEnabled
 )
 
 // IO sentinels (R4-F8). Re-exported so external callers can write
@@ -133,6 +148,14 @@ var (
 	ErrCursorUnknown     = core.ErrCursorUnknown
 	ErrDeltaBaseMismatch = core.ErrDeltaBaseMismatch
 )
+
+// ErrBackupExists is returned by g.IO().BackupTo / BackupDeltaTo when the
+// deterministic target filename already exists in the backup directory — the
+// one-call backup ergonomics layer over Export/ExportSince never silently
+// overwrites a prior backup. Aliases io.ErrBackupExists; there is no
+// internal/core declaration to mirror because BackupTo/BackupDeltaTo are pure
+// filesystem orchestration over the existing Export/ExportSince doors.
+var ErrBackupExists = iopkg.ErrBackupExists
 
 // ErrNoVersionAsOf is the bitemporal sentinel returned by g.Temporal().NodeAsOf
 // / RelAsOf when no version was committed at or before the supplied

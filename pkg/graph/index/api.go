@@ -21,6 +21,7 @@ type Ops interface {
 	CreateTemporal(label string) error
 	DeleteTemporal(label string) error
 	CreateVector(label, propertyKey string, dims int, metric storepkg.DistanceMetric) error
+	CreateVectorWithOptions(label, propertyKey string, dims int, metric storepkg.DistanceMetric, opts storepkg.VectorIndexOptions) error
 	DeleteVector(label, propertyKey string) error
 	SearchNearest(label, propertyKey string, query []float32, k int, opts storepkg.QueryOpts) ([]*types.Node, error)
 	RegisterProvider(p IndexProvider) error
@@ -101,6 +102,10 @@ func (a *API) DeleteTemporal(label string) error {
 // CreateVector creates a vector (kNN) index. Existing indexed vectors with
 // non-finite coordinates are rejected with ErrInvalidVectorValue.
 //
+// The index defaults to an approximate HNSW engine (see CLAUDE.md "Vector
+// Indexes" for the recall target and tuning); use CreateVectorWithOptions
+// for the brute-force escape hatch or HNSW tuning.
+//
 // Persistence: vector index DEFINITIONS survive restart, but the index
 // entries do not — on reopen the index is rebuilt by scanning every node
 // carrying the indexed label/property. For large graphs this is the dominant
@@ -112,6 +117,19 @@ func (a *API) CreateVector(label, propertyKey string, dims int, metric storepkg.
 		return err
 	}
 	return ops.CreateVector(label, propertyKey, dims, metric)
+}
+
+// CreateVectorWithOptions is CreateVector with additional control over the
+// search engine (opts.UseBruteForce) and HNSW tuning (opts.M /
+// EfConstruction / EfSearch). A zero-value opts is identical to
+// CreateVector (documented HNSW defaults: M=16, EfConstruction=200,
+// EfSearch=64).
+func (a *API) CreateVectorWithOptions(label, propertyKey string, dims int, metric storepkg.DistanceMetric, opts storepkg.VectorIndexOptions) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.CreateVectorWithOptions(label, propertyKey, dims, metric, opts)
 }
 
 // DropVector drops a vector index.

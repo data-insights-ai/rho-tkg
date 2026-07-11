@@ -42,6 +42,25 @@ func ExampleAPI_NodeCountByLabel() {
 	_ = cnt
 }
 
+// ExampleAPI_PropertyStats demonstrates the NDV/min/max/count planner
+// statistics for a (label, property key) pair.
+func ExampleAPI_PropertyStats() {
+	g, err := graph.New(graph.Config{})
+	if err != nil {
+		panic(err)
+	}
+	defer g.Close()
+
+	_, _ = g.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"age": int64(30)})
+	_, _ = g.Nodes().Add(context.Background(), []string{"Person"}, map[string]any{"age": int64(45)})
+
+	stats, err := g.Stats().PropertyStats("Person", "age")
+	if err != nil {
+		panic(err)
+	}
+	_ = stats // stats.Count, stats.NDV, stats.Min, stats.Max
+}
+
 // ExampleAPI_AllLabelCounts demonstrates retrieving cardinalities for every
 // label in one call.
 func ExampleAPI_AllLabelCounts() {

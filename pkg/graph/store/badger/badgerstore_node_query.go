@@ -292,7 +292,17 @@ func (bs *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, valu
 
 	if idx, ok := bs.propertyIndexes[key]; ok && idx.Mutated == nil {
 		// Indexed path: snapshot matching IDs.
-		nids := idx.NodeIDs(value)
+		var nids []types.NodeID
+		if bs.propIdxOnDisk {
+			diskNids, dErr := bs.propertyIndexDiskLookupLocked(propKey, targetKey)
+			if dErr != nil {
+				bs.idxMu.RUnlock()
+				return nil, dErr
+			}
+			nids = diskNids
+		} else {
+			nids = idx.NodeIDs(value)
+		}
 		if len(nids) == 0 {
 			bs.idxMu.RUnlock()
 			return nil, nil

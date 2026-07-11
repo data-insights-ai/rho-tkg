@@ -13,11 +13,27 @@ import (
 
 // vectorIdxDef is the store-level serialization format for TieredStore vector
 // indexes. The entries themselves are rebuilt from node properties on open.
+// UseBruteForce/M/EfConstruction/EfSearch are additive: a def
+// written before these fields existed decodes them to zero, which is
+// exactly "default HNSW with default tuning" — backward compatible.
 type vectorIdxDef struct {
-	LabelToken  uint16         `msgpack:"l"`
-	PropertyKey string         `msgpack:"p"`
-	Dims        int            `msgpack:"d"`
-	Metric      DistanceMetric `msgpack:"m"`
+	LabelToken     uint16         `msgpack:"l"`
+	PropertyKey    string         `msgpack:"p"`
+	Dims           int            `msgpack:"d"`
+	Metric         DistanceMetric `msgpack:"m"`
+	UseBruteForce  bool           `msgpack:"bf,omitempty"`
+	M              int            `msgpack:"hm,omitempty"`
+	EfConstruction int            `msgpack:"efc,omitempty"`
+	EfSearch       int            `msgpack:"efs,omitempty"`
+}
+
+func (d vectorIdxDef) vectorIndexOptions() storecontract.VectorIndexOptions {
+	return storecontract.VectorIndexOptions{
+		UseBruteForce:  d.UseBruteForce,
+		M:              d.M,
+		EfConstruction: d.EfConstruction,
+		EfSearch:       d.EfSearch,
+	}
 }
 
 func saveVectorIndexFile(path string, defs []vectorIdxDef) error {
@@ -175,6 +191,7 @@ func (ts *Store) loadVectorIndexDefs() error {
 	for _, def := range validDefs {
 		key := indexpkg.VectorIndexKey{LabelToken: def.LabelToken, PropertyKey: def.PropertyKey}
 		vi := &indexpkg.VectorIndex{Dims: def.Dims, Metric: def.Metric}
+		indexpkg.ApplyVectorIndexOptions(vi, def.vectorIndexOptions())
 		for _, id := range ids {
 			n, getErr := ts.GetNode(id)
 			if getErr != nil {
@@ -217,10 +234,14 @@ func (ts *Store) persistVectorIndexDefsLocked() error {
 			continue
 		}
 		defs = append(defs, vectorIdxDef{
-			LabelToken:  key.LabelToken,
-			PropertyKey: key.PropertyKey,
-			Dims:        idx.Dims,
-			Metric:      idx.Metric,
+			LabelToken:     key.LabelToken,
+			PropertyKey:    key.PropertyKey,
+			Dims:           idx.Dims,
+			Metric:         idx.Metric,
+			UseBruteForce:  idx.BruteForce,
+			M:              idx.HNSWM,
+			EfConstruction: idx.HNSWEfConstruction,
+			EfSearch:       idx.HNSWEfSearch,
 		})
 	}
 	return saveVectorIndexFile(ts.vectorIdxFile, defs)

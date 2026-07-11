@@ -229,6 +229,10 @@ type ValidationLimits = core.ValidationLimits
 // GraphStats aliases the public stats snapshot returned by g.Stats.Get().
 type GraphStats = stats.GraphStats
 
+// PropertyStats aliases store.PropertyStats — the NDV/min/max/count planner
+// statistics returned by g.Stats().PropertyStats(...).
+type PropertyStats = store.PropertyStats
+
 // StoreStats aliases core.StoreStats for the public API.
 type StoreStats = core.StoreStats
 
@@ -265,6 +269,12 @@ type ShardDepth = store.ShardDepth
 // DistanceMetric aliases store.DistanceMetric — accepted by
 // g.Index().SearchNearest. Use the storepkg.Distance* constants for values.
 type DistanceMetric = store.DistanceMetric
+
+// VectorIndexOptions aliases store.VectorIndexOptions — accepted by
+// g.Index().CreateVectorWithOptions to choose the vector-index engine
+// (default approximate HNSW, or the UseBruteForce exact-recall escape
+// hatch) and its tuning. Zero value = documented defaults.
+type VectorIndexOptions = store.VectorIndexOptions
 
 // New creates a new Graph with the given configuration. Delegates to core.New
 // and wires every sub-API accessor to the same *Core instance.

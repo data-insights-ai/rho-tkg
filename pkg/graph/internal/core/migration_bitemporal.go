@@ -39,8 +39,8 @@ const (
 // with bitemporalMigrated=false, which keeps the legacy inheritance
 // heuristic active for their data.
 func (c *Core) runBitemporalMigrationBestEffort() {
-	meta, ok := c.store.(storepkg.MetaKVCapability)
-	if !ok {
+	meta := c.metaKV
+	if meta == nil {
 		return
 	}
 	cur, err := meta.MetaGet(schemaVersionKey)

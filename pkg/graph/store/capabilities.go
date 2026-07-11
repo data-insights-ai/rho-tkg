@@ -199,6 +199,35 @@ type MetaKVCapability interface {
 	MetaSet(key string, value []byte) error
 }
 
+// MetaWrite is one key/value entry for HistoryCompactionCapability. The Key is
+// the graph-layer meta key (the same namespace as MetaKVCapability); the backend
+// stamps it under its own MetaKey encoding. A nil Value deletes the key.
+type MetaWrite struct {
+	Key   string
+	Value []byte
+}
+
+// HistoryCompactionCapability is OPTIONAL. It trims an entity's oldest history
+// versions AND persists the accompanying per-entity compaction stub (the
+// metaWrites). keepVersions has the same meaning as TruncateNodeHistory: retain
+// the newest keepVersions history versions and delete the rest.
+//
+// Single-shard backends (memory, badger) commit the trim and the metaWrites in
+// ONE atomic write, so a crash can never leave trimmed history without its stub
+// (a silently-incomplete chain) or a stub without the trim. The tiered backend
+// also implements it: because a node's whole chain is single-shard (B33) but the
+// stub must live on the reference shard (where the store-level MetaGet reads it),
+// the trim and the stub land on different shards and cannot share one batch;
+// tiered writes the stub BEFORE the trim so a crash between them fails closed
+// (over-rejection, repaired by an idempotent re-run) rather than silently
+// incomplete — see pkg/graph/store/tiered/tieredstore_compaction.go. The graph
+// watermark is NOT part of metaWrites; the graph layer routes it once via the
+// store-level MetaSet (see core/compaction.go advanceCompactionWatermark).
+type HistoryCompactionCapability interface {
+	CompactNodeHistory(id types.NodeID, keepVersions int, metaWrites []MetaWrite) error
+	CompactRelHistory(id types.RelID, keepVersions int, metaWrites []MetaWrite) error
+}
+
 // HistoryVersionPageCapability is OPTIONAL. Backends that can page through an
 // individual entity's history chain implement it so export and other streaming
 // readers do not have to materialize every version for one heavily updated
@@ -318,6 +347,38 @@ type VectorIndexCapability interface {
 	CreateVectorIndex(labelToken uint16, propertyKey string, dims int, metric DistanceMetric) error
 	DropVectorIndex(labelToken uint16, propertyKey string) error
 	SearchNearestNodes(labelToken uint16, propertyKey string, query []float32, k int, opts QueryOpts) ([]*types.Node, error)
+}
+
+// VectorIndexOptions configures the search engine and tuning chosen at
+// CreateVectorIndex time. Zero values select the documented defaults: the
+// approximate HNSW engine (see pkg/graph/internal/index/hnsw.go) with
+// M=16, EfConstruction=200, EfSearch=64 — see CLAUDE.md "Vector Indexes".
+// Additive: a backend need not implement VectorIndexOptionsCapability to
+// remain a conformant Store — it simply keeps handling CreateVectorIndex
+// through the mandatory VectorIndexCapability door with its own default
+// engine, and callers reaching for the options door on such a backend
+// silently fall back to plain CreateVectorIndex (opts unavailable).
+type VectorIndexOptions struct {
+	// UseBruteForce selects the exact linear-scan k-NN engine instead of
+	// the default approximate HNSW engine — the escape hatch for
+	// exact-recall requirements (compliance workloads, small indexes,
+	// correctness oracles).
+	UseBruteForce bool
+
+	// HNSW tuning. Ignored when UseBruteForce is true. Zero = default.
+	M              int // Max bidirectional links per node above layer 0. Default 16.
+	EfConstruction int // Candidate list size while building. Default 200.
+	EfSearch       int // Candidate list size while searching. Default 64.
+}
+
+// VectorIndexOptionsCapability is OPTIONAL. A backend implementing it
+// accepts the engine/tuning choice in VectorIndexOptions at creation time
+// in addition to the mandatory VectorIndexCapability.CreateVectorIndex
+// door (which keeps working — it now defaults to the same HNSW engine with
+// VectorIndexOptions{} i.e. all-default tuning). Every in-tree backend
+// (memory/badger/tiered) implements this capability.
+type VectorIndexOptionsCapability interface {
+	CreateVectorIndexWithOptions(labelToken uint16, propertyKey string, dims int, metric DistanceMetric, opts VectorIndexOptions) error
 }
 
 // FilteredVectorSearchCapability is OPTIONAL but strongly recommended for

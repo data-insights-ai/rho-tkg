@@ -135,6 +135,24 @@ type Config struct {
 	// 11-byte prefix that replaces the in-memory typeIdx intersection.
 	// See badgerstore_adjacency_disk.go.
 	AdjacencyIndexOnDisk bool
+	// PropertyIndexOnDisk is the property-index sibling of LabelIndexOnDisk:
+	// entries created by CreatePropertyIndex live in the persisted 0x0A
+	// keyspace (see badgerstore_property_disk.go) instead of the in-memory
+	// PropertyIndex.Entries/numBuckets maps — each entry is one
+	// (propertyKeyToken, order-preserving value bytes, nodeID) row, written
+	// transactionally with the node row it describes. Saves the per-value
+	// RAM the in-memory index would otherwise hold at large scale, at the
+	// cost of a disk prefix/range iteration per equality/range read. An
+	// existing data directory with property-index definitions but no prior
+	// 0x0A rows is backfilled from current node state exactly once, on the
+	// first open with this flag set (guarded by
+	// storeutil.PropertyIndexOnDiskBuiltKey, mirroring the wire-format
+	// marker pattern) — no manual migration step is required. Requires a
+	// wired property-key registry (see Config.PropertyKeyRegistry — always
+	// present when opened via pkg/graph); CreatePropertyIndex fails closed
+	// with ErrInvalidStoreMutation without one. Ignored when Store is
+	// provided explicitly.
+	PropertyIndexOnDisk bool
 	// FlushInterval is the time between async write batches. Default: 100ms.
 	// Zero disables periodic flushing (manual flush only — for testing).
 	FlushInterval time.Duration
@@ -191,6 +209,17 @@ type Config struct {
 	// BlockCacheSize bounds the Ristretto block cache (filled lazily, not
 	// pre-allocated). Must be >= 0; 0 keeps the stock default.
 	BlockCacheSize int64 // bytes; >= 0
+	// IndexCacheSize bounds the Ristretto table-index/bloom-filter cache. Must
+	// be >= 0; 0 keeps Badger's stock default (0 — indices decoded and kept
+	// resident on the table object with NO cache). REQUIRED (> 0) whenever
+	// EncryptionKey is set: an encrypted table's index is stored encrypted on
+	// disk, and Badger's per-table fetchIndex() unconditionally PANICS
+	// ("Index Cache must be set for encrypted workloads") the first time an
+	// encrypted SSTable is created (flush or compaction) if this cache is
+	// nil — a real, empirically-reproduced failure mode distinct from (and in
+	// addition to) the BlockCacheSize requirement below. See
+	// ErrEncryptionRequiresIndexCache.
+	IndexCacheSize int64 // bytes; >= 0
 	// NumCompactors sets the compactor goroutine count. 0 keeps the stock
 	// default (4); any non-zero value must be >= 2 (Badger's minimum).
 	NumCompactors int
@@ -203,6 +232,15 @@ type Config struct {
 	// foundation for read-replica streaming. Ignored in ReadOnly mode (a
 	// read-only shard never mutates). See badgerstore_changelog.go.
 	ChangeLog bool
+	// ChangeLogSeqSource, when non-nil, replaces this shard's self-owned
+	// change-log LSN counter (logSeq) with an injected store-global allocator.
+	// A sharded owner (the tiered store) injects ONE allocator so every shard
+	// draws change-log LSNs from a single monotonic sequence — the global
+	// commit order the merged feed depends on. nil (the default) keeps the
+	// self-owned counter, so a standalone badger store is byte-for-byte
+	// unchanged. Ignored when ChangeLog is off or in ReadOnly mode. See
+	// ChangeLogSeqSource and badgerstore_changelog.go.
+	ChangeLogSeqSource ChangeLogSeqSource
 	// PropertyKeyRegistry, when non-nil, is the property-key token registry the
 	// store uses to tokenize on write and resolve tokens on read — supplied by
 	// an owner (e.g. the tiered store) that holds ONE canonical registry for all
@@ -220,6 +258,38 @@ type Config struct {
 	// meta (standalone behavior). A non-nil error aborts the flush so a batch of
 	// rows can never become durable before the registry entries it depends on.
 	OnPropertyKeyGrow func() error
+	// OnChangeLogFlush, when non-nil, is invoked from flush() AFTER a WriteBatch
+	// carrying change-log records commits durably. The tiered store sets it to
+	// persist the store-global allocator high-water to the reference shard's
+	// catalog watermark (ADR-0005 §2.1-reseed), so reseed at open reads ONE key
+	// and never opens a cold shard. A non-nil error surfaces to the writer (the
+	// records are already durable; the watermark is belt-and-braces, so the store
+	// logs but does not roll back). nil = no watermark persistence (standalone).
+	OnChangeLogFlush func() error
+	// EncryptionKey enables AES encryption-at-rest (SSTables, value log, WAL,
+	// and Badger's own key registry). Length must be 0 (disabled — the
+	// default, byte-for-byte the pre-encryption on-disk format), 16, 24, or 32
+	// bytes (AES-128/192/256); any other length is rejected at New() with
+	// ErrInvalidEncryptionKeyLength.
+	//
+	// Badger REQUIRES a non-zero BlockCacheSize whenever compression or
+	// encryption is enabled and PANICS (not a returned error) on Open
+	// otherwise — verified directly against the Badger v4.9.2 source (it is
+	// BlockCacheSize, not IndexCacheSize, that gates the check). New() fails
+	// closed with ErrEncryptionRequiresBlockCache instead of letting that
+	// panic escape when EncryptionKey is set and BlockCacheSize == 0.
+	//
+	// Reopening an encrypted dir with the WRONG key, or opening an existing
+	// PLAINTEXT dir with a non-empty key, fails Open with an error wrapping
+	// badgerv4.ErrEncryptionKeyMismatch (errors.Is-able) — Badger detects
+	// both by decrypting a sanity marker in its KEYREGISTRY file at open,
+	// before any row is read.
+	EncryptionKey []byte
+	// EncryptionKeyRotation is Badger's EncryptionKeyRotationDuration — how
+	// often a new internal data key is generated for the encrypted value log.
+	// Zero keeps Badger's stock default (10 days). Ignored when EncryptionKey
+	// is empty.
+	EncryptionKeyRotation time.Duration
 }
 
 // writeOpType indicates the type of deferred write operation.
@@ -275,6 +345,7 @@ type Store struct {
 	labelIdx         map[uint16]map[types.NodeID]struct{}          // labelToken → set(nodeID); EMPTY in labelOnDisk mode
 	labelOnDisk      bool                                          // answer label snapshots from the persisted keyspace
 	adjOnDisk        bool                                          // answer adjacency snapshots from the persisted keyspaces
+	propIdxOnDisk    bool                                          // maintain/answer property-index entries via the persisted 0x0A keyspace
 	typeIdx          map[uint16]map[types.RelID]struct{}           // relTypeToken → set(relID)
 	outIdx           map[types.NodeID]map[types.RelID]types.NodeID // startNodeID → relID → endNodeID
 	inIdx            map[types.NodeID]map[types.RelID]inEdge       // endNodeID → relID → {startNodeID, typeToken}
@@ -364,6 +435,34 @@ type Store struct {
 	// values because the planner uses this to prune scalar equality lookups.
 	propertyKeyCounts sync.Map // map[indexpkg.PropertyIndexKey]*atomic.Int64
 
+	// Per-label property-key NDV + exact min/max accumulators, protected by
+	// idxMu (unlike propertyKeyCounts's lock-free sync.Map — the accumulator's
+	// HyperLogLog registers and min/max fields are not atomic-friendly, and
+	// NodePropertyStats is a cold-path planner call, so it takes idxMu instead
+	// of a bespoke lock-free structure). Maintained on the SAME node-mutation
+	// doors as propertyKeyCounts — see adjustNodePropertyKeyCounts in
+	// badgerstore_property_key_counts.go. Backs the optional
+	// store.NodePropertyStatsCapability.
+	propertyStats map[indexpkg.PropertyIndexKey]*indexpkg.PropertyStatsAccumulator
+
+	// rescanTestHook, when non-nil, is invoked by NodePropertyStats right after
+	// the unlocked value collection and BEFORE the write-generation re-check /
+	// Rescan commit, once per rescan attempt. Production leaves it nil (zero
+	// overhead); tests use it to deterministically land a concurrent mutation
+	// inside the collect→commit window that the stale-rescan-overwrite guard
+	// must catch. Set only from the owning test before starting workers.
+	rescanTestHook func(attempt int)
+
+	// historyScanTestHook, when non-nil, is invoked by the full-history prefix
+	// readers (getNodeHistoryByPrefix / getRelHistoryByPrefix) right AFTER the
+	// Badger scan and BEFORE the overlay merge. Production leaves it nil (zero
+	// overhead); tests use it to deterministically land a concurrent flush()
+	// commit (flushing rows -> Badger, `flushing` cleared) inside the
+	// scan->merge window — the window in which a scan-first reader drops a row
+	// that has left `flushing` but was not in the reader's older Badger
+	// snapshot. Set only from the owning test.
+	historyScanTestHook func()
+
 	// Property indexes — in-memory only. Definitions persisted, data rebuilt on startup.
 	propertyIndexes map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex
 
@@ -419,8 +518,21 @@ type Store struct {
 	// is the append-only buffer of framed records awaiting flush, guarded by
 	// wbMu so a record and its entity ops snapshot together.
 	logEnabled bool
-	logSeq     atomic.Uint64
-	pendingLog []pendingLogRecord
+	// logConfigured records the open-time change-log intent, so EnableChangeLog
+	// (recovery) only re-enables a store that was actually opened with the log —
+	// it never turns the log on for a store opened without it. DisableChangeLog
+	// leaves it set; EnableChangeLog restores logEnabled to it.
+	logConfigured bool
+	logSeq        atomic.Uint64
+	pendingLog    []pendingLogRecord
+	// logSeqSource, when non-nil (Config.ChangeLogSeqSource), supplies change-log
+	// LSNs in place of logSeq — the tiered store's store-global allocator. When
+	// set, nextLSN() draws from it and the open-time watermark is folded into it
+	// via Observe (instead of stored in logSeq). nil = self-owned counter.
+	logSeqSource ChangeLogSeqSource
+	// onChangeLogFlush (Config.OnChangeLogFlush) persists the store-global
+	// allocator watermark after a log-bearing flush commits. nil = standalone.
+	onChangeLogFlush func() error
 
 	// Per-transaction change-log scope (store.TxChangeLogScope). When a tx/batch
 	// opens a scope, scopeActive diverts record production into scopeLog — the
@@ -496,6 +608,9 @@ func New(cfg Config) (*Store, error) {
 		return nil, fmt.Errorf("graph: Dir required when InMemory is false")
 	}
 	if err := validateTuningConfig(cfg); err != nil {
+		return nil, err
+	}
+	if err := validateEncryptionConfig(cfg); err != nil {
 		return nil, err
 	}
 
@@ -581,28 +696,33 @@ func New(cfg Config) (*Store, error) {
 		// relValidIdx is built LAZILY on the first temporal traversal — a graph
 		// that never does temporal adjacency (or a tiered store, which does not
 		// expose the capability) pays nothing for the per-rel stamps.
-		nodeCache:       newNodeCache(capacity, cfg.CacheBudgetBytes),
-		relCache:        newRelCache(capacity, cfg.CacheBudgetBytes),
-		resident:        cfg.ResidentCache,
-		pending:         make(map[string]writeOp),
-		propertyIndexes: make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex),
-		temporalIndexes: make(map[uint16]*indexpkg.TemporalIndex),
-		hfIndexes:       make(map[uint16]*indexpkg.HighFrequencyIndex),
-		vectorIndexes:   make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex),
-		inMemory:        cfg.InMemory,
-		labelOnDisk:     cfg.LabelIndexOnDisk,
-		adjOnDisk:       cfg.AdjacencyIndexOnDisk,
-		readOnly:        cfg.ReadOnly,
-		syncWrites:      cfg.SyncWrites && !cfg.ReadOnly,
-		logEnabled:      cfg.ChangeLog && !cfg.ReadOnly,
-		maxPending:      maxPending,
-		flushInt:        flushInt,
-		gcInt:           gcInt,
-		gcRatio:         gcRatio,
-		stopCh:          make(chan struct{}),
-		flushDone:       make(chan struct{}),
-		gcDone:          make(chan struct{}),
-		logger:          cfg.Logger,
+		nodeCache:        newNodeCache(capacity, cfg.CacheBudgetBytes),
+		relCache:         newRelCache(capacity, cfg.CacheBudgetBytes),
+		resident:         cfg.ResidentCache,
+		pending:          make(map[string]writeOp),
+		propertyIndexes:  make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex),
+		propertyStats:    make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyStatsAccumulator),
+		temporalIndexes:  make(map[uint16]*indexpkg.TemporalIndex),
+		hfIndexes:        make(map[uint16]*indexpkg.HighFrequencyIndex),
+		vectorIndexes:    make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex),
+		inMemory:         cfg.InMemory,
+		labelOnDisk:      cfg.LabelIndexOnDisk,
+		adjOnDisk:        cfg.AdjacencyIndexOnDisk,
+		propIdxOnDisk:    cfg.PropertyIndexOnDisk,
+		readOnly:         cfg.ReadOnly,
+		syncWrites:       cfg.SyncWrites && !cfg.ReadOnly,
+		logEnabled:       cfg.ChangeLog && !cfg.ReadOnly,
+		logConfigured:    cfg.ChangeLog && !cfg.ReadOnly,
+		logSeqSource:     cfg.ChangeLogSeqSource,
+		onChangeLogFlush: cfg.OnChangeLogFlush,
+		maxPending:       maxPending,
+		flushInt:         flushInt,
+		gcInt:            gcInt,
+		gcRatio:          gcRatio,
+		stopCh:           make(chan struct{}),
+		flushDone:        make(chan struct{}),
+		gcDone:           make(chan struct{}),
+		logger:           cfg.Logger,
 	}
 
 	// Resident mode: keep every decoded node/rel resident so a cache miss never
@@ -699,9 +819,33 @@ func (bs *Store) loadIndexes() error {
 }
 
 func (bs *Store) loadIndexesScan() error {
-	return bs.db.View(func(txn *badgerv4.Txn) error {
+	// propIdxNeedsBuild / propIdxBackfillOps support item (d) — rebuild-on-
+	// enable: the 0x0A property-index keyspace is NEW (unlike label/adjacency,
+	// which have always been written transactionally), so an existing
+	// directory that already has property-index DEFINITIONS needs an explicit
+	// one-time backfill the first time PropertyIndexOnDisk is turned on.
+	// Computed inside the View closure below (which already walks every
+	// definition's current node set); committed via a real WriteBatch AFTER
+	// the read-only View returns, guarded by
+	// storeutil.PropertyIndexOnDiskBuiltKey so it runs exactly once.
+	var propIdxNeedsBuild bool
+	var propIdxBackfillOps []writeOp
+
+	err := bs.db.View(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
+
+		if bs.propIdxOnDisk {
+			_, merr := txn.Get(storepkg.PropertyIndexOnDiskBuiltKey)
+			switch {
+			case merr == nil:
+				propIdxNeedsBuild = false
+			case errors.Is(merr, badgerv4.ErrKeyNotFound):
+				propIdxNeedsBuild = true
+			default:
+				return fmt.Errorf("graph: read property-index-on-disk marker: %w", merr)
+			}
+		}
 
 		nodeEntityIDs := make(map[types.NodeID]struct{})
 		decodedNodeLabels := make(map[types.NodeID]map[uint16]struct{})
@@ -983,7 +1127,15 @@ func (bs *Store) loadIndexesScan() error {
 		if err != nil {
 			return err
 		}
-		bs.logSeq.Store(lastLSN)
+		if bs.logSeqSource != nil {
+			// Tiered: fold this shard's durable watermark into the store-global
+			// allocator (belt-and-braces above the refShard catalog watermark),
+			// so the shared sequence resumes strictly above every shard's max —
+			// even a cold shard that lazily opens read-only later.
+			bs.logSeqSource.Observe(lastLSN)
+		} else {
+			bs.logSeq.Store(lastLSN)
+		}
 
 		// Rebuild per-label and per-type counters from index sizes.
 		for token, set := range bs.labelIdx {
@@ -1034,9 +1186,24 @@ func (bs *Store) loadIndexesScan() error {
 							}
 							continue
 						}
-						if valueKey, found := n.IndexablePropertyValueKey(def.PropertyKey); found {
-							idx.AddKey(rawID, valueKey)
+						valueKey, found := n.IndexablePropertyValueKey(def.PropertyKey)
+						if !found {
+							continue
 						}
+						if bs.propIdxOnDisk {
+							// Disk mode: do NOT populate idx.Entries/numBuckets
+							// (the whole point is to keep entries off the RAM
+							// heap) — collect the one-time backfill op instead,
+							// only when this directory hasn't been backfilled
+							// before (propIdxNeedsBuild).
+							if propIdxNeedsBuild {
+								if op, ok := bs.propertyIndexDiskOp(def.PropertyKey, valueKey, rawID, writeOpSet); ok {
+									propIdxBackfillOps = append(propIdxBackfillOps, op)
+								}
+							}
+							continue
+						}
+						idx.AddKey(rawID, valueKey)
 					}
 				}
 				bs.propertyIndexes[key] = idx
@@ -1171,6 +1338,7 @@ func (bs *Store) loadIndexesScan() error {
 				}
 				seenVector[key] = def
 				vi := &indexpkg.VectorIndex{Dims: def.Dims, Metric: def.Metric}
+				indexpkg.ApplyVectorIndexOptions(vi, def.vectorIndexOptions())
 				if nodeIDs, ok := bs.labelIdx[def.LabelToken]; ok {
 					for nodeID := range nodeIDs {
 						rawID := nodeID.SnowflakeID()
@@ -1199,6 +1367,24 @@ func (bs *Store) loadIndexesScan() error {
 
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+
+	if bs.propIdxOnDisk && propIdxNeedsBuild {
+		if bs.propKeyReg.Load() == nil {
+			// No property-key registry wired yet (a direct badger.Store user
+			// without Config.PropertyKeyRegistry and no meta-persisted
+			// registry) — skip the backfill AND leave the marker unset so a
+			// later open (once the registry is available) retries. A graph
+			// opened via pkg/graph always wires a registry before this runs.
+			return nil
+		}
+		if err := bs.commitPropertyIndexOnDiskBackfill(propIdxBackfillOps); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // reconcilePersistedCounter resolves a persisted entity counter against the rows
@@ -1345,6 +1531,7 @@ func (bs *Store) Clear() error {
 		bs.propertyKeyCounts.Delete(k)
 		return true
 	})
+	bs.propertyStats = make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyStatsAccumulator)
 
 	// Re-create LRU caches with same capacity and byte budget.
 	cap := bs.nodeCache.Cap()

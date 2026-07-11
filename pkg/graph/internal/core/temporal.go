@@ -852,7 +852,28 @@ func hasTemporalFilter(opts storepkg.QueryOpts) bool {
 	if opts.TxAt != 0 {
 		return true
 	}
+	if opts.TxPin != 0 {
+		return true
+	}
 	return opts.ValidStart > 0 && opts.ValidEnd > 0
+}
+
+// validateTemporalQueryOpts is the core-layer superset of
+// storepkg.ValidateQueryOpts: it adds the cross-field TxPin conflict check.
+// TxPin is a pure knowledge-time belief-state pin (identical semantics to
+// NodesAsOf / RelsAsOf) with NO valid-time filtering, so combining it with any
+// valid-time filter (ValidAt / ValidStart / ValidEnd) or with the combined
+// bitemporal TxAt door is contradictory and rejected with
+// ErrConflictingTemporalOpts rather than silently mis-resolved. Every generic
+// query door that honours TxPin validates through here.
+func validateTemporalQueryOpts(opts storepkg.QueryOpts) error {
+	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+		return err
+	}
+	if opts.TxPin != 0 && (opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0) {
+		return ErrConflictingTemporalOpts
+	}
+	return nil
 }
 
 // findNodeVersionForOpts returns a node version that satisfies pred under the
@@ -863,6 +884,24 @@ func hasTemporalFilter(opts storepkg.QueryOpts) bool {
 // matches. Returns storepkg.ErrNoVersionValidAt if no overlapping version satisfies
 // pred. pred==nil means "any overlapping version".
 func (c *Core) findNodeVersionForOpts(id types.NodeID, opts storepkg.QueryOpts, pred func(*types.Node) bool) (*types.Node, error) {
+	if opts.TxPin != 0 {
+		// Belief-state pin: pure knowledge-time resolution, NO valid-time
+		// filter. Delegate to the SAME resolver the named as-of door uses
+		// (nodeAsOfLocked feeds NodeAsOf / NodesAsOf) so the two doors agree by
+		// construction — the version-ordered retraction rule (lesson 62) is
+		// inherited, never re-implemented. Absent → the loop's skip sentinel.
+		n, err := c.nodeAsOfLocked(id, opts.TxPin)
+		if err != nil {
+			if errors.Is(err, ErrNoVersionAsOf) {
+				return nil, storepkg.ErrNoVersionValidAt
+			}
+			return nil, err
+		}
+		if pred != nil && !pred(n) {
+			return nil, storepkg.ErrNoVersionValidAt
+		}
+		return n, nil
+	}
 	if opts.ValidAt != 0 {
 		n, err := c.nodeAtLockedTx(id, opts.ValidAt, opts.TxAt)
 		if err != nil {
@@ -893,6 +932,21 @@ func (c *Core) findNodeVersionForOpts(id types.NodeID, opts storepkg.QueryOpts, 
 
 // findRelVersionForOpts is the relationship counterpart of findNodeVersionForOpts.
 func (c *Core) findRelVersionForOpts(id types.RelID, opts storepkg.QueryOpts, pred func(*types.Relationship) bool) (*types.Relationship, error) {
+	if opts.TxPin != 0 {
+		// Belief-state pin — see findNodeVersionForOpts. Delegates to the same
+		// relAsOfLocked the named RelAsOf / RelsAsOf door uses.
+		r, err := c.relAsOfLocked(id, opts.TxPin)
+		if err != nil {
+			if errors.Is(err, ErrNoVersionAsOf) {
+				return nil, storepkg.ErrNoVersionValidAt
+			}
+			return nil, err
+		}
+		if pred != nil && !pred(r) {
+			return nil, storepkg.ErrNoVersionValidAt
+		}
+		return r, nil
+	}
 	if opts.ValidAt != 0 {
 		r, err := c.relAtLockedTx(id, opts.ValidAt, opts.TxAt)
 		if err != nil {
@@ -961,29 +1015,7 @@ func (c *Core) findNodeVersionMatchingDuringTx(id types.NodeID, start, end, txAt
 		chain = append(chain, current)
 	}
 
-	chain = filterNodeChainByTxAt(chain, txAt)
-	if len(chain) == 0 {
-		return nil, storepkg.ErrNoVersionValidAt
-	}
-
-	// Order by effective valid-from so next-version tiling is correct after an
-	// append-only cascade (see sortNodeChainForResolve). Scan highest-valid-from
-	// first to preserve the "most-recent overlapping match" semantic.
-	c.sortNodeChainForResolve(chain)
-	for i := len(chain) - 1; i >= 0; i-- {
-		if eclipsedNodeBounds(chain[i]) {
-			continue
-		}
-		vStart, vEnd := c.nodeVersionBounds(chain, i)
-		// Overlap: vStart < end AND (vEnd == 0 OR vEnd > start).
-		if vStart < end && (vEnd == 0 || vEnd > start) {
-			if pred == nil || pred(chain[i]) {
-				return chain[i], nil
-			}
-		}
-	}
-
-	return nil, storepkg.ErrNoVersionValidAt
+	return c.resolveNodeChain(chain, chainProbe{kind: probeInterval, validStart: start, validEnd: end, tx: txAt}, pred)
 }
 
 // findRelVersionMatchingDuring is the relationship counterpart.
@@ -1013,25 +1045,7 @@ func (c *Core) findRelVersionMatchingDuringTx(id types.RelID, start, end, txAt t
 		chain = append(chain, current)
 	}
 
-	chain = filterRelChainByTxAt(chain, txAt)
-	if len(chain) == 0 {
-		return nil, storepkg.ErrNoVersionValidAt
-	}
-
-	c.sortRelChainForResolve(chain)
-	for i := len(chain) - 1; i >= 0; i-- {
-		if eclipsedRelBounds(chain[i]) {
-			continue
-		}
-		vStart, vEnd := c.relVersionBounds(chain, i)
-		if vStart < end && (vEnd == 0 || vEnd > start) {
-			if pred == nil || pred(chain[i]) {
-				return chain[i], nil
-			}
-		}
-	}
-
-	return nil, storepkg.ErrNoVersionValidAt
+	return c.resolveRelChain(chain, chainProbe{kind: probeInterval, validStart: start, validEnd: end, tx: txAt}, pred)
 }
 
 // getNodeVersionDuring is a thin wrapper preserving the original "any overlap"

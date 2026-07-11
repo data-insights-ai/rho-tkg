@@ -52,18 +52,30 @@ type Config struct {
 	// Only effective when Compression is options.ZSTD.
 	// Zero keeps the Badger default (1).
 	ZSTDCompressionLevel int
-	// ValueLogFileSize / MemTableSize / BlockCacheSize / NumCompactors tune each
-	// shard's Badger per-instance footprint. ONE Badger instance opens per
-	// shard, so stock sizes multiply by shard count — a deployment with a
-	// reference shard plus a dozen weekly event shards pre-creates tens of GB of
-	// apparent vlog and allocates a memtable arena per shard even when every
-	// shard holds little data. Zero keeps Badger's stock defaults. Validated
-	// per-shard at open (same bounds as badger.Config) — an out-of-range value
-	// surfaces when the reference shard opens in New.
+	// ValueLogFileSize / MemTableSize / BlockCacheSize / IndexCacheSize /
+	// NumCompactors tune each shard's Badger per-instance footprint. ONE
+	// Badger instance opens per shard, so stock sizes multiply by shard count
+	// — a deployment with a reference shard plus a dozen weekly event shards
+	// pre-creates tens of GB of apparent vlog and allocates a memtable arena
+	// per shard even when every shard holds little data. Zero keeps Badger's
+	// stock defaults. Validated per-shard at open (same bounds as
+	// badger.Config) — an out-of-range value surfaces when the reference
+	// shard opens in New.
 	ValueLogFileSize int64 // bytes; valid [1MB, 2GB)
 	MemTableSize     int64 // bytes; valid [8MB, 1GB]
 	BlockCacheSize   int64 // bytes; >= 0
+	IndexCacheSize   int64 // bytes; >= 0
 	NumCompactors    int   // 0 = badger default (4); minimum 2
+	// EncryptionKey / EncryptionKeyRotation enable AES encryption-at-rest for
+	// EVERY shard (reference, hot, warm, lazy cold/archive, and
+	// rotation-created) — see badger.Config for length validation and the
+	// wrong-key/plaintext-dir failure modes. Encryption REQUIRES both
+	// BlockCacheSize > 0 and IndexCacheSize > 0 above (Badger panics at Open
+	// without the former, and on the first encrypted SSTable flush without
+	// the latter); validated per-shard at open (same bounds as
+	// badger.Config) — surfaces when the reference shard opens in New.
+	EncryptionKey         []byte
+	EncryptionKeyRotation time.Duration
 	// CacheBudgetBytes bounds EACH shard's entity caches (nodes, rels) by
 	// estimated resident BYTES rather than entry count. With one cache pair per
 	// open shard, CacheCapacity alone (an entry count, default 10,000 per cache)
@@ -72,6 +84,29 @@ type Config struct {
 	// (dirty entries are never evicted). 0 disables byte accounting. When set
 	// and CacheCapacity is 0, the byte budget alone governs.
 	CacheBudgetBytes int64
+	// PropertyIndexOnDisk is the tiered sibling of badger.Config's
+	// PropertyIndexOnDisk: it does NOT change WHERE property indexes live —
+	// property indexes remain reference-shard-only (CreatePropertyIndex still
+	// rejects event labels with ErrEventPropertyIndex; see CLAUDE.md "Property
+	// indexes on reference entities only"). It only changes HOW the reference
+	// shard answers them: false (default) keeps the reference shard's
+	// PropertyIndex.Entries/numBuckets maps in RAM; true answers
+	// equality/range reads from the reference shard's persisted 0x0A keyspace
+	// instead (see badgerstore_property_disk.go), surviving reopen without an
+	// in-memory rebuild. Passed through badgerCfg to EVERY shard (reference,
+	// hot, warm, lazy cold/archive, and rotation-created) for uniformity —
+	// event shards never build a property index, so the flag is a no-op
+	// there, harmless.
+	PropertyIndexOnDisk bool
+	// ChangeLog enables the durable, ordered change-log (op-log) across all
+	// shards. A store-level monotonic allocator hands every shard's change-log
+	// record a store-global LSN (a total commit order); each shard co-commits
+	// its records in its own WriteBatch (as standalone badger does), and the
+	// feed methods (ForEachChange/ChangeFeed/LastCommittedLSN) k-way merge the
+	// per-shard logs by LSN behind a flush-before-read durability barrier
+	// (ADR-0005 §2). Off by default (zero overhead). Surfaces
+	// store.ChangeFeedCapability / ChangeLogStatusCapability / TxChangeLogScope.
+	ChangeLog bool
 }
 
 // EventShard wraps a BadgerStore with metadata for an event shard.
@@ -147,42 +182,53 @@ func (es *EventShard) currentTier() ShardTier {
 // Event entities (Signal, Alert) live in time-windowed event shards.
 // Phase 3a: exactly one hot event shard. Phases 3b-3e add warm/cold/archive.
 type Store struct {
-	mu                sync.RWMutex                                    // protects hotShard + eventShards during rotation
-	refShard          *BadgerStore                                    // reference shard (always hot)
-	propKeyReg        atomic.Pointer[registrypkg.PropertyKeyRegistry] // single canonical property-key registry, injected into every shard at open
-	refActiveReqs     atomic.Int64                                    // refcount for refShard — Close spin-waits on this before refShard.Close()
-	refArchive        atomic.Pointer[BadgerStore]                     // nil until first archive/restore or DepthAll with archive catalog; atomic so reads need not hold archiveMu
-	archiveMu         sync.Mutex                                      // serializes lazy-open of refArchive (single-flight)
-	archiveActiveReqs atomic.Int64                                    // refcount for refArchive — Close spin-waits on this before archive.Close()
-	eventShards       map[string]*EventShard                          // name -> event shard
-	hotShard          *EventShard                                     // convenience pointer to current hot shard
-	ontology          *OntologyMapping
-	catalog           *ShardCatalog
-	regFile           string // path to registry.msgpack
-	temporalIdxFile   string // path to temporal_indexes.msgpack
-	vectorIdxFile     string // path to vector_indexes.msgpack
-	dataDir           string
-	inMemory          bool
-	shardWindow       time.Duration
-	cacheCap          int
-	flushInt          time.Duration
-	coldAfter         time.Duration
-	idleTimeout       time.Duration
-	compression       options.CompressionType
-	zstdLevel         int
-	valueLogFileSize  int64 // per-shard Badger footprint knobs; 0 = stock default
-	memTableSize      int64
-	blockCacheSize    int64
-	numCompactors     int
-	cacheBudgetBytes  int64         // per-shard entity-cache byte budget; 0 = off
-	closeCh           chan struct{} // signals idle-close goroutine to stop
-	closeOnce         sync.Once
-	lifecycleMu       sync.RWMutex // blocks Close while long sequential store-wide operations release per-shard pins
-	closed            atomic.Bool  // set under archiveMu inside Close before tearing the archive down;
+	mu                    sync.RWMutex                                    // protects hotShard + eventShards during rotation
+	refShard              *BadgerStore                                    // reference shard (always hot)
+	propKeyReg            atomic.Pointer[registrypkg.PropertyKeyRegistry] // single canonical property-key registry, injected into every shard at open
+	refActiveReqs         atomic.Int64                                    // refcount for refShard — Close spin-waits on this before refShard.Close()
+	refArchive            atomic.Pointer[BadgerStore]                     // nil until first archive/restore or DepthAll with archive catalog; atomic so reads need not hold archiveMu
+	archiveMu             sync.Mutex                                      // serializes lazy-open of refArchive (single-flight)
+	archiveActiveReqs     atomic.Int64                                    // refcount for refArchive — Close spin-waits on this before archive.Close()
+	eventShards           map[string]*EventShard                          // name -> event shard
+	hotShard              *EventShard                                     // convenience pointer to current hot shard
+	ontology              *OntologyMapping
+	catalog               *ShardCatalog
+	regFile               string // path to registry.msgpack
+	temporalIdxFile       string // path to temporal_indexes.msgpack
+	vectorIdxFile         string // path to vector_indexes.msgpack
+	dataDir               string
+	inMemory              bool
+	shardWindow           time.Duration
+	cacheCap              int
+	flushInt              time.Duration
+	coldAfter             time.Duration
+	idleTimeout           time.Duration
+	compression           options.CompressionType
+	zstdLevel             int
+	valueLogFileSize      int64 // per-shard Badger footprint knobs; 0 = stock default
+	memTableSize          int64
+	blockCacheSize        int64
+	indexCacheSize        int64
+	numCompactors         int
+	encryptionKey         []byte // per-shard AES encryption-at-rest key; nil = disabled
+	encryptionKeyRotation time.Duration
+	cacheBudgetBytes      int64         // per-shard entity-cache byte budget; 0 = off
+	propertyIndexOnDisk   bool          // reference-shard-only scope unchanged; changes RAM vs disk representation
+	closeCh               chan struct{} // signals idle-close goroutine to stop
+	closeOnce             sync.Once
+	lifecycleMu           sync.RWMutex // blocks Close while long sequential store-wide operations release per-shard pins
+	closed                atomic.Bool  // set under archiveMu inside Close before tearing the archive down;
 	// readers consult this from ensureRefArchive to refuse re-opening the archive after Close
 	// has already closed it (prevents an orphan re-open + leaked DB handle)
 	bgErrMu sync.Mutex
 	bgErr   error
+
+	// Change-log (op-log) — opt-in via Config.ChangeLog. logEnabled gates record
+	// production on every shard; changeLogAlloc is the store-global LSN allocator
+	// injected into each shard (badger.Config.ChangeLogSeqSource) so LSNs are a
+	// total commit order across shards. See tieredstore_changelog.go.
+	logEnabled     bool
+	changeLogAlloc *changeLogAllocator
 
 	nodeCreateMu sync.Mutex // serializes cross-shard node ID uniqueness checks with writes
 	relCreateMu  sync.Mutex // serializes cross-shard relationship ID uniqueness checks with writes
@@ -246,25 +292,38 @@ func New(cfg Config) (*Store, error) {
 	}
 
 	ts := &Store{
-		eventShards:      make(map[string]*EventShard),
-		ontology:         NewOntologyMapping(cfg.RefLabels),
-		dataDir:          cfg.DataDir,
-		inMemory:         cfg.InMemory,
-		shardWindow:      window,
-		cacheCap:         cacheCap,
-		flushInt:         flushInt,
-		coldAfter:        cfg.ColdAfter,
-		idleTimeout:      idleTimeout,
-		compression:      cfg.Compression,
-		zstdLevel:        cfg.ZSTDCompressionLevel,
-		valueLogFileSize: cfg.ValueLogFileSize,
-		memTableSize:     cfg.MemTableSize,
-		blockCacheSize:   cfg.BlockCacheSize,
-		numCompactors:    cfg.NumCompactors,
-		cacheBudgetBytes: cfg.CacheBudgetBytes,
-		closeCh:          make(chan struct{}),
-		hfIdxBuckets:     make(map[uint16]time.Duration),
-		vectorIndexes:    make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex),
+		eventShards:           make(map[string]*EventShard),
+		ontology:              NewOntologyMapping(cfg.RefLabels),
+		dataDir:               cfg.DataDir,
+		inMemory:              cfg.InMemory,
+		shardWindow:           window,
+		cacheCap:              cacheCap,
+		flushInt:              flushInt,
+		coldAfter:             cfg.ColdAfter,
+		idleTimeout:           idleTimeout,
+		compression:           cfg.Compression,
+		zstdLevel:             cfg.ZSTDCompressionLevel,
+		valueLogFileSize:      cfg.ValueLogFileSize,
+		memTableSize:          cfg.MemTableSize,
+		blockCacheSize:        cfg.BlockCacheSize,
+		indexCacheSize:        cfg.IndexCacheSize,
+		numCompactors:         cfg.NumCompactors,
+		encryptionKey:         cfg.EncryptionKey,
+		encryptionKeyRotation: cfg.EncryptionKeyRotation,
+		cacheBudgetBytes:      cfg.CacheBudgetBytes,
+		propertyIndexOnDisk:   cfg.PropertyIndexOnDisk,
+		closeCh:               make(chan struct{}),
+		hfIdxBuckets:          make(map[uint16]time.Duration),
+		vectorIndexes:         make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex),
+		logEnabled:            cfg.ChangeLog,
+	}
+	// Build the store-global change-log allocator BEFORE opening any shard, so it
+	// can be injected via badgerCfg (ChangeLogSeqSource). Each shard folds its
+	// durable watermark into it at open via Observe; after the reference shard
+	// opens we reseed the allocator from the refShard catalog watermark so a cold
+	// shard never has to be opened at startup (ADR-0005 §2.1-reseed).
+	if cfg.ChangeLog {
+		ts.changeLogAlloc = newChangeLogAllocator(ts)
 	}
 
 	// Create directory layout for disk-backed stores.
@@ -307,6 +366,20 @@ func New(cfg Config) (*Store, error) {
 	// SAME instance, instead of its own (empty) per-shard meta copy.
 	if reg := refStore.PropertyKeyRegistry(); reg != nil {
 		ts.propKeyReg.Store(reg)
+	}
+	// Reseed the store-global change-log allocator from the reference shard's
+	// catalog watermark now that refShard is open. This covers cold shards that
+	// are NOT opened at startup (their max LSN was folded into this watermark
+	// while they were hot). refShard's own LastLSNKey was already folded via
+	// Observe at its open. An unreadable watermark fails the change-log CLOSED
+	// (sticky background error; the allocator refuses to hand out LSNs) rather
+	// than reseeding below a durable cold-shard LSN and risking reuse.
+	if ts.changeLogAlloc != nil {
+		// A reseed failure poisons ONLY the change-log capability (the feed doors
+		// fail closed and the allocator refuses LSNs); the store still serves its
+		// primary reads/writes. This is the change-log fence of ADR-0005 §2.1-reseed
+		// Problem 1 — narrower than the store-wide recordBackgroundError gate.
+		ts.changeLogAlloc.reseedFromRefShard()
 	}
 
 	// Register reference shard in catalog if new.
@@ -953,17 +1026,21 @@ func (ts *Store) openBadgerStore(name string, readOnly bool) (*BadgerStore, erro
 // cold/archive, and rotation-created.
 func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 	cfg := BadgerStoreConfig{
-		InMemory:             ts.inMemory,
-		CacheCapacity:        ts.cacheCap,
-		CacheBudgetBytes:     ts.cacheBudgetBytes,
-		FlushInterval:        ts.flushInt,
-		ReadOnly:             readOnly,
-		Compression:          ts.compression,
-		ZSTDCompressionLevel: ts.zstdLevel,
-		ValueLogFileSize:     ts.valueLogFileSize,
-		MemTableSize:         ts.memTableSize,
-		BlockCacheSize:       ts.blockCacheSize,
-		NumCompactors:        ts.numCompactors,
+		InMemory:              ts.inMemory,
+		CacheCapacity:         ts.cacheCap,
+		CacheBudgetBytes:      ts.cacheBudgetBytes,
+		FlushInterval:         ts.flushInt,
+		ReadOnly:              readOnly,
+		Compression:           ts.compression,
+		ZSTDCompressionLevel:  ts.zstdLevel,
+		ValueLogFileSize:      ts.valueLogFileSize,
+		MemTableSize:          ts.memTableSize,
+		BlockCacheSize:        ts.blockCacheSize,
+		IndexCacheSize:        ts.indexCacheSize,
+		NumCompactors:         ts.numCompactors,
+		EncryptionKey:         ts.encryptionKey,
+		EncryptionKeyRotation: ts.encryptionKeyRotation,
+		PropertyIndexOnDisk:   ts.propertyIndexOnDisk,
 	}
 	if !ts.inMemory {
 		cfg.Dir = filepath.Join(ts.dataDir, name)
@@ -988,6 +1065,18 @@ func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 				return nil
 			}
 			return ts.refShard.SavePropertyKeyRegistry(reg)
+		}
+	}
+	// Change-log: slave this shard's LSNs to the store-global allocator and, for
+	// non-reference shards, persist the allocator watermark to the reference
+	// shard after each log-bearing flush (the reference shard writes its own
+	// watermark directly — see changeLogAllocator.persistWatermark). ReadOnly
+	// (warm/cold) shards never produce records but still Observe their watermark.
+	if ts.changeLogAlloc != nil && !ts.changeLogAlloc.isPoisoned() {
+		cfg.ChangeLog = true
+		cfg.ChangeLogSeqSource = ts.changeLogAlloc
+		if ts.refShard != nil {
+			cfg.OnChangeLogFlush = ts.changeLogAlloc.persistWatermark
 		}
 	}
 	return cfg

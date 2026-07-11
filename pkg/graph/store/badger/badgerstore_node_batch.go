@@ -187,7 +187,7 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePr
 		// Leave property-key counters conservatively positive: without the row
 		// we cannot know which keys to decrement, and positive overcounts only
 		// cause extra scans while undercounts could make planners prune matches.
-		indexpkg.PurgeNodeFromAllPropertyIndexes(bs.propertyIndexes, id)
+		ops = append(ops, bs.maintainPropertyIndexesPurge(id)...)
 		indexpkg.PurgeNodeFromAllTemporalIndexes(bs.temporalIndexes, id)
 		indexpkg.PurgeNodeFromAllHighFrequencyIndexes(bs.hfIndexes, id)
 		indexpkg.PurgeNodeFromAllVectorIndexes(bs.vectorIndexes, id)
@@ -220,7 +220,7 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePr
 	}
 
 	bs.removeNodePropertyKeyCounts(n)
-	indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, n, id)
+	ops = append(ops, bs.maintainPropertyIndexesRemove(n, id)...)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, n, id)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, n, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, n, id)
@@ -496,7 +496,7 @@ func (bs *Store) PutNodesBatch(nodes []*types.Node) error {
 			bs.getOrCreateLabelCounter(tok).Add(1)
 		}
 		bs.addNodePropertyKeyCounts(n)
-		indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, n, nd.id)
+		ops = append(ops, bs.maintainPropertyIndexesAdd(n, nd.id)...)
 		indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, n, nd.id)
 		indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, n, nd.id)
 		if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates[i], nd.id); err != nil {
@@ -647,7 +647,7 @@ func (bs *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 		}
 
 		bs.removeNodePropertyKeyCounts(n)
-		indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, n, id)
+		ops = append(ops, bs.maintainPropertyIndexesRemove(n, id)...)
 		indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, n, id)
 		indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, n, id)
 		indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, n, id)

@@ -47,8 +47,15 @@ func (c *Core) verifyNodeChainLocked(id types.NodeID) (bool, error) {
 	}
 	// current may be nil for deleted entities.
 
+	// Load the compaction stub (if any). A corrupt/forged stub fails closed
+	// here — Verify* is a tamper-evidence gate.
+	stub, err := c.loadNodeCompactionStubPtr(id)
+	if err != nil {
+		return false, err
+	}
+
 	if pager := hashVerifyHistoryVersionPageCapability(c.store); pager != nil {
-		return c.verifyNodeChainPagedLocked(id, current, pager)
+		return c.verifyNodeChainPagedLocked(id, current, pager, stub)
 	}
 
 	history, err := c.getNodeHistory(id)
@@ -56,7 +63,33 @@ func (c *Core) verifyNodeChainLocked(id types.NodeID) (bool, error) {
 		return false, err
 	}
 
-	return c.verifyNodeChainRowsLocked(current, history)
+	return c.verifyNodeChainRowsLocked(current, history, stub)
+}
+
+// loadNodeCompactionStubPtr adapts loadNodeCompactionStub to a nil-able pointer
+// for the verify seam.
+func (c *Core) loadNodeCompactionStubPtr(id types.NodeID) (*compactionStub, error) {
+	s, ok, err := c.loadNodeCompactionStub(id)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, nil
+	}
+	return &s, nil
+}
+
+// loadRelCompactionStubPtr is the relationship mirror of
+// loadNodeCompactionStubPtr.
+func (c *Core) loadRelCompactionStubPtr(id types.RelID) (*compactionStub, error) {
+	s, ok, err := c.loadRelCompactionStub(id)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, nil
+	}
+	return &s, nil
 }
 
 // chainEntryMeta is the per-version integrity summary the linkage check operates
@@ -81,7 +114,16 @@ type chainEntryMeta struct {
 // may have a dangling PrevHash (its predecessor was truncated away), tolerated to
 // match the pre-DAG behavior. Per-version CONTENT hashes are verified separately
 // by the caller — that is the tamper-evidence on content; this checks structure.
-func verifyChainLinkage(metas []chainEntryMeta) bool {
+//
+// stub-aware (ADR-0001): when a compaction stub exists, the lowest retained
+// version is NOT allowed a dangling PrevHash — it must link to the stub's
+// LastTrimmedHash (the stub is a VIRTUAL PREDECESSOR). This turns the boundary
+// back into tamper-evidence after a trim: a forged truncation that drops the
+// oldest versions without a matching stub, or with a stub whose LastTrimmedHash
+// does not equal the oldest kept row's PrevHash, fails closed. A stub covering a
+// chain that still holds its genesis (version 0) is contradictory (nothing below
+// genesis can have been trimmed) and also fails.
+func verifyChainLinkage(metas []chainEntryMeta, stub *compactionStub) bool {
 	hashSet := make(map[string]struct{}, len(metas))
 	minVersion := ^uint32(0)
 	for _, m := range metas {
@@ -92,13 +134,26 @@ func verifyChainLinkage(metas []chainEntryMeta) bool {
 	}
 	for _, m := range metas {
 		if m.version == 0 {
+			// Genesis must anchor with an empty PrevHash. A stub claims a trimmed
+			// predecessor, which cannot coexist with a retained genesis.
+			if stub != nil {
+				return false
+			}
 			if m.prevHash != "" {
 				return false
 			}
 			continue
 		}
 		if m.version == minVersion {
-			// Lowest retained version: its predecessor may have been truncated.
+			if stub != nil {
+				// Virtual predecessor: the oldest kept version must link to the
+				// stub's recorded LastTrimmedHash.
+				if m.prevHash != stub.LastTrimmedHash {
+					return false
+				}
+				continue
+			}
+			// No stub: predecessor may have been truncated (legacy leniency).
 			continue
 		}
 		if m.prevHash == "" {
@@ -111,7 +166,7 @@ func verifyChainLinkage(metas []chainEntryMeta) bool {
 	return true
 }
 
-func (c *Core) verifyNodeChainRowsLocked(current *types.Node, history []*types.Node) (bool, error) {
+func (c *Core) verifyNodeChainRowsLocked(current *types.Node, history []*types.Node, stub *compactionStub) (bool, error) {
 	if current == nil && len(history) == 0 {
 		return false, storepkg.ErrNodeNotFound
 	}
@@ -131,10 +186,10 @@ func (c *Core) verifyNodeChainRowsLocked(current *types.Node, history []*types.N
 		}
 		metas = append(metas, m)
 	}
-	return verifyChainLinkage(metas), nil
+	return verifyChainLinkage(metas, stub), nil
 }
 
-func (c *Core) verifyNodeChainPagedLocked(id types.NodeID, current *types.Node, pager storepkg.HistoryVersionPageCapability) (bool, error) {
+func (c *Core) verifyNodeChainPagedLocked(id types.NodeID, current *types.Node, pager storepkg.HistoryVersionPageCapability, stub *compactionStub) (bool, error) {
 	var (
 		metas       = make([]chainEntryMeta, 0)
 		seenHistory bool
@@ -175,7 +230,7 @@ func (c *Core) verifyNodeChainPagedLocked(id types.NodeID, current *types.Node, 
 		}
 		metas = append(metas, m)
 	}
-	return verifyChainLinkage(metas), nil
+	return verifyChainLinkage(metas, stub), nil
 }
 
 // verifyNodeChainEntryContentLocked recomputes a node version's content hash and
@@ -234,8 +289,13 @@ func (c *Core) verifyRelChainLocked(id types.RelID) (bool, error) {
 	}
 	// current may be nil for deleted entities.
 
+	stub, err := c.loadRelCompactionStubPtr(id)
+	if err != nil {
+		return false, err
+	}
+
 	if pager := hashVerifyHistoryVersionPageCapability(c.store); pager != nil {
-		return c.verifyRelChainPagedLocked(id, current, pager)
+		return c.verifyRelChainPagedLocked(id, current, pager, stub)
 	}
 
 	history, err := c.getRelHistory(id)
@@ -243,10 +303,10 @@ func (c *Core) verifyRelChainLocked(id types.RelID) (bool, error) {
 		return false, err
 	}
 
-	return c.verifyRelChainRowsLocked(current, history)
+	return c.verifyRelChainRowsLocked(current, history, stub)
 }
 
-func (c *Core) verifyRelChainRowsLocked(current *types.Relationship, history []*types.Relationship) (bool, error) {
+func (c *Core) verifyRelChainRowsLocked(current *types.Relationship, history []*types.Relationship, stub *compactionStub) (bool, error) {
 	if current == nil && len(history) == 0 {
 		return false, storepkg.ErrRelNotFound
 	}
@@ -276,10 +336,10 @@ func (c *Core) verifyRelChainRowsLocked(current *types.Relationship, history []*
 		}
 		metas = append(metas, m)
 	}
-	return verifyChainLinkage(metas), nil
+	return verifyChainLinkage(metas, stub), nil
 }
 
-func (c *Core) verifyRelChainPagedLocked(id types.RelID, current *types.Relationship, pager storepkg.HistoryVersionPageCapability) (bool, error) {
+func (c *Core) verifyRelChainPagedLocked(id types.RelID, current *types.Relationship, pager storepkg.HistoryVersionPageCapability, stub *compactionStub) (bool, error) {
 	var (
 		metas         = make([]chainEntryMeta, 0)
 		seenHistory   bool
@@ -334,7 +394,7 @@ func (c *Core) verifyRelChainPagedLocked(id types.RelID, current *types.Relation
 		}
 		metas = append(metas, m)
 	}
-	return verifyChainLinkage(metas), nil
+	return verifyChainLinkage(metas, stub), nil
 }
 
 // verifyRelChainEntryContent is the relationship counterpart of

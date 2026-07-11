@@ -83,7 +83,7 @@ func (bs *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 
 	// Update property, temporal, and vector indexes using the current old node state.
 	bs.removeNodePropertyKeyCounts(old)
-	indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, old, id)
+	ops := bs.maintainPropertyIndexesRemove(old, id)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
@@ -104,7 +104,7 @@ func (bs *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
 	bs.bumpNodeRevLocked(nid)
 	bs.addNodePropertyKeyCounts(updatedNode)
-	indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, updatedNode, id)
+	ops = append(ops, bs.maintainPropertyIndexesAdd(updatedNode, id)...)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, updatedNode, id)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
@@ -114,11 +114,12 @@ func (bs *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 
 	// Single appendOps call — node data + history + label index delete — atomic in the pending buffer.
 	histKey := storepkg.HistNodeKey(id, uint64(prevVersion))
-	bs.appendOps(
+	ops = append(ops,
 		writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data},
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
 		writeOp{opType: writeOpDelete, key: storepkg.LabelIndexKey(tok, id)},
 	)
+	bs.appendOps(ops...)
 	logErr := bs.logNodePut(updatedNode, true)
 	bs.idxMu.Unlock()
 
@@ -194,7 +195,7 @@ func (bs *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 
 	// Update property, temporal, and vector indexes using the current old node state.
 	bs.removeNodePropertyKeyCounts(old)
-	indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, old, id)
+	ops := bs.maintainPropertyIndexesRemove(old, id)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
@@ -215,7 +216,7 @@ func (bs *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
 	bs.bumpNodeRevLocked(nid)
 	bs.addNodePropertyKeyCounts(updatedNode)
-	indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, updatedNode, id)
+	ops = append(ops, bs.maintainPropertyIndexesAdd(updatedNode, id)...)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, updatedNode, id)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
@@ -225,11 +226,12 @@ func (bs *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 
 	// Single appendOps call — node data + history + label index set — atomic in the pending buffer.
 	histKey := storepkg.HistNodeKey(id, uint64(prevVersion))
-	bs.appendOps(
+	ops = append(ops,
 		writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data},
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
 		writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tok, id)},
 	)
+	bs.appendOps(ops...)
 	logErr := bs.logNodePut(updatedNode, true)
 	bs.idxMu.Unlock()
 
@@ -307,7 +309,7 @@ func (bs *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 	}
 
 	bs.removeNodePropertyKeyCounts(old)
-	indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, old, id)
+	ops := bs.maintainPropertyIndexesRemove(old, id)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
@@ -315,7 +317,7 @@ func (bs *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(current)
 	bs.bumpNodeRevLocked(nid)
 	bs.addNodePropertyKeyCounts(current)
-	indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, current, id)
+	ops = append(ops, bs.maintainPropertyIndexesAdd(current, id)...)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, current, id)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, current, id)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
@@ -325,10 +327,11 @@ func (bs *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 
 	// Single appendOps call — atomic in the pending buffer.
 	histKey := storepkg.HistNodeKey(id, uint64(prevVersion))
-	bs.appendOps(
+	ops = append(ops,
 		writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data},
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
 	)
+	bs.appendOps(ops...)
 	logErr := bs.logNodePut(current, true)
 	bs.idxMu.Unlock()
 
@@ -600,7 +603,20 @@ func (bs *Store) NodeHistoryVersionsFrom(nid types.NodeID, startVersion uint32, 
 
 func (bs *Store) getNodeHistoryByPrefix(prefix []byte) ([]*types.Node, error) {
 	expectedID := storepkg.ParseIDFromKey(prefix, 1)
-	prefixStr := string(prefix)
+
+	// Snapshot the write-buffer overlay (flushing ++ pending) BEFORE opening the
+	// Badger View. Ordering matters: a concurrent flush() commits a parked row to
+	// Badger and THEN clears `flushing`, so a row is in `flushing` until strictly
+	// after it lands in Badger. If we scanned Badger first (at snapshot time Ts)
+	// and read the overlay second (at Tr > Ts), a flush that committed the row in
+	// (Ts, Tr) would leave it in NEITHER view — invisible to the older Badger
+	// snapshot AND to the already-cleared `flushing` — a dropped in-flight row
+	// (load-dependent: a descheduled flush goroutine widens the window). Capturing
+	// the overlay first (at Ta) and opening the View second (Tb >= Ta) closes the
+	// window: any row committed after Ta was still in `flushing` at Ta and is in
+	// the snapshot; any row committed before Ta is durable and in the View. See
+	// lesson 64.
+	overlay, overlayDeletes := bs.pendingHistoryVersionOverlay(prefix, 0)
 
 	// Collect from Badger.
 	entries := make(map[string][]byte) // key string -> value bytes
@@ -633,20 +649,20 @@ func (bs *Store) getNodeHistoryByPrefix(prefix []byte) ([]*types.Node, error) {
 		return nil, err
 	}
 
-	// Merge buffered entries (rangePending = flushing ++ pending; pending wins).
-	// Consulting only `pending` would drop a version parked in `flushing` during
-	// the commit window.
-	bs.rangePending(func(k string, op writeOp) {
-		if len(k) == storepkg.SizeHistKey && k[:len(prefixStr)] == prefixStr {
-			if op.opType == writeOpDelete {
-				delete(entries, k)
-			} else {
-				cp := make([]byte, len(op.value))
-				copy(cp, op.value)
-				entries[k] = cp
-			}
-		}
-	})
+	if bs.historyScanTestHook != nil {
+		bs.historyScanTestHook()
+	}
+
+	// Merge the pre-scan overlay snapshot (authoritative — it is strictly newer
+	// than any committed Badger state): a delete masks a scanned row, a set
+	// overwrites it. History version keys are append-only-immutable, so an
+	// overlay set and a scanned row for the same key carry identical bytes.
+	for k := range overlayDeletes {
+		delete(entries, k)
+	}
+	for k, v := range overlay {
+		entries[k] = v
+	}
 
 	if len(entries) == 0 {
 		return nil, nil

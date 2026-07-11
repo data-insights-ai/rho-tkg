@@ -106,6 +106,31 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	// downstream. A post-write registry checkpoint failure still reports node
 	// errors, but the node rows are live and can be used by later batch ops.
 	var unavailableNodeIDs map[types.NodeID]struct{}
+
+	// Unique-constraint pre-check (ADR-0002 Stage D). Batch node creates land
+	// through PutNodesBatch, bypassing the standalone enforceUniqueForNode seam;
+	// enforce here under the batch's exclusive c.mu.Lock. Violating nodes (a
+	// value already held by committed state OR by an earlier create in this same
+	// batch) are removed from the create set, surfaced as failed ops, and seeded
+	// into unavailableNodeIDs so dependent rels short-circuit.
+	if b.g.hasUniqueConstraints.Load() && len(b.nodes) > 0 {
+		survivors, violators := b.g.partitionBatchNodesByUnique(b.nodes)
+		if len(violators) > 0 {
+			unavailableNodeIDs = make(map[types.NodeID]struct{}, len(violators))
+			for _, v := range violators {
+				syncPendingNodeResult(v.pn)
+				unavailableNodeIDs[v.id] = struct{}{}
+				result.Failed++
+				result.Errors = append(result.Errors, BatchError{
+					Op:  "AddNode",
+					ID:  types.EntityID(v.id),
+					Err: v.err,
+				})
+			}
+			b.nodes = survivors
+		}
+	}
+
 	if len(b.nodes) > 0 {
 		labelTokens, labelSnapshot, allocatedLabels, labelsLocked, err := b.g.getOrCreateBatchNodeLabelsWithSnapshot(b.nodes)
 		labelsFinished := !labelsLocked
@@ -230,7 +255,8 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 					b.g.publishEvent(eventspkg.EventNodeCreate, types.EntityID(pn.node.ID()), txNow, eventspkg.PriorityHigh)
 				}
 			}
-			if !nodesCommitted {
+			if !nodesCommitted && unavailableNodeIDs == nil {
+				// Preserve any unique-violation seeds already recorded above.
 				unavailableNodeIDs = make(map[types.NodeID]struct{}, len(b.nodes))
 			}
 			for _, pn := range b.nodes {

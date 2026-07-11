@@ -771,10 +771,22 @@ func ensureHighFrequencyIndexKind(store *BadgerStore, labelToken uint16, bucketS
 }
 
 // CreateVectorIndex creates a vector similarity index spanning all shards.
-// The index is maintained at the Store level (not per-shard).
+// The index is maintained at the Store level (not per-shard). The index
+// defaults to the approximate HNSW engine; use CreateVectorIndexWithOptions
+// for the brute-force escape hatch or HNSW tuning.
 // Scans existing nodes across all shards to populate the index.
 // Returns ErrVectorIndexExists on duplicate.
 func (ts *Store) CreateVectorIndex(labelToken uint16, propertyKey string, dims int, metric DistanceMetric) error {
+	return ts.CreateVectorIndexWithOptions(labelToken, propertyKey, dims, metric, storecontract.VectorIndexOptions{})
+}
+
+// CreateVectorIndexWithOptions is CreateVectorIndex with additional control
+// over the search engine (opts.UseBruteForce) and HNSW tuning (opts.M /
+// EfConstruction / EfSearch). A zero-value opts is identical to
+// CreateVectorIndex (documented HNSW defaults). The chosen engine/tuning is
+// persisted in the vector index definition file so a restart rebuilds the
+// SAME engine rather than silently reverting to the default.
+func (ts *Store) CreateVectorIndexWithOptions(labelToken uint16, propertyKey string, dims int, metric DistanceMetric, opts storecontract.VectorIndexOptions) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
 	}
@@ -787,6 +799,9 @@ func (ts *Store) CreateVectorIndex(labelToken uint16, propertyKey string, dims i
 	if err := indexpkg.ValidateVectorIndexConfig(dims, metric); err != nil {
 		return err
 	}
+	if err := indexpkg.ValidateVectorIndexOptions(opts); err != nil {
+		return err
+	}
 
 	key := indexpkg.VectorIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
 
@@ -796,6 +811,7 @@ func (ts *Store) CreateVectorIndex(labelToken uint16, propertyKey string, dims i
 		return ErrVectorIndexExists
 	}
 	vi := &indexpkg.VectorIndex{Dims: dims, Metric: metric, Mutated: make(map[snowflake.ID]struct{})}
+	indexpkg.ApplyVectorIndexOptions(vi, opts)
 	ts.vectorIndexes[key] = vi
 	ts.vectorIdxMu.Unlock()
 

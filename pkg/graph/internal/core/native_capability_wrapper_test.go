@@ -131,6 +131,23 @@ func (s *concreteFilteredVectorFaultStore) SearchNearestNodes(labelToken uint16,
 	return s.Store.SearchNearestNodes(labelToken, propertyKey, query, k, opts)
 }
 
+// concreteVectorIndexOptionsFaultStore embeds *memory.Store and overrides only
+// CreateVectorIndex (the mandatory VectorIndexCapability door). It inherits
+// CreateVectorIndexWithOptions directly from the embedded store, so it
+// mirrors a wrapper that adds fault injection / a different engine choice
+// on top of CreateVectorIndex but has no idea VectorIndexOptionsCapability
+// exists. If vectorIndexOptionsCapability failed to detect this shadowing,
+// a call through CreateVectorWithOptions would silently bypass the override
+// via the embedded CreateVectorIndexWithOptions method.
+type concreteVectorIndexOptionsFaultStore struct {
+	*memory.Store
+	err error
+}
+
+func (s *concreteVectorIndexOptionsFaultStore) CreateVectorIndex(labelToken uint16, propertyKey string, dims int, metric storepkg.DistanceMetric) error {
+	return s.err
+}
+
 type concretePropertyQueryFaultStore struct {
 	*memory.Store
 	err  error
@@ -557,6 +574,38 @@ func (s *directVectorSearchStore) DropVectorIndex(labelToken uint16, propertyKey
 
 func (s *directVectorSearchStore) SearchNearestNodes(labelToken uint16, propertyKey string, query []float32, k int, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	return s.searchVec(labelToken, propertyKey, query, k, opts)
+}
+
+// directVectorIndexOptionsFaultStore declares CreateVectorIndexWithOptions
+// itself (not via an embedded in-tree store), mirroring an out-of-tree
+// backend that implements the capability directly. vectorIndexOptionsCapability
+// must keep it enabled.
+type directVectorIndexOptionsFaultStore struct {
+	storepkg.MandatoryStore
+	createVec      func(uint16, string, int, storepkg.DistanceMetric) error
+	dropVec        func(uint16, string) error
+	searchVec      func(uint16, string, []float32, int, storepkg.QueryOpts) ([]*types.Node, error)
+	optsErr        error
+	lastOpts       storepkg.VectorIndexOptions
+	lastOptsCalled bool
+}
+
+func (s *directVectorIndexOptionsFaultStore) CreateVectorIndex(labelToken uint16, propertyKey string, dims int, metric storepkg.DistanceMetric) error {
+	return s.createVec(labelToken, propertyKey, dims, metric)
+}
+
+func (s *directVectorIndexOptionsFaultStore) DropVectorIndex(labelToken uint16, propertyKey string) error {
+	return s.dropVec(labelToken, propertyKey)
+}
+
+func (s *directVectorIndexOptionsFaultStore) SearchNearestNodes(labelToken uint16, propertyKey string, query []float32, k int, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	return s.searchVec(labelToken, propertyKey, query, k, opts)
+}
+
+func (s *directVectorIndexOptionsFaultStore) CreateVectorIndexWithOptions(labelToken uint16, propertyKey string, dims int, metric storepkg.DistanceMetric, opts storepkg.VectorIndexOptions) error {
+	s.lastOpts = opts
+	s.lastOptsCalled = true
+	return s.optsErr
 }
 
 func TestCapabilityReflectionHelpersDetectPromotedNativeMethods(t *testing.T) {
@@ -1093,6 +1142,61 @@ func TestFilteredVectorSearch_AllowsDirectExternalCapability(t *testing.T) {
 	_, err = g.Index.SearchNearest("Doc", "embedding", []float32{1, 0}, 1, storepkg.QueryOpts{ValidAt: n.Temporal().TxFrom})
 	if !errors.Is(err, injected) {
 		t.Fatalf("SearchNearest err = %v, want direct filtered vector fault", err)
+	}
+}
+
+func TestVectorIndexOptions_IgnoresConcreteMemoryWrapper(t *testing.T) {
+	t.Parallel()
+	injected := errors.New("synthetic vector index options fault")
+	fs := &concreteVectorIndexOptionsFaultStore{Store: memory.New(), err: injected}
+	if _, ok := any(fs).(storepkg.VectorIndexOptionsCapability); !ok {
+		t.Fatal("test wrapper must inherit VectorIndexOptionsCapability from memory.Store")
+	}
+	g, err := New(Config{Store: fs})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+	if g.vectorIndexOptions != nil {
+		t.Fatal("concrete wrapper must not enable the vector index options fast path")
+	}
+
+	err = g.Index.CreateVectorWithOptions("Doc", "embedding", 2, storepkg.DistanceEuclidean, storepkg.VectorIndexOptions{M: 8})
+	if !errors.Is(err, injected) {
+		t.Fatalf("CreateVectorWithOptions err = %v, want injected CreateVectorIndex fault (fallback path)", err)
+	}
+}
+
+func TestVectorIndexOptions_AllowsDirectExternalCapability(t *testing.T) {
+	t.Parallel()
+	ms := memory.New()
+	fs := &directVectorIndexOptionsFaultStore{
+		MandatoryStore: ms,
+		createVec:      ms.CreateVectorIndex,
+		dropVec:        ms.DropVectorIndex,
+		searchVec:      ms.SearchNearestNodes,
+	}
+	if _, ok := any(fs).(storepkg.VectorIndexOptionsCapability); !ok {
+		t.Fatal("test store must satisfy VectorIndexOptionsCapability directly")
+	}
+	g, err := New(Config{Store: fs})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+	if g.vectorIndexOptions == nil {
+		t.Fatal("direct external vector index options capability must remain enabled")
+	}
+
+	opts := storepkg.VectorIndexOptions{UseBruteForce: true, M: 8, EfConstruction: 50, EfSearch: 10}
+	if err := g.Index.CreateVectorWithOptions("Doc", "embedding", 2, storepkg.DistanceEuclidean, opts); err != nil {
+		t.Fatalf("CreateVectorWithOptions: %v", err)
+	}
+	if !fs.lastOptsCalled {
+		t.Fatal("CreateVectorIndexWithOptions was not invoked on the direct external capability")
+	}
+	if fs.lastOpts != opts {
+		t.Fatalf("CreateVectorIndexWithOptions received opts = %+v, want %+v", fs.lastOpts, opts)
 	}
 }
 

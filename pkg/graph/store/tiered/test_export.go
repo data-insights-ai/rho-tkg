@@ -6,6 +6,8 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	"github.com/dgraph-io/badger/v4/options"
 )
@@ -205,4 +207,25 @@ func (ts *Store) OntologyForTest() *OntologyMapping { return ts.ontology }
 // (used by the repair tests).
 func HasIncomingEntryForTest(store *BadgerStore, nodeID, relID snowflake.ID) bool {
 	return hasIncomingEntry(store, nodeID, relID)
+}
+
+// VectorIndexOptionsForTest returns the engine/tuning options currently in
+// effect for the Store-level vector index at (labelToken, propertyKey) — i.e.
+// what CreateVectorIndexWithOptions actually applied — and whether the index
+// exists. Exported so callers outside this package (core, io, cross-backend
+// parity tests) can assert that a non-default VectorIndexOptions took effect
+// without reaching into the unexported vectorIndexes map. Not for production use.
+func (ts *Store) VectorIndexOptionsForTest(labelToken uint16, propertyKey string) (storecontract.VectorIndexOptions, bool) {
+	ts.vectorIdxMu.RLock()
+	defer ts.vectorIdxMu.RUnlock()
+	vi, ok := ts.vectorIndexes[indexpkg.VectorIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}]
+	if !ok {
+		return storecontract.VectorIndexOptions{}, false
+	}
+	return storecontract.VectorIndexOptions{
+		UseBruteForce:  vi.BruteForce,
+		M:              vi.HNSWM,
+		EfConstruction: vi.HNSWEfConstruction,
+		EfSearch:       vi.HNSWEfSearch,
+	}, true
 }

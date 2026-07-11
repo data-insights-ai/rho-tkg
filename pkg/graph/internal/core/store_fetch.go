@@ -84,6 +84,34 @@ func (c *Core) incomingRelIDsFromRows(nodeID types.NodeID, typeToken uint16, rel
 	return ids, nil
 }
 
+// relIDsFromNodeMapRows extracts relationship IDs from a per-node adjacency
+// map (OutgoingRelationshipsForNodes / IncomingRelationshipsForNodes), the
+// batched counterpart of outgoingRelIDsFromRows / incomingRelIDsFromRows.
+// Trust-aware: an untrusted backend is validated per-node (same map
+// validators the non-temporal OutgoingForNodes/IncomingForNodes doors use)
+// before IDs are extracted; the extracted IDs are seeds for a temporal
+// re-resolution, so no deep copy is needed here.
+func (c *Core) relIDsFromNodeMapRows(nodeIDs []types.NodeID, typeToken uint16, rows map[types.NodeID][]*types.Relationship, outgoing bool) ([]types.RelID, error) {
+	if !c.storeRowsTrust {
+		var err error
+		if outgoing {
+			err = c.validateOutgoingRelationshipMap(nodeIDs, typeToken, rows)
+		} else {
+			err = c.validateIncomingRelationshipMap(nodeIDs, typeToken, rows)
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	ids := make([]types.RelID, 0, len(rows))
+	for _, rels := range rows {
+		for _, r := range rels {
+			ids = append(ids, r.ID())
+		}
+	}
+	return ids, nil
+}
+
 func (c *Core) getCurrentNode(id types.NodeID) (*types.Node, error) {
 	n, err := c.store.GetNode(id)
 	if err != nil {
@@ -242,6 +270,14 @@ func (c *Core) nodeCountByLabelAndPropertyKey(tok uint16, propertyKey string) (i
 		return 0, err
 	}
 	return count, nil
+}
+
+func (c *Core) nodePropertyStats(tok uint16, propertyKey string) (storepkg.PropertyStats, error) {
+	stats, ok := c.store.(storepkg.NodePropertyStatsCapability)
+	if !ok {
+		return storepkg.PropertyStats{}, storepkg.ErrCapabilityNotSupported
+	}
+	return stats.NodePropertyStats(tok, propertyKey)
 }
 
 func (c *Core) relCountByType(tok uint16) (int, error) {

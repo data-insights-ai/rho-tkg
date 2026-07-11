@@ -37,6 +37,11 @@ func (bs *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) erro
 	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
 		return err
 	}
+	if bs.propIdxOnDisk {
+		if _, ok := bs.propKeyTokenFor(propertyKey); !ok {
+			return fmt.Errorf("graph: create property index: property-key registry required for PropertyIndexOnDisk: %w", ErrInvalidStoreMutation)
+		}
+	}
 
 	// Phase 1: Install empty live index + snapshot IDs under write Lock.
 	// Write lock (not RLock) ensures the index is visible to concurrent mutations.
@@ -59,8 +64,10 @@ func (bs *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) erro
 
 	// Phase 2: Fetch node data OUTSIDE any lock. Builds a backfill index for
 	// nodes that existed before Phase 1 without the defensive copy required by
-	// the public GetNode boundary.
+	// the public GetNode boundary. Disk mode collects writeOps instead of
+	// populating a RAM PropertyIndex's Entries map.
 	backfill := indexpkg.NewPropertyIndex()
+	var diskOps []writeOp
 	for _, nid := range nids {
 		n, err := bs.prefetchNode(nid)
 		if err != nil {
@@ -73,9 +80,17 @@ func (bs *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) erro
 			bs.idxMu.Unlock()
 			return fmt.Errorf("graph: create property index: %w", err)
 		}
-		if valueKey, found := n.IndexablePropertyValueKey(propertyKey); found {
-			backfill.AddKey(nid.SnowflakeID(), valueKey)
+		valueKey, found := n.IndexablePropertyValueKey(propertyKey)
+		if !found {
+			continue
 		}
+		if bs.propIdxOnDisk {
+			if op, ok := bs.propertyIndexDiskOp(propertyKey, valueKey, nid.SnowflakeID(), writeOpSet); ok {
+				diskOps = append(diskOps, op)
+			}
+			continue
+		}
+		backfill.AddKey(nid.SnowflakeID(), valueKey)
 	}
 
 	// Phase 3: Merge backfill into live index under write Lock.
@@ -85,6 +100,24 @@ func (bs *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) erro
 	if err := requirePropertyIndexCurrentForCreate(bs.propertyIndexes, key, liveIdx); err != nil {
 		bs.idxMu.Unlock()
 		return err
+	}
+	if bs.propIdxOnDisk {
+		var ops []writeOp
+		for _, op := range diskOps {
+			id := storepkg.PropertyIndexNodeIDFromKey(op.key)
+			if _, mutated := liveIdx.Mutated[id]; mutated {
+				continue // concurrent write handled this ID during Phase 2
+			}
+			if _, alive := bs.nodeIDs[types.NodeID(id)]; !alive {
+				continue // node deleted during Phase 2
+			}
+			ops = append(ops, op)
+		}
+		liveIdx.Mutated = nil // stop tracking — index creation complete
+		bs.persistPropertyIndexDefs()
+		bs.appendOps(ops...)
+		bs.idxMu.Unlock()
+		return bs.flushIfNeeded()
 	}
 	for vk, idSet := range backfill.Entries {
 		for id := range idSet {
@@ -125,10 +158,34 @@ func (bs *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error 
 		bs.idxMu.Unlock()
 		return ErrIndexNotFound
 	}
-
 	delete(bs.propertyIndexes, key)
+
+	// Disk mode: on-disk rows are shared across every definition indexing the
+	// SAME PropertyKey (regardless of label — see badgerstore_property_disk.go's
+	// file doc comment), so only physically purge them once no OTHER active
+	// definition still references propertyKey.
+	var purgeOps []writeOp
+	var purgeErr error
+	if bs.propIdxOnDisk {
+		stillReferenced := false
+		for k := range bs.propertyIndexes {
+			if k.PropertyKey == propertyKey {
+				stillReferenced = true
+				break
+			}
+		}
+		if !stillReferenced {
+			purgeOps, purgeErr = bs.purgePropertyKeyDiskEntriesLocked(propertyKey)
+		}
+	}
 	bs.persistPropertyIndexDefs()
+	if len(purgeOps) > 0 {
+		bs.appendOps(purgeOps...)
+	}
 	bs.idxMu.Unlock()
+	if purgeErr != nil {
+		return purgeErr
+	}
 	return bs.flushIfNeeded()
 }
 
@@ -139,11 +196,27 @@ type propIdxDef struct {
 }
 
 // vectorIdxDef is the serialization format for vector index definitions.
+// UseBruteForce/M/EfConstruction/EfSearch are additive: a def
+// written before these fields existed decodes them to zero, which is
+// exactly "default HNSW with default tuning" — backward compatible.
 type vectorIdxDef struct {
-	LabelToken  uint16         `msgpack:"l"`
-	PropertyKey string         `msgpack:"p"`
-	Dims        int            `msgpack:"d"`
-	Metric      DistanceMetric `msgpack:"m"`
+	LabelToken     uint16         `msgpack:"l"`
+	PropertyKey    string         `msgpack:"p"`
+	Dims           int            `msgpack:"d"`
+	Metric         DistanceMetric `msgpack:"m"`
+	UseBruteForce  bool           `msgpack:"bf,omitempty"`
+	M              int            `msgpack:"hm,omitempty"`
+	EfConstruction int            `msgpack:"efc,omitempty"`
+	EfSearch       int            `msgpack:"efs,omitempty"`
+}
+
+func (d vectorIdxDef) vectorIndexOptions() storecontract.VectorIndexOptions {
+	return storecontract.VectorIndexOptions{
+		UseBruteForce:  d.UseBruteForce,
+		M:              d.M,
+		EfConstruction: d.EfConstruction,
+		EfSearch:       d.EfSearch,
+	}
 }
 
 // hfIdxDef is the serialization format for high-frequency temporal index definitions.
@@ -494,10 +567,22 @@ func (bs *Store) persistHighFrequencyIndexDefs() {
 }
 
 // CreateVectorIndex creates a vector similarity index for nodes with the given label token,
-// on the given property key, expecting vectors of length dims.
+// on the given property key, expecting vectors of length dims. The index
+// defaults to the approximate HNSW engine; use CreateVectorIndexWithOptions
+// for the brute-force escape hatch or HNSW tuning.
 // Scans existing nodes to populate the index. Returns ErrVectorIndexExists on duplicate.
 // Definitions are persisted and entries are rebuilt from node properties on startup.
 func (bs *Store) CreateVectorIndex(labelToken uint16, propertyKey string, dims int, metric DistanceMetric) error {
+	return bs.CreateVectorIndexWithOptions(labelToken, propertyKey, dims, metric, storecontract.VectorIndexOptions{})
+}
+
+// CreateVectorIndexWithOptions is CreateVectorIndex with additional control
+// over the search engine (opts.UseBruteForce) and HNSW tuning (opts.M /
+// EfConstruction / EfSearch). A zero-value opts is identical to
+// CreateVectorIndex (documented HNSW defaults). The chosen engine/tuning is
+// persisted alongside Dims/Metric so a restart rebuilds the SAME engine
+// (see vectorIdxDef) rather than silently reverting to the default.
+func (bs *Store) CreateVectorIndexWithOptions(labelToken uint16, propertyKey string, dims int, metric DistanceMetric, opts storecontract.VectorIndexOptions) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
@@ -510,6 +595,9 @@ func (bs *Store) CreateVectorIndex(labelToken uint16, propertyKey string, dims i
 	if err := indexpkg.ValidateVectorIndexConfig(dims, metric); err != nil {
 		return err
 	}
+	if err := indexpkg.ValidateVectorIndexOptions(opts); err != nil {
+		return err
+	}
 
 	key := indexpkg.VectorIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
 
@@ -520,6 +608,7 @@ func (bs *Store) CreateVectorIndex(labelToken uint16, propertyKey string, dims i
 		return ErrVectorIndexExists
 	}
 	vi := &indexpkg.VectorIndex{Dims: dims, Metric: metric, Mutated: make(map[snowflake.ID]struct{})}
+	indexpkg.ApplyVectorIndexOptions(vi, opts)
 	bs.vectorIndexes[key] = vi
 
 	// Snapshot only nodes carrying this label for population scan. Scanning
@@ -806,10 +895,14 @@ func (bs *Store) persistVectorIndexDefs() {
 			continue
 		}
 		defs = append(defs, vectorIdxDef{
-			LabelToken:  key.LabelToken,
-			PropertyKey: key.PropertyKey,
-			Dims:        idx.Dims,
-			Metric:      idx.Metric,
+			LabelToken:     key.LabelToken,
+			PropertyKey:    key.PropertyKey,
+			Dims:           idx.Dims,
+			Metric:         idx.Metric,
+			UseBruteForce:  idx.BruteForce,
+			M:              idx.HNSWM,
+			EfConstruction: idx.HNSWEfConstruction,
+			EfSearch:       idx.HNSWEfSearch,
 		})
 	}
 	if len(defs) == 0 {

@@ -36,8 +36,10 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 		{name: "DeleteWithContext", run: func() error { return nilAPI.Delete(ctx, id) }},
 		{name: "Import", run: func() error { _, err := nilAPI.Import(ctx, id, []string{"Node"}, nil); return err }},
 		{name: "AddByIDIfAbsent", run: func() error { _, _, err := nilAPI.AddByIDIfAbsent(ctx, id, []string{"Node"}, nil); return err }},
+		{name: "GetOrCreateByKey", run: func() error { _, _, err := nilAPI.GetOrCreateByKey(ctx, "Node", "name", "Ada", nil); return err }},
 		{name: "All", run: func() error { _, err := nilAPI.All(opts); return err }},
 		{name: "ForEach", run: func() error { return nilAPI.ForEach(opts, func(*types.Node) bool { return true }) }},
+		{name: "Iter", run: func() error { return drainNodeIter(nilAPI.Iter(ctx, opts)) }},
 		{name: "ByLabel", run: func() error { _, err := nilAPI.ByLabel("Node", opts); return err }},
 		{name: "ByLabelAndProperty", run: func() error { _, err := nilAPI.ByLabelAndProperty("Node", "name", "Ada", opts); return err }},
 		{name: "Count", run: func() error { _, err := nilAPI.Count(); return err }},
@@ -130,8 +132,10 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "DeleteWithContext", run: func() error { return api.Delete(ctx, id) }},
 		{name: "Import", run: func() error { _, err := api.Import(ctx, id, []string{"Node"}, nil); return err }},
 		{name: "AddByIDIfAbsent", run: func() error { _, _, err := api.AddByIDIfAbsent(ctx, id, []string{"Node"}, nil); return err }},
+		{name: "GetOrCreateByKey", run: func() error { _, _, err := api.GetOrCreateByKey(ctx, "Node", "name", "Ada", nil); return err }},
 		{name: "All", run: func() error { _, err := api.All(opts); return err }},
 		{name: "ForEach", run: func() error { return api.ForEach(opts, func(*types.Node) bool { return true }) }},
+		{name: "Iter", run: func() error { return drainNodeIter(api.Iter(ctx, opts)) }},
 		{name: "ByLabel", run: func() error { _, err := api.ByLabel("Node", opts); return err }},
 		{name: "ByLabelAndProperty", run: func() error { _, err := api.ByLabelAndProperty("Node", "name", "Ada", opts); return err }},
 		{name: "Count", run: func() error { _, err := api.Count(); return err }},
@@ -184,7 +188,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 	wantCalls := []string{
 		"Add", "Add", "AddWithTx", "Get", "Get", "GetByIDs",
 		"Update", "Update", "UpdateInPlace", "UpdateInPlace",
-		"Delete", "Delete", "Import", "AddByIDIfAbsent", "All", "ForEach", "ByLabel", "ByLabelAndProperty",
+		"Delete", "Delete", "Import", "AddByIDIfAbsent", "GetOrCreateByKey", "All", "ForEach", "ForEach", "ByLabel", "ByLabelAndProperty",
 		"Count", "CountByLabel", "SetProperty", "DeleteProperty",
 		"CompareAndSetProperty", "CompareAndSetProperty",
 		"AddLabel", "RemoveLabel", "CloseVersion", "History", "VersionAfter", "VersionBefore",
@@ -310,6 +314,11 @@ func (s *nodeOpsSpy) Import(ctx context.Context, id types.NodeID, labels []strin
 func (s *nodeOpsSpy) AddByIDIfAbsent(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, bool, error) {
 	s.record("AddByIDIfAbsent")
 	s.lastID = id
+	return nil, false, s.err
+}
+
+func (s *nodeOpsSpy) GetOrCreateByKey(ctx context.Context, label, propertyKey string, value any, extraProps map[string]any) (*types.Node, bool, error) {
+	s.record("GetOrCreateByKey")
 	return nil, false, s.err
 }
 

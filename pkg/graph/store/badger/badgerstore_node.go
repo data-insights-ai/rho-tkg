@@ -65,7 +65,7 @@ func (bs *Store) PutNode(n *types.Node) error {
 	}
 
 	bs.addNodePropertyKeyCounts(n)
-	indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, n, id)
+	ops = append(ops, bs.maintainPropertyIndexesAdd(n, id)...)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, n, id)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, n, id)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
@@ -386,7 +386,7 @@ func (bs *Store) DeleteNode(nid types.NodeID) error {
 	}
 
 	bs.removeNodePropertyKeyCounts(n)
-	indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, n, id)
+	ops = append(ops, bs.maintainPropertyIndexesRemove(n, id)...)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, n, id)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, n, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, n, id)
@@ -459,7 +459,7 @@ func (bs *Store) ReplaceNode(n *types.Node) error {
 
 	// Update property, temporal, and vector indexes: remove old entries, add new.
 	bs.removeNodePropertyKeyCounts(old)
-	indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, old, id)
+	ops := bs.maintainPropertyIndexesRemove(old, id)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
@@ -467,14 +467,15 @@ func (bs *Store) ReplaceNode(n *types.Node) error {
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(n)
 	bs.bumpNodeRevLocked(nid)
 	bs.addNodePropertyKeyCounts(n)
-	indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, n, id)
+	ops = append(ops, bs.maintainPropertyIndexesAdd(n, id)...)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, n, id)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, n, id)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
 		bs.idxMu.Unlock()
 		return err
 	}
-	bs.appendOps(writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data})
+	ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data})
+	bs.appendOps(ops...)
 	logErr := bs.logNodePut(n, false)
 	bs.idxMu.Unlock()
 
@@ -537,7 +538,7 @@ func (bs *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 
 	// Update property, temporal, and vector indexes using the current old node state.
 	bs.removeNodePropertyKeyCounts(old)
-	indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, old, id)
+	ops := bs.maintainPropertyIndexesRemove(old, id)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
@@ -558,7 +559,7 @@ func (bs *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
 	bs.bumpNodeRevLocked(nid)
 	bs.addNodePropertyKeyCounts(updatedNode)
-	indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, updatedNode, id)
+	ops = append(ops, bs.maintainPropertyIndexesAdd(updatedNode, id)...)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, updatedNode, id)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
@@ -567,10 +568,11 @@ func (bs *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 	}
 
 	// Queue: set node data + delete label index entry.
-	bs.appendOps(
+	ops = append(ops,
 		writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data},
 		writeOp{opType: writeOpDelete, key: storepkg.LabelIndexKey(tok, id)},
 	)
+	bs.appendOps(ops...)
 	logErr := bs.logNodePut(updatedNode, false)
 	bs.idxMu.Unlock()
 
@@ -631,7 +633,7 @@ func (bs *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 	}
 
 	bs.removeNodePropertyKeyCounts(old)
-	indexpkg.RemoveNodeFromPropertyIndexes(bs.propertyIndexes, old, id)
+	ops := bs.maintainPropertyIndexesRemove(old, id)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
@@ -650,7 +652,7 @@ func (bs *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
 	bs.bumpNodeRevLocked(nid)
 	bs.addNodePropertyKeyCounts(updatedNode)
-	indexpkg.AddNodeToPropertyIndexes(bs.propertyIndexes, updatedNode, id)
+	ops = append(ops, bs.maintainPropertyIndexesAdd(updatedNode, id)...)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, updatedNode, id)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
@@ -658,10 +660,11 @@ func (bs *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 		return err
 	}
 
-	bs.appendOps(
+	ops = append(ops,
 		writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data},
 		writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tok, id)},
 	)
+	bs.appendOps(ops...)
 	logErr := bs.logNodePut(updatedNode, false)
 	bs.idxMu.Unlock()
 

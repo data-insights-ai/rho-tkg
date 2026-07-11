@@ -1,0 +1,35 @@
+name: Security scan
+
+# Weekly (and on-demand) gosec + govulncheck sweep. Deliberately NOT per-PR:
+# gosec carries a documented pre-existing baseline (~9 G115 findings) and has
+# no new-findings-only mode, and govulncheck alerts depend on the vulnerability
+# database, not on the PR's diff — a weekly run surfaces new advisories with
+# zero per-PR noise. Compare each run's output against the previous one; the
+# baseline is documented in the repo's contributor docs.
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: gosec
+        continue-on-error: true
+        run: gosec -quiet ./...
+      - name: govulncheck
+        continue-on-error: true
+        run: govulncheck ./...
+      - if: always()
+        run: |
+          echo "::notice::Findings are compared against the documented baseline (gosec ~9 G115s; one stdlib govulncheck advisory pending a Go patch). Anything beyond the baseline needs review."

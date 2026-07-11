@@ -25,6 +25,22 @@ func (ts *Store) shardForNode(primaryLabel uint16) *BadgerStore {
 	return s
 }
 
+// IsReferenceLabel reports whether the given label NAME is reference-class
+// (routed to the reference shard). Event-class labels — the default for any
+// label not in RefLabels — return false. Classification is by name so it does
+// not depend on label-token registration timing, and it consults the SAME
+// ontology the router uses (shardForNode), so a label's class is consistent
+// with where its entities live.
+//
+// The core layer uses this to decide whether a unique constraint on the label
+// can be enforced globally on tiered: reference entities all live on the
+// reference shard (+ its cold archive), so ref-shard uniqueness IS global
+// uniqueness; an event label's values are spread across unbounded time shards
+// with no global value index, so unique enforcement is not offered there.
+func (ts *Store) IsReferenceLabel(name string) bool {
+	return ts.ontology.ClassifyByName(name) == ClassReference
+}
+
 // shardForNodeID resolves which shard owns a node ID. It preserves the legacy
 // unpinned return contract for tests; production paths use shardForNodeIDChecked.
 func (ts *Store) shardForNodeID(id types.NodeID) (*BadgerStore, error) {

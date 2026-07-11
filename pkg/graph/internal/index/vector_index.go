@@ -59,8 +59,16 @@ type vectorEntry struct {
 	vec []float32
 }
 
-// VectorIndex is an in-memory brute-force k-nearest-neighbor index.
-// O(n × dims) per query. CreateVectorIndex rebuilds entries from current node properties.
+// VectorIndex is an in-memory k-nearest-neighbor index. By default it
+// searches through a pure-Go HNSW approximate graph (see hnsw.go); setting
+// BruteForce selects the exact O(n × dims)-per-query linear scan instead
+// (the documented CreateVectorIndex escape hatch for exact-recall needs —
+// VectorIndexOptions.UseBruteForce). CreateVectorIndex rebuilds entries
+// from current node properties; the HNSW graph (when enabled) is built
+// lazily on first Add/Remove from whatever entries already exist at that
+// point, so a VectorIndex constructed via a bare struct literal (existing
+// call sites across memory/badger/tiered are unchanged) transparently
+// defaults to HNSW with no code changes required at those call sites.
 type VectorIndex struct {
 	mu        sync.RWMutex
 	entries   []vectorEntry
@@ -68,6 +76,49 @@ type VectorIndex struct {
 	Dims      int
 	Metric    storepkg.DistanceMetric
 	Mutated   map[snowflake.ID]struct{} // non-nil during index creation backfill
+
+	// BruteForce selects the exact linear-scan engine instead of the
+	// default approximate HNSW engine. Zero value (false) = HNSW.
+	BruteForce bool
+	// HNSW tuning knobs (ignored when BruteForce is true). Zero selects
+	// the documented default (DefaultHNSWM / DefaultHNSWEfConstruction /
+	// DefaultHNSWEfSearch in hnsw.go).
+	HNSWM              int
+	HNSWEfConstruction int
+	HNSWEfSearch       int
+
+	hnsw *hnswGraph // lazily built on first Add/Remove; nil when BruteForce
+}
+
+// ApplyVectorIndexOptions carries the additive engine-choice fields from a
+// storepkg.VectorIndexOptions onto a freshly constructed VectorIndex. Every
+// in-tree backend (memory/badger/tiered) still builds the Dims/Metric/
+// Mutated fields itself (unchanged construction shape) and calls this to
+// apply the CreateVectorIndex "default HNSW, brute-force escape hatch"
+// contract identically across all three.
+func ApplyVectorIndexOptions(vi *VectorIndex, opts storepkg.VectorIndexOptions) {
+	if vi == nil {
+		return
+	}
+	vi.BruteForce = opts.UseBruteForce
+	vi.HNSWM = opts.M
+	vi.HNSWEfConstruction = opts.EfConstruction
+	vi.HNSWEfSearch = opts.EfSearch
+}
+
+// ValidateVectorIndexOptions checks HNSW tuning fields. Negative values are
+// rejected; zero selects the documented default.
+func ValidateVectorIndexOptions(opts storepkg.VectorIndexOptions) error {
+	if opts.M < 0 {
+		return fmt.Errorf("%w: M must be >= 0, got %d", ErrInvalidVectorIndexConfig, opts.M)
+	}
+	if opts.EfConstruction < 0 {
+		return fmt.Errorf("%w: EfConstruction must be >= 0, got %d", ErrInvalidVectorIndexConfig, opts.EfConstruction)
+	}
+	if opts.EfSearch < 0 {
+		return fmt.Errorf("%w: EfSearch must be >= 0, got %d", ErrInvalidVectorIndexConfig, opts.EfSearch)
+	}
+	return nil
 }
 
 // NodeVectorIndexUpdate is a prevalidated vector-index write for one node.
@@ -146,14 +197,62 @@ func (vi *VectorIndex) addLocked(id snowflake.ID, vec []float32, owned bool) err
 	}
 
 	vi.ensurePositionsLocked()
+	vi.ensureHNSWLocked()
+
 	if i, ok := vi.positions[id]; ok {
 		vi.entries[i].vec = vec
+		if vi.hnsw != nil {
+			// An update is a remove-then-insert at the HNSW level (the
+			// graph has no in-place vector-update primitive): tombstone
+			// the stale node, then either fold the new vector into the
+			// same rebuild the tombstone may have triggered, or insert it
+			// directly into the still-current graph.
+			if vi.hnsw.removeLocked(id) {
+				vi.rebuildHNSWLocked()
+			} else {
+				vi.hnsw.insert(id, vec)
+			}
+		}
 		return nil
 	}
 
 	vi.positions[id] = len(vi.entries)
 	vi.entries = append(vi.entries, vectorEntry{id: id, vec: vec})
+	if vi.hnsw != nil {
+		vi.hnsw.insert(id, vec)
+	}
 	return nil
+}
+
+// ensureHNSWLocked lazily builds the HNSW graph from whatever entries
+// already exist the first time an Add/Remove call needs it. Callers must
+// hold vi.mu (write lock) and must call this AFTER ensurePositionsLocked so
+// the initial build sees the deduplicated, canonical entry set. No-op when
+// BruteForce is set or the graph is already built.
+func (vi *VectorIndex) ensureHNSWLocked() {
+	if vi.BruteForce || vi.hnsw != nil {
+		return
+	}
+	g := newHNSWGraph(vi.Metric, vi.HNSWM, vi.HNSWEfConstruction, vi.HNSWEfSearch)
+	for _, e := range vi.entries {
+		g.insert(e.id, e.vec)
+	}
+	vi.hnsw = g
+}
+
+// rebuildHNSWLocked replaces the HNSW graph with a fresh one built from the
+// CURRENT vi.entries (i.e. with all tombstones gone). Triggered when the
+// tombstone/live ratio crosses hnswRebuildTombstoneRatio (see
+// hnswGraph.removeLocked). The rebuild resets the level-assignment RNG to
+// the same fixed seed and replays vi.entries in their current slice order —
+// deterministic given that order (see hnsw.go doc comment), not a
+// continuation of the original insertion RNG stream.
+func (vi *VectorIndex) rebuildHNSWLocked() {
+	g := newHNSWGraph(vi.Metric, vi.HNSWM, vi.HNSWEfConstruction, vi.HNSWEfSearch)
+	for _, e := range vi.entries {
+		g.insert(e.id, e.vec)
+	}
+	vi.hnsw = g
 }
 
 func (vi *VectorIndex) ensurePositionsLocked() {
@@ -184,6 +283,7 @@ func (vi *VectorIndex) Remove(id snowflake.ID) {
 	defer vi.mu.Unlock()
 
 	vi.ensurePositionsLocked()
+	vi.ensureHNSWLocked()
 	if i, ok := vi.positions[id]; ok {
 		lastIdx := len(vi.entries) - 1
 		last := vi.entries[lastIdx]
@@ -193,6 +293,9 @@ func (vi *VectorIndex) Remove(id snowflake.ID) {
 		delete(vi.positions, id)
 		if i != lastIdx {
 			vi.positions[last.id] = i
+		}
+		if vi.hnsw != nil && vi.hnsw.removeLocked(id) {
+			vi.rebuildHNSWLocked()
 		}
 		if vi.Mutated != nil {
 			vi.Mutated[id] = struct{}{}
@@ -267,10 +370,19 @@ func (vi *VectorIndex) IDs() []snowflake.ID {
 // k-best set. By filtering BEFORE the heap insertion, the heap always
 // contains the top-k of the eligible-only set.
 //
-// Non-nil filters are invoked after snapshotting entries, without holding the
-// vector index lock. Store-backed filters may need store/index locks, and
-// holding the vector lock while calling them would invert the mutation order
-// used by backends (store lock -> vector lock).
+// Non-nil filters are invoked after snapshotting entries (or, on the HNSW
+// path, after snapshotting the over-fetched candidate list), without
+// holding the vector index lock. Store-backed filters may need store/index
+// locks, and holding the vector lock while calling them would invert the
+// mutation order used by backends (store lock -> vector lock).
+//
+// When the index is running its default HNSW engine (BruteForce == false),
+// results are approximate — see CLAUDE.md "Vector Indexes" for the
+// documented recall target. A filtered search over-fetches
+// hnswOverfetchFactor times its effective ef worth of candidates before
+// applying filter; if fewer than k survive, it falls back to an exact
+// brute-force scan of every entry (with the same filter) so a highly
+// selective filter never silently under-returns.
 func (vi *VectorIndex) SearchNearest(query []float32, k int, filter func(snowflake.ID) bool) ([]snowflake.ID, error) {
 	if vi == nil {
 		return nil, fmt.Errorf("%w: nil vector index", ErrInvalidVectorIndexConfig)
@@ -297,6 +409,35 @@ func (vi *VectorIndex) SearchNearest(query []float32, k int, filter func(snowfla
 		vi.mu.RUnlock()
 		return nil, nil
 	}
+	liveCount := len(vi.entries)
+
+	if vi.hnsw != nil && !vi.BruteForce {
+		if filter == nil {
+			ef := clampInt(vi.hnsw.searchEf(k), liveCount)
+			candidates := vi.hnsw.search(query, ef)
+			vi.mu.RUnlock()
+			return hnswResultIDs(candidates, k), nil
+		}
+
+		overFetch := clampInt(vi.hnsw.searchEf(k)*hnswOverfetchFactor, liveCount)
+		candidates := vi.hnsw.search(query, overFetch)
+		vi.mu.RUnlock()
+
+		ids := filterHNSWResults(candidates, filter, k)
+		if len(ids) >= k {
+			return ids, nil
+		}
+		// Fewer than k eligible candidates survived the over-fetch: fall
+		// back to an exhaustive brute-force scan (with the same filter)
+		// over every entry so a highly selective filter never
+		// under-returns relative to what a full scan would find.
+		vi.mu.RLock()
+		entries := make([]vectorEntry, len(vi.entries))
+		copy(entries, vi.entries)
+		vi.mu.RUnlock()
+		return vi.searchNearestEntries(query, k, filter, entries), nil
+	}
+
 	if filter == nil {
 		ids := vi.searchNearestEntries(query, k, nil, vi.entries)
 		vi.mu.RUnlock()
@@ -307,6 +448,48 @@ func (vi *VectorIndex) SearchNearest(query []float32, k int, filter func(snowfla
 	vi.mu.RUnlock()
 
 	return vi.searchNearestEntries(query, k, filter, entries), nil
+}
+
+// clampInt bounds n to max (n itself if n <= max). Used to keep an
+// over-fetch/ef request from allocating past what the index could possibly
+// return, even for a caller-supplied k as large as math.MaxInt.
+func clampInt(n, max int) int {
+	if n > max {
+		return max
+	}
+	return n
+}
+
+// hnswResultIDs extracts up to k IDs (candidates are already sorted
+// ascending by distance) from an HNSW search's output.
+func hnswResultIDs(candidates []hnswResult, k int) []snowflake.ID {
+	if len(candidates) > k {
+		candidates = candidates[:k]
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+	ids := make([]snowflake.ID, len(candidates))
+	for i, c := range candidates {
+		ids[i] = c.ID
+	}
+	return ids
+}
+
+// filterHNSWResults applies filter to an over-fetched HNSW candidate list
+// (already sorted ascending by distance), keeping at most k eligible IDs in
+// order. filter is invoked here, after the caller has released vi.mu.
+func filterHNSWResults(candidates []hnswResult, filter func(snowflake.ID) bool, k int) []snowflake.ID {
+	ids := make([]snowflake.ID, 0, k)
+	for _, c := range candidates {
+		if filter(c.ID) {
+			ids = append(ids, c.ID)
+			if len(ids) >= k {
+				break
+			}
+		}
+	}
+	return ids
 }
 
 func (vi *VectorIndex) searchNearestEntries(query []float32, k int, filter func(snowflake.ID) bool, entries []vectorEntry) []snowflake.ID {

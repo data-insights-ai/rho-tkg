@@ -228,9 +228,24 @@ func (i *IndexOps) DeleteHighFrequency(label string) error {
 
 // CreateVector creates a vector similarity index on the given label and property key.
 // dims is the expected vector dimension. metric selects the distance function.
+// The index defaults to the approximate HNSW engine (see
+// CLAUDE.md "Vector Indexes"); use CreateVectorWithOptions for the
+// brute-force escape hatch or HNSW tuning.
 // Resolves or creates the label token so the index applies to future matching nodes.
 // Returns ErrVectorIndexExists if the index already exists.
 func (i *IndexOps) CreateVector(label, propertyKey string, dims int, metric storepkg.DistanceMetric) error {
+	return i.CreateVectorWithOptions(label, propertyKey, dims, metric, storepkg.VectorIndexOptions{})
+}
+
+// CreateVectorWithOptions is CreateVector with additional control over the
+// search engine (opts.UseBruteForce) and HNSW tuning (opts.M /
+// EfConstruction / EfSearch). A zero-value opts is identical to
+// CreateVector (documented HNSW defaults). A backend that does not
+// implement storepkg.VectorIndexOptionsCapability falls back to
+// CreateVectorIndex (opts silently unavailable — the same "optional
+// acceleration" contract as FilteredVectorSearchCapability); every in-tree
+// backend (memory/badger/tiered) implements it.
+func (i *IndexOps) CreateVectorWithOptions(label, propertyKey string, dims int, metric storepkg.DistanceMetric, opts storepkg.VectorIndexOptions) error {
 	c := i.c
 	if err := c.checkWritable(); err != nil {
 		return err
@@ -243,6 +258,9 @@ func (i *IndexOps) CreateVector(label, propertyKey string, dims int, metric stor
 			return err
 		}
 		if err := indexpkg.ValidateVectorIndexConfig(dims, metric); err != nil {
+			return err
+		}
+		if err := indexpkg.ValidateVectorIndexOptions(opts); err != nil {
 			return err
 		}
 		cap, err := c.vectorIndexCap()
@@ -264,8 +282,14 @@ func (i *IndexOps) CreateVector(label, propertyKey string, dims int, metric stor
 				)
 			}
 		}()
+		var createErr error
+		if c.vectorIndexOptions != nil {
+			createErr = c.vectorIndexOptions.CreateVectorIndexWithOptions(tok, propertyKey, dims, metric, opts)
+		} else {
+			createErr = cap.CreateVectorIndex(tok, propertyKey, dims, metric)
+		}
 		err = c.restoreNewLabelIndexOnError(labelSnapshot, allocatedLabel, label,
-			cap.CreateVectorIndex(tok, propertyKey, dims, metric),
+			createErr,
 			func() error { return cap.DropVectorIndex(tok, propertyKey) },
 			storepkg.ErrVectorIndexNotFound,
 			storepkg.ErrVectorIndexExists,

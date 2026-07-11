@@ -316,6 +316,9 @@ func (c *Core) nodeAtLockedTx(id types.NodeID, validAt, txAt types.Instant) (*ty
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return nil, err
 	}
+	if err := c.checkNodePointCompaction(id, txAt); err != nil {
+		return nil, err
+	}
 	current, err := c.getCurrentNode(id)
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
@@ -341,11 +344,7 @@ func (c *Core) nodeAtLockedTx(id types.NodeID, validAt, txAt types.Instant) (*ty
 		chain = append(chain, current)
 	}
 
-	chain = filterNodeChainByTxAt(chain, txAt)
-	if len(chain) == 0 {
-		return nil, storepkg.ErrNoVersionValidAt
-	}
-	return c.resolveNodeVersionAt(chain, validAt)
+	return c.resolveNodeChain(chain, chainProbe{kind: probePoint, validAt: validAt, tx: txAt}, nil)
 }
 
 // RelAt returns the version of a relationship that was valid at the given instant.
@@ -395,6 +394,9 @@ func (c *Core) relAtLockedTx(id types.RelID, validAt, txAt types.Instant) (*type
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return nil, err
 	}
+	if err := c.checkRelPointCompaction(id, txAt); err != nil {
+		return nil, err
+	}
 	current, err := c.getCurrentRelationship(id)
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, err
@@ -418,11 +420,7 @@ func (c *Core) relAtLockedTx(id types.RelID, validAt, txAt types.Instant) (*type
 		chain = append(chain, current)
 	}
 
-	chain = filterRelChainByTxAt(chain, txAt)
-	if len(chain) == 0 {
-		return nil, storepkg.ErrNoVersionValidAt
-	}
-	return c.resolveRelVersionAt(chain, validAt)
+	return c.resolveRelChain(chain, chainProbe{kind: probePoint, validAt: validAt, tx: txAt}, nil)
 }
 
 // NeighborsAt returns all neighbor nodes reachable from nodeID via

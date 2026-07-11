@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := build
 
-.PHONY: build test test-v test-race test-integration bench bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large bench-compare cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker ci-docker check ci clean
+.PHONY: build test test-v test-race test-integration bench-types-footprint bench bench-baseline bench-check bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large bench-compare cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker ci-docker check ci clean
 
 BENCH_COUNT ?= 1
 BENCH_TIME ?= 1s
@@ -28,9 +28,31 @@ test-race:
 test-integration:
 	go test -count=1 -run Integration ./...
 
-# Run benchmarks (long-running, not short)
-bench:
+# Run the pkg/types memory-footprint / struct-size regression tests (renamed
+# from the historical "bench" target so that name is free for the bench/
+# suite below — these are ordinary `go test` assertions, not `testing.B`
+# benchmarks).
+bench-types-footprint:
 	go test -v -count=1 -run TestBench ./pkg/types/
+
+# Run the bench/ cross-backend performance suite (see bench/README.md).
+# Fixed -benchtime keeps a full run fast and reproducible; -count=1 is the
+# quick local/CI signal (bench-check below runs its own fresh comparison
+# pass under the same flags).
+bench:
+	go test -bench=. -benchmem -benchtime=0.3s -count=1 ./bench
+
+# Capture a per-machine baseline for bench-check. Baselines are never
+# committed (see .gitignore) — machine-specific, re-capture after any
+# hardware/load change or before starting a perf investigation.
+bench-baseline:
+	go test -bench=. -benchmem -benchtime=0.3s -count=1 -run '^$$' ./bench | tee bench/local-baseline.txt
+
+# Compare bench/local-baseline.txt against a fresh run via benchstat and
+# fail if any scenario regressed time by more than 15% (see
+# bench/bench-check.sh for the threshold logic and its documented rationale).
+bench-check:
+	./bench/bench-check.sh
 
 # Run graph performance baseline benchmarks for benchstat comparisons.
 bench-graph-baseline:

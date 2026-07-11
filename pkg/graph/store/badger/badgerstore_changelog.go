@@ -24,6 +24,34 @@ import (
 // memory stays bounded regardless of log length.
 const changeFeedPageSize = 256
 
+// ChangeLogSeqSource is an injectable store-global change-log LSN allocator. A
+// standalone badger Store owns its LSN counter (logSeq); a sharded owner (the
+// tiered store) injects ONE allocator via Config.ChangeLogSeqSource so every
+// shard draws change-log LSNs from a single monotonic sequence — the global
+// commit order the merged feed depends on. nil (the default) keeps the
+// self-owned counter, so standalone badger is byte-for-byte unchanged.
+type ChangeLogSeqSource interface {
+	// Next returns the next LSN. Called under the shard's wbMu, once per
+	// buffered record, so within one shard buffer order == LSN order.
+	Next() uint64
+	// Observe folds a durable watermark the shard read at open (its LastLSNKey)
+	// into the allocator's seed so the store-global sequence resumes strictly
+	// above every shard's persisted max. Idempotent and monotonic (a lower
+	// watermark never lowers the allocator).
+	Observe(watermark uint64)
+}
+
+// nextLSN mints the next change-log LSN, drawing from the injected store-global
+// allocator when one is present (tiered) or from the shard-local logSeq
+// otherwise (standalone). Called only under wbMu, so the mint is serialized
+// with record buffering.
+func (bs *Store) nextLSN() uint64 {
+	if bs.logSeqSource != nil {
+		return bs.logSeqSource.Next()
+	}
+	return bs.logSeq.Add(1)
+}
+
 // logChangeRaw buffers one change-log record for the next flush, assigning it a
 // monotonic LSN. It is a no-op when the change-log is disabled (zero overhead).
 //
@@ -46,7 +74,7 @@ func (bs *Store) logChangeRaw(tag storecontract.ChangeTag, payload []byte) {
 		bs.wbMu.Unlock()
 		return
 	}
-	lsn := bs.logSeq.Add(1)
+	lsn := bs.nextLSN()
 	bs.pendingLog = append(bs.pendingLog, pendingLogRecord{lsn: lsn, value: value})
 	bs.wbMu.Unlock()
 }
@@ -82,7 +110,7 @@ func (bs *Store) appendOpsLogged(tag storecontract.ChangeTag, payload []byte, op
 			// The entity ops still go to pending (data flows normally).
 			bs.scopeLog = append(bs.scopeLog, value)
 		} else {
-			lsn := bs.logSeq.Add(1)
+			lsn := bs.nextLSN()
 			bs.pendingLog = append(bs.pendingLog, pendingLogRecord{lsn: lsn, value: value})
 		}
 	}
@@ -217,7 +245,7 @@ func (bs *Store) clearAndReanchorChangeLog() error {
 
 	// 4. Write the fresh ChangeClear marker and overwrite LastLSNKey with the new
 	//    (still strictly monotonic) watermark, atomically.
-	lsn := bs.logSeq.Add(1)
+	lsn := bs.nextLSN()
 	value := storepkg.EncodeChangeValue(storecontract.ChangeClear, nil)
 	lsnBuf := make([]byte, 8)
 	binary.BigEndian.PutUint64(lsnBuf, lsn)
@@ -432,7 +460,7 @@ func (bs *Store) CommitLogScope() error {
 	bs.scopeLog = nil
 	bs.scopeActive = false
 	for _, value := range buffered {
-		lsn := bs.logSeq.Add(1)
+		lsn := bs.nextLSN()
 		bs.pendingLog = append(bs.pendingLog, pendingLogRecord{lsn: lsn, value: value})
 	}
 	bs.wbMu.Unlock()
@@ -498,6 +526,62 @@ func (bs *Store) ChangeLogEnabled() bool {
 		return false
 	}
 	return bs.logEnabled
+}
+
+// DisableChangeLog turns OFF change-log record production at runtime. It exists
+// for a sharded owner (the tiered store) that must fail the change-log closed
+// AFTER opening a shard with it enabled — specifically when the store-global
+// reseed watermark is unreadable and continuing to hand out LSNs would risk
+// reuse (ADR-0005 §2.1-reseed Problem 1). Called only at open, before any
+// concurrent mutation, so a plain flag flip under wbMu is race-free.
+func (bs *Store) DisableChangeLog() {
+	if bs == nil {
+		return
+	}
+	bs.wbMu.Lock()
+	bs.logEnabled = false
+	bs.wbMu.Unlock()
+}
+
+// EnableChangeLog re-enables change-log record production at runtime after a
+// DisableChangeLog fence has been cleared (tiered RecoverChangeLog). The shard
+// must have been opened with the change-log configured (writable, non-ReadOnly);
+// a shard opened without it stays off. Called only at recovery, before resuming
+// mutations, so a plain flag flip under wbMu is race-free.
+func (bs *Store) EnableChangeLog() {
+	if bs == nil {
+		return
+	}
+	bs.wbMu.Lock()
+	bs.logEnabled = bs.logConfigured
+	bs.wbMu.Unlock()
+}
+
+// EnableChangeLogWithSource (re)configures AND enables change-log record
+// production on this store at runtime, wiring in seq (the LSN allocator) and
+// onFlush (the post-flush watermark-persistence hook). Unlike EnableChangeLog
+// — which only restores production on a shard that was already opened WITH
+// the change-log configured, and stays a no-op otherwise ("a shard opened
+// without it stays off") — this brings a shard that was opened WITHOUT any
+// change-log wiring at all into full production. That gap is reachable for a
+// sharded owner (tiered): a shard opened while the owner's allocator was
+// poisoned never receives Config.ChangeLogSeqSource (the owner's badgerCfg
+// gates it on the allocator's poisoned state at open time), so a later
+// EnableChangeLog on that shard would be forever inert. Called only by the
+// owner's recovery path (tiered RecoverChangeLog), before resuming mutations
+// on that shard, so a plain field set under wbMu is race-free. No-op on a
+// ReadOnly store (mirrors the constructor invariant: logConfigured is never
+// true for a ReadOnly shard — it never mutates and never produces records).
+func (bs *Store) EnableChangeLogWithSource(seq ChangeLogSeqSource, onFlush func() error) {
+	if bs == nil || bs.readOnly {
+		return
+	}
+	bs.wbMu.Lock()
+	bs.logSeqSource = seq
+	bs.onChangeLogFlush = onFlush
+	bs.logConfigured = true
+	bs.logEnabled = true
+	bs.wbMu.Unlock()
 }
 
 // ChangeFeed returns up to limit committed records with LSN > afterLSN, in

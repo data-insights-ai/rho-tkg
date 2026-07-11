@@ -214,6 +214,18 @@ var VectorIndexDefsKey = MetaKey("vector_index_defs")
 // store" and is equivalent to version 1.
 var WireFormatVersionKey = MetaKey("wire_format_version")
 
+// PropertyIndexOnDiskBuiltKey marks that the persisted 0x0A property-index
+// keyspace has been backfilled from current node state at least once (a
+// single byte, value irrelevant — presence is the signal). Absent means a
+// fresh store, or an existing store having PropertyIndexOnDisk turned on for
+// the first time: the open path must scan current node state for every
+// existing property-index definition and write the corresponding disk rows
+// before serving reads, exactly once (mirrors the wire_format_version marker
+// pattern — stamped after a successful backfill so subsequent opens with the
+// flag still on skip the rescan and trust the keyspace ongoing maintenance
+// already kept in sync).
+var PropertyIndexOnDiskBuiltKey = MetaKey("property_index_on_disk_built")
+
 // LastLSNKey is the Badger key for the durable change-log watermark: a single
 // big-endian uint64 holding the highest LSN committed to the change-log. It is
 // written in the SAME WriteBatch as the change-log records it covers, so after

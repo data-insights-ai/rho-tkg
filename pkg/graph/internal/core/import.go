@@ -153,6 +153,68 @@ func (o *IOOps) Import(r io.Reader, opts tkgio.ImportOptions) error {
 		}
 		return err
 	}
+
+	// Post-replay unique-constraint validation (ADR-0002 Stage E, default-strict).
+	// The stream is untrusted: a violating stream must not leave the graph in a
+	// state the constraint forbids, so validate the replayed CURRENT state and
+	// roll the whole import back on a violation (matching the hash-mismatch
+	// rollback path). A trusted restore opts out via SkipUniqueValidation.
+	if !opts.SkipUniqueValidation {
+		if err := c.validateUniqueAfterImportLocked(); err != nil {
+			if rbErr := rollback.rollback(); rbErr != nil {
+				return fmt.Errorf("%w (rollback failed: %v)", err, rbErr)
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+// validateUniqueAfterImportLocked scans current nodes against every ACTIVE
+// unique constraint and returns ErrUniqueViolation on the first duplicate.
+// Caller holds c.mu.Lock. No-op when no constraints are registered.
+func (c *Core) validateUniqueAfterImportLocked() error {
+	if !c.hasUniqueConstraints.Load() {
+		return nil
+	}
+	c.uniqueMu.RLock()
+	type activeConstraint struct {
+		labelTok uint16
+		label    string
+		key      string
+	}
+	var active []activeConstraint
+	for labelTok, byKey := range c.uniqueConstraints {
+		for key, st := range byKey {
+			if !st.active {
+				continue
+			}
+			active = append(active, activeConstraint{labelTok: labelTok, label: st.label, key: key})
+		}
+	}
+	c.uniqueMu.RUnlock()
+
+	for _, ac := range active {
+		seen := make(map[string]types.NodeID)
+		nodes, err := c.store.NodesByLabel(ac.labelTok, storepkg.QueryOpts{})
+		if err != nil {
+			return fmt.Errorf("graph: import unique validation: %w", err)
+		}
+		for _, n := range nodes {
+			vk, found := n.IndexablePropertyValueKey(ac.key)
+			if !found || vk == "" {
+				continue
+			}
+			if isFloatValueKey(vk) {
+				return fmt.Errorf("%w: label %q key %q holds a float value", ErrUniqueUnsupportedType, ac.label, ac.key)
+			}
+			if first, ok := seen[vk]; ok {
+				return fmt.Errorf("%w: label %q key %q held by both node %d and node %d after import",
+					ErrUniqueViolation, ac.label, ac.key, first, n.ID())
+			}
+			seen[vk] = n.ID()
+		}
+	}
 	return nil
 }
 

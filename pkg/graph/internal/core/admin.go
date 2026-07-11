@@ -253,6 +253,15 @@ func (a *AdminOps) Reset() error {
 	if err := c.reapAsOfTagsForReset(); err != nil {
 		return err
 	}
+	if err := c.reapUniqueConstraintsForReset(); err != nil {
+		return err
+	}
+	if err := c.reapCompactionForReset(); err != nil {
+		return err
+	}
+	if err := c.reapUniqueForeverOwnersForReset(); err != nil {
+		return err
+	}
 	c.restoreOpCounters(opCounterSnapshot{})
 	return c.persistRegistries()
 }

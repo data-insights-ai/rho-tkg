@@ -56,13 +56,22 @@ type Core struct {
 	propertyQuery      storepkg.PropertyIndexCapability
 	propertyQueryTrust bool
 	filteredVector     storepkg.FilteredVectorSearchCapability
+	vectorIndexOptions storepkg.VectorIndexOptionsCapability
 	depthHistory       storepkg.DepthHistoryIterationCapability
 	deletedIter        storepkg.DeletedIterationCapability
 	deletedDepthIter   storepkg.DepthDeletedIterationCapability
 	changeFeed         storepkg.ChangeFeedCapability
 	changeLogEnabled   bool                      // store's change-log actually on (records emitted)
 	txLogScope         storepkg.TxChangeLogScope // per-tx record buffer (nil when off / unsupported)
-	readOnlyReplica    bool
+	// Metadata facet (ADR-0003) — durable arbitrary-KV + atomic history
+	// compaction. Both are bare optional capabilities (no wrapper-visibility
+	// dance): the store is fixed after New, so a nil handle is exactly the
+	// pre-consolidation "_, ok := c.store.(X) → !ok" decline, byte-for-byte.
+	// Resolved once here instead of at ~23 scattered call sites (the largest
+	// ad-hoc-assert sprawl STAGE 0 identified).
+	metaKV            storepkg.MetaKVCapability
+	historyCompaction storepkg.HistoryCompactionCapability
+	readOnlyReplica   bool
 	// allowTxBackfill enables the privileged transaction-time backfill door:
 	// when true, create doors honor a caller-supplied tkg_tx_from (or
 	// AddWithTx) instead of stamping c.now(), so a re-ingest can faithfully
@@ -100,12 +109,42 @@ type Core struct {
 	// map (asof_tags MetaKV entry) so concurrent TagAsOf/RemoveAsOfTag calls
 	// cannot lose updates. Taken only by the WRITERS; readers (ResolveAsOf /
 	// AsOfTags) are lock-free because MetaGet returns an atomic snapshot.
-	asofMu         sync.Mutex
-	registryDirty  atomic.Bool
-	relTypeCache   map[string]uint16
-	relTypeCacheMu sync.RWMutex
-	closeOnce      sync.Once
-	closed         atomic.Bool
+	asofMu sync.Mutex
+	// valueLocks stripes unique-property-constraint enforcement by
+	// (labelToken, keyToken, canonical value). Lock order: entity -> value ->
+	// idxMu (see internal/locks.ValueManager and CLAUDE.md).
+	valueLocks *locks.ValueManager
+	// uniqueMu guards the in-memory unique-constraint registry (uniqueConstraints).
+	// Read on every constrained write (fast-path gated by hasUniqueConstraints);
+	// written by CreateUnique / DropUnique / reset.
+	uniqueMu sync.RWMutex
+	// uniqueConstraints maps labelToken -> propertyKey -> constraint state.
+	// UniqueCurrent and UniqueForever scopes are implemented (UniqueValidOverlap
+	// is reserved). Durable copy lives in MetaKV under uniqueConstraintsMeta;
+	// this in-memory map is loaded at open and kept in sync by the write doors.
+	uniqueConstraints map[uint16]map[string]*uniqueConstraintState
+	// hasUniqueConstraints is the lock-free fast path: when false, the write
+	// doors skip the uniqueMu.RLock + enforcement entirely.
+	hasUniqueConstraints atomic.Bool
+	// uniqueOwners is the durable UniqueForever value-ownership registry
+	// (ADR-0002 Stage F): ownerKey(labelTok, propKey, valueKey) -> owning NodeID.
+	// A value once claimed is barred from every OTHER entity forever, across
+	// delete and reopen. Guarded by uniqueMu; durable copy lives in MetaKV under
+	// uniqueForeverOwnersMeta with a self-hash (loaded at open, reaped by Reset).
+	uniqueOwners map[string]types.NodeID
+	// compactedThroughTx is the graph-level history-compaction watermark
+	// (CompactedThroughTx = max over per-entity stubs of LastTrimmedTxTo),
+	// loaded from MetaKV at open and advanced by CompactHistory*. It is the
+	// lock-free fast gate for every temporal read: when it is 0 no compaction
+	// has ever run, so point/scan doors skip the per-entity stub probe entirely.
+	// A pin (TxAt / TxPin / txTime) at or above the watermark cannot require any
+	// trimmed version. See compaction.go.
+	compactedThroughTx atomic.Int64
+	registryDirty      atomic.Bool
+	relTypeCache       map[string]uint16
+	relTypeCacheMu     sync.RWMutex
+	closeOnce          sync.Once
+	closed             atomic.Bool
 
 	// clock is the time source used by every mutation path that stamps
 	// TxFrom / UpdatedAt / DeletedAt / event.Timestamp. Defaults to
@@ -189,6 +228,15 @@ var (
 	// edit (SetVersionInterval) instead.
 	ErrValidFromBeforePrevious = errors.New("graph: tkg_valid_from must be greater than previous version's effective ValidFrom")
 
+	// ErrConflictingTemporalOpts is returned by a generic query door
+	// (ByLabel / ByType / All and their property/vector siblings) when
+	// QueryOpts.TxPin is set together with any other temporal filter. TxPin is
+	// a pure knowledge-time belief-state pin (identical to NodesAsOf) and does
+	// NOT valid-time filter; combining it with ValidAt / ValidStart / ValidEnd
+	// (valid-time) or with TxAt (the combined bitemporal door) is contradictory,
+	// so the query fails loudly rather than silently mis-resolving.
+	ErrConflictingTemporalOpts = errors.New("graph: QueryOpts.TxPin is mutually exclusive with ValidAt / ValidStart / ValidEnd / TxAt")
+
 	// ErrTxBackfillDisabled is returned by a create door when a caller supplies
 	// a transaction-time override (tkg_tx_from property or AddWithTx) but the
 	// graph was not opened with Config.AllowTxBackfill. TxFrom is normally
@@ -210,6 +258,71 @@ var (
 	// ErrTooManyAsOfTags is returned by TagAsOf when the durable tag registry
 	// is at capacity (maxAsOfTags distinct names).
 	ErrTooManyAsOfTags = errors.New("graph: too many as-of tags")
+
+	// ErrUniqueViolation is returned by a create/update/label-add door when a
+	// write would make two current nodes carry the same value for a constrained
+	// (label, property). Wrapped with the label, key, and winning entity ID.
+	ErrUniqueViolation = errors.New("graph: unique constraint violation")
+
+	// ErrUniqueViolationExisting is returned by CreateUnique when existing data
+	// already contains duplicate values for the constrained (label, property);
+	// the constraint is NOT installed. Wrapped with up to five offender IDs.
+	ErrUniqueViolationExisting = errors.New("graph: unique constraint violated by existing data")
+
+	// ErrUniqueConstraintExists is returned by CreateUnique when a unique
+	// constraint already exists for the given (label, property).
+	ErrUniqueConstraintExists = errors.New("graph: unique constraint already exists")
+
+	// ErrUniqueConstraintNotFound is returned by DropUnique when no unique
+	// constraint exists for the given (label, property).
+	ErrUniqueConstraintNotFound = errors.New("graph: unique constraint not found")
+
+	// ErrUniqueUnsupportedType is returned when a unique constraint's key or an
+	// existing/incoming value is a floating-point type. Bit-pattern float
+	// equality makes value uniqueness user-hostile; int64/string/bool/temporal
+	// values are supported. Also returned for an unimplemented UniqueScope.
+	ErrUniqueUnsupportedType = errors.New("graph: unique constraint does not support this value/scope")
+
+	// ErrUniqueEventLabelUnsupported is returned by CreateUnique /
+	// CreateUniqueForever on a TIERED store when the constrained label is
+	// event-class. On tiered, reference-class entities all live on the reference
+	// shard, so a reference-label unique constraint enforces globally via the
+	// ref-shard property index; but an event label's values are spread across
+	// unbounded time shards with no global value index, so uniqueness cannot be
+	// enforced without a store-wide index that contradicts the shard-local
+	// design (ADR-0005 §3.5). This is a permanent correctness boundary, not
+	// deferred work. Distinct from the tiered store's ErrEventPropertyIndex so
+	// the caller sees a unique-specific message.
+	ErrUniqueEventLabelUnsupported = errors.New("graph: unique constraints on event-class labels are not supported on the tiered store")
+)
+
+// History-retention / compaction sentinels (ADR-0001).
+var (
+	// ErrHistoryCompacted is returned by a temporal read whose transaction-time
+	// pin (TxAt / TxPin / txTime for point doors; graph watermark for scans)
+	// falls before compacted knowledge, so the answer would require a trimmed
+	// version. The store never silently returns an incomplete result — the loss
+	// of answerability is explicit (ADR Decision 3).
+	ErrHistoryCompacted = errors.New("graph: history compacted below the requested transaction time")
+
+	// ErrCompactionProtectedTag is returned by CompactHistory* when a registered
+	// named as-of tag (§4.2) pins a knowledge time that the requested policy
+	// would trim. A registered tag is a promise that a knowledge state stays
+	// addressable; removing the tag first is the operator's explicit act
+	// (ADR Decision 4). No history is trimmed when this is returned.
+	ErrCompactionProtectedTag = errors.New("graph: compaction would strand a registered as-of tag; remove the tag first")
+
+	// ErrInvalidRetentionPolicy is returned when a RetentionPolicy has no bound
+	// set (both KeepVersions and KeepSince zero) or a negative bound. An empty
+	// policy is almost always a mistake, so compaction refuses it rather than
+	// trimming every entity down to its mandatory-minimum chain.
+	ErrInvalidRetentionPolicy = errors.New("graph: retention policy requires a positive KeepVersions or KeepSince bound")
+
+	// ErrCompactionChangeLogEnabled is returned when CompactHistory* runs on a
+	// graph with the change-log enabled. Compaction records / replica apply /
+	// delta interplay are a later stage (ADR Decision 5); refusing here keeps a
+	// replica from silently diverging from a compacted primary.
+	ErrCompactionChangeLogEnabled = errors.New("graph: history compaction is unavailable while the change-log is enabled (compaction + replication lands later)")
 )
 
 // Re-exports of registry errors and index errors used by methods on *Core.
@@ -304,18 +417,42 @@ type Config struct {
 	// relationship — the largest index maps). No migration needed.
 	// Ignored when Store is provided explicitly.
 	AdjacencyIndexOnDisk bool
-	// ValueLogFileSize / MemTableSize / BlockCacheSize / NumCompactors tune
-	// Badger's per-instance footprint for the store constructed from
-	// BadgerDir/BadgerInMemory. Zero keeps Badger's stock defaults (1GB vlog /
-	// 64MB memtable / 256MB block cache / 4 compactors). The defaults multiply
-	// per open instance, so these matter most when many stores share a process.
-	// Validated at construction: ValueLogFileSize [1MB, 2GB), MemTableSize
-	// [8MB, 1GB], BlockCacheSize >= 0, NumCompactors 0 or >= 2. Ignored when
-	// Store is provided explicitly.
+	// PropertyIndexOnDisk is the property-index sibling of LabelIndexOnDisk:
+	// entries created by g.Index().CreatePropertyIndex live in the
+	// badger-backed store's persisted 0x0A keyspace instead of its
+	// in-memory PropertyIndex.Entries/numBuckets maps. Unlike
+	// LabelIndexOnDisk/AdjacencyIndexOnDisk, the property-index keyspace is
+	// NEW (not written since inception), so an existing directory with
+	// prior property-index definitions is backfilled from current node
+	// state exactly once, the first time this flag is turned on. Ignored
+	// when Store is provided explicitly.
+	PropertyIndexOnDisk bool
+	// ValueLogFileSize / MemTableSize / BlockCacheSize / IndexCacheSize /
+	// NumCompactors tune Badger's per-instance footprint for the store
+	// constructed from BadgerDir/BadgerInMemory. Zero keeps Badger's stock
+	// defaults (1GB vlog / 64MB memtable / 256MB block cache / 0 index cache,
+	// i.e. indices kept resident uncached / 4 compactors). The defaults
+	// multiply per open instance, so these matter most when many stores share
+	// a process. Validated at construction: ValueLogFileSize [1MB, 2GB),
+	// MemTableSize [8MB, 1GB], BlockCacheSize >= 0, IndexCacheSize >= 0,
+	// NumCompactors 0 or >= 2. Ignored when Store is provided explicitly.
 	ValueLogFileSize int64
 	MemTableSize     int64
 	BlockCacheSize   int64
+	IndexCacheSize   int64
 	NumCompactors    int
+	// EncryptionKey / EncryptionKeyRotation enable AES encryption-at-rest on
+	// the badger-backed store constructed from BadgerDir/BadgerInMemory (see
+	// badger.Config for the length validation and the wrong-key/plaintext-dir
+	// failure modes). Encryption REQUIRES both BlockCacheSize > 0 and
+	// IndexCacheSize > 0 above (Badger panics at Open without the former, and
+	// on the first encrypted SSTable flush without the latter); New() fails
+	// closed with badger.ErrEncryptionRequiresBlockCache /
+	// badger.ErrEncryptionRequiresIndexCache instead of letting either panic
+	// escape. Ignored when Store is supplied explicitly (enable it on the
+	// injected store directly, e.g. badger.Config.EncryptionKey).
+	EncryptionKey         []byte
+	EncryptionKeyRotation time.Duration
 	// ChangeLog enables the durable, ordered change-log (op-log) on the
 	// badger-backed store constructed from BadgerDir/BadgerInMemory: every
 	// committed mutation appends a framed record tagged with a monotonic cluster
@@ -590,6 +727,27 @@ func filteredVectorSearchCapability(store storepkg.MandatoryStore) storepkg.Filt
 	return cap
 }
 
+func vectorIndexOptionsCapability(store storepkg.MandatoryStore) storepkg.VectorIndexOptionsCapability {
+	cap, ok := store.(storepkg.VectorIndexOptionsCapability)
+	if !ok {
+		return nil
+	}
+	// Same rationale as filteredVectorSearchCapability: a concrete wrapper
+	// that overrides CreateVectorIndex for fault injection, policy checks,
+	// or a different engine choice — but only inherits
+	// CreateVectorIndexWithOptions from an embedded native store — must not
+	// have that override silently bypassed by a direct call to the
+	// inherited method. Only trust the capability on an exact in-tree store
+	// or a wrapper that declares CreateVectorIndexWithOptions itself.
+	if isExactNativeStore(store) {
+		return cap
+	}
+	if embedsNativeCapability(store, reflect.TypeOf((*storepkg.VectorIndexOptionsCapability)(nil)).Elem(), "CreateVectorIndexWithOptions") {
+		return nil
+	}
+	return cap
+}
+
 func propertyQueryCapability(store storepkg.MandatoryStore) storepkg.PropertyIndexCapability {
 	cap, ok := store.(storepkg.PropertyIndexCapability)
 	if !ok {
@@ -755,15 +913,20 @@ func depthDeletedIterationCapability(store storepkg.MandatoryStore) storepkg.Dep
 // sharded backend, or tiered if it ever embedded a shard) would promote the
 // badger ChangeFeed methods and expose ONE shard's per-shard log as if it were
 // the cluster feed — force nil there so such a backend must implement a real
-// global feed itself. The current tiered.Store holds shards as named fields
-// (no promotion), so it already type-asserts false and declines the capability.
+// global feed itself. tiered.Store now provides a coherent store-global LSN
+// sequence via its OWN allocator (ADR-0005 §2 — not shard promotion): the
+// store-level changeLogAllocator hands every shard's record a store-global LSN,
+// and ForEachChange/ChangeFeed/LastCommittedLSN k-way merge the per-shard logs by
+// LSN behind a flush-before-read barrier. So tiered is admitted here alongside
+// the single-shard backends; the embedsNativeCapability reflection guard stays
+// for UNKNOWN future backends that merely embed a native shard.
 func changeFeedCapability(store storepkg.MandatoryStore) storepkg.ChangeFeedCapability {
 	cap, ok := store.(storepkg.ChangeFeedCapability)
 	if !ok {
 		return nil
 	}
 	switch store.(type) {
-	case *memory.Store, *badger.Store:
+	case *memory.Store, *badger.Store, *tiered.Store:
 		return cap
 	default:
 		if embedsNativeCapability(store, reflect.TypeOf((*storepkg.ChangeFeedCapability)(nil)).Elem(),
@@ -951,6 +1114,7 @@ func New(config Config) (*Core, error) {
 		nodeIDGen:       nodeGen,
 		relIDGen:        relGen,
 		entityLocks:     locks.NewManager(),
+		valueLocks:      locks.NewValueManager(),
 		validation:      v,
 		indexProviders:  make(map[string]*indexProviderEntry),
 		relTypeCache:    make(map[string]uint16),
@@ -982,21 +1146,25 @@ func New(config Config) (*Core, error) {
 	if store == nil {
 		if config.BadgerDir != "" || config.BadgerInMemory {
 			bs, err := badger.New(badger.Config{
-				Dir:                  config.BadgerDir,
-				InMemory:             config.BadgerInMemory,
-				SyncWrites:           config.SyncWrites,
-				Compression:          config.Compression,
-				ZSTDCompressionLevel: config.ZSTDCompressionLevel,
-				CacheCapacity:        config.CacheCapacity,
-				CacheBudgetBytes:     config.CacheBudgetBytes,
-				ResidentCache:        config.ResidentCache,
-				LabelIndexOnDisk:     config.LabelIndexOnDisk,
-				AdjacencyIndexOnDisk: config.AdjacencyIndexOnDisk,
-				ValueLogFileSize:     config.ValueLogFileSize,
-				MemTableSize:         config.MemTableSize,
-				BlockCacheSize:       config.BlockCacheSize,
-				NumCompactors:        config.NumCompactors,
-				ChangeLog:            config.ChangeLog,
+				Dir:                   config.BadgerDir,
+				InMemory:              config.BadgerInMemory,
+				SyncWrites:            config.SyncWrites,
+				Compression:           config.Compression,
+				ZSTDCompressionLevel:  config.ZSTDCompressionLevel,
+				CacheCapacity:         config.CacheCapacity,
+				CacheBudgetBytes:      config.CacheBudgetBytes,
+				ResidentCache:         config.ResidentCache,
+				LabelIndexOnDisk:      config.LabelIndexOnDisk,
+				AdjacencyIndexOnDisk:  config.AdjacencyIndexOnDisk,
+				PropertyIndexOnDisk:   config.PropertyIndexOnDisk,
+				ValueLogFileSize:      config.ValueLogFileSize,
+				MemTableSize:          config.MemTableSize,
+				BlockCacheSize:        config.BlockCacheSize,
+				IndexCacheSize:        config.IndexCacheSize,
+				NumCompactors:         config.NumCompactors,
+				EncryptionKey:         config.EncryptionKey,
+				EncryptionKeyRotation: config.EncryptionKeyRotation,
+				ChangeLog:             config.ChangeLog,
 			})
 			if err != nil {
 				return nil, fmt.Errorf("graph: badger store: %w", err)
@@ -1041,12 +1209,17 @@ func New(config Config) (*Core, error) {
 	c.propertyQuery = propertyQueryCapability(store)
 	c.propertyQueryTrust = isExactNativeStore(store)
 	c.filteredVector = filteredVectorSearchCapability(store)
+	c.vectorIndexOptions = vectorIndexOptionsCapability(store)
 	c.depthHistory = depthHistoryIterationCapability(store)
 	c.deletedIter = deletedIterationCapability(store)
 	c.changeFeed = changeFeedCapability(store)
 	c.changeLogEnabled = changeLogStatusEnabled(store)
 	c.txLogScope = txChangeLogScope(store, c.changeLogEnabled)
 	c.deletedDepthIter = depthDeletedIterationCapability(store)
+	// Metadata facet: bare optional-capability probes, resolved once (byte-for-byte
+	// equal to the former per-site `_, ok := c.store.(X)` since store is immutable).
+	c.metaKV, _ = store.(storepkg.MetaKVCapability)
+	c.historyCompaction, _ = store.(storepkg.HistoryCompactionCapability)
 	c.vectorRowsTrust = isExactNativeStore(store)
 	c.storeRowsTrust = isExactNativeStore(store)
 	c.nativeAdjacency = nativeAdjacencyReadsValidateNodeExistence(store)
@@ -1125,6 +1298,23 @@ func New(config Config) (*Core, error) {
 	}
 
 	c.runBitemporalMigrationBestEffort()
+
+	// Rehydrate the durable unique-constraint registry (fail closed on a corrupt
+	// MetaKV blob — a constraint silently dropped at open would let a duplicate
+	// slip in). Backends without MetaKV simply start with no constraints.
+	if err := c.loadUniqueConstraints(); err != nil {
+		return nil, err
+	}
+	if err := c.loadUniqueForeverOwners(); err != nil {
+		return nil, err
+	}
+
+	// Rehydrate the history-compaction watermark (ADR-0001). Fail closed on a
+	// corrupt blob — a silently-dropped watermark would let a scan below
+	// compacted knowledge return incomplete data as if complete.
+	if err := c.loadCompactionWatermark(); err != nil {
+		return nil, err
+	}
 
 	return c, nil
 }

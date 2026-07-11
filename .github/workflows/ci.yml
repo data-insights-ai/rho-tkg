@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: make vet
+      - run: make build
+      - run: make test-race
+
+  # Lint runs on pull requests only and is BLOCKING for findings introduced by
+  # the PR itself (only-new-issues). The repo carries a documented pre-existing
+  # baseline (~40 findings); scanning the whole tree on every push would only
+  # re-report that baseline, so push events skip lint entirely until the
+  # baseline is burned down.
+  lint:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          only-new-issues: true
+          args: --timeout=5m

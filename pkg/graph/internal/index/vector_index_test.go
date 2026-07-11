@@ -297,6 +297,46 @@ func TestValidateVectorIndexConfigRejectsInvalidValues(t *testing.T) {
 	}
 }
 
+func TestValidateVectorIndexOptionsRejectsInvalidValues(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		opts storepkg.VectorIndexOptions
+	}{
+		{name: "negative M", opts: storepkg.VectorIndexOptions{M: -1}},
+		{name: "negative EfConstruction", opts: storepkg.VectorIndexOptions{EfConstruction: -1}},
+		{name: "negative EfSearch", opts: storepkg.VectorIndexOptions{EfSearch: -1}},
+		{name: "all negative", opts: storepkg.VectorIndexOptions{M: -5, EfConstruction: -5, EfSearch: -5}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateVectorIndexOptions(tc.opts)
+			if !errors.Is(err, ErrInvalidVectorIndexConfig) {
+				t.Fatalf("ValidateVectorIndexOptions(%+v) = %v, want ErrInvalidVectorIndexConfig", tc.opts, err)
+			}
+			if !errors.Is(err, storepkg.ErrInvalidVectorIndexConfig) {
+				t.Fatalf("ValidateVectorIndexOptions(%+v) = %v, want public store ErrInvalidVectorIndexConfig", tc.opts, err)
+			}
+		})
+	}
+}
+
+func TestValidateVectorIndexOptionsAcceptsZeroAndPositiveValues(t *testing.T) {
+	t.Parallel()
+
+	cases := []storepkg.VectorIndexOptions{
+		{},
+		{UseBruteForce: true},
+		{M: 8, EfConstruction: 50, EfSearch: 10},
+	}
+	for _, opts := range cases {
+		if err := ValidateVectorIndexOptions(opts); err != nil {
+			t.Fatalf("ValidateVectorIndexOptions(%+v) = %v, want nil", opts, err)
+		}
+	}
+}
+
 func TestVectorIndexRejectsNonFiniteVectors(t *testing.T) {
 	t.Parallel()
 

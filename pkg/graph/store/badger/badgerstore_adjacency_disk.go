@@ -330,6 +330,20 @@ func (bs *Store) incomingIndexEntriesFromKeyspaceLocked() []IncomingIndexEntry {
 		}, true
 	}
 
+	// Snapshot the overlay (flushing ++ pending, pending visited last so it wins)
+	// BEFORE the Badger scan. The overlay is authoritative — strictly newer than
+	// committed Badger — so the scan only fills keys the overlay didn't resolve.
+	// Ordering closes the commit-window drop: a flush that commits a parked
+	// adjacency SET and clears `flushing` between a scan-first read's Badger
+	// snapshot and its overlay read would leave the edge in neither view, and the
+	// incoming-index repair would then DELETE a live edge. See lesson 64.
+	overlay := make(map[inKey]bool) // present (SET) / deleted (DELETE) per parked op
+	bs.rangePending(func(k string, op writeOp) {
+		if ik, ok := decode([]byte(k)); ok {
+			overlay[ik] = op.opType == writeOpSet
+		}
+	})
+
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
@@ -338,7 +352,9 @@ func (bs *Store) incomingIndexEntriesFromKeyspaceLocked() []IncomingIndexEntry {
 		prefix := []byte{storepkg.KeyIn}
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 			if ik, ok := decode(it.Item().Key()); ok {
-				merged[ik] = true
+				if _, resolved := overlay[ik]; !resolved {
+					merged[ik] = true
+				}
 			}
 		}
 		return nil
@@ -348,13 +364,11 @@ func (bs *Store) incomingIndexEntriesFromKeyspaceLocked() []IncomingIndexEntry {
 		return nil
 	}
 
-	// rangePending = flushing ++ pending (pending visited last wins on `merged`),
-	// so an adjacency op a concurrent flush is mid-committing is visible.
-	bs.rangePending(func(k string, op writeOp) {
-		if ik, ok := decode([]byte(k)); ok {
-			merged[ik] = op.opType == writeOpSet
-		}
-	})
+	// Apply the pre-scan overlay snapshot last so a parked delete masks a still-
+	// committed Badger row and a parked set is authoritative.
+	for ik, present := range overlay {
+		merged[ik] = present
+	}
 
 	entries := make([]IncomingIndexEntry, 0, len(merged))
 	for ik, present := range merged {

@@ -127,8 +127,48 @@ func (s *StatOps) NodeCountByLabelAndPropertyKey(label, propertyKey string) (int
 	return count, err
 }
 
+// PropertyStats returns NDV/min/max/count planner statistics for
+// (label, propertyKey). Missing labels return a zero-value PropertyStats
+// (Count 0, NDV 0, Min/Max nil), matching NodeCountByLabelAndPropertyKey's
+// "unregistered label → 0" convention. Backends without
+// store.NodePropertyStatsCapability return storepkg.ErrCapabilityNotSupported
+// (memory, badger, and tiered all implement it — see
+// docs/adr/0005-tiered-parity.md §3.1).
+func (s *StatOps) PropertyStats(label, propertyKey string) (storepkg.PropertyStats, error) {
+	c := s.c
+	if err := c.validateIndexLabel(label); err != nil {
+		return storepkg.PropertyStats{}, err
+	}
+	if err := storepkg.ValidateIndexPropertyKey(propertyKey); err != nil {
+		return storepkg.PropertyStats{}, err
+	}
+	c.mu.RLock()
+	if c.closed.Load() {
+		c.mu.RUnlock()
+		return storepkg.PropertyStats{}, ErrGraphClosed
+	}
+	tok, ok := c.labels.Lookup(label)
+	if !ok {
+		c.mu.RUnlock()
+		return storepkg.PropertyStats{}, nil
+	}
+	stats, err := c.nodePropertyStats(tok, propertyKey)
+	c.mu.RUnlock()
+	return stats, err
+}
+
 // RelCountByType forwards to Core.Rels.CountByType.
 func (s *StatOps) RelCountByType(typeName string) (int, error) { return s.c.Rels.CountByType(typeName) }
+
+// RangeCardinality forwards to Core.Nodes.RangeCardinality — the SAME core op
+// g.Nodes().RangeCardinality uses (identical signature and semantics). See
+// NodeOps.RangeCardinality for the full contract: an O(distinct values in
+// range) bucket-sum count from the property index, with exact=false when the
+// fast path declines (no capability, no/poisoned index, or a temporal filter
+// in opts).
+func (s *StatOps) RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
+	return s.c.Nodes.RangeCardinality(label, propKey, min, max, inclMin, inclMax, opts)
+}
 
 // PropertyKeyCount returns the number of distinct property keys registered
 // in the property-key registry. Useful for monitoring cardinality growth

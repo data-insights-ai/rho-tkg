@@ -719,18 +719,18 @@ func TestVerifyChainRejectsNilHistoryRows(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	if valid, err := g.verifyNodeChainRowsLocked(nil, []*types.Node{nil}); !errors.Is(err, ErrNilNode) || valid {
+	if valid, err := g.verifyNodeChainRowsLocked(nil, []*types.Node{nil}, nil); !errors.Is(err, ErrNilNode) || valid {
 		t.Fatalf("verifyNodeChainRowsLocked nil history = (%v, %v), want (false, ErrNilNode)", valid, err)
 	}
-	if valid, err := g.verifyRelChainRowsLocked(nil, []*types.Relationship{nil}); !errors.Is(err, ErrNilRelationship) || valid {
+	if valid, err := g.verifyRelChainRowsLocked(nil, []*types.Relationship{nil}, nil); !errors.Is(err, ErrNilRelationship) || valid {
 		t.Fatalf("verifyRelChainRowsLocked nil history = (%v, %v), want (false, ErrNilRelationship)", valid, err)
 	}
 
 	pager := verifyNilHistoryPager{}
-	if valid, err := g.verifyNodeChainPagedLocked(types.NodeID(1), nil, pager); !errors.Is(err, ErrNilNode) || valid {
+	if valid, err := g.verifyNodeChainPagedLocked(types.NodeID(1), nil, pager, nil); !errors.Is(err, ErrNilNode) || valid {
 		t.Fatalf("verifyNodeChainPagedLocked nil history = (%v, %v), want (false, ErrNilNode)", valid, err)
 	}
-	if valid, err := g.verifyRelChainPagedLocked(types.RelID(2), nil, pager); !errors.Is(err, ErrNilRelationship) || valid {
+	if valid, err := g.verifyRelChainPagedLocked(types.RelID(2), nil, pager, nil); !errors.Is(err, ErrNilRelationship) || valid {
 		t.Fatalf("verifyRelChainPagedLocked nil history = (%v, %v), want (false, ErrNilRelationship)", valid, err)
 	}
 }

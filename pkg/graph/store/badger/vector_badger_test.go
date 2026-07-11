@@ -95,6 +95,62 @@ func TestBadgerStore_VectorIndex_CreateAndSearch(t *testing.T) {
 	}
 }
 
+func TestBadgerStore_VectorIndex_CreateWithOptionsAppliesTuning(t *testing.T) {
+	bs := newTestBadgerStore(t)
+	labelTok := uint16(9)
+	key := "vec"
+
+	n1 := types.NewNode(types.NodeID(snowflake.ID(201)), labelTok, nil)
+	ps1, _ := types.NewPropertySlice(map[string]any{key: []float32{1, 0, 0}})
+	n1.SetProperties(ps1)
+	if err := bs.PutNode(n1); err != nil {
+		t.Fatalf("PutNode n1: %v", err)
+	}
+	n2 := types.NewNode(types.NodeID(snowflake.ID(202)), labelTok, nil)
+	ps2, _ := types.NewPropertySlice(map[string]any{key: []float32{0, 1, 0}})
+	n2.SetProperties(ps2)
+	if err := bs.PutNode(n2); err != nil {
+		t.Fatalf("PutNode n2: %v", err)
+	}
+
+	opts := storepkg.VectorIndexOptions{UseBruteForce: true, M: 8, EfConstruction: 50, EfSearch: 10}
+	if err := bs.CreateVectorIndexWithOptions(labelTok, key, 3, DistanceCosine, opts); err != nil {
+		t.Fatalf("CreateVectorIndexWithOptions: %v", err)
+	}
+
+	got, ok := bs.VectorIndexOptionsForTest(labelTok, key)
+	if !ok {
+		t.Fatal("VectorIndexOptionsForTest: index not found")
+	}
+	if got != opts {
+		t.Fatalf("VectorIndexOptionsForTest = %+v, want %+v", got, opts)
+	}
+
+	results, err := bs.SearchNearestNodes(labelTok, key, []float32{1, 0, 0}, 1, QueryOpts{})
+	if err != nil {
+		t.Fatalf("SearchNearestNodes: %v", err)
+	}
+	if len(results) != 1 || results[0].ID() != n1.ID() {
+		t.Fatalf("SearchNearestNodes (brute force tuning applied) = %#v, want n1", results)
+	}
+}
+
+func TestBadgerStore_VectorIndex_CreateWithOptionsZeroValueMatchesPlainCreate(t *testing.T) {
+	bs := newTestBadgerStore(t)
+	labelTok := uint16(9)
+	key := "vec"
+	if err := bs.CreateVectorIndex(labelTok, key, 3, DistanceCosine); err != nil {
+		t.Fatalf("CreateVectorIndex: %v", err)
+	}
+	got, ok := bs.VectorIndexOptionsForTest(labelTok, key)
+	if !ok {
+		t.Fatal("VectorIndexOptionsForTest: index not found")
+	}
+	if got != (storepkg.VectorIndexOptions{}) {
+		t.Fatalf("VectorIndexOptionsForTest after plain CreateVectorIndex = %+v, want zero value", got)
+	}
+}
+
 func TestBadgerStoreSearchNearestNodesAppliesCursorPagination(t *testing.T) {
 	bs := newTestBadgerStore(t)
 	labelTok := uint16(3)
@@ -732,6 +788,83 @@ func TestBadgerStore_VectorIndex_DefinitionSurvivesRestart(t *testing.T) {
 	}
 	if len(results) != 1 || results[0].ID() != n1.ID() {
 		t.Fatalf("SearchNearestNodes after reopen = %#v, want n1", results)
+	}
+
+	// A definition created via plain CreateVectorIndex carries zero-value
+	// (default HNSW) tuning; confirm that specifically survives the reopen
+	// rather than just asserting search still resolves.
+	gotOpts, ok := bs2.VectorIndexOptionsForTest(labelTok, key)
+	if !ok {
+		t.Fatal("VectorIndexOptionsForTest after reopen: index not found")
+	}
+	if gotOpts != (storepkg.VectorIndexOptions{}) {
+		t.Fatalf("VectorIndexOptionsForTest after reopen = %+v, want zero-value default tuning", gotOpts)
+	}
+}
+
+// TestBadgerStore_VectorIndex_NonDefaultOptionsSurviveRestart is the
+// non-default-tuning counterpart to
+// TestBadgerStore_VectorIndex_DefinitionSurvivesRestart: it proves the
+// documented contract (badger persists UseBruteForce/M/EfConstruction/
+// EfSearch, not just Dims/Metric, alongside the vector index definition —
+// see vectorIdxDef and CLAUDE.md "Vector Indexes") by creating the index
+// through CreateVectorIndexWithOptions with every tunable field set to a
+// non-default, non-zero value, reopening the store, and asserting the
+// SAME options come back via VectorIndexOptionsForTest — not merely that
+// search still resolves the pre-existing definition.
+func TestBadgerStore_VectorIndex_NonDefaultOptionsSurviveRestart(t *testing.T) {
+	dir := t.TempDir()
+	labelTok := uint16(3)
+	key := "vec"
+	opts := storepkg.VectorIndexOptions{UseBruteForce: true, M: 8, EfConstruction: 50, EfSearch: 10}
+
+	bs1, err := New(Config{Dir: dir})
+	if err != nil {
+		t.Fatalf("open 1: %v", err)
+	}
+	n1 := types.NewNode(types.NodeID(snowflake.ID(101)), labelTok, nil)
+	ps1, _ := types.NewPropertySlice(map[string]any{key: []float32{1, 0, 0}})
+	n1.SetProperties(ps1)
+	if err := bs1.PutNode(n1); err != nil {
+		t.Fatalf("PutNode 1: %v", err)
+	}
+	n2 := types.NewNode(types.NodeID(snowflake.ID(102)), labelTok, nil)
+	ps2, _ := types.NewPropertySlice(map[string]any{key: []float32{0, 1, 0}})
+	n2.SetProperties(ps2)
+	if err := bs1.PutNode(n2); err != nil {
+		t.Fatalf("PutNode 2: %v", err)
+	}
+	if err := bs1.CreateVectorIndexWithOptions(labelTok, key, 3, DistanceCosine, opts); err != nil {
+		t.Fatalf("CreateVectorIndexWithOptions: %v", err)
+	}
+	beforeOpts, ok := bs1.VectorIndexOptionsForTest(labelTok, key)
+	if !ok || beforeOpts != opts {
+		t.Fatalf("VectorIndexOptionsForTest before close = (%+v, %v), want (%+v, true)", beforeOpts, ok, opts)
+	}
+	if err := bs1.Close(); err != nil {
+		t.Fatalf("close 1: %v", err)
+	}
+
+	bs2, err := New(Config{Dir: dir})
+	if err != nil {
+		t.Fatalf("open 2: %v", err)
+	}
+	defer bs2.Close()
+
+	gotOpts, ok := bs2.VectorIndexOptionsForTest(labelTok, key)
+	if !ok {
+		t.Fatal("VectorIndexOptionsForTest after reopen: index not found")
+	}
+	if gotOpts != opts {
+		t.Fatalf("VectorIndexOptionsForTest after reopen = %+v, want %+v", gotOpts, opts)
+	}
+
+	results, err := bs2.SearchNearestNodes(labelTok, key, []float32{1, 0, 0}, 1, QueryOpts{})
+	if err != nil {
+		t.Fatalf("SearchNearestNodes after reopen: %v", err)
+	}
+	if len(results) != 1 || results[0].ID() != n1.ID() {
+		t.Fatalf("SearchNearestNodes after reopen (brute force tuning) = %#v, want n1", results)
 	}
 }
 

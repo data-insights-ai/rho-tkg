@@ -788,3 +788,27 @@ func TestTieredStore_ShardForRelID_FindsInWarmShard(t *testing.T) {
 		t.Error("expected shard to have the rel after cold demotion")
 	}
 }
+
+// TestTieredStore_IsReferenceLabel is the direct unit test for the classifier
+// the core unique-constraint layer consults (ADR-0005 §3.5): reference labels
+// (configured RefLabels) report true; any other label — the event-class default
+// — reports false. Classification is by name, independent of token registration.
+func TestTieredStore_IsReferenceLabel(t *testing.T) {
+	ts := newTestTieredStore(t) // RefLabels: Case, User
+	if !ts.IsReferenceLabel("Case") {
+		t.Error("Case is a configured RefLabel, want IsReferenceLabel true")
+	}
+	if !ts.IsReferenceLabel("User") {
+		t.Error("User is a configured RefLabel, want IsReferenceLabel true")
+	}
+	if ts.IsReferenceLabel("Login") {
+		t.Error("Login is not a RefLabel (event class), want IsReferenceLabel false")
+	}
+	if ts.IsReferenceLabel("") {
+		t.Error("empty label is event class, want IsReferenceLabel false")
+	}
+	// Unknown label the router would route to an event shard → not reference.
+	if ts.IsReferenceLabel("NeverConfigured") {
+		t.Error("unconfigured label want IsReferenceLabel false")
+	}
+}

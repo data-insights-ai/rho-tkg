@@ -156,6 +156,17 @@ func (c *Core) addNodeLabelInternal(id types.NodeID, label string) (bool, error)
 	tm.UpdatedAt = now
 	tm.TxFrom = now
 
+	// Unique-constraint enforcement (standalone label-add door — the door that
+	// binds a constraint without touching the property). The finalized node
+	// `copy` now carries the new label token; reject if it makes `copy` a second
+	// current holder of a constrained value. Entity lock held; value stripe(s)
+	// taken across the check + write.
+	uniqueRelease, uniqueErr := c.enforceUniqueForNode(copy, nil, id)
+	if uniqueErr != nil {
+		return false, finishLabel(uniqueErr)
+	}
+	defer uniqueRelease()
+
 	// Atomic: write history entry + add label index + persist updated node in one call.
 	if err := c.store.AddNodeLabelTokenWithHistory(id, tok, copy, prevVersion, prevState); err != nil {
 		return false, finishLabel(err)

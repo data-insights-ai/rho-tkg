@@ -54,7 +54,7 @@ func (n *NodeOps) ByLabel(label string, opts storepkg.QueryOpts) ([]*types.Node,
 	if err := c.validateIndexLabel(label); err != nil {
 		return nil, err
 	}
-	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
 		return nil, err
 	}
 	var result []*types.Node
@@ -146,7 +146,7 @@ func (n *NodeOps) ForEachByLabel(label string, opts storepkg.QueryOpts, fn func(
 	if err := c.validateIndexLabel(label); err != nil {
 		return err
 	}
-	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
 		return err
 	}
 
@@ -207,7 +207,7 @@ func (n *NodeOps) ForEachByLabelPropertyRange(label, propKey string, min, max fl
 	if err := c.validateIndexLabel(label); err != nil {
 		return err
 	}
-	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
 		return err
 	}
 	scanner, native := c.store.(nodeRangeScanner)
@@ -291,7 +291,7 @@ func (r *RelOps) ByType(typeName string, opts storepkg.QueryOpts) ([]*types.Rela
 	if err := c.validateRelTypeQueryName(typeName); err != nil {
 		return nil, err
 	}
-	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
 		return nil, err
 	}
 	var result []*types.Relationship
@@ -385,7 +385,7 @@ func (r *RelOps) ForEachByType(typeName string, opts storepkg.QueryOpts, fn func
 	if err := c.validateRelTypeQueryName(typeName); err != nil {
 		return err
 	}
-	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
 		return err
 	}
 
@@ -612,7 +612,7 @@ func (r *RelOps) ForEachAdjacentEndpointAt(nodeID types.NodeID, typeName string,
 	if err := storepkg.ValidateNodeID(nodeID); err != nil {
 		return err
 	}
-	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
 		return err
 	}
 
@@ -694,7 +694,7 @@ func (r *RelOps) ForEachAdjacentRelAt(nodeID types.NodeID, typeName string, inco
 	if err := storepkg.ValidateNodeID(nodeID); err != nil {
 		return err
 	}
-	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
 		return err
 	}
 
@@ -913,6 +913,178 @@ func (c *Core) incomingRelsForNodesLocked(nodeIDs []types.NodeID, typeName strin
 	return rels, nil
 }
 
+// OutgoingForNodesAtTx is the bitemporal (transaction-time-pinned) counterpart
+// of OutgoingForNodes: instead of the live adjacency index alone, it resolves
+// each candidate relationship's belief-at-pin version through the SAME chain
+// seam the generic TxAt door uses (findRelVersionForOpts, which funnels
+// through filterRelChainByTxAt — the tombstone-normalization seam shared with
+// NodeAtTx/RelAtTx and the named as-of door), so a pinned adjacency read
+// agrees with a pinned `ByType` scan filtered by endpoint, by construction
+// (rule 17: two doors, same shape).
+//
+// Rel endpoints are immutable, so the candidate relationship-ID set is the
+// live per-node adjacency (seeds the common case) UNIONED with every DELETED
+// relationship ID via forEachRelAdjacencyCandidateID — mirroring the
+// single-node OutgoingRelsAt/IncomingRelsAt fold (see CLAUDE.md "Adjacency-at-t
+// fold uses deleted-only iteration"). A relationship deleted after txAt is
+// therefore still visible (delete is a transaction-time tombstone, lesson 60);
+// one created after txAt is invisible; one deleted before txAt is invisible;
+// a backfilled relationship (AddWithTx) is visible from its backfilled TxFrom
+// onward, not from wall-clock creation time.
+//
+// txAt == 0 delegates to OutgoingForNodes verbatim (no TX filter — identical
+// to the generic ByType(opts) door's "TxAt==0 means no temporal filter"
+// convention, and it keeps existing callers of OutgoingForNodes unaffected —
+// this method is purely additive). An unregistered typeName still validates
+// that every requested node currently exists (mirrors OutgoingForNodes) and
+// returns (nil, nil) on success. Returned relationships are sorted by ID
+// within each node's slice.
+func (r *RelOps) OutgoingForNodesAtTx(nodeIDs []types.NodeID, typeName string, txAt types.Instant) (map[types.NodeID][]*types.Relationship, error) {
+	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	if typeName != "" {
+		if err := c.validateRelTypeQueryName(typeName); err != nil {
+			return nil, err
+		}
+	}
+	if len(nodeIDs) == 0 {
+		return nil, nil
+	}
+	for _, id := range nodeIDs {
+		if err := storepkg.ValidateNodeID(id); err != nil {
+			return nil, err
+		}
+	}
+	var result map[types.NodeID][]*types.Relationship
+	err := c.readUnderRLock(func() error {
+		var err error
+		result, err = c.directionalRelsForNodesAtTxLocked(nodeIDs, typeName, txAt, true)
+		return err
+	})
+	return result, err
+}
+
+// IncomingForNodesAtTx is the bitemporal counterpart of IncomingForNodes. See
+// OutgoingForNodesAtTx for the resolution semantics (identical, mirrored for
+// the incoming direction).
+func (r *RelOps) IncomingForNodesAtTx(nodeIDs []types.NodeID, typeName string, txAt types.Instant) (map[types.NodeID][]*types.Relationship, error) {
+	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	if typeName != "" {
+		if err := c.validateRelTypeQueryName(typeName); err != nil {
+			return nil, err
+		}
+	}
+	if len(nodeIDs) == 0 {
+		return nil, nil
+	}
+	for _, id := range nodeIDs {
+		if err := storepkg.ValidateNodeID(id); err != nil {
+			return nil, err
+		}
+	}
+	var result map[types.NodeID][]*types.Relationship
+	err := c.readUnderRLock(func() error {
+		var err error
+		result, err = c.directionalRelsForNodesAtTxLocked(nodeIDs, typeName, txAt, false)
+		return err
+	})
+	return result, err
+}
+
+// directionalRelsForNodesAtTxLocked is the lock-free shared body of
+// OutgoingForNodesAtTx / IncomingForNodesAtTx. outgoing=true selects the
+// start-endpoint (outgoing) direction. See OutgoingForNodesAtTx for the
+// resolution semantics.
+func (c *Core) directionalRelsForNodesAtTxLocked(nodeIDs []types.NodeID, typeName string, txAt types.Instant, outgoing bool) (map[types.NodeID][]*types.Relationship, error) {
+	if txAt == 0 {
+		if outgoing {
+			return c.outgoingRelsForNodesLocked(nodeIDs, typeName)
+		}
+		return c.incomingRelsForNodesLocked(nodeIDs, typeName)
+	}
+
+	var tok uint16
+	hasType := typeName != ""
+	if hasType {
+		t, ok := c.lookupRelTypeQueryToken(typeName)
+		if !ok {
+			return nil, c.validateRequestedNodesExist(nodeIDs)
+		}
+		tok = t
+	}
+	if !c.storeRowsTrust {
+		if err := c.validateRequestedNodesExist(nodeIDs); err != nil {
+			return nil, err
+		}
+	}
+
+	var (
+		liveRows map[types.NodeID][]*types.Relationship
+		err      error
+	)
+	if outgoing {
+		liveRows, err = c.store.OutgoingRelationshipsForNodes(nodeIDs, tok)
+	} else {
+		liveRows, err = c.store.IncomingRelationshipsForNodes(nodeIDs, tok)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	seedIDs, err := c.relIDsFromNodeMapRows(nodeIDs, tok, liveRows, outgoing)
+	if err != nil {
+		return nil, err
+	}
+
+	requested := make(map[types.NodeID]struct{}, len(nodeIDs))
+	for _, id := range nodeIDs {
+		requested[id] = struct{}{}
+	}
+
+	opts := storepkg.QueryOpts{TxAt: txAt}
+	var pred func(*types.Relationship) bool
+	if hasType {
+		pred = func(r *types.Relationship) bool { return r.HasTypeTokenRaw(tok) }
+	}
+
+	result := make(map[types.NodeID][]*types.Relationship)
+	if err := c.forEachRelAdjacencyCandidateID(seedIDs, func(id types.RelID) error {
+		r, err := c.findRelVersionForOpts(id, opts, pred)
+		if err != nil {
+			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
+				return nil
+			}
+			return err
+		}
+		var endpoint types.NodeID
+		if outgoing {
+			endpoint = r.StartNodeID()
+		} else {
+			endpoint = r.EndNodeID()
+		}
+		if _, ok := requested[endpoint]; !ok {
+			return nil
+		}
+		result[endpoint] = append(result[endpoint], r)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	if len(result) == 0 {
+		return nil, nil
+	}
+	for id := range result {
+		storeutil.SortRelsByID(result[id])
+	}
+	return result, nil
+}
+
 // Incoming returns all incoming relationships to the given node.
 // If typeName is empty, all types are returned. If typeName is non-empty, only
 // relationships of that type are returned (nil if the type is not registered).
@@ -1073,7 +1245,7 @@ func (n *NodeOps) All(opts storepkg.QueryOpts) ([]*types.Node, error) {
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
 		return nil, err
 	}
 	var result []*types.Node
@@ -1140,7 +1312,7 @@ func (n *NodeOps) ForEach(opts storepkg.QueryOpts, fn func(*types.Node) bool) er
 	if fn == nil {
 		return grapherr.ErrNilCallback
 	}
-	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
 		return err
 	}
 
@@ -1188,7 +1360,7 @@ func (r *RelOps) All(opts storepkg.QueryOpts) ([]*types.Relationship, error) {
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
 		return nil, err
 	}
 	var result []*types.Relationship
@@ -1236,6 +1408,60 @@ func (c *Core) allRelsLocked(opts storepkg.QueryOpts) ([]*types.Relationship, er
 	storeutil.SortRelsByID(result)
 	result = storeutil.PaginateRels(result, opts.After, opts.Limit)
 	return result, nil
+}
+
+// ForEach streams all relationships matching opts to fn. For current-state
+// unpaginated scans it walks the store's rel-ID iterator and fetches one row
+// at a time, so peak memory is O(1) in graph cardinality. Temporal and
+// paginated scans fall back to All to preserve the existing history-aware and
+// ordering semantics. Mirrors NodeOps.ForEach exactly for Node/Rel test
+// parity (Testing Rule 2) — added alongside nodes.API.Iter / rels.API.Iter.
+//
+// Isolation is relaxed, matching ForEachByType: the ID set is snapshotted by
+// the store iterator, then each row is fetched and fn is called without
+// holding graph locks. Concurrently deleted rows may be skipped; concurrently
+// created rows are not guaranteed to be seen.
+func (r *RelOps) ForEach(opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
+	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
+	if fn == nil {
+		return grapherr.ErrNilCallback
+	}
+	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+		return err
+	}
+
+	if !c.storeRowsTrust || hasTemporalFilter(opts) || opts.After != 0 || opts.Limit != 0 {
+		rels, err := r.All(opts)
+		if err != nil {
+			return err
+		}
+		for _, rel := range rels {
+			if !fn(rel) {
+				return nil
+			}
+		}
+		return nil
+	}
+
+	var iterErr error
+	err := c.forEachRelID(func(id types.RelID) bool {
+		rel, getErr := c.store.GetRelationship(id)
+		if getErr != nil {
+			if errors.Is(getErr, storepkg.ErrRelNotFound) {
+				return true
+			}
+			iterErr = getErr
+			return false
+		}
+		return fn(rel)
+	})
+	if err != nil {
+		return err
+	}
+	return iterErr
 }
 
 // GetByIDs returns nodes for every requested ID sorted by ascending ID.

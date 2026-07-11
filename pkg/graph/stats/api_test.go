@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
 func TestAPINilReceiversReturnErrNilGraph(t *testing.T) {
@@ -37,6 +38,12 @@ func TestAPINilReceiversReturnErrNilGraph(t *testing.T) {
 	}
 	if got, err := nilAPI.AllRelTypeCounts(); got != nil || !errors.Is(err, grapherr.ErrNilGraph) {
 		t.Fatalf("nil AllRelTypeCounts = (%v, %v), want (nil, ErrNilGraph)", got, err)
+	}
+	if count, exact, err := nilAPI.RangeCardinality("Person", "age", 0, 100, true, true, storepkg.QueryOpts{}); count != 0 || exact || !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil RangeCardinality = (%d, %v, %v), want (0, false, ErrNilGraph)", count, exact, err)
+	}
+	if got, err := nilAPI.PropertyStats("Person", "id"); got != (storepkg.PropertyStats{}) || !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil PropertyStats = (%+v, %v), want (zero, ErrNilGraph)", got, err)
 	}
 
 	api := New((*statsOpsSpy)(nil))
@@ -79,6 +86,9 @@ func TestAPIForwardsMethodsAndMapsSnapshotCounters(t *testing.T) {
 		nodeCountByLabel: 3,
 		nodePropKeyCount: 2,
 		relCountByType:   4,
+		rangeCardCount:   7,
+		rangeCardExact:   true,
+		propertyStats:    storepkg.PropertyStats{NDV: 5, Min: int64(1), Max: int64(9), Count: 3},
 		labelCounts:      map[string]int{"Person": 3},
 		relTypeCounts:    map[string]int{"KNOWS": 4},
 		snapshot:         [12]int64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
@@ -99,6 +109,19 @@ func TestAPIForwardsMethodsAndMapsSnapshotCounters(t *testing.T) {
 	}
 	if got, err := api.RelCountByType("KNOWS"); got != 4 || err != nil {
 		t.Fatalf("RelCountByType = (%d, %v), want (4, nil)", got, err)
+	}
+	if count, exact, err := api.RangeCardinality("Person", "age", 10, 20, true, false, storepkg.QueryOpts{}); count != 7 || !exact || err != nil {
+		t.Fatalf("RangeCardinality = (%d, %v, %v), want (7, true, nil)", count, exact, err)
+	}
+	if ops.rangeCardLabel != "Person" || ops.rangeCardPropKey != "age" || ops.rangeCardMin != 10 || ops.rangeCardMax != 20 ||
+		ops.rangeCardInclMin != true || ops.rangeCardInclMax != false || ops.rangeCardCalls != 1 {
+		t.Fatalf("RangeCardinality forwarded args mismatch: %+v", ops)
+	}
+	if got, err := api.PropertyStats("Person", "age"); err != nil || got != (storepkg.PropertyStats{NDV: 5, Min: int64(1), Max: int64(9), Count: 3}) {
+		t.Fatalf("PropertyStats = (%+v, %v), want (NDV:5 Min:1 Max:9 Count:3, nil)", got, err)
+	}
+	if ops.propertyStatsLabel != "Person" || ops.propertyStatsKeyArg != "age" || ops.propertyStatsCalls != 1 {
+		t.Fatalf("PropertyStats forwarded args mismatch: %+v", ops)
 	}
 	labelCounts, err := api.AllLabelCounts()
 	if err != nil || labelCounts["Person"] != 3 {
@@ -182,6 +205,8 @@ func TestAPIPropagatesOpsErrors(t *testing.T) {
 		nodeCountByLabelErr: opErr,
 		nodePropKeyCountErr: opErr,
 		relCountByTypeErr:   opErr,
+		rangeCardErr:        opErr,
+		propertyStatsErr:    opErr,
 		allLabelCountsErr:   opErr,
 		allRelTypeCountsErr: opErr,
 	})
@@ -200,6 +225,12 @@ func TestAPIPropagatesOpsErrors(t *testing.T) {
 			t.Fatalf("%s error = %v, want %v", check.name, check.err, opErr)
 		}
 	}
+	if _, _, err := api.RangeCardinality("Person", "age", 0, 100, true, true, storepkg.QueryOpts{}); !errors.Is(err, opErr) {
+		t.Fatalf("RangeCardinality error = %v, want %v", err, opErr)
+	}
+	if _, err := api.PropertyStats("Person", "age"); !errors.Is(err, opErr) {
+		t.Fatalf("PropertyStats error = %v, want %v", err, opErr)
+	}
 	if _, err := api.AllLabelCounts(); !errors.Is(err, opErr) {
 		t.Fatalf("AllLabelCounts error = %v, want %v", err, opErr)
 	}
@@ -216,6 +247,9 @@ type statsOpsSpy struct {
 	nodeCountByLabel int
 	nodePropKeyCount int
 	relCountByType   int
+	rangeCardCount   int64
+	rangeCardExact   bool
+	propertyStats    storepkg.PropertyStats
 	labelCounts      map[string]int
 	relTypeCounts    map[string]int
 	snapshot         [12]int64
@@ -225,6 +259,8 @@ type statsOpsSpy struct {
 	nodeCountByLabelErr error
 	nodePropKeyCountErr error
 	relCountByTypeErr   error
+	rangeCardErr        error
+	propertyStatsErr    error
 	allLabelCountsErr   error
 	allRelTypeCountsErr error
 	snapshotErr         error
@@ -234,11 +270,23 @@ type statsOpsSpy struct {
 	nodePropKeyArg string
 	relTypeArg     string
 
+	rangeCardLabel   string
+	rangeCardPropKey string
+	rangeCardMin     float64
+	rangeCardMax     float64
+	rangeCardInclMin bool
+	rangeCardInclMax bool
+
+	propertyStatsLabel  string
+	propertyStatsKeyArg string
+
 	nodeCountCalls        int
 	relCountCalls         int
 	nodeCountByLabelCalls int
 	nodePropKeyCountCalls int
 	relCountByTypeCalls   int
+	rangeCardCalls        int
+	propertyStatsCalls    int
 	allLabelCountsCalls   int
 	allRelTypeCountsCalls int
 	snapshotCountersCalls int
@@ -271,6 +319,24 @@ func (s *statsOpsSpy) RelCountByType(typeName string) (int, error) {
 	s.relCountByTypeCalls++
 	s.relTypeArg = typeName
 	return s.relCountByType, s.relCountByTypeErr
+}
+
+func (s *statsOpsSpy) RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
+	s.rangeCardCalls++
+	s.rangeCardLabel = label
+	s.rangeCardPropKey = propKey
+	s.rangeCardMin = min
+	s.rangeCardMax = max
+	s.rangeCardInclMin = inclMin
+	s.rangeCardInclMax = inclMax
+	return s.rangeCardCount, s.rangeCardExact, s.rangeCardErr
+}
+
+func (s *statsOpsSpy) PropertyStats(label, propertyKey string) (storepkg.PropertyStats, error) {
+	s.propertyStatsCalls++
+	s.propertyStatsLabel = label
+	s.propertyStatsKeyArg = propertyKey
+	return s.propertyStats, s.propertyStatsErr
 }
 
 func (s *statsOpsSpy) AllLabelCounts() (map[string]int, error) {

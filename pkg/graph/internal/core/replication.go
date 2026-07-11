@@ -64,6 +64,22 @@ func (r *ReplOps) LastCommittedLSN() (uint64, error) {
 	return cf.LastCommittedLSN()
 }
 
+// ChangeLogActive reports whether the backend is genuinely recording committed
+// mutations to its change-log right now — the SAME probe (*Core).changeLogActive
+// that Watermark / ExportSince use to fail closed on a present-but-disabled log
+// (see export_delta.go): false when the store has no change-feed capability at
+// all, or when it implements store.ChangeLogStatusCapability and reports the
+// log as off; true otherwise (including a feed backend that does not report
+// status — assumed active, it opted into exposing the feed). g.Replication().
+// Watch calls this once before its first pull so a present-but-disabled log
+// fails closed instead of silently tailing an always-empty feed forever.
+func (r *ReplOps) ChangeLogActive() bool {
+	if r == nil || r.c == nil {
+		return false
+	}
+	return r.c.changeLogActive()
+}
+
 // RegistrySnapshot captures this graph's full token registries plus the
 // change-log LSN they are complete as-of, for a replica to append-only-extend
 // its own registry on an unresolved token. Returns ErrCapabilityNotSupported
@@ -115,8 +131,8 @@ func (r *ReplOps) IDSlotLease() (*storepkg.IDSlotLeaseRecord, error) {
 	if err := r.c.checkOpen(); err != nil {
 		return nil, err
 	}
-	mk, ok := r.c.store.(storepkg.MetaKVCapability)
-	if !ok {
+	mk := r.c.metaKV
+	if mk == nil {
 		return nil, fmt.Errorf("graph: id-slot lease: %w", storepkg.ErrCapabilityNotSupported)
 	}
 	v, err := mk.MetaGet(idSlotLeaseMeta)
@@ -152,8 +168,8 @@ func (r *ReplOps) SetIDSlotLease(rec *storepkg.IDSlotLeaseRecord) error {
 	if rec.Slot < 0 || rec.Slot > 15 {
 		return fmt.Errorf("graph: set id-slot lease: slot %d out of range 0-15", rec.Slot)
 	}
-	mk, ok := r.c.store.(storepkg.MetaKVCapability)
-	if !ok {
+	mk := r.c.metaKV
+	if mk == nil {
 		return fmt.Errorf("graph: id-slot lease: %w", storepkg.ErrCapabilityNotSupported)
 	}
 	b, err := msgpack.Marshal(rec)
@@ -291,8 +307,8 @@ func (r *ReplOps) AppliedLSN() (uint64, error) {
 // backend cannot persist it). Caller holds c.mu (or it is otherwise safe — the
 // underlying MetaGet is its own backend transaction).
 func (c *Core) appliedLSNLocked() (uint64, error) {
-	mk, ok := c.store.(storepkg.MetaKVCapability)
-	if !ok {
+	mk := c.metaKV
+	if mk == nil {
 		return 0, nil
 	}
 	v, err := mk.MetaGet(replicaAppliedLSNMeta)
@@ -342,8 +358,8 @@ func (r *ReplOps) SetAppliedLSN(lsn uint64) error {
 // otherwise it is a no-op (the in-session driver still tracks the LSN, and a
 // restart resumes from 0 → idempotent re-apply). Caller holds c.mu.
 func (c *Core) setAppliedLSNLocked(lsn uint64) error {
-	mk, ok := c.store.(storepkg.MetaKVCapability)
-	if !ok {
+	mk := c.metaKV
+	if mk == nil {
 		return nil
 	}
 	buf := make([]byte, 8)

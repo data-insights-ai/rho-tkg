@@ -53,7 +53,7 @@ import (
 // should implement FilteredVectorSearchCapability.
 func (i *IndexOps) SearchNearest(label, propertyKey string, query []float32, k int, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	c := i.c
-	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
 		return nil, err
 	}
 	if err := c.validateIndexLabel(label); err != nil {

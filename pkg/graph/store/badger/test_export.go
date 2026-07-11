@@ -4,6 +4,7 @@ import (
 	"time"
 
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
@@ -36,6 +37,13 @@ func (bs *Store) UnlockFlushMuForTest() { bs.flushMu.Unlock() }
 // DBForTest returns the underlying *badgerv4.DB so corruption-injection tests in
 // pkg/graph can write malformed entries directly. Not for production use.
 func (bs *Store) DBForTest() *badgerv4.DB { return bs.db }
+
+// PropertyIndexOnDiskForTest reports whether this shard was opened with
+// Config.PropertyIndexOnDisk set. Exported so tiered-store tests can assert
+// the tiered Config.PropertyIndexOnDisk pass-through actually reached a
+// shard's badger.Config, distinct from proving the persisted keyspace has
+// entries. Not for production use.
+func (bs *Store) PropertyIndexOnDiskForTest() bool { return bs.propIdxOnDisk }
 
 // NodeCacheForTest / RelCacheForTest return the entity caches so tests can call
 // EvictForTest / ResetForTest from outside the package. Not for production use.
@@ -102,6 +110,27 @@ func (bs *Store) HFIndexPointQueryForTest(token uint16, t types.Instant) []types
 		return nil
 	}
 	return hfi.PointQuery(t)
+}
+
+// VectorIndexOptionsForTest returns the engine/tuning options currently in
+// effect for the vector index at (labelToken, propertyKey) — i.e. what
+// CreateVectorIndexWithOptions actually applied — and whether the index
+// exists. Exported so callers outside this package (core, io, cross-backend
+// parity tests) can assert that a non-default VectorIndexOptions took effect
+// without reaching into the unexported vectorIndexes map. Not for production use.
+func (bs *Store) VectorIndexOptionsForTest(labelToken uint16, propertyKey string) (storecontract.VectorIndexOptions, bool) {
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
+	vi, ok := bs.vectorIndexes[indexpkg.VectorIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}]
+	if !ok {
+		return storecontract.VectorIndexOptions{}, false
+	}
+	return storecontract.VectorIndexOptions{
+		UseBruteForce:  vi.BruteForce,
+		M:              vi.HNSWM,
+		EfConstruction: vi.HNSWEfConstruction,
+		EfSearch:       vi.HNSWEfSearch,
+	}, true
 }
 
 // LockIdxMuRForTest / UnlockIdxMuRForTest expose the in-memory index mutex's

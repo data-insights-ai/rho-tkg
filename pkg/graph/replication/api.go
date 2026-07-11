@@ -15,6 +15,7 @@ type Ops interface {
 	ChangeFeed(afterLSN uint64, limit int) ([]store.ChangeRecord, error)
 	ForEachChange(afterLSN uint64, fn func(store.ChangeRecord) bool) error
 	LastCommittedLSN() (uint64, error)
+	ChangeLogActive() bool
 	ApplyChange(rec store.ChangeRecord) error
 	ApplyChanges(recs []store.ChangeRecord) (uint64, error)
 	AppliedLSN() (uint64, error)

@@ -47,6 +47,10 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 		{name: "DeleteWithContext", run: func() error { return nilAPI.Delete(ctx, relID) }},
 		{name: "Import", run: func() error { _, err := nilAPI.Import(ctx, relID, "KNOWS", nil, nil, nil); return err }},
 		{name: "All", run: func() error { _, err := nilAPI.All(opts); return err }},
+		{name: "ForEach", run: func() error { return nilAPI.ForEach(opts, func(*types.Relationship) bool { return true }) }},
+		{name: "Iter", run: func() error { return drainRelIter(nilAPI.Iter(ctx, opts)) }},
+		{name: "OutgoingIter", run: func() error { return drainRelIter(nilAPI.OutgoingIter(ctx, nodeID, "KNOWS")) }},
+		{name: "IncomingIter", run: func() error { return drainRelIter(nilAPI.IncomingIter(ctx, nodeID, "KNOWS")) }},
 		{name: "ByType", run: func() error { _, err := nilAPI.ByType("KNOWS", opts); return err }},
 		{name: "Count", run: func() error { _, err := nilAPI.Count(); return err }},
 		{name: "CountByType", run: func() error { _, err := nilAPI.CountByType("KNOWS"); return err }},
@@ -57,6 +61,14 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 		}},
 		{name: "OutgoingForNodes", run: func() error { _, err := nilAPI.OutgoingForNodes([]types.NodeID{nodeID}, "KNOWS"); return err }},
 		{name: "IncomingForNodes", run: func() error { _, err := nilAPI.IncomingForNodes([]types.NodeID{nodeID}, "KNOWS"); return err }},
+		{name: "OutgoingForNodesAtTx", run: func() error {
+			_, err := nilAPI.OutgoingForNodesAtTx([]types.NodeID{nodeID}, "KNOWS", 1000)
+			return err
+		}},
+		{name: "IncomingForNodesAtTx", run: func() error {
+			_, err := nilAPI.IncomingForNodesAtTx([]types.NodeID{nodeID}, "KNOWS", 1000)
+			return err
+		}},
 		{name: "SetProperty", run: func() error { return nilAPI.SetProperty(ctx, relID, "since", 2026) }},
 		{name: "DeleteProperty", run: func() error { return nilAPI.DeleteProperty(ctx, relID, "since") }},
 		{name: "CompareAndSetProperty", run: func() error {
@@ -156,6 +168,10 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "DeleteWithContext", run: func() error { return api.Delete(ctx, relID) }},
 		{name: "Import", run: func() error { _, err := api.Import(ctx, relID, "KNOWS", nil, nil, nil); return err }},
 		{name: "All", run: func() error { _, err := api.All(opts); return err }},
+		{name: "ForEach", run: func() error { return api.ForEach(opts, func(*types.Relationship) bool { return true }) }},
+		{name: "Iter", run: func() error { return drainRelIter(api.Iter(ctx, opts)) }},
+		{name: "OutgoingIter", run: func() error { return drainRelIter(api.OutgoingIter(ctx, nodeID, "KNOWS")) }},
+		{name: "IncomingIter", run: func() error { return drainRelIter(api.IncomingIter(ctx, nodeID, "KNOWS")) }},
 		{name: "ByType", run: func() error { _, err := api.ByType("KNOWS", opts); return err }},
 		{name: "ForEachByType", run: func() error {
 			return api.ForEachByType("KNOWS", opts, func(*types.Relationship) bool { return true })
@@ -175,6 +191,14 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "Incoming", run: func() error { _, err := api.Incoming(nodeID, "KNOWS"); return err }},
 		{name: "OutgoingForNodes", run: func() error { _, err := api.OutgoingForNodes([]types.NodeID{nodeID}, "KNOWS"); return err }},
 		{name: "IncomingForNodes", run: func() error { _, err := api.IncomingForNodes([]types.NodeID{nodeID}, "KNOWS"); return err }},
+		{name: "OutgoingForNodesAtTx", run: func() error {
+			_, err := api.OutgoingForNodesAtTx([]types.NodeID{nodeID}, "KNOWS", 1000)
+			return err
+		}},
+		{name: "IncomingForNodesAtTx", run: func() error {
+			_, err := api.IncomingForNodesAtTx([]types.NodeID{nodeID}, "KNOWS", 1000)
+			return err
+		}},
 		{name: "SetProperty", run: func() error { return api.SetProperty(ctx, relID, "since", 2026) }},
 		{name: "DeleteProperty", run: func() error { return api.DeleteProperty(ctx, relID, "since") }},
 		{name: "CompareAndSetProperty", run: func() error {
@@ -214,9 +238,11 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		"Add", "Add", "AddWithTx", "AddByID", "AddByID",
 		"AddByIDIfAbsent", "AddByIDIfAbsent", "Get", "Get", "GetByIDs",
 		"Update", "Update", "UpdateInPlace", "UpdateInPlace",
-		"Delete", "Delete", "Import", "All", "ByType",
+		"Delete", "Delete", "Import", "All",
+		"ForEach", "ForEach", "ForEachOutgoing", "ForEachIncoming", "ByType",
 		"ForEachByType", "ForEachOutgoing", "ForEachIncoming", "ForEachAdjacentEndpoint", "Count", "CountByType",
-		"Outgoing", "Incoming", "OutgoingForNodes", "IncomingForNodes", "SetProperty", "DeleteProperty",
+		"Outgoing", "Incoming", "OutgoingForNodes", "IncomingForNodes",
+		"OutgoingForNodesAtTx", "IncomingForNodesAtTx", "SetProperty", "DeleteProperty",
 		"CompareAndSetProperty", "CompareAndSetProperty",
 		"CloseVersion", "History", "VersionAfter", "VersionBefore", "HasType", "Type", "NextID",
 	}
@@ -376,6 +402,12 @@ func (s *relOpsSpy) ByType(typeName string, opts storepkg.QueryOpts) ([]*types.R
 	return nil, s.err
 }
 
+func (s *relOpsSpy) ForEach(opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
+	s.record("ForEach")
+	s.lastOpts = opts
+	return s.err
+}
+
 func (s *relOpsSpy) ForEachByType(typeName string, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
 	s.record("ForEachByType")
 	s.lastType = typeName
@@ -473,6 +505,24 @@ func (s *relOpsSpy) OutgoingForNodes(nodeIDs []types.NodeID, typeName string) (m
 
 func (s *relOpsSpy) IncomingForNodes(nodeIDs []types.NodeID, typeName string) (map[types.NodeID][]*types.Relationship, error) {
 	s.record("IncomingForNodes")
+	if len(nodeIDs) > 0 {
+		s.lastNodeID = nodeIDs[0]
+	}
+	s.lastType = typeName
+	return nil, s.err
+}
+
+func (s *relOpsSpy) OutgoingForNodesAtTx(nodeIDs []types.NodeID, typeName string, txAt types.Instant) (map[types.NodeID][]*types.Relationship, error) {
+	s.record("OutgoingForNodesAtTx")
+	if len(nodeIDs) > 0 {
+		s.lastNodeID = nodeIDs[0]
+	}
+	s.lastType = typeName
+	return nil, s.err
+}
+
+func (s *relOpsSpy) IncomingForNodesAtTx(nodeIDs []types.NodeID, typeName string, txAt types.Instant) (map[types.NodeID][]*types.Relationship, error) {
+	s.record("IncomingForNodesAtTx")
 	if len(nodeIDs) > 0 {
 		s.lastNodeID = nodeIDs[0]
 	}

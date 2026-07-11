@@ -7,6 +7,7 @@ import (
 	"time"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -445,6 +446,82 @@ func TestVectorIndex_DropAndRecreate(t *testing.T) {
 	// Should be able to create again after drop.
 	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceCosine); err != nil {
 		t.Fatalf("second CreateVectorIndex after drop: %v", err)
+	}
+}
+
+// TestVectorIndex_CreateWithOptions_AppliesTuning drives CreateVectorWithOptions
+// through the real graph -> core -> store path (not a spy) with a non-default
+// VectorIndexOptions and confirms it actually reached the backend: the
+// options are readable back via the store's test-only accessor and the
+// brute-force engine choice is observable in search results.
+func TestVectorIndex_CreateWithOptions_AppliesTuning(t *testing.T) {
+	g, _ := New(Config{})
+	label := "Item"
+	key := "embedding"
+
+	n1, err := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{1, 0, 0}})
+	if err != nil {
+		t.Fatalf("Add n1: %v", err)
+	}
+	if _, err := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{0, 1, 0}}); err != nil {
+		t.Fatalf("Add n2: %v", err)
+	}
+
+	opts := storepkg.VectorIndexOptions{UseBruteForce: true, M: 8, EfConstruction: 50, EfSearch: 10}
+	if err := g.Index.CreateVectorWithOptions(label, key, 3, storepkg.DistanceCosine, opts); err != nil {
+		t.Fatalf("CreateVectorWithOptions: %v", err)
+	}
+
+	tok, ok := g.labels.Lookup(label)
+	if !ok {
+		t.Fatal("label token not found after CreateVectorWithOptions")
+	}
+	ms, ok := g.store.(*memory.Store)
+	if !ok {
+		t.Fatalf("default store = %T, want *memory.Store", g.store)
+	}
+	got, ok := ms.VectorIndexOptionsForTest(tok, key)
+	if !ok {
+		t.Fatal("VectorIndexOptionsForTest: index not found")
+	}
+	if got != opts {
+		t.Fatalf("VectorIndexOptionsForTest = %+v, want %+v", got, opts)
+	}
+
+	results, err := g.Index.SearchNearest(label, key, []float32{1, 0, 0}, 1, storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("SearchNearest: %v", err)
+	}
+	if len(results) != 1 || results[0].ID() != n1.ID() {
+		t.Fatalf("SearchNearest (brute force tuning applied) = %#v, want n1", results)
+	}
+}
+
+// TestVectorIndex_CreateWithOptions_ZeroValueMatchesPlainCreate confirms the
+// documented equivalence: CreateVector == CreateVectorWithOptions with a
+// zero-value VectorIndexOptions.
+func TestVectorIndex_CreateWithOptions_ZeroValueMatchesPlainCreate(t *testing.T) {
+	g, _ := New(Config{})
+	label := "Item"
+	key := "embedding"
+
+	if err := g.Index.CreateVector(label, key, 3, storepkg.DistanceCosine); err != nil {
+		t.Fatalf("CreateVector: %v", err)
+	}
+	tok, ok := g.labels.Lookup(label)
+	if !ok {
+		t.Fatal("label token not found after CreateVector")
+	}
+	ms, ok := g.store.(*memory.Store)
+	if !ok {
+		t.Fatalf("default store = %T, want *memory.Store", g.store)
+	}
+	got, ok := ms.VectorIndexOptionsForTest(tok, key)
+	if !ok {
+		t.Fatal("VectorIndexOptionsForTest: index not found")
+	}
+	if got != (storepkg.VectorIndexOptions{}) {
+		t.Fatalf("VectorIndexOptionsForTest after plain CreateVector = %+v, want zero value", got)
 	}
 }
 

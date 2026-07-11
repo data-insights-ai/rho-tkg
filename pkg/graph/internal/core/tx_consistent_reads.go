@@ -220,7 +220,7 @@ func (tx *GraphTx) AllNodes(opts storepkg.QueryOpts) ([]*types.Node, error) {
 		return nil, err
 	}
 	defer tx.unlockActiveCore()
-	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+	if err := tx.g.validateTemporalQueryOptsScan(opts); err != nil {
 		return nil, err
 	}
 	return tx.g.allNodesLocked(opts)
@@ -235,7 +235,7 @@ func (tx *GraphTx) NodesByLabel(label string, opts storepkg.QueryOpts) ([]*types
 	if err := tx.g.validateIndexLabel(label); err != nil {
 		return nil, err
 	}
-	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+	if err := tx.g.validateTemporalQueryOptsScan(opts); err != nil {
 		return nil, err
 	}
 	return tx.g.nodesByLabelLocked(label, opts)
@@ -247,7 +247,7 @@ func (tx *GraphTx) NodesByLabelAndProperty(label, key string, value any, opts st
 		return nil, err
 	}
 	defer tx.unlockActiveCore()
-	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+	if err := tx.g.validateTemporalQueryOptsScan(opts); err != nil {
 		return nil, err
 	}
 	if err := tx.g.validateIndexLabel(label); err != nil {
@@ -308,7 +308,7 @@ func (tx *GraphTx) AllRels(opts storepkg.QueryOpts) ([]*types.Relationship, erro
 		return nil, err
 	}
 	defer tx.unlockActiveCore()
-	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+	if err := tx.g.validateTemporalQueryOptsScan(opts); err != nil {
 		return nil, err
 	}
 	return tx.g.allRelsLocked(opts)
@@ -323,7 +323,7 @@ func (tx *GraphTx) RelsByType(typeName string, opts storepkg.QueryOpts) ([]*type
 	if err := tx.g.validateRelTypeQueryName(typeName); err != nil {
 		return nil, err
 	}
-	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+	if err := tx.g.validateTemporalQueryOptsScan(opts); err != nil {
 		return nil, err
 	}
 	return tx.g.relsByTypeLocked(typeName, opts)
@@ -707,7 +707,7 @@ func (tx *GraphTx) SearchNearest(label, propertyKey string, query []float32, k i
 		return nil, err
 	}
 	defer tx.unlockActiveCore()
-	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+	if err := tx.g.validateTemporalQueryOptsScan(opts); err != nil {
 		return nil, err
 	}
 	if err := tx.g.validateIndexLabel(label); err != nil {

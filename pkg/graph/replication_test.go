@@ -81,9 +81,11 @@ func TestReplication_EndToEnd(t *testing.T) {
 	}
 }
 
-// A backend without a change-log (tiered) surfaces ErrCapabilityNotSupported
-// through every g.Replication() method.
-func TestReplication_NotSupportedOnTiered(t *testing.T) {
+// A tiered store opened WITHOUT Config.ChangeLog now behaves exactly like a
+// change-log-less badger: the capability is present (ADR-0005 §2 admitted tiered
+// into changeFeedCapability) but reports an empty, inactive feed — not
+// ErrCapabilityNotSupported. Enabling the log (a separate test) makes it emit.
+func TestReplication_TieredWithoutChangeLogIsEmpty(t *testing.T) {
 	ts, err := tiered.New(tiered.Config{
 		InMemory:    true,
 		RefLabels:   []string{"Person"},
@@ -98,14 +100,15 @@ func TestReplication_NotSupportedOnTiered(t *testing.T) {
 	}
 	defer g.Close()
 
-	if _, err := g.Replication().LastCommittedLSN(); !errors.Is(err, graph.ErrCapabilityNotSupported) {
-		t.Fatalf("LastCommittedLSN = %v, want ErrCapabilityNotSupported", err)
+	if lsn, err := g.Replication().LastCommittedLSN(); err != nil || lsn != 0 {
+		t.Fatalf("LastCommittedLSN = (%d, %v), want (0, nil)", lsn, err)
 	}
-	if _, err := g.Replication().ChangeFeed(0, 0); !errors.Is(err, graph.ErrCapabilityNotSupported) {
-		t.Fatalf("ChangeFeed = %v, want ErrCapabilityNotSupported", err)
+	feed, err := g.Replication().ChangeFeed(0, 0)
+	if err != nil || len(feed) != 0 {
+		t.Fatalf("ChangeFeed = (%d recs, %v), want (0, nil)", len(feed), err)
 	}
-	if err := g.Replication().ForEachChange(0, func(storepkg.ChangeRecord) bool { return true }); !errors.Is(err, graph.ErrCapabilityNotSupported) {
-		t.Fatalf("ForEachChange = %v, want ErrCapabilityNotSupported", err)
+	if err := g.Replication().ForEachChange(0, func(storepkg.ChangeRecord) bool { return true }); err != nil {
+		t.Fatalf("ForEachChange = %v, want nil", err)
 	}
 }
 

@@ -37,3 +37,7 @@ tutorials/005_performance/005_performance
 cov.out
 .claude/
 coverage.pkg.out
+
+# bench/ suite: per-machine baselines and bench-check scratch output —
+# never committed (see bench/README.md).
+bench/local-*

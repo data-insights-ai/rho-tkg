@@ -1306,6 +1306,64 @@ func TestTieredStoreVectorIndexCreateSkipsIneligibleNodesAndSentinels(t *testing
 	}
 }
 
+func TestTieredStore_VectorIndex_CreateWithOptionsAppliesTuning(t *testing.T) {
+	t.Parallel()
+	ts, caseTok, _ := setupBatchDelete(t)
+	key := "vec"
+
+	n1 := types.NewNode(types.NodeID(snowflake.ID(201)), caseTok, nil)
+	if err := n1.SetProperty(key, []float32{1, 0, 0}); err != nil {
+		t.Fatalf("SetProperty n1: %v", err)
+	}
+	if err := ts.PutNode(n1); err != nil {
+		t.Fatalf("PutNode n1: %v", err)
+	}
+	n2 := types.NewNode(types.NodeID(snowflake.ID(202)), caseTok, nil)
+	if err := n2.SetProperty(key, []float32{0, 1, 0}); err != nil {
+		t.Fatalf("SetProperty n2: %v", err)
+	}
+	if err := ts.PutNode(n2); err != nil {
+		t.Fatalf("PutNode n2: %v", err)
+	}
+
+	opts := storepkg.VectorIndexOptions{UseBruteForce: true, M: 8, EfConstruction: 50, EfSearch: 10}
+	if err := ts.CreateVectorIndexWithOptions(caseTok, key, 3, DistanceCosine, opts); err != nil {
+		t.Fatalf("CreateVectorIndexWithOptions: %v", err)
+	}
+
+	got, ok := ts.VectorIndexOptionsForTest(caseTok, key)
+	if !ok {
+		t.Fatal("VectorIndexOptionsForTest: index not found")
+	}
+	if got != opts {
+		t.Fatalf("VectorIndexOptionsForTest = %+v, want %+v", got, opts)
+	}
+
+	results, err := ts.SearchNearestNodes(caseTok, key, []float32{1, 0, 0}, 1, QueryOpts{})
+	if err != nil {
+		t.Fatalf("SearchNearestNodes: %v", err)
+	}
+	if len(results) != 1 || results[0].ID() != n1.ID() {
+		t.Fatalf("SearchNearestNodes (brute force tuning applied) = %#v, want n1", results)
+	}
+}
+
+func TestTieredStore_VectorIndex_CreateWithOptionsZeroValueMatchesPlainCreate(t *testing.T) {
+	t.Parallel()
+	ts, caseTok, _ := setupBatchDelete(t)
+	key := "vec"
+	if err := ts.CreateVectorIndex(caseTok, key, 3, DistanceCosine); err != nil {
+		t.Fatalf("CreateVectorIndex: %v", err)
+	}
+	got, ok := ts.VectorIndexOptionsForTest(caseTok, key)
+	if !ok {
+		t.Fatal("VectorIndexOptionsForTest: index not found")
+	}
+	if got != (storepkg.VectorIndexOptions{}) {
+		t.Fatalf("VectorIndexOptionsForTest after plain CreateVectorIndex = %+v, want zero value", got)
+	}
+}
+
 func TestTieredStoreDropVectorIndexSnapshotErrorLeavesIndex(t *testing.T) {
 	t.Parallel()
 	ts, caseTok, _ := setupBatchDelete(t)

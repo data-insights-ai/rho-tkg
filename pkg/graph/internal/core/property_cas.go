@@ -195,6 +195,15 @@ func (c *Core) compareAndSetPropertyInternal(ctx context.Context, id types.NodeI
 		return false, false, err
 	}
 
+	// Unique-constraint enforcement (standalone CAS door). Entity lock held;
+	// take value stripe(s) across the check + write. prevState holds the old
+	// value so a changed constrained value also holds the freed value's stripe.
+	uniqueRelease, uniqueErr := c.enforceUniqueForNode(current, prevState, id)
+	if uniqueErr != nil {
+		return false, false, uniqueErr
+	}
+	defer uniqueRelease()
+
 	// Atomic replace + history.
 	if err := c.store.ReplaceNodeWithHistory(current, prevVersion, prevState); err != nil {
 		return false, false, err

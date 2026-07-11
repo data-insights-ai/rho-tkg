@@ -42,6 +42,9 @@ func (c *Core) nodeAsOfLocked(id types.NodeID, txTime types.Instant) (*types.Nod
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return nil, err
 	}
+	if err := c.checkNodePointCompaction(id, txTime); err != nil {
+		return nil, err
+	}
 	if c.txTimeQuery != nil {
 		n, err := c.txTimeQuery.NodeAsOf(id, txTime)
 		if errors.Is(err, storepkg.ErrVersionNotFound) {
@@ -70,33 +73,17 @@ func (c *Core) nodeAsOfLocked(id types.NodeID, txTime types.Instant) (*types.Nod
 		}
 	}
 
-	// Scan history.
+	// Scan history through the single resolution seam. The {TxPin}-shaped probe
+	// runs the newest-belief-by-version selection + retraction rule (lesson 62)
+	// that resolveNodeChain concentrates. The fast path above already returned
+	// the current row when it is the answer, so any current row that reaches here
+	// is not a candidate at txTime (recorded later, or no TX stamp) and is
+	// correctly excluded by passing history alone.
 	hist, err := c.getNodeHistory(id)
 	if err != nil {
 		return nil, err
 	}
-
-	var best *types.Node
-	for _, v := range hist {
-		tm := v.Temporal()
-		if tm == nil || tm.TxFrom == 0 {
-			continue
-		}
-		if tm.TxFrom <= txTime && (tm.TxTo == 0 || tm.TxTo > txTime) {
-			// Highest (TxFrom, version) qualifying — the version tiebreak keeps
-			// this fallback (used by tiered) deterministic and consistent with the
-			// memory/badger native paths when an append-only cascade leaves
-			// several open tiles sharing one TxFrom.
-			if best == nil || tm.TxFrom > best.Temporal().TxFrom ||
-				(tm.TxFrom == best.Temporal().TxFrom && v.Version() > best.Version()) {
-				best = v
-			}
-		}
-	}
-	if best != nil {
-		return nodeVisibleAtTxTime(best, txTime), nil
-	}
-	return nil, ErrNoVersionAsOf
+	return c.resolveNodeChain(hist, chainProbe{kind: probeAsOf, tx: txTime}, nil)
 }
 
 // RelAsOf returns the relationship version that was current at the given
@@ -120,6 +107,9 @@ func (t *TempOps) RelAsOf(id types.RelID, txTime types.Instant) (*types.Relation
 
 func (c *Core) relAsOfLocked(id types.RelID, txTime types.Instant) (*types.Relationship, error) {
 	if err := storepkg.ValidateRelID(id); err != nil {
+		return nil, err
+	}
+	if err := c.checkRelPointCompaction(id, txTime); err != nil {
 		return nil, err
 	}
 	if c.txTimeQuery != nil {
@@ -149,29 +139,12 @@ func (c *Core) relAsOfLocked(id types.RelID, txTime types.Instant) (*types.Relat
 		}
 	}
 
+	// Scan history through the single resolution seam — see nodeAsOfLocked.
 	hist, err := c.getRelHistory(id)
 	if err != nil {
 		return nil, err
 	}
-
-	var best *types.Relationship
-	for _, v := range hist {
-		tm := v.Temporal()
-		if tm == nil || tm.TxFrom == 0 {
-			continue
-		}
-		if tm.TxFrom <= txTime && (tm.TxTo == 0 || tm.TxTo > txTime) {
-			// Highest (TxFrom, version) — see nodeAsOfLocked for the tiebreak.
-			if best == nil || tm.TxFrom > best.Temporal().TxFrom ||
-				(tm.TxFrom == best.Temporal().TxFrom && v.Version() > best.Version()) {
-				best = v
-			}
-		}
-	}
-	if best != nil {
-		return relVisibleAtTxTime(best, txTime), nil
-	}
-	return nil, ErrNoVersionAsOf
+	return c.resolveRelChain(hist, chainProbe{kind: probeAsOf, tx: txTime}, nil)
 }
 
 // NodesAsOf returns all nodes that existed at the given transaction time.
@@ -220,6 +193,9 @@ func (t *TempOps) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 }
 
 func (c *Core) nodesAsOfLocked(txTime types.Instant) ([]*types.Node, error) {
+	if err := c.checkScanCompactionAt(txTime); err != nil {
+		return nil, err
+	}
 	var result []*types.Node
 	if c.txTimeQuery != nil {
 		nodes, err := c.txTimeQuery.NodesAsOf(txTime)
@@ -302,6 +278,9 @@ func (t *TempOps) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) 
 }
 
 func (c *Core) relsAsOfLocked(txTime types.Instant) ([]*types.Relationship, error) {
+	if err := c.checkScanCompactionAt(txTime); err != nil {
+		return nil, err
+	}
 	var result []*types.Relationship
 	if c.txTimeQuery != nil {
 		rels, err := c.txTimeQuery.RelsAsOf(txTime)

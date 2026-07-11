@@ -1,0 +1,76 @@
+name: Bench
+
+# ON-DEMAND benchmark comparison (manual trigger only). Shared GitHub-hosted
+# runners are too noisy (CPU steal, frequency scaling) for a per-PR regression
+# signal — a permanently-informational job just trains people to ignore it.
+# The authoritative regression tooling is LOCAL: make bench-baseline +
+# make bench-check on stable hardware (see bench/README.md). Trigger this
+# workflow manually when a same-runner base-vs-head comparison is still
+# useful (e.g. sanity-checking a large perf claim from a fork).
+on:
+  workflow_dispatch:
+
+jobs:
+  bench-compare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Resolve merge-base
+        id: mergebase
+        run: |
+          # workflow_dispatch checks out the dispatched ref directly; compare
+          # it against its merge-base with origin/main (fetch-depth: 0 above
+          # guarantees both histories are present). Dispatching ON main
+          # compares main against itself's parent-of-merge-base, which
+          # degenerates to a no-op comparison — dispatch from a branch.
+          head_sha="$(git rev-parse HEAD)"
+          merge_base="$(git merge-base "$head_sha" origin/main)"
+          echo "merge_base=$merge_base" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Benchmark merge-base
+        id: bench_base
+        run: |
+          merge_base="${{ steps.mergebase.outputs.merge_base }}"
+          worktree="$(mktemp -d)/bench-base"
+          git worktree add --detach "$worktree" "$merge_base"
+          if [[ -d "$worktree/bench" ]]; then
+            (cd "$worktree" && go test -bench=. -benchmem -benchtime=0.3s -count=1 -run '^$' ./bench) | tee bench-base.txt
+            echo "has_base=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "bench/ suite not present at merge-base ($merge_base) — nothing to compare against yet." | tee bench-base.txt
+            echo "has_base=false" >> "$GITHUB_OUTPUT"
+          fi
+          git worktree remove --force "$worktree"
+
+      - name: Benchmark HEAD
+        run: |
+          git checkout "${{ steps.mergebase.outputs.head_sha }}" --quiet
+          go test -bench=. -benchmem -benchtime=0.3s -count=1 -run '^$' ./bench | tee bench-head.txt
+
+      - name: Compare (benchstat) — informational only
+        continue-on-error: true
+        run: |
+          {
+            echo "### bench/ comparison — merge-base vs HEAD"
+            echo
+            if [[ "${{ steps.bench_base.outputs.has_base }}" == "true" ]]; then
+              command -v benchstat >/dev/null 2>&1 || go install golang.org/x/perf/cmd/benchstat@latest
+              benchstat_bin="$(command -v benchstat || echo "$(go env GOPATH)/bin/benchstat")"
+              echo '```'
+              "$benchstat_bin" bench-base.txt bench-head.txt
+              echo '```'
+            else
+              echo "_No merge-base benchmark available — see bench-base.txt output above (likely this is the PR introducing bench/). Nothing to compare yet._"
+            fi
+            echo
+            echo "_Informational only — this step runs with \`continue-on-error: true\` and never fails the job. A single -count=1 / -benchtime=0.3s sample is noisy on shared runners; the OWNER will flip this to a blocking gate once baseline noise levels here are understood. See \`bench/README.md\`._"
+          } >> "$GITHUB_STEP_SUMMARY"

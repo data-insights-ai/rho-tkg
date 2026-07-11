@@ -11,6 +11,7 @@ package nodes
 
 import (
 	"context"
+	"iter"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -28,6 +29,7 @@ type Ops interface {
 	Delete(ctx context.Context, id types.NodeID) error
 	Import(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, error)
 	AddByIDIfAbsent(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, bool, error)
+	GetOrCreateByKey(ctx context.Context, label, propertyKey string, value any, extraProps map[string]any) (*types.Node, bool, error)
 
 	All(opts storepkg.QueryOpts) ([]*types.Node, error)
 	ForEach(opts storepkg.QueryOpts, fn func(*types.Node) bool) error
@@ -95,6 +97,22 @@ func (a *API) AddWithTx(ctx context.Context, labels []string, props map[string]a
 		return nil, err
 	}
 	return ops.AddWithTx(ctx, labels, props, txFrom)
+}
+
+// GetOrCreateByKey atomically returns the current node carrying value for
+// (label, propertyKey), or creates one if absent — under a single value lock so
+// concurrent callers with the same key produce exactly one create. The bool
+// reports whether THIS call created the node. Works with or without an active
+// unique constraint on (label, propertyKey); value must be an indexable scalar
+// (floats rejected with ErrUniqueUnsupportedType). extraProps seed a freshly
+// created node (the keyed property wins) and are ignored on a hit. The returned
+// node is a mutable, independent copy (Get semantics).
+func (a *API) GetOrCreateByKey(ctx context.Context, label, propertyKey string, value any, extraProps map[string]any) (*types.Node, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, false, err
+	}
+	return ops.GetOrCreateByKey(ctx, label, propertyKey, value, extraProps)
 }
 
 // Get returns the node with the given ID, honoring ctx.
@@ -182,6 +200,40 @@ func (a *API) ForEach(opts storepkg.QueryOpts, fn func(*types.Node) bool) error 
 		return err
 	}
 	return ops.ForEach(opts, fn)
+}
+
+// Iter returns a Go 1.23+ range-over-func iterator over nodes matching opts,
+// built directly on top of ForEach (no new scan machinery) — same row set,
+// same order, same temporal/paginated fallback to All that ForEach itself
+// takes for the given opts (see ForEach's doc). Differences from ForEach:
+//
+//   - ctx is checked once per row (non-blocking, before each yield); on
+//     cancellation the iterator yields (nil, ctx.Err()) exactly once and
+//     stops the underlying scan.
+//   - Any internal scan error yields (nil, err) exactly once and stops.
+//   - Breaking out of the range loop stops the underlying ForEach scan
+//     immediately; no further rows are fetched.
+//
+// Row ownership mirrors ForEach exactly, and it is NOT uniform across opts:
+// a plain current-state, unpaginated scan (ForEach's fast path) hands each
+// row to fn as an independent, already-mutable copy, while a temporal filter
+// or Limit/After pagination (ForEach's fallback to All) hands back shared
+// FROZEN rows on a trusted backend — DeepCopy before mutating in that case.
+// When in doubt, treat every yielded row as read-only and DeepCopy before
+// mutating.
+//
+// A nil/zero-value API yields a single (nil, grapherr.ErrNilGraph).
+func (a *API) Iter(ctx context.Context, opts storepkg.QueryOpts) iter.Seq2[*types.Node, error] {
+	return func(yield func(*types.Node, error) bool) {
+		ops, err := a.ready()
+		if err != nil {
+			yield(nil, err)
+			return
+		}
+		iterateForEach(ctx, yield, func(fn func(*types.Node) bool) error {
+			return ops.ForEach(opts, fn)
+		})
+	}
 }
 
 // ByLabel returns nodes carrying the given label.
@@ -435,4 +487,40 @@ func cloneStrings(values []string) []string {
 	out := make([]string, len(values))
 	copy(out, values)
 	return out
+}
+
+// iterateForEach drives a Go 1.23+ range-over-func Seq2 from an
+// already-validated ForEach-shaped streaming primitive (scan): ctx is checked
+// once per row (non-blocking, before each yield) and the scan stops
+// immediately either on ctx cancellation — yielding (zero, ctx.Err()) exactly
+// once — or when the consumer's yield returns false (a normal early stop,
+// nothing further is yielded). Any error the scan itself returns (and did not
+// already surface via a per-row ctx check) is yielded once at the end. Kept
+// unexported and duplicated in rels (rather than shared via a new package) to
+// stay inside this WP's scope.
+func iterateForEach[T any](ctx context.Context, yield func(T, error) bool, scan func(fn func(T) bool) error) {
+	var zero T
+	if err := ctx.Err(); err != nil {
+		yield(zero, err)
+		return
+	}
+	stopped := false
+	err := scan(func(v T) bool {
+		if cErr := ctx.Err(); cErr != nil {
+			stopped = true
+			yield(zero, cErr)
+			return false
+		}
+		if !yield(v, nil) {
+			stopped = true
+			return false
+		}
+		return true
+	})
+	if stopped {
+		return
+	}
+	if err != nil {
+		yield(zero, err)
+	}
 }

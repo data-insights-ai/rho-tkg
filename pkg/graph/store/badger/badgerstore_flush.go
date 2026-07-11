@@ -255,6 +255,18 @@ func (bs *Store) flush() error {
 	// Entries re-dirtied during the flush retain their dirty status.
 	bs.markCacheFlushed(nodeDirty, relDirty)
 
+	// Step 4 (tiered only): persist the store-global allocator watermark now that
+	// this batch's change-log records are durable, so reseed at open reads ONE
+	// refShard key and never opens a cold shard (ADR-0005 §2.1-reseed). The
+	// records already committed; the watermark is belt-and-braces (reseed also
+	// folds each open shard's own LastLSNKey), so a hook error is logged, not
+	// propagated — it must never mask a successful data commit.
+	if bs.onChangeLogFlush != nil && len(logs) > 0 {
+		if err := bs.onChangeLogFlush(); err != nil && bs.logger != nil {
+			bs.logger.Warningf("graph: persist change-log watermark: %v", err)
+		}
+	}
+
 	return nil
 }
 
