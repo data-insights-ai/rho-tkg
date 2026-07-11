@@ -67,7 +67,15 @@ func CoerceInstant(v any) (Instant, bool) {
 		if math.Trunc(val) != val {
 			return 0, false
 		}
-		if val < float64(math.MinInt64) || val > float64(math.MaxInt64) {
+		// Upper bound must be STRICT against 2^63: float64(math.MaxInt64)
+		// rounds up to exactly 2^63, which is one past the largest int64 —
+		// and Go's out-of-range float→int conversion is platform-defined
+		// (amd64 wraps to MinInt64, arm64 saturates to MaxInt64), so an
+		// inclusive comparison let 2^63 through with divergent results per
+		// architecture. float64(math.MinInt64) is exactly -2^63, a valid
+		// int64, so the inclusive lower bound stays.
+		const maxInt64PlusOne = 9223372036854775808.0 // 2^63
+		if val < float64(math.MinInt64) || val >= maxInt64PlusOne {
 			return 0, false
 		}
 		return Instant(int64(val)), true

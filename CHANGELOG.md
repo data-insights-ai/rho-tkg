@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.12.1] - 2026-07-11
+
+### Fixed
+- `types.CoerceInstant`: the float64 upper-bound check used an inclusive
+  comparison against `float64(math.MaxInt64)`, which rounds up to exactly 2^63
+  — one past the largest int64 — so that value slipped through to a
+  platform-defined float-to-int conversion (amd64 wraps to `MinInt64`, arm64
+  saturates to `MaxInt64`). The bound is now strictly below 2^63, rejecting
+  the value identically on every architecture; boundary cases (largest
+  integral float64 below 2^63, exact `MinInt64`) are pinned by tests. Found by
+  the public CI's amd64 runner diverging from arm64 development machines.
+
 ## [4.12.0] - 2026-07-11
 
 - Store capability consolidation (ADR-0003) — internal refactor, ZERO public API change. Adds five composed capability facets to `pkg/graph/store` (`IntegrityAccelerationFacet`, `HistoryAccelerationFacet`, `IndexAccelerationFacet`, `ChangeLogFacet`, `MetadataFacet`) as pure compositions of the existing narrow capability interfaces — every existing interface name is unchanged, so Go structural typing keeps every current implementer (in-tree and external) satisfying them automatically; a compile-time test proves an old-style store implementing only the pre-facet method sets still satisfies `Store` and each facet. Adds `store.CapabilityReport` + `store.CapabilitiesOf(MandatoryStore) CapabilityReport`, a pure, side-effect-free introspection that probes each optional capability once (for diagnostics/tooling; it is a STRUCTURAL probe and deliberately does NOT reproduce the wrapper-visibility guard the graph layer applies to its own cached handles). Core-side: the 23 scattered inline `c.store.(MetaKVCapability)` / `(HistoryCompactionCapability)` asserts (as-of tags, graph epoch, bitemporal migration, unique constraints, unique-forever ownership, replication watermark/lease, compaction) are replaced by two handles (`c.metaKV`, `c.historyCompaction`) resolved once in `core.New` — byte-for-byte behavior-preserving (bare probes, immutable store, identical decline error at every site). The 13 wrapper-visibility-guarded acceleration handles were already resolved once in `New` and are unchanged. See `docs/adr/0003-capability-consolidation.md` (inventory regenerated in-branch: 34 store interfaces, 45 assertion sites, post-parity implementation matrix).

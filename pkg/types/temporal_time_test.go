@@ -336,9 +336,28 @@ func TestCoerceInstantAccepts(t *testing.T) {
 			ok:    true,
 		},
 		{
-			name:  "float64 large integral",
+			// float64(math.MaxInt64) rounds UP to exactly 2^63 — one past the
+			// largest int64 — so it must be REJECTED (Go's out-of-range
+			// float→int conversion is platform-defined: amd64 wraps to
+			// MinInt64, arm64 saturates; the original inclusive bound let this
+			// through and CI on amd64 caught the divergence).
+			name:  "float64 2^63 (float64(MaxInt64)) rejected",
 			input: float64(math.MaxInt64),
-			want:  Instant(math.MaxInt64),
+			want:  0,
+			ok:    false,
+		},
+		{
+			// Largest integral float64 strictly below 2^63: 2^63 - 1024.
+			name:  "float64 largest representable below 2^63",
+			input: 9223372036854774784.0,
+			want:  Instant(9223372036854774784),
+			ok:    true,
+		},
+		{
+			// float64(math.MinInt64) is exactly -2^63 == MinInt64: valid.
+			name:  "float64 -2^63 (exact MinInt64) accepted",
+			input: float64(math.MinInt64),
+			want:  Instant(math.MinInt64),
 			ok:    true,
 		},
 
