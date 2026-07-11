@@ -267,8 +267,18 @@ type QueryOpts = store.QueryOpts
 type ShardDepth = store.ShardDepth
 
 // DistanceMetric aliases store.DistanceMetric — accepted by
-// g.Index().SearchNearest. Use the storepkg.Distance* constants for values.
+// g.Index().SearchNearest.
 type DistanceMetric = store.DistanceMetric
+
+// Distance metrics for vector indexes — re-exports of the store-canonical
+// store.DistanceCosine / store.DistanceEuclidean values (same identity, not
+// just the same numeric value), so a caller using only graph.DistanceMetric
+// (via g.Index().CreateVector/CreateVectorWithOptions/SearchNearest) is not
+// forced to import pkg/graph/store directly just to name a metric constant.
+const (
+	DistanceCosine    = store.DistanceCosine
+	DistanceEuclidean = store.DistanceEuclidean
+)
 
 // VectorIndexOptions aliases store.VectorIndexOptions — accepted by
 // g.Index().CreateVectorWithOptions to choose the vector-index engine

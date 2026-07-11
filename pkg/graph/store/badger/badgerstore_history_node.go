@@ -85,6 +85,7 @@ func (bs *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 	bs.removeNodePropertyKeyCounts(old)
 	ops := bs.maintainPropertyIndexesRemove(old, id)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
+	ops = append(ops, bs.maintainTemporalIndexDiskRemove(old, id)...)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
 
@@ -106,6 +107,7 @@ func (bs *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 	bs.addNodePropertyKeyCounts(updatedNode)
 	ops = append(ops, bs.maintainPropertyIndexesAdd(updatedNode, id)...)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
+	ops = append(ops, bs.maintainTemporalIndexDiskAdd(updatedNode, id)...)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, updatedNode, id)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
 		bs.idxMu.Unlock()
@@ -197,6 +199,7 @@ func (bs *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 	bs.removeNodePropertyKeyCounts(old)
 	ops := bs.maintainPropertyIndexesRemove(old, id)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
+	ops = append(ops, bs.maintainTemporalIndexDiskRemove(old, id)...)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
 
@@ -210,6 +213,7 @@ func (bs *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 		set[nid] = struct{}{}
 	}
 	bs.getOrCreateLabelCounter(tok).Add(1)
+	bs.recordNodeLabelMembersLocked(updatedNode) // K1: transaction-time label membership (new token)
 
 	// Update cache and property/temporal/vector indexes for the new node state.
 	bs.nodeCache.Put(id, freezeNodeCopy(updatedNode))
@@ -218,6 +222,7 @@ func (bs *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 	bs.addNodePropertyKeyCounts(updatedNode)
 	ops = append(ops, bs.maintainPropertyIndexesAdd(updatedNode, id)...)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
+	ops = append(ops, bs.maintainTemporalIndexDiskAdd(updatedNode, id)...)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, updatedNode, id)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
 		bs.idxMu.Unlock()
@@ -311,6 +316,7 @@ func (bs *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 	bs.removeNodePropertyKeyCounts(old)
 	ops := bs.maintainPropertyIndexesRemove(old, id)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
+	ops = append(ops, bs.maintainTemporalIndexDiskRemove(old, id)...)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
 	bs.nodeCache.Put(id, freezeNodeCopy(current))
@@ -319,6 +325,7 @@ func (bs *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 	bs.addNodePropertyKeyCounts(current)
 	ops = append(ops, bs.maintainPropertyIndexesAdd(current, id)...)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, current, id)
+	ops = append(ops, bs.maintainTemporalIndexDiskAdd(current, id)...)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, current, id)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
 		bs.idxMu.Unlock()
@@ -508,6 +515,15 @@ func (bs *Store) PutNodeVersion(nid types.NodeID, version uint32, n *types.Node)
 		return fmt.Errorf("graph: encode change-log: %w", err)
 	}
 	key := storepkg.HistNodeKey(id, uint64(version))
+	// K1: a historical version may carry a label the current row no longer has.
+	// Only lock when the sidecar is already built (the import/replica bootstrap
+	// common case runs before any pinned scan, so the flag is false and the lazy
+	// build catches these history rows).
+	if bs.labelTxMembersBuilt.Load() {
+		bs.idxMu.Lock()
+		bs.recordNodeLabelMembersLocked(n)
+		bs.idxMu.Unlock()
+	}
 	// PutNodeVersion holds no idxMu, so enqueue the op and its record together
 	// under one wbMu critical section (appendOpsLogged) for snapshot atomicity.
 	bs.appendOpsLogged(storecontract.ChangeNodeHistoryVersion, logPayload, writeOp{opType: writeOpSet, key: key, value: data})

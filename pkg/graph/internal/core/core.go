@@ -40,29 +40,39 @@ import (
 // Core is the central graph implementation. Customers see *graph.Graph, which
 // is a thin facade holding *Core plus sub-API accessors.
 type Core struct {
-	labels             *registrypkg.LabelRegistry
-	relTypes           *registrypkg.RelTypeRegistry
-	propKeys           *registrypkg.PropertyKeyRegistry
-	nodeIDGen          *snowflake.Node
-	relIDGen           *snowflake.Node
-	store              storepkg.MandatoryStore
-	generatedCreate    generatedcreate.Capability
-	endpointHash       storepkg.EndpointIntegrityHashCapability
-	endpointHashWrite  generatedcreate.RelationshipEndpointHashCapability
-	nodeHash           storepkg.NodeIntegrityHashCapability
-	txTimeQuery        storepkg.TransactionTimeQueryCapability
-	txTimeQueryCopy    bool
-	historyTrim        storepkg.HistoryRollbackTrimCapability
-	propertyQuery      storepkg.PropertyIndexCapability
-	propertyQueryTrust bool
-	filteredVector     storepkg.FilteredVectorSearchCapability
-	vectorIndexOptions storepkg.VectorIndexOptionsCapability
-	depthHistory       storepkg.DepthHistoryIterationCapability
-	deletedIter        storepkg.DeletedIterationCapability
-	deletedDepthIter   storepkg.DepthDeletedIterationCapability
-	changeFeed         storepkg.ChangeFeedCapability
-	changeLogEnabled   bool                      // store's change-log actually on (records emitted)
-	txLogScope         storepkg.TxChangeLogScope // per-tx record buffer (nil when off / unsupported)
+	labels                *registrypkg.LabelRegistry
+	relTypes              *registrypkg.RelTypeRegistry
+	propKeys              *registrypkg.PropertyKeyRegistry
+	nodeIDGen             *snowflake.Node
+	relIDGen              *snowflake.Node
+	store                 storepkg.MandatoryStore
+	generatedCreate       generatedcreate.Capability
+	endpointHash          storepkg.EndpointIntegrityHashCapability
+	endpointHashWrite     generatedcreate.RelationshipEndpointHashCapability
+	nodeHash              storepkg.NodeIntegrityHashCapability
+	txTimeQuery           storepkg.TransactionTimeQueryCapability
+	txTimeQueryCopy       bool
+	historyTrim           storepkg.HistoryRollbackTrimCapability
+	propertyQuery         storepkg.PropertyIndexCapability
+	propertyQueryTrust    bool
+	relPropertyQuery      storepkg.RelPropertyIndexCapability
+	relPropertyQueryTrust bool
+	compositeQuery        storepkg.CompositePropertyIndexCapability
+	compositeQueryTrust   bool
+	filteredVector        storepkg.FilteredVectorSearchCapability
+	vectorIndexOptions    storepkg.VectorIndexOptionsCapability
+	depthHistory          storepkg.DepthHistoryIterationCapability
+	deletedIter           storepkg.DeletedIterationCapability
+	deletedDepthIter      storepkg.DepthDeletedIterationCapability
+	// K1 — transaction-time membership sidecars: scope a pinned label/type scan's
+	// candidate set to the label/type's ever-members (O(matches)) instead of the
+	// whole node/rel-history fold (O(everything ever)). nil = store declines
+	// (tiered), so the query falls back to the full-history candidate fold.
+	labelTxMembers   storepkg.LabelTxMembershipCapability
+	relTypeTxMembers storepkg.RelTypeTxMembershipCapability
+	changeFeed       storepkg.ChangeFeedCapability
+	changeLogEnabled bool                      // store's change-log actually on (records emitted)
+	txLogScope       storepkg.TxChangeLogScope // per-tx record buffer (nil when off / unsupported)
 	// Metadata facet (ADR-0003) — durable arbitrary-KV + atomic history
 	// compaction. Both are bare optional capabilities (no wrapper-visibility
 	// dance): the store is fixed after New, so a nil handle is exactly the
@@ -427,6 +437,20 @@ type Config struct {
 	// state exactly once, the first time this flag is turned on. Ignored
 	// when Store is provided explicitly.
 	PropertyIndexOnDisk bool
+	// TemporalIndexOnDisk is a rebuild-at-open accelerator for the
+	// maxTo-augmented temporal interval index (g.Index().CreateTemporalIndex)
+	// on the badger-backed store — NOT a RAM-vs-disk trade-off like
+	// LabelIndexOnDisk/AdjacencyIndexOnDisk/PropertyIndexOnDisk above: the
+	// index always stays fully resident in RAM at runtime. Off (default),
+	// reopening a store with an existing temporal index definition rebuilds
+	// it via a full node fetch+decode per entity. On, a compact per-entity
+	// row is maintained in the persisted 0x0B keyspace alongside the node row
+	// (see badgerstore_temporal_disk.go), and open streams straight from a
+	// prefix iteration over it instead. An existing directory with temporal
+	// index definitions but no prior 0x0B rows is backfilled from current
+	// node state exactly once, the first time this flag is turned on. Ignored
+	// when Store is provided explicitly.
+	TemporalIndexOnDisk bool
 	// ValueLogFileSize / MemTableSize / BlockCacheSize / IndexCacheSize /
 	// NumCompactors tune Badger's per-instance footprint for the store
 	// constructed from BadgerDir/BadgerInMemory. Zero keeps Badger's stock
@@ -766,6 +790,43 @@ func propertyQueryCapability(store storepkg.MandatoryStore) storepkg.PropertyInd
 	return cap
 }
 
+func relPropertyQueryCapability(store storepkg.MandatoryStore) storepkg.RelPropertyIndexCapability {
+	cap, ok := store.(storepkg.RelPropertyIndexCapability)
+	if !ok {
+		return nil
+	}
+	// Mirror propertyQueryCapability: the graph can answer rel-property equality
+	// by scanning RelationshipsByType, so the store capability is an
+	// acceleration/extension path. Trust exact in-tree and direct external
+	// implementations; keep concrete wrappers on the graph fallback so their
+	// RelationshipsByType overrides stay visible.
+	if isExactNativeStore(store) {
+		return cap
+	}
+	if embedsNativeCapability(store, reflect.TypeOf((*storepkg.RelPropertyIndexCapability)(nil)).Elem(), "RelationshipsByTypeAndProperty") {
+		return nil
+	}
+	return cap
+}
+
+func compositeQueryCapability(store storepkg.MandatoryStore) storepkg.CompositePropertyIndexCapability {
+	cap, ok := store.(storepkg.CompositePropertyIndexCapability)
+	if !ok {
+		return nil
+	}
+	// Same rationale as propertyQueryCapability: the graph can always answer
+	// a composite equality query by scanning NodesByLabel + post-filtering
+	// every declared pair, so the store capability is an acceleration path
+	// only, not the sole source of correctness.
+	if isExactNativeStore(store) {
+		return cap
+	}
+	if embedsNativeCapability(store, reflect.TypeOf((*storepkg.CompositePropertyIndexCapability)(nil)).Elem(), "NodesByLabelAndProperties") {
+		return nil
+	}
+	return cap
+}
+
 func nativeNodeIntegrityHash(store storepkg.MandatoryStore) storepkg.NodeIntegrityHashCapability {
 	cap, ok := store.(storepkg.NodeIntegrityHashCapability)
 	if !ok {
@@ -902,6 +963,42 @@ func depthDeletedIterationCapability(store storepkg.MandatoryStore) storepkg.Dep
 	}
 	if embedsNativeCapability(store, reflect.TypeOf((*storepkg.DepthDeletedIterationCapability)(nil)).Elem(),
 		"ForEachDeletedNodeIDByDepth", "ForEachDeletedRelIDByDepth") {
+		return nil
+	}
+	return cap
+}
+
+// labelTxMembershipCapability resolves the K1 transaction-time label-membership
+// sidecar. Only the exact native single-shard backends (memory, badger) own a
+// coherent whole-store membership index; a wrapper that merely EMBEDS a native
+// store, or the multi-shard tiered store, is forced to nil so the query falls
+// back to the correct (if unaccelerated) full-history candidate fold.
+func labelTxMembershipCapability(store storepkg.MandatoryStore) storepkg.LabelTxMembershipCapability {
+	cap, ok := store.(storepkg.LabelTxMembershipCapability)
+	if !ok {
+		return nil
+	}
+	if isExactNativeStore(store) {
+		return cap
+	}
+	if embedsNativeCapability(store, reflect.TypeOf((*storepkg.LabelTxMembershipCapability)(nil)).Elem(),
+		"ForEachLabelTxMember") {
+		return nil
+	}
+	return cap
+}
+
+// relTypeTxMembershipCapability is the rel-type mirror of labelTxMembershipCapability.
+func relTypeTxMembershipCapability(store storepkg.MandatoryStore) storepkg.RelTypeTxMembershipCapability {
+	cap, ok := store.(storepkg.RelTypeTxMembershipCapability)
+	if !ok {
+		return nil
+	}
+	if isExactNativeStore(store) {
+		return cap
+	}
+	if embedsNativeCapability(store, reflect.TypeOf((*storepkg.RelTypeTxMembershipCapability)(nil)).Elem(),
+		"ForEachRelTypeTxMember") {
 		return nil
 	}
 	return cap
@@ -1157,6 +1254,7 @@ func New(config Config) (*Core, error) {
 				LabelIndexOnDisk:      config.LabelIndexOnDisk,
 				AdjacencyIndexOnDisk:  config.AdjacencyIndexOnDisk,
 				PropertyIndexOnDisk:   config.PropertyIndexOnDisk,
+				TemporalIndexOnDisk:   config.TemporalIndexOnDisk,
 				ValueLogFileSize:      config.ValueLogFileSize,
 				MemTableSize:          config.MemTableSize,
 				BlockCacheSize:        config.BlockCacheSize,
@@ -1208,6 +1306,10 @@ func New(config Config) (*Core, error) {
 	c.historyTrim = nativeHistoryRollbackTrim(store)
 	c.propertyQuery = propertyQueryCapability(store)
 	c.propertyQueryTrust = isExactNativeStore(store)
+	c.relPropertyQuery = relPropertyQueryCapability(store)
+	c.relPropertyQueryTrust = isExactNativeStore(store)
+	c.compositeQuery = compositeQueryCapability(store)
+	c.compositeQueryTrust = isExactNativeStore(store)
 	c.filteredVector = filteredVectorSearchCapability(store)
 	c.vectorIndexOptions = vectorIndexOptionsCapability(store)
 	c.depthHistory = depthHistoryIterationCapability(store)
@@ -1216,6 +1318,8 @@ func New(config Config) (*Core, error) {
 	c.changeLogEnabled = changeLogStatusEnabled(store)
 	c.txLogScope = txChangeLogScope(store, c.changeLogEnabled)
 	c.deletedDepthIter = depthDeletedIterationCapability(store)
+	c.labelTxMembers = labelTxMembershipCapability(store)
+	c.relTypeTxMembers = relTypeTxMembershipCapability(store)
 	// Metadata facet: bare optional-capability probes, resolved once (byte-for-byte
 	// equal to the former per-site `_, ok := c.store.(X)` since store is immutable).
 	c.metaKV, _ = store.(storepkg.MetaKVCapability)

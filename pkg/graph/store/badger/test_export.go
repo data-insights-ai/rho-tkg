@@ -4,6 +4,7 @@ import (
 	"time"
 
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 	badgerv4 "github.com/dgraph-io/badger/v4"
@@ -44,6 +45,70 @@ func (bs *Store) DBForTest() *badgerv4.DB { return bs.db }
 // shard's badger.Config, distinct from proving the persisted keyspace has
 // entries. Not for production use.
 func (bs *Store) PropertyIndexOnDiskForTest() bool { return bs.propIdxOnDisk }
+
+// TemporalIndexOnDiskForTest reports whether this shard was opened with
+// Config.TemporalIndexOnDisk set. Exported so tiered-store tests can assert
+// the tiered Config.TemporalIndexOnDisk pass-through actually reached a
+// shard's badger.Config. Not for production use.
+func (bs *Store) TemporalIndexOnDiskForTest() bool { return bs.temporalIdxOnDisk }
+
+// TemporalIndexOnDiskBuiltForTest reports whether the persisted 0x0B
+// rebuild-on-enable marker (storeutil.TemporalIndexOnDiskBuiltKey) is
+// present in this store's Badger keyspace. Exported solely for tests
+// asserting the one-time backfill actually committed the marker. Not for
+// production use.
+func (bs *Store) TemporalIndexOnDiskBuiltForTest() bool {
+	found := false
+	_ = bs.db.View(func(txn *badgerv4.Txn) error {
+		_, err := txn.Get(storepkg.TemporalIndexOnDiskBuiltKey)
+		found = err == nil
+		return nil
+	})
+	return found
+}
+
+// TemporalIndexDiskEntryCountForTest returns the number of persisted 0x0B
+// raw-entry rows for labelToken, counting both durable Badger rows and any
+// unflushed pending overlay (set-vs-delete resolved per key). Exported solely
+// for tests asserting write-path maintenance / backfill / drop-purge
+// behavior of the TemporalIndexOnDisk keyspace. Not for production use.
+func (bs *Store) TemporalIndexDiskEntryCountForTest(labelToken uint16) int {
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
+	seen := make(map[string]bool)
+	prefix := string(storepkg.TemporalIndexTokenPrefix(labelToken))
+	bs.rangePending(func(k string, op writeOp) {
+		if len(k) < len(prefix) || k[:len(prefix)] != prefix {
+			return
+		}
+		seen[k] = op.opType == writeOpSet
+	})
+	count := 0
+	_ = bs.db.View(func(txn *badgerv4.Txn) error {
+		opts := badgerv4.DefaultIteratorOptions
+		opts.PrefetchValues = false
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		for it.Seek([]byte(prefix)); it.ValidForPrefix([]byte(prefix)); it.Next() {
+			k := string(it.Item().KeyCopy(nil))
+			if live, overridden := seen[k]; overridden {
+				if live {
+					count++
+				}
+				delete(seen, k)
+				continue
+			}
+			count++
+		}
+		return nil
+	})
+	for _, live := range seen {
+		if live {
+			count++
+		}
+	}
+	return count
+}
 
 // NodeCacheForTest / RelCacheForTest return the entity caches so tests can call
 // EvictForTest / ResetForTest from outside the package. Not for production use.

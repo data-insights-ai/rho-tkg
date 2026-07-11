@@ -75,9 +75,13 @@ func TestAPINilReceiversReturnErrNilGraph(t *testing.T) {
 		t.Fatalf("typed-nil NodeAt = %v, want ErrNilGraph", err)
 	}
 
-	// RelMatchesValidTime returns bool, not error: a not-ready graph must report
-	// "not valid" (false), the safe default for a post-filter consumer.
+	// NodeMatchesValidTime / RelMatchesValidTime return bool, not error: a
+	// not-ready graph must report "not valid" (false), the safe default for a
+	// post-filter consumer.
 	var nilGraphAPI *API
+	if nilGraphAPI.NodeMatchesValidTime(nil, storepkg.QueryOpts{}) {
+		t.Fatal("nil-graph NodeMatchesValidTime = true, want false")
+	}
 	if nilGraphAPI.RelMatchesValidTime(nil, storepkg.QueryOpts{}) {
 		t.Fatal("nil-graph RelMatchesValidTime = true, want false")
 	}
@@ -164,6 +168,12 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 			}
 			return err
 		}},
+		{name: "NodeMatchesValidTime", run: func() error {
+			if !api.NodeMatchesValidTime(nil, storepkg.QueryOpts{}) {
+				t.Fatal("NodeMatchesValidTime forwarded result = false, want true")
+			}
+			return wantErr // not error-returning; satisfy the loop's errors.Is(wantErr) check
+		}},
 		{name: "RelMatchesValidTime", run: func() error {
 			if !api.RelMatchesValidTime(nil, storepkg.QueryOpts{}) {
 				t.Fatal("RelMatchesValidTime forwarded result = false, want true")
@@ -187,7 +197,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		"NodeAtTx", "RelAtTx", "NodesAtTx", "RelsAtTx",
 		"SetNodeVersionInterval", "SetRelVersionInterval",
 		"Snapshot", "Diff", "DiffCallback", "NodeInterval", "RelInterval", "RelateNodes", "RelateRels",
-		"RelMatchesValidTime",
+		"NodeMatchesValidTime", "RelMatchesValidTime",
 		"TagAsOf", "ResolveAsOf", "AsOfTags", "RemoveAsOfTag",
 	}
 	if len(ops.calls) != len(wantCalls) {
@@ -419,6 +429,11 @@ func (s *temporalOpsSpy) AsOfTags() (map[string]types.Instant, error) {
 func (s *temporalOpsSpy) RemoveAsOfTag(name string) error {
 	s.record("RemoveAsOfTag")
 	return s.err
+}
+
+func (s *temporalOpsSpy) NodeMatchesValidTime(n *types.Node, opts storepkg.QueryOpts) bool {
+	s.record("NodeMatchesValidTime")
+	return true
 }
 
 func (s *temporalOpsSpy) RelMatchesValidTime(r *types.Relationship, opts storepkg.QueryOpts) bool {

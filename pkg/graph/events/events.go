@@ -4,6 +4,14 @@
 // import it directly to construct buses (events.NewEventBus,
 // events.NewAsyncEventBus) and observe events (events.Event, events.EventType,
 // the EventNode*/EventRel* constants, and the BackpressureStrategy variants).
+//
+// Observability: AsyncEventBusConfig.OnDrop reports events shed by
+// BackpressureDropOldest/BackpressureDropLatest (silent before this field
+// existed — there was no hook, counter, or depth accessor anywhere in the
+// package), and AsyncEventBus.QueueDepth/QueueDepths expose the current
+// per-priority buffer occupancy. Both are additive and zero-cost when unused
+// (OnDrop nil, the pre-existing default). See the AsyncEventBusConfig and
+// AsyncEventBus.QueueDepth doc comments for the exact contract.
 package events
 
 import (
@@ -201,6 +209,37 @@ type AsyncEventBusConfig struct {
 	Workers      int                  // requested worker count; capped at 1 to preserve priority, default 1
 	QueueSize    int                  // channel capacity (default 256)
 	Backpressure BackpressureStrategy // behavior when queue is full; invalid values use BackpressureBlock
+
+	// OnDrop, when non-nil, is invoked once for every event shed by
+	// BackpressureDropOldest or BackpressureDropLatest. Nil (the default) is
+	// zero cost: no event is ever staged for the callback and no drop
+	// bookkeeping runs. BackpressureBlock never drops, so OnDrop is never
+	// invoked under that strategy.
+	//
+	// Which event is handed to the callback differs by strategy — this is
+	// the precise, tested contract:
+	//   - BackpressureDropOldest: the OLD event evicted from the queue HEAD
+	//     to make room for the new one (the new event is always enqueued
+	//     after the eviction).
+	//   - BackpressureDropLatest: the NEW event being rejected (the queue's
+	//     existing contents are left untouched).
+	//
+	// OnDrop is guaranteed to run OUTSIDE any AsyncEventBus lock: the bus
+	// stashes evicted/rejected events while the enqueue lock is held and
+	// invokes the callback only after releasing it. This means the callback
+	// may safely re-enter the bus — call Publish, PublishBatch, QueueDepth,
+	// Subscribe, or Close — without risk of deadlock.
+	//
+	// Ordering is NOT globally guaranteed across concurrent callers: a
+	// single Publish or PublishBatch call invokes OnDrop for its own
+	// drops, in the order those drops occurred, before that call returns.
+	// But when multiple goroutines call Publish/PublishBatch concurrently,
+	// each call's OnDrop invocations run only after ITS OWN lock section
+	// releases, so callbacks from different calls may interleave or arrive
+	// out of the events' relative enqueue order. Callers needing a strict
+	// global order must serialize their own producers or synchronize
+	// inside OnDrop.
+	OnDrop func(Event)
 }
 
 // AsyncEventBus delivers graph lifecycle events asynchronously via a dispatcher.
@@ -231,6 +270,12 @@ type AsyncEventBus struct {
 
 	queues       [numPriorityLevels]chan Event // one channel per priority level
 	backpressure BackpressureStrategy
+
+	// onDrop is the configured AsyncEventBusConfig.OnDrop callback, captured
+	// once in start(). Nil means "no observer" — enqueueLocked skips all
+	// drop bookkeeping when this is nil, so the feature is zero cost when
+	// unused.
+	onDrop func(Event)
 
 	// wakeupCh is a 1-buffered "events available" signal. Each
 	// Publish/PublishBatch does ONE non-blocking send after all
@@ -291,6 +336,7 @@ func NewAsyncEventBus(cfg AsyncEventBusConfig) *AsyncEventBus {
 		backpressure: normalizeBackpressure(cfg.Backpressure),
 		workers:      cfg.Workers,
 		queueSize:    cfg.QueueSize,
+		onDrop:       cfg.OnDrop,
 	}
 	ab.start()
 	return ab
@@ -386,11 +432,13 @@ func (ab *AsyncEventBus) Publish(e Event) {
 		ab.publishMu.Unlock()
 		return
 	}
-	wrote := ab.enqueueLocked(e)
+	drops := ab.newDropSink()
+	wrote := ab.enqueueLocked(e, drops)
 	ab.publishMu.Unlock()
 	if wrote {
 		ab.signalWakeup()
 	}
+	ab.notifyDrops(drops)
 }
 
 // PublishBatch enqueues a sequence of events atomically: the publish mutex is
@@ -428,6 +476,7 @@ func (ab *AsyncEventBus) PublishBatch(events ...Event) {
 		ab.publishMu.Unlock()
 		return
 	}
+	drops := ab.newDropSink()
 	wroteAny := false
 	for i, p := range priorityOrder {
 		// Raise the dispatch ceiling to the current pass's priority before
@@ -439,7 +488,7 @@ func (ab *AsyncEventBus) PublishBatch(events ...Event) {
 			if normalizePriority(e.Priority) != p {
 				continue
 			}
-			if ab.enqueueLocked(e) {
+			if ab.enqueueLocked(e, drops) {
 				wroteAny = true
 			}
 		}
@@ -449,6 +498,10 @@ func (ab *AsyncEventBus) PublishBatch(events ...Event) {
 	if wroteAny {
 		ab.signalWakeup()
 	}
+	// Notified only after the ENTIRE batch has released publishMu and
+	// cleared the priority ceiling — never interleaved between per-priority
+	// passes — so OnDrop never observes a batch mid-flight.
+	ab.notifyDrops(drops)
 }
 
 // enqueueLocked enqueues a single event into the appropriate priority
@@ -456,7 +509,12 @@ func (ab *AsyncEventBus) PublishBatch(events ...Event) {
 // if the event was successfully enqueued, false if it was dropped
 // (DropLatest with full queue) or the bus is stopping. Caller must
 // hold ab.publishMu.
-func (ab *AsyncEventBus) enqueueLocked(e Event) bool {
+//
+// drops, when non-nil, accumulates every event shed by DropOldest/DropLatest
+// during this call (DropOldest: the evicted head; DropLatest: the rejected
+// newcomer). Callers pass nil when ab.onDrop is nil (see newDropSink) so no
+// drop bookkeeping runs in the common unconfigured case.
+func (ab *AsyncEventBus) enqueueLocked(e Event, drops *[]Event) bool {
 	p := normalizePriority(e.Priority)
 	q := ab.queues[p]
 
@@ -486,7 +544,10 @@ func (ab *AsyncEventBus) enqueueLocked(e Event) bool {
 				select {
 				case <-ab.stopCh:
 					return false
-				case <-q:
+				case old := <-q:
+					if drops != nil {
+						*drops = append(*drops, old)
+					}
 				default:
 					// Queue is full and drain attempt also contended;
 					// yield so the dispatcher draining the queue gets CPU time.
@@ -500,10 +561,83 @@ func (ab *AsyncEventBus) enqueueLocked(e Event) bool {
 			return true
 		default:
 			// Queue full — drop this event.
+			if drops != nil {
+				*drops = append(*drops, e)
+			}
 			return false
 		}
 	}
 	return false
+}
+
+// newDropSink returns a fresh drop accumulator when ab.onDrop is configured,
+// or nil otherwise. Passing the nil result into enqueueLocked skips every
+// append, keeping the unconfigured (default) path allocation-free.
+func (ab *AsyncEventBus) newDropSink() *[]Event {
+	if ab.onDrop == nil {
+		return nil
+	}
+	drops := make([]Event, 0)
+	return &drops
+}
+
+// notifyDrops invokes ab.onDrop for every accumulated drop, in order. Called
+// ONLY after the caller has released ab.publishMu, so the callback is
+// guaranteed to run outside any AsyncEventBus lock and may safely re-enter
+// the bus (Publish, PublishBatch, QueueDepth, Subscribe, Close).
+func (ab *AsyncEventBus) notifyDrops(drops *[]Event) {
+	if drops == nil || ab.onDrop == nil {
+		return
+	}
+	for _, e := range *drops {
+		safeInvokeOnDrop(ab.onDrop, e)
+	}
+}
+
+// safeInvokeOnDrop calls onDrop(e) and recovers from any panic, logging it via
+// slog — the drop-observability mirror of safeInvoke: Publish runs synchronously
+// inside every graph mutation door, so a misbehaving drop observer must never
+// crash the in-flight mutation.
+func safeInvokeOnDrop(onDrop func(Event), e Event) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("graph: OnDrop callback panicked", "panic", r,
+				"eventType", e.Type, "entityID", e.EntityID)
+		}
+	}()
+	onDrop(e)
+}
+
+// QueueDepth returns the total number of events currently buffered across
+// every priority queue. Snapshot semantics: the count reflects a point in
+// time and may be stale by the time the caller observes it, since
+// Publish/PublishBatch and the dispatcher continue to mutate the queues
+// concurrently. A nil receiver or a not-yet-started zero-value bus returns 0.
+func (ab *AsyncEventBus) QueueDepth() int {
+	if ab == nil {
+		return 0
+	}
+	total := 0
+	for _, q := range ab.queues {
+		total += len(q)
+	}
+	return total
+}
+
+// QueueDepths returns the buffered event count for each priority level,
+// indexed by EventPriority value (PriorityNormal, PriorityHigh,
+// PriorityCritical, PriorityLow, PriorityDeferred). Snapshot semantics as
+// QueueDepth. A nil receiver or a not-yet-started zero-value bus returns all
+// zeros.
+func (ab *AsyncEventBus) QueueDepths() [numPriorityLevels]int {
+	var depths [numPriorityLevels]int
+	if ab == nil {
+		return depths
+	}
+	for i, q := range ab.queues {
+		depths[i] = len(q)
+	}
+	return depths
 }
 
 func normalizePriority(p EventPriority) EventPriority {
@@ -629,6 +763,11 @@ func (ab *AsyncEventBus) dispatch(e Event) {
 
 // Close signals the dispatcher to stop, waits for it to drain the queue and finish.
 // Safe to call multiple times (B11). Blocks until all in-flight events are delivered.
+//
+// OnDrop quiescence: Close does NOT wait for OnDrop callbacks in-flight on
+// concurrent Publish/PublishBatch callers (they run on the producer goroutine
+// after publishMu is released). A caller tearing down resources referenced by
+// its OnDrop callback must quiesce its own producers first.
 func (ab *AsyncEventBus) Close() {
 	if ab == nil {
 		return

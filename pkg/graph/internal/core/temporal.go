@@ -131,6 +131,23 @@ func (c *Core) isNodeValidAt(n *types.Node, t types.Instant) bool {
 	return storeutil.MatchesPointInTime(n.ID().SnowflakeID(), n.Temporal(), t)
 }
 
+// NodeMatchesValidTime reports whether n passes the valid-time filter in opts
+// (ValidAt point, ValidStart/ValidEnd interval, or no filter), using the SAME
+// canonical storeutil.MatchesTemporalFilter predicate the store push-down and
+// RelMatchesValidTime use. Exposed so a consumer that already holds a
+// materialized node (e.g. a query engine post-filtering a traversal) decides
+// validity with effective valid-from (snowflake fallback when ValidFrom==0) —
+// never the raw shadow value. This is the NODE mirror of RelMatchesValidTime
+// (rule 17: two structural mirrors, same shape); a frozen node (returned by
+// any plural/scan read, see the Defensive Copying design rule) is read-only
+// here so it is accepted exactly like a mutable one. A nil node never matches.
+func (t *TempOps) NodeMatchesValidTime(n *types.Node, opts storepkg.QueryOpts) bool {
+	if n == nil {
+		return false
+	}
+	return storeutil.MatchesTemporalFilter(n.ID().SnowflakeID(), n.Temporal(), opts)
+}
+
 // RelMatchesValidTime reports whether r passes the valid-time filter in opts
 // (ValidAt point, ValidStart/ValidEnd interval, or no filter), using the SAME
 // canonical storeutil.MatchesTemporalFilter predicate the store push-down uses.
@@ -856,6 +873,71 @@ func hasTemporalFilter(opts storepkg.QueryOpts) bool {
 		return true
 	}
 	return opts.ValidStart > 0 && opts.ValidEnd > 0
+}
+
+// effectiveTxPin returns the transaction-time pin a candidate must have been
+// recorded by (TxPin, else TxAt). A member whose earliest label/type acquisition
+// transaction time is strictly AFTER this pin could not have carried the
+// label/type at the pin and is safely pruned from the K1 candidate set. Returns
+// 0 for a pure valid-time filter (no transaction-time pin → no such pruning).
+func effectiveTxPin(opts storepkg.QueryOpts) types.Instant {
+	if opts.TxPin != 0 {
+		return opts.TxPin
+	}
+	return opts.TxAt
+}
+
+// forEachLabelTxCandidate streams the K1 label-membership candidate set for tok
+// into fn: the label's ever-members (a sound superset of the nodes whose
+// belief-state version at the pin carries the label), pruned by the
+// firstTxFrom lower bound against the effective transaction-time pin. It unions
+// currentIDs as a defensive safety net so a maintenance gap in the sidecar can
+// never drop a currently-labelled node. fn is called once per unique candidate.
+func (c *Core) forEachLabelTxCandidate(tok uint16, currentIDs []types.NodeID, opts storepkg.QueryOpts, fn func(types.NodeID) error) error {
+	pinTx := effectiveTxPin(opts)
+	seen := make(map[types.NodeID]struct{}, len(currentIDs))
+	if err := c.labelTxMembers.ForEachLabelTxMember(tok, func(id types.NodeID, firstTx types.Instant) bool {
+		if pinTx != 0 && firstTx != 0 && firstTx > pinTx {
+			return true // label acquired strictly after the pin — cannot match
+		}
+		seen[id] = struct{}{}
+		return true
+	}); err != nil {
+		return err
+	}
+	for _, id := range currentIDs {
+		seen[id] = struct{}{}
+	}
+	for id := range seen {
+		if err := fn(id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// forEachRelTypeTxCandidate is the rel-type mirror of forEachLabelTxCandidate.
+func (c *Core) forEachRelTypeTxCandidate(tok uint16, currentIDs []types.RelID, opts storepkg.QueryOpts, fn func(types.RelID) error) error {
+	pinTx := effectiveTxPin(opts)
+	seen := make(map[types.RelID]struct{}, len(currentIDs))
+	if err := c.relTypeTxMembers.ForEachRelTypeTxMember(tok, func(id types.RelID, firstTx types.Instant) bool {
+		if pinTx != 0 && firstTx != 0 && firstTx > pinTx {
+			return true
+		}
+		seen[id] = struct{}{}
+		return true
+	}); err != nil {
+		return err
+	}
+	for _, id := range currentIDs {
+		seen[id] = struct{}{}
+	}
+	for id := range seen {
+		if err := fn(id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // validateTemporalQueryOpts is the core-layer superset of

@@ -28,6 +28,22 @@ func (c *Core) propertyIndexCap() (storepkg.PropertyIndexCapability, error) {
 	return cap, nil
 }
 
+func (c *Core) relPropertyIndexCap() (storepkg.RelPropertyIndexCapability, error) {
+	cap, ok := c.store.(storepkg.RelPropertyIndexCapability)
+	if !ok {
+		return nil, fmt.Errorf("%w: RelPropertyIndexCapability", storepkg.ErrCapabilityNotSupported)
+	}
+	return cap, nil
+}
+
+func (c *Core) compositeIndexCap() (storepkg.CompositePropertyIndexCapability, error) {
+	cap, ok := c.store.(storepkg.CompositePropertyIndexCapability)
+	if !ok {
+		return nil, fmt.Errorf("%w: CompositePropertyIndexCapability", storepkg.ErrCapabilityNotSupported)
+	}
+	return cap, nil
+}
+
 func (c *Core) temporalIndexCap() (storepkg.TemporalIndexCapability, error) {
 	cap, ok := c.store.(storepkg.TemporalIndexCapability)
 	if !ok {
@@ -114,6 +130,58 @@ func (c *Core) nodesByLabelAndProperty(tok uint16, key string, value any, opts s
 			continue
 		}
 		if gotKey != wantKey {
+			continue
+		}
+		out = append(out, n)
+	}
+	out = storeutil.PaginateNodes(out, opts.After, opts.Limit)
+	if !c.storeRowsTrust {
+		out = copyNodeRows(out)
+	}
+	return out, nil
+}
+
+// nodesByLabelAndProperties answers the (label-token, values map) composite
+// equality query whether or not the underlying store implements the
+// accelerated CompositePropertyIndexCapability. Mirrors
+// nodesByLabelAndProperty's structure exactly (same trust-boundary shape,
+// same "index acceleration, never the sole source of correctness"
+// contract) — see its doc comment for the empty-key / R4-F9 rationale,
+// which applies here per-component via indexpkg.NodeMatchesAllProperties.
+func (c *Core) nodesByLabelAndProperties(tok uint16, values map[string]any, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	if c.compositeQuery != nil {
+		nodes, err := c.compositeQuery.NodesByLabelAndProperties(tok, values, opts)
+		if err != nil {
+			return nil, err
+		}
+		if !c.compositeQueryTrust {
+			if err := validateNodesByLabelAndProperties(tok, values, opts, nodes); err != nil {
+				return nil, err
+			}
+			nodes = copyNodeRows(nodes)
+		}
+		return nodes, nil
+	}
+	// Mandatory fallback: label scan + post-filter over every declared pair.
+	// Every in-tree backend already applies the same scan-and-filter
+	// internally when no composite index covers the requested key set;
+	// replicating it here ensures a MandatoryStore-only backend (or one that
+	// simply omits the optional capability, e.g. tiered in v1 — see
+	// docs/query-planners.md) still gets correct, if unaccelerated, results.
+	pageOpts := opts
+	pageOpts.Limit = 0
+	candidates, err := c.store.NodesByLabel(tok, pageOpts)
+	if err != nil {
+		return nil, err
+	}
+	if !c.storeRowsTrust {
+		if err := c.validateNodesByLabelPage(tok, pageOpts, candidates); err != nil {
+			return nil, err
+		}
+	}
+	out := make([]*types.Node, 0, len(candidates))
+	for _, n := range candidates {
+		if !indexpkg.NodeMatchesAllProperties(n, values) {
 			continue
 		}
 		out = append(out, n)

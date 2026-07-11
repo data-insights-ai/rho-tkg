@@ -153,6 +153,27 @@ type Config struct {
 	// with ErrInvalidStoreMutation without one. Ignored when Store is
 	// provided explicitly.
 	PropertyIndexOnDisk bool
+	// TemporalIndexOnDisk is a REBUILD-AT-OPEN accelerator for the
+	// maxTo-augmented temporal interval index (g.Index().CreateTemporalIndex),
+	// NOT a RAM-vs-disk trade-off like LabelIndexOnDisk / AdjacencyIndexOnDisk /
+	// PropertyIndexOnDisk above: the index always stays fully resident in RAM
+	// at runtime (its stabbing/overlap queries need the in-memory subMax
+	// augmentation, which has no on-disk analogue). Off (default), reopening a
+	// store with an existing temporal index definition rebuilds it via a full
+	// node fetch+decode (a Badger point-get plus msgpack decode of the ENTIRE
+	// row) for every node carrying the indexed label, just to extract two
+	// int64 fields. On, a compact 19-byte-key/8-byte-value row is maintained
+	// per (labelToken, entity) alongside the node row (see
+	// badgerstore_temporal_disk.go), and loadIndexesScan streams straight from
+	// a prefix iteration over it instead — trading a small amount of extra
+	// write-path I/O for eliminating the O(N) full-row rebuild at open. An
+	// existing data directory with temporal-index definitions but no prior
+	// 0x0B rows is backfilled from current node state exactly once, on the
+	// first open with this flag set (guarded by
+	// storeutil.TemporalIndexOnDiskBuiltKey, mirroring the
+	// PropertyIndexOnDiskBuiltKey pattern) — no manual migration step is
+	// required. Ignored when Store is provided explicitly.
+	TemporalIndexOnDisk bool
 	// FlushInterval is the time between async write batches. Default: 100ms.
 	// Zero disables periodic flushing (manual flush only — for testing).
 	FlushInterval time.Duration
@@ -336,21 +357,34 @@ type Store struct {
 
 	// In-memory indexes (source of truth while running).
 	// Protected by idxMu for concurrent read/write access.
-	idxMu            sync.RWMutex
-	nodeIDs          map[types.NodeID]struct{} // O(1) node existence check
-	nodeHashes       map[types.NodeID]string   // current node integrity hash for live endpoint validation
-	nodeRevs         map[types.NodeID]uint64   // live node row revision for safe prefetch handoff
-	nextNodeRev      uint64
-	relIDs           map[types.RelID]struct{}                      // O(1) rel existence check
-	labelIdx         map[uint16]map[types.NodeID]struct{}          // labelToken → set(nodeID); EMPTY in labelOnDisk mode
-	labelOnDisk      bool                                          // answer label snapshots from the persisted keyspace
-	adjOnDisk        bool                                          // answer adjacency snapshots from the persisted keyspaces
-	propIdxOnDisk    bool                                          // maintain/answer property-index entries via the persisted 0x0A keyspace
-	typeIdx          map[uint16]map[types.RelID]struct{}           // relTypeToken → set(relID)
-	outIdx           map[types.NodeID]map[types.RelID]types.NodeID // startNodeID → relID → endNodeID
-	inIdx            map[types.NodeID]map[types.RelID]inEdge       // endNodeID → relID → {startNodeID, typeToken}
-	relValidIdx      map[types.RelID]relValidStamp                 // relID → effective {validFrom, validTo} for inline-stamp temporal traversal (OPT15); nil until lazily built on the first temporal traversal
-	relValidIdxBuilt atomic.Bool                                   // fast-path "already built" check outside idxMu
+	idxMu             sync.RWMutex
+	nodeIDs           map[types.NodeID]struct{} // O(1) node existence check
+	nodeHashes        map[types.NodeID]string   // current node integrity hash for live endpoint validation
+	nodeRevs          map[types.NodeID]uint64   // live node row revision for safe prefetch handoff
+	nextNodeRev       uint64
+	relIDs            map[types.RelID]struct{}                      // O(1) rel existence check
+	labelIdx          map[uint16]map[types.NodeID]struct{}          // labelToken → set(nodeID); EMPTY in labelOnDisk mode
+	labelOnDisk       bool                                          // answer label snapshots from the persisted keyspace
+	adjOnDisk         bool                                          // answer adjacency snapshots from the persisted keyspaces
+	propIdxOnDisk     bool                                          // maintain/answer property-index entries via the persisted 0x0A keyspace
+	temporalIdxOnDisk bool                                          // maintain the persisted 0x0B raw-entry log so loadIndexesScan can rebuild without a full node fetch per entity
+	typeIdx           map[uint16]map[types.RelID]struct{}           // relTypeToken → set(relID)
+	outIdx            map[types.NodeID]map[types.RelID]types.NodeID // startNodeID → relID → endNodeID
+	inIdx             map[types.NodeID]map[types.RelID]inEdge       // endNodeID → relID → {startNodeID, typeToken}
+	relValidIdx       map[types.RelID]relValidStamp                 // relID → effective {validFrom, validTo} for inline-stamp temporal traversal (OPT15); nil until lazily built on the first temporal traversal
+	relValidIdxBuilt  atomic.Bool                                   // fast-path "already built" check outside idxMu
+
+	// K1 transaction-time membership sidecars (store.LabelTxMembershipCapability /
+	// RelTypeTxMembershipCapability). labelTxMembers maps a label token to the set
+	// of node IDs that EVER carried it (current OR any historical version) tagged
+	// with a lower bound on their earliest acquisition transaction time;
+	// relTypeTxMembers is the rel-type mirror. Both APPEND-ONLY (removal/delete
+	// never drops a member) and nil until lazily built on the first pinned label/
+	// type scan (mirrors relValidIdx / OPT15). Guarded by idxMu.
+	labelTxMembers      map[uint16]map[types.NodeID]types.Instant
+	labelTxMembersBuilt atomic.Bool
+	relTypeTxMembers    map[uint16]map[types.RelID]types.Instant
+	relTypeMembersBuilt atomic.Bool
 
 	// X5 DocValues: cached per-label columnar snapshots + a global node-mutation
 	// epoch bumped on EVERY node write (incl. deletes). nextNodeRev above misses
@@ -466,6 +500,22 @@ type Store struct {
 	// Property indexes — in-memory only. Definitions persisted, data rebuilt on startup.
 	propertyIndexes map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex
 
+	// Relationship property indexes (K3b) — RAM-only value maps, keyed by
+	// rel-type token. Definitions persisted under RelPropIndexDefsKey; data
+	// rebuilt from current relationships at open. There is no on-disk value
+	// keyspace (RAM-only v1; a 0x0C rel keyspace disk mode is a documented
+	// follow-up mirroring the node 0x0A PropertyIndexOnDisk mode). Guarded by
+	// idxMu like propertyIndexes.
+	relPropertyIndexes map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyIndex
+
+	// Composite property indexes — in-memory only (v1 has no on-disk mode,
+	// unlike PropertyIndexOnDisk). Definitions persisted, data rebuilt on
+	// startup. compositeIndexesByLabel is the label->definitions secondary
+	// index the node-mutation maintenance seam
+	// (maintainPropertyIndexesAdd/Remove/Purge) needs.
+	compositeIndexes        map[indexpkg.CompositeIndexKey]*indexpkg.CompositePropertyIndex
+	compositeIndexesByLabel map[uint16][]indexpkg.CompositeIndexKey
+
 	// Temporal indexes — in-memory only. Label tokens persisted, data rebuilt on startup.
 	temporalIndexes map[uint16]*indexpkg.TemporalIndex
 
@@ -473,10 +523,11 @@ type Store struct {
 	// loadIndexes pass tolerated as missing/corrupt. Surfaced via
 	// IndexRebuildStats so operators can detect partially rebuilt indexes
 	// instead of the previous silent skip (F9 in the maintainability review).
-	indexRebuildPropertySkips atomic.Int64
-	indexRebuildTemporalSkips atomic.Int64
-	indexRebuildHFSkips       atomic.Int64
-	indexRebuildVectorSkips   atomic.Int64
+	indexRebuildPropertySkips  atomic.Int64
+	indexRebuildCompositeSkips atomic.Int64
+	indexRebuildTemporalSkips  atomic.Int64
+	indexRebuildHFSkips        atomic.Int64
+	indexRebuildVectorSkips    atomic.Int64
 
 	// logger is captured from cfg.Logger so loadIndexes can warn about
 	// skipped node records during the rebuild. Nil means no logging.
@@ -696,33 +747,37 @@ func New(cfg Config) (*Store, error) {
 		// relValidIdx is built LAZILY on the first temporal traversal — a graph
 		// that never does temporal adjacency (or a tiered store, which does not
 		// expose the capability) pays nothing for the per-rel stamps.
-		nodeCache:        newNodeCache(capacity, cfg.CacheBudgetBytes),
-		relCache:         newRelCache(capacity, cfg.CacheBudgetBytes),
-		resident:         cfg.ResidentCache,
-		pending:          make(map[string]writeOp),
-		propertyIndexes:  make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex),
-		propertyStats:    make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyStatsAccumulator),
-		temporalIndexes:  make(map[uint16]*indexpkg.TemporalIndex),
-		hfIndexes:        make(map[uint16]*indexpkg.HighFrequencyIndex),
-		vectorIndexes:    make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex),
-		inMemory:         cfg.InMemory,
-		labelOnDisk:      cfg.LabelIndexOnDisk,
-		adjOnDisk:        cfg.AdjacencyIndexOnDisk,
-		propIdxOnDisk:    cfg.PropertyIndexOnDisk,
-		readOnly:         cfg.ReadOnly,
-		syncWrites:       cfg.SyncWrites && !cfg.ReadOnly,
-		logEnabled:       cfg.ChangeLog && !cfg.ReadOnly,
-		logConfigured:    cfg.ChangeLog && !cfg.ReadOnly,
-		logSeqSource:     cfg.ChangeLogSeqSource,
-		onChangeLogFlush: cfg.OnChangeLogFlush,
-		maxPending:       maxPending,
-		flushInt:         flushInt,
-		gcInt:            gcInt,
-		gcRatio:          gcRatio,
-		stopCh:           make(chan struct{}),
-		flushDone:        make(chan struct{}),
-		gcDone:           make(chan struct{}),
-		logger:           cfg.Logger,
+		nodeCache:               newNodeCache(capacity, cfg.CacheBudgetBytes),
+		relCache:                newRelCache(capacity, cfg.CacheBudgetBytes),
+		resident:                cfg.ResidentCache,
+		pending:                 make(map[string]writeOp),
+		propertyIndexes:         make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex),
+		relPropertyIndexes:      make(map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyIndex),
+		compositeIndexes:        make(map[indexpkg.CompositeIndexKey]*indexpkg.CompositePropertyIndex),
+		compositeIndexesByLabel: make(map[uint16][]indexpkg.CompositeIndexKey),
+		propertyStats:           make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyStatsAccumulator),
+		temporalIndexes:         make(map[uint16]*indexpkg.TemporalIndex),
+		hfIndexes:               make(map[uint16]*indexpkg.HighFrequencyIndex),
+		vectorIndexes:           make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex),
+		inMemory:                cfg.InMemory,
+		labelOnDisk:             cfg.LabelIndexOnDisk,
+		adjOnDisk:               cfg.AdjacencyIndexOnDisk,
+		propIdxOnDisk:           cfg.PropertyIndexOnDisk,
+		temporalIdxOnDisk:       cfg.TemporalIndexOnDisk,
+		readOnly:                cfg.ReadOnly,
+		syncWrites:              cfg.SyncWrites && !cfg.ReadOnly,
+		logEnabled:              cfg.ChangeLog && !cfg.ReadOnly,
+		logConfigured:           cfg.ChangeLog && !cfg.ReadOnly,
+		logSeqSource:            cfg.ChangeLogSeqSource,
+		onChangeLogFlush:        cfg.OnChangeLogFlush,
+		maxPending:              maxPending,
+		flushInt:                flushInt,
+		gcInt:                   gcInt,
+		gcRatio:                 gcRatio,
+		stopCh:                  make(chan struct{}),
+		flushDone:               make(chan struct{}),
+		gcDone:                  make(chan struct{}),
+		logger:                  cfg.Logger,
 	}
 
 	// Resident mode: keep every decoded node/rel resident so a cache miss never
@@ -830,6 +885,14 @@ func (bs *Store) loadIndexesScan() error {
 	// storeutil.PropertyIndexOnDiskBuiltKey so it runs exactly once.
 	var propIdxNeedsBuild bool
 	var propIdxBackfillOps []writeOp
+	// temporalIdxNeedsBuild / temporalIdxBackfillOps mirror propIdxNeedsBuild /
+	// propIdxBackfillOps above for the 0x0B temporal-index raw-entry log (also
+	// a new keyspace): an existing directory with temporal-index definitions
+	// but no prior 0x0B rows is backfilled from current node state exactly
+	// once, the first time TemporalIndexOnDisk is turned on. Guarded by
+	// storeutil.TemporalIndexOnDiskBuiltKey so it runs exactly once.
+	var temporalIdxNeedsBuild bool
+	var temporalIdxBackfillOps []writeOp
 
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
@@ -844,6 +907,17 @@ func (bs *Store) loadIndexesScan() error {
 				propIdxNeedsBuild = true
 			default:
 				return fmt.Errorf("graph: read property-index-on-disk marker: %w", merr)
+			}
+		}
+		if bs.temporalIdxOnDisk {
+			_, merr := txn.Get(storepkg.TemporalIndexOnDiskBuiltKey)
+			switch {
+			case merr == nil:
+				temporalIdxNeedsBuild = false
+			case errors.Is(merr, badgerv4.ErrKeyNotFound):
+				temporalIdxNeedsBuild = true
+			default:
+				return fmt.Errorf("graph: read temporal-index-on-disk marker: %w", merr)
 			}
 		}
 
@@ -1211,6 +1285,104 @@ func (bs *Store) loadIndexesScan() error {
 		}
 		// badgerv4.ErrKeyNotFound is OK — no indexes defined yet.
 
+		// Load relationship property index definitions and rebuild RAM value maps
+		// (K3b). RAM-only: no on-disk value keyspace, so the maps are rebuilt from
+		// current relationship state by scanning each type's members. Mirrors the
+		// non-disk node property index rebuild above.
+		item, err = txn.Get(storepkg.RelPropIndexDefsKey)
+		if err == nil {
+			var defs []relPropIdxDef
+			if e := item.Value(func(val []byte) error {
+				return storepkg.SafeUnmarshal(val, &defs)
+			}); e != nil {
+				return fmt.Errorf("graph: load relationship property index definitions: %w", e)
+			}
+			seenRelProperty := make(map[indexpkg.RelPropertyIndexKey]struct{}, len(defs))
+			for _, def := range defs {
+				if err := storecontract.ValidateRelTypeToken(def.RelTypeToken); err != nil {
+					return fmt.Errorf("graph: load relationship property index definition type %d property %q: %w",
+						def.RelTypeToken, def.PropertyKey, err)
+				}
+				if err := storecontract.ValidateIndexPropertyKey(def.PropertyKey); err != nil {
+					return fmt.Errorf("graph: load relationship property index definition type %d property %q: %w",
+						def.RelTypeToken, def.PropertyKey, err)
+				}
+				key := indexpkg.RelPropertyIndexKey{RelTypeToken: def.RelTypeToken, PropertyKey: def.PropertyKey}
+				if _, exists := seenRelProperty[key]; exists {
+					continue
+				}
+				seenRelProperty[key] = struct{}{}
+				idx := indexpkg.NewPropertyIndex()
+				if relIDs, ok := bs.typeIdx[def.RelTypeToken]; ok {
+					for relID := range relIDs {
+						rawID := relID.SnowflakeID()
+						r, rerr := bs.loadRelFromBadger(txn, rawID)
+						if rerr != nil {
+							// Tolerate missing/corrupt during rebuild, mirroring the
+							// node property-index rebuild's F9 skip accounting.
+							bs.indexRebuildPropertySkips.Add(1)
+							if bs.logger != nil {
+								bs.logger.Warningf("graph: rel-property-index rebuild skipped rel %d (type %d, property %q): %v", rawID, def.RelTypeToken, def.PropertyKey, rerr)
+							}
+							continue
+						}
+						if valueKey, found := r.IndexablePropertyValueKey(def.PropertyKey); found {
+							idx.AddKey(rawID, valueKey)
+						}
+					}
+				}
+				bs.relPropertyIndexes[key] = idx
+			}
+		}
+		// badgerv4.ErrKeyNotFound is OK — no rel property indexes defined yet.
+
+		// Load composite property index definitions and rebuild index data.
+		// RAM-only — v1 has no on-disk mode, unlike PropertyIndexOnDisk.
+		item, err = txn.Get(storepkg.CompositeIndexDefsKey)
+		if err == nil {
+			var compositeDefs []compositeIdxDef
+			if e := item.Value(func(val []byte) error {
+				return storepkg.SafeUnmarshal(val, &compositeDefs)
+			}); e != nil {
+				return fmt.Errorf("graph: load composite index definitions: %w", e)
+			}
+			seenComposite := make(map[indexpkg.CompositeIndexKey]struct{}, len(compositeDefs))
+			for _, def := range compositeDefs {
+				if err := storecontract.ValidateLabelToken(def.LabelToken); err != nil {
+					return fmt.Errorf("graph: load composite index definition label %d: %w", def.LabelToken, err)
+				}
+				if err := storecontract.ValidateCompositeIndexKeys(def.Keys); err != nil {
+					return fmt.Errorf("graph: load composite index definition label %d: %w", def.LabelToken, err)
+				}
+				key := indexpkg.CompositeIndexKey{LabelToken: def.LabelToken, Keys: indexpkg.EncodeCompositeKeyTuple(def.Keys)}
+				if _, exists := seenComposite[key]; exists {
+					continue
+				}
+				seenComposite[key] = struct{}{}
+				idx := indexpkg.NewCompositePropertyIndex(def.Keys)
+				if nodeIDs, ok := bs.labelIdx[def.LabelToken]; ok {
+					for nodeID := range nodeIDs {
+						rawID := nodeID.SnowflakeID()
+						n, nerr := bs.loadNodeFromBadger(txn, rawID)
+						if nerr != nil {
+							// Tolerate missing/corrupt during rebuild, but
+							// record + warn (F9), same as the single-key path.
+							bs.indexRebuildCompositeSkips.Add(1)
+							if bs.logger != nil {
+								bs.logger.Warningf("graph: composite-index rebuild skipped node %d (label %d, keys %v): %v", rawID, def.LabelToken, def.Keys, nerr)
+							}
+							continue
+						}
+						if vk, found := indexpkg.NodeCompositeValueKey(idx.Keys, n); found {
+							idx.AddKey(rawID, vk)
+						}
+					}
+				}
+				indexpkg.RegisterCompositeIndex(bs.compositeIndexes, bs.compositeIndexesByLabel, key, idx)
+			}
+		}
+		// badgerv4.ErrKeyNotFound is OK — no composite indexes defined yet.
+
 		// Load temporal index label tokens and rebuild index data.
 		item, err = txn.Get(storepkg.TemporalIndexDefsKey)
 		if err == nil {
@@ -1230,7 +1402,37 @@ func (bs *Store) loadIndexesScan() error {
 				}
 				seenTemporal[tok] = struct{}{}
 				ti := indexpkg.NewTemporalIndex()
-				if nodeIDs, ok := bs.labelIdx[tok]; ok {
+				if bs.temporalIdxOnDisk && !temporalIdxNeedsBuild {
+					// Fast path: stream (from, to, id) triples directly from the
+					// compact 0x0B keyspace — no per-node full-row fetch/decode.
+					// Iteration order over one label's sub-keyspace is already
+					// (From ASC, ID ASC) by key construction (see
+					// storeutil.TemporalIndexEntryKey), matching
+					// TemporalIndex.Entries' required order exactly — this is
+					// the O(N) full-node-fetch rebuild K4 eliminates.
+					valueOpts := opts
+					valueOpts.PrefetchValues = true
+					prefix := storepkg.TemporalIndexTokenPrefix(tok)
+					it := txn.NewIterator(valueOpts)
+					for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+						key := it.Item().Key()
+						if len(key) != storepkg.SizeTemporalIndexEntryKey {
+							continue
+						}
+						id := storepkg.TemporalIndexNodeIDFromKey(key)
+						from := storepkg.TemporalIndexFromFromKey(key)
+						var to types.Instant
+						if verr := it.Item().Value(func(val []byte) error {
+							to = storepkg.TemporalIndexEntryValueDecode(val)
+							return nil
+						}); verr != nil {
+							it.Close()
+							return fmt.Errorf("graph: read temporal-index-on-disk entry: %w", verr)
+						}
+						ti.AddKnownAbsent(id, from, to)
+					}
+					it.Close()
+				} else if nodeIDs, ok := bs.labelIdx[tok]; ok {
 					for nodeID := range nodeIDs {
 						rawID := nodeID.SnowflakeID()
 						n, nerr := bs.loadNodeFromBadger(txn, rawID)
@@ -1245,6 +1447,16 @@ func (bs *Store) loadIndexesScan() error {
 						}
 						from, to := indexpkg.NodeTemporalBounds(rawID, n.Temporal())
 						ti.AddKnownAbsent(rawID, from, to)
+						if bs.temporalIdxOnDisk && temporalIdxNeedsBuild {
+							// Rebuild-on-enable: collect the one-time backfill row
+							// for the NEW 0x0B keyspace (committed after the View
+							// returns — see commitTemporalIndexOnDiskBackfill).
+							temporalIdxBackfillOps = append(temporalIdxBackfillOps, writeOp{
+								opType: writeOpSet,
+								key:    storepkg.TemporalIndexEntryKey(tok, from, rawID),
+								value:  storepkg.TemporalIndexEntryValue(to),
+							})
+						}
 					}
 				}
 				bs.temporalIndexes[tok] = ti
@@ -1378,9 +1590,12 @@ func (bs *Store) loadIndexesScan() error {
 			// registry) — skip the backfill AND leave the marker unset so a
 			// later open (once the registry is available) retries. A graph
 			// opened via pkg/graph always wires a registry before this runs.
-			return nil
+		} else if err := bs.commitPropertyIndexOnDiskBackfill(propIdxBackfillOps); err != nil {
+			return err
 		}
-		if err := bs.commitPropertyIndexOnDiskBackfill(propIdxBackfillOps); err != nil {
+	}
+	if bs.temporalIdxOnDisk && temporalIdxNeedsBuild {
+		if err := bs.commitTemporalIndexOnDiskBackfill(temporalIdxBackfillOps); err != nil {
 			return err
 		}
 	}
@@ -1509,6 +1724,10 @@ func (bs *Store) Clear() error {
 	bs.inIdx = make(map[types.NodeID]map[types.RelID]inEdge)
 	bs.relValidIdx = nil // OPT15: drop the lazy stamp index; rebuilt on next temporal traversal
 	bs.relValidIdxBuilt.Store(false)
+	bs.labelTxMembers = nil // K1: drop the lazy membership sidecar; rebuilt on next pinned scan
+	bs.labelTxMembersBuilt.Store(false)
+	bs.relTypeTxMembers = nil // K1: rel-type mirror
+	bs.relTypeMembersBuilt.Store(false)
 
 	// Reset atomic counters. Clear sync.Map contents via Range+Delete
 	// rather than struct reassignment (review L1): concurrent readers
@@ -1559,6 +1778,9 @@ func (bs *Store) Clear() error {
 	// exists" on a logically empty store, and stale vector entries would
 	// occupy top-k slots in SearchNearestNodes results.
 	bs.propertyIndexes = make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex)
+	bs.relPropertyIndexes = make(map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyIndex)
+	bs.compositeIndexes = make(map[indexpkg.CompositeIndexKey]*indexpkg.CompositePropertyIndex)
+	bs.compositeIndexesByLabel = make(map[uint16][]indexpkg.CompositeIndexKey)
 	bs.temporalIndexes = make(map[uint16]*indexpkg.TemporalIndex)
 	bs.hfIndexes = make(map[uint16]*indexpkg.HighFrequencyIndex)
 	bs.vectorIndexes = make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex)
@@ -1652,10 +1874,11 @@ func (bs *Store) checkWritable() error {
 // Open means the persisted indexes are degraded — operators should run an
 // explicit repair pass before relying on index-backed queries.
 type IndexRebuildStats struct {
-	PropertySkipped int64
-	TemporalSkipped int64
-	HFSkipped       int64
-	VectorSkipped   int64
+	PropertySkipped  int64
+	CompositeSkipped int64
+	TemporalSkipped  int64
+	HFSkipped        int64
+	VectorSkipped    int64
 }
 
 // IndexRebuildStats returns the diagnostic counters captured during the last
@@ -1665,10 +1888,11 @@ func (bs *Store) IndexRebuildStats() IndexRebuildStats {
 		return IndexRebuildStats{}
 	}
 	return IndexRebuildStats{
-		PropertySkipped: bs.indexRebuildPropertySkips.Load(),
-		TemporalSkipped: bs.indexRebuildTemporalSkips.Load(),
-		HFSkipped:       bs.indexRebuildHFSkips.Load(),
-		VectorSkipped:   bs.indexRebuildVectorSkips.Load(),
+		PropertySkipped:  bs.indexRebuildPropertySkips.Load(),
+		CompositeSkipped: bs.indexRebuildCompositeSkips.Load(),
+		TemporalSkipped:  bs.indexRebuildTemporalSkips.Load(),
+		HFSkipped:        bs.indexRebuildHFSkips.Load(),
+		VectorSkipped:    bs.indexRebuildVectorSkips.Load(),
 	}
 }
 

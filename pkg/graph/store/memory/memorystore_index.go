@@ -112,6 +112,202 @@ func (ms *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error 
 	return nil
 }
 
+// --- Composite property indexes ---
+
+// CreateCompositePropertyIndex creates a composite property index over the
+// declared, ORDER-PRESERVING keys (2..4) for the given label token. Scans all
+// existing nodes with that label to populate the index. Returns ErrIndexExists
+// if an index for the exact same (labelToken, ordered keys) already exists —
+// a different key ORDER for the same key SET is a distinct definition.
+func (ms *Store) CreateCompositePropertyIndex(labelToken uint16, keys []string) error {
+	if ms == nil {
+		return ErrNilStore
+	}
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateCompositeIndexKeys(keys); err != nil {
+		return err
+	}
+
+	key := indexpkg.CompositeIndexKey{LabelToken: labelToken, Keys: indexpkg.EncodeCompositeKeyTuple(keys)}
+	if _, exists := ms.compositeIndexes[key]; exists {
+		return ErrIndexExists
+	}
+
+	idx := indexpkg.NewCompositePropertyIndex(keys)
+
+	// Populate from existing nodes with this label.
+	if nodeIDs, ok := ms.labelIdx[labelToken]; ok {
+		for nodeID := range nodeIDs {
+			n := ms.nodes[nodeID]
+			if n == nil {
+				continue
+			}
+			if vk, found := indexpkg.NodeCompositeValueKey(idx.Keys, n); found {
+				idx.AddKey(nodeID.SnowflakeID(), vk)
+			}
+		}
+	}
+
+	indexpkg.RegisterCompositeIndex(ms.compositeIndexes, ms.compositeIndexesByLabel, key, idx)
+	return nil
+}
+
+// DropCompositePropertyIndex removes a composite property index declared
+// over the exact ordered keys. Returns ErrIndexNotFound if no such
+// definition exists.
+func (ms *Store) DropCompositePropertyIndex(labelToken uint16, keys []string) error {
+	if ms == nil {
+		return ErrNilStore
+	}
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateCompositeIndexKeys(keys); err != nil {
+		return err
+	}
+
+	key := indexpkg.CompositeIndexKey{LabelToken: labelToken, Keys: indexpkg.EncodeCompositeKeyTuple(keys)}
+	if _, exists := ms.compositeIndexes[key]; !exists {
+		return ErrIndexNotFound
+	}
+
+	indexpkg.UnregisterCompositeIndex(ms.compositeIndexes, ms.compositeIndexesByLabel, key)
+	return nil
+}
+
+// NodesByLabelAndProperties returns nodes matching labelToken whose current
+// row matches EVERY (key, value) pair in values (AND-conjunction, equality
+// only — v1 has no partial-prefix or range semantics). Uses a matching
+// composite index if one exists whose declared key SET equals values' keys;
+// falls back to a label scan + post-filter otherwise.
+func (ms *Store) NodesByLabelAndProperties(labelToken uint16, values map[string]any, opts QueryOpts) ([]*types.Node, error) {
+	if ms == nil {
+		return nil, ErrNilStore
+	}
+
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateQueryOpts(opts); err != nil {
+		return nil, err
+	}
+	if err := validateCompositeQueryValues(values); err != nil {
+		return nil, err
+	}
+
+	if idx, found := indexpkg.FindCompositeIndexForQuery(ms.compositeIndexes, ms.compositeIndexesByLabel, labelToken, values); found {
+		vk, ok := indexpkg.QueryCompositeValueKey(idx.Keys, values)
+		if !ok {
+			return nil, nil
+		}
+		ids := idx.NodeIDs(vk)
+		if len(ids) == 0 {
+			return nil, nil
+		}
+		storepkg.SortNodeIDs(ids)
+		return ms.nodesByLabelPropertiesFromIDs(labelToken, values, ids, opts), nil
+	}
+
+	// Fallback: label scan + post-filter.
+	slog.Debug("graph: NodesByLabelAndProperties using full label scan (no matching composite index)",
+		"labelToken", labelToken, "keys", len(values))
+	labelIDs := ms.labelIdx[labelToken]
+	if len(labelIDs) == 0 {
+		return nil, nil
+	}
+	matchIDs := make([]types.NodeID, 0, len(labelIDs))
+	for id := range labelIDs {
+		matchIDs = append(matchIDs, id)
+	}
+	storepkg.SortNodeIDs(matchIDs)
+	return ms.nodesByLabelPropertiesFromIDs(labelToken, values, matchIDs, opts), nil
+}
+
+func (ms *Store) nodesByLabelPropertiesFromIDs(labelToken uint16, values map[string]any, ids []types.NodeID, opts QueryOpts) []*types.Node {
+	ids = storepkg.PaginateNodeIDs(ids, opts.After, 0)
+	if len(ids) == 0 {
+		return nil
+	}
+
+	hasTemporal := storepkg.HasTemporalFilter(opts)
+	capHint := len(ids)
+	if opts.Limit > 0 && opts.Limit < capHint {
+		capHint = opts.Limit
+	}
+	result := make([]*types.Node, 0, capHint)
+	for _, id := range ids {
+		if n, ok := ms.nodes[id]; ok {
+			if !n.HasLabelTokenRaw(labelToken) {
+				continue
+			}
+			if !indexpkg.NodeMatchesAllProperties(n, values) {
+				continue
+			}
+			if hasTemporal && !storepkg.MatchesTemporalFilter(id.SnowflakeID(), n.Temporal(), opts) {
+				continue
+			}
+			result = append(result, n.DeepCopy())
+			if opts.Limit > 0 && len(result) >= opts.Limit {
+				break
+			}
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+// addNodeToCompositeIndexesLocked/removeNodeFromCompositeIndexesLocked are
+// the composite-index counterparts every node-mutation door calls alongside
+// indexpkg.AddNodeToPropertyIndexes/RemoveNodeFromPropertyIndexes (same call
+// sites — grep both together).
+func (ms *Store) addNodeToCompositeIndexesLocked(n *types.Node, rawID snowflake.ID) {
+	indexpkg.AddNodeToCompositeIndexes(ms.compositeIndexes, ms.compositeIndexesByLabel, n, rawID)
+}
+
+func (ms *Store) removeNodeFromCompositeIndexesLocked(n *types.Node, rawID snowflake.ID) {
+	indexpkg.RemoveNodeFromCompositeIndexes(ms.compositeIndexes, ms.compositeIndexesByLabel, n, rawID)
+}
+
+// validateCompositeQueryValues validates the query-side (key,value) map: 2..4
+// keys, no shadow keys, and every value indexable per the property allowlist.
+func validateCompositeQueryValues(values map[string]any) error {
+	keys := make([]string, 0, len(values))
+	for k := range values {
+		keys = append(keys, k)
+	}
+	if err := storecontract.ValidateCompositeIndexKeys(keys); err != nil {
+		return err
+	}
+	for _, v := range values {
+		if err := types.ValidatePropertyValue(v); err != nil {
+			return fmt.Errorf("graph: nodes by label and properties value: %w", err)
+		}
+	}
+	return nil
+}
+
 // --- Temporal indexes ---
 
 // CreateTemporalIndex creates a temporal interval index on nodes with the given label token.

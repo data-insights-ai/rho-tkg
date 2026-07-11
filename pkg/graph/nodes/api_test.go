@@ -42,6 +42,10 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 		{name: "Iter", run: func() error { return drainNodeIter(nilAPI.Iter(ctx, opts)) }},
 		{name: "ByLabel", run: func() error { _, err := nilAPI.ByLabel("Node", opts); return err }},
 		{name: "ByLabelAndProperty", run: func() error { _, err := nilAPI.ByLabelAndProperty("Node", "name", "Ada", opts); return err }},
+		{name: "ByLabelAndProperties", run: func() error {
+			_, err := nilAPI.ByLabelAndProperties("Node", map[string]any{"name": "Ada"}, opts)
+			return err
+		}},
 		{name: "Count", run: func() error { _, err := nilAPI.Count(); return err }},
 		{name: "CountByLabel", run: func() error { _, err := nilAPI.CountByLabel("Node"); return err }},
 		{name: "SetProperty", run: func() error { return nilAPI.SetProperty(ctx, id, "name", "Ada") }},
@@ -138,6 +142,10 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "Iter", run: func() error { return drainNodeIter(api.Iter(ctx, opts)) }},
 		{name: "ByLabel", run: func() error { _, err := api.ByLabel("Node", opts); return err }},
 		{name: "ByLabelAndProperty", run: func() error { _, err := api.ByLabelAndProperty("Node", "name", "Ada", opts); return err }},
+		{name: "ByLabelAndProperties", run: func() error {
+			_, err := api.ByLabelAndProperties("Node", map[string]any{"name": "Ada"}, opts)
+			return err
+		}},
 		{name: "Count", run: func() error { _, err := api.Count(); return err }},
 		{name: "CountByLabel", run: func() error { _, err := api.CountByLabel("Node"); return err }},
 		{name: "SetProperty", run: func() error { return api.SetProperty(ctx, id, "name", "Ada") }},
@@ -188,7 +196,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 	wantCalls := []string{
 		"Add", "Add", "AddWithTx", "Get", "Get", "GetByIDs",
 		"Update", "Update", "UpdateInPlace", "UpdateInPlace",
-		"Delete", "Delete", "Import", "AddByIDIfAbsent", "GetOrCreateByKey", "All", "ForEach", "ForEach", "ByLabel", "ByLabelAndProperty",
+		"Delete", "Delete", "Import", "AddByIDIfAbsent", "GetOrCreateByKey", "All", "ForEach", "ForEach", "ByLabel", "ByLabelAndProperty", "ByLabelAndProperties",
 		"Count", "CountByLabel", "SetProperty", "DeleteProperty",
 		"CompareAndSetProperty", "CompareAndSetProperty",
 		"AddLabel", "RemoveLabel", "CloseVersion", "History", "VersionAfter", "VersionBefore",
@@ -388,10 +396,25 @@ func (s *nodeOpsSpy) ForEachByLabelPropertyRange(label, propKey string, min, max
 	return s.err
 }
 
+func (s *nodeOpsSpy) ForEachByLabelPropertyRangeOrdered(label, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
+	s.record("ForEachByLabelPropertyRangeOrdered")
+	s.lastLabel = label
+	s.lastKey = propKey
+	s.lastOpts = opts
+	return s.err
+}
+
 func (s *nodeOpsSpy) ByLabelAndProperty(label, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	s.record("ByLabelAndProperty")
 	s.lastLabel = label
 	s.lastKey = key
+	s.lastOpts = opts
+	return nil, s.err
+}
+
+func (s *nodeOpsSpy) ByLabelAndProperties(label string, values map[string]any, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	s.record("ByLabelAndProperties")
+	s.lastLabel = label
 	s.lastOpts = opts
 	return nil, s.err
 }

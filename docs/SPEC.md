@@ -721,6 +721,28 @@ Vector nearest-neighbor retrieval returns nodes in ranked order. Backends may
 skip IDs that disappeared between index scan and node fetch, but unreadable
 candidate rows are storage/corruption errors and must be returned to the caller.
 
+### 12.3a Composite (multi-key) Node Retrieval
+
+```go
+// Declare an index over an ORDERED tuple of 2-4 property keys:
+err := g.Index().CreateComposite("User", []string{"lastName", "firstName"})
+
+// Query supplies a value for every key of a matching definition (order
+// does not matter on the caller's side — values is a map). Equality-only
+// (v1): all declared keys must be present.
+matches, err := g.Nodes().ByLabelAndProperties("User",
+    map[string]any{"lastName": "Doe", "firstName": "Jane"}, store.QueryOpts{})
+
+err = g.Index().DeleteComposite("User", []string{"lastName", "firstName"})
+```
+
+Uses the composite index (`store.CompositePropertyIndexCapability`, optional
+and NOT embedded in `Store`) when a definition's declared key SET exactly
+matches the query's keys; falls back to a label scan + post-filter over
+every requested pair otherwise — correct on any backend, accelerated only
+where the capability and a matching definition both exist. See
+`docs/query-planners.md` "Composite property indexes" for planner guidance.
+
 ---
 
 ## 13. Startup Sequence
@@ -732,7 +754,7 @@ candidate rows are storage/corruption errors and must be returned to the caller.
    (property_keys BEFORE index rebuild — tokenized rows need it to decode)
 3. Initialize snowflake generators (nodeIDGen, relIDGen)
 4. Load entities into RAM cache + rebuild in-memory indexes (label, adjacency,
-   property, temporal, vector) from entity rows
+   property, composite property, temporal, vector) from entity rows
    - Deserialize nodeWire/relWire (complete after deserialization; no injection)
 5. With ChangeLog: reseed the LSN allocator from the meta/last_lsn watermark
 6. Ready

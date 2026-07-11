@@ -69,6 +69,14 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 			_, err := nilAPI.IncomingForNodesAtTx([]types.NodeID{nodeID}, "KNOWS", 1000)
 			return err
 		}},
+		{name: "OutgoingForNodesAtPin", run: func() error {
+			_, err := nilAPI.OutgoingForNodesAtPin([]types.NodeID{nodeID}, "KNOWS", 1000)
+			return err
+		}},
+		{name: "IncomingForNodesAtPin", run: func() error {
+			_, err := nilAPI.IncomingForNodesAtPin([]types.NodeID{nodeID}, "KNOWS", 1000)
+			return err
+		}},
 		{name: "SetProperty", run: func() error { return nilAPI.SetProperty(ctx, relID, "since", 2026) }},
 		{name: "DeleteProperty", run: func() error { return nilAPI.DeleteProperty(ctx, relID, "since") }},
 		{name: "CompareAndSetProperty", run: func() error {
@@ -199,6 +207,14 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 			_, err := api.IncomingForNodesAtTx([]types.NodeID{nodeID}, "KNOWS", 1000)
 			return err
 		}},
+		{name: "OutgoingForNodesAtPin", run: func() error {
+			_, err := api.OutgoingForNodesAtPin([]types.NodeID{nodeID}, "KNOWS", 1000)
+			return err
+		}},
+		{name: "IncomingForNodesAtPin", run: func() error {
+			_, err := api.IncomingForNodesAtPin([]types.NodeID{nodeID}, "KNOWS", 1000)
+			return err
+		}},
 		{name: "SetProperty", run: func() error { return api.SetProperty(ctx, relID, "since", 2026) }},
 		{name: "DeleteProperty", run: func() error { return api.DeleteProperty(ctx, relID, "since") }},
 		{name: "CompareAndSetProperty", run: func() error {
@@ -242,7 +258,8 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		"ForEach", "ForEach", "ForEachOutgoing", "ForEachIncoming", "ByType",
 		"ForEachByType", "ForEachOutgoing", "ForEachIncoming", "ForEachAdjacentEndpoint", "Count", "CountByType",
 		"Outgoing", "Incoming", "OutgoingForNodes", "IncomingForNodes",
-		"OutgoingForNodesAtTx", "IncomingForNodesAtTx", "SetProperty", "DeleteProperty",
+		"OutgoingForNodesAtTx", "IncomingForNodesAtTx",
+		"OutgoingForNodesAtPin", "IncomingForNodesAtPin", "SetProperty", "DeleteProperty",
 		"CompareAndSetProperty", "CompareAndSetProperty",
 		"CloseVersion", "History", "VersionAfter", "VersionBefore", "HasType", "Type", "NextID",
 	}
@@ -402,6 +419,20 @@ func (s *relOpsSpy) ByType(typeName string, opts storepkg.QueryOpts) ([]*types.R
 	return nil, s.err
 }
 
+func (s *relOpsSpy) ByTypeAndProperty(typeName, key string, value any, opts storepkg.QueryOpts) ([]*types.Relationship, error) {
+	s.record("ByTypeAndProperty")
+	s.lastType = typeName
+	s.lastOpts = opts
+	return nil, s.err
+}
+
+func (s *relOpsSpy) ForEachByTypePropertyRange(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
+	s.record("ForEachByTypePropertyRange")
+	s.lastType = typeName
+	s.lastOpts = opts
+	return s.err
+}
+
 func (s *relOpsSpy) ForEach(opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
 	s.record("ForEach")
 	s.lastOpts = opts
@@ -523,6 +554,24 @@ func (s *relOpsSpy) OutgoingForNodesAtTx(nodeIDs []types.NodeID, typeName string
 
 func (s *relOpsSpy) IncomingForNodesAtTx(nodeIDs []types.NodeID, typeName string, txAt types.Instant) (map[types.NodeID][]*types.Relationship, error) {
 	s.record("IncomingForNodesAtTx")
+	if len(nodeIDs) > 0 {
+		s.lastNodeID = nodeIDs[0]
+	}
+	s.lastType = typeName
+	return nil, s.err
+}
+
+func (s *relOpsSpy) OutgoingForNodesAtPin(nodeIDs []types.NodeID, typeName string, pin types.Instant) (map[types.NodeID][]*types.Relationship, error) {
+	s.record("OutgoingForNodesAtPin")
+	if len(nodeIDs) > 0 {
+		s.lastNodeID = nodeIDs[0]
+	}
+	s.lastType = typeName
+	return nil, s.err
+}
+
+func (s *relOpsSpy) IncomingForNodesAtPin(nodeIDs []types.NodeID, typeName string, pin types.Instant) (map[types.NodeID][]*types.Relationship, error) {
+	s.record("IncomingForNodesAtPin")
 	if len(nodeIDs) > 0 {
 		s.lastNodeID = nodeIDs[0]
 	}

@@ -24,25 +24,27 @@ func TestSentinelAliasesShareIdentity(t *testing.T) {
 
 	identical := map[string][2]error{
 		// pkg/graph aliases of store-canonical sentinels.
-		"NodeNotFound/graph=store":        {graphpkg.ErrNodeNotFound, storepkg.ErrNodeNotFound},
-		"RelNotFound/graph=store":         {graphpkg.ErrRelNotFound, storepkg.ErrRelNotFound},
-		"NodeExists/graph=store":          {graphpkg.ErrNodeExists, storepkg.ErrNodeExists},
-		"RelExists/graph=store":           {graphpkg.ErrRelExists, storepkg.ErrRelExists},
-		"IndexExists/graph=store":         {graphpkg.ErrIndexExists, storepkg.ErrIndexExists},
-		"IndexNotFound/graph=store":       {graphpkg.ErrIndexNotFound, storepkg.ErrIndexNotFound},
-		"DimensionMismatch/graph=store":   {graphpkg.ErrDimensionMismatch, storepkg.ErrDimensionMismatch},
-		"InvalidQueryLimit/graph=store":   {graphpkg.ErrInvalidQueryLimit, storepkg.ErrInvalidQueryLimit},
-		"InvalidQueryCursor/graph=store":  {graphpkg.ErrInvalidQueryCursor, storepkg.ErrInvalidQueryCursor},
-		"CapabilityNotSupported":          {graphpkg.ErrCapabilityNotSupported, storepkg.ErrCapabilityNotSupported},
-		"TxDone/graph=store":              {graphpkg.ErrTxDone, storepkg.ErrTxDone},
-		"WireFormatVersion/graph=store":   {graphpkg.ErrWireFormatVersionUnsupported, storepkg.ErrWireFormatVersionUnsupported},
-		"InvalidTimeRange/graph=store":    {graphpkg.ErrInvalidTimeRange, storepkg.ErrInvalidTimeRange},
-		"InvalidShardDepth/graph=store":   {graphpkg.ErrInvalidShardDepth, storepkg.ErrInvalidShardDepth},
-		"InvalidVectorValue/graph=store":  {graphpkg.ErrInvalidVectorValue, storepkg.ErrInvalidVectorValue},
-		"TemporalIdxExists/graph=store":   {graphpkg.ErrTemporalIndexExists, storepkg.ErrTemporalIndexExists},
-		"TemporalIdxNotFound/graph=store": {graphpkg.ErrTemporalIndexNotFound, storepkg.ErrTemporalIndexNotFound},
-		"VectorIdxExists/graph=store":     {graphpkg.ErrVectorIndexExists, storepkg.ErrVectorIndexExists},
-		"VectorIdxNotFound/graph=store":   {graphpkg.ErrVectorIndexNotFound, storepkg.ErrVectorIndexNotFound},
+		"NodeNotFound/graph=store":          {graphpkg.ErrNodeNotFound, storepkg.ErrNodeNotFound},
+		"RelNotFound/graph=store":           {graphpkg.ErrRelNotFound, storepkg.ErrRelNotFound},
+		"NodeExists/graph=store":            {graphpkg.ErrNodeExists, storepkg.ErrNodeExists},
+		"RelExists/graph=store":             {graphpkg.ErrRelExists, storepkg.ErrRelExists},
+		"IndexExists/graph=store":           {graphpkg.ErrIndexExists, storepkg.ErrIndexExists},
+		"IndexNotFound/graph=store":         {graphpkg.ErrIndexNotFound, storepkg.ErrIndexNotFound},
+		"RelPropIdxUnsupported/graph=store": {graphpkg.ErrRelPropertyIndexUnsupported, storepkg.ErrRelPropertyIndexUnsupported},
+		"NoVersionValidAt/graph=store":      {graphpkg.ErrNoVersionValidAt, storepkg.ErrNoVersionValidAt},
+		"DimensionMismatch/graph=store":     {graphpkg.ErrDimensionMismatch, storepkg.ErrDimensionMismatch},
+		"InvalidQueryLimit/graph=store":     {graphpkg.ErrInvalidQueryLimit, storepkg.ErrInvalidQueryLimit},
+		"InvalidQueryCursor/graph=store":    {graphpkg.ErrInvalidQueryCursor, storepkg.ErrInvalidQueryCursor},
+		"CapabilityNotSupported":            {graphpkg.ErrCapabilityNotSupported, storepkg.ErrCapabilityNotSupported},
+		"TxDone/graph=store":                {graphpkg.ErrTxDone, storepkg.ErrTxDone},
+		"WireFormatVersion/graph=store":     {graphpkg.ErrWireFormatVersionUnsupported, storepkg.ErrWireFormatVersionUnsupported},
+		"InvalidTimeRange/graph=store":      {graphpkg.ErrInvalidTimeRange, storepkg.ErrInvalidTimeRange},
+		"InvalidShardDepth/graph=store":     {graphpkg.ErrInvalidShardDepth, storepkg.ErrInvalidShardDepth},
+		"InvalidVectorValue/graph=store":    {graphpkg.ErrInvalidVectorValue, storepkg.ErrInvalidVectorValue},
+		"TemporalIdxExists/graph=store":     {graphpkg.ErrTemporalIndexExists, storepkg.ErrTemporalIndexExists},
+		"TemporalIdxNotFound/graph=store":   {graphpkg.ErrTemporalIndexNotFound, storepkg.ErrTemporalIndexNotFound},
+		"VectorIdxExists/graph=store":       {graphpkg.ErrVectorIndexExists, storepkg.ErrVectorIndexExists},
+		"VectorIdxNotFound/graph=store":     {graphpkg.ErrVectorIndexNotFound, storepkg.ErrVectorIndexNotFound},
 
 		// tiered re-exports of the same store sentinels — a third surface
 		// that must share the same identity, not merely the same message.
@@ -89,6 +91,27 @@ func TestSentinelAliasesShareIdentity(t *testing.T) {
 		if pair[0] == nil {
 			t.Errorf("%s: nil sentinel", name)
 		}
+	}
+}
+
+// TestDistanceMetricConstantsShareIdentity is the const-value counterpart of
+// TestSentinelAliasesShareIdentity: graph.DistanceMetric is an alias of
+// store.DistanceMetric, but (before this test/re-export) the constant
+// VALUES lived only in pkg/graph/store — a consumer avoiding a direct store
+// import had to mirror the numeric values locally. graph.DistanceCosine /
+// graph.DistanceEuclidean must equal their store-canonical counterparts
+// exactly (same underlying value, not merely the same name).
+func TestDistanceMetricConstantsShareIdentity(t *testing.T) {
+	t.Parallel()
+
+	if graphpkg.DistanceCosine != storepkg.DistanceCosine {
+		t.Errorf("graph.DistanceCosine = %v, want storepkg.DistanceCosine = %v", graphpkg.DistanceCosine, storepkg.DistanceCosine)
+	}
+	if graphpkg.DistanceEuclidean != storepkg.DistanceEuclidean {
+		t.Errorf("graph.DistanceEuclidean = %v, want storepkg.DistanceEuclidean = %v", graphpkg.DistanceEuclidean, storepkg.DistanceEuclidean)
+	}
+	if graphpkg.DistanceCosine == graphpkg.DistanceEuclidean {
+		t.Errorf("graph.DistanceCosine and graph.DistanceEuclidean must be distinct values")
 	}
 }
 

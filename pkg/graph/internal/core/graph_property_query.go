@@ -109,3 +109,106 @@ func (c *Core) nodesByLabelAndPropertyLocked(label, key string, value any, opts 
 	result = storeutil.PaginateNodes(result, opts.After, opts.Limit)
 	return result, nil
 }
+
+// ByLabelAndProperties returns nodes matching the label AND every (key,
+// value) pair in values (AND-conjunction, EQUALITY-only in v1 — no
+// partial-prefix or range semantics; see docs/query-planners.md "Composite
+// property indexes"). values must supply exactly the 2..4 keys a composite
+// index declares to be eligible for acceleration — a superset or subset of
+// keys still answers correctly via the label-scan + post-filter fallback,
+// just without the O(matches) speedup. Resolves the label name to a token.
+// Returns nil if the label is not registered.
+//
+// Mirrors NodeOps.ByLabelAndProperty's structure exactly: without a temporal
+// filter, falls through to the store-level composite index for O(matches)
+// lookup when the backend implements CompositePropertyIndexCapability and a
+// matching definition exists; otherwise falls back to a label-scan +
+// property filter using the mandatory NodesByLabel surface. When opts
+// carries a temporal filter, the candidate set is the union of (nodes
+// currently matching label+properties) and (every known history ID); each
+// candidate is resolved to its version overlapping the requested time and
+// the predicate re-checked against that historical version.
+func (n *NodeOps) ByLabelAndProperties(label string, values map[string]any, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+		return nil, err
+	}
+	if err := c.validateIndexLabel(label); err != nil {
+		return nil, err
+	}
+	keys := make([]string, 0, len(values))
+	for k := range values {
+		keys = append(keys, k)
+	}
+	if err := storepkg.ValidateCompositeIndexKeys(keys); err != nil {
+		return nil, err
+	}
+	for _, k := range keys {
+		if err := c.validateIndexPropertyKey(k); err != nil {
+			return nil, err
+		}
+	}
+	for _, v := range values {
+		if err := types.ValidatePropertyValue(v); err != nil {
+			return nil, fmt.Errorf("graph: nodes by label and properties value: %w", err)
+		}
+	}
+	var result []*types.Node
+	err := c.readUnderRLock(func() error {
+		var err error
+		result, err = c.nodesByLabelAndPropertiesLocked(label, values, opts)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// nodesByLabelAndPropertiesLocked is the lock-free body of
+// NodeOps.ByLabelAndProperties. Callers must hold c.mu (R or W).
+func (c *Core) nodesByLabelAndPropertiesLocked(label string, values map[string]any, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	temporal := hasTemporalFilter(opts)
+	tok, ok := c.labels.Lookup(label)
+	if !ok {
+		return nil, nil
+	}
+	if !temporal {
+		return c.nodesByLabelAndProperties(tok, values, opts)
+	}
+	currentMatching, err := c.nodesByLabelAndProperties(tok, values, storepkg.QueryOpts{Depth: opts.Depth})
+	if err != nil {
+		return nil, err
+	}
+	currentIDs, err := c.nodeIDsFromLabelRows(tok, currentMatching)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []*types.Node
+	pred := func(n *types.Node) bool {
+		if !n.HasLabelTokenRaw(tok) {
+			return false
+		}
+		return indexpkg.NodeMatchesAllProperties(n, values)
+	}
+	if err := c.forEachNodeCandidateIDByDepth(currentIDs, opts.Depth, func(id types.NodeID) error {
+		n, err := c.findNodeVersionForOpts(id, opts, pred)
+		if err != nil {
+			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
+				return nil
+			}
+			return err
+		}
+		result = append(result, n)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	storeutil.SortNodesByID(result)
+	result = storeutil.PaginateNodes(result, opts.After, opts.Limit)
+	return result, nil
+}

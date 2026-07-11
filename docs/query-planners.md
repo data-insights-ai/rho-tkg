@@ -28,11 +28,16 @@ bottom.
 | All label counts | `g.Stats().AllLabelCounts()` | O(distinct registered labels) | O(labels × open shards) | zero-count labels omitted from the map |
 | All rel-type counts | `g.Stats().AllRelTypeCounts()` | O(distinct registered types) | O(types × open shards) | zero-count types omitted from the map |
 | Node count by label + property-key presence | `g.Stats().NodeCountByLabelAndPropertyKey(label, key)` | O(1) | O(open shards) | `ErrCapabilityNotSupported` on a store without the optional capability |
-| NDV + exact min/max + count | `g.Stats().PropertyStats(label, key)` | O(1) amortized; O(nodes carrying label) on a rescan after the current min/max holder is deleted | always declines — tiered does not implement `NodePropertyStatsCapability` (v1) | `ErrCapabilityNotSupported` on a store without the optional capability |
+| NDV + exact min/max + count | `g.Stats().PropertyStats(label, key)` | O(1) amortized; O(nodes carrying label) on a rescan after the current min/max holder is deleted | O(open shards) — per-shard HyperLogLog register-max merge, plus each shard's own independent Min/Max rescan on extremum deletion (see "Tiered NDV fold") | `ErrCapabilityNotSupported` on a store without the optional capability |
 | Numeric range cardinality | `g.Nodes().RangeCardinality(...)` / `g.Stats().RangeCardinality(...)` (alias) | O(distinct values in range), no node scan | always declines (tiered does not implement the capability) | `exact=false` (not an error) — see "RangeCardinality decline conditions" |
+| Ordered / top-k range scan | `g.Nodes().ForEachByLabelPropertyRangeOrdered(...)` | O(k + log n) index work for a LIMIT-k top-k (RAM); disk mode is O(range) cheap-ID collection + O(k) node fetch | `ErrIndexNotFound` (tiered is not an exact native store — no ordered view) | `ErrOrderedScanTemporal` for temporal opts; `ErrIndexNotFound` when no property index / capability |
 | Outgoing / incoming degree | `g.Rels().OutgoingDegree(id, type)` / `IncomingDegree(id, type)` | O(1) via `DegreeCapability`, else O(degree) | O(1) — single-shard lookup on the node's owning shard | never — always answers (fast path or fallback) |
 | Node / relationship mutation epoch | `g.Nodes().NodeMutationEpoch()` / `g.Rels().RelMutationEpoch()` | O(1) | O(1) where supported | returns 0 (not an error) when the backend lacks the DocValues capability |
 | Pinned adjacency (transaction-time) | `g.Rels().OutgoingForNodesAtTx(nodeIDs, type, txAt)` / `IncomingForNodesAtTx(...)` | adjacency index + O(deleted rels) fold, not a full `ByType` history scan | same adjacency-index push-down per shard | `txAt == 0` delegates to `OutgoingForNodes`/`IncomingForNodes` (no TX filter) |
+| Composite (multi-key) equality lookup | `g.Nodes().ByLabelAndProperties(label, values, opts)` | O(matches) with a matching `g.Index().CreateComposite` definition; else O(label size) scan+filter | O(label size) scan+filter — v1 has no accelerated composite index on tiered | never errors; falls back to scan+filter when no exact-key-set definition exists (see "Composite property indexes" below) |
+
+| Pinned adjacency — bitemporal (TxAt) | `g.Rels().OutgoingForNodesAtTx(nodeIDs, type, txAt)` / `IncomingForNodesAtTx(...)` | adjacency index + O(deleted rels) fold, not a full `ByType` history scan | same adjacency-index push-down per shard | `txAt == 0` delegates to `OutgoingForNodes`/`IncomingForNodes` (no TX filter); **wall-now valid filter — drops past-valid edges**, see below |
+| Pinned adjacency — belief-state (TxPin) | `g.Rels().OutgoingForNodesAtPin(nodeIDs, type, pin)` / `IncomingForNodesAtPin(...)` | adjacency index + O(deleted rels) fold; agrees with `ByType{TxPin}` filtered by endpoint by construction | same adjacency-index push-down per shard | `pin == 0` delegates to `OutgoingForNodes`/`IncomingForNodes`; a seed absent from the belief state at the pin is skipped silently (no `ErrNodeNotFound`) |
 
 ## Cardinality counters — `NodeCount` / `RelCount` / `AllLabelCounts` / `NodeCountByLabel` / `RelCountByType`
 
@@ -311,6 +316,94 @@ Fractional values and fractional bounds are counted EXACTLY when `exact ==
 true` — there is no separate "approximate but exact enough" state; it is
 either an exact bucket-sum count or a full decline.
 
+## Ordered / top-k range scan — `ForEachByLabelPropertyRangeOrdered`
+
+`g.Nodes().ForEachByLabelPropertyRangeOrdered(label, propKey, min, max,
+inclMin, inclMax, desc, opts, fn)` is the CONTRACTUAL ordered access path — the
+one door that serves `ORDER BY n.propKey [ASC|DESC] [LIMIT k]` from the index
+instead of a materialize-and-sort. It streams the label's nodes whose numeric
+`propKey` value lies within `[min, max]` to `fn` in **value order**, and `fn`
+returning `false` stops the scan.
+
+### Ordering contract
+
+- **Value order**: ascending by the numeric value, or descending when `desc`
+  is true. All numeric widths (int/uint/float, any size) share one ordered
+  domain — an `int64(5)`, a `uint64(5)` and a `float64(5.0)` sort to the same
+  position (magnitude `5.0`).
+- **Ties by node ID ASCENDING**, in BOTH directions. Two nodes with equal
+  values are emitted in ascending snowflake-ID order whether the scan is
+  ascending or descending — the tie-break never flips with `desc`.
+- **Over-selecting candidate filter** (same contract as
+  `ForEachByLabelPropertyRange`): the door widens the bounds by one ulp and
+  NEVER skips a boundary bucket, because an `int64` magnitude past `2^53`
+  collapses onto a neighbouring `float64` sort key (the exact-value /
+  float-precision caveats). So `fn` receives CANDIDATES and MUST re-check the
+  predicate with exact comparison semantics — including the `inclMin`/`inclMax`
+  inclusivity, which the door itself does not apply.
+
+### Compiling `ORDER BY ... LIMIT k`
+
+A query layer compiles `MATCH (n:Label) WHERE n.p >= lo AND n.p <= hi RETURN n
+ORDER BY n.p ASC LIMIT k` to:
+
+```go
+kept := make([]*types.Node, 0, k)
+err := g.Nodes().ForEachByLabelPropertyRangeOrdered(
+    "Label", "p", lo, hi, true, true, /*desc=*/false, storepkg.QueryOpts{},
+    func(n *types.Node) bool {
+        v := /* exact numeric value of n.p */
+        if v < lo || v > hi { return true } // over-selected candidate: skip
+        kept = append(kept, n)
+        return len(kept) < k // stop once we have k rows -> LIMIT pushdown
+    })
+```
+
+Because `fn` returns `false` the moment it has `k` rows, the LIMIT is pushed
+into the index: the scan seeks (O(log n)) then walks only the first `k`
+in-range candidates, so the top-k costs **O(k + log n)** index work and
+materializes only `k` nodes — never the whole range. `ORDER BY ... DESC LIMIT
+k` is the same call with `desc = true`.
+
+### Complexity
+
+- **Memory / badger (RAM ordered view)**: fully lazy and paged. A top-k walks
+  seek + O(k) plus a small constant page slack (the ordered view is snapshotted
+  a page at a time under the index lock so `fn` can run lock-free and even call
+  back into the store). No full-range collection.
+- **Badger (`PropertyIndexOnDisk`, the `0x0A` keyspace)**: the ordered
+  candidate IDs are collected up front in value order (cheap 8-byte IDs,
+  pending-write overlay merged), then node materialization is streamed with the
+  SAME `fn`-driven early stop — so the expensive per-node decode still stays
+  bounded by what `fn` consumes, even though the ID collection is O(range).
+- **Benchmark** (`bench/ordered_topk_test.go`, top-10 by value over 100k
+  distinct values): the ordered arm vs the pre-K3a collect-then-limit shape (a
+  full `ByLabel` scan sorted by value, truncated to k):
+
+  | Backend | ordered top-10 | collect-then-limit | speedup |
+  |---|---|---|---|
+  | memory | ~17 µs | ~354 ms | ~20,000× |
+  | badger | ~45 µs | ~575 ms | ~13,000× |
+
+### Current-state only (v1)
+
+The ordered door reflects the LIVE current row set. It has NO temporal
+behaviour: any temporal `QueryOpts` (`ValidAt` / `ValidStart` / `ValidEnd` /
+`TxAt` / `TxPin`) is DECLINED with `graph.ErrOrderedScanTemporal` rather than
+silently answered against current state — the value ordering is derived from
+the valid-time-agnostic property index, so an as-of ordered scan cannot be
+served correctly in v1. A query layer that needs `ORDER BY ... LIMIT k` AS OF a
+past time must fall back to a temporal scan + in-memory sort until a bitemporal
+ordered view lands.
+
+### Declines
+
+- `graph.ErrOrderedScanTemporal` — any temporal `QueryOpts` field set.
+- `graph.ErrIndexNotFound` — no property index exists for `(label, propKey)`,
+  the store lacks the ordered-scan capability, or the store is not an exact
+  native store (tiered and store wrappers decline; callers fall back to a label
+  scan + sort). An unregistered label is a cheap `nil` (no rows), not an error.
+
 ## Degree — `OutgoingDegree` / `IncomingDegree`
 
 `g.Rels().OutgoingDegree(nodeID, typeName)` / `IncomingDegree(nodeID, typeName)`
@@ -345,6 +438,174 @@ DocValues capability — a planner reading `0` on every call cannot distinguish
 "never mutated" from "unsupported"; check the corresponding DocValues call's
 `ok` return if that distinction matters.
 
+## Composite property indexes — `CreateComposite` / `ByLabelAndProperties`
+
+`g.Index().CreateComposite(label, keys)` builds an index over an ORDERED
+tuple of 2–4 declared property keys under one label; `g.Nodes().ByLabelAndProperties(label,
+values, opts)` is its query door — `values` is a `map[string]any` supplying a
+value for every key an index of the same declared key SET was built over
+(order-independent from the caller's side — a Go map has no order).
+
+### When a composite index beats a single-key index + post-filter
+
+A single-key property index (`g.Index().CreateProperty`) narrows a scan to
+`(label, oneKey) = value` — a second predicate on a different key is still a
+POST-FILTER over that candidate set. This is fine when the first key is
+already fairly selective. It stops being fine when the **first key is
+UNSELECTIVE** (e.g. `status = "active"` matches 90% of rows) but the FULL
+predicate (`status = "active" AND region = "eu-west-1"`) is selective — a
+single-key index on `status` still has to fetch and post-filter 90% of the
+label's rows. A composite index on `(status, region)` answers the same query
+in O(matches) because the SECOND key is folded into the index's key space
+instead of a post-filter. See `bench/composite_index_test.go`'s
+`BenchmarkCompositeLookupVsSingleIndexPlusFilter` for exactly this shape (a
+100k-node fixture where the first key is deliberately unselective — ~10
+distinct values — and the composite key pair is selective).
+
+Conversely, do NOT reach for a composite index when the first key ALONE is
+already selective enough — the single-key index + post-filter is simpler,
+cheaper to maintain (composite index entries also cost RAM), and answers the
+same query with the same big-O once the candidate set from the first key is
+already small.
+
+### v1 scope (equality-only, RAM-only, node-only)
+
+- **Equality-only.** `values` must supply an exact value for EVERY key the
+  matching definition declares — there is no partial-prefix lookup (querying
+  a subset of a definition's keys) and no range semantics on any component.
+  A query whose key SET does not exactly match any registered definition
+  still answers correctly (see "Mandatory fallback" below) — it just isn't
+  accelerated.
+- **RAM-only.** Composite index ENTRIES always live in memory on both
+  `memory.Store` and `badger.Store` — there is no on-disk mode analogous to
+  `badger.Config.PropertyIndexOnDisk`. DEFINITIONS (label + declared key
+  list) are persisted on `badger.Store` so a reopen rebuilds the same
+  definitions by re-scanning current node state (same shape as the
+  single-key property index's own RAM-mode rebuild). A store with many
+  large composite indexes should budget RAM accordingly; on-disk composite
+  entries are a documented follow-up.
+- **Node-only.** Mirrors the existing single-key `PropertyIndexCapability`,
+  which has no relationship equivalent in this library today.
+- **Tiered declines the acceleration in v1.** `tiered.Store` does not
+  implement `CompositePropertyIndexCapability` — `g.Index().CreateComposite`
+  on a tiered-backed graph returns `ErrCapabilityNotSupported`, and
+  `g.Nodes().ByLabelAndProperties` answers via the graph-layer mandatory
+  fallback (a label scan + post-filter using the mandatory `NodesByLabel`
+  surface) — correct, just unaccelerated. Reference-label-scoped tiered
+  acceleration (mirroring the single-key index's `ErrEventPropertyIndex`
+  gate) is a documented follow-up.
+
+### Key-set identity, not key-order identity
+
+A composite index's identity is `(labelToken, DECLARED KEY ORDER)` — creating
+`["first", "last"]` and `["last", "first"]` under the same label are TWO
+distinct definitions (both usable; a query's key SET, not order, decides
+which definition accelerates it, since `values` is an unordered map). This
+is deliberate: the on-disk/in-RAM entry key is built by concatenating each
+component's canonical value key IN THE DECLARED ORDER, so two orderings of
+the same key set produce different entry-key spaces even for the same
+underlying node.
+
+### Collision-free key concatenation
+
+Composite entry keys are built with a LENGTH-PREFIXED concatenation
+(`indexpkg.EncodeCompositeKeyTuple`): each component's canonical value-key
+byte length is written before its bytes. A naive plain-concatenation or
+single-separator join can alias two DIFFERENT ordered key lists onto the
+same encoded string — e.g. `["ab", "c"]` and `["a", "bc"]` both
+plain-concatenate to `"abc"` — which would silently merge two distinct
+composite tuples (or two distinct index DEFINITIONS, since the same scheme
+also encodes a definition's declared key names) onto one map slot.
+Length-prefixing is a standard bijective encoding: parsing back (read a
+4-byte length, then that many bytes, repeat) is always unambiguous, so no
+two distinct ordered lists can ever collide. See
+`TestEncodeCompositeKeyTupleCollisionBattery` in
+`pkg/graph/internal/index/composite_property_index_test.go` for adversarial
+inputs chosen so a naive scheme WOULD collide.
+
+### Float equality semantics
+
+Composite equality SUPPORTS floats, using the exact same lesson-25
+bit-pattern semantics `types.IndexablePropertyValueKey` already applies to
+the single-key property index (`+0`/`-0` collapse to one key, `NaN` is
+pinned to one key, `float32` and `float64` holding the same magnitude stay
+distinct types). This is a deliberate departure from the unique-constraint
+precedent (`ErrUniqueUnsupportedType` for float keys/values) — a composite
+index is an EQUALITY accelerator, not a business-identity constraint, so
+exact bit-pattern equality is a sound, unsurprising definition; unique
+constraints have the additional (here irrelevant) concern that two writers
+might mean "the same value" despite differing bit patterns.
+
+### Mandatory fallback — correctness without the capability
+
+`CompositePropertyIndexCapability` is NOT part of the `Store` composed
+interface (unlike the single-key `PropertyIndexCapability`, which IS
+embedded) — a backend can satisfy `MandatoryStore`/`Store` fully while
+omitting it entirely. `g.Nodes().ByLabelAndProperties` therefore has a
+graph-layer fallback (mirroring `ByLabelAndProperty`'s own fallback) that
+scans `NodesByLabel` and applies `indexpkg.NodeMatchesAllProperties` — the
+SAME AND-conjunction predicate the backend's own internal scan-and-filter
+and the accelerated index path all agree on — as a pure post-filter. Every
+in-tree backend (`memory`/`badger`) ALSO applies this same fallback
+internally whenever no composite index exists for the requested key set, so
+the query is correct on every backend at every point, with or without an
+index.
+
+## Pinned adjacency — `OutgoingForNodesAtTx` / `OutgoingForNodesAtPin` (and incoming mirrors)
+
+Both families expand a batch of seed nodes to their relationships *as the graph
+was recorded at a transaction-time pin*, resolving each candidate through the
+adjacency index (live per-node adjacency UNIONED with the deleted-relationship
+fold, since rel endpoints are immutable) rather than a full history-aware
+`ByType` scan. They differ ONLY in how they treat VALID time — and picking the
+wrong one is the exact footgun that motivated the belief-state door:
+
+- **`OutgoingForNodesAtTx(nodeIDs, type, txAt)` / `IncomingForNodesAtTx(...)` —
+  bitemporal.** Agrees with the `QueryOpts{TxAt: txAt}` scan door filtered by
+  endpoint. When no valid-time opts are set, the `TxAt` arm applies a POINT
+  valid-time probe at **wall-now**, so an edge whose valid interval lies wholly
+  in the past is SILENTLY DROPPED even though it was believed at `txAt`:
+  a `CloseVersion`-ed edge, or a width-1 `[t, t+1)` point-event edge (the
+  standard point-event encoding). Use this only when you genuinely want
+  "believed at `txAt` AND still valid at wall-now". `txAt == 0` delegates to the
+  plain current-state door.
+
+- **`OutgoingForNodesAtPin(nodeIDs, type, pin)` / `IncomingForNodesAtPin(...)` —
+  belief-state (AS-OF-SYSTEM-TIME).** Pure knowledge-time resolution with NO
+  valid-time filtering; agrees with `ByType(QueryOpts{TxPin: pin})` filtered by
+  endpoint BY CONSTRUCTION (both funnel through the same as-of resolver —
+  `findRelVersionForOpts`'s `TxPin` arm → `relAsOfLocked` → the chain resolver +
+  `storeutil.SelectAsOf`). It returns EVERY edge believed at the pin regardless
+  of valid time: past-valid facts, point events, and unset-`valid_from`
+  (snowflake-fallback) edges alike. An edge hard-deleted after the pin is still
+  visible (delete is a transaction-time tombstone); one created after the pin is
+  invisible; a backfilled edge (`AddWithTx`) is visible from its backfilled
+  `TxFrom` onward. `pin == 0` delegates to the plain current-state door.
+
+**Which to use:** for reconstructing a historical knowledge state
+(AS-OF-SYSTEM-TIME `$pin`), always use the `*AtPin` doors — the `*AtTx` doors'
+wall-now valid filter will silently drop point events and closed intervals. The
+`*AtTx` doors remain for callers who explicitly want the bitemporal "recorded by
+`txAt` and valid at wall-now" intersection.
+
+**Seed tolerance (AtPin only):** unlike the current-state and `*AtTx` doors —
+which hard-error `ErrNodeNotFound` on a seed that is absent from CURRENT state —
+the `*AtPin` doors tolerate a seed that was part of the belief state at the pin
+but was HARD-DELETED afterwards. Such a seed's live adjacency entries were purged
+by the delete cascade, so it is excluded from the store's live-adjacency probe
+(which would otherwise error), but its pre-delete edges — themselves
+cascade-deleted, hence present in the deleted-relationship fold and still naming
+the seed as their (immutable) endpoint — are recovered and returned. A seed that
+never existed at the pin (or was created only after it) contributes nothing and
+is skipped silently, matching `ByType{TxPin}` filtered by endpoint, which simply
+has no entry for such a node. Seed IDs are still format-validated, so a
+zero/invalid ID is rejected with `ErrInvalidStoreMutation`.
+
+Both families push the live-adjacency probe down per shard on `tiered.Store`
+(cross-shard endpoints supported) and fold in deleted relationships via the same
+`DeletedIterationCapability` the single-node `OutgoingRelsAt`/`IncomingRelsAt`
+doors use.
+
 ## The capability story for external stores
 
 Every OPTIONAL statistics primitive above (`NodeCountByLabelAndPropertyKey`,
@@ -362,10 +623,13 @@ string comparison on the error message, which is diagnostic-only and may be
 wrapped with the missing capability's name. `NodeCountByLabelAndPropertyKey`
 and `PropertyStats` are the two primitives on this page that surface this
 sentinel directly (`core.nodeCountByLabelAndPropertyKey` /
-`core.nodePropertyStats` return it verbatim on a failed type assertion —
-`PropertyStats` is the one currently reachable ONLY via this decline shape on
-tiered, since it has no graceful fallback the way RangeCardinality/degree
-do). `RangeCardinality` and the degree methods instead have a GRACEFUL
+`core.nodePropertyStats` return it verbatim on a failed type assertion) —
+unlike `RangeCardinality`/degree below, `PropertyStats` has no graceful
+fallback, so an external `Store` implementation that omits
+`NodePropertyStatsCapability` sees this sentinel outright rather than a
+degraded-but-correct answer (all three in-tree backends — memory, badger,
+tiered — implement the capability; see "Tiered NDV fold" above).
+`RangeCardinality` and the degree methods instead have a GRACEFUL
 fallback baked into the graph layer (scan-and-count for range cardinality's
 `exact=false`; `len(Outgoing/Incoming(...))` for degree), so a store missing
 those two capabilities never surfaces `ErrCapabilityNotSupported` — it just

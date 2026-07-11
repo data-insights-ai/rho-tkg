@@ -2,6 +2,7 @@ package index
 
 import (
 	"math"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -123,6 +124,124 @@ func (o *orderedKeys) forEachFrom(lo float64, fn func(k float64) bool) {
 			}
 		}
 	}
+}
+
+// forEachDownFrom calls fn for every key <= hi in DESCENDING order until fn
+// returns false — the reverse-iteration mirror of forEachFrom, used by the
+// descending ordered-scan (ORDER BY prop DESC) top-k path.
+func (o *orderedKeys) forEachDownFrom(hi float64, fn func(k float64) bool) {
+	start := o.chunkIdx(hi)
+	if start == len(o.chunks) {
+		start = len(o.chunks) - 1 // hi is greater than every key: start at the last chunk
+	}
+	for ci := start; ci >= 0; ci-- {
+		c := o.chunks[ci]
+		pos := len(c) - 1
+		if ci == start {
+			// First chunk: begin at the greatest key <= hi.
+			p := sort.SearchFloat64s(c, hi)
+			if p < len(c) && c[p] == hi {
+				pos = p // exact hit
+			} else {
+				pos = p - 1 // p is the first key > hi, so p-1 is the last <= hi
+			}
+		}
+		for ; pos >= 0; pos-- {
+			if !fn(c[pos]) {
+				return
+			}
+		}
+	}
+}
+
+// RangeOrderedCursor is the opaque resumption point for a paged ordered range
+// scan (RangeOrderedPage). The zero value is "start from the beginning".
+// Callers thread the `next` cursor returned by one page into the next call
+// and never construct or interpret its fields themselves.
+type RangeOrderedCursor struct {
+	has bool
+	val float64
+	id  snowflake.ID
+}
+
+// RangeOrderedPage collects up to `limit` candidate node IDs from the ordered
+// numeric view in the CONTRACTUAL order — value ascending (or descending when
+// desc), TIES within one value ALWAYS by node ID ascending regardless of desc
+// — starting strictly AFTER `after`. It returns the page (already in order),
+// the cursor to resume the NEXT page from, and done=true once the range is
+// exhausted.
+//
+// Like RangeNodeIDs this is an OVER-SELECTING candidate filter: bounds are
+// widened by one ulp and boundary buckets are never skipped, so callers MUST
+// post-filter each candidate with exact comparison semantics (lesson 23) and
+// remember that int64 magnitudes past 2^53 collapse onto neighbouring float64
+// sort keys (lesson 25). Paging (rather than one big collection) is what keeps
+// a top-k caller's work O(k + pageSize + log n): the caller stops threading
+// pages the moment it has enough rows, so the scan never materializes the
+// whole range. supported=false only when the index is nil; an enabled view
+// with no numeric keys returns an authoritative empty page (done=true).
+func (pi *PropertyIndex) RangeOrderedPage(min, max float64, desc bool, after RangeOrderedCursor, limit int) (ids []snowflake.ID, next RangeOrderedCursor, done bool, supported bool) {
+	if pi == nil {
+		return nil, RangeOrderedCursor{}, true, false
+	}
+	if limit <= 0 || pi.numKeys.n == 0 {
+		return nil, RangeOrderedCursor{}, true, true
+	}
+	lo := math.Nextafter(min, math.Inf(-1))
+	hi := math.Nextafter(max, math.Inf(1))
+
+	next = after
+	emitKey := func(k float64) bool {
+		bucket := pi.numBuckets[k]
+		if len(bucket) == 0 {
+			return true
+		}
+		kids := make([]snowflake.ID, 0, len(bucket))
+		for id := range bucket {
+			kids = append(kids, id)
+		}
+		slices.Sort(kids) // ties by node ID ascending, in asc AND desc value order
+		for _, id := range kids {
+			// Skip everything at or before the resume cursor's position. The
+			// per-value tie order is ascending in BOTH scan directions, so the
+			// within-group skip test is `id <= after.id` regardless of desc.
+			if after.has && k == after.val && id <= after.id {
+				continue
+			}
+			ids = append(ids, id)
+			next = RangeOrderedCursor{has: true, val: k, id: id}
+			if len(ids) >= limit {
+				return false
+			}
+		}
+		return true
+	}
+
+	if !desc {
+		start := lo
+		if after.has && after.val > lo {
+			start = after.val
+		}
+		pi.numKeys.forEachFrom(start, func(k float64) bool {
+			if k > hi {
+				return false
+			}
+			return emitKey(k)
+		})
+	} else {
+		start := hi
+		if after.has && after.val < hi {
+			start = after.val
+		}
+		pi.numKeys.forEachDownFrom(start, func(k float64) bool {
+			if k < lo {
+				return false
+			}
+			return emitKey(k)
+		})
+	}
+	done = len(ids) < limit
+	return ids, next, done, true
 }
 
 // numericSortKey decodes the canonical value key's numeric value. ok=false

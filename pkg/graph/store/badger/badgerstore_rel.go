@@ -79,6 +79,7 @@ func (bs *Store) PutRelationship(r *types.Relationship) error {
 		bs.inIdx[endNID][rid] = inEdge{start: startNID, typ: relType}
 	}
 	bs.setRelValidStampLocked(rid, r) // OPT15: inline valid-time stamp
+	bs.recordRelTypeMemberLocked(r)   // K1: transaction-time rel-type membership
 
 	// Build write ops.
 	ops := []writeOp{
@@ -87,6 +88,8 @@ func (bs *Store) PutRelationship(r *types.Relationship) error {
 		{opType: writeOpSet, key: storepkg.OutKey(startID, relType, endID, id)},
 		{opType: writeOpSet, key: storepkg.InKey(endID, relType, startID, id)},
 	}
+
+	bs.maintainRelPropertyIndexesAdd(r, id) // K3b
 
 	bs.appendOps(ops...)
 	bs.relCount.Add(1)
@@ -203,7 +206,11 @@ func (bs *Store) ReplaceRelationship(r *types.Relationship) error {
 		return err
 	}
 
+	// K3b: type/endpoints are immutable, but property values can change — refresh
+	// the rel property index (remove old value, add new).
+	bs.maintainRelPropertyIndexesRemove(old, id)
 	bs.relCache.Put(id, freezeRelCopy(r))
+	bs.maintainRelPropertyIndexesAdd(r, id)
 	bs.appendOps(writeOp{opType: writeOpSet, key: storepkg.RelKey(id), value: data})
 	// OPT15: a version update rewrites the row in place — endpoints/type are
 	// immutable (no adjacency change) but valid_to may move, so the inline stamp
@@ -341,7 +348,8 @@ func (bs *Store) deleteRelByInfo(info RelDeleteInfo) {
 	// Update in-memory state.
 	bs.relCache.MarkDeleted(info.ID)
 	delete(bs.relIDs, rid)
-	delete(bs.relValidIdx, rid) // OPT15: drop the inline valid-time stamp
+	delete(bs.relValidIdx, rid)                 // OPT15: drop the inline valid-time stamp
+	bs.maintainRelPropertyIndexesPurge(info.ID) // K3b: brute-force (RelDeleteInfo has no property values)
 
 	// Type index cleanup.
 	if set, exists := bs.typeIdx[info.RelType]; exists {

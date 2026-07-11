@@ -197,6 +197,12 @@ func MetaKey(name string) []byte {
 // PropIndexDefsKey is the Badger key for persisting property index definitions.
 var PropIndexDefsKey = MetaKey("prop_indexes")
 
+// RelPropIndexDefsKey is the Badger key for persisting relationship property
+// index definitions (K3b). Only the definitions are persisted; the RAM value
+// maps are rebuilt from current relationship state at open, mirroring the
+// node property index's non-disk rebuild path.
+var RelPropIndexDefsKey = MetaKey("rel_prop_indexes")
+
 // TemporalIndexDefsKey is the Badger key for persisting temporal index label tokens.
 var TemporalIndexDefsKey = MetaKey("temporal_index_defs")
 
@@ -205,6 +211,13 @@ var HighFrequencyIndexDefsKey = MetaKey("high_frequency_index_defs")
 
 // VectorIndexDefsKey is the Badger key for persisting vector index definitions.
 var VectorIndexDefsKey = MetaKey("vector_index_defs")
+
+// CompositeIndexDefsKey is the Badger key for persisting composite property
+// index definitions (label token + declared ordered key list). Entries are
+// always RAM-only and rebuilt from current node state on reopen — there is
+// no on-disk composite-index keyspace equivalent to PropertyIndexOnDisk (v1
+// scope; see docs/query-planners.md "Composite property indexes").
+var CompositeIndexDefsKey = MetaKey("composite_index_defs")
 
 // WireFormatVersionKey is the Badger key for the store-level on-disk format
 // marker: a single big-endian uint16 holding the highest wire format version
@@ -225,6 +238,19 @@ var WireFormatVersionKey = MetaKey("wire_format_version")
 // flag still on skip the rescan and trust the keyspace ongoing maintenance
 // already kept in sync).
 var PropertyIndexOnDiskBuiltKey = MetaKey("property_index_on_disk_built")
+
+// TemporalIndexOnDiskBuiltKey marks that the persisted 0x0B temporal-index
+// raw-entry keyspace has been backfilled from current node state at least
+// once (a single byte, value irrelevant — presence is the signal). Absent
+// means a fresh store, or an existing store having TemporalIndexOnDisk
+// turned on for the first time: the open path must fall back to the
+// (slower) full-node-fetch rebuild for every existing temporal index
+// definition, collecting the corresponding 0x0B rows as it goes, and commit
+// them plus this marker in one WriteBatch — mirroring the
+// PropertyIndexOnDiskBuiltKey pattern exactly. Subsequent opens with the
+// flag still on trust the keyspace (kept in sync by ongoing write-path
+// maintenance) and stream straight from it instead.
+var TemporalIndexOnDiskBuiltKey = MetaKey("temporal_index_on_disk_built")
 
 // LastLSNKey is the Badger key for the durable change-log watermark: a single
 // big-endian uint64 holding the highest LSN committed to the change-log. It is

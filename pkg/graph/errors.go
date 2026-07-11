@@ -71,6 +71,10 @@ var (
 	ErrIndexProviderExists        = indexpkg.ErrIndexProviderExists
 	ErrIndexProviderNotFound      = indexpkg.ErrIndexProviderNotFound
 	ErrIndexProviderEmptyName     = indexpkg.ErrIndexProviderEmptyName
+	// ErrOrderedScanTemporal is returned by
+	// g.Nodes().ForEachByLabelPropertyRangeOrdered when temporal QueryOpts are
+	// supplied — the ordered / top-k door is current-state only in v1.
+	ErrOrderedScanTemporal = storepkg.ErrOrderedScanTemporal
 )
 
 // Registry sentinel errors. Surface through node/rel mutations.
@@ -162,8 +166,22 @@ var ErrBackupExists = iopkg.ErrBackupExists
 // transaction time.
 var ErrNoVersionAsOf = core.ErrNoVersionAsOf
 
+// ErrNoVersionValidAt is returned by g.Temporal().NodeAt / RelAt / NodeAtTx /
+// RelAtTx when the entity is known (current or historical rows exist) but no
+// version's effective valid-time interval covers the requested instant.
+// Aliases store.ErrNoVersionValidAt so a consumer that bans pkg/graph/store
+// imports can still classify the error with errors.Is(err,
+// graph.ErrNoVersionValidAt) — previously this sentinel leaked raw from
+// those four public doors with no pkg/graph-qualified alias.
+var ErrNoVersionValidAt = storepkg.ErrNoVersionValidAt
+
 // ErrTxDone is the transaction-completion sentinel returned by g.Tx().Run /
 // RunContext / the imperative *GraphTx methods when the transaction has
 // already committed or rolled back. Aliases store.ErrTxDone so external
 // callers can use either qualifier.
 var ErrTxDone = storepkg.ErrTxDone
+
+// Relationship property-index sentinel re-exports.
+var (
+	ErrRelPropertyIndexUnsupported = storepkg.ErrRelPropertyIndexUnsupported
+)

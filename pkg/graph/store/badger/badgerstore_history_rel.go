@@ -68,7 +68,10 @@ func (bs *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion 
 		return err
 	}
 
+	// K3b: refresh the rel property index (property values may have changed).
+	bs.maintainRelPropertyIndexesRemove(old, id)
 	bs.relCache.Put(id, freezeRelCopy(current))
+	bs.maintainRelPropertyIndexesAdd(current, id)
 	// OPT15: refresh the inline valid-time stamp — a history version-close moves
 	// valid_to while leaving endpoints/type (and thus adjacency) unchanged.
 	bs.setRelValidStampLocked(rid, current)
@@ -155,6 +158,14 @@ func (bs *Store) PutRelVersion(rid types.RelID, version uint32, r *types.Relatio
 		return fmt.Errorf("graph: encode change-log: %w", err)
 	}
 	key := storepkg.HistRelKey(id, uint64(version))
+	// K1: capture a history-only rel (deleted rel reconstructed via version
+	// inserts) once the sidecar is built; the bootstrap common case runs before
+	// any pinned scan, so the lazy build catches these rows.
+	if bs.relTypeMembersBuilt.Load() {
+		bs.idxMu.Lock()
+		bs.recordRelTypeMemberLocked(r)
+		bs.idxMu.Unlock()
+	}
 	// PutRelVersion holds no idxMu, so enqueue the op and its record together
 	// under one wbMu critical section (appendOpsLogged) for snapshot atomicity.
 	bs.appendOpsLogged(storecontract.ChangeRelHistoryVersion, logPayload, writeOp{opType: writeOpSet, key: key, value: data})

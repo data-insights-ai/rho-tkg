@@ -36,12 +36,14 @@ type Ops interface {
 	ByLabel(label string, opts storepkg.QueryOpts) ([]*types.Node, error)
 	ForEachByLabel(label string, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
 	ForEachByLabelPropertyRange(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
+	ForEachByLabelPropertyRangeOrdered(label, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
 	RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
 	ForEachDocValues(label string, propKeys []string, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error)
 	ForEachDocValuesMulti(labels []string, propKeys []string, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error)
 	DocValuesSnapshot(label string, propKeys []string) (types.NodeColumnReader, uint64, bool, error)
 	NodeMutationEpoch() uint64
 	ByLabelAndProperty(label, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error)
+	ByLabelAndProperties(label string, values map[string]any, opts storepkg.QueryOpts) ([]*types.Node, error)
 	Count() (int, error)
 	CountByLabel(label string) (int, error)
 
@@ -273,6 +275,26 @@ func (a *API) ForEachByLabelPropertyRange(label, propKey string, min, max float6
 	return ops.ForEachByLabelPropertyRange(label, propKey, min, max, inclMin, inclMax, opts, fn)
 }
 
+// ForEachByLabelPropertyRangeOrdered streams nodes whose NUMERIC propKey value
+// lies within [min, max] in CONTRACTUAL VALUE ORDER — ascending, or
+// descending when desc, with ties broken by node ID ascending — the ordered /
+// top-k access path for ORDER BY prop [LIMIT k]. fn returning false stops the
+// scan at the index level, pushing a LIMIT down. The ordered view over-selects
+// (float64 sort keys, ulp-widened bounds), so fn MUST re-check its predicate
+// with exact comparison semantics.
+//
+// CURRENT-STATE ONLY: a temporal QueryOpts combination is declined with
+// graph.ErrOrderedScanTemporal. Returns graph.ErrIndexNotFound when no usable
+// ordered view exists for (label, propKey). Same relaxed isolation and
+// frozen-row contract as ForEachByLabel.
+func (a *API) ForEachByLabelPropertyRangeOrdered(label, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachByLabelPropertyRangeOrdered(label, propKey, min, max, inclMin, inclMax, desc, opts, fn)
+}
+
 // RangeCardinality returns the count of the label's nodes whose numeric propKey
 // value lies within [min, max] (inclusivity per flags), summed from the property
 // index's sorted per-value bucket sizes (R1) — O(distinct values in range), NO
@@ -347,6 +369,20 @@ func (a *API) ByLabelAndProperty(label, key string, value any, opts storepkg.Que
 		return nil, err
 	}
 	return ops.ByLabelAndProperty(label, key, value, opts)
+}
+
+// ByLabelAndProperties returns nodes carrying the label whose properties
+// match EVERY (key, value) pair in values (AND-conjunction, EQUALITY-only in
+// v1). Accelerated by a composite property index (see
+// Index().CreateComposite) whose declared key set equals values' keys;
+// otherwise answered via a label-scan + post-filter fallback — see
+// docs/query-planners.md "Composite property indexes".
+func (a *API) ByLabelAndProperties(label string, values map[string]any, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.ByLabelAndProperties(label, values, opts)
 }
 
 // Count returns the total node count.

@@ -63,10 +63,12 @@ func (bs *Store) PutNode(n *types.Node) error {
 		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tok, id)})
 		bs.getOrCreateLabelCounter(tok).Add(1)
 	}
+	bs.recordNodeLabelMembersLocked(n) // K1: transaction-time label membership
 
 	bs.addNodePropertyKeyCounts(n)
 	ops = append(ops, bs.maintainPropertyIndexesAdd(n, id)...)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, n, id)
+	ops = append(ops, bs.maintainTemporalIndexDiskAdd(n, id)...)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, n, id)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
 		bs.idxMu.Unlock()
@@ -388,6 +390,7 @@ func (bs *Store) DeleteNode(nid types.NodeID) error {
 	bs.removeNodePropertyKeyCounts(n)
 	ops = append(ops, bs.maintainPropertyIndexesRemove(n, id)...)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, n, id)
+	ops = append(ops, bs.maintainTemporalIndexDiskRemove(n, id)...)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, n, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, n, id)
 
@@ -461,6 +464,7 @@ func (bs *Store) ReplaceNode(n *types.Node) error {
 	bs.removeNodePropertyKeyCounts(old)
 	ops := bs.maintainPropertyIndexesRemove(old, id)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
+	ops = append(ops, bs.maintainTemporalIndexDiskRemove(old, id)...)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
 	bs.nodeCache.Put(id, freezeNodeCopy(n))
@@ -469,6 +473,7 @@ func (bs *Store) ReplaceNode(n *types.Node) error {
 	bs.addNodePropertyKeyCounts(n)
 	ops = append(ops, bs.maintainPropertyIndexesAdd(n, id)...)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, n, id)
+	ops = append(ops, bs.maintainTemporalIndexDiskAdd(n, id)...)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, n, id)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
 		bs.idxMu.Unlock()
@@ -540,6 +545,7 @@ func (bs *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 	bs.removeNodePropertyKeyCounts(old)
 	ops := bs.maintainPropertyIndexesRemove(old, id)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
+	ops = append(ops, bs.maintainTemporalIndexDiskRemove(old, id)...)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
 
@@ -561,6 +567,7 @@ func (bs *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 	bs.addNodePropertyKeyCounts(updatedNode)
 	ops = append(ops, bs.maintainPropertyIndexesAdd(updatedNode, id)...)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
+	ops = append(ops, bs.maintainTemporalIndexDiskAdd(updatedNode, id)...)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, updatedNode, id)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
 		bs.idxMu.Unlock()
@@ -635,6 +642,7 @@ func (bs *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 	bs.removeNodePropertyKeyCounts(old)
 	ops := bs.maintainPropertyIndexesRemove(old, id)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, old, id)
+	ops = append(ops, bs.maintainTemporalIndexDiskRemove(old, id)...)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
 
@@ -647,6 +655,7 @@ func (bs *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 		set[nid] = struct{}{}
 	}
 	bs.getOrCreateLabelCounter(tok).Add(1)
+	bs.recordNodeLabelMembersLocked(updatedNode) // K1: transaction-time label membership (new token)
 
 	bs.nodeCache.Put(id, freezeNodeCopy(updatedNode))
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
@@ -654,6 +663,7 @@ func (bs *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 	bs.addNodePropertyKeyCounts(updatedNode)
 	ops = append(ops, bs.maintainPropertyIndexesAdd(updatedNode, id)...)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
+	ops = append(ops, bs.maintainTemporalIndexDiskAdd(updatedNode, id)...)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, updatedNode, id)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
 		bs.idxMu.Unlock()
@@ -699,6 +709,33 @@ func (bs *Store) loadNodeFromBadger(txn *badgerv4.Txn, id snowflake.ID) (*types.
 		return nil
 	})
 	return n, err
+}
+
+// loadRelFromBadger reads and unmarshals a relationship within an existing
+// Badger transaction — the rel mirror of loadNodeFromBadger, used by the K3b
+// rel-property-index rebuild at open (loadIndexes).
+func (bs *Store) loadRelFromBadger(txn *badgerv4.Txn, id snowflake.ID) (*types.Relationship, error) {
+	item, err := txn.Get(storepkg.RelKey(id))
+	if err == badgerv4.ErrKeyNotFound {
+		return nil, ErrRelNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	var r *types.Relationship
+	err = item.Value(func(val []byte) error {
+		var w storepkg.RelWire
+		if err := storepkg.SafeUnmarshal(val, &w); err != nil {
+			return fmt.Errorf("graph: unmarshal relationship: %w", err)
+		}
+		decoded, err := bs.decodeRelWireForKey(w, id)
+		if err != nil {
+			return fmt.Errorf("graph: decode relationship: %w", err)
+		}
+		r = decoded
+		return nil
+	})
+	return r, err
 }
 
 // NodesByLabelAndProperty returns nodes matching the label and property value,

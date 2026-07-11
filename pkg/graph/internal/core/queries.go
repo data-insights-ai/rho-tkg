@@ -229,6 +229,77 @@ func (n *NodeOps) ForEachByLabelPropertyRange(label, propKey string, min, max fl
 	return scanner.ForEachNodeByLabelPropertyRange(tok, propKey, min, max, inclMin, inclMax, opts, fn)
 }
 
+// nodeOrderedRangeScanner is the OPTIONAL store capability behind
+// NodeOps.ForEachByLabelPropertyRangeOrdered — streaming NUMERIC range scans
+// that emit in contractual VALUE ORDER (the ORDER BY prop [LIMIT k] / top-k
+// access path). Implemented by the in-tree memory and badger stores.
+type nodeOrderedRangeScanner interface {
+	ForEachNodeByLabelPropertyRangeOrdered(token uint16, propKey string, min, max float64, inclMin, inclMax, desc bool, fn func(*types.Node) bool) error
+}
+
+// ForEachByLabelPropertyRangeOrdered streams nodes carrying the label whose
+// NUMERIC propKey value lies within [min, max] to fn in CONTRACTUAL VALUE
+// ORDER — ascending, or descending when desc — with ties (equal values)
+// always broken by node ID ASCENDING in both directions. This is the ordered
+// / top-k access path: a query layer compiling `ORDER BY n.prop [ASC|DESC]
+// LIMIT k` streams here and returns false from fn once it has collected k
+// rows, so the LIMIT is pushed into the index and the scan stops at
+// O(k + log n) index work — never materializing the whole range.
+//
+// The candidates come from the property index's ordered numeric view, which
+// OVER-SELECTS by design (float64 sort keys, ulp-widened bounds): fn MUST
+// re-check its predicate with exact comparison semantics (the door never
+// skips a boundary bucket — int64 magnitudes past 2^53 collapse onto
+// neighbouring sort keys, so the exact inclusivity check per inclMin/inclMax
+// is fn's responsibility).
+//
+// CURRENT-STATE ONLY (v1): the ordered door reflects the live current row
+// set. A temporal QueryOpts combination (ValidAt / ValidStart / ValidEnd /
+// TxAt / TxPin) is DECLINED with storepkg.ErrOrderedScanTemporal — value
+// ordering is derived from the valid-time-agnostic property index, so a
+// temporal ordered scan cannot be served correctly and is refused rather than
+// silently answered against current state. Returns storepkg.ErrIndexNotFound
+// when no property index with a usable ordered view exists for (label,
+// propKey) or the store lacks the capability. Same relaxed isolation and
+// frozen-row contract as ForEachByLabel.
+func (n *NodeOps) ForEachByLabelPropertyRangeOrdered(label, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
+	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
+	if fn == nil {
+		return grapherr.ErrNilCallback
+	}
+	if err := c.validateIndexLabel(label); err != nil {
+		return err
+	}
+	// Strict: decline on ANY temporal field (a lone ValidStart is not a
+	// complete interval, so hasTemporalFilter would miss it).
+	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
+		return storepkg.ErrOrderedScanTemporal
+	}
+	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+		return err
+	}
+	scanner, native := c.store.(nodeOrderedRangeScanner)
+	if !native || !c.storeRowsTrust {
+		return storepkg.ErrIndexNotFound
+	}
+	var tok uint16
+	var ok bool
+	if err := c.readUnderRLock(func() error {
+		tok, ok = c.labels.Lookup(label)
+		return nil
+	}); err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+	// Deliberately outside c.mu — see ForEachByLabel's isolation note.
+	return scanner.ForEachNodeByLabelPropertyRangeOrdered(tok, propKey, min, max, inclMin, inclMax, desc, fn)
+}
+
 // nodesByLabelLocked is the lock-free body of NodeOps.ByLabel. Callers must
 // hold c.mu (R or W). Used by the public method (under RLock) and by
 // (*GraphTx).NodesByLabel (under tx-inherited Lock).
@@ -257,7 +328,7 @@ func (c *Core) nodesByLabelLocked(label string, opts storepkg.QueryOpts) ([]*typ
 
 	var result []*types.Node
 	pred := func(n *types.Node) bool { return n.HasLabelTokenRaw(tok) }
-	if err := c.forEachNodeCandidateIDByDepth(currentIDs, opts.Depth, func(id types.NodeID) error {
+	collect := func(id types.NodeID) error {
 		n, err := c.findNodeVersionForOpts(id, opts, pred)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
@@ -267,7 +338,18 @@ func (c *Core) nodesByLabelLocked(label string, opts storepkg.QueryOpts) ([]*typ
 		}
 		result = append(result, n)
 		return nil
-	}); err != nil {
+	}
+	// K1: when the store owns a transaction-time label-membership sidecar, scope
+	// the candidate set to the label's ever-members (O(matches)) instead of
+	// folding ALL node history (O(everything that ever carried ANY label)). The
+	// chain resolver (findNodeVersionForOpts) stays the correctness authority —
+	// the sidecar is a sound superset, so an over-included candidate is rejected
+	// there. Tiered / wrapped stores decline the capability and take the fold.
+	if c.labelTxMembers != nil {
+		if err := c.forEachLabelTxCandidate(tok, currentIDs, opts, collect); err != nil {
+			return nil, err
+		}
+	} else if err := c.forEachNodeCandidateIDByDepth(currentIDs, opts.Depth, collect); err != nil {
 		return nil, err
 	}
 	storeutil.SortNodesByID(result)
@@ -332,7 +414,7 @@ func (c *Core) relsByTypeLocked(typeName string, opts storepkg.QueryOpts) ([]*ty
 
 	var result []*types.Relationship
 	pred := func(r *types.Relationship) bool { return r.HasTypeTokenRaw(tok) }
-	if err := c.forEachRelCandidateIDByDepth(currentIDs, opts.Depth, func(id types.RelID) error {
+	collect := func(id types.RelID) error {
 		r, err := c.findRelVersionForOpts(id, opts, pred)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
@@ -342,7 +424,14 @@ func (c *Core) relsByTypeLocked(typeName string, opts storepkg.QueryOpts) ([]*ty
 		}
 		result = append(result, r)
 		return nil
-	}); err != nil {
+	}
+	// K1: scope the candidate set to the type's ever-members when the store owns
+	// the transaction-time rel-type-membership sidecar (see nodesByLabelLocked).
+	if c.relTypeTxMembers != nil {
+		if err := c.forEachRelTypeTxCandidate(tok, currentIDs, opts, collect); err != nil {
+			return nil, err
+		}
+	} else if err := c.forEachRelCandidateIDByDepth(currentIDs, opts.Depth, collect); err != nil {
 		return nil, err
 	}
 	storeutil.SortRelsByID(result)
@@ -915,12 +1004,22 @@ func (c *Core) incomingRelsForNodesLocked(nodeIDs []types.NodeID, typeName strin
 
 // OutgoingForNodesAtTx is the bitemporal (transaction-time-pinned) counterpart
 // of OutgoingForNodes: instead of the live adjacency index alone, it resolves
-// each candidate relationship's belief-at-pin version through the SAME chain
-// seam the generic TxAt door uses (findRelVersionForOpts, which funnels
-// through filterRelChainByTxAt — the tombstone-normalization seam shared with
-// NodeAtTx/RelAtTx and the named as-of door), so a pinned adjacency read
-// agrees with a pinned `ByType` scan filtered by endpoint, by construction
-// (rule 17: two doors, same shape).
+// each candidate relationship's version through the SAME chain seam the generic
+// TxAt door uses (findRelVersionForOpts, which funnels through
+// filterRelChainByTxAt — the tombstone-normalization seam shared with
+// NodeAtTx/RelAtTx and the named as-of door).
+//
+// SEMANTICS — this door agrees with the TxAt-pinned BITEMPORAL door
+// (QueryOpts{TxAt: txAt}) filtered by endpoint, NOT with a belief-state pin.
+// The TxAt arm applies a POINT valid-time probe at wall-now when no valid-time
+// opts are set (see the QueryOpts.TxAt warning): an edge whose valid interval
+// lies wholly in the past — a CloseVersion-ed edge, or a width-1 [t, t+1)
+// point-event edge — is SILENTLY DROPPED here even though it was believed at
+// txAt. For pure knowledge-time (belief-state) semantics that returns every
+// edge believed at the pin regardless of valid time, use OutgoingForNodesAtPin
+// / IncomingForNodesAtPin instead (agreeing with QueryOpts{TxPin} filtered by
+// endpoint). The two doors are deliberately distinct — do NOT treat this one as
+// a belief-state pin.
 //
 // Rel endpoints are immutable, so the candidate relationship-ID set is the
 // live per-node adjacency (seeds the common case) UNIONED with every DELETED
@@ -1047,6 +1146,215 @@ func (c *Core) directionalRelsForNodesAtTxLocked(nodeIDs []types.NodeID, typeNam
 	}
 
 	opts := storepkg.QueryOpts{TxAt: txAt}
+	var pred func(*types.Relationship) bool
+	if hasType {
+		pred = func(r *types.Relationship) bool { return r.HasTypeTokenRaw(tok) }
+	}
+
+	result := make(map[types.NodeID][]*types.Relationship)
+	if err := c.forEachRelAdjacencyCandidateID(seedIDs, func(id types.RelID) error {
+		r, err := c.findRelVersionForOpts(id, opts, pred)
+		if err != nil {
+			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
+				return nil
+			}
+			return err
+		}
+		var endpoint types.NodeID
+		if outgoing {
+			endpoint = r.StartNodeID()
+		} else {
+			endpoint = r.EndNodeID()
+		}
+		if _, ok := requested[endpoint]; !ok {
+			return nil
+		}
+		result[endpoint] = append(result[endpoint], r)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	if len(result) == 0 {
+		return nil, nil
+	}
+	for id := range result {
+		storeutil.SortRelsByID(result[id])
+	}
+	return result, nil
+}
+
+// OutgoingForNodesAtPin is the pure knowledge-time (belief-state) counterpart of
+// OutgoingForNodes / OutgoingForNodesAtTx: it returns every outgoing
+// relationship that was BELIEVED at the transaction-time pin, with NO valid-time
+// filtering. It agrees with ByType(QueryOpts{TxPin: pin}) filtered by endpoint,
+// BY CONSTRUCTION — every candidate is resolved through the SAME as-of
+// resolution the generic TxPin door uses (findRelVersionForOpts's TxPin arm ->
+// relAsOfLocked -> the chain resolver + storeutil.SelectAsOf), so the two doors
+// cannot drift (rule 17: two doors, same shape).
+//
+// This is the door to use for AS-OF-SYSTEM-TIME semantics. Unlike
+// OutgoingForNodesAtTx (which valid-filters at wall-now when no valid opts are
+// set and therefore silently drops an edge whose valid interval lies wholly in
+// the past — a CloseVersion-ed edge, or a width-1 [t, t+1) point-event edge),
+// this door returns EVERY edge believed at the pin: past-valid facts, point
+// events, and unset-valid_from (snowflake-fallback) edges alike. An edge
+// hard-deleted after the pin is still visible (delete is a transaction-time
+// tombstone); one created after the pin is invisible; one deleted before the pin
+// is invisible; a backfilled edge (AddWithTx) is visible from its backfilled
+// TxFrom onward.
+//
+// Candidate set — rel endpoints are immutable, so the candidates are the live
+// per-node adjacency of the CURRENTLY-EXISTING seeds UNIONED with every DELETED
+// relationship ID via forEachRelAdjacencyCandidateID (the same fold ByType uses,
+// see CLAUDE.md "Adjacency-at-t fold uses deleted-only iteration").
+//
+// SEED TOLERANCE — unlike OutgoingForNodes/AtTx, this door does NOT hard-error
+// ErrNodeNotFound on a seed that is absent from CURRENT state. A seed that was
+// part of the belief state at the pin but was HARD-DELETED afterwards is
+// accepted: its live adjacency entries were purged by the cascade, so it is
+// excluded from the store's live-adjacency probe (which would otherwise
+// ErrNodeNotFound), but its pre-delete edges — themselves cascade-deleted, hence
+// present in the deleted-rel fold and still naming the seed as their (immutable)
+// endpoint — are recovered and returned. A seed created after the pin
+// contributes nothing (its live edges resolve to empty at the pin). A seed that
+// NEVER existed at the pin (or never existed at all) contributes nothing and is
+// SKIPPED SILENTLY — matching ByType{TxPin} filtered by endpoint, which simply
+// has no entry for such a node (no rel believed at the pin names it). Seed IDs
+// are still format-validated (ValidateNodeID), so a zero/invalid ID is rejected.
+//
+// pin == 0 delegates to OutgoingForNodes verbatim (belief-state at the zero
+// instant is "no pin" — identical to the generic ByType(QueryOpts{TxPin:0})
+// door's "no temporal filter" convention; the current-state door's
+// ErrNodeNotFound seed validation applies in that delegated case). Returned
+// relationships are sorted by ID within each node's slice.
+func (r *RelOps) OutgoingForNodesAtPin(nodeIDs []types.NodeID, typeName string, pin types.Instant) (map[types.NodeID][]*types.Relationship, error) {
+	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	if typeName != "" {
+		if err := c.validateRelTypeQueryName(typeName); err != nil {
+			return nil, err
+		}
+	}
+	if len(nodeIDs) == 0 {
+		return nil, nil
+	}
+	for _, id := range nodeIDs {
+		if err := storepkg.ValidateNodeID(id); err != nil {
+			return nil, err
+		}
+	}
+	var result map[types.NodeID][]*types.Relationship
+	err := c.readUnderRLock(func() error {
+		var err error
+		result, err = c.directionalRelsForNodesAtPinLocked(nodeIDs, typeName, pin, true)
+		return err
+	})
+	return result, err
+}
+
+// IncomingForNodesAtPin is the belief-state counterpart of IncomingForNodes. See
+// OutgoingForNodesAtPin for the resolution semantics (identical, mirrored for
+// the incoming direction).
+func (r *RelOps) IncomingForNodesAtPin(nodeIDs []types.NodeID, typeName string, pin types.Instant) (map[types.NodeID][]*types.Relationship, error) {
+	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	if typeName != "" {
+		if err := c.validateRelTypeQueryName(typeName); err != nil {
+			return nil, err
+		}
+	}
+	if len(nodeIDs) == 0 {
+		return nil, nil
+	}
+	for _, id := range nodeIDs {
+		if err := storepkg.ValidateNodeID(id); err != nil {
+			return nil, err
+		}
+	}
+	var result map[types.NodeID][]*types.Relationship
+	err := c.readUnderRLock(func() error {
+		var err error
+		result, err = c.directionalRelsForNodesAtPinLocked(nodeIDs, typeName, pin, false)
+		return err
+	})
+	return result, err
+}
+
+// directionalRelsForNodesAtPinLocked is the lock-free shared body of
+// OutgoingForNodesAtPin / IncomingForNodesAtPin. outgoing=true selects the
+// start-endpoint (outgoing) direction. See OutgoingForNodesAtPin for the
+// resolution semantics and the seed-tolerance contract.
+func (c *Core) directionalRelsForNodesAtPinLocked(nodeIDs []types.NodeID, typeName string, pin types.Instant, outgoing bool) (map[types.NodeID][]*types.Relationship, error) {
+	if pin == 0 {
+		if outgoing {
+			return c.outgoingRelsForNodesLocked(nodeIDs, typeName)
+		}
+		return c.incomingRelsForNodesLocked(nodeIDs, typeName)
+	}
+
+	var tok uint16
+	hasType := typeName != ""
+	if hasType {
+		t, ok := c.lookupRelTypeQueryToken(typeName)
+		if !ok {
+			// Unregistered type: no relationship of this type exists at any pin.
+			// Tolerant (unlike the AtTx door, which validates node existence):
+			// the belief-state door never rejects seeds, so return no edges.
+			return nil, nil
+		}
+		tok = t
+	}
+
+	// Partition the requested seeds by CURRENT existence for the live-adjacency
+	// probe. A seed hard-deleted after the pin is NOT current (its live
+	// adjacency was purged by the cascade) — passing it to
+	// OutgoingRelationshipsForNodes would hard-error ErrNodeNotFound. We tolerate
+	// such seeds: their pre-delete edges are recovered purely through the
+	// deleted-rel fold below (rel endpoints are immutable, so a cascade-deleted
+	// edge still names the deleted seed as its endpoint). `requested` keeps ALL
+	// deduped seeds so the endpoint filter still admits a deleted seed's edges.
+	requested := make(map[types.NodeID]struct{}, len(nodeIDs))
+	liveSeedIDs := make([]types.NodeID, 0, len(nodeIDs))
+	for _, id := range nodeIDs {
+		if _, dup := requested[id]; dup {
+			continue
+		}
+		requested[id] = struct{}{}
+		if _, err := c.getCurrentNode(id); err != nil {
+			if errors.Is(err, storepkg.ErrNodeNotFound) {
+				continue
+			}
+			return nil, err
+		}
+		liveSeedIDs = append(liveSeedIDs, id)
+	}
+
+	var (
+		liveRows map[types.NodeID][]*types.Relationship
+		err      error
+	)
+	if len(liveSeedIDs) > 0 {
+		if outgoing {
+			liveRows, err = c.store.OutgoingRelationshipsForNodes(liveSeedIDs, tok)
+		} else {
+			liveRows, err = c.store.IncomingRelationshipsForNodes(liveSeedIDs, tok)
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	seedIDs, err := c.relIDsFromNodeMapRows(liveSeedIDs, tok, liveRows, outgoing)
+	if err != nil {
+		return nil, err
+	}
+
+	opts := storepkg.QueryOpts{TxPin: pin}
 	var pred func(*types.Relationship) bool
 	if hasType {
 		pred = func(r *types.Relationship) bool { return r.HasTypeTokenRaw(tok) }
@@ -1615,3 +1923,54 @@ func (c *Core) countByTypeLocked(typeName string) (int, error) {
 }
 
 // (AllLabelCounts and AllRelTypeCounts moved to StatOps in stats.go.)
+
+// relRangeScanner is the OPTIONAL store capability behind
+// RelOps.ForEachByTypePropertyRange — the relationship mirror of
+// nodeRangeScanner. Implemented by the memory and badger stores.
+type relRangeScanner interface {
+	ForEachRelByTypePropertyRange(typeToken uint16, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
+}
+
+// ForEachByTypePropertyRange streams relationships carrying the type whose
+// NUMERIC propKey value lies within [min, max] (per the inclusivity flags), in
+// snowflake-ID order — the relationship mirror of
+// NodeOps.ForEachByLabelPropertyRange. Candidates come from the rel property
+// index's ordered numeric view, which OVER-SELECTS by design (float64 sort
+// keys, ulp-widened bounds): fn must re-check its predicate with exact
+// comparison semantics. Returns storepkg.ErrIndexNotFound when no rel property
+// index with a usable ordered view exists for (type, propKey) or the store
+// lacks the capability — callers fall back to a type scan. Same relaxed
+// isolation and frozen-row contract as ForEachByType; temporal-filter opts route
+// through the store's per-row temporal check.
+func (r *RelOps) ForEachByTypePropertyRange(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
+	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
+	if fn == nil {
+		return grapherr.ErrNilCallback
+	}
+	if err := c.validateRelTypeQueryName(typeName); err != nil {
+		return err
+	}
+	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+		return err
+	}
+	scanner, native := c.store.(relRangeScanner)
+	if !native || !c.storeRowsTrust {
+		return storepkg.ErrIndexNotFound
+	}
+	var tok uint16
+	var ok bool
+	if err := c.readUnderRLock(func() error {
+		tok, ok = c.lookupRelTypeQueryToken(typeName)
+		return nil
+	}); err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+	// Deliberately outside c.mu — see ForEachByLabel's isolation note.
+	return scanner.ForEachRelByTypePropertyRange(tok, propKey, min, max, inclMin, inclMax, opts, fn)
+}

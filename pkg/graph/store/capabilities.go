@@ -178,6 +178,42 @@ type TransactionTimeQueryCapability interface {
 	RelsAsOf(txTime types.Instant) ([]*types.Relationship, error)
 }
 
+// LabelTxMembershipCapability is OPTIONAL. A backend that maintains a
+// transaction-time label-membership sidecar can enumerate, for a label token,
+// the node IDs that EVER carried it — in the current row OR any historical
+// version — each tagged with a lower bound on the transaction time of its
+// earliest acquisition of the label. This lets the graph layer make a pinned
+// label scan OUTPUT-SENSITIVE (K1): the candidate set for a history-aware
+// ByLabel scan is scoped to the label's ever-members (O(matches)) instead of
+// the whole node-history fold (O(everything that ever carried ANY label)), and
+// a member whose earliest acquisition post-dates a transaction-time pin is
+// rejected WITHOUT loading its version chain.
+//
+// Membership is APPEND-ONLY: removing a label from a node, or hard-deleting the
+// node, does NOT drop the member — a pin BEFORE the removal/delete must still
+// admit it as a candidate. The enumerated set is therefore a sound SUPERSET of
+// {nodes whose belief-state version at the pin carried token}; the core chain
+// resolver is the correctness authority and rejects the over-included
+// candidates, so a spurious member only costs a resolver probe, never a wrong
+// result. firstTxFrom is a LOWER bound (0 = unknown → never prune): pruning is
+// sound only as `pin < firstTxFrom → skip`.
+type LabelTxMembershipCapability interface {
+	// ForEachLabelTxMember streams (id, firstTxFrom) for every node that ever
+	// carried token. fn returning false stops the scan. Order is unspecified.
+	// The sidecar is built lazily on first use, so the first call after open (or
+	// after Clear) pays a one-time build; subsequent calls are cheap.
+	ForEachLabelTxMember(token uint16, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
+}
+
+// RelTypeTxMembershipCapability is the relationship mirror of
+// LabelTxMembershipCapability. A relationship's type is structurally immutable,
+// so a rel of type T carried T in EVERY version — its ever-membership is exactly
+// {rels ever created with type T}, recorded once at creation. Same append-only
+// superset + lower-bound-prune contract.
+type RelTypeTxMembershipCapability interface {
+	ForEachRelTypeTxMember(token uint16, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
+}
+
 // HistoryRollbackTrimCapability is OPTIONAL. It supports transaction rollback
 // without eager deep copies of entire history chains. Graph mutation paths
 // append superseded versions at the entity's previous Version(); rollback can
@@ -329,6 +365,60 @@ type PropertyIndexCapability interface {
 	CreatePropertyIndex(labelToken uint16, propertyKey string) error
 	DropPropertyIndex(labelToken uint16, propertyKey string) error
 	NodesByLabelAndProperty(labelToken uint16, key string, value any, opts QueryOpts) ([]*types.Node, error)
+}
+
+// RelPropertyIndexCapability is the relationship mirror of
+// PropertyIndexCapability (Node/Rel parity), keyed by rel-type token instead
+// of label token. OPTIONAL — a backend that has no use for accelerated
+// rel-value equality lookup may omit it, and the graph layer answers
+// RelsByTypeAndProperty by a type-scan + property filter over the mandatory
+// RelationshipsByType surface.
+//
+// The tiered store IMPLEMENTS this capability but its Create/Drop doors return
+// ErrRelPropertyIndexUnsupported: a shard-local rel-value index cannot answer a
+// query whose matches are scattered across timestamp-routed event shards. Its
+// RelationshipsByTypeAndProperty still answers correctly (unaccelerated
+// cross-shard scan+filter), so query semantics are uniform across backends.
+type RelPropertyIndexCapability interface {
+	CreateRelPropertyIndex(relTypeToken uint16, propertyKey string) error
+	DropRelPropertyIndex(relTypeToken uint16, propertyKey string) error
+	RelationshipsByTypeAndProperty(relTypeToken uint16, key string, value any, opts QueryOpts) ([]*types.Relationship, error)
+}
+
+// CompositePropertyIndexCapability is OPTIONAL. A backend implements it to
+// accelerate an EQUALITY lookup across an ordered tuple of 2..4 property keys
+// under one label with O(matches) cost, instead of the label-scan +
+// post-filter every backend must still support for correctness (see
+// NodesByLabelAndProperties's doc comment). v1 is equality-only — no
+// partial-prefix or range semantics (a query must supply a value for every
+// declared key); see docs/query-planners.md "Composite property indexes" for
+// planner guidance on when this beats a single-key index + post-filter.
+//
+// Unlike PropertyIndexCapability, this is NOT embedded in Store: a backend
+// that never implements it (e.g. a sharded backend that only supports
+// reference-label single-key indexes today) still satisfies Store/
+// MandatoryStore unchanged, and the graph layer answers
+// NodesByLabelAndProperties correctly (unaccelerated) via its own
+// label-scan + post-filter fallback.
+type CompositePropertyIndexCapability interface {
+	// CreateCompositePropertyIndex creates a composite index over the
+	// declared, ORDER-PRESERVING keys (2..4) under labelToken. Returns
+	// ErrIndexExists if an index for the exact same (labelToken, ordered
+	// keys) already exists — a different key ORDER for the same key SET is
+	// a distinct definition (no implicit dedup across orderings).
+	CreateCompositePropertyIndex(labelToken uint16, keys []string) error
+	// DropCompositePropertyIndex removes the composite index declared over
+	// the exact ordered keys. Returns ErrIndexNotFound if no such
+	// definition exists.
+	DropCompositePropertyIndex(labelToken uint16, keys []string) error
+	// NodesByLabelAndProperties returns nodes carrying labelToken whose
+	// current row matches EVERY (key, value) pair in values (AND-conjunction,
+	// equality only). All of a matching composite index's declared keys must
+	// be present in values for the index to accelerate the call; otherwise
+	// (or when no matching composite index exists) implementations fall back
+	// to a label-scan + post-filter, mirroring PropertyIndexCapability's
+	// internal fallback contract.
+	NodesByLabelAndProperties(labelToken uint16, values map[string]any, opts QueryOpts) ([]*types.Node, error)
 }
 
 // TemporalIndexCapability is OPTIONAL — see the note on

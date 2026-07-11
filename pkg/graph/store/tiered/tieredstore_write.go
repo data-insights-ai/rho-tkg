@@ -154,6 +154,98 @@ func (ts *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error 
 	return ref.DropPropertyIndex(labelToken, propertyKey)
 }
 
+// --- Relationship property indexes (K3b) ---
+//
+// The tiered store DECLINES relationship property index creation: relationships
+// are routed to event shards by timestamp, so a shard-local rel-value equality
+// index would only ever see the relationships in one shard while the values a
+// query must find are scattered across every shard. CreateRelPropertyIndex
+// returns ErrRelPropertyIndexUnsupported (a clear, distinct sentinel);
+// DropRelPropertyIndex returns ErrIndexNotFound (there is never such an index to
+// drop, and this keeps the graph-layer create-rollback clean). Queries still
+// work via RelationshipsByTypeAndProperty's cross-shard scan+filter, so
+// g.Rels().ByTypeAndProperty behaves uniformly across every backend.
+
+// CreateRelPropertyIndex declines on the tiered store — see the note above.
+func (ts *Store) CreateRelPropertyIndex(relTypeToken uint16, propertyKey string) error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateRelTypeToken(relTypeToken); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
+		return err
+	}
+	return storecontract.ErrRelPropertyIndexUnsupported
+}
+
+// DropRelPropertyIndex declines on the tiered store — a rel property index can
+// never exist here, so there is nothing to drop.
+func (ts *Store) DropRelPropertyIndex(relTypeToken uint16, propertyKey string) error {
+	if err := ts.checkOpen(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateRelTypeToken(relTypeToken); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
+		return err
+	}
+	return storecontract.ErrIndexNotFound
+}
+
+// RelationshipsByTypeAndProperty answers the query by a cross-shard type scan +
+// property filter (no index exists on tiered). Correct, unaccelerated. Uses the
+// mandatory RelationshipsByType surface so it folds reference + archive + every
+// event shard.
+func (ts *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, key string, value any, opts QueryOpts) ([]*types.Relationship, error) {
+	if err := ts.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateRelTypeToken(relTypeToken); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateIndexPropertyKey(key); err != nil {
+		return nil, err
+	}
+	if err := validateQueryOpts(opts); err != nil {
+		return nil, err
+	}
+	if err := types.ValidatePropertyValue(value); err != nil {
+		return nil, fmt.Errorf("graph: relationships by type and property value: %w", err)
+	}
+	targetKey := indexpkg.PropertyValueKey(value)
+	if targetKey == "" {
+		return nil, nil
+	}
+
+	// Scan the whole type at the requested depth (no pagination limit — the
+	// property predicate can drop arbitrary elements; no temporal filter — a
+	// temporal opt is applied to current rows below, matching memory/badger's
+	// RelationshipsByTypeAndProperty).
+	candidates, err := ts.RelationshipsByType(relTypeToken, QueryOpts{Depth: opts.Depth})
+	if err != nil {
+		return nil, err
+	}
+	hasTemporal := storeutil.HasTemporalFilter(opts)
+	out := make([]*types.Relationship, 0, len(candidates))
+	for _, r := range candidates {
+		valueKey, found := r.IndexablePropertyValueKey(key)
+		if !found || valueKey != targetKey {
+			continue
+		}
+		if hasTemporal && !storeutil.MatchesTemporalFilter(r.ID().SnowflakeID(), r.Temporal(), opts) {
+			continue
+		}
+		out = append(out, r)
+	}
+	if len(out) == 0 {
+		return nil, nil
+	}
+	return storeutil.PaginateRels(out, opts.After, opts.Limit), nil
+}
+
 // --- Temporal indexes ---
 
 // CreateTemporalIndex creates a temporal index on nodes with the given label token

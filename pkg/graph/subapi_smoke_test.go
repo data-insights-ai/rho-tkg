@@ -110,6 +110,21 @@ func TestSubAPISmoke(t *testing.T) {
 		t.Fatalf("Index.DeleteProperty: %v", err)
 	}
 
+	// Index — composite create + query + drop.
+	if err := g.Index().CreateComposite("Person", []string{"name", "age"}); err != nil {
+		t.Fatalf("Index.CreateComposite: %v", err)
+	}
+	if _, err := g.Nodes().Update(context.Background(), a.ID(), map[string]any{"age": int64(30)}); err != nil {
+		t.Fatalf("Nodes.Update: %v", err)
+	}
+	composite, err := g.Nodes().ByLabelAndProperties("Person", map[string]any{"name": "Alice", "age": int64(30)}, storepkg.QueryOpts{})
+	if err != nil || len(composite) != 1 || composite[0].ID() != a.ID() {
+		t.Fatalf("Nodes.ByLabelAndProperties: %v len=%d", err, len(composite))
+	}
+	if err := g.Index().DeleteComposite("Person", []string{"name", "age"}); err != nil {
+		t.Fatalf("Index.DeleteComposite: %v", err)
+	}
+
 	// IO — round-trip Export/Import via in-memory graph.
 	var exported bytes.Buffer
 	if err := g.IO().Export(&exported); err != nil {

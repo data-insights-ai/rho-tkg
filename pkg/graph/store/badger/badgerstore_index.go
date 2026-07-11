@@ -304,18 +304,29 @@ func (bs *Store) CreateTemporalIndex(labelToken uint16) error {
 		bs.idxMu.Unlock()
 		return err
 	}
+	var diskOps []writeOp
 	for _, entry := range backfill {
 		if _, alive := bs.nodeIDs[types.NodeID(entry.id)]; !alive {
 			continue // node deleted during Phase 2
 		}
 		if liveTI.WasMutated(entry.id) {
-			continue
+			continue // a concurrent write already maintained RAM + (if enabled) disk for this ID
 		}
 		liveTI.AddKnownAbsent(entry.id, entry.from, entry.to)
+		if bs.temporalIdxOnDisk {
+			diskOps = append(diskOps, writeOp{
+				opType: writeOpSet,
+				key:    storepkg.TemporalIndexEntryKey(labelToken, entry.from, entry.id),
+				value:  storepkg.TemporalIndexEntryValue(entry.to),
+			})
+		}
 	}
 	liveTI.Building = false
 	liveTI.ClearMutationTracking()
 	bs.persistTemporalIndexDefs()
+	if len(diskOps) > 0 {
+		bs.appendOps(diskOps...)
+	}
 	bs.idxMu.Unlock()
 	return bs.flushIfNeeded()
 }
@@ -372,8 +383,18 @@ func (bs *Store) DropTemporalIndex(labelToken uint16) error {
 	}
 
 	delete(bs.temporalIndexes, labelToken)
+	// A TemporalIndex definition is exclusively keyed by labelToken (only one
+	// can ever exist per label — see purgeTemporalIndexDiskEntriesLocked's doc
+	// comment), so purging the whole labelToken prefix is always safe.
+	purgeOps, purgeErr := bs.purgeTemporalIndexDiskEntriesLocked(labelToken)
 	bs.persistTemporalIndexDefs()
+	if len(purgeOps) > 0 {
+		bs.appendOps(purgeOps...)
+	}
 	bs.idxMu.Unlock()
+	if purgeErr != nil {
+		return purgeErr
+	}
 	return bs.flushIfNeeded()
 }
 

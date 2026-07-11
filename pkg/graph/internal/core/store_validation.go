@@ -3,6 +3,7 @@ package core
 import (
 	"fmt"
 
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -24,6 +25,18 @@ func validateNodesByLabelAndProperty(labelToken uint16, key, wantKey string, opt
 	return validateNodeRowPage(nodes, opts, "NodesByLabelAndProperty")
 }
 
+func validateNodesByLabelAndProperties(labelToken uint16, values map[string]any, opts storepkg.QueryOpts, nodes []*types.Node) error {
+	for _, n := range nodes {
+		if err := validateNodeByLabelRow(labelToken, n); err != nil {
+			return err
+		}
+		if !indexpkg.NodeMatchesAllProperties(n, values) {
+			return fmt.Errorf("%w: composite property query node %d does not match requested properties", storepkg.ErrInvalidStoreMutation, n.ID())
+		}
+	}
+	return validateNodeRowPage(nodes, opts, "NodesByLabelAndProperties")
+}
+
 func validateNodeByLabelRow(labelToken uint16, n *types.Node) error {
 	if err := storepkg.ValidateNodeWrite(n); err != nil {
 		return err
@@ -32,6 +45,19 @@ func validateNodeByLabelRow(labelToken uint16, n *types.Node) error {
 		return fmt.Errorf("%w: node %d missing label token %d", storepkg.ErrInvalidStoreMutation, n.ID(), labelToken)
 	}
 	return nil
+}
+
+func validateRelsByTypeAndProperty(typeToken uint16, key, wantKey string, opts storepkg.QueryOpts, rels []*types.Relationship) error {
+	for _, r := range rels {
+		if err := validateRelationshipByTypeRow(typeToken, r); err != nil {
+			return err
+		}
+		gotKey, found := r.IndexablePropertyValueKey(key)
+		if !found || gotKey != wantKey {
+			return fmt.Errorf("%w: property query relationship %d does not match property %q", storepkg.ErrInvalidStoreMutation, r.ID(), key)
+		}
+	}
+	return validateRelRowPage(rels, opts, "RelationshipsByTypeAndProperty")
 }
 
 func validateRelationshipByTypeRow(typeToken uint16, r *types.Relationship) error {

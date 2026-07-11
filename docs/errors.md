@@ -21,8 +21,9 @@ Coverage spans three sources:
 
 | Sentinel | Package | Meaning | Typical Doors |
 |----------|---------|---------|---------------|
-| `ErrIndexExists` | store | Property index already exists at the given name | `g.Index().CreatePropertyIndex()` |
-| `ErrIndexNotFound` | store | Property index not found | `g.Index().SearchNearest()`, index mutation/removal doors |
+| `ErrIndexExists` | store | Property index already exists at the given name (node OR relationship) | `g.Index().CreateProperty()`, `g.Index().CreateRelProperty()` |
+| `ErrIndexNotFound` | store | Property index not found (also returned by the range doors when no usable index exists, so callers fall back to a scan) | `g.Index().SearchNearest()`, `g.Index().DeleteRelProperty()`, `g.Rels().ForEachByTypePropertyRange()`, index mutation/removal doors |
+| `ErrRelPropertyIndexUnsupported` | store | The backend recognizes relationship property indexes but declines to CREATE them (the tiered store — rel values are scattered across timestamp-routed event shards). Query still works via the type-scan fallback. Distinct from `ErrCapabilityNotSupported` | `g.Index().CreateRelProperty()` on a tiered-backed graph |
 | `ErrTemporalIndexExists` | store | Temporal index already exists | `g.Index().CreateTemporalIndex()` |
 | `ErrTemporalIndexNotFound` | store | Temporal index not found | `g.Index().QueryTemporalIndex()` |
 | `ErrVectorIndexExists` | store | Vector index already exists | `g.Index().CreateVectorIndex()` |
@@ -42,6 +43,8 @@ Coverage spans three sources:
 | `ErrIndexProviderExists` | index | An index provider is already registered with that name | `g.Index().RegisterProvider()` |
 | `ErrIndexProviderNotFound` | index | No index provider registered with that name | `g.Index().SearchNearest()` when provider not found |
 | `ErrIndexProviderEmptyName` | index | Index provider name cannot be empty | `g.Index().RegisterProvider()` |
+| `ErrOrderedScanTemporal` | store | Ordered/top-k range door is current-state only — temporal QueryOpts decline | `g.Nodes().ForEachByLabelPropertyRangeOrdered()` |
+| `ErrRelPropertyIndexUnsupported` | store | Backend lacks relationship property-index capability | `g.Index().CreateRelProperty()`, `g.Rels().ByTypeAndProperty()` |
 
 ## Registry
 
@@ -56,6 +59,7 @@ Coverage spans three sources:
 |----------|---------|---------|---------------|
 | `ErrValidFromBeforePrevious` | core | `tkg_valid_from` must be strictly greater than the previous version's valid-from | `g.Nodes().Update()`, `g.Rels().Update()` with explicit `tkg_valid_from` |
 | `ErrNoVersionAsOf` | core | No entity version recorded at the given transaction time | `g.Temporal().NodeAsOf()`, `g.Temporal().RelAsOf()` |
+| `ErrNoVersionValidAt` | store | The entity is known (current or historical rows exist) but no version's effective valid-time interval covers the requested instant. Aliases `store.ErrNoVersionValidAt` — previously leaked raw from these four doors with no `pkg/graph` alias | `g.Temporal().NodeAt()`, `g.Temporal().RelAt()`, `g.Temporal().NodeAtTx()`, `g.Temporal().RelAtTx()` |
 | `ErrConflictingTemporalOpts` | core | `QueryOpts.TxPin` (the belief-state / knowledge-time pin) was set together with a valid-time filter (`ValidAt` / `ValidStart` / `ValidEnd`) or with `TxAt`; TxPin resolves like `NodesAsOf` with NO valid-time filtering, so combining it with any other temporal filter is contradictory and rejected rather than silently mis-resolved | `g.Nodes().All()` / `ByLabel()`, `g.Rels().All()` / `ByType()` with a conflicting `QueryOpts` |
 | `ErrTemporalConstraint` | temporal | A temporal constraint was violated (interval predicate failed) | `g.Temporal().AssertNodeConstraint()`, `g.Temporal().AssertRelConstraint()` |
 | `ErrInvalidTemporalConstraint` | temporal | Temporal constraint definition is invalid | `g.Temporal().AssertNodeConstraint()`, `g.Temporal().AssertRelConstraint()` |
@@ -124,6 +128,12 @@ Coverage spans three sources:
 | `ErrCursorUnknown` | io | Export cursor is from another graph, ahead of the change-log, or predates retained history | `g.IO().ExportSince()` with invalid/stale cursor |
 | `ErrDeltaBaseMismatch` | io | Delta does not match the base it is applied to (different snapshot state or epoch) | `g.IO().ImportMerge()` with mismatched base |
 
+## Backup Ergonomics
+
+| Sentinel | Package | Meaning | Typical Doors |
+|----------|---------|---------|---------------|
+| `ErrBackupExists` | io | The deterministic target filename (content-addressed by change-log cursor) already exists in the backup directory — `BackupTo`/`BackupDeltaTo` never silently overwrite a prior backup or pick for the caller | `g.IO().BackupTo()`, `g.IO().BackupDeltaTo()` |
+
 ## Replication & Change-Log
 
 | Sentinel | Package | Meaning | Typical Doors |
@@ -160,7 +170,6 @@ These sentinels are declared in `pkg/graph/store/errors.go` and have **no alias 
 |----------|---------|---------|---------------|
 | `ErrStoreClosed` | store | The backing store instance has been closed; returned directly by store-implementation methods, independent of the graph-level `ErrGraphClosed` check | Any `Store` interface method called on a closed `badger.Store` / `memory.Store` / `tiered.Store`. Most graph-façade doors intercept with `ErrGraphClosed` first (via `core.checkOpen()`), so this is chiefly visible to a caller driving a `store.Store` implementation directly (custom wiring, store-level tests) |
 | `ErrVersionNotFound` | store | The requested history version *number* does not exist for the entity (version-number lookup, distinct from a time-based query) | Store-level `GetNodeVersion(id, version)` / `GetRelVersion(id, version)`. Consumed and converted internally by most public callers — `g.Nodes().VersionBefore()` / `VersionAfter()` fold it into `(nil, nil)` or `ErrNodeNotFound`; `g.Temporal().NodeAsOf()` / `RelAsOf()` fold it into `ErrNoVersionAsOf` — but a default-branch conflict check in `g.IO().Import()` can still surface it raw on an unexpected store error |
-| `ErrNoVersionValidAt` | store | The entity is known (current or historical rows exist) but no version's effective valid-time interval covers the requested instant | Returned **directly and only** by `g.Temporal().NodeAt(id, at)` / `RelAt(id, at)` / `NodeAtTx(id, validAt, txAt)` / `RelAtTx(id, validAt, txAt)` when no chain entry covers `at` — this is a real, reachable, undocumented-until-now gap: these four public doors return the raw store sentinel with no `pkg/graph` alias |
 | `ErrInvalidStoreMutation` | store | A `Store` implementation returned a result violating its documented contract (mismatched ID, non-ascending order, wrong row count, dangling adjacency reference), or a backend-specific mutation guard rejected the write (deleting a node that still has live relationships via a raw store call, a nil iteration callback, a write attempted against a read-only badger store) | Internal `store_validation.go` invariant checks that wrap a misbehaving custom `Store`; direct `memory.Store` / `badger.Store` / `tiered.Store` method calls that bypass the graph façade's cascade-safe doors |
 | `ErrChangesNotAscending` | store | A batch passed to `ApplyChanges` is not in strictly ascending LSN order | `g.Replication().ApplyChanges(recs)` — the successful ascending prefix before the out-of-order record is still applied and watermarked; this sentinel itself is not re-exported through `pkg/graph` or `pkg/graph/replication` |
 
@@ -290,9 +299,21 @@ Sentinels documented under "Store-Internal Sentinels" (and `ErrCorruptWire` unde
 ```go
 import storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
-// g.Temporal().NodeAt(id, at) returns storepkg.ErrNoVersionValidAt raw —
-// there is no graph.ErrNoVersionValidAt.
-if _, err := g.Temporal().NodeAt(id, at); errors.Is(err, storepkg.ErrNoVersionValidAt) {
+// GetNodeVersion(id, version) returns storepkg.ErrVersionNotFound raw at the
+// store layer — there is no graph.ErrVersionNotFound.
+if _, err := someStore.GetNodeVersion(id, version); errors.Is(err, storepkg.ErrVersionNotFound) {
+	log.Println("that version number does not exist for this entity")
+}
+```
+
+`ErrNoVersionValidAt` DOES have a `graph.ErrXxx` alias (added alongside this
+example — it used to be store-only, hence the historical footgun this
+section used to warn about):
+
+```go
+// g.Temporal().NodeAt(id, at) returns graph.ErrNoVersionValidAt (identical
+// to storepkg.ErrNoVersionValidAt — pick whichever import you already have).
+if _, err := g.Temporal().NodeAt(id, at); errors.Is(err, graph.ErrNoVersionValidAt) {
 	log.Println("no version covers that instant")
 }
 ```

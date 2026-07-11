@@ -113,7 +113,9 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 			}
 			bs.inIdx[rd.endNID][rd.rid] = inEdge{start: rd.startNID, typ: rd.relType}
 		}
-		bs.setRelValidStampLocked(rd.rid, r) // OPT15: inline valid-time stamp
+		bs.setRelValidStampLocked(rd.rid, r)       // OPT15: inline valid-time stamp
+		bs.recordRelTypeMemberLocked(r)            // K1: transaction-time rel-type membership
+		bs.maintainRelPropertyIndexesAdd(r, rd.id) // K3b
 
 		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.RelKey(rd.id), value: rd.data})
 		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.RelTypeIndexKey(rd.relType, rd.id)})

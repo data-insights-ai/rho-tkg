@@ -312,3 +312,57 @@ func TestIndexRebuildStats_LoggerNil_NoPanic(t *testing.T) {
 	}
 	// If we got here without panicking, the nil-logger branch is correct.
 }
+
+// TestIndexRebuildStats_CompositeIndex_SkipsAreReportedAndLogged mirrors
+// TestIndexRebuildStats_PropertyIndex_SkipsAreReportedAndLogged for K3c's
+// composite property index rebuild loop in loadIndexesScan.
+func TestIndexRebuildStats_CompositeIndex_SkipsAreReportedAndLogged(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	bs1, err := New(Config{Dir: dir})
+	if err != nil {
+		t.Fatalf("open 1: %v", err)
+	}
+	const labelTok = uint16(7)
+	const nodeID = int64(101)
+	n := putTestNode(t, bs1, nodeID, labelTok, nil)
+	if err := n.SetProperty("first", "alice"); err != nil {
+		t.Fatalf("SetProperty first: %v", err)
+	}
+	if err := n.SetProperty("last", "smith"); err != nil {
+		t.Fatalf("SetProperty last: %v", err)
+	}
+	if err := bs1.ReplaceNode(n); err != nil {
+		t.Fatalf("ReplaceNode: %v", err)
+	}
+	if err := bs1.CreateCompositePropertyIndex(labelTok, []string{"first", "last"}); err != nil {
+		t.Fatalf("CreateCompositePropertyIndex: %v", err)
+	}
+	if err := bs1.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	if err := bs1.Close(); err != nil {
+		t.Fatalf("close 1: %v", err)
+	}
+
+	corruptNodeKey(t, dir, nodeID)
+
+	logger := &captureLogger{}
+	bs2, err := New(Config{Dir: dir, Logger: logger})
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer bs2.Close()
+
+	stats := bs2.IndexRebuildStats()
+	if stats.CompositeSkipped != 1 {
+		t.Errorf("CompositeSkipped = %d, want 1", stats.CompositeSkipped)
+	}
+	if stats.PropertySkipped != 0 {
+		t.Errorf("PropertySkipped = %d, want 0", stats.PropertySkipped)
+	}
+	if logger.warnings.Load() == 0 {
+		t.Errorf("Warningf was never invoked; composite-index rebuild must log per-skip diagnostics")
+	}
+}

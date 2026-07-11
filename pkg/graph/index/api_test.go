@@ -21,6 +21,8 @@ func TestAPINilReceiversReturnErrNilGraphOrNil(t *testing.T) {
 	}{
 		{name: "CreateProperty", run: func() error { return nilAPI.CreateProperty("Node", "name") }},
 		{name: "DropProperty", run: func() error { return nilAPI.DeleteProperty("Node", "name") }},
+		{name: "CreateComposite", run: func() error { return nilAPI.CreateComposite("Node", []string{"a", "b"}) }},
+		{name: "DeleteComposite", run: func() error { return nilAPI.DeleteComposite("Node", []string{"a", "b"}) }},
 		{name: "CreateHighFrequency", run: func() error { return nilAPI.CreateHighFrequency("Node", time.Second) }},
 		{name: "DropHighFrequency", run: func() error { return nilAPI.DeleteHighFrequency("Node") }},
 		{name: "CreateTemporal", run: func() error { return nilAPI.CreateTemporal("Node") }},
@@ -73,6 +75,8 @@ func TestAPIForwardsMethodsAndErrors(t *testing.T) {
 	}{
 		{name: "CreateProperty", run: func() error { return api.CreateProperty("Node", "name") }},
 		{name: "DropProperty", run: func() error { return api.DeleteProperty("Node", "name") }},
+		{name: "CreateComposite", run: func() error { return api.CreateComposite("Node", []string{"a", "b"}) }},
+		{name: "DeleteComposite", run: func() error { return api.DeleteComposite("Node", []string{"a", "b"}) }},
 		{name: "CreateHighFrequency", run: func() error { return api.CreateHighFrequency("Node", time.Minute) }},
 		{name: "DropHighFrequency", run: func() error { return api.DeleteHighFrequency("Node") }},
 		{name: "CreateTemporal", run: func() error { return api.CreateTemporal("Node") }},
@@ -102,7 +106,7 @@ func TestAPIForwardsMethodsAndErrors(t *testing.T) {
 	}
 
 	wantCalls := []string{
-		"CreateProperty", "DropProperty", "CreateHighFrequency", "DropHighFrequency",
+		"CreateProperty", "DropProperty", "CreateComposite", "DeleteComposite", "CreateHighFrequency", "DropHighFrequency",
 		"CreateTemporal", "DropTemporal", "CreateVector", "CreateVectorWithOptions", "DropVector",
 		"RegisterProvider", "UnregisterProvider",
 		"SearchNearest", "Providers", "Providers",
@@ -157,6 +161,26 @@ func (s *indexOpsSpy) CreateProperty(label, propertyKey string) error {
 
 func (s *indexOpsSpy) DeleteProperty(label, propertyKey string) error {
 	s.record("DropProperty")
+	return s.err
+}
+
+func (s *indexOpsSpy) CreateRelProperty(typeName, propertyKey string) error {
+	s.record("CreateRelProperty")
+	return s.err
+}
+
+func (s *indexOpsSpy) DeleteRelProperty(typeName, propertyKey string) error {
+	s.record("DeleteRelProperty")
+	return s.err
+}
+
+func (s *indexOpsSpy) CreateComposite(label string, keys []string) error {
+	s.record("CreateComposite")
+	return s.err
+}
+
+func (s *indexOpsSpy) DeleteComposite(label string, keys []string) error {
+	s.record("DeleteComposite")
 	return s.err
 }
 

@@ -76,6 +76,20 @@ type Store struct {
 	// Property indexes — label+property → value → set of node IDs.
 	propertyIndexes map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex
 
+	// Relationship property indexes — relType+property → value → set of rel IDs.
+	// RAM-only mirror of propertyIndexes (K3b); rebuilt from current rels at open.
+	relPropertyIndexes map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyIndex
+
+	// Composite property indexes — (label, declared ordered key tuple) →
+	// concatenated per-component value key → set of node IDs. RAM-only, v1
+	// equality-only (see docs/query-planners.md "Composite property
+	// indexes"). compositeIndexesByLabel is the label->definitions secondary
+	// index node-mutation maintenance needs (a node carries a label, not a
+	// specific composite key tuple, so maintenance must enumerate every
+	// definition registered on each label the node carries).
+	compositeIndexes        map[indexpkg.CompositeIndexKey]*indexpkg.CompositePropertyIndex
+	compositeIndexesByLabel map[uint16][]indexpkg.CompositeIndexKey
+
 	// Property-key presence counts — label+property → current node count.
 	// Counts only indexable scalar property values because that is the lookup
 	// surface used by property equality indexes and planner pruning.
@@ -139,6 +153,17 @@ type Store struct {
 	// (a rolled-back tx emits nothing). All under ms.mu.
 	scopeActive bool
 	scopeLog    []storecontract.ChangeRecord
+
+	// K1 transaction-time membership sidecars (store.LabelTxMembershipCapability /
+	// RelTypeTxMembershipCapability). labelTxMembers maps a label token to the set
+	// of node IDs that EVER carried it (current OR any historical version), each
+	// tagged with a lower bound on the transaction time of its earliest
+	// acquisition; relTypeTxMembers is the rel-type mirror. Both are APPEND-ONLY
+	// (removal/delete never drops a member) and nil until lazily built on the first
+	// ForEach*TxMember call (mirrors the badger relValidIdx / OPT15 precedent), so a
+	// graph that never runs a pinned label/type scan pays nothing. All under ms.mu.
+	labelTxMembers   map[uint16]map[types.NodeID]types.Instant
+	relTypeTxMembers map[uint16]map[types.RelID]types.Instant
 }
 
 // bumpNodeEpoch marks every cached DocValues column potentially stale. Called by
@@ -191,6 +216,15 @@ func (ms *Store) ensureInitialized() {
 		if ms.propertyIndexes == nil {
 			ms.propertyIndexes = make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex)
 		}
+		if ms.relPropertyIndexes == nil {
+			ms.relPropertyIndexes = make(map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyIndex)
+		}
+		if ms.compositeIndexes == nil {
+			ms.compositeIndexes = make(map[indexpkg.CompositeIndexKey]*indexpkg.CompositePropertyIndex)
+		}
+		if ms.compositeIndexesByLabel == nil {
+			ms.compositeIndexesByLabel = make(map[uint16][]indexpkg.CompositeIndexKey)
+		}
 		if ms.propertyKeyCounts == nil {
 			ms.propertyKeyCounts = make(map[uint16]map[string]int)
 		}
@@ -241,6 +275,9 @@ func (ms *Store) Clear() error {
 	ms.nodeHistory = make(map[types.NodeID]map[uint32]*types.Node)
 	ms.relHistory = make(map[types.RelID]map[uint32]*types.Relationship)
 	ms.propertyIndexes = make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex)
+	ms.relPropertyIndexes = make(map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyIndex)
+	ms.compositeIndexes = make(map[indexpkg.CompositeIndexKey]*indexpkg.CompositePropertyIndex)
+	ms.compositeIndexesByLabel = make(map[uint16][]indexpkg.CompositeIndexKey)
 	ms.propertyKeyCounts = make(map[uint16]map[string]int)
 	ms.propertyStats = make(map[uint16]map[string]*indexpkg.PropertyStatsAccumulator)
 	ms.temporalIndexes = make(map[uint16]*indexpkg.TemporalIndex)
@@ -248,8 +285,10 @@ func (ms *Store) Clear() error {
 	ms.vectorIndexes = make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex)
 	ms.docColumns = make(map[uint16]*indexpkg.LabelDocValues)
 	ms.docColumnsMulti = make(map[string]*indexpkg.LabelDocValues)
-	ms.bumpNodeEpoch() // any cached column from before Clear is now invalid
-	ms.bumpRelEpoch()  // and the adjacency view (X5 expand path)
+	ms.labelTxMembers = nil   // K1: drop the lazy membership sidecar; rebuilt on next pinned scan
+	ms.relTypeTxMembers = nil // K1: rel-type mirror
+	ms.bumpNodeEpoch()        // any cached column from before Clear is now invalid
+	ms.bumpRelEpoch()         // and the adjacency view (X5 expand path)
 	// Drop the change-log records (the store is now empty) and re-anchor with a
 	// ChangeClear marker at a fresh, still-monotonic LSN — mirrors badger.Clear.
 	ms.changeLog = nil

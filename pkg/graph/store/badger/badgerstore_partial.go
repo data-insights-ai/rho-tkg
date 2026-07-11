@@ -86,6 +86,7 @@ func (bs *Store) PutRelEntityAndOut(r *types.Relationship) error {
 	// maintainable here (the cross-shard incoming leg, PutRelIncoming, has no
 	// entity and intentionally leaves no stamp — readers miss and decode).
 	bs.setRelValidStampLocked(rid, r)
+	bs.recordRelTypeMemberLocked(r) // K1: transaction-time rel-type membership
 
 	ops := []writeOp{
 		{opType: writeOpSet, key: storepkg.RelKey(id), value: data},

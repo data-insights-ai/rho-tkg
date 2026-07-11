@@ -150,9 +150,11 @@ func (a *API) NodeCountByLabelAndPropertyKey(label, propertyKey string) (int, er
 //
 // Missing/unpopulated (label, propertyKey) pairs return a zero-value
 // PropertyStats, not an error — matching NodeCountByLabelAndPropertyKey's
-// "unregistered → 0" convention. Backends without the optional
-// store.NodePropertyStatsCapability (e.g. tiered.Store — see
-// docs/query-planners.md "Tiered limitation (v1)") return
+// "unregistered → 0" convention. All three in-tree backends (memory,
+// badger, tiered) implement store.NodePropertyStatsCapability — tiered
+// folds NDV via a register-max HyperLogLog merge across shards and Min/Max
+// via min-of-mins/max-of-maxes (see docs/query-planners.md "Tiered NDV
+// fold"). A backend WITHOUT the optional capability returns
 // store.ErrCapabilityNotSupported; check with errors.Is.
 func (a *API) PropertyStats(label, propertyKey string) (storepkg.PropertyStats, error) {
 	ops, err := a.ready()

@@ -16,6 +16,10 @@ import (
 type Ops interface {
 	CreateProperty(label, propertyKey string) error
 	DeleteProperty(label, propertyKey string) error
+	CreateRelProperty(typeName, propertyKey string) error
+	DeleteRelProperty(typeName, propertyKey string) error
+	CreateComposite(label string, keys []string) error
+	DeleteComposite(label string, keys []string) error
 	CreateHighFrequency(label string, bucketSize time.Duration) error
 	DeleteHighFrequency(label string) error
 	CreateTemporal(label string) error
@@ -61,6 +65,49 @@ func (a *API) DeleteProperty(label, propertyKey string) error {
 		return err
 	}
 	return ops.DeleteProperty(label, propertyKey)
+}
+
+// CreateRelProperty creates a relationship property index on the given rel type
+// and property key (K3b). Returns store.ErrRelPropertyIndexUnsupported on the
+// tiered store, which declines rel property index creation.
+func (a *API) CreateRelProperty(typeName, propertyKey string) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.CreateRelProperty(typeName, propertyKey)
+}
+
+// DeleteRelProperty drops a relationship property index.
+func (a *API) DeleteRelProperty(typeName, propertyKey string) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.DeleteRelProperty(typeName, propertyKey)
+}
+
+// CreateComposite creates a composite property index over the declared,
+// ORDER-PRESERVING keys (2..4) under one label — EQUALITY-only in v1 (no
+// partial-prefix or range semantics). See docs/query-planners.md "Composite
+// property indexes" for planner guidance on when this beats a single-key
+// index + post-filter.
+func (a *API) CreateComposite(label string, keys []string) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.CreateComposite(label, keys)
+}
+
+// DeleteComposite drops a composite property index declared over the exact
+// ordered keys.
+func (a *API) DeleteComposite(label string, keys []string) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.DeleteComposite(label, keys)
 }
 
 // CreateHighFrequency creates a high-frequency temporal index.

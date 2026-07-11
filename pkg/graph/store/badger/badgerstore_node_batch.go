@@ -189,6 +189,7 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePr
 		// cause extra scans while undercounts could make planners prune matches.
 		ops = append(ops, bs.maintainPropertyIndexesPurge(id)...)
 		indexpkg.PurgeNodeFromAllTemporalIndexes(bs.temporalIndexes, id)
+		ops = append(ops, bs.maintainTemporalIndexDiskPurge(id)...)
 		indexpkg.PurgeNodeFromAllHighFrequencyIndexes(bs.hfIndexes, id)
 		indexpkg.PurgeNodeFromAllVectorIndexes(bs.vectorIndexes, id)
 
@@ -222,6 +223,7 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePr
 	bs.removeNodePropertyKeyCounts(n)
 	ops = append(ops, bs.maintainPropertyIndexesRemove(n, id)...)
 	indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, n, id)
+	ops = append(ops, bs.maintainTemporalIndexDiskRemove(n, id)...)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, n, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, n, id)
 
@@ -495,9 +497,11 @@ func (bs *Store) PutNodesBatch(nodes []*types.Node) error {
 			ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tok, nd.id)})
 			bs.getOrCreateLabelCounter(tok).Add(1)
 		}
+		bs.recordNodeLabelMembersLocked(n) // K1: transaction-time label membership
 		bs.addNodePropertyKeyCounts(n)
 		ops = append(ops, bs.maintainPropertyIndexesAdd(n, nd.id)...)
 		indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, n, nd.id)
+		ops = append(ops, bs.maintainTemporalIndexDiskAdd(n, nd.id)...)
 		indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, n, nd.id)
 		if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates[i], nd.id); err != nil {
 			bs.idxMu.Unlock()
@@ -649,6 +653,7 @@ func (bs *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 		bs.removeNodePropertyKeyCounts(n)
 		ops = append(ops, bs.maintainPropertyIndexesRemove(n, id)...)
 		indexpkg.RemoveNodeFromTemporalIndexes(bs.temporalIndexes, n, id)
+		ops = append(ops, bs.maintainTemporalIndexDiskRemove(n, id)...)
 		indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, n, id)
 		indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, n, id)
 		bs.nodeCache.MarkDeleted(id)

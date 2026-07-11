@@ -411,6 +411,28 @@ func ValidateIndexPropertyKey(propertyKey string) error {
 	return nil
 }
 
+// ValidateCompositeIndexKeys verifies that a Store-level composite property
+// index operation (create/drop/query) targets a well-formed, 2..4-key
+// declared property-key list with no duplicates. Reuses ValidateIndexPropertyKey
+// per key, so a shadow key is rejected the same way the single-key property
+// index rejects it.
+func ValidateCompositeIndexKeys(keys []string) error {
+	if len(keys) < 2 || len(keys) > 4 {
+		return fmt.Errorf("%w: composite index requires 2-4 property keys, got %d", ErrInvalidStoreMutation, len(keys))
+	}
+	seen := make(map[string]struct{}, len(keys))
+	for _, k := range keys {
+		if err := ValidateIndexPropertyKey(k); err != nil {
+			return err
+		}
+		if _, dup := seen[k]; dup {
+			return fmt.Errorf("%w: duplicate composite index key %q", ErrInvalidStoreMutation, k)
+		}
+		seen[k] = struct{}{}
+	}
+	return nil
+}
+
 // ValidateHighFrequencyBucketSize verifies that an HFI bucket width can be
 // represented exactly by the millisecond Instant precision used by temporal
 // indexes.

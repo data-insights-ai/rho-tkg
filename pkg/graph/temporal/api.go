@@ -66,7 +66,8 @@ type Ops interface {
 	RelateNodes(a, b *types.Node) (types.AllenRelation, error)
 	RelateRels(a, b *types.Relationship) (types.AllenRelation, error)
 
-	// Canonical valid-time predicate for a materialized relationship.
+	// Canonical valid-time predicate for a materialized node/relationship.
+	NodeMatchesValidTime(n *types.Node, opts storepkg.QueryOpts) bool
 	RelMatchesValidTime(r *types.Relationship, opts storepkg.QueryOpts) bool
 
 	// Named knowledge-time (Erkenntniszeit) marks (§4.2). The instant is a
@@ -391,6 +392,20 @@ func (a *API) RelInterval(r *types.Relationship) (start, end types.Instant, err 
 		return 0, 0, err
 	}
 	return ops.RelInterval(r)
+}
+
+// NodeMatchesValidTime reports whether n passes the valid-time filter in opts
+// (ValidAt point, ValidStart/ValidEnd interval, or no filter) using the
+// canonical effective-valid-from predicate shared with the store push-down and
+// the RelMatchesValidTime path. Returns false (no match) on a not-ready graph
+// or nil node — a post-filter consumer treats either as "excluded", which is
+// the safe default. See core.TempOps.NodeMatchesValidTime.
+func (a *API) NodeMatchesValidTime(n *types.Node, opts storepkg.QueryOpts) bool {
+	ops, err := a.ready()
+	if err != nil {
+		return false
+	}
+	return ops.NodeMatchesValidTime(n, opts)
 }
 
 // RelMatchesValidTime reports whether r passes the valid-time filter in opts

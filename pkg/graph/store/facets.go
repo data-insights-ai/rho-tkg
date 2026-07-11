@@ -54,6 +54,8 @@ type HistoryAccelerationFacet interface {
 // property-statistics surfaces).
 type IndexAccelerationFacet interface {
 	PropertyIndexCapability
+	RelPropertyIndexCapability
+	CompositePropertyIndexCapability
 	TemporalIndexCapability
 	VectorIndexCapability
 	VectorIndexOptionsCapability
@@ -107,14 +109,16 @@ type CapabilityReport struct {
 		DepthDeletedIter bool
 	}
 	IndexAcceleration struct {
-		PropertyIndex        bool
-		TemporalIndex        bool
-		VectorIndex          bool
-		VectorIndexOptions   bool
-		FilteredVectorSearch bool
-		HighFrequencyIndex   bool
-		PropertyKeyStats     bool
-		PropertyStats        bool
+		PropertyIndex          bool
+		RelPropertyIndex       bool
+		CompositePropertyIndex bool
+		TemporalIndex          bool
+		VectorIndex            bool
+		VectorIndexOptions     bool
+		FilteredVectorSearch   bool
+		HighFrequencyIndex     bool
+		PropertyKeyStats       bool
+		PropertyStats          bool
 	}
 	ChangeLog struct {
 		Feed        bool
@@ -165,6 +169,8 @@ func CapabilitiesOf(s MandatoryStore) CapabilityReport {
 	_, r.HistoryAcceleration.DepthDeletedIter = s.(DepthDeletedIterationCapability)
 
 	_, r.IndexAcceleration.PropertyIndex = s.(PropertyIndexCapability)
+	_, r.IndexAcceleration.RelPropertyIndex = s.(RelPropertyIndexCapability)
+	_, r.IndexAcceleration.CompositePropertyIndex = s.(CompositePropertyIndexCapability)
 	_, r.IndexAcceleration.TemporalIndex = s.(TemporalIndexCapability)
 	_, r.IndexAcceleration.VectorIndex = s.(VectorIndexCapability)
 	_, r.IndexAcceleration.VectorIndexOptions = s.(VectorIndexOptionsCapability)

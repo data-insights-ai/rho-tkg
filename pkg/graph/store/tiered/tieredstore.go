@@ -98,6 +98,17 @@ type Config struct {
 	// event shards never build a property index, so the flag is a no-op
 	// there, harmless.
 	PropertyIndexOnDisk bool
+	// TemporalIndexOnDisk is the tiered sibling of badger.Config's
+	// TemporalIndexOnDisk: a rebuild-at-open accelerator for each shard's
+	// maxTo-augmented temporal interval index, NOT a RAM-vs-disk trade-off —
+	// the index always stays fully resident in RAM at runtime on every shard.
+	// false (default) rebuilds an existing temporal index definition via a
+	// full node fetch+decode per entity whenever a shard opens; true
+	// maintains a compact per-entity row in each shard's persisted 0x0B
+	// keyspace instead, so shard open streams straight from a prefix
+	// iteration over it. Passed through badgerCfg to EVERY shard (reference,
+	// hot, warm, lazy cold/archive, and rotation-created) for uniformity.
+	TemporalIndexOnDisk bool
 	// ChangeLog enables the durable, ordered change-log (op-log) across all
 	// shards. A store-level monotonic allocator hands every shard's change-log
 	// record a store-global LSN (a total commit order); each shard co-commits
@@ -214,6 +225,7 @@ type Store struct {
 	encryptionKeyRotation time.Duration
 	cacheBudgetBytes      int64         // per-shard entity-cache byte budget; 0 = off
 	propertyIndexOnDisk   bool          // reference-shard-only scope unchanged; changes RAM vs disk representation
+	temporalIndexOnDisk   bool          // per-shard rebuild-at-open accelerator; index itself stays RAM-resident on every shard
 	closeCh               chan struct{} // signals idle-close goroutine to stop
 	closeOnce             sync.Once
 	lifecycleMu           sync.RWMutex // blocks Close while long sequential store-wide operations release per-shard pins
@@ -312,6 +324,7 @@ func New(cfg Config) (*Store, error) {
 		encryptionKeyRotation: cfg.EncryptionKeyRotation,
 		cacheBudgetBytes:      cfg.CacheBudgetBytes,
 		propertyIndexOnDisk:   cfg.PropertyIndexOnDisk,
+		temporalIndexOnDisk:   cfg.TemporalIndexOnDisk,
 		closeCh:               make(chan struct{}),
 		hfIdxBuckets:          make(map[uint16]time.Duration),
 		vectorIndexes:         make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex),
@@ -1041,6 +1054,7 @@ func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 		EncryptionKey:         ts.encryptionKey,
 		EncryptionKeyRotation: ts.encryptionKeyRotation,
 		PropertyIndexOnDisk:   ts.propertyIndexOnDisk,
+		TemporalIndexOnDisk:   ts.temporalIndexOnDisk,
 	}
 	if !ts.inMemory {
 		cfg.Dir = filepath.Join(ts.dataDir, name)

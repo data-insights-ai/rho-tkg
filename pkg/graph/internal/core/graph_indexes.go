@@ -81,6 +81,87 @@ func (i *IndexOps) DeleteProperty(label, propertyKey string) error {
 	})
 }
 
+// CreateComposite creates a composite property index over the declared,
+// ORDER-PRESERVING keys (2..4) under one label — EQUALITY-only in v1, see
+// docs/query-planners.md "Composite property indexes" for planner guidance
+// on when this beats a single-key index + post-filter. Resolves or creates
+// the label token. Returns storepkg.ErrIndexExists if a composite index for
+// the exact same (label, ordered key list) already exists — a different key
+// ORDER for the same key SET is a distinct definition.
+func (i *IndexOps) CreateComposite(label string, keys []string) error {
+	c := i.c
+	if err := c.checkWritable(); err != nil {
+		return err
+	}
+	return c.readUnderRLock(func() error {
+		if err := c.validateIndexLabel(label); err != nil {
+			return err
+		}
+		if err := storepkg.ValidateCompositeIndexKeys(keys); err != nil {
+			return err
+		}
+		for _, k := range keys {
+			if err := c.validateIndexPropertyKey(k); err != nil {
+				return err
+			}
+		}
+		cap, err := c.compositeIndexCap()
+		if err != nil {
+			return err
+		}
+		tok, labelSnapshot, allocatedLabel, err := c.getOrCreateLabelWithSnapshot(label)
+		if err != nil {
+			return err
+		}
+		labelFinished := false
+		defer func() {
+			if !labelFinished {
+				_ = c.restoreNewLabelIndexOnError(labelSnapshot, allocatedLabel, label,
+					fmt.Errorf("panic during composite index create"),
+					func() error { return cap.DropCompositePropertyIndex(tok, keys) },
+					storepkg.ErrIndexNotFound,
+					storepkg.ErrIndexExists,
+				)
+			}
+		}()
+		err = c.restoreNewLabelIndexOnError(labelSnapshot, allocatedLabel, label,
+			cap.CreateCompositePropertyIndex(tok, keys),
+			func() error { return cap.DropCompositePropertyIndex(tok, keys) },
+			storepkg.ErrIndexNotFound,
+			storepkg.ErrIndexExists,
+		)
+		labelFinished = true
+		return err
+	})
+}
+
+// DeleteComposite removes a composite property index declared over the
+// exact ordered keys. Returns storepkg.ErrIndexNotFound if no such
+// definition exists.
+func (i *IndexOps) DeleteComposite(label string, keys []string) error {
+	c := i.c
+	if err := c.checkWritable(); err != nil {
+		return err
+	}
+	return c.readUnderRLock(func() error {
+		if err := c.validateIndexLabel(label); err != nil {
+			return err
+		}
+		if err := storepkg.ValidateCompositeIndexKeys(keys); err != nil {
+			return err
+		}
+		tok, ok := c.labels.Lookup(label)
+		if !ok {
+			return storepkg.ErrIndexNotFound
+		}
+		cap, err := c.compositeIndexCap()
+		if err != nil {
+			return err
+		}
+		return cap.DropCompositePropertyIndex(tok, keys)
+	})
+}
+
 // CreateTemporal creates a temporal index on nodes with the given label.
 // Accelerates temporal queries (ValidAt/interval filter) for that label.
 // Returns storepkg.ErrTemporalIndexExists if the index already exists.

@@ -4,30 +4,39 @@ import "errors"
 
 // Sentinel errors for store operations.
 var (
-	ErrNodeNotFound               = errors.New("graph: node not found")
-	ErrRelNotFound                = errors.New("graph: relationship not found")
-	ErrNodeExists                 = errors.New("graph: node already exists")
-	ErrRelExists                  = errors.New("graph: relationship already exists")
-	ErrVersionNotFound            = errors.New("graph: version not found")
-	ErrNoVersionValidAt           = errors.New("graph: no version valid at the given time")
-	ErrIndexExists                = errors.New("graph: property index already exists")
-	ErrIndexNotFound              = errors.New("graph: property index not found")
-	ErrTemporalIndexExists        = errors.New("graph: temporal index already exists")
-	ErrTemporalIndexNotFound      = errors.New("graph: temporal index not found")
-	ErrInvalidTemporalIndexConfig = errors.New("graph: invalid temporal index configuration")
-	ErrVectorIndexExists          = errors.New("graph: vector index already exists")
-	ErrVectorIndexNotFound        = errors.New("graph: vector index not found")
-	ErrDimensionMismatch          = errors.New("graph: vector dimension mismatch")
-	ErrInvalidVectorIndexConfig   = errors.New("graph: invalid vector index configuration")
-	ErrInvalidVectorValue         = errors.New("graph: invalid vector value")
-	ErrInvalidShardDepth          = errors.New("graph: invalid shard depth")
-	ErrInvalidTimeRange           = errors.New("graph: invalid time range")
-	ErrInvalidQueryLimit          = errors.New("graph: invalid query limit")
-	ErrInvalidQueryCursor         = errors.New("graph: invalid query cursor")
-	ErrInvalidStoreMutation       = errors.New("graph: invalid store mutation")
-	ErrNilStore                   = errors.New("graph: store must not be nil")
-	ErrTxDone                     = errors.New("graph: transaction already committed or rolled back")
-	ErrStoreClosed                = errors.New("graph: store already closed")
+	ErrNodeNotFound     = errors.New("graph: node not found")
+	ErrRelNotFound      = errors.New("graph: relationship not found")
+	ErrNodeExists       = errors.New("graph: node already exists")
+	ErrRelExists        = errors.New("graph: relationship already exists")
+	ErrVersionNotFound  = errors.New("graph: version not found")
+	ErrNoVersionValidAt = errors.New("graph: no version valid at the given time")
+	ErrIndexExists      = errors.New("graph: property index already exists")
+	ErrIndexNotFound    = errors.New("graph: property index not found")
+	// ErrRelPropertyIndexUnsupported is returned by a backend that recognizes
+	// the relationship property-index capability but cannot serve it — the
+	// tiered store declines it (v1): relationships live on event shards by
+	// timestamp routing, so a rel-value equality index would be shard-local
+	// while the values it must find are spread across every shard. Distinct
+	// from ErrCapabilityNotSupported (which means the backend does not
+	// implement the capability at all). Query still works everywhere via the
+	// graph-layer type-scan fallback; only index creation declines.
+	ErrRelPropertyIndexUnsupported = errors.New("graph: relationship property indexes are not supported on this backend")
+	ErrTemporalIndexExists         = errors.New("graph: temporal index already exists")
+	ErrTemporalIndexNotFound       = errors.New("graph: temporal index not found")
+	ErrInvalidTemporalIndexConfig  = errors.New("graph: invalid temporal index configuration")
+	ErrVectorIndexExists           = errors.New("graph: vector index already exists")
+	ErrVectorIndexNotFound         = errors.New("graph: vector index not found")
+	ErrDimensionMismatch           = errors.New("graph: vector dimension mismatch")
+	ErrInvalidVectorIndexConfig    = errors.New("graph: invalid vector index configuration")
+	ErrInvalidVectorValue          = errors.New("graph: invalid vector value")
+	ErrInvalidShardDepth           = errors.New("graph: invalid shard depth")
+	ErrInvalidTimeRange            = errors.New("graph: invalid time range")
+	ErrInvalidQueryLimit           = errors.New("graph: invalid query limit")
+	ErrInvalidQueryCursor          = errors.New("graph: invalid query cursor")
+	ErrInvalidStoreMutation        = errors.New("graph: invalid store mutation")
+	ErrNilStore                    = errors.New("graph: store must not be nil")
+	ErrTxDone                      = errors.New("graph: transaction already committed or rolled back")
+	ErrStoreClosed                 = errors.New("graph: store already closed")
 
 	// ErrCapabilityNotSupported is returned by graph operations that depend
 	// on an optional Store capability when the configured backend does not
@@ -35,6 +44,14 @@ var (
 	// — the wrapping message identifies the missing capability for
 	// diagnostics, but the sentinel is the contract.
 	ErrCapabilityNotSupported = errors.New("graph: store does not support this capability")
+
+	// ErrOrderedScanTemporal is returned by the ordered / top-k range scan
+	// (ForEachByLabelPropertyRangeOrdered) when the caller supplies temporal
+	// QueryOpts. The ordered door is CURRENT-STATE only in v1 — the value
+	// ordering is derived from the live property index, which is valid-time
+	// agnostic — so a temporal opts combination is declined rather than
+	// silently answered against current state. Callers match with errors.Is.
+	ErrOrderedScanTemporal = errors.New("graph: ordered range scan is current-state only; temporal QueryOpts are not supported")
 
 	// ErrPrimaryRegistryStale is returned by the replica apply path when a
 	// refetched primary RegistrySnapshot has CapturedAtLSN < the record being

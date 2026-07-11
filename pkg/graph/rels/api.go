@@ -35,6 +35,8 @@ type Ops interface {
 	ForEach(opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 	ByType(typeName string, opts storepkg.QueryOpts) ([]*types.Relationship, error)
 	ForEachByType(typeName string, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
+	ByTypeAndProperty(typeName, key string, value any, opts storepkg.QueryOpts) ([]*types.Relationship, error)
+	ForEachByTypePropertyRange(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 	Count() (int, error)
 	CountByType(typeName string) (int, error)
 
@@ -49,6 +51,8 @@ type Ops interface {
 	IncomingForNodes(nodeIDs []types.NodeID, typeName string) (map[types.NodeID][]*types.Relationship, error)
 	OutgoingForNodesAtTx(nodeIDs []types.NodeID, typeName string, txAt types.Instant) (map[types.NodeID][]*types.Relationship, error)
 	IncomingForNodesAtTx(nodeIDs []types.NodeID, typeName string, txAt types.Instant) (map[types.NodeID][]*types.Relationship, error)
+	OutgoingForNodesAtPin(nodeIDs []types.NodeID, typeName string, pin types.Instant) (map[types.NodeID][]*types.Relationship, error)
+	IncomingForNodesAtPin(nodeIDs []types.NodeID, typeName string, pin types.Instant) (map[types.NodeID][]*types.Relationship, error)
 	OutgoingDegree(nodeID types.NodeID, typeName string) (int, error)
 	IncomingDegree(nodeID types.NodeID, typeName string) (int, error)
 	RelMutationEpoch() uint64
@@ -259,6 +263,36 @@ func (a *API) ForEachByType(typeName string, opts storepkg.QueryOpts, fn func(*t
 	return ops.ForEachByType(typeName, opts, fn)
 }
 
+// ByTypeAndProperty returns relationships matching the rel type and property
+// value (K3b) — the relationship mirror of nodes.API.ByLabelAndProperty. Uses
+// the store-level rel property index for O(matches) lookup when one exists;
+// otherwise falls back to a type-scan + property filter, so it works on every
+// backend (including the tiered store, which declines rel-property-index
+// CREATION but still answers this query). Temporal opts fold current + history.
+func (a *API) ByTypeAndProperty(typeName, key string, value any, opts storepkg.QueryOpts) ([]*types.Relationship, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.ByTypeAndProperty(typeName, key, value, opts)
+}
+
+// ForEachByTypePropertyRange streams relationships whose NUMERIC propKey value
+// lies within [min, max] (per the inclusivity flags) to fn in snowflake-ID
+// order (K3b) — the relationship mirror of
+// nodes.API.ForEachByLabelPropertyRange. Candidates come from the rel property
+// index's ordered numeric view, which OVER-SELECTS by design, so fn must
+// re-check its predicate with exact comparison semantics. Returns
+// store.ErrIndexNotFound when no usable rel property index exists for
+// (type, propKey) — callers fall back to a type scan.
+func (a *API) ForEachByTypePropertyRange(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachByTypePropertyRange(typeName, propKey, min, max, inclMin, inclMax, opts, fn)
+}
+
 // Count returns the total relationship count.
 func (a *API) Count() (int, error) {
 	ops, err := a.ready()
@@ -441,15 +475,22 @@ func (a *API) IncomingForNodes(nodeIDs []types.NodeID, typeName string) (map[typ
 }
 
 // OutgoingForNodesAtTx is the bitemporal (transaction-time-pinned) counterpart
-// of OutgoingForNodes: it resolves each candidate relationship's belief-at-pin
-// version at txAt through the adjacency index instead of paying a full
-// history-aware ByType scan, agreeing with a pinned `ByType` scan filtered by
-// endpoint by construction (both funnel through the same chain-resolution
-// seam). Rel endpoints are immutable, so a relationship deleted after txAt is
-// still visible (delete is a transaction-time tombstone), one created after
-// txAt is invisible, and a backfilled relationship (AddWithTx) is visible
-// from its backfilled TxFrom onward. txAt == 0 delegates to OutgoingForNodes
-// verbatim (no TX filter, no caller churn). See core.RelOps.OutgoingForNodesAtTx.
+// of OutgoingForNodes: it resolves each candidate relationship's version at
+// txAt through the adjacency index instead of paying a full history-aware
+// ByType scan.
+//
+// This door agrees with the TxAt-pinned BITEMPORAL door (QueryOpts{TxAt: txAt})
+// filtered by endpoint — which valid-filters at wall-now when no valid-time
+// opts are set — NOT with a belief-state pin: an edge whose valid interval lies
+// wholly in the past (a CloseVersion-ed edge, or a width-1 [t, t+1) point-event
+// edge) is SILENTLY DROPPED even though it was believed at txAt. For pure
+// knowledge-time (AS-OF-SYSTEM-TIME) semantics use OutgoingForNodesAtPin /
+// IncomingForNodesAtPin instead. Rel endpoints are immutable, so a relationship
+// deleted after txAt is still visible (delete is a transaction-time tombstone),
+// one created after txAt is invisible, and a backfilled relationship (AddWithTx)
+// is visible from its backfilled TxFrom onward. txAt == 0 delegates to
+// OutgoingForNodes verbatim (no TX filter, no caller churn).
+// See core.RelOps.OutgoingForNodesAtTx.
 func (a *API) OutgoingForNodesAtTx(nodeIDs []types.NodeID, typeName string, txAt types.Instant) (map[types.NodeID][]*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -466,6 +507,40 @@ func (a *API) IncomingForNodesAtTx(nodeIDs []types.NodeID, typeName string, txAt
 		return nil, err
 	}
 	return ops.IncomingForNodesAtTx(nodeIDs, typeName, txAt)
+}
+
+// OutgoingForNodesAtPin is the pure knowledge-time (belief-state) counterpart of
+// OutgoingForNodes: it returns every outgoing relationship BELIEVED at the
+// transaction-time pin, with NO valid-time filtering — the door to use for
+// AS-OF-SYSTEM-TIME semantics. It agrees with ByType(QueryOpts{TxPin: pin})
+// filtered by endpoint BY CONSTRUCTION (both funnel through the same as-of
+// resolver). Unlike OutgoingForNodesAtTx it returns past-valid facts, width-1
+// point events, and unset-valid_from (snowflake-fallback) edges believed at the
+// pin. An edge hard-deleted after the pin is still visible; one created after
+// the pin is invisible; a backfilled edge (AddWithTx) is visible from its
+// backfilled TxFrom onward.
+//
+// SEED TOLERANCE — a seed hard-deleted after the pin is ACCEPTED (its pre-delete
+// edges are returned via the deleted-rel fold), and a seed absent from the
+// belief state at the pin is skipped silently (no ErrNodeNotFound, matching
+// ByType{TxPin} filtered by endpoint). pin == 0 delegates to OutgoingForNodes
+// verbatim. See core.RelOps.OutgoingForNodesAtPin.
+func (a *API) OutgoingForNodesAtPin(nodeIDs []types.NodeID, typeName string, pin types.Instant) (map[types.NodeID][]*types.Relationship, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.OutgoingForNodesAtPin(nodeIDs, typeName, pin)
+}
+
+// IncomingForNodesAtPin is the belief-state counterpart of IncomingForNodes. See
+// OutgoingForNodesAtPin for the resolution semantics and seed-tolerance contract.
+func (a *API) IncomingForNodesAtPin(nodeIDs []types.NodeID, typeName string, pin types.Instant) (map[types.NodeID][]*types.Relationship, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.IncomingForNodesAtPin(nodeIDs, typeName, pin)
 }
 
 // SetProperty sets a single property on the relationship honoring ctx.

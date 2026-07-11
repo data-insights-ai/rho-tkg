@@ -72,12 +72,14 @@ func (ms *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 	// Update property, temporal, and vector indexes.
 	ms.removeNodePropertyKeyCounts(old)
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
+	ms.removeNodeFromCompositeIndexesLocked(old, rawID)
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = freezeNodeCopy(updatedNode)
 	ms.addNodePropertyKeyCounts(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
+	ms.addNodeToCompositeIndexesLocked(updatedNode, rawID)
 	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, updatedNode, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, updatedNode, rawID)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
@@ -141,16 +143,19 @@ func (ms *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 		ms.labelIdx[tok] = set
 	}
 	set[nid] = struct{}{}
+	ms.recordNodeLabelMembersLocked(updatedNode) // K1: transaction-time label membership (new token)
 
 	// Update property, temporal, and vector indexes.
 	ms.removeNodePropertyKeyCounts(old)
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
+	ms.removeNodeFromCompositeIndexesLocked(old, rawID)
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = freezeNodeCopy(updatedNode)
 	ms.addNodePropertyKeyCounts(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
+	ms.addNodeToCompositeIndexesLocked(updatedNode, rawID)
 	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, updatedNode, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, updatedNode, rawID)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
@@ -309,6 +314,7 @@ func (ms *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 	rawID := nid.SnowflakeID()
 	ms.removeNodePropertyKeyCounts(n)
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, n, rawID)
+	ms.removeNodeFromCompositeIndexesLocked(n, rawID)
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, n, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, n, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, n, rawID)
@@ -341,6 +347,7 @@ func (ms *Store) PutNodeVersion(nid types.NodeID, version uint32, n *types.Node)
 		ms.nodeHistory[nid] = inner
 	}
 	inner[version] = n.DeepCopy()
+	ms.recordNodeLabelMembersLocked(n) // K1: a historical version may carry labels the current row dropped
 	return ms.logNodeHistoryVersionLocked(version, n)
 }
 
@@ -518,6 +525,7 @@ func (ms *Store) PutRelVersion(rid types.RelID, version uint32, r *types.Relatio
 		ms.relHistory[rid] = inner
 	}
 	inner[version] = r.DeepCopy()
+	ms.recordRelTypeMemberLocked(r) // K1: transaction-time rel-type membership (history version)
 	return ms.logRelHistoryVersionLocked(version, r)
 }
 
@@ -722,12 +730,14 @@ func (ms *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 
 	ms.removeNodePropertyKeyCounts(old)
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
+	ms.removeNodeFromCompositeIndexesLocked(old, rawID)
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = freezeNodeCopy(current)
 	ms.addNodePropertyKeyCounts(current)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, current, rawID)
+	ms.addNodeToCompositeIndexesLocked(current, rawID)
 	indexpkg.AddNodeToTemporalIndexes(ms.temporalIndexes, current, rawID)
 	indexpkg.AddNodeToHighFrequencyIndexes(ms.hfIndexes, current, rawID)
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
@@ -778,8 +788,11 @@ func (ms *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion 
 	}
 	inner[prevVersion] = prevState.DeepCopy()
 
+	// K3b: refresh the rel property index (property values may have changed).
+	indexpkg.RemoveRelFromPropertyIndexes(ms.relPropertyIndexes, old, id.SnowflakeID())
 	// Replace current entity.
 	ms.rels[id] = freezeRelCopy(current)
+	indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, current, id.SnowflakeID())
 	return ms.logRelPutLocked(current, true)
 }
 

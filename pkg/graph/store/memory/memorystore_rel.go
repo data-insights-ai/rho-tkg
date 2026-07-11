@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate"
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -54,6 +55,7 @@ func (ms *Store) PutRelationship(r *types.Relationship) error {
 		ms.typeIdx[tv] = make(map[types.RelID]struct{})
 	}
 	ms.typeIdx[tv][id] = struct{}{}
+	ms.recordRelTypeMemberLocked(r) // K1: transaction-time rel-type membership
 
 	// Adjacency: outgoing.
 	if ms.outIdx[startID] == nil {
@@ -67,6 +69,7 @@ func (ms *Store) PutRelationship(r *types.Relationship) error {
 	}
 	ms.inIdx[endID][id] = struct{}{}
 
+	indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID()) // K3b
 	return ms.logRelPutLocked(r, false)
 }
 
@@ -132,6 +135,7 @@ func (ms *Store) PutRelationshipGeneratedIDWithEndpointHashes(r *types.Relations
 		ms.typeIdx[tv] = make(map[types.RelID]struct{})
 	}
 	ms.typeIdx[tv][id] = struct{}{}
+	ms.recordRelTypeMemberLocked(r) // K1: transaction-time rel-type membership
 
 	if ms.outIdx[startID] == nil {
 		ms.outIdx[startID] = make(map[types.RelID]struct{})
@@ -143,6 +147,7 @@ func (ms *Store) PutRelationshipGeneratedIDWithEndpointHashes(r *types.Relations
 	}
 	ms.inIdx[endID][id] = struct{}{}
 
+	indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID()) // K3b
 	if err := ms.logRelPutLocked(r, false); err != nil {
 		return "", "", err
 	}
@@ -198,7 +203,11 @@ func (ms *Store) ReplaceRelationship(r *types.Relationship) error {
 	if err := storecontract.ValidateRelationshipReplacement(old, r); err != nil {
 		return err
 	}
+	// K3b: type/endpoints are immutable, but property values can change — refresh
+	// the rel property index (remove the superseded value, add the new one).
+	indexpkg.RemoveRelFromPropertyIndexes(ms.relPropertyIndexes, old, id.SnowflakeID())
 	ms.rels[id] = freezeRelCopy(r)
+	indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID())
 	return ms.logRelPutLocked(r, false)
 }
 
@@ -259,6 +268,7 @@ func (ms *Store) deleteRelLocked(id types.RelID) error {
 		}
 	}
 
+	indexpkg.RemoveRelFromPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID()) // K3b
 	delete(ms.rels, id)
 	return nil
 }
@@ -293,6 +303,7 @@ func (ms *Store) purgeRelIDFromIndexesLocked(id types.RelID) {
 			delete(ms.inIdx, nid)
 		}
 	}
+	indexpkg.PurgeRelFromAllPropertyIndexes(ms.relPropertyIndexes, id.SnowflakeID()) // K3b corruption path
 }
 
 // OutgoingRelationships returns relationships starting from the given node.
@@ -677,6 +688,7 @@ func (ms *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 			ms.typeIdx[tv] = make(map[types.RelID]struct{})
 		}
 		ms.typeIdx[tv][id] = struct{}{}
+		ms.recordRelTypeMemberLocked(r) // K1: transaction-time rel-type membership
 
 		if ms.outIdx[startID] == nil {
 			ms.outIdx[startID] = make(map[types.RelID]struct{})
@@ -688,6 +700,7 @@ func (ms *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		}
 		ms.inIdx[endID][id] = struct{}{}
 
+		indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID()) // K3b
 		if err := ms.logRelPutLocked(r, false); err != nil {
 			return err
 		}

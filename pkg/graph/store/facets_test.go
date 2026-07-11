@@ -189,6 +189,14 @@ func (fullOptionalStore) NodeHistoryVersionsFrom(types.NodeID, uint32, int) ([]*
 func (fullOptionalStore) RelHistoryVersionsFrom(types.RelID, uint32, int) ([]*types.Relationship, error) {
 	return nil, nil
 }
+
+// --- RelPropertyIndexCapability (K3b) ---
+func (fullOptionalStore) CreateRelPropertyIndex(uint16, string) error { return nil }
+func (fullOptionalStore) DropRelPropertyIndex(uint16, string) error   { return nil }
+func (fullOptionalStore) RelationshipsByTypeAndProperty(uint16, string, any, QueryOpts) ([]*types.Relationship, error) {
+	return nil, nil
+}
+
 func (fullOptionalStore) CompactNodeHistory(types.NodeID, int, []MetaWrite) error { return nil }
 func (fullOptionalStore) CompactRelHistory(types.RelID, int, []MetaWrite) error   { return nil }
 func (fullOptionalStore) OutgoingDegree(types.NodeID, uint16) (int, error)        { return 0, nil }
@@ -227,6 +235,11 @@ func (fullOptionalStore) CommitLogScope() error                               { 
 func (fullOptionalStore) DiscardLogScope() error                              { return nil }
 func (fullOptionalStore) MetaGet(string) ([]byte, error)                      { return nil, nil }
 func (fullOptionalStore) MetaSet(string, []byte) error                        { return nil }
+func (fullOptionalStore) CreateCompositePropertyIndex(uint16, []string) error { return nil }
+func (fullOptionalStore) DropCompositePropertyIndex(uint16, []string) error   { return nil }
+func (fullOptionalStore) NodesByLabelAndProperties(uint16, map[string]any, QueryOpts) ([]*types.Node, error) {
+	return nil, nil
+}
 
 // Compile-time proof that every composed facet is satisfiable by structural
 // typing over the existing narrow method sets.
@@ -266,6 +279,8 @@ func TestCapabilitiesOfFullOptionalReportsAllPresent(t *testing.T) {
 		{"HistoryAcceleration.DeletedIter", r.HistoryAcceleration.DeletedIter},
 		{"HistoryAcceleration.DepthDeletedIter", r.HistoryAcceleration.DepthDeletedIter},
 		{"IndexAcceleration.PropertyIndex", r.IndexAcceleration.PropertyIndex},
+		{"IndexAcceleration.RelPropertyIndex", r.IndexAcceleration.RelPropertyIndex},
+		{"IndexAcceleration.CompositePropertyIndex", r.IndexAcceleration.CompositePropertyIndex},
 		{"IndexAcceleration.TemporalIndex", r.IndexAcceleration.TemporalIndex},
 		{"IndexAcceleration.VectorIndex", r.IndexAcceleration.VectorIndex},
 		{"IndexAcceleration.VectorIndexOptions", r.IndexAcceleration.VectorIndexOptions},
@@ -296,7 +311,8 @@ func TestCapabilitiesOfOldStyleStoreReportsIndexQuartetOnly(t *testing.T) {
 		t.Fatalf("old-style Store must report the four embedded index capabilities present, got %+v", r.IndexAcceleration)
 	}
 	if r.IndexAcceleration.VectorIndexOptions || r.IndexAcceleration.FilteredVectorSearch ||
-		r.IndexAcceleration.PropertyKeyStats || r.IndexAcceleration.PropertyStats {
+		r.IndexAcceleration.PropertyKeyStats || r.IndexAcceleration.PropertyStats ||
+		r.IndexAcceleration.RelPropertyIndex || r.IndexAcceleration.CompositePropertyIndex {
 		t.Fatalf("old-style Store must NOT report the direct-optional index accelerators, got %+v", r.IndexAcceleration)
 	}
 	if r.MetaKV || r.ChangeLog.Feed || r.IntegrityAcceleration.NodeHash {

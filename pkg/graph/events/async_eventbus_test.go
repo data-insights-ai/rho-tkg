@@ -565,7 +565,7 @@ func TestAsyncEventBusEnqueueLockedDefensiveBranches(t *testing.T) {
 		bus.queues[PriorityNormal] = make(chan Event, 1)
 
 		bus.publishMu.Lock()
-		wrote := bus.enqueueLocked(Event{Type: EventNodeCreate, Priority: EventPriority(numPriorityLevels + 1)})
+		wrote := bus.enqueueLocked(Event{Type: EventNodeCreate, Priority: EventPriority(numPriorityLevels + 1)}, nil)
 		bus.publishMu.Unlock()
 		if !wrote {
 			t.Fatal("enqueueLocked dropped invalid-priority event, want normal-priority enqueue")
@@ -590,7 +590,7 @@ func TestAsyncEventBusEnqueueLockedDefensiveBranches(t *testing.T) {
 		done := make(chan bool, 1)
 		go func() {
 			bus.publishMu.Lock()
-			done <- bus.enqueueLocked(Event{Type: EventNodeCreate})
+			done <- bus.enqueueLocked(Event{Type: EventNodeCreate}, nil)
 			bus.publishMu.Unlock()
 		}()
 
@@ -614,7 +614,7 @@ func TestAsyncEventBusEnqueueLockedDefensiveBranches(t *testing.T) {
 		bus.queues[PriorityNormal] = make(chan Event, 1)
 
 		bus.publishMu.Lock()
-		wrote := bus.enqueueLocked(Event{Type: EventNodeCreate})
+		wrote := bus.enqueueLocked(Event{Type: EventNodeCreate}, nil)
 		bus.publishMu.Unlock()
 		if wrote {
 			t.Fatal("enqueueLocked wrote with an unknown backpressure strategy")
