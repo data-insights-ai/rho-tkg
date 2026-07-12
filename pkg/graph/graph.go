@@ -20,6 +20,7 @@
 //	(*Graph).Tier() *tier.API
 //	(*Graph).Stats() *stats.API
 //	(*Graph).Hash() *hash.API
+//	(*Graph).Ingest() *ingest.API
 //	(*Graph).Resolve() *resolve.API
 //	(*Graph).Tx() *TxAPI
 //	(*Graph).Batch() *BatchAPI
@@ -35,6 +36,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/hash"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/index"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/nodes"
@@ -67,6 +69,7 @@ type Graph struct {
 	hash        *hash.API
 	resolve     *resolve.API
 	replication *replication.API
+	ingest      *ingest.API
 	tx          *TxAPI
 	batch       *BatchAPI
 }
@@ -170,6 +173,16 @@ func (g *Graph) Replication() *replication.API {
 		return nil
 	}
 	return g.replication
+}
+
+// Ingest returns the ingest-pipeline sub-API (ADR-0006) — the
+// prepare-parallel / apply-sequential write door for insert-dominated
+// throughput, beside the interactive g.Tx() door. Nil-safe.
+func (g *Graph) Ingest() *ingest.API {
+	if g == nil {
+		return nil
+	}
+	return g.ingest
 }
 
 // Resolve returns the shadow-property resolution sub-API. Nil-safe.
@@ -307,6 +320,7 @@ func New(cfg Config) (*Graph, error) {
 	g.hash = hash.New(c.Hash)
 	g.resolve = resolve.New(c.Resolve)
 	g.replication = replication.New(c.Repl)
+	g.ingest = ingest.New(c.Ingest)
 	g.tx = &TxAPI{c: c}
 	g.batch = &BatchAPI{c: c}
 	return g, nil

@@ -82,6 +82,10 @@ func TestSentinelAliasesShareIdentity(t *testing.T) {
 		"ProviderExists/graph=index":    {graphpkg.ErrIndexProviderExists, indexpkg.ErrIndexProviderExists},
 		"ProviderNotFound/graph=index":  {graphpkg.ErrIndexProviderNotFound, indexpkg.ErrIndexProviderNotFound},
 		"ProviderEmptyName/graph=index": {graphpkg.ErrIndexProviderEmptyName, indexpkg.ErrIndexProviderEmptyName},
+
+		// pkg/graph alias of the ingest-pipeline sentinel (ADR-0006; core owns
+		// the canonical declaration).
+		"IngestClosed/graph=core": {graphpkg.ErrIngestClosed, core.ErrIngestClosed},
 	}
 
 	for name, pair := range identical {

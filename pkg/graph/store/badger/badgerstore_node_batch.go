@@ -420,6 +420,27 @@ func relationshipIndexKeyMatchesRelID(key []byte, relID snowflake.ID) bool {
 // Phase 2: serialize, cache, index, and queue each for async flush.
 // Any duplicate → error, zero mutations. Nil/empty input → nil error.
 func (bs *Store) PutNodesBatch(nodes []*types.Node) error {
+	return bs.putNodesBatchInternal(nodes, nil)
+}
+
+// PutNodesBatchPreEncoded persists nodes whose v2 entity-row wire has already
+// been pre-encoded (with its transaction-time tail patched by the applier),
+// skipping the second msgpack pass for those rows (store.PreEncodedPutCapability,
+// ADR-0006 §4.5). wireBodies[i] == nil re-encodes node i via marshalNodeBytes —
+// the applier's conservative fallback — so the persisted bytes are byte-identical
+// whether or not a row arrived pre-encoded (proven by the ingest divergence
+// battery). The change-log put body is UNCHANGED (untokenized encode-at-flush).
+func (bs *Store) PutNodesBatchPreEncoded(nodes []*types.Node, wireBodies [][]byte) error {
+	return bs.putNodesBatchInternal(nodes, wireBodies)
+}
+
+// putNodesBatchInternal is the shared body of PutNodesBatch (wireBodies nil) and
+// PutNodesBatchPreEncoded. When wireBodies[i] is non-nil it is used verbatim as
+// the persisted entity-row bytes for nodes[i]; otherwise the row is marshaled
+// here (encode-at-flush). Everything else — validation, duplicate check, cache,
+// index maintenance, counters, and the UNTOKENIZED change-log put body — is
+// identical on both paths.
+func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies [][]byte) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
 	}
@@ -430,7 +451,9 @@ func (bs *Store) PutNodesBatch(nodes []*types.Node) error {
 		return err
 	}
 
-	// Pre-serialize all nodes outside the lock.
+	// Pre-serialize all nodes outside the lock. A pre-encoded buffer (from the
+	// ingest applier — already tail-patched with the stamped TxFrom) is used
+	// verbatim; a nil element falls back to a fresh encode here.
 	type nodeData struct {
 		nid  types.NodeID
 		id   snowflake.ID
@@ -441,9 +464,15 @@ func (bs *Store) PutNodesBatch(nodes []*types.Node) error {
 		if err := storecontract.ValidateNodeWrite(n); err != nil {
 			return err
 		}
-		data, err := bs.marshalNodeBytes(n)
-		if err != nil {
-			return fmt.Errorf("graph: marshal node: %w", err)
+		var data []byte
+		if i < len(wireBodies) && wireBodies[i] != nil {
+			data = wireBodies[i]
+		} else {
+			d, err := bs.marshalNodeBytes(n)
+			if err != nil {
+				return fmt.Errorf("graph: marshal node: %w", err)
+			}
+			data = d
 		}
 		nid := n.InternalID()
 		serialized[i] = nodeData{nid: nid, id: nid.SnowflakeID(), data: data}

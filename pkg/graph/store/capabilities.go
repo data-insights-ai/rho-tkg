@@ -137,6 +137,31 @@ type BatchCapability interface {
 	DeleteRelationshipsBatch(ids []types.RelID) error
 }
 
+// PreEncodedPutCapability is OPTIONAL — the ingest apply-side fast path
+// (ADR-0006 §4.5, Scenario B). PutNodesBatchPreEncoded persists nodes whose v2
+// ENTITY-ROW wire was pre-encoded on the producer thread (with a zero
+// transaction-time tail) and had that tail patched with the applier-stamped
+// TxFrom by the single applier — so the store SKIPS the second msgpack pass for
+// those rows. It is otherwise identical to PutNodesBatch (same validation,
+// duplicate check, indexing, change-log co-commit).
+//
+// wireBodies[i] is the patched pre-encoded buffer for nodes[i], or nil to signal
+// "re-encode node i" — the applier's CONSERVATIVE fallback whenever the buffer
+// could not be proven byte-identical to what the store would emit (e.g. a probe
+// label token was re-stamped to a different real token at apply). A backend MUST
+// treat a nil element exactly as PutNodesBatch would (encode at flush), so the
+// persisted bytes are IDENTICAL whether a row arrived pre-encoded or not.
+//
+// Provenance is by the typed in-process buffer the applier hands down, NEVER by
+// sniffing stored bytes: a backend must not decide a row is patchable from the
+// wire alone. Only the exact native memory/badger stores implement this; tiered
+// and wrapper stores decline (the graph layer type-asserts at wiring and falls
+// back to PutNodesBatch). The change-log put body is unaffected — it stays the
+// UNTOKENIZED encode-at-flush form so cross-backend feed parity is byte-identical.
+type PreEncodedPutCapability interface {
+	PutNodesBatchPreEncoded(nodes []*types.Node, wireBodies [][]byte) error
+}
+
 // HistoryCapability is the version-history surface. Every backend must
 // implement it because the graph layer applies pre-mutation snapshots on
 // every Update*. The atomic ReplaceWith*History and Delete*WithHistory

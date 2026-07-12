@@ -25,7 +25,17 @@ const (
 // emitters in wire_encode.go (lesson 39 — struct tags alone do nothing),
 // (2) a decode path for the new layout, and (3) the store-level marker logic
 // in the badger backend.
-const CurrentWireFormatVersion = 1
+//
+// v2 (ADR-0006 §4.5): the transaction-time tail (tf/tt) moved from omitempty
+// mid-map fields to a FIXED-WIDTH, always-present trailing slot (last two map
+// entries), so the ingest pipeline can pre-encode a row with a zero tail on the
+// producer thread and have the single applier patch in the stamped TxFrom/TxTo
+// with a bounded memory write (PatchWireTemporalTail) instead of a second
+// msgpack pass. Decoders accept BOTH v1 (omitempty tail, absent fv = legacy)
+// and v2 (fixed tail) transparently — msgpack map keys are self-describing, so
+// no version branch is needed on read; the fv guard still fails a FUTURE
+// version closed with ErrWireFormatVersionUnsupported. See wire_temporal_tail.go.
+const CurrentWireFormatVersion = 2
 
 // NodeWire is the msgpack wire format for Node entities.
 // All token values are stored as int (maps to msgpack integer).

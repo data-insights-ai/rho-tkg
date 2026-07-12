@@ -485,6 +485,18 @@ func (ms *Store) PutNodesBatch(nodes []*types.Node) error {
 	return nil
 }
 
+// PutNodesBatchPreEncoded satisfies store.PreEncodedPutCapability. The memory
+// backend holds live *types.Node objects and never serializes an entity row, so
+// the pre-encoded buffers are irrelevant here — it delegates to PutNodesBatch.
+// Byte-identity is trivially preserved: memory produces no persisted entity
+// bytes, and its change feed uses the same UNTOKENIZED encode on both paths. The
+// method exists so the ingest applier can exercise the capability path uniformly
+// across the native backends (the badger arm is where the encode is actually
+// skipped).
+func (ms *Store) PutNodesBatchPreEncoded(nodes []*types.Node, _ [][]byte) error {
+	return ms.PutNodesBatch(nodes)
+}
+
 // DeleteNodesBatch deletes multiple nodes atomically using two-phase validation.
 // Phase 1: check all IDs exist.
 // Phase 2: remove each from store and clean label indexes.

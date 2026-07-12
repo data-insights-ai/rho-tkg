@@ -5,6 +5,10 @@ import "github.com/vmihailenco/msgpack/v5"
 // EncodeMsgpack writes NodeWire with the same map keys as the struct tags in
 // wire.go, but avoids reflective omitempty checks on hot write paths.
 func (w NodeWire) EncodeMsgpack(enc *msgpack.Encoder) error {
+	// v2+ emits tf/tt as a fixed-width, always-present trailing slot (last two
+	// map entries); v1/legacy keeps the omitempty mid-map form. See
+	// wire_temporal_tail.go.
+	v2 := w.FormatVersion >= 2
 	fields := 3 // id, pl, v
 	if w.FormatVersion != 0 {
 		fields++
@@ -24,11 +28,15 @@ func (w NodeWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 	if w.ValidTo != 0 {
 		fields++
 	}
-	if w.TxFrom != 0 {
-		fields++
-	}
-	if w.TxTo != 0 {
-		fields++
+	if v2 {
+		fields += 2 // tf, tt fixed trailing slot (always present)
+	} else {
+		if w.TxFrom != 0 {
+			fields++
+		}
+		if w.TxTo != 0 {
+			fields++
+		}
 	}
 	if w.CreatedAt != 0 {
 		fields++
@@ -109,14 +117,16 @@ func (w NodeWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 			return err
 		}
 	}
-	if w.TxFrom != 0 {
-		if err := encodeStringInt64Field(enc, "tf", w.TxFrom); err != nil {
-			return err
+	if !v2 {
+		if w.TxFrom != 0 {
+			if err := encodeStringInt64Field(enc, "tf", w.TxFrom); err != nil {
+				return err
+			}
 		}
-	}
-	if w.TxTo != 0 {
-		if err := encodeStringInt64Field(enc, "tt", w.TxTo); err != nil {
-			return err
+		if w.TxTo != 0 {
+			if err := encodeStringInt64Field(enc, "tt", w.TxTo); err != nil {
+				return err
+			}
 		}
 	}
 	if w.CreatedAt != 0 {
@@ -175,7 +185,17 @@ func (w NodeWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 		}
 	}
 	if w.AuthorizationLevel != 0 {
-		return encodeStringUint8Field(enc, "al", w.AuthorizationLevel)
+		if err := encodeStringUint8Field(enc, "al", w.AuthorizationLevel); err != nil {
+			return err
+		}
+	}
+	if v2 {
+		// Fixed-width trailing slot — must be the LAST two entries so the
+		// applier can patch them by offset from the buffer end.
+		if err := encodeStringInt64Field(enc, "tf", w.TxFrom); err != nil {
+			return err
+		}
+		return encodeStringInt64Field(enc, "tt", w.TxTo)
 	}
 	return nil
 }
@@ -183,6 +203,9 @@ func (w NodeWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 // EncodeMsgpack writes RelWire with the same map keys as the struct tags in
 // wire.go, but avoids reflective omitempty checks on hot write paths.
 func (w RelWire) EncodeMsgpack(enc *msgpack.Encoder) error {
+	// v2+ emits tf/tt as a fixed-width, always-present trailing slot; v1/legacy
+	// keeps the omitempty mid-map form. See wire_temporal_tail.go.
+	v2 := w.FormatVersion >= 2
 	fields := 5 // id, rt, s, e, v
 	if w.FormatVersion != 0 {
 		fields++
@@ -199,11 +222,15 @@ func (w RelWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 	if w.ValidTo != 0 {
 		fields++
 	}
-	if w.TxFrom != 0 {
-		fields++
-	}
-	if w.TxTo != 0 {
-		fields++
+	if v2 {
+		fields += 2 // tf, tt fixed trailing slot (always present)
+	} else {
+		if w.TxFrom != 0 {
+			fields++
+		}
+		if w.TxTo != 0 {
+			fields++
+		}
 	}
 	if w.CreatedAt != 0 {
 		fields++
@@ -291,14 +318,16 @@ func (w RelWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 			return err
 		}
 	}
-	if w.TxFrom != 0 {
-		if err := encodeStringInt64Field(enc, "tf", w.TxFrom); err != nil {
-			return err
+	if !v2 {
+		if w.TxFrom != 0 {
+			if err := encodeStringInt64Field(enc, "tf", w.TxFrom); err != nil {
+				return err
+			}
 		}
-	}
-	if w.TxTo != 0 {
-		if err := encodeStringInt64Field(enc, "tt", w.TxTo); err != nil {
-			return err
+		if w.TxTo != 0 {
+			if err := encodeStringInt64Field(enc, "tt", w.TxTo); err != nil {
+				return err
+			}
 		}
 	}
 	if w.CreatedAt != 0 {
@@ -367,7 +396,17 @@ func (w RelWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 		}
 	}
 	if w.AuthorizationLevel != 0 {
-		return encodeStringUint8Field(enc, "al", w.AuthorizationLevel)
+		if err := encodeStringUint8Field(enc, "al", w.AuthorizationLevel); err != nil {
+			return err
+		}
+	}
+	if v2 {
+		// Fixed-width trailing slot — must be the LAST two entries so the
+		// applier can patch them by offset from the buffer end.
+		if err := encodeStringInt64Field(enc, "tf", w.TxFrom); err != nil {
+			return err
+		}
+		return encodeStringInt64Field(enc, "tt", w.TxTo)
 	}
 	return nil
 }

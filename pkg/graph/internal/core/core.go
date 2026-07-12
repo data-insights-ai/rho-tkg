@@ -70,6 +70,12 @@ type Core struct {
 	// (tiered), so the query falls back to the full-history candidate fold.
 	labelTxMembers   storepkg.LabelTxMembershipCapability
 	relTypeTxMembers storepkg.RelTypeTxMembershipCapability
+	// preEncodedPut — ADR-0006 §4.5 Scenario B: the ingest applier hands the
+	// store a v2 entity-row wire pre-encoded on the producer thread (tail patched
+	// with the stamped TxFrom) instead of a second msgpack pass. nil = store
+	// declines (tiered, wrappers), so the applier uses the encode-at-flush
+	// PutNodesBatch path. Native memory/badger only.
+	preEncodedPut    storepkg.PreEncodedPutCapability
 	changeFeed       storepkg.ChangeFeedCapability
 	changeLogEnabled bool                      // store's change-log actually on (records emitted)
 	txLogScope       storepkg.TxChangeLogScope // per-tx record buffer (nil when off / unsupported)
@@ -196,6 +202,20 @@ type Core struct {
 	Resolve     *ResolveOps
 	Stats       *StatOps
 	Repl        *ReplOps
+	Ingest      *IngestOps
+
+	// Ingest pipeline (ADR-0006 stage 1). ingest is the lazily-started single
+	// applier goroutine; ingestMu guards its lifecycle (start on first session,
+	// stop at Close). ingestClosing is set under ingestMu by stopIngestApplier so
+	// a NewSession racing Close can NEVER lazily start a fresh applier AFTER the
+	// stop swept c.ingest — such an applier would be orphaned (never stopped) and
+	// would apply groups against the closing graph (C1 lifecycle race).
+	ingestMu      sync.Mutex
+	ingest        *ingestApplier
+	ingestClosing bool
+	// ingestLaneCtr mints nonzero lane identifiers for CONCURRENT ingest
+	// sessions (§14 concurrent mode); lane 0 is the strong-mode applier.
+	ingestLaneCtr atomic.Uint32
 }
 
 // =============================================================================
@@ -843,6 +863,28 @@ func nativeNodeIntegrityHash(store storepkg.MandatoryStore) storepkg.NodeIntegri
 	return cap
 }
 
+// nativePreEncodedPut resolves the ADR-0006 §4.5 pre-encoded-put fast path.
+// Only the exact native *badger.Store is routed: it serializes each entity row
+// to msgpack, so handing it a pre-encoded buffer genuinely skips a second encode
+// pass, and it holds the applier's shared property-key registry so the buffer's
+// tokens match its own encode byte-for-byte. The memory store also IMPLEMENTS
+// the capability (contract + direct test), but it stores live *types.Node objects
+// and never serializes a row, so pre-encoding there is pure wasted prepare work —
+// it is deliberately NOT routed (a nil handle disables the prepare-side
+// pre-encode for memory sessions). Tiered declines (no single WriteBatch — it
+// routes per shard) and wrapper stores decline (an overridden PutNodesBatch must
+// not be bypassed); both fall back to encode-at-flush via putGeneratedNodesBatch.
+func nativePreEncodedPut(store storepkg.MandatoryStore) storepkg.PreEncodedPutCapability {
+	cap, ok := store.(storepkg.PreEncodedPutCapability)
+	if !ok {
+		return nil
+	}
+	if _, isBadger := store.(*badger.Store); isBadger {
+		return cap
+	}
+	return nil
+}
+
 func nativeGeneratedCreate(store storepkg.MandatoryStore) generatedcreate.Capability {
 	cap, ok := store.(generatedcreate.Capability)
 	if !ok {
@@ -1229,6 +1271,7 @@ func New(config Config) (*Core, error) {
 	c.Constraints = &ConstraintOps{c: c}
 	c.Hash = &HashOps{c: c}
 	c.Repl = &ReplOps{c: c}
+	c.Ingest = &IngestOps{c: c}
 	c.IO = &IOOps{c: c}
 	c.Resolve = &ResolveOps{c: c}
 	c.Stats = &StatOps{c: c}
@@ -1296,6 +1339,7 @@ func New(config Config) (*Core, error) {
 	}
 
 	c.store = store
+	c.preEncodedPut = nativePreEncodedPut(store)
 	c.generatedCreate = nativeGeneratedCreate(store)
 	c.endpointHash = nativeEndpointIntegrityHash(store)
 	c.endpointHashWrite = nativeRelationshipEndpointHashWrite(store)
@@ -1445,6 +1489,13 @@ type badgerRegistryLoader interface {
 func (c *Core) Close() error {
 	var closeErr error
 	c.closeOnce.Do(func() {
+		// Drain and stop the ingest applier BEFORE marking the graph closed, so
+		// every accepted-but-unapplied intent is applied while the graph is
+		// still writable (§4.8: entity writes are never dropped). The applier
+		// takes c.txMu + c.mu.Lock per group, so it must finish before Close
+		// acquires c.mu.Lock below.
+		c.stopIngestApplier()
+
 		c.closed.Store(true)
 
 		// Drain in-flight RLock holders. New mutations that win the

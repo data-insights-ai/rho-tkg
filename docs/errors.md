@@ -110,6 +110,12 @@ Coverage spans three sources:
 | `ErrBatchDone` | core | Batch already executed (cannot reuse) | Multiple `g.Batch().Execute()` calls on the same batch |
 | `ErrInvalidTimeRange` | core | Supplied time range is invalid (start >= end or negative bounds). Aliases `store.ErrInvalidTimeRange`. Distinct identity from `types.ErrInvalidTimeRange` (see pkg/types Sentinels below) despite the identical name | `g.Temporal().NodesIn()`, `g.Temporal().RelsIn()`, constraint assertions |
 
+## Ingest Pipeline (ADR-0006)
+
+| Sentinel | Package | Meaning | Typical Doors |
+|----------|---------|---------|---------------|
+| `ErrIngestClosed` | core | The ingest pipeline (graph + applier) is closed before the work could be applied — an enqueue racing `Close` is rejected cleanly with this sentinel (never accepted-then-dropped, never hung) | `g.Ingest()` `Session.Submit()` / `Session.Close()`, `g.Ingest().WaitApplied()` |
+
 ## I/O Operations
 
 | Sentinel | Package | Meaning | Typical Doors |

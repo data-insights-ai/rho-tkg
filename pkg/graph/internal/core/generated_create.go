@@ -25,3 +25,25 @@ func (c *Core) putGeneratedNodesBatch(nodes []*types.Node) error {
 	}
 	return c.store.PutNodesBatch(nodes)
 }
+
+// putGeneratedNodesBatchPreEncoded routes a batch node create through the
+// ADR-0006 §4.5 pre-encoded-put fast path when the store supports it and the
+// applier produced any usable pre-encoded buffer (wireBodies has a non-nil
+// element). Otherwise it falls back to putGeneratedNodesBatch (encode-at-flush).
+// wireBodies[i] == nil re-encodes node i even on the fast path, so a partially
+// invalidated group (some probe-restamped rows) still commits correctly.
+func (c *Core) putGeneratedNodesBatchPreEncoded(nodes []*types.Node, wireBodies [][]byte) error {
+	if c.preEncodedPut != nil && anyNonNil(wireBodies) {
+		return c.preEncodedPut.PutNodesBatchPreEncoded(nodes, wireBodies)
+	}
+	return c.putGeneratedNodesBatch(nodes)
+}
+
+func anyNonNil(bufs [][]byte) bool {
+	for _, b := range bufs {
+		if b != nil {
+			return true
+		}
+	}
+	return false
+}

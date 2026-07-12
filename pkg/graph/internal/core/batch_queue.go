@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -126,7 +127,7 @@ func (b *BatchBuilder) addNodes(labels []string, props map[string]any, count int
 			result = n.DeepCopy()
 			results = append(results, result)
 		}
-		b.nodes = append(b.nodes, pendingNode{
+		pn := pendingNode{
 			node:               n,
 			result:             result,
 			labels:             canonicalLabels,
@@ -135,9 +136,38 @@ func (b *BatchBuilder) addNodes(labels []string, props map[string]any, count int
 			nodeIntegrity:      nodeIntegrity,
 			temporal:           temporal,
 			backfillTxFrom:     txFromOverride,
-		})
+		}
+		// Ingest §4.5 prepare-side pre-encode (gated to the ingest pipeline; the
+		// plain g.Batch() door leaves preEncode false and pays nothing). Encode the
+		// v2 entity-row wire with a ZERO transaction-time tail so the applier can
+		// patch the stamped TxFrom in place. temporal.TxFrom/TxTo are 0 at prepare
+		// (stamped only at Execute), so applying it now yields exactly the finalized
+		// row modulo the tail; the caller-visible result skeleton was already copied
+		// above and is unaffected.
+		if b.preEncode {
+			if err := b.preEncodeNodeBody(&pn); err != nil {
+				return nil, fmt.Errorf("graph: ingest pre-encode: %w", err)
+			}
+		}
+		b.nodes = append(b.nodes, pn)
 	}
 	return results, nil
+}
+
+// preEncodeNodeBody pre-encodes pn's v2 entity-row wire with a zero
+// transaction-time tail, tokenizing property keys via the SAME shared registry
+// the store marshals with (so the bytes are identical to marshalNodeBytes modulo
+// the tail). Applying pn.temporal now (TxFrom/TxTo already 0 at prepare) makes the
+// wire carry HasTemporal + VT claims exactly as the finalized row will; the
+// applier re-stamps pn.temporal.TxFrom and re-SetTemporal at Execute.
+func (b *BatchBuilder) preEncodeNodeBody(pn *pendingNode) error {
+	pn.node.SetTemporal(pn.temporal)
+	body, err := storeutil.PreEncodeNodeWireV2WithKeys(pn.node, b.g.propKeys)
+	if err != nil {
+		return err
+	}
+	pn.wireBody = body
+	return nil
 }
 
 // AddRelationship queues a relationship for creation. The type name and

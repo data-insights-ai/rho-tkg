@@ -51,3 +51,8 @@ type StatOps struct{ c *Core }
 // forwards to the store's optional ChangeFeedCapability and returns
 // ErrCapabilityNotSupported when the backend does not provide one.
 type ReplOps struct{ c *Core }
+
+// IngestOps groups the ingest-pipeline surface (g.Ingest()) — the ADR-0006
+// prepare-parallel / apply-sequential write door. It creates producer sessions
+// and exposes the applied-watermark accessors for async read-your-writes.
+type IngestOps struct{ c *Core }

@@ -174,6 +174,23 @@ type ChangeLogStatusCapability interface {
 //
 // A store that does not implement this (e.g. tiered) makes the core emit records
 // eagerly as before. All methods are no-ops when the change-log is disabled.
+//
+// CONCURRENCY POSITION (deliberate design, not a gap): the scope is
+// EXCLUSIVE-WRITE-LOCK-ONLY machinery. There is exactly one implicit scope, and
+// BeginLogScope while a scope is open is an error — handle-based scopes for N
+// concurrent writers are deliberately NOT provided. Concurrent writers (the
+// standalone mutation doors, and the ingest pipeline's concurrent mode) do not
+// need them: they use the EAGER in-door path, where each store mutation door
+// appends its record(s), mints their LSN(s), and stages its data under ONE
+// store-write-mutex window — so per-door record atomicity, LSN gaplessness
+// (records are minted only after validation, on the same path that stages the
+// data, so a failed door burns nothing), and crash-consistent co-commit all hold
+// under any number of concurrent writers. The feed is then a linearization of
+// committed doors in LSN order, which is exactly what a tailing replica applies.
+// The scope exists only to give a multi-door EXCLUSIVE unit (an interactive tx,
+// or the batch/strong-mode ingest applier) all-or-nothing feed semantics with
+// commit-time LSNs; anything running under the shared read lock must never
+// touch it.
 type TxChangeLogScope interface {
 	BeginLogScope() error
 	SetLogDivert(on bool)

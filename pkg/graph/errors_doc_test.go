@@ -184,6 +184,14 @@ var capabilitySentinels = []string{
 	"ErrTxDone",
 }
 
+// Ingest pipeline sentinels (ADR-0006). ErrIngestClosed is the only
+// ingest sentinel aliased into pkg/graph/errors.go; ErrNilSession is a
+// session-nil-receiver guard used only inside internal/core (never surfaced
+// through pkg/graph), so it is intentionally NOT re-exported here.
+var ingestSentinels = []string{
+	"ErrIngestClosed",
+}
+
 // Temporal constraints (from pkg/graph/temporal). NOT part of
 // graphReexportSentinelNames() below: these are declared directly in
 // pkg/graph/temporal (a sibling sub-API package reachable as
@@ -285,6 +293,7 @@ func graphReexportSentinelNames() []string {
 	all = append(all, deltaSentinels...)
 	all = append(all, replicationSentinels...)
 	all = append(all, capabilitySentinels...)
+	all = append(all, ingestSentinels...)
 	return all
 }
 

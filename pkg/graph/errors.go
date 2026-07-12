@@ -185,3 +185,11 @@ var ErrTxDone = storepkg.ErrTxDone
 var (
 	ErrRelPropertyIndexUnsupported = storepkg.ErrRelPropertyIndexUnsupported
 )
+
+// Ingest pipeline sentinel (ADR-0006). ErrIngestClosed is returned by a session
+// method (Submit / Close) or by g.Ingest().WaitApplied when the pipeline (the
+// graph and its applier) has been closed before the work could be applied — an
+// enqueue racing Close is rejected cleanly with this sentinel, never
+// accepted-then-dropped and never hung. Aliases core.ErrIngestClosed so external
+// callers can classify it with errors.Is(err, graph.ErrIngestClosed).
+var ErrIngestClosed = core.ErrIngestClosed

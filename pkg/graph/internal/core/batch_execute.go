@@ -7,6 +7,7 @@ import (
 	"time"
 
 	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -206,8 +207,20 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			for i, pn := range b.nodes {
 				nodes[i] = pn.node
 			}
+			// ADR-0006 §4.5 apply-side consumption: for each node that carried a
+			// prepare-side pre-encoded wire (ingest path), patch its transaction-time
+			// tail with the just-stamped TxFrom and hand the buffer to the store —
+			// UNLESS the buffer is no longer provably byte-identical to what the store
+			// would encode. The ONLY field that can diverge between prepare and apply
+			// for a genesis create is the label tokens (a probe token re-stamped to a
+			// different real token, §4.4); everything else (id/props/version/hash/VT/
+			// provenance) is fixed at prepare and the tail is what we patch. When in
+			// doubt (tokens changed, patch fails, or capability absent) leave
+			// wireBodies[i] nil so the store re-encodes — the correct fallback, proven
+			// byte-identical by the ingest divergence battery (Risk-2).
+			wireBodies := b.buildPreEncodedWireBodies(labelTokens)
 			nodesWriteAttempted = true
-			err = b.g.putGeneratedNodesBatch(nodes)
+			err = b.g.putGeneratedNodesBatchPreEncoded(nodes, wireBodies)
 			nodesCommitted = err == nil
 			if err == nil {
 				err = finishLabels(nil)
@@ -643,6 +656,58 @@ func restoreQueuedPendingNodeLabels(nodes []pendingNode) {
 			extras:  pn.queuedExtraTokens,
 		})
 	}
+}
+
+// buildPreEncodedWireBodies produces the per-node pre-encoded entity-row buffers
+// the applier hands to store.PreEncodedPutCapability (ADR-0006 §4.5). Returns nil
+// when no node carried a pre-encode (the plain g.Batch() path or a store without
+// the capability) — the caller then takes the encode-at-flush PutNodesBatch path.
+// For each pre-encoded node it PATCHES the transaction-time tail with the stamped
+// TxFrom/TxTo and validates byte-identity CONSERVATIVELY: the buffer is used ONLY
+// when the finalized label tokens equal the queued tokens the buffer was encoded
+// with (a probe re-stamp invalidates it) and the tail patch succeeds; otherwise
+// wireBodies[i] stays nil and the store re-encodes that row.
+//
+// labelTokens[i] carries the real tokens the applier stamped for b.nodes[i].
+func (b *BatchBuilder) buildPreEncodedWireBodies(labelTokens []nodeLabelTokens) [][]byte {
+	var wireBodies [][]byte
+	for i := range b.nodes {
+		pn := b.nodes[i]
+		if pn.wireBody == nil {
+			continue
+		}
+		if wireBodies == nil {
+			wireBodies = make([][]byte, len(b.nodes))
+		}
+		if i >= len(labelTokens) || !pendingNodeLabelsUnchanged(pn, labelTokens[i]) {
+			continue // probe token re-stamped → buffer stale, re-encode
+		}
+		if err := storeutil.PatchWireTemporalTail(pn.wireBody, int64(pn.temporal.TxFrom), int64(pn.temporal.TxTo)); err != nil {
+			continue // malformed buffer → re-encode (never persist a wrong row)
+		}
+		wireBodies[i] = pn.wireBody
+	}
+	return wireBodies
+}
+
+// pendingNodeLabelsUnchanged reports whether the applier-stamped real tokens
+// equal the queued tokens the pre-encoded buffer was built with. Label tokens are
+// the only NodeWire field (besides the patched tail) that can differ between a
+// prepared genesis create and its apply; equality here is what makes the
+// pre-encoded buffer byte-identical to the store's own encode.
+func pendingNodeLabelsUnchanged(pn pendingNode, tokens nodeLabelTokens) bool {
+	if pn.queuedPrimaryToken != tokens.primary {
+		return false
+	}
+	if len(pn.queuedExtraTokens) != len(tokens.extras) {
+		return false
+	}
+	for i := range tokens.extras {
+		if pn.queuedExtraTokens[i] != tokens.extras[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func syncPendingNodeResult(pn pendingNode) {

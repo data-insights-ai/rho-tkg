@@ -35,9 +35,15 @@ import (
 //   - batch_queue.go   — Add/Update/Delete queue methods
 //   - batch_execute.go — Execute (the under-lock replay)
 type BatchBuilder struct {
-	g            *Core
-	mu           sync.Mutex
-	done         bool
+	g    *Core
+	mu   sync.Mutex
+	done bool
+	// preEncode is set ONLY for the ingest-pipeline prepare path (ADR-0006 §4.5).
+	// When true, AddNode pre-encodes each queued node's v2 entity-row wire (with a
+	// zero transaction-time tail) on the producer thread so the applier can patch
+	// the tail instead of a second msgpack pass. The plain g.Batch() door leaves
+	// it false and pays ZERO new cost (pendingNode.wireBody stays nil).
+	preEncode    bool
 	nodes        []pendingNode
 	rels         []pendingRel
 	nodeUpdates  []pendingNodeUpdate
@@ -81,6 +87,15 @@ type pendingNode struct {
 	// resets to 0 on the rollback/retry path) so a re-stamp restores the
 	// backfill value, not the system clock (§4.1).
 	backfillTxFrom types.Instant
+	// wireBody is the ingest-path §4.5 prepare-side pre-encode: the v2 entity-row
+	// wire (property keys tokenized like the persisted row) with a ZERO
+	// transaction-time tail, produced on the producer thread. nil on the plain
+	// g.Batch() path. When non-nil AND still valid at apply (labels not
+	// probe-restamped), the applier patches its tail with the stamped TxFrom and
+	// hands it to store.PreEncodedPutCapability instead of a second msgpack pass.
+	// A wrong buffer is the ADR §8 Risk-2 silent-wrong-answer class, so the
+	// applier re-encodes whenever it cannot prove the buffer byte-identical.
+	wireBody []byte
 }
 
 type pendingRel struct {

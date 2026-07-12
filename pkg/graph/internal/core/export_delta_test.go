@@ -451,7 +451,11 @@ func TestImportMerge_CorruptionRollsBack(t *testing.T) {
 	// to break a content hash / chain link.
 	corrupt := make([]byte, len(delta))
 	copy(corrupt, delta)
-	corrupt[len(corrupt)-1] ^= 0xFF
+	// The v2 wire format ends every row with a fixed 24-byte transaction-time
+	// tail (tf/tt) that is DELIBERATELY not hash-covered (ADR-0006 §4.5), so a
+	// flip there would replicate verbatim. Corrupt the last byte BEFORE the
+	// tail — hash-protected content — to break the content hash / chain link.
+	corrupt[len(corrupt)-1-24] ^= 0xFF
 
 	err := base.IO.ImportMerge(bytes.NewReader(corrupt), tkgio.MergeOptions{})
 	if err == nil {
@@ -695,7 +699,11 @@ func TestImportMerge_RelCorruptionRollsBack(t *testing.T) {
 	delta := exportSinceBytes(t, src, c0)
 	corrupt := make([]byte, len(delta))
 	copy(corrupt, delta)
-	corrupt[len(corrupt)-1] ^= 0xFF
+	// The v2 wire format ends every row with a fixed 24-byte transaction-time
+	// tail (tf/tt) that is DELIBERATELY not hash-covered (ADR-0006 §4.5), so a
+	// flip there would replicate verbatim. Corrupt the last byte BEFORE the
+	// tail — hash-protected content — to break the content hash / chain link.
+	corrupt[len(corrupt)-1-24] ^= 0xFF
 
 	if err := base.IO.ImportMerge(bytes.NewReader(corrupt), tkgio.MergeOptions{}); err == nil {
 		t.Fatal("ImportMerge(corrupt) succeeded, want error")
@@ -775,7 +783,11 @@ func TestImportMerge_HistoryVersionCorruptionPreservesEdges(t *testing.T) {
 	delta := exportSinceBytes(t, src, c0)
 	corrupt := make([]byte, len(delta))
 	copy(corrupt, delta)
-	corrupt[len(corrupt)-1] ^= 0xFF
+	// The v2 wire format ends every row with a fixed 24-byte transaction-time
+	// tail (tf/tt) that is DELIBERATELY not hash-covered (ADR-0006 §4.5), so a
+	// flip there would replicate verbatim. Corrupt the last byte BEFORE the
+	// tail — hash-protected content — to break the content hash / chain link.
+	corrupt[len(corrupt)-1-24] ^= 0xFF
 
 	if err := base.IO.ImportMerge(bytes.NewReader(corrupt), tkgio.MergeOptions{}); err == nil {
 		t.Fatal("ImportMerge(corrupt) succeeded, want error")
