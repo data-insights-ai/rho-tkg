@@ -25,12 +25,26 @@ Three numbers, deliberately decoupled:
 - **SLOTS** — ID-space partitions. A deployment claims a contiguous range of
   the existing 5-bit snowflake node field: `Config.SnowflakeNodeID` (base) +
   `Config.SlotCount` (n). Slots are the IMMUTABLE routing key: an entity minted
-  in slot s carries s in its ID forever (`decompose(id).Node / 2`). The 16
-  pair-slots are a CLUSTER-WIDE budget shared by machines, lanes, and failover
-  spares — exactly the owner's model: "these x lanes use instance IDs y..y+x,
-  plus z instance IDs elsewhere".
-- **LANES** — runtime writers. Each lane owns one claimed slot's generator
-  pair (even=nodes, odd=rels) and mints independently: ZERO shared mint state.
+  in slot s carries s in its ID forever (`decompose(id).Node`). The budget is
+  CLUSTER-WIDE and split purely between machines' lanes — machine A's x lanes
+  use slots [y, y+x), machine B's lanes use their own range (the owner's
+  model); a failover spare is just an unclaimed slot value, not a separate
+  class.
+
+  **The even/odd rel pairing is DROPPED in sharded mode** (owner question,
+  resolved): today nodes mint with node-field `id*2` and rels `id*2+1`, purely
+  to guarantee node IDs and rel IDs never collide as values — which halves the
+  budget to 16 pair-slots. A single per-slot generator gives the same
+  uniqueness guarantee trivially (one sequence cannot emit a value twice), so
+  sharded deployments mint nodes AND rels from ONE generator per slot: the
+  budget becomes the FULL 32 slots (a 128-CPU box wanting 32 local lanes now
+  fits, as does 4 machines × 6 lanes + 8 free). Nothing in the codebase
+  discriminates node-vs-rel by ID parity (stores key them in separate
+  keyspaces; type always comes from context) — the pairing is a legacy layout
+  detail that single-store mode keeps unchanged. The sharded catalog records
+  the ID discipline so a directory fails closed if opened under the wrong one.
+- **LANES** — runtime writers. Each lane owns one claimed slot's single
+  generator and mints independently: ZERO shared mint state.
   A concurrent ingest session is pinned to a lane, so a whole commit group
   mints in one slot and lands on ONE shard as ONE batched door call — the
   group-commit economics survive sharding (this is what hash routing would
@@ -51,10 +65,11 @@ remaining cores regardless of lane count. Measured per-lane apply ceiling is
 ~0.5–1M inserts/s through the full stack, so 4–12 lanes saturate multi-M/s,
 at which point shared disk/flush is the wall. Size by
 `target inserts/s ÷ per-shard ceiling`, not by CPUs-per-lane. The slot budget
-(≤16 pairs) therefore does not pinch in practice; if it ever does, the escape
-hatch is a LAYOUT-VERSIONED v2 (borrow 2–3 bits from the 10-bit sequence
-field → 64–128 pair-slots at 128–256 IDs/µs/lane ≈ still >100M/s/lane),
-opt-in for new deployments — documented here, NOT built now.
+(32 slots once the rel pairing is dropped — §2) therefore does not pinch in
+practice; if it ever does, the escape hatch is a LAYOUT-VERSIONED v2 (borrow
+2–3 bits from the 10-bit sequence field → 128–256 slots at 128–256 IDs/µs/lane
+≈ still >100M/s/lane), opt-in for new deployments — documented here, NOT
+built now.
 
 ## 3. Architecture
 
@@ -70,16 +85,27 @@ wiring for ingest sessions.
   (all shards are open local badgers — unlike tiered's one-at-a-time cold
   checkout). Rebuild-at-open parallelizes the same way. Reads get faster,
   not just writes.
-- **Relationships — rel-local adjacency (v1 decision)**: a rel row AND both
-  its adjacency index entries (out + in) live on the REL's shard (the
-  creating lane's slot). `OutgoingRels(node)` becomes a parallel fold over N
-  shards' out-indexes instead of one point lookup. Why: it keeps every rel
-  write a SINGLE-SHARD single-WriteBatch atomic operation — no cross-shard
-  split-write ordering, no torn-edge crash states, no generalization of
-  tiered's section-12 protocol. Cost: adjacency point-reads amplify ×N small
-  map probes (N ≤ 16, parallelizable); accepted for v1 and revisitable via
-  the catalog (a "home-shard adjacency mirror" could be added later without
-  a format change).
+- **Relationships — minted in the START node's slot, stored whole on that
+  shard (v1 decision)**: a rel's ID is minted from its start node's slot
+  generator, and the rel row PLUS BOTH adjacency index entries (out + in)
+  live on that one shard. What this buys: (1) routing stays a pure function
+  of the ID for BOTH entity kinds — `GetRelationship(relID)` decomposes and
+  routes O(1); (2) `OutgoingRels(node)` remains a POINT LOOKUP on the node's
+  own shard (the hot traversal direction — query engines depend on it); (3)
+  every rel write is a SINGLE-SHARD single-WriteBatch atomic operation — no
+  cross-shard split-write ordering, no torn-edge crash states, no
+  generalization of tiered's section-12 protocol; (4) in the dominant ingest
+  pattern (a session creates an event node and immediately its edges FROM
+  that event) start = a just-minted lane-local node, so the whole group —
+  nodes and rels — still lands on ONE shard as batched door calls. Cost:
+  `IncomingRels(node)` becomes a parallel fold over ≤N shards' in-indexes
+  (N ≤ 32, small parallel map probes; hub fan-in reads amplified but
+  bounded); a rel whose start lives on ANOTHER lane's slot mints on that
+  slot's generator (a mutex hop — rare outside cross-partition edges) and its
+  door call targets that shard. HORIZONTAL NOTE: at the cross-machine stage,
+  "mint in the start's slot" implies the machine OWNING the start slot mints
+  the rel — edge ownership follows the start node; recorded here as the
+  stage-3 routing rule, not built now.
 - **Change-log**: per-shard co-committed logs + ONE store-global LSN
   allocator injected via the EXISTING `badger.Config.ChangeLogSeqSource`,
   flush-barrier + W-bounded k-way merge feed, anchor-shard watermark reseed —
