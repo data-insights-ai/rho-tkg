@@ -1210,6 +1210,11 @@ func (rb *importRollback) restoreRegistries() error {
 	if err := relTypes.ImportNames(rb.relTypes); err != nil {
 		return err
 	}
+	// Swap + persist under registryMu in addition to the exclusive c.mu the
+	// import path holds — synchronizes with registryMu-only readers (Close's
+	// persist, declare-on-prepare); see GraphTx.restoreRegistries.
+	rb.c.registryMu.Lock()
+	defer rb.c.registryMu.Unlock()
 	rb.c.labels = labels
 	rb.c.relTypes = relTypes
 	rb.c.clearRelTypeCache()

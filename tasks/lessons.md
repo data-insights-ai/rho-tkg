@@ -2022,3 +2022,27 @@ are all out of scope for the ADR-0005 §3.1 brief and are left as they are.
 A future session tightening those concurrent tests' NDV bounds should feed
 scattered values too, or the tightened bound will flake red for a reason that
 has nothing to do with the thing under test.
+
+## 66. A Pointer Swap Guarded By One Lock Class Races Every Reader Outside That Class — And "Targeted Race Tests" Before A Release Miss What The Full-Suite Storm Catches
+
+`GraphTx.restoreRegistries` swaps the registry POINTERS (`c.labels`/`c.relTypes`)
+under `c.mu.Lock` — which excludes every reader under `c.mu.RLock` (all normal
+doors) but NOT the two readers that run outside `c.mu`: `Close`'s final
+`persistRegistries` (after Close has already released `c.mu`) and the ingest
+sessions' declare-on-prepare path (`registryMu` only). The v4.15.1 release CI
+caught `Close`-vs-`Rollback` as a data race via `TestLifecycleStormCloseMidFlight`
+under `-race` on a slow runner; the fast dev machine never reproduced it in 36
+runs.
+
+Fix pattern: a shared POINTER may only be swapped while holding EVERY lock class
+its readers use — the registry swap sites (tx rollback, import rollback,
+import-merge rollback) now hold `registryMu` in addition to `c.mu.Lock`, and
+`Close`'s persist takes `registryMu`. Rules:
+
+1. When adding a reader of shared state on a new lock class (or no lock), grep
+   every WRITER of that state and prove each holds your class too. `grep -rn
+   'c\.labels = \|c\.relTypes = ' pkg/` is the swap-site audit for registries.
+2. The pre-release race gate is the FULL `make test-race`, never a targeted
+   `-run` subset — the storm/lifecycle tests only run in the full suite, and CI's
+   slower runners hit windows a fast dev box never opens. A release commit whose
+   full race suite did not run locally is a release gambling on CI.

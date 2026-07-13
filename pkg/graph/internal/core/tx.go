@@ -931,6 +931,14 @@ func (tx *GraphTx) restoreRegistries() error {
 	if err := relTypes.ImportNames(tx.relTypeSnapshot); err != nil {
 		return err
 	}
+	// The pointer swap + persist must hold registryMu IN ADDITION to the
+	// c.mu.Lock Rollback already holds: readers under c.mu.RLock are excluded
+	// by c.mu, but Close's final persistRegistries and the ingest sessions'
+	// declare-on-prepare path read the registry pointers under registryMu
+	// WITHOUT c.mu — the swap must synchronize with both classes (the
+	// Close-vs-Rollback race was caught by the lifecycle storm under -race).
+	tx.g.registryMu.Lock()
+	defer tx.g.registryMu.Unlock()
 	tx.g.labels = labels
 	tx.g.relTypes = relTypes
 	tx.g.clearRelTypeCache()

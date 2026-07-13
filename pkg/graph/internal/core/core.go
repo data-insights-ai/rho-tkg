@@ -1521,7 +1521,13 @@ func (c *Core) Close() error {
 			closeErr = errors.Join(closeErr, closeIndexProvider(e))
 		}
 
+		// persistRegistries reads the registry POINTERS, which a concurrent
+		// tx Rollback / import rollback may still be swapping (they hold
+		// c.mu.Lock, which Close released above) — take registryMu, the
+		// second guard every swap site now holds.
+		c.registryMu.Lock()
 		closeErr = errors.Join(closeErr, c.persistRegistries())
+		c.registryMu.Unlock()
 		closeErr = errors.Join(closeErr, c.store.Close())
 	})
 	return closeErr

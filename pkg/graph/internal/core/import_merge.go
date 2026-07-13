@@ -664,6 +664,11 @@ func (mrb *mergeRollback) restoreRegistries() error {
 	if err := relTypes.ImportNames(mrb.relTypes); err != nil {
 		return err
 	}
+	// Swap + persist under registryMu in addition to the exclusive c.mu the
+	// import path holds — synchronizes with registryMu-only readers (Close's
+	// persist, declare-on-prepare); see GraphTx.restoreRegistries.
+	mrb.c.registryMu.Lock()
+	defer mrb.c.registryMu.Unlock()
 	mrb.c.labels = labels
 	mrb.c.relTypes = relTypes
 	mrb.c.clearRelTypeCache()
