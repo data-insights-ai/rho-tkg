@@ -203,6 +203,28 @@ func NodePutPayload(n *types.Node, withHistory bool) ([]byte, error) {
 	return MarshalChangeBody(NodePutBody{Wire: w, WithHistory: withHistory})
 }
 
+// PreEncodeNodePutPayloadV2 pre-encodes a CREATE's ChangeNodePut payload on
+// the producer thread with a ZERO transaction-time tail (ADR-0006 §4.5,
+// applied to the change-log body). For a create, WithHistory is false and
+// omitempty — the body is a one-entry map {"w": wire}, so the nested v2 wire
+// is the LAST content and its fixed-width temporal tail sits at the very END
+// of the payload bytes: the applier patches the stamped TxFrom in place via
+// PatchWireTemporalTail(payload, ...) exactly as it does the entity row, and
+// the crown property Patch(PreEncodePayload(E, 0), T) == NodePutPayload(E@T)
+// holds byte-for-byte (the outer map framing cannot shift — the slot is
+// fixed-width). CREATE-ONLY: never use for a WithHistory body (the "wh" field
+// would follow the wire and the tail would no longer be terminal).
+func PreEncodeNodePutPayloadV2(n *types.Node) ([]byte, error) {
+	w, err := NodeToWireChecked(n)
+	if err != nil {
+		return nil, err
+	}
+	w.FormatVersion = CurrentWireFormatVersion
+	w.TxFrom = 0
+	w.TxTo = 0
+	return MarshalChangeBody(NodePutBody{Wire: w})
+}
+
 // RelPutPayload is the relationship counterpart of NodePutPayload.
 func RelPutPayload(r *types.Relationship, withHistory bool) ([]byte, error) {
 	w, err := RelToWireChecked(r)

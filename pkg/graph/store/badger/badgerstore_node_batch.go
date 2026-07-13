@@ -420,7 +420,7 @@ func relationshipIndexKeyMatchesRelID(key []byte, relID snowflake.ID) bool {
 // Phase 2: serialize, cache, index, and queue each for async flush.
 // Any duplicate → error, zero mutations. Nil/empty input → nil error.
 func (bs *Store) PutNodesBatch(nodes []*types.Node) error {
-	return bs.putNodesBatchInternal(nodes, nil)
+	return bs.putNodesBatchInternal(nodes, nil, nil)
 }
 
 // PutNodesBatchPreEncoded persists nodes whose v2 entity-row wire has already
@@ -431,7 +431,17 @@ func (bs *Store) PutNodesBatch(nodes []*types.Node) error {
 // whether or not a row arrived pre-encoded (proven by the ingest divergence
 // battery). The change-log put body is UNCHANGED (untokenized encode-at-flush).
 func (bs *Store) PutNodesBatchPreEncoded(nodes []*types.Node, wireBodies [][]byte) error {
-	return bs.putNodesBatchInternal(nodes, wireBodies)
+	return bs.putNodesBatchInternal(nodes, wireBodies, nil)
+}
+
+// PutNodesBatchPreEncodedLog satisfies store.PreEncodedPutLogCapability:
+// like PutNodesBatchPreEncoded, but logBodies[i] (when non-nil) is used
+// VERBATIM as node i's ChangeNodePut record body — the producer thread
+// already encoded and the applier already tail-patched it — so the door
+// skips that node's payload encode entirely. Nil elements build at the door
+// (byte-identical by the crown equivalence).
+func (bs *Store) PutNodesBatchPreEncodedLog(nodes []*types.Node, wireBodies, logBodies [][]byte) error {
+	return bs.putNodesBatchInternal(nodes, wireBodies, logBodies)
 }
 
 // putNodesBatchInternal is the shared body of PutNodesBatch (wireBodies nil) and
@@ -440,7 +450,7 @@ func (bs *Store) PutNodesBatchPreEncoded(nodes []*types.Node, wireBodies [][]byt
 // here (encode-at-flush). Everything else — validation, duplicate check, cache,
 // index maintenance, counters, and the UNTOKENIZED change-log put body — is
 // identical on both paths.
-func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies [][]byte) error {
+func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodies [][]byte) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
 	}
@@ -453,13 +463,24 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies [][]byte)
 
 	// Pre-serialize all nodes outside the lock. A pre-encoded buffer (from the
 	// ingest applier — already tail-patched with the stamped TxFrom) is used
-	// verbatim; a nil element falls back to a fresh encode here.
+	// verbatim; a nil element falls back to a fresh encode here. The frozen
+	// cache copy (a full deep copy) and the change-log put payload (a second
+	// msgpack encode) are ALSO built here — both are pure functions of the
+	// caller-owned finalized node, and keeping them inside idxMu was the
+	// dominant contention cost of concurrent batch creates (mutex profile:
+	// ~95% of lock wait in this door). Only the ORDER-sensitive appends (cache
+	// put, index maps, ops, record buffering) stay under the lock.
 	type nodeData struct {
-		nid  types.NodeID
-		id   snowflake.ID
-		data []byte
+		nid    types.NodeID
+		id     snowflake.ID
+		data   []byte
+		frozen *types.Node
 	}
 	serialized := make([]nodeData, len(nodes))
+	var putPayloads [][]byte
+	if bs.logEnabled {
+		putPayloads = make([][]byte, len(nodes))
+	}
 	for i, n := range nodes {
 		if err := storecontract.ValidateNodeWrite(n); err != nil {
 			return err
@@ -475,7 +496,18 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies [][]byte)
 			data = d
 		}
 		nid := n.InternalID()
-		serialized[i] = nodeData{nid: nid, id: nid.SnowflakeID(), data: data}
+		serialized[i] = nodeData{nid: nid, id: nid.SnowflakeID(), data: data, frozen: freezeNodeCopy(n)}
+		if bs.logEnabled {
+			if i < len(logBodies) && logBodies[i] != nil {
+				putPayloads[i] = logBodies[i] // producer-encoded, applier-patched
+			} else {
+				p, err := storepkg.NodePutPayload(n, false)
+				if err != nil {
+					return fmt.Errorf("graph: encode change-log: %w", err)
+				}
+				putPayloads[i] = p
+			}
+		}
 	}
 
 	bs.idxMu.Lock()
@@ -508,7 +540,7 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies [][]byte)
 	for i, n := range nodes {
 		nd := serialized[i]
 
-		bs.nodeCache.Put(nd.id, freezeNodeCopy(n))
+		bs.nodeCache.Put(nd.id, nd.frozen)
 		bs.nodeIDs[nd.nid] = struct{}{}
 		bs.nodeHashes[nd.nid] = badgerNodeIntegrityHash(n)
 		bs.bumpNodeRevLocked(nd.nid)
@@ -538,21 +570,6 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies [][]byte)
 		}
 	}
 
-	// Pre-build the per-node change-log payloads BEFORE enqueuing ops, so an
-	// (in practice impossible) encode error aborts the batch with zero side
-	// effects rather than leaving ops enqueued with a partial feed.
-	var putPayloads [][]byte
-	if bs.logEnabled {
-		putPayloads = make([][]byte, len(nodes))
-		for i := range nodes {
-			p, err := storepkg.NodePutPayload(nodes[i], false)
-			if err != nil {
-				bs.idxMu.Unlock()
-				return fmt.Errorf("graph: encode change-log: %w", err)
-			}
-			putPayloads[i] = p
-		}
-	}
 	bs.appendOps(ops...)
 	bs.nodeCount.Add(int64(len(nodes)))
 	// One ChangeNodePut per node (create => WithHistory false), under the same

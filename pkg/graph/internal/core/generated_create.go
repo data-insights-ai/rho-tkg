@@ -2,6 +2,7 @@ package core
 
 import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -32,8 +33,15 @@ func (c *Core) putGeneratedNodesBatch(nodes []*types.Node) error {
 // element). Otherwise it falls back to putGeneratedNodesBatch (encode-at-flush).
 // wireBodies[i] == nil re-encodes node i even on the fast path, so a partially
 // invalidated group (some probe-restamped rows) still commits correctly.
-func (c *Core) putGeneratedNodesBatchPreEncoded(nodes []*types.Node, wireBodies [][]byte) error {
+func (c *Core) putGeneratedNodesBatchPreEncoded(nodes []*types.Node, wireBodies, logBodies [][]byte) error {
 	if c.preEncodedPut != nil && anyNonNil(wireBodies) {
+		// Prefer the log-aware door when the store offers it and any producer
+		// pre-encoded a ChangeNodePut payload — the store then skips the
+		// second msgpack pass for those records too. Per-element nil falls
+		// back to encode-at-door exactly like wireBodies.
+		if lcap, ok := c.preEncodedPut.(storepkg.PreEncodedPutLogCapability); ok && anyNonNil(logBodies) {
+			return lcap.PutNodesBatchPreEncodedLog(nodes, wireBodies, logBodies)
+		}
 		return c.preEncodedPut.PutNodesBatchPreEncoded(nodes, wireBodies)
 	}
 	return c.putGeneratedNodesBatch(nodes)

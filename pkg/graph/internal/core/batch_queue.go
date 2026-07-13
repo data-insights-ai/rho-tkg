@@ -167,6 +167,16 @@ func (b *BatchBuilder) preEncodeNodeBody(pn *pendingNode) error {
 		return err
 	}
 	pn.wireBody = body
+	// When the change-log records mutations, also pre-encode the CREATE's
+	// ChangeNodePut payload here — the second msgpack pass that otherwise runs
+	// on the apply side. Same crown property, same patch, same validity gate.
+	if b.g.changeLogEnabled {
+		lb, err := storeutil.PreEncodeNodePutPayloadV2(pn.node)
+		if err != nil {
+			return err
+		}
+		pn.logBody = lb
+	}
 	return nil
 }
 

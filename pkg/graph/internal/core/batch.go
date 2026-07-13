@@ -96,6 +96,14 @@ type pendingNode struct {
 	// A wrong buffer is the ADR §8 Risk-2 silent-wrong-answer class, so the
 	// applier re-encodes whenever it cannot prove the buffer byte-identical.
 	wireBody []byte
+	// logBody is the §4.5 pre-encode of the CREATE's ChangeNodePut payload
+	// (untokenized wire, zero temporal tail — see
+	// storeutil.PreEncodeNodePutPayloadV2), built on the producer thread when
+	// the change-log is enabled. The tail is TERMINAL in the payload bytes for
+	// a create, so the applier patches it exactly like wireBody. nil off the
+	// ingest path / when the log is off; invalidated together with wireBody
+	// (same token-equality gate — both stale or both valid).
+	logBody []byte
 }
 
 type pendingRel struct {

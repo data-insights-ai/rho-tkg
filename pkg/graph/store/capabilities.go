@@ -162,6 +162,22 @@ type PreEncodedPutCapability interface {
 	PutNodesBatchPreEncoded(nodes []*types.Node, wireBodies [][]byte) error
 }
 
+// PreEncodedPutLogCapability is OPTIONAL — the change-log extension of
+// PreEncodedPutCapability (kept separate so existing implementers stay
+// source-compatible). logBodies[i], when non-nil, is the producer-thread
+// pre-encoded ChangeNodePut PAYLOAD for nodes[i] (untokenized wire, v2
+// temporal tail patched by the applier — the tail is TERMINAL in a create's
+// payload, see the storeutil pre-encode) and MUST be used verbatim as the
+// record body, skipping the second msgpack pass. A nil element means "build
+// the payload at the door" (the conservative fallback), which by the crown
+// equivalence produces byte-identical record bytes — cross-backend feed
+// parity is unaffected either way. Only meaningful when the store's
+// change-log is recording; with the log off, implementations behave exactly
+// like PutNodesBatchPreEncoded.
+type PreEncodedPutLogCapability interface {
+	PutNodesBatchPreEncodedLog(nodes []*types.Node, wireBodies, logBodies [][]byte) error
+}
+
 // HistoryCapability is the version-history surface. Every backend must
 // implement it because the graph layer applies pre-mutation snapshots on
 // every Update*. The atomic ReplaceWith*History and Delete*WithHistory

@@ -218,9 +218,9 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			// doubt (tokens changed, patch fails, or capability absent) leave
 			// wireBodies[i] nil so the store re-encodes — the correct fallback, proven
 			// byte-identical by the ingest divergence battery (Risk-2).
-			wireBodies := b.buildPreEncodedWireBodies(labelTokens)
+			wireBodies, logBodies := b.buildPreEncodedWireBodies(labelTokens)
 			nodesWriteAttempted = true
-			err = b.g.putGeneratedNodesBatchPreEncoded(nodes, wireBodies)
+			err = b.g.putGeneratedNodesBatchPreEncoded(nodes, wireBodies, logBodies)
 			nodesCommitted = err == nil
 			if err == nil {
 				err = finishLabels(nil)
@@ -669,8 +669,7 @@ func restoreQueuedPendingNodeLabels(nodes []pendingNode) {
 // wireBodies[i] stays nil and the store re-encodes that row.
 //
 // labelTokens[i] carries the real tokens the applier stamped for b.nodes[i].
-func (b *BatchBuilder) buildPreEncodedWireBodies(labelTokens []nodeLabelTokens) [][]byte {
-	var wireBodies [][]byte
+func (b *BatchBuilder) buildPreEncodedWireBodies(labelTokens []nodeLabelTokens) (wireBodies, logBodies [][]byte) {
 	for i := range b.nodes {
 		pn := b.nodes[i]
 		if pn.wireBody == nil {
@@ -680,14 +679,26 @@ func (b *BatchBuilder) buildPreEncodedWireBodies(labelTokens []nodeLabelTokens) 
 			wireBodies = make([][]byte, len(b.nodes))
 		}
 		if i >= len(labelTokens) || !pendingNodeLabelsUnchanged(pn, labelTokens[i]) {
-			continue // probe token re-stamped → buffer stale, re-encode
+			continue // probe token re-stamped → BOTH buffers stale, re-encode
 		}
 		if err := storeutil.PatchWireTemporalTail(pn.wireBody, int64(pn.temporal.TxFrom), int64(pn.temporal.TxTo)); err != nil {
 			continue // malformed buffer → re-encode (never persist a wrong row)
 		}
 		wireBodies[i] = pn.wireBody
+		// The pre-encoded ChangeNodePut payload shares the validity gate and
+		// the patch (its v2 tail is TERMINAL for a create — see
+		// storeutil.PreEncodeNodePutPayloadV2). A patch failure just leaves
+		// logBodies[i] nil and the store builds the payload as before.
+		if pn.logBody != nil {
+			if err := storeutil.PatchWireTemporalTail(pn.logBody, int64(pn.temporal.TxFrom), int64(pn.temporal.TxTo)); err == nil {
+				if logBodies == nil {
+					logBodies = make([][]byte, len(b.nodes))
+				}
+				logBodies[i] = pn.logBody
+			}
+		}
 	}
-	return wireBodies
+	return wireBodies, logBodies
 }
 
 // pendingNodeLabelsUnchanged reports whether the applier-stamped real tokens

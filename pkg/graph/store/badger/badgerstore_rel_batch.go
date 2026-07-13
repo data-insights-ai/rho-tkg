@@ -33,8 +33,16 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		endID    snowflake.ID
 		relType  uint16
 		data     []byte
+		frozen   *types.Relationship
 	}
 	serialized := make([]relData, len(rels))
+	// The frozen cache copy and the change-log payload are pure functions of
+	// the caller-owned finalized rel — built OUTSIDE idxMu (see PutNodesBatch:
+	// keeping them under the lock was the dominant concurrent-write cost).
+	var putPayloads [][]byte
+	if bs.logEnabled {
+		putPayloads = make([][]byte, len(rels))
+	}
 	for i, r := range rels {
 		if err := storecontract.ValidateRelationshipWrite(r); err != nil {
 			return err
@@ -42,6 +50,13 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		data, err := bs.marshalRelBytes(r)
 		if err != nil {
 			return fmt.Errorf("graph: marshal relationship: %w", err)
+		}
+		if bs.logEnabled {
+			p, err := storepkg.RelPutPayload(r, false)
+			if err != nil {
+				return fmt.Errorf("graph: encode change-log: %w", err)
+			}
+			putPayloads[i] = p
 		}
 		rid := r.InternalID()
 		startNID := r.StartNodeID()
@@ -55,6 +70,7 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 			endID:    endNID.SnowflakeID(),
 			relType:  r.TypeToken().Value(),
 			data:     data,
+			frozen:   freezeRelCopy(r),
 		}
 	}
 	endpointIDs := make([]types.NodeID, 0, len(serialized)*2)
@@ -94,7 +110,7 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 	for i, r := range rels {
 		rd := serialized[i]
 
-		bs.relCache.Put(rd.id, freezeRelCopy(r))
+		bs.relCache.Put(rd.id, rd.frozen)
 		bs.relIDs[rd.rid] = struct{}{}
 
 		if bs.typeIdx[rd.relType] == nil {
@@ -124,20 +140,6 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		bs.getOrCreateTypeCounter(rd.relType).Add(1)
 	}
 
-	// Pre-build the per-rel change-log payloads BEFORE enqueuing ops (see
-	// PutNodesBatch) so an encode error aborts with zero side effects.
-	var putPayloads [][]byte
-	if bs.logEnabled {
-		putPayloads = make([][]byte, len(rels))
-		for i := range rels {
-			p, err := storepkg.RelPutPayload(rels[i], false)
-			if err != nil {
-				bs.idxMu.Unlock()
-				return fmt.Errorf("graph: encode change-log: %w", err)
-			}
-			putPayloads[i] = p
-		}
-	}
 	bs.appendOps(ops...)
 	bs.relCount.Add(int64(len(rels)))
 	// One ChangeRelPut per relationship (create => WithHistory false).

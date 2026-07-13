@@ -139,9 +139,10 @@ func (c *Core) applyConcurrentNodeCreates(
 	txNow := c.now()
 	batchable := !c.hasUniqueConstraints.Load()
 	var (
-		batch  []*types.Node
-		bodies [][]byte
-		queued []*pendingNode // batch[i] came from queued[i]
+		batch     []*types.Node
+		bodies    [][]byte
+		logBodies [][]byte
+		queued    []*pendingNode // batch[i] came from queued[i]
 	)
 	for i := range pns {
 		pn := &pns[i]
@@ -156,19 +157,26 @@ func (c *Core) applyConcurrentNodeCreates(
 		pn.temporal.TxFrom = ts
 		pn.node.SetTemporal(pn.temporal)
 
-		// §4.5 pre-encoded buffer: tokens are real at prepare in concurrent mode,
-		// so the buffer stays valid — patch its tail with the stamped TxFrom. A
-		// patch failure just falls back to encode-at-flush (byte-identical).
-		var body []byte
+		// §4.5 pre-encoded buffers: tokens are real at prepare in concurrent
+		// mode, so both buffers stay valid — patch their tails with the stamped
+		// TxFrom (the ChangeNodePut payload's tail is terminal for a create). A
+		// patch failure just falls back to encode-at-door (byte-identical).
+		var body, logBody []byte
 		if pn.wireBody != nil {
 			if err := storeutil.PatchWireTemporalTail(pn.wireBody, int64(pn.temporal.TxFrom), int64(pn.temporal.TxTo)); err == nil {
 				body = pn.wireBody
+			}
+		}
+		if pn.logBody != nil {
+			if err := storeutil.PatchWireTemporalTail(pn.logBody, int64(pn.temporal.TxFrom), int64(pn.temporal.TxTo)); err == nil {
+				logBody = pn.logBody
 			}
 		}
 
 		if batchable {
 			batch = append(batch, pn.node)
 			bodies = append(bodies, body)
+			logBodies = append(logBodies, logBody)
 			queued = append(queued, pn)
 			continue
 		}
@@ -195,7 +203,7 @@ func (c *Core) applyConcurrentNodeCreates(
 		// One batched store door for the whole group — in-tree PutNodesBatch
 		// implementations are all-or-nothing, so a door error fails every intent
 		// in it (rolling their stamps back); success commits them all.
-		if err := c.putGeneratedNodesBatchPreEncoded(batch, bodies); err != nil {
+		if err := c.putGeneratedNodesBatchPreEncoded(batch, bodies, logBodies); err != nil {
 			for _, pn := range queued {
 				markFailed(pn, err)
 			}

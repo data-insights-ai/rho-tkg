@@ -243,6 +243,41 @@ func BenchmarkIngestPipelineChangeLog(b *testing.B) {
 	}
 }
 
+// BenchmarkIngestConcurrentChangeLog measures the CONCURRENT (§14) mode with
+// the change-log on vs off at 8 sessions — after the producer-side payload
+// pre-encode, the log's per-insert cost should be a fraction of the strong
+// pipeline's (whose applier still pays the record buffering serially).
+func BenchmarkIngestConcurrentChangeLog(b *testing.B) {
+	for _, bc := range backendCases {
+		for _, cl := range []bool{false, true} {
+			name := bc.name
+			if cl {
+				name += "/log-on"
+			} else {
+				name += "/log-off"
+			}
+			b.Run(name, func(b *testing.B) {
+				b.ReportAllocs()
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					func() {
+						b.StopTimer()
+						g := newPipelineGraph(b, bc, cl)
+						defer func() {
+							b.StopTimer()
+							if err := g.Close(); err != nil {
+								b.Logf("%s: graph.Close: %v", bc.name, err)
+							}
+						}()
+						b.StartTimer()
+						runConcurrentOnce(b, g, 8)
+					}()
+				}
+			})
+		}
+	}
+}
+
 // durableCount is the per-iteration node count for the DURABLE (real badger dir
 // + SyncWrites) comparison. Smaller than the in-memory count because a
 // per-mutation fsync (the standalone baseline) is ms-scale.

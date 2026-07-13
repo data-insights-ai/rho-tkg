@@ -18,7 +18,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 Module: `github.com/data-insights-ai/rho-tkg/v4`
 Go: 1.26.1 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v4.15.0 — consumer round 3 (query-planner doors): composite-index introspection (`Index().HasComposite`/`ListComposites` — order-insensitive key-set existence matching the `NodesByLabelAndProperties` routing rule) and exact O(1) per-(label, key) type-class cardinalities (`Stats().PropertyTypeClassCounts` — `{Numeric, NaN, String, Bool, Other, Missing}`, maintained in the store's presence-counter choke point, rebuilt at open, folded across tiered shards; the ordering-soundness gate for value-ordered top-k). See `CHANGELOG.md` `[4.15.0]`.
+Status: v4.15.1 — ingest write-path performance round (profile-driven): frozen-copy + change-log payload encode evicted from the badger batch doors' idxMu critical section; producer-side ChangeNodePut payload pre-encode (terminal v2 tail, patched at apply, verbatim at the door via `store.PreEncodedPutLogCapability`) — concurrent-mode change-log penalty ~2.2–2.6x → ~1.12x (~983k inserts/s log-on at 8 sessions, badger-in-memory). See `CHANGELOG.md` `[4.15.1]`.
 
 ## Build & Test Commands
 
