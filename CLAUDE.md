@@ -56,7 +56,7 @@ Execute these three phases in order when reviewing a merge request.
 Module: `github.com/data-insights-ai/rho-tkg/v4`
 Go: 1.26.1 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v4.15.1 — ingest write-path performance round (profile-driven): frozen-copy + change-log payload encode evicted from the badger batch doors' idxMu critical section; producer-side ChangeNodePut payload pre-encode (terminal v2 tail, patched at apply, verbatim at the door via `store.PreEncodedPutLogCapability`) — concurrent-mode change-log penalty ~2.2–2.6x → ~1.12x (~983k inserts/s log-on at 8 sessions, badger-in-memory). See `CHANGELOG.md` `[4.15.1]`.
+Status: v4.15.2 — hotfix: registry pointer swaps (tx/import rollback) now hold registryMu in addition to c.mu, closing the Close-vs-Rollback data race the v4.15.1 release CI caught (lesson 66); v4.15.1's ingest write-path performance round (idxMu eviction + producer-side change-log payload pre-encode, change-log penalty ~2.2–2.6x → ~1.12x) is unchanged. See `CHANGELOG.md` `[4.15.2]`.
 
 See `CHANGELOG.md` `[4.0.0]` for the v3.4.0 → v4.0.0 migration recipe; `[4.1.0]` for the tx-isolation change (Path B); `[4.2.0]` for the field→method conversion; `[4.2.1]`/`[4.2.2]` for the consumer-ergonomics alias additions.
 

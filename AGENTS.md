@@ -18,7 +18,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 Module: `github.com/data-insights-ai/rho-tkg/v4`
 Go: 1.26.1 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v4.15.1 — ingest write-path performance round (profile-driven): frozen-copy + change-log payload encode evicted from the badger batch doors' idxMu critical section; producer-side ChangeNodePut payload pre-encode (terminal v2 tail, patched at apply, verbatim at the door via `store.PreEncodedPutLogCapability`) — concurrent-mode change-log penalty ~2.2–2.6x → ~1.12x (~983k inserts/s log-on at 8 sessions, badger-in-memory). See `CHANGELOG.md` `[4.15.1]`.
+Status: v4.15.2 — hotfix: registry pointer swaps (tx/import rollback) now hold registryMu in addition to c.mu, closing the Close-vs-Rollback data race the v4.15.1 release CI caught (lesson 66); v4.15.1's ingest write-path performance round (idxMu eviction + producer-side change-log payload pre-encode, change-log penalty ~2.2–2.6x → ~1.12x) is unchanged. See `CHANGELOG.md` `[4.15.2]`.
 
 ## Build & Test Commands
 

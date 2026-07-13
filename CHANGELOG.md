@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.15.2] - 2026-07-13
+
+- Fix a data race between `Graph.Close` and a concurrent transaction/import rollback: the registry POINTER swap sites (`GraphTx.restoreRegistries`, import rollback, import-merge rollback) held only the exclusive `c.mu`, which excludes normal doors (`c.mu.RLock`) but NOT the two readers that run outside `c.mu` — `Close`'s final `persistRegistries` (after `Close` has released `c.mu`) and the ingest declare-on-prepare path (`registryMu` only). Caught by `TestLifecycleStormCloseMidFlight` under the full-suite race detector on the v4.15.1 release CI (a slow runner hits the window a fast dev machine never opened in 36 attempts). Every swap site now ALSO holds `registryMu`, and `Close`'s persist takes `registryMu` — one guard class covers all readers outside `c.mu`; lock order `c.mu → registryMu` unchanged, no callee re-entry (audited). NOTE: the `v4.15.1` tag's CI was red with this race; use `v4.15.2`. See `tasks`-internal lesson 66 (full-suite `make test-race` is the pre-release gate, never a targeted subset).
+
 ## [4.15.1] - 2026-07-13
 
 - Ingest write-path performance round (profile-driven): the mutex profile at 8 concurrent sessions showed ~94% of all lock wait inside the badger batch-put door's `idxMu` critical section, dominated by two per-node heavyweights that never needed the lock. BOTH MOVED OUT: (1) `freezeNodeCopy`/`freezeRelCopy` (the full defensive deep copy for the entity cache) and (2) the change-log `ChangeNodePut`/`ChangeRelPut` payload encode (an entire second msgpack pass) now run in the pre-serialize phase OUTSIDE `idxMu` in both batch doors — only the order-sensitive appends (cache put, index maps, ops, record buffering) stay under the lock. Semantics unchanged (both are pure functions of the caller-owned finalized entity; record/op ordering still snapshots under one lock window).
