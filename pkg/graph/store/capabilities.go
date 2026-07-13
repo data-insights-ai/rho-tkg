@@ -446,6 +446,61 @@ type CompositePropertyIndexCapability interface {
 	NodesByLabelAndProperties(labelToken uint16, values map[string]any, opts QueryOpts) ([]*types.Node, error)
 }
 
+// CompositeIndexIntrospectionCapability is OPTIONAL — the query-planner
+// existence door for composite definitions. A planner must KNOW whether a
+// matching composite definition exists before routing a multi-property
+// equality match through NodesByLabelAndProperties: without one, that door
+// falls back to a label scan + post-filter, which can be strictly worse than
+// the single-key property-index plan the planner would otherwise choose.
+// Kept separate from CompositePropertyIndexCapability so existing out-of-tree
+// implementations of that interface stay source-compatible.
+type CompositeIndexIntrospectionCapability interface {
+	// ListCompositePropertyIndexes returns the DECLARED, ORDER-PRESERVING
+	// key tuple of every composite index registered under labelToken (one
+	// entry per definition; distinct orderings of the same key set are
+	// distinct definitions). Unregistered labels return an empty slice, not
+	// an error. The returned slices are caller-owned copies. O(definitions
+	// on the label) — cheap enough to call per query; there is NO index-DDL
+	// epoch/invalidation signal, so cache-averse callers should simply call
+	// it each time.
+	ListCompositePropertyIndexes(labelToken uint16) ([][]string, error)
+}
+
+// PropertyTypeClassCounts is the EXACT per-(label, property key) partition of
+// a label's current nodes by the type class of the key's value
+// (types.PropertyTypeClass — see its doc for the classification rule).
+// Maintained counters, O(1) to read, exact by construction: they are adjusted
+// on the SAME node-mutation doors (same call, same loop) as the
+// NodeCountByLabelAndPropertyKey presence counter, so the two can never
+// drift. Every field counts NODES (a node contributes to exactly one class
+// per key it carries).
+//
+// Missing (nodes carrying the label WITHOUT the key) is computed by the
+// graph layer as NodeCountByLabel − (Numeric+NaN+String+Bool+Other); store
+// implementations always return it as 0.
+type PropertyTypeClassCounts struct {
+	Numeric int64 // finite ints/uints/floats and ±Inf (orderable numbers)
+	NaN     int64 // float NaN values (numeric kind, unorderable)
+	String  int64
+	Bool    int64
+	Other   int64 // slices (incl. []float32/[]byte), maps, registered structs
+	Missing int64 // graph-layer computed; always 0 at the store boundary
+}
+
+// Present returns the number of nodes carrying the key at all (any class).
+func (c PropertyTypeClassCounts) Present() int64 {
+	return c.Numeric + c.NaN + c.String + c.Bool + c.Other
+}
+
+// NodePropertyTypeClassCountsCapability is OPTIONAL — the exact O(1)
+// type-class cardinality door for query planners (ordering-soundness gates
+// like "the gap between label count and numeric count is nulls only" need
+// EXACT counts; the HLL-based NDV statistics are not usable there). See
+// PropertyTypeClassCounts for semantics.
+type NodePropertyTypeClassCountsCapability interface {
+	NodePropertyTypeClassCounts(labelToken uint16, propertyKey string) (PropertyTypeClassCounts, error)
+}
+
 // TemporalIndexCapability is OPTIONAL — see the note on
 // PropertyIndexCapability.
 type TemporalIndexCapability interface {

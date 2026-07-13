@@ -47,6 +47,20 @@ func (ms *Store) adjustNodePropertyKeyCounts(n *types.Node, delta int) {
 	if labelCount == 0 {
 		return
 	}
+	// Type-class counts cover EVERY property (non-indexable values classify as
+	// ClassOther), so they run their own full sweep here — same call as the
+	// indexable presence sweep below, so the three capabilities' lifecycles
+	// (presence, NDV stats, type classes) never drift apart.
+	n.ForEachPropertyTypeClass(func(propertyKey string, class types.PropertyTypeClass) bool {
+		for i := 0; i < labelCount; i++ {
+			tok := n.LabelTokenRawAt(i)
+			if tok == 0 {
+				continue
+			}
+			ms.adjustNodePropertyTypeClassOne(tok, propertyKey, class, int64(delta))
+		}
+		return true
+	})
 	n.ForEachIndexablePropertyValueKey(func(propertyKey, valueKey string) bool {
 		value, _ := n.GetProperty(propertyKey)
 		for i := 0; i < labelCount; i++ {

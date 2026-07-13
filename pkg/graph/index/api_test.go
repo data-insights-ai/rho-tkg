@@ -184,6 +184,16 @@ func (s *indexOpsSpy) DeleteComposite(label string, keys []string) error {
 	return s.err
 }
 
+func (s *indexOpsSpy) HasComposite(label string, keys []string) (bool, error) {
+	s.record("HasComposite")
+	return false, s.err
+}
+
+func (s *indexOpsSpy) ListComposites(label string) ([][]string, error) {
+	s.record("ListComposites")
+	return nil, s.err
+}
+
 func (s *indexOpsSpy) CreateHighFrequency(label string, bucketSize time.Duration) error {
 	s.record("CreateHighFrequency")
 	return s.err

@@ -332,6 +332,10 @@ func (s *statsOpsSpy) RangeCardinality(label, propKey string, min, max float64, 
 	return s.rangeCardCount, s.rangeCardExact, s.rangeCardErr
 }
 
+func (s *statsOpsSpy) PropertyTypeClassCounts(label, propertyKey string) (storepkg.PropertyTypeClassCounts, error) {
+	return storepkg.PropertyTypeClassCounts{}, s.propertyStatsErr
+}
+
 func (s *statsOpsSpy) PropertyStats(label, propertyKey string) (storepkg.PropertyStats, error) {
 	s.propertyStatsCalls++
 	s.propertyStatsLabel = label

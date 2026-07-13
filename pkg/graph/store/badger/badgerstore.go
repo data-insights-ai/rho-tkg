@@ -469,6 +469,13 @@ type Store struct {
 	// values because the planner uses this to prune scalar equality lookups.
 	propertyKeyCounts sync.Map // map[indexpkg.PropertyIndexKey]*atomic.Int64
 
+	// Per-(label, property key) EXACT type-class node counters — O(1) reads.
+	// Keys are indexpkg.PropertyIndexKey, values *typeClassCounters. Unlike
+	// propertyKeyCounts this covers EVERY property value (non-indexable ones
+	// classify as types.ClassOther); maintained on the SAME mutation call
+	// (adjustNodePropertyKeyCounts) and rebuilt by the same loadIndexes pass.
+	propertyTypeClassCounts sync.Map // map[indexpkg.PropertyIndexKey]*typeClassCounters
+
 	// Per-label property-key NDV + exact min/max accumulators, protected by
 	// idxMu (unlike propertyKeyCounts's lock-free sync.Map — the accumulator's
 	// HyperLogLog registers and min/max fields are not atomic-friendly, and
@@ -1748,6 +1755,10 @@ func (bs *Store) Clear() error {
 	})
 	bs.propertyKeyCounts.Range(func(k, _ any) bool {
 		bs.propertyKeyCounts.Delete(k)
+		return true
+	})
+	bs.propertyTypeClassCounts.Range(func(k, _ any) bool {
+		bs.propertyTypeClassCounts.Delete(k)
 		return true
 	})
 	bs.propertyStats = make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyStatsAccumulator)

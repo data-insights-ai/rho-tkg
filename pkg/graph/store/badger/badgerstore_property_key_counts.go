@@ -47,6 +47,10 @@ func (bs *Store) adjustNodePropertyKeyCounts(n *types.Node, delta int64) {
 	if labelCount == 0 {
 		return
 	}
+	// Type-class counters run their own FULL property sweep on the same call
+	// (non-indexable values classify as ClassOther), so the presence, NDV, and
+	// type-class capabilities' lifecycles never drift apart.
+	bs.adjustNodePropertyTypeClassCounts(n, delta)
 	n.ForEachIndexablePropertyValueKey(func(propertyKey, valueKey string) bool {
 		value, _ := n.GetProperty(propertyKey)
 		for i := 0; i < labelCount; i++ {

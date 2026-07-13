@@ -20,6 +20,8 @@ type Ops interface {
 	DeleteRelProperty(typeName, propertyKey string) error
 	CreateComposite(label string, keys []string) error
 	DeleteComposite(label string, keys []string) error
+	HasComposite(label string, keys []string) (bool, error)
+	ListComposites(label string) ([][]string, error)
 	CreateHighFrequency(label string, bucketSize time.Duration) error
 	DeleteHighFrequency(label string) error
 	CreateTemporal(label string) error
@@ -108,6 +110,38 @@ func (a *API) DeleteComposite(label string, keys []string) error {
 		return err
 	}
 	return ops.DeleteComposite(label, keys)
+}
+
+// HasComposite reports whether a composite index definition exists on label
+// whose declared key SET equals keys — ORDER-INSENSITIVE, duplicates in keys
+// ignored; exactly the match rule the NodesByLabelAndProperties query door
+// uses to decide index-vs-label-scan. A query planner calls this BEFORE
+// routing a multi-property equality match through ByLabelAndProperties, so a
+// missing definition keeps the single-key property-index plan instead of
+// silently regressing to a label scan + post-filter. Unregistered labels
+// return false. O(definitions on the label); there is NO index-DDL
+// epoch/invalidation signal, so call it per plan rather than caching across
+// DDL you do not control. Backends without composite-index introspection
+// (tiered, wrappers) return store.ErrCapabilityNotSupported.
+func (a *API) HasComposite(label string, keys []string) (bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return false, err
+	}
+	return ops.HasComposite(label, keys)
+}
+
+// ListComposites returns the DECLARED, ORDER-PRESERVING key tuple of every
+// composite index registered under label (one entry per definition; distinct
+// orderings of the same key set are distinct definitions and are both
+// listed). Unregistered labels return an empty slice. The returned slices
+// are caller-owned copies. See HasComposite for the caching guidance.
+func (a *API) ListComposites(label string) ([][]string, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.ListComposites(label)
 }
 
 // CreateHighFrequency creates a high-frequency temporal index.

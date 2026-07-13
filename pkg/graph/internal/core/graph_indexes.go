@@ -162,6 +162,88 @@ func (i *IndexOps) DeleteComposite(label string, keys []string) error {
 	})
 }
 
+// ListComposites returns the DECLARED, ORDER-PRESERVING key tuple of every
+// composite index registered under label (one entry per definition; distinct
+// orderings of the same key set are distinct definitions and are both
+// listed). Unregistered labels return an empty slice, not an error. The
+// returned slices are caller-owned copies. O(definitions on the label) —
+// cheap enough to call per query plan; there is NO index-DDL
+// epoch/invalidation signal, so callers should not cache the answer across
+// DDL they do not control. Backends without composite-index introspection
+// (tiered, wrappers) return storepkg.ErrCapabilityNotSupported.
+func (i *IndexOps) ListComposites(label string) ([][]string, error) {
+	c := i.c
+	var out [][]string
+	err := c.readUnderRLock(func() error {
+		if err := c.validateIndexLabel(label); err != nil {
+			return err
+		}
+		cap, ok := c.store.(storepkg.CompositeIndexIntrospectionCapability)
+		if !ok {
+			return fmt.Errorf("%w: CompositeIndexIntrospectionCapability", storepkg.ErrCapabilityNotSupported)
+		}
+		tok, found := c.labels.Lookup(label)
+		if !found {
+			out = [][]string{}
+			return nil
+		}
+		defs, err := cap.ListCompositePropertyIndexes(tok)
+		if err != nil {
+			return err
+		}
+		out = defs
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// HasComposite reports whether a composite index definition exists on label
+// whose declared key SET equals keys (ORDER-INSENSITIVE, duplicates in keys
+// ignored) — exactly the match rule the NodesByLabelAndProperties query door
+// uses to decide index-vs-label-scan, so a planner can prove the accelerated
+// path exists BEFORE routing a multi-property equality match through it.
+// Unregistered labels return false. Backends without composite-index
+// introspection return storepkg.ErrCapabilityNotSupported.
+func (i *IndexOps) HasComposite(label string, keys []string) (bool, error) {
+	// Deliberately laxer than ValidateCompositeIndexKeys: a planner may probe
+	// with ANY key set from a query (1 key, 5 keys, duplicates) — sizes no
+	// definition can have simply answer false. Individual keys still validate
+	// (shadow keys rejected the same way everywhere else).
+	if len(keys) == 0 {
+		return false, fmt.Errorf("%w: HasComposite requires at least one key", storepkg.ErrInvalidStoreMutation)
+	}
+	want := make(map[string]struct{}, len(keys))
+	for _, k := range keys {
+		if err := storepkg.ValidateIndexPropertyKey(k); err != nil {
+			return false, err
+		}
+		want[k] = struct{}{}
+	}
+	defs, err := i.ListComposites(label)
+	if err != nil {
+		return false, err
+	}
+	for _, def := range defs {
+		if len(def) != len(want) {
+			continue
+		}
+		match := true
+		for _, k := range def {
+			if _, ok := want[k]; !ok {
+				match = false
+				break
+			}
+		}
+		if match {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // CreateTemporal creates a temporal index on nodes with the given label.
 // Accelerates temporal queries (ValidAt/interval filter) for that label.
 // Returns storepkg.ErrTemporalIndexExists if the index already exists.

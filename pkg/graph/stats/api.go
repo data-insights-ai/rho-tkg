@@ -45,6 +45,7 @@ type Ops interface {
 	RelCount() (int, error)
 	NodeCountByLabel(label string) (int, error)
 	NodeCountByLabelAndPropertyKey(label, propertyKey string) (int, error)
+	PropertyTypeClassCounts(label, propertyKey string) (storepkg.PropertyTypeClassCounts, error)
 	PropertyStats(label, propertyKey string) (storepkg.PropertyStats, error)
 	RelCountByType(typeName string) (int, error)
 	RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
@@ -140,6 +141,30 @@ func (a *API) NodeCountByLabelAndPropertyKey(label, propertyKey string) (int, er
 		return 0, err
 	}
 	return ops.NodeCountByLabelAndPropertyKey(label, propertyKey)
+}
+
+// PropertyTypeClassCounts returns the EXACT partition of label's current
+// nodes by the type class of propertyKey's value — Numeric (finite numbers
+// and ±Inf), NaN, String, Bool, Other (slices/maps/structs), plus Missing
+// (nodes carrying the label WITHOUT the key, computed as NodeCountByLabel
+// minus the present classes). O(1): maintained counters adjusted on the same
+// mutation call as NodeCountByLabelAndPropertyKey, so exactness is a
+// correctness guarantee a planner's ordering-soundness gate may rely on —
+// e.g. "every present value is orderable-numeric" is Numeric == Present, and
+// "the gap is nulls only" is Present == Numeric with Missing free to be
+// nonzero. Note the difference from NodeCountByLabelAndPropertyKey: that
+// counter covers INDEXABLE SCALAR values only, while this partition covers
+// EVERY value (a []int64 property counts under Other here but is invisible
+// there). Unregistered labels return the zero value. Backends without
+// store.NodePropertyTypeClassCountsCapability return
+// store.ErrCapabilityNotSupported; the in-tree memory, badger, and tiered
+// (cross-shard fold) backends all implement it.
+func (a *API) PropertyTypeClassCounts(label, propertyKey string) (storepkg.PropertyTypeClassCounts, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.PropertyTypeClassCounts{}, err
+	}
+	return ops.PropertyTypeClassCounts(label, propertyKey)
 }
 
 // PropertyStats returns NDV (estimated distinct-value count via a

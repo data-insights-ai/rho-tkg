@@ -1,6 +1,10 @@
 package core
 
-import storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+import (
+	"fmt"
+
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+)
 
 // GraphStats holds operation counters and optional cache metrics for a Graph.
 // Cache metrics are populated only when the underlying store is a BadgerStore;
@@ -125,6 +129,52 @@ func (s *StatOps) NodeCountByLabelAndPropertyKey(label, propertyKey string) (int
 	count, err := c.nodeCountByLabelAndPropertyKey(tok, propertyKey)
 	c.mu.RUnlock()
 	return count, err
+}
+
+// PropertyTypeClassCounts returns the EXACT per-(label, propertyKey)
+// partition of the label's current nodes by the type class of the key's value
+// — see types.PropertyTypeClass for the classification rule. O(1): maintained
+// counters, adjusted on the same node-mutation call as the presence counter,
+// so exactness is a correctness guarantee, not a planner estimate (an
+// ordering-soundness gate may rely on it). Missing is computed here as
+// NodeCountByLabel − Present (nodes carrying the label WITHOUT the key).
+// Unregistered labels return the zero value. Backends without
+// store.NodePropertyTypeClassCountsCapability return
+// storepkg.ErrCapabilityNotSupported.
+func (s *StatOps) PropertyTypeClassCounts(label, propertyKey string) (storepkg.PropertyTypeClassCounts, error) {
+	c := s.c
+	var zero storepkg.PropertyTypeClassCounts
+	if err := c.validateIndexLabel(label); err != nil {
+		return zero, err
+	}
+	if err := storepkg.ValidateIndexPropertyKey(propertyKey); err != nil {
+		return zero, err
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.closed.Load() {
+		return zero, ErrGraphClosed
+	}
+	cap, ok := c.store.(storepkg.NodePropertyTypeClassCountsCapability)
+	if !ok {
+		return zero, fmt.Errorf("%w: NodePropertyTypeClassCountsCapability", storepkg.ErrCapabilityNotSupported)
+	}
+	tok, ok := c.labels.Lookup(label)
+	if !ok {
+		return zero, nil
+	}
+	counts, err := cap.NodePropertyTypeClassCounts(tok, propertyKey)
+	if err != nil {
+		return zero, err
+	}
+	labelCount, err := c.nodeCountByLabel(tok)
+	if err != nil {
+		return zero, err
+	}
+	if missing := int64(labelCount) - counts.Present(); missing > 0 {
+		counts.Missing = missing
+	}
+	return counts, nil
 }
 
 // PropertyStats returns NDV/min/max/count planner statistics for

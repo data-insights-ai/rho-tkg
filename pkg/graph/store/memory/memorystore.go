@@ -95,6 +95,15 @@ type Store struct {
 	// surface used by property equality indexes and planner pruning.
 	propertyKeyCounts map[uint16]map[string]int
 
+	// Property-key type-class counts — label+property → per-class node counts
+	// (types.PropertyTypeClass order). Unlike propertyKeyCounts this covers
+	// EVERY property value (non-indexable ones classify as ClassOther), so
+	// present+missing partitions the label exactly. Maintained on the SAME
+	// node-mutation doors as propertyKeyCounts (same call — see
+	// adjustNodePropertyKeyCounts); backs the optional
+	// store.NodePropertyTypeClassCountsCapability.
+	propertyTypeClassCounts map[uint16]map[string]*[types.NumPropertyTypeClasses]int64
+
 	// Property-key NDV + exact min/max stats — label+property → accumulator.
 	// Maintained on the SAME node-mutation doors as propertyKeyCounts (see
 	// adjustNodePropertyKeyCounts in memorystore_property_key_counts.go);
@@ -228,6 +237,9 @@ func (ms *Store) ensureInitialized() {
 		if ms.propertyKeyCounts == nil {
 			ms.propertyKeyCounts = make(map[uint16]map[string]int)
 		}
+		if ms.propertyTypeClassCounts == nil {
+			ms.propertyTypeClassCounts = make(map[uint16]map[string]*[types.NumPropertyTypeClasses]int64)
+		}
 		if ms.propertyStats == nil {
 			ms.propertyStats = make(map[uint16]map[string]*indexpkg.PropertyStatsAccumulator)
 		}
@@ -279,6 +291,7 @@ func (ms *Store) Clear() error {
 	ms.compositeIndexes = make(map[indexpkg.CompositeIndexKey]*indexpkg.CompositePropertyIndex)
 	ms.compositeIndexesByLabel = make(map[uint16][]indexpkg.CompositeIndexKey)
 	ms.propertyKeyCounts = make(map[uint16]map[string]int)
+	ms.propertyTypeClassCounts = make(map[uint16]map[string]*[types.NumPropertyTypeClasses]int64)
 	ms.propertyStats = make(map[uint16]map[string]*indexpkg.PropertyStatsAccumulator)
 	ms.temporalIndexes = make(map[uint16]*indexpkg.TemporalIndex)
 	ms.hfIndexes = make(map[uint16]*indexpkg.HighFrequencyIndex)
