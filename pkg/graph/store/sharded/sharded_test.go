@@ -463,13 +463,96 @@ func TestCatalogConflictMissingShardDir(t *testing.T) {
 	}
 }
 
+// --- (a2) two-phase history: historical version reflects PRE-mutation state,
+// routed to the entity's own shard, for BOTH node and relationship (rule 2/15) ---
+
+func TestHistoryTwoPhaseNodeAndRelCrossSlot(t *testing.T) {
+	st := newMemStore(t, 0, 4)
+
+	// Node on slot 2: create state=old (v0), then supersede with state=new (v1).
+	nid := mkNodeID(2, 1)
+	prev := types.NewNode(nid, 10, nil)
+	if err := prev.SetProperty("state", "old"); err != nil {
+		t.Fatalf("SetProperty old: %v", err)
+	}
+	if err := st.PutNode(prev); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+	cur := types.NewNode(nid, 10, nil)
+	if err := cur.SetProperty("state", "new"); err != nil {
+		t.Fatalf("SetProperty new: %v", err)
+	}
+	cur.SetVersion(1)
+	if err := st.ReplaceNodeWithHistory(cur, prev.Version(), prev); err != nil {
+		t.Fatalf("ReplaceNodeWithHistory: %v", err)
+	}
+	// Current row reflects the NEW state.
+	nowN, err := st.GetNode(nid)
+	if err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+	if s, _ := nowN.PropertiesMap()["state"].(string); s != "new" {
+		t.Fatalf("current node state = %q, want new", s)
+	}
+	// The historical version must reflect the OLD state (not the post-mutation one).
+	v0, err := st.GetNodeVersion(nid, 0)
+	if err != nil {
+		t.Fatalf("GetNodeVersion(0): %v", err)
+	}
+	if s, _ := v0.PropertiesMap()["state"].(string); s != "old" {
+		t.Fatalf("node version 0 state = %q, want old", s)
+	}
+	if hist, herr := st.GetNodeHistory(nid); herr != nil || len(hist) != 1 {
+		t.Fatalf("GetNodeHistory: %v (n=%d, want 1)", herr, len(hist))
+	}
+
+	// Relationship parity: endpoints on slots 0/1, rel on slot 3 (routing spread).
+	a := mkNodeID(0, 1)
+	b := mkNodeID(1, 1)
+	putNode(t, st, a, 10)
+	putNode(t, st, b, 10)
+	rid := mkRelID(3, 1)
+	prevR := types.NewRelationship(rid, 5, a, b)
+	if err := prevR.SetProperty("state", "old"); err != nil {
+		t.Fatalf("rel SetProperty old: %v", err)
+	}
+	if err := st.PutRelationship(prevR); err != nil {
+		t.Fatalf("PutRelationship: %v", err)
+	}
+	curR := types.NewRelationship(rid, 5, a, b)
+	if err := curR.SetProperty("state", "new"); err != nil {
+		t.Fatalf("rel SetProperty new: %v", err)
+	}
+	curR.SetVersion(1)
+	if err := st.ReplaceRelWithHistory(curR, prevR.Version(), prevR); err != nil {
+		t.Fatalf("ReplaceRelWithHistory: %v", err)
+	}
+	nowR, err := st.GetRelationship(rid)
+	if err != nil {
+		t.Fatalf("GetRelationship: %v", err)
+	}
+	if s, _ := nowR.PropertiesMap()["state"].(string); s != "new" {
+		t.Fatalf("current rel state = %q, want new", s)
+	}
+	rv0, err := st.GetRelVersion(rid, 0)
+	if err != nil {
+		t.Fatalf("GetRelVersion(0): %v", err)
+	}
+	if s, _ := rv0.PropertiesMap()["state"].(string); s != "old" {
+		t.Fatalf("rel version 0 state = %q, want old", s)
+	}
+	if rhist, rerr := st.GetRelHistory(rid); rerr != nil || len(rhist) != 1 {
+		t.Fatalf("GetRelHistory: %v (n=%d, want 1)", rerr, len(rhist))
+	}
+}
+
 // --- config validation ---
 
 func TestConfigRangeValidation(t *testing.T) {
 	cases := []Config{
-		{InMemory: true, BaseSlot: 0, SlotCount: 0},   // zero count
-		{InMemory: true, BaseSlot: 30, SlotCount: 4},  // overflows 32
-		{InMemory: true, BaseSlot: 0, SlotCount: 33},  // count > 32
+		{InMemory: true, BaseSlot: 0, SlotCount: 0},  // zero count
+		{InMemory: true, BaseSlot: 30, SlotCount: 4}, // overflows 32
+		{InMemory: true, BaseSlot: 0, SlotCount: 33}, // count > 32
 	}
 	for i, c := range cases {
 		if _, err := New(c); err == nil {
