@@ -2,6 +2,7 @@ package sharded
 
 import (
 	"fmt"
+	"sort"
 
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -76,8 +77,29 @@ func (s *Store) DeleteNode(id types.NodeID) error {
 }
 
 // DeleteNodeCascade removes the node and every relationship it participates in.
-// Relationships are collected by folding adjacency across all shards, deleted on
-// their own shards, then the (now unconnected) node row is removed.
+//
+// ADR-0007 Risk 1 — a node and its rels may span shards and there is NO
+// cross-shard WriteBatch. The cascade is therefore crash-recoverable rather
+// than crash-atomic, and the ordering is the recovery contract:
+//
+//	(a) fold-collect ALL connected rel IDs across every shard (out ∪ in,
+//	    self-loops deduped to a single delete);
+//	(b) delete each rel on ITS OWN shard, in DETERMINISTIC ascending rel-ID
+//	    order — each per-rel delete is a single-shard single-WriteBatch atomic
+//	    operation, so a crash stops at a rel boundary that is reproducible
+//	    (same order every run) and repair is decidable;
+//	(c) delete the NODE row LAST. Because rels are removed first, a crash
+//	    mid-cascade leaves DANGLING RELS (some already gone, some still live)
+//	    but NEVER a dangling node with ghost edges: the node row is the last
+//	    thing standing, so recovery/VerifyConsistency always finds a live node
+//	    to re-drive the cascade from — never a rel pointing at a vanished node;
+//	(d) an adjacency entry whose rel row is already gone (a torn prior run or
+//	    index corruption) is purged so the final node delete does not see a
+//	    phantom connection.
+//
+// The core layer holds entity locks over the whole neighborhood above this
+// door, so it may rely on no CONCURRENT mutation of the same neighborhood — but
+// NOT on crash atomicity, which this ordering + the verify door provide instead.
 func (s *Store) DeleteNodeCascade(id types.NodeID) error {
 	if err := s.checkOpen(); err != nil {
 		return err
@@ -97,19 +119,31 @@ func (s *Store) DeleteNodeCascade(id types.NodeID) error {
 	if err != nil {
 		return err
 	}
+	// (b) Deterministic ascending rel-ID order: a crash always stops at the same
+	// boundary, so a partial cascade is reproducible and repair is decidable.
+	sort.Slice(relIDs, func(i, j int) bool {
+		return relIDs[i].SnowflakeID() < relIDs[j].SnowflakeID()
+	})
 	for _, rid := range relIDs {
 		relShard, rerr := s.shardForRelID(rid)
 		if rerr != nil {
 			return rerr
 		}
-		if derr := relShard.DeleteRelationship(rid); derr != nil {
-			// Tolerate an already-removed rel (self-loop counted once, or a
-			// concurrent delete): the node delete is what matters.
-			if !isRelNotFound(derr) {
-				return derr
-			}
+		derr := relShard.DeleteRelationship(rid)
+		if derr == nil {
+			continue
+		}
+		if !isRelNotFound(derr) {
+			return derr
+		}
+		// (d) The adjacency fold pointed at a rel whose row is already gone —
+		// a torn prior cascade or an index orphan. Purge the stale index
+		// entries so the final DeleteNode does not reject on a phantom edge.
+		if perr := relShard.PurgeOrphanRelationshipIndexes(rid); perr != nil {
+			return perr
 		}
 	}
+	// (c) Node row deleted LAST.
 	return nodeShard.DeleteNode(id)
 }
 

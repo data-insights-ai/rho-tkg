@@ -57,6 +57,7 @@ import (
 
 	snowflakepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/snowflake"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	shardedpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -1541,12 +1542,35 @@ func runOracleSequence(t *testing.T, seed uint64, nOps, nProbes int) {
 	backends := []struct {
 		name string
 		cfg  Config
+		// newStore builds a fresh store per sequence (so state never leaks across
+		// seeds). nil => the cfg's own backend (memory/badger) is used.
+		newStore func(t *testing.T) storepkg.MandatoryStore
 	}{
-		{"memory", Config{AllowTxBackfill: true}},
-		{"badger", Config{BadgerInMemory: true, AllowTxBackfill: true}},
+		{"memory", Config{AllowTxBackfill: true}, nil},
+		{"badger", Config{BadgerInMemory: true, AllowTxBackfill: true}, nil},
+		// ADR-0007 S2 oracle arm: the sharded backend, BaseSlot 0 / SlotCount 2 —
+		// core still mints legacy dual-generator IDs (nodes on slot 0, rels on
+		// slot 1 with SnowflakeNodeID=0), so two slots cover both raw values and
+		// every relationship is cross-shard from its endpoints. Sharded declines
+		// TransactionTimeQueryCapability (S3/S5), so the as-of / TxPin doors
+		// resolve through core's generic chain resolver rather than a native
+		// reverse scan — the arm still cross-checks every probe class the harness
+		// runs on memory/badger (point, interval, as-of, TxPin) against the same
+		// oracle; nothing the harness needs is skipped.
+		{"sharded", Config{AllowTxBackfill: true}, func(t *testing.T) storepkg.MandatoryStore {
+			st, err := shardedpkg.New(shardedpkg.Config{InMemory: true, BaseSlot: 0, SlotCount: 2})
+			if err != nil {
+				t.Fatalf("sharded.New: %v", err)
+			}
+			return st
+		}},
 	}
 	for _, be := range backends {
-		g, err := New(be.cfg)
+		cfg := be.cfg
+		if be.newStore != nil {
+			cfg.Store = be.newStore(t)
+		}
+		g, err := New(cfg)
 		if err != nil {
 			t.Fatalf("New(%s): %v", be.name, err)
 		}
