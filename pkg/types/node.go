@@ -220,6 +220,25 @@ func (n *Node) SetProperties(ps PropertySlice) error {
 	return nil
 }
 
+// SetPropertiesCanonicalShared assigns an ALREADY-CANONICAL PropertySlice
+// directly, with NO sort/validate/deep-copy — the node ALIASES ps. It is the
+// batch/ingest BULK-create fast path: one NewPropertySlice result is shared
+// across many sibling write-only create nodes, avoiding a per-node
+// canonicalize+copy (the store deep-copies each node at Put, so the shared slice
+// is never mutated through any node).
+//
+// UNSAFE for any node that a caller can reach and mutate: SetProperty mutates
+// the slice in place, so a shared slice would corrupt every sibling. Callers
+// MUST use this only for nodes that are never returned to the caller (the
+// write-only keepResults==false path) and MUST pass an already-canonical,
+// caller-owned ps. General code uses SetProperties or SetOwnedProperties.
+func (n *Node) SetPropertiesCanonicalShared(ps PropertySlice) {
+	if n == nil {
+		return
+	}
+	n.properties = ps
+}
+
 // SetOwnedProperties replaces the node's property slice without copying it.
 // The caller transfers ownership of ps and must not mutate it after this call.
 // This is intended for graph-layer construction paths that just received ps

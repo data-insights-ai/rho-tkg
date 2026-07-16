@@ -98,8 +98,19 @@ func (b *BatchBuilder) addNodes(labels []string, props map[string]any, count int
 	for i := 0; i < count; i++ {
 		id := b.g.nextNodeIDForLane(b.genLane)
 		n := types.NewNode(id, labelTokens.primary, labelTokens.extras)
-		if err := n.SetProperties(baseProps); err != nil {
-			return nil, fmt.Errorf("graph: batch node properties: %w", err)
+		if keepResults {
+			// The returned skeleton is caller-mutable, so each node needs its own
+			// property slice (SetProperty mutates in place — sharing would corrupt
+			// siblings via the returned node).
+			if err := n.SetProperties(baseProps); err != nil {
+				return nil, fmt.Errorf("graph: batch node properties: %w", err)
+			}
+		} else {
+			// Write-only bulk create: the node is never returned to the caller and
+			// is read-only until the store deep-copies it at Put, so all siblings
+			// can share the one already-canonical baseProps — skipping a per-node
+			// canonicalize + copy (lever #2, the mass-ingestion path).
+			n.SetPropertiesCanonicalShared(baseProps)
 		}
 
 		hash := integrity.ComputeNodeHashFromSuffix(n.ID(), n.Version(), hashSuffix)
