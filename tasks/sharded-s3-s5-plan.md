@@ -139,14 +139,24 @@ and mints contiguous LSNs at commit.
 
 ## S5 — capability parity sweep + docs + release v4.16.0
 
-1. Enumerate remaining declined optionals (vector/temporal/high-freq/property
-   index) with reasons; close toward parity as tiered was (staged, not skipped —
-   standing owner requirement).
-2. Update CLAUDE.md (Status line + the sharded store section), docs/architecture.md,
-   docs/api.md, bench tables.
-3. Version sync → release v4.16.0 (squash to main; scrub tasks/ + any sigma refs;
-   `make ci-docker`; tag; GitHub release). Retention (ADR-0008) is a SEPARATE
-   later release per the owner.
+**STATUS 2026-07-16: capability parity DONE & COMMITTED (S5-A..E). Release NOT
+done — owner chose "no release yet; keep landing on wp-integration-adr7".**
+
+1. ✅ Capability parity (S5-A property; S5-B rel-property + composite +
+   introspection; S5-C stats/type-class + range-cardinality + temporal; S5-D
+   vector; S5-E high-freq). Every capability fans DDL out to all shards
+   (`fanOutUniform` lockstep sentinels) + folds per-shard reads; vector keeps one
+   index per shard + merges by `index.VectorDistance`. Declined-with-reason
+   (mirror tiered): TransactionTimeQuery, HistoryRollbackTrim, LabelTx/RelTypeTx
+   membership, depth iteration. All race-clean, cross-shard batteries; whole
+   suite (36 pkgs) green. CLAUDE.md store table + CHANGELOG [Unreleased] updated.
+2. STILL TODO at release: docs/architecture.md + docs/api.md sharded sections
+   (sharded is currently documented only in ADR-0007 — release-time work), bench
+   tables.
+3. STILL TODO (owner-gated, deferred): version sync → v4.16.0, squash to main,
+   scrub tasks/ + sigma refs, `make ci-docker`, tag, GitHub release. Retention
+   (ADR-0008) is a SEPARATE later release per the owner. **S4 throughput bench
+   (≥2.75M/s on M4 Max) is owner-run and NOT claimed.**
 
 ---
 
