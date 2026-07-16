@@ -80,6 +80,12 @@ type Core struct {
 	// (tiered), so the query falls back to the full-history candidate fold.
 	labelTxMembers   storepkg.LabelTxMembershipCapability
 	relTypeTxMembers storepkg.RelTypeTxMembershipCapability
+	// temporalCandidates — B4 valid-time candidate prune: narrow a temporal
+	// ByLabel/ByType query's candidate set by the per-label valid-time envelope
+	// index before resolving each chain. nil = store declines (no temporal-index
+	// support), so the query resolves every candidate (correct, unaccelerated).
+	// Sound for any store: an id the index does not cover is never pruned.
+	temporalCandidates storepkg.TemporalCandidateCapability
 	// preEncodedPut — ADR-0006 §4.5 Scenario B: the ingest applier hands the
 	// store a v2 entity-row wire pre-encoded on the producer thread (tail patched
 	// with the stamped TxFrom) instead of a second msgpack pass. nil = store
@@ -1435,6 +1441,11 @@ func New(config Config) (*Core, error) {
 	c.deletedDepthIter = depthDeletedIterationCapability(store)
 	c.labelTxMembers = labelTxMembershipCapability(store)
 	c.relTypeTxMembers = relTypeTxMembershipCapability(store)
+	// B4: valid-time candidate prune is sound for ANY store that offers it (an
+	// unknown id is never pruned), so unlike the K1 membership sidecar it needs no
+	// exact-native-store guard — a plain probe admits memory/badger now and
+	// tiered/sharded once they implement it.
+	c.temporalCandidates, _ = store.(storepkg.TemporalCandidateCapability)
 	// Metadata facet: bare optional-capability probes, resolved once (byte-for-byte
 	// equal to the former per-site `_, ok := c.store.(X)` since store is immutable).
 	c.metaKV, _ = store.(storepkg.MetaKVCapability)

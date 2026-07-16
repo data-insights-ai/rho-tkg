@@ -129,21 +129,37 @@ func (c *Core) nodesByLabelAtLocked(label string, at types.Instant) ([]*types.No
 	if err != nil {
 		return nil, err
 	}
-	var result []*types.Node
+
+	// Gather the full-history candidate id set (cheap — id enumeration only).
+	var candIDs []types.NodeID
 	if err := c.forEachNodeCandidateID(currentIDs, func(id types.NodeID) error {
+		candIDs = append(candIDs, id)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	// B4: drop candidates whose valid-time envelope provably cannot contain `at`,
+	// before the expensive per-id chain resolve below. Same sound-superset prune as
+	// the generic ByLabel{ValidAt} door (queries.go) — both temporal-ByLabel doors
+	// MUST agree (rule 17), enforced by TestTemporalCandidatePruneEquivalence.
+	if c.temporalCandidates != nil {
+		if kept, ok := c.temporalCandidates.PruneTemporalCandidates(tok, candIDs, storepkg.QueryOpts{ValidAt: at}); ok {
+			candIDs = kept
+		}
+	}
+
+	var result []*types.Node
+	for _, id := range candIDs {
 		n, err := c.nodeAtLocked(id, at)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
-				return nil
+				continue
 			}
-			return err
+			return nil, err
 		}
 		if n.HasLabelTokenRaw(tok) {
 			result = append(result, n)
 		}
-		return nil
-	}); err != nil {
-		return nil, err
 	}
 	storeutil.SortNodesByID(result)
 	return result, nil

@@ -25,6 +25,7 @@ var (
 	_ generatedcreate.RelationshipEndpointHashCapability = (*Store)(nil)
 	_ storecontract.PropertyIndexCapability              = (*Store)(nil)
 	_ storecontract.TemporalIndexCapability              = (*Store)(nil)
+	_ storecontract.TemporalCandidateCapability          = (*Store)(nil)
 	_ storecontract.VectorIndexCapability                = (*Store)(nil)
 	_ storecontract.FilteredVectorSearchCapability       = (*Store)(nil)
 	_ storecontract.HighFrequencyIndexCapability         = (*Store)(nil)

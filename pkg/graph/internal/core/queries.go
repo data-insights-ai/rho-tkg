@@ -326,31 +326,51 @@ func (c *Core) nodesByLabelLocked(label string, opts storepkg.QueryOpts) ([]*typ
 		return nil, err
 	}
 
+	// Gather the candidate id set. K1: when the store owns a transaction-time
+	// label-membership sidecar, scope candidates to the label's ever-members
+	// (O(matches)) instead of folding ALL node history (O(everything that ever
+	// carried ANY label)); otherwise fold by depth. The chain resolver
+	// (findNodeVersionForOpts) stays the correctness authority — both the K1
+	// sidecar and the B4 envelope prune below are sound supersets, so any
+	// over-included candidate is rejected there. Tiered / wrapped stores decline
+	// both capabilities and take the full fold.
+	var candIDs []types.NodeID
+	gather := func(id types.NodeID) error {
+		candIDs = append(candIDs, id)
+		return nil
+	}
+	if c.labelTxMembers != nil {
+		if err := c.forEachLabelTxCandidate(tok, currentIDs, opts, gather); err != nil {
+			return nil, err
+		}
+	} else if err := c.forEachNodeCandidateIDByDepth(currentIDs, opts.Depth, gather); err != nil {
+		return nil, err
+	}
+
+	// B4: when the store owns a per-label valid-time ENVELOPE index, drop every
+	// candidate whose envelope provably cannot overlap the query's valid-time
+	// filter — WITHOUT loading its version chain. PruneTemporalCandidates returns
+	// ok=false (candidates unchanged) when opts carries no valid-time filter or no
+	// envelope covers this label. The envelope is a sound superset of every
+	// version's interval, so a kept id may still be rejected by the resolver, but a
+	// pruned id can never have matched (positive-evidence-only pruning).
+	if c.temporalCandidates != nil {
+		if kept, ok := c.temporalCandidates.PruneTemporalCandidates(tok, candIDs, opts); ok {
+			candIDs = kept
+		}
+	}
+
 	var result []*types.Node
 	pred := func(n *types.Node) bool { return n.HasLabelTokenRaw(tok) }
-	collect := func(id types.NodeID) error {
+	for _, id := range candIDs {
 		n, err := c.findNodeVersionForOpts(id, opts, pred)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
-				return nil
+				continue
 			}
-			return err
-		}
-		result = append(result, n)
-		return nil
-	}
-	// K1: when the store owns a transaction-time label-membership sidecar, scope
-	// the candidate set to the label's ever-members (O(matches)) instead of
-	// folding ALL node history (O(everything that ever carried ANY label)). The
-	// chain resolver (findNodeVersionForOpts) stays the correctness authority —
-	// the sidecar is a sound superset, so an over-included candidate is rejected
-	// there. Tiered / wrapped stores decline the capability and take the fold.
-	if c.labelTxMembers != nil {
-		if err := c.forEachLabelTxCandidate(tok, currentIDs, opts, collect); err != nil {
 			return nil, err
 		}
-	} else if err := c.forEachNodeCandidateIDByDepth(currentIDs, opts.Depth, collect); err != nil {
-		return nil, err
+		result = append(result, n)
 	}
 	storeutil.SortNodesByID(result)
 	result = storeutil.PaginateNodes(result, opts.After, opts.Limit)

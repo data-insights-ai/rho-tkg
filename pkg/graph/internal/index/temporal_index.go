@@ -58,6 +58,37 @@ type TemporalIndex struct {
 	dirty    bool            // true when entries changed but slice not yet sorted/augmented
 	Building bool            // true while CreateTemporalIndex is still backfilling
 	Mutated  map[snowflake.ID]struct{}
+	// byID mirrors each id's current envelope bounds for O(1) EnvelopeOf lookups
+	// (the B4 candidate-prune primitive). Entries stays sorted-by-From for stabbing
+	// queries; byID stores BOUNDS (not slice positions), so a re-sort never
+	// invalidates it. Maintained in every entry mutator (Add / AddKnownAbsent /
+	// Extend / Remove).
+	byID map[snowflake.ID]IntervalEntry
+}
+
+// EnvelopeOf returns the per-node valid-time envelope [from, to) recorded for id,
+// and ok=false when the index does not cover id. It is the B4 candidate-prune
+// primitive: the core resolver drops a temporal candidate ONLY when the index
+// vouches for it (ok) AND its envelope provably cannot overlap the query — an
+// id the index does not cover (ok=false) is never pruned, so incomplete index
+// membership costs recall of pruning, never correctness.
+func (ti *TemporalIndex) EnvelopeOf(id snowflake.ID) (from, to types.Instant, ok bool) {
+	if ti == nil || ti.byID == nil {
+		return 0, 0, false
+	}
+	e, present := ti.byID[id]
+	if !present {
+		return 0, 0, false
+	}
+	return e.From, e.To, true
+}
+
+// setByID records id's current envelope bounds for EnvelopeOf.
+func (ti *TemporalIndex) setByID(id snowflake.ID, from, to types.Instant) {
+	if ti.byID == nil {
+		ti.byID = make(map[snowflake.ID]IntervalEntry)
+	}
+	ti.byID[id] = IntervalEntry{From: from, To: to, ID: id}
 }
 
 // NewTemporalIndex allocates an empty temporal index.
@@ -78,6 +109,7 @@ func (ti *TemporalIndex) Add(id snowflake.ID, from, to types.Instant) {
 
 	// Append unsorted — sort is deferred to QueryAt/QueryOverlap.
 	ti.Entries = append(ti.Entries, IntervalEntry{From: from, To: to, ID: id})
+	ti.setByID(id, from, to)
 	ti.markMutated(id)
 	ti.dirty = true
 }
@@ -113,12 +145,14 @@ func (ti *TemporalIndex) Extend(id snowflake.ID, from, to types.Instant) {
 				ti.Entries[i].From = from
 			}
 			ti.Entries[i].To = unionTo(ti.Entries[i].To, to)
+			ti.setByID(id, ti.Entries[i].From, ti.Entries[i].To)
 			ti.markMutated(id)
 			ti.dirty = true
 			return
 		}
 	}
 	ti.Entries = append(ti.Entries, IntervalEntry{From: from, To: to, ID: id})
+	ti.setByID(id, from, to)
 	ti.markMutated(id)
 	ti.dirty = true
 }
@@ -131,6 +165,7 @@ func (ti *TemporalIndex) AddKnownAbsent(id snowflake.ID, from, to types.Instant)
 		return
 	}
 	ti.Entries = append(ti.Entries, IntervalEntry{From: from, To: to, ID: id})
+	ti.setByID(id, from, to)
 	ti.dirty = true
 }
 
@@ -230,6 +265,7 @@ func (ti *TemporalIndex) Remove(id snowflake.ID) {
 		out = append(out, e)
 	}
 	ti.Entries = out
+	delete(ti.byID, id)
 	ti.dirty = true
 }
 

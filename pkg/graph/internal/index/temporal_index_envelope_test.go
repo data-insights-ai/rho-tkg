@@ -119,4 +119,38 @@ func TestTemporalIndexExtend_NilSafe(t *testing.T) {
 	var ti *TemporalIndex
 	ti.Extend(snowflake.ID(1), 1, 2) // must not panic
 	ExtendNodeInTemporalIndexes(nil, nil, snowflake.ID(1))
+	if _, _, ok := ti.EnvelopeOf(snowflake.ID(1)); ok {
+		t.Fatal("nil index EnvelopeOf must return ok=false")
+	}
+}
+
+// EnvelopeOf reflects the current envelope through every mutator and is the
+// candidate-prune primitive: absent id → ok=false (never pruned).
+func TestTemporalIndexEnvelopeOf(t *testing.T) {
+	t.Parallel()
+	ti := NewTemporalIndex()
+	if _, _, ok := ti.EnvelopeOf(snowflake.ID(1)); ok {
+		t.Fatal("absent id must be ok=false")
+	}
+	ti.Extend(snowflake.ID(1), 10, 20)
+	from, to, ok := ti.EnvelopeOf(snowflake.ID(1))
+	if !ok || from != 10 || to != 20 {
+		t.Fatalf("EnvelopeOf after insert = (%d,%d,%v), want (10,20,true)", from, to, ok)
+	}
+	// Union grows the envelope — EnvelopeOf must track it.
+	ti.Extend(snowflake.ID(1), 5, 40)
+	from, to, ok = ti.EnvelopeOf(snowflake.ID(1))
+	if !ok || from != 5 || to != 40 {
+		t.Fatalf("EnvelopeOf after union = (%d,%d,%v), want (5,40,true)", from, to, ok)
+	}
+	// AddKnownAbsent (rebuild path) also populates byID.
+	ti.AddKnownAbsent(snowflake.ID(2), 100, 200)
+	if _, _, ok := ti.EnvelopeOf(snowflake.ID(2)); !ok {
+		t.Fatal("AddKnownAbsent must populate EnvelopeOf")
+	}
+	// Remove (drop/purge path) clears it.
+	ti.Remove(snowflake.ID(1))
+	if _, _, ok := ti.EnvelopeOf(snowflake.ID(1)); ok {
+		t.Fatal("EnvelopeOf must be ok=false after Remove")
+	}
 }

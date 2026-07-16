@@ -112,10 +112,21 @@ func TestTemporalIndexNodeHelpersUseAllLabels(t *testing.T) {
 		t.Fatalf("unmatched token QueryAt = %v, want nil", got)
 	}
 
+	// Since B4 the temporal index is an APPEND-ONLY per-node envelope, so
+	// RemoveNodeFromTemporalIndexes is a no-op (an update/delete must not drop a
+	// past interval from the sound superset). The node stays across every label.
+	// Real removal is Remove/PurgeNodeFromAllTemporalIndexes (drop / corrupt path).
 	RemoveNodeFromTemporalIndexes(idxs, node, id)
 	for _, tok := range []uint16{1, 2, 3} {
+		if got := idxs[tok].QueryAt(1000); len(got) != 1 || got[0] != id {
+			t.Fatalf("token %d: envelope must retain node after no-op remove, got %v", tok, got)
+		}
+	}
+	// The explicit removal primitive still shrinks the index.
+	PurgeNodeFromAllTemporalIndexes(idxs, id)
+	for _, tok := range []uint16{1, 2, 3} {
 		if got := idxs[tok].QueryAt(1000); got != nil {
-			t.Fatalf("token %d still contains node after remove: %v", tok, got)
+			t.Fatalf("token %d still contains node after purge: %v", tok, got)
 		}
 	}
 }

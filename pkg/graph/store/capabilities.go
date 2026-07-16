@@ -543,6 +543,22 @@ type TemporalIndexCapability interface {
 	DropTemporalIndex(labelToken uint16) error
 }
 
+// TemporalCandidateCapability is OPTIONAL (B4). It lets the graph layer prune a
+// temporal query's candidate node-ID set against the per-label valid-time ENVELOPE
+// index — the valid-time analogue of the K1 label-membership sidecar. It is SOUND
+// for any store to implement: an id the index does not cover is always kept, so an
+// incomplete or wrapper-inherited index costs pruning recall, never correctness
+// (the chain resolver stays authoritative). A store without a temporal index for
+// the label returns ok=false, and the caller keeps every candidate.
+type TemporalCandidateCapability interface {
+	// PruneTemporalCandidates returns the subset of ids that may still satisfy the
+	// valid-time filter in opts (ValidAt point, or ValidStart/ValidEnd interval): an
+	// id whose envelope is present AND provably cannot overlap the query is dropped;
+	// every other id is kept. ok is false when no temporal index covers labelToken
+	// or opts carries no valid-time filter — the caller then keeps ids unchanged.
+	PruneTemporalCandidates(labelToken uint16, ids []types.NodeID, opts QueryOpts) (kept []types.NodeID, ok bool)
+}
+
 // VectorIndexCapability is OPTIONAL. The reference implementation is a
 // brute-force in-memory k-NN. Backends backed by a remote vector store
 // should plug in here without having to implement the rest of Store.

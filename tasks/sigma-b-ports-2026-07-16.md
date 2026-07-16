@@ -58,6 +58,21 @@ identity is enough).
    - Recommended start: increment (C) — make the index all-versions + wire ONE door
      (NodesDuring interval, highest value) as a candidate narrower, MEASURE, then extend.
 
+   ### STATUS (2026-07-16): ALL STAGES COMPLETE. ✅
+   - Stage 1 (a91af43), Stage 2 (af588f0): envelope foundation + maintenance switch.
+   - Stage 3: `store.TemporalCandidateCapability.PruneTemporalCandidates` (memory+badger),
+     `storeutil.EnvelopeOverlaps`, `TemporalIndex.byID`/`EnvelopeOf`; wired into BOTH
+     temporal-ByLabel doors — generic `nodesByLabelLocked` (queries.go) AND named
+     `nodesByLabelAtLocked` (temporal_queries.go). Positive-evidence-only prune.
+   - Stage 4: tiered + sharded DECLINE the capability (no cross-shard envelope fold) →
+     `c.temporalCandidates` nil → full fold. Correct by construction (no embedding
+     promotes the method) + `TestTemporalCandidatePruneTieredDeclines`.
+   - Stage 5: `TestTemporalCandidatePruneEquivalence` (memory+badger, two-phase adversarial,
+     union-soundness trap, named-vs-generic parity, white-box prune-fires) + MEASURED via
+     `BenchmarkTemporalEnvelopePrune`: NodesByLabelAt over a 5000-node 90%-cold label —
+     **~2.0× faster** (1060→527 µs/op), ~3.1× less memory, ~12.6× fewer allocs. Identical
+     result (equivalence-proven). Full `-race` suites green.
+
    ### DECISION (2026-07-16): user chose FULL B4 + measure. Staged execution plan:
 
    **Design:** the per-label temporal index becomes a SOUND VALID-TIME CANDIDATE

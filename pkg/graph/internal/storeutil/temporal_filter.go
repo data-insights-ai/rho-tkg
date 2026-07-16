@@ -17,6 +17,24 @@ func EntityValidFrom(id snowflake.ID, tm *types.TemporalMetadata) types.Instant 
 	return types.Instant(snowflakepkg.Layout.CreatedAt(id).UnixMilli())
 }
 
+// EnvelopeOverlaps reports whether a node's valid-time ENVELOPE [from, to) (to == 0
+// meaning open-ended) could satisfy the valid-time filter in opts. It is the B4
+// candidate-prune predicate: because the envelope is a SOUND SUPERSET of every
+// version's interval, a false result proves NO version of the node can match the
+// filter, so the candidate may be dropped without loading its chain; a true result
+// only means SOME version MIGHT match (the chain resolver decides precisely). Only
+// a point (ValidAt) or interval (ValidStart/ValidEnd) filter constrains — with
+// neither, returns true (nothing to prune on).
+func EnvelopeOverlaps(from, to types.Instant, opts storepkg.QueryOpts) bool {
+	if opts.ValidAt != 0 {
+		return from <= opts.ValidAt && (to == 0 || to > opts.ValidAt)
+	}
+	if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+		return from < opts.ValidEnd && (to == 0 || to > opts.ValidStart)
+	}
+	return true
+}
+
 // MatchesTemporalFilter evaluates whether an entity passes the temporal
 // filter in opts. Returns true when no filter is set (zero values).
 //
