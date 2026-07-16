@@ -215,9 +215,10 @@ func TestPrefixScan_Declines(t *testing.T) {
 	if err := g.Index.CreateProperty(label, key); err != nil {
 		t.Fatalf("CreateProperty: %v", err)
 	}
-	// Temporal opts -> declined.
+	// Temporal opts are SERVED (Stage B), not declined — the fold resolves at the
+	// pin. (Correct temporal ordering: TestTemporalOrderedScan_Prefix.)
 	err = g.Nodes.ForEachByLabelPropertyPrefix(label, key, "a", false, storepkg.QueryOpts{ValidAt: 123}, func(*types.Node) bool { return true })
-	if !errors.Is(err, storepkg.ErrOrderedScanTemporal) {
-		t.Errorf("temporal opts: err = %v, want ErrOrderedScanTemporal", err)
+	if errors.Is(err, storepkg.ErrOrderedScanTemporal) || err != nil {
+		t.Errorf("temporal opts: err = %v, want nil (served by fold)", err)
 	}
 }

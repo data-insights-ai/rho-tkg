@@ -301,10 +301,12 @@ func (a *API) ForEachByTypePropertyRange(typeName, propKey string, min, max floa
 // false stops the scan (ORDER BY ... LIMIT k pushdown); an empty prefix matches
 // every string value. The rel ordered string view is EXACT.
 //
-// CURRENT-STATE ONLY: a temporal QueryOpts combination is declined with
-// graph.ErrOrderedScanTemporal. Returns store.ErrIndexNotFound when no usable rel
-// property index exists for (type, propKey). Same relaxed isolation and
-// frozen-row contract as ForEachByType.
+// Non-temporal opts use the index-backed fast path and return
+// store.ErrIndexNotFound when no usable rel property index exists for (type,
+// propKey). A TEMPORAL QueryOpts combination is served by a sound full fold
+// (values resolved at the pin, sorted lexicographically) — correct over a past
+// belief/valid state, needs no index. Same relaxed isolation and frozen-row
+// contract as ForEachByType.
 func (a *API) ForEachByTypePropertyPrefix(typeName, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
 	ops, err := a.ready()
 	if err != nil {

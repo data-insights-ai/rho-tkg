@@ -45,12 +45,13 @@ var (
 	// diagnostics, but the sentinel is the contract.
 	ErrCapabilityNotSupported = errors.New("graph: store does not support this capability")
 
-	// ErrOrderedScanTemporal is returned by the ordered / top-k range scan
-	// (ForEachByLabelPropertyRangeOrdered) when the caller supplies temporal
-	// QueryOpts. The ordered door is CURRENT-STATE only in v1 — the value
-	// ordering is derived from the live property index, which is valid-time
-	// agnostic — so a temporal opts combination is declined rather than
-	// silently answered against current state. Callers match with errors.Is.
+	// ErrOrderedScanTemporal is a LEGACY sentinel retained for backward
+	// compatibility. The ordered / prefix scan doors used to DECLINE temporal
+	// QueryOpts with this error (the value ordering came from the valid-time-
+	// agnostic property index). As of Stage B those doors SERVE temporal opts via
+	// a sound full fold (values resolved at the pin, then sorted), so this error is
+	// no longer returned. It is kept exported so a consumer that still matches it
+	// with errors.Is keeps compiling.
 	ErrOrderedScanTemporal = errors.New("graph: ordered range scan is current-state only; temporal QueryOpts are not supported")
 
 	// ErrPrimaryRegistryStale is returned by the replica apply path when a

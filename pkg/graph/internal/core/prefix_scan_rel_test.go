@@ -132,9 +132,10 @@ func TestRelPrefixScan_Declines(t *testing.T) {
 	if err := g.Index.CreateRelProperty(typeName, key); err != nil {
 		t.Fatalf("CreateRelProperty: %v", err)
 	}
-	// Temporal opts -> declined.
+	// Temporal opts are SERVED (Stage B), not declined — the fold resolves at the
+	// pin. (Correct temporal ordering: TestTemporalOrderedScan_RelPrefix.)
 	err = g.Rels.ForEachByTypePropertyPrefix(typeName, key, "a", false, storepkg.QueryOpts{ValidAt: 123}, func(*types.Relationship) bool { return true })
-	if !errors.Is(err, storepkg.ErrOrderedScanTemporal) {
-		t.Errorf("temporal opts: err = %v, want ErrOrderedScanTemporal", err)
+	if errors.Is(err, storepkg.ErrOrderedScanTemporal) || err != nil {
+		t.Errorf("temporal opts: err = %v, want nil (served by fold)", err)
 	}
 }

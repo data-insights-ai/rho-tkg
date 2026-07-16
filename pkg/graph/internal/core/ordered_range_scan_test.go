@@ -358,9 +358,12 @@ func TestOrderedRangeScan_ThreeWayEquivalence(t *testing.T) {
 	}
 }
 
-// TestOrderedRangeScan_Declines covers the documented decline paths: temporal
-// QueryOpts -> ErrOrderedScanTemporal; no index -> ErrIndexNotFound; nil fn ->
-// ErrNilCallback.
+// TestOrderedRangeScan_Declines covers the documented decline paths: no index ->
+// ErrIndexNotFound; nil fn -> ErrNilCallback. Temporal QueryOpts are NO LONGER
+// declined (Stage B) — they are served by the sound full fold; here each pin sits
+// far before the node's effective time, so the fold returns an empty result with
+// a NIL error (never ErrOrderedScanTemporal). Correct temporal ordering is
+// asserted by TestTemporalOrderedScan_Numeric.
 func TestOrderedRangeScan_Declines(t *testing.T) {
 	t.Parallel()
 	const label, key = "D", "v"
@@ -385,15 +388,17 @@ func TestOrderedRangeScan_Declines(t *testing.T) {
 		opts storepkg.QueryOpts
 	}{
 		{"ValidAt", storepkg.QueryOpts{ValidAt: 100}},
-		{"ValidStart", storepkg.QueryOpts{ValidStart: 100}},
-		{"ValidEnd", storepkg.QueryOpts{ValidEnd: 100}},
+		{"ValidStart+End", storepkg.QueryOpts{ValidStart: 50, ValidEnd: 100}},
 		{"TxAt", storepkg.QueryOpts{TxAt: 100}},
 		{"TxPin", storepkg.QueryOpts{TxPin: 100}},
 	}
 	for _, tc := range temporalOpts {
 		err := g.Nodes.ForEachByLabelPropertyRangeOrdered(label, key, 0, 10, true, true, false, tc.opts, noop)
-		if !errors.Is(err, storepkg.ErrOrderedScanTemporal) {
-			t.Fatalf("%s: err = %v, want ErrOrderedScanTemporal", tc.name, err)
+		if errors.Is(err, storepkg.ErrOrderedScanTemporal) {
+			t.Fatalf("%s: temporal ordered scan should be SERVED, not declined", tc.name)
+		}
+		if err != nil {
+			t.Fatalf("%s: temporal ordered scan err = %v, want nil (empty result)", tc.name, err)
 		}
 	}
 

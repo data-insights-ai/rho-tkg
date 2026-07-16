@@ -284,10 +284,12 @@ func (a *API) ForEachByLabelPropertyRange(label, propKey string, min, max float6
 // (float64 sort keys, ulp-widened bounds), so fn MUST re-check its predicate
 // with exact comparison semantics.
 //
-// CURRENT-STATE ONLY: a temporal QueryOpts combination is declined with
-// graph.ErrOrderedScanTemporal. Returns graph.ErrIndexNotFound when no usable
-// ordered view exists for (label, propKey). Same relaxed isolation and
-// frozen-row contract as ForEachByLabel.
+// Non-temporal opts use the index-backed fast path and return
+// graph.ErrIndexNotFound when no usable ordered view exists for (label, propKey).
+// A TEMPORAL QueryOpts combination is served by a sound full fold (values resolved
+// at the pin, sorted by value-at-t) — correct over a past belief/valid state,
+// needs no index, O(N log N). Same relaxed isolation and frozen-row contract as
+// ForEachByLabel.
 func (a *API) ForEachByLabelPropertyRangeOrdered(label, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
 	ops, err := a.ready()
 	if err != nil {
@@ -304,10 +306,11 @@ func (a *API) ForEachByLabelPropertyRangeOrdered(label, propKey string, min, max
 // of the property. Unlike the numeric range doors the string ordered view is
 // EXACT, so rows already satisfy the prefix.
 //
-// CURRENT-STATE ONLY: a temporal QueryOpts combination is declined with
-// graph.ErrOrderedScanTemporal. Returns graph.ErrIndexNotFound when no usable
-// ordered view exists for (label, propKey). Same relaxed isolation and frozen-row
-// contract as ForEachByLabel.
+// Non-temporal opts use the index-backed fast path and return
+// graph.ErrIndexNotFound when no usable ordered view exists for (label, propKey).
+// A TEMPORAL QueryOpts combination is served by a sound full fold (values resolved
+// at the pin, sorted lexicographically) — correct over a past belief/valid state,
+// needs no index. Same relaxed isolation and frozen-row contract as ForEachByLabel.
 func (a *API) ForEachByLabelPropertyPrefix(label, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
 	ops, err := a.ready()
 	if err != nil {

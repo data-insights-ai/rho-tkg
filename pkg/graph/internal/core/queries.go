@@ -2,6 +2,7 @@ package core
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -253,14 +254,16 @@ type nodeOrderedRangeScanner interface {
 // neighbouring sort keys, so the exact inclusivity check per inclMin/inclMax
 // is fn's responsibility).
 //
-// CURRENT-STATE ONLY (v1): the ordered door reflects the live current row
-// set. A temporal QueryOpts combination (ValidAt / ValidStart / ValidEnd /
-// TxAt / TxPin) is DECLINED with storepkg.ErrOrderedScanTemporal — value
-// ordering is derived from the valid-time-agnostic property index, so a
-// temporal ordered scan cannot be served correctly and is refused rather than
-// silently answered against current state. Returns storepkg.ErrIndexNotFound
-// when no property index with a usable ordered view exists for (label,
-// propKey) or the store lacks the capability. Same relaxed isolation and
+// Non-temporal opts take the index-backed fast path (O(k + log n) top-k) and
+// return storepkg.ErrIndexNotFound when no property index with a usable ordered
+// view exists for (label, propKey) or the store lacks the capability. A TEMPORAL
+// QueryOpts combination (ValidAt / ValidStart+ValidEnd / TxAt / TxPin) is instead
+// served by a SOUND FULL FOLD (Stage B): every label member is resolved to its
+// version at the pin, filtered to [min,max] on the value-AT-t, and sorted by that
+// value — so ordering over a past belief/valid state is correct and complete
+// (a value in range then but not now is included, and vice versa). The temporal
+// path needs no property index (it reads resolved node values directly) and is
+// O(N log N) in the label's temporal membership. Same relaxed isolation and
 // frozen-row contract as ForEachByLabel.
 func (n *NodeOps) ForEachByLabelPropertyRangeOrdered(label, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
 	c := n.c
@@ -273,10 +276,27 @@ func (n *NodeOps) ForEachByLabelPropertyRangeOrdered(label, propKey string, min,
 	if err := c.validateIndexLabel(label); err != nil {
 		return err
 	}
-	// Strict: decline on ANY temporal field (a lone ValidStart is not a
-	// complete interval, so hasTemporalFilter would miss it).
+	// Temporal ordered scan (Stage B): value-at-t is not indexed, so serve it as a
+	// SOUND FULL FOLD — resolve every label member to its version at the pin, keep
+	// those whose numeric value is in [min,max], sort by value. Needs no property
+	// index (it reads resolved node values directly). Non-temporal opts take the
+	// index-backed fast path below.
 	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
-		return storepkg.ErrOrderedScanTemporal
+		if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+			return err
+		}
+		return forEachNodeValueOrderedTemporal(c, label, opts, desc,
+			func(nd *types.Node) (float64, bool) {
+				v, ok := nd.GetProperty(propKey)
+				if !ok {
+					return 0, false
+				}
+				f, ok := coerceFloat64(v)
+				if !ok || !numericInRange(f, min, max, inclMin, inclMax) {
+					return 0, false
+				}
+				return f, true
+			}, fn)
 	}
 	if err := storepkg.ValidateQueryOpts(opts); err != nil {
 		return err
@@ -324,14 +344,13 @@ type nodePrefixScanner interface {
 // receives rows that already satisfy the prefix; fn still owns any further
 // predicate.
 //
-// CURRENT-STATE ONLY (Stage A): a temporal QueryOpts combination (ValidAt /
-// ValidStart / ValidEnd / TxAt / TxPin) is DECLINED with
-// storepkg.ErrOrderedScanTemporal — value ordering is derived from the
-// valid-time-agnostic property index, so a temporal ordered/prefix scan cannot be
-// served from the index and is refused rather than answered against current state.
-// Returns storepkg.ErrIndexNotFound when no property index with a usable ordered
-// view exists for (label, propKey) or the store lacks the capability. Same relaxed
-// isolation and frozen-row contract as ForEachByLabel.
+// Non-temporal opts take the index-backed fast path and return
+// storepkg.ErrIndexNotFound when no property index with a usable ordered view
+// exists for (label, propKey) or the store lacks the capability. A TEMPORAL
+// QueryOpts combination is served by a SOUND FULL FOLD (Stage B): every label
+// member is resolved to its version at the pin, filtered to the prefix on the
+// value-AT-t, and sorted lexicographically — needs no property index, O(N log N).
+// Same relaxed isolation and frozen-row contract as ForEachByLabel.
 func (n *NodeOps) ForEachByLabelPropertyPrefix(label, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
@@ -343,10 +362,26 @@ func (n *NodeOps) ForEachByLabelPropertyPrefix(label, propKey, prefix string, de
 	if err := c.validateIndexLabel(label); err != nil {
 		return err
 	}
-	// Strict: decline on ANY temporal field (a lone ValidStart is not a complete
-	// interval, so hasTemporalFilter would miss it).
+	// Temporal prefix scan (Stage B): value-at-t is not indexed, so serve it as a
+	// SOUND FULL FOLD — resolve every label member to its version at the pin, keep
+	// those whose string value begins with prefix, sort lexicographically. Needs no
+	// property index. Non-temporal opts take the index-backed fast path below.
 	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
-		return storepkg.ErrOrderedScanTemporal
+		if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+			return err
+		}
+		return forEachNodeValueOrderedTemporal(c, label, opts, desc,
+			func(nd *types.Node) (string, bool) {
+				v, ok := nd.GetProperty(propKey)
+				if !ok {
+					return "", false
+				}
+				s, ok := v.(string)
+				if !ok || !strings.HasPrefix(s, prefix) {
+					return "", false
+				}
+				return s, true
+			}, fn)
 	}
 	if err := storepkg.ValidateQueryOpts(opts); err != nil {
 		return err
@@ -2081,11 +2116,13 @@ type relPrefixScanner interface {
 // returning false stops the scan (LIMIT pushdown); an empty prefix matches every
 // string value.
 //
-// CURRENT-STATE ONLY: a temporal QueryOpts combination is DECLINED with
-// storepkg.ErrOrderedScanTemporal (value ordering derives from the
-// valid-time-agnostic property index). Returns storepkg.ErrIndexNotFound when no
-// usable rel property index exists for (type, propKey) or the store lacks the
-// capability. Same relaxed isolation and frozen-row contract as ForEachByType.
+// Non-temporal opts take the index-backed fast path and return
+// storepkg.ErrIndexNotFound when no usable rel property index exists for (type,
+// propKey) or the store lacks the capability. A TEMPORAL QueryOpts combination is
+// served by a SOUND FULL FOLD (Stage B): every rel of the type is resolved to its
+// version at the pin, filtered to the prefix on the value-AT-t, and sorted
+// lexicographically — needs no rel property index, O(N log N). Same relaxed
+// isolation and frozen-row contract as ForEachByType.
 func (r *RelOps) ForEachByTypePropertyPrefix(typeName, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -2097,10 +2134,27 @@ func (r *RelOps) ForEachByTypePropertyPrefix(typeName, propKey, prefix string, d
 	if err := c.validateRelTypeQueryName(typeName); err != nil {
 		return err
 	}
-	// Strict: decline on ANY temporal field (a lone ValidStart is not a complete
-	// interval, so hasTemporalFilter would miss it).
+	// Temporal prefix scan (Stage B): value-at-t is not indexed, so serve it as a
+	// SOUND FULL FOLD — resolve every rel of the type to its version at the pin,
+	// keep those whose string value begins with prefix, sort lexicographically.
+	// Needs no rel property index. Non-temporal opts take the index-backed fast
+	// path below.
 	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
-		return storepkg.ErrOrderedScanTemporal
+		if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+			return err
+		}
+		return forEachRelValueOrderedTemporal(c, typeName, opts, desc,
+			func(rl *types.Relationship) (string, bool) {
+				v, ok := rl.GetProperty(propKey)
+				if !ok {
+					return "", false
+				}
+				s, ok := v.(string)
+				if !ok || !strings.HasPrefix(s, prefix) {
+					return "", false
+				}
+				return s, true
+			}, fn)
 	}
 	if err := storepkg.ValidateQueryOpts(opts); err != nil {
 		return err
