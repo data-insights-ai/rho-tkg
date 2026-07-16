@@ -119,6 +119,27 @@ identity is enough).
 3. **B5 (OPT8) — deferred/batched index build during bulk load** + offline-shard bypass.
    - Refs: neo4j-admin import; RocksDB bulk ingest. Fits the ingest pipeline.
 
+   ### DECISION (2026-07-16): SKIP — already effectively implemented; residual not worth it. ✅
+   Surface map (Explore agent) + CPU profile of the 8-lane sharded bulk path
+   (`BenchmarkIngestShardedLanesBulk`, 1 property/node, ~1.89M inserts/s):
+   - **The classic "defer index build during bulk load" optimization is ALREADY DONE.**
+     All FIVE derived indexes (property/composite/temporal/HF/vector) are existence-gated
+     in BOTH stores (`if len(idxs)==0 return`), so a load-then-index workflow (the ingest
+     convention) already pays ~zero for them during the load. Zero additional win available.
+   - **The only un-gated always-on cost is the stats sweep** (`addNodePropertyKeyCounts` →
+     presence counters + type-class + NDV/min-max, a full property sweep per node). MEASURED
+     at **0.52s / 33.82s = ~1.54% of total CPU** (~8.8% of the serial per-shard idxMu section)
+     on a 1-property load. It scales with property count but stays small.
+   - Deferring the stats sweep is B3-flavored RISK: `PropertyTypeClassCounts` is a documented
+     CORRECTNESS GUARANTEE (ordering-soundness gates), not an estimate — deferral needs a
+     dirty-rebuild + read-fence and makes the stat stale mid-load. Not worth ~1.5% at that risk.
+   - The only scenario with a real derived-index win — bulk-loading into a PRE-INDEXED graph —
+     is avoided by the "create indexes after load" convention; revisit ONLY if sigma-tkgd
+     confirms it bulk-loads into already-indexed graphs (then: an ingest "suspend derived-index
+     maintenance" flag + batch rebuild via the existing `Create*Index` phase-2 primitives +
+     the `Building` read-fence — low risk, reuses everything).
+   Marked done-by-analysis (like B3). Proceed to B2.
+
 4. **B2 (OPT6) — lock-free skip-list ordered (label,property) index** for range/prefix/
    sorted scans. Large new index class (persistence + auto-maintenance across every
    mutation path). Alt: ART for single-thread + prefix. Refs: Memgraph; Leis ART.
