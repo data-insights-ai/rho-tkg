@@ -154,6 +154,27 @@ func BenchmarkIngestShardedLanesBulk(b *testing.B) {
 	benchInsertRateBulk(b, g, int(lanes))
 }
 
+// BenchmarkIngestShardedLanesBulkScaling measures how the write-only bulk path
+// scales with shard/lane count (== core count on the box). It answers "how far
+// toward 10M/s does adding shards get us" — throughput should climb roughly with
+// lanes until the box runs out of cores or the shared store LSM cost dominates.
+func BenchmarkIngestShardedLanesBulkScaling(b *testing.B) {
+	for _, lanes := range []uint8{2, 4, 8, 16} {
+		b.Run(fmt.Sprintf("lanes-%d", lanes), func(b *testing.B) {
+			st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2 + uint8(lanes)})
+			if err != nil {
+				b.Fatal(err)
+			}
+			g, err := graph.New(graph.Config{Store: st, SnowflakeNodeID: 0, IngestLanes: lanes})
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer func() { _ = g.Close() }()
+			benchInsertRateBulk(b, g, int(lanes))
+		})
+	}
+}
+
 // BenchmarkIngestShardedLanes is the S4 target: badger-backed sharded store,
 // 8 lanes over 8 lane slots (plus the interactive pair), 8 concurrent sessions
 // each pinned to its own slot -> its own shard -> one batched door per group.
