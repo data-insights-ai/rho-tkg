@@ -127,11 +127,20 @@ entity; the same reverse cleanup applies.
 ## 4. Staged plan
 
 - **R0 — ADR acceptance** (this document).
-- **R1 — watermark + sentinel + read-door plumbing (fail-closed FIRST).**
+- **R1 — watermark + sentinel + read-door plumbing (fail-closed FIRST). ✅ DONE.**
   `ErrRetentionExpired` sentinel (canonical in `internal/core`, re-exported from
-  `pkg/graph`); per-label `retention_watermark` MetaKV; point/scan temporal read
-  doors consult it. No purge yet — the guard lands before the thing it guards, so
-  a half-built purge can never read as complete. Gate: two-door watermark tests.
+  `pkg/graph`); per-label `retention_watermark/<labelToken>` MetaKV + a graph-max
+  fast-gate key (`retention_max_watermark`, rehydrated at open — `retention.go`,
+  mirroring the compaction watermark); point/scan temporal read doors consult it.
+  No purge yet — the guard lands before the thing it guards, so a half-built purge
+  can never read as complete. Point doors check the queried entity's label
+  watermark(s) (`checkNodePointRetention`); scan doors fail the whole scan against
+  the graph max (`checkScanRetention` inside `validateTemporalQueryOptsScan` + the
+  `nodesAsOfLocked`/`relsAsOfLocked` seams). `advanceRetentionWatermark` is the
+  seam R2's purge calls after a range is fully clean; `Admin.Reset` reaps it.
+  Gate: two-door watermark tests (point per-label incl. per-label precision; scan
+  whole-scan; monotonic; durable across reopen; reset clears) — all green,
+  race-clean, all backends.
 - **R2 — single-store age-based range purge (badger + memory).** Chunked,
   idempotent, entity-locked per chunk; removes entity rows + history + all index
   entries + survivor inIdx cleanup; advances the watermark last. `RetentionPolicy

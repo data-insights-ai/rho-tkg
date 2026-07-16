@@ -259,6 +259,9 @@ func (a *AdminOps) Reset() error {
 	if err := c.reapCompactionForReset(); err != nil {
 		return err
 	}
+	if err := c.reapRetentionForReset(); err != nil {
+		return err
+	}
 	if err := c.reapUniqueForeverOwnersForReset(); err != nil {
 		return err
 	}

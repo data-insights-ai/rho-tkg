@@ -378,7 +378,12 @@ func (c *Core) validateTemporalQueryOptsScan(opts storepkg.QueryOpts) error {
 	if err := validateTemporalQueryOpts(opts); err != nil {
 		return err
 	}
-	return c.checkScanCompaction(opts)
+	if err := c.checkScanCompaction(opts); err != nil {
+		return err
+	}
+	// Retention (ADR-0008): a pin below the graph's max retention watermark means
+	// some purged entity is missing — fail the whole scan closed.
+	return c.checkScanRetention(opts)
 }
 
 // -----------------------------------------------------------------------------

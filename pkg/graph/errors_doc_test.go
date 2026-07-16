@@ -147,6 +147,11 @@ var compactionSentinels = []string{
 	"ErrCompactionChangeLogEnabled",
 }
 
+// Retention purge (ADR-0008)
+var retentionSentinels = []string{
+	"ErrRetentionExpired",
+}
+
 // IO sentinels
 var ioSentinels = []string{
 	"ErrNilReader",
@@ -288,6 +293,7 @@ func graphReexportSentinelNames() []string {
 	all = append(all, asOfTagsSentinels...)
 	all = append(all, uniqueConstraintSentinels...)
 	all = append(all, compactionSentinels...)
+	all = append(all, retentionSentinels...)
 	all = append(all, ioSentinels...)
 	all = append(all, backupSentinels...)
 	all = append(all, deltaSentinels...)

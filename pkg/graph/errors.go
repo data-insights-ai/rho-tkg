@@ -131,6 +131,8 @@ var (
 	ErrCompactionProtectedTag     = core.ErrCompactionProtectedTag
 	ErrInvalidRetentionPolicy     = core.ErrInvalidRetentionPolicy
 	ErrCompactionChangeLogEnabled = core.ErrCompactionChangeLogEnabled
+	// Retention purge (ADR-0008).
+	ErrRetentionExpired = core.ErrRetentionExpired
 )
 
 // IO sentinels (R4-F8). Re-exported so external callers can write

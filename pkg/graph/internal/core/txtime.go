@@ -45,6 +45,9 @@ func (c *Core) nodeAsOfLocked(id types.NodeID, txTime types.Instant) (*types.Nod
 	if err := c.checkNodePointCompaction(id, txTime); err != nil {
 		return nil, err
 	}
+	if err := c.checkNodePointRetention(id, txTime); err != nil {
+		return nil, err
+	}
 	if c.txTimeQuery != nil {
 		n, err := c.txTimeQuery.NodeAsOf(id, txTime)
 		if errors.Is(err, storepkg.ErrVersionNotFound) {
@@ -110,6 +113,9 @@ func (c *Core) relAsOfLocked(id types.RelID, txTime types.Instant) (*types.Relat
 		return nil, err
 	}
 	if err := c.checkRelPointCompaction(id, txTime); err != nil {
+		return nil, err
+	}
+	if err := c.checkRelPointRetention(txTime); err != nil {
 		return nil, err
 	}
 	if c.txTimeQuery != nil {
@@ -196,6 +202,9 @@ func (c *Core) nodesAsOfLocked(txTime types.Instant) ([]*types.Node, error) {
 	if err := c.checkScanCompactionAt(txTime); err != nil {
 		return nil, err
 	}
+	if err := c.checkScanRetentionAt(txTime); err != nil {
+		return nil, err
+	}
 	var result []*types.Node
 	if c.txTimeQuery != nil {
 		nodes, err := c.txTimeQuery.NodesAsOf(txTime)
@@ -279,6 +288,9 @@ func (t *TempOps) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) 
 
 func (c *Core) relsAsOfLocked(txTime types.Instant) ([]*types.Relationship, error) {
 	if err := c.checkScanCompactionAt(txTime); err != nil {
+		return nil, err
+	}
+	if err := c.checkScanRetentionAt(txTime); err != nil {
 		return nil, err
 	}
 	var result []*types.Relationship

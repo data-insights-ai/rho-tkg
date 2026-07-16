@@ -216,6 +216,7 @@ History compaction (`g.Admin().CompactHistoryNodes(...)` / `CompactHistoryRels(.
 | `ErrCompactionProtectedTag` | core | A registered named as-of tag (§4.2) pins knowledge the policy would trim; a tag is a promise the state stays addressable. No history is trimmed. Remove the tag first | `g.Admin().CompactHistoryNodes()` / `CompactHistoryRels()` |
 | `ErrInvalidRetentionPolicy` | core | The `RetentionPolicy` has no bound set (both `KeepVersions` and `KeepSince` zero) or a negative bound | `g.Admin().CompactHistoryNodes()` / `CompactHistoryRels()` |
 | `ErrCompactionChangeLogEnabled` | core | Compaction is refused while the change-log is enabled (compaction records / replica apply / delta interplay land later), so no replica can silently diverge from a compacted primary | `g.Admin().CompactHistoryNodes()` / `CompactHistoryRels()` |
+| `ErrRetentionExpired` | core | A temporal read's pin falls before a relevant label's retention watermark (ADR-0008 — whole entities purged below a policy boundary with no tombstone). Point doors (`NodeAtTx` / `NodeAsOf` / rel mirrors) check the queried entity's label watermark(s); scan doors (`NodesAsOf` / `ByLabel` / `All` with a temporal pin) fail the whole scan against the graph max watermark. Fail-closed guard shipped in R1 before any purge exists | `g.Temporal().NodeAtTx()` / `NodesAsOf()`, `g.Nodes().All()` / `ByLabel()` with a pin below a retention watermark |
 
 Compaction also declines with `ErrCapabilityNotSupported` on the tiered backend (per-shard trim + catalog counters are out of scope for v1).
 

@@ -157,7 +157,14 @@ type Core struct {
 	// A pin (TxAt / TxPin / txTime) at or above the watermark cannot require any
 	// trimmed version. See compaction.go.
 	compactedThroughTx atomic.Int64
-	registryDirty      atomic.Bool
+	// retentionMaxWatermark is the graph-level maximum over all per-label
+	// retention watermarks (ADR-0008), loaded from MetaKV at open and advanced by
+	// advanceRetentionWatermark. Like compactedThroughTx it is the lock-free fast
+	// gate for every temporal read: 0 means no retention watermark has ever been
+	// set, so point/scan doors skip the retention probe entirely, and a pin at or
+	// above it cannot precede any label's watermark. See retention.go.
+	retentionMaxWatermark atomic.Int64
+	registryDirty         atomic.Bool
 	relTypeCache       map[string]uint16
 	relTypeCacheMu     sync.RWMutex
 	closeOnce          sync.Once
@@ -354,6 +361,18 @@ var (
 	// delta interplay are a later stage (ADR Decision 5); refusing here keeps a
 	// replica from silently diverging from a compacted primary.
 	ErrCompactionChangeLogEnabled = errors.New("graph: history compaction is unavailable while the change-log is enabled (compaction + replication lands later)")
+
+	// ErrRetentionExpired is returned by a temporal read whose pin falls before a
+	// relevant label's retention watermark (ADR-0008 §2). Retention PURGE
+	// hard-removes whole entities below a policy boundary WITHOUT tombstones, so a
+	// read pinned below the boundary cannot be answered completely — the loss of
+	// answerability is EXPLICIT and fail-closed, never a silently-incomplete
+	// result (mirroring ErrHistoryCompacted for trimmed history). Point doors
+	// check the queried entity's label watermark(s); scan doors fail the whole
+	// scan when the pin precedes the graph's maximum retention watermark. R1
+	// installs this guard BEFORE any purge exists (ADR staged plan), so a
+	// half-built purge can never read as complete.
+	ErrRetentionExpired = errors.New("graph: entities purged per retention policy below the requested time")
 )
 
 // Re-exports of registry errors and index errors used by methods on *Core.
@@ -1462,6 +1481,12 @@ func New(config Config) (*Core, error) {
 	// corrupt blob — a silently-dropped watermark would let a scan below
 	// compacted knowledge return incomplete data as if complete.
 	if err := c.loadCompactionWatermark(); err != nil {
+		return nil, err
+	}
+
+	// Rehydrate the graph retention watermark (ADR-0008) — same fail-closed
+	// contract as the compaction watermark above.
+	if err := c.loadRetentionWatermark(); err != nil {
 		return nil, err
 	}
 

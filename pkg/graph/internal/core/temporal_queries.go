@@ -319,6 +319,9 @@ func (c *Core) nodeAtLockedTx(id types.NodeID, validAt, txAt types.Instant) (*ty
 	if err := c.checkNodePointCompaction(id, txAt); err != nil {
 		return nil, err
 	}
+	if err := c.checkNodePointRetention(id, txAt); err != nil {
+		return nil, err
+	}
 	current, err := c.getCurrentNode(id)
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
@@ -395,6 +398,9 @@ func (c *Core) relAtLockedTx(id types.RelID, validAt, txAt types.Instant) (*type
 		return nil, err
 	}
 	if err := c.checkRelPointCompaction(id, txAt); err != nil {
+		return nil, err
+	}
+	if err := c.checkRelPointRetention(txAt); err != nil {
 		return nil, err
 	}
 	current, err := c.getCurrentRelationship(id)
