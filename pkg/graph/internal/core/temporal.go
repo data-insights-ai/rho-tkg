@@ -1130,6 +1130,62 @@ func (c *Core) findRelVersionMatchingDuringTx(id types.RelID, start, end, txAt t
 	return c.resolveRelChain(chain, chainProbe{kind: probeInterval, validStart: start, validEnd: end, tx: txAt}, pred)
 }
 
+// findNodeVersionRelating iterates versions of node id whose valid-interval has
+// an Allen relation to the query interval [qStart, qEnd) that is a member of
+// rels, most-recent-first, returning the first match (predicate-anywhere; see
+// resolveNodeChainRelating). pred==nil applies no additional filter. qEnd == 0
+// denotes an open query interval and is NOT pre-resolved — RelateOpen substitutes
+// +∞ itself. Returns storepkg.ErrNoVersionValidAt if no version relates,
+// storepkg.ErrNodeNotFound if the node was never seen.
+func (c *Core) findNodeVersionRelating(id types.NodeID, qStart, qEnd types.Instant, rels types.AllenRelationSet, pred func(*types.Node) bool) (*types.Node, error) {
+	current, err := c.getCurrentNode(id)
+	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
+		return nil, err
+	}
+
+	history, err := c.getNodeHistory(id)
+	if err != nil {
+		return nil, err
+	}
+
+	if current == nil && len(history) == 0 {
+		return nil, storepkg.ErrNodeNotFound
+	}
+
+	chain := make([]*types.Node, 0, len(history)+1)
+	chain = append(chain, history...)
+	if current != nil {
+		chain = append(chain, current)
+	}
+
+	return c.resolveNodeChain(chain, chainProbe{kind: probeRelate, validStart: qStart, validEnd: qEnd, rels: rels}, pred)
+}
+
+// findRelVersionRelating is the relationship counterpart of findNodeVersionRelating.
+func (c *Core) findRelVersionRelating(id types.RelID, qStart, qEnd types.Instant, rels types.AllenRelationSet, pred func(*types.Relationship) bool) (*types.Relationship, error) {
+	current, err := c.getCurrentRelationship(id)
+	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
+		return nil, err
+	}
+
+	history, err := c.getRelHistory(id)
+	if err != nil {
+		return nil, err
+	}
+
+	if current == nil && len(history) == 0 {
+		return nil, storepkg.ErrRelNotFound
+	}
+
+	chain := make([]*types.Relationship, 0, len(history)+1)
+	chain = append(chain, history...)
+	if current != nil {
+		chain = append(chain, current)
+	}
+
+	return c.resolveRelChain(chain, chainProbe{kind: probeRelate, validStart: qStart, validEnd: qEnd, rels: rels}, pred)
+}
+
 // getNodeVersionDuring is a thin wrapper preserving the original "any overlap"
 // semantic. Use findNodeVersionMatchingDuring with a predicate when the query
 // has a label/property filter.

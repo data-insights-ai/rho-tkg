@@ -32,6 +32,8 @@ type Ops interface {
 	RelsDuring(start, end types.Instant) ([]*types.Relationship, error)
 	NodesByLabelPropertyDuring(label, key string, value any, start, end types.Instant) ([]*types.Node, error)
 	RelsByTypePropertyDuring(relType, key string, value any, start, end types.Instant) ([]*types.Relationship, error)
+	NodesRelating(from, to types.Instant, rels types.AllenRelationSet) ([]*types.Node, error)
+	RelsRelating(from, to types.Instant, rels types.AllenRelationSet) ([]*types.Relationship, error)
 
 	// Bitemporal (transaction time)
 	NowTx() (types.Instant, error)
@@ -220,6 +222,27 @@ func (a *API) RelsDuring(start, end types.Instant) ([]*types.Relationship, error
 		return nil, err
 	}
 	return ops.RelsDuring(start, end)
+}
+
+// NodesRelating returns nodes having a version whose valid-interval has an Allen
+// relation to the query interval [from,to) that is a member of rels. History-aware
+// and predicate-anywhere; to == 0 is an open (+∞) query interval; an empty rels
+// set yields an empty result. See core.TempOps.NodesRelating.
+func (a *API) NodesRelating(from, to types.Instant, rels types.AllenRelationSet) ([]*types.Node, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.NodesRelating(from, to, rels)
+}
+
+// RelsRelating is the relationship mirror of NodesRelating.
+func (a *API) RelsRelating(from, to types.Instant, rels types.AllenRelationSet) ([]*types.Relationship, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.RelsRelating(from, to, rels)
 }
 
 // NodesByLabelPropertyDuring returns nodes labeled with property during [start,end).

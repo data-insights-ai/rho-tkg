@@ -65,6 +65,14 @@ const (
 	// the retraction rule. The chain handed in must include the current row when
 	// the current row is a candidate (see nodeAsOfLocked).
 	probeAsOf
+	// probeRelate resolves any version whose valid-interval [vStart, vEnd) has an
+	// Allen relation to the query interval [validStart, validEnd) that is a member
+	// of rels — predicate-anywhere, most-recent-first, like probeInterval. UNLIKE
+	// probeInterval, validEnd is the RAW query end (0 = open, +∞): the classifier
+	// types.RelateOpen substitutes +∞ itself, so pre-resolving the open end to a
+	// concrete "now+" bound (as probeInterval requires) would corrupt Before/After
+	// classification. No TX filter is applied (tx must be 0).
+	probeRelate
 )
 
 // chainProbe is the query specification handed to resolveNodeChain /
@@ -78,6 +86,9 @@ type chainProbe struct {
 	validStart types.Instant
 	validEnd   types.Instant
 	tx         types.Instant
+	// rels is meaningful only for probeRelate: the set of Allen relations a
+	// version's valid-interval must have with [validStart, validEnd) to match.
+	rels types.AllenRelationSet
 }
 
 // resolveNodeChain is the single node-side selection seam. pred is consulted
@@ -96,7 +107,36 @@ func (c *Core) resolveNodeChain(chain []*types.Node, probe chainProbe, pred func
 	if probe.kind == probeInterval {
 		return c.resolveNodeChainDuring(chain, probe.validStart, probe.validEnd, pred)
 	}
+	if probe.kind == probeRelate {
+		return c.resolveNodeChainRelating(chain, probe.validStart, probe.validEnd, probe.rels, pred)
+	}
 	return c.resolveNodeVersionAt(chain, probe.validAt)
+}
+
+// resolveNodeChainRelating scans a chain for a version whose valid-interval has
+// an Allen relation to [qStart, qEnd) that is a member of rels, most-recent-first
+// (predicate-anywhere — the same rationale as resolveNodeChainDuring). qEnd == 0
+// denotes an open query interval; types.RelateOpen substitutes +∞ for both the
+// query's and the version's open ends, so Before/After/Meets classify exactly.
+func (c *Core) resolveNodeChainRelating(chain []*types.Node, qStart, qEnd types.Instant, rels types.AllenRelationSet, pred func(*types.Node) bool) (*types.Node, error) {
+	if rels == 0 {
+		return nil, storepkg.ErrNoVersionValidAt
+	}
+	c.sortNodeChainForResolve(chain)
+	for i := len(chain) - 1; i >= 0; i-- {
+		if eclipsedNodeBounds(chain[i]) {
+			continue
+		}
+		vStart, vEnd := c.nodeVersionBounds(chain, i)
+		rel, err := types.RelateOpen(vStart, vEnd, qStart, qEnd)
+		if err != nil {
+			continue
+		}
+		if rels.Contains(rel) && (pred == nil || pred(chain[i])) {
+			return chain[i], nil
+		}
+	}
+	return nil, storepkg.ErrNoVersionValidAt
 }
 
 // resolveNodeChainDuring scans a TxAt-filtered chain for a version whose
@@ -148,7 +188,32 @@ func (c *Core) resolveRelChain(chain []*types.Relationship, probe chainProbe, pr
 	if probe.kind == probeInterval {
 		return c.resolveRelChainDuring(chain, probe.validStart, probe.validEnd, pred)
 	}
+	if probe.kind == probeRelate {
+		return c.resolveRelChainRelating(chain, probe.validStart, probe.validEnd, probe.rels, pred)
+	}
 	return c.resolveRelVersionAt(chain, probe.validAt)
+}
+
+// resolveRelChainRelating mirrors resolveNodeChainRelating for relationships.
+func (c *Core) resolveRelChainRelating(chain []*types.Relationship, qStart, qEnd types.Instant, rels types.AllenRelationSet, pred func(*types.Relationship) bool) (*types.Relationship, error) {
+	if rels == 0 {
+		return nil, storepkg.ErrNoVersionValidAt
+	}
+	c.sortRelChainForResolve(chain)
+	for i := len(chain) - 1; i >= 0; i-- {
+		if eclipsedRelBounds(chain[i]) {
+			continue
+		}
+		vStart, vEnd := c.relVersionBounds(chain, i)
+		rel, err := types.RelateOpen(vStart, vEnd, qStart, qEnd)
+		if err != nil {
+			continue
+		}
+		if rels.Contains(rel) && (pred == nil || pred(chain[i])) {
+			return chain[i], nil
+		}
+	}
+	return nil, storepkg.ErrNoVersionValidAt
 }
 
 // resolveRelChainDuring mirrors resolveNodeChainDuring for relationships.

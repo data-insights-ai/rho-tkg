@@ -262,6 +262,119 @@ func (c *Core) relsDuringLocked(start, end types.Instant) ([]*types.Relationship
 	return result, nil
 }
 
+// normalizeRelatingRange validates a query interval for the Allen-relation
+// doors. UNLIKE normalizeDuringRange it does NOT substitute a concrete bound for
+// an open end (end == 0): types.RelateOpen needs the raw open representation to
+// classify Before/After/Meets against an open query exactly. Requires start > 0
+// (an open START is meaningless — only ENDS may be open), and start < end when
+// end is a closed bound.
+func normalizeRelatingRange(start, end types.Instant) error {
+	if start <= 0 {
+		return ErrInvalidTimeRange
+	}
+	if end != 0 && start >= end {
+		return ErrInvalidTimeRange
+	}
+	return nil
+}
+
+// NodesRelating returns all nodes having some version whose valid-interval
+// [vStart, vEnd) has an Allen relation to the query interval [from, to) that is a
+// member of rels. History-aware and predicate-anywhere: a node matches if ANY of
+// its versions relates, even when the most-recent version does not — so a query
+// for Before/Meets finds an entity that was superseded before the query window.
+//
+// to == 0 denotes an OPEN query interval (+∞); it is NOT resolved to a concrete
+// "now+" bound (as NodesDuring does) because that would corrupt the Before/After
+// boundary — see types.RelateOpen. An empty rels set yields an empty result.
+// Returns ErrInvalidTimeRange if from <= 0, or from >= to when to is closed.
+func (t *TempOps) NodesRelating(from, to types.Instant, rels types.AllenRelationSet) ([]*types.Node, error) {
+	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := normalizeRelatingRange(from, to); err != nil {
+		return nil, err
+	}
+	if rels == 0 {
+		return nil, nil
+	}
+	var result []*types.Node
+	err := c.readUnderRLock(func() error {
+		var err error
+		result, err = c.nodesRelatingLocked(from, to, rels)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (c *Core) nodesRelatingLocked(from, to types.Instant, rels types.AllenRelationSet) ([]*types.Node, error) {
+	var result []*types.Node
+	err := c.forEachKnownNodeID(func(id types.NodeID) error {
+		n, err := c.findNodeVersionRelating(id, from, to, rels, nil)
+		if err != nil {
+			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
+				return nil
+			}
+			return err
+		}
+		result = append(result, n)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	storeutil.SortNodesByID(result)
+	return result, nil
+}
+
+// RelsRelating is the relationship mirror of NodesRelating (Testing Rule 2).
+func (t *TempOps) RelsRelating(from, to types.Instant, rels types.AllenRelationSet) ([]*types.Relationship, error) {
+	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := normalizeRelatingRange(from, to); err != nil {
+		return nil, err
+	}
+	if rels == 0 {
+		return nil, nil
+	}
+	var result []*types.Relationship
+	err := c.readUnderRLock(func() error {
+		var err error
+		result, err = c.relsRelatingLocked(from, to, rels)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (c *Core) relsRelatingLocked(from, to types.Instant, rels types.AllenRelationSet) ([]*types.Relationship, error) {
+	var result []*types.Relationship
+	err := c.forEachKnownRelID(func(id types.RelID) error {
+		r, err := c.findRelVersionRelating(id, from, to, rels, nil)
+		if err != nil {
+			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
+				return nil
+			}
+			return err
+		}
+		result = append(result, r)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	storeutil.SortRelsByID(result)
+	return result, nil
+}
+
 // NodeAt returns the version of a node that was valid at the given instant.
 // Builds the full version chain (history + current) and finds the version
 // whose validity period contains t.
@@ -761,6 +874,28 @@ func (c *Core) nodesByLabelPropertyDuringLocked(label, key string, value any, st
 	if err != nil {
 		return nil, err
 	}
+	// Gather the full-history candidate id set (id enumeration only), then apply
+	// the B4 Step-1 envelope prune before the expensive per-id chain resolve.
+	var candIDs []types.NodeID
+	if err := c.forEachNodeCandidateID(currentIDs, func(id types.NodeID) error {
+		candIDs = append(candIDs, id)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	// Drop candidates whose valid-time envelope provably cannot OVERLAP [start,end).
+	// Sound for the During door specifically because it matches on overlap; the
+	// chain resolver stays authoritative for anything the index does not vouch for.
+	// (This prune is NOT applied to the Relating doors — their Allen set may include
+	// non-overlapping relations like Before/After/Meets, which envelope-overlap
+	// pruning would wrongly drop.) end is already resolved to a concrete bound by
+	// normalizeDuringRange, so ValidEnd > 0 holds. Mirrors the point-in-time door
+	// (rule 17); TestTemporalDuringCandidatePruneEquivalence enforces agreement.
+	if c.temporalCandidates != nil {
+		if kept, ok := c.temporalCandidates.PruneTemporalCandidates(tok, candIDs, storepkg.QueryOpts{ValidStart: start, ValidEnd: end}); ok {
+			candIDs = kept
+		}
+	}
 	pred := func(n *types.Node) bool {
 		if !n.HasLabelTokenRaw(tok) {
 			return false
@@ -769,18 +904,15 @@ func (c *Core) nodesByLabelPropertyDuringLocked(label, key string, value any, st
 		return found && gotKey == targetKey
 	}
 	var result []*types.Node
-	if err := c.forEachNodeCandidateID(currentIDs, func(id types.NodeID) error {
+	for _, id := range candIDs {
 		n, err := c.findNodeVersionMatchingDuring(id, start, end, pred)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
-				return nil
+				continue
 			}
-			return err
+			return nil, err
 		}
 		result = append(result, n)
-		return nil
-	}); err != nil {
-		return nil, err
 	}
 	storeutil.SortNodesByID(result)
 	return result, nil

@@ -2111,3 +2111,38 @@ before re-marshaling so a rewritten full row stays canonical. Rules:
    backends. For any storage-representation change (delta, compaction, re-encode),
    the differential-oracle test — not just a round-trip on one backend — is the
    test that catches representation-specific corruption.
+
+## 69. An Overlap-Based Candidate Prune Must NOT Be Applied To A Query Door Whose Predicate Set Includes NON-Overlapping Relations
+
+The B4 valid-time envelope prune (`PruneTemporalCandidates`) drops a candidate
+when its `[minFrom, maxTo]` envelope provably cannot OVERLAP the query interval.
+That is sound for the `During` / point-in-time doors, whose match predicate IS
+overlap. OPT10 added `NodesRelating(from, to, rels)` — an Allen-relation door
+whose `rels` set may include `Before` / `After` / `Meets` / `MetBy`, which are
+precisely the relations that hold when the two intervals do NOT overlap. Wiring
+the same overlap-prune into the Relating door "for consistency" would silently
+drop every `{Before}`/`{After}` match — a query for "entities that ended before
+the window" would return empty. The prune is a candidate NARROWER keyed to one
+predicate (overlap); it is not a general temporal accelerator.
+
+Rules:
+1. Before reusing a pruning/short-circuit built for one predicate on a new door,
+   check whether the new door's predicate is a SUBSET of what the prune assumes.
+   Overlap-prune is valid only where the match is overlap. An Allen door with any
+   non-overlap relation in its set must take the full fold (or a prune keyed to
+   the actual relation set).
+2. Scope the wiring explicitly and say WHY at the call site: the Step-1 prune is
+   wired into `nodesByLabelPropertyDuringLocked` with a comment that it is NOT
+   applied to the Relating doors, so the next person does not "complete" the
+   symmetry and reintroduce the bug.
+3. The adversarial test must include the non-overlap relations (`{Before, After,
+   Meets, MetBy}` as an exact-set assertion) — a happy-path `{Overlaps}`/`{During}`
+   test would pass even with the incorrect prune, because those relations DO
+   overlap. Rule 16's "must return the relations envelope-pruning would drop" is
+   the specific assertion that fails closed here.
+4. Open interval ends are +∞, not a wall-clock "now+": the Relating classifier
+   (`types.RelateOpen`) passes the query end RAW (0 = open) so Before/After/Meets
+   classify against the true open edge. Pre-resolving an open end to a concrete
+   bound (as the overlap `During` door does) would move the Before/After boundary
+   and misclassify — another reason the two doors cannot share the open-end
+   handling.

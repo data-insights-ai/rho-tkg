@@ -36,6 +36,8 @@ func TestAPINilReceiversReturnErrNilGraph(t *testing.T) {
 		{name: "RelsDuring", run: func() error { _, err := nilAPI.RelsDuring(1, 2); return err }},
 		{name: "NodesByLabelPropertyDuring", run: func() error { _, err := nilAPI.NodesByLabelPropertyDuring("Node", "name", "Ada", 1, 2); return err }},
 		{name: "RelsByTypePropertyDuring", run: func() error { _, err := nilAPI.RelsByTypePropertyDuring("KNOWS", "since", 2026, 1, 2); return err }},
+		{name: "NodesRelating", run: func() error { _, err := nilAPI.NodesRelating(1, 2, types.Before.Set()); return err }},
+		{name: "RelsRelating", run: func() error { _, err := nilAPI.RelsRelating(1, 2, types.Before.Set()); return err }},
 		{name: "NowTx", run: func() error { _, err := nilAPI.NowTx(); return err }},
 		{name: "NodeAsOf", run: func() error { _, err := nilAPI.NodeAsOf(nodeID, 1); return err }},
 		{name: "RelAsOf", run: func() error { _, err := nilAPI.RelAsOf(relID, 1); return err }},
@@ -122,6 +124,8 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "RelsDuring", run: func() error { _, err := api.RelsDuring(1, 2); return err }},
 		{name: "NodesByLabelPropertyDuring", run: func() error { _, err := api.NodesByLabelPropertyDuring("Node", "name", "Ada", 1, 2); return err }},
 		{name: "RelsByTypePropertyDuring", run: func() error { _, err := api.RelsByTypePropertyDuring("KNOWS", "since", 2026, 1, 2); return err }},
+		{name: "NodesRelating", run: func() error { _, err := api.NodesRelating(1, 2, types.Before.Set()); return err }},
+		{name: "RelsRelating", run: func() error { _, err := api.RelsRelating(1, 2, types.Before.Set()); return err }},
 		{name: "NowTx", run: func() error { _, err := api.NowTx(); return err }},
 		{name: "NodeAsOf", run: func() error { _, err := api.NodeAsOf(nodeID, 1); return err }},
 		{name: "RelAsOf", run: func() error { _, err := api.RelAsOf(relID, 1); return err }},
@@ -197,7 +201,8 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 	wantCalls := []string{
 		"NodeAt", "NodesAt", "NodesByLabelAt", "RelAt", "RelsAt", "RelsByTypeAt",
 		"NeighborsAt", "OutgoingRelsAt", "IncomingRelsAt", "NodesByLabelPropertyAt", "RelsByTypePropertyAt", "NodesDuring", "RelsDuring",
-		"NodesByLabelPropertyDuring", "RelsByTypePropertyDuring", "NowTx", "NodeAsOf", "RelAsOf", "NodesAsOf", "RelsAsOf",
+		"NodesByLabelPropertyDuring", "RelsByTypePropertyDuring", "NodesRelating", "RelsRelating",
+		"NowTx", "NodeAsOf", "RelAsOf", "NodesAsOf", "RelsAsOf",
 		"NodeAtTx", "RelAtTx", "NodesAtTx", "RelsAtTx", "NodesDuringTx", "RelsDuringTx",
 		"SetNodeVersionInterval", "SetRelVersionInterval",
 		"Snapshot", "Diff", "DiffCallback", "NodeInterval", "RelInterval", "RelateNodes", "RelateRels",
@@ -306,6 +311,16 @@ func (s *temporalOpsSpy) NodesDuring(start, end types.Instant) ([]*types.Node, e
 
 func (s *temporalOpsSpy) RelsDuring(start, end types.Instant) ([]*types.Relationship, error) {
 	s.record("RelsDuring")
+	return nil, s.err
+}
+
+func (s *temporalOpsSpy) NodesRelating(from, to types.Instant, rels types.AllenRelationSet) ([]*types.Node, error) {
+	s.record("NodesRelating")
+	return nil, s.err
+}
+
+func (s *temporalOpsSpy) RelsRelating(from, to types.Instant, rels types.AllenRelationSet) ([]*types.Relationship, error) {
+	s.record("RelsRelating")
 	return nil, s.err
 }
 

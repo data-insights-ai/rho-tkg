@@ -2,6 +2,7 @@ package types
 
 import (
 	"errors"
+	"math"
 	"strings"
 )
 
@@ -162,6 +163,34 @@ func (r AllenRelation) Set() AllenRelationSet {
 func Relate(aStart, aEnd, bStart, bEnd Instant) (AllenRelation, error) {
 	if aStart == 0 || aEnd == 0 || bStart == 0 || bEnd == 0 {
 		return 0, ErrOpenInterval
+	}
+	if aStart >= aEnd || bStart >= bEnd {
+		return 0, ErrInvalidInterval
+	}
+	return relate(aStart, aEnd, bStart, bEnd), nil
+}
+
+// RelateOpen classifies the Allen relation between intervals [aStart, aEnd) and
+// [bStart, bEnd) where an END of 0 denotes an OPEN (still-valid, +∞) interval —
+// the temporal-query representation of ValidTo == 0. Only ends may be open:
+// aStart and bStart must be > 0 (ErrOpenInterval), and each interval must be
+// non-empty once its open end is substituted with +∞ (ErrInvalidInterval).
+//
+// This is the version-chain door's classifier: entity valid-intervals routinely
+// carry an open end (the current, not-yet-superseded version), so Relate — which
+// rejects any zero endpoint — cannot classify them. Relate stays untouched for
+// callers with genuinely closed intervals (rule 17: two doors, same shape).
+func RelateOpen(aStart, aEnd, bStart, bEnd Instant) (AllenRelation, error) {
+	if aStart == 0 || bStart == 0 {
+		return 0, ErrOpenInterval
+	}
+	// Substitute +∞ for an open end. math.MaxInt64 is strictly greater than any
+	// real snowflake-derived instant, so the classifier's ordering is exact.
+	if aEnd == 0 {
+		aEnd = Instant(math.MaxInt64)
+	}
+	if bEnd == 0 {
+		bEnd = Instant(math.MaxInt64)
 	}
 	if aStart >= aEnd || bStart >= bEnd {
 		return 0, ErrInvalidInterval
