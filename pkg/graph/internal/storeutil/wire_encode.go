@@ -95,7 +95,7 @@ func (w NodeWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 		}
 	}
 	if len(w.Properties) > 0 {
-		if err := encodeStringAnyField(enc, "p", w.Properties); err != nil {
+		if err := encodePropertyArray(enc, "p", w.Properties); err != nil {
 			return err
 		}
 	}
@@ -296,7 +296,7 @@ func (w RelWire) EncodeMsgpack(enc *msgpack.Encoder) error {
 		return err
 	}
 	if len(w.Properties) > 0 {
-		if err := encodeStringAnyField(enc, "p", w.Properties); err != nil {
+		if err := encodePropertyArray(enc, "p", w.Properties); err != nil {
 			return err
 		}
 	}
@@ -483,6 +483,31 @@ func encodeStringAnyField(enc *msgpack.Encoder, key string, value any) error {
 		return err
 	}
 	return enc.Encode(value)
+}
+
+// encodePropertyArray writes the property slice under key WITHOUT reflection.
+// Handing []PropertyWire to enc.Encode routes through msgpack's reflective slice
+// path, which boxes every element via reflect.Value.Interface() to dispatch its
+// CustomEncoder — one heap allocation per property on the write hot path. Emitting
+// the array header directly and calling EncodeMsgpack on each ADDRESSABLE element
+// is a plain method call: no reflection, no boxing. The bytes are identical — a
+// msgpack array is a length header (fixarray/array16/array32, exactly what
+// EncodeArrayLen emits) followed by each element's CustomEncoder output, which is
+// what the reflective path produces too. Byte-identity is locked by the golden
+// vectors in wire_encode_golden_test.go.
+func encodePropertyArray(enc *msgpack.Encoder, key string, props []PropertyWire) error {
+	if err := enc.EncodeString(key); err != nil {
+		return err
+	}
+	if err := enc.EncodeArrayLen(len(props)); err != nil {
+		return err
+	}
+	for i := range props {
+		if err := props[i].EncodeMsgpack(enc); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func encodeStringBoolField(enc *msgpack.Encoder, key string, value bool) error {
