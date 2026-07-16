@@ -2046,3 +2046,39 @@ import-merge rollback) now hold `registryMu` in addition to `c.mu.Lock`, and
    `-run` subset — the storm/lifecycle tests only run in the full suite, and CI's
    slower runners hit windows a fast dev box never opens. A release commit whose
    full race suite did not run locally is a release gambling on CI.
+
+## 67. A Raw-Byte Storage-Saving Estimate Is Not A Disk-Saving Estimate — Validate Every Wire-Compaction Proposal Against BLOCK-Snappy, Not Per-Row And Not Uncompressed
+
+The v3-redesign plan carried two on-disk-shrink levers, both justified by RAW
+(uncompressed) byte estimates: B3 (delta-encode the 5 mid-map timestamps against
+the snowflake-derived base, est. 7–15%) and B6 (anchor+delta history, est.
+40–94%). Badger does NOT store raw wire bytes — it Snappy-compresses SSTable
+*blocks* (default 4KB, `s2.EncodeSnappy`, `badger/table/builder.go`). A measured
+gate (`wire_b3_ondisk_gate_test.go` / `wire_b6_history_gate_test.go`, block-Snappy
+at 4KB in keyspace order) showed the two estimates diverge OPPOSITELY under real
+compression:
+
+- **B3: 2.99% raw → 1.13% post-Snappy.** Block-Snappy already dedups the
+  low-entropy repeated timestamp bytes (many rows share `ca`/`ua`/base), so
+  delta-encoding at the source reclaims almost nothing the compressor didn't. The
+  high-entropy 64-hex hashes (~128 B/row, incompressible) dominate the compressed
+  size and dilute the rest. **B3 dropped** — building it would have added the
+  first custom decoder in the wire layer + an `fv` bump for a 1.13% disk win.
+- **B6: 57.65% raw → 39.10% post-Snappy.** It elides WHOLE property structures
+  (key + type tag + value) for every unchanged property on every non-anchor
+  version. Even though the smaller delta rows compress *worse* individually
+  (2.27× vs the full-snapshot 3.26×, less internal redundancy), their absolute
+  size is far smaller. **B6 kept.**
+
+Rules:
+1. Any "shrink the wire" proposal states its saving as **post-block-Snappy over a
+   realistic corpus in keyspace order**, never uncompressed and never per-row
+   (per-row Snappy overstates cross-row wins the block compressor already gets;
+   uncompressed overstates everything). History rows are keyed
+   `0x07/<id>/<version>` — contiguous — so a repeated blob lands in one block and
+   the compressor sees it; model that contiguity.
+2. Removing low-entropy redundancy (timestamps, repeated small ints) is usually a
+   mirage post-Snappy. Removing high-entropy or whole-structure bulk (large
+   distinct values, entire unchanged property sub-trees) is what survives.
+3. Keep the measurement as an executable decision record — a `_test.go` gate that
+   re-runs the comparison — so a future revisit re-measures instead of re-guessing.
