@@ -58,24 +58,51 @@ func ResolvePropertyKeyTokens(pw []PropertyWire, reg *registrypkg.PropertyKeyReg
 	return nil
 }
 
+// NodeToWireCheckedWithKeys returns the tokenized NodeWire for n — the exact
+// wire MarshalNodeWireWithKeys marshals. Exposed so the anchor+delta history
+// path can diff/apply at the wire-struct level without re-marshaling.
+func NodeToWireCheckedWithKeys(n *types.Node, reg *registrypkg.PropertyKeyRegistry) (NodeWire, error) {
+	w, err := NodeToWireChecked(n)
+	if err != nil {
+		return NodeWire{}, err
+	}
+	ApplyPropertyKeyTokens(w.Properties, reg)
+	return w, nil
+}
+
+// RelToWireCheckedWithKeys mirrors NodeToWireCheckedWithKeys for relationships.
+func RelToWireCheckedWithKeys(r *types.Relationship, reg *registrypkg.PropertyKeyRegistry) (RelWire, error) {
+	w, err := RelToWireChecked(r)
+	if err != nil {
+		return RelWire{}, err
+	}
+	ApplyPropertyKeyTokens(w.Properties, reg)
+	return w, nil
+}
+
+// MarshalNodeWireStruct marshals an already-built NodeWire, byte-identically to
+// MarshalNodeWireWithKeys' final step (same pooled encoder).
+func MarshalNodeWireStruct(w NodeWire) ([]byte, error) { return marshalWirePooled(w) }
+
+// MarshalRelWireStruct mirrors MarshalNodeWireStruct for relationships.
+func MarshalRelWireStruct(w RelWire) ([]byte, error) { return marshalWirePooled(w) }
+
 // MarshalNodeWireWithKeys is the registry-aware variant of MarshalNodeWire.
 // Pass a non-nil registry to dictionary-encode property keys on the wire.
 func MarshalNodeWireWithKeys(n *types.Node, reg *registrypkg.PropertyKeyRegistry) ([]byte, error) {
-	w, err := NodeToWireChecked(n)
+	w, err := NodeToWireCheckedWithKeys(n, reg)
 	if err != nil {
 		return nil, err
 	}
-	ApplyPropertyKeyTokens(w.Properties, reg)
 	return marshalWirePooled(w)
 }
 
 // MarshalRelWireWithKeys is the registry-aware variant of MarshalRelWire.
 func MarshalRelWireWithKeys(r *types.Relationship, reg *registrypkg.PropertyKeyRegistry) ([]byte, error) {
-	w, err := RelToWireChecked(r)
+	w, err := RelToWireCheckedWithKeys(r, reg)
 	if err != nil {
 		return nil, err
 	}
-	ApplyPropertyKeyTokens(w.Properties, reg)
 	return marshalWirePooled(w)
 }
 

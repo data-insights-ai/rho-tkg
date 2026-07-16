@@ -2,7 +2,6 @@ package badger
 
 import (
 	"errors"
-	"fmt"
 	"sort"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
@@ -198,21 +197,24 @@ func (bs *Store) NodeAsOf(nid types.NodeID, txTime types.Instant) (*types.Node, 
 		return current, nil // GetNode already returned a DeepCopy
 	}
 
-	// History arm: reverse-scan for the visible superseded version.
+	// History arm: reverse-scan for the visible superseded version. Classify by
+	// temporal metadata only — a delta carries the full temporal block in its Meta,
+	// so no anchor read is needed during the scan; the winning version is fully
+	// reconstructed (point-reading its anchor if it is a delta) after the scan.
 	id := nid.SnowflakeID()
-	var result *types.Node
+	var winnerVersion uint64
+	var winnerRaw []byte
+	found := false
 	scanErr := bs.reverseScanHistoryVersion(storepkg.HistNodePrefix(id), func(version uint64, val []byte) (bool, error) {
-		var w storepkg.NodeWire
-		if err := storepkg.SafeUnmarshal(val, &w); err != nil {
-			return false, fmt.Errorf("graph: unmarshal node version: %w", err)
-		}
-		n, err := bs.decodeNodeHistoryWireForKey(w, id, version)
+		n, err := bs.historyNodeTemporal(id, version, val)
 		if err != nil {
-			return false, fmt.Errorf("graph: decode node version: %w", err)
+			return false, err
 		}
 		switch classifyVersionAtTxTime(n.Temporal(), txTime) {
 		case txTimeVisible:
-			result = n
+			winnerRaw = append([]byte(nil), val...)
+			winnerVersion = version
+			found = true
 			return true, nil
 		case txTimeHidden:
 			return true, nil // decisive: entity not visible at txTime
@@ -223,10 +225,10 @@ func (bs *Store) NodeAsOf(nid types.NodeID, txTime types.Instant) (*types.Node, 
 	if scanErr != nil {
 		return nil, scanErr
 	}
-	if result == nil {
+	if !found {
 		return nil, ErrVersionNotFound
 	}
-	return result, nil
+	return bs.decodeHistoryNodeValue(id, winnerVersion, winnerRaw)
 }
 
 // RelAsOf returns the relationship version visible at txTime. Mirrors NodeAsOf.
@@ -247,19 +249,19 @@ func (bs *Store) RelAsOf(rid types.RelID, txTime types.Instant) (*types.Relation
 	}
 
 	id := rid.SnowflakeID()
-	var result *types.Relationship
+	var winnerVersion uint64
+	var winnerRaw []byte
+	found := false
 	scanErr := bs.reverseScanHistoryVersion(storepkg.HistRelPrefix(id), func(version uint64, val []byte) (bool, error) {
-		var w storepkg.RelWire
-		if err := storepkg.SafeUnmarshal(val, &w); err != nil {
-			return false, fmt.Errorf("graph: unmarshal rel version: %w", err)
-		}
-		r, err := bs.decodeRelHistoryWireForKey(w, id, version)
+		r, err := bs.historyRelTemporal(id, version, val)
 		if err != nil {
-			return false, fmt.Errorf("graph: decode rel version: %w", err)
+			return false, err
 		}
 		switch classifyVersionAtTxTime(r.Temporal(), txTime) {
 		case txTimeVisible:
-			result = r
+			winnerRaw = append([]byte(nil), val...)
+			winnerVersion = version
+			found = true
 			return true, nil
 		case txTimeHidden:
 			return true, nil
@@ -270,10 +272,10 @@ func (bs *Store) RelAsOf(rid types.RelID, txTime types.Instant) (*types.Relation
 	if scanErr != nil {
 		return nil, scanErr
 	}
-	if result == nil {
+	if !found {
 		return nil, ErrVersionNotFound
 	}
-	return result, nil
+	return bs.decodeHistoryRelValue(id, winnerVersion, winnerRaw)
 }
 
 // NodesAsOf returns every node version visible at txTime: the union of live

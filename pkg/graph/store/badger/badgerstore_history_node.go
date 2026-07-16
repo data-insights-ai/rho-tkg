@@ -34,7 +34,7 @@ func (bs *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 		return fmt.Errorf("graph: marshal node: %w", err)
 	}
 
-	histData, err := bs.marshalNodeToBytes(prevState)
+	histData, err := bs.historyNodeValue(id, uint64(prevVersion), prevState)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node version: %w", err)
 	}
@@ -148,7 +148,7 @@ func (bs *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 		return fmt.Errorf("graph: marshal node: %w", err)
 	}
 
-	histData, err := bs.marshalNodeToBytes(prevState)
+	histData, err := bs.historyNodeValue(id, uint64(prevVersion), prevState)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node version: %w", err)
 	}
@@ -266,7 +266,7 @@ func (bs *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 	}
 
 	// Serialize history snapshot.
-	histData, err := bs.marshalNodeToBytes(prevState)
+	histData, err := bs.historyNodeValue(id, uint64(prevVersion), prevState)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node version: %w", err)
 	}
@@ -358,7 +358,7 @@ func (bs *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 	}
 	id := nid.SnowflakeID()
 	// Serialize all tombstones OUTSIDE lock (B3).
-	nodeData, err := bs.marshalNodeToBytes(nodeTombstone)
+	nodeData, err := bs.historyNodeValue(id, uint64(prevNodeVersion), nodeTombstone)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node tombstone: %w", err)
 	}
@@ -506,7 +506,7 @@ func (bs *Store) PutNodeVersion(nid types.NodeID, version uint32, n *types.Node)
 		return err
 	}
 	id := nid.SnowflakeID()
-	data, err := bs.marshalNodeToBytes(n)
+	data, err := bs.historyNodeValue(id, uint64(version), n)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node version: %w", err)
 	}
@@ -550,19 +550,17 @@ func (bs *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 		if op.opType == writeOpDelete {
 			return nil, ErrVersionNotFound
 		}
-		var w storepkg.NodeWire
-		if err := storepkg.SafeUnmarshal(op.value, &w); err != nil {
-			return nil, fmt.Errorf("graph: unmarshal node version: %w", err)
-		}
-		n, err := bs.decodeNodeHistoryWireForKey(w, id, uint64(version))
+		n, err := bs.decodeHistoryNodeValue(id, uint64(version), op.value)
 		if err != nil {
-			return nil, fmt.Errorf("graph: decode node version: %w", err)
+			return nil, err
 		}
 		return n.DeepCopy(), nil
 	}
 
-	// Fall through to Badger.
-	var n *types.Node
+	// Fall through to Badger. Copy the raw value out of the View before
+	// reconstruction: a delta reconstruct point-reads the interval anchor via a
+	// separate read txn, which is cleaner done outside the current one.
+	var raw []byte
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(key)
 		if err == badgerv4.ErrKeyNotFound {
@@ -572,22 +570,33 @@ func (bs *Store) GetNodeVersion(nid types.NodeID, version uint32) (*types.Node, 
 			return err
 		}
 		return item.Value(func(val []byte) error {
-			var w storepkg.NodeWire
-			if err := storepkg.SafeUnmarshal(val, &w); err != nil {
-				return fmt.Errorf("graph: unmarshal node version: %w", err)
-			}
-			decoded, err := bs.decodeNodeHistoryWireForKey(w, id, uint64(version))
-			if err != nil {
-				return fmt.Errorf("graph: decode node version: %w", err)
-			}
-			n = decoded
+			raw = make([]byte, len(val))
+			copy(raw, val)
 			return nil
 		})
 	})
 	if err != nil {
 		return nil, err
 	}
+	n, err := bs.decodeHistoryNodeValue(id, uint64(version), raw)
+	if err != nil {
+		return nil, err
+	}
 	return n.DeepCopy(), nil
+}
+
+// decodeHistoryNodeValue reconstructs (full-or-delta) then decodes one node
+// history value to a *types.Node. Point-reads the interval anchor for a delta.
+func (bs *Store) decodeHistoryNodeValue(id snowflake.ID, version uint64, raw []byte) (*types.Node, error) {
+	w, err := bs.reconstructNodeHistoryWire(id, version, raw, nil)
+	if err != nil {
+		return nil, fmt.Errorf("graph: unmarshal node version: %w", err)
+	}
+	n, err := bs.decodeNodeHistoryWireForKey(w, id, version)
+	if err != nil {
+		return nil, fmt.Errorf("graph: decode node version: %w", err)
+	}
+	return n, nil
 }
 
 func (bs *Store) GetNodeHistory(nid types.NodeID) ([]*types.Node, error) {
@@ -691,13 +700,20 @@ func (bs *Store) getNodeHistoryByPrefix(prefix []byte) ([]*types.Node, error) {
 	}
 	sort.Strings(keys)
 
+	// The whole chain is in `entries`, so a delta's interval anchor is available
+	// in-memory — no extra point read.
+	localAnchor := func(anchorVer uint64) ([]byte, bool) {
+		b, ok := entries[string(storepkg.HistNodeKey(expectedID, anchorVer))]
+		return b, ok
+	}
 	result := make([]*types.Node, 0, len(keys))
 	for _, k := range keys {
-		var w storepkg.NodeWire
-		if err := storepkg.SafeUnmarshal(entries[k], &w); err != nil {
+		version := historyVersionFromKey([]byte(k))
+		w, err := bs.reconstructNodeHistoryWire(expectedID, version, entries[k], localAnchor)
+		if err != nil {
 			return nil, fmt.Errorf("graph: unmarshal node version: %w", err)
 		}
-		n, err := bs.decodeNodeHistoryWireForKey(w, expectedID, historyVersionFromKey([]byte(k)))
+		n, err := bs.decodeNodeHistoryWireForKey(w, expectedID, version)
 		if err != nil {
 			return nil, fmt.Errorf("graph: decode node version: %w", err)
 		}
@@ -715,20 +731,14 @@ func (bs *Store) nodeHistoryVersionsFromPrefix(prefix []byte, startVersion uint3
 	}
 	sort.Strings(pendingKeys)
 
-	result := make([]*types.Node, 0, capForLimit(limit))
+	collected := make([]historyRawRow, 0, capForLimit(limit))
 	reachedLimit := func() bool {
-		return limit > 0 && len(result) >= limit
+		return limit > 0 && len(collected) >= limit
 	}
 	emit := func(key string, data []byte) error {
-		var w storepkg.NodeWire
-		if err := storepkg.SafeUnmarshal(data, &w); err != nil {
-			return fmt.Errorf("graph: unmarshal node version: %w", err)
-		}
-		n, err := bs.decodeNodeHistoryWireForKey(w, expectedID, historyVersionFromKey([]byte(key)))
-		if err != nil {
-			return fmt.Errorf("graph: decode node version: %w", err)
-		}
-		result = append(result, n.DeepCopy())
+		raw := make([]byte, len(data))
+		copy(raw, data)
+		collected = append(collected, historyRawRow{version: historyVersionFromKey([]byte(key)), raw: raw})
 		return nil
 	}
 
@@ -804,8 +814,28 @@ func (bs *Store) nodeHistoryVersionsFromPrefix(prefix []byte, startVersion uint3
 	if err != nil {
 		return nil, err
 	}
-	if len(result) == 0 {
+	if len(collected) == 0 {
 		return nil, nil
+	}
+	// Reconstruct after the scan closes: a delta whose interval anchor precedes
+	// startVersion is not in the collected window, so it is point-read; anchors
+	// inside the window are served from the collected rows.
+	anchorCache := make(map[uint64][]byte, len(collected))
+	for i := range collected {
+		anchorCache[collected[i].version] = collected[i].raw
+	}
+	local := func(anchorVer uint64) ([]byte, bool) { b, ok := anchorCache[anchorVer]; return b, ok }
+	result := make([]*types.Node, 0, len(collected))
+	for i := range collected {
+		w, err := bs.reconstructNodeHistoryWire(expectedID, collected[i].version, collected[i].raw, local)
+		if err != nil {
+			return nil, fmt.Errorf("graph: unmarshal node version: %w", err)
+		}
+		n, err := bs.decodeNodeHistoryWireForKey(w, expectedID, collected[i].version)
+		if err != nil {
+			return nil, fmt.Errorf("graph: decode node version: %w", err)
+		}
+		result = append(result, n.DeepCopy())
 	}
 	return result, nil
 }

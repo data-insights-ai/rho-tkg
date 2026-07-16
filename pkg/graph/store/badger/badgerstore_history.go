@@ -5,6 +5,7 @@ package badger
 
 import (
 	"encoding/binary"
+	"fmt"
 	"sort"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -79,20 +80,31 @@ func (bs *Store) truncateHistoryByPrefix(prefix []byte, keepVersions int, logTag
 	}
 	sort.Strings(sorted)
 
-	var toDelete []string
+	var toDelete, kept []string
 	if keepVersions == 0 {
 		toDelete = sorted
 	} else if len(sorted) > keepVersions {
 		toDelete = sorted[:len(sorted)-keepVersions]
+		kept = sorted[len(sorted)-keepVersions:]
+	} else {
+		kept = sorted
 	}
 
 	if len(toDelete) == 0 {
 		return nil
 	}
 
-	ops := make([]writeOp, len(toDelete))
-	for i, k := range toDelete {
-		ops[i] = writeOp{opType: writeOpDelete, key: []byte(k)}
+	// Anchor-safety: rewrite any KEPT delta whose interval anchor is being
+	// deleted into a full snapshot BEFORE the deletes commit, in the same batch.
+	rematerOps, err := bs.rematerializeOrphanedDeltas(prefix, kept)
+	if err != nil {
+		return fmt.Errorf("graph: re-anchor kept history deltas: %w", err)
+	}
+
+	ops := make([]writeOp, 0, len(toDelete)+len(rematerOps))
+	ops = append(ops, rematerOps...)
+	for _, k := range toDelete {
+		ops = append(ops, writeOp{opType: writeOpDelete, key: []byte(k)})
 	}
 	// Emit the truncation record atomically with the delete ops (this helper
 	// holds no idxMu). The record is produced only when something is actually

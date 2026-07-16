@@ -192,6 +192,17 @@ type Config struct {
 	// stats maintained (unchanged behavior). Ignored when Store is provided
 	// explicitly.
 	DisablePlannerStats bool
+	// HistoryDeltaEncoding turns ON anchor+delta storage for version-history rows
+	// (badger 0x07/0x08). When set, a version V with V%HistoryAnchorInterval == 0
+	// is stored as a full ANCHOR and the rest as DELTAS carrying only the
+	// properties that changed vs the interval anchor — eliding large unchanged
+	// values that a full snapshot would re-serialize every version (measured ~39%
+	// less history storage post-Snappy on wide, history-heavy entities). Reads
+	// reconstruct transparently and always accept BOTH forms, so the flag may be
+	// toggled on an existing store with no migration (legacy full rows are
+	// anchors; new deltas carry a 1-byte 'D' tag). Opt-in (default false) while the
+	// path soaks; the current row (0x01/0x02) is always full. See ADR-0009 / B6.
+	HistoryDeltaEncoding bool
 	// FlushInterval is the time between async write batches. Default: 100ms.
 	// Zero disables periodic flushing (manual flush only — for testing).
 	FlushInterval time.Duration
@@ -387,6 +398,7 @@ type Store struct {
 	propIdxOnDisk       bool                                          // maintain/answer property-index entries via the persisted 0x0A keyspace
 	temporalIdxOnDisk   bool                                          // maintain the persisted 0x0B raw-entry log so loadIndexesScan can rebuild without a full node fetch per entity
 	disablePlannerStats bool                                          // skip planner-stat maintenance (presence/NDV/min-max/type-class) on writes + open; the stat capabilities fail closed with ErrCapabilityNotSupported
+	historyDelta        bool                                          // store version-history rows as anchor+delta (ADR-0009/B6); reads accept both forms regardless
 	typeIdx             map[uint16]map[types.RelID]struct{}           // relTypeToken → set(relID)
 	outIdx              map[types.NodeID]map[types.RelID]types.NodeID // startNodeID → relID → endNodeID
 	inIdx               map[types.NodeID]map[types.RelID]inEdge       // endNodeID → relID → {startNodeID, typeToken}
@@ -791,6 +803,7 @@ func New(cfg Config) (*Store, error) {
 		propIdxOnDisk:           cfg.PropertyIndexOnDisk,
 		temporalIdxOnDisk:       cfg.TemporalIndexOnDisk,
 		disablePlannerStats:     cfg.DisablePlannerStats,
+		historyDelta:            cfg.HistoryDeltaEncoding,
 		readOnly:                cfg.ReadOnly,
 		syncWrites:              cfg.SyncWrites && !cfg.ReadOnly,
 		logEnabled:              cfg.ChangeLog && !cfg.ReadOnly,

@@ -34,8 +34,8 @@ func (bs *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion 
 		return fmt.Errorf("graph: marshal relationship: %w", err)
 	}
 
-	// Serialize history snapshot.
-	histData, err := bs.marshalRelToBytes(prevState)
+	// Serialize history snapshot (anchor or delta — see historyRelValue).
+	histData, err := bs.historyRelValue(id, uint64(prevVersion), prevState)
 	if err != nil {
 		return fmt.Errorf("graph: marshal rel version: %w", err)
 	}
@@ -100,7 +100,7 @@ func (bs *Store) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombs
 	}
 	id := rid.SnowflakeID()
 	// Serialize tombstone OUTSIDE lock (B3: no I/O under write lock).
-	tombData, err := bs.marshalRelToBytes(tombstone)
+	tombData, err := bs.historyRelValue(id, uint64(prevVersion), tombstone)
 	if err != nil {
 		return fmt.Errorf("graph: marshal rel tombstone: %w", err)
 	}
@@ -149,7 +149,7 @@ func (bs *Store) PutRelVersion(rid types.RelID, version uint32, r *types.Relatio
 		return err
 	}
 	id := rid.SnowflakeID()
-	data, err := bs.marshalRelToBytes(r)
+	data, err := bs.historyRelValue(id, uint64(version), r)
 	if err != nil {
 		return fmt.Errorf("graph: marshal rel version: %w", err)
 	}
@@ -192,19 +192,16 @@ func (bs *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relation
 		if op.opType == writeOpDelete {
 			return nil, ErrVersionNotFound
 		}
-		var w storepkg.RelWire
-		if err := storepkg.SafeUnmarshal(op.value, &w); err != nil {
-			return nil, fmt.Errorf("graph: unmarshal rel version: %w", err)
-		}
-		r, err := bs.decodeRelHistoryWireForKey(w, id, uint64(version))
+		r, err := bs.decodeHistoryRelValue(id, uint64(version), op.value)
 		if err != nil {
-			return nil, fmt.Errorf("graph: decode rel version: %w", err)
+			return nil, err
 		}
 		return r.DeepCopy(), nil
 	}
 
-	// Fall through to Badger.
-	var r *types.Relationship
+	// Fall through to Badger. Copy the raw value out before reconstruction (a
+	// delta reconstruct point-reads the interval anchor via a separate txn).
+	var raw []byte
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(key)
 		if err == badgerv4.ErrKeyNotFound {
@@ -214,22 +211,33 @@ func (bs *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relation
 			return err
 		}
 		return item.Value(func(val []byte) error {
-			var w storepkg.RelWire
-			if err := storepkg.SafeUnmarshal(val, &w); err != nil {
-				return fmt.Errorf("graph: unmarshal rel version: %w", err)
-			}
-			decoded, err := bs.decodeRelHistoryWireForKey(w, id, uint64(version))
-			if err != nil {
-				return fmt.Errorf("graph: decode rel version: %w", err)
-			}
-			r = decoded
+			raw = make([]byte, len(val))
+			copy(raw, val)
 			return nil
 		})
 	})
 	if err != nil {
 		return nil, err
 	}
+	r, err := bs.decodeHistoryRelValue(id, uint64(version), raw)
+	if err != nil {
+		return nil, err
+	}
 	return r.DeepCopy(), nil
+}
+
+// decodeHistoryRelValue reconstructs (full-or-delta) then decodes one rel history
+// value to a *types.Relationship. Point-reads the interval anchor for a delta.
+func (bs *Store) decodeHistoryRelValue(id snowflake.ID, version uint64, raw []byte) (*types.Relationship, error) {
+	w, err := bs.reconstructRelHistoryWire(id, version, raw, nil)
+	if err != nil {
+		return nil, fmt.Errorf("graph: unmarshal rel version: %w", err)
+	}
+	r, err := bs.decodeRelHistoryWireForKey(w, id, version)
+	if err != nil {
+		return nil, fmt.Errorf("graph: decode rel version: %w", err)
+	}
+	return r, nil
 }
 
 func (bs *Store) GetRelHistory(rid types.RelID) ([]*types.Relationship, error) {
@@ -321,13 +329,18 @@ func (bs *Store) getRelHistoryByPrefix(prefix []byte) ([]*types.Relationship, er
 	}
 	sort.Strings(keys)
 
+	localAnchor := func(anchorVer uint64) ([]byte, bool) {
+		b, ok := entries[string(storepkg.HistRelKey(expectedID, anchorVer))]
+		return b, ok
+	}
 	result := make([]*types.Relationship, 0, len(keys))
 	for _, k := range keys {
-		var w storepkg.RelWire
-		if err := storepkg.SafeUnmarshal(entries[k], &w); err != nil {
+		version := historyVersionFromKey([]byte(k))
+		w, err := bs.reconstructRelHistoryWire(expectedID, version, entries[k], localAnchor)
+		if err != nil {
 			return nil, fmt.Errorf("graph: unmarshal rel version: %w", err)
 		}
-		r, err := bs.decodeRelHistoryWireForKey(w, expectedID, historyVersionFromKey([]byte(k)))
+		r, err := bs.decodeRelHistoryWireForKey(w, expectedID, version)
 		if err != nil {
 			return nil, fmt.Errorf("graph: decode rel version: %w", err)
 		}
@@ -345,20 +358,14 @@ func (bs *Store) relHistoryVersionsFromPrefix(prefix []byte, startVersion uint32
 	}
 	sort.Strings(pendingKeys)
 
-	result := make([]*types.Relationship, 0, capForLimit(limit))
+	collected := make([]historyRawRow, 0, capForLimit(limit))
 	reachedLimit := func() bool {
-		return limit > 0 && len(result) >= limit
+		return limit > 0 && len(collected) >= limit
 	}
 	emit := func(key string, data []byte) error {
-		var w storepkg.RelWire
-		if err := storepkg.SafeUnmarshal(data, &w); err != nil {
-			return fmt.Errorf("graph: unmarshal rel version: %w", err)
-		}
-		r, err := bs.decodeRelHistoryWireForKey(w, expectedID, historyVersionFromKey([]byte(key)))
-		if err != nil {
-			return fmt.Errorf("graph: decode rel version: %w", err)
-		}
-		result = append(result, r.DeepCopy())
+		raw := make([]byte, len(data))
+		copy(raw, data)
+		collected = append(collected, historyRawRow{version: historyVersionFromKey([]byte(key)), raw: raw})
 		return nil
 	}
 
@@ -434,8 +441,25 @@ func (bs *Store) relHistoryVersionsFromPrefix(prefix []byte, startVersion uint32
 	if err != nil {
 		return nil, err
 	}
-	if len(result) == 0 {
+	if len(collected) == 0 {
 		return nil, nil
+	}
+	anchorCache := make(map[uint64][]byte, len(collected))
+	for i := range collected {
+		anchorCache[collected[i].version] = collected[i].raw
+	}
+	local := func(anchorVer uint64) ([]byte, bool) { b, ok := anchorCache[anchorVer]; return b, ok }
+	result := make([]*types.Relationship, 0, len(collected))
+	for i := range collected {
+		w, err := bs.reconstructRelHistoryWire(expectedID, collected[i].version, collected[i].raw, local)
+		if err != nil {
+			return nil, fmt.Errorf("graph: unmarshal rel version: %w", err)
+		}
+		r, err := bs.decodeRelHistoryWireForKey(w, expectedID, collected[i].version)
+		if err != nil {
+			return nil, fmt.Errorf("graph: decode rel version: %w", err)
+		}
+		result = append(result, r.DeepCopy())
 	}
 	return result, nil
 }
