@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"slices"
 	"strconv"
+	"time"
 )
 
 // ErrReservedPrefix is returned when a property key uses the reserved "tkg_" prefix.
@@ -99,6 +100,9 @@ func (ps *PropertySlice) Set(key string, value any) error {
 	if IsShadowKey(key) {
 		return fmt.Errorf("%w: %q", ErrReservedPrefix, key)
 	}
+	// Accept time.Time as caller sugar: canonicalize to a TemporalValue before
+	// validation so the whole pipeline downstream sees only known types.
+	value, _ = canonicalizeTemporalValue(value)
 	if err := ValidatePropertyValue(value); err != nil {
 		return fmt.Errorf("%w: %q (got %T)", err, key, value)
 	}
@@ -115,6 +119,32 @@ func (ps *PropertySlice) Set(key string, value any) error {
 	copy((*ps)[i+1:], (*ps)[i:])
 	(*ps)[i] = Property{Key: key, Value: copied}
 	return nil
+}
+
+// temporalValueFromTime renders a Go time.Time as the canonical stored temporal
+// property value: a zoned date-time (TemporalDateTime) in RFC 3339 form. The
+// zone offset is preserved in the ISO rendering, so the value round-trips
+// through storage without the type-erasure a plain string would suffer.
+func temporalValueFromTime(t time.Time) TemporalValue {
+	return TemporalValue{Kind: TemporalDateTime, Value: t.Format(time.RFC3339Nano)}
+}
+
+// canonicalizeTemporalValue rewrites a TOP-LEVEL time.Time property value to a
+// TemporalValue, so the rest of the property pipeline (validation, deep copy,
+// content hash, wire) never sees the time.Time type and needs no new case (the
+// "canonicalize at the door" rule). Returns (canonicalized, changed); a
+// non-time value is returned untouched (changed=false, zero allocation).
+//
+// Only the top-level value is canonicalized: a time.Time nested inside an []any
+// / map[string]any is NOT rewritten and is rejected by the allowlist validator,
+// the same as a nested TemporalValue — nested temporal values are not a
+// supported wire shape (their content hash does not round-trip through
+// export/import), so accepting the sugar there would be a silent corruption.
+func canonicalizeTemporalValue(v any) (any, bool) {
+	if tm, ok := v.(time.Time); ok {
+		return temporalValueFromTime(tm), true
+	}
+	return v, false
 }
 
 func copyValidatedPropertyValue(key string, value any) (copied any, err error) {
@@ -624,6 +654,12 @@ func ValidatePropertyValue(v any) error {
 	if tv, ok := v.(TemporalValue); ok {
 		return tv.Validate()
 	}
+	// time.Time is accepted as caller sugar — Set / NewPropertySlice
+	// canonicalize it to a TemporalValue before it is stored, so downstream
+	// (deep copy, content hash, wire) only ever see the canonical type.
+	if _, ok := v.(time.Time); ok {
+		return nil
+	}
 	return validateReflectValue(reflect.ValueOf(v), 0)
 }
 
@@ -1067,6 +1103,7 @@ func NewPropertySlice(m map[string]any) (PropertySlice, error) {
 		if IsShadowKey(k) {
 			return nil, fmt.Errorf("%w: %q", ErrReservedPrefix, k)
 		}
+		v, _ = canonicalizeTemporalValue(v)
 		if err := ValidatePropertyValue(v); err != nil {
 			return nil, fmt.Errorf("%w: %q (got %T)", err, k, v)
 		}

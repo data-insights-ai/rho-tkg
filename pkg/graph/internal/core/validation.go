@@ -3,6 +3,7 @@ package core
 import (
 	"fmt"
 	"reflect"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -215,6 +216,11 @@ func (c *Core) validatePropertyValueLimitTyped(key string, val any, depth int) e
 		if len(v.Value) > c.validation.MaxPropertyValueSize {
 			return fmt.Errorf("%w: key %q (%d > %d)", ErrValueTooLarge, key, len(v.Value), c.validation.MaxPropertyValueSize)
 		}
+		return nil
+	case time.Time:
+		// Caller sugar: canonicalized to a TemporalValue (bounded RFC-3339
+		// rendering) by types.Set / NewPropertySlice before storage, so the
+		// stored form is always the TemporalValue case above.
 		return nil
 	case []int:
 		if len(v) > 0 && depth+1 > maxPropertyValueLimitDepth {
