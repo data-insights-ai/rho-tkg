@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [4.17.0] - 2026-07-16
 
 - ADD — OPT10 Allen-predicate temporal query doors (`g.Temporal().NodesRelating(from, to, rels)` + rel mirror `RelsRelating`) and the labeled-During Step-1 envelope prune (ADR-0009). Until now the only interval temporal doors were OVERLAP-based (`NodesDuring`) or pairwise-entity (`RelateNodes`); there was no way to ask "which entities' valid-interval `Meets` / is `Before` / `Contains` … the window [from,to)?". `NodesRelating` answers with any subset of Allen's 13 relations (an `types.AllenRelationSet`), history-aware and **predicate-anywhere** (a match on ANY version of an entity's chain counts, so a superseded-before-the-window entity is still found by `{Before}` — the classic case an overlap query misses). Design:
   - New classifier `types.RelateOpen(aStart, aEnd, bStart, bEnd)` — the version-chain door's Allen classifier, treating an END of 0 as OPEN (+∞ via `math.MaxInt64`) so the routinely-open current-version interval `[start, ∞)` and an open query end classify exactly (Before/After/Meets are order-exact; Meets/MetBy are correctly UNREACHABLE across an open end). The existing `Relate` (rejects any zero endpoint) is untouched — two doors, same shape (rule 17).
