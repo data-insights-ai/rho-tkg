@@ -1,4 +1,4 @@
-# Architecture — tkg/v4 (v4.15.2)
+# Architecture — tkg/v4 (v4.16.0)
 
 Temporal Knowledge Graph v4 is a pure Go library providing the core graph engine for temporal knowledge graphs. It is the low-level storage and type layer — no main binary, no HTTP server, no query language.
 
@@ -763,6 +763,52 @@ Cross-shard split writes use `badgerstore_partial.go` helpers: `putRelEntityAndO
 - `RunRepair()` -- Phase 1: detect+delete orphaned in/ entries by scanning each shard's incoming-index entries directly, including entries whose end node row is missing. Phase 2: detect+re-create missing in/ entries. Endpoint resolution uses the already-pinned shard snapshot, not fresh live routing. Logs a warning with exact counts whenever it fixed anything — repaired residue from a crash window is operator-visible.
 - `RecoverBackgroundError()` -- operator-driven recovery from the sticky background error (recorded on idle/transient cold-shard close failures). Re-probes persistence via an atomic catalog save; success clears the gate in place (no close/re-open), failure retains the original cause joined with the probe failure. Clears the lifecycle gate only — run `VerifyShard`/`RunRepair` for data confidence.
 - `MigrateFromBadger(src, dst)` -- copies all entities into an empty destination with automatic ontology routing, loading registries from the source BadgerStore, preflighting entity tokens and relationship endpoints, and saving registries to the destination TieredStore only after success; failures roll back inserted destination entities, restore ontology routing, and restore/remove the destination registry file to match its pre-migration state; nil stores/non-empty destinations/missing source registry metadata for non-empty data return `ErrInvalidStoreMutation`, and closed stores return `ErrStoreClosed`
+
+---
+
+## sharded.Store (`pkg/graph/store/sharded/`) — EXPERIMENTAL (ADR-0007)
+
+Slot-topology Store: N `badger.Store` shards, one per snowflake SLOT, routing every entity by the slot carried in its ID's node field — never by ontology class (that is tiered's job). The design target is the horizontal stage where `ErrSlotNotLocal` becomes "route to the owning machine." Integration-branch WIP; declared EXPERIMENTAL until the S4 throughput bar and S5 parity land in a numbered release.
+
+### Slot Model
+
+```
+Dir/
+  shard-00/                 # anchor shard (BaseSlot) — MetaKV, registries,
+                            #   catalog, change-log watermark, vector-index defs
+  shard-01/
+  ...
+  shard-<SlotCount-1>/
+```
+
+`Config{Dir, InMemory, BaseSlot, SlotCount (1..32, BaseSlot+SlotCount<=32), ChangeLog, IngestLanes-agnostic per-shard badger passthroughs}`. A slot CATALOG (claimed range, slot→shard map, ID-discipline marker, format version) is persisted on the anchor shard (`shards[0]` == BaseSlot). Opens FAIL CLOSED: `ErrCatalogConflict` on a config/catalog mismatch (wrong `SlotCount`, missing mapped shard dir), `ErrCatalogCorrupt` on a tampered blob. Every shard is always an open local badger — there is no cold/lazy tier and no checkout/checkin discipline, so the tiered `activeReqs` machinery has no analogue here.
+
+### Slot Routing (O(1) pure function)
+
+`shardFor(id) = shards[ decompose(id).Node - BaseSlot ]` — an immutable O(1) map of the ID, no probe, no ref-shard lookup. A door reached with an ID whose slot is unclaimed fails closed with `ErrSlotNotLocal` (the future "not on this machine" signal). Because slots are assigned at mint time by the per-lane UNIFIED generators (S4, `Config.IngestLanes` on the graph layer), a concurrent-ingest session pins lane→slot and mints BOTH its nodes and rels from one generator, so a whole commit group lands in one slot → one shard → one batched door call.
+
+### Relationship Co-location
+
+A relationship row AND both its adjacency legs (`outIdx`, `inIdx`) live on the REL ID's shard — so `GetRelationship`/`DeleteRelationship` are O(1) single-shard. Adjacency READS (`OutgoingRelationships`/`IncomingRelationships`) are PARALLEL FOLDS across all shards (foreign-ID puts spread rel slots, so rel-slot is never assumed to equal start-slot); endpoint-existence checks read the endpoint's own shard. `PutRelationshipCoLocated` (S3) writes the rel entity + both legs + the co-committed `ChangeRelPut` record in ONE `WriteBatch`, skipping only the same-shard endpoint check (the sharded layer validates endpoints cross-shard first).
+
+### Read / Write Operations
+
+- **Point ops** route by entity-ID slot — single shard, frozen-row/mutable-point-read semantics inherited verbatim from badger.
+- **Scans / counts / stats / iteration** fold across shards in parallel with an ID-sorted k-way merge; pagination (`Limit`/`After`) is applied AFTER the merge so it straddles shard boundaries correctly.
+- **Batched doors** (`PutNodesBatch`/`…PreEncoded`/`…PreEncodedLog`/`PutRelationshipsBatch`/`DeleteNodesBatch`/`DeleteRelationshipsBatch`) are ATOMIC PER SHARD GROUP — no cross-shard `WriteBatch` exists. Each validates the WHOLE input first (structure, slot-locality, no duplicate IDs, creates-not-present, rel endpoints live, node deletes unconnected across ALL shards), then applies per shard group in ascending shard order; a mid-sequence I/O error returns a typed `*PartialBatchError{Op, CommittedShards, FailedShard, Err}` (fail-LOUD, never a silent cross-shard partial). The `wireBodies[j]`/`logBodies[j]` pre-encoded arrays are sliced per shard group with INDEX ALIGNMENT PRESERVED (an off-by-one is the silent-wrong-answer class).
+- **Cross-shard cascade delete** is crash-RECOVERABLE, not crash-atomic: fold-collect every connected rel across all shards, delete each rel on ITS OWN shard in deterministic ascending rel-ID order (each a single-shard atomic `WriteBatch`), then delete the NODE row LAST — a crash mid-cascade leaves dangling RELS but never a ghost-edged node, so recovery always finds a live node to re-drive from.
+
+### Store-global Change-log (S3, `Config.ChangeLog`)
+
+One store-global LSN allocator (`changeLogAllocator`) is injected into every shard via `badger.Config.ChangeLogSeqSource`, so each shard co-commits its own `0x09` records + `LastLSNKey` in its own `WriteBatch` but all records draw from ONE monotonic sequence — a single total commit order across shards. Reseed at open needs none of tiered's persisted-watermark/poison machinery: each shard's `badger.New` folds its durable `LastLSNKey` into the shared allocator via `ChangeLogSeqSource.Observe`. `sharded.Store` satisfies `ChangeFeedCapability` (barrier-first, W-bounded paged k-way min-heap merge over all shards' logs — `Flush` makes every allocated LSN durable, `W = LastCommittedLSN` bounds emission so records allocated mid-drain defer to the next poll), `ChangeLogStatusCapability`, and `TxChangeLogScope` (per-tx buffer folded over every shard; LSNs minted at commit so a rolled-back tx burns none). The feed is topology-independent: a 2-shard sharded primary converges BYTE-EXACT onto a single-badger replica AND a 4-shard sharded replica (records carry entities verbatim; each replica routes by its own catalog).
+
+### Capability Parity (S5)
+
+A label's entities are distributed across slots, so — unlike tiered, which routes property indexes to its ontology reference shard — every index/stats capability fans its DDL out to EVERY shard (each badger shard maintains its own index over its local entities, in lockstep via `fanOutUniform`) and folds the per-shard results on read. Implemented: PropertyIndex, RelPropertyIndex (accelerated — sharded shards are static and all-open, so a per-shard rel-value index is foldable, where tiered declines), Composite + CompositeIntrospection, TemporalIndex, HighFrequencyIndex, NodePropertyKeyStats, NodePropertyTypeClassCounts, inline `NodeRangeCardinality` (per-shard exact sum; exact only if every shard is exact), and Vector (VectorIndex + Options + FilteredVectorSearch). Vector indexes keep ONE index PER SHARD (reusing badger's per-write maintenance — no store-level write-path hooks, avoiding tiered's silent-staleness surface) and merge per-shard top-k globally by `index.VectorDistance` — EXACT for brute-force, sound-approximate for HNSW; the store persists only per-index def metadata (dims+metric) to anchor MetaKV.
+
+### Declined-with-reason
+
+Mirroring tiered: `TransactionTimeQuery`, `HistoryRollbackTrim`, `LabelTxMembership`/`RelTypeTxMembership` (the full-history fold is the correct sharded path), and the two depth-iteration accelerators. `OwnedPreEncodedPutCapability` and the pre-encoded put/log capabilities ARE implemented (routed to the owning shard's badger door).
 
 ---
 
