@@ -2082,3 +2082,32 @@ Rules:
    distinct values, entire unchanged property sub-trees) is what survives.
 3. Keep the measurement as an executable decision record — a `_test.go` gate that
    re-runs the comparison — so a future revisit re-measures instead of re-guessing.
+
+## 68. Reconstructed Wire Properties Must Be Re-Sorted By KEY STRING, Not Token — And A Cross-Backend Differential Oracle Is What Catches It
+
+B6 anchor+delta reconstruction (`ApplyNodeHistory`) merges the anchor's and
+delta's properties into a map and emits them sorted by the property-key IDENTITY
+(the uint16 token, since a tokenized wire has `Key==""`). But the entity decoder
+(`WireToNodeChecked`) VALIDATES that wire properties are in strict key-STRING
+ascending order and REJECTS an unsorted row. Token order equals key-string order
+ONLY when tokens were assigned alphabetically — which `SetProperty` happens to
+produce (it pre-sorts by key), so a store-level test that built nodes via
+`SetProperty` passed, hiding the bug. The core path tokenizes in
+property-validation order (not alphabetical), so `Update`-built chains reconstruct
+into `[region, blob, ...]` and the decoder rejects them: `property "blob" is not
+in strict sorted order after "region"`.
+
+Fix: reconstruction resolves `KeyToken→Key` (registry available in the badger
+layer) and re-sorts by `Key` (`storeutil.SortWirePropertiesByKey`) before decode;
+the truncate re-materialization path then re-tokenizes (`ApplyPropertyKeyTokens`)
+before re-marshaling so a rewritten full row stays canonical. Rules:
+1. Any code that REBUILDS a wire's property slice from parts (delta apply, merge,
+   splice) must emit key-string order, not token/insertion order — the decoder
+   validates order, it does not re-sort.
+2. Token order is NOT key order. Never assume registry tokens are assigned
+   alphabetically; that coincidence is an artifact of one construction path.
+3. The bug was invisible to a same-backend test and only surfaced under a
+   memory-vs-badger DIFFERENTIAL ORACLE running an identical workload through both
+   backends. For any storage-representation change (delta, compaction, re-encode),
+   the differential-oracle test — not just a round-trip on one backend — is the
+   test that catches representation-specific corruption.

@@ -179,6 +179,20 @@ func applyProperties(anchor, ps []PropertyWire, pr []propKeyRef) []PropertyWire 
 	return out
 }
 
+// SortWirePropertiesByKey sorts properties into the canonical key-string
+// ascending order the entity decoder validates (WireToNode* rejects unsorted
+// rows). Reconstruction produces properties in token-identity order, which only
+// matches key order when tokens were assigned alphabetically; callers resolve
+// KeyToken→Key first, then sort here. Ties (all resolved) break by KeyToken.
+func SortWirePropertiesByKey(props []PropertyWire) {
+	sort.SliceStable(props, func(i, j int) bool {
+		if props[i].Key != props[j].Key {
+			return props[i].Key < props[j].Key
+		}
+		return props[i].KeyToken < props[j].KeyToken
+	})
+}
+
 // DiffNodeHistory builds the delta for target vs anchor.
 func DiffNodeHistory(anchor, target NodeWire) NodeHistoryDelta {
 	meta := target

@@ -532,6 +532,16 @@ type Config struct {
 	// (and tiered/sharded via their per-shard badger config); ignored when Store
 	// is supplied explicitly.
 	DisablePlannerStats bool
+	// HistoryDeltaEncoding turns ON anchor+delta storage for version-history rows
+	// on the badger backend (and tiered/sharded shards) — see
+	// badger.Config.HistoryDeltaEncoding. A full ANCHOR every 16 versions, deltas
+	// in between carrying only changed properties vs the interval anchor (~39% less
+	// history storage post-Snappy on wide history-heavy entities; ADR-0009 / B6).
+	// Reads accept both full and delta rows, so the flag is toggleable on an
+	// existing store with no migration. Default false (opt-in while it soaks);
+	// ignored when Store is supplied explicitly, and a no-op on the memory backend
+	// (which keeps full snapshots as the differential oracle).
+	HistoryDeltaEncoding bool
 	// ValueLogFileSize / MemTableSize / BlockCacheSize / IndexCacheSize /
 	// NumCompactors tune Badger's per-instance footprint for the store
 	// constructed from BadgerDir/BadgerInMemory. Zero keeps Badger's stock
@@ -1384,6 +1394,7 @@ func New(config Config) (*Core, error) {
 				PropertyIndexOnDisk:   config.PropertyIndexOnDisk,
 				TemporalIndexOnDisk:   config.TemporalIndexOnDisk,
 				DisablePlannerStats:   config.DisablePlannerStats,
+				HistoryDeltaEncoding:  config.HistoryDeltaEncoding,
 				ValueLogFileSize:      config.ValueLogFileSize,
 				MemTableSize:          config.MemTableSize,
 				BlockCacheSize:        config.BlockCacheSize,

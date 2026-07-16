@@ -166,7 +166,14 @@ func (bs *Store) reconstructNodeHistoryWire(id snowflake.ID, version uint64, raw
 	if err := storepkg.SafeUnmarshal(anchorRaw, &anchorWire); err != nil {
 		return storepkg.NodeWire{}, err
 	}
-	return storepkg.ApplyNodeHistory(anchorWire, d), nil
+	w := storepkg.ApplyNodeHistory(anchorWire, d)
+	// ApplyNodeHistory merges properties in token-identity order; the decoder
+	// requires key-string order. Resolve keys (registry available) and re-sort.
+	if err := bs.resolveNodeWireKeys(&w); err != nil {
+		return storepkg.NodeWire{}, fmt.Errorf("%w: %w", ErrInvalidStoreMutation, err)
+	}
+	storepkg.SortWirePropertiesByKey(w.Properties)
+	return w, nil
 }
 
 // reconstructRelHistoryWire mirrors reconstructNodeHistoryWire.
@@ -194,7 +201,12 @@ func (bs *Store) reconstructRelHistoryWire(id snowflake.ID, version uint64, raw 
 	if err := storepkg.SafeUnmarshal(anchorRaw, &anchorWire); err != nil {
 		return storepkg.RelWire{}, err
 	}
-	return storepkg.ApplyRelHistory(anchorWire, d), nil
+	w := storepkg.ApplyRelHistory(anchorWire, d)
+	if err := bs.resolveRelWireKeys(&w); err != nil {
+		return storepkg.RelWire{}, fmt.Errorf("%w: %w", ErrInvalidStoreMutation, err)
+	}
+	storepkg.SortWirePropertiesByKey(w.Properties)
+	return w, nil
 }
 
 // historyNodeTemporal decodes only enough of a node history value to read its
@@ -287,18 +299,23 @@ func (bs *Store) rematerializeOrphanedDeltas(prefix []byte, keptKeys []string) (
 }
 
 // materializeFullHistoryValue reconstructs a delta value and re-marshals it as a
-// full snapshot (still tokenized), for node or rel.
+// canonical full snapshot (property keys re-tokenized), for node or rel.
+// reconstruct* returns resolved (Key-set) properties in key order; ApplyProperty
+// KeyTokens converts them back to the tokenized wire form the store stores.
 func (bs *Store) materializeFullHistoryValue(isNode bool, id snowflake.ID, version uint64, raw []byte) ([]byte, error) {
+	reg := bs.propKeyReg.Load()
 	if isNode {
 		w, err := bs.reconstructNodeHistoryWire(id, version, raw, nil)
 		if err != nil {
 			return nil, err
 		}
+		storepkg.ApplyPropertyKeyTokens(w.Properties, reg)
 		return storepkg.MarshalNodeWireStruct(w)
 	}
 	w, err := bs.reconstructRelHistoryWire(id, version, raw, nil)
 	if err != nil {
 		return nil, err
 	}
+	storepkg.ApplyPropertyKeyTokens(w.Properties, reg)
 	return storepkg.MarshalRelWireStruct(w)
 }

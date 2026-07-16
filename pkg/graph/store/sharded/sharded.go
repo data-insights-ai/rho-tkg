@@ -99,6 +99,11 @@ type Config struct {
 	// ErrCapabilityNotSupported and the cross-shard fold declines. Default false.
 	DisablePlannerStats bool
 
+	// HistoryDeltaEncoding turns ON anchor+delta version-history storage on every
+	// slot's badger store — see badger.Config.HistoryDeltaEncoding (ADR-0009/B6).
+	// Default false (opt-in).
+	HistoryDeltaEncoding bool
+
 	// Per-shard badger passthroughs (applied uniformly to every shard).
 	Compression           options.CompressionType
 	ZSTDCompressionLevel  int
@@ -266,6 +271,7 @@ func (s *Store) shardConfig(cfg Config, k uint8, reg *registrypkg.PropertyKeyReg
 		EncryptionKey:         cfg.EncryptionKey,
 		EncryptionKeyRotation: cfg.EncryptionKeyRotation,
 		DisablePlannerStats:   cfg.DisablePlannerStats,
+		HistoryDeltaEncoding:  cfg.HistoryDeltaEncoding,
 		PropertyKeyRegistry:   reg,
 	}
 	if cfg.ChangeLog {

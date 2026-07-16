@@ -115,6 +115,10 @@ type Config struct {
 	// the stat methods then fail closed with ErrCapabilityNotSupported and the
 	// tiered cross-shard fold declines uniformly. Default false = maintained.
 	DisablePlannerStats bool
+	// HistoryDeltaEncoding turns ON anchor+delta version-history storage on every
+	// shard's badger store — see badger.Config.HistoryDeltaEncoding (ADR-0009/B6).
+	// Passed through badgerCfg to EVERY shard uniformly. Default false (opt-in).
+	HistoryDeltaEncoding bool
 	// ChangeLog enables the durable, ordered change-log (op-log) across all
 	// shards. A store-level monotonic allocator hands every shard's change-log
 	// record a store-global LSN (a total commit order); each shard co-commits
@@ -232,6 +236,7 @@ type Store struct {
 	cacheBudgetBytes      int64         // per-shard entity-cache byte budget; 0 = off
 	propertyIndexOnDisk   bool          // reference-shard-only scope unchanged; changes RAM vs disk representation
 	disablePlannerStats   bool          // skip planner-stat maintenance on every shard; stat folds decline
+	historyDeltaEncoding  bool          // anchor+delta version-history storage on every shard (ADR-0009/B6)
 	temporalIndexOnDisk   bool          // per-shard rebuild-at-open accelerator; index itself stays RAM-resident on every shard
 	closeCh               chan struct{} // signals idle-close goroutine to stop
 	closeOnce             sync.Once
@@ -333,6 +338,7 @@ func New(cfg Config) (*Store, error) {
 		propertyIndexOnDisk:   cfg.PropertyIndexOnDisk,
 		temporalIndexOnDisk:   cfg.TemporalIndexOnDisk,
 		disablePlannerStats:   cfg.DisablePlannerStats,
+		historyDeltaEncoding:  cfg.HistoryDeltaEncoding,
 		closeCh:               make(chan struct{}),
 		hfIdxBuckets:          make(map[uint16]time.Duration),
 		vectorIndexes:         make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex),
@@ -1064,6 +1070,7 @@ func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 		PropertyIndexOnDisk:   ts.propertyIndexOnDisk,
 		TemporalIndexOnDisk:   ts.temporalIndexOnDisk,
 		DisablePlannerStats:   ts.disablePlannerStats,
+		HistoryDeltaEncoding:  ts.historyDeltaEncoding,
 	}
 	if !ts.inMemory {
 		cfg.Dir = filepath.Join(ts.dataDir, name)
