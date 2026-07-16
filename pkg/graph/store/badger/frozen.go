@@ -16,6 +16,19 @@ func freezeNodeCopy(n *types.Node) *types.Node {
 	return cp
 }
 
+// freezeNodeForCache returns the frozen cache entry for n. When owned is false
+// it deep-copies (the default Put contract — the caller keeps its object). When
+// owned is true the caller has TRANSFERRED OWNERSHIP (ingest bulk apply), so n
+// is frozen IN PLACE and returned directly — no copy, the single largest saving
+// on the ingest apply path. The caller MUST NOT read or mutate n afterward.
+func freezeNodeForCache(n *types.Node, owned bool) *types.Node {
+	if owned {
+		n.Freeze()
+		return n
+	}
+	return freezeNodeCopy(n)
+}
+
 // freezeRelCopy is the relationship counterpart of freezeNodeCopy.
 func freezeRelCopy(r *types.Relationship) *types.Relationship {
 	cp := r.DeepCopy()

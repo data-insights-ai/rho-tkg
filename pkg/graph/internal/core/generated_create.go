@@ -47,6 +47,21 @@ func (c *Core) putGeneratedNodesBatchPreEncoded(nodes []*types.Node, wireBodies,
 	return c.putGeneratedNodesBatch(nodes)
 }
 
+// putGeneratedNodesBatchOwnedPreEncoded is putGeneratedNodesBatchPreEncoded with
+// an OWNERSHIP TRANSFER: the caller guarantees none of these nodes is ever read
+// or mutated again, so a store implementing store.OwnedPreEncodedPutCapability
+// freezes them in place instead of deep-copying into its cache — the largest
+// per-node allocation on the apply path. A store without the capability falls
+// back to the copying pre-encoded door, so this is a pure allocation
+// optimization, never a correctness requirement. Used ONLY by the concurrent
+// ingest apply for an all-write-only (no caller-visible skeleton) group.
+func (c *Core) putGeneratedNodesBatchOwnedPreEncoded(nodes []*types.Node, wireBodies, logBodies [][]byte) error {
+	if c.ownedPut != nil {
+		return c.ownedPut.PutNodesBatchOwnedPreEncoded(nodes, wireBodies, logBodies)
+	}
+	return c.putGeneratedNodesBatchPreEncoded(nodes, wireBodies, logBodies)
+}
+
 func anyNonNil(bufs [][]byte) bool {
 	for _, b := range bufs {
 		if b != nil {

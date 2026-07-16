@@ -178,6 +178,25 @@ type PreEncodedPutLogCapability interface {
 	PutNodesBatchPreEncodedLog(nodes []*types.Node, wireBodies, logBodies [][]byte) error
 }
 
+// OwnedPreEncodedPutCapability is OPTIONAL — the OWNERSHIP-TRANSFER variant of
+// PreEncodedPutLogCapability for the ingest bulk apply path. It behaves exactly
+// like PutNodesBatchPreEncodedLog EXCEPT the caller transfers ownership of the
+// nodes: it guarantees it will never read or mutate them again, so the store MAY
+// freeze each node IN PLACE and cache it directly instead of deep-copying it
+// into the cache. That deep copy (freezeNodeCopy) is the single largest per-node
+// allocation on the apply path; skipping it is the point of this capability.
+//
+// CONTRACT: the store's cached (frozen) entry IS the passed object. The caller
+// MUST NOT touch a node after this call — behaviour is undefined otherwise. Use
+// ONLY for write-only creates that are never returned to the caller (the ingest
+// bulk door, keepResults==false); the graph layer enforces the gate. A store
+// that does not implement this is simply used via PutNodesBatchPreEncoded(Log),
+// which deep-copies as usual — the capability is a pure allocation optimization,
+// never a correctness requirement.
+type OwnedPreEncodedPutCapability interface {
+	PutNodesBatchOwnedPreEncoded(nodes []*types.Node, wireBodies, logBodies [][]byte) error
+}
+
 // HistoryCapability is the version-history surface. Every backend must
 // implement it because the graph layer applies pre-mutation snapshots on
 // every Update*. The atomic ReplaceWith*History and Delete*WithHistory

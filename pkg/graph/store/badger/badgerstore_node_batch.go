@@ -420,7 +420,7 @@ func relationshipIndexKeyMatchesRelID(key []byte, relID snowflake.ID) bool {
 // Phase 2: serialize, cache, index, and queue each for async flush.
 // Any duplicate → error, zero mutations. Nil/empty input → nil error.
 func (bs *Store) PutNodesBatch(nodes []*types.Node) error {
-	return bs.putNodesBatchInternal(nodes, nil, nil)
+	return bs.putNodesBatchInternal(nodes, nil, nil, false)
 }
 
 // PutNodesBatchPreEncoded persists nodes whose v2 entity-row wire has already
@@ -431,7 +431,7 @@ func (bs *Store) PutNodesBatch(nodes []*types.Node) error {
 // whether or not a row arrived pre-encoded (proven by the ingest divergence
 // battery). The change-log put body is UNCHANGED (untokenized encode-at-flush).
 func (bs *Store) PutNodesBatchPreEncoded(nodes []*types.Node, wireBodies [][]byte) error {
-	return bs.putNodesBatchInternal(nodes, wireBodies, nil)
+	return bs.putNodesBatchInternal(nodes, wireBodies, nil, false)
 }
 
 // PutNodesBatchPreEncodedLog satisfies store.PreEncodedPutLogCapability:
@@ -441,8 +441,23 @@ func (bs *Store) PutNodesBatchPreEncoded(nodes []*types.Node, wireBodies [][]byt
 // skips that node's payload encode entirely. Nil elements build at the door
 // (byte-identical by the crown equivalence).
 func (bs *Store) PutNodesBatchPreEncodedLog(nodes []*types.Node, wireBodies, logBodies [][]byte) error {
-	return bs.putNodesBatchInternal(nodes, wireBodies, logBodies)
+	return bs.putNodesBatchInternal(nodes, wireBodies, logBodies, false)
 }
+
+// PutNodesBatchOwnedPreEncoded is PutNodesBatchPreEncodedLog with an OWNERSHIP
+// TRANSFER: the caller guarantees it will never read or mutate the nodes again,
+// so the store freezes each node IN PLACE and caches it directly instead of
+// deep-copying it (freezeNodeCopy). This eliminates the single largest per-node
+// allocation on the ingest apply path. Satisfies store.OwnedPreEncodedPutCapability.
+//
+// UNDEFINED BEHAVIOR if the caller touches a node afterward — the store's cached
+// (frozen) entry IS that object. Only the ingest bulk path (write-only creates,
+// no caller-visible skeleton) may use this; see the gate in the core apply path.
+func (bs *Store) PutNodesBatchOwnedPreEncoded(nodes []*types.Node, wireBodies, logBodies [][]byte) error {
+	return bs.putNodesBatchInternal(nodes, wireBodies, logBodies, true)
+}
+
+var _ storecontract.OwnedPreEncodedPutCapability = (*Store)(nil)
 
 // putNodesBatchInternal is the shared body of PutNodesBatch (wireBodies nil) and
 // PutNodesBatchPreEncoded. When wireBodies[i] is non-nil it is used verbatim as
@@ -450,7 +465,7 @@ func (bs *Store) PutNodesBatchPreEncodedLog(nodes []*types.Node, wireBodies, log
 // here (encode-at-flush). Everything else — validation, duplicate check, cache,
 // index maintenance, counters, and the UNTOKENIZED change-log put body — is
 // identical on both paths.
-func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodies [][]byte) error {
+func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodies [][]byte, owned bool) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
 	}
@@ -496,7 +511,7 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 			data = d
 		}
 		nid := n.InternalID()
-		serialized[i] = nodeData{nid: nid, id: nid.SnowflakeID(), data: data, frozen: freezeNodeCopy(n)}
+		serialized[i] = nodeData{nid: nid, id: nid.SnowflakeID(), data: data, frozen: freezeNodeForCache(n, owned)}
 		if bs.logEnabled {
 			if i < len(logBodies) && logBodies[i] != nil {
 				putPayloads[i] = logBodies[i] // producer-encoded, applier-patched

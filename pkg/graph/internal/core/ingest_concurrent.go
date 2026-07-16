@@ -200,10 +200,28 @@ func (c *Core) applyConcurrentNodeCreates(
 	}
 
 	if len(batch) > 0 {
+		// Ownership transfer (lever #2): when EVERY queued node in this group is
+		// write-only (no caller-visible skeleton — result == nil), no code path
+		// reads or mutates these nodes after the put, so the store may freeze them
+		// in place instead of deep-copying into its cache. A single result != nil
+		// disqualifies the whole group: syncPendingNodeResult copies the (now
+		// frozen) node into the caller's skeleton AFTER the put, which would leak
+		// the frozen state. Mixed groups take the copying door.
+		ownedGroup := true
+		for _, pn := range queued {
+			if pn.result != nil {
+				ownedGroup = false
+				break
+			}
+		}
+		put := c.putGeneratedNodesBatchPreEncoded
+		if ownedGroup {
+			put = c.putGeneratedNodesBatchOwnedPreEncoded
+		}
 		// One batched store door for the whole group — in-tree PutNodesBatch
 		// implementations are all-or-nothing, so a door error fails every intent
 		// in it (rolling their stamps back); success commits them all.
-		if err := c.putGeneratedNodesBatchPreEncoded(batch, bodies, logBodies); err != nil {
+		if err := put(batch, bodies, logBodies); err != nil {
 			for _, pn := range queued {
 				markFailed(pn, err)
 			}

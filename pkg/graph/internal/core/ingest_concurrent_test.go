@@ -177,6 +177,26 @@ func TestIngestConcurrentBulkAddNodes(t *testing.T) {
 		if tm := n.Temporal(); tm == nil || tm.TxFrom == 0 {
 			t.Fatalf("bulk node %d missing TxFrom stamp", n.ID())
 		}
+		// Property values survive the ownership-transfer freeze-in-place path
+		// (the store owns the built node; siblings share the canonical slice).
+		wv, okw := n.GetProperty("w")
+		cv, okc := n.GetProperty("ch")
+		if !okw || !okc {
+			t.Fatalf("bulk node %d missing w/ch props", n.ID())
+		}
+		if _, isInt := wv.(int64); !isInt {
+			t.Fatalf("bulk node %d prop w = %T, want int64", n.ID(), wv)
+		}
+		_ = cv
+		// A point read returns a mutable, independent copy (DeepCopy thaws the
+		// frozen owned entry) — mutating it must not error.
+		mutable, err := c.Nodes.Get(context.Background(), n.ID())
+		if err != nil {
+			t.Fatalf("Get(%d): %v", n.ID(), err)
+		}
+		if err := mutable.SetProperty("touched", true); err != nil {
+			t.Fatalf("owned entry not thawed on point read (%d): %v", n.ID(), err)
+		}
 		ok, err := c.Hash.VerifyNodeChain(n.ID())
 		if !ok || err != nil {
 			t.Fatalf("VerifyNodeChain(%d) = (%v, %v)", n.ID(), ok, err)

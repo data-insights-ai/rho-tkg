@@ -60,7 +60,7 @@ func ascendingKeys[V any](m map[int]V) []int {
 // first (structure, slot-locality, no duplicate IDs, none already present), then
 // commit ascending; a surviving I/O error returns *PartialBatchError.
 func (s *Store) PutNodesBatch(nodes []*types.Node) error {
-	return s.putNodesBatchInternal(nodes, nil, nil)
+	return s.putNodesBatchInternal(nodes, nil, nil, false)
 }
 
 // PutNodesBatchPreEncoded satisfies store.PreEncodedPutCapability (ADR-0006 §4.5).
@@ -71,7 +71,17 @@ func (s *Store) PutNodesBatch(nodes []*types.Node) error {
 // the row (an off-by-one here is the silent-wrong-answer class, tested for
 // byte-identity per shard against unsharded badger).
 func (s *Store) PutNodesBatchPreEncoded(nodes []*types.Node, wireBodies [][]byte) error {
-	return s.putNodesBatchInternal(nodes, wireBodies, nil)
+	return s.putNodesBatchInternal(nodes, wireBodies, nil, false)
+}
+
+// PutNodesBatchOwnedPreEncoded satisfies store.OwnedPreEncodedPutCapability: the
+// ownership-transfer variant used by the ingest bulk apply path. It partitions
+// per shard exactly like PutNodesBatchPreEncodedLog, then hands each shard group
+// to the shard's OWN owned door so the shard freezes the nodes in place instead
+// of deep-copying them. Same ownership contract as the badger door: the caller
+// must never touch a node again.
+func (s *Store) PutNodesBatchOwnedPreEncoded(nodes []*types.Node, wireBodies, logBodies [][]byte) error {
+	return s.putNodesBatchInternal(nodes, wireBodies, logBodies, true)
 }
 
 // PutNodesBatchPreEncodedLog satisfies store.PreEncodedPutLogCapability: like
@@ -79,14 +89,14 @@ func (s *Store) PutNodesBatchPreEncoded(nodes []*types.Node, wireBodies [][]byte
 // payload. Both parallel arrays are sliced per shard group with the SAME index
 // alignment as the nodes.
 func (s *Store) PutNodesBatchPreEncodedLog(nodes []*types.Node, wireBodies, logBodies [][]byte) error {
-	return s.putNodesBatchInternal(nodes, wireBodies, logBodies)
+	return s.putNodesBatchInternal(nodes, wireBodies, logBodies, false)
 }
 
 // putNodesBatchInternal is the shared body of the three node-batch doors. When
 // wireBodies/logBodies are non-nil, they are the pre-encoded parallel arrays
 // (ADR-0006 §4.5) and are partitioned per shard group in index alignment with
 // their nodes; when nil the plain PutNodesBatch path runs on every shard.
-func (s *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodies [][]byte) error {
+func (s *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodies [][]byte, owned bool) error {
 	if err := s.checkOpen(); err != nil {
 		return err
 	}
@@ -142,6 +152,8 @@ func (s *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodies
 		b := buckets[idx]
 		var err error
 		switch {
+		case owned:
+			err = s.shards[idx].PutNodesBatchOwnedPreEncoded(b.nodes, b.wire, b.log)
 		case logBodies != nil:
 			err = s.shards[idx].PutNodesBatchPreEncodedLog(b.nodes, b.wire, b.log)
 		case wireBodies != nil:
@@ -318,6 +330,7 @@ func (s *Store) DeleteRelationshipsBatch(ids []types.RelID) error {
 // (nativePreEncodedPut) keeps them badger-only, so a sharded deployment falls
 // back to encode-at-flush PutNodesBatch until S4 lane wiring routes them.
 var (
-	_ storecontract.PreEncodedPutCapability    = (*Store)(nil)
-	_ storecontract.PreEncodedPutLogCapability = (*Store)(nil)
+	_ storecontract.PreEncodedPutCapability      = (*Store)(nil)
+	_ storecontract.PreEncodedPutLogCapability   = (*Store)(nil)
+	_ storecontract.OwnedPreEncodedPutCapability = (*Store)(nil)
 )

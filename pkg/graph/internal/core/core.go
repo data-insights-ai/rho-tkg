@@ -85,7 +85,12 @@ type Core struct {
 	// with the stamped TxFrom) instead of a second msgpack pass. nil = store
 	// declines (tiered, wrappers), so the applier uses the encode-at-flush
 	// PutNodesBatch path. Native memory/badger only.
-	preEncodedPut    storepkg.PreEncodedPutCapability
+	preEncodedPut storepkg.PreEncodedPutCapability
+	// ownedPut — lever #2 ownership-transfer put. Set for any store implementing
+	// OwnedPreEncodedPutCapability (badger, sharded), independent of the
+	// badger-only preEncodedPut gate. nil = store copies as usual (memory,
+	// tiered, wrappers). Used only by the concurrent ingest bulk apply.
+	ownedPut         storepkg.OwnedPreEncodedPutCapability
 	changeFeed       storepkg.ChangeFeedCapability
 	changeLogEnabled bool                      // store's change-log actually on (records emitted)
 	txLogScope       storepkg.TxChangeLogScope // per-tx record buffer (nil when off / unsupported)
@@ -1399,6 +1404,13 @@ func New(config Config) (*Core, error) {
 
 	c.store = store
 	c.preEncodedPut = nativePreEncodedPut(store)
+	// Ownership-transfer put (lever #2) is independent of the §4.5 pre-encode
+	// gate (which is badger-only): any store implementing the capability honors
+	// the freeze-in-place contract, so recognize sharded here too. Used only by
+	// the concurrent ingest bulk apply for all-write-only groups.
+	if oc, ok := store.(storepkg.OwnedPreEncodedPutCapability); ok {
+		c.ownedPut = oc
+	}
 	c.generatedCreate = nativeGeneratedCreate(store)
 	c.endpointHash = nativeEndpointIntegrityHash(store)
 	c.endpointHashWrite = nativeRelationshipEndpointHashWrite(store)
