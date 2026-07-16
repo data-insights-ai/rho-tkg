@@ -37,6 +37,7 @@ type Ops interface {
 	ForEachByLabel(label string, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
 	ForEachByLabelPropertyRange(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
 	ForEachByLabelPropertyRangeOrdered(label, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
+	ForEachByLabelPropertyPrefix(label, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error
 	RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
 	ForEachDocValues(label string, propKeys []string, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error)
 	ForEachDocValuesMulti(labels []string, propKeys []string, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error)
@@ -293,6 +294,26 @@ func (a *API) ForEachByLabelPropertyRangeOrdered(label, propKey string, min, max
 		return err
 	}
 	return ops.ForEachByLabelPropertyRangeOrdered(label, propKey, min, max, inclMin, inclMax, desc, opts, fn)
+}
+
+// ForEachByLabelPropertyPrefix streams nodes whose STRING propKey value begins
+// with prefix in CONTRACTUAL VALUE ORDER — lexicographic ascending, or descending
+// when desc, with ties broken by node ID ascending — the string prefix /
+// `STARTS WITH` access path. fn returning false stops the scan at the index level,
+// pushing an ORDER BY ... LIMIT k down. An empty prefix matches every string value
+// of the property. Unlike the numeric range doors the string ordered view is
+// EXACT, so rows already satisfy the prefix.
+//
+// CURRENT-STATE ONLY: a temporal QueryOpts combination is declined with
+// graph.ErrOrderedScanTemporal. Returns graph.ErrIndexNotFound when no usable
+// ordered view exists for (label, propKey). Same relaxed isolation and frozen-row
+// contract as ForEachByLabel.
+func (a *API) ForEachByLabelPropertyPrefix(label, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachByLabelPropertyPrefix(label, propKey, prefix, desc, opts, fn)
 }
 
 // RangeCardinality returns the count of the label's nodes whose numeric propKey

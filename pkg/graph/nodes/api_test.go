@@ -404,6 +404,14 @@ func (s *nodeOpsSpy) ForEachByLabelPropertyRangeOrdered(label, propKey string, m
 	return s.err
 }
 
+func (s *nodeOpsSpy) ForEachByLabelPropertyPrefix(label, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
+	s.record("ForEachByLabelPropertyPrefix")
+	s.lastLabel = label
+	s.lastKey = propKey
+	s.lastOpts = opts
+	return s.err
+}
+
 func (s *nodeOpsSpy) ByLabelAndProperty(label, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	s.record("ByLabelAndProperty")
 	s.lastLabel = label

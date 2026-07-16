@@ -511,6 +511,121 @@ func (bs *Store) propertyIndexDiskRangeLocked(propertyKey string, min, max float
 	return nids, true, nil
 }
 
+// diskStrOrderedEntry pairs a string entry's order-preserving value bytes (the
+// domain-tagged payload minus the trailing node ID) with its node ID. Byte
+// ordering of val IS lexicographic value ordering: every string entry shares the
+// constant [PropIdxDomainRaw]"s:" payload prefix, so comparing the payload bytes
+// compares the underlying strings.
+type diskStrOrderedEntry struct {
+	val string
+	id  snowflake.ID
+}
+
+func sortDiskStrOrderedEntries(entries []diskStrOrderedEntry, desc bool) {
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].val != entries[j].val {
+			if desc {
+				return entries[i].val > entries[j].val
+			}
+			return entries[i].val < entries[j].val
+		}
+		return entries[i].id < entries[j].id
+	})
+}
+
+// propertyIndexDiskPrefixOrderedLocked resolves propertyKey + string prefix to
+// disk candidate node IDs in CONTRACTUAL VALUE ORDER (lex value asc, or desc when
+// desc; ties by node ID ASCENDING in both directions), merging the pending-write
+// overlay. The string view is EXACT (no over-selection). supported=false when the
+// property key has no token. An empty prefix matches every string value. Caller
+// holds idxMu.
+func (bs *Store) propertyIndexDiskPrefixOrderedLocked(propertyKey, prefix string, desc bool) ([]snowflake.ID, bool, error) {
+	tok, ok := bs.propKeyTokenFor(propertyKey)
+	if !ok {
+		return nil, false, nil
+	}
+	// "s:"+prefix -> raw-domain payload [PropIdxDomainRaw]"s:"+prefix; the full key
+	// prefix bounds exactly the string entries whose value begins with prefix (the
+	// "s:" tag excludes bool/temporal raw-domain entries).
+	payload, ok := storepkg.PropertyIndexValueBytes("s:" + prefix)
+	if !ok {
+		return nil, false, nil
+	}
+	keyPrefix := storepkg.PropertyIndexValuePrefix(tok, payload)
+	entries, err := bs.propertyIndexDiskPrefixEntriesLocked(keyPrefix)
+	if err != nil {
+		return nil, false, err
+	}
+	sortDiskStrOrderedEntries(entries, desc)
+	ids := make([]snowflake.ID, len(entries))
+	for i, e := range entries {
+		ids[i] = e.id
+	}
+	return ids, true, nil
+}
+
+// propertyIndexDiskPrefixEntriesLocked returns the (value, nodeID) entries whose
+// on-disk key begins with keyPrefix, merging the pending-write overlay (set/delete
+// resolved PER KEY over the persisted keyspace — lesson 57). The value is the
+// order-preserving payload bytes between the KeyPropertyIndex(1)+token(2) header
+// and the trailing 8-byte node ID. Caller holds idxMu.
+func (bs *Store) propertyIndexDiskPrefixEntriesLocked(keyPrefix []byte) ([]diskStrOrderedEntry, error) {
+	prefixStr := string(keyPrefix)
+	minLen := len(keyPrefix) + 8
+	valOf := func(kb []byte) string { return string(kb[3 : len(kb)-8]) }
+
+	var adds map[snowflake.ID]string
+	var dels map[snowflake.ID]struct{}
+	bs.rangePending(func(k string, op writeOp) {
+		if len(k) < minLen || !strings.HasPrefix(k, prefixStr) {
+			return
+		}
+		kb := []byte(k)
+		nid := storepkg.PropertyIndexNodeIDFromKey(kb)
+		if op.opType == writeOpSet {
+			if adds == nil {
+				adds = make(map[snowflake.ID]string)
+			}
+			adds[nid] = valOf(kb)
+			delete(dels, nid)
+		} else {
+			if dels == nil {
+				dels = make(map[snowflake.ID]struct{})
+			}
+			dels[nid] = struct{}{}
+			delete(adds, nid)
+		}
+	})
+
+	var entries []diskStrOrderedEntry
+	err := bs.db.View(func(txn *badgerv4.Txn) error {
+		opts := badgerv4.DefaultIteratorOptions
+		opts.PrefetchValues = false
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		for it.Seek(keyPrefix); it.ValidForPrefix(keyPrefix); it.Next() {
+			key := it.Item().Key()
+			if len(key) < minLen {
+				continue
+			}
+			nid := storepkg.PropertyIndexNodeIDFromKey(key)
+			if _, del := dels[nid]; del {
+				continue
+			}
+			delete(adds, nid)
+			entries = append(entries, diskStrOrderedEntry{val: valOf(key), id: nid})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("graph: property index prefix scan: %w", err)
+	}
+	for nid, v := range adds {
+		entries = append(entries, diskStrOrderedEntry{val: v, id: nid})
+	}
+	return entries, nil
+}
+
 // purgePropertyKeyDiskEntriesLocked deletes every on-disk row for
 // propertyKey's token — both persisted (via a Badger scan) and any unflushed
 // SET still sitting in the write buffer. Called from DropPropertyIndex only

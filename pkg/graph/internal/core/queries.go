@@ -300,6 +300,76 @@ func (n *NodeOps) ForEachByLabelPropertyRangeOrdered(label, propKey string, min,
 	return scanner.ForEachNodeByLabelPropertyRangeOrdered(tok, propKey, min, max, inclMin, inclMax, desc, fn)
 }
 
+// nodePrefixScanner is the OPTIONAL store capability behind
+// NodeOps.ForEachByLabelPropertyPrefix — streaming STRING prefix scans that emit
+// in contractual lexicographic VALUE ORDER (the `WHERE n.k STARTS WITH $p
+// [ORDER BY n.k] [LIMIT k]` access path). Implemented by the in-tree memory and
+// badger stores.
+type nodePrefixScanner interface {
+	ForEachNodeByLabelPropertyPrefix(token uint16, propKey, prefix string, desc bool, fn func(*types.Node) bool) error
+}
+
+// ForEachByLabelPropertyPrefix streams nodes carrying the label whose STRING
+// propKey value begins with prefix, to fn in CONTRACTUAL VALUE ORDER —
+// lexicographic ascending, or descending when desc — with ties (equal values)
+// always broken by node ID ASCENDING in both directions. It is the string prefix
+// / `STARTS WITH` access path: a query layer compiling `WHERE n.k STARTS WITH $p
+// ORDER BY n.k [ASC|DESC] LIMIT k` streams here and returns false from fn once it
+// has k rows, so the LIMIT is pushed into the index (O(k + log n) index work — the
+// whole prefix range is never materialized). An empty prefix matches every string
+// value of the property.
+//
+// Candidates come from the property index's ordered STRING view, which — unlike
+// the numeric ordered view — is EXACT (string sort keys never collide), so fn
+// receives rows that already satisfy the prefix; fn still owns any further
+// predicate.
+//
+// CURRENT-STATE ONLY (Stage A): a temporal QueryOpts combination (ValidAt /
+// ValidStart / ValidEnd / TxAt / TxPin) is DECLINED with
+// storepkg.ErrOrderedScanTemporal — value ordering is derived from the
+// valid-time-agnostic property index, so a temporal ordered/prefix scan cannot be
+// served from the index and is refused rather than answered against current state.
+// Returns storepkg.ErrIndexNotFound when no property index with a usable ordered
+// view exists for (label, propKey) or the store lacks the capability. Same relaxed
+// isolation and frozen-row contract as ForEachByLabel.
+func (n *NodeOps) ForEachByLabelPropertyPrefix(label, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
+	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
+	if fn == nil {
+		return grapherr.ErrNilCallback
+	}
+	if err := c.validateIndexLabel(label); err != nil {
+		return err
+	}
+	// Strict: decline on ANY temporal field (a lone ValidStart is not a complete
+	// interval, so hasTemporalFilter would miss it).
+	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
+		return storepkg.ErrOrderedScanTemporal
+	}
+	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+		return err
+	}
+	scanner, native := c.store.(nodePrefixScanner)
+	if !native || !c.storeRowsTrust {
+		return storepkg.ErrIndexNotFound
+	}
+	var tok uint16
+	var ok bool
+	if err := c.readUnderRLock(func() error {
+		tok, ok = c.labels.Lookup(label)
+		return nil
+	}); err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+	// Deliberately outside c.mu — see ForEachByLabel's isolation note.
+	return scanner.ForEachNodeByLabelPropertyPrefix(tok, propKey, prefix, desc, fn)
+}
+
 // nodesByLabelLocked is the lock-free body of NodeOps.ByLabel. Callers must
 // hold c.mu (R or W). Used by the public method (under RLock) and by
 // (*GraphTx).NodesByLabel (under tx-inherited Lock).
