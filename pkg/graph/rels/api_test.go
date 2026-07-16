@@ -433,6 +433,13 @@ func (s *relOpsSpy) ForEachByTypePropertyRange(typeName, propKey string, min, ma
 	return s.err
 }
 
+func (s *relOpsSpy) ForEachByTypePropertyPrefix(typeName, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
+	s.record("ForEachByTypePropertyPrefix")
+	s.lastType = typeName
+	s.lastOpts = opts
+	return s.err
+}
+
 func (s *relOpsSpy) ForEach(opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
 	s.record("ForEach")
 	s.lastOpts = opts

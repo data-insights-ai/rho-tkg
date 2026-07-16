@@ -1,0 +1,73 @@
+package badger
+
+import (
+	"errors"
+	"fmt"
+
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+)
+
+// ForEachRelByTypePropertyPrefix streams the type's relationships whose STRING
+// propKey value begins with prefix to fn in CONTRACTUAL VALUE ORDER —
+// lexicographic ascending, or descending when desc — with ties (equal values)
+// always broken by rel ID ASCENDING in both directions. It is the relationship
+// mirror of ForEachNodeByLabelPropertyPrefix (the `STARTS WITH` access path).
+// fn returning false stops the scan (LIMIT pushdown); an empty prefix matches
+// every string value.
+//
+// Rel property indexes are RAM-only (their definitions persist, the entries do
+// not), so there is no on-disk prefix path — candidates always come from the
+// ordered STRING view, which is EXACT. Returns ErrIndexNotFound when no usable
+// rel property index exists for (relType, propKey). Rows are materialized outside
+// idxMu and fn runs with no lock held.
+func (bs *Store) ForEachRelByTypePropertyPrefix(relTypeToken uint16, propKey, prefix string, desc bool, fn func(*types.Relationship) bool) error {
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
+	if fn == nil {
+		return storecontract.ErrInvalidStoreMutation
+	}
+	if err := storecontract.ValidateRelTypeToken(relTypeToken); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateIndexPropertyKey(propKey); err != nil {
+		return err
+	}
+	key := indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propKey}
+
+	var cur indexpkg.StrOrderedCursor
+	for {
+		bs.idxMu.RLock()
+		idx, ok := bs.relPropertyIndexes[key]
+		if !ok || idx.Mutated != nil {
+			bs.idxMu.RUnlock()
+			return storecontract.ErrIndexNotFound
+		}
+		ids, next, done, supported := idx.PrefixOrderedPage(prefix, desc, cur, orderedRangePageSize)
+		bs.idxMu.RUnlock()
+		if !supported {
+			return storecontract.ErrIndexNotFound
+		}
+		for _, rawID := range ids {
+			r, err := bs.prefetchRelScan(types.RelID(rawID))
+			if err != nil {
+				if errors.Is(err, ErrRelNotFound) {
+					continue // deleted since snapshot, or orphaned ordered-view entry
+				}
+				return fmt.Errorf("graph: prefix-scan relationship %d: %w", rawID, err)
+			}
+			if !r.HasTypeTokenRaw(relTypeToken) {
+				continue
+			}
+			if !fn(r) {
+				return nil
+			}
+		}
+		if done {
+			return nil
+		}
+		cur = next
+	}
+}

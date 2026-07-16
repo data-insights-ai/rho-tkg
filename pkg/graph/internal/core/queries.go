@@ -2064,3 +2064,62 @@ func (r *RelOps) ForEachByTypePropertyRange(typeName, propKey string, min, max f
 	// Deliberately outside c.mu — see ForEachByLabel's isolation note.
 	return scanner.ForEachRelByTypePropertyRange(tok, propKey, min, max, inclMin, inclMax, opts, fn)
 }
+
+// relPrefixScanner is the OPTIONAL store capability behind
+// RelOps.ForEachByTypePropertyPrefix — the relationship mirror of
+// nodePrefixScanner (streaming STRING prefix scans in contractual lex value
+// order). Implemented by the memory and badger stores.
+type relPrefixScanner interface {
+	ForEachRelByTypePropertyPrefix(typeToken uint16, propKey, prefix string, desc bool, fn func(*types.Relationship) bool) error
+}
+
+// ForEachByTypePropertyPrefix streams relationships carrying the type whose
+// STRING propKey value begins with prefix, to fn in CONTRACTUAL VALUE ORDER —
+// lexicographic ascending, or descending when desc — with ties (equal values)
+// broken by rel ID ASCENDING in both directions. It is the relationship mirror of
+// NodeOps.ForEachByLabelPropertyPrefix (the `STARTS WITH` access path). fn
+// returning false stops the scan (LIMIT pushdown); an empty prefix matches every
+// string value.
+//
+// CURRENT-STATE ONLY: a temporal QueryOpts combination is DECLINED with
+// storepkg.ErrOrderedScanTemporal (value ordering derives from the
+// valid-time-agnostic property index). Returns storepkg.ErrIndexNotFound when no
+// usable rel property index exists for (type, propKey) or the store lacks the
+// capability. Same relaxed isolation and frozen-row contract as ForEachByType.
+func (r *RelOps) ForEachByTypePropertyPrefix(typeName, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
+	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
+	if fn == nil {
+		return grapherr.ErrNilCallback
+	}
+	if err := c.validateRelTypeQueryName(typeName); err != nil {
+		return err
+	}
+	// Strict: decline on ANY temporal field (a lone ValidStart is not a complete
+	// interval, so hasTemporalFilter would miss it).
+	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
+		return storepkg.ErrOrderedScanTemporal
+	}
+	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+		return err
+	}
+	scanner, native := c.store.(relPrefixScanner)
+	if !native || !c.storeRowsTrust {
+		return storepkg.ErrIndexNotFound
+	}
+	var tok uint16
+	var ok bool
+	if err := c.readUnderRLock(func() error {
+		tok, ok = c.lookupRelTypeQueryToken(typeName)
+		return nil
+	}); err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+	// Deliberately outside c.mu — see ForEachByLabel's isolation note.
+	return scanner.ForEachRelByTypePropertyPrefix(tok, propKey, prefix, desc, fn)
+}

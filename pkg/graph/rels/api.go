@@ -37,6 +37,7 @@ type Ops interface {
 	ForEachByType(typeName string, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 	ByTypeAndProperty(typeName, key string, value any, opts storepkg.QueryOpts) ([]*types.Relationship, error)
 	ForEachByTypePropertyRange(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
+	ForEachByTypePropertyPrefix(typeName, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 	Count() (int, error)
 	CountByType(typeName string) (int, error)
 
@@ -291,6 +292,25 @@ func (a *API) ForEachByTypePropertyRange(typeName, propKey string, min, max floa
 		return err
 	}
 	return ops.ForEachByTypePropertyRange(typeName, propKey, min, max, inclMin, inclMax, opts, fn)
+}
+
+// ForEachByTypePropertyPrefix streams relationships whose STRING propKey value
+// begins with prefix to fn in CONTRACTUAL VALUE ORDER — lexicographic ascending,
+// or descending when desc, with ties broken by rel ID ascending — the
+// relationship mirror of nodes.API.ForEachByLabelPropertyPrefix. fn returning
+// false stops the scan (ORDER BY ... LIMIT k pushdown); an empty prefix matches
+// every string value. The rel ordered string view is EXACT.
+//
+// CURRENT-STATE ONLY: a temporal QueryOpts combination is declined with
+// graph.ErrOrderedScanTemporal. Returns store.ErrIndexNotFound when no usable rel
+// property index exists for (type, propKey). Same relaxed isolation and
+// frozen-row contract as ForEachByType.
+func (a *API) ForEachByTypePropertyPrefix(typeName, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachByTypePropertyPrefix(typeName, propKey, prefix, desc, opts, fn)
 }
 
 // Count returns the total relationship count.
