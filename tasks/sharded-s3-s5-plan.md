@@ -79,6 +79,45 @@ and mints contiguous LSNs at commit.
 
 ## S4 — lanes + per-lane generators (HAS AN OWNER HARDWARE GATE)
 
+> **STATUS 2026-07-16: NOT STARTED — deliberately deferred.** Two structural
+> blockers to completing it autonomously: (1) the acceptance bar is an owner-M4-Max
+> throughput number the owner must run (a dev-box figure is explicitly not claimable);
+> (2) it is the silent-ID-collision risk class (drops the even/odd node/rel
+> value-uniqueness invariant). Do it in a dedicated session WITH the owner's bench.
+>
+> **Execution-ready integration map (verified 2026-07-16):**
+> - Generators built ONLY in `core.New`, `core.go:1208-1222`: `nodeIDGen` =
+>   `snowflake.NewNode(SnowflakeNodeID*2, …)` (EVEN node-field), `relIDGen` =
+>   `NewNode(SnowflakeNodeID*2+1, …)` (ODD). The even/odd value-uniqueness invariant
+>   lives ONLY here. Struct fields `core.go:47-48`.
+> - All minting funnels through `c.nextNodeID`/`c.nextRelID` (`validation.go:504-510`);
+>   5 call sites, all prepare-time, none lane-aware: `batch_queue.go:99` (node),
+>   `batch_queue.go:259` (rel), `node_add.go:171`, `relationship_add.go:171` & `:285`.
+> - Lane exists end-to-end but is inert as a routing key: `SubmitToken.Lane`
+>   (`ingest.go:94`), `Session.lane` (`ingest.go:652`, set by `nextIngestLane`
+>   `ingest.go:581`, only when `opts.Concurrent`), `IntentRecord.Lane`/`PeerLane`
+>   (`ingest_intent.go:71-78`). Strong mode always Lane 0; concurrent mode tags a
+>   nonzero per-session lane but never routes it to a generator.
+> - Concurrent apply mints NOTHING at apply time — IDs are pre-minted on the caller
+>   thread in `batch_queue.go`; `ingest_concurrent.go` consumes `pn.node.ID()` etc.
+>   So lane→slot pinning must happen at the PREPARE mint, keyed by the session lane.
+> - Sharded routing: `slotOf(id)=DecomposeID(id).NodeID` (`sharded.go:306`),
+>   `shardForID` (`sharded.go:311`), catalog identity slot→shard map
+>   (`catalog.go:43-62`), `maxSlots=32`, discipline marker `disciplineUnified=1`
+>   "single generator per slot (nodes+rels)" (`catalog.go:16-19`) — the contract S4
+>   must honor.
+>
+> **Safe design (preserve value-uniqueness):** ONE generator per claimed slot
+> (node-field = slot value), used for BOTH node and rel mints in that slot, so every
+> mint draws the next (time, seq) → no node/rel value collision within a slot;
+> cross-slot differs by node-field. Interactive lane (standalone/tx/batch) mints from
+> the BASE slot generator. A concurrent ingest session pins lane→slot→shard, mints
+> its whole group in one slot → one shard → one batched door. Non-sharded backends
+> KEEP the even/odd model unchanged (dual model — gate on the store's slot discipline,
+> not unconditionally). **PRIMARY GATE (verifiable here, unlike throughput): mint
+> millions of node+rel IDs across all lanes and assert GLOBAL uniqueness of the
+> node∪rel ID set — the silent-collision class. Do NOT commit S4 without this green.**
+
 1. `Config.SlotCount` already exists; add per-lane generator pairs so a concurrent
    ingest session pins lane→slot→shard and a whole commit group mints in one slot
    → lands on ONE shard as one batched door call (group-commit economics survive).
