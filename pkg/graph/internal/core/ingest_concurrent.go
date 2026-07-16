@@ -53,7 +53,7 @@ type bufferedIngestEvent struct {
 // every intent committed, or the first intent's error (with a count of any
 // further failures) — survivors commit regardless, matching the strong-mode
 // batch's keep-successful-ops semantics.
-func (c *Core) applyIngestGroupConcurrent(g *ingestGroup) error {
+func (c *Core) applyIngestGroupConcurrent(g *ingestGroup, lane uint16) error {
 	var (
 		events   []bufferedIngestEvent
 		firstErr error
@@ -69,7 +69,7 @@ func (c *Core) applyIngestGroupConcurrent(g *ingestGroup) error {
 		events = append(events, bufferedIngestEvent{typ: typ, id: id, ts: ts, prio: prio})
 	}
 
-	ep, closeErr := c.runUnderRLock(func() {
+	ep, closeErr := c.runUnderRLockShard(uint(lane), func() {
 		unavailable := c.applyConcurrentNodeCreates(g.nodes, fail, emit)
 		c.applyConcurrentRelCreates(g.rels, unavailable, fail, emit)
 		c.applyConcurrentUpdatesAndDeletes(g, fail, emit)

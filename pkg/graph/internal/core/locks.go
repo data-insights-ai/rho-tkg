@@ -51,6 +51,22 @@ func (c *Core) runUnderRLock(fn func()) (eventspkg.Publisher, error) {
 	return c.events, nil
 }
 
+// runUnderRLockShard is runUnderRLock keyed to a reader stripe (ADR-0007
+// lever #1). The concurrent-ingest apply path passes its session lane so N
+// lanes fan out across N stripes instead of contending on stripe 0. Semantics
+// are otherwise identical to runUnderRLock: a writer (Lock) still excludes this
+// reader, the closed check is the same, and events are dispatched by the caller
+// AFTER the returned publisher is captured under the lock.
+func (c *Core) runUnderRLockShard(hint uint, fn func()) (eventspkg.Publisher, error) {
+	tok := c.mu.RLockShard(hint)
+	defer c.mu.RUnlockShard(tok)
+	if c.closed.Load() {
+		return c.events, ErrGraphClosed
+	}
+	fn()
+	return c.events, nil
+}
+
 // readUnderRLock runs an operation that does not require exclusive graph access
 // under c.mu.RLock and returns ErrGraphClosed if Close has set the lifecycle
 // flag before the lock is acquired. Public read/query paths and small

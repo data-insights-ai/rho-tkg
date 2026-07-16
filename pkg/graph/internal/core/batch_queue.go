@@ -46,8 +46,8 @@ func (b *BatchBuilder) addNodes(labels []string, props map[string]any, count int
 	if err := b.g.checkOpen(); err != nil {
 		return nil, err
 	}
-	b.g.mu.RLock()
-	defer b.g.mu.RUnlock()
+	rtok := b.g.mu.RLockShard(uint(b.genLane))
+	defer b.g.mu.RUnlockShard(rtok)
 	if b.g.closed.Load() {
 		return nil, ErrGraphClosed
 	}
@@ -196,8 +196,8 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 	if err := b.g.checkOpen(); err != nil {
 		return nil, err
 	}
-	b.g.mu.RLock()
-	defer b.g.mu.RUnlock()
+	rtok := b.g.mu.RLockShard(uint(b.genLane))
+	defer b.g.mu.RUnlockShard(rtok)
 	if b.g.closed.Load() {
 		return nil, ErrGraphClosed
 	}
@@ -317,8 +317,8 @@ func (b *BatchBuilder) UpdateNode(id types.NodeID, updates map[string]any) error
 	if err := b.g.checkOpen(); err != nil {
 		return err
 	}
-	b.g.mu.RLock()
-	defer b.g.mu.RUnlock()
+	rtok := b.g.mu.RLockShard(uint(b.genLane))
+	defer b.g.mu.RUnlockShard(rtok)
 	if b.g.closed.Load() {
 		return ErrGraphClosed
 	}
@@ -346,8 +346,8 @@ func (b *BatchBuilder) UpdateRelationship(id types.RelID, updates map[string]any
 	if err := b.g.checkOpen(); err != nil {
 		return err
 	}
-	b.g.mu.RLock()
-	defer b.g.mu.RUnlock()
+	rtok := b.g.mu.RLockShard(uint(b.genLane))
+	defer b.g.mu.RUnlockShard(rtok)
 	if b.g.closed.Load() {
 		return ErrGraphClosed
 	}
@@ -375,8 +375,8 @@ func (b *BatchBuilder) SetNodeVersionInterval(id types.NodeID, validFrom, validT
 	if err := b.g.checkOpen(); err != nil {
 		return err
 	}
-	b.g.mu.RLock()
-	defer b.g.mu.RUnlock()
+	rtok := b.g.mu.RLockShard(uint(b.genLane))
+	defer b.g.mu.RUnlockShard(rtok)
 	if b.g.closed.Load() {
 		return ErrGraphClosed
 	}
@@ -411,8 +411,8 @@ func (b *BatchBuilder) SetRelVersionInterval(id types.RelID, validFrom, validTo 
 	if err := b.g.checkOpen(); err != nil {
 		return err
 	}
-	b.g.mu.RLock()
-	defer b.g.mu.RUnlock()
+	rtok := b.g.mu.RLockShard(uint(b.genLane))
+	defer b.g.mu.RUnlockShard(rtok)
 	if b.g.closed.Load() {
 		return ErrGraphClosed
 	}
@@ -451,8 +451,8 @@ func (b *BatchBuilder) DeleteNode(id types.NodeID) error {
 	if err := b.g.checkOpen(); err != nil {
 		return err
 	}
-	b.g.mu.RLock()
-	defer b.g.mu.RUnlock()
+	rtok := b.g.mu.RLockShard(uint(b.genLane))
+	defer b.g.mu.RUnlockShard(rtok)
 	if b.g.closed.Load() {
 		return ErrGraphClosed
 	}
@@ -476,8 +476,8 @@ func (b *BatchBuilder) DeleteRelationship(id types.RelID) error {
 	if err := b.g.checkOpen(); err != nil {
 		return err
 	}
-	b.g.mu.RLock()
-	defer b.g.mu.RUnlock()
+	rtok := b.g.mu.RLockShard(uint(b.genLane))
+	defer b.g.mu.RUnlockShard(rtok)
 	if b.g.closed.Load() {
 		return ErrGraphClosed
 	}

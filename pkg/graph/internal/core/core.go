@@ -119,7 +119,13 @@ type Core struct {
 	constraints        ConstraintSet
 	events             eventspkg.Publisher
 	txEventBuffer      *[]eventspkg.Event
-	mu                 sync.RWMutex
+	// mu is a striped RWMutex (ADR-0007 lever #1): exact sync.RWMutex semantics
+	// (a writer via Lock excludes ALL readers), but the reader fast path fans
+	// out across stripes so concurrent-ingest lanes taking c.mu.RLock do not
+	// serialize on one reader-count cache line. Hot ingest paths call
+	// RLockShard(lane)/runUnderRLockShard; every other reader uses the drop-in
+	// RLock()/RUnlock() (stripe 0) and every writer uses Lock()/Unlock().
+	mu shardedRWMutex
 	// txMu serializes transaction/batch lifecycles (BeginTx → Commit/Rollback
 	// and BatchExecute). Held for the entire tx/batch lifetime instead of
 	// c.mu.Lock (which was held in v3.4 / v4.0.x). Standalone mutations and

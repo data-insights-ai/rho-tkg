@@ -832,7 +832,7 @@ func (s *Session) Submit() (SubmitToken, error) {
 		s.seq++
 		token := SubmitToken{Lane: s.lane, Seq: s.seq}
 		s.mu.Unlock()
-		return token, s.c.applyIngestGroupConcurrent(g)
+		return token, s.c.applyIngestGroupConcurrent(g, s.lane)
 	}
 
 	sync := s.opts.Sync

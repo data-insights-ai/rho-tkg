@@ -67,7 +67,32 @@ type nodeLabelTokens struct {
 	extras  []uint16
 }
 
+// existingLabelsOrNextProbeTokens resolves label names to tokens, minting a
+// provisional PROBE token (re-stamped at apply) for any name not yet in the
+// registry.
+//
+// Contract: the caller MUST hold c.mu (read or write). That is what fences the
+// registry POINTER against the swap that import / tx-rollback perform — those
+// swaps take c.mu.Lock, so a reader under c.mu.RLock observes a stable c.labels
+// pointer WITHOUT needing c.registryMu (registryMu on the swap is only to
+// synchronize with registryMu-only readers that lack c.mu). This lets the hot
+// concurrent-ingest prepare fast path (a single ALREADY-registered label — the
+// steady state after declare-on-prepare) resolve its token via the label
+// registry's OWN internal RWMutex alone, keeping ALL lanes off the single
+// exclusive c.registryMu that otherwise serialized every prepared node
+// (ADR-0007 lever #1). Only the probe / miss / multi-label paths — which mint
+// provisional tokens from Len() and so need cross-lane serialization — take
+// c.registryMu.
 func (c *Core) existingLabelsOrNextProbeTokens(labels []string) (nodeLabelTokens, []string, error) {
+	// Fast path: one label already in the registry needs no probe allocation.
+	// Lookup is safe under the registry's own RWMutex; the pointer is safe under
+	// the caller's c.mu. No c.registryMu, no cross-lane serialization.
+	if len(labels) == 1 {
+		if tok, ok := c.labels.Lookup(labels[0]); ok {
+			return nodeLabelTokens{primary: tok}, []string{labels[0]}, nil
+		}
+	}
+
 	c.registryMu.Lock()
 	defer c.registryMu.Unlock()
 
