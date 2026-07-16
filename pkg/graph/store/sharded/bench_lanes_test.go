@@ -8,6 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 )
 
@@ -138,4 +139,34 @@ func BenchmarkIngestSingleStoreP8(b *testing.B) {
 	}
 	defer func() { _ = g.Close() }()
 	benchInsertRate(b, g, benchSessions)
+}
+
+// BenchmarkIngestMemoryP8 is the PURE-CODE ceiling: memory.Store (Go maps, live
+// objects — NO msgpack wire encode, NO LSM skiplist, NO memtable arena), 8
+// concurrent sessions. Comparing this to BenchmarkIngestSingleStoreP8 (single
+// badger) isolates the badger cost; comparing to the sharded-lanes benchmark
+// isolates the core-layer (lock/alloc) cost from the store cost.
+func BenchmarkIngestMemoryP8(b *testing.B) {
+	g, err := graph.New(graph.Config{Store: memory.New(), SnowflakeNodeID: 0})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer func() { _ = g.Close() }()
+	benchInsertRate(b, g, benchSessions)
+}
+
+// BenchmarkIngestMemoryScaling reveals the contention penalty: if throughput
+// does not scale ~linearly with session count, the ceiling is shared-state lock
+// contention (c.mu), not per-insert work.
+func BenchmarkIngestMemoryScaling(b *testing.B) {
+	for _, p := range []int{1, 2, 4, 8, 16} {
+		b.Run(fmt.Sprintf("p-%d", p), func(b *testing.B) {
+			g, err := graph.New(graph.Config{Store: memory.New(), SnowflakeNodeID: 0})
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer func() { _ = g.Close() }()
+			benchInsertRate(b, g, p)
+		})
+	}
 }
