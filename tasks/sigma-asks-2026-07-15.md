@@ -11,6 +11,19 @@ signatures.
 
 **Priority:** Ask 1 (HIGH) > Asks 2 & 4 (MEDIUM) > Ask 3 (LOW).
 
+**STATUS (2026-07-16): ALL FOUR IMPLEMENTED, VERIFIED, RACE-CLEAN.**
+- Ask 1 — `GraphTx.GetOrCreateByKey` (commit a05097f): tx-scoped, value-stripe
+  atomic, participates in the tx (rollback undoes, commit publishes). memory+badger.
+- Ask 2 — `Temporal().NodesDuringTx`/`RelsDuringTx` (commit 91e10e5): bitemporal
+  interval; reused the existing `probeInterval`+`TxAt` seam (rule 17 free); focused
+  two-phase + oracle-harness cross-check on all four backends.
+- Ask 4 — `replication.DecodeChangeIdentity` + `EntityKind`/`ErrNoEntityIdentity`
+  (commit de26654): kind+SnowflakeID from a ChangeRecord for a foreign CDC sink;
+  every single-entity tag; fail-closed via storeutil.SafeUnmarshal. Real-record tests.
+- Ask 3 — top-level `time.Time` property value → canonical `TemporalValue` at the
+  door (commit 8445ec1). Nested rejected (nested temporal doesn't round-trip the
+  wire hash). Round-trip + hash-verify + export/import tests.
+
 ---
 
 ## Ask 1 — `tx.GetOrCreateByKey` (tx-scoped atomic get-or-create) — HIGH
