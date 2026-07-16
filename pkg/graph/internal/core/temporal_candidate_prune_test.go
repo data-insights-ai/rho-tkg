@@ -8,6 +8,7 @@ import (
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -120,15 +121,25 @@ func TestTemporalCandidatePruneEquivalence(t *testing.T) {
 	t.Parallel()
 	backends := []struct {
 		name     string
-		newStore func(t *testing.T) storepkg.Store
+		newStore func(t *testing.T) storepkg.MandatoryStore
 	}{
-		{"memory", func(t *testing.T) storepkg.Store { return memory.New() }},
-		{"badger", func(t *testing.T) storepkg.Store {
+		{"memory", func(t *testing.T) storepkg.MandatoryStore { return memory.New() }},
+		{"badger", func(t *testing.T) storepkg.MandatoryStore {
 			bs, err := badger.New(badger.Config{InMemory: true})
 			if err != nil {
 				t.Fatalf("badger.New: %v", err)
 			}
 			return bs
+		}},
+		// Sharded implements TemporalCandidateCapability by routing each id to its
+		// owning shard's envelope (S5 parity). BaseSlot 0 / SlotCount 2 covers the
+		// legacy dual-generator IDs (nodes slot 0, rels slot 1) at SnowflakeNodeID=0.
+		{"sharded", func(t *testing.T) storepkg.MandatoryStore {
+			st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2})
+			if err != nil {
+				t.Fatalf("sharded.New: %v", err)
+			}
+			return st
 		}},
 	}
 	for _, be := range backends {
@@ -141,11 +152,15 @@ func TestTemporalCandidatePruneEquivalence(t *testing.T) {
 }
 
 // TestTemporalCandidatePruneTieredDeclines pins the Stage-4 contract: the tiered
-// store does NOT implement TemporalCandidateCapability (its per-shard envelopes
-// cannot be soundly folded into one store-global envelope without a cross-shard
-// pass), so core wires c.temporalCandidates = nil and every temporal scan takes
-// the full-history fold. The query must still return the correct at-time result —
-// declining the accelerator must never change the answer.
+// store does NOT implement TemporalCandidateCapability, so core wires
+// c.temporalCandidates = nil and every temporal scan takes the full-history fold.
+// Unlike sharded (whose shards are all-open badger stores, so per-id envelope
+// routing is a cheap in-memory lookup), tiered routes by TIME across windowed
+// shards that may be cold/archived — pruning an id would require checking out the
+// same shard the resolve would open anyway, so the prune cannot be cheaper than
+// the resolve it avoids. Declining and folding is the correct call; the query must
+// still return the right at-time result — declining an accelerator never changes
+// the answer.
 func TestTemporalCandidatePruneTieredDeclines(t *testing.T) {
 	t.Parallel()
 	g, _ := newTestTieredGraph(t)
@@ -190,7 +205,7 @@ func TestTemporalCandidatePruneTieredDeclines(t *testing.T) {
 // same backend — one without a temporal index (the no-prune correctness oracle),
 // one with — and asserts they agree with each other AND with the pinned expected
 // sets, plus that the prune path genuinely fires.
-func runPruneEquivalence(t *testing.T, newStore func(t *testing.T) storepkg.Store) {
+func runPruneEquivalence(t *testing.T, newStore func(t *testing.T) storepkg.MandatoryStore) {
 	// Run 1 — NO temporal index. PruneTemporalCandidates returns ok=false, so
 	// every candidate is resolved. This is the correctness oracle.
 	gNoIdx, err := New(Config{Store: newStore(t)})

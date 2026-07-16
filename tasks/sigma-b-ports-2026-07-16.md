@@ -64,9 +64,12 @@ identity is enough).
      `storeutil.EnvelopeOverlaps`, `TemporalIndex.byID`/`EnvelopeOf`; wired into BOTH
      temporal-ByLabel doors — generic `nodesByLabelLocked` (queries.go) AND named
      `nodesByLabelAtLocked` (temporal_queries.go). Positive-evidence-only prune.
-   - Stage 4: tiered + sharded DECLINE the capability (no cross-shard envelope fold) →
-     `c.temporalCandidates` nil → full fold. Correct by construction (no embedding
-     promotes the method) + `TestTemporalCandidatePruneTieredDeclines`.
+   - Stage 4: SHARDED implements the fan-out (`PruneTemporalCandidates` routes each id
+     to its owning shard's envelope — S5 parity; `TestShardedPruneTemporalCandidates‑
+     RoutesAcrossShards` + sharded arm in the core equivalence test). TIERED DECLINES
+     with reason: its temporal index spans time-windowed cold/archive shards, so a
+     prune would check out the same shard the resolve opens anyway (no net win) →
+     `c.temporalCandidates` nil → full fold (`TestTemporalCandidatePruneTieredDeclines`).
    - Stage 5: `TestTemporalCandidatePruneEquivalence` (memory+badger, two-phase adversarial,
      union-soundness trap, named-vs-generic parity, white-box prune-fires) + MEASURED via
      `BenchmarkTemporalEnvelopePrune`: NodesByLabelAt over a 5000-node 90%-cold label —
