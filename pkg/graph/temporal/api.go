@@ -47,6 +47,8 @@ type Ops interface {
 	RelAtTx(id types.RelID, validAt, txAt types.Instant) (*types.Relationship, error)
 	NodesAtTx(validAt, txAt types.Instant) ([]*types.Node, error)
 	RelsAtTx(validAt, txAt types.Instant) ([]*types.Relationship, error)
+	NodesDuringTx(from, to, txAt types.Instant) ([]*types.Node, error)
+	RelsDuringTx(from, to, txAt types.Instant) ([]*types.Relationship, error)
 
 	// Cascade / timeline edit. Convenience wrapper that calls Update with
 	// tkg_valid_from / tkg_valid_to in the props map. Adjacent versions'
@@ -328,6 +330,26 @@ func (a *API) RelsAtTx(validAt, txAt types.Instant) ([]*types.Relationship, erro
 		return nil, err
 	}
 	return ops.RelsAtTx(validAt, txAt)
+}
+
+// NodesDuringTx returns every node version whose valid window overlaps [from, to)
+// as known at txAt (transaction time) — the bitemporal-interval sibling of
+// NodesDuring / NodesAtTx. txAt == 0 is equivalent to NodesDuring(from, to).
+func (a *API) NodesDuringTx(from, to, txAt types.Instant) ([]*types.Node, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.NodesDuringTx(from, to, txAt)
+}
+
+// RelsDuringTx is the relationship counterpart of NodesDuringTx.
+func (a *API) RelsDuringTx(from, to, txAt types.Instant) ([]*types.Relationship, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.RelsDuringTx(from, to, txAt)
 }
 
 // SetNodeVersionInterval declares node id is in state props for [validFrom, validTo).

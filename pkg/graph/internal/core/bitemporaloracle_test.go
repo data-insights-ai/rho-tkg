@@ -1328,6 +1328,19 @@ func (w *world) runIntervalProbe(backend string, seed uint64, snap *snapshot, p 
 		w.harnessFail(backend, seed, p, "Nodes.All(interval)", fmtNodeVer(oracleAll), fmtNodeVer(gm))
 	}
 
+	// NodesDuringTx (named bitemporal-interval door, sigma ask 2) — must equal the
+	// same interval-visible-at-txAt oracle for EVERY txAt (0 included, where it
+	// collapses onto NodesDuring). This is the named-door half of the rule-17
+	// equivalence: NodesDuringTx == Nodes.All(interval) == oracle, on every backend
+	// the harness runs.
+	gotDurTx, err := g.Temporal.NodesDuringTx(p.s, p.e, p.txAt)
+	if err != nil {
+		w.t.Fatalf("NodesDuringTx: %v", err)
+	}
+	if gm := nodeSetVer(gotDurTx); !nodeKeysEqual(oracleAll, gm) {
+		w.harnessFail(backend, seed, p, "NodesDuringTx", fmtNodeVer(oracleAll), fmtNodeVer(gm))
+	}
+
 	if p.txAt == 0 {
 		gotDur, err := g.Temporal.NodesDuring(p.s, p.e)
 		if err != nil {
@@ -1367,6 +1380,15 @@ func (w *world) runIntervalProbe(backend string, seed uint64, snap *snapshot, p 
 	}
 	if gm := relSetVer(gotRAll); !relKeysEqual(oracleRelAll, gm) {
 		w.harnessFail(backend, seed, p, "Rels.All(interval)", fmtRelVer(oracleRelAll), fmtRelVer(gm))
+	}
+
+	// RelsDuringTx (named) — mirror of NodesDuringTx, every txAt.
+	gotRDurTx, err := g.Temporal.RelsDuringTx(p.s, p.e, p.txAt)
+	if err != nil {
+		w.t.Fatalf("RelsDuringTx: %v", err)
+	}
+	if gm := relSetVer(gotRDurTx); !relKeysEqual(oracleRelAll, gm) {
+		w.harnessFail(backend, seed, p, "RelsDuringTx", fmtRelVer(oracleRelAll), fmtRelVer(gm))
 	}
 
 	if p.txAt == 0 {

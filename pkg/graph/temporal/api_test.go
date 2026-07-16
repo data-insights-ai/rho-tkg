@@ -45,6 +45,8 @@ func TestAPINilReceiversReturnErrNilGraph(t *testing.T) {
 		{name: "RelAtTx", run: func() error { _, err := nilAPI.RelAtTx(relID, 1, 2); return err }},
 		{name: "NodesAtTx", run: func() error { _, err := nilAPI.NodesAtTx(1, 2); return err }},
 		{name: "RelsAtTx", run: func() error { _, err := nilAPI.RelsAtTx(1, 2); return err }},
+		{name: "NodesDuringTx", run: func() error { _, err := nilAPI.NodesDuringTx(1, 2, 3); return err }},
+		{name: "RelsDuringTx", run: func() error { _, err := nilAPI.RelsDuringTx(1, 2, 3); return err }},
 		{name: "SetNodeVersionInterval", run: func() error {
 			_, err := nilAPI.SetNodeVersionInterval(context.Background(), nodeID, 1, 2, nil)
 			return err
@@ -129,6 +131,8 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "RelAtTx", run: func() error { _, err := api.RelAtTx(relID, 1, 2); return err }},
 		{name: "NodesAtTx", run: func() error { _, err := api.NodesAtTx(1, 2); return err }},
 		{name: "RelsAtTx", run: func() error { _, err := api.RelsAtTx(1, 2); return err }},
+		{name: "NodesDuringTx", run: func() error { _, err := api.NodesDuringTx(1, 2, 3); return err }},
+		{name: "RelsDuringTx", run: func() error { _, err := api.RelsDuringTx(1, 2, 3); return err }},
 		{name: "SetNodeVersionInterval", run: func() error {
 			_, err := api.SetNodeVersionInterval(context.Background(), nodeID, 1, 2, nil)
 			return err
@@ -194,7 +198,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		"NodeAt", "NodesAt", "NodesByLabelAt", "RelAt", "RelsAt", "RelsByTypeAt",
 		"NeighborsAt", "OutgoingRelsAt", "IncomingRelsAt", "NodesByLabelPropertyAt", "RelsByTypePropertyAt", "NodesDuring", "RelsDuring",
 		"NodesByLabelPropertyDuring", "RelsByTypePropertyDuring", "NowTx", "NodeAsOf", "RelAsOf", "NodesAsOf", "RelsAsOf",
-		"NodeAtTx", "RelAtTx", "NodesAtTx", "RelsAtTx",
+		"NodeAtTx", "RelAtTx", "NodesAtTx", "RelsAtTx", "NodesDuringTx", "RelsDuringTx",
 		"SetNodeVersionInterval", "SetRelVersionInterval",
 		"Snapshot", "Diff", "DiffCallback", "NodeInterval", "RelInterval", "RelateNodes", "RelateRels",
 		"NodeMatchesValidTime", "RelMatchesValidTime",
@@ -363,6 +367,16 @@ func (s *temporalOpsSpy) NodesAtTx(validAt, txAt types.Instant) ([]*types.Node, 
 
 func (s *temporalOpsSpy) RelsAtTx(validAt, txAt types.Instant) ([]*types.Relationship, error) {
 	s.record("RelsAtTx")
+	return nil, s.err
+}
+
+func (s *temporalOpsSpy) NodesDuringTx(from, to, txAt types.Instant) ([]*types.Node, error) {
+	s.record("NodesDuringTx")
+	return nil, s.err
+}
+
+func (s *temporalOpsSpy) RelsDuringTx(from, to, txAt types.Instant) ([]*types.Relationship, error) {
+	s.record("RelsDuringTx")
 	return nil, s.err
 }
 

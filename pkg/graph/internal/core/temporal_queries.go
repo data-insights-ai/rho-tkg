@@ -1077,6 +1077,105 @@ func (c *Core) relsAtLockedTx(validAt, txAt types.Instant) ([]*types.Relationshi
 	return result, nil
 }
 
+// NodesDuringTx returns every node version whose valid window OVERLAPS
+// [from, to) AS KNOWN AT txAt (transaction time) — the bitemporal-interval
+// sibling of NodesDuring / NodesAtTx. NodesDuring answers valid-time overlap
+// against the belief head and ignores transaction time; NodesDuringTx first
+// filters each chain to the versions RECORDED by txAt (TxFrom <= txAt; a
+// superseded version is NOT retracted, so it remains the authority for its
+// valid-time slot at every later txAt — lesson 43), then applies the same
+// predicate-anywhere overlap test. This closes the multi-valid-version miss for
+// Cypher's `AS OF SYSTEM TIME t BETWEEN a AND b` (sigma ask 2), exactly as
+// NodesAtTx closed it for the point case.
+//
+// to == 0 is "open-ended to now" (mirrors ValidTo == 0 and NodesDuring).
+// txAt == 0 → equivalent to NodesDuring(from, to). Returns ErrInvalidTimeRange
+// if from >= the resolved end.
+func (t *TempOps) NodesDuringTx(from, to, txAt types.Instant) ([]*types.Node, error) {
+	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	resolvedEnd, err := normalizeDuringRange(from, to)
+	if err != nil {
+		return nil, err
+	}
+	to = resolvedEnd
+	var result []*types.Node
+	err = c.readUnderRLock(func() error {
+		var err error
+		result, err = c.nodesDuringTxLocked(from, to, txAt)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (c *Core) nodesDuringTxLocked(start, end, txAt types.Instant) ([]*types.Node, error) {
+	var result []*types.Node
+	err := c.forEachKnownNodeID(func(id types.NodeID) error {
+		n, err := c.findNodeVersionMatchingDuringTx(id, start, end, txAt, nil)
+		if err != nil {
+			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
+				return nil
+			}
+			return err
+		}
+		result = append(result, n)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	storeutil.SortNodesByID(result)
+	return result, nil
+}
+
+// RelsDuringTx is the relationship mirror of NodesDuringTx.
+func (t *TempOps) RelsDuringTx(from, to, txAt types.Instant) ([]*types.Relationship, error) {
+	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return nil, err
+	}
+	resolvedEnd, err := normalizeDuringRange(from, to)
+	if err != nil {
+		return nil, err
+	}
+	to = resolvedEnd
+	var result []*types.Relationship
+	err = c.readUnderRLock(func() error {
+		var err error
+		result, err = c.relsDuringTxLocked(from, to, txAt)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (c *Core) relsDuringTxLocked(start, end, txAt types.Instant) ([]*types.Relationship, error) {
+	var result []*types.Relationship
+	err := c.forEachKnownRelID(func(id types.RelID) error {
+		r, err := c.findRelVersionMatchingDuringTx(id, start, end, txAt, nil)
+		if err != nil {
+			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
+				return nil
+			}
+			return err
+		}
+		result = append(result, r)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	storeutil.SortRelsByID(result)
+	return result, nil
+}
+
 func (c *Core) relsByTypePropertyDuringLocked(relType, key string, value any, start, end types.Instant) ([]*types.Relationship, error) {
 	targetKey := indexpkg.PropertyValueKey(value)
 	tok, ok := c.lookupRelTypeQueryToken(relType)
