@@ -82,6 +82,47 @@ func (ti *TemporalIndex) Add(id snowflake.ID, from, to types.Instant) {
 	ti.dirty = true
 }
 
+// unionTo returns the wider (later-ending) of two valid-to bounds, treating 0 as
+// open-ended (+infinity) — so unioning any bounded end with an open interval stays
+// open. Mirrors effTo's 0-is-open convention.
+func unionTo(a, b types.Instant) types.Instant {
+	if a == 0 || b == 0 {
+		return 0 // open-ended absorbs any bounded end
+	}
+	if b > a {
+		return b
+	}
+	return a
+}
+
+// Extend inserts an entry for id, or UNIONs it into the node's existing entry:
+// [min(From), unionTo(To)]. Where Add REPLACES with the current version's interval,
+// Extend GROWS a per-node VALID-TIME ENVELOPE across all versions. This is the
+// sound-superset property the core resolver needs for predicate-anywhere temporal
+// queries (rule 16): a node whose PAST version overlapped the probe must stay a
+// candidate even after its current version moves off it — the envelope keeps
+// covering the past interval, and the resolver filters the over-inclusion
+// precisely. Must be called under the store's write lock.
+func (ti *TemporalIndex) Extend(id snowflake.ID, from, to types.Instant) {
+	if ti == nil {
+		return
+	}
+	for i := range ti.Entries {
+		if ti.Entries[i].ID == id {
+			if from < ti.Entries[i].From {
+				ti.Entries[i].From = from
+			}
+			ti.Entries[i].To = unionTo(ti.Entries[i].To, to)
+			ti.markMutated(id)
+			ti.dirty = true
+			return
+		}
+	}
+	ti.Entries = append(ti.Entries, IntervalEntry{From: from, To: to, ID: id})
+	ti.markMutated(id)
+	ti.dirty = true
+}
+
 // AddKnownAbsent appends an entry without scanning for an existing ID.
 // Caller must prove id is not already present in this index.
 // Must be called under the store's write lock.
@@ -307,6 +348,24 @@ func AddNodeToTemporalIndexes(idxs map[uint16]*TemporalIndex, n *types.Node, id 
 	for i := 0; i < n.LabelTokenCount(); i++ {
 		if ti, ok := idxs[n.LabelTokenRawAt(i)]; ok {
 			ti.Add(id, from, to)
+		}
+	}
+}
+
+// ExtendNodeInTemporalIndexes UNIONs the node's current effective [from,to) into
+// the per-node envelope of every temporal index covering one of its labels. Unlike
+// AddNodeToTemporalIndexes (which REPLACES the entry with the current version's
+// interval), this GROWS the envelope so a node's past-version interval stays
+// covered — the sound-superset property the core resolver relies on for
+// predicate-anywhere temporal queries. Caller must hold the store's write lock.
+func ExtendNodeInTemporalIndexes(idxs map[uint16]*TemporalIndex, n *types.Node, id snowflake.ID) {
+	if len(idxs) == 0 {
+		return
+	}
+	from, to := NodeTemporalBounds(id, n.Temporal())
+	for i := 0; i < n.LabelTokenCount(); i++ {
+		if ti, ok := idxs[n.LabelTokenRawAt(i)]; ok {
+			ti.Extend(id, from, to)
 		}
 	}
 }

@@ -58,6 +58,46 @@ identity is enough).
    - Recommended start: increment (C) — make the index all-versions + wire ONE door
      (NodesDuring interval, highest value) as a candidate narrower, MEASURE, then extend.
 
+   ### DECISION (2026-07-16): user chose FULL B4 + measure. Staged execution plan:
+
+   **Design:** the per-label temporal index becomes a SOUND VALID-TIME CANDIDATE
+   NARROWER for the core resolver — the valid-time analogue of the K1 label-membership
+   sidecar. Combined candidate set = (label-ever-members ∩ valid-time-overlappers),
+   resolver stays authoritative. Soundness for predicate-anywhere (rule 16) requires the
+   index to hold the per-node VALID-TIME ENVELOPE `[min(validFrom over all versions),
+   maxTo(validTo over all versions)]` (envelope, not current-version — current is unsound,
+   proven by probe: a node whose PAST version overlapped [start,end) but whose current
+   doesn't is missed). Envelope over-includes gap queries; the resolver filters precisely.
+   Envelope chosen over per-version entries: 1 entry/node (same cardinality), extend-on-
+   write maintenance, no per-version removal. Upgrade to per-version (tighter) is a later
+   option if measurement shows envelope over-inclusion hurts.
+
+   - **Stage 1 — index-level sound superset (FOUNDATION, self-contained).**
+     `TemporalIndex.Extend(id, from, to)` = union with existing entry (insert if absent);
+     `ExtendNodeInTemporalIndexes` maintenance helper. Index-level tests proving the
+     sound-superset property (QueryOverlap returns a node whose PAST version overlapped).
+     Additive — does not yet change any maintenance call site, so zero blast radius.
+   - **Stage 2 — switch maintenance to envelope + update the store path.** Route every
+     node history write (memory + badger create/update/delete/replace) through `Extend`
+     (envelope grows; delete RETAINS envelope so deleted-node history stays queryable, B32).
+     The existing store `NodesByLabel(temporal)` path now returns a candidate SUPERSET;
+     update its tests + doc (it was unreachable from graph anyway). Badger 0x0B persistence
+     stores the envelope.
+   - **Stage 3 — wire into the core resolver (the actual acceleration).** New store
+     capability `TemporalCandidateCapability` (`NodeTemporalCandidatesDuring/At(labelToken,
+     ...) ([]NodeID, bool)`), memory+badger implement. Core: in `forEachLabelTxCandidate`
+     (and the unlabeled interval path), when the capability + a per-label index exist,
+     INTERSECT the valid-time candidates with the K1/label candidate set before resolving.
+     Resolver (`findNodeVersionForOpts`) stays authoritative. Two-door equivalence (rule 17)
+     via the shared resolver; both named + generic doors benefit.
+   - **Stage 4 — sharded/tiered fan-out.** sharded: per-shard index query, fold candidate
+     IDs. tiered: per-shard (reference + event shards). Capability-gated; a store without
+     it falls back to the full fold (never wrong).
+   - **Stage 5 — two-phase adversarial tests (rules 15/16/17) + MEASURE.** Two-phase
+     (create@X, mutate, query@t0 reflects X) across backends; predicate-anywhere interval
+     case (past-version overlap); exact-set assertions; index-present-vs-absent equivalence.
+     Benchmark: large graph, temporal interval query, index vs no-index throughput.
+
 3. **B5 (OPT8) — deferred/batched index build during bulk load** + offline-shard bypass.
    - Refs: neo4j-admin import; RocksDB bulk ingest. Fits the ingest pipeline.
 
