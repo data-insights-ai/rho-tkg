@@ -79,11 +79,17 @@ and mints contiguous LSNs at commit.
 
 ## S4 — lanes + per-lane generators (HAS AN OWNER HARDWARE GATE)
 
-> **STATUS 2026-07-16: NOT STARTED — deliberately deferred.** Two structural
-> blockers to completing it autonomously: (1) the acceptance bar is an owner-M4-Max
-> throughput number the owner must run (a dev-box figure is explicitly not claimable);
-> (2) it is the silent-ID-collision risk class (drops the even/odd node/rel
-> value-uniqueness invariant). Do it in a dedicated session WITH the owner's bench.
+> **STATUS 2026-07-16: CORRECTNESS CORE DONE & COMMITTED.** `Config.IngestLanes`
+> (0=off default), per-lane UNIFIED generators built in `core.New`
+> (`ingest_lanes.go`), `BatchBuilder.genLane` routes the `batch_queue.go` mints,
+> concurrent ingest session pins lane→slot. The silent-ID-collision class is
+> CLOSED by the committed collision battery (3.5M node+rel IDs, global
+> uniqueness) + concurrent-mint race gate + slot-pinning + slot-exhaustion
+> fail-closed + end-to-end concurrent-lane pinning + sharded integration
+> (`TestGraphLevelIngestLanesRouteAcrossShards`) — all race-clean. **The ONE
+> remaining item is the throughput acceptance bar (≥2.75M/s on the owner's M4
+> Max) — hardware-gated, owner runs the bench; a dev-box number is not claimable
+> and is NOT claimed.** CHANGELOG + CLAUDE.md updated.
 >
 > **Execution-ready integration map (verified 2026-07-16):**
 > - Generators built ONLY in `core.New`, `core.go:1208-1222`: `nodeIDGen` =
