@@ -148,10 +148,7 @@ func newHNSWGraph(metric storepkg.DistanceMetric, m, efConstruction, efSearch in
 }
 
 func (g *hnswGraph) dist(a, b []float32) float64 {
-	if g.metric == storepkg.DistanceCosine {
-		return cosineDist(a, b)
-	}
-	return euclideanDist(a, b)
+	return VectorDistance(g.metric, a, b)
 }
 
 // searchEf is the effective candidate-list size for a top-k request: at

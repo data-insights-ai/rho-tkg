@@ -506,12 +506,7 @@ func (vi *VectorIndex) searchNearestEntries(query []float32, k int, filter func(
 		if filter != nil && !filter(e.id) {
 			continue
 		}
-		var d float64
-		if vi.Metric == storepkg.DistanceCosine {
-			d = cosineDist(query, e.vec)
-		} else {
-			d = euclideanDist(query, e.vec)
-		}
+		d := VectorDistance(vi.Metric, query, e.vec)
 		candidate := knnEntry{id: e.id, dist: d}
 		if h.Len() < k {
 			heap.Push(&h, candidate)
@@ -528,6 +523,20 @@ func (vi *VectorIndex) searchNearestEntries(query []float32, k int, filter func(
 		ids[i] = heap.Pop(&h).(knnEntry).id
 	}
 	return ids
+}
+
+// VectorDistance computes the distance between a and b under metric — the SAME
+// primitive the HNSW and brute-force engines rank by (1 - cosine_similarity for
+// DistanceCosine, Euclidean/L2 otherwise). It is exposed so a COMPOSITE backend
+// (e.g. the sharded store, which keeps one vector index per shard and merges the
+// per-shard top-k) can globally re-rank the union of per-shard results without
+// reimplementing the metric math. hnswGraph.dist and the brute-force scan both
+// route through it, so there is exactly one definition and no drift.
+func VectorDistance(metric storepkg.DistanceMetric, a, b []float32) float64 {
+	if metric == storepkg.DistanceCosine {
+		return cosineDist(a, b)
+	}
+	return euclideanDist(a, b)
 }
 
 // cosineDist computes 1 - cosine_similarity (range [0, 2]).

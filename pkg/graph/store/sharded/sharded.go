@@ -136,6 +136,15 @@ type Store struct {
 	// when Config.ChangeLog is off.
 	logEnabled     bool
 	changeLogAlloc *changeLogAllocator
+
+	// vectorDefs records the dims + metric of every store-level vector index
+	// (ADR-0007 S5; see vector_index.go). The actual per-shard VectorIndexes live
+	// inside each badger shard and are maintained by badger on every write; the
+	// sharded store keeps ONLY this def metadata so it can globally re-rank the
+	// union of per-shard top-k results by distance. Persisted to the anchor's
+	// MetaKV (vectorDefsMetaKey) and reloaded at open.
+	vectorDefMu sync.RWMutex
+	vectorDefs  map[vectorDefKey]vectorDefMeta
 }
 
 // anchor returns the anchor shard (slot base), which owns store-global metadata.
@@ -153,11 +162,12 @@ func New(cfg Config) (*Store, error) {
 	}
 
 	s := &Store{
-		base:     cfg.BaseSlot,
-		count:    cfg.SlotCount,
-		inMemory: cfg.InMemory,
-		dir:      cfg.Dir,
-		shards:   make([]*badger.Store, cfg.SlotCount),
+		base:       cfg.BaseSlot,
+		count:      cfg.SlotCount,
+		inMemory:   cfg.InMemory,
+		dir:        cfg.Dir,
+		shards:     make([]*badger.Store, cfg.SlotCount),
+		vectorDefs: make(map[vectorDefKey]vectorDefMeta),
 	}
 	if cfg.ChangeLog {
 		s.logEnabled = true
@@ -220,6 +230,14 @@ func New(cfg Config) (*Store, error) {
 				return nil, e
 			}
 		}
+	}
+
+	// Reload the store-level vector-index def metadata (dims + metric) so a
+	// reopened store can globally re-rank per-shard search results. The shards
+	// independently rebuild their own vector indexes from persisted defs.
+	if err := s.loadVectorDefs(); err != nil {
+		s.closeOpenShards()
+		return nil, err
 	}
 
 	return s, nil
