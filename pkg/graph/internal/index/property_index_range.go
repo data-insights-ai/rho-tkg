@@ -3,7 +3,6 @@ package index
 import (
 	"math"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -39,120 +38,6 @@ import (
 // directory stays small (10M keys ≈ 10-20k chunks), small enough that the
 // in-chunk insert memmove is cheap.
 const orderedKeyChunk = 512
-
-// orderedKeys is a chunked sorted set of distinct float64 keys — a B+ tree
-// of order 2*orderedKeyChunk with a flat root directory. The directory
-// (chunk slice) is ordered: every key in chunks[i] is less than every key
-// in chunks[i+1]. NaN is never inserted (numericSortKey rejects it).
-type orderedKeys struct {
-	chunks [][]float64
-	n      int
-}
-
-// chunkIdx returns the index of the chunk that does or would contain k:
-// the first chunk whose last element is >= k. Returns len(chunks) when k is
-// greater than every stored key.
-func (o *orderedKeys) chunkIdx(k float64) int {
-	return sort.Search(len(o.chunks), func(i int) bool {
-		c := o.chunks[i]
-		return c[len(c)-1] >= k
-	})
-}
-
-// insert adds a key known to be absent (callers guard via the bucket map).
-func (o *orderedKeys) insert(k float64) {
-	o.n++
-	if len(o.chunks) == 0 {
-		o.chunks = append(o.chunks, append(make([]float64, 0, orderedKeyChunk), k))
-		return
-	}
-	ci := o.chunkIdx(k)
-	if ci == len(o.chunks) {
-		ci-- // greater than every key: extend the last chunk
-	}
-	c := o.chunks[ci]
-	pos := sort.SearchFloat64s(c, k)
-	c = append(c, 0)
-	copy(c[pos+1:], c[pos:])
-	c[pos] = k
-	o.chunks[ci] = c
-
-	if len(c) > 2*orderedKeyChunk {
-		// Split: left half stays, right half becomes a new chunk. Copy the
-		// right half so the two chunks stop sharing a backing array —
-		// appends to the left would otherwise clobber the right.
-		mid := len(c) / 2
-		right := append(make([]float64, 0, orderedKeyChunk+len(c)-mid), c[mid:]...)
-		o.chunks[ci] = c[:mid:mid]
-		o.chunks = append(o.chunks, nil)
-		copy(o.chunks[ci+2:], o.chunks[ci+1:])
-		o.chunks[ci+1] = right
-	}
-}
-
-// remove deletes a key if present.
-func (o *orderedKeys) remove(k float64) {
-	ci := o.chunkIdx(k)
-	if ci == len(o.chunks) {
-		return
-	}
-	c := o.chunks[ci]
-	pos := sort.SearchFloat64s(c, k)
-	if pos >= len(c) || c[pos] != k {
-		return
-	}
-	o.chunks[ci] = append(c[:pos], c[pos+1:]...)
-	o.n--
-	if len(o.chunks[ci]) == 0 {
-		o.chunks = append(o.chunks[:ci], o.chunks[ci+1:]...)
-	}
-}
-
-// forEachFrom calls fn for every key >= lo in ascending order until fn
-// returns false.
-func (o *orderedKeys) forEachFrom(lo float64, fn func(k float64) bool) {
-	start := o.chunkIdx(lo)
-	for ci := start; ci < len(o.chunks); ci++ {
-		c := o.chunks[ci]
-		pos := 0
-		if ci == start {
-			pos = sort.SearchFloat64s(c, lo)
-		}
-		for ; pos < len(c); pos++ {
-			if !fn(c[pos]) {
-				return
-			}
-		}
-	}
-}
-
-// forEachDownFrom calls fn for every key <= hi in DESCENDING order until fn
-// returns false — the reverse-iteration mirror of forEachFrom, used by the
-// descending ordered-scan (ORDER BY prop DESC) top-k path.
-func (o *orderedKeys) forEachDownFrom(hi float64, fn func(k float64) bool) {
-	start := o.chunkIdx(hi)
-	if start == len(o.chunks) {
-		start = len(o.chunks) - 1 // hi is greater than every key: start at the last chunk
-	}
-	for ci := start; ci >= 0; ci-- {
-		c := o.chunks[ci]
-		pos := len(c) - 1
-		if ci == start {
-			// First chunk: begin at the greatest key <= hi.
-			p := sort.SearchFloat64s(c, hi)
-			if p < len(c) && c[p] == hi {
-				pos = p // exact hit
-			} else {
-				pos = p - 1 // p is the first key > hi, so p-1 is the last <= hi
-			}
-		}
-		for ; pos >= 0; pos-- {
-			if !fn(c[pos]) {
-				return
-			}
-		}
-	}
-}
 
 // RangeOrderedCursor is the opaque resumption point for a paged ordered range
 // scan (RangeOrderedPage). The zero value is "start from the beginning".

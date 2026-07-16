@@ -17,8 +17,16 @@ type PropertyIndex struct {
 	Mutated map[snowflake.ID]struct{} // non-nil during index creation Phase 2
 
 	// Ordered numeric view — see property_index_range.go.
-	numKeys    orderedKeys
+	numKeys    sortedChunks[float64]
 	numBuckets map[float64]map[snowflake.ID]struct{}
+
+	// Ordered STRING view — see property_index_string_range.go. Distinct string
+	// values kept in lexicographic order (canonical bytes) so PREFIX / string
+	// range / sorted scans (`WHERE n.name STARTS WITH $p`) search the key set
+	// instead of scanning the label. Maintained alongside numKeys, for free,
+	// inside AddKey/removeKey — no new mutation call sites.
+	strKeys    sortedChunks[string]
+	strBuckets map[string]map[snowflake.ID]struct{}
 
 	// numImprecise is set when an integer value larger than 2^53 has been
 	// indexed, so its float64 sort key may collide with a neighbour. While set,
@@ -60,6 +68,7 @@ func (pi *PropertyIndex) AddKey(id snowflake.ID, vk string) {
 	}
 	pi.Entries[vk][id] = struct{}{}
 	pi.addOrdered(id, vk)
+	pi.addOrderedStr(id, vk)
 	if pi.Mutated != nil {
 		pi.Mutated[id] = struct{}{}
 	}
@@ -89,6 +98,7 @@ func (pi *PropertyIndex) removeKey(id snowflake.ID, vk string) {
 		}
 	}
 	pi.removeOrdered(id, vk)
+	pi.removeOrderedStr(id, vk)
 	if pi.Mutated != nil {
 		pi.Mutated[id] = struct{}{}
 	}
@@ -180,6 +190,7 @@ func PurgeNodeFromAllPropertyIndexes(indexes map[PropertyIndexKey]*PropertyIndex
 			}
 		}
 		idx.purgeOrdered(id)
+		idx.purgeOrderedStr(id)
 		if idx.Mutated != nil {
 			idx.Mutated[id] = struct{}{}
 		}

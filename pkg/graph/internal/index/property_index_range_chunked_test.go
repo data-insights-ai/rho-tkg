@@ -21,7 +21,7 @@ import (
 func TestOrderedKeys_ModelEquivalence(t *testing.T) {
 	t.Parallel()
 	rng := rand.New(rand.NewSource(42)) //nolint:gosec // deterministic test
-	var o orderedKeys
+	var o sortedChunks[float64]
 	model := map[float64]struct{}{}
 
 	check := func(step int) {
@@ -70,7 +70,7 @@ func TestOrderedKeys_ModelEquivalence(t *testing.T) {
 // that sits at a chunk edge after forced splits.
 func TestOrderedKeys_ForEachFromMidRange(t *testing.T) {
 	t.Parallel()
-	var o orderedKeys
+	var o sortedChunks[float64]
 	const n = 5_000 // ~5 chunks after splits
 	for i := 0; i < n; i++ {
 		o.insert(float64(i) * 2) // evens 0..9998
