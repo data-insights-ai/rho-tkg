@@ -91,6 +91,14 @@ and mints contiguous LSNs at commit.
 > Max) — hardware-gated, owner runs the bench; a dev-box number is not claimable
 > and is NOT claimed.** CHANGELOG + CLAUDE.md updated.
 >
+> **Harness ADDED** (`bench_lanes_test.go`): `BenchmarkIngestShardedLanes`
+> (4/8 lanes), `BenchmarkIngestShardedLanesChangeLog`, `BenchmarkIngestSingleStoreP8`,
+> each reporting an `inserts/s` metric. Owner accepts the bar with:
+> `go test -run '^$' -bench BenchmarkIngest -benchmem -count=5 ./pkg/graph/store/sharded/`
+> then checks lanes-8 ≥ 2.5× single-store-P8 and change-log-on within 1.2× of off.
+> Dev-box sanity (16-core, NOT M4 Max): lanes-8 ~1.56M/s vs P8 ~357k/s (~4.4×) —
+> harness sound + speedup real, but NOT the accepted number.
+>
 > **Execution-ready integration map (verified 2026-07-16):**
 > - Generators built ONLY in `core.New`, `core.go:1208-1222`: `nodeIDGen` =
 >   `snowflake.NewNode(SnowflakeNodeID*2, …)` (EVEN node-field), `relIDGen` =
