@@ -837,6 +837,23 @@ func New(cfg Config) (*Store, error) {
 		return nil, fmt.Errorf("graph: load indexes: %w", err)
 	}
 
+	// B4: loadIndexes rebuilds each temporal index from CURRENT node state only.
+	// Fold every node's history versions into the per-node valid-time ENVELOPE so
+	// the sound-superset property survives restart (a past interval differing from
+	// the current one stays a candidate for the core resolver's temporal narrowing).
+	bs.idxMu.RLock()
+	temporalToks := make([]uint16, 0, len(bs.temporalIndexes))
+	for tok := range bs.temporalIndexes {
+		temporalToks = append(temporalToks, tok)
+	}
+	bs.idxMu.RUnlock()
+	if len(temporalToks) > 0 {
+		if err := bs.foldTemporalHistoryEnvelopes(temporalToks); err != nil {
+			_ = db.Close() // best-effort cleanup
+			return nil, fmt.Errorf("graph: fold temporal history envelopes: %w", err)
+		}
+	}
+
 	// Start background goroutines (skip when read-only or no flush interval).
 	if flushInt > 0 && !cfg.ReadOnly {
 		go bs.flushLoop()

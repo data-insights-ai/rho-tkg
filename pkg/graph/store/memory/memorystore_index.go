@@ -342,8 +342,19 @@ func (ms *Store) CreateTemporalIndex(labelToken uint16) error {
 				continue
 			}
 			rawID := nodeID.SnowflakeID()
+			// Fold the current version AND every history version's bounds into the
+			// node's ENVELOPE (B4 sound superset): a past version whose valid
+			// interval differs from the current one must still be covered, so the
+			// core resolver's predicate-anywhere candidate narrowing never misses it.
 			from, to := indexpkg.NodeTemporalBounds(rawID, n.Temporal())
-			ti.AddKnownAbsent(rawID, from, to)
+			ti.Extend(rawID, from, to)
+			for _, hv := range ms.nodeHistory[nodeID] {
+				if hv == nil {
+					continue
+				}
+				hf, ht := indexpkg.NodeTemporalBounds(rawID, hv.Temporal())
+				ti.Extend(rawID, hf, ht)
+			}
 		}
 	}
 

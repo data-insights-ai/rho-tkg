@@ -338,18 +338,15 @@ func NodeTemporalBounds(id snowflake.ID, tm *types.TemporalMetadata) (from, to t
 	return
 }
 
-// AddNodeToTemporalIndexes adds a node to all temporal indexes that cover any of
-// the node's label tokens. Caller must hold the store's write lock.
+// AddNodeToTemporalIndexes folds the node's current effective [from,to) into every
+// temporal index covering one of its labels. Since B4 the temporal index is a
+// per-node valid-time ENVELOPE (a SOUND SUPERSET for the core resolver's
+// predicate-anywhere candidate narrowing), so this UNIONs (grows the envelope)
+// rather than replacing with the current version — it is an alias of
+// ExtendNodeInTemporalIndexes kept for the many existing maintenance call sites.
+// Caller must hold the store's write lock.
 func AddNodeToTemporalIndexes(idxs map[uint16]*TemporalIndex, n *types.Node, id snowflake.ID) {
-	if len(idxs) == 0 {
-		return
-	}
-	from, to := NodeTemporalBounds(id, n.Temporal())
-	for i := 0; i < n.LabelTokenCount(); i++ {
-		if ti, ok := idxs[n.LabelTokenRawAt(i)]; ok {
-			ti.Add(id, from, to)
-		}
-	}
+	ExtendNodeInTemporalIndexes(idxs, n, id)
 }
 
 // ExtendNodeInTemporalIndexes UNIONs the node's current effective [from,to) into
@@ -370,17 +367,19 @@ func ExtendNodeInTemporalIndexes(idxs map[uint16]*TemporalIndex, n *types.Node, 
 	}
 }
 
-// RemoveNodeFromTemporalIndexes removes a node from all temporal indexes.
-// Caller must hold the store's write lock.
-func RemoveNodeFromTemporalIndexes(idxs map[uint16]*TemporalIndex, n *types.Node, id snowflake.ID) {
-	if len(idxs) == 0 {
-		return
-	}
-	for i := 0; i < n.LabelTokenCount(); i++ {
-		if ti, ok := idxs[n.LabelTokenRawAt(i)]; ok {
-			ti.Remove(id)
-		}
-	}
+// RemoveNodeFromTemporalIndexes is a NO-OP since B4. The temporal index is now a
+// per-node valid-time ENVELOPE that is APPEND-ONLY (grow-only) per node — mirroring
+// the K1 label-tx-membership sidecar: an update or delete must NOT shrink the
+// envelope, because a node's PAST version interval (and a deleted node's history)
+// must remain a candidate for predicate-anywhere / historical temporal queries. The
+// envelope is a SOUND SUPERSET; over-inclusion is filtered by the store's
+// current-row predicate (nodesByLabelFromIDs) and by the core chain resolver, both
+// of which stay authoritative. Removal that truly must shrink the index happens only
+// on index DROP (DropTemporalIndex) or corrupt-node purge
+// (PurgeNodeFromAllTemporalIndexes, which calls ti.Remove directly). Kept as a
+// no-op — rather than deleting its ~34 maintenance call sites — so the create /
+// update / delete / replace / batch write paths need no change.
+func RemoveNodeFromTemporalIndexes(_ map[uint16]*TemporalIndex, _ *types.Node, _ snowflake.ID) {
 }
 
 // PurgeNodeFromAllTemporalIndexes removes a node ID from every temporal index.

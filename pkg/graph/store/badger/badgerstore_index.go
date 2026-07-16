@@ -328,7 +328,72 @@ func (bs *Store) CreateTemporalIndex(labelToken uint16) error {
 		bs.appendOps(diskOps...)
 	}
 	bs.idxMu.Unlock()
+
+	// B4: the backfill above recorded only each node's CURRENT version. Fold its
+	// history versions into the per-node ENVELOPE so a past valid interval that
+	// differs from the current one stays a candidate (sound superset).
+	if err := bs.foldTemporalHistoryEnvelopes([]uint16{labelToken}); err != nil {
+		return err
+	}
 	return bs.flushIfNeeded()
+}
+
+// foldTemporalHistoryEnvelopes folds every history version's valid-time bounds
+// into the per-node ENVELOPE of each temporal index in tokens (B4 sound superset).
+// The current-version rebuild/backfill records only each node's latest version;
+// this pass adds the historical versions via Extend, so a past interval that
+// differs from the current one stays covered by the envelope. Two-phase (snapshot
+// member IDs under idxMu → read history with GetNodeHistory unlocked → Extend under
+// idxMu) so GetNodeHistory never re-enters idxMu. Called after loadIndexes (all
+// tokens) and after each CreateTemporalIndex (one token); tolerant of nodes deleted
+// concurrently.
+func (bs *Store) foldTemporalHistoryEnvelopes(tokens []uint16) error {
+	for _, tok := range tokens {
+		bs.idxMu.RLock()
+		ti, ok := bs.temporalIndexes[tok]
+		var ids []types.NodeID
+		if ok {
+			for id := range bs.labelIdx[tok] {
+				ids = append(ids, id)
+			}
+		}
+		bs.idxMu.RUnlock()
+		if !ok || len(ids) == 0 {
+			continue
+		}
+		type foldEntry struct {
+			id       snowflake.ID
+			from, to types.Instant
+		}
+		var folds []foldEntry
+		for _, id := range ids {
+			hist, err := bs.GetNodeHistory(id)
+			if err != nil {
+				if errors.Is(err, ErrNodeNotFound) {
+					continue // deleted concurrently — its current row is already gone
+				}
+				return fmt.Errorf("graph: temporal-index history envelope fold (label %d): %w", tok, err)
+			}
+			for _, hv := range hist {
+				if hv == nil {
+					continue
+				}
+				f, t := indexpkg.NodeTemporalBounds(id.SnowflakeID(), hv.Temporal())
+				folds = append(folds, foldEntry{id.SnowflakeID(), f, t})
+			}
+		}
+		if len(folds) == 0 {
+			continue
+		}
+		bs.idxMu.Lock()
+		if cur, still := bs.temporalIndexes[tok]; still && cur == ti {
+			for _, f := range folds {
+				ti.Extend(f.id, f.from, f.to)
+			}
+		}
+		bs.idxMu.Unlock()
+	}
+	return nil
 }
 
 func deletePropertyIndexIfCurrent(idxs map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex, key indexpkg.PropertyIndexKey, expected *indexpkg.PropertyIndex) {
