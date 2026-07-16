@@ -153,6 +153,109 @@ func TestDecodeChangeIdentity_UnknownTag(t *testing.T) {
 	}
 }
 
+// Ask 4 (op) — ChangeOpOf classifies every real record's tag into a normalized
+// mutation op, and every entity op pairs with a decodable (kind, ID). Driven
+// against the SAME real feed shape as the identity test so tag→op stays aligned
+// with what the encoders actually emit.
+func TestChangeOpOf_RealRecords(t *testing.T) {
+	g, err := graphpkg.New(graphpkg.Config{Store: memory.New(memory.WithChangeLog())})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+	ctx := context.Background()
+
+	n1, err := g.Nodes().Add(ctx, []string{"A"}, map[string]any{"x": int64(1)})
+	if err != nil {
+		t.Fatalf("add n1: %v", err)
+	}
+	n2, err := g.Nodes().Add(ctx, []string{"A"}, map[string]any{"x": int64(2)})
+	if err != nil {
+		t.Fatalf("add n2: %v", err)
+	}
+	if _, err := g.Nodes().Update(ctx, n1.ID(), map[string]any{"x": int64(11)}); err != nil {
+		t.Fatalf("update n1: %v", err)
+	}
+	if err := g.Nodes().Delete(ctx, n2.ID()); err != nil {
+		t.Fatalf("delete n2: %v", err)
+	}
+
+	feed, err := g.Replication().ChangeFeed(0, 0)
+	if err != nil {
+		t.Fatalf("ChangeFeed: %v", err)
+	}
+	if len(feed) == 0 {
+		t.Fatal("empty change feed")
+	}
+
+	sawUpsert, sawDelete := false, false
+	for _, rec := range feed {
+		op, err := replication.ChangeOpOf(rec)
+		if errors.Is(err, replication.ErrNoEntityIdentity) {
+			continue // control record — none expected here, tolerated
+		}
+		if err != nil {
+			t.Fatalf("ChangeOpOf(%s @LSN %d): %v", rec.Tag, rec.LSN, err)
+		}
+		// op must agree with the tag family.
+		switch rec.Tag {
+		case store.ChangeNodePut, store.ChangeRelPut:
+			if op != replication.ChangeOpUpsert {
+				t.Fatalf("put record %s got op %s, want Upsert", rec.Tag, op)
+			}
+			sawUpsert = true
+		case store.ChangeNodeDelete, store.ChangeRelDelete:
+			if op != replication.ChangeOpDelete {
+				t.Fatalf("delete record %s got op %s, want Delete", rec.Tag, op)
+			}
+			sawDelete = true
+		}
+		// Every entity op pairs with a decodable identity — the (kind, ID, op)
+		// triple a mirror consumes.
+		if _, _, idErr := replication.DecodeChangeIdentity(rec); idErr != nil {
+			t.Fatalf("op %s record %s has no identity: %v", op, rec.Tag, idErr)
+		}
+	}
+	if !sawUpsert || !sawDelete {
+		t.Fatalf("missing ops: upsert=%v delete=%v", sawUpsert, sawDelete)
+	}
+}
+
+// ChangeOpOf is a pure tag classifier: control tags name no op, unknown tags fail
+// closed, and — unlike DecodeChangeIdentity — a corrupt PAYLOAD is irrelevant
+// because the body is never decoded.
+func TestChangeOpOf_ControlUnknownAndCorruptPayload(t *testing.T) {
+	for _, tag := range []store.ChangeTag{store.ChangeMeta, store.ChangeClear} {
+		if _, err := replication.ChangeOpOf(store.ChangeRecord{Tag: tag}); !errors.Is(err, replication.ErrNoEntityIdentity) {
+			t.Fatalf("control tag %s err = %v, want ErrNoEntityIdentity", tag, err)
+		}
+	}
+	if _, err := replication.ChangeOpOf(store.ChangeRecord{Tag: store.ChangeTag(200)}); !errors.Is(err, store.ErrCorruptWire) {
+		t.Fatalf("unknown tag err = %v, want ErrCorruptWire", err)
+	}
+	// A put tag with a garbage payload still classifies (op is tag-only).
+	op, err := replication.ChangeOpOf(store.ChangeRecord{Tag: store.ChangeNodePut, Payload: []byte{0xc1}})
+	if err != nil || op != replication.ChangeOpUpsert {
+		t.Fatalf("put with garbage payload = (%s, %v), want (Upsert, nil)", op, err)
+	}
+}
+
+func TestChangeOp_String(t *testing.T) {
+	cases := map[replication.ChangeOp]string{
+		replication.ChangeOpUpsert:          "Upsert",
+		replication.ChangeOpDelete:          "Delete",
+		replication.ChangeOpHistoryVersion:  "HistoryVersion",
+		replication.ChangeOpHistoryTruncate: "HistoryTruncate",
+		replication.ChangeOpUnknown:         "Unknown",
+		replication.ChangeOp(99):            "Unknown",
+	}
+	for o, want := range cases {
+		if got := o.String(); got != want {
+			t.Fatalf("ChangeOp(%d).String() = %q, want %q", o, got, want)
+		}
+	}
+}
+
 func TestEntityKind_String(t *testing.T) {
 	cases := map[replication.EntityKind]string{
 		replication.EntityKindNode:         "Node",

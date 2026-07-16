@@ -45,6 +45,72 @@ func (k EntityKind) String() string {
 // mutation.
 var ErrNoEntityIdentity = errors.New("replication: change record names no single entity")
 
+// ChangeOp is the mutation KIND a change-log record describes, normalized for an
+// out-of-tree CDC sink that needs to route a record to an upsert vs a delete
+// WITHOUT decoding the msgpack payload — the op is a pure function of the record
+// tag. Pair it with DecodeChangeIdentity (which yields the entity kind + ID) to
+// build the sink's mutation: ChangeOpUpsert → re-read current state and upsert,
+// ChangeOpDelete → DETACH DELETE by ID. History ops let a full-history mirror
+// distinguish an appended version from a trim; a current-state-only mirror
+// typically ignores both.
+type ChangeOp uint8
+
+const (
+	// ChangeOpUnknown is the zero value — returned only alongside a non-nil
+	// error (a control record with no entity op, or an unrecognized tag).
+	ChangeOpUnknown ChangeOp = iota
+	// ChangeOpUpsert marks a put: the record carries the entity's new CURRENT
+	// state (a create or an in-place/replace update). A mirror upserts.
+	ChangeOpUpsert
+	// ChangeOpDelete marks a delete (with tombstone). A mirror removes the entity.
+	ChangeOpDelete
+	// ChangeOpHistoryVersion marks a historical version row being appended.
+	ChangeOpHistoryVersion
+	// ChangeOpHistoryTruncate marks history rows being trimmed.
+	ChangeOpHistoryTruncate
+)
+
+// String renders the op for diagnostics.
+func (o ChangeOp) String() string {
+	switch o {
+	case ChangeOpUpsert:
+		return "Upsert"
+	case ChangeOpDelete:
+		return "Delete"
+	case ChangeOpHistoryVersion:
+		return "HistoryVersion"
+	case ChangeOpHistoryTruncate:
+		return "HistoryTruncate"
+	default:
+		return "Unknown"
+	}
+}
+
+// ChangeOpOf classifies a change-log record into its normalized ChangeOp from the
+// record TAG ALONE — it does NOT decode the payload, so it never fails on a
+// corrupt body and is safe to call on every record to route it before deciding
+// whether the ID (via DecodeChangeIdentity) is even needed. The two store-global
+// control tags (ChangeMeta, ChangeClear) return (ChangeOpUnknown,
+// ErrNoEntityIdentity); an unrecognized tag returns store.ErrCorruptWire. This is
+// the discriminant that, with DecodeChangeIdentity's (kind, ID), gives a CDC
+// consumer the full (kind, ID, op) it needs for a durable mirror.
+func ChangeOpOf(rec store.ChangeRecord) (ChangeOp, error) {
+	switch rec.Tag {
+	case store.ChangeNodePut, store.ChangeRelPut:
+		return ChangeOpUpsert, nil
+	case store.ChangeNodeDelete, store.ChangeRelDelete:
+		return ChangeOpDelete, nil
+	case store.ChangeNodeHistoryVersion, store.ChangeRelHistoryVersion:
+		return ChangeOpHistoryVersion, nil
+	case store.ChangeNodeHistoryTruncate, store.ChangeRelHistoryTruncate:
+		return ChangeOpHistoryTruncate, nil
+	case store.ChangeMeta, store.ChangeClear:
+		return ChangeOpUnknown, ErrNoEntityIdentity
+	default:
+		return ChangeOpUnknown, fmt.Errorf("%w: unknown change-log tag %d", store.ErrCorruptWire, byte(rec.Tag))
+	}
+}
+
 // DecodeChangeIdentity extracts the entity KIND and Snowflake ID a change-log
 // record concerns, WITHOUT the caller needing the internal wire codec (the
 // msgpack NodeWire/RelWire bodies live in an internal package). It is the bridge
