@@ -96,7 +96,7 @@ func (b *BatchBuilder) addNodes(labels []string, props map[string]any, count int
 		results = make([]*types.Node, 0, count)
 	}
 	for i := 0; i < count; i++ {
-		id := b.g.nextNodeID()
+		id := b.g.nextNodeIDForLane(b.genLane)
 		n := types.NewNode(id, labelTokens.primary, labelTokens.extras)
 		if err := n.SetProperties(baseProps); err != nil {
 			return nil, fmt.Errorf("graph: batch node properties: %w", err)
@@ -256,7 +256,7 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 		return nil, fmt.Errorf("graph: batch relationship type: %w", err)
 	}
 
-	id := b.g.nextRelID()
+	id := b.g.nextRelIDForLane(b.genLane)
 	r := types.NewRelationship(id, typeToken, startID, endID)
 	if err := r.SetOwnedProperties(ps); err != nil {
 		return nil, fmt.Errorf("graph: batch relationship properties: %w", err)

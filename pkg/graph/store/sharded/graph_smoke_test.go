@@ -12,12 +12,14 @@ import (
 // TestGraphLevelSmoke wires a sharded.Store into graph.New and exercises the
 // basic Add/Get/Update/Delete/ByLabel + relationship flow.
 //
-// Core still mints legacy dual-generator IDs (SnowflakeNodeID*2 for nodes,
-// *2+1 for rels — S4 lane minting is not wired), so a graph-level deployment
-// must claim slots covering BOTH raw values. With SnowflakeNodeID=0, nodes land
-// on slot 0 and rels on slot 1, so BaseSlot=0, SlotCount=2 claims both. Every
+// With Config.IngestLanes unset (0), core mints legacy dual-generator IDs
+// (SnowflakeNodeID*2 for nodes, *2+1 for rels), so a graph-level deployment must
+// claim slots covering BOTH raw values. With SnowflakeNodeID=0, nodes land on
+// slot 0 and rels on slot 1, so BaseSlot=0, SlotCount=2 claims both. Every
 // relationship is therefore cross-shard from its endpoints — exercising the
-// adjacency fold + cross-shard endpoint validation end to end.
+// adjacency fold + cross-shard endpoint validation end to end. (Per-lane unified
+// minting, which co-locates a whole ingest group on one slot, is exercised by
+// TestGraphLevelIngestLanesRouteAcrossShards.)
 func TestGraphLevelSmoke(t *testing.T) {
 	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2})
 	if err != nil {

@@ -571,6 +571,11 @@ func (i *IngestOps) NewSession(opts IngestOptions) (*Session, error) {
 	// the native store implements PreEncodedPutCapability (memory/badger);
 	// tiered/wrappers fall back to encode-at-flush.
 	b.preEncode = c.preEncodedPut != nil
+	// Pin this session's ID minting to a per-lane UNIFIED generator (ADR-0007 S4)
+	// so a concurrent group mints in one slot -> one shard. lane is 0 in strong
+	// mode (interactive even/odd) and when Config.IngestLanes == 0 the lane index
+	// resolver falls back to interactive regardless — zero behavior change.
+	b.genLane = lane
 	return &Session{c: c, a: a, opts: opts, b: b, lane: lane}, nil
 }
 

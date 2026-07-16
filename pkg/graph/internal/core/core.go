@@ -41,11 +41,20 @@ import (
 // Core is the central graph implementation. Customers see *graph.Graph, which
 // is a thin facade holding *Core plus sub-API accessors.
 type Core struct {
-	labels                *registrypkg.LabelRegistry
-	relTypes              *registrypkg.RelTypeRegistry
-	propKeys              *registrypkg.PropertyKeyRegistry
-	nodeIDGen             *snowflake.Node
-	relIDGen              *snowflake.Node
+	labels    *registrypkg.LabelRegistry
+	relTypes  *registrypkg.RelTypeRegistry
+	propKeys  *registrypkg.PropertyKeyRegistry
+	nodeIDGen *snowflake.Node
+	relIDGen  *snowflake.Node
+	// laneGenerators holds the per-lane UNIFIED ID generators built when
+	// Config.IngestLanes > 0 (ADR-0007 S4). Index 0 is lane 1, index k-1 is
+	// lane k; each generator mints BOTH nodes and rels from its own distinct
+	// node-field (slot). Nil / empty when IngestLanes == 0 (legacy dual model).
+	laneGenerators []*snowflake.Node
+	// laneSlots[i] is the node-field (slot) carried by laneGenerators[i] — kept
+	// for diagnostics / docs (the sharded store routes an ID to a shard by this
+	// slot). Same length as laneGenerators.
+	laneSlots             []uint8
 	store                 storepkg.MandatoryStore
 	generatedCreate       generatedcreate.Capability
 	endpointHash          storepkg.EndpointIntegrityHashCapability
@@ -165,10 +174,10 @@ type Core struct {
 	// above it cannot precede any label's watermark. See retention.go.
 	retentionMaxWatermark atomic.Int64
 	registryDirty         atomic.Bool
-	relTypeCache       map[string]uint16
-	relTypeCacheMu     sync.RWMutex
-	closeOnce          sync.Once
-	closed             atomic.Bool
+	relTypeCache          map[string]uint16
+	relTypeCacheMu        sync.RWMutex
+	closeOnce             sync.Once
+	closed                atomic.Bool
 
 	// clock is the time source used by every mutation path that stamps
 	// TxFrom / UpdatedAt / DeletedAt / event.Timestamp. Defaults to
@@ -552,6 +561,23 @@ type Config struct {
 	// correction recorded now is stamped now). TxFrom is not part of the
 	// integrity hash, so a backfilled row still verifies and replicates verbatim.
 	AllowTxBackfill bool
+
+	// IngestLanes is the number of extra per-lane UNIFIED ID generators built for
+	// concurrent-ingest write parallelism (ADR-0007 S4). Zero (default) keeps the
+	// legacy dual generator model unchanged — every write mints from the even
+	// node-field (nodes) / odd node-field (rels) pair and there is ZERO behavior
+	// change. When >0, New additionally builds IngestLanes unified generators,
+	// each pinned to its OWN distinct snowflake node-field (slot) drawn from
+	// 0..31 excluding the interactive pair {SnowflakeNodeID*2, *2+1}; a concurrent
+	// ingest session pins lane->slot and mints BOTH its nodes and its rels from
+	// that one generator (the sharded catalog's disciplineUnified contract), so a
+	// whole commit group lands in one slot -> one shard as one batched door call.
+	// Value-level ID uniqueness is preserved: a unified generator never mints the
+	// same (time, seq) twice, so a node and a rel in one slot never collide, and
+	// distinct node-fields separate the slots. Requires 2+IngestLanes <= 32 (the
+	// 5-bit node field); New fails closed otherwise. Interactive writes
+	// (standalone / tx / plain batch) always mint from the interactive pair.
+	IngestLanes uint8
 }
 
 // ValidationDefaults returns the resolved validation limits (for testing).
@@ -1243,6 +1269,11 @@ func New(config Config) (*Core, error) {
 		return nil, fmt.Errorf("graph: rel ID generator: %w", err)
 	}
 
+	laneGens, laneSlots, err := buildLaneGenerators(config.SnowflakeNodeID, config.IngestLanes)
+	if err != nil {
+		return nil, err
+	}
+
 	v := config.Validation
 	if v.MaxLabelsPerNode == 0 {
 		v.MaxLabelsPerNode = defaultMaxLabelsPerNode
@@ -1272,6 +1303,8 @@ func New(config Config) (*Core, error) {
 		propKeys:        registrypkg.NewPropertyKeyRegistry(),
 		nodeIDGen:       nodeGen,
 		relIDGen:        relGen,
+		laneGenerators:  laneGens,
+		laneSlots:       laneSlots,
 		entityLocks:     locks.NewManager(),
 		valueLocks:      locks.NewValueManager(),
 		validation:      v,

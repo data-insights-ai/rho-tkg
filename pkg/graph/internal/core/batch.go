@@ -43,7 +43,13 @@ type BatchBuilder struct {
 	// zero transaction-time tail) on the producer thread so the applier can patch
 	// the tail instead of a second msgpack pass. The plain g.Batch() door leaves
 	// it false and pays ZERO new cost (pendingNode.wireBody stays nil).
-	preEncode    bool
+	preEncode bool
+	// genLane pins this builder's ID minting to a per-lane UNIFIED generator
+	// (ADR-0007 S4). Zero (default) mints from the interactive even/odd pair — the
+	// legacy model, used by every plain g.Batch() and strong-mode ingest group. A
+	// concurrent ingest session sets a nonzero lane so its whole group mints in one
+	// slot -> one shard. Routed through c.nextNodeIDForLane / nextRelIDForLane.
+	genLane      uint16
 	nodes        []pendingNode
 	rels         []pendingRel
 	nodeUpdates  []pendingNodeUpdate
