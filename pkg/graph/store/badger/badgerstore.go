@@ -174,6 +174,24 @@ type Config struct {
 	// PropertyIndexOnDiskBuiltKey pattern) — no manual migration step is
 	// required. Ignored when Store is provided explicitly.
 	TemporalIndexOnDisk bool
+	// DisablePlannerStats turns OFF maintenance of the query-planner statistics —
+	// the per-(label, property key) presence counts, NDV + min/max
+	// range-cardinality accumulator, and exact type-class counts. These are
+	// maintained on EVERY node write (a full per-property sweep in
+	// adjustNodePropertyKeyCounts, under idxMu) and rebuilt by the loadIndexes
+	// open scan, yet are consumed ONLY by query-planning APIs
+	// (NodeCountByLabelAndPropertyKey, NodeRangeCardinality,
+	// NodePropertyTypeClassCounts + rel mirrors). A pure-ingest or non-planning
+	// deployment pays that write-path CPU (and open-scan work) for data it never
+	// reads. When set, the maintenance is skipped and those stat methods fail
+	// closed with ErrCapabilityNotSupported (range-cardinality returns exact=false)
+	// — the SAME signal a backend that never implemented the capability returns,
+	// so planners already fall back gracefully. NO correctness path reads these
+	// counters (unique constraints use the property index, not the stats), so
+	// disabling them changes only planner estimate availability. Default false =
+	// stats maintained (unchanged behavior). Ignored when Store is provided
+	// explicitly.
+	DisablePlannerStats bool
 	// FlushInterval is the time between async write batches. Default: 100ms.
 	// Zero disables periodic flushing (manual flush only — for testing).
 	FlushInterval time.Duration
@@ -357,22 +375,23 @@ type Store struct {
 
 	// In-memory indexes (source of truth while running).
 	// Protected by idxMu for concurrent read/write access.
-	idxMu             sync.RWMutex
-	nodeIDs           map[types.NodeID]struct{} // O(1) node existence check
-	nodeHashes        map[types.NodeID]string   // current node integrity hash for live endpoint validation
-	nodeRevs          map[types.NodeID]uint64   // live node row revision for safe prefetch handoff
-	nextNodeRev       uint64
-	relIDs            map[types.RelID]struct{}                      // O(1) rel existence check
-	labelIdx          map[uint16]map[types.NodeID]struct{}          // labelToken → set(nodeID); EMPTY in labelOnDisk mode
-	labelOnDisk       bool                                          // answer label snapshots from the persisted keyspace
-	adjOnDisk         bool                                          // answer adjacency snapshots from the persisted keyspaces
-	propIdxOnDisk     bool                                          // maintain/answer property-index entries via the persisted 0x0A keyspace
-	temporalIdxOnDisk bool                                          // maintain the persisted 0x0B raw-entry log so loadIndexesScan can rebuild without a full node fetch per entity
-	typeIdx           map[uint16]map[types.RelID]struct{}           // relTypeToken → set(relID)
-	outIdx            map[types.NodeID]map[types.RelID]types.NodeID // startNodeID → relID → endNodeID
-	inIdx             map[types.NodeID]map[types.RelID]inEdge       // endNodeID → relID → {startNodeID, typeToken}
-	relValidIdx       map[types.RelID]relValidStamp                 // relID → effective {validFrom, validTo} for inline-stamp temporal traversal (OPT15); nil until lazily built on the first temporal traversal
-	relValidIdxBuilt  atomic.Bool                                   // fast-path "already built" check outside idxMu
+	idxMu               sync.RWMutex
+	nodeIDs             map[types.NodeID]struct{} // O(1) node existence check
+	nodeHashes          map[types.NodeID]string   // current node integrity hash for live endpoint validation
+	nodeRevs            map[types.NodeID]uint64   // live node row revision for safe prefetch handoff
+	nextNodeRev         uint64
+	relIDs              map[types.RelID]struct{}                      // O(1) rel existence check
+	labelIdx            map[uint16]map[types.NodeID]struct{}          // labelToken → set(nodeID); EMPTY in labelOnDisk mode
+	labelOnDisk         bool                                          // answer label snapshots from the persisted keyspace
+	adjOnDisk           bool                                          // answer adjacency snapshots from the persisted keyspaces
+	propIdxOnDisk       bool                                          // maintain/answer property-index entries via the persisted 0x0A keyspace
+	temporalIdxOnDisk   bool                                          // maintain the persisted 0x0B raw-entry log so loadIndexesScan can rebuild without a full node fetch per entity
+	disablePlannerStats bool                                          // skip planner-stat maintenance (presence/NDV/min-max/type-class) on writes + open; the stat capabilities fail closed with ErrCapabilityNotSupported
+	typeIdx             map[uint16]map[types.RelID]struct{}           // relTypeToken → set(relID)
+	outIdx              map[types.NodeID]map[types.RelID]types.NodeID // startNodeID → relID → endNodeID
+	inIdx               map[types.NodeID]map[types.RelID]inEdge       // endNodeID → relID → {startNodeID, typeToken}
+	relValidIdx         map[types.RelID]relValidStamp                 // relID → effective {validFrom, validTo} for inline-stamp temporal traversal (OPT15); nil until lazily built on the first temporal traversal
+	relValidIdxBuilt    atomic.Bool                                   // fast-path "already built" check outside idxMu
 
 	// K1 transaction-time membership sidecars (store.LabelTxMembershipCapability /
 	// RelTypeTxMembershipCapability). labelTxMembers maps a label token to the set
@@ -771,6 +790,7 @@ func New(cfg Config) (*Store, error) {
 		adjOnDisk:               cfg.AdjacencyIndexOnDisk,
 		propIdxOnDisk:           cfg.PropertyIndexOnDisk,
 		temporalIdxOnDisk:       cfg.TemporalIndexOnDisk,
+		disablePlannerStats:     cfg.DisablePlannerStats,
 		readOnly:                cfg.ReadOnly,
 		syncWrites:              cfg.SyncWrites && !cfg.ReadOnly,
 		logEnabled:              cfg.ChangeLog && !cfg.ReadOnly,

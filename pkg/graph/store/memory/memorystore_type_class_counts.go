@@ -55,6 +55,9 @@ func (ms *Store) NodePropertyTypeClassCounts(labelToken uint16, propertyKey stri
 	if ms == nil {
 		return storecontract.PropertyTypeClassCounts{}, ErrNilStore
 	}
+	if ms.disablePlannerStats {
+		return storecontract.PropertyTypeClassCounts{}, storecontract.ErrCapabilityNotSupported
+	}
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 	if err := ms.checkOpenLocked(); err != nil {

@@ -517,6 +517,21 @@ type Config struct {
 	// node state exactly once, the first time this flag is turned on. Ignored
 	// when Store is provided explicitly.
 	TemporalIndexOnDisk bool
+	// DisablePlannerStats turns OFF maintenance of the query-planner statistics
+	// (per-(label, property key) presence counts, NDV + min/max range-cardinality,
+	// and exact type-class counts). These are maintained on every node write (a
+	// full per-property sweep) and rebuilt at store open, but consumed ONLY by
+	// query-planning APIs (g.Stats().NodeCountByLabelAndPropertyKey /
+	// PropertyTypeClassCounts and the planner's range-cardinality gate). A
+	// pure-ingest or non-planning deployment pays that cost for data it never
+	// reads. When set, maintenance is skipped and those stat APIs fail closed with
+	// ErrCapabilityNotSupported — the same signal a backend without the capability
+	// returns, so planners fall back gracefully. NO correctness path depends on
+	// these counters (unique constraints use the property index). Default false =
+	// stats maintained (unchanged). Honored by the memory and badger backends
+	// (and tiered/sharded via their per-shard badger config); ignored when Store
+	// is supplied explicitly.
+	DisablePlannerStats bool
 	// ValueLogFileSize / MemTableSize / BlockCacheSize / IndexCacheSize /
 	// NumCompactors tune Badger's per-instance footprint for the store
 	// constructed from BadgerDir/BadgerInMemory. Zero keeps Badger's stock
@@ -1368,6 +1383,7 @@ func New(config Config) (*Core, error) {
 				AdjacencyIndexOnDisk:  config.AdjacencyIndexOnDisk,
 				PropertyIndexOnDisk:   config.PropertyIndexOnDisk,
 				TemporalIndexOnDisk:   config.TemporalIndexOnDisk,
+				DisablePlannerStats:   config.DisablePlannerStats,
 				ValueLogFileSize:      config.ValueLogFileSize,
 				MemTableSize:          config.MemTableSize,
 				BlockCacheSize:        config.BlockCacheSize,
@@ -1404,7 +1420,11 @@ func New(config Config) (*Core, error) {
 			}
 			store = bs
 		} else {
-			store = memory.New()
+			var memOpts []memory.Option
+			if config.DisablePlannerStats {
+				memOpts = append(memOpts, memory.WithoutPlannerStats())
+			}
+			store = memory.New(memOpts...)
 		}
 	}
 

@@ -19,6 +19,9 @@ func (ms *Store) NodeCountByLabelAndPropertyKey(labelToken uint16, propertyKey s
 	if err := ms.checkOpenLocked(); err != nil {
 		return 0, err
 	}
+	if ms.disablePlannerStats {
+		return 0, storecontract.ErrCapabilityNotSupported
+	}
 	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
 		return 0, err
 	}
@@ -40,6 +43,9 @@ func (ms *Store) removeNodePropertyKeyCounts(n *types.Node) {
 }
 
 func (ms *Store) adjustNodePropertyKeyCounts(n *types.Node, delta int) {
+	if ms.disablePlannerStats {
+		return // planner stats disabled — skip the per-write sweep
+	}
 	if n == nil || delta == 0 {
 		return
 	}
@@ -141,6 +147,9 @@ func (ms *Store) NodePropertyStats(labelToken uint16, propertyKey string) (store
 	if ms == nil {
 		return storecontract.PropertyStats{}, ErrNilStore
 	}
+	if ms.disablePlannerStats {
+		return storecontract.PropertyStats{}, storecontract.ErrCapabilityNotSupported
+	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 	if err := ms.checkOpenLocked(); err != nil {
@@ -184,6 +193,9 @@ func (ms *Store) NodePropertyStats(labelToken uint16, propertyKey string) (store
 func (ms *Store) NodePropertyStatsSketch(labelToken uint16, propertyKey string) (sketch *indexpkg.HyperLogLog, min, max any, count int64, err error) {
 	if ms == nil {
 		return nil, nil, nil, 0, ErrNilStore
+	}
+	if ms.disablePlannerStats {
+		return nil, nil, nil, 0, storecontract.ErrCapabilityNotSupported
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()

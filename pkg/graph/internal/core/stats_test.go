@@ -111,6 +111,44 @@ func TestGraphStats_RelCounters(t *testing.T) {
 	}
 }
 
+// TestGraphStats_DisablePlannerStats pins the end-to-end wiring of
+// Config.DisablePlannerStats through the graph façade: node writes remain
+// correct, but every planner-stat accessor surfaces ErrCapabilityNotSupported
+// (a runtime decline — the store still implements the capability interface, it
+// just refuses to maintain the counters).
+func TestGraphStats_DisablePlannerStats(t *testing.T) {
+	t.Parallel()
+	g, err := New(Config{DisablePlannerStats: true})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx := context.Background()
+
+	n, err := g.Nodes.Add(ctx, []string{"DPSPerson"}, map[string]any{
+		"id":    int64(1),
+		"score": 3.5,
+	})
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+
+	// Data path unaffected: the node reads back verbatim.
+	got, err := g.Nodes.Get(ctx, n.ID())
+	if err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+	if v, ok := got.GetProperty("id"); !ok || v != int64(1) {
+		t.Fatalf("round-trip id = (%v, %v), want (1, true)", v, ok)
+	}
+
+	if _, err := g.Stats.NodeCountByLabelAndPropertyKey("DPSPerson", "id"); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
+		t.Fatalf("NodeCountByLabelAndPropertyKey err = %v, want ErrCapabilityNotSupported", err)
+	}
+	if _, err := g.Stats.PropertyTypeClassCounts("DPSPerson", "score"); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
+		t.Fatalf("PropertyTypeClassCounts err = %v, want ErrCapabilityNotSupported", err)
+	}
+}
+
 func TestGraphStats_NodeCountByLabelAndPropertyKey(t *testing.T) {
 	t.Parallel()
 	g, _ := New(Config{})

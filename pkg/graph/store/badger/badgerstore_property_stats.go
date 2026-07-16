@@ -50,6 +50,9 @@ func (bs *Store) NodePropertyStats(labelToken uint16, propertyKey string) (store
 	if err := bs.checkOpen(); err != nil {
 		return storecontract.PropertyStats{}, err
 	}
+	if bs.disablePlannerStats {
+		return storecontract.PropertyStats{}, storecontract.ErrCapabilityNotSupported
+	}
 	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
 		return storecontract.PropertyStats{}, err
 	}
@@ -152,6 +155,9 @@ func (bs *Store) resolveNodePropertyStats(labelToken uint16, propertyKey string,
 func (bs *Store) NodePropertyStatsSketch(labelToken uint16, propertyKey string) (sketch *indexpkg.HyperLogLog, min, max any, count int64, err error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, nil, nil, 0, err
+	}
+	if bs.disablePlannerStats {
+		return nil, nil, nil, 0, storecontract.ErrCapabilityNotSupported
 	}
 	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
 		return nil, nil, nil, 0, err

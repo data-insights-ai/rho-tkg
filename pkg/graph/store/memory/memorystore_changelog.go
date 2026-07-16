@@ -26,6 +26,13 @@ func WithChangeLog() Option {
 	return func(ms *Store) { ms.logEnabled = true }
 }
 
+// WithoutPlannerStats disables maintenance of the query-planner statistics
+// (presence/NDV/min-max/type-class counters). See Config.DisablePlannerStats.
+// The stat methods then fail closed with ErrCapabilityNotSupported.
+func WithoutPlannerStats() Option {
+	return func(ms *Store) { ms.disablePlannerStats = true }
+}
+
 // logChangeLocked appends one change-log record. The caller MUST hold ms.mu
 // (every mutation door does), so the LSN assignment and the append are atomic
 // and totally ordered. payload is the tag-specific msgpack body; it is copied so

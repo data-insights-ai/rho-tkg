@@ -154,6 +154,11 @@ type Store struct {
 	logSeq     uint64
 	changeLog  []storecontract.ChangeRecord
 
+	// disablePlannerStats skips maintenance of the query-planner statistics
+	// (presence/NDV/min-max/type-class) on every write; the stat methods then
+	// fail closed with ErrCapabilityNotSupported. Opt-in via WithoutPlannerStats.
+	disablePlannerStats bool
+
 	// Per-transaction change-log scope (store.TxChangeLogScope), parallel to the
 	// badger backend. While scopeActive (toggled by the core's SetLogDivert under
 	// its exclusive write lock), logChangeLocked buffers the record into scopeLog

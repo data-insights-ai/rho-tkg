@@ -58,6 +58,9 @@ func (bs *Store) NodePropertyTypeClassCounts(labelToken uint16, propertyKey stri
 	if err := bs.checkOpen(); err != nil {
 		return storecontract.PropertyTypeClassCounts{}, err
 	}
+	if bs.disablePlannerStats {
+		return storecontract.PropertyTypeClassCounts{}, storecontract.ErrCapabilityNotSupported
+	}
 	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
 		return storecontract.PropertyTypeClassCounts{}, err
 	}

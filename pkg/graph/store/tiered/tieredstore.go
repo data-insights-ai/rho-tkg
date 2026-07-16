@@ -109,6 +109,12 @@ type Config struct {
 	// iteration over it. Passed through badgerCfg to EVERY shard (reference,
 	// hot, warm, lazy cold/archive, and rotation-created) for uniformity.
 	TemporalIndexOnDisk bool
+	// DisablePlannerStats turns OFF the query-planner statistics (presence/NDV/
+	// min-max/type-class counters) on every shard's badger store — see
+	// badger.Config.DisablePlannerStats. Passed through badgerCfg to EVERY shard;
+	// the stat methods then fail closed with ErrCapabilityNotSupported and the
+	// tiered cross-shard fold declines uniformly. Default false = maintained.
+	DisablePlannerStats bool
 	// ChangeLog enables the durable, ordered change-log (op-log) across all
 	// shards. A store-level monotonic allocator hands every shard's change-log
 	// record a store-global LSN (a total commit order); each shard co-commits
@@ -225,6 +231,7 @@ type Store struct {
 	encryptionKeyRotation time.Duration
 	cacheBudgetBytes      int64         // per-shard entity-cache byte budget; 0 = off
 	propertyIndexOnDisk   bool          // reference-shard-only scope unchanged; changes RAM vs disk representation
+	disablePlannerStats   bool          // skip planner-stat maintenance on every shard; stat folds decline
 	temporalIndexOnDisk   bool          // per-shard rebuild-at-open accelerator; index itself stays RAM-resident on every shard
 	closeCh               chan struct{} // signals idle-close goroutine to stop
 	closeOnce             sync.Once
@@ -325,6 +332,7 @@ func New(cfg Config) (*Store, error) {
 		cacheBudgetBytes:      cfg.CacheBudgetBytes,
 		propertyIndexOnDisk:   cfg.PropertyIndexOnDisk,
 		temporalIndexOnDisk:   cfg.TemporalIndexOnDisk,
+		disablePlannerStats:   cfg.DisablePlannerStats,
 		closeCh:               make(chan struct{}),
 		hfIdxBuckets:          make(map[uint16]time.Duration),
 		vectorIndexes:         make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex),
@@ -1055,6 +1063,7 @@ func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 		EncryptionKeyRotation: ts.encryptionKeyRotation,
 		PropertyIndexOnDisk:   ts.propertyIndexOnDisk,
 		TemporalIndexOnDisk:   ts.temporalIndexOnDisk,
+		DisablePlannerStats:   ts.disablePlannerStats,
 	}
 	if !ts.inMemory {
 		cfg.Dir = filepath.Join(ts.dataDir, name)

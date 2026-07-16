@@ -94,6 +94,11 @@ type Config struct {
 	// then k-way-merge the per-shard logs. Off by default (zero overhead).
 	ChangeLog bool
 
+	// DisablePlannerStats turns OFF query-planner statistics on every shard —
+	// see badger.Config.DisablePlannerStats. The stat methods fail closed with
+	// ErrCapabilityNotSupported and the cross-shard fold declines. Default false.
+	DisablePlannerStats bool
+
 	// Per-shard badger passthroughs (applied uniformly to every shard).
 	Compression           options.CompressionType
 	ZSTDCompressionLevel  int
@@ -260,6 +265,7 @@ func (s *Store) shardConfig(cfg Config, k uint8, reg *registrypkg.PropertyKeyReg
 		NumCompactors:         cfg.NumCompactors,
 		EncryptionKey:         cfg.EncryptionKey,
 		EncryptionKeyRotation: cfg.EncryptionKeyRotation,
+		DisablePlannerStats:   cfg.DisablePlannerStats,
 		PropertyKeyRegistry:   reg,
 	}
 	if cfg.ChangeLog {
