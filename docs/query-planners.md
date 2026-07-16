@@ -30,7 +30,8 @@ bottom.
 | Node count by label + property-key presence | `g.Stats().NodeCountByLabelAndPropertyKey(label, key)` | O(1) | O(open shards) | `ErrCapabilityNotSupported` on a store without the optional capability |
 | NDV + exact min/max + count | `g.Stats().PropertyStats(label, key)` | O(1) amortized; O(nodes carrying label) on a rescan after the current min/max holder is deleted | O(open shards) — per-shard HyperLogLog register-max merge, plus each shard's own independent Min/Max rescan on extremum deletion (see "Tiered NDV fold") | `ErrCapabilityNotSupported` on a store without the optional capability |
 | Numeric range cardinality | `g.Nodes().RangeCardinality(...)` / `g.Stats().RangeCardinality(...)` (alias) | O(distinct values in range), no node scan | always declines (tiered does not implement the capability) | `exact=false` (not an error) — see "RangeCardinality decline conditions" |
-| Ordered / top-k range scan | `g.Nodes().ForEachByLabelPropertyRangeOrdered(...)` | O(k + log n) index work for a LIMIT-k top-k (RAM); disk mode is O(range) cheap-ID collection + O(k) node fetch | `ErrIndexNotFound` (tiered is not an exact native store — no ordered view) | `ErrOrderedScanTemporal` for temporal opts; `ErrIndexNotFound` when no property index / capability |
+| Ordered / top-k range scan | `g.Nodes().ForEachByLabelPropertyRangeOrdered(...)` | O(k + log n) index work for a LIMIT-k top-k (RAM); disk mode is O(range) cheap-ID collection + O(k) node fetch. TEMPORAL opts: O(N log N) sound full fold (no index) | `ErrIndexNotFound` (tiered is not an exact native store — no ordered view) | non-temporal: `ErrIndexNotFound` when no property index / capability. Temporal opts are SERVED via the fold (no longer `ErrOrderedScanTemporal`) |
+| String prefix scan (`STARTS WITH`) | `g.Nodes().ForEachByLabelPropertyPrefix(...)` / `g.Rels().ForEachByTypePropertyPrefix(...)` | O(k + log n) top-k over the ordered STRING view (RAM); node disk mode is `0x0A` `"s:"+prefix` iteration; EXACT (no over-selection). TEMPORAL opts: O(N log N) sound full fold | `ErrIndexNotFound` (no ordered view) | lex value order asc/desc, ties by id ascending; empty prefix = all strings; temporal opts SERVED via the fold |
 | Outgoing / incoming degree | `g.Rels().OutgoingDegree(id, type)` / `IncomingDegree(id, type)` | O(1) via `DegreeCapability`, else O(degree) | O(1) — single-shard lookup on the node's owning shard | never — always answers (fast path or fallback) |
 | Node / relationship mutation epoch | `g.Nodes().NodeMutationEpoch()` / `g.Rels().RelMutationEpoch()` | O(1) | O(1) where supported | returns 0 (not an error) when the backend lacks the DocValues capability |
 | Pinned adjacency (transaction-time) | `g.Rels().OutgoingForNodesAtTx(nodeIDs, type, txAt)` / `IncomingForNodesAtTx(...)` | adjacency index + O(deleted rels) fold, not a full `ByType` history scan | same adjacency-index push-down per shard | `txAt == 0` delegates to `OutgoingForNodes`/`IncomingForNodes` (no TX filter) |
@@ -385,24 +386,32 @@ k` is the same call with `desc = true`.
   | memory | ~17 µs | ~354 ms | ~20,000× |
   | badger | ~45 µs | ~575 ms | ~13,000× |
 
-### Current-state only (v1)
+### Two paths: index fast path (current-state) + temporal fold
 
-The ordered door reflects the LIVE current row set. It has NO temporal
-behaviour: any temporal `QueryOpts` (`ValidAt` / `ValidStart` / `ValidEnd` /
-`TxAt` / `TxPin`) is DECLINED with `graph.ErrOrderedScanTemporal` rather than
-silently answered against current state — the value ordering is derived from
-the valid-time-agnostic property index, so an as-of ordered scan cannot be
-served correctly in v1. A query layer that needs `ORDER BY ... LIMIT k` AS OF a
-past time must fall back to a temporal scan + in-memory sort until a bitemporal
-ordered view lands.
+With NO temporal `QueryOpts`, the ordered door reads the LIVE current row set
+from the valid-time-agnostic ordered property view — the O(k + log n) top-k fast
+path above.
+
+With a TEMPORAL `QueryOpts` (`ValidAt` / `ValidStart`+`ValidEnd` / `TxAt` /
+`TxPin`) the door instead serves a SOUND FULL FOLD: every label/type member is
+resolved to its version AT THE PIN (via the same chain resolver + B4 valid-time
+prune as the temporal `ByLabel`/`ByType` door), the value predicate is applied to
+the value-AT-t, then the survivors are sorted by that value. This is the only
+sound answer — the current-state index would both MISS a node in range then but
+not now AND over-report the reverse. It is O(N log N) in the label/type's temporal
+membership (value-at-t is not indexed, so no early-stop by value), and it needs NO
+property index (it reads resolved values directly). Prefix scans (node + rel)
+share the same fold. Previously this was declined with `graph.ErrOrderedScanTemporal`
+(now a legacy, no-longer-returned sentinel).
 
 ### Declines
 
-- `graph.ErrOrderedScanTemporal` — any temporal `QueryOpts` field set.
-- `graph.ErrIndexNotFound` — no property index exists for `(label, propKey)`,
-  the store lacks the ordered-scan capability, or the store is not an exact
-  native store (tiered and store wrappers decline; callers fall back to a label
-  scan + sort). An unregistered label is a cheap `nil` (no rows), not an error.
+- `graph.ErrIndexNotFound` — NON-temporal scan with no property index for
+  `(label, propKey)`, the store lacks the ordered-scan capability, or the store is
+  not an exact native store (tiered and store wrappers decline; callers fall back
+  to a label scan + sort). An unregistered label is a cheap `nil` (no rows), not an
+  error. The TEMPORAL fold path does not require an index and never returns
+  `ErrIndexNotFound`.
 
 ## Degree — `OutgoingDegree` / `IncomingDegree`
 

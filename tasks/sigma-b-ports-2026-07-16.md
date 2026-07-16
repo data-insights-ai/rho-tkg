@@ -144,6 +144,24 @@ identity is enough).
    sorted scans. Large new index class (persistence + auto-maintenance across every
    mutation path). Alt: ART for single-thread + prefix. Refs: Memgraph; Leis ART.
 
+   ### STATUS (2026-07-16): DONE — scoped down after investigation, both real gaps closed. ✅
+   Investigation (Explore agent) found the numeric RANGE / SORTED / top-k path ALREADY
+   shipped + publicly exposed in RAM (chunked sorted set `orderedKeys`) and disk (0x0A
+   order-preserving keyspace) — a skip-list would DUPLICATE it, so NOT built. User chose
+   option 3 (prefix + temporal ordered, the full solution). Delivered:
+   - **A1** (ae9fab7): generic `sortedChunks[T cmp.Ordered]` (numeric behavior preserved)
+     + ordered STRING view (`strKeys`/`strBuckets`) maintained for free in AddKey/removeKey.
+   - **A2-A4** (6fcab87): node `ForEachByLabelPropertyPrefix` — memory + badger RAM + badger
+     DISK (0x0A "s:"+prefix iteration). Lex order asc/desc, id tie-break, top-k pushdown.
+   - **A5** (65ab8a2): rel `ForEachByTypePropertyPrefix` (rule-2 parity; first rel ordered door).
+   - **Stage B** (5ef83ef): temporal ordered/prefix scans via sound full fold
+     (`forEach{Node,Rel}ValueOrderedTemporal[K]`) — resolve-at-pin + value-sort; lifts the
+     ErrOrderedScanTemporal decline (now legacy sentinel). Needs no index, O(N log N).
+   Tests: index-level + graph-level (memory/badger-ram/badger-disk) + two-phase temporal
+   (in-range-then/out-now, reordering) + rel mirrors. Full suite + -race green.
+   NOTE deferred (pre-existing, out of B2 scope): rels lack the ordered NUMERIC range door
+   (only unordered + now string-prefix); add if a consumer needs rel numeric top-k.
+
 ## Deferred / conditional
 
 - **B3 (OPT4) — adaptive int64 timestamp codec.** ON HOLD — consumer unsure of the
