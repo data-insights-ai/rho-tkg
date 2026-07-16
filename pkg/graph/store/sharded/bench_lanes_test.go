@@ -89,6 +89,71 @@ func benchInsertRate(b *testing.B, g *graph.Graph, sessions int) {
 	}
 }
 
+// benchInsertRateBulk is benchInsertRate using the write-only bulk door
+// (Session.AddNodes), which skips the per-node isolation DeepCopy — the
+// mass-ingestion path where created nodes are not needed as endpoints.
+func benchInsertRateBulk(b *testing.B, g *graph.Graph, sessions int) {
+	b.Helper()
+	perSession := b.N / sessions
+	remainder := b.N % sessions
+
+	b.ResetTimer()
+	var wg sync.WaitGroup
+	for w := 0; w < sessions; w++ {
+		count := perSession
+		if w < remainder {
+			count++
+		}
+		wg.Add(1)
+		go func(count int) {
+			defer wg.Done()
+			sess, err := g.Ingest().NewSession(ingest.IngestOptions{Concurrent: true})
+			if err != nil {
+				b.Error(err)
+				return
+			}
+			defer func() { _ = sess.Close() }()
+			for remaining := count; remaining > 0; {
+				chunk := benchSubmitChunkSize
+				if chunk > remaining {
+					chunk = remaining
+				}
+				if err := sess.AddNodes([]string{"Event"}, map[string]any{"i": int64(chunk)}, chunk); err != nil {
+					b.Error(err)
+					return
+				}
+				if _, err := sess.Submit(); err != nil {
+					b.Error(err)
+					return
+				}
+				remaining -= chunk
+			}
+		}(count)
+	}
+	wg.Wait()
+	b.StopTimer()
+
+	if secs := b.Elapsed().Seconds(); secs > 0 {
+		b.ReportMetric(float64(b.N)/secs, "inserts/s")
+	}
+}
+
+// BenchmarkIngestShardedLanesBulk is the write-only mass-ingestion variant of
+// BenchmarkIngestShardedLanes: same topology, but the DeepCopy-free bulk door.
+func BenchmarkIngestShardedLanesBulk(b *testing.B) {
+	const lanes uint8 = 8
+	st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2 + lanes})
+	if err != nil {
+		b.Fatal(err)
+	}
+	g, err := graph.New(graph.Config{Store: st, SnowflakeNodeID: 0, IngestLanes: lanes})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer func() { _ = g.Close() }()
+	benchInsertRateBulk(b, g, int(lanes))
+}
+
 // BenchmarkIngestShardedLanes is the S4 target: badger-backed sharded store,
 // 8 lanes over 8 lane slots (plus the interactive pair), 8 concurrent sessions
 // each pinned to its own slot -> its own shard -> one batched door per group.

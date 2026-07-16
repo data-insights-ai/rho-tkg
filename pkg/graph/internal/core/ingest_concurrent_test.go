@@ -120,6 +120,70 @@ func TestIngestConcurrentParallelSessions(t *testing.T) {
 	}
 }
 
+// TestIngestConcurrentBulkAddNodes exercises the write-only bulk door
+// (Session.AddNodes) across concurrent sessions: each queues count-per-chunk
+// nodes with NO caller-visible skeleton (so prepare skips the isolation
+// DeepCopy — lever #2), submits, and every created node must be persisted,
+// TxFrom-stamped, and hash-valid. The exact total guards against the bulk door
+// silently dropping or over-creating nodes.
+func TestIngestConcurrentBulkAddNodes(t *testing.T) {
+	t.Parallel()
+	c := newIngestGraph(t)
+
+	const sessions = 6
+	const chunks = 4
+	const perChunk = 25
+	var wg sync.WaitGroup
+	errCh := make(chan error, sessions)
+	for w := 0; w < sessions; w++ {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			sess, err := c.Ingest.NewSession(IngestOptions{Concurrent: true})
+			if err != nil {
+				errCh <- err
+				return
+			}
+			defer sess.Close()
+			for ch := 0; ch < chunks; ch++ {
+				if err := sess.AddNodes([]string{"Bulk"}, map[string]any{"w": int64(w), "ch": int64(ch)}, perChunk); err != nil {
+					errCh <- err
+					return
+				}
+				if _, err := sess.Submit(); err != nil {
+					errCh <- err
+					return
+				}
+			}
+			errCh <- nil
+		}(w)
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			t.Fatalf("bulk session: %v", err)
+		}
+	}
+
+	got, err := c.Nodes.ByLabel("Bulk", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("ByLabel: %v", err)
+	}
+	if want := sessions * chunks * perChunk; len(got) != want {
+		t.Fatalf("bulk created %d nodes, want %d", len(got), want)
+	}
+	for _, n := range got {
+		if tm := n.Temporal(); tm == nil || tm.TxFrom == 0 {
+			t.Fatalf("bulk node %d missing TxFrom stamp", n.ID())
+		}
+		ok, err := c.Hash.VerifyNodeChain(n.ID())
+		if !ok || err != nil {
+			t.Fatalf("VerifyNodeChain(%d) = (%v, %v)", n.ID(), ok, err)
+		}
+	}
+}
+
 // A unique-constraint storm across concurrent sessions: every session races the
 // SAME constrained value — exactly one wins, every loser's Submit surfaces
 // ErrUniqueViolation directly (Submit is the truth channel in concurrent mode).

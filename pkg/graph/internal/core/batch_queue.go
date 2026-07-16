@@ -124,6 +124,14 @@ func (b *BatchBuilder) addNodes(labels []string, props map[string]any, count int
 
 		var result *types.Node
 		if keepResults {
+			// Deep, not shallow: the batch/ingest contract lets the caller mutate
+			// this returned skeleton between queue and apply (SetProperty,
+			// SetVersion, tamper Integrity()) WITHOUT the mutation leaking into
+			// the stored node — see
+			// TestBatchBuilderCreateQueuesIsolatedFromReturnedSkeletonMutations.
+			// A shallow copy would share the property slice + integrity pointer
+			// and break that isolation. Apply later refreshes this skeleton to the
+			// authoritative post-stamp state via `*pn.result = *pn.node`.
 			result = n.DeepCopy()
 			results = append(results, result)
 		}

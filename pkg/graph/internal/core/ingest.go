@@ -697,6 +697,28 @@ func (s *Session) AddNode(labels []string, props map[string]any) (*types.Node, e
 	return s.b.AddNode(labels, props)
 }
 
+// AddNodes queues count node creations sharing the same labels and properties
+// WITHOUT returning caller-visible skeletons — the write-only, bulk counterpart
+// of AddNode for mass ingestion where the created nodes are not needed as
+// relationship endpoints. Because no skeleton is returned, prepare skips the
+// per-node isolation DeepCopy that AddNode must do (the returned node is
+// caller-mutable and must not alias the queued node), which is the single
+// largest per-node allocation on the create path — so a pure-insert workload
+// that does not need endpoints should prefer this door. Same declare-on-prepare
+// and apply semantics as AddNode otherwise.
+func (s *Session) AddNodes(labels []string, props map[string]any, count int) error {
+	if err := s.lockOpen(); err != nil {
+		return err
+	}
+	defer s.mu.Unlock()
+	if s.opts.Concurrent {
+		if err := s.ensureDeclaredLabels(labels); err != nil {
+			return err
+		}
+	}
+	return s.b.AddNodes(labels, props, count)
+}
+
 // ensureDeclaredLabels registers any not-yet-known label names (idempotent,
 // persisted). Steady state is lookup-only — the registry write lock is taken
 // only when a genuinely new name appears.
