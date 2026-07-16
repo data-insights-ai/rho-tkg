@@ -212,6 +212,38 @@ func TestBadgerHistoryDeltaTruncateAnchorSafety(t *testing.T) {
 	}
 }
 
+// TestBadgerHistoryDeltaCompactAnchorSafety proves history compaction (trim
+// oldest, keep newest N) does not orphan a kept delta from a trimmed anchor: the
+// reads after compaction still match the full-snapshot oracle compacted the same
+// way. Same hazard as truncate, via the compactHistoryByPrefix path.
+func TestBadgerHistoryDeltaCompactAnchorSafety(t *testing.T) {
+	const versions = 20
+	id := snowflake.ID(9)
+	on := deltaTestStore(t, true)
+	off := deltaTestStore(t, false)
+	for v := uint32(0); v < versions; v++ {
+		for _, bs := range []*Store{on, off} {
+			if err := bs.PutNodeVersion(types.NodeID(id), v, deltaVersionNode(id, v)); err != nil {
+				t.Fatalf("PutNodeVersion v%d: %v", v, err)
+			}
+		}
+	}
+	for _, bs := range []*Store{on, off} {
+		if err := bs.CompactNodeHistory(types.NodeID(id), 5, nil); err != nil {
+			t.Fatalf("CompactNodeHistory: %v", err)
+		}
+	}
+	assertNodeHistoriesEqual(t, on, off, id, 5)
+	// The lowest kept version (15, referencing trimmed anchor 0) must reconstruct.
+	got, err := on.GetNodeVersion(types.NodeID(id), 15)
+	if err != nil {
+		t.Fatalf("GetNodeVersion v15 after compact: %v", err)
+	}
+	if !bytes.Equal(nodeWireBytes(t, got), nodeWireBytes(t, deltaVersionNode(id, 15))) {
+		t.Fatalf("re-anchored v15 != input after compact")
+	}
+}
+
 // TestBadgerHistoryDeltaPersistence proves deltas + anchors survive a close/reopen
 // on disk and still reconstruct.
 func TestBadgerHistoryDeltaPersistence(t *testing.T) {

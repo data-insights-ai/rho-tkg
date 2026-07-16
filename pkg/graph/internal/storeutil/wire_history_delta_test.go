@@ -187,6 +187,26 @@ func TestHistoryValueKindOf(t *testing.T) {
 	}
 }
 
+// TestHistoryDeltaFailsClosedForDeltaUnawareDecoder locks the safety property
+// that guards a downgrade: a delta value ('D'-tagged) fed to the plain
+// full-snapshot decode path (what a delta-UNAWARE binary does — SafeUnmarshal
+// straight into a NodeWire) must FAIL, never silently produce a bogus entity.
+// The tag byte 0x44 is a msgpack positive-fixint, not a map header, so the
+// struct decode rejects it. This is why enabling HistoryDeltaEncoding is
+// fail-closed for an older reader even without a wire-format-version bump.
+func TestHistoryDeltaFailsClosedForDeltaUnawareDecoder(t *testing.T) {
+	anchor := baseNode(0, tokProps(p(1, bigBlob, 6), p(2, "active", 6)))
+	target := baseNode(1, tokProps(p(1, bigBlob, 6), p(2, "closed", 6)))
+	enc, err := EncodeNodeHistoryDelta(DiffNodeHistory(anchor, target))
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	var w NodeWire
+	if err := SafeUnmarshal(enc, &w); err == nil {
+		t.Fatalf("delta value decoded as a plain NodeWire without error — NOT fail-closed (silent misread risk)")
+	}
+}
+
 func TestNodeHistoryDeltaSizeWin(t *testing.T) {
 	// Wide entity, big blob, only one scalar changes: the delta must be far
 	// smaller than a full snapshot.

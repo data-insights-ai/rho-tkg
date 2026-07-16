@@ -113,22 +113,23 @@ func (bs *Store) truncateHistoryByPrefix(prefix []byte, keepVersions int, logTag
 	return bs.flushIfNeeded()
 }
 
-// historyTruncateDeleteKeys computes the set of history keys that a
-// keepVersions truncation would delete for prefix (keeping the newest
-// keepVersions versions), merging the pre-scan write-buffer overlay exactly as
-// truncateHistoryByPrefix does (see the lesson-64 note there). It performs no
-// writes — the caller decides how to commit the deletes.
-func (bs *Store) historyTruncateDeleteKeys(prefix []byte, keepVersions int) ([]string, error) {
+// historyTruncateDeleteKeys computes the history keys that a keepVersions
+// truncation would delete for prefix (keeping the newest keepVersions versions)
+// AND the keys it would keep, merging the pre-scan write-buffer overlay exactly
+// as truncateHistoryByPrefix does (see the lesson-64 note there). It performs no
+// writes — the caller decides how to commit. The kept set lets the caller
+// re-anchor any orphaned delta (a kept delta whose anchor is being deleted).
+func (bs *Store) historyTruncateDeleteKeys(prefix []byte, keepVersions int) (deleteKeys, keptKeys []string, err error) {
 	if err := bs.checkOpen(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if err := storecontract.ValidateHistoryRetention(keepVersions); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	overlayEntries, overlayDeletes := bs.pendingHistoryVersionOverlay(prefix, 0)
 
 	var allKeys []string
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	scanErr := bs.db.View(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false
 		it := txn.NewIterator(opts)
@@ -142,8 +143,8 @@ func (bs *Store) historyTruncateDeleteKeys(prefix []byte, keepVersions int) ([]s
 		}
 		return nil
 	})
-	if err != nil {
-		return nil, err
+	if scanErr != nil {
+		return nil, nil, scanErr
 	}
 
 	keySet := make(map[string]struct{}, len(allKeys)+len(overlayEntries))
@@ -157,7 +158,7 @@ func (bs *Store) historyTruncateDeleteKeys(prefix []byte, keepVersions int) ([]s
 		delete(keySet, k)
 	}
 	if len(keySet) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	sorted := make([]string, 0, len(keySet))
@@ -167,12 +168,12 @@ func (bs *Store) historyTruncateDeleteKeys(prefix []byte, keepVersions int) ([]s
 	sort.Strings(sorted)
 
 	if keepVersions == 0 {
-		return sorted, nil
+		return sorted, nil, nil
 	}
 	if len(sorted) > keepVersions {
-		return sorted[:len(sorted)-keepVersions], nil
+		return sorted[:len(sorted)-keepVersions], sorted[len(sorted)-keepVersions:], nil
 	}
-	return nil, nil
+	return nil, sorted, nil
 }
 
 // CompactNodeHistory implements store.HistoryCompactionCapability: it trims the
@@ -209,11 +210,18 @@ func (bs *Store) CompactRelHistory(rid types.RelID, keepVersions int, metaWrites
 // appendOps installs all ops under a single wbMu window, so a concurrent flush
 // snapshot sees either all of them or none — the trim and the stub are atomic.
 func (bs *Store) compactHistoryByPrefix(prefix []byte, keepVersions int, metaWrites []storecontract.MetaWrite) error {
-	deleteKeys, err := bs.historyTruncateDeleteKeys(prefix, keepVersions)
+	deleteKeys, keptKeys, err := bs.historyTruncateDeleteKeys(prefix, keepVersions)
 	if err != nil {
 		return err
 	}
-	ops := make([]writeOp, 0, len(deleteKeys)+len(metaWrites))
+	// Anchor-safety: re-materialize to full any kept delta whose interval anchor
+	// is being trimmed, in the same batch (before the deletes commit).
+	rematerOps, err := bs.rematerializeOrphanedDeltas(prefix, keptKeys)
+	if err != nil {
+		return fmt.Errorf("graph: re-anchor kept history deltas: %w", err)
+	}
+	ops := make([]writeOp, 0, len(rematerOps)+len(deleteKeys)+len(metaWrites))
+	ops = append(ops, rematerOps...)
 	for _, k := range deleteKeys {
 		ops = append(ops, writeOp{opType: writeOpDelete, key: []byte(k)})
 	}
