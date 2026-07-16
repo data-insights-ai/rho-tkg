@@ -5,7 +5,6 @@ import (
 
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
-	"github.com/vmihailenco/msgpack/v5"
 )
 
 // ApplyPropertyKeyTokens replaces each PropertyWire.Key with its registry-
@@ -67,7 +66,7 @@ func MarshalNodeWireWithKeys(n *types.Node, reg *registrypkg.PropertyKeyRegistry
 		return nil, err
 	}
 	ApplyPropertyKeyTokens(w.Properties, reg)
-	return msgpack.Marshal(w)
+	return marshalWirePooled(w)
 }
 
 // MarshalRelWireWithKeys is the registry-aware variant of MarshalRelWire.
@@ -77,7 +76,7 @@ func MarshalRelWireWithKeys(r *types.Relationship, reg *registrypkg.PropertyKeyR
 		return nil, err
 	}
 	ApplyPropertyKeyTokens(w.Properties, reg)
-	return msgpack.Marshal(w)
+	return marshalWirePooled(w)
 }
 
 // UnmarshalNodeWireWithKeys decodes a NodeWire from msgpack bytes and

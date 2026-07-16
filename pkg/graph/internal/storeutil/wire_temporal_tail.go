@@ -7,7 +7,6 @@ import (
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
-	"github.com/vmihailenco/msgpack/v5"
 )
 
 // The v2 wire format (CurrentWireFormatVersion >= 2) emits the transaction-time
@@ -98,7 +97,7 @@ func PreEncodeNodeWireV2(w NodeWire) ([]byte, error) {
 	w.FormatVersion = CurrentWireFormatVersion
 	w.TxFrom = 0
 	w.TxTo = 0
-	return msgpack.Marshal(w)
+	return marshalWirePooled(w)
 }
 
 // PreEncodeRelWireV2 is the relationship counterpart of PreEncodeNodeWireV2.
@@ -106,7 +105,7 @@ func PreEncodeRelWireV2(w RelWire) ([]byte, error) {
 	w.FormatVersion = CurrentWireFormatVersion
 	w.TxFrom = 0
 	w.TxTo = 0
-	return msgpack.Marshal(w)
+	return marshalWirePooled(w)
 }
 
 // PreEncodeNodeWireV2WithKeys pre-encodes a node's ENTITY-ROW wire exactly as
@@ -140,7 +139,7 @@ func PreEncodeNodeWireV2WithKeys(n *types.Node, reg *registrypkg.PropertyKeyRegi
 	w.FormatVersion = CurrentWireFormatVersion
 	w.TxFrom = 0
 	w.TxTo = 0
-	return msgpack.Marshal(w)
+	return marshalWirePooled(w)
 }
 
 // PreEncodeRelWireV2WithKeys is the relationship counterpart of
@@ -154,5 +153,5 @@ func PreEncodeRelWireV2WithKeys(r *types.Relationship, reg *registrypkg.Property
 	w.FormatVersion = CurrentWireFormatVersion
 	w.TxFrom = 0
 	w.TxTo = 0
-	return msgpack.Marshal(w)
+	return marshalWirePooled(w)
 }

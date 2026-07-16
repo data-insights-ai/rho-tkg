@@ -5,7 +5,6 @@ import (
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
-	"github.com/vmihailenco/msgpack/v5"
 )
 
 const (
@@ -198,7 +197,7 @@ func MarshalNodeWire(n *types.Node) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return msgpack.Marshal(w)
+	return marshalWirePooled(w)
 }
 
 // WireToNode reconstructs a Node from its wire format.
@@ -340,7 +339,7 @@ func MarshalRelWire(r *types.Relationship) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return msgpack.Marshal(w)
+	return marshalWirePooled(w)
 }
 
 // WireToRel reconstructs a Relationship from its wire format.
