@@ -88,6 +88,12 @@ type Config struct {
 	// BaseSlot+SlotCount must be <= 32. One badger.Store opens per claimed slot.
 	SlotCount uint8
 
+	// ChangeLog enables the store-global change-log/op-log (ADR-0007 S3): a single
+	// LSN allocator is injected into every shard so records draw one total order,
+	// and the feed doors (ForEachChange/ChangeFeed/LastCommittedLSN) barrier-flush
+	// then k-way-merge the per-shard logs. Off by default (zero overhead).
+	ChangeLog bool
+
 	// Per-shard badger passthroughs (applied uniformly to every shard).
 	Compression           options.CompressionType
 	ZSTDCompressionLevel  int
@@ -123,6 +129,13 @@ type Store struct {
 	// propKeyReg tracks the canonical property-key registry currently installed
 	// on every shard so SetPropertyKeyRegistry reaches all of them.
 	propKeyReg *registrypkg.PropertyKeyRegistry
+
+	// logEnabled + changeLogAlloc drive the store-global change-log (ADR-0007 S3;
+	// see changelog.go). changeLogAlloc is injected into every shard's badger.Config
+	// as ChangeLogSeqSource so LSNs form one total order across shards. Both zero
+	// when Config.ChangeLog is off.
+	logEnabled     bool
+	changeLogAlloc *changeLogAllocator
 }
 
 // anchor returns the anchor shard (slot base), which owns store-global metadata.
@@ -145,6 +158,10 @@ func New(cfg Config) (*Store, error) {
 		inMemory: cfg.InMemory,
 		dir:      cfg.Dir,
 		shards:   make([]*badger.Store, cfg.SlotCount),
+	}
+	if cfg.ChangeLog {
+		s.logEnabled = true
+		s.changeLogAlloc = &changeLogAllocator{}
 	}
 
 	// Create the per-shard directory layout for disk stores, and detect which
@@ -226,6 +243,15 @@ func (s *Store) shardConfig(cfg Config, k uint8, reg *registrypkg.PropertyKeyReg
 		EncryptionKey:         cfg.EncryptionKey,
 		EncryptionKeyRotation: cfg.EncryptionKeyRotation,
 		PropertyKeyRegistry:   reg,
+	}
+	if cfg.ChangeLog {
+		// Every shard records to its own co-committed log but draws LSNs from the
+		// ONE store-global allocator, so the merged feed is a single total order.
+		// badger.New folds each shard's durable LastLSNKey into the allocator via
+		// ChangeLogSeqSource.Observe at open — automatic reseed, no persisted
+		// watermark needed (every shard is always open, unlike tiered's cold shards).
+		bc.ChangeLog = true
+		bc.ChangeLogSeqSource = s.changeLogAlloc
 	}
 	if !cfg.InMemory {
 		bc.Dir = filepath.Join(cfg.Dir, shardDirName(cfg.BaseSlot+k))

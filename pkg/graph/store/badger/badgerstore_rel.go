@@ -15,6 +15,22 @@ import (
 )
 
 func (bs *Store) PutRelationship(r *types.Relationship) error {
+	return bs.putRelationship(r, true)
+}
+
+// PutRelationshipCoLocated writes a relationship whose entity AND both adjacency
+// legs (out + in) live on THIS shard, WITHOUT validating that its endpoint nodes
+// exist on this shard — a sharded owner (ADR-0007: a rel + both legs live on the
+// rel's shard, endpoints may be elsewhere) validates the endpoints on their own
+// shards before calling. It emits the SAME co-committed ChangeRelPut record as
+// PutRelationship, so a sharded rel create appears in the change-log feed (the
+// partial doors PutRelEntityAndOut/PutRelIncoming are record-free split-write
+// helpers and would leave a sharded rel create invisible to a tailing replica).
+func (bs *Store) PutRelationshipCoLocated(r *types.Relationship) error {
+	return bs.putRelationship(r, false)
+}
+
+func (bs *Store) putRelationship(r *types.Relationship, validateEndpoints bool) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
@@ -34,20 +50,25 @@ func (bs *Store) PutRelationship(r *types.Relationship) error {
 	if err != nil {
 		return fmt.Errorf("graph: marshal relationship: %w", err)
 	}
-	if err := bs.ensureRelationshipEndpointRowsLive(startNID, endNID); err != nil {
-		return err
+	if validateEndpoints {
+		if err := bs.ensureRelationshipEndpointRowsLive(startNID, endNID); err != nil {
+			return err
+		}
 	}
 
 	bs.idxMu.Lock()
 
-	// Verify endpoints exist.
-	if _, exists := bs.nodeIDs[startNID]; !exists {
-		bs.idxMu.Unlock()
-		return ErrNodeNotFound
-	}
-	if _, exists := bs.nodeIDs[endNID]; !exists {
-		bs.idxMu.Unlock()
-		return ErrNodeNotFound
+	// Verify endpoints exist (skipped for a co-located sharded write — the sharded
+	// owner validated the endpoints on their own shards before calling).
+	if validateEndpoints {
+		if _, exists := bs.nodeIDs[startNID]; !exists {
+			bs.idxMu.Unlock()
+			return ErrNodeNotFound
+		}
+		if _, exists := bs.nodeIDs[endNID]; !exists {
+			bs.idxMu.Unlock()
+			return ErrNodeNotFound
+		}
 	}
 
 	// Check for duplicate via O(1) relIDs.

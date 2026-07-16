@@ -29,6 +29,7 @@ import (
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -1065,7 +1066,7 @@ func changeFeedCapability(store storepkg.MandatoryStore) storepkg.ChangeFeedCapa
 		return nil
 	}
 	switch store.(type) {
-	case *memory.Store, *badger.Store, *tiered.Store:
+	case *memory.Store, *badger.Store, *tiered.Store, *sharded.Store:
 		return cap
 	default:
 		if embedsNativeCapability(store, reflect.TypeOf((*storepkg.ChangeFeedCapability)(nil)).Elem(),

@@ -218,23 +218,12 @@ func (s *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 }
 
 // putRelationshipToShard writes a fully pre-validated relationship (row + both
-// adjacency legs) to the given shard index. Mirrors PutRelationship's two-leg
-// write + rollback, minus the redundant endpoint/existence re-validation the
-// batch already performed.
+// adjacency legs) to the given shard index via the co-located door — one atomic
+// WriteBatch with a co-committed ChangeRelPut record. The batch already validated
+// endpoints (cross-shard) and non-existence, so the door's own checks are redundant
+// but harmless.
 func (s *Store) putRelationshipToShard(idx int, r *types.Relationship) error {
-	relShard := s.shards[idx]
-	if err := relShard.PutRelEntityAndOut(r); err != nil {
-		return err
-	}
-	endID := r.EndNodeID().SnowflakeID()
-	startID := r.StartNodeID().SnowflakeID()
-	if err := relShard.PutRelIncoming(endID, startID, r.TypeToken().Value(), r.ID().SnowflakeID()); err != nil {
-		if _, rbErr := relShard.DeleteRelEntityAndOut(r.ID().SnowflakeID()); rbErr != nil {
-			return fmt.Errorf("graph: sharded: put relationship incoming leg failed: %w (rollback failed: %v)", err, rbErr)
-		}
-		return err
-	}
-	return nil
+	return s.shards[idx].PutRelationshipCoLocated(r)
 }
 
 // DeleteNodesBatch removes unconnected node rows. It validates the whole input

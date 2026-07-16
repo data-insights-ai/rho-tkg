@@ -2,7 +2,6 @@ package sharded
 
 import (
 	"errors"
-	"fmt"
 
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -36,20 +35,13 @@ func (s *Store) PutRelationship(r *types.Relationship) error {
 	if relShard.HasRelID(r.ID().SnowflakeID()) {
 		return ErrRelExists
 	}
-	// Write the entity + outgoing adjacency, then the incoming adjacency — both
-	// on the rel's shard. Roll back the entity write if the incoming leg fails.
-	if err := relShard.PutRelEntityAndOut(r); err != nil {
-		return err
-	}
-	endID := r.EndNodeID().SnowflakeID()
-	startID := r.StartNodeID().SnowflakeID()
-	if err := relShard.PutRelIncoming(endID, startID, r.TypeToken().Value(), r.ID().SnowflakeID()); err != nil {
-		if _, rbErr := relShard.DeleteRelEntityAndOut(r.ID().SnowflakeID()); rbErr != nil {
-			return fmt.Errorf("graph: sharded: put relationship incoming leg failed: %w (rollback failed: %v)", err, rbErr)
-		}
-		return err
-	}
-	return nil
+	// The rel entity + BOTH adjacency legs live on the rel's shard (ADR-0007), so
+	// this is a single-shard atomic write via the co-located door — one WriteBatch,
+	// one co-committed ChangeRelPut record (endpoints already validated cross-shard
+	// above). The record emission is why this must NOT use the record-free partial
+	// doors (PutRelEntityAndOut/PutRelIncoming) — a sharded rel create would
+	// otherwise be invisible to a tailing replica.
+	return relShard.PutRelationshipCoLocated(r)
 }
 
 func (s *Store) GetRelationship(id types.RelID) (*types.Relationship, error) {
