@@ -362,6 +362,11 @@ func (s *temporalOpsSpy) NowTx() (types.Instant, error) {
 	return 0, s.err
 }
 
+func (s *temporalOpsSpy) PeekTx() (types.Instant, error) {
+	s.record("PeekTx")
+	return 0, s.err
+}
+
 func (s *temporalOpsSpy) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 	s.record("NodesAsOf")
 	return nil, s.err

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // NowTx is the pin primitive: it must return an instant T such that every
@@ -210,5 +211,54 @@ func TestNowTx_ClosedGraphErrors(t *testing.T) {
 	}
 	if _, err := g.Temporal.NowTx(); err == nil {
 		t.Fatal("NowTx on a closed graph must error, got nil")
+	}
+}
+
+// TestPeekTx_DoesNotAdvanceClock proves PeekTx is the non-burning observability read:
+// it returns the current floor and, unlike NowTx, does NOT reserve an instant. The
+// clock floor is pushed far above wall-clock via AdvanceClock so the assertion is
+// deterministic (the floor dominates; wall ticks are irrelevant).
+func TestPeekTx_DoesNotAdvanceClock(t *testing.T) {
+	t.Parallel()
+	for name, cfg := range map[string]Config{"memory": {}, "badger": {BadgerInMemory: true}} {
+		t.Run(name, func(t *testing.T) {
+			g, err := New(cfg)
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			defer g.Close()
+
+			const big = types.Instant(1 << 50) // far above wall-clock ms
+			if _, err := g.Temporal.AdvanceClock(big); err != nil {
+				t.Fatalf("AdvanceClock: %v", err)
+			}
+			// First reservation sits at big+1.
+			n1, err := g.Temporal.NowTx()
+			if err != nil {
+				t.Fatalf("NowTx: %v", err)
+			}
+			if n1 != big+1 {
+				t.Fatalf("NowTx after AdvanceClock(big) = %d, want %d", n1, big+1)
+			}
+			// Many PeekTx calls: each returns the floor exactly, none advance it.
+			for i := 0; i < 1000; i++ {
+				p, err := g.Temporal.PeekTx()
+				if err != nil {
+					t.Fatalf("PeekTx: %v", err)
+				}
+				if p != n1 {
+					t.Fatalf("PeekTx #%d = %d, want %d (floor unchanged, no reservation)", i, p, n1)
+				}
+			}
+			// The next reservation is exactly n1+1 — proving the 1000 PeekTx calls
+			// burned ZERO instants (else this would have jumped far past n1+1).
+			n2, err := g.Temporal.NowTx()
+			if err != nil {
+				t.Fatalf("NowTx 2: %v", err)
+			}
+			if n2 != n1+1 {
+				t.Fatalf("NowTx after 1000 PeekTx = %d, want %d — PeekTx advanced the clock", n2, n1+1)
+			}
+		})
 	}
 }

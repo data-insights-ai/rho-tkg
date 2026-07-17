@@ -37,6 +37,7 @@ type Ops interface {
 
 	// Bitemporal (transaction time)
 	NowTx() (types.Instant, error)
+	PeekTx() (types.Instant, error)
 	AdvanceClock(to types.Instant) (types.Instant, error)
 	NodeAsOf(id types.NodeID, txTime types.Instant) (*types.Node, error)
 	RelAsOf(id types.RelID, txTime types.Instant) (*types.Relationship, error)
@@ -298,6 +299,20 @@ func (a *API) NowTx() (types.Instant, error) {
 		return 0, err
 	}
 	return ops.NowTx()
+}
+
+// PeekTx returns the current transaction-clock value WITHOUT reserving an instant —
+// the non-burning, observability-only sibling of NowTx for metrics/polling loops
+// (which would inflate the commit clock if they called NowTx). It is NOT a sound
+// as-of pin: the value can coincide with a concurrent write's stamp, so pinning a
+// read at PeekTx() includes/excludes that write nondeterministically. For a sound
+// pin use NowTx(), a value returned BY a write, or a named TagAsOf.
+func (a *API) PeekTx() (types.Instant, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, err
+	}
+	return ops.PeekTx()
 }
 
 // AdvanceClock raises the transaction-clock floor to at least `to`, returning the

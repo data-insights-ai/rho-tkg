@@ -510,9 +510,14 @@ docs/adr note); (2) either wire `IntentRecord` to a real distributed producer or
 + its tests to a design note/branch rather than carrying inert code as if shipped. Low risk
 (removing verified-unused code) but doc-heavy — hence a deliberate pass, not a tail-of-session edit.
 
-### 4e. `NowTx()` observability footgun (LOW value)
-`NowTx()` (`txtime.go`) ADVANCES the commit clock (reserves an instant) — a polling/metrics loop
-inflates the clock and burns instants a mutation would take. Either add a non-reserving
-`PeekTx()` documented as OBSERVABILITY-ONLY (NOT a separating pin — it can equal a concurrent
-stamp, so using it as an as-of pin is unsound: a footgun of its own), or just harden the
-`NowTx` godoc against polling. Decide the API shape deliberately.
+### 4e. `NowTx()` observability footgun (LOW value) — ✅ DONE
+Shipped `g.Temporal().PeekTx()` — a non-reserving read of the transaction clock
+(`Core.peekNow` = `max(wall, lastInstant)` with NO CompareAndSwap), the observability
+sibling of `NowTx` for metrics/polling loops that must not burn instants. Documented
+LOUDLY (core + sub-API godoc) as NOT a sound as-of pin — it can coincide with a
+concurrent write's stamp, so pinning at it includes/excludes that write
+nondeterministically; a sound pin is `NowTx()`, a value returned BY a write, or a
+named `TagAsOf`. The `NowTx` godoc is hardened to steer polling to `PeekTx`.
+Deterministic test (floor pushed above wall via `AdvanceClock`): 1000 `PeekTx` calls
+return the floor exactly and burn ZERO instants (the next `NowTx` is floor+1), both
+backends.
