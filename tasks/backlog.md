@@ -392,9 +392,17 @@ scan; it MUST take `QueryOpts` so it honors the B4 valid-time envelope prune ([4
   WITH prefetch measured ~10× SLOWER (re-fills a discarded value window per seek). The naive
   "one range scan beats N Txn.Gets" intuition was WRONG until the prefetch knob was fixed by
   measurement. Single-threaded the DECODE (msgpack→Node), not the fetch txn, is the floor.
-- **Next lever (bigger win): PARALLEL decode.** The one-shot scan is decode-bound and serial;
-  fan the per-node decode across cores (M4 Max = 16). Est. multi-core speedup. Needs care:
-  frozen nodes, output ordering, cache interaction (serve hits inline, parallel-decode misses).
+- **✅ SHIPPED (increment 2) — PARALLEL decode.** `collectNodesBulkParallel` (badger): the
+  serial iterator pass SEEKS + `ValueCopy`s each cache-miss's raw bytes (txn not concurrent-safe),
+  then fans the CPU-bound decode across `GOMAXPROCS` contiguous chunks into per-node result slots.
+  Wired into `fetchNodesByLabelIDs` for unbounded (`Limit==0`) scans of `>= parallelDecodeMinIDs`
+  (2048) candidates; Limit'd scans keep the serial early-stopping door. Decode verified
+  data-parallel-safe (reads the RLock-protected property-key registry, mutates only a per-decode
+  local wire, per-node Freeze, own result slot). **MEASURED ~3× (82→27 ms/50k), +17% transient
+  memory, +2% allocs.** Correctness: parallel == serial on present/tombstoned/absent mix + wired
+  `NodesByLabel` equivalence, `-race` clean. Remaining follow-up: batched raw-byte staging to bound
+  memory for extreme scans; cache-hit-heavy scans skip the fan-out (served inline). Tiered/sharded
+  inherit it (fold per-shard through badger).
 - Remaining spread: apply the bulk substrate to `AllNodes` + the `getProp`/`GetNode` loop in
   `buildLabelColumns`/`buildMultiColumns` (speeds DocValues cold builds). Memory store already
   trivial (live objects); tiered/sharded fold per shard.
@@ -481,7 +489,15 @@ persisting the interval as a store marker (like `wire_format_version`) and faili
 mismatched reopen. Low value (a tuning knob on an opt-in, still-soaking feature) — do only if a
 sweep shows a materially better interval.
 
-### 4d. Ingest strong-mode / IntentRecord cleanup (MEDIUM value, LOW risk)
+### 4d. Ingest strong-mode / IntentRecord cleanup (MEDIUM value, LOW risk) — ✅ DONE
+**Shipped:** the serializable `IntentRecord` codec (`EncodeIntent`/`DecodeIntent`/`wireBody`) was
+removed 2026-07-17 (verified test-only, no non-test caller — CLAUDE.md ingest section + git
+history). The load-bearing §4.5 producer pre-encode was KEPT (concurrent mode reuses it). The doc
+steering is in place (CLAUDE.md marks the single-applier strong-mode pipeline as the durable-
+`SyncWrites` fsync-amortization niche and steers throughput to concurrent mode). No code remains.
+Original analysis retained below for the record.
+
+
 **Problem (verified):** strong mode (single applier) "p8 gains nothing over p1" (CHANGELOG
 [4.14.0]); concurrent mode (self-apply, no applier/handoff/intent records) is the measured
 throughput winner. The serializable `IntentRecord` codec (`EncodeIntent`/`DecodeIntent`,

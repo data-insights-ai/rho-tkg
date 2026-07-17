@@ -101,6 +101,33 @@ func (bs *Store) fetchNodesByLabelIDs(token uint16, ids []types.NodeID, opts Que
 		return nil, nil
 	}
 	hasTemporal := storepkg.HasTemporalFilter(opts)
+
+	// Unbounded large scans (MATCH (n:L) RETURN n) decode the badger misses across
+	// cores — the CPU-bound msgpack decode is the serial floor (~3x measured on a
+	// 16-core box, badgerstore_node_bulk_bench_test.go). Limit'd scans keep the
+	// serial early-stopping door (parallel decode has no early stop). The label +
+	// temporal filter is applied post-decode, identical to the serial callback.
+	if opts.Limit == 0 && len(ids) >= parallelDecodeMinIDs {
+		all, err := bs.collectNodesBulkParallel(ids)
+		if err != nil {
+			return nil, err
+		}
+		nodes := make([]*types.Node, 0, len(all))
+		for _, n := range all {
+			if !n.HasLabelTokenRaw(token) {
+				continue
+			}
+			if hasTemporal && !storepkg.MatchesTemporalFilter(n.ID().SnowflakeID(), n.Temporal(), opts) {
+				continue
+			}
+			nodes = append(nodes, n)
+		}
+		if len(nodes) == 0 {
+			return nil, nil
+		}
+		return nodes, nil
+	}
+
 	nodes := make([]*types.Node, 0, capForLimit(opts.Limit))
 	err := bs.forEachNodeBulk(ids, func(n *types.Node) bool {
 		if !n.HasLabelTokenRaw(token) {
