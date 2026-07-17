@@ -79,7 +79,7 @@ func (c *Core) highFrequencyIndexCap() (storepkg.HighFrequencyIndexCapability, e
 // backends still get the correct semantics — the optional capability is index
 // management/acceleration, not query correctness.
 //
-// Empty-key contract (R4-F9): `indexpkg.PropertyValueKey` returns "" for
+// Empty-key contract: `indexpkg.PropertyValueKey` returns "" for
 // values it cannot canonicalise (slices, maps, nested structs without a
 // custom `HashableValue` etc.). The in-tree backends (and the property
 // index itself) treat such queries as "no matches"; the graph-layer
@@ -146,7 +146,7 @@ func (c *Core) nodesByLabelAndProperty(tok uint16, key string, value any, opts s
 // accelerated CompositePropertyIndexCapability. Mirrors
 // nodesByLabelAndProperty's structure exactly (same trust-boundary shape,
 // same "index acceleration, never the sole source of correctness"
-// contract) — see its doc comment for the empty-key / R4-F9 rationale,
+// contract) — see its doc comment for the empty-key rationale,
 // which applies here per-component via indexpkg.NodeMatchesAllProperties.
 func (c *Core) nodesByLabelAndProperties(tok uint16, values map[string]any, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	if c.compositeQuery != nil {

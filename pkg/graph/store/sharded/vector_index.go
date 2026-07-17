@@ -12,7 +12,7 @@ import (
 )
 
 // Vector indexes (VectorIndexCapability + VectorIndexOptionsCapability +
-// FilteredVectorSearchCapability) — ADR-0007 S5.
+// FilteredVectorSearchCapability) — ADR-0007.
 //
 // A k-NN search must consider vectors GLOBALLY, but a label's nodes are spread
 // across slots. Rather than replicate tiered's store-level index (which hooks

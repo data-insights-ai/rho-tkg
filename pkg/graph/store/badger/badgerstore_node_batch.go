@@ -12,7 +12,7 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// Node batch writes + cascade-delete (R5-F9 split out from badgerstore_node.go).
+// Node batch writes + cascade-delete.
 
 func (bs *Store) DeleteNodeCascade(nid types.NodeID) error {
 	if err := bs.checkWritable(); err != nil {
@@ -365,7 +365,7 @@ func (bs *Store) purgeOrphanRelIDLocked(rid types.RelID) error {
 		delete(bs.relIDs, rid)
 		bs.relCount.Add(-1)
 	}
-	delete(bs.relValidIdx, rid) // OPT15: drop the inline valid-time stamp on node-cascade rel purge
+	delete(bs.relValidIdx, rid) // drop the inline valid-time stamp on node-cascade rel purge
 	bs.relCache.MarkDeleted(rawID)
 	if len(ops) > 0 {
 		bs.appendOps(ops...)
@@ -482,9 +482,9 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 	// cache copy (a full deep copy) and the change-log put payload (a second
 	// msgpack encode) are ALSO built here — both are pure functions of the
 	// caller-owned finalized node, and keeping them inside idxMu was the
-	// dominant contention cost of concurrent batch creates (mutex profile:
-	// ~95% of lock wait in this door). Only the ORDER-sensitive appends (cache
-	// put, index maps, ops, record buffering) stay under the lock.
+	// dominant contention cost of concurrent batch creates. Only the
+	// ORDER-sensitive appends (cache put, index maps, ops, record buffering)
+	// stay under the lock.
 	type nodeData struct {
 		nid    types.NodeID
 		id     snowflake.ID
@@ -573,7 +573,7 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 			ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tok, nd.id)})
 			bs.getOrCreateLabelCounter(tok).Add(1)
 		}
-		bs.recordNodeLabelMembersLocked(n) // K1: transaction-time label membership
+		bs.recordNodeLabelMembersLocked(n) // transaction-time label membership
 		bs.addNodePropertyKeyCounts(n)
 		ops = append(ops, bs.maintainPropertyIndexesAdd(n, nd.id)...)
 		indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, n, nd.id)

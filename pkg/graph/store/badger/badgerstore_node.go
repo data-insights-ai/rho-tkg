@@ -63,7 +63,7 @@ func (bs *Store) PutNode(n *types.Node) error {
 		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tok, id)})
 		bs.getOrCreateLabelCounter(tok).Add(1)
 	}
-	bs.recordNodeLabelMembersLocked(n) // K1: transaction-time label membership
+	bs.recordNodeLabelMembersLocked(n) // transaction-time label membership
 
 	bs.addNodePropertyKeyCounts(n)
 	ops = append(ops, bs.maintainPropertyIndexesAdd(n, id)...)
@@ -264,7 +264,7 @@ func (bs *Store) bumpNodeRevLocked(nid types.NodeID) {
 		bs.nextNodeRev = 1
 	}
 	bs.nodeRevs[nid] = bs.nextNodeRev
-	bs.nodeEpoch.Add(1) // X5: every non-delete node write invalidates cached columns
+	bs.nodeEpoch.Add(1) // every non-delete node write invalidates cached columns
 }
 
 // bumpNodeEpoch marks every cached DocValues column stale. bumpNodeRevLocked
@@ -272,7 +272,7 @@ func (bs *Store) bumpNodeRevLocked(nid types.NodeID) {
 // call it) call this directly. A spurious bump is safe — it only forces a rebuild.
 func (bs *Store) bumpNodeEpoch() { bs.nodeEpoch.Add(1) }
 
-// bumpRelEpoch marks the adjacency view stale for the X5 expand-aggregation column
+// bumpRelEpoch marks the adjacency view stale for the expand-aggregation column
 // path (which reads edges, not just node membership). Called by every relationship
 // mutation. A spurious bump is safe — it only forces a Gate-2 fall-back.
 func (bs *Store) bumpRelEpoch() { bs.relEpoch.Add(1) }
@@ -336,7 +336,7 @@ func (bs *Store) DeleteNode(nid types.NodeID) error {
 	}
 
 	// Pre-fetch node state before acquiring the write lock to avoid holding
-	// idxMu.Lock() during Badger disk I/O on cache misses (B3: lock scope rule).
+	// idxMu.Lock() during Badger disk I/O on cache misses (lock scope rule).
 	// prefetchNode checks the cache and falls through to db.View without any lock.
 	if _, err := bs.prefetchNode(nid); err != nil {
 		return err
@@ -655,7 +655,7 @@ func (bs *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 		set[nid] = struct{}{}
 	}
 	bs.getOrCreateLabelCounter(tok).Add(1)
-	bs.recordNodeLabelMembersLocked(updatedNode) // K1: transaction-time label membership (new token)
+	bs.recordNodeLabelMembersLocked(updatedNode) // transaction-time label membership (new token)
 
 	bs.nodeCache.Put(id, freezeNodeCopy(updatedNode))
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
@@ -712,7 +712,7 @@ func (bs *Store) loadNodeFromBadger(txn *badgerv4.Txn, id snowflake.ID) (*types.
 }
 
 // loadRelFromBadger reads and unmarshals a relationship within an existing
-// Badger transaction — the rel mirror of loadNodeFromBadger, used by the K3b
+// Badger transaction — the rel mirror of loadNodeFromBadger, used by the
 // rel-property-index rebuild at open (loadIndexes).
 func (bs *Store) loadRelFromBadger(txn *badgerv4.Txn, id snowflake.ID) (*types.Relationship, error) {
 	item, err := txn.Get(storepkg.RelKey(id))

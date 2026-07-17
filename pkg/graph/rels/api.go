@@ -24,6 +24,8 @@ type Ops interface {
 	AddWithTx(ctx context.Context, typeName string, startNode, endNode *types.Node, props map[string]any, txFrom types.Instant) (*types.Relationship, error)
 	AddByID(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, error)
 	AddByIDIfAbsent(ctx context.Context, typeName string, startID, endID types.NodeID, props map[string]any) (*types.Relationship, bool, error)
+	AddByIDForeignEnd(ctx context.Context, typeName string, startID types.NodeID, foreignEnd storepkg.ForeignEndpoint, props map[string]any) (*types.Relationship, error)
+	RecordForeignIncoming(ctx context.Context, edge storepkg.ForeignIncomingEdge) error
 	Get(ctx context.Context, id types.RelID) (*types.Relationship, error)
 	GetByIDs(ids []types.RelID) ([]*types.Relationship, error)
 	Update(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error)
@@ -37,6 +39,7 @@ type Ops interface {
 	ForEachByType(typeName string, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 	ByTypeAndProperty(typeName, key string, value any, opts storepkg.QueryOpts) ([]*types.Relationship, error)
 	ForEachByTypePropertyRange(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
+	ForEachByTypePropertyRangeOrdered(typeName, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 	ForEachByTypePropertyPrefix(typeName, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 	Count() (int, error)
 	CountByType(typeName string) (int, error)
@@ -100,7 +103,7 @@ func (a *API) Add(ctx context.Context, typeName string, startNode, endNode *type
 
 // AddWithTx creates a relationship like Add but stamps the caller-supplied
 // txFrom as its transaction time (backfill). Requires the graph to be opened
-// with Config.AllowTxBackfill; see RelOps.AddWithTx and §4.1.
+// with Config.AllowTxBackfill; see RelOps.AddWithTx.
 func (a *API) AddWithTx(ctx context.Context, typeName string, startNode, endNode *types.Node, props map[string]any, txFrom types.Instant) (*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -128,6 +131,38 @@ func (a *API) AddByIDIfAbsent(ctx context.Context, typeName string, startID, end
 		return nil, false, err
 	}
 	return ops.AddByIDIfAbsent(ctx, typeName, startID, endID, props)
+}
+
+// AddByIDForeignEnd creates a relationship whose END node lives on a FOREIGN
+// partition — a slot owned by another machine, not present in the local store
+// (ADR-0010, cross-machine edges). The caller resolves the foreign endpoint
+// out-of-band (an RPC to the owning machine) and supplies it as a
+// store.ForeignEndpoint carrying the attested tkg_to_hash and its provenance;
+// the local start endpoint is locked and hashed normally, and the rel is minted
+// in the start's slot and persisted entirely on this machine. Requires a
+// partitioned (sharded) store — returns ErrForeignEndpointUnsupported otherwise.
+// A foreign START is not supported by this door: execute it on the start's own
+// machine as an ordinary local-start create.
+func (a *API) AddByIDForeignEnd(ctx context.Context, typeName string, startID types.NodeID, foreignEnd storepkg.ForeignEndpoint, props map[string]any) (*types.Relationship, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.AddByIDForeignEnd(ctx, typeName, startID, foreignEnd, props)
+}
+
+// RecordForeignIncoming records a cross-machine edge as an incoming half-edge STUB
+// on the END node's machine (ADR-0010 Model A) so IncomingRelationships(END) is
+// locally complete. Called on the END node's machine after the authoritative edge
+// was created (via AddByIDForeignEnd) on the START node's machine; the caller
+// (sigma) supplies the edge fields via a store.ForeignIncomingEdge. Requires a
+// partitioned (sharded) store — returns ErrForeignEndpointUnsupported otherwise.
+func (a *API) RecordForeignIncoming(ctx context.Context, edge storepkg.ForeignIncomingEdge) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.RecordForeignIncoming(ctx, edge)
 }
 
 // Get returns the relationship with the given ID honoring ctx.
@@ -294,6 +329,29 @@ func (a *API) ForEachByTypePropertyRange(typeName, propKey string, min, max floa
 	return ops.ForEachByTypePropertyRange(typeName, propKey, min, max, inclMin, inclMax, opts, fn)
 }
 
+// ForEachByTypePropertyRangeOrdered streams relationships whose NUMERIC propKey
+// value lies within [min, max] to fn in CONTRACTUAL VALUE ORDER — ascending, or
+// descending when desc, with ties broken by rel ID ascending — the relationship
+// mirror of nodes.API.ForEachByLabelPropertyRangeOrdered (the ORDER BY prop
+// [LIMIT k] / top-k access path). fn returning false stops the scan (LIMIT
+// pushdown, O(k + log n) index work). Candidates come from the rel property
+// index's ordered numeric view, which OVER-SELECTS by design, so fn must re-check
+// its predicate with exact comparison semantics.
+//
+// Non-temporal opts use the index-backed fast path and return
+// store.ErrIndexNotFound when no usable rel property index exists for (type,
+// propKey). A TEMPORAL QueryOpts combination is served by a sound full fold
+// (values resolved at the pin, sorted by value) — correct over a past
+// belief/valid state, needs no index. Same relaxed isolation and frozen-row
+// contract as ForEachByType.
+func (a *API) ForEachByTypePropertyRangeOrdered(typeName, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachByTypePropertyRangeOrdered(typeName, propKey, min, max, inclMin, inclMax, desc, opts, fn)
+}
+
 // ForEachByTypePropertyPrefix streams relationships whose STRING propKey value
 // begins with prefix to fn in CONTRACTUAL VALUE ORDER — lexicographic ascending,
 // or descending when desc, with ties broken by rel ID ascending — the
@@ -424,7 +482,7 @@ func (a *API) ForEachAdjacentEndpoint(nodeID types.NodeID, typeName string, inco
 // ForEachAdjacentEndpointAt streams (relID, otherEndpoint) for nodeID's
 // adjacency in the given direction, yielding only edges valid under the opts
 // temporal filter and rejecting expired edges from inline valid-time stamps
-// WITHOUT decoding relationship rows (OPT15). fn returning false stops the scan.
+// WITHOUT decoding relationship rows. fn returning false stops the scan.
 // See core.RelOps.ForEachAdjacentEndpointAt.
 func (a *API) ForEachAdjacentEndpointAt(nodeID types.NodeID, typeName string, incoming bool, opts storepkg.QueryOpts, fn func(rel types.RelID, other types.NodeID) bool) error {
 	ops, err := a.ready()
@@ -436,7 +494,7 @@ func (a *API) ForEachAdjacentEndpointAt(nodeID types.NodeID, typeName string, in
 
 // ForEachAdjacentRelAt streams the DECODED relationships for nodeID's adjacency
 // in the given direction, yielding only edges valid under the opts temporal
-// filter and skipping the decode of inline-stamp-rejected edges (OPT15). fn
+// filter and skipping the decode of inline-stamp-rejected edges. fn
 // returning false stops the scan. See core.RelOps.ForEachAdjacentRelAt.
 func (a *API) ForEachAdjacentRelAt(nodeID types.NodeID, typeName string, incoming bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
 	ops, err := a.ready()
@@ -659,8 +717,7 @@ func (a *API) NextID() types.RelID {
 // once — or when the consumer's yield returns false (a normal early stop,
 // nothing further is yielded). Any error the scan itself returns (and did not
 // already surface via a per-row ctx check) is yielded once at the end. Shared
-// by Iter / OutgoingIter / IncomingIter; kept unexported and duplicated
-// (rather than shared via a new package) to stay inside this WP's scope.
+// by Iter / OutgoingIter / IncomingIter.
 func iterateForEach[T any](ctx context.Context, yield func(T, error) bool, scan func(fn func(T) bool) error) {
 	var zero T
 	if err := ctx.Err(); err != nil {

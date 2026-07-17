@@ -157,7 +157,7 @@ func (c *Core) applyConcurrentNodeCreates(
 		pn.temporal.TxFrom = ts
 		pn.node.SetTemporal(pn.temporal)
 
-		// §4.5 pre-encoded buffers: tokens are real at prepare in concurrent
+		// pre-encoded buffers: tokens are real at prepare in concurrent
 		// mode, so both buffers stay valid — patch their tails with the stamped
 		// TxFrom (the ChangeNodePut payload's tail is terminal for a create). A
 		// patch failure just falls back to encode-at-door (byte-identical).
@@ -334,7 +334,7 @@ func (c *Core) applyConcurrentRelCreates(
 				}
 			}
 
-			rel, kerr := c.createRelWithTypeRollback(pr.typeName, storeCanCaptureEndpointHashes, func(typeToken uint16) (*types.Relationship, *types.RelIntegrity, error) {
+			rel, kerr := c.createRelWithTypeRollback(pr.typeName, relPersistModeFor(storeCanCaptureEndpointHashes), func(typeToken uint16) (*types.Relationship, *types.RelIntegrity, error) {
 				setPendingRelationshipType(pr, typeToken)
 				return pr.rel, pr.relIntegrity, nil
 			})

@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Relationship batch writes (R5-F9 split out from badgerstore_rel.go).
+// Relationship batch writes.
 
 func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 	if err := bs.checkOpen(); err != nil {
@@ -21,7 +21,7 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
-	defer bs.bumpRelEpoch() // X5 expand path: adjacency view changed
+	defer bs.bumpRelEpoch() // expand path: adjacency view changed
 
 	// Pre-serialize all relationships outside the lock.
 	type relData struct {
@@ -129,9 +129,9 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 			}
 			bs.inIdx[rd.endNID][rd.rid] = inEdge{start: rd.startNID, typ: rd.relType}
 		}
-		bs.setRelValidStampLocked(rd.rid, r)       // OPT15: inline valid-time stamp
-		bs.recordRelTypeMemberLocked(r)            // K1: transaction-time rel-type membership
-		bs.maintainRelPropertyIndexesAdd(r, rd.id) // K3b
+		bs.setRelValidStampLocked(rd.rid, r) // inline valid-time stamp
+		bs.recordRelTypeMemberLocked(r)      // transaction-time rel-type membership
+		bs.maintainRelPropertyIndexesAdd(r, rd.id)
 
 		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.RelKey(rd.id), value: rd.data})
 		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.RelTypeIndexKey(rd.relType, rd.id)})
@@ -166,7 +166,7 @@ func (bs *Store) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
-	defer bs.bumpRelEpoch() // X5 expand path: adjacency view changed
+	defer bs.bumpRelEpoch() // expand path: adjacency view changed
 	for _, id := range typedIDs {
 		if err := storecontract.ValidateRelID(id); err != nil {
 			return err

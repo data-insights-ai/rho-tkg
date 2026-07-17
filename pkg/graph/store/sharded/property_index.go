@@ -8,7 +8,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Node property indexes (PropertyIndexCapability) — ADR-0007 S5.
+// Node property indexes (PropertyIndexCapability) — ADR-0007.
 //
 // A label's nodes are distributed across slots, so a property index has no
 // single home shard (unlike tiered, which routes property indexes to its

@@ -95,7 +95,7 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 		return nil, ErrSelfLoop
 	}
 
-	// R4-F14 / R5-F6: defer registry-token allocation until after the
+	// defer registry-token allocation until after the
 	// cheap validation gates (self-loop, ID==0, nil endpoints), the
 	// collision probe, AND the live-endpoint fetches. Every operational
 	// failure path that can reject the import must run before we touch
@@ -117,7 +117,7 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 		return nil, err
 	}
 
-	// Check for collision (R4-F14, R4-F15). Probe BEFORE allocating
+	// Check for collision. Probe BEFORE allocating
 	// the rel-type token so a duplicate import never pollutes the
 	// registry. Probe must surface non-not-found errors instead of
 	// silently treating them as absence — operational store failures
@@ -130,7 +130,7 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 
 	var fromHash, toHash string
 	if c.constraints.Len() > 0 {
-		// Fetch live endpoints under the endpoint locks (R4-F5). The
+		// Fetch live endpoints under the endpoint locks. The
 		// caller-supplied `startNode`/`endNode` pointers are advisory —
 		// only their IDs are load-bearing for routing. Constraint checks
 		// must use the current persisted state.
@@ -154,7 +154,7 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 		return nil, err
 	}
 
-	// R5-F6: only allocate the rel-type token now that every cheap,
+	// only allocate the rel-type token now that every cheap,
 	// operational, and temporal-constraint rejection gate has been cleared.
 	typeToken, relTypeSnapshot, allocatedRelType, err := c.getOrCreateRelTypeWithSnapshot(typeName)
 	if err != nil {

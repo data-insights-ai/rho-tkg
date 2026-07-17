@@ -5,7 +5,7 @@ import (
 )
 
 // Property-key statistics (NodePropertyKeyStatsCapability +
-// NodePropertyTypeClassCountsCapability) and range cardinality — ADR-0007 S5.
+// NodePropertyTypeClassCountsCapability) and range cardinality — ADR-0007.
 //
 // These counters are maintained per shard on every node mutation (the store's
 // adjustNodePropertyKeyCounts choke point), independent of any property index,

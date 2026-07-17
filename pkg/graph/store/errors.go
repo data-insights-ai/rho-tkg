@@ -45,6 +45,15 @@ var (
 	// diagnostics, but the sentinel is the contract.
 	ErrCapabilityNotSupported = errors.New("graph: store does not support this capability")
 
+	// ErrSlotNotLocal is returned by a PARTITIONED store when an entity's snowflake
+	// slot is not owned by this store (its authority lives on another partition —
+	// ADR-0007/0010). The slot-sharded backend re-exports it as sharded.ErrSlotNotLocal
+	// (same value) so a point read routed to the wrong partition, and a foreign-
+	// incoming stub whose rel-ID slot is foreign, both fail closed with it. Declared
+	// here (not only in the sharded package) so the partition-agnostic graph layer
+	// can errors.Is against it — e.g. to recognize a Model-A stub during tx rollback.
+	ErrSlotNotLocal = errors.New("graph: entity slot not local to this partitioned store")
+
 	// ErrOrderedScanTemporal is a LEGACY sentinel retained for backward
 	// compatibility. The ordered / prefix scan doors used to DECLINE temporal
 	// QueryOpts with this error (the value ordering came from the valid-time-

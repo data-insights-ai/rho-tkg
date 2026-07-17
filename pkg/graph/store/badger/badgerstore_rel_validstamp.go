@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Inline valid-time adjacency stamps (OPT15 — LiveGraph VLDB 2020 inline-edge
+// Inline valid-time adjacency stamps (LiveGraph VLDB 2020 inline-edge
 // timestamps, in-memory arm).
 //
 // A temporal adjacency traversal (give me nid's neighbours valid at time T)

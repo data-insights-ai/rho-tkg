@@ -14,7 +14,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Relationship property indexes (K3b) — the rel mirror of badgerstore_index.go's
+// Relationship property indexes — the rel mirror of badgerstore_index.go's
 // node property indexes, keyed by rel-type token. RAM-only v1: the value maps
 // live entirely in RAM (bs.relPropertyIndexes), only the DEFINITIONS are
 // persisted (RelPropIndexDefsKey), and the maps are rebuilt from current

@@ -36,6 +36,13 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 			_, _, err := nilAPI.AddByIDIfAbsent(ctx, "KNOWS", nodeID, nodeID, nil)
 			return err
 		}},
+		{name: "AddByIDForeignEnd", run: func() error {
+			_, err := nilAPI.AddByIDForeignEnd(context.Background(), "KNOWS", nodeID, storepkg.ForeignEndpoint{}, nil)
+			return err
+		}},
+		{name: "RecordForeignIncoming", run: func() error {
+			return nilAPI.RecordForeignIncoming(context.Background(), storepkg.ForeignIncomingEdge{})
+		}},
 		{name: "Get", run: func() error { _, err := nilAPI.Get(context.Background(), relID); return err }},
 		{name: "GetWithContext", run: func() error { _, err := nilAPI.Get(ctx, relID); return err }},
 		{name: "GetByIDs", run: func() error { _, err := nilAPI.GetByIDs([]types.RelID{relID}); return err }},
@@ -162,6 +169,13 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 			}
 			return err
 		}},
+		{name: "AddByIDForeignEnd", run: func() error {
+			_, err := api.AddByIDForeignEnd(context.Background(), "KNOWS", nodeID, storepkg.ForeignEndpoint{NodeID: nodeID, Hash: "h", AttestTx: 1}, nil)
+			return err
+		}},
+		{name: "RecordForeignIncoming", run: func() error {
+			return api.RecordForeignIncoming(context.Background(), storepkg.ForeignIncomingEdge{TypeName: "KNOWS"})
+		}},
 		{name: "Get", run: func() error { _, err := api.Get(context.Background(), relID); return err }},
 		{name: "GetWithContext", run: func() error { _, err := api.Get(ctx, relID); return err }},
 		{name: "GetByIDs", run: func() error { _, err := api.GetByIDs([]types.RelID{relID}); return err }},
@@ -252,7 +266,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 
 	wantCalls := []string{
 		"Add", "Add", "AddWithTx", "AddByID", "AddByID",
-		"AddByIDIfAbsent", "AddByIDIfAbsent", "Get", "Get", "GetByIDs",
+		"AddByIDIfAbsent", "AddByIDIfAbsent", "AddByIDForeignEnd", "RecordForeignIncoming", "Get", "Get", "GetByIDs",
 		"Update", "Update", "UpdateInPlace", "UpdateInPlace",
 		"Delete", "Delete", "Import", "All",
 		"ForEach", "ForEach", "ForEachOutgoing", "ForEachIncoming", "ByType",
@@ -343,6 +357,19 @@ func (s *relOpsSpy) AddByIDIfAbsentWithContext(ctx context.Context, typeName str
 	return nil, s.created, s.err
 }
 
+func (s *relOpsSpy) AddByIDForeignEnd(ctx context.Context, typeName string, startID types.NodeID, foreignEnd storepkg.ForeignEndpoint, props map[string]any) (*types.Relationship, error) {
+	s.record("AddByIDForeignEnd")
+	s.lastType = typeName
+	s.lastNodeID = startID
+	return nil, s.err
+}
+
+func (s *relOpsSpy) RecordForeignIncoming(ctx context.Context, edge storepkg.ForeignIncomingEdge) error {
+	s.record("RecordForeignIncoming")
+	s.lastType = edge.TypeName
+	return s.err
+}
+
 func (s *relOpsSpy) Get(ctx context.Context, id types.RelID) (*types.Relationship, error) {
 	s.record("Get")
 	s.lastRelID = id
@@ -428,6 +455,13 @@ func (s *relOpsSpy) ByTypeAndProperty(typeName, key string, value any, opts stor
 
 func (s *relOpsSpy) ForEachByTypePropertyRange(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
 	s.record("ForEachByTypePropertyRange")
+	s.lastType = typeName
+	s.lastOpts = opts
+	return s.err
+}
+
+func (s *relOpsSpy) ForEachByTypePropertyRangeOrdered(typeName, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
+	s.record("ForEachByTypePropertyRangeOrdered")
 	s.lastType = typeName
 	s.lastOpts = opts
 	return s.err

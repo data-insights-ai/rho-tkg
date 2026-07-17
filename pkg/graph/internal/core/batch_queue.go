@@ -15,7 +15,7 @@ import (
 //
 // Returns ErrBatchDone if Execute has already started, or ErrGraphClosed if
 // the underlying graph has been closed since the builder was constructed
-// (R5-F5: queue methods must respect the same lifecycle gate as standalone
+// (queue methods must respect the same lifecycle gate as standalone
 // mutations).
 func (b *BatchBuilder) AddNode(labels []string, props map[string]any) (*types.Node, error) {
 	nodes, err := b.addNodes(labels, props, 1, true)
@@ -204,8 +204,7 @@ func (b *BatchBuilder) preEncodeNodeBody(pn *pendingNode) error {
 // Returns the created relationship.
 //
 // Returns ErrBatchDone if Execute has already started, or ErrGraphClosed if
-// the underlying graph has been closed since the builder was constructed
-// (R5-F5).
+// the underlying graph has been closed since the builder was constructed.
 func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *types.Node, props map[string]any) (*types.Relationship, error) {
 	if err := b.lockOpen(); err != nil {
 		return nil, err
@@ -325,8 +324,7 @@ func (b *BatchBuilder) AddRelationship(typeName string, startNode, endNode *type
 
 // UpdateNode queues a node update. Keys and values are validated eagerly.
 // Returns ErrBatchDone if Execute has already started, or ErrGraphClosed if
-// the underlying graph has been closed since the builder was constructed
-// (R5-F5).
+// the underlying graph has been closed since the builder was constructed.
 func (b *BatchBuilder) UpdateNode(id types.NodeID, updates map[string]any) error {
 	if err := b.lockOpen(); err != nil {
 		return err
@@ -354,8 +352,7 @@ func (b *BatchBuilder) UpdateNode(id types.NodeID, updates map[string]any) error
 
 // UpdateRelationship queues a relationship update. Keys and values are validated eagerly.
 // Returns ErrBatchDone if Execute has already started, or ErrGraphClosed if
-// the underlying graph has been closed since the builder was constructed
-// (R5-F5).
+// the underlying graph has been closed since the builder was constructed.
 func (b *BatchBuilder) UpdateRelationship(id types.RelID, updates map[string]any) error {
 	if err := b.lockOpen(); err != nil {
 		return err
@@ -457,10 +454,7 @@ func (b *BatchBuilder) SetRelVersionInterval(id types.RelID, validFrom, validTo 
 
 // DeleteNode queues a node for deletion (cascade via Graph.Nodes.Delete).
 // Returns ErrBatchDone if Execute has already started, or ErrGraphClosed if
-// the underlying graph has been closed since the builder was constructed
-// (R5-F5). The error return was added alongside the lifecycle gate; pre-R5
-// callers that ignored the value continue to work via the default _
-// assignment.
+// the underlying graph has been closed since the builder was constructed.
 func (b *BatchBuilder) DeleteNode(id types.NodeID) error {
 	if err := b.lockOpen(); err != nil {
 		return err
@@ -484,8 +478,7 @@ func (b *BatchBuilder) DeleteNode(id types.NodeID) error {
 
 // DeleteRelationship queues a relationship for deletion.
 // Returns ErrBatchDone if Execute has already started, or ErrGraphClosed if
-// the underlying graph has been closed since the builder was constructed
-// (R5-F5).
+// the underlying graph has been closed since the builder was constructed.
 func (b *BatchBuilder) DeleteRelationship(id types.RelID) error {
 	if err := b.lockOpen(); err != nil {
 		return err

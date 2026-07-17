@@ -59,6 +59,8 @@ type Core struct {
 	generatedCreate       generatedcreate.Capability
 	endpointHash          storepkg.EndpointIntegrityHashCapability
 	endpointHashWrite     generatedcreate.RelationshipEndpointHashCapability
+	foreignEndpointRel    generatedcreate.ForeignEndpointRelCapability
+	foreignIncomingRel    generatedcreate.ForeignIncomingRelCapability
 	nodeHash              storepkg.NodeIntegrityHashCapability
 	txTimeQuery           storepkg.TransactionTimeQueryCapability
 	txTimeQueryCopy       bool
@@ -74,13 +76,13 @@ type Core struct {
 	depthHistory          storepkg.DepthHistoryIterationCapability
 	deletedIter           storepkg.DeletedIterationCapability
 	deletedDepthIter      storepkg.DepthDeletedIterationCapability
-	// K1 — transaction-time membership sidecars: scope a pinned label/type scan's
+	// transaction-time membership sidecars: scope a pinned label/type scan's
 	// candidate set to the label/type's ever-members (O(matches)) instead of the
 	// whole node/rel-history fold (O(everything ever)). nil = store declines
 	// (tiered), so the query falls back to the full-history candidate fold.
 	labelTxMembers   storepkg.LabelTxMembershipCapability
 	relTypeTxMembers storepkg.RelTypeTxMembershipCapability
-	// temporalCandidates — B4 valid-time candidate prune: narrow a temporal
+	// temporalCandidates — valid-time candidate prune: narrow a temporal
 	// ByLabel/ByType query's candidate set by the per-label valid-time envelope
 	// index before resolving each chain. nil = store declines (no temporal-index
 	// support), so the query resolves every candidate (correct, unaccelerated).
@@ -108,7 +110,13 @@ type Core struct {
 	// ad-hoc-assert sprawl STAGE 0 identified).
 	metaKV            storepkg.MetaKVCapability
 	historyCompaction storepkg.HistoryCompactionCapability
+	retentionPurge    storepkg.RetentionPurgeCapability
+	rangePurgeLog     storepkg.RangePurgeLogCapability
 	readOnlyReplica   bool
+	// allowRetentionPurge gates the ADR-0008 R2 hard-purge admin door
+	// (g.Admin().PurgeExpiredNodes). Off by default — a destructive, no-tombstone
+	// range removal must be explicitly enabled. Wired from Config.AllowRetentionPurge.
+	allowRetentionPurge bool
 	// allowTxBackfill enables the privileged transaction-time backfill door:
 	// when true, create doors honor a caller-supplied tkg_tx_from (or
 	// AddWithTx) instead of stamping c.now(), so a re-ingest can faithfully
@@ -201,7 +209,7 @@ type Core struct {
 	// time.Now in New(); c.now() makes the observed instant monotonic
 	// per Core so fast same-millisecond mutations still get ordered
 	// transaction intervals. Test helpers swap it for a deterministic
-	// counter without relying on wall-clock sleeps (R4-F20). Only ever
+	// counter without relying on wall-clock sleeps. Only ever
 	// read from goroutines that hold the appropriate Core lock — the
 	// value is set once in New and (in tests) replaced under exclusive
 	// access.
@@ -399,6 +407,22 @@ var (
 	// installs this guard BEFORE any purge exists (ADR staged plan), so a
 	// half-built purge can never read as complete.
 	ErrRetentionExpired = errors.New("graph: entities purged per retention policy below the requested time")
+
+	// ErrRetentionPurgeDisabled is returned by the purge admin door when the graph
+	// was not opened with Config.AllowRetentionPurge. A no-tombstone hard removal
+	// must be explicitly enabled.
+	ErrRetentionPurgeDisabled = errors.New("graph: retention purge is disabled (set Config.AllowRetentionPurge to enable g.Admin().PurgeExpiredNodes)")
+
+	// ErrRetentionPurgeChangeLogEnabled is returned by the purge admin door while a
+	// change-log is enabled: the single ChangeRangePurge record + a replica's
+	// re-execution of the predicate (ADR-0008 R3) are not yet built, so a purge on
+	// a replicated store would silently diverge the replica. Mirrors
+	// ErrCompactionChangeLogEnabled — the restriction lifts when R3 lands.
+	ErrRetentionPurgeChangeLogEnabled = errors.New("graph: retention purge is unavailable while the change-log is enabled (purge + replication lands in R3)")
+
+	// ErrInvalidPurgePolicy is returned when a PurgePolicy is missing its Label,
+	// carries a non-positive Before, or names an unsupported Mode.
+	ErrInvalidPurgePolicy = errors.New("graph: retention purge policy requires a non-empty Label, a positive Before, and a supported Mode")
 )
 
 // Re-exports of registry errors and index errors used by methods on *Core.
@@ -603,6 +627,13 @@ type Config struct {
 	// correction recorded now is stamped now). TxFrom is not part of the
 	// integrity hash, so a backfilled row still verifies and replicates verbatim.
 	AllowTxBackfill bool
+
+	// AllowRetentionPurge enables the ADR-0008 R2 retention-purge admin door
+	// (g.Admin().PurgeExpiredNodes), which HARD-removes whole aged-out nodes of a
+	// label — no tombstones — for range-scale event retention. Off by default: a
+	// destructive removal that cannot be undone must be opted into. When off the
+	// door fails closed with ErrRetentionPurgeDisabled.
+	AllowRetentionPurge bool
 
 	// IngestLanes is the number of extra per-lane UNIFIED ID generators built for
 	// concurrent-ingest write parallelism (ADR-0007 S4). Zero (default) keeps the
@@ -1340,22 +1371,23 @@ func New(config Config) (*Core, error) {
 	}
 
 	c := &Core{
-		labels:          registrypkg.NewLabelRegistry(),
-		relTypes:        registrypkg.NewRelTypeRegistry(),
-		propKeys:        registrypkg.NewPropertyKeyRegistry(),
-		nodeIDGen:       nodeGen,
-		relIDGen:        relGen,
-		laneGenerators:  laneGens,
-		laneSlots:       laneSlots,
-		entityLocks:     locks.NewManager(),
-		valueLocks:      locks.NewValueManager(),
-		validation:      v,
-		indexProviders:  make(map[string]*indexProviderEntry),
-		relTypeCache:    make(map[string]uint16),
-		clock:           time.Now,
-		readOnlyReplica: config.ReadOnlyReplica,
-		allowTxBackfill: config.AllowTxBackfill,
-		replSource:      config.ReplicationSource,
+		labels:              registrypkg.NewLabelRegistry(),
+		relTypes:            registrypkg.NewRelTypeRegistry(),
+		propKeys:            registrypkg.NewPropertyKeyRegistry(),
+		nodeIDGen:           nodeGen,
+		relIDGen:            relGen,
+		laneGenerators:      laneGens,
+		laneSlots:           laneSlots,
+		entityLocks:         locks.NewManager(),
+		valueLocks:          locks.NewValueManager(),
+		validation:          v,
+		indexProviders:      make(map[string]*indexProviderEntry),
+		relTypeCache:        make(map[string]uint16),
+		clock:               time.Now,
+		readOnlyReplica:     config.ReadOnlyReplica,
+		allowTxBackfill:     config.AllowTxBackfill,
+		allowRetentionPurge: config.AllowRetentionPurge,
+		replSource:          config.ReplicationSource,
 	}
 	c.Nodes = &NodeOps{c: c}
 	c.Rels = &RelOps{c: c}
@@ -1451,6 +1483,8 @@ func New(config Config) (*Core, error) {
 	c.generatedCreate = nativeGeneratedCreate(store)
 	c.endpointHash = nativeEndpointIntegrityHash(store)
 	c.endpointHashWrite = nativeRelationshipEndpointHashWrite(store)
+	c.foreignEndpointRel, _ = store.(generatedcreate.ForeignEndpointRelCapability)
+	c.foreignIncomingRel, _ = store.(generatedcreate.ForeignIncomingRelCapability)
 	c.nodeHash = nativeNodeIntegrityHash(store)
 	c.txTimeQuery = nativeTransactionTimeQuery(store)
 	_, txTimeQueryIsNativeMemory := store.(*memory.Store)
@@ -1472,8 +1506,8 @@ func New(config Config) (*Core, error) {
 	c.deletedDepthIter = depthDeletedIterationCapability(store)
 	c.labelTxMembers = labelTxMembershipCapability(store)
 	c.relTypeTxMembers = relTypeTxMembershipCapability(store)
-	// B4: valid-time candidate prune is sound for ANY store that offers it (an
-	// unknown id is never pruned), so unlike the K1 membership sidecar it needs no
+	// valid-time candidate prune is sound for ANY store that offers it (an
+	// unknown id is never pruned), so unlike the membership sidecar it needs no
 	// exact-native-store guard — a plain probe admits memory/badger now and
 	// tiered/sharded once they implement it.
 	c.temporalCandidates, _ = store.(storepkg.TemporalCandidateCapability)
@@ -1481,13 +1515,15 @@ func New(config Config) (*Core, error) {
 	// equal to the former per-site `_, ok := c.store.(X)` since store is immutable).
 	c.metaKV, _ = store.(storepkg.MetaKVCapability)
 	c.historyCompaction, _ = store.(storepkg.HistoryCompactionCapability)
+	c.retentionPurge, _ = store.(storepkg.RetentionPurgeCapability)
+	c.rangePurgeLog, _ = store.(storepkg.RangePurgeLogCapability)
 	c.vectorRowsTrust = isExactNativeStore(store)
 	c.storeRowsTrust = isExactNativeStore(store)
 	c.nativeAdjacency = nativeAdjacencyReadsValidateNodeExistence(store)
 
 	// Registry rehydration for caller-injected stores. The Core-
 	// constructed badger.Store path above already loads registries; the
-	// inject path also has to (R4-F1). Without this, opening an
+	// inject path also has to. Without this, opening an
 	// existing badger.Store separately and passing it via
 	// `Config{Store: bs}` would start the graph with empty in-memory
 	// registries even though the persisted entities use tokenised
@@ -1598,8 +1634,7 @@ type badgerRegistryLoader interface {
 
 // Close saves registries (if Badger) and closes the underlying store.
 //
-// Close is serialized against in-flight standalone mutations and reads
-// (R4-F3). The closed-state flag is set BEFORE acquiring c.mu.Lock so
+// Close is serialized against in-flight standalone mutations and reads. The closed-state flag is set BEFORE acquiring c.mu.Lock so
 // that any RLock acquired after Close releases its Lock observes
 // closed=true and short-circuits with ErrGraphClosed (see
 // runUnderRLock). Provider drain happens under c.mu.Lock so it cannot

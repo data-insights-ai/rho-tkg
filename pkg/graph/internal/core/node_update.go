@@ -189,7 +189,7 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 	if err != nil {
 		return nil, false, fmt.Errorf("graph: compute node hash: %w", err)
 	}
-	// Preserve existing integrity metadata (B3 — Update previously wiped
+	// Preserve existing integrity metadata (Update previously wiped
 	// AuthorID / Signature / AuthorizedBy / AuthorizationLevel whenever a
 	// caller restated even one of them). Only overwrite the four caller-
 	// supplied provenance fields that are explicitly present in `updates`.

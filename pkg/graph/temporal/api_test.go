@@ -39,6 +39,7 @@ func TestAPINilReceiversReturnErrNilGraph(t *testing.T) {
 		{name: "NodesRelating", run: func() error { _, err := nilAPI.NodesRelating(1, 2, types.Before.Set()); return err }},
 		{name: "RelsRelating", run: func() error { _, err := nilAPI.RelsRelating(1, 2, types.Before.Set()); return err }},
 		{name: "NowTx", run: func() error { _, err := nilAPI.NowTx(); return err }},
+		{name: "AdvanceClock", run: func() error { _, err := nilAPI.AdvanceClock(1); return err }},
 		{name: "NodeAsOf", run: func() error { _, err := nilAPI.NodeAsOf(nodeID, 1); return err }},
 		{name: "RelAsOf", run: func() error { _, err := nilAPI.RelAsOf(relID, 1); return err }},
 		{name: "NodesAsOf", run: func() error { _, err := nilAPI.NodesAsOf(1); return err }},
@@ -127,6 +128,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "NodesRelating", run: func() error { _, err := api.NodesRelating(1, 2, types.Before.Set()); return err }},
 		{name: "RelsRelating", run: func() error { _, err := api.RelsRelating(1, 2, types.Before.Set()); return err }},
 		{name: "NowTx", run: func() error { _, err := api.NowTx(); return err }},
+		{name: "AdvanceClock", run: func() error { _, err := api.AdvanceClock(1); return err }},
 		{name: "NodeAsOf", run: func() error { _, err := api.NodeAsOf(nodeID, 1); return err }},
 		{name: "RelAsOf", run: func() error { _, err := api.RelAsOf(relID, 1); return err }},
 		{name: "NodesAsOf", run: func() error { _, err := api.NodesAsOf(1); return err }},
@@ -202,7 +204,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		"NodeAt", "NodesAt", "NodesByLabelAt", "RelAt", "RelsAt", "RelsByTypeAt",
 		"NeighborsAt", "OutgoingRelsAt", "IncomingRelsAt", "NodesByLabelPropertyAt", "RelsByTypePropertyAt", "NodesDuring", "RelsDuring",
 		"NodesByLabelPropertyDuring", "RelsByTypePropertyDuring", "NodesRelating", "RelsRelating",
-		"NowTx", "NodeAsOf", "RelAsOf", "NodesAsOf", "RelsAsOf",
+		"NowTx", "AdvanceClock", "NodeAsOf", "RelAsOf", "NodesAsOf", "RelsAsOf",
 		"NodeAtTx", "RelAtTx", "NodesAtTx", "RelsAtTx", "NodesDuringTx", "RelsDuringTx",
 		"SetNodeVersionInterval", "SetRelVersionInterval",
 		"Snapshot", "Diff", "DiffCallback", "NodeInterval", "RelInterval", "RelateNodes", "RelateRels",
@@ -348,6 +350,11 @@ func (s *temporalOpsSpy) RelAsOf(id types.RelID, txTime types.Instant) (*types.R
 	s.record("RelAsOf")
 	s.lastRelID = id
 	return nil, s.err
+}
+
+func (s *temporalOpsSpy) AdvanceClock(to types.Instant) (types.Instant, error) {
+	s.record("AdvanceClock")
+	return to, s.err
 }
 
 func (s *temporalOpsSpy) NowTx() (types.Instant, error) {

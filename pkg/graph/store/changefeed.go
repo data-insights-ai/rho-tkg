@@ -48,6 +48,35 @@ const (
 	// ChangeClear marks a full store clear (DropAll). A replica applying it must
 	// clear its own state. Carries no body.
 	ChangeClear ChangeTag = 10
+
+	// ChangeForeignIncoming is the cross-machine incoming half-edge stub (ADR-0010
+	// Model A): a relationship whose ID belongs to a FOREIGN slot but is stored
+	// on the END node's shard so IncomingRelationships(END) is locally complete.
+	// Body is the same as ChangeRelPut (the stub's RelWire), but a replica MUST
+	// route apply by the END-node's slot (not the rel's slot, which is foreign),
+	// idempotently — a plain ChangeRelPut apply would route by rel-slot and fail
+	// ErrSlotNotLocal. Emitted only by the sharded store's RecordForeignIncoming.
+	ChangeForeignIncoming ChangeTag = 11
+
+	// ChangeForeignIncomingDelete removes a Model-A incoming half-edge stub
+	// (ADR-0010 §3.3 cascade). It is the delete counterpart of ChangeForeignIncoming
+	// and, like it, MUST route apply by the END-node's slot — the rel's own slot is
+	// foreign, so a plain ChangeRelDelete apply would fail ErrSlotNotLocal. Emitted
+	// when the END node is deleted (the stub's row + adjacency are removed from the
+	// END shard) BEFORE the node's own with-history delete, so the node-delete
+	// tombstone validation sees a stub-free adjacency. Body is ForeignIncoming
+	// DeleteBody (rel ID + END-node ID for routing). Idempotent on apply.
+	ChangeForeignIncomingDelete ChangeTag = 12
+
+	// ChangeRangePurge is a retention range purge (ADR-0008 R3): a single logical
+	// record naming a PREDICATE ("label L older than T"), NOT N per-entity deletes.
+	// A replica RE-EXECUTES the predicate against its own state — because replicas
+	// apply LSN-ordered, their pre-purge state for label L below the boundary is
+	// byte-identical to the primary's, so the same range predicate removes exactly
+	// the same entities (even onto a different shard count). Body is RangePurgeBody
+	// (label token + boundary + mode). Idempotent: re-executing below an
+	// already-advanced watermark is a no-op.
+	ChangeRangePurge ChangeTag = 13
 )
 
 // String renders the tag for diagnostics and tests.
@@ -73,6 +102,12 @@ func (t ChangeTag) String() string {
 		return "Meta"
 	case ChangeClear:
 		return "Clear"
+	case ChangeForeignIncoming:
+		return "ForeignIncoming"
+	case ChangeForeignIncomingDelete:
+		return "ForeignIncomingDelete"
+	case ChangeRangePurge:
+		return "RangePurge"
 	default:
 		return "ChangeTag(unknown)"
 	}
@@ -80,7 +115,7 @@ func (t ChangeTag) String() string {
 
 // Valid reports whether t is a known change tag.
 func (t ChangeTag) Valid() bool {
-	return t >= ChangeNodePut && t <= ChangeClear
+	return t >= ChangeNodePut && t <= ChangeRangePurge
 }
 
 // ChangeRecord is one entry of the durable ordered change-log (op-log). LSN is

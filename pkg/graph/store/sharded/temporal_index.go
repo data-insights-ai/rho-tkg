@@ -5,7 +5,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Temporal indexes (TemporalIndexCapability) — ADR-0007 S5.
+// Temporal indexes (TemporalIndexCapability) — ADR-0007.
 //
 // A temporal index accelerates a shard's own label-scoped temporal scans over
 // its LOCAL nodes; a label's nodes are distributed across slots, so the index

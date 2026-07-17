@@ -11,7 +11,7 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-// Property type tags + value reconstruction (R5-F9 split out from wire.go).
+// Property type tags + value reconstruction.
 //
 // File layout:
 //   - wire.go        — NodeWire / RelWire / PropertyWire types + entity-level

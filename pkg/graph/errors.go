@@ -111,12 +111,16 @@ var (
 	ErrNameTooLong             = core.ErrNameTooLong
 	ErrSelfLoop                = core.ErrSelfLoop
 	ErrValidFromBeforePrevious = core.ErrValidFromBeforePrevious
+	// Cross-machine (foreign-endpoint) edges (ADR-0010).
+	ErrForeignEndpointUnsupported = core.ErrForeignEndpointUnsupported
+	ErrForeignEndpointConstraint  = core.ErrForeignEndpointConstraint
+	ErrInvalidForeignEndpoint     = storepkg.ErrInvalidForeignEndpoint
 	// Generic-door belief-state pin conflict (QueryOpts.TxPin).
 	ErrConflictingTemporalOpts = core.ErrConflictingTemporalOpts
-	// §4.1 transaction-time backfill.
+	// Transaction-time backfill.
 	ErrTxBackfillDisabled = core.ErrTxBackfillDisabled
 	ErrInvalidTxFrom      = core.ErrInvalidTxFrom
-	// §4.2 named as-of (Erkenntniszeit) tags.
+	// Named as-of (Erkenntniszeit) tags.
 	ErrInvalidAsOfTag  = core.ErrInvalidAsOfTag
 	ErrTooManyAsOfTags = core.ErrTooManyAsOfTags
 	// Unique property constraints (ADR-0002).
@@ -132,10 +136,13 @@ var (
 	ErrInvalidRetentionPolicy     = core.ErrInvalidRetentionPolicy
 	ErrCompactionChangeLogEnabled = core.ErrCompactionChangeLogEnabled
 	// Retention purge (ADR-0008).
-	ErrRetentionExpired = core.ErrRetentionExpired
+	ErrRetentionExpired               = core.ErrRetentionExpired
+	ErrRetentionPurgeDisabled         = core.ErrRetentionPurgeDisabled
+	ErrRetentionPurgeChangeLogEnabled = core.ErrRetentionPurgeChangeLogEnabled
+	ErrInvalidPurgePolicy             = core.ErrInvalidPurgePolicy
 )
 
-// IO sentinels (R4-F8). Re-exported so external callers can write
+// IO sentinels. Re-exported so external callers can write
 // `errors.Is(err, ErrImportSizeLimit)` without dipping into internal/core.
 // Mirrored on pkg/graph/io as well — pick whichever import the caller
 // already has.

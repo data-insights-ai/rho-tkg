@@ -329,7 +329,7 @@ func (bs *Store) CreateTemporalIndex(labelToken uint16) error {
 	}
 	bs.idxMu.Unlock()
 
-	// B4: the backfill above recorded only each node's CURRENT version. Fold its
+	// The backfill above recorded only each node's CURRENT version. Fold its
 	// history versions into the per-node ENVELOPE so a past valid interval that
 	// differs from the current one stays a candidate (sound superset).
 	if err := bs.foldTemporalHistoryEnvelopes([]uint16{labelToken}); err != nil {
@@ -339,7 +339,7 @@ func (bs *Store) CreateTemporalIndex(labelToken uint16) error {
 }
 
 // foldTemporalHistoryEnvelopes folds every history version's valid-time bounds
-// into the per-node ENVELOPE of each temporal index in tokens (B4 sound superset).
+// into the per-node ENVELOPE of each temporal index in tokens (sound superset).
 // The current-version rebuild/backfill records only each node's latest version;
 // this pass adds the historical versions via Extend, so a past interval that
 // differs from the current one stays covered by the envelope. Two-phase (snapshot

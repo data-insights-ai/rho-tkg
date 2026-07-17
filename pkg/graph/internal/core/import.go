@@ -22,7 +22,7 @@ import (
 
 // ErrImportSizeLimit is the canonical IO size-cap sentinel — declared in
 // pkg/graph/io and aliased here so internal references stay on the short
-// identifier (R4-F8).
+// identifier.
 var (
 	ErrImportSizeLimit = tkgio.ErrImportSizeLimit
 	ErrNilReader       = tkgio.ErrNilReader
@@ -55,10 +55,6 @@ const importBodyPreallocCap int64 = 64 << 10 // 64 KiB
 // Import reads a portable graph snapshot from r and restores it into c,
 // honouring the staging-directory and size-cap options. Pass tkgio.ImportOptions{}
 // for default behavior (platform default temp dir, no size cap).
-//
-// API 4.0 change: the previous separate Import(r) and ImportWithOptions(r, opts)
-// were merged into this single method. Pass tkgio.ImportOptions{} for the
-// previous defaults.
 //
 // Registries are imported if they are empty; if already populated (e.g., the
 // graph was loaded from a prior Badger directory), the existing registry is kept
@@ -416,7 +412,7 @@ func (c *Core) importReplayBytesLocked(data []byte, rollback *importRollback) er
 }
 
 func (c *Core) importReplayRecordsLocked(readRecord func() (byte, []byte, error), rollback *importRollback) error {
-	// R4-F11: track whether we've seen a header and a registry before
+	// track whether we've seen a header and a registry before
 	// any tokenized entity record. Tokenized records (nodes / rels and
 	// their histories) reference label/rel-type tokens that resolve
 	// through the registry — without a compatible registry import, the
@@ -506,7 +502,7 @@ func (c *Core) importReplayRecordsLocked(readRecord func() (byte, []byte, error)
 			seenRegistry = true
 
 		case exportTagNode, exportTagNodeHist, exportTagRel, exportTagRelHist:
-			// R4-F11: tokenized entity records require a header AND a
+			// tokenized entity records require a header AND a
 			// registry to be replayed first. Otherwise the entity is
 			// stored with token IDs that resolve to empty strings.
 			if !seenHeader {
@@ -675,7 +671,7 @@ func (s *importReplaySeen) recordRelHist(id types.RelID, version uint32) error {
 // respective Put paths. Extracted from ImportWithOptions so the header
 // and registry preconditions for each tag can be enforced uniformly.
 //
-// R4-F12: current entities that already existed before this import are allowed
+// Current entities that already existed before this import are allowed
 // only when their bytes match the stream (idempotent re-import). Repeated
 // records inside the same stream are always corrupt; otherwise one duplicated
 // record could hide a missing one while still matching the header count.
@@ -709,7 +705,7 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 			if !errors.Is(err, storepkg.ErrNodeExists) {
 				return fmt.Errorf("import: put node %d: %w", wn.ID, err)
 			}
-			// R4-F12: duplicate node — accept only if existing content matches.
+			// duplicate node — accept only if existing content matches.
 			existing, gerr := c.getCurrentNode(n.ID())
 			if gerr != nil {
 				return fmt.Errorf("import: load existing node %d for conflict check: %w", wn.ID, gerr)
@@ -744,12 +740,12 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 		if err := rollback.captureNodeHistory(id, n.Version()); err != nil {
 			return fmt.Errorf("import: snapshot node history %d: %w", wn.ID, err)
 		}
-		// R5-F4: history records carry the same idempotent /
-		// conflict-rejection contract as current entities (R4-F12).
+		// history records carry the same idempotent /
+		// conflict-rejection contract as current entities.
 		// PutNodeVersion silently overwrites, so without this check a
 		// re-import with diverging history would replace the existing
 		// version snapshot in place — exactly the hybrid-graph hazard
-		// R4-F12 closed for current entities.
+		// closed for current entities.
 		existing, gerr := c.getNodeVersion(id, n.Version())
 		switch {
 		case gerr == nil:
@@ -793,7 +789,7 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 			if !errors.Is(err, storepkg.ErrRelExists) {
 				return fmt.Errorf("import: put rel %d: %w", wr.ID, err)
 			}
-			// R4-F12: duplicate rel — accept only if existing content matches.
+			// duplicate rel — accept only if existing content matches.
 			existing, gerr := c.getCurrentRelationship(rel.ID())
 			if gerr != nil {
 				return fmt.Errorf("import: load existing rel %d for conflict check: %w", wr.ID, gerr)
@@ -828,8 +824,8 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 		if err := rollback.captureRelHistory(id, rel.Version()); err != nil {
 			return fmt.Errorf("import: snapshot rel history %d: %w", wr.ID, err)
 		}
-		// R5-F4: same idempotent / conflict-rejection contract as
-		// rel current entities (R4-F12). PutRelVersion silently
+		// same idempotent / conflict-rejection contract as
+		// rel current entities. PutRelVersion silently
 		// overwrites, so a diverging re-import would replace the
 		// version in place without this guard.
 		existing, gerr := c.getRelVersion(id, rel.Version())

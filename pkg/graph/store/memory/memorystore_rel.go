@@ -55,7 +55,7 @@ func (ms *Store) PutRelationship(r *types.Relationship) error {
 		ms.typeIdx[tv] = make(map[types.RelID]struct{})
 	}
 	ms.typeIdx[tv][id] = struct{}{}
-	ms.recordRelTypeMemberLocked(r) // K1: transaction-time rel-type membership
+	ms.recordRelTypeMemberLocked(r) // transaction-time rel-type membership
 
 	// Adjacency: outgoing.
 	if ms.outIdx[startID] == nil {
@@ -135,7 +135,7 @@ func (ms *Store) PutRelationshipGeneratedIDWithEndpointHashes(r *types.Relations
 		ms.typeIdx[tv] = make(map[types.RelID]struct{})
 	}
 	ms.typeIdx[tv][id] = struct{}{}
-	ms.recordRelTypeMemberLocked(r) // K1: transaction-time rel-type membership
+	ms.recordRelTypeMemberLocked(r) // transaction-time rel-type membership
 
 	if ms.outIdx[startID] == nil {
 		ms.outIdx[startID] = make(map[types.RelID]struct{})
@@ -688,7 +688,7 @@ func (ms *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 			ms.typeIdx[tv] = make(map[types.RelID]struct{})
 		}
 		ms.typeIdx[tv][id] = struct{}{}
-		ms.recordRelTypeMemberLocked(r) // K1: transaction-time rel-type membership
+		ms.recordRelTypeMemberLocked(r) // transaction-time rel-type membership
 
 		if ms.outIdx[startID] == nil {
 			ms.outIdx[startID] = make(map[types.RelID]struct{})

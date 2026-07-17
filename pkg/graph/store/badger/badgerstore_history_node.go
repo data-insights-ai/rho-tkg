@@ -13,7 +13,7 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// Node-history methods (R5-F9 split out from badgerstore_history.go).
+// Node-history methods.
 // Helpers shared between node and rel paths stay in badgerstore_history.go;
 // rel-history methods live in badgerstore_history_rel.go.
 
@@ -213,7 +213,7 @@ func (bs *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 		set[nid] = struct{}{}
 	}
 	bs.getOrCreateLabelCounter(tok).Add(1)
-	bs.recordNodeLabelMembersLocked(updatedNode) // K1: transaction-time label membership (new token)
+	bs.recordNodeLabelMembersLocked(updatedNode) // transaction-time label membership (new token)
 
 	// Update cache and property/temporal/vector indexes for the new node state.
 	bs.nodeCache.Put(id, freezeNodeCopy(updatedNode))
@@ -357,7 +357,7 @@ func (bs *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 		return err
 	}
 	id := nid.SnowflakeID()
-	// Serialize all tombstones OUTSIDE lock (B3).
+	// Serialize all tombstones OUTSIDE lock.
 	nodeData, err := bs.historyNodeValue(id, uint64(prevNodeVersion), nodeTombstone)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node tombstone: %w", err)
@@ -392,7 +392,7 @@ func (bs *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 		return err
 	}
 
-	// Acquire lock ONCE — hold it across cascade + tombstone appends (B3 + lock ordering rule).
+	// Acquire lock ONCE — hold it across cascade + tombstone appends (lock ordering rule).
 	bs.idxMu.Lock()
 	var old *types.Node
 	if bs.nodeDeleteInfoStillCurrentLocked(nid, prefetched.node) {
@@ -515,7 +515,7 @@ func (bs *Store) PutNodeVersion(nid types.NodeID, version uint32, n *types.Node)
 		return fmt.Errorf("graph: encode change-log: %w", err)
 	}
 	key := storepkg.HistNodeKey(id, uint64(version))
-	// K1: a historical version may carry a label the current row no longer has.
+	// A historical version may carry a label the current row no longer has.
 	// Only lock when the sidecar is already built (the import/replica bootstrap
 	// common case runs before any pinned scan, so the flag is false and the lazy
 	// build catches these history rows).

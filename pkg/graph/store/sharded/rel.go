@@ -3,6 +3,7 @@ package sharded
 import (
 	"errors"
 
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -42,6 +43,115 @@ func (s *Store) PutRelationship(r *types.Relationship) error {
 	// doors (PutRelEntityAndOut/PutRelIncoming) — a sharded rel create would
 	// otherwise be invisible to a tailing replica.
 	return relShard.PutRelationshipCoLocated(r)
+}
+
+// PutRelationshipForeignEnd persists a generated-ID relationship whose END node
+// lives on a FOREIGN partition not present in this store (ADR-0010). Unlike
+// PutRelationship it does NOT validate the end node's existence — that node is
+// on another machine and the caller has attested it out-of-band. The START node
+// IS validated locally; the rel + BOTH adjacency legs write on the rel's shard
+// exactly as the co-located in-process path does (the local incoming leg is
+// inert here — a query for the foreign end's incoming edges runs on the end's
+// own machine, fed by the Model-A half-edge stub). Emits one co-committed
+// ChangeRelPut so a replica of this machine reproduces the edge verbatim.
+//
+// Fails closed with ErrForeignEndpointLocal if the END slot is in fact local
+// (that is a misuse of this door — the normal PutRelationship must be used so
+// the local end is properly validated).
+func (s *Store) PutRelationshipForeignEnd(r *types.Relationship, proof generatedcreate.Proof) error {
+	if !proof.Valid() {
+		// Foreign-endpoint creation is a graph-generated fresh-ID fast path only;
+		// a caller outside pkg/graph cannot name Proof, so it cannot reach here.
+		return storecontract.ErrInvalidStoreMutation
+	}
+	if err := s.checkOpen(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
+		return err
+	}
+	relShard, err := s.shardForRelID(r.InternalID())
+	if err != nil {
+		return err
+	}
+	// The START must be local and live; the END must be genuinely foreign.
+	if err := s.requireNodeLive(r.StartNodeID()); err != nil {
+		return err
+	}
+	if _, err := s.shardForNodeID(r.EndNodeID()); err == nil {
+		return ErrForeignEndpointLocal
+	} else if !errors.Is(err, ErrSlotNotLocal) {
+		return err
+	}
+	if relShard.HasRelID(r.ID().SnowflakeID()) {
+		return ErrRelExists
+	}
+	// Single-shard atomic co-located write (one WriteBatch, one co-committed
+	// ChangeRelPut record) — see PutRelationship for why the record-free partial
+	// doors must not be used.
+	return relShard.PutRelationshipCoLocated(r)
+}
+
+// RecordForeignIncoming stores a cross-machine incoming half-edge STUB (ADR-0010
+// Model A) on the END node's shard so IncomingRelationships(END) is locally
+// complete on this (the end's) machine. It is the mirror of PutRelationshipForeignEnd,
+// executed on the OTHER machine: here the END node is LOCAL and the START node is
+// FOREIGN (the edge's authoritative row lives on the start's machine). The stub's
+// rel-ID belongs to a foreign slot, so it is written co-located on the END's shard
+// (reachable only via that shard's adjacency fold, never a slot-routed GetRelationship)
+// and co-commits a ChangeForeignIncoming record so a replica routes apply by the
+// END-node slot. Fails closed with ErrForeignEndpointLocal if the START is in fact
+// local (then it is an ordinary local edge, not a cross-machine one).
+func (s *Store) RecordForeignIncoming(r *types.Relationship, proof generatedcreate.Proof) error {
+	if !proof.Valid() {
+		return storecontract.ErrInvalidStoreMutation
+	}
+	if err := s.checkOpen(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
+		return err
+	}
+	// The END must be LOCAL and live (it hosts the stub); the START must be foreign.
+	endShard, err := s.shardForNodeID(r.EndNodeID())
+	if err != nil {
+		return err // END slot not local → ErrSlotNotLocal (routed to the wrong machine)
+	}
+	if !endShard.HasNodeID(r.EndNodeID().SnowflakeID()) {
+		return ErrNodeNotFound
+	}
+	if _, serr := s.shardForNodeID(r.StartNodeID()); serr == nil {
+		return ErrForeignEndpointLocal // START local → not a cross-machine incoming edge
+	} else if !errors.Is(serr, ErrSlotNotLocal) {
+		return serr
+	}
+	if endShard.HasRelID(r.ID().SnowflakeID()) {
+		return ErrRelExists // idempotency guard — apply tolerates this
+	}
+	return endShard.PutRelationshipForeignIncoming(r)
+}
+
+// DeleteForeignIncoming removes a Model-A incoming half-edge stub (ADR-0010 §3.3
+// cascade). The stub is physically co-located on endID's shard even though its
+// rel-ID slot is foreign, so the delete routes by endID (never the rel slot) and
+// co-commits a ChangeForeignIncomingDelete record there. Idempotent: a stub that
+// is already gone (torn cascade / replica re-apply) returns nil, not an error.
+// Satisfies generatedcreate.ForeignIncomingRelCapability.
+func (s *Store) DeleteForeignIncoming(relID types.RelID, endID types.NodeID) error {
+	if err := s.checkOpen(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateRelID(relID); err != nil {
+		return err
+	}
+	endShard, err := s.shardForNodeID(endID)
+	if err != nil {
+		return err // END slot not local → routed to the wrong machine
+	}
+	if derr := endShard.DeleteRelationshipForeignIncoming(relID); derr != nil && !isRelNotFound(derr) {
+		return derr
+	}
+	return nil
 }
 
 func (s *Store) GetRelationship(id types.RelID) (*types.Relationship, error) {

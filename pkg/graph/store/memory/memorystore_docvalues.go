@@ -36,7 +36,7 @@ func (ms *Store) RelMutationEpoch() uint64 {
 //     is empty, over the size cap, or any requested property is not a uniformly
 //     numeric/string column. The caller falls back to the per-node path.
 //   - Membership is the FULL label index (ms.labelIdx) — the same unfiltered set
-//     the zero-QueryOpts scan returns. No valid-time predicate (critique C1): a
+//     the zero-QueryOpts scan returns. No valid-time predicate: a
 //     non-temporal aggregation counts every label member, including logically
 //     expired-but-not-deleted ones.
 //   - The returned gen is the epoch the snapshot was built at; the caller re-checks
@@ -85,7 +85,7 @@ func (ms *Store) ForEachDocValues(labelToken uint16, propKeys []string,
 //     the size cap, or any requested property not a uniformly numeric/string
 //     column. The caller falls back to the general (per-node) path.
 //   - Membership is the INTERSECTION of the full label indexes — the same set a
-//     multi-label scan returns (no valid-time filter; critique C1). A node absent
+//     multi-label scan returns (no valid-time filter). A node absent
 //     from any one label is excluded; count(*) counts the surviving rows.
 //   - The returned gen is the snapshot's epoch; the caller re-checks
 //     NodeMutationEpoch()==gen after consuming fn's results (Gate 2).
@@ -165,7 +165,7 @@ func (ms *Store) intersectLabelsLocked(toks []uint16) map[types.NodeID]struct{} 
 // snapshot as ForEachDocValues, building/refreshing under the write lock if stale.
 //
 //   - ok=false (NOT an error) when unusable: empty/over-cap label, OR any requested
-//     property is not a uniformly numeric/string column (critique Trap B — the
+//     property is not a uniformly numeric/string column (the
 //     consumer declines the whole query to the per-node path rather than reading an
 //     unbuildable column as nulls).
 //   - gen is the snapshot epoch; the caller re-checks NodeMutationEpoch()==gen AND

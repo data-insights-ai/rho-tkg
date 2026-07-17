@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -75,6 +76,24 @@ func (c *Core) applyChangeRecordLocked(rec storepkg.ChangeRecord) error {
 			return err
 		}
 		return c.applyHistoryTruncateLocked(false, body)
+	case storepkg.ChangeForeignIncoming:
+		body, err := storeutil.DecodeRelPut(rec.Payload)
+		if err != nil {
+			return err
+		}
+		return c.applyForeignIncomingLocked(body, rec)
+	case storepkg.ChangeForeignIncomingDelete:
+		body, err := storeutil.DecodeForeignIncomingDelete(rec.Payload)
+		if err != nil {
+			return err
+		}
+		return c.applyForeignIncomingDeleteLocked(body)
+	case storepkg.ChangeRangePurge:
+		body, err := storeutil.DecodeRangePurge(rec.Payload)
+		if err != nil {
+			return err
+		}
+		return c.applyRangePurgeLocked(body)
 	case storepkg.ChangeClear:
 		return c.store.Clear()
 	default:
@@ -371,6 +390,48 @@ func (c *Core) applyRelPutLocked(body storeutil.RelPutBody, rec storepkg.ChangeR
 		return c.store.ReplaceRelWithHistory(r, local.Version(), local)
 	}
 	return c.store.ReplaceRelationship(r)
+}
+
+// applyForeignIncomingLocked reproduces a cross-machine incoming half-edge stub
+// (ADR-0010 Model A) on a replica. The stub's rel-ID belongs to a FOREIGN slot,
+// so a plain rel-put apply would route by rel-slot and fail ErrSlotNotLocal;
+// instead it routes to the END node's shard via the ForeignIncomingRelCapability,
+// idempotently (an already-present stub is a no-op — the watermark advances via a
+// separate MetaSet, so re-apply must be a no-op). The row is reconstructed
+// verbatim through the same import-trust pipeline as an ordinary rel put.
+func (c *Core) applyForeignIncomingLocked(body storeutil.RelPutBody, rec storepkg.ChangeRecord) error {
+	if c.foreignIncomingRel == nil {
+		return fmt.Errorf("graph: apply: ChangeForeignIncoming requires a partitioned store")
+	}
+	if err := c.validateRelTokensWithRefetch(&body.Wire, rec); err != nil {
+		return err
+	}
+	r, err := storeutil.WireToRelChecked(body.Wire)
+	if err != nil {
+		return fmt.Errorf("graph: apply: foreign-incoming relationship %d: %w: %v", body.Wire.ID, ErrCorruptExport, err)
+	}
+	if err := c.validatePropertySliceLimits(r.Properties()); err != nil {
+		return err
+	}
+	if err := c.verifyImportedRelHash(r, body.Wire.ID, "relationship"); err != nil {
+		return err
+	}
+	if err := c.foreignIncomingRel.RecordForeignIncoming(r, generatedcreate.FreshGraphID); err != nil && !errors.Is(err, storepkg.ErrRelExists) {
+		return err
+	}
+	return nil
+}
+
+// applyForeignIncomingDeleteLocked removes a Model-A incoming half-edge stub on a
+// replica (ADR-0010 §3.3 cascade), routing by the END-node slot carried in the
+// record — the rel-ID's own slot is foreign, so a plain rel-delete apply would
+// fail ErrSlotNotLocal. Idempotent: an already-absent stub is a no-op (the
+// watermark advances via a separate MetaSet, so re-apply must not error).
+func (c *Core) applyForeignIncomingDeleteLocked(body storeutil.ForeignIncomingDeleteBody) error {
+	if c.foreignIncomingRel == nil {
+		return fmt.Errorf("graph: apply: ChangeForeignIncomingDelete requires a partitioned store")
+	}
+	return c.foreignIncomingRel.DeleteForeignIncoming(types.RelID(body.RelID), types.NodeID(body.EndID))
 }
 
 func (c *Core) applyNodeDeleteLocked(body storeutil.NodeDeleteBody) error {

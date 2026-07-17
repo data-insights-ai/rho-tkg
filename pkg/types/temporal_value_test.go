@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TemporalValue probes — the storage-typed temporal kind exists to make
@@ -84,5 +85,48 @@ func TestTemporalValue_HashDistinctFromString(t *testing.T) {
 	hString := AppendPropertyValueHashBytes(nil, iso)
 	if string(hTemporal) == string(hString) {
 		t.Fatal("temporal and string hash bytes collide")
+	}
+}
+
+// TestTemporalValueAsTime covers the read-side inverse of the time.Time property
+// sugar: a date-bearing kind parses back to a time.Time, non-date kinds and
+// garbage decline.
+func TestTemporalValueAsTime(t *testing.T) {
+	// Round-trip through the write-door sugar: a time.Time canonicalizes to a
+	// TemporalDateTime (RFC3339Nano), and AsTime recovers the same instant.
+	orig := time.Date(2024, 1, 2, 12, 30, 45, 123456789, time.UTC)
+	tv := TemporalValue{Kind: TemporalDateTime, Value: orig.Format(time.RFC3339Nano)}
+	got, ok := tv.AsTime()
+	if !ok {
+		t.Fatalf("AsTime(DateTime) ok=false, want true")
+	}
+	if !got.Equal(orig) {
+		t.Fatalf("AsTime = %v, want %v", got, orig)
+	}
+
+	// Date-only.
+	if d, ok := (TemporalValue{Kind: TemporalDate, Value: "2024-01-02"}).AsTime(); !ok || d.Year() != 2024 || d.Month() != 1 || d.Day() != 2 {
+		t.Fatalf("AsTime(Date) = %v ok=%v, want 2024-01-02", d, ok)
+	}
+
+	// Local date-time (no zone).
+	if _, ok := (TemporalValue{Kind: TemporalLocalDateTime, Value: "2024-01-02T12:30:45"}).AsTime(); !ok {
+		t.Fatalf("AsTime(LocalDateTime) ok=false, want true")
+	}
+
+	// Non-date kinds decline (no date component).
+	for _, tv := range []TemporalValue{
+		{Kind: TemporalTime, Value: "12:30:00Z"},
+		{Kind: TemporalLocalTime, Value: "12:30:00"},
+		{Kind: TemporalDuration, Value: "P1DT2H"},
+	} {
+		if _, ok := tv.AsTime(); ok {
+			t.Fatalf("AsTime(%v) ok=true, want false (no date component)", tv.Kind)
+		}
+	}
+
+	// Unparseable rendering declines.
+	if _, ok := (TemporalValue{Kind: TemporalDateTime, Value: "not-a-date"}).AsTime(); ok {
+		t.Fatalf("AsTime(garbage) ok=true, want false")
 	}
 }

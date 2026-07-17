@@ -5,7 +5,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Relationship property indexes (RelPropertyIndexCapability) — ADR-0007 S5.
+// Relationship property indexes (RelPropertyIndexCapability) — ADR-0007.
 //
 // Rels are distributed by their start node's slot. UNLIKE tiered — whose event
 // rels route by timestamp across a DYNAMIC (cold/archive) shard set, so it

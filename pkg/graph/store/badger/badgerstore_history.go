@@ -15,7 +15,7 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// History helpers shared between node and rel paths (R5-F9 split).
+// History helpers shared between node and rel paths.
 // Per-entity history methods live in badgerstore_history_node.go and
 // badgerstore_history_rel.go.
 

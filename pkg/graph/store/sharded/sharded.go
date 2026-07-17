@@ -4,13 +4,19 @@
 // routes by time window and ontology class), sharded.Store routes by a pure,
 // immutable function of the ID: shardFor(id) = catalog[decompose(id).Node].
 //
-// EXPERIMENTAL / stage-S1: the mandatory Store contract (CRUD, adjacency,
-// bulk-read, batch, history, stats, iteration) is complete over multi-slot
-// spreads; the change-log/feed (S3), pre-encoded-put (S4), and index (S5)
-// optional capabilities are DECLINED (not implemented) so the graph layer
-// surfaces ErrCapabilityNotSupported for them. Lanes / per-lane generators
-// (S4) are not yet wired — core still mints legacy dual-generator IDs, so a
-// graph-level deployment must claim slots covering BOTH nodeID*2 and *2+1.
+// EXPERIMENTAL (ADR-0007, integration branch): the mandatory Store contract
+// (CRUD, adjacency, bulk-read, batch, history, stats, iteration) plus the S3
+// store-global change-log/feed (Config.ChangeLog), S4 per-lane unified ID
+// generators (Config.IngestLanes) + pre-encoded-put, and S5 full index/stats
+// capability parity (property / rel-property / composite / temporal / high-
+// frequency indexes + type-class / presence / range-cardinality stats, fanned
+// out per shard) are all IMPLEMENTED over multi-slot spreads. It still declines,
+// with reason, the capabilities tiered also declines (TransactionTimeQuery,
+// HistoryRollbackTrim, label/rel-type-tx membership, depth iteration). With
+// Config.IngestLanes unset, core mints legacy dual-generator IDs, so a plain
+// graph-level deployment must claim slots covering BOTH nodeID*2 and *2+1; set
+// IngestLanes to pin a whole ingest group into one slot (one shard, one batched
+// door call).
 package sharded
 
 import (
@@ -50,8 +56,10 @@ var (
 var (
 	// ErrSlotNotLocal is returned when a door is reached with an entity ID
 	// whose snowflake slot is outside this store's claimed range. Point ops
-	// fail closed with it rather than silently returning empty.
-	ErrSlotNotLocal = errors.New("graph: sharded: entity slot not local to this store")
+	// fail closed with it rather than silently returning empty. Re-exported from
+	// the store contract (SAME value) so the partition-agnostic graph layer can
+	// errors.Is against it — e.g. to recognize a Model-A stub during tx rollback.
+	ErrSlotNotLocal = storecontract.ErrSlotNotLocal
 	// ErrCatalogConflict is returned at open when the persisted slot catalog
 	// disagrees with the config (different claimed range, unknown discipline,
 	// missing shard directory).
@@ -59,6 +67,12 @@ var (
 	// ErrCatalogCorrupt is returned when the persisted catalog blob cannot be
 	// decoded.
 	ErrCatalogCorrupt = errors.New("graph: sharded: slot catalog corrupt")
+	// ErrForeignEndpointLocal is returned by PutRelationshipForeignEnd when the
+	// "foreign" END node's slot is actually LOCAL to this store — a misuse that
+	// would silently skip the local existence check for a node this store can
+	// (and must) validate. The caller should use the normal PutRelationship
+	// door for a local-to-local edge (ADR-0010 §3.2).
+	ErrForeignEndpointLocal = errors.New("graph: sharded: foreign-endpoint door reached with a local end node")
 )
 
 // QueryOpts / RelTombstone are Store-contract aliases.

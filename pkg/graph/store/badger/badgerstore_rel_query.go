@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Relationship-side query methods (R5-F9 split out from badgerstore_rel.go).
+// Relationship-side query methods.
 // Single-rel CRUD and helpers stay in badgerstore_rel.go; batch writes
 // live in badgerstore_rel_batch.go.
 

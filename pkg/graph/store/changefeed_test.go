@@ -4,18 +4,21 @@ import "testing"
 
 func TestChangeTagString(t *testing.T) {
 	cases := map[ChangeTag]string{
-		ChangeNodePut:             "NodePut",
-		ChangeRelPut:              "RelPut",
-		ChangeNodeDelete:          "NodeDelete",
-		ChangeRelDelete:           "RelDelete",
-		ChangeNodeHistoryVersion:  "NodeHistoryVersion",
-		ChangeRelHistoryVersion:   "RelHistoryVersion",
-		ChangeNodeHistoryTruncate: "NodeHistoryTruncate",
-		ChangeRelHistoryTruncate:  "RelHistoryTruncate",
-		ChangeMeta:                "Meta",
-		ChangeClear:               "Clear",
-		ChangeTag(0):              "ChangeTag(unknown)",
-		ChangeTag(200):            "ChangeTag(unknown)",
+		ChangeNodePut:               "NodePut",
+		ChangeRelPut:                "RelPut",
+		ChangeNodeDelete:            "NodeDelete",
+		ChangeRelDelete:             "RelDelete",
+		ChangeNodeHistoryVersion:    "NodeHistoryVersion",
+		ChangeRelHistoryVersion:     "RelHistoryVersion",
+		ChangeNodeHistoryTruncate:   "NodeHistoryTruncate",
+		ChangeRelHistoryTruncate:    "RelHistoryTruncate",
+		ChangeMeta:                  "Meta",
+		ChangeClear:                 "Clear",
+		ChangeForeignIncoming:       "ForeignIncoming",
+		ChangeForeignIncomingDelete: "ForeignIncomingDelete",
+		ChangeRangePurge:            "RangePurge",
+		ChangeTag(0):                "ChangeTag(unknown)",
+		ChangeTag(200):              "ChangeTag(unknown)",
 	}
 	for tag, want := range cases {
 		if got := tag.String(); got != want {
@@ -25,12 +28,12 @@ func TestChangeTagString(t *testing.T) {
 }
 
 func TestChangeTagValid(t *testing.T) {
-	for tag := ChangeNodePut; tag <= ChangeClear; tag++ {
+	for tag := ChangeNodePut; tag <= ChangeRangePurge; tag++ {
 		if !tag.Valid() {
 			t.Errorf("tag %v should be valid", tag)
 		}
 	}
-	for _, tag := range []ChangeTag{0, ChangeClear + 1, 255} {
+	for _, tag := range []ChangeTag{0, ChangeRangePurge + 1, 255} {
 		if tag.Valid() {
 			t.Errorf("tag %d should be invalid", byte(tag))
 		}
@@ -41,16 +44,19 @@ func TestChangeTagValid(t *testing.T) {
 // the build's test gate rather than silently misreading every persisted record.
 func TestChangeTagWireNumbersStable(t *testing.T) {
 	pinned := map[ChangeTag]byte{
-		ChangeNodePut:             1,
-		ChangeRelPut:              2,
-		ChangeNodeDelete:          3,
-		ChangeRelDelete:           4,
-		ChangeNodeHistoryVersion:  5,
-		ChangeRelHistoryVersion:   6,
-		ChangeNodeHistoryTruncate: 7,
-		ChangeRelHistoryTruncate:  8,
-		ChangeMeta:                9,
-		ChangeClear:               10,
+		ChangeNodePut:               1,
+		ChangeRelPut:                2,
+		ChangeNodeDelete:            3,
+		ChangeRelDelete:             4,
+		ChangeNodeHistoryVersion:    5,
+		ChangeRelHistoryVersion:     6,
+		ChangeNodeHistoryTruncate:   7,
+		ChangeRelHistoryTruncate:    8,
+		ChangeMeta:                  9,
+		ChangeClear:                 10,
+		ChangeForeignIncoming:       11,
+		ChangeForeignIncomingDelete: 12,
+		ChangeRangePurge:            13,
 	}
 	for tag, want := range pinned {
 		if byte(tag) != want {

@@ -7,11 +7,11 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// K1 — transaction-time label / rel-type membership sidecar (badger arm).
+// Transaction-time label / rel-type membership sidecar (badger arm).
 //
 // A history-aware ByLabel/ByType scan (one carrying a temporal filter) must
 // consider every node/rel whose PAST version could match the queried label/type
-// at the pinned instant. Before K1 the core layer folded ALL node/rel history
+// at the pinned instant. Previously the core layer folded ALL node/rel history
 // into the candidate set, so a pinned scan for a selective label cost
 // O(everything that ever carried ANY label) rather than O(matches).
 //
@@ -23,7 +23,7 @@ import (
 // the core chain resolver remains the correctness authority. firstTxFrom is a
 // lower bound (0 = never prune); pruning is `pin < firstTxFrom → skip`.
 //
-// LAZY, RAM-only: nil until the first pinned scan builds it (mirrors the OPT15
+// LAZY, RAM-only: nil until the first pinned scan builds it (mirrors the
 // relValidIdx precedent), rebuilt after a Close/reopen on next use. The build
 // runs under idxMu.Lock (no writer/flush can progress — flush takes idxMu.RLock,
 // writers idxMu.Lock), reading each committed row's wire tokens directly (no

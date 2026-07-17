@@ -19,6 +19,8 @@ var (
 	_ storecontract.BatchCapability                 = (*Store)(nil)
 	_ storecontract.HistoryCapability               = (*Store)(nil)
 	_ storecontract.HistoryRollbackTrimCapability   = (*Store)(nil)
+	_ storecontract.RetentionPurgeCapability        = (*Store)(nil)
+	_ storecontract.RangePurgeLogCapability         = (*Store)(nil)
 	_ storecontract.StatsCapability                 = (*Store)(nil)
 	_ storecontract.IterationCapability             = (*Store)(nil)
 	_ storecontract.PropertyIndexCapability         = (*Store)(nil)

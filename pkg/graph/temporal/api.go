@@ -37,6 +37,7 @@ type Ops interface {
 
 	// Bitemporal (transaction time)
 	NowTx() (types.Instant, error)
+	AdvanceClock(to types.Instant) (types.Instant, error)
 	NodeAsOf(id types.NodeID, txTime types.Instant) (*types.Node, error)
 	RelAsOf(id types.RelID, txTime types.Instant) (*types.Relationship, error)
 	NodesAsOf(txTime types.Instant) ([]*types.Node, error)
@@ -74,7 +75,7 @@ type Ops interface {
 	NodeMatchesValidTime(n *types.Node, opts storepkg.QueryOpts) bool
 	RelMatchesValidTime(r *types.Relationship, opts storepkg.QueryOpts) bool
 
-	// Named knowledge-time (Erkenntniszeit) marks (§4.2). The instant is a
+	// Named knowledge-time (Erkenntniszeit) marks. The instant is a
 	// transaction time used with AS OF SYSTEM TIME / TxAt.
 	TagAsOf(name string, at types.Instant) error
 	ResolveAsOf(name string) (types.Instant, bool, error)
@@ -299,6 +300,21 @@ func (a *API) NowTx() (types.Instant, error) {
 	return ops.NowTx()
 }
 
+// AdvanceClock raises the transaction-clock floor to at least `to`, returning the
+// resulting floor (a no-op returning the current floor if `to` is not ahead).
+// The clock never moves backward. It is the Hybrid-Logical-Clock merge seam for a
+// distributed deployment: a coordinator that observes a peer machine's
+// transaction timestamp calls this before stamping local writes, so subsequent
+// local TxFrom values are >= every peer timestamp seen — a causal cross-machine
+// order without a central sequencer. rho-tkg owns only the monotonic bump.
+func (a *API) AdvanceClock(to types.Instant) (types.Instant, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, err
+	}
+	return ops.AdvanceClock(to)
+}
+
 // NodesAsOf returns nodes known at transaction time txTime.
 func (a *API) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 	ops, err := a.ready()
@@ -487,7 +503,7 @@ func (a *API) RelateRels(x, y *types.Relationship) (types.AllenRelation, error) 
 
 // TagAsOf registers (or overwrites) a named knowledge-time (Erkenntniszeit)
 // mark: name → a transaction-time instant addressable via AS OF SYSTEM TIME /
-// TxAt. See core.TempOps.TagAsOf and §4.2.
+// TxAt. See core.TempOps.TagAsOf.
 func (a *API) TagAsOf(name string, at types.Instant) error {
 	ops, err := a.ready()
 	if err != nil {

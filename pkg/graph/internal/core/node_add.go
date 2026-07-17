@@ -280,7 +280,7 @@ func (n *NodeOps) Import(ctx context.Context, id types.NodeID, labels []string, 
 // the supplied id already exists, the existing node is returned with
 // created=false and no error; otherwise a new node is created exactly as
 // Import would create it. Mirrors the shape of RelOps.AddByIDIfAbsent so
-// Node and Rel sub-APIs share the same "ensure-exists" verb (S3 parity).
+// Node and Rel sub-APIs share the same "ensure-exists" verb.
 //
 // Returns ErrZeroID / ErrInvalidID for invalid IDs (same as Import).
 // Acquires c.mu.RLock (panic-safe) for transaction isolation — blocked
@@ -400,10 +400,10 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 		return nil, err
 	}
 
-	// Check for collision BEFORE allocating registry tokens (R4-F14).
+	// Check for collision BEFORE allocating registry tokens.
 	// Allocating tokens up-front pollutes the registry on duplicate-ID
 	// rejection. Probe must surface non-not-found errors instead of
-	// silently treating them as absence (R4-F15) — operational store
+	// silently treating them as absence — operational store
 	// failures must not be hidden by the import path.
 	if _, err := c.getCurrentNode(id); err == nil {
 		return nil, storepkg.ErrNodeExists

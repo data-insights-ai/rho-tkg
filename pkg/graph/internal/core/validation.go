@@ -305,7 +305,7 @@ func (c *Core) validatePropertyValueLimitTyped(key string, val any, depth int) e
 // `present` collective flag is true iff at least one field was supplied —
 // it gates the "this update is non-empty" check. The per-field flags drive
 // the merge against existing integrity in update paths: a field NOT
-// restated is preserved from the previous version (B3 — previously every
+// restated is preserved from the previous version (previously every
 // Update wiped all four fields if any were restated, since extractProvenance
 // returned zeros for missing fields).
 type updateProvenance struct {

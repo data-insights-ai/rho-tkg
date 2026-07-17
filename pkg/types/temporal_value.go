@@ -3,6 +3,7 @@ package types
 import (
 	"errors"
 	"fmt"
+	"time"
 )
 
 // TemporalValue is a storage-typed temporal property value: a temporal
@@ -68,3 +69,33 @@ func (t TemporalValue) Validate() error {
 // String returns the ISO rendering — fmt/%v of a TemporalValue prints
 // exactly the storage form, mirroring the engine-side convention.
 func (t TemporalValue) String() string { return t.Value }
+
+// AsTime parses a date-bearing TemporalValue back into a time.Time — the
+// read-side inverse of the top-level time.Time property sugar (which stores a
+// time.Time as a TemporalDateTime in RFC 3339 form at the Set door). It closes
+// the round-trip so a consumer reading a temporal property back does not have to
+// hand-parse the rendering.
+//
+// ok=true only for the date-bearing kinds (TemporalDate, TemporalLocalDateTime,
+// TemporalDateTime); time-of-day and duration kinds have no date component and
+// return ok=false, as does an unparseable rendering. NOTE: sub-nanosecond
+// precision, the monotonic-clock reading, and (for LocalDateTime) the original
+// zone do NOT round-trip — they were dropped when the value was rendered to its
+// ISO string at write time. The returned instant reflects the stored rendering.
+func (t TemporalValue) AsTime() (time.Time, bool) {
+	switch t.Kind {
+	case TemporalDateTime:
+		if tm, err := time.Parse(time.RFC3339Nano, t.Value); err == nil {
+			return tm, true
+		}
+	case TemporalLocalDateTime:
+		if tm, err := time.Parse("2006-01-02T15:04:05.999999999", t.Value); err == nil {
+			return tm, true
+		}
+	case TemporalDate:
+		if tm, err := time.Parse("2006-01-02", t.Value); err == nil {
+			return tm, true
+		}
+	}
+	return time.Time{}, false
+}

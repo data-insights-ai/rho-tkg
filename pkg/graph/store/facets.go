@@ -2,7 +2,7 @@ package store
 
 // Capability facets — thematic groupings of the optional capability interfaces.
 //
-// This file is PURELY ADDITIVE (ADR-0003 STAGE 1). It does not rename, move, or
+// This file is PURELY ADDITIVE. It does not rename, move, or
 // remove any existing interface: each facet below is a plain Go composition
 // (interface embedding) of interfaces that already exist in capabilities.go,
 // changefeed.go, and property_stats.go. Because Go interfaces are structural, a

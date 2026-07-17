@@ -1,6 +1,7 @@
 package sharded
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 
@@ -127,7 +128,17 @@ func (s *Store) DeleteNodeCascade(id types.NodeID) error {
 	for _, rid := range relIDs {
 		relShard, rerr := s.shardForRelID(rid)
 		if rerr != nil {
-			return rerr
+			if !errors.Is(rerr, ErrSlotNotLocal) {
+				return rerr
+			}
+			// A foreign rel-ID slot in this node's adjacency is a Model-A incoming
+			// half-edge stub (ADR-0010 §3.3), physically co-located on the node's
+			// own shard. Remove it there (routed by END slot, replicated via
+			// ChangeForeignIncomingDelete), not by its foreign rel slot. Idempotent.
+			if derr := nodeShard.DeleteRelationshipForeignIncoming(rid); derr != nil && !isRelNotFound(derr) {
+				return derr
+			}
+			continue
 		}
 		derr := relShard.DeleteRelationship(rid)
 		if derr == nil {

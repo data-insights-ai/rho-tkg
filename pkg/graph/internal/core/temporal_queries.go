@@ -138,7 +138,7 @@ func (c *Core) nodesByLabelAtLocked(label string, at types.Instant) ([]*types.No
 	}); err != nil {
 		return nil, err
 	}
-	// B4: drop candidates whose valid-time envelope provably cannot contain `at`,
+	// drop candidates whose valid-time envelope provably cannot contain `at`,
 	// before the expensive per-id chain resolve below. Same sound-superset prune as
 	// the generic ByLabel{ValidAt} door (queries.go) — both temporal-ByLabel doors
 	// MUST agree (rule 17), enforced by TestTemporalCandidatePruneEquivalence.

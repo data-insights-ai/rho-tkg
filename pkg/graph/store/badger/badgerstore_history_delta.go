@@ -11,7 +11,7 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// ADR-0009 / B6 — badger anchor+delta version-history storage.
+// ADR-0009 — badger anchor+delta version-history storage.
 //
 // WRITE: historyNodeValue / historyRelValue turn a version's full state into the
 // on-disk history value — a full anchor when delta encoding is off, the version

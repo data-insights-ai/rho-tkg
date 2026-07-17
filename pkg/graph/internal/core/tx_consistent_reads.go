@@ -12,7 +12,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Tx-scoped consistent-read APIs (R5-F2).
+// Tx-scoped consistent-read APIs.
 //
 // The standalone IO/Temporal/Admin snapshot-style entry points acquire
 // c.mu.Lock themselves. Code that is already inside g.Tx.Run /

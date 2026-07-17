@@ -4,12 +4,12 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// K1 — transaction-time label/rel-type membership sidecar (memory arm).
+// Transaction-time label/rel-type membership sidecar (memory arm).
 //
 // A history-aware ByLabel/ByType scan (one carrying a temporal filter) must
 // consider every node/rel whose PAST version could match the queried label/type
-// at the pinned instant — not just the current index members. Before K1 the
-// core layer folded ALL node/rel history into the candidate set (temporal.go
+// at the pinned instant — not just the current index members. Without this
+// sidecar the core layer folds ALL node/rel history into the candidate set (temporal.go
 // forEachNodeCandidateID), so a pinned scan for a selective label cost
 // O(everything that ever carried ANY label), not O(matches).
 //

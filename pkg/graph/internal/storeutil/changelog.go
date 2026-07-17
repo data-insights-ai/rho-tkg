@@ -25,6 +25,9 @@ import (
 //	ChangeNodeHistoryTruncate / ChangeRelHistoryTruncate -> HistoryTruncateBody
 //	ChangeMeta                                       -> MetaBody
 //	ChangeClear                                      -> (no body; empty payload)
+//	ChangeForeignIncoming                            -> RelPutBody (stub RelWire)
+//	ChangeForeignIncomingDelete                      -> ForeignIncomingDeleteBody
+//	ChangeRangePurge                                 -> RangePurgeBody
 
 // NodePutBody is the ChangeNodePut payload. Wire is the new CURRENT node state
 // (built via NodeToWireChecked, so property keys are STRINGS — untokenized — and
@@ -77,6 +80,27 @@ type RelDeleteBody struct {
 	ID          int64    `msgpack:"id"`
 	WithHistory bool     `msgpack:"wh,omitempty"`
 	Tombstone   *RelWire `msgpack:"tr,omitempty"`
+}
+
+// ForeignIncomingDeleteBody is the ChangeForeignIncomingDelete payload
+// (ADR-0010 Model A cascade). RelID identifies the incoming half-edge stub to
+// remove; EndID is the LOCAL end node whose shard hosts the stub — a replica
+// routes the delete by EndID's slot (the rel's own slot is foreign). The stub
+// is adjacency-only, so no tombstone/version row travels with it.
+type ForeignIncomingDeleteBody struct {
+	RelID int64 `msgpack:"id"`
+	EndID int64 `msgpack:"e"`
+}
+
+// RangePurgeBody is the ChangeRangePurge payload (ADR-0008 R3). It names the
+// PREDICATE a replica re-executes: purge every node of LabelToken whose predicate
+// value is < Before, under Mode (0 = ByAge on snowflake mint-time). Carries no
+// per-entity rows — the replica derives the entity set by re-running the
+// predicate against its own LSN-consistent state.
+type RangePurgeBody struct {
+	LabelToken uint16 `msgpack:"l"`
+	Before     int64  `msgpack:"b"`
+	Mode       uint8  `msgpack:"m,omitempty"`
 }
 
 // HistoryVersionNodeBody is the ChangeNodeHistoryVersion payload: a history row
@@ -271,6 +295,24 @@ func DecodeRelDelete(payload []byte) (RelDeleteBody, error) {
 	var b RelDeleteBody
 	if err := SafeUnmarshal(payload, &b); err != nil {
 		return RelDeleteBody{}, fmt.Errorf("change-log: rel delete body: %w", err)
+	}
+	return b, nil
+}
+
+// DecodeRangePurge decodes a ChangeRangePurge payload.
+func DecodeRangePurge(payload []byte) (RangePurgeBody, error) {
+	var b RangePurgeBody
+	if err := SafeUnmarshal(payload, &b); err != nil {
+		return RangePurgeBody{}, fmt.Errorf("change-log: range purge body: %w", err)
+	}
+	return b, nil
+}
+
+// DecodeForeignIncomingDelete decodes a ChangeForeignIncomingDelete payload.
+func DecodeForeignIncomingDelete(payload []byte) (ForeignIncomingDeleteBody, error) {
+	var b ForeignIncomingDeleteBody
+	if err := SafeUnmarshal(payload, &b); err != nil {
+		return ForeignIncomingDeleteBody{}, fmt.Errorf("change-log: foreign-incoming delete body: %w", err)
 	}
 	return b, nil
 }

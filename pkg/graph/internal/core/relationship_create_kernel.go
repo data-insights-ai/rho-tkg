@@ -92,7 +92,7 @@ func (c *Core) prepareRelCreate(typeName string, props map[string]any, startID, 
 // relationship. Must be called under the endpoint entity locks so the hashes
 // (and the temporal-constraint check, when constraints are configured)
 // reflect the committed endpoint state at creation time, not whatever the
-// caller happened to hold (R4-F5).
+// caller happened to hold.
 //
 // Returns useEndpointHashWrite=true when hash capture should instead be
 // delegated to the store write (endpointHashWrite capability available and
@@ -168,12 +168,44 @@ func (c *Core) buildRelFromSpec(ctx context.Context, spec relCreateSpec) func(ty
 	}
 }
 
+// relPersistMode selects how the create kernel persists the built relationship.
+// Keeping every persist strategy in the kernel (rather than a per-door copy) is
+// the whole reason the kernel exists — see the file header.
+type relPersistMode uint8
+
+const (
+	// relPersistPlain writes via putGeneratedRelationship (endpoint hashes were
+	// captured on the built relationship before persistence).
+	relPersistPlain relPersistMode = iota
+	// relPersistEndpointHashWrite delegates hash capture to the store write via
+	// the endpointHashWrite capability, refreshing the integrity hashes from the
+	// store's reply.
+	relPersistEndpointHashWrite
+	// relPersistForeignEnd writes via the foreignEndpointRel capability: the END
+	// node lives on a foreign partition, so its existence is NOT validated here
+	// and the attested tkg_to_hash on the built relationship is authoritative
+	// (ADR-0010).
+	relPersistForeignEnd
+	// relPersistForeignIncoming writes via the foreignIncomingRel capability: a
+	// cross-machine incoming half-edge STUB recorded on the END node's machine so
+	// IncomingRelationships(END) is locally complete (ADR-0010 Model A).
+	relPersistForeignIncoming
+)
+
+// relPersistModeFor maps the endpoint-hash-ladder's useEndpointHashWrite bool to
+// a persist mode for the two local-endpoint create doors (Add / AddByIDIfAbsent).
+func relPersistModeFor(useEndpointHashWrite bool) relPersistMode {
+	if useEndpointHashWrite {
+		return relPersistEndpointHashWrite
+	}
+	return relPersistPlain
+}
+
 // createRelWithTypeRollback is the persistence kernel: allocate the rel-type
 // token (snapshotting the registry so a later failure can roll back a fresh
-// allocation), invoke build(token) to produce the relationship, persist it —
-// via the endpoint-hash-capture capability when useEndpointHashWrite is true,
-// else putGeneratedRelationship — and finalize or roll back the registry
-// state exactly once on every path, including panics.
+// allocation), invoke build(token) to produce the relationship, persist it
+// according to mode, and finalize or roll back the registry state exactly once
+// on every path, including panics.
 //
 // Contract: getOrCreateRelTypeWithSnapshot returns with c.registryMu HELD
 // when it allocated a new token (snapshot != nil); the restore helpers
@@ -184,7 +216,7 @@ func (c *Core) buildRelFromSpec(ctx context.Context, spec relCreateSpec) func(ty
 // either a clean success (err == nil) or a partial-live outcome (the write
 // landed but post-write cleanup/registry persistence failed; err != nil).
 // Callers must count the create and surface the row whenever rel != nil.
-func (c *Core) createRelWithTypeRollback(typeName string, useEndpointHashWrite bool, build func(typeToken uint16) (*types.Relationship, *types.RelIntegrity, error)) (*types.Relationship, error) {
+func (c *Core) createRelWithTypeRollback(typeName string, mode relPersistMode, build func(typeToken uint16) (*types.Relationship, *types.RelIntegrity, error)) (*types.Relationship, error) {
 	typeToken, relTypeSnapshot, allocatedRelType, err := c.getOrCreateRelTypeWithSnapshot(typeName)
 	if err != nil {
 		return nil, fmt.Errorf("graph: relationship type: %w", err)
@@ -218,14 +250,23 @@ func (c *Core) createRelWithTypeRollback(typeName string, useEndpointHashWrite b
 		return nil, err
 	}
 
-	if useEndpointHashWrite {
+	switch mode {
+	case relPersistEndpointHashWrite:
 		fromHash, toHash, err := c.endpointHashWrite.PutRelationshipGeneratedIDWithEndpointHashes(r, generatedcreate.FreshGraphID)
 		if err != nil {
 			return persistFailed(err)
 		}
 		ig.FromNodeHash = fromHash
 		ig.ToNodeHash = toHash
-	} else {
+	case relPersistForeignEnd:
+		if err := c.foreignEndpointRel.PutRelationshipForeignEnd(r, generatedcreate.FreshGraphID); err != nil {
+			return persistFailed(err)
+		}
+	case relPersistForeignIncoming:
+		if err := c.foreignIncomingRel.RecordForeignIncoming(r, generatedcreate.FreshGraphID); err != nil {
+			return persistFailed(err)
+		}
+	default: // relPersistPlain
 		if err := c.putGeneratedRelationship(r); err != nil {
 			return persistFailed(err)
 		}

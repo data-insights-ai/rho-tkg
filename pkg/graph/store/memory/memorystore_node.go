@@ -42,7 +42,7 @@ func (ms *Store) PutNode(n *types.Node) error {
 	ms.nodes[nid] = freezeNodeCopy(n)
 
 	ms.addNodeLabelIndexes(nid, n)
-	ms.recordNodeLabelMembersLocked(n) // K1: transaction-time label membership
+	ms.recordNodeLabelMembersLocked(n) // transaction-time label membership
 	ms.addNodePropertyKeyCounts(n)
 
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, n, rawID)
@@ -281,7 +281,7 @@ func (ms *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 		ms.labelIdx[tok] = set
 	}
 	set[nid] = struct{}{}
-	ms.recordNodeLabelMembersLocked(updatedNode) // K1: transaction-time label membership (new token)
+	ms.recordNodeLabelMembersLocked(updatedNode) // transaction-time label membership (new token)
 
 	ms.removeNodePropertyKeyCounts(old)
 	indexpkg.RemoveNodeFromPropertyIndexes(ms.propertyIndexes, old, rawID)
@@ -467,7 +467,7 @@ func (ms *Store) PutNodesBatch(nodes []*types.Node) error {
 		ms.nodes[id] = freezeNodeCopy(n)
 
 		ms.addNodeLabelIndexes(id, n)
-		ms.recordNodeLabelMembersLocked(n) // K1: transaction-time label membership
+		ms.recordNodeLabelMembersLocked(n) // transaction-time label membership
 		ms.addNodePropertyKeyCounts(n)
 		rawID := id.SnowflakeID()
 		indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, n, rawID)

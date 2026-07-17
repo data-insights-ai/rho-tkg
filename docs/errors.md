@@ -83,6 +83,9 @@ Coverage spans three sources:
 | `ErrLabelNotFound` | core | Node does not have the specified label | `g.Nodes().RemoveLabel()` with non-existent label |
 | `ErrLastLabel` | core | Cannot remove the last label from a node | `g.Nodes().RemoveLabel()` on sole label |
 | `ErrSelfLoop` | core | Relationship cannot start and end at the same node (when disallowed) | `g.Rels().Add*()` with `start == end` and `AllowSelfLoops=false` |
+| `ErrForeignEndpointUnsupported` | core | Cross-machine (foreign-endpoint) edges require a partitioned (sharded) store | `g.Rels().AddByIDForeignEnd()` on a non-sharded store |
+| `ErrForeignEndpointConstraint` | core | Temporal constraints cannot be enforced on a cross-machine edge (foreign end not locally available) | `g.Rels().AddByIDForeignEnd()` with temporal constraints configured |
+| `ErrInvalidForeignEndpoint` | store | Malformed `ForeignEndpoint` descriptor (zero node ID, empty attested hash, or zero attest-time) | `g.Rels().AddByIDForeignEnd()` with an invalid descriptor |
 | `ErrTooManyLabels` | core | Node exceeds max label count (default 50) | `g.Nodes().Add*()` with excess labels |
 | `ErrTooManyProperties` | core | Entity exceeds max property count (default 1000) | `g.Nodes().Add*()`, `g.Nodes().Update()`, `g.Rels().Add*()`, `g.Rels().Update()` |
 | `ErrKeyTooLong` | core | Property key exceeds max length (default 256) | `g.Nodes().Add*()`, `g.Nodes().Update()`, `g.Rels().Add*()`, `g.Rels().Update()` |
@@ -217,8 +220,11 @@ History compaction (`g.Admin().CompactHistoryNodes(...)` / `CompactHistoryRels(.
 | `ErrInvalidRetentionPolicy` | core | The `RetentionPolicy` has no bound set (both `KeepVersions` and `KeepSince` zero) or a negative bound | `g.Admin().CompactHistoryNodes()` / `CompactHistoryRels()` |
 | `ErrCompactionChangeLogEnabled` | core | Compaction is refused while the change-log is enabled (compaction records / replica apply / delta interplay land later), so no replica can silently diverge from a compacted primary | `g.Admin().CompactHistoryNodes()` / `CompactHistoryRels()` |
 | `ErrRetentionExpired` | core | A temporal read's pin falls before a relevant label's retention watermark (ADR-0008 — whole entities purged below a policy boundary with no tombstone). Point doors (`NodeAtTx` / `NodeAsOf` / rel mirrors) check the queried entity's label watermark(s); scan doors (`NodesAsOf` / `ByLabel` / `All` with a temporal pin) fail the whole scan against the graph max watermark. Fail-closed guard shipped in R1 before any purge exists | `g.Temporal().NodeAtTx()` / `NodesAsOf()`, `g.Nodes().All()` / `ByLabel()` with a pin below a retention watermark |
+| `ErrRetentionPurgeDisabled` | core | The retention-purge admin door was called but the graph was not opened with `Config.AllowRetentionPurge`. A no-tombstone hard removal must be explicitly enabled | `g.Admin().PurgeExpiredNodes()` |
+| `ErrRetentionPurgeChangeLogEnabled` | core | The change-log is enabled but the store cannot emit the `ChangeRangePurge` predicate record (no `RangePurgeLogCapability`), so a purge would remove data locally without telling a replica — a silent divergence, refused. Defensive: no in-tree backend hits it (the native purge stores also implement `RangePurgeLogCapability`); it guards a future/partial backend | `g.Admin().PurgeExpiredNodes()` |
+| `ErrInvalidPurgePolicy` | core | The `PurgePolicy` is missing its `Label`, carries a non-positive `Before`, or names an unsupported `Mode` | `g.Admin().PurgeExpiredNodes()` |
 
-Compaction also declines with `ErrCapabilityNotSupported` on the tiered backend (per-shard trim + catalog counters are out of scope for v1).
+Compaction also declines with `ErrCapabilityNotSupported` on the tiered backend (per-shard trim + catalog counters are out of scope for v1). Retention purge (R2) likewise declines with `ErrCapabilityNotSupported` on the tiered/sharded backends until R4 wires their per-shard mapping.
 
 ## pkg/types Sentinels
 

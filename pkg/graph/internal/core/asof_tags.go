@@ -12,7 +12,7 @@ import (
 )
 
 // =============================================================================
-// §4.2 — Named knowledge-time (Erkenntniszeit) marks
+// Named knowledge-time (Erkenntniszeit) marks
 //
 // A small durable alias registry mapping a documented name to a transaction-time
 // instant, so a consumer can run AS OF SYSTEM TIME against a named, stable state

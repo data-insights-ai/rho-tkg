@@ -9,10 +9,9 @@ import (
 )
 
 // Store is the persistence contract for the graph layer. It is the
-// composition of the capability interfaces declared in capabilities.go —
-// the original ~65-method aggregate written out by hand. Today every
-// in-tree implementation (memory.Store, badger.Store, tiered.Store)
-// satisfies the full composition; out-of-tree backends that need only a
+// composition of the capability interfaces declared in capabilities.go.
+// Today every in-tree implementation (memory.Store, badger.Store,
+// tiered.Store) satisfies the full composition; out-of-tree backends that need only a
 // subset can implement the narrower capability interfaces and have call
 // sites type-assert on the specific capability.
 //

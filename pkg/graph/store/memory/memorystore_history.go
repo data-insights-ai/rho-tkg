@@ -143,7 +143,7 @@ func (ms *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 		ms.labelIdx[tok] = set
 	}
 	set[nid] = struct{}{}
-	ms.recordNodeLabelMembersLocked(updatedNode) // K1: transaction-time label membership (new token)
+	ms.recordNodeLabelMembersLocked(updatedNode) // transaction-time label membership (new token)
 
 	// Update property, temporal, and vector indexes.
 	ms.removeNodePropertyKeyCounts(old)
@@ -347,7 +347,7 @@ func (ms *Store) PutNodeVersion(nid types.NodeID, version uint32, n *types.Node)
 		ms.nodeHistory[nid] = inner
 	}
 	inner[version] = n.DeepCopy()
-	ms.recordNodeLabelMembersLocked(n) // K1: a historical version may carry labels the current row dropped
+	ms.recordNodeLabelMembersLocked(n) // a historical version may carry labels the current row dropped
 	return ms.logNodeHistoryVersionLocked(version, n)
 }
 
@@ -525,7 +525,7 @@ func (ms *Store) PutRelVersion(rid types.RelID, version uint32, r *types.Relatio
 		ms.relHistory[rid] = inner
 	}
 	inner[version] = r.DeepCopy()
-	ms.recordRelTypeMemberLocked(r) // K1: transaction-time rel-type membership (history version)
+	ms.recordRelTypeMemberLocked(r) // transaction-time rel-type membership (history version)
 	return ms.logRelHistoryVersionLocked(version, r)
 }
 

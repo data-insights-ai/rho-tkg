@@ -10,8 +10,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Relationship-history reads (R5-F9 split out from tieredstore_read_history.go).
-// Mirror layout of the node-history methods left in tieredstore_read_history.go.
+// Relationship-history reads.
+// Mirror layout of the node-history methods in tieredstore_read_history.go.
 
 func (ts *Store) GetRelVersion(rid types.RelID, version uint32) (*types.Relationship, error) {
 	if err := ts.checkOpen(); err != nil {

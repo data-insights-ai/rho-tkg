@@ -21,16 +21,16 @@ import (
 // delete rels → delete nodes. Nodes before rels (endpoints must exist),
 // deletes last (don't delete something that's about to be updated).
 //
-// Queue-time side effects (R4-F13): AddNode and AddRelationship consume
+// Queue-time side effects: AddNode and AddRelationship consume
 // snowflake IDs at queue time and reuse existing registry tokens when available,
 // but defer new label/type token allocation until Execute has passed rejection
 // checks. Execute retokenizes private queued entities before persistence, then
 // syncs their final state back into the caller-visible skeletons returned by
 // AddNode/AddRelationship. Validation rejections
 // (label/type-name format, property limits, self-loop) run BEFORE token
-// allocation per R4-F14.
+// allocation.
 //
-// File layout (R5-F9 split):
+// File layout:
 //   - batch.go         — types, constructor, BatchError
 //   - batch_queue.go   — Add/Update/Delete queue methods
 //   - batch_execute.go — Execute (the under-lock replay)
@@ -99,7 +99,7 @@ type pendingNode struct {
 	// g.Batch() path. When non-nil AND still valid at apply (labels not
 	// probe-restamped), the applier patches its tail with the stamped TxFrom and
 	// hands it to store.PreEncodedPutCapability instead of a second msgpack pass.
-	// A wrong buffer is the ADR §8 Risk-2 silent-wrong-answer class, so the
+	// A wrong buffer is a silent-wrong-answer class, so the
 	// applier re-encodes whenever it cannot prove the buffer byte-identical.
 	wireBody []byte
 	// logBody is the §4.5 pre-encode of the CREATE's ChangeNodePut payload

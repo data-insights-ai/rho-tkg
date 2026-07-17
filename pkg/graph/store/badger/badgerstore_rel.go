@@ -15,7 +15,7 @@ import (
 )
 
 func (bs *Store) PutRelationship(r *types.Relationship) error {
-	return bs.putRelationship(r, true)
+	return bs.putRelationship(r, true, false)
 }
 
 // PutRelationshipCoLocated writes a relationship whose entity AND both adjacency
@@ -27,14 +27,26 @@ func (bs *Store) PutRelationship(r *types.Relationship) error {
 // partial doors PutRelEntityAndOut/PutRelIncoming are record-free split-write
 // helpers and would leave a sharded rel create invisible to a tailing replica).
 func (bs *Store) PutRelationshipCoLocated(r *types.Relationship) error {
-	return bs.putRelationship(r, false)
+	return bs.putRelationship(r, false, false)
 }
 
-func (bs *Store) putRelationship(r *types.Relationship, validateEndpoints bool) error {
+// PutRelationshipForeignIncoming writes a cross-machine incoming half-edge STUB
+// (ADR-0010 Model A) co-located on THIS shard exactly like PutRelationshipCoLocated
+// (entity + both adjacency legs, no endpoint validation), but co-commits a
+// ChangeForeignIncoming record instead of ChangeRelPut. The stub's rel-ID belongs
+// to a FOREIGN slot (the edge's real owner is another machine), so it is reachable
+// only via this shard's adjacency fold, never a slot-routed GetRelationship — and
+// the distinct record tag lets a replica route apply by the END-node slot rather
+// than the (foreign) rel slot. Called by the sharded store's RecordForeignIncoming.
+func (bs *Store) PutRelationshipForeignIncoming(r *types.Relationship) error {
+	return bs.putRelationship(r, false, true)
+}
+
+func (bs *Store) putRelationship(r *types.Relationship, validateEndpoints, foreignIncoming bool) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
-	defer bs.bumpRelEpoch() // X5 expand path: adjacency view changed
+	defer bs.bumpRelEpoch() // expand path: adjacency view changed
 	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
 		return err
 	}
@@ -99,8 +111,8 @@ func (bs *Store) putRelationship(r *types.Relationship, validateEndpoints bool) 
 		}
 		bs.inIdx[endNID][rid] = inEdge{start: startNID, typ: relType}
 	}
-	bs.setRelValidStampLocked(rid, r) // OPT15: inline valid-time stamp
-	bs.recordRelTypeMemberLocked(r)   // K1: transaction-time rel-type membership
+	bs.setRelValidStampLocked(rid, r) // inline valid-time stamp
+	bs.recordRelTypeMemberLocked(r)   // transaction-time rel-type membership
 
 	// Build write ops.
 	ops := []writeOp{
@@ -110,12 +122,12 @@ func (bs *Store) putRelationship(r *types.Relationship, validateEndpoints bool) 
 		{opType: writeOpSet, key: storepkg.InKey(endID, relType, startID, id)},
 	}
 
-	bs.maintainRelPropertyIndexesAdd(r, id) // K3b
+	bs.maintainRelPropertyIndexesAdd(r, id)
 
 	bs.appendOps(ops...)
 	bs.relCount.Add(1)
 	bs.getOrCreateTypeCounter(relType).Add(1)
-	logErr := bs.logRelPut(r, false)
+	logErr := bs.logRelPutTagged(r, foreignIncoming)
 	bs.idxMu.Unlock()
 
 	if logErr != nil {
@@ -193,7 +205,7 @@ func (bs *Store) ReplaceRelationship(r *types.Relationship) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
-	defer bs.bumpRelEpoch() // X5 expand path: adjacency view changed
+	defer bs.bumpRelEpoch() // expand path: adjacency view changed
 	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
 		return err
 	}
@@ -227,13 +239,13 @@ func (bs *Store) ReplaceRelationship(r *types.Relationship) error {
 		return err
 	}
 
-	// K3b: type/endpoints are immutable, but property values can change — refresh
+	// Type/endpoints are immutable, but property values can change — refresh
 	// the rel property index (remove old value, add new).
 	bs.maintainRelPropertyIndexesRemove(old, id)
 	bs.relCache.Put(id, freezeRelCopy(r))
 	bs.maintainRelPropertyIndexesAdd(r, id)
 	bs.appendOps(writeOp{opType: writeOpSet, key: storepkg.RelKey(id), value: data})
-	// OPT15: a version update rewrites the row in place — endpoints/type are
+	// A version update rewrites the row in place — endpoints/type are
 	// immutable (no adjacency change) but valid_to may move, so the inline stamp
 	// MUST be refreshed here or a temporal traversal reads a stale interval.
 	bs.setRelValidStampLocked(rid, r)
@@ -252,7 +264,7 @@ func (bs *Store) DeleteRelationship(rid types.RelID) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
-	defer bs.bumpRelEpoch() // X5 expand path: adjacency view changed
+	defer bs.bumpRelEpoch() // expand path: adjacency view changed
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return err
 	}
@@ -289,6 +301,55 @@ func (bs *Store) DeleteRelationship(rid types.RelID) error {
 	if err != nil {
 		return err
 	}
+	return bs.flushIfNeeded()
+}
+
+// DeleteRelationshipForeignIncoming removes a Model-A incoming half-edge stub
+// (ADR-0010 §3.3) physically co-located on THIS (the END node's) shard. It is the
+// delete counterpart of PutRelationshipForeignIncoming: the stub's row + both
+// adjacency legs are removed exactly like DeleteRelationship, but a
+// ChangeForeignIncomingDelete record is co-committed instead of ChangeRelDelete,
+// carrying the END-node ID so a replica routes apply by the END slot (the rel's
+// own slot is foreign). Returns ErrRelNotFound when the stub is absent — the
+// caller (cascade / replica apply) tolerates it for idempotency.
+func (bs *Store) DeleteRelationshipForeignIncoming(rid types.RelID) error {
+	if err := bs.checkWritable(); err != nil {
+		return err
+	}
+	defer bs.bumpRelEpoch()
+	if err := storecontract.ValidateRelID(rid); err != nil {
+		return err
+	}
+	if _, err := bs.prefetchRel(rid); err != nil {
+		return err
+	}
+
+	bs.idxMu.Lock()
+	if _, exists := bs.relIDs[rid]; !exists {
+		bs.idxMu.Unlock()
+		return ErrRelNotFound
+	}
+	r, err := bs.getRelLocked(rid)
+	if err != nil {
+		bs.idxMu.Unlock()
+		return err
+	}
+	// The END-node ID must be captured from the stub before deletion — a replica
+	// routes the delete by it (the rel-ID's slot is foreign). Build the record
+	// inside the lock but marshal errors surface after unlock, mirroring the
+	// other delete doors.
+	delPayload, perr := bs.buildChangePayload(storepkg.ForeignIncomingDeleteBody{
+		RelID: int64(rid.SnowflakeID()),
+		EndID: int64(r.EndNodeID().SnowflakeID()),
+	})
+	if perr != nil {
+		bs.idxMu.Unlock()
+		return fmt.Errorf("graph: encode change-log: %w", perr)
+	}
+	bs.deleteRelByInfo(relDeleteInfoFromRelationship(r))
+	bs.logChangeRaw(storecontract.ChangeForeignIncomingDelete, delPayload)
+	bs.idxMu.Unlock()
+
 	return bs.flushIfNeeded()
 }
 
@@ -369,8 +430,8 @@ func (bs *Store) deleteRelByInfo(info RelDeleteInfo) {
 	// Update in-memory state.
 	bs.relCache.MarkDeleted(info.ID)
 	delete(bs.relIDs, rid)
-	delete(bs.relValidIdx, rid)                 // OPT15: drop the inline valid-time stamp
-	bs.maintainRelPropertyIndexesPurge(info.ID) // K3b: brute-force (RelDeleteInfo has no property values)
+	delete(bs.relValidIdx, rid)                 // drop the inline valid-time stamp
+	bs.maintainRelPropertyIndexesPurge(info.ID) // brute-force (RelDeleteInfo has no property values)
 
 	// Type index cleanup.
 	if set, exists := bs.typeIdx[info.RelType]; exists {

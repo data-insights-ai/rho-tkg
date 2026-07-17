@@ -9,6 +9,7 @@ import (
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
 	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -169,8 +170,8 @@ func (c *Core) BeginTx() (*GraphTx, error) {
 // mutation only. If the node was already snapshotted in this transaction,
 // this is a no-op.
 //
-// Caller must hold tx.mu (R4-F2: every public tx method holds tx.mu for
-// its entire body so snapshot accesses do not race with Commit/Rollback).
+// Caller must hold tx.mu: every public tx method holds tx.mu for
+// its entire body so snapshot accesses do not race with Commit/Rollback.
 func (tx *GraphTx) snapshotNodeLocked(id snowflake.ID) error {
 	node, err := tx.g.getCurrentNode(types.NodeID(id))
 	if err != nil {
@@ -680,6 +681,20 @@ func (tx *GraphTx) restoreDeletedRelRow(r *types.Relationship) error {
 	current, err := tx.g.getCurrentRelationship(r.ID())
 	if errors.Is(err, storepkg.ErrRelNotFound) {
 		return tx.g.store.PutRelationship(r)
+	} else if errors.Is(err, storepkg.ErrSlotNotLocal) {
+		// A Model-A foreign-incoming stub (ADR-0010): its rel-ID slot is foreign, so
+		// a slot-routed point read fails closed and PutRelationship/ReplaceRelationship
+		// would too. It can only be restored via the foreign-incoming capability,
+		// which routes by the END-node slot. The end node was restored earlier in
+		// the rollback (deleted nodes first), so it is live. Idempotent.
+		if tx.g.foreignIncomingRel == nil {
+			return err // non-partitioned store cannot hold a stub — surface the error
+		}
+		rerr := tx.g.foreignIncomingRel.RecordForeignIncoming(r, generatedcreate.FreshGraphID)
+		if errors.Is(rerr, storepkg.ErrRelExists) {
+			return nil // already present — idempotent restore
+		}
+		return rerr
 	} else if err != nil {
 		return err
 	}
@@ -952,7 +967,7 @@ func (tx *GraphTx) restoreRegistries() error {
 
 // GetNode reads a node by ID within the transaction.
 // Safe because the tx holds the write lock — no concurrent modifications possible.
-// Holds tx.mu for the whole call — see AddNode (R4-F2).
+// Holds tx.mu for the whole call — see AddNode.
 func (tx *GraphTx) GetNode(id types.NodeID) (*types.Node, error) {
 	if err := tx.lockActive(); err != nil {
 		return nil, err
@@ -971,7 +986,7 @@ func (tx *GraphTx) GetNode(id types.NodeID) (*types.Node, error) {
 
 // GetRelationship reads a relationship by ID within the transaction.
 // Safe because the tx holds the write lock — no concurrent modifications possible.
-// Holds tx.mu for the whole call — see AddNode (R4-F2).
+// Holds tx.mu for the whole call — see AddNode.
 func (tx *GraphTx) GetRelationship(id types.RelID) (*types.Relationship, error) {
 	if err := tx.lockActive(); err != nil {
 		return nil, err

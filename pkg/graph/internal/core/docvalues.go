@@ -15,6 +15,18 @@ type nodeDocValuesScanner interface {
 	NodeMutationEpoch() uint64
 }
 
+// nodeMutationEpochScanner exposes ONLY the node-mutation epoch, DECOUPLED from
+// the columnar DocValues path. A consumer keys a read cache on this epoch to
+// invalidate it on writes; the value need not be the DocValues cache's — only
+// monotonically advancing on every node mutation. Splitting it out lets a
+// partitioned backend (sharded) that declines DocValues STILL expose a correct
+// advancing epoch (folded across shards) — without it the epoch defaulted to a
+// constant 0 there, so an epoch-keyed consumer cache never invalidated and
+// served stale reads after writes on a multi-lane deployment.
+type nodeMutationEpochScanner interface {
+	NodeMutationEpoch() uint64
+}
+
 // ForEachDocValues streams the requested property columns for a label's nodes in
 // ordinal order, serving each value from a cached columnar snapshot instead of a
 // per-node fetch+decode. Membership is the full label index (the unfiltered scan
@@ -94,7 +106,7 @@ func (n *NodeOps) ForEachDocValuesMulti(labels []string, propKeys []string,
 // label's cached column snapshot — the X5 expand-aggregation target side, fetching
 // a node's properties by ID without materializing it. ok=false (not an error) when
 // unusable: no capability, unknown/empty/over-cap label, or any requested property
-// not a uniformly numeric/string column (critique Trap B → consumer declines the
+// not a uniformly numeric/string column (consumer declines the
 // whole query). gen is the snapshot's node-mutation epoch (pair with
 // RelMutationEpoch for the adjacency Gate-2).
 func (n *NodeOps) DocValuesSnapshot(label string, propKeys []string) (snap types.NodeColumnReader, gen uint64, ok bool, err error) {
@@ -123,7 +135,7 @@ func (n *NodeOps) DocValuesSnapshot(label string, propKeys []string) (snap types
 // NodeMutationEpoch returns the store's current node-mutation epoch, or 0 if the
 // store lacks the DocValues capability. The consumer's Gate-2 staleness check.
 func (n *NodeOps) NodeMutationEpoch() uint64 {
-	scanner, native := n.c.store.(nodeDocValuesScanner)
+	scanner, native := n.c.store.(nodeMutationEpochScanner)
 	if !native {
 		return 0
 	}

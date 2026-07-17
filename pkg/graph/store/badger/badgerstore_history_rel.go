@@ -11,7 +11,7 @@ import (
 	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
-// Relationship-history methods (R5-F9 split out from badgerstore_history.go).
+// Relationship-history methods.
 
 func (bs *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion uint32, prevState *types.Relationship) error {
 	if err := bs.checkWritable(); err != nil {
@@ -68,11 +68,11 @@ func (bs *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion 
 		return err
 	}
 
-	// K3b: refresh the rel property index (property values may have changed).
+	// Refresh the rel property index (property values may have changed).
 	bs.maintainRelPropertyIndexesRemove(old, id)
 	bs.relCache.Put(id, freezeRelCopy(current))
 	bs.maintainRelPropertyIndexesAdd(current, id)
-	// OPT15: refresh the inline valid-time stamp — a history version-close moves
+	// Refresh the inline valid-time stamp — a history version-close moves
 	// valid_to while leaving endpoints/type (and thus adjacency) unchanged.
 	bs.setRelValidStampLocked(rid, current)
 
@@ -99,7 +99,7 @@ func (bs *Store) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombs
 		return err
 	}
 	id := rid.SnowflakeID()
-	// Serialize tombstone OUTSIDE lock (B3: no I/O under write lock).
+	// Serialize tombstone OUTSIDE lock (no I/O under write lock).
 	tombData, err := bs.historyRelValue(id, uint64(prevVersion), tombstone)
 	if err != nil {
 		return fmt.Errorf("graph: marshal rel tombstone: %w", err)
@@ -158,7 +158,7 @@ func (bs *Store) PutRelVersion(rid types.RelID, version uint32, r *types.Relatio
 		return fmt.Errorf("graph: encode change-log: %w", err)
 	}
 	key := storepkg.HistRelKey(id, uint64(version))
-	// K1: capture a history-only rel (deleted rel reconstructed via version
+	// Capture a history-only rel (deleted rel reconstructed via version
 	// inserts) once the sidecar is built; the bootstrap common case runs before
 	// any pinned scan, so the lazy build catches these rows.
 	if bs.relTypeMembersBuilt.Load() {

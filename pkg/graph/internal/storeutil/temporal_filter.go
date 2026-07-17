@@ -17,6 +17,15 @@ func EntityValidFrom(id snowflake.ID, tm *types.TemporalMetadata) types.Instant 
 	return types.Instant(snowflakepkg.Layout.CreatedAt(id).UnixMilli())
 }
 
+// SnowflakeInstant returns the IMMUTABLE mint-time of a snowflake ID as a
+// types.Instant (Unix ms). Unlike EntityValidFrom it never consults temporal
+// metadata — this is the age boundary retention purge (ADR-0008 ByAge) tests,
+// deliberately independent of a caller-set ValidFrom or a backfilled TxFrom so a
+// backfilled fact cannot dodge (or be silently caught by) the purge predicate.
+func SnowflakeInstant(id snowflake.ID) types.Instant {
+	return types.Instant(snowflakepkg.Layout.CreatedAt(id).UnixMilli())
+}
+
 // EnvelopeOverlaps reports whether a node's valid-time ENVELOPE [from, to) (to == 0
 // meaning open-ended) could satisfy the valid-time filter in opts. It is the B4
 // candidate-prune predicate: because the envelope is a SOUND SUPERSET of every

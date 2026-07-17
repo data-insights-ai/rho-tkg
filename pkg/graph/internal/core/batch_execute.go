@@ -45,7 +45,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		// Re-check under the lock — Close may have run between
 		// checkOpen and Lock. Without this re-check, Execute could
 		// race past a fully-completed Close and operate on a torn
-		// store (R5-F5 lifecycle gate, mirrors BeginTx).
+		// store (lifecycle gate, mirrors BeginTx).
 		b.g.mu.Unlock()
 		b.g.txMu.Unlock()
 		b.mu.Unlock()
@@ -217,7 +217,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			// provenance) is fixed at prepare and the tail is what we patch. When in
 			// doubt (tokens changed, patch fails, or capability absent) leave
 			// wireBodies[i] nil so the store re-encodes — the correct fallback, proven
-			// byte-identical by the ingest divergence battery (Risk-2).
+			// byte-identical by the ingest divergence battery.
 			wireBodies, logBodies := b.buildPreEncodedWireBodies(labelTokens)
 			nodesWriteAttempted = true
 			err = b.g.putGeneratedNodesBatchPreEncoded(nodes, wireBodies, logBodies)
@@ -397,8 +397,8 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			txNow = b.g.now()
 			ts := txNow
 			if pr.backfillTxFrom != 0 {
-				// Privileged transaction-time backfill (gated at queue time,
-				// §4.1). The event timestamp below still uses the real clock.
+				// Privileged transaction-time backfill (gated at queue time).
+				// The event timestamp below still uses the real clock.
 				ts = pr.backfillTxFrom
 			}
 			pr.temporal.TxFrom = ts
@@ -417,7 +417,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			// batch path. rel != nil from the kernel means the row is live
 			// (clean success or partial-live failure) — that maps onto the
 			// batch's committed flag.
-			rel, kerr := b.g.createRelWithTypeRollback(pr.typeName, storeCanCaptureEndpointHashes, func(typeToken uint16) (*types.Relationship, *types.RelIntegrity, error) {
+			rel, kerr := b.g.createRelWithTypeRollback(pr.typeName, relPersistModeFor(storeCanCaptureEndpointHashes), func(typeToken uint16) (*types.Relationship, *types.RelIntegrity, error) {
 				setPendingRelationshipType(pr, typeToken)
 				return pr.rel, pr.relIntegrity, nil
 			})

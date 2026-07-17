@@ -36,15 +36,15 @@ var (
 
 const (
 	// defaultIngestGroupSize is the target number of prepared intents the
-	// applier coalesces into one commit group before flushing (group commit,
-	// §4.6). Larger amortizes the fsync further; smaller lowers latency.
+	// applier coalesces into one commit group before flushing (group commit).
+	// Larger amortizes the fsync further; smaller lowers latency.
 	defaultIngestGroupSize = 4096
 	// defaultIngestQueueBound is the default capacity of the prepare→apply
-	// queue in submitted groups (§4.8). A full queue BLOCKS the producer
+	// queue in submitted groups. A full queue BLOCKS the producer
 	// (synchronous stall), never drops.
 	defaultIngestQueueBound = 256
 	// ingestFailureCap bounds the retained per-token apply-failure records (the
-	// async WaitApplied truth channel — C2). Failures are rare; prune-on-read
+	// async WaitApplied truth channel). Failures are rare; prune-on-read
 	// keeps the map tiny in normal operation, and this cap bounds the
 	// pathological "fire-and-forget async producer, many failures, nobody reads"
 	// case: at the cap the oldest record is evicted (counted in failureDrops)
@@ -419,9 +419,9 @@ func (a *ingestApplier) currentAppliedSeq() uint64 {
 
 // waitApplied blocks until the applier has PROCESSED up to seq, then returns
 // that token's apply outcome: nil if the group committed, or the intent's real
-// apply error if it was REJECTED (C2 truth channel), pruned on read. If the
+// apply error if it was REJECTED (truth channel), pruned on read. If the
 // applier stops before seq is reached (should not happen for an accepted token —
-// C1 applies every accepted intent), it returns a recorded failure if any, else
+// every accepted intent is applied), it returns a recorded failure if any, else
 // ErrIngestClosed.
 func (a *ingestApplier) waitApplied(seq uint64) error {
 	a.mu.Lock()

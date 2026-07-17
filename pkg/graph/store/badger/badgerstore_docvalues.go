@@ -2,6 +2,7 @@ package badger
 
 import (
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -16,7 +17,7 @@ func (bs *Store) NodeMutationEpoch() uint64 {
 }
 
 // RelMutationEpoch returns the global relationship-mutation epoch — bumped on every
-// edge write. The X5 expand-aggregation column path samples it before the scan and
+// edge write. The expand-aggregation column path samples it before the scan and
 // re-checks it after (Gate 2): a concurrent edge insert/delete advances it and the
 // consumer discards the torn aggregate. Distinct from NodeMutationEpoch.
 func (bs *Store) RelMutationEpoch() uint64 {
@@ -39,7 +40,7 @@ func (bs *Store) RelMutationEpoch() uint64 {
 //     discards the (possibly torn) rows and falls back.
 //
 // Membership is the full in-RAM label index — the same unfiltered set the
-// zero-QueryOpts scan returns (no valid-time filter; critique C1). Declines
+// zero-QueryOpts scan returns (no valid-time filter). Declines
 // (ok=false) in LabelIndexOnDisk mode (membership not in RAM), for an empty or
 // over-cap label, or when a requested property is not a uniformly numeric/string
 // column.
@@ -76,10 +77,10 @@ func (bs *Store) ForEachDocValues(labelToken uint16, propKeys []string,
 }
 
 // DocValuesSnapshot returns a RANDOM-ACCESS point-lookup handle over a single
-// label's column snapshot (the X5 expand-aggregation target side), building it if
+// label's column snapshot (the expand-aggregation target side), building it if
 // stale. Same lock-free epoch-keyed build and decline contract as ForEachDocValues;
 // declines in LabelIndexOnDisk mode, on an empty/over-cap label, or when a requested
-// property is not a uniformly numeric/string column (critique Trap B). gen is the
+// property is not a uniformly numeric/string column. gen is the
 // snapshot epoch for the consumer's Gate-2 (paired with RelMutationEpoch).
 func (bs *Store) DocValuesSnapshot(labelToken uint16, propKeys []string) (snap types.NodeColumnReader, gen uint64, ok bool, err error) {
 	if bs == nil {
@@ -107,7 +108,7 @@ func (bs *Store) DocValuesSnapshot(labelToken uint16, propKeys []string) (snap t
 
 	ps, pok := col.NewPointSnapshot(propKeys)
 	if !pok {
-		return nil, col.Epoch(), false, nil // an unbuildable key → decline (Trap B)
+		return nil, col.Epoch(), false, nil // an unbuildable key → decline
 	}
 	return ps, col.Epoch(), true, nil
 }
@@ -116,7 +117,7 @@ func (bs *Store) DocValuesSnapshot(labelToken uint16, propKeys []string) (snap t
 // INTERSECTION (a multi-label pattern like (p:A:B)) in ordinal order from a cached
 // columnar snapshot, building it if stale. Same lock-free, epoch-keyed build and
 // decline contract as ForEachDocValues; membership is the INTERSECTION of the
-// in-RAM label indexes (no valid-time filter; critique C1). Declines in
+// in-RAM label indexes (no valid-time filter). Declines in
 // LabelIndexOnDisk mode, on an empty intersection / over-cap, or for a
 // non-numeric/string column.
 func (bs *Store) ForEachDocValuesMulti(toks []uint16, propKeys []string,
@@ -178,14 +179,7 @@ func (bs *Store) buildMultiColumns(toks []uint16, key string, requested []string
 	}
 	bs.docMu.Unlock()
 
-	getProp := func(id types.NodeID, key string) (any, bool) {
-		nd, err := bs.GetNode(id)
-		if err != nil || nd == nil {
-			return nil, false
-		}
-		return nd.GetProperty(key)
-	}
-	col = indexpkg.BuildLabelDocValues(gen, ids, keys, getProp)
+	col = indexpkg.BuildLabelDocValues(gen, ids, keys, bs.bulkNodePropGetter(ids))
 
 	bs.docMu.Lock()
 	if bs.nodeEpoch.Load() == gen {
@@ -259,14 +253,7 @@ func (bs *Store) buildLabelColumns(labelToken uint16, requested []string) (col *
 	}
 	bs.docMu.Unlock()
 
-	getProp := func(id types.NodeID, key string) (any, bool) {
-		nd, err := bs.GetNode(id)
-		if err != nil || nd == nil {
-			return nil, false // node deleted between the membership snapshot and the read
-		}
-		return nd.GetProperty(key)
-	}
-	col = indexpkg.BuildLabelDocValues(gen, ids, keys, getProp)
+	col = indexpkg.BuildLabelDocValues(gen, ids, keys, bs.bulkNodePropGetter(ids))
 
 	bs.docMu.Lock()
 	if bs.nodeEpoch.Load() == gen { // build saw a consistent snapshot — safe to cache
@@ -277,4 +264,37 @@ func (bs *Store) buildLabelColumns(labelToken uint16, requested []string) (col *
 	}
 	bs.docMu.Unlock()
 	return col, false
+}
+
+// bulkNodePropGetter returns a getProp closure for a column build over ids that
+// decodes each node EXACTLY ONCE via a single bulk scan, instead of the naive
+// column-major build's ~O(columns × 2 passes × N) per-(id,key) GetNode calls —
+// each of which re-fetches the whole node and, on a label larger than the LRU,
+// thrashes the cache with fill-on-miss (evicting hot point-read entries). The
+// bulk scan is no-fill (scan discipline: cache hits served without promotion, so
+// it does not pollute the LRU). On a bulk-scan error it falls back to per-node
+// reads so the build still completes correctly.
+func (bs *Store) bulkNodePropGetter(ids []types.NodeID) func(types.NodeID, string) (any, bool) {
+	sorted := append([]types.NodeID(nil), ids...)
+	storepkg.SortNodeIDs(sorted)
+	mat := make(map[types.NodeID]*types.Node, len(sorted))
+	if err := bs.forEachNodeBulk(sorted, func(nd *types.Node) bool {
+		mat[nd.ID()] = nd
+		return true
+	}); err != nil {
+		return func(id types.NodeID, key string) (any, bool) {
+			nd, gerr := bs.GetNode(id)
+			if gerr != nil || nd == nil {
+				return nil, false
+			}
+			return nd.GetProperty(key)
+		}
+	}
+	return func(id types.NodeID, key string) (any, bool) {
+		nd := mat[id]
+		if nd == nil {
+			return nil, false // deleted between the membership snapshot and the scan
+		}
+		return nd.GetProperty(key)
+	}
 }

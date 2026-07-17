@@ -128,7 +128,7 @@ type Store struct {
 	// so a cached column can detect staleness. The epoch is deliberately coarse
 	// (any node mutation invalidates every column): a per-label counter is an
 	// optimization, but a single missed mutation path would silently serve a stale
-	// aggregate (critique H2), so correctness picks the impossible-to-under-fire
+	// aggregate, so correctness picks the impossible-to-under-fire
 	// global counter. atomic so ForEachDocValues can read it without the lock.
 	nodeEpoch atomic.Uint64
 	// relEpoch is a DISTINCT generation counter bumped on every relationship write
@@ -168,7 +168,7 @@ type Store struct {
 	scopeActive bool
 	scopeLog    []storecontract.ChangeRecord
 
-	// K1 transaction-time membership sidecars (store.LabelTxMembershipCapability /
+	// transaction-time membership sidecars (store.LabelTxMembershipCapability /
 	// RelTypeTxMembershipCapability). labelTxMembers maps a label token to the set
 	// of node IDs that EVER carried it (current OR any historical version), each
 	// tagged with a lower bound on the transaction time of its earliest
@@ -303,8 +303,8 @@ func (ms *Store) Clear() error {
 	ms.vectorIndexes = make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex)
 	ms.docColumns = make(map[uint16]*indexpkg.LabelDocValues)
 	ms.docColumnsMulti = make(map[string]*indexpkg.LabelDocValues)
-	ms.labelTxMembers = nil   // K1: drop the lazy membership sidecar; rebuilt on next pinned scan
-	ms.relTypeTxMembers = nil // K1: rel-type mirror
+	ms.labelTxMembers = nil   // drop the lazy membership sidecar; rebuilt on next pinned scan
+	ms.relTypeTxMembers = nil // rel-type mirror
 	ms.bumpNodeEpoch()        // any cached column from before Clear is now invalid
 	ms.bumpRelEpoch()         // and the adjacency view (X5 expand path)
 	// Drop the change-log records (the store is now empty) and re-anchor with a

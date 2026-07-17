@@ -15,7 +15,7 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-// File layout (R5-F9 split):
+// File layout:
 //   - export.go — wire format + Export path + framing helpers
 //   - import.go — Import path + per-record validators
 
@@ -99,7 +99,7 @@ type exportHeader struct {
 // callers can use `errors.Is(err, tkgio.ErrIncompatibleExport)` without
 // importing internal/core. Aliasing here keeps internal references on
 // the short identifier while the exported identity sits in the public
-// package (R4-F8).
+// package.
 var (
 	ErrIncompatibleExport   = tkgio.ErrIncompatibleExport
 	ErrIncompatibleRegistry = tkgio.ErrIncompatibleRegistry

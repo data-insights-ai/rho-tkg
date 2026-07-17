@@ -1,6 +1,8 @@
 package sharded
 
 import (
+	"errors"
+
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -166,7 +168,21 @@ func (s *Store) DeleteNodeWithHistory(id types.NodeID, prevNodeVersion uint32, n
 	for _, rt := range relTombstones {
 		idx, rerr := s.shardIndexForRel(rt.ID)
 		if rerr != nil {
-			return rerr
+			if !errors.Is(rerr, ErrSlotNotLocal) {
+				return rerr
+			}
+			// A rel tombstone whose rel-ID slot is FOREIGN is a Model-A incoming
+			// half-edge stub (ADR-0010 §3.3): physically co-located on the END
+			// node's (== this node's) shard, adjacency-only, with no version chain
+			// to tombstone. Remove it now — BEFORE the node's own with-history
+			// delete — so nodeShard.DeleteNodeWithHistory's tombstone validation and
+			// cascade sweep see a stub-free adjacency. It replicates via a dedicated
+			// ChangeForeignIncomingDelete (routed by END slot), never a rel-slot
+			// ChangeRelDelete that a replica cannot route. Idempotent.
+			if derr := nodeShard.DeleteRelationshipForeignIncoming(rt.ID); derr != nil && !isRelNotFound(derr) {
+				return derr
+			}
+			continue
 		}
 		if idx == nodeIdx {
 			local = append(local, rt)

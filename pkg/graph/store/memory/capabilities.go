@@ -29,4 +29,6 @@ var (
 	_ storecontract.VectorIndexCapability                = (*Store)(nil)
 	_ storecontract.FilteredVectorSearchCapability       = (*Store)(nil)
 	_ storecontract.HighFrequencyIndexCapability         = (*Store)(nil)
+	_ storecontract.RetentionPurgeCapability             = (*Store)(nil)
+	_ storecontract.RangePurgeLogCapability              = (*Store)(nil)
 )

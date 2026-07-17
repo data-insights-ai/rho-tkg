@@ -9,15 +9,10 @@ import (
 
 // --- Convenience helpers (single-property update) ---
 //
-// API 4.0: the previous separate (Add, AddWithContext), (Delete, DeleteWithContext),
-// (Update, UpdateWithContext), (UpdateInPlace, UpdateInPlaceWithContext),
-// (Get, GetWithContext), (CompareAndSetProperty, CompareAndSetPropertyWithContext)
-// pairs collapsed into one context-aware method each. The previous *WithContext
-// variants were renamed to drop the suffix; the old short forms were removed.
-// Pass context.Background() for the previous no-ctx behavior.
+// Each method is context-aware; pass context.Background() when no context is needed.
 
 // SetProperty sets a single property on an existing node. Internally delegates
-// to Update; ctx is honoured by the Update lifecycle gates (S1).
+// to Update; ctx is honoured by the Update lifecycle gates.
 func (n *NodeOps) SetProperty(ctx context.Context, id types.NodeID, key string, value any) error {
 	c := n.c
 	_, err := c.Nodes.Update(ctx, id, map[string]any{key: value})
@@ -25,7 +20,7 @@ func (n *NodeOps) SetProperty(ctx context.Context, id types.NodeID, key string, 
 }
 
 // DeleteProperty removes a single property from an existing node. Internally
-// delegates to Update; ctx is honoured by the Update lifecycle gates (S1).
+// delegates to Update; ctx is honoured by the Update lifecycle gates.
 func (n *NodeOps) DeleteProperty(ctx context.Context, id types.NodeID, key string) error {
 	c := n.c
 	_, err := c.Nodes.Update(ctx, id, map[string]any{key: nil})
@@ -33,7 +28,7 @@ func (n *NodeOps) DeleteProperty(ctx context.Context, id types.NodeID, key strin
 }
 
 // SetProperty sets a single property on an existing relationship. Internally
-// delegates to Update; ctx is honoured by the Update lifecycle gates (S1).
+// delegates to Update; ctx is honoured by the Update lifecycle gates.
 func (r *RelOps) SetProperty(ctx context.Context, id types.RelID, key string, value any) error {
 	c := r.c
 	_, err := c.Rels.Update(ctx, id, map[string]any{key: value})
@@ -41,7 +36,7 @@ func (r *RelOps) SetProperty(ctx context.Context, id types.RelID, key string, va
 }
 
 // DeleteProperty removes a single property from an existing relationship.
-// Internally delegates to Update; ctx is honoured by the Update lifecycle gates (S1).
+// Internally delegates to Update; ctx is honoured by the Update lifecycle gates.
 func (r *RelOps) DeleteProperty(ctx context.Context, id types.RelID, key string) error {
 	c := r.c
 	_, err := c.Rels.Update(ctx, id, map[string]any{key: nil})

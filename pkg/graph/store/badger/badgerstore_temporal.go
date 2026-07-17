@@ -67,19 +67,15 @@ func (bs *Store) filterRelIDsByTemporalPeek(ids []types.RelID, opts QueryOpts) [
 func (bs *Store) fetchNodesWithTemporalFilter(ids []types.NodeID, opts QueryOpts) ([]*types.Node, error) {
 	hasTemporal := opts.ValidAt != 0 || (opts.ValidStart > 0 && opts.ValidEnd > 0)
 	nodes := make([]*types.Node, 0, len(ids))
-	for _, nid := range ids {
-		id := nid.SnowflakeID()
-		n, err := bs.prefetchNodeScan(nid)
-		if err != nil {
-			if errors.Is(err, ErrNodeNotFound) {
-				continue
-			}
-			return nil, fmt.Errorf("graph: query node %d: %w", id, err)
-		}
-		if hasTemporal && !storepkg.MatchesTemporalFilter(id, n.Temporal(), opts) {
-			continue
+	err := bs.forEachNodeBulk(ids, func(n *types.Node) bool {
+		if hasTemporal && !storepkg.MatchesTemporalFilter(n.ID().SnowflakeID(), n.Temporal(), opts) {
+			return true
 		}
 		nodes = append(nodes, n)
+		return true
+	})
+	if err != nil {
+		return nil, err
 	}
 	return nodes, nil
 }
@@ -95,22 +91,15 @@ func (bs *Store) fetchNodesWithTemporalFilterPage(ids []types.NodeID, opts Query
 	}
 	hasTemporal := opts.ValidAt != 0 || (opts.ValidStart > 0 && opts.ValidEnd > 0)
 	nodes := make([]*types.Node, 0, capForLimit(opts.Limit))
-	for _, nid := range ids {
-		id := nid.SnowflakeID()
-		n, err := bs.prefetchNodeScan(nid)
-		if err != nil {
-			if errors.Is(err, ErrNodeNotFound) {
-				continue
-			}
-			return nil, fmt.Errorf("graph: query node %d: %w", id, err)
-		}
-		if hasTemporal && !storepkg.MatchesTemporalFilter(id, n.Temporal(), opts) {
-			continue
+	err := bs.forEachNodeBulk(ids, func(n *types.Node) bool {
+		if hasTemporal && !storepkg.MatchesTemporalFilter(n.ID().SnowflakeID(), n.Temporal(), opts) {
+			return true
 		}
 		nodes = append(nodes, n)
-		if opts.Limit > 0 && len(nodes) >= opts.Limit {
-			break
-		}
+		return opts.Limit == 0 || len(nodes) < opts.Limit
+	})
+	if err != nil {
+		return nil, err
 	}
 	if len(nodes) == 0 {
 		return nil, nil

@@ -48,7 +48,11 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		t.Fatalf("DecomposeRelID = %+v, want NodeID 7", got)
 	}
 
-	if ops.resetCalls != 1 || ops.decomposeIDCalls != 2 {
+	if _, err := api.PurgeExpiredNodes(context.Background(), PurgePolicy{Label: "Event", Before: 1}); err != nil {
+		t.Fatalf("PurgeExpiredNodes: %v", err)
+	}
+
+	if ops.resetCalls != 1 || ops.decomposeIDCalls != 2 || ops.purgeCalls != 1 {
 		t.Fatalf("unexpected call counts: %+v", ops)
 	}
 }
@@ -57,6 +61,7 @@ type adminOpsSpy struct {
 	resetCalls       int
 	decomposeIDCalls int
 	compactCalls     int
+	purgeCalls       int
 }
 
 func (s *adminOpsSpy) Reset() error {
@@ -82,4 +87,9 @@ func (s *adminOpsSpy) CompactHistoryNodes(ctx context.Context, policy RetentionP
 func (s *adminOpsSpy) CompactHistoryRels(ctx context.Context, policy RetentionPolicy) (CompactReport, error) {
 	s.compactCalls++
 	return CompactReport{}, nil
+}
+
+func (s *adminOpsSpy) PurgeExpiredNodes(ctx context.Context, policy PurgePolicy) (PurgeReport, error) {
+	s.purgeCalls++
+	return PurgeReport{}, nil
 }

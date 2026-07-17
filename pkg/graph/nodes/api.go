@@ -93,7 +93,7 @@ func (a *API) Add(ctx context.Context, labels []string, props map[string]any) (*
 
 // AddWithTx creates a node like Add but stamps the caller-supplied txFrom as
 // its transaction time (backfill). Requires the graph to be opened with
-// Config.AllowTxBackfill; see NodeOps.AddWithTx and §4.1.
+// Config.AllowTxBackfill; see NodeOps.AddWithTx.
 func (a *API) AddWithTx(ctx context.Context, labels []string, props map[string]any, txFrom types.Instant) (*types.Node, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -175,7 +175,7 @@ func (a *API) Import(ctx context.Context, id types.NodeID, labels []string, prop
 // AddByIDIfAbsent creates a node with the supplied id and labels+props if no
 // node with that id already exists; if a node is already present at that id
 // it returns the existing node with created=false and no error. Mirror of
-// Rels.AddByIDIfAbsent for Node/Rel parity (S3). Returns ErrZeroID or
+// Rels.AddByIDIfAbsent for Node/Rel parity. Returns ErrZeroID or
 // ErrInvalidID for invalid IDs (same as Import).
 func (a *API) AddByIDIfAbsent(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, bool, error) {
 	ops, err := a.ready()
@@ -363,10 +363,10 @@ func (a *API) ForEachDocValuesMulti(labels []string, propKeys []string, fn func(
 	return ops.ForEachDocValuesMulti(labels, propKeys, fn)
 }
 
-// DocValuesSnapshot (X5) returns a random-access point-lookup handle over a label's
+// DocValuesSnapshot returns a random-access point-lookup handle over a label's
 // cached column snapshot — the expand-aggregation target side (fetch b's properties
 // by ID without materializing b). ok=false means unusable (no capability, unknown/
-// empty/over-cap label, or an unbuildable requested property — critique Trap B) and
+// empty/over-cap label, or an unbuildable requested property) and
 // the caller falls back. See core.NodeOps.DocValuesSnapshot.
 func (a *API) DocValuesSnapshot(label string, propKeys []string) (types.NodeColumnReader, uint64, bool, error) {
 	ops, err := a.ready()
@@ -555,9 +555,7 @@ func cloneStrings(values []string) []string {
 // immediately either on ctx cancellation — yielding (zero, ctx.Err()) exactly
 // once — or when the consumer's yield returns false (a normal early stop,
 // nothing further is yielded). Any error the scan itself returns (and did not
-// already surface via a per-row ctx check) is yielded once at the end. Kept
-// unexported and duplicated in rels (rather than shared via a new package) to
-// stay inside this WP's scope.
+// already surface via a per-row ctx check) is yielded once at the end.
 func iterateForEach[T any](ctx context.Context, yield func(T, error) bool, scan func(fn func(T) bool) error) {
 	var zero T
 	if err := ctx.Err(); err != nil {

@@ -296,7 +296,7 @@ type AsyncEventBus struct {
 	// higher-priority events have been made visible. Cleared at end of
 	// batch followed by signalWakeup so any lower-priority work can resume.
 	//
-	// Ordering correctness (W1 analysis):
+	// Ordering correctness:
 	//   - Go atomics are sequentially consistent, so the dispatcher's
 	//     Load always sees the most-recent Store across goroutines.
 	//   - Publisher pattern: Store(i+1) HAPPENS-BEFORE every enqueueLocked
@@ -669,7 +669,7 @@ var priorityOrder = [numPriorityLevels]EventPriority{
 
 // worker runs the dispatcher loop and drains per-priority queues via a
 // non-blocking scan; when all queues are empty it blocks ONLY on
-// stopCh + wakeupCh (R4-F16). Critically, the blocking branch never
+// stopCh + wakeupCh. Critically, the blocking branch never
 // receives an event directly — it only learns "events are now
 // available" and loops back to the priority scan. This guarantees
 // that when multiple priority queues become ready together, the
@@ -742,7 +742,7 @@ func (ab *AsyncEventBus) drainAll() {
 }
 
 // dispatch copies handlers under RLock and invokes each via safeInvoke.
-// Uses copy-outside-lock pattern (B15) to prevent deadlocks when handlers
+// Uses copy-outside-lock pattern to prevent deadlocks when handlers
 // re-enter the Graph.
 func (ab *AsyncEventBus) dispatch(e Event) {
 	ab.mu.RLock()
@@ -762,7 +762,7 @@ func (ab *AsyncEventBus) dispatch(e Event) {
 }
 
 // Close signals the dispatcher to stop, waits for it to drain the queue and finish.
-// Safe to call multiple times (B11). Blocks until all in-flight events are delivered.
+// Safe to call multiple times. Blocks until all in-flight events are delivered.
 //
 // OnDrop quiescence: Close does NOT wait for OnDrop callbacks in-flight on
 // concurrent Publish/PublishBatch callers (they run on the producer goroutine

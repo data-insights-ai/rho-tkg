@@ -149,6 +149,26 @@ func (bs *Store) logRelPut(r *types.Relationship, withHistory bool) error {
 	return nil
 }
 
+// logRelPutTagged emits a create put record, choosing the ChangeForeignIncoming
+// tag for a cross-machine incoming half-edge stub (ADR-0010 Model A) so a replica
+// routes apply by the END-node slot, else the ordinary ChangeRelPut. The body is
+// identical (the rel wire, no history) either way.
+func (bs *Store) logRelPutTagged(r *types.Relationship, foreignIncoming bool) error {
+	if !bs.logEnabled {
+		return nil
+	}
+	payload, err := storepkg.RelPutPayload(r, false)
+	if err != nil {
+		return fmt.Errorf("graph: encode change-log: %w", err)
+	}
+	tag := storecontract.ChangeRelPut
+	if foreignIncoming {
+		tag = storecontract.ChangeForeignIncoming
+	}
+	bs.logChangeRaw(tag, payload)
+	return nil
+}
+
 func (bs *Store) historyVersionNodePayload(version uint32, n *types.Node) ([]byte, error) {
 	if !bs.logEnabled {
 		return nil, nil

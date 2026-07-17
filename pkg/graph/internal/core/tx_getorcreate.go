@@ -28,7 +28,7 @@ import (
 // seed a freshly created node only (the keyed property always wins); they are
 // ignored on a hit. The returned node is a mutable, independent copy.
 //
-// Holds tx.mu for the whole call (R4-F2) — see GraphTx.AddNode.
+// Holds tx.mu for the whole call — see GraphTx.AddNode.
 func (tx *GraphTx) GetOrCreateByKey(label, propertyKey string, value any, extraProps map[string]any) (*types.Node, bool, error) {
 	if err := tx.lockActiveCoreWrite(); err != nil {
 		return nil, false, err

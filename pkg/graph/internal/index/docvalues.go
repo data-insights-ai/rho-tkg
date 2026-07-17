@@ -197,7 +197,7 @@ type PointSnapshot struct {
 // NewPointSnapshot binds propKeys to their columns for point lookups, or returns
 // ok=false if ANY requested key is not a usable (numeric/string) column — mirroring
 // HasAll exactly, so the consumer declines the WHOLE query to the per-node path
-// rather than reading an unbuildable column as spurious nulls (critique Trap B).
+// rather than reading an unbuildable column as spurious nulls.
 func (l *LabelDocValues) NewPointSnapshot(propKeys []string) (*PointSnapshot, bool) {
 	cols := make([]*docColumn, len(propKeys))
 	for i, k := range propKeys {
@@ -214,7 +214,7 @@ func (l *LabelDocValues) NewPointSnapshot(propKeys []string) (*PointSnapshot, bo
 // false (buffers untouched) when id is not a label member — the expand path's b:T
 // filter. For a member, a cleared present bit yields a nil value (the absent-
 // property shape); Row still returns TRUE so the row is counted (an all-absent but
-// BUILDABLE column must count every member — critique Trap B').
+// BUILDABLE column must count every member).
 func (s *PointSnapshot) Row(id types.NodeID, vals []any, present []bool) bool {
 	ord, ok := s.l.lookup(id)
 	if !ok {

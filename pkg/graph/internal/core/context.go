@@ -13,7 +13,7 @@ import (
 // milliseconds). Used by code paths that have no Core handle (notably
 // the package-level test helpers and bootstrap paths). Mutation paths
 // inside Core MUST use c.now() instead — that path consults c.clock,
-// which tests can override (R4-F20).
+// which tests can override.
 func nowInstant() types.Instant {
 	return types.Instant(time.Now().UnixMilli())
 }
@@ -38,6 +38,31 @@ func (c *Core) now() types.Instant {
 		}
 		if c.lastInstant.CompareAndSwap(last, next) {
 			return types.Instant(next)
+		}
+	}
+}
+
+// advanceClockFloor raises the per-Core monotonic transaction-clock floor to at
+// least `to`, returning the resulting floor. It NEVER moves the clock backward:
+// to <= the current floor is a no-op that returns the current floor.
+//
+// This is the Hybrid-Logical-Clock merge primitive for a distributed deployment.
+// rho-tkg's transaction clock is per-machine; two machines' clocks are not
+// globally ordered. A coordinator (sigma-tkgd) that observes a peer machine's
+// transaction timestamp on an incoming message calls this before stamping any
+// local write, so every subsequent local TxFrom is >= every peer timestamp seen
+// — establishing a causal (happens-before) order across machines WITHOUT a
+// central sequencer. rho-tkg only exposes the seam; the HLC bookkeeping (what to
+// advance to, and when) is the coordinator's responsibility.
+func (c *Core) advanceClockFloor(to types.Instant) types.Instant {
+	target := int64(to)
+	for {
+		last := c.lastInstant.Load()
+		if target <= last {
+			return types.Instant(last)
+		}
+		if c.lastInstant.CompareAndSwap(last, target) {
+			return types.Instant(target)
 		}
 	}
 }

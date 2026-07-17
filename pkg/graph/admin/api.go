@@ -26,6 +26,18 @@ type RetentionPolicy = core.RetentionPolicy
 // CompactReport summarizes a CompactHistory* run. See core.CompactReport.
 type CompactReport = core.CompactReport
 
+// PurgePolicy bounds a retention purge (ADR-0008 R2). See core.PurgePolicy.
+type PurgePolicy = core.PurgePolicy
+
+// PurgeMode selects the retention-purge predicate. See core.PurgeMode.
+type PurgeMode = core.PurgeMode
+
+// PurgeReport summarizes a PurgeExpiredNodes run. See core.PurgeReport.
+type PurgeReport = core.PurgeReport
+
+// PurgeByAge purges nodes below Before by IMMUTABLE snowflake mint-time (v1).
+const PurgeByAge = core.PurgeByAge
+
 // Ops is the subset of *core.AdminOps the admin sub-API forwards to.
 type Ops interface {
 	Reset() error
@@ -33,6 +45,7 @@ type Ops interface {
 	DecomposeRelID(id types.RelID) IDComponents
 	CompactHistoryNodes(ctx context.Context, policy RetentionPolicy) (CompactReport, error)
 	CompactHistoryRels(ctx context.Context, policy RetentionPolicy) (CompactReport, error)
+	PurgeExpiredNodes(ctx context.Context, policy PurgePolicy) (PurgeReport, error)
 }
 
 // API is the admin sub-API accessor.
@@ -96,4 +109,19 @@ func (a *API) CompactHistoryRels(ctx context.Context, policy RetentionPolicy) (C
 		return CompactReport{}, err
 	}
 	return ops.CompactHistoryRels(ctx, policy)
+}
+
+// PurgeExpiredNodes hard-removes aged-out nodes of policy.Label below
+// policy.Before (with each node's edges, indexes, and full history) — no
+// tombstones (ADR-0008 R2). Requires Config.AllowRetentionPurge and a
+// RetentionPurgeCapability backend (memory or badger; tiered/sharded decline
+// until R4), and refuses while the change-log is enabled (replica re-execution is
+// R3). Advances the per-label retention watermark so a read pinned below the
+// boundary fails closed with ErrRetentionExpired. Idempotent + resumable.
+func (a *API) PurgeExpiredNodes(ctx context.Context, policy PurgePolicy) (PurgeReport, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return PurgeReport{}, err
+	}
+	return ops.PurgeExpiredNodes(ctx, policy)
 }

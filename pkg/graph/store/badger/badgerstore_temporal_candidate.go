@@ -5,7 +5,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// PruneTemporalCandidates implements store.TemporalCandidateCapability (B4). It
+// PruneTemporalCandidates implements store.TemporalCandidateCapability. It
 // drops every candidate whose per-label valid-time ENVELOPE is present in the
 // temporal index AND provably cannot overlap the query's valid-time filter — an id
 // the index does not cover is always kept (sound: the chain resolver stays

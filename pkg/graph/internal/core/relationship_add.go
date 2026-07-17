@@ -177,12 +177,12 @@ func (c *Core) createRelationshipLocked(ctx context.Context, typeName string, st
 		return nil, err
 	}
 
-	// R5-F6: the kernel allocates the rel-type token only now — after the
+	// the kernel allocates the rel-type token only now — after the
 	// endpoint locks are held and every endpoint-fetch failure path has
 	// passed — so an operational failure does not leave a permanent
 	// rel-type registration.
 	spec := relCreateSpec{relCreatePrep: prep, id: id, fromHash: fromHash, toHash: toHash}
-	rel, err := c.createRelWithTypeRollback(typeName, useEndpointHashWrite, c.buildRelFromSpec(ctx, spec))
+	rel, err := c.createRelWithTypeRollback(typeName, relPersistModeFor(useEndpointHashWrite), c.buildRelFromSpec(ctx, spec))
 	if rel != nil {
 		c.opRelAdds.Add(1)
 	}
@@ -249,7 +249,7 @@ func (c *Core) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName
 		return nil, false, err
 	}
 
-	// R5-F6: probe the registry for an existing token via Lookup
+	// probe the registry for an existing token via Lookup
 	// (zero side effect) before committing to GetOrCreate. If the type
 	// was never registered, no relationship of this type can exist for
 	// any endpoint pair, so the absence check is vacuous and we can
@@ -294,7 +294,7 @@ func (c *Core) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName
 	// Not found — the kernel allocates the token now and creates, rolling
 	// back a newly created type token if the final store write fails.
 	spec := relCreateSpec{relCreatePrep: prep, id: id, fromHash: fromHash, toHash: toHash}
-	rel, err := c.createRelWithTypeRollback(typeName, useEndpointHashWrite, c.buildRelFromSpec(ctx, spec))
+	rel, err := c.createRelWithTypeRollback(typeName, relPersistModeFor(useEndpointHashWrite), c.buildRelFromSpec(ctx, spec))
 	if rel != nil {
 		c.opRelAdds.Add(1)
 		return rel, true, err

@@ -16,7 +16,7 @@ import (
 	"github.com/vmihailenco/msgpack/v5"
 )
 
-// Composite property indexes (K3c) — RAM-only in v1 (no on-disk mode, unlike
+// Composite property indexes — RAM-only (no on-disk mode, unlike
 // PropertyIndexOnDisk; see docs/query-planners.md "Composite property
 // indexes" for the documented follow-up and planner guidance). Definitions
 // are persisted (compositeIdxDef below) so a reopen rebuilds the SAME

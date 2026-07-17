@@ -243,7 +243,7 @@ type TransactionTimeQueryCapability interface {
 // the node IDs that EVER carried it — in the current row OR any historical
 // version — each tagged with a lower bound on the transaction time of its
 // earliest acquisition of the label. This lets the graph layer make a pinned
-// label scan OUTPUT-SENSITIVE (K1): the candidate set for a history-aware
+// label scan OUTPUT-SENSITIVE: the candidate set for a history-aware
 // ByLabel scan is scoped to the label's ever-members (O(matches)) instead of
 // the whole node-history fold (O(everything that ever carried ANY label)), and
 // a member whose earliest acquisition post-dates a transaction-time pin is
@@ -322,6 +322,58 @@ type MetaWrite struct {
 type HistoryCompactionCapability interface {
 	CompactNodeHistory(id types.NodeID, keepVersions int, metaWrites []MetaWrite) error
 	CompactRelHistory(id types.RelID, keepVersions int, metaWrites []MetaWrite) error
+}
+
+// RetentionPurgeResult reports what one PurgeNodesByLabelBefore chunk removed.
+// More is true when the label may still hold purgeable nodes below the boundary
+// (the caller loops until it is false) — it never under-reports completion.
+//
+// PurgedNodeIDs lists the node IDs this chunk removed. A single-machine backend
+// leaves it nil (its cascade already removed every co-located edge); a PARTITIONED
+// backend (sharded) uses it to sweep edges MINTED IN ANOTHER node's slot that
+// point at a purged node and therefore live on a different shard — the one edge
+// class a per-shard label purge cannot see (an event-as-END cross-shard edge).
+type RetentionPurgeResult struct {
+	NodesPurged   int
+	RelsPurged    int
+	More          bool
+	PurgedNodeIDs []types.NodeID
+}
+
+// RetentionPurgeCapability is OPTIONAL (ADR-0008 R2). It HARD-removes whole
+// aged-out nodes of a label WITHOUT tombstones — the range-scale removal door for
+// event-retention workloads, where a per-entity tombstoning delete would double
+// write volume just to delete.
+//
+// PurgeNodesByLabelBefore removes up to `chunk` nodes carrying labelToken whose
+// IMMUTABLE snowflake-ID mint-time is < before, and for each removed node ALSO
+// removes: every connected relationship (both adjacency legs — so a surviving
+// endpoint's incoming index is cleaned, no phantom edge), ALL index entries
+// (label/property/temporal/vector), and the ENTIRE version history of the node
+// and each removed relationship. Each call is ONE atomic batch; the caller loops
+// on More. It emits NO per-entity change-log record — the graph layer emits ONE
+// logical ChangeRangePurge for the whole range and advances the retention
+// watermark only after a range is fully clean (crash mid-range re-runs to the
+// same end state; the R1 read-guard turns a below-watermark read into
+// ErrRetentionExpired). Purge is idempotent: a node already gone is skipped.
+//
+// The predicate is on snowflake mint-time (not ValidFrom / not a backfilled
+// TxFrom) because snowflake IDs are time-ordered, so "label L older than T" is a
+// clustered key range, and a backfilled fact below the boundary is rejected at
+// WRITE, never silently purged here.
+type RetentionPurgeCapability interface {
+	PurgeNodesByLabelBefore(labelToken uint16, before types.Instant, chunk int) (RetentionPurgeResult, error)
+}
+
+// RangePurgeLogCapability is OPTIONAL (ADR-0008 R3). It appends ONE
+// ChangeRangePurge record — the PREDICATE a replica re-executes — to the store's
+// change-log, co-committed like any other record. No-op (nil) when the store has
+// no change-log enabled. The graph layer calls it once per purge so a replica of
+// the primary converges by re-running the same range predicate against its own
+// LSN-consistent state (never per-entity delete records). Implemented by the
+// native memory + badger backends alongside RetentionPurgeCapability.
+type RangePurgeLogCapability interface {
+	LogRangePurge(labelToken uint16, before types.Instant, mode uint8) error
 }
 
 // HistoryVersionPageCapability is OPTIONAL. Backends that can page through an

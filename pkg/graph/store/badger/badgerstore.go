@@ -196,12 +196,12 @@ type Config struct {
 	// (badger 0x07/0x08). When set, a version V with V%HistoryAnchorInterval == 0
 	// is stored as a full ANCHOR and the rest as DELTAS carrying only the
 	// properties that changed vs the interval anchor — eliding large unchanged
-	// values that a full snapshot would re-serialize every version (measured ~39%
-	// less history storage post-Snappy on wide, history-heavy entities). Reads
+	// values that a full snapshot would re-serialize every version (less
+	// history storage post-Snappy on wide, history-heavy entities). Reads
 	// reconstruct transparently and always accept BOTH forms, so the flag may be
 	// toggled on an existing store with no migration (legacy full rows are
 	// anchors; new deltas carry a 1-byte 'D' tag). Opt-in (default false) while the
-	// path soaks; the current row (0x01/0x02) is always full. See ADR-0009 / B6.
+	// path soaks; the current row (0x01/0x02) is always full. See ADR-0009.
 	HistoryDeltaEncoding bool
 	// FlushInterval is the time between async write batches. Default: 100ms.
 	// Zero disables periodic flushing (manual flush only — for testing).
@@ -398,33 +398,33 @@ type Store struct {
 	propIdxOnDisk       bool                                          // maintain/answer property-index entries via the persisted 0x0A keyspace
 	temporalIdxOnDisk   bool                                          // maintain the persisted 0x0B raw-entry log so loadIndexesScan can rebuild without a full node fetch per entity
 	disablePlannerStats bool                                          // skip planner-stat maintenance (presence/NDV/min-max/type-class) on writes + open; the stat capabilities fail closed with ErrCapabilityNotSupported
-	historyDelta        bool                                          // store version-history rows as anchor+delta (ADR-0009/B6); reads accept both forms regardless
+	historyDelta        bool                                          // store version-history rows as anchor+delta (ADR-0009); reads accept both forms regardless
 	typeIdx             map[uint16]map[types.RelID]struct{}           // relTypeToken → set(relID)
 	outIdx              map[types.NodeID]map[types.RelID]types.NodeID // startNodeID → relID → endNodeID
 	inIdx               map[types.NodeID]map[types.RelID]inEdge       // endNodeID → relID → {startNodeID, typeToken}
-	relValidIdx         map[types.RelID]relValidStamp                 // relID → effective {validFrom, validTo} for inline-stamp temporal traversal (OPT15); nil until lazily built on the first temporal traversal
+	relValidIdx         map[types.RelID]relValidStamp                 // relID → effective {validFrom, validTo} for inline-stamp temporal traversal; nil until lazily built on the first temporal traversal
 	relValidIdxBuilt    atomic.Bool                                   // fast-path "already built" check outside idxMu
 
-	// K1 transaction-time membership sidecars (store.LabelTxMembershipCapability /
+	// Transaction-time membership sidecars (store.LabelTxMembershipCapability /
 	// RelTypeTxMembershipCapability). labelTxMembers maps a label token to the set
 	// of node IDs that EVER carried it (current OR any historical version) tagged
 	// with a lower bound on their earliest acquisition transaction time;
 	// relTypeTxMembers is the rel-type mirror. Both APPEND-ONLY (removal/delete
 	// never drops a member) and nil until lazily built on the first pinned label/
-	// type scan (mirrors relValidIdx / OPT15). Guarded by idxMu.
+	// type scan (mirrors relValidIdx). Guarded by idxMu.
 	labelTxMembers      map[uint16]map[types.NodeID]types.Instant
 	labelTxMembersBuilt atomic.Bool
 	relTypeTxMembers    map[uint16]map[types.RelID]types.Instant
 	relTypeMembersBuilt atomic.Bool
 
-	// X5 DocValues: cached per-label columnar snapshots + a global node-mutation
+	// DocValues: cached per-label columnar snapshots + a global node-mutation
 	// epoch bumped on EVERY node write (incl. deletes). nextNodeRev above misses
 	// deletes, so DocValues keeps its own counter. docMu guards docColumns only
 	// (the build itself runs lock-free, keyed on nodeEpoch — see
 	// ForEachDocValues). atomic so the epoch reads need no lock.
 	nodeEpoch atomic.Uint64
 	// relEpoch: DISTINCT generation counter bumped on every relationship write. The
-	// X5 expand-aggregation column path reads ADJACENCY, so its Gate-2 re-check must
+	// expand-aggregation column path reads ADJACENCY, so its Gate-2 re-check must
 	// see edge mutations (nodeEpoch alone would wave through a torn aggregate from a
 	// concurrent edge insert). Separate from nodeEpoch so node-only column caches do
 	// not rebuild on edge-heavy writes.
@@ -538,7 +538,7 @@ type Store struct {
 	// Property indexes — in-memory only. Definitions persisted, data rebuilt on startup.
 	propertyIndexes map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex
 
-	// Relationship property indexes (K3b) — RAM-only value maps, keyed by
+	// Relationship property indexes — RAM-only value maps, keyed by
 	// rel-type token. Definitions persisted under RelPropIndexDefsKey; data
 	// rebuilt from current relationships at open. There is no on-disk value
 	// keyspace (RAM-only v1; a 0x0C rel keyspace disk mode is a documented
@@ -870,7 +870,7 @@ func New(cfg Config) (*Store, error) {
 		return nil, fmt.Errorf("graph: load indexes: %w", err)
 	}
 
-	// B4: loadIndexes rebuilds each temporal index from CURRENT node state only.
+	// loadIndexes rebuilds each temporal index from CURRENT node state only.
 	// Fold every node's history versions into the per-node valid-time ENVELOPE so
 	// the sound-superset property survives restart (a past interval differing from
 	// the current one stays a candidate for the core resolver's temporal narrowing).
@@ -1125,7 +1125,7 @@ func (bs *Store) loadIndexesScan() error {
 			info := relDeleteInfoFromRelationship(r)
 			decodedRelInfo[rid] = info
 			bs.addRelationshipIndexesFromRow(info)
-			// OPT15 relValidIdx is built lazily on the first temporal traversal,
+			// relValidIdx is built lazily on the first temporal traversal,
 			// not during load — see ensureRelValidIdxBuilt.
 		}
 		it.Close()
@@ -1342,8 +1342,8 @@ func (bs *Store) loadIndexesScan() error {
 		}
 		// badgerv4.ErrKeyNotFound is OK — no indexes defined yet.
 
-		// Load relationship property index definitions and rebuild RAM value maps
-		// (K3b). RAM-only: no on-disk value keyspace, so the maps are rebuilt from
+		// Load relationship property index definitions and rebuild RAM value maps.
+		// RAM-only: no on-disk value keyspace, so the maps are rebuilt from
 		// current relationship state by scanning each type's members. Mirrors the
 		// non-disk node property index rebuild above.
 		item, err = txn.Get(storepkg.RelPropIndexDefsKey)
@@ -1466,7 +1466,7 @@ func (bs *Store) loadIndexesScan() error {
 					// (From ASC, ID ASC) by key construction (see
 					// storeutil.TemporalIndexEntryKey), matching
 					// TemporalIndex.Entries' required order exactly — this is
-					// the O(N) full-node-fetch rebuild K4 eliminates.
+					// the O(N) full-node-fetch rebuild this eliminates.
 					valueOpts := opts
 					valueOpts.PrefetchValues = true
 					prefix := storepkg.TemporalIndexTokenPrefix(tok)
@@ -1745,7 +1745,7 @@ func (bs *Store) addRelationshipIndexesFromRow(info RelDeleteInfo) {
 // post-restart data corruption. Holding flushMu for the duration of Clear
 // also blocks any new flush() from snapshotting state we're about to reset.
 //
-// Cost note (review M3): in SyncWrites mode every concurrent mutation
+// Cost note: in SyncWrites mode every concurrent mutation
 // blocks while Clear runs DropAll, which can be slow on large stores.
 // This is an intentional accepted trade-off — Clear is rare and admin-
 // scoped, and the alternative (release flushMu before DropAll) does not
@@ -1768,8 +1768,8 @@ func (bs *Store) Clear() error {
 	bs.nodeHashes = make(map[types.NodeID]string)
 	bs.nodeRevs = make(map[types.NodeID]uint64)
 	bs.nextNodeRev = 0
-	bs.nodeEpoch.Add(1) // X5: invalidate cached columns built before Clear
-	bs.relEpoch.Add(1)  // and the adjacency view (X5 expand path)
+	bs.nodeEpoch.Add(1) // invalidate cached columns built before Clear
+	bs.relEpoch.Add(1)  // and the adjacency view (expand path)
 	bs.docMu.Lock()
 	bs.docColumns = nil
 	bs.docColumnsMulti = nil
@@ -1779,15 +1779,15 @@ func (bs *Store) Clear() error {
 	bs.typeIdx = make(map[uint16]map[types.RelID]struct{})
 	bs.outIdx = make(map[types.NodeID]map[types.RelID]types.NodeID)
 	bs.inIdx = make(map[types.NodeID]map[types.RelID]inEdge)
-	bs.relValidIdx = nil // OPT15: drop the lazy stamp index; rebuilt on next temporal traversal
+	bs.relValidIdx = nil // drop the lazy stamp index; rebuilt on next temporal traversal
 	bs.relValidIdxBuilt.Store(false)
-	bs.labelTxMembers = nil // K1: drop the lazy membership sidecar; rebuilt on next pinned scan
+	bs.labelTxMembers = nil // drop the lazy membership sidecar; rebuilt on next pinned scan
 	bs.labelTxMembersBuilt.Store(false)
-	bs.relTypeTxMembers = nil // K1: rel-type mirror
+	bs.relTypeTxMembers = nil // rel-type mirror
 	bs.relTypeMembersBuilt.Store(false)
 
 	// Reset atomic counters. Clear sync.Map contents via Range+Delete
-	// rather than struct reassignment (review L1): concurrent readers
+	// rather than struct reassignment: concurrent readers
 	// at NodeCountByLabel / RelCountByType call labelCounts.Load /
 	// typeCounts.Load WITHOUT holding idxMu, and replacing the
 	// sync.Map struct value while a reader is mid-Load races on the

@@ -6,7 +6,7 @@ import (
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// High-frequency temporal indexes (HighFrequencyIndexCapability) — ADR-0007 S5.
+// High-frequency temporal indexes (HighFrequencyIndexCapability) — ADR-0007.
 //
 // A high-frequency index is the time-bucketed amortised-insertion variant of
 // the temporal index; like the temporal index, a label's nodes are spread

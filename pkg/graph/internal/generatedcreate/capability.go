@@ -35,3 +35,36 @@ type Capability interface {
 type RelationshipEndpointHashCapability interface {
 	PutRelationshipGeneratedIDWithEndpointHashes(r *types.Relationship, proof Proof) (string, string, error)
 }
+
+// ForeignEndpointRelCapability is an optional generated-ID create path for a
+// PARTITIONED store: it persists a relationship whose END node lives on a
+// FOREIGN partition — a slot owned by another machine and not present in this
+// store (ADR-0010). The rel row and BOTH adjacency legs are written on the
+// rel's shard; the END node's existence is NOT validated locally (the caller
+// attests it via an out-of-band RPC), while the START (local) endpoint IS
+// validated. The relationship already carries its attested tkg_to_hash and its
+// locally-captured tkg_from_hash, so no endpoint-hash capture happens here.
+//
+// Only the slot-sharded store implements this; single-machine backends
+// (memory/badger/tiered) have no foreign partition and decline it, which makes
+// the graph-level foreign-endpoint door fail closed on a non-partitioned store.
+type ForeignEndpointRelCapability interface {
+	PutRelationshipForeignEnd(r *types.Relationship, proof Proof) error
+}
+
+// ForeignIncomingRelCapability is the ADR-0010 Model A companion to
+// ForeignEndpointRelCapability: it records a cross-machine incoming half-edge
+// STUB on the END node's machine so IncomingRelationships(END) is locally
+// complete. The stub's rel-ID belongs to a FOREIGN slot; the store writes it
+// co-located on the END node's shard (reachable via that shard's adjacency fold,
+// never a slot-routed point read) and co-commits a distinct ChangeForeignIncoming
+// record so a replica routes apply by the END-node slot. Sharded-only.
+type ForeignIncomingRelCapability interface {
+	RecordForeignIncoming(r *types.Relationship, proof Proof) error
+	// DeleteForeignIncoming removes the stub identified by relID, routed by the
+	// LOCAL end node endID (the rel-ID's own slot is foreign). It co-commits a
+	// ChangeForeignIncomingDelete record so a replica routes the delete by the
+	// END slot too. Idempotent — an already-absent stub is not an error. Called
+	// by the cascade (END-node delete) and the replica-apply path.
+	DeleteForeignIncoming(relID types.RelID, endID types.NodeID) error
+}

@@ -180,7 +180,7 @@ func (c *Core) searchNearestLocked(label, propertyKey string, query []float32, k
 	// implement FilteredVectorSearchCapability to avoid the loop entirely
 	// for DepthAll queries.
 	//
-	// Ceiling discipline (R4-F10): the probe size is clamped to
+	// Ceiling discipline: the probe size is clamped to
 	// overfetchCeiling on every iteration. For k > overfetchCeiling the
 	// loop still runs at least one iteration at the ceiling — without
 	// the clamp, the entry condition rawK <= overfetchCeiling would

@@ -78,6 +78,12 @@ func TestSentinelAliasesShareIdentity(t *testing.T) {
 		"InvalidRetentionPolicy/graph=core":     {graphpkg.ErrInvalidRetentionPolicy, core.ErrInvalidRetentionPolicy},
 		"CompactionChangeLogEnabled/graph=core": {graphpkg.ErrCompactionChangeLogEnabled, core.ErrCompactionChangeLogEnabled},
 
+		// Retention purge (ADR-0008 R2) graph aliases of core.
+		"RetentionExpired/graph=core":               {graphpkg.ErrRetentionExpired, core.ErrRetentionExpired},
+		"RetentionPurgeDisabled/graph=core":         {graphpkg.ErrRetentionPurgeDisabled, core.ErrRetentionPurgeDisabled},
+		"RetentionPurgeChangeLogEnabled/graph=core": {graphpkg.ErrRetentionPurgeChangeLogEnabled, core.ErrRetentionPurgeChangeLogEnabled},
+		"InvalidPurgePolicy/graph=core":             {graphpkg.ErrInvalidPurgePolicy, core.ErrInvalidPurgePolicy},
+
 		// pkg/graph aliases of index-provider sentinels.
 		"ProviderExists/graph=index":    {graphpkg.ErrIndexProviderExists, indexpkg.ErrIndexProviderExists},
 		"ProviderNotFound/graph=index":  {graphpkg.ErrIndexProviderNotFound, indexpkg.ErrIndexProviderNotFound},

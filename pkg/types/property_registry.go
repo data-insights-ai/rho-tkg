@@ -176,7 +176,7 @@ var (
 // type if rv is a pointer) has been registered via RegisterPropertyStructType
 // AND whether the runtime form actually implements HashableValue + DeepCopier.
 //
-// The interface check is the F3 fix: registering the typed-nil pointer of a
+// The interface check guards a subtle case: registering the typed-nil pointer of a
 // type whose methods live on the pointer receiver only (`(*T)(nil)`) records
 // elemT in the registry, but a later `ps.Set("x", T{})` would otherwise be
 // accepted by the type-level lookup. The stored value would then fail the

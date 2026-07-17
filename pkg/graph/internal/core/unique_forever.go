@@ -163,6 +163,51 @@ func parseForeverOwnerKey(key string) (labelTok uint16, propKey, valueKey string
 	return uint16(tok), key[first+1 : second], key[second+1:], true
 }
 
+// foreverOwnerSnapshot returns the set of node IDs that currently OWN a
+// UniqueForever value, or nil when the ownership registry is empty (the common
+// case in an event-heavy graph, where the retention-purge caller pays nothing).
+// The retention purge uses it to reap only owners it actually removes.
+func (c *Core) foreverOwnerSnapshot() map[types.NodeID]struct{} {
+	c.uniqueMu.Lock()
+	defer c.uniqueMu.Unlock()
+	if len(c.uniqueOwners) == 0 {
+		return nil
+	}
+	owners := make(map[types.NodeID]struct{}, len(c.uniqueOwners))
+	for _, owner := range c.uniqueOwners {
+		owners[owner] = struct{}{}
+	}
+	return owners
+}
+
+// reapForeverOwnersForPurged releases the UniqueForever claims held by purged
+// nodes (ADR-0008 R2 gotcha): a retention purge removes whole entities, and an
+// owner that vanishes must free its value or the value is barred forever by a
+// ghost. It removes every ownership entry whose owner is in `purged` and
+// re-persists the durable blob. No-op when nothing matches. Idempotent.
+func (c *Core) reapForeverOwnersForPurged(purged map[types.NodeID]struct{}) error {
+	if len(purged) == 0 {
+		return nil
+	}
+	c.uniqueMu.Lock()
+	defer c.uniqueMu.Unlock()
+	changed := false
+	for k, owner := range c.uniqueOwners {
+		if _, ok := purged[owner]; ok {
+			delete(c.uniqueOwners, k)
+			changed = true
+		}
+	}
+	if !changed {
+		return nil
+	}
+	mk := c.metaKV
+	if mk == nil {
+		return nil
+	}
+	return c.storeForeverOwnersLocked(mk)
+}
+
 // reapUniqueForeverOwnersForReset clears the durable + in-memory ownership map
 // as part of Admin.Reset. No-op without MetaKV.
 func (c *Core) reapUniqueForeverOwnersForReset() error {

@@ -6,7 +6,7 @@ import (
 )
 
 // Composite property indexes (CompositePropertyIndexCapability) +
-// introspection (CompositeIndexIntrospectionCapability) — ADR-0007 S5.
+// introspection (CompositeIndexIntrospectionCapability) — ADR-0007.
 //
 // Same cross-shard model as the single-key node property index: fan the DDL out
 // to every shard and fold the per-shard equality matches on read. Because the

@@ -17,9 +17,9 @@ import (
 // is just the sum of bucket sizes over the sorted keys in [min,max] — O(distinct
 // values in range), no node fetches, no candidate materialisation.
 //
-// Note (R1 finding): a roaring64 bit-sliced index (BSI) was prototyped and
-// MEASURED for this. Its CompareValue is big.Int-based and cost ~30ms over 100k
-// regardless of bit width — only ~4x over the scan and far slower than the
+// Note: a roaring64 bit-sliced index (BSI) was prototyped for this. Its
+// CompareValue is big.Int-based and cost ~30ms over 100k regardless of bit
+// width — only ~4x over the scan and far slower than the
 // sorted-bucket sum below. The BSI wins only when the property is BOTH
 // high-cardinality (so the bucket sum degrades to O(matches)) AND the count is
 // hot; no current benchmark shape has that profile, so the simpler exact sum is

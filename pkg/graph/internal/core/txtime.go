@@ -180,6 +180,23 @@ func (t *TempOps) NowTx() (types.Instant, error) {
 	return c.now(), nil
 }
 
+// AdvanceClock raises the transaction-clock floor to at least `to` and returns
+// the resulting floor — a no-op returning the current floor when `to` is not
+// ahead of it (the clock never moves backward). It is the Hybrid-Logical-Clock
+// merge seam for a distributed deployment: a coordinator observing a peer
+// machine's transaction timestamp calls this before stamping local writes, so
+// subsequent local TxFrom values are >= every peer timestamp seen, giving a
+// causal order across machines without a central sequencer. See
+// Core.advanceClockFloor. rho-tkg owns only the monotonic bump; the HLC
+// bookkeeping is the coordinator's.
+func (t *TempOps) AdvanceClock(to types.Instant) (types.Instant, error) {
+	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return 0, err
+	}
+	return c.advanceClockFloor(to), nil
+}
+
 func (t *TempOps) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 	c := t.c
 	if err := c.checkOpen(); err != nil {

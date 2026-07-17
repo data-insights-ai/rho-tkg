@@ -105,6 +105,13 @@ var batchSentinels = []string{
 	"ErrBatchDone",
 }
 
+// Cross-machine (foreign-endpoint) edge sentinels (ADR-0010).
+var foreignEndpointSentinels = []string{
+	"ErrForeignEndpointUnsupported",
+	"ErrForeignEndpointConstraint",
+	"ErrInvalidForeignEndpoint",
+}
+
 // Temporal sentinels. ErrNoVersionValidAt is the store-canonical sentinel
 // newly aliased into pkg/graph/errors.go — it used to be store-only (see
 // storeOnlySentinels' history note below) because it leaked raw from
@@ -150,6 +157,9 @@ var compactionSentinels = []string{
 // Retention purge (ADR-0008)
 var retentionSentinels = []string{
 	"ErrRetentionExpired",
+	"ErrRetentionPurgeDisabled",
+	"ErrRetentionPurgeChangeLogEnabled",
+	"ErrInvalidPurgePolicy",
 }
 
 // IO sentinels
@@ -288,6 +298,7 @@ func graphReexportSentinelNames() []string {
 	all = append(all, validationSentinels...)
 	all = append(all, labelRelSentinels...)
 	all = append(all, batchSentinels...)
+	all = append(all, foreignEndpointSentinels...)
 	all = append(all, temporalSentinels...)
 	all = append(all, backfillSentinels...)
 	all = append(all, asOfTagsSentinels...)

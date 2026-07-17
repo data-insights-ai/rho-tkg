@@ -5,8 +5,8 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Relationship-side bulk queries (R5-F9 split out from tieredstore_read_bulk.go).
-// Mirror layout of the node-side methods left in tieredstore_read_bulk.go.
+// Relationship-side bulk queries.
+// Mirror layout of the node-side methods in tieredstore_read_bulk.go.
 
 func (ts *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error) {
 	if err := ts.checkOpen(); err != nil {

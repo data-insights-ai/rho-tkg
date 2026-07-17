@@ -452,7 +452,7 @@ func (c *Core) nodesByLabelLocked(label string, opts storepkg.QueryOpts) ([]*typ
 		return nil, err
 	}
 
-	// B4: when the store owns a per-label valid-time ENVELOPE index, drop every
+	// when the store owns a per-label valid-time ENVELOPE index, drop every
 	// candidate whose envelope provably cannot overlap the query's valid-time
 	// filter — WITHOUT loading its version chain. PruneTemporalCandidates returns
 	// ok=false (candidates unchanged) when opts carries no valid-time filter or no
@@ -550,7 +550,7 @@ func (c *Core) relsByTypeLocked(typeName string, opts storepkg.QueryOpts) ([]*ty
 		result = append(result, r)
 		return nil
 	}
-	// K1: scope the candidate set to the type's ever-members when the store owns
+	// scope the candidate set to the type's ever-members when the store owns
 	// the transaction-time rel-type-membership sidecar (see nodesByLabelLocked).
 	if c.relTypeTxMembers != nil {
 		if err := c.forEachRelTypeTxCandidate(tok, currentIDs, opts, collect); err != nil {
@@ -796,7 +796,7 @@ func (r *RelOps) ForEachAdjacentEndpoint(nodeID types.NodeID, typeName string, i
 // RelOps.ForEachAdjacentEndpointAt — the temporal sibling of relEndpointScanner.
 // It yields the OTHER endpoint of edges passing the opts temporal filter while
 // rejecting expired edges from inline valid-time stamps WITHOUT decoding the
-// relationship row (OPT15).
+// relationship row.
 type relEndpointScannerAt interface {
 	ForEachAdjacentEndpointAt(nid types.NodeID, typeToken uint16, incoming bool, opts storepkg.QueryOpts, fn func(rel types.RelID, other types.NodeID) bool) error
 }
@@ -880,7 +880,7 @@ func (r *RelOps) ForEachAdjacentEndpointAt(nodeID types.NodeID, typeName string,
 // relRelScannerAt is the OPTIONAL store capability behind
 // RelOps.ForEachAdjacentRelAt — the decode-arm sibling of relEndpointScannerAt.
 // It streams DECODED relationship rows for edges passing the opts temporal
-// filter while SKIPPING the decode of inline-stamp-rejected edges (OPT15).
+// filter while SKIPPING the decode of inline-stamp-rejected edges.
 type relRelScannerAt interface {
 	ForEachAdjacentRelAt(nid types.NodeID, typeToken uint16, incoming bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 }
@@ -2098,6 +2098,93 @@ func (r *RelOps) ForEachByTypePropertyRange(typeName, propKey string, min, max f
 	}
 	// Deliberately outside c.mu — see ForEachByLabel's isolation note.
 	return scanner.ForEachRelByTypePropertyRange(tok, propKey, min, max, inclMin, inclMax, opts, fn)
+}
+
+// relOrderedRangeScanner is the OPTIONAL store capability behind
+// RelOps.ForEachByTypePropertyRangeOrdered — the relationship mirror of
+// nodeOrderedRangeScanner (streaming NUMERIC range scans that emit in
+// contractual VALUE ORDER — the ORDER BY prop [LIMIT k] / top-k access path).
+// Implemented by the in-tree memory and badger stores (rel indexes are RAM-only).
+type relOrderedRangeScanner interface {
+	ForEachRelByTypePropertyRangeOrdered(typeToken uint16, propKey string, min, max float64, inclMin, inclMax, desc bool, fn func(*types.Relationship) bool) error
+}
+
+// ForEachByTypePropertyRangeOrdered streams relationships carrying the type whose
+// NUMERIC propKey value lies within [min, max] to fn in CONTRACTUAL VALUE ORDER —
+// ascending, or descending when desc — with ties (equal values) always broken by
+// rel ID ASCENDING in both directions. It is the relationship mirror of
+// NodeOps.ForEachByLabelPropertyRangeOrdered (the ordered / top-k access path):
+// a query layer compiling `ORDER BY r.prop [ASC|DESC] LIMIT k` streams here and
+// returns false from fn once it has k rows, so the LIMIT is pushed into the index
+// and the scan stops at O(k + log n) index work — never materializing the whole
+// range.
+//
+// Candidates come from the rel property index's ordered numeric view, which
+// OVER-SELECTS by design (float64 sort keys, ulp-widened bounds): fn MUST
+// re-check its predicate with exact comparison semantics.
+//
+// Non-temporal opts take the index-backed fast path (O(k + log n) top-k) and
+// return storepkg.ErrIndexNotFound when no rel property index with a usable
+// ordered view exists for (type, propKey) or the store lacks the capability. A
+// TEMPORAL QueryOpts combination (ValidAt / ValidStart+ValidEnd / TxAt / TxPin) is
+// instead served by a SOUND FULL FOLD (Stage B): every rel of the type is
+// resolved to its version at the pin, filtered to [min,max] on the value-AT-t,
+// and sorted by that value — so ordering over a past belief/valid state is
+// correct and complete. The temporal path needs no rel property index (it reads
+// resolved rel values directly) and is O(N log N) in the type's temporal
+// membership. Same relaxed isolation and frozen-row contract as ForEachByType.
+func (r *RelOps) ForEachByTypePropertyRangeOrdered(typeName, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
+	c := r.c
+	if err := c.checkOpen(); err != nil {
+		return err
+	}
+	if fn == nil {
+		return grapherr.ErrNilCallback
+	}
+	if err := c.validateRelTypeQueryName(typeName); err != nil {
+		return err
+	}
+	// Temporal ordered scan (Stage B): value-at-t is not indexed, so serve it as a
+	// SOUND FULL FOLD — resolve every rel of the type to its version at the pin,
+	// keep those whose numeric value is in [min,max], sort by value. Needs no rel
+	// property index. Non-temporal opts take the index-backed fast path below.
+	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
+		if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+			return err
+		}
+		return forEachRelValueOrderedTemporal(c, typeName, opts, desc,
+			func(rl *types.Relationship) (float64, bool) {
+				v, ok := rl.GetProperty(propKey)
+				if !ok {
+					return 0, false
+				}
+				f, ok := coerceFloat64(v)
+				if !ok || !numericInRange(f, min, max, inclMin, inclMax) {
+					return 0, false
+				}
+				return f, true
+			}, fn)
+	}
+	if err := storepkg.ValidateQueryOpts(opts); err != nil {
+		return err
+	}
+	scanner, native := c.store.(relOrderedRangeScanner)
+	if !native || !c.storeRowsTrust {
+		return storepkg.ErrIndexNotFound
+	}
+	var tok uint16
+	var ok bool
+	if err := c.readUnderRLock(func() error {
+		tok, ok = c.lookupRelTypeQueryToken(typeName)
+		return nil
+	}); err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+	// Deliberately outside c.mu — see ForEachByLabel's isolation note.
+	return scanner.ForEachRelByTypePropertyRangeOrdered(tok, propKey, min, max, inclMin, inclMax, desc, fn)
 }
 
 // relPrefixScanner is the OPTIONAL store capability behind
