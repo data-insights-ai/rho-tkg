@@ -108,11 +108,12 @@ type Core struct {
 	// pre-consolidation "_, ok := c.store.(X) → !ok" decline, byte-for-byte.
 	// Resolved once here instead of at ~23 scattered call sites (the largest
 	// ad-hoc-assert sprawl STAGE 0 identified).
-	metaKV            storepkg.MetaKVCapability
-	historyCompaction storepkg.HistoryCompactionCapability
-	retentionPurge    storepkg.RetentionPurgeCapability
-	rangePurgeLog     storepkg.RangePurgeLogCapability
-	readOnlyReplica   bool
+	metaKV                storepkg.MetaKVCapability
+	historyCompaction     storepkg.HistoryCompactionCapability
+	retentionPurge        storepkg.RetentionPurgeCapability
+	retentionPurgeValidTo storepkg.RetentionPurgeByValidToCapability
+	rangePurgeLog         storepkg.RangePurgeLogCapability
+	readOnlyReplica       bool
 	// allowRetentionPurge gates the ADR-0008 R2 hard-purge admin door
 	// (g.Admin().PurgeExpiredNodes). Off by default — a destructive, no-tombstone
 	// range removal must be explicitly enabled. Wired from Config.AllowRetentionPurge.
@@ -1516,6 +1517,7 @@ func New(config Config) (*Core, error) {
 	c.metaKV, _ = store.(storepkg.MetaKVCapability)
 	c.historyCompaction, _ = store.(storepkg.HistoryCompactionCapability)
 	c.retentionPurge, _ = store.(storepkg.RetentionPurgeCapability)
+	c.retentionPurgeValidTo, _ = store.(storepkg.RetentionPurgeByValidToCapability)
 	c.rangePurgeLog, _ = store.(storepkg.RangePurgeLogCapability)
 	c.vectorRowsTrust = isExactNativeStore(store)
 	c.storeRowsTrust = isExactNativeStore(store)

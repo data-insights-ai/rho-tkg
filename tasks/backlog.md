@@ -1,19 +1,20 @@
 # rho-tkg backlog — designed, ready to build in a focused session
 
-Two rho-tkg features are fully designed but deliberately NOT built inline: each
-is a large, replication-/delete-critical subsystem where a rushed pass risks
-permanent data loss or silent replica divergence. They are parked HERE (not in a
-todo, not an ADR) as self-contained handoffs — a new session should be able to
-start cold from either entry. Full prior design also lives in git history:
-`git log --all -- docs/adr/0008-event-retention.md docs/adr/0010-cross-machine-edges.md`.
+**STATUS: BACKLOG 1 (retention purge R2–R5) and BACKLOG 2 (Model A) are SHIPPED**
+(see CHANGELOG). Their design entries below are retained for reference / recovery.
+The live remaining entries are BACKLOG 3 (consumer-gated columnar whole-node fetch)
+and BACKLOG 4 (review-driven adaptations), plus a later tiered O(1) cold-shard-drop
+purge optimization (perf only — functionality complete via the per-shard row scan).
 
-Both must clear the house quality bar: rules 1–17 (esp. 15/16 two-phase +
-adversarial), cross-backend parity, **byte-exact replica convergence**, `-race`,
-and `make cover` (no new public method at 0%, no new code < 80%).
+Any new large subsystem must clear the house quality bar: rules 1–17 (esp. 15/16
+two-phase + adversarial), cross-backend parity, **byte-exact replica convergence**,
+`-race`, and `make cover` (no new public method at 0%, no new code < 80%). Full
+prior design also lives in git history:
+`git log --all -- docs/adr/0008-event-retention.md docs/adr/0010-cross-machine-edges.md`.
 
 ---
 
-## BACKLOG 1 — Retention purge (hard-purge aged-out entities) — ex-ADR-0008 R2–R5
+## BACKLOG 1 — Retention purge (hard-purge aged-out entities) — ex-ADR-0008 R2–R5  [SHIPPED]
 
 ### Why
 Cybersecurity/observability workloads ingest TB/day of events (event→machine,
@@ -113,8 +114,21 @@ temporal index) needs no signature/record change.
   ONE predicate record, cross-shard sweep on the replica too, dangle-free, watermark advanced).
   Optimization (later, not built): a range covering a whole cold event-shard → O(1)
   `g.Tier().Archive` shard-drop.
-- **R5 (optional, own release) — `ByValidTo` v2** via the `0x0B` temporal interval
-  index; record format already carries `Mode`.
+- **R5 — `ByValidTo`: ✅ SHIPPED.** New optional `store.RetentionPurgeByValidToCapability.PurgeNodesByLabelValidToBefore`
+  (native memory + badger; sharded/tiered fan out through the SAME cross-shard mechanism as
+  ByAge — both refactored to a `purgeNodesFanOut` closure so only the per-shard predicate
+  differs). Predicate = current-version `ValidTo != 0 && ValidTo < Before` (open interval never
+  purged). Implementation reads the current `ValidTo` directly during the label-node scan
+  (badger `getNodeLocked`, memory under-lock map read) — NOT the `0x0B` temporal index; that
+  index would only be a later selection-perf optimization, exactly as ByAge does not use a
+  special index either. **Key simplification vs the original sketch:** no under-lock re-confirm
+  is needed despite selecting on a temporal field — a qualifying node is CLOSED, and a closed
+  entity is frozen against every interactive mutation door (`rejectClosedNodeMutation`), so the
+  predicate is immutable-once-true (dead re-confirm removed per Testing Rule 5). Record format
+  already carried `Mode` (msgpack omitempty; ByAge=0/ByValidTo=1), so replication needed no
+  wire change — `applyRangePurgeLocked` re-executes with the record's mode. Tests: exact-set on
+  both backends incl. a `closedViaUpdate` two-phase case; tiered cross-shard sweep; ByValidTo
+  replica convergence (selective — open survivor kept).
 
 ### Invariants (each needs a test)
 1. **No silent absence** — a read pinned before a label's watermark → `ErrRetentionExpired`
@@ -145,7 +159,7 @@ temporal index) needs no signature/record change.
 
 ---
 
-## BACKLOG 2 — Cross-machine incoming half-edge (Model A) + cascade — ADR-0010 §3.3
+## BACKLOG 2 — Cross-machine incoming half-edge (Model A) + cascade — ADR-0010 §3.3  [SHIPPED]
 
 ### STATUS (2026-07-17): increments 1–4 SHIPPED & byte-exact verified. One narrow fail-closed follow-up remains (tx-rollback stub restore, below).
 - **Inc 1 (store write):** `ChangeForeignIncoming` tag + badger `PutRelationshipForeignIncoming`

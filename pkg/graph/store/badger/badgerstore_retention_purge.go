@@ -41,13 +41,56 @@ func (bs *Store) LogRangePurge(labelToken uint16, before types.Instant, mode uin
 // bounded regardless of how far behind the boundary the store is.
 const defaultRetentionPurgeChunk = 256
 
-// PurgeNodesByLabelBefore hard-removes aged-out nodes of a label (ADR-0008 R2).
-// See store.RetentionPurgeCapability for the contract. Each call removes up to
-// `chunk` nodes below the boundary plus all their rels/indexes/history in ONE
-// atomic batch (mirroring DeleteNodeWithHistory's single-lock-span assembly), and
-// reports More so the caller loops. It emits NO change-log record — the graph
-// layer owns the single ChangeRangePurge + the watermark advance.
+// PurgeNodesByLabelBefore hard-removes aged-out nodes of a label (ADR-0008 R2, ByAge).
+// See store.RetentionPurgeCapability for the contract. Selection is on the node's
+// IMMUTABLE snowflake mint-time — never ValidFrom / a backfilled TxFrom.
 func (bs *Store) PurgeNodesByLabelBefore(labelToken uint16, before types.Instant, chunk int) (storecontract.RetentionPurgeResult, error) {
+	if before <= 0 {
+		return storecontract.RetentionPurgeResult{}, nil // nothing older than a non-positive boundary
+	}
+	return bs.purgeNodesByLabel(labelToken, chunk, func(id types.NodeID) (bool, error) {
+		return storepkg.SnowflakeInstant(id.SnowflakeID()) < before, nil
+	})
+}
+
+// PurgeNodesByLabelValidToBefore hard-removes nodes of a label whose world-time
+// validity ENDED before the boundary (ADR-0008 R5, ByValidTo): current-version
+// ValidTo != 0 && ValidTo < before. A node with an open interval (ValidTo == 0) is
+// never purged by validity.
+//
+// No Phase-B re-confirm is needed even though selection reads a temporal field: a
+// node that qualifies is CLOSED (ValidTo != 0), and a closed node is FROZEN against
+// every interactive mutation door (core rejectClosedNodeMutation on Update/label/
+// CAS/tx). So a selected victim's current-version ValidTo cannot change between the
+// Phase-A snapshot and the Phase-B cascade — the predicate is effectively immutable
+// once true, exactly like mint-time. (The open→closed direction only ever ADDS a
+// candidate, caught on the next chunk; it never invalidates a selected one.)
+func (bs *Store) PurgeNodesByLabelValidToBefore(labelToken uint16, before types.Instant, chunk int) (storecontract.RetentionPurgeResult, error) {
+	if before <= 0 {
+		return storecontract.RetentionPurgeResult{}, nil
+	}
+	return bs.purgeNodesByLabel(labelToken, chunk, func(id types.NodeID) (bool, error) {
+		n, err := bs.getNodeLocked(id)
+		if errors.Is(err, ErrNodeNotFound) {
+			return false, nil // concurrently gone — nothing to purge
+		}
+		if err != nil {
+			return false, err
+		}
+		vt := n.Temporal().ValidTo
+		return vt != 0 && vt < before, nil
+	})
+}
+
+// purgeNodesByLabel is the shared chunked-purge body for both selection modes. Each
+// call removes up to `chunk` nodes for which `qualifies` returns true, plus all their
+// rels/indexes/history in ONE atomic batch (mirroring DeleteNodeWithHistory's
+// single-lock-span assembly), and reports More so the caller loops. It emits NO
+// change-log record — the graph layer owns the single ChangeRangePurge + the
+// watermark advance. `qualifies` runs in Phase A (may call getNodeLocked, which reads
+// cache/db without taking idxMu); both purge predicates are immutable-once-true (see
+// the ByAge/ByValidTo doc-blocks), so no Phase-B re-confirm is required.
+func (bs *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(id types.NodeID) (bool, error)) (storecontract.RetentionPurgeResult, error) {
 	var zero storecontract.RetentionPurgeResult
 	if err := bs.checkWritable(); err != nil {
 		return zero, err
@@ -56,16 +99,13 @@ func (bs *Store) PurgeNodesByLabelBefore(labelToken uint16, before types.Instant
 	// advance for consumer cache invalidation (same contract as delete doors).
 	defer bs.bumpNodeEpoch()
 	defer bs.bumpRelEpoch()
-	if before <= 0 {
-		return zero, nil // nothing is older than a non-positive boundary
-	}
 	if chunk <= 0 {
 		chunk = defaultRetentionPurgeChunk
 	}
 
 	// Phase A (idxMu.RLock): snapshot the label's node IDs, then select up to
-	// `chunk` whose IMMUTABLE snowflake mint-time is below the boundary. The
-	// selection is on the ID's own time — never ValidFrom / a backfilled TxFrom.
+	// `chunk` that qualify. `qualifies` may load the node (ByValidTo) — that reads
+	// cache/db, never idxMu, so a stale snapshot is fine (Phase B re-confirms).
 	bs.idxMu.RLock()
 	ids, err := bs.labelNodeIDsSnapshotLocked(labelToken)
 	bs.idxMu.RUnlock()
@@ -75,7 +115,11 @@ func (bs *Store) PurgeNodesByLabelBefore(labelToken uint16, before types.Instant
 	victims := make([]types.NodeID, 0, chunk)
 	more := false
 	for _, id := range ids {
-		if storepkg.SnowflakeInstant(id.SnowflakeID()) >= before {
+		ok, qerr := qualifies(id)
+		if qerr != nil {
+			return zero, qerr
+		}
+		if !ok {
 			continue
 		}
 		if len(victims) >= chunk {

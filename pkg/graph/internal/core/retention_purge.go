@@ -26,8 +26,14 @@ const (
 	// Snowflake IDs are time-ordered, so "label older than T" is a contiguous key
 	// range — a sequential scan-and-delete, not N point lookups. (ADR-0008 v1.)
 	PurgeByAge PurgeMode = iota
-	// PurgeByValidTo is reserved for ADR-0008 R5 (via the 0x0B temporal index).
-	// The Mode field exists from day one so v2 needs no signature change.
+	// PurgeByValidTo purges nodes whose current-version world-time validity ENDED
+	// before Before: ValidTo != 0 && ValidTo < Before (ADR-0008 R5). Unlike mint-
+	// time, ValidTo is MUTABLE, so the store re-confirms the predicate under its
+	// write lock before removing each node. A node with an open interval
+	// (ValidTo == 0) is never purged by validity. Backed by the store's optional
+	// RetentionPurgeByValidToCapability (native memory + badger; fanned out by
+	// sharded/tiered).
+	PurgeByValidTo
 )
 
 // PurgePolicy bounds a retention purge (ADR-0008 R2). Mirrors the compaction
@@ -55,10 +61,15 @@ type PurgeReport struct {
 const retentionPurgeChunk = 256
 
 func validatePurgePolicy(p PurgePolicy) error {
-	if p.Label == "" || p.Before <= 0 || p.Mode != PurgeByAge {
+	if p.Label == "" || p.Before <= 0 {
 		return ErrInvalidPurgePolicy
 	}
-	return nil
+	switch p.Mode {
+	case PurgeByAge, PurgeByValidTo:
+		return nil
+	default:
+		return ErrInvalidPurgePolicy
+	}
 }
 
 // PurgeExpiredNodes hard-removes aged-out nodes of policy.Label (and each node's
@@ -99,6 +110,9 @@ func (a *AdminOps) PurgeExpiredNodes(ctx context.Context, policy PurgePolicy) (P
 	if c.retentionPurge == nil {
 		return PurgeReport{}, fmt.Errorf("graph: retention purge: %w", storepkg.ErrCapabilityNotSupported)
 	}
+	if policy.Mode == PurgeByValidTo && c.retentionPurgeValidTo == nil {
+		return PurgeReport{}, fmt.Errorf("graph: retention purge by valid-to: %w", storepkg.ErrCapabilityNotSupported)
+	}
 	// A change-log-enabled store that cannot emit the ChangeRangePurge record
 	// would purge locally but never tell a replica — a silent divergence. Refuse.
 	// (No in-tree backend hits this: the native purge stores also implement
@@ -134,9 +148,20 @@ func (a *AdminOps) PurgeExpiredNodes(ctx context.Context, policy PurgePolicy) (P
 
 	// (3) Physical purge, chunked (the store self-locks per chunk; the graph lock
 	// is NOT held across the range — invariant 5).
-	report, err := c.purgeRangeAllChunks(ctx, token, policy.Before)
+	report, err := c.purgeRangeAllChunks(ctx, token, policy.Before, policy.Mode)
 	report.Watermark = types.Instant(c.retentionMaxWatermark.Load())
 	return report, err
+}
+
+// purgeChunk dispatches ONE chunked store purge on the policy mode. ByValidTo
+// routes to the RetentionPurgeByValidToCapability (guaranteed non-nil here — the
+// admin door refused earlier, and apply verifies it too); every other mode is the
+// mint-time RetentionPurgeCapability.
+func (c *Core) purgeChunk(token uint16, before types.Instant, mode PurgeMode) (storepkg.RetentionPurgeResult, error) {
+	if mode == PurgeByValidTo {
+		return c.retentionPurgeValidTo.PurgeNodesByLabelValidToBefore(token, before, retentionPurgeChunk)
+	}
+	return c.retentionPurge.PurgeNodesByLabelBefore(token, before, retentionPurgeChunk)
 }
 
 // purgeRangeAllChunks loops the store's chunked purge until the label is drained
@@ -149,7 +174,7 @@ func (a *AdminOps) PurgeExpiredNodes(ctx context.Context, policy PurgePolicy) (P
 // on a non-empty ownership registry (nil in an event-heavy graph → zero cost) and
 // accumulates only purged IDs that are actually owners, so it stays bounded even
 // at range scale.
-func (c *Core) purgeRangeAllChunks(ctx context.Context, token uint16, before types.Instant) (PurgeReport, error) {
+func (c *Core) purgeRangeAllChunks(ctx context.Context, token uint16, before types.Instant, mode PurgeMode) (PurgeReport, error) {
 	report := PurgeReport{}
 	owners := c.foreverOwnerSnapshot() // nil ⇒ no forever constraints ⇒ no reaping
 	var reap map[types.NodeID]struct{}
@@ -157,7 +182,7 @@ func (c *Core) purgeRangeAllChunks(ctx context.Context, token uint16, before typ
 		if err := ctx.Err(); err != nil {
 			return report, err
 		}
-		res, err := c.retentionPurge.PurgeNodesByLabelBefore(token, before, retentionPurgeChunk)
+		res, err := c.purgeChunk(token, before, mode)
 		if err != nil {
 			return report, err
 		}
@@ -194,11 +219,15 @@ func (c *Core) applyRangePurgeLocked(body storeutil.RangePurgeBody) error {
 	if c.retentionPurge == nil {
 		return fmt.Errorf("graph: apply: ChangeRangePurge requires a RetentionPurgeCapability store")
 	}
+	mode := PurgeMode(body.Mode)
+	if mode == PurgeByValidTo && c.retentionPurgeValidTo == nil {
+		return fmt.Errorf("graph: apply: ChangeRangePurge(ByValidTo) requires a RetentionPurgeByValidToCapability store")
+	}
 	token := body.LabelToken
 	before := types.Instant(body.Before)
 	if err := c.advanceRetentionWatermark(token, before); err != nil {
 		return err
 	}
-	_, err := c.purgeRangeAllChunks(context.Background(), token, before)
+	_, err := c.purgeRangeAllChunks(context.Background(), token, before, mode)
 	return err
 }

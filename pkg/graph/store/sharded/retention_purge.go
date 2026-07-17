@@ -9,16 +9,34 @@ import (
 )
 
 var (
-	_ storecontract.RetentionPurgeCapability = (*Store)(nil)
-	_ storecontract.RangePurgeLogCapability  = (*Store)(nil)
+	_ storecontract.RetentionPurgeCapability          = (*Store)(nil)
+	_ storecontract.RetentionPurgeByValidToCapability = (*Store)(nil)
+	_ storecontract.RangePurgeLogCapability           = (*Store)(nil)
 )
 
-// PurgeNodesByLabelBefore hard-removes aged-out nodes of a label across every
-// shard (ADR-0008 R4). It runs in two phases:
+// PurgeNodesByLabelBefore hard-removes aged-out nodes of a label across every shard
+// (ADR-0008 R4, ByAge). See purgeNodesFanOut for the two-phase mechanism.
+func (s *Store) PurgeNodesByLabelBefore(labelToken uint16, before types.Instant, chunk int) (storecontract.RetentionPurgeResult, error) {
+	return s.purgeNodesFanOut(func(shard *badger.Store) (storecontract.RetentionPurgeResult, error) {
+		return shard.PurgeNodesByLabelBefore(labelToken, before, chunk)
+	})
+}
+
+// PurgeNodesByLabelValidToBefore hard-removes nodes whose world-time validity ended
+// before the boundary across every shard (ADR-0008 R5, ByValidTo). Same two-phase
+// mechanism as ByAge (see purgeNodesFanOut) — only the per-shard predicate differs;
+// each shard applies its own mutable-predicate re-confirm under its write lock.
+func (s *Store) PurgeNodesByLabelValidToBefore(labelToken uint16, before types.Instant, chunk int) (storecontract.RetentionPurgeResult, error) {
+	return s.purgeNodesFanOut(func(shard *badger.Store) (storecontract.RetentionPurgeResult, error) {
+		return shard.PurgeNodesByLabelValidToBefore(labelToken, before, chunk)
+	})
+}
+
+// purgeNodesFanOut is the shared two-phase cross-shard purge (ADR-0008 R4):
 //
-//	(1) Fan out the per-shard label purge (parallel) — each shard removes its own
-//	    below-boundary nodes, their CO-LOCATED edges (rels minted in the node's
-//	    slot, ADR-0007 §2, incl. the survivor inIdx cleanup), and all their history.
+//	(1) Fan out `perShard` (parallel) — each shard removes its own qualifying nodes,
+//	    their CO-LOCATED edges (rels minted in the node's slot, ADR-0007 §2, incl.
+//	    the survivor inIdx cleanup), and all their history.
 //	(2) Cross-shard sweep — for each purged node, remove any edge MINTED IN ANOTHER
 //	    node's slot that points at it. Such an edge lives on a shard OTHER than the
 //	    purged node's, so phase 1 cannot see it; left behind it would dangle
@@ -27,9 +45,9 @@ var (
 //
 // Each shard batch is atomic; the whole operation is crash-recoverable-not-atomic
 // (a re-run finishes, and the graph watermark makes any residue invisible), the
-// same contract as the cross-shard cascade. Emits no per-entity record — the
-// graph layer owns the single ChangeRangePurge.
-func (s *Store) PurgeNodesByLabelBefore(labelToken uint16, before types.Instant, chunk int) (storecontract.RetentionPurgeResult, error) {
+// same contract as the cross-shard cascade. Emits no per-entity record — the graph
+// layer owns the single ChangeRangePurge.
+func (s *Store) purgeNodesFanOut(perShard func(shard *badger.Store) (storecontract.RetentionPurgeResult, error)) (storecontract.RetentionPurgeResult, error) {
 	var zero storecontract.RetentionPurgeResult
 	if err := s.checkOpen(); err != nil {
 		return zero, err
@@ -39,7 +57,7 @@ func (s *Store) PurgeNodesByLabelBefore(labelToken uint16, before types.Instant,
 	total := storecontract.RetentionPurgeResult{}
 	var purgedIDs []types.NodeID
 	ferr := s.forEachShardErr(func(_ int, shard *badger.Store) error {
-		res, e := shard.PurgeNodesByLabelBefore(labelToken, before, chunk)
+		res, e := perShard(shard)
 		if e != nil {
 			return e
 		}

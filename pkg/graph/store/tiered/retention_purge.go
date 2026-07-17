@@ -8,19 +8,39 @@ import (
 )
 
 var (
-	_ storecontract.RetentionPurgeCapability = (*Store)(nil)
-	_ storecontract.RangePurgeLogCapability  = (*Store)(nil)
+	_ storecontract.RetentionPurgeCapability          = (*Store)(nil)
+	_ storecontract.RetentionPurgeByValidToCapability = (*Store)(nil)
+	_ storecontract.RangePurgeLogCapability           = (*Store)(nil)
 )
 
-// PurgeNodesByLabelBefore hard-removes aged-out nodes of a label across every
-// tiered shard (ADR-0008 R4). Tiered uses a SPLIT-WRITE cross-shard adjacency
-// layout — a rel's entity + out-leg live on the START node's shard, its in-leg on
-// the END node's shard — so unlike sharded (co-located legs) a per-shard label
-// purge leaves a residue on a survivor's shard for any cross-shard edge. Two phases:
+// PurgeNodesByLabelBefore hard-removes aged-out nodes of a label across every tiered
+// shard (ADR-0008 R4, ByAge). See purgeNodesFanOut for the split-write mechanism.
+func (ts *Store) PurgeNodesByLabelBefore(labelToken uint16, before types.Instant, chunk int) (storecontract.RetentionPurgeResult, error) {
+	return ts.purgeNodesFanOut(func(shard *BadgerStore) (storecontract.RetentionPurgeResult, error) {
+		return shard.PurgeNodesByLabelBefore(labelToken, before, chunk)
+	})
+}
+
+// PurgeNodesByLabelValidToBefore hard-removes nodes whose world-time validity ended
+// before the boundary across every tiered shard (ADR-0008 R5, ByValidTo). Same
+// split-write cross-shard mechanism as ByAge (see purgeNodesFanOut) — only the
+// per-shard predicate differs; each shard applies its own mutable-predicate
+// re-confirm under its write lock.
+func (ts *Store) PurgeNodesByLabelValidToBefore(labelToken uint16, before types.Instant, chunk int) (storecontract.RetentionPurgeResult, error) {
+	return ts.purgeNodesFanOut(func(shard *BadgerStore) (storecontract.RetentionPurgeResult, error) {
+		return shard.PurgeNodesByLabelValidToBefore(labelToken, before, chunk)
+	})
+}
+
+// purgeNodesFanOut is the shared cross-shard purge (ADR-0008 R4). Tiered uses a
+// SPLIT-WRITE cross-shard adjacency layout — a rel's entity + out-leg live on the
+// START node's shard, its in-leg on the END node's shard — so unlike sharded
+// (co-located legs) a per-shard label purge leaves a residue on a survivor's shard
+// for any cross-shard edge. Two phases:
 //
-//	(1) Fan out the per-shard label purge over ref + archive + every event shard
-//	    (forEachOpenShard). Each shard removes its below-boundary nodes, their
-//	    CO-LOCATED rel parts + history, and reports the rels it TOUCHED.
+//	(1) Fan out `perShard` over ref + archive + every event shard (forEachOpenShard).
+//	    Each shard removes its qualifying nodes, their CO-LOCATED rel parts + history,
+//	    and reports the rels it TOUCHED.
 //	(2) For each touched rel, clean its residue on the SURVIVING endpoint's shard.
 //	    The residue always lands there (a purged endpoint's shard self-cleaned in
 //	    phase 1): a survivor→purged rel leaves its entity+out-leg on the survivor's
@@ -30,7 +50,7 @@ var (
 // Each per-shard step is atomic; the whole is crash-recoverable-not-atomic (a
 // re-run finishes; the graph watermark makes any residue invisible). Recordless —
 // the graph layer owns the single ChangeRangePurge (see LogRangePurge).
-func (ts *Store) PurgeNodesByLabelBefore(labelToken uint16, before types.Instant, chunk int) (storecontract.RetentionPurgeResult, error) {
+func (ts *Store) purgeNodesFanOut(perShard func(shard *BadgerStore) (storecontract.RetentionPurgeResult, error)) (storecontract.RetentionPurgeResult, error) {
 	var zero storecontract.RetentionPurgeResult
 	if err := ts.checkOpen(); err != nil {
 		return zero, err
@@ -40,7 +60,7 @@ func (ts *Store) PurgeNodesByLabelBefore(labelToken uint16, before types.Instant
 	var purgedIDs []types.NodeID
 	var purgedRels []storecontract.PurgedRel
 	perr := ts.forEachOpenShard(func(shard *BadgerStore) error {
-		res, e := shard.PurgeNodesByLabelBefore(labelToken, before, chunk)
+		res, e := perShard(shard)
 		if e != nil {
 			return e
 		}
