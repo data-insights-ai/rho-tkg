@@ -112,8 +112,40 @@ temporal index) needs no signature/record change.
   global merged feed. Proven by `TestTieredPurge_CrossShardEdgeSweep` (both residue shapes) +
   `TestRetentionPurge_TieredReplicaConvergence` (tiered primary → tiered replica re-executes the
   ONE predicate record, cross-shard sweep on the replica too, dangle-free, watermark advanced).
-  Optimization (later, not built): a range covering a whole cold event-shard → O(1)
-  `g.Tier().Archive` shard-drop.
+  Optimization (later, not built — DESIGN SCOPED, deliberately deferred): a ByAge range
+  covering a whole aged-out event shard could physically DROP the shard (close + os.RemoveAll +
+  catalog remove) instead of row-scan-cascading every entity, skipping the per-row delete writes
+  + their flush (the write-amplification cost). Investigation found this is NOT a quick tweak —
+  it is a delete-critical CONCURRENT subsystem with three hard constraints and one sharp edge:
+  - **Not O(1):** still needs an O(nodes) READ scan of the shard for the purged count, the
+    `UniqueForever` owner reap, and — critically — to enumerate cross-shard rels for the
+    survivor-side residue sweep (a dropped shard's split-write edges leave residue on survivor
+    shards, exactly as the row-scan path handles via `purgedRelsForNodeLocked`). The win is
+    "skip the per-row cascade DELETES + flush", not constant time.
+  - **Off under ChangeLog:** the row-scan purge leaves each shard's `0x09` change-log records
+    intact (feed stays gapless); physically dropping a shard destroys its log segment → a
+    tailing replica sees an LSN gap. So the drop MUST fall back to row-scan whenever ChangeLog
+    is enabled (the replication config). Replication itself is unaffected (the ONE
+    `ChangeRangePurge` predicate re-executes on the replica, which drops its own shard).
+  - **Narrow eligibility:** ByAge only (`ValidTo` is orthogonal to the mint-time window),
+    single-label shards only (`Labels ⊆ {purged}` — conservative, check the shard's label index
+    for any foreign token), whole-window-below-boundary only (`shard.timeEnd <= before`).
+  - **THE sharp edge — concurrent-write TOCTOU (the reason it is its own session):** the
+    cross-shard rel WRITE path (`putRelationshipLocked`) does NOT serialize against `ts.mu.Lock`
+    — it coordinates only through per-shard checkout refcounts (`shardForNodeIDChecked` →
+    `checkoutStoreForRead`/`activeReqs`). So a concurrent writer can add a cross-shard in-leg to
+    the dropping shard AFTER residue collection and BEFORE removal, leaving un-swept survivor
+    residue = a dangling phantom (silent wrong result). A correct drop needs a DRAIN PROTOCOL:
+    (1) under `ts.mu.Lock` unlink the shard from `ts.eventShards` so no NEW checkout routes to it
+    (and handle the now-possible routing-miss for a concurrent edge-to-a-purged-node — it should
+    fail cleanly, the target node is being purged anyway); (2) drain in-flight `activeReqs` to 0;
+    (3) only THEN collect residue → sweep survivors → close → `os.RemoveAll` → `catalog.RemoveShard`
+    → `catalog.Save` (add `RemoveShard`, mirror rotation's snapshot/restore rollback). Needs
+    adversarial concurrent-write race tests (rules: shared-state → `test-race`) proving no phantom
+    survives an edge-add racing the drop. A reusable read primitive is straightforward to
+    (re)build: a badger `CollectShardDropResidue(labelToken)` returning (onlyLabel, nodeIDs,
+    touchingRels) — the single-label check via `hasForeignLabelTokensLocked` + per-node
+    `purgedRelsForNodeLocked` deduped by rel ID, read-only. Build it as its own focused increment.
 - **R5 — `ByValidTo`: ✅ SHIPPED.** New optional `store.RetentionPurgeByValidToCapability.PurgeNodesByLabelValidToBefore`
   (native memory + badger; sharded/tiered fan out through the SAME cross-shard mechanism as
   ByAge — both refactored to a `purgeNodesFanOut` closure so only the per-shard predicate
