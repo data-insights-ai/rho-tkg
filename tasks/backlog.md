@@ -89,32 +89,30 @@ temporal index) needs no signature/record change.
   exactly ONE `ChangeRangePurge` record, ZERO per-entity delete records, replica reaches the
   same purged state + advanced watermark, idempotent re-apply. Different shard count is the
   R4 extension (the record already names a PREDICATE, not physical rows).
-- **R4 — SHARDED: ✅ SHIPPED. Tiered: REMAINING.** Sharded (ADR-0007): phase 1 fans out the
+- **R4 — SHARDED + TIERED: ✅ SHIPPED.** Sharded (ADR-0007): phase 1 fans out the
   per-shard label purge (parallel) — each shard removes its below-boundary nodes + co-located
   edges + history; phase 2 sweeps cross-shard edges (`PurgeAdjacentRelsForNode` per purged ID,
   driven by `RetentionPurgeResult.PurgedNodeIDs`) — the event-as-END cross-shard edge a
   per-shard purge misses. Record emitted once on the anchor shard. Proven by a store-level
   cross-shard-edge test + `TestRetentionPurge_ShardedReplicaConvergence` (sharded→sharded).
-  **Tiered REMAINING — and NOT a sharded mirror (finding 2026-07-17).** A naive fan-out of the
-  per-shard badger purge + the sharded phase-2 `PurgeAdjacentRelsForNode` sweep is INCORRECT for
-  tiered because tiered uses a SPLIT-WRITE cross-shard adjacency model (see
-  `tieredstore_write_rel.go putRelationshipLocked`): a cross-shard rel's ENTITY (0x02) + OUT leg
-  (0x05/start) live on the START node's shard, while only the IN leg (0x06/end) lives on the END
-  node's shard. Sharded co-locates BOTH legs on the rel's shard, so sweeping the purged node's
-  adjacency finds the edge; tiered does NOT. Concretely, purging event E (event shard) leaves:
-  (a) for `E→X` cross-shard, a dangling `0x06/X` in-leg on X's shard; (b) for `Y→E` cross-shard,
-  the rel ENTITY + `0x05/Y` out-leg on Y's shard — a LIVE PHANTOM (Y's OutgoingRelationships folds
-  the entity, but its end E is gone). `PurgeAdjacentRelsForNode(E)` on Y's shard can't find it —
-  the entity is keyed by Y (the survivor), not E. So COLD-SHARD-READONLY is a non-issue (cold
-  shards open writable), but the split-write is the real blocker. **Correct design:** tiered's
-  purge must be cross-shard-cascade-aware per victim (like `tiered.DeleteNodeCascade`, which
-  routes each rel's delete to its entity shard AND cleans the remote in-leg), recordless, plus
-  history purge — NOT a per-shard `cascadeDeleteInner` fan-out. Simplest correct v1: for each
-  victim, reuse the tiered cross-shard cascade to remove the node + all its rels (both legs, all
-  shards) + purge history; emit ONE `ChangeRangePurge` on the ref shard (`ts.refShard.LogRangePurge`
-  already reaches the global merged feed). Optimization (later): a range covering a whole cold
-  event-shard → O(1) `g.Tier().Archive` shard-drop. Tiered currently DECLINES the purge
-  (`ErrCapabilityNotSupported`) — fail-closed, safe — until this lands.
+  **Tiered — SHIPPED (NOT a sharded mirror).** Tiered uses a SPLIT-WRITE cross-shard adjacency
+  layout (`tieredstore_write_rel.go putRelationshipLocked`): a cross-shard rel's ENTITY (0x02) +
+  OUT leg (0x05/start) live on the START node's shard, its IN leg (0x06/end) on the END node's
+  shard — so the sharded `PurgeAdjacentRelsForNode(purgedNode)` sweep (which finds the edge via the
+  purged node's adjacency because sharded co-locates both legs) MISSES tiered's residue: a
+  `survivor→purged` rel leaves its entity+out-leg on the SURVIVOR's shard, keyed by the survivor.
+  The tiered solution: phase 1 fans out the per-shard badger purge (`forEachOpenShard`) — but that
+  purge now ALSO returns `RetentionPurgeResult.PurgedRels`, decoded from the purged node's
+  adjacency KEYS (`purgedRelsForNodeLocked` — the key encodes BOTH endpoints, so a cross-shard rel
+  whose entity is elsewhere and thus invisible to a local entity read is still captured). Phase 2
+  routes each touched rel to its SURVIVING endpoint's shard and calls the new recordless badger
+  `PurgeRelationshipByInfo`, which dispatches: entity present here → full delete + history; only a
+  dangling in-leg → orphan-index purge. `LogRangePurge` → `ts.refShard.LogRangePurge` reaches the
+  global merged feed. Proven by `TestTieredPurge_CrossShardEdgeSweep` (both residue shapes) +
+  `TestRetentionPurge_TieredReplicaConvergence` (tiered primary → tiered replica re-executes the
+  ONE predicate record, cross-shard sweep on the replica too, dangle-free, watermark advanced).
+  Optimization (later, not built): a range covering a whole cold event-shard → O(1)
+  `g.Tier().Archive` shard-drop.
 - **R5 (optional, own release) — `ByValidTo` v2** via the `0x0B` temporal interval
   index; record format already carries `Mode`.
 

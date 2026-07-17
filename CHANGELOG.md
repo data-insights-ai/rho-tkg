@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- ADD — retention purge R4 for the TIERED backend (ADR-0008), completing purge across all four backends (memory / badger / sharded / tiered). Tiered is deliberately NOT a sharded mirror: it uses a SPLIT-WRITE cross-shard adjacency layout (a rel's entity + out-leg live on the START node's shard, its in-leg on the END node's shard), so the sharded `PurgeAdjacentRelsForNode(purgedNode)` sweep — which relies on both legs being co-located — MISSES tiered's residue (a `survivor→purged` rel leaves its entity+out-leg on the survivor's shard, keyed by the survivor, not the purged node). Design:
+  - Phase 1 fans out the per-shard badger purge over ref + archive + every event shard (`forEachOpenShard`). That purge now also returns `store.RetentionPurgeResult.PurgedRels`, decoded from each purged node's adjacency KEYS (new `purgedRelsForNodeLocked` — the `0x05`/`0x06` key encodes BOTH endpoints, so a cross-shard rel whose entity lives on another shard and is thus invisible to a local entity read is still captured with its endpoints).
+  - Phase 2 routes each touched rel to its SURVIVING endpoint's shard (a purged endpoint's shard self-cleaned in phase 1) and calls the new recordless badger `PurgeRelationshipByInfo`, which dispatches on where the residue is: entity present here (a survivor→purged full-local rel) → full delete + version-history purge; only a dangling in-leg (a purged→survivor orphan) → an orphan-index purge. Both reuse existing tested primitives (`deleteRelByInfo` / `purgeOrphanRelIDLocked`).
+  - `LogRangePurge` emits the ONE `ChangeRangePurge` on the reference shard (shares the store-global LSN allocator + merged feed). New `store.PurgedRel` descriptor on the result.
+  - Tests: `TestTieredPurge_CrossShardEdgeSweep` (store-level — both residue shapes: event→ref orphan + ref→event full-local, zero dangling); `TestRetentionPurge_TieredReplicaConvergence` (a tiered primary → tiered replica re-executes the single predicate record, cross-shard sweep on the replica too, dangle-free, watermark advanced). No regression to memory/badger/sharded (they ignore `PurgedRels`; badger fills it, memory leaves it nil). REMAINING: R5 (`ByValidTo`, optional) + a later tiered O(1) cold-shard-drop optimization.
+
 ## [4.19.0] - 2026-07-17
 
 - ADD — three sigma-tkgd consumer doors (previously emulated or blocked):

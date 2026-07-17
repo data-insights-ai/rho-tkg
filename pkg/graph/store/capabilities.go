@@ -333,11 +333,30 @@ type HistoryCompactionCapability interface {
 // backend (sharded) uses it to sweep edges MINTED IN ANOTHER node's slot that
 // point at a purged node and therefore live on a different shard — the one edge
 // class a per-shard label purge cannot see (an event-as-END cross-shard edge).
+//
+// PurgedRels lists the relationships this chunk TOUCHED (removed at least one row
+// or adjacency leg of). The tiered backend — whose SPLIT-WRITE layout stores a
+// rel's entity+out-leg on the start node's shard and its in-leg on the end node's
+// shard — uses it to sweep each rel's residue on its OTHER endpoint shard (an
+// orphan in-leg, or a fully-local survivor→purged rel), which a per-shard label
+// purge leaves behind. Left nil by memory (single store) and unused by sharded
+// (co-located legs, node-ID sweep).
 type RetentionPurgeResult struct {
 	NodesPurged   int
 	RelsPurged    int
 	More          bool
 	PurgedNodeIDs []types.NodeID
+	PurgedRels    []PurgedRel
+}
+
+// PurgedRel is the routing descriptor of a relationship a purge touched — enough
+// for a partitioned backend to locate and clean the rel's residue on either
+// endpoint's shard without re-reading the (already-removed) row.
+type PurgedRel struct {
+	ID        types.RelID
+	TypeToken uint16
+	StartID   types.NodeID
+	EndID     types.NodeID
 }
 
 // RetentionPurgeCapability is OPTIONAL (ADR-0008 R2). It HARD-removes whole

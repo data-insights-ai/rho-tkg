@@ -1,8 +1,11 @@
 package badger
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
+
+	badgerv4 "github.com/dgraph-io/badger/v4"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -107,12 +110,18 @@ func (bs *Store) PurgeNodesByLabelBefore(labelToken uint16, before types.Instant
 	nodesPurged := 0
 	relsPurged := 0
 	purgedIDs := make([]types.NodeID, 0, len(victims))
+	var purgedRels []storecontract.PurgedRel
 	var histOps []writeOp
 	for _, v := range victims {
 		pf, ok := prefetch[v]
 		if !ok {
 			continue // skipped above (already gone)
 		}
+		// Capture every relationship touching v from its adjacency KEYS BEFORE the
+		// cascade removes them — this is the only way to surface a CROSS-SHARD rel
+		// whose entity lives on another shard (an entity read here would miss it),
+		// which the tiered residue sweep needs.
+		purgedRels = append(purgedRels, bs.purgedRelsForNodeLocked(v)...)
 		deleted, corruptErr, fatalErr := bs.cascadeDeleteInner(v, pf)
 		if fatalErr != nil {
 			if errors.Is(fatalErr, ErrNodeNotFound) {
@@ -157,11 +166,146 @@ func (bs *Store) PurgeNodesByLabelBefore(labelToken uint16, before types.Instant
 		return zero, err
 	}
 	return storecontract.RetentionPurgeResult{
+		PurgedRels:    purgedRels,
 		NodesPurged:   nodesPurged,
 		RelsPurged:    relsPurged,
 		More:          more,
 		PurgedNodeIDs: purgedIDs,
 	}, nil
+}
+
+// purgedRelsForNodeLocked decodes every relationship touching nid straight from
+// its adjacency KEYS (persisted + pending overlay), not from entity reads — the
+// key encodes BOTH endpoints (out: 0x05|start|type|end|relID; in:
+// 0x06|end|type|start|relID), so a CROSS-SHARD rel whose entity lives on another
+// shard (invisible to a local entity read) is still captured with its endpoints.
+// The tiered cross-shard residue sweep needs those endpoints. Caller holds
+// idxMu.Lock. Deduplicated by rel ID (a self-loop appears in both directions).
+func (bs *Store) purgedRelsForNodeLocked(nid types.NodeID) []storecontract.PurgedRel {
+	sid := nid.SnowflakeID()
+	seen := make(map[types.RelID]struct{})
+	var out []storecontract.PurgedRel
+
+	collect := func(keyTag byte, incoming bool) {
+		prefix := make([]byte, 9)
+		prefix[0] = keyTag
+		binary.BigEndian.PutUint64(prefix[1:], uint64(sid)) // #nosec G115 — key round-trips int64 bits
+		emit := func(kb []byte) {
+			if len(kb) != storepkg.SizeAdjacency || kb[0] != keyTag || !hasPrefix(kb, prefix) {
+				return
+			}
+			rid := types.RelID(storepkg.ParseIDFromKey(kb, 19))
+			if _, ok := seen[rid]; ok {
+				return
+			}
+			seen[rid] = struct{}{}
+			pr := storecontract.PurgedRel{
+				ID:        rid,
+				TypeToken: binary.BigEndian.Uint16(kb[9:11]),
+			}
+			other := types.NodeID(storepkg.ParseIDFromKey(kb, 11))
+			if incoming {
+				pr.StartID, pr.EndID = other, nid // 0x06|end=nid|type|start=other
+			} else {
+				pr.StartID, pr.EndID = nid, other // 0x05|start=nid|type|end=other
+			}
+			out = append(out, pr)
+		}
+		// Pending overlay: a set adds the key, a delete removes it (authoritative
+		// over the committed keyspace).
+		dels := make(map[string]struct{})
+		var pendingSets [][]byte
+		bs.rangePending(func(k string, op writeOp) {
+			kb := []byte(k)
+			if len(kb) != storepkg.SizeAdjacency || kb[0] != keyTag || !hasPrefix(kb, prefix) {
+				return
+			}
+			if op.opType == writeOpDelete {
+				dels[k] = struct{}{}
+			} else {
+				pendingSets = append(pendingSets, kb)
+			}
+		})
+		_ = bs.db.View(func(txn *badgerv4.Txn) error {
+			opts := badgerv4.DefaultIteratorOptions
+			opts.PrefetchValues = false
+			it := txn.NewIterator(opts)
+			defer it.Close()
+			for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+				k := it.Item().KeyCopy(nil)
+				if _, dropped := dels[string(k)]; dropped {
+					continue
+				}
+				emit(k)
+			}
+			return nil
+		})
+		for _, kb := range pendingSets {
+			if _, dropped := dels[string(kb)]; dropped {
+				continue
+			}
+			emit(kb)
+		}
+	}
+
+	collect(storepkg.KeyOut, false)
+	collect(storepkg.KeyIn, true)
+	return out
+}
+
+// PurgeRelationshipByInfo recordlessly cleans a relationship's residue on THIS
+// store, given only its routing descriptor (the row may already be gone). It is
+// the cross-shard cleanup primitive for a SPLIT-WRITE partitioned backend
+// (tiered), where a rel's entity+out-leg live on the start node's shard and its
+// in-leg on the end node's shard, so a per-shard label purge leaves a residue on
+// the OTHER endpoint's shard. It dispatches on where the residue is:
+//   - entity present here (a survivor→purged rel whose entity is on this shard):
+//     full delete of the entity + both legs' local keys + its version history;
+//   - entity absent here (only a dangling in-leg for a purged→survivor rel):
+//     an orphan-index purge of the leftover adjacency/type keys.
+//
+// Idempotent: a rel with no residue on this shard is a no-op. Recordless — the
+// graph layer owns the single ChangeRangePurge.
+func (bs *Store) PurgeRelationshipByInfo(rel storecontract.PurgedRel) error {
+	if err := bs.checkWritable(); err != nil {
+		return err
+	}
+	defer bs.bumpRelEpoch()
+	rid := rel.ID
+
+	bs.idxMu.Lock()
+	if _, entityHere := bs.relIDs[rid]; entityHere {
+		// The rel entity lives on this shard — a full recordless delete (both legs'
+		// local keys via the info; the remote leg was already purged with the node)
+		// plus its version history (0x08, co-located with the entity).
+		bs.deleteRelByInfo(RelDeleteInfo{
+			ID:      rid.SnowflakeID(),
+			RelType: rel.TypeToken,
+			StartID: rel.StartID.SnowflakeID(),
+			EndID:   rel.EndID.SnowflakeID(),
+		})
+		histKeys, _, herr := bs.historyTruncateDeleteKeys(storepkg.HistRelPrefix(rid.SnowflakeID()), 0)
+		if herr != nil {
+			bs.idxMu.Unlock()
+			return herr
+		}
+		if len(histKeys) > 0 {
+			ops := make([]writeOp, 0, len(histKeys))
+			for _, k := range histKeys {
+				ops = append(ops, writeOp{opType: writeOpDelete, key: []byte(k)})
+			}
+			bs.appendOps(ops...)
+		}
+		bs.idxMu.Unlock()
+		return bs.flushIfNeeded()
+	}
+	// The entity is elsewhere — only a dangling adjacency leg (or nothing) is here.
+	err := bs.purgeOrphanRelIDLocked(rid)
+	bs.idxMu.Unlock()
+	if err != nil {
+		return err
+	}
+	return bs.flushIfNeeded()
 }
 
 // PurgeAdjacentRelsForNode recordlessly removes every relationship on THIS store
