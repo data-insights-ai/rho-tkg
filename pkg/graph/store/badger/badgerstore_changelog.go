@@ -471,27 +471,32 @@ func (bs *Store) SetLogDivert(on bool) {
 // this instant — the tx logically commits now, after every record that committed
 // during its body), appends them to pendingLog, then flushes so they co-commit
 // with the tx's still-pending data + counters + LastLSNKey in one WriteBatch.
-func (bs *Store) CommitLogScope() error {
+func (bs *Store) CommitLogScope() (uint64, error) {
 	if !bs.logEnabled {
-		return nil
+		return 0, nil
 	}
 	bs.wbMu.Lock()
 	buffered := bs.scopeLog
 	bs.scopeLog = nil
 	bs.scopeActive = false
+	var maxLSN uint64
 	for _, value := range buffered {
 		lsn := bs.nextLSN()
 		bs.pendingLog = append(bs.pendingLog, pendingLogRecord{lsn: lsn, value: value})
+		maxLSN = lsn // contiguous + monotonic, so the last minted is the max
 	}
 	bs.wbMu.Unlock()
 	if len(buffered) == 0 {
-		return nil
+		return 0, nil
 	}
 	// Flush so the just-minted records co-commit with the tx's pending data. If a
 	// concurrent flushLoop tick drains pendingLog first, the records still commit
 	// (it drains ALL of pendingLog) and this flush is a no-op — either way the
 	// records ride one WriteBatch with the pending data + counters + watermark.
-	return bs.flush()
+	if err := bs.flush(); err != nil {
+		return 0, err
+	}
+	return maxLSN, nil
 }
 
 // DiscardLogScope drops the buffered records (a rolled-back tx emits nothing) and

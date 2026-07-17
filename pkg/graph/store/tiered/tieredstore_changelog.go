@@ -622,11 +622,27 @@ func (ts *Store) SetLogDivert(on bool) {
 // CommitLogScope mints store-global LSNs for each scoped shard's buffered records
 // (reference → archive → event order) and flushes them so they co-commit with the
 // tx's data.
-func (ts *Store) CommitLogScope() error {
+func (ts *Store) CommitLogScope() (uint64, error) {
 	if !ts.ChangeLogEnabled() {
-		return nil
+		return 0, nil
 	}
-	return ts.forEachScopeShard(func(bs *BadgerStore) error { return bs.CommitLogScope() })
+	// Every shard draws from ONE store-global allocator, so the max LSN across the
+	// scoped shards is this commit's max LSN.
+	var maxLSN uint64
+	err := ts.forEachScopeShard(func(bs *BadgerStore) error {
+		lsn, e := bs.CommitLogScope()
+		if e != nil {
+			return e
+		}
+		if lsn > maxLSN {
+			maxLSN = lsn
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return maxLSN, nil
 }
 
 // DiscardLogScope drops every scoped shard's buffer — a rolled-back tx emits

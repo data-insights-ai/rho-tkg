@@ -280,19 +280,25 @@ func (s *Store) SetLogDivert(on bool) {
 	}
 }
 
-func (s *Store) CommitLogScope() error {
+func (s *Store) CommitLogScope() (uint64, error) {
 	if !s.ChangeLogEnabled() {
-		return nil
+		return 0, nil
 	}
 	// Commit in ascending shard order so cross-shard records within one tx take
 	// contiguous LSNs in a deterministic order (self-describing records apply
-	// correctly on the replica in LSN order regardless).
+	// correctly on the replica in LSN order regardless). All shards draw from ONE
+	// store-global allocator, so the max across shards is this commit's max LSN.
+	var maxLSN uint64
 	for _, shard := range s.shards {
-		if err := shard.CommitLogScope(); err != nil {
-			return err
+		lsn, err := shard.CommitLogScope()
+		if err != nil {
+			return 0, err
+		}
+		if lsn > maxLSN {
+			maxLSN = lsn
 		}
 	}
-	return nil
+	return maxLSN, nil
 }
 
 func (s *Store) DiscardLogScope() error {

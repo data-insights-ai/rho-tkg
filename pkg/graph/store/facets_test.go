@@ -231,7 +231,7 @@ func (fullOptionalStore) LastCommittedLSN() (uint64, error)                   { 
 func (fullOptionalStore) ChangeLogEnabled() bool                              { return false }
 func (fullOptionalStore) BeginLogScope() error                                { return nil }
 func (fullOptionalStore) SetLogDivert(bool)                                   {}
-func (fullOptionalStore) CommitLogScope() error                               { return nil }
+func (fullOptionalStore) CommitLogScope() (uint64, error)                     { return 0, nil }
 func (fullOptionalStore) DiscardLogScope() error                              { return nil }
 func (fullOptionalStore) MetaGet(string) ([]byte, error)                      { return nil, nil }
 func (fullOptionalStore) MetaSet(string, []byte) error                        { return nil }

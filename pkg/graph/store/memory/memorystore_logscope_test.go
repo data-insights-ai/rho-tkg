@@ -70,7 +70,7 @@ func TestMemoryLogScope_CommitMintsContiguousLSNs(t *testing.T) {
 		t.Fatalf("watermark moved during open scope")
 	}
 
-	if err := ms.CommitLogScope(); err != nil {
+	if _, err := ms.CommitLogScope(); err != nil {
 		t.Fatalf("CommitLogScope: %v", err)
 	}
 	recs, _ := ms.ChangeFeed(before, 0)

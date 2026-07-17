@@ -258,6 +258,22 @@ func (c *Core) checkAndClaimForever(labelTok uint16, propKey, valueKey string, s
 	return nil
 }
 
+// checkForeverOwnership is the READ-ONLY sibling of checkAndClaimForever for
+// dry-run validation: it reports whether selfID could hold the value under a
+// UniqueForever constraint WITHOUT claiming or persisting. Registry hit +
+// different entity => ErrUniqueViolation; same entity or a miss => nil (a miss
+// passes because a real assert would claim it). Takes only c.uniqueMu.RLock.
+func (c *Core) checkForeverOwnership(labelTok uint16, propKey, valueKey string, selfID types.NodeID) error {
+	key := foreverOwnerKey(labelTok, propKey, valueKey)
+	c.uniqueMu.RLock()
+	defer c.uniqueMu.RUnlock()
+	if owner, ok := c.uniqueOwners[key]; ok && owner != selfID {
+		return fmt.Errorf("%w: label %q key %q value permanently owned by node %d (UniqueForever)",
+			ErrUniqueViolation, c.labels.Resolve(labelTok), propKey, owner)
+	}
+	return nil
+}
+
 // -----------------------------------------------------------------------------
 // Seeding at constraint creation
 // -----------------------------------------------------------------------------

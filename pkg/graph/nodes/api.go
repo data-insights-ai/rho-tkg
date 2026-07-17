@@ -42,6 +42,7 @@ type Ops interface {
 	ForEachDocValues(label string, propKeys []string, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error)
 	ForEachDocValuesMulti(labels []string, propKeys []string, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error)
 	DocValuesSnapshot(label string, propKeys []string) (types.NodeColumnReader, uint64, bool, error)
+	DocValuesSnapshotAsOf(label string, propKeys []string, txAt types.Instant) (types.NodeColumnReader, uint64, bool, error)
 	NodeMutationEpoch() uint64
 	ByLabelAndProperty(label, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error)
 	ByLabelAndProperties(label string, values map[string]any, opts storepkg.QueryOpts) ([]*types.Node, error)
@@ -374,6 +375,24 @@ func (a *API) DocValuesSnapshot(label string, propKeys []string) (types.NodeColu
 		return nil, 0, false, err
 	}
 	return ops.DocValuesSnapshot(label, propKeys)
+}
+
+// DocValuesSnapshotAsOf is the transaction-time (AS OF) analogue of
+// DocValuesSnapshot: a columnar handle over a label's members as believed at txAt
+// (a knowledge-time / TxPin belief-state pin) — the time-travel aggregation
+// target. It reuses the pinned ByLabel resolver, so it works on EVERY backend
+// (including tiered/sharded, which decline the current-state scanner) and is not
+// cached (a past pin is immutable + one-shot). ok=false means a requested property
+// is not a uniform column at txAt (caller falls back). A pin before a retention
+// watermark returns ErrRetentionExpired. gen is DELIBERATELY 0 — an as-of snapshot
+// is a frozen point-in-time read with no current-state staleness signal, so do
+// NOT gen-recheck it (see core.NodeOps.DocValuesSnapshotAsOf).
+func (a *API) DocValuesSnapshotAsOf(label string, propKeys []string, txAt types.Instant) (types.NodeColumnReader, uint64, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, 0, false, err
+	}
+	return ops.DocValuesSnapshotAsOf(label, propKeys, txAt)
 }
 
 // NodeMutationEpoch returns the store's node-mutation epoch (0 if the backend

@@ -83,22 +83,25 @@ func (ms *Store) SetLogDivert(on bool) {
 // CommitLogScope mints contiguous LSNs for the buffered records (at commit time)
 // and splices them into the durable-order log under ms.mu — atomic (memory has no
 // flush; the splice IS the commit).
-func (ms *Store) CommitLogScope() error {
+func (ms *Store) CommitLogScope() (uint64, error) {
 	if !ms.logEnabled {
-		return nil
+		return 0, nil
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 	buffered := ms.scopeLog
 	ms.scopeLog = nil
 	ms.scopeActive = false
+	if len(buffered) == 0 {
+		return 0, nil
+	}
 	for i := range buffered {
 		ms.logSeq++
 		rec := buffered[i]
 		rec.LSN = ms.logSeq
 		ms.changeLog = append(ms.changeLog, rec)
 	}
-	return nil
+	return ms.logSeq, nil // the last minted LSN is the max
 }
 
 // DiscardLogScope drops the buffered records; logSeq is never advanced.

@@ -96,6 +96,7 @@ type GraphTx struct {
 	deletedRelSet   map[snowflake.ID]struct{}
 	mu              sync.Mutex // protects done flag and snapshot tracking
 	done            bool
+	committedLSN    uint64 // max change-log LSN this tx's commit assigned (0 = none / log off)
 }
 
 // BeginTx starts a new mutation transaction. Returns ErrGraphClosed if
@@ -521,10 +522,12 @@ func (tx *GraphTx) Commit() error {
 	// is in pending but unlogged — not yet durable-as-committed); the caller can
 	// retry. The scope's own records remain buffered for the retry.
 	if tx.g.txLogScope != nil {
-		if err := tx.g.txLogScope.CommitLogScope(); err != nil {
+		lsn, err := tx.g.txLogScope.CommitLogScope()
+		if err != nil {
 			tx.g.mu.Unlock()
 			return err
 		}
+		tx.committedLSN = lsn
 	}
 	tx.done = true
 
@@ -544,6 +547,17 @@ func (tx *GraphTx) Commit() error {
 		ep.PublishBatch(events...)
 	}
 	return nil
+}
+
+// CommittedLSN returns the MAX change-log LSN this transaction's commit assigned
+// — the exact commit-LSN for a read-your-writes write-bookmark, unaffected by
+// concurrent writers (unlike the global LastCommittedLSN head). Valid only AFTER
+// a successful Commit; 0 when the tx emitted no change-log records (no mutations,
+// or the change-log is disabled). Safe to read after Commit returns nil.
+func (tx *GraphTx) CommittedLSN() uint64 {
+	tx.mu.Lock()
+	defer tx.mu.Unlock()
+	return tx.committedLSN
 }
 
 // Rollback undoes all mutations in reverse order, then releases the graph write lock.

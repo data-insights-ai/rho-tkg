@@ -584,10 +584,12 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	// data (documented residual); surface it as the batch error if nothing else
 	// failed.
 	if scopeOpen {
-		if err := b.g.txLogScope.CommitLogScope(); err != nil && result.Failed == 0 {
+		lsn, err := b.g.txLogScope.CommitLogScope()
+		if err != nil && result.Failed == 0 {
 			result.Errors = append(result.Errors, BatchError{Op: "commit-change-log", Err: err})
 			result.Failed++
 		}
+		result.CommittedLSN = lsn
 		scopeCommitted = true
 	}
 

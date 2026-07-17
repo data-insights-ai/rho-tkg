@@ -148,6 +148,11 @@ type BatchResult struct {
 	Failed   int
 	Errors   []BatchError
 	Duration time.Duration
+	// CommittedLSN is the MAX change-log LSN this batch's commit assigned — the
+	// exact commit-LSN for a read-your-writes write-bookmark, unaffected by
+	// concurrent writers (unlike the global LastCommittedLSN head). 0 when the
+	// batch emitted no change-log records (no mutations, or the change-log is off).
+	CommittedLSN uint64
 }
 
 // BatchError describes a single operation failure within a batch.

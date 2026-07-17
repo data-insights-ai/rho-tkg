@@ -1,6 +1,8 @@
 package core
 
 import (
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -130,6 +132,79 @@ func (n *NodeOps) DocValuesSnapshot(label string, propKeys []string) (snap types
 		return nil, 0, false, nil // unknown label → fall back (finds zero rows)
 	}
 	return scanner.DocValuesSnapshot(tok, propKeys)
+}
+
+// DocValuesSnapshotAsOf is the transaction-time (AS OF) analogue of
+// DocValuesSnapshot: a random-access columnar handle over a label's members AS
+// BELIEVED at txAt (a knowledge-time / TxPin belief-state pin) — the time-travel
+// aggregation target for `AS OF SYSTEM TIME … RETURN count(*)…`.
+//
+// Unlike DocValuesSnapshot it is NOT a store capability and NOT cached: it reuses
+// the pinned ByLabel resolver (the SAME one g.Nodes().ByLabel{TxPin} uses — K1
+// ever-member scoped, history/deleted-aware, chain-resolver-correct so a node
+// whose CURRENT label differs from its label-at-txAt is handled), then builds a
+// throwaway column set from the resolved as-of nodes. Consequently it works on
+// EVERY backend, INCLUDING tiered/sharded which decline the current-state column
+// scanner. A specific past pin is immutable and typically one-shot, so caching
+// (the current-state epoch-invalidation model) does not apply.
+//
+// ok=false (not an error) when a requested property is not a uniform
+// numeric/string column at txAt (the consumer declines the whole query and falls
+// back to the row path). A pin before a relevant label's retention watermark
+// returns ErrRetentionExpired (the answer would be silently incomplete) —
+// inherited from the pinned scan's retention guard. txAt must be positive.
+//
+// gen is DELIBERATELY 0 (unlike the current-state door): the returned snapshot is
+// a FROZEN materialization of the belief at txAt, built under c.mu.RLock, so the
+// consumer's Gate-2 epoch re-check does NOT apply. The current-state node-mutation
+// epoch would be wrong in BOTH directions here — it bumps on current writes that
+// do not change a past belief (false stale), and it does NOT bump on
+// compaction/truncate, which rewrite history and DO change a past belief (false
+// fresh). A past pin is immutable except under explicit history-rewriting ADMIN
+// ops (compaction / retention purge / bitemporal PutNodeVersion correction);
+// those all take c.mu.Lock, so they cannot tear this RLock-held build, and a
+// caching consumer should treat them as out-of-band cache-busting events rather
+// than gen-recheck. So: use the snapshot as a point-in-time read; do not re-check
+// gen.
+func (n *NodeOps) DocValuesSnapshotAsOf(label string, propKeys []string, txAt types.Instant) (snap types.NodeColumnReader, gen uint64, ok bool, err error) {
+	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return nil, 0, false, err
+	}
+	if txAt <= 0 {
+		return nil, 0, false, ErrInvalidTimeRange
+	}
+	var col *indexpkg.LabelDocValues
+	if rerr := c.readUnderRLock(func() error {
+		nodes, e := c.nodesByLabelLocked(label, storepkg.QueryOpts{TxPin: txAt})
+		if e != nil {
+			return e
+		}
+		ids := make([]types.NodeID, len(nodes))
+		byID := make(map[types.NodeID]*types.Node, len(nodes))
+		for i, nd := range nodes {
+			ids[i] = nd.ID()
+			byID[nd.ID()] = nd
+		}
+		getProp := func(id types.NodeID, key string) (any, bool) {
+			nd, present := byID[id]
+			if !present {
+				return nil, false
+			}
+			return nd.GetProperty(key)
+		}
+		// epoch 0 — an as-of snapshot carries no current-state staleness signal
+		// (see the doc block). It is a frozen point-in-time materialization.
+		col = indexpkg.BuildLabelDocValues(0, ids, propKeys, getProp)
+		return nil
+	}); rerr != nil {
+		return nil, 0, false, rerr
+	}
+	ps, colOK := col.NewPointSnapshot(propKeys)
+	if !colOK {
+		return nil, 0, false, nil // a requested key is not a uniform column at txAt
+	}
+	return ps, 0, true, nil
 }
 
 // NodeMutationEpoch returns the store's current node-mutation epoch, or 0 if the

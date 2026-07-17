@@ -229,6 +229,11 @@ type ChangeLogStatusCapability interface {
 type TxChangeLogScope interface {
 	BeginLogScope() error
 	SetLogDivert(on bool)
-	CommitLogScope() error
+	// CommitLogScope mints contiguous LSNs for the scope's buffered records and
+	// co-commits them, returning the MAX (last) LSN this commit assigned — the
+	// exact commit-LSN a read-your-writes write-bookmark needs, unaffected by
+	// concurrent writers or async-flush timing (unlike the global LastCommittedLSN
+	// head). Returns 0 when the scope emitted no records (or the log is disabled).
+	CommitLogScope() (uint64, error)
 	DiscardLogScope() error
 }

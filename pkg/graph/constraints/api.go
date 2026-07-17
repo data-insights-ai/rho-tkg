@@ -3,6 +3,8 @@
 package constraints
 
 import (
+	"context"
+
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	temporalpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 )
@@ -12,6 +14,12 @@ type Ops interface {
 	Set(cs temporalpkg.ConstraintSet) error
 	Add(c temporalpkg.TemporalConstraint) error
 	Get() temporalpkg.ConstraintSet
+}
+
+// DryRunOps is the dry-run validation surface of *core.ConstraintOps, type-
+// asserted from Ops (mirroring UniqueOps) so the base Ops interface stays minimal.
+type DryRunOps interface {
+	DryRunValidate(ctx context.Context, facts DryRunFacts) ([]DryRunViolation, error)
 }
 
 // API is the constraints sub-API accessor.
@@ -54,4 +62,22 @@ func (a *API) Get() temporalpkg.ConstraintSet {
 		return temporalpkg.ConstraintSet{}
 	}
 	return a.ops.Get()
+}
+
+// DryRunValidate validates a proposed fact set against the configured unique +
+// temporal constraints and returns every violation WITHOUT asserting anything —
+// no writes, no ID mint, no events, no LSN burn, and no permanent UniqueForever
+// claim (unlike the Tx+rollback emulation, which cannot release a forever claim
+// it made). An empty result means the fact set would be accepted under the
+// current committed state.
+func (a *API) DryRunValidate(ctx context.Context, facts DryRunFacts) ([]DryRunViolation, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	do, ok := ops.(DryRunOps)
+	if !ok {
+		return nil, grapherr.ErrNilGraph
+	}
+	return do.DryRunValidate(ctx, facts)
 }

@@ -370,6 +370,12 @@ func (s *nodeOpsSpy) DocValuesSnapshot(label string, propKeys []string) (types.N
 	return nil, 0, false, s.err
 }
 
+func (s *nodeOpsSpy) DocValuesSnapshotAsOf(label string, propKeys []string, txAt types.Instant) (types.NodeColumnReader, uint64, bool, error) {
+	s.record("DocValuesSnapshotAsOf")
+	s.lastLabel = label
+	return nil, 0, false, s.err
+}
+
 func (s *nodeOpsSpy) NodeMutationEpoch() uint64 {
 	s.record("NodeMutationEpoch")
 	return 0

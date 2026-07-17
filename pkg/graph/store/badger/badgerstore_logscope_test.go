@@ -86,7 +86,7 @@ func TestLogScope_CommitMintsContiguousLSNsAndEmits(t *testing.T) {
 		t.Fatalf("watermark moved during open scope")
 	}
 
-	if err := bs.CommitLogScope(); err != nil {
+	if _, err := bs.CommitLogScope(); err != nil {
 		t.Fatalf("CommitLogScope: %v", err)
 	}
 	// Two records emitted at contiguous LSNs after `before`.

@@ -123,6 +123,49 @@ func (a *TxAPI) RunContext(ctx context.Context, fn func(*GraphTx) error) (retErr
 	return nil
 }
 
+// RunWithLSN is Run plus the commit-LSN: on a successful commit it returns the
+// MAX change-log LSN this transaction assigned — the exact write-bookmark for
+// read-your-writes under concurrency (the global LastCommittedLSN head can
+// already reflect another writer's commit). Returns 0 when the tx emitted no
+// change-log records (no mutations, or the change-log is disabled) and on any
+// error. Same panic-safety + rollback semantics as Run.
+//
+// Scope: the LSN is a bookmark WITHIN the current change-log epoch — comparable
+// against LastCommittedLSN / a replica's AppliedLSN, but not meaningful across a
+// Clear/re-bootstrap that resets the feed. A commit-LSN is exposed only for the
+// TRANSACTIONAL doors (this + Batch.Execute's CommittedLSN); a standalone
+// mutation's async-flushed record has no synchronous return path, so bookmark
+// such writes by wrapping them in a one-op tx.
+func (a *TxAPI) RunWithLSN(fn func(*GraphTx) error) (lsn uint64, retErr error) {
+	if a == nil || a.c == nil {
+		return 0, core.ErrNilGraph
+	}
+	if fn == nil {
+		return 0, core.ErrNilTxCallback
+	}
+	tx, err := a.c.BeginTx()
+	if err != nil {
+		return 0, err
+	}
+	committed := false
+	defer func() {
+		if committed {
+			return
+		}
+		if rbErr := tx.Rollback(); rbErr != nil && !errors.Is(rbErr, errTxDoneSentinel()) {
+			retErr = errors.Join(retErr, rbErr)
+		}
+	}()
+	if err := fn(tx); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	committed = true
+	return tx.CommittedLSN(), nil
+}
+
 // errTxDoneSentinel is the ErrTxDone sentinel that GraphTx returns after the
 // caller has already committed or rolled back. The deferred Rollback in Run /
 // RunContext expects this if fn rolled back manually; we silently swallow only
