@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -235,5 +236,52 @@ func BenchmarkForEachDocValuesAsOfUncached(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		g.asOfColumns.bump()
 		sumAsOf(b, g, txAt)
+	}
+}
+
+// TestAsOfColumnCache_EvictionAndEpochGuard covers put's FIFO eviction (memory bound)
+// and its epoch-race guard (a rewrite during the build discards the column).
+func TestAsOfColumnCache_EvictionAndEpochGuard(t *testing.T) {
+	a := newAsOfColumnCache()
+	epoch := a.currentEpoch()
+	emptyCol := func() *indexpkg.LabelDocValues {
+		return indexpkg.BuildLabelDocValues(epoch, nil, nil, func(types.NodeID, string) (any, bool) { return nil, false })
+	}
+
+	// Fill past the cap → oldest entries evicted, size stays bounded.
+	for i := 0; i < asOfCacheCap+10; i++ {
+		a.put(asOfCacheKey{label: 1, txAt: int64(i)}, emptyCol(), epoch)
+	}
+	a.mu.Lock()
+	size := len(a.cols)
+	a.mu.Unlock()
+	if size != asOfCacheCap {
+		t.Fatalf("cache size = %d after overflow, want %d (FIFO eviction)", size, asOfCacheCap)
+	}
+	// The oldest key (txAt 0) was evicted; the newest is present.
+	if _, ok := a.get(asOfCacheKey{label: 1, txAt: 0}, nil, epoch); ok {
+		t.Fatal("oldest entry survived eviction")
+	}
+	if _, ok := a.get(asOfCacheKey{label: 1, txAt: int64(asOfCacheCap + 9)}, nil, epoch); !ok {
+		t.Fatal("newest entry missing")
+	}
+
+	// Epoch-race guard: a put stamped with a now-stale epoch is dropped.
+	stale := a.currentEpoch()
+	a.bump()
+	a.put(asOfCacheKey{label: 2, txAt: 1}, emptyCol(), stale)
+	if _, ok := a.get(asOfCacheKey{label: 2, txAt: 1}, nil, a.currentEpoch()); ok {
+		t.Fatal("a column built under a stale epoch was cached (torn-belief risk)")
+	}
+}
+
+// TestNoteAppliedTxFrom_NilSafe covers the nil-metadata guard.
+func TestNoteAppliedTxFrom_NilSafe(t *testing.T) {
+	g, _ := New(Config{})
+	defer g.Close()
+	before := g.asOfColumns.currentEpoch()
+	g.noteAppliedTxFrom(nil) // must not panic or bump
+	if g.asOfColumns.currentEpoch() != before {
+		t.Fatal("nil metadata bumped the epoch")
 	}
 }

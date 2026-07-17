@@ -410,11 +410,17 @@ scan; it MUST take `QueryOpts` so it honors the B4 valid-time envelope prune ([4
   driven; the prefetch footgun proves "measure, don't guess." Cross-backend parity + `QueryOpts`
   (valid-time) correctness: the scan must return the SAME node set as `ByLabel(label, opts)`.
 
-### Sibling (same family, standing / lower priority) — as-of columnar
-`DocValuesSnapshotAsOf(label, keys, txAt)` — time-travel columnar aggregation
-(sigma `X5-temporal`). Verified vs v4.17.0: `DocValuesSnapshot` is current-state only;
-`g.Temporal()` returns as-of node STRUCTS, not columns. If a whole-node snapshot (above)
-is built, an as-of variant of BOTH closes `X5-temporal` too. Lower priority.
+### Sibling (same family) — as-of columnar — ✅ SHIPPED (and CORRECTED)
+`DocValuesSnapshotAsOf` / `ForEachDocValuesAsOf` (sigma `X5-temporal`). First shipped
+(4.19/4.20) building a THROWAWAY column set per call — which materialized the full
+as-of structs and discarded the columns, so sigma benchmarked ~3% of the row path
+(noise) and reverted. FIXED: an as-of column cache keyed by (label, txAt), invalidated
+ONLY by history rewrite (compaction / retention / truncate / backfill / past-dated
+replica apply) — a past belief is immutable under forward ingest, so the cache
+survives write-active ingest (better than the current-state cache). MEASURED ~159×
+(8.0 ms → 50 µs, repeated same-txAt SUM over 20k). The lesson: the DocValues win is a
+CACHING win, not a per-build win — an uncached columnar door is ~= the row path. See
+`internal/core/docvalues_asof_cache.go` + CHANGELOG.
 
 ### Deferred sibling (no shape yet) — dry-run constraint validation
 Already on the consumer-gated list (HP2.5). Sigma can't pin the shape until it builds the
