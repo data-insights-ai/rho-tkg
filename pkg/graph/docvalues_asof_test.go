@@ -2,6 +2,7 @@ package graph_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
@@ -186,5 +187,55 @@ func TestForEachDocValuesAsOf_StreamingAggregation(t *testing.T) {
 	}
 	if seen != 1 {
 		t.Fatalf("early-stop streamed %d rows, want 1", seen)
+	}
+}
+
+// TestForEachDocValuesAsOf_ContractEdges covers the door's two non-happy contracts:
+// a non-positive txAt is rejected, and a non-uniform column (mixed value types)
+// yields ok=false streaming nothing — the "caller falls back" signal.
+func TestForEachDocValuesAsOf_ContractEdges(t *testing.T) {
+	ctx := context.Background()
+	g, err := graphpkg.New(graphpkg.Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	// Two Metric nodes whose "score" is int on one, string on the other → the
+	// column is not uniformly numeric/string, so it is unbuildable.
+	a, err := g.Nodes().Add(ctx, []string{"Metric"}, map[string]any{"score": int64(1)})
+	if err != nil {
+		t.Fatalf("add a: %v", err)
+	}
+	if _, err := g.Nodes().Add(ctx, []string{"Metric"}, map[string]any{"score": "not-a-number"}); err != nil {
+		t.Fatalf("add b: %v", err)
+	}
+	txfRaw, _ := g.Resolve().NodeProperty(a, "tkg_tx_from")
+	t0 := txfRaw.(types.Instant)
+	if _, err := g.Temporal().AdvanceClock(t0 + 1_000_000); err != nil {
+		t.Fatalf("AdvanceClock: %v", err)
+	}
+
+	// txAt <= 0 → ErrInvalidTimeRange.
+	if _, _, err := g.Nodes().ForEachDocValuesAsOf("Metric", []string{"score"}, 0, func(types.NodeID, []any, []bool) bool {
+		return true
+	}); !errors.Is(err, graphpkg.ErrInvalidTimeRange) {
+		t.Fatalf("txAt=0 err=%v, want ErrInvalidTimeRange", err)
+	}
+
+	// Non-uniform column → ok=false, zero rows streamed.
+	rows := 0
+	_, ok, err := g.Nodes().ForEachDocValuesAsOf("Metric", []string{"score"}, t0+1, func(types.NodeID, []any, []bool) bool {
+		rows++
+		return true
+	})
+	if err != nil {
+		t.Fatalf("ForEachDocValuesAsOf mixed column: %v", err)
+	}
+	if ok {
+		t.Fatal("mixed-type column reported ok=true, want ok=false (unbuildable)")
+	}
+	if rows != 0 {
+		t.Fatalf("ok=false stream emitted %d rows, want 0", rows)
 	}
 }
