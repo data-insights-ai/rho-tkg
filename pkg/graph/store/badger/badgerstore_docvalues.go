@@ -278,10 +278,27 @@ func (bs *Store) bulkNodePropGetter(ids []types.NodeID) func(types.NodeID, strin
 	sorted := append([]types.NodeID(nil), ids...)
 	storepkg.SortNodeIDs(sorted)
 	mat := make(map[types.NodeID]*types.Node, len(sorted))
-	if err := bs.forEachNodeBulk(sorted, func(nd *types.Node) bool {
-		mat[nd.ID()] = nd
-		return true
-	}); err != nil {
+
+	// Large builds fan the decode across cores (same result set as the serial scan,
+	// proven equivalent by TestCollectNodesBulkParallel_EquivalentToSerial); small
+	// builds stay serial (below the goroutine break-even). Either populates `mat`.
+	var buildErr error
+	if len(sorted) >= parallelDecodeMinIDs {
+		nodes, err := bs.collectNodesBulkParallel(sorted)
+		if err != nil {
+			buildErr = err
+		} else {
+			for _, nd := range nodes {
+				mat[nd.ID()] = nd
+			}
+		}
+	} else {
+		buildErr = bs.forEachNodeBulk(sorted, func(nd *types.Node) bool {
+			mat[nd.ID()] = nd
+			return true
+		})
+	}
+	if buildErr != nil {
 		return func(id types.NodeID, key string) (any, bool) {
 			nd, gerr := bs.GetNode(id)
 			if gerr != nil || nd == nil {
