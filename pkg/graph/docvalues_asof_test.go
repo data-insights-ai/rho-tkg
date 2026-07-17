@@ -239,3 +239,42 @@ func TestForEachDocValuesAsOf_ContractEdges(t *testing.T) {
 		t.Fatalf("ok=false stream emitted %d rows, want 0", rows)
 	}
 }
+
+// TestDocValuesSnapshotAsOf_ContractEdges mirrors the ForEachDocValuesAsOf contract
+// test: a non-positive txAt is rejected, and a non-uniform (mixed-type) column yields
+// ok=false with a nil snapshot — the caller falls back to the row path.
+func TestDocValuesSnapshotAsOf_ContractEdges(t *testing.T) {
+	ctx := context.Background()
+	g, err := graphpkg.New(graphpkg.Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	a, err := g.Nodes().Add(ctx, []string{"Metric"}, map[string]any{"score": int64(1)})
+	if err != nil {
+		t.Fatalf("add a: %v", err)
+	}
+	if _, err := g.Nodes().Add(ctx, []string{"Metric"}, map[string]any{"score": "not-a-number"}); err != nil {
+		t.Fatalf("add b: %v", err)
+	}
+	txfRaw, _ := g.Resolve().NodeProperty(a, "tkg_tx_from")
+	t0 := txfRaw.(types.Instant)
+	if _, err := g.Temporal().AdvanceClock(t0 + 1_000_000); err != nil {
+		t.Fatalf("AdvanceClock: %v", err)
+	}
+
+	// txAt <= 0 → ErrInvalidTimeRange.
+	if _, _, _, err := g.Nodes().DocValuesSnapshotAsOf("Metric", []string{"score"}, 0); !errors.Is(err, graphpkg.ErrInvalidTimeRange) {
+		t.Fatalf("txAt=0 err=%v, want ErrInvalidTimeRange", err)
+	}
+
+	// Non-uniform column → ok=false, nil snapshot.
+	snap, _, ok, err := g.Nodes().DocValuesSnapshotAsOf("Metric", []string{"score"}, t0+1)
+	if err != nil {
+		t.Fatalf("DocValuesSnapshotAsOf mixed column: %v", err)
+	}
+	if ok || snap != nil {
+		t.Fatalf("mixed-type column reported ok=%v snap!=nil=%v, want ok=false + nil snap", ok, snap != nil)
+	}
+}
