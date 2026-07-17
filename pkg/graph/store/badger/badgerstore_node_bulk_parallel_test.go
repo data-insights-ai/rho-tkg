@@ -3,8 +3,10 @@ package badger
 import (
 	"testing"
 
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
 // (newTinyCacheBadgerStore — CacheCapacity 1, so post-flush reads MISS the cache and
@@ -128,5 +130,115 @@ func TestNodesByLabel_ParallelPathEquivalence(t *testing.T) {
 		if got[i].ID() != want[i].ID() {
 			t.Fatalf("order mismatch at %d", i)
 		}
+	}
+}
+
+// TestBulkNodePropGetter_ParallelBranch exercises bulkNodePropGetter's parallel
+// materialization branch (candidate count >= parallelDecodeMinIDs) — the DocValues
+// cold-build node fetch — and asserts it returns the correct per-node property, i.e.
+// the parallel decode wired into the column build agrees with the stored values.
+func TestBulkNodePropGetter_ParallelBranch(t *testing.T) {
+	bs := newTinyCacheBadgerStore(t)
+	gen := newTestGen(t, 0)
+
+	const label = uint16(1)
+	n := parallelDecodeMinIDs + 100 // cross the parallel threshold
+	ids := make([]types.NodeID, 0, n)
+	want := make(map[types.NodeID]int64, n)
+	for i := 0; i < n; i++ {
+		nid := types.NodeID(gen.Generate())
+		nd := types.NewNode(nid, label, nil)
+		if err := nd.SetProperty("v", int64(i)); err != nil {
+			t.Fatalf("SetProperty: %v", err)
+		}
+		if err := bs.PutNode(nd); err != nil {
+			t.Fatalf("PutNode: %v", err)
+		}
+		ids = append(ids, nid)
+		want[nid] = int64(i)
+	}
+	if err := bs.flush(); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+
+	getProp := bs.bulkNodePropGetter(ids)
+	for _, id := range ids {
+		got, ok := getProp(id, "v")
+		if !ok {
+			t.Fatalf("getProp(%d, v) not found", id.SnowflakeID())
+		}
+		if got != want[id] {
+			t.Fatalf("getProp(%d, v) = %v, want %d", id.SnowflakeID(), got, want[id])
+		}
+	}
+}
+
+// TestCollectNodesBulkParallel_FewerJobsThanWorkers covers the worker clamp
+// (workers > len(jobs)) — a handful of cache-missed nodes must decode correctly even
+// when there are fewer decode jobs than GOMAXPROCS.
+func TestCollectNodesBulkParallel_FewerJobsThanWorkers(t *testing.T) {
+	bs := newTinyCacheBadgerStore(t) // CacheCapacity 1 → post-flush reads miss
+	gen := newTestGen(t, 0)
+
+	var ids []types.NodeID
+	for i := 0; i < 3; i++ {
+		nid := types.NodeID(gen.Generate())
+		nd := types.NewNode(nid, 1, nil)
+		if err := nd.SetProperty("seq", int64(i)); err != nil {
+			t.Fatalf("SetProperty: %v", err)
+		}
+		if err := bs.PutNode(nd); err != nil {
+			t.Fatalf("PutNode: %v", err)
+		}
+		ids = append(ids, nid)
+	}
+	if err := bs.flush(); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+	got, err := bs.collectNodesBulkParallel(ids)
+	if err != nil {
+		t.Fatalf("collectNodesBulkParallel: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("got %d nodes, want 3", len(got))
+	}
+	for i, n := range got {
+		if n.ID() != ids[i] {
+			t.Fatalf("order mismatch at %d", i)
+		}
+	}
+}
+
+// TestCollectNodesBulkParallel_DecodeErrorSurfaces proves the parallel path does NOT
+// silently drop a corrupt node: a decode failure in a worker is propagated as an
+// error from collectNodesBulkParallel (the errOnce path), not swallowed into a
+// short result. Silently returning fewer nodes would be the wrong-answer class.
+func TestCollectNodesBulkParallel_DecodeErrorSurfaces(t *testing.T) {
+	bs := newTinyCacheBadgerStore(t)
+	gen := newTestGen(t, 0)
+
+	var ids []types.NodeID
+	for i := 0; i < 4; i++ {
+		nid := types.NodeID(gen.Generate())
+		if err := bs.PutNode(types.NewNode(nid, 1, nil)); err != nil {
+			t.Fatalf("PutNode: %v", err)
+		}
+		ids = append(ids, nid)
+	}
+	if err := bs.flush(); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+	// Corrupt one node's stored bytes directly, then evict the cache so the read
+	// goes through the badger decode path.
+	bad := ids[2]
+	if err := bs.db.Update(func(txn *badgerv4.Txn) error {
+		return txn.Set(storepkg.NodeKey(bad.SnowflakeID()), []byte{0xff, 0xff, 0xff, 0xff})
+	}); err != nil {
+		t.Fatalf("corrupt write: %v", err)
+	}
+	bs.nodeCache.ResetForTest()
+
+	if _, err := bs.collectNodesBulkParallel(ids); err == nil {
+		t.Fatal("collectNodesBulkParallel over a corrupt node returned nil error — a decode failure must surface, not be silently dropped")
 	}
 }
