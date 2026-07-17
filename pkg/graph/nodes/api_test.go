@@ -376,6 +376,12 @@ func (s *nodeOpsSpy) DocValuesSnapshotAsOf(label string, propKeys []string, txAt
 	return nil, 0, false, s.err
 }
 
+func (s *nodeOpsSpy) ForEachDocValuesAsOf(label string, propKeys []string, txAt types.Instant, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error) {
+	s.record("ForEachDocValuesAsOf")
+	s.lastLabel = label
+	return 0, false, s.err
+}
+
 func (s *nodeOpsSpy) NodeMutationEpoch() uint64 {
 	s.record("NodeMutationEpoch")
 	return 0

@@ -174,8 +174,54 @@ func (n *NodeOps) DocValuesSnapshotAsOf(label string, propKeys []string, txAt ty
 	if txAt <= 0 {
 		return nil, 0, false, ErrInvalidTimeRange
 	}
+	col, rerr := c.buildAsOfColumns(label, propKeys, txAt)
+	if rerr != nil {
+		return nil, 0, false, rerr
+	}
+	ps, colOK := col.NewPointSnapshot(propKeys)
+	if !colOK {
+		return nil, 0, false, nil // a requested key is not a uniform column at txAt
+	}
+	return ps, 0, true, nil
+}
+
+// ForEachDocValuesAsOf is the STREAMING transaction-time (AS OF) analogue of
+// ForEachDocValues: it enumerates the label's members AS BELIEVED at txAt and
+// invokes fn(id, vals, present) for each, in ordinal order, WITHOUT materializing
+// a node — the time-travel target for `AS OF SYSTEM TIME … RETURN <agg>(n.prop)…`.
+// fn returning false stops the scan. Same design as DocValuesSnapshotAsOf: reuses
+// the pinned ByLabel{TxPin} resolver + indexpkg.BuildLabelDocValues, so it works
+// on EVERY backend (incl. tiered/sharded), is retention-guarded, and carries no
+// current-state staleness signal (gen is deliberately 0). ok=false (not an error)
+// when a requested property is not a uniform numeric/string column at txAt — the
+// consumer falls back to the row path. txAt must be positive.
+func (n *NodeOps) ForEachDocValuesAsOf(label string, propKeys []string, txAt types.Instant, fn func(types.NodeID, []any, []bool) bool) (gen uint64, ok bool, err error) {
+	c := n.c
+	if err := c.checkOpen(); err != nil {
+		return 0, false, err
+	}
+	if txAt <= 0 {
+		return 0, false, ErrInvalidTimeRange
+	}
+	col, rerr := c.buildAsOfColumns(label, propKeys, txAt)
+	if rerr != nil {
+		return 0, false, rerr
+	}
+	// ForEachRow returns false if any requested key is not a uniform column — the
+	// same "unusable, caller falls back" signal as NewPointSnapshot. Because it
+	// checks the columns before emitting any row, an ok=false stream emits nothing.
+	streamed := col.ForEachRow(propKeys, fn)
+	return 0, streamed, nil
+}
+
+// buildAsOfColumns resolves the label's members AS BELIEVED at txAt (the pinned
+// ByLabel{TxPin} resolver — K1-scoped, history/deleted-aware, chain-resolver
+// correct) and builds a throwaway column set over their as-of property values.
+// Shared by DocValuesSnapshotAsOf + ForEachDocValuesAsOf. Epoch 0 — an as-of
+// column set carries no current-state staleness signal (see DocValuesSnapshotAsOf).
+func (c *Core) buildAsOfColumns(label string, propKeys []string, txAt types.Instant) (*indexpkg.LabelDocValues, error) {
 	var col *indexpkg.LabelDocValues
-	if rerr := c.readUnderRLock(func() error {
+	err := c.readUnderRLock(func() error {
 		nodes, e := c.nodesByLabelLocked(label, storepkg.QueryOpts{TxPin: txAt})
 		if e != nil {
 			return e
@@ -193,18 +239,10 @@ func (n *NodeOps) DocValuesSnapshotAsOf(label string, propKeys []string, txAt ty
 			}
 			return nd.GetProperty(key)
 		}
-		// epoch 0 — an as-of snapshot carries no current-state staleness signal
-		// (see the doc block). It is a frozen point-in-time materialization.
 		col = indexpkg.BuildLabelDocValues(0, ids, propKeys, getProp)
 		return nil
-	}); rerr != nil {
-		return nil, 0, false, rerr
-	}
-	ps, colOK := col.NewPointSnapshot(propKeys)
-	if !colOK {
-		return nil, 0, false, nil // a requested key is not a uniform column at txAt
-	}
-	return ps, 0, true, nil
+	})
+	return col, err
 }
 
 // NodeMutationEpoch returns the store's current node-mutation epoch, or 0 if the
