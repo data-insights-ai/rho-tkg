@@ -71,6 +71,9 @@ func (c *Core) advanceRetentionWatermark(labelToken uint16, w types.Instant) err
 	if w <= 0 {
 		return nil
 	}
+	// A retention purge removes history below the boundary, which can change the
+	// as-of belief at any txAt < w — invalidate the as-of column cache.
+	c.asOfColumns.bump()
 	mk, err := c.retentionMetaKV()
 	if err != nil {
 		return err

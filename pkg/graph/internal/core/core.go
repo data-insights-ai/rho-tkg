@@ -199,11 +199,17 @@ type Core struct {
 	// set, so point/scan doors skip the retention probe entirely, and a pin at or
 	// above it cannot precede any label's watermark. See retention.go.
 	retentionMaxWatermark atomic.Int64
-	registryDirty         atomic.Bool
-	relTypeCache          map[string]uint16
-	relTypeCacheMu        sync.RWMutex
-	closeOnce             sync.Once
-	closed                atomic.Bool
+	// asOfColumns caches the columnar as-of snapshot of a label's members at a fixed
+	// past txAt, invalidated only by history rewrites (compaction / retention purge /
+	// truncate / past-dated backfill or replica apply) — a past belief is immutable
+	// under forward ingest, so the cache survives write-active ingest. See
+	// docvalues_asof_cache.go and buildAsOfColumns.
+	asOfColumns    *asOfColumnCache
+	registryDirty  atomic.Bool
+	relTypeCache   map[string]uint16
+	relTypeCacheMu sync.RWMutex
+	closeOnce      sync.Once
+	closed         atomic.Bool
 
 	// clock is the time source used by every mutation path that stamps
 	// TxFrom / UpdatedAt / DeletedAt / event.Timestamp. Defaults to
@@ -1384,6 +1390,7 @@ func New(config Config) (*Core, error) {
 		validation:          v,
 		indexProviders:      make(map[string]*indexProviderEntry),
 		relTypeCache:        make(map[string]uint16),
+		asOfColumns:         newAsOfColumnCache(),
 		clock:               time.Now,
 		readOnlyReplica:     config.ReadOnlyReplica,
 		allowTxBackfill:     config.AllowTxBackfill,

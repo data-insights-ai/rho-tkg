@@ -250,6 +250,7 @@ func (a *AdminOps) Reset() error {
 	if err := c.store.Clear(); err != nil {
 		return err
 	}
+	c.asOfColumns.bump() // whole state wiped — discard cached as-of columns
 	if err := c.reapAsOfTagsForReset(); err != nil {
 		return err
 	}

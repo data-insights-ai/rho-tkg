@@ -139,33 +139,35 @@ func (n *NodeOps) DocValuesSnapshot(label string, propKeys []string) (snap types
 // BELIEVED at txAt (a knowledge-time / TxPin belief-state pin) — the time-travel
 // aggregation target for `AS OF SYSTEM TIME … RETURN count(*)…`.
 //
-// Unlike DocValuesSnapshot it is NOT a store capability and NOT cached: it reuses
-// the pinned ByLabel resolver (the SAME one g.Nodes().ByLabel{TxPin} uses — K1
-// ever-member scoped, history/deleted-aware, chain-resolver-correct so a node
-// whose CURRENT label differs from its label-at-txAt is handled), then builds a
-// throwaway column set from the resolved as-of nodes. Consequently it works on
-// EVERY backend, INCLUDING tiered/sharded which decline the current-state column
-// scanner. A specific past pin is immutable and typically one-shot, so caching
-// (the current-state epoch-invalidation model) does not apply.
+// Unlike DocValuesSnapshot it is not a STORE capability (as-of resolution is a
+// graph-layer concern — version-chain selection): it reuses the pinned ByLabel
+// resolver (the SAME one g.Nodes().ByLabel{TxPin} uses — K1 ever-member scoped,
+// history/deleted-aware, chain-resolver-correct so a node whose CURRENT label
+// differs from its label-at-txAt is handled), so it works on EVERY backend,
+// INCLUDING tiered/sharded which decline the current-state column scanner.
+//
+// It IS cached (buildAsOfColumns → Core.asOfColumns), keyed by (label, txAt). The
+// first build materializes the as-of members — the version-chain resolution is
+// unavoidable — but the compact columns are then cached, so REPEATED same-txAt
+// aggregations (a dashboard "AS OF SYSTEM TIME $t RETURN count/sum/…") scan the
+// compact column instead of re-materializing. Crucially the cache SURVIVES
+// write-active ingest: a past belief is immutable under forward writes (a new
+// version has TxFrom = now > txAt, invisible at txAt), so ONLY a history rewrite
+// below txAt (compaction / retention purge / truncate / past-dated backfill or
+// replica apply) invalidates it — see Core.asOfColumns / asOfColumnCache.
 //
 // ok=false (not an error) when a requested property is not a uniform
 // numeric/string column at txAt (the consumer declines the whole query and falls
 // back to the row path). A pin before a relevant label's retention watermark
-// returns ErrRetentionExpired (the answer would be silently incomplete) —
-// inherited from the pinned scan's retention guard. txAt must be positive.
+// returns ErrRetentionExpired — inherited from the pinned scan's retention guard.
+// txAt must be positive.
 //
-// gen is DELIBERATELY 0 (unlike the current-state door): the returned snapshot is
-// a FROZEN materialization of the belief at txAt, built under c.mu.RLock, so the
-// consumer's Gate-2 epoch re-check does NOT apply. The current-state node-mutation
-// epoch would be wrong in BOTH directions here — it bumps on current writes that
-// do not change a past belief (false stale), and it does NOT bump on
-// compaction/truncate, which rewrite history and DO change a past belief (false
-// fresh). A past pin is immutable except under explicit history-rewriting ADMIN
-// ops (compaction / retention purge / bitemporal PutNodeVersion correction);
-// those all take c.mu.Lock, so they cannot tear this RLock-held build, and a
-// caching consumer should treat them as out-of-band cache-busting events rather
-// than gen-recheck. So: use the snapshot as a point-in-time read; do not re-check
-// gen.
+// gen is the as-of history-rewrite epoch (NOT the current-state node-mutation
+// epoch): it is STABLE for a fixed past belief and advances only when a history
+// rewrite could have changed the belief at some txAt. A caching consumer keys its
+// own result on (txAt, gen) and re-fetches only when gen advances — correct in
+// both directions, unlike the current-state epoch which would falsely invalidate on
+// every forward write and falsely hold across a compaction.
 func (n *NodeOps) DocValuesSnapshotAsOf(label string, propKeys []string, txAt types.Instant) (snap types.NodeColumnReader, gen uint64, ok bool, err error) {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
@@ -182,7 +184,7 @@ func (n *NodeOps) DocValuesSnapshotAsOf(label string, propKeys []string, txAt ty
 	if !colOK {
 		return nil, 0, false, nil // a requested key is not a uniform column at txAt
 	}
-	return ps, 0, true, nil
+	return ps, col.Epoch(), true, nil
 }
 
 // ForEachDocValuesAsOf is the STREAMING transaction-time (AS OF) analogue of
@@ -190,11 +192,14 @@ func (n *NodeOps) DocValuesSnapshotAsOf(label string, propKeys []string, txAt ty
 // invokes fn(id, vals, present) for each, in ordinal order, WITHOUT materializing
 // a node — the time-travel target for `AS OF SYSTEM TIME … RETURN <agg>(n.prop)…`.
 // fn returning false stops the scan. Same design as DocValuesSnapshotAsOf: reuses
-// the pinned ByLabel{TxPin} resolver + indexpkg.BuildLabelDocValues, so it works
-// on EVERY backend (incl. tiered/sharded), is retention-guarded, and carries no
-// current-state staleness signal (gen is deliberately 0). ok=false (not an error)
-// when a requested property is not a uniform numeric/string column at txAt — the
-// consumer falls back to the row path. txAt must be positive.
+// the pinned ByLabel{TxPin} resolver + the cached indexpkg.BuildLabelDocValues
+// (Core.asOfColumns, keyed by (label, txAt), invalidated only by history rewrite —
+// so repeated same-txAt streams ride the cache even under write-active ingest), so
+// it works on EVERY backend (incl. tiered/sharded) and is retention-guarded. gen is
+// the as-of history-rewrite epoch (stable for a fixed past belief — see
+// DocValuesSnapshotAsOf). ok=false (not an error) when a requested property is not a
+// uniform numeric/string column at txAt — the consumer falls back to the row path.
+// txAt must be positive.
 func (n *NodeOps) ForEachDocValuesAsOf(label string, propKeys []string, txAt types.Instant, fn func(types.NodeID, []any, []bool) bool) (gen uint64, ok bool, err error) {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
@@ -211,7 +216,7 @@ func (n *NodeOps) ForEachDocValuesAsOf(label string, propKeys []string, txAt typ
 	// same "unusable, caller falls back" signal as NewPointSnapshot. Because it
 	// checks the columns before emitting any row, an ok=false stream emits nothing.
 	streamed := col.ForEachRow(propKeys, fn)
-	return 0, streamed, nil
+	return col.Epoch(), streamed, nil
 }
 
 // buildAsOfColumns resolves the label's members AS BELIEVED at txAt (the pinned
@@ -220,12 +225,35 @@ func (n *NodeOps) ForEachDocValuesAsOf(label string, propKeys []string, txAt typ
 // Shared by DocValuesSnapshotAsOf + ForEachDocValuesAsOf. Epoch 0 — an as-of
 // column set carries no current-state staleness signal (see DocValuesSnapshotAsOf).
 func (c *Core) buildAsOfColumns(label string, propKeys []string, txAt types.Instant) (*indexpkg.LabelDocValues, error) {
+	epoch := c.asOfColumns.currentEpoch()
+
+	// Cache hit: a column built for this (label, txAt) under the current epoch that
+	// already holds every requested key. The past belief is immutable under forward
+	// ingest, so this hits repeatedly even while writes stream in — the whole point.
+	tok, known := c.labels.Lookup(label)
+	var key asOfCacheKey
+	if known {
+		key = asOfCacheKey{label: tok, txAt: int64(txAt)}
+		if col, ok := c.asOfColumns.get(key, propKeys, epoch); ok {
+			return col, nil
+		}
+	}
+
+	// Miss: build a superset of any prior keys for this pin (mirrors the current-state
+	// cache), materializing the as-of members once. Cache the compact result unless
+	// the label is over the column cap (huge labels are one-shot, never cached).
+	buildKeys := propKeys
+	if known {
+		buildKeys = c.asOfColumns.unionKeysFor(key, propKeys)
+	}
 	var col *indexpkg.LabelDocValues
+	cacheable := false
 	err := c.readUnderRLock(func() error {
 		nodes, e := c.nodesByLabelLocked(label, storepkg.QueryOpts{TxPin: txAt})
 		if e != nil {
 			return e
 		}
+		cacheable = known && len(nodes) <= indexpkg.MaxDocValuesNodes
 		ids := make([]types.NodeID, len(nodes))
 		byID := make(map[types.NodeID]*types.Node, len(nodes))
 		for i, nd := range nodes {
@@ -239,10 +267,16 @@ func (c *Core) buildAsOfColumns(label string, propKeys []string, txAt types.Inst
 			}
 			return nd.GetProperty(key)
 		}
-		col = indexpkg.BuildLabelDocValues(0, ids, propKeys, getProp)
+		col = indexpkg.BuildLabelDocValues(epoch, ids, buildKeys, getProp)
 		return nil
 	})
-	return col, err
+	if err != nil {
+		return nil, err
+	}
+	if cacheable {
+		c.asOfColumns.put(key, col, epoch)
+	}
+	return col, nil
 }
 
 // NodeMutationEpoch returns the store's current node-mutation epoch, or 0 if the

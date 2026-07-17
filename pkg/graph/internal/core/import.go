@@ -92,6 +92,10 @@ func (o *IOOps) Import(r io.Reader, opts tkgio.ImportOptions) error {
 	if err := c.checkOpen(); err != nil {
 		return err
 	}
+	// An import writes arbitrary (possibly past-dated) history verbatim via the store
+	// doors, bypassing the apply-path past-dated detector — discard cached as-of
+	// columns unconditionally (a rolled-back import just forces a harmless rebuild).
+	defer c.asOfColumns.bump()
 	if isNilInterfaceValue(r) {
 		return ErrNilReader
 	}

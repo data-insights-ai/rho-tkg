@@ -268,6 +268,7 @@ func (c *Core) applyNodePutLocked(body storeutil.NodePutBody, rec storepkg.Chang
 	if err != nil {
 		return fmt.Errorf("graph: apply: node %d: %w: %v", body.Wire.ID, ErrCorruptExport, err)
 	}
+	c.noteAppliedTxFrom(n.Temporal())
 	if err := c.validatePropertySliceLimits(n.Properties()); err != nil {
 		return err
 	}
@@ -368,6 +369,7 @@ func (c *Core) applyRelPutLocked(body storeutil.RelPutBody, rec storepkg.ChangeR
 	if err != nil {
 		return fmt.Errorf("graph: apply: relationship %d: %w: %v", body.Wire.ID, ErrCorruptExport, err)
 	}
+	c.noteAppliedTxFrom(r.Temporal())
 	if err := c.validatePropertySliceLimits(r.Properties()); err != nil {
 		return err
 	}
@@ -514,6 +516,7 @@ func (c *Core) applyNodeHistoryVersionLocked(body storeutil.HistoryVersionNodeBo
 	if err != nil {
 		return fmt.Errorf("graph: apply: node version %d: %w: %v", body.Wire.ID, ErrCorruptExport, err)
 	}
+	c.noteAppliedTxFrom(n.Temporal())
 	if err := c.validatePropertySliceLimits(n.Properties()); err != nil {
 		return err
 	}
@@ -531,6 +534,7 @@ func (c *Core) applyRelHistoryVersionLocked(body storeutil.HistoryVersionRelBody
 	if err != nil {
 		return fmt.Errorf("graph: apply: relationship version %d: %w: %v", body.Wire.ID, ErrCorruptExport, err)
 	}
+	c.noteAppliedTxFrom(r.Temporal())
 	if err := c.validatePropertySliceLimits(r.Properties()); err != nil {
 		return err
 	}
@@ -541,6 +545,9 @@ func (c *Core) applyRelHistoryVersionLocked(body storeutil.HistoryVersionRelBody
 }
 
 func (c *Core) applyHistoryTruncateLocked(isNode bool, body storeutil.HistoryTruncateBody) error {
+	// Truncation/trim removes history rows, which can change an as-of belief within
+	// the removed range — invalidate the as-of column cache.
+	c.asOfColumns.bump()
 	if body.IsTrim {
 		// trim-from is the optional HistoryRollbackTrimCapability; a primary only
 		// emits this record on a backend that has it, so a same-backend replica

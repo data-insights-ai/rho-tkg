@@ -121,6 +121,10 @@ func (c *Core) resolveBackfillTxFrom(txFrom types.Instant) (types.Instant, error
 	if !c.allowTxBackfill {
 		return 0, ErrTxBackfillDisabled
 	}
+	// A backfill stamps a PAST transaction time, inserting a version below the
+	// forward frontier — the one primary-side write that can change an as-of belief
+	// at a past txAt. Invalidate the as-of column cache.
+	c.asOfColumns.bump()
 	return txFrom, nil
 }
 
