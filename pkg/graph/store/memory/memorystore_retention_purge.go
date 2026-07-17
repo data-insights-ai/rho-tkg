@@ -51,6 +51,34 @@ func (ms *Store) LogRangePurge(labelToken uint16, before types.Instant, mode uin
 // removal (delete never erases history; a purge does), and skips the per-entity
 // change-log record the cascade would emit.
 func (ms *Store) PurgeNodesByLabelBefore(labelToken uint16, before types.Instant, chunk int) (storecontract.RetentionPurgeResult, error) {
+	if before <= 0 {
+		return storecontract.RetentionPurgeResult{}, nil
+	}
+	// Mint-time is immutable; the node argument is unused.
+	return ms.purgeNodesByLabel(labelToken, chunk, func(nid types.NodeID, _ *types.Node) bool {
+		return storeutil.SnowflakeInstant(nid.SnowflakeID()) < before
+	})
+}
+
+// PurgeNodesByLabelValidToBefore is the memory mirror of the badger ByValidTo purge
+// (ADR-0008 R5 / store.RetentionPurgeByValidToCapability): it removes nodes whose
+// current-version world-time validity ended before the boundary (ValidTo != 0 &&
+// ValidTo < before). Because the memory store selects and removes under ONE lock,
+// there is no mutable-predicate race — the selection reads the same live node state
+// that is then removed. A node with an open interval (ValidTo == 0) is never purged.
+func (ms *Store) PurgeNodesByLabelValidToBefore(labelToken uint16, before types.Instant, chunk int) (storecontract.RetentionPurgeResult, error) {
+	if before <= 0 {
+		return storecontract.RetentionPurgeResult{}, nil
+	}
+	return ms.purgeNodesByLabel(labelToken, chunk, func(_ types.NodeID, n *types.Node) bool {
+		vt := n.Temporal().ValidTo
+		return vt != 0 && vt < before
+	})
+}
+
+// purgeNodesByLabel is the shared body for both memory purge modes; `qualifies`
+// selects victims from the label's live nodes under the store lock.
+func (ms *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(types.NodeID, *types.Node) bool) (storecontract.RetentionPurgeResult, error) {
 	var zero storecontract.RetentionPurgeResult
 	if ms == nil {
 		return zero, ErrNilStore
@@ -63,20 +91,18 @@ func (ms *Store) PurgeNodesByLabelBefore(labelToken uint16, before types.Instant
 	if err := ms.checkOpenLocked(); err != nil {
 		return zero, err
 	}
-	if before <= 0 {
-		return zero, nil
-	}
 	if chunk <= 0 {
 		chunk = defaultRetentionPurgeChunk
 	}
 
-	// Select up to `chunk` below-boundary victims. Map order is random — fine: the
+	// Select up to `chunk` qualifying victims. Map order is random — fine: the
 	// purge is order-independent and `more` just tells the caller to loop; each
-	// call removes SOME below-boundary subset, so repeated calls drain the label.
+	// call removes SOME qualifying subset, so repeated calls drain the label.
 	victims := make([]types.NodeID, 0, chunk)
 	more := false
 	for id := range ms.labelIdx[labelToken] {
-		if storeutil.SnowflakeInstant(id.SnowflakeID()) >= before {
+		n, ok := ms.nodes[id]
+		if !ok || !qualifies(id, n) {
 			continue
 		}
 		if len(victims) >= chunk {

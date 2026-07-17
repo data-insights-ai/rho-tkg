@@ -56,9 +56,9 @@ Execute these three phases in order when reviewing a merge request.
 Module: `github.com/data-insights-ai/rho-tkg/v4`
 Go: 1.26.1 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v4.19.x. **`CHANGELOG.md` is the source of truth for version history, migration recipes, and per-feature detail** (incl. measured numbers and ADR-stage narrative). This file is the STABLE architecture + design-rules reference and must not accumulate change narratives.
+Status: v4.20.x. **`CHANGELOG.md` is the source of truth for version history, migration recipes, and per-feature detail** (incl. measured numbers and ADR-stage narrative). This file is the STABLE architecture + design-rules reference and must not accumulate change narratives.
 
-**Designed-not-built (rho-tkg roadmap).** Two large replication-/delete-critical subsystems are fully designed and ready to build in a focused session — see `tasks/backlog.md` (retention purge, ex-ADR-0008 R2–R5; and the cross-machine incoming half-edge "Model A", ADR-0010 §3.3). ADR files were removed after their shipped rounds; prior design is recoverable via `git log --all -- docs/adr/`.
+**Designed-not-built (rho-tkg roadmap).** The two large replication-/delete-critical subsystems that were parked here — retention purge (ex-ADR-0008 R2–R5) and the cross-machine incoming half-edge "Model A" (ADR-0010 §3.3) — are now SHIPPED (see CHANGELOG). The remaining `tasks/backlog.md` entries are the consumer-gated columnar whole-node fetch (BACKLOG 3) and review-driven adaptations (BACKLOG 4), plus a later tiered O(1) cold-shard-drop purge optimization (perf only — functionality is complete via the per-shard row scan). ADR files were removed after their shipped rounds; prior design is recoverable via `git log --all -- docs/adr/`.
 
 **Stdlib aliasing convention.** `pkg/graph/hash` and `pkg/graph/io` shadow stdlib `hash` and `io`. Inside the local package no aliasing is needed. At consumer sites that import BOTH stdlib AND the local package, alias the LOCAL one with a `tkg` prefix (`tkghash` / `tkgio`) — leave stdlib unaliased.
 

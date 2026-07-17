@@ -333,11 +333,30 @@ type HistoryCompactionCapability interface {
 // backend (sharded) uses it to sweep edges MINTED IN ANOTHER node's slot that
 // point at a purged node and therefore live on a different shard — the one edge
 // class a per-shard label purge cannot see (an event-as-END cross-shard edge).
+//
+// PurgedRels lists the relationships this chunk TOUCHED (removed at least one row
+// or adjacency leg of). The tiered backend — whose SPLIT-WRITE layout stores a
+// rel's entity+out-leg on the start node's shard and its in-leg on the end node's
+// shard — uses it to sweep each rel's residue on its OTHER endpoint shard (an
+// orphan in-leg, or a fully-local survivor→purged rel), which a per-shard label
+// purge leaves behind. Left nil by memory (single store) and unused by sharded
+// (co-located legs, node-ID sweep).
 type RetentionPurgeResult struct {
 	NodesPurged   int
 	RelsPurged    int
 	More          bool
 	PurgedNodeIDs []types.NodeID
+	PurgedRels    []PurgedRel
+}
+
+// PurgedRel is the routing descriptor of a relationship a purge touched — enough
+// for a partitioned backend to locate and clean the rel's residue on either
+// endpoint's shard without re-reading the (already-removed) row.
+type PurgedRel struct {
+	ID        types.RelID
+	TypeToken uint16
+	StartID   types.NodeID
+	EndID     types.NodeID
 }
 
 // RetentionPurgeCapability is OPTIONAL (ADR-0008 R2). It HARD-removes whole
@@ -363,6 +382,25 @@ type RetentionPurgeResult struct {
 // WRITE, never silently purged here.
 type RetentionPurgeCapability interface {
 	PurgeNodesByLabelBefore(labelToken uint16, before types.Instant, chunk int) (RetentionPurgeResult, error)
+}
+
+// RetentionPurgeByValidToCapability is OPTIONAL (ADR-0008 R5). It is the ByValidTo
+// sibling of RetentionPurgeCapability: it HARD-removes nodes of a label whose
+// world-time validity ENDED before the boundary — current-version ValidTo != 0 &&
+// ValidTo < before — with the identical cascade/history/atomic-batch/More contract.
+// It is a SEPARATE optional interface (not folded into RetentionPurgeCapability) so
+// backends can offer age-purge without validity-purge and the addition stays a
+// purely additive, non-breaking capability.
+//
+// The predicate reads the node's CURRENT-version ValidTo. It is immutable-once-true:
+// a node that qualifies is CLOSED (ValidTo != 0), and the graph layer freezes a
+// closed entity against every interactive mutation door, so a selected victim's
+// ValidTo cannot change under a chunked selection — no separate under-lock re-confirm
+// is required. A node with an open interval (ValidTo == 0) is never purged by
+// validity. Implemented by the native memory + badger backends and fanned out by the
+// sharded/tiered stores.
+type RetentionPurgeByValidToCapability interface {
+	PurgeNodesByLabelValidToBefore(labelToken uint16, before types.Instant, chunk int) (RetentionPurgeResult, error)
 }
 
 // RangePurgeLogCapability is OPTIONAL (ADR-0008 R3). It appends ONE

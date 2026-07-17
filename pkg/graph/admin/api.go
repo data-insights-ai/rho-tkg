@@ -38,6 +38,10 @@ type PurgeReport = core.PurgeReport
 // PurgeByAge purges nodes below Before by IMMUTABLE snowflake mint-time (v1).
 const PurgeByAge = core.PurgeByAge
 
+// PurgeByValidTo purges nodes whose world-time validity ENDED before Before
+// (ValidTo != 0 && ValidTo < Before; ADR-0008 R5). See core.PurgeByValidTo.
+const PurgeByValidTo = core.PurgeByValidTo
+
 // Ops is the subset of *core.AdminOps the admin sub-API forwards to.
 type Ops interface {
 	Reset() error

@@ -43,6 +43,7 @@ type Ops interface {
 	ForEachDocValuesMulti(labels []string, propKeys []string, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error)
 	DocValuesSnapshot(label string, propKeys []string) (types.NodeColumnReader, uint64, bool, error)
 	DocValuesSnapshotAsOf(label string, propKeys []string, txAt types.Instant) (types.NodeColumnReader, uint64, bool, error)
+	ForEachDocValuesAsOf(label string, propKeys []string, txAt types.Instant, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error)
 	NodeMutationEpoch() uint64
 	ByLabelAndProperty(label, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error)
 	ByLabelAndProperties(label string, values map[string]any, opts storepkg.QueryOpts) ([]*types.Node, error)
@@ -393,6 +394,20 @@ func (a *API) DocValuesSnapshotAsOf(label string, propKeys []string, txAt types.
 		return nil, 0, false, err
 	}
 	return ops.DocValuesSnapshotAsOf(label, propKeys, txAt)
+}
+
+// ForEachDocValuesAsOf streams the label's members as believed at txAt, invoking
+// fn(id, vals, present) per row without materializing a node — the streaming
+// (AS OF) analogue of ForEachDocValues, and the time-travel aggregation target.
+// fn returning false stops the scan. ok=false means a requested property is not a
+// uniform column at txAt (caller falls back). Works on every backend;
+// retention-guarded; gen is deliberately 0. See core.NodeOps.ForEachDocValuesAsOf.
+func (a *API) ForEachDocValuesAsOf(label string, propKeys []string, txAt types.Instant, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, false, err
+	}
+	return ops.ForEachDocValuesAsOf(label, propKeys, txAt, fn)
 }
 
 // NodeMutationEpoch returns the store's node-mutation epoch (0 if the backend

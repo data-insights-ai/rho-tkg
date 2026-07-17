@@ -1,19 +1,20 @@
 # rho-tkg backlog — designed, ready to build in a focused session
 
-Two rho-tkg features are fully designed but deliberately NOT built inline: each
-is a large, replication-/delete-critical subsystem where a rushed pass risks
-permanent data loss or silent replica divergence. They are parked HERE (not in a
-todo, not an ADR) as self-contained handoffs — a new session should be able to
-start cold from either entry. Full prior design also lives in git history:
-`git log --all -- docs/adr/0008-event-retention.md docs/adr/0010-cross-machine-edges.md`.
+**STATUS: BACKLOG 1 (retention purge R2–R5) and BACKLOG 2 (Model A) are SHIPPED**
+(see CHANGELOG). Their design entries below are retained for reference / recovery.
+The live remaining entries are BACKLOG 3 (consumer-gated columnar whole-node fetch)
+and BACKLOG 4 (review-driven adaptations), plus a later tiered O(1) cold-shard-drop
+purge optimization (perf only — functionality complete via the per-shard row scan).
 
-Both must clear the house quality bar: rules 1–17 (esp. 15/16 two-phase +
-adversarial), cross-backend parity, **byte-exact replica convergence**, `-race`,
-and `make cover` (no new public method at 0%, no new code < 80%).
+Any new large subsystem must clear the house quality bar: rules 1–17 (esp. 15/16
+two-phase + adversarial), cross-backend parity, **byte-exact replica convergence**,
+`-race`, and `make cover` (no new public method at 0%, no new code < 80%). Full
+prior design also lives in git history:
+`git log --all -- docs/adr/0008-event-retention.md docs/adr/0010-cross-machine-edges.md`.
 
 ---
 
-## BACKLOG 1 — Retention purge (hard-purge aged-out entities) — ex-ADR-0008 R2–R5
+## BACKLOG 1 — Retention purge (hard-purge aged-out entities) — ex-ADR-0008 R2–R5  [SHIPPED]
 
 ### Why
 Cybersecurity/observability workloads ingest TB/day of events (event→machine,
@@ -89,34 +90,77 @@ temporal index) needs no signature/record change.
   exactly ONE `ChangeRangePurge` record, ZERO per-entity delete records, replica reaches the
   same purged state + advanced watermark, idempotent re-apply. Different shard count is the
   R4 extension (the record already names a PREDICATE, not physical rows).
-- **R4 — SHARDED: ✅ SHIPPED. Tiered: REMAINING.** Sharded (ADR-0007): phase 1 fans out the
+- **R4 — SHARDED + TIERED: ✅ SHIPPED.** Sharded (ADR-0007): phase 1 fans out the
   per-shard label purge (parallel) — each shard removes its below-boundary nodes + co-located
   edges + history; phase 2 sweeps cross-shard edges (`PurgeAdjacentRelsForNode` per purged ID,
   driven by `RetentionPurgeResult.PurgedNodeIDs`) — the event-as-END cross-shard edge a
   per-shard purge misses. Record emitted once on the anchor shard. Proven by a store-level
   cross-shard-edge test + `TestRetentionPurge_ShardedReplicaConvergence` (sharded→sharded).
-  **Tiered REMAINING — and NOT a sharded mirror (finding 2026-07-17).** A naive fan-out of the
-  per-shard badger purge + the sharded phase-2 `PurgeAdjacentRelsForNode` sweep is INCORRECT for
-  tiered because tiered uses a SPLIT-WRITE cross-shard adjacency model (see
-  `tieredstore_write_rel.go putRelationshipLocked`): a cross-shard rel's ENTITY (0x02) + OUT leg
-  (0x05/start) live on the START node's shard, while only the IN leg (0x06/end) lives on the END
-  node's shard. Sharded co-locates BOTH legs on the rel's shard, so sweeping the purged node's
-  adjacency finds the edge; tiered does NOT. Concretely, purging event E (event shard) leaves:
-  (a) for `E→X` cross-shard, a dangling `0x06/X` in-leg on X's shard; (b) for `Y→E` cross-shard,
-  the rel ENTITY + `0x05/Y` out-leg on Y's shard — a LIVE PHANTOM (Y's OutgoingRelationships folds
-  the entity, but its end E is gone). `PurgeAdjacentRelsForNode(E)` on Y's shard can't find it —
-  the entity is keyed by Y (the survivor), not E. So COLD-SHARD-READONLY is a non-issue (cold
-  shards open writable), but the split-write is the real blocker. **Correct design:** tiered's
-  purge must be cross-shard-cascade-aware per victim (like `tiered.DeleteNodeCascade`, which
-  routes each rel's delete to its entity shard AND cleans the remote in-leg), recordless, plus
-  history purge — NOT a per-shard `cascadeDeleteInner` fan-out. Simplest correct v1: for each
-  victim, reuse the tiered cross-shard cascade to remove the node + all its rels (both legs, all
-  shards) + purge history; emit ONE `ChangeRangePurge` on the ref shard (`ts.refShard.LogRangePurge`
-  already reaches the global merged feed). Optimization (later): a range covering a whole cold
-  event-shard → O(1) `g.Tier().Archive` shard-drop. Tiered currently DECLINES the purge
-  (`ErrCapabilityNotSupported`) — fail-closed, safe — until this lands.
-- **R5 (optional, own release) — `ByValidTo` v2** via the `0x0B` temporal interval
-  index; record format already carries `Mode`.
+  **Tiered — SHIPPED (NOT a sharded mirror).** Tiered uses a SPLIT-WRITE cross-shard adjacency
+  layout (`tieredstore_write_rel.go putRelationshipLocked`): a cross-shard rel's ENTITY (0x02) +
+  OUT leg (0x05/start) live on the START node's shard, its IN leg (0x06/end) on the END node's
+  shard — so the sharded `PurgeAdjacentRelsForNode(purgedNode)` sweep (which finds the edge via the
+  purged node's adjacency because sharded co-locates both legs) MISSES tiered's residue: a
+  `survivor→purged` rel leaves its entity+out-leg on the SURVIVOR's shard, keyed by the survivor.
+  The tiered solution: phase 1 fans out the per-shard badger purge (`forEachOpenShard`) — but that
+  purge now ALSO returns `RetentionPurgeResult.PurgedRels`, decoded from the purged node's
+  adjacency KEYS (`purgedRelsForNodeLocked` — the key encodes BOTH endpoints, so a cross-shard rel
+  whose entity is elsewhere and thus invisible to a local entity read is still captured). Phase 2
+  routes each touched rel to its SURVIVING endpoint's shard and calls the new recordless badger
+  `PurgeRelationshipByInfo`, which dispatches: entity present here → full delete + history; only a
+  dangling in-leg → orphan-index purge. `LogRangePurge` → `ts.refShard.LogRangePurge` reaches the
+  global merged feed. Proven by `TestTieredPurge_CrossShardEdgeSweep` (both residue shapes) +
+  `TestRetentionPurge_TieredReplicaConvergence` (tiered primary → tiered replica re-executes the
+  ONE predicate record, cross-shard sweep on the replica too, dangle-free, watermark advanced).
+  Optimization (later, not built — DESIGN SCOPED, deliberately deferred): a ByAge range
+  covering a whole aged-out event shard could physically DROP the shard (close + os.RemoveAll +
+  catalog remove) instead of row-scan-cascading every entity, skipping the per-row delete writes
+  + their flush (the write-amplification cost). Investigation found this is NOT a quick tweak —
+  it is a delete-critical CONCURRENT subsystem with three hard constraints and one sharp edge:
+  - **Not O(1):** still needs an O(nodes) READ scan of the shard for the purged count, the
+    `UniqueForever` owner reap, and — critically — to enumerate cross-shard rels for the
+    survivor-side residue sweep (a dropped shard's split-write edges leave residue on survivor
+    shards, exactly as the row-scan path handles via `purgedRelsForNodeLocked`). The win is
+    "skip the per-row cascade DELETES + flush", not constant time.
+  - **Off under ChangeLog:** the row-scan purge leaves each shard's `0x09` change-log records
+    intact (feed stays gapless); physically dropping a shard destroys its log segment → a
+    tailing replica sees an LSN gap. So the drop MUST fall back to row-scan whenever ChangeLog
+    is enabled (the replication config). Replication itself is unaffected (the ONE
+    `ChangeRangePurge` predicate re-executes on the replica, which drops its own shard).
+  - **Narrow eligibility:** ByAge only (`ValidTo` is orthogonal to the mint-time window),
+    single-label shards only (`Labels ⊆ {purged}` — conservative, check the shard's label index
+    for any foreign token), whole-window-below-boundary only (`shard.timeEnd <= before`).
+  - **THE sharp edge — concurrent-write TOCTOU (the reason it is its own session):** the
+    cross-shard rel WRITE path (`putRelationshipLocked`) does NOT serialize against `ts.mu.Lock`
+    — it coordinates only through per-shard checkout refcounts (`shardForNodeIDChecked` →
+    `checkoutStoreForRead`/`activeReqs`). So a concurrent writer can add a cross-shard in-leg to
+    the dropping shard AFTER residue collection and BEFORE removal, leaving un-swept survivor
+    residue = a dangling phantom (silent wrong result). A correct drop needs a DRAIN PROTOCOL:
+    (1) under `ts.mu.Lock` unlink the shard from `ts.eventShards` so no NEW checkout routes to it
+    (and handle the now-possible routing-miss for a concurrent edge-to-a-purged-node — it should
+    fail cleanly, the target node is being purged anyway); (2) drain in-flight `activeReqs` to 0;
+    (3) only THEN collect residue → sweep survivors → close → `os.RemoveAll` → `catalog.RemoveShard`
+    → `catalog.Save` (add `RemoveShard`, mirror rotation's snapshot/restore rollback). Needs
+    adversarial concurrent-write race tests (rules: shared-state → `test-race`) proving no phantom
+    survives an edge-add racing the drop. A reusable read primitive is straightforward to
+    (re)build: a badger `CollectShardDropResidue(labelToken)` returning (onlyLabel, nodeIDs,
+    touchingRels) — the single-label check via `hasForeignLabelTokensLocked` + per-node
+    `purgedRelsForNodeLocked` deduped by rel ID, read-only. Build it as its own focused increment.
+- **R5 — `ByValidTo`: ✅ SHIPPED.** New optional `store.RetentionPurgeByValidToCapability.PurgeNodesByLabelValidToBefore`
+  (native memory + badger; sharded/tiered fan out through the SAME cross-shard mechanism as
+  ByAge — both refactored to a `purgeNodesFanOut` closure so only the per-shard predicate
+  differs). Predicate = current-version `ValidTo != 0 && ValidTo < Before` (open interval never
+  purged). Implementation reads the current `ValidTo` directly during the label-node scan
+  (badger `getNodeLocked`, memory under-lock map read) — NOT the `0x0B` temporal index; that
+  index would only be a later selection-perf optimization, exactly as ByAge does not use a
+  special index either. **Key simplification vs the original sketch:** no under-lock re-confirm
+  is needed despite selecting on a temporal field — a qualifying node is CLOSED, and a closed
+  entity is frozen against every interactive mutation door (`rejectClosedNodeMutation`), so the
+  predicate is immutable-once-true (dead re-confirm removed per Testing Rule 5). Record format
+  already carried `Mode` (msgpack omitempty; ByAge=0/ByValidTo=1), so replication needed no
+  wire change — `applyRangePurgeLocked` re-executes with the record's mode. Tests: exact-set on
+  both backends incl. a `closedViaUpdate` two-phase case; tiered cross-shard sweep; ByValidTo
+  replica convergence (selective — open survivor kept).
 
 ### Invariants (each needs a test)
 1. **No silent absence** — a read pinned before a label's watermark → `ErrRetentionExpired`
@@ -147,7 +191,7 @@ temporal index) needs no signature/record change.
 
 ---
 
-## BACKLOG 2 — Cross-machine incoming half-edge (Model A) + cascade — ADR-0010 §3.3
+## BACKLOG 2 — Cross-machine incoming half-edge (Model A) + cascade — ADR-0010 §3.3  [SHIPPED]
 
 ### STATUS (2026-07-17): increments 1–4 SHIPPED & byte-exact verified. One narrow fail-closed follow-up remains (tx-rollback stub restore, below).
 - **Inc 1 (store write):** `ChangeForeignIncoming` tag + badger `PutRelationshipForeignIncoming`
