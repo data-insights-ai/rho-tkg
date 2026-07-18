@@ -103,3 +103,27 @@ func BenchmarkNodeScanBulkParallel(b *testing.B) {
 		}
 	}
 }
+
+// BenchmarkForEachNodeByLabelStream measures the streaming label door (BACKLOG 3) —
+// it now rides forEachNodeBulk (one iterator pass) instead of N per-node Txn.Gets, so
+// it runs at bulk-scan speed while materializing nothing.
+func BenchmarkForEachNodeByLabelStream(b *testing.B) {
+	bs := newBenchmarkBadgerStore(b)
+	b.Cleanup(func() { _ = bs.Close() })
+	_ = benchSeedNodesForScan(b, bs, 50_000)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		got := 0
+		if err := bs.ForEachNodeByLabel(1, QueryOpts{}, func(*types.Node) bool {
+			got++
+			return true
+		}); err != nil {
+			b.Fatalf("ForEachNodeByLabel: %v", err)
+		}
+		if got != 50_000 {
+			b.Fatalf("streamed %d, want 50000", got)
+		}
+	}
+}
