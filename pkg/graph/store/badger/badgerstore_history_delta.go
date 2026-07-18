@@ -79,10 +79,10 @@ func (bs *Store) historyNodeValue(id snowflake.ID, version uint64, state *types.
 	if err != nil {
 		return nil, err
 	}
-	if !bs.historyDelta || storepkg.IsAnchorVersion(version) {
+	if !bs.historyDelta || storepkg.IsAnchorVersion(version, bs.historyAnchorInterval) {
 		return fullBytes, nil
 	}
-	anchorRaw, err := bs.readHistoryNodeRaw(id, storepkg.AnchorVersionFor(version))
+	anchorRaw, err := bs.readHistoryNodeRaw(id, storepkg.AnchorVersionFor(version, bs.historyAnchorInterval))
 	if err != nil || storepkg.HistoryValueKindOf(anchorRaw) != storepkg.HistoryFull {
 		return fullBytes, nil // anchor missing or itself a delta → safe full fallback
 	}
@@ -108,10 +108,10 @@ func (bs *Store) historyRelValue(id snowflake.ID, version uint64, state *types.R
 	if err != nil {
 		return nil, err
 	}
-	if !bs.historyDelta || storepkg.IsAnchorVersion(version) {
+	if !bs.historyDelta || storepkg.IsAnchorVersion(version, bs.historyAnchorInterval) {
 		return fullBytes, nil
 	}
-	anchorRaw, err := bs.readHistoryRelRaw(id, storepkg.AnchorVersionFor(version))
+	anchorRaw, err := bs.readHistoryRelRaw(id, storepkg.AnchorVersionFor(version, bs.historyAnchorInterval))
 	if err != nil || storepkg.HistoryValueKindOf(anchorRaw) != storepkg.HistoryFull {
 		return fullBytes, nil
 	}
@@ -154,7 +154,7 @@ func (bs *Store) reconstructNodeHistoryWire(id snowflake.ID, version uint64, raw
 	if err != nil {
 		return storepkg.NodeWire{}, err
 	}
-	anchorVer := storepkg.AnchorVersionFor(version)
+	anchorVer := storepkg.AnchorVersionFor(version, bs.historyAnchorInterval)
 	anchorRaw, err := bs.fetchAnchorRaw(anchorVer, local, func() ([]byte, error) { return bs.readHistoryNodeRaw(id, anchorVer) })
 	if err != nil {
 		return storepkg.NodeWire{}, fmt.Errorf("graph: read node history anchor v%d: %w", anchorVer, err)
@@ -189,7 +189,7 @@ func (bs *Store) reconstructRelHistoryWire(id snowflake.ID, version uint64, raw 
 	if err != nil {
 		return storepkg.RelWire{}, err
 	}
-	anchorVer := storepkg.AnchorVersionFor(version)
+	anchorVer := storepkg.AnchorVersionFor(version, bs.historyAnchorInterval)
 	anchorRaw, err := bs.fetchAnchorRaw(anchorVer, local, func() ([]byte, error) { return bs.readHistoryRelRaw(id, anchorVer) })
 	if err != nil {
 		return storepkg.RelWire{}, fmt.Errorf("graph: read rel history anchor v%d: %w", anchorVer, err)
@@ -286,7 +286,7 @@ func (bs *Store) rematerializeOrphanedDeltas(prefix []byte, keptKeys []string) (
 			continue // already a full snapshot
 		}
 		version := historyVersionFromKey([]byte(k))
-		if _, anchorKept := keptVersions[storepkg.AnchorVersionFor(version)]; anchorKept {
+		if _, anchorKept := keptVersions[storepkg.AnchorVersionFor(version, bs.historyAnchorInterval)]; anchorKept {
 			continue // anchor survives — the delta stays reconstructable
 		}
 		full, err := bs.materializeFullHistoryValue(isNode, id, version, raw)
@@ -318,4 +318,14 @@ func (bs *Store) materializeFullHistoryValue(isNode bool, id snowflake.ID, versi
 	}
 	storepkg.ApplyPropertyKeyTokens(w.Properties, reg)
 	return storepkg.MarshalRelWireStruct(w)
+}
+
+// resolveHistoryAnchorInterval maps the config value (0 = default) to the effective
+// anchor interval. Validation of the range happens at New via
+// validateHistoryAnchorInterval; this resolve is total (a validated 0 → default).
+func resolveHistoryAnchorInterval(configured int) uint64 {
+	if configured <= 0 {
+		return storepkg.DefaultHistoryAnchorInterval
+	}
+	return uint64(configured) // #nosec G115 — validated in [2,4096] at New
 }

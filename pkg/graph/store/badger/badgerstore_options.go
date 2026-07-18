@@ -71,6 +71,9 @@ const (
 // validateTuningConfig rejects out-of-range per-instance footprint knobs. Zero
 // means "keep Badger's stock default" for every knob and always validates.
 func validateTuningConfig(cfg Config) error {
+	if err := validateHistoryAnchorInterval(cfg.HistoryAnchorInterval); err != nil {
+		return err
+	}
 	if cfg.ValueLogFileSize != 0 &&
 		(cfg.ValueLogFileSize < minValueLogFileSize || cfg.ValueLogFileSize > maxValueLogFileSize) {
 		return fmt.Errorf("graph: ValueLogFileSize %d out of range [1MB, 2GB)", cfg.ValueLogFileSize)

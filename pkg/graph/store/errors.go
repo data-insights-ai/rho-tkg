@@ -93,6 +93,14 @@ var (
 	// binary; never strip the marker by hand.
 	ErrWireFormatVersionUnsupported = errors.New("graph: on-disk wire format version not supported by this binary")
 
+	// ErrHistoryAnchorIntervalMismatch is returned at open when the configured
+	// HistoryAnchorInterval differs from the interval a store's existing delta
+	// history was written at (persisted marker). The interval is baked into the
+	// on-disk delta layout, so reading deltas at a different interval would silently
+	// reconstruct against the wrong anchor. Reopen at the original interval, or
+	// rewrite history to change it.
+	ErrHistoryAnchorIntervalMismatch = errors.New("graph: configured HistoryAnchorInterval differs from the store's persisted delta-history interval")
+
 	// ErrCorruptWire is returned when msgpack decoding of a persisted or
 	// imported row fails in a way that indicates corrupt or hostile bytes —
 	// in particular when the underlying msgpack decoder PANICS rather than

@@ -485,7 +485,7 @@ epoch choice). A single missed bump site = a stale column served = SILENT WRONG 
 Also weigh vs BACKLOG 3's bulk-decode substrate (make cold builds cheap, no cache) — that may
 be the better lever than patching the cache.
 
-### 4c. B6 `HistoryAnchorInterval` → config, WITH a persisted compat marker (LOW value)
+### 4c. B6 `HistoryAnchorInterval` → config, WITH a persisted compat marker — ✅ SHIPPED (mechanism; default stays 16 pending a sweep)
 **Problem:** the anchor spacing is a hardcoded `const = 16` (`storeutil/wire_history_delta.go:41`),
 never swept (8/32/64) against the 39% figure.
 **Sharp edge (why not a trivial config field):** the interval is baked into the ON-DISK delta

@@ -203,6 +203,17 @@ type Config struct {
 	// anchors; new deltas carry a 1-byte 'D' tag). Opt-in (default false) while the
 	// path soaks; the current row (0x01/0x02) is always full. See ADR-0009.
 	HistoryDeltaEncoding bool
+	// HistoryAnchorInterval overrides the anchor spacing for HistoryDeltaEncoding
+	// (0 = the default 16). A version V with V%interval == 0 is a full anchor; the
+	// rest are deltas against the nearest lower anchor. A larger interval stores more
+	// deltas per anchor (less storage, more reconstruction reads); a smaller one the
+	// reverse. **The interval is baked into the on-disk delta layout**, so a store
+	// that wrote deltas at interval N MUST be reopened at N — a persisted marker is
+	// verified at open and a mismatch FAILS CLOSED (ErrHistoryAnchorIntervalMismatch),
+	// because a delta reconstructed against the wrong anchor is a SILENT misread. To
+	// change it on an existing delta store, rewrite history (not an inline migration).
+	// Validated at New: 0 or in [2, 4096]. Moot when HistoryDeltaEncoding is off.
+	HistoryAnchorInterval int
 	// FlushInterval is the time between async write batches. Default: 100ms.
 	// Zero disables periodic flushing (manual flush only — for testing).
 	FlushInterval time.Duration
@@ -386,24 +397,25 @@ type Store struct {
 
 	// In-memory indexes (source of truth while running).
 	// Protected by idxMu for concurrent read/write access.
-	idxMu               sync.RWMutex
-	nodeIDs             map[types.NodeID]struct{} // O(1) node existence check
-	nodeHashes          map[types.NodeID]string   // current node integrity hash for live endpoint validation
-	nodeRevs            map[types.NodeID]uint64   // live node row revision for safe prefetch handoff
-	nextNodeRev         uint64
-	relIDs              map[types.RelID]struct{}                      // O(1) rel existence check
-	labelIdx            map[uint16]map[types.NodeID]struct{}          // labelToken → set(nodeID); EMPTY in labelOnDisk mode
-	labelOnDisk         bool                                          // answer label snapshots from the persisted keyspace
-	adjOnDisk           bool                                          // answer adjacency snapshots from the persisted keyspaces
-	propIdxOnDisk       bool                                          // maintain/answer property-index entries via the persisted 0x0A keyspace
-	temporalIdxOnDisk   bool                                          // maintain the persisted 0x0B raw-entry log so loadIndexesScan can rebuild without a full node fetch per entity
-	disablePlannerStats bool                                          // skip planner-stat maintenance (presence/NDV/min-max/type-class) on writes + open; the stat capabilities fail closed with ErrCapabilityNotSupported
-	historyDelta        bool                                          // store version-history rows as anchor+delta (ADR-0009); reads accept both forms regardless
-	typeIdx             map[uint16]map[types.RelID]struct{}           // relTypeToken → set(relID)
-	outIdx              map[types.NodeID]map[types.RelID]types.NodeID // startNodeID → relID → endNodeID
-	inIdx               map[types.NodeID]map[types.RelID]inEdge       // endNodeID → relID → {startNodeID, typeToken}
-	relValidIdx         map[types.RelID]relValidStamp                 // relID → effective {validFrom, validTo} for inline-stamp temporal traversal; nil until lazily built on the first temporal traversal
-	relValidIdxBuilt    atomic.Bool                                   // fast-path "already built" check outside idxMu
+	idxMu                 sync.RWMutex
+	nodeIDs               map[types.NodeID]struct{} // O(1) node existence check
+	nodeHashes            map[types.NodeID]string   // current node integrity hash for live endpoint validation
+	nodeRevs              map[types.NodeID]uint64   // live node row revision for safe prefetch handoff
+	nextNodeRev           uint64
+	relIDs                map[types.RelID]struct{}                      // O(1) rel existence check
+	labelIdx              map[uint16]map[types.NodeID]struct{}          // labelToken → set(nodeID); EMPTY in labelOnDisk mode
+	labelOnDisk           bool                                          // answer label snapshots from the persisted keyspace
+	adjOnDisk             bool                                          // answer adjacency snapshots from the persisted keyspaces
+	propIdxOnDisk         bool                                          // maintain/answer property-index entries via the persisted 0x0A keyspace
+	temporalIdxOnDisk     bool                                          // maintain the persisted 0x0B raw-entry log so loadIndexesScan can rebuild without a full node fetch per entity
+	disablePlannerStats   bool                                          // skip planner-stat maintenance (presence/NDV/min-max/type-class) on writes + open; the stat capabilities fail closed with ErrCapabilityNotSupported
+	historyDelta          bool                                          // store version-history rows as anchor+delta (ADR-0009); reads accept both forms regardless
+	historyAnchorInterval uint64                                        // anchor spacing for historyDelta (>=1, default 16); baked into the on-disk layout — verified against a persisted marker at open
+	typeIdx               map[uint16]map[types.RelID]struct{}           // relTypeToken → set(relID)
+	outIdx                map[types.NodeID]map[types.RelID]types.NodeID // startNodeID → relID → endNodeID
+	inIdx                 map[types.NodeID]map[types.RelID]inEdge       // endNodeID → relID → {startNodeID, typeToken}
+	relValidIdx           map[types.RelID]relValidStamp                 // relID → effective {validFrom, validTo} for inline-stamp temporal traversal; nil until lazily built on the first temporal traversal
+	relValidIdxBuilt      atomic.Bool                                   // fast-path "already built" check outside idxMu
 
 	// Transaction-time membership sidecars (store.LabelTxMembershipCapability /
 	// RelTypeTxMembershipCapability). labelTxMembers maps a label token to the set
@@ -748,6 +760,10 @@ func New(cfg Config) (*Store, error) {
 		_ = db.Close() // best-effort cleanup
 		return nil, err
 	}
+	if err := verifyAndStampHistoryAnchorInterval(db, resolveHistoryAnchorInterval(cfg.HistoryAnchorInterval), cfg.HistoryDeltaEncoding, cfg.ReadOnly); err != nil {
+		_ = db.Close() // best-effort cleanup
+		return nil, err
+	}
 
 	capacity := cfg.CacheCapacity
 	if capacity <= 0 {
@@ -813,6 +829,7 @@ func New(cfg Config) (*Store, error) {
 		temporalIdxOnDisk:       cfg.TemporalIndexOnDisk,
 		disablePlannerStats:     cfg.DisablePlannerStats,
 		historyDelta:            cfg.HistoryDeltaEncoding,
+		historyAnchorInterval:   resolveHistoryAnchorInterval(cfg.HistoryAnchorInterval),
 		readOnly:                cfg.ReadOnly,
 		syncWrites:              cfg.SyncWrites && !cfg.ReadOnly,
 		logEnabled:              cfg.ChangeLog && !cfg.ReadOnly,
