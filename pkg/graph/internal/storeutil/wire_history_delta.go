@@ -34,21 +34,27 @@ import (
 // replica compute the same delta bytes from LSN-ordered-identical (anchor, target)
 // inputs. Diff therefore sorts ps/pr by a total identity order.
 
-// HistoryAnchorInterval is the version spacing between full anchors. A version V
-// with V%HistoryAnchorInterval == 0 is stored full; the rest are deltas against
-// the nearest lower anchor (V - V%HistoryAnchorInterval). Random-access
-// reconstruction is bounded to two point reads (anchor + target delta).
-const HistoryAnchorInterval = 16
+// DefaultHistoryAnchorInterval is the default version spacing between full anchors
+// (badger.Config.HistoryAnchorInterval overrides it). A version V with
+// V%interval == 0 is stored full; the rest are deltas against the nearest lower
+// anchor (V - V%interval). Random-access reconstruction is bounded to two point reads
+// (anchor + target delta). The interval is baked into the on-disk delta layout, so a
+// store that wrote deltas at one interval MUST be reopened at the same interval — the
+// badger store persists a marker and fails closed on a mismatch (a delta reconstructed
+// against the wrong anchor would be a SILENT misread).
+const DefaultHistoryAnchorInterval = 16
 
 // historyDeltaTag prefixes a delta history value. 'D' (0x44) can never be the
 // first byte of a msgpack map, so it disambiguates delta from anchor/legacy.
 const historyDeltaTag = 'D'
 
-// AnchorVersionFor returns the anchor version governing version v.
-func AnchorVersionFor(v uint64) uint64 { return v - v%HistoryAnchorInterval }
+// AnchorVersionFor returns the anchor version governing version v at the given anchor
+// interval (caller guarantees interval >= 1).
+func AnchorVersionFor(v, interval uint64) uint64 { return v - v%interval }
 
-// IsAnchorVersion reports whether version v is stored as a full anchor.
-func IsAnchorVersion(v uint64) bool { return v%HistoryAnchorInterval == 0 }
+// IsAnchorVersion reports whether version v is stored as a full anchor at the given
+// interval (caller guarantees interval >= 1).
+func IsAnchorVersion(v, interval uint64) bool { return v%interval == 0 }
 
 // HistoryKind classifies a raw history value's storage form.
 type HistoryKind uint8

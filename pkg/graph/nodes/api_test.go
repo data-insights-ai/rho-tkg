@@ -387,6 +387,12 @@ func (s *nodeOpsSpy) NodeMutationEpoch() uint64 {
 	return 0
 }
 
+func (s *nodeOpsSpy) NodeLabelMutationEpoch(label string) uint64 {
+	s.record("NodeLabelMutationEpoch")
+	s.lastLabel = label
+	return 0
+}
+
 func (s *nodeOpsSpy) ForEachByLabel(label string, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
 	s.record("ForEachByLabel")
 	s.lastLabel = label

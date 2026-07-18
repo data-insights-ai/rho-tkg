@@ -203,6 +203,17 @@ type Config struct {
 	// anchors; new deltas carry a 1-byte 'D' tag). Opt-in (default false) while the
 	// path soaks; the current row (0x01/0x02) is always full. See ADR-0009.
 	HistoryDeltaEncoding bool
+	// HistoryAnchorInterval overrides the anchor spacing for HistoryDeltaEncoding
+	// (0 = the default 16). A version V with V%interval == 0 is a full anchor; the
+	// rest are deltas against the nearest lower anchor. A larger interval stores more
+	// deltas per anchor (less storage, more reconstruction reads); a smaller one the
+	// reverse. **The interval is baked into the on-disk delta layout**, so a store
+	// that wrote deltas at interval N MUST be reopened at N — a persisted marker is
+	// verified at open and a mismatch FAILS CLOSED (ErrHistoryAnchorIntervalMismatch),
+	// because a delta reconstructed against the wrong anchor is a SILENT misread. To
+	// change it on an existing delta store, rewrite history (not an inline migration).
+	// Validated at New: 0 or in [2, 4096]. Moot when HistoryDeltaEncoding is off.
+	HistoryAnchorInterval int
 	// FlushInterval is the time between async write batches. Default: 100ms.
 	// Zero disables periodic flushing (manual flush only — for testing).
 	FlushInterval time.Duration
@@ -386,24 +397,25 @@ type Store struct {
 
 	// In-memory indexes (source of truth while running).
 	// Protected by idxMu for concurrent read/write access.
-	idxMu               sync.RWMutex
-	nodeIDs             map[types.NodeID]struct{} // O(1) node existence check
-	nodeHashes          map[types.NodeID]string   // current node integrity hash for live endpoint validation
-	nodeRevs            map[types.NodeID]uint64   // live node row revision for safe prefetch handoff
-	nextNodeRev         uint64
-	relIDs              map[types.RelID]struct{}                      // O(1) rel existence check
-	labelIdx            map[uint16]map[types.NodeID]struct{}          // labelToken → set(nodeID); EMPTY in labelOnDisk mode
-	labelOnDisk         bool                                          // answer label snapshots from the persisted keyspace
-	adjOnDisk           bool                                          // answer adjacency snapshots from the persisted keyspaces
-	propIdxOnDisk       bool                                          // maintain/answer property-index entries via the persisted 0x0A keyspace
-	temporalIdxOnDisk   bool                                          // maintain the persisted 0x0B raw-entry log so loadIndexesScan can rebuild without a full node fetch per entity
-	disablePlannerStats bool                                          // skip planner-stat maintenance (presence/NDV/min-max/type-class) on writes + open; the stat capabilities fail closed with ErrCapabilityNotSupported
-	historyDelta        bool                                          // store version-history rows as anchor+delta (ADR-0009); reads accept both forms regardless
-	typeIdx             map[uint16]map[types.RelID]struct{}           // relTypeToken → set(relID)
-	outIdx              map[types.NodeID]map[types.RelID]types.NodeID // startNodeID → relID → endNodeID
-	inIdx               map[types.NodeID]map[types.RelID]inEdge       // endNodeID → relID → {startNodeID, typeToken}
-	relValidIdx         map[types.RelID]relValidStamp                 // relID → effective {validFrom, validTo} for inline-stamp temporal traversal; nil until lazily built on the first temporal traversal
-	relValidIdxBuilt    atomic.Bool                                   // fast-path "already built" check outside idxMu
+	idxMu                 sync.RWMutex
+	nodeIDs               map[types.NodeID]struct{} // O(1) node existence check
+	nodeHashes            map[types.NodeID]string   // current node integrity hash for live endpoint validation
+	nodeRevs              map[types.NodeID]uint64   // live node row revision for safe prefetch handoff
+	nextNodeRev           uint64
+	relIDs                map[types.RelID]struct{}                      // O(1) rel existence check
+	labelIdx              map[uint16]map[types.NodeID]struct{}          // labelToken → set(nodeID); EMPTY in labelOnDisk mode
+	labelOnDisk           bool                                          // answer label snapshots from the persisted keyspace
+	adjOnDisk             bool                                          // answer adjacency snapshots from the persisted keyspaces
+	propIdxOnDisk         bool                                          // maintain/answer property-index entries via the persisted 0x0A keyspace
+	temporalIdxOnDisk     bool                                          // maintain the persisted 0x0B raw-entry log so loadIndexesScan can rebuild without a full node fetch per entity
+	disablePlannerStats   bool                                          // skip planner-stat maintenance (presence/NDV/min-max/type-class) on writes + open; the stat capabilities fail closed with ErrCapabilityNotSupported
+	historyDelta          bool                                          // store version-history rows as anchor+delta (ADR-0009); reads accept both forms regardless
+	historyAnchorInterval uint64                                        // anchor spacing for historyDelta (>=1, default 16); baked into the on-disk layout — verified against a persisted marker at open
+	typeIdx               map[uint16]map[types.RelID]struct{}           // relTypeToken → set(relID)
+	outIdx                map[types.NodeID]map[types.RelID]types.NodeID // startNodeID → relID → endNodeID
+	inIdx                 map[types.NodeID]map[types.RelID]inEdge       // endNodeID → relID → {startNodeID, typeToken}
+	relValidIdx           map[types.RelID]relValidStamp                 // relID → effective {validFrom, validTo} for inline-stamp temporal traversal; nil until lazily built on the first temporal traversal
+	relValidIdxBuilt      atomic.Bool                                   // fast-path "already built" check outside idxMu
 
 	// Transaction-time membership sidecars (store.LabelTxMembershipCapability /
 	// RelTypeTxMembershipCapability). labelTxMembers maps a label token to the set
@@ -423,6 +435,19 @@ type Store struct {
 	// (the build itself runs lock-free, keyed on nodeEpoch — see
 	// ForEachDocValues). atomic so the epoch reads need no lock.
 	nodeEpoch atomic.Uint64
+	// PER-LABEL node-mutation epochs (BACKLOG 4b): a node write bumps only the epochs
+	// of the labels it carries, so a cached column for an UNRELATED label survives
+	// write-active ingest of other labels (the global nodeEpoch invalidates every
+	// label's column on any write). labelEpoch(token) = nodeLabelEpochs[token%256] +
+	// nodeEpochSalt. The sharded array (256 stripes) trades exactness for lock-free
+	// O(1): a hash collision over-invalidates two labels together (SAFE — never
+	// stale). nodeEpochSalt is bumped on the label-LESS invalidation events (Clear,
+	// retention purge) so they invalidate every label. Both counters are monotonic, so
+	// a stamp-and-recheck is a total-order freshness test (and the multi-label cache
+	// uses the monotonic SUM of member epochs). Bumped in add/removeNodePropertyKeyCounts
+	// (the ungated wrappers every node-content write funnels through, with the node).
+	nodeLabelEpochs [nodeLabelEpochStripes]atomic.Uint64
+	nodeEpochSalt   atomic.Uint64
 	// relEpoch: DISTINCT generation counter bumped on every relationship write. The
 	// expand-aggregation column path reads ADJACENCY, so its Gate-2 re-check must
 	// see edge mutations (nodeEpoch alone would wave through a torn aggregate from a
@@ -506,6 +531,15 @@ type Store struct {
 	// classify as types.ClassOther); maintained on the SAME mutation call
 	// (adjustNodePropertyKeyCounts) and rebuilt by the same loadIndexes pass.
 	propertyTypeClassCounts sync.Map // map[indexpkg.PropertyIndexKey]*typeClassCounters
+
+	// relPropertyTypeClassCounts is the RELATIONSHIP mirror of propertyTypeClassCounts
+	// (BACKLOG 5B): exact per-(relTypeToken, propertyKey) rel counts by
+	// types.PropertyTypeClass. relTypeClassContrib memoizes each rel's per-property
+	// classification by rel ID so the read-free deleteRelByInfo (which carries no
+	// property values) can decrement precisely by ID — the single delete seam. Both
+	// maintained at the full-rel-write ADD sites + rebuilt by loadIndexes.
+	relPropertyTypeClassCounts sync.Map // map[indexpkg.RelPropertyIndexKey]*typeClassCounters
+	relTypeClassContrib        sync.Map // map[snowflake.ID][]relClassEntry
 
 	// Per-label property-key NDV + exact min/max accumulators, protected by
 	// idxMu (unlike propertyKeyCounts's lock-free sync.Map — the accumulator's
@@ -739,6 +773,10 @@ func New(cfg Config) (*Store, error) {
 		_ = db.Close() // best-effort cleanup
 		return nil, err
 	}
+	if err := verifyAndStampHistoryAnchorInterval(db, resolveHistoryAnchorInterval(cfg.HistoryAnchorInterval), cfg.HistoryDeltaEncoding, cfg.ReadOnly); err != nil {
+		_ = db.Close() // best-effort cleanup
+		return nil, err
+	}
 
 	capacity := cfg.CacheCapacity
 	if capacity <= 0 {
@@ -804,6 +842,7 @@ func New(cfg Config) (*Store, error) {
 		temporalIdxOnDisk:       cfg.TemporalIndexOnDisk,
 		disablePlannerStats:     cfg.DisablePlannerStats,
 		historyDelta:            cfg.HistoryDeltaEncoding,
+		historyAnchorInterval:   resolveHistoryAnchorInterval(cfg.HistoryAnchorInterval),
 		readOnly:                cfg.ReadOnly,
 		syncWrites:              cfg.SyncWrites && !cfg.ReadOnly,
 		logEnabled:              cfg.ChangeLog && !cfg.ReadOnly,
@@ -1122,6 +1161,7 @@ func (bs *Store) loadIndexesScan() error {
 				continue
 			}
 			bs.relIDs[rid] = struct{}{}
+			bs.addRelPropertyTypeClassCounts(r) // rebuild rel type-class counters + contrib (BACKLOG 5B)
 			info := relDeleteInfoFromRelationship(r)
 			decodedRelInfo[rid] = info
 			bs.addRelationshipIndexesFromRow(info)
@@ -1768,8 +1808,9 @@ func (bs *Store) Clear() error {
 	bs.nodeHashes = make(map[types.NodeID]string)
 	bs.nodeRevs = make(map[types.NodeID]uint64)
 	bs.nextNodeRev = 0
-	bs.nodeEpoch.Add(1) // invalidate cached columns built before Clear
-	bs.relEpoch.Add(1)  // and the adjacency view (expand path)
+	bs.nodeEpoch.Add(1)     // invalidate cached columns built before Clear
+	bs.nodeEpochSalt.Add(1) // label-less event: invalidate every per-label column too (BACKLOG 4b)
+	bs.relEpoch.Add(1)      // and the adjacency view (expand path)
 	bs.docMu.Lock()
 	bs.docColumns = nil
 	bs.docColumnsMulti = nil
@@ -1809,6 +1850,14 @@ func (bs *Store) Clear() error {
 	})
 	bs.propertyTypeClassCounts.Range(func(k, _ any) bool {
 		bs.propertyTypeClassCounts.Delete(k)
+		return true
+	})
+	bs.relPropertyTypeClassCounts.Range(func(k, _ any) bool {
+		bs.relPropertyTypeClassCounts.Delete(k)
+		return true
+	})
+	bs.relTypeClassContrib.Range(func(k, _ any) bool {
+		bs.relTypeClassContrib.Delete(k)
 		return true
 	})
 	bs.propertyStats = make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyStatsAccumulator)

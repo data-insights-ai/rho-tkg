@@ -2,10 +2,12 @@ package badger
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
+	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -353,4 +355,97 @@ func TestBadgerHistoryDeltaRelDifferential(t *testing.T) {
 			t.Fatalf("RelAsOf(%d): delta != full", txAt)
 		}
 	}
+}
+
+// TestHistoryAnchorInterval_ConfiguredRoundTrips proves a non-default anchor interval
+// round-trips: versions written at interval 4 (anchors at 0,4,8,12,16) reconstruct
+// exactly after reopen at the same interval.
+func TestHistoryAnchorInterval_ConfiguredRoundTrips(t *testing.T) {
+	dir := t.TempDir()
+	id := snowflake.ID(7)
+	const versions = 18
+	func() {
+		bs, err := New(Config{Dir: dir, HistoryDeltaEncoding: true, HistoryAnchorInterval: 4})
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+		defer func() { _ = bs.Close() }()
+		for v := uint32(0); v < versions; v++ {
+			if err := bs.PutNodeVersion(types.NodeID(id), v, deltaVersionNode(id, v)); err != nil {
+				t.Fatalf("PutNodeVersion v%d: %v", v, err)
+			}
+		}
+	}()
+
+	bs, err := New(Config{Dir: dir, HistoryDeltaEncoding: true, HistoryAnchorInterval: 4})
+	if err != nil {
+		t.Fatalf("reopen at same interval: %v", err)
+	}
+	t.Cleanup(func() { _ = bs.Close() })
+	for v := uint32(0); v < versions; v++ {
+		got, err := bs.GetNodeVersion(types.NodeID(id), v)
+		if err != nil {
+			t.Fatalf("GetNodeVersion v%d: %v", v, err)
+		}
+		if !bytes.Equal(nodeWireBytes(t, got), nodeWireBytes(t, deltaVersionNode(id, v))) {
+			t.Fatalf("v%d != input at interval 4", v)
+		}
+	}
+}
+
+// TestHistoryAnchorInterval_MismatchFailsClosed is the silent-misread guard: a delta
+// store written at interval 4 must FAIL CLOSED when reopened at a different interval.
+func TestHistoryAnchorInterval_MismatchFailsClosed(t *testing.T) {
+	dir := t.TempDir()
+	id := snowflake.ID(9)
+	func() {
+		bs, err := New(Config{Dir: dir, HistoryDeltaEncoding: true, HistoryAnchorInterval: 4})
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+		defer func() { _ = bs.Close() }()
+		for v := uint32(0); v < 6; v++ {
+			if err := bs.PutNodeVersion(types.NodeID(id), v, deltaVersionNode(id, v)); err != nil {
+				t.Fatalf("PutNodeVersion v%d: %v", v, err)
+			}
+		}
+	}()
+
+	_, err := New(Config{Dir: dir, HistoryDeltaEncoding: true, HistoryAnchorInterval: 8})
+	if !errors.Is(err, storecontract.ErrHistoryAnchorIntervalMismatch) {
+		t.Fatalf("reopen at mismatched interval err = %v, want ErrHistoryAnchorIntervalMismatch", err)
+	}
+	// Reopening at the DEFAULT (16) after writing at 4 must also fail.
+	if _, err := New(Config{Dir: dir, HistoryDeltaEncoding: true}); !errors.Is(err, storecontract.ErrHistoryAnchorIntervalMismatch) {
+		t.Fatalf("reopen at default interval err = %v, want mismatch", err)
+	}
+}
+
+// TestHistoryAnchorInterval_Validation rejects an out-of-range interval at New.
+func TestHistoryAnchorInterval_Validation(t *testing.T) {
+	for _, bad := range []int{1, -1, 4097} {
+		if _, err := New(Config{Dir: t.TempDir(), HistoryAnchorInterval: bad}); err == nil {
+			t.Fatalf("New with HistoryAnchorInterval=%d succeeded, want validation error", bad)
+		}
+	}
+}
+
+// TestHistoryAnchorInterval_NoDeltaNoMarker proves the interval is NOT pinned when
+// delta encoding is off (no deltas written → no interval-dependent layout), so such a
+// store reopens at any interval without failing.
+func TestHistoryAnchorInterval_NoDeltaNoMarker(t *testing.T) {
+	dir := t.TempDir()
+	func() {
+		bs, err := New(Config{Dir: dir, HistoryAnchorInterval: 4}) // delta OFF
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+		_ = bs.Close()
+	}()
+	// A non-delta store never stamped a marker → reopen at a different interval is fine.
+	bs, err := New(Config{Dir: dir, HistoryAnchorInterval: 8})
+	if err != nil {
+		t.Fatalf("reopen non-delta store at different interval failed: %v", err)
+	}
+	_ = bs.Close()
 }

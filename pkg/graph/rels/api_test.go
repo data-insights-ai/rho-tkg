@@ -467,6 +467,13 @@ func (s *relOpsSpy) ForEachByTypePropertyRangeOrdered(typeName, propKey string, 
 	return s.err
 }
 
+func (s *relOpsSpy) RangeCardinality(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
+	s.record("RangeCardinality")
+	s.lastType = typeName
+	s.lastOpts = opts
+	return 0, false, s.err
+}
+
 func (s *relOpsSpy) ForEachByTypePropertyPrefix(typeName, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
 	s.record("ForEachByTypePropertyPrefix")
 	s.lastType = typeName

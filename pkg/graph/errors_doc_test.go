@@ -196,6 +196,7 @@ var replicationSentinels = []string{
 var capabilitySentinels = []string{
 	"ErrCapabilityNotSupported",
 	"ErrWireFormatVersionUnsupported",
+	"ErrHistoryAnchorIntervalMismatch",
 	"ErrTxDone",
 }
 

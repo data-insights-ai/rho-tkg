@@ -18,6 +18,14 @@ import (
 // the serial forEachNodeBulk path.
 const parallelDecodeMinIDs = 2048
 
+// parallelDecodeBatch bounds how many misses' raw value bytes are staged at once: the
+// serial pass copies up to this many, the workers decode them, then the buffer is
+// reused for the next batch. This caps the collector's TRANSIENT memory (raw bytes)
+// to O(batch) instead of O(all misses) — the decoded nodes are the caller's result
+// and are inherently O(N), but the raw-byte staging need not be. Large enough that the
+// per-batch goroutine fan-out is amortized.
+const parallelDecodeBatch = 8192
+
 // decodeJob carries a badger miss to be decoded off-thread, tagged with its output slot.
 type decodeJob struct {
 	idx int
@@ -80,6 +88,15 @@ func (bs *Store) collectNodesBulkParallel(ids []types.NodeID) ([]*types.Node, er
 				return fmt.Errorf("graph: read node value: %w", cerr)
 			}
 			jobs = append(jobs, decodeJob{idx: i, id: id, raw: raw})
+			// Flush a full batch: decode it in parallel, then reuse the buffer so the
+			// staged raw bytes stay bounded (jobs[:0] keeps the array; the decoded
+			// batch's raw slices become unreferenced and GC-able).
+			if len(jobs) >= parallelDecodeBatch {
+				if derr := bs.decodeJobsParallel(jobs, results); derr != nil {
+					return derr
+				}
+				jobs = jobs[:0]
+			}
 		}
 		return nil
 	})
@@ -87,6 +104,7 @@ func (bs *Store) collectNodesBulkParallel(ids []types.NodeID) ([]*types.Node, er
 		return nil, err
 	}
 
+	// Final partial batch (raw bytes are copies, valid after the txn closed).
 	if derr := bs.decodeJobsParallel(jobs, results); derr != nil {
 		return nil, derr
 	}

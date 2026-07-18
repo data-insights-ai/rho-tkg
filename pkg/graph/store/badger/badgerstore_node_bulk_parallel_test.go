@@ -242,3 +242,93 @@ func TestCollectNodesBulkParallel_DecodeErrorSurfaces(t *testing.T) {
 		t.Fatal("collectNodesBulkParallel over a corrupt node returned nil error — a decode failure must surface, not be silently dropped")
 	}
 }
+
+// TestAllNodes_ParallelPathEquivalence exercises the wired AllNodes parallel path:
+// an unbounded whole-graph scan whose candidate count crosses parallelDecodeMinIDs
+// routes through parallel decode and must return the same set as a serial reference.
+func TestAllNodes_ParallelPathEquivalence(t *testing.T) {
+	bs := newTinyCacheBadgerStore(t)
+	gen := newTestGen(t, 0)
+
+	n := parallelDecodeMinIDs + 150
+	want := make(map[types.NodeID]struct{}, n)
+	for i := 0; i < n; i++ {
+		nid := types.NodeID(gen.Generate())
+		nd := types.NewNode(nid, uint16(1+i%3), nil) // spread across a few labels
+		if err := bs.PutNode(nd); err != nil {
+			t.Fatalf("PutNode: %v", err)
+		}
+		want[nid] = struct{}{}
+	}
+	if err := bs.flush(); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+
+	got, err := bs.AllNodes(store.QueryOpts{})
+	if err != nil {
+		t.Fatalf("AllNodes: %v", err)
+	}
+	if len(got) != n {
+		t.Fatalf("AllNodes returned %d, want %d", len(got), n)
+	}
+	// Every stored node present, sorted ascending, no dupes.
+	var prev types.NodeID
+	for i, nd := range got {
+		if _, ok := want[nd.ID()]; !ok {
+			t.Fatalf("AllNodes returned unexpected node %d", nd.ID().SnowflakeID())
+		}
+		if i > 0 && nd.ID().SnowflakeID() <= prev.SnowflakeID() {
+			t.Fatalf("AllNodes not sorted ascending at %d", i)
+		}
+		prev = nd.ID()
+	}
+}
+
+// TestCollectNodesBulkParallel_MultiBatch exercises the batched raw-byte staging:
+// more cache-missed nodes than parallelDecodeBatch forces multiple decode batches
+// (buffer reuse), and the result must still equal the serial reference exactly.
+func TestCollectNodesBulkParallel_MultiBatch(t *testing.T) {
+	bs := newTinyCacheBadgerStore(t) // CacheCapacity 1 → all post-flush reads miss
+	gen := newTestGen(t, 0)
+
+	n := 2*parallelDecodeBatch + 500 // spans 3 batches
+	ids := make([]types.NodeID, 0, n)
+	for i := 0; i < n; i++ {
+		nid := types.NodeID(gen.Generate())
+		nd := types.NewNode(nid, 1, nil)
+		if err := nd.SetProperty("seq", int64(i)); err != nil {
+			t.Fatalf("SetProperty: %v", err)
+		}
+		if err := bs.PutNode(nd); err != nil {
+			t.Fatalf("PutNode: %v", err)
+		}
+		ids = append(ids, nid)
+	}
+	if err := bs.flush(); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+
+	var serial []*types.Node
+	if err := bs.forEachNodeBulk(ids, func(nd *types.Node) bool {
+		serial = append(serial, nd)
+		return true
+	}); err != nil {
+		t.Fatalf("forEachNodeBulk: %v", err)
+	}
+	parallel, err := bs.collectNodesBulkParallel(ids)
+	if err != nil {
+		t.Fatalf("collectNodesBulkParallel: %v", err)
+	}
+	if len(parallel) != len(serial) || len(parallel) != n {
+		t.Fatalf("multi-batch parallel = %d, serial = %d, want %d", len(parallel), len(serial), n)
+	}
+	for i := range serial {
+		if parallel[i].ID() != serial[i].ID() {
+			t.Fatalf("order mismatch at %d (batch boundary bug?)", i)
+		}
+		ps, _ := parallel[i].GetProperty("seq")
+		if ps != int64(i) {
+			t.Fatalf("seq mismatch at %d: got %v", i, ps)
+		}
+	}
+}

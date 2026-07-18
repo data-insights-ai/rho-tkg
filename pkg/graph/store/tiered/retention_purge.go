@@ -16,9 +16,27 @@ var (
 // PurgeNodesByLabelBefore hard-removes aged-out nodes of a label across every tiered
 // shard (ADR-0008 R4, ByAge). See purgeNodesFanOut for the split-write mechanism.
 func (ts *Store) PurgeNodesByLabelBefore(labelToken uint16, before types.Instant, chunk int) (storecontract.RetentionPurgeResult, error) {
-	return ts.purgeNodesFanOut(func(shard *BadgerStore) (storecontract.RetentionPurgeResult, error) {
+	if err := ts.checkOpen(); err != nil {
+		return storecontract.RetentionPurgeResult{}, err
+	}
+	// Fast path (ADR-0008 R4 optimization): physically DROP wholly-aged-out
+	// single-label event shards instead of row-scanning them (see fastDropEligibleShards
+	// — ByAge + change-log-off only). Runs on the first chunked call; subsequent calls
+	// find those shards already gone and the row scan drains the rest.
+	dropResult, err := ts.fastDropEligibleShards(labelToken, before)
+	if err != nil {
+		return storecontract.RetentionPurgeResult{}, err
+	}
+	scanResult, err := ts.purgeNodesFanOut(func(shard *BadgerStore) (storecontract.RetentionPurgeResult, error) {
 		return shard.PurgeNodesByLabelBefore(labelToken, before, chunk)
 	})
+	if err != nil {
+		return scanResult, err
+	}
+	scanResult.NodesPurged += dropResult.NodesPurged
+	scanResult.RelsPurged += dropResult.RelsPurged
+	scanResult.PurgedNodeIDs = append(scanResult.PurgedNodeIDs, dropResult.PurgedNodeIDs...)
+	return scanResult, nil
 }
 
 // PurgeNodesByLabelValidToBefore hard-removes nodes whose world-time validity ended

@@ -70,6 +70,7 @@ func (ms *Store) PutRelationship(r *types.Relationship) error {
 	ms.inIdx[endID][id] = struct{}{}
 
 	indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID()) // K3b
+	ms.adjustRelPropertyTypeClassCounts(r, 1)
 	return ms.logRelPutLocked(r, false)
 }
 
@@ -148,6 +149,7 @@ func (ms *Store) PutRelationshipGeneratedIDWithEndpointHashes(r *types.Relations
 	ms.inIdx[endID][id] = struct{}{}
 
 	indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID()) // K3b
+	ms.adjustRelPropertyTypeClassCounts(r, 1)
 	if err := ms.logRelPutLocked(r, false); err != nil {
 		return "", "", err
 	}
@@ -206,8 +208,10 @@ func (ms *Store) ReplaceRelationship(r *types.Relationship) error {
 	// K3b: type/endpoints are immutable, but property values can change — refresh
 	// the rel property index (remove the superseded value, add the new one).
 	indexpkg.RemoveRelFromPropertyIndexes(ms.relPropertyIndexes, old, id.SnowflakeID())
+	ms.adjustRelPropertyTypeClassCounts(old, -1)
 	ms.rels[id] = freezeRelCopy(r)
 	indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID())
+	ms.adjustRelPropertyTypeClassCounts(r, 1)
 	return ms.logRelPutLocked(r, false)
 }
 
@@ -269,6 +273,7 @@ func (ms *Store) deleteRelLocked(id types.RelID) error {
 	}
 
 	indexpkg.RemoveRelFromPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID()) // K3b
+	ms.adjustRelPropertyTypeClassCounts(r, -1)
 	delete(ms.rels, id)
 	return nil
 }
@@ -701,6 +706,7 @@ func (ms *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		ms.inIdx[endID][id] = struct{}{}
 
 		indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID()) // K3b
+		ms.adjustRelPropertyTypeClassCounts(r, 1)
 		if err := ms.logRelPutLocked(r, false); err != nil {
 			return err
 		}

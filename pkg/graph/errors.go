@@ -41,6 +41,13 @@ var (
 // store.ErrWireFormatVersionUnsupported.
 var ErrWireFormatVersionUnsupported = storepkg.ErrWireFormatVersionUnsupported
 
+// ErrHistoryAnchorIntervalMismatch is returned at open when Config.HistoryAnchorInterval
+// differs from the interval a store's existing delta history was written at (the
+// interval is baked into the on-disk delta layout — a mismatch would silently
+// reconstruct against the wrong anchor). Reopen at the original interval, or rewrite
+// history. Aliases store.ErrHistoryAnchorIntervalMismatch.
+var ErrHistoryAnchorIntervalMismatch = storepkg.ErrHistoryAnchorIntervalMismatch
+
 // Store entity sentinels re-exported for public Graph API callers.
 // Graph methods return ErrNodeNotFound / ErrRelNotFound for missing current
 // entities (including bulk GetByIDs requests with any missing explicit ID),

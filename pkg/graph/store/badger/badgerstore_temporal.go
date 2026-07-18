@@ -64,8 +64,28 @@ func (bs *Store) filterRelIDsByTemporalPeek(ids []types.RelID, opts QueryOpts) [
 
 // fetchNodesWithTemporalFilter fetches nodes by ID and post-filters for temporal
 // match. Cache-miss candidates that were speculatively included are filtered here.
+// This is the unbounded whole-graph path (AllNodes, no Limit), so a large scan
+// decodes the badger misses ACROSS CORES (same collector + ~3x win as the label
+// scan, badgerstore_node_bulk_parallel.go); the temporal filter is applied
+// post-decode, identical set/order to the serial callback.
 func (bs *Store) fetchNodesWithTemporalFilter(ids []types.NodeID, opts QueryOpts) ([]*types.Node, error) {
 	hasTemporal := opts.ValidAt != 0 || (opts.ValidStart > 0 && opts.ValidEnd > 0)
+
+	if len(ids) >= parallelDecodeMinIDs {
+		all, err := bs.collectNodesBulkParallel(ids)
+		if err != nil {
+			return nil, err
+		}
+		nodes := make([]*types.Node, 0, len(all))
+		for _, n := range all {
+			if hasTemporal && !storepkg.MatchesTemporalFilter(n.ID().SnowflakeID(), n.Temporal(), opts) {
+				continue
+			}
+			nodes = append(nodes, n)
+		}
+		return nodes, nil
+	}
+
 	nodes := make([]*types.Node, 0, len(ids))
 	err := bs.forEachNodeBulk(ids, func(n *types.Node) bool {
 		if hasTemporal && !storepkg.MatchesTemporalFilter(n.ID().SnowflakeID(), n.Temporal(), opts) {

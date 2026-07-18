@@ -573,6 +573,12 @@ type Config struct {
 	// ignored when Store is supplied explicitly, and a no-op on the memory backend
 	// (which keeps full snapshots as the differential oracle).
 	HistoryDeltaEncoding bool
+	// HistoryAnchorInterval overrides the anchor spacing for HistoryDeltaEncoding
+	// (0 = default 16). Baked into the on-disk delta layout and pinned by a persisted
+	// marker — a mismatched reopen fails closed (ErrHistoryAnchorIntervalMismatch).
+	// Validated at New (0 or [2, 4096]); moot when HistoryDeltaEncoding is off. See
+	// badger.Config.HistoryAnchorInterval.
+	HistoryAnchorInterval int
 	// ValueLogFileSize / MemTableSize / BlockCacheSize / IndexCacheSize /
 	// NumCompactors tune Badger's per-instance footprint for the store
 	// constructed from BadgerDir/BadgerInMemory. Zero keeps Badger's stock
@@ -1435,6 +1441,7 @@ func New(config Config) (*Core, error) {
 				TemporalIndexOnDisk:   config.TemporalIndexOnDisk,
 				DisablePlannerStats:   config.DisablePlannerStats,
 				HistoryDeltaEncoding:  config.HistoryDeltaEncoding,
+				HistoryAnchorInterval: config.HistoryAnchorInterval,
 				ValueLogFileSize:      config.ValueLogFileSize,
 				MemTableSize:          config.MemTableSize,
 				BlockCacheSize:        config.BlockCacheSize,

@@ -227,6 +227,12 @@ var CompositeIndexDefsKey = MetaKey("composite_index_defs")
 // store" and is equivalent to version 1.
 var WireFormatVersionKey = MetaKey("wire_format_version")
 
+// HistoryAnchorIntervalKey is the Badger key for the persisted anchor interval used
+// by HistoryDeltaEncoding. The interval is baked into the on-disk delta layout, so a
+// mismatch between the stored marker and the configured interval fails closed at open
+// (a delta reconstructed against the wrong anchor is a silent misread).
+var HistoryAnchorIntervalKey = MetaKey("history_anchor_interval")
+
 // PropertyIndexOnDiskBuiltKey marks that the persisted 0x0A property-index
 // keyspace has been backfilled from current node state at least once (a
 // single byte, value irrelevant — presence is the signal). Absent means a

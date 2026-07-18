@@ -112,7 +112,7 @@ temporal index) needs no signature/record change.
   global merged feed. Proven by `TestTieredPurge_CrossShardEdgeSweep` (both residue shapes) +
   `TestRetentionPurge_TieredReplicaConvergence` (tiered primary → tiered replica re-executes the
   ONE predicate record, cross-shard sweep on the replica too, dangle-free, watermark advanced).
-  Optimization (later, not built — DESIGN SCOPED, deliberately deferred): a ByAge range
+  Optimization — ✅ SHIPPED (retention_purge_drop.go, drain protocol): a ByAge range
   covering a whole aged-out event shard could physically DROP the shard (close + os.RemoveAll +
   catalog remove) instead of row-scan-cascading every entity, skipping the per-row delete writes
   + their flush (the write-amplification cost). Investigation found this is NOT a quick tweak —
@@ -470,7 +470,7 @@ current bench omits), index-present == index-absent == pinned expected, on all b
 temporal-scan speedup — document it as an accelerator for closed-interval/archival labels only,
 inert for actively-updated labels, and re-bench with updated nodes to size the real win.
 
-### 4b. DocValues per-LABEL epoch (MEDIUM value)
+### 4b. DocValues per-LABEL epoch — ✅ SHIPPED
 **Problem (verified):** `badgerstore_node.go:267` bumps a GLOBAL `nodeEpoch` on every node
 write, invalidating EVERY label's cached column snapshot; each rebuild is N `GetNode`
 point-gets (`buildLabelColumns:263`). Under write-active ingest the cache is perpetually cold —
@@ -485,7 +485,7 @@ epoch choice). A single missed bump site = a stale column served = SILENT WRONG 
 Also weigh vs BACKLOG 3's bulk-decode substrate (make cold builds cheap, no cache) — that may
 be the better lever than patching the cache.
 
-### 4c. B6 `HistoryAnchorInterval` → config, WITH a persisted compat marker (LOW value)
+### 4c. B6 `HistoryAnchorInterval` → config, WITH a persisted compat marker — ✅ SHIPPED (mechanism; default stays 16 pending a sweep)
 **Problem:** the anchor spacing is a hardcoded `const = 16` (`storeutil/wire_history_delta.go:41`),
 never swept (8/32/64) against the 39% figure.
 **Sharp edge (why not a trivial config field):** the interval is baked into the ON-DISK delta
@@ -527,3 +527,57 @@ named `TagAsOf`. The `NowTx` godoc is hardened to steer polling to `PeekTx`.
 Deterministic test (floor pushed above wall via `AdvanceClock`): 1000 `PeekTx` calls
 return the floor exactly and burn ZERO instants (the next `NowTx` is floor+1), both
 backends.
+
+---
+
+## BACKLOG 5 — Rel-side ordering-soundness primitives (sigma) — rule-2 parity
+
+Handed over by sigma-tkgd 2026-07-18. Unblocks the rel ordered-top-k push-down
+(`MATCH ()-[r:T]->() ... ORDER BY r.prop [ASC|DESC] LIMIT k`) — the rel mirror of the
+node ordered push-down; sigma's framing is a ~1,313× win when the push-down is proven
+SOUND. Two independent primitives, both mirrors of shipped NODE doors (rule 2):
+
+### 5A — ✅ SHIPPED — `g.Stats().RelRangeCardinality(typeName, propKey, min, max, inclMin, inclMax, opts)`
+Mirror of the node `RangeCardinality` (`internal/core/queries.go`,
+`nodeRangeCardinalityScanner.NodeRangeCardinality`). The node version counts a numeric
+value range from the node property index; the rel version counts from the REL property
+index — which ALREADY EXISTS (`CreateRelPropertyIndex` / `maintainRelPropertyIndexes*`
+/ `index.RelPropertyIndexKey`, the substrate behind `ForEachByTypePropertyRangeOrdered`
+[4.18]). **Moderate:** new optional `store.RelRangeCardinalityCapability`
+(`RelRangeCardinality(relTypeToken, propKey, min, max, inclMin, inclMax) (int64, bool, error)`)
+over the existing rel index numeric range (memory + badger; rel indexes are RAM-only, so
+tiered/sharded DECLINE exactly as they do for the sibling ordered/prefix rel doors) +
+core (`RelOps.RangeCardinality` mirroring `NodeOps.RangeCardinality`) + `g.Stats` +
+`g.Rels`? (place beside the node door — stats). `exact` semantics identical to
+NodeRangeCardinality (indexable scalars only). Tests: rule-2 parity with the node door,
+non-temporal fast path + `ErrIndexNotFound`, exact/inexact flag.
+
+### 5B — ✅ SHIPPED — `g.Stats().RelPropertyTypeClassCounts(typeName, propKey)`
+Mirror of node `PropertyTypeClassCounts` (`NodePropertyTypeClassCountsCapability`,
+`badgerstore_type_class_counts.go`). Returns the EXACT `{Numeric, NaN, String, Bool,
+Other, Missing}` partition of a rel-type's current rels by the key's value class — the
+correctness gate for ordering soundness (an ORDER BY is sound only if the ordered class
+is unambiguous). **Substantial — no rel-side counter infrastructure exists yet.** The node
+version is maintained in the `adjustNodePropertyKeyCounts` choke (present counter + NDV +
+type-class in one call, so they never drift), persisted, rebuilt in `loadIndexes`, folded
+per-shard by tiered/sharded. The rel side needs the SAME built from scratch:
+- new `adjustRelPropertyKeyCounts` + `adjustRelPropertyTypeClassCounts` choke, called on
+  EVERY rel write (put / delete / replace / batch — audit parity with the node choke's
+  call sites), under `idxMu`;
+- persisted counters keyspace + rebuild in `loadIndexes` (a rel that survives restart must
+  restore its counts — the "if loadIndexes doesn't rebuild it, it doesn't survive" rule);
+- new optional `store.RelPropertyTypeClassCountsCapability` (memory + badger); tiered
+  folds per-shard, sharded fans out — mirror the node fold; `DisablePlannerStats` must
+  decline the rel counters too (parity with the node stat opt-out);
+- core `RelOps.PropertyTypeClassCounts` + `g.Stats` wiring; `Missing` computed graph-side
+  as rel-type count − present (mirror the node door).
+- **Sharp edge (silent-wrong):** a missed rel-write choke site = drifted counts = an
+  UNSOUND ordering push-down waved through = wrong top-k. The completeness audit of rel
+  write paths is the whole ballgame (same discipline as the node choke). Adversarial
+  tests: mixed-class rel property (int + string under one type/key) partitions exactly;
+  delete/replace adjust correctly; survives reopen; two-phase not required (current-state
+  counter) but exact-set assertions are.
+
+Effort: 5A moderate (rides existing rel index), 5B substantial (new write-path
+maintenance + persistence + rebuild + cross-backend fold). Both gate on rules 1–17,
+cross-backend parity, `-race`, `make cover`.
