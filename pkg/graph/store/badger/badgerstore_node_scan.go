@@ -1,9 +1,6 @@
 package badger
 
 import (
-	"errors"
-	"fmt"
-
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -56,29 +53,26 @@ func (bs *Store) ForEachNodeByLabel(token uint16, opts QueryOpts, fn func(*types
 	nids = bs.filterNodeIDsByTemporalPeek(nids, opts)
 	nids = storepkg.PaginateNodeIDs(nids, opts.After, 0)
 
+	// Stream via the ONE-iterator bulk substrate (forEachNodeBulk) instead of N
+	// per-node Txn.Gets — the same ~3x fetch/decode substrate NodesByLabel uses
+	// (BACKLOG 3), while keeping peak memory O(1) nodes (no slice materialization).
+	// Cache hits are served inline; misses decode from the shared iterator. The label
+	// IDs are snapshotted under idxMu ABOVE and released, so fn runs holding no idxMu
+	// (only a badger snapshot read txn) — the relaxed-isolation "fn may call back into
+	// the graph" contract of ForEachByLabel is preserved.
 	hasTemporal := storepkg.HasTemporalFilter(opts)
 	emitted := 0
-	for _, nid := range nids {
-		n, err := bs.prefetchNodeScan(nid)
-		if err != nil {
-			if errors.Is(err, ErrNodeNotFound) {
-				continue // deleted since snapshot, or orphaned index entry
-			}
-			return fmt.Errorf("graph: scan node %d: %w", nid.SnowflakeID(), err)
-		}
+	return bs.forEachNodeBulk(nids, func(n *types.Node) bool {
 		if !n.HasLabelTokenRaw(token) {
-			continue
+			return true // orphaned label-index entry — skip
 		}
-		if hasTemporal && !storepkg.MatchesTemporalFilter(nid.SnowflakeID(), n.Temporal(), opts) {
-			continue
+		if hasTemporal && !storepkg.MatchesTemporalFilter(n.ID().SnowflakeID(), n.Temporal(), opts) {
+			return true
 		}
 		if !fn(n) {
-			return nil
+			return false
 		}
 		emitted++
-		if opts.Limit > 0 && emitted >= opts.Limit {
-			return nil
-		}
-	}
-	return nil
+		return opts.Limit == 0 || emitted < opts.Limit
+	})
 }

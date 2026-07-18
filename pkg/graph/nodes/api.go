@@ -242,6 +242,27 @@ func (a *API) Iter(ctx context.Context, opts storepkg.QueryOpts) iter.Seq2[*type
 	}
 }
 
+// IterByLabel is the iter.Seq2 form of ForEachByLabel (BACKLOG 3 — the streaming
+// whole-node door for a one-shot MATCH (n:L) RETURN n): it ranges over the label's
+// nodes without materializing the result slice, riding the same bulk/parallel decode
+// substrate as ByLabel so the scan is fast while peak memory stays O(1) nodes. Row
+// ownership + isolation are identical to ForEachByLabel (shared frozen rows on a
+// trusted backend — DeepCopy before mutating; a temporal filter or a backend without
+// the streaming capability falls back to a materialized ByLabel then streams). A
+// nil/zero-value API yields a single (nil, grapherr.ErrNilGraph).
+func (a *API) IterByLabel(ctx context.Context, label string, opts storepkg.QueryOpts) iter.Seq2[*types.Node, error] {
+	return func(yield func(*types.Node, error) bool) {
+		ops, err := a.ready()
+		if err != nil {
+			yield(nil, err)
+			return
+		}
+		iterateForEach(ctx, yield, func(fn func(*types.Node) bool) error {
+			return ops.ForEachByLabel(label, opts, fn)
+		})
+	}
+}
+
 // ByLabel returns nodes carrying the given label.
 func (a *API) ByLabel(label string, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	ops, err := a.ready()
