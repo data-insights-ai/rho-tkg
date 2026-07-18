@@ -470,7 +470,7 @@ current bench omits), index-present == index-absent == pinned expected, on all b
 temporal-scan speedup — document it as an accelerator for closed-interval/archival labels only,
 inert for actively-updated labels, and re-bench with updated nodes to size the real win.
 
-### 4b. DocValues per-LABEL epoch (MEDIUM value)
+### 4b. DocValues per-LABEL epoch — ✅ SHIPPED
 **Problem (verified):** `badgerstore_node.go:267` bumps a GLOBAL `nodeEpoch` on every node
 write, invalidating EVERY label's cached column snapshot; each rebuild is N `GetNode`
 point-gets (`buildLabelColumns:263`). Under write-active ingest the cache is perpetually cold —

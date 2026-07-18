@@ -35,10 +35,12 @@ func (bs *Store) NodeCountByLabelAndPropertyKey(labelToken uint16, propertyKey s
 }
 
 func (bs *Store) addNodePropertyKeyCounts(n *types.Node) {
+	bs.bumpNodeLabelEpochs(n) // UNGATED: invalidate this node's labels' cached columns (BACKLOG 4b)
 	bs.adjustNodePropertyKeyCounts(n, 1)
 }
 
 func (bs *Store) removeNodePropertyKeyCounts(n *types.Node) {
+	bs.bumpNodeLabelEpochs(n) // UNGATED: invalidate this node's labels' cached columns (BACKLOG 4b)
 	bs.adjustNodePropertyKeyCounts(n, -1)
 }
 

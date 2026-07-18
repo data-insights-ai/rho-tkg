@@ -435,6 +435,19 @@ type Store struct {
 	// (the build itself runs lock-free, keyed on nodeEpoch — see
 	// ForEachDocValues). atomic so the epoch reads need no lock.
 	nodeEpoch atomic.Uint64
+	// PER-LABEL node-mutation epochs (BACKLOG 4b): a node write bumps only the epochs
+	// of the labels it carries, so a cached column for an UNRELATED label survives
+	// write-active ingest of other labels (the global nodeEpoch invalidates every
+	// label's column on any write). labelEpoch(token) = nodeLabelEpochs[token%256] +
+	// nodeEpochSalt. The sharded array (256 stripes) trades exactness for lock-free
+	// O(1): a hash collision over-invalidates two labels together (SAFE — never
+	// stale). nodeEpochSalt is bumped on the label-LESS invalidation events (Clear,
+	// retention purge) so they invalidate every label. Both counters are monotonic, so
+	// a stamp-and-recheck is a total-order freshness test (and the multi-label cache
+	// uses the monotonic SUM of member epochs). Bumped in add/removeNodePropertyKeyCounts
+	// (the ungated wrappers every node-content write funnels through, with the node).
+	nodeLabelEpochs [nodeLabelEpochStripes]atomic.Uint64
+	nodeEpochSalt   atomic.Uint64
 	// relEpoch: DISTINCT generation counter bumped on every relationship write. The
 	// expand-aggregation column path reads ADJACENCY, so its Gate-2 re-check must
 	// see edge mutations (nodeEpoch alone would wave through a torn aggregate from a
@@ -1795,8 +1808,9 @@ func (bs *Store) Clear() error {
 	bs.nodeHashes = make(map[types.NodeID]string)
 	bs.nodeRevs = make(map[types.NodeID]uint64)
 	bs.nextNodeRev = 0
-	bs.nodeEpoch.Add(1) // invalidate cached columns built before Clear
-	bs.relEpoch.Add(1)  // and the adjacency view (expand path)
+	bs.nodeEpoch.Add(1)     // invalidate cached columns built before Clear
+	bs.nodeEpochSalt.Add(1) // label-less event: invalidate every per-label column too (BACKLOG 4b)
+	bs.relEpoch.Add(1)      // and the adjacency view (expand path)
 	bs.docMu.Lock()
 	bs.docColumns = nil
 	bs.docColumnsMulti = nil

@@ -56,7 +56,7 @@ func (bs *Store) ForEachDocValues(labelToken uint16, propKeys []string,
 		return 0, false, nil // membership not materialized in RAM → fall back
 	}
 
-	cur := bs.nodeEpoch.Load()
+	cur := bs.labelEpoch(labelToken) // per-label epoch: survives unrelated-label writes (BACKLOG 4b)
 	bs.docMu.Lock()
 	col := bs.docColumns[labelToken]
 	bs.docMu.Unlock()
@@ -93,7 +93,7 @@ func (bs *Store) DocValuesSnapshot(labelToken uint16, propKeys []string) (snap t
 		return nil, 0, false, nil
 	}
 
-	cur := bs.nodeEpoch.Load()
+	cur := bs.labelEpoch(labelToken) // per-label epoch: survives unrelated-label writes (BACKLOG 4b)
 	bs.docMu.Lock()
 	col := bs.docColumns[labelToken]
 	bs.docMu.Unlock()
@@ -132,7 +132,7 @@ func (bs *Store) ForEachDocValuesMulti(toks []uint16, propKeys []string,
 		return 0, false, nil // membership not materialized in RAM → fall back
 	}
 
-	cur := bs.nodeEpoch.Load()
+	cur := bs.multiLabelEpoch(toks) // monotonic sum of member per-label epochs (BACKLOG 4b)
 	key := indexpkg.MultiLabelKey(toks)
 	bs.docMu.Lock()
 	col := bs.docColumnsMulti[key]
@@ -157,7 +157,7 @@ func (bs *Store) ForEachDocValuesMulti(toks []uint16, propKeys []string,
 // mirroring buildLabelColumns (lock-free, epoch-stamped, cached only if the epoch
 // held). declined=true means an empty intersection or over-cap.
 func (bs *Store) buildMultiColumns(toks []uint16, key string, requested []string) (col *indexpkg.LabelDocValues, declined bool) {
-	gen := bs.nodeEpoch.Load()
+	gen := bs.multiLabelEpoch(toks)
 
 	bs.idxMu.RLock()
 	set := bs.intersectLabelsLocked(toks)
@@ -182,7 +182,7 @@ func (bs *Store) buildMultiColumns(toks []uint16, key string, requested []string
 	col = indexpkg.BuildLabelDocValues(gen, ids, keys, bs.bulkNodePropGetter(ids))
 
 	bs.docMu.Lock()
-	if bs.nodeEpoch.Load() == gen {
+	if bs.multiLabelEpoch(toks) == gen {
 		if bs.docColumnsMulti == nil {
 			bs.docColumnsMulti = make(map[string]*indexpkg.LabelDocValues)
 		}
@@ -231,7 +231,7 @@ func (bs *Store) intersectLabelsLocked(toks []uint16) map[types.NodeID]struct{} 
 // not advance during the build (otherwise it is returned for the caller's
 // fall-back, never trusted). declined=true means the label is empty or over cap.
 func (bs *Store) buildLabelColumns(labelToken uint16, requested []string) (col *indexpkg.LabelDocValues, declined bool) {
-	gen := bs.nodeEpoch.Load()
+	gen := bs.labelEpoch(labelToken)
 
 	bs.idxMu.RLock()
 	set := bs.labelIdx[labelToken]
@@ -256,7 +256,7 @@ func (bs *Store) buildLabelColumns(labelToken uint16, requested []string) (col *
 	col = indexpkg.BuildLabelDocValues(gen, ids, keys, bs.bulkNodePropGetter(ids))
 
 	bs.docMu.Lock()
-	if bs.nodeEpoch.Load() == gen { // build saw a consistent snapshot — safe to cache
+	if bs.labelEpoch(labelToken) == gen { // build saw a consistent snapshot — safe to cache
 		if bs.docColumns == nil {
 			bs.docColumns = make(map[uint16]*indexpkg.LabelDocValues)
 		}

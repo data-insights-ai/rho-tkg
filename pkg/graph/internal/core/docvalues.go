@@ -289,6 +289,36 @@ func (n *NodeOps) NodeMutationEpoch() uint64 {
 	return scanner.NodeMutationEpoch()
 }
 
+// nodeLabelMutationEpochScanner exposes the PER-LABEL node-mutation epoch (BACKLOG 4b,
+// badger only).
+type nodeLabelMutationEpochScanner interface {
+	NodeLabelMutationEpoch(labelToken uint16) uint64
+}
+
+// NodeLabelMutationEpoch returns the per-label node-mutation epoch for label — the
+// value a single-label ForEachDocValues/DocValuesSnapshot returns as gen (BACKLOG 4b).
+// It advances ONLY when a node carrying THIS label is written (or a label-less
+// invalidation event fires), NOT on unrelated-label writes, unlike NodeMutationEpoch.
+// A Gate-2 re-check on a single-label aggregate should use this to avoid discarding a
+// still-valid result after an unrelated-label write. Returns 0 for an unknown label or
+// a store without the capability (tiered/sharded — they decline the column scanner).
+func (n *NodeOps) NodeLabelMutationEpoch(label string) uint64 {
+	c := n.c
+	scanner, native := c.store.(nodeLabelMutationEpochScanner)
+	if !native {
+		return 0
+	}
+	var tok uint16
+	var ok bool
+	if err := c.readUnderRLock(func() error {
+		tok, ok = c.lookupLabelLocked(label)
+		return nil
+	}); err != nil || !ok {
+		return 0
+	}
+	return scanner.NodeLabelMutationEpoch(tok)
+}
+
 // relMutationEpochScanner is the OPTIONAL store capability exposing the global
 // relationship-mutation epoch (memory + badger). The X5 expand-aggregation column
 // path reads adjacency, so its Gate-2 samples this to discard a torn aggregate

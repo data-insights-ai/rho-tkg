@@ -96,8 +96,12 @@ func (bs *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 		return zero, err
 	}
 	// A purge removes node AND rel rows + adjacency, so both mutation epochs must
-	// advance for consumer cache invalidation (same contract as delete doors).
+	// advance for consumer cache invalidation (same contract as delete doors). The
+	// per-label salt bump invalidates every per-label column (a purge is a rare
+	// label-scoped bulk delete — coarse invalidation is fine and belt-and-braces
+	// against a purge path that skips the per-node count wrappers). BACKLOG 4b.
 	defer bs.bumpNodeEpoch()
+	defer bs.nodeEpochSalt.Add(1)
 	defer bs.bumpRelEpoch()
 	if chunk <= 0 {
 		chunk = defaultRetentionPurgeChunk

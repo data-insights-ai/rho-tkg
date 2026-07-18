@@ -45,6 +45,7 @@ type Ops interface {
 	DocValuesSnapshotAsOf(label string, propKeys []string, txAt types.Instant) (types.NodeColumnReader, uint64, bool, error)
 	ForEachDocValuesAsOf(label string, propKeys []string, txAt types.Instant, fn func(types.NodeID, []any, []bool) bool) (uint64, bool, error)
 	NodeMutationEpoch() uint64
+	NodeLabelMutationEpoch(label string) uint64
 	ByLabelAndProperty(label, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error)
 	ByLabelAndProperties(label string, values map[string]any, opts storepkg.QueryOpts) ([]*types.Node, error)
 	Count() (int, error)
@@ -418,6 +419,20 @@ func (a *API) NodeMutationEpoch() uint64 {
 		return 0
 	}
 	return ops.NodeMutationEpoch()
+}
+
+// NodeLabelMutationEpoch returns the PER-LABEL node-mutation epoch (0 if the backend
+// lacks the DocValues capability or the label is unknown) — the value a single-label
+// DocValues result returns as gen (BACKLOG 4b). It advances only when a node carrying
+// THIS label is written, not on unrelated-label writes, so a Gate-2 re-check on a
+// single-label aggregate should use this (not NodeMutationEpoch) to avoid discarding a
+// still-valid result after an unrelated-label write.
+func (a *API) NodeLabelMutationEpoch(label string) uint64 {
+	ops, err := a.ready()
+	if err != nil {
+		return 0
+	}
+	return ops.NodeLabelMutationEpoch(label)
 }
 
 // ByLabelAndProperty returns nodes carrying the label whose property matches value.
