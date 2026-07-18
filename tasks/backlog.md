@@ -112,7 +112,7 @@ temporal index) needs no signature/record change.
   global merged feed. Proven by `TestTieredPurge_CrossShardEdgeSweep` (both residue shapes) +
   `TestRetentionPurge_TieredReplicaConvergence` (tiered primary → tiered replica re-executes the
   ONE predicate record, cross-shard sweep on the replica too, dangle-free, watermark advanced).
-  Optimization (later, not built — DESIGN SCOPED, deliberately deferred): a ByAge range
+  Optimization — ✅ SHIPPED (retention_purge_drop.go, drain protocol): a ByAge range
   covering a whole aged-out event shard could physically DROP the shard (close + os.RemoveAll +
   catalog remove) instead of row-scan-cascading every entity, skipping the per-row delete writes
   + their flush (the write-amplification cost). Investigation found this is NOT a quick tweak —

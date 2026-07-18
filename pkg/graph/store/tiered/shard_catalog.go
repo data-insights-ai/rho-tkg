@@ -233,6 +233,22 @@ func (sc *ShardCatalog) AddShard(entry ShardEntry) {
 	sc.Shards = append(sc.Shards, cloneShardEntry(entry))
 }
 
+// RemoveShard deletes the entry named `name` and reports whether it was present. Used
+// by the retention-purge cold-shard fast-drop (ADR-0008 R4 optimization), which
+// physically removes a wholly-aged-out single-label event shard. Pair with
+// snapshotShards()/restoreShards() + Save() for a transactional drop.
+func (sc *ShardCatalog) RemoveShard(name string) bool {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	for i := range sc.Shards {
+		if sc.Shards[i].Name == name {
+			sc.Shards = append(sc.Shards[:i], sc.Shards[i+1:]...)
+			return true
+		}
+	}
+	return false
+}
+
 // snapshotShards returns a deep copy of the current Shards slice. Used by
 // transactional mutators (e.g. RotateHotShard) that need to roll back
 // in-memory catalog mutations when a subsequent Save() fails.
