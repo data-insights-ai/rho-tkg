@@ -163,6 +163,7 @@ Sentinels guarding the on-disk / on-wire trust boundary: format compatibility an
 | Sentinel | Package | Meaning | Typical Doors |
 |----------|---------|---------|---------------|
 | `ErrWireFormatVersionUnsupported` | store | On-disk wire format is newer than this binary supports | `g.New()` with data directory created by newer release; per-row checked decode during `loadIndexes` |
+| `ErrHistoryAnchorIntervalMismatch` | store | Configured `HistoryAnchorInterval` differs from the interval the store's existing delta history was written at (baked into the on-disk delta layout; a mismatch would silently reconstruct against the wrong anchor) | `g.New()` reopening a delta store at a different `Config.HistoryAnchorInterval` |
 | `ErrCorruptWire` | store | msgpack decoding of a persisted, imported, or replicated row failed in a way indicating corrupt or adversarial bytes — including a recovered decoder panic (`guardMsgpackDepth` / `SafeUnmarshal`, lesson 47). The store trust boundary fails closed rather than crashing. **NOT re-exported through `pkg/graph`** under its own name — only the `ErrCorruptExport` wrapping alias is (see I/O Operations above) | `g.Replication().ChangeFeed()` / `ForEachChange()` on a corrupt `0x09` change-log record; `g.Temporal().AsOfTags()` / `ResolveAsOf()` / `TagAsOf()` on a corrupted `asof_tags` MetaKV blob; wrapped as `ErrCorruptExport` at the `g.IO().Import()` trust boundary |
 
 ## Capabilities
