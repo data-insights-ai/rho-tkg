@@ -73,3 +73,27 @@ func (bs *Store) ForEachRelByTypePropertyRangeOrdered(relTypeToken uint16, propK
 		cur = next
 	}
 }
+
+// RelRangeCardinality is the relationship mirror of NodeRangeCardinality: the count
+// of the type's relationships whose numeric propKey value lies in [min,max]
+// (inclusivity per flags), summed directly from the rel property index's sorted
+// per-value bucket sizes — O(distinct values in range), NO rel scan. exact=false
+// declines (the caller scans-and-counts) when no rel property index exists for
+// (relType, propKey) or the index is poisoned (an integer magnitude past 2^53, where
+// float64 sort keys can collide). Rel property indexes are RAM-only, so there is no
+// on-disk decline arm (unlike the node door's propIdxOnDisk). Fractional values and
+// bounds are counted exactly.
+func (bs *Store) RelRangeCardinality(relTypeToken uint16, propKey string, min, max float64, inclMin, inclMax bool) (int64, bool, error) {
+	if err := bs.checkOpen(); err != nil {
+		return 0, false, err
+	}
+	bs.idxMu.RLock()
+	idx, ok := bs.relPropertyIndexes[indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propKey}]
+	var count int64
+	exact := false
+	if ok {
+		count, exact = idx.RangeCardinality(min, max, inclMin, inclMax)
+	}
+	bs.idxMu.RUnlock()
+	return count, exact, nil
+}

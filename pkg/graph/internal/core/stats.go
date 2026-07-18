@@ -220,6 +220,13 @@ func (s *StatOps) RangeCardinality(label, propKey string, min, max float64, incl
 	return s.c.Nodes.RangeCardinality(label, propKey, min, max, inclMin, inclMax, opts)
 }
 
+// RelRangeCardinality forwards to Core.Rels.RangeCardinality — the relationship
+// mirror of RangeCardinality (rule 2). See RelOps.RangeCardinality for the contract
+// (rel property indexes are RAM-only, so tiered/sharded decline with exact=false).
+func (s *StatOps) RelRangeCardinality(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
+	return s.c.Rels.RangeCardinality(typeName, propKey, min, max, inclMin, inclMax, opts)
+}
+
 // PropertyKeyCount returns the number of distinct property keys registered
 // in the property-key registry. Useful for monitoring cardinality growth
 // against the uint16 ceiling (65535). When the registry approaches its

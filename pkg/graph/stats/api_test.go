@@ -286,6 +286,7 @@ type statsOpsSpy struct {
 	nodePropKeyCountCalls int
 	relCountByTypeCalls   int
 	rangeCardCalls        int
+	relRangeCardCalls     int
 	propertyStatsCalls    int
 	allLabelCountsCalls   int
 	allRelTypeCountsCalls int
@@ -329,6 +330,13 @@ func (s *statsOpsSpy) RangeCardinality(label, propKey string, min, max float64, 
 	s.rangeCardMax = max
 	s.rangeCardInclMin = inclMin
 	s.rangeCardInclMax = inclMax
+	return s.rangeCardCount, s.rangeCardExact, s.rangeCardErr
+}
+
+func (s *statsOpsSpy) RelRangeCardinality(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
+	s.relRangeCardCalls++
+	s.rangeCardLabel = typeName
+	s.rangeCardPropKey = propKey
 	return s.rangeCardCount, s.rangeCardExact, s.rangeCardErr
 }
 

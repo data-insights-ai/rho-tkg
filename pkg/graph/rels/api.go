@@ -40,6 +40,7 @@ type Ops interface {
 	ByTypeAndProperty(typeName, key string, value any, opts storepkg.QueryOpts) ([]*types.Relationship, error)
 	ForEachByTypePropertyRange(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 	ForEachByTypePropertyRangeOrdered(typeName, propKey string, min, max float64, inclMin, inclMax, desc bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
+	RangeCardinality(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
 	ForEachByTypePropertyPrefix(typeName, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 	Count() (int, error)
 	CountByType(typeName string) (int, error)
@@ -350,6 +351,22 @@ func (a *API) ForEachByTypePropertyRangeOrdered(typeName, propKey string, min, m
 		return err
 	}
 	return ops.ForEachByTypePropertyRangeOrdered(typeName, propKey, min, max, inclMin, inclMax, desc, opts, fn)
+}
+
+// RangeCardinality returns the count of the type's relationships whose numeric
+// propKey value lies in [min,max] (inclusivity per flags), summed from the rel
+// property index's per-value bucket sizes — O(distinct values in range), NO rel
+// scan. exact=false declines (the caller scans-and-counts) when the fast path is
+// unusable: no store capability (rel indexes are RAM-only, so tiered/sharded
+// decline), no/poisoned index, or a temporal filter in opts. The relationship mirror
+// of nodes.API.RangeCardinality (rule 2) and the rel ordering-soundness primitive
+// for the ORDER BY r.prop LIMIT k push-down.
+func (a *API) RangeCardinality(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, false, err
+	}
+	return ops.RangeCardinality(typeName, propKey, min, max, inclMin, inclMax, opts)
 }
 
 // ForEachByTypePropertyPrefix streams relationships whose STRING propKey value

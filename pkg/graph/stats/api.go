@@ -49,6 +49,7 @@ type Ops interface {
 	PropertyStats(label, propertyKey string) (storepkg.PropertyStats, error)
 	RelCountByType(typeName string) (int, error)
 	RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
+	RelRangeCardinality(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
 	AllLabelCounts() (map[string]int, error)
 	AllRelTypeCounts() (map[string]int, error)
 	SnapshotCounters() (
@@ -219,6 +220,19 @@ func (a *API) RangeCardinality(label, propKey string, min, max float64, inclMin,
 		return 0, false, err
 	}
 	return ops.RangeCardinality(label, propKey, min, max, inclMin, inclMax, opts)
+}
+
+// RelRangeCardinality is the relationship mirror of RangeCardinality (rule 2): an
+// O(distinct values in range) bucket-sum count from the REL property index, with
+// exact=false when the fast path declines (no capability — rel indexes are RAM-only,
+// so tiered/sharded decline; no/poisoned index; or a temporal filter in opts). The
+// rel ordering-soundness primitive for the ORDER BY r.prop LIMIT k push-down.
+func (a *API) RelRangeCardinality(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, false, err
+	}
+	return ops.RelRangeCardinality(typeName, propKey, min, max, inclMin, inclMax, opts)
 }
 
 // AllLabelCounts returns counts per label.
