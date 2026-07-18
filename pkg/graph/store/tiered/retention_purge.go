@@ -23,7 +23,7 @@ func (ts *Store) PurgeNodesByLabelBefore(labelToken uint16, before types.Instant
 	// single-label event shards instead of row-scanning them (see fastDropEligibleShards
 	// — ByAge + change-log-off only). Runs on the first chunked call; subsequent calls
 	// find those shards already gone and the row scan drains the rest.
-	dropResult, _, err := ts.fastDropEligibleShards(labelToken, before)
+	dropResult, err := ts.fastDropEligibleShards(labelToken, before)
 	if err != nil {
 		return storecontract.RetentionPurgeResult{}, err
 	}

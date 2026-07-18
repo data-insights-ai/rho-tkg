@@ -17,8 +17,9 @@ const coldShardDrainSpinLimit = 5000
 
 // fastDropEligibleShards physically DROPS wholly-aged-out single-label event shards
 // (ADR-0008 R4 optimization) instead of row-scanning them, for a ByAge purge with the
-// change-log DISABLED. It returns the accumulated result and the set of dropped shard
-// names, so the caller's row-scan fan-out skips them.
+// change-log DISABLED. It returns the accumulated drop result; the dropped shards are
+// removed from ts.eventShards, so the caller's row-scan fan-out (forEachOpenShard)
+// naturally skips them.
 //
 // A drop replaces the per-row cascade + flush with one directory removal. Correctness
 // under concurrency rests on a DRAIN PROTOCOL (dropOneShard): a shard is unlinked from
@@ -27,11 +28,10 @@ const coldShardDrainSpinLimit = 5000
 // un-swept residue (a new edge to a purged-window node fails endpoint validation once
 // the shard is unlinked; an in-flight one is captured by the drain). Disabled under
 // change-log (dropping a shard would destroy its 0x09 log segment → replica LSN gap).
-func (ts *Store) fastDropEligibleShards(labelToken uint16, before types.Instant) (storecontract.RetentionPurgeResult, map[string]struct{}, error) {
+func (ts *Store) fastDropEligibleShards(labelToken uint16, before types.Instant) (storecontract.RetentionPurgeResult, error) {
 	var total storecontract.RetentionPurgeResult
-	dropped := make(map[string]struct{})
 	if ts.logEnabled || before <= 0 {
-		return total, dropped, nil // change-log on (log-segment loss) → row-scan
+		return total, nil // change-log on (log-segment loss) → row-scan
 	}
 	beforeTime := time.UnixMilli(int64(before))
 
@@ -53,16 +53,15 @@ func (ts *Store) fastDropEligibleShards(labelToken uint16, before types.Instant)
 	for _, es := range candidates {
 		res, ok, err := ts.dropOneShard(es, labelToken)
 		if err != nil {
-			return total, dropped, err
+			return total, err
 		}
 		if ok {
 			total.NodesPurged += res.NodesPurged
 			total.RelsPurged += res.RelsPurged
 			total.PurgedNodeIDs = append(total.PurgedNodeIDs, res.PurgedNodeIDs...)
-			dropped[es.name] = struct{}{}
 		}
 	}
-	return total, dropped, nil
+	return total, nil
 }
 
 // dropOneShard runs the drain protocol for one candidate. ok=false (no error) means
