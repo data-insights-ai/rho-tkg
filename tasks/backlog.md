@@ -537,7 +537,7 @@ Handed over by sigma-tkgd 2026-07-18. Unblocks the rel ordered-top-k push-down
 node ordered push-down; sigma's framing is a ~1,313× win when the push-down is proven
 SOUND. Two independent primitives, both mirrors of shipped NODE doors (rule 2):
 
-### 5A — `g.Stats().RelRangeCardinality(typeName, propKey, min, max, inclMin, inclMax, opts)`
+### 5A — ✅ SHIPPED — `g.Stats().RelRangeCardinality(typeName, propKey, min, max, inclMin, inclMax, opts)`
 Mirror of the node `RangeCardinality` (`internal/core/queries.go`,
 `nodeRangeCardinalityScanner.NodeRangeCardinality`). The node version counts a numeric
 value range from the node property index; the rel version counts from the REL property
@@ -552,7 +552,7 @@ core (`RelOps.RangeCardinality` mirroring `NodeOps.RangeCardinality`) + `g.Stats
 NodeRangeCardinality (indexable scalars only). Tests: rule-2 parity with the node door,
 non-temporal fast path + `ErrIndexNotFound`, exact/inexact flag.
 
-### 5B — `g.Stats().RelPropertyTypeClassCounts(typeName, propKey)`
+### 5B — ✅ SHIPPED — `g.Stats().RelPropertyTypeClassCounts(typeName, propKey)`
 Mirror of node `PropertyTypeClassCounts` (`NodePropertyTypeClassCountsCapability`,
 `badgerstore_type_class_counts.go`). Returns the EXACT `{Numeric, NaN, String, Bool,
 Other, Missing}` partition of a rel-type's current rels by the key's value class — the

@@ -507,6 +507,15 @@ type Store struct {
 	// (adjustNodePropertyKeyCounts) and rebuilt by the same loadIndexes pass.
 	propertyTypeClassCounts sync.Map // map[indexpkg.PropertyIndexKey]*typeClassCounters
 
+	// relPropertyTypeClassCounts is the RELATIONSHIP mirror of propertyTypeClassCounts
+	// (BACKLOG 5B): exact per-(relTypeToken, propertyKey) rel counts by
+	// types.PropertyTypeClass. relTypeClassContrib memoizes each rel's per-property
+	// classification by rel ID so the read-free deleteRelByInfo (which carries no
+	// property values) can decrement precisely by ID — the single delete seam. Both
+	// maintained at the full-rel-write ADD sites + rebuilt by loadIndexes.
+	relPropertyTypeClassCounts sync.Map // map[indexpkg.RelPropertyIndexKey]*typeClassCounters
+	relTypeClassContrib        sync.Map // map[snowflake.ID][]relClassEntry
+
 	// Per-label property-key NDV + exact min/max accumulators, protected by
 	// idxMu (unlike propertyKeyCounts's lock-free sync.Map — the accumulator's
 	// HyperLogLog registers and min/max fields are not atomic-friendly, and
@@ -1122,6 +1131,7 @@ func (bs *Store) loadIndexesScan() error {
 				continue
 			}
 			bs.relIDs[rid] = struct{}{}
+			bs.addRelPropertyTypeClassCounts(r) // rebuild rel type-class counters + contrib (BACKLOG 5B)
 			info := relDeleteInfoFromRelationship(r)
 			decodedRelInfo[rid] = info
 			bs.addRelationshipIndexesFromRow(info)
@@ -1809,6 +1819,14 @@ func (bs *Store) Clear() error {
 	})
 	bs.propertyTypeClassCounts.Range(func(k, _ any) bool {
 		bs.propertyTypeClassCounts.Delete(k)
+		return true
+	})
+	bs.relPropertyTypeClassCounts.Range(func(k, _ any) bool {
+		bs.relPropertyTypeClassCounts.Delete(k)
+		return true
+	})
+	bs.relTypeClassContrib.Range(func(k, _ any) bool {
+		bs.relTypeClassContrib.Delete(k)
 		return true
 	})
 	bs.propertyStats = make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyStatsAccumulator)

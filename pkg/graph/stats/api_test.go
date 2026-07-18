@@ -344,6 +344,10 @@ func (s *statsOpsSpy) PropertyTypeClassCounts(label, propertyKey string) (storep
 	return storepkg.PropertyTypeClassCounts{}, s.propertyStatsErr
 }
 
+func (s *statsOpsSpy) RelPropertyTypeClassCounts(typeName, propertyKey string) (storepkg.PropertyTypeClassCounts, error) {
+	return storepkg.PropertyTypeClassCounts{}, s.propertyStatsErr
+}
+
 func (s *statsOpsSpy) PropertyStats(label, propertyKey string) (storepkg.PropertyStats, error) {
 	s.propertyStatsCalls++
 	s.propertyStatsLabel = label

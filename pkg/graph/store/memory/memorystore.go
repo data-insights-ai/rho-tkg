@@ -104,6 +104,14 @@ type Store struct {
 	// store.NodePropertyTypeClassCountsCapability.
 	propertyTypeClassCounts map[uint16]map[string]*[types.NumPropertyTypeClasses]int64
 
+	// relPropertyTypeClassCounts is the RELATIONSHIP mirror (BACKLOG 5B): exact
+	// per-(relTypeToken, propertyKey) rel counts by class, maintained on the same rel
+	// mutation doors as the rel property index. The memory store holds live rels, so
+	// the delete path decrements with the old rel directly — no memoized-contribution
+	// sidecar (unlike badger's read-free deleteRelByInfo). Backs the optional
+	// store.RelPropertyTypeClassCountsCapability.
+	relPropertyTypeClassCounts map[uint16]map[string]*[types.NumPropertyTypeClasses]int64
+
 	// Property-key NDV + exact min/max stats — label+property → accumulator.
 	// Maintained on the SAME node-mutation doors as propertyKeyCounts (see
 	// adjustNodePropertyKeyCounts in memorystore_property_key_counts.go);
@@ -297,6 +305,7 @@ func (ms *Store) Clear() error {
 	ms.compositeIndexesByLabel = make(map[uint16][]indexpkg.CompositeIndexKey)
 	ms.propertyKeyCounts = make(map[uint16]map[string]int)
 	ms.propertyTypeClassCounts = make(map[uint16]map[string]*[types.NumPropertyTypeClasses]int64)
+	ms.relPropertyTypeClassCounts = make(map[uint16]map[string]*[types.NumPropertyTypeClasses]int64)
 	ms.propertyStats = make(map[uint16]map[string]*indexpkg.PropertyStatsAccumulator)
 	ms.temporalIndexes = make(map[uint16]*indexpkg.TemporalIndex)
 	ms.hfIndexes = make(map[uint16]*indexpkg.HighFrequencyIndex)

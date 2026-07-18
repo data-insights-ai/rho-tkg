@@ -46,6 +46,7 @@ type Ops interface {
 	NodeCountByLabel(label string) (int, error)
 	NodeCountByLabelAndPropertyKey(label, propertyKey string) (int, error)
 	PropertyTypeClassCounts(label, propertyKey string) (storepkg.PropertyTypeClassCounts, error)
+	RelPropertyTypeClassCounts(typeName, propertyKey string) (storepkg.PropertyTypeClassCounts, error)
 	PropertyStats(label, propertyKey string) (storepkg.PropertyStats, error)
 	RelCountByType(typeName string) (int, error)
 	RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
@@ -166,6 +167,21 @@ func (a *API) PropertyTypeClassCounts(label, propertyKey string) (storepkg.Prope
 		return storepkg.PropertyTypeClassCounts{}, err
 	}
 	return ops.PropertyTypeClassCounts(label, propertyKey)
+}
+
+// RelPropertyTypeClassCounts is the relationship mirror of PropertyTypeClassCounts
+// (rule 2, BACKLOG 5B): the EXACT per-(relType, property key) partition of the type's
+// current relationships by value class — the correctness gate for the rel ORDER BY
+// r.prop LIMIT k push-down (ordering is sound only when the ordered class is
+// unambiguous). Backends without store.RelPropertyTypeClassCountsCapability
+// (tiered/sharded — rel property indexes are RAM-only) return
+// store.ErrCapabilityNotSupported.
+func (a *API) RelPropertyTypeClassCounts(typeName, propertyKey string) (storepkg.PropertyTypeClassCounts, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.PropertyTypeClassCounts{}, err
+	}
+	return ops.RelPropertyTypeClassCounts(typeName, propertyKey)
 }
 
 // PropertyStats returns NDV (estimated distinct-value count via a

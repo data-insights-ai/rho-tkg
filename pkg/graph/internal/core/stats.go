@@ -177,6 +177,45 @@ func (s *StatOps) PropertyTypeClassCounts(label, propertyKey string) (storepkg.P
 	return counts, nil
 }
 
+// RelPropertyTypeClassCounts is the relationship mirror of PropertyTypeClassCounts
+// (rule 2, BACKLOG 5B): the exact per-(relType, property key) partition of the type's
+// current relationships by value class — the correctness gate for the rel ORDER BY
+// r.prop LIMIT k push-down. Missing = RelCountByType − Present. Backends without
+// store.RelPropertyTypeClassCountsCapability (tiered/sharded — rel indexes are
+// RAM-only) return storepkg.ErrCapabilityNotSupported.
+func (s *StatOps) RelPropertyTypeClassCounts(typeName, propertyKey string) (storepkg.PropertyTypeClassCounts, error) {
+	c := s.c
+	var zero storepkg.PropertyTypeClassCounts
+	if err := storepkg.ValidateIndexPropertyKey(propertyKey); err != nil {
+		return zero, err
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.closed.Load() {
+		return zero, ErrGraphClosed
+	}
+	cap, ok := c.store.(storepkg.RelPropertyTypeClassCountsCapability)
+	if !ok {
+		return zero, fmt.Errorf("%w: RelPropertyTypeClassCountsCapability", storepkg.ErrCapabilityNotSupported)
+	}
+	tok, ok := c.lookupRelTypeQueryToken(typeName)
+	if !ok {
+		return zero, nil
+	}
+	counts, err := cap.RelPropertyTypeClassCounts(tok, propertyKey)
+	if err != nil {
+		return zero, err
+	}
+	typeCount, err := c.relCountByType(tok)
+	if err != nil {
+		return zero, err
+	}
+	if missing := int64(typeCount) - counts.Present(); missing > 0 {
+		counts.Missing = missing
+	}
+	return counts, nil
+}
+
 // PropertyStats returns NDV/min/max/count planner statistics for
 // (label, propertyKey). Missing labels return a zero-value PropertyStats
 // (Count 0, NDV 0, Min/Max nil), matching NodeCountByLabelAndPropertyKey's

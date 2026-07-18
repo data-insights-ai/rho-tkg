@@ -132,6 +132,7 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		bs.setRelValidStampLocked(rd.rid, r) // inline valid-time stamp
 		bs.recordRelTypeMemberLocked(r)      // transaction-time rel-type membership
 		bs.maintainRelPropertyIndexesAdd(r, rd.id)
+		bs.addRelPropertyTypeClassCounts(r)
 
 		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.RelKey(rd.id), value: rd.data})
 		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.RelTypeIndexKey(rd.relType, rd.id)})
