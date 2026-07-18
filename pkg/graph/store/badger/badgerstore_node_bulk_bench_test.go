@@ -81,3 +81,25 @@ func BenchmarkNodeScanBulk(b *testing.B) {
 		}
 	}
 }
+
+// BenchmarkNodeScanBulkParallel measures the parallel-decode collector against the
+// serial BenchmarkNodeScanBulk above (same seed). The badger fetch stays serial; only
+// the CPU-bound msgpack decode fans across GOMAXPROCS. Gates whether parallel decode
+// is worth wiring for full unbounded label scans (measure, don't guess).
+func BenchmarkNodeScanBulkParallel(b *testing.B) {
+	bs := newBenchmarkBadgerStore(b)
+	b.Cleanup(func() { _ = bs.Close() })
+	ids := benchSeedNodesForScan(b, bs, 50_000)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		got, err := bs.collectNodesBulkParallel(ids)
+		if err != nil {
+			b.Fatalf("collectNodesBulkParallel: %v", err)
+		}
+		if len(got) != len(ids) {
+			b.Fatalf("scanned %d, want %d", len(got), len(ids))
+		}
+	}
+}

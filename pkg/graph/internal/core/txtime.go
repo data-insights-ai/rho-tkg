@@ -172,12 +172,36 @@ func (c *Core) relAsOfLocked(id types.RelID, txTime types.Instant) (*types.Relat
 // clock still dominates every historical stamp (lesson 61). A bare wall-clock
 // pin is unsafe: a burst of mutations can outrun the wall, so a slept pin can
 // land BEFORE the last write's logical stamp.
+//
+// Because each call reserves an instant, NowTx is NOT a metrics/polling read: a
+// loop that samples it inflates the commit clock and burns instants a mutation
+// would otherwise take. For observability (dashboards, health checks) use PeekTx,
+// which reads the clock without reserving.
 func (t *TempOps) NowTx() (types.Instant, error) {
 	c := t.c
 	if err := c.checkOpen(); err != nil {
 		return 0, err
 	}
 	return c.now(), nil
+}
+
+// PeekTx returns the current transaction-clock value WITHOUT reserving an instant —
+// the non-burning, observability-only sibling of NowTx. A metrics/polling loop can
+// call it as often as it likes without advancing the commit clock.
+//
+// It is DELIBERATELY NOT a sound as-of pin. The value can equal the instant a
+// concurrent mutation is about to reserve via NowTx/commit, so a read pinned at
+// PeekTx() would include or exclude that write nondeterministically. For a sound
+// pin use NowTx() (its reservation is what guarantees strict before/after
+// separation), a value returned BY a write (e.g. Tx().RunWithLSN), or a named
+// TagAsOf. PeekTx is for "roughly where is the clock now", never "snapshot exactly
+// what is committed".
+func (t *TempOps) PeekTx() (types.Instant, error) {
+	c := t.c
+	if err := c.checkOpen(); err != nil {
+		return 0, err
+	}
+	return c.peekNow(), nil
 }
 
 // AdvanceClock raises the transaction-clock floor to at least `to` and returns

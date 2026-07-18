@@ -217,6 +217,9 @@ func (c *Core) advanceCompactionWatermark(newWatermark types.Instant) error {
 	if int64(newWatermark) <= c.compactedThroughTx.Load() {
 		return nil
 	}
+	// History compaction trims old versions, which can change the as-of belief at a
+	// txAt within the compacted range — invalidate the as-of column cache.
+	c.asOfColumns.bump()
 	mk, err := c.compactionMetaKV()
 	if err != nil {
 		return err

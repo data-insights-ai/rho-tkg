@@ -392,9 +392,17 @@ scan; it MUST take `QueryOpts` so it honors the B4 valid-time envelope prune ([4
   WITH prefetch measured ~10× SLOWER (re-fills a discarded value window per seek). The naive
   "one range scan beats N Txn.Gets" intuition was WRONG until the prefetch knob was fixed by
   measurement. Single-threaded the DECODE (msgpack→Node), not the fetch txn, is the floor.
-- **Next lever (bigger win): PARALLEL decode.** The one-shot scan is decode-bound and serial;
-  fan the per-node decode across cores (M4 Max = 16). Est. multi-core speedup. Needs care:
-  frozen nodes, output ordering, cache interaction (serve hits inline, parallel-decode misses).
+- **✅ SHIPPED (increment 2) — PARALLEL decode.** `collectNodesBulkParallel` (badger): the
+  serial iterator pass SEEKS + `ValueCopy`s each cache-miss's raw bytes (txn not concurrent-safe),
+  then fans the CPU-bound decode across `GOMAXPROCS` contiguous chunks into per-node result slots.
+  Wired into `fetchNodesByLabelIDs` for unbounded (`Limit==0`) scans of `>= parallelDecodeMinIDs`
+  (2048) candidates; Limit'd scans keep the serial early-stopping door. Decode verified
+  data-parallel-safe (reads the RLock-protected property-key registry, mutates only a per-decode
+  local wire, per-node Freeze, own result slot). **MEASURED ~3× (82→27 ms/50k), +17% transient
+  memory, +2% allocs.** Correctness: parallel == serial on present/tombstoned/absent mix + wired
+  `NodesByLabel` equivalence, `-race` clean. Remaining follow-up: batched raw-byte staging to bound
+  memory for extreme scans; cache-hit-heavy scans skip the fan-out (served inline). Tiered/sharded
+  inherit it (fold per-shard through badger).
 - Remaining spread: apply the bulk substrate to `AllNodes` + the `getProp`/`GetNode` loop in
   `buildLabelColumns`/`buildMultiColumns` (speeds DocValues cold builds). Memory store already
   trivial (live objects); tiered/sharded fold per shard.
@@ -402,11 +410,17 @@ scan; it MUST take `QueryOpts` so it honors the B4 valid-time envelope prune ([4
   driven; the prefetch footgun proves "measure, don't guess." Cross-backend parity + `QueryOpts`
   (valid-time) correctness: the scan must return the SAME node set as `ByLabel(label, opts)`.
 
-### Sibling (same family, standing / lower priority) — as-of columnar
-`DocValuesSnapshotAsOf(label, keys, txAt)` — time-travel columnar aggregation
-(sigma `X5-temporal`). Verified vs v4.17.0: `DocValuesSnapshot` is current-state only;
-`g.Temporal()` returns as-of node STRUCTS, not columns. If a whole-node snapshot (above)
-is built, an as-of variant of BOTH closes `X5-temporal` too. Lower priority.
+### Sibling (same family) — as-of columnar — ✅ SHIPPED (and CORRECTED)
+`DocValuesSnapshotAsOf` / `ForEachDocValuesAsOf` (sigma `X5-temporal`). First shipped
+(4.19/4.20) building a THROWAWAY column set per call — which materialized the full
+as-of structs and discarded the columns, so sigma benchmarked ~3% of the row path
+(noise) and reverted. FIXED: an as-of column cache keyed by (label, txAt), invalidated
+ONLY by history rewrite (compaction / retention / truncate / backfill / past-dated
+replica apply) — a past belief is immutable under forward ingest, so the cache
+survives write-active ingest (better than the current-state cache). MEASURED ~159×
+(8.0 ms → 50 µs, repeated same-txAt SUM over 20k). The lesson: the DocValues win is a
+CACHING win, not a per-build win — an uncached columnar door is ~= the row path. See
+`internal/core/docvalues_asof_cache.go` + CHANGELOG.
 
 ### Deferred sibling (no shape yet) — dry-run constraint validation
 Already on the consumer-gated list (HP2.5). Sigma can't pin the shape until it builds the
@@ -481,7 +495,15 @@ persisting the interval as a store marker (like `wire_format_version`) and faili
 mismatched reopen. Low value (a tuning knob on an opt-in, still-soaking feature) — do only if a
 sweep shows a materially better interval.
 
-### 4d. Ingest strong-mode / IntentRecord cleanup (MEDIUM value, LOW risk)
+### 4d. Ingest strong-mode / IntentRecord cleanup (MEDIUM value, LOW risk) — ✅ DONE
+**Shipped:** the serializable `IntentRecord` codec (`EncodeIntent`/`DecodeIntent`/`wireBody`) was
+removed 2026-07-17 (verified test-only, no non-test caller — CLAUDE.md ingest section + git
+history). The load-bearing §4.5 producer pre-encode was KEPT (concurrent mode reuses it). The doc
+steering is in place (CLAUDE.md marks the single-applier strong-mode pipeline as the durable-
+`SyncWrites` fsync-amortization niche and steers throughput to concurrent mode). No code remains.
+Original analysis retained below for the record.
+
+
 **Problem (verified):** strong mode (single applier) "p8 gains nothing over p1" (CHANGELOG
 [4.14.0]); concurrent mode (self-apply, no applier/handoff/intent records) is the measured
 throughput winner. The serializable `IntentRecord` codec (`EncodeIntent`/`DecodeIntent`,
@@ -494,9 +516,14 @@ docs/adr note); (2) either wire `IntentRecord` to a real distributed producer or
 + its tests to a design note/branch rather than carrying inert code as if shipped. Low risk
 (removing verified-unused code) but doc-heavy — hence a deliberate pass, not a tail-of-session edit.
 
-### 4e. `NowTx()` observability footgun (LOW value)
-`NowTx()` (`txtime.go`) ADVANCES the commit clock (reserves an instant) — a polling/metrics loop
-inflates the clock and burns instants a mutation would take. Either add a non-reserving
-`PeekTx()` documented as OBSERVABILITY-ONLY (NOT a separating pin — it can equal a concurrent
-stamp, so using it as an as-of pin is unsound: a footgun of its own), or just harden the
-`NowTx` godoc against polling. Decide the API shape deliberately.
+### 4e. `NowTx()` observability footgun (LOW value) — ✅ DONE
+Shipped `g.Temporal().PeekTx()` — a non-reserving read of the transaction clock
+(`Core.peekNow` = `max(wall, lastInstant)` with NO CompareAndSwap), the observability
+sibling of `NowTx` for metrics/polling loops that must not burn instants. Documented
+LOUDLY (core + sub-API godoc) as NOT a sound as-of pin — it can coincide with a
+concurrent write's stamp, so pinning at it includes/excludes that write
+nondeterministically; a sound pin is `NowTx()`, a value returned BY a write, or a
+named `TagAsOf`. The `NowTx` godoc is hardened to steer polling to `PeekTx`.
+Deterministic test (floor pushed above wall via `AdvanceClock`): 1000 `PeekTx` calls
+return the floor exactly and burn ZERO instants (the next `NowTx` is floor+1), both
+backends.

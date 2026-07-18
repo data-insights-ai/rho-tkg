@@ -34,6 +34,9 @@ func (o *IOOps) ImportMerge(r io.Reader, opts tkgio.MergeOptions) error {
 	if err := c.checkOpen(); err != nil {
 		return err
 	}
+	// A merge replays arbitrary (possibly past-dated) history verbatim — discard
+	// cached as-of columns (a rolled-back merge just forces a harmless rebuild).
+	defer c.asOfColumns.bump()
 	if isNilInterfaceValue(r) {
 		return ErrNilReader
 	}

@@ -42,6 +42,21 @@ func (c *Core) now() types.Instant {
 	}
 }
 
+// peekNow reads the current transaction-clock value WITHOUT reserving an instant —
+// max(wall-now, the last handed-out floor), with NO CompareAndSwap. It is the
+// observability read behind TempOps.PeekTx: a metrics/polling loop can sample it
+// without burning instants (which c.now() would). It is NOT a sound as-of pin — the
+// returned value can equal the instant a concurrent c.now() is about to reserve, so
+// a read pinned here would include/exclude that write nondeterministically. Use
+// NowTx() (or a value returned BY a write) for a sound pin.
+func (c *Core) peekNow() types.Instant {
+	observed := c.clock().UnixMilli()
+	if last := c.lastInstant.Load(); last > observed {
+		return types.Instant(last)
+	}
+	return types.Instant(observed)
+}
+
 // advanceClockFloor raises the per-Core monotonic transaction-clock floor to at
 // least `to`, returning the resulting floor. It NEVER moves the clock backward:
 // to <= the current floor is a no-op that returns the current floor.
@@ -106,6 +121,10 @@ func (c *Core) resolveBackfillTxFrom(txFrom types.Instant) (types.Instant, error
 	if !c.allowTxBackfill {
 		return 0, ErrTxBackfillDisabled
 	}
+	// A backfill stamps a PAST transaction time, inserting a version below the
+	// forward frontier — the one primary-side write that can change an as-of belief
+	// at a past txAt. Invalidate the as-of column cache.
+	c.asOfColumns.bump()
 	return txFrom, nil
 }
 
