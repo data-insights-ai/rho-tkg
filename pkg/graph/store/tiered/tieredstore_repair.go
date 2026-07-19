@@ -11,9 +11,14 @@ import (
 
 // RepairResult holds the outcome of a cross-shard consistency repair scan.
 type RepairResult struct {
-	OrphanedInEntries     int // in/ entries without entity → deleted
-	StaleInEntries        int // in/ entries whose entity has different type/end shard → deleted
-	MissingInEntries      int // entities without in/ → re-created
+	OrphanedInEntries    int // in/ entries without entity → deleted
+	StaleInEntries       int // in/ entries whose entity has different type/end shard → deleted
+	MissingInEntries     int // entities without in/ → re-created
+	OrphanedRelEndpoints int // BACKLOG 19s: rel entities whose start or end node no longer
+	// exists anywhere → skipped and reported, NOT auto-deleted (ambiguous whether this
+	// is a genuine orphan or a transient mid-write race; deleting speculatively risks
+	// destroying a legitimate relationship on observation-window noise — see the door
+	// comment in tieredstore_repair.go's Phase 2 loop)
 	ShardsScanned         int
 	CrossShardRelsChecked int
 }
@@ -133,15 +138,22 @@ func (ts *Store) runRepairStores(stores []namedStore) (*RepairResult, error) {
 			if err != nil {
 				return nil, fmt.Errorf("repair: shard %q: read start node for rel %d: %w", ns.name, relID, err)
 			}
-			if startShard == nil {
-				return nil, fmt.Errorf("repair: shard %q: resolve start shard for rel %d: %w", ns.name, relID, ErrNodeNotFound)
-			}
 			endShard, err := ts.findNodeInAnyShardStore(endID, stores)
 			if err != nil {
 				return nil, fmt.Errorf("repair: shard %q: read end node for rel %d: %w", ns.name, relID, err)
 			}
-			if endShard == nil {
-				return nil, fmt.Errorf("repair: shard %q: resolve end shard for rel %d: %w", ns.name, relID, ErrNodeNotFound)
+			if startShard == nil || endShard == nil {
+				// A rel entity referencing a node that no longer exists
+				// anywhere (BACKLOG 19s) is a REPORTABLE finding, not a
+				// reason to abort the entire repair pass — Phase 1 already
+				// treats the symmetric case (an in/ entry with no backing
+				// entity) as an orphan to count, not an error. This can
+				// legitimately arise from the 19g crash-residue window or a
+				// concurrent node purge racing a relationship read; either
+				// way an operator running RunRepair to fix a KNOWN set of
+				// issues should not have the whole run fail on it.
+				result.OrphanedRelEndpoints++
+				continue
 			}
 
 			if startShard == endShard {

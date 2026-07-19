@@ -2751,21 +2751,42 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 - **19r. Under-commented TOCTOU defense in fanout cold-shard reclassification — real but narrow-
   window, reads as removable dead code to a future maintainer (LOW).**
   `tieredstore_read_fanout.go:26-59`.
-- **19s. `RunRepair` Phase 2 aborts the whole repair pass with a hard error when a relationship's
-  endpoint has vanished (a legitimate 19g race), instead of treating it as an orphan like Phase 1 does
-  (MEDIUM, discovered via BACKLOG 19d's adversarial concurrent-writer test, not yet reproduced in
-  isolation).** `tieredstore_repair.go:132-145`. An earlier draft of
-  `TestTieredColdShardFastDrop_ConcurrentWriters` (before it was narrowed to touch only a
-  never-purged survivor node set) had writer goroutines create relationships directly against
-  purge-target nodes; under `-race -count=10` this intermittently made `RunRepair` return
-  `resolve start shard for rel N: graph: node not found` instead of completing the repair pass and
-  accounting for the vanished-endpoint relationship the way Phase 1 already accounts for an orphaned
-  in/ entry (`OrphanedInEntries`). A relationship whose endpoint disappeared mid-write (the exact
-  cross-shard-ordering race 19g already documents and accepts) should be a REPORTABLE finding a repair
-  pass folds into its result, not a reason to abort the ENTIRE pass — an operator running `RunRepair`
-  to fix a KNOWN set of issues would have the whole run fail on an unrelated, already-expected race.
-  Needs a dedicated minimal repro (this was surfaced as a side effect of an unrelated adversarial test,
-  not isolated) before a fix is designed.
+- **19s. [FIXED — `store/tiered/tieredstore_repair.go`,
+  `store/tiered/tieredstore_repair_orphaned_endpoint_test.go`] `RunRepair` Phase 2 aborted the whole
+  repair pass with a hard error when a relationship's endpoint had vanished (a legitimate 19g race),
+  instead of treating it as an orphan like Phase 1 does (MEDIUM, discovered via BACKLOG 19d's
+  adversarial concurrent-writer test, not yet reproduced in isolation).** `tieredstore_repair.go:132-145`.
+
+  **Minimal repro constructed.** The single-shard `Store.DeleteNode` guards against deleting a node
+  with a live relationship, so "create both endpoints + the rel, then delete one endpoint" cannot be
+  driven through the public API. Mirroring `TestTieredStore_Repair_MissingIncoming`'s existing
+  technique, the repro instead writes the relationship's entity+out/ row directly via the lower-level
+  `PutRelEntityAndOut` door (no endpoint-liveness check — that validation lives one layer up, in
+  `putRelationshipLocked`) referencing an end-node ID that was never created on any shard. This is the
+  same observable state a node purge racing a concurrent relationship write would leave behind, and
+  reproduces the reported abort deterministically (`TestTieredStore_Repair_OrphanedRelEndpointDoesNotAbortPass`,
+  RED-confirmed via `git stash` — the new `RepairResult.OrphanedRelEndpoints` field is compile-load-bearing).
+
+  **Fix.** In Phase 2's endpoint-resolution block, `findNodeInAnyShardStore` returning a genuine I/O
+  error is still treated as fatal (unchanged — an operational failure must not be silently swallowed,
+  per the existing Phase-2 doc comment). But `startShard == nil || endShard == nil` (endpoint not
+  found anywhere, not an I/O error) now increments a new `RepairResult.OrphanedRelEndpoints` counter
+  and `continue`s to the next relationship, instead of returning
+  `fmt.Errorf("resolve start/end shard for rel %d: %w", ..., ErrNodeNotFound)` and aborting the whole
+  pass — mirroring exactly how Phase 1 already treats `entityStore == nil` (in/ entry with no backing
+  entity) as `OrphanedInEntries++`, not an error. Deliberately does NOT auto-delete the orphaned
+  relationship: whether this is a genuine permanent orphan or a relationship still mid-write when
+  observed is ambiguous from a repair pass's point-in-time snapshot, and speculatively deleting risks
+  destroying a legitimate relationship on observation-window noise (same caution CLAUDE.md's "Repair
+  tools don't replace correctness" lesson calls for) — an operator gets a count to investigate, not a
+  silent mutation.
+
+  **Verification.** `go build ./...` + `go vet ./...` clean. RED confirmed via `git stash push` on the
+  production file alone: `go vet` failed to compile (`result.OrphanedRelEndpoints undefined`). Popped
+  the stash, confirmed GREEN on the new test plus the full existing `TestTieredStore_Repair_*` suite
+  (5 tests, all still pass — Phase 1 and the genuine-I/O-error path are untouched).
+  `go test ./pkg/graph/store/tiered/...` clean (33s); full repo `go test ./...` clean (including
+  tutorials).
 
 ### BACKLOG 20 — Sharded backend hardening (WIP status)
 

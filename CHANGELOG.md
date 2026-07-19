@@ -83,6 +83,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   comment to `putRelationshipLocked`'s split-write branches, and a new
   `TestIncomingRelationships_SkipsPhantomInEntryFromCrashedCrossShardWrite` proving a query issued in
   the crash→repair window returns empty rather than erroring.
+- FIX — `RunRepair` Phase 2 no longer aborts the ENTIRE repair pass when a cross-shard relationship's
+  endpoint node cannot be resolved on any shard (BACKLOG 19s) — a state a node purge racing a
+  concurrent relationship write can legitimately leave behind (adjacent to the BACKLOG 19g crash
+  window), previously surfaced only as a side effect of an adversarial concurrent-writer test. Now
+  counted in a new `RepairResult.OrphanedRelEndpoints` field and skipped, mirroring how Phase 1
+  already treats an orphaned in/ entry (`OrphanedInEntries`) as a reportable finding rather than a
+  fatal error — an operator running `RunRepair` to fix a known set of issues no longer has the whole
+  run fail on an unrelated, already-expected race. Deliberately does not auto-delete the orphaned
+  relationship (ambiguous whether it's a permanent orphan or mid-write when observed). New minimal
+  repro test constructed via the same lower-level `PutRelEntityAndOut` technique
+  `TestTieredStore_Repair_MissingIncoming` already uses; full suite green.
 
 ## [4.23.0] - 2026-07-18
 
