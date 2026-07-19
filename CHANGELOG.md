@@ -75,6 +75,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `currentRelForPrefetchLocked` was already safe via its own independent rev gate (BACKLOG 18b).
   3 new regression tests (a direct mechanism-level proof plus a door-level end-to-end test through
   `DeleteRelationshipsBatch`); full suite + `-race` green.
+- DOCS/TEST — investigated BACKLOG 19g (tiered store's E→R cross-shard relationship split-write
+  appeared to have no crash-residue reconciliation). Found the reconciliation (`RunRepair` Phase 1)
+  and the read-time safety (`getUniqueRelationshipsByIDs` silently omits unresolvable relIDs rather
+  than erroring) already existed and were already correct — this was a documentation gap plus one
+  genuine test gap, not a missing-functionality bug. Added an inline crash-consistency contract
+  comment to `putRelationshipLocked`'s split-write branches, and a new
+  `TestIncomingRelationships_SkipsPhantomInEntryFromCrashedCrossShardWrite` proving a query issued in
+  the crash→repair window returns empty rather than erroring.
 
 ## [4.23.0] - 2026-07-18
 

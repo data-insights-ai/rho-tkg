@@ -2624,9 +2624,49 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   verification-only addition with no production code change, so no RED/GREEN cycle or `-race` run was
   needed — the new test passed on first run against the existing, unmodified code, which is itself the
   point: proving the safety net already works).
-- **19g. `putRelationshipLocked`'s documented E→R write ordering has no residue reconciliation on
-  crash — a durable phantom incoming-index entry with no backing entity, undetectable except via
-  manual `VerifyShard`/`RunRepair` (MEDIUM).** `tieredstore_write_rel.go:147-162`.
+- **19g. [FIXED — `store/tiered/tieredstore_write_rel.go`,
+  `store/tiered/tieredstore_write_rel_crash_residue_test.go`] `putRelationshipLocked`'s documented
+  E→R write ordering appeared to have no residue reconciliation on crash — a durable phantom
+  incoming-index entry with no backing entity, undetectable except via manual `VerifyShard`/
+  `RunRepair` (MEDIUM).** `tieredstore_write_rel.go:147-162`.
+
+  **Investigated in depth — the reconciliation and read-safety mechanisms already existed; this was a
+  documentation + test-gap finding, not a missing-functionality bug.** The existing rollback (`if err
+  := entityShard.PutRelEntityAndOut(r); err != nil { ...delete the in/ write... }`) only covers a
+  SYNCHRONOUS failure on the second write; it genuinely cannot run across a process crash between the
+  two writes, so the finding's core observation is correct. But: (1) `RunRepair`'s Phase 1 already
+  scans every shard's `IncomingIndexEntries()` and purges exactly this residue shape — proven by the
+  pre-existing `TestTieredStore_Repair_OrphanedIncoming`, which manually constructs the identical
+  scenario (a `PutRelIncoming` call with no matching entity row) and confirms `RunRepair` cleans it
+  up. (2) The read path is ALREADY safe in the crash→repair window: `IncomingRelationships` /
+  `IncomingRelationshipsForNodes` resolve relIDs through `getUniqueRelationshipsByIDs`, which tracks
+  unresolved IDs in a `pending` set and simply omits them from the returned map rather than erroring —
+  confirmed by tracing every return path in the function, none of which fails on a nonempty leftover
+  `pending`. So a phantom in/ entry never produces a wrong or crashing query result, only a (correct)
+  absent one, since the relationship never fully committed. Automatic repair-at-open was considered
+  and rejected: `RunRepair` opens every shard (including cold ones) for the whole run — running it
+  unconditionally on every `New()` would contradict the codebase's own lazy/sequential shard-access
+  discipline (the exact complaint BACKLOG 19i raises about `RunRepair` itself) and would tank startup
+  time for large stores; it is an operator-triggered admin action by design, like `VerifyShard`.
+
+  **Fix.** Added an inline crash-consistency contract comment on both split-write branches in
+  `putRelationshipLocked` (E→R and R→E/E→E), explicitly stating: what residue a crash between the two
+  writes leaves, why it's safe to read around (citing the `getUniqueRelationshipsByIDs` omission
+  behavior), and that `RunRepair` (not this door) is the reconciliation path — so a future reader
+  doesn't have to independently rediscover this by cross-referencing `tieredstore_repair.go`. Closed
+  the one genuine test gap: no test previously proved a QUERY issued in the crash→repair window
+  behaves safely (only that repair eventually cleans up, and that a pre-repair inIdx entry is
+  visible via the low-level `IncomingRelIDs` accessor — not that the door-level `IncomingRelationships`
+  query tolerates it). New `TestIncomingRelationships_SkipsPhantomInEntryFromCrashedCrossShardWrite`
+  constructs the crash residue exactly like `TestTieredStore_Repair_OrphanedIncoming`, then calls
+  `IncomingRelationships` BEFORE running repair and asserts it returns `(nil, nil)` rather than an
+  error or a phantom entry, then runs `RunRepair` afterward to confirm the residue is still
+  independently cleaned up (the query itself doesn't consume/repair it).
+
+  **Verification.** New test passes with NO logic change (only the doc comment was added) — expected,
+  since the underlying mechanism was already correct; the test closes a coverage gap, not a bug.
+  `go build ./...` + `go vet ./...` clean; `go test ./pkg/graph/store/tiered/...` clean (33s); full
+  repo `go test ./...` clean (including tutorials).
 - **19h. `TxChangeLogScope`'s per-tx shard snapshot has a documented, untested gap under rotation
   (MEDIUM).** `tieredstore_changelog.go:584-699`.
 - **19i. `RunRepair` pins EVERY shard (including all cold shards) open simultaneously for the whole

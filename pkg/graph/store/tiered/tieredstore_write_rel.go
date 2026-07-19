@@ -145,6 +145,24 @@ func (ts *Store) putRelationshipLocked(r *types.Relationship, checkDuplicate boo
 	}
 
 	// Split-write ordering per spec §12.
+	//
+	// Crash-consistency contract (BACKLOG 19g): the rollback below only covers
+	// a SYNCHRONOUS failure on the second write (e.g. a validation error) — it
+	// cannot run if the process crashes between the two writes. A crash after
+	// the first write commits durably but before the second leaves a durable
+	// residue: in the E→R branch, a phantom in/ entry on the ref shard with no
+	// backing relationship entity; in the R→E/E→E branch, an entity+out/ row
+	// with no matching in/ entry. This residue is SAFE to read around in the
+	// interim — getUniqueRelationshipsByIDs (which every incoming/outgoing
+	// query funnels through) silently omits any relID it cannot resolve to an
+	// entity row rather than erroring, so a phantom in/ entry never surfaces
+	// as a wrong or crashing query result, only as a missing one (the correct
+	// answer, since the relationship never fully committed). Reconciliation
+	// is RunRepair's job, not this door's: Phase 1 purges exactly this
+	// orphaned-in/-entry shape (see TestTieredStore_Repair_OrphanedIncoming),
+	// and Phase 2 recreates a missing in/ entry for a committed entity+out/
+	// row. Operators should run RunRepair after any non-graceful shutdown of
+	// a process that was writing cross-shard relationships.
 	if endShard == ts.refShard {
 		// E→R: reference shard (in/) first — critical path for SOC queries.
 		if err := inShard.PutRelIncoming(endID, startID, relType, relID); err != nil {
