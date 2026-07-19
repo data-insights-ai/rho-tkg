@@ -395,11 +395,13 @@ func (bs *Store) DeleteRelationshipForeignIncoming(rid types.RelID) error {
 }
 
 // RelDeleteInfo holds pre-read relationship metadata for two-phase cascade delete.
+// Rev is populated ONLY by prefetchRelDeleteInfo (0 elsewhere) — see its doc comment.
 type RelDeleteInfo struct {
 	ID      snowflake.ID
 	RelType uint16
 	StartID snowflake.ID
 	EndID   snowflake.ID
+	Rev     uint64
 }
 
 func relDeleteInfoFromRelationship(r *types.Relationship) RelDeleteInfo {
@@ -446,12 +448,35 @@ func (bs *Store) currentRelForPrefetchLocked(rid types.RelID, prefetched relPref
 	return bs.getRelLocked(rid)
 }
 
+// prefetchRelDeleteInfo prefetches a relationship's delete metadata plus the
+// relRevs value observed at prefetch time (BACKLOG 18g, mirroring
+// prefetchRelWithRev/BACKLOG 18b). The rev lets a locked TOCTOU re-check
+// detect ANY write to this specific rel ID in the prefetch→lock window —
+// including a delete-then-recreate-with-the-same-ID-but-different-endpoints
+// race (lesson 22), which relDeleteInfoStillIndexedLocked's relIDs/typeIdx
+// membership check alone cannot catch in AdjacencyIndexOnDisk mode (no RAM
+// adjacency mirror to verify endpoints against).
 func (bs *Store) prefetchRelDeleteInfo(rid types.RelID) (RelDeleteInfo, error) {
+	bs.idxMu.RLock()
+	rev := bs.relRevs[rid]
+	bs.idxMu.RUnlock()
 	r, err := bs.prefetchRel(rid)
 	if err != nil {
 		return RelDeleteInfo{}, err
 	}
-	return relDeleteInfoFromRelationship(r), nil
+	info := relDeleteInfoFromRelationship(r)
+	info.Rev = rev
+	return info, nil
+}
+
+// relDeleteInfoRevCurrentLocked reports whether info's prefetch-time rev
+// still matches the live rev for its rel ID — i.e. nothing has written to
+// (or deleted+recreated) that specific rel ID since prefetch. Caller must
+// hold bs.idxMu (read or write). info.Rev == 0 (unset by construction, e.g.
+// relDeleteInfoFromRelationship) always reports stale, forcing callers that
+// didn't capture a rev to fall back to a locked re-read.
+func (bs *Store) relDeleteInfoRevCurrentLocked(info RelDeleteInfo) bool {
+	return info.Rev != 0 && bs.relRevs[types.RelID(info.ID)] == info.Rev
 }
 
 func (bs *Store) relDeleteInfoStillIndexedLocked(info RelDeleteInfo) bool {

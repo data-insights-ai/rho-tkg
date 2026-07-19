@@ -2272,10 +2272,63 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 - **18f. Meta/registry persistence (`MetaSet`, `Save*Registry`) lacks the immediate pre-call
   `dbClosed` guard that `flush()` uses (MEDIUM, the same forever-block class CLAUDE.md calls
   "hard-won").** `badgerstore_meta.go:169,190,239,317,335`.
-- **18g. `DeleteRelationshipsBatch` staleness check skips adjacency verification entirely in
-  `AdjacencyIndexOnDisk` mode — a rel-ID-reuse-with-different-endpoints race (lesson 22's classic
-  case) orphans the new rel's real adjacency entries (MEDIUM).** `badgerstore_rel_batch.go:216-238`,
-  `badgerstore_rel.go:394-421`.
+- **18g. [FIXED — `store/badger/badgerstore_rel.go`, `store/badger/badgerstore_rel_batch.go`,
+  `store/badger/badgerstore_node_batch.go`, `store/badger/badgerstore_history_node.go`,
+  `store/badger/badgerstore_rel_delete_reuse_disk_test.go`] `DeleteRelationshipsBatch`'s staleness
+  check skipped adjacency verification entirely in `AdjacencyIndexOnDisk` mode — a rel-ID-reuse-with-
+  different-endpoints race (lesson 22's classic case) could orphan the new rel's real adjacency
+  entries (MEDIUM).** `badgerstore_rel_batch.go:216-238`, `badgerstore_rel.go:394-421`.
+
+  **Bug.** `relDeleteInfoStillIndexedLocked`'s doc comment claimed "Disk mode keeps no adjacency RAM
+  mirror to verify against; relIDs + typeIdx membership above remain the TOCTOU currency check" — but
+  that claim is false for a delete-then-recreate-with-the-same-rel-ID-but-different-endpoints race
+  (rel IDs can be caller-supplied via `AddByID`/`AddByIDIfAbsent`/`AddByIDForeignEnd`, so reuse is not
+  hypothetical). `relIDs[rid]` existing and `typeIdx[relType]` containing `rid` are BOTH still true
+  after the reused rel is recreated with the same type — the exact scenario the check exists to catch
+  is invisible to it once `!bs.adjOnDisk`'s extra `outIdx`/`inIdx` membership check is compiled out.
+  Three TOCTOU call sites relied on this alone: `DeleteRelationshipsBatch` (`badgerstore_rel_batch.go`),
+  the cascade-delete preflight (`cascadeDeleteInner` in `badgerstore_node_batch.go`), and the
+  with-history tombstone-completeness check (`validateDeleteNodeRelTombstonesLocked` in
+  `badgerstore_history_node.go`). A hit on the stale fast path would delete the REUSED relationship's
+  row while cleaning up adjacency for the STALE (original) endpoints — orphaning the reused rel's real
+  on-disk adjacency entries permanently (nothing else would ever clean them up) while writing a
+  phantom delete op for endpoints that no longer own that rel ID. The fourth TOCTOU call site,
+  `currentRelForPrefetchLocked` (used by `ReplaceRelationship`), was ALREADY safe — its
+  `relPrefetchSnapshot.rev` gate (BACKLOG 18b) wraps every call to `relDeleteInfoStillIndexedLocked`,
+  so it never reached this blind spot.
+
+  **Fix.** Added `RelDeleteInfo.Rev` (populated only by the new `prefetchRelDeleteInfo`, which now
+  also snapshots `bs.relRevs[rid]` under a brief `RLock` — mirroring `prefetchRelWithRev`/BACKLOG 18b)
+  and a new `relDeleteInfoRevCurrentLocked(info)` helper that reports whether the live rev for that
+  rel ID still matches the prefetch-time rev. `relRevs` is bumped on every create (including a
+  recreate after delete — `bumpRelRevLocked` draws from a single monotonic `nextRelRev` counter that
+  never repeats a value for the store's lifetime) and the map entry is deleted entirely on every
+  delete (`deleteRelRevLocked`), so ANY write to that specific rel ID between prefetch and the locked
+  re-check — property update, delete, or delete+recreate with a reused ID — changes what
+  `bs.relRevs[rid]` reads back as. All three vulnerable call sites now gate their fast path on
+  `bs.relDeleteInfoRevCurrentLocked(info) && bs.relDeleteInfoStillIndexedLocked(info)`, the same
+  two-check composition `currentRelForPrefetchLocked` already used successfully (just with its own
+  independent rev already in scope there). `relDeleteInfoStillIndexedLocked` itself was left
+  unchanged — the fix closes the gap at the call sites rather than inside the shared structural check,
+  so `!adjOnDisk` behavior (which was already correct) is untouched.
+
+  **Tests.** `TestRelDeleteInfoStillIndexedLocked_DiskMode_BlindToEndpointReuse` proves the
+  vulnerability directly: in `AdjacencyIndexOnDisk` mode, `relDeleteInfoStillIndexedLocked` ALONE
+  still reports a stale prefetch (endpoints 1→2) as "still indexed" after a delete+recreate with the
+  same rel ID and different endpoints (3→4) — then asserts the fix's `relDeleteInfoRevCurrentLocked`
+  correctly reports it stale. `TestRelDeleteInfoRevCurrentLocked_UnchangedRevReusesPrefetch` is the
+  non-regression counterpart (no concurrent write → both checks still pass, fast path preserved).
+  `TestDeleteRelationshipsBatch_DiskMode_ReusedIDDoesNotOrphanNewAdjacency` is the door-level
+  end-to-end regression through the real `DeleteRelationshipsBatch` door, asserting the reused
+  relationship's real adjacency (nodes 3→4) is fully cleaned and the row is gone.
+
+  RED confirmed via `git stash push` on all 4 production files (test-only diff remaining): `go vet`
+  failed to compile (`prefetched.Rev undefined`) — the test is load-bearing on the fix's new
+  field/helper, not just a behavioral assertion. Popped the stash, confirmed GREEN on all 3 new tests
+  plus the full existing `TestCurrentRelForPrefetchLocked_*` suite (BACKLOG 18b, unaffected). Full
+  `go build ./...` + `go vet ./...` clean; `go test ./pkg/graph/store/badger/...` clean (25s);
+  `go test -race ./pkg/graph/store/badger/...` clean (194s); full repo `go test ./...` clean
+  (including tutorials).
 - **18h. [FIXED — `store/badger/badgerstore_node_batch.go`,
   `store/badger/badgerstore_cascade_corruption_epoch_test.go`] `cascadeDeleteInner`'s
   corruption-fallback branch skipped per-label DocValues epoch invalidation (MEDIUM, corruption-only

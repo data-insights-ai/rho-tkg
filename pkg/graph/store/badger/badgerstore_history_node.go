@@ -483,7 +483,7 @@ func (bs *Store) validateDeleteNodeRelTombstonesLocked(nid types.NodeID, relTomb
 		}
 	}
 	for relID := range relIDs {
-		if info, ok := prefetched[relID]; ok && bs.relDeleteInfoStillIndexedLocked(info) {
+		if info, ok := prefetched[relID]; ok && bs.relDeleteInfoRevCurrentLocked(info) && bs.relDeleteInfoStillIndexedLocked(info) {
 			if _, ok := tombed[relID]; !ok {
 				return fmt.Errorf("%w: missing relationship tombstone %d", ErrInvalidStoreMutation, relID)
 			}

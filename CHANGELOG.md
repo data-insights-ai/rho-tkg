@@ -62,6 +62,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   behavior change on any currently-reachable path, confirmed by the full existing suite passing
   unchanged. `go build`/`go vet` clean; `go test ./pkg/graph/store/badger/...` and
   `go test ./pkg/graph/...` green; `go test -race ./pkg/graph/store/badger/...` green (196s).
+- FIX — `DeleteRelationshipsBatch` (and its two sibling TOCTOU sites, `cascadeDeleteInner`'s
+  preflight and `validateDeleteNodeRelTombstonesLocked`) could orphan a relationship's real adjacency
+  entries in `AdjacencyIndexOnDisk` mode when a caller-supplied rel ID was deleted and immediately
+  reused with different endpoints inside the prefetch→lock window (BACKLOG 18g, lesson 22's classic
+  rel-ID-reuse race). The disk-mode staleness fast path relied on `relIDs`+`typeIdx` membership alone
+  (`!bs.adjOnDisk`'s extra adjacency-membership check compiles out in disk mode), which stays true
+  across an endpoint-changing reuse. Fixed by adding `RelDeleteInfo.Rev` (captured by
+  `prefetchRelDeleteInfo`, mirroring `prefetchRelWithRev`/BACKLOG 18b) and gating all three sites on
+  `relDeleteInfoRevCurrentLocked` — `relRevs` changes on any write to that specific rel ID, including
+  a delete+recreate with a reused ID, closing the gap in both adjacency modes. `ReplaceRelationship`'s
+  `currentRelForPrefetchLocked` was already safe via its own independent rev gate (BACKLOG 18b).
+  3 new regression tests (a direct mechanism-level proof plus a door-level end-to-end test through
+  `DeleteRelationshipsBatch`); full suite + `-race` green.
 
 ## [4.23.0] - 2026-07-18
 

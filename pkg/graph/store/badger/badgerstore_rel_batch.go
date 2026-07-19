@@ -221,7 +221,7 @@ func (bs *Store) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
 			bs.idxMu.Unlock()
 			return ErrRelNotFound
 		}
-		if info, ok := prefetched[rid]; ok && bs.relDeleteInfoStillIndexedLocked(info) {
+		if info, ok := prefetched[rid]; ok && bs.relDeleteInfoRevCurrentLocked(info) && bs.relDeleteInfoStillIndexedLocked(info) {
 			infos[i] = info
 			continue
 		}

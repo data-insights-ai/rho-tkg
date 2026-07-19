@@ -116,7 +116,7 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePr
 	toDelete := make([]RelDeleteInfo, 0, len(relIDs))
 	orphanRelIDs := make([]types.RelID, 0)
 	for relID := range relIDs {
-		if info, ok := prefetched.rels[relID]; ok && bs.relDeleteInfoStillIndexedLocked(info) {
+		if info, ok := prefetched.rels[relID]; ok && bs.relDeleteInfoRevCurrentLocked(info) && bs.relDeleteInfoStillIndexedLocked(info) {
 			toDelete = append(toDelete, info)
 			continue
 		}
