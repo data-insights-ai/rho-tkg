@@ -15,6 +15,7 @@ import (
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	iopkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	tieredpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 )
 
 // ErrCapabilityNotSupported is the capability-missing sentinel — returned
@@ -130,6 +131,8 @@ var (
 	// Named as-of (Erkenntniszeit) tags.
 	ErrInvalidAsOfTag  = core.ErrInvalidAsOfTag
 	ErrTooManyAsOfTags = core.ErrTooManyAsOfTags
+	// HLC clock-merge seam.
+	ErrInvalidClockAdvance = core.ErrInvalidClockAdvance
 	// Unique property constraints (ADR-0002).
 	ErrUniqueViolation             = core.ErrUniqueViolation
 	ErrUniqueViolationExisting     = core.ErrUniqueViolationExisting
@@ -209,3 +212,33 @@ var (
 // accepted-then-dropped and never hung. Aliases core.ErrIngestClosed so external
 // callers can classify it with errors.Is(err, graph.ErrIngestClosed).
 var ErrIngestClosed = core.ErrIngestClosed
+
+// TieredStore reference/event ontology sentinels (ADR-0007; see CLAUDE.md's
+// TieredStore section). Reachable through THREE different sub-APIs
+// depending on which door the caller used, so they are re-exported here
+// (the central consumer surface) rather than in a single sub-API package's
+// own errors.go.
+var (
+	// ErrNotReferenceEntity is returned by g.Tier().Archive/Restore when the
+	// target entity is not a reference entity — event entities cannot be
+	// archived.
+	ErrNotReferenceEntity = tieredpkg.ErrNotReferenceEntity
+	// ErrEventPropertyIndex is returned by g.Index().CreatePropertyIndex
+	// when the target label classifies as an event label — property
+	// indexes are reference-entities-only on a tiered.Store.
+	ErrEventPropertyIndex = tieredpkg.ErrEventPropertyIndex
+	// ErrPrimaryLabelClassMutation is returned by g.Nodes().AddLabelToken /
+	// RemoveLabelToken (and their WithHistory variants) when the mutation
+	// would change the primary label's reference<->event ontology class.
+	ErrPrimaryLabelClassMutation = tieredpkg.ErrPrimaryLabelClassMutation
+)
+
+// ErrNilSession is returned by every ingest.Session method (AddNode,
+// AddRelationship, Submit, Close, ...) called on a nil *ingest.Session.
+// ingest.Session is a TYPE ALIAS for core.Session (not a wrapper), so a
+// pkg/graph caller holding a nil *ingest.Session reaches core.Session's own
+// nil-receiver guard directly — this sentinel IS reachable through the
+// public surface, unlike an internal-core-only guard. Aliases
+// core.ErrNilSession so external callers can classify it with
+// errors.Is(err, graph.ErrNilSession).
+var ErrNilSession = core.ErrNilSession

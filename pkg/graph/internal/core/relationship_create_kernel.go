@@ -94,32 +94,40 @@ func (c *Core) prepareRelCreate(typeName string, props map[string]any, startID, 
 // reflect the committed endpoint state at creation time, not whatever the
 // caller happened to hold.
 //
+// mintID mints the new relationship's ID (normally c.nextRelID) — called
+// LAZILY, only once every endpoint-existence check this ladder performs has
+// already passed, so a failed create (missing endpoint) never burns a
+// generated ID (Design Rules: "Validate before generating IDs" — the same
+// rule AddNode/AddRelationship's genesis path already honors; this ladder
+// previously received an already-minted id, minting it before validation).
+//
 // Returns useEndpointHashWrite=true when hash capture should instead be
 // delegated to the store write (endpointHashWrite capability available and
 // no constraints configured) — in that case the returned hashes are empty
 // and the kernel refreshes them from the store's reply.
-func (c *Core) relEndpointHashLadder(id types.RelID, startID, endID types.NodeID, validFrom, validTo, createdAt types.Instant) (fromHash, toHash string, useEndpointHashWrite bool, err error) {
+func (c *Core) relEndpointHashLadder(mintID func() types.RelID, startID, endID types.NodeID, validFrom, validTo, createdAt types.Instant) (id types.RelID, fromHash, toHash string, useEndpointHashWrite bool, err error) {
 	if c.constraints.Len() > 0 {
 		// Fetch live endpoints from the store under the endpoint locks so
 		// hash refresh and temporal-constraint checks see the current state.
 		liveStart, liveEnd, err := c.liveEndpointNodes(startID, endID)
 		if err != nil {
-			return "", "", false, err
+			return 0, "", "", false, err
 		}
+		id = mintID()
 		probe := c.newRelConstraintProbe(id, startID, endID, validFrom, validTo, createdAt)
 		if err := c.checkTemporalConstraints(probe, liveStart, liveEnd); err != nil {
-			return "", "", false, err
+			return 0, "", "", false, err
 		}
-		return nodeIntegrityHash(liveStart), nodeIntegrityHash(liveEnd), false, nil
+		return id, nodeIntegrityHash(liveStart), nodeIntegrityHash(liveEnd), false, nil
 	}
 	if c.endpointHashWrite != nil {
-		return "", "", true, nil
+		return mintID(), "", "", true, nil
 	}
 	fromHash, toHash, err = c.liveEndpointHashes(startID, endID)
 	if err != nil {
-		return "", "", false, err
+		return 0, "", "", false, err
 	}
-	return fromHash, toHash, false, nil
+	return mintID(), fromHash, toHash, false, nil
 }
 
 // relCreateSpec carries everything the standalone build closure needs to

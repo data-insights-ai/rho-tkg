@@ -10,7 +10,6 @@ import (
 
 	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate"
-	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -68,10 +67,14 @@ type txSnapshotKey struct {
 }
 
 // GraphTx is a mutation transaction with snapshot-based rollback.
-// It holds the graph write lock for the entire duration of the transaction,
-// blocking concurrent standalone mutations, Batch, and Snapshot operations.
-// All mutations (create, update, delete) are tracked so Rollback can restore
-// pre-transaction state.
+// Path B (v4.1.0+): it holds c.txMu for its entire lifetime — serializing
+// tx-vs-tx and tx-vs-batch — but NOT c.mu (the graph write lock) for its
+// whole duration. Each method takes c.mu briefly around its own body
+// (lockActiveCore()/lockActiveCoreWrite()), so concurrent standalone
+// mutations and reads from OTHER goroutines proceed in parallel with an open
+// tx; only entity-level conflicts block, via the existing entity-lock
+// manager. All mutations (create, update, delete) are tracked so Rollback
+// can restore pre-transaction state.
 //
 // Events are buffered during the transaction and published on Commit (after
 // c.mu.Unlock). On Rollback, buffered events are discarded.
@@ -589,6 +592,20 @@ func (tx *GraphTx) Rollback() error {
 	defer tx.g.txMu.Unlock()
 	defer tx.g.mu.Unlock()
 
+	// Rollback rewrites history via direct store calls (ReplaceNode,
+	// TruncateNodeHistory, DeleteNodeCascade, PutNodeVersion, ...), bypassing
+	// the higher-level mutation doors that normally bump this cache as they
+	// run. The tx's OWN forward mutations DID bump it correctly when they
+	// executed (they go through those same doors) — but under this graph's
+	// relaxed per-entity isolation, a concurrent reader can observe an open
+	// tx's in-flight (not-yet-committed) state and build/cache an AS-OF
+	// DocValues column reflecting it. Without this bump, rolling that state
+	// back leaves the cache stale forever at whatever (label, txAt) pin was
+	// read mid-tx (BACKLOG 14a) — every other history-rewrite site
+	// (Admin.Reset, compaction, retention purge, import/import-merge, replica
+	// apply) already bumps; Rollback was the one gap.
+	tx.g.asOfColumns.bump()
+
 	// Discard buffered events — rolled-back mutations should never reach subscribers.
 	tx.g.txEventBuffer = nil
 	tx.pendingEvents = nil
@@ -943,36 +960,59 @@ func (tx *GraphTx) restoreRelSnapshotHistory(id types.RelID, snap relSnapshot) e
 	return tx.restoreRelHistory(id, snap.history)
 }
 
+// restoreRegistries de-allocates any label/rel-type token this tx allocated —
+// UNLESS a concurrently-persisted entity has already adopted it (BACKLOG 11b).
+//
+// A tx's newly-allocated label/rel-type token is registered (and persisted)
+// immediately, before Commit — Rollback does NOT hold c.mu for the tx's whole
+// lifetime (only per-mutation, see lockActiveCoreWrite), so a concurrent
+// standalone Add can Lookup and persist an entity referencing the token before
+// this tx rolls back. Blindly de-allocating the token in that case would leave
+// the already-persisted entity's label/type dangling: the next distinct
+// name allocated anywhere reuses the freed token number, silently reassigning
+// that entity's label/type. So each newly-allocated name is reclaimed only when
+// NO current entity references its token (checked via the O(1) label/rel-type
+// counters, under the exclusive c.mu.Lock Rollback already holds — no concurrent
+// writer can be adding a NEW reference while this check runs). A referenced
+// token is left registered rather than risking corruption; the (rare) leaked
+// registry slot is a strictly better failure mode than a silently mis-labeled
+// entity.
+//
+// This is safe even with the change-log enabled BECAUSE the per-tx change-log
+// scope (store.TxChangeLogScope) discarded the tx's buffered records on
+// rollback — the rolled-back tx emitted NOTHING, so no durable feed record
+// references a token this function does end up de-allocating. (Before the
+// per-tx buffer existed, the tx body's puts emitted records in-backend
+// immediately, so de-allocating here poisoned the feed and stalled replicas —
+// lesson 55; the append-only STOPGAP that guarded this is now superseded by
+// the buffer for the tx path.)
 func (tx *GraphTx) restoreRegistries() error {
-	// Restore the exact pre-tx registry, de-allocating any label/rel-type token
-	// this tx allocated. This is safe even with the change-log enabled BECAUSE the
-	// per-tx change-log scope (store.TxChangeLogScope) discarded the tx's buffered
-	// records on rollback — the rolled-back tx emitted NOTHING, so no durable feed
-	// record references the de-allocated token. (Before the per-tx buffer existed,
-	// the tx body's puts emitted records in-backend immediately, so de-allocating
-	// here poisoned the feed and stalled replicas — lesson 55; the append-only
-	// STOPGAP that guarded this is now superseded by the buffer for the tx path.)
-	labels := registrypkg.NewLabelRegistry()
-	if err := labels.ImportNames(tx.labelSnapshot); err != nil {
-		return err
-	}
-	relTypes := registrypkg.NewRelTypeRegistry()
-	if err := relTypes.ImportNames(tx.relTypeSnapshot); err != nil {
-		return err
-	}
-	// The pointer swap + persist must hold registryMu IN ADDITION to the
-	// c.mu.Lock Rollback already holds: readers under c.mu.RLock are excluded
-	// by c.mu, but Close's final persistRegistries and the ingest sessions'
-	// declare-on-prepare path read the registry pointers under registryMu
-	// WITHOUT c.mu — the swap must synchronize with both classes (the
-	// Close-vs-Rollback race was caught by the lifecycle storm under -race).
+	// registryMu additionally guards Close's final persistRegistries and the
+	// ingest sessions' declare-on-prepare path, which read the registry
+	// pointers WITHOUT c.mu (the Close-vs-Rollback race was caught by the
+	// lifecycle storm under -race) — held here even though this function no
+	// longer swaps the registry pointers (RollbackNames mutates the existing
+	// object in place, under its own internal lock), so persistRegistries
+	// below observes a state consistent with those other readers.
 	tx.g.registryMu.Lock()
 	defer tx.g.registryMu.Unlock()
-	tx.g.labels = labels
-	tx.g.relTypes = relTypes
+
+	labelAllocated := newlyAllocatedNames(tx.labelSnapshot, tx.g.labels.ExportNames())
+	relTypeAllocated := newlyAllocatedNames(tx.relTypeSnapshot, tx.g.relTypes.ExportNames())
+
+	var firstErr error
+	if _, err := tx.g.rollbackLabelsIfUnreferenced(tx.labelSnapshot, labelAllocated); err != nil && firstErr == nil {
+		firstErr = err
+	}
+	if _, err := tx.g.rollbackRelTypesIfUnreferenced(tx.relTypeSnapshot, relTypeAllocated); err != nil && firstErr == nil {
+		firstErr = err
+	}
 	tx.g.clearRelTypeCache()
 	setTieredLabelRegistryIfSupported(tx.g.store, tx.g.labels)
-	return tx.g.persistRegistries()
+	if err := tx.g.persistRegistries(); err != nil && firstErr == nil {
+		firstErr = err
+	}
+	return firstErr
 }
 
 // =============================================================================
@@ -980,13 +1020,15 @@ func (tx *GraphTx) restoreRegistries() error {
 // =============================================================================
 
 // GetNode reads a node by ID within the transaction.
-// Safe because the tx holds the write lock — no concurrent modifications possible.
-// Holds tx.mu for the whole call — see AddNode.
+// Safe under v4.1.0 Path B: the tx does NOT hold c.mu for its whole lifetime
+// (only per-call, see lockActiveCore) — this method takes c.mu.RLock briefly,
+// like every other tx read mirror, so it observes ErrGraphClosed instead of
+// racing a concurrent Close (BACKLOG 11a).
 func (tx *GraphTx) GetNode(id types.NodeID) (*types.Node, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return nil, err
@@ -999,13 +1041,15 @@ func (tx *GraphTx) GetNode(id types.NodeID) (*types.Node, error) {
 }
 
 // GetRelationship reads a relationship by ID within the transaction.
-// Safe because the tx holds the write lock — no concurrent modifications possible.
-// Holds tx.mu for the whole call — see AddNode.
+// Safe under v4.1.0 Path B: the tx does NOT hold c.mu for its whole lifetime
+// (only per-call, see lockActiveCore) — this method takes c.mu.RLock briefly,
+// like every other tx read mirror, so it observes ErrGraphClosed instead of
+// racing a concurrent Close (BACKLOG 11a).
 func (tx *GraphTx) GetRelationship(id types.RelID) (*types.Relationship, error) {
-	if err := tx.lockActive(); err != nil {
+	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
 	}
-	defer tx.mu.Unlock()
+	defer tx.unlockActiveCore()
 
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return nil, err

@@ -61,7 +61,7 @@ func (bs *Store) nextLSN() uint64 {
 // lock), so the record and the entity ops it describes are both buffered before
 // any flush can snapshot them (flush snapshots under idxMu.RLock).
 func (bs *Store) logChangeRaw(tag storecontract.ChangeTag, payload []byte) {
-	if !bs.logEnabled {
+	if !bs.logEnabled.Load() {
 		return
 	}
 	value := storepkg.EncodeChangeValue(tag, payload)
@@ -86,7 +86,7 @@ func (bs *Store) logChangeRaw(tag storecontract.ChangeTag, payload []byte) {
 // Put-style records pass the already-marshaled entity wire bytes straight to
 // logChangeRaw and never need this.
 func (bs *Store) buildChangePayload(body any) ([]byte, error) {
-	if !bs.logEnabled {
+	if !bs.logEnabled.Load() {
 		return nil, nil
 	}
 	return storepkg.MarshalChangeBody(body)
@@ -103,7 +103,7 @@ func (bs *Store) appendOpsLogged(tag storecontract.ChangeTag, payload []byte, op
 	for _, op := range ops {
 		bs.pending[string(op.key)] = op
 	}
-	if bs.logEnabled {
+	if bs.logEnabled.Load() {
 		value := storepkg.EncodeChangeValue(tag, payload)
 		if bs.scopeActive {
 			// Per-tx scope: buffer the record without an LSN (see logChangeRaw).
@@ -119,58 +119,48 @@ func (bs *Store) appendOpsLogged(tag storecontract.ChangeTag, payload []byte, op
 
 // historyVersionNodePayload builds a ChangeNodeHistoryVersion body for an
 // explicit-version history write (PutNodeVersion). nil when the log is disabled.
-// logNodePut / logRelPut build a ChangeNodePut/ChangeRelPut body (untokenized
-// wire + WithHistory bit) for the new current state and buffer it. No-op when
-// the log is disabled. Called by every node/rel-put door UNDER idxMu.Lock (so
-// the record is buffered atomically with the entity ops); the wire conversion of
-// an already-validated node cannot fail in practice, so the returned error is a
-// defensive guard the caller surfaces after releasing the lock.
-func (bs *Store) logNodePut(n *types.Node, withHistory bool) error {
-	if !bs.logEnabled {
-		return nil
+// buildNodePutPayload / buildRelPutPayload marshal a ChangeNodePut/ChangeRelPut
+// body (untokenized wire + WithHistory bit) for the new current state. nil
+// payload when the log is disabled — the matching logChangeRaw call is then a
+// no-op. Every node/rel-put door calls these BEFORE bs.idxMu.Lock() and before
+// any mutation (mirroring buildChangePayload / DeleteNode), so a marshal error
+// aborts the door with nothing mutated and no op enqueued — see lesson 58 /
+// BACKLOG 18a. The door then emits the pre-built payload via bs.logChangeRaw
+// UNDER idxMu.Lock, atomically with the entity ops it describes.
+func (bs *Store) buildNodePutPayload(n *types.Node, withHistory bool) ([]byte, error) {
+	if !bs.logEnabled.Load() {
+		return nil, nil
 	}
 	payload, err := storepkg.NodePutPayload(n, withHistory)
 	if err != nil {
-		return fmt.Errorf("graph: encode change-log: %w", err)
+		return nil, fmt.Errorf("graph: encode change-log: %w", err)
 	}
-	bs.logChangeRaw(storecontract.ChangeNodePut, payload)
-	return nil
+	return payload, nil
 }
 
-func (bs *Store) logRelPut(r *types.Relationship, withHistory bool) error {
-	if !bs.logEnabled {
-		return nil
+func (bs *Store) buildRelPutPayload(r *types.Relationship, withHistory bool) ([]byte, error) {
+	if !bs.logEnabled.Load() {
+		return nil, nil
 	}
 	payload, err := storepkg.RelPutPayload(r, withHistory)
 	if err != nil {
-		return fmt.Errorf("graph: encode change-log: %w", err)
+		return nil, fmt.Errorf("graph: encode change-log: %w", err)
 	}
-	bs.logChangeRaw(storecontract.ChangeRelPut, payload)
-	return nil
+	return payload, nil
 }
 
-// logRelPutTagged emits a create put record, choosing the ChangeForeignIncoming
-// tag for a cross-machine incoming half-edge stub (ADR-0010 Model A) so a replica
-// routes apply by the END-node slot, else the ordinary ChangeRelPut. The body is
-// identical (the rel wire, no history) either way.
-func (bs *Store) logRelPutTagged(r *types.Relationship, foreignIncoming bool) error {
-	if !bs.logEnabled {
-		return nil
-	}
-	payload, err := storepkg.RelPutPayload(r, false)
-	if err != nil {
-		return fmt.Errorf("graph: encode change-log: %w", err)
-	}
-	tag := storecontract.ChangeRelPut
+// relPutTag chooses the ChangeForeignIncoming tag for a cross-machine incoming
+// half-edge stub (ADR-0010 Model A) so a replica routes apply by the END-node
+// slot, else the ordinary ChangeRelPut. Pure — safe to call before the lock.
+func relPutTag(foreignIncoming bool) storecontract.ChangeTag {
 	if foreignIncoming {
-		tag = storecontract.ChangeForeignIncoming
+		return storecontract.ChangeForeignIncoming
 	}
-	bs.logChangeRaw(tag, payload)
-	return nil
+	return storecontract.ChangeRelPut
 }
 
 func (bs *Store) historyVersionNodePayload(version uint32, n *types.Node) ([]byte, error) {
-	if !bs.logEnabled {
+	if !bs.logEnabled.Load() {
 		return nil, nil
 	}
 	return storepkg.NodeHistoryVersionPayload(version, n)
@@ -178,7 +168,7 @@ func (bs *Store) historyVersionNodePayload(version uint32, n *types.Node) ([]byt
 
 // historyVersionRelPayload is the relationship counterpart of historyVersionNodePayload.
 func (bs *Store) historyVersionRelPayload(version uint32, r *types.Relationship) ([]byte, error) {
-	if !bs.logEnabled {
+	if !bs.logEnabled.Load() {
 		return nil, nil
 	}
 	return storepkg.RelHistoryVersionPayload(version, r)
@@ -188,7 +178,7 @@ func (bs *Store) historyVersionRelPayload(version uint32, r *types.Relationship)
 // node tombstone, every connected-relationship tombstone, and the cascaded rel
 // IDs. nil when the log is disabled.
 func (bs *Store) nodeDeleteWithHistoryPayload(id snowflake.ID, nodeTombstone *types.Node, relTombstones []RelTombstone) ([]byte, error) {
-	if !bs.logEnabled {
+	if !bs.logEnabled.Load() {
 		return nil, nil
 	}
 	return storepkg.NodeDeleteWithHistoryPayload(id, nodeTombstone, relTombstones)
@@ -200,7 +190,7 @@ func (bs *Store) nodeDeleteWithHistoryPayload(id snowflake.ID, nodeTombstone *ty
 // after the cascade's ops are enqueued; a marshal error is surfaced to the
 // caller (it never silently drops a record).
 func (bs *Store) logCascadeNodeDelete(id snowflake.ID, deleted []RelDeleteInfo) error {
-	if !bs.logEnabled {
+	if !bs.logEnabled.Load() {
 		return nil
 	}
 	body := storepkg.NodeDeleteBody{ID: int64(id)}
@@ -224,7 +214,7 @@ func (bs *Store) logCascadeNodeDelete(id snowflake.ID, deleted []RelDeleteInfo) 
 
 // relDeleteWithHistoryPayload builds a with-history ChangeRelDelete body.
 func (bs *Store) relDeleteWithHistoryPayload(id snowflake.ID, tombstone *types.Relationship) ([]byte, error) {
-	if !bs.logEnabled {
+	if !bs.logEnabled.Load() {
 		return nil, nil
 	}
 	return storepkg.RelDeleteWithHistoryPayload(id, tombstone)
@@ -441,7 +431,7 @@ func maxChangeLogLSN(txn *badgerv4.Txn) uint64 {
 
 // BeginLogScope opens the per-tx record buffer. No-op when the change-log is off.
 func (bs *Store) BeginLogScope() error {
-	if !bs.logEnabled {
+	if !bs.logEnabled.Load() {
 		return nil
 	}
 	bs.wbMu.Lock()
@@ -459,7 +449,7 @@ func (bs *Store) BeginLogScope() error {
 // before releasing it — so the window in which scopeActive is true is exactly the
 // window in which no concurrent standalone (c.mu.RLock) mutation can run.
 func (bs *Store) SetLogDivert(on bool) {
-	if !bs.logEnabled {
+	if !bs.logEnabled.Load() {
 		return
 	}
 	bs.wbMu.Lock()
@@ -472,7 +462,7 @@ func (bs *Store) SetLogDivert(on bool) {
 // during its body), appends them to pendingLog, then flushes so they co-commit
 // with the tx's still-pending data + counters + LastLSNKey in one WriteBatch.
 func (bs *Store) CommitLogScope() (uint64, error) {
-	if !bs.logEnabled {
+	if !bs.logEnabled.Load() {
 		return 0, nil
 	}
 	bs.wbMu.Lock()
@@ -503,7 +493,7 @@ func (bs *Store) CommitLogScope() (uint64, error) {
 // clears the scope. logSeq is never advanced, so no LSN is burned and no gap is
 // left for a tailing replica.
 func (bs *Store) DiscardLogScope() error {
-	if !bs.logEnabled {
+	if !bs.logEnabled.Load() {
 		return nil
 	}
 	bs.wbMu.Lock()
@@ -550,7 +540,7 @@ func (bs *Store) ChangeLogEnabled() bool {
 	if bs == nil {
 		return false
 	}
-	return bs.logEnabled
+	return bs.logEnabled.Load()
 }
 
 // DisableChangeLog turns OFF change-log record production at runtime. It exists
@@ -564,7 +554,7 @@ func (bs *Store) DisableChangeLog() {
 		return
 	}
 	bs.wbMu.Lock()
-	bs.logEnabled = false
+	bs.logEnabled.Store(false)
 	bs.wbMu.Unlock()
 }
 
@@ -578,7 +568,7 @@ func (bs *Store) EnableChangeLog() {
 		return
 	}
 	bs.wbMu.Lock()
-	bs.logEnabled = bs.logConfigured
+	bs.logEnabled.Store(bs.logConfigured)
 	bs.wbMu.Unlock()
 }
 
@@ -605,7 +595,7 @@ func (bs *Store) EnableChangeLogWithSource(seq ChangeLogSeqSource, onFlush func(
 	bs.logSeqSource = seq
 	bs.onChangeLogFlush = onFlush
 	bs.logConfigured = true
-	bs.logEnabled = true
+	bs.logEnabled.Store(true)
 	bs.wbMu.Unlock()
 }
 

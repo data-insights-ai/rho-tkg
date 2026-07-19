@@ -1,5 +1,7 @@
 package index
 
+import "math"
+
 // PropertyStatsAccumulator maintains a HyperLogLog sketch (NDV) plus an
 // exact min/max pair for one (label, property key) pair. Shared by the
 // memory and badger store backends so the min/max-family and NDV-hash logic
@@ -196,9 +198,17 @@ func (a *PropertyStatsAccumulator) Sketch() *HyperLogLog {
 // rather than re-implementing").
 //
 // A nil incomingMin (that shard/accumulator observed no ordered value at
-// all) is a safe no-op; a nil runningMin simply adopts the incoming pair.
+// all) is a safe no-op; a nil runningMin simply adopts the incoming pair —
+// PROVIDED incomingMin is itself orderable (BACKLOG 16a): an
+// accumulator-sourced incomingMin is already NaN-free by construction
+// (Observe/Rescan never let a NaN become min/max in the first place), but
+// this is a public function with no way to enforce that on every caller, so
+// it re-validates incomingMin's family here too rather than adopting it
+// unconditionally — the same "first pair wins" nil-running fast path that
+// would otherwise wedge a stray NaN in permanently, exactly like the
+// single-accumulator bug this fix closes.
 func CombineExtrema(runningMin, runningMax, incomingMin, incomingMax any) (min, max any) {
-	if incomingMin == nil {
+	if incomingMin == nil || scalarOrderFamily(incomingMin) == "" {
 		return runningMin, runningMax
 	}
 	if runningMin == nil {
@@ -220,11 +230,31 @@ func CombineExtrema(runningMin, runningMax, incomingMin, incomingMax any) (min, 
 // scalarOrderFamily returns the ordering family for min/max tracking: "n"
 // for any numeric allowlist type, "s" for string, "" (not tracked) for
 // anything else (bool, TemporalValue, nil, slices, maps, custom types).
+//
+// A NaN float is deliberately excluded (returns "", not "n") to match the
+// library's own PropertyTypeClass rule: ±Inf is Numeric (still totally
+// ordered — this accumulator tracks it as a normal min/max candidate), but
+// NaN is unorderable and split out on its own. IEEE 754 comparisons against
+// NaN are ALWAYS false, so admitting one as min/max here would corrupt the
+// accumulator permanently: CombineExtrema would adopt an incoming NaN as the
+// running min/max outright (the nil-running-min fast path takes it
+// unconditionally), and every later scalarLess comparison against that NaN
+// evaluates false, so it can never be replaced by a real, orderable value
+// again for the accumulator's whole lifetime.
 func scalarOrderFamily(v any) string {
-	switch v.(type) {
+	switch n := v.(type) {
 	case int, int8, int16, int32, int64,
-		uint, uint8, uint16, uint32, uint64,
-		float32, float64:
+		uint, uint8, uint16, uint32, uint64:
+		return "n"
+	case float32:
+		if math.IsNaN(float64(n)) {
+			return ""
+		}
+		return "n"
+	case float64:
+		if math.IsNaN(n) {
+			return ""
+		}
 		return "n"
 	case string:
 		return "s"

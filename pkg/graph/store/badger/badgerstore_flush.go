@@ -57,7 +57,7 @@ func (bs *Store) flushIfNeeded() error {
 func (bs *Store) pendingLen() int {
 	bs.wbMu.Lock()
 	n := len(bs.pending)
-	if bs.logEnabled {
+	if bs.logEnabled.Load() {
 		n += len(bs.pendingLog)
 	}
 	bs.wbMu.Unlock()

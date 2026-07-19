@@ -118,6 +118,7 @@ func PurgeRelFromAllPropertyIndexes(indexes map[RelPropertyIndexKey]*PropertyInd
 			}
 		}
 		idx.purgeOrdered(id)
+		idx.purgeOrderedStr(id)
 		if idx.Mutated != nil {
 			idx.Mutated[id] = struct{}{}
 		}

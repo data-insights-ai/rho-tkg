@@ -236,6 +236,13 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 // accumulation is undesirable. Returns storepkg.ErrNodeNotFound if the node
 // does not exist. Empty updates map is a no-op. Acquires c.mu.RLock
 // (panic-safe) for transaction isolation — blocked while a tx holds c.mu.Lock.
+//
+// tkg_valid_from/tkg_valid_to ARE accepted and rewrite the current row's
+// TemporalMetadata directly — consistent with this door's no-history
+// tradeoff, this does NOT stamp TxFrom or preserve the pre-correction belief
+// anywhere: a bitemporal read pinned between the original write and this
+// correction sees the corrected value. Callers that need the pre-correction
+// belief recoverable must use Update instead.
 func (n *NodeOps) UpdateInPlace(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
 	c := n.c
 	if err := c.checkWritable(); err != nil {

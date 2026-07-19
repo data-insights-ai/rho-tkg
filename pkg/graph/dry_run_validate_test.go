@@ -3,6 +3,7 @@ package graph_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
@@ -186,5 +187,154 @@ func TestDryRunValidate_CoProposedEndpoint(t *testing.T) {
 	// NOT an "invalid: start node not found" (A is not a live node).
 	if v.Kind != "temporal" || !errors.Is(v.Err, temporalpkg.ErrTemporalConstraint) {
 		t.Fatalf("violation kind=%q err=%v, want a temporal violation (co-proposed endpoint not resolved?)", v.Kind, v.Err)
+	}
+}
+
+// TestDryRunValidate_SelfLoopRejectedWithoutAnyConstraintConfigured guards
+// BACKLOG 8b: the real create kernel rejects a self-loop relationship
+// (AllowSelfLoops defaults to false) UNCONDITIONALLY — regardless of whether
+// any temporal constraint is configured. Before the fix, the dry-run rel loop
+// only ran when c.constraints.Len() > 0, so with zero constraints configured
+// a self-loop fact was never even inspected and DryRunValidate silently
+// reported zero violations for a fact set a real Add would reject.
+func TestDryRunValidate_SelfLoopRejectedWithoutAnyConstraintConfigured(t *testing.T) {
+	ctx := context.Background()
+	g, err := graphpkg.New(graphpkg.Config{}) // AllowSelfLoops defaults false, NO constraints configured
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	n, err := g.Nodes().Add(ctx, []string{"N"}, nil)
+	if err != nil {
+		t.Fatalf("add n: %v", err)
+	}
+
+	facts := constraintspkg.DryRunFacts{Rels: []constraintspkg.DryRunRel{
+		{Ref: "loop", TypeName: "R", StartID: n.ID(), EndID: n.ID()},
+	}}
+	violations, err := g.Constraints().DryRunValidate(ctx, facts)
+	if err != nil {
+		t.Fatalf("DryRunValidate: %v", err)
+	}
+	if len(violations) != 1 || violations[0].Ref != "loop" {
+		t.Fatalf("want exactly one violation for 'loop', got %+v", violations)
+	}
+	if !errors.Is(violations[0].Err, graphpkg.ErrSelfLoop) {
+		t.Fatalf("violation err = %v, want ErrSelfLoop", violations[0].Err)
+	}
+
+	// The real door must agree: it rejects the identical fact.
+	if _, err := g.Rels().AddByID(ctx, "R", n.ID(), n.ID(), nil); !errors.Is(err, graphpkg.ErrSelfLoop) {
+		t.Fatalf("real AddByID(self-loop) = %v, want ErrSelfLoop (dry-run/real door must agree)", err)
+	}
+}
+
+// TestDryRunValidate_SelfLoopRejectedWithConstraintsConfigured proves the
+// self-loop check still fires even when a temporal constraint IS configured
+// (the gate that used to hide it in the zero-constraint case).
+func TestDryRunValidate_SelfLoopRejectedWithConstraintsConfigured(t *testing.T) {
+	ctx := context.Background()
+	g, err := graphpkg.New(graphpkg.Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+	if err := g.Constraints().Add(temporalpkg.TemporalConstraint{Kind: temporalpkg.ConstraintRelWithinEndpoints}); err != nil {
+		t.Fatalf("Add constraint: %v", err)
+	}
+
+	n, err := g.Nodes().Add(ctx, []string{"N"}, map[string]any{"tkg_valid_from": int64(1000)})
+	if err != nil {
+		t.Fatalf("add n: %v", err)
+	}
+
+	facts := constraintspkg.DryRunFacts{Rels: []constraintspkg.DryRunRel{
+		{Ref: "loop", TypeName: "R", StartID: n.ID(), EndID: n.ID(), ValidFrom: 2000},
+	}}
+	violations, err := g.Constraints().DryRunValidate(ctx, facts)
+	if err != nil {
+		t.Fatalf("DryRunValidate: %v", err)
+	}
+	if len(violations) != 1 || !errors.Is(violations[0].Err, graphpkg.ErrSelfLoop) {
+		t.Fatalf("want exactly one ErrSelfLoop violation, got %+v", violations)
+	}
+}
+
+// TestDryRunValidate_NodeLabelValidation guards BACKLOG 8b: buildDryRunProbeNode
+// never called validateNodeCreateLabels, so an empty label set or a label
+// count exceeding MaxLabelsPerNode passed a dry run silently even though a
+// real Add rejects both.
+func TestDryRunValidate_NodeLabelValidation(t *testing.T) {
+	ctx := context.Background()
+	g, err := graphpkg.New(graphpkg.Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	facts := constraintspkg.DryRunFacts{Nodes: []constraintspkg.DryRunNode{
+		{Ref: "no-labels", Labels: nil},
+	}}
+	violations, err := g.Constraints().DryRunValidate(ctx, facts)
+	if err != nil {
+		t.Fatalf("DryRunValidate: %v", err)
+	}
+	if len(violations) != 1 || !errors.Is(violations[0].Err, graphpkg.ErrNoLabels) {
+		t.Fatalf("empty-labels violations = %+v, want exactly one ErrNoLabels", violations)
+	}
+	if _, err := g.Nodes().Add(ctx, nil, nil); !errors.Is(err, graphpkg.ErrNoLabels) {
+		t.Fatalf("real Add(no labels) = %v, want ErrNoLabels (dry-run/real door must agree)", err)
+	}
+
+	// Oversized label count.
+	tooMany := make([]string, 0, 60)
+	for i := 0; i < 60; i++ {
+		tooMany = append(tooMany, "L"+string(rune('A'+i%26))+string(rune('0'+i/26)))
+	}
+	facts = constraintspkg.DryRunFacts{Nodes: []constraintspkg.DryRunNode{
+		{Ref: "too-many", Labels: tooMany},
+	}}
+	violations, err = g.Constraints().DryRunValidate(ctx, facts)
+	if err != nil {
+		t.Fatalf("DryRunValidate: %v", err)
+	}
+	if len(violations) != 1 || !errors.Is(violations[0].Err, graphpkg.ErrTooManyLabels) {
+		t.Fatalf("too-many-labels violations = %+v, want exactly one ErrTooManyLabels", violations)
+	}
+}
+
+// TestDryRunValidate_RelTypeNameValidation guards BACKLOG 8b: an empty
+// relationship type name passed a dry run silently even though a real Add
+// rejects it.
+func TestDryRunValidate_RelTypeNameValidation(t *testing.T) {
+	ctx := context.Background()
+	g, err := graphpkg.New(graphpkg.Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	n, err := g.Nodes().Add(ctx, []string{"N"}, nil)
+	if err != nil {
+		t.Fatalf("add n: %v", err)
+	}
+	m, err := g.Nodes().Add(ctx, []string{"N"}, nil)
+	if err != nil {
+		t.Fatalf("add m: %v", err)
+	}
+
+	facts := constraintspkg.DryRunFacts{Rels: []constraintspkg.DryRunRel{
+		{Ref: "blank-type", TypeName: strings.Repeat(" ", 3), StartID: n.ID(), EndID: m.ID()},
+	}}
+	violations, err := g.Constraints().DryRunValidate(ctx, facts)
+	if err != nil {
+		t.Fatalf("DryRunValidate: %v", err)
+	}
+	if len(violations) != 1 || !errors.Is(violations[0].Err, graphpkg.ErrEmptyName) {
+		t.Fatalf("blank-type-name violations = %+v, want exactly one ErrEmptyName", violations)
+	}
+	if _, err := g.Rels().AddByID(ctx, strings.Repeat(" ", 3), n.ID(), m.ID(), nil); !errors.Is(err, graphpkg.ErrEmptyName) {
+		t.Fatalf("real AddByID(blank type) = %v, want ErrEmptyName (dry-run/real door must agree)", err)
 	}
 }

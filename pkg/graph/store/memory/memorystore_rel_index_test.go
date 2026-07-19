@@ -3,6 +3,7 @@ package memory
 import (
 	"errors"
 	"testing"
+	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -109,6 +110,70 @@ func TestMemStoreForEachRelByTypePropertyRange(t *testing.T) {
 	if !errors.Is(err, ErrIndexNotFound) {
 		t.Fatalf("range no index = %v, want ErrIndexNotFound", err)
 	}
+}
+
+// TestForEachRelByTypePropertyRange_CallbackCanReenterStoreWithoutDeadlock is
+// the BACKLOG 17b regression: ForEachRelByTypePropertyRange used to hold
+// ms.mu.RLock() across the ENTIRE callback loop, unlike every sibling
+// streaming method (which snapshot IDs, release the lock, then call fn with
+// no lock held). Go's sync.RWMutex documents that once a Lock() call is
+// waiting, no NEW RLock() is granted until that writer proceeds — so a
+// callback that re-enters the store via a read door, WHILE a concurrent
+// writer is queued on Lock() behind this scan's outstanding RLock, would
+// deadlock forever: the writer waits for this scan's RLock to release, and
+// this scan's nested RLock (from inside fn) waits behind the now-queued
+// writer. The fix must let fn call back into the store safely even under
+// exactly this interleaving.
+func TestForEachRelByTypePropertyRange_CallbackCanReenterStoreWithoutDeadlock(t *testing.T) {
+	t.Parallel()
+	ms := New()
+	putMemNodes(t, ms, 1, 2)
+	putMemRelWeight(t, ms, 10, 1, 2, 1, 5)
+	if err := ms.CreateRelPropertyIndex(1, "weight"); err != nil {
+		t.Fatalf("CreateRelPropertyIndex: %v", err)
+	}
+
+	inCallback := make(chan struct{})
+	writerQueued := make(chan struct{})
+	scanDone := make(chan error, 1)
+
+	go func() {
+		scanDone <- ms.ForEachRelByTypePropertyRange(1, "weight", 0, 100, true, true, storecontract.QueryOpts{}, func(r *types.Relationship) bool {
+			close(inCallback)
+			<-writerQueued // wait until a concurrent writer is queued on ms.mu.Lock()
+			// Re-enter the store from inside the callback — this is exactly
+			// what would deadlock if the scan still held its RLock here.
+			if _, err := ms.GetRelationship(r.ID()); err != nil {
+				t.Errorf("GetRelationship from inside callback: %v", err)
+			}
+			return true
+		})
+	}()
+
+	<-inCallback
+
+	writerDone := make(chan struct{})
+	go func() {
+		n := types.NewNode(types.NodeID(snowflake.ID(999)), 1, nil)
+		_ = ms.PutNode(n)
+		close(writerDone)
+	}()
+	// Give the writer goroutine time to actually reach and block on
+	// ms.mu.Lock() (queued behind the scan's still-open outer RLock) before
+	// letting the callback proceed — this ordering is what makes the
+	// deadlock deterministic in the unfixed code.
+	time.Sleep(50 * time.Millisecond)
+	close(writerQueued)
+
+	select {
+	case err := <-scanDone:
+		if err != nil {
+			t.Fatalf("ForEachRelByTypePropertyRange: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("ForEachRelByTypePropertyRange deadlocked when its callback re-entered the store — BACKLOG 17b regression")
+	}
+	<-writerDone
 }
 
 func TestMemStoreRelPropertyIndex_NilStoreGuards(t *testing.T) {

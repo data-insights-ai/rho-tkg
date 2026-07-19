@@ -173,6 +173,7 @@ func (ms *Store) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombs
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
+	defer ms.bumpRelEpoch()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
@@ -215,6 +216,10 @@ func (ms *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 	defer ms.bumpNodeEpoch()
+	// The cascade removes every connected relationship's tombstoned row too
+	// (adjacency changes) — bumpRelEpoch, matching DeleteNodeCascade
+	// (BACKLOG 17a).
+	defer ms.bumpRelEpoch()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err

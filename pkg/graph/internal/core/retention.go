@@ -131,11 +131,36 @@ func (c *Core) retentionWatermarkForLabel(labelToken uint16) (int64, error) {
 	return wm, nil
 }
 
-// reapRetentionForReset clears the graph retention watermark as part of
-// Admin.Reset, so a reset graph does not inherit a pre-Clear watermark that would
-// spuriously fail temporal reads. Per-label keys are left in place — a reset
-// clears all entities and their (never-reused) tokens, and the zeroed graph max
-// fast-gates every read past the per-label probe. Caller holds c.mu.Lock.
+// reapRetentionForReset clears the graph retention watermark AND every
+// per-label retention watermark as part of Admin.Reset, so a reset graph does
+// not inherit a pre-Clear watermark that would spuriously fail temporal reads
+// (BACKLOG 13b).
+//
+// Unlike a compaction stub (keyed by ENTITY ID, and Reset destroys every
+// entity — a stale stub for a now-nonexistent ID is simply never looked up
+// again, since snowflake IDs are never reused), a retention watermark is keyed
+// by LABEL TOKEN, and Admin.Reset deliberately PRESERVES the label registry
+// (tokens ARE reused across a reset — same label name, same token number).
+// Leaving a stale per-label watermark key in place after Reset zeroed only the
+// graph-max gate is a genuine cross-label false-positive hazard: once ANY
+// later post-reset purge on a DIFFERENT label raises the graph max again, the
+// per-label check in checkNodePointRetention re-activates and consults every
+// queried node's label tokens — including this label's STALE, pre-reset
+// watermark, for a label that was NEVER purged post-reset. A point read on a
+// brand-new post-reset entity of that label, pinned before the stale
+// watermark, then fails closed with ErrRetentionExpired for no legitimate
+// reason.
+//
+// MetaKVCapability has no key-enumeration primitive (get/set only), so this
+// clears every CURRENTLY REGISTERED label token's watermark key by token
+// number (1..c.labels.Len()) rather than tracking which ones were ever
+// written — the registry is already the authoritative, bounded (<= 65535)
+// enumeration of every token that could possibly hold a watermark key, so no
+// additional durable tracking structure is needed. MetaSet(key, nil) mirrors
+// the graph-max clear immediately below: retentionWatermarkForLabel already
+// treats an empty value identically to an absent key (len(v)==0 → 0), so this
+// is a safe "unset", not a hard delete, on every in-tree backend. Caller
+// holds c.mu.Lock.
 func (c *Core) reapRetentionForReset() error {
 	c.retentionMaxWatermark.Store(0)
 	mk := c.metaKV
@@ -144,6 +169,11 @@ func (c *Core) reapRetentionForReset() error {
 	}
 	if err := mk.MetaSet(retentionMaxWatermarkMeta, nil); err != nil {
 		return fmt.Errorf("graph: reset retention watermark: %w", err)
+	}
+	for tok := 1; tok <= c.labels.Len(); tok++ {
+		if err := mk.MetaSet(retentionWatermarkKey(uint16(tok)), nil); err != nil { // #nosec G115 -- bounded by registry TokenCapacityMax
+			return fmt.Errorf("graph: reset per-label retention watermark (token %d): %w", tok, err)
+		}
 	}
 	return nil
 }

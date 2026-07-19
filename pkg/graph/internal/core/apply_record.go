@@ -95,7 +95,15 @@ func (c *Core) applyChangeRecordLocked(rec storepkg.ChangeRecord) error {
 		}
 		return c.applyRangePurgeLocked(body)
 	case storepkg.ChangeClear:
-		return c.store.Clear()
+		if err := c.store.Clear(); err != nil {
+			return err
+		}
+		// A replica applying ChangeClear must reproduce the exact state a
+		// primary's Reset() ends up in, not just wipe the Store — Reset() also
+		// clears Core-level in-memory state (as-of DocValues cache, unique
+		// constraints/owners, compaction/retention watermarks, op counters)
+		// that store.Clear() cannot reach (BACKLOG 12a).
+		return c.reapCoreStateForClear()
 	default:
 		return fmt.Errorf("graph: apply: unknown change tag %d", byte(rec.Tag))
 	}

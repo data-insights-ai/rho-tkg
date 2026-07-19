@@ -24,9 +24,18 @@ var ErrInvalidForeignEndpoint = errors.New("graph: invalid foreign endpoint desc
 // trusted. tkg_from_hash/tkg_to_hash are deliberately NOT part of the
 // relationship content hash (they never were — see the relationship create
 // kernel), so an attested hash does not weaken Verify*Chain or replication
-// byte-exactness; it is a cross-validation aid whose staleness window is made
-// explicit by AttestTx (ADR-0010 §4.1). The tkg_to_hash therefore reflects the
-// foreign node's state at attest time, not at local-commit time.
+// byte-exactness. AttestTx is REQUIRED PROVENANCE (Validate rejects a zero
+// value) recording WHEN Hash was read, so the attest-time-vs-commit-time gap
+// is always knowable in the persisted data — but rho-tkg itself enforces NO
+// staleness bound on that gap: any positive AttestTx passes, no matter how
+// old relative to local commit time. Bounding acceptable staleness (a
+// deployment policy — how large a gap is tolerable, clock-skew allowance,
+// whether to reject vs. warn) is the caller's/orchestrator's responsibility
+// (ADR-0010 §4.1; a sigma-tkgd concern per this repo's cross-team boundary),
+// enforced BEFORE calling AddByIDForeignEnd, not inside it. The tkg_to_hash
+// therefore reflects the foreign node's state at attest time, not at
+// local-commit time, and callers needing a bound must check AttestTx against
+// their own clock before this door is invoked.
 type ForeignEndpoint struct {
 	// NodeID is the foreign node's ID. Its snowflake slot is owned by another
 	// machine and is not claimed by the local (sharded) store.
@@ -35,13 +44,16 @@ type ForeignEndpoint struct {
 	// under that machine's entity lock at AttestTx.
 	Hash string
 	// AttestTx is the owning machine's transaction time when Hash was read —
-	// required provenance for the attest-time-vs-commit-time window (§4.1).
+	// required provenance (Validate rejects zero) for the attest-time-vs-
+	// commit-time gap. NOT staleness-bounded here; see the type doc comment.
 	AttestTx types.Instant
 }
 
 // Validate rejects a malformed descriptor. A foreign create must carry real
 // provenance: a non-zero node ID, a non-empty attested hash, and a non-zero
-// attest-time.
+// attest-time. Validate does NOT check how OLD AttestTx is — any positive
+// value passes; see the type doc comment for why that bound is intentionally
+// left to the caller.
 func (fe ForeignEndpoint) Validate() error {
 	if fe.NodeID.SnowflakeID() == 0 {
 		return fmt.Errorf("%w: zero node ID", ErrInvalidForeignEndpoint)
@@ -82,10 +94,16 @@ type ForeignIncomingEdge struct {
 	CreatedAt  types.Instant
 	TxFrom     types.Instant
 	Version    uint32
-	AttestTx   types.Instant // provenance (§4.1), required non-zero
+	// AttestTx is required non-zero provenance (§4.1) for the attest-time-vs-
+	// commit-time gap. Like ForeignEndpoint.AttestTx, rho-tkg enforces NO
+	// staleness bound on it — any positive value passes Validate; bounding
+	// acceptable staleness is the caller's/orchestrator's responsibility.
+	AttestTx types.Instant
 }
 
-// Validate rejects a malformed descriptor.
+// Validate rejects a malformed descriptor. Validate does NOT check how OLD
+// AttestTx is — any positive value passes; see ForeignEndpoint's type doc
+// comment for why that bound is intentionally left to the caller.
 func (e ForeignIncomingEdge) Validate() error {
 	if e.RelID.SnowflakeID() == 0 {
 		return fmt.Errorf("%w: zero rel ID", ErrInvalidForeignIncoming)

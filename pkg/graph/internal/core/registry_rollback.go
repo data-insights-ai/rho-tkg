@@ -449,6 +449,104 @@ func (c *Core) restoreNewRelTypeOnError(snapshot []string, allocated bool, typeN
 	return err
 }
 
+// rollbackLabelsIfUnreferenced reclaims the given newly-allocated label names
+// (obtained via GetOrCreate against `snapshot`) via RollbackNames — UNLESS a
+// concurrently-persisted node has already adopted one of the resulting
+// tokens (BACKLOG 11b — currently wired ONLY into GraphTx.restoreRegistries;
+// see the caveat below for why it is NOT a universal drop-in replacement for
+// every direct RollbackNames call). Returns RollbackNames' own (ok, err):
+// ok=false with err=nil means nothing was mutated (either the registry
+// drifted from the expected snapshot+allocated shape, or a token turned out
+// to be referenced) — the caller's existing "rollback declined, keep the
+// original error" handling applies unchanged either way.
+//
+// Registry Lookup is visible cross-goroutine independent of registryMu — by
+// design, so the ADR-0007 hot concurrent-ingest path can resolve an
+// already-declared label via the registry's own internal RWMutex alone
+// without serializing on the single exclusive registryMu
+// (existingLabelsOrNextProbeTokens). That means a concurrent writer can
+// Lookup and persist an entity referencing a token THIS call just allocated,
+// before this call's own operation fails and tries to undo the allocation —
+// even though registry MUTATIONS (GetOrCreate) are themselves serialized via
+// registryMu (every GetOrCreate call site takes it first). De-allocating a
+// referenced token would leave that concurrent entity's label dangling: the
+// next distinct name allocated anywhere reuses the freed token number,
+// silently reassigning the entity's label. So each newly-allocated token is
+// reclaimed only when NO current node references it (checked via the O(1)
+// label-count stat, under the SAME registryMu critical section the caller
+// already holds — no concurrent MUTATION can be interleaving, only a prior
+// Lookup+persist that already landed). A referenced token is left registered
+// rather than risking corruption; the (rare) leaked registry slot is a
+// strictly better failure mode than a silently mis-labeled entity. Caller
+// must hold c.registryMu.
+//
+// CAVEAT — a "referenced" token is not proof of a legitimate concurrent
+// adopter: it could instead be a PRE-EXISTING row that already carried the
+// (brand-new, about-to-be-freed) token number BEFORE this call's own
+// allocation ever ran — reachable only via a corrupt/untrusted store
+// (TestAddNodeLabel_CorruptFutureTokenRollsBackRegistry seeds exactly this:
+// a node holding a raw label bit for a token that isn't registered to any
+// name yet). This function cannot distinguish that case from a genuine
+// concurrent adopter without a "reference count immediately before this
+// call's own allocation" baseline, which the OTHER registry_rollback.go call
+// sites (getOrCreateLabelPersisted and friends, restoreNewLabelsOnError) do
+// not currently capture — so those sites intentionally keep calling
+// RollbackNames directly rather than through this guard. GraphTx.Rollback is
+// different: by the time restoreRegistries runs, steps 1-7 have already
+// deleted every entity this tx itself created, so a nonzero count found here
+// can only be a genuinely concurrent writer's entity, never this tx's own —
+// the corrupt-pre-existing-row ambiguity does not apply to that call site.
+func (c *Core) rollbackLabelsIfUnreferenced(snapshot, allocated []string) (bool, error) {
+	if len(allocated) == 0 {
+		return true, nil
+	}
+	referenced, err := c.anyTokenReferenced(len(snapshot), len(allocated), c.store.NodeCountByLabel)
+	if err != nil {
+		return false, err
+	}
+	if referenced {
+		return false, nil
+	}
+	return c.labels.RollbackNames(snapshot, allocated...)
+}
+
+// rollbackRelTypesIfUnreferenced is the relationship-type mirror of
+// rollbackLabelsIfUnreferenced.
+func (c *Core) rollbackRelTypesIfUnreferenced(snapshot, allocated []string) (bool, error) {
+	if len(allocated) == 0 {
+		return true, nil
+	}
+	referenced, err := c.anyTokenReferenced(len(snapshot), len(allocated), c.store.RelCountByType)
+	if err != nil {
+		return false, err
+	}
+	if referenced {
+		return false, nil
+	}
+	return c.relTypes.RollbackNames(snapshot, allocated...)
+}
+
+// anyTokenReferenced reports whether any of the `count` newly-allocated token
+// numbers starting at `base` (registries are contiguous and append-only: a
+// name's token number is fixed at its ExportNames() index for life) currently
+// has any live members, via the given counter (StatsCapability.NodeCountByLabel
+// / RelCountByType — an O(1) maintained counter, not a scan). A counter error
+// is treated as "referenced" (fail safe: leaves the token registered rather
+// than risking a corrupt reclaim) and propagated to the caller for visibility.
+func (c *Core) anyTokenReferenced(base, count int, counter func(uint16) (int, error)) (bool, error) {
+	for i := 0; i < count; i++ {
+		tok := uint16(base + i) // #nosec G115 — bounded by registry TokenCapacityMax
+		n, err := counter(tok)
+		if err != nil {
+			return true, err
+		}
+		if n > 0 {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func newlyAllocatedNames(before, after []string) []string {
 	if len(after) <= len(before) {
 		return nil

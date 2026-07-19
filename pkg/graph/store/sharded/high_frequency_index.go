@@ -31,9 +31,10 @@ func (s *Store) CreateHighFrequencyIndex(labelToken uint16, bucketSize time.Dura
 	if err := storecontract.ValidateHighFrequencyBucketSize(bucketSize); err != nil {
 		return err
 	}
-	return s.fanOutUniform(func(shard *badgerShard) error {
-		return shard.CreateHighFrequencyIndex(labelToken, bucketSize)
-	})
+	return s.fanOutUniformCreate(
+		func(shard *badgerShard) error { return shard.CreateHighFrequencyIndex(labelToken, bucketSize) },
+		func(shard *badgerShard) error { return shard.DropHighFrequencyIndex(labelToken) },
+	)
 }
 
 // DropHighFrequencyIndex removes the high-frequency index for labelToken from

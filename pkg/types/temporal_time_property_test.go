@@ -93,6 +93,64 @@ func TestSet_TimeTimeEqualsExplicitTemporalValue(t *testing.T) {
 	}
 }
 
+// TestSetProperties_TimeTimeCanonicalizedToTemporalValue guards BACKLOG 6a:
+// unlike Set/NewPropertySlice, Node.SetProperties/Relationship.SetProperties
+// route through canonicalPropertySlice -> canonicalPropertyValue, which
+// skipped the time.Time -> TemporalValue canonicalization entirely. A raw
+// time.Time value stored via SetProperties therefore diverged from the same
+// content stored via Set (different stored type, non-hashable — see the
+// companion hash-equivalence test below).
+func TestSetProperties_TimeTimeCanonicalizedToTemporalValue(t *testing.T) {
+	t.Parallel()
+	tm := time.Date(2024, 3, 14, 9, 26, 53, 0, time.UTC)
+
+	n := NewNode(NodeID(1), 1, nil)
+	if err := n.SetProperties(PropertySlice{{Key: "seen", Value: tm}}); err != nil {
+		t.Fatalf("SetProperties(time.Time): %v", err)
+	}
+	got, ok := n.GetProperty("seen")
+	if !ok {
+		t.Fatal("key seen missing after SetProperties")
+	}
+	tv, ok := got.(TemporalValue)
+	if !ok {
+		t.Fatalf("stored value type = %T, want TemporalValue", got)
+	}
+	if tv.Kind != TemporalDateTime {
+		t.Fatalf("stored kind = %d, want TemporalDateTime", tv.Kind)
+	}
+	if want := tm.Format(time.RFC3339Nano); tv.Value != want {
+		t.Fatalf("stored rendering = %q, want %q", tv.Value, want)
+	}
+}
+
+// TestSetProperties_TimeTimeMatchesSet proves the two doors now agree: a node
+// built via SetProperties with a raw time.Time must be indistinguishable
+// (same stored value) from the equivalent Set()-built node — otherwise their
+// content hashes silently diverge for logically identical data.
+func TestSetProperties_TimeTimeMatchesSet(t *testing.T) {
+	t.Parallel()
+	tm := time.Date(2024, 3, 14, 9, 26, 53, 123456789, time.UTC)
+
+	viaSetProperties := NewNode(NodeID(1), 1, nil)
+	if err := viaSetProperties.SetProperties(PropertySlice{{Key: "t", Value: tm}}); err != nil {
+		t.Fatalf("SetProperties: %v", err)
+	}
+	viaSet := NewNode(NodeID(2), 1, nil)
+	if err := viaSet.SetProperty("t", tm); err != nil {
+		t.Fatalf("SetProperty: %v", err)
+	}
+
+	a, _ := viaSetProperties.GetProperty("t")
+	b, _ := viaSet.GetProperty("t")
+	if a != b {
+		t.Fatalf("SetProperties stored %#v, Set stored %#v — must be identical", a, b)
+	}
+
+	// Must be hashable without panicking (a raw uncanonicalized time.Time is not).
+	_ = viaSetProperties.AppendPropertyHashBytes(nil)
+}
+
 // A value with no time.Time is returned untouched (changed=false, zero copy).
 func TestCanonicalizeTemporalValue_NoTimeUnchanged(t *testing.T) {
 	t.Parallel()

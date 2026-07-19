@@ -56,7 +56,10 @@ func backupDeltaName(since, to uint64) string {
 // file in dir: backup-<LSN>-full.tkg, where LSN (zero-padded to 20 digits) is
 // the change-log point the export's own header reports itself consistent at
 // (DeltaHeader.To — the same value HeaderOf would decode back out of the
-// file). The file is fsync'd before BackupTo returns.
+// file). The file is fsync'd before BackupTo returns, and the containing
+// directory is fsync'd after the file is published under its final name —
+// so both the backup's data and its directory-entry visibility survive a
+// crash immediately after a successful return.
 //
 // On a backend with no active change-log, the export still succeeds and the
 // returned Cursor is the zero Cursor (there is no change-log point to name it
@@ -120,7 +123,8 @@ func (a *API) BackupTo(dir string) (Cursor, error) {
 // committed after `since` to a deterministically named file in dir:
 // backup-<sinceLSN>-to-<toLSN>-delta.tkg (both zero-padded to 20 digits).
 // Like BackupTo, the name is derived from the stream's own header cursors,
-// never wall time, and the file is fsync'd before returning.
+// the file is fsync'd before returning, and the containing directory is
+// fsync'd after the file is published under its final name.
 //
 // Empty delta: if there is nothing to reproduce after `since` (zero change
 // records beyond the header/registry — e.g. called again right after a
@@ -244,5 +248,29 @@ func renameNoClobber(tmpPath, finalPath string) error {
 	// is already durably published at finalPath regardless of whether this
 	// Remove succeeds.
 	_ = os.Remove(tmpPath)
+	// fsync the CONTAINING DIRECTORY, not just the file: tmp.Sync() (already
+	// called by both BackupTo/BackupDeltaTo before this rename) only makes
+	// the file's DATA durable. The directory ENTRY that publishes it under
+	// finalPath (this Link, plus the Remove of tmpPath's entry — both
+	// metadata changes in the SAME directory) is a separate durability
+	// domain on POSIX filesystems that don't implicitly journal directory
+	// metadata alongside file data: a crash right after a successful
+	// BackupTo/BackupDeltaTo return could otherwise lose the publish itself,
+	// leaving the data on disk but the backup absent from a directory
+	// listing after recovery.
+	if err := fsyncDir(filepath.Dir(finalPath)); err != nil {
+		return fmt.Errorf("graph: backup: sync dir for %s: %w", finalPath, err)
+	}
 	return nil
+}
+
+// fsyncDir opens dir and fsyncs it, flushing pending directory-entry
+// metadata changes (create/link/remove) to durable storage.
+func fsyncDir(dir string) error {
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = d.Close() }()
+	return d.Sync()
 }

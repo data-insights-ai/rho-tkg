@@ -223,39 +223,36 @@ func (c *Core) validatePropertyValueLimitTyped(key string, val any, depth int) e
 		// stored form is always the TemporalValue case above.
 		return nil
 	case []int:
-		if len(v) > 0 && depth+1 > maxPropertyValueLimitDepth {
-			return fmt.Errorf("%w: key %q", types.ErrMaxDepthExceeded, key)
+		if len(v) > c.validation.MaxPropertyContainerLength {
+			return fmt.Errorf("%w: key %q (%d elements > %d)", ErrValueTooLarge, key, len(v), c.validation.MaxPropertyContainerLength)
 		}
 		return nil
 	case []int64:
-		if len(v) > 0 && depth+1 > maxPropertyValueLimitDepth {
-			return fmt.Errorf("%w: key %q", types.ErrMaxDepthExceeded, key)
+		if len(v) > c.validation.MaxPropertyContainerLength {
+			return fmt.Errorf("%w: key %q (%d elements > %d)", ErrValueTooLarge, key, len(v), c.validation.MaxPropertyContainerLength)
 		}
 		return nil
 	case []float32:
-		if len(v) > 0 && depth+1 > maxPropertyValueLimitDepth {
-			return fmt.Errorf("%w: key %q", types.ErrMaxDepthExceeded, key)
+		if len(v) > c.validation.MaxPropertyContainerLength {
+			return fmt.Errorf("%w: key %q (%d elements > %d)", ErrValueTooLarge, key, len(v), c.validation.MaxPropertyContainerLength)
 		}
 		return nil
 	case []float64:
-		if len(v) > 0 && depth+1 > maxPropertyValueLimitDepth {
-			return fmt.Errorf("%w: key %q", types.ErrMaxDepthExceeded, key)
+		if len(v) > c.validation.MaxPropertyContainerLength {
+			return fmt.Errorf("%w: key %q (%d elements > %d)", ErrValueTooLarge, key, len(v), c.validation.MaxPropertyContainerLength)
 		}
 		return nil
 	case []byte:
-		if len(v) > 0 && depth+1 > maxPropertyValueLimitDepth {
-			return fmt.Errorf("%w: key %q", types.ErrMaxDepthExceeded, key)
+		if len(v) > c.validation.MaxPropertyContainerLength {
+			return fmt.Errorf("%w: key %q (%d bytes > %d)", ErrValueTooLarge, key, len(v), c.validation.MaxPropertyContainerLength)
 		}
 		return nil
 	case []bool:
-		if len(v) > 0 && depth+1 > maxPropertyValueLimitDepth {
-			return fmt.Errorf("%w: key %q", types.ErrMaxDepthExceeded, key)
+		if len(v) > c.validation.MaxPropertyContainerLength {
+			return fmt.Errorf("%w: key %q (%d elements > %d)", ErrValueTooLarge, key, len(v), c.validation.MaxPropertyContainerLength)
 		}
 		return nil
 	case []string:
-		if len(v) > 0 && depth+1 > maxPropertyValueLimitDepth {
-			return fmt.Errorf("%w: key %q", types.ErrMaxDepthExceeded, key)
-		}
 		for _, s := range v {
 			if len(s) > c.validation.MaxPropertyValueSize {
 				return fmt.Errorf("%w: key %q (%d > %d)", ErrValueTooLarge, key, len(s), c.validation.MaxPropertyValueSize)
@@ -263,6 +260,9 @@ func (c *Core) validatePropertyValueLimitTyped(key string, val any, depth int) e
 		}
 		return nil
 	case []any:
+		if len(v) > c.validation.MaxPropertyContainerLength {
+			return fmt.Errorf("%w: key %q (%d elements > %d)", ErrValueTooLarge, key, len(v), c.validation.MaxPropertyContainerLength)
+		}
 		for _, item := range v {
 			if err := c.validatePropertyValueLimitTyped(key, item, depth+1); err != nil {
 				return err
@@ -270,6 +270,9 @@ func (c *Core) validatePropertyValueLimitTyped(key string, val any, depth int) e
 		}
 		return nil
 	case map[string]string:
+		if len(v) > c.validation.MaxPropertyContainerLength {
+			return fmt.Errorf("%w: key %q (%d entries > %d)", ErrValueTooLarge, key, len(v), c.validation.MaxPropertyContainerLength)
+		}
 		for nestedKey, nestedValue := range v {
 			if len(nestedKey) > c.validation.MaxPropertyValueSize {
 				return fmt.Errorf("%w: key %q nested map key (%d > %d)", ErrValueTooLarge, key, len(nestedKey), c.validation.MaxPropertyValueSize)
@@ -283,6 +286,9 @@ func (c *Core) validatePropertyValueLimitTyped(key string, val any, depth int) e
 		}
 		return nil
 	case map[string]any:
+		if len(v) > c.validation.MaxPropertyContainerLength {
+			return fmt.Errorf("%w: key %q (%d entries > %d)", ErrValueTooLarge, key, len(v), c.validation.MaxPropertyContainerLength)
+		}
 		for nestedKey, nestedValue := range v {
 			if len(nestedKey) > c.validation.MaxPropertyValueSize {
 				return fmt.Errorf("%w: key %q nested map key (%d > %d)", ErrValueTooLarge, key, len(nestedKey), c.validation.MaxPropertyValueSize)
@@ -444,6 +450,9 @@ func (c *Core) validatePropertyValueLimit(key string, rv reflect.Value, depth in
 		if rv.IsNil() {
 			return nil
 		}
+		if rv.Len() > c.validation.MaxPropertyValueSize {
+			return fmt.Errorf("%w: key %q (%d elements > %d)", ErrValueTooLarge, key, rv.Len(), c.validation.MaxPropertyValueSize)
+		}
 		for i := range rv.Len() {
 			if err := c.validatePropertyValueLimit(key, rv.Index(i), depth+1); err != nil {
 				return err
@@ -453,6 +462,9 @@ func (c *Core) validatePropertyValueLimit(key string, rv reflect.Value, depth in
 	case reflect.Map:
 		if rv.IsNil() {
 			return nil
+		}
+		if rv.Len() > c.validation.MaxPropertyValueSize {
+			return fmt.Errorf("%w: key %q (%d entries > %d)", ErrValueTooLarge, key, rv.Len(), c.validation.MaxPropertyValueSize)
 		}
 		iter := rv.MapRange()
 		for iter.Next() {

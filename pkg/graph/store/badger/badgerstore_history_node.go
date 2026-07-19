@@ -38,6 +38,10 @@ func (bs *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 	if err != nil {
 		return fmt.Errorf("graph: marshal node version: %w", err)
 	}
+	changePayload, err := bs.buildNodePutPayload(updatedNode, true)
+	if err != nil {
+		return err
+	}
 
 	// Pre-fetch old state before the write lock to avoid Badger I/O under idxMu.Lock().
 	// If the prefetched row is stale by the time the lock is acquired, fall back
@@ -122,12 +126,9 @@ func (bs *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 		writeOp{opType: writeOpDelete, key: storepkg.LabelIndexKey(tok, id)},
 	)
 	bs.appendOps(ops...)
-	logErr := bs.logNodePut(updatedNode, true)
+	bs.logChangeRaw(storecontract.ChangeNodePut, changePayload)
 	bs.idxMu.Unlock()
 
-	if logErr != nil {
-		return logErr
-	}
 	return bs.flushIfNeeded()
 }
 
@@ -151,6 +152,10 @@ func (bs *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 	histData, err := bs.historyNodeValue(id, uint64(prevVersion), prevState)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node version: %w", err)
+	}
+	changePayload, err := bs.buildNodePutPayload(updatedNode, true)
+	if err != nil {
+		return err
 	}
 
 	// Pre-fetch old state before the write lock to avoid Badger I/O under idxMu.Lock().
@@ -237,12 +242,9 @@ func (bs *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 		writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tok, id)},
 	)
 	bs.appendOps(ops...)
-	logErr := bs.logNodePut(updatedNode, true)
+	bs.logChangeRaw(storecontract.ChangeNodePut, changePayload)
 	bs.idxMu.Unlock()
 
-	if logErr != nil {
-		return logErr
-	}
 	return bs.flushIfNeeded()
 }
 
@@ -269,6 +271,10 @@ func (bs *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 	histData, err := bs.historyNodeValue(id, uint64(prevVersion), prevState)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node version: %w", err)
+	}
+	changePayload, err := bs.buildNodePutPayload(current, true)
+	if err != nil {
+		return err
 	}
 
 	// Pre-fetch old state before the write lock to avoid Badger I/O under idxMu.Lock().
@@ -339,12 +345,9 @@ func (bs *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
 	)
 	bs.appendOps(ops...)
-	logErr := bs.logNodePut(current, true)
+	bs.logChangeRaw(storecontract.ChangeNodePut, changePayload)
 	bs.idxMu.Unlock()
 
-	if logErr != nil {
-		return logErr
-	}
 	return bs.flushIfNeeded()
 }
 

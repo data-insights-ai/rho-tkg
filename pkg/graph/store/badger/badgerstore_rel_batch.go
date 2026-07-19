@@ -40,7 +40,7 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 	// the caller-owned finalized rel — built OUTSIDE idxMu (see PutNodesBatch:
 	// keeping them under the lock was the dominant concurrent-write cost).
 	var putPayloads [][]byte
-	if bs.logEnabled {
+	if bs.logEnabled.Load() {
 		putPayloads = make([][]byte, len(rels))
 	}
 	for i, r := range rels {
@@ -51,7 +51,7 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		if err != nil {
 			return fmt.Errorf("graph: marshal relationship: %w", err)
 		}
-		if bs.logEnabled {
+		if bs.logEnabled.Load() {
 			p, err := storepkg.RelPutPayload(r, false)
 			if err != nil {
 				return fmt.Errorf("graph: encode change-log: %w", err)
@@ -112,6 +112,7 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 
 		bs.relCache.Put(rd.id, rd.frozen)
 		bs.relIDs[rd.rid] = struct{}{}
+		bs.bumpRelRevLocked(rd.rid)
 
 		if bs.typeIdx[rd.relType] == nil {
 			bs.typeIdx[rd.relType] = make(map[types.RelID]struct{})
@@ -179,7 +180,7 @@ func (bs *Store) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
 	// marshal error aborts before any op is enqueued. Indexed by typedIDs order,
 	// which the infos slice below preserves.
 	delPayloads := make([][]byte, len(typedIDs))
-	if bs.logEnabled {
+	if bs.logEnabled.Load() {
 		for i, rid := range typedIDs {
 			p, err := storepkg.MarshalChangeBody(storepkg.RelDeleteBody{ID: int64(rid.SnowflakeID())})
 			if err != nil {

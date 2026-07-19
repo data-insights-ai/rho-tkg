@@ -218,7 +218,7 @@ func (t *TempOps) AdvanceClock(to types.Instant) (types.Instant, error) {
 	if err := c.checkOpen(); err != nil {
 		return 0, err
 	}
-	return c.advanceClockFloor(to), nil
+	return c.advanceClockFloor(to)
 }
 
 func (t *TempOps) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {

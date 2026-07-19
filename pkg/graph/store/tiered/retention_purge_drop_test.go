@@ -2,6 +2,9 @@ package tiered
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -203,4 +206,163 @@ func TestTieredColdShardFastDrop_ConcurrentReads(t *testing.T) {
 		}
 	}
 	_ = storecontract.ErrNodeNotFound
+}
+
+// TestTieredColdShardFastDrop_CloseDoesNotRaceEventShardsMap guards BACKLOG
+// 19a: Close() must not run concurrently with the cold-shard-drop drain
+// protocol's mutations of ts.eventShards. Before the fix, Close() ranged the
+// map under lifecycleMu only while dropOneShard mutated it under ts.mu only —
+// two different locks guarding the same map from two different code paths,
+// which the race detector (or, without -race, Go's own concurrent
+// map-read/map-write fatal-error check) can catch even without precise
+// timing, since no happens-before edge related the two accesses at all.
+// Several event shards (multiple dropOneShard calls per purge) and repeated
+// iterations widen the interleaving window and raise the chance any residual
+// race is caught.
+func TestTieredColdShardFastDrop_CloseDoesNotRaceEventShardsMap(t *testing.T) {
+	for iter := 0; iter < 20; iter++ {
+		ts, err := New(Config{
+			DataDir:       t.TempDir(),
+			RefLabels:     []string{"Case", "User"},
+			ShardWindow:   7 * 24 * time.Hour,
+			FlushInterval: 1<<63 - 1,
+		})
+		if err != nil {
+			t.Fatalf("iter %d: New: %v", iter, err)
+		}
+		reg := registrypkg.NewLabelRegistry()
+		ts.SetLabelRegistry(reg)
+		signalTok, err := reg.GetOrCreate("Signal")
+		if err != nil {
+			t.Fatalf("iter %d: registry: %v", iter, err)
+		}
+		gen := tieredNodeGen(t)
+		// Several rotated shards, so fastDropEligibleShards makes several
+		// dropOneShard calls (each with its own I/O-bearing residue-collect
+		// step) instead of one, widening the window Close() can land in.
+		for shard := 0; shard < 5; shard++ {
+			for i := 0; i < 10; i++ {
+				if err := ts.PutNode(types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)); err != nil {
+					t.Fatalf("iter %d: put: %v", iter, err)
+				}
+			}
+			if err := ts.ForceRotate(); err != nil {
+				t.Fatalf("iter %d: ForceRotate: %v", iter, err)
+			}
+		}
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_, _ = ts.PurgeNodesByLabelBefore(signalTok, types.Instant(1<<50), 8)
+		}()
+		go func() {
+			defer wg.Done()
+			// A short head start lets the purge goroutine clear checkOpen()
+			// and reach dropOneShard's I/O-bound residue collection before
+			// Close() begins its own eventShards map traversal — widening the
+			// window where the two unsynchronized map accesses can overlap.
+			time.Sleep(50 * time.Microsecond)
+			_ = ts.Close()
+		}()
+		wg.Wait()
+	}
+}
+
+// TestTieredColdShardFastDrop_CatalogSaveFailureLeavesShardIntact guards
+// BACKLOG 19b: dropOneShard must durably commit the catalog removal BEFORE
+// deleting the shard directory, with an in-memory rollback (catalog +
+// routing) on a failed Save — mirroring RotateHotShard's discipline. Before
+// the fix, the directory was removed FIRST; a Save failure (or a crash in
+// that window) left a catalog entry pointing at a directory that no longer
+// existed, bricking the shard's reopen. This test forces catalog.Save() to
+// fail (read-only meta dir) and asserts the shard's directory, catalog entry,
+// and in-memory routing all survive intact — the drop simply fails and can be
+// retried, instead of destroying data it couldn't durably record as gone.
+func TestTieredColdShardFastDrop_CatalogSaveFailureLeavesShardIntact(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod-driven write-failure injection is unreliable on Windows")
+	}
+
+	dir := t.TempDir()
+	ts, err := New(Config{
+		DataDir:       dir,
+		RefLabels:     []string{"Case"},
+		ShardWindow:   7 * 24 * time.Hour,
+		FlushInterval: 1<<63 - 1,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = ts.Close() })
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	signalTok, err := reg.GetOrCreate("Signal")
+	if err != nil {
+		t.Fatalf("registry: %v", err)
+	}
+	gen := tieredNodeGen(t)
+	var ids []types.NodeID
+	for i := 0; i < 10; i++ {
+		id := types.NodeID(gen.Generate())
+		if err := ts.PutNode(types.NewNode(id, signalTok, nil)); err != nil {
+			t.Fatalf("put: %v", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := ts.ForceRotate(); err != nil {
+		t.Fatalf("ForceRotate: %v", err)
+	}
+	shardsBefore := ts.catalog.EventShards()
+	if len(shardsBefore) == 0 {
+		t.Fatal("no rotated event shard — test setup broken")
+	}
+	droppedName := shardsBefore[0].Name
+	shardDir := filepath.Join(dir, shardsBefore[0].Path)
+
+	// Make the catalog directory read-only so atomicWriteFile's CreateTemp
+	// call inside catalog.Save() fails.
+	metaDir := filepath.Join(dir, "meta")
+	if err := os.Chmod(metaDir, 0o500); err != nil {
+		t.Fatalf("chmod meta read-only: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(metaDir, 0o700) })
+
+	if _, err := ts.PurgeNodesByLabelBefore(signalTok, types.Instant(1<<50), 8); err == nil {
+		t.Fatal("PurgeNodesByLabelBefore: nil error, want failure (catalog dir is read-only)")
+	}
+
+	// Restore write access so the assertions below (which read the store)
+	// aren't themselves impeded, then verify nothing was destroyed.
+	if err := os.Chmod(metaDir, 0o700); err != nil {
+		t.Fatalf("chmod meta writable: %v", err)
+	}
+
+	if _, err := os.Stat(shardDir); err != nil {
+		t.Fatalf("shard directory removed despite failed catalog commit: %v", err)
+	}
+	shardsAfter := ts.catalog.EventShards()
+	found := false
+	for _, e := range shardsAfter {
+		if e.Name == droppedName {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("catalog no longer lists shard %q after a failed drop — rollback did not restore it", droppedName)
+	}
+	ts.mu.RLock()
+	_, routable := ts.eventShards[droppedName]
+	ts.mu.RUnlock()
+	if !routable {
+		t.Fatalf("shard %q not re-linked into ts.eventShards after failed drop — data intact but unreachable", droppedName)
+	}
+	// The entities themselves must still be reachable through the surviving,
+	// re-linked shard.
+	for _, id := range ids {
+		if _, err := ts.GetNode(id); err != nil {
+			t.Fatalf("node %d unreachable after failed-but-rolled-back drop: %v", id.SnowflakeID(), err)
+		}
+	}
 }

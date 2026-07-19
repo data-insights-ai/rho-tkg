@@ -173,7 +173,9 @@ func (c *Core) resolveNodeChainAsOf(chain []*types.Node, txPin types.Instant) (*
 	if !ok {
 		return nil, ErrNoVersionAsOf
 	}
-	return nodeVisibleAtTxTime(best, txPin), nil
+	// Chain rows may be shared frozen store rows — never mutate them in place
+	// (lesson 60, mirroring filterNodeChainByTxAt's discipline).
+	return nodeVisibleAtTxTime(best.DeepCopy(), txPin), nil
 }
 
 // resolveRelChain is the relationship-side mirror of resolveNodeChain.
@@ -239,5 +241,7 @@ func (c *Core) resolveRelChainAsOf(chain []*types.Relationship, txPin types.Inst
 	if !ok {
 		return nil, ErrNoVersionAsOf
 	}
-	return relVisibleAtTxTime(best, txPin), nil
+	// Chain rows may be shared frozen store rows — never mutate them in place
+	// (lesson 60, mirroring filterRelChainByTxAt's discipline).
+	return relVisibleAtTxTime(best.DeepCopy(), txPin), nil
 }

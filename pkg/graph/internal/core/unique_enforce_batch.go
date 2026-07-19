@@ -108,6 +108,16 @@ func (c *Core) partitionBatchNodesByUnique(nodes []pendingNode) ([]pendingNode, 
 			violators = append(violators, batchNodeUniqueViolation{pn: pn, id: pn.node.ID(), err: ferr})
 			continue
 		}
+		// Pass 1: check EVERY tuple this node binds, read-only, before claiming
+		// anything. A node with more than one constrained tuple (e.g. two
+		// UniqueForever keys) that claimed each tuple as it was checked could
+		// fail on a LATER tuple and be rejected as a violator while an
+		// EARLIER tuple's claim stayed durably persisted — a permanent
+		// orphaned ownership claim on a node that never actually landed
+		// (BACKLOG 9e, batch mirror of the standalone-door fix). The batch's
+		// exclusive c.mu.Lock already fences out any concurrent standalone
+		// writer for the whole partition pass, so no TOCTOU window exists
+		// between this read-only pass and the claim pass below.
 		var vErr error
 		for seenKey, tuple := range tuples {
 			// (a) earlier pending node in THIS batch already claimed it.
@@ -134,18 +144,33 @@ func (c *Core) partitionBatchNodesByUnique(nodes []pendingNode) ([]pendingNode, 
 				break
 			}
 			// (c) UniqueForever: the current-state check passed; consult the
-			// durable ownership registry (a value can be owned forever by an
-			// entity that no longer holds it — supersession, hard delete — so
-			// (b) alone misses it). Registry hit + different entity => violation;
-			// same entity => pass; miss => claim + persist. This reuses the same
-			// registry seam the standalone kernel uses (checkAndClaimForever takes
-			// c.uniqueMu; the batch's exclusive c.mu.Lock already fences out any
-			// concurrent standalone writer, so no value stripe is needed here).
+			// durable ownership registry READ-ONLY (a value can be owned
+			// forever by an entity that no longer holds it — supersession,
+			// hard delete — so (b) alone misses it). Claiming happens in the
+			// second pass below, only after every tuple has passed.
 			if tuple.scope == constraintspkg.UniqueForever {
-				if err := c.checkAndClaimForever(tuple.labelTok, tuple.key, tuple.valueKey, pn.node.ID()); err != nil {
+				if err := c.checkForeverOwnership(tuple.labelTok, tuple.key, tuple.valueKey, pn.node.ID()); err != nil {
 					vErr = err
 					break
 				}
+			}
+		}
+		if vErr != nil {
+			violators = append(violators, batchNodeUniqueViolation{pn: pn, id: pn.node.ID(), err: vErr})
+			continue
+		}
+		// Pass 2: every tuple passed — now durably claim each UniqueForever
+		// value. This reuses the same registry seam the standalone kernel
+		// uses (checkAndClaimForever takes c.uniqueMu; the batch's exclusive
+		// c.mu.Lock already fences out any concurrent standalone writer, so
+		// no value stripe is needed here).
+		for _, tuple := range tuples {
+			if tuple.scope != constraintspkg.UniqueForever {
+				continue
+			}
+			if err := c.checkAndClaimForever(tuple.labelTok, tuple.key, tuple.valueKey, pn.node.ID()); err != nil {
+				vErr = err
+				break
 			}
 		}
 		if vErr != nil {

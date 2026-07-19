@@ -292,10 +292,21 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	// 2. Create relationships — lock endpoints per-rel.
 	//
 	// Inside the per-rel lock window, refresh endpoint hashes from the live
-	// store and stamp TxFrom. Both fields must reflect the committed state
-	// at relationship-creation time: queueing endpoint hashes in
-	// AddRelationship would let an intervening UpdateNode invalidate them
-	// before commit.
+	// store. Endpoint hashes must reflect the committed state at
+	// relationship-creation time: queueing them in AddRelationship would let
+	// an intervening UpdateNode invalidate them before commit.
+	//
+	// TxFrom, in contrast, is stamped ONCE for the whole rel-creation phase
+	// (relsTxNow, computed here) — mirroring the node-creation phase above
+	// and the documented "a whole commit group shares one TxFrom" contract
+	// (CLAUDE.md's Ingest Pipeline section: "A whole commit group shares one
+	// TxFrom... TxFrom is strictly increasing ACROSS groups"), NOT
+	// per-relationship inside the loop (BACKLOG 11d — the previous code
+	// called b.g.now() fresh per-rel, so distinct rels in the SAME batch
+	// could get DIFFERENT TxFrom stamps). Distinct rels remain each their
+	// own genesis chain, so per-entity TxFrom monotonicity is unaffected by
+	// sharing one stamp across them.
+	relsTxNow := b.g.now()
 	for _, pr := range b.rels {
 		// Short-circuit when a queued endpoint failed in step 1: surface a
 		// clear dependency error rather than letting PutRelationship report
@@ -394,7 +405,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			// alias is not load-bearing.
 			pr.rel.SetIntegrity(pr.relIntegrity)
 
-			txNow = b.g.now()
+			txNow = relsTxNow
 			ts := txNow
 			if pr.backfillTxFrom != 0 {
 				// Privileged transaction-time backfill (gated at queue time).
@@ -581,11 +592,16 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	// co-commit them. Always commit (even on partial failure) because the batch
 	// KEEPS its successful ops — discarding would lose records for committed data
 	// and diverge a replica. A CommitLogScope error leaves committed-but-unlogged
-	// data (documented residual); surface it as the batch error if nothing else
-	// failed.
+	// data (documented residual) — ALWAYS surfaced as an additional batch error,
+	// even when per-op failures already occurred: a replica-divergence risk is
+	// not something a caller should ever have silently swallowed just because
+	// something else also failed in the same batch (BACKLOG 11c — the previous
+	// `result.Failed == 0` guard dropped exactly this error whenever it mattered
+	// most, i.e. an already-partially-failed batch whose surviving ops are now
+	// also unlogged).
 	if scopeOpen {
 		lsn, err := b.g.txLogScope.CommitLogScope()
-		if err != nil && result.Failed == 0 {
+		if err != nil {
 			result.Errors = append(result.Errors, BatchError{Op: "commit-change-log", Err: err})
 			result.Failed++
 		}

@@ -19,7 +19,7 @@ func (bs *Store) LogRangePurge(labelToken uint16, before types.Instant, mode uin
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
-	if !bs.logEnabled {
+	if !bs.logEnabled.Load() {
 		return nil
 	}
 	payload, err := bs.buildChangePayload(storepkg.RangePurgeBody{

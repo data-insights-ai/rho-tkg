@@ -164,6 +164,19 @@ func (c *Core) recordForeignIncomingInternal(ctx context.Context, edge storepkg.
 	if err := edge.Validate(); err != nil {
 		return nil, err
 	}
+	// RecordForeignIncoming is a DIRECTLY CALLABLE public door (unlike
+	// apply_record.go's replica-apply path, which has a documented exemption
+	// because it reproduces a PRIMARY's already-validated state verbatim) — a
+	// caller on a machine with looser ValidationLimits could otherwise inject
+	// a type name or property set exceeding THIS machine's configured caps.
+	// Mirror prepareRelCreate's validation order (validateName, then
+	// validateProperties, before the property slice is built).
+	if err := c.validateName(edge.TypeName); err != nil {
+		return nil, err
+	}
+	if err := c.validateProperties(edge.Properties); err != nil {
+		return nil, err
+	}
 	ps, err := types.NewOwnedPropertySlice(edge.Properties)
 	if err != nil {
 		return nil, fmt.Errorf("graph: foreign-incoming properties: %w", err)

@@ -1,5 +1,7 @@
 package types
 
+import "unsafe"
+
 // Approximate Go heap footprint estimation for cache byte budgets
 // (enterprise-scale ceiling 4: caches budgeted by count, not bytes).
 //
@@ -21,10 +23,23 @@ const (
 	// approxUnknownValue covers registered custom property types — walking
 	// user-defined structs is not worth the cost; assume a sizable value.
 	approxUnknownValue = 256
-	// approxTemporalMeta is the TemporalMetadata struct (4 instants + flags).
-	approxTemporalMeta = 72
-	// approxIntegrity covers the integrity struct + hash string.
-	approxIntegrity = 96
+)
+
+// approxTemporalMeta/approxNodeIntegrity/approxRelIntegrity/approxNodeStruct/
+// approxRelStruct are derived from unsafe.Sizeof instead of hardcoded
+// literals so a future struct-layout change can't silently desync the
+// estimator from reality the way it did twice before (BACKLOG 6b/6c):
+// approxTemporalMeta was a stale 72 vs the actual 96-byte TemporalMetadata,
+// and a single approxIntegrity=96 constant was wrongly shared between
+// NodeIntegrity (96B) and RelIntegrity (128B, which carries FromNodeHash/
+// ToNodeHash beyond NodeIntegrity), under-counting every relationship's
+// integrity metadata by 33%.
+var (
+	approxTemporalMeta  = int(unsafe.Sizeof(TemporalMetadata{}))
+	approxNodeIntegrity = int(unsafe.Sizeof(NodeIntegrity{}))
+	approxRelIntegrity  = int(unsafe.Sizeof(RelIntegrity{}))
+	approxNodeStruct    = int(unsafe.Sizeof(Node{}))
+	approxRelStruct     = int(unsafe.Sizeof(Relationship{}))
 )
 
 // approxValueBytes estimates the heap bytes held by a property value.
@@ -104,15 +119,15 @@ func (n *Node) ApproxHeapBytes() int {
 	if n == nil {
 		return 0
 	}
-	size := 80 // Node struct (documented layout)
+	size := approxNodeStruct
 	if len(n.extraLabels) > 0 {
 		size += approxSliceHeader + len(n.extraLabels)*2
 	}
 	if n.temporal != nil {
-		size += approxTemporalMeta
+		size += approxTemporalMeta + len(n.temporal.CreatedBy) + len(n.temporal.UpdatedBy)
 	}
 	if n.integrity != nil {
-		size += approxIntegrity
+		size += approxNodeIntegrity
 	}
 	return size + n.properties.ApproxHeapBytes()
 }
@@ -123,12 +138,12 @@ func (r *Relationship) ApproxHeapBytes() int {
 	if r == nil {
 		return 0
 	}
-	size := 72 // Relationship struct (documented layout)
+	size := approxRelStruct
 	if r.temporal != nil {
-		size += approxTemporalMeta
+		size += approxTemporalMeta + len(r.temporal.CreatedBy) + len(r.temporal.UpdatedBy)
 	}
 	if r.integrity != nil {
-		size += approxIntegrity
+		size += approxRelIntegrity
 	}
 	return size + r.properties.ApproxHeapBytes()
 }

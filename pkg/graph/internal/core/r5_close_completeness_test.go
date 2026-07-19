@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"runtime"
 	"testing"
 	"time"
 
@@ -407,6 +408,48 @@ func TestR5_PostClose_EventSettersReturnErrGraphClosed(t *testing.T) {
 	}
 	if got := g2.Events.GetSync(); got != nil {
 		t.Fatalf("Events.SetSync after close installed bus %p, want nil", got)
+	}
+}
+
+// TestR5_PostClose_AsyncEventBusIsClosed guards BACKLOG 7a: Core.Close() must
+// close an installed AsyncEventBus, or its dispatcher goroutine (started by
+// NewAsyncEventBus) leaks permanently on every open/close cycle. Since
+// AsyncEventBus.Close() blocks on ab.wg.Wait() until the worker goroutine has
+// fully exited, the goroutine count should already be back at baseline
+// immediately after Core.Close() returns — the retry loop below is only
+// slack for unrelated goroutines elsewhere in the runtime, not for this
+// specific teardown.
+func TestR5_PostClose_AsyncEventBusIsClosed(t *testing.T) {
+	runtime.GC()
+	baseline := runtime.NumGoroutine()
+
+	const n = 20
+	for i := 0; i < n; i++ {
+		g := newTestGraph(t)
+		bus := eventspkg.NewAsyncEventBus(eventspkg.AsyncEventBusConfig{})
+		if err := g.Events.SetAsync(bus); err != nil {
+			t.Fatalf("SetAsync: %v", err)
+		}
+		if err := g.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	}
+
+	runtime.GC()
+	deadline := time.Now().Add(2 * time.Second)
+	var after int
+	for {
+		after = runtime.NumGoroutine()
+		if after <= baseline {
+			break
+		}
+		if time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if after > baseline {
+		t.Fatalf("goroutine count after %d open+SetAsync+Close cycles = %d, want <= baseline %d (AsyncEventBus dispatcher leaked)", n, after, baseline)
 	}
 }
 

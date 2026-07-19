@@ -91,7 +91,7 @@ func (n *NodeOps) RangeCardinality(label, propKey string, min, max float64, incl
 	if err := c.checkOpen(); err != nil {
 		return 0, false, err
 	}
-	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 {
+	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
 		return 0, false, nil // temporal — the BSI cannot answer; caller scans
 	}
 	scanner, native := c.store.(nodeRangeCardinalityScanner)
@@ -132,7 +132,7 @@ func (r *RelOps) RangeCardinality(typeName, propKey string, min, max float64, in
 	if err := c.checkOpen(); err != nil {
 		return 0, false, err
 	}
-	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 {
+	if opts.ValidAt != 0 || opts.ValidStart != 0 || opts.ValidEnd != 0 || opts.TxAt != 0 || opts.TxPin != 0 {
 		return 0, false, nil // temporal — the index cannot answer; caller scans
 	}
 	scanner, native := c.store.(relRangeCardinalityScanner)

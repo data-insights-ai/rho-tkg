@@ -362,6 +362,60 @@ func (c *Core) captureMergeRecord(mrb *mergeRollback, rec storepkg.ChangeRecord,
 		tr[id] = struct{}{}
 		return mrb.captureRel(id)
 
+	case storepkg.ChangeForeignIncoming:
+		// A cross-machine incoming half-edge stub (ADR-0010 Model A). Its rel-ID
+		// deliberately belongs to a FOREIGN slot — the whole point of the stub is
+		// that it is written co-located on the END node's shard, "reachable via
+		// that shard's adjacency fold, never a slot-routed point read"
+		// (ForeignIncomingRelCapability's own doc). mrb.captureRel /
+		// verifyRelChainLocked, like every other case in this switch, both do a
+		// plain SLOT-ROUTED getCurrentRelationship — which fails closed with
+		// ErrSlotNotLocal for exactly this rel-ID, not "not found". So, unlike
+		// ChangeRelPut, this case cannot reuse the generic single-entity
+		// capture/verify machinery without a bespoke foreign-slot-aware
+		// read/restore path this pass does not add. Validate the payload decodes
+		// (the untrusted-stream check every case performs) and otherwise capture
+		// NOTHING — safe because RecordForeignIncoming is documented idempotent
+		// ("an already-present stub is a no-op"), so a merge retried after an
+		// unrelated later-record failure simply re-applies this put again.
+		if _, err := storeutil.DecodeRelPut(rec.Payload); err != nil {
+			return corruptDelta(rec, "foreign-incoming put", err)
+		}
+		return nil
+
+	case storepkg.ChangeForeignIncomingDelete:
+		// Same foreign-slot addressing constraint as ChangeForeignIncoming above.
+		// DeleteForeignIncoming is documented idempotent ("an already-absent stub
+		// is not an error"), so capturing nothing and letting a merge retry
+		// re-apply the delete is safe.
+		if _, err := storeutil.DecodeForeignIncomingDelete(rec.Payload); err != nil {
+			return corruptDelta(rec, "foreign-incoming delete", err)
+		}
+		return nil
+
+	case storepkg.ChangeRangePurge:
+		// A ChangeRangePurge record carries no per-entity rows — it names a
+		// PREDICATE (label + before-instant) the replica re-executes, deriving
+		// whatever entity set currently matches (ADR-0008 R3;
+		// applyRangePurgeLocked). Unlike every other tag, "capture the touched
+		// entities for merge rollback" is neither meaningful (there is no fixed
+		// ID set to snapshot ahead of applying) NOR desirable: retention purge
+		// exists to durably remove data, so snapshotting the about-to-be-purged
+		// rows into mergeRollback's in-memory buffers — even temporarily, even
+		// if a later record's failure never actually triggers a restore — would
+		// undermine the exact retention/compliance guarantee the primary's
+		// purge made. So this case deliberately captures NOTHING: only
+		// validate the payload decodes cleanly (the untrusted-stream check
+		// every other case performs), and let the purge's effect stand
+		// uncaptured. applyRangePurgeLocked is documented idempotent, so a
+		// merge retry after an unrelated later-record failure simply
+		// re-executes the same predicate — never a correctness problem, and
+		// never a reason to hold purged data in memory "just in case".
+		if _, err := storeutil.DecodeRangePurge(rec.Payload); err != nil {
+			return corruptDelta(rec, "range purge", err)
+		}
+		return nil
+
 	case storepkg.ChangeClear, storepkg.ChangeMeta:
 		return fmt.Errorf("%w: change tag %s is not valid in a delta merge", ErrCorruptExport, rec.Tag)
 

@@ -79,9 +79,12 @@ func (s *Store) CreateVectorIndexWithOptions(labelToken uint16, propertyKey stri
 	if err := indexpkg.ValidateVectorIndexConfig(dims, metric); err != nil {
 		return err
 	}
-	if err := s.fanOutUniform(func(shard *badgerShard) error {
-		return shard.CreateVectorIndexWithOptions(labelToken, propertyKey, dims, metric, opts)
-	}); err != nil {
+	if err := s.fanOutUniformCreate(
+		func(shard *badgerShard) error {
+			return shard.CreateVectorIndexWithOptions(labelToken, propertyKey, dims, metric, opts)
+		},
+		func(shard *badgerShard) error { return shard.DropVectorIndex(labelToken, propertyKey) },
+	); err != nil {
 		return err
 	}
 	s.vectorDefMu.Lock()

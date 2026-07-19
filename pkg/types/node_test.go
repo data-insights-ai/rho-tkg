@@ -326,6 +326,61 @@ func TestRemoveLabelTokenRawRefusesLastLabel(t *testing.T) {
 	}
 }
 
+// TestRemoveLabelTokenRawSkipsZeroTokenWhenPromoting is BACKLOG 6d:
+// RemoveLabelTokenRaw's promotion step used to promote extraLabels[0]
+// unconditionally. NewNode's own documented/tested contract
+// (TestNewNodeAllowsZeroExtraLabelForStoreValidation) permits token 0 to sit
+// in the extra-label set, so a node built as
+// NewNode(id, primary, []uint16{0, realLabel}) had reserved token 0 as its
+// FIRST extra. Removing the primary label promoted that 0 to primary —
+// HasLabelToken(0) always returns false (token 0 reserved), so the node was
+// left with a primary label that could never again be observed as present,
+// even though LabelTokenCount() still reported it. A perfectly good
+// non-zero candidate (realLabel) sat right behind it in the extra list.
+func TestRemoveLabelTokenRawSkipsZeroTokenWhenPromoting(t *testing.T) {
+	t.Parallel()
+
+	n := NewNode(NodeID(snowflake.ID(1)), 10, []uint16{0, 20})
+	if !n.RemoveLabelTokenRaw(10) {
+		t.Fatal("RemoveLabelTokenRaw(primary) = false, want true — BACKLOG 6d regression")
+	}
+	if n.PrimaryLabelToken() != labelToken(20) {
+		t.Fatalf("PrimaryLabelToken() = %d, want 20 (the non-zero extra), not the reserved token 0 — BACKLOG 6d regression", n.PrimaryLabelToken())
+	}
+	if !n.HasLabelToken(labelToken(20)) {
+		t.Fatal("HasLabelToken(20) = false after promotion, want true")
+	}
+	// The skipped token-0 extra must survive as an extra label, not vanish.
+	extras := n.ExtraLabelTokens()
+	if len(extras) != 1 || extras[0] != labelToken(0) {
+		t.Fatalf("ExtraLabelTokens() = %v, want [0] (the skipped zero token retained as an extra)", extras)
+	}
+	if n.LabelTokenCount() != 2 {
+		t.Fatalf("LabelTokenCount() = %d, want 2", n.LabelTokenCount())
+	}
+}
+
+// TestRemoveLabelTokenRawRefusesPromotionWhenOnlyZeroExtraRemains covers the
+// edge the skip-token-0 fix introduces: if the ONLY remaining extra is token
+// 0, there is no valid non-zero candidate to promote, so the removal must be
+// refused — exactly like the pre-existing "no extras at all" refusal
+// (TestRemoveLabelTokenRawRefusesLastLabel), not silently promote 0 anyway.
+func TestRemoveLabelTokenRawRefusesPromotionWhenOnlyZeroExtraRemains(t *testing.T) {
+	t.Parallel()
+
+	n := NewNode(NodeID(snowflake.ID(1)), 10, []uint16{0})
+	if n.RemoveLabelTokenRaw(10) {
+		t.Fatal("RemoveLabelTokenRaw(primary) = true when only a reserved zero extra remains, want false — BACKLOG 6d regression")
+	}
+	if n.PrimaryLabelToken() != labelToken(10) {
+		t.Fatalf("PrimaryLabelToken() = %d, want unchanged 10 after refused removal", n.PrimaryLabelToken())
+	}
+	extras := n.ExtraLabelTokens()
+	if len(extras) != 1 || extras[0] != labelToken(0) {
+		t.Fatalf("ExtraLabelTokens() = %v, want unchanged [0] after refused removal", extras)
+	}
+}
+
 func TestTokenZeroReservedNode(t *testing.T) {
 	t.Parallel()
 

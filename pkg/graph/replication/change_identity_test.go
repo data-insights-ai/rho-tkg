@@ -7,9 +7,12 @@ import (
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	adminpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/replication"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // Ask 4 — DecodeChangeIdentity: extract (kind, Snowflake ID) from a real
@@ -150,6 +153,137 @@ func TestDecodeChangeIdentity_UnknownTag(t *testing.T) {
 	_, _, err := replication.DecodeChangeIdentity(store.ChangeRecord{Tag: store.ChangeTag(200)})
 	if !errors.Is(err, store.ErrCorruptWire) {
 		t.Fatalf("unknown tag err = %v, want ErrCorruptWire", err)
+	}
+}
+
+// TestDecodeChangeIdentity_ForeignIncomingRecords guards BACKLOG 8a:
+// ChangeForeignIncoming and ChangeForeignIncomingDelete (ADR-0010 Model A,
+// shipped) must decode as relationship identities, not fall into the
+// unknown-tag default and misreport a well-formed record as
+// store.ErrCorruptWire. Driven against REAL records from RecordForeignIncoming
+// + a subsequent node delete (which cascades a ChangeForeignIncomingDelete).
+func TestDecodeChangeIdentity_ForeignIncomingRecords(t *testing.T) {
+	ctx := context.Background()
+
+	eStore, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2, ChangeLog: true})
+	if err != nil {
+		t.Fatalf("sharded.New: %v", err)
+	}
+	e, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 0, Store: eStore})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer e.Close()
+
+	end, err := e.Nodes().Add(ctx, []string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("Add end: %v", err)
+	}
+
+	edge := store.ForeignIncomingEdge{
+		RelID:      types.RelID(snowflake.ID(700003)),
+		TypeName:   "KNOWS",
+		StartID:    types.NodeID(snowflake.ID(700001)),
+		EndID:      end.ID(),
+		Properties: map[string]any{"w": int64(7)},
+		FromHash:   "aa11",
+		ToHash:     "bb22",
+		TxFrom:     1234,
+		Version:    0,
+		AttestTx:   1,
+	}
+	if err := e.Rels().RecordForeignIncoming(ctx, edge); err != nil {
+		t.Fatalf("RecordForeignIncoming: %v", err)
+	}
+	if err := e.Nodes().Delete(ctx, end.ID()); err != nil {
+		t.Fatalf("Delete(end): %v", err)
+	}
+
+	feed, err := e.Replication().ChangeFeed(0, 0)
+	if err != nil {
+		t.Fatalf("ChangeFeed: %v", err)
+	}
+
+	sawForeignIncoming, sawForeignIncomingDelete := false, false
+	for _, rec := range feed {
+		switch rec.Tag {
+		case store.ChangeForeignIncoming:
+			sawForeignIncoming = true
+			kind, id, err := replication.DecodeChangeIdentity(rec)
+			if err != nil {
+				t.Fatalf("DecodeChangeIdentity(ChangeForeignIncoming): %v", err)
+			}
+			if kind != replication.EntityKindRelationship {
+				t.Fatalf("ChangeForeignIncoming kind = %s, want Relationship", kind)
+			}
+			if id != edge.RelID.SnowflakeID() {
+				t.Fatalf("ChangeForeignIncoming id = %d, want %d", id, edge.RelID.SnowflakeID())
+			}
+			op, err := replication.ChangeOpOf(rec)
+			if err != nil || op != replication.ChangeOpUpsert {
+				t.Fatalf("ChangeOpOf(ChangeForeignIncoming) = (%s, %v), want (Upsert, nil)", op, err)
+			}
+		case store.ChangeForeignIncomingDelete:
+			sawForeignIncomingDelete = true
+			kind, id, err := replication.DecodeChangeIdentity(rec)
+			if err != nil {
+				t.Fatalf("DecodeChangeIdentity(ChangeForeignIncomingDelete): %v", err)
+			}
+			if kind != replication.EntityKindRelationship {
+				t.Fatalf("ChangeForeignIncomingDelete kind = %s, want Relationship", kind)
+			}
+			if id != edge.RelID.SnowflakeID() {
+				t.Fatalf("ChangeForeignIncomingDelete id = %d, want %d", id, edge.RelID.SnowflakeID())
+			}
+			op, err := replication.ChangeOpOf(rec)
+			if err != nil || op != replication.ChangeOpDelete {
+				t.Fatalf("ChangeOpOf(ChangeForeignIncomingDelete) = (%s, %v), want (Delete, nil)", op, err)
+			}
+		}
+	}
+	if !sawForeignIncoming || !sawForeignIncomingDelete {
+		t.Fatalf("missing record kinds: foreignIncoming=%v foreignIncomingDelete=%v", sawForeignIncoming, sawForeignIncomingDelete)
+	}
+}
+
+// TestDecodeChangeIdentity_RangePurgeRecord guards BACKLOG 8a: ChangeRangePurge
+// (ADR-0008 R3, shipped) must classify as a no-entity-identity control record
+// (like ChangeMeta/ChangeClear), not the unknown-tag default
+// store.ErrCorruptWire — it names a predicate, not one entity.
+func TestDecodeChangeIdentity_RangePurgeRecord(t *testing.T) {
+	ctx := context.Background()
+	g, err := graphpkg.New(graphpkg.Config{Store: memory.New(memory.WithChangeLog()), AllowRetentionPurge: true})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	if _, err := g.Nodes().Add(ctx, []string{"Event"}, nil); err != nil {
+		t.Fatalf("add event: %v", err)
+	}
+	if _, err := g.Admin().PurgeExpiredNodes(ctx, adminpkg.PurgePolicy{Label: "Event", Mode: adminpkg.PurgeByAge, Before: types.Instant(1 << 50)}); err != nil {
+		t.Fatalf("PurgeExpiredNodes: %v", err)
+	}
+
+	feed, err := g.Replication().ChangeFeed(0, 0)
+	if err != nil {
+		t.Fatalf("ChangeFeed: %v", err)
+	}
+	sawRangePurge := false
+	for _, rec := range feed {
+		if rec.Tag != store.ChangeRangePurge {
+			continue
+		}
+		sawRangePurge = true
+		if _, _, err := replication.DecodeChangeIdentity(rec); !errors.Is(err, replication.ErrNoEntityIdentity) {
+			t.Fatalf("DecodeChangeIdentity(ChangeRangePurge) err = %v, want ErrNoEntityIdentity", err)
+		}
+		if _, err := replication.ChangeOpOf(rec); !errors.Is(err, replication.ErrNoEntityIdentity) {
+			t.Fatalf("ChangeOpOf(ChangeRangePurge) err = %v, want ErrNoEntityIdentity", err)
+		}
+	}
+	if !sawRangePurge {
+		t.Fatal("no ChangeRangePurge record found in feed — test setup broken")
 	}
 }
 

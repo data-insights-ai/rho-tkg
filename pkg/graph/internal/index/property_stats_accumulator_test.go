@@ -1,6 +1,7 @@
 package index
 
 import (
+	"math"
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -237,6 +238,106 @@ func TestScalarOrderFamily(t *testing.T) {
 		if fam := scalarOrderFamily(v); fam != "" {
 			t.Errorf("scalarOrderFamily(%T) = %q, want \"\"", v, fam)
 		}
+	}
+}
+
+// TestScalarOrderFamily_NaNExcludedButInfIncluded is the BACKLOG 16a direct
+// pin: scalarOrderFamily must exclude NaN (both float32 and float64) — the
+// library's own PropertyTypeClass rule splits NaN out as unorderable — while
+// still treating +/-Inf as an ordinary orderable numeric value (±Inf IS
+// Numeric per that same rule; only NaN is unorderable).
+func TestScalarOrderFamily_NaNExcludedButInfIncluded(t *testing.T) {
+	t.Parallel()
+	nanValues := []any{float32(math.NaN()), math.NaN()}
+	for _, v := range nanValues {
+		if fam := scalarOrderFamily(v); fam != "" {
+			t.Errorf("scalarOrderFamily(NaN %T) = %q, want \"\" (unorderable)", v, fam)
+		}
+	}
+	infValues := []any{float32(math.Inf(1)), float32(math.Inf(-1)), math.Inf(1), math.Inf(-1)}
+	for _, v := range infValues {
+		if fam := scalarOrderFamily(v); fam != "n" {
+			t.Errorf("scalarOrderFamily(%v %T) = %q, want \"n\" (Inf is still Numeric)", v, v, fam)
+		}
+	}
+}
+
+// TestPropertyStatsAccumulatorObserveExcludesNaN is the BACKLOG 16a
+// regression, exercised through the real Observe door (not just the
+// classifier directly): observing a NaN value must not corrupt Min/Max — it
+// contributes to NDV only, exactly like any other unordered-family value
+// (bool, TemporalValue). Before the fix, a NaN observed FIRST would be
+// adopted as both min and max outright (Observe's "a.family == \"\"" fast
+// path takes ANY value unconditionally on first sight), and every subsequent
+// comparison against that stored NaN is false under IEEE 754 — permanently
+// wedging Min/Max at NaN for the accumulator's entire lifetime, even after
+// real orderable values arrive.
+func TestPropertyStatsAccumulatorObserveExcludesNaN(t *testing.T) {
+	t.Parallel()
+	a := NewPropertyStatsAccumulator()
+
+	nan := math.NaN()
+	a.Observe(types.IndexablePropertyValueKey(nan), nan)
+	_, min, max := a.Snapshot()
+	if min != nil || max != nil {
+		t.Fatalf("after observing only NaN: min=%v max=%v, want nil/nil (NaN must not seed min/max)", min, max)
+	}
+
+	// A real orderable value observed AFTER the NaN must establish min/max
+	// normally — proving the accumulator was never permanently wedged.
+	a.Observe(types.IndexablePropertyValueKey(int64(5)), int64(5))
+	a.Observe(types.IndexablePropertyValueKey(int64(1)), int64(1))
+	a.Observe(types.IndexablePropertyValueKey(int64(9)), int64(9))
+	_, min, max = a.Snapshot()
+	if min != int64(1) {
+		t.Fatalf("min after NaN-then-real-values = %v, want int64(1) (permanently wedged at NaN — BACKLOG 16a regression)", min)
+	}
+	if max != int64(9) {
+		t.Fatalf("max after NaN-then-real-values = %v, want int64(9) (permanently wedged at NaN — BACKLOG 16a regression)", max)
+	}
+}
+
+// TestPropertyStatsAccumulatorObserveNaNAfterRealValuesLeavesMinMaxIntact
+// covers the OTHER ordering: a NaN arriving AFTER real values must not
+// disturb the already-established min/max (the mid-accumulation path, as
+// opposed to the NaN-observed-first path above).
+func TestPropertyStatsAccumulatorObserveNaNAfterRealValuesLeavesMinMaxIntact(t *testing.T) {
+	t.Parallel()
+	a := NewPropertyStatsAccumulator()
+	a.Observe(types.IndexablePropertyValueKey(int64(5)), int64(5))
+	a.Observe(types.IndexablePropertyValueKey(int64(1)), int64(1))
+	a.Observe(types.IndexablePropertyValueKey(int64(9)), int64(9))
+
+	nan := math.NaN()
+	a.Observe(types.IndexablePropertyValueKey(nan), nan)
+
+	_, min, max := a.Snapshot()
+	if min != int64(1) || max != int64(9) {
+		t.Fatalf("min=%v max=%v after a NaN mid-stream, want int64(1)/int64(9) unchanged", min, max)
+	}
+}
+
+// TestCombineExtrema_NaNIncomingDoesNotCorruptRunning proves the SAME NaN
+// protection holds for the cross-shard/cross-accumulator fold path
+// (CombineExtrema), not just single-accumulator Observe — a shard reporting a
+// NaN extremum (e.g. from an accumulator that itself only ever observed NaN)
+// must not poison the caller's running min/max.
+func TestCombineExtrema_NaNIncomingDoesNotCorruptRunning(t *testing.T) {
+	t.Parallel()
+	nan := math.NaN()
+
+	// NaN incoming with a nil running pair: must NOT be adopted (the nil-
+	// running fast path previously took ANY incoming value unconditionally).
+	min, max := CombineExtrema(nil, nil, nan, nan)
+	if min != nil || max != nil {
+		t.Fatalf("CombineExtrema(nil running, NaN incoming) = (%v, %v), want (nil, nil)", min, max)
+	}
+
+	// NaN incoming with a REAL running pair already established: must leave
+	// the running pair untouched.
+	min, max = CombineExtrema(int64(1), int64(9), nan, nan)
+	if min != int64(1) || max != int64(9) {
+		t.Fatalf("CombineExtrema(running=1/9, NaN incoming) = (%v, %v), want (1, 9) unchanged", min, max)
 	}
 }
 

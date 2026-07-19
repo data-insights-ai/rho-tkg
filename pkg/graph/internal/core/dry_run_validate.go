@@ -50,6 +50,16 @@ func (co *ConstraintOps) DryRunValidate(ctx context.Context, facts constraintspk
 		if err := checkCtx(ctx); err != nil {
 			return nil, err
 		}
+		// Structural validation the real create door runs unconditionally
+		// (validateNodeCreateLabels — empty/oversized/too-many labels) BEFORE
+		// buildDryRunProbeNode's property checks, mirroring the "validate
+		// before generating IDs" ordering rule. A real Add rejects these
+		// regardless of unique-constraint configuration, so a dry run must
+		// too (BACKLOG 8b).
+		if err := c.validateNodeCreateLabels(dn.Labels); err != nil {
+			violations = append(violations, constraintspkg.DryRunViolation{Ref: dn.Ref, Kind: "invalid", Err: err})
+			continue
+		}
 		probe, err := c.buildDryRunProbeNode(dn.ID, dn.Properties)
 		if err != nil {
 			violations = append(violations, constraintspkg.DryRunViolation{Ref: dn.Ref, Kind: "invalid", Err: err})
@@ -103,8 +113,8 @@ func (co *ConstraintOps) DryRunValidate(ctx context.Context, facts constraintspk
 		}
 	}
 
-	// --- Rels → temporal constraints ---
-	if c.constraints.Len() > 0 && len(facts.Rels) > 0 {
+	// --- Rels → structural validation (unconditional) + temporal constraints ---
+	if len(facts.Rels) > 0 {
 		// A rel's endpoint may be a node PROPOSED in the SAME fact set (not yet
 		// asserted), so resolve endpoints from the proposed nodes FIRST (using their
 		// proposed valid interval) and fall back to the live committed node. Only
@@ -128,9 +138,33 @@ func (co *ConstraintOps) DryRunValidate(ctx context.Context, facts constraintspk
 			}
 			return c.getCurrentNode(id)
 		}
+		hasTemporalConstraints := c.constraints.Len() > 0
 		for _, dr := range facts.Rels {
 			if err := checkCtx(ctx); err != nil {
 				return nil, err
+			}
+			// Structural validation the real create kernel
+			// (relationship_create_kernel.go's prepareRelCreate) runs
+			// UNCONDITIONALLY, before any temporal-constraint check and
+			// regardless of whether any constraint is configured — a
+			// self-loop or malformed endpoint/type-name is rejected by a real
+			// Add/AddByID no matter what. A dry run that only inspected
+			// temporal constraints could report zero violations for a fact
+			// set a real assert would reject (BACKLOG 8b).
+			if err := validateRelationshipEndpointIDs(dr.StartID, dr.EndID); err != nil {
+				violations = append(violations, constraintspkg.DryRunViolation{Ref: dr.Ref, Kind: "invalid", Err: err})
+				continue
+			}
+			if dr.StartID == dr.EndID && !c.validation.AllowSelfLoops {
+				violations = append(violations, constraintspkg.DryRunViolation{Ref: dr.Ref, Kind: "invalid", Err: ErrSelfLoop})
+				continue
+			}
+			if err := c.validateName(dr.TypeName); err != nil {
+				violations = append(violations, constraintspkg.DryRunViolation{Ref: dr.Ref, Kind: "invalid", Err: err})
+				continue
+			}
+			if !hasTemporalConstraints {
+				continue
 			}
 			startNode, err := resolveEndpoint(dr.StartID)
 			if err != nil {

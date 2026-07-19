@@ -255,6 +255,58 @@ func TestResolveNodeChain_AsOf(t *testing.T) {
 	}
 }
 
+// TestResolveNodeChain_AsOf_DoesNotMutateInputChain guards lesson 60 for the
+// probeAsOf path specifically: resolveNodeChainAsOf must never mutate a chain
+// row in place (chain rows may be shared frozen store rows on some backends —
+// e.g. TieredStore, which lacks TransactionTimeQueryCapability and falls
+// through to this resolver). Unlike filterNodeChainByTxAt (used by
+// probePoint/probeInterval), which explicitly DeepCopy()s before normalizing a
+// post-pin tombstone, resolveNodeChainAsOf must apply the same discipline
+// (BACKLOG 10a).
+func TestResolveNodeChain_AsOf_DoesNotMutateInputChain(t *testing.T) {
+	c := resolverTestCore()
+	chain := []*types.Node{
+		rcNode(1, 0, &types.TemporalMetadata{ValidFrom: 1000, TxFrom: 1000, TxTo: 3000, DeletedAt: 3000, ValidTo: 3000}),
+	}
+	origTM := *chain[0].Temporal()
+
+	// Pin BEFORE the delete/supersession triggers normalizeTemporalVisibleAtTxTime,
+	// which clears TxTo/DeletedAt/ValidTo on the SELECTED row.
+	got, err := c.resolveNodeChain(chain, chainProbe{kind: probeAsOf, tx: 2000}, nil)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if tm := got.Temporal(); tm.DeletedAt != 0 || tm.ValidTo != 0 || tm.TxTo != 0 {
+		t.Fatalf("expected normalized result, got %+v", tm)
+	}
+
+	if got := *chain[0].Temporal(); got != origTM {
+		t.Fatalf("resolveNodeChainAsOf mutated its input chain in place: got %+v, want unchanged %+v", got, origTM)
+	}
+}
+
+// TestResolveRelChain_AsOf_DoesNotMutateInputChain is the relationship mirror
+// of TestResolveNodeChain_AsOf_DoesNotMutateInputChain (rule 2).
+func TestResolveRelChain_AsOf_DoesNotMutateInputChain(t *testing.T) {
+	c := resolverTestCore()
+	chain := []*types.Relationship{
+		rcRel(1, 0, &types.TemporalMetadata{ValidFrom: 1000, TxFrom: 1000, TxTo: 3000, DeletedAt: 3000, ValidTo: 3000}),
+	}
+	origTM := *chain[0].Temporal()
+
+	got, err := c.resolveRelChain(chain, chainProbe{kind: probeAsOf, tx: 2000}, nil)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if tm := got.Temporal(); tm.DeletedAt != 0 || tm.ValidTo != 0 || tm.TxTo != 0 {
+		t.Fatalf("expected normalized result, got %+v", tm)
+	}
+
+	if got := *chain[0].Temporal(); got != origTM {
+		t.Fatalf("resolveRelChainAsOf mutated its input chain in place: got %+v, want unchanged %+v", got, origTM)
+	}
+}
+
 // --- Relationship parity (rule 2) -----------------------------------------
 
 func TestResolveRelChain_Point(t *testing.T) {

@@ -493,8 +493,12 @@ func (n *Node) AddLabelTokenRaw(tok uint16) bool {
 
 // RemoveLabelTokenRaw removes the label with the given raw uint16 token from this node.
 // Returns false if tok == 0 or the token is not present on this node.
-// If the removed label is the primary label, the first extra label is promoted to primary.
-// Removing the last label is refused and returns false.
+// If the removed label is the primary label, the first NON-ZERO extra label is
+// promoted to primary — token 0 is reserved (HasLabelToken(0) always returns
+// false), so promoting it would silently leave the node with a primary label
+// that can never be observed as present while still counting toward
+// LabelTokenCount. Any skipped token-0 extras stay in the extra set.
+// Removing the last (non-zero-promotable) label is refused and returns false.
 func (n *Node) RemoveLabelTokenRaw(tok uint16) bool {
 	if n == nil || tok == 0 {
 		return false
@@ -515,15 +519,23 @@ func (n *Node) RemoveLabelTokenRaw(tok uint16) bool {
 		}
 		return false
 	}
-	// Case 2: removing the primary label — promote first extra to primary.
-	if len(n.extraLabels) == 0 {
+	// Case 2: removing the primary label — promote the first non-zero extra to
+	// primary. If every remaining extra is token 0 (or there are none), the
+	// primary cannot be removed.
+	promoteIdx := -1
+	for i, t := range n.extraLabels {
+		if t != 0 {
+			promoteIdx = i
+			break
+		}
+	}
+	if promoteIdx == -1 {
 		return false
 	}
-	n.primaryLabel = n.extraLabels[0]
-	if len(n.extraLabels) == 1 {
+	n.primaryLabel = n.extraLabels[promoteIdx]
+	n.extraLabels = append(n.extraLabels[:promoteIdx], n.extraLabels[promoteIdx+1:]...)
+	if len(n.extraLabels) == 0 {
 		n.extraLabels = nil
-	} else {
-		n.extraLabels = n.extraLabels[1:]
 	}
 	return true
 }

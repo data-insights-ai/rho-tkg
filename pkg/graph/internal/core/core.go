@@ -330,6 +330,14 @@ var (
 	// wall-clock at write, and the feature is backfill).
 	ErrInvalidTxFrom = errors.New("graph: backfilled tkg_tx_from must be a positive instant not in the future")
 
+	// ErrInvalidClockAdvance is returned by TempOps.AdvanceClock when the
+	// caller-supplied floor target lands implausibly far ahead of wall-clock
+	// (see maxClockAdvanceSkewMillis) — the same bug class lesson 59 closed for
+	// AllowTxBackfill. AdvanceClock has no upper-bound protection otherwise: a
+	// single bad call (e.g. a unit mixup, lesson 59's exact trigger) would
+	// permanently poison the transaction clock for the process's life.
+	ErrInvalidClockAdvance = errors.New("graph: AdvanceClock target is implausibly far ahead of wall-clock")
+
 	// ErrInvalidAsOfTag is returned by TagAsOf for a blank tag name or a
 	// non-positive instant.
 	ErrInvalidAsOfTag = errors.New("graph: as-of tag requires a non-blank name and a positive instant")
@@ -452,11 +460,12 @@ var (
 // =============================================================================
 
 const (
-	defaultMaxLabelsPerNode       = 50
-	defaultMaxPropertiesPerEntity = 1000
-	defaultMaxPropertyKeyLength   = 256
-	defaultMaxPropertyValueSize   = 65536
-	defaultMaxNameLength          = 256
+	defaultMaxLabelsPerNode           = 50
+	defaultMaxPropertiesPerEntity     = 1000
+	defaultMaxPropertyKeyLength       = 256
+	defaultMaxPropertyValueSize       = 65536
+	defaultMaxPropertyContainerLength = 100000
+	defaultMaxNameLength              = 256
 )
 
 // ValidationLimits configures limits on entity structure.
@@ -465,8 +474,19 @@ type ValidationLimits struct {
 	MaxPropertiesPerEntity int
 	MaxPropertyKeyLength   int
 	MaxPropertyValueSize   int
-	MaxNameLength          int
-	AllowSelfLoops         bool
+	// MaxPropertyContainerLength bounds the aggregate element/entry count of a
+	// slice- or map-typed property value (or the byte length of a []byte) —
+	// distinct from MaxPropertyValueSize, which bounds the length of a STRING
+	// value (top-level, a []string element, or a map[string]string entry).
+	// The two are deliberately separate: MaxPropertyValueSize's natural scale
+	// is "how long can one string be", while a container's natural scale is
+	// "how many elements" (e.g. a vector-index embedding — []float32 — can
+	// legitimately have thousands of dimensions, far more than a reasonable
+	// string-length cap, yet still needs SOME bound against a pathological
+	// 100M-element payload). Zero = default (100000).
+	MaxPropertyContainerLength int
+	MaxNameLength              int
+	AllowSelfLoops             bool
 }
 
 // Config holds configuration for the Core.
@@ -1373,13 +1393,16 @@ func New(config Config) (*Core, error) {
 	if v.MaxPropertyValueSize == 0 {
 		v.MaxPropertyValueSize = defaultMaxPropertyValueSize
 	}
+	if v.MaxPropertyContainerLength == 0 {
+		v.MaxPropertyContainerLength = defaultMaxPropertyContainerLength
+	}
 	if v.MaxNameLength == 0 {
 		v.MaxNameLength = defaultMaxNameLength
 	}
 
 	if v.MaxLabelsPerNode < 0 || v.MaxPropertiesPerEntity < 0 ||
 		v.MaxPropertyKeyLength < 0 || v.MaxPropertyValueSize < 0 ||
-		v.MaxNameLength < 0 {
+		v.MaxPropertyContainerLength < 0 || v.MaxNameLength < 0 {
 		return nil, fmt.Errorf("graph: validation limits must not be negative")
 	}
 
@@ -1678,6 +1701,7 @@ func (c *Core) Close() error {
 			entries = append(entries, e)
 		}
 		c.indexProviders = make(map[string]*indexProviderEntry)
+		asyncBus, _ := c.events.(*eventspkg.AsyncEventBus)
 		c.mu.Unlock()
 
 		// Provider Close runs outside the lifecycle lock — providers
@@ -1689,6 +1713,17 @@ func (c *Core) Close() error {
 			e.unsubscribe()
 			e.waitInit()
 			closeErr = errors.Join(closeErr, closeIndexProvider(e))
+		}
+
+		// An installed AsyncEventBus starts its own dispatcher goroutine
+		// (NewAsyncEventBus) that only exits via its own Close() — without
+		// this, every open/close cycle with an async bus configured leaked
+		// that goroutine permanently. Runs outside c.mu (Close blocks
+		// draining the queue). Nil-safe / idempotent, and closed==true by
+		// now means no concurrent SetAsync/publishEvent can install or use a
+		// different bus underneath this call.
+		if asyncBus != nil {
+			asyncBus.Close()
 		}
 
 		// persistRegistries reads the registry POINTERS, which a concurrent

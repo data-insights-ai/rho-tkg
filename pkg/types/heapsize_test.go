@@ -3,6 +3,7 @@ package types
 import (
 	"strings"
 	"testing"
+	"unsafe"
 )
 
 // Byte-budget estimator probes. The estimator's contract is "approximate
@@ -23,6 +24,71 @@ func TestApproxHeapBytes_NilSafe(t *testing.T) {
 	var ps PropertySlice
 	if got := ps.ApproxHeapBytes(); got < 0 {
 		t.Fatalf("nil slice = %d, want >= 0", got)
+	}
+}
+
+// TestApproxHeapBytes_TemporalMetaMatchesActualStructSize guards BACKLOG 6b:
+// approxTemporalMeta was a stale hardcoded 72 while TemporalMetadata is
+// actually 96 bytes (pinned by TestTemporalMetadataStructSize in
+// layout_test.go), under-counting every node/rel carrying temporal metadata
+// (virtually all of them) and undermining the CacheBudgetBytes soft limit.
+func TestApproxHeapBytes_TemporalMetaMatchesActualStructSize(t *testing.T) {
+	t.Parallel()
+	without := NewNode(NodeID(1), 1, nil)
+	withTemporal := NewNode(NodeID(2), 1, nil)
+	withTemporal.SetTemporal(&TemporalMetadata{})
+
+	delta := withTemporal.ApproxHeapBytes() - without.ApproxHeapBytes()
+	want := int(unsafe.Sizeof(TemporalMetadata{}))
+	if delta != want {
+		t.Fatalf("temporal metadata heap delta = %d, want %d (unsafe.Sizeof(TemporalMetadata{}))", delta, want)
+	}
+}
+
+// TestApproxHeapBytes_TemporalMetaCountsCreatedByUpdatedByContent guards
+// BACKLOG 6b: CreatedBy/UpdatedBy string CONTENT (not just the fixed struct)
+// must grow the estimate, mirroring how every other string-bearing field is
+// counted (e.g. property values via approxStringHeader + len).
+func TestApproxHeapBytes_TemporalMetaCountsCreatedByUpdatedByContent(t *testing.T) {
+	t.Parallel()
+	empty := NewNode(NodeID(1), 1, nil)
+	empty.SetTemporal(&TemporalMetadata{})
+	withNames := NewNode(NodeID(2), 1, nil)
+	withNames.SetTemporal(&TemporalMetadata{CreatedBy: strings.Repeat("a", 500), UpdatedBy: strings.Repeat("b", 500)})
+
+	if d := withNames.ApproxHeapBytes() - empty.ApproxHeapBytes(); d < 1000 {
+		t.Fatalf("CreatedBy/UpdatedBy content heap delta = %d, want >= 1000 (1000 bytes of string content)", d)
+	}
+}
+
+// TestApproxHeapBytes_NodeVsRelIntegritySizesDiffer guards BACKLOG 6b/6c:
+// NodeIntegrity (96B, pinned by TestNodeIntegrityStructSize) and RelIntegrity
+// (128B, pinned by TestRelIntegrityStructSize — it carries FromNodeHash and
+// ToNodeHash beyond NodeIntegrity) must NOT share one estimator constant —
+// the shared approxIntegrity=96 under-counted every relationship's integrity
+// metadata by 32 bytes (33%).
+func TestApproxHeapBytes_NodeVsRelIntegritySizesDiffer(t *testing.T) {
+	t.Parallel()
+	nodeWithout := NewNode(NodeID(1), 1, nil)
+	nodeWith := NewNode(NodeID(2), 1, nil)
+	nodeWith.SetIntegrity(&NodeIntegrity{})
+	nodeDelta := nodeWith.ApproxHeapBytes() - nodeWithout.ApproxHeapBytes()
+	wantNode := int(unsafe.Sizeof(NodeIntegrity{}))
+	if nodeDelta != wantNode {
+		t.Fatalf("node integrity heap delta = %d, want %d (unsafe.Sizeof(NodeIntegrity{}))", nodeDelta, wantNode)
+	}
+
+	start, end := NodeID(10), NodeID(20)
+	relWithout := NewRelationship(RelID(1), 1, start, end)
+	relWith := NewRelationship(RelID(2), 1, start, end)
+	relWith.SetIntegrity(&RelIntegrity{})
+	relDelta := relWith.ApproxHeapBytes() - relWithout.ApproxHeapBytes()
+	wantRel := int(unsafe.Sizeof(RelIntegrity{}))
+	if relDelta != wantRel {
+		t.Fatalf("relationship integrity heap delta = %d, want %d (unsafe.Sizeof(RelIntegrity{}))", relDelta, wantRel)
+	}
+	if wantNode == wantRel {
+		t.Fatal("test invariant broken: NodeIntegrity and RelIntegrity must differ in size for this test to be meaningful")
 	}
 }
 

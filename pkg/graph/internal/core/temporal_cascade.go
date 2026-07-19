@@ -29,8 +29,24 @@ import (
 //
 // Per-row hashes are unchanged because TemporalMetadata is NOT part of the
 // content hash (see integrity.computeNodeHashWithBuffer). The new version
-// itself gets a fresh hash and joins the chain via PrevHash from whichever
-// row it directly supersedes on the VT axis.
+// itself gets a fresh hash and its PrevHash is set to the "template" row's
+// hash — the most-recent-non-eclipsed row the new row's labels/properties
+// were carried over from (BACKLOG 10e) — NOT the row it "supersedes on the
+// VT axis" in any positional or temporal sense; a cascade never derives a
+// VT-axis predecessor (nodeVersionBounds/relVersionBounds' positional
+// derivation is a read-time concern, not a write-time PrevHash-selection
+// one — see BACKLOG 10b for why deriving true VT-axis lineage at write time
+// is a known correctness minefield in this file, not a matter of picking a
+// "smarter" template). This is safe: verifyChainLinkage (integrity.go) only
+// requires a non-genesis row's PrevHash to match SOME hash present anywhere
+// in the same entity's full chain, not the immediately-preceding-by-version
+// or VT-axis-adjacent row specifically — template is always a member of that
+// chain, so linkage verification never fails on this choice. Do not "fix"
+// PrevHash to walk VT-axis lineage without re-running the full bitemporal
+// oracle fuzz harness (bitemporaloracle_test.go /
+// bitemporaloracle_commitwindow_test.go) — 10b's reverted fix attempts prove
+// this file's positional-bounds logic breaks in non-obvious multi-cascade
+// ways under exactly that kind of change.
 //
 // "Current" semantics: the row that has the latest open-ended interval
 // (max(effectiveValidFrom) where ValidTo == 0) is the new current. If the
@@ -110,7 +126,10 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 	if current != nil && current.Version() > maxVersion {
 		maxVersion = current.Version()
 	}
-	nextVersion := maxVersion + 1
+	nextVersion, err := nextEntityVersion(maxVersion)
+	if err != nil {
+		return nil, err
+	}
 	now := c.now()
 
 	// Pick the most recent non-eclipsed version as the template for
@@ -156,7 +175,10 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 			resumption = src.DeepCopy()
 			ensureNodeTemporal(resumption)
 			resumption.SetVersion(nextVersion)
-			nextVersion++
+			nextVersion, err = nextEntityVersion(nextVersion)
+			if err != nil {
+				return nil, err
+			}
 			resumption.Temporal().ValidFrom = newVT
 			resumption.Temporal().ValidTo = 0 // open; tiles to the next existing version
 			resumption.Temporal().UpdatedAt = now
@@ -320,7 +342,10 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 	if current != nil && current.Version() > maxVersion {
 		maxVersion = current.Version()
 	}
-	nextVersion := maxVersion + 1
+	nextVersion, err := nextEntityVersion(maxVersion)
+	if err != nil {
+		return nil, err
+	}
 	now := c.now()
 
 	var template *types.Relationship
@@ -354,7 +379,10 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 			resumption = src.DeepCopy()
 			ensureRelTemporal(resumption)
 			resumption.SetVersion(nextVersion)
-			nextVersion++
+			nextVersion, err = nextEntityVersion(nextVersion)
+			if err != nil {
+				return nil, err
+			}
 			resumption.Temporal().ValidFrom = newVT
 			resumption.Temporal().ValidTo = 0
 			resumption.Temporal().UpdatedAt = now

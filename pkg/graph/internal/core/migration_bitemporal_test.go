@@ -123,6 +123,52 @@ func TestBitemporalMigration_PreservesExplicitValidFrom(t *testing.T) {
 	}
 }
 
+// TestBitemporalMigration_TruncationGapDoesNotMisfire is BACKLOG 10f: the
+// inheritance loop compared ARRAY-adjacent chain entries, not VERSION-
+// adjacent ones. Simulates a history row that was truncated away (v1
+// missing between v0 and current v2) where the remaining v0 and v2 happen
+// to carry the SAME ValidFrom for entirely unrelated, independently
+// asserted reasons (not genuine inheritance) — the array-adjacency check
+// would have wrongly treated v0 as v2's "predecessor" purely by array
+// position and cleared v2's genuine explicit ValidFrom.
+func TestBitemporalMigration_TruncationGapDoesNotMisfire(t *testing.T) {
+	st := memory.New()
+	id := types.NodeID(1<<30 | 2)
+
+	v0 := types.NewNode(id, 1, nil)
+	v0.SetVersion(0)
+	v0.SetTemporal(&types.TemporalMetadata{ValidFrom: 5000, TxFrom: 5000})
+	if err := st.PutNodeVersion(id, 0, v0); err != nil {
+		t.Fatalf("PutNodeVersion v=0: %v", err)
+	}
+	// v1 deliberately absent — simulates a truncated/compacted-away version,
+	// leaving a gap between v0 and current (v2).
+
+	current := types.NewNode(id, 1, nil)
+	current.SetVersion(2)
+	// ValidFrom coincidentally equals v0's — a genuine, independent
+	// assertion, NOT copied forward from v0 (v0 is not v2's true
+	// predecessor; the real v1 that WAS the predecessor is gone).
+	current.SetTemporal(&types.TemporalMetadata{ValidFrom: 5000, TxFrom: 9000, UpdatedAt: 9000})
+	if err := st.PutNode(current); err != nil {
+		t.Fatalf("PutNode current: %v", err)
+	}
+
+	g, err := New(Config{Store: st})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	cur, err := st.GetNode(id)
+	if err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+	if vf := cur.Temporal().ValidFrom; vf != 5000 {
+		t.Fatalf("post-migration ValidFrom = %d, want 5000 (preserved — v0 is NOT v2's true predecessor after truncation) — BACKLOG 10f regression", vf)
+	}
+}
+
 func TestBitemporalMigration_BackendsWithoutMetaKVStaySafe(t *testing.T) {
 	// Wrap memory.Store with a type that does NOT implement MetaKVCapability.
 	// Migration should be skipped, bitemporalMigrated stays false, heuristic

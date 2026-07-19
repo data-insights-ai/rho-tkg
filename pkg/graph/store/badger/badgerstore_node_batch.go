@@ -199,6 +199,15 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePr
 		bs.deleteNodeRevLocked(nid)
 		bs.appendOps(ops...)
 		bs.nodeCount.Add(-1)
+		// The label-index scrub above touched an UNKNOWN set of labels (the
+		// per-token loop above, not a single known label), so no single
+		// per-label epoch bump can target it precisely — bump the salt that
+		// invalidates every per-label DocValues column (same coarse
+		// belt-and-braces invalidation purgeNodesByLabel already uses for its
+		// own bulk-delete case, BACKLOG 4b/18h). Without this, a columnar
+		// query could keep answering from a column snapshot still containing
+		// this node's now-deleted row.
+		bs.nodeEpochSalt.Add(1)
 		return toDelete, fmt.Errorf("graph: cascade completed with corrupt node data: %w", err), nil
 	}
 
@@ -493,7 +502,7 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 	}
 	serialized := make([]nodeData, len(nodes))
 	var putPayloads [][]byte
-	if bs.logEnabled {
+	if bs.logEnabled.Load() {
 		putPayloads = make([][]byte, len(nodes))
 	}
 	for i, n := range nodes {
@@ -512,7 +521,7 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 		}
 		nid := n.InternalID()
 		serialized[i] = nodeData{nid: nid, id: nid.SnowflakeID(), data: data, frozen: freezeNodeForCache(n, owned)}
-		if bs.logEnabled {
+		if bs.logEnabled.Load() {
 			if i < len(logBodies) && logBodies[i] != nil {
 				putPayloads[i] = logBodies[i] // producer-encoded, applier-patched
 			} else {
@@ -623,7 +632,7 @@ func (bs *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 	// Pre-build the change-log delete records (DeleteNodesBatch is unconnected-only
 	// — hard deletes, no tombstone), so a marshal error aborts before any op.
 	delPayloads := make([][]byte, len(typedIDs))
-	if bs.logEnabled {
+	if bs.logEnabled.Load() {
 		for i, nid := range typedIDs {
 			p, err := storepkg.MarshalChangeBody(storepkg.NodeDeleteBody{ID: int64(nid.SnowflakeID())})
 			if err != nil {

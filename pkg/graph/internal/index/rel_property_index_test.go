@@ -123,6 +123,45 @@ func TestRelPropertyIndexPurge(t *testing.T) {
 	}
 }
 
+// TestRelPropertyIndexPurgeCleansStringOrderedView is the BACKLOG 16b
+// regression: PurgeRelFromAllPropertyIndexes (the corruption-path,
+// brute-force purge) cleaned idx.Entries and the numeric-ordered view
+// (purgeOrdered) but never called purgeOrderedStr — unlike its node mirror,
+// PurgeNodeFromAllPropertyIndexes, which calls both. A rel carrying a
+// STRING-valued indexed property left a stale entry in idx.strBuckets/
+// idx.strKeys after a purge, producing a phantom RangeRelIDs-string-view
+// result for a rel ID that no longer exists in the index at all (Entries is
+// clean, but the string-ordered view still thinks it's there — the exact
+// "index cleanup on corruption must clean ALL indexes" violation the finding
+// describes).
+func TestRelPropertyIndexPurgeCleansStringOrderedView(t *testing.T) {
+	const knows = uint16(7)
+	idx := NewPropertyIndex()
+	r := relWithProps(t, 500, knows, map[string]any{"city": "berlin"})
+	indexes := map[RelPropertyIndexKey]*PropertyIndex{
+		{RelTypeToken: knows, PropertyKey: "city"}: idx,
+	}
+	AddRelToPropertyIndexes(indexes, r, r.ID().SnowflakeID())
+
+	if len(idx.strBuckets) == 0 {
+		t.Fatal("setup: AddRelToPropertyIndexes did not populate the string-ordered view — test premise invalid")
+	}
+
+	PurgeRelFromAllPropertyIndexes(indexes, r.ID().SnowflakeID())
+
+	if len(idx.Entries) != 0 {
+		t.Fatalf("after purge, Entries still has %v", idx.Entries)
+	}
+	for s, bucket := range idx.strBuckets {
+		if _, present := bucket[r.ID().SnowflakeID()]; present {
+			t.Fatalf("after purge, strBuckets[%q] still holds the purged rel — BACKLOG 16b regression", s)
+		}
+	}
+	if idx.strKeys.n != 0 {
+		t.Fatalf("after purge, strKeys.n = %d, want 0 (stale string-ordered-view entry) — BACKLOG 16b regression", idx.strKeys.n)
+	}
+}
+
 func TestRelPropertyIndexNilAndEmptyGuards(t *testing.T) {
 	// Nil map / nil rel are no-ops (must not panic).
 	AddRelToPropertyIndexes(nil, nil, 1)

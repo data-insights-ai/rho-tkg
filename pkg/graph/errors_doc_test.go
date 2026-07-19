@@ -122,6 +122,7 @@ var temporalSentinels = []string{
 	"ErrNoVersionAsOf",
 	"ErrConflictingTemporalOpts",
 	"ErrNoVersionValidAt",
+	"ErrInvalidClockAdvance",
 }
 
 // Transaction-time backfill sentinels (§4.1)
@@ -200,12 +201,28 @@ var capabilitySentinels = []string{
 	"ErrTxDone",
 }
 
-// Ingest pipeline sentinels (ADR-0006). ErrIngestClosed is the only
-// ingest sentinel aliased into pkg/graph/errors.go; ErrNilSession is a
-// session-nil-receiver guard used only inside internal/core (never surfaced
-// through pkg/graph), so it is intentionally NOT re-exported here.
+// TieredStore reference/event ontology sentinels (ADR-0007). BACKLOG 7c:
+// these three are declared in pkg/graph/store/tiered and reachable through
+// THREE different sub-APIs (Tier/Index/Nodes), so pkg/graph/errors.go
+// re-exports them centrally rather than any single sub-API package growing
+// its own errors.go for them.
+var tieredOntologySentinels = []string{
+	"ErrNotReferenceEntity",
+	"ErrEventPropertyIndex",
+	"ErrPrimaryLabelClassMutation",
+}
+
+// Ingest pipeline sentinels (ADR-0006). BACKLOG 7b: ErrNilSession was
+// previously treated as an internal-core-only guard and deliberately
+// excluded here — that was wrong. ingest.Session is a TYPE ALIAS for
+// core.Session (pkg/graph/ingest/api.go: `type Session = core.Session`), not
+// a wrapper, so a pkg/graph caller holding a nil *ingest.Session reaches
+// core.Session's own nil-receiver guard (every exported Session method calls
+// lockOpen(), which returns ErrNilSession for a nil receiver) directly
+// through the public surface. Both sentinels are re-exported.
 var ingestSentinels = []string{
 	"ErrIngestClosed",
+	"ErrNilSession",
 }
 
 // Temporal constraints (from pkg/graph/temporal). NOT part of
@@ -312,6 +329,7 @@ func graphReexportSentinelNames() []string {
 	all = append(all, replicationSentinels...)
 	all = append(all, capabilitySentinels...)
 	all = append(all, ingestSentinels...)
+	all = append(all, tieredOntologySentinels...)
 	return all
 }
 

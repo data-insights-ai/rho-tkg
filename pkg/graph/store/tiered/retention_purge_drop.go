@@ -2,6 +2,7 @@ package tiered
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -33,6 +34,18 @@ func (ts *Store) fastDropEligibleShards(labelToken uint16, before types.Instant)
 	if ts.logEnabled || before <= 0 {
 		return total, nil // change-log on (log-segment loss) → row-scan
 	}
+
+	// dropOneShard mutates ts.eventShards (the same map Close() ranges while
+	// tearing shards down). Every other topology-mutating operation
+	// (RotateHotShard, Clear, index creation) excludes Close() via
+	// beginSequentialStoreWideOperation/lifecycleMu; the drop path must too,
+	// or Close() and a drop's map mutations race unsynchronized (BACKLOG 19a).
+	releaseLifecycle, err := ts.beginSequentialStoreWideOperation()
+	if err != nil {
+		return total, err
+	}
+	defer releaseLifecycle()
+
 	beforeTime := time.UnixMilli(int64(before))
 
 	// Snapshot the candidate event shards whose entire window is below the boundary
@@ -119,10 +132,24 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 	if err != nil {
 		return zero, false, err
 	}
-	_, nodeIDs, rels, cerr := store.CollectShardDropResidue(labelToken)
+	stillOnlyLabel, nodeIDs, rels, cerr := store.CollectShardDropResidue(labelToken)
 	es.checkinStore()
 	if cerr != nil {
 		return zero, false, cerr
+	}
+	// Re-verify single-label eligibility (BACKLOG 19e): a write that started
+	// and finished entirely between step (1)'s check and step (2)'s unlink is
+	// invisible to the drain (it was never "in-flight" at unlink time), so a
+	// concurrent AddNodeLabelToken adding a FOREIGN label in that narrow
+	// window would otherwise go undetected — the shard would be dropped with
+	// live data under a label this purge was never authorized to remove. This
+	// second, POST-drain result is authoritative; re-link and fall back to
+	// row-scan instead of silently discarding it.
+	if !stillOnlyLabel {
+		ts.mu.Lock()
+		ts.eventShards[es.name] = es
+		ts.mu.Unlock()
+		return zero, false, nil
 	}
 	dropSet := make(map[types.NodeID]struct{}, len(nodeIDs))
 	for _, id := range nodeIDs {
@@ -133,8 +160,17 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 		return zero, false, serr
 	}
 
-	// (5) Physically drop: close the store, remove the directory, remove the catalog
-	// entry, persist. The shard is unreachable + quiescent, so this is unobserved.
+	// (5) Physically drop: close the store, then durably commit the catalog
+	// removal BEFORE deleting the directory (not after). This ordering means a
+	// crash/failure before the catalog commit leaves the directory AND the
+	// catalog untouched — consistent and safely retryable, mirroring
+	// RotateHotShard's snapshot/restore discipline on a failed Save. A
+	// crash/failure after the catalog commits but before RemoveAll finishes
+	// leaves only a harmless orphaned, unreferenced directory (reclaimable by
+	// a future cleanup pass) instead of a catalog entry pointing at a
+	// directory that no longer exists — which would otherwise brick the
+	// shard's reopen for a warm shard, or leave a permanent zombie catalog
+	// entry for a cold one (BACKLOG 19b).
 	es.shardMu.Lock()
 	if es.store != nil {
 		if closeErr := es.store.Close(); closeErr != nil {
@@ -144,12 +180,34 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 		es.store = nil
 	}
 	es.shardMu.Unlock()
-	if rerr := os.RemoveAll(filepath.Join(ts.dataDir, es.path)); rerr != nil {
-		return zero, false, rerr
-	}
+
+	snapshot := ts.catalog.snapshotShards()
 	ts.catalog.RemoveShard(es.name)
 	if serr := ts.catalog.Save(); serr != nil {
+		ts.catalog.restoreShards(snapshot)
+		// The directory is still intact (RemoveAll hasn't run) and the
+		// catalog rollback means it's still logically present too — reopen
+		// (checkoutStore's fast path for a non-cold shard assumes es.store is
+		// never nil, so relinking alone would leave every subsequent checkout
+		// returning a nil store) and re-link so the shard stays reachable,
+		// instead of being silently stranded in memory despite its data
+		// surviving on disk.
+		es.shardMu.Lock()
+		store, reopenErr := ts.openBadgerStoreWithRecovery(es.path)
+		if reopenErr == nil {
+			es.store = store
+		}
+		es.shardMu.Unlock()
+		ts.mu.Lock()
+		ts.eventShards[es.name] = es
+		ts.mu.Unlock()
+		if reopenErr != nil {
+			return zero, false, fmt.Errorf("graph: reopen shard %s after failed drop: %w (drop error: %v)", es.name, reopenErr, serr)
+		}
 		return zero, false, serr
+	}
+	if rerr := os.RemoveAll(filepath.Join(ts.dataDir, es.path)); rerr != nil {
+		return zero, false, rerr
 	}
 
 	return storecontract.RetentionPurgeResult{

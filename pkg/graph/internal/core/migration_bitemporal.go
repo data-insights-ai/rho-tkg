@@ -19,7 +19,17 @@ import (
 // rewrites the affected rows.
 //
 // Algorithm: for every node + rel history row (Version > 0), clear
-// ValidFrom IF it equals the immediately-preceding version's ValidFrom.
+// ValidFrom IF it equals the immediately-preceding version's ValidFrom —
+// "immediately-preceding" meaning the row whose Version is exactly one less,
+// NOT merely the previous entry in the chain array. History truncation
+// (TruncateNodeHistory/CompactHistoryNodes) can leave gaps in the returned
+// history, so an array-adjacent pair may not be version-adjacent; comparing
+// ValidFrom across a gap risks a coincidental match between two
+// INDEPENDENTLY, GENUINELY asserted ValidFrom values being misread as
+// inheritance and wrongly cleared (BACKLOG 10f). The loop below skips the
+// comparison entirely when a version gap is present — conservative by
+// construction: it can only leave a value UN-cleared it wasn't certain
+// about, never wrongly clear a value it shouldn't have.
 // After the migration runs the heuristic becomes dead code — every non-zero
 // ValidFrom on a history row is now caller-supplied.
 //
@@ -108,7 +118,11 @@ func (c *Core) migrateNodeHistoryClearInheritedValidFrom() error {
 			if tm == nil || tm.ValidFrom == 0 || tm.UpdatedAt == 0 {
 				continue
 			}
-			prevTM := chain[i-1].Temporal()
+			prev := chain[i-1]
+			if v.Version() != prev.Version()+1 {
+				continue // history truncation gap — chain[i-1] is not the true predecessor
+			}
+			prevTM := prev.Temporal()
 			if prevTM == nil || prevTM.ValidFrom == 0 {
 				continue
 			}
@@ -167,7 +181,11 @@ func (c *Core) migrateRelHistoryClearInheritedValidFrom() error {
 			if tm == nil || tm.ValidFrom == 0 || tm.UpdatedAt == 0 {
 				continue
 			}
-			prevTM := chain[i-1].Temporal()
+			prev := chain[i-1]
+			if v.Version() != prev.Version()+1 {
+				continue // history truncation gap — chain[i-1] is not the true predecessor
+			}
+			prevTM := prev.Temporal()
 			if prevTM == nil || prevTM.ValidFrom == 0 {
 				continue
 			}

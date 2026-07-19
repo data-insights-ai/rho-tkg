@@ -326,6 +326,10 @@ func (c *Core) refreshNodeHash(id types.NodeID) (string, error) {
 // integrity chain is preserved. Returns storepkg.ErrRelNotFound if the
 // relationship does not exist. Empty updates map is a no-op. Acquires
 // c.mu.RLock for transaction isolation — blocked while a tx holds c.mu.Lock.
+//
+// tkg_valid_from/tkg_valid_to ARE accepted and rewrite the current row's
+// TemporalMetadata directly — see the node-side mirror's doc comment
+// (node_update.go) for the bitemporal-visibility tradeoff this implies.
 func (r *RelOps) UpdateInPlace(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error) {
 	c := r.c
 	if err := c.checkWritable(); err != nil {

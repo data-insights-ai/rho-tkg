@@ -76,3 +76,41 @@ func TestRelRangeCardinality_Parity(t *testing.T) {
 		}
 	})
 }
+
+// TestRelRangeCardinality_DeclinesOnBitemporalTxFilter is the rel mirror of
+// TestRangeCardinality_DeclinesOnBitemporalTxFilter (BACKLOG 10c): a TxAt/
+// TxPin-pinned call must decline (exact=false) rather than silently answer
+// from the CURRENT-state BSI/property-index fast path while claiming exact.
+func TestRelRangeCardinality_DeclinesOnBitemporalTxFilter(t *testing.T) {
+	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
+		ctx := context.Background()
+		a, err := g.Nodes().Add(ctx, []string{"P"}, nil)
+		if err != nil {
+			t.Fatalf("add a: %v", err)
+		}
+		b, err := g.Nodes().Add(ctx, []string{"P"}, nil)
+		if err != nil {
+			t.Fatalf("add b: %v", err)
+		}
+		for i := 0; i < 20; i++ {
+			if _, err := g.Rels().AddByID(ctx, "KNOWS", a.ID(), b.ID(), map[string]any{"weight": int64(i)}); err != nil {
+				t.Fatalf("add rel %d: %v", i, err)
+			}
+		}
+		if err := g.Index().CreateRelProperty("KNOWS", "weight"); err != nil {
+			t.Fatalf("CreateRelProperty: %v", err)
+		}
+
+		if c, exact, err := g.Rels().RangeCardinality("KNOWS", "weight", 5, 15, true, true, graphpkg.QueryOpts{TxAt: 1}); err != nil {
+			t.Fatalf("TxAt RangeCardinality: %v", err)
+		} else if exact || c != 0 {
+			t.Fatalf("TxAt RangeCardinality = (count=%d, exact=%v), want (0, false)", c, exact)
+		}
+
+		if c, exact, err := g.Rels().RangeCardinality("KNOWS", "weight", 5, 15, true, true, graphpkg.QueryOpts{TxPin: 1}); err != nil {
+			t.Fatalf("TxPin RangeCardinality: %v", err)
+		} else if exact || c != 0 {
+			t.Fatalf("TxPin RangeCardinality = (count=%d, exact=%v), want (0, false)", c, exact)
+		}
+	})
+}

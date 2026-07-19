@@ -174,16 +174,36 @@ func (c *Core) purgeChunk(token uint16, before types.Instant, mode PurgeMode) (s
 // on a non-empty ownership registry (nil in an event-heavy graph → zero cost) and
 // accumulates only purged IDs that are actually owners, so it stays bounded even
 // at range scale.
-func (c *Core) purgeRangeAllChunks(ctx context.Context, token uint16, before types.Instant, mode PurgeMode) (PurgeReport, error) {
-	report := PurgeReport{}
+//
+// The reap runs via `defer` regardless of exit path (BACKLOG 13a): a ctx
+// cancellation or a chunk error mid-range must NOT skip it — prior chunks in
+// this same call have already committed their deletions to the store, so any
+// forever-owner reaping for those already-purged IDs is the ONLY chance to
+// release their claims. A purged node is gone forever; unlike a transient
+// error, retrying the purge can never recapture it in a LATER chunk result, so
+// skipping the reap here would leave a PERMANENT ghost owner barring its value
+// forever with no remaining path to fix it (short of an operator-side manual
+// `Constraints().ReleaseOwnership` call).
+func (c *Core) purgeRangeAllChunks(ctx context.Context, token uint16, before types.Instant, mode PurgeMode) (report PurgeReport, err error) {
 	owners := c.foreverOwnerSnapshot() // nil ⇒ no forever constraints ⇒ no reaping
 	var reap map[types.NodeID]struct{}
+	defer func() {
+		if rerr := c.reapForeverOwnersForPurged(reap); rerr != nil {
+			if err == nil {
+				err = rerr
+			} else {
+				err = fmt.Errorf("%w (additionally failed to reap forever owners of already-purged nodes: %v)", err, rerr)
+			}
+		}
+	}()
 	for {
-		if err := ctx.Err(); err != nil {
+		if cerr := ctx.Err(); cerr != nil {
+			err = cerr
 			return report, err
 		}
-		res, err := c.purgeChunk(token, before, mode)
-		if err != nil {
+		res, perr := c.purgeChunk(token, before, mode)
+		if perr != nil {
+			err = perr
 			return report, err
 		}
 		report.NodesPurged += res.NodesPurged
@@ -201,9 +221,6 @@ func (c *Core) purgeRangeAllChunks(ctx context.Context, token uint16, before typ
 		if !res.More {
 			break
 		}
-	}
-	if err := c.reapForeverOwnersForPurged(reap); err != nil {
-		return report, err
 	}
 	return report, nil
 }

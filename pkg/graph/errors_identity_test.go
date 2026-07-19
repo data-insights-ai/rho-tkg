@@ -92,6 +92,19 @@ func TestSentinelAliasesShareIdentity(t *testing.T) {
 		// pkg/graph alias of the ingest-pipeline sentinel (ADR-0006; core owns
 		// the canonical declaration).
 		"IngestClosed/graph=core": {graphpkg.ErrIngestClosed, core.ErrIngestClosed},
+
+		// BACKLOG 7b: pkg/graph alias of the ingest session nil-receiver guard
+		// — reachable through the public surface since ingest.Session is a
+		// type alias for core.Session, not a wrapper.
+		"NilSession/graph=core": {graphpkg.ErrNilSession, core.ErrNilSession},
+
+		// BACKLOG 7c: pkg/graph aliases of tiered.Store's reference/event
+		// ontology sentinels — reachable through g.Tier()/g.Index()/g.Nodes()
+		// depending on the door, so re-exported centrally rather than in a
+		// single sub-API's own errors.go.
+		"NotReferenceEntity/graph=tiered":        {graphpkg.ErrNotReferenceEntity, tieredpkg.ErrNotReferenceEntity},
+		"EventPropertyIndex/graph=tiered":        {graphpkg.ErrEventPropertyIndex, tieredpkg.ErrEventPropertyIndex},
+		"PrimaryLabelClassMutation/graph=tiered": {graphpkg.ErrPrimaryLabelClassMutation, tieredpkg.ErrPrimaryLabelClassMutation},
 	}
 
 	for name, pair := range identical {

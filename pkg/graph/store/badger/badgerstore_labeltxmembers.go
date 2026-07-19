@@ -123,6 +123,54 @@ func (bs *Store) recordRelWireMembersLocked(rid types.RelID, w *storepkg.RelWire
 	}
 }
 
+// decodeNodeWireForMembership decodes a node/node-history row's wire label
+// tokens + TxFrom for the K1 sidecar build, delta-aware (BACKLOG 18d): a
+// history row (0x07) can be a 'D'-tagged DELTA under HistoryDeltaEncoding, and
+// a bare SafeUnmarshal into NodeWire fails on one (a delta's first byte is not
+// a valid msgpack map header) — the old code silently skipped such rows ("skip
+// an unreadable row; the fold fallback stays correct"), which is WRONG once
+// labelTxMembersBuilt is set: after that point the sidecar is the ONLY
+// candidate source a pinned scan consults, so a node whose ONLY label
+// evidence is a delta row (the common case — up to HistoryAnchorInterval-1 out
+// of every HistoryAnchorInterval versions) was never recorded. The sidecar's
+// documented guarantee is a SOUND SUPERSET (over-inclusion is safe,
+// under-inclusion is not), so silently dropping real members broke that
+// contract. The fix needs no anchor read: DiffNodeHistory builds a delta's
+// Meta as `target` with `Properties` cleared, so every NON-property field —
+// including PrimaryLabel/ExtraLabels/TxFrom — is carried in Meta verbatim.
+// Current rows (0x01) are always full (never delta-tagged), so this helper is
+// safe to use uniformly for both keyspaces.
+func decodeNodeWireForMembership(val []byte) (storepkg.NodeWire, bool) {
+	if storepkg.HistoryValueKindOf(val) == storepkg.HistoryFull {
+		var w storepkg.NodeWire
+		if err := storepkg.SafeUnmarshal(val, &w); err != nil {
+			return storepkg.NodeWire{}, false
+		}
+		return w, true
+	}
+	d, err := storepkg.DecodeNodeHistoryDelta(val)
+	if err != nil {
+		return storepkg.NodeWire{}, false
+	}
+	return d.Meta, true
+}
+
+// decodeRelWireForMembership mirrors decodeNodeWireForMembership for relationships.
+func decodeRelWireForMembership(val []byte) (storepkg.RelWire, bool) {
+	if storepkg.HistoryValueKindOf(val) == storepkg.HistoryFull {
+		var w storepkg.RelWire
+		if err := storepkg.SafeUnmarshal(val, &w); err != nil {
+			return storepkg.RelWire{}, false
+		}
+		return w, true
+	}
+	d, err := storepkg.DecodeRelHistoryDelta(val)
+	if err != nil {
+		return storepkg.RelWire{}, false
+	}
+	return d.Meta, true
+}
+
 // ensureLabelTxMembersBuilt lazily builds the label membership sidecar from the
 // committed node/history keyspaces + the pending write-buffer overlay.
 func (bs *Store) ensureLabelTxMembersBuilt() error {
@@ -148,9 +196,9 @@ func (bs *Store) ensureLabelTxMembersBuilt() error {
 				item := it.Item()
 				nid := types.NodeID(storepkg.ParseIDFromKey(item.KeyCopy(nil), 1))
 				if verr := item.Value(func(val []byte) error {
-					var w storepkg.NodeWire
-					if err := storepkg.SafeUnmarshal(val, &w); err != nil {
-						return nil // skip an unreadable row; the fold fallback stays correct
+					w, ok := decodeNodeWireForMembership(val)
+					if !ok {
+						return nil // skip a genuinely corrupt row; the fold fallback stays correct
 					}
 					bs.recordNodeWireMembersLocked(nid, &w)
 					return nil
@@ -185,8 +233,8 @@ func (bs *Store) ensureLabelTxMembersBuilt() error {
 			return
 		}
 		nid := types.NodeID(storepkg.ParseIDFromKey(kb, 1))
-		var w storepkg.NodeWire
-		if err := storepkg.SafeUnmarshal(op.value, &w); err != nil {
+		w, ok := decodeNodeWireForMembership(op.value)
+		if !ok {
 			return
 		}
 		bs.recordNodeWireMembersLocked(nid, &w)
@@ -218,8 +266,8 @@ func (bs *Store) ensureRelTypeTxMembersBuilt() error {
 				item := it.Item()
 				rid := types.RelID(storepkg.ParseIDFromKey(item.KeyCopy(nil), 1))
 				if verr := item.Value(func(val []byte) error {
-					var w storepkg.RelWire
-					if err := storepkg.SafeUnmarshal(val, &w); err != nil {
+					w, ok := decodeRelWireForMembership(val)
+					if !ok {
 						return nil
 					}
 					bs.recordRelWireMembersLocked(rid, &w)
@@ -252,8 +300,8 @@ func (bs *Store) ensureRelTypeTxMembersBuilt() error {
 			return
 		}
 		rid := types.RelID(storepkg.ParseIDFromKey(kb, 1))
-		var w storepkg.RelWire
-		if err := storepkg.SafeUnmarshal(op.value, &w); err != nil {
+		w, ok := decodeRelWireForMembership(op.value)
+		if !ok {
 			return
 		}
 		bs.recordRelWireMembersLocked(rid, &w)

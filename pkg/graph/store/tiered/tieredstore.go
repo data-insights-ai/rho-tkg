@@ -209,6 +209,7 @@ type Store struct {
 	refActiveReqs         atomic.Int64                                    // refcount for refShard — Close spin-waits on this before refShard.Close()
 	refArchive            atomic.Pointer[BadgerStore]                     // nil until first archive/restore or DepthAll with archive catalog; atomic so reads need not hold archiveMu
 	archiveMu             sync.Mutex                                      // serializes lazy-open of refArchive (single-flight)
+	migrateMu             sync.Mutex                                      // serializes concurrent MigrateFromBadger calls against this Store (BACKLOG 19k)
 	archiveActiveReqs     atomic.Int64                                    // refcount for refArchive — Close spin-waits on this before archive.Close()
 	eventShards           map[string]*EventShard                          // name -> event shard
 	hotShard              *EventShard                                     // convenience pointer to current hot shard

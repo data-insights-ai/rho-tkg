@@ -381,3 +381,49 @@ func TestRecurrence_Expand_InvalidRange(t *testing.T) {
 		t.Fatalf("Expand error = %v, want ErrInvalidTimeRange", err)
 	}
 }
+
+// TestRecurrence_Expand_RejectsExcessiveSpan is BACKLOG 6e: Expand had no
+// bound on to-from, so a caller-supplied multi-million-year window drove an
+// unbounded loop in expandByDay (Daily/Weekly) — the same DoS class as
+// lesson 48 (untrusted-size-driven amplification), but via iteration count
+// rather than a single make() call. RecurrencePattern.Expand is a public
+// pkg/types API not currently wired to any pkg/graph door, so this is the
+// boundary another ecosystem module calling it directly would hit.
+func TestRecurrence_Expand_RejectsExcessiveSpan(t *testing.T) {
+	p := types.RecurrencePattern{
+		Frequency: types.RecurrenceDaily,
+		Days:      types.MaskAllDays,
+		DayStart:  9 * time.Hour,
+		DayEnd:    17 * time.Hour,
+	}
+	from := inst(time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC))
+	to := inst(time.Date(1_000_000, 1, 1, 0, 0, 0, 0, time.UTC)) // ~1 million years
+	_, err := p.Expand(from, to)
+	if !errors.Is(err, types.ErrRecurrenceSpanTooLarge) {
+		t.Fatalf("Expand error = %v, want ErrRecurrenceSpanTooLarge — BACKLOG 6e regression", err)
+	}
+}
+
+// TestRecurrence_Expand_AllowsSpanUpToCap is the non-regression counterpart:
+// the fix must not lower the ceiling below what real callers already rely
+// on. TestRecurrence_YearlyLargeRange and TestRecurrence_WeeklySparseLargeRange
+// already exercise a 200-year span successfully; this pins that a span right
+// at (just under) the 1000-year cap still succeeds for every frequency,
+// including the tightest loop (Daily).
+func TestRecurrence_Expand_AllowsSpanUpToCap(t *testing.T) {
+	p := types.RecurrencePattern{
+		Frequency: types.RecurrenceDaily,
+		Days:      types.MaskMonday,
+		DayStart:  9 * time.Hour,
+		DayEnd:    17 * time.Hour,
+	}
+	from := inst(time.Date(1000, 1, 1, 0, 0, 0, 0, time.UTC))
+	to := inst(time.Date(1999, 1, 1, 0, 0, 0, 0, time.UTC)) // 999 years, under the 1000-year cap
+	intervals, err := p.Expand(from, to)
+	if err != nil {
+		t.Fatalf("Expand: %v, want success for a span under the cap", err)
+	}
+	if len(intervals) == 0 {
+		t.Fatal("Expand returned no intervals for a 999-year Monday-weekly span")
+	}
+}

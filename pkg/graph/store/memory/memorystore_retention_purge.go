@@ -71,8 +71,12 @@ func (ms *Store) PurgeNodesByLabelValidToBefore(labelToken uint16, before types.
 		return storecontract.RetentionPurgeResult{}, nil
 	}
 	return ms.purgeNodesByLabel(labelToken, chunk, func(_ types.NodeID, n *types.Node) bool {
-		vt := n.Temporal().ValidTo
-		return vt != 0 && vt < before
+		// Temporal() can legitimately be nil — SetTemporal is never mandatory
+		// (raw Store interface writes, batch import, and replication apply can
+		// all leave it unset) — so this predicate must not dereference it
+		// unconditionally (BACKLOG 17c).
+		tm := n.Temporal()
+		return tm != nil && tm.ValidTo != 0 && tm.ValidTo < before
 	})
 }
 

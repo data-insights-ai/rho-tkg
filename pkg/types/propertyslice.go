@@ -1082,6 +1082,10 @@ func canonicalPropertySlice(ps PropertySlice) (PropertySlice, error) {
 }
 
 func canonicalPropertyValue(key string, value any) (any, error) {
+	// Accept time.Time as caller sugar: canonicalize to a TemporalValue before
+	// validation, mirroring Set/NewPropertySlice, so SetProperties-built
+	// entities hash identically to equivalent Set()-built ones (BACKLOG 6a).
+	value, _ = canonicalizeTemporalValue(value)
 	if err := ValidatePropertyValue(value); err != nil {
 		return nil, fmt.Errorf("%w: %q (got %T)", err, key, value)
 	}

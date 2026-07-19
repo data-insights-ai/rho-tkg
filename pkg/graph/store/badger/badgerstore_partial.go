@@ -36,6 +36,16 @@ type IncomingIndexEntry struct {
 // key (0x06) — that belongs to the endpoint's shard for cross-shard rels.
 // TieredStore verifies endpoint existence before invoking this split-write leg.
 // Acquires idxMu.Lock internally.
+//
+// Co-commits a ChangeRelPut record carrying the FULL relationship (BACKLOG
+// 18c): this is the entity-bearing leg of a cross-shard rel create, so it is
+// the ONE place with everything a replica needs to reconstruct the whole
+// relationship (start/end/type/properties) — a replica applying the record
+// re-derives both split legs via its own routing (the same door split any
+// primary/replica would run), exactly like a single-shard PutRelationship's
+// one record already covers all 4 keys. PutRelIncoming (the companion in/-only
+// leg on the endpoint's shard, carrying no entity data) deliberately emits
+// nothing — see its doc comment.
 func (bs *Store) PutRelEntityAndOut(r *types.Relationship) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
@@ -54,6 +64,10 @@ func (bs *Store) PutRelEntityAndOut(r *types.Relationship) error {
 	if err != nil {
 		return fmt.Errorf("graph: marshal relationship: %w", err)
 	}
+	changePayload, err := bs.buildRelPutPayload(r, false)
+	if err != nil {
+		return err
+	}
 
 	bs.idxMu.Lock()
 
@@ -65,6 +79,7 @@ func (bs *Store) PutRelEntityAndOut(r *types.Relationship) error {
 	// Update in-memory state.
 	bs.relCache.Put(id, freezeRelCopy(r))
 	bs.relIDs[rid] = struct{}{}
+	bs.bumpRelRevLocked(rid)
 
 	// Type index.
 	if bs.typeIdx[relType] == nil {
@@ -97,6 +112,7 @@ func (bs *Store) PutRelEntityAndOut(r *types.Relationship) error {
 	bs.appendOps(ops...)
 	bs.relCount.Add(1)
 	bs.getOrCreateTypeCounter(relType).Add(1)
+	bs.logChangeRaw(storecontract.ChangeRelPut, changePayload)
 	bs.idxMu.Unlock()
 	return bs.flushIfNeeded()
 }
@@ -106,6 +122,15 @@ func (bs *Store) PutRelEntityAndOut(r *types.Relationship) error {
 // shard — only the in/ index entry, so that IncomingRelationships queries
 // on the endpoint node find the relationship.
 // Acquires idxMu.Lock internally.
+//
+// Deliberately emits NO change-log record (BACKLOG 18c): this leg carries no
+// entity data (just start/end/type as INDEX bytes, no properties), so it has
+// nothing a replica could not already reconstruct from the companion
+// PutRelEntityAndOut's ChangeRelPut record. Emitting a second record here
+// would be redundant at best and, since this leg alone cannot express
+// "relationship" (only "some node has an incoming edge"), would need its own
+// decode/apply path for no benefit — the entity leg's record already fully
+// describes the relationship.
 func (bs *Store) PutRelIncoming(endID, startID snowflake.ID, relType uint16, relID snowflake.ID) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
@@ -139,6 +164,13 @@ func (bs *Store) PutRelIncoming(endID, startID snowflake.ID, relType uint16, rel
 // adjacency key (0x06). Returns RelDeleteInfo so the caller can clean up
 // the companion in-shard deletion.
 // Acquires idxMu.Lock internally.
+//
+// Co-commits a ChangeRelDelete record (BACKLOG 18c), mirroring
+// DeleteRelationship exactly: this is the entity-bearing leg of a cross-shard
+// rel delete, so it is the one place that can build the record — the record
+// carries only the ID (a hard delete, no tombstone), the same as a
+// single-shard delete. DeleteRelIncoming (the companion in/-only leg)
+// deliberately emits nothing — see PutRelIncoming's doc comment for why.
 func (bs *Store) DeleteRelEntityAndOut(id snowflake.ID) (RelDeleteInfo, error) {
 	if err := bs.checkWritable(); err != nil {
 		return RelDeleteInfo{}, err
@@ -146,6 +178,12 @@ func (bs *Store) DeleteRelEntityAndOut(id snowflake.ID) (RelDeleteInfo, error) {
 	rid := types.RelID(id)
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return RelDeleteInfo{}, err
+	}
+	// Build the change-log delete record up front, so a marshal error aborts
+	// before any op is enqueued (mirrors DeleteRelationship / lesson 58).
+	relDelPayload, err := bs.buildChangePayload(storepkg.RelDeleteBody{ID: int64(id)})
+	if err != nil {
+		return RelDeleteInfo{}, fmt.Errorf("graph: encode change-log: %w", err)
 	}
 
 	bs.idxMu.Lock()
@@ -172,6 +210,7 @@ func (bs *Store) DeleteRelEntityAndOut(id snowflake.ID) (RelDeleteInfo, error) {
 	// Update in-memory state.
 	bs.relCache.MarkDeleted(id)
 	delete(bs.relIDs, rid)
+	bs.deleteRelRevLocked(rid)
 	delete(bs.relValidIdx, rid) // drop the inline valid-time stamp
 
 	// Type index cleanup.
@@ -204,6 +243,7 @@ func (bs *Store) DeleteRelEntityAndOut(id snowflake.ID) (RelDeleteInfo, error) {
 	bs.appendOps(ops...)
 	bs.relCount.Add(-1)
 	bs.getOrCreateTypeCounter(info.RelType).Add(-1)
+	bs.logChangeRaw(storecontract.ChangeRelDelete, relDelPayload)
 
 	bs.idxMu.Unlock()
 	return info, bs.flushIfNeeded()
@@ -212,6 +252,10 @@ func (bs *Store) DeleteRelEntityAndOut(id snowflake.ID) (RelDeleteInfo, error) {
 // DeleteRelIncoming removes only the incoming adjacency key (0x06) for a
 // cross-shard relationship.
 // Acquires idxMu.Lock internally.
+//
+// Deliberately emits NO change-log record — see PutRelIncoming's doc comment
+// (BACKLOG 18c): this leg carries no entity data, so DeleteRelEntityAndOut's
+// ChangeRelDelete record already fully describes the deletion.
 func (bs *Store) DeleteRelIncoming(info RelDeleteInfo) error {
 	if err := bs.checkWritable(); err != nil {
 		return err

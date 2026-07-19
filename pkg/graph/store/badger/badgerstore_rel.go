@@ -62,6 +62,11 @@ func (bs *Store) putRelationship(r *types.Relationship, validateEndpoints, forei
 	if err != nil {
 		return fmt.Errorf("graph: marshal relationship: %w", err)
 	}
+	changePayload, err := bs.buildRelPutPayload(r, false)
+	if err != nil {
+		return err
+	}
+	changeTag := relPutTag(foreignIncoming)
 	if validateEndpoints {
 		if err := bs.ensureRelationshipEndpointRowsLive(startNID, endNID); err != nil {
 			return err
@@ -92,6 +97,7 @@ func (bs *Store) putRelationship(r *types.Relationship, validateEndpoints, forei
 	// Update in-memory state.
 	bs.relCache.Put(id, freezeRelCopy(r))
 	bs.relIDs[rid] = struct{}{}
+	bs.bumpRelRevLocked(rid)
 
 	// Type index.
 	if bs.typeIdx[relType] == nil {
@@ -128,13 +134,35 @@ func (bs *Store) putRelationship(r *types.Relationship, validateEndpoints, forei
 	bs.appendOps(ops...)
 	bs.relCount.Add(1)
 	bs.getOrCreateTypeCounter(relType).Add(1)
-	logErr := bs.logRelPutTagged(r, foreignIncoming)
+	bs.logChangeRaw(changeTag, changePayload)
 	bs.idxMu.Unlock()
 
-	if logErr != nil {
-		return logErr
-	}
 	return bs.flushIfNeeded()
+}
+
+// bumpRelRevLocked mirrors bumpNodeRevLocked (BACKLOG 18b): called by every
+// door that changes a live relationship's DATA (create + property-changing
+// update), so relRevs[rid] changes on every such write. This is what lets
+// currentRelForPrefetchLocked detect a concurrent property-changing write in
+// the prefetch→lock window — relDeleteInfoStillIndexedLocked alone cannot,
+// because endpoints/type are immutable, so a property-only update leaves
+// relIDs/typeIdx/adjacency membership completely unchanged.
+func (bs *Store) bumpRelRevLocked(rid types.RelID) {
+	if bs.relRevs == nil {
+		bs.relRevs = make(map[types.RelID]uint64)
+	}
+	bs.nextRelRev++
+	if bs.nextRelRev == 0 {
+		bs.nextRelRev = 1
+	}
+	bs.relRevs[rid] = bs.nextRelRev
+}
+
+// deleteRelRevLocked mirrors deleteNodeRevLocked. Called from the single
+// shared delete mutator (deleteRelByInfo) so every rel delete path clears the
+// rev entry in one place.
+func (bs *Store) deleteRelRevLocked(rid types.RelID) {
+	delete(bs.relRevs, rid)
 }
 
 // GetRelationship retrieves a relationship by its snowflake ID.
@@ -213,11 +241,23 @@ func (bs *Store) ReplaceRelationship(r *types.Relationship) error {
 	rid := r.InternalID()
 	id := rid.SnowflakeID()
 
-	old, prefetchErr := bs.prefetchRel(rid)
+	// Snapshot the rev alongside the prefetched row (BACKLOG 18b): endpoints/
+	// type are immutable, so relDeleteInfoStillIndexedLocked's structural check
+	// alone cannot detect a concurrent property-only update racing this
+	// prefetch — only relRevs (bumped on every rel data write) can.
+	prefetched, prefetchErr := bs.prefetchRelWithRev(rid)
 
 	data, err := bs.marshalRelBytes(r)
 	if err != nil {
 		return fmt.Errorf("graph: marshal relationship: %w", err)
+	}
+	changePayload, err := bs.buildRelPutPayload(r, false)
+	if err != nil {
+		return err
+	}
+
+	if bs.replaceRelPrefetchTestHook != nil {
+		bs.replaceRelPrefetchTestHook()
 	}
 
 	bs.idxMu.Lock()
@@ -230,7 +270,7 @@ func (bs *Store) ReplaceRelationship(r *types.Relationship) error {
 		bs.idxMu.Unlock()
 		return fmt.Errorf("graph: read relationship before replace: %w", prefetchErr)
 	}
-	old, err = bs.currentRelForPrefetchLocked(rid, old)
+	old, err := bs.currentRelForPrefetchLocked(rid, prefetched)
 	if err != nil {
 		bs.idxMu.Unlock()
 		return fmt.Errorf("graph: read relationship before replace: %w", err)
@@ -245,6 +285,7 @@ func (bs *Store) ReplaceRelationship(r *types.Relationship) error {
 	bs.maintainRelPropertyIndexesRemove(old, id)
 	bs.removeRelPropertyTypeClassCountsByID(id, old.TypeToken().Value()) // decrement old (type immutable)
 	bs.relCache.Put(id, freezeRelCopy(r))
+	bs.bumpRelRevLocked(rid)
 	bs.maintainRelPropertyIndexesAdd(r, id)
 	bs.addRelPropertyTypeClassCounts(r) // increment new
 	bs.appendOps(writeOp{opType: writeOpSet, key: storepkg.RelKey(id), value: data})
@@ -252,12 +293,9 @@ func (bs *Store) ReplaceRelationship(r *types.Relationship) error {
 	// immutable (no adjacency change) but valid_to may move, so the inline stamp
 	// MUST be refreshed here or a temporal traversal reads a stale interval.
 	bs.setRelValidStampLocked(rid, r)
-	logErr := bs.logRelPut(r, false)
+	bs.logChangeRaw(storecontract.ChangeRelPut, changePayload)
 	bs.idxMu.Unlock()
 
-	if logErr != nil {
-		return logErr
-	}
 	return bs.flushIfNeeded()
 }
 
@@ -373,11 +411,36 @@ func relDeleteInfoFromRelationship(r *types.Relationship) RelDeleteInfo {
 	}
 }
 
-func (bs *Store) currentRelForPrefetchLocked(rid types.RelID, prefetched *types.Relationship) (*types.Relationship, error) {
-	if prefetched != nil {
-		info := relDeleteInfoFromRelationship(prefetched)
+// relPrefetchSnapshot pairs a prefetched relationship with the relRevs value
+// observed at prefetch time (BACKLOG 18b). Used by ReplaceRelationship to
+// detect a concurrent property-changing write in the prefetch→lock window:
+// relDeleteInfoStillIndexedLocked alone is insufficient because endpoints/
+// type are immutable, so a concurrent property-only ReplaceRelationship
+// leaves relIDs/typeIdx/adjacency membership completely unchanged — only the
+// rev (bumped on every rel data write) detects it.
+type relPrefetchSnapshot struct {
+	rel *types.Relationship
+	rev uint64
+}
+
+// prefetchRelWithRev is prefetchRel plus a rev snapshot taken under the SAME
+// brief RLock the rev is later compared against — see relPrefetchSnapshot.
+func (bs *Store) prefetchRelWithRev(rid types.RelID) (relPrefetchSnapshot, error) {
+	bs.idxMu.RLock()
+	rev := bs.relRevs[rid]
+	bs.idxMu.RUnlock()
+	r, err := bs.prefetchRel(rid)
+	if err != nil {
+		return relPrefetchSnapshot{}, err
+	}
+	return relPrefetchSnapshot{rel: r, rev: rev}, nil
+}
+
+func (bs *Store) currentRelForPrefetchLocked(rid types.RelID, prefetched relPrefetchSnapshot) (*types.Relationship, error) {
+	if prefetched.rel != nil && prefetched.rev != 0 && bs.relRevs[rid] == prefetched.rev {
+		info := relDeleteInfoFromRelationship(prefetched.rel)
 		if types.RelID(info.ID) == rid && bs.relDeleteInfoStillIndexedLocked(info) {
-			return prefetched, nil
+			return prefetched.rel, nil
 		}
 	}
 	return bs.getRelLocked(rid)
@@ -433,6 +496,7 @@ func (bs *Store) deleteRelByInfo(info RelDeleteInfo) {
 	// Update in-memory state.
 	bs.relCache.MarkDeleted(info.ID)
 	delete(bs.relIDs, rid)
+	bs.deleteRelRevLocked(rid)
 	delete(bs.relValidIdx, rid)                                    // drop the inline valid-time stamp
 	bs.maintainRelPropertyIndexesPurge(info.ID)                    // brute-force (RelDeleteInfo has no property values)
 	bs.removeRelPropertyTypeClassCountsByID(info.ID, info.RelType) // decrement via memoized contribution (the single delete seam)

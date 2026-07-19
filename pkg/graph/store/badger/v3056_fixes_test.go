@@ -400,9 +400,9 @@ func TestBadgerStore_RelPrefetchFallsBackAfterIndexedStateChange(t *testing.T) {
 	}
 	bs.RelCacheForTest().ResetForTest()
 
-	prefetched, err := bs.prefetchRel(rel.ID())
+	prefetched, err := bs.prefetchRelWithRev(rel.ID())
 	if err != nil {
-		t.Fatalf("prefetchRel: %v", err)
+		t.Fatalf("prefetchRelWithRev: %v", err)
 	}
 	if err := bs.DeleteRelationship(rel.ID()); err != nil {
 		t.Fatalf("DeleteRelationship: %v", err)
@@ -414,7 +414,7 @@ func TestBadgerStore_RelPrefetchFallsBackAfterIndexedStateChange(t *testing.T) {
 
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()
-	if bs.relDeleteInfoStillIndexedLocked(relDeleteInfoFromRelationship(prefetched)) {
+	if bs.relDeleteInfoStillIndexedLocked(relDeleteInfoFromRelationship(prefetched.rel)) {
 		t.Fatal("stale prefetched relationship indexes were accepted after delete/recreate")
 	}
 	current, err := bs.currentRelForPrefetchLocked(rel.ID(), prefetched)

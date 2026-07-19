@@ -250,6 +250,22 @@ func (a *AdminOps) Reset() error {
 	if err := c.store.Clear(); err != nil {
 		return err
 	}
+	return c.reapCoreStateForClear()
+}
+
+// reapCoreStateForClear clears every Core-level in-memory/derived-state field
+// that a bare store.Clear() cannot reach: the as-of DocValues column cache,
+// named as-of tags, unique-constraint definitions, the compaction watermark,
+// the retention watermark, UniqueForever ownership claims, and op counters —
+// then re-persists the (preserved) label/rel-type registries, since Clear()
+// wipes their persisted MetaKV blob too. Called by BOTH Admin.Reset() (the
+// primary's direct door) and the replica's ChangeClear apply path
+// (BACKLOG 12a) — a replica applying ChangeClear must reproduce the exact
+// state a primary's Reset() ends up in, not just wipe its Store, or a
+// read-only replica can keep serving stale as-of/unique/compaction/retention
+// state (or a stale as-of DocValues cache) against data that was supposedly
+// wiped. Caller must hold c.mu.Lock.
+func (c *Core) reapCoreStateForClear() error {
 	c.asOfColumns.bump() // whole state wiped — discard cached as-of columns
 	if err := c.reapAsOfTagsForReset(); err != nil {
 		return err

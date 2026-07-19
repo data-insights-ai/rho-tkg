@@ -33,9 +33,10 @@ func (s *Store) CreateCompositePropertyIndex(labelToken uint16, keys []string) e
 	if err := storecontract.ValidateCompositeIndexKeys(keys); err != nil {
 		return err
 	}
-	return s.fanOutUniform(func(shard *badgerShard) error {
-		return shard.CreateCompositePropertyIndex(labelToken, keys)
-	})
+	return s.fanOutUniformCreate(
+		func(shard *badgerShard) error { return shard.CreateCompositePropertyIndex(labelToken, keys) },
+		func(shard *badgerShard) error { return shard.DropCompositePropertyIndex(labelToken, keys) },
+	)
 }
 
 // DropCompositePropertyIndex removes the composite index declared over the

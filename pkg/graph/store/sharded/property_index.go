@@ -2,6 +2,7 @@ package sharded
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -36,9 +37,10 @@ func (s *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) error
 	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
 		return err
 	}
-	return s.fanOutUniform(func(shard *badgerShard) error {
-		return shard.CreatePropertyIndex(labelToken, propertyKey)
-	})
+	return s.fanOutUniformCreate(
+		func(shard *badgerShard) error { return shard.CreatePropertyIndex(labelToken, propertyKey) },
+		func(shard *badgerShard) error { return shard.DropPropertyIndex(labelToken, propertyKey) },
+	)
 }
 
 // DropPropertyIndex removes the (labelToken, propertyKey) index from every
@@ -131,4 +133,55 @@ func coalesceUniform(errs []error) error {
 
 func errorsEquivalent(a, b error) bool {
 	return errors.Is(a, b) || errors.Is(b, a)
+}
+
+// fanOutUniformCreate is fanOutUniform for CREATE-shaped DDL (BACKLOG 20b): a
+// mid-build I/O failure on one shard while others succeed used to leave the
+// index built on N-1 shards and absent on one, with no reconciliation path —
+// for vector indexes this additionally orphaned per-shard disk state, since
+// the store-level def map (vectorDefs) was only updated after the WHOLE
+// fan-out succeeded, so the caller had no way to even discover the already-
+// built shards existed. do is the create call; rollback is the matching drop,
+// called on every shard whose do() succeeded, whenever the overall result is
+// non-nil — including the "every shard failed, but not identically" case,
+// where rollback is a no-op for shards that never succeeded (do()!=nil on
+// them, so they're skipped) and safe/idempotent for ones that did. A rollback
+// failure is joined into the returned error rather than swallowed, so a
+// stuck rollback stays visible to the caller (and to RunRepair-style manual
+// reconciliation) instead of silently leaving orphaned state.
+func (s *Store) fanOutUniformCreate(do, rollback func(shard *badgerShard) error) error {
+	errs := make([]error, len(s.shards))
+	var wg sync.WaitGroup
+	for i, shard := range s.shards {
+		wg.Add(1)
+		go func(i int, shard *badgerShard) {
+			defer wg.Done()
+			errs[i] = do(shard)
+		}(i, shard)
+	}
+	wg.Wait()
+	result := coalesceUniform(errs)
+	if result == nil {
+		return nil
+	}
+
+	rollbackErrs := make([]error, len(s.shards))
+	var rbWg sync.WaitGroup
+	for i, shard := range s.shards {
+		if errs[i] != nil {
+			continue // this shard's create never succeeded — nothing to undo
+		}
+		rbWg.Add(1)
+		go func(i int, shard *badgerShard) {
+			defer rbWg.Done()
+			if rerr := rollback(shard); rerr != nil {
+				rollbackErrs[i] = fmt.Errorf("shard %d: %w", i, rerr)
+			}
+		}(i, shard)
+	}
+	rbWg.Wait()
+	if joined := errors.Join(rollbackErrs...); joined != nil {
+		return fmt.Errorf("%w (rollback of succeeded shards failed: %w)", result, joined)
+	}
+	return result
 }

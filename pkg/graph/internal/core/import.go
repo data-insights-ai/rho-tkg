@@ -586,12 +586,30 @@ func (c *Core) importReplayRecordsLocked(readRecord func() (byte, []byte, error)
 	// durability ordering) so a crash can't leave the watermark ahead of the
 	// bootstrap data. v1 snapshots / no-change-log sources carry SnapshotLSN 0
 	// and leave the watermark untouched. Non-MetaKV backends no-op.
+	//
+	// Monotonic, mirroring ApplyChange/ApplyChanges's enforced no-regression
+	// (BACKLOG 12c): a raw overwrite here could REGRESS an already-tailing
+	// replica's watermark if this snapshot is re-imported (or an older one is
+	// imported) onto a replica that has already applied past SnapshotLSN — the
+	// replica would then re-tail from the regressed point, re-applying already-
+	// seen records, and any change-log delete whose LSN falls in the
+	// re-applied range would (harmlessly, eventually) re-delete its entity —
+	// but the entity is MOMENTARILY resurrected by this import's own row data
+	// in the meantime. A snapshot's LSN advancing the watermark only when it's
+	// actually newer than what's already recorded closes that window: a
+	// same-or-older re-import leaves the existing (higher) watermark alone.
 	if header.SnapshotLSN > 0 {
-		if err := c.flushStoreLocked(); err != nil {
-			return fmt.Errorf("import: flush before snapshot watermark: %w", err)
+		current, err := c.appliedLSNLocked()
+		if err != nil {
+			return fmt.Errorf("import: read current applied watermark: %w", err)
 		}
-		if err := c.setAppliedLSNLocked(header.SnapshotLSN); err != nil {
-			return fmt.Errorf("import: record snapshot watermark: %w", err)
+		if header.SnapshotLSN > current {
+			if err := c.flushStoreLocked(); err != nil {
+				return fmt.Errorf("import: flush before snapshot watermark: %w", err)
+			}
+			if err := c.setAppliedLSNLocked(header.SnapshotLSN); err != nil {
+				return fmt.Errorf("import: record snapshot watermark: %w", err)
+			}
 		}
 	}
 	return nil

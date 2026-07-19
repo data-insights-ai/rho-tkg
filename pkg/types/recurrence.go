@@ -37,6 +37,22 @@ const (
 // ErrInvalidTimeRange is returned when an expansion window is empty or inverted.
 var ErrInvalidTimeRange = errors.New("types: invalid time range")
 
+// ErrRecurrenceSpanTooLarge is returned by Expand when to-from exceeds
+// maxExpandSpan.
+var ErrRecurrenceSpanTooLarge = errors.New("types: recurrence expansion span too large")
+
+// maxExpandSpan bounds Expand's [from, to) window. Without a cap, an
+// arbitrary caller-supplied span (e.g. a multi-million-year range) drives an
+// unbounded loop in expandByDay/expandMonthly/expandYearly — the same DoS
+// class as lesson 48 (untrusted-size-driven amplification), but via loop
+// iteration count rather than a single make() call. 1000 years comfortably
+// exceeds any realistic recurrence use case (this type models schedules
+// like "every Monday 9-5", not geological time — the existing
+// TestRecurrence_YearlyLargeRange/TestRecurrence_WeeklySparseLargeRange
+// regressions already exercise a 200-year span) while still bounding
+// expandByDay's worst case to roughly 365,000 iterations.
+const maxExpandSpan Instant = 1000 * 365 * 24 * 60 * 60 * 1000 // 1000 years, in milliseconds
+
 // Interval is a closed-open [Start, End) temporal interval.
 type Interval struct {
 	Start Instant
@@ -110,6 +126,9 @@ func (p RecurrencePattern) Validate() error {
 func (p RecurrencePattern) Expand(from, to Instant) ([]Interval, error) {
 	if from >= to {
 		return nil, fmt.Errorf("%w: from must be before to", ErrInvalidTimeRange)
+	}
+	if to-from > maxExpandSpan {
+		return nil, fmt.Errorf("%w: span %dms exceeds maximum %dms", ErrRecurrenceSpanTooLarge, to-from, maxExpandSpan)
 	}
 	if err := p.Validate(); err != nil {
 		return nil, err

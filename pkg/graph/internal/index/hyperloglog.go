@@ -97,8 +97,31 @@ func (h *HyperLogLog) AddString(s string) {
 }
 
 func (h *HyperLogLog) addHash(hash uint64) {
+	hash = mix64(hash)
 	idx := uint32(hash >> (64 - h.precision))
 	h.setRegister(idx, rank(hash, h.precision))
+}
+
+// mix64 is the Murmur3 fmix64 finalizer, applied to every hash before it
+// feeds the register index / rho computation. FNV-1a avalanches poorly on
+// short inputs that differ only in a low-order byte — exactly the shape of
+// IndexablePropertyValueKey's "i64:1990", "i64:1991", "i64:1992", ... keys
+// for real sequential-ish property values (birth years, ages, small
+// counters), which correlate heavily in the top bits addHash uses for the
+// register index and collapse thousands of logically-distinct values into a
+// handful of registers (see tasks/lessons.md #65 — an ~11x undercount was
+// observed on sequential int keys). Re-mixing with a proper avalanche
+// function whitens FNV-1a's output before use without changing the hash
+// choice itself, so equality/collision behavior for the property index
+// (which uses the SAME valueKey string separately, via exact map/bucket
+// lookup, never this sketch) is unaffected.
+func mix64(x uint64) uint64 {
+	x ^= x >> 33
+	x *= 0xff51afd7ed558ccd
+	x ^= x >> 33
+	x *= 0xc4ceb9fe1a85ec53
+	x ^= x >> 33
+	return x
 }
 
 // rank returns the 1-based position of the first set bit among the

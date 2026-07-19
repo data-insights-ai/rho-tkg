@@ -249,7 +249,20 @@ func TestAddNodePropertyValueNonStringIgnored(t *testing.T) {
 	}
 }
 
-func TestAddNodePropertyValueNonStringContainersIgnored(t *testing.T) {
+// TestAddNodePropertyValueNonStringContainersUnaffectedByMaxPropertyValueSize
+// proves non-string containers are governed by the SEPARATE
+// MaxPropertyContainerLength field (BACKLOG 14b), not MaxPropertyValueSize —
+// a small string-length limit (here 1) must NOT reject a modestly-sized
+// numeric/byte container. This is deliberate: MaxPropertyValueSize's natural
+// scale is "how long can one string be", while a container's natural scale is
+// element/entry count (or byte length for []byte) — conflating the two would
+// make a legitimate large vector-index embedding ([]float32) impossible to
+// store under any string-length-appropriate limit. (Renamed from
+// "...NonStringContainersIgnored" — they are no longer ignored, just bounded
+// by a different, independently-configurable knob; see
+// TestGraphMutationsRejectOversizedContainerProperty for the knob actually
+// rejecting an oversized container.)
+func TestAddNodePropertyValueNonStringContainersUnaffectedByMaxPropertyValueSize(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -271,7 +284,7 @@ func TestAddNodePropertyValueNonStringContainersIgnored(t *testing.T) {
 
 			n, err := g.Nodes.Add(context.Background(), []string{"X"}, map[string]any{"key": tc.val})
 			if err != nil {
-				t.Fatalf("non-string container should be ignored: %v", err)
+				t.Fatalf("non-string container should not be governed by MaxPropertyValueSize: %v", err)
 			}
 			if n == nil {
 				t.Fatal("node should not be nil")

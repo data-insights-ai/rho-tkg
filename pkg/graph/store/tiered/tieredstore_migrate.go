@@ -22,6 +22,20 @@ import (
 // The label registry is loaded from src and wired to dst before migration so
 // ontology routing sees the same token mapping used by src. Both source
 // registries are saved to dst after a successful entity copy.
+//
+// Single-writer discipline: MigrateFromBadger takes dst.migrateMu for its
+// entire duration, so two concurrent MigrateFromBadger calls against the SAME
+// dst cannot interleave — dst.ontology.SetLabelRegistry (shared, unlocked
+// state on the ontology object) and the insertedNodes/insertedRels rollback
+// bookkeeping would otherwise race and corrupt each other's routing/rollback
+// state. This does NOT serialize against a Core/Graph already open on dst
+// performing ordinary writes concurrently: this function operates BELOW the
+// Core layer, directly on the raw store, and dst.ontology.SetLabelRegistry
+// changes routing behavior mid-flight — running it against a live,
+// concurrently-written dst can misroute those writes. MigrateFromBadger is
+// an operational, one-time migration tool; the documented safe usage is to
+// run it BEFORE any Core/Graph opens dst (an offline migration step), never
+// against a dst with concurrent normal traffic.
 func MigrateFromBadger(src *BadgerStore, dst *Store) error {
 	if src == nil {
 		return fmt.Errorf("%w: nil source badger store", ErrInvalidStoreMutation)
@@ -29,6 +43,8 @@ func MigrateFromBadger(src *BadgerStore, dst *Store) error {
 	if dst == nil {
 		return fmt.Errorf("%w: nil destination tiered store", ErrInvalidStoreMutation)
 	}
+	dst.migrateMu.Lock()
+	defer dst.migrateMu.Unlock()
 	if err := dst.checkOpen(); err != nil {
 		return err
 	}

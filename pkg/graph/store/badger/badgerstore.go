@@ -403,6 +403,8 @@ type Store struct {
 	nodeRevs              map[types.NodeID]uint64   // live node row revision for safe prefetch handoff
 	nextNodeRev           uint64
 	relIDs                map[types.RelID]struct{}                      // O(1) rel existence check
+	relRevs               map[types.RelID]uint64                        // live rel row revision for safe prefetch handoff (BACKLOG 18b — relRevs/nextRelRev mirror nodeRevs/nextNodeRev)
+	nextRelRev            uint64
 	labelIdx              map[uint16]map[types.NodeID]struct{}          // labelToken → set(nodeID); EMPTY in labelOnDisk mode
 	labelOnDisk           bool                                          // answer label snapshots from the persisted keyspace
 	adjOnDisk             bool                                          // answer adjacency snapshots from the persisted keyspaces
@@ -569,6 +571,14 @@ type Store struct {
 	// snapshot. Set only from the owning test.
 	historyScanTestHook func()
 
+	// replaceRelPrefetchTestHook, when non-nil, is invoked by ReplaceRelationship
+	// right after prefetchRelWithRev returns and BEFORE idxMu.Lock() is acquired.
+	// Production leaves it nil (zero overhead); tests use it to deterministically
+	// land a concurrent property-changing write inside the prefetch->lock window
+	// that relRevs (BACKLOG 18b) must detect via currentRelForPrefetchLocked's
+	// rev check. Set only from the owning test.
+	replaceRelPrefetchTestHook func()
+
 	// Property indexes — in-memory only. Definitions persisted, data rebuilt on startup.
 	propertyIndexes map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex
 
@@ -639,8 +649,12 @@ type Store struct {
 	// allocator, seeded at open from LastLSNKey (or the max KeyChangeLog key),
 	// advanced only under wbMu so LSN order is a total commit order. pendingLog
 	// is the append-only buffer of framed records awaiting flush, guarded by
-	// wbMu so a record and its entity ops snapshot together.
-	logEnabled bool
+	// wbMu so a record and its entity ops snapshot together. logEnabled is
+	// atomic (not a plain bool guarded by wbMu) because ChangeLogEnabled() is a
+	// PUBLIC accessor called externally with no lock of its own (BACKLOG 18i) —
+	// every write-path check still runs under wbMu as before, but the flag type
+	// itself must be safe for the unsynchronized external read.
+	logEnabled atomic.Bool
 	// logConfigured records the open-time change-log intent, so EnableChangeLog
 	// (recovery) only re-enables a store that was actually opened with the log —
 	// it never turns the log on for a store opened without it. DisableChangeLog
@@ -816,6 +830,7 @@ func New(cfg Config) (*Store, error) {
 		nodeHashes: make(map[types.NodeID]string),
 		nodeRevs:   make(map[types.NodeID]uint64),
 		relIDs:     make(map[types.RelID]struct{}),
+		relRevs:    make(map[types.RelID]uint64),
 		labelIdx:   make(map[uint16]map[types.NodeID]struct{}),
 		typeIdx:    make(map[uint16]map[types.RelID]struct{}),
 		outIdx:     make(map[types.NodeID]map[types.RelID]types.NodeID),
@@ -845,7 +860,6 @@ func New(cfg Config) (*Store, error) {
 		historyAnchorInterval:   resolveHistoryAnchorInterval(cfg.HistoryAnchorInterval),
 		readOnly:                cfg.ReadOnly,
 		syncWrites:              cfg.SyncWrites && !cfg.ReadOnly,
-		logEnabled:              cfg.ChangeLog && !cfg.ReadOnly,
 		logConfigured:           cfg.ChangeLog && !cfg.ReadOnly,
 		logSeqSource:            cfg.ChangeLogSeqSource,
 		onChangeLogFlush:        cfg.OnChangeLogFlush,
@@ -858,6 +872,10 @@ func New(cfg Config) (*Store, error) {
 		gcDone:                  make(chan struct{}),
 		logger:                  cfg.Logger,
 	}
+	// atomic.Bool cannot be set via a composite literal (unexported internal
+	// field) — set it here, before any concurrent access is possible (bs is
+	// still local to this constructor).
+	bs.logEnabled.Store(cfg.ChangeLog && !cfg.ReadOnly)
 
 	// Resident mode: keep every decoded node/rel resident so a cache miss never
 	// re-decodes (msgpack unmarshal + wire-decode) the same entity twice — the
@@ -1161,6 +1179,7 @@ func (bs *Store) loadIndexesScan() error {
 				continue
 			}
 			bs.relIDs[rid] = struct{}{}
+			bs.bumpRelRevLocked(rid) // seed a non-zero rev so a pre-first-write prefetch doesn't fall back needlessly (mirrors nodeRevs seeding above)
 			bs.addRelPropertyTypeClassCounts(r) // rebuild rel type-class counters + contrib (BACKLOG 5B)
 			info := relDeleteInfoFromRelationship(r)
 			decodedRelInfo[rid] = info
@@ -1816,6 +1835,8 @@ func (bs *Store) Clear() error {
 	bs.docColumnsMulti = nil
 	bs.docMu.Unlock()
 	bs.relIDs = make(map[types.RelID]struct{})
+	bs.relRevs = make(map[types.RelID]uint64)
+	bs.nextRelRev = 0
 	bs.labelIdx = make(map[uint16]map[types.NodeID]struct{})
 	bs.typeIdx = make(map[uint16]map[types.RelID]struct{})
 	bs.outIdx = make(map[types.NodeID]map[types.RelID]types.NodeID)
@@ -1899,7 +1920,7 @@ func (bs *Store) Clear() error {
 	// LastLSNKey continuously durable (clearAndReanchorChangeLog), so a crash
 	// mid-Clear cannot reseed the LSN allocator to 0 and collide with a tailing
 	// consumer's pre-Clear watermark (lesson 53).
-	if bs.logEnabled {
+	if bs.logEnabled.Load() {
 		return bs.clearAndReanchorChangeLog()
 	}
 	// Change-log disabled now — but a PRIOR change-log-enabled session may have

@@ -4,6 +4,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 )
@@ -123,6 +124,162 @@ func TestLockStripesAscendingDedup(t *testing.T) {
 	// Re-lock proves everything was released (would deadlock/hang otherwise).
 	ordered2 := vm.LockStripes([]uint8{5, 42, 200})
 	vm.UnlockStripes(ordered2)
+}
+
+// BACKLOG 15c: LockStripesExcept had zero direct or indirect test coverage —
+// the concurrency-critical skip-already-held-stripe path GetOrCreateByKey
+// relies on to create a node while holding the keyed value's stripe without
+// self-deadlocking (a sync.Mutex is not reentrant; re-locking a held stripe
+// from the same goroutine hangs forever).
+
+// TestLockStripesExceptEmptyHeldDelegatesToLockStripes pins the documented
+// "when held is empty this is exactly LockStripes" contract: same
+// ascending-order, deduplicated behavior.
+func TestLockStripesExceptEmptyHeldDelegatesToLockStripes(t *testing.T) {
+	t.Parallel()
+	vm := NewValueManager()
+	kept := vm.LockStripesExcept([]uint8{200, 5, 200, 5, 42}, nil)
+	want := []uint8{5, 42, 200}
+	if len(kept) != len(want) {
+		t.Fatalf("kept = %v, want %v", kept, want)
+	}
+	for i := range want {
+		if kept[i] != want[i] {
+			t.Fatalf("kept = %v, want %v", kept, want)
+		}
+	}
+	vm.UnlockStripes(kept)
+}
+
+// TestLockStripesExceptSkipsHeldStripes proves the skip set is honored: a
+// held stripe is excluded from BOTH the returned "kept" list AND from being
+// re-locked — verified by actually holding it (not merely simulating) and
+// confirming LockStripesExcept still returns promptly with the held stripe
+// excluded.
+func TestLockStripesExceptSkipsHeldStripes(t *testing.T) {
+	t.Parallel()
+	vm := NewValueManager()
+	held := []uint8{5, 42}
+	for _, s := range held {
+		vm.shards[s].Lock()
+	}
+	defer func() {
+		for _, s := range held {
+			vm.shards[s].Unlock()
+		}
+	}()
+
+	kept := vm.LockStripesExcept([]uint8{5, 10, 42, 100}, held)
+	want := []uint8{10, 100}
+	if len(kept) != len(want) {
+		t.Fatalf("kept = %v, want %v", kept, want)
+	}
+	for i := range want {
+		if kept[i] != want[i] {
+			t.Fatalf("kept = %v, want %v", kept, want)
+		}
+	}
+	vm.UnlockStripes(kept)
+}
+
+// TestLockStripesExceptAllRequestedAreHeld proves the degenerate case: every
+// requested stripe is already held, so nothing new is locked and an empty
+// (non-nil-vs-nil is not asserted; only emptiness matters) slice is returned.
+func TestLockStripesExceptAllRequestedAreHeld(t *testing.T) {
+	t.Parallel()
+	vm := NewValueManager()
+	held := []uint8{5, 42}
+	for _, s := range held {
+		vm.shards[s].Lock()
+	}
+	defer func() {
+		for _, s := range held {
+			vm.shards[s].Unlock()
+		}
+	}()
+
+	kept := vm.LockStripesExcept([]uint8{42, 5, 5}, held)
+	if len(kept) != 0 {
+		t.Fatalf("kept = %v, want empty (every requested stripe already held)", kept)
+	}
+	vm.UnlockStripes(kept) // no-op over an empty slice — must not panic
+}
+
+// TestLockStripesExceptDoesNotDeadlockOnHeldStripe is the direct regression
+// guard for the bug this function exists to prevent: if the skip logic were
+// ever broken (e.g. an off-by-one, or comparing the wrong stripe set),
+// LockStripesExcept would try to re-lock a stripe THIS SAME GOROUTINE already
+// holds via a non-reentrant sync.Mutex — an unconditional self-deadlock, not
+// a race requiring -race or multiple goroutines to observe. Run on a
+// timeout-guarded goroutine so a regression fails the test instead of hanging
+// the whole suite.
+func TestLockStripesExceptDoesNotDeadlockOnHeldStripe(t *testing.T) {
+	t.Parallel()
+	vm := NewValueManager()
+	const heldStripe = 77
+	vm.shards[heldStripe].Lock()
+	defer vm.shards[heldStripe].Unlock()
+
+	done := make(chan []uint8, 1)
+	go func() {
+		// heldStripe appears in BOTH stripes and held — must be skipped, not
+		// re-locked, by the same goroutine that already holds it.
+		done <- vm.LockStripesExcept([]uint8{heldStripe, 1, 2}, []uint8{heldStripe})
+	}()
+
+	select {
+	case kept := <-done:
+		want := []uint8{1, 2}
+		if len(kept) != len(want) || kept[0] != want[0] || kept[1] != want[1] {
+			t.Fatalf("kept = %v, want %v", kept, want)
+		}
+		vm.UnlockStripes(kept)
+	case <-time.After(2 * time.Second):
+		t.Fatal("LockStripesExcept deadlocked re-locking an already-held stripe")
+	}
+}
+
+// TestLockStripesExceptGetOrCreateByKeyShape mirrors the real call shape
+// GetOrCreateByKey uses: the caller already holds the KEYED value's stripe
+// (taken before this call, exactly like enforceUniqueForNodeHeld's caller),
+// and the constraint-check set may or may not include that same stripe again
+// (a hash collision, or the same key appearing in multiple constrained
+// tuples). Either way, the held stripe must never be double-locked, and every
+// OTHER stripe must be genuinely acquired (verified via a concurrent
+// contender that only succeeds after UnlockStripes releases them).
+func TestLockStripesExceptGetOrCreateByKeyShape(t *testing.T) {
+	t.Parallel()
+	vm := NewValueManager()
+	const keyedStripe = 11
+	vm.shards[keyedStripe].Lock()
+	defer vm.shards[keyedStripe].Unlock()
+
+	kept := vm.LockStripesExcept([]uint8{keyedStripe, 22, 33}, []uint8{keyedStripe})
+	if len(kept) != 2 || kept[0] != 22 || kept[1] != 33 {
+		t.Fatalf("kept = %v, want [22 33]", kept)
+	}
+
+	// A concurrent contender for stripe 22 must block until UnlockStripes runs.
+	acquired := make(chan struct{})
+	go func() {
+		vm.shards[22].Lock()
+		close(acquired)
+		vm.shards[22].Unlock()
+	}()
+	select {
+	case <-acquired:
+		t.Fatal("stripe 22 was not actually locked by LockStripesExcept — contender acquired it too early")
+	case <-time.After(50 * time.Millisecond):
+		// expected: still blocked
+	}
+
+	vm.UnlockStripes(kept)
+	select {
+	case <-acquired:
+		// expected: contender now proceeds
+	case <-time.After(2 * time.Second):
+		t.Fatal("contender never acquired stripe 22 after UnlockStripes — stripe leaked locked")
+	}
 }
 
 // Two updates crossing the same pair of value stripes in opposite argument

@@ -2,6 +2,7 @@ package index
 
 import (
 	"cmp"
+	"math"
 	"slices"
 	"strings"
 
@@ -286,7 +287,9 @@ func buildColumn(ids []types.NodeID, key string, n int, getProp func(types.NodeI
 		}
 		present.set(ord)
 		switch v.(type) {
-		case int64, int, int32, float64, float32:
+		case int64, int, int32, int16, int8,
+			uint64, uint, uint32, uint16, uint8,
+			float64, float32:
 			sawNumeric = true
 		case string:
 			sawString = true
@@ -314,13 +317,33 @@ func buildNumericColumn(ids []types.NodeID, key string, n int, present bitset, g
 		}
 		v, _ := getProp(id, key)
 		// Normalize to int64/float64 (the consumer's accumulator fast-path types)
-		// and box once; the boxed dynamic type preserves int64-vs-float64.
+		// and box once; the boxed dynamic type preserves int64-vs-float64. All
+		// signed/unsigned integer widths up to 32 bits fit int64 exactly. uint/
+		// uint64 need a range check: only values <= math.MaxInt64 fit; a larger
+		// magnitude falls back to float64 (the same precision trade-off
+		// property_stats_accumulator.go's numericValue already documents and
+		// accepts for the same magnitude range) rather than silently wrapping
+		// negative via a raw int64(x) cast.
 		switch x := v.(type) {
 		case int64:
 			c.boxed[ord] = x
 		case int:
 			c.boxed[ord] = int64(x)
 		case int32:
+			c.boxed[ord] = int64(x)
+		case int16:
+			c.boxed[ord] = int64(x)
+		case int8:
+			c.boxed[ord] = int64(x)
+		case uint:
+			c.boxed[ord] = normalizeUint64(uint64(x))
+		case uint64:
+			c.boxed[ord] = normalizeUint64(x)
+		case uint32:
+			c.boxed[ord] = int64(x)
+		case uint16:
+			c.boxed[ord] = int64(x)
+		case uint8:
 			c.boxed[ord] = int64(x)
 		case float64:
 			c.boxed[ord] = x
@@ -329,6 +352,17 @@ func buildNumericColumn(ids []types.NodeID, key string, n int, present bitset, g
 		}
 	}
 	return c
+}
+
+// normalizeUint64 boxes a uint64 as int64 when it fits exactly (every
+// practical counter/ID/age value), else as float64 — the same magnitude-only
+// precision trade-off numericValue in property_stats_accumulator.go already
+// documents and accepts, rather than letting int64(x) wrap negative.
+func normalizeUint64(v uint64) any {
+	if v <= math.MaxInt64 {
+		return int64(v)
+	}
+	return float64(v)
 }
 
 func buildStringColumn(ids []types.NodeID, key string, n int, present bitset, getProp func(types.NodeID, string) (any, bool)) *docColumn {

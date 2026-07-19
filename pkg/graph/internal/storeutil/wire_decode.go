@@ -267,7 +267,21 @@ func (p *PropertyWire) DecodeMsgpack(dec *msgpack.Decoder) error {
 	return decodePropertyWireInto(dec, p, kb)
 }
 
-// decodeIntSlice decodes a msgpack array of ints (ExtraLabels) in one make().
+// wireArrayPreallocCap bounds the capacity reserved up front from an untrusted
+// msgpack array-length header (lesson 48: allocate proportional to bytes
+// DELIVERED, not to an untrusted count field). A declared length is a CLAIM,
+// not a fact, until the elements behind it actually decode — pre-sizing a
+// make() to the raw claimed count lets a few hostile bytes (a msgpack array
+// header claiming e.g. 100M elements) amplify into a huge allocation before a
+// single element is read. Mirrors internal/core's importPreallocLimit (4096):
+// large enough that every realistic entity (bounded by
+// ValidationLimits.MaxLabelsPerNode / MaxPropertiesPerEntity, both far under
+// 4096 by default) hits the fast pre-sized path with zero extra allocation,
+// small enough that a hostile claim costs only a few KiB up front. Once past
+// the cap, append grows incrementally with elements that actually decoded.
+const wireArrayPreallocCap = 4096
+
+// decodeIntSlice decodes a msgpack array of ints (ExtraLabels).
 func decodeIntSlice(dec *msgpack.Decoder) ([]int, error) {
 	n, err := dec.DecodeArrayLen()
 	if err != nil {
@@ -276,17 +290,19 @@ func decodeIntSlice(dec *msgpack.Decoder) ([]int, error) {
 	if n < 0 {
 		return nil, nil
 	}
-	out := make([]int, n)
+	out := make([]int, 0, min(n, wireArrayPreallocCap))
 	for i := 0; i < n; i++ {
-		if out[i], err = dec.DecodeInt(); err != nil {
+		v, err := dec.DecodeInt()
+		if err != nil {
 			return nil, err
 		}
+		out = append(out, v)
 	}
 	return out, nil
 }
 
-// decodePropertyArray decodes the "p" array of PropertyWire elements in one
-// make(), reusing the caller's key buffer for every element's keys.
+// decodePropertyArray decodes the "p" array of PropertyWire elements, reusing
+// the caller's key buffer for every element's keys.
 func decodePropertyArray(dec *msgpack.Decoder, kb []byte) ([]PropertyWire, error) {
 	n, err := dec.DecodeArrayLen()
 	if err != nil {
@@ -295,11 +311,13 @@ func decodePropertyArray(dec *msgpack.Decoder, kb []byte) ([]PropertyWire, error
 	if n < 0 {
 		return nil, nil
 	}
-	out := make([]PropertyWire, n)
+	out := make([]PropertyWire, 0, min(n, wireArrayPreallocCap))
 	for i := 0; i < n; i++ {
-		if err := decodePropertyWireInto(dec, &out[i], kb); err != nil {
+		var pw PropertyWire
+		if err := decodePropertyWireInto(dec, &pw, kb); err != nil {
 			return nil, err
 		}
+		out = append(out, pw)
 	}
 	return out, nil
 }

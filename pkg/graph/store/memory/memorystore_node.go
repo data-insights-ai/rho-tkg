@@ -361,6 +361,11 @@ func (ms *Store) DeleteNodeCascade(nid types.NodeID) error {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 	defer ms.bumpNodeEpoch()
+	// The cascade removes every connected relationship (adjacency changes),
+	// not just the node — bumpRelEpoch too, or a concurrent X5
+	// expand-aggregation column reader's staleness gate would pass despite
+	// adjacency having changed mid-scan (BACKLOG 17a).
+	defer ms.bumpRelEpoch()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err

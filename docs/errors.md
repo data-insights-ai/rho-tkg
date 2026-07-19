@@ -61,6 +61,7 @@ Coverage spans three sources:
 | `ErrNoVersionAsOf` | core | No entity version recorded at the given transaction time | `g.Temporal().NodeAsOf()`, `g.Temporal().RelAsOf()` |
 | `ErrNoVersionValidAt` | store | The entity is known (current or historical rows exist) but no version's effective valid-time interval covers the requested instant. Aliases `store.ErrNoVersionValidAt` — previously leaked raw from these four doors with no `pkg/graph` alias | `g.Temporal().NodeAt()`, `g.Temporal().RelAt()`, `g.Temporal().NodeAtTx()`, `g.Temporal().RelAtTx()` |
 | `ErrConflictingTemporalOpts` | core | `QueryOpts.TxPin` (the belief-state / knowledge-time pin) was set together with a valid-time filter (`ValidAt` / `ValidStart` / `ValidEnd`) or with `TxAt`; TxPin resolves like `NodesAsOf` with NO valid-time filtering, so combining it with any other temporal filter is contradictory and rejected rather than silently mis-resolved | `g.Nodes().All()` / `ByLabel()`, `g.Rels().All()` / `ByType()` with a conflicting `QueryOpts` |
+| `ErrInvalidClockAdvance` | core | The `AdvanceClock` target lands implausibly far ahead of wall-clock (more than the ~10-year skew tolerance) — guards against a unit/scale mixup (e.g. microseconds passed where milliseconds are expected) permanently poisoning the transaction clock | `g.Temporal().AdvanceClock()` |
 | `ErrTemporalConstraint` | temporal | A temporal constraint was violated (interval predicate failed) | `g.Temporal().AssertNodeConstraint()`, `g.Temporal().AssertRelConstraint()` |
 | `ErrInvalidTemporalConstraint` | temporal | Temporal constraint definition is invalid | `g.Temporal().AssertNodeConstraint()`, `g.Temporal().AssertRelConstraint()` |
 | `ErrRelBeforeStartNode` | temporal | Relationship begins before its start node is valid | `g.Rels().Add*()` with temporal validation enabled |
@@ -118,6 +119,7 @@ Coverage spans three sources:
 | Sentinel | Package | Meaning | Typical Doors |
 |----------|---------|---------|---------------|
 | `ErrIngestClosed` | core | The ingest pipeline (graph + applier) is closed before the work could be applied — an enqueue racing `Close` is rejected cleanly with this sentinel (never accepted-then-dropped, never hung) | `g.Ingest()` `Session.Submit()` / `Session.Close()`, `g.Ingest().WaitApplied()` |
+| `ErrNilSession` | core | An `ingest.Session` method was called on a nil `*Session`. `ingest.Session` is a type alias for `core.Session` (not a wrapper), so this is reachable directly through the public surface | Any `*ingest.Session` method (`AddNode`, `AddRelationship`, `UpdateNode`, `UpdateRelationship`, `DeleteNode`, `DeleteRelationship`, `Submit`, `Close`) called on a nil receiver |
 
 ## I/O Operations
 
@@ -171,6 +173,16 @@ Sentinels guarding the on-disk / on-wire trust boundary: format compatibility an
 | Sentinel | Package | Meaning | Typical Doors |
 |----------|---------|---------|---------------|
 | `ErrCapabilityNotSupported` | store | Required optional Store capability is not implemented by the configured backend | `g.Replication().ApplyChange()` on memory store, `g.IO().ExportSince()` on tiered store without change-log, `g.Replication().Watch()` on its very first pull — either no change-feed capability at all (e.g. tiered) or a badger/memory store whose change-log is present but disabled (`store.ChangeLogStatusCapability.ChangeLogEnabled() == false`), mirroring the same fail-closed check as `Watermark`/`ExportSince` |
+
+## TieredStore Reference/Event Ontology
+
+Sentinels enforcing `tiered.Store`'s reference-vs-event primary-label class boundary (see CLAUDE.md's TieredStore section). Declared in `pkg/graph/store/tiered` and reachable through three DIFFERENT sub-APIs depending on which door the caller used, so they are re-exported centrally in `pkg/graph/errors.go` rather than in a single sub-API package's own `errors.go`.
+
+| Sentinel | Package | Meaning | Typical Doors |
+|----------|---------|---------|---------------|
+| `ErrNotReferenceEntity` | tiered | The target entity is not a reference entity — event entities cannot be archived | `g.Tier().Archive()` / `Restore()` on an event-classed node |
+| `ErrEventPropertyIndex` | tiered | Property indexes are reference-entities-only on a tiered store | `g.Index().CreatePropertyIndex()` on an event-classed label |
+| `ErrPrimaryLabelClassMutation` | tiered | A label mutation would change the primary label's reference↔event ontology class (routing depends on this class, so flipping it mid-flight would fragment the version chain across shards) | `g.Nodes().AddLabelToken()` / `RemoveLabelToken()` (and their `WithHistory` variants) |
 
 ## Store-Internal Sentinels (Not Re-Exported Through pkg/graph)
 

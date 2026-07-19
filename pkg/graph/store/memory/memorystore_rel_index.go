@@ -192,6 +192,17 @@ func (ms *Store) relsByTypePropertyFromIDs(relTypeToken uint16, propKey, targetK
 // bounds): fn must re-check its predicate with exact comparison semantics.
 // Returns ErrIndexNotFound when no rel property index with a usable ordered view
 // exists for (relType, propKey) — the caller falls back to a type scan.
+//
+// Isolation mirrors ForEachRelByTypePropertyRangeOrdered (BACKLOG 17b): the
+// candidate ID set is snapshotted under one brief store RLock, then each row is
+// looked up under its OWN brief RLock, and fn runs with NO lock held — fn may
+// freely call back into the store. Every sibling streaming method already
+// followed this two-phase pattern (matching the documented IterationCapability
+// contract and sync.RWMutex's non-reentrancy); this was the one door that held
+// the lock across the whole callback loop, a self-deadlock hazard if fn ever
+// re-entered any Store read method while a writer was waiting for the RLock
+// (a waiting writer blocks NEW readers too, so a reentrant RLock from inside fn
+// would never acquire).
 func (ms *Store) ForEachRelByTypePropertyRange(relTypeToken uint16, propKey string, min, max float64, inclMin, inclMax bool, opts QueryOpts, fn func(*types.Relationship) bool) error {
 	if ms == nil {
 		return ErrNilStore
@@ -199,28 +210,33 @@ func (ms *Store) ForEachRelByTypePropertyRange(relTypeToken uint16, propKey stri
 	if fn == nil {
 		return storecontract.ErrInvalidStoreMutation
 	}
-	ms.mu.RLock()
-	defer ms.mu.RUnlock()
 
+	ms.mu.RLock()
 	if err := ms.checkOpenLocked(); err != nil {
+		ms.mu.RUnlock()
 		return err
 	}
 	if err := storecontract.ValidateRelTypeToken(relTypeToken); err != nil {
+		ms.mu.RUnlock()
 		return err
 	}
 	if err := storecontract.ValidateIndexPropertyKey(propKey); err != nil {
+		ms.mu.RUnlock()
 		return err
 	}
 	if err := storecontract.ValidateQueryOpts(opts); err != nil {
+		ms.mu.RUnlock()
 		return err
 	}
 
 	key := indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propKey}
 	idx, ok := ms.relPropertyIndexes[key]
 	if !ok {
+		ms.mu.RUnlock()
 		return ErrIndexNotFound
 	}
 	ids, supported := idx.RangeRelIDs(min, max, inclMin, inclMax)
+	ms.mu.RUnlock()
 	if !supported {
 		return ErrIndexNotFound
 	}
@@ -233,7 +249,9 @@ func (ms *Store) ForEachRelByTypePropertyRange(relTypeToken uint16, propKey stri
 	hasTemporal := storepkg.HasTemporalFilter(opts)
 	emitted := 0
 	for _, id := range ids {
+		ms.mu.RLock()
 		r, ok := ms.rels[id]
+		ms.mu.RUnlock()
 		if !ok {
 			continue
 		}

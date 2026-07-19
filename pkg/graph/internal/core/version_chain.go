@@ -147,6 +147,10 @@ func (c *Core) closeNodeVersionInternal(id types.NodeID, t types.Instant) error 
 	}
 
 	prevVersion := current.Version()
+	nextVersion, err := nextEntityVersion(prevVersion)
+	if err != nil {
+		return err
+	}
 	prevState := current.DeepCopy()
 	now := c.nodeVersionUpdateInstant(current)
 	if ptm := prevState.Temporal(); ptm == nil {
@@ -157,6 +161,7 @@ func (c *Core) closeNodeVersionInternal(id types.NodeID, t types.Instant) error 
 		ptm.TxTo = now
 	}
 
+	current.SetVersion(nextVersion)
 	tm := current.Temporal()
 	if tm == nil {
 		tm = &types.TemporalMetadata{}
@@ -166,10 +171,11 @@ func (c *Core) closeNodeVersionInternal(id types.NodeID, t types.Instant) error 
 	tm.UpdatedAt = now
 	tm.TxFrom = now
 
-	// Preserve existing chain position; recompute hash after temporal change.
+	// The closed row is a new chain entry superseding the open one — its
+	// PrevHash chains to the open row's own Hash, not to that row's PrevHash.
 	prevHash := ""
 	if ig := current.Integrity(); ig != nil {
-		prevHash = ig.PrevHash
+		prevHash = ig.Hash
 	}
 	nodeLabels := c.nodeLabelsUnlocked(current)
 	hash, err := integrity.ComputeNodeHashChecked(current, nodeLabels)
@@ -372,6 +378,10 @@ func (c *Core) closeRelVersionInternal(id types.RelID, t types.Instant) error {
 	}
 
 	prevVersion := current.Version()
+	nextVersion, err := nextEntityVersion(prevVersion)
+	if err != nil {
+		return err
+	}
 	prevState := current.DeepCopy()
 	now := c.relVersionUpdateInstant(current)
 	if ptm := prevState.Temporal(); ptm == nil {
@@ -382,6 +392,7 @@ func (c *Core) closeRelVersionInternal(id types.RelID, t types.Instant) error {
 		ptm.TxTo = now
 	}
 
+	current.SetVersion(nextVersion)
 	tm := current.Temporal()
 	if tm == nil {
 		tm = &types.TemporalMetadata{}
@@ -391,10 +402,11 @@ func (c *Core) closeRelVersionInternal(id types.RelID, t types.Instant) error {
 	tm.UpdatedAt = now
 	tm.TxFrom = now
 
-	// Preserve existing chain position; recompute hash after temporal change.
+	// The closed row is a new chain entry superseding the open one — its
+	// PrevHash chains to the open row's own Hash, not to that row's PrevHash.
 	prevHash := ""
 	if ig := current.Integrity(); ig != nil {
-		prevHash = ig.PrevHash
+		prevHash = ig.Hash
 	}
 	relTypeName := c.relTypeUnlocked(current)
 	hash, err := integrity.ComputeRelHashChecked(current, relTypeName)

@@ -228,9 +228,21 @@ func TestPeekTx_DoesNotAdvanceClock(t *testing.T) {
 			}
 			defer g.Close()
 
-			const big = types.Instant(1 << 50) // far above wall-clock ms
-			if _, err := g.Temporal.AdvanceClock(big); err != nil {
+			// 5 years ahead of wall-clock — comfortably below AdvanceClock's
+			// ~10-year skew bound (BACKLOG 10c/10d), but still far enough above
+			// wall-clock for the assertions below to be deterministic (the
+			// floor dominates; wall ticks during the loop are irrelevant).
+			wallNow, err := g.Temporal.PeekTx()
+			if err != nil {
+				t.Fatalf("PeekTx (baseline): %v", err)
+			}
+			big := wallNow + types.Instant(5*365*24*60*60*1000)
+			gotFloor, err := g.Temporal.AdvanceClock(big)
+			if err != nil {
 				t.Fatalf("AdvanceClock: %v", err)
+			}
+			if gotFloor < big {
+				t.Fatalf("AdvanceClock(big) returned floor %d, want >= %d", gotFloor, big)
 			}
 			// First reservation sits at big+1.
 			n1, err := g.Temporal.NowTx()

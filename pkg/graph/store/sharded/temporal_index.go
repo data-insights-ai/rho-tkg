@@ -24,9 +24,10 @@ func (s *Store) CreateTemporalIndex(labelToken uint16) error {
 	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
 		return err
 	}
-	return s.fanOutUniform(func(shard *badgerShard) error {
-		return shard.CreateTemporalIndex(labelToken)
-	})
+	return s.fanOutUniformCreate(
+		func(shard *badgerShard) error { return shard.CreateTemporalIndex(labelToken) },
+		func(shard *badgerShard) error { return shard.DropTemporalIndex(labelToken) },
+	)
 }
 
 // DropTemporalIndex removes the temporal index for labelToken from every shard.

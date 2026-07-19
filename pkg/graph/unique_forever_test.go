@@ -241,6 +241,90 @@ func TestUniqueForever_ResetReaps(t *testing.T) {
 	mustAddUser(t, g, "own@x.com")
 }
 
+// TestUniqueForever_MultiKeyViolationLeavesNoOrphanedClaim guards BACKLOG 9e:
+// a node binding TWO constrained tuples — a fresh UniqueForever value and a
+// plain UniqueCurrent value that turns out to be a duplicate — must not
+// permanently claim the forever value just because a LATER tuple's check
+// failed. Before the fix, enforceUniqueForNodeHeld claimed each UniqueForever
+// tuple as it was checked, so a later tuple's violation left the earlier
+// claim durably persisted on an entity that never actually got created.
+func TestUniqueForever_MultiKeyViolationLeavesNoOrphanedClaim(t *testing.T) {
+	for _, bc := range uniqueBackends(t) {
+		t.Run(bc.name, func(t *testing.T) {
+			g := bc.open(t)
+			defer g.Close()
+			ctx := context.Background()
+
+			if err := g.Constraints().CreateUniqueForever(ctx, "Account", "email"); err != nil {
+				t.Fatalf("CreateUniqueForever: %v", err)
+			}
+			if err := g.Constraints().CreateUnique(ctx, "Account", "ssn"); err != nil {
+				t.Fatalf("CreateUnique: %v", err)
+			}
+			if _, err := g.Nodes().Add(ctx, []string{"Account"}, map[string]any{"ssn": "999-99-9999"}); err != nil {
+				t.Fatalf("seed ssn holder: %v", err)
+			}
+
+			// Fresh (claimable) forever email + a duplicate ssn — the whole
+			// create must fail, and it must fail regardless of which tuple
+			// the implementation happens to check first.
+			_, err := g.Nodes().Add(ctx, []string{"Account"}, map[string]any{
+				"email": "fresh@x.com",
+				"ssn":   "999-99-9999",
+			})
+			if !errors.Is(err, graphpkg.ErrUniqueViolation) {
+				t.Fatalf("Add with one fresh + one duplicate tuple = %v, want ErrUniqueViolation", err)
+			}
+
+			// The forever email value must remain FREE — a real create must
+			// still succeed. Pre-fix this fails with ErrUniqueViolation
+			// because the earlier failed attempt already durably claimed it.
+			if _, err := g.Nodes().Add(ctx, []string{"Account"}, map[string]any{"email": "fresh@x.com"}); err != nil {
+				t.Fatalf("email wrongly left claimed by the failed multi-key create: %v", err)
+			}
+		})
+	}
+}
+
+// TestUniqueForever_BatchMultiKeyViolationLeavesNoOrphanedClaim is the batch-
+// door mirror of TestUniqueForever_MultiKeyViolationLeavesNoOrphanedClaim
+// (BACKLOG 9e) — partitionBatchNodesByUnique had the identical per-tuple
+// check-then-claim interleaving bug.
+func TestUniqueForever_BatchMultiKeyViolationLeavesNoOrphanedClaim(t *testing.T) {
+	for _, bc := range uniqueBackends(t) {
+		t.Run(bc.name, func(t *testing.T) {
+			g := bc.open(t)
+			defer g.Close()
+			ctx := context.Background()
+
+			if err := g.Constraints().CreateUniqueForever(ctx, "Account", "email"); err != nil {
+				t.Fatalf("CreateUniqueForever: %v", err)
+			}
+			if err := g.Constraints().CreateUnique(ctx, "Account", "ssn"); err != nil {
+				t.Fatalf("CreateUnique: %v", err)
+			}
+			if _, err := g.Nodes().Add(ctx, []string{"Account"}, map[string]any{"ssn": "999-99-9999"}); err != nil {
+				t.Fatalf("seed ssn holder: %v", err)
+			}
+
+			b, err := g.Batch().New()
+			if err != nil {
+				t.Fatalf("Batch.New: %v", err)
+			}
+			if _, err := b.AddNode([]string{"Account"}, map[string]any{"email": "batch-fresh@x.com", "ssn": "999-99-9999"}); err != nil {
+				t.Fatalf("queue: %v", err)
+			}
+			if _, err := b.Execute(); !errors.Is(err, graphpkg.ErrBatchFailed) {
+				t.Fatalf("Execute err = %v, want ErrBatchFailed", err)
+			}
+
+			if _, err := g.Nodes().Add(ctx, []string{"Account"}, map[string]any{"email": "batch-fresh@x.com"}); err != nil {
+				t.Fatalf("email wrongly left claimed by the failed batch multi-key create: %v", err)
+			}
+		})
+	}
+}
+
 func bcMemory(t *testing.T) *graphpkg.Graph {
 	t.Helper()
 	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 8})

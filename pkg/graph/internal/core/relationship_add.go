@@ -168,8 +168,7 @@ func (c *Core) createRelationshipLocked(ctx context.Context, typeName string, st
 		return nil, err
 	}
 
-	id := c.nextRelID()
-	fromHash, toHash, useEndpointHashWrite, err := c.relEndpointHashLadder(id, startID, endID, prep.validFrom, prep.validTo, prep.createdAt)
+	id, fromHash, toHash, useEndpointHashWrite, err := c.relEndpointHashLadder(c.nextRelID, startID, endID, prep.validFrom, prep.validTo, prep.createdAt)
 	if err != nil {
 		return nil, err
 	}
@@ -282,8 +281,7 @@ func (c *Core) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName
 		}
 	}
 
-	id := c.nextRelID()
-	fromHash, toHash, useEndpointHashWrite, err := c.relEndpointHashLadder(id, startID, endID, prep.validFrom, prep.validTo, prep.createdAt)
+	id, fromHash, toHash, useEndpointHashWrite, err := c.relEndpointHashLadder(c.nextRelID, startID, endID, prep.validFrom, prep.validTo, prep.createdAt)
 	if err != nil {
 		return nil, false, err
 	}

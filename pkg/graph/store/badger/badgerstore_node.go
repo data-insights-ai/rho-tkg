@@ -28,6 +28,10 @@ func (bs *Store) PutNode(n *types.Node) error {
 	if err != nil {
 		return fmt.Errorf("graph: marshal node: %w", err)
 	}
+	changePayload, err := bs.buildNodePutPayload(n, false)
+	if err != nil {
+		return err
+	}
 
 	bs.idxMu.Lock()
 
@@ -76,12 +80,9 @@ func (bs *Store) PutNode(n *types.Node) error {
 	}
 	bs.appendOps(ops...)
 	bs.nodeCount.Add(1)
-	logErr := bs.logNodePut(n, false)
+	bs.logChangeRaw(storecontract.ChangeNodePut, changePayload)
 	bs.idxMu.Unlock()
 
-	if logErr != nil {
-		return logErr
-	}
 	return bs.flushIfNeeded()
 }
 
@@ -425,6 +426,10 @@ func (bs *Store) ReplaceNode(n *types.Node) error {
 	if err != nil {
 		return fmt.Errorf("graph: marshal node: %w", err)
 	}
+	changePayload, err := bs.buildNodePutPayload(n, false)
+	if err != nil {
+		return err
+	}
 
 	// Pre-fetch old state before the write lock to avoid Badger I/O under idxMu.Lock().
 	// If the prefetched row is stale by the time the lock is acquired, fall back
@@ -481,12 +486,9 @@ func (bs *Store) ReplaceNode(n *types.Node) error {
 	}
 	ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data})
 	bs.appendOps(ops...)
-	logErr := bs.logNodePut(n, false)
+	bs.logChangeRaw(storecontract.ChangeNodePut, changePayload)
 	bs.idxMu.Unlock()
 
-	if logErr != nil {
-		return logErr
-	}
 	return bs.flushIfNeeded()
 }
 
@@ -505,6 +507,10 @@ func (bs *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 	data, err := bs.marshalNodeBytes(updatedNode)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node: %w", err)
+	}
+	changePayload, err := bs.buildNodePutPayload(updatedNode, false)
+	if err != nil {
+		return err
 	}
 
 	// Pre-fetch old state before the write lock to avoid Badger I/O under idxMu.Lock().
@@ -580,12 +586,9 @@ func (bs *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 		writeOp{opType: writeOpDelete, key: storepkg.LabelIndexKey(tok, id)},
 	)
 	bs.appendOps(ops...)
-	logErr := bs.logNodePut(updatedNode, false)
+	bs.logChangeRaw(storecontract.ChangeNodePut, changePayload)
 	bs.idxMu.Unlock()
 
-	if logErr != nil {
-		return logErr
-	}
 	return bs.flushIfNeeded()
 }
 
@@ -603,6 +606,10 @@ func (bs *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 	data, err := bs.marshalNodeBytes(updatedNode)
 	if err != nil {
 		return fmt.Errorf("graph: marshal node: %w", err)
+	}
+	changePayload, err := bs.buildNodePutPayload(updatedNode, false)
+	if err != nil {
+		return err
 	}
 
 	// Pre-fetch old state before the write lock to avoid Badger I/O under idxMu.Lock().
@@ -675,12 +682,9 @@ func (bs *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 		writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tok, id)},
 	)
 	bs.appendOps(ops...)
-	logErr := bs.logNodePut(updatedNode, false)
+	bs.logChangeRaw(storecontract.ChangeNodePut, changePayload)
 	bs.idxMu.Unlock()
 
-	if logErr != nil {
-		return logErr
-	}
 	return bs.flushIfNeeded()
 }
 

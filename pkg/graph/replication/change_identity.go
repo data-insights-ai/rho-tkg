@@ -96,15 +96,15 @@ func (o ChangeOp) String() string {
 // consumer the full (kind, ID, op) it needs for a durable mirror.
 func ChangeOpOf(rec store.ChangeRecord) (ChangeOp, error) {
 	switch rec.Tag {
-	case store.ChangeNodePut, store.ChangeRelPut:
+	case store.ChangeNodePut, store.ChangeRelPut, store.ChangeForeignIncoming:
 		return ChangeOpUpsert, nil
-	case store.ChangeNodeDelete, store.ChangeRelDelete:
+	case store.ChangeNodeDelete, store.ChangeRelDelete, store.ChangeForeignIncomingDelete:
 		return ChangeOpDelete, nil
 	case store.ChangeNodeHistoryVersion, store.ChangeRelHistoryVersion:
 		return ChangeOpHistoryVersion, nil
 	case store.ChangeNodeHistoryTruncate, store.ChangeRelHistoryTruncate:
 		return ChangeOpHistoryTruncate, nil
-	case store.ChangeMeta, store.ChangeClear:
+	case store.ChangeMeta, store.ChangeClear, store.ChangeRangePurge:
 		return ChangeOpUnknown, ErrNoEntityIdentity
 	default:
 		return ChangeOpUnknown, fmt.Errorf("%w: unknown change-log tag %d", store.ErrCorruptWire, byte(rec.Tag))
@@ -172,6 +172,24 @@ func DecodeChangeIdentity(rec store.ChangeRecord) (EntityKind, snowflake.ID, err
 			return EntityKindNode, snowflake.ID(b.ID), nil
 		}
 		return EntityKindRelationship, snowflake.ID(b.ID), nil
+	case store.ChangeForeignIncoming:
+		// Same body shape as ChangeRelPut (ADR-0010 Model A incoming half-edge
+		// stub) — see the ChangeForeignIncoming tag doc.
+		b, err := storeutil.DecodeRelPut(rec.Payload)
+		if err != nil {
+			return EntityKindUnknown, 0, err
+		}
+		return EntityKindRelationship, snowflake.ID(b.Wire.ID), nil
+	case store.ChangeForeignIncomingDelete:
+		b, err := storeutil.DecodeForeignIncomingDelete(rec.Payload)
+		if err != nil {
+			return EntityKindUnknown, 0, err
+		}
+		return EntityKindRelationship, snowflake.ID(b.RelID), nil
+	case store.ChangeRangePurge:
+		// Names a PREDICATE ("label L older than T"), not a single entity —
+		// same "no entity identity" shape as ChangeMeta/ChangeClear.
+		return EntityKindUnknown, 0, ErrNoEntityIdentity
 	case store.ChangeMeta, store.ChangeClear:
 		return EntityKindUnknown, 0, ErrNoEntityIdentity
 	default:

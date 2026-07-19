@@ -57,9 +57,22 @@ func (c *Core) peekNow() types.Instant {
 	return types.Instant(observed)
 }
 
+// maxClockAdvanceSkewMillis bounds how far ahead of wall-clock advanceClockFloor
+// will accept a floor target, in milliseconds (~10 years). AdvanceClock is the
+// HLC merge seam for legitimate cross-machine clock skew, which in practice is
+// NTP-scale drift — at most hours, never years — so the tolerance is deliberately
+// generous: it never rejects a genuine peer timestamp or a test fast-forward, but
+// it decisively catches the lesson-59 bug class (a unit/scale mixup — e.g.
+// UnixMicro() passed where UnixMilli() is expected inflates a near-now value by
+// roughly 1000x, landing millennia ahead) before it can permanently poison the
+// graph's transaction clock for the process's life.
+const maxClockAdvanceSkewMillis = int64(10 * 365 * 24 * 60 * 60 * 1000)
+
 // advanceClockFloor raises the per-Core monotonic transaction-clock floor to at
 // least `to`, returning the resulting floor. It NEVER moves the clock backward:
-// to <= the current floor is a no-op that returns the current floor.
+// to <= the current floor is a no-op that returns the current floor. A `to` that
+// lands implausibly far ahead of wall-clock (see maxClockAdvanceSkewMillis) is
+// rejected with ErrInvalidClockAdvance rather than silently poisoning the floor.
 //
 // This is the Hybrid-Logical-Clock merge primitive for a distributed deployment.
 // rho-tkg's transaction clock is per-machine; two machines' clocks are not
@@ -69,15 +82,18 @@ func (c *Core) peekNow() types.Instant {
 // — establishing a causal (happens-before) order across machines WITHOUT a
 // central sequencer. rho-tkg only exposes the seam; the HLC bookkeeping (what to
 // advance to, and when) is the coordinator's responsibility.
-func (c *Core) advanceClockFloor(to types.Instant) types.Instant {
+func (c *Core) advanceClockFloor(to types.Instant) (types.Instant, error) {
 	target := int64(to)
+	if wall := c.clock().UnixMilli(); target > wall+maxClockAdvanceSkewMillis {
+		return 0, ErrInvalidClockAdvance
+	}
 	for {
 		last := c.lastInstant.Load()
 		if target <= last {
-			return types.Instant(last)
+			return types.Instant(last), nil
 		}
 		if c.lastInstant.CompareAndSwap(last, target) {
-			return types.Instant(target)
+			return types.Instant(target), nil
 		}
 	}
 }

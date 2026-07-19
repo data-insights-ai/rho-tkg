@@ -301,17 +301,40 @@ func (c *Core) createUnique(ctx context.Context, label, propKey string, scope co
 
 	// Phase 1: install a PENDING entry under lock so concurrent writers already
 	// enforce it while we validate existing data.
+	//
+	// The install itself also runs under c.mu.Lock() (BACKLOG 9c): a
+	// standalone write's addNodeInternal holds c.mu.RLock() for its ENTIRE
+	// duration (enforceUniqueForNodeHeld's check through the actual store
+	// write). If that check ran while hasUniqueConstraints() was still false,
+	// it took no value-stripe lock — so without this, such a write could
+	// still be in flight when installConstraintLocked runs, then commit its
+	// duplicate AFTER Phase 3 activates the constraint, with nothing having
+	// ever enforced it. Taking c.mu.Lock() here forces the install to wait
+	// until every already-in-flight write (holding c.mu.RLock()) has fully
+	// committed, so Phase 2's unlocked scan below is guaranteed to observe
+	// it; any write starting after this point sees the PENDING entry and
+	// self-enforces via the stripe lock. Released before Phase 2 (which
+	// takes its own c.mu.RLock() internally via validateUniqueExisting) —
+	// only the install itself needs the exclusion, not the whole scan.
+	c.mu.Lock()
+	if c.closed.Load() {
+		c.mu.Unlock()
+		return ErrGraphClosed
+	}
 	c.uniqueMu.Lock()
 	if _, exists := c.lookupConstraintLocked(labelTok, propKey); exists {
 		c.uniqueMu.Unlock()
+		c.mu.Unlock()
 		return fmt.Errorf("%w: label %q key %q", ErrUniqueConstraintExists, label, propKey)
 	}
 	if c.totalConstraintsLocked() >= maxUniqueConstraints {
 		c.uniqueMu.Unlock()
+		c.mu.Unlock()
 		return fmt.Errorf("%w: at capacity (%d)", ErrUniqueConstraintExists, maxUniqueConstraints)
 	}
 	c.installConstraintLocked(labelTok, propKey, label, scope, false)
 	c.uniqueMu.Unlock()
+	c.mu.Unlock()
 
 	// Auto-ensure a property index on (label, propKey) — an acceleration for the
 	// enforcement lookup (ADR default). Correctness holds without it (the store
@@ -593,6 +616,18 @@ func (c *Core) enforceUniqueForNodeHeld(node *types.Node, prev *types.Node, self
 	ordered := c.valueLocks.LockStripesExcept(stripes, held)
 	release := func() { c.valueLocks.UnlockStripes(ordered) }
 
+	// Pass 1: validate EVERY tuple read-only before claiming anything. A node
+	// can bind more than one constrained tuple (e.g. two UniqueForever keys,
+	// or one UniqueForever + one UniqueCurrent) — claiming a UniqueForever
+	// value as each tuple is checked, then failing on a LATER tuple, would
+	// abort the whole create/update while leaving the earlier tuple's claim
+	// durably persisted: the value becomes permanently owned by an entity
+	// that never came into existence (BACKLOG 9e). checkForeverOwnership is
+	// the same read-only check the dry-run door uses, so this pass can never
+	// itself leave a claim behind. All of `checks`' value stripes are already
+	// held for the whole call (LockStripesExcept above), so no concurrent
+	// writer can claim any of these exact values between this pass and the
+	// claim pass below.
 	for _, ck := range checks {
 		matches, err := c.nodesByLabelAndProperty(ck.labelTok, ck.key, ck.raw, storepkg.QueryOpts{})
 		if err != nil {
@@ -608,15 +643,25 @@ func (c *Core) enforceUniqueForNodeHeld(node *types.Node, prev *types.Node, self
 			return noop, fmt.Errorf("%w: label %q key %q already held by node %d",
 				ErrUniqueViolation, c.labels.Resolve(ck.labelTok), ck.key, winner)
 		}
-		// UniqueForever (Stage F): the current-state check passed; now consult
-		// the durable ownership registry under the held value stripe. Registry
-		// hit + different entity => violation; same entity (any version) => pass;
-		// miss => claim + persist. Barred forever, across delete and reopen.
 		if ck.scope == constraintspkg.UniqueForever {
-			if err := c.checkAndClaimForever(ck.labelTok, ck.key, ck.valueKey, selfID); err != nil {
+			if err := c.checkForeverOwnership(ck.labelTok, ck.key, ck.valueKey, selfID); err != nil {
 				release()
 				return noop, err
 			}
+		}
+	}
+	// Pass 2: every tuple passed its check — now durably claim each
+	// UniqueForever value. Registry hit + different entity => violation
+	// (only possible here via the same-tuple TOCTOU checkAndClaimForever
+	// itself still guards against); same entity (any version) => pass; miss
+	// => claim + persist. Barred forever, across delete and reopen.
+	for _, ck := range checks {
+		if ck.scope != constraintspkg.UniqueForever {
+			continue
+		}
+		if err := c.checkAndClaimForever(ck.labelTok, ck.key, ck.valueKey, selfID); err != nil {
+			release()
+			return noop, err
 		}
 	}
 	return release, nil

@@ -82,6 +82,17 @@ func (a *changeLogAllocator) Observe(watermark uint64) {
 	}
 }
 
+// mintedHighWater returns the highest LSN minted so far, store-global. Every
+// LSN <= this value was already appended to SOME shard's write buffer (under
+// that shard's wbMu, atomically with the mint — see Next) at the instant this
+// is read, even though it may not be durably flushed yet. Callers that need a
+// safe "everything up to X is durable" bound must read this BEFORE flushing
+// every shard (BACKLOG 19c) — flush() also requires each shard's wbMu, so it
+// cannot complete for a shard while a mint+append already reflected in this
+// value is still in flight there, and any mint racing AFTER this read gets an
+// LSN > the captured value, correctly excluded from that bound.
+func (a *changeLogAllocator) mintedHighWater() uint64 { return a.seq.Load() }
+
 func (a *changeLogAllocator) isPoisoned() bool { return a.poisoned.Load() }
 
 func (a *changeLogAllocator) poisonError() error {
@@ -244,10 +255,21 @@ func (ts *Store) RecoverChangeLog() error {
 // --- store.ChangeFeedCapability ---
 
 // LastCommittedLSN returns the highest durably-committed change-log LSN across
-// all shards. It runs the flush-before-read barrier FIRST so every allocated LSN
-// is durable, then folds each open shard's watermark (ADR-0005 §2.2) — after the
-// barrier this equals the allocator high-water. A consumer resumes from this
-// value, so it must never straddle an un-durable record.
+// all shards. It captures the store-global allocator high-water FIRST, then
+// runs the flush-before-read barrier — NOT the other way around. Folding each
+// shard's own post-flush watermark (the prior implementation) is unsound under
+// a concurrent writer: a write landing on a shard AFTER this call's barrier has
+// already flushed it mints a LOWER LSN than some OTHER shard's already-durable
+// higher watermark, so the fold's max would bound the emission window above an
+// LSN that is not yet durable anywhere and will never be flushed within it
+// (BACKLOG 19c / ADR-0005 Finding-1). Capturing the allocator's high-water
+// BEFORE flushing sidesteps this: every LSN <= the captured value was already
+// appended to some shard's buffer at read time (mint and append are atomic
+// under that shard's wbMu — see changeLogAllocator.mintedHighWater), and the
+// subsequent full-store flush cannot complete for any shard while such an
+// append is still in flight there, so it is guaranteed durable afterward. A
+// consumer resumes from this value, so it must never straddle an un-durable
+// record.
 func (ts *Store) LastCommittedLSN() (uint64, error) {
 	if err := ts.checkOpen(); err != nil {
 		return 0, err
@@ -258,24 +280,11 @@ func (ts *Store) LastCommittedLSN() (uint64, error) {
 	if !ts.logEnabled {
 		return 0, nil
 	}
+	w := ts.changeLogAlloc.mintedHighWater()
 	if err := ts.Flush(); err != nil {
 		return 0, err
 	}
-	var maxLSN uint64
-	err := ts.forEachOpenShard(func(bs *BadgerStore) error {
-		lsn, err := bs.LastCommittedLSN()
-		if err != nil {
-			return err
-		}
-		if lsn > maxLSN {
-			maxLSN = lsn
-		}
-		return nil
-	})
-	if err != nil {
-		return 0, err
-	}
-	return maxLSN, nil
+	return w, nil
 }
 
 // ChangeFeed materializes up to limit committed records with LSN > afterLSN, in
@@ -298,14 +307,19 @@ func (ts *Store) ChangeFeed(afterLSN uint64, limit int) ([]storecontract.ChangeR
 }
 
 // ForEachChange streams committed records with LSN > afterLSN in ascending
-// store-global LSN order (ADR-0005 §2.2). It runs the flush-before-read barrier
-// FIRST (so every allocated LSN is durable), captures W = LastCommittedLSN
-// immediately after the barrier, and bounds the k-way merge to emit ONLY records
-// with LSN <= W — records allocated DURING the drain (heads > W) are deferred to
-// the next poll (whose own barrier makes them durable). The W-bound is
-// load-bearing: the barrier alone is insufficient under a concurrent writer
-// (ADR-0005 Finding-1). fn runs OUTSIDE every shard checkout, so it may re-enter
-// store methods; the payload it receives is valid only for the call.
+// store-global LSN order (ADR-0005 §2.2). It captures the emission bound W —
+// the store-global allocator high-water — BEFORE running the flush-before-read
+// barrier, then bounds the k-way merge to emit ONLY records with LSN <= W —
+// records allocated DURING the drain (heads > W) are deferred to the next poll
+// (whose own barrier makes them durable). Capturing W before the flush (rather
+// than folding each shard's post-flush watermark, the prior implementation) is
+// the load-bearing correctness fix: the barrier alone is insufficient under a
+// concurrent writer (ADR-0005 Finding-1), and a post-flush fold can bound the
+// window above an LSN that landed on an already-flushed shard mid-barrier and
+// will never become durable within it — see
+// changeLogAllocator.mintedHighWater and LastCommittedLSN (BACKLOG 19c). fn
+// runs OUTSIDE every shard checkout, so it may re-enter store methods; the
+// payload it receives is valid only for the call.
 func (ts *Store) ForEachChange(afterLSN uint64, fn func(storecontract.ChangeRecord) bool) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
@@ -319,36 +333,17 @@ func (ts *Store) ForEachChange(afterLSN uint64, fn func(storecontract.ChangeReco
 	if !ts.logEnabled {
 		return nil
 	}
-	// Barrier: flush every open shard's async buffer so no allocated LSN is
-	// buffered-but-invisible, then capture the emission bound W.
+	w := ts.changeLogAlloc.mintedHighWater()
+	if w <= afterLSN {
+		// Nothing new even before the barrier — still flush so a caller
+		// relying on ForEachChange's error return to detect flush failures
+		// keeps seeing them.
+		return ts.Flush()
+	}
 	if err := ts.Flush(); err != nil {
 		return err
 	}
-	w, err := ts.lastCommittedLSNNoFlush()
-	if err != nil {
-		return err
-	}
-	if w <= afterLSN {
-		return nil
-	}
 	return ts.mergeChangeFeed(afterLSN, w, fn)
-}
-
-// lastCommittedLSNNoFlush folds each open shard's watermark WITHOUT the barrier
-// (the caller already ran it). It is the emission bound W for the merge.
-func (ts *Store) lastCommittedLSNNoFlush() (uint64, error) {
-	var maxLSN uint64
-	err := ts.forEachOpenShard(func(bs *BadgerStore) error {
-		lsn, err := bs.LastCommittedLSN()
-		if err != nil {
-			return err
-		}
-		if lsn > maxLSN {
-			maxLSN = lsn
-		}
-		return nil
-	})
-	return maxLSN, err
 }
 
 // mergeChangeFeed is the W-bounded paged k-way merge (ADR-0005 §2.2 option 1). It

@@ -6,6 +6,51 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- FIX/HARDEN — comprehensive backlog hardening pass: closed 32 findings from the standing code-review
+  backlog (`tasks/backlog.md`), each with a genuine RED→GREEN TDD cycle (a failing test proving the
+  bug, the fix, the test passing, package + `-race` where concurrency-relevant + full-repo `go test
+  ./...` all green) and a detailed write-up in `tasks/backlog.md` under its item ID. Grouped by theme:
+  - **Correctness fixes**: `docvalues.go` numeric-type classification widened to the full 12-type
+    scalar allowlist (16c); HyperLogLog FNV-1a short-sequential-integer undercount fixed via a
+    Murmur3 `fmix64` avalanche mixer, reachable via real property values like years/ages/counters
+    (16d); `RemoveLabelTokenRaw` could promote reserved token 0 to primary label (6d);
+    `RecurrencePattern.Expand` had no span cap, a DoS vector (6e); relationship IDs were minted
+    before endpoint existence was validated (9d); `temporal_cascade.go`'s version-split bypassed the
+    version-overflow guard (9g); `RecordForeignIncoming` skipped `ValidationLimits` checks (9h); the
+    one-time bitemporal migration could wrongly clear a genuine `ValidFrom` across a history-
+    truncation gap (10f); `Batch.Execute` silently dropped a change-log-commit error whenever a
+    per-op failure already existed (11c); relationship creates within one batch didn't share a single
+    `TxFrom` per commit group, contradicting the documented ingest invariant (11d);
+    `MigrateFromBadger` had no protection against concurrent migration calls (19k); a genuine
+    **data race** on `badger.Store.logEnabled` (plain bool written under one lock, read by a public
+    accessor with none) confirmed by the race detector and fixed via `atomic.Bool` (18i); two
+    sub-API capability checks returned the wrong sentinel `ErrNilGraph` instead of
+    `ErrCapabilityNotSupported` (8c); a corruption-recovery cascade-delete path skipped a DocValues
+    cache-invalidation step its sibling bulk-delete already did correctly (18h).
+  - **Missing capabilities**: `sharded.Store` was entirely missing `DeletedIterationCapability`,
+    silently degrading temporal adjacency queries to O(total history) (20f).
+  - **Missing re-exports**: `ErrNilSession` was reachable through the public `pkg/graph/ingest`
+    surface but never re-exported, plus a test-comment incorrectly claimed it wasn't reachable (7b);
+    three tiered-store ontology sentinels re-exported centrally (7c).
+  - **Durability**: `BackupTo`/`BackupDeltaTo` now fsync the containing directory after publish, not
+    just the staged file (8d).
+  - **Documentation-precision fixes** (behavior already correct/intentional; the doc was misleading):
+    cascade `PrevHash` doc corrected to describe the actual "template" rule instead of implying true
+    VT-axis lineage, with an explicit warning against changing it without the full bitemporal oracle
+    fuzz harness (10e); `ForeignEndpoint`/`ForeignIncomingEdge.AttestTx` doc corrected to state no
+    staleness bound is enforced (a deployment-policy decision left to the caller) (9i); stale
+    pre-4.1.0 tx-locking-model comments corrected (11g).
+  - **Test-gap closures**: `pkg/graph/ingest` had zero direct tests (7g); a relationship-type mirror
+    of the node-side rule-17 cross-door equivalence test was missing (10g); a fuzz target for the
+    replica-apply/delta-merge decode path was missing, unlike `Import`'s `FuzzImport` — ~140k fuzz
+    executions found no crashes (12g); verified an `UpdateInPlace` unique-constraint race was already
+    closed as a side effect of an earlier fix in this pass, and added a regression test that fails if
+    reverted (9j).
+  - **Investigated and deliberately deferred** (documented rationale, not force-patched): a
+    `UniqueForever` claim leak on write-failure-after-claim is an explicitly documented crash-safety
+    trade-off; auto-compensation would need an invasive signature change and risks a worse
+    correctness bug if done wrong (9f).
+
 ## [4.23.0] - 2026-07-18
 
 - PERF — the streaming whole-node label door (`g.Nodes().ForEachByLabel` + new `g.Nodes().IterByLabel(ctx, label, opts) iter.Seq2[*types.Node, error]`) now rides the bulk-scan substrate (BACKLOG 3, final increment — the `NodesByLabelBulk` ask). badger's `ForEachNodeByLabel` was still doing N per-node `Txn.Get`s (`prefetchNodeScan` loop); it now streams through `forEachNodeBulk` — one read transaction + one forward-seeking iterator, cache hits served inline — so a one-shot `MATCH (n:L) RETURN n` gets the ~1.3× single-iterator fetch win **while keeping peak memory O(1) nodes** (no result-slice materialization), the whole point of the streaming door vs the materializing `ByLabel`. The label IDs are snapshotted under `idxMu` then released, so `fn` runs holding no `idxMu` (only a badger snapshot txn) — the relaxed-isolation "fn may call back into the graph" contract is preserved. New `IterByLabel` is the ergonomic iter.Seq2 form (parity with `Iter`). Cross-backend unchanged: memory streams live objects; tiered/sharded and any temporal `QueryOpts` fall back to the materialized history-aware `ByLabel` then stream (correct, no streaming-memory win there). **MEASURED (50k, cache-cold): ~120 → ~93 ms** vs the old per-node path. Tests: `IterByLabel`/`ForEachByLabel` == `ByLabel` set+order over a mixed-label 3k scan (both backends) + iter.Seq2 early-stop, `-race` clean; A/B benchmark. This closes the last open `tasks/backlog.md` item.

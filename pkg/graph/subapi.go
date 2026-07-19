@@ -21,12 +21,14 @@ type TxAPI struct{ c *core.Core }
 // transaction across function boundaries that cannot be expressed as a
 // single callback. The closure-style helpers guarantee a deferred
 // [GraphTx.Rollback], so an early return or panic still releases the
-// graph write lock; Begin places that responsibility on the caller.
+// tx-serialization lock; Begin places that responsibility on the caller.
 //
 // If you call Begin you MUST arrange for Rollback or Commit on every
-// path — including panic recovery. A leaked GraphTx holds the graph
-// write lock and deadlocks every subsequent mutation, transaction, and
-// read.
+// path — including panic recovery. A leaked GraphTx holds the
+// tx-serialization lock (c.txMu, Path B v4.1.0+) for its entire lifetime —
+// NOT the graph write lock, which it only takes briefly per-call — and
+// deadlocks every subsequent transaction or batch (concurrent standalone
+// mutations and reads are unaffected).
 //
 // Returns ErrGraphClosed if the graph has already been closed.
 func (a *TxAPI) Begin() (*GraphTx, error) {

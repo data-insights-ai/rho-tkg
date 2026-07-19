@@ -1,7 +1,9 @@
 package tiered
 
 import (
+	"fmt"
 	"sort"
+	"sync"
 	"testing"
 
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -114,6 +116,113 @@ func TestTieredChangeFeedWBound(t *testing.T) {
 	want := []uint64{1, 2, 3, 4}
 	if g := lsns(got); !equalLSNs(g, want) {
 		t.Fatalf("W-bounded merge = %v, want %v (LSN 5,6 deferred)", g, want)
+	}
+}
+
+// TestTieredChangeFeedConcurrentWritersNoGaps guards BACKLOG 19c: unlike
+// TestTieredChangeFeedReorderBarrierNoSkip/TestTieredChangeFeedWBound (both
+// sequential, constructing the hazard by hand), this races real concurrent
+// writers across the reference and event shards against a continuously
+// polling reader, and asserts the delivered LSN sequence is gapless — no LSN
+// is ever silently skipped. The prior implementation captured the emission
+// bound W by folding each shard's watermark AFTER the flush-before-read
+// barrier; a write landing on a shard the barrier had already visited (during
+// the SAME barrier call, before it reached other shards) could mint an LSN
+// below another shard's already-durable higher watermark, so W's fold would
+// bound the merge above an LSN that was not yet durable anywhere and would
+// never be re-requested (afterLSN only ever advances). The fix captures W
+// from the store-global allocator's high-water BEFORE flushing instead. This
+// test cannot force the exact interleaving deterministically (it is a benign
+// ordering race, not a data race — nothing here is `-race`-detectable, since
+// every individual access is already synchronized; only the RESULT is wrong
+// under the bad ordering), so it maximizes the chance of hitting it with
+// heavy concurrent cross-shard writers against a tight polling loop, backed
+// by an end-to-end accounting check (every LSN ever minted must have been
+// delivered exactly once, in order) rather than relying on catching it live.
+func TestTieredChangeFeedConcurrentWritersNoGaps(t *testing.T) {
+	ts, caseTok, _, signalTok := newChangeLogTieredStore(t)
+	nodeGen := tieredNodeGen(t)
+
+	const writers = 8
+	const writesPerWriter = 300
+
+	var wg sync.WaitGroup
+	for w := 0; w < writers; w++ {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			for i := 0; i < writesPerWriter; i++ {
+				tok := caseTok
+				if (w+i)%2 == 0 {
+					tok = signalTok
+				}
+				n := types.NewNode(types.NodeID(nodeGen.Generate()), tok, nil)
+				if err := ts.PutNode(n); err != nil {
+					t.Errorf("PutNode: %v", err)
+					return
+				}
+			}
+		}(w)
+	}
+
+	stop := make(chan struct{})
+	readerDone := make(chan struct{})
+	var readerErr error
+	go func() {
+		defer close(readerDone)
+		var expectedNext uint64 = 1
+		var afterLSN uint64
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			err := ts.ForEachChange(afterLSN, func(rec storecontract.ChangeRecord) bool {
+				if rec.LSN != expectedNext {
+					readerErr = fmt.Errorf("gap or reorder in change feed: got LSN %d, want %d", rec.LSN, expectedNext)
+					return false
+				}
+				expectedNext++
+				afterLSN = rec.LSN
+				return true
+			})
+			if err != nil {
+				readerErr = fmt.Errorf("ForEachChange: %w", err)
+				return
+			}
+			if readerErr != nil {
+				return
+			}
+		}
+	}()
+
+	wg.Wait()
+	close(stop)
+	<-readerDone
+	if readerErr != nil {
+		t.Fatal(readerErr)
+	}
+
+	// Final full drain from LSN 0, independent of wherever the concurrent
+	// reader left off, with the same gapless accounting — this is the
+	// end-to-end check that every LSN ever minted was actually delivered
+	// (not just "no gap observed in what the concurrent reader happened to
+	// see before stopping").
+	var expectedNext uint64 = 1
+	if err := ts.ForEachChange(0, func(rec storecontract.ChangeRecord) bool {
+		if rec.LSN != expectedNext {
+			t.Fatalf("final drain gap: got LSN %d, want %d", rec.LSN, expectedNext)
+		}
+		expectedNext++
+		return true
+	}); err != nil {
+		t.Fatalf("final ForEachChange: %v", err)
+	}
+
+	want := uint64(writers*writesPerWriter) + 1
+	if expectedNext != want {
+		t.Fatalf("delivered %d distinct records total, want %d (some records permanently lost to a gap)", expectedNext-1, want-1)
 	}
 }
 

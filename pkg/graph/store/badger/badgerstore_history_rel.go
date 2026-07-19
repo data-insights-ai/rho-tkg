@@ -39,6 +39,10 @@ func (bs *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion 
 	if err != nil {
 		return fmt.Errorf("graph: marshal rel version: %w", err)
 	}
+	changePayload, err := bs.buildRelPutPayload(current, true)
+	if err != nil {
+		return err
+	}
 
 	bs.idxMu.Lock()
 
@@ -72,6 +76,7 @@ func (bs *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion 
 	bs.maintainRelPropertyIndexesRemove(old, id)
 	bs.removeRelPropertyTypeClassCountsByID(id, old.TypeToken().Value())
 	bs.relCache.Put(id, freezeRelCopy(current))
+	bs.bumpRelRevLocked(rid) // this door always re-reads via getRelLocked above, but must still bump so a concurrent ReplaceRelationship's prefetch detects this write (BACKLOG 18b)
 	bs.maintainRelPropertyIndexesAdd(current, id)
 	bs.addRelPropertyTypeClassCounts(current)
 	// Refresh the inline valid-time stamp — a history version-close moves
@@ -84,12 +89,9 @@ func (bs *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion 
 		writeOp{opType: writeOpSet, key: storepkg.RelKey(id), value: data},
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
 	)
-	logErr := bs.logRelPut(current, true)
+	bs.logChangeRaw(storecontract.ChangeRelPut, changePayload)
 	bs.idxMu.Unlock()
 
-	if logErr != nil {
-		return logErr
-	}
 	return bs.flushIfNeeded()
 }
 

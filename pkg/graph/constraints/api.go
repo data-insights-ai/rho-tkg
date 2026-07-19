@@ -6,6 +6,7 @@ import (
 	"context"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	temporalpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 )
 
@@ -77,7 +78,11 @@ func (a *API) DryRunValidate(ctx context.Context, facts DryRunFacts) ([]DryRunVi
 	}
 	do, ok := ops.(DryRunOps)
 	if !ok {
-		return nil, grapherr.ErrNilGraph
+		// The underlying Ops implementation doesn't support dry-run validation —
+		// a capability gap, not a nil/unwired graph (BACKLOG 8c: ErrNilGraph was
+		// the wrong sentinel here; a.ready() already returned it for the actual
+		// nil-graph case above).
+		return nil, storepkg.ErrCapabilityNotSupported
 	}
 	return do.DryRunValidate(ctx, facts)
 }

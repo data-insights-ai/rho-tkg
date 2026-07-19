@@ -185,6 +185,26 @@ func (s *Store) ForEachRelHistoryID(fn func(types.RelID) bool) error {
 	})
 }
 
+// ForEachDeletedNodeID and ForEachDeletedRelID implement
+// storecontract.DeletedIterationCapability by fanning out to every shard's
+// own DeletedIterationCapability (badger.Store already implements it
+// natively). Unlike tiered.Store, sharded.Store routes an entity to exactly
+// ONE shard by ID (never by time window), so no cross-shard dedup is needed
+// — each shard's deleted-ID set is already disjoint from every other
+// shard's, the same reasoning ForEachNodeID/ForEachNodeHistoryID above
+// already rely on.
+func (s *Store) ForEachDeletedNodeID(fn func(types.NodeID) bool) error {
+	return s.forEachID(fn, func(shard *badgerShard, cb func(types.NodeID) bool) error {
+		return shard.ForEachDeletedNodeID(cb)
+	})
+}
+
+func (s *Store) ForEachDeletedRelID(fn func(types.RelID) bool) error {
+	return s.forEachRelID(fn, func(shard *badgerShard, cb func(types.RelID) bool) error {
+		return shard.ForEachDeletedRelID(cb)
+	})
+}
+
 // forEachID iterates node IDs across shards sequentially, stopping early if fn
 // returns false. Sequential (not parallel) so the callback contract — invoked
 // outside backend locks, may call back into Store — holds without interleaving.

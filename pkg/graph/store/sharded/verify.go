@@ -2,6 +2,7 @@ package sharded
 
 import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	badger "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -87,11 +88,6 @@ func (s *Store) VerifyConsistency() (Report, error) {
 		}
 		for _, rid := range relIDs {
 			sfid := rid.SnowflakeID()
-			if exp, ok := s.catalog.shardIndexForSlot(slotOf(sfid)); !ok || exp != k {
-				rep.ShardMismatches = append(rep.ShardMismatches, ShardMismatch{
-					Shard: k, ID: sfid, Slot: slotOf(sfid), ExpectedShard: expectedShard(ok, exp), Kind: "rel",
-				})
-			}
 			r, gerr := shard.GetRelationship(rid)
 			if gerr != nil {
 				// The ID is indexed but the row is unreadable — a genuine orphan
@@ -100,6 +96,22 @@ func (s *Store) VerifyConsistency() (Report, error) {
 				// AllRelIDs source already implies a row. A read error here is a
 				// deeper corruption surfaced by GetRelationship's own error.
 				return Report{}, gerr
+			}
+			// BACKLOG 20a: a Model-A foreign-incoming half-edge stub (ADR-0010
+			// §3.3) is DELIBERATELY co-located on its END node's local shard
+			// even though its OWN rel-ID slot belongs to a foreign machine —
+			// so its slot never matches the shard it is stored on, by design.
+			// There is no persistent per-row marker distinguishing a stub from
+			// a genuinely misrouted row, but isForeignIncomingStubShape uses
+			// the same "is this endpoint local to the shard we found the row
+			// on" test endpointOrphan already applies to the ORPHAN check
+			// below — a rel whose END node IS local to this shard has an
+			// innocent explanation for a slot disagreement; one whose end node
+			// is NOT local here has none, and is still correctly flagged.
+			if exp, ok := s.catalog.shardIndexForSlot(slotOf(sfid)); (!ok || exp != k) && !s.isForeignIncomingStubShape(shard, r) {
+				rep.ShardMismatches = append(rep.ShardMismatches, ShardMismatch{
+					Shard: k, ID: sfid, Slot: slotOf(sfid), ExpectedShard: expectedShard(ok, exp), Kind: "rel",
+				})
 			}
 			if o, dangling := s.endpointOrphan(k, r, r.StartNodeID(), true); dangling {
 				rep.RelEndpointOrphans = append(rep.RelEndpointOrphans, o)
@@ -157,6 +169,22 @@ func (s *Store) endpointOrphan(relShardIdx int, r *types.Relationship, endpoint 
 	return RelEndpointOrphan{
 		Shard: relShardIdx, Rel: r.ID().SnowflakeID(), Missing: endpoint.SnowflakeID(), IsStart: isStart,
 	}, true
+}
+
+// isForeignIncomingStubShape reports whether rel r, found on foundOn, has the
+// structural shape of a legitimate Model-A foreign-incoming half-edge stub
+// (ADR-0010 §3.3): its END node is local to foundOn — the stub's defining
+// co-location rule, and the only reason a rel's own slot can legitimately
+// disagree with the shard storing it. There is no persistent per-row stub
+// marker, so this is not a definitive identification, but a rel whose end
+// node is NOT local to foundOn has no such explanation and is still flagged
+// by the caller.
+func (s *Store) isForeignIncomingStubShape(foundOn *badger.Store, r *types.Relationship) bool {
+	endShard, err := s.shardForNodeID(r.EndNodeID())
+	if err != nil {
+		return false
+	}
+	return endShard == foundOn
 }
 
 // expectedShard maps the catalog lookup result to a report field: the shard

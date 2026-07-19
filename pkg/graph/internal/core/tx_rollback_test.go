@@ -50,6 +50,93 @@ func TestGraphTx_RollbackDeletes(t *testing.T) {
 	}
 }
 
+// TestGraphTx_RollbackDoesNotDeallocateLabelTokenAdoptedByConcurrentWriter is
+// the BACKLOG 11b regression. A tx's newly-allocated label token is
+// registered (and persisted) immediately, before Commit — Rollback does NOT
+// hold c.mu for the tx's whole lifetime (only per-mutation), so a concurrent
+// standalone Add can Lookup and persist an entity referencing the token
+// before this tx rolls back. Blindly de-allocating the token on rollback (the
+// pre-fix behavior: unconditional ImportNames(pre-tx snapshot)) would leave
+// the concurrently-persisted entity's label token dangling — the next
+// distinct name allocated anywhere would reuse the freed number, silently
+// reassigning that entity's label.
+func TestGraphTx_RollbackDoesNotDeallocateLabelTokenAdoptedByConcurrentWriter(t *testing.T) {
+	t.Parallel()
+	g := newTxTestGraph(t)
+	ctx := context.Background()
+
+	tx, err := g.BeginTx()
+	if err != nil {
+		t.Fatalf("BeginTx: %v", err)
+	}
+	txNode, err := tx.AddNode([]string{"RaceLabel"}, map[string]any{"who": "tx"})
+	if err != nil {
+		t.Fatalf("tx AddNode: %v", err)
+	}
+	raceToken, ok := g.labels.Lookup("RaceLabel")
+	if !ok {
+		t.Fatal("RaceLabel not registered after tx AddNode")
+	}
+
+	// Simulate the concurrent writer: a standalone Add resolves the SAME
+	// tx-allocated (not-yet-committed) token via Lookup and persists an
+	// entity carrying it — all before this tx rolls back.
+	concurrentNode, err := g.Nodes.Add(ctx, []string{"RaceLabel"}, map[string]any{"who": "concurrent"})
+	if err != nil {
+		t.Fatalf("concurrent standalone Add: %v", err)
+	}
+	if tok, ok := g.labels.Lookup("RaceLabel"); !ok || tok != raceToken {
+		t.Fatalf("concurrent Add did not reuse the tx-allocated token: tok=%d ok=%v want=%d", tok, ok, raceToken)
+	}
+
+	if err := tx.Rollback(); err != nil {
+		t.Fatalf("Rollback: %v", err)
+	}
+
+	// The tx's OWN node must be gone.
+	if _, err := g.Nodes.Get(ctx, txNode.ID()); !errors.Is(err, storepkg.ErrNodeNotFound) {
+		t.Fatalf("tx's own node survived rollback: err=%v, want ErrNodeNotFound", err)
+	}
+
+	// RaceLabel must STILL be registered to the SAME token — reclaiming it
+	// would orphan the concurrently-persisted node's label.
+	tok, ok := g.labels.Lookup("RaceLabel")
+	if !ok {
+		t.Fatal("RaceLabel was de-allocated by rollback despite a concurrent node referencing its token — BACKLOG 11b regression")
+	}
+	if tok != raceToken {
+		t.Fatalf("RaceLabel re-registered under a DIFFERENT token: got %d, want %d", tok, raceToken)
+	}
+
+	// The concurrently-persisted node must still resolve its label correctly.
+	reloaded, err := g.Nodes.Get(ctx, concurrentNode.ID())
+	if err != nil {
+		t.Fatalf("Get concurrent node: %v", err)
+	}
+	if !g.Nodes.HasLabel(reloaded, "RaceLabel") {
+		t.Fatal("concurrent node lost its RaceLabel after tx rollback")
+	}
+
+	// A genuinely new label allocated afterward must NOT reuse RaceLabel's
+	// token — proving the slot truly stayed claimed, not just cosmetically
+	// still Lookup-able.
+	otherNode, err := g.Nodes.Add(ctx, []string{"AfterRollbackLabel"}, nil)
+	if err != nil {
+		t.Fatalf("Add AfterRollbackLabel: %v", err)
+	}
+	otherTok, ok := g.labels.Lookup("AfterRollbackLabel")
+	if !ok {
+		t.Fatal("AfterRollbackLabel not registered")
+	}
+	if otherTok == raceToken {
+		t.Fatalf("AfterRollbackLabel reused RaceLabel's token %d — the freed-number reuse this fix prevents", raceToken)
+	}
+	if !g.Nodes.HasLabel(reloaded, "RaceLabel") {
+		t.Fatal("concurrent node's RaceLabel was corrupted by the new allocation")
+	}
+	_ = otherNode
+}
+
 func TestGraphTx_RollbackRestoresStatsCounters(t *testing.T) {
 	t.Parallel()
 	g := newTxTestGraph(t)

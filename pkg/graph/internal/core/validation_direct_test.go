@@ -65,7 +65,7 @@ func TestCoreIsBlankNameUnicodeAndInvalidUTF8(t *testing.T) {
 }
 
 func TestValidatePropertyValueLimitTypedDirectBranches(t *testing.T) {
-	g, err := New(Config{Validation: ValidationLimits{MaxPropertyValueSize: 3}})
+	g, err := New(Config{Validation: ValidationLimits{MaxPropertyValueSize: 3, MaxPropertyContainerLength: 3}})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -79,9 +79,18 @@ func TestValidatePropertyValueLimitTypedDirectBranches(t *testing.T) {
 		{name: "nil", val: nil},
 		{name: "scalar", val: int64(1)},
 		{name: "string too large", val: "xxxx", want: ErrValueTooLarge},
-		{name: "non-empty int slice too deep", val: []int{1}, dep: maxPropertyValueLimitDepth, want: types.ErrMaxDepthExceeded},
+		// BACKLOG 14a fix: []int/[]string never actually recurse (they have no
+		// depth+1 call), so the old `depth+1 > maxPropertyValueLimitDepth`
+		// check inside these leaf-container cases was dead/inconsistent — it
+		// fired ONLY at the exact depth==maxPropertyValueLimitDepth boundary
+		// (every deeper depth was already caught by this function's OWN
+		// top-of-body `depth > maxPropertyValueLimitDepth` guard, which still
+		// applies here unchanged). Removing it makes the boundary consistent
+		// with every other leaf type; these two now correctly pass (they were
+		// never a real depth violation, just a 1-element/1-string container).
+		{name: "non-empty int slice at max depth is not a depth violation", val: []int{1}, dep: maxPropertyValueLimitDepth},
 		{name: "empty int slice at max depth", val: []int{}, dep: maxPropertyValueLimitDepth},
-		{name: "string slice too deep", val: []string{"ok"}, dep: maxPropertyValueLimitDepth, want: types.ErrMaxDepthExceeded},
+		{name: "string slice at max depth is not a depth violation", val: []string{"ok"}, dep: maxPropertyValueLimitDepth},
 		{name: "string slice value too large", val: []string{"ok", "xxxx"}, want: ErrValueTooLarge},
 		{name: "any slice nested too large", val: []any{[]any{"xxxx"}}, want: ErrValueTooLarge},
 		{name: "string map key too large", val: map[string]string{"xxxx": "ok"}, want: ErrValueTooLarge},
@@ -91,6 +100,27 @@ func TestValidatePropertyValueLimitTypedDirectBranches(t *testing.T) {
 		{name: "any map nested too large", val: map[string]any{"ok": []any{"xxxx"}}, want: ErrValueTooLarge},
 		{name: "struct with no string fields", val: struct{ X int }{X: 1}},
 		{name: "struct string too large", val: struct{ X string }{X: "xxxx"}, want: ErrValueTooLarge},
+
+		// BACKLOG 14b: aggregate container length/entry cap, governed by the
+		// SEPARATE MaxPropertyContainerLength field (=3 in this test's
+		// config) — deliberately distinct from MaxPropertyValueSize (string
+		// length), so a legitimate large numeric container (e.g. a
+		// vector-index embedding) is not accidentally bound by a
+		// string-length knob. []string keeps its ORIGINAL per-element-only
+		// behavior (no new aggregate-count cap) — the backlog's own finding
+		// scoped []string as "correctly checking length" already.
+		{name: "int slice within container cap", val: []int{1, 2, 3}},
+		{name: "int slice exceeds container cap", val: []int{1, 2, 3, 4}, want: ErrValueTooLarge},
+		{name: "int64 slice exceeds container cap", val: []int64{1, 2, 3, 4}, want: ErrValueTooLarge},
+		{name: "float32 slice exceeds container cap", val: []float32{1, 2, 3, 4}, want: ErrValueTooLarge},
+		{name: "float64 slice exceeds container cap", val: []float64{1, 2, 3, 4}, want: ErrValueTooLarge},
+		{name: "bool slice exceeds container cap", val: []bool{true, true, true, true}, want: ErrValueTooLarge},
+		{name: "byte slice within cap (byte length)", val: []byte{1, 2, 3}},
+		{name: "byte slice exceeds cap", val: []byte{1, 2, 3, 4}, want: ErrValueTooLarge},
+		{name: "string slice unaffected by container cap (unchanged scope)", val: []string{"a", "b", "c", "d"}},
+		{name: "any slice exceeds container cap", val: []any{1, 2, 3, 4}, want: ErrValueTooLarge},
+		{name: "string map exceeds entry cap", val: map[string]string{"a": "1", "b": "2", "c": "3", "d": "4"}, want: ErrValueTooLarge},
+		{name: "any map exceeds entry cap", val: map[string]any{"a": 1, "b": 2, "c": 3, "d": 4}, want: ErrValueTooLarge},
 	}
 
 	for _, tt := range tests {
@@ -110,7 +140,7 @@ func TestValidatePropertyValueLimitTypedDirectBranches(t *testing.T) {
 }
 
 func TestValidatePropertyValueLimitReflectBranches(t *testing.T) {
-	g, err := New(Config{Validation: ValidationLimits{MaxPropertyValueSize: 3}})
+	g, err := New(Config{Validation: ValidationLimits{MaxPropertyValueSize: 3, MaxPropertyContainerLength: 3}})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -142,6 +172,13 @@ func TestValidatePropertyValueLimitReflectBranches(t *testing.T) {
 		{name: "struct nested map string too large", rv: reflect.ValueOf(sizeLimitCustomProperty{Meta: map[string]any{"ok": "xxxx"}}), want: ErrValueTooLarge},
 		{name: "struct nested pointer string too large", rv: reflect.ValueOf(sizeLimitCustomProperty{Child: &sizeLimitCustomProperty{Name: "xxxx"}}), want: ErrValueTooLarge},
 		{name: "default kind", rv: reflect.ValueOf(1)},
+
+		// BACKLOG 14b: the reflect-based fallback (arbitrary slice/map kinds not
+		// in the typed fast-path switch, e.g. []int32) gets the same aggregate
+		// container length/entry cap.
+		{name: "reflect slice within container cap", rv: reflect.ValueOf([]int32{1, 2, 3})},
+		{name: "reflect slice exceeds container cap", rv: reflect.ValueOf([]int32{1, 2, 3, 4}), want: ErrValueTooLarge},
+		{name: "reflect map exceeds entry cap", rv: reflect.ValueOf(map[string]int32{"a": 1, "b": 2, "c": 3, "d": 4}), want: ErrValueTooLarge},
 	}
 
 	for _, tt := range tests {
@@ -276,6 +313,93 @@ func TestGraphMutationsRejectOversizedStringInsideRegisteredPropertyStruct(t *te
 			}
 		})
 	}
+}
+
+// TestGraphMutationsRejectOversizedContainerProperty is the BACKLOG 14b
+// regression, exercised end-to-end through the real Add/Update doors (not
+// just the validator function directly): a slice/map property with more
+// elements than MaxPropertyValueSize must be rejected with ErrValueTooLarge,
+// not silently accepted. Only []int/[]int64/[]float32/[]float64/[]bool/
+// []any/map never bounded aggregate container size before this fix — only
+// per-leaf string length and property *count* (MaxPropertiesPerEntity) were
+// checked, so e.g. a many-million-element []float64 or a huge []byte would
+// have passed unrejected.
+func TestGraphMutationsRejectOversizedContainerProperty(t *testing.T) {
+	newGraph := func(t *testing.T) *Core {
+		t.Helper()
+		g, err := New(Config{Validation: ValidationLimits{MaxPropertyContainerLength: 3}})
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+		return g
+	}
+	oversizedInts := []int64{1, 2, 3, 4} // 4 elements > MaxPropertyContainerLength(3)
+	validInts := []int64{1, 2, 3}
+
+	tests := []struct {
+		name string
+		run  func(*Core) error
+	}{
+		{
+			name: "node add oversized []int64",
+			run: func(g *Core) error {
+				_, err := g.Nodes.Add(context.Background(), []string{"Metric"}, map[string]any{"vals": oversizedInts})
+				return err
+			},
+		},
+		{
+			name: "node update oversized []int64",
+			run: func(g *Core) error {
+				n, err := g.Nodes.Add(context.Background(), []string{"Metric"}, map[string]any{"vals": validInts})
+				if err != nil {
+					return err
+				}
+				_, err = g.Nodes.Update(context.Background(), n.ID(), map[string]any{"vals": oversizedInts})
+				return err
+			},
+		},
+		{
+			name: "node add oversized map[string]any",
+			run: func(g *Core) error {
+				_, err := g.Nodes.Add(context.Background(), []string{"Metric"}, map[string]any{
+					"meta": map[string]any{"a": 1, "b": 2, "c": 3, "d": 4},
+				})
+				return err
+			},
+		},
+		{
+			name: "relationship add oversized []int64",
+			run: func(g *Core) error {
+				a, err := g.Nodes.Add(context.Background(), []string{"P"}, nil)
+				if err != nil {
+					return err
+				}
+				b, err := g.Nodes.Add(context.Background(), []string{"P"}, nil)
+				if err != nil {
+					return err
+				}
+				_, err = g.Rels.Add(context.Background(), "LINKS", a, b, map[string]any{"vals": oversizedInts})
+				return err
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.run(newGraph(t))
+			if !errors.Is(err, ErrValueTooLarge) {
+				t.Fatalf("error = %v, want ErrValueTooLarge (unbounded container size — BACKLOG 14b regression)", err)
+			}
+		})
+	}
+
+	// A container WITHIN the cap must still be accepted (no over-rejection).
+	t.Run("node add within-cap []int64 succeeds", func(t *testing.T) {
+		g := newGraph(t)
+		if _, err := g.Nodes.Add(context.Background(), []string{"Metric"}, map[string]any{"vals": validInts}); err != nil {
+			t.Fatalf("Add within-cap []int64: %v", err)
+		}
+	})
 }
 
 func TestPrepareQueuedUpdatePropertiesOwnsSignature(t *testing.T) {

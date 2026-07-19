@@ -30,9 +30,10 @@ func (s *Store) CreateRelPropertyIndex(relTypeToken uint16, propertyKey string) 
 	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
 		return err
 	}
-	return s.fanOutUniform(func(shard *badgerShard) error {
-		return shard.CreateRelPropertyIndex(relTypeToken, propertyKey)
-	})
+	return s.fanOutUniformCreate(
+		func(shard *badgerShard) error { return shard.CreateRelPropertyIndex(relTypeToken, propertyKey) },
+		func(shard *badgerShard) error { return shard.DropRelPropertyIndex(relTypeToken, propertyKey) },
+	)
 }
 
 // DropRelPropertyIndex removes the (relTypeToken, propertyKey) rel index from

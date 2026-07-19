@@ -3,7 +3,7 @@ package constraints
 import (
 	"context"
 
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
 // UniqueScope selects which slice of the bitemporal history a unique
@@ -137,7 +137,11 @@ func (a *API) uniqueReady() (UniqueOps, error) {
 	}
 	uo, ok := ops.(UniqueOps)
 	if !ok {
-		return nil, grapherr.ErrNilGraph
+		// The underlying Ops implementation doesn't support unique-constraint
+		// management — a capability gap, not a nil/unwired graph (BACKLOG 8c:
+		// ErrNilGraph was the wrong sentinel here; a.ready() already returned
+		// it for the actual nil-graph case above).
+		return nil, storepkg.ErrCapabilityNotSupported
 	}
 	return uo, nil
 }

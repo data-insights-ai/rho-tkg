@@ -84,6 +84,52 @@ func TestStatsRangeCardinality_MatchesNodesAlias(t *testing.T) {
 	})
 }
 
+// TestRangeCardinality_DeclinesOnBitemporalTxFilter is the BACKLOG 10c
+// regression: RangeCardinality's decline guard checked ValidAt/ValidStart/
+// ValidEnd but NOT TxAt/TxPin, so a bitemporal-pinned call fell through to the
+// live BSI/property-index fast path and answered from CURRENT state while
+// still claiming exact=true — a silent wrong-tense answer, not a documented
+// decline. Both g.Nodes().RangeCardinality and its g.Stats() alias must
+// decline (exact=false) identically for both TxAt and TxPin, exactly like the
+// existing ValidAt case above.
+func TestRangeCardinality_DeclinesOnBitemporalTxFilter(t *testing.T) {
+	eachBackend(t, func(t *testing.T, g *graphpkg.Graph) {
+		ctx := context.Background()
+		for i := 0; i < 20; i++ {
+			if _, err := g.Nodes().Add(ctx, []string{"P"}, map[string]any{"age": int64(i)}); err != nil {
+				t.Fatalf("Add %d: %v", i, err)
+			}
+		}
+		if err := g.Index().CreateProperty("P", "age"); err != nil {
+			t.Fatalf("CreateProperty: %v", err)
+		}
+
+		nCount, nExact, nErr := g.Nodes().RangeCardinality("P", "age", 5, 15, true, true, graphpkg.QueryOpts{TxAt: 1})
+		sCount, sExact, sErr := g.Stats().RangeCardinality("P", "age", 5, 15, true, true, graphpkg.QueryOpts{TxAt: 1})
+		if nErr != nil || sErr != nil {
+			t.Fatalf("TxAt RangeCardinality errors: nodes=%v stats=%v", nErr, sErr)
+		}
+		if nExact || sExact {
+			t.Fatalf("TxAt RangeCardinality exact = (nodes=%v, stats=%v), want both false (BSI cannot answer a TX-pinned query)", nExact, sExact)
+		}
+		if nCount != 0 || sCount != 0 {
+			t.Fatalf("TxAt RangeCardinality count = (nodes=%d, stats=%d), want both 0", nCount, sCount)
+		}
+
+		nCount, nExact, nErr = g.Nodes().RangeCardinality("P", "age", 5, 15, true, true, graphpkg.QueryOpts{TxPin: 1})
+		sCount, sExact, sErr = g.Stats().RangeCardinality("P", "age", 5, 15, true, true, graphpkg.QueryOpts{TxPin: 1})
+		if nErr != nil || sErr != nil {
+			t.Fatalf("TxPin RangeCardinality errors: nodes=%v stats=%v", nErr, sErr)
+		}
+		if nExact || sExact {
+			t.Fatalf("TxPin RangeCardinality exact = (nodes=%v, stats=%v), want both false (BSI cannot answer a TX-pinned query)", nExact, sExact)
+		}
+		if nCount != 0 || sCount != 0 {
+			t.Fatalf("TxPin RangeCardinality count = (nodes=%d, stats=%d), want both 0", nCount, sCount)
+		}
+	})
+}
+
 // TestStatsRangeCardinality_DeclinesWithSentinelOnClosedGraph is the decline
 // case documented for the capability story: on a closed graph the call must
 // both decline (exact=false) AND surface the documented graph.ErrGraphClosed

@@ -358,6 +358,72 @@ func TestCloseNodeVersion_SetsValidTo(t *testing.T) {
 	}
 }
 
+// TestCloseNodeVersion_AdvancesVersionIdentity verifies that closing a version
+// produces a chain-walkable distinct version identity: the pre-close (open) state
+// and the post-close (closed) state must NOT share the same Version() number, since
+// GetNodeVersion/VersionAfter/History resolve purely by version identity. A close
+// that reuses the pre-close version number for the post-close row makes the closed
+// transition invisible to chain-walking consumers (BACKLOG 9a).
+func TestCloseNodeVersion_AdvancesVersionIdentity(t *testing.T) {
+	g := newTestGraphForChain(t)
+	n, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	id := n.ID()
+	genesisVersion := n.Version()
+
+	closeTime := g.nodeValidFrom(n) + 2000
+	if err := g.Nodes.CloseVersion(context.Background(), id, closeTime); err != nil {
+		t.Fatalf("CloseNodeVersion: %v", err)
+	}
+
+	loaded, err := g.Nodes.Get(context.Background(), id)
+	if err != nil {
+		t.Fatalf("Get after close: %v", err)
+	}
+	if loaded.Version() == genesisVersion {
+		t.Fatalf("closed node kept genesis version %d — the close transition is not chain-walkable", genesisVersion)
+	}
+	if tm := loaded.Temporal(); tm == nil || tm.ValidTo != closeTime {
+		t.Fatalf("expected current row ValidTo=%d, got temporal=%v", closeTime, loaded.Temporal())
+	}
+
+	// The genesis version must still resolve, via history, to the PRE-close
+	// (open, ValidTo==0) snapshot — not be silently aliased to the closed content.
+	history, err := g.Nodes.History(id)
+	if err != nil {
+		t.Fatalf("History: %v", err)
+	}
+	var genesisSnap *types.Node
+	for _, h := range history {
+		if h.Version() == genesisVersion {
+			genesisSnap = h
+		}
+	}
+	if genesisSnap == nil {
+		t.Fatalf("history missing genesis version %d entry: %+v", genesisVersion, history)
+	}
+	if tm := genesisSnap.Temporal(); tm == nil || tm.ValidTo != 0 {
+		t.Fatalf("expected genesis history snapshot to still be open (ValidTo=0), got temporal=%v", genesisSnap.Temporal())
+	}
+
+	// VersionAfter(genesis) must resolve to the closed row, not report "no successor".
+	next, err := g.Nodes.VersionAfter(id, genesisVersion)
+	if err != nil {
+		t.Fatalf("VersionAfter: %v", err)
+	}
+	if next == nil {
+		t.Fatal("VersionAfter(genesisVersion) returned nil — the close transition is invisible to chain-walking")
+	}
+	if tm := next.Temporal(); tm == nil || tm.ValidTo != closeTime {
+		t.Fatalf("VersionAfter(genesisVersion) temporal = %v, want ValidTo=%d", next.Temporal(), closeTime)
+	}
+	if next.Version() != loaded.Version() {
+		t.Fatalf("VersionAfter(genesisVersion) version = %d, want %d (the current tip)", next.Version(), loaded.Version())
+	}
+}
+
 func TestCloseNodeVersion_PreservesIntegrityMetadata(t *testing.T) {
 	g := newTestGraphForChain(t)
 	n, err := g.Nodes.Add(context.Background(), []string{"Event"}, map[string]any{
@@ -426,6 +492,11 @@ func TestClosedEntitiesRejectMutations(t *testing.T) {
 		if err := g.Nodes.CloseVersion(context.Background(), n.ID(), closeTime); err != nil {
 			t.Fatalf("CloseVersion: %v", err)
 		}
+		closedNode, err := g.Nodes.Get(context.Background(), n.ID())
+		if err != nil {
+			t.Fatalf("GetNode after CloseVersion: %v", err)
+		}
+		closedVersion := closedNode.Version()
 
 		if _, err := g.Nodes.Update(context.Background(), n.ID(), map[string]any{"state": "updated"}); !errors.Is(err, ErrAlreadyClosed) {
 			t.Fatalf("Update closed node = %v, want ErrAlreadyClosed", err)
@@ -459,8 +530,8 @@ func TestClosedEntitiesRejectMutations(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetNode after rejected mutations: %v", err)
 		}
-		if loaded.Version() != 0 {
-			t.Fatalf("closed node version changed after rejected mutations: %d", loaded.Version())
+		if loaded.Version() != closedVersion {
+			t.Fatalf("closed node version changed after rejected mutations: %d, want %d", loaded.Version(), closedVersion)
 		}
 		if tm := loaded.Temporal(); tm == nil || tm.ValidTo != closeTime {
 			t.Fatalf("closed node ValidTo = %v, want %d", tm, closeTime)
@@ -495,6 +566,11 @@ func TestClosedEntitiesRejectMutations(t *testing.T) {
 		if err := g.Rels.CloseVersion(context.Background(), rel.ID(), closeTime); err != nil {
 			t.Fatalf("CloseVersion: %v", err)
 		}
+		closedRel, err := g.Rels.Get(context.Background(), rel.ID())
+		if err != nil {
+			t.Fatalf("GetRelationship after CloseVersion: %v", err)
+		}
+		closedVersion := closedRel.Version()
 
 		if _, err := g.Rels.Update(context.Background(), rel.ID(), map[string]any{"state": "updated"}); !errors.Is(err, ErrAlreadyClosed) {
 			t.Fatalf("Update closed relationship = %v, want ErrAlreadyClosed", err)
@@ -526,8 +602,8 @@ func TestClosedEntitiesRejectMutations(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetRelationship after rejected mutations: %v", err)
 		}
-		if loaded.Version() != 0 {
-			t.Fatalf("closed relationship version changed after rejected mutations: %d", loaded.Version())
+		if loaded.Version() != closedVersion {
+			t.Fatalf("closed relationship version changed after rejected mutations: %d, want %d", loaded.Version(), closedVersion)
 		}
 		if tm := loaded.Temporal(); tm == nil || tm.ValidTo != closeTime {
 			t.Fatalf("closed relationship ValidTo = %v, want %d", tm, closeTime)
@@ -1028,6 +1104,74 @@ func TestCloseRelVersion_Mirrors(t *testing.T) {
 	// NotFound.
 	if err := g.Rels.CloseVersion(context.Background(), types.RelID(777777777), closeTime); !errors.Is(err, storepkg.ErrRelNotFound) {
 		t.Fatalf("CloseRelVersion missing: expected storepkg.ErrRelNotFound, got %v", err)
+	}
+}
+
+// TestCloseRelVersion_AdvancesVersionIdentity is the relationship-side mirror of
+// TestCloseNodeVersion_AdvancesVersionIdentity (BACKLOG 9a — Node/Relationship
+// structural-mirror parity, CLAUDE.md Testing Rule 2).
+func TestCloseRelVersion_AdvancesVersionIdentity(t *testing.T) {
+	g := newTestGraphForChain(t)
+	start, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode start: %v", err)
+	}
+	end, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode end: %v", err)
+	}
+	r, err := g.Rels.Add(context.Background(), "KNOWS", start, end, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+	rid := r.ID()
+	genesisVersion := r.Version()
+
+	closeTime := g.relValidFrom(r) + 2000
+	if err := g.Rels.CloseVersion(context.Background(), rid, closeTime); err != nil {
+		t.Fatalf("CloseRelVersion: %v", err)
+	}
+
+	loaded, err := g.Rels.Get(context.Background(), rid)
+	if err != nil {
+		t.Fatalf("Get after close: %v", err)
+	}
+	if loaded.Version() == genesisVersion {
+		t.Fatalf("closed relationship kept genesis version %d — the close transition is not chain-walkable", genesisVersion)
+	}
+	if tm := loaded.Temporal(); tm == nil || tm.ValidTo != closeTime {
+		t.Fatalf("expected current row ValidTo=%d, got temporal=%v", closeTime, loaded.Temporal())
+	}
+
+	history, err := g.Rels.History(rid)
+	if err != nil {
+		t.Fatalf("History: %v", err)
+	}
+	var genesisSnap *types.Relationship
+	for _, h := range history {
+		if h.Version() == genesisVersion {
+			genesisSnap = h
+		}
+	}
+	if genesisSnap == nil {
+		t.Fatalf("history missing genesis version %d entry: %+v", genesisVersion, history)
+	}
+	if tm := genesisSnap.Temporal(); tm == nil || tm.ValidTo != 0 {
+		t.Fatalf("expected genesis history snapshot to still be open (ValidTo=0), got temporal=%v", genesisSnap.Temporal())
+	}
+
+	next, err := g.Rels.VersionAfter(rid, genesisVersion)
+	if err != nil {
+		t.Fatalf("VersionAfter: %v", err)
+	}
+	if next == nil {
+		t.Fatal("VersionAfter(genesisVersion) returned nil — the close transition is invisible to chain-walking")
+	}
+	if tm := next.Temporal(); tm == nil || tm.ValidTo != closeTime {
+		t.Fatalf("VersionAfter(genesisVersion) temporal = %v, want ValidTo=%d", next.Temporal(), closeTime)
+	}
+	if next.Version() != loaded.Version() {
+		t.Fatalf("VersionAfter(genesisVersion) version = %d, want %d (the current tip)", next.Version(), loaded.Version())
 	}
 }
 
