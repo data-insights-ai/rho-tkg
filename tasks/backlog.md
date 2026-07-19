@@ -2214,11 +2214,61 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   doors). Popped the stash, confirmed GREEN on all 4. Full `go build ./...` + `go vet ./...` clean;
   `go test ./pkg/graph/store/badger/...` clean; `go test -race ./pkg/graph/store/badger/...` clean
   (201s); full repo `go test ./...` clean.
-- **18e. Vector-index apply happens AFTER other RAM mutations are already committed — a failure
-  leaves cache/indexes reflecting an unpersisted state, violating lesson 4's "preflight then apply"
-  (MEDIUM).** `badgerstore_node.go:73-76,478-481,572-575,668-671`, `badgerstore_node_batch.go:582-585`.
-  In `ReplaceNode` the old vector-index entry is already removed before a failure — the node loses its
-  vector-index entry entirely while other indexes show the unpersisted new row.
+- **18e. [FIXED — `store/badger/badgerstore_node.go`, `store/badger/badgerstore_history_node.go`,
+  `store/badger/badgerstore_node_batch.go`] Vector-index apply happened AFTER other RAM mutations
+  were already committed — a failure would leave cache/indexes reflecting an unpersisted state,
+  violating lesson 4's "preflight then apply" (MEDIUM).** `badgerstore_node.go:73-76,478-481,572-575,
+  668-671`, `badgerstore_node_batch.go:582-585` (plus the 3 mirrored history-writing doors in
+  `badgerstore_history_node.go` the finding's line numbers didn't enumerate). In `ReplaceNode` the old
+  vector-index entry was already removed before a possible failure — the node would lose its
+  vector-index entry entirely while other indexes showed the unpersisted new row.
+
+  **Confirmed mechanism.** All 8 call sites (`PutNode`, `ReplaceNode`, `RemoveNodeLabelToken`,
+  `AddNodeLabelToken` in `badgerstore_node.go`; `RemoveNodeLabelTokenWithHistory`,
+  `AddNodeLabelTokenWithHistory`, `ReplaceNodeWithHistory` in `badgerstore_history_node.go`; the
+  per-node loop in `PutNodesBatch`'s Phase 2 in `badgerstore_node_batch.go`) shared the identical
+  shape: `indexpkg.PrepareNodeVectorIndexUpdates` (the validating preflight) ran early and correctly,
+  but `indexpkg.AddPreparedNodeToVectorIndexes` (the apply) ran LAST — after cache puts, label-index
+  mutation, `nodeHashes`/rev-bump, and property/temporal/high-frequency-index adds had already
+  committed to RAM. Since none of `bs.appendOps`/`bs.logChangeRaw` (the durable-write enqueue) had run
+  yet at that point, a failed apply would return an error to the caller while leaving every other
+  in-memory index/cache reflecting a row that was never queued for durable persistence — a genuine
+  RAM/durable-store divergence class, not merely cosmetic.
+
+  **Reachability under current invariants (investigated in depth).** Traced `AddPreparedNodeToVectorIndexes`
+  → `VectorIndex.AddOwned` → `addLocked` (`internal/index/vector_index.go`): it re-validates
+  `vi.Dims`/`vi.Metric` (`ValidateVectorIndexConfig`), vector length, and vector values — the exact
+  same checks `PrepareNodeVectorIndexUpdates` already ran — then unconditionally returns `nil` from
+  every remaining code path (`ensurePositionsLocked`/`ensureHNSWLocked`/HNSW insert have no error
+  return). At every one of the 8 call sites, `bs.idxMu` is held continuously from before Prepare
+  through after Apply (no unlock in between), `bs.vectorIndexes`'s `*VectorIndex` pointers cannot be
+  swapped mid-call (DDL also requires `bs.idxMu`), `VectorIndex.Dims`/`Metric` are set once at
+  construction and never mutated afterward (grepped every assignment site), and the `vec` slice
+  captured during Prepare is the exact slice passed to Apply. Given all of that, a successful Prepare
+  provably implies a successful Apply under the codebase as it stands today — the error return on
+  `AddPreparedNodeToVectorIndexes` is currently dead on every real call path, which is also why no
+  regression test can honestly force the RAM-divergence outcome through the public Store API (or even
+  a same-package white-box test) without fabricating a scenario that contradicts the locking
+  discipline actually in force.
+
+  **Fix (defensive, zero behavior change).** Reordered all 8 sites so `AddPreparedNodeToVectorIndexes`
+  runs immediately after its own `PrepareNodeVectorIndexUpdates` (or immediately after the paired
+  `RemoveNodeFromVectorIndexes` purge at the 6 update/history sites, preserving the required
+  remove-before-add ordering for the SAME vector-index key), before any other RAM mutation begins. The
+  batch `PutNodesBatch` Phase-2 loop got the same per-node reordering. This closes the structural gap
+  for any FUTURE failure mode that might be added inside `addLocked` (e.g. a capacity/memory guard),
+  without weakening today's error handling or touching `RemoveNodeFromVectorIndexes`'s blanket-purge
+  semantics (relied on unconditionally by `DeleteNode`/cascade-delete paths, so making it selective
+  was explicitly out of scope for this fix).
+
+  **Verification.** `go build ./...` and `go vet ./...` clean. `go test ./pkg/graph/store/badger/...`
+  green (all pre-existing vector-index + node-write tests pass unchanged, confirming the reorder is
+  behavior-preserving on every currently-reachable path). `go test ./pkg/graph/...` green (all 27
+  packages). `go test -race ./pkg/graph/store/badger/...` green (196s). No new regression test was
+  added: per the reachability analysis above, constructing one would require injecting a fault that
+  cannot occur through any real call path today, which would make the test assert against fabricated
+  behavior rather than a genuine defect. If `addLocked` ever grows a real post-validation failure
+  mode, this ordering is what makes that future failure safe — that is the entire value of the fix.
 - **18f. Meta/registry persistence (`MetaSet`, `Save*Registry`) lacks the immediate pre-call
   `dbClosed` guard that `flush()` uses (MEDIUM, the same forever-block class CLAUDE.md calls
   "hard-won").** `badgerstore_meta.go:169,190,239,317,335`.

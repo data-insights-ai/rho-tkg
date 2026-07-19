@@ -92,6 +92,12 @@ func (bs *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 	ops = append(ops, bs.maintainTemporalIndexDiskRemove(old, id)...)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
+	// Apply the new vector-index entries right after the old ones are purged,
+	// before any other new-state RAM mutation commits (lesson 4, BACKLOG 18e).
+	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
+		bs.idxMu.Unlock()
+		return err
+	}
 
 	// Remove tok from the in-memory label index.
 	if !bs.labelOnDisk {
@@ -113,10 +119,6 @@ func (bs *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskAdd(updatedNode, id)...)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, updatedNode, id)
-	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
-		bs.idxMu.Unlock()
-		return err
-	}
 
 	// Single appendOps call — node data + history + label index delete — atomic in the pending buffer.
 	histKey := storepkg.HistNodeKey(id, uint64(prevVersion))
@@ -207,6 +209,12 @@ func (bs *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 	ops = append(ops, bs.maintainTemporalIndexDiskRemove(old, id)...)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
+	// Apply the new vector-index entries right after the old ones are purged,
+	// before any other new-state RAM mutation commits (lesson 4, BACKLOG 18e).
+	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
+		bs.idxMu.Unlock()
+		return err
+	}
 
 	// Add tok to the in-memory label index.
 	if !bs.labelOnDisk {
@@ -229,10 +237,6 @@ func (bs *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskAdd(updatedNode, id)...)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, updatedNode, id)
-	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
-		bs.idxMu.Unlock()
-		return err
-	}
 
 	// Single appendOps call — node data + history + label index set — atomic in the pending buffer.
 	histKey := storepkg.HistNodeKey(id, uint64(prevVersion))
@@ -325,6 +329,12 @@ func (bs *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 	ops = append(ops, bs.maintainTemporalIndexDiskRemove(old, id)...)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(bs.hfIndexes, old, id)
 	indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, old, id)
+	// Apply the new vector-index entries right after the old ones are purged,
+	// before any other new-state RAM mutation commits (lesson 4, BACKLOG 18e).
+	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
+		bs.idxMu.Unlock()
+		return err
+	}
 	bs.nodeCache.Put(id, freezeNodeCopy(current))
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(current)
 	bs.bumpNodeRevLocked(nid)
@@ -333,10 +343,6 @@ func (bs *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, current, id)
 	ops = append(ops, bs.maintainTemporalIndexDiskAdd(current, id)...)
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, current, id)
-	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id); err != nil {
-		bs.idxMu.Unlock()
-		return err
-	}
 
 	// Single appendOps call — atomic in the pending buffer.
 	histKey := storepkg.HistNodeKey(id, uint64(prevVersion))

@@ -564,6 +564,15 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 	for i, n := range nodes {
 		nd := serialized[i]
 
+		// Apply this node's vector-index entries first, before any other RAM
+		// state for it commits — lesson 4 "preflight then apply" (BACKLOG
+		// 18e): a failure here must not leave cache/label/property/temporal/
+		// HF indexes reflecting a node whose write was never queued.
+		if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates[i], nd.id); err != nil {
+			bs.idxMu.Unlock()
+			return err
+		}
+
 		bs.nodeCache.Put(nd.id, nd.frozen)
 		bs.nodeIDs[nd.nid] = struct{}{}
 		bs.nodeHashes[nd.nid] = badgerNodeIntegrityHash(n)
@@ -588,10 +597,6 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 		indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, n, nd.id)
 		ops = append(ops, bs.maintainTemporalIndexDiskAdd(n, nd.id)...)
 		indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, n, nd.id)
-		if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates[i], nd.id); err != nil {
-			bs.idxMu.Unlock()
-			return err
-		}
 	}
 
 	bs.appendOps(ops...)

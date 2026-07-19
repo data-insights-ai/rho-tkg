@@ -50,6 +50,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     `UniqueForever` claim leak on write-failure-after-claim is an explicitly documented crash-safety
     trade-off; auto-compensation would need an invasive signature change and risks a worse
     correctness bug if done wrong (9f).
+- FIX/HARDEN — vector-index apply now runs immediately after its own prepare step at all 8
+  node-write call sites (`PutNode`, `ReplaceNode`, `AddNodeLabelToken`, `RemoveNodeLabelToken`, their
+  3 `*WithHistory` mirrors, and `PutNodesBatch`'s per-node Phase 2 loop), instead of after cache/
+  label/property/temporal/HF-index RAM mutations had already committed (BACKLOG 18e, lesson 4
+  "preflight then apply"). Investigated reachability in depth: traced `AddPreparedNodeToVectorIndexes`
+  through `VectorIndex.addLocked` and confirmed that, given `bs.idxMu` is held continuously across
+  prepare+apply at every site and `VectorIndex.Dims`/`Metric` are immutable post-construction, a
+  successful prepare provably implies a successful apply on every call path that exists today — so
+  the fix is defensive (closes the gap for any future failure mode `addLocked` might grow) with zero
+  behavior change on any currently-reachable path, confirmed by the full existing suite passing
+  unchanged. `go build`/`go vet` clean; `go test ./pkg/graph/store/badger/...` and
+  `go test ./pkg/graph/...` green; `go test -race ./pkg/graph/store/badger/...` green (196s).
 
 ## [4.23.0] - 2026-07-18
 
