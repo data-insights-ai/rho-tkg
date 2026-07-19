@@ -11,6 +11,52 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
+// BACKLOG 13d: Admin.Reset (a whole-graph destructive wipe) had no config-gated
+// safety valve, unlike PurgeExpiredNodes/AllowRetentionPurge — any caller
+// holding a *Graph handle could wipe every entity/index/history row in one
+// call. Config.AllowReset now gates it the same way.
+func TestAdminOpsReset_DisabledByDefault(t *testing.T) {
+	t.Parallel()
+
+	g, err := New(Config{Store: memory.New()})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	if _, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil); err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+
+	if err := g.Admin.Reset(); !errors.Is(err, ErrResetDisabled) {
+		t.Fatalf("Reset without Config.AllowReset = %v, want ErrResetDisabled", err)
+	}
+	// Refused, not just erroring after a partial wipe — the graph must be untouched.
+	if count, err := g.Nodes.Count(); err != nil || count != 1 {
+		t.Fatalf("node count after refused Reset = (%d, %v), want (1, nil)", count, err)
+	}
+}
+
+func TestAdminOpsReset_SucceedsWhenAllowed(t *testing.T) {
+	t.Parallel()
+
+	g, err := New(Config{Store: memory.New(), AllowReset: true})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+
+	if _, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil); err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	if err := g.Admin.Reset(); err != nil {
+		t.Fatalf("Reset with Config.AllowReset: %v", err)
+	}
+	if count, err := g.Nodes.Count(); err != nil || count != 0 {
+		t.Fatalf("node count after allowed Reset = (%d, %v), want (0, nil)", count, err)
+	}
+}
+
 func TestAdminOpsClosedGraphReturnsErrGraphClosed(t *testing.T) {
 	t.Parallel()
 
@@ -85,7 +131,7 @@ func TestAdminOpsArchiveEventNodeReturnsNotReference(t *testing.T) {
 func TestAdminOpsResetClearsOperationCounters(t *testing.T) {
 	t.Parallel()
 
-	g, err := New(Config{Store: memory.New()})
+	g, err := New(Config{Store: memory.New(), AllowReset: true})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -148,7 +194,7 @@ func TestAdminOpsResetPersistsRegistrySnapshotAfterClear(t *testing.T) {
 	t.Parallel()
 
 	store := &resetRegistryPersistStore{Store: memory.New()}
-	g, err := New(Config{Store: store})
+	g, err := New(Config{Store: store, AllowReset: true})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -185,7 +231,7 @@ func TestAdminOpsResetReturnsRegistryCheckpointError(t *testing.T) {
 
 	injected := errors.New("registry checkpoint failed")
 	store := &resetRegistryPersistStore{Store: memory.New(), saveErr: injected}
-	g, err := New(Config{Store: store})
+	g, err := New(Config{Store: store, AllowReset: true})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

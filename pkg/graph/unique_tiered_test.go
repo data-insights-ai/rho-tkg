@@ -36,7 +36,7 @@ func openTieredUniqueGraph(t *testing.T, dir string, snowflakeID int64) *graphpk
 	if err != nil {
 		t.Fatalf("tiered.New: %v", err)
 	}
-	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: snowflakeID, Store: ts})
+	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: snowflakeID, Store: ts, AllowReset: true})
 	if err != nil {
 		_ = ts.Close()
 		t.Fatalf("new tiered graph: %v", err)

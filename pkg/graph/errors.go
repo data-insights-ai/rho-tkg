@@ -150,6 +150,8 @@ var (
 	ErrRetentionPurgeDisabled         = core.ErrRetentionPurgeDisabled
 	ErrRetentionPurgeChangeLogEnabled = core.ErrRetentionPurgeChangeLogEnabled
 	ErrInvalidPurgePolicy             = core.ErrInvalidPurgePolicy
+	// Admin.Reset safety valve (BACKLOG 13d).
+	ErrResetDisabled = core.ErrResetDisabled
 )
 
 // IO sentinels. Re-exported so external callers can write

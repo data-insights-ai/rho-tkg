@@ -14,7 +14,7 @@ import (
 
 func newTxTimeGraph(t *testing.T) *Core {
 	t.Helper()
-	g, err := New(Config{})
+	g, err := New(Config{AllowReset: true})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

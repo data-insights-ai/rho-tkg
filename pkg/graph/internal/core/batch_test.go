@@ -19,7 +19,7 @@ import (
 
 func newTestGraph(t *testing.T) *Core {
 	t.Helper()
-	g, err := New(Config{Store: memory.New()})
+	g, err := New(Config{Store: memory.New(), AllowReset: true})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

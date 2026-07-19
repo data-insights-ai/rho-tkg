@@ -167,7 +167,7 @@ func TestAsOfTags_NonPositiveInstantFailsClosed(t *testing.T) {
 type noMetaStore struct{ storepkg.MandatoryStore }
 
 func TestAsOfTags_DeclinesWithoutMetaKV(t *testing.T) {
-	g, err := New(Config{Store: &noMetaStore{MandatoryStore: memory.New()}})
+	g, err := New(Config{Store: &noMetaStore{MandatoryStore: memory.New()}, AllowReset: true})
 	if err != nil {
 		t.Fatalf("New(no-MetaKV store): %v", err)
 	}
@@ -219,7 +219,7 @@ func TestAsOfTags_MetaStoreErrorsSurface(t *testing.T) {
 	t.Run("MetaSet failure on write", func(t *testing.T) {
 		ms := memory.New()
 		store := &failMetaStore{MandatoryStore: ms, inner: ms, failSet: errors.New("meta write boom")}
-		g, err := New(Config{Store: store})
+		g, err := New(Config{Store: store, AllowReset: true})
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}

@@ -26,7 +26,7 @@ func uniqueBackends(t *testing.T) []backendCase {
 		{
 			name: "memory",
 			open: func(t *testing.T) *graphpkg.Graph {
-				g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 1})
+				g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 1, AllowReset: true})
 				if err != nil {
 					t.Fatalf("new memory graph: %v", err)
 				}
@@ -36,7 +36,7 @@ func uniqueBackends(t *testing.T) []backendCase {
 		{
 			name: "badger",
 			open: func(t *testing.T) *graphpkg.Graph {
-				g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 2, BadgerDir: t.TempDir()})
+				g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 2, BadgerDir: t.TempDir(), AllowReset: true})
 				if err != nil {
 					t.Fatalf("new badger graph: %v", err)
 				}

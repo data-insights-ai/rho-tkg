@@ -118,6 +118,9 @@ type Core struct {
 	// (g.Admin().PurgeExpiredNodes). Off by default — a destructive, no-tombstone
 	// range removal must be explicitly enabled. Wired from Config.AllowRetentionPurge.
 	allowRetentionPurge bool
+	// allowReset gates the whole-graph destructive wipe door (g.Admin().Reset()).
+	// Off by default. Wired from Config.AllowReset.
+	allowReset bool
 	// allowTxBackfill enables the privileged transaction-time backfill door:
 	// when true, create doors honor a caller-supplied tkg_tx_from (or
 	// AddWithTx) instead of stamping c.now(), so a re-ingest can faithfully
@@ -428,6 +431,11 @@ var (
 	// must be explicitly enabled.
 	ErrRetentionPurgeDisabled = errors.New("graph: retention purge is disabled (set Config.AllowRetentionPurge to enable g.Admin().PurgeExpiredNodes)")
 
+	// ErrResetDisabled is returned by g.Admin().Reset() when the graph was not
+	// opened with Config.AllowReset. A whole-graph destructive wipe must be
+	// explicitly enabled, mirroring ErrRetentionPurgeDisabled.
+	ErrResetDisabled = errors.New("graph: reset is disabled (set Config.AllowReset to enable g.Admin().Reset)")
+
 	// ErrRetentionPurgeChangeLogEnabled is returned by the purge admin door while a
 	// change-log is enabled: the single ChangeRangePurge record + a replica's
 	// re-execution of the predicate (ADR-0008 R3) are not yet built, so a purge on
@@ -667,6 +675,15 @@ type Config struct {
 	// destructive removal that cannot be undone must be opted into. When off the
 	// door fails closed with ErrRetentionPurgeDisabled.
 	AllowRetentionPurge bool
+
+	// AllowReset enables the g.Admin().Reset() door, which wipes EVERY entity,
+	// index, history row, named as-of tag, and unique-constraint definition from
+	// the graph in one call (registries are preserved). Off by default, mirroring
+	// AllowRetentionPurge: a whole-graph destructive wipe that cannot be undone
+	// must be opted into explicitly, not reachable by any caller that merely
+	// holds a *Graph handle. When off the door fails closed with
+	// ErrResetDisabled.
+	AllowReset bool
 
 	// IngestLanes is the number of extra per-lane UNIFIED ID generators built for
 	// concurrent-ingest write parallelism (ADR-0007 S4). Zero (default) keeps the
@@ -1424,6 +1441,7 @@ func New(config Config) (*Core, error) {
 		readOnlyReplica:     config.ReadOnlyReplica,
 		allowTxBackfill:     config.AllowTxBackfill,
 		allowRetentionPurge: config.AllowRetentionPurge,
+		allowReset:          config.AllowReset,
 		replSource:          config.ReplicationSource,
 	}
 	c.Nodes = &NodeOps{c: c}

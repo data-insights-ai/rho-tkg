@@ -521,7 +521,7 @@ func TestSubAPISmoke_AdminWrappers_TieredHappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tiered.New: %v", err)
 	}
-	g, err := graphpkg.New(graphpkg.Config{Store: ts})
+	g, err := graphpkg.New(graphpkg.Config{Store: ts, AllowReset: true})
 	if err != nil {
 		t.Fatalf("graphpkg.New(tiered): %v", err)
 	}

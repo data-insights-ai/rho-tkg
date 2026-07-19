@@ -1405,8 +1405,48 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   scan+write, contradicting retention purge's own documented chunked-lock discipline (MEDIUM).**
   `internal/core/compaction.go:518-599,601-681`. No chunking, no periodic lock release, no `Label`
   scoping — always the whole population.
-- **13d. `Admin.Reset` (full-graph destructive wipe) has no config-gated safety valve, unlike
-  `AllowRetentionPurge` (MEDIUM).** `internal/core/admin.go:240-271`. Fix: add `Config.AllowReset`.
+- **13d. [FIXED — `internal/core/core.go`, `internal/core/admin.go`, `pkg/graph/errors.go`,
+  `internal/core/admin_direct_test.go`, `pkg/graph/errors_doc_test.go`, `docs/errors.md`, plus
+  ~10 existing-test call-site updates] `Admin.Reset` (full-graph destructive wipe) had no
+  config-gated safety valve, unlike `AllowRetentionPurge` (MEDIUM).** `internal/core/admin.go:240-271`.
+
+  **Fix.** Added `Config.AllowReset bool` (default `false`, mirroring `AllowRetentionPurge`'s exact
+  pattern) and the unexported `Core.allowReset` field wired from it in `New`. `AdminOps.Reset()` now
+  checks `!c.allowReset` immediately after `checkWritable()` (so a closed or read-only-replica graph
+  still gets `ErrGraphClosed`/`ErrReadOnlyReplica` first, unchanged) and fails closed with the new
+  `ErrResetDisabled` sentinel before taking `c.mu.Lock()` — refused, not a partial wipe. The
+  replica's `ChangeClear` apply path (`apply_record.go`) calls `c.reapCoreStateForClear()` directly,
+  never through `AdminOps.Reset()`, so replica convergence is unaffected by this gate (verified by
+  reading the call graph, not just assumed). `ErrResetDisabled` re-exported from `pkg/graph/errors.go`
+  and added to `docs/errors.md` + `errors_doc_test.go`'s sentinel inventory (a pre-existing self-check
+  test, `TestGraphErrorsFileInventoryComplete`, caught the omission on the first test run).
+
+  **Test-suite ripple.** This is a default-behavior change (Reset silently worked before; now it
+  fails closed unless opted in), so ~14 existing test files across `pkg/graph` and
+  `pkg/graph/internal/core` that called `.Reset()`/`g.Admin.Reset()` needed `AllowReset: true` added
+  to their `Config`. Updated at the narrowest correct scope: shared test-graph constructor helpers
+  (`newTxTestGraph`, `newTxTimeGraph`, `newTestGraph`, `bcMemory`, `openTieredUniqueGraph`,
+  `uniqueBackends`) got the flag added once each (safe for every OTHER test using them too, since it
+  only changes `Reset()` behavior); one-off `New(Config{...})` calls specific to a single
+  Reset-calling test got it added inline. `TestAdminOpsClosedGraphReturnsErrGraphClosed` needed NO
+  change — traced that `checkWritable()` already checks `closed.Load()` before the new gate is
+  reached, so a closed graph still surfaces `ErrGraphClosed`, not `ErrResetDisabled`.
+  `admin/example_test.go`'s `ExampleAPI_Reset` godoc example was updated to demonstrate the new
+  config knob directly, since it's user-facing documentation.
+
+  **New tests.** `TestAdminOpsReset_DisabledByDefault` (a plain `Config{Store: memory.New()}` graph
+  with a node already added: `Reset()` returns `ErrResetDisabled` AND the node count is unchanged —
+  refused, not a partial wipe) and `TestAdminOpsReset_SucceedsWhenAllowed` (the `AllowReset: true`
+  counterpart, confirms the door still works end-to-end when opted in).
+
+  **Verification.** RED confirmed via `git stash push` on the 3 production files alone (test files
+  kept): `go vet` failed to compile across 3 packages (`unknown field AllowReset in struct literal`,
+  `undefined: ErrResetDisabled`) — proving every test touched is genuinely load-bearing on the fix,
+  not just cosmetically updated. Popped the stash, confirmed GREEN. `go build ./...` + `go vet ./...`
+  clean. Full repo `go test ./...` clean (including tutorials, `errors_doc_test.go`'s
+  documentation-completeness self-check, and admin/example_test.go's godoc example). `go test -race
+  ./pkg/graph/internal/core/...` clean (129s) — Reset takes `c.mu.Lock()`, the same exclusion class
+  as tx/batch/Archive/ForceRotate, so this is the concurrency-sensitive package for this change.
 - **13e. `PurgeExpiredNodes` can emit a duplicate `ChangeRangePurge` record on operator retry after a
   crash between watermark-advance and log-emit (LOW-MEDIUM, harmless — idempotent apply — but
   log-noise).** `retention_purge.go:132-147`.

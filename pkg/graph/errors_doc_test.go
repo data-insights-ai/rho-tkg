@@ -163,6 +163,11 @@ var retentionSentinels = []string{
 	"ErrInvalidPurgePolicy",
 }
 
+// Admin.Reset safety valve (BACKLOG 13d)
+var adminResetSentinels = []string{
+	"ErrResetDisabled",
+}
+
 // IO sentinels
 var ioSentinels = []string{
 	"ErrNilReader",
@@ -323,6 +328,7 @@ func graphReexportSentinelNames() []string {
 	all = append(all, uniqueConstraintSentinels...)
 	all = append(all, compactionSentinels...)
 	all = append(all, retentionSentinels...)
+	all = append(all, adminResetSentinels...)
 	all = append(all, ioSentinels...)
 	all = append(all, backupSentinels...)
 	all = append(all, deltaSentinels...)

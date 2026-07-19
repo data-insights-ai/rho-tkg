@@ -327,7 +327,7 @@ func TestUniqueForever_BatchMultiKeyViolationLeavesNoOrphanedClaim(t *testing.T)
 
 func bcMemory(t *testing.T) *graphpkg.Graph {
 	t.Helper()
-	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 8})
+	g, err := graphpkg.New(graphpkg.Config{SnowflakeNodeID: 8, AllowReset: true})
 	if err != nil {
 		t.Fatalf("new memory graph: %v", err)
 	}

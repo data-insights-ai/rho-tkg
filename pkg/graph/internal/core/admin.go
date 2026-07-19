@@ -237,10 +237,17 @@ func (v lockedHashVerifier) VerifyRelChain(id types.RelID) (bool, error) {
 // Reset clears all entities, indexes, history, counters, and named as-of tags
 // (§4.2) from the graph while preserving registries (label and relationship
 // type tokens). Acquires the graph write lock to prevent concurrent operations.
+//
+// Refuses (no writes) when the graph was not opened with Config.AllowReset
+// (ErrResetDisabled) — a whole-graph destructive wipe that cannot be undone
+// must be explicitly opted into, mirroring PurgeExpiredNodes/AllowRetentionPurge.
 func (a *AdminOps) Reset() error {
 	c := a.c
 	if err := c.checkWritable(); err != nil {
 		return err
+	}
+	if !c.allowReset {
+		return ErrResetDisabled
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()

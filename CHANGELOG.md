@@ -94,6 +94,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   relationship (ambiguous whether it's a permanent orphan or mid-write when observed). New minimal
   repro test constructed via the same lower-level `PutRelEntityAndOut` technique
   `TestTieredStore_Repair_MissingIncoming` already uses; full suite green.
+- **BREAKING** — `g.Admin().Reset()` (the whole-graph destructive wipe — every entity, index,
+  history row, named as-of tag, and unique-constraint definition) now fails closed with the new
+  `ErrResetDisabled` unless the graph is opened with `Config.AllowReset: true` (BACKLOG 13d),
+  mirroring the existing `AllowRetentionPurge` safety-valve pattern for `PurgeExpiredNodes`. Any
+  caller holding a `*Graph` handle could previously wipe the entire graph in one call with no opt-in.
+  Migration: pass `AllowReset: true` in `Config` wherever `Reset()` is legitimately used (tests,
+  admin tooling, fixture teardown). New `TestAdminOpsReset_DisabledByDefault` /
+  `_SucceedsWhenAllowed` cover both paths; ~14 existing test files updated to opt in.
 
 ## [4.23.0] - 2026-07-18
 

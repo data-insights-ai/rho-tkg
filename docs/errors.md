@@ -236,6 +236,7 @@ History compaction (`g.Admin().CompactHistoryNodes(...)` / `CompactHistoryRels(.
 | `ErrRetentionPurgeDisabled` | core | The retention-purge admin door was called but the graph was not opened with `Config.AllowRetentionPurge`. A no-tombstone hard removal must be explicitly enabled | `g.Admin().PurgeExpiredNodes()` |
 | `ErrRetentionPurgeChangeLogEnabled` | core | The change-log is enabled but the store cannot emit the `ChangeRangePurge` predicate record (no `RangePurgeLogCapability`), so a purge would remove data locally without telling a replica — a silent divergence, refused. Defensive: no in-tree backend hits it (the native purge stores also implement `RangePurgeLogCapability`); it guards a future/partial backend | `g.Admin().PurgeExpiredNodes()` |
 | `ErrInvalidPurgePolicy` | core | The `PurgePolicy` is missing its `Label`, carries a non-positive `Before`, or names an unsupported `Mode` | `g.Admin().PurgeExpiredNodes()` |
+| `ErrResetDisabled` | core | `g.Admin().Reset()` (a whole-graph destructive wipe — every entity, index, history row, named as-of tag, and unique-constraint definition) was called but the graph was not opened with `Config.AllowReset`. Mirrors `ErrRetentionPurgeDisabled`'s safety-valve pattern (BACKLOG 13d) | `g.Admin().Reset()` |
 
 Compaction also declines with `ErrCapabilityNotSupported` on the tiered backend (per-shard trim + catalog counters are out of scope for v1). Retention purge (R2) likewise declines with `ErrCapabilityNotSupported` on the tiered/sharded backends until R4 wires their per-shard mapping.
 

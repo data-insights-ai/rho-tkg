@@ -23,7 +23,7 @@ import (
 // again.
 func TestRetentionReset_DoesNotLeakStalePerLabelWatermarkAcrossReset(t *testing.T) {
 	ctx := context.Background()
-	g, err := graphpkg.New(graphpkg.Config{AllowRetentionPurge: true})
+	g, err := graphpkg.New(graphpkg.Config{AllowRetentionPurge: true, AllowReset: true})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

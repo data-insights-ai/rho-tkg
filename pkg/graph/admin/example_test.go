@@ -24,9 +24,11 @@ func ExampleAPI_DecomposeNodeID() {
 }
 
 // ExampleAPI_Reset demonstrates clearing all entities while preserving
-// label and relationship-type registries.
+// label and relationship-type registries. Reset is a whole-graph destructive
+// wipe, so it must be explicitly opted into via Config.AllowReset — a graph
+// opened without it fails closed with ErrResetDisabled.
 func ExampleAPI_Reset() {
-	g, err := graph.New(graph.Config{})
+	g, err := graph.New(graph.Config{AllowReset: true})
 	if err != nil {
 		panic(err)
 	}
