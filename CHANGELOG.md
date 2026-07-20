@@ -542,6 +542,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   known, real, cross-cutting architecture work (core + every store backend's change-log wiring), not a
   narrow patch safe to attempt inside a backlog sweep (same caution class as the still-open BACKLOG
   10b). Left genuinely open rather than closed by documentation alone.
+- INVESTIGATE — BACKLOG 11h stays OPEN (no fix applied): ran the exact repro the finding itself
+  recommended for `TestOutgoingIncomingForNodesAtTx_RandomizedDivergenceProbe/badger`'s one-time
+  observed flake — a 3ms sleep injected between every one of the 36 per-iteration queries, 20 full
+  repetitions (40 subtest runs), plus 200+ bare reruns and 3 full `internal/core` package runs. Zero
+  failures anywhere. This rules out the test's own theorized mechanism (a later query's wall-now probe
+  racing a scheduling delay) as reproducible, and wall-clock monotonicity analysis argues against it
+  holding even in principle (once `waitWallPast` returns, every later `nowInstant()` read is
+  unconditionally also past the pin — there's no window for a later query to read an earlier value than
+  an earlier query). The one observed failure remains real and unexplained; candidate directions for a
+  future investigation (a third clock source — snowflake ID microsecond timestamps — and genuine
+  full-suite CPU/memory contention that a synthetic single-goroutine delay can't replicate) are
+  recorded in the backlog entry. No code or test change applied.
 
 ## [4.23.0] - 2026-07-18
 

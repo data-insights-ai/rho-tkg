@@ -144,24 +144,42 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   to `docs/api.md`'s "Ingest pipeline" section — that part is genuinely done, since the finding was ALSO
   a real doc gap — but the doc addition must not be mistaken for resolving the underlying bottleneck;
   the scope-tagged-routing redesign itself remains open, real engineering work.
-- **11h. `TestOutgoingIncomingForNodesAtTx_RandomizedDivergenceProbe/badger` is intermittently flaky
-  under full-suite load (MEDIUM, discovered during BACKLOG 12c's verification run, not yet reproduced
-  in isolation).** `internal/core/adjacency_at_tx_test.go:402-554`. One failure observed in a full
-  `go test ./pkg/graph/internal/core/...` run (`got 6 node entries ... want 5 entries` — an EXTRA
-  relationship visible in the actual result that the reference model says should not be, at one of the
-  test's bitemporal pins); 5 immediate reruns of the isolated test all passed. Despite the FIXED
-  `rand.NewSource(42)` seed (the data sequence itself is deterministic), the test's own comment already
-  documents a known two-clock hazard: mutation stamps are minted via the monotonic-floor `c.now())`,
-  while `OutgoingForNodesAtTx`'s "TX-only door" valid-time coverage check probes at WALL now
-  (`resolveOpenEndInstant`) — the EXISTING `waitWallPast(pinD)` mitigation waits once, before setup
-  ends, until the wall clock passes the LAST logical-clock stamp minted, but does not account for
-  `resolveOpenEndInstant` re-probing wall-now AGAIN at EACH query in the loop below (6 pins × 2
-  directions × 3 type filters = 36 queries) — under heavy CI/full-suite load (goroutine scheduling
-  delays between the wait and a LATER query in the loop), a query's own "wall now" probe could still
-  race against something time-dependent in a way the one-time wait doesn't fully close. Needs a
-  dedicated minimal repro under artificial scheduling delay (e.g. inserting a controlled sleep between
-  `waitWallPast` and the query loop, or between individual queries) before a fix is designed — not
-  fixed here to avoid a blind patch to unfamiliar bitemporal clock-skew logic.
+- **11h. [STILL OPEN — NOT resolved; original "clock re-probing" theory RULED OUT by direct experiment,
+  but the real root cause remains unknown and no fix has been applied]
+  `TestOutgoingIncomingForNodesAtTx_RandomizedDivergenceProbe/badger`
+  is intermittently flaky under full-suite load (MEDIUM, discovered during BACKLOG 12c's verification
+  run, one failure ever observed, not yet reproduced).** `internal/core/adjacency_at_tx_test.go:402-554`.
+  One failure observed in a full `go test ./pkg/graph/internal/core/...` run (`got 6 node entries ...
+  want 5 entries` — an EXTRA relationship visible in the actual result the reference model says should
+  not be, at one of the test's bitemporal pins). The original theory (documented in the test's own
+  comment): `OutgoingForNodesAtTx`'s TX-only-door valid-time probe re-reads WALL-now
+  (`resolveOpenEndInstant`/`nowInstant()`) fresh on every one of 36 queries in the loop, while the
+  EXISTING `waitWallPast(pinD)` mitigation only waits ONCE before the loop starts, so a scheduling
+  delay under heavy CI load between individual queries could theoretically let a later query's wall-now
+  probe race against "something time-dependent."
+  **Ran exactly the repro the finding itself recommended** — inserted a controlled 3ms sleep between
+  EVERY one of the 36 per-iteration queries (far larger than any plausible single-goroutine scheduling
+  jitter) and ran 20 full repetitions (40 subtest runs): ZERO failures. Also ran the bare test 200+
+  times with no injected delay, and the whole `internal/core` package 3x end-to-end (mirroring how the
+  original flake was found, inside a full-package run): zero failures in every attempt. Code-level
+  analysis also argues AGAINST the theory as stated: wall-clock time is monotonically non-decreasing
+  (barring an NTP step), so once `waitWallPast(pinD)` returns (wall-now > pinD), EVERY subsequent
+  `nowInstant()` read in the query loop is unconditionally also > pinD — there is no window in which a
+  LATER query's wall-now probe could read a SMALLER value than an EARLIER one, so "a later query races
+  against a delay" does not by itself explain an extra/wrong relationship appearing.
+  **Conclusion: the specific mechanism the test's own comment theorized is not reproducible by direct,
+  aggressive experiment, and does not hold up under wall-clock-monotonicity analysis — but the ONE
+  observed failure is real and unexplained.** Candidate directions for whoever picks this up: (1) a
+  THIRD clock source — entities without explicit `tkg_valid_from` derive effective valid-from from
+  their snowflake ID's own embedded MICROSECOND timestamp (a different clock reading than both `c.now()`
+  and `nowInstant()`'s millisecond `time.Now()` — see CLAUDE.md "Snowflake Configuration"), not
+  investigated here; (2) true cross-test interference under genuine full-suite CPU/memory contention
+  (GC pause, scheduler starvation) that a targeted single-goroutine sleep injection cannot replicate,
+  since this test's `t.Parallel()` only affects scheduling relative to OTHER package tests, not
+  anything reproducible by delaying this test's own goroutine in isolation. A real repro likely needs
+  either genuine concurrent load from sibling tests (not a synthetic sleep) or many more full-suite runs
+  than were feasible here. NOT fixed — no code or test change applied; left explicitly open rather than
+  closed by an unconfirmed theory or a speculative patch.
 
 ### BACKLOG 12 — Replication / import / export hardening
 
