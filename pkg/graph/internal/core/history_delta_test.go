@@ -18,6 +18,23 @@ import (
 //   - the hash chain verifies over the delta-reconstructed chain (integrity is
 //     preserved through anchor+delta storage),
 //   - point-in-time reads agree between the two backends (two-phase temporal).
+//
+// BACKLOG 18s: this is also the lesson-68 regression (tasks/lessons.md #68) —
+// B6 anchor+delta reconstruction must re-sort reconstructed properties by KEY
+// STRING, not by property-key TOKEN identity, since the entity decoder
+// rejects a row not in strict key-string order. The bug is invisible when
+// token-assignment order happens to match alphabetical key order, which is
+// exactly what happens when new property keys are registered by iterating a
+// Go map[string]any (nondeterministic order): validateOwnedPropertyEntryForCreate
+// (validation.go) calls c.propKeys.GetOrCreate per key while ranging over the
+// caller's raw map, BEFORE NewPropertySlice's later alphabetical sort — so
+// whether a given run's token order happens to diverge from key-string order
+// was previously LEFT TO CHANCE (some runs would have caught a lesson-68
+// regression, others wouldn't). Pre-registering every property key used below
+// via propKeys.GetOrCreate directly, in a fixed REVERSE-alphabetical order,
+// deterministically forces token order to be the exact opposite of key-string
+// order on every run — the maximally adversarial case — before any Add/Update
+// call ever reaches the map-iteration-order-dependent path.
 func TestHistoryDeltaCoreDifferentialAndIntegrity(t *testing.T) {
 	ctx := context.Background()
 
@@ -31,6 +48,17 @@ func TestHistoryDeltaCoreDifferentialAndIntegrity(t *testing.T) {
 		t.Fatalf("New(mem): %v", err)
 	}
 	t.Cleanup(func() { _ = memG.Close() })
+
+	// Reverse-alphabetical registration order: status < region < counter < blob
+	// gets tokens 1,2,3,4 respectively — the exact opposite of the keys' own
+	// alphabetical order (blob < counter < region < status). tkg_valid_from is
+	// a shadow key (tkg_ prefix) and is never tokenized via this registry, so
+	// it's deliberately excluded.
+	for _, key := range []string{"status", "region", "counter", "blob"} {
+		if _, err := deltaG.propKeys.GetOrCreate(key); err != nil {
+			t.Fatalf("pre-register property key %q: %v", key, err)
+		}
+	}
 
 	const blob = "a large unchanging free-text blob " +
 		"that a full snapshot would re-serialize on every single version bump"

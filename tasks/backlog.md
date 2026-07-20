@@ -2713,9 +2713,39 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   GREEN on the full `TestBadgerTuningBoundaries` table (27 subtests). `go build ./...` + `go vet ./...`
   clean; `go test ./pkg/graph/store/badger/...` clean (25s); full repo `go test ./...` clean
   (including tutorials).
-- **18s. Lesson-68 regression coverage relies on nondeterministic Go map iteration rather than a
-  deterministic adversarial construction — has only some probability per run of catching a regression
-  (MEDIUM, TEST-GAP).** `internal/core/history_delta_test.go:41-61`.
+- **18s. [FIXED — `internal/core/history_delta_test.go`] Lesson-68 regression coverage relied on
+  nondeterministic Go map iteration rather than a deterministic adversarial construction — had only
+  some probability per run of catching a regression (MEDIUM, TEST-GAP).**
+  `internal/core/history_delta_test.go:41-61`.
+
+  **Traced the exact nondeterminism source.** `NodeOps.Add`'s `addNodeInternal` calls
+  `c.validateProperties(props)` (which ranges the caller's raw `map[string]any` directly — Go's
+  randomized order) BEFORE `types.NewOwnedPropertySlice` ever sorts anything.
+  `validateOwnedPropertyEntryForCreate` calls `c.propKeys.GetOrCreate(key)` for each NEW key during
+  that same randomized-order range — this is where property-key TOKENS actually get assigned, not at
+  the wire-encoding boundary (`ApplyPropertyKeyTokens` only resolves already-assigned tokens by
+  iterating an already-sorted slice — deterministic, but downstream of the real nondeterminism). The
+  original test's `Add` call introduced 3 new keys (`blob`, `counter`, `region`) in ONE map literal —
+  exactly the nondeterministic-order scenario: on some runs their tokens landed alphabetically
+  (masking a lesson-68 regression), on others they didn't (catching it).
+
+  **Fix.** Pre-register every property key the test uses via `deltaG.propKeys.GetOrCreate(key)`
+  directly, in a fixed REVERSE-alphabetical order (`status, region, counter, blob` → tokens 1,2,3,4) —
+  the maximally adversarial case, guaranteed opposite of the keys' own alphabetical order, BEFORE any
+  `Add`/`Update` call ever reaches the map-iteration-order-dependent registration path.
+  `tkg_valid_from` (a shadow key) is correctly excluded — shadow keys are never tokenized via this
+  registry.
+
+  **Verification.** Ran the test with `-count=10`: consistently green (confirms the production fix is
+  genuinely correct under the now-deterministic adversarial ordering, not just "usually" correct).
+  Then, to prove the test is actually LOAD-BEARING (not just passing vacuously), temporarily commented
+  out ONE of the two `storepkg.SortWirePropertiesByKey` call sites in
+  `badgerstore_history_delta.go` (simulating a lesson-68 regression) — the test failed
+  DETERMINISTICALLY on every one of 3 repeated runs with the exact error lesson 68 describes
+  (`property[1] key "region" is not in strict sorted order after "status"`), where the ORIGINAL
+  map-iteration-dependent test would have caught this only probabilistically. Restored the production
+  file via `git checkout`, confirmed GREEN again across 5 repeated runs. `go build ./...` + `go vet
+  ./...` clean; `go test ./pkg/graph/internal/core/...` clean; full repo `go test ./...` clean.
 - **18t. No direct self-loop round-trip test at the raw Store layer; no test pins change-log-marshal-
   failure-mid-write behavior (relevant to 18a); no adversarial test proves the frozen-row guard
   actually rejects mutation on an owned/ingest-transferred cache entry (TEST-GAP, 3 gaps).**

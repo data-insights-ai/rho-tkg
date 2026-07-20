@@ -195,6 +195,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   them released when purged, not just one). Investigated `reapForeverOwnersForPurged` and confirmed
   it was already correct (a flat scan over every ownership entry, no per-owner special-casing) — pure
   test-gap, no production change. New `TestPurge_ReapsAllForeverKeysOfMultiKeyOwner`.
+- TEST — made `TestHistoryDeltaCoreDifferentialAndIntegrity` (the lesson-68 regression test) exercise
+  the adversarial property-key-token-order scenario DETERMINISTICALLY on every run (BACKLOG 18s),
+  instead of relying on Go's randomized map iteration to sometimes construct it and sometimes not.
+  Traced token assignment to `validateOwnedPropertyEntryForCreate`, which calls
+  `propKeys.GetOrCreate` while ranging a raw `map[string]any` — before any alphabetical sort happens.
+  The test now pre-registers its property keys in a fixed reverse-alphabetical order directly via the
+  registry, guaranteeing token order is the exact opposite of key-string order every run. Verified the
+  fix is load-bearing by temporarily reverting one of the two `SortWirePropertiesByKey` call sites in
+  `badgerstore_history_delta.go`: the test now fails deterministically on every run with lesson 68's
+  exact error, where the original test only caught it probabilistically.
 
 ## [4.23.0] - 2026-07-18
 
