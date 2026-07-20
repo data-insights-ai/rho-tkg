@@ -488,6 +488,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   since history *decode* cost dominates there, not the resolution scan the finding was about. `go
   build ./...` + `go vet ./...` clean; full `pkg/graph/internal/core` package suite green under
   `-race`; full-repo `go test ./...` clean.
+- DOC — closed BACKLOG 10n: CLAUDE.md's "Single resolution seam" design rule said
+  `resolveNodeChain`/`resolveRelChain` in `chain_resolver.go` "are the ONE place" temporal reads select
+  a version — worded as if the resolution logic itself lives there. Confirmed while working BACKLOG
+  10m: `resolveNodeChain`'s point-probe arm delegates straight to `resolveNodeVersionAt` (defined in
+  `temporal.go`, alongside `nodeVersionBounds` and the eclipsed/belief-newer-than helpers, with the
+  cascade-specific pieces in `temporal_cascade.go`) — so the seam is a CALL-GRAPH guarantee (every
+  door funnels through one entry point) rather than a file-boundary. Reworded to say so explicitly,
+  so a future lesson-17/58 drift audit knows to inspect `temporal.go`/`temporal_cascade.go` too, not
+  just `chain_resolver.go`. Pure doc fix, no code change.
 
 ## [4.23.0] - 2026-07-18
 

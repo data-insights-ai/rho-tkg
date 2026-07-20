@@ -118,9 +118,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   insufficient (both shapes are structurally identical); the fix likely needs either a persisted
   marker distinguishing the two row roles, or a fundamentally different (non-positional,
   non-pairwise-TxFrom) algorithm for interval-bounds derivation in a chain with cascade-inserted rows.
-- **10n. "Single resolution seam" is a call-graph guarantee, not a file-boundary — worth stating
-  explicitly so future lesson-17/58 audits know to check `temporal.go`/`temporal_cascade.go` too, not
-  just `chain_resolver.go` (LOW, organizational).**
 - **10o. `Diff`/`DiffCallback` acquires `c.mu.RLock` per entity, not one atomic snapshot — honestly
   disclosed accepted tradeoff, but the exposure window under concurrent writes is untested
   (LOW/informational).**
