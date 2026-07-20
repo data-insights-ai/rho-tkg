@@ -991,6 +991,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   turned RED with the exact predicted wrong `maxLevel`, then reverted. `go build`/`go vet` clean; full
   `pkg/graph/internal/index` package suite green including under `-race` (139s); full-repo `go test
   ./...` clean.
+- FIX — BACKLOG 16f: `hnsw.go`'s `connect()` used reflection-based `sort.Slice` on the hottest
+  construction path (every neighbor-cap overflow during insert), contradicting the project's own
+  established idiom — `lru.go` carries an explicit comment warning against this exact pattern
+  ("reflection sorting showed up in ingestion profiles"). Replaced with `slices.SortFunc` using a
+  `cmp`-style comparator that mirrors the original less-func's dist-then-extID tie-break exactly (same
+  branch structure, not a blind `cmp.Compare` on the float field, to avoid any behavior change on the
+  practically-unreachable NaN-distance edge case). Verified byte-identical behavior via the existing
+  `TestHNSWDeterministicGivenSameSeedAndInsertionOrder`/`TestHNSWDeterministicAcrossRepeatedBuilds` and
+  the full `pkg/graph/internal/index` suite (including the clustered-corpus recall gate), all green
+  unchanged — a pure algorithm swap with equivalent comparator semantics, so no new test was needed
+  beyond confirming the existing determinism/recall suite still passes byte-for-byte. `go build`/
+  `go vet` clean; full `pkg/graph/internal/index` package suite green including under `-race` (140s);
+  full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

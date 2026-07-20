@@ -1,9 +1,10 @@
 package index
 
 import (
+	"cmp"
 	"math"
 	"math/rand/v2"
-	"sort"
+	"slices"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -296,11 +297,18 @@ func (g *hnswGraph) connect(a, b int32, layer int) {
 	for i, nb := range na.neighbors[layer] {
 		candidates[i] = hnswNeighbor{idx: nb, extID: g.nodes[nb].extID, dist: g.dist(na.vec, g.nodes[nb].vec)}
 	}
-	sort.Slice(candidates, func(i, j int) bool {
-		if candidates[i].dist != candidates[j].dist {
-			return candidates[i].dist < candidates[j].dist
+	// slices.SortFunc, not sort.Slice — this runs on the hottest construction
+	// path (every connect() that overflows a neighbor cap) and reflection
+	// sorting is measurably slower; see lru.go's identical rationale (BACKLOG 16f).
+	slices.SortFunc(candidates, func(a, b hnswNeighbor) int {
+		switch {
+		case a.dist < b.dist:
+			return -1
+		case a.dist > b.dist:
+			return 1
+		default:
+			return cmp.Compare(a.extID, b.extID)
 		}
-		return candidates[i].extID < candidates[j].extID
 	})
 	selected := g.selectNeighborsHeuristic(candidates, maxNeighbors)
 	pruned := make([]int32, len(selected))

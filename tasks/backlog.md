@@ -273,9 +273,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   see BACKLOG 21 (LOW, likely intentional node-first scope).**
 ### BACKLOG 16 — In-memory index-engine hardening (HNSW / property & temporal index / HyperLogLog)
 
-- **16f. `hnsw.go`'s `connect()` uses reflection-based `sort.Slice` on the hottest construction path,
-  contradicting the project's own established `slices.SortFunc` idiom (MEDIUM, perf).**
-  `internal/index/hnsw.go:299` — `lru.go:314-316`'s comment explicitly warns against this pattern.
 - **16g. `hnsw.go`'s `searchLayer` allocates a fresh `[]bool` visited slice per layer, not reused
   across a query — O(maxLevel) O(n)-byte allocations per query (MEDIUM, perf).**
   `internal/index/hnsw.go:337-345`. Fix: per-graph visited-generation array + epoch counter.
