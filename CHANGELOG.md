@@ -816,6 +816,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   turned their respective test RED, then reverted. `go build`/`go vet` clean; full
   `pkg/graph/internal/core` package suite green including under `-race` (137s); full-repo `go test
   ./...` clean.
+- DOC — BACKLOG 15i (behavior already correct; the doc misattributed WHERE a switch lives, not what it
+  does): CLAUDE.md's `internal/integrity` row and `integrity_test.go`'s package/section doc comments
+  described "the per-type-tag dispatch inside appendPropertyValue" as living in `internal/integrity`.
+  Verified `appendPropertyValue` there is actually a one-line forward to
+  `pkg/types.appendPropertyValueHashBytes` — the real type switch, and its own direct Rule 3 branch
+  coverage (`TestAppendPropertyValueHashBytesAllBranches` and siblings), already live in
+  `pkg/types/property_hash_test.go`. So there was no coverage gap — just Rule 3 being cited against the
+  wrong package in two places. Corrected both doc comments to name the actual location and clarify that
+  `internal/integrity`'s own per-type-tag tests (`TestAppendPropertyValue_*`) are INDIRECT coverage (at
+  the `ComputeNodeHash` call level, additionally pinning each branch's participation in the higher-level
+  hash), not the canonical Rule 3 proof.
+- FIX — BACKLOG 15g: `ValueStripe` (`internal/locks/value_locks.go`, called once per constrained
+  property per node write) used `fnv.New64a()`, whose `hash.Hash64` return is an interface wrapping a
+  heap-allocated concrete `*sum64a` in general. Investigated the actual live impact before assuming the
+  finding's premise held on the current toolchain: with default inlining, Go 1.26.1's compiler inlines
+  `fnv.New64a()` and its subsequent `Write`/`Sum64` calls into `ValueStripe` and escape-analyzes the
+  allocation away entirely (confirmed via `testing.AllocsPerRun` — 0 allocs under normal `go build`/
+  `go test`) — so this was NOT a live perf bug today. Confirmed the underlying escape is nonetheless
+  real by re-running the same allocation test with inlining disabled (`-gcflags=-l`): 2 allocs/call.
+  Replaced with an inline FNV-1a accumulator over a local `uint64` (the same algorithm, unrolled) so the
+  zero-allocation property is UNCONDITIONAL — true regardless of inlining decisions, build flags, or a
+  future Go compiler no longer choosing to inline this call, rather than resting on today's inliner
+  behavior. Added `TestValueStripeGoldenVectors` (5 fixed-vector cases captured from the ORIGINAL
+  `fnv.New64a()`-based implementation before the rewrite, proving byte-for-byte equivalence — a
+  self-consistency check alone cannot catch an algorithm-drift bug in a rewrite) and
+  `TestValueStripeZeroAllocs` (`testing.AllocsPerRun`, confirmed load-bearing under `-gcflags=-l`: RED
+  against the original code with inlining disabled, GREEN against the rewrite either way). `go build`/
+  `go vet` clean; full `pkg/graph/internal/locks` package suite green including under `-race`; full
+  `pkg/graph/internal/core` package suite (the consumer of `ValueStripe` for unique-constraint
+  enforcement) green unchanged; full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

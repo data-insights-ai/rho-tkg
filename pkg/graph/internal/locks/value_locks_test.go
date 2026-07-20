@@ -9,12 +9,57 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 )
 
+// TestValueStripeZeroAllocs pins the BACKLOG 15g perf fix: ValueStripe must
+// not allocate. The prior fnv.New64a()-based implementation allocated its
+// concrete *sum64a to the heap on every call (hash.Hash64 is an interface),
+// once per constrained property per node write — a hot path.
+func TestValueStripeZeroAllocs(t *testing.T) {
+	value := []byte("s:alice@example.com")
+	allocs := testing.AllocsPerRun(100, func() {
+		_ = ValueStripe(3, 9, value)
+	})
+	if allocs != 0 {
+		t.Fatalf("ValueStripe allocated %.1f times per call, want 0", allocs)
+	}
+}
+
 func TestValueStripeInRange(t *testing.T) {
 	t.Parallel()
 	for i := 0; i < 1000; i++ {
 		s := ValueStripe(uint16(i), uint16(i*7), []byte{byte(i), byte(i >> 8)})
 		if int(s) >= ValueShardCount {
 			t.Fatalf("stripe %d out of range [0,%d)", s, ValueShardCount)
+		}
+	}
+}
+
+// TestValueStripeGoldenVectors pins the EXACT stripe values ValueStripe
+// produces for a fixed set of inputs — captured from the pre-BACKLOG-15g
+// fnv.New64a()-based implementation before it was replaced with an inline
+// FNV-1a accumulator (avoiding the heap-allocating hash.Hash64 interface on
+// every call). "Deterministic across process restarts" is a documented
+// contract (see ValueStripe's doc comment); a self-consistency check (call
+// twice, compare) cannot catch an algorithm-drift bug in a REWRITE the way
+// a golden vector can — this test is what proves the inline rewrite is
+// byte-for-byte equivalent to the original, not merely "still
+// self-consistent within itself".
+func TestValueStripeGoldenVectors(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		labelToken, keyToken uint16
+		value                []byte
+		want                 uint8
+	}{
+		{3, 9, []byte("s:alice@example.com"), 219},
+		{1, 1, []byte("s:aaa"), 117},
+		{2, 2, []byte("s:bbb"), 2},
+		{0, 0, []byte{}, 245},
+		{65535, 65535, []byte("x"), 171},
+	}
+	for _, c := range cases {
+		if got := ValueStripe(c.labelToken, c.keyToken, c.value); got != c.want {
+			t.Fatalf("ValueStripe(%d, %d, %q) = %d, want %d (golden vector — algorithm drift?)",
+				c.labelToken, c.keyToken, c.value, got, c.want)
 		}
 	}
 }

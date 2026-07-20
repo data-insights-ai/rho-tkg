@@ -1,8 +1,12 @@
-// Package integrity tests cover ComputeNodeHash, ComputeRelHash, and the
-// per-type-tag dispatch inside appendPropertyValue. The tests intentionally
-// pin the exact byte layout via fixed-vector SHA-256 anchors: any change to
-// the hash bytes invalidates every persisted tkg_hash / tkg_prev_hash, so
-// silent algorithm drift must trip a test.
+// Package integrity tests cover ComputeNodeHash, ComputeRelHash, and
+// appendPropertyValue at the CALL level (property values round-tripping
+// through the hash). appendPropertyValue itself is a one-line forward to
+// pkg/types.appendPropertyValueHashBytes — the REAL per-type-tag property-
+// value switch lives there, and its own branch coverage (Rule 3) lives in
+// pkg/types/property_hash_test.go, not here. The tests in this package
+// intentionally pin the exact byte layout via fixed-vector SHA-256 anchors:
+// any change to the hash bytes invalidates every persisted tkg_hash /
+// tkg_prev_hash, so silent algorithm drift must trip a test.
 package integrity
 
 import (
@@ -408,11 +412,17 @@ func TestComputeRelHashChecked_MatchesUncheckedFastPath(t *testing.T) {
 	}
 }
 
-// --- per-type-switch-branch tests for appendPropertyValue ---
+// --- per-type-switch-branch tests, exercised through appendPropertyValue ---
 
-// Each test below triggers exactly one branch of the appendPropertyValue
-// type switch, then verifies (a) determinism and (b) sensitivity to value
-// change for that property type. Per CLAUDE.md Rule 3.
+// Each test below triggers exactly one branch of pkg/types's
+// appendPropertyValueHashBytes type switch (appendPropertyValue forwards to
+// it — see the package doc above), then verifies (a) determinism and
+// (b) sensitivity to value change for that property type, at the
+// ComputeNodeHash call level. This is INDIRECT coverage of that switch —
+// the direct, canonical Rule 3 branch coverage lives in
+// pkg/types/property_hash_test.go (TestAppendPropertyValueHashBytesAllBranches
+// and siblings); these tests additionally pin that each branch actually
+// participates correctly in the higher-level node-hash computation.
 
 func TestAppendPropertyValue_Nil(t *testing.T) {
 	// PropertySlice.Set accepts nil values directly via ValidatePropertyValue

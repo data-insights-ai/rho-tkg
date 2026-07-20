@@ -1,9 +1,18 @@
 package locks
 
 import (
-	"hash/fnv"
 	"sort"
 	"sync"
+)
+
+// FNV-1a 64-bit constants (matches hash/fnv's fnv.New64a()). Inlined below
+// instead of using fnv.New64a() directly — BACKLOG 15g: hash.Hash64 is an
+// interface, so New64a()'s concrete *sum64a escapes to the heap on every
+// ValueStripe call (once per constrained property per node write, a hot
+// path). Accumulating over a local uint64 keeps this allocation-free.
+const (
+	fnvOffset64 uint64 = 14695981039346656037
+	fnvPrime64  uint64 = 1099511628211
 )
 
 // ValueShardCount is the number of mutex stripes held by ValueManager.
@@ -40,17 +49,19 @@ func NewValueManager() *ValueManager { return &ValueManager{} }
 
 // ValueStripe returns the stripe index for a constrained value triple.
 // Deterministic across process restarts (FNV-1a over label token, key token,
-// and the canonical value bytes).
+// and the canonical value bytes) — byte-for-byte equivalent to hashing the
+// same 4-byte header + value through fnv.New64a(), see the golden-vector
+// test pinning this.
 func ValueStripe(labelToken, keyToken uint16, value []byte) uint8 {
-	h := fnv.New64a()
-	var hdr [4]byte
-	hdr[0] = byte(labelToken)
-	hdr[1] = byte(labelToken >> 8)
-	hdr[2] = byte(keyToken)
-	hdr[3] = byte(keyToken >> 8)
-	_, _ = h.Write(hdr[:])
-	_, _ = h.Write(value)
-	return uint8(h.Sum64() & (ValueShardCount - 1)) // #nosec G115 — masked to 8 bits
+	h := fnvOffset64
+	h = (h ^ uint64(byte(labelToken))) * fnvPrime64
+	h = (h ^ uint64(byte(labelToken>>8))) * fnvPrime64
+	h = (h ^ uint64(byte(keyToken))) * fnvPrime64
+	h = (h ^ uint64(byte(keyToken>>8))) * fnvPrime64
+	for _, b := range value {
+		h = (h ^ uint64(b)) * fnvPrime64
+	}
+	return uint8(h & (ValueShardCount - 1)) // #nosec G115 — masked to 8 bits
 }
 
 // LockValue acquires the stripe for one constrained value triple and returns

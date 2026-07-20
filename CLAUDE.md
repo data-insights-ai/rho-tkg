@@ -203,7 +203,7 @@ Each sub-API package declares a local `Ops` interface listing only the methods i
 | `internal/locks` | `Manager` — 256-shard entity-lock manager, `LockEntity`/`LockTwo`/`LockThree`/`LockMany` in ascending order. |
 | `internal/registry` | `LabelRegistry`, `RelTypeRegistry`, and `PropertyKeyRegistry` — thread-safe string-to-uint16 token registries (`AppendNames`/`RollbackNames`/`ImportNames` grow/restore primitives). Internal — not public API. |
 | `internal/index` | In-memory indexes only: property index, vector index, high-frequency temporal index, `OntologyMapping`. The label/reltype registries live in `internal/registry`. |
-| `internal/integrity` | Pure SHA-256 hash primitives — `ComputeNodeHash`, `ComputeRelHash`, `appendProperties`, `appendPropertyValue`. Five fixed-vector hash anchors lock the on-disk hash format. |
+| `internal/integrity` | Pure SHA-256 hash primitives — `ComputeNodeHash`, `ComputeRelHash`, `appendProperties`, `appendPropertyValue` (a one-line forward — the actual per-type-tag property-value switch lives in `pkg/types.appendPropertyValueHashBytes`; Rule 3 branch-coverage for that switch belongs to `pkg/types/property_hash_test.go`, not this package). Five fixed-vector hash anchors lock the on-disk hash format. |
 
 ### Configuration
 

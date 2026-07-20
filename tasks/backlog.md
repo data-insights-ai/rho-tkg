@@ -272,16 +272,10 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 - **15f. `propertyToWire`'s `ptCustom` branch does a full marshal+reflect-unmarshal+2×hash+compare
   round-trip on *every write*, not just type-registration time (MEDIUM, perf, may be intentional
   defense-in-depth).** `storeutil/wire_value.go:429-464`.
-- **15g. `ValueStripe` calls `fnv.New64a()` (heap-allocating interface) on every invocation — once per
-  constrained property per node write (MEDIUM, perf).** `internal/locks/value_locks.go:44-53`. Fix:
-  inline FNV-1a over a local `uint64` accumulator.
 - **15h. `TestKeyPrefixesNonOverlapping` omits the 3 newest production key-prefix tags
   (`KeyChangeLog`/`KeyPropertyIndex`/`KeyTemporalIndex`); dead test scaffold aliases real production
   byte values (MEDIUM, test-gap + code smell, zero prod risk).** `storeutil/keys_test.go:297-309`,
   `keys_helpers_test.go:11-14`.
-- **15i. `integrity_test.go`/CLAUDE.md attribute the per-type-tag property-value switch to
-  `internal/integrity`, but the real switch lives in `pkg/types` — Rule 3 gets enforced against the
-  wrong location (MEDIUM, doc/attribution).**
 - **15j. `EnvelopeOverlaps` (backs the B4 candidate-prune optimization on every history-aware temporal
   scan) has no direct unit test anywhere — only indirect (LOW-MEDIUM, Rule 1).**
   `storeutil/temporal_filter.go:37`.
