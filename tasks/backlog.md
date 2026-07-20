@@ -216,11 +216,10 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   `PrevHash` accepted when the lowest retained version has no compaction stub (MEDIUM, intentional
   backward-compat tradeoff).** `internal/core/integrity.go:126-167`. Any out-of-band row removal *not*
   via `CompactHistoryNodes`/`Rels` is undetectable by `Verify*Chain`.
-- **13j. Transient in-memory activation on the persist-failure path in `createUnique` — narrow
-  self-healing race window (LOW).** `unique_constraints.go:339-353`.
 - **13l. `Admin.Reset`'s correctness depends on a hand-maintained, unenforced checklist of `reap*`
   calls — no test asserting every MetaKV prefix is reaped-or-documented-safe (LOW, latent cross-backend
   divergence risk for future MetaKV features).** `admin.go:250-268`.
+
 ### BACKLOG 14 — Index / docvalues / stats / vector / events hardening (graph layer)
 
 - **14e. Two sibling stats doors disagree on capability-check-vs-label-lookup ordering — inconsistent

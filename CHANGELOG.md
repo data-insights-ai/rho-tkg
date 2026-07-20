@@ -687,6 +687,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   short-circuiting the `foreign` decline branch both turned the relevant tests RED, then reverted.
   `go build`/`go vet` clean; full `pkg/graph/store/badger` package suite green including under `-race`
   (200s); full-repo `go test ./...` clean.
+- FIX — BACKLOG 13j: `createUnique`'s Phase 3 (activate + persist) unlocked `uniqueMu` right after
+  setting `st.active = true` and attempting the durable `MetaSet`, checked the persist error, and only
+  THEN re-acquired `uniqueMu` (via `uninstallPendingConstraint`) to roll back a failed activation — a
+  narrow window in which a concurrent reader taking `uniqueMu` could observe (and be transiently,
+  wrongly rejected by) a constraint that was never actually made durable. Fixed by keeping the
+  rollback INSIDE the same critical section as the failed activation (`removeConstraintLocked` called
+  before `uniqueMu.Unlock()`, never after), so external code now has a timing-INDEPENDENT guarantee
+  that intermediate state is never observable — not merely an unlikely race. Added
+  `TestCreateUnique_PersistFailureNeverExposesActiveConstraintToConcurrentReader`, blocking the
+  persisting `MetaSet` call deterministically (via a small `blockingFailUniqueMetaKV` swapped directly
+  into `g.metaKV` post-`New()` — wrapping the whole `Store` was not viable, since `createUnique`'s
+  property-index auto-ensure step requires `PropertyIndexCapability`, which `core.go`'s
+  `isExactNativeStore` "wrapper-visibility guard" deliberately declines for any non-native wrapper) and
+  confirming a racing goroutine stays blocked on `uniqueMu` for the duration of the in-flight write.
+  Honest load-bearing note: against the UNFIXED code this test is not reliably RED under natural Go
+  scheduling — the buggy window (`Unlock`, then immediately re-`Lock` with no intervening work) is too
+  narrow for the runtime to reliably interleave a racer into. Confirmed the race is real, not
+  hypothetical, by temporarily widening it with an artificial `time.Sleep` between the buggy `Unlock`
+  and the re-`Lock`: with the window widened the same test turned reliably RED, then GREEN again once
+  the sleep was removed and the real single-critical-section fix was restored (the temporary sleep was
+  never committed). `go build`/`go vet` clean; full `pkg/graph/internal/core` package suite green
+  including under `-race` (137s, 10x repeat of the new test with `-race` also clean); full-repo `go
+  test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

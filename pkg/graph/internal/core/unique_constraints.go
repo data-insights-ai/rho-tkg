@@ -359,7 +359,15 @@ func (c *Core) createUnique(ctx context.Context, label, propKey string, scope co
 		return fmt.Errorf("%w: label %q key %q; offenders %v", ErrUniqueViolationExisting, label, propKey, offenders)
 	}
 
-	// Phase 3: activate + persist.
+	// Phase 3: activate + persist. BACKLOG 13j: on a persist failure, the
+	// uninstall happens INSIDE this same critical section (never releasing
+	// uniqueMu between the failed persist and the removal), so no concurrent
+	// reader can ever observe st.active=true for a constraint whose
+	// activation is about to be rolled back — the prior code unlocked
+	// uniqueMu before checking the persist error, then re-acquired it in
+	// uninstallPendingConstraint, leaving a narrow window where a concurrent
+	// writer could see (and be transiently rejected by) a constraint that
+	// was never actually durable.
 	c.uniqueMu.Lock()
 	st, ok := c.lookupConstraintLocked(labelTok, propKey)
 	if !ok {
@@ -369,11 +377,12 @@ func (c *Core) createUnique(ctx context.Context, label, propKey string, scope co
 	}
 	st.active = true
 	err = c.storeUniqueConstraintsLocked(mk)
-	c.uniqueMu.Unlock()
 	if err != nil {
-		c.uninstallPendingConstraint(labelTok, propKey)
+		c.removeConstraintLocked(labelTok, propKey)
+		c.uniqueMu.Unlock()
 		return err
 	}
+	c.uniqueMu.Unlock()
 
 	// UniqueForever: seed ownership from the current values so existing entities
 	// own the values they already hold (validation above guaranteed no current
