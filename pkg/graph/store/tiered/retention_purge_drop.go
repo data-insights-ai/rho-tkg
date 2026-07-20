@@ -13,8 +13,30 @@ import (
 
 // coldShardDrainSpinLimit bounds the drain wait so a wedged in-flight request cannot
 // stall a purge forever. On timeout the shard is RE-LINKED and left to the row-scan
-// path (safe — the fast-drop is a pure optimization). ~5s at 1ms/spin.
+// path (safe — the fast-drop is a pure optimization). ~5s at 1ms/spin. Reused by
+// Close()'s drains (BACKLOG 19n, drainActiveReqsBounded in tieredstore.go) — same
+// bound, same "a wedged counter must not stall forever" rationale.
 const coldShardDrainSpinLimit = 5000
+
+// ErrDrainTimeout is returned (wrapped) when a bounded active-request drain hits
+// coldShardDrainSpinLimit without reaching zero — signals a checkin leak elsewhere
+// rather than normal in-flight traffic finishing late.
+var ErrDrainTimeout = errors.New("graph: active-request drain timed out")
+
+// drainActiveReqsBounded spin-waits (1ms/iteration) for load() to reach <= 0, up to
+// coldShardDrainSpinLimit iterations (~5s). Returns true if drained, false on
+// timeout — the caller decides what to do (report and proceed; a wedged counter
+// must never make a lifecycle method like Close() hang forever, unlike the purge
+// protocol which can safely fall back to a slower path instead).
+func drainActiveReqsBounded(load func() int64) bool {
+	for i := 0; i < coldShardDrainSpinLimit; i++ {
+		if load() <= 0 {
+			return true
+		}
+		time.Sleep(time.Millisecond)
+	}
+	return false
+}
 
 // fastDropEligibleShards physically DROPS wholly-aged-out single-label event shards
 // (ADR-0008 R4 optimization) instead of row-scanning them, for a ByAge purge with the

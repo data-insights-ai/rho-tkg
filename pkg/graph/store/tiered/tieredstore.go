@@ -674,12 +674,16 @@ func (ts *Store) Close() error {
 		// shard stores. Badger v4 WriteBatch.Flush blocks forever on a
 		// closed DB (CLAUDE.md: closeIdleShards uses the same pattern), so
 		// closing while a long-running RunRepair/VerifyShard still holds a
-		// checkout would deadlock that caller. Spin-wait with a short
-		// sleep — Close is rare and the wait is bounded by whatever
-		// outermost admin call is in flight.
+		// checkout would deadlock that caller. Bounded spin-wait (BACKLOG
+		// 19n — mirrors the purge protocol's coldShardDrainSpinLimit
+		// instead of spinning forever): Close is rare and the wait is
+		// normally bounded by whatever outermost admin call is in flight,
+		// but a checkin leak elsewhere must not hang Close() forever —
+		// report it and proceed anyway, since Close has no fallback but to
+		// terminate.
 		for _, es := range ts.eventShards {
-			for es.activeReqs.Load() > 0 {
-				time.Sleep(time.Millisecond)
+			if !drainActiveReqsBounded(es.activeReqs.Load) {
+				closeErr = errors.Join(closeErr, fmt.Errorf("graph: close event shard %s: %w (checkin leak?)", es.name, ErrDrainTimeout))
 			}
 		}
 
@@ -702,10 +706,11 @@ func (ts *Store) Close() error {
 		// archiveActiveReqs first so a concurrent AllNodeHistoryIDs /
 		// ForEachNodeHistoryID / similar archive reader cannot race the
 		// underlying db.Close() — same Badger v4 Flush-on-closed-DB
-		// concern as event shards above.
+		// concern as event shards above. Bounded (BACKLOG 19n) — see the
+		// event-shard drain above for the rationale.
 		if archive != nil {
-			for ts.archiveActiveReqs.Load() > 0 {
-				time.Sleep(time.Millisecond)
+			if !drainActiveReqsBounded(ts.archiveActiveReqs.Load) {
+				closeErr = errors.Join(closeErr, fmt.Errorf("graph: close ref archive: %w (checkin leak?)", ErrDrainTimeout))
 			}
 			if err := archive.Close(); err != nil {
 				closeErr = errors.Join(closeErr, fmt.Errorf("graph: close ref archive: %w", err))
@@ -714,9 +719,10 @@ func (ts *Store) Close() error {
 
 		// Close reference shard. Drain refActiveReqs first so public
 		// store methods that already passed checkOpen cannot have the
-		// Badger handle closed underneath a read/write call.
-		for ts.refActiveReqs.Load() > 0 {
-			time.Sleep(time.Millisecond)
+		// Badger handle closed underneath a read/write call. Bounded
+		// (BACKLOG 19n) — see the event-shard drain above for the rationale.
+		if !drainActiveReqsBounded(ts.refActiveReqs.Load) {
+			closeErr = errors.Join(closeErr, fmt.Errorf("graph: close ref shard: %w (checkin leak?)", ErrDrainTimeout))
 		}
 		if ts.refShard != nil {
 			if err := ts.refShard.Close(); err != nil {

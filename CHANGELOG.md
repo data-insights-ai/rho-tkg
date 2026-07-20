@@ -1466,6 +1466,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   tiered is a real feature gap, scoped out as a `BACKLOG 21`-class missing-feature item rather than a
   hardening-sweep fix. `go build`/`go vet` clean; `pkg/graph/store/tiered` package suite green;
   full-repo `go test ./...` clean.
+- DOCUMENTATION FIX — BACKLOG 19r: `queryEventShardIndices`'s (`tieredstore_read_fanout.go`) per-index
+  `currentTier() == TierCold` recheck had no comment explaining why it can fire — the caller
+  (`queryEventShards`) already partitions shards into parallel-safe vs. cold BEFORE calling this
+  function, so at a glance the recheck looks like unreachable dead code a future "cleanup" could
+  remove. It is a genuine (if narrow-window) TOCTOU defense: a shard can be demoted to cold by a
+  concurrent `closeIdleShards` in the window between the caller's up-front partition and a worker
+  goroutine actually reaching that shard. Added a comment explaining the race, WHY cold shards are
+  processed differently in the first place (bounding how many can be concurrently open, since cold
+  shards are lazily opened and aggressively idle-closed — not because concurrent access to a single
+  cold shard is otherwise known to be unsafe), and an explicit "do not remove as dead code" note.
+  Documentation only, no behavior change.
+- FIX — BACKLOG 19n: `Close()`'s three active-request drains (event shards, ref archive, reference
+  shard — `tieredstore.go`) spin-waited on `activeReqs`/`archiveActiveReqs`/`refActiveReqs` reaching
+  zero with NO bound, unlike the purge protocol's `coldShardDrainSpinLimit`-bounded drain in the same
+  package (lesson 24, "bound every retry loop"). A checkin leak anywhere (a bug this doesn't cause,
+  but must not compound) would hang `Close()` forever instead of surfacing the problem — a lifecycle
+  method with no way to time out is worse than the purge protocol's equivalent gap, since purge can
+  safely fall back to a slower path on timeout while `Close()` has no fallback but to terminate.
+  Extracted `drainActiveReqsBounded` (reusing `coldShardDrainSpinLimit`, ~5s at 1ms/spin) and a new
+  `ErrDrainTimeout` sentinel; all three drains now report-and-proceed on timeout instead of spinning
+  forever, joining the error into `Close()`'s existing `closeErr` aggregation. Added
+  `TestTieredClose_LeakedEventShardCheckinTimesOutInsteadOfHanging`/
+  `TestTieredClose_LeakedRefShardCheckinTimesOutInsteadOfHanging`: simulate a leaked checkin via the
+  `*ActiveReqsForTest` accessors, then call `Close()` from a goroutine with an 8s test-level deadline,
+  asserting it returns (with a wrapped `ErrDrainTimeout`) rather than hanging. Confirmed load-bearing
+  via a genuine reproduction, not just a code-diff argument: reverting the fix (with a temporary local
+  stub for the removed `ErrDrainTimeout` identifier so the old code could still compile) made
+  `Close()` actually hang past the test's 8s deadline (`"Close() did not return within 8s"`); restored,
+  both tests GREEN in ~6.3s (close to the ~5s bound plus overhead). `go build`/`go vet` clean; full
+  `pkg/graph/store/tiered` package suite green including under `-race` (67s); full-repo
+  `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

@@ -418,17 +418,11 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 - **19m. Duplicated cross-shard residue-sweep logic between `sweepDroppedShardResidue` and
   `purgeNodesFanOut`'s phase 2 — a future fix to one is likely to miss the other (LOW).**
   `retention_purge_drop.go:167-200` vs `retention_purge.go:98-125`.
-- **19n. Unbounded spin-wait in `Close()`'s shard drains, inconsistent with the bounded/timed-out
-  drain used by the purge protocol (LOW, requires a pre-existing checkin leak to trigger).**
-  `tieredstore.go:679-683,706-708,717-719`.
 - **19p. Dead defensive-only bound check would silently swallow the exact invariant violation 19c
   would produce, instead of surfacing it (LOW).** `tieredstore_changelog.go:415-419`.
 - **19q. Global `nodeCreateMu`/`relCreateMu` serialize ALL creates store-wide — a hard throughput
   ceiling for the stated TB/day workload, likely unavoidable given the correctness requirement (LOW,
   scaling constraint, not obviously cheap to fix).** `tieredstore.go:257-258`.
-- **19r. Under-commented TOCTOU defense in fanout cold-shard reclassification — real but narrow-
-  window, reads as removable dead code to a future maintainer (LOW).**
-  `tieredstore_read_fanout.go:26-59`.
 ### BACKLOG 20 — Sharded backend hardening (WIP status)
 
 - **20e. §4.5 pre-encoded-put fast path never routed for sharded despite the capability being
