@@ -1254,6 +1254,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   CLAUDE.md's own account of its bitemporal testing rules and hard-won lessons — it deserves
   dedicated design and a full bitemporal-correctness verification pass of its own, not a speed
   patch folded into a broader sweep. See `tasks/backlog.md` 18k for the full writeup.
+- FIX — BACKLOG 18l: `PutRelEntityAndOut`/`DeleteRelEntityAndOut` (`badgerstore_partial.go`, the
+  cross-shard split-write legs TieredStore uses for the entity-bearing side of a relationship) wrote
+  the entity/type-index/outgoing-adjacency keys and updated `relCount`/type counters, but skipped the
+  rel property-index (`maintainRelPropertyIndexesAdd`/`Remove`) and type-class-count
+  (`addRelPropertyTypeClassCounts`/`removeRelPropertyTypeClassCountsByID`) maintenance every other
+  rel-write door performs. Unlike the incoming-adjacency key these doors deliberately skip (which
+  genuinely belongs to the endpoint's shard), the relationship ENTITY — including all its property
+  values — is fully resident on this shard, so there is no structural reason to skip its property-
+  index/type-class contribution; this reads as an oversight from when the partial-write helpers were
+  introduced, not a deliberate omission. Currently unreachable in practice (TieredStore's own routing
+  declines both capabilities for split writes), but both are EXPORTED `Store` methods any direct
+  caller could invoke and silently get a rel property index / type-class-count set that drifts from
+  the true relationship set. Fixed by mirroring `PutRelationship`'s/`deleteRelByInfo`'s exact
+  maintenance calls at the same lock scope; the delete side uses the PRECISE value-based
+  `maintainRelPropertyIndexesRemove(r, id)` (the full pre-delete relationship is already fetched for
+  `RelDeleteInfo`) rather than the brute-force ID-only purge `deleteRelByInfo` falls back to when it
+  has no relationship value to work from. Added
+  `TestPutAndDeleteRelEntityAndOut_MaintainRelPropertyIndexAndTypeClassCounts`: creates a rel property
+  index, writes a relationship via `PutRelEntityAndOut` with an indexed property, confirms it's
+  findable via `RelationshipsByTypeAndProperty` and counted by `RelPropertyTypeClassCounts`, then
+  deletes it via `DeleteRelEntityAndOut` and confirms both are cleaned up. Confirmed load-bearing:
+  reverting the fix turns the test immediately RED (`RelationshipsByTypeAndProperty after
+  PutRelEntityAndOut = [], want [...]`); restored, GREEN. `go build`/`go vet` clean; full
+  `pkg/graph/store/badger` package suite green including under `-race` (148s); full-repo
+  `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

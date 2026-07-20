@@ -111,6 +111,80 @@ func TestPutRelEntityAndOutRejectsInvalidPayload(t *testing.T) {
 	}
 }
 
+// TestPutAndDeleteRelEntityAndOut_MaintainRelPropertyIndexAndTypeClassCounts
+// (BACKLOG 18l) pins that the partial-write doors keep the rel property index
+// and type-class counters in sync — the relationship ENTITY (unlike the
+// incoming-adjacency leg these doors deliberately skip) is fully resident on
+// this shard, so its property-value contribution is fully computable here.
+// Without this maintenance, a direct caller of these exported Store methods
+// (any caller, not just TieredStore) would see the rel property index and
+// RelPropertyTypeClassCounts silently drift from the true relationship set.
+func TestPutAndDeleteRelEntityAndOut_MaintainRelPropertyIndexAndTypeClassCounts(t *testing.T) {
+	bs := newTestBadgerStoreInMemory(t)
+
+	gen := newTestGen(t, 0)
+	n1 := types.NewNode(types.NodeID(gen.Generate()), 1, nil)
+	n2 := types.NewNode(types.NodeID(gen.Generate()), 1, nil)
+	if err := bs.PutNode(n1); err != nil {
+		t.Fatal(err)
+	}
+	if err := bs.PutNode(n2); err != nil {
+		t.Fatal(err)
+	}
+
+	const relType = 7
+	if err := bs.CreateRelPropertyIndex(relType, "amount"); err != nil {
+		t.Fatalf("CreateRelPropertyIndex: %v", err)
+	}
+
+	relGen := newTestGen(t, 1)
+	relID := relGen.Generate()
+	r := types.NewRelationship(types.RelID(relID), relType, n1.ID(), n2.ID())
+	if err := r.SetProperty("amount", int64(42)); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := bs.PutRelEntityAndOut(r); err != nil {
+		t.Fatalf("PutRelEntityAndOut: %v", err)
+	}
+
+	found, err := bs.RelationshipsByTypeAndProperty(relType, "amount", int64(42), QueryOpts{})
+	if err != nil {
+		t.Fatalf("RelationshipsByTypeAndProperty: %v", err)
+	}
+	if len(found) != 1 || found[0].ID().SnowflakeID() != relID {
+		t.Fatalf("RelationshipsByTypeAndProperty after PutRelEntityAndOut = %v, want [%d]", found, relID)
+	}
+
+	counts, err := bs.RelPropertyTypeClassCounts(relType, "amount")
+	if err != nil {
+		t.Fatalf("RelPropertyTypeClassCounts: %v", err)
+	}
+	if counts.Numeric != 1 {
+		t.Fatalf("RelPropertyTypeClassCounts.Numeric after PutRelEntityAndOut = %d, want 1", counts.Numeric)
+	}
+
+	if _, err := bs.DeleteRelEntityAndOut(relID); err != nil {
+		t.Fatalf("DeleteRelEntityAndOut: %v", err)
+	}
+
+	found, err = bs.RelationshipsByTypeAndProperty(relType, "amount", int64(42), QueryOpts{})
+	if err != nil {
+		t.Fatalf("RelationshipsByTypeAndProperty after DeleteRelEntityAndOut: %v", err)
+	}
+	if len(found) != 0 {
+		t.Fatalf("RelationshipsByTypeAndProperty after DeleteRelEntityAndOut = %v, want none", found)
+	}
+
+	counts, err = bs.RelPropertyTypeClassCounts(relType, "amount")
+	if err != nil {
+		t.Fatalf("RelPropertyTypeClassCounts after delete: %v", err)
+	}
+	if counts.Numeric != 0 {
+		t.Fatalf("RelPropertyTypeClassCounts.Numeric after DeleteRelEntityAndOut = %d, want 0", counts.Numeric)
+	}
+}
+
 func TestPutRelIncoming_CreatesInIdxOnly(t *testing.T) {
 	bs := newTestBadgerStoreInMemory(t)
 

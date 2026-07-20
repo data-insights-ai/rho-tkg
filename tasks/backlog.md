@@ -370,9 +370,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   dedicated design + a full bitemporal-correctness verification pass, not a speed-fix folded into a
   broader backlog sweep. Recommend a dedicated follow-up.** `badgerstore_txtime.go:74-115` (`reverse
   ScanHistoryVersion`), `:182-` (`NodeAsOf`), `:285-333,336-384` (`NodesAsOf`/`RelsAsOf`).
-- **18l. `PutRelEntityAndOut`/`DeleteRelEntityAndOut` skip rel property-index and type-class-count
-  maintenance — currently harmless (TieredStore declines both) but these are exported `Store` methods
-  any direct caller could invoke (LOW-MEDIUM).** `badgerstore_partial.go`.
 - **18m. Oversized-WAL migration guard doesn't cover the "explicit `MemTableSize` reverted to 0
   (stock)" transition — could reproduce the lesson-45 crash via a different input path than the one
   that's tested (LOW-MEDIUM).** `badgerstore.go:720-762`.

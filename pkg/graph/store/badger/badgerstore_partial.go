@@ -109,6 +109,14 @@ func (bs *Store) PutRelEntityAndOut(r *types.Relationship) error {
 		{opType: writeOpSet, key: storepkg.OutKey(startID, relType, endID, id)},
 	}
 
+	// BACKLOG 18l: the rel entity is fully resident on THIS shard (unlike the
+	// inIdx key it deliberately skips), so its property index / type-class-
+	// count contribution is fully computable here too — mirror
+	// PutRelationship's maintenance exactly rather than leaving these caught
+	// up only via the full door.
+	bs.maintainRelPropertyIndexesAdd(r, id)
+	bs.addRelPropertyTypeClassCounts(r)
+
 	bs.appendOps(ops...)
 	bs.relCount.Add(1)
 	bs.getOrCreateTypeCounter(relType).Add(1)
@@ -233,6 +241,13 @@ func (bs *Store) DeleteRelEntityAndOut(id snowflake.ID) (RelDeleteInfo, error) {
 	}
 
 	// NO inIdx cleanup — the in/ key lives in the endpoint's shard.
+
+	// BACKLOG 18l: mirror deleteRelByInfo's maintenance. r (the full
+	// pre-delete relationship, already fetched above for info) is available,
+	// so the precise value-based removal is used rather than the brute-force
+	// purge deleteRelByInfo falls back to when only RelDeleteInfo is known.
+	bs.maintainRelPropertyIndexesRemove(r, id)
+	bs.removeRelPropertyTypeClassCountsByID(id, info.RelType)
 
 	ops := []writeOp{
 		{opType: writeOpDelete, key: storepkg.RelKey(id)},
