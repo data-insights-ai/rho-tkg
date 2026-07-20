@@ -132,8 +132,20 @@ func (ms *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 			relIDs[relID] = struct{}{}
 		}
 		for relID := range relIDs {
-			if _, live := ms.rels[relID]; live {
+			if r, live := ms.rels[relID]; live {
 				relsPurged++ // count only rows actually removed (parity with badger)
+				// BACKLOG 17f: unlike a normal delete, retention purge erases
+				// the relationship's history entirely and advances the
+				// retention watermark below which no read can ever be pinned
+				// again — so, unlike the append-only-superset contract a
+				// normal delete relies on for correctness, a purged rel's
+				// K1 transaction-time membership entry can never legitimately
+				// be needed again. Reap it now instead of leaking it forever.
+				if ms.relTypeTxMembers != nil {
+					if tok := r.TypeToken().Value(); tok != 0 {
+						delete(ms.relTypeTxMembers[tok], relID)
+					}
+				}
 			}
 			if err := ms.deleteRelOrPurgeOrphanLocked(relID); err != nil {
 				return zero, err
@@ -149,6 +161,18 @@ func (ms *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 		indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, n, rawID)
 		indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, n, rawID)
 		indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, n, rawID)
+		// BACKLOG 17f: same rationale as the rel-type reap above, for every
+		// label token the CURRENT version carries (a cheap, node-local
+		// iteration — not a full-history label scan, so a label the node
+		// carried earlier in its history and later dropped can still leave a
+		// residual entry; the sidecar's append-only-superset soundness means
+		// that residual is harmless, just not fully reclaimed).
+		if ms.labelTxMembers != nil {
+			labelCount := n.LabelTokenCount()
+			for i := 0; i < labelCount; i++ {
+				delete(ms.labelTxMembers[n.LabelTokenRawAt(i)], nid)
+			}
+		}
 		delete(ms.nodes, nid)
 		delete(ms.nodeHistory, nid) // purge the node's whole history too
 		nodesPurged++

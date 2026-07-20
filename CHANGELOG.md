@@ -130,6 +130,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   removed pointer-identity check was also fully redundant with the existing count-based check for
   genuine over-return corruption, since a returned row's ID is intrinsic to the pointer. Inverted the
   pre-existing test that had pinned the old (incorrect) rejection.
+- PERF/FIX — memory store's retention purge now reaps the purged entities' K1 transaction-time
+  membership sidecar entries (`labelTxMembers`/`relTypeTxMembers`) instead of leaking them forever
+  (BACKLOG 17f). Unlike a normal delete — where the sidecar's append-only-superset design is required
+  for correctness, since history stays queryable — a retention-purged entity's entire history is
+  erased and the retention watermark advances below which no pin can ever reach it again, so reaping
+  is correctness-neutral. Without this, every pinned label/type scan on a high-volume event workload
+  paid an ever-growing cost considering phantom candidates for entities purged specifically to bound
+  memory — defeating retention purge's own purpose. New regression test proves purged IDs are reaped
+  from both sidecars while a surviving same-label entity's entry is untouched.
 
 ## [4.23.0] - 2026-07-18
 

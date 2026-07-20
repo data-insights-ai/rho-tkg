@@ -2039,10 +2039,39 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 - **17e. `MemoryStore` never honors `QueryOpts.NoSort` — silent perf-parity gap with badger, which
   does honor it (MEDIUM, not user-visible incorrectness, but breaks memory's role as an oracle for
   NoSort's performance characteristic).** `store/memory/memorystore_query.go` and scan files.
-- **17f. Retention purge leaves permanent dangling entries in `labelTxMembers`/`relTypeTxMembers` —
-  unbounded memory leak combined with pinned scans (MEDIUM, soundness-preserving but defeats
-  retention purge's whole memory-bounding purpose for high-volume event workloads).**
-  `store/memory/memorystore_retention_purge.go:117-152`.
+- **17f. [FIXED — `store/memory/memorystore_retention_purge.go`,
+  `store/memory/memorystore_retention_purge_txmembers_test.go`] Retention purge left permanent
+  dangling entries in `labelTxMembers`/`relTypeTxMembers` — unbounded memory leak combined with
+  pinned scans (MEDIUM, soundness-preserving but defeats retention purge's whole memory-bounding
+  purpose for high-volume event workloads).** `store/memory/memorystore_retention_purge.go:117-152`.
+
+  **Why this is safe (unlike a normal delete).** The K1 sidecar's doc comment is explicit that
+  removal/delete are deliberate no-ops — an APPEND-ONLY SOUND SUPERSET, since a normal delete's
+  history stays queryable and a pin BEFORE the delete must still admit the entity. Retention purge is
+  categorically different: it erases the entity's ENTIRE history (no tombstone) and advances the
+  retention watermark below which `NodesAsOf`/`ByLabel`-with-a-pin/etc. always fail closed with
+  `ErrRetentionExpired` — so there is NO legitimate future query state that could ever need a purged
+  entity's sidecar entry again. Reaping it is therefore a correctness-neutral, pure memory-bounding
+  win, not a soundness trade-off.
+
+  **Fix.** In `purgeNodesByLabel`'s per-victim cleanup: for each purged relationship, delete its ID
+  from `relTypeTxMembers[relType]` (exact — a relationship has exactly one type token, read from the
+  live row before deletion). For each purged node, delete its ID from `labelTxMembers[tok]` for every
+  label token the CURRENT version carries (a cheap, node-local iteration over the already-in-hand `n`,
+  not a full-history label scan) — a label the node carried earlier in its history and later dropped
+  can still leave a residual sidecar entry, but that residual stays harmless under the sidecar's own
+  append-only-superset soundness guarantee, just not fully reclaimed; the common case (an event node's
+  one lifelong label) is fully covered. Both `PurgeNodesByLabelBefore` (age) and
+  `PurgeNodesByLabelValidToBefore` (valid-to) share this body, so the fix applies to both purge modes.
+
+  **Tests.** `TestMemoryPurgeNodesByLabelBefore_ReapsLabelAndRelTypeTxMembers`: builds both sidecars
+  via `ForEachLabelTxMember`/`ForEachRelTypeTxMember` from current state (mirroring a pinned scan
+  having already run once), purges 3 aged-out event nodes + their 3 edges while a survivor node of the
+  same label stays, then asserts the purged IDs are gone from both sidecars while the survivor's entry
+  is untouched (guards against an over-aggressive reap). RED confirmed via `git stash push` on the
+  production file alone: the purged node was still present post-purge. Popped the stash, confirmed
+  GREEN. `go build ./...` + `go vet ./...` clean; `go test ./pkg/graph/store/memory/...` clean;
+  `go test -race ./pkg/graph/store/memory/...` clean (40s); full repo `go test ./...` clean.
 - **17g. `snapshotChangesLocked` is O(total log size) per call instead of O(returned records) — O(n²)
   to fully drain via small-limit polling (LOW-MEDIUM, severity capped since the memory changelog is
   explicitly a non-durable test/parity facility).** `store/memory/memorystore_changelog.go:262-278`.
