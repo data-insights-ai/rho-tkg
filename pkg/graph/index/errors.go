@@ -22,13 +22,24 @@ var ErrIndexProviderEmptyName = errors.New("graph: index provider Name must be n
 
 // Index sentinel errors returned by g.Index operations. Canonical declarations
 // live in pkg/graph/store because the optional Store capability interfaces
-// live there. These aliases keep the g.Index package a complete error-checking
-// surface for callers already importing it.
+// live there. These aliases keep the g.Index package a complete
+// error-checking surface for every error this package's OWN doors
+// (CreateProperty/CreateRelProperty/CreateComposite/CreateTemporal/
+// CreateHighFrequency/CreateVector*) can return — NOT a complete inventory of
+// every store-level index sentinel (e.g. ErrInvalidShardDepth/
+// ErrInvalidQueryLimit/ErrInvalidQueryCursor/ErrOrderedScanTemporal belong to
+// the ordered range-scan doors on g.Nodes()/g.Rels(), not this package; see
+// pkg/graph/errors.go for the full re-export inventory).
 var (
-	ErrVectorIndexExists          = storepkg.ErrVectorIndexExists
-	ErrVectorIndexNotFound        = storepkg.ErrVectorIndexNotFound
-	ErrDimensionMismatch          = storepkg.ErrDimensionMismatch
-	ErrInvalidTemporalIndexConfig = storepkg.ErrInvalidTemporalIndexConfig
-	ErrInvalidVectorIndexConfig   = storepkg.ErrInvalidVectorIndexConfig
-	ErrInvalidVectorValue         = storepkg.ErrInvalidVectorValue
+	ErrIndexExists                 = storepkg.ErrIndexExists
+	ErrIndexNotFound               = storepkg.ErrIndexNotFound
+	ErrTemporalIndexExists         = storepkg.ErrTemporalIndexExists
+	ErrTemporalIndexNotFound       = storepkg.ErrTemporalIndexNotFound
+	ErrRelPropertyIndexUnsupported = storepkg.ErrRelPropertyIndexUnsupported
+	ErrVectorIndexExists           = storepkg.ErrVectorIndexExists
+	ErrVectorIndexNotFound         = storepkg.ErrVectorIndexNotFound
+	ErrDimensionMismatch           = storepkg.ErrDimensionMismatch
+	ErrInvalidTemporalIndexConfig  = storepkg.ErrInvalidTemporalIndexConfig
+	ErrInvalidVectorIndexConfig    = storepkg.ErrInvalidVectorIndexConfig
+	ErrInvalidVectorValue          = storepkg.ErrInvalidVectorValue
 )

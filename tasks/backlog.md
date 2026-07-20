@@ -65,10 +65,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 7 — Public façade & thin sub-API wrapper hardening
 
-- **7d. `index/errors.go` doc comment overclaims completeness (LOW-MEDIUM).** `index/errors.go:23-26`
-  — missing `ErrIndexExists`, `ErrIndexNotFound`, `ErrTemporalIndexExists/NotFound`,
-  `ErrInvalidShardDepth`, `ErrInvalidQueryLimit/Cursor`, `ErrOrderedScanTemporal`,
-  `ErrRelPropertyIndexUnsupported` (all re-exported at `pkg/graph` level but not here).
 - **7e. Stale "Drop\*" doc comments on `Delete*` methods, 4 places (LOW).** `index/api.go:63-64,
   156-157, 174-175, 216-217` — leftover from a `Drop*`→`Delete*` rename.
 - **7f. Package doc's "complete public surface" list omits `Replication()` (LOW).** `graph.go:1-31`

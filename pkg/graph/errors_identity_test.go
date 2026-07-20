@@ -89,6 +89,26 @@ func TestSentinelAliasesShareIdentity(t *testing.T) {
 		"ProviderNotFound/graph=index":  {graphpkg.ErrIndexProviderNotFound, indexpkg.ErrIndexProviderNotFound},
 		"ProviderEmptyName/graph=index": {graphpkg.ErrIndexProviderEmptyName, indexpkg.ErrIndexProviderEmptyName},
 
+		// BACKLOG 7d: pkg/graph/index's own aliases of store-canonical index
+		// sentinels — index/errors.go declares these as a second surface
+		// (alongside pkg/graph's) so callers who only import g.Index() can
+		// errors.Is against a store-package sentinel without also importing
+		// pkg/graph/store directly. Previously only the 3 provider sentinels
+		// above were cross-checked here; every other index/errors.go alias
+		// (added or pre-existing) had no identity guard against silent
+		// re-declaration drift.
+		"IndexExists/index=store":                 {indexpkg.ErrIndexExists, storepkg.ErrIndexExists},
+		"IndexNotFound/index=store":                {indexpkg.ErrIndexNotFound, storepkg.ErrIndexNotFound},
+		"TemporalIndexExists/index=store":          {indexpkg.ErrTemporalIndexExists, storepkg.ErrTemporalIndexExists},
+		"TemporalIndexNotFound/index=store":        {indexpkg.ErrTemporalIndexNotFound, storepkg.ErrTemporalIndexNotFound},
+		"RelPropertyIndexUnsupported/index=store":  {indexpkg.ErrRelPropertyIndexUnsupported, storepkg.ErrRelPropertyIndexUnsupported},
+		"VectorIndexExists/index=store":            {indexpkg.ErrVectorIndexExists, storepkg.ErrVectorIndexExists},
+		"VectorIndexNotFound/index=store":          {indexpkg.ErrVectorIndexNotFound, storepkg.ErrVectorIndexNotFound},
+		"DimensionMismatch/index=store":            {indexpkg.ErrDimensionMismatch, storepkg.ErrDimensionMismatch},
+		"InvalidTemporalIndexConfig/index=store":   {indexpkg.ErrInvalidTemporalIndexConfig, storepkg.ErrInvalidTemporalIndexConfig},
+		"InvalidVectorIndexConfig/index=store":     {indexpkg.ErrInvalidVectorIndexConfig, storepkg.ErrInvalidVectorIndexConfig},
+		"InvalidVectorValue/index=store":           {indexpkg.ErrInvalidVectorValue, storepkg.ErrInvalidVectorValue},
+
 		// pkg/graph alias of the ingest-pipeline sentinel (ADR-0006; core owns
 		// the canonical declaration).
 		"IngestClosed/graph=core": {graphpkg.ErrIngestClosed, core.ErrIngestClosed},
@@ -178,5 +198,27 @@ func TestSentinelsMatchThroughEveryQualifier(t *testing.T) {
 	exportErr := g.IO().Export(nil)
 	if !errors.Is(exportErr, graphpkg.ErrNilWriter) || !errors.Is(exportErr, tkgio.ErrNilWriter) {
 		t.Errorf("nil-writer error %v does not match through both graph and io qualifiers", exportErr)
+	}
+
+	// BACKLOG 7d: duplicate property-index creation via g.Index() itself
+	// (not just aliases of a store-level error injected artificially) →
+	// must match through graph, store, AND index qualifiers — proving
+	// indexpkg.ErrIndexExists is not just an alias in name but genuinely
+	// reachable through this package's own CreateProperty door.
+	if err := g.Index().CreateProperty("N", "name"); err != nil {
+		t.Fatalf("CreateProperty: %v", err)
+	}
+	dupErr := g.Index().CreateProperty("N", "name")
+	if dupErr == nil {
+		t.Fatalf("duplicate CreateProperty succeeded, want ErrIndexExists")
+	}
+	for q, sentinel := range map[string]error{
+		"graph": graphpkg.ErrIndexExists,
+		"store": storepkg.ErrIndexExists,
+		"index": indexpkg.ErrIndexExists,
+	} {
+		if !errors.Is(dupErr, sentinel) {
+			t.Errorf("duplicate property-index error %v does not match %s.ErrIndexExists", dupErr, q)
+		}
 	}
 }

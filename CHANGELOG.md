@@ -233,6 +233,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   items (all of BACKLOG 6-9's CRITICAL/HIGH findings plus every other backend/subsystem section's
   completed items) from the file; the one remaining HIGH item (10b, bitemporal cascade/resumption-row
   ambiguity) stays with its full investigation notes since it's still open, not done.
+- FIX — closed BACKLOG 7d: `pkg/graph/index`'s own `errors.go` claimed to be "a complete
+  error-checking surface for callers already importing it" but was missing 5 sentinels genuinely
+  returned by this package's own doors — `ErrIndexExists`/`ErrIndexNotFound` (`CreateProperty`/
+  `CreateComposite`), `ErrTemporalIndexExists`/`ErrTemporalIndexNotFound` (`CreateTemporal`/
+  `CreateHighFrequency`), and `ErrRelPropertyIndexUnsupported` (`CreateRelProperty`) — confirmed by
+  tracing each door down to its `internal/core` implementation. Added all 5 as aliases and narrowed the
+  doc comment's completeness claim to this package's own doors specifically (the other 4 sentinels the
+  finding flagged — `ErrInvalidShardDepth`/`ErrInvalidQueryLimit`/`ErrInvalidQueryCursor`/
+  `ErrOrderedScanTemporal` — belong to `g.Nodes()`/`g.Rels()`'s ordered range-scan doors, not
+  `g.Index()`, so were deliberately NOT added here). Extended `TestSentinelAliasesShareIdentity`
+  (`pkg/graph/errors_identity_test.go`) with identity checks for all 11 of `index/errors.go`'s
+  store-derived aliases (the 5 new ones plus 6 pre-existing ones that had never been cross-checked),
+  and extended the behavioral `TestSentinelsMatchThroughEveryQualifier` with a real duplicate
+  `g.Index().CreateProperty()` call proving `indexpkg.ErrIndexExists` is genuinely reachable through
+  this package's own door, matching through the `graph`, `store`, AND `index` qualifiers. RED confirmed
+  via `git stash push -- pkg/graph/index/errors.go`: `go vet` failed at compile time with `undefined:
+  indexpkg.ErrIndexExists` — the strongest possible signal. Stash popped, GREEN confirmed; full
+  `pkg/graph/...` suite and full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 
