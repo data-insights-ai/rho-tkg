@@ -433,9 +433,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   Recommend a dedicated follow-up that starts from the "shrink the critical section" angle above.**
 ### BACKLOG 20 — Sharded backend hardening (WIP status)
 
-- **20e. §4.5 pre-encoded-put fast path never routed for sharded despite the capability being
-  satisfied — the ADR-0006 throughput benefit doesn't materialize for this backend today (MEDIUM,
-  documented gap in the code's own comment).** `store/sharded/batch.go:328-336`.
 - **20g. Adjacency reads always fan out to every claimed shard regardless of endpoint locality — an
   under-documented architectural cost that scales with `SlotCount` regardless of traversal locality
   (MEDIUM, perf).** `store/sharded/rel.go:241-288`, `node.go:183-248`.

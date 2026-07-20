@@ -1543,6 +1543,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `tasks/backlog.md` 19q for the full writeup and the recommended starting angle for a dedicated
   follow-up. No code change. This closes out BACKLOG 19 (TieredStore hardening) for this pass —
   19h and 19q remain intentionally open with full investigation writeups.
+- FIX — BACKLOG 20e: `nativePreEncodedPut` (`internal/core/core.go`, the ADR-0006 §4.5 pre-encoded-put
+  fast-path router) routed only for the exact native `*badger.Store`, so a sharded-backed graph always
+  fell back to the slower encode-at-flush `PutNodesBatch` path even though `sharded.Store` already
+  satisfied `PreEncodedPutCapability`/`PreEncodedPutLogCapability` (compile-time asserted in
+  `store/sharded/batch.go`, which already partitions the pre-encoded `wireBodies`/`logBodies` arrays
+  per shard WITH INDEX ALIGNMENT PRESERVED specifically for this door, and is tested for byte-identity
+  per shard against unsharded badger). Confirmed this was a genuine routing gap, not a declined
+  capability: `OwnedPreEncodedPutCapability` (the ingest concurrent-mode ownership-transfer variant)
+  was ALREADY routed for sharded via a separate, unrestricted type-assertion — only the strong-mode
+  (Lanes:1) `preEncodedPut`/`PreEncodedPutLogCapability` gate was badger-only, with sharded excluded
+  purely by omission (unlike tiered, which is correctly excluded because it has no per-shard-
+  partitioned implementation of the capability at all — no interface satisfaction, not merely a
+  disabled check). Added a parallel `*sharded.Store` type-assertion branch, matching badger's exact
+  pattern (a plain concrete-type assertion, which already excludes any wrapper merely embedding
+  `sharded.Store` — the same wrapper-boundary safety badger's check already provided). Added
+  `TestNativePreEncodedPut_RoutesShardedButNotWrapper` (direct proof of the routing gate: non-nil for
+  bare `*sharded.Store`, nil for a wrapper embedding one) plus sharded-backed mirrors of the existing
+  badger coverage — `TestIngestPreEncodedEndToEnd_Sharded` (both the declared-label pre-encoded-patch
+  and undeclared-label probe-restamp-fallback sub-paths produce a correct graph) and
+  `TestIngestPreEncodedVsDisabledEquivalence_Sharded` (the capability-enabled and capability-disabled
+  paths produce semantically identical graphs). Confirmed load-bearing: reverting the fix turns
+  `TestNativePreEncodedPut_RoutesShardedButNotWrapper` immediately RED (`"native sharded core did not
+  wire preEncodedPut"`); restored, GREEN. `go build`/`go vet` clean; full `pkg/graph/internal/core`
+  package suite green including under `-race` (133s); `pkg/graph/store/sharded` package suite green
+  under `-race`; full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

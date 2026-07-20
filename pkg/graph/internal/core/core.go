@@ -1033,22 +1033,36 @@ func nativeNodeIntegrityHash(store storepkg.MandatoryStore) storepkg.NodeIntegri
 }
 
 // nativePreEncodedPut resolves the ADR-0006 §4.5 pre-encoded-put fast path.
-// Only the exact native *badger.Store is routed: it serializes each entity row
-// to msgpack, so handing it a pre-encoded buffer genuinely skips a second encode
-// pass, and it holds the applier's shared property-key registry so the buffer's
-// tokens match its own encode byte-for-byte. The memory store also IMPLEMENTS
-// the capability (contract + direct test), but it stores live *types.Node objects
-// and never serializes a row, so pre-encoding there is pure wasted prepare work —
-// it is deliberately NOT routed (a nil handle disables the prepare-side
-// pre-encode for memory sessions). Tiered declines (no single WriteBatch — it
-// routes per shard) and wrapper stores decline (an overridden PutNodesBatch must
-// not be bypassed); both fall back to encode-at-flush via putGeneratedNodesBatch.
+// Routed for the exact native *badger.Store and *sharded.Store: both
+// genuinely serialize each entity row to msgpack (sharded IS a collection of
+// per-slot badger.Store shards), so handing either a pre-encoded buffer
+// skips a second encode pass, and both hold the applier's shared
+// property-key registry so the buffer's tokens match their own encode
+// byte-for-byte. sharded.putNodesBatchInternal partitions the pre-encoded
+// wireBodies/logBodies arrays per shard WITH INDEX ALIGNMENT PRESERVED
+// specifically for this door (tested for byte-identity per shard against
+// unsharded badger — BACKLOG 20e; this was a routing gap, not a declined
+// capability: sharded's OwnedPreEncodedPutCapability, gated only by a plain
+// type-assertion below with no badger-only restriction, was already routed).
+// The memory store also IMPLEMENTS the capability (contract + direct test),
+// but it stores live *types.Node objects and never serializes a row, so
+// pre-encoding there is pure wasted prepare work — it is deliberately NOT
+// routed (a nil handle disables the prepare-side pre-encode for memory
+// sessions). Tiered declines (no per-shard-partitioned implementation exists
+// — no single WriteBatch across its ref/archive/event shards) and wrapper
+// stores decline (an overridden PutNodesBatch must not be bypassed, and a
+// plain type assertion against the exact concrete type already excludes any
+// wrapper that merely embeds badger.Store/sharded.Store as a field); all
+// fall back to encode-at-flush via putGeneratedNodesBatch.
 func nativePreEncodedPut(store storepkg.MandatoryStore) storepkg.PreEncodedPutCapability {
 	cap, ok := store.(storepkg.PreEncodedPutCapability)
 	if !ok {
 		return nil
 	}
 	if _, isBadger := store.(*badger.Store); isBadger {
+		return cap
+	}
+	if _, isSharded := store.(*sharded.Store); isSharded {
 		return cap
 	}
 	return nil
