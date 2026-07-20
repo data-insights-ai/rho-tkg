@@ -279,6 +279,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   extracted package covering nil handling, defensive-copy independence, early stop via yield-false,
   pre-canceled and mid-scan context cancellation, and end-of-scan error surfacing). `go build ./...` +
   `go vet ./...` clean; `pkg/graph/...` full suite green under `-race`; full-repo `go test ./...` clean.
+- MAINTENANCE — deduped `tasks/backlog.md` 7i and 17j into 21a: all three were the same finding (no
+  `RelPropertyStats` mirror), independently noted by 3 separate subsystem audits (façade, memory
+  backend, stats layer) and already fully captured by 21a's own text. BACKLOG 21 (7 FEATURE-class
+  items — new capabilities, not bugs) is intentionally deferred to a separate design pass per user
+  direction; the rest of the backlog (bug/test-gap/refactor items) continues.
 
 ## [4.23.0] - 2026-07-18
 

@@ -65,8 +65,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 7 — Public façade & thin sub-API wrapper hardening
 
-- **7i. No relationship-side mirror of `PropertyStats` (LOW, see BACKLOG 21 feature list).**
-
 ### BACKLOG 8 — Dry-run / constraints / replication convenience-API correctness
 
 - **8e. `(*TempOps).Diff` doc comment claims a continuously-held RLock; actual impl does per-entity
@@ -314,9 +312,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   rule without a carved-out exception).** `store/memory/memorystore_index.go`, `memorystore_rel_index.go`.
 - **17i. `defer bumpNodeEpoch()`/`bumpRelEpoch()` fire even on validation-failure/no-op error paths
   (LOW, already documented as a deliberate/safe tradeoff — flagged only for future profiling).**
-- **17j. No relationship-side mirror of `PropertyStats` — see BACKLOG 21 (LOW, likely intentional per
-  capability doc scoping).**
-
 ### BACKLOG 18 — Badger backend hardening
 
 - **18f. Meta/registry persistence (`MetaSet`, `Save*Registry`) lacks the immediate pre-call
