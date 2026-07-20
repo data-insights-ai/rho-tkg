@@ -69,8 +69,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 9 — Write-path kernel hardening (CRUD, unique constraints, version chains)
 
-- **9o. `TestDeleteNodeWithContext_ConcurrentAddRel` never enumerates surviving relationships after
-  the race (TEST-GAP).**
 - **9p. No adversarial concurrent test pins 9c's TOCTOU window (TEST-GAP).**
 - **9r. `node_delete.go`'s two-phase retry backs off with a bare `runtime.Gosched()`, no jitter
   (LOW).**

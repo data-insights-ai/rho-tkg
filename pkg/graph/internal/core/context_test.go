@@ -1026,6 +1026,16 @@ func TestDeleteNodeWithContext_LocksRelationships(t *testing.T) {
 	}
 }
 
+// TestDeleteNodeWithContext_ConcurrentAddRel guards BACKLOG 9o: a rel-add
+// racing a node-delete cascade must never leave an orphaned relationship
+// pointing at the deleted node. The two-phase delete's TOCTOU retry (Phase A
+// snapshots adjacency, Phase B re-verifies under LockMany and retries if
+// changed — up to 10 times, see CLAUDE.md "Two-phase delete with TOCTOU
+// retry") is supposed to guarantee this, but the original version of this
+// test only checked that the NODE ended up gone — it discarded every
+// concurrent Add's result and never enumerated what happened to the
+// relationships those calls raced to create, so a bug that let one survive
+// with a dangling endpoint would have shipped undetected.
 func TestDeleteNodeWithContext_ConcurrentAddRel(t *testing.T) {
 	t.Parallel()
 	g := newTestGraph(t)
@@ -1035,8 +1045,13 @@ func TestDeleteNodeWithContext_ConcurrentAddRel(t *testing.T) {
 	aID := a.ID()
 
 	// Pre-create some rels.
+	var preRelIDs []types.RelID
 	for range 5 {
-		_, _ = g.Rels.Add(context.Background(), "EDGE", a, b, nil)
+		r, err := g.Rels.Add(context.Background(), "EDGE", a, b, nil)
+		if err != nil {
+			t.Fatalf("pre-create rel: %v", err)
+		}
+		preRelIDs = append(preRelIDs, r.ID())
 	}
 
 	var wg sync.WaitGroup
@@ -1048,11 +1063,20 @@ func TestDeleteNodeWithContext_ConcurrentAddRel(t *testing.T) {
 		_ = g.Nodes.Delete(context.Background(), aID)
 	}()
 
-	// Goroutine 2: try to add more rels while delete is happening.
+	// Goroutine 2: try to add more rels while delete is happening. Every
+	// SUCCESSFUL add is recorded — a raced Add that returns a live rel is
+	// exactly the case that must not survive the cascade.
+	var mu sync.Mutex
+	var racedRelIDs []types.RelID
 	go func() {
 		defer wg.Done()
 		for range 10 {
-			_, _ = g.Rels.Add(context.Background(), "EDGE", a, b, nil)
+			r, err := g.Rels.Add(context.Background(), "EDGE", a, b, nil)
+			if err == nil {
+				mu.Lock()
+				racedRelIDs = append(racedRelIDs, r.ID())
+				mu.Unlock()
+			}
 		}
 	}()
 
@@ -1062,6 +1086,22 @@ func TestDeleteNodeWithContext_ConcurrentAddRel(t *testing.T) {
 	_, err := g.Nodes.Get(context.Background(), aID)
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
 		t.Fatalf("expected storepkg.ErrNodeNotFound, got %v", err)
+	}
+
+	// Every pre-existing rel must be cascade-deleted.
+	for _, rID := range preRelIDs {
+		if _, err := g.Rels.Get(context.Background(), rID); !errors.Is(err, storepkg.ErrRelNotFound) {
+			t.Fatalf("pre-existing rel %v: expected ErrRelNotFound, got %v", rID, err)
+		}
+	}
+
+	// Every rel the RACING Add calls managed to create — even though they
+	// raced the delete — must ALSO be gone, not orphaned with a dangling
+	// endpoint pointing at the now-deleted node.
+	for _, rID := range racedRelIDs {
+		if _, err := g.Rels.Get(context.Background(), rID); !errors.Is(err, storepkg.ErrRelNotFound) {
+			t.Fatalf("raced rel %v (created concurrently with the delete) survived the cascade: got %v, want ErrRelNotFound", rID, err)
+		}
 	}
 }
 

@@ -363,6 +363,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   bump). Verified load-bearing by temporarily removing the `enforceUniqueForNode` call: the new test
   failed immediately with the exact silent-bypass shape the finding warns about. `go build ./...` + `go
   vet ./...` clean; full `pkg/graph/internal/core` package suite clean; full-repo `go test ./...` clean.
+- TEST — closed BACKLOG 9o: `TestDeleteNodeWithContext_ConcurrentAddRel` (a node-delete cascade racing
+  10 concurrent `Rels.Add` calls) discarded every raced `Add`'s result and only asserted the node ended
+  up gone — it never checked what happened to relationships the race managed to create, so a bug that
+  let one survive with a dangling endpoint pointing at the deleted node would have shipped undetected.
+  Rewrote it to record every successful raced `Add`'s rel ID and, after the race settles, assert EVERY
+  ONE of them — plus the 5 pre-existing rels — returns `ErrRelNotFound`, proving the two-phase delete's
+  TOCTOU retry (CLAUDE.md "Two-phase delete with TOCTOU retry") genuinely closes the window rather than
+  merely happening to pass on the untested happy path. 20 repetitions under `-race`, zero flakes,
+  confirming the fix is not itself a flaky new test. `go build ./...` + `go vet ./...` clean; full
+  `pkg/graph/internal/core` package suite green under `-race`; full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 
