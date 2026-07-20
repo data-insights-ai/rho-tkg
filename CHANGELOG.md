@@ -612,6 +612,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Confirmed load-bearing by reverting the fix and re-running: the epoch no longer bumps (RED). `go
   build`/`go vet` clean; full `pkg/graph/internal/core` package suite green including under `-race`
   (143s); full-repo `go test ./...` clean.
+- FIX — BACKLOG 12f: `noteAppliedTxFrom` was called BEFORE property/hash verification in every
+  `apply_record.go` handler (`applyNodePutLocked`, `applyRelPutLocked`, `applyForeignIncomingLocked`,
+  `applyNodeHistoryVersionLocked`, `applyRelHistoryVersionLocked`) — so a record that would ultimately
+  be REJECTED (oversized properties, a wrong hash) still fed its `TxFrom` to the as-of DocValues
+  cache's past-dated detector before the rejection was discovered. Since that detector bumps a single
+  GLOBAL epoch whenever an applied `TxFrom` is lower than the running max, an out-of-order but
+  otherwise-corrupt record could unnecessarily discard every cached as-of column for an entity that
+  never actually landed in the store — real over-invalidation (wasted cache work), not a correctness
+  bug (a rejected record was never going to be served either way). Moved the `noteAppliedTxFrom` call
+  to AFTER `validatePropertySliceLimits`/`verifyImportedNodeHash`/`verifyImportedRelHash` succeed at
+  all 5 call sites, right before the store write, documented on `noteAppliedTxFrom`'s own doc comment
+  so a future 6th handler follows the same order. Added
+  `TestApplyChange_RejectedNodePutDoesNotBumpAsOfCacheEpoch`: establishes a high applied-TxFrom
+  watermark via a valid apply, then sends a node put with an OLDER TxFrom AND a wrong hash (must be
+  rejected) and asserts the as-of cache epoch is unchanged. Confirmed load-bearing by reverting just
+  the reordering in `applyNodePutLocked` (restoring the pre-verification call) and re-running: the test
+  turns RED (epoch bumps despite the rejection). `go build`/`go vet` clean; full
+  `pkg/graph/internal/core` package suite green including under `-race` (135s); full-repo `go test
+  ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

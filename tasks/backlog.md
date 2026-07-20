@@ -183,8 +183,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 12 — Replication / import / export hardening
 
-- **12f. `noteAppliedTxFrom` runs before hash/property verification in all 4 handlers — over-
-  invalidation only, semantically backwards (LOW).** `apply_record.go` (4 sites).
 - **12i. `strictCheckMergeRecord` (Strict mode) only covers 4 of 8+ mergeable tag kinds — missing
   history-version/truncate tags (LOW, not a correctness bug, incomplete contract).**
   `import_merge.go:409-449`.

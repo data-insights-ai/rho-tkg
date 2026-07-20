@@ -56,6 +56,14 @@ func newAsOfColumnCache() *asOfColumnCache {
 
 // noteAppliedTxFrom feeds a replica-applied entity's transaction time to the as-of
 // cache's past-dated detector. A nil metadata or non-positive TxFrom is ignored.
+//
+// BACKLOG 12f: every apply_record.go call site invokes this AFTER property/hash
+// verification succeeds, never before. A record that will ultimately be
+// REJECTED (oversized properties, a hash mismatch) must not be counted as
+// "applied" for the out-of-order detector — doing so would be an unforced
+// over-invalidation (a rejected record's TxFrom could still trip the
+// past-dated check and discard every cached as-of column for an entity that
+// never actually landed).
 func (c *Core) noteAppliedTxFrom(tm *types.TemporalMetadata) {
 	if tm == nil {
 		return

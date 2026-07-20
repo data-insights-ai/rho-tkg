@@ -276,13 +276,13 @@ func (c *Core) applyNodePutLocked(body storeutil.NodePutBody, rec storepkg.Chang
 	if err != nil {
 		return fmt.Errorf("graph: apply: node %d: %w: %v", body.Wire.ID, ErrCorruptExport, err)
 	}
-	c.noteAppliedTxFrom(n.Temporal())
 	if err := c.validatePropertySliceLimits(n.Properties()); err != nil {
 		return err
 	}
 	if err := c.verifyImportedNodeHash(n, body.Wire.ID, "node"); err != nil {
 		return err
 	}
+	c.noteAppliedTxFrom(n.Temporal())
 	id := n.InternalID()
 	local, gerr := c.store.GetNode(id)
 	if errors.Is(gerr, storepkg.ErrNodeNotFound) {
@@ -377,13 +377,13 @@ func (c *Core) applyRelPutLocked(body storeutil.RelPutBody, rec storepkg.ChangeR
 	if err != nil {
 		return fmt.Errorf("graph: apply: relationship %d: %w: %v", body.Wire.ID, ErrCorruptExport, err)
 	}
-	c.noteAppliedTxFrom(r.Temporal())
 	if err := c.validatePropertySliceLimits(r.Properties()); err != nil {
 		return err
 	}
 	if err := c.verifyImportedRelHash(r, body.Wire.ID, "relationship"); err != nil {
 		return err
 	}
+	c.noteAppliedTxFrom(r.Temporal())
 	id := r.InternalID()
 	local, gerr := c.store.GetRelationship(id)
 	if errors.Is(gerr, storepkg.ErrRelNotFound) {
@@ -431,13 +431,13 @@ func (c *Core) applyForeignIncomingLocked(body storeutil.RelPutBody, rec storepk
 	if err != nil {
 		return fmt.Errorf("graph: apply: foreign-incoming relationship %d: %w: %v", body.Wire.ID, ErrCorruptExport, err)
 	}
-	c.noteAppliedTxFrom(r.Temporal())
 	if err := c.validatePropertySliceLimits(r.Properties()); err != nil {
 		return err
 	}
 	if err := c.verifyImportedRelHash(r, body.Wire.ID, "relationship"); err != nil {
 		return err
 	}
+	c.noteAppliedTxFrom(r.Temporal())
 	if err := c.foreignIncomingRel.RecordForeignIncoming(r, generatedcreate.FreshGraphID); err != nil && !errors.Is(err, storepkg.ErrRelExists) {
 		return err
 	}
@@ -536,13 +536,13 @@ func (c *Core) applyNodeHistoryVersionLocked(body storeutil.HistoryVersionNodeBo
 	if err != nil {
 		return fmt.Errorf("graph: apply: node version %d: %w: %v", body.Wire.ID, ErrCorruptExport, err)
 	}
-	c.noteAppliedTxFrom(n.Temporal())
 	if err := c.validatePropertySliceLimits(n.Properties()); err != nil {
 		return err
 	}
 	if err := c.verifyImportedNodeHash(n, body.Wire.ID, "node version"); err != nil {
 		return err
 	}
+	c.noteAppliedTxFrom(n.Temporal())
 	return c.store.PutNodeVersion(n.InternalID(), uint32(body.Version), n) // #nosec G115 — version from our own wire
 }
 
@@ -554,13 +554,13 @@ func (c *Core) applyRelHistoryVersionLocked(body storeutil.HistoryVersionRelBody
 	if err != nil {
 		return fmt.Errorf("graph: apply: relationship version %d: %w: %v", body.Wire.ID, ErrCorruptExport, err)
 	}
-	c.noteAppliedTxFrom(r.Temporal())
 	if err := c.validatePropertySliceLimits(r.Properties()); err != nil {
 		return err
 	}
 	if err := c.verifyImportedRelHash(r, body.Wire.ID, "relationship version"); err != nil {
 		return err
 	}
+	c.noteAppliedTxFrom(r.Temporal())
 	return c.store.PutRelVersion(r.InternalID(), uint32(body.Version), r) // #nosec G115 — version from our own wire
 }
 
