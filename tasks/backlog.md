@@ -118,8 +118,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   insufficient (both shapes are structurally identical); the fix likely needs either a persisted
   marker distinguishing the two row roles, or a fundamentally different (non-positional,
   non-pairwise-TxFrom) algorithm for interval-bounds derivation in a chain with cascade-inserted rows.
-- **10l. `RangeCardinality`'s ordered/prefix-scan sibling doors don't independently test the
-  `TxPin`-conflict validation path (TEST-GAP, low risk — code path is identical to tested doors).**
 - **10m. `resolveNodeVersionAt`/`resolveRelVersionAt` fast path is O(n) linear reverse-scan despite
   the chain being provably sorted/non-overlapping at that point — could be O(log n) via
   `sort.Search` (MEDIUM, perf).** `temporal.go:167-207,419-451`.

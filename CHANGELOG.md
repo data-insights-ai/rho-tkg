@@ -445,6 +445,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   values (never corrupted/torn) and the registry always has exactly 1 entry. `go build ./...` + `go vet
   ./...` clean; full `pkg/graph/internal/core` package suite green under `-race`; full-repo `go test
   ./...` clean.
+- TEST — closed BACKLOG 10l: `TestTxPinConflictSentinel` covers the generic `All`/`ByLabel`/`ByType`
+  scan doors' `TxPin`-conflict rejection, but `RangeCardinality`'s ordered/prefix-scan sibling doors
+  (`ForEachByLabelPropertyRangeOrdered`/`ForEachByLabelPropertyPrefix` and their rel-side mirrors)
+  route through the SAME `validateTemporalQueryOptsScan` validator from their own call sites with no
+  direct test of their own (rule 1: a shared validator's coverage doesn't cover each caller; rule 17:
+  a future change at one call site isn't guaranteed to keep working the same way at the others).
+  `RangeCardinality` itself is excluded — unlike its siblings it has no conflict-validation path,
+  declining outright whenever any temporal opt is set. Added
+  `TestTxPinConflictSentinel_OrderedAndPrefixScanDoors`: all 4 sibling doors reject
+  `{TxPin, ValidAt}` with `ErrConflictingTemporalOpts` and accept a lone `TxPin` without error. Pure
+  test-gap — the shared validator was already correct for every call site. `go build ./...` + `go vet
+  ./...` clean; full `pkg/graph/internal/core` package suite clean; full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

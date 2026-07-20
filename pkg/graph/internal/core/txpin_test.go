@@ -388,3 +388,59 @@ func TestTxPinConflictSentinel(t *testing.T) {
 		t.Errorf("Nodes.All{TxPin alone} = %v, want nil", err)
 	}
 }
+
+// TestTxPinConflictSentinel_OrderedAndPrefixScanDoors guards BACKLOG 10l:
+// TestTxPinConflictSentinel above covers the generic All/ByLabel/ByType
+// scan doors, but RangeCardinality's ordered/prefix-scan SIBLING doors
+// (ForEachByLabelPropertyRangeOrdered/Prefix and their rel-side mirrors)
+// route through the exact same validateTemporalQueryOptsScan validator —
+// yet had no direct test of their own (rule 1: indirect coverage via a
+// shared validator does not count as direct coverage of each door — rule
+// 17: a fix to the generic door's validation call doesn't guarantee these
+// doors, which call the SAME function from a different call site, keep
+// working the same way). RangeCardinality itself is NOT included: unlike
+// its siblings it has no conflict-validation path at all — it just
+// declines (exact=false) whenever ANY temporal opt is set, TxPin included.
+func TestTxPinConflictSentinel_OrderedAndPrefixScanDoors(t *testing.T) {
+	t.Parallel()
+
+	g, err := New(Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	conflict := storepkg.QueryOpts{TxPin: 100, ValidAt: 200}
+	noop := func() func(*types.Node) bool { return func(*types.Node) bool { return true } }
+	noopRel := func() func(*types.Relationship) bool { return func(*types.Relationship) bool { return true } }
+
+	if err := g.Nodes.ForEachByLabelPropertyRangeOrdered("X", "k", 0, 100, true, true, false, conflict, noop()); !errors.Is(err, ErrConflictingTemporalOpts) {
+		t.Errorf("Nodes.ForEachByLabelPropertyRangeOrdered = %v, want ErrConflictingTemporalOpts", err)
+	}
+	if err := g.Nodes.ForEachByLabelPropertyPrefix("X", "k", "p", false, conflict, noop()); !errors.Is(err, ErrConflictingTemporalOpts) {
+		t.Errorf("Nodes.ForEachByLabelPropertyPrefix = %v, want ErrConflictingTemporalOpts", err)
+	}
+	if err := g.Rels.ForEachByTypePropertyRangeOrdered("Y", "k", 0, 100, true, true, false, conflict, noopRel()); !errors.Is(err, ErrConflictingTemporalOpts) {
+		t.Errorf("Rels.ForEachByTypePropertyRangeOrdered = %v, want ErrConflictingTemporalOpts", err)
+	}
+	if err := g.Rels.ForEachByTypePropertyPrefix("Y", "k", "p", false, conflict, noopRel()); !errors.Is(err, ErrConflictingTemporalOpts) {
+		t.Errorf("Rels.ForEachByTypePropertyPrefix = %v, want ErrConflictingTemporalOpts", err)
+	}
+
+	// A lone TxPin (no conflicting field) must NOT be rejected as a conflict
+	// — it takes the temporal full-fold path and should reach fn (or find
+	// nothing, since the label/type is unknown) without a validation error.
+	lone := storepkg.QueryOpts{TxPin: 100}
+	if err := g.Nodes.ForEachByLabelPropertyRangeOrdered("X", "k", 0, 100, true, true, false, lone, noop()); errors.Is(err, ErrConflictingTemporalOpts) {
+		t.Errorf("Nodes.ForEachByLabelPropertyRangeOrdered{TxPin alone} = %v, want no conflict error", err)
+	}
+	if err := g.Nodes.ForEachByLabelPropertyPrefix("X", "k", "p", false, lone, noop()); errors.Is(err, ErrConflictingTemporalOpts) {
+		t.Errorf("Nodes.ForEachByLabelPropertyPrefix{TxPin alone} = %v, want no conflict error", err)
+	}
+	if err := g.Rels.ForEachByTypePropertyRangeOrdered("Y", "k", 0, 100, true, true, false, lone, noopRel()); errors.Is(err, ErrConflictingTemporalOpts) {
+		t.Errorf("Rels.ForEachByTypePropertyRangeOrdered{TxPin alone} = %v, want no conflict error", err)
+	}
+	if err := g.Rels.ForEachByTypePropertyPrefix("Y", "k", "p", false, lone, noopRel()); errors.Is(err, ErrConflictingTemporalOpts) {
+		t.Errorf("Rels.ForEachByTypePropertyPrefix{TxPin alone} = %v, want no conflict error", err)
+	}
+}
