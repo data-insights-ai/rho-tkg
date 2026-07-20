@@ -2,9 +2,11 @@ package badger
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -206,5 +208,71 @@ func TestPreEncodedPutNilFallsBackToEncode(t *testing.T) {
 		if !bytes.Equal(rawNodeBytes(t, a, id), rawNodeBytes(t, b, id)) {
 			t.Fatalf("node %d fallback bytes diverge", id)
 		}
+	}
+}
+
+// TestPutNodesBatchOwnedPreEncoded_FreezesInPlaceAndRejectsMutation (BACKLOG
+// 18t) is the adversarial proof the frozen-row guard actually fires on an
+// OWNERSHIP-TRANSFERRED (owned=true) cache entry — the ingest bulk-apply
+// path (PutNodesBatchOwnedPreEncoded had zero direct badger-package tests
+// before this one; only indirect coverage via the ingest package, which
+// violates Rule 1). Unlike the default owned=false doors (which deep-copy,
+// leaving the caller's own object mutable — see
+// TestPreEncodedPutNilFallsBackToEncode's dual-store reuse of one battery),
+// owned=true freezes the caller's node IN PLACE: this test proves that after
+// the call, the CALLER'S OWN object — not just some separate cached copy —
+// rejects further mutation, matching the documented "UNDEFINED BEHAVIOR if
+// the caller touches a node afterward" contract by making touching it fail
+// fast instead of silently corrupting the cache.
+func TestPutNodesBatchOwnedPreEncoded_FreezesInPlaceAndRejectsMutation(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	n := types.NewNode(types.NodeID(snowflake.ID(2001)), 1, nil)
+	if err := n.SetProperty("k", "v"); err != nil {
+		t.Fatalf("SetProperty before transfer: %v", err)
+	}
+
+	if err := bs.PutNodesBatchOwnedPreEncoded([]*types.Node{n}, nil, nil); err != nil {
+		t.Fatalf("PutNodesBatchOwnedPreEncoded: %v", err)
+	}
+
+	// The caller's OWN object is now frozen in place — not a separate copy.
+	if err := n.SetProperty("k2", "v2"); !errors.Is(err, types.ErrFrozenNode) {
+		t.Fatalf("SetProperty on the ownership-transferred node = %v, want ErrFrozenNode", err)
+	}
+	func() {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Fatal("AddLabelTokenRaw on the ownership-transferred node did not panic")
+			}
+		}()
+		n.AddLabelTokenRaw(99)
+	}()
+
+	// The cached entry the store now serves is the SAME frozen object and
+	// also rejects mutation — not just the caller's dangling reference.
+	bs.idxMu.RLock()
+	cached, status := bs.nodeCache.Get(2001)
+	bs.idxMu.RUnlock()
+	if status != indexpkg.CacheHit {
+		t.Fatalf("cache status = %v, want CacheHit", status)
+	}
+	if err := cached.SetProperty("k3", "v3"); !errors.Is(err, types.ErrFrozenNode) {
+		t.Fatalf("SetProperty on the cached entry = %v, want ErrFrozenNode", err)
+	}
+
+	// GetNode still serves a correct, independently-mutable deep copy — the
+	// frozen guard protects the SHARED cache entry, not every reader.
+	got, err := bs.GetNode(types.NodeID(snowflake.ID(2001)))
+	if err != nil {
+		t.Fatalf("GetNode: %v", err)
+	}
+	v, ok := got.GetProperty("k")
+	if !ok || v != "v" {
+		t.Fatalf("GetNode property = %v, %v, want \"v\", true", v, ok)
+	}
+	if err := got.SetProperty("k4", "v4"); err != nil {
+		t.Fatalf("SetProperty on GetNode's own deep copy: %v", err)
 	}
 }

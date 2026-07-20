@@ -1387,6 +1387,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   refactors/cleanup with no behavior change — no load-bearing test applicable (nothing to prove RED
   first). `go build`/`go vet` clean; full `pkg/graph/store/badger` package suite green including
   under `-race` (159s); full-repo `go test ./...` clean.
+- TEST — BACKLOG 18t (partial, 2 of 3 gaps closed): added `TestBadgerStoreSelfLoopRoundTrip` — a
+  direct self-loop round-trip test at the raw Store layer. Investigated first: confirmed
+  `AllowSelfLoops` is a graph/core-layer (`ValidationLimits`) concern never enforced anywhere in
+  `pkg/graph/store` (no self-loop check exists at the store boundary), so `badger.Store` already
+  accepted and correctly served self-loops (both adjacency directions pointing at the same node,
+  cascade delete cleaning up both) — a pure test-gap closure, zero production change. Added
+  `TestPutNodesBatchOwnedPreEncoded_FreezesInPlaceAndRejectsMutation` — the adversarial proof the
+  frozen-row guard fires on an ownership-transferred (ingest bulk-apply) cache entry.
+  `PutNodesBatchOwnedPreEncoded` (the `owned=true` door that freezes the caller's node IN PLACE
+  instead of deep-copying, per its own "UNDEFINED BEHAVIOR if the caller touches a node afterward"
+  contract) had ZERO direct badger-package tests before this one — only indirect coverage via the
+  ingest package, violating Rule 1. The new test proves: the caller's OWN object (not a separate
+  copy) rejects both an error-returning mutator (`SetProperty` → `types.ErrFrozenNode`) and a
+  void/bool mutator (`AddLabelTokenRaw` → panic) after the transfer; the cached entry the store
+  serves is that same frozen object; and `GetNode` still correctly returns an independently mutable
+  deep copy (the frozen guard protects the shared cache entry, not every reader). Confirmed
+  load-bearing: temporarily reverting `freezeNodeForCache`'s `owned` branch to always deep-copy
+  turned the test immediately RED (`SetProperty ... = <nil>, want ErrFrozenNode`); restored, GREEN.
+  Left open (see `tasks/backlog.md` 18t): a direct test pinning change-log-marshal-failure-mid-write
+  atomicity would need a registered custom property type with a deliberately-failing
+  `msgpack.CustomEncoder` — nontrivial test infrastructure for uncertain marginal value, since every
+  change-log-emitting door already builds its payload UP FRONT, before any mutation op is enqueued
+  (an ordering verified directly in several doors this session, e.g. `DeleteRelEntityAndOut`) — the
+  atomicity property is already structurally enforced by call order, not something that could
+  silently regress without an obvious diff. `go build`/`go vet` clean; full `pkg/graph/store/badger`
+  package suite green including under `-race` (161s); full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

@@ -370,17 +370,22 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   dedicated design + a full bitemporal-correctness verification pass, not a speed-fix folded into a
   broader backlog sweep. Recommend a dedicated follow-up.** `badgerstore_txtime.go:74-115` (`reverse
   ScanHistoryVersion`), `:182-` (`NodeAsOf`), `:285-333,336-384` (`NodesAsOf`/`RelsAsOf`).
-- **18t. No direct self-loop round-trip test at the raw Store layer; no test pins change-log-marshal-
-  failure-mid-write behavior (relevant to 18a); no adversarial test proves the frozen-row guard
-  actually rejects mutation on an owned/ingest-transferred cache entry (TEST-GAP, 3 gaps).**
-- **18u. Missing-feature (likely intentional): no zero-copy ownership-transfer cache path
-  (`freezeRelForCache`) for bulk relationship writes, unlike nodes' `freezeNodeForCache` — see
-  BACKLOG 21.**
-- **18v. Vector-index apply-order (18e) and every other item in this section were cross-verified by
-  two independent review passes on the same code (part A + part B); items not listed here (e.g.
-  `dbClosed` guard on the primary `flush()` path, wire-format-version enforcement, encryption
-  validation, `NodeAsOf`/`RelAsOf` pending-overlay-before-view ordering) were explicitly verified
-  correct.**
+- **18t. [PARTIALLY RESOLVED — 2 of 3 test gaps closed; 1 STILL OPEN, not resolved].** Added
+  `TestBadgerStoreSelfLoopRoundTrip` (confirmed `AllowSelfLoops` is a graph/core-layer concern never
+  enforced by `pkg/graph/store` itself, so the raw Store already accepted self-loops correctly — a
+  pure test-gap closure, zero production change) and
+  `TestPutNodesBatchOwnedPreEncoded_FreezesInPlaceAndRejectsMutation` (the adversarial proof the
+  frozen-row guard fires on an ownership-transferred cache entry — `PutNodesBatchOwnedPreEncoded` had
+  ZERO direct badger-package tests before this one, only indirect ingest-package coverage, violating
+  Rule 1; confirmed load-bearing by temporarily reverting `freezeNodeForCache`'s owned branch to
+  always deep-copy, which turned the test immediately RED). Left open: a direct test pinning
+  change-log-marshal-failure-mid-write atomicity would need a registered custom property type whose
+  `msgpack.CustomEncoder` deliberately errors (property validation already rejects every other
+  unmarshalable shape before it reaches encode) — nontrivial test infrastructure for uncertain
+  marginal value, since every change-log-emitting door already builds its payload UP FRONT, before
+  any mutation op is enqueued (verified this ordering directly in `DeleteRelEntityAndOut` and others
+  this session) — the atomicity property is already structurally enforced by call order, not
+  something that could silently regress. Recommend a dedicated follow-up if this needs a hard proof.**
 
 ### BACKLOG 19 — TieredStore hardening
 

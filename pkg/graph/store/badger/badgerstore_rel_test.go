@@ -46,6 +46,52 @@ func TestBadgerStorePutGetRelationship(t *testing.T) {
 	}
 }
 
+// TestBadgerStoreSelfLoopRoundTrip (BACKLOG 18t) pins a direct self-loop
+// round-trip at the raw Store layer — AllowSelfLoops is a graph/core-layer
+// (ValidationLimits) concern, never enforced by badger.Store itself
+// (confirmed: no AllowSelfLoops/start-equals-end check anywhere in
+// pkg/graph/store), so the store must accept and correctly serve a
+// relationship whose start and end are the same node, including BOTH
+// adjacency directions pointing back to that one node and cascade delete
+// cleaning up both.
+func TestBadgerStoreSelfLoopRoundTrip(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	putTestNode(t, bs, 10, 1, nil)
+	putTestRel(t, bs, 500, 3, 10, 10)
+
+	got, err := bs.GetRelationship(types.RelID(snowflake.ID(500)))
+	if err != nil {
+		t.Fatalf("GetRelationship: %v", err)
+	}
+	if got.StartNodeID() != got.EndNodeID() {
+		t.Fatalf("StartNodeID (%v) != EndNodeID (%v) for a self-loop", got.StartNodeID(), got.EndNodeID())
+	}
+	if got.StartNodeID().SnowflakeID() != snowflake.ID(10) {
+		t.Fatalf("StartNodeID = %v, want 10", got.StartNodeID())
+	}
+
+	out := bs.OutgoingRelIDs(snowflake.ID(10))
+	if len(out) != 1 || out[0] != snowflake.ID(500) {
+		t.Fatalf("OutgoingRelIDs(10) = %v, want [500]", out)
+	}
+	in := bs.IncomingRelIDs(snowflake.ID(10), 0)
+	if len(in) != 1 || in[0] != snowflake.ID(500) {
+		t.Fatalf("IncomingRelIDs(10) = %v, want [500]", in)
+	}
+
+	if err := bs.DeleteRelationship(types.RelID(snowflake.ID(500))); err != nil {
+		t.Fatalf("DeleteRelationship: %v", err)
+	}
+	if out := bs.OutgoingRelIDs(snowflake.ID(10)); len(out) != 0 {
+		t.Fatalf("OutgoingRelIDs(10) after delete = %v, want none", out)
+	}
+	if in := bs.IncomingRelIDs(snowflake.ID(10), 0); len(in) != 0 {
+		t.Fatalf("IncomingRelIDs(10) after delete = %v, want none", in)
+	}
+}
+
 func TestBadgerStorePutRelDuplicate(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)
