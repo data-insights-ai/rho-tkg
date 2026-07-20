@@ -271,6 +271,59 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 - **15p. No `PreEncodeRelPutPayloadV2` counterpart to `PreEncodeNodePutPayloadV2` for §4.5 pre-encode —
   see BACKLOG 21 (LOW, likely intentional node-first scope).**
+- **15s. Change-log body wrapper types have no custom msgpack encoders — reflection on every
+  change-log-enabled mutation (MEDIUM-HIGH, perf, user-requested audit following BACKLOG 16f).**
+  `internal/storeutil/changelog.go` (`marshalChangeBody`/`SafeUnmarshal` call sites at
+  `changelog.go:163` and every `Decode*` helper in the same file). `NodeWire`/`RelWire`/`PropertyWire`
+  already have hand-written `EncodeMsgpack`/`DecodeMsgpack` (no reflection — see CLAUDE.md's wire-codec
+  notes and the BACKLOG 15h/15m test-gap work in this same area), but the 10 change-log BODY WRAPPER
+  types that embed them do NOT: `NodePutBody`, `RelPutBody`, `NodeDeleteBody`, `RelDeleteBody`,
+  `ForeignIncomingDeleteBody`, `RangePurgeBody`, `HistoryVersionNodeBody`, `HistoryVersionRelBody`,
+  `HistoryTruncateBody`, `MetaBody`. `msgpack.Marshal(body)`/`SafeUnmarshal(payload, &body)` on any of
+  these therefore falls back to msgpack's generic reflection-based struct encoder for the OUTER
+  wrapper layer (the inner `Wire NodeWire`/`Wire RelWire` field still dispatches correctly to the fast
+  path once reflection reaches it — only the wrapper's own 1-4 fields pay the reflection cost, not the
+  full entity). `NodePutBody`/`RelPutBody` are BY FAR the hottest — emitted (encode) on every node/rel
+  write when a change-log is enabled, and decoded on every record a replica applies
+  (`applyChangeRecordLocked`) — so this is a real per-mutation cost on any change-log-enabled
+  deployment (replication, tiered's store-global change-log), not a rare admin path. The other 8 body
+  types are lower frequency (deletes, history-version/truncate, meta, range-purge) but share the same
+  gap. Fix: hand-write `EncodeMsgpack`/`DecodeMsgpack` for all 10 body types following the exact
+  `NodeWire`/`RelWire` pattern (`wire_encode.go`/`wire_decode.go`), verified byte-identical to the
+  current reflection-based encoding via golden vectors (the same discipline BACKLOG 15g/15m/15h used)
+  before any behavior-preserving swap — a change-log/replica-apply wire-format regression would break
+  cross-version replica compatibility, so this needs the same rigor as the entity wire codecs, not a
+  quick pass.
+- **15t. `HistoryDeltaEncoding`'s delta wrapper types have no custom msgpack encoders — reflection on
+  every delta-encoded history write when the opt-in feature is enabled (MEDIUM, perf, same audit as
+  15s).** `internal/storeutil/wire_history_delta.go` (`EncodeNodeHistoryDelta`/`EncodeRelHistoryDelta`
+  call `msgpack.Marshal(d)` on `NodeHistoryDelta`/`RelHistoryDelta` directly). Same shape as 15s: the
+  embedded `Meta NodeWire`/`Meta RelWire` field and the `PS []PropertyWire` elements dispatch to their
+  fast custom encoders once reflection reaches them, but the outer 3-field wrapper struct itself is
+  walked via reflection. Lower priority than 15s: `HistoryDeltaEncoding` is opt-in (default OFF) and
+  only engages on history-writes past the anchor interval (not every write), vs 15s's change-log body
+  types which cover the CURRENT-row put path too.
+- **15u. `propertyToWire`'s `ptCustom` branch (`storeutil/wire_value.go:450`, kept per BACKLOG 15f's
+  investigation as necessary defense-in-depth) cannot avoid reflection inside THIS library at all — an
+  inherent limitation, not a bug to fix here (INFORMATIONAL).** `msgpack.Marshal(p.Value)` marshals an
+  arbitrary USER-REGISTERED custom property type whose concrete shape is unknown to this library at
+  compile time; msgpack's reflection-based encoder is the only option unless the caller's OWN type
+  implements `msgpack.CustomEncoder`/`CustomDecoder` itself (a caller-side opt-in the library cannot
+  force). Action, if any: document this recommendation for custom-property-type authors (implement
+  `msgpack.CustomEncoder` on your own registered type for max perf) in the `RegisterPropertyStructType`
+  doc comment or docs/api.md — not a library-internal fix.
+- **15v. Registry/index-definition/catalog persistence across badger/tiered/sharded (label/reltype
+  registry names, property/composite/vector index definitions, tiered registry/temporal-index/vector-
+  index files, sharded catalog) marshal plain slices/structs via reflection-based `msgpack.Marshal`
+  with no custom encoders (LOW, perf, same audit as 15s — lower priority since these are ADMIN/GROWTH
+  paths, not per-entity-write).** `store/badger/badgerstore_meta.go` (5 sites),
+  `badgerstore_index.go` (4 sites), `badgerstore_rel_index.go`, `badgerstore_composite_index.go`,
+  `store/tiered/{registry_file,temporal_index_file,vector_index_file}.go`,
+  `store/sharded/{catalog,vector_index}.go`. All of these persist on registry GROWTH (a new label/
+  rel-type token minted — bounded by distinct-name cardinality, cold after warm-up) or explicit ADMIN
+  operations (index creation, shard rotation/close), never per-entity-write — genuinely low priority,
+  listed for completeness of the reflection audit rather than because it is a live hot-path concern.
+
 ### BACKLOG 16 — In-memory index-engine hardening (HNSW / property & temporal index / HyperLogLog)
 
 - **16g. `hnsw.go`'s `searchLayer` allocates a fresh `[]bool` visited slice per layer, not reused

@@ -2166,11 +2166,9 @@ write, once per property, or once per search/insert step. Prefer the generic
 inlined FNV-1a (BACKLOG 15g) and `decodeMapKeyLen`'s hand-written msgpack
 decoders for the same discipline applied to hashing and decoding.
 
-This is NOT a blanket "never use `reflect` anywhere" rule, and audited the
-codebase (grep `"reflect"` imports under `pkg/`) to confirm no other hot-path
-violation of this shape currently exists beyond the one just fixed. Reflection
-remains the CORRECT tool, used deliberately, in several places that are
-either (a) inherently reflection-shaped problems — `pkg/types` property
+This is NOT a blanket "never use `reflect` anywhere" rule. Reflection remains
+the CORRECT tool, used deliberately, in several places that are either
+(a) inherently reflection-shaped problems — `pkg/types` property
 validation/deep-copy/equality over an arbitrary caller-supplied `any` value,
 where the concrete type is unknowable at compile time and reflection is what
 lets one recursive function validate every allowed shape instead of a
@@ -2180,3 +2178,23 @@ per value), and store-capability wrapper-detection at `Core` construction
 time (`embedsNativeCapability` and friends in `core.go` — once per `New()`
 call, not per query). The dividing line is call FREQUENCY relative to the
 write/query hot path, not "does this identifier contain `reflect`".
+
+CORRECTION (same session, user follow-up): the first audit pass only grepped
+for OUR OWN direct `reflect.*` calls (`import "reflect"`) and missed the
+broader version of this same bug class — a THIRD-PARTY library call that
+internally falls back to reflection because the target Go type doesn't
+implement that library's fast-path interface. `msgpack.Marshal`/`Unmarshal`
+is reflection-based UNLESS the target type implements `msgpack.CustomEncoder`/
+`CustomDecoder` — `NodeWire`/`RelWire`/`PropertyWire` do (hand-written, see
+`wire_encode.go`/`wire_decode.go`), but the 10 change-log body WRAPPER types
+that embed them (`NodePutBody`, `RelPutBody`, etc., BACKLOG 15s) and the
+`HistoryDeltaEncoding` delta wrapper types (`NodeHistoryDelta`/
+`RelHistoryDelta`, BACKLOG 15t) do NOT — so `msgpack.Marshal(body)` on any of
+them reflects over the OUTER wrapper's fields even though the embedded
+`Wire NodeWire` field, once reflection reaches it, still dispatches to the
+fast custom encoder. Rule, extended: auditing "no reflection on a hot path"
+means checking not just `grep '"reflect"'` in your own imports, but also
+"does every type that crosses a reflection-capable third-party
+Marshal/Unmarshal/Encode/Decode call on a hot path implement that library's
+opt-out interface" — a struct embedding an already-optimized field is NOT
+automatically itself optimized.
