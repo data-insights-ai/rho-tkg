@@ -862,6 +862,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   0x09" failure the finding described, then reverted. `go build`/`go vet` clean; full
   `pkg/graph/internal/storeutil` package suite green including under `-race`; full-repo `go test
   ./...` clean.
+- FIX — BACKLOG 15n: `generatedcreate.FreshGraphID` was a mutable exported package-level `var` holding
+  a process-wide sentinel `Proof` value — any importer could accidentally reassign it (e.g.
+  `generatedcreate.FreshGraphID = generatedcreate.Proof{}`, legal since `Proof`'s zero value is
+  externally constructible even though its field is unexported), zeroing `freshGraphID` for every
+  subsequent call across the whole process for the binary's lifetime. Converted to a function
+  (`func FreshGraphID() Proof`) returning a fresh value each call — no mutable global exists to
+  corrupt. Updated all 9 production call sites (`apply_record.go`, `generated_create.go`,
+  `relationship_create_kernel.go` ×3, `tx.go`) plus 8 test call sites across
+  `internal/generatedcreate`, `store/tiered`, `store/sharded`, `store/memory` to `FreshGraphID()`.
+  Confirmed the fix actually closes the hazard (not just testable behavior) by attempting the exact
+  accidental-reassignment pattern the finding described in a throwaway file: it now fails to compile
+  ("cannot assign to FreshGraphID") — a compile-time guarantee, strictly stronger than a runtime test
+  could provide. `go build`/`go vet` clean; full `pkg/graph/internal/generatedcreate`,
+  `pkg/graph/internal/core`, `pkg/graph/store/{tiered,sharded,memory}` package suites green including
+  under `-race`; full-repo `go test ./...` clean.
+- DOC — BACKLOG 15o (behavior already correct/intentional; the doc was simply absent): documented on
+  `PropertyKeyRegistry`'s type comment why it has no `RollbackNames` unlike `LabelRegistry`/
+  `RelTypeRegistry`: (1) lesson 37 — its growth is capacity-soft and never fails a write (overflow
+  returns token 0, encoders fall back to the raw key string), so there is no failed-operation-that-
+  grew-the-registry case to roll back; (2) property keys are never synced from a replication primary
+  (records carry untokenized string keys), so a replica has no primary-driven growth to undo either.
+- FIX — BACKLOG 15q: `PaginateNodesInOrder` (`storeutil/pagination.go`) tested its cursor via
+  `after != 0` directly, unlike every sibling `Paginate*` function's `afterRaw := after.SnowflakeID();
+  if afterRaw > 0` idiom. This was not purely stylistic: negative snowflake IDs are valid values (see
+  `TestNegativeIDEncoding`), so a negative `after` cursor would have been treated as "search for this
+  cursor" by `PaginateNodesInOrder` while every sibling treats ANY non-positive value (negative or
+  zero) as "no cursor, start from the beginning" — a real behavioral inconsistency for that edge case,
+  not just a readability nit. Reordered to compute `afterRaw` unconditionally and gate on
+  `afterRaw > 0`, matching the siblings exactly. Added a test case (`negative cursor treated as no
+  cursor`) asserting a `types.EntityID(-1)` cursor returns the FULL input in original order rather than
+  an empty/not-found result; confirmed load-bearing by reverting to the `after != 0` form and
+  re-running: the new case failed (`len = 0, want 3`), then reverted back. `go build`/`go vet` clean;
+  full `pkg/graph/internal/storeutil` package suite green including under `-race`; full-repo `go test
+  ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

@@ -721,7 +721,7 @@ func (tx *GraphTx) restoreDeletedRelRow(r *types.Relationship) error {
 		if tx.g.foreignIncomingRel == nil {
 			return err // non-partitioned store cannot hold a stub — surface the error
 		}
-		rerr := tx.g.foreignIncomingRel.RecordForeignIncoming(r, generatedcreate.FreshGraphID)
+		rerr := tx.g.foreignIncomingRel.RecordForeignIncoming(r, generatedcreate.FreshGraphID())
 		if errors.Is(rerr, storepkg.ErrRelExists) {
 			return nil // already present — idempotent restore
 		}

@@ -97,8 +97,8 @@ func PaginateNodesInOrder(nodes []*types.Node, after types.EntityID, limit int) 
 		return nil
 	}
 	start := 0
-	if after != 0 {
-		afterRaw := after.SnowflakeID()
+	afterRaw := after.SnowflakeID()
+	if afterRaw > 0 {
 		found := false
 		for i, n := range nodes {
 			if n.ID().SnowflakeID() == afterRaw {

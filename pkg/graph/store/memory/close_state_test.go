@@ -201,7 +201,7 @@ func TestMemoryStoreMutationAPIsCheckLifecycleBeforeValidation(t *testing.T) {
 			{name: "DeleteNodesBatch", run: func() error { return ms.DeleteNodesBatch([]types.NodeID{0}) }},
 			{name: "PutRelationship", run: func() error { return ms.PutRelationship(nil) }},
 			{name: "PutRelationshipGeneratedIDWithEndpointHashes", run: func() error {
-				_, _, err := ms.PutRelationshipGeneratedIDWithEndpointHashes(nil, generatedcreate.FreshGraphID)
+				_, _, err := ms.PutRelationshipGeneratedIDWithEndpointHashes(nil, generatedcreate.FreshGraphID())
 				return err
 			}},
 			{name: "ReplaceRelationship", run: func() error { return ms.ReplaceRelationship(nil) }},

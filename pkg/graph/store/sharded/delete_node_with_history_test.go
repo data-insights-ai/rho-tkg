@@ -180,7 +180,7 @@ func TestDeleteNodeWithHistoryForeignIncomingStub(t *testing.T) {
 	stubRelID := mkRelID(9, 1)
 	foreignStart := mkNodeID(9, 2)
 	stub := types.NewRelationship(stubRelID, 5, foreignStart, end.ID())
-	if err := st.RecordForeignIncoming(stub, generatedcreate.FreshGraphID); err != nil {
+	if err := st.RecordForeignIncoming(stub, generatedcreate.FreshGraphID()); err != nil {
 		t.Fatalf("RecordForeignIncoming: %v", err)
 	}
 	if in, err := st.IncomingRelationships(end.ID(), 0); err != nil || len(in) != 1 {

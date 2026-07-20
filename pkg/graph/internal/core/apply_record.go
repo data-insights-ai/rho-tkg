@@ -453,7 +453,7 @@ func (c *Core) applyForeignIncomingLocked(body storeutil.RelPutBody, rec storepk
 		return err
 	}
 	c.noteAppliedTxFrom(r.Temporal())
-	if err := c.foreignIncomingRel.RecordForeignIncoming(r, generatedcreate.FreshGraphID); err != nil && !errors.Is(err, storepkg.ErrRelExists) {
+	if err := c.foreignIncomingRel.RecordForeignIncoming(r, generatedcreate.FreshGraphID()); err != nil && !errors.Is(err, storepkg.ErrRelExists) {
 		return err
 	}
 	return nil

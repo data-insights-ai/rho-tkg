@@ -1122,7 +1122,7 @@ func TestTieredStoreWriteAPIsCheckLifecycleBeforeValidation(t *testing.T) {
 			run  func() error
 		}{
 			{name: "PutNode", run: func() error { return ts.PutNode(nil) }},
-			{name: "PutNodeGeneratedID", run: func() error { return ts.PutNodeGeneratedID(nil, generatedcreate.FreshGraphID) }},
+			{name: "PutNodeGeneratedID", run: func() error { return ts.PutNodeGeneratedID(nil, generatedcreate.FreshGraphID()) }},
 			{name: "ReplaceNode", run: func() error { return ts.ReplaceNode(nil) }},
 			{name: "DeleteNode", run: func() error { return ts.DeleteNode(0) }},
 			{name: "RemoveNodeLabelToken", run: func() error { return ts.RemoveNodeLabelToken(0, 0, nil) }},
@@ -1139,10 +1139,10 @@ func TestTieredStoreWriteAPIsCheckLifecycleBeforeValidation(t *testing.T) {
 			{name: "DeleteNodeWithHistory", run: func() error { return ts.DeleteNodeWithHistory(0, 0, nil, nil) }},
 			{name: "PutRelationship", run: func() error { return ts.PutRelationship(nil) }},
 			{name: "PutRelationshipGeneratedID", run: func() error {
-				return ts.PutRelationshipGeneratedID(nil, generatedcreate.FreshGraphID)
+				return ts.PutRelationshipGeneratedID(nil, generatedcreate.FreshGraphID())
 			}},
 			{name: "PutRelationshipGeneratedIDWithEndpointHashes", run: func() error {
-				_, _, err := ts.PutRelationshipGeneratedIDWithEndpointHashes(nil, generatedcreate.FreshGraphID)
+				_, _, err := ts.PutRelationshipGeneratedIDWithEndpointHashes(nil, generatedcreate.FreshGraphID())
 				return err
 			}},
 			{name: "ReplaceRelationship", run: func() error { return ts.ReplaceRelationship(nil) }},
@@ -1789,7 +1789,7 @@ func TestTieredStorePutNodeGeneratedIDFreshProofStoresNode(t *testing.T) {
 	gen := tieredNodeGen(t)
 
 	n := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
-	if err := ts.PutNodeGeneratedID(n, generatedcreate.FreshGraphID); err != nil {
+	if err := ts.PutNodeGeneratedID(n, generatedcreate.FreshGraphID()); err != nil {
 		t.Fatalf("PutNodeGeneratedID: %v", err)
 	}
 	got, err := ts.GetNode(n.ID())
@@ -1819,7 +1819,7 @@ func TestTieredStoreGeneratedNodeRequiresFreshProof(t *testing.T) {
 func TestTieredStorePutNodeGeneratedIDRejectsInvalidAndClosedStore(t *testing.T) {
 	ts, _, signalTok := setupBatchDelete(t)
 
-	if err := ts.PutNodeGeneratedID(nil, generatedcreate.FreshGraphID); !errors.Is(err, ErrInvalidStoreMutation) {
+	if err := ts.PutNodeGeneratedID(nil, generatedcreate.FreshGraphID()); !errors.Is(err, ErrInvalidStoreMutation) {
 		t.Fatalf("PutNodeGeneratedID(nil) = %v, want ErrInvalidStoreMutation", err)
 	}
 
@@ -1828,7 +1828,7 @@ func TestTieredStorePutNodeGeneratedIDRejectsInvalidAndClosedStore(t *testing.T)
 	if err := ts.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-	if err := ts.PutNodeGeneratedID(n, generatedcreate.FreshGraphID); !errors.Is(err, ErrStoreClosed) {
+	if err := ts.PutNodeGeneratedID(n, generatedcreate.FreshGraphID()); !errors.Is(err, ErrStoreClosed) {
 		t.Fatalf("PutNodeGeneratedID after Close = %v, want ErrStoreClosed", err)
 	}
 }
@@ -1839,7 +1839,7 @@ func TestTieredStorePutNodesBatchGeneratedIDFreshProofStoresMixedNodes(t *testin
 
 	ref := types.NewNode(types.NodeID(gen.Generate()), caseTok, nil)
 	event := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
-	if err := ts.PutNodesBatchGeneratedID([]*types.Node{ref, event}, generatedcreate.FreshGraphID); err != nil {
+	if err := ts.PutNodesBatchGeneratedID([]*types.Node{ref, event}, generatedcreate.FreshGraphID()); err != nil {
 		t.Fatalf("PutNodesBatchGeneratedID: %v", err)
 	}
 	for _, want := range []*types.Node{ref, event} {
@@ -1871,7 +1871,7 @@ func TestTieredStoreGeneratedNodeBatchRequiresFreshProof(t *testing.T) {
 func TestTieredStorePutNodesBatchGeneratedIDRejectsInvalidAndClosedStore(t *testing.T) {
 	ts, _, signalTok := setupBatchDelete(t)
 
-	if err := ts.PutNodesBatchGeneratedID([]*types.Node{nil}, generatedcreate.FreshGraphID); !errors.Is(err, ErrInvalidStoreMutation) {
+	if err := ts.PutNodesBatchGeneratedID([]*types.Node{nil}, generatedcreate.FreshGraphID()); !errors.Is(err, ErrInvalidStoreMutation) {
 		t.Fatalf("PutNodesBatchGeneratedID(nil node) = %v, want ErrInvalidStoreMutation", err)
 	}
 
@@ -1880,7 +1880,7 @@ func TestTieredStorePutNodesBatchGeneratedIDRejectsInvalidAndClosedStore(t *test
 	if err := ts.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-	if err := ts.PutNodesBatchGeneratedID([]*types.Node{n}, generatedcreate.FreshGraphID); !errors.Is(err, ErrStoreClosed) {
+	if err := ts.PutNodesBatchGeneratedID([]*types.Node{n}, generatedcreate.FreshGraphID()); !errors.Is(err, ErrStoreClosed) {
 		t.Fatalf("PutNodesBatchGeneratedID after Close = %v, want ErrStoreClosed", err)
 	}
 }
@@ -2006,7 +2006,7 @@ func TestTieredStorePutRelationshipGeneratedIDFreshProofStoresCrossShardRel(t *t
 	}
 
 	rel := types.NewRelationship(types.RelID(relGen.Generate()), 1, signal.ID(), cas.ID())
-	if err := ts.PutRelationshipGeneratedID(rel, generatedcreate.FreshGraphID); err != nil {
+	if err := ts.PutRelationshipGeneratedID(rel, generatedcreate.FreshGraphID()); err != nil {
 		t.Fatalf("PutRelationshipGeneratedID: %v", err)
 	}
 	stored, err := ts.GetRelationship(rel.ID())
@@ -2035,7 +2035,7 @@ func TestTieredStorePutRelationshipGeneratedIDFreshProofStoresCrossShardRel(t *t
 func TestTieredStorePutRelationshipGeneratedIDRejectsInvalidAndClosedStore(t *testing.T) {
 	ts, _, _ := setupBatchDelete(t)
 
-	if err := ts.PutRelationshipGeneratedID(nil, generatedcreate.FreshGraphID); !errors.Is(err, ErrInvalidStoreMutation) {
+	if err := ts.PutRelationshipGeneratedID(nil, generatedcreate.FreshGraphID()); !errors.Is(err, ErrInvalidStoreMutation) {
 		t.Fatalf("PutRelationshipGeneratedID(nil) = %v, want ErrInvalidStoreMutation", err)
 	}
 
@@ -2050,7 +2050,7 @@ func TestTieredStorePutRelationshipGeneratedIDRejectsInvalidAndClosedStore(t *te
 	if err := ts.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-	if err := ts.PutRelationshipGeneratedID(rel, generatedcreate.FreshGraphID); !errors.Is(err, ErrStoreClosed) {
+	if err := ts.PutRelationshipGeneratedID(rel, generatedcreate.FreshGraphID()); !errors.Is(err, ErrStoreClosed) {
 		t.Fatalf("PutRelationshipGeneratedID after Close = %v, want ErrStoreClosed", err)
 	}
 }
@@ -2073,7 +2073,7 @@ func TestTieredStoreGeneratedRelationshipWithEndpointHashes(t *testing.T) {
 
 	rel := types.NewRelationship(types.RelID(relGen.Generate()), 1, signal.ID(), cas.ID())
 	rel.SetIntegrity(&types.RelIntegrity{Hash: "rel-hash"})
-	fromHash, toHash, err := ts.PutRelationshipGeneratedIDWithEndpointHashes(rel, generatedcreate.FreshGraphID)
+	fromHash, toHash, err := ts.PutRelationshipGeneratedIDWithEndpointHashes(rel, generatedcreate.FreshGraphID())
 	if err != nil {
 		t.Fatalf("PutRelationshipGeneratedIDWithEndpointHashes: %v", err)
 	}

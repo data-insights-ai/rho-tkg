@@ -199,7 +199,7 @@ const (
 	// IncomingRelationships(END) is locally complete (ADR-0010 Model A).
 	relPersistForeignIncoming
 	// relPersistImport writes via c.store.PutRelationship directly — NEVER
-	// putGeneratedRelationship/generatedcreate.FreshGraphID, because RelOps.Import
+	// putGeneratedRelationship/generatedcreate.FreshGraphID(), because RelOps.Import
 	// takes a CALLER-SPECIFIED ID that may be a previously-deleted (reused) ID,
 	// not a freshly minted one; tagging it FreshGraphID would misrepresent that
 	// to the store. Used only by importRelWithIDInternal.
@@ -266,18 +266,18 @@ func (c *Core) createRelWithTypeRollback(typeName string, mode relPersistMode, b
 
 	switch mode {
 	case relPersistEndpointHashWrite:
-		fromHash, toHash, err := c.endpointHashWrite.PutRelationshipGeneratedIDWithEndpointHashes(r, generatedcreate.FreshGraphID)
+		fromHash, toHash, err := c.endpointHashWrite.PutRelationshipGeneratedIDWithEndpointHashes(r, generatedcreate.FreshGraphID())
 		if err != nil {
 			return persistFailed(err)
 		}
 		ig.FromNodeHash = fromHash
 		ig.ToNodeHash = toHash
 	case relPersistForeignEnd:
-		if err := c.foreignEndpointRel.PutRelationshipForeignEnd(r, generatedcreate.FreshGraphID); err != nil {
+		if err := c.foreignEndpointRel.PutRelationshipForeignEnd(r, generatedcreate.FreshGraphID()); err != nil {
 			return persistFailed(err)
 		}
 	case relPersistForeignIncoming:
-		if err := c.foreignIncomingRel.RecordForeignIncoming(r, generatedcreate.FreshGraphID); err != nil {
+		if err := c.foreignIncomingRel.RecordForeignIncoming(r, generatedcreate.FreshGraphID()); err != nil {
 			return persistFailed(err)
 		}
 	case relPersistImport:

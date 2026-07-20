@@ -55,7 +55,7 @@ func TestTieredStoreGeneratedRelationshipWithEndpointHashesInvalidProofFallback(
 func TestTieredStoreGeneratedRelationshipWithEndpointHashesRejectsInvalidRelationship(t *testing.T) {
 	ts, _, _ := setupBatchDelete(t)
 
-	if _, _, err := ts.PutRelationshipGeneratedIDWithEndpointHashes(nil, generatedcreate.FreshGraphID); !errors.Is(err, ErrInvalidStoreMutation) {
+	if _, _, err := ts.PutRelationshipGeneratedIDWithEndpointHashes(nil, generatedcreate.FreshGraphID()); !errors.Is(err, ErrInvalidStoreMutation) {
 		t.Fatalf("PutRelationshipGeneratedIDWithEndpointHashes(nil) = %v, want ErrInvalidStoreMutation", err)
 	}
 }
@@ -72,7 +72,7 @@ func TestTieredStoreGeneratedRelationshipWithEndpointHashesSelfEndpoint(t *testi
 	}
 
 	rel := types.NewRelationship(types.RelID(relGen.Generate()), 1, node.ID(), node.ID())
-	fromHash, toHash, err := ts.PutRelationshipGeneratedIDWithEndpointHashes(rel, generatedcreate.FreshGraphID)
+	fromHash, toHash, err := ts.PutRelationshipGeneratedIDWithEndpointHashes(rel, generatedcreate.FreshGraphID())
 	if err != nil {
 		t.Fatalf("PutRelationshipGeneratedIDWithEndpointHashes self endpoint: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestTieredStoreGeneratedRelationshipWithEndpointHashesRestoresCallerHashesO
 		FromNodeHash: "old-from",
 		ToNodeHash:   "old-to",
 	})
-	_, _, err := ts.PutRelationshipGeneratedIDWithEndpointHashes(rel, generatedcreate.FreshGraphID)
+	_, _, err := ts.PutRelationshipGeneratedIDWithEndpointHashes(rel, generatedcreate.FreshGraphID())
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("PutRelationshipGeneratedIDWithEndpointHashes missing end = %v, want ErrNodeNotFound", err)
 	}
@@ -139,7 +139,7 @@ func TestTieredStoreGeneratedRelationshipWithEndpointHashesRollsBackIncomingOnEn
 		t.Fatalf("SetProperties: %v", err)
 	}
 
-	_, _, err := ts.PutRelationshipGeneratedIDWithEndpointHashes(rel, generatedcreate.FreshGraphID)
+	_, _, err := ts.PutRelationshipGeneratedIDWithEndpointHashes(rel, generatedcreate.FreshGraphID())
 	if err == nil {
 		t.Fatal("PutRelationshipGeneratedIDWithEndpointHashes returned nil for unmarshalable relationship")
 	}

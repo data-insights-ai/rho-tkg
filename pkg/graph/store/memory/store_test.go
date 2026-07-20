@@ -283,7 +283,7 @@ func TestMemoryStorePutGeneratedRelationshipWithEndpointHashes(t *testing.T) {
 
 	r := types.NewRelationship(types.RelID(snowflake.ID(100)), 5, nA.ID(), nB.ID())
 	r.SetIntegrity(&types.RelIntegrity{Hash: "rel-hash"})
-	fromHash, toHash, err := ms.PutRelationshipGeneratedIDWithEndpointHashes(r, generatedcreate.FreshGraphID)
+	fromHash, toHash, err := ms.PutRelationshipGeneratedIDWithEndpointHashes(r, generatedcreate.FreshGraphID())
 	if err != nil {
 		t.Fatalf("PutRelationshipGeneratedIDWithEndpointHashes: %v", err)
 	}
@@ -317,11 +317,11 @@ func TestMemoryStorePutGeneratedRelationshipWithEndpointHashesDuplicate(t *testi
 	}
 
 	r := types.NewRelationship(types.RelID(snowflake.ID(100)), 5, nA.ID(), nB.ID())
-	if _, _, err := ms.PutRelationshipGeneratedIDWithEndpointHashes(r, generatedcreate.FreshGraphID); err != nil {
+	if _, _, err := ms.PutRelationshipGeneratedIDWithEndpointHashes(r, generatedcreate.FreshGraphID()); err != nil {
 		t.Fatalf("initial PutRelationshipGeneratedIDWithEndpointHashes: %v", err)
 	}
 	dup := types.NewRelationship(r.ID(), 5, nA.ID(), nB.ID())
-	_, _, err := ms.PutRelationshipGeneratedIDWithEndpointHashes(dup, generatedcreate.FreshGraphID)
+	_, _, err := ms.PutRelationshipGeneratedIDWithEndpointHashes(dup, generatedcreate.FreshGraphID())
 	if !errors.Is(err, ErrRelExists) {
 		t.Fatalf("duplicate PutRelationshipGeneratedIDWithEndpointHashes = %v, want ErrRelExists", err)
 	}

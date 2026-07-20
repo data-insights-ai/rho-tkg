@@ -280,16 +280,8 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   `storeutil/wire.go:204,346`. Fix: delete or rename unmistakably as test-fixture-only.
 - **15m. `decodeMapKeyLen`'s over-long-key path allocates a fresh up-to-65535-byte slice per key
   instead of pooled scratch, on an otherwise zero-alloc path (LOW, perf).**
-- **15n. `generatedcreate.FreshGraphID` exported as a mutable package-level `var`, not a
-  const/accessor — accidental reassignment zeros a process-wide global (LOW, module-internal blast
-  radius).** `internal/generatedcreate/capability.go:16`.
-- **15o. `PropertyKeyRegistry` has no `RollbackNames` unlike `Label`/`RelTypeRegistry` — intentional
-  (lesson 37) but undocumented at the type level (LOW).**
 - **15p. No `PreEncodeRelPutPayloadV2` counterpart to `PreEncodeNodePutPayloadV2` for §4.5 pre-encode —
   see BACKLOG 21 (LOW, likely intentional node-first scope).**
-- **15q. `PaginateNodesInOrder` tests the cursor via `after != 0` directly instead of
-  `after.SnowflakeID() > 0` like every sibling `Paginate*` function — inconsistent idiom (LOW).**
-  `storeutil/pagination.go:95-122`.
 - **15r. `wireEncBufPool` (`sync.Pool`, shared on the hot ingest write path across goroutines) has no
   concurrent/parallel-goroutine test pinning its safety guarantee (LOW, `sync.Pool` is safe by design;
   test would pin it rather than rely on the general contract).**

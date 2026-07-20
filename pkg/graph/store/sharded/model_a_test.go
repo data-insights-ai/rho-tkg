@@ -46,7 +46,7 @@ func TestRecordForeignIncoming_StoreWrite(t *testing.T) {
 
 	lsn0, _ := st.LastCommittedLSN()
 
-	if err := st.RecordForeignIncoming(stub, generatedcreate.FreshGraphID); err != nil {
+	if err := st.RecordForeignIncoming(stub, generatedcreate.FreshGraphID()); err != nil {
 		t.Fatalf("RecordForeignIncoming: %v", err)
 	}
 
@@ -84,7 +84,7 @@ func TestRecordForeignIncoming_StoreWrite(t *testing.T) {
 
 	// Misuse guards: a LOCAL start is not a cross-machine edge.
 	localStub := types.NewRelationship(types.RelID(snowflake.ID(700004)), 5, end.ID(), end.ID())
-	if err := st.RecordForeignIncoming(localStub, generatedcreate.FreshGraphID); !errors.Is(err, sharded.ErrForeignEndpointLocal) {
+	if err := st.RecordForeignIncoming(localStub, generatedcreate.FreshGraphID()); !errors.Is(err, sharded.ErrForeignEndpointLocal) {
 		t.Fatalf("local-start stub = %v, want ErrForeignEndpointLocal", err)
 	}
 }
@@ -113,7 +113,7 @@ func TestDeleteForeignIncoming_StoreWrite(t *testing.T) {
 	}
 	relID := types.RelID(snowflake.ID(700003))
 	stub := types.NewRelationship(relID, 5, types.NodeID(snowflake.ID(700001)), end.ID())
-	if err := st.RecordForeignIncoming(stub, generatedcreate.FreshGraphID); err != nil {
+	if err := st.RecordForeignIncoming(stub, generatedcreate.FreshGraphID()); err != nil {
 		t.Fatalf("RecordForeignIncoming: %v", err)
 	}
 

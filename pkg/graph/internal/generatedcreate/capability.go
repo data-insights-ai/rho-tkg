@@ -13,7 +13,15 @@ type Proof struct {
 
 // FreshGraphID is passed by core create paths immediately after generating a
 // snowflake ID from the graph's configured generators.
-var FreshGraphID = Proof{freshGraphID: true}
+//
+// BACKLOG 15n: a function, not a package-level var. A mutable exported var
+// holding this process-wide sentinel could be accidentally reassigned by any
+// importer (e.g. `generatedcreate.FreshGraphID = generatedcreate.Proof{}`,
+// legal since Proof's zero value is externally constructible even though its
+// field is unexported) — zeroing freshGraphID for every subsequent call
+// across the whole process for the lifetime of the binary. A function
+// returning a fresh value each call has no such mutable global to corrupt.
+func FreshGraphID() Proof { return Proof{freshGraphID: true} }
 
 // Valid reports whether this proof came from this package's fresh-ID marker.
 func (p Proof) Valid() bool {
