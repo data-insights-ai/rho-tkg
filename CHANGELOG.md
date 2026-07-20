@@ -205,6 +205,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   fix is load-bearing by temporarily reverting one of the two `SortWirePropertiesByKey` call sites in
   `badgerstore_history_delta.go`: the test now fails deterministically on every run with lesson 68's
   exact error, where the original test only caught it probabilistically.
+- TEST — added `FuzzDecodeNodeHistoryDelta`/`FuzzDecodeRelHistoryDelta` (BACKLOG 15d) — the anchor+delta
+  history decode path (ADR-0009/B6) had zero fuzz coverage, unlike the sibling
+  `WireToNodeChecked`/`WireToRelChecked`, despite sitting on the same untrusted-bytes trust boundary
+  lesson 47's fuzzing originally found a panic bug on. Mirrors the sibling harness's 3-invariant shape:
+  decode must never panic, the decoded delta merged against a realistic anchor via
+  `ApplyNodeHistory`/`ApplyRelHistory` must not panic, and a resulting entity that passes the checked
+  reconstructor must survive every accessor. 60s of active fuzzing per target (26M and 28.5M
+  executions respectively) found zero crashes.
 
 ## [4.23.0] - 2026-07-18
 

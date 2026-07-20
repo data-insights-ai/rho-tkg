@@ -1756,10 +1756,31 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   is genuinely sensitive to this bug class, not just superficially plausible. Restored the original code
   (bit-for-bit — `git diff` empty) and confirmed GREEN. Full `go test ./...` and
   `go test -race ./pkg/graph/internal/locks/...` pass.
-- **15d. History-delta decode functions have zero fuzz coverage unlike sibling
-  `WireToNodeChecked`/`WireToRelChecked` (MEDIUM, same untrusted-bytes trust class lesson 47's fuzzing
-  found the original bug on).** `badgerstore_history_delta.go` (4 call sites) +
-  `storeutil/wire_history_delta.go`. Fix: add `FuzzDecodeNodeHistoryDelta`/`FuzzDecodeRelHistoryDelta`.
+- **15d. [FIXED — `internal/storeutil/wire_history_delta_fuzz_test.go`] History-delta decode functions
+  had zero fuzz coverage unlike sibling `WireToNodeChecked`/`WireToRelChecked` (MEDIUM, same
+  untrusted-bytes trust class lesson 47's fuzzing found the original bug on).**
+  `badgerstore_history_delta.go` (4 call sites) + `storeutil/wire_history_delta.go`. Fix: add
+  `FuzzDecodeNodeHistoryDelta`/`FuzzDecodeRelHistoryDelta`.
+
+  **Design.** Mirrors `wire_fuzz_test.go`'s existing 3-invariant shape exactly, adapted for the
+  2-stage decode→reconstruct pipeline history-delta rows actually go through: (1)
+  `DecodeNodeHistoryDelta`/`DecodeRelHistoryDelta` must never panic on ANY bytes (they already route
+  through `SafeUnmarshal`; this proves that holds for the delta types specifically, not just
+  `NodeWire`/`RelWire`); (2) a successfully decoded delta merged against a realistic FIXED anchor via
+  `ApplyNodeHistory`/`ApplyRelHistory` must not panic — the map-merge logic in `applyProperties`
+  exercised with adversarial `PS`/`PR` shapes no seed built from real `DiffNodeHistory` output would
+  produce; (3) if the reconstructed wire happens to pass `WireToNodeChecked`/`WireToRelChecked`, every
+  entity accessor must survive touching it (reusing `wire_fuzz_test.go`'s `exerciseNode`/`exerciseRel`
+  helpers, same package). Seed corpus: real deltas from `DiffNodeHistory`/`DiffRelHistory` over an
+  unchanged / added / changed / removed property (covering every `PS`/`PR` shape), plus raw
+  adversarial byte seeds (empty, bare tag byte, tag+garbage msgpack, untagged-looks-like-an-anchor).
+
+  **Verification.** `go test -run` green on all 11 seeds per target. Then ACTIVE fuzzing (`go test
+  -fuzz`, 60s each): `FuzzDecodeNodeHistoryDelta` — 26M executions, 378 interesting corpus entries
+  discovered, zero crashes. `FuzzDecodeRelHistoryDelta` — 28.5M executions, 483 interesting corpus
+  entries, zero crashes. No crash corpus files were written (nothing to add to
+  `testdata/fuzz/`). `go build ./...` + `go vet ./...` clean; `go test
+  ./pkg/graph/internal/storeutil/...` clean; full repo `go test ./...` clean.
 - **15e. `DecodeRangePurge`/`DecodeForeignIncomingDelete` decoders not exercised by the existing
   round-trip/fail-closed test suites despite being live shipped record types (MEDIUM).**
   `storeutil/changelog.go`.
