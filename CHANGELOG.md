@@ -1752,10 +1752,64 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (ADR-0009/B6 — a `'D'`-tagged delta row must fail closed on an old delta-unaware decoder) stayed green
   throughout. `go build`/`go vet` clean; `internal/storeutil` package suite green under `-race`;
   `store/badger`/`store/tiered`/`internal/core` package suites (the `HistoryDeltaEncoding` consumers)
-  green under `-race`; full-repo `go test ./...` clean. This closes out BACKLOG 15's reflection-audit
-  items for this pass — 15u remains open by design (informational: an inherent library-boundary
-  limitation for user-registered custom property types, not a fixable bug) and 15v remains open
-  (LOW priority, admin/growth-path-only reflection, listed for audit completeness).
+  green under `-race`; full-repo `go test ./...` clean.
+- PERF FIX — BACKLOG 15v: registry/index-definition/catalog persistence types across all three
+  backends had no custom msgpack encoders either — the LOW-priority, admin/growth-path tail of the
+  same reflection audit as BACKLOG 15s/15t. Investigated all 14 named call sites first and split them
+  by whether a custom encoder is actually a win: `badgerstore_meta.go`'s 5 sites (label/reltype/
+  property-key registry names) and `persistTemporalIndexDefs`'s `[]uint16` token list all marshal a
+  BUILT-IN slice type directly (`[]string`/`[]uint16`) with NO wrapping struct — `msgpack.Marshal([]string{...})`
+  already dispatches to the library's own dedicated, zero-per-element-reflection fast path
+  (`encodeStringSliceValue`, verified against the vendored `vmihailenco/msgpack/v5` source), so
+  wrapping a raw slice in a named type purely to attach a method would be pure churn for zero
+  measurable benefit — correctly SKIPPED, per the standing "don't force a fit" discipline. The
+  remaining sites all marshal actual STRUCTS (or slices of them), where reflection genuinely does a
+  per-field walk with omitempty checks: added hand-written `EncodeMsgpack`/`DecodeMsgpack` for 11
+  types across 3 packages — `hfIdxDef`/`propIdxDef`/`vectorIdxDef`/`compositeIdxDef`/`relPropIdxDef`
+  (`store/badger/idx_def_wire.go`); `RegistryFileData`/`vectorIdxDef`/`tieredHFIdef`/
+  `temporalIndexFileData` (`store/tiered/wire_defs_wire.go`, distinct package-local types from
+  badger's despite identical field shapes — Go methods can't be shared across packages);
+  `vectorDefBlob`/`slotCatalog` (`store/sharded/store_wire.go`). Two implementation findings beyond a
+  mechanical port: (1) `temporalIndexFileData`'s two slice fields carry NO `omitempty` tag, so
+  reflection encodes a nil slice as msgpack `nil` but a non-nil-empty slice as an empty array (`0x90`)
+  — a naive `EncodeArrayLen(len(...))` collapses that distinction; fixed with an explicit nil check
+  before the array-length helpers, locked in by a dedicated nil-vs-empty-non-nil golden/round-trip
+  case; (2) `slotCatalog`'s `SlotShard map[uint8]int` field has NO msgpack fast path for non-string-keyed
+  maps, so its reflective baseline is itself NON-DETERMINISTIC byte-for-byte across runs (Go map
+  iteration order is randomized) — a fixed hex golden for a populated map would be flaky, not
+  load-bearing, so that one field is verified via decode round-trip (order-independent) instead, while
+  the encoder itself emits ascending-key-sorted order (a genuine, deliberate improvement in
+  reproducibility over the old non-deterministic baseline). Verified byte-identical to the prior
+  reflection-based encoding via golden vectors for every deterministic case (11 types across
+  `idx_def_wire_golden_test.go`/`wire_defs_wire_golden_test.go`/`store_wire_golden_test.go`, captured
+  BEFORE these methods existed) plus round-trip tests for every type/variant including the two special
+  cases above.
+  **Caught and fixed a real regression during full-suite verification** (exactly the scenario the
+  "always run the full test suite, not just the new tests" discipline exists to catch): `RegistryFileData`
+  and `temporalIndexFileData` were initially given POINTER-receiver `EncodeMsgpack` (unlike every other
+  type in this change, correctly value-receiver), which broke `msgpack.Marshal(v)` on a
+  NON-ADDRESSABLE value (a plain struct literal boxed into an `any` — the exact shape
+  `internal/core`'s export/import test helpers use for `RegistryFileData`) with `"Encode(non-addressable
+  tiered.RegistryFileData)"`; 8 pre-existing `internal/core` tests failed
+  (`TestR9_ImportReplay*`, `TestImport_Rejects*IntegrityBlock`, `TestImportRejectsRegistryNamesOverGraphLimit`,
+  `TestTieredWrapper_ImportRollbackRewiresLabelRegistry`). Fixed by switching both to value receivers
+  (matching the established pattern everywhere else in this change) and, defensively, also switched
+  `slotCatalog`'s `EncodeMsgpack` to a value receiver even though no production call site currently
+  marshals it by value, to close off the same failure mode proactively. Added
+  `TestTieredWireEncodeByValue`/`TestStoreWireEncodeByValue`/`TestIdxDefEncodeByValue` (one per package)
+  asserting `msgpack.Marshal` succeeds on a bare struct VALUE for every new type — the compile-time
+  `var _ msgpack.CustomEncoder = T{}` assertions (value-typed, not pointer-typed) already catch a
+  regression back to pointer-only receivers at build time, and these tests additionally pin the
+  runtime behavior. Confirmed load-bearing throughout: targeted bug injections (`vectorIdxDef`'s "efs"
+  key, `temporalIndexFileData`'s "t" key, `slotCatalog`'s "v" key) each turned the corresponding
+  golden/round-trip tests immediately RED; reverting `RegistryFileData`'s receiver back to pointer
+  reproduced the exact original regression (a COMPILE failure this time, since the `var _
+  msgpack.CustomEncoder = RegistryFileData{}` assertion is even stronger than the runtime test);
+  restored, all GREEN. `go build`/`go vet` clean; `store/badger`/`store/tiered`/`store/sharded`/
+  `internal/core`/`internal/storeutil` package suites green under `-race`; full-repo `go test ./...`
+  clean. This closes out BACKLOG 15's reflection-audit items — 15u remains open by design
+  (informational: an inherent library-boundary limitation for user-registered custom property types,
+  not a fixable bug).
 
 ## [4.23.0] - 2026-07-18
 

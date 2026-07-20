@@ -275,18 +275,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   force). Action, if any: document this recommendation for custom-property-type authors (implement
   `msgpack.CustomEncoder` on your own registered type for max perf) in the `RegisterPropertyStructType`
   doc comment or docs/api.md — not a library-internal fix.
-- **15v. Registry/index-definition/catalog persistence across badger/tiered/sharded (label/reltype
-  registry names, property/composite/vector index definitions, tiered registry/temporal-index/vector-
-  index files, sharded catalog) marshal plain slices/structs via reflection-based `msgpack.Marshal`
-  with no custom encoders (LOW, perf, same audit as 15s — lower priority since these are ADMIN/GROWTH
-  paths, not per-entity-write).** `store/badger/badgerstore_meta.go` (5 sites),
-  `badgerstore_index.go` (4 sites), `badgerstore_rel_index.go`, `badgerstore_composite_index.go`,
-  `store/tiered/{registry_file,temporal_index_file,vector_index_file}.go`,
-  `store/sharded/{catalog,vector_index}.go`. All of these persist on registry GROWTH (a new label/
-  rel-type token minted — bounded by distinct-name cardinality, cold after warm-up) or explicit ADMIN
-  operations (index creation, shard rotation/close), never per-entity-write — genuinely low priority,
-  listed for completeness of the reflection audit rather than because it is a live hot-path concern.
-
 ### BACKLOG 17 — Store interface & MemoryStore hardening
 
 - **17h. [PARTIALLY RESOLVED — `CreatePropertyIndex`/`CreateRelPropertyIndex` fixed; 4 doors STILL
