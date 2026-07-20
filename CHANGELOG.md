@@ -758,6 +758,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   further would mean redesigning that threat model, not fixing a bug. Removed from backlog as verified
   intentional and correct, distinct from a doc-only closure of a real problem: nothing was changed
   because nothing needed to change.
+- FIX — BACKLOG 14e (lessons 17/58 drift pattern): `NodeCountByLabelAndPropertyKey` and `PropertyStats`
+  (`internal/core/stats.go`) did the label lookup BEFORE checking the store's optional capability
+  (`NodePropertyKeyStatsCapability` / `NodePropertyStatsCapability`), so for an UNREGISTERED label both
+  short-circuited to a zero-value success before the capability check — buried inside the internal
+  `c.nodeCountByLabelAndPropertyKey`/`c.nodePropertyStats` helpers — was ever reached. Their two
+  siblings, `PropertyTypeClassCounts`/`RelPropertyTypeClassCounts`, already checked the capability
+  FIRST, so a store declining it (e.g. `DisablePlannerStats`) correctly failed closed with
+  `ErrCapabilityNotSupported` regardless of label registration. CLAUDE.md documents all four as
+  failing closed "at RUNTIME" when the store declines — a store-level feature-availability gate that
+  should not depend on whether the queried label happens to be registered — so the drift was a real
+  inconsistency, not a documentation nuance. Fixed by reordering both doors to check the capability
+  before the label lookup, matching the two correct siblings' structure exactly. Added 4 tests:
+  `TestGraphStats_NodeCountByLabelAndPropertyKey_CapabilityMissing_UnregisteredLabel` and
+  `TestGraphStats_PropertyStats_CapabilityMissing_UnregisteredLabel` (confirmed RED before the fix —
+  both returned `nil` instead of `ErrCapabilityNotSupported`), plus the sibling-baseline tests
+  `TestGraphStats_PropertyTypeClassCounts_CapabilityMissing_UnregisteredLabel`/
+  `TestGraphStats_RelPropertyTypeClassCounts_CapabilityMissing_UnregisteredType` confirming the two
+  already-correct doors as the reference behavior. All pre-existing `TestGraphStats_*` tests (which
+  only ever exercised the capability-missing case for a REGISTERED label — never the unregistered
+  combination where the drift lived) stayed green unchanged. `go build`/`go vet` clean; full
+  `pkg/graph/internal/core` package suite green including under `-race` (133s); full-repo `go test
+  ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

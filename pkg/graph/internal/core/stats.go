@@ -108,6 +108,17 @@ func (s *StatOps) NodeCountByLabel(label string) (int, error) { return s.c.Nodes
 
 // NodeCountByLabelAndPropertyKey returns the number of current nodes carrying
 // label with an indexable scalar propertyKey value. Missing labels return 0.
+//
+// BACKLOG 14e: the capability check runs BEFORE the label lookup — matching
+// PropertyTypeClassCounts/RelPropertyTypeClassCounts, not the pre-fix
+// ordering here — so a store that declines NodePropertyKeyStatsCapability
+// (e.g. DisablePlannerStats) fails closed with ErrCapabilityNotSupported for
+// EVERY label, not just registered ones. The prior label-lookup-first order
+// let an unregistered label short-circuit to a zero-value success before the
+// capability check (buried inside c.nodeCountByLabelAndPropertyKey) was ever
+// reached, silently masking the fail-closed contract CLAUDE.md documents for
+// this capability "at RUNTIME" — a store-level feature-availability gate
+// that should not depend on whether the queried label happens to exist.
 func (s *StatOps) NodeCountByLabelAndPropertyKey(label, propertyKey string) (int, error) {
 	c := s.c
 	if err := c.validateIndexLabel(label); err != nil {
@@ -117,18 +128,18 @@ func (s *StatOps) NodeCountByLabelAndPropertyKey(label, propertyKey string) (int
 		return 0, err
 	}
 	c.mu.RLock()
+	defer c.mu.RUnlock()
 	if c.closed.Load() {
-		c.mu.RUnlock()
 		return 0, ErrGraphClosed
+	}
+	if _, ok := c.store.(storepkg.NodePropertyKeyStatsCapability); !ok {
+		return 0, fmt.Errorf("%w: NodePropertyKeyStatsCapability", storepkg.ErrCapabilityNotSupported)
 	}
 	tok, ok := c.labels.Lookup(label)
 	if !ok {
-		c.mu.RUnlock()
 		return 0, nil
 	}
-	count, err := c.nodeCountByLabelAndPropertyKey(tok, propertyKey)
-	c.mu.RUnlock()
-	return count, err
+	return c.nodeCountByLabelAndPropertyKey(tok, propertyKey)
 }
 
 // PropertyTypeClassCounts returns the EXACT per-(label, propertyKey)
@@ -223,6 +234,9 @@ func (s *StatOps) RelPropertyTypeClassCounts(typeName, propertyKey string) (stor
 // store.NodePropertyStatsCapability return storepkg.ErrCapabilityNotSupported
 // (memory, badger, and tiered all implement it — see
 // docs/adr/0005-tiered-parity.md §3.1).
+//
+// BACKLOG 14e: the capability check runs BEFORE the label lookup, for the
+// same reason as NodeCountByLabelAndPropertyKey's sibling fix — see there.
 func (s *StatOps) PropertyStats(label, propertyKey string) (storepkg.PropertyStats, error) {
 	c := s.c
 	if err := c.validateIndexLabel(label); err != nil {
@@ -232,18 +246,18 @@ func (s *StatOps) PropertyStats(label, propertyKey string) (storepkg.PropertySta
 		return storepkg.PropertyStats{}, err
 	}
 	c.mu.RLock()
+	defer c.mu.RUnlock()
 	if c.closed.Load() {
-		c.mu.RUnlock()
 		return storepkg.PropertyStats{}, ErrGraphClosed
+	}
+	if _, ok := c.store.(storepkg.NodePropertyStatsCapability); !ok {
+		return storepkg.PropertyStats{}, fmt.Errorf("%w: NodePropertyStatsCapability", storepkg.ErrCapabilityNotSupported)
 	}
 	tok, ok := c.labels.Lookup(label)
 	if !ok {
-		c.mu.RUnlock()
 		return storepkg.PropertyStats{}, nil
 	}
-	stats, err := c.nodePropertyStats(tok, propertyKey)
-	c.mu.RUnlock()
-	return stats, err
+	return c.nodePropertyStats(tok, propertyKey)
 }
 
 // RelCountByType forwards to Core.Rels.CountByType.

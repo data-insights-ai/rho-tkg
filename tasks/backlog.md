@@ -264,9 +264,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 14 — Index / docvalues / stats / vector / events hardening (graph layer)
 
-- **14e. Two sibling stats doors disagree on capability-check-vs-label-lookup ordering — inconsistent
-  `DisablePlannerStats` fail-closed behavior for an unregistered label (LOW-MEDIUM, lessons 17/58
-  drift pattern).** `internal/core/stats.go:111-132,226-247` vs `:144-178,186-217`.
 - **14f. FIFO (not LRU) eviction on the as-of DocValues column cache (cap=64) — undercuts the cache's
   own stated goal once a workload exceeds 64 distinct hot pins (LOW, deliberate simplicity tradeoff,
   worth revisiting).** `internal/core/docvalues_asof_cache.go:31-51,121-139`.
