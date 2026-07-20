@@ -167,6 +167,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   oracle. New tests (no `NoSort` test existed anywhere in the repo before this) exploit Go's per-call
   randomized map iteration order to prove the sort is actually skipped, not just that results are
   still correct.
+- FIX — sharded store's `Clear()` now resets the store-level `vectorDefs` cache (BACKLOG 20n).
+  Verified the finding's own "likely fails safe" hypothesis and confirmed it: each shard's per-shard
+  vector index state was already correctly wiped by `shard.Clear()`, and the stale store-level cache
+  only caused `SearchNearestNodes`/`SearchNearestFiltered` to fall through to a uniform
+  `ErrVectorIndexNotFound` from every shard (never wrong data) plus a harmless overwrite on the next
+  `CreateVectorIndex` for the same key — but it was still a real RAM/disk desync window, now closed
+  directly. `propKeyReg` (the other half of the finding) was confirmed to be correctly out of scope by
+  existing design — it's a shared pointer to the graph-layer-owned registry, and `Clear()`'s own doc
+  comment already says registries aren't its concern. New white-box test proves the cache is actually
+  empty after `Clear()`.
 
 ## [4.23.0] - 2026-07-18
 

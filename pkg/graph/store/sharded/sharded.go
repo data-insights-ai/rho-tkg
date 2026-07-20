@@ -441,6 +441,26 @@ func (s *Store) Clear() error {
 	if err := s.anchor().MetaSet(catalogMetaKey, blob); err != nil {
 		return fmt.Errorf("graph: sharded: re-persist catalog: %w", err)
 	}
+	// BACKLOG 20n: each shard.Clear() above already reset that shard's OWN
+	// vectorIndexes map to empty, but the store-level vectorDefs cache (kept
+	// so cross-shard merges can re-rank without re-deriving dims/metric) is
+	// a SEPARATE field Clear never touched — verified this was already
+	// harmless (SearchNearestNodes/SearchNearestFiltered call vectorDefFor,
+	// which would still report the stale def as present, but every shard
+	// then uniformly answers ErrVectorIndexNotFound and coalesceUniform
+	// surfaces that single error rather than wrong/empty data; a later
+	// CreateVectorIndex for the same key just overwrites the stale entry).
+	// Resetting it here closes that residual staleness window outright
+	// instead of relying on downstream error-uniformity to paper over it.
+	// propKeyReg is deliberately NOT touched — see the doc comment above:
+	// registries are a graph-layer concern, not Clear's.
+	s.vectorDefMu.Lock()
+	s.vectorDefs = make(map[vectorDefKey]vectorDefMeta)
+	verr := s.persistVectorDefsLocked()
+	s.vectorDefMu.Unlock()
+	if verr != nil {
+		return fmt.Errorf("graph: sharded: reset vector defs: %w", verr)
+	}
 	return nil
 }
 

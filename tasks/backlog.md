@@ -3274,8 +3274,38 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 - **20m. Catalog is fixed identity-only — no re-sharding/rebalancing path exists at all; see BACKLOG
   21 for the feature-level entry (MEDIUM, missing feature, likely intentional "not yet" for a WIP
   backend).**
-- **20n. `Clear()` does not restore `vectorDefs`/`propKeyReg` in-memory state — likely fails safe via
-  `coalesceUniform` but unverified; RAM/disk desync (LOW-MEDIUM).** `store/sharded/sharded.go:423-445`.
+- **20n. [FIXED — `store/sharded/sharded.go`, `store/sharded/vector_defs_clear_test.go`] `Clear()`
+  did not restore `vectorDefs`/`propKeyReg` in-memory state — likely fails safe via `coalesceUniform`
+  but unverified; RAM/disk desync (LOW-MEDIUM).** `store/sharded/sharded.go:423-445`.
+
+  **Verified the "likely fails safe" hypothesis, and split the two fields on investigation.**
+  `propKeyReg` is a pointer to the SAME registry object the graph layer owns and Clear's own doc
+  comment already states registries are deliberately out of scope ("Registries are a graph-layer
+  concern and are not part of Clear") — confirmed this is correct existing design, not a bug; left
+  untouched. `vectorDefs` (the store-level dims/metric cache backing cross-shard vector-search
+  re-ranking) IS genuinely stale after `Clear()` — each shard's OWN `vectorIndexes` map is reset to
+  empty by `shard.Clear()` (traced badger's `Clear()`), but the separate store-level `vectorDefs`
+  cache was never touched. Traced the full consequence chain: `SearchNearestNodes`/
+  `SearchNearestFiltered` still pass the stale `vectorDefFor` presence check, fan out to every shard,
+  and every shard uniformly returns `ErrVectorIndexNotFound` (confirmed in
+  `badgerstore_index.go:815-820`) — `coalesceUniform` detects "all non-nil AND equivalent" and
+  surfaces that ONE error rather than wrong/empty data. A later `CreateVectorIndex` for the same key
+  just overwrites the stale entry (no pre-check against `vectorDefs` gates the fan-out). Confirmed:
+  genuinely fails safe, exactly as hypothesized — but the residual staleness window was still real
+  RAM/disk desync worth closing directly rather than relying on downstream error-uniformity.
+
+  **Fix.** `Clear()` now resets `s.vectorDefs` to an empty map and re-persists it (mirroring the
+  existing catalog re-anchor step right above it) under the same `vectorDefMu` lock
+  `persistVectorDefsLocked` already requires.
+
+  **Tests.** `TestClear_ResetsVectorDefs` (package-internal white-box test — no public introspection
+  door exists for `vectorDefs`): create a vector index, confirm 1 entry, `Clear()`, confirm 0 entries;
+  also pins the already-safe `SearchNearestNodes` → `ErrVectorIndexNotFound` behavior and that
+  recreating the same key post-Clear works cleanly, so a future regression in either direction is
+  caught. RED confirmed via `git stash push` on the production file alone: "vectorDefs after Clear = 1
+  entries, want 0." Popped the stash, confirmed GREEN. `go build ./...` + `go vet ./...` clean;
+  `go test ./pkg/graph/store/sharded/...` clean; `go test -race ./pkg/graph/store/sharded/...` clean;
+  full repo `go test ./...` clean.
 
 ### BACKLOG 21 — Missing library-level features (cross-cutting)
 
