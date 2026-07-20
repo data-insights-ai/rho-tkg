@@ -24,6 +24,19 @@ var ErrOversizedWAL = errors.New("graph: oversized WAL cannot be opened at the c
 // sizes Badger accepts (AES-128/192/256).
 var ErrInvalidEncryptionKeyLength = errors.New("graph: EncryptionKey length must be 0 (disabled), 16, 24, or 32 bytes (AES-128/192/256)")
 
+// effectiveMemTableSize resolves the MemTableSize a Badger open will actually
+// use: cfg.MemTableSize when explicitly tuned, else Badger's own stock
+// default. Resolved from badgerv4.DefaultOptions rather than hardcoded, so a
+// future Badger version bump that changes its default cannot silently desync
+// this from reality (BACKLOG 18m) — DefaultOptions builds a pure struct
+// literal, no I/O, so this is a cheap in-memory computation.
+func effectiveMemTableSize(cfg Config) int64 {
+	if cfg.MemTableSize > 0 {
+		return cfg.MemTableSize
+	}
+	return badgerv4.DefaultOptions("").MemTableSize
+}
+
 // ErrEncryptionRequiresBlockCache is returned when Config.EncryptionKey is
 // set but Config.BlockCacheSize is 0. Badger PANICS at Open (not a returned
 // error) when compression or encryption is enabled and its resolved
@@ -207,18 +220,26 @@ func buildBadgerOptions(cfg Config) badgerv4.Options {
 // the read-only branch), so it ALSO fails on an oversized WAL — and "Arena too
 // small" is not ErrTruncateNeeded. The tiered store therefore calls this
 // EXPLICITLY before its read-only recovery probe; New runs it on the writable
-// open. Both are gated to a writable, on-disk store with MemTableSize > 0.
+// open. Both are gated to a writable, on-disk store; the comparison uses the
+// EFFECTIVE MemTableSize (effectiveMemTableSize — cfg.MemTableSize when tuned,
+// else Badger's own stock default), not a raw cfg.MemTableSize > 0 check
+// (BACKLOG 18m): reverting an explicitly-tuned dir back to MemTableSize: 0
+// ("use stock") is itself a shrink whenever stock is smaller than the
+// previous tuning, and un-gating on ">0" alone would skip exactly that
+// transition, reproducing the "Arena too small" os.Exit lesson 45 already
+// fixed for the explicit-to-smaller-explicit case.
 // Idempotent: a second call after the flush finds nothing to do.
 func MigrateOversizedWAL(cfg Config) error {
-	if cfg.Dir == "" || cfg.InMemory || cfg.MemTableSize <= 0 {
+	if cfg.Dir == "" || cfg.InMemory {
 		return nil
 	}
+	target := effectiveMemTableSize(cfg)
 	maxWAL, err := maxWALFileSize(cfg.Dir)
 	if err != nil {
 		return err
 	}
-	if maxWAL <= 2*cfg.MemTableSize {
-		return nil // WALs (if any) fit the configured arena
+	if maxWAL <= 2*target {
+		return nil // WALs (if any) fit the configured (or stock) arena
 	}
 
 	// The flush open must size its arena to the WAL's ORIGINAL memtable
@@ -242,7 +263,7 @@ func MigrateOversizedWAL(cfg Config) error {
 	flushCfg.MemTableSize = recovered
 	if cfg.Logger != nil {
 		cfg.Logger.Infof("graph: flushing oversized WAL before memtable shrink: dir=%s wal_bytes=%d flush_memtable=%d target_memtable=%d",
-			cfg.Dir, maxWAL, flushCfg.MemTableSize, cfg.MemTableSize)
+			cfg.Dir, maxWAL, flushCfg.MemTableSize, target)
 	}
 	db, err := badgerv4.Open(buildBadgerOptions(flushCfg))
 	if err != nil {
@@ -255,20 +276,23 @@ func MigrateOversizedWAL(cfg Config) error {
 }
 
 // guardReadOnlyOversizedWAL returns ErrOversizedWAL when a read-only open at
-// cfg.MemTableSize would replay an oversized WAL and terminate the process. A
-// read-only open cannot flush, so there is no in-place recovery — the caller
-// must do one writable open (which migrates) first. Gated by New() to
-// on-disk, tuned, read-only opens.
+// the EFFECTIVE MemTableSize (effectiveMemTableSize — cfg.MemTableSize when
+// tuned, else Badger's own stock default; BACKLOG 18m, same rationale as
+// MigrateOversizedWAL) would replay an oversized WAL and terminate the
+// process. A read-only open cannot flush, so there is no in-place recovery —
+// the caller must do one writable open (which migrates) first. Gated by
+// New() to on-disk, read-only opens.
 func guardReadOnlyOversizedWAL(cfg Config) error {
+	target := effectiveMemTableSize(cfg)
 	maxWAL, err := maxWALFileSize(cfg.Dir)
 	if err != nil {
 		return err
 	}
-	if maxWAL <= 2*cfg.MemTableSize {
+	if maxWAL <= 2*target {
 		return nil
 	}
 	return fmt.Errorf("%w: read-only open at MemTableSize=%d cannot replay the %d-byte WAL in %s; open writable once to migrate first",
-		ErrOversizedWAL, cfg.MemTableSize, maxWAL, cfg.Dir)
+		ErrOversizedWAL, target, maxWAL, cfg.Dir)
 }
 
 // maxWALFileSize returns the largest apparent .mem (WAL) file size in dir, or 0

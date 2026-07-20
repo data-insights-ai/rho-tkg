@@ -370,9 +370,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   dedicated design + a full bitemporal-correctness verification pass, not a speed-fix folded into a
   broader backlog sweep. Recommend a dedicated follow-up.** `badgerstore_txtime.go:74-115` (`reverse
   ScanHistoryVersion`), `:182-` (`NodeAsOf`), `:285-333,336-384` (`NodesAsOf`/`RelsAsOf`).
-- **18m. Oversized-WAL migration guard doesn't cover the "explicit `MemTableSize` reverted to 0
-  (stock)" transition — could reproduce the lesson-45 crash via a different input path than the one
-  that's tested (LOW-MEDIUM).** `badgerstore.go:720-762`.
 - **18n. `ForEachNodeByLabel`'s callback runs inside an open Badger read transaction, contradicting
   its own doc comment ("fn runs WITHOUT any store lock held") — not a deadlock risk but pins Badger's
   min read timestamp for the whole scan, inhibiting value-log GC (LOW-MEDIUM, undocumented

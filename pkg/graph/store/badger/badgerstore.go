@@ -751,14 +751,20 @@ func New(cfg Config) (*Store, error) {
 		return nil, err
 	}
 
-	// Shrinking MemTableSize on a data dir that still holds WAL files written
-	// under a LARGER memtable bricks the open: Badger replays each WAL into an
-	// arena sized by the CURRENT MemTableSize and fails with "Arena too small"
-	// (not a recoverable sentinel) before a single row is read. Flush such WALs
-	// at their original size first. Gated on MemTableSize > 0 (no tuning => no
-	// shrink), and on a writable on-disk store (the read-only probe must not
-	// write — the tiered recovery path migrates explicitly before its probe).
-	if cfg.MemTableSize > 0 && !cfg.InMemory && !cfg.ReadOnly {
+	// Shrinking the EFFECTIVE MemTableSize on a data dir that still holds WAL
+	// files written under a LARGER memtable bricks the open: Badger replays
+	// each WAL into an arena sized by the current memtable and fails with
+	// "Arena too small" (not a recoverable sentinel) before a single row is
+	// read. Flush such WALs at their original size first. Gated on a writable
+	// on-disk store (the read-only probe must not write — the tiered recovery
+	// path migrates explicitly before its probe) — NOT on MemTableSize > 0
+	// (BACKLOG 18m): reverting an explicitly-tuned dir back to MemTableSize: 0
+	// ("use Badger's stock default") is itself a shrink whenever stock is
+	// smaller than the previous tuning, so MigrateOversizedWAL/
+	// guardReadOnlyOversizedWAL must run for that case too — they compare
+	// against the resolved effective size internally and no-op when nothing
+	// needs migrating (clean dirs, stock sizes with no oversized WAL, etc.).
+	if !cfg.InMemory && !cfg.ReadOnly {
 		if err := MigrateOversizedWAL(cfg); err != nil {
 			return nil, err
 		}
@@ -768,7 +774,7 @@ func New(cfg Config) (*Store, error) {
 	// too small"). Fail closed with a returned error instead of crashing the
 	// process. (The tiered store never reaches here for a recoverable shard: it
 	// migrates before its read-only probe.)
-	if cfg.MemTableSize > 0 && !cfg.InMemory && cfg.ReadOnly {
+	if !cfg.InMemory && cfg.ReadOnly {
 		if err := guardReadOnlyOversizedWAL(cfg); err != nil {
 			return nil, err
 		}

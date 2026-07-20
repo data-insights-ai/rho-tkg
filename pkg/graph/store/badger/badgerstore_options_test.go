@@ -423,6 +423,104 @@ func TestBadgerMigrateOversizedWALRejectsAboveCapWAL(t *testing.T) {
 	}
 }
 
+// writeStockOversizedWALCopy mirrors writeOversizedWALCopy but writes the
+// source under a memtable LARGER than Badger's own stock default
+// (badgerv4.DefaultOptions("").MemTableSize, 64MB) — the fixture BACKLOG 18m's
+// "revert to stock" gap needs: a dir whose live WAL only becomes oversized
+// relative to the STOCK arena, not an explicitly smaller tuned one.
+func writeStockOversizedWALCopy(t *testing.T, n, padBytes int) string {
+	t.Helper()
+	srcDir := t.TempDir()
+	const srcMemTableSize = 128 << 20 // > stock (64MB): reverting to stock is a real shrink
+	bs, err := New(Config{Dir: srcDir, MemTableSize: srcMemTableSize})
+	if err != nil {
+		t.Fatalf("open source: %v", err)
+	}
+	pad := strings.Repeat("y", padBytes)
+	for i := 1; i <= n; i++ {
+		node := mustNode(t, i, map[string]any{"i": i, "pad": pad})
+		if err := bs.PutNode(node); err != nil {
+			t.Fatalf("put %d: %v", i, err)
+		}
+	}
+	if err := bs.Flush(); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+
+	dstDir := t.TempDir()
+	copyDirFiles(t, srcDir, dstDir)
+	if err := bs.Close(); err != nil {
+		t.Fatalf("close source: %v", err)
+	}
+
+	stock := badgerv4.DefaultOptions("").MemTableSize
+	if maxMemFileSize(t, dstDir) <= 2*stock {
+		t.Fatalf("fixture invalid: no WAL larger than 2x stock (%d) in copy %s", stock, dstDir)
+	}
+	return dstDir
+}
+
+// TestBadgerMigrateOversizedWALCoversRevertToStock (BACKLOG 18m) pins the gap
+// the old "cfg.MemTableSize > 0" gate missed: a dir tuned LARGER than Badger's
+// stock default, then reopened with MemTableSize: 0 ("use stock") — itself a
+// shrink whenever stock is smaller than the previous tuning. Before the fix,
+// MigrateOversizedWAL (and New's gate calling it) no-opped unconditionally
+// whenever cfg.MemTableSize == 0, so this exact transition reproduced the
+// lesson-45 "Arena too small" os.Exit via a different input path than the
+// already-tested explicit-to-smaller-explicit case
+// (TestBadgerReopenLiveWALAcrossMemtableShrink).
+func TestBadgerMigrateOversizedWALCoversRevertToStock(t *testing.T) {
+	if testing.Short() {
+		t.Skip("writes ~30MB through a 128MB memtable and copies a ~256MB WAL")
+	}
+	const n = 1000
+	dstDir := writeStockOversizedWALCopy(t, n, 100*1024)
+
+	// MemTableSize deliberately left at 0 — the "reverted to stock" case.
+	bs, err := New(Config{Dir: dstDir})
+	if err != nil {
+		t.Fatalf("stock open on oversized WAL: %v", err)
+	}
+	defer bs.Close()
+	for i := 1; i <= n; i++ {
+		if _, err := bs.GetNode(types.NodeID(snowflake.ID(i))); err != nil {
+			t.Fatalf("record %d lost across stock-revert WAL migration: %v", i, err)
+		}
+	}
+	stock := badgerv4.DefaultOptions("").MemTableSize
+	if got := maxMemFileSize(t, dstDir); got > 2*stock {
+		t.Fatalf("oversized WAL (%d bytes) survived migration to stock (%d)", got, stock)
+	}
+}
+
+// TestBadgerReadOnlyOpenOversizedWALFailsClosedAtStock (BACKLOG 18m) mirrors
+// TestBadgerReadOnlyOpenOversizedWALFailsClosed for the revert-to-stock path:
+// a read-only open at MemTableSize: 0 over a WAL oversized relative to stock
+// must fail closed with ErrOversizedWAL, not silently skip the guard and
+// os.Exit deep inside Badger's WAL replay.
+func TestBadgerReadOnlyOpenOversizedWALFailsClosedAtStock(t *testing.T) {
+	if testing.Short() {
+		t.Skip("writes ~30MB through a 128MB memtable and copies a ~256MB WAL")
+	}
+	dir := writeStockOversizedWALCopy(t, 1000, 100*1024)
+
+	bs, err := New(Config{Dir: dir, ReadOnly: true}) // MemTableSize 0 == stock
+	if bs != nil {
+		_ = bs.Close()
+	}
+	if !errors.Is(err, ErrOversizedWAL) {
+		t.Fatalf("read-only stock open over oversized WAL: err = %v, want ErrOversizedWAL", err)
+	}
+	w, err := New(Config{Dir: dir})
+	if err != nil {
+		t.Fatalf("writable stock open after fail-closed read-only: %v", err)
+	}
+	defer w.Close()
+	if _, err := w.GetNode(types.NodeID(snowflake.ID(1))); err != nil {
+		t.Fatalf("record 1 not served after writable stock migration: %v", err)
+	}
+}
+
 // --- Test 3c: the knobs are actually applied (not just accepted) ------------
 
 // TestBadgerFootprintKnobsApplied is the adversarial complement to the boundary

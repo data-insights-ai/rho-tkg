@@ -1279,6 +1279,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   PutRelEntityAndOut = [], want [...]`); restored, GREEN. `go build`/`go vet` clean; full
   `pkg/graph/store/badger` package suite green including under `-race` (148s); full-repo
   `go test ./...` clean.
+- FIX — BACKLOG 18m: the oversized-WAL migration guard (`MigrateOversizedWAL`/`guardReadOnlyOversizedWAL`,
+  `badgerstore_options.go`, invoked by `New()`) was gated on `cfg.MemTableSize > 0`, treating an unset/0
+  `MemTableSize` as "no tuning, nothing to check." But `MemTableSize: 0` means "use Badger's stock
+  default" (64MB, confirmed by reading badger v4.9.2's `DefaultOptions`), which is itself a SHRINK
+  relative to any previous explicit tuning above 64MB (the validated range is [8MB, 1GB]) — reverting
+  a previously-tuned dir's config back to `MemTableSize: 0` skipped the migration/guard entirely and
+  could reproduce the exact "Arena too small" `os.Exit` crash lesson 45 already fixed for the
+  explicit-to-smaller-explicit case, just via a different input path (explicit-to-stock) that wasn't
+  covered. Fixed by resolving an `effectiveMemTableSize(cfg)` (cfg.MemTableSize when tuned, else
+  Badger's own stock default via `badgerv4.DefaultOptions("").MemTableSize` — resolved dynamically
+  rather than hardcoded, so a future Badger version bump changing its default cannot silently desync
+  this) and using it everywhere `MigrateOversizedWAL`/`guardReadOnlyOversizedWAL` compare against the
+  WAL's apparent size; `New()`'s two call-site gates dropped the `MemTableSize > 0` condition entirely
+  (now gated only on writable/read-only + on-disk), letting the functions' own now-correct internal
+  comparison decide whether anything needs migrating. Added `writeStockOversizedWALCopy` (mirrors the
+  existing `writeOversizedWALCopy` fixture builder, but writes the source under a memtable LARGER than
+  stock — 128MB — so reverting to `MemTableSize: 0` is a genuine shrink) plus two tests:
+  `TestBadgerMigrateOversizedWALCoversRevertToStock` (a writable stock-size reopen over the oversized
+  WAL must migrate and serve every record) and `TestBadgerReadOnlyOpenOversizedWALFailsClosedAtStock`
+  (a read-only stock-size open over the same WAL must fail closed with `ErrOversizedWAL`, not crash).
+  Confirmed maximally load-bearing: reverting the fix and running the writable-reopen test did not
+  merely fail — it CRASHED THE ENTIRE TEST PROCESS via Badger's `log.Fatal`/`os.Exit` ("Arena too
+  small, toWrite:102487 newTotal:87298494 limit:87241465"), the exact unrecoverable-process-abort
+  hazard this fix exists to prevent; the read-only variant returned a raw Badger internal error
+  instead of the safe `ErrOversizedWAL` sentinel. Both restored, GREEN, non-crashing. `go build`/
+  `go vet` clean; full `pkg/graph/store/badger` package suite green including under `-race` (162s);
+  `pkg/graph/store/tiered` (the other `MigrateOversizedWAL` caller) green; full-repo `go test ./...`
+  clean.
 
 ## [4.23.0] - 2026-07-18
 
