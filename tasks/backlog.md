@@ -58,12 +58,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ## Open — Hardening Pass (2026-07-18)
 
-### BACKLOG 7 — Public façade & thin sub-API wrapper hardening
-
-### BACKLOG 8 — Dry-run / constraints / replication convenience-API correctness
-
-### BACKLOG 9 — Write-path kernel hardening (CRUD, unique constraints, version chains)
-
 ### BACKLOG 10 — Bitemporal resolution engine hardening
 
 - **10b. [CONFIRMED REAL via reproducible test; fix ATTEMPTED and REVERTED — needs a dedicated
