@@ -213,6 +213,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `ApplyNodeHistory`/`ApplyRelHistory` must not panic, and a resulting entity that passes the checked
   reconstructor must survive every accessor. 60s of active fuzzing per target (26M and 28.5M
   executions respectively) found zero crashes.
+- TEST — closed BACKLOG 15e (`DecodeRangePurge`/`DecodeForeignIncomingDelete` — ADR-0008 R3 and
+  ADR-0010 Model A cascade record types respectively — were absent from the round-trip and
+  fail-closed-on-garbage change-log decoder suites, despite every other `ChangeRecord` body type
+  being covered). Investigated both decoders: they already route through `SafeUnmarshal` identically
+  to every sibling decoder — pure test-gap, no production change. Added matching subtests to
+  `TestChangeBody_RoundTrip` and `TestChangeBodyDecoders_FailClosedOnGarbage`.
 
 ## [4.23.0] - 2026-07-18
 

@@ -233,6 +233,34 @@ func TestChangeBody_RoundTrip(t *testing.T) {
 			t.Fatalf("got %+v want %+v", got, b)
 		}
 	})
+
+	// BACKLOG 15e: RangePurge (ADR-0008 R3) and ForeignIncomingDelete
+	// (ADR-0010 Model A cascade) are live shipped record types with the same
+	// SafeUnmarshal-decoder shape as every body above, but were not exercised
+	// by this round-trip suite.
+	t.Run("RangePurge", func(t *testing.T) {
+		b := RangePurgeBody{LabelToken: 7, Before: 123456, Mode: 1}
+		p, _ := MarshalChangeBody(b)
+		got, err := DecodeRangePurge(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, b) {
+			t.Fatalf("got %+v want %+v", got, b)
+		}
+	})
+
+	t.Run("ForeignIncomingDelete", func(t *testing.T) {
+		b := ForeignIncomingDeleteBody{RelID: 3003, EndID: 4004}
+		p, _ := MarshalChangeBody(b)
+		got, err := DecodeForeignIncomingDelete(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, b) {
+			t.Fatalf("got %+v want %+v", got, b)
+		}
+	})
 }
 
 // Every decoder must fail with an error (never panic) on truncated/garbage
@@ -242,12 +270,14 @@ func TestChangeBodyDecoders_FailClosedOnGarbage(t *testing.T) {
 	decoders := map[string]func([]byte) error{
 		"NodePut":            func(p []byte) error { _, e := DecodeNodePut(p); return e },
 		"RelPut":             func(p []byte) error { _, e := DecodeRelPut(p); return e },
-		"NodeDelete":         func(p []byte) error { _, e := DecodeNodeDelete(p); return e },
-		"RelDelete":          func(p []byte) error { _, e := DecodeRelDelete(p); return e },
-		"NodeHistoryVersion": func(p []byte) error { _, e := DecodeHistoryVersionNode(p); return e },
-		"RelHistoryVersion":  func(p []byte) error { _, e := DecodeHistoryVersionRel(p); return e },
-		"HistoryTruncate":    func(p []byte) error { _, e := DecodeHistoryTruncate(p); return e },
-		"Meta":               func(p []byte) error { _, e := DecodeMeta(p); return e },
+		"NodeDelete":            func(p []byte) error { _, e := DecodeNodeDelete(p); return e },
+		"RelDelete":             func(p []byte) error { _, e := DecodeRelDelete(p); return e },
+		"NodeHistoryVersion":    func(p []byte) error { _, e := DecodeHistoryVersionNode(p); return e },
+		"RelHistoryVersion":     func(p []byte) error { _, e := DecodeHistoryVersionRel(p); return e },
+		"HistoryTruncate":       func(p []byte) error { _, e := DecodeHistoryTruncate(p); return e },
+		"Meta":                  func(p []byte) error { _, e := DecodeMeta(p); return e },
+		"RangePurge":            func(p []byte) error { _, e := DecodeRangePurge(p); return e },
+		"ForeignIncomingDelete": func(p []byte) error { _, e := DecodeForeignIncomingDelete(p); return e },
 	}
 	for name, dec := range decoders {
 		t.Run(name, func(t *testing.T) {

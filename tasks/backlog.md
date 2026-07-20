@@ -1781,9 +1781,22 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   entries, zero crashes. No crash corpus files were written (nothing to add to
   `testdata/fuzz/`). `go build ./...` + `go vet ./...` clean; `go test
   ./pkg/graph/internal/storeutil/...` clean; full repo `go test ./...` clean.
-- **15e. `DecodeRangePurge`/`DecodeForeignIncomingDelete` decoders not exercised by the existing
-  round-trip/fail-closed test suites despite being live shipped record types (MEDIUM).**
-  `storeutil/changelog.go`.
+- **15e. [FIXED — `internal/storeutil/changelog_test.go`] `DecodeRangePurge`/`DecodeForeignIncomingDelete`
+  decoders not exercised by the existing round-trip/fail-closed test suites despite being live shipped
+  record types (MEDIUM).** `storeutil/changelog.go:302-318`. Investigated both decoders: they already
+  route through `SafeUnmarshal` identically to every sibling decoder (`DecodeNodePut`, `DecodeRelPut`,
+  `DecodeMeta`, etc.) — no production bug, pure test-gap (same shape as 13h). `TestChangeBody_RoundTrip`
+  and `TestChangeBodyDecoders_FailClosedOnGarbage` covered every other `ChangeRecord` body type
+  (`NodePut`/`RelPut`/`NodeDelete`/`RelDelete`/`NodeHistoryVersion`/`RelHistoryVersion`/
+  `HistoryTruncate`/`Meta`) but omitted `RangePurgeBody` (ADR-0008 R3) and `ForeignIncomingDeleteBody`
+  (ADR-0010 Model A cascade) entirely. Added a `"RangePurge"` and `"ForeignIncomingDelete"` subtest to
+  the round-trip suite (marshal → decode → `reflect.DeepEqual`, matching every sibling subtest exactly)
+  and both decoders to the fail-closed-on-garbage decoder map. Both new subtests passed on the first
+  run in both suites (confirming the decoders were already correct). `go build ./...` + `go vet ./...`
+  clean; `go test ./pkg/graph/internal/storeutil/... -run
+  "TestChangeBody_RoundTrip|TestChangeBodyDecoders_FailClosedOnGarbage" -v` green (11/11 and 10/10
+  subtests respectively); full `pkg/graph/internal/storeutil` package suite clean; full repo `go test
+  ./...` clean.
 - **15f. `propertyToWire`'s `ptCustom` branch does a full marshal+reflect-unmarshal+2×hash+compare
   round-trip on *every write*, not just type-registration time (MEDIUM, perf, may be intentional
   defense-in-depth).** `storeutil/wire_value.go:429-464`.
