@@ -497,6 +497,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   door funnels through one entry point) rather than a file-boundary. Reworded to say so explicitly,
   so a future lesson-17/58 drift audit knows to inspect `temporal.go`/`temporal_cascade.go` too, not
   just `chain_resolver.go`. Pure doc fix, no code change.
+- TEST — closed BACKLOG 10o (the last open item in BACKLOG 10 — bitemporal resolution engine hardening
+  is now fully closed except the still-open, dedicated-design-session 10b): `Diff`'s per-entity
+  `c.mu.RLock` (not one atomic global snapshot — the BACKLOG 8e-corrected doc comment on
+  `TempOps.Diff`) is an honestly disclosed accepted tradeoff — a concurrent standalone backdated write
+  MAY surface as a spurious Created/Deleted entry, by design, not a bug. What was untested is the
+  STRONGER invariant the tradeoff must still uphold under a torrent of concurrent writes hitting the
+  exact entities being scanned: the result must never be internally CORRUPTED. Added
+  `TestDiffConcurrentStandaloneWritesNeverProduceInconsistentResult`: 15 rounds, 20 entities, 3
+  concurrent writers each (update/delete/backdated-update mix) racing a `Diff(t1, t2)` call, asserting
+  no duplicate IDs within `NodesCreated`/`NodesUpdated`/`NodesDeleted` and no ID appearing in more than
+  one category — and that `Diff` itself never panics or returns an unexpected error. 10 repetitions
+  under `-race`, zero flakes. `go build ./...` + `go vet ./...` clean; full `pkg/graph/internal/core`
+  package suite green under `-race`; full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

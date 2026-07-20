@@ -770,3 +770,114 @@ func TestDiffGracefulUnderConcurrentClose(t *testing.T) {
 		}
 	}
 }
+
+// TestDiffConcurrentStandaloneWritesNeverProduceInconsistentResult guards
+// BACKLOG 10o: Diff's per-entity c.mu.RLock (not one atomic global snapshot,
+// see the BACKLOG 8e doc comment on TempOps.Diff) is an HONESTLY DISCLOSED
+// accepted tradeoff — a concurrent standalone backdated write MAY appear as
+// a spurious Created/Deleted entry, and this test does not try to eliminate
+// that (it's by design, not a bug). What was untested is the STRONGER
+// invariant the tradeoff must still uphold even under a torrent of
+// concurrent writes hitting the exact entities Diff is scanning: the result
+// must never be internally CORRUPTED — no node ID appearing in both
+// NodesCreated and NodesDeleted, no duplicate ID within either slice, and
+// Diff itself must never panic or return an unexpected error. Many rounds,
+// many concurrent writers per round, to shake out ordering-dependent bugs.
+func TestDiffConcurrentStandaloneWritesNeverProduceInconsistentResult(t *testing.T) {
+	const rounds = 15
+	const entities = 20
+	const writersPerEntity = 3
+
+	for round := 0; round < rounds; round++ {
+		g := newDiffGraph(t)
+		ctx := context.Background()
+
+		ids := make([]types.NodeID, entities)
+		for i := 0; i < entities; i++ {
+			n, err := g.Nodes.Add(ctx, []string{"Thing"}, nil)
+			if err != nil {
+				t.Fatalf("round %d: AddNode %d: %v", round, i, err)
+			}
+			setNodeTemporal(t, g, n.ID(), 1000, 0)
+			ids[i] = n.ID()
+		}
+
+		t1 := types.Instant(500)
+		t2 := types.Instant(3000)
+
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+
+		// Concurrent writers: each entity gets a few racing goroutines doing
+		// a mix of update/delete, some with an explicit backdated
+		// tkg_valid_from — exactly the write shape the doc comment calls out
+		// as able to produce a spurious Created/Deleted entry.
+		for i := 0; i < entities; i++ {
+			id := ids[i]
+			for w := 0; w < writersPerEntity; w++ {
+				w := w
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					<-start
+					switch w % 3 {
+					case 0:
+						_, _ = g.Nodes.Update(ctx, id, map[string]any{"tkg_valid_from": types.Instant(700), "k": int64(1)})
+					case 1:
+						_ = g.Nodes.Delete(ctx, id)
+					default:
+						_, _ = g.Nodes.Update(ctx, id, map[string]any{"k": int64(2)})
+					}
+				}()
+			}
+		}
+
+		var diff *temporalpkg.SnapshotDiff
+		var diffErr error
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			diff, diffErr = g.Temporal.Diff(t1, t2)
+		}()
+
+		close(start)
+		wg.Wait()
+
+		if diffErr != nil {
+			t.Fatalf("round %d: Diff: %v", round, diffErr)
+		}
+		if diff == nil {
+			t.Fatalf("round %d: Diff returned nil result with nil error", round)
+		}
+
+		created := make(map[types.NodeID]bool, len(diff.NodesCreated))
+		for _, n := range diff.NodesCreated {
+			if created[n.ID()] {
+				t.Fatalf("round %d: NodesCreated contains duplicate ID %v", round, n.ID())
+			}
+			created[n.ID()] = true
+		}
+		deleted := make(map[types.NodeID]bool, len(diff.NodesDeleted))
+		for _, n := range diff.NodesDeleted {
+			if deleted[n.ID()] {
+				t.Fatalf("round %d: NodesDeleted contains duplicate ID %v", round, n.ID())
+			}
+			deleted[n.ID()] = true
+			if created[n.ID()] {
+				t.Fatalf("round %d: node %v appears in BOTH NodesCreated and NodesDeleted — corrupted result", round, n.ID())
+			}
+		}
+		seenUpdated := make(map[types.NodeID]bool, len(diff.NodesUpdated))
+		for _, u := range diff.NodesUpdated {
+			id := u.Before.ID()
+			if seenUpdated[id] {
+				t.Fatalf("round %d: NodesUpdated contains duplicate ID %v", round, id)
+			}
+			seenUpdated[id] = true
+			if created[id] || deleted[id] {
+				t.Fatalf("round %d: node %v appears in NodesUpdated AND Created/Deleted — corrupted result", round, id)
+			}
+		}
+	}
+}

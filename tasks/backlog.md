@@ -118,10 +118,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   insufficient (both shapes are structurally identical); the fix likely needs either a persisted
   marker distinguishing the two row roles, or a fundamentally different (non-positional,
   non-pairwise-TxFrom) algorithm for interval-bounds derivation in a chain with cascade-inserted rows.
-- **10o. `Diff`/`DiffCallback` acquires `c.mu.RLock` per entity, not one atomic snapshot — honestly
-  disclosed accepted tradeoff, but the exposure window under concurrent writes is untested
-  (LOW/informational).**
-
 ### BACKLOG 11 — Batch / ingest / tx concurrency hardening
 
 - **11e. `ingestFailureCap`/`failureDrops` eviction path (8192-entry oldest-first, O(n) per insert at
