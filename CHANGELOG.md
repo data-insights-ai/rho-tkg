@@ -673,6 +673,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   immediately after the Store's own `Clear()`). Expanded the doc comment to name that requirement
   explicitly and point at `reapCoreStateForClear`, so a future Store implementer or replica-apply
   reader does not have to rediscover it from the `apply_record.go` source.
+- TEST — BACKLOG 13m: `CollectShardDropResidue` (`pkg/graph/store/badger/badgerstore_shard_drop.go`,
+  the badger-layer primitive backing tiered's whole-shard fast-drop, ADR-0008 R4) had zero direct
+  badger-package tests — only indirectly exercised via tiered, which violates Rule 1 ("indirect
+  coverage via delegation does NOT count"). Added 7 direct tests in the `badger` package covering both
+  label-index modes (`hasForeignLabelTokensLocked` has separate RAM-map and on-disk-keyspace code
+  paths): a single-label shard reports `onlyLabel=true` with every node ID and the internal
+  relationship deduped to exactly one entry despite being touched from both endpoints; a shard also
+  holding a foreign label declines (`onlyLabel=false`, empty `nodeIDs`/`rels`) in both index modes; an
+  empty shard vacuously reports `onlyLabel=true`; a read-only store fails closed via `checkWritable`.
+  Confirmed the dedup and foreign-label-detection assertions are load-bearing, not tautological, via
+  two mutation checks: removing the `seen` dedup map (rel count becomes 2 instead of 1) and
+  short-circuiting the `foreign` decline branch both turned the relevant tests RED, then reverted.
+  `go build`/`go vet` clean; full `pkg/graph/store/badger` package suite green including under `-race`
+  (200s); full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

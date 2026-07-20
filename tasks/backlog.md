@@ -221,10 +221,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 - **13l. `Admin.Reset`'s correctness depends on a hand-maintained, unenforced checklist of `reap*`
   calls — no test asserting every MetaKV prefix is reaped-or-documented-safe (LOW, latent cross-backend
   divergence risk for future MetaKV features).** `admin.go:250-268`.
-- **13m. `CollectShardDropResidue` (badger-layer primitive backing tiered's fast-drop) has zero direct
-  badger-package tests (TEST-GAP, Rule 1 — only indirectly exercised via tiered).**
-  `pkg/graph/store/badger/badgerstore_shard_drop.go`.
-
 ### BACKLOG 14 — Index / docvalues / stats / vector / events hardening (graph layer)
 
 - **14e. Two sibling stats doors disagree on capability-check-vs-label-lookup ordering — inconsistent
