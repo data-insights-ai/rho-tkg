@@ -710,6 +710,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   never committed). `go build`/`go vet` clean; full `pkg/graph/internal/core` package suite green
   including under `-race` (137s, 10x repeat of the new test with `-race` also clean); full-repo `go
   test ./...` clean.
+- INVESTIGATE — BACKLOG 13l stays PARTIALLY OPEN (no code or test change applied): the finding claimed
+  `Admin.Reset`'s hand-maintained `reap*` checklist (`reapCoreStateForClear`) had no test asserting
+  MetaKV state is actually reaped. Verified this premise is largely already false: every currently-
+  known reaped category (op counters, unique constraints, UniqueForever owners, named as-of tags,
+  compaction watermark, retention watermark, entity count, the as-of DocValues cache epoch bump, and
+  the deliberately-PRESERVED-not-reaped registries) already has a direct test —
+  `TestApplyChangeRecord_ChangeClearReapsCoreStateLikeReset`, `TestAdminOpsResetClearsOperationCounters`,
+  `TestAdminOpsResetPersistsRegistrySnapshotAfterClear`, `TestAsOfColumnCache_RealChokesBumpEpoch` — all
+  confirmed green. What remains genuinely open is a SYSTEMATIC guarantee (enumerate every MetaKV key
+  constant in the codebase and assert each is accounted for) that would catch a brand-new future
+  MetaKV feature landing without a reap decision — a hand-written allowlist test would just be a
+  second hand-maintained checklist duplicating the first, not closing the risk; a real fix needs
+  static analysis or a generated registry, design work outside a backlog-sweep patch. Left open with
+  the coverage-gap premise corrected rather than closed by a checklist mirroring a checklist.
 
 ## [4.23.0] - 2026-07-18
 
