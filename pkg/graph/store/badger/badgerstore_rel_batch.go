@@ -263,6 +263,3 @@ func uniqueRelIDs(ids []types.RelID) []types.RelID {
 	}
 	return out
 }
-
-// AllRelIDs returns the IDs of all current relationships, with optional pagination.
-// Returns only IDs — no entity deserialization or deep copy. O(N) in relIDs map size.

@@ -107,7 +107,7 @@ func (bs *Store) getOrCreateTypeCounter(token uint16) *atomic.Int64 {
 // Implements StoreStats. Both indexpkg.CacheHit and indexpkg.CacheDeleted (tombstone) results count
 // as hits, because both avoid a Badger read.
 func (bs *Store) NodeCacheHits() int64 {
-	if bs == nil || bs.nodeCache == nil || bs.closing.Load() || bs.dbClosed.Load() {
+	if bs == nil || bs.nodeCache == nil || bs.isClosingOrClosed() {
 		return 0
 	}
 	return bs.nodeCache.Hits()
@@ -116,7 +116,7 @@ func (bs *Store) NodeCacheHits() int64 {
 // NodeCacheMisses returns the total number of node cache misses since store creation.
 // Implements StoreStats.
 func (bs *Store) NodeCacheMisses() int64 {
-	if bs == nil || bs.nodeCache == nil || bs.closing.Load() || bs.dbClosed.Load() {
+	if bs == nil || bs.nodeCache == nil || bs.isClosingOrClosed() {
 		return 0
 	}
 	return bs.nodeCache.Misses()
@@ -125,7 +125,7 @@ func (bs *Store) NodeCacheMisses() int64 {
 // RelCacheHits returns the total number of relationship cache hits since store creation.
 // Implements StoreStats.
 func (bs *Store) RelCacheHits() int64 {
-	if bs == nil || bs.relCache == nil || bs.closing.Load() || bs.dbClosed.Load() {
+	if bs == nil || bs.relCache == nil || bs.isClosingOrClosed() {
 		return 0
 	}
 	return bs.relCache.Hits()
@@ -134,7 +134,7 @@ func (bs *Store) RelCacheHits() int64 {
 // RelCacheMisses returns the total number of relationship cache misses since store creation.
 // Implements StoreStats.
 func (bs *Store) RelCacheMisses() int64 {
-	if bs == nil || bs.relCache == nil || bs.closing.Load() || bs.dbClosed.Load() {
+	if bs == nil || bs.relCache == nil || bs.isClosingOrClosed() {
 		return 0
 	}
 	return bs.relCache.Misses()

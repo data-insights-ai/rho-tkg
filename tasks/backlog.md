@@ -370,11 +370,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   dedicated design + a full bitemporal-correctness verification pass, not a speed-fix folded into a
   broader backlog sweep. Recommend a dedicated follow-up.** `badgerstore_txtime.go:74-115` (`reverse
   ScanHistoryVersion`), `:182-` (`NodeAsOf`), `:285-333,336-384` (`NodesAsOf`/`RelsAsOf`).
-- **18q. Code smells: duplicated ad-hoc "closed" checks instead of `checkOpen()` (`badgerstore_meta.go`,
-  `badgerstore.go`); orphaned doc comment for a function living in a different file
-  (`badgerstore_rel_batch.go:266-267`); ~20 sites compare `err == badgerv4.ErrKeyNotFound` directly
-  instead of `errors.Is`, vs. ~4 using `errors.Is` (lesson 12 convention, may be accepted house style)
-  (all LOW).**
 - **18t. No direct self-loop round-trip test at the raw Store layer; no test pins change-log-marshal-
   failure-mid-write behavior (relevant to 18a); no adversarial test proves the frozen-row guard
   actually rejects mutation on an owned/ingest-transferred cache entry (TEST-GAP, 3 gaps).**

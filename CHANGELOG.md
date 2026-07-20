@@ -1367,6 +1367,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   full `pkg/graph/store/badger` package suite green including under `-race` (161s, verifying the
   Lock→RLock change introduced no data race); `pkg/graph/store/tiered` (the only caller) green under
   `-race`; full-repo `go test ./...` clean.
+- CLEANUP — BACKLOG 18q: three small code-smell items in `badgerstore.go`/`badgerstore_meta.go`/
+  `badgerstore_rel_batch.go`. (1) Deduplicated the identical `bs.closing.Load() || bs.dbClosed.Load()`
+  inline check, repeated verbatim at 5 call sites (`NodeCacheHits`/`NodeCacheMisses`/`RelCacheHits`/
+  `RelCacheMisses`/`IndexRebuildStats`) — these stats accessors can't call `checkOpen()` directly
+  (their signature returns a plain value, no error channel, for a deliberate "silently report zero"
+  contract), so the duplication itself was the fixable part; extracted a shared
+  `isClosingOrClosed()` helper. (2) Deleted a dangling doc comment for `AllRelIDs` sitting at the end
+  of `badgerstore_rel_batch.go` with no declaration following it — the real `AllRelIDs` function lives
+  in `badgerstore_rel_query.go:584` and already has its own (different, correct) doc comment; this was
+  dead documentation left behind by an earlier file-split refactor. (3) Investigated the `err ==
+  badgerv4.ErrKeyNotFound` vs `errors.Is(err, badgerv4.ErrKeyNotFound)` split (~20 vs ~4 sites) and
+  confirmed it is genuinely accepted, behavior-neutral house style, not a latent bug: spot-checked
+  several of the ~20 sites and every one compares directly against the RAW, unwrapped return of a
+  badger `Txn.Get`/`item.Value` call with no `fmt.Errorf("...: %w", err)` in between — `errors.Is`
+  and `==` are then provably identical (a target with no `Unwrap` chain falls back to direct
+  comparison inside `errors.Is` itself), so converting ~20 already-correct call sites would be pure
+  churn with zero behavioral change. Left as-is; no further action. All three changes are pure
+  refactors/cleanup with no behavior change — no load-bearing test applicable (nothing to prove RED
+  first). `go build`/`go vet` clean; full `pkg/graph/store/badger` package suite green including
+  under `-race` (159s); full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

@@ -1995,6 +1995,17 @@ func (bs *Store) checkOpen() error {
 	return nil
 }
 
+// isClosingOrClosed is the shared "silently return zero" guard for stats
+// accessors whose signature (plain value, no error return) can't propagate
+// checkOpen()'s error — a nil *Store is handled by the caller's own `bs ==
+// nil` check, since a nil receiver can't have this method called on it via a
+// non-nil-checked call chain in the first place (BACKLOG 18q: deduplicates
+// the identical `bs.closing.Load() || bs.dbClosed.Load()` inline check that
+// was repeated at 5 call sites).
+func (bs *Store) isClosingOrClosed() bool {
+	return bs.closing.Load() || bs.dbClosed.Load()
+}
+
 func (bs *Store) checkWritable() error {
 	if err := bs.checkOpen(); err != nil {
 		return err
@@ -2021,7 +2032,7 @@ type IndexRebuildStats struct {
 // IndexRebuildStats returns the diagnostic counters captured during the last
 // loadIndexes pass. Zero means a clean rebuild.
 func (bs *Store) IndexRebuildStats() IndexRebuildStats {
-	if bs == nil || bs.closing.Load() || bs.dbClosed.Load() {
+	if bs == nil || bs.isClosingOrClosed() {
 		return IndexRebuildStats{}
 	}
 	return IndexRebuildStats{
