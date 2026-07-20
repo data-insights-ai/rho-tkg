@@ -171,6 +171,59 @@ func TestAddNodeLabel_TooManyLabelsDoesNotRegisterRejectedLabel(t *testing.T) {
 	}
 }
 
+// TestAddNodeLabel_RejectsUniqueConstraintViolation guards BACKLOG 9n:
+// CLAUDE.md documents AddLabel as "the door everyone forgets" for
+// unique-constraint enforcement — a node NOT yet carrying the constrained
+// label can hold an offending value freely, but acquiring the label must be
+// rejected if another node already owns that value under it
+// (enforceUniqueForNode, node_label.go:164). This is the only door among
+// Add/AddWithTx/AddByIDIfAbsent/Update/UpdateInPlace/CompareAndSetProperty/
+// AddLabel with zero prior direct test coverage of that enforcement, despite
+// being explicitly called out by name as the easiest one for a future
+// refactor to silently drop.
+func TestAddNodeLabel_RejectsUniqueConstraintViolation(t *testing.T) {
+	ctx := context.Background()
+	g, _ := New(Config{})
+	if err := g.Constraints.CreateUnique(ctx, "Employee", "email"); err != nil {
+		t.Fatalf("CreateUnique: %v", err)
+	}
+
+	// First Employee claims the value.
+	if _, err := g.Nodes.Add(ctx, []string{"Employee"}, map[string]any{"email": "a@x.com"}); err != nil {
+		t.Fatalf("add first employee: %v", err)
+	}
+
+	// A second node holds the SAME value but under a DIFFERENT label — legal,
+	// since it isn't yet in the constrained scope.
+	other, err := g.Nodes.Add(ctx, []string{"Contractor"}, map[string]any{"email": "a@x.com"})
+	if err != nil {
+		t.Fatalf("add contractor with same email: %v", err)
+	}
+
+	// Acquiring the Employee label now makes `other` a second current holder
+	// of the constrained value — must be rejected.
+	err = g.Nodes.AddLabel(ctx, other.ID(), "Employee")
+	if err == nil {
+		t.Fatal("AddLabel succeeded despite a pre-existing unique-value conflict — BACKLOG 9n regression")
+	}
+	if !errors.Is(err, ErrUniqueViolation) {
+		t.Fatalf("AddLabel error = %v, want ErrUniqueViolation", err)
+	}
+
+	// The rejected add must not have mutated the node — no Employee label,
+	// no version bump, no history entry.
+	reloaded, err := g.Nodes.Get(ctx, other.ID())
+	if err != nil {
+		t.Fatalf("Get after rejected AddLabel: %v", err)
+	}
+	if g.Nodes.HasLabel(reloaded, "Employee") {
+		t.Fatal("rejected AddLabel still added the Employee label")
+	}
+	if reloaded.Version() != other.Version() {
+		t.Fatalf("rejected AddLabel bumped version: before=%d after=%d", other.Version(), reloaded.Version())
+	}
+}
+
 func TestAddNodeLabel_NodeNotFound(t *testing.T) {
 	g, _ := New(Config{})
 	err := g.Nodes.AddLabel(context.Background(), 999, "Person")

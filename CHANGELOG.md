@@ -352,6 +352,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   made it do exactly that — corrected both to describe the real version-advance/hash-chain contract.
   `go build ./...` + `go vet ./...` clean; full `pkg/graph/internal/core` package suite green under
   `-race`; full-repo `go test ./...` clean.
+- TEST — closed BACKLOG 9n: `AddLabel`'s unique-constraint enforcement — CLAUDE.md names it explicitly
+  as "the door everyone forgets" for `enforceUniqueForNode` — had ZERO direct test coverage, unlike
+  every sibling door (`Add`/`AddWithTx`/`AddByIDIfAbsent`/`Update`/`UpdateInPlace`/
+  `CompareAndSetProperty`). Confirmed `node_label.go:164` does call `enforceUniqueForNode` correctly —
+  pure test-gap, no production change. Added `TestAddNodeLabel_RejectsUniqueConstraintViolation`: a
+  node holds a constrained value under an UNRELATED label (legal, out of scope), then `AddLabel` with
+  the constrained label is rejected with `ErrUniqueViolation` since it would make the node a second
+  current holder of the value — and confirms the rejection is a true no-op (no label added, no version
+  bump). Verified load-bearing by temporarily removing the `enforceUniqueForNode` call: the new test
+  failed immediately with the exact silent-bypass shape the finding warns about. `go build ./...` + `go
+  vet ./...` clean; full `pkg/graph/internal/core` package suite clean; full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 
