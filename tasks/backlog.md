@@ -2087,9 +2087,38 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   (single predicate function, no locking change), so `-race` was not required.
 - **17d. [FIXED — see 17c, same commit] Zero test coverage for `PurgeNodesByLabelValidToBefore` on the
   memory backend — Rule 1 violation, direct cause of 17c shipping (TEST-GAP).**
-- **17e. `MemoryStore` never honors `QueryOpts.NoSort` — silent perf-parity gap with badger, which
-  does honor it (MEDIUM, not user-visible incorrectness, but breaks memory's role as an oracle for
-  NoSort's performance characteristic).** `store/memory/memorystore_query.go` and scan files.
+- **17e. [FIXED — `store/memory/memorystore_query.go`, `store/memory/memorystore_node_scan.go`,
+  `store/memory/memorystore_nosort_test.go`] `MemoryStore` never honored `QueryOpts.NoSort` — silent
+  perf-parity gap with badger, which does honor it (MEDIUM, not user-visible incorrectness, but breaks
+  memory's role as an oracle for NoSort's performance characteristic).**
+  `store/memory/memorystore_query.go` and scan files.
+
+  **Scoped the actual gap precisely.** Traced every badger door that has a `NoSort` check
+  (`badgerstore_node_query.go:88`, `badgerstore_node_scan.go:50` — only 2 grep hits in the whole
+  badger backend) and confirmed by reading each candidate memory-side counterpart that the gap is
+  EXACTLY those two: `NodesByLabel`'s "standard path" sort and `ForEachNodeByLabel`'s sort. Checked
+  and ruled out `RelationshipsByType`/`ForEachRelByType` and `AllNodeIDs` — badger itself sorts
+  unconditionally in all of those (no `NoSort` check exists on the badger side either), so memory
+  already matches badger there; adding a guard on the memory side alone would have been a NEW
+  divergence, not a fix. Also confirmed the temporal-index/HF-index fast-path branches inside
+  `NodesByLabel` correctly stay unconditionally sorted, matching badger's own equivalent branches.
+
+  **Fix.** Added the identical `if !opts.NoSort || opts.After != 0 { storepkg.SortNodeIDs(ids) }`
+  guard badger already uses, in both `NodesByLabel`'s standard path and `ForEachNodeByLabel`.
+
+  **Tests.** No `NoSort` test existed anywhere in the repo (neither backend) before this. New
+  `TestMemStoreNodesByLabel_NoSortSkipsSort` / `TestMemStoreForEachNodeByLabel_NoSortSkipsSort`:
+  40 nodes, repeat the `NoSort:true` call up to 20 times and assert at least one attempt returns a
+  non-ascending order (Go's map iteration order is randomized per `range` statement, so if the sort
+  were still silently running every call would come back ascending) — while also asserting the
+  returned SET always matches expectations (no missing/extra nodes) and the plain sorted path is
+  ALWAYS ascending. `TestMemStoreNodesByLabel_NoSortIgnoredWithPagination` pins the documented
+  override: `NoSort:true` combined with `After > 0` still returns ascending order. RED confirmed via
+  `git stash push` on the 2 production files: both NoSort tests failed ("returned ascending order on
+  every one of 20 attempts"). Popped the stash, confirmed GREEN across 5 repeated runs (guarding
+  against the small residual chance of a coincidentally-sorted random permutation).
+  `go build ./...` + `go vet ./...` clean; `go test ./pkg/graph/store/memory/...` clean; `go test
+  -race ./pkg/graph/store/memory/...` clean (42s); full repo `go test ./...` clean.
 - **17f. [FIXED — `store/memory/memorystore_retention_purge.go`,
   `store/memory/memorystore_retention_purge_txmembers_test.go`] Retention purge left permanent
   dangling entries in `labelTxMembers`/`relTypeTxMembers` — unbounded memory leak combined with

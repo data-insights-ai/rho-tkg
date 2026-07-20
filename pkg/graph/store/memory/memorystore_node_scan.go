@@ -43,7 +43,12 @@ func (ms *Store) ForEachNodeByLabel(token uint16, opts QueryOpts, fn func(*types
 	if len(ids) == 0 {
 		return nil
 	}
-	storepkg.SortNodeIDs(ids)
+	// BACKLOG 17e: mirror badger's ForEachNodeByLabel — order-independent
+	// streaming consumers set NoSort to drop the O(n log n) sort; pagination
+	// (After > 0) still needs sorted order regardless of the flag.
+	if !opts.NoSort || opts.After != 0 {
+		storepkg.SortNodeIDs(ids)
+	}
 	ids = storepkg.PaginateNodeIDs(ids, opts.After, 0)
 
 	hasTemporal := storepkg.HasTemporalFilter(opts)

@@ -87,12 +87,17 @@ func (ms *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, erro
 		}
 	}
 
-	// Standard path: collect and sort IDs before fetching entities.
+	// Standard path: collect IDs before fetching entities.
 	ids := make([]types.NodeID, 0, len(set))
 	for id := range set {
 		ids = append(ids, id)
 	}
-	storepkg.SortNodeIDs(ids)
+	// BACKLOG 17e: mirror badger's NodesByLabel — order-independent consumers
+	// set NoSort to drop the O(n log n) sort; keyset pagination (After > 0)
+	// still needs sorted order regardless of the flag.
+	if !opts.NoSort || opts.After != 0 {
+		storepkg.SortNodeIDs(ids)
+	}
 
 	return ms.nodesByLabelFromIDs(token, ids, opts), nil
 }

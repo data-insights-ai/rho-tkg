@@ -159,6 +159,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `NewPropertySlice` path — found and fixed mid-investigation once a test targeting it surfaced it as
   a distinct implementation). 3 new regression tests, including one reproducing the exact wire shape
   from the original finding.
+- PERF/FIX — memory store's `NodesByLabel` and `ForEachNodeByLabel` now honor `QueryOpts.NoSort`
+  (BACKLOG 17e), matching badger — the only 2 doors in either backend that have a `NoSort` check at
+  all (ruled out `RelationshipsByType`/`AllNodeIDs`: badger sorts those unconditionally too, so memory
+  already matched). Previously memory always paid the O(n log n) sort even when the caller declared it
+  order-independent, a silent perf-parity gap that broke memory's role as the cross-backend behavioral
+  oracle. New tests (no `NoSort` test existed anywhere in the repo before this) exploit Go's per-call
+  randomized map iteration order to prove the sort is actually skipped, not just that results are
+  still correct.
 
 ## [4.23.0] - 2026-07-18
 
