@@ -896,6 +896,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   re-running: the new case failed (`len = 0, want 3`), then reverted back. `go build`/`go vet` clean;
   full `pkg/graph/internal/storeutil` package suite green including under `-race`; full-repo `go test
   ./...` clean.
+- INVESTIGATE — BACKLOG 15f CLOSED (verified intentional defense-in-depth, not a fixable perf bug):
+  `propertyToWire`'s `ptCustom` branch (`storeutil/wire_value.go`) does a full marshal + reflect-
+  unmarshal + hash-before/hash-after + compare round-trip on every write of a custom-typed property
+  value. Investigated whether a cheaper registration-time-only check could substitute: it cannot —
+  `types.RegisterPropertyStructType` validates only that the TYPE implements HashableValue/DeepCopier
+  via reflection; it never exercises an actual msgpack round-trip for any VALUE, at registration or
+  otherwise. So the per-write check is the ONLY place a value-specific serialization divergence (e.g.
+  an unexported field a custom type's own `HashBytes` reads but msgpack cannot marshal) is ever caught
+  — custom types are entirely user-defined and unaudited by this library, so weakening this to a
+  per-type check would be a real hash-chain integrity regression for custom properties, not a safe
+  optimization. Confirmed this branch had ZERO direct test coverage (a related, separate gap from the
+  perf question) and added `TestPropertyToWire_CustomRoundTripHashMismatchRejected`: a custom type with
+  an unexported field its `HashBytes` reads (msgpack silently drops it on round-trip, since msgpack
+  only encodes exported fields) triggers the rejection. Confirmed load-bearing by neutralizing the
+  `bytes.Equal` check and re-running: the test failed (accepted a value it should have rejected), then
+  reverted. Documented the investigation directly on `propertyToWire` so a future perf pass does not
+  reopen this as an "easy win" without re-deriving the same safety argument. `go build`/`go vet` clean;
+  full `pkg/graph/internal/storeutil` package suite green including under `-race`; full-repo `go test
+  ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

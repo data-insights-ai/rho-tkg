@@ -3,6 +3,7 @@ package storeutil
 import (
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -18,6 +19,24 @@ func (v wireValueDirectCustom) HashBytes() []byte {
 }
 
 func (v wireValueDirectCustom) DeepCopyValue() any { return v }
+
+// wireValueDirectHiddenFieldCustom carries an UNEXPORTED field that
+// HashBytes reads but msgpack cannot marshal (msgpack only encodes
+// exported struct fields) — a msgpack round-trip silently drops it,
+// producing a value whose hash differs from the original. Used by
+// TestPropertyToWire_CustomRoundTripHashMismatchRejected (BACKLOG 15f) to
+// exercise propertyToWire's round-trip hash-mismatch rejection branch,
+// which previously had zero direct test coverage.
+type wireValueDirectHiddenFieldCustom struct {
+	Visible int
+	hidden  int
+}
+
+func (v wireValueDirectHiddenFieldCustom) HashBytes() []byte {
+	return []byte{byte(v.Visible), byte(v.hidden)}
+}
+
+func (v wireValueDirectHiddenFieldCustom) DeepCopyValue() any { return v }
 
 func TestValidatePropertyWireValueDirectBranches(t *testing.T) {
 	tests := []struct {
@@ -207,6 +226,31 @@ func TestReconstructCustomPropertyValueDirectBranches(t *testing.T) {
 	}
 	if got, ok := ptr.(*wireValueDirectCustom); !ok || got.X != 7 {
 		t.Fatalf("reconstruct pointer = %#v, want *wireValueDirectCustom{X:7}", ptr)
+	}
+}
+
+// TestPropertyToWire_CustomRoundTripHashMismatchRejected is the BACKLOG 15f
+// proof that propertyToWire's per-write msgpack round-trip proof for
+// ptCustom values (storeutil/wire_value.go:429-464) is load-bearing, not
+// redundant perf overhead: RegisterPropertyStructType only validates that
+// the TYPE implements HashableValue/DeepCopier via reflection — it never
+// exercises an actual msgpack round-trip for any VALUE, at registration
+// time or otherwise. So this per-write check is the ONLY place a
+// value-specific serialization divergence (e.g. an unexported field the
+// value's own Hash reads but msgpack cannot marshal) is ever caught for a
+// user-registered custom property type — a real integrity guarantee, not a
+// duplicate of a cheaper check performed elsewhere.
+func TestPropertyToWire_CustomRoundTripHashMismatchRejected(t *testing.T) {
+	if err := types.RegisterPropertyStructType(wireValueDirectHiddenFieldCustom{}); err != nil {
+		t.Fatalf("RegisterPropertyStructType: %v", err)
+	}
+	p := types.Property{Key: "k", Value: wireValueDirectHiddenFieldCustom{Visible: 1, hidden: 99}}
+	_, err := propertyToWire(p)
+	if err == nil {
+		t.Fatal("propertyToWire with a hidden-field custom value = nil error, want a round-trip hash mismatch rejection")
+	}
+	if !strings.Contains(err.Error(), "round-trip changed hash bytes") {
+		t.Fatalf("propertyToWire error = %v, want it to mention a round-trip hash mismatch", err)
 	}
 }
 

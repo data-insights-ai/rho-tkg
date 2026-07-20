@@ -269,9 +269,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 15 — Internal primitives hardening (storeutil / locks / registry / wire codec)
 
-- **15f. `propertyToWire`'s `ptCustom` branch does a full marshal+reflect-unmarshal+2×hash+compare
-  round-trip on *every write*, not just type-registration time (MEDIUM, perf, may be intentional
-  defense-in-depth).** `storeutil/wire_value.go:429-464`.
 - **15j. `EnvelopeOverlaps` (backs the B4 candidate-prune optimization on every history-aware temporal
   scan) has no direct unit test anywhere — only indirect (LOW-MEDIUM, Rule 1).**
   `storeutil/temporal_filter.go:37`.

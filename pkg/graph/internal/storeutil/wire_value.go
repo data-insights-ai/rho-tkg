@@ -406,6 +406,23 @@ func PropertyTypeTag(v any) byte {
 	return types.PropertyHashTypeTag(v)
 }
 
+// propertyToWire's ptCustom branch (BACKLOG 15f, investigated): the full
+// marshal + reflect-unmarshal + hash-before/hash-after + compare round-trip
+// runs on EVERY write of a custom-typed property value, not just at
+// type-registration time — deliberately. types.RegisterPropertyStructType
+// validates only that the TYPE implements HashableValue/DeepCopier via
+// reflection; it never exercises an actual msgpack round-trip for any
+// value. So this per-write check is the ONLY place a value-specific
+// serialization divergence (e.g. an unexported field the value's own
+// HashBytes reads but msgpack cannot marshal — see
+// TestPropertyToWire_CustomRoundTripHashMismatchRejected) is ever caught
+// for a user-registered custom property type. Custom types are entirely
+// user-defined and unaudited by this library, so a per-TYPE
+// registration-time check cannot substitute for a per-VALUE check without
+// weakening the hash-chain integrity guarantee for custom properties.
+// Moving this check to registration time only was considered and rejected
+// as unsafe for that reason — this is intentional defense-in-depth, not an
+// unaddressed perf bug.
 func propertyToWire(p types.Property) (PropertyWire, error) {
 	tag := PropertyTypeTag(p.Value)
 	pw := PropertyWire{Key: p.Key, Type: tag}
