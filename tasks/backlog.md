@@ -269,9 +269,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 15 — Internal primitives hardening (storeutil / locks / registry / wire codec)
 
-- **15j. `EnvelopeOverlaps` (backs the B4 candidate-prune optimization on every history-aware temporal
-  scan) has no direct unit test anywhere — only indirect (LOW-MEDIUM, Rule 1).**
-  `storeutil/temporal_filter.go:37`.
 - **15k. `WireToNode`/`WireToRel` (unchecked, panic-on-invalid variants) have zero production callers
   but dangerously similar naming to the trust-boundary-safe `*Checked` versions (LOW, foot-gun risk).**
   `storeutil/wire.go:204,346`. Fix: delete or rename unmistakably as test-fixture-only.

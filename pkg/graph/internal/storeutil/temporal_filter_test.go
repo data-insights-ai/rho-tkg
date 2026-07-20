@@ -152,3 +152,150 @@ func TestMatchesTemporalFilter_ValidAtPrecedence(t *testing.T) {
 		t.Error("ValidAt should take precedence over interval — entity should match at t=150")
 	}
 }
+
+// BACKLOG 15j: EnvelopeOverlaps backs the B4 candidate-prune optimization on
+// every history-aware temporal scan and previously had zero direct unit
+// tests — only indirect coverage through higher-level callers. Direct
+// coverage below exercises every branch: no-filter passthrough, ValidAt
+// (both closed and open-ended envelopes, at every boundary), interval
+// filter (both closed and open-ended envelopes, at every boundary), the
+// "only one of ValidStart/ValidEnd set" no-filter fallback, and ValidAt
+// taking precedence over an interval filter when both are set.
+
+func TestEnvelopeOverlaps_NoFilterAlwaysTrue(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		from, to types.Instant
+	}{
+		{100, 200},
+		{100, 0}, // open-ended envelope
+		{0, 0},
+	}
+	for _, c := range cases {
+		if !EnvelopeOverlaps(c.from, c.to, storepkg.QueryOpts{}) {
+			t.Errorf("EnvelopeOverlaps(%d, %d, no filter) = false, want true", c.from, c.to)
+		}
+	}
+}
+
+func TestEnvelopeOverlaps_ValidAtClosedEnvelope(t *testing.T) {
+	t.Parallel()
+	// Envelope [100, 200).
+	cases := []struct {
+		name    string
+		validAt types.Instant
+		want    bool
+	}{
+		{"before from", 99, false},
+		{"at from (inclusive)", 100, true},
+		{"inside", 150, true},
+		{"at to (exclusive)", 200, false},
+		{"after to", 201, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := EnvelopeOverlaps(100, 200, storepkg.QueryOpts{ValidAt: c.validAt})
+			if got != c.want {
+				t.Errorf("EnvelopeOverlaps(100, 200, ValidAt=%d) = %v, want %v", c.validAt, got, c.want)
+			}
+		})
+	}
+}
+
+func TestEnvelopeOverlaps_ValidAtOpenEndedEnvelope(t *testing.T) {
+	t.Parallel()
+	// Envelope [100, +inf) — to=0 means still valid, no upper bound.
+	cases := []struct {
+		name    string
+		validAt types.Instant
+		want    bool
+	}{
+		{"before from", 99, false},
+		{"at from", 100, true},
+		{"far future", 1_000_000, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := EnvelopeOverlaps(100, 0, storepkg.QueryOpts{ValidAt: c.validAt})
+			if got != c.want {
+				t.Errorf("EnvelopeOverlaps(100, 0, ValidAt=%d) = %v, want %v", c.validAt, got, c.want)
+			}
+		})
+	}
+}
+
+func TestEnvelopeOverlaps_IntervalClosedEnvelope(t *testing.T) {
+	t.Parallel()
+	// Envelope [100, 200). Overlap rule: from < end AND (to==0 OR to > start).
+	cases := []struct {
+		name       string
+		start, end types.Instant
+		want       bool
+	}{
+		{"query entirely before envelope", 1, 100, false},
+		{"query touches envelope start (half-open, no overlap)", 50, 100, false},
+		{"query overlaps envelope start", 50, 150, true},
+		{"query entirely inside envelope", 120, 180, true},
+		{"query overlaps envelope end", 150, 250, true},
+		{"query touches envelope end (half-open, no overlap)", 200, 300, false},
+		{"query entirely after envelope", 300, 400, false},
+		{"query exactly matches envelope", 100, 200, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := EnvelopeOverlaps(100, 200, storepkg.QueryOpts{ValidStart: c.start, ValidEnd: c.end})
+			if got != c.want {
+				t.Errorf("EnvelopeOverlaps(100, 200, [%d,%d)) = %v, want %v", c.start, c.end, got, c.want)
+			}
+		})
+	}
+}
+
+func TestEnvelopeOverlaps_IntervalOpenEndedEnvelope(t *testing.T) {
+	t.Parallel()
+	// Envelope [100, +inf).
+	cases := []struct {
+		name       string
+		start, end types.Instant
+		want       bool
+	}{
+		{"query entirely before envelope", 1, 100, false},
+		{"query overlaps envelope start", 50, 150, true},
+		{"query far in the future still overlaps", 1_000_000, 2_000_000, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := EnvelopeOverlaps(100, 0, storepkg.QueryOpts{ValidStart: c.start, ValidEnd: c.end})
+			if got != c.want {
+				t.Errorf("EnvelopeOverlaps(100, 0, [%d,%d)) = %v, want %v", c.start, c.end, got, c.want)
+			}
+		})
+	}
+}
+
+func TestEnvelopeOverlaps_OnlyOneIntervalBoundSetIsNoFilter(t *testing.T) {
+	t.Parallel()
+	// Both ValidStart AND ValidEnd must be set for interval filtering;
+	// setting only one falls back to "no filter" (always true) — the
+	// EnvelopeOverlaps-level mirror of MatchesTemporalFilter's documented
+	// convention.
+	cases := []storepkg.QueryOpts{
+		{ValidStart: 500}, // ValidEnd unset
+		{ValidEnd: 500},   // ValidStart unset
+	}
+	for _, opts := range cases {
+		if !EnvelopeOverlaps(100, 200, opts) {
+			t.Errorf("EnvelopeOverlaps(100, 200, %+v) = false, want true (only one interval bound set)", opts)
+		}
+	}
+}
+
+func TestEnvelopeOverlaps_ValidAtTakesPrecedenceOverInterval(t *testing.T) {
+	t.Parallel()
+	// Envelope [100, 200). ValidAt=150 is inside; the interval [300,400)
+	// would not overlap at all — ValidAt must win.
+	opts := storepkg.QueryOpts{ValidAt: 150, ValidStart: 300, ValidEnd: 400}
+	if !EnvelopeOverlaps(100, 200, opts) {
+		t.Error("EnvelopeOverlaps should prefer ValidAt over interval when both are set")
+	}
+}

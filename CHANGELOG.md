@@ -915,6 +915,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   reopen this as an "easy win" without re-deriving the same safety argument. `go build`/`go vet` clean;
   full `pkg/graph/internal/storeutil` package suite green including under `-race`; full-repo `go test
   ./...` clean.
+- TEST — BACKLOG 15j: `EnvelopeOverlaps` (`storeutil/temporal_filter.go`, the B4 candidate-prune
+  predicate consulted on every history-aware temporal scan) had zero direct unit tests, only indirect
+  coverage through higher-level callers. Added 7 tests exercising every branch: no-filter passthrough,
+  `ValidAt` against both a closed `[from,to)` and an open-ended `[from,+inf)` envelope at every
+  boundary (before/at/inside/at-to/after), interval filtering against both envelope shapes at every
+  boundary (before/touching-start/overlapping-start/inside/overlapping-end/touching-end/after/exact-
+  match), the "only one of `ValidStart`/`ValidEnd` set" no-filter fallback, and `ValidAt` taking
+  precedence over an interval filter when both are set. Confirmed load-bearing via mutation: relaxing
+  the interval branch's `from < opts.ValidEnd` to `from <= opts.ValidEnd` (an off-by-one on the
+  boundary) turned 2 of the new boundary cases RED, then reverted. `go build`/`go vet` clean; full
+  `pkg/graph/internal/storeutil` package suite green including under `-race`; full-repo `go test
+  ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 
