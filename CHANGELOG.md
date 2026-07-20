@@ -1677,6 +1677,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestRunShardPoolBoundsConcurrency` immediately RED (`"more than maxShardWorkers (8) goroutines ran fn
   concurrently"`); restored, GREEN. `go build`/`go vet` clean; `pkg/graph/store/sharded` package suite
   green under `-race`; full-repo `go test ./...` clean.
+- PERF FIX — BACKLOG 20l: `GetNodesByIDs`/`GetRelationshipsByIDs` (`store/sharded/bulk.go`) applied
+  their per-shard ID buckets SEQUENTIALLY (a plain `for idx, bucket := range buckets` loop calling each
+  shard's own `Get*ByIDs` one at a time) — the one multi-shard read left out when `NodesByLabel` /
+  `RelationshipsByType` / `AllNodes` / `AllRelationships` already fan out via `forEachShardErr`. Rewired
+  both doors through the same bounded `runShardPool` helper 20k introduced: buckets are first collected
+  into an explicit `bucketIdx []int` slice (map iteration order is unspecified, so a stable index list is
+  needed before parallelizing), then each shard's `Get*ByIDs` call runs as one pool task, with per-task
+  results/errors collected into index-aligned slices and folded via `errors.Join` (replacing the old
+  "return on first sequentially-encountered error", which was already non-deterministic under Go's
+  randomized map iteration order — `errors.Join` stays `errors.Is`-detectable for the same sentinels).
+  Added `TestGetNodesByIDsMultiShard`/`TestGetRelationshipsByIDsMultiShard`
+  (`store/sharded/bulk_get_by_ids_test.go`): a request spanning FOUR shards (one holding two IDs) must
+  still return the exact sorted-by-ID union, and a missing ID anywhere in the request must still fail
+  the whole call with an `errors.Is`-detectable `ErrNodeNotFound`/`ErrRelNotFound`. Confirmed load-bearing
+  with a targeted bug injection (indexing `s.shards[i]`, the pool position, instead of `s.shards[idx]`,
+  the actual owning shard — the exact mistake this kind of map-to-slice-then-parallelize refactor
+  invites): turned the test reliably RED across 20 repeated runs (`"graph: get nodes by IDs ...: graph:
+  node not found"` — bucket N's IDs routed to the wrong shard); restored, GREEN and stable across 10
+  repeated runs. `go build`/`go vet` clean; `pkg/graph/store/sharded` package suite green under `-race`;
+  full-repo `go test ./...` clean. This closes out BACKLOG 20 (Sharded backend hardening) for this pass —
+  20m remains intentionally open (cross-references BACKLOG 21's deliberately-deferred re-sharding
+  feature-level entry).
 
 ## [4.23.0] - 2026-07-18
 

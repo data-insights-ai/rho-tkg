@@ -433,8 +433,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   Recommend a dedicated follow-up that starts from the "shrink the critical section" angle above.**
 ### BACKLOG 20 — Sharded backend hardening (WIP status)
 
-- **20l. `GetNodesByIDs`/`GetRelationshipsByIDs` shard-bucket application is sequential, not
-  parallel, unlike every other multi-shard read in the file (LOW, perf).** `store/sharded/bulk.go:94-158`.
 - **20m. Catalog is fixed identity-only — no re-sharding/rebalancing path exists at all; see BACKLOG
   21 for the feature-level entry (MEDIUM, missing feature, likely intentional "not yet" for a WIP
   backend).**

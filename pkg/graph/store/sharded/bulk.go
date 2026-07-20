@@ -1,6 +1,8 @@
 package sharded
 
 import (
+	"errors"
+
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -90,7 +92,10 @@ func (s *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error) 
 }
 
 // GetNodesByIDs routes each requested ID to its shard, resolves per shard (all
-// missing → ErrNodeNotFound), and returns the union sorted by ID.
+// missing → ErrNodeNotFound), and returns the union sorted by ID. Shard
+// buckets are read in PARALLEL (BACKLOG 20l) through the same bounded worker
+// pool every other multi-shard read in this file uses (forEachShardErr) —
+// this was the one multi-shard read left applying its buckets sequentially.
 func (s *Store) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
 	if err := s.checkOpen(); err != nil {
 		return nil, err
@@ -109,13 +114,18 @@ func (s *Store) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
 		}
 		buckets[idx] = append(buckets[idx], id)
 	}
-	var slices [][]*types.Node
-	for idx, bucket := range buckets {
-		nodes, err := s.shards[idx].GetNodesByIDs(bucket)
-		if err != nil {
-			return nil, err
-		}
-		slices = append(slices, nodes)
+	bucketIdx := make([]int, 0, len(buckets))
+	for idx := range buckets {
+		bucketIdx = append(bucketIdx, idx)
+	}
+	slices := make([][]*types.Node, len(bucketIdx))
+	errs := make([]error, len(bucketIdx))
+	runShardPool(len(bucketIdx), func(i int) {
+		idx := bucketIdx[i]
+		slices[i], errs[i] = s.shards[idx].GetNodesByIDs(buckets[idx])
+	})
+	if err := errors.Join(errs...); err != nil {
+		return nil, err
 	}
 	merged := mergeSortNodes(slices)
 	if len(merged) == 0 {
@@ -124,6 +134,8 @@ func (s *Store) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
 	return merged, nil
 }
 
+// GetRelationshipsByIDs mirrors GetNodesByIDs's parallel per-shard-bucket read
+// (BACKLOG 20l).
 func (s *Store) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relationship, error) {
 	if err := s.checkOpen(); err != nil {
 		return nil, err
@@ -142,13 +154,18 @@ func (s *Store) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relationship,
 		}
 		buckets[idx] = append(buckets[idx], id)
 	}
-	var slices [][]*types.Relationship
-	for idx, bucket := range buckets {
-		rels, err := s.shards[idx].GetRelationshipsByIDs(bucket)
-		if err != nil {
-			return nil, err
-		}
-		slices = append(slices, rels)
+	bucketIdx := make([]int, 0, len(buckets))
+	for idx := range buckets {
+		bucketIdx = append(bucketIdx, idx)
+	}
+	slices := make([][]*types.Relationship, len(bucketIdx))
+	errs := make([]error, len(bucketIdx))
+	runShardPool(len(bucketIdx), func(i int) {
+		idx := bucketIdx[i]
+		slices[i], errs[i] = s.shards[idx].GetRelationshipsByIDs(buckets[idx])
+	})
+	if err := errors.Join(errs...); err != nil {
+		return nil, err
 	}
 	merged := mergeSortRels(slices)
 	if len(merged) == 0 {
