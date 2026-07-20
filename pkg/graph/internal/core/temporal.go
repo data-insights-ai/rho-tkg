@@ -171,7 +171,29 @@ func (c *Core) resolveNodeVersionAt(chain []*types.Node, t types.Instant) (*type
 	// belief scan. Only a non-monotonic chain (an append-only cascade
 	// correction) needs the overlay, and only it pays the sort + full scan.
 	if !c.sortNodeChainForResolve(chain) {
-		for i := len(chain) - 1; i >= 0; i-- {
+		start := len(chain) - 1
+		if c.bitemporalMigrated {
+			// BACKLOG 10m: binary search for the backward scan's STARTING
+			// index instead of always starting at the end — an old t would
+			// otherwise force an O(n) walk past every newer version. Safe
+			// because when bitemporalMigrated is true, nodeVersionBounds'
+			// vStart is PROVABLY IDENTICAL to nodeSortValidFrom's — the very
+			// function sortNodeChainForResolve just used to confirm the
+			// chain is monotonic — so vStart is non-decreasing across the
+			// array, exactly binary search's precondition. (Pre-migration,
+			// the legacy inherited-ValidFrom heuristic can make them
+			// diverge for an inherited entry, breaking that precondition —
+			// why this is gated on bitemporalMigrated instead of applied
+			// unconditionally.) idx is the first index whose vStart exceeds
+			// t; every entry from idx onward provably cannot cover t, so
+			// the UNCHANGED backward scan below can start one before it.
+			idx := sort.Search(len(chain), func(i int) bool {
+				vStart, _ := c.nodeVersionBounds(chain, i)
+				return vStart > t
+			})
+			start = idx - 1
+		}
+		for i := start; i >= 0; i-- {
 			entry := chain[i]
 			if eclipsedNodeBounds(entry) {
 				continue
@@ -418,7 +440,17 @@ func nodeInheritedValidFrom(chain []*types.Node, i int, tm *types.TemporalMetada
 // overlap, the newer belief (higher TxFrom, then version) wins.
 func (c *Core) resolveRelVersionAt(chain []*types.Relationship, t types.Instant) (*types.Relationship, error) {
 	if !c.sortRelChainForResolve(chain) {
-		for i := len(chain) - 1; i >= 0; i-- {
+		// BACKLOG 10m: mirrors resolveNodeVersionAt's binary-search-assisted
+		// scan start — see there for the bitemporalMigrated-gating rationale.
+		start := len(chain) - 1
+		if c.bitemporalMigrated {
+			idx := sort.Search(len(chain), func(i int) bool {
+				vStart, _ := c.relVersionBounds(chain, i)
+				return vStart > t
+			})
+			start = idx - 1
+		}
+		for i := start; i >= 0; i-- {
 			entry := chain[i]
 			if eclipsedRelBounds(entry) {
 				continue

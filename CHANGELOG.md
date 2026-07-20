@@ -457,6 +457,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `{TxPin, ValidAt}` with `ErrConflictingTemporalOpts` and accept a lone `TxPin` without error. Pure
   test-gap — the shared validator was already correct for every call site. `go build ./...` + `go vet
   ./...` clean; full `pkg/graph/internal/core` package suite clean; full-repo `go test ./...` clean.
+- PERF — closed BACKLOG 10m: `resolveNodeVersionAt`/`resolveRelVersionAt`'s monotonic-chain fast path
+  always started its backward scan at the chain's END, so a query for an OLD `t` had to walk almost
+  the entire chain before finding the covering version — despite `sortNodeChainForResolve` having
+  just confirmed the chain's vStart values are sorted ascending, exactly `sort.Search`'s precondition.
+  Investigated carefully before changing anything, this exact function family being 10 lines from
+  BACKLOG 10b's still-open, previously-reverted bitemporal-cascade bug: found that `nodeVersionBounds`'
+  vStart derivation is only PROVABLY IDENTICAL to the sort key (`nodeSortValidFrom`) when
+  `c.bitemporalMigrated` is true — the pre-migration legacy inherited-ValidFrom heuristic can make them
+  diverge for an inherited entry, which would break binary search's monotonicity precondition. Gated
+  the optimization on `c.bitemporalMigrated` (true for any store with `MetaKVCapability` — memory,
+  badger, tiered — after the one-shot migration runs at open, so this covers the overwhelming common
+  case) and, even then, changed ONLY the scan's *starting index* via `sort.Search` — every per-entry
+  check/skip below it is byte-for-byte the original code, so the change is provably a no-op on any
+  path where the binary search's precondition holds. Node/Rel mirrored (rule 2). Verified against the
+  property-based bitemporal oracle (`TestBitemporalOracleHarness` at FULL iteration count — 200
+  sequences × 40 probes × 18 ops, not just the short-mode 30 — plus `TestBitemporalOracle_BadgerCommitWindow`)
+  per BACKLOG 10b's own lesson that hand-written repro cases are insufficient for changes to this code;
+  confirmed the harness is genuinely load-bearing here by deliberately reintroducing an off-by-one
+  (`start = idx` instead of `idx - 1`): the FIRST oracle seed panicked with an index-out-of-range
+  immediately, while two new hand-written correctness tests
+  (`TestResolveNodeVersionAt_EveryChainPositionMatchesExpectedVersion`/rel-mirror, exhaustively checking
+  every tile boundary of a 40-version chain) missed it entirely — the oracle's randomized/adversarial
+  coverage is the real safety net for this code, not hand-written cases alone. MEASURED (isolated
+  `resolveNodeVersionAt` benchmark, no store I/O, old-`t` query): size=100 ~1529ns → ~514ns (~3.0x),
+  size=1000 ~12377ns → ~4480ns (~2.8x), size=10000 ~84769ns → ~29120ns (~2.9x) — a consistent ~3x
+  constant-factor win, honestly NOT an asymptotic one: `resolveNodeVersionAt`'s overall cost is still
+  bounded by `sortNodeChainForResolve`'s own unavoidable O(n) monotonicity-confirmation pass, which
+  this change doesn't touch — the store-backed `BenchmarkNodeAt_DeepHistory` shows no visible delta
+  since history *decode* cost dominates there, not the resolution scan the finding was about. `go
+  build ./...` + `go vet ./...` clean; full `pkg/graph/internal/core` package suite green under
+  `-race`; full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 
