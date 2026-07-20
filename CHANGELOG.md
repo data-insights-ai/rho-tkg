@@ -1209,6 +1209,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   in one pass without the same dedicated per-door test budget this fix used. `go build`/`go vet`
   clean; full `pkg/graph/store/memory` package suite green including under `-race` (41s); full-repo
   `go test ./...` clean.
+- VERIFIED-CORRECT (closes BACKLOG 17): re-confirmed BACKLOG 17i — `defer bumpNodeEpoch()`/
+  `bumpRelEpoch()` (`store/memory/memorystore_node.go`, `memorystore_rel.go`, `memorystore_history.go`)
+  fire immediately after the lock is taken, before validation, so a validation-failure or no-op
+  mutation still bumps the epoch counter. Confirmed this is intentional, not an oversight: both
+  `bumpNodeEpoch`/`bumpRelEpoch` (`memorystore.go:192-198`) already carry their own doc comment
+  stating this exact tradeoff — "A spurious bump (on a no-op or errored mutation) is safe — it only
+  forces a rebuild" — matching the original finding's own framing. No code change; this was a
+  pre-verified, deliberate, self-documented tradeoff rather than an open item, so it is removed from
+  the backlog rather than left as a perpetual "still open" note. This was the final item of BACKLOG 17
+  (Store interface & MemoryStore hardening) — the section is now fully closed.
 
 ## [4.23.0] - 2026-07-18
 

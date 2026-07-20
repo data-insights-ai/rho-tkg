@@ -348,8 +348,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   Recommend a dedicated follow-up pass using the property-index port as the template.**
   `store/memory/memorystore_index.go` (`CreateCompositePropertyIndex`, `CreateTemporalIndex`,
   `CreateHighFrequencyIndex`, `CreateVectorIndex`/`CreateVectorIndexWithOptions`).
-- **17i. `defer bumpNodeEpoch()`/`bumpRelEpoch()` fire even on validation-failure/no-op error paths
-  (LOW, already documented as a deliberate/safe tradeoff — flagged only for future profiling).**
 ### BACKLOG 18 — Badger backend hardening
 
 - **18f. Meta/registry persistence (`MetaSet`, `Save*Registry`) lacks the immediate pre-call
