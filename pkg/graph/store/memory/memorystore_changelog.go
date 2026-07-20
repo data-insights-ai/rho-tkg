@@ -262,17 +262,28 @@ func (ms *Store) ChangeLogEnabled() bool {
 // snapshotChangesLocked copies the records with LSN > afterLSN (up to limit;
 // <=0 = all). The caller holds at least an RLock. Payloads are copied so the
 // returned records never alias the stored log.
+//
+// changeLog is append-only with strictly ascending LSN (logChangeLocked and
+// CommitLogScope both mint LSN via ms.logSeq++ immediately before appending),
+// so the starting position is found by binary search instead of a linear
+// scan from the beginning. BACKLOG 17g: the prior linear scan was O(total
+// log size) per call regardless of afterLSN, making small-limit polling (the
+// normal ChangeFeed/replication consumption pattern) O(n^2) to fully drain a
+// log of size n.
 func (ms *Store) snapshotChangesLocked(afterLSN uint64, limit int) []storecontract.ChangeRecord {
-	var out []storecontract.ChangeRecord
-	for _, rec := range ms.changeLog {
-		if rec.LSN <= afterLSN {
-			continue
-		}
-		cp := append([]byte(nil), rec.Payload...)
-		out = append(out, storecontract.ChangeRecord{LSN: rec.LSN, Tag: rec.Tag, Payload: cp})
-		if limit > 0 && len(out) >= limit {
-			break
-		}
+	start := sort.Search(len(ms.changeLog), func(i int) bool {
+		return ms.changeLog[i].LSN > afterLSN
+	})
+	remaining := ms.changeLog[start:]
+	if limit > 0 && len(remaining) > limit {
+		remaining = remaining[:limit]
+	}
+	if len(remaining) == 0 {
+		return nil
+	}
+	out := make([]storecontract.ChangeRecord, len(remaining))
+	for i, rec := range remaining {
+		out[i] = storecontract.ChangeRecord{LSN: rec.LSN, Tag: rec.Tag, Payload: append([]byte(nil), rec.Payload...)}
 	}
 	return out
 }

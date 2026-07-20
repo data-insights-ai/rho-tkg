@@ -91,6 +91,61 @@ func TestMemoryChangeLog_BasicFeed(t *testing.T) {
 	}
 }
 
+// TestMemoryChangeLog_SnapshotBoundaryEquivalence (BACKLOG 17g) pins
+// ChangeFeed's (afterLSN, limit) semantics against a brute-force reference
+// built directly from known insertion order, across every LSN/limit
+// boundary. snapshotChangesLocked was rewritten from a full linear scan to
+// a binary search over the append-only, strictly-ascending changeLog (fixing
+// an O(n^2)-to-fully-drain-via-small-limit-polling perf issue) — an
+// off-by-one in the search predicate or slicing would silently drop or
+// duplicate a boundary record, which this test exhaustively checks for.
+func TestMemoryChangeLog_SnapshotBoundaryEquivalence(t *testing.T) {
+	ms := New(WithChangeLog())
+	const n = 37
+	for i := 0; i < n; i++ {
+		if err := ms.PutNode(memNode(int64(i+1), 10)); err != nil {
+			t.Fatalf("PutNode %d: %v", i, err)
+		}
+	}
+	// Known reference independent of ChangeFeed: n PutNode calls each emit
+	// exactly one record, LSNs 1..n in insertion order.
+	allLSNs := make([]uint64, n)
+	for i := range allLSNs {
+		allLSNs[i] = uint64(i + 1)
+	}
+	bruteForce := func(afterLSN uint64, limit int) []uint64 {
+		var out []uint64
+		for _, lsn := range allLSNs {
+			if lsn <= afterLSN {
+				continue
+			}
+			out = append(out, lsn)
+			if limit > 0 && len(out) >= limit {
+				break
+			}
+		}
+		return out
+	}
+
+	for after := 0; after <= n+2; after++ {
+		for _, limit := range []int{0, -1, 1, 2, 5, n, n + 5} {
+			want := bruteForce(uint64(after), limit)
+			recs, err := ms.ChangeFeed(uint64(after), limit)
+			if err != nil {
+				t.Fatalf("afterLSN=%d limit=%d: ChangeFeed err %v", after, limit, err)
+			}
+			if len(recs) != len(want) {
+				t.Fatalf("afterLSN=%d limit=%d: got %d records, want %d", after, limit, len(recs), len(want))
+			}
+			for i, rec := range recs {
+				if rec.LSN != want[i] {
+					t.Fatalf("afterLSN=%d limit=%d: record[%d].LSN = %d, want %d", after, limit, i, rec.LSN, want[i])
+				}
+			}
+		}
+	}
+}
+
 func TestMemoryChangeLog_ForEachAndNilCallback(t *testing.T) {
 	ms := New(WithChangeLog())
 	for i := int64(1); i <= 4; i++ {

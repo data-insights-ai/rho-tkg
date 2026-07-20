@@ -1143,6 +1143,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   restored, GREEN. `go build`/`go vet` clean; full `pkg/graph/internal/index` package suite green
   including under `-race` (148s); full-repo `go test ./...` clean. This was the final item of
   BACKLOG 16 (In-memory index-engine hardening) — the section is now fully closed.
+- PERF/FIX — BACKLOG 17g: `snapshotChangesLocked` (`store/memory/memorystore_changelog.go`, backing
+  `ChangeFeed`/`ForEachChange`) linear-scanned the ENTIRE in-RAM `changeLog` slice from the beginning
+  on every call, regardless of `afterLSN` — O(total log size) per call instead of O(returned
+  records). The normal change-feed consumption pattern (a replica or test harness polling with a
+  small `limit`, `afterLSN` advancing each call) is therefore O(n²) to fully drain a log of size n.
+  `changeLog` is append-only with strictly ascending LSN (`logChangeLocked` and `CommitLogScope` both
+  mint LSN via `ms.logSeq++` immediately before appending, and the only other mutation is a full
+  reset to nil), so the starting position is found by `sort.Search` binary search instead of a linear
+  scan — O(log n + limit) per call. Added `TestMemoryChangeLog_SnapshotBoundaryEquivalence`: builds a
+  37-record log, then checks `ChangeFeed(afterLSN, limit)` against a brute-force reference built
+  directly from known insertion order (not from `ChangeFeed` itself, to avoid a circular reference)
+  across every `afterLSN` (0..n+2) × `limit` (0, -1, 1, 2, 5, n, n+5) combination — exhaustive
+  boundary coverage since an off-by-one in the binary-search predicate or slicing would silently drop
+  or duplicate exactly one boundary record, easy to miss with spot-check assertions. Confirmed
+  load-bearing: mutating the search predicate from `LSN > afterLSN` to `LSN >= afterLSN` (an off-by-
+  one that returns 37 instead of 36 records for `afterLSN=1`) turned the test immediately RED;
+  reverted, GREEN. Severity was capped LOW-MEDIUM in the original finding since the memory changelog
+  is explicitly a non-durable test/parity facility (the durable op-log is the badger backend), but
+  the fix is small, safe, and removes a real algorithmic-complexity trap from a facility every
+  replica-convergence and change-feed test in the suite exercises. `go build`/`go vet` clean; full
+  `pkg/graph/store/memory` package suite green including under `-race` (40s); full-repo
+  `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

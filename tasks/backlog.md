@@ -326,9 +326,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 17 — Store interface & MemoryStore hardening
 
-- **17g. `snapshotChangesLocked` is O(total log size) per call instead of O(returned records) — O(n²)
-  to fully drain via small-limit polling (LOW-MEDIUM, severity capped since the memory changelog is
-  explicitly a non-durable test/parity facility).** `store/memory/memorystore_changelog.go:262-278`.
 - **17h. Index-creation doors hold the exclusive write lock for the entire scan-and-build, unlike the
   documented 3-phase pattern (LOW-MEDIUM, possibly acceptable for pure-RAM but deviates from a stated
   rule without a carved-out exception).** `store/memory/memorystore_index.go`, `memorystore_rel_index.go`.
