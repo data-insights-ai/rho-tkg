@@ -21,6 +21,19 @@ import (
 // the same kernel), and the two mechanisms share the same stripe so they
 // serialize together.
 //
+// BACKLOG 9s — scope of the guarantee: atomicity holds against every caller
+// that participates in the value-stripe protocol — other GetOrCreateByKey
+// calls, and any write whose value is under an ACTIVE unique constraint
+// (enforceUniqueForNode/enforceUniqueForNodeHeld take the same stripe). It
+// does NOT serialize against a PLAIN concurrent Add/Update writing the same
+// value when NO unique constraint exists on (label, propertyKey): value-
+// stripe locking is unique-constraint-enforcement machinery, so a plain
+// write with nothing constrained never touches the stripe and can land a
+// second node holding the value even while GetOrCreateByKey believes its
+// own check-then-create was atomic. Create a unique constraint on
+// (label, propertyKey) if protection against EVERY writer (not just other
+// GetOrCreateByKey callers) is required.
+//
 // value must be an indexable scalar (string / int / bool / Instant). Float
 // values are rejected with ErrUniqueUnsupportedType (bit-pattern equality is a
 // trap — lesson 25). extraProps are set on a freshly created node (the keyed

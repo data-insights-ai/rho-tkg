@@ -69,10 +69,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 9 — Write-path kernel hardening (CRUD, unique constraints, version chains)
 
-- **9s. `GetOrCreateByKey`'s atomicity only holds against concurrent `GetOrCreateByKey`/constraint-
-  enforced writers, not a plain concurrent `Add`/`Update` with no active constraint — doc could be
-  clearer (LOW).**
-
 ### BACKLOG 10 — Bitemporal resolution engine hardening
 
 - **10b. [CONFIRMED REAL via reproducible test; fix ATTEMPTED and REVERTED — needs a dedicated

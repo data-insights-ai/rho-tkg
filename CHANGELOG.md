@@ -407,6 +407,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (statistical: mean sleep at the capped attempt is clearly larger than at attempt 0). `go build ./...`
   + `go vet ./...` clean; full `pkg/graph/internal/core` package suite (incl. every `TestDelete*`)
   green under `-race`; full-repo `go test ./...` clean.
+- DOC/TEST — closed BACKLOG 9s (the last open item in BACKLOG 9 — write-path kernel hardening is now
+  fully closed): `GetOrCreateByKey`'s doc said it "works WITHOUT an active unique constraint" via its
+  own value stripe, without stating who that guarantee is scoped to. Value-stripe locking is
+  unique-constraint-enforcement machinery (`enforceUniqueForNode`/`enforceUniqueForNodeHeld`) — a
+  PLAIN concurrent `Add`/`Update` writing the same value, with NO constraint active on
+  `(label, propertyKey)`, never takes the stripe at all, so it can land a second node holding the value
+  even while `GetOrCreateByKey` believes its own check-then-create was atomic. Clarified both doc
+  comments (`internal/core/node_getorcreate.go`, `pkg/graph/nodes/api.go`) to state the guarantee's
+  real scope: atomic against other `GetOrCreateByKey` callers and constraint-enforced writers, NOT
+  against an arbitrary plain writer absent a constraint. Added
+  `TestGetOrCreateByKey_DoesNotSerializeAgainstPlainConcurrentAddWithoutConstraint`
+  (`pkg/graph/unique_stage_test.go`) — races a `GetOrCreateByKey` call against 8 plain concurrent
+  `Add` calls with no constraint anywhere, reliably reproducing 2+ current nodes holding the same
+  value, pinning the documented scope as living, checked documentation rather than prose alone. Also
+  confirmed via the pre-existing `TestGetOrCreateByKey_IdempotencyStorm` that the PROTECTED side (100
+  concurrent `GetOrCreateByKey` callers, with or without a constraint) already produces exactly one
+  create — no gap there. `go build ./...` + `go vet ./...` clean; `pkg/graph/...` suite green under
+  `-race`; full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

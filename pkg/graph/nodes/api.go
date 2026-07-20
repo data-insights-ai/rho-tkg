@@ -114,6 +114,14 @@ func (a *API) AddWithTx(ctx context.Context, labels []string, props map[string]a
 // (floats rejected with ErrUniqueUnsupportedType). extraProps seed a freshly
 // created node (the keyed property wins) and are ignored on a hit. The returned
 // node is a mutable, independent copy (Get semantics).
+//
+// Scope of the atomicity guarantee: it holds against other GetOrCreateByKey
+// callers, and against writes to a value under an ACTIVE unique constraint —
+// but NOT against a plain concurrent Add/Update writing the same value when
+// no unique constraint exists on (label, propertyKey); such a write never
+// takes the value lock and can still land a second node with the value. Add
+// a unique constraint on (label, propertyKey) for protection against every
+// writer, not just other GetOrCreateByKey callers.
 func (a *API) GetOrCreateByKey(ctx context.Context, label, propertyKey string, value any, extraProps map[string]any) (*types.Node, bool, error) {
 	ops, err := a.ready()
 	if err != nil {

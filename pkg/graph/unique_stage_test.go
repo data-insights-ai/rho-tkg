@@ -442,6 +442,66 @@ func TestGetOrCreateByKey_IdempotencyStorm(t *testing.T) {
 	}
 }
 
+// TestGetOrCreateByKey_DoesNotSerializeAgainstPlainConcurrentAddWithoutConstraint
+// guards BACKLOG 9s: GetOrCreateByKey's doc says it "works WITHOUT an active
+// unique constraint" via its own value stripe, which is true against OTHER
+// GetOrCreateByKey callers (TestGetOrCreateByKey_IdempotencyStorm above,
+// "no-constraint" case) — but a PLAIN g.Nodes().Add call takes NO value
+// stripe at all when no constraint is active on (label, key) (value-stripe
+// locking is unique-constraint-enforcement machinery — CLAUDE.md
+// "Concurrency": "a create/update/label-add that introduces or changes a
+// CONSTRAINED value holds the value stripe"; with no constraint, nothing is
+// constrained, so nothing locks). So GetOrCreateByKey's atomicity is scoped
+// to callers that participate in the stripe protocol (other
+// GetOrCreateByKey calls, or writes enforced by an active constraint) — NOT
+// to an arbitrary concurrent plain Add. This test demonstrates that scope
+// concretely: many plain Adds racing a single GetOrCreateByKey, with no
+// constraint anywhere, CAN and DO produce more than one current node
+// holding the same value — the exact behavior the doc needed to state
+// explicitly instead of only describing the protected side.
+func TestGetOrCreateByKey_DoesNotSerializeAgainstPlainConcurrentAddWithoutConstraint(t *testing.T) {
+	const attempts = 20
+	const plainWriters = 8
+
+	for attempt := 0; attempt < attempts; attempt++ {
+		g, err := graphpkg.New(graphpkg.Config{})
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+		ctx := context.Background()
+
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		wg.Add(1 + plainWriters)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, _, _ = g.Nodes().GetOrCreateByKey(ctx, "User", "email", "race@x.com", nil)
+		}()
+		for i := 0; i < plainWriters; i++ {
+			go func() {
+				defer wg.Done()
+				<-start
+				_, _ = g.Nodes().Add(ctx, []string{"User"}, map[string]any{"email": "race@x.com"})
+			}()
+		}
+		close(start)
+		wg.Wait()
+
+		nodes, err := g.Nodes().ByLabelAndProperty("User", "email", "race@x.com", store.QueryOpts{})
+		if err != nil {
+			t.Fatalf("attempt %d: ByLabelAndProperty: %v", attempt, err)
+		}
+		_ = g.Close()
+		if len(nodes) > 1 {
+			// Reproduced the documented gap — done, no need to keep looping.
+			return
+		}
+	}
+	t.Fatalf("plain concurrent Add never landed alongside GetOrCreateByKey across %d attempts — "+
+		"could not demonstrate the documented no-constraint scope gap this test exists to pin", attempts)
+}
+
 // A hit returns a mutable, independent copy (Get semantics) and the created==false.
 func TestGetOrCreateByKey_HitReturnsCopy(t *testing.T) {
 	for _, bc := range uniqueBackends(t) {
