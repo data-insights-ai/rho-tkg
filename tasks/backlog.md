@@ -264,9 +264,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 14 — Index / docvalues / stats / vector / events hardening (graph layer)
 
-- **14f. FIFO (not LRU) eviction on the as-of DocValues column cache (cap=64) — undercuts the cache's
-  own stated goal once a workload exceeds 64 distinct hot pins (LOW, deliberate simplicity tradeoff,
-  worth revisiting).** `internal/core/docvalues_asof_cache.go:31-51,121-139`.
 - **14g. `graph_epoch.go`'s corrupt-lineage and zero-avoidance branches have no direct test (TEST-GAP).**
   `graph_epoch.go:36-38,43-46`.
 - **14h. Composite-index introspection (`ListComposites`/`HasComposite`) has no counterpart for

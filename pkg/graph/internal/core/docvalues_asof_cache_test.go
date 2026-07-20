@@ -329,8 +329,11 @@ func BenchmarkForEachDocValuesAsOfUncached(b *testing.B) {
 	}
 }
 
-// TestAsOfColumnCache_EvictionAndEpochGuard covers put's FIFO eviction (memory bound)
-// and its epoch-race guard (a rewrite during the build discards the column).
+// TestAsOfColumnCache_EvictionAndEpochGuard covers put's LRU eviction (memory bound —
+// pure sequential inserts with no intervening gets exercise the same "evict the
+// oldest/least-recently-touched" order as a FIFO would) and its epoch-race guard (a
+// rewrite during the build discards the column). TestAsOfColumnCache_LRUNotFIFO
+// below covers the case where LRU and FIFO diverge.
 func TestAsOfColumnCache_EvictionAndEpochGuard(t *testing.T) {
 	a := newAsOfColumnCache()
 	epoch := a.currentEpoch()
@@ -346,7 +349,7 @@ func TestAsOfColumnCache_EvictionAndEpochGuard(t *testing.T) {
 	size := len(a.cols)
 	a.mu.Unlock()
 	if size != asOfCacheCap {
-		t.Fatalf("cache size = %d after overflow, want %d (FIFO eviction)", size, asOfCacheCap)
+		t.Fatalf("cache size = %d after overflow, want %d (LRU eviction)", size, asOfCacheCap)
 	}
 	// The oldest key (txAt 0) was evicted; the newest is present.
 	if _, ok := a.get(asOfCacheKey{label: 1, txAt: 0}, nil, epoch); ok {
@@ -362,6 +365,41 @@ func TestAsOfColumnCache_EvictionAndEpochGuard(t *testing.T) {
 	a.put(asOfCacheKey{label: 2, txAt: 1}, emptyCol(), stale)
 	if _, ok := a.get(asOfCacheKey{label: 2, txAt: 1}, nil, a.currentEpoch()); ok {
 		t.Fatal("a column built under a stale epoch was cached (torn-belief risk)")
+	}
+}
+
+// TestAsOfColumnCache_LRUNotFIFO is the BACKLOG 14f load-bearing proof: a key
+// touched via a cache HIT after insertion must survive an overflow that would
+// evict it under pure insertion-order (FIFO) eviction. Fills the cache to
+// capacity, re-reads the OLDEST key (marking it most-recently-used), then
+// inserts ONE more entry to force exactly one eviction — under FIFO the
+// oldest key (just re-read) would still be evicted first; under LRU the
+// SECOND-oldest key (never touched) is evicted instead.
+func TestAsOfColumnCache_LRUNotFIFO(t *testing.T) {
+	a := newAsOfColumnCache()
+	epoch := a.currentEpoch()
+	emptyCol := func() *indexpkg.LabelDocValues {
+		return indexpkg.BuildLabelDocValues(epoch, nil, nil, func(types.NodeID, string) (any, bool) { return nil, false })
+	}
+
+	for i := 0; i < asOfCacheCap; i++ {
+		a.put(asOfCacheKey{label: 1, txAt: int64(i)}, emptyCol(), epoch)
+	}
+
+	// Touch the oldest key (txAt 0) — under LRU this makes it MOST recently
+	// used, protecting it from the next eviction.
+	if _, ok := a.get(asOfCacheKey{label: 1, txAt: 0}, nil, epoch); !ok {
+		t.Fatal("txAt 0 should still be cached before overflow")
+	}
+
+	// One more insert forces exactly one eviction.
+	a.put(asOfCacheKey{label: 1, txAt: int64(asOfCacheCap)}, emptyCol(), epoch)
+
+	if _, ok := a.get(asOfCacheKey{label: 1, txAt: 0}, nil, epoch); !ok {
+		t.Fatal("recently-touched txAt 0 was evicted — eviction is FIFO, not LRU (BACKLOG 14f regression)")
+	}
+	if _, ok := a.get(asOfCacheKey{label: 1, txAt: 1}, nil, epoch); ok {
+		t.Fatal("txAt 1 (never re-touched, second-oldest) should have been evicted instead of txAt 0")
 	}
 }
 

@@ -32,7 +32,16 @@ type asOfColumnCache struct {
 	mu    sync.Mutex
 	epoch atomic.Uint64
 	cols  map[asOfCacheKey]*indexpkg.LabelDocValues
-	order []asOfCacheKey // FIFO eviction order, bounded by asOfCacheCap
+	// order tracks LRU eviction order (BACKLOG 14f — was FIFO/insertion-order,
+	// which undercuts the cache's own stated goal once a workload exceeds
+	// asOfCacheCap distinct hot pins: a genuinely hot key inserted early would
+	// be evicted ahead of a key touched once and never again. Least-recently-
+	// used at index 0, most-recently-used at the tail; get/put move a touched
+	// key to the tail via touchLocked. A linear O(cap) scan per touch is
+	// deliberately simple — cap is a small fixed constant (64), so this is
+	// negligible; a doubly-linked-list O(1) LRU would be premature
+	// optimization at this scale.
+	order []asOfCacheKey
 	// maxAppliedTx is the max entity TxFrom a replica has applied. A forward apply
 	// (TxFrom >= max) cannot change any past belief and leaves the cache warm; an
 	// out-of-order apply (TxFrom < max) is a past-dated write and bumps the epoch.
@@ -45,7 +54,7 @@ type asOfCacheKey struct {
 }
 
 // asOfCacheCap bounds the number of distinct (label, txAt) column sets held. A
-// realistic dashboard queries a handful of named snapshots; the FIFO cap keeps memory
+// realistic dashboard queries a handful of named snapshots; the LRU cap keeps memory
 // bounded against a flood of distinct pins. Each column is itself size-capped at
 // indexpkg.MaxDocValuesNodes (large labels are built one-shot, never cached).
 const asOfCacheCap = 64
@@ -100,8 +109,22 @@ func (a *asOfColumnCache) noteAppliedTx(txFrom types.Instant) {
 	}
 }
 
+// touchLocked moves key to the most-recently-used end of order (a no-op if
+// key is not tracked, e.g. called for a key not yet inserted). Caller holds
+// a.mu.
+func (a *asOfColumnCache) touchLocked(key asOfCacheKey) {
+	for i, k := range a.order {
+		if k == key {
+			a.order = append(a.order[:i], a.order[i+1:]...)
+			a.order = append(a.order, key)
+			return
+		}
+	}
+}
+
 // get returns the cached column for key iff it was built under the current epoch and
-// already holds every requiredKey; otherwise (nil, false) — the caller rebuilds.
+// already holds every requiredKey; otherwise (nil, false) — the caller rebuilds. A
+// hit marks key most-recently-used (see touchLocked / the LRU note on order).
 func (a *asOfColumnCache) get(key asOfCacheKey, requiredKeys []string, epoch uint64) (*indexpkg.LabelDocValues, bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -109,6 +132,7 @@ func (a *asOfColumnCache) get(key asOfCacheKey, requiredKeys []string, epoch uin
 	if col == nil || col.Epoch() != epoch || !col.HasAll(requiredKeys) {
 		return nil, false
 	}
+	a.touchLocked(key)
 	return col, true
 }
 
@@ -128,7 +152,8 @@ func (a *asOfColumnCache) unionKeysFor(key asOfCacheKey, requested []string) []s
 
 // put installs col for key, but ONLY if the epoch has not advanced since the build
 // started (a history rewrite mid-build → discard, the build saw a torn belief).
-// Evicts the oldest entry (FIFO) when over the cap.
+// Evicts the LEAST-recently-used entry when over the cap; overwriting an
+// existing key also marks it most-recently-used.
 func (a *asOfColumnCache) put(key asOfCacheKey, col *indexpkg.LabelDocValues, buildEpoch uint64) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -142,6 +167,8 @@ func (a *asOfColumnCache) put(key asOfCacheKey, col *indexpkg.LabelDocValues, bu
 			delete(a.cols, oldest)
 		}
 		a.order = append(a.order, key)
+	} else {
+		a.touchLocked(key)
 	}
 	a.cols[key] = col
 }

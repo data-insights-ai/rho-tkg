@@ -780,6 +780,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   combination where the drift lived) stayed green unchanged. `go build`/`go vet` clean; full
   `pkg/graph/internal/core` package suite green including under `-race` (133s); full-repo `go test
   ./...` clean.
+- FIX — BACKLOG 14f: the as-of DocValues column cache (`internal/core/docvalues_asof_cache.go`,
+  `asOfColumnCache`, cap=64) evicted on pure insertion order (FIFO), undercutting its own stated goal
+  once a workload pins more than 64 distinct hot `(label, txAt)` snapshots — a genuinely hot key
+  inserted early would be evicted ahead of a key touched once and never revisited. Converted `order` to
+  track true LRU order: a new `touchLocked` helper moves a key to the most-recently-used end of the
+  slice, called on every cache HIT in `get()` and on every value overwrite in `put()`; eviction still
+  removes `order[0]`, which is now the LEAST-recently-used entry rather than merely the oldest-inserted
+  one. A linear O(cap) scan per touch is deliberately simple (cap is a fixed small constant — 64 — so
+  this is negligible; a doubly-linked-list O(1) LRU would be premature optimization at this scale).
+  Added `TestAsOfColumnCache_LRUNotFIFO`: fills the cache to capacity, re-reads the OLDEST key (a cache
+  hit, marking it most-recently-used), inserts one more entry to force exactly one eviction, and
+  asserts the re-read key SURVIVES while the never-touched second-oldest key is evicted instead —
+  confirmed RED before the fix (removing the `touchLocked` call in `get()` reproduces plain FIFO and
+  the re-touched key gets evicted anyway). The pre-existing `TestAsOfColumnCache_EvictionAndEpochGuard`
+  (pure sequential inserts, no intervening reads) stayed green unchanged, since LRU and FIFO coincide
+  when nothing is ever re-touched — updated its comment/terminology only. `go build`/`go vet` clean;
+  full `pkg/graph/internal/core` package suite green including under `-race` (135s); the cache's own
+  benchmarks (`BenchmarkForEachDocValuesAsOf{Cached,Uncached}`) still run correctly; full-repo `go test
+  ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 
