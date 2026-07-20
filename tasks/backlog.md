@@ -326,10 +326,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 16 — In-memory index-engine hardening (HNSW / property & temporal index / HyperLogLog)
 
-- **16i. `hnsw.go`/`hnsw_test.go` has no direct BFS-reachability graph-connectivity regression test —
-  only an indirect, `-short`-skipped recall@10 proxy (MEDIUM, TEST-GAP).** CLAUDE.md documents that
-  exact BFS test was used during development to catch the naive-closest fragmentation bug; it doesn't
-  exist today as a fast always-run test.
 - **16k. `RangeNodeIDs`'s `inclMin`/`inclMax` parameters are declared but never read — contract drift
   (LOW).** `internal/index/property_index_range.go:230`.
 - **16l. `sorted_chunks.go`'s `remove()` has no merge-on-shrink for adjacent undersized chunks (LOW-

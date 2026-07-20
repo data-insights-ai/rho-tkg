@@ -1055,6 +1055,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   green unchanged. `go build`/`go vet` clean; full `pkg/graph/internal/index` package suite green
   including under `-race` (151s); `pkg/graph/internal/core`'s temporal-index-dependent tests green
   unchanged; full-repo `go test ./...` clean.
+- TEST — BACKLOG 16i: added a direct, FAST, always-run (never `-short`-skipped) BFS-reachability
+  graph-connectivity regression test for HNSW. CLAUDE.md documents that a naive "keep the M/M0 closest"
+  neighbor-selection policy (tried during development, reverted) fragments a clustered corpus into
+  per-cluster islands — verified back then via exactly this kind of BFS check ("a purely-closest-pruned
+  2000-node/20-cluster graph left only ~109 of 2000 nodes reachable from the entry point"), but that
+  check never landed as a committed test; only the recall@10 gate exists, which is `-short`-skipped and
+  only INDIRECTLY sensitive to fragmentation (a fragmented graph can still score well on recall if a
+  query's true neighbors happen to land in the entry point's own component — recall is a statistical
+  proxy, not a structural guarantee). Added `TestHNSWBFSReachability_ClusteredCorpus` (800-node/20-
+  cluster corpus, BFS from the documented entry point over layer-0 edges — every node has a layer-0
+  presence regardless of its randomly-drawn max level, so layer-0 connectivity is exactly "the whole
+  graph is one component") and `TestHNSWBFSReachability_AfterDeletions` (same, after tombstoning ~10%
+  of nodes — CLAUDE.md documents tombstones deliberately stay linked for connectivity, excluded only
+  from search RESULTS). Both run in well under 0.1s even without `-short`. Confirmed load-bearing by
+  reproducing the exact historical bug (swapping `selectNeighborsHeuristic` for naive closest-M
+  selection): both tests failed immediately with the predicted fragmentation (34/800 and 110/500
+  reachable — matching the ~109/2000 pattern CLAUDE.md's own account describes), then reverted. `go
+  build`/`go vet` clean; full `pkg/graph/internal/index` package suite green including under `-race`
+  (153s); full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 
