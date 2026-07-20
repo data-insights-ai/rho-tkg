@@ -69,7 +69,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 9 — Write-path kernel hardening (CRUD, unique constraints, version chains)
 
-- **9k. CLAUDE.md's Concurrency section omits `LockThree` (LOW, doc gap only — implementation sound).**
 - **9l. `relationship_import.go` hand-rolls temporal stamping + create/rollback instead of reusing
   the kernel's `applyRelCreateTemporal`/`createRelWithTypeRollback` (LOW, lesson-17/58 drift risk).**
   `internal/core/relationship_import.go:206-224`.

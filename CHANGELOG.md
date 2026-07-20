@@ -309,6 +309,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   doc claim) and `TestCountStreamChangeRecords_EmptyAndTruncated` (empty stream → 0/nil; truncated
   frame body → error) in a new `backup_internal_test.go` white-box test. `go build ./...` + `go vet
   ./...` clean; `pkg/graph/io` package suite and full-repo `go test ./...` clean.
+- DOC — closed BACKLOG 9k: CLAUDE.md's Concurrency section listed `LockEntity`/`LockTwo`/`LockMany` but
+  omitted `LockThree` (used by relationship update/import to lock a rel's own ID + start/end node IDs
+  — 3 entities — in ascending shard order). Confirmed the implementation and its test coverage
+  (`TestEntityLockManagerLockThree`/`LockThreeSameShard`/`LockThreeNoDeadlock`) were already sound —
+  pure doc gap, no code change. Added `LockThree` to all 3 CLAUDE.md mentions (the `internal/locks`
+  table row, the "Ascending shard order" bullet, and the "Entity locks" audit-checklist grep note).
 
 ## [4.23.0] - 2026-07-18
 
