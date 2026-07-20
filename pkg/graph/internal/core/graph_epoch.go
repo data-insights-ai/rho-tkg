@@ -6,6 +6,11 @@ import (
 	"fmt"
 )
 
+// epochRandRead is a seam over crypto/rand.Read so a test can force the
+// all-zero-buffer branch (BACKLOG 14g) deterministically instead of relying
+// on a 1-in-2^64 chance; production code never reassigns it.
+var epochRandRead = rand.Read
+
 // graphEpochMeta is the MetaKV key holding this graph's durable lineage id — a
 // random 8-byte value minted once on first use. It identifies a graph instance
 // so a delta cursor (io.Cursor.Epoch) carried from a DIFFERENT graph (e.g. a
@@ -37,7 +42,7 @@ func (c *Core) graphEpochLocked() (uint64, error) {
 		return 0, fmt.Errorf("graph: read epoch: corrupt lineage id (%d bytes)", len(v))
 	}
 	var buf [8]byte
-	if _, err := rand.Read(buf[:]); err != nil {
+	if _, err := epochRandRead(buf[:]); err != nil {
 		return 0, fmt.Errorf("graph: mint epoch: %w", err)
 	}
 	// 0 is the zero-cursor sentinel; never mint it.

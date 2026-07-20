@@ -264,8 +264,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 14 — Index / docvalues / stats / vector / events hardening (graph layer)
 
-- **14g. `graph_epoch.go`'s corrupt-lineage and zero-avoidance branches have no direct test (TEST-GAP).**
-  `graph_epoch.go:36-38,43-46`.
 - **14h. Composite-index introspection (`ListComposites`/`HasComposite`) has no counterpart for
   property/temporal/vector/rel-property indexes — see BACKLOG 21 for the feature-level entry.**
 

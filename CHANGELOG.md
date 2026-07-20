@@ -799,6 +799,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   full `pkg/graph/internal/core` package suite green including under `-race` (135s); the cache's own
   benchmarks (`BenchmarkForEachDocValuesAsOf{Cached,Uncached}`) still run correctly; full-repo `go test
   ./...` clean.
+- TEST — BACKLOG 14g: `graph_epoch.go`'s `graphEpochLocked` had two untested branches — the
+  corrupt-lineage-id fail-closed path (a persisted `graph_epoch` MetaKV value that is neither empty
+  nor exactly 8 bytes) and the zero-avoidance path (never mint the reserved zero-cursor sentinel from
+  an unlucky all-zero random draw, naturally a 1-in-2^64 event). Added `epochRandRead`, a package-level
+  seam over `crypto/rand.Read` that production code never reassigns, so a test can force the all-zero
+  buffer deterministically instead of relying on chance. Added 3 tests:
+  `TestGraphEpochLocked_CorruptLineageIDRejected` (seeds a 3-byte value, asserts the error mentions
+  "corrupt lineage id"), `TestGraphEpochLocked_NeverMintsZero` (forces an all-zero random draw, asserts
+  the minted epoch is non-zero), and `TestGraphEpochLocked_RandReadFailurePropagates` (covers the
+  `rand.Read` error branch for full coverage of the minting path). The two seam-mutating tests are
+  deliberately NOT `t.Parallel()` (Go's default sequential execution, where no other test runs
+  concurrently with a non-parallel one, is what keeps a package-level global swap safe — production
+  code path is otherwise untouched). Confirmed both new branch-assertions load-bearing via mutation:
+  short-circuiting the corrupt-lineage-id check and removing the zero-avoidance bump each independently
+  turned their respective test RED, then reverted. `go build`/`go vet` clean; full
+  `pkg/graph/internal/core` package suite green including under `-race` (137s); full-repo `go test
+  ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 
