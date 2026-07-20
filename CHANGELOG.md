@@ -1635,6 +1635,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   RED (`"relB (smaller ID) committed at LSN 5, relA (larger ID, listed first in input) at LSN 4"` —
   exactly input order, not ID order); restored, GREEN. `go build`/`go vet` clean;
   `pkg/graph/store/sharded` package suite green under `-race`; full-repo `go test ./...` clean.
+- TEST-GAP FIX — BACKLOG 20j: `PruneTemporalCandidates` (`store/sharded/temporal_index.go`) had no
+  cross-backend equivalence test against a single unsharded badger store. Two existing tests came close
+  but each missed the actual gap: `TestShardedPruneTemporalCandidatesRoutesAcrossShards`
+  (`store/sharded`) proves the byShard routing fires across shards but only self-checks against
+  hand-reasoned windows, never against an oracle backend; `TestTemporalCandidatePruneEquivalence`
+  (`internal/core`) DOES compare sharded against memory/badger, but builds its scenario via
+  `g.Nodes.Add`, whose single fixed node-ID generator lands every node on ONE slot — so the
+  byShard-partition-and-fold path (`temporal_index.go:70-96`) was never exercised for equivalence, only
+  for isolated single-shard correctness. Added
+  `TestPruneTemporalCandidatesCrossBackendEquivalence` (`store/sharded/temporal_candidate_equivalence_test.go`):
+  builds an identical 6-node scenario — open/bounded/future-phantom windows deliberately spanning FOUR
+  shards, with one shard holding two nodes — using the SAME snowflake IDs on both a plain
+  single-instance `badger.Store` (the oracle) and a four-shard `sharded.Store` (badger does not
+  interpret the slot bits, so direct ID reuse across backends is legitimate), then asserts every probe
+  (5 point-in-time + 1 interval) returns an IDENTICAL kept-ID set from both backends AND matches a
+  hand-reasoned pinned expected set (rule 16 — an equivalence-only check can't catch a bug that
+  corrupts both backends identically). Confirmed load-bearing: temporarily forcing every candidate's
+  routed shard index to 0 (simulating a `shardIndexForSlot` misroute) turned all 6 subcases immediately
+  RED with clear cross-backend divergence (e.g. `sharded kept = [C D E F], want [E]`); restored, GREEN.
+  `go build`/`go vet` clean; `pkg/graph/store/sharded` package suite green under `-race`; full-repo
+  `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

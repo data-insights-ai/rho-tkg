@@ -433,8 +433,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   Recommend a dedicated follow-up that starts from the "shrink the critical section" angle above.**
 ### BACKLOG 20 — Sharded backend hardening (WIP status)
 
-- **20j. `PruneTemporalCandidates` has no cross-backend equivalence test vs. a single badger store
-  (LOW, TEST-GAP).**
 - **20k. `forEachShardErr`/`fanOutUniform`/`parallelShards` spawn one goroutine per shard
   unconditionally, violating lesson 8's bounded-worker-pool rule — low practical impact given the
   32-shard hard cap (LOW).**
