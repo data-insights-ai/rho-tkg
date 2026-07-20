@@ -326,8 +326,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 16 — In-memory index-engine hardening (HNSW / property & temporal index / HyperLogLog)
 
-- **16l. `sorted_chunks.go`'s `remove()` has no merge-on-shrink for adjacent undersized chunks (LOW-
-  MEDIUM, missing-feature/perf note for long-lived high-churn indexes).**
 - **16m. `lru.go`'s `MarkDeleted` on an already-cached key leaves the stale payload and its accounted
   byte size in place until flush — un-evictable, holds full memory against the byte budget (LOW-
   MEDIUM, untested intermediate state).** `internal/index/lru.go:247-257`.

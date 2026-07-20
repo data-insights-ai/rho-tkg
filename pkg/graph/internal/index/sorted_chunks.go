@@ -81,10 +81,48 @@ func (o *sortedChunks[T]) remove(k T) {
 	if !found {
 		return
 	}
-	o.chunks[ci] = append(c[:pos], c[pos+1:]...)
+	c = append(c[:pos], c[pos+1:]...)
+	o.chunks[ci] = c
 	o.n--
-	if len(o.chunks[ci]) == 0 {
+	if len(c) == 0 {
 		o.chunks = append(o.chunks[:ci], o.chunks[ci+1:]...)
+		return
+	}
+	o.mergeIfUndersized(ci)
+}
+
+// mergeIfUndersized merges chunk ci into an adjacent chunk when ci has
+// shrunk below half occupancy AND the combined size still fits under the
+// insert-side split cap (2*orderedKeyChunk). Without this, long-lived
+// high-churn indexes that repeatedly insert and remove near a chunk
+// boundary — without ever fully draining any single chunk to empty — leave
+// the chunk directory growing toward O(distinct keys ever inserted) instead
+// of O(live keys / orderedKeyChunk), degrading chunkIdx's binary search and
+// full-scan iteration. Tries the right neighbor first (no index shift needed
+// beyond removing the now-empty slot), falling back to the left neighbor.
+// A single merge attempt per remove is sufficient: the split cap never gets
+// exceeded post-merge, so cascading further wouldn't shrink the directory
+// any faster than letting the next remove re-check.
+func (o *sortedChunks[T]) mergeIfUndersized(ci int) {
+	c := o.chunks[ci]
+	if len(c) >= orderedKeyChunk/2 {
+		return
+	}
+	if ci+1 < len(o.chunks) {
+		right := o.chunks[ci+1]
+		if len(c)+len(right) <= 2*orderedKeyChunk {
+			o.chunks[ci] = append(c, right...)
+			o.chunks = append(o.chunks[:ci+1], o.chunks[ci+2:]...)
+			return
+		}
+	}
+	if ci > 0 {
+		left := o.chunks[ci-1]
+		if len(left)+len(c) <= 2*orderedKeyChunk {
+			o.chunks[ci-1] = append(left, c...)
+			o.chunks = append(o.chunks[:ci], o.chunks[ci+1:]...)
+			return
+		}
 	}
 }
 

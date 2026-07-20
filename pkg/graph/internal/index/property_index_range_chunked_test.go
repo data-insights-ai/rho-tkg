@@ -65,6 +65,76 @@ func TestOrderedKeys_ModelEquivalence(t *testing.T) {
 	}
 }
 
+// assertNoMissedChunkMerge fails if two adjacent chunks are both below half
+// occupancy AND would fit within the split cap if merged — i.e. a merge
+// opportunity mergeIfUndersized should have taken was left on the table.
+// BACKLOG 16l.
+func assertNoMissedChunkMerge(t *testing.T, o *sortedChunks[float64]) {
+	t.Helper()
+	for i := 0; i+1 < len(o.chunks); i++ {
+		a, b := o.chunks[i], o.chunks[i+1]
+		if len(a) < orderedKeyChunk/2 && len(b) < orderedKeyChunk/2 && len(a)+len(b) <= 2*orderedKeyChunk {
+			t.Fatalf("adjacent chunks %d (%d keys) and %d (%d keys) are both undersized and mergeable but weren't merged",
+				i, len(a), i+1, len(b))
+		}
+	}
+}
+
+// TestOrderedKeys_RemoveMergesUndersizedAdjacentChunks (BACKLOG 16l) drives
+// heavy insert/remove churn concentrated so that many chunks shrink well
+// below half occupancy without ever fully draining to empty (the only case
+// the pre-fix remove() shrank the directory for), and asserts after every
+// remove that no adjacent pair of undersized, mergeable chunks was left
+// unmerged. A long-lived high-churn property index that never happens to
+// drain a chunk to exactly zero would otherwise carry an ever-growing chunk
+// directory relative to its live key count, degrading chunkIdx's binary
+// search and full-range iteration.
+func TestOrderedKeys_RemoveMergesUndersizedAdjacentChunks(t *testing.T) {
+	t.Parallel()
+	rng := rand.New(rand.NewSource(7)) //nolint:gosec // deterministic test
+	var o sortedChunks[float64]
+	live := map[float64]struct{}{}
+
+	const universe = 6_000 // enough distinct keys to force several splits
+	for i := 0; i < universe; i++ {
+		k := float64(i)
+		o.insert(k)
+		live[k] = struct{}{}
+	}
+	if len(o.chunks) < 3 {
+		t.Fatalf("setup: only %d chunks after inserting %d keys, want several", len(o.chunks), universe)
+	}
+
+	// Remove ~97% of keys in random order, checking the no-missed-merge
+	// invariant after every single removal — this is exactly the churn
+	// pattern (heavy deletion, never draining every chunk to zero at once)
+	// that leaves a long tail of tiny fragments without merge-on-shrink.
+	order := make([]float64, 0, universe)
+	for k := range live {
+		order = append(order, k)
+	}
+	rng.Shuffle(len(order), func(i, j int) { order[i], order[j] = order[j], order[i] })
+
+	removeCount := universe * 97 / 100
+	for i := 0; i < removeCount; i++ {
+		k := order[i]
+		o.remove(k)
+		delete(live, k)
+		assertNoMissedChunkMerge(t, &o)
+	}
+
+	if o.n != len(live) {
+		t.Fatalf("o.n = %d, want %d", o.n, len(live))
+	}
+	// With ~3% of keys surviving (well under one chunk's worth), the whole
+	// remaining set should have collapsed toward very few chunks instead of
+	// still carrying the original several-chunk directory from setup.
+	if got := len(o.chunks); got > 2 {
+		t.Fatalf("after draining to %d live keys, chunk directory still has %d chunks — undersized chunks were not merged",
+			len(live), got)
+	}
+}
+
 // TestOrderedKeys_ForEachFromMidRange pins the iteration lower bound across
 // chunk boundaries: starting exactly at, just below, and just above a key
 // that sits at a chunk edge after forced splits.

@@ -1097,6 +1097,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   caller reading `RangeNodeIDs(min, max, inclMin, inclMax)` sees the query's intended bounds even though
   this layer doesn't enforce them), not because the plumbing forgot to use them. Original LOW-severity
   "contract drift" framing is retired in favor of "documented caller-enforced exactness contract."
+- FIX — BACKLOG 16l: `sortedChunks.remove()` (`internal/index/sorted_chunks.go`) only shrank the
+  chunk directory when a chunk hit exactly zero elements — a chunk that dropped to, say, 1 out of
+  its 512-element half-occupancy target (from repeated insert/remove churn that never happens to
+  fully drain it) stayed its own directory entry forever. A long-lived, high-churn property index
+  (one whose ordered numeric view keeps getting written and pruned near the same boundary, e.g. an
+  aging/expiring numeric property) could therefore carry a chunk directory approaching O(distinct
+  keys ever inserted) instead of O(live keys / orderedKeyChunk), degrading `chunkIdx`'s binary
+  search and full-range iteration (`forEachFrom`/`forEachDownFrom`/`forEachDownAll`) — the whole
+  point of the B+-tree-style chunking (see the type doc: "instead of a flat sorted slice's O(D)
+  memmove"). Added `mergeIfUndersized(ci)`, invoked after every non-emptying `remove()`: when a
+  chunk drops below half occupancy (`orderedKeyChunk/2`), merges it into an adjacent chunk (right
+  neighbor first, else left) if the combined size still fits under the insert-side split cap
+  (`2*orderedKeyChunk`) — a single bounded-cost attempt per remove, since the merged chunk never
+  exceeds the cap so cascading further wouldn't shrink the directory any faster than the next
+  remove's own re-check. Added `TestOrderedKeys_RemoveMergesUndersizedAdjacentChunks`
+  (`property_index_range_chunked_test.go`): builds a several-chunk directory (6,000 sequential
+  keys), then randomly removes ~97% of them, asserting after EVERY single removal (via
+  `assertNoMissedChunkMerge`) that no two adjacent chunks are simultaneously undersized and
+  mergeable — directly targets the missing-merge defect rather than inferring it from an aggregate
+  chunk count. Confirmed load-bearing: reverting `mergeIfUndersized` to current-code-equivalent (no
+  merge) turns the test immediately RED ("adjacent chunks 2 (251 keys) and 3 (255 keys) are both
+  undersized and mergeable but weren't merged"); restored, GREEN. `go build`/`go vet` clean; full
+  `pkg/graph/internal/index` package suite green including under `-race` (151s); full-repo
+  `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 
