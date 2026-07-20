@@ -350,9 +350,26 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   `CreateHighFrequencyIndex`, `CreateVectorIndex`/`CreateVectorIndexWithOptions`).
 ### BACKLOG 18 — Badger backend hardening
 
-- **18k. `NodesAsOf`/`RelsAsOf` open one Badger read transaction PER ENTITY instead of sharing one
-  across the scan — O(N) independent transactions for a graph-wide as-of query (MEDIUM, perf).**
-  `badgerstore_txtime.go:285-333,336-384`.
+- **18k. [STILL OPEN — NOT resolved; confirmed real via badger v4 source, a safe fix needs more
+  design/test budget than a backlog-sweep patch].** Confirmed via direct inspection (not just the
+  call graph, the actual per-call cost): `NodesAsOf`/`RelsAsOf` call `NodeAsOf`/`RelAsOf` once per
+  entity, and EACH call performs up to two INDEPENDENT `bs.db.View(...)` transactions — one inside
+  `GetNode` for the current-row arm (cache-aware; skipped on a cache HIT, so this half is often free
+  for a warm graph) and one inside `reverseScanHistoryVersion` for the history arm (`badgerstore_
+  txtime.go:84`, ALWAYS opens a fresh transaction + a fresh badger `Iterator` — history rows are
+  never cache-backed, so this half is NEVER free regardless of cache state). For a graph-wide
+  `NodesAsOf` query over N entities, that's N fresh transactions (each paying badger's `oracle.
+  readTs()` — lock + `WaitForMark`) purely for the history arm, real and not overstated by caching.
+  A fix would wrap the whole scan in ONE `bs.db.View(...)` and give the scan loop txn-scoped variants
+  of the current-row and history-reverse-scan lookups instead of calling the general-purpose
+  `GetNode`/`reverseScanHistoryVersion` (which always open their own transaction, and are each used
+  by many OTHER call sites that must keep their own-transaction behavior). Scoped out of this pass:
+  `NodeAsOf`/the temporal resolution path is the single most correctness-sensitive area in the
+  codebase per CLAUDE.md's own account (17 dedicated testing rules, two-phase/bitemporal fuzz
+  harnesses, the "hard-won" lessons list) — a shared-transaction refactor touching it deserves
+  dedicated design + a full bitemporal-correctness verification pass, not a speed-fix folded into a
+  broader backlog sweep. Recommend a dedicated follow-up.** `badgerstore_txtime.go:74-115` (`reverse
+  ScanHistoryVersion`), `:182-` (`NodeAsOf`), `:285-333,336-384` (`NodesAsOf`/`RelsAsOf`).
 - **18l. `PutRelEntityAndOut`/`DeleteRelEntityAndOut` skip rel property-index and type-class-count
   maintenance — currently harmless (TieredStore declines both) but these are exported `Store` methods
   any direct caller could invoke (LOW-MEDIUM).** `badgerstore_partial.go`.

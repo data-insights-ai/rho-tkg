@@ -1240,6 +1240,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   codebase can add, so an outer duplicate guard would provide no additional protection, only
   redundant complexity for a scenario the coding-style rule "don't add validation for scenarios that
   can't happen" argues against. No code change.
+- INVESTIGATED, DELIBERATELY DEFERRED — BACKLOG 18k: confirmed `NodesAsOf`/`RelsAsOf`
+  (`badgerstore_txtime.go`) genuinely open one fresh Badger read transaction PER ENTITY for their
+  history-arm reverse scan (`reverseScanHistoryVersion` always opens its own `bs.db.View` + a fresh
+  `Iterator` — history rows are never cache-backed, so this cost is real and not masked by a warm
+  node cache the way the current-row arm's `GetNode` half sometimes is). For a graph-wide as-of
+  query over N entities that is N independent `oracle.readTs()` calls purely for history lookups —
+  a real perf cost, not overstated. Left OPEN rather than fixed in this pass: the fix (wrap the whole
+  scan in one shared `db.View` transaction, with txn-scoped variants of the current-row and
+  history-reverse-scan lookups alongside — not replacing — the general-purpose `GetNode`/
+  `reverseScanHistoryVersion` every other call site still needs their own-transaction behavior from)
+  touches `NodeAsOf`, the single most correctness-sensitive resolution path in the codebase per
+  CLAUDE.md's own account of its bitemporal testing rules and hard-won lessons — it deserves
+  dedicated design and a full bitemporal-correctness verification pass of its own, not a speed
+  patch folded into a broader sweep. See `tasks/backlog.md` 18k for the full writeup.
 
 ## [4.23.0] - 2026-07-18
 
