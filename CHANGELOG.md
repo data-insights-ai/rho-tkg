@@ -425,6 +425,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   concurrent `GetOrCreateByKey` callers, with or without a constraint) already produces exactly one
   create — no gap there. `go build ./...` + `go vet ./...` clean; `pkg/graph/...` suite green under
   `-race`; full-repo `go test ./...` clean.
+- MAINTENANCE — deduped `tasks/backlog.md` 10h into 21c: both were the same finding (no
+  `RelTypeTemporalCandidateCapability` mirror of the node-side B4 prune capability —
+  `PruneTemporalCandidates` is typed to `types.NodeID` only), found independently from the query-door
+  wiring angle (10h) and the missing-capability angle (21c, already cross-referencing 10h). Folded
+  10h's detail into 21c's text; 21c stays deferred with the rest of BACKLOG 21 per user direction.
 
 ## [4.23.0] - 2026-07-18
 

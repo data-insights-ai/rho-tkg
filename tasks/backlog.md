@@ -118,10 +118,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   insufficient (both shapes are structurally identical); the fix likely needs either a persisted
   marker distinguishing the two row roles, or a fundamentally different (non-positional,
   non-pairwise-TxFrom) algorithm for interval-bounds derivation in a chain with cascade-inserted rows.
-- **10h. B4 envelope prune wiring inconsistent across ByLabel/ByType-with-property doors; `ByType`
-  structurally cannot get it at all (LOW, perf + Node/Rel asymmetry — see BACKLOG 21).**
-  `temporal_queries.go:145-149,894-898` (pruned) vs `:784-822,973-1011,1333-1373` (not pruned). Root
-  cause: `store.TemporalCandidateCapability.PruneTemporalCandidates` is typed to `types.NodeID` only.
 - **10j. No test races concurrent `TagAsOf` writes to the *same* tag name (TEST-GAP, code inspection
   shows it's safe in practice — global `asofMu` serializes).**
 - **10l. `RangeCardinality`'s ordered/prefix-scan sibling doors don't independently test the
@@ -396,7 +392,9 @@ none sigma's:
   `HasProperty(label,key)`/`HasTemporal(label)`/`VectorIndexInfo(label,key)`/`HasRelProperty(type,key)`.
 - **21c. No `RelTypeTemporalCandidateCapability` mirror of the node-side B4 prune capability** — the
   store contract's `PruneTemporalCandidates` is typed to `types.NodeID` only, so `relsByTypeLocked`
-  can never get B4 acceleration unlike `nodesByLabelLocked` (see BACKLOG 10h).
+  can never get B4 acceleration unlike `nodesByLabelLocked`. Independently found from the query-door
+  wiring angle too: `ByType`-with-property doors (`temporal_queries.go`) structurally cannot prune at
+  all for exactly this reason, unlike their `ByLabel` node-side siblings.
 - **21d. Sharded backend: `DeletedIterationCapability` entirely absent (see BACKLOG 20f)** — worth
   tracking here too since it's a genuine capability gap, not just a bug.
 - **21e. Sharded backend: no re-sharding/rebalancing path** — growing/shrinking `SlotCount` on an
