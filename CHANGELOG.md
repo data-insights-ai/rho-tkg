@@ -973,6 +973,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   green including under `-race` (3x repeat); full-repo `go test ./...` clean. **BACKLOG 15 is now fully
   worked through** (real fixes, verified-correct closures, and test-gap closures throughout — no items
   remain except 15p, which explicitly defers to the already-agreed-deferred BACKLOG 21).
+- FIX — BACKLOG 16e: HNSW's `reassignEntryPoint` (`internal/index/hnsw.go`, run whenever the current
+  entry point is deleted) picked the last non-deleted node by INDEX order, ignoring level entirely.
+  `insert()` maintains the invariant "entryPoint always sits at the graph's maxLevel" (the highest level
+  among live nodes) — but level assignment is a random draw uncorrelated with insertion order, so the
+  index-order pick could silently collapse `maxLevel` to whatever level the last-inserted survivor
+  happened to draw, even while some OTHER live node still sat at a higher level. Since search descends
+  from `entryPoint` starting at `maxLevel`, a collapsed `maxLevel` makes that higher-level survivor's
+  upper layers unreachable from the new entry point — a real degradation of search convergence/quality
+  (no crash, no error — exactly why it went undetected). Fixed to scan all live nodes and pick the
+  MAX-level survivor, restoring insert()'s invariant; reverse index order is kept only as a
+  deterministic tiebreak among equal-max-level survivors. Added 3 tests constructing an `hnswGraph` by
+  hand (bypassing `insert()`'s random level draws for precise control): a max-level survivor NOT at the
+  highest index must still be promoted; a tie among equal-max-level survivors breaks toward the
+  higher-index (more recently inserted) node; and the "all deleted" empty-graph branch. Confirmed
+  load-bearing by reverting to the original index-order-only logic and re-running: 2 of the 3 tests
+  turned RED with the exact predicted wrong `maxLevel`, then reverted. `go build`/`go vet` clean; full
+  `pkg/graph/internal/index` package suite green including under `-race` (139s); full-repo `go test
+  ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

@@ -422,16 +422,34 @@ func (g *hnswGraph) removeLocked(id snowflake.ID) bool {
 	return float64(g.tombstones) > hnswRebuildTombstoneRatio*float64(g.live)
 }
 
+// reassignEntryPoint picks a new entry point after the current one is
+// deleted, restoring the SAME invariant insert() maintains: entryPoint is
+// always a node at the graph's maxLevel (the highest level among live
+// nodes). BACKLOG 16e: a prior version picked the last non-deleted node by
+// INDEX order regardless of level — level assignment is random (randomLevel)
+// and uncorrelated with insertion order, so that could silently collapse
+// maxLevel to whatever level the last-inserted survivor happened to draw,
+// even while some OTHER live node still sits at a higher level. Search
+// starts descending from entryPoint at maxLevel, so a collapsed maxLevel
+// makes the graph's upper layers for that higher-level survivor unreachable
+// from the new entry point — a real degradation of search convergence/
+// quality, not a crash. Reverse index order is kept only as a deterministic
+// tiebreak among equal-max-level survivors (prefers the more recently
+// inserted one), matching the spirit of the original iteration order.
 func (g *hnswGraph) reassignEntryPoint() {
+	best := int32(-1)
+	bestLevel := -1
 	for i := len(g.nodes) - 1; i >= 0; i-- {
-		if !g.nodes[i].deleted {
-			g.entryPoint = int32(i)
-			g.maxLevel = g.nodes[i].level
-			return
+		if g.nodes[i].deleted {
+			continue
+		}
+		if g.nodes[i].level > bestLevel {
+			bestLevel = g.nodes[i].level
+			best = int32(i)
 		}
 	}
-	g.entryPoint = -1
-	g.maxLevel = -1
+	g.entryPoint = best
+	g.maxLevel = bestLevel
 }
 
 // hnswMinHeap pops the SMALLEST dist first — the exploration frontier. Hand

@@ -273,9 +273,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   see BACKLOG 21 (LOW, likely intentional node-first scope).**
 ### BACKLOG 16 — In-memory index-engine hardening (HNSW / property & temporal index / HyperLogLog)
 
-- **16e. `hnsw.go`'s `reassignEntryPoint` doesn't pick the max-level survivor — silently collapses
-  `maxLevel`, degrading search convergence/quality after entry-point deletion (MEDIUM, no crash, no
-  test targets this).** `internal/index/hnsw.go:425-435`.
 - **16f. `hnsw.go`'s `connect()` uses reflection-based `sort.Slice` on the hottest construction path,
   contradicting the project's own established `slices.SortFunc` idiom (MEDIUM, perf).**
   `internal/index/hnsw.go:299` — `lru.go:314-316`'s comment explicitly warns against this pattern.
