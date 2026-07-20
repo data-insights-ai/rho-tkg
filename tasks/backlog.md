@@ -370,9 +370,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   dedicated design + a full bitemporal-correctness verification pass, not a speed-fix folded into a
   broader backlog sweep. Recommend a dedicated follow-up.** `badgerstore_txtime.go:74-115` (`reverse
   ScanHistoryVersion`), `:182-` (`NodeAsOf`), `:285-333,336-384` (`NodesAsOf`/`RelsAsOf`).
-- **18o. Property/temporal-index-on-disk backfill commits lack the `dbClosed` guard used everywhere
-  else — currently unreachable but a landmine for a future refactor (LOW).**
-  `badgerstore_property_disk.go:680-693`, `badgerstore_temporal_disk.go:189-203`.
 - **18p. `CollectShardDropResidue` requires `checkWritable()` despite being documented as read-only
   ("mutates nothing") — possibly deliberate but undocumented (LOW).** `badgerstore_shard_drop.go:23-26`.
 - **18q. Code smells: duplicated ad-hoc "closed" checks instead of `checkOpen()` (`badgerstore_meta.go`,

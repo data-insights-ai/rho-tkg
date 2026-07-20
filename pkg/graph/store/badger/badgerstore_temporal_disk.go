@@ -197,6 +197,16 @@ func (bs *Store) commitTemporalIndexOnDiskBackfill(ops []writeOp) error {
 	if err := wb.SetEntry(badgerv4.NewEntry(storepkg.TemporalIndexOnDiskBuiltKey, []byte{1})); err != nil {
 		return fmt.Errorf("graph: temporal-index-on-disk backfill: mark built: %w", err)
 	}
+	// Guard against blocking forever: Badger v4's WriteBatch.Flush() hangs
+	// when called after db.Close() (WaitForMark blocks on a stopped oracle) —
+	// same guard as flush() (BACKLOG 18o). Currently unreachable (this runs
+	// during New()'s own construction, before any caller could hold a Store
+	// to Close()), but a landmine for a future refactor that starts
+	// concurrent access earlier.
+	if bs.dbClosed.Load() {
+		wb.Cancel()
+		return fmt.Errorf("graph: temporal-index-on-disk backfill: %w", badgerv4.ErrDBClosed)
+	}
 	if err := wb.Flush(); err != nil {
 		return fmt.Errorf("graph: temporal-index-on-disk backfill: %w", err)
 	}

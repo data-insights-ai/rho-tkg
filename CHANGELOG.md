@@ -1323,6 +1323,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   transaction distinction explicitly and name the GC-pinning tradeoff, matching what an inline
   comment lower in the function already correctly documented. No behavior change; no test added
   (a doc-comment correction has nothing behavioral to assert).
+- FIX — BACKLOG 18o: `commitPropertyIndexOnDiskBackfill`/`commitTemporalIndexOnDiskBackfill`
+  (`badgerstore_property_disk.go`, `badgerstore_temporal_disk.go` — the one-time rebuild-on-enable
+  backfill commits for `PropertyIndexOnDisk`/`TemporalIndexOnDisk`) use `bs.db.NewWriteBatch()` +
+  `wb.Flush()` — confirmed by the BACKLOG 18f investigation earlier in this pass to be the EXACT API
+  class vulnerable to Badger v4's close-hang (`WriteBatch.Flush()`'s `commit()` unconditionally
+  creates a fresh transaction with no `IsClosed()` guard anywhere in that path, unlike `db.Update`,
+  which self-guards) — but, unlike `flush()`, lacked the matching `bs.dbClosed.Load()` guard
+  immediately before `wb.Flush()`. Currently unreachable (both backfills run during `New()`'s own
+  construction, before any caller could hold a `*Store` to `Close()`), but a landmine for a future
+  refactor that starts concurrent access earlier — added the identical guard `flush()` uses, for
+  consistency and defense-in-depth. Added `TestCommitPropertyIndexOnDiskBackfill_DbClosedGuard`/
+  `TestCommitTemporalIndexOnDiskBackfill_DbClosedGuard`, mirroring the established `dbClosed`-guard
+  test pattern (`TestFlushWithClosedDB`): set `bs.dbClosed` true without actually closing the
+  underlying Badger DB (genuinely reproducing the oracle hang deterministically is impractical, the
+  same reason the established `flush()` test uses this exact technique), call the backfill commit,
+  assert it returns the wrapped `badgerv4.ErrDBClosed` sentinel instead of attempting the write.
+  Confirmed load-bearing: reverting the fix turns both tests immediately RED (`err = <nil>, want
+  ErrDBClosed`); restored, GREEN. `go build`/`go vet` clean; full `pkg/graph/store/badger` package
+  suite green including under `-race` (156s); full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 
