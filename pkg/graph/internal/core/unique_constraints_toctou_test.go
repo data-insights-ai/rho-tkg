@@ -3,9 +3,11 @@ package core
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -85,6 +87,115 @@ func TestCreateUnique_BlocksInstallUntilInFlightWriteCompletes(t *testing.T) {
 	err = <-createDone
 	if !errors.Is(err, ErrUniqueViolationExisting) {
 		t.Fatalf("CreateUnique = %v, want ErrUniqueViolationExisting — the late-committing duplicate must be caught, not silently let through under an active constraint", err)
+	}
+}
+
+// TestCreateUnique_AdversarialConcurrentRace is the genuinely-concurrent
+// counterpart to TestCreateUnique_BlocksInstallUntilInFlightWriteCompletes
+// above (BACKLOG 9p): that test proves the fix's mechanism with exactly ONE
+// simulated in-flight writer, manipulated serially from the test goroutine.
+// This one runs `racers` REAL goroutines simultaneously, each independently
+// holding c.mu.RLock() (a genuine concurrent-reader scenario the race
+// detector can inspect) to simulate `racers` DIFFERENT standalone writers
+// that have all already passed their (constraint-free)
+// enforceUniqueForNodeHeld check and are about to commit — then races
+// CreateUnique against all of them at once via a barrier, instead of one
+// hand-timed interleaving.
+//
+// A pure "just spawn N concurrent g.Nodes.Add calls and let the scheduler
+// decide" version of this test was tried first and reverted: the real
+// TOCTOU window (check with no stripe lock -> [gap: build/hash/etc.] ->
+// store commit) is narrow enough that Go's scheduler essentially never lands
+// a preemption inside it on a fast in-memory store, so that version passed
+// even with the BACKLOG 9c fix fully reverted — a non-load-bearing test.
+// Forcing every racer to hold c.mu.RLock() across an explicit barrier makes
+// the window wide open and deterministic while still exercising REAL
+// concurrent goroutines (not serial manual lock manipulation) and running
+// under -race.
+//
+// Asserts the exact invariant: CreateUnique must block until every one of
+// the `racers` simulated in-flight writers has committed and released its
+// RLock, so Phase 2's scan sees ALL of them (never a subset) and correctly
+// rejects with ErrUniqueViolationExisting — never silently activating with
+// some of the racers' duplicates unaccounted for.
+func TestCreateUnique_AdversarialConcurrentRace(t *testing.T) {
+	const racers = 8
+
+	ctx := context.Background()
+	ms := memory.New()
+	c, err := New(Config{Store: ms})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = c.Close() })
+
+	if _, err := c.Nodes.Add(ctx, []string{"User"}, map[string]any{"email": "race@x.com"}); err != nil {
+		t.Fatalf("add genesis user: %v", err)
+	}
+	labelTok := primaryLabelTokenForTest(t, c, "User")
+
+	// racers goroutines each simulate an independent in-flight writer: take
+	// c.mu.RLock() (real concurrent readers), signal arrival, wait for the
+	// barrier, then commit their own duplicate node and release.
+	arrived := make(chan struct{}, racers)
+	release := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(racers)
+	for i := 0; i < racers; i++ {
+		go func(i int) {
+			defer wg.Done()
+			c.mu.RLock()
+			arrived <- struct{}{}
+			<-release
+			dup := types.NewNode(c.nextNodeID(), labelTok, nil)
+			if err := dup.SetProperty("email", "race@x.com"); err != nil {
+				t.Errorf("racer %d SetProperty: %v", i, err)
+			}
+			if err := ms.PutNode(dup); err != nil {
+				t.Errorf("racer %d PutNode: %v", i, err)
+			}
+			c.mu.RUnlock()
+		}(i)
+	}
+	for i := 0; i < racers; i++ {
+		<-arrived
+	}
+
+	// Every racer now holds c.mu.RLock() simultaneously. CreateUnique must
+	// be unable to proceed past its install while ANY of them still does.
+	// Recorded via t.Error (non-fatal) rather than t.Fatal: the racers must
+	// be released and joined regardless of outcome below, or a genuine
+	// regression here would deadlock the whole test binary — Close() (in
+	// t.Cleanup) needs c.mu.Lock(), which cannot be granted while any racer
+	// goroutine is still parked on c.mu.RLock() waiting for `release`.
+	createDone := make(chan error, 1)
+	go func() { createDone <- c.Constraints.CreateUnique(ctx, "User", "email") }()
+	select {
+	case err := <-createDone:
+		t.Errorf("CreateUnique completed (err=%v) while %d simulated in-flight writers still held c.mu.RLock() — BACKLOG 9c/9p regression", err, racers)
+	case <-time.After(150 * time.Millisecond):
+	}
+
+	// Release all racers at once — genuine concurrent commits, real
+	// goroutines, race detector watching. Always runs, so cleanup can never
+	// deadlock even if the block-check above already failed.
+	close(release)
+	wg.Wait()
+	if t.Failed() {
+		return
+	}
+
+	err = <-createDone
+	if !errors.Is(err, ErrUniqueViolationExisting) {
+		t.Fatalf("CreateUnique = %v, want ErrUniqueViolationExisting — Phase 2 must see all %d racers' duplicates plus genesis", err, racers)
+	}
+
+	nodes, err := c.Nodes.ByLabelAndProperty("User", "email", "race@x.com", storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("ByLabelAndProperty: %v", err)
+	}
+	if len(nodes) != racers+1 {
+		t.Fatalf("current nodes holding the value = %d, want %d (genesis + every racer accounted for)", len(nodes), racers+1)
 	}
 }
 

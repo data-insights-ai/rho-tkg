@@ -373,6 +373,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   merely happening to pass on the untested happy path. 20 repetitions under `-race`, zero flakes,
   confirming the fix is not itself a flaky new test. `go build ./...` + `go vet ./...` clean; full
   `pkg/graph/internal/core` package suite green under `-race`; full-repo `go test ./...` clean.
+- TEST — closed BACKLOG 9p: `TestCreateUnique_BlocksInstallUntilInFlightWriteCompletes` (BACKLOG 9c's
+  own regression test) proves the `c.mu.Lock()`-around-Phase-1-install fix deterministically, but only
+  ever with exactly ONE simulated in-flight writer, hand-timed serially from the test goroutine — no
+  test raced multiple REAL concurrent goroutines against `CreateUnique` under `-race`. Added
+  `TestCreateUnique_AdversarialConcurrentRace`: 8 real goroutines each hold `c.mu.RLock()` simulating 8
+  independent in-flight writers, synchronized via an arrival barrier so all 8 are confirmed
+  simultaneously in-flight before `CreateUnique` is raced against them; asserts it cannot proceed past
+  install while any are still held, then that Phase 2 sees all 8 duplicates plus genesis (9 total) once
+  released. A first version that just spawned N concurrent `g.Nodes.Add` calls with no explicit
+  synchronization was tried and reverted — the real TOCTOU window (check-with-no-stripe-lock → build/
+  hash/etc. → store commit) is too narrow for Go's scheduler to reliably land a preemption inside it on
+  a fast in-memory store, so that version passed even with the 9c fix fully reverted (confirmed by
+  temporarily removing `c.mu.Lock()`/`c.mu.Unlock()` around the install: the naive version stayed green
+  across 150 iterations × 5 runs, a non-load-bearing test). The barrier-based version catches the same
+  reintroduced bug immediately and reliably. Also fixed the test's own failure-path robustness: on a
+  genuine regression the block-check now records via `t.Error` (not `t.Fatal`) and unconditionally
+  releases the racer goroutines before returning — `t.Fatal`'s early exit would otherwise leave racers
+  parked forever on the release channel, deadlocking `t.Cleanup`'s `Close()` (which needs `c.mu.Lock()`,
+  unavailable while any racer's `c.mu.RLock()` is still held), turning a would-be one-line test failure
+  into a `go test` hang. 15 repetitions under `-race`, zero flakes. `go build ./...` + `go vet ./...`
+  clean; full `pkg/graph/internal/core` package suite green under `-race`; full-repo `go test ./...`
+  clean.
 
 ## [4.23.0] - 2026-07-18
 
