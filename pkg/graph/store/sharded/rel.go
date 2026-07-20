@@ -241,6 +241,24 @@ func (s *Store) IncomingRelationships(nodeID types.NodeID, typeToken uint16) ([]
 // foldAdjacency collects a node's outgoing (or incoming) relationships across
 // every shard. Each shard holds the entity co-located with its adjacency entry,
 // so per shard we resolve the adjacency rel IDs against that same shard.
+//
+// PERF CAVEAT (BACKLOG 20g): this ALWAYS fans out to every claimed shard
+// (forEachShardErr below), never just nodeID's own shard or the shards of its
+// actual neighbors — a full-fan-out cost proportional to Config.SlotCount for
+// EVERY adjacency read, regardless of how localized the node's real
+// connectivity is. This is architecturally required by the current sharding
+// strategy, not a missed optimization: a relationship's entity AND BOTH its
+// adjacency legs are co-located on the shard the REL's OWN ID routes to
+// (ADR-0007), which has NO guaranteed relationship to either endpoint's home
+// shard — nodeID's own outgoing/incoming adjacency entries could legitimately
+// live on any of the store's shards, so there is no cheaper subset to query
+// without changing the fundamental placement rule. A future re-architecture
+// (e.g. co-locating a rel's adjacency legs with the START node's shard
+// instead of the rel's own ID) could bound this to the neighbor shards
+// actually involved, but that is a fundamental sharding-strategy change for
+// this WIP backend, not a hardening-pass fix — deliberately not attempted
+// here. Operators choosing SlotCount for an adjacency-traversal-heavy
+// workload should weigh this cost explicitly.
 func (s *Store) foldAdjacency(nodeID types.NodeID, typeToken uint16, outgoing bool) ([]*types.Relationship, error) {
 	sid := nodeID.SnowflakeID()
 	per := make([][]*types.Relationship, len(s.shards))

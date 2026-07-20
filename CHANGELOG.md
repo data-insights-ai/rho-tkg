@@ -1568,6 +1568,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   wire preEncodedPut"`); restored, GREEN. `go build`/`go vet` clean; full `pkg/graph/internal/core`
   package suite green including under `-race` (133s); `pkg/graph/store/sharded` package suite green
   under `-race`; full-repo `go test ./...` clean.
+- DOCUMENTATION FIX — BACKLOG 20g: `foldAdjacency`/`nodeConnectedAnyShard`/`adjacentRelIDsAnyShard`
+  (`store/sharded/rel.go`, `node.go`) fan out to EVERY claimed shard for any adjacency read, with no
+  doc comment explaining why. Investigated whether this is a missed optimization (route to just the
+  relevant shards) or architecturally required: confirmed it's required by the current sharding
+  strategy, not fixable without a redesign — ADR-0007 co-locates a relationship's entity AND BOTH its
+  adjacency legs on the shard the REL's OWN ID routes to, which has NO guaranteed relationship to
+  either endpoint's home shard, so a node's own outgoing/incoming adjacency entries could legitimately
+  live on any shard in the store — there is no cheaper subset to query without changing the
+  fundamental placement rule (e.g. co-locating a rel's adjacency legs with its START node's shard
+  instead). That would be a fundamental re-architecture of this WIP backend's sharding strategy, not
+  a hardening-pass fix — deliberately not attempted. Added doc comments to all three functions stating
+  the cost (scales with `Config.SlotCount` on every adjacency read, regardless of traversal locality)
+  and the ADR-0007 rationale, so an operator choosing `SlotCount` for an adjacency-heavy workload has
+  the information to weigh it. Documentation only, no behavior change. `go build`/`go vet` clean;
+  `pkg/graph/store/sharded` package suite green; full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

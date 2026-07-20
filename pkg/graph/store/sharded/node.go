@@ -183,7 +183,10 @@ func (s *Store) AddNodeLabelToken(id types.NodeID, tok uint16, updatedNode *type
 // --- Cross-shard connectivity helpers ---
 
 // nodeConnectedAnyShard reports whether the node has any outgoing OR incoming
-// adjacency entry on ANY shard.
+// adjacency entry on ANY shard. Fans out to every shard (BACKLOG 20g — see
+// foldAdjacency's doc comment in rel.go for the full ADR-0007 rationale: a
+// rel's adjacency legs are co-located with the rel's OWN ID's shard, not
+// either endpoint's, so there is no cheaper subset to query).
 func (s *Store) nodeConnectedAnyShard(id types.NodeID) (bool, error) {
 	sid := id.SnowflakeID()
 	var mu = make([]bool, len(s.shards))
@@ -205,7 +208,8 @@ func (s *Store) nodeConnectedAnyShard(id types.NodeID) (bool, error) {
 }
 
 // adjacentRelIDsAnyShard collects the deduplicated set of relationship IDs
-// (outgoing ∪ incoming) touching the node across every shard.
+// (outgoing ∪ incoming) touching the node across every shard. Same full-fan-
+// out cost as nodeConnectedAnyShard/foldAdjacency (BACKLOG 20g).
 func (s *Store) adjacentRelIDsAnyShard(id types.NodeID) ([]types.RelID, error) {
 	sid := id.SnowflakeID()
 	per := make([][]types.RelID, len(s.shards))

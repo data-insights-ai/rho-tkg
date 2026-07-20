@@ -433,9 +433,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   Recommend a dedicated follow-up that starts from the "shrink the critical section" angle above.**
 ### BACKLOG 20 — Sharded backend hardening (WIP status)
 
-- **20g. Adjacency reads always fan out to every claimed shard regardless of endpoint locality — an
-  under-documented architectural cost that scales with `SlotCount` regardless of traversal locality
-  (MEDIUM, perf).** `store/sharded/rel.go:241-288`, `node.go:183-248`.
 - **20h. No upfront cross-validation between `Config.IngestLanes` and the sharded store's claimed
   slot range at construction time — misconfiguration only caught reactively at first write
   (LOW-MEDIUM).**
