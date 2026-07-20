@@ -58,11 +58,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ## Open — Hardening Pass (2026-07-18)
 
-### BACKLOG 6 — `pkg/types` data-model hardening
-
-- **6f. No `unsafe.Sizeof` cross-check test for `heapsize.go` constants (TEST-GAP).** Root cause of 6b
-  shipping undetected twice.
-
 ### BACKLOG 7 — Public façade & thin sub-API wrapper hardening
 
 ### BACKLOG 8 — Dry-run / constraints / replication convenience-API correctness
