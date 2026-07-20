@@ -1773,9 +1773,37 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 - **15k. `WireToNode`/`WireToRel` (unchecked, panic-on-invalid variants) have zero production callers
   but dangerously similar naming to the trust-boundary-safe `*Checked` versions (LOW, foot-gun risk).**
   `storeutil/wire.go:204,346`. Fix: delete or rename unmistakably as test-fixture-only.
-- **15l. A `PropertyWire` with both `KeyToken==0` and `Key==""` (neither valid v1 nor v2 form) passes
-  unchallenged (LOW-MEDIUM, contingent on unverified downstream behavior).** `wire.go:120-128,458-498`,
-  `wire_property_keys.go:41-59`.
+- **15l. [FIXED — `pkg/types/propertyslice.go`, `pkg/types/propertyslice_test.go`,
+  `internal/storeutil/wire_test.go`] A `PropertyWire` with both `KeyToken==0` and `Key==""` (neither
+  valid v1 nor v2 form) passed unchallenged (LOW-MEDIUM, contingent on unverified downstream
+  behavior).** `wire.go:120-128,458-498`, `wire_property_keys.go:41-59`.
+
+  **Resolved the "unverified downstream behavior" contingency: confirmed it genuinely passes
+  unchallenged.** `ResolvePropertyKeyTokens` skips a wire row entirely when `KeyToken==0` (its
+  short-circuit `continue`), leaving `Key` untouched. `validatePropertyWire` probes the reconstructed
+  value through `types.PropertySlice.Set(p.Key, value)` as its final validation step — but traced
+  `Set()` itself and found it checks `IsShadowKey` (rejects `tkg_` prefix) and validates the VALUE,
+  but never checked for an EMPTY key. So `Set("", validValue)` silently succeeded, meaning the probe
+  passed and a property with no name would install on the entity — a genuine data-integrity gap, not
+  just a theoretical one.
+
+  **Fix, at the root.** Added `ErrEmptyPropertyKey` and a `key == ""` check to ALL THREE independent
+  property-insertion entry points in `pkg/types/propertyslice.go` — `PropertySlice.Set` (the single
+  path `validatePropertyWire`'s probe already routes through, so this alone closes the wire-layer
+  gap), `canonicalPropertySlice` (the `SetProperties`/bulk-install path), and `NewPropertySlice` (the
+  map-based bulk-construction path — a SEPARATE implementation from `canonicalPropertySlice`, found
+  mid-fix when a test targeting it initially failed). Deliberately left `PropertySlice.Delete`
+  unchanged — deleting-by-empty-key is a harmless no-op (never creates a bad entry), unlike the three
+  insertion paths.
+
+  **Tests.** `TestPropertySliceSetRejectsEmptyKey` / `TestNewPropertySliceRejectsEmptyKey` (pkg/types)
+  plus `TestValidatePropertyWireSliceRejectsEmptyKeyNeitherV1NorV2` (internal/storeutil) — the last one
+  reproduces the EXACT finding: `PropertyWire{Key: "", KeyToken: 0, ...}` now rejected by
+  `ValidatePropertyWireSlice`. RED confirmed via `git stash push` on the production file alone: the
+  pkg/types tests failed to compile (`undefined: ErrEmptyPropertyKey`) and the storeutil test failed
+  behaviorally ("returned nil, want error"). Popped the stash, confirmed GREEN on all 3 plus the full
+  existing property/wire test suites (no existing test anywhere relied on empty keys being accepted).
+  `go build ./...` + `go vet ./...` clean; full repo `go test ./...` clean (including tutorials).
 - **15m. `decodeMapKeyLen`'s over-long-key path allocates a fresh up-to-65535-byte slice per key
   instead of pooled scratch, on an otherwise zero-alloc path (LOW, perf).**
 - **15n. `generatedcreate.FreshGraphID` exported as a mutable package-level `var`, not a

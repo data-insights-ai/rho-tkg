@@ -600,6 +600,42 @@ func TestPropertySliceDeleteRejectsTKGPrefix(t *testing.T) {
 	}
 }
 
+// BACKLOG 15l: an empty property key was never rejected anywhere in the
+// validated pipeline — not by Set, not by bulk construction (NewPropertySlice),
+// and (transitively, since it reuses Set as a probe) not by the wire decoder's
+// validatePropertyWire either. A PropertyWire with both KeyToken==0 and
+// Key=="" (neither valid v1 nor v2 wire form) would pass unchallenged and
+// install a property with no name. Set is the single validated entry point
+// every one of those paths funnels through, so fixing it here closes the gap
+// everywhere at once.
+func TestPropertySliceSetRejectsEmptyKey(t *testing.T) {
+	t.Parallel()
+
+	var ps PropertySlice
+	err := ps.Set("", "value")
+	if err == nil {
+		t.Fatal("Set(\"\", ...) should return error")
+	}
+	if !errors.Is(err, ErrEmptyPropertyKey) {
+		t.Errorf("errors.Is(err, ErrEmptyPropertyKey) = false; err = %v", err)
+	}
+	if ps.Len() != 0 {
+		t.Fatalf("PropertySlice after rejected Set(\"\") has %d entries, want 0", ps.Len())
+	}
+}
+
+func TestNewPropertySliceRejectsEmptyKey(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewPropertySlice(map[string]any{"": "value", "ok": 1})
+	if err == nil {
+		t.Fatal("NewPropertySlice with an empty key should return error")
+	}
+	if !errors.Is(err, ErrEmptyPropertyKey) {
+		t.Errorf("errors.Is(err, ErrEmptyPropertyKey) = false; err = %v", err)
+	}
+}
+
 // ─── Stress tests ───────────────────────────────────────────────────────────
 
 func TestPropertySliceStressLargeMap(t *testing.T) {

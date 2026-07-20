@@ -1394,6 +1394,23 @@ func TestValidatePropertyWireSliceRejectsLossyTaggedValues(t *testing.T) {
 	}
 }
 
+// TestValidatePropertyWireSliceRejectsEmptyKeyNeitherV1NorV2 is the BACKLOG
+// 15l regression: a PropertyWire with BOTH KeyToken==0 and Key=="" is
+// neither valid v1 (raw Key) nor valid v2 (KeyToken-resolved Key) form —
+// ResolvePropertyKeyTokens skips it entirely (KeyToken==0 short-circuits),
+// so without a key-emptiness check it reached decoding unchallenged and
+// installed a property with no name. types.PropertySlice.Set now rejects an
+// empty key at the single validated entry point validatePropertyWire probes
+// through, so this closes the gap for every caller, not just the wire path.
+func TestValidatePropertyWireSliceRejectsEmptyKeyNeitherV1NorV2(t *testing.T) {
+	t.Parallel()
+
+	pw := []PropertyWire{{Key: "", KeyToken: 0, Value: int64(1), Type: ptInt64}}
+	if err := ValidatePropertyWireSlice(pw); err == nil {
+		t.Fatal("ValidatePropertyWireSlice with an empty Key and zero KeyToken returned nil, want error — BACKLOG 15l regression")
+	}
+}
+
 func TestValidatePropertyWireSliceAcceptsCanonicalTaggedValues(t *testing.T) {
 	t.Parallel()
 

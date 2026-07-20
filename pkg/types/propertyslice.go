@@ -13,6 +13,14 @@ import (
 // ErrReservedPrefix is returned when a property key uses the reserved "tkg_" prefix.
 var ErrReservedPrefix = errors.New("types: property key uses reserved tkg_ prefix")
 
+// ErrEmptyPropertyKey is returned when a property key is the empty string.
+// An empty key is never a meaningful property name, and — for wire-decoded
+// data specifically — is also the shape a PropertyWire takes when it is
+// neither valid v1 (raw Key) nor v2 (KeyToken-resolved Key) form: catching it
+// here, at the single validated Set() entry point, closes that gap without
+// needing a wire-layer-specific check (BACKLOG 15l).
+var ErrEmptyPropertyKey = errors.New("types: property key must not be empty")
+
 // ErrUnsupportedValueType is returned when a property value contains a type
 // not on the exact allowlist consumed by hashing, copying, and wire encoding.
 // Graph databases store data, not application memory references.
@@ -96,6 +104,9 @@ type OwnedPropertySlice struct {
 func (ps *PropertySlice) Set(key string, value any) error {
 	if ps == nil {
 		return ErrNilPropertySlice
+	}
+	if key == "" {
+		return ErrEmptyPropertyKey
 	}
 	if IsShadowKey(key) {
 		return fmt.Errorf("%w: %q", ErrReservedPrefix, key)
@@ -1041,6 +1052,9 @@ func canonicalPropertySlice(ps PropertySlice) (PropertySlice, error) {
 
 	sortedUnique := true
 	for i, p := range ps {
+		if p.Key == "" {
+			return nil, ErrEmptyPropertyKey
+		}
 		if IsShadowKey(p.Key) {
 			return nil, fmt.Errorf("%w: %q", ErrReservedPrefix, p.Key)
 		}
@@ -1104,6 +1118,9 @@ func NewPropertySlice(m map[string]any) (PropertySlice, error) {
 	}
 	ps := make(PropertySlice, 0, len(m))
 	for k, v := range m {
+		if k == "" {
+			return nil, ErrEmptyPropertyKey
+		}
 		if IsShadowKey(k) {
 			return nil, fmt.Errorf("%w: %q", ErrReservedPrefix, k)
 		}

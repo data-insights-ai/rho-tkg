@@ -149,6 +149,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   indexed poisoning values, incremented/decremented symmetrically on add/remove; once every poisoning
   value is removed or replaced, exact range counting automatically re-enables instead of staying
   degraded to the fallback scan for the index's whole remaining lifetime. 2 new regression tests.
+- FIX — a property with an EMPTY key is now rejected everywhere, closing a gap where a `PropertyWire`
+  with both `KeyToken==0` and `Key==""` (neither valid v1 nor v2 wire form) passed all validation
+  unchallenged and installed a nameless property (BACKLOG 15l). Root-caused to
+  `types.PropertySlice.Set` never checking for an empty key — the wire decoder's validator probes
+  through `Set`, so the gap traced back to the core property API, not just the wire layer. Added
+  `ErrEmptyPropertyKey` and an empty-key check to all three independent property-insertion paths
+  (`Set`, the bulk `SetProperties`/`canonicalPropertySlice` path, and the separate map-based
+  `NewPropertySlice` path — found and fixed mid-investigation once a test targeting it surfaced it as
+  a distinct implementation). 3 new regression tests, including one reproducing the exact wire shape
+  from the original finding.
 
 ## [4.23.0] - 2026-07-18
 
