@@ -69,8 +69,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 9 — Write-path kernel hardening (CRUD, unique constraints, version chains)
 
-- **9m. No test exercises `CloseVersion`→`VersionAfter`/`GetNodeVersion`/`History()` (TEST-GAP, root
-  cause of 9a shipping).**
 - **9n. `AddLabel`'s unique-constraint enforcement — CLAUDE.md's "door everyone forgets" — has ZERO
   test coverage (TEST-GAP, high risk: a future refactor dropping it ships a critical bypass silently).**
 - **9o. `TestDeleteNodeWithContext_ConcurrentAddRel` never enumerates surviving relationships after

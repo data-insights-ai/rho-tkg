@@ -424,6 +424,60 @@ func TestCloseNodeVersion_AdvancesVersionIdentity(t *testing.T) {
 	}
 }
 
+// TestCloseNodeVersion_HashChainVerifiesAfterClose guards the OTHER half of
+// BACKLOG 9a's original bug (the version-advance half is covered by
+// TestCloseNodeVersion_AdvancesVersionIdentity above): the closed row's
+// PrevHash must chain to the PRE-close row's own Hash, not to that row's own
+// PrevHash (the pre-fix bug — see the 54acb94 diff removing `prevHash =
+// ig.PrevHash` in favor of `prevHash = ig.Hash`). Neither the AdvancesVersionIdentity
+// test above nor any other test in this file calls VerifyNodeChain, so a
+// regression in the PrevHash wiring specifically would not be caught by the
+// existing suite (BACKLOG 9m). Covers both a 2-version chain (genesis + close)
+// and a 3-version chain (genesis + update + close), since a 2-version chain
+// alone leaves the wrong-vs-right PrevHash both plausible-looking for a
+// genesis predecessor with an empty PrevHash.
+func TestCloseNodeVersion_HashChainVerifiesAfterClose(t *testing.T) {
+	g := newTestGraphForChain(t)
+	n, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	id := n.ID()
+
+	closeTime := g.nodeValidFrom(n) + 2000
+	if err := g.Nodes.CloseVersion(context.Background(), id, closeTime); err != nil {
+		t.Fatalf("CloseNodeVersion: %v", err)
+	}
+	ok, err := g.Hash.VerifyNodeChain(id)
+	if err != nil {
+		t.Fatalf("VerifyNodeChain (2-version): %v", err)
+	}
+	if !ok {
+		t.Fatal("VerifyNodeChain (2-version: genesis + close) = false, want true — closed row's PrevHash does not chain to the genesis row's Hash")
+	}
+
+	// Extend to a 3-version chain: genesis -> update -> close.
+	n2, err := g.Nodes.Add(context.Background(), []string{"Event"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode (second entity): %v", err)
+	}
+	id2 := n2.ID()
+	if _, err := g.Nodes.Update(context.Background(), id2, map[string]any{"k": "v"}); err != nil {
+		t.Fatalf("UpdateNode: %v", err)
+	}
+	closeTime2 := g.nodeValidFrom(n2) + 4000
+	if err := g.Nodes.CloseVersion(context.Background(), id2, closeTime2); err != nil {
+		t.Fatalf("CloseNodeVersion (3-version): %v", err)
+	}
+	ok, err = g.Hash.VerifyNodeChain(id2)
+	if err != nil {
+		t.Fatalf("VerifyNodeChain (3-version): %v", err)
+	}
+	if !ok {
+		t.Fatal("VerifyNodeChain (3-version: genesis + update + close) = false, want true")
+	}
+}
+
 func TestCloseNodeVersion_PreservesIntegrityMetadata(t *testing.T) {
 	g := newTestGraphForChain(t)
 	n, err := g.Nodes.Add(context.Background(), []string{"Event"}, map[string]any{
@@ -1172,6 +1226,59 @@ func TestCloseRelVersion_AdvancesVersionIdentity(t *testing.T) {
 	}
 	if next.Version() != loaded.Version() {
 		t.Fatalf("VersionAfter(genesisVersion) version = %d, want %d (the current tip)", next.Version(), loaded.Version())
+	}
+}
+
+// TestCloseRelVersion_HashChainVerifiesAfterClose is the relationship-side
+// mirror of TestCloseNodeVersion_HashChainVerifiesAfterClose (rule 2, node/rel
+// parity) — see that test's comment for the BACKLOG 9a/9m background.
+func TestCloseRelVersion_HashChainVerifiesAfterClose(t *testing.T) {
+	g := newTestGraphForChain(t)
+	start, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode start: %v", err)
+	}
+	end, err := g.Nodes.Add(context.Background(), []string{"Person"}, nil)
+	if err != nil {
+		t.Fatalf("AddNode end: %v", err)
+	}
+	r, err := g.Rels.Add(context.Background(), "KNOWS", start, end, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship: %v", err)
+	}
+	rid := r.ID()
+
+	closeTime := g.relValidFrom(r) + 2000
+	if err := g.Rels.CloseVersion(context.Background(), rid, closeTime); err != nil {
+		t.Fatalf("CloseRelVersion: %v", err)
+	}
+	ok, err := g.Hash.VerifyRelChain(rid)
+	if err != nil {
+		t.Fatalf("VerifyRelChain (2-version): %v", err)
+	}
+	if !ok {
+		t.Fatal("VerifyRelChain (2-version: genesis + close) = false, want true — closed row's PrevHash does not chain to the genesis row's Hash")
+	}
+
+	// Extend to a 3-version chain: genesis -> update -> close.
+	r2, err := g.Rels.Add(context.Background(), "KNOWS", start, end, nil)
+	if err != nil {
+		t.Fatalf("AddRelationship (second entity): %v", err)
+	}
+	rid2 := r2.ID()
+	if _, err := g.Rels.Update(context.Background(), rid2, map[string]any{"k": "v"}); err != nil {
+		t.Fatalf("UpdateRelationship: %v", err)
+	}
+	closeTime2 := g.relValidFrom(r2) + 4000
+	if err := g.Rels.CloseVersion(context.Background(), rid2, closeTime2); err != nil {
+		t.Fatalf("CloseRelVersion (3-version): %v", err)
+	}
+	ok, err = g.Hash.VerifyRelChain(rid2)
+	if err != nil {
+		t.Fatalf("VerifyRelChain (3-version): %v", err)
+	}
+	if !ok {
+		t.Fatal("VerifyRelChain (3-version: genesis + update + close) = false, want true")
 	}
 }
 

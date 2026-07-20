@@ -334,6 +334,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestImportRelationshipWithID_LocksCallerRelID`, all green with no changes). `go build ./...` + `go
   vet ./...` clean; full `pkg/graph/internal/core` package suite green under `-race`; 20s of active
   `FuzzImport` fuzzing (~700K executions) found zero crashes; full-repo `go test ./...` clean.
+- TEST/DOC — closed BACKLOG 9m. Investigated: `TestCloseNodeVersion_AdvancesVersionIdentity`/
+  `TestCloseRelVersion_AdvancesVersionIdentity` (added alongside BACKLOG 9a's own fix, commit
+  `54acb94`) already exercise `CloseVersion`→`VersionAfter`→`History()` thoroughly with Node/Rel
+  parity — so the version-advance half of 9a's original bug was already covered. But 9a's fix had a
+  SECOND half no test touched: the closed row's `PrevHash` must chain to the pre-close row's own
+  `Hash`, not to that row's own `PrevHash` (the exact pre-fix bug — `54acb94`'s diff replaces `prevHash
+  = ig.PrevHash` with `prevHash = ig.Hash` in both `closeNodeVersionInternal`/`closeRelVersionInternal`)
+  — and no existing test in `version_chain_test.go` ever calls `VerifyNodeChain`/`VerifyRelChain` after
+  a `CloseVersion`, so a regression in that PrevHash wiring specifically would ship undetected. Added
+  `TestCloseNodeVersion_HashChainVerifiesAfterClose`/`TestCloseRelVersion_HashChainVerifiesAfterClose`,
+  each covering a 2-version (genesis+close) AND a 3-version (genesis+update+close) chain. Verified
+  load-bearing by reintroducing the exact original bug (`ig.Hash` → `ig.PrevHash`): both new tests
+  failed immediately with the exact chain-break; reverted, GREEN confirmed. Also fixed a stale doc
+  comment directly caused by the same pre-fix behavior: `NodeOps.CloseVersion`/`RelOps.CloseVersion`
+  still claimed the close "does not increment its version number", a leftover from before 9a's fix
+  made it do exactly that — corrected both to describe the real version-advance/hash-chain contract.
+  `go build ./...` + `go vet ./...` clean; full `pkg/graph/internal/core` package suite green under
+  `-race`; full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 
