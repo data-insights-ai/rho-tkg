@@ -326,9 +326,28 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 17 — Store interface & MemoryStore hardening
 
-- **17h. Index-creation doors hold the exclusive write lock for the entire scan-and-build, unlike the
-  documented 3-phase pattern (LOW-MEDIUM, possibly acceptable for pure-RAM but deviates from a stated
-  rule without a carved-out exception).** `store/memory/memorystore_index.go`, `memorystore_rel_index.go`.
+- **17h. [PARTIALLY RESOLVED — `CreatePropertyIndex`/`CreateRelPropertyIndex` fixed; 4 doors STILL
+  OPEN, not resolved].** Fixed the property-index pair (`memorystore_index.go`,
+  `memorystore_rel_index.go`) to use the same 3-phase pattern the badger backend already uses
+  (install placeholder + snapshot IDs under Lock → scan with brief per-row RLocks, never held across
+  the scan → merge under Lock, reconciling via the index's existing `Mutated` tracking), so a large
+  label/rel-type no longer blocks every concurrent read/write for the whole scan. Investigated the
+  other four index-creation doors sharing the same single-Lock-for-the-whole-scan shape —
+  `CreateCompositePropertyIndex`, `CreateTemporalIndex` (plus its `foldTemporalHistoryEnvelopes`
+  sub-phase), `CreateHighFrequencyIndex`, `CreateVectorIndex`/`CreateVectorIndexWithOptions` — and
+  confirmed the underlying `Mutated`-tracking scaffolding already exists on all four corresponding
+  `internal/index` types (`CompositePropertyIndex`, `TemporalIndex`, `HighFrequencyIndex`,
+  `VectorIndex`), so porting badger's proven algorithm for each is mechanical, not a design gap. Left
+  open rather than rushed in this pass: each is a DISTINCT, non-trivial concurrent algorithm (the
+  temporal-index door alone has an extra history-envelope-fold sub-phase) that needs its own
+  dedicated concurrency-correctness test (lock-released-during-scan + concurrent-mutation-
+  reconciliation, the two properties a "still returns the same index" test can't see — see the
+  `TestCreatePropertyIndex_ReleasesLockDuringScan`/`_ConcurrentMutationDuringScanIsReconciled` pair
+  added for this fix) — four more such pairs in one pass risked exactly the kind of subtle
+  lock-ordering/reconciliation bug this session's "verify all with tests" standard exists to catch.
+  Recommend a dedicated follow-up pass using the property-index port as the template.**
+  `store/memory/memorystore_index.go` (`CreateCompositePropertyIndex`, `CreateTemporalIndex`,
+  `CreateHighFrequencyIndex`, `CreateVectorIndex`/`CreateVectorIndexWithOptions`).
 - **17i. `defer bumpNodeEpoch()`/`bumpRelEpoch()` fire even on validation-failure/no-op error paths
   (LOW, already documented as a deliberate/safe tradeoff — flagged only for future profiling).**
 ### BACKLOG 18 — Badger backend hardening

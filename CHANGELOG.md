@@ -1165,6 +1165,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   replica-convergence and change-feed test in the suite exercises. `go build`/`go vet` clean; full
   `pkg/graph/store/memory` package suite green including under `-race` (40s); full-repo
   `go test ./...` clean.
+- FIX (partial) — BACKLOG 17h: `CreatePropertyIndex`/`CreateRelPropertyIndex` (`store/memory/
+  memorystore_index.go`, `memorystore_rel_index.go`) held `ms.mu.Lock()` — the memory store's SINGLE
+  mutex, shared by every read and write — for the entire scan-and-build over a label/rel-type's
+  existing rows, unlike the documented 3-phase pattern (CLAUDE.md's "Index creation is a three-phase
+  operation", already implemented in the badger backend) that exists precisely to avoid blocking
+  every concurrent operation for the whole scan. Ported badger's proven algorithm: Phase 1 (Lock)
+  installs an empty live index with `Mutated` tracking and snapshots the label/rel-type's current
+  ID set; Phase 2 scans with only a brief per-row RLock per ID (never held across the scan — safe
+  because every stored row is a frozen, immutable-once-cached copy per the v4.5.0 frozen-row
+  contract, so a stale pointer read under a since-released lock can never tear); Phase 3 (Lock)
+  merges the backfill, skipping IDs a concurrent write already handled (via `Mutated`) or that were
+  deleted mid-scan. Added `requirePropertyIndexCurrentForCreate`/`requireRelPropertyIndexCurrentForCreate`
+  mirroring badger's identically-shaped helpers. Two new concurrency-targeted tests per door
+  (`memorystore_index_3phase_test.go`): `TestCreate{Property,RelProperty}Index_ReleasesLockDuringScan`
+  proves Phase 2 doesn't hold the lock continuously — a concurrent goroutine polling `TryLock` during
+  a 20,000-row scan must succeed at least 100 times (calibrated against measurement: the pre-fix code
+  scored 1, rarely up to 23, from a one-time race window at the tail of the call; the fix scored
+  2,400-19,000+ across repeated runs — a plain ">0" assertion would NOT have been load-bearing, since
+  that same tail-window race let the un-fixed code pass a naive check about half the time, which is
+  exactly what an initial version of this test did before the two-orders-of-magnitude-gap threshold
+  was calibrated by measuring both). `TestCreatePropertyIndex_ConcurrentMutationDuringScanIsReconciled`
+  proves the `Mutated`-based reconciliation is actually correct, not just non-crashing: races a
+  goroutine that deletes 2,000 snapshotted nodes and updates another 2,000 to a new property value
+  against the scan, asserting the finished index has no stale entries for deleted nodes and no
+  stale pre-update values for updated ones. Confirmed both load-bearing: reverting to the old
+  single-Lock code turns the `ReleasesLockDuringScan` tests immediately and consistently RED across
+  8 repeated runs (was previously GREEN under a naive `>0` version of the same test, purely from
+  scheduler luck — a false-negative caught by explicitly measuring the pre-fix noise floor before
+  picking a threshold); removing the `Mutated`-skip check from Phase 3 turns the reconciliation test
+  RED (`"updated node 2003 still present in index under its stale pre-update value 1"`); both
+  restored, GREEN. Fixing this also surfaced and fixed an ordering regression the rewrite
+  introduced: `TestMemoryStoreIndexAPIsCheckLifecycleBeforeValidation` caught that the rewritten
+  doors validated `labelToken`/`propertyKey` BEFORE `checkOpenLocked()`, reversing the
+  established "closed store reports `ErrStoreClosed` even for otherwise-invalid arguments" contract
+  every index door shares — reordered to check-open-first, matching the original code and every
+  sibling door. Investigated the other four index-creation doors sharing the identical
+  single-Lock-for-the-whole-scan shape (`CreateCompositePropertyIndex`, `CreateTemporalIndex`,
+  `CreateHighFrequencyIndex`, `CreateVectorIndex`/`WithOptions`) and confirmed the `Mutated`
+  scaffolding already exists on all four corresponding `internal/index` types, making a future port
+  mechanical — but left them open (see `tasks/backlog.md` 17h) rather than rushing four more
+  non-trivial concurrent-algorithm ports (one with an extra history-envelope-fold sub-phase) through
+  in one pass without the same dedicated per-door test budget this fix used. `go build`/`go vet`
+  clean; full `pkg/graph/store/memory` package suite green including under `-race` (41s); full-repo
+  `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

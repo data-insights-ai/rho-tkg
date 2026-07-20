@@ -41,47 +41,120 @@ func (ms *Store) NodeRangeCardinality(labelToken uint16, propertyKey string, min
 }
 
 // CreatePropertyIndex creates a property index for the given label token and property key.
-// Scans all existing nodes with that label to populate the index.
+// Three-phase approach (mirrors the badger backend and CLAUDE.md's documented pattern) so
+// scanning a large existing label does not hold the store's single mutex — and therefore
+// block every concurrent read/write — for the whole scan (BACKLOG 17h):
+//
+//	Phase 1 (Lock): install an empty live index so concurrent PutNode/ReplaceNode writes are
+//	captured immediately via Mutated tracking. Snapshot the label's current node IDs.
+//	Phase 2 (brief per-row RLock, never held across the scan): read each snapshotted node's
+//	current value. Safe because every stored *types.Node is a frozen, immutable-once-cached
+//	copy (freezeNodeCopy) — a concurrent write always REPLACES the map entry rather than
+//	mutating a row in place, so a stale pointer read under a since-released lock can never
+//	tear.
+//	Phase 3 (Lock): merge the backfill into the live index, skipping IDs a concurrent write
+//	already handled (Mutated) or that were deleted during Phase 2.
+//
 // Returns ErrIndexExists if the index already exists.
 func (ms *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) error {
 	if ms == nil {
 		return ErrNilStore
 	}
-	ms.mu.Lock()
-	defer ms.mu.Unlock()
 
+	// Phase 1. checkOpenLocked before argument validation — a closed store
+	// must report ErrStoreClosed even for otherwise-invalid arguments (the
+	// lifecycle-before-validation contract every index door shares, pinned
+	// by TestMemoryStoreIndexAPIsCheckLifecycleBeforeValidation).
+	ms.mu.Lock()
 	if err := ms.checkOpenLocked(); err != nil {
+		ms.mu.Unlock()
 		return err
 	}
 	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
+		ms.mu.Unlock()
 		return err
 	}
 	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
+		ms.mu.Unlock()
 		return err
 	}
-
 	key := indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
 	if _, exists := ms.propertyIndexes[key]; exists {
+		ms.mu.Unlock()
 		return ErrIndexExists
 	}
+	liveIdx := indexpkg.NewPropertyIndex()
+	liveIdx.Mutated = make(map[snowflake.ID]struct{})
+	ms.propertyIndexes[key] = liveIdx
+	nids := ms.labelNodeIDsSnapshotLocked(labelToken)
+	ms.mu.Unlock()
 
-	idx := indexpkg.NewPropertyIndex()
-
-	// Populate from existing nodes with this label.
-	if nodeIDs, ok := ms.labelIdx[labelToken]; ok {
-		for nodeID := range nodeIDs {
-			n := ms.nodes[nodeID]
-			if n == nil {
-				continue
-			}
-			if valueKey, found := n.IndexablePropertyValueKey(propertyKey); found {
-				idx.AddKey(nodeID.SnowflakeID(), valueKey)
-			}
+	// Phase 2.
+	backfill := indexpkg.NewPropertyIndex()
+	for _, nid := range nids {
+		ms.mu.RLock()
+		n, ok := ms.nodes[nid]
+		ms.mu.RUnlock()
+		if !ok {
+			continue // deleted between snapshot and fetch
+		}
+		if valueKey, found := n.IndexablePropertyValueKey(propertyKey); found {
+			backfill.AddKey(nid.SnowflakeID(), valueKey)
 		}
 	}
 
-	ms.propertyIndexes[key] = idx
+	// Phase 3.
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	if err := requirePropertyIndexCurrentForCreate(ms.propertyIndexes, key, liveIdx); err != nil {
+		return err
+	}
+	for vk, idSet := range backfill.Entries {
+		for id := range idSet {
+			if _, mutated := liveIdx.Mutated[id]; mutated {
+				continue // concurrent write handled this ID during Phase 2
+			}
+			if _, alive := ms.nodes[types.NodeID(id)]; !alive {
+				continue // node deleted during Phase 2
+			}
+			// AddKey, not a direct Entries write — the index's ordered
+			// numeric view is maintained inside AddKey.
+			liveIdx.AddKey(id, vk)
+		}
+	}
+	liveIdx.Mutated = nil // stop tracking — index creation complete
 	return nil
+}
+
+// labelNodeIDsSnapshotLocked returns a slice copy of the label's current node
+// ID set. The caller MUST hold at least ms.mu's read lock.
+func (ms *Store) labelNodeIDsSnapshotLocked(labelToken uint16) []types.NodeID {
+	idSet, ok := ms.labelIdx[labelToken]
+	if !ok {
+		return nil
+	}
+	nids := make([]types.NodeID, 0, len(idSet))
+	for nid := range idSet {
+		nids = append(nids, nid)
+	}
+	return nids
+}
+
+// requirePropertyIndexCurrentForCreate mirrors the badger backend's
+// identically-named helper (badgerstore_index.go) — the index-creation
+// Phase 3 "is my just-installed placeholder still the live index" check,
+// shared shape across both backends' 3-phase index-creation doors. Memory has
+// no phase-2 fatal-I/O-error path (a map lookup cannot fail), so unlike
+// badger there is no companion delete-on-fatal-error helper.
+func requirePropertyIndexCurrentForCreate(idxs map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex, key indexpkg.PropertyIndexKey, expected *indexpkg.PropertyIndex) error {
+	current := idxs[key]
+	if current == expected {
+		return nil
+	}
+	if current == nil {
+		return fmt.Errorf("graph: create property index: index dropped during creation: %w", ErrIndexNotFound)
+	}
+	return fmt.Errorf("graph: create property index: index replaced during creation: %w", ErrIndexExists)
 }
 
 // DropPropertyIndex removes a property index.

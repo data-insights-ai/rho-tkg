@@ -1,8 +1,10 @@
 package memory
 
 import (
+	"fmt"
 	"log/slog"
 
+	snowflake "github.com/bds421/rho-snowflake-2026"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -19,47 +21,95 @@ import (
 // memorystore_history.go).
 
 // CreateRelPropertyIndex creates a property index for the given rel-type token
-// and property key. Scans all existing relationships with that type to populate
-// the index. Returns ErrIndexExists if the index already exists.
+// and property key. Three-phase approach mirroring node CreatePropertyIndex
+// (BACKLOG 17h) — see its doc comment for the full rationale; the rel mirror
+// snapshots the type's relationship IDs instead of a label's node IDs, and
+// Phase 2 reads *types.Relationship rows (also frozen/immutable-once-cached,
+// same safety argument). Returns ErrIndexExists if the index already exists.
 func (ms *Store) CreateRelPropertyIndex(relTypeToken uint16, propertyKey string) error {
 	if ms == nil {
 		return ErrNilStore
 	}
-	ms.mu.Lock()
-	defer ms.mu.Unlock()
 
+	// Phase 1. checkOpenLocked before argument validation — a closed store
+	// must report ErrStoreClosed even for otherwise-invalid arguments,
+	// mirroring node CreatePropertyIndex's lifecycle-before-validation order.
+	ms.mu.Lock()
 	if err := ms.checkOpenLocked(); err != nil {
+		ms.mu.Unlock()
 		return err
 	}
 	if err := storecontract.ValidateRelTypeToken(relTypeToken); err != nil {
+		ms.mu.Unlock()
 		return err
 	}
 	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
+		ms.mu.Unlock()
 		return err
 	}
-
 	key := indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propertyKey}
 	if _, exists := ms.relPropertyIndexes[key]; exists {
+		ms.mu.Unlock()
 		return ErrIndexExists
 	}
+	liveIdx := indexpkg.NewPropertyIndex()
+	liveIdx.Mutated = make(map[snowflake.ID]struct{})
+	ms.relPropertyIndexes[key] = liveIdx
+	var rids []types.RelID
+	if idSet, ok := ms.typeIdx[relTypeToken]; ok {
+		rids = make([]types.RelID, 0, len(idSet))
+		for rid := range idSet {
+			rids = append(rids, rid)
+		}
+	}
+	ms.mu.Unlock()
 
-	idx := indexpkg.NewPropertyIndex()
-
-	// Populate from existing relationships with this type.
-	if relIDs, ok := ms.typeIdx[relTypeToken]; ok {
-		for relID := range relIDs {
-			r := ms.rels[relID]
-			if r == nil {
-				continue
-			}
-			if valueKey, found := r.IndexablePropertyValueKey(propertyKey); found {
-				idx.AddKey(relID.SnowflakeID(), valueKey)
-			}
+	// Phase 2.
+	backfill := indexpkg.NewPropertyIndex()
+	for _, rid := range rids {
+		ms.mu.RLock()
+		r, ok := ms.rels[rid]
+		ms.mu.RUnlock()
+		if !ok {
+			continue // deleted between snapshot and fetch
+		}
+		if valueKey, found := r.IndexablePropertyValueKey(propertyKey); found {
+			backfill.AddKey(rid.SnowflakeID(), valueKey)
 		}
 	}
 
-	ms.relPropertyIndexes[key] = idx
+	// Phase 3.
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	if err := requireRelPropertyIndexCurrentForCreate(ms.relPropertyIndexes, key, liveIdx); err != nil {
+		return err
+	}
+	for vk, idSet := range backfill.Entries {
+		for id := range idSet {
+			if _, mutated := liveIdx.Mutated[id]; mutated {
+				continue // concurrent write handled this ID during Phase 2
+			}
+			if _, alive := ms.rels[types.RelID(id)]; !alive {
+				continue // relationship deleted during Phase 2
+			}
+			liveIdx.AddKey(id, vk)
+		}
+	}
+	liveIdx.Mutated = nil // stop tracking — index creation complete
 	return nil
+}
+
+// requireRelPropertyIndexCurrentForCreate mirrors node CreatePropertyIndex's
+// requirePropertyIndexCurrentForCreate for the rel-type-keyed index map.
+func requireRelPropertyIndexCurrentForCreate(idxs map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyIndex, key indexpkg.RelPropertyIndexKey, expected *indexpkg.PropertyIndex) error {
+	current := idxs[key]
+	if current == expected {
+		return nil
+	}
+	if current == nil {
+		return fmt.Errorf("graph: create rel property index: index dropped during creation: %w", ErrIndexNotFound)
+	}
+	return fmt.Errorf("graph: create rel property index: index replaced during creation: %w", ErrIndexExists)
 }
 
 // DropRelPropertyIndex removes a relationship property index.
