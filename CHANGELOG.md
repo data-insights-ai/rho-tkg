@@ -1026,6 +1026,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   confirming zero search-quality regression from the allocation-strategy change. `go build`/`go vet`
   clean; full `pkg/graph/internal/index` package suite green including under `-race` (155s); full-repo
   `go test ./...` clean.
+- FIX — BACKLOG 16h: `TemporalIndex.Extend` (`internal/index/temporal_index.go`) linear-scanned
+  `Entries` on every call to check whether the node already had an entry — since `Extend` runs once
+  PER NODE MUTATION to a temporally-indexed label, a bulk sequence of N calls (e.g. importing a node's
+  full history, one `Extend` per version) cost O(n²). Added `posByID map[snowflake.ID]int`, a secondary
+  index tracking each id's CURRENT slice position — unlike the existing `byID` bounds-only map (which
+  is sort-invariant by design), `posByID` DOES invalidate on any reorder, so it must be rebuilt after
+  every `sortIfDirty` re-sort and kept in sync during `Remove`'s filter-copy (which shifts every
+  surviving entry). `Extend` now finds an existing entry in O(1) via `posByID`, falling back to an O(1)
+  append when absent — no linear scan either way. Also corrected the type's own complexity doc, which
+  claimed `Add` was O(1) amortized when it has ALWAYS called `Remove` (O(n)) first for replace
+  semantics, and applied lesson 70 in the same pass — `sortIfDirty`'s `sort.Slice` (reflection) became
+  `slices.SortFunc`, run once per dirty batch, not once per entry, but on the same correctness-critical
+  path this whole change touches. Given this index's role as the B4 candidate-prune primitive (CLAUDE.md
+  flags this exact class of code as needing oracle-level scrutiny), added
+  `TestTemporalIndex_PosByIDOracle_ExtendAddRemoveInterleaved`: 300 randomized trials interleaving all
+  four mutators (Add/Extend/AddKnownAbsent/Remove) against a brute-force reference, verifying
+  QueryAt/QueryOverlap/EnvelopeOf agree with the reference after each operation. Queries are
+  deliberately withheld ~60% of the time (not run after every single op) — an earlier version of this
+  test queried unconditionally and FAILED to catch either of two deliberately-reintroduced bugs (skipping
+  `posByID` maintenance in `Remove`'s filter-copy, and skipping the `posByID` rebuild in
+  `sortIfDirty`), because `QueryAt`/`QueryOverlap` call `sortIfDirty`, which fully repairs `posByID`
+  before every query — masking staleness that only a genuine burst of mutations with no intervening
+  query can expose (exactly how `Extend` is actually called during bulk history import). Restructured to
+  query only intermittently, confirmed BOTH mutations turn the test RED with the exact predicted
+  corruption (`Extend` silently mutating the wrong entry via a stale index), then reverted. The full
+  pre-existing `TemporalIndex` suite (including the two existing Add/Remove randomized oracles) stayed
+  green unchanged. `go build`/`go vet` clean; full `pkg/graph/internal/index` package suite green
+  including under `-race` (151s); `pkg/graph/internal/core`'s temporal-index-dependent tests green
+  unchanged; full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

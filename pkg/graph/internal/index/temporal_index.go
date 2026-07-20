@@ -1,8 +1,9 @@
 package index
 
 import (
+	"cmp"
 	"math"
-	"sort"
+	"slices"
 	"sync"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -45,12 +46,19 @@ type IntervalEntry struct {
 // multiple goroutines to query concurrently. sortIfDirty is protected by sortMu so
 // that concurrent readers do not race on the sort/augmentation transition.
 //
-// Complexity:
-//   - Add:          O(1) amortized append; sort + augmentation deferred to first query
-//   - Remove:       O(n) linear scan
-//   - QueryAt:      O(n log n) sort + O(n) augmentation (once per dirty batch),
-//     then O(log n + k) per stabbing query
-//   - QueryOverlap: same as QueryAt
+// Complexity (BACKLOG 16h corrected these — Add's prior doc claimed O(1)
+// amortized, but it has ALWAYS called Remove first for replace semantics,
+// so it was never actually O(1); Extend's O(n) scan is now O(1) via posByID):
+//   - Add:            O(n) — Remove(id) first for replace semantics, then an
+//     O(1) append
+//   - AddKnownAbsent: O(1) amortized append (no existing-id check)
+//   - Extend:         O(1) amortized — posByID lookup finds an existing
+//     entry directly; O(1) append if absent
+//   - Remove:         O(n) — must shift every surviving entry to preserve
+//     order; inherent to a filter-copy, not something posByID changes
+//   - QueryAt:        O(n log n) sort + O(n) augmentation + O(n) posByID
+//     rebuild (once per dirty batch), then O(log n + k) per stabbing query
+//   - QueryOverlap:   same as QueryAt
 type TemporalIndex struct {
 	sortMu   sync.Mutex      // serialises concurrent sort/augmentation transitions under RLock
 	Entries  []IntervalEntry // sorted by (From ASC, ID ASC) when not dirty
@@ -64,6 +72,19 @@ type TemporalIndex struct {
 	// invalidates it. Maintained in every entry mutator (Add / AddKnownAbsent /
 	// Extend / Remove).
 	byID map[snowflake.ID]IntervalEntry
+	// posByID mirrors each id's CURRENT index into Entries — BACKLOG 16h. Unlike
+	// byID this DOES invalidate on reorder, so (unlike byID) it must be rebuilt
+	// after every sortIfDirty re-sort and after Remove's filter-copy shifts
+	// surviving entries down. It exists purely so Extend can find "does id
+	// already have an entry, and if so where" in O(1) instead of an O(n) linear
+	// scan — the O(n) scan on every call is what turns a bulk sequence of N
+	// Extend calls (e.g. importing a node's full history, one Extend per
+	// version) into O(n²) instead of O(n). Remove's own Entries rebuild stays
+	// O(n) per call either way (it must shift every surviving entry to preserve
+	// sort-adjacent order), so posByID does not change Remove's complexity —
+	// only Extend's, which is the actual per-node-mutation hot path the finding
+	// names.
+	posByID map[snowflake.ID]int
 }
 
 // EnvelopeOf returns the per-node valid-time envelope [from, to) recorded for id,
@@ -110,6 +131,7 @@ func (ti *TemporalIndex) Add(id snowflake.ID, from, to types.Instant) {
 	// Append unsorted — sort is deferred to QueryAt/QueryOverlap.
 	ti.Entries = append(ti.Entries, IntervalEntry{From: from, To: to, ID: id})
 	ti.setByID(id, from, to)
+	ti.setPos(id, len(ti.Entries)-1)
 	ti.markMutated(id)
 	ti.dirty = true
 }
@@ -135,24 +157,29 @@ func unionTo(a, b types.Instant) types.Instant {
 // candidate even after its current version moves off it — the envelope keeps
 // covering the past interval, and the resolver filters the over-inclusion
 // precisely. Must be called under the store's write lock.
+//
+// BACKLOG 16h: finds an existing entry via posByID in O(1) rather than a
+// linear scan — the scan previously turned a bulk sequence of N Extend calls
+// (e.g. importing a node's full history, one Extend per version) into
+// O(n²), since Extend is called once PER NODE MUTATION to a
+// temporally-indexed label.
 func (ti *TemporalIndex) Extend(id snowflake.ID, from, to types.Instant) {
 	if ti == nil {
 		return
 	}
-	for i := range ti.Entries {
-		if ti.Entries[i].ID == id {
-			if from < ti.Entries[i].From {
-				ti.Entries[i].From = from
-			}
-			ti.Entries[i].To = unionTo(ti.Entries[i].To, to)
-			ti.setByID(id, ti.Entries[i].From, ti.Entries[i].To)
-			ti.markMutated(id)
-			ti.dirty = true
-			return
+	if i, ok := ti.posByID[id]; ok {
+		if from < ti.Entries[i].From {
+			ti.Entries[i].From = from
 		}
+		ti.Entries[i].To = unionTo(ti.Entries[i].To, to)
+		ti.setByID(id, ti.Entries[i].From, ti.Entries[i].To)
+		ti.markMutated(id)
+		ti.dirty = true
+		return
 	}
 	ti.Entries = append(ti.Entries, IntervalEntry{From: from, To: to, ID: id})
 	ti.setByID(id, from, to)
+	ti.setPos(id, len(ti.Entries)-1)
 	ti.markMutated(id)
 	ti.dirty = true
 }
@@ -166,7 +193,16 @@ func (ti *TemporalIndex) AddKnownAbsent(id snowflake.ID, from, to types.Instant)
 	}
 	ti.Entries = append(ti.Entries, IntervalEntry{From: from, To: to, ID: id})
 	ti.setByID(id, from, to)
+	ti.setPos(id, len(ti.Entries)-1)
 	ti.dirty = true
+}
+
+// setPos records id's current index into Entries. See the posByID field doc.
+func (ti *TemporalIndex) setPos(id snowflake.ID, idx int) {
+	if ti.posByID == nil {
+		ti.posByID = make(map[snowflake.ID]int)
+	}
+	ti.posByID[id] = idx
 }
 
 func (ti *TemporalIndex) markMutated(id snowflake.ID) {
@@ -205,12 +241,22 @@ func (ti *TemporalIndex) sortIfDirty() {
 	if !ti.dirty {
 		return
 	}
-	sort.Slice(ti.Entries, func(i, j int) bool {
-		if ti.Entries[i].From != ti.Entries[j].From {
-			return ti.Entries[i].From < ti.Entries[j].From
+	slices.SortFunc(ti.Entries, func(a, b IntervalEntry) int {
+		if a.From != b.From {
+			if a.From < b.From {
+				return -1
+			}
+			return 1
 		}
-		return ti.Entries[i].ID < ti.Entries[j].ID
+		return cmp.Compare(a.ID, b.ID)
 	})
+	// posByID (BACKLOG 16h) tracks slice POSITION, unlike byID's sort-invariant
+	// bounds — a re-sort reorders every entry, so it must be rebuilt here. O(n),
+	// same complexity class as the sort/augmentation this function already does
+	// once per dirty batch, not once per entry.
+	for i, e := range ti.Entries {
+		ti.setPos(e.ID, i)
+	}
 	ti.buildSubMax()
 	ti.dirty = false
 }
@@ -248,10 +294,14 @@ func (ti *TemporalIndex) fillSubMax(lo, hi int) types.Instant {
 	return m
 }
 
-// Remove deletes the entry for id. Linear scan — O(n).
-// No-op if id is not present. The filtered slice stays sorted, but the maxTo
-// augmentation now spans a stale length, so the index is marked dirty to force a
-// rebuild on the next query.
+// Remove deletes the entry for id. O(n) — a filter-copy that shifts every
+// surviving entry left of the removed one, which posByID (BACKLOG 16h)
+// intentionally does not change: preserving relative order without breaking
+// the "posByID always reflects the current index" invariant needs the same
+// O(n) work either way, and Remove is not the bulk-mutation hot path Extend
+// is. No-op if id is not present. The filtered slice stays sorted, but the
+// maxTo augmentation now spans a stale length, so the index is marked dirty
+// to force a rebuild on the next query.
 func (ti *TemporalIndex) Remove(id snowflake.ID) {
 	if ti == nil {
 		return
@@ -262,10 +312,14 @@ func (ti *TemporalIndex) Remove(id snowflake.ID) {
 		if e.ID == id {
 			continue
 		}
+		// Every surviving entry's position shifts as out grows — record its
+		// NEW index now rather than leaving posByID stale until the next sort.
+		ti.setPos(e.ID, len(out))
 		out = append(out, e)
 	}
 	ti.Entries = out
 	delete(ti.byID, id)
+	delete(ti.posByID, id)
 	ti.dirty = true
 }
 
