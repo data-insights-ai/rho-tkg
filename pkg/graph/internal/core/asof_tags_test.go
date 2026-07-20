@@ -336,6 +336,63 @@ func TestAsOfTags_ConcurrentWritesNoLostUpdate(t *testing.T) {
 	}
 }
 
+// TestAsOfTags_ConcurrentWritesSameNameNoLostUpdate guards BACKLOG 10j: the
+// test above races DIFFERENT tag names, which even a naive unsynchronized
+// read-modify-write can often survive by accident depending on interleaving
+// — the sharper adversarial case is many goroutines racing to overwrite the
+// SAME tag name. Under asofMu's full serialization of the read-modify-write,
+// each TagAsOf call is one atomic critical section, so whichever call
+// happens to run last wins outright — the final value must be EXACTLY one of
+// the values written (never corrupted, never a torn/partial value, never
+// silently reverted to an earlier writer's value after a later one
+// "succeeded"). Runs many rounds to shake out ordering-dependent bugs.
+func TestAsOfTags_ConcurrentWritesSameNameNoLostUpdate(t *testing.T) {
+	for round := 0; round < 20; round++ {
+		g := newTestGraph(t)
+		const n = 16
+		written := make([]types.Instant, n)
+		var wg sync.WaitGroup
+		wg.Add(n)
+		for i := 0; i < n; i++ {
+			at := types.Instant(i + 1)
+			written[i] = at
+			go func(at types.Instant) {
+				defer wg.Done()
+				if err := g.Temporal.TagAsOf("contested", at); err != nil {
+					t.Errorf("round %d: TagAsOf: %v", round, err)
+				}
+			}(at)
+		}
+		wg.Wait()
+
+		got, ok, err := g.Temporal.ResolveAsOf("contested")
+		if err != nil {
+			t.Fatalf("round %d: ResolveAsOf: %v", round, err)
+		}
+		if !ok {
+			t.Fatalf("round %d: tag missing after %d concurrent writers", round, n)
+		}
+		found := false
+		for _, w := range written {
+			if got == w {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("round %d: resolved value %d is not any of the %d written values %v — corrupted/torn write", round, got, n, written)
+		}
+
+		all, err := g.Temporal.AsOfTags()
+		if err != nil {
+			t.Fatalf("round %d: AsOfTags: %v", round, err)
+		}
+		if len(all) != 1 {
+			t.Fatalf("round %d: registry has %d entries after %d writers of ONE tag name, want 1", round, len(all), n)
+		}
+	}
+}
+
 // End-to-end: a §4.1 backfilled node addressed via a §4.2 named mark — the OETK
 // "AS OF SYSTEM TIME $tag against a documented Erkenntniszeit" loop.
 func TestAsOfTags_ResolvedTagDrivesBitemporalQuery(t *testing.T) {

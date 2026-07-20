@@ -118,8 +118,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   insufficient (both shapes are structurally identical); the fix likely needs either a persisted
   marker distinguishing the two row roles, or a fundamentally different (non-positional,
   non-pairwise-TxFrom) algorithm for interval-bounds derivation in a chain with cascade-inserted rows.
-- **10j. No test races concurrent `TagAsOf` writes to the *same* tag name (TEST-GAP, code inspection
-  shows it's safe in practice — global `asofMu` serializes).**
 - **10l. `RangeCardinality`'s ordered/prefix-scan sibling doors don't independently test the
   `TxPin`-conflict validation path (TEST-GAP, low risk — code path is identical to tested doors).**
 - **10m. `resolveNodeVersionAt`/`resolveRelVersionAt` fast path is O(n) linear reverse-scan despite

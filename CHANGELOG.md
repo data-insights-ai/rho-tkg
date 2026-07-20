@@ -430,6 +430,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `PruneTemporalCandidates` is typed to `types.NodeID` only), found independently from the query-door
   wiring angle (10h) and the missing-capability angle (21c, already cross-referencing 10h). Folded
   10h's detail into 21c's text; 21c stays deferred with the rest of BACKLOG 21 per user direction.
+- TEST — closed BACKLOG 10j: the existing `TestAsOfTags_ConcurrentWritesNoLostUpdate` races `TagAsOf`
+  with a DISTINCT name per goroutine, proving no lost updates across different keys — but the finding's
+  sharper adversarial case, many goroutines racing to overwrite the SAME tag name, had no test.
+  Investigated `tagAsOf`: the whole read-modify-write (load tags map, mutate, persist) runs as one
+  atomic critical section under `c.asofMu.Lock()`, so the same-name case is safe by construction —
+  confirmed by verified experiment: temporarily removing `asofMu` breaks the EXISTING different-names
+  test immediately (fewer entries than writers — a real lost update), but does NOT break a same-name
+  scenario, because collapsing N writers of one key can't "lose" entries the way distinct keys can — so
+  this finding is a pure test-gap (no missing synchronization), matching the finding's own "code
+  inspection shows it's safe in practice" note. Added
+  `TestAsOfTags_ConcurrentWritesSameNameNoLostUpdate`: 16 goroutines race to overwrite one tag name
+  across 20 rounds under `-race`, asserting the resolved value is always exactly one of the written
+  values (never corrupted/torn) and the registry always has exactly 1 entry. `go build ./...` + `go vet
+  ./...` clean; full `pkg/graph/internal/core` package suite green under `-race`; full-repo `go test
+  ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 
