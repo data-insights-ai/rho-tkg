@@ -1004,6 +1004,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   beyond confirming the existing determinism/recall suite still passes byte-for-byte. `go build`/
   `go vet` clean; full `pkg/graph/internal/index` package suite green including under `-race` (140s);
   full-repo `go test ./...` clean.
+- FIX — BACKLOG 16g: `hnsw.go`'s `searchLayer` allocated a fresh `[]bool` visited slice sized to
+  `len(g.nodes)` on EVERY call — once per layer per search, and once per layer per `insert()` — an
+  O(maxLevel) × O(n)-byte allocation cost per query/insert that grows with graph size. Replaced with
+  `hnswVisitedBuf`, a reusable generation-tagged `[]uint32` buffer: marking a node visited stamps the
+  buffer's current generation rather than clearing the whole slice, so reuse across many calls costs
+  O(1) (a generation bump) instead of O(n) (a fresh allocation + implicit zeroing). Pooled PER CALL via
+  `sync.Pool`, deliberately NOT shared per-graph: `search()`/`searchLayer()` run under `vi.mu.RLock`
+  (see `vector_index.go`), which allows MULTIPLE goroutines to search the SAME graph CONCURRENTLY — a
+  single shared per-graph generation array (the naive reading of the backlog's own suggested "per-graph
+  visited-generation array + epoch counter" fix) would let one goroutine's visited-marks bleed into
+  another's concurrently-running traversal, a correctness bug, not just a race. Each `searchLayer` call
+  instead borrows its own buffer from the pool for the call's duration, preserving the original code's
+  safety property ("every call gets its own fresh slice") without paying for a fresh allocation every
+  time. Added 5 tests covering the buffer in isolation (fresh-borrow-starts-unvisited, marking,
+  cross-reborrow generation reset — the core correctness property, confirmed load-bearing by removing
+  the generation bump and re-running: turned RED with the exact predicted "stale mark leaked" failure,
+  then reverted — growth-for-a-larger-graph, and 16 goroutines × 50 iterations confirming concurrent
+  borrowers never observe each other's marks, run under `-race`). The full existing HNSW suite
+  (determinism, recall@10=1.0000 unchanged, concurrent search+mutate stress) stayed green unchanged,
+  confirming zero search-quality regression from the allocation-strategy change. `go build`/`go vet`
+  clean; full `pkg/graph/internal/index` package suite green including under `-race` (155s); full-repo
+  `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

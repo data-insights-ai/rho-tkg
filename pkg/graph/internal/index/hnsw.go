@@ -5,6 +5,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"slices"
+	"sync"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -336,6 +337,60 @@ func (g *hnswGraph) nearestAtLayer(entry int32, query []float32, layer int) int3
 	return found[0].idx
 }
 
+// hnswVisitedBuf is a reusable, generation-tagged "visited" set indexed by
+// internal node index — BACKLOG 16g. Replaces a fresh []bool allocated on
+// every searchLayer call (O(maxLevel) O(n)-byte allocations per query/
+// insert) with a pooled []uint32 whose capacity only grows, marking a node
+// visited by stamping the buffer's current generation rather than clearing
+// the whole slice between uses.
+//
+// Pooled PER CALL via sync.Pool, not shared per-graph: search runs under
+// vi.mu.RLock (see vector_index.go), which allows MULTIPLE goroutines to
+// call search/searchLayer on the SAME graph CONCURRENTLY — a single shared
+// per-graph generation array (the naive version of this optimization) would
+// let one goroutine's visited-marks bleed into another's traversal, a
+// correctness bug, not just a race. Each searchLayer call instead borrows
+// its OWN buffer from the pool for the call's duration, so concurrent
+// callers never share generation state — matching the safety property the
+// original comment on the removed []bool documented ("every call gets its
+// own fresh slice"), just without paying for a fresh allocation each time.
+type hnswVisitedBuf struct {
+	gen []uint32
+	seq uint32
+}
+
+var hnswVisitedPool = sync.Pool{New: func() any { return &hnswVisitedBuf{} }}
+
+// getHNSWVisitedBuf borrows a buffer sized for at least n nodes, resized
+// (and its generation state reset) if the pooled buffer is too small for
+// the current graph. The returned buffer's generation is advanced so every
+// slot starts "not visited" for this call, in O(1) — never O(n) — except
+// on the (rare) grow/first-use path.
+func getHNSWVisitedBuf(n int) *hnswVisitedBuf {
+	v := hnswVisitedPool.Get().(*hnswVisitedBuf)
+	if cap(v.gen) < n {
+		v.gen = make([]uint32, n)
+		v.seq = 0
+	}
+	v.gen = v.gen[:n]
+	v.seq++
+	if v.seq == 0 {
+		// Wrapped around (2^32 calls sharing one buffer instance — not
+		// reachable in practice, but handle it rather than assume it away).
+		for i := range v.gen {
+			v.gen[i] = 0
+		}
+		v.seq = 1
+	}
+	return v
+}
+
+func putHNSWVisitedBuf(v *hnswVisitedBuf) { hnswVisitedPool.Put(v) }
+
+func (v *hnswVisitedBuf) visited(idx int32) bool { return v.gen[idx] == v.seq }
+
+func (v *hnswVisitedBuf) markVisited(idx int32) { v.gen[idx] = v.seq }
+
 // searchLayer is the classic HNSW beam search at one layer: explores from
 // entry, keeping the best-so-far ef candidates (results) and a frontier to
 // expand (candidates), until no unexplored node could improve the worst
@@ -346,12 +401,13 @@ func (g *hnswGraph) searchLayer(entry int32, query []float32, ef int, layer int)
 	if ef <= 0 {
 		return nil
 	}
-	// A per-call slice indexed by internal node index, rather than a map
-	// keyed by int32, avoids hashing overhead on the hot search path —
-	// safe because every call gets its own fresh slice (searches run
-	// under a shared RLock; nothing here is mutated concurrently).
-	visited := make([]bool, len(g.nodes))
-	visited[entry] = true
+	// A pooled, generation-tagged buffer indexed by internal node index,
+	// rather than a map keyed by int32, avoids hashing overhead on the hot
+	// search path — safe for concurrent callers because each call borrows
+	// its OWN buffer instance from the pool (see hnswVisitedBuf's doc).
+	vb := getHNSWVisitedBuf(len(g.nodes))
+	defer putHNSWVisitedBuf(vb)
+	vb.markVisited(entry)
 	entryDist := g.dist(g.nodes[entry].vec, query)
 
 	candidates := hnswMinHeap{{idx: entry, extID: g.nodes[entry].extID, dist: entryDist}}
@@ -367,10 +423,10 @@ func (g *hnswGraph) searchLayer(entry int32, query []float32, ef int, layer int)
 			break
 		}
 		for _, nbIdx := range g.nodes[c.idx].neighbors[layer] {
-			if visited[nbIdx] {
+			if vb.visited(nbIdx) {
 				continue
 			}
-			visited[nbIdx] = true
+			vb.markVisited(nbIdx)
 			d := g.dist(g.nodes[nbIdx].vec, query)
 			if len(results) < ef || d < results[0].dist {
 				candidates.push(hnswNeighbor{idx: nbIdx, extID: g.nodes[nbIdx].extID, dist: d})

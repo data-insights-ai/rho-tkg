@@ -326,9 +326,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 16 — In-memory index-engine hardening (HNSW / property & temporal index / HyperLogLog)
 
-- **16g. `hnsw.go`'s `searchLayer` allocates a fresh `[]bool` visited slice per layer, not reused
-  across a query — O(maxLevel) O(n)-byte allocations per query (MEDIUM, perf).**
-  `internal/index/hnsw.go:337-345`. Fix: per-graph visited-generation array + epoch counter.
 - **16h. `temporal_index.go`'s `Extend`/`Remove` is O(n) linear scan on every node mutation to a
   temporally-indexed label — O(n²) bulk-update under the write lock (MEDIUM).**
   `internal/index/temporal_index.go:130-158,251-270`. Fix: secondary id→index map for O(1) amortized.
