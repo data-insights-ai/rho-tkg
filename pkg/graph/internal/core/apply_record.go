@@ -343,6 +343,21 @@ func reproduceSupersededRelTxTo(prev, next *types.Relationship) {
 // applyNodeLabelChangeLocked routes a NodePut whose label set differs from the
 // local row to the matching label-token door (a label mutation on the primary
 // went through Add/RemoveNodeLabelToken{,WithHistory}, which ReplaceNode rejects).
+//
+// BACKLOG 12j: NodeWire carries only the FINAL label set, never an explicit
+// added/removed diff — the wire format has no "this was a label mutation"
+// marker at all. Mutation intent is entirely INFERRED here by diffing the
+// incoming row against this replica's own local current row
+// (labelTokenDiff), which is only a valid inference under two conditions the
+// wire itself does not encode or enforce: (1) records apply in strict,
+// gap-free LSN order, so "local" really is the primary's pre-mutation state
+// (documented at the package level in applyChangeRecordLocked); (2) every
+// label-token-mutating door changes exactly ONE token per call (enforced
+// below by rejecting addedN+removedN != 1). Both hold today — this is
+// correct behavior, not a bug — but a future door that could mutate more
+// than one label token per primary-side call, or a replica that applies
+// records out of order or with gaps, would silently break this inference
+// without any wire-level signal to catch it.
 func (c *Core) applyNodeLabelChangeLocked(local, n *types.Node, added, removed uint16, addedN, removedN int, withHistory bool) error {
 	id := n.InternalID()
 	// Every label-token door mutates exactly one token, so a well-formed

@@ -1,7 +1,9 @@
 package core
 
 import (
+	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -461,6 +463,16 @@ func writeFull(w io.Writer, data []byte) error {
 // readExportRecord reads one tagged length-prefixed record from r.
 // Returns (0, nil, io.EOF) when the stream ends cleanly between records.
 // Returns (0, nil, io.ErrUnexpectedEOF) when the stream is truncated mid-record.
+//
+// BACKLOG 12k: the body is read proportional to bytes actually DELIVERED
+// (io.CopyN into a capped-growth buffer), not pre-allocated from the
+// declared length header, mirroring readImportStageRecord (lessons.md 48).
+// r is always this Core's own already-staged replay source (staged via
+// readImportStageRecord's identical bounded read, itself capped by
+// ImportOptions.MaxStagedBytes), never a raw untrusted network stream
+// directly — so this was not a live amplification vector — but matching the
+// established pattern removes the landmine for any future caller that
+// might point this reader at less-trusted input.
 func readExportRecord(r io.Reader) (tag byte, data []byte, err error) {
 	var header [5]byte
 	if _, err := io.ReadFull(r, header[:]); err != nil {
@@ -470,11 +482,16 @@ func readExportRecord(r io.Reader) (tag byte, data []byte, err error) {
 	if err := validateExportRecordSize("import", header[0], uint64(length)); err != nil {
 		return 0, nil, err
 	}
-	data = make([]byte, length)
-	if _, err := io.ReadFull(r, data); err != nil {
-		return 0, nil, fmt.Errorf("record body (tag=0x%02x, len=%d): %w", header[0], length, err)
+	var body bytes.Buffer
+	body.Grow(int(min(int64(length), importBodyPreallocCap)))
+	got, rerr := io.CopyN(&body, r, int64(length))
+	if rerr != nil {
+		if errors.Is(rerr, io.EOF) {
+			rerr = io.ErrUnexpectedEOF
+		}
+		return 0, nil, fmt.Errorf("record body (tag=0x%02x, len=%d, got=%d): %w", header[0], length, got, rerr)
 	}
-	return header[0], data, nil
+	return header[0], body.Bytes(), nil
 }
 
 func readExportRecordBytes(src []byte, offset *int) (tag byte, data []byte, err error) {

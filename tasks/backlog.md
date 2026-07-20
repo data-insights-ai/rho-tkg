@@ -183,17 +183,29 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 12 — Replication / import / export hardening
 
-- **12i. `strictCheckMergeRecord` (Strict mode) only covers 4 of 8+ mergeable tag kinds — missing
-  history-version/truncate tags (LOW, not a correctness bug, incomplete contract).**
-  `import_merge.go:409-449`.
-- **12j. `applyNodeLabelChangeLocked`'s fail-closed guard rests on an undocumented wire-format
-  assumption — single-token label diffs only (informational, correct today).** `apply_record.go:335-362`.
-- **12k. `readExportRecord` allocates directly from a length header — the lesson-48 anti-pattern, but
-  not currently reachable from untrusted input (informational, landmine for a future refactor).**
-  `export.go:464-478`.
-- **12l. `ChangeClear` doc ("replica applying it must clear its own state") vs implementation mismatch
-  — ties directly to 12a (informational).**
-
+- **12i. [STILL OPEN — NOT resolved; investigated, a safe fix needs more design work than a backlog-
+  sweep patch].** `strictCheckMergeRecord` (Strict mode's "delta applied onto the wrong base" detector,
+  `import_merge.go:463-503`) explicitly checks `ChangeNodePut`/`ChangeRelPut` (only when
+  `body.WithHistory` — the signal a PRIOR version must already exist) and `ChangeNodeDelete`/
+  `ChangeRelDelete`; every other tag (`ChangeNodeHistoryVersion`, `ChangeRelHistoryVersion`,
+  `ChangeNodeHistoryTruncate`, `ChangeRelHistoryTruncate`, `ChangeForeignIncoming`,
+  `ChangeForeignIncomingDelete`) falls through the switch with no default case and returns nil
+  unchecked. Investigated whether `ChangeNodeHistoryVersion`/`ChangeRelHistoryVersion` (the two most
+  structurally similar to the already-checked WithHistory puts) have an equally safe "entity absent
+  from base ⇒ wrong base" signal: they do NOT, at least not as simply. `applyNodeHistoryVersionLocked`
+  itself has no existence precondition (`PutNodeVersion` writes unconditionally), and
+  `import.go`'s final trust-boundary pass documents that a node can legitimately be "history-only"
+  (deleted at the source) — so a base with zero prior knowledge of an ID receiving a bare
+  history-version record is not obviously "wrong base" the way a WithHistory PUT for an absent entity
+  is (that one is unambiguous: a WithHistory put's OWN semantics guarantee a prior version existed on
+  the primary). A candidate refinement (only flag `Version > 0` history-version records for an entity
+  with NO current row, NO existing history, and NO compaction stub) requires reasoning through
+  compaction-stub interaction and delta-boundary edge cases (does `ExportSince` ever emit a bare
+  history-version record with no accompanying WithHistory put for the same entity in the same delta?)
+  that a backlog-sweep patch should not attempt without the bitemporal oracle's usual scrutiny —
+  Strict mode exists specifically to catch dangerous wrong-base merges, so a subtly wrong check here
+  (false negative OR false positive) is worse than the current honest gap. Left open rather than
+  force a fix with unverified edge-case coverage.** `import_merge.go:461-503`.
 ### BACKLOG 13 — Retention / compaction / admin hardening
 
 - **13c. `CompactHistoryNodes`/`Rels` hold the exclusive graph lock across a full O(n) whole-graph

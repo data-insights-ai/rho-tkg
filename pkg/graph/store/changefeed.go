@@ -46,7 +46,13 @@ const (
 	ChangeMeta ChangeTag = 9
 
 	// ChangeClear marks a full store clear (DropAll). A replica applying it must
-	// clear its own state. Carries no body.
+	// reproduce the exact state a primary's Admin.Reset() ends up in, not just
+	// wipe this Store implementation's own data: the graph layer above the Store
+	// interface also holds Core-level in-memory state a bare store.Clear() cannot
+	// reach (the as-of DocValues cache, unique-constraint ownership registries,
+	// compaction/retention watermarks, operation counters) — see
+	// core.reapCoreStateForClear, invoked by the replica apply path (BACKLOG 12a)
+	// immediately after this Store's own Clear(). Carries no body.
 	ChangeClear ChangeTag = 10
 
 	// ChangeForeignIncoming is the cross-machine incoming half-edge stub (ADR-0010

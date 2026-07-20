@@ -631,6 +631,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   turns RED (epoch bumps despite the rejection). `go build`/`go vet` clean; full
   `pkg/graph/internal/core` package suite green including under `-race` (135s); full-repo `go test
   ./...` clean.
+- FIX — BACKLOG 12k: `readExportRecord` (`export.go`, the delta-merge/import Phase-2 staged-replay
+  reader) pre-allocated its body buffer directly from the untrusted declared length header
+  (`data = make([]byte, length)`) — the exact lesson-48 anti-pattern already fixed in
+  `readImportStageRecord`. Investigated reachability: `readExportRecord` only ever reads from this
+  Core's own already-staged replay file/buffer, itself produced by `readImportStageRecord`'s
+  identical bounded read and capped by `ImportOptions.MaxStagedBytes` — so this was never a live
+  untrusted-input amplification vector, unlike the original lesson-48 finding. Fixed anyway (a cheap,
+  mechanical, low-risk change mirroring an already-proven pattern in the same file family) to remove
+  the landmine for any future caller that might point this reader at less-trusted input: the body is
+  now read via `io.CopyN` into a `bytes.Buffer` pre-grown only to `min(declared length,
+  importBodyPreallocCap=64 KiB)`, so a lying length header costs at most ~64 KiB instead of up to 128
+  MiB. Preserved the exact existing error-type contract (`errors.Is(err, io.ErrUnexpectedEOF)` for a
+  truncated body — `io.CopyN`'s own short-read error is `io.EOF`, explicitly remapped to
+  `io.ErrUnexpectedEOF` to match `io.ReadFull`'s convention and the pre-existing
+  `TestReadExportRecordDirectReaderBranches` assertion, which stayed green unchanged). Added
+  `TestReadExportRecordDoesNotAllocateDeclaredLengthOnShortBody` (mirrors
+  `TestImportRejectsOversizedRecordWithoutAllocatingIt`'s `runtime.TotalAlloc`-delta detector: a
+  5-byte header declaring the max 128 MiB with no body must allocate <1 MiB, not the declared amount)
+  and `TestReadExportRecordAllocationTracksActualBodySize` (happy-path round-trip proof under the new
+  read strategy). Confirmed load-bearing by reverting `export.go` and re-running: the allocation
+  ceiling test fails with the wrong error type entirely (bare `io.EOF`, not wrapped
+  `io.ErrUnexpectedEOF`) before even reaching the allocation assertion. `go build`/`go vet` clean; full
+  `pkg/graph/internal/core` package suite green including under `-race` (140s); full-repo `go test
+  ./...` clean.
+- DOC — BACKLOG 12j (behavior already correct; the doc was missing an invariant, not wrong): expanded
+  `applyNodeLabelChangeLocked`'s doc comment (`apply_record.go`) to spell out the previously
+  undocumented wire-format assumption its fail-closed single-token guard rests on — `NodeWire` carries
+  only the FINAL label set, never an explicit added/removed diff, so mutation intent is entirely
+  INFERRED by diffing the incoming row against the replica's own local current row, which is only a
+  valid inference when (1) records apply in strict gap-free LSN order and (2) every label-token door
+  mutates exactly one token per call. Both hold today (hence "informational, correct today" in the
+  original finding) but neither was previously written down at the point that relies on them.
+- DOC — BACKLOG 12l (behavior already correct via BACKLOG 12a; the doc predated that fix and was
+  vague, not wrong): `store.ChangeTag.ChangeClear`'s doc comment (`pkg/graph/store/changefeed.go`)
+  said only "a replica applying it must clear its own state," which a reader could reasonably take to
+  mean a bare `store.Clear()` — the graph layer's own Core-level in-memory state (as-of DocValues
+  cache, unique-constraint ownership registries, compaction/retention watermarks, operation counters)
+  that `store.Clear()` cannot reach is a separate, non-obvious requirement, already correctly
+  implemented since BACKLOG 12a via `core.reapCoreStateForClear` (invoked by the replica apply path
+  immediately after the Store's own `Clear()`). Expanded the doc comment to name that requirement
+  explicitly and point at `reapCoreStateForClear`, so a future Store implementer or replica-apply
+  reader does not have to rediscover it from the `apply_record.go` source.
 
 ## [4.23.0] - 2026-07-18
 
