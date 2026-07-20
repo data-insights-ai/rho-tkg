@@ -139,6 +139,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   paid an ever-growing cost considering phantom candidates for entities purged specifically to bound
   memory — defeating retention purge's own purpose. New regression test proves purged IDs are reaped
   from both sidecars while a surviving same-label entity's entry is untouched.
+- FIX — badger `Config.ZSTDCompressionLevel` (documented bound [1,15], BACKLOG 18j) and
+  `Config.EncryptionKeyRotation` (must not be negative, BACKLOG 18r) are now validated at `New()`
+  like every other tuning knob, instead of silently ignoring an out-of-range value. 8 new
+  `TestBadgerTuningBoundaries` table rows.
 
 ## [4.23.0] - 2026-07-18
 

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -66,6 +67,21 @@ func TestBadgerTuningBoundaries(t *testing.T) {
 		{"compactors at minimum 2", func(c *Config) { c.NumCompactors = minNumCompactors }, ""},
 		{"compactors below minimum", func(c *Config) { c.NumCompactors = 1 }, "NumCompactors"},
 		{"compactors negative", func(c *Config) { c.NumCompactors = -3 }, "NumCompactors"},
+
+		// BACKLOG 18j: documented bound [1,15] (zero = badger default 1) was
+		// never enforced, unlike every other tuning knob.
+		{"zstd level zero keeps default", func(c *Config) { c.ZSTDCompressionLevel = 0 }, ""},
+		{"zstd level at floor 1", func(c *Config) { c.ZSTDCompressionLevel = minZSTDCompressionLevel }, ""},
+		{"zstd level at cap 15", func(c *Config) { c.ZSTDCompressionLevel = maxZSTDCompressionLevel }, ""},
+		{"zstd level below floor", func(c *Config) { c.ZSTDCompressionLevel = -1 }, "ZSTDCompressionLevel"},
+		{"zstd level above cap", func(c *Config) { c.ZSTDCompressionLevel = maxZSTDCompressionLevel + 1 }, "ZSTDCompressionLevel"},
+
+		// BACKLOG 18r: a negative rotation duration was silently ignored
+		// (buildBadgerOptions's `> 0` guard) rather than rejected, unlike
+		// every other numeric knob's fail-closed pattern.
+		{"encryption key rotation zero keeps default", func(c *Config) { c.EncryptionKeyRotation = 0 }, ""},
+		{"encryption key rotation positive", func(c *Config) { c.EncryptionKeyRotation = time.Hour }, ""},
+		{"encryption key rotation negative", func(c *Config) { c.EncryptionKeyRotation = -time.Hour }, "EncryptionKeyRotation"},
 
 		{"all knobs tuned together", func(c *Config) {
 			c.ValueLogFileSize = 64 << 20

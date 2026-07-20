@@ -2576,8 +2576,14 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   `.bak`, GREEN confirmed. Full `go build ./...` and `go vet ./...` clean. `go test -race
   ./pkg/graph/store/badger/...` — full package pass under the race detector (189s, no other races
   found). Full-repo `go test ./...` clean — no regressions.
-- **18j. `Config.ZSTDCompressionLevel` documented as bounded [1,15] but never validated, unlike every
-  other tuning knob (LOW-MEDIUM).** `badgerstore.go:246-249` vs `badgerstore_options.go:73-95`.
+- **18j. [FIXED — `store/badger/badgerstore_options.go`, `store/badger/badgerstore_options_test.go`]
+  `Config.ZSTDCompressionLevel` documented as bounded [1,15] but never validated, unlike every other
+  tuning knob (LOW-MEDIUM).** `badgerstore.go:246-249` vs `badgerstore_options.go:73-95`. Added
+  `minZSTDCompressionLevel`/`maxZSTDCompressionLevel` constants and a `validateTuningConfig` check
+  matching the existing zero-keeps-default / non-zero-must-be-in-range pattern every other knob
+  already uses. 5 new `TestBadgerTuningBoundaries` table rows (zero, floor, cap, below-floor,
+  above-cap). Fixed alongside 18r (same file, same validation function, same test table) — see 18r's
+  entry for the shared verification.
 - **18k. `NodesAsOf`/`RelsAsOf` open one Badger read transaction PER ENTITY instead of sharing one
   across the scan — O(N) independent transactions for a graph-wide as-of query (MEDIUM, perf).**
   `badgerstore_txtime.go:285-333,336-384`.
@@ -2601,9 +2607,23 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   (`badgerstore_rel_batch.go:266-267`); ~20 sites compare `err == badgerv4.ErrKeyNotFound` directly
   instead of `errors.Is`, vs. ~4 using `errors.Is` (lesson 12 convention, may be accepted house style)
   (all LOW).**
-- **18r. `EncryptionKeyRotation` negative values silently ignored rather than rejected, inconsistent
-  with the fail-closed pattern applied to every other numeric knob (LOW).**
-  `badgerstore_options.go:97-115,169-171`.
+- **18r. [FIXED — `store/badger/badgerstore_options.go`, `store/badger/badgerstore_options_test.go`]
+  `EncryptionKeyRotation` negative values silently ignored rather than rejected, inconsistent with the
+  fail-closed pattern applied to every other numeric knob (LOW).**
+  `badgerstore_options.go:97-115,169-171`. `buildBadgerOptions`'s `if cfg.EncryptionKeyRotation > 0`
+  guard silently dropped a negative value on the floor (never applied to Badger, no error) instead of
+  the fail-closed pattern `BlockCacheSize`/`IndexCacheSize`/`NumCompactors` already use. Added a
+  `cfg.EncryptionKeyRotation < 0` check to `validateTuningConfig`, rejecting at `New()` with a message
+  naming the field — mirroring the exact fix shape for 18j (same commit; both are gaps in the same
+  validation function, found and fixed together).
+
+  **Verification (both 18j and 18r).** 8 new `TestBadgerTuningBoundaries` table rows total. RED
+  confirmed via `git stash push` on the production file alone: `go vet` failed to compile
+  (`undefined: minZSTDCompressionLevel` / `maxZSTDCompressionLevel`) — the new test rows reference the
+  new constants directly, so the test cannot even build without the fix. Popped the stash, confirmed
+  GREEN on the full `TestBadgerTuningBoundaries` table (27 subtests). `go build ./...` + `go vet ./...`
+  clean; `go test ./pkg/graph/store/badger/...` clean (25s); full repo `go test ./...` clean
+  (including tutorials).
 - **18s. Lesson-68 regression coverage relies on nondeterministic Go map iteration rather than a
   deterministic adversarial construction — has only some probability per run of catching a regression
   (MEDIUM, TEST-GAP).** `internal/core/history_delta_test.go:41-61`.

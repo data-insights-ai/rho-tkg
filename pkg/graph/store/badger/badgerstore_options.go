@@ -66,6 +66,11 @@ const (
 	maxMemTableSize = 1 << 30
 	// minNumCompactors is Badger's documented minimum compactor count.
 	minNumCompactors = 2
+	// minZSTDCompressionLevel / maxZSTDCompressionLevel mirror the documented
+	// bound in CLAUDE.md/docs: ZSTDCompressionLevel (1-15, zero = Badger
+	// default 1).
+	minZSTDCompressionLevel = 1
+	maxZSTDCompressionLevel = 15
 )
 
 // validateTuningConfig rejects out-of-range per-instance footprint knobs. Zero
@@ -90,6 +95,13 @@ func validateTuningConfig(cfg Config) error {
 	}
 	if cfg.NumCompactors != 0 && cfg.NumCompactors < minNumCompactors {
 		return fmt.Errorf("graph: NumCompactors %d must be 0 (badger default) or at least 2", cfg.NumCompactors)
+	}
+	if cfg.ZSTDCompressionLevel != 0 &&
+		(cfg.ZSTDCompressionLevel < minZSTDCompressionLevel || cfg.ZSTDCompressionLevel > maxZSTDCompressionLevel) {
+		return fmt.Errorf("graph: ZSTDCompressionLevel %d out of range [1, 15]", cfg.ZSTDCompressionLevel)
+	}
+	if cfg.EncryptionKeyRotation < 0 {
+		return fmt.Errorf("graph: EncryptionKeyRotation %s must not be negative", cfg.EncryptionKeyRotation)
 	}
 	return nil
 }
