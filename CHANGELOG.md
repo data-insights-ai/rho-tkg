@@ -940,6 +940,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   comments to state the "test-fixture only, zero production callers" contract explicitly. `go build`/
   `go vet` clean; full `pkg/graph/internal/storeutil` and `pkg/graph/internal/core` package suites green
   including under `-race`; full-repo `go test ./...` clean.
+- TEST — BACKLOG 15m: investigated whether `decodeMapKeyLen`'s over-long-key path (a fresh allocation
+  instead of pooled scratch) was worth pooling. It is a genuinely rare cold path (the function's own
+  doc comment: "longest known [key] is 3 bytes"), the allocation is bounded (msgpack str8/str16 cap a
+  single key at 65535 bytes) and proportional to bytes the caller actually sent — not an amplification
+  vector like lesson 48's cases, since claiming `n` bytes always requires `n` real bytes on the wire for
+  `ReadFull` to succeed. Left unpooled: variable-size buffers up to 64 KiB are a poor `sync.Pool` fit
+  (Go's own guidance is to avoid pooling widely-variable-sized objects), so the complexity would not be
+  worth it for this rare, bounded, non-amplifying path. Found the REAL gap during investigation:
+  `decodeMapKeyLen` had ZERO direct tests anywhere, only indirect coverage through the entity wire
+  decoders and fuzzing. Added 6 tests covering every branch and decode format directly against a
+  `*msgpack.Decoder`: fixstr, str8 (exactly at the `wireKeyScratch`=16 boundary), str16 over-long (the
+  cold path — verifies both the `n=0`/no-match report AND that the decoder cursor stays correctly
+  aligned for the next value, via a marker byte read immediately after), an unexpected map-key type,
+  and two truncation cases (header, body). Confirmed the over-long test is load-bearing via mutation:
+  under-reading the consumed key by one byte turned it RED with "cursor misaligned", then reverted.
+  `go build`/`go vet` clean; full `pkg/graph/internal/storeutil` package suite green including under
+  `-race`; full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 
