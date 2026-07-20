@@ -92,6 +92,35 @@ func TestApproxHeapBytes_NodeVsRelIntegritySizesDiffer(t *testing.T) {
 	}
 }
 
+// TestApproxHeapBytes_BaseStructSizesMatchUnsafeSizeof guards BACKLOG 6f: the
+// existing temporal/integrity probes above pin DELTAS (does adding a
+// TemporalMetadata/*Integrity grow the estimate by the right amount?), but
+// none of them pin the BASE floor — an empty node/rel with no temporal, no
+// integrity, no extra labels, and no properties. That floor is exactly
+// approxNodeStruct/approxRelStruct (heapsize.go) plus the fixed
+// approxSliceHeader every PropertySlice contributes even when empty (its
+// ApproxHeapBytes always counts the backing-array header regardless of
+// length). approxNodeStruct/approxRelStruct were moved from hardcoded
+// literals to `int(unsafe.Sizeof(Node{}))`/`Relationship{}` by BACKLOG 6b/6c
+// specifically so a future struct-layout change can't silently desync the
+// estimator again — but no test actually exercised that base case, so a
+// regression back to a hardcoded literal (the exact 6b bug shape) would ship
+// undetected a third time even with every other heapsize_test.go probe
+// green, since they all measure deltas relative to the (possibly wrong)
+// floor rather than the floor itself.
+func TestApproxHeapBytes_BaseStructSizesMatchUnsafeSizeof(t *testing.T) {
+	t.Parallel()
+	n := NewNode(NodeID(1), 1, nil)
+	if got, want := n.ApproxHeapBytes(), int(unsafe.Sizeof(Node{}))+approxSliceHeader; got != want {
+		t.Fatalf("empty node ApproxHeapBytes = %d, want %d (unsafe.Sizeof(Node{})+approxSliceHeader)", got, want)
+	}
+
+	r := NewRelationship(RelID(1), 1, NodeID(10), NodeID(20))
+	if got, want := r.ApproxHeapBytes(), int(unsafe.Sizeof(Relationship{}))+approxSliceHeader; got != want {
+		t.Fatalf("empty relationship ApproxHeapBytes = %d, want %d (unsafe.Sizeof(Relationship{})+approxSliceHeader)", got, want)
+	}
+}
+
 // TestApproxHeapBytes_GrowsWithPayload pins that the estimate is at least
 // the raw payload bytes for every container type — an estimator that
 // under-counts payloads lets a "bounded" cache hold unbounded memory.

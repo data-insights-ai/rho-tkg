@@ -219,6 +219,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   being covered). Investigated both decoders: they already route through `SafeUnmarshal` identically
   to every sibling decoder — pure test-gap, no production change. Added matching subtests to
   `TestChangeBody_RoundTrip` and `TestChangeBodyDecoders_FailClosedOnGarbage`.
+- TEST — closed BACKLOG 6f (no test pinned `heapsize.go`'s `approxNodeStruct`/`approxRelStruct`
+  against `unsafe.Sizeof(Node{})`/`Relationship{}` directly — the existing temporal/integrity probes
+  only measured deltas, which stay correct even if the base floor regresses to a hardcoded literal,
+  the exact BACKLOG 6b bug shape). New `TestApproxHeapBytes_BaseStructSizesMatchUnsafeSizeof` asserts
+  an empty node/rel's `ApproxHeapBytes()` equals `unsafe.Sizeof(...)` plus the fixed empty-
+  `PropertySlice` header overhead. Verified load-bearing by temporarily hardcoding a stale
+  `approxNodeStruct` literal: the new test failed immediately with the exact mismatch a real
+  regression would produce.
+- MAINTENANCE — `tasks/backlog.md` now removes items on completion instead of leaving an in-place
+  `[FIXED — ...]`/`[INVESTIGATED — ...]` write-up; the backlog tracks only open work, and the shipped
+  detail (mechanism, fix, tests, verification) lives here in CHANGELOG.md instead. Removed 99 resolved
+  items (all of BACKLOG 6-9's CRITICAL/HIGH findings plus every other backend/subsystem section's
+  completed items) from the file; the one remaining HIGH item (10b, bitemporal cascade/resumption-row
+  ambiguity) stays with its full investigation notes since it's still open, not done.
 
 ## [4.23.0] - 2026-07-18
 
