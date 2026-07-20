@@ -724,6 +724,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   second hand-maintained checklist duplicating the first, not closing the risk; a real fix needs
   static analysis or a generated registry, design work outside a backlog-sweep patch. Left open with
   the coverage-gap premise corrected rather than closed by a checklist mirroring a checklist.
+- INVESTIGATE — BACKLOG 13c stays OPEN (no code or test change applied): `CompactHistoryNodes`/`Rels`
+  hold `c.mu.Lock()` across a whole-graph plan-then-write pass with no chunking, contradicting
+  retention purge's documented "graph lock NOT held across the range" discipline. Traced the structural
+  reason the two differ: retention purge chunks because `RetentionPurgeCapability` is a STORE-LEVEL
+  range primitive (the store self-locks per chunk); `HistoryCompactionCapability` is purely per-entity,
+  so the Core layer does all range iteration itself under one lock — there is no store primitive to
+  loop over safely. A real fix needs a new chunked store capability mirroring
+  `RetentionPurgeCapability`'s shape, implemented across memory/badger/tiered (tiered is the hard case:
+  its stub and trim already land on different shards and must preserve crash-safety ordering per
+  chunk, not just per entity). Rejected a smaller "release c.mu every K entities" patch as UNSAFE, not
+  just incomplete: the current code plans every entity up front from a point-in-time snapshot, then
+  applies all plans in a second loop; releasing the lock between planning and a later apply opens a
+  window where a concurrent write invalidates that entity's plan, so applying it corrupts the
+  compaction stub — real data corruption in the same caution class as BACKLOG 10b, not an acceptable
+  risk for a backlog-sweep patch. Left open pending a proper capability-level design.
+- INVESTIGATE — BACKLOG 13f CLOSED (verified already-correct and already well-tested; no bug, no code
+  or doc change needed): the finding described `verifyChainLinkage`'s no-stub "legacy leniency" (any
+  `PrevHash` accepted on the lowest retained version when no compaction stub is present) as a tamper-
+  evidence gap. Investigated whether the "legacy" framing undersold a currently-live risk: it does not
+  — `store.HistoryCapability.TruncateNodeHistory`/`TruncateRelHistory` (the STUB-LESS truncation door)
+  is a real, ACTIVE, MANDATORY capability every backend implements today, used by import rollback,
+  delta-merge rollback, tx rollback, AND the replica-apply path for `ChangeNodeHistoryTruncate` records
+  — not a deprecated/legacy mechanism. The no-stub leniency is therefore NECESSARY, not merely
+  tolerated: without it, every one of those legitimate rollback/truncate paths would make
+  `Verify*Chain` falsely report tampering. The existing doc comment on `verifyChainLinkage`
+  (`integrity.go:108-125`) already explains this precisely and accurately (no gap to fix), and
+  `TestVerifyNodeChain_AfterTruncation`/`TestVerifyRelChain_AfterTruncation` already directly pin the
+  exact scenario (truncate via the stub-less door, then assert the chain still verifies) — so the
+  "no test coverage" implication was also already false. The hash chain's own documented threat model
+  is corruption detection, not adversarial tamper-proofing against direct disk access (see
+  `verifyImportedNodeHash`'s doc and CLAUDE.md's Integrity & Indexes section) — closing this "gap"
+  further would mean redesigning that threat model, not fixing a bug. Removed from backlog as verified
+  intentional and correct, distinct from a doc-only closure of a real problem: nothing was changed
+  because nothing needed to change.
 
 ## [4.23.0] - 2026-07-18
 
