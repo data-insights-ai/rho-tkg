@@ -415,8 +415,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   one worth guaranteeing (e.g. "the shard is picked up correctly if it existed before the tx's FIRST
   divert toggle" as a documented, tested contract) rather than leaving the actual behavior
   undefined-by-omission.**
-- **19p. Dead defensive-only bound check would silently swallow the exact invariant violation 19c
-  would produce, instead of surfacing it (LOW).** `tieredstore_changelog.go:415-419`.
 - **19q. Global `nodeCreateMu`/`relCreateMu` serialize ALL creates store-wide — a hard throughput
   ceiling for the stated TB/day workload, likely unavoidable given the correctness requirement (LOW,
   scaling constraint, not obviously cheap to fix).** `tieredstore.go:257-258`.

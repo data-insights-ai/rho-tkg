@@ -1510,6 +1510,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestTieredPurge_ByValidTo_CrossShardEdgeSweep`, and the `TestTieredColdShardFastDrop*` family), no
   new test needed. `go build`/`go vet` clean; full `pkg/graph/store/tiered` package suite green
   including under `-race` (65s); full-repo `go test ./...` clean.
+- FIX — BACKLOG 19p: `mergeChangeFeed`'s (`tieredstore_changelog.go`, the change-feed k-way merge)
+  per-record defensive re-check (`if rec.LSN > w { continue }`) silently DROPPED the offending record
+  from the merged feed instead of surfacing the invariant break — a replica consuming this feed would
+  silently drift out of sync with zero signal why, the worst possible failure mode for a genuine
+  internal-consistency violation. The check is real double-defense (both `pageBoundedFeed`, the first
+  layer, and this merge-loop check, the second, independently bound every record to `LSN <= w`), not
+  literally dead code, but "should not happen" defensive code that silently no-ops on the exact
+  condition it exists to catch defeats its own purpose. Changed the branch to return a wrapped,
+  actionable error (identifying the offending shard via a new `logShardSource.describe()` helper, the
+  record's LSN, and the bound) instead of `continue`. Verified reachability and correctness via a
+  one-off manual mutation (not committed): temporarily neutered `pageBoundedFeed`'s own filter so an
+  out-of-bound record could reach the merge loop, confirmed the new error fires with the exact
+  expected shape (`"shard reference returned record LSN 4 exceeding bound 3 (internal invariant
+  violation in logShardSource.page)"`), then reverted the neutering. A dedicated committed unit test
+  was not added: reaching this code path naturally requires BOTH defensive layers to fail
+  simultaneously (that is the whole point of defense-in-depth), so a real regression test would need
+  a new test seam making `logShardSource.page`'s bounding independently injectable/mockable — a larger
+  design change than warranted for converting a silent-swallow into a loud, debuggable failure.
+  `go build`/`go vet` clean; full existing change-feed test suite green
+  (`TestTieredChangeFeed*`/`TestTieredChangeLog*`) confirming no regression; full
+  `pkg/graph/store/tiered` package suite green including under `-race` (68s); full-repo
+  `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

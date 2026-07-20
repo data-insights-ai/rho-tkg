@@ -409,8 +409,17 @@ func (ts *Store) mergeChangeFeed(afterLSN, w uint64, fn func(storecontract.Chang
 		sc := cursors[top.shard]
 		rec := sc.buf[sc.pos]
 		if rec.LSN > w {
-			// Should not happen (pages are w-bounded), but guard the invariant.
-			continue
+			// BACKLOG 19p: this is a genuine internal invariant violation, not
+			// a normal runtime condition — logShardSource.page is documented
+			// AND contracted to bound every returned record to LSN <= w, so
+			// reaching here means that contract was broken somewhere. The
+			// prior `continue` silently dropped the record from the merged
+			// feed instead of surfacing the break — a replica consuming this
+			// feed would drift out of sync with zero signal why. Fail the
+			// merge loudly instead: a returned error is far more debuggable
+			// than a replica that silently missed a change.
+			return fmt.Errorf("graph: change feed merge: shard %s returned record LSN %d exceeding bound %d (internal invariant violation in logShardSource.page)",
+				cursors[top.shard].src.describe(), rec.LSN, w)
 		}
 		if !fn(rec) {
 			return nil
@@ -454,6 +463,24 @@ func (h *feedHeap) Pop() any {
 type logShardSource struct {
 	kind logShardKind
 	es   *EventShard // for kind == logShardEvent
+}
+
+// describe returns a human-readable identifier for error messages (BACKLOG
+// 19p) — not a hot path, only reached on an internal invariant violation.
+func (s *logShardSource) describe() string {
+	switch s.kind {
+	case logShardRef:
+		return "reference"
+	case logShardArchive:
+		return "archive"
+	case logShardEvent:
+		if s.es != nil {
+			return s.es.name
+		}
+		return "event(unknown)"
+	default:
+		return "unknown"
+	}
 }
 
 type logShardKind int
