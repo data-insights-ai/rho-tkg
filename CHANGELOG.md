@@ -1433,6 +1433,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   operator-invoked maintenance operation, not a hot path, so the simultaneous-shard-count resource
   cost is an accepted, bounded tradeoff for correctness. No code change.
 
+- INVESTIGATED, LEFT OPEN — BACKLOG 19h: dug into `TxChangeLogScope`'s documented "shard opened
+  mid-tx not covered by the snapshot" edge case and found the actual behavior is more subtle — and
+  the doc comment more misleading — than the finding assumed. `forEachScopeShard` doesn't cache a
+  snapshot at `BeginLogScope` at all; every one of `Begin`/`SetLogDivert`/`Commit`/`Discard`
+  independently re-queries the current open-shard set. Since `SetLogDivert` toggles once per mutation
+  within a tx, a shard that opens BETWEEN two divert toggles gets picked up correctly by the next one
+  (despite `BeginLogScope` never having run on it) — only a shard whose entire open-plus-write window
+  falls between toggles (or a single-shot batch with no toggle sequence) hits the "excluded, writes
+  with an immediate untracked LSN" case the comment describes. A test needs to pin one specific
+  sub-case via white-box control of the tiered Store's low-level scope API to land a `ForceRotate()`
+  at an exact point — left open pending a decision on which sub-case is worth a documented, tested
+  contract, per `tasks/backlog.md` 19h's full writeup. No code change.
+
 ## [4.23.0] - 2026-07-18
 
 - PERF — the streaming whole-node label door (`g.Nodes().ForEachByLabel` + new `g.Nodes().IterByLabel(ctx, label, opts) iter.Seq2[*types.Node, error]`) now rides the bulk-scan substrate (BACKLOG 3, final increment — the `NodesByLabelBulk` ask). badger's `ForEachNodeByLabel` was still doing N per-node `Txn.Get`s (`prefetchNodeScan` loop); it now streams through `forEachNodeBulk` — one read transaction + one forward-seeking iterator, cache hits served inline — so a one-shot `MATCH (n:L) RETURN n` gets the ~1.3× single-iterator fetch win **while keeping peak memory O(1) nodes** (no result-slice materialization), the whole point of the streaming door vs the materializing `ByLabel`. The label IDs are snapshotted under `idxMu` then released, so `fn` runs holding no `idxMu` (only a badger snapshot txn) — the relaxed-isolation "fn may call back into the graph" contract is preserved. New `IterByLabel` is the ergonomic iter.Seq2 form (parity with `Iter`). Cross-backend unchanged: memory streams live objects; tiered/sharded and any temporal `QueryOpts` fall back to the materialized history-aware `ByLabel` then stream (correct, no streaming-memory win there). **MEASURED (50k, cache-cold): ~120 → ~93 ms** vs the old per-node path. Tests: `IterByLabel`/`ForEachByLabel` == `ByLabel` set+order over a mixed-label 3k scan (both backends) + iter.Seq2 early-stop, `-race` clean; A/B benchmark. This closes the last open `tasks/backlog.md` item.

@@ -389,8 +389,32 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 19 — TieredStore hardening
 
-- **19h. `TxChangeLogScope`'s per-tx shard snapshot has a documented, untested gap under rotation
-  (MEDIUM).** `tieredstore_changelog.go:584-699`.
+- **19h. [STILL OPEN — NOT resolved; investigated in depth, found the actual behavior is more subtle
+  than the existing doc comment claims, a safe test needs to distinguish sub-cases before it can be
+  written].** Traced `forEachScopeShard` (`tieredstore_changelog.go`) — the shared fold every one of
+  `BeginLogScope`/`SetLogDivert`/`CommitLogScope`/`DiscardLogScope` routes through — and found it does
+  NOT cache a snapshot at `BeginLogScope` time despite the type-level doc comment's claim ("The shards
+  scoped are snapshotted at Begin so Commit/Discard target exactly them"): every one of the four calls
+  independently RE-QUERIES `ts.eventShardSnapshot(DepthAll)` fresh. In the common (no-rotation) case
+  this is unobservable (the shard set is stable across one tx), but under a mid-tx rotation the actual
+  outcome for the newly-opened shard is TIMING-DEPENDENT, not the simple "shard is silently excluded
+  the whole time" the doc comment implies: `SetLogDivert(true/false)` is called once per mutation
+  within the tx (per the core's own bracketing doc), and each call ALSO re-queries the shard set fresh
+  — so a shard that opens BETWEEN two `SetLogDivert` calls WOULD have `scopeActive` set true by the
+  next one (Go's `append` to a nil `scopeLog` is safe, no panic), and its buffered records WOULD then
+  be picked up by the eventual `CommitLogScope`'s fresh re-query — DESPITE `BeginLogScope` having
+  never been called on it specifically. Only a shard that opens and is written to entirely BETWEEN the
+  last `SetLogDivert(true)` before it existed and the next one (or a single-shot batch commit with no
+  intervening toggle) would hit the "excluded, writes immediately with their own LSN" case the comment
+  describes. A test proving the documented behavior would need to pin ONE of these sub-cases
+  precisely (which requires white-box control over the tiered Store's low-level scope API — direct
+  `ts.BeginLogScope()`/`SetLogDivert()`/`CommitLogScope()` calls bypassing the full graph/core Tx
+  layer — to land a `ForceRotate()` at an exact point in the sequence), and the doc comment itself
+  should be corrected to describe the timing-dependent reality rather than the simpler
+  always-excluded framing. Recommend a dedicated follow-up that first decides which sub-case is the
+  one worth guaranteeing (e.g. "the shard is picked up correctly if it existed before the tx's FIRST
+  divert toggle" as a documented, tested contract) rather than leaving the actual behavior
+  undefined-by-omission.**
 - **19j. Cross-shard result accumulation in `AllNodes`/`AllNodeIDs` fanout is unbounded — materializes
   every shard's full result into RAM concurrently, undocumented as a caveat despite the streaming
   alternative (`ForEachByLabel`/`IterByLabel`) existing precisely to avoid this (MEDIUM).**
