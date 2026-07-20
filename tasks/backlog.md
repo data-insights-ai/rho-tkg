@@ -67,9 +67,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 8 — Dry-run / constraints / replication convenience-API correctness
 
-- **8e. `(*TempOps).Diff` doc comment claims a continuously-held RLock; actual impl does per-entity
-  `readUnderRLock` (LOW, stale doc, safety property still holds).** `internal/core/temporal_snapshot.go:88-96`
-  vs `:188-293`.
 - **8f. `countStreamChangeRecords` doc describes a precondition its only caller doesn't satisfy
   (informational, harmless today, landmine for future refactor).** `io/backup.go:191-196` vs `:171`.
 

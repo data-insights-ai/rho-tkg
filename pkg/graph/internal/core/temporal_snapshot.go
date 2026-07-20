@@ -85,10 +85,20 @@ func (c *Core) snapshotAt(t types.Instant) (*temporalpkg.GraphSnapshot, error) {
 // Entities valid at T1 but not T2 → Deleted.
 // Returns ErrInvalidTimeRange if t1 >= t2 or either is zero.
 //
-// The diff scan holds c.mu.RLock so Close cannot shut down the store mid-scan.
-// The RLock excludes tx/batch but NOT individual standalone mutations (which
-// also use c.mu.RLock), so concurrent standalone backdated writes may still
-// appear as spurious Created/Deleted entries.
+// BACKLOG 8e: Diff does NOT hold c.mu.RLock continuously for the whole scan —
+// like every other tx-era read door (v4.1.0+, see CLAUDE.md "Transaction
+// isolation via c.txMu"), it takes c.mu.RLock per call via readUnderRLock:
+// once to collect candidate IDs, then once PER ENTITY as diffCallback walks
+// them. This means Close CAN proceed between entity reads; Diff never
+// observes a torn/closing store because the NEXT readUnderRLock call after
+// Close has run returns ErrGraphClosed immediately (checked before the read
+// body executes) rather than reading through a closing store — so Diff
+// either completes normally or fails closed with ErrGraphClosed, never a
+// partial/corrupt result. The per-call RLock excludes tx/batch (each also
+// takes c.mu.RLock/Lock per call) but NOT individual standalone mutations
+// (which use the same per-call c.mu.RLock as Diff itself), so concurrent
+// standalone backdated writes may still appear as spurious Created/Deleted
+// entries.
 //
 // Implementation: delegates to DiffSnapshotsCallback with handlers that
 // accumulate into a SnapshotDiff. The callback path resolves each entity

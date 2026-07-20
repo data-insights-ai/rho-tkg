@@ -284,6 +284,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   backend, stats layer) and already fully captured by 21a's own text. BACKLOG 21 (7 FEATURE-class
   items — new capabilities, not bugs) is intentionally deferred to a separate design pass per user
   direction; the rest of the backlog (bug/test-gap/refactor items) continues.
+- DOC — closed BACKLOG 8e: `(*TempOps).Diff`'s doc comment claimed the diff scan "holds c.mu.RLock so
+  Close cannot shut down the store mid-scan" — actually stale since the v4.1.0 tx-isolation rework
+  (CLAUDE.md "Transaction isolation via c.txMu"): `diffCallback` takes `c.mu.RLock` PER ENTITY via
+  `readUnderRLock` (once for the ID collection phase, then once per node/rel as the loop walks them),
+  not once for the whole scan. Close CAN run between entity reads. The real safety property — Diff
+  never observes a torn/closing store, because the next `readUnderRLock` call after Close has run
+  fails closed with `ErrGraphClosed` before touching the store — still holds, just not via a
+  continuously-held lock. Rewrote the doc comment to describe the actual per-call mechanism. Added
+  `TestDiffGracefulUnderConcurrentClose` (`internal/core/diff_test.go`): 20 iterations of a 200-node
+  graph running `Diff` concurrently with `Close`, asserting the only two outcomes are a successful
+  diff or `errors.Is(err, ErrGraphClosed)` — never a panic, hang, or a non-nil result alongside an
+  error. `go build ./...` + `go vet ./...` clean; `internal/core` package suite green under `-race`;
+  full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

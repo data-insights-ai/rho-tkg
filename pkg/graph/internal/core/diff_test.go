@@ -710,3 +710,63 @@ func TestDiffSnapshots_DoesNotBlockWrites(t *testing.T) {
 		t.Fatal("concurrent DiffSnapshots + BeginTx goroutines did not complete within 10s")
 	}
 }
+
+// TestDiffGracefulUnderConcurrentClose guards BACKLOG 8e's corrected Diff doc
+// comment: because Diff takes c.mu.RLock per entity (readUnderRLock) rather
+// than once for the whole scan, Close can run between entity reads. The
+// claimed safety property is that Diff never observes a torn/closing store —
+// it either finishes normally (if it wins the race) or fails closed with
+// ErrGraphClosed (if Close wins), never a partial result alongside a nil
+// error and never a panic/hang. A large entity count widens the window for
+// Close to land mid-scan across repeated runs.
+func TestDiffGracefulUnderConcurrentClose(t *testing.T) {
+	t.Parallel()
+
+	for iter := 0; iter < 20; iter++ {
+		g, err := New(Config{})
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+		ctx := context.Background()
+		for i := 0; i < 200; i++ {
+			n, err := g.Nodes.Add(ctx, []string{"Thing"}, nil)
+			if err != nil {
+				t.Fatalf("AddNode: %v", err)
+			}
+			setNodeTemporal(t, g, n.ID(), 1000, 0)
+		}
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+		var diff *temporalpkg.SnapshotDiff
+		var diffErr error
+		go func() {
+			defer wg.Done()
+			diff, diffErr = g.Temporal.Diff(types.Instant(500), types.Instant(2000))
+		}()
+		go func() {
+			defer wg.Done()
+			_ = g.Close()
+		}()
+
+		done := make(chan struct{})
+		go func() {
+			wg.Wait()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Fatal("Diff + concurrent Close did not complete within 10s")
+		}
+
+		if diffErr != nil {
+			if !errors.Is(diffErr, ErrGraphClosed) {
+				t.Fatalf("iter %d: Diff error = %v, want nil or ErrGraphClosed", iter, diffErr)
+			}
+			if diff != nil {
+				t.Fatalf("iter %d: Diff returned a non-nil result alongside an error", iter)
+			}
+		}
+	}
+}
