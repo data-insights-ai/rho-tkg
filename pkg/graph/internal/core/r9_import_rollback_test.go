@@ -6,6 +6,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -30,22 +31,22 @@ func TestR9_ImportReplayErrorRollsBackNewCurrentHistoryAndRegistries(t *testing.
 		Labels:   []string{"", "Person"},
 		RelTypes: []string{"", "KNOWS"},
 	})
-	writeImportMsgpackRecord(t, &stream, exportTagNode, storeutil.NodeWire{
+	writeImportMsgpackRecord(t, &stream, exportTagNode, mustHashedNodeWire(t, storeutil.NodeWire{
 		ID:           100,
 		PrimaryLabel: 1,
 		Version:      1,
-	})
-	writeImportMsgpackRecord(t, &stream, exportTagNodeHist, storeutil.NodeWire{
+	}, []string{"Person"}))
+	writeImportMsgpackRecord(t, &stream, exportTagNodeHist, mustHashedNodeWire(t, storeutil.NodeWire{
 		ID:           100,
 		PrimaryLabel: 1,
 		Version:      0,
-	})
-	writeImportMsgpackRecord(t, &stream, exportTagRel, storeutil.RelWire{
+	}, []string{"Person"}))
+	writeImportMsgpackRecord(t, &stream, exportTagRel, mustHashedRelWire(t, storeutil.RelWire{
 		ID:      300,
 		RelType: 1,
 		StartID: 100,
 		EndID:   200, // missing endpoint: PutRelationship fails after node/history replay
-	})
+	}, "KNOWS"))
 
 	err = g.IO.Import(bytes.NewReader(stream.Bytes()), tkgio.ImportOptions{})
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
@@ -96,12 +97,12 @@ func TestR9_ImportReplayErrorRestoresExistingHistoryAndRegistries(t *testing.T) 
 	})
 	writeImportMsgpackRecord(t, &stream, exportTagNode, nodeWire)
 	writeImportMsgpackRecord(t, &stream, exportTagNodeHist, nodeWire)
-	writeImportMsgpackRecord(t, &stream, exportTagRel, storeutil.RelWire{
+	writeImportMsgpackRecord(t, &stream, exportTagRel, mustHashedRelWire(t, storeutil.RelWire{
 		ID:      300,
 		RelType: 1,
 		StartID: int64(n.ID().SnowflakeID()),
 		EndID:   200, // missing endpoint after the history replay
-	})
+	}, "KNOWS"))
 
 	err = g.IO.Import(bytes.NewReader(stream.Bytes()), tkgio.ImportOptions{})
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
@@ -232,24 +233,24 @@ func TestR9_ImportReplayErrorRestoresHistorySuffixAfterTrimRollback(t *testing.T
 		Labels:   []string{"", "Person"},
 		RelTypes: []string{"", "KNOWS"},
 	})
-	writeImportMsgpackRecord(t, &stream, exportTagNodeHist, storeutil.NodeWire{
+	writeImportMsgpackRecord(t, &stream, exportTagNodeHist, mustHashedNodeWire(t, storeutil.NodeWire{
 		ID:           int64(n.ID().SnowflakeID()),
 		PrimaryLabel: 1,
 		Version:      2,
-	})
-	writeImportMsgpackRecord(t, &stream, exportTagRelHist, storeutil.RelWire{
+	}, []string{"Person"}))
+	writeImportMsgpackRecord(t, &stream, exportTagRelHist, mustHashedRelWire(t, storeutil.RelWire{
 		ID:      300,
 		RelType: 1,
 		StartID: int64(n.ID().SnowflakeID()),
 		EndID:   int64(other.ID().SnowflakeID()),
 		Version: 2,
-	})
-	writeImportMsgpackRecord(t, &stream, exportTagRel, storeutil.RelWire{
+	}, "KNOWS"))
+	writeImportMsgpackRecord(t, &stream, exportTagRel, mustHashedRelWire(t, storeutil.RelWire{
 		ID:      400,
 		RelType: 1,
 		StartID: int64(n.ID().SnowflakeID()),
 		EndID:   999, // missing endpoint: fail after history replay
-	})
+	}, "KNOWS"))
 
 	err = g.IO.Import(bytes.NewReader(stream.Bytes()), tkgio.ImportOptions{})
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
@@ -474,22 +475,22 @@ func TestR9_ImportReplayRollbackUsesImportRegistryBeforeTieredCleanup(t *testing
 		Labels:   []string{"", "Signal"},
 		RelTypes: []string{"", "KNOWS"},
 	})
-	writeImportMsgpackRecord(t, &stream, exportTagNode, storeutil.NodeWire{
+	writeImportMsgpackRecord(t, &stream, exportTagNode, mustHashedNodeWire(t, storeutil.NodeWire{
 		ID:           int64(nodeID.SnowflakeID()),
 		PrimaryLabel: 1,
 		Version:      1,
-	})
-	writeImportMsgpackRecord(t, &stream, exportTagNodeHist, storeutil.NodeWire{
+	}, []string{"Signal"}))
+	writeImportMsgpackRecord(t, &stream, exportTagNodeHist, mustHashedNodeWire(t, storeutil.NodeWire{
 		ID:           int64(nodeID.SnowflakeID()),
 		PrimaryLabel: 1,
 		Version:      0,
-	})
-	writeImportMsgpackRecord(t, &stream, exportTagRel, storeutil.RelWire{
+	}, []string{"Signal"}))
+	writeImportMsgpackRecord(t, &stream, exportTagRel, mustHashedRelWire(t, storeutil.RelWire{
 		ID:      int64(relID.SnowflakeID()),
 		RelType: 1,
 		StartID: int64(nodeID.SnowflakeID()),
 		EndID:   int64(missingID.SnowflakeID()),
-	})
+	}, "KNOWS"))
 
 	err := g.IO.Import(bytes.NewReader(stream.Bytes()), tkgio.ImportOptions{})
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {
@@ -538,4 +539,43 @@ func writeImportMsgpackRecord(t *testing.T, buf *bytes.Buffer, tag byte, v any) 
 	if err := writeExportRecord(buf, tag, body); err != nil {
 		t.Fatalf("write record %x: %v", tag, err)
 	}
+}
+
+// mustHashedNodeWire returns w with Hash set to the correct content hash for
+// its decoded content. BACKLOG 12d: verifyImportedNodeHash now REJECTS a row
+// with no integrity hash (previously silently exempted), so a hand-built
+// synthetic NodeWire fixture must carry a real hash to reach whatever OTHER
+// behavior the test actually means to exercise (e.g. a later record's
+// failure triggering rollback) instead of failing immediately on this one.
+func mustHashedNodeWire(t *testing.T, w storeutil.NodeWire, labelNames []string) storeutil.NodeWire {
+	t.Helper()
+	n, err := storeutil.WireToNodeChecked(w)
+	if err != nil {
+		t.Fatalf("mustHashedNodeWire: decode: %v", err)
+	}
+	hash, err := integrity.ComputeNodeHashChecked(n, labelNames)
+	if err != nil {
+		t.Fatalf("mustHashedNodeWire: compute hash: %v", err)
+	}
+	w.Hash = hash
+	return w
+}
+
+// mustHashedRelWire is the relationship counterpart of mustHashedNodeWire.
+// Hash computation is pure content (labels/type/properties/temporal); it
+// does not require the endpoints to actually exist, so this is safe to use
+// even for a wire whose EndID is deliberately a nonexistent node (the usual
+// reason these rollback tests build one).
+func mustHashedRelWire(t *testing.T, w storeutil.RelWire, typeName string) storeutil.RelWire {
+	t.Helper()
+	r, err := storeutil.WireToRelChecked(w)
+	if err != nil {
+		t.Fatalf("mustHashedRelWire: decode: %v", err)
+	}
+	hash, err := integrity.ComputeRelHashChecked(r, typeName)
+	if err != nil {
+		t.Fatalf("mustHashedRelWire: compute hash: %v", err)
+	}
+	w.Hash = hash
+	return w
 }

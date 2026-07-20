@@ -92,22 +92,22 @@ func TestTieredWrapper_ImportRollbackRewiresLabelRegistry(t *testing.T) {
 		Labels:   []string{"", "Signal"},
 		RelTypes: []string{"", "KNOWS"},
 	})
-	writeImportMsgpackRecord(t, &stream, exportTagNode, storeutil.NodeWire{
+	writeImportMsgpackRecord(t, &stream, exportTagNode, mustHashedNodeWire(t, storeutil.NodeWire{
 		ID:           int64(nodeID.SnowflakeID()),
 		PrimaryLabel: 1,
 		Version:      1,
-	})
-	writeImportMsgpackRecord(t, &stream, exportTagNodeHist, storeutil.NodeWire{
+	}, []string{"Signal"}))
+	writeImportMsgpackRecord(t, &stream, exportTagNodeHist, mustHashedNodeWire(t, storeutil.NodeWire{
 		ID:           int64(nodeID.SnowflakeID()),
 		PrimaryLabel: 1,
 		Version:      0,
-	})
-	writeImportMsgpackRecord(t, &stream, exportTagRel, storeutil.RelWire{
+	}, []string{"Signal"}))
+	writeImportMsgpackRecord(t, &stream, exportTagRel, mustHashedRelWire(t, storeutil.RelWire{
 		ID:      int64(relID.SnowflakeID()),
 		RelType: 1,
 		StartID: int64(nodeID.SnowflakeID()),
 		EndID:   int64(missingID.SnowflakeID()),
-	})
+	}, "KNOWS"))
 
 	err := g.IO.Import(bytes.NewReader(stream.Bytes()), tkgio.ImportOptions{})
 	if !errors.Is(err, storepkg.ErrNodeNotFound) {

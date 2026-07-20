@@ -183,10 +183,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 12 — Replication / import / export hardening
 
-- **12d. Hash verification skipped whenever the wire carries an entirely-empty integrity block
-  (LOW-MEDIUM, documented tradeoff, worth hardening at the untrusted boundary specifically).**
-  `import.go:269-301`. A forged/corrupted record with all integrity fields blanked sails through
-  unverified.
 - **12e. `applyForeignIncomingLocked` missing `noteAppliedTxFrom`, unlike every sibling put/version
   handler (LOW, harmless today, unexplained family asymmetry).** `apply_record.go:404-425`.
 - **12f. `noteAppliedTxFrom` runs before hash/property verification in all 4 handlers — over-

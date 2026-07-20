@@ -554,6 +554,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   future investigation (a third clock source — snowflake ID microsecond timestamps — and genuine
   full-suite CPU/memory contention that a synthetic single-goroutine delay can't replicate) are
   recorded in the backlog entry. No code or test change applied.
+- FIX — BACKLOG 12d: `verifyImportedNodeHash`/`verifyImportedRelHash` (`import.go`) previously
+  EXEMPTED a row from verification whenever its integrity block was entirely absent or `Hash == ""`
+  ("rows without integrity state are exempt") — but every entity this library itself ever produces
+  (standalone/tx/batch/ingest create, replica-apply, import reconstruction, ADR-0010 foreign-incoming
+  stubs) always calls `SetIntegrity` with a non-empty computed hash, so a row with no hash at all is
+  never a legitimate case — it is exactly the shape a forged or corrupted record would have. Changed
+  both functions to reject (`ErrCorruptExport`) instead of exempting. Investigated the actual blast
+  radius carefully rather than assuming the fix mattered everywhere it's called: for the full
+  `g.IO().Import()` path, the change is defense-in-depth-redundant with the pre-existing end-of-import
+  "final trust-boundary pass" (`verifyNodeChainLocked`, run once over every imported entity's full
+  chain after all per-record processing) — that pass already independently rejects a missing/empty
+  hash before the import can succeed, confirmed by reverting only the `import.go` fix and re-running
+  the two new full-Import end-to-end tests: they still pass unchanged. The genuinely NON-redundant,
+  load-bearing case is the replica change-log apply path (`g.Repl.ApplyChange` →
+  `applyNodePutLocked`/`applyRelPutLocked`/`applyNodeHistoryVersionLocked`/
+  `applyRelHistoryVersionLocked`, `apply_record.go`), which writes the decoded row straight to the
+  store with no subsequent whole-chain verification of any kind — `verifyImportedNodeHash`/
+  `verifyImportedRelHash` are the ONLY check standing between a change-log record with a blanked
+  integrity block and a silently-unverified row landing on a replica. Added
+  `TestApplyChange_RejectsNodePutWithBlankedIntegrityBlock` and the relationship mirror, hand-
+  constructing an adversarial `storepkg.ChangeRecord{Tag: ChangeNodePut/ChangeRelPut}` payload with no
+  `Hash` and driving it through `g.Repl.ApplyChange` directly — confirmed load-bearing by reverting the
+  fix and re-running: both turn RED (row silently accepted and persisted). Also added
+  `TestVerifyImportedNodeHash_*`/`TestVerifyImportedRelHash_*` (8 unit tests: missing/empty/wrong/
+  correct hash, node + rel) confirmed RED via `git stash` on the missing/empty-hash cases, plus the two
+  full-Import end-to-end tests (legitimately redundant with the final chain-verify pass, kept as
+  accurate illustrations of Import's behavior with an explanatory comment pointing at the ApplyChange
+  tests as the real isolating proof). Along the way, fixed the two new end-to-end tests' initial
+  isolation bug: their hand-built `exportHeader{}` left `NodeCount`/`RelCount` at zero, so the
+  pre-existing "header count vs. stream record count" check fired first and masked the hash check
+  entirely (both tests passed even with the fix fully reverted) — fixed by setting the header counts
+  to match the stream's actual record count. `go build`/`go vet` clean; full `pkg/graph/internal/core`
+  package suite green including under `-race` (134s); full-repo `go test ./...` clean; also patched 5
+  pre-existing tests (`r9_import_rollback_test.go` ×4, `tiered_wrapper_test.go` ×1) whose hand-built
+  `storeutil.NodeWire{}`/`RelWire{}` fixtures had no hash and would have failed under the new stricter
+  check, via new `mustHashedNodeWire`/`mustHashedRelWire` test helpers that decode the wire, compute
+  the correct content hash against the test's own registry-resolved label/type name, and set it.
 
 ## [4.23.0] - 2026-07-18
 

@@ -264,12 +264,24 @@ func readImportStageRecord(r io.Reader, staged, cap int64) (tag byte, data []byt
 // and compares it with the hash the stream claims. Import reads untrusted
 // bytes (lesson 6): without this check a transport bit-flip in a property
 // value imports cleanly and produces a graph whose hash chain no longer
-// verifies. Rows without integrity state are exempt (hashes are unkeyed, so
-// this is corruption detection, not tamper-proofing).
+// verifies.
+//
+// BACKLOG 12d: a row whose integrity block is entirely absent or carries an
+// empty Hash is REJECTED, not silently exempted. Every entity this library
+// itself ever produces has a non-empty Hash — SetIntegrity is called on every
+// standalone/tx/batch/ingest create and on every replica-apply/import row
+// reconstruction, always with a freshly computed content hash — so an
+// imported row with no Hash at all is not a legitimate "hashes are optional"
+// case, it is exactly what a forged/corrupted record would look like if an
+// attacker (or transport bug) blanked the ONE field this check exists to
+// verify. Hashes are unkeyed (this is corruption detection, not
+// cryptographic tamper-proofing against an adversary who can also forge a
+// valid-looking hash for altered content), but "no hash at all" is strictly
+// weaker than "a wrong hash" and must fail at least as hard.
 func (c *Core) verifyImportedNodeHash(n *types.Node, id int64, kind string) error {
 	ig := n.Integrity()
 	if ig == nil || ig.Hash == "" {
-		return nil
+		return fmt.Errorf("import: %s %d: %w: missing integrity hash", kind, id, ErrCorruptExport)
 	}
 	hash, err := integrity.ComputeNodeHashChecked(n, c.nodeLabelsUnlocked(n))
 	if err != nil {
@@ -282,13 +294,13 @@ func (c *Core) verifyImportedNodeHash(n *types.Node, id int64, kind string) erro
 }
 
 // verifyImportedRelHash is the relationship counterpart of
-// verifyImportedNodeHash. FromNodeHash/ToNodeHash are not part of the
-// content hash and are not checked here; chain links are covered by
-// Verify*Chain.
+// verifyImportedNodeHash (see there for the BACKLOG 12d missing-hash
+// rejection rationale). FromNodeHash/ToNodeHash are not part of the content
+// hash and are not checked here; chain links are covered by Verify*Chain.
 func (c *Core) verifyImportedRelHash(r *types.Relationship, id int64, kind string) error {
 	ig := r.Integrity()
 	if ig == nil || ig.Hash == "" {
-		return nil
+		return fmt.Errorf("import: %s %d: %w: missing integrity hash", kind, id, ErrCorruptExport)
 	}
 	hash, err := integrity.ComputeRelHashChecked(r, c.relTypeUnlocked(r))
 	if err != nil {
