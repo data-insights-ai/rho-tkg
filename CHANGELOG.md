@@ -1219,6 +1219,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pre-verified, deliberate, self-documented tradeoff rather than an open item, so it is removed from
   the backlog rather than left as a perpetual "still open" note. This was the final item of BACKLOG 17
   (Store interface & MemoryStore hardening) — the section is now fully closed.
+- VERIFIED-CORRECT — BACKLOG 18f: investigated the claim that `MetaSet`/`Save*Registry`
+  (`badgerstore_meta.go`) lack the immediate pre-call `dbClosed` guard `flush()` uses before its
+  `WriteBatch.Flush()` call, framed as "the same forever-block class CLAUDE.md calls hard-won."
+  Read badger v4.9.2's own source (`go.pkg/mod`) to settle whether `bs.db.Update(...)` (what these
+  five doors call) is actually vulnerable to the SAME hang. It is NOT, and the two APIs are
+  meaningfully different: `DB.Update` (`txn.go`) checks `db.IsClosed()` and returns `ErrDBClosed`
+  BEFORE calling `db.NewTransaction` (`if db.IsClosed() { return ErrDBClosed }` is the function's
+  first line) — so a call that starts after `Close()` has finished fails fast, exactly like
+  `checkWritable()`'s existing `dbClosed` check already guarantees at the memory-safe layer above it.
+  `WriteBatch.Flush()` (`batch.go`) has NO such guard: `Flush` → `commit()` unconditionally creates a
+  FRESH transaction via `wb.db.newTransaction(true, ...)` on every commit cycle (including the final
+  one Flush triggers), and `newTransaction` calls `orc.readTs()` → `WaitForMark(context.Background(),
+  ...)` with no closed-check anywhere in that path — that unconditional-fresh-transaction-with-no-
+  guard is the actual hang mechanism CLAUDE.md's lesson describes, and it is specific to the
+  lower-level batching API, not shared by the higher-level `Update`/`View` convenience API the meta
+  doors use. A residual microsecond-scale TOCTOU window exists in BOTH APIs (Close() landing between
+  the `IsClosed()`/`checkWritable()` check and the transaction actually being created) — but that
+  same narrow window already exists inside badger's own `DB.Update`, unnarrowable by anything this
+  codebase can add, so an outer duplicate guard would provide no additional protection, only
+  redundant complexity for a scenario the coding-style rule "don't add validation for scenarios that
+  can't happen" argues against. No code change.
 
 ## [4.23.0] - 2026-07-18
 

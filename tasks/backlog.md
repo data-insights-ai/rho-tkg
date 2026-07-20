@@ -350,9 +350,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   `CreateHighFrequencyIndex`, `CreateVectorIndex`/`CreateVectorIndexWithOptions`).
 ### BACKLOG 18 — Badger backend hardening
 
-- **18f. Meta/registry persistence (`MetaSet`, `Save*Registry`) lacks the immediate pre-call
-  `dbClosed` guard that `flush()` uses (MEDIUM, the same forever-block class CLAUDE.md calls
-  "hard-won").** `badgerstore_meta.go:169,190,239,317,335`.
 - **18k. `NodesAsOf`/`RelsAsOf` open one Badger read transaction PER ENTITY instead of sharing one
   across the scan — O(N) independent transactions for a graph-wide as-of query (MEDIUM, perf).**
   `badgerstore_txtime.go:285-333,336-384`.
