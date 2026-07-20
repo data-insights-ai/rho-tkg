@@ -415,10 +415,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   one worth guaranteeing (e.g. "the shard is picked up correctly if it existed before the tx's FIRST
   divert toggle" as a documented, tested contract) rather than leaving the actual behavior
   undefined-by-omission.**
-- **19j. Cross-shard result accumulation in `AllNodes`/`AllNodeIDs` fanout is unbounded — materializes
-  every shard's full result into RAM concurrently, undocumented as a caveat despite the streaming
-  alternative (`ForEachByLabel`/`IterByLabel`) existing precisely to avoid this (MEDIUM).**
-  `tieredstore_read_bulk.go:62-70,323-333`.
 - **19m. Duplicated cross-shard residue-sweep logic between `sweepDroppedShardResidue` and
   `purgeNodesFanOut`'s phase 2 — a future fix to one is likely to miss the other (LOW).**
   `retention_purge_drop.go:167-200` vs `retention_purge.go:98-125`.

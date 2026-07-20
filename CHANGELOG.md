@@ -1445,6 +1445,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   sub-case via white-box control of the tiered Store's low-level scope API to land a `ForceRotate()`
   at an exact point — left open pending a decision on which sub-case is worth a documented, tested
   contract, per `tasks/backlog.md` 19h's full writeup. No code change.
+- DOCUMENTATION FIX — BACKLOG 19j: `AllNodes`/`AllNodeIDs`/`AllRelationships`/`AllRelIDs`
+  (`tieredstore_read_bulk.go`, `tieredstore_read_bulk_rel.go`) had no doc comment at all despite a
+  genuinely unbounded-RAM fanout: every shard's full result is materialized CONCURRENTLY
+  (`queryEventShards`) and merged BEFORE `opts.Limit`/`opts.After` is applied — pagination trims the
+  already-fully-materialized result, it does not reduce peak memory. Checked the original finding's
+  claim that the graph layer's streaming `ForEachByLabel`/`IterByLabel` doors avoid this: they do NOT
+  for tiered specifically — tiered doesn't implement their streaming capability, so those doors fall
+  back to a materialized `ByLabel` scan internally and only stream at the caller-facing interface
+  (confirmed via `nodes.API.IterByLabel`'s own doc comment: "a backend without the streaming
+  capability falls back to a materialized ByLabel then streams") — so the "streaming alternative
+  exists precisely to avoid this" framing in the original finding was overstated. Did find a genuine,
+  already-existing partial mitigation: `ForEachNodeID`/`ForEachRelID` (same files) ARE true
+  O(one-shard) sequential streaming doors, just for bare ID enumeration only (no depth filtering, no
+  full entities) — cited them accurately in the new doc comments rather than either overclaiming a
+  full streaming alternative or claiming none exists at all. Added doc comments to all four bulk-read
+  functions stating the unbounded-memory characteristic, the pagination-doesn't-help correction, and
+  the accurate scope of the `ForEachNodeID`/`ForEachRelID` partial mitigation. Documentation only, no
+  behavior change — building a genuine O(1)-memory full-node/full-relationship bulk read path for
+  tiered is a real feature gap, scoped out as a `BACKLOG 21`-class missing-feature item rather than a
+  hardening-sweep fix. `go build`/`go vet` clean; `pkg/graph/store/tiered` package suite green;
+  full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

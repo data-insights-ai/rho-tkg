@@ -7,6 +7,24 @@ import (
 
 // --- Bulk queries ---
 
+// AllNodes returns every node across every shard (reference + archive-if-
+// DepthAll + every event shard at opts.Depth). Memory caveat (BACKLOG 19j):
+// this is UNBOUNDED in RAM, not a streaming door — every shard's full result
+// is materialized concurrently (queryEventShards) and then concatenated, so
+// peak memory is O(total nodes across every scanned shard), not O(one shard)
+// or O(1). opts.Limit/opts.After do NOT reduce this: applyNodePagination
+// trims the already-fully-materialized merged slice AFTER every shard's
+// unlimited result has already been fetched and held in RAM — pagination
+// here shrinks the RETURNED set, not the peak memory footprint. This is
+// also NOT mitigated by the graph layer's streaming `ForEachByLabel`/
+// `IterByLabel` doors: tiered does not implement their streaming capability,
+// so those doors fall back to a materialized `ByLabel` scan internally and
+// stream only at the caller-facing interface (see `nodes.API.IterByLabel`'s
+// doc comment). `ForEachNodeID` (below) IS a genuine O(one-shard) sequential
+// streaming door, but it yields bare IDs with no depth filtering, not full
+// nodes — there is no equivalent for full-node or depth-filtered bulk reads
+// today. Prefer a label-scoped point query when the caller only needs a
+// subset.
 func (ts *Store) AllNodes(opts QueryOpts) ([]*types.Node, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
@@ -273,6 +291,12 @@ func (ts *Store) NodeCountByLabelAndPropertyKey(token uint16, propertyKey string
 
 // --- ID enumeration ---
 
+// AllNodeIDs mirrors AllNodes's memory caveat (BACKLOG 19j): every shard's
+// full ID set is materialized concurrently and merged before pagination is
+// applied, so peak memory is unbounded in the total node count, not reduced
+// by opts.Limit/opts.After. See AllNodes's doc comment for the full writeup.
+// ForEachNodeID (below) is a genuine O(one-shard) streaming alternative when
+// the caller needs every ID with no depth filtering.
 func (ts *Store) AllNodeIDs(opts QueryOpts) ([]types.NodeID, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err

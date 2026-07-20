@@ -8,6 +8,12 @@ import (
 // Relationship-side bulk queries.
 // Mirror layout of the node-side methods in tieredstore_read_bulk.go.
 
+// AllRelationships shares AllNodes's memory caveat (BACKLOG 19j,
+// tieredstore_read_bulk.go): every shard's full result is materialized
+// concurrently and merged before opts.Limit/opts.After is applied, so peak
+// memory is unbounded in the total relationship count, not reduced by
+// pagination. ForEachRelID (below) is a genuine O(one-shard) streaming
+// alternative for ID-only enumeration with no depth filtering.
 func (ts *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
@@ -199,6 +205,8 @@ func (ts *Store) RelCountByType(token uint16) (int, error) {
 	return total, nil
 }
 
+// AllRelIDs mirrors AllRelationships's memory caveat (BACKLOG 19j) — see
+// AllNodes's doc comment (tieredstore_read_bulk.go) for the full writeup.
 func (ts *Store) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
 	if err := ts.checkOpen(); err != nil {
 		return nil, err
