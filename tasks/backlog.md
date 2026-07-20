@@ -266,15 +266,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 - **15p. No `PreEncodeRelPutPayloadV2` counterpart to `PreEncodeNodePutPayloadV2` for §4.5 pre-encode —
   see BACKLOG 21 (LOW, likely intentional node-first scope).**
-- **15t. `HistoryDeltaEncoding`'s delta wrapper types have no custom msgpack encoders — reflection on
-  every delta-encoded history write when the opt-in feature is enabled (MEDIUM, perf, same audit as
-  15s).** `internal/storeutil/wire_history_delta.go` (`EncodeNodeHistoryDelta`/`EncodeRelHistoryDelta`
-  call `msgpack.Marshal(d)` on `NodeHistoryDelta`/`RelHistoryDelta` directly). Same shape as 15s: the
-  embedded `Meta NodeWire`/`Meta RelWire` field and the `PS []PropertyWire` elements dispatch to their
-  fast custom encoders once reflection reaches them, but the outer 3-field wrapper struct itself is
-  walked via reflection. Lower priority than 15s: `HistoryDeltaEncoding` is opt-in (default OFF) and
-  only engages on history-writes past the anchor interval (not every write), vs 15s's change-log body
-  types which cover the CURRENT-row put path too.
 - **15u. `propertyToWire`'s `ptCustom` branch (`storeutil/wire_value.go:450`, kept per BACKLOG 15f's
   investigation as necessary defense-in-depth) cannot avoid reflection inside THIS library at all — an
   inherent limitation, not a bug to fix here (INFORMATIONAL).** `msgpack.Marshal(p.Value)` marshals an

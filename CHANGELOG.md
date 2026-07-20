@@ -1727,6 +1727,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   of which decoder runs underneath it. `go build`/`go vet` clean; `internal/storeutil` package suite
   green under `-race`; `io`/`replication`/`store/tiered`/`store/sharded`/`store/badger` package suites
   (the change-log-heaviest consumers) green under `-race`; full-repo `go test ./...` clean.
+- PERF FIX — BACKLOG 15t: `NodeHistoryDelta`/`RelHistoryDelta` (`internal/storeutil/wire_history_delta.go`,
+  the opt-in `HistoryDeltaEncoding` ADR-0009/B6 delta row payload) and their nested `propKeyRef` type
+  (the `PR []propKeyRef` removed-property-identity list) had no custom msgpack encoders either — same
+  audit and same shape as BACKLOG 15s: the embedded `Meta NodeWire`/`Meta RelWire` field and `PS
+  []PropertyWire` elements already dispatch to their own hand-written codecs once reflection reaches
+  them, but the outer 3-field wrapper struct — and `propKeyRef` itself, a 2-field type with no custom
+  encoder of its own, so `PR` elements were STILL reflected even after fixing the wrapper — were walked
+  via reflection. Added hand-written `EncodeMsgpack`/`DecodeMsgpack` for `NodeHistoryDelta`,
+  `RelHistoryDelta`, and `propKeyRef` (`internal/storeutil/history_delta_wire.go`), reusing the EXISTING
+  `encodePropertyArray`/`decodePropertyArray` helpers verbatim for the `PS` field (no new array-codec
+  needed there) and adding a small `encodePropKeyRefArray`/`decodePropKeyRefArray` pair mirroring the
+  same array-header-then-per-element shape for `PR`. Verified byte-identical to the prior
+  pure-reflection encoding via golden vectors (`history_delta_encode_golden_test.go`, captured from
+  `msgpack.Marshal` BEFORE these methods existed) for the all-omitted-optional-fields and
+  every-optional-field-present case of each type, including `propKeyRef`'s own 3 field-presence
+  combinations (`Token` only, `Key` only, both zero → empty map). Added
+  `history_delta_wire_roundtrip_test.go`: 7 struct-level round-trip cases via `reflect.DeepEqual`, plus
+  `TestEncodeDecodeNodeRelHistoryDelta_RoundTrip` exercising the actual on-disk door
+  (`EncodeNodeHistoryDelta`/`DecodeNodeHistoryDelta` and the Rel counterparts — the `historyDeltaTag`
+  framing end to end). Confirmed load-bearing: temporarily renaming `NodeHistoryDelta`'s `"m"` encode key
+  to `"zz"` turned the golden test and both round-trip test layers RED simultaneously; restored, all
+  GREEN. The pre-existing `TestHistoryDeltaFailsClosedForDeltaUnawareDecoder` downgrade-safety test
+  (ADR-0009/B6 — a `'D'`-tagged delta row must fail closed on an old delta-unaware decoder) stayed green
+  throughout. `go build`/`go vet` clean; `internal/storeutil` package suite green under `-race`;
+  `store/badger`/`store/tiered`/`internal/core` package suites (the `HistoryDeltaEncoding` consumers)
+  green under `-race`; full-repo `go test ./...` clean. This closes out BACKLOG 15's reflection-audit
+  items for this pass — 15u remains open by design (informational: an inherent library-boundary
+  limitation for user-registered custom property types, not a fixable bug) and 15v remains open
+  (LOW priority, admin/growth-path-only reflection, listed for audit completeness).
 
 ## [4.23.0] - 2026-07-18
 
