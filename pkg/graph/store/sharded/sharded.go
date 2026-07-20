@@ -493,18 +493,50 @@ func (s *Store) Flush() error {
 
 // --- Parallel fold helper ---
 
-// forEachShard runs fn against every shard in parallel and returns the joined
-// error. fn receives the shard index and the shard.
-func (s *Store) forEachShardErr(fn func(idx int, shard *badger.Store) error) error {
-	errs := make([]error, len(s.shards))
+// maxShardWorkers bounds every shard fan-out to a fixed-size worker pool
+// (BACKLOG 20k / lesson 8: "fan-out helpers should use bounded worker pools,
+// not one goroutine per shard"). The store's own 32-shard hard cap (a 5-bit
+// slot field) already keeps an unbounded fan-out modest, but the pool is
+// capped independently of that limit so a future cap raise cannot silently
+// regress it into scheduler/memory pressure.
+const maxShardWorkers = 8
+
+// runShardPool runs fn(idx) once for every idx in [0,n) using a worker pool of
+// at most maxShardWorkers goroutines, blocking until every index has run. Each
+// task touches only its own idx, so callers passing shard-indexed fn bodies
+// (errs[idx] = ...) need no additional synchronization.
+func runShardPool(n int, fn func(idx int)) {
+	workers := maxShardWorkers
+	if n < workers {
+		workers = n
+	}
+	if workers <= 0 {
+		return
+	}
+	tasks := make(chan int, n)
+	for i := 0; i < n; i++ {
+		tasks <- i
+	}
+	close(tasks)
 	var wg sync.WaitGroup
-	for i, shard := range s.shards {
-		wg.Add(1)
-		go func(i int, shard *badger.Store) {
+	wg.Add(workers)
+	for w := 0; w < workers; w++ {
+		go func() {
 			defer wg.Done()
-			errs[i] = fn(i, shard)
-		}(i, shard)
+			for idx := range tasks {
+				fn(idx)
+			}
+		}()
 	}
 	wg.Wait()
+}
+
+// forEachShard runs fn against every shard through the bounded worker pool and
+// returns the joined error. fn receives the shard index and the shard.
+func (s *Store) forEachShardErr(fn func(idx int, shard *badger.Store) error) error {
+	errs := make([]error, len(s.shards))
+	runShardPool(len(s.shards), func(i int) {
+		errs[i] = fn(i, s.shards[i])
+	})
 	return errors.Join(errs...)
 }

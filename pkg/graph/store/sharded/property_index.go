@@ -3,7 +3,6 @@ package sharded
 import (
 	"errors"
 	"fmt"
-	"sync"
 
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -92,15 +91,9 @@ func (s *Store) NodesByLabelAndProperty(labelToken uint16, key string, value any
 // inconsistency is visible rather than masked.
 func (s *Store) fanOutUniform(fn func(shard *badgerShard) error) error {
 	errs := make([]error, len(s.shards))
-	var wg sync.WaitGroup
-	for i, shard := range s.shards {
-		wg.Add(1)
-		go func(i int, shard *badgerShard) {
-			defer wg.Done()
-			errs[i] = fn(shard)
-		}(i, shard)
-	}
-	wg.Wait()
+	runShardPool(len(s.shards), func(i int) {
+		errs[i] = fn(s.shards[i])
+	})
 	return coalesceUniform(errs)
 }
 
@@ -151,35 +144,23 @@ func errorsEquivalent(a, b error) bool {
 // reconciliation) instead of silently leaving orphaned state.
 func (s *Store) fanOutUniformCreate(do, rollback func(shard *badgerShard) error) error {
 	errs := make([]error, len(s.shards))
-	var wg sync.WaitGroup
-	for i, shard := range s.shards {
-		wg.Add(1)
-		go func(i int, shard *badgerShard) {
-			defer wg.Done()
-			errs[i] = do(shard)
-		}(i, shard)
-	}
-	wg.Wait()
+	runShardPool(len(s.shards), func(i int) {
+		errs[i] = do(s.shards[i])
+	})
 	result := coalesceUniform(errs)
 	if result == nil {
 		return nil
 	}
 
 	rollbackErrs := make([]error, len(s.shards))
-	var rbWg sync.WaitGroup
-	for i, shard := range s.shards {
+	runShardPool(len(s.shards), func(i int) {
 		if errs[i] != nil {
-			continue // this shard's create never succeeded — nothing to undo
+			return // this shard's create never succeeded — nothing to undo
 		}
-		rbWg.Add(1)
-		go func(i int, shard *badgerShard) {
-			defer rbWg.Done()
-			if rerr := rollback(shard); rerr != nil {
-				rollbackErrs[i] = fmt.Errorf("shard %d: %w", i, rerr)
-			}
-		}(i, shard)
-	}
-	rbWg.Wait()
+		if rerr := rollback(s.shards[i]); rerr != nil {
+			rollbackErrs[i] = fmt.Errorf("shard %d: %w", i, rerr)
+		}
+	})
 	if joined := errors.Join(rollbackErrs...); joined != nil {
 		return fmt.Errorf("%w (rollback of succeeded shards failed: %w)", result, joined)
 	}

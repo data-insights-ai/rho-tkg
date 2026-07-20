@@ -1656,6 +1656,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   RED with clear cross-backend divergence (e.g. `sharded kept = [C D E F], want [E]`); restored, GREEN.
   `go build`/`go vet` clean; `pkg/graph/store/sharded` package suite green under `-race`; full-repo
   `go test ./...` clean.
+- FIX — BACKLOG 20k: `forEachShardErr` (`store/sharded/sharded.go`), `fanOutUniform` and
+  `fanOutUniformCreate` (`store/sharded/property_index.go`) each spawned one goroutine PER SHARD
+  unconditionally, violating lesson 8's "fan-out helpers should use bounded worker pools, not one
+  goroutine per shard" rule. Low practical impact today (the store's 5-bit slot field hard-caps shard
+  count at 32, well within any scheduler's comfort zone), but the pattern is exactly what lesson 8
+  exists to prevent regressing if the cap is ever raised. `parallelShards` (`store/sharded/vector_index.go`)
+  already delegated to `forEachShardErr`, so it inherits the fix with no separate change. Added a shared
+  `runShardPool(n int, fn func(idx int))` helper (`sharded.go`) — a fixed `maxShardWorkers`(8)-goroutine
+  worker pool draining a buffered index channel, blocking until every index has run — and rewired all
+  three fan-out sites (plus `fanOutUniformCreate`'s SECOND rollback fan-out, same pattern) through it;
+  behavior (per-shard error collection, uniform-sentinel coalescing, create/rollback semantics) is
+  unchanged, only the concurrency profile. Added `TestRunShardPoolBoundsConcurrency`
+  (`store/sharded/shard_pool_test.go`): drives `runShardPool` with `n=24` (`>maxShardWorkers`) tasks that
+  block until released, drains exactly `maxShardWorkers` "entered" signals, then asserts NO further task
+  enters within a timeout window (proving the bound holds) before releasing and confirming every
+  remaining task still eventually completes; plus `TestRunShardPoolZeroAndSmallN` for the `n=0` (no
+  goroutines spawned) and `n<maxShardWorkers` (pool clamps to `n`) boundary cases. Confirmed load-bearing:
+  temporarily reverting `runShardPool` to the old unbounded one-goroutine-per-task form turns
+  `TestRunShardPoolBoundsConcurrency` immediately RED (`"more than maxShardWorkers (8) goroutines ran fn
+  concurrently"`); restored, GREEN. `go build`/`go vet` clean; `pkg/graph/store/sharded` package suite
+  green under `-race`; full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 
