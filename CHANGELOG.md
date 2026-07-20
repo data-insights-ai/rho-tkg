@@ -510,6 +510,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   one category — and that `Diff` itself never panics or returns an unexpected error. 10 repetitions
   under `-race`, zero flakes. `go build ./...` + `go vet ./...` clean; full `pkg/graph/internal/core`
   package suite green under `-race`; full-repo `go test ./...` clean.
+- TEST — closed BACKLOG 11e: `ingestApplier`'s bounded async-failure map (`ingestFailureCap`=8192,
+  oldest-evicted, `failureDrops` counted) had zero direct test coverage for its eviction path — driving
+  it through the full ingest pipeline would need 8192+ genuinely rejected intents, so added direct
+  tests against a bare `*ingestApplier` (no `run()` loop needed; `recordFailureLocked`/
+  `takeFailureLocked` only touch the failures map under `a.mu`, held manually per their own "caller
+  holds a.mu" contract): `TestIngestApplier_RecordFailureLocked_EvictsOldestAtCap` (fills to the cap,
+  confirms one more record evicts EXACTLY the oldest seq and increments `failureDrops`, confirms every
+  other entry survives), `TestIngestApplier_RecordFailureLocked_KeepsFirstErrorForToken`, and
+  `TestIngestApplier_TakeFailureLocked_PrunesOnRead` (previously only exercised indirectly via
+  `WaitApplied`). Added `TestIngestApplier_RecordFailureLocked_ConcurrentLoad` for the "untested under
+  load or concurrency" half of the finding — 32 goroutines × 500 ops hammering record/take through the
+  same `a.mu` discipline every real caller uses, under `-race`, with an accounting invariant
+  (remaining + taken + dropped ≤ total inserted) ruling out silent loss. Verified
+  `EvictsOldestAtCap` load-bearing by temporarily flipping the eviction to evict-newest: the test
+  failed immediately. `go build ./...` + `go vet ./...` clean; full `pkg/graph/internal/core` package
+  suite green under `-race`; full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

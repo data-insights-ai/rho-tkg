@@ -395,3 +395,140 @@ func TestIngestFlakyFlushThroughPipeline(t *testing.T) {
 		t.Fatalf("second WaitApplied = %v, want nil (pruned on read)", err)
 	}
 }
+
+// TestIngestApplier_RecordFailureLocked_EvictsOldestAtCap guards BACKLOG
+// 11e: the `failures` map's bounded-eviction path (oldest-first at
+// ingestFailureCap, counted in failureDrops) had zero direct test coverage
+// — driving it through the full async ingest pipeline would need 8192+
+// genuinely rejected intents, so this tests recordFailureLocked/
+// takeFailureLocked directly against a bare *ingestApplier (no run() loop
+// needed — these two methods only touch the failures map under a.mu, which
+// the test acquires itself, matching their own "caller holds a.mu"
+// contract).
+func TestIngestApplier_RecordFailureLocked_EvictsOldestAtCap(t *testing.T) {
+	a := newIngestApplier(&Core{}, 0, 0)
+
+	a.mu.Lock()
+	for seq := uint64(1); seq <= ingestFailureCap; seq++ {
+		a.recordFailureLocked(seq, errors.New("boom"))
+	}
+	if len(a.failures) != ingestFailureCap {
+		t.Fatalf("failures at cap = %d, want %d", len(a.failures), ingestFailureCap)
+	}
+	if a.failureDrops != 0 {
+		t.Fatalf("failureDrops before exceeding cap = %d, want 0", a.failureDrops)
+	}
+
+	// One more record must evict the OLDEST (seq=1), not any arbitrary entry.
+	a.recordFailureLocked(ingestFailureCap+1, errors.New("boom"))
+	if len(a.failures) != ingestFailureCap {
+		t.Fatalf("failures after exceeding cap = %d, want still %d", len(a.failures), ingestFailureCap)
+	}
+	if a.failureDrops != 1 {
+		t.Fatalf("failureDrops = %d, want 1", a.failureDrops)
+	}
+	if _, exists := a.failures[1]; exists {
+		t.Fatal("oldest seq=1 was not evicted")
+	}
+	for seq := uint64(2); seq <= ingestFailureCap+1; seq++ {
+		if _, exists := a.failures[seq]; !exists {
+			t.Fatalf("seq=%d was evicted, want retained (only the oldest should ever be evicted)", seq)
+		}
+	}
+	a.mu.Unlock()
+}
+
+// TestIngestApplier_RecordFailureLocked_KeepsFirstErrorForToken guards the
+// "Keeps the FIRST error for a token" contract documented on
+// recordFailureLocked — a second record call for an ALREADY-recorded seq
+// must be a no-op, not overwrite.
+func TestIngestApplier_RecordFailureLocked_KeepsFirstErrorForToken(t *testing.T) {
+	a := newIngestApplier(&Core{}, 0, 0)
+	first := errors.New("first")
+	second := errors.New("second")
+
+	a.mu.Lock()
+	a.recordFailureLocked(1, first)
+	a.recordFailureLocked(1, second)
+	got := a.failures[1]
+	a.mu.Unlock()
+
+	if !errors.Is(got, first) {
+		t.Fatalf("recorded error = %v, want the FIRST error %v (not overwritten)", got, first)
+	}
+}
+
+// TestIngestApplier_TakeFailureLocked_PrunesOnRead guards the "prune on
+// read" contract directly (the ingest_reliability_test.go tests above only
+// exercise this indirectly through WaitApplied).
+func TestIngestApplier_TakeFailureLocked_PrunesOnRead(t *testing.T) {
+	a := newIngestApplier(&Core{}, 0, 0)
+	want := errors.New("boom")
+
+	a.mu.Lock()
+	a.recordFailureLocked(1, want)
+	got := a.takeFailureLocked(1)
+	if !errors.Is(got, want) {
+		a.mu.Unlock()
+		t.Fatalf("takeFailureLocked = %v, want %v", got, want)
+	}
+	if _, exists := a.failures[1]; exists {
+		a.mu.Unlock()
+		t.Fatal("failure record was not pruned after takeFailureLocked")
+	}
+	// A second take for the same seq returns nil — already pruned.
+	got2 := a.takeFailureLocked(1)
+	a.mu.Unlock()
+	if got2 != nil {
+		t.Fatalf("second takeFailureLocked = %v, want nil", got2)
+	}
+}
+
+// TestIngestApplier_RecordFailureLocked_ConcurrentLoad guards BACKLOG 11e's
+// "untested under load or concurrency" half: many goroutines hammering
+// record/take concurrently through the SAME a.mu discipline every real
+// caller uses, run under -race to confirm the mutex genuinely serializes
+// map access (not just "no test crashed by luck").
+func TestIngestApplier_RecordFailureLocked_ConcurrentLoad(t *testing.T) {
+	a := newIngestApplier(&Core{}, 0, 0)
+	const goroutines = 32
+	const perGoroutine = 500
+
+	var wg sync.WaitGroup
+	var seqCtr atomic.Uint64
+	var takenCount atomic.Int64
+	wg.Add(goroutines)
+	for g := 0; g < goroutines; g++ {
+		go func() {
+			defer wg.Done()
+			for i := 0; i < perGoroutine; i++ {
+				seq := seqCtr.Add(1)
+				a.mu.Lock()
+				a.recordFailureLocked(seq, errors.New("boom"))
+				a.mu.Unlock()
+				if i%3 == 0 {
+					a.mu.Lock()
+					if a.takeFailureLocked(seq) != nil {
+						takenCount.Add(1)
+					}
+					a.mu.Unlock()
+				}
+			}
+		}()
+	}
+	wg.Wait()
+
+	a.mu.Lock()
+	finalLen := len(a.failures)
+	drops := a.failureDrops
+	a.mu.Unlock()
+
+	if finalLen > ingestFailureCap {
+		t.Fatalf("failures map grew past the cap under concurrent load: %d > %d", finalLen, ingestFailureCap)
+	}
+	total := int64(goroutines * perGoroutine)
+	if int64(finalLen)+takenCount.Load()+int64(drops) > total {
+		t.Fatalf("accounting overflow: remaining(%d) + taken(%d) + dropped(%d) > total inserted(%d)",
+			finalLen, takenCount.Load(), drops, total)
+	}
+}
