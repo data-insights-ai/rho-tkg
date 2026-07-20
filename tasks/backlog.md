@@ -326,8 +326,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 16 — In-memory index-engine hardening (HNSW / property & temporal index / HyperLogLog)
 
-- **16k. `RangeNodeIDs`'s `inclMin`/`inclMax` parameters are declared but never read — contract drift
-  (LOW).** `internal/index/property_index_range.go:230`.
 - **16l. `sorted_chunks.go`'s `remove()` has no merge-on-shrink for adjacent undersized chunks (LOW-
   MEDIUM, missing-feature/perf note for long-lived high-churn indexes).**
 - **16m. `lru.go`'s `MarkDeleted` on an already-cached key leaves the stale payload and its accounted

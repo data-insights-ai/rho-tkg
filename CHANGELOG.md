@@ -1074,6 +1074,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   reachable — matching the ~109/2000 pattern CLAUDE.md's own account describes), then reverted. `go
   build`/`go vet` clean; full `pkg/graph/internal/index` package suite green including under `-race`
   (153s); full-repo `go test ./...` clean.
+- VERIFIED-CORRECT — BACKLOG 16k: investigated the claim that `RangeNodeIDs`'s `inclMin`/`inclMax`
+  parameters (`internal/index/property_index_range.go`) are declared-but-unread "contract drift."
+  Traced both production call sites (`rel_property_index.go:55`, `badgerstore_node_range_scan.go:71`)
+  up through the public door (`NodeOps.ForEachByLabelPropertyRange` / `ForEachByLabelPropertyRangeOrdered`
+  in `internal/core/queries.go`, mirrored by `RelOps`) and confirmed the parameters are genuinely never
+  read at this layer — but this is a DELIBERATE, CONSISTENTLY-DOCUMENTED design, not drift: the property
+  index's ordered numeric view over-selects by construction (float64 sort keys, ulp-widened bounds — a
+  value whose int64 magnitude exceeds 2^53 collapses onto a neighboring sort key, lesson 25) and boundary
+  buckets are never skipped, so an exact-bounds check (including the inclusivity semantics `inclMin`/
+  `inclMax` describe) is documented as `fn`'s responsibility at every one of the four doors that carry
+  these flags (`NodeOps`/`RelOps` × unordered/ordered, plus both the memory and badger backends) — the
+  doc comments are near-identical across all four and explicitly cite lesson 23 (property-index keys are
+  equality-semantic, not exactness-semantic). Checked for an in-tree caller that might rely on these doors
+  already being exact (which would make the missing check a live bug, not just a documented contract) —
+  none exists; the only in-tree callers are 1-2 line pass-through wrappers (`pkg/graph/nodes/api.go`,
+  `pkg/graph/rels/api.go`) that forward `fn` unchanged from the external caller, who owns the exactness
+  check. Both the ordered and unordered doors were checked for consistency (an earlier session hypothesis
+  was that one door might correctly enforce inclusivity while its sibling didn't, which would indicate a
+  real asymmetry bug) — confirmed both are symmetric over-selecting doors with the same caller-filters
+  contract. Closed with no code change: the parameters exist for API/call-site self-documentation (a
+  caller reading `RangeNodeIDs(min, max, inclMin, inclMax)` sees the query's intended bounds even though
+  this layer doesn't enforce them), not because the plumbing forgot to use them. Original LOW-severity
+  "contract drift" framing is retired in favor of "documented caller-enforced exactness contract."
 
 ## [4.23.0] - 2026-07-18
 
