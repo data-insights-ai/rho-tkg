@@ -191,6 +191,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   constructs snowflake-ID order and shard-slot order to deliberately disagree, proving the fix
   follows ID order specifically (not e.g. slot order) by observing which of two rels survives a
   forced mid-delete failure.
+- TEST — closed BACKLOG 13h (no test proved a node holding MULTIPLE `UniqueForever` keys has ALL of
+  them released when purged, not just one). Investigated `reapForeverOwnersForPurged` and confirmed
+  it was already correct (a flat scan over every ownership entry, no per-owner special-casing) — pure
+  test-gap, no production change. New `TestPurge_ReapsAllForeverKeysOfMultiKeyOwner`.
 
 ## [4.23.0] - 2026-07-18
 

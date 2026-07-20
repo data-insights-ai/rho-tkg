@@ -1484,10 +1484,19 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   via `CompactHistoryNodes`/`Rels` is undetectable by `Verify*Chain`.
 - **13g/h/i. Three test-coverage gaps that are exactly what would have caught 13a-13b (TEST-GAP).**
   13g [FIXED — `TestPurgeRangeAllChunks_ReapsForeverOwnersOnMidRangeAbort`, see 13b's fix]: no
-  crash/abort-mid-purge simulation test. 13h [OPEN]: no multi-`UniqueForever`-key partial-claim test
+  crash/abort-mid-purge simulation test. 13h [FIXED — `TestPurge_ReapsAllForeverKeysOfMultiKeyOwner`,
+  `pkg/graph/retention_purge_forever_test.go`]: no multi-`UniqueForever`-key partial-claim test
   (distinct from 13g — a single node holding MULTIPLE forever keys getting purged, not a multi-chunk
-  abort). 13i [FIXED — `TestRetentionReset_DoesNotLeakStalePerLabelWatermarkAcrossReset`, see 13b's fix]:
-  no Reset+label-token-reuse+cross-label retention test.
+  abort). Investigated `reapForeverOwnersForPurged` (`unique_forever.go:188-209`): it iterates the
+  ENTIRE `c.uniqueOwners` map (keyed by `(labelTok, propKey, valueKey)`) and deletes every entry whose
+  owner is in the purged set — a flat scan with no per-owner special-casing, so a multi-key owner was
+  already handled correctly; this was PURE test-gap, no production code change. New test: one node
+  claims TWO distinct `UniqueForever` keys (`email` + `ssn`), gets purged, and BOTH values must be
+  independently reusable afterward — not just whichever key the map-iteration order happens to visit
+  first. Passed on the first run (confirming the code was already correct). `go build ./...` + `go vet
+  ./...` clean; `go test ./pkg/graph/...` clean. 13i [FIXED —
+  `TestRetentionReset_DoesNotLeakStalePerLabelWatermarkAcrossReset`, see 13b's fix]: no
+  Reset+label-token-reuse+cross-label retention test.
 - **13j. Transient in-memory activation on the persist-failure path in `createUnique` — narrow
   self-healing race window (LOW).** `unique_constraints.go:339-353`.
 - **13k. [FIXED — see 13b, same commit] Misapplied "never-reused tokens" doc rationale in

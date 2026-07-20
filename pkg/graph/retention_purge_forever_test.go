@@ -48,6 +48,61 @@ func TestPurge_ReapsUniqueForeverOwner(t *testing.T) {
 	}
 }
 
+// TestPurge_ReapsAllForeverKeysOfMultiKeyOwner (BACKLOG 13h) is the
+// multi-key companion to TestPurge_ReapsUniqueForeverOwner: a SINGLE node
+// can own forever claims on MULTIPLE distinct constrained keys at once
+// (here, two different labels' constraints, since UniqueForever is scoped
+// per (label, key) and a purge-eligible node label is what's being tested —
+// the ownership registry itself is a flat map keyed by (label, propKey,
+// value), so nothing in reapForeverOwnersForPurged's loop shape special-
+// cases "how many keys does this owner hold" — but that was previously
+// unverified by any test, unlike the single-key case). Purges the owner and
+// asserts BOTH claims are released, not just one.
+func TestPurge_ReapsAllForeverKeysOfMultiKeyOwner(t *testing.T) {
+	ctx := context.Background()
+	g, err := graphpkg.New(graphpkg.Config{AllowRetentionPurge: true})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+
+	if err := g.Constraints().CreateUniqueForever(ctx, "User", "email"); err != nil {
+		t.Fatalf("CreateUniqueForever(email): %v", err)
+	}
+	if err := g.Constraints().CreateUniqueForever(ctx, "User", "ssn"); err != nil {
+		t.Fatalf("CreateUniqueForever(ssn): %v", err)
+	}
+
+	// One node claims BOTH forever keys.
+	if _, err := g.Nodes().Add(ctx, []string{"User"}, map[string]any{"email": "a@x.com", "ssn": "111-11-1111"}); err != nil {
+		t.Fatalf("add user with both keys: %v", err)
+	}
+	// Both values are barred while the owner is alive.
+	if _, err := g.Nodes().Add(ctx, []string{"User"}, map[string]any{"email": "a@x.com", "ssn": "222-22-2222"}); err == nil {
+		t.Fatal("duplicate email succeeded, want ErrUniqueViolation")
+	}
+	if _, err := g.Nodes().Add(ctx, []string{"User"}, map[string]any{"email": "b@x.com", "ssn": "111-11-1111"}); err == nil {
+		t.Fatal("duplicate ssn succeeded, want ErrUniqueViolation")
+	}
+
+	res, err := g.Admin().PurgeExpiredNodes(ctx, adminpkg.PurgePolicy{Label: "User", Mode: adminpkg.PurgeByAge, Before: farFuture})
+	if err != nil {
+		t.Fatalf("purge: %v", err)
+	}
+	if res.NodesPurged != 1 {
+		t.Fatalf("purged %d users, want 1", res.NodesPurged)
+	}
+
+	// BOTH values must be reusable — not just the first key the reap loop
+	// happens to visit.
+	if _, err := g.Nodes().Add(ctx, []string{"User"}, map[string]any{"email": "a@x.com", "ssn": "222-22-2222"}); err != nil {
+		t.Fatalf("email claim not reaped after owner purge — BACKLOG 13h regression: %v", err)
+	}
+	if _, err := g.Nodes().Add(ctx, []string{"User"}, map[string]any{"email": "b@x.com", "ssn": "111-11-1111"}); err != nil {
+		t.Fatalf("ssn claim not reaped after owner purge — BACKLOG 13h regression: %v", err)
+	}
+}
+
 // TestPurge_ForeverReapIsScoped ensures the reap only releases claims of purged
 // owners — a SURVIVING owner of a different label keeps its claim.
 func TestPurge_ForeverReapIsScoped(t *testing.T) {
