@@ -183,8 +183,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 12 — Replication / import / export hardening
 
-- **12e. `applyForeignIncomingLocked` missing `noteAppliedTxFrom`, unlike every sibling put/version
-  handler (LOW, harmless today, unexplained family asymmetry).** `apply_record.go:404-425`.
 - **12f. `noteAppliedTxFrom` runs before hash/property verification in all 4 handlers — over-
   invalidation only, semantically backwards (LOW).** `apply_record.go` (4 sites).
 - **12i. `strictCheckMergeRecord` (Strict mode) only covers 4 of 8+ mergeable tag kinds — missing

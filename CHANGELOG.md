@@ -591,6 +591,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `storeutil.NodeWire{}`/`RelWire{}` fixtures had no hash and would have failed under the new stricter
   check, via new `mustHashedNodeWire`/`mustHashedRelWire` test helpers that decode the wire, compute
   the correct content hash against the test's own registry-resolved label/type name, and set it.
+- FIX — BACKLOG 12e: `applyForeignIncomingLocked` (the ADR-0010 Model A cross-machine incoming
+  half-edge stub apply path, `apply_record.go`) was missing the `noteAppliedTxFrom` call every sibling
+  put/version handler makes (`applyNodePutLocked`, `applyRelPutLocked`,
+  `applyNodeHistoryVersionLocked`, `applyRelHistoryVersionLocked`). `noteAppliedTxFrom` feeds the as-of
+  DocValues cache's past-dated detector (`asOfColumnCache.noteAppliedTx`): it tracks the max entity
+  `TxFrom` a replica has applied and, when a later apply's `TxFrom` is LOWER than that max (an
+  out-of-order/past-dated write — evidence the apply stream is not strictly TxFrom-monotonic),
+  conservatively bumps a global epoch that discards every cached as-of column, regardless of which
+  label it covers. A foreign-incoming stub's `TxFrom` reflects its ORIGIN machine's write time, which
+  is exactly as capable of arriving out of order on this replica as an ordinary relationship put — so
+  the omission was a real gap in that detector, not just a stylistic asymmetry between otherwise-
+  parallel handlers (the original backlog entry undersold it as "harmless today"). Fixed by adding the
+  same `c.noteAppliedTxFrom(r.Temporal())` call at the same point in the handler (right after
+  `WireToRelChecked`, before property/hash verification — matching the existing, if imperfect, call
+  order the separate BACKLOG 12f finding tracks). Added
+  `TestApplyForeignIncoming_OutOfOrderTxFromBumpsAsOfCacheEpoch`: establishes a high applied-TxFrom
+  watermark via an ordinary `ChangeNodePut` apply on a real sharded store, then applies a
+  `ChangeForeignIncoming` record with an older `TxFrom` and asserts the as-of cache epoch advances.
+  Confirmed load-bearing by reverting the fix and re-running: the epoch no longer bumps (RED). `go
+  build`/`go vet` clean; full `pkg/graph/internal/core` package suite green including under `-race`
+  (143s); full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

@@ -409,6 +409,17 @@ func (c *Core) applyRelPutLocked(body storeutil.RelPutBody, rec storepkg.ChangeR
 // idempotently (an already-present stub is a no-op — the watermark advances via a
 // separate MetaSet, so re-apply must be a no-op). The row is reconstructed
 // verbatim through the same import-trust pipeline as an ordinary rel put.
+//
+// BACKLOG 12e: calls noteAppliedTxFrom, matching every sibling put/version
+// handler (applyNodePutLocked, applyRelPutLocked, applyNodeHistoryVersionLocked,
+// applyRelHistoryVersionLocked). The as-of DocValues cache's past-dated
+// detector treats ANY out-of-order applied entity TxFrom (node or rel) as
+// evidence that this replica's apply stream is not strictly TxFrom-monotonic
+// and conservatively invalidates every cached as-of column — a foreign-
+// incoming stub is exactly as capable of arriving out of order as an ordinary
+// rel put (its origin machine's write time is unrelated to this shard's local
+// apply order), so omitting it here left a real gap in that detector, not
+// just a stylistic asymmetry.
 func (c *Core) applyForeignIncomingLocked(body storeutil.RelPutBody, rec storepkg.ChangeRecord) error {
 	if c.foreignIncomingRel == nil {
 		return fmt.Errorf("graph: apply: ChangeForeignIncoming requires a partitioned store")
@@ -420,6 +431,7 @@ func (c *Core) applyForeignIncomingLocked(body storeutil.RelPutBody, rec storepk
 	if err != nil {
 		return fmt.Errorf("graph: apply: foreign-incoming relationship %d: %w: %v", body.Wire.ID, ErrCorruptExport, err)
 	}
+	c.noteAppliedTxFrom(r.Temporal())
 	if err := c.validatePropertySliceLimits(r.Properties()); err != nil {
 		return err
 	}
