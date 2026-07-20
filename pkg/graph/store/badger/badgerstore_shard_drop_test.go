@@ -170,15 +170,35 @@ func TestCollectShardDropResidue_EmptyShardIsOnlyLabel(t *testing.T) {
 // (this method mutates nothing itself, but is a maintenance primitive gated
 // the same way as the fast-drop it supports — a warm/cold-tier shard opened
 // ReadOnly must reject it rather than silently return stale-looking data).
-func TestCollectShardDropResidue_ReadOnlyStoreFailsClosed(t *testing.T) {
+// TestCollectShardDropResidue_WorksOnReadOnlyStore (BACKLOG 18p) pins the
+// corrected contract: CollectShardDropResidue is documented as mutating
+// NOTHING (a pure read/analysis primitive), so it must work against a
+// read-only-opened Store, e.g. a transiently-read-opened cold shard —
+// unlike the tiered fast-drop's actual physical removal, which genuinely
+// needs a writable handle and is a separate step entirely. Previously this
+// required checkWritable() + idxMu.Lock(), a stricter precondition than the
+// function's own documented contract needed (a copy-paste of the general
+// write-door boilerplate, not a reasoned requirement — see BACKLOG 13m's
+// test, which pinned the AS-IS behavior as pure coverage without
+// independently re-justifying it).
+func TestCollectShardDropResidue_WorksOnReadOnlyStore(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	seed, err := New(Config{Dir: dir, SyncWrites: true})
 	if err != nil {
 		t.Fatalf("New seed store: %v", err)
 	}
-	if err := seed.PutNode(types.NewNode(types.NodeID(1), shardDropLabelA, nil)); err != nil {
-		t.Fatalf("PutNode: %v", err)
+	n1 := types.NewNode(types.NodeID(1), shardDropLabelA, nil)
+	n2 := types.NewNode(types.NodeID(2), shardDropLabelA, nil)
+	if err := seed.PutNode(n1); err != nil {
+		t.Fatalf("PutNode(1): %v", err)
+	}
+	if err := seed.PutNode(n2); err != nil {
+		t.Fatalf("PutNode(2): %v", err)
+	}
+	rel := types.NewRelationship(types.RelID(100), shardDropKnows, n1.ID(), n2.ID())
+	if err := seed.PutRelationship(rel); err != nil {
+		t.Fatalf("PutRelationship: %v", err)
 	}
 	if err := seed.Close(); err != nil {
 		t.Fatalf("Close seed store: %v", err)
@@ -190,8 +210,38 @@ func TestCollectShardDropResidue_ReadOnlyStoreFailsClosed(t *testing.T) {
 	}
 	t.Cleanup(func() { ro.Close() })
 
-	if _, _, _, err := ro.CollectShardDropResidue(shardDropLabelA); err == nil {
-		t.Fatal("CollectShardDropResidue on a read-only store = nil error, want checkWritable failure")
+	onlyLabel, nodeIDs, rels, err := ro.CollectShardDropResidue(shardDropLabelA)
+	if err != nil {
+		t.Fatalf("CollectShardDropResidue on a read-only store: %v", err)
+	}
+	if !onlyLabel {
+		t.Fatal("onlyLabel = false, want true")
+	}
+	if got := sortedNodeIDs(nodeIDs); !equalInt64Slices(got, []int64{1, 2}) {
+		t.Fatalf("nodeIDs = %v, want [1 2]", got)
+	}
+	if got := sortedRelIDs(rels); !equalInt64Slices(got, []int64{100}) {
+		t.Fatalf("rels = %v, want [100]", got)
+	}
+}
+
+// TestCollectShardDropResidue_NilStoreAndClosedStore pins the two lifecycle
+// guards CollectShardDropResidue still enforces after BACKLOG 18p relaxed it
+// from checkWritable to checkOpen: a nil receiver and a fully closed store
+// must still fail — only the read-only restriction was lifted.
+func TestCollectShardDropResidue_NilStoreAndClosedStore(t *testing.T) {
+	t.Parallel()
+	var nilStore *Store
+	if _, _, _, err := nilStore.CollectShardDropResidue(shardDropLabelA); err == nil {
+		t.Fatal("nil store: CollectShardDropResidue = nil error, want ErrNilStore")
+	}
+
+	bs := newShardDropTestStore(t, false)
+	if err := bs.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if _, _, _, err := bs.CollectShardDropResidue(shardDropLabelA); err == nil {
+		t.Fatal("closed store: CollectShardDropResidue = nil error, want ErrStoreClosed")
 	}
 }
 

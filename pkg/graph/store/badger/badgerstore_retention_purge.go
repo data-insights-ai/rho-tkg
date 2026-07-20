@@ -227,8 +227,11 @@ func (bs *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 // key encodes BOTH endpoints (out: 0x05|start|type|end|relID; in:
 // 0x06|end|type|start|relID), so a CROSS-SHARD rel whose entity lives on another
 // shard (invisible to a local entity read) is still captured with its endpoints.
-// The tiered cross-shard residue sweep needs those endpoints. Caller holds
-// idxMu.Lock. Deduplicated by rel ID (a self-loop appears in both directions).
+// The tiered cross-shard residue sweep needs those endpoints. Caller holds idxMu
+// (read or write — this function only reads a Badger db.View snapshot plus
+// rangePending, which guards itself with the separate wbMu; RLock already excludes
+// any idxMu.Lock-held writer for the duration, all the cross-consistency this needs).
+// Deduplicated by rel ID (a self-loop appears in both directions).
 func (bs *Store) purgedRelsForNodeLocked(nid types.NodeID) []storecontract.PurgedRel {
 	sid := nid.SnowflakeID()
 	seen := make(map[types.RelID]struct{})

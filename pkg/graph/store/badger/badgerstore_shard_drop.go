@@ -20,12 +20,25 @@ import (
 // NOT droppable by a single-label purge — nodeIDs/rels are empty and the caller falls
 // back to the row-scan purge. Deciding onlyLabel is CONSERVATIVE: any foreign label
 // token present forces false (a safe over-decline).
+//
+// BACKLOG 18p: genuinely read-only (checkOpen, idxMu.RLock), matching the doc claims
+// above — a caller may run this against a read-only-opened Store (e.g. a
+// transiently-read-opened cold shard). Its three constituent reads (
+// hasForeignLabelTokensLocked, labelNodeIDsSnapshotLocked, purgedRelsForNodeLocked) are
+// each independently safe under a shared idxMu hold: labelNodeIDsSnapshotLocked is
+// already called under RLock elsewhere (e.g. ForEachNodeByLabel), and
+// purgedRelsForNodeLocked reads only a Badger db.View snapshot plus rangePending (which
+// guards itself with the separate wbMu) — RLock already excludes any idxMu.Lock-held
+// writer for the duration, which is the only cross-consistency guarantee these reads
+// need. Previously required checkWritable()+idxMu.Lock(), which worked for the current
+// caller (always a writable-opened shard) but was an unnecessarily strict precondition
+// for a function documented as mutating nothing.
 func (bs *Store) CollectShardDropResidue(labelToken uint16) (onlyLabel bool, nodeIDs []types.NodeID, rels []storecontract.PurgedRel, err error) {
-	if err := bs.checkWritable(); err != nil {
+	if err := bs.checkOpen(); err != nil {
 		return false, nil, nil, err
 	}
-	bs.idxMu.Lock()
-	defer bs.idxMu.Unlock()
+	bs.idxMu.RLock()
+	defer bs.idxMu.RUnlock()
 
 	foreign, ferr := bs.hasForeignLabelTokensLocked(labelToken)
 	if ferr != nil {

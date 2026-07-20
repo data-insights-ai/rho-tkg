@@ -1342,6 +1342,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Confirmed load-bearing: reverting the fix turns both tests immediately RED (`err = <nil>, want
   ErrDBClosed`); restored, GREEN. `go build`/`go vet` clean; full `pkg/graph/store/badger` package
   suite green including under `-race` (156s); full-repo `go test ./...` clean.
+- FIX — BACKLOG 18p: `CollectShardDropResidue` (`badgerstore_shard_drop.go`, the tiered whole-shard
+  fast-drop residue primitive, ADR-0008 R4) required `checkWritable()` + `idxMu.Lock()` despite its
+  own doc comment stating it "Mutates NOTHING" and runs "Under one read lock." Traced its three
+  constituent reads (`hasForeignLabelTokensLocked`, `labelNodeIDsSnapshotLocked`,
+  `purgedRelsForNodeLocked`) to confirm each is genuinely RLock-safe: `labelNodeIDsSnapshotLocked` is
+  already called under `idxMu.RLock()` elsewhere (`ForEachNodeByLabel`), and `purgedRelsForNodeLocked`
+  only reads a Badger `db.View` snapshot plus `rangePending` (which guards itself with the separate
+  `wbMu`) — `idxMu.RLock()` already excludes any `idxMu.Lock()`-held writer for the duration, the only
+  cross-consistency these reads need. Checked whether the existing read-only-rejection test
+  (`TestCollectShardDropResidue_ReadOnlyStoreFailsClosed`, added by BACKLOG 13m) represented a
+  deliberate design decision before changing behavior — `git log`/the commit message showed it was
+  pure Rule-1 coverage-completeness work ("had zero direct badger-package tests") that pinned
+  whatever `checkWritable()` already did, not an independently-reasoned requirement; the "mutates
+  nothing"/"one read lock" doc comment predates that test and states the opposite intent. Relaxed to
+  `checkOpen()` + `idxMu.RLock()`, and corrected `purgedRelsForNodeLocked`'s own doc comment (which
+  overclaimed "Caller holds idxMu.Lock" — a copy-paste of the general write-door convention rather
+  than a reasoned requirement of that specific function). Replaced the old fail-closed test with
+  `TestCollectShardDropResidue_WorksOnReadOnlyStore` (asserts a read-only-opened store now returns
+  correct residue data) and added `TestCollectShardDropResidue_NilStoreAndClosedStore` (pins that the
+  nil-receiver and fully-closed-store guards are still enforced — only the read-only restriction was
+  lifted). Confirmed load-bearing: reverting the fix turns the new read-only test immediately RED
+  (`"graph: invalid store mutation: read-only store"`); restored, GREEN. `go build`/`go vet` clean;
+  full `pkg/graph/store/badger` package suite green including under `-race` (161s, verifying the
+  Lock→RLock change introduced no data race); `pkg/graph/store/tiered` (the only caller) green under
+  `-race`; full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 
