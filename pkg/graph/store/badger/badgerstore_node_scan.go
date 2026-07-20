@@ -13,11 +13,21 @@ import (
 // stops the scan early.
 //
 // Isolation: the ID set is snapshotted under the index lock, then rows are
-// fetched and fn is called WITHOUT any store lock held — fn may freely call
-// back into the store. Rows deleted between snapshot and fetch are skipped
-// (same orphan tolerance as NodesByLabel); rows created after the snapshot
-// are not seen. This is the same relaxed isolation badger's own iterators
-// provide.
+// fetched and fn is called WITHOUT any store MUTEX held (idxMu is released
+// before the fetch loop starts) — fn may freely call back into the store.
+// Rows deleted between snapshot and fetch are skipped (same orphan tolerance
+// as NodesByLabel); rows created after the snapshot are not seen.
+//
+// UNLIKE that relaxed mutex isolation, fn DOES run inside one open Badger
+// read transaction for the whole scan (BACKLOG 18n): forEachNodeBulk shares a
+// single txn + iterator across every row instead of one Txn.Get per row
+// (~3x faster fetch/decode, BACKLOG 3). This is safe — Badger read
+// transactions do not block Go-level locks, so fn re-entering the store is
+// still fine — but it pins Badger's minimum read timestamp for the whole
+// scan, which can delay value-log GC on a long-running scan with a slow fn.
+// Callers streaming over a very large label with a slow callback and tight
+// value-log GC requirements should account for this; there is currently no
+// variant that trades the fetch-speed win for a shorter-lived transaction.
 //
 // Rows are fetched through the scan (no-cache-fill) path and are FROZEN
 // shared pointers — fn must not mutate them and must not retain them past

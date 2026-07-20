@@ -1307,6 +1307,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `go vet` clean; full `pkg/graph/store/badger` package suite green including under `-race` (162s);
   `pkg/graph/store/tiered` (the other `MigrateOversizedWAL` caller) green; full-repo `go test ./...`
   clean.
+- DOCUMENTATION-PRECISION FIX — BACKLOG 18n: `ForEachNodeByLabel`'s doc comment claimed "fn is called
+  WITHOUT any store lock held," worded generically enough to read as "no Badger transaction either."
+  In reality (confirmed by reading `forEachNodeBulk`, the shared substrate this door streams
+  through), `fn` runs INSIDE one open Badger read transaction spanning the entire scan — a deliberate
+  design (BACKLOG 3's "~3x fetch/decode substrate," one shared txn + iterator instead of N per-row
+  `Txn.Get`s), not an oversight, and not a deadlock risk (Badger read transactions don't block
+  Go-level locks). But it DOES pin Badger's minimum read timestamp for the scan's duration, which can
+  delay value-log GC on a long-running scan with a slow callback — a real operational tradeoff the
+  doc comment didn't mention. Confirmed this is isolated to `ForEachNodeByLabel` specifically (the
+  only door in `badgerstore_node_scan.go` routing through `forEachNodeBulk`) — checked the rel-side
+  mirror (`ForEachRelByType`, `badgerstore_rel_scan.go`) and confirmed it still uses the older
+  per-row `prefetchRelScan` path (no shared transaction), so its identically-worded doc comment is
+  accurate as written and needed no change. Rewrote the isolation paragraph to state the mutex-vs-
+  transaction distinction explicitly and name the GC-pinning tradeoff, matching what an inline
+  comment lower in the function already correctly documented. No behavior change; no test added
+  (a doc-comment correction has nothing behavioral to assert).
 
 ## [4.23.0] - 2026-07-18
 
