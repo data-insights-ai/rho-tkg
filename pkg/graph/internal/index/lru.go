@@ -249,6 +249,20 @@ func (c *Cache[V]) MarkDeleted(key snowflake.ID) {
 		if entry.DirtyVer == 0 && !entry.Deleted {
 			c.cleanCount-- // was clean, now dirty tombstone
 		}
+		// Release the stale payload: Get/GetNoPromote/Peek never return
+		// entry.Value once Deleted is set, so retaining it (and its
+		// accounted Size) is pure waste — the value stays reachable via the
+		// cache's own map (blocking GC) and, being dirty, is unevictable
+		// until flush, so a large tombstoned payload would otherwise hold
+		// its full byte-budget weight for the entire flush interval.
+		// Shrink to the same tombstone-only footprint a fresh insert gets.
+		var zero V
+		entry.Value = zero
+		if c.sizer != nil {
+			newSize := int64(perEntryOverhead)
+			c.totalBytes += newSize - entry.Size
+			entry.Size = newSize
+		}
 		entry.Deleted = true
 		entry.DirtyVer = c.nextVer
 		c.dirtySet[key] = el

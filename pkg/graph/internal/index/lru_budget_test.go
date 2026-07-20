@@ -193,6 +193,48 @@ func TestCacheBudget_TombstoneLifecycleReleasesBytes(t *testing.T) {
 	}
 }
 
+// TestCacheBudget_MarkDeletedShrinksAlreadyCachedEntry (BACKLOG 16m) pins
+// that MarkDeleted on a key ALREADY in the cache releases the stale
+// payload's accounted bytes immediately, not just after flush. Get/
+// GetNoPromote/Peek never return entry.Value once Deleted is set, so
+// retaining the full pre-delete payload's Size is pure waste — and because
+// dirty entries are never evicted, an unshrunk tombstone would hold its
+// full byte weight against the budget for the entire flush interval, not
+// just until the next MarkFlushed (see
+// TestCacheBudget_TombstoneLifecycleReleasesBytes, which only checks the
+// POST-flush state and would not catch a leak in the intermediate window).
+func TestCacheBudget_MarkDeletedShrinksAlreadyCachedEntry(t *testing.T) {
+	t.Parallel()
+	c := NewCacheWithBudget(100, 1_000_000, sizerLen)
+
+	key := snowflake.ID(1)
+	big := string(make([]byte, 100_000))
+	c.Put(key, big)
+
+	wantBefore := int64(len(big)) + perEntryOverhead
+	if got := c.Bytes(); got != wantBefore {
+		t.Fatalf("Bytes() after Put = %d, want %d", got, wantBefore)
+	}
+
+	c.MarkDeleted(key)
+
+	wantAfter := int64(perEntryOverhead)
+	if got := c.Bytes(); got != wantAfter {
+		t.Fatalf("Bytes() after MarkDeleted on an already-cached key = %d, want %d "+
+			"(tombstone-only footprint) — stale payload still accounted before flush", got, wantAfter)
+	}
+
+	// Flushing must be idempotent with the pre-shrunk size (no double-release).
+	dirty := c.CollectDirty()
+	if len(dirty) != 1 || !dirty[0].Deleted {
+		t.Fatalf("expected one tombstone, got %+v", dirty)
+	}
+	c.MarkFlushed(map[snowflake.ID]uint64{key: dirty[0].DirtyVer})
+	if got := c.Bytes(); got != 0 {
+		t.Fatalf("Bytes() after flushing the shrunk tombstone = %d, want 0", got)
+	}
+}
+
 // TestCacheBudget_DisabledByZeroBudgetOrNilSizer pins the off switches:
 // NewCacheWithBudget(_, 0, sizer) and (_, budget, nil) must behave exactly
 // like NewCache — no byte accounting, no byte eviction.

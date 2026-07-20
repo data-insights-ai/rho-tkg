@@ -324,12 +324,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   operations (index creation, shard rotation/close), never per-entity-write — genuinely low priority,
   listed for completeness of the reflection audit rather than because it is a live hot-path concern.
 
-### BACKLOG 16 — In-memory index-engine hardening (HNSW / property & temporal index / HyperLogLog)
-
-- **16m. `lru.go`'s `MarkDeleted` on an already-cached key leaves the stale payload and its accounted
-  byte size in place until flush — un-evictable, holds full memory against the byte budget (LOW-
-  MEDIUM, untested intermediate state).** `internal/index/lru.go:247-257`.
-
 ### BACKLOG 17 — Store interface & MemoryStore hardening
 
 - **17g. `snapshotChangesLocked` is O(total log size) per call instead of O(returned records) — O(n²)

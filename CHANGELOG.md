@@ -1121,6 +1121,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   undersized and mergeable but weren't merged"); restored, GREEN. `go build`/`go vet` clean; full
   `pkg/graph/internal/index` package suite green including under `-race` (151s); full-repo
   `go test ./...` clean.
+- FIX — BACKLOG 16m (closes BACKLOG 16): `Cache.MarkDeleted` (`internal/index/lru.go`), on a key
+  ALREADY present in the cache, tombstoned the entry (`Deleted = true`) without releasing its
+  payload — `entry.Value` kept the full pre-delete value and `entry.Size` kept its full accounted
+  byte count, even though `Get`/`GetNoPromote`/`Peek` never return `entry.Value` once `Deleted` is
+  set (so the retained payload was dead data from the moment of deletion). Because dirty entries are
+  never evicted, a large tombstoned payload held its full weight against both the byte budget and
+  the process's live heap (the value stayed reachable via the cache's own map, blocking GC) for the
+  ENTIRE flush interval, not just briefly — the "insert a tombstone for a key not yet cached" sibling
+  branch a few lines below already sized a fresh tombstone at just `perEntryOverhead`, so the two
+  branches diverged in the exact case that matters most (a hot key: cached, then deleted). Fixed by
+  zeroing `entry.Value` and, when byte budgeting is on, re-accounting `entry.Size` down to
+  `perEntryOverhead` (matching the sibling branch) with the corresponding `totalBytes` delta. Added
+  `TestCacheBudget_MarkDeletedShrinksAlreadyCachedEntry` (`lru_budget_test.go`) — puts a 100,000-byte
+  value, marks it deleted, and asserts `Bytes()` drops to the tombstone-only footprint immediately
+  (not just after `MarkFlushed`, which the pre-existing
+  `TestCacheBudget_TombstoneLifecycleReleasesBytes` only checks post-flush and therefore could not
+  catch this — the exact "untested intermediate state" the backlog item flagged), then confirms
+  flush is still idempotent from the pre-shrunk size. Confirmed load-bearing: reverting the fix turns
+  the test immediately RED (`Bytes() after MarkDeleted on an already-cached key = 100160, want 160`);
+  restored, GREEN. `go build`/`go vet` clean; full `pkg/graph/internal/index` package suite green
+  including under `-race` (148s); full-repo `go test ./...` clean. This was the final item of
+  BACKLOG 16 (In-memory index-engine hardening) — the section is now fully closed.
 
 ## [4.23.0] - 2026-07-18
 
