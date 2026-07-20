@@ -395,6 +395,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   into a `go test` hang. 15 repetitions under `-race`, zero flakes. `go build ./...` + `go vet ./...`
   clean; full `pkg/graph/internal/core` package suite green under `-race`; full-repo `go test ./...`
   clean.
+- PERF — closed BACKLOG 9r: `deleteNodeInternal`'s two-phase TOCTOU retry (`node_delete.go`) backed
+  off between retries with a bare `runtime.Gosched()` — every contending goroutine wakes at the same
+  cooperative-yield cadence, so under heavy concurrent write contention on one hot node they could
+  keep re-colliding on the same Phase A/Phase B window instead of desynchronizing. Replaced with
+  `nodeDeleteRetryBackoff`: a randomized sleep that grows with the attempt number (capped at
+  `nodeDeleteRetryBackoffCap`), so contenders spread out; total worst-case added latency across all
+  `maxRetries` (10) attempts stays sub-millisecond, negligible next to real store I/O. Added
+  `TestNodeDeleteRetryBackoff_BoundedAndCapped` (never negative, never exceeds the capped max across
+  every attempt value including well past the cap) and `TestNodeDeleteRetryBackoff_GrowsWithAttempt`
+  (statistical: mean sleep at the capped attempt is clearly larger than at attempt 0). `go build ./...`
+  + `go vet ./...` clean; full `pkg/graph/internal/core` package suite (incl. every `TestDelete*`)
+  green under `-race`; full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

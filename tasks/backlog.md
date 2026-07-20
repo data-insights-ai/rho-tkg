@@ -69,8 +69,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 9 — Write-path kernel hardening (CRUD, unique constraints, version chains)
 
-- **9r. `node_delete.go`'s two-phase retry backs off with a bare `runtime.Gosched()`, no jitter
-  (LOW).**
 - **9s. `GetOrCreateByKey`'s atomicity only holds against concurrent `GetOrCreateByKey`/constraint-
   enforced writers, not a plain concurrent `Add`/`Update` with no active constraint — doc could be
   clearer (LOW).**

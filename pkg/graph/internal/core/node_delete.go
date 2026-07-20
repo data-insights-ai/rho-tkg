@@ -3,13 +3,38 @@ package core
 import (
 	"context"
 	"fmt"
-	"runtime"
+	"math/rand/v2"
+	"time"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
+
+// nodeDeleteRetryBackoffBase/Cap bound the randomized jitter deleteNodeInternal's
+// TOCTOU retry sleeps for (BACKLOG 9r). A bare runtime.Gosched() lets every
+// contending goroutine wake at the same cooperative-yield cadence, so under
+// heavy concurrent write contention on one hot node they can keep
+// re-colliding on the same Phase A/Phase B window instead of desynchronizing.
+// The backoff grows with the attempt number (capped) and is randomized so
+// contenders spread out; total worst-case added latency across all
+// maxRetries attempts stays in the sub-millisecond range, negligible next to
+// real store I/O.
+const (
+	nodeDeleteRetryBackoffBase = 50 * time.Microsecond
+	nodeDeleteRetryBackoffCap  = 4
+)
+
+// nodeDeleteRetryBackoff sleeps for a randomized jitter interval before a
+// deleteNodeInternal TOCTOU retry, see the constants above.
+func nodeDeleteRetryBackoff(attempt int) {
+	if attempt > nodeDeleteRetryBackoffCap {
+		attempt = nodeDeleteRetryBackoffCap
+	}
+	maxSleep := nodeDeleteRetryBackoffBase << attempt
+	time.Sleep(time.Duration(rand.Int64N(int64(maxSleep))))
+}
 
 // =============================================================================
 // Node — Read / Delete
@@ -93,7 +118,7 @@ func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID) ([]types
 	// Captured from the final attempt so retry exhaustion can report WHAT
 	// kept changing, not just that it did (contention diagnosis).
 	var lastLockSet, lastObserved int
-	for range maxRetries {
+	for attempt := range maxRetries {
 		// Phase A: read under node lock only. The closure pattern keeps
 		// the lock under defer so a panic from a custom Store does not
 		// leak the shard lock.
@@ -206,7 +231,7 @@ func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID) ([]types
 			done = true
 		}()
 		if retry {
-			runtime.Gosched()
+			nodeDeleteRetryBackoff(attempt)
 			continue
 		}
 		if done {
