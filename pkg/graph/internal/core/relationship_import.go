@@ -156,91 +156,45 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 
 	// only allocate the rel-type token now that every cheap,
 	// operational, and temporal-constraint rejection gate has been cleared.
-	typeToken, relTypeSnapshot, allocatedRelType, err := c.getOrCreateRelTypeWithSnapshot(typeName)
-	if err != nil {
-		return nil, fmt.Errorf("graph: relationship type: %w", err)
-	}
-	relTypeFinished := false
-	finishRelType := func(err error) error {
-		relTypeFinished = true
-		return c.restoreNewRelTypeOnError(relTypeSnapshot, allocatedRelType, typeName, err)
-	}
-	var r *types.Relationship
-	finishRelCreateError := func(err error) (error, bool) {
-		relTypeFinished = true
-		partialLive := false
-		err = c.restoreNewRelTypeCreateOnError(relTypeSnapshot, allocatedRelType, typeName, err, func() error {
-			return c.deletePartialRelationshipForRollback(r)
-		}, &partialLive)
-		return err, partialLive
-	}
-	defer func() {
-		if !relTypeFinished {
-			_ = c.restoreNewRelTypeCreateOnError(relTypeSnapshot, allocatedRelType, typeName, fmt.Errorf("panic during relationship import"), func() error {
-				return c.deletePartialRelationshipForRollback(r)
-			}, nil)
+	// The type-token-allocate / build / persist / rollback sequence itself
+	// (including the panic-safety net) is the shared kernel
+	// (relationship_create_kernel.go) — BACKLOG 9l: this door used to
+	// hand-roll a byte-for-byte copy of that bookkeeping, plus its own
+	// inline duplicate of applyRelCreateTemporal's temporal-stamping logic.
+	// relPersistImport is the one kernel persist mode Import needs that no
+	// other create door does: a direct c.store.PutRelationship, never
+	// putGeneratedRelationship/FreshGraphID, since id here may be a
+	// previously-deleted (reused) caller-specified ID, not freshly minted.
+	build := func(typeToken uint16) (*types.Relationship, *types.RelIntegrity, error) {
+		r := types.NewRelationship(id, typeToken, startID, endID)
+		if err := r.SetOwnedProperties(ps); err != nil {
+			return nil, nil, fmt.Errorf("graph: relationship import properties: %w", err)
 		}
-	}()
-
-	r = types.NewRelationship(id, typeToken, startID, endID)
-	if err := r.SetOwnedProperties(ps); err != nil {
-		return nil, finishRelType(fmt.Errorf("graph: relationship import properties: %w", err))
-	}
-
-	hash, err := integrity.ComputeRelHashChecked(r, typeName)
-	if err != nil {
-		return nil, finishRelType(fmt.Errorf("graph: compute relationship hash: %w", err))
-	}
-	ig := &types.RelIntegrity{
-		Hash:               hash,
-		PrevHash:           "",
-		AuthorID:           authorID,
-		Signature:          sig,
-		AuthorizedBy:       authorizedBy,
-		AuthorizationLevel: authLevel,
-	}
-	ig.FromNodeHash = fromHash
-	ig.ToNodeHash = toHash
-	r.SetIntegrity(ig)
-
-	txNow := c.now()
-	if txFromOverride != 0 {
-		txNow = txFromOverride
-	}
-	tm := r.Temporal()
-	if tm == nil {
-		tm = &types.TemporalMetadata{}
-		r.SetTemporal(tm)
-	}
-	tm.TxFrom = txNow
-	if validFrom != 0 {
-		tm.ValidFrom = validFrom
-	}
-	if validTo != 0 {
-		tm.ValidTo = validTo
-	}
-	if createdAt != 0 {
-		tm.CreatedAt = createdAt
-	}
-
-	if err := checkCtx(ctx); err != nil {
-		return nil, finishRelType(err)
-	}
-
-	if err := c.store.PutRelationship(r); err != nil {
-		err, partialLive := finishRelCreateError(err)
-		if partialLive {
-			c.opRelAdds.Add(1)
-			return r, err
+		hash, err := integrity.ComputeRelHashChecked(r, typeName)
+		if err != nil {
+			return nil, nil, fmt.Errorf("graph: compute relationship hash: %w", err)
 		}
-		return nil, err
+		ig := &types.RelIntegrity{
+			Hash:               hash,
+			PrevHash:           "",
+			AuthorID:           authorID,
+			Signature:          sig,
+			AuthorizedBy:       authorizedBy,
+			AuthorizationLevel: authLevel,
+		}
+		ig.FromNodeHash = fromHash
+		ig.ToNodeHash = toHash
+		r.SetIntegrity(ig)
+		c.applyRelCreateTemporal(r, validFrom, validTo, createdAt, txFromOverride)
+		if err := checkCtx(ctx); err != nil {
+			return nil, nil, err
+		}
+		return r, ig, nil
 	}
-	if err := finishRelType(nil); err != nil {
+
+	rel, err := c.createRelWithTypeRollback(typeName, relPersistImport, build)
+	if rel != nil {
 		c.opRelAdds.Add(1)
-		return r, err
 	}
-	c.rememberRelType(typeName, typeToken)
-
-	c.opRelAdds.Add(1)
-	return r, nil
+	return rel, err
 }

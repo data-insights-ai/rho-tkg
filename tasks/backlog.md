@@ -69,9 +69,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 9 — Write-path kernel hardening (CRUD, unique constraints, version chains)
 
-- **9l. `relationship_import.go` hand-rolls temporal stamping + create/rollback instead of reusing
-  the kernel's `applyRelCreateTemporal`/`createRelWithTypeRollback` (LOW, lesson-17/58 drift risk).**
-  `internal/core/relationship_import.go:206-224`.
 - **9m. No test exercises `CloseVersion`→`VersionAfter`/`GetNodeVersion`/`History()` (TEST-GAP, root
   cause of 9a shipping).**
 - **9n. `AddLabel`'s unique-constraint enforcement — CLAUDE.md's "door everyone forgets" — has ZERO

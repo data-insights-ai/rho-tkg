@@ -198,6 +198,12 @@ const (
 	// cross-machine incoming half-edge STUB recorded on the END node's machine so
 	// IncomingRelationships(END) is locally complete (ADR-0010 Model A).
 	relPersistForeignIncoming
+	// relPersistImport writes via c.store.PutRelationship directly — NEVER
+	// putGeneratedRelationship/generatedcreate.FreshGraphID, because RelOps.Import
+	// takes a CALLER-SPECIFIED ID that may be a previously-deleted (reused) ID,
+	// not a freshly minted one; tagging it FreshGraphID would misrepresent that
+	// to the store. Used only by importRelWithIDInternal.
+	relPersistImport
 )
 
 // relPersistModeFor maps the endpoint-hash-ladder's useEndpointHashWrite bool to
@@ -272,6 +278,10 @@ func (c *Core) createRelWithTypeRollback(typeName string, mode relPersistMode, b
 		}
 	case relPersistForeignIncoming:
 		if err := c.foreignIncomingRel.RecordForeignIncoming(r, generatedcreate.FreshGraphID); err != nil {
+			return persistFailed(err)
+		}
+	case relPersistImport:
+		if err := c.store.PutRelationship(r); err != nil {
 			return persistFailed(err)
 		}
 	default: // relPersistPlain

@@ -315,6 +315,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (`TestEntityLockManagerLockThree`/`LockThreeSameShard`/`LockThreeNoDeadlock`) were already sound —
   pure doc gap, no code change. Added `LockThree` to all 3 CLAUDE.md mentions (the `internal/locks`
   table row, the "Ascending shard order" bullet, and the "Entity locks" audit-checklist grep note).
+- REFACTOR — closed BACKLOG 9l: `RelOps.Import` (`internal/core/relationship_import.go`) hand-rolled a
+  byte-for-byte copy of the shared relationship-create kernel's type-token-allocate / build / persist /
+  rollback / panic-safety bookkeeping (`createRelWithTypeRollback`), plus its own inline duplicate of
+  `applyRelCreateTemporal`'s temporal-stamping logic — the exact "a fix in one copy risks not landing
+  in the other" class lesson 17/58 exists to prevent, and the reason `relationship_create_kernel.go`
+  was built in the first place for every OTHER create door (Add/AddByID/AddByIDIfAbsent/batch
+  Execute). Import was deliberately left off that list because its one real difference — a
+  caller-specified, possibly-REUSED ID — meant it couldn't safely persist via the kernel's existing
+  `relPersistPlain` mode: that mode always uses `putGeneratedRelationship`, which tags the row
+  `generatedcreate.FreshGraphID` for a freshly minted ID, an incorrect claim for an imported/reused
+  one. Added a new `relPersistImport` mode (direct `c.store.PutRelationship`, no `FreshGraphID`
+  tagging) to the kernel specifically for this door, then rewrote `importRelWithIDInternal` to call
+  `applyRelCreateTemporal` directly and delegate its entire type-token/persist/rollback sequence to
+  `createRelWithTypeRollback` — removing ~55 lines of duplicated bookkeeping. Behavior-preserving
+  (confirmed via the full pre-existing Import test suite, including the rollback-path
+  `TestGraphImportRelationshipFailureDeletesPartialRowBeforeRelTypeRollback` and the concurrency test
+  `TestImportRelationshipWithID_LocksCallerRelID`, all green with no changes). `go build ./...` + `go
+  vet ./...` clean; full `pkg/graph/internal/core` package suite green under `-race`; 20s of active
+  `FuzzImport` fuzzing (~700K executions) found zero crashes; full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 
