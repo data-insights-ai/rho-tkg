@@ -67,9 +67,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 8 — Dry-run / constraints / replication convenience-API correctness
 
-- **8f. `countStreamChangeRecords` doc describes a precondition its only caller doesn't satisfy
-  (informational, harmless today, landmine for future refactor).** `io/backup.go:191-196` vs `:171`.
-
 ### BACKLOG 9 — Write-path kernel hardening (CRUD, unique constraints, version chains)
 
 - **9k. CLAUDE.md's Concurrency section omits `LockThree` (LOW, doc gap only — implementation sound).**

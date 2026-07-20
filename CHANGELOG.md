@@ -297,6 +297,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   diff or `errors.Is(err, ErrGraphClosed)` — never a panic, hang, or a non-nil result alongside an
   error. `go build ./...` + `go vet ./...` clean; `internal/core` package suite green under `-race`;
   full-repo `go test ./...` clean.
+- DOC — closed BACKLOG 8f: `countStreamChangeRecords`'s doc comment claimed its `r` parameter must be
+  "an export stream positioned at its start", but its only real caller (`BackupDeltaTo`) always passes
+  a reader already past the header record (consumed by a preceding `HeaderOf` call) — exactly what's
+  wanted, since counting the header itself would corrupt the "empty delta" heuristic. Confirmed the
+  function has no such precondition (it just scans framed records from wherever `r`'s cursor is until
+  EOF) and rewrote the doc to say so, closing the "landmine for a future refactor" the finding flagged.
+  Zero direct tests existed for this function before this fix; added
+  `TestCountStreamChangeRecords_StartsFromCurrentPositionNotStreamStart` (proves identical counts
+  whether `r` starts at the true stream start or past the header — directly encoding the corrected
+  doc claim) and `TestCountStreamChangeRecords_EmptyAndTruncated` (empty stream → 0/nil; truncated
+  frame body → error) in a new `backup_internal_test.go` white-box test. `go build ./...` + `go vet
+  ./...` clean; `pkg/graph/io` package suite and full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

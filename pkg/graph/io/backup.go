@@ -192,11 +192,17 @@ func (a *API) BackupDeltaTo(dir string, since Cursor) (Cursor, error) {
 	return hdr.To, nil
 }
 
-// countStreamChangeRecords scans every framed record in r (an export stream
-// positioned at its start) and counts how many carry the delta change-record
-// tag, without decoding any record body. BackupDeltaTo uses this to detect an
-// "empty delta" — a stream holding only a header and registry record, no
-// actual mutations — so it can skip writing a file entirely.
+// countStreamChangeRecords scans every framed record from r's CURRENT
+// position onward and counts how many carry the delta change-record tag,
+// without decoding any record body. It has no precondition on where r is
+// positioned — it simply consumes frames until EOF — so a caller may start
+// it anywhere in a well-formed frame sequence. BACKLOG 8f: BackupDeltaTo's
+// call site passes r already past the header record (consumed by the
+// preceding HeaderOf call), NOT at the stream's start, which is exactly
+// what's wanted here: counting the header would corrupt the "empty delta"
+// heuristic below. BackupDeltaTo uses the result to detect an "empty delta"
+// — a stream holding only a header and registry record, no actual mutations
+// — so it can skip writing a file entirely.
 func countStreamChangeRecords(r io.Reader) (int, error) {
 	var frame [exportRecordHeaderSz]byte
 	count := 0
