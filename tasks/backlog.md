@@ -391,9 +391,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 - **19h. `TxChangeLogScope`'s per-tx shard snapshot has a documented, untested gap under rotation
   (MEDIUM).** `tieredstore_changelog.go:584-699`.
-- **19i. `RunRepair` pins EVERY shard (including all cold shards) open simultaneously for the whole
-  repair run, contrary to lesson 8 — `RebuildCatalog` in the same file does it correctly (MEDIUM).**
-  `tieredstore_repair.go:34-42`.
 - **19j. Cross-shard result accumulation in `AllNodes`/`AllNodeIDs` fanout is unbounded — materializes
   every shard's full result into RAM concurrently, undocumented as a caveat despite the streaming
   alternative (`ForEachByLabel`/`IterByLabel`) existing precisely to avoid this (MEDIUM).**

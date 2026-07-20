@@ -1413,6 +1413,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   atomicity property is already structurally enforced by call order, not something that could
   silently regress without an obvious diff. `go build`/`go vet` clean; full `pkg/graph/store/badger`
   package suite green including under `-race` (161s); full-repo `go test ./...` clean.
+- VERIFIED-CORRECT — BACKLOG 19i: investigated the claim that `RunRepair` (`tieredstore_repair.go`)
+  pinning every shard open simultaneously for the whole repair run is a lesson-8 ("iterate without
+  materializing everything") violation, contrasted against `RebuildCatalog`'s per-shard checkout
+  pattern in the same file. The comparison doesn't hold: the two operations have fundamentally
+  different data-access shapes. `RebuildCatalog` checks out ONE shard at a time (`ref` → checkin →
+  `archive` → checkin → each event shard in turn) because each shard's catalog stats (`NodeCount()`/
+  `RelationshipCount()`) are purely LOCAL — no cross-shard lookup needed. `RunRepair` is structurally
+  different: `findRelInAnyShardStore`/`findNodeInAnyShardStore` resolve "does this entity exist
+  ANYWHERE" by scanning the PINNED snapshot across every shard, called repeatedly across the whole
+  scan — and `findRelInAnyShardStore`'s own doc comment explains WHY the snapshot must stay pinned
+  rather than re-resolved per lookup: "Close sets closed=true and nil's refArchive BEFORE waiting for
+  archiveActiveReqs to drain, so a fresh checkoutArchive() during that window returns nil even though
+  the archive ... still owns the rel. Without consulting the pinned snapshot, RunRepair Phase 1 would
+  treat the archived rel's in/ entries as orphaned and delete them — silent data loss." Pinning every
+  shard for the whole run is therefore a deliberate, documented, correctness-load-bearing design
+  choice, not an oversight — repeated re-checkout per lookup (the "fix" a lesson-8 comparison would
+  suggest) would reintroduce exactly the race the current design prevents. `RunRepair` is an
+  operator-invoked maintenance operation, not a hot path, so the simultaneous-shard-count resource
+  cost is an accepted, bounded tradeoff for correctness. No code change.
 
 ## [4.23.0] - 2026-07-18
 
