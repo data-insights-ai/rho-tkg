@@ -177,6 +177,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   existing design — it's a shared pointer to the graph-layer-owned registry, and `Clear()`'s own doc
   comment already says registries aren't its concern. New white-box test proves the cache is actually
   empty after `Clear()`.
+- DOCS/TEST — renamed `preflightArchiveNodeDestination` to `checkAndCleanArchiveNodeDestination`
+  (BACKLOG 19o): the old name claimed the check-only "preflight" contract every other `preflight*`
+  function in the tiered package actually honors (confirmed by grepping all of them), but this one
+  purges a genuinely orphaned destination-shard adjacency entry it discovers while checking — a
+  deliberate, safe (idempotent, no rollback needed) side effect that deserved an honest name instead
+  of a misleading one. New test proves the purge behavior, previously untested.
 
 ## [4.23.0] - 2026-07-18
 

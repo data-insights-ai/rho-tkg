@@ -79,7 +79,7 @@ func (ts *Store) ArchiveNode(nid types.NodeID) error {
 		return err
 	}
 	defer releaseMoves()
-	if err := ts.preflightArchiveNodeDestination(types.NodeID(id), archive, moves); err != nil {
+	if err := ts.checkAndCleanArchiveNodeDestination(types.NodeID(id), archive, moves); err != nil {
 		return fmt.Errorf("graph: archive destination preflight: %w", err)
 	}
 
@@ -174,7 +174,7 @@ func (ts *Store) RestoreNode(nid types.NodeID) error {
 		return err
 	}
 	defer releaseMoves()
-	if err := ts.preflightArchiveNodeDestination(types.NodeID(id), ref, moves); err != nil {
+	if err := ts.checkAndCleanArchiveNodeDestination(types.NodeID(id), ref, moves); err != nil {
 		return fmt.Errorf("graph: restore destination preflight: %w", err)
 	}
 
@@ -338,7 +338,21 @@ func (ts *Store) planRelationshipPlacementMoves(moving types.NodeID, relIDs []sn
 	return moves, releaseAll, nil
 }
 
-func (ts *Store) preflightArchiveNodeDestination(nodeID types.NodeID, destination *BadgerStore, moves []relationshipPlacementMove) error {
+// checkAndCleanArchiveNodeDestination validates that destination has no
+// conflicting node/relationship rows for nodeID before Archive/Restore
+// writes it there. UNLIKE every other preflight* function in this package
+// (preflightMigrateSource is pure read-only, the convention this file
+// otherwise follows), this one can MUTATE destination via
+// purgeOrRejectDestinationAdjacency: while scanning destination's adjacency
+// for nodeID it may discover a genuinely orphaned index entry (pointing at
+// a relationship that no longer exists anywhere) and purges it on the spot
+// (BACKLOG 19o). This is deliberate, not a check/apply-separation slip:
+// purging a confirmed-dead index entry is idempotent and safe regardless of
+// whether the surrounding Archive/Restore call ultimately succeeds or is
+// aborted by a later step — there is no "undo" needed for removing garbage
+// that shouldn't have existed. Named to make that side effect explicit
+// rather than reusing the misleading "preflight" (check-only) name.
+func (ts *Store) checkAndCleanArchiveNodeDestination(nodeID types.NodeID, destination *BadgerStore, moves []relationshipPlacementMove) error {
 	rawID := nodeID.SnowflakeID()
 	if destination.HasNodeID(rawID) {
 		return ErrNodeExists

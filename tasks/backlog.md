@@ -3007,9 +3007,38 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 - **19n. Unbounded spin-wait in `Close()`'s shard drains, inconsistent with the bounded/timed-out
   drain used by the purge protocol (LOW, requires a pre-existing checkin leak to trigger).**
   `tieredstore.go:679-683,706-708,717-719`.
-- **19o. `preflightArchiveNodeDestination` performs an untracked destructive mutation despite its
-  "preflight" name — harmless in effect but breaks the check/apply separation the rest of the file
-  follows (MEDIUM).** `tieredstore_write_archive.go:341-373`.
+- **19o. [FIXED — `store/tiered/tieredstore_write_archive.go`,
+  `store/tiered/tieredstore_archive_dest_cleanup_test.go`] `preflightArchiveNodeDestination`
+  performed an untracked destructive mutation despite its "preflight" name — harmless in effect but
+  broke the check/apply separation the rest of the file follows (MEDIUM).**
+  `tieredstore_write_archive.go:341-373`.
+
+  **Confirmed the convention and the violation.** Grepped every `preflight*` function in the tiered
+  package: `preflightMigrateSource` is purely read-only (only `GetNode`/`GetRelationship` calls) —
+  confirming "preflight" IS an established check-only convention here, and
+  `preflightArchiveNodeDestination` genuinely broke it via `purgeOrRejectDestinationAdjacency`, which
+  can call `destination.PurgeOrphanRelationshipIndexes` — a real mutation.
+
+  **Confirmed the mutation is safe (matches the finding's own "harmless in effect").** The purge only
+  fires for an adjacency entry whose relationship `ts.GetRelationship(rid)` confirms is genuinely gone
+  (`ErrRelNotFound`) — a confirmed-dead index entry. Removing garbage that shouldn't exist is
+  idempotent and needs no rollback regardless of whether the surrounding `ArchiveNode`/`RestoreNode`
+  call ultimately succeeds or aborts at a later step.
+
+  **Fix.** Renamed `preflightArchiveNodeDestination` → `checkAndCleanArchiveNodeDestination` (both
+  call sites, in `ArchiveNode` and `RestoreNode`) with a doc comment explaining the deliberate side
+  effect and why it's safe — so the name itself no longer claims a check-only contract it doesn't
+  honor, and a future reader doesn't have to rediscover this by reading the call chain.
+
+  **Test.** No test covered the purge side effect at all before this. New
+  `TestCheckAndCleanArchiveNodeDestination_PurgesOrphanedAdjacency`: injects an orphaned in/ entry on
+  a "destination" shard for a node that doesn't exist there yet (mirroring BACKLOG 19g's repro
+  technique), calls the renamed function directly, and confirms the orphaned entry is gone afterward.
+  Since this fix is a rename + documentation clarification with NO behavior change, RED was confirmed
+  via compile failure only (`git stash push` on the production file: `ts.checkAndCleanArchiveNodeDestination
+  undefined`) — the appropriate signal here, since there is no behavioral delta to assert on. Popped
+  the stash, confirmed GREEN. `go build ./...` + `go vet ./...` clean; `go test
+  ./pkg/graph/store/tiered/...` clean (36s); full repo `go test ./...` clean.
 - **19p. Dead defensive-only bound check would silently swallow the exact invariant violation 19c
   would produce, instead of surfacing it (LOW).** `tieredstore_changelog.go:415-419`.
 - **19q. Global `nodeCreateMu`/`relCreateMu` serialize ALL creates store-wide — a hard throughput
