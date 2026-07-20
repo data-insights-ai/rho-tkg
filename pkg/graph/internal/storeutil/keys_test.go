@@ -116,18 +116,6 @@ func TestHistPrefixContainment(t *testing.T) {
 	}
 }
 
-func TestTempIdxKeyLength(t *testing.T) {
-	t.Parallel()
-	nk := tempNodeKey(1000, 100)
-	if len(nk) != 17 {
-		t.Fatalf("expected 17 bytes, got %d", len(nk))
-	}
-	rk := tempRelKey(2000, 200)
-	if len(rk) != 17 {
-		t.Fatalf("expected 17 bytes, got %d", len(rk))
-	}
-}
-
 func TestMetaKeyLength(t *testing.T) {
 	t.Parallel()
 	key := MetaKey("label_tokens")
@@ -294,11 +282,24 @@ func TestNegativeIDEncoding(t *testing.T) {
 	}
 }
 
+// TestKeyPrefixesNonOverlapping verifies every REAL production key-prefix
+// tag is mutually distinct. BACKLOG 15h: this list previously included the
+// dead test-only scaffold keyTempNode(0x09)/keyTempRel(0x0A) — reserved
+// years ago for a temporal index that was never built that way; the real
+// temporal index shipped later using KeyTemporalIndex(0x0B) instead — while
+// OMITTING the 3 newest real production tags (KeyChangeLog, which also
+// happens to be 0x09; KeyPropertyIndex, also 0x0A; KeyTemporalIndex,
+// 0x0B). So the scaffold's "reserved for later" byte values had already
+// been silently claimed by real shipped features, and this test could never
+// have caught it either way: it checked the scaffold against itself, not
+// against the actual production keyspace. The dead scaffold (keyTempNode/
+// keyTempRel/tempNodeKey/tempRelKey/sizeTempIdx and their own
+// self-referential TestTempIdxKeyLength) has been removed; this test now
+// checks the complete real prefix set.
 func TestKeyPrefixesNonOverlapping(t *testing.T) {
 	t.Parallel()
-	// Verify that different key types never share a prefix byte.
 	prefixes := []byte{KeyNode, KeyRel, KeyLabel, KeyRelType, KeyOut, KeyIn,
-		KeyHistNode, KeyHistRel, keyTempNode, keyTempRel, KeyMeta}
+		KeyHistNode, KeyHistRel, KeyChangeLog, KeyPropertyIndex, KeyTemporalIndex, KeyMeta}
 	seen := make(map[byte]bool)
 	for _, p := range prefixes {
 		if seen[p] {

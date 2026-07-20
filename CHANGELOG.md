@@ -846,6 +846,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `go vet` clean; full `pkg/graph/internal/locks` package suite green including under `-race`; full
   `pkg/graph/internal/core` package suite (the consumer of `ValueStripe` for unique-constraint
   enforcement) green unchanged; full-repo `go test ./...` clean.
+- FIX — BACKLOG 15h: `TestKeyPrefixesNonOverlapping` (`storeutil/keys_test.go`) checked a prefix list
+  that included the dead test-only scaffold `keyTempNode`(0x09)/`keyTempRel`(0x0A) — reserved years ago
+  for a temporal index that was never built that way (the real temporal index later shipped as
+  `KeyTemporalIndex`, 0x0B) — while OMITTING the 3 newest real production tags: `KeyChangeLog` (also
+  0x09), `KeyPropertyIndex` (also 0x0A), and `KeyTemporalIndex` itself. So the scaffold's "reserved for
+  later" byte values had already been silently claimed by real shipped features, and the test could
+  never have caught it: it checked the scaffold against itself, never against the actual production
+  keyspace. Removed the dead scaffold entirely (`keyTempNode`/`keyTempRel`/`tempNodeKey`/`tempRelKey`/
+  `sizeTempIdx` in `keys_helpers_test.go`, plus their purely self-referential `TestTempIdxKeyLength`,
+  which tested the scaffold helpers against themselves and proved nothing about production code) and
+  added the 3 missing real tags to `TestKeyPrefixesNonOverlapping`'s list, so it now checks the
+  complete real production key-prefix set (12 tags). Confirmed load-bearing: temporarily reintroducing
+  a `0x09` collision into the (now-correct) list turned the test RED with the exact "duplicate prefix:
+  0x09" failure the finding described, then reverted. `go build`/`go vet` clean; full
+  `pkg/graph/internal/storeutil` package suite green including under `-race`; full-repo `go test
+  ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

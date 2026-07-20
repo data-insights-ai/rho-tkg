@@ -6,18 +6,6 @@ import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
 )
 
-// Key prefix tags used only in tests — future key types for temporal
-// indexing that are not yet integrated into any Store implementation.
-const (
-	keyTempNode byte = 0x09 // + 8B validFrom + 8B nodeID               = 17B
-	keyTempRel  byte = 0x0A // + 8B validFrom + 8B relID                = 17B
-)
-
-// Key sizes for test-only key types.
-const (
-	sizeTempIdx = 1 + 8 + 8 // 17B
-)
-
 // --- Prefix builders (test-only) ---
 
 // labelIndexPrefix returns the 3-byte prefix for scanning all nodes with a label.
@@ -67,26 +55,6 @@ func inTypedPrefix(endID snowflake.ID, relType uint16) []byte {
 	b[0] = KeyIn
 	PutUint64(b, 1, int64(endID))
 	PutUint16(b, 9, relType)
-	return b
-}
-
-// --- Temporal index keys (test-only) ---
-
-// tempNodeKey returns the 17-byte key for a temporal node index entry.
-func tempNodeKey(validFrom int64, nodeID snowflake.ID) []byte {
-	b := make([]byte, sizeTempIdx)
-	b[0] = keyTempNode
-	PutUint64(b, 1, validFrom)
-	PutUint64(b, 9, int64(nodeID))
-	return b
-}
-
-// tempRelKey returns the 17-byte key for a temporal relationship index entry.
-func tempRelKey(validFrom int64, relID snowflake.ID) []byte {
-	b := make([]byte, sizeTempIdx)
-	b[0] = keyTempRel
-	PutUint64(b, 1, validFrom)
-	PutUint64(b, 9, int64(relID))
 	return b
 }
 
