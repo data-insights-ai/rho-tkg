@@ -526,6 +526,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `EvictsOldestAtCap` load-bearing by temporarily flipping the eviction to evict-newest: the test
   failed immediately. `go build ./...` + `go vet ./...` clean; full `pkg/graph/internal/core` package
   suite green under `-race`; full-repo `go test ./...` clean.
+- DOC — closed BACKLOG 11f: a change-log-enabled `g.Tx()` mutation takes `c.mu.Lock()` (the FULL
+  exclusive graph lock, per mutation call) instead of its normal `RLock()`, so that no concurrent
+  write's change-log record can be misrouted into the tx's buffer — a real, intentional throughput
+  cliff (it defeats ADR-0007's per-shard `RLockShard` striping and blocks concurrent Lanes:N ingest
+  for each mutation's duration) that was never mentioned in `docs/api.md`'s "Ingest pipeline" section,
+  the one place a reader sizing an interactive-tx-vs-ingest workload split would look. Added a
+  paragraph there explaining the mechanism and its practical guidance (route bulk writes through
+  `g.Ingest()` rather than `g.Tx()` when change-log is enabled and Lanes:N throughput matters). Pure
+  doc addition, no code change.
 
 ## [4.23.0] - 2026-07-18
 

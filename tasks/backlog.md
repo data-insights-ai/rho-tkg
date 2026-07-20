@@ -120,10 +120,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   non-pairwise-TxFrom) algorithm for interval-bounds derivation in a chain with cascade-inserted rows.
 ### BACKLOG 11 — Batch / ingest / tx concurrency hardening
 
-- **11f. Change-log-enabled tx mutations take the FULL 32-stripe writer lock per call, not just per
-  commit — a throughput cliff (LOW-MEDIUM, documented/intentional, undocumented in the ingest-pipeline
-  docs).** `tx.go:387-416`. Fully defeats ADR-0007's `RLockShard` striping win for the lifetime of any
-  change-log-enabled tx actively mutating, concurrent with Lanes:N ingest.
 - **11h. `TestOutgoingIncomingForNodesAtTx_RandomizedDivergenceProbe/badger` is intermittently flaky
   under full-suite load (MEDIUM, discovered during BACKLOG 12c's verification run, not yet reproduced
   in isolation).** `internal/core/adjacency_at_tx_test.go:402-554`. One failure observed in a full
