@@ -433,9 +433,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   Recommend a dedicated follow-up that starts from the "shrink the critical section" angle above.**
 ### BACKLOG 20 — Sharded backend hardening (WIP status)
 
-- **20h. No upfront cross-validation between `Config.IngestLanes` and the sharded store's claimed
-  slot range at construction time — misconfiguration only caught reactively at first write
-  (LOW-MEDIUM).**
 - **20i. `PutRelationshipsBatch` per-rel apply loop is not atomic per shard group and non-deterministic
   order — same class as 20c (LOW).** `store/sharded/batch.go:220-229`.
 - **20j. `PruneTemporalCandidates` has no cross-backend equivalence test vs. a single badger store

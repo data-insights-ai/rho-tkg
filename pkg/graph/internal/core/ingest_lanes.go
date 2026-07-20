@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -53,6 +55,42 @@ func buildLaneGenerators(snowflakeNodeID int64, lanes uint8) ([]*snowflake.Node,
 		slots = append(slots, uint8(slot))
 	}
 	return gens, slots, nil
+}
+
+// validateShardedSlotCoverage cross-validates the slots New()'s ID generators
+// will actually mint from (the interactive pair {SnowflakeNodeID*2, *2+1}
+// plus every IngestLanes slot buildLaneGenerators picked) against a sharded
+// store's own claimed range (BACKLOG 20h). Only applies when store is a
+// *sharded.Store; every other backend has no slot-ownership concept and is a
+// silent no-op. Without this, a BaseSlot/SlotCount that doesn't cover every
+// slot the generators use is only discovered reactively — a routing error
+// (or worse, a misrouted write to a foreign slot's shard) the first time an
+// uncovered slot mints an ID — instead of failing closed at construction
+// with a message naming exactly which slot and why.
+func validateShardedSlotCoverage(store storepkg.MandatoryStore, snowflakeNodeID int64, laneSlots []uint8) error {
+	shardedStore, ok := store.(*sharded.Store)
+	if !ok {
+		return nil
+	}
+	base, count := shardedStore.ClaimedSlotRange()
+	covers := func(slot uint8) bool {
+		return slot >= base && slot < base+count
+	}
+	interactiveNode := uint8(snowflakeNodeID * 2)
+	interactiveRel := uint8(snowflakeNodeID*2 + 1)
+	if !covers(interactiveNode) || !covers(interactiveRel) {
+		return fmt.Errorf(
+			"graph: sharded store claims slots [%d,%d) but SnowflakeNodeID %d needs its interactive pair {%d,%d}: reconfigure BaseSlot/SlotCount or SnowflakeNodeID",
+			base, base+count, snowflakeNodeID, interactiveNode, interactiveRel)
+	}
+	for _, slot := range laneSlots {
+		if !covers(slot) {
+			return fmt.Errorf(
+				"graph: sharded store claims slots [%d,%d) but IngestLanes needs slot %d: reconfigure BaseSlot/SlotCount, SnowflakeNodeID, or IngestLanes",
+				base, base+count, slot)
+		}
+	}
+	return nil
 }
 
 // laneGeneratorIndex maps a session lane number to a laneGenerators index, or

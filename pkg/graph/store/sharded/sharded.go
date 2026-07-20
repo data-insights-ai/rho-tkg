@@ -385,6 +385,18 @@ func (s *Store) checkOpen() error {
 	return nil
 }
 
+// ClaimedSlotRange returns the store's claimed snowflake slot range
+// (BaseSlot, SlotCount) as configured at New() — the immutable identity of
+// this deployment (BACKLOG 20h). Callers wiring a snowflake-ID-generating
+// component against a sharded store (e.g. Config.IngestLanes's per-lane
+// generators, each pinned to a specific node-field/slot) can use this to
+// cross-validate BEFORE minting any ID that every slot the generators will
+// use is actually claimed by this store, instead of discovering a mismatch
+// reactively at the first write to an unclaimed slot.
+func (s *Store) ClaimedSlotRange() (base, count uint8) {
+	return s.base, s.count
+}
+
 // Close closes every shard, joining errors.
 func (s *Store) Close() error {
 	if s == nil {

@@ -1583,6 +1583,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and the ADR-0007 rationale, so an operator choosing `SlotCount` for an adjacency-heavy workload has
   the information to weigh it. Documentation only, no behavior change. `go build`/`go vet` clean;
   `pkg/graph/store/sharded` package suite green; full-repo `go test ./...` clean.
+- FIX — BACKLOG 20h: `New()` (`internal/core/core.go`) had no upfront cross-validation between the
+  slots its ID generators (the interactive pair `{SnowflakeNodeID*2, *2+1}` plus every
+  `Config.IngestLanes` slot `buildLaneGenerators` picks) will actually mint from and a `*sharded.Store`'s
+  own claimed `BaseSlot`/`SlotCount` range — a mismatch was only discovered reactively, at the first
+  write to an uncovered slot, as a routing error (or worse, a misrouted write). Added
+  `sharded.Store.ClaimedSlotRange()` (a small new exported accessor for the store's immutable
+  `base`/`count` fields) and `validateShardedSlotCoverage` (`internal/core/ingest_lanes.go`), called
+  right after `buildLaneGenerators` in `New()`: when `config.Store` is a `*sharded.Store`, verifies
+  every slot the generators will use falls within the claimed range, failing closed with a message
+  naming the exact uncovered slot and which config field to reconsider (`BaseSlot`/`SlotCount`,
+  `SnowflakeNodeID`, or `IngestLanes`). A pure no-op for every other backend (memory/badger/tiered),
+  which have no slot-ownership concept — the type assertion simply fails, so this cannot regress any
+  non-sharded deployment. **Also exempted `Config.ReadOnlyReplica`**: a read-only replica never mints
+  its own IDs (every write it makes reproduces a primary's exact ID verbatim via `ApplyChange`), so
+  its own generator-slot coverage is irrelevant — a replica's `SnowflakeNodeID` is commonly a
+  deliberately-different value from the primary's, precisely to prove its own identity doesn't
+  matter. This exemption was NOT part of the original design — the first full-repo verification pass
+  caught 4 EXISTING sharded-replica-convergence tests breaking (`TestModelA_ForeignIncomingConvergence`,
+  `TestModelA_ForeignIncomingDeleteConvergence`, `TestRetentionPurge_ShardedReplicaConvergence`,
+  `TestShardedReplicaConvergence_TopologyIndependent` — all construct a replica with an intentionally
+  slot-uncovered `SnowflakeNodeID`), which is exactly the scenario full-suite verification (not just
+  the new tests in isolation) exists to catch. Added the exemption plus a dedicated regression test
+  (`TestNewSkipsSlotCoverageForReadOnlyReplica`) locking it in. Added 5 tests total: two negative cases
+  (interactive-pair-uncovered, lane-slot-uncovered) proving the new fail-closed error fires with the
+  right message, one positive case matching CLAUDE.md's own documented example (`SnowflakeNodeID=0` +
+  `IngestLanes=4` needs `BaseSlot=0, SlotCount=6`) proving a correctly-configured deployment still
+  opens, one confirming the check is a no-op for non-sharded stores, and the replica exemption test.
+  Confirmed load-bearing: reverting the fix turns both
+  negative-case tests immediately RED (`"New() = nil error, want a slot-coverage failure"`); restored,
+  GREEN. `go build`/`go vet` clean; full `pkg/graph/internal/core` package suite green including under
+  `-race` (128s); `pkg/graph/store/sharded` package suite green under `-race`; full-repo
+  `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

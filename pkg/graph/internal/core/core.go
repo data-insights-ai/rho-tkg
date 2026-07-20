@@ -1410,6 +1410,17 @@ func New(config Config) (*Core, error) {
 	if err != nil {
 		return nil, err
 	}
+	// A read-only replica never mints its own IDs — every write it ever makes
+	// reproduces a primary's exact ID verbatim via ApplyChange, so its own
+	// SnowflakeNodeID/IngestLanes generator-slot coverage is irrelevant and
+	// must not be validated (a replica's SnowflakeNodeID is commonly a
+	// deliberately-different value from the primary's, precisely to prove
+	// its own identity doesn't matter).
+	if !config.ReadOnlyReplica {
+		if err := validateShardedSlotCoverage(config.Store, config.SnowflakeNodeID, laneSlots); err != nil {
+			return nil, err
+		}
+	}
 
 	v := config.Validation
 	if v.MaxLabelsPerNode == 0 {
