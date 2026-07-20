@@ -71,6 +71,18 @@ func (s *indexCreateFailAfterInstallStore) DropPropertyIndex(labelToken uint16, 
 	return s.Store.DropPropertyIndex(labelToken, propertyKey)
 }
 
+// NodesByLabelAndProperty is a pure passthrough — this fixture only injects
+// faults into the DDL path (CreatePropertyIndex), never queries. Declaring
+// it directly (BACKLOG 14c) keeps propertyIndexCap's wrapper-promotion guard
+// consistent with propertyQueryCapability's for this store: both accessors
+// resolve the identical bundled PropertyIndexCapability, so a wrapper that
+// hasn't declared ANY method on it gets rejected by both, and one that has
+// (as here, via CreatePropertyIndex/DropPropertyIndex) is trusted by both —
+// never DDL-trusted-but-query-untrusted or vice versa.
+func (s *indexCreateFailAfterInstallStore) NodesByLabelAndProperty(labelToken uint16, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	return s.Store.NodesByLabelAndProperty(labelToken, key, value, opts)
+}
+
 func TestMemStoreCreatePropertyIndex(t *testing.T) {
 	t.Parallel()
 
@@ -575,6 +587,15 @@ func (s *failIndexCreateStore) CreateHighFrequencyIndex(uint16, time.Duration) e
 
 func (s *failIndexCreateStore) CreateVectorIndex(uint16, string, int, storepkg.DistanceMetric) error {
 	return s.err
+}
+
+// NodesByLabelAndProperty is a pure passthrough (BACKLOG 14c — see
+// indexCreateFailAfterInstallStore's identical comment): this fixture only
+// injects DDL faults, so declaring the query method directly keeps
+// propertyIndexCap's wrapper-promotion guard trusting it, consistent with
+// propertyQueryCapability.
+func (s *failIndexCreateStore) NodesByLabelAndProperty(labelToken uint16, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	return s.Store.NodesByLabelAndProperty(labelToken, key, value, opts)
 }
 
 func TestGraphDropPropertyIndex(t *testing.T) {

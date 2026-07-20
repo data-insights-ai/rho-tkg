@@ -112,6 +112,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   duplicate (2 identical `ChangeRangePurge` records from 2 identical `PurgeExpiredNodes` calls) and
   proves a replica applying both still converges correctly — pinning the "idempotent apply" half of
   the finding's own claim, previously asserted but untested.
+- FIX — `propertyIndexCap`/`relPropertyIndexCap` (the `CreatePropertyIndex`/`CreateRelPropertyIndex`
+  DDL accessors) now apply the SAME wrapper-promotion guard their query-side siblings
+  (`propertyQueryCapability`/`relPropertyQueryCapability`) already used (BACKLOG 14c). Previously a
+  store wrapper that merely inherited the bundled `PropertyIndexCapability`/`RelPropertyIndexCapability`
+  interface via Go embedding could build a real index via DDL that the graph's own guarded query path
+  would then never consult — a permanently inert index maintained forever for nothing. Scoped to just
+  these 2 accessors: they're the only DDL capabilities with a genuinely guarded query-side sibling on
+  the identical interface (composite/temporal/high-frequency have no bundled query method; vector's
+  query and DDL already share the same unguarded accessor, so no mismatch existed there). 4 new
+  wrapper-promotion regression tests; 3 pre-existing fault-injection test fixtures updated to declare
+  `NodesByLabelAndProperty` directly (their real intent was never to simulate an untrusted wrapper).
 
 ## [4.23.0] - 2026-07-18
 

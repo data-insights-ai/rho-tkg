@@ -1505,6 +1505,15 @@ func (s *registryPersistFailFirstStore) SaveRegistries(*registrypkg.LabelRegistr
 	return nil
 }
 
+// NodesByLabelAndProperty is a pure passthrough (BACKLOG 14c — see
+// indexCreateFailAfterInstallStore's identical comment in graph_index_test.go):
+// this fixture only injects a registry-persist fault, so declaring the query
+// method directly keeps propertyIndexCap's wrapper-promotion guard trusting
+// it, consistent with propertyQueryCapability.
+func (s *registryPersistFailFirstStore) NodesByLabelAndProperty(labelToken uint16, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	return s.Store.NodesByLabelAndProperty(labelToken, key, value, opts)
+}
+
 type putNodeFailRegistryStore struct {
 	*memory.Store
 	saveCalls int

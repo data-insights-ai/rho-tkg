@@ -1565,12 +1565,57 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   entry and `docs/api.md`'s validation-limits section (both STABLE-fact updates per this repo's own
   CLAUDE.md maintenance rule). Full `go test ./...` passes; not concurrency-sensitive, so `-race` was not
   required.
-- **14c. DDL index-creation capability accessors lack the wrapper-promotion guard that sibling
+- **14c. [FIXED — `internal/core/store_capabilities.go`,
+  `internal/core/store_capabilities_ddl_wrapper_test.go`, plus 3 existing-fixture updates] DDL
+  index-creation capability accessors lacked the wrapper-promotion guard that sibling
   query-acceleration resolvers apply to the identical interfaces (MEDIUM, same class as the
   `changeFeedCapability` guard elsewhere).** `internal/core/store_capabilities.go:23-69` vs
-  `core.go:927-983`. A wrapper store that merely inherits a method via Go embedding gets DDL success
-  (builds+forever-maintains a real index) while the correctly-guarded query resolver never uses it —
+  `core.go:927-983`. A wrapper store that merely inherited a method via Go embedding got DDL success
+  (builds+forever-maintains a real index) while the correctly-guarded query resolver never used it —
   wasted maintenance cost for a permanently inert index.
+
+  **Scope decision.** Of the 6 DDL accessors in `store_capabilities.go`, only `propertyIndexCap` and
+  `relPropertyIndexCap` type-assert an interface (`PropertyIndexCapability`/`RelPropertyIndexCapability`)
+  that ALSO has a separately-guarded query-side sibling in `core.go`
+  (`propertyQueryCapability`/`relPropertyQueryCapability`) — the exact "identical interfaces" mismatch
+  the finding describes. `compositeIndexCap`/`temporalIndexCap`/`highFrequencyIndexCap` have no bundled
+  query method at all (pure DDL interfaces), and `vectorIndexCap`'s bundled `SearchNearestNodes` is
+  ALSO consulted through the SAME unguarded `vectorIndexCap()` accessor (traced every call site) — so
+  DDL and query are already symmetric there, no mismatch to fix. Scoped the fix to the 2 accessors
+  with a genuine guarded/unguarded split.
+
+  **Fix.** `propertyIndexCap`/`relPropertyIndexCap` now apply the identical
+  `isExactNativeStore`/`embedsNativeCapability` guard their query-side siblings already use, checking
+  for the SAME direct-method name (`NodesByLabelAndProperty`/`RelationshipsByTypeAndProperty`) — so a
+  store's DDL and query trust decisions can never diverge for the bundled interface again.
+
+  **Test-suite ripple.** 3 pre-existing test fixtures (`indexCreateFailAfterInstallStore` in
+  `graph_index_test.go`, `registryPersistFailFirstStore` in `r9_registry_persistence_test.go`,
+  `failIndexCreateStore` in `graph_index_test.go`, plus `failSecondPurgeChunkStore` in
+  `pkg/graph/retention_purge_midrange_abort_test.go`) inject DDL-path faults by overriding
+  `CreatePropertyIndex` directly while never touching `NodesByLabelAndProperty` — under the new guard
+  they were suddenly untrusted for DDL too, breaking their fault-injection premise with
+  `ErrCapabilityNotSupported` instead of the intended injected error. Each got a one-line
+  `NodesByLabelAndProperty` passthrough method added (declaring it directly satisfies the guard,
+  since their real intent — as fault-injection test doubles for a genuine native-store-backed DDL
+  path — was never to simulate an untrusted wrapper).
+
+  **New tests.** `TestPropertyIndexDDL_IgnoresInterfaceEmbeddedNativeStore` /
+  `_AllowsInterfaceEmbeddedDirectCapability` mirror the existing `TestPropertyQuery_*` query-side
+  tests for the DDL side, reusing the identical fixtures (`interfaceStorePropertyScanFaultStore`/
+  `interfaceStoreDirectPropertyQueryFaultStore`) to prove DDL and query now agree. Rel-side mirrors
+  (`TestRelPropertyIndexDDL_IgnoresConcreteEmbeddedNativeStore` / `_AllowsConcreteEmbeddedDirectCapability`)
+  needed NEW fixtures embedding concrete `*memory.Store` rather than the `storepkg.Store` interface,
+  since (discovered mid-fix) `RelPropertyIndexCapability` — unlike `PropertyIndexCapability` — is not
+  bundled into the `storepkg.Store` interface, so interface-embedding wouldn't promote it.
+
+  **Verification.** RED confirmed via `git stash push` on the production file alone: both new
+  `TestPropertyIndexDDL_Ignores*`/`TestRelPropertyIndexDDL_Ignores*` tests failed (DDL unconditionally
+  succeeded instead of returning `ErrCapabilityNotSupported`). Popped the stash, confirmed GREEN on
+  all 4 new tests plus the full existing suite (found + fixed the 3 fixture regressions via a full
+  `go test ./...` sweep before considering this done, not just the new tests). `go build ./...` +
+  `go vet ./...` clean. Full repo `go test ./...` clean from a COLD cache (`go clean -testcache`,
+  ~45s badger, ~46s tiered, rest sub-20s) — including tutorials.
 - **14d. `validateNodesByIDRows`/`validateRelationshipsByIDRows` reject a store behavior CLAUDE.md's
   own documented contract explicitly permits — duplicate-ID aliasing (MEDIUM, genuine ambiguity about
   which side is "wrong").** `internal/core/store_validation.go:414-478`. `GetByIDs([5,5])` against a

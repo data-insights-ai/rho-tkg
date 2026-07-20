@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"reflect"
 
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
@@ -20,17 +21,41 @@ import (
 // satisfy every capability, so these assertions always succeed in the
 // reference configuration.
 
+// propertyIndexCap resolves the DDL+query-bundled PropertyIndexCapability
+// (CreatePropertyIndex/DropPropertyIndex/NodesByLabelAndProperty all live on
+// one interface). It applies the SAME wrapper-promotion guard
+// propertyQueryCapability (core.go) already applies to the identical
+// interface for query acceleration — BACKLOG 14c: without it, a concrete
+// wrapper that merely inherits the interface via embedding (never declaring
+// NodesByLabelAndProperty itself) could still successfully CreatePropertyIndex
+// (the call is promoted straight through to the embedded native store) while
+// every query against that same wrapper falls back to the graph scan (guarded,
+// since the wrapper doesn't declare the query method) — a permanently inert
+// index the graph forever pays to maintain but never consults. Guarding here
+// too means such a wrapper gets ErrCapabilityNotSupported for DDL as well,
+// consistent with the query side refusing to trust it.
 func (c *Core) propertyIndexCap() (storepkg.PropertyIndexCapability, error) {
 	cap, ok := c.store.(storepkg.PropertyIndexCapability)
 	if !ok {
 		return nil, fmt.Errorf("%w: PropertyIndexCapability", storepkg.ErrCapabilityNotSupported)
 	}
+	if !isExactNativeStore(c.store) && embedsNativeCapability(c.store,
+		reflect.TypeOf((*storepkg.PropertyIndexCapability)(nil)).Elem(), "NodesByLabelAndProperty") {
+		return nil, fmt.Errorf("%w: PropertyIndexCapability", storepkg.ErrCapabilityNotSupported)
+	}
 	return cap, nil
 }
 
+// relPropertyIndexCap mirrors propertyIndexCap for the relationship-side
+// RelPropertyIndexCapability (BACKLOG 14c) — same rationale, same guard,
+// same identical-interface pairing with relPropertyQueryCapability.
 func (c *Core) relPropertyIndexCap() (storepkg.RelPropertyIndexCapability, error) {
 	cap, ok := c.store.(storepkg.RelPropertyIndexCapability)
 	if !ok {
+		return nil, fmt.Errorf("%w: RelPropertyIndexCapability", storepkg.ErrCapabilityNotSupported)
+	}
+	if !isExactNativeStore(c.store) && embedsNativeCapability(c.store,
+		reflect.TypeOf((*storepkg.RelPropertyIndexCapability)(nil)).Elem(), "RelationshipsByTypeAndProperty") {
 		return nil, fmt.Errorf("%w: RelPropertyIndexCapability", storepkg.ErrCapabilityNotSupported)
 	}
 	return cap, nil

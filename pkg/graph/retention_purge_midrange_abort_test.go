@@ -43,6 +43,15 @@ func (s *failSecondPurgeChunkStore) PurgeNodesByLabelBefore(labelToken uint16, b
 	return res, err
 }
 
+// NodesByLabelAndProperty is a pure passthrough (BACKLOG 14c): this fixture
+// only injects a purge-chunk fault, so declaring the query method directly
+// keeps the graph's propertyIndexCap wrapper-promotion guard trusting it
+// (CreateUniqueForever needs a real property index on this store), consistent
+// with the query-side guard for the same store.
+func (s *failSecondPurgeChunkStore) NodesByLabelAndProperty(labelToken uint16, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	return s.Store.NodesByLabelAndProperty(labelToken, key, value, opts)
+}
+
 // TestPurgeRangeAllChunks_ReapsForeverOwnersOnMidRangeAbort is the BACKLOG 13a
 // regression: purgeRangeAllChunks only reaped UniqueForever claims of purged
 // owners AFTER the chunk loop exited normally — both early-return paths (ctx
