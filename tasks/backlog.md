@@ -120,6 +120,30 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   non-pairwise-TxFrom) algorithm for interval-bounds derivation in a chain with cascade-inserted rows.
 ### BACKLOG 11 — Batch / ingest / tx concurrency hardening
 
+- **11f. [PARTIALLY ADDRESSED — see below] Change-log-enabled tx mutations take the FULL exclusive
+  graph lock (`c.mu.Lock()`) per mutation call, not just per commit — a real throughput cliff (LOW-
+  MEDIUM). NOT a fix; the underlying bottleneck is still fully present.** `tx.go:387-416`
+  (`lockActiveCoreWrite`). Fully defeats ADR-0007's per-shard `RLockShard` striping and blocks every
+  concurrent standalone writer AND concurrent-mode (Lanes:N) ingest session for the duration of EACH
+  mutation call a change-log-enabled interactive tx makes — not once per tx, once per call. Investigated
+  the mechanism (`store.TxChangeLogScope`/`SetLogDivert`, `changefeed.go:191-239`): the interface's own
+  doc explicitly frames the current exclusive-lock behavior as "CONCURRENCY POSITION (deliberate
+  design, not a gap)" — there is exactly one implicit divert scope, so `SetLogDivert(true)` must run
+  under a lock that provably excludes every other writer, or a concurrent standalone mutation's record
+  could be silently misrouted into the tx's buffer (a correctness bug, not just a perf one, if broken).
+  A cheaper fix needs the divert mechanism to stop being a single global on/off flag and become
+  SCOPE-TAGGED instead (each in-flight writer's change-log record carries/derives its own routing key,
+  so multiple scopes can be open concurrently without one global exclusive lock) — CLAUDE.md's own
+  design notes on the tiered store's change-log ALREADY flag `SetLogDivert` as "the ONE divert seam,
+  marked for the scope-tagged-routing redesign" from prior (2026-07-11) measurements, confirming this
+  is known, real, cross-cutting architecture work (touches the standalone core AND every store
+  backend's change-log wiring), not a narrow one-file patch — exactly the class of change that needs a
+  dedicated design pass, not a blind attempt inside a backlog sweep (same caution class as 10b).
+  Documentation of the current mechanism and its practical implication (route bulk writes through
+  `g.Ingest()` instead of `g.Tx()` when change-log is enabled and Lanes:N throughput matters) was added
+  to `docs/api.md`'s "Ingest pipeline" section — that part is genuinely done, since the finding was ALSO
+  a real doc gap — but the doc addition must not be mistaken for resolving the underlying bottleneck;
+  the scope-tagged-routing redesign itself remains open, real engineering work.
 - **11h. `TestOutgoingIncomingForNodesAtTx_RandomizedDivergenceProbe/badger` is intermittently flaky
   under full-suite load (MEDIUM, discovered during BACKLOG 12c's verification run, not yet reproduced
   in isolation).** `internal/core/adjacency_at_tx_test.go:402-554`. One failure observed in a full

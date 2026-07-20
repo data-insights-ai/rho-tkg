@@ -526,15 +526,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `EvictsOldestAtCap` load-bearing by temporarily flipping the eviction to evict-newest: the test
   failed immediately. `go build ./...` + `go vet ./...` clean; full `pkg/graph/internal/core` package
   suite green under `-race`; full-repo `go test ./...` clean.
-- DOC — closed BACKLOG 11f: a change-log-enabled `g.Tx()` mutation takes `c.mu.Lock()` (the FULL
-  exclusive graph lock, per mutation call) instead of its normal `RLock()`, so that no concurrent
-  write's change-log record can be misrouted into the tx's buffer — a real, intentional throughput
-  cliff (it defeats ADR-0007's per-shard `RLockShard` striping and blocks concurrent Lanes:N ingest
-  for each mutation's duration) that was never mentioned in `docs/api.md`'s "Ingest pipeline" section,
-  the one place a reader sizing an interactive-tx-vs-ingest workload split would look. Added a
-  paragraph there explaining the mechanism and its practical guidance (route bulk writes through
-  `g.Ingest()` rather than `g.Tx()` when change-log is enabled and Lanes:N throughput matters). Pure
-  doc addition, no code change.
+- DOC — BACKLOG 11f (documentation half only — the item stays OPEN in `tasks/backlog.md`, the
+  underlying throughput cliff is NOT fixed): a change-log-enabled `g.Tx()` mutation takes `c.mu.Lock()`
+  (the FULL exclusive graph lock, per mutation call) instead of its normal `RLock()`, so that no
+  concurrent write's change-log record can be misrouted into the tx's buffer — a real throughput cliff
+  (it defeats ADR-0007's per-shard `RLockShard` striping and blocks concurrent Lanes:N ingest for each
+  mutation's duration) that was never mentioned in `docs/api.md`'s "Ingest pipeline" section. Added a
+  paragraph there explaining the mechanism and practical guidance (route bulk writes through
+  `g.Ingest()` rather than `g.Tx()` when change-log is enabled and Lanes:N throughput matters) — that
+  part is a genuine gap closure. Investigated whether the lock itself could be narrowed: the divert
+  mechanism (`store.TxChangeLogScope.SetLogDivert`) is a single global on/off flag by design
+  (`changefeed.go`'s own doc: "deliberate design, not a gap" — exactly one implicit scope, so exclusion
+  is required to prevent a genuine correctness bug, not just a perf one), and CLAUDE.md's tiered-store
+  change-log notes already flag this exact seam as needing a future "scope-tagged-routing redesign" —
+  known, real, cross-cutting architecture work (core + every store backend's change-log wiring), not a
+  narrow patch safe to attempt inside a backlog sweep (same caution class as the still-open BACKLOG
+  10b). Left genuinely open rather than closed by documentation alone.
 
 ## [4.23.0] - 2026-07-18
 
