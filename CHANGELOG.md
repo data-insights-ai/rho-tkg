@@ -251,6 +251,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   via `git stash push -- pkg/graph/index/errors.go`: `go vet` failed at compile time with `undefined:
   indexpkg.ErrIndexExists` — the strongest possible signal. Stash popped, GREEN confirmed; full
   `pkg/graph/...` suite and full-repo `go test ./...` clean.
+- DOC — closed BACKLOG 7e: 4 stale `// Drop*` doc comments on `pkg/graph/index`'s `Delete*` sub-API
+  methods (`DeleteProperty`/`DeleteHighFrequency`/`DeleteTemporal`/`DeleteVector`), leftover from a
+  `Drop*`→`Delete*` rename at this wrapper layer. Confirmed by grep audit that every OTHER `// Drop*`
+  comment in the repo (internal/core's `graph_indexes.go`, every store backend's `Drop*Index` methods)
+  correctly names a function that is itself still called `Drop*` — this package's public façade is the
+  only layer where the method was renamed but its doc comment wasn't. Fixed all 4; no behavior change.
 
 ## [4.23.0] - 2026-07-18
 

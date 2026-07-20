@@ -60,7 +60,7 @@ func (a *API) CreateProperty(label, propertyKey string) error {
 	return ops.CreateProperty(label, propertyKey)
 }
 
-// DropProperty drops a property index.
+// DeleteProperty drops a property index.
 func (a *API) DeleteProperty(label, propertyKey string) error {
 	ops, err := a.ready()
 	if err != nil {
@@ -153,7 +153,7 @@ func (a *API) CreateHighFrequency(label string, bucketSize time.Duration) error 
 	return ops.CreateHighFrequency(label, bucketSize)
 }
 
-// DropHighFrequency drops a high-frequency temporal index.
+// DeleteHighFrequency drops a high-frequency temporal index.
 func (a *API) DeleteHighFrequency(label string) error {
 	ops, err := a.ready()
 	if err != nil {
@@ -171,7 +171,7 @@ func (a *API) CreateTemporal(label string) error {
 	return ops.CreateTemporal(label)
 }
 
-// DropTemporal drops a temporal interval index.
+// DeleteTemporal drops a temporal interval index.
 func (a *API) DeleteTemporal(label string) error {
 	ops, err := a.ready()
 	if err != nil {
@@ -213,7 +213,7 @@ func (a *API) CreateVectorWithOptions(label, propertyKey string, dims int, metri
 	return ops.CreateVectorWithOptions(label, propertyKey, dims, metric, opts)
 }
 
-// DropVector drops a vector index.
+// DeleteVector drops a vector index.
 func (a *API) DeleteVector(label, propertyKey string) error {
 	ops, err := a.ready()
 	if err != nil {
