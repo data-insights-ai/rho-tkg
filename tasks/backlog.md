@@ -1447,9 +1447,37 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   documentation-completeness self-check, and admin/example_test.go's godoc example). `go test -race
   ./pkg/graph/internal/core/...` clean (129s) — Reset takes `c.mu.Lock()`, the same exclusion class
   as tx/batch/Archive/ForceRotate, so this is the concurrency-sensitive package for this change.
-- **13e. `PurgeExpiredNodes` can emit a duplicate `ChangeRangePurge` record on operator retry after a
-  crash between watermark-advance and log-emit (LOW-MEDIUM, harmless — idempotent apply — but
-  log-noise).** `retention_purge.go:132-147`.
+- **13e. [INVESTIGATED — no code change; regression test added] `PurgeExpiredNodes` can emit a
+  duplicate `ChangeRangePurge` record on operator retry after a crash between watermark-advance and
+  log-emit (LOW-MEDIUM, harmless — idempotent apply — but log-noise).** `retention_purge.go:132-147`.
+
+  **Confirmed mechanism.** `advanceRetentionWatermark` is max-monotonic and silently no-ops when the
+  target watermark is already `<=` the current one — it returns `nil` either way, so the caller
+  cannot distinguish "just advanced it" from "already there." `PurgeExpiredNodes` doesn't try to: it
+  unconditionally proceeds to `LogRangePurge` regardless of whether step (1) actually changed
+  anything. An operator retrying an identical policy call — the natural response to "did my purge
+  actually happen?" after a crash, with no other way to know — durably emits a second
+  `ChangeRangePurge` record for the same predicate.
+
+  **Considered and rejected a fix**: skip the log emission when the watermark didn't advance
+  (`advanceRetentionWatermark` returning a `bool`). This is UNSAFE — it cannot distinguish "watermark
+  already advanced AND already logged by an earlier fully-successful call" from "watermark durably
+  advanced but the crash landed BEFORE the log call" (exactly the scenario this finding describes).
+  The fix would silently DROP the one log record a replica needs in the second case, trading harmless
+  log-noise for an actual replica-divergence bug — strictly worse. A safe fix would need a THIRD
+  durably-tracked state ("log emitted for this exact range") co-committed atomically with the
+  watermark, which shifts the crash window rather than closing it (a crash between log-emit and
+  marking-log-done reopens the same class of gap) for a LOW-MEDIUM cosmetic issue the finding's own
+  text already calls harmless.
+
+  **Verification, not a fix.** Added `TestRetentionPurge_RetryAfterWatermarkAdvanceDuplicatesLogButConverges`:
+  calls `PurgeExpiredNodes` with an identical policy TWICE (first purges 3 nodes, second purges 0 —
+  proving the retry is a genuine no-op on the primary), confirms the feed carries exactly 2
+  `ChangeRangePurge` records (proving the duplicate mechanism is real, not just theorized), then
+  applies BOTH records to a replica bootstrapped from a pre-purge snapshot and confirms it converges
+  to the correct post-purge state with no error — proving the "idempotent apply" half of the finding's
+  own claim, which was asserted but not previously pinned by any test. `go build ./...` + `go vet
+  ./...` clean; `go test ./pkg/graph/...` clean; full repo `go test ./...` clean.
 - **13f. `verifyChainLinkage`'s no-stub "legacy leniency" leaves a real tamper-evidence gap — any
   `PrevHash` accepted when the lowest retained version has no compaction stub (MEDIUM, intentional
   backward-compat tradeoff).** `internal/core/integrity.go:126-167`. Any out-of-band row removal *not*

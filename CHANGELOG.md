@@ -102,6 +102,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Migration: pass `AllowReset: true` in `Config` wherever `Reset()` is legitimately used (tests,
   admin tooling, fixture teardown). New `TestAdminOpsReset_DisabledByDefault` /
   `_SucceedsWhenAllowed` cover both paths; ~14 existing test files updated to opt in.
+- DOCS/TEST — investigated BACKLOG 13e (`PurgeExpiredNodes` can emit a duplicate `ChangeRangePurge`
+  record when an operator retries an identical policy after a crash between the watermark advance and
+  the log emission). Confirmed the mechanism is real, but rejected the natural fix (skip logging when
+  the watermark didn't advance) as UNSAFE: it cannot distinguish "already logged by an earlier
+  successful call" from "crashed before logging" and would silently drop a log record a replica
+  genuinely needs — trading harmless log-noise for real replica divergence. Added
+  `TestRetentionPurge_RetryAfterWatermarkAdvanceDuplicatesLogButConverges`, which reproduces the
+  duplicate (2 identical `ChangeRangePurge` records from 2 identical `PurgeExpiredNodes` calls) and
+  proves a replica applying both still converges correctly — pinning the "idempotent apply" half of
+  the finding's own claim, previously asserted but untested.
 
 ## [4.23.0] - 2026-07-18
 
