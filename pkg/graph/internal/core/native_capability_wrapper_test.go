@@ -2145,9 +2145,13 @@ func TestMandatoryBulkReadRowsRejectInvalidExternalRows(t *testing.T) {
 	if nodes, err := g.Nodes.GetByIDs([]types.NodeID{a.ID(), b.ID()}); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || nodes != nil {
 		t.Fatalf("GetNodesByIDs non-ascending rows = (%v, %v), want nil, ErrInvalidStoreMutation", nodes, err)
 	}
+	// BACKLOG 14d: CLAUDE.md's documented Store contract explicitly permits a
+	// store aliasing the same row pointer for a duplicate requested ID
+	// ("Rows for duplicate requested IDs may alias the same frozen pointer")
+	// — this must succeed, not be rejected as corruption.
 	fs.getNodeRows = []*types.Node{a, a}
-	if nodes, err := g.Nodes.GetByIDs([]types.NodeID{a.ID(), a.ID()}); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || nodes != nil {
-		t.Fatalf("GetNodesByIDs aliased duplicate rows = (%v, %v), want nil, ErrInvalidStoreMutation", nodes, err)
+	if nodes, err := g.Nodes.GetByIDs([]types.NodeID{a.ID(), a.ID()}); err != nil || len(nodes) != 2 || nodes[0].ID() != a.ID() || nodes[1].ID() != a.ID() {
+		t.Fatalf("GetNodesByIDs aliased duplicate rows = (%v, %v), want 2 rows for %d, nil error", nodes, err, a.ID())
 	}
 	fs.failGetNodes.Store(false)
 
@@ -2160,9 +2164,11 @@ func TestMandatoryBulkReadRowsRejectInvalidExternalRows(t *testing.T) {
 	if rels, err := g.Rels.GetByIDs([]types.RelID{rel.ID(), rel2.ID()}); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || rels != nil {
 		t.Fatalf("GetRelationshipsByIDs non-ascending rows = (%v, %v), want nil, ErrInvalidStoreMutation", rels, err)
 	}
+	// BACKLOG 14d: mirrors the node-side aliasing case above — permitted, not
+	// corruption.
 	fs.getRelRows = []*types.Relationship{rel, rel}
-	if rels, err := g.Rels.GetByIDs([]types.RelID{rel.ID(), rel.ID()}); !errors.Is(err, storepkg.ErrInvalidStoreMutation) || rels != nil {
-		t.Fatalf("GetRelationshipsByIDs aliased duplicate rows = (%v, %v), want nil, ErrInvalidStoreMutation", rels, err)
+	if rels, err := g.Rels.GetByIDs([]types.RelID{rel.ID(), rel.ID()}); err != nil || len(rels) != 2 || rels[0].ID() != rel.ID() || rels[1].ID() != rel.ID() {
+		t.Fatalf("GetRelationshipsByIDs aliased duplicate rows = (%v, %v), want 2 rows for %d, nil error", rels, err, rel.ID())
 	}
 }
 

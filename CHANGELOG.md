@@ -123,6 +123,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   query and DDL already share the same unguarded accessor, so no mismatch existed there). 4 new
   wrapper-promotion regression tests; 3 pre-existing fault-injection test fixtures updated to declare
   `NodesByLabelAndProperty` directly (their real intent was never to simulate an untrusted wrapper).
+- FIX — `Nodes().GetByIDs`/`Rels().GetByIDs` no longer reject a duplicate-requested-ID row an
+  untrusted external `Store` answers by aliasing the same pointer (BACKLOG 14d). CLAUDE.md's Store
+  contract explicitly permits this ("Rows for duplicate requested IDs may alias the same frozen
+  pointer"); the validation was stricter than the documented contract, not the store misbehaving. The
+  removed pointer-identity check was also fully redundant with the existing count-based check for
+  genuine over-return corruption, since a returned row's ID is intrinsic to the pointer. Inverted the
+  pre-existing test that had pinned the old (incorrect) rejection.
 
 ## [4.23.0] - 2026-07-18
 

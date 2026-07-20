@@ -1616,10 +1616,35 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   `go test ./...` sweep before considering this done, not just the new tests). `go build ./...` +
   `go vet ./...` clean. Full repo `go test ./...` clean from a COLD cache (`go clean -testcache`,
   ~45s badger, ~46s tiered, rest sub-20s) — including tutorials.
-- **14d. `validateNodesByIDRows`/`validateRelationshipsByIDRows` reject a store behavior CLAUDE.md's
-  own documented contract explicitly permits — duplicate-ID aliasing (MEDIUM, genuine ambiguity about
-  which side is "wrong").** `internal/core/store_validation.go:414-478`. `GetByIDs([5,5])` against a
-  spec-compliant untrusted `Store` that aliases the duplicate row is incorrectly rejected as corruption.
+- **14d. [FIXED — `internal/core/store_validation.go`,
+  `internal/core/native_capability_wrapper_test.go`] `validateNodesByIDRows`/
+  `validateRelationshipsByIDRows` rejected a store behavior CLAUDE.md's own documented contract
+  explicitly permits — duplicate-ID aliasing (MEDIUM, genuine ambiguity about which side is
+  "wrong").** `internal/core/store_validation.go:414-478`. `GetByIDs([5,5])` against a spec-compliant
+  untrusted `Store` that aliases the duplicate row was incorrectly rejected as corruption.
+
+  **Resolved the ambiguity.** CLAUDE.md's "Defensive Copying" section states the contract in plain
+  terms: "Rows for duplicate requested IDs may alias the same frozen pointer." This validation exists
+  ONLY on the untrusted-store path (`!c.storeRowsTrust`, guarding external/wrapper `Store`
+  implementations — native in-tree stores skip it entirely), so the "wrong side" question resolves
+  cleanly: the validator was enforcing an invariant stricter than the documented contract, not the
+  store violating anything.
+
+  **Fix.** Removed the `seenRows` pointer-identity map and its "aliased node/relationship pointer"
+  error from both validators. It was also fully REDUNDANT with the existing count-based `remaining`
+  check for the genuine corruption case (a store returning MORE rows for one ID than requested): since
+  a `*types.Node`'s `.ID()` is intrinsic to the object, two occurrences of the same pointer necessarily
+  carry the same ID, so an over-return — aliased or independently-allocated — is already caught the
+  moment `remaining[id]` hits 0 on the extra row. Deleting the pointer check closes the false-positive
+  for legitimate aliasing without losing any real corruption detection.
+
+  **Tests.** The pre-existing `TestMandatoryBulkReadRowsRejectInvalidExternalRows` asserted the OLD
+  (incorrect) behavior directly — `fs.getNodeRows = []*types.Node{a, a}` with `ids =
+  [a.ID(), a.ID()]` expected `ErrInvalidStoreMutation`. Inverted both the node- and relationship-side
+  assertions (with an explanatory BACKLOG 14d comment) to expect SUCCESS: exactly 2 rows returned,
+  both carrying the requested ID. RED confirmed via `git stash push` on the production file alone: the
+  test failed with the old rejection error. Popped the stash, confirmed GREEN. `go build ./...` +
+  `go vet ./...` clean; full repo `go test ./...` clean.
 - **14e. Two sibling stats doors disagree on capability-check-vs-label-lookup ordering — inconsistent
   `DisablePlannerStats` fail-closed behavior for an unregistered label (LOW-MEDIUM, lessons 17/58
   drift pattern).** `internal/core/stats.go:111-132,226-247` vs `:144-178,186-217`.

@@ -411,21 +411,28 @@ func validateRelRowPage(rels []*types.Relationship, opts storepkg.QueryOpts, sou
 	return nil
 }
 
+// validateNodesByIDRows checks that nodes is exactly the multiset of rows
+// GetNodesByIDs promises for ids: every requested ID present exactly as many
+// times as requested, in ascending order. It does NOT reject a store that
+// returns the SAME *types.Node pointer for a duplicate requested ID —
+// CLAUDE.md's documented contract explicitly permits aliasing ("Rows for
+// duplicate requested IDs may alias the same frozen pointer"), and a
+// spec-compliant untrusted Store choosing that representation is not
+// corruption (BACKLOG 14d). A prior pointer-identity check here rejected
+// exactly that legitimate case; it was also fully redundant with the
+// count-based check below for genuine over-return corruption (a store
+// returning MORE rows for one ID than requested — aliased or not — is
+// already caught when remaining[id] hits 0 on the extra row).
 func validateNodesByIDRows(ids []types.NodeID, nodes []*types.Node) error {
 	remaining := make(map[types.NodeID]int, len(ids))
 	for _, id := range ids {
 		remaining[id]++
 	}
-	seenRows := make(map[*types.Node]struct{}, len(nodes))
 	var prev types.NodeID
 	for _, n := range nodes {
 		if err := storepkg.ValidateNodeWrite(n); err != nil {
 			return err
 		}
-		if _, ok := seenRows[n]; ok {
-			return fmt.Errorf("%w: GetNodesByIDs returned aliased node pointer for %d", storepkg.ErrInvalidStoreMutation, n.ID())
-		}
-		seenRows[n] = struct{}{}
 		id := n.ID()
 		if prev != 0 && id < prev {
 			return fmt.Errorf("%w: GetNodesByIDs returned non-ascending node %d after %d", storepkg.ErrInvalidStoreMutation, id, prev)
@@ -444,21 +451,19 @@ func validateNodesByIDRows(ids []types.NodeID, nodes []*types.Node) error {
 	return nil
 }
 
+// validateRelationshipsByIDRows mirrors validateNodesByIDRows for
+// GetRelationshipsByIDs (BACKLOG 14d) — see its doc comment for the
+// duplicate-ID-aliasing rationale.
 func validateRelationshipsByIDRows(ids []types.RelID, rels []*types.Relationship) error {
 	remaining := make(map[types.RelID]int, len(ids))
 	for _, id := range ids {
 		remaining[id]++
 	}
-	seenRows := make(map[*types.Relationship]struct{}, len(rels))
 	var prev types.RelID
 	for _, r := range rels {
 		if err := storepkg.ValidateRelationshipWrite(r); err != nil {
 			return err
 		}
-		if _, ok := seenRows[r]; ok {
-			return fmt.Errorf("%w: GetRelationshipsByIDs returned aliased relationship pointer for %d", storepkg.ErrInvalidStoreMutation, r.ID())
-		}
-		seenRows[r] = struct{}{}
 		id := r.ID()
 		if prev != 0 && id < prev {
 			return fmt.Errorf("%w: GetRelationshipsByIDs returned non-ascending relationship %d after %d", storepkg.ErrInvalidStoreMutation, id, prev)
