@@ -12,7 +12,7 @@ package storeutil
 //      boundary.)
 //   2. ValidateNodeWire / ValidateRelWire is a COMPLETE gate for the unchecked
 //      reconstructor: whenever the checked path accepts a wire, the unchecked
-//      WireToNode / WireToRel (which panic on invalid prevalidated input) must
+//      MustWireToNode / MustWireToRel (which panic on invalid prevalidated input) must
 //      also not panic. This pins that validation covers everything
 //      reconstruction asserts.
 //   3. Anything the checked decoder accepts must be re-encodable
@@ -258,7 +258,7 @@ func FuzzWireToNodeChecked(f *testing.F) {
 		if verr := ValidateNodeWire(w); verr != nil {
 			t.Fatalf("WireToNodeChecked accepted a wire ValidateNodeWire rejects: %v\nwire=%+v", verr, w)
 		}
-		_ = WireToNode(w) // must not panic once validation has passed
+		_ = MustWireToNode(w) // must not panic once validation has passed
 		// invariant 3: anything readable must be re-encodable.
 		if _, merr := MarshalNodeWire(n); merr != nil {
 			t.Fatalf("decoded node cannot be re-encoded (read-but-cannot-persist): %v\nwire=%+v", merr, w)
@@ -293,7 +293,7 @@ func FuzzWireToRelChecked(f *testing.F) {
 		if verr := ValidateRelWire(w); verr != nil {
 			t.Fatalf("WireToRelChecked accepted a wire ValidateRelWire rejects: %v\nwire=%+v", verr, w)
 		}
-		_ = WireToRel(w)
+		_ = MustWireToRel(w)
 		if _, merr := MarshalRelWire(r); merr != nil {
 			t.Fatalf("decoded relationship cannot be re-encoded (read-but-cannot-persist): %v\nwire=%+v", merr, w)
 		}

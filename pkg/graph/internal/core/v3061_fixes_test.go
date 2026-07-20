@@ -72,7 +72,7 @@ func TestWireRoundTrip_NodeSignatureIsolation(t *testing.T) {
 	// Reset wire for decode test.
 	w.Signature[0] = 0xAA
 
-	decoded := storeutil.WireToNode(w)
+	decoded := storeutil.MustWireToNode(w)
 
 	// Mutate wire again — must not affect decoded node.
 	w.Signature[0] = 0xFF
@@ -101,7 +101,7 @@ func TestWireRoundTrip_RelSignatureIsolation(t *testing.T) {
 	// Reset wire for decode test.
 	w.Signature[0] = 0xCC
 
-	decoded := storeutil.WireToRel(w)
+	decoded := storeutil.MustWireToRel(w)
 
 	// Mutate wire again — must not affect decoded rel.
 	w.Signature[0] = 0xFF

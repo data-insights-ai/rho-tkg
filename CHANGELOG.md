@@ -927,6 +927,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   boundary) turned 2 of the new boundary cases RED, then reverted. `go build`/`go vet` clean; full
   `pkg/graph/internal/storeutil` package suite green including under `-race`; full-repo `go test
   ./...` clean.
+- FIX — BACKLOG 15k: `WireToNode`/`WireToRel` (`storeutil/wire.go`) panic on invalid input and have
+  zero production callers — but their names were dangerously similar to the trust-boundary-safe
+  `WireToNodeChecked`/`WireToRelChecked` every real read path uses, a foot-gun for a future call site
+  reaching for the wrong one. Renamed to `MustWireToNode`/`MustWireToRel` (the idiomatic Go signal for
+  "panics on failure" — `regexp.MustCompile`, `template.Must`), keeping them (rather than deleting)
+  since they ARE legitimately used across multiple test fixtures, including from a DIFFERENT package
+  (`internal/core`'s `v3061_fixes_test.go` calls `storeutil.WireToNode`/`WireToRel` directly) — deleting
+  would have broken those call sites for no safety benefit, since the actual risk was naming
+  confusion, not the functions' existence. Updated all call sites (4 files: `wire.go`,
+  `wire_fuzz_test.go`, `wire_test.go`, `internal/core/v3061_fixes_test.go`) and expanded both doc
+  comments to state the "test-fixture only, zero production callers" contract explicitly. `go build`/
+  `go vet` clean; full `pkg/graph/internal/storeutil` and `pkg/graph/internal/core` package suites green
+  including under `-race`; full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

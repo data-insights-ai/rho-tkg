@@ -269,9 +269,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 15 — Internal primitives hardening (storeutil / locks / registry / wire codec)
 
-- **15k. `WireToNode`/`WireToRel` (unchecked, panic-on-invalid variants) have zero production callers
-  but dangerously similar naming to the trust-boundary-safe `*Checked` versions (LOW, foot-gun risk).**
-  `storeutil/wire.go:204,346`. Fix: delete or rename unmistakably as test-fixture-only.
 - **15m. `decodeMapKeyLen`'s over-long-key path allocates a fresh up-to-65535-byte slice per key
   instead of pooled scratch, on an otherwise zero-alloc path (LOW, perf).**
 - **15p. No `PreEncodeRelPutPayloadV2` counterpart to `PreEncodeNodePutPayloadV2` for §4.5 pre-encode —

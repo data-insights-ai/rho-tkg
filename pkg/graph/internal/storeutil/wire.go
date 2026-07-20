@@ -44,7 +44,7 @@ const CurrentWireFormatVersion = 2
 // this is the on-disk wire format. Existing Badger databases were written with
 // int64 IDs; changing the field type breaks msgpack unmarshalling of every
 // pre-existing file. The Graph layer wraps these int64 values into typed IDs
-// at the deserialization boundary (WireToNode / WireToRel). Tier D — see
+// at the deserialization boundary (MustWireToNode / MustWireToRel). Tier D — see
 // keys.go for the chokepoint invariant.
 type NodeWire struct {
 	// FormatVersion is the per-row wire format version. 0 means the row was
@@ -200,11 +200,18 @@ func MarshalNodeWire(n *types.Node) ([]byte, error) {
 	return marshalWirePooled(w)
 }
 
-// WireToNode reconstructs a Node from its wire format.
-func WireToNode(w NodeWire) *types.Node {
+// MustWireToNode reconstructs a Node from its wire format, PANICKING if the
+// wire is invalid. BACKLOG 15k: renamed from WireToNode (the Must* prefix is
+// the idiomatic Go signal for "panics on failure" — regexp.MustCompile,
+// template.Must) to make it unmistakably distinct from the trust-boundary-
+// safe WireToNodeChecked, which every real read path uses instead. Has zero
+// production callers — this exists ONLY for test fixtures that construct an
+// already-known-valid NodeWire and want the *types.Node without threading an
+// error return through the test.
+func MustWireToNode(w NodeWire) *types.Node {
 	n := newNodeFromWire(w)
 	if err := applyNodeWireFields(n, w, wireToProperties(w.Properties)); err != nil {
-		panic(fmt.Sprintf("storeutil: WireToNode with invalid prevalidated properties: %v", err))
+		panic(fmt.Sprintf("storeutil: MustWireToNode with invalid prevalidated properties: %v", err))
 	}
 	return n
 }
@@ -342,8 +349,9 @@ func MarshalRelWire(r *types.Relationship) ([]byte, error) {
 	return marshalWirePooled(w)
 }
 
-// WireToRel reconstructs a Relationship from its wire format.
-func WireToRel(w RelWire) *types.Relationship {
+// MustWireToRel is the relationship mirror of MustWireToNode — see there for
+// the naming rationale (BACKLOG 15k) and the "test-fixture only" contract.
+func MustWireToRel(w RelWire) *types.Relationship {
 	r := types.NewRelationship(
 		types.RelID(w.ID),
 		uint16(w.RelType), // #nosec G115 — token from our own serialization
@@ -351,7 +359,7 @@ func WireToRel(w RelWire) *types.Relationship {
 		types.NodeID(w.EndID),
 	)
 	if err := applyRelWireFields(r, w, wireToProperties(w.Properties)); err != nil {
-		panic(fmt.Sprintf("storeutil: WireToRel with invalid prevalidated properties: %v", err))
+		panic(fmt.Sprintf("storeutil: MustWireToRel with invalid prevalidated properties: %v", err))
 	}
 	return r
 }
@@ -397,7 +405,7 @@ func applyRelWireFields(r *types.Relationship, w RelWire, props types.PropertySl
 }
 
 // WireToRelChecked validates and reconstructs a Relationship from persisted
-// wire data. Use this at store read boundaries instead of calling WireToRel
+// wire data. Use this at store read boundaries instead of calling MustWireToRel
 // directly on bytes that came from disk.
 func WireToRelChecked(w RelWire) (*types.Relationship, error) {
 	if err := validateRelWireFields(w); err != nil {
@@ -630,7 +638,7 @@ func relWireHasTemporalPayload(w RelWire) bool {
 
 // wireToProperties converts wire properties back to a PropertySlice.
 // The unchecked path preserves the historical normalization behavior used by
-// tests and by WireToNode/WireToRel; checked store reads use
+// tests and by MustWireToNode/MustWireToRel; checked store reads use
 // wireToPropertiesChecked so corrupt wire rows fail closed.
 //
 // The Type tag drives faithful reconstruction of the original Go type.

@@ -39,7 +39,7 @@ func TestNodeToWireAndBack(t *testing.T) {
 	})
 
 	w := NodeToWire(n)
-	got := WireToNode(w)
+	got := MustWireToNode(w)
 
 	if int64(got.ID()) != 1001 {
 		t.Fatalf("ID mismatch: got %d", int64(got.ID()))
@@ -89,7 +89,7 @@ func TestNodeWireNoExtras(t *testing.T) {
 
 	n := types.NewNode(types.NodeID(snowflake.ID(42)), 1, nil)
 	w := NodeToWire(n)
-	got := WireToNode(w)
+	got := MustWireToNode(w)
 
 	if got.ExtraLabelTokens() != nil {
 		t.Fatal("expected no extra labels")
@@ -109,7 +109,7 @@ func TestNodeWireNilTemporal(t *testing.T) {
 		t.Fatal("HasTemporal should be false")
 	}
 
-	got := WireToNode(w)
+	got := MustWireToNode(w)
 	if got.Temporal() != nil {
 		t.Fatal("temporal should be nil")
 	}
@@ -125,7 +125,7 @@ func TestNodeWireNilIntegrity(t *testing.T) {
 		t.Fatal("hash fields should be empty")
 	}
 
-	got := WireToNode(w)
+	got := MustWireToNode(w)
 	if got.Integrity() != nil {
 		t.Fatal("integrity should be nil")
 	}
@@ -148,7 +148,7 @@ func TestRelToWireAndBack(t *testing.T) {
 	})
 
 	w := RelToWire(r)
-	got := WireToRel(w)
+	got := MustWireToRel(w)
 
 	if int64(got.ID()) != 500 {
 		t.Fatalf("ID mismatch: got %d", int64(got.ID()))
@@ -185,7 +185,7 @@ func TestRelWireNoProperties(t *testing.T) {
 
 	r := types.NewRelationship(types.RelID(snowflake.ID(1)), 1, types.NodeID(snowflake.ID(2)), types.NodeID(snowflake.ID(3)))
 	w := RelToWire(r)
-	got := WireToRel(w)
+	got := MustWireToRel(w)
 
 	if got.Properties().Len() != 0 {
 		t.Fatal("expected no properties")
@@ -197,7 +197,7 @@ func TestRelWireNilTemporalIntegrity(t *testing.T) {
 
 	r := types.NewRelationship(types.RelID(snowflake.ID(1)), 1, types.NodeID(snowflake.ID(2)), types.NodeID(snowflake.ID(3)))
 	w := RelToWire(r)
-	got := WireToRel(w)
+	got := MustWireToRel(w)
 
 	if got.Temporal() != nil {
 		t.Fatal("temporal should be nil")
@@ -522,7 +522,7 @@ func TestNodeWireMsgpackMarshalUnmarshal(t *testing.T) {
 		t.Fatalf("unmarshal: %v", err)
 	}
 
-	got := WireToNode(w2)
+	got := MustWireToNode(w2)
 	if int64(got.ID()) != 1001 {
 		t.Fatal("ID mismatch after msgpack round-trip")
 	}
@@ -552,7 +552,7 @@ func TestRelWireMsgpackMarshalUnmarshal(t *testing.T) {
 		t.Fatalf("unmarshal: %v", err)
 	}
 
-	got := WireToRel(w2)
+	got := MustWireToRel(w2)
 	if int64(got.ID()) != 500 {
 		t.Fatal("ID mismatch")
 	}
@@ -1038,7 +1038,7 @@ func TestNodeWireBaseEntityID(t *testing.T) {
 		t.Fatalf("wire base entity: got %d", w.BaseEntityID)
 	}
 
-	got := WireToNode(w)
+	got := MustWireToNode(w)
 	if int64(got.Temporal().BaseEntityID().SnowflakeID()) != 777 {
 		t.Fatal("base entity round-trip failed")
 	}
@@ -1047,7 +1047,7 @@ func TestNodeWireBaseEntityID(t *testing.T) {
 	n2 := types.NewNode(types.NodeID(snowflake.ID(2)), 1, nil)
 	n2.SetTemporal(&types.TemporalMetadata{})
 	w2 := NodeToWire(n2)
-	got2 := WireToNode(w2)
+	got2 := MustWireToNode(w2)
 	if int64(got2.Temporal().BaseEntityID().SnowflakeID()) != 0 {
 		t.Fatal("zero base entity should remain zero")
 	}
@@ -1065,7 +1065,7 @@ func TestNodeWireTemporalZeroInstants(t *testing.T) {
 		t.Fatal("HasTemporal should be true")
 	}
 
-	got := WireToNode(w)
+	got := MustWireToNode(w)
 	tm := got.Temporal()
 	if tm == nil {
 		t.Fatal("temporal should not be nil")
@@ -1095,7 +1095,7 @@ func TestWireRoundTripIntSlice(t *testing.T) {
 		t.Fatalf("unmarshal: %v", err)
 	}
 
-	got := WireToNode(w2)
+	got := MustWireToNode(w2)
 	v, ok := got.GetProperty("counts")
 	if !ok {
 		t.Fatal("missing counts property")
