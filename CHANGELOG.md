@@ -267,6 +267,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   drifting. RED confirmed via `git stash push -- pkg/graph/graph.go`: the new test failed with both
   exact missing names (`Replication`, `SetReplicationSource`). Stash popped, GREEN confirmed; full
   `pkg/graph/...` suite and full-repo `go test ./...` clean.
+- REFACTOR — closed BACKLOG 7h: extracted the sub-API wrapper packages' duplicated generic helpers
+  into a new `pkg/graph/internal/apiutil` package (`CloneSlice[T]`, `CloneMap[K,V]`,
+  `IterateForEach[T]`). `iterateForEach` was copy-pasted byte-for-byte between `nodes/api.go` and
+  `rels/api.go`; `cloneStrings` was copy-pasted byte-for-byte between `nodes/api.go` and
+  `index/api.go`; `cloneShardInfo` (tier) and `cloneCounts` (stats) were structurally-identical
+  single-type slice/map clones of the same shape, now both `CloneSlice`/`CloneMap` instantiations — a
+  fix landing in one copy previously risked never reaching the others (lesson A1 class). All 5
+  call-site files updated, all 5 local duplicate definitions removed; behavior unchanged (pure
+  extraction, verified by the existing packages' full test suites plus 7 new direct tests on the
+  extracted package covering nil handling, defensive-copy independence, early stop via yield-false,
+  pre-canceled and mid-scan context cancellation, and end-of-scan error surfacing). `go build ./...` +
+  `go vet ./...` clean; `pkg/graph/...` full suite green under `-race`; full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

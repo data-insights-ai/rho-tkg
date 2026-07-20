@@ -7,6 +7,7 @@ package index
 import (
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/apiutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -255,14 +256,5 @@ func (a *API) Providers() []string {
 	if a == nil || !a.ok {
 		return nil
 	}
-	return cloneStrings(a.ops.Providers())
-}
-
-func cloneStrings(values []string) []string {
-	if values == nil {
-		return nil
-	}
-	out := make([]string, len(values))
-	copy(out, values)
-	return out
+	return apiutil.CloneSlice(a.ops.Providers())
 }

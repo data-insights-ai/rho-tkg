@@ -6,6 +6,7 @@
 package stats
 
 import (
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/apiutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
@@ -261,7 +262,7 @@ func (a *API) AllLabelCounts() (map[string]int, error) {
 	if err != nil {
 		return nil, err
 	}
-	return cloneCounts(counts), nil
+	return apiutil.CloneMap(counts), nil
 }
 
 // AllRelTypeCounts returns counts per relationship type.
@@ -274,16 +275,5 @@ func (a *API) AllRelTypeCounts() (map[string]int, error) {
 	if err != nil {
 		return nil, err
 	}
-	return cloneCounts(counts), nil
-}
-
-func cloneCounts(counts map[string]int) map[string]int {
-	if counts == nil {
-		return nil
-	}
-	out := make(map[string]int, len(counts))
-	for key, count := range counts {
-		out[key] = count
-	}
-	return out
+	return apiutil.CloneMap(counts), nil
 }

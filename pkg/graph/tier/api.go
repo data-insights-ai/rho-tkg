@@ -11,6 +11,7 @@
 package tier
 
 import (
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/apiutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -80,7 +81,7 @@ func (a *API) ListShards() ([]tiered.ShardInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	return cloneShardInfo(shards), nil
+	return apiutil.CloneSlice(shards), nil
 }
 
 // RebuildCatalog reconstructs the shard catalog from live state.
@@ -108,13 +109,4 @@ func (a *API) VerifyShard(shardName string) (*tiered.VerifyResult, error) {
 		return nil, err
 	}
 	return ops.VerifyShard(shardName)
-}
-
-func cloneShardInfo(shards []tiered.ShardInfo) []tiered.ShardInfo {
-	if shards == nil {
-		return nil
-	}
-	out := make([]tiered.ShardInfo, len(shards))
-	copy(out, shards)
-	return out
 }

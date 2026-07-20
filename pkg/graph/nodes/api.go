@@ -13,6 +13,7 @@ import (
 	"context"
 	"iter"
 
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/apiutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -236,7 +237,7 @@ func (a *API) Iter(ctx context.Context, opts storepkg.QueryOpts) iter.Seq2[*type
 			yield(nil, err)
 			return
 		}
-		iterateForEach(ctx, yield, func(fn func(*types.Node) bool) error {
+		apiutil.IterateForEach(ctx, yield, func(fn func(*types.Node) bool) error {
 			return ops.ForEach(opts, fn)
 		})
 	}
@@ -257,7 +258,7 @@ func (a *API) IterByLabel(ctx context.Context, label string, opts storepkg.Query
 			yield(nil, err)
 			return
 		}
-		iterateForEach(ctx, yield, func(fn func(*types.Node) bool) error {
+		apiutil.IterateForEach(ctx, yield, func(fn func(*types.Node) bool) error {
 			return ops.ForEachByLabel(label, opts, fn)
 		})
 	}
@@ -555,7 +556,7 @@ func (a *API) Labels(n *types.Node) []string {
 	if a == nil || !a.ok {
 		return nil
 	}
-	return cloneStrings(a.ops.Labels(n))
+	return apiutil.CloneSlice(a.ops.Labels(n))
 }
 
 // PrimaryLabel returns the node's primary label.
@@ -608,47 +609,4 @@ func (a *API) NextID() types.NodeID {
 		return 0
 	}
 	return a.ops.NextID()
-}
-
-func cloneStrings(values []string) []string {
-	if values == nil {
-		return nil
-	}
-	out := make([]string, len(values))
-	copy(out, values)
-	return out
-}
-
-// iterateForEach drives a Go 1.23+ range-over-func Seq2 from an
-// already-validated ForEach-shaped streaming primitive (scan): ctx is checked
-// once per row (non-blocking, before each yield) and the scan stops
-// immediately either on ctx cancellation — yielding (zero, ctx.Err()) exactly
-// once — or when the consumer's yield returns false (a normal early stop,
-// nothing further is yielded). Any error the scan itself returns (and did not
-// already surface via a per-row ctx check) is yielded once at the end.
-func iterateForEach[T any](ctx context.Context, yield func(T, error) bool, scan func(fn func(T) bool) error) {
-	var zero T
-	if err := ctx.Err(); err != nil {
-		yield(zero, err)
-		return
-	}
-	stopped := false
-	err := scan(func(v T) bool {
-		if cErr := ctx.Err(); cErr != nil {
-			stopped = true
-			yield(zero, cErr)
-			return false
-		}
-		if !yield(v, nil) {
-			stopped = true
-			return false
-		}
-		return true
-	})
-	if stopped {
-		return
-	}
-	if err != nil {
-		yield(zero, err)
-	}
 }

@@ -98,16 +98,16 @@ func TestSentinelAliasesShareIdentity(t *testing.T) {
 		// (added or pre-existing) had no identity guard against silent
 		// re-declaration drift.
 		"IndexExists/index=store":                 {indexpkg.ErrIndexExists, storepkg.ErrIndexExists},
-		"IndexNotFound/index=store":                {indexpkg.ErrIndexNotFound, storepkg.ErrIndexNotFound},
-		"TemporalIndexExists/index=store":          {indexpkg.ErrTemporalIndexExists, storepkg.ErrTemporalIndexExists},
-		"TemporalIndexNotFound/index=store":        {indexpkg.ErrTemporalIndexNotFound, storepkg.ErrTemporalIndexNotFound},
-		"RelPropertyIndexUnsupported/index=store":  {indexpkg.ErrRelPropertyIndexUnsupported, storepkg.ErrRelPropertyIndexUnsupported},
-		"VectorIndexExists/index=store":            {indexpkg.ErrVectorIndexExists, storepkg.ErrVectorIndexExists},
-		"VectorIndexNotFound/index=store":          {indexpkg.ErrVectorIndexNotFound, storepkg.ErrVectorIndexNotFound},
-		"DimensionMismatch/index=store":            {indexpkg.ErrDimensionMismatch, storepkg.ErrDimensionMismatch},
-		"InvalidTemporalIndexConfig/index=store":   {indexpkg.ErrInvalidTemporalIndexConfig, storepkg.ErrInvalidTemporalIndexConfig},
-		"InvalidVectorIndexConfig/index=store":     {indexpkg.ErrInvalidVectorIndexConfig, storepkg.ErrInvalidVectorIndexConfig},
-		"InvalidVectorValue/index=store":           {indexpkg.ErrInvalidVectorValue, storepkg.ErrInvalidVectorValue},
+		"IndexNotFound/index=store":               {indexpkg.ErrIndexNotFound, storepkg.ErrIndexNotFound},
+		"TemporalIndexExists/index=store":         {indexpkg.ErrTemporalIndexExists, storepkg.ErrTemporalIndexExists},
+		"TemporalIndexNotFound/index=store":       {indexpkg.ErrTemporalIndexNotFound, storepkg.ErrTemporalIndexNotFound},
+		"RelPropertyIndexUnsupported/index=store": {indexpkg.ErrRelPropertyIndexUnsupported, storepkg.ErrRelPropertyIndexUnsupported},
+		"VectorIndexExists/index=store":           {indexpkg.ErrVectorIndexExists, storepkg.ErrVectorIndexExists},
+		"VectorIndexNotFound/index=store":         {indexpkg.ErrVectorIndexNotFound, storepkg.ErrVectorIndexNotFound},
+		"DimensionMismatch/index=store":           {indexpkg.ErrDimensionMismatch, storepkg.ErrDimensionMismatch},
+		"InvalidTemporalIndexConfig/index=store":  {indexpkg.ErrInvalidTemporalIndexConfig, storepkg.ErrInvalidTemporalIndexConfig},
+		"InvalidVectorIndexConfig/index=store":    {indexpkg.ErrInvalidVectorIndexConfig, storepkg.ErrInvalidVectorIndexConfig},
+		"InvalidVectorValue/index=store":          {indexpkg.ErrInvalidVectorValue, storepkg.ErrInvalidVectorValue},
 
 		// pkg/graph alias of the ingest-pipeline sentinel (ADR-0006; core owns
 		// the canonical declaration).

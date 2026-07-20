@@ -65,11 +65,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 7 — Public façade & thin sub-API wrapper hardening
 
-- **7h. Duplicated generic helpers across sub-API packages (LOW, code smell).**
-  `iterateForEach`/`cloneStrings` copy-pasted verbatim between `nodes/api.go`, `rels/api.go`,
-  `index/api.go`, plus structurally-identical `cloneShardInfo`/`cloneCounts` in `tier`/`stats`. A fix
-  in one copy risks not landing in the other (lesson A1 class). Fix: extract to a shared internal
-  package.
 - **7i. No relationship-side mirror of `PropertyStats` (LOW, see BACKLOG 21 feature list).**
 
 ### BACKLOG 8 — Dry-run / constraints / replication convenience-API correctness

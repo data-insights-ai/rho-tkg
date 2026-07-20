@@ -268,8 +268,8 @@ func TestChangeBody_RoundTrip(t *testing.T) {
 func TestChangeBodyDecoders_FailClosedOnGarbage(t *testing.T) {
 	garbage := []byte{0xc1, 0xff, 0x00, 0xde, 0xad} // 0xc1 is an invalid msgpack type byte
 	decoders := map[string]func([]byte) error{
-		"NodePut":            func(p []byte) error { _, e := DecodeNodePut(p); return e },
-		"RelPut":             func(p []byte) error { _, e := DecodeRelPut(p); return e },
+		"NodePut":               func(p []byte) error { _, e := DecodeNodePut(p); return e },
+		"RelPut":                func(p []byte) error { _, e := DecodeRelPut(p); return e },
 		"NodeDelete":            func(p []byte) error { _, e := DecodeNodeDelete(p); return e },
 		"RelDelete":             func(p []byte) error { _, e := DecodeRelDelete(p); return e },
 		"NodeHistoryVersion":    func(p []byte) error { _, e := DecodeHistoryVersionNode(p); return e },
