@@ -3195,9 +3195,32 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   describes. Restored the fix, confirmed GREEN on all 5. Full `go build ./...` + `go vet ./...` clean;
   `go test ./pkg/graph/store/sharded/...` clean; `go test -race ./pkg/graph/store/sharded/...` clean;
   full repo `go test ./...` clean.
-- **20c. `DeleteNodeWithHistory` cross-shard rel tombstones not applied in deterministic (sorted)
+- **20c. [FIXED — `store/sharded/history.go`, `store/sharded/delete_node_with_history_test.go`]
+  `DeleteNodeWithHistory` cross-shard rel tombstones were not applied in deterministic (sorted)
   order, unlike the sibling `DeleteNodeCascade` — breaks repair reproducibility (MEDIUM).**
-  `store/sharded/history.go:166-203`.
+  `store/sharded/history.go:166-203`. `DeleteNodeCascade` (`node.go:123-127`) explicitly sorts its
+  cross-shard rel IDs ascending before processing ("a crash always stops at the same boundary, so a
+  partial cascade is reproducible and repair is decidable"); `DeleteNodeWithHistory`'s `remote` slice
+  had no equivalent sort — it processed cross-shard tombstones in whatever order the caller happened
+  to pass `relTombstones`, which is not guaranteed sorted.
+
+  **Fix.** Added `sort.Slice(remote, ...)` by `rt.ID.SnowflakeID()` ascending, immediately before the
+  cross-shard tombstone loop — the exact same ordering discipline `DeleteNodeCascade` already applies,
+  with a comment cross-referencing it.
+
+  **Test.** `TestDeleteNodeWithHistoryCrossShard_DeterministicAscendingOrder`: two remote tombstones
+  constructed so snowflake-ID order and SLOT order deliberately DISAGREE (relA has the larger ID but
+  lower slot; relB has the smaller ID but higher slot), passed in `[relA, relB]` input order with
+  relA's tombstone carrying a deliberately invalid `PrevVersion` (forcing its delete to fail) and
+  relB's valid. If tombstones were applied in raw input order, relA (first in the slice) would fail
+  immediately and relB — never reached — would survive untouched; ascending-ID order processes relB
+  FIRST (smaller ID despite the higher slot), so relB is gone before relA is even reached. RED
+  confirmed via `git stash push` on the production file alone: a genuine BEHAVIORAL failure (not a
+  compile error) — "relB survived... cross-shard tombstones were not applied in ascending-ID order."
+  Popped the stash, confirmed GREEN, plus the full pre-existing `TestDeleteNodeWithHistoryCrossShard`/
+  `TestDeleteNodeWithHistoryForeignIncomingStub` (BACKLOG 20d) still pass unchanged. `go build ./...`
+  + `go vet ./...` clean; `go test ./pkg/graph/store/sharded/...` clean; `go test -race
+  ./pkg/graph/store/sharded/...` clean; full repo `go test ./...` clean.
 - **20d. [FIXED — TEST-GAP, `delete_node_with_history_test.go`] Zero test coverage for
   `DeleteNodeWithHistory` in the sharded package — the most cross-shard-hazardous door in the file,
   unlike every sibling mutation door which has a dedicated `*CrossShard` test (HIGH, TEST-GAP).**

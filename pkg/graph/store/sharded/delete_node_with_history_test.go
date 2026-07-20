@@ -103,6 +103,68 @@ func TestDeleteNodeWithHistoryCrossShard(t *testing.T) {
 	}
 }
 
+// TestDeleteNodeWithHistoryCrossShard_DeterministicAscendingOrder is the
+// BACKLOG 20c regression: cross-shard rel tombstones must be applied in
+// deterministic ascending rel-ID order, mirroring DeleteNodeCascade
+// (node.go) — not the caller's input order — so a partial failure always
+// stops at the same reproducible boundary (repair-decidable).
+//
+// Constructs two remote tombstones where the SNOWFLAKE-ID order and the
+// SLOT order deliberately disagree (relA has the larger ID but the lower
+// slot; relB has the smaller ID but the higher slot), passes them to
+// DeleteNodeWithHistory in [relA, relB] input order with relA's tombstone
+// carrying a deliberately WRONG PrevVersion (forcing its delete to fail)
+// and relB's carrying a valid one. If tombstones were applied in raw input
+// order, relA (first in the slice) would fail immediately and relB (never
+// reached) would survive untouched. Ascending-ID order processes relB
+// FIRST (its ID is smaller despite its higher slot) — relB succeeds and is
+// gone before relA is even reached and fails.
+func TestDeleteNodeWithHistoryCrossShard_DeterministicAscendingOrder(t *testing.T) {
+	st := newMemStore(t, 0, 4)
+
+	hub := mkNodeID(0, 1)
+	nbrA := mkNodeID(1, 1)
+	nbrB := mkNodeID(3, 1)
+	putNode(t, st, hub, 10)
+	putNode(t, st, nbrA, 10)
+	putNode(t, st, nbrB, 10)
+
+	// relA: slot 1, n=100 -> larger snowflake ID despite the lower slot.
+	// relB: slot 3, n=50  -> smaller snowflake ID despite the higher slot.
+	relA := putRel(t, st, mkRelID(1, 100), 5, hub, nbrA)
+	relB := putRel(t, st, mkRelID(3, 50), 5, hub, nbrB)
+	if !(relB.ID().SnowflakeID() < relA.ID().SnowflakeID()) {
+		t.Fatalf("test setup invalid: want relB.ID (%d) < relA.ID (%d)", relB.ID().SnowflakeID(), relA.ID().SnowflakeID())
+	}
+
+	hubTombstone := types.NewNode(hub, 10, nil)
+	err := st.DeleteNodeWithHistory(hub, 0, hubTombstone, []RelTombstone{
+		// Deliberately relA-then-relB input order (the "wrong" order by ID)
+		// with relA's tombstone carrying an invalid PrevVersion.
+		{ID: relA.ID(), PrevVersion: relA.Version() + 99, Tombstone: relA.DeepCopy()},
+		{ID: relB.ID(), PrevVersion: relB.Version(), Tombstone: relB.DeepCopy()},
+	})
+	if err == nil {
+		t.Fatal("DeleteNodeWithHistory = nil, want an error from relA's invalid PrevVersion")
+	}
+
+	// relB (smaller ID) must have been tombstoned BEFORE relA's failure was
+	// hit — proving ascending-ID order, not input order, was followed.
+	if _, err := st.GetRelationship(relB.ID()); !errors.Is(err, ErrRelNotFound) {
+		t.Fatalf("relB survived — BACKLOG 20c regression: cross-shard tombstones were not applied in ascending-ID order (GetRelationship(relB) = %v, want ErrRelNotFound)", err)
+	}
+	relBHist, err := st.GetRelHistory(relB.ID())
+	if err != nil || len(relBHist) == 0 {
+		t.Fatalf("relB history after delete = (%v, %v), want a non-empty history (tombstone recorded)", relBHist, err)
+	}
+
+	// relA (larger ID, invalid tombstone) must still be live — its delete
+	// was reached and correctly rejected.
+	if _, err := st.GetRelationship(relA.ID()); err != nil {
+		t.Fatalf("relA unexpectedly gone: %v (its delete should have failed on the bad PrevVersion)", err)
+	}
+}
+
 // TestDeleteNodeWithHistoryForeignIncomingStub covers the third category: a
 // Model-A foreign-incoming half-edge stub connected to the node being
 // deleted. The stub has no version chain (nothing to tombstone) and must be

@@ -2,6 +2,7 @@ package sharded
 
 import (
 	"errors"
+	"sort"
 
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -191,7 +192,15 @@ func (s *Store) DeleteNodeWithHistory(id types.NodeID, prevNodeVersion uint32, n
 		}
 	}
 
-	// Cross-shard rel tombstones first (each atomic on its own shard).
+	// Cross-shard rel tombstones first (each atomic on its own shard), in
+	// deterministic ascending rel-ID order — mirrors DeleteNodeCascade
+	// (node.go): a crash always stops at the same boundary, so a partial
+	// with-history delete is reproducible and repair is decidable
+	// (BACKLOG 20c; `remote` otherwise preserved the caller's relTombstones
+	// order, which is not guaranteed sorted).
+	sort.Slice(remote, func(i, j int) bool {
+		return remote[i].ID.SnowflakeID() < remote[j].ID.SnowflakeID()
+	})
 	for _, rt := range remote {
 		relShard, rerr := s.shardForRelID(rt.ID)
 		if rerr != nil {

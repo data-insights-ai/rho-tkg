@@ -184,6 +184,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   deliberate, safe (idempotent, no rollback needed) side effect that deserved an honest name instead
   of a misleading one. New test proves the purge behavior, previously untested.
 
+- FIX — sharded store's `DeleteNodeWithHistory` now applies cross-shard relationship tombstones in
+  deterministic ascending rel-ID order (BACKLOG 20c), mirroring the sibling `DeleteNodeCascade` — a
+  partial failure now always stops at the same reproducible boundary instead of depending on the
+  caller's `relTombstones` input order, which was never guaranteed sorted. New regression test
+  constructs snowflake-ID order and shard-slot order to deliberately disagree, proving the fix
+  follows ID order specifically (not e.g. slot order) by observing which of two rels survives a
+  forced mid-delete failure.
+
 ## [4.23.0] - 2026-07-18
 
 - PERF — the streaming whole-node label door (`g.Nodes().ForEachByLabel` + new `g.Nodes().IterByLabel(ctx, label, opts) iter.Seq2[*types.Node, error]`) now rides the bulk-scan substrate (BACKLOG 3, final increment — the `NodesByLabelBulk` ask). badger's `ForEachNodeByLabel` was still doing N per-node `Txn.Get`s (`prefetchNodeScan` loop); it now streams through `forEachNodeBulk` — one read transaction + one forward-seeking iterator, cache hits served inline — so a one-shot `MATCH (n:L) RETURN n` gets the ~1.3× single-iterator fetch win **while keeping peak memory O(1) nodes** (no result-slice materialization), the whole point of the streaming door vs the materializing `ByLabel`. The label IDs are snapshotted under `idxMu` then released, so `fn` runs holding no `idxMu` (only a badger snapshot txn) — the relaxed-isolation "fn may call back into the graph" contract is preserved. New `IterByLabel` is the ergonomic iter.Seq2 form (parity with `Iter`). Cross-backend unchanged: memory streams live objects; tiered/sharded and any temporal `QueryOpts` fall back to the materialized history-aware `ByLabel` then stream (correct, no streaming-memory win there). **MEASURED (50k, cache-cold): ~120 → ~93 ms** vs the old per-node path. Tests: `IterByLabel`/`ForEachByLabel` == `ByLabel` set+order over a mixed-label 3k scan (both backends) + iter.Seq2 early-stop, `-race` clean; A/B benchmark. This closes the last open `tasks/backlog.md` item.
