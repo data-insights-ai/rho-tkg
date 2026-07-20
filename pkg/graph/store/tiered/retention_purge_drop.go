@@ -245,6 +245,25 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 // endpoint's shard holds the residue (a full-local rel or an orphan in-leg), removed
 // via PurgeRelationshipByInfo. Returns the count of distinct rels swept.
 func (ts *Store) sweepDroppedShardResidue(rels []storecontract.PurgedRel, dropSet map[types.NodeID]struct{}) (int, error) {
+	return ts.sweepRelResidue(rels, func(endpoint types.NodeID) bool {
+		_, gone := dropSet[endpoint]
+		return gone // this endpoint is on the dropped shard — nothing to clean there
+	})
+}
+
+// sweepRelResidue is the shared cross-shard residue-sweep body BACKLOG 19m
+// factors out of sweepDroppedShardResidue (whole-shard fast-drop) and
+// purgeNodesFanOut's Phase 2 (row-scan purge, retention_purge.go) — the two
+// were independently near-duplicated, a future fix to one likely to miss
+// the other. Dedupes rels by ID (an internal rel between two purged nodes,
+// or a self-loop, would otherwise be swept once per endpoint), then for
+// each endpoint whose shard MIGHT hold residue, purges it. isKnownGone lets
+// a caller with a precomputed "already known dropped" set (the fast-drop
+// path's dropSet) skip a redundant GetNode call for those endpoints; a
+// caller with no such set (the row-scan path) passes a func that always
+// returns false, relying solely on GetNode's ErrNodeNotFound to detect a
+// purged endpoint. Returns the count of unique rels processed.
+func (ts *Store) sweepRelResidue(rels []storecontract.PurgedRel, isKnownGone func(types.NodeID) bool) (int, error) {
 	seen := make(map[types.RelID]struct{}, len(rels))
 	swept := 0
 	for _, pr := range rels {
@@ -254,8 +273,8 @@ func (ts *Store) sweepDroppedShardResidue(rels []storecontract.PurgedRel, dropSe
 		seen[pr.ID] = struct{}{}
 		swept++
 		for _, endpoint := range [2]types.NodeID{pr.StartID, pr.EndID} {
-			if _, gone := dropSet[endpoint]; gone {
-				continue // this endpoint is on the dropped shard — nothing to clean there
+			if isKnownGone(endpoint) {
+				continue
 			}
 			// Surviving endpoint: its shard may hold residue. Skip if the endpoint is
 			// itself already gone (a GetNode miss), else route + purge the residue.

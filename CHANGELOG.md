@@ -1497,6 +1497,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   both tests GREEN in ~6.3s (close to the ~5s bound plus overhead). `go build`/`go vet` clean; full
   `pkg/graph/store/tiered` package suite green including under `-race` (67s); full-repo
   `go test ./...` clean.
+- CLEANUP — BACKLOG 19m: `sweepDroppedShardResidue` (whole-shard fast-drop) and `purgeNodesFanOut`'s
+  Phase 2 (row-scan purge) independently duplicated near-identical cross-shard rel-residue-sweep
+  logic (dedup rels by ID, iterate both endpoints, skip a known-gone one, `GetNode`-probe the other,
+  route + `PurgeRelationshipByInfo`) — a future fix to one was likely to miss the other. Extracted
+  the shared body into `sweepRelResidue(rels, isKnownGone)`, parameterized by an `isKnownGone` probe:
+  the fast-drop path passes its precomputed `dropSet` membership check (a pure optimization — skips a
+  redundant `GetNode` call for endpoints already known removed), the row-scan path passes a func that
+  always returns false, relying solely on `GetNode`'s `ErrNodeNotFound` to detect a purged endpoint
+  (its pre-refactor behavior, preserved exactly). Pure refactor, no behavior change — verified via the
+  existing test coverage that already exercises both call sites (`TestTieredPurge_CrossShardEdgeSweep`,
+  `TestTieredPurge_ByValidTo_CrossShardEdgeSweep`, and the `TestTieredColdShardFastDrop*` family), no
+  new test needed. `go build`/`go vet` clean; full `pkg/graph/store/tiered` package suite green
+  including under `-race` (65s); full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

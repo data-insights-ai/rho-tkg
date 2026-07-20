@@ -415,9 +415,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   one worth guaranteeing (e.g. "the shard is picked up correctly if it existed before the tx's FIRST
   divert toggle" as a documented, tested contract) rather than leaving the actual behavior
   undefined-by-omission.**
-- **19m. Duplicated cross-shard residue-sweep logic between `sweepDroppedShardResidue` and
-  `purgeNodesFanOut`'s phase 2 — a future fix to one is likely to miss the other (LOW).**
-  `retention_purge_drop.go:167-200` vs `retention_purge.go:98-125`.
 - **19p. Dead defensive-only bound check would silently swallow the exact invariant violation 19c
   would produce, instead of surfacing it (LOW).** `tieredstore_changelog.go:415-419`.
 - **19q. Global `nodeCreateMu`/`relCreateMu` serialize ALL creates store-wide — a hard throughput
