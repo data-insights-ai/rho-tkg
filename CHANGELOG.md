@@ -1699,6 +1699,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   full-repo `go test ./...` clean. This closes out BACKLOG 20 (Sharded backend hardening) for this pass —
   20m remains intentionally open (cross-references BACKLOG 21's deliberately-deferred re-sharding
   feature-level entry).
+- PERF FIX — BACKLOG 15s: the 10 change-log BODY WRAPPER types (`internal/storeutil/changelog.go`) —
+  `NodePutBody`, `RelPutBody`, `NodeDeleteBody`, `RelDeleteBody`, `ForeignIncomingDeleteBody`,
+  `RangePurgeBody`, `HistoryVersionNodeBody`, `HistoryVersionRelBody`, `HistoryTruncateBody`, `MetaBody` —
+  had no custom msgpack encoders, so every `MarshalChangeBody`/`SafeUnmarshal` call paid reflection for
+  the wrapper's own 1-5 top-level fields even though the nested `Wire NodeWire`/`Wire RelWire` field
+  already dispatches to ITS OWN hand-written `EncodeMsgpack`/`DecodeMsgpack` once reflection reaches it.
+  `NodePutBody`/`RelPutBody` are the hottest — emitted on every node/rel write when a change-log is
+  enabled (replication, tiered's/sharded's store-global change-log) and decoded on every record a
+  replica applies. Added hand-written `EncodeMsgpack`/`DecodeMsgpack` for all 10 types
+  (`internal/storeutil/changelog_wire.go`), mirroring the existing `NodeWire`/`RelWire` pattern: map-key
+  emission order matches each struct's field DECLARATION order (the order reflection walked them in),
+  nested `NodeWire`/`RelWire`/`*NodeWire`/`*RelWire` fields dispatch via a direct method call (zero
+  reflection either way), and the two slice fields on `NodeDeleteBody` (`RelTombstones []RelWire`,
+  `CascadedRelIDs []int64`) get array-header-then-per-element helpers mirroring the existing
+  `encodePropertyArray` shape. Verified byte-identical to the PRIOR pure-reflection encoding via golden
+  vectors (`changelog_encode_golden_test.go`) captured from `msgpack.Marshal` BEFORE these methods
+  existed, for both the all-omitted-optional-fields case and the every-optional-field-present case of
+  every type; added `changelog_wire_roundtrip_test.go` (`TestChangeBodyRoundTrip`, 17 cases via
+  `reflect.DeepEqual`, plus `TestChangeBodyDecodeUnknownKeyForwardCompat` proving an unrecognized map key
+  is skipped like reflection ignores an unknown struct field). Confirmed load-bearing: temporarily
+  renaming `NodePutBody`'s `"wh"` encode key to `"xx"` turned the new golden test, the new round-trip
+  test, AND the pre-existing `TestChangeBody_RoundTrip/NodePut` (a higher-level test exercising the same
+  path through `NodePutPayload`/`DecodeNodePut`) all RED simultaneously; restored, all GREEN. The
+  pre-existing `TestChangeBodyDecoders_FailClosedOnGarbage` suite (BACKLOG 16f) stayed green throughout,
+  confirming corrupt/hostile payloads still fail closed via `SafeUnmarshal`'s panic recovery regardless
+  of which decoder runs underneath it. `go build`/`go vet` clean; `internal/storeutil` package suite
+  green under `-race`; `io`/`replication`/`store/tiered`/`store/sharded`/`store/badger` package suites
+  (the change-log-heaviest consumers) green under `-race`; full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

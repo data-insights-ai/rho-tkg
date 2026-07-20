@@ -266,29 +266,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 - **15p. No `PreEncodeRelPutPayloadV2` counterpart to `PreEncodeNodePutPayloadV2` for §4.5 pre-encode —
   see BACKLOG 21 (LOW, likely intentional node-first scope).**
-- **15s. Change-log body wrapper types have no custom msgpack encoders — reflection on every
-  change-log-enabled mutation (MEDIUM-HIGH, perf, user-requested audit following BACKLOG 16f).**
-  `internal/storeutil/changelog.go` (`marshalChangeBody`/`SafeUnmarshal` call sites at
-  `changelog.go:163` and every `Decode*` helper in the same file). `NodeWire`/`RelWire`/`PropertyWire`
-  already have hand-written `EncodeMsgpack`/`DecodeMsgpack` (no reflection — see CLAUDE.md's wire-codec
-  notes and the BACKLOG 15h/15m test-gap work in this same area), but the 10 change-log BODY WRAPPER
-  types that embed them do NOT: `NodePutBody`, `RelPutBody`, `NodeDeleteBody`, `RelDeleteBody`,
-  `ForeignIncomingDeleteBody`, `RangePurgeBody`, `HistoryVersionNodeBody`, `HistoryVersionRelBody`,
-  `HistoryTruncateBody`, `MetaBody`. `msgpack.Marshal(body)`/`SafeUnmarshal(payload, &body)` on any of
-  these therefore falls back to msgpack's generic reflection-based struct encoder for the OUTER
-  wrapper layer (the inner `Wire NodeWire`/`Wire RelWire` field still dispatches correctly to the fast
-  path once reflection reaches it — only the wrapper's own 1-4 fields pay the reflection cost, not the
-  full entity). `NodePutBody`/`RelPutBody` are BY FAR the hottest — emitted (encode) on every node/rel
-  write when a change-log is enabled, and decoded on every record a replica applies
-  (`applyChangeRecordLocked`) — so this is a real per-mutation cost on any change-log-enabled
-  deployment (replication, tiered's store-global change-log), not a rare admin path. The other 8 body
-  types are lower frequency (deletes, history-version/truncate, meta, range-purge) but share the same
-  gap. Fix: hand-write `EncodeMsgpack`/`DecodeMsgpack` for all 10 body types following the exact
-  `NodeWire`/`RelWire` pattern (`wire_encode.go`/`wire_decode.go`), verified byte-identical to the
-  current reflection-based encoding via golden vectors (the same discipline BACKLOG 15g/15m/15h used)
-  before any behavior-preserving swap — a change-log/replica-apply wire-format regression would break
-  cross-version replica compatibility, so this needs the same rigor as the entity wire codecs, not a
-  quick pass.
 - **15t. `HistoryDeltaEncoding`'s delta wrapper types have no custom msgpack encoders — reflection on
   every delta-encoded history write when the opt-in feature is enabled (MEDIUM, perf, same audit as
   15s).** `internal/storeutil/wire_history_delta.go` (`EncodeNodeHistoryDelta`/`EncodeRelHistoryDelta`
