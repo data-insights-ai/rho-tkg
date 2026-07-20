@@ -219,7 +219,18 @@ func (s *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 
 	var committed []int
 	for _, idx := range ascendingKeys(buckets) {
-		for _, r := range buckets[idx] {
+		// Deterministic ascending rel-ID order WITHIN a shard group (BACKLOG
+		// 20i, same class as 20c/DeleteNodeWithHistory): buckets[idx] otherwise
+		// preserves the caller's rels slice order, which is not guaranteed
+		// sorted. Each relationship's own write is already atomic (row + both
+		// adjacency legs co-commit), but a MULTI-rel group is not — a surviving
+		// I/O error mid-group must always stop at the same reproducible
+		// boundary, not one that depends on caller input order.
+		group := buckets[idx]
+		sort.Slice(group, func(i, j int) bool {
+			return group[i].ID().SnowflakeID() < group[j].ID().SnowflakeID()
+		})
+		for _, r := range group {
 			if err := s.putRelationshipToShard(idx, r); err != nil {
 				return &PartialBatchError{Op: "PutRelationshipsBatch", CommittedShards: committed, FailedShard: idx, Err: err}
 			}

@@ -1615,6 +1615,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   GREEN. `go build`/`go vet` clean; full `pkg/graph/internal/core` package suite green including under
   `-race` (128s); `pkg/graph/store/sharded` package suite green under `-race`; full-repo
   `go test ./...` clean.
+- FIX — BACKLOG 20i: `PutRelationshipsBatch` (`store/sharded/batch.go`) applied shard GROUPS in
+  deterministic ascending shard-index order (via `ascendingKeys(buckets)`), but WITHIN a group applied
+  relationships in caller input-slice order — not guaranteed sorted. Same class as BACKLOG 20c
+  (`DeleteNodeWithHistory`'s cross-shard tombstone ordering): each relationship's own write is already
+  atomic (row + both adjacency legs co-commit in one `PutRelationshipCoLocated` call), but a multi-rel
+  group is not atomic as a whole, so a surviving I/O error mid-group must always stop at the same
+  reproducible boundary regardless of how the caller happened to order its input slice. Fixed by sorting
+  each shard's `group` by ascending relationship snowflake ID (`sort.Slice`) immediately before the
+  per-relationship apply loop, mirroring `DeleteNodeWithHistory`'s established `sort.Slice(remote, ...)`
+  precedent exactly. Added `TestPutRelationshipsBatchSameShard_DeterministicAscendingOrder`
+  (`store/sharded/put_relationships_batch_order_test.go`): two relationships routed to the SAME shard
+  slot, listed in the batch's input slice in the "wrong" order (the larger-snowflake-ID relationship
+  first), verified via the change-log — a change-log-enabled store co-commits a `ChangeRelPut` record
+  with each relationship write, so the record's LSN is a direct, order-preserving observation of actual
+  write sequence inside the shard, decoded via `replication.DecodeChangeIdentity` — asserting the
+  smaller-ID relationship's LSN precedes the larger-ID relationship's LSN despite the reversed input
+  order. Confirmed load-bearing: temporarily reverting the `sort.Slice` call turns the test immediately
+  RED (`"relB (smaller ID) committed at LSN 5, relA (larger ID, listed first in input) at LSN 4"` —
+  exactly input order, not ID order); restored, GREEN. `go build`/`go vet` clean;
+  `pkg/graph/store/sharded` package suite green under `-race`; full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 
