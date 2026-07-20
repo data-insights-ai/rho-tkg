@@ -22,7 +22,7 @@ func (ms *Store) PruneTemporalCandidates(labelToken uint16, ids []types.NodeID, 
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 	ti := ms.temporalIndexes[labelToken]
-	if ti == nil {
+	if ti == nil || ti.Building {
 		return ids, false
 	}
 	kept := make([]types.NodeID, 0, len(ids))

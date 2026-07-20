@@ -188,49 +188,96 @@ func (ms *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error 
 // --- Composite property indexes ---
 
 // CreateCompositePropertyIndex creates a composite property index over the
-// declared, ORDER-PRESERVING keys (2..4) for the given label token. Scans all
-// existing nodes with that label to populate the index. Returns ErrIndexExists
-// if an index for the exact same (labelToken, ordered keys) already exists —
-// a different key ORDER for the same key SET is a distinct definition.
+// declared, ORDER-PRESERVING keys (2..4) for the given label token. Returns
+// ErrIndexExists if an index for the exact same (labelToken, ordered keys)
+// already exists — a different key ORDER for the same key SET is a distinct
+// definition. Three-phase approach (BACKLOG 17h, mirrors CreatePropertyIndex
+// and badger's proven CreateCompositePropertyIndex) so scanning a large
+// existing label does not hold ms.mu for the whole scan:
+//
+//	Phase 1 (Lock): register an empty live index (captures concurrent writes
+//	via Mutated) and snapshot the label's current node IDs.
+//	Phase 2 (brief per-row RLock, never held across the scan): read each
+//	snapshotted node's current row into a separate backfill index.
+//	Phase 3 (Lock): merge backfill into the live index, skipping IDs a
+//	concurrent write already handled (Mutated) or that were deleted during
+//	Phase 2.
 func (ms *Store) CreateCompositePropertyIndex(labelToken uint16, keys []string) error {
 	if ms == nil {
 		return ErrNilStore
 	}
-	ms.mu.Lock()
-	defer ms.mu.Unlock()
 
+	// Phase 1.
+	ms.mu.Lock()
 	if err := ms.checkOpenLocked(); err != nil {
+		ms.mu.Unlock()
 		return err
 	}
 	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
+		ms.mu.Unlock()
 		return err
 	}
 	if err := storecontract.ValidateCompositeIndexKeys(keys); err != nil {
+		ms.mu.Unlock()
 		return err
 	}
-
 	key := indexpkg.CompositeIndexKey{LabelToken: labelToken, Keys: indexpkg.EncodeCompositeKeyTuple(keys)}
 	if _, exists := ms.compositeIndexes[key]; exists {
+		ms.mu.Unlock()
 		return ErrIndexExists
 	}
+	liveIdx := indexpkg.NewCompositePropertyIndex(keys)
+	liveIdx.Mutated = make(map[snowflake.ID]struct{})
+	indexpkg.RegisterCompositeIndex(ms.compositeIndexes, ms.compositeIndexesByLabel, key, liveIdx)
+	nids := ms.labelNodeIDsSnapshotLocked(labelToken)
+	ms.mu.Unlock()
 
-	idx := indexpkg.NewCompositePropertyIndex(keys)
-
-	// Populate from existing nodes with this label.
-	if nodeIDs, ok := ms.labelIdx[labelToken]; ok {
-		for nodeID := range nodeIDs {
-			n := ms.nodes[nodeID]
-			if n == nil {
-				continue
-			}
-			if vk, found := indexpkg.NodeCompositeValueKey(idx.Keys, n); found {
-				idx.AddKey(nodeID.SnowflakeID(), vk)
-			}
+	// Phase 2.
+	backfill := indexpkg.NewCompositePropertyIndex(keys)
+	for _, nid := range nids {
+		ms.mu.RLock()
+		n, ok := ms.nodes[nid]
+		ms.mu.RUnlock()
+		if !ok {
+			continue // deleted between snapshot and fetch
+		}
+		if vk, found := indexpkg.NodeCompositeValueKey(liveIdx.Keys, n); found {
+			backfill.AddKey(nid.SnowflakeID(), vk)
 		}
 	}
 
-	indexpkg.RegisterCompositeIndex(ms.compositeIndexes, ms.compositeIndexesByLabel, key, idx)
+	// Phase 3.
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	if err := requireCompositeIndexCurrentForCreate(ms.compositeIndexes, key, liveIdx); err != nil {
+		return err
+	}
+	for vk, idSet := range backfill.Entries {
+		for id := range idSet {
+			if _, mutated := liveIdx.Mutated[id]; mutated {
+				continue // concurrent write handled this ID during Phase 2
+			}
+			if _, alive := ms.nodes[types.NodeID(id)]; !alive {
+				continue // node deleted during Phase 2
+			}
+			liveIdx.AddKey(id, vk)
+		}
+	}
+	liveIdx.Mutated = nil // stop tracking — index creation complete
 	return nil
+}
+
+// requireCompositeIndexCurrentForCreate mirrors requirePropertyIndexCurrentForCreate
+// (and badger's identically-named helper) for the composite-index door.
+func requireCompositeIndexCurrentForCreate(idxs map[indexpkg.CompositeIndexKey]*indexpkg.CompositePropertyIndex, key indexpkg.CompositeIndexKey, expected *indexpkg.CompositePropertyIndex) error {
+	current := idxs[key]
+	if current == expected {
+		return nil
+	}
+	if current == nil {
+		return fmt.Errorf("graph: create composite property index: index dropped during creation: %w", ErrIndexNotFound)
+	}
+	return fmt.Errorf("graph: create composite property index: index replaced during creation: %w", ErrIndexExists)
 }
 
 // DropCompositePropertyIndex removes a composite property index declared
@@ -383,56 +430,126 @@ func validateCompositeQueryValues(values map[string]any) error {
 
 // --- Temporal indexes ---
 
-// CreateTemporalIndex creates a temporal interval index on nodes with the given label token.
-// Scans existing nodes with that label to populate the index.
-// Returns ErrTemporalIndexExists if an index already exists for this label.
+// CreateTemporalIndex creates a temporal interval index on nodes with the
+// given label token. Returns ErrTemporalIndexExists if an index already
+// exists for this label (temporal or high-frequency — only one kind per
+// label). Three-phase approach (BACKLOG 17h, mirrors CreatePropertyIndex and
+// badger's proven CreateTemporalIndex) so scanning a large existing label
+// does not hold ms.mu for the whole scan:
+//
+//	Phase 1 (Lock): install an empty live index (Building=true, Mutated
+//	tracking) and snapshot the label's current node IDs.
+//	Phase 2 (brief per-row RLock, never held across the scan): for each
+//	snapshotted node ID, read its CURRENT row AND its history rows together
+//	under the SAME RLock (so the two views cannot tear relative to each
+//	other — unlike badger, which folds history in a separate deferred pass
+//	because its I/O-bound GetNodeHistory cannot run under idxMu; memory has
+//	no such constraint, so it merges current+history in one Phase 2 pass).
+//	Every node's CURRENT version AND every history version's bounds are
+//	folded into the node's per-ID ENVELOPE (B4 sound superset): a past
+//	version whose valid interval differs from the current one must still be
+//	covered, so the core resolver's predicate-anywhere candidate narrowing
+//	never misses it.
+//	Phase 3 (Lock): for each snapshotted node still alive and not touched by
+//	a concurrent write during Phase 2 (Mutated), Extend the live index with
+//	EVERY interval collected for that node (current + history) — Extend's
+//	union-into-existing-entry semantics correctly merge multiple intervals
+//	for the same ID into one envelope, exactly like the pre-3-phase code's
+//	inline current-then-history Extend sequence.
 func (ms *Store) CreateTemporalIndex(labelToken uint16) error {
 	if ms == nil {
 		return ErrNilStore
 	}
-	ms.mu.Lock()
-	defer ms.mu.Unlock()
 
+	// Phase 1.
+	ms.mu.Lock()
 	if err := ms.checkOpenLocked(); err != nil {
+		ms.mu.Unlock()
 		return err
 	}
 	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
+		ms.mu.Unlock()
 		return err
 	}
-
 	if _, exists := ms.temporalIndexes[labelToken]; exists {
+		ms.mu.Unlock()
 		return ErrTemporalIndexExists
 	}
 	if _, exists := ms.hfIndexes[labelToken]; exists {
+		ms.mu.Unlock()
 		return ErrTemporalIndexExists
 	}
+	liveTI := indexpkg.NewTemporalIndex()
+	liveTI.Building = true
+	liveTI.Mutated = make(map[snowflake.ID]struct{})
+	ms.temporalIndexes[labelToken] = liveTI
+	nids := ms.labelNodeIDsSnapshotLocked(labelToken)
+	ms.mu.Unlock()
 
-	ti := indexpkg.NewTemporalIndex()
-	if nodeIDs, ok := ms.labelIdx[labelToken]; ok {
-		for nodeID := range nodeIDs {
-			n := ms.nodes[nodeID]
-			if n == nil {
+	// Phase 2.
+	type interval struct{ from, to types.Instant }
+	type nodeEnvelope struct {
+		id        snowflake.ID
+		intervals []interval
+	}
+	backfill := make([]nodeEnvelope, 0, len(nids))
+	for _, nid := range nids {
+		ms.mu.RLock()
+		n, ok := ms.nodes[nid]
+		var hist map[uint32]*types.Node
+		if ok {
+			hist = ms.nodeHistory[nid]
+		}
+		ms.mu.RUnlock()
+		if !ok {
+			continue // deleted between snapshot and fetch
+		}
+		rawID := nid.SnowflakeID()
+		from, to := indexpkg.NodeTemporalBounds(rawID, n.Temporal())
+		entry := nodeEnvelope{id: rawID, intervals: []interval{{from, to}}}
+		for _, hv := range hist {
+			if hv == nil {
 				continue
 			}
-			rawID := nodeID.SnowflakeID()
-			// Fold the current version AND every history version's bounds into the
-			// node's ENVELOPE (B4 sound superset): a past version whose valid
-			// interval differs from the current one must still be covered, so the
-			// core resolver's predicate-anywhere candidate narrowing never misses it.
-			from, to := indexpkg.NodeTemporalBounds(rawID, n.Temporal())
-			ti.Extend(rawID, from, to)
-			for _, hv := range ms.nodeHistory[nodeID] {
-				if hv == nil {
-					continue
-				}
-				hf, ht := indexpkg.NodeTemporalBounds(rawID, hv.Temporal())
-				ti.Extend(rawID, hf, ht)
-			}
+			hf, ht := indexpkg.NodeTemporalBounds(rawID, hv.Temporal())
+			entry.intervals = append(entry.intervals, interval{hf, ht})
 		}
+		backfill = append(backfill, entry)
 	}
 
-	ms.temporalIndexes[labelToken] = ti
+	// Phase 3.
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	if err := requireTemporalIndexCurrentForCreate(ms.temporalIndexes, labelToken, liveTI); err != nil {
+		return err
+	}
+	for _, entry := range backfill {
+		if _, alive := ms.nodes[types.NodeID(entry.id)]; !alive {
+			continue // node deleted during Phase 2
+		}
+		if liveTI.WasMutated(entry.id) {
+			continue // concurrent write already handled this ID (current + history) during Phase 2
+		}
+		for _, iv := range entry.intervals {
+			liveTI.Extend(entry.id, iv.from, iv.to)
+		}
+	}
+	liveTI.Building = false
+	liveTI.ClearMutationTracking()
 	return nil
+}
+
+// requireTemporalIndexCurrentForCreate mirrors requirePropertyIndexCurrentForCreate
+// (and badger's identically-named helper) for the temporal-index door.
+func requireTemporalIndexCurrentForCreate(idxs map[uint16]*indexpkg.TemporalIndex, labelToken uint16, expected *indexpkg.TemporalIndex) error {
+	current := idxs[labelToken]
+	if current == expected {
+		return nil
+	}
+	if current == nil {
+		return fmt.Errorf("graph: create temporal index: index dropped during creation: %w", ErrTemporalIndexNotFound)
+	}
+	return fmt.Errorf("graph: create temporal index: index replaced during creation: %w", ErrTemporalIndexExists)
 }
 
 // DropTemporalIndex removes a temporal index for the given label token.
@@ -460,50 +577,96 @@ func (ms *Store) DropTemporalIndex(labelToken uint16) error {
 
 // --- High-frequency indexes ---
 
-// CreateHighFrequencyIndex creates a time-bucketed high-frequency index on nodes
-// with the given label token. Only one temporal index type can exist per label —
-// returns ErrInvalidTemporalIndexConfig if bucketSize is not a positive whole
-// millisecond and
-// returns ErrTemporalIndexExists if a temporalIndex or highFrequencyIndex already
-// exists for this label.
+// CreateHighFrequencyIndex creates a time-bucketed high-frequency index on
+// nodes with the given label token. Only one temporal index type can exist
+// per label — returns ErrInvalidTemporalIndexConfig if bucketSize is not a
+// positive whole millisecond and returns ErrTemporalIndexExists if a
+// temporalIndex or highFrequencyIndex already exists for this label.
+// Three-phase approach (BACKLOG 17h, mirrors CreatePropertyIndex and badger's
+// proven CreateHighFrequencyIndex) so scanning a large existing label does
+// not hold ms.mu for the whole scan; see CreatePropertyIndex's doc comment
+// for the general phase shape.
 func (ms *Store) CreateHighFrequencyIndex(labelToken uint16, bucketSize time.Duration) error {
 	if ms == nil {
 		return ErrNilStore
 	}
-	ms.mu.Lock()
-	defer ms.mu.Unlock()
 
+	// Phase 1.
+	ms.mu.Lock()
 	if err := ms.checkOpenLocked(); err != nil {
+		ms.mu.Unlock()
 		return err
 	}
 	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
+		ms.mu.Unlock()
 		return err
 	}
 	if err := storecontract.ValidateHighFrequencyBucketSize(bucketSize); err != nil {
+		ms.mu.Unlock()
 		return err
 	}
-
 	if _, exists := ms.temporalIndexes[labelToken]; exists {
+		ms.mu.Unlock()
 		return ErrTemporalIndexExists
 	}
 	if _, exists := ms.hfIndexes[labelToken]; exists {
+		ms.mu.Unlock()
 		return ErrTemporalIndexExists
 	}
+	liveHFI := indexpkg.NewHighFrequencyIndex(bucketSize, 0)
+	liveHFI.Mutated = make(map[snowflake.ID]struct{})
+	ms.hfIndexes[labelToken] = liveHFI
+	nids := ms.labelNodeIDsSnapshotLocked(labelToken)
+	ms.mu.Unlock()
 
-	hfi := indexpkg.NewHighFrequencyIndex(bucketSize, 0)
-	if nodeIDs, ok := ms.labelIdx[labelToken]; ok {
-		for nodeID := range nodeIDs {
-			n := ms.nodes[nodeID]
-			if n == nil {
-				continue
-			}
-			from, _ := indexpkg.NodeTemporalBounds(nodeID.SnowflakeID(), n.Temporal())
-			hfi.Add(nodeID, from)
+	// Phase 2.
+	type nodeEntry struct {
+		id   snowflake.ID
+		from types.Instant
+	}
+	backfill := make([]nodeEntry, 0, len(nids))
+	for _, nid := range nids {
+		ms.mu.RLock()
+		n, ok := ms.nodes[nid]
+		ms.mu.RUnlock()
+		if !ok {
+			continue // deleted between snapshot and fetch
 		}
+		rawID := nid.SnowflakeID()
+		from, _ := indexpkg.NodeTemporalBounds(rawID, n.Temporal())
+		backfill = append(backfill, nodeEntry{id: rawID, from: from})
 	}
 
-	ms.hfIndexes[labelToken] = hfi
+	// Phase 3.
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	if err := requireHighFrequencyIndexCurrentForCreate(ms.hfIndexes, labelToken, liveHFI); err != nil {
+		return err
+	}
+	for _, entry := range backfill {
+		if _, alive := ms.nodes[types.NodeID(entry.id)]; !alive {
+			continue // node deleted during Phase 2
+		}
+		if liveHFI.WasMutated(entry.id) {
+			continue // concurrent write handled this ID during Phase 2
+		}
+		liveHFI.Add(types.NodeID(entry.id), entry.from)
+	}
+	liveHFI.ClearMutationTracking()
 	return nil
+}
+
+// requireHighFrequencyIndexCurrentForCreate mirrors requirePropertyIndexCurrentForCreate
+// (and badger's identically-named helper) for the high-frequency-index door.
+func requireHighFrequencyIndexCurrentForCreate(idxs map[uint16]*indexpkg.HighFrequencyIndex, labelToken uint16, expected *indexpkg.HighFrequencyIndex) error {
+	current := idxs[labelToken]
+	if current == expected {
+		return nil
+	}
+	if current == nil {
+		return fmt.Errorf("graph: create high-frequency index: index dropped during creation: %w", ErrTemporalIndexNotFound)
+	}
+	return fmt.Errorf("graph: create high-frequency index: index replaced during creation: %w", ErrTemporalIndexExists)
 }
 
 // DropHighFrequencyIndex removes the high-frequency index for the given label token.
@@ -541,56 +704,93 @@ func (ms *Store) CreateVectorIndex(labelToken uint16, propertyKey string, dims i
 // CreateVectorIndexWithOptions is CreateVectorIndex with additional control
 // over the search engine (opts.UseBruteForce) and HNSW tuning (opts.M /
 // EfConstruction / EfSearch). A zero-value opts is identical to
-// CreateVectorIndex (documented HNSW defaults).
+// CreateVectorIndex (documented HNSW defaults). Three-phase approach
+// (BACKLOG 17h, mirrors CreatePropertyIndex and badger's proven
+// CreateVectorIndexWithOptions) so scanning a large existing label does not
+// hold ms.mu for the whole scan; see CreatePropertyIndex's doc comment for
+// the general phase shape. While the index is being backfilled it is
+// installed but "Building" (vi.IsBuilding()) — SearchNearestNodes/
+// SearchNearestFiltered decline it as ErrVectorIndexNotFound until Phase 3
+// completes, mirroring badger.
 func (ms *Store) CreateVectorIndexWithOptions(labelToken uint16, propertyKey string, dims int, metric DistanceMetric, opts storecontract.VectorIndexOptions) error {
 	if ms == nil {
 		return ErrNilStore
 	}
-	ms.mu.Lock()
-	defer ms.mu.Unlock()
 
+	// Phase 1.
+	ms.mu.Lock()
 	if err := ms.checkOpenLocked(); err != nil {
+		ms.mu.Unlock()
 		return err
 	}
 	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
+		ms.mu.Unlock()
 		return err
 	}
 	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
+		ms.mu.Unlock()
 		return err
 	}
 	if err := indexpkg.ValidateVectorIndexConfig(dims, metric); err != nil {
+		ms.mu.Unlock()
 		return err
 	}
 	if err := indexpkg.ValidateVectorIndexOptions(opts); err != nil {
+		ms.mu.Unlock()
 		return err
 	}
-
 	key := indexpkg.VectorIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
 	if _, exists := ms.vectorIndexes[key]; exists {
+		ms.mu.Unlock()
 		return ErrVectorIndexExists
 	}
-	vi := &indexpkg.VectorIndex{Dims: dims, Metric: metric}
+	vi := &indexpkg.VectorIndex{Dims: dims, Metric: metric, Mutated: make(map[snowflake.ID]struct{})}
 	indexpkg.ApplyVectorIndexOptions(vi, opts)
 	ms.vectorIndexes[key] = vi
+	nids := ms.labelNodeIDsSnapshotLocked(labelToken)
+	ms.mu.Unlock()
 
-	// Populate from nodes carrying this label. Keep this backfill shape aligned
-	// with the other index builders and avoid scanning unrelated node rows.
-	if nodeIDs, ok := ms.labelIdx[labelToken]; ok {
-		for id := range nodeIDs {
-			n := ms.nodes[id]
-			if n == nil {
-				continue
-			}
-			vec, ok := n.Float32SlicePropertyCopy(propertyKey)
-			if !ok {
-				continue
-			}
-			if err := vi.AddOwned(id.SnowflakeID(), vec); err != nil {
-				delete(ms.vectorIndexes, key)
-				return fmt.Errorf("graph: create vector index: node %d: %w", id.SnowflakeID(), err)
-			}
+	// Phase 2. Populate from nodes carrying this label only — keep this
+	// backfill shape aligned with the other index builders and avoid
+	// scanning unrelated node rows.
+	type vectorBackfillEntry struct {
+		id  snowflake.ID
+		vec []float32
+	}
+	backfill := make([]vectorBackfillEntry, 0, len(nids))
+	for _, nid := range nids {
+		ms.mu.RLock()
+		n, ok := ms.nodes[nid]
+		ms.mu.RUnlock()
+		if !ok {
+			continue // deleted between snapshot and fetch
+		}
+		vec, ok := n.Float32SlicePropertyCopy(propertyKey)
+		if !ok {
+			continue
+		}
+		backfill = append(backfill, vectorBackfillEntry{id: nid.SnowflakeID(), vec: vec})
+	}
+
+	// Phase 3.
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	if err := indexpkg.RequireVectorIndexCurrentForCreate(ms.vectorIndexes, key, vi); err != nil {
+		return err
+	}
+	for _, entry := range backfill {
+		if _, alive := ms.nodes[types.NodeID(entry.id)]; !alive {
+			continue // node deleted during Phase 2
+		}
+		if vi.WasMutated(entry.id) {
+			continue // concurrent write handled this ID during Phase 2
+		}
+		if err := vi.AddOwned(entry.id, entry.vec); err != nil {
+			indexpkg.DeleteVectorIndexIfCurrent(ms.vectorIndexes, key, vi)
+			return fmt.Errorf("graph: create vector index: node %d: %w", entry.id, err)
 		}
 	}
+	vi.ClearMutationTracking()
 	return nil
 }
 
@@ -657,6 +857,12 @@ func (ms *Store) SearchNearestNodes(labelToken uint16, propertyKey string, query
 	ms.mu.RUnlock()
 
 	if !exists {
+		return nil, ErrVectorIndexNotFound
+	}
+	// A live-but-still-backfilling index (BACKLOG 17h's 3-phase
+	// CreateVectorIndexWithOptions) is not yet trustworthy for search — mirrors
+	// badger's identical IsBuilding gate in its SearchNearestNodes.
+	if vi.IsBuilding() {
 		return nil, ErrVectorIndexNotFound
 	}
 	if k <= 0 {
@@ -761,6 +967,10 @@ func (ms *Store) SearchNearestFiltered(labelToken uint16, propertyKey string, qu
 	ms.mu.RUnlock()
 
 	if !exists {
+		return nil, ErrVectorIndexNotFound
+	}
+	// See SearchNearestNodes's identical gate.
+	if vi.IsBuilding() {
 		return nil, ErrVectorIndexNotFound
 	}
 	dims := vi.Dims

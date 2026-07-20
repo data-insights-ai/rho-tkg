@@ -1810,6 +1810,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   clean. This closes out BACKLOG 15's reflection-audit items — 15u remains open by design
   (informational: an inherent library-boundary limitation for user-registered custom property types,
   not a fixable bug).
+- FIX — BACKLOG 17h (remainder): `CreateCompositePropertyIndex`, `CreateTemporalIndex`,
+  `CreateHighFrequencyIndex`, and `CreateVectorIndexWithOptions` (`store/memory/memorystore_index.go`)
+  each held `ms.mu.Lock()` across their whole existing-label scan-and-build, blocking every concurrent
+  read/write on the store for the duration — the same shape `CreatePropertyIndex`/`CreateRelPropertyIndex`
+  were already fixed for in an earlier pass. Ported the same proven 3-phase pattern (install an empty
+  live index under Lock + snapshot candidate IDs → brief per-row RLock scan into a separate backfill,
+  never held across the scan → merge under Lock, reconciling via each index type's existing `Mutated`
+  tracking) to all 4 remaining doors, using badger's already-correct 3-phase implementations of the same
+  4 doors as the reference algorithm. `CreateTemporalIndex` deliberately DIVERGES from badger's own
+  two-step design (badger commits current-only in Phase 1-3, then folds history envelopes in a SEPARATE
+  deferred `foldTemporalHistoryEnvelopes` pass, because its I/O-bound `GetNodeHistory` can't run under
+  `idxMu`): memory has no such I/O constraint, so it reads each snapshotted node's CURRENT row AND its
+  history rows together under the SAME brief per-row RLock in Phase 2, then applies every collected
+  interval (current + history) via repeated `Extend` calls in ONE Phase 3 pass — simpler than badger's
+  split design and, as a side effect, MORE sound during construction (badger has a real window between
+  `Building=false` and the deferred history fold completing where `EnvelopeOf` can return current-only
+  bounds; memory's unified design has no such window). Two related gaps surfaced and fixed alongside the
+  port: memory's `PruneTemporalCandidates` (`memorystore_temporal_candidate.go`) never checked
+  `TemporalIndex.Building`, unlike badger's identical door — added the same gate for defense-in-depth and
+  cross-backend consistency (the `Building` field was already being set by the new code but never read);
+  and `SearchNearestNodes`/`SearchNearestFiltered` never checked `VectorIndex.IsBuilding()` before this
+  fix introduced a genuine new concurrent-visibility window on the vector index during backfill — added
+  the same `IsBuilding()` → `ErrVectorIndexNotFound` gate badger already has. Added 8 new tests
+  (`store/memory/memorystore_index_3phase_more_test.go`), 2 per door, mirroring the established
+  `TestCreatePropertyIndex_ReleasesLockDuringScan`/`_ConcurrentMutationDuringScanIsReconciled` template:
+  a `TryLock`-polling goroutine proving the lock is genuinely released during a 20,000-node scan (5,000
+  for the HNSW-backed vector door, whose per-node insert cost is far higher — a lower TryLock-success
+  threshold still clears comfortably), and a concurrent delete/update-during-scan test proving the
+  finished index reflects final state (deleted nodes absent, updated nodes present under their new value,
+  untouched nodes under their original value) via each index type's own read API (`CompositePropertyIndex.NodeIDs`,
+  `TemporalIndex.EnvelopeOf`, `HighFrequencyIndex.PointQuery`, `VectorIndex.IDs`). Confirmed load-bearing
+  for all 4 doors: temporarily collapsing each door back to one continuous `ms.mu.Lock()` for the whole
+  scan (mirroring the exact pre-fix bug shape) turned its `_ReleasesLockDuringScan` test immediately RED
+  in isolation (TryLock successes near zero against the 100/20 threshold); restored, all GREEN. One test
+  bug found and fixed during this verification, not a production bug: the first HF-index reconciliation
+  test used `ValidFrom` values (1000ms and 5000ms) that both round to bucket 0 under an
+  `hfi.BucketFor` with a 1-hour `bucketSize`, making the "moved to a new bucket" assertion vacuously true
+  regardless of correctness — fixed by using a `ValidFrom` 4 hours later, landing in a genuinely different
+  bucket. `go build`/`go vet` clean; `store/memory` package suite green under `-race`;
+  `internal/index`/`internal/core` package suites (indirect consumers of these doors) green under
+  `-race`; full-repo `go test ./...` clean. This closes out BACKLOG 17h — BACKLOG 17 (Store interface &
+  MemoryStore hardening) has no remaining open items.
 
 ## [4.23.0] - 2026-07-18
 

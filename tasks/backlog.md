@@ -269,30 +269,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   force). Action, if any: document this recommendation for custom-property-type authors (implement
   `msgpack.CustomEncoder` on your own registered type for max perf) in the `RegisterPropertyStructType`
   doc comment or docs/api.md — not a library-internal fix.
-### BACKLOG 17 — Store interface & MemoryStore hardening
-
-- **17h. [PARTIALLY RESOLVED — `CreatePropertyIndex`/`CreateRelPropertyIndex` fixed; 4 doors STILL
-  OPEN, not resolved].** Fixed the property-index pair (`memorystore_index.go`,
-  `memorystore_rel_index.go`) to use the same 3-phase pattern the badger backend already uses
-  (install placeholder + snapshot IDs under Lock → scan with brief per-row RLocks, never held across
-  the scan → merge under Lock, reconciling via the index's existing `Mutated` tracking), so a large
-  label/rel-type no longer blocks every concurrent read/write for the whole scan. Investigated the
-  other four index-creation doors sharing the same single-Lock-for-the-whole-scan shape —
-  `CreateCompositePropertyIndex`, `CreateTemporalIndex` (plus its `foldTemporalHistoryEnvelopes`
-  sub-phase), `CreateHighFrequencyIndex`, `CreateVectorIndex`/`CreateVectorIndexWithOptions` — and
-  confirmed the underlying `Mutated`-tracking scaffolding already exists on all four corresponding
-  `internal/index` types (`CompositePropertyIndex`, `TemporalIndex`, `HighFrequencyIndex`,
-  `VectorIndex`), so porting badger's proven algorithm for each is mechanical, not a design gap. Left
-  open rather than rushed in this pass: each is a DISTINCT, non-trivial concurrent algorithm (the
-  temporal-index door alone has an extra history-envelope-fold sub-phase) that needs its own
-  dedicated concurrency-correctness test (lock-released-during-scan + concurrent-mutation-
-  reconciliation, the two properties a "still returns the same index" test can't see — see the
-  `TestCreatePropertyIndex_ReleasesLockDuringScan`/`_ConcurrentMutationDuringScanIsReconciled` pair
-  added for this fix) — four more such pairs in one pass risked exactly the kind of subtle
-  lock-ordering/reconciliation bug this session's "verify all with tests" standard exists to catch.
-  Recommend a dedicated follow-up pass using the property-index port as the template.**
-  `store/memory/memorystore_index.go` (`CreateCompositePropertyIndex`, `CreateTemporalIndex`,
-  `CreateHighFrequencyIndex`, `CreateVectorIndex`/`CreateVectorIndexWithOptions`).
 ### BACKLOG 18 — Badger backend hardening
 
 - **18k. [STILL OPEN — NOT resolved; confirmed real via badger v4 source, a safe fix needs more
