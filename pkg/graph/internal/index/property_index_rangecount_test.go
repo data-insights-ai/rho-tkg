@@ -104,6 +104,57 @@ func TestRangeCardinality_DeclinesOnLargeInt(t *testing.T) {
 	}
 }
 
+// TestRangeCardinality_RecoversAfterPoisoningValueRemoved is the BACKLOG 16j
+// regression: numImpreciseCount is a COUNT, not a one-way sticky flag — once
+// every >2^53 value is removed (or replaced via remove-then-add, the update
+// pattern), RangeCardinality must re-enable rather than staying permanently
+// disabled for the index's whole remaining lifetime.
+func TestRangeCardinality_RecoversAfterPoisoningValueRemoved(t *testing.T) {
+	t.Parallel()
+	pi := NewPropertyIndex()
+	pi.AddKey(snowflake.ID(1), "i64:10")
+	poison := fmt.Sprintf("i64:%d", (int64(1)<<53)+1) // > 2^53
+	pi.AddKey(snowflake.ID(2), poison)
+	if _, ok := pi.RangeCardinality(0, math.Inf(1), true, true); ok {
+		t.Fatal("expected decline while the poisoning value is indexed")
+	}
+
+	pi.removeKey(snowflake.ID(2), poison)
+
+	count, ok := pi.RangeCardinality(0, math.Inf(1), true, true)
+	if !ok {
+		t.Fatal("RangeCardinality still declines after the poisoning value was removed — BACKLOG 16j regression")
+	}
+	if count != 1 {
+		t.Fatalf("RangeCardinality = %d, want 1 (only the remaining non-poisoning value)", count)
+	}
+}
+
+// TestRangeCardinality_StaysDeclinedWhileAnyPoisoningValueRemains proves the
+// count tracks MULTIPLE poisoning values correctly — removing one of two must
+// NOT re-enable RangeCardinality while the other is still indexed.
+func TestRangeCardinality_StaysDeclinedWhileAnyPoisoningValueRemains(t *testing.T) {
+	t.Parallel()
+	pi := NewPropertyIndex()
+	poisonA := fmt.Sprintf("i64:%d", (int64(1)<<53)+1)
+	poisonB := fmt.Sprintf("i64:%d", (int64(1)<<53)+2)
+	pi.AddKey(snowflake.ID(1), poisonA)
+	pi.AddKey(snowflake.ID(2), poisonB)
+	if _, ok := pi.RangeCardinality(0, math.Inf(1), true, true); ok {
+		t.Fatal("expected decline with two poisoning values indexed")
+	}
+
+	pi.removeKey(snowflake.ID(1), poisonA)
+	if _, ok := pi.RangeCardinality(0, math.Inf(1), true, true); ok {
+		t.Fatal("RangeCardinality re-enabled after removing only ONE of two poisoning values — BACKLOG 16j regression")
+	}
+
+	pi.removeKey(snowflake.ID(2), poisonB)
+	if _, ok := pi.RangeCardinality(0, math.Inf(1), true, true); !ok {
+		t.Fatal("RangeCardinality still declines after removing BOTH poisoning values")
+	}
+}
+
 // TestRangeCardinality_FractionalValuesAndBounds pins that fractional values and
 // fractional bounds count exactly (the sorted-bucket sum needs no integer gate).
 func TestRangeCardinality_FractionalValuesAndBounds(t *testing.T) {

@@ -143,6 +143,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `Config.EncryptionKeyRotation` (must not be negative, BACKLOG 18r) are now validated at `New()`
   like every other tuning knob, instead of silently ignoring an out-of-range value. 8 new
   `TestBadgerTuningBoundaries` table rows.
+- FIX — the property index's `RangeCardinality` accelerator no longer permanently disables itself
+  after a single transient outlier value (an integer past 2^53, whose float64 sort key can collide
+  with a neighbour) — BACKLOG 16j. Replaced the sticky `numImprecise` bool with a count of currently
+  indexed poisoning values, incremented/decremented symmetrically on add/remove; once every poisoning
+  value is removed or replaced, exact range counting automatically re-enables instead of staying
+  degraded to the fallback scan for the index's whole remaining lifetime. 2 new regression tests.
 
 ## [4.23.0] - 2026-07-18
 

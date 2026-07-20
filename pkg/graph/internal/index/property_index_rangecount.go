@@ -58,18 +58,33 @@ func exactInt64FromVK(vk string) (int64, bool) {
 	return 0, false
 }
 
-// noteNumericPrecision flags the index as imprecise if vk decodes to an integer
-// whose magnitude exceeds 2^53 (float64's exact-integer ceiling), since its sort
-// key may then collide with a neighbouring integer. Caller holds the write lock.
-func (pi *PropertyIndex) noteNumericPrecision(vk string) {
-	if pi.numImprecise {
-		return
+// isNumericImprecise reports whether vk decodes to an integer whose magnitude
+// exceeds 2^53 (float64's exact-integer ceiling), meaning its sort key may
+// collide with a neighbouring integer.
+func isNumericImprecise(vk string) bool {
+	v, ok := exactInt64FromVK(vk)
+	if !ok {
+		return false
 	}
-	if v, ok := exactInt64FromVK(vk); ok {
-		const f64IntCeil = int64(1) << 53
-		if v > f64IntCeil || v < -f64IntCeil {
-			pi.numImprecise = true
-		}
+	const f64IntCeil = int64(1) << 53
+	return v > f64IntCeil || v < -f64IntCeil
+}
+
+// noteNumericPrecision increments numImpreciseCount if vk is a poisoning
+// value (BACKLOG 16j — see the field doc comment). Caller holds the write lock.
+func (pi *PropertyIndex) noteNumericPrecision(vk string) {
+	if isNumericImprecise(vk) {
+		pi.numImpreciseCount++
+	}
+}
+
+// noteNumericPrecisionRemoved decrements numImpreciseCount if vk was a
+// poisoning value, the symmetric counterpart to noteNumericPrecision called
+// when the SAME (id, vk) pair is removed or replaced (BACKLOG 16j). Caller
+// holds the write lock.
+func (pi *PropertyIndex) noteNumericPrecisionRemoved(vk string) {
+	if isNumericImprecise(vk) && pi.numImpreciseCount > 0 {
+		pi.numImpreciseCount--
 	}
 }
 
@@ -80,7 +95,7 @@ func (pi *PropertyIndex) noteNumericPrecision(vk string) {
 // sort key may collide. The bounds must already capture the WHOLE predicate and
 // the query must be non-temporal — the caller enforces that.
 func (pi *PropertyIndex) RangeCardinality(min, max float64, inclMin, inclMax bool) (int64, bool) {
-	if pi == nil || pi.numImprecise {
+	if pi == nil || pi.numImpreciseCount > 0 {
 		return 0, false
 	}
 	if pi.numBuckets == nil {

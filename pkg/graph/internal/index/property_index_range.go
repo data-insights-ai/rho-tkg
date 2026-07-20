@@ -202,6 +202,7 @@ func (pi *PropertyIndex) removeOrdered(id snowflake.ID, vk string) {
 		delete(pi.numBuckets, k)
 		pi.numKeys.remove(k)
 	}
+	pi.noteNumericPrecisionRemoved(vk) // BACKLOG 16j: symmetric with addOrdered's noteNumericPrecision
 }
 
 // purgeOrdered removes id from every numeric bucket (corruption-path

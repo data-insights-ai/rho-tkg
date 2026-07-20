@@ -28,11 +28,21 @@ type PropertyIndex struct {
 	strKeys    sortedChunks[string]
 	strBuckets map[string]map[snowflake.ID]struct{}
 
-	// numImprecise is set when an integer value larger than 2^53 has been
-	// indexed, so its float64 sort key may collide with a neighbour. While set,
-	// RangeCardinality declines (the sorted-bucket sum could miscount near the
-	// collision) and the caller falls back to the over-select+exact-recheck scan.
-	numImprecise bool
+	// numImpreciseCount counts CURRENTLY indexed entries whose exact integer
+	// magnitude exceeds 2^53, so their float64 sort key may collide with a
+	// neighbour. While > 0, RangeCardinality declines (the sorted-bucket sum
+	// could miscount near a collision) and the caller falls back to the
+	// over-select+exact-recheck scan. A COUNT rather than a sticky bool
+	// (BACKLOG 16j): addOrdered/removeOrdered increment/decrement it
+	// symmetrically for the SAME (id, vk) pair, so once every poisoning value
+	// is removed or updated away, RangeCardinality automatically re-enables —
+	// a value's lifetime evicting or eviction doesn't permanently disable
+	// exact counting for the index's whole remaining life. purgeOrdered (the
+	// corruption-path brute-force sweep) does NOT decrement it — it has no
+	// access to the purged id's original vk to know whether it was poisoning,
+	// and staying imprecise is the safe direction (falls back to the exact
+	// scan) rather than risking a wrong exact count.
+	numImpreciseCount int
 }
 
 // NewPropertyIndex creates an empty property index.

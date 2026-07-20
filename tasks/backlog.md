@@ -1955,10 +1955,33 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   only an indirect, `-short`-skipped recall@10 proxy (MEDIUM, TEST-GAP).** CLAUDE.md documents that
   exact BFS test was used during development to catch the naive-closest fragmentation bug; it doesn't
   exist today as a fast always-run test.
-- **16j. `property_index_rangecount.go`'s `numImprecise` is a one-way sticky flag, never
-  re-evaluated — one transient outlier value permanently disables `RangeCardinality` for the index's
-  whole lifetime (LOW-MEDIUM, deliberate but undocumented).**
-  `internal/index/property_index_rangecount.go:61-74`.
+- **16j. [FIXED — `internal/index/property_index.go`, `internal/index/property_index_range.go`,
+  `internal/index/property_index_rangecount.go`, `internal/index/property_index_rangecount_test.go`]
+  `property_index_rangecount.go`'s `numImprecise` was a one-way sticky flag, never re-evaluated — one
+  transient outlier value permanently disabled `RangeCardinality` for the index's whole lifetime
+  (LOW-MEDIUM, deliberate but undocumented).** `internal/index/property_index_rangecount.go:61-74`.
+
+  **Fix.** Replaced the sticky `numImprecise bool` field with `numImpreciseCount int` — the number of
+  CURRENTLY indexed entries whose exact integer magnitude exceeds 2^53. `addOrdered`'s
+  `noteNumericPrecision` increments it when the added value is poisoning (removed the old
+  already-true early-return, since every add must now be counted, not just the first). New symmetric
+  `noteNumericPrecisionRemoved`, called from `removeOrdered` with the SAME `vk` the removal already
+  receives, decrements it when the removed value was poisoning. `RangeCardinality` declines while
+  `numImpreciseCount > 0` instead of the old sticky bool — once every poisoning value is removed (or
+  replaced via the store's remove-then-add update pattern), the count returns to 0 and exact counting
+  automatically re-enables. `purgeOrdered` (the corruption-path brute-force sweep, which has no access
+  to a purged ID's original `vk`) deliberately does NOT decrement — staying imprecise is the safe
+  direction there (falls back to the exact scan) rather than risking an under-count.
+
+  **Tests.** `TestRangeCardinality_RecoversAfterPoisoningValueRemoved` (add poisoning value → decline;
+  remove it → re-enable, correct count of the remaining value) and
+  `TestRangeCardinality_StaysDeclinedWhileAnyPoisoningValueRemains` (two poisoning values; removing
+  only one must NOT re-enable; removing both must). RED confirmed via `git stash push` on the 3
+  production files: both new tests failed exactly as described ("still declines after the poisoning
+  value was removed"). Popped the stash, confirmed GREEN — plus the full pre-existing
+  `TestRangeCardinality_VsBruteForce` (200 randomized trials) and `TestRangeCardinality_DeclinesOnLargeInt`
+  still pass unchanged. `go build ./...` + `go vet ./...` clean; `go test ./pkg/graph/internal/index/...`
+  clean; full repo `go test ./...` clean (including tutorials).
 - **16k. `RangeNodeIDs`'s `inclMin`/`inclMax` parameters are declared but never read — contract drift
   (LOW).** `internal/index/property_index_range.go:230`.
 - **16l. `sorted_chunks.go`'s `remove()` has no merge-on-shrink for adjacent undersized chunks (LOW-
