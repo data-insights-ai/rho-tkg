@@ -20,10 +20,12 @@
 //	(*Graph).Tier() *tier.API
 //	(*Graph).Stats() *stats.API
 //	(*Graph).Hash() *hash.API
+//	(*Graph).Replication() *replication.API
 //	(*Graph).Ingest() *ingest.API
 //	(*Graph).Resolve() *resolve.API
 //	(*Graph).Tx() *TxAPI
 //	(*Graph).Batch() *BatchAPI
+//	(*Graph).SetReplicationSource(src store.ReplicationSource)
 //
 // All accessors are nil-safe: (*Graph)(nil).Nodes() returns nil, and every
 // sub-API method handles a nil receiver by returning ErrNilGraph (or a zero

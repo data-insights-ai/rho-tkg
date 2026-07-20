@@ -65,8 +65,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 7 — Public façade & thin sub-API wrapper hardening
 
-- **7f. Package doc's "complete public surface" list omits `Replication()` (LOW).** `graph.go:1-31`
-  vs `:171-176`.
 - **7h. Duplicated generic helpers across sub-API packages (LOW, code smell).**
   `iterateForEach`/`cloneStrings` copy-pasted verbatim between `nodes/api.go`, `rels/api.go`,
   `index/api.go`, plus structurally-identical `cloneShardInfo`/`cloneCounts` in `tier`/`stats`. A fix

@@ -257,6 +257,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   comment in the repo (internal/core's `graph_indexes.go`, every store backend's `Drop*Index` methods)
   correctly names a function that is itself still called `Drop*` — this package's public façade is the
   only layer where the method was renamed but its doc comment wasn't. Fixed all 4; no behavior change.
+- DOC — closed BACKLOG 7f: `graph.go`'s package doc comment claims to enumerate "the complete public
+  surface on `*Graph` itself" but was missing both `Replication()` and `SetReplicationSource()` — real
+  accessors, just never added to the hand-maintained prose list when they shipped. Added both. Added
+  `TestGraphPackageDocListsEveryPublicMethod` (`pkg/graph/graph_doc_test.go`), mirroring
+  `errors_doc_test.go`'s `go/parser` sweep pattern: parses `graph.go` directly, collects every exported
+  `New` func and `*Graph`-receiver method, and asserts each name appears in the package doc text — so a
+  future accessor added without updating the doc list fails at the source of truth instead of silently
+  drifting. RED confirmed via `git stash push -- pkg/graph/graph.go`: the new test failed with both
+  exact missing names (`Replication`, `SetReplicationSource`). Stash popped, GREEN confirmed; full
+  `pkg/graph/...` suite and full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 
