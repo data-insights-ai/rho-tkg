@@ -2146,3 +2146,37 @@ Rules:
    bound (as the overlap `During` door does) would move the Before/After boundary
    and misclassify — another reason the two doors cannot share the open-end
    handling.
+
+## 70. `reflect`-Based Sorting/Comparison On A Hot Path Is A Perf Bug — But Not All Reflection Is
+
+BACKLOG 16f found `hnsw.go`'s `connect()` calling `sort.Slice` (Go's
+reflection-boxed sort, invoked via a `reflect.Value` swap under the hood) on
+the hottest HNSW construction path — every neighbor-cap overflow during
+`insert()`. `lru.go` already carried an explicit comment warning against this
+exact pattern ("reflection sorting showed up in ingestion profiles"), so the
+convention existed but wasn't consistently applied. Fixed by swapping to
+`slices.SortFunc` (generic, no reflection) with a comparator that mirrors the
+original tie-break exactly.
+
+Rule: **no `reflect`-mediated operation (`sort.Slice`, `reflect.DeepEqual` used
+as a substitute for a typed `Equal`, `reflect.Value` field walks, etc.) on a
+per-write or per-query hot path** — anywhere a call happens once per node/rel
+write, once per property, or once per search/insert step. Prefer the generic
+(`slices`/`cmp`/`maps`) or hand-written typed equivalent; see `ValueStripe`'s
+inlined FNV-1a (BACKLOG 15g) and `decodeMapKeyLen`'s hand-written msgpack
+decoders for the same discipline applied to hashing and decoding.
+
+This is NOT a blanket "never use `reflect` anywhere" rule, and audited the
+codebase (grep `"reflect"` imports under `pkg/`) to confirm no other hot-path
+violation of this shape currently exists beyond the one just fixed. Reflection
+remains the CORRECT tool, used deliberately, in several places that are
+either (a) inherently reflection-shaped problems — `pkg/types` property
+validation/deep-copy/equality over an arbitrary caller-supplied `any` value,
+where the concrete type is unknowable at compile time and reflection is what
+lets one recursive function validate every allowed shape instead of a
+combinatorial type-switch per call site — or (b) COLD paths: custom
+property-type registration (`RegisterPropertyStructType`, once per type, not
+per value), and store-capability wrapper-detection at `Core` construction
+time (`embedsNativeCapability` and friends in `core.go` — once per `New()`
+call, not per query). The dividing line is call FREQUENCY relative to the
+write/query hot path, not "does this identifier contain `reflect`".
