@@ -2,6 +2,8 @@ package storeutil
 
 import (
 	"bytes"
+	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/vmihailenco/msgpack/v5"
@@ -65,4 +67,62 @@ func TestMarshalWirePooledByteIdentical(t *testing.T) {
 		t.Fatalf("pooled reuse leaked bytes: got=%x want=%x", small, wantSmall)
 	}
 	_ = big
+}
+
+// TestMarshalWirePooledConcurrentSafe is the BACKLOG 15r proof: wireEncBufPool
+// is shared across goroutines on the hot ingest write path (sync.Pool's
+// concurrent Get/Put is safe by design, but that alone doesn't prove
+// marshalWirePooled's OWN discipline — copying out of the buffer before
+// returning it to the pool — actually prevents cross-goroutine aliasing).
+// Many goroutines concurrently encode DISTINCT, per-goroutine-identifiable
+// values in a tight loop and verify every result byte-for-byte against a
+// fresh msgpack.Marshal of the SAME value — if a returned []byte ever
+// aliased a pooled buffer another goroutine mutated afterward, the observed
+// bytes would belong to the wrong node/rel and this comparison would catch
+// it. Run under `go test -race` (see the package's `-race` gate) to also
+// catch any unsynchronized access to the shared buffer.
+func TestMarshalWirePooledConcurrentSafe(t *testing.T) {
+	const goroutines = 32
+	const iterations = 200
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, goroutines)
+	for g := 0; g < goroutines; g++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			for i := 0; i < iterations; i++ {
+				// A distinctive, per-call value: any cross-goroutine
+				// aliasing would surface as a byte mismatch here.
+				w := NodeWire{
+					ID:           int64(id)*1_000_000 + int64(i),
+					PrimaryLabel: id + 1,
+					Version:      i,
+					Properties: []PropertyWire{
+						{Key: "goroutine", Value: int64(id)},
+						{Key: "iter", Value: int64(i)},
+					},
+				}
+				want, err := msgpack.Marshal(w)
+				if err != nil {
+					errCh <- fmt.Errorf("goroutine %d iter %d: msgpack.Marshal: %w", id, i, err)
+					return
+				}
+				got, err := marshalWirePooled(w)
+				if err != nil {
+					errCh <- fmt.Errorf("goroutine %d iter %d: marshalWirePooled: %w", id, i, err)
+					return
+				}
+				if !bytes.Equal(got, want) {
+					errCh <- fmt.Errorf("goroutine %d iter %d: pooled bytes differ (possible cross-goroutine pool aliasing):\n got=%x\nwant=%x", id, i, got, want)
+					return
+				}
+			}
+		}(g)
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		t.Error(err)
+	}
 }

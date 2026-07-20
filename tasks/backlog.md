@@ -271,10 +271,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 - **15p. No `PreEncodeRelPutPayloadV2` counterpart to `PreEncodeNodePutPayloadV2` for §4.5 pre-encode —
   see BACKLOG 21 (LOW, likely intentional node-first scope).**
-- **15r. `wireEncBufPool` (`sync.Pool`, shared on the hot ingest write path across goroutines) has no
-  concurrent/parallel-goroutine test pinning its safety guarantee (LOW, `sync.Pool` is safe by design;
-  test would pin it rather than rely on the general contract).**
-
 ### BACKLOG 16 — In-memory index-engine hardening (HNSW / property & temporal index / HyperLogLog)
 
 - **16e. `hnsw.go`'s `reassignEntryPoint` doesn't pick the max-level survivor — silently collapses

@@ -957,6 +957,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   under-reading the consumed key by one byte turned it RED with "cursor misaligned", then reverted.
   `go build`/`go vet` clean; full `pkg/graph/internal/storeutil` package suite green including under
   `-race`; full-repo `go test ./...` clean.
+- TEST — BACKLOG 15r: `wireEncBufPool` (`storeutil/wire_marshal_pool.go`, shared on the hot ingest write
+  path across goroutines) had no concurrent/parallel-goroutine test pinning its safety guarantee —
+  `sync.Pool`'s own concurrent Get/Put is safe by design, but that alone doesn't prove
+  `marshalWirePooled`'s OWN discipline (copying out of the buffer before returning it to the pool)
+  actually prevents cross-goroutine aliasing. Added `TestMarshalWirePooledConcurrentSafe`: 32 goroutines
+  × 200 iterations each encode a distinctive, per-call-identifiable `NodeWire` and verify the result
+  byte-for-byte against a fresh `msgpack.Marshal` of the same value — a returned `[]byte` aliasing a
+  pooled buffer another goroutine mutated afterward would surface as a byte mismatch belonging to the
+  wrong node. Confirmed load-bearing by reintroducing the classic pool-aliasing bug (`return
+  buf.Bytes(), nil` instead of copying): the test failed with a detected data race under `go test -race`
+  (the correct gate for this bug class — a plain non-`-race` run did not reliably reproduce the
+  corruption at this scale, confirming why `-race` is the documented gate for concurrency-sensitive
+  work), then reverted. `go build`/`go vet` clean; full `pkg/graph/internal/storeutil` package suite
+  green including under `-race` (3x repeat); full-repo `go test ./...` clean. **BACKLOG 15 is now fully
+  worked through** (real fixes, verified-correct closures, and test-gap closures throughout — no items
+  remain except 15p, which explicitly defers to the already-agreed-deferred BACKLOG 21).
 
 ## [4.23.0] - 2026-07-18
 
