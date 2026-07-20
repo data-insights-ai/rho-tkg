@@ -1532,6 +1532,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (`TestTieredChangeFeed*`/`TestTieredChangeLog*`) confirming no regression; full
   `pkg/graph/store/tiered` package suite green including under `-race` (68s); full-repo
   `go test ./...` clean.
+- INVESTIGATED, LEFT OPEN — BACKLOG 19q: confirmed `nodeCreateMu`/`relCreateMu` are held for the
+  ENTIRE create operation (duplicate-ID check AND the physical shard write, not just the check),
+  serializing every node/rel create store-wide even across unrelated shards — a real hard throughput
+  ceiling, needed because externally-generated snowflake IDs require a cross-shard global-uniqueness
+  check with no natural per-shard scoping. Noticed a possible narrower mitigation (hold the mutex only
+  for the check, release before the write) but deliberately did not attempt it in this pass — the
+  original finding's own "likely unavoidable, not obviously cheap to fix" framing is accurate, and a
+  subtle mistake here would break the correctness-critical global-uniqueness guarantee. See
+  `tasks/backlog.md` 19q for the full writeup and the recommended starting angle for a dedicated
+  follow-up. No code change. This closes out BACKLOG 19 (TieredStore hardening) for this pass —
+  19h and 19q remain intentionally open with full investigation writeups.
 
 ## [4.23.0] - 2026-07-18
 

@@ -415,9 +415,22 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   one worth guaranteeing (e.g. "the shard is picked up correctly if it existed before the tx's FIRST
   divert toggle" as a documented, tested contract) rather than leaving the actual behavior
   undefined-by-omission.**
-- **19q. Global `nodeCreateMu`/`relCreateMu` serialize ALL creates store-wide — a hard throughput
-  ceiling for the stated TB/day workload, likely unavoidable given the correctness requirement (LOW,
-  scaling constraint, not obviously cheap to fix).** `tieredstore.go:257-258`.
+- **19q. [STILL OPEN — NOT resolved; confirmed accurate, deliberately not attempted this pass].**
+  Confirmed `nodeCreateMu`/`relCreateMu` (`tieredstore.go:257-258`) are held for the ENTIRE create
+  operation (`putNode`/`putRel`, `tieredstore_write_node.go`/`tieredstore_write_rel.go`) — the
+  duplicate-ID check AND the actual shard-routed write, not just the check — so any two node (or rel)
+  creates anywhere in the store, even to completely different shards, cannot proceed concurrently.
+  The mutex's own comment states the reason: cross-shard global ID-uniqueness checking, needed
+  because snowflake IDs are externally generated (not auto-incremented) and must be unique across
+  every shard, not just within one — some serialization is genuinely required to close the TOCTOU
+  window between "check ID doesn't exist anywhere" and "commit it." Noticed a POTENTIAL narrower
+  mitigation (hold the mutex only for the duplicate-check phase, release it before the slower
+  physical shard write) but did not attempt it: verifying that's actually safe requires confirming
+  nothing between the check and the write needs continued exclusion, and a subtle regression here
+  would break the correctness-critical global-uniqueness guarantee — exactly the risk the original
+  finding's own "likely unavoidable, not obviously cheap to fix" hedge anticipated. Left open,
+  deliberately not attempted rather than rushed, given the stakes of the invariant it protects.
+  Recommend a dedicated follow-up that starts from the "shrink the critical section" angle above.**
 ### BACKLOG 20 — Sharded backend hardening (WIP status)
 
 - **20e. §4.5 pre-encoded-put fast path never routed for sharded despite the capability being
