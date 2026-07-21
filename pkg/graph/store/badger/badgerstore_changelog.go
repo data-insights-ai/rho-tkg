@@ -448,11 +448,24 @@ func (bs *Store) BeginLogScope() error {
 // takes the exclusive c.mu.Lock that guards the mutation and SetLogDivert(false)
 // before releasing it — so the window in which scopeActive is true is exactly the
 // window in which no concurrent standalone (c.mu.RLock) mutation can run.
+//
+// Defensive lazy-begin (BACKLOG 19h): turning divert ON for a store that never
+// had BeginLogScope called on it (scopeLog == nil — e.g. a shard a sharded owner
+// brought into an already-open scope by some path other than its own explicit
+// BeginLogScope) lazily allocates the buffer instead of leaving scopeActive true
+// with a nil scopeLog. logChangeRaw/appendOpsLogged already tolerate append to a
+// nil slice, so this is belt-and-braces, not required for the common case — the
+// primary fix for tiered's mid-rotation scope hand-off lives in
+// tiered.rotateHotShardLocked, which calls BeginLogScope explicitly before this
+// method is ever reached for a newly-rotated shard.
 func (bs *Store) SetLogDivert(on bool) {
 	if !bs.logEnabled.Load() {
 		return
 	}
 	bs.wbMu.Lock()
+	if on && bs.scopeLog == nil {
+		bs.scopeLog = make([][]byte, 0, 8)
+	}
 	bs.scopeActive = on
 	bs.wbMu.Unlock()
 }

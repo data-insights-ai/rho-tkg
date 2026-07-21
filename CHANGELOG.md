@@ -1993,6 +1993,44 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   guarantee for `Reset()`, not a `ChangeClear`-apply correctness audit. `go build`/`go vet` clean;
   `pkg/graph/internal/core` package suite green under `-race`; `make check-metakv-reap` passes; full-repo
   `go test ./...` clean.
+- FIX — BACKLOG 19h: `forEachScopeShard` (`store/tiered/tieredstore_changelog.go`) — the shared fold every one of
+  `BeginLogScope`/`SetLogDivert`/`CommitLogScope`/`DiscardLogScope` routes through — re-queries the currently-open
+  shard set FRESH on every call rather than snapshotting it at `BeginLogScope`, despite the type-level doc comment's
+  prior claim to the contrary. Under a mid-tx hot-shard ROTATION, this had a real correctness consequence beyond
+  the doc inaccuracy: a shard created by rotation while a change-log scope was open had no `BeginLogScope`/
+  `SetLogDivert` state of its own, so its rotation-triggering write (and, depending on exact timing, some
+  subsequent writes too) self-committed EAGERLY with its own LSN, entirely outside the open scope. On a tx
+  ROLLBACK, `DiscardLogScope` drops each scoped shard's buffer — but the eagerly-self-committed record was never
+  IN any buffer, so it survived the discard: a mid-rotation tx that rolled back leaked exactly one change-log
+  record, violating the documented "a rolled-back tx emits nothing and burns no LSN" invariant
+  (`badgerstore_changelog.go:492-494`, `tx.go:616-617`). Fixed with a two-part hand-off: (1)
+  `rotateHotShardLocked` (`tieredstore_catalog.go`) now checks new store-wide `Store.scopeOpen`/`scopeDivertOn`
+  fields (set by `BeginLogScope`/`SetLogDivert`/`Commit`/`DiscardLogScope`) and, when a scope is currently open,
+  calls `BeginLogScope()` + `SetLogDivert(current state)` on the newly-created shard IMMEDIATELY — before
+  `rotateHotShardLocked` returns and the triggering write reaches the new shard — so even that first write is
+  buffered into the scope instead of self-committing eagerly; (2) badger's own `SetLogDivert` (`store/badger/
+  badgerstore_changelog.go`) also lazily allocates its per-shard buffer on first divert-on if one was never
+  explicitly begun, as a defensive backstop for any other path that might bring a scope-less shard into an
+  active scope. Corrected the stale "snapshotted at Begin" doc comment to describe the actual re-query-per-call
+  behavior and the resulting first-divert-boundary contract. Added `TestScopeRotation_ShardBeforeFirstDivert_
+  Included` (clean baseline, unaffected by this fix), `TestScopeRotation_ShardAfterFirstDivert_NowIncluded`
+  (proves `LastCommittedLSN()` reads 0 — nothing eagerly committed — for BOTH the rotation-triggering write and a
+  subsequent one, until `CommitLogScope` mints contiguous LSNs for both at once), and
+  `TestScopeRotation_Rollback_DoesNotLeak` (proves the feed is completely empty and no LSN is burned after a
+  mid-rotation `DiscardLogScope`, plus confirms the store is still fully usable — a subsequent normal write
+  commits eagerly with a fresh LSN) — all using white-box control over the low-level scope API
+  (`BeginLogScope`/`SetLogDivert`/`ForceRotate`/`CommitLogScope`/`DiscardLogScope`), bypassing the full graph/core
+  Tx layer, in `store/tiered/tieredstore_changelog_scope_rotation_test.go`. Confirmed load-bearing: temporarily
+  removing the `rotateHotShardLocked` hand-off turned both `TestScopeRotation_ShardAfterFirstDivert_NowIncluded`
+  and `TestScopeRotation_Rollback_DoesNotLeak` immediately RED (`LastCommittedLSN` read 1, not 0, in both —
+  proving the rotation-triggering write really was escaping the scope); restored, GREEN. The full-suite
+  verification pass this session's discipline calls for caught a genuine self-inflicted regression along the way:
+  an earlier revert-for-load-bearing-testing step (a Python string-range removal) accidentally also deleted the
+  unrelated `coldDemotions` warm→cold tier-flip loop a few lines below the intended removal window, which broke
+  `TestTieredStore_ColdShard_DemotionWarmToCold`/`TestTieredStore_ColdShard_DemotionDuringRotation` — caught only
+  by running the FULL `store/tiered` package suite (not just the new tests), diagnosed by diffing against a clean
+  `git stash` baseline, and fixed by restoring the loop. `go build`/`go vet` clean; `store/tiered` and
+  `store/badger` package suites green under `-race`; full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

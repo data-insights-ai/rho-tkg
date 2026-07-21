@@ -610,34 +610,61 @@ func (ts *Store) forEachOpenShard(fn func(*BadgerStore) error) error {
 // no concurrent standalone can misroute. A tiered tx touches multiple shards; the
 // scope is reused PER SHARD (each shard already buffers records without an LSN
 // while diverted and mints store-global LSNs at commit — the store allocator is
-// shared, so a rolled-back tx burns no LSN on ANY shard). The shards scoped are
-// snapshotted at Begin so Commit/Discard target exactly them.
+// shared, so a rolled-back tx burns no LSN on ANY shard).
+//
+// The scoped shard set is NOT snapshotted at Begin — despite an earlier version of
+// this comment claiming otherwise (BACKLOG 19h). forEachScopeShard RE-QUERIES the
+// currently-open shard set on EVERY call (Begin/SetLogDivert/Commit/Discard
+// alike), so the set a given call reaches can differ from the one a prior call in
+// the same scope reached. In the common (no-rotation) case this is unobservable —
+// the shard set is stable across one tx. Under a MID-TX ROTATION (checkRotation
+// firing inside a mutation's write), the contract is: a shard already present
+// before the tx's FIRST SetLogDivert(true) call is included cleanly and
+// atomically with the tx's eventual commit. A shard that comes into existence via
+// rotation is brought into the open scope IMMEDIATELY at rotation time (see
+// rotateHotShardLocked's scope hand-off, gated on Store.scopeOpen/scopeDivertOn)
+// — including for the very mutation whose write triggered the rotation — so its
+// records are buffered into the scope exactly like any pre-existing shard's, and
+// DiscardLogScope on rollback correctly drops them too. (badger's own
+// SetLogDivert also lazily opens a per-shard buffer on first divert as a
+// defensive backstop, in case some other path ever constructs a scope-less shard
+// mid-scope.) Before this fix, a rotation-triggering write could self-commit
+// eagerly outside the scope (its own LSN, no divert), which DiscardLogScope could
+// never reach — a rolled-back tx that rotated mid-flight leaked exactly one
+// change-log record. See tasks/lessons.md and CHANGELOG.md BACKLOG 19h.
 //
 // Cross-shard record order within one tx follows shard-commit order (reference →
 // archive → event), matching the common create-reference-then-reference-it
 // pattern; each record is self-describing, so a replica applies them correctly in
-// LSN order (ADR-0005 §2.4). A shard opened mid-tx (rotation) is a documented
-// edge not covered by the snapshot — tiered cascades are already not
-// cross-shard-atomic (CLAUDE.md).
+// LSN order (ADR-0005 §2.4).
 
 // BeginLogScope opens a per-shard record buffer on every currently-open shard and
-// remembers that set for Commit/Discard. No-op when the change-log is off/fenced.
+// records store-wide scope state (BACKLOG 19h) so a shard created mid-scope by
+// rotation can be brought in. No-op when the change-log is off/fenced.
 func (ts *Store) BeginLogScope() error {
 	if !ts.ChangeLogEnabled() {
 		return nil
 	}
+	ts.scopeMu.Lock()
+	ts.scopeOpen = true
+	ts.scopeDivertOn = false
+	ts.scopeMu.Unlock()
 	return ts.forEachScopeShard(func(bs *BadgerStore) error { return bs.BeginLogScope() })
 }
 
 // SetLogDivert is the ONE divert seam on tiered. It toggles record diversion into
-// the open scope buffer on every scoped shard. The coming redesign (measurements
-// 2026-07-11: the badger per-mutation exclusive-lock divert costs ~36% and
-// serializes) replaces this global flag with scope-tagged routing — when it
-// lands, it lands HERE, in this single helper, not in two dozen call sites.
+// the open scope buffer on every scoped shard and records the current divert
+// state (BACKLOG 19h) for any shard rotation brings in later. The coming redesign
+// (measurements 2026-07-11: the badger per-mutation exclusive-lock divert costs
+// ~36% and serializes) replaces this global flag with scope-tagged routing — when
+// it lands, it lands HERE, in this single helper, not in two dozen call sites.
 func (ts *Store) SetLogDivert(on bool) {
 	if !ts.ChangeLogEnabled() {
 		return
 	}
+	ts.scopeMu.Lock()
+	ts.scopeDivertOn = on
+	ts.scopeMu.Unlock()
 	_ = ts.forEachScopeShard(func(bs *BadgerStore) error { bs.SetLogDivert(on); return nil })
 }
 
@@ -661,6 +688,10 @@ func (ts *Store) CommitLogScope() (uint64, error) {
 		}
 		return nil
 	})
+	ts.scopeMu.Lock()
+	ts.scopeOpen = false
+	ts.scopeDivertOn = false
+	ts.scopeMu.Unlock()
 	if err != nil {
 		return 0, err
 	}
@@ -673,7 +704,12 @@ func (ts *Store) DiscardLogScope() error {
 	if !ts.ChangeLogEnabled() {
 		return nil
 	}
-	return ts.forEachScopeShard(func(bs *BadgerStore) error { return bs.DiscardLogScope() })
+	err := ts.forEachScopeShard(func(bs *BadgerStore) error { return bs.DiscardLogScope() })
+	ts.scopeMu.Lock()
+	ts.scopeOpen = false
+	ts.scopeDivertOn = false
+	ts.scopeMu.Unlock()
+	return err
 }
 
 // forEachScopeShard folds fn over every currently-open writable shard (refShard +

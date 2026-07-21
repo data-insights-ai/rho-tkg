@@ -167,6 +167,25 @@ func (ts *Store) rotateHotShardLocked() error {
 		// snapshots).
 	}
 
+	// BACKLOG 19h: if a change-log scope is currently open (a tx/batch mid-flight
+	// triggered this rotation via checkRotation), hand the new shard into the open
+	// scope IMMEDIATELY — before this call returns and the triggering write
+	// reaches the new shard — so even that write is buffered into the scope
+	// instead of self-committing eagerly outside it (which DiscardLogScope on a
+	// later rollback could never reach). ts.scopeMu is a leaf lock, never held
+	// while acquiring ts.mu elsewhere, so taking it here while already holding
+	// ts.mu.Lock is safe.
+	ts.scopeMu.Lock()
+	scopeOpen, scopeDivertOn := ts.scopeOpen, ts.scopeDivertOn
+	ts.scopeMu.Unlock()
+	if scopeOpen {
+		if err := newStore.BeginLogScope(); err != nil {
+			slog.Error("graph: begin change-log scope on newly-rotated shard", "shard", newName, "error", err)
+		} else if scopeDivertOn {
+			newStore.SetLogDivert(true)
+		}
+	}
+
 	return nil
 }
 

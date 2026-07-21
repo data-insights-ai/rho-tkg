@@ -255,6 +255,20 @@ type Store struct {
 	logEnabled     bool
 	changeLogAlloc *changeLogAllocator
 
+	// scopeMu guards scopeOpen/scopeDivertOn — a leaf lock, never held while
+	// acquiring ts.mu, so it is safe to take from inside rotateHotShardLocked
+	// (which already holds ts.mu.Lock). They track whether a change-log scope
+	// (BACKLOG 19h) is currently open store-wide and its current divert state,
+	// so a shard created by mid-tx rotation can be brought into the open scope
+	// immediately — before the rotation-triggering write reaches it — instead
+	// of that write self-committing eagerly outside the scope (which a
+	// subsequent DiscardLogScope on rollback could never reach, leaking a
+	// record). At most one scope is ever open at a time (the core serializes
+	// tx/batch via c.txMu), so these need no finer-grained tracking.
+	scopeMu       sync.Mutex
+	scopeOpen     bool
+	scopeDivertOn bool
+
 	nodeCreateMu sync.Mutex // serializes cross-shard node ID uniqueness checks with writes
 	relCreateMu  sync.Mutex // serializes cross-shard relationship ID uniqueness checks with writes
 
