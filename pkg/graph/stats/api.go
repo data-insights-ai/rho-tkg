@@ -49,6 +49,7 @@ type Ops interface {
 	PropertyTypeClassCounts(label, propertyKey string) (storepkg.PropertyTypeClassCounts, error)
 	RelPropertyTypeClassCounts(typeName, propertyKey string) (storepkg.PropertyTypeClassCounts, error)
 	PropertyStats(label, propertyKey string) (storepkg.PropertyStats, error)
+	RelPropertyStats(typeName, propertyKey string) (storepkg.PropertyStats, error)
 	RelCountByType(typeName string) (int, error)
 	RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
 	RelRangeCardinality(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
@@ -205,6 +206,30 @@ func (a *API) PropertyStats(label, propertyKey string) (storepkg.PropertyStats, 
 		return storepkg.PropertyStats{}, err
 	}
 	return ops.PropertyStats(label, propertyKey)
+}
+
+// RelPropertyStats is the relationship mirror of PropertyStats (BACKLOG
+// 21a): NDV (estimated distinct-value count via a HyperLogLog sketch), exact
+// Min/Max (for scalar-ordered value families — numeric and string), and
+// Count (the number of the type's current relationships carrying
+// propertyKey with an indexable scalar value), complementing the existing
+// rel-side ordering-soundness primitives RelRangeCardinality and
+// RelPropertyTypeClassCounts with a selectivity estimate.
+//
+// Missing/unpopulated (relType, propertyKey) pairs return a zero-value
+// PropertyStats, not an error — matching RelPropertyTypeClassCounts'
+// "unregistered → 0" convention. memory and badger implement
+// store.RelPropertyStatsCapability; tiered does not (mirroring the
+// precedent already set by RelRangeCardinality/RelPropertyTypeClassCounts,
+// neither of which tiered implements either — rel property indexes are
+// RAM-only per-shard). A backend WITHOUT the optional capability returns
+// store.ErrCapabilityNotSupported; check with errors.Is.
+func (a *API) RelPropertyStats(typeName, propertyKey string) (storepkg.PropertyStats, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.PropertyStats{}, err
+	}
+	return ops.RelPropertyStats(typeName, propertyKey)
 }
 
 // RelCountByType returns the count of relationships of the given type.

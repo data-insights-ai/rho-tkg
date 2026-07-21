@@ -45,6 +45,9 @@ func TestAPINilReceiversReturnErrNilGraph(t *testing.T) {
 	if got, err := nilAPI.PropertyStats("Person", "id"); got != (storepkg.PropertyStats{}) || !errors.Is(err, grapherr.ErrNilGraph) {
 		t.Fatalf("nil PropertyStats = (%+v, %v), want (zero, ErrNilGraph)", got, err)
 	}
+	if got, err := nilAPI.RelPropertyStats("KNOWS", "weight"); got != (storepkg.PropertyStats{}) || !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil RelPropertyStats = (%+v, %v), want (zero, ErrNilGraph)", got, err)
+	}
 
 	api := New((*statsOpsSpy)(nil))
 	if got, err := api.NodeCount(); got != 0 || !errors.Is(err, grapherr.ErrNilGraph) {
@@ -89,6 +92,7 @@ func TestAPIForwardsMethodsAndMapsSnapshotCounters(t *testing.T) {
 		rangeCardCount:   7,
 		rangeCardExact:   true,
 		propertyStats:    storepkg.PropertyStats{NDV: 5, Min: int64(1), Max: int64(9), Count: 3},
+		relPropertyStats: storepkg.PropertyStats{NDV: 6, Min: int64(2), Max: int64(8), Count: 4},
 		labelCounts:      map[string]int{"Person": 3},
 		relTypeCounts:    map[string]int{"KNOWS": 4},
 		snapshot:         [12]int64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
@@ -122,6 +126,12 @@ func TestAPIForwardsMethodsAndMapsSnapshotCounters(t *testing.T) {
 	}
 	if ops.propertyStatsLabel != "Person" || ops.propertyStatsKeyArg != "age" || ops.propertyStatsCalls != 1 {
 		t.Fatalf("PropertyStats forwarded args mismatch: %+v", ops)
+	}
+	if got, err := api.RelPropertyStats("KNOWS", "weight"); err != nil || got != (storepkg.PropertyStats{NDV: 6, Min: int64(2), Max: int64(8), Count: 4}) {
+		t.Fatalf("RelPropertyStats = (%+v, %v), want (NDV:6 Min:2 Max:8 Count:4, nil)", got, err)
+	}
+	if ops.relPropertyStatsTypeArg != "KNOWS" || ops.relPropertyStatsKeyArg != "weight" || ops.relPropertyStatsCalls != 1 {
+		t.Fatalf("RelPropertyStats forwarded args mismatch: %+v", ops)
 	}
 	labelCounts, err := api.AllLabelCounts()
 	if err != nil || labelCounts["Person"] != 3 {
@@ -207,6 +217,7 @@ func TestAPIPropagatesOpsErrors(t *testing.T) {
 		relCountByTypeErr:   opErr,
 		rangeCardErr:        opErr,
 		propertyStatsErr:    opErr,
+		relPropertyStatsErr: opErr,
 		allLabelCountsErr:   opErr,
 		allRelTypeCountsErr: opErr,
 	})
@@ -231,6 +242,9 @@ func TestAPIPropagatesOpsErrors(t *testing.T) {
 	if _, err := api.PropertyStats("Person", "age"); !errors.Is(err, opErr) {
 		t.Fatalf("PropertyStats error = %v, want %v", err, opErr)
 	}
+	if _, err := api.RelPropertyStats("KNOWS", "weight"); !errors.Is(err, opErr) {
+		t.Fatalf("RelPropertyStats error = %v, want %v", err, opErr)
+	}
 	if _, err := api.AllLabelCounts(); !errors.Is(err, opErr) {
 		t.Fatalf("AllLabelCounts error = %v, want %v", err, opErr)
 	}
@@ -250,6 +264,7 @@ type statsOpsSpy struct {
 	rangeCardCount   int64
 	rangeCardExact   bool
 	propertyStats    storepkg.PropertyStats
+	relPropertyStats storepkg.PropertyStats
 	labelCounts      map[string]int
 	relTypeCounts    map[string]int
 	snapshot         [12]int64
@@ -261,6 +276,7 @@ type statsOpsSpy struct {
 	relCountByTypeErr   error
 	rangeCardErr        error
 	propertyStatsErr    error
+	relPropertyStatsErr error
 	allLabelCountsErr   error
 	allRelTypeCountsErr error
 	snapshotErr         error
@@ -280,6 +296,9 @@ type statsOpsSpy struct {
 	propertyStatsLabel  string
 	propertyStatsKeyArg string
 
+	relPropertyStatsTypeArg string
+	relPropertyStatsKeyArg  string
+
 	nodeCountCalls        int
 	relCountCalls         int
 	nodeCountByLabelCalls int
@@ -288,6 +307,7 @@ type statsOpsSpy struct {
 	rangeCardCalls        int
 	relRangeCardCalls     int
 	propertyStatsCalls    int
+	relPropertyStatsCalls int
 	allLabelCountsCalls   int
 	allRelTypeCountsCalls int
 	snapshotCountersCalls int
@@ -353,6 +373,13 @@ func (s *statsOpsSpy) PropertyStats(label, propertyKey string) (storepkg.Propert
 	s.propertyStatsLabel = label
 	s.propertyStatsKeyArg = propertyKey
 	return s.propertyStats, s.propertyStatsErr
+}
+
+func (s *statsOpsSpy) RelPropertyStats(typeName, propertyKey string) (storepkg.PropertyStats, error) {
+	s.relPropertyStatsCalls++
+	s.relPropertyStatsTypeArg = typeName
+	s.relPropertyStatsKeyArg = propertyKey
+	return s.relPropertyStats, s.relPropertyStatsErr
 }
 
 func (s *statsOpsSpy) AllLabelCounts() (map[string]int, error) {

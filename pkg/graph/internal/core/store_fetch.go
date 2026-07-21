@@ -280,6 +280,14 @@ func (c *Core) nodePropertyStats(tok uint16, propertyKey string) (storepkg.Prope
 	return stats.NodePropertyStats(tok, propertyKey)
 }
 
+func (c *Core) relPropertyStats(tok uint16, propertyKey string) (storepkg.PropertyStats, error) {
+	stats, ok := c.store.(storepkg.RelPropertyStatsCapability)
+	if !ok {
+		return storepkg.PropertyStats{}, storepkg.ErrCapabilityNotSupported
+	}
+	return stats.RelPropertyStats(tok, propertyKey)
+}
+
 func (c *Core) relCountByType(tok uint16) (int, error) {
 	count, err := c.store.RelCountByType(tok)
 	if err != nil {

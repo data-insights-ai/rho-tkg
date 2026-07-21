@@ -156,12 +156,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 Collected here from "missing feature" notes scattered across the subsystem audits — all rho-tkg-owned,
 none sigma's:
 
-- **21a. No `RelPropertyStats` (NDV/min/max HyperLogLog estimator) mirror on the relationship side.**
-  `RangeCardinality`↔`RelRangeCardinality` and `PropertyTypeClassCounts`↔`RelPropertyTypeClassCounts`
-  are deliberately mirrored pairs (the latter shipped as BACKLOG 5B specifically as a rel ordering-
-  soundness primitive); `PropertyStats` has no rel-side equivalent, so a planner costing a
-  relationship-property predicate has count/type-class tools but no selectivity estimate. Noted
-  independently by 3 separate subsystem audits (façade, memory backend, stats layer).
 - **21c. No `RelTypeTemporalCandidateCapability` mirror of the node-side B4 prune capability** — the
   store contract's `PruneTemporalCandidates` is typed to `types.NodeID` only, so `relsByTypeLocked`
   can never get B4 acceleration unlike `nodesByLabelLocked`. Independently found from the query-door

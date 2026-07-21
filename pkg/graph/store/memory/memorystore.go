@@ -118,6 +118,18 @@ type Store struct {
 	// backs the optional store.NodePropertyStatsCapability.
 	propertyStats map[uint16]map[string]*indexpkg.PropertyStatsAccumulator
 
+	// relPropertyKeyCounts / relPropertyStats are the RELATIONSHIP mirror of
+	// propertyKeyCounts / propertyStats (BACKLOG 21a), following the same
+	// live-object-at-delete shape as relPropertyTypeClassCounts above: the
+	// memory store holds live rels, so the delete path decrements with the
+	// old rel directly — no memoized-contribution sidecar (unlike badger's
+	// read-free deleteRelByInfo). Maintained on the same rel-mutation doors
+	// as relPropertyTypeClassCounts (see adjustRelPropertyKeyCounts in
+	// memorystore_rel_property_stats.go); backs the optional
+	// store.RelPropertyStatsCapability.
+	relPropertyKeyCounts map[uint16]map[string]int
+	relPropertyStats     map[uint16]map[string]*indexpkg.PropertyStatsAccumulator
+
 	// Temporal indexes — labelToken → interval index for temporal push-down.
 	temporalIndexes map[uint16]*indexpkg.TemporalIndex
 
@@ -256,6 +268,12 @@ func (ms *Store) ensureInitialized() {
 		if ms.propertyStats == nil {
 			ms.propertyStats = make(map[uint16]map[string]*indexpkg.PropertyStatsAccumulator)
 		}
+		if ms.relPropertyKeyCounts == nil {
+			ms.relPropertyKeyCounts = make(map[uint16]map[string]int)
+		}
+		if ms.relPropertyStats == nil {
+			ms.relPropertyStats = make(map[uint16]map[string]*indexpkg.PropertyStatsAccumulator)
+		}
 		if ms.temporalIndexes == nil {
 			ms.temporalIndexes = make(map[uint16]*indexpkg.TemporalIndex)
 		}
@@ -307,6 +325,8 @@ func (ms *Store) Clear() error {
 	ms.propertyTypeClassCounts = make(map[uint16]map[string]*[types.NumPropertyTypeClasses]int64)
 	ms.relPropertyTypeClassCounts = make(map[uint16]map[string]*[types.NumPropertyTypeClasses]int64)
 	ms.propertyStats = make(map[uint16]map[string]*indexpkg.PropertyStatsAccumulator)
+	ms.relPropertyKeyCounts = make(map[uint16]map[string]int)
+	ms.relPropertyStats = make(map[uint16]map[string]*indexpkg.PropertyStatsAccumulator)
 	ms.temporalIndexes = make(map[uint16]*indexpkg.TemporalIndex)
 	ms.hfIndexes = make(map[uint16]*indexpkg.HighFrequencyIndex)
 	ms.vectorIndexes = make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex)

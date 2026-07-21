@@ -130,6 +130,7 @@ func (bs *Store) putRelationship(r *types.Relationship, validateEndpoints, forei
 
 	bs.maintainRelPropertyIndexesAdd(r, id)
 	bs.addRelPropertyTypeClassCounts(r)
+	bs.addRelPropertyStatsCounts(r)
 
 	bs.appendOps(ops...)
 	bs.relCount.Add(1)
@@ -330,10 +331,12 @@ func (bs *Store) ReplaceRelationship(r *types.Relationship) error {
 	// the rel property index (remove old value, add new).
 	bs.maintainRelPropertyIndexesRemove(old, id)
 	bs.removeRelPropertyTypeClassCountsByID(id, old.TypeToken().Value()) // decrement old (type immutable)
+	bs.removeRelPropertyStatsCountsByID(id, old.TypeToken().Value())
 	bs.relCache.Put(id, freezeRelCopy(r))
 	bs.bumpRelRevLocked(rid)
 	bs.maintainRelPropertyIndexesAdd(r, id)
 	bs.addRelPropertyTypeClassCounts(r) // increment new
+	bs.addRelPropertyStatsCounts(r)
 	bs.appendOps(writeOp{opType: writeOpSet, key: storepkg.RelKey(id), value: data})
 	// A version update rewrites the row in place — endpoints/type are
 	// immutable (no adjacency change) but valid_to may move, so the inline stamp
@@ -571,6 +574,7 @@ func (bs *Store) deleteRelByInfo(info RelDeleteInfo) {
 	delete(bs.relValidIdx, rid)                                    // drop the inline valid-time stamp
 	bs.maintainRelPropertyIndexesPurge(info.ID)                    // brute-force (RelDeleteInfo has no property values)
 	bs.removeRelPropertyTypeClassCountsByID(info.ID, info.RelType) // decrement via memoized contribution (the single delete seam)
+	bs.removeRelPropertyStatsCountsByID(info.ID, info.RelType)     // same memoized-delete seam for NDV+min/max
 
 	// Type index cleanup.
 	if set, exists := bs.typeIdx[info.RelType]; exists {

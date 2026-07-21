@@ -553,6 +553,24 @@ type Store struct {
 	// store.NodePropertyStatsCapability.
 	propertyStats map[indexpkg.PropertyIndexKey]*indexpkg.PropertyStatsAccumulator
 
+	// relPropertyKeyCounts / relPropertyStats / relStatsContrib are the
+	// RELATIONSHIP mirror of propertyKeyCounts / propertyStats (BACKLOG 21a),
+	// following the exact same shape as relPropertyTypeClassCounts /
+	// relTypeClassContrib above: relPropertyKeyCounts is the per-(relType,
+	// property key) presence counter (indexable scalar values only, same
+	// convention as propertyKeyCounts); relPropertyStats is the per-(relType,
+	// property key) NDV+min/max accumulator, protected by idxMu for the same
+	// reason propertyStats is; relStatsContrib memoizes each rel's per-property
+	// (key, valueKey, value) triples by rel ID so the read-free deleteRelByInfo
+	// (which carries no property values) can Forget() precisely by ID — the
+	// same memoized-delete-seam shape relTypeClassContrib already uses. Both
+	// maintained at the full-rel-write ADD sites alongside
+	// addRelPropertyTypeClassCounts + rebuilt by loadIndexes. Backs the
+	// optional store.RelPropertyStatsCapability.
+	relPropertyKeyCounts sync.Map // map[indexpkg.RelPropertyIndexKey]*atomic.Int64
+	relPropertyStats     map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyStatsAccumulator
+	relStatsContrib      sync.Map // map[snowflake.ID][]relStatsEntry
+
 	// rescanTestHook, when non-nil, is invoked by NodePropertyStats right after
 	// the unlocked value collection and BEFORE the write-generation re-check /
 	// Rescan commit, once per rescan attempt. Production leaves it nil (zero
@@ -853,6 +871,7 @@ func New(cfg Config) (*Store, error) {
 		compositeIndexes:        make(map[indexpkg.CompositeIndexKey]*indexpkg.CompositePropertyIndex),
 		compositeIndexesByLabel: make(map[uint16][]indexpkg.CompositeIndexKey),
 		propertyStats:           make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyStatsAccumulator),
+		relPropertyStats:        make(map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyStatsAccumulator),
 		temporalIndexes:         make(map[uint16]*indexpkg.TemporalIndex),
 		hfIndexes:               make(map[uint16]*indexpkg.HighFrequencyIndex),
 		vectorIndexes:           make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex),
@@ -1187,6 +1206,7 @@ func (bs *Store) loadIndexesScan() error {
 			bs.relIDs[rid] = struct{}{}
 			bs.bumpRelRevLocked(rid) // seed a non-zero rev so a pre-first-write prefetch doesn't fall back needlessly (mirrors nodeRevs seeding above)
 			bs.addRelPropertyTypeClassCounts(r) // rebuild rel type-class counters + contrib (BACKLOG 5B)
+			bs.addRelPropertyStatsCounts(r)     // rebuild rel NDV+min/max counters + contrib (BACKLOG 21a)
 			info := relDeleteInfoFromRelationship(r)
 			decodedRelInfo[rid] = info
 			bs.addRelationshipIndexesFromRow(info)
@@ -1888,6 +1908,15 @@ func (bs *Store) Clear() error {
 		return true
 	})
 	bs.propertyStats = make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyStatsAccumulator)
+	bs.relPropertyKeyCounts.Range(func(k, _ any) bool {
+		bs.relPropertyKeyCounts.Delete(k)
+		return true
+	})
+	bs.relStatsContrib.Range(func(k, _ any) bool {
+		bs.relStatsContrib.Delete(k)
+		return true
+	})
+	bs.relPropertyStats = make(map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyStatsAccumulator)
 
 	// Re-create LRU caches with same capacity and byte budget.
 	cap := bs.nodeCache.Cap()

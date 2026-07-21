@@ -260,6 +260,39 @@ func (s *StatOps) PropertyStats(label, propertyKey string) (storepkg.PropertySta
 	return c.nodePropertyStats(tok, propertyKey)
 }
 
+// RelPropertyStats is the relationship mirror of PropertyStats (BACKLOG
+// 21a): NDV/min/max/count planner statistics for (relType, propertyKey).
+// Missing types return a zero-value PropertyStats, matching
+// RelPropertyTypeClassCounts' "unregistered type → 0" convention. Backends
+// without store.RelPropertyStatsCapability return
+// storepkg.ErrCapabilityNotSupported — memory and badger implement it;
+// tiered does not (mirroring the precedent already set by
+// RelRangeCardinality/RelPropertyTypeClassCounts, neither of which tiered
+// implements either).
+func (s *StatOps) RelPropertyStats(typeName, propertyKey string) (storepkg.PropertyStats, error) {
+	c := s.c
+	if err := storepkg.ValidateIndexPropertyKey(propertyKey); err != nil {
+		return storepkg.PropertyStats{}, err
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.closed.Load() {
+		return storepkg.PropertyStats{}, ErrGraphClosed
+	}
+	// Capability is checked BEFORE the type-token lookup (mirroring
+	// RelPropertyTypeClassCounts' order, not PropertyStats') so a caller on a
+	// backend without store.RelPropertyStatsCapability (tiered) reliably gets
+	// ErrCapabilityNotSupported even for a never-used relationship type name.
+	if _, ok := c.store.(storepkg.RelPropertyStatsCapability); !ok {
+		return storepkg.PropertyStats{}, fmt.Errorf("%w: RelPropertyStatsCapability", storepkg.ErrCapabilityNotSupported)
+	}
+	tok, ok := c.lookupRelTypeQueryToken(typeName)
+	if !ok {
+		return storepkg.PropertyStats{}, nil
+	}
+	return c.relPropertyStats(tok, propertyKey)
+}
+
 // RelCountByType forwards to Core.Rels.CountByType.
 func (s *StatOps) RelCountByType(typeName string) (int, error) { return s.c.Rels.CountByType(typeName) }
 

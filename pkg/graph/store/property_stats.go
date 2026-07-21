@@ -55,3 +55,25 @@ type PropertyStats struct {
 type NodePropertyStatsCapability interface {
 	NodePropertyStats(labelToken uint16, propertyKey string) (PropertyStats, error)
 }
+
+// RelPropertyStatsCapability is the RELATIONSHIP mirror of
+// NodePropertyStatsCapability (BACKLOG 21a) — the same NDV/min/max/count
+// PropertyStats shape, keyed by (relationship type token, property key)
+// instead of (label token, property key). It gives a query planner a
+// selectivity estimate for a relationship-property predicate, complementing
+// the existing rel-side ordering-soundness primitives RelRangeCardinality
+// and RelPropertyTypeClassCounts.
+//
+// memory AND badger implement this capability. tiered does NOT — mirroring
+// the precedent already set by its two rel-side sibling capabilities,
+// RelRangeCardinality and RelPropertyTypeClassCounts, neither of which tiered
+// implements either (rel property indexes are RAM-only per-shard with no
+// cross-shard fold defined for them, unlike the node-side property/NDV
+// indexes which are scoped to reference-label shards). sharded does not
+// implement PropertyStats on the node side either, so it is not expected to
+// implement this capability. A backend satisfying only MandatoryStore
+// returns ErrCapabilityNotSupported; check with errors.Is, never a string
+// compare.
+type RelPropertyStatsCapability interface {
+	RelPropertyStats(relTypeToken uint16, propertyKey string) (PropertyStats, error)
+}
