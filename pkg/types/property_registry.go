@@ -120,6 +120,13 @@ var (
 // are welcome, but review carefully: accepting arbitrary struct types in
 // properties widens the trust surface (serialisation, hashing, deep-copy
 // semantics must all hold).
+//
+// Performance note: the wire encoder marshals a registered value via
+// msgpack's reflection-based encoder, since this library cannot know the
+// concrete shape of a caller-registered type at compile time. If your type
+// is on a hot write path, implement msgpack.CustomEncoder/CustomDecoder on
+// it yourself — the encoder detects and uses those directly, bypassing
+// reflection. This is a caller-side opt-in the library cannot force.
 func RegisterPropertyStructType(v any) error {
 	if v == nil {
 		return fmt.Errorf("%w: nil property struct registration", ErrUnsupportedValueType)

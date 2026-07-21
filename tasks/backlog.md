@@ -134,17 +134,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   than were feasible here. NOT fixed — no code or test change applied; left explicitly open rather than
   closed by an unconfirmed theory or a speculative patch.
 
-### BACKLOG 15 — Internal primitives hardening (storeutil / locks / registry / wire codec)
-
-- **15u. `propertyToWire`'s `ptCustom` branch (`storeutil/wire_value.go:450`, kept per BACKLOG 15f's
-  investigation as necessary defense-in-depth) cannot avoid reflection inside THIS library at all — an
-  inherent limitation, not a bug to fix here (INFORMATIONAL).** `msgpack.Marshal(p.Value)` marshals an
-  arbitrary USER-REGISTERED custom property type whose concrete shape is unknown to this library at
-  compile time; msgpack's reflection-based encoder is the only option unless the caller's OWN type
-  implements `msgpack.CustomEncoder`/`CustomDecoder` itself (a caller-side opt-in the library cannot
-  force). Action, if any: document this recommendation for custom-property-type authors (implement
-  `msgpack.CustomEncoder` on your own registered type for max perf) in the `RegisterPropertyStructType`
-  doc comment or docs/api.md — not a library-internal fix.
 ### BACKLOG 18 — Badger backend hardening
 
 - **18t. [PARTIALLY RESOLVED — 2 of 3 test gaps closed; 1 STILL OPEN, not resolved].** Added

@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- DOCS — BACKLOG 15u closed: documented the reflection-vs-`msgpack.CustomEncoder` performance
+  recommendation for custom-registered property types directly on `types.RegisterPropertyStructType`'s
+  doc comment. `propertyToWire`'s `ptCustom` branch (`storeutil/wire_value.go`) cannot avoid reflection
+  inside this library — the concrete shape of a caller-registered type is unknown at compile time — so
+  the only lever a hot-path caller has is implementing `msgpack.CustomEncoder`/`CustomDecoder` on their
+  own type, which the encoder already detects and prefers automatically. INFORMATIONAL only, no library
+  code changed.
 - ADD — BACKLOG 11f Batch A — scoped change-log foundation (ctx-token routing, doors 1-3, FOUNDATION
   ONLY — no lock-behavior change yet). Change-log-enabled `g.Tx()` mutations currently take the FULL
   exclusive graph lock per mutation call because the single implicit `TxChangeLogScope`/`SetLogDivert`
