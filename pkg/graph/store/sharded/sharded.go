@@ -87,6 +87,56 @@ type badgerShard = badger.Store
 // isRelNotFound reports whether err is (or wraps) ErrRelNotFound.
 func isRelNotFound(err error) bool { return errors.Is(err, ErrRelNotFound) }
 
+// --- Re-sharding (BACKLOG 21e / 20m): the supported topology-change path ---
+//
+// A slot is baked into an entity's snowflake ID at MINT TIME
+// (shardFor(id) = catalog[decompose(id).Node] — see the package doc comment)
+// and can never change without changing the ID itself, which would break
+// every relationship pointing at the entity, its hash chain, and any
+// external reference. There is therefore no in-place "move this entity to a
+// different shard" primitive, and there does not need to be one:
+//
+//   - GROW (SlotCount increases to a superset of the currently-claimed
+//     range, same BaseSlot): SAFE, needs no data movement or new routing
+//     code. g.IO().Export from the old topology followed by g.IO().Import
+//     into a freshly-opened store with the wider Config reconstructs every
+//     entity verbatim through the SAME store doors (PutNode/PutRelationship/
+//     PutNodeVersion/PutRelVersion/...) any other write uses — doors that
+//     route by the entity's own already-fixed slot, identically to a normal
+//     write. This is a TESTED, documented capability (see
+//     TestShardedResharding_* in pkg/graph/sharded_resharding_test.go:
+//     exact-set live/history parity, rule-15 two-phase temporal survival,
+//     graph-level hash-chain re-verification, and a zero-ShardMismatch
+//     VerifyConsistency() report), not an accident of how PutNode happens to
+//     be implemented.
+//   - EMPTY-SLOT SHRINK (SlotCount decreases, but every dropped slot was
+//     never actually minted into) is equally SAFE via the same export/import
+//     path, for the same reason.
+//   - UNSAFE SHRINK or BASE-SLOT REBASE (the new claimed range does not
+//     cover a slot some already-migrated entity actually lives on) FAILS
+//     CLOSED: the store door for the uncovered entity's slot returns
+//     ErrSlotNotLocal exactly like it would for any other misrouted write,
+//     Import's rollback undoes every record already replayed in the same
+//     migration (verified: the target ends up completely empty, not
+//     partially migrated), and the source is untouched (Export is
+//     read-only). This is a FEATURE — a fail-closed refusal to silently
+//     drop data — not a bug to work around.
+//   - Live/online topology changes, and a non-identity SlotShard rebalance
+//     (relocating an already-minted entity's ROW without changing its ID —
+//     no primitive exists for this; it would require physically merging
+//     badger stores under a routing table that the ID itself no longer
+//     determines), are explicitly OUT OF SCOPE. Both would need a large new
+//     consistency layer this backend does not have and — per the immutable-
+//     ID-routing argument above — cannot express without an ID change.
+//
+// Operator note: growing SlotCount widens the STORE's claimed range, but
+// does NOT by itself cause anything to mint IDs into the new slots. Pair a
+// grow with a corresponding widening of the consuming Graph's ID-minting
+// configuration (Config.SnowflakeNodeID for the interactive pair, and/or
+// Config.IngestLanes for additional per-lane generators — see Config
+// doc comments in pkg/graph) — otherwise the new slots stay permanently
+// empty and the grow bought nothing.
+
 // Config configures a sharded.Store. Dir/InMemory + BaseSlot/SlotCount define the
 // topology; the remaining fields are per-shard badger passthroughs applied
 // uniformly to every shard.
@@ -100,6 +150,13 @@ type Config struct {
 	BaseSlot uint8
 	// SlotCount is the number of contiguous claimed slots (1..32);
 	// BaseSlot+SlotCount must be <= 32. One badger.Store opens per claimed slot.
+	//
+	// Re-sharding: growing SlotCount (or shrinking it to a range that still
+	// covers every slot in use) is supported via export/import — see the
+	// "Re-sharding" doc comment above Config. Shrinking/rebasing to a range
+	// that drops a non-empty slot fails closed inside Import
+	// (ErrSlotNotLocal) with a full rollback; there is no in-place topology
+	// change.
 	SlotCount uint8
 
 	// ChangeLog enables the store-global change-log/op-log (ADR-0007 S3): a single

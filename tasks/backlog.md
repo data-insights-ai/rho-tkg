@@ -153,11 +153,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   this session) — the atomicity property is already structurally enforced by call order, not
   something that could silently regress. Recommend a dedicated follow-up if this needs a hard proof.**
 
-### BACKLOG 20 — Sharded backend hardening (WIP status)
-
-- **20m. Catalog is fixed identity-only — no re-sharding/rebalancing path exists at all; see BACKLOG
-  21 for the feature-level entry (MEDIUM, missing feature, likely intentional "not yet" for a WIP
-  backend).**
 ### BACKLOG 21 — Missing library-level features (cross-cutting)
 
 Collected here from "missing feature" notes scattered across the subsystem audits — all rho-tkg-owned,
@@ -174,10 +169,6 @@ none sigma's:
   can never get B4 acceleration unlike `nodesByLabelLocked`. Independently found from the query-door
   wiring angle too: `ByType`-with-property doors (`temporal_queries.go`) structurally cannot prune at
   all for exactly this reason, unlike their `ByLabel` node-side siblings.
-- **21e. Sharded backend: no re-sharding/rebalancing path** — growing/shrinking `SlotCount` on an
-  existing deployment is unsupported; a mismatch is a fail-closed `ErrCatalogConflict` with no
-  migration tool (see BACKLOG 20m). Likely intentional for the current WIP stage but worth an explicit
-  decision/roadmap note before this backend leaves WIP status.
 - **21f. No `PreEncodeRelPutPayloadV2` counterpart to the node-side §4.5 pre-encode fast path** — a
   relationship-heavy concurrent-ingest workload always pays the second msgpack pass that a node-heavy
   workload avoids (see BACKLOG 15p).
