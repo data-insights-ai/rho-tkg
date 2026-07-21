@@ -106,8 +106,47 @@ func TestSubAPISmoke(t *testing.T) {
 	if err := g.Index().CreateProperty("Person", "name"); err != nil {
 		t.Fatalf("Index.CreateProperty: %v", err)
 	}
+	if has, err := g.Index().HasProperty("Person", "name"); err != nil || !has {
+		t.Fatalf("Index.HasProperty: has=%v err=%v", has, err)
+	}
 	if err := g.Index().DeleteProperty("Person", "name"); err != nil {
 		t.Fatalf("Index.DeleteProperty: %v", err)
+	}
+	if has, err := g.Index().HasProperty("Person", "name"); err != nil || has {
+		t.Fatalf("Index.HasProperty after drop: has=%v err=%v", has, err)
+	}
+
+	// Index — rel property introspection.
+	if err := g.Index().CreateRelProperty("KNOWS", "since"); err != nil {
+		t.Fatalf("Index.CreateRelProperty: %v", err)
+	}
+	if has, err := g.Index().HasRelProperty("KNOWS", "since"); err != nil || !has {
+		t.Fatalf("Index.HasRelProperty: has=%v err=%v", has, err)
+	}
+	if err := g.Index().DeleteRelProperty("KNOWS", "since"); err != nil {
+		t.Fatalf("Index.DeleteRelProperty: %v", err)
+	}
+
+	// Index — temporal introspection.
+	if err := g.Index().CreateTemporal("Person"); err != nil {
+		t.Fatalf("Index.CreateTemporal: %v", err)
+	}
+	if has, err := g.Index().HasTemporal("Person"); err != nil || !has {
+		t.Fatalf("Index.HasTemporal: has=%v err=%v", has, err)
+	}
+	if err := g.Index().DeleteTemporal("Person"); err != nil {
+		t.Fatalf("Index.DeleteTemporal: %v", err)
+	}
+
+	// Index — vector introspection.
+	if err := g.Index().CreateVector("Person", "embedding", 3, storepkg.DistanceCosine); err != nil {
+		t.Fatalf("Index.CreateVector: %v", err)
+	}
+	if info, found, err := g.Index().VectorIndexInfo("Person", "embedding"); err != nil || !found || info.Dims != 3 {
+		t.Fatalf("Index.VectorIndexInfo: info=%+v found=%v err=%v", info, found, err)
+	}
+	if err := g.Index().DeleteVector("Person", "embedding"); err != nil {
+		t.Fatalf("Index.DeleteVector: %v", err)
 	}
 
 	// Index — composite create + query + drop.

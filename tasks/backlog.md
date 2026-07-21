@@ -121,11 +121,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   than were feasible here. NOT fixed — no code or test change applied; left explicitly open rather than
   closed by an unconfirmed theory or a speculative patch.
 
-### BACKLOG 14 — Index / docvalues / stats / vector / events hardening (graph layer)
-
-- **14h. Composite-index introspection (`ListComposites`/`HasComposite`) has no counterpart for
-  property/temporal/vector/rel-property indexes — see BACKLOG 21 for the feature-level entry.**
-
 ### BACKLOG 15 — Internal primitives hardening (storeutil / locks / registry / wire codec)
 
 - **15p. No `PreEncodeRelPutPayloadV2` counterpart to `PreEncodeNodePutPayloadV2` for §4.5 pre-encode —
@@ -174,12 +169,6 @@ none sigma's:
   soundness primitive); `PropertyStats` has no rel-side equivalent, so a planner costing a
   relationship-property predicate has count/type-class tools but no selectivity estimate. Noted
   independently by 3 separate subsystem audits (façade, memory backend, stats layer).
-- **21b. No index-introspection doors for property/temporal/vector/rel-property indexes, unlike
-  `HasComposite`/`ListComposites` for composite indexes.** A query planner has no way to ask "does
-  label X have a property/temporal/vector index on key Y, with what config?" without issuing the
-  query and inferring from latency. `HasComposite`'s own doc comment frames the need generally
-  ("so a planner can prove the accelerated path exists before routing"). Fix: add
-  `HasProperty(label,key)`/`HasTemporal(label)`/`VectorIndexInfo(label,key)`/`HasRelProperty(type,key)`.
 - **21c. No `RelTypeTemporalCandidateCapability` mirror of the node-side B4 prune capability** — the
   store contract's `PruneTemporalCandidates` is typed to `types.NodeID` only, so `relsByTypeLocked`
   can never get B4 acceleration unlike `nodesByLabelLocked`. Independently found from the query-door

@@ -42,6 +42,18 @@ func TestAPINilReceiversReturnErrNilGraphOrNil(t *testing.T) {
 	if _, err := nilAPI.SearchNearest("Node", "embedding", []float32{1, 2, 3}, 2, storepkg.QueryOpts{}); !errors.Is(err, grapherr.ErrNilGraph) {
 		t.Fatalf("SearchNearest = %v, want ErrNilGraph", err)
 	}
+	if _, err := nilAPI.HasProperty("Node", "name"); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("HasProperty = %v, want ErrNilGraph", err)
+	}
+	if _, err := nilAPI.HasRelProperty("KNOWS", "weight"); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("HasRelProperty = %v, want ErrNilGraph", err)
+	}
+	if _, err := nilAPI.HasTemporal("Node"); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("HasTemporal = %v, want ErrNilGraph", err)
+	}
+	if _, _, err := nilAPI.VectorIndexInfo("Node", "embedding"); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("VectorIndexInfo = %v, want ErrNilGraph", err)
+	}
 	if got := nilAPI.Providers(); got != nil {
 		t.Fatalf("nil Providers = %v, want nil", got)
 	}
@@ -96,6 +108,18 @@ func TestAPIForwardsMethodsAndErrors(t *testing.T) {
 	if _, err := api.SearchNearest("Node", "embedding", query, 4, opts); !errors.Is(err, wantErr) {
 		t.Fatalf("SearchNearest = %v, want %v", err, wantErr)
 	}
+	if _, err := api.HasProperty("Node", "name"); !errors.Is(err, wantErr) {
+		t.Fatalf("HasProperty = %v, want %v", err, wantErr)
+	}
+	if _, err := api.HasRelProperty("KNOWS", "weight"); !errors.Is(err, wantErr) {
+		t.Fatalf("HasRelProperty = %v, want %v", err, wantErr)
+	}
+	if _, err := api.HasTemporal("Node"); !errors.Is(err, wantErr) {
+		t.Fatalf("HasTemporal = %v, want %v", err, wantErr)
+	}
+	if _, _, err := api.VectorIndexInfo("Node", "embedding"); !errors.Is(err, wantErr) {
+		t.Fatalf("VectorIndexInfo = %v, want %v", err, wantErr)
+	}
 	if got := api.Providers(); len(got) != len(wantProviders) || got[0] != wantProviders[0] || got[1] != wantProviders[1] {
 		t.Fatalf("Providers = %v, want %v", got, wantProviders)
 	}
@@ -109,7 +133,7 @@ func TestAPIForwardsMethodsAndErrors(t *testing.T) {
 		"CreateProperty", "DropProperty", "CreateComposite", "DeleteComposite", "CreateHighFrequency", "DropHighFrequency",
 		"CreateTemporal", "DropTemporal", "CreateVector", "CreateVectorWithOptions", "DropVector",
 		"RegisterProvider", "UnregisterProvider",
-		"SearchNearest", "Providers", "Providers",
+		"SearchNearest", "HasProperty", "HasRelProperty", "HasTemporal", "VectorIndexInfo", "Providers", "Providers",
 	}
 	if len(ops.calls) != len(wantCalls) {
 		t.Fatalf("calls = %v, want %v", ops.calls, wantCalls)
@@ -164,6 +188,11 @@ func (s *indexOpsSpy) DeleteProperty(label, propertyKey string) error {
 	return s.err
 }
 
+func (s *indexOpsSpy) HasProperty(label, propertyKey string) (bool, error) {
+	s.record("HasProperty")
+	return false, s.err
+}
+
 func (s *indexOpsSpy) CreateRelProperty(typeName, propertyKey string) error {
 	s.record("CreateRelProperty")
 	return s.err
@@ -172,6 +201,11 @@ func (s *indexOpsSpy) CreateRelProperty(typeName, propertyKey string) error {
 func (s *indexOpsSpy) DeleteRelProperty(typeName, propertyKey string) error {
 	s.record("DeleteRelProperty")
 	return s.err
+}
+
+func (s *indexOpsSpy) HasRelProperty(typeName, propertyKey string) (bool, error) {
+	s.record("HasRelProperty")
+	return false, s.err
 }
 
 func (s *indexOpsSpy) CreateComposite(label string, keys []string) error {
@@ -214,6 +248,11 @@ func (s *indexOpsSpy) DeleteTemporal(label string) error {
 	return s.err
 }
 
+func (s *indexOpsSpy) HasTemporal(label string) (bool, error) {
+	s.record("HasTemporal")
+	return false, s.err
+}
+
 func (s *indexOpsSpy) CreateVector(label, propertyKey string, dims int, metric storepkg.DistanceMetric) error {
 	s.record("CreateVector")
 	s.vectorDims = dims
@@ -232,6 +271,11 @@ func (s *indexOpsSpy) CreateVectorWithOptions(label, propertyKey string, dims in
 func (s *indexOpsSpy) DeleteVector(label, propertyKey string) error {
 	s.record("DropVector")
 	return s.err
+}
+
+func (s *indexOpsSpy) VectorIndexInfo(label, propertyKey string) (storepkg.VectorIndexInfo, bool, error) {
+	s.record("VectorIndexInfo")
+	return storepkg.VectorIndexInfo{}, false, s.err
 }
 
 func (s *indexOpsSpy) SearchNearest(label, propertyKey string, query []float32, k int, opts storepkg.QueryOpts) ([]*types.Node, error) {

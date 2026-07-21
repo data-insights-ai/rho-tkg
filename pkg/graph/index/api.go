@@ -17,8 +17,10 @@ import (
 type Ops interface {
 	CreateProperty(label, propertyKey string) error
 	DeleteProperty(label, propertyKey string) error
+	HasProperty(label, propertyKey string) (bool, error)
 	CreateRelProperty(typeName, propertyKey string) error
 	DeleteRelProperty(typeName, propertyKey string) error
+	HasRelProperty(typeName, propertyKey string) (bool, error)
 	CreateComposite(label string, keys []string) error
 	DeleteComposite(label string, keys []string) error
 	HasComposite(label string, keys []string) (bool, error)
@@ -27,9 +29,11 @@ type Ops interface {
 	DeleteHighFrequency(label string) error
 	CreateTemporal(label string) error
 	DeleteTemporal(label string) error
+	HasTemporal(label string) (bool, error)
 	CreateVector(label, propertyKey string, dims int, metric storepkg.DistanceMetric) error
 	CreateVectorWithOptions(label, propertyKey string, dims int, metric storepkg.DistanceMetric, opts storepkg.VectorIndexOptions) error
 	DeleteVector(label, propertyKey string) error
+	VectorIndexInfo(label, propertyKey string) (storepkg.VectorIndexInfo, bool, error)
 	SearchNearest(label, propertyKey string, query []float32, k int, opts storepkg.QueryOpts) ([]*types.Node, error)
 	RegisterProvider(p IndexProvider) error
 	UnregisterProvider(name string) error
@@ -70,6 +74,21 @@ func (a *API) DeleteProperty(label, propertyKey string) error {
 	return ops.DeleteProperty(label, propertyKey)
 }
 
+// HasProperty reports whether a single-key property index exists on (label,
+// propertyKey) (BACKLOG 21b) — a planner existence door mirroring
+// HasComposite, so a query planner can prove the single-key accelerated path
+// exists before routing an equality/range predicate to it instead of a label
+// scan + post-filter. Unregistered labels return false. There is NO
+// index-DDL epoch/invalidation signal, so call it per plan. Backends without
+// property-index introspection return store.ErrCapabilityNotSupported.
+func (a *API) HasProperty(label, propertyKey string) (bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return false, err
+	}
+	return ops.HasProperty(label, propertyKey)
+}
+
 // CreateRelProperty creates a relationship property index on the given rel type
 // and property key (K3b). Returns store.ErrRelPropertyIndexUnsupported on the
 // tiered store, which declines rel property index creation.
@@ -88,6 +107,19 @@ func (a *API) DeleteRelProperty(typeName, propertyKey string) error {
 		return err
 	}
 	return ops.DeleteRelProperty(typeName, propertyKey)
+}
+
+// HasRelProperty reports whether a relationship property index exists on
+// (typeName, propertyKey) (BACKLOG 21b) — the rel-side mirror of
+// HasProperty. Unregistered relationship types return false. Backends
+// without rel-property-index introspection (tiered) return
+// store.ErrCapabilityNotSupported.
+func (a *API) HasRelProperty(typeName, propertyKey string) (bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return false, err
+	}
+	return ops.HasRelProperty(typeName, propertyKey)
 }
 
 // CreateComposite creates a composite property index over the declared,
@@ -181,6 +213,19 @@ func (a *API) DeleteTemporal(label string) error {
 	return ops.DeleteTemporal(label)
 }
 
+// HasTemporal reports whether a temporal interval index exists on label
+// (BACKLOG 21b). Reports the interval-index KIND specifically — a
+// high-frequency index on the same label (CreateHighFrequency) does not
+// count. Unregistered labels return false. Backends without temporal-index
+// introspection return store.ErrCapabilityNotSupported.
+func (a *API) HasTemporal(label string) (bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return false, err
+	}
+	return ops.HasTemporal(label)
+}
+
 // CreateVector creates a vector (kNN) index. Existing indexed vectors with
 // non-finite coordinates are rejected with ErrInvalidVectorValue.
 //
@@ -221,6 +266,21 @@ func (a *API) DeleteVector(label, propertyKey string) error {
 		return err
 	}
 	return ops.DeleteVector(label, propertyKey)
+}
+
+// VectorIndexInfo returns the declared configuration (dims, metric, engine,
+// HNSW tuning) of the vector index on (label, propertyKey), or (zero value,
+// false, nil) if none exists (BACKLOG 21b) — lets a planner validate a query
+// vector's dimensionality and pick the right engine BEFORE issuing
+// SearchNearest, rather than discovering a mismatch as a runtime error.
+// Unregistered labels return (zero value, false, nil). Backends without
+// vector-index introspection return store.ErrCapabilityNotSupported.
+func (a *API) VectorIndexInfo(label, propertyKey string) (storepkg.VectorIndexInfo, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.VectorIndexInfo{}, false, err
+	}
+	return ops.VectorIndexInfo(label, propertyKey)
 }
 
 // SearchNearest returns the k nearest nodes to query in the vector index.

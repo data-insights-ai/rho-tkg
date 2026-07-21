@@ -2150,6 +2150,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `go build`/`go vet` clean; `store/badger` and `internal/core` package suites green under `-race`;
   full-repo `go test ./...` clean.
 - TEST-GAP FIX — BACKLOG 21d bookkeeping correction: investigating `store.DeletedIterationCapability` (`ForEachDeletedNodeID`/`ForEachDeletedRelID`) for the sharded backend found the capability ITSELF already exists — it shipped in an earlier hardening pass (commit `54acb94`, closing BACKLOG 20f) as a thin sequential fan-out over each shard's own already-native `DeletedIterationCapability` (`pkg/graph/store/sharded/stats_iter.go`), before the 21d bullet (a cross-reference to 20f) was ever written — the bullet was simply never removed when 20f closed, the same class of stale-cross-reference bookkeeping gap as BACKLOG 6f earlier this session. No new production code was needed. What WAS a genuine gap: no test proved the DOWNSTREAM consumer (`g.Temporal().OutgoingRelsAt`/`IncomingRelsAt`/`NeighborsAt`'s deleted-rel fold) actually wires and uses this capability end-to-end for a sharded-backed `Core` — a pure query-result assertion could not distinguish "wired and fast" from "declined and correctly falling back to a full history scan," since both produce the same answer. Added `pkg/graph/internal/core/sharded_deleted_adjacency_test.go`: a white-box assertion that `c.deletedIter != nil` for a sharded-backed graph, plus a two-phase `OutgoingRelsAt`/`IncomingRelsAt` proof using a relationship whose own ID mints on a DIFFERENT shard than its endpoints' (the standard dual-generator topology) — correctly folded in at a pin before its deletion, correctly excluded after. Also added incremental store-level coverage in `pkg/graph/store/sharded/deleted_iteration_test.go` (deterministic multi-call ordering, an explicit nil-callback `ErrInvalidStoreMutation` check for both node and rel doors) alongside the existing exact-set/early-stop tests. `go build`/`go vet` clean; `pkg/graph/store/sharded` and `pkg/graph/internal/core` package suites green under `-race`; full-repo `go test ./...` clean.
+- FEAT — BACKLOG 21b / 14h — **index-existence/config introspection doors for property, temporal,
+  vector, and relationship-property indexes**, the single-key/vector/rel-property counterparts to
+  `HasComposite`/`ListComposites` (composite indexes). A query planner previously had no way to ask
+  "does label X have a property/temporal/vector index on key Y, with what config?" without issuing
+  the query and inferring acceleration from latency — `HasComposite`'s own doc comment already framed
+  this need generally ("so a planner can prove the accelerated path exists before routing"), but the
+  other three index kinds had no equivalent door. Added `g.Index().HasProperty(label, propertyKey)`,
+  `g.Index().HasTemporal(label)` (reports the interval-index KIND specifically — a high-frequency
+  index on the same label does not count), `g.Index().VectorIndexInfo(label, propertyKey)
+  (VectorIndexInfo, bool, error)` (returns the DECLARED dims/metric/engine/HNSW-tuning config — a
+  plain `CreateVector` with no explicit options reports the zero-value `Options` sentinel meaning
+  "use the engine default," not the resolved default values, matching
+  `indexpkg.ValidateVectorIndexOptions`'s existing "zero selects the documented default" contract),
+  and `g.Index().HasRelProperty(typeName, propertyKey)`. Backed by 4 new OPTIONAL store capabilities
+  (`PropertyIndexIntrospectionCapability`, `TemporalIndexIntrospectionCapability`,
+  `VectorIndexIntrospectionCapability` + new `VectorIndexInfo` struct,
+  `RelPropertyIndexIntrospectionCapability`) implemented on memory, badger, and sharded (the latter
+  delegating to the anchor shard, mirroring `ListCompositePropertyIndexes` — DDL for these index
+  kinds fans out uniformly to every shard). Tiered implements `HasProperty`/`HasTemporal`/
+  `VectorIndexInfo` (the three index kinds it genuinely supports — property indexes delegate to the
+  reference shard since `CreatePropertyIndex` rejects event labels; temporal-index membership reads
+  the store-level `tempIdxLabels` list CreateTemporalIndex already maintains; vector indexes are
+  store-level on tiered, read directly), but deliberately does NOT implement
+  `RelPropertyIndexIntrospectionCapability` — tiered's `CreateRelPropertyIndex` already declines
+  unconditionally with `ErrRelPropertyIndexUnsupported` (a shard-local rel-value index cannot answer
+  queries scattered across timestamp-routed event shards), so `HasRelProperty` correctly surfaces the
+  same `ErrCapabilityNotSupported` the capability-absent case does everywhere else, rather than a
+  misleading `false`. Every door: unregistered label/type returns `(false, nil)` — never an error;
+  no index-DDL epoch/invalidation signal (call per plan, same as `HasComposite`). Tests: multi-backend
+  lifecycle battery (absent → create → present → drop → absent) across memory/badger/sharded (+tiered
+  where supported), unregistered-label/type = false, badger-reopen persistence, tiered
+  reference-vs-event-label scoping, HNSW-vs-brute-force/tuning exact-config assertions, capability-
+  absent on a `MandatoryStore`-only backend, plus API-layer forwarding/nil-receiver tests and a
+  `pkg/graph` sub-API smoke-test entry (closing a pre-existing 0%-coverage gap the sibling
+  `HasComposite`/`ListComposites` doors had at the public-API layer). `-race` clean; full-repo
+  `go test ./...` green.
 
 ## [4.23.0] - 2026-07-18
 

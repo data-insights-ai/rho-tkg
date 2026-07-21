@@ -244,6 +244,156 @@ func (i *IndexOps) HasComposite(label string, keys []string) (bool, error) {
 	return false, nil
 }
 
+// HasProperty reports whether a property index exists on (label,
+// propertyKey) (BACKLOG 21b) — a planner existence door mirroring
+// HasComposite for single-key property indexes, so a query planner can prove
+// the accelerated path exists before routing a single-property predicate.
+// Unregistered labels return false. Backends without property-index
+// introspection return storepkg.ErrCapabilityNotSupported.
+func (i *IndexOps) HasProperty(label, propertyKey string) (bool, error) {
+	c := i.c
+	var out bool
+	err := c.readUnderRLock(func() error {
+		if err := c.validateIndexLabel(label); err != nil {
+			return err
+		}
+		if err := c.validateIndexPropertyKey(propertyKey); err != nil {
+			return err
+		}
+		cap, ok := c.store.(storepkg.PropertyIndexIntrospectionCapability)
+		if !ok {
+			return fmt.Errorf("%w: PropertyIndexIntrospectionCapability", storepkg.ErrCapabilityNotSupported)
+		}
+		tok, found := c.labels.Lookup(label)
+		if !found {
+			out = false
+			return nil
+		}
+		has, err := cap.HasPropertyIndex(tok, propertyKey)
+		if err != nil {
+			return err
+		}
+		out = has
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+	return out, nil
+}
+
+// HasTemporal reports whether a temporal interval index exists on label
+// (BACKLOG 21b). Reports the interval-index KIND specifically — a
+// high-frequency index on the same label does not count. Unregistered
+// labels return false. Backends without temporal-index introspection return
+// storepkg.ErrCapabilityNotSupported.
+func (i *IndexOps) HasTemporal(label string) (bool, error) {
+	c := i.c
+	var out bool
+	err := c.readUnderRLock(func() error {
+		if err := c.validateIndexLabel(label); err != nil {
+			return err
+		}
+		cap, ok := c.store.(storepkg.TemporalIndexIntrospectionCapability)
+		if !ok {
+			return fmt.Errorf("%w: TemporalIndexIntrospectionCapability", storepkg.ErrCapabilityNotSupported)
+		}
+		tok, found := c.labels.Lookup(label)
+		if !found {
+			out = false
+			return nil
+		}
+		has, err := cap.HasTemporalIndex(tok)
+		if err != nil {
+			return err
+		}
+		out = has
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+	return out, nil
+}
+
+// VectorIndexInfo returns the declared configuration (dims, metric, engine,
+// HNSW tuning) of the vector index on (label, propertyKey), or (zero value,
+// false) if none exists (BACKLOG 21b) — lets a planner validate a query
+// vector's dimensionality and know the search engine BEFORE issuing
+// SearchNearest, rather than discovering a mismatch as a runtime error.
+// Unregistered labels return (zero value, false). Backends without
+// vector-index introspection return storepkg.ErrCapabilityNotSupported.
+func (i *IndexOps) VectorIndexInfo(label, propertyKey string) (storepkg.VectorIndexInfo, bool, error) {
+	c := i.c
+	var (
+		out   storepkg.VectorIndexInfo
+		found bool
+	)
+	err := c.readUnderRLock(func() error {
+		if err := c.validateIndexLabel(label); err != nil {
+			return err
+		}
+		if err := c.validateIndexPropertyKey(propertyKey); err != nil {
+			return err
+		}
+		cap, ok := c.store.(storepkg.VectorIndexIntrospectionCapability)
+		if !ok {
+			return fmt.Errorf("%w: VectorIndexIntrospectionCapability", storepkg.ErrCapabilityNotSupported)
+		}
+		tok, ok := c.labels.Lookup(label)
+		if !ok {
+			return nil
+		}
+		info, has, err := cap.VectorIndexInfo(tok, propertyKey)
+		if err != nil {
+			return err
+		}
+		out, found = info, has
+		return nil
+	})
+	if err != nil {
+		return storepkg.VectorIndexInfo{}, false, err
+	}
+	return out, found, nil
+}
+
+// HasRelProperty reports whether a relationship property index exists on
+// (typeName, propertyKey) (BACKLOG 21b) — the rel-side mirror of
+// HasProperty. Unregistered relationship types return false. Backends
+// without rel-property-index introspection return
+// storepkg.ErrCapabilityNotSupported.
+func (i *IndexOps) HasRelProperty(typeName, propertyKey string) (bool, error) {
+	c := i.c
+	var out bool
+	err := c.readUnderRLock(func() error {
+		if err := c.validateIndexName(typeName); err != nil {
+			return err
+		}
+		if err := c.validateIndexPropertyKey(propertyKey); err != nil {
+			return err
+		}
+		cap, ok := c.store.(storepkg.RelPropertyIndexIntrospectionCapability)
+		if !ok {
+			return fmt.Errorf("%w: RelPropertyIndexIntrospectionCapability", storepkg.ErrCapabilityNotSupported)
+		}
+		tok, found := c.relTypes.Lookup(typeName)
+		if !found {
+			out = false
+			return nil
+		}
+		has, err := cap.HasRelPropertyIndex(tok, propertyKey)
+		if err != nil {
+			return err
+		}
+		out = has
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+	return out, nil
+}
+
 // CreateTemporal creates a temporal index on nodes with the given label.
 // Accelerates temporal queries (ValidAt/interval filter) for that label.
 // Returns storepkg.ErrTemporalIndexExists if the index already exists.

@@ -591,6 +591,64 @@ type CompositeIndexIntrospectionCapability interface {
 	ListCompositePropertyIndexes(labelToken uint16) ([][]string, error)
 }
 
+// PropertyIndexIntrospectionCapability is OPTIONAL — the query-planner
+// existence door for single-key property index definitions (BACKLOG 21b),
+// mirroring CompositeIndexIntrospectionCapability's role for composites: a
+// planner must know whether an accelerated path exists before routing a
+// single-property predicate, rather than inferring it from query latency.
+type PropertyIndexIntrospectionCapability interface {
+	// HasPropertyIndex reports whether a property index exists on
+	// (labelToken, propertyKey). Unregistered labels return false, not an
+	// error. O(1) — no index-DDL epoch/invalidation signal, call per plan.
+	HasPropertyIndex(labelToken uint16, propertyKey string) (bool, error)
+}
+
+// TemporalIndexIntrospectionCapability is OPTIONAL — the query-planner
+// existence door for temporal interval index definitions (BACKLOG 21b). Only
+// one temporal index KIND (interval or high-frequency) can exist per label
+// (see HighFrequencyIndexCapability), so this answers "interval kind
+// specifically", not "any temporal acceleration exists".
+type TemporalIndexIntrospectionCapability interface {
+	// HasTemporalIndex reports whether a temporal interval index exists on
+	// labelToken. Unregistered labels return false, not an error.
+	HasTemporalIndex(labelToken uint16) (bool, error)
+}
+
+// VectorIndexInfo is the declared configuration of a vector index — the read
+// side of VectorIndexOptions plus the two fields fixed at creation
+// (Dims/Metric) that CreateVectorWithOptions takes as separate parameters
+// rather than folding into VectorIndexOptions itself.
+type VectorIndexInfo struct {
+	Dims    int
+	Metric  DistanceMetric
+	Options VectorIndexOptions
+}
+
+// VectorIndexIntrospectionCapability is OPTIONAL — the query-planner
+// existence+config door for vector index definitions (BACKLOG 21b). A
+// planner needs BOTH existence and dims/metric/engine BEFORE issuing
+// SearchNearest, so a dimension mismatch or an unexpectedly-brute-force
+// index is a routing decision, not a runtime error discovered mid-query.
+type VectorIndexIntrospectionCapability interface {
+	// VectorIndexInfo returns the declared configuration of the vector index
+	// on (labelToken, propertyKey), or (zero value, false) if none exists.
+	// Reflects the DEFINITION only (dims/metric/engine/tuning), never a
+	// runtime rebuild-status signal — see CLAUDE.md "Vector Indexes: Not
+	// persisted" for what does and does not survive restart.
+	VectorIndexInfo(labelToken uint16, propertyKey string) (VectorIndexInfo, bool, error)
+}
+
+// RelPropertyIndexIntrospectionCapability is OPTIONAL — the query-planner
+// existence door for relationship-type-scoped property index definitions
+// (BACKLOG 21b), mirroring PropertyIndexIntrospectionCapability for the rel
+// side.
+type RelPropertyIndexIntrospectionCapability interface {
+	// HasRelPropertyIndex reports whether a relationship property index
+	// exists on (relTypeToken, propertyKey). Unregistered rel types return
+	// false, not an error.
+	HasRelPropertyIndex(relTypeToken uint16, propertyKey string) (bool, error)
+}
+
 // PropertyTypeClassCounts is the EXACT per-(label, property key) partition of
 // a label's current nodes by the type class of the key's value
 // (types.PropertyTypeClass — see its doc for the classification rule).
