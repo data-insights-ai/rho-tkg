@@ -17,6 +17,24 @@ import (
 // writes a version history entry, and persists updatedNode under a single lock.
 func (ms *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, updatedNode *types.Node,
 	prevVersion uint32, prevState *types.Node) error {
+	return ms.removeNodeLabelTokenWithHistoryRouted(nid, tok, updatedNode, prevVersion, prevState, 0)
+}
+
+// RemoveNodeLabelTokenWithHistoryScoped mirrors RemoveNodeLabelTokenWithHistory
+// but routes the change-log record into the store.ScopedTxChangeLog buffer
+// named by token instead of the eager pending log. token == 0 is exactly
+// RemoveNodeLabelTokenWithHistory. See memorystore_changelog_scoped.go
+// (BACKLOG 11f Batch D — foundation only).
+func (ms *Store) RemoveNodeLabelTokenWithHistoryScoped(nid types.NodeID, tok uint16, updatedNode *types.Node,
+	prevVersion uint32, prevState *types.Node, token uint64) error {
+	if token == 0 {
+		return ms.RemoveNodeLabelTokenWithHistory(nid, tok, updatedNode, prevVersion, prevState)
+	}
+	return ms.removeNodeLabelTokenWithHistoryRouted(nid, tok, updatedNode, prevVersion, prevState, token)
+}
+
+func (ms *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16, updatedNode *types.Node,
+	prevVersion uint32, prevState *types.Node, token uint64) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -85,13 +103,31 @@ func (ms *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
-	return ms.logNodePutLocked(updatedNode, true)
+	return ms.logNodePutRoutedLocked(updatedNode, true, token)
 }
 
 // AddNodeLabelTokenWithHistory atomically adds tok to the label index,
 // writes a version history entry, and persists updatedNode under a single lock.
 func (ms *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, updatedNode *types.Node,
 	prevVersion uint32, prevState *types.Node) error {
+	return ms.addNodeLabelTokenWithHistoryRouted(nid, tok, updatedNode, prevVersion, prevState, 0)
+}
+
+// AddNodeLabelTokenWithHistoryScoped mirrors AddNodeLabelTokenWithHistory but
+// routes the change-log record into the store.ScopedTxChangeLog buffer named
+// by token instead of the eager pending log. token == 0 is exactly
+// AddNodeLabelTokenWithHistory. See memorystore_changelog_scoped.go (BACKLOG
+// 11f Batch D — foundation only).
+func (ms *Store) AddNodeLabelTokenWithHistoryScoped(nid types.NodeID, tok uint16, updatedNode *types.Node,
+	prevVersion uint32, prevState *types.Node, token uint64) error {
+	if token == 0 {
+		return ms.AddNodeLabelTokenWithHistory(nid, tok, updatedNode, prevVersion, prevState)
+	}
+	return ms.addNodeLabelTokenWithHistoryRouted(nid, tok, updatedNode, prevVersion, prevState, token)
+}
+
+func (ms *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16, updatedNode *types.Node,
+	prevVersion uint32, prevState *types.Node, token uint64) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -161,7 +197,7 @@ func (ms *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
-	return ms.logNodePutLocked(updatedNode, true)
+	return ms.logNodePutRoutedLocked(updatedNode, true, token)
 }
 
 // DeleteRelWithHistory atomically writes a relationship tombstone history entry

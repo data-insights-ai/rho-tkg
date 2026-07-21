@@ -353,3 +353,26 @@ type ScopedDeleteCapability interface {
 	DeleteNodeWithHistoryScoped(id types.NodeID, prevNodeVersion uint32, nodeTombstone *types.Node, relTombstones []RelTombstone, token uint64) error
 	DeleteRelWithHistoryScoped(id types.RelID, prevVersion uint32, tombstone *types.Relationship, token uint64) error
 }
+
+// ScopedLabelCapability is the BACKLOG 11f Batch D scoped counterpart of the
+// two atomic label-mutation-plus-history doors AddNodeLabelTokenWithHistory /
+// RemoveNodeLabelTokenWithHistory (HistoryCapability, store/capabilities.go):
+// each method behaves EXACTLY like its unscoped sibling — persisting the
+// updated current row, the label index entry, AND a version-history row for
+// prevState/prevVersion atomically — except the change-log record it produces
+// is routed into the ScopedTxChangeLog buffer named by token (opened via
+// BeginScopedLog) instead of the eager pending log or the legacy single
+// TxChangeLogScope buffer. token == 0 is exactly AddNodeLabelTokenWithHistory
+// / RemoveNodeLabelTokenWithHistory. A store implementing
+// ScopedLabelCapability MUST also implement ScopedTxChangeLog (the token
+// comes from nowhere else).
+//
+// FOUNDATION ONLY, same status as ScopedPutCapability / ScopedReplaceCapability
+// / ScopedDeleteCapability: nothing in the core/tx layer constructs a
+// token-carrying context yet, so this has zero effect on any existing
+// behavior. See store.ScopedTxChangeLog's doc comment for the full design
+// rationale.
+type ScopedLabelCapability interface {
+	AddNodeLabelTokenWithHistoryScoped(id types.NodeID, tok uint16, updatedNode *types.Node, prevVersion uint32, prevState *types.Node, token uint64) error
+	RemoveNodeLabelTokenWithHistoryScoped(id types.NodeID, tok uint16, updatedNode *types.Node, prevVersion uint32, prevState *types.Node, token uint64) error
+}

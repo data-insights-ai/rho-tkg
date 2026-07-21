@@ -155,6 +155,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     dedicated `-race` re-run of the full package (clean) and a further targeted `-race` re-run of
     `TestBitemporalOracle*` alone (clean) — consistent with this session's other documented randomized-
     test flakiness (BACKLOG 11h) rather than a regression from this batch.
+- ADD — BACKLOG 11f Batch D — scoped change-log foundation, two independent pieces (FOUNDATION ONLY —
+  same no-lock-behavior-change status as Batches A-C).
+  - **Import doors.** `importNodeWithIDInternal` (`node_add.go`) and the `relPersistImport` branch of
+    `createRelWithTypeRollback` (`relationship_create_kernel.go`) previously called `c.store.PutNode`/
+    `c.store.PutRelationship` directly, bypassing the Batch A `store.ScopedPutCapability` entirely even
+    though both ultimately write through the SAME plain `PutNode`/`PutRelationship` doors Batch A already
+    scoped for the fresh-ID create path. New thin wrappers `putImportedNode`/`putImportedRelationship`
+    (`generated_create.go`) route through `PutNodeScoped`/`PutRelationshipScoped` when ctx carries a
+    token, mirroring `putGeneratedNode`'s pattern — no new store capability needed, since this reuses
+    Batch A's existing one. `putImportedNode` deliberately does NOT go through `c.generatedCreate` (that
+    branch mints a fresh ID; import supplies its own caller-specified ID, so fresh-ID semantics do not
+    apply).
+  - **Label-token doors.** `AddNodeLabelTokenWithHistory`/`RemoveNodeLabelTokenWithHistory` now have
+    `Scoped` siblings (new optional `store.ScopedLabelCapability`, memory + badger, documented to the
+    same rigor as Batch C's `ScopedDeleteCapability` — `token == 0` byte-identical, requires
+    `ScopedTxChangeLog`). Unlike every prior batch, `addNodeLabelInternal`/`removeNodeLabelInternal`
+    (`node_label.go`) took NO `ctx context.Context` parameter at all before this batch — a genuine
+    signature change, not just a new branch inside an already-ctx-aware function. All 4 call sites
+    updated together (confirmed by grep before touching anything): the standalone `NodeOps.AddLabel`/
+    `RemoveLabel` doors now thread their real caller ctx through instead of dropping it, and
+    `GraphTx.AddNodeLabel`/`RemoveNodeLabel` pass `context.Background()`, per the established
+    no-natural-ctx-available precedent from `ingest_concurrent.go` and others. Badger's implementation
+    reuses the Batch A/B/C `logChangeRoutedRaw` machinery (thin wrapper over new
+    `addNodeLabelTokenWithHistoryRouted`/`removeNodeLabelTokenWithHistoryRouted` helpers, mirroring the
+    Batch B/C refactor shape exactly); memory reuses its existing `logNodePutRoutedLocked` unchanged.
+  - Tests: `import_scoped_test.go` (direct exercise of `putImportedNode`/`putImportedRelationship`
+    routing, mirroring `generated_create_scoped_test.go`), `label_scoped_test.go` (same shape for
+    `addNodeLabelTokenWithHistory`/`removeNodeLabelTokenWithHistory`),
+    `badgerstore_history_label_scoped_test.go` / `memorystore_history_label_scoped_test.go` (the full
+    Batch A-C `TestScopedChangeLog_*`/`TestMemoryScopedChangeLog_*` battery replayed for the two label
+    doors — including a legacy-single-scope-mechanism test that initially failed because it called only
+    `BeginLogScope()` without the separate `SetLogDivert(true)` the core normally issues under its
+    exclusive write lock to actually start diverting records — a test-only bug, fixed by adding the
+    missing call, not a product bug). `go build`/`go vet`/`gofmt` clean (same 3 pre-existing drift files
+    elsewhere, untouched); full-repo `go test ./...` green; `-race` clean on `internal/core`,
+    `store/badger`, `store/memory` (the same one-time `TestBitemporalOracle*` flake documented in Batch
+    C's entry recurred once here too, on an op log exercising `addLabel`/`removeLabel` among other
+    unrelated operations — confirmed pre-existing, not a regression, via the same two-step re-run
+    protocol: a dedicated `TestBitemporalOracle*`-only `-race` re-run and a full-package `-race` re-run,
+    both clean; the diff at both label-door call sites is a pure `if token != 0` branch with no new
+    `checkCtx` calls, so `token == 0` — every real call today — is provably byte-identical to the
+    pre-batch behavior).
 - FIX/HARDEN — comprehensive backlog hardening pass: closed 32 findings from the standing code-review
   backlog (`tasks/backlog.md`), each with a genuine RED→GREEN TDD cycle (a failing test proving the
   bug, the fix, the test passing, package + `-race` where concurrency-relevant + full-repo `go test

@@ -19,6 +19,24 @@ import (
 
 func (bs *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, updatedNode *types.Node,
 	prevVersion uint32, prevState *types.Node) error {
+	return bs.removeNodeLabelTokenWithHistoryRouted(nid, tok, updatedNode, prevVersion, prevState, 0)
+}
+
+// RemoveNodeLabelTokenWithHistoryScoped mirrors RemoveNodeLabelTokenWithHistory
+// but routes the change-log record into the store.ScopedTxChangeLog buffer
+// named by token instead of the eager pending log. token == 0 is exactly
+// RemoveNodeLabelTokenWithHistory. See badgerstore_changelog_scoped.go
+// (BACKLOG 11f Batch D — foundation only).
+func (bs *Store) RemoveNodeLabelTokenWithHistoryScoped(nid types.NodeID, tok uint16, updatedNode *types.Node,
+	prevVersion uint32, prevState *types.Node, token uint64) error {
+	if token == 0 {
+		return bs.RemoveNodeLabelTokenWithHistory(nid, tok, updatedNode, prevVersion, prevState)
+	}
+	return bs.removeNodeLabelTokenWithHistoryRouted(nid, tok, updatedNode, prevVersion, prevState, token)
+}
+
+func (bs *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16, updatedNode *types.Node,
+	prevVersion uint32, prevState *types.Node, token uint64) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
@@ -128,14 +146,35 @@ func (bs *Store) RemoveNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, u
 		writeOp{opType: writeOpDelete, key: storepkg.LabelIndexKey(tok, id)},
 	)
 	bs.appendOps(ops...)
-	bs.logChangeRaw(storecontract.ChangeNodePut, changePayload)
+	logErr := bs.logChangeRoutedRaw(storecontract.ChangeNodePut, changePayload, token)
 	bs.idxMu.Unlock()
+	if logErr != nil {
+		return logErr
+	}
 
 	return bs.flushIfNeeded()
 }
 
 func (bs *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, updatedNode *types.Node,
 	prevVersion uint32, prevState *types.Node) error {
+	return bs.addNodeLabelTokenWithHistoryRouted(nid, tok, updatedNode, prevVersion, prevState, 0)
+}
+
+// AddNodeLabelTokenWithHistoryScoped mirrors AddNodeLabelTokenWithHistory but
+// routes the change-log record into the store.ScopedTxChangeLog buffer named
+// by token instead of the eager pending log. token == 0 is exactly
+// AddNodeLabelTokenWithHistory. See badgerstore_changelog_scoped.go (BACKLOG
+// 11f Batch D — foundation only).
+func (bs *Store) AddNodeLabelTokenWithHistoryScoped(nid types.NodeID, tok uint16, updatedNode *types.Node,
+	prevVersion uint32, prevState *types.Node, token uint64) error {
+	if token == 0 {
+		return bs.AddNodeLabelTokenWithHistory(nid, tok, updatedNode, prevVersion, prevState)
+	}
+	return bs.addNodeLabelTokenWithHistoryRouted(nid, tok, updatedNode, prevVersion, prevState, token)
+}
+
+func (bs *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16, updatedNode *types.Node,
+	prevVersion uint32, prevState *types.Node, token uint64) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
@@ -246,8 +285,11 @@ func (bs *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 		writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tok, id)},
 	)
 	bs.appendOps(ops...)
-	bs.logChangeRaw(storecontract.ChangeNodePut, changePayload)
+	logErr := bs.logChangeRoutedRaw(storecontract.ChangeNodePut, changePayload, token)
 	bs.idxMu.Unlock()
+	if logErr != nil {
+		return logErr
+	}
 
 	return bs.flushIfNeeded()
 }

@@ -635,7 +635,7 @@ func (tx *GraphTx) AddNodeLabel(id types.NodeID, label string) error {
 		return err
 	}
 
-	mutated, err := tx.g.addNodeLabelInternal(id, label)
+	mutated, err := tx.g.addNodeLabelInternal(context.Background(), id, label)
 	if err != nil {
 		return err
 	}
@@ -672,7 +672,7 @@ func (tx *GraphTx) RemoveNodeLabel(id types.NodeID, label string) error {
 		return err
 	}
 
-	if err := tx.g.removeNodeLabelInternal(id, label); err != nil {
+	if err := tx.g.removeNodeLabelInternal(context.Background(), id, label); err != nil {
 		return err
 	}
 

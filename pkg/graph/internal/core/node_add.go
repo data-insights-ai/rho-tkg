@@ -505,7 +505,7 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 	}
 	defer uniqueRelease()
 
-	if err := c.store.PutNode(n); err != nil {
+	if err := c.putImportedNode(ctx, n); err != nil {
 		err, partialLive := finishNodeCreateError(err)
 		if partialLive {
 			c.opNodeAdds.Add(1)

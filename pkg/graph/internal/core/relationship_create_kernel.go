@@ -302,7 +302,7 @@ func (c *Core) createRelWithTypeRollback(ctx context.Context, typeName string, m
 			return persistFailed(err)
 		}
 	case relPersistImport:
-		if err := c.store.PutRelationship(r); err != nil {
+		if err := c.putImportedRelationship(ctx, r); err != nil {
 			return persistFailed(err)
 		}
 	default: // relPersistPlain

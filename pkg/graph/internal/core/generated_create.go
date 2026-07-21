@@ -46,6 +46,36 @@ func (c *Core) putGeneratedRelationship(ctx context.Context, r *types.Relationsh
 	return c.store.PutRelationship(r)
 }
 
+// putImportedNode persists a caller-ID-specified node created via
+// ImportNodeWithID/AddByIDIfAbsent. Unlike putGeneratedNode this door never
+// goes through c.generatedCreate (import supplies its own ID, so there is no
+// fresh-ID-minting semantics to preserve) — it routes through
+// store.ScopedPutCapability under the same BACKLOG 11f token rule and
+// otherwise falls straight through to the plain c.store.PutNode door that
+// existed here before scope-token routing was added (Batch D).
+func (c *Core) putImportedNode(ctx context.Context, n *types.Node) error {
+	if token, ok := scopeTokenFrom(ctx); ok && token != 0 {
+		if scoped, ok := c.store.(storepkg.ScopedPutCapability); ok {
+			return scoped.PutNodeScoped(n, token)
+		}
+	}
+	return c.store.PutNode(n)
+}
+
+// putImportedRelationship is putImportedNode's relationship counterpart —
+// used only by createRelWithTypeRollback's relPersistImport branch
+// (importRelWithIDInternal), which supplies a caller-specified ID and so must
+// never route through putGeneratedRelationship/generatedcreate.FreshGraphID().
+// See its doc comment for the scoped-routing rule (Batch D).
+func (c *Core) putImportedRelationship(ctx context.Context, r *types.Relationship) error {
+	if token, ok := scopeTokenFrom(ctx); ok && token != 0 {
+		if scoped, ok := c.store.(storepkg.ScopedPutCapability); ok {
+			return scoped.PutRelationshipScoped(r, token)
+		}
+	}
+	return c.store.PutRelationship(r)
+}
+
 func (c *Core) putGeneratedNodesBatch(nodes []*types.Node) error {
 	if c.generatedCreate != nil {
 		return c.generatedCreate.PutNodesBatchGeneratedID(nodes, generatedcreate.FreshGraphID())

@@ -117,6 +117,22 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   changes WHERE the change-log record for the delete lands, nothing about tombstone/cascade
   construction. Remaining doors after A+B+C: ~15 more call sites (label-token doors, batch doors,
   import doors, …).
+  **Batch D landed (foundation only, zero behavior change):** two independent pieces. (1) Import doors —
+  `importNodeWithIDInternal`/the `relPersistImport` branch of `createRelWithTypeRollback` now route
+  through the EXISTING Batch A `store.ScopedPutCapability` (`PutNodeScoped`/`PutRelationshipScoped`) via
+  new thin wrappers `putImportedNode`/`putImportedRelationship` — no new store capability needed, since
+  import's caller-specified-ID create ultimately writes through the same plain `PutNode`/
+  `PutRelationship` doors Batch A already scoped. (2) Label-token doors — `AddNodeLabelTokenWithHistory`/
+  `RemoveNodeLabelTokenWithHistory` now have `Scoped` siblings (new `store.ScopedLabelCapability`, memory
+  + badger), wired through `addNodeLabelInternal`/`removeNodeLabelInternal` in `node_label.go`, which
+  needed a genuine signature change (adding `ctx context.Context`, since — unlike every prior batch's
+  doors — these two functions took no ctx at all before this batch); all 4 call sites (the standalone
+  `NodeOps.AddLabel`/`RemoveLabel` doors, threading their real ctx, and `GraphTx.AddNodeLabel`/
+  `RemoveNodeLabel`, passing `context.Background()` per the established no-natural-ctx precedent) updated
+  together. `GraphTx` still constructs no token-carrying ctx anywhere — same "dormant foundation" status
+  as every prior batch. Remaining doors after A+B+C+D: batch doors and the bitemporal cascade doors
+  (`SetNodeVersionInterval`/`SetRelVersionInterval`) — roughly ~11 more call sites — before the
+  `GraphTx` lock-relaxation flip itself.
 - **11h. [STILL OPEN — NOT resolved; original "clock re-probing" theory RULED OUT by direct experiment,
   but the real root cause remains unknown and no fix has been applied]
   `TestOutgoingIncomingForNodesAtTx_RandomizedDivergenceProbe/badger`

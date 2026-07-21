@@ -29,7 +29,7 @@ func (n *NodeOps) AddLabel(ctx context.Context, id types.NodeID, label string) e
 		err     error
 	)
 	ep, closeErr := c.runUnderRLock(func() {
-		mutated, err = c.addNodeLabelInternal(id, label)
+		mutated, err = c.addNodeLabelInternal(ctx, id, label)
 	})
 	if closeErr != nil {
 		return closeErr
@@ -43,7 +43,13 @@ func (n *NodeOps) AddLabel(ctx context.Context, id types.NodeID, label string) e
 // addNodeLabelInternal is the lock-free implementation of AddNodeLabel.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 // Returns mutated=false if the node already has the label.
-func (c *Core) addNodeLabelInternal(id types.NodeID, label string) (bool, error) {
+//
+// ctx is consulted ONLY for a BACKLOG 11f scoped change-log token (see
+// scopeTokenFrom) when persisting via store.AddNodeLabelTokenWithHistory —
+// FOUNDATION ONLY, nothing constructs a token-carrying ctx yet, so this is
+// currently always a no-op. Callers with no naturally-available ctx pass
+// context.Background(), exactly like createRelWithTypeRollback.
+func (c *Core) addNodeLabelInternal(ctx context.Context, id types.NodeID, label string) (bool, error) {
 	if err := c.validateName(label); err != nil {
 		return false, err
 	}
@@ -168,7 +174,7 @@ func (c *Core) addNodeLabelInternal(id types.NodeID, label string) (bool, error)
 	defer uniqueRelease()
 
 	// Atomic: write history entry + add label index + persist updated node in one call.
-	if err := c.store.AddNodeLabelTokenWithHistory(id, tok, copy, prevVersion, prevState); err != nil {
+	if err := c.addNodeLabelTokenWithHistory(ctx, id, tok, copy, prevVersion, prevState); err != nil {
 		return false, finishLabel(err)
 	}
 	if err := finishLabel(nil); err != nil {
@@ -190,7 +196,7 @@ func (n *NodeOps) RemoveLabel(ctx context.Context, id types.NodeID, label string
 	}
 	var err error
 	ep, closeErr := c.runUnderRLock(func() {
-		err = c.removeNodeLabelInternal(id, label)
+		err = c.removeNodeLabelInternal(ctx, id, label)
 	})
 	if closeErr != nil {
 		return closeErr
@@ -203,7 +209,11 @@ func (n *NodeOps) RemoveLabel(ctx context.Context, id types.NodeID, label string
 
 // removeNodeLabelInternal is the lock-free implementation of RemoveNodeLabel.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
-func (c *Core) removeNodeLabelInternal(id types.NodeID, label string) error {
+//
+// ctx is consulted ONLY for a BACKLOG 11f scoped change-log token (see
+// scopeTokenFrom) when persisting via store.RemoveNodeLabelTokenWithHistory —
+// see addNodeLabelInternal's doc comment for the same foundation-only rule.
+func (c *Core) removeNodeLabelInternal(ctx context.Context, id types.NodeID, label string) error {
 	if err := c.validateName(label); err != nil {
 		return err
 	}
@@ -286,11 +296,38 @@ func (c *Core) removeNodeLabelInternal(id types.NodeID, label string) error {
 	tm.TxFrom = now
 
 	// Atomic: write history entry + remove label index + persist updated node in one call.
-	if err := c.store.RemoveNodeLabelTokenWithHistory(id, tok, copy, prevVersion, prevState); err != nil {
+	if err := c.removeNodeLabelTokenWithHistory(ctx, id, tok, copy, prevVersion, prevState); err != nil {
 		return err
 	}
 	c.opNodeUpdates.Add(1)
 	return nil
+}
+
+// addNodeLabelTokenWithHistory persists a label-add via
+// store.AddNodeLabelTokenWithHistory, routing through its BACKLOG 11f scoped
+// sibling (store.ScopedLabelCapability) when ctx carries a scoped change-log
+// token and the store supports it — see addNodeLabelInternal's doc comment
+// for the foundation-only rule (Batch D). token == 0 (every real call today)
+// falls straight through to the unscoped door, byte-identical to before this
+// helper existed.
+func (c *Core) addNodeLabelTokenWithHistory(ctx context.Context, id types.NodeID, tok uint16, updatedNode *types.Node, prevVersion uint32, prevState *types.Node) error {
+	if token, ok := scopeTokenFrom(ctx); ok && token != 0 {
+		if scoped, ok := c.store.(storepkg.ScopedLabelCapability); ok {
+			return scoped.AddNodeLabelTokenWithHistoryScoped(id, tok, updatedNode, prevVersion, prevState, token)
+		}
+	}
+	return c.store.AddNodeLabelTokenWithHistory(id, tok, updatedNode, prevVersion, prevState)
+}
+
+// removeNodeLabelTokenWithHistory is addNodeLabelTokenWithHistory's
+// label-remove counterpart — see its doc comment for the scoped-routing rule.
+func (c *Core) removeNodeLabelTokenWithHistory(ctx context.Context, id types.NodeID, tok uint16, updatedNode *types.Node, prevVersion uint32, prevState *types.Node) error {
+	if token, ok := scopeTokenFrom(ctx); ok && token != 0 {
+		if scoped, ok := c.store.(storepkg.ScopedLabelCapability); ok {
+			return scoped.RemoveNodeLabelTokenWithHistoryScoped(id, tok, updatedNode, prevVersion, prevState, token)
+		}
+	}
+	return c.store.RemoveNodeLabelTokenWithHistory(id, tok, updatedNode, prevVersion, prevState)
 }
 
 func (c *Core) nodeLabelsWithoutTokenUnlocked(node *types.Node, tok uint16) []string {
