@@ -188,6 +188,21 @@ func (bs *Store) marshalRelToBytes(r *types.Relationship) ([]byte, error) {
 }
 
 func (bs *Store) PutRelVersion(rid types.RelID, version uint32, r *types.Relationship) error {
+	return bs.putRelVersionRouted(rid, version, r, 0)
+}
+
+// PutRelVersionScoped mirrors PutRelVersion but routes the change-log record
+// into the store.ScopedTxChangeLog buffer named by token instead of the
+// eager pending log. token == 0 is exactly PutRelVersion. See
+// badgerstore_changelog_scoped.go (BACKLOG 11f Batch E — foundation only).
+func (bs *Store) PutRelVersionScoped(rid types.RelID, version uint32, r *types.Relationship, token uint64) error {
+	if token == 0 {
+		return bs.PutRelVersion(rid, version, r)
+	}
+	return bs.putRelVersionRouted(rid, version, r, token)
+}
+
+func (bs *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.Relationship, token uint64) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
@@ -213,8 +228,10 @@ func (bs *Store) PutRelVersion(rid types.RelID, version uint32, r *types.Relatio
 		bs.idxMu.Unlock()
 	}
 	// PutRelVersion holds no idxMu, so enqueue the op and its record together
-	// under one wbMu critical section (appendOpsLogged) for snapshot atomicity.
-	bs.appendOpsLogged(storecontract.ChangeRelHistoryVersion, logPayload, writeOp{opType: writeOpSet, key: key, value: data})
+	// under one wbMu critical section (appendOpsLoggedRouted) for snapshot atomicity.
+	if err := bs.appendOpsLoggedRouted(storecontract.ChangeRelHistoryVersion, logPayload, token, writeOp{opType: writeOpSet, key: key, value: data}); err != nil {
+		return err
+	}
 	return bs.flushIfNeeded()
 }
 

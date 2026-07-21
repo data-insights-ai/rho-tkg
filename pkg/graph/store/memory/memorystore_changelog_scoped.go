@@ -161,3 +161,38 @@ func (ms *Store) logRelDeleteWithHistoryRoutedLocked(id snowflake.ID, tombstone 
 	ms.logChangeLocked(storecontract.ChangeRelDelete, p)
 	return nil
 }
+
+// logNodeHistoryVersionRoutedLocked is logNodeHistoryVersionLocked's
+// token-aware sibling (BACKLOG 11f Batch E) — see logNodePutRoutedLocked's
+// doc comment for the routing rule.
+func (ms *Store) logNodeHistoryVersionRoutedLocked(version uint32, n *types.Node, token uint64) error {
+	if !ms.logEnabled {
+		return nil
+	}
+	p, err := storeutil.NodeHistoryVersionPayload(version, n)
+	if err != nil {
+		return changeLogEncodeErr(err)
+	}
+	if token != 0 {
+		return ms.logChangeScopedLocked(token, storecontract.ChangeNodeHistoryVersion, p)
+	}
+	ms.logChangeLocked(storecontract.ChangeNodeHistoryVersion, p)
+	return nil
+}
+
+// logRelHistoryVersionRoutedLocked is logRelHistoryVersionLocked's
+// token-aware sibling — see logNodeHistoryVersionRoutedLocked's doc comment.
+func (ms *Store) logRelHistoryVersionRoutedLocked(version uint32, r *types.Relationship, token uint64) error {
+	if !ms.logEnabled {
+		return nil
+	}
+	p, err := storeutil.RelHistoryVersionPayload(version, r)
+	if err != nil {
+		return changeLogEncodeErr(err)
+	}
+	if token != 0 {
+		return ms.logChangeScopedLocked(token, storecontract.ChangeRelHistoryVersion, p)
+	}
+	ms.logChangeLocked(storecontract.ChangeRelHistoryVersion, p)
+	return nil
+}

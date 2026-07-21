@@ -376,3 +376,29 @@ type ScopedLabelCapability interface {
 	AddNodeLabelTokenWithHistoryScoped(id types.NodeID, tok uint16, updatedNode *types.Node, prevVersion uint32, prevState *types.Node, token uint64) error
 	RemoveNodeLabelTokenWithHistoryScoped(id types.NodeID, tok uint16, updatedNode *types.Node, prevVersion uint32, prevState *types.Node, token uint64) error
 }
+
+// ScopedCascadeCapability is the BACKLOG 11f Batch E scoped counterpart of
+// the four store doors the bitemporal cascade doors (GraphTx.
+// SetNodeVersionInterval / SetRelVersionInterval, via
+// cascadeNodeVersionInterval / cascadeRelVersionInterval in
+// internal/core/temporal_cascade.go) call: PutNodeVersion / ReplaceNode
+// (MandatoryStore/HistoryCapability, store/capabilities.go) and their
+// relationship mirrors PutRelVersion / ReplaceRelationship. Each Scoped
+// method behaves EXACTLY like its unscoped sibling — the cascade's append-
+// only history-row inserts and the new-current-row replace are UNCHANGED —
+// except the change-log record it produces is routed into the
+// ScopedTxChangeLog buffer named by token instead of the eager pending log
+// or the legacy single TxChangeLogScope buffer. token == 0 is exactly the
+// unscoped door. A store implementing ScopedCascadeCapability MUST also
+// implement ScopedTxChangeLog (the token comes from nowhere else).
+//
+// FOUNDATION ONLY, same status as every other BACKLOG 11f Scoped capability:
+// nothing in the core/tx layer constructs a token-carrying context yet, so
+// this has zero effect on any existing behavior. See
+// store.ScopedTxChangeLog's doc comment for the full design rationale.
+type ScopedCascadeCapability interface {
+	PutNodeVersionScoped(id types.NodeID, version uint32, n *types.Node, token uint64) error
+	ReplaceNodeScoped(n *types.Node, token uint64) error
+	PutRelVersionScoped(id types.RelID, version uint32, r *types.Relationship, token uint64) error
+	ReplaceRelationshipScoped(r *types.Relationship, token uint64) error
+}

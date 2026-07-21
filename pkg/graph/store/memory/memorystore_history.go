@@ -400,6 +400,21 @@ func (ms *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion u
 // PutNodeVersion stores a node snapshot at the given version.
 // Deep-copies the node at the store boundary.
 func (ms *Store) PutNodeVersion(nid types.NodeID, version uint32, n *types.Node) error {
+	return ms.putNodeVersionRouted(nid, version, n, 0)
+}
+
+// PutNodeVersionScoped mirrors PutNodeVersion but routes the change-log
+// record into the store.ScopedTxChangeLog buffer named by token instead of
+// the eager pending log. token == 0 is exactly PutNodeVersion. See
+// memorystore_changelog_scoped.go (BACKLOG 11f Batch E — foundation only).
+func (ms *Store) PutNodeVersionScoped(nid types.NodeID, version uint32, n *types.Node, token uint64) error {
+	if token == 0 {
+		return ms.PutNodeVersion(nid, version, n)
+	}
+	return ms.putNodeVersionRouted(nid, version, n, token)
+}
+
+func (ms *Store) putNodeVersionRouted(nid types.NodeID, version uint32, n *types.Node, token uint64) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -421,7 +436,7 @@ func (ms *Store) PutNodeVersion(nid types.NodeID, version uint32, n *types.Node)
 	}
 	inner[version] = n.DeepCopy()
 	ms.recordNodeLabelMembersLocked(n) // a historical version may carry labels the current row dropped
-	return ms.logNodeHistoryVersionLocked(version, n)
+	return ms.logNodeHistoryVersionRoutedLocked(version, n, token)
 }
 
 // GetNodeVersion retrieves a node snapshot at the given version.
@@ -579,6 +594,21 @@ func (ms *Store) TruncateNodeHistory(nid types.NodeID, keepVersions int) error {
 // PutRelVersion stores a relationship snapshot at the given version.
 // Deep-copies the relationship at the store boundary.
 func (ms *Store) PutRelVersion(rid types.RelID, version uint32, r *types.Relationship) error {
+	return ms.putRelVersionRouted(rid, version, r, 0)
+}
+
+// PutRelVersionScoped mirrors PutRelVersion but routes the change-log record
+// into the store.ScopedTxChangeLog buffer named by token instead of the
+// eager pending log. token == 0 is exactly PutRelVersion. See
+// memorystore_changelog_scoped.go (BACKLOG 11f Batch E — foundation only).
+func (ms *Store) PutRelVersionScoped(rid types.RelID, version uint32, r *types.Relationship, token uint64) error {
+	if token == 0 {
+		return ms.PutRelVersion(rid, version, r)
+	}
+	return ms.putRelVersionRouted(rid, version, r, token)
+}
+
+func (ms *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.Relationship, token uint64) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -599,7 +629,7 @@ func (ms *Store) PutRelVersion(rid types.RelID, version uint32, r *types.Relatio
 	}
 	inner[version] = r.DeepCopy()
 	ms.recordRelTypeMemberLocked(r) // transaction-time rel-type membership (history version)
-	return ms.logRelHistoryVersionLocked(version, r)
+	return ms.logRelHistoryVersionRoutedLocked(version, r, token)
 }
 
 // GetRelVersion retrieves a relationship snapshot at the given version.

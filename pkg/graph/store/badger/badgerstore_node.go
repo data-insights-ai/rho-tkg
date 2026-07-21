@@ -499,6 +499,21 @@ func (bs *Store) DeleteNode(nid types.NodeID) error {
 // No label index changes — labels are immutable after creation.
 // Property indexes are updated to reflect property changes.
 func (bs *Store) ReplaceNode(n *types.Node) error {
+	return bs.replaceNodeRouted(n, 0)
+}
+
+// ReplaceNodeScoped mirrors ReplaceNode but routes the change-log record
+// into the store.ScopedTxChangeLog buffer named by token instead of the
+// eager pending log. token == 0 is exactly ReplaceNode. See
+// badgerstore_changelog_scoped.go (BACKLOG 11f Batch E — foundation only).
+func (bs *Store) ReplaceNodeScoped(n *types.Node, token uint64) error {
+	if token == 0 {
+		return bs.ReplaceNode(n)
+	}
+	return bs.replaceNodeRouted(n, token)
+}
+
+func (bs *Store) replaceNodeRouted(n *types.Node, token uint64) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
@@ -577,8 +592,11 @@ func (bs *Store) ReplaceNode(n *types.Node) error {
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, n, id)
 	ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data})
 	bs.appendOps(ops...)
-	bs.logChangeRaw(storecontract.ChangeNodePut, changePayload)
+	logErr := bs.logChangeRoutedRaw(storecontract.ChangeNodePut, changePayload, token)
 	bs.idxMu.Unlock()
+	if logErr != nil {
+		return logErr
+	}
 
 	return bs.flushIfNeeded()
 }

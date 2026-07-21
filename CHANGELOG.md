@@ -206,6 +206,53 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     both clean; the diff at both label-door call sites is a pure `if token != 0` branch with no new
     `checkCtx` calls, so `token == 0` — every real call today — is provably byte-identical to the
     pre-batch behavior).
+- ADD — BACKLOG 11f Batch E — scoped change-log foundation, the LAST doors (FOUNDATION ONLY — same
+  no-lock-behavior-change status as Batches A-D). Investigation found the prior batches' "batch doors"
+  estimate was inflated: `SetNodeProperty`/`DeleteNodeProperty`/`SetRelationshipProperty`/
+  `DeleteRelationshipProperty` all delegate to `UpdateNode`/`UpdateRelationship` (Batch B, already
+  wired), and `GraphTx` has no batch-mutation surface at all — `g.Batch()`/`BatchBuilder` is a
+  completely separate write door, never reached from `GraphTx`. The only remaining `GraphTx`-reachable
+  unscoped doors were the four the bitemporal cascade (`cascadeNodeVersionInterval`/
+  `cascadeRelVersionInterval` in `temporal_cascade.go`, BACKLOG 10b's carefully-proven append-only
+  algorithm) calls: `PutNodeVersion`/`ReplaceNode`/`PutRelVersion`/`ReplaceRelationship`.
+  - New optional `store.ScopedCascadeCapability` (memory + badger), documented to the same rigor as
+    every prior batch's Scoped capability.
+  - Badger needed a genuinely new low-level helper, `appendOpsLoggedRouted`: `PutNodeVersion`/
+    `PutRelVersion` hold no `idxMu` across their enqueue (unlike every put/replace door so far), so they
+    can't reuse `logChangeRoutedRaw` — the new helper mirrors the existing `appendOpsLogged`'s
+    one-critical-section-for-both-ops-and-record atomicity shape, made token-aware.
+    `ReplaceNode`/`ReplaceRelationship` reuse `logChangeRoutedRaw` directly, matching every prior
+    batch's replace-door shape. Memory added `logNodeHistoryVersionRoutedLocked`/
+    `logRelHistoryVersionRoutedLocked` (mirroring `logNodePutRoutedLocked`) and reused its existing
+    `logNodePutRoutedLocked`/`logRelPutRoutedLocked` for the replace doors.
+  - **The BACKLOG 10b cascade algorithm in `temporal_cascade.go` is completely UNCHANGED.** A new
+    `cascade_scoped.go` adds four small `*ScopedAware` wrapper methods (mirroring `putGeneratedNode`'s
+    exact `scopeTokenFrom(ctx)` + type-assert-and-route pattern) that the cascade's 4 store-door call
+    sites now go through instead of calling `c.store.*` directly — a pure routing substitution, never
+    touching the belief-selection, resumption-boundary, or own-interval-bounds logic the 10b fix so
+    carefully proved correct.
+  - Confirmed by grep that the MANY other callers of these same 4 store doors are untouched: replica
+    apply (`apply_record.go` — must never be tx-scoped, same exclusion class as every prior batch),
+    import/rollback (`import.go`, `import_merge.go`), the one-time bitemporal migration
+    (`migration_bitemporal.go`), and the `UpdateInPlace`-style direct-write doors
+    (`node_update.go`/`relationship_update.go` — a DIFFERENT code path than Batch B's tx-exclusive
+    `updateNodePreparedInternal`).
+  - Tests: `badgerstore_cascade_scoped_test.go` / `memorystore_cascade_scoped_test.go` (the full Batch
+    A-D `TestScopedChangeLog_*` battery replayed for all 4 doors). `cascade_scoped_test.go` in
+    `internal/core` is the load-bearing one: it exercises the REAL
+    `cascadeNodeVersionInterval`/`cascadeRelVersionInterval` entry points via
+    `TempOps.SetNodeVersionInterval`/`SetRelVersionInterval` (which forward ctx unchanged — the exact
+    function `GraphTx`'s own doors call) with a token-carrying ctx, proving the wiring routes correctly
+    through the ACTUAL cascade algorithm end-to-end, not just through the wrapper helpers in isolation
+    — and asserts the cascade's data mutation (the new belief at the queried instant) still lands
+    correctly even while its change-log records stay invisible in the scope buffer.
+  - **This closes the door-wiring phase of BACKLOG 11f entirely** — every `GraphTx`-reachable store
+    door now has a Scoped sibling. `go build`/`go vet`/`gofmt` clean (same 3 pre-existing drift files
+    elsewhere, untouched); full-repo `go test ./...` green (including the full BACKLOG 10b cascade test
+    suite — `cascade_test.go`, `cascade_bitemporal_test.go`, `cascade_open_override_test.go`,
+    `cascade_asof_parity_test.go`, `cascade_prevhash_test.go` — all unchanged and green, confirming the
+    routing substitution altered no cascade behavior); `-race` clean on `internal/core`, `store/badger`,
+    `store/memory`.
 - FIX/HARDEN — comprehensive backlog hardening pass: closed 32 findings from the standing code-review
   backlog (`tasks/backlog.md`), each with a genuine RED→GREEN TDD cycle (a failing test proving the
   bug, the fix, the test passing, package + `-race` where concurrency-relevant + full-repo `go test

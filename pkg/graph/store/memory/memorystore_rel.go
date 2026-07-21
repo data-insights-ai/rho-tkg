@@ -219,6 +219,22 @@ func (ms *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
 // Returns ErrRelNotFound if the relationship does not exist.
 // No index changes — type and endpoints are immutable after creation.
 func (ms *Store) ReplaceRelationship(r *types.Relationship) error {
+	return ms.replaceRelationshipRouted(r, 0)
+}
+
+// ReplaceRelationshipScoped mirrors ReplaceRelationship but routes the
+// change-log record into the store.ScopedTxChangeLog buffer named by token
+// instead of the eager pending log. token == 0 is exactly
+// ReplaceRelationship. See memorystore_changelog_scoped.go (BACKLOG 11f
+// Batch E — foundation only).
+func (ms *Store) ReplaceRelationshipScoped(r *types.Relationship, token uint64) error {
+	if token == 0 {
+		return ms.ReplaceRelationship(r)
+	}
+	return ms.replaceRelationshipRouted(r, token)
+}
+
+func (ms *Store) replaceRelationshipRouted(r *types.Relationship, token uint64) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -252,7 +268,7 @@ func (ms *Store) ReplaceRelationship(r *types.Relationship) error {
 	ms.adjustRelPropertyTypeClassCounts(r, 1)
 	ms.adjustRelPropertyKeyCounts(r, 1)
 	indexpkg.AddRelToTemporalIndexes(ms.relTypeTemporalIndexes, r, id.SnowflakeID()) // BACKLOG 21c
-	return ms.logRelPutLocked(r, false)
+	return ms.logRelPutRoutedLocked(r, false, token)
 }
 
 // DeleteRelationship removes a relationship and cleans up type + adjacency indexes.

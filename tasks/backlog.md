@@ -133,6 +133,31 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   as every prior batch. Remaining doors after A+B+C+D: batch doors and the bitemporal cascade doors
   (`SetNodeVersionInterval`/`SetRelVersionInterval`) — roughly ~11 more call sites — before the
   `GraphTx` lock-relaxation flip itself.
+  **Batch E landed (foundation only, zero behavior change):** the LAST remaining doors — investigation
+  found "batch doors" was an overestimate from the Batch C/D notes; `SetNodeProperty`/
+  `DeleteNodeProperty`/`SetRelationshipProperty`/`DeleteRelationshipProperty` all delegate to
+  `UpdateNode`/`UpdateRelationship` (Batch B, already wired), and `GraphTx` has no separate batch-mutation
+  surface at all (`g.Batch()`/`BatchBuilder` is a wholly separate write door, never reached from
+  `GraphTx`). The ONLY remaining GraphTx-reachable unscoped doors were the four the bitemporal cascade
+  (`cascadeNodeVersionInterval`/`cascadeRelVersionInterval`, BACKLOG 10b's carefully-proven append-only
+  algorithm) calls: `PutNodeVersion`/`ReplaceNode`/`PutRelVersion`/`ReplaceRelationship`. New optional
+  `store.ScopedCascadeCapability` (memory + badger). Badger needed a new `appendOpsLoggedRouted` helper
+  (`PutNodeVersion`/`PutRelVersion` hold no `idxMu` across their enqueue, so they can't reuse
+  `logChangeRoutedRaw` — mirrors the existing `appendOpsLogged`'s one-critical-section-for-both shape,
+  token-aware); `ReplaceNode`/`ReplaceRelationship` reuse `logChangeRoutedRaw` directly, same as prior
+  batches' replace doors. The cascade's own append-only algorithm in `temporal_cascade.go` is
+  UNCHANGED — only the 4 store-door call sites gained a dormant `if token != 0` routing branch via a new
+  `cascade_scoped.go` (mirroring `putGeneratedNode`'s exact pattern), never touching the delicate
+  belief-selection/resumption-boundary logic itself. Confirmed by grep that the many OTHER callers of
+  these same 4 store doors — replica apply (`apply_record.go`), import/rollback (`import.go`,
+  `import_merge.go`), the one-time bitemporal migration (`migration_bitemporal.go`), and the
+  `UpdateInPlace`-style direct-write doors (`node_update.go`/`relationship_update.go`, a DIFFERENT path
+  than Batch B's `updateNodePreparedInternal`) — are all correctly untouched. Full end-to-end test
+  proves the wiring routes through the REAL `cascadeNodeVersionInterval`/`cascadeRelVersionInterval`
+  entry points (via `TempOps.SetNodeVersionInterval`/`SetRelVersionInterval`, which forward ctx
+  unchanged — the exact function `GraphTx`'s doors call), not just the wrapper helpers in isolation.
+  **This closes the door-wiring phase of 11f entirely** — all `GraphTx`-reachable store doors now have
+  Scoped siblings. The remaining and final piece is the `GraphTx` lock-relaxation flip itself.
 - **11h. [STILL OPEN — NOT resolved; original "clock re-probing" theory RULED OUT by direct experiment,
   but the real root cause remains unknown and no fix has been applied]
   `TestOutgoingIncomingForNodesAtTx_RandomizedDivergenceProbe/badger`

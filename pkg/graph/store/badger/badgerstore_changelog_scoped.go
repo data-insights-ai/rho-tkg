@@ -124,3 +124,44 @@ func (bs *Store) logChangeRoutedRaw(tag storecontract.ChangeTag, payload []byte,
 	bs.logChangeRaw(tag, payload)
 	return nil
 }
+
+// appendOpsLoggedRouted is appendOpsLogged's token-aware sibling — see
+// appendOpsLogged's doc comment for why PutNodeVersion/PutRelVersion need
+// this ONE-critical-section-for-both-ops-and-record shape instead of the
+// idxMu-based logChangeRoutedRaw (BACKLOG 11f Batch E: neither door holds
+// idxMu.Lock across its enqueue). token == 0 takes the exact appendOpsLogged
+// path (pendingLog when no legacy scope is active, scopeLog when one is);
+// token != 0 buffers into that scope's token-keyed buffer instead. Returns
+// ErrInvalidStoreMutation for an unknown/retired token — by the time this is
+// called the entity ops are ALREADY enqueued into bs.pending in the same
+// critical section (matching every other *Scoped door's "the write lands,
+// only the record's routing can fail" contract).
+func (bs *Store) appendOpsLoggedRouted(tag storecontract.ChangeTag, payload []byte, token uint64, ops ...writeOp) error {
+	bs.wbMu.Lock()
+	for _, op := range ops {
+		bs.pending[string(op.key)] = op
+	}
+	if !bs.logEnabled.Load() {
+		bs.wbMu.Unlock()
+		return nil
+	}
+	value := storepkg.EncodeChangeValue(tag, payload)
+	if token != 0 {
+		buf, ok := bs.scopedLogs[token]
+		if !ok {
+			bs.wbMu.Unlock()
+			return fmt.Errorf("graph: %w: unknown scoped change-log token", storecontract.ErrInvalidStoreMutation)
+		}
+		bs.scopedLogs[token] = append(buf, value)
+		bs.wbMu.Unlock()
+		return nil
+	}
+	if bs.scopeActive {
+		bs.scopeLog = append(bs.scopeLog, value)
+	} else {
+		lsn := bs.nextLSN()
+		bs.pendingLog = append(bs.pendingLog, pendingLogRecord{lsn: lsn, value: value})
+	}
+	bs.wbMu.Unlock()
+	return nil
+}

@@ -288,17 +288,17 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 		if r == newCurrent {
 			continue // written via ReplaceNode below
 		}
-		if err := c.store.PutNodeVersion(id, r.Version(), r); err != nil {
+		if err := c.putNodeVersionScopedAware(ctx, id, r.Version(), r); err != nil {
 			return nil, fmt.Errorf("graph: cascade put appended version: %w", err)
 		}
 	}
 	if curIsNew {
 		if current != nil {
-			if err := c.store.PutNodeVersion(id, current.Version(), current); err != nil {
+			if err := c.putNodeVersionScopedAware(ctx, id, current.Version(), current); err != nil {
 				return nil, fmt.Errorf("graph: cascade demote current to history: %w", err)
 			}
 		}
-		if err := c.store.ReplaceNode(newCurrent); err != nil {
+		if err := c.replaceNodeScopedAware(ctx, newCurrent); err != nil {
 			return nil, fmt.Errorf("graph: cascade replace current: %w", err)
 		}
 	}
@@ -553,17 +553,17 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 		if r == newCurrent {
 			continue
 		}
-		if err := c.store.PutRelVersion(id, r.Version(), r); err != nil {
+		if err := c.putRelVersionScopedAware(ctx, id, r.Version(), r); err != nil {
 			return nil, fmt.Errorf("graph: cascade put appended rel version: %w", err)
 		}
 	}
 	if curIsNew {
 		if current != nil {
-			if err := c.store.PutRelVersion(id, current.Version(), current); err != nil {
+			if err := c.putRelVersionScopedAware(ctx, id, current.Version(), current); err != nil {
 				return nil, fmt.Errorf("graph: cascade demote rel current: %w", err)
 			}
 		}
-		if err := c.store.ReplaceRelationship(newCurrent); err != nil {
+		if err := c.replaceRelationshipScopedAware(ctx, newCurrent); err != nil {
 			return nil, fmt.Errorf("graph: cascade replace rel current: %w", err)
 		}
 	}

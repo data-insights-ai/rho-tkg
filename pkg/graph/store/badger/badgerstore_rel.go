@@ -293,6 +293,22 @@ func (bs *Store) getRelInTxn(txn *badgerv4.Txn, rid types.RelID) (*types.Relatio
 // Returns ErrRelNotFound if the relationship does not exist.
 // No index changes — type and endpoints are immutable after creation.
 func (bs *Store) ReplaceRelationship(r *types.Relationship) error {
+	return bs.replaceRelationshipRouted(r, 0)
+}
+
+// ReplaceRelationshipScoped mirrors ReplaceRelationship but routes the
+// change-log record into the store.ScopedTxChangeLog buffer named by token
+// instead of the eager pending log. token == 0 is exactly
+// ReplaceRelationship. See badgerstore_changelog_scoped.go (BACKLOG 11f
+// Batch E — foundation only).
+func (bs *Store) ReplaceRelationshipScoped(r *types.Relationship, token uint64) error {
+	if token == 0 {
+		return bs.ReplaceRelationship(r)
+	}
+	return bs.replaceRelationshipRouted(r, token)
+}
+
+func (bs *Store) replaceRelationshipRouted(r *types.Relationship, token uint64) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
@@ -359,8 +375,11 @@ func (bs *Store) ReplaceRelationship(r *types.Relationship) error {
 	// immutable (no adjacency change) but valid_to may move, so the inline stamp
 	// MUST be refreshed here or a temporal traversal reads a stale interval.
 	bs.setRelValidStampLocked(rid, r)
-	bs.logChangeRaw(storecontract.ChangeRelPut, changePayload)
+	logErr := bs.logChangeRoutedRaw(storecontract.ChangeRelPut, changePayload, token)
 	bs.idxMu.Unlock()
+	if logErr != nil {
+		return logErr
+	}
 
 	return bs.flushIfNeeded()
 }

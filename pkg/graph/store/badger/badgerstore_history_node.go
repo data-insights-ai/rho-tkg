@@ -587,6 +587,21 @@ func (bs *Store) marshalNodeToBytes(n *types.Node) ([]byte, error) {
 }
 
 func (bs *Store) PutNodeVersion(nid types.NodeID, version uint32, n *types.Node) error {
+	return bs.putNodeVersionRouted(nid, version, n, 0)
+}
+
+// PutNodeVersionScoped mirrors PutNodeVersion but routes the change-log
+// record into the store.ScopedTxChangeLog buffer named by token instead of
+// the eager pending log. token == 0 is exactly PutNodeVersion. See
+// badgerstore_changelog_scoped.go (BACKLOG 11f Batch E — foundation only).
+func (bs *Store) PutNodeVersionScoped(nid types.NodeID, version uint32, n *types.Node, token uint64) error {
+	if token == 0 {
+		return bs.PutNodeVersion(nid, version, n)
+	}
+	return bs.putNodeVersionRouted(nid, version, n, token)
+}
+
+func (bs *Store) putNodeVersionRouted(nid types.NodeID, version uint32, n *types.Node, token uint64) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
@@ -614,8 +629,10 @@ func (bs *Store) PutNodeVersion(nid types.NodeID, version uint32, n *types.Node)
 		bs.idxMu.Unlock()
 	}
 	// PutNodeVersion holds no idxMu, so enqueue the op and its record together
-	// under one wbMu critical section (appendOpsLogged) for snapshot atomicity.
-	bs.appendOpsLogged(storecontract.ChangeNodeHistoryVersion, logPayload, writeOp{opType: writeOpSet, key: key, value: data})
+	// under one wbMu critical section (appendOpsLoggedRouted) for snapshot atomicity.
+	if err := bs.appendOpsLoggedRouted(storecontract.ChangeNodeHistoryVersion, logPayload, token, writeOp{opType: writeOpSet, key: key, value: data}); err != nil {
+		return err
+	}
 	return bs.flushIfNeeded()
 }
 

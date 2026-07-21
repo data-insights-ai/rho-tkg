@@ -321,6 +321,21 @@ func (ms *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 // No label index changes — labels are immutable after creation.
 // Property indexes are updated to reflect property changes.
 func (ms *Store) ReplaceNode(n *types.Node) error {
+	return ms.replaceNodeRouted(n, 0)
+}
+
+// ReplaceNodeScoped mirrors ReplaceNode but routes the change-log record
+// into the store.ScopedTxChangeLog buffer named by token instead of the
+// eager pending log. token == 0 is exactly ReplaceNode. See
+// memorystore_changelog_scoped.go (BACKLOG 11f Batch E — foundation only).
+func (ms *Store) ReplaceNodeScoped(n *types.Node, token uint64) error {
+	if token == 0 {
+		return ms.ReplaceNode(n)
+	}
+	return ms.replaceNodeRouted(n, token)
+}
+
+func (ms *Store) replaceNodeRouted(n *types.Node, token uint64) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -363,7 +378,7 @@ func (ms *Store) ReplaceNode(n *types.Node) error {
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
-	return ms.logNodePutLocked(n, false)
+	return ms.logNodePutRoutedLocked(n, false, token)
 }
 
 // DeleteNodeCascade atomically removes a node and all connected relationships.
