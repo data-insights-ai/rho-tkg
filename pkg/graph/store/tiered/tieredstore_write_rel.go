@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	snowflake "github.com/bds421/rho-snowflake-2026"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -35,8 +36,9 @@ func (ts *Store) PutRelationship(r *types.Relationship) error {
 	if err := ts.checkRotation(); err != nil {
 		return err
 	}
-	ts.relCreateMu.Lock()
-	defer ts.relCreateMu.Unlock()
+	id := r.ID().SnowflakeID()
+	ts.relCreateLocks.LockEntity(id)
+	defer ts.relCreateLocks.UnlockEntity(id)
 
 	return ts.putRelationshipLocked(r, true)
 }
@@ -54,8 +56,9 @@ func (ts *Store) PutRelationshipGeneratedID(r *types.Relationship, proof generat
 	if err := ts.checkRotation(); err != nil {
 		return err
 	}
-	ts.relCreateMu.Lock()
-	defer ts.relCreateMu.Unlock()
+	id := r.ID().SnowflakeID()
+	ts.relCreateLocks.LockEntity(id)
+	defer ts.relCreateLocks.UnlockEntity(id)
 
 	return ts.putRelationshipLocked(r, false)
 }
@@ -80,8 +83,9 @@ func (ts *Store) PutRelationshipGeneratedIDWithEndpointHashes(r *types.Relations
 	if err := ts.checkRotation(); err != nil {
 		return "", "", err
 	}
-	ts.relCreateMu.Lock()
-	defer ts.relCreateMu.Unlock()
+	id := r.ID().SnowflakeID()
+	ts.relCreateLocks.LockEntity(id)
+	defer ts.relCreateLocks.UnlockEntity(id)
 
 	return ts.putRelationshipWithEndpointHashesLocked(r, false)
 }
@@ -365,8 +369,12 @@ func (ts *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 	if err := ts.checkRotation(); err != nil {
 		return err
 	}
-	ts.relCreateMu.Lock()
-	defer ts.relCreateMu.Unlock()
+	batchIDs := make([]snowflake.ID, len(rels))
+	for i, r := range rels {
+		batchIDs[i] = r.ID().SnowflakeID()
+	}
+	ts.relCreateLocks.LockMany(batchIDs)
+	defer ts.relCreateLocks.UnlockMany(batchIDs)
 
 	seen := make(map[types.RelID]struct{}, len(rels))
 	for _, r := range rels {
@@ -631,8 +639,12 @@ func (ts *Store) DeleteRelationshipsBatch(ids []types.RelID) error {
 	}
 	defer releaseAll()
 
-	ts.relCreateMu.Lock()
-	defer ts.relCreateMu.Unlock()
+	batchIDs := make([]snowflake.ID, len(ids))
+	for i, id := range ids {
+		batchIDs[i] = id.SnowflakeID()
+	}
+	ts.relCreateLocks.LockMany(batchIDs)
+	defer ts.relCreateLocks.UnlockMany(batchIDs)
 
 	committed := make([]*types.Relationship, 0, len(ids))
 	rollback := func(err error) error {

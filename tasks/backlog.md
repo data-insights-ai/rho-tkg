@@ -58,55 +58,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ## Open — Hardening Pass (2026-07-18)
 
-### BACKLOG 10 — Bitemporal resolution engine hardening
-
-- **10b. [CONFIRMED REAL via reproducible test; fix ATTEMPTED and REVERTED — needs a dedicated
-  design session, do not attempt a quick patch] An open-ended cascade correction starting *before* an
-  untouched open "current" row is silently capped and never wins, even though it's the newer belief
-  (HIGH).** `internal/core/temporal_cascade.go:218-233` + `temporal.go:358-406,167-184,420-442`.
-  `nodeVersionBounds` derives a version's end **positionally** (next sorted entry's `ValidFrom`), not
-  by belief recency. Repro (now in `TestCascade_OpenCorrectionBeforeUntouchedOpenCurrent` history —
-  reverted alongside the fix, see below): current v0 `ValidFrom=2000,open,TxFrom=T0`;
-  `SetNodeVersionInterval(id,1000,0,corrected)` at `T1>T0` creates v1 `ValidFrom=1000,open,TxFrom=T1`;
-  v1's effective end is computed as v0's `ValidFrom`(2000) since v0 sorts after it, so v1 loses the
-  "current" slot to the untouched v0 and is demoted to history. `NodeAtTx(id,2500,txAt>=T1)` then
-  returns v0's **pre-correction** content. Empirically confirmed with a live test (RED without a fix,
-  100% reproducible, no flakiness).
-  **Attempted fix (reverted):** (1) `nodeVersionBounds`/`relVersionBounds` skip a later-sorted `next`
-  entry whose `TxFrom` is older than the entry being bounded, so `next` can't wrongly truncate a
-  newer, wider-reaching correction; (2) the cascade's `newCurrent` selection picks the open-ended
-  candidate with the *newest belief* (`nodeBeliefNewerThan`/`relBeliefNewerThan`) instead of "last in
-  valid-from order"; (3) discovered that fix (1) alone breaks the **resumption row** the cascade
-  constructs for a *bounded* correction (`newVT != 0`) — a resumption row re-asserting old content
-  from `newVT` onward is STRUCTURALLY INDISTINGUISHABLE, via its own stored ValidFrom/ValidTo/TxFrom,
-  from a genuine override like the one in the repro (both are "open, later TxFrom than some
-  pre-existing older-belief row that should — or shouldn't — bound them" — the two cases require
-  OPPOSITE treatment and cannot be told apart from per-row temporal metadata alone). Refined fix (3b):
-  compute the resumption row's `ValidTo` EXPLICITLY at construction time from its source row's own
-  effective end in the **pre-correction chain** (via `nodeVersionBounds` over `preChain` alone, never
-  touched by fix (1)'s skip logic) instead of leaving it `0` and relying on positional tiling at read
-  time. This fixed both the original repro AND the previously-passing `TestCascade_MidHistoryInsertion`
-  — **but** running the full suite surfaced `TestBitemporalOracleHarness` /
-  `TestBitemporalOracle_BadgerCommitWindow` (a property-based fuzz harness comparing an independent
-  oracle model against live `NodesAtTx` results over long randomized operation sequences, including
-  repeated/interleaved cascades) failing on roughly HALF of all random seeds — extra/missing/wrong-
-  version nodes in the door's answer vs. the oracle. This means fix (1)'s blanket "skip older-belief
-  next" rule, even with refinement (3b) patching the single-cascade resumption case, still produces
-  wrong answers once MULTIPLE cascades (each contributing their own newVer/resumption pairs with
-  distinct TxFrom values) accumulate on the same chain — the pairwise TxFrom comparison in
-  `nodeVersionBounds` doesn't know "which cascade batch" a candidate pair belongs to, and applying it
-  indiscriminately across an arbitrarily-merged multi-cascade chain has failure modes beyond the
-  single-resumption case this session found and fixed. **All three changes were reverted** (`git
-  checkout -- temporal.go temporal_cascade.go cascade_test.go`) — full suite is back to green.
-  **For the next attempt:** the oracle harness (`bitemporaloracle_test.go`,
-  `bitemporaloracle_commitwindow_test.go`) is the load-bearing regression gate — any fix MUST pass it
-  at full iteration count (not just the two hand-written repro cases) before being considered done.
-  The core open design question: how to durably distinguish, at read time, "a row asserting a genuine
-  override of an older belief within its claimed domain" from "a row merely continuing/resuming an
-  older belief that legitimately still bounds it" — per-row temporal metadata alone is provably
-  insufficient (both shapes are structurally identical); the fix likely needs either a persisted
-  marker distinguishing the two row roles, or a fundamentally different (non-positional,
-  non-pairwise-TxFrom) algorithm for interval-bounds derivation in a chain with cascade-inserted rows.
 ### BACKLOG 11 — Batch / ingest / tx concurrency hardening
 
 - **11f. [PARTIALLY ADDRESSED — see below] Change-log-enabled tx mutations take the FULL exclusive
@@ -227,24 +178,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   this session) — the atomicity property is already structurally enforced by call order, not
   something that could silently regress. Recommend a dedicated follow-up if this needs a hard proof.**
 
-### BACKLOG 19 — TieredStore hardening
-
-- **19q. [STILL OPEN — NOT resolved; confirmed accurate, deliberately not attempted this pass].**
-  Confirmed `nodeCreateMu`/`relCreateMu` (`tieredstore.go:257-258`) are held for the ENTIRE create
-  operation (`putNode`/`putRel`, `tieredstore_write_node.go`/`tieredstore_write_rel.go`) — the
-  duplicate-ID check AND the actual shard-routed write, not just the check — so any two node (or rel)
-  creates anywhere in the store, even to completely different shards, cannot proceed concurrently.
-  The mutex's own comment states the reason: cross-shard global ID-uniqueness checking, needed
-  because snowflake IDs are externally generated (not auto-incremented) and must be unique across
-  every shard, not just within one — some serialization is genuinely required to close the TOCTOU
-  window between "check ID doesn't exist anywhere" and "commit it." Noticed a POTENTIAL narrower
-  mitigation (hold the mutex only for the duplicate-check phase, release it before the slower
-  physical shard write) but did not attempt it: verifying that's actually safe requires confirming
-  nothing between the check and the write needs continued exclusion, and a subtle regression here
-  would break the correctness-critical global-uniqueness guarantee — exactly the risk the original
-  finding's own "likely unavoidable, not obviously cheap to fix" hedge anticipated. Left open,
-  deliberately not attempted rather than rushed, given the stakes of the invariant it protects.
-  Recommend a dedicated follow-up that starts from the "shrink the critical section" angle above.**
 ### BACKLOG 20 — Sharded backend hardening (WIP status)
 
 - **20m. Catalog is fixed identity-only — no re-sharding/rebalancing path exists at all; see BACKLOG

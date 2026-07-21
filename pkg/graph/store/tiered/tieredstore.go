@@ -12,6 +12,7 @@ import (
 	"time"
 
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
+	lockspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/locks"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	badger "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	badgerv4 "github.com/dgraph-io/badger/v4"
@@ -269,8 +270,27 @@ type Store struct {
 	scopeOpen     bool
 	scopeDivertOn bool
 
-	nodeCreateMu sync.Mutex // serializes cross-shard node ID uniqueness checks with writes
-	relCreateMu  sync.Mutex // serializes cross-shard relationship ID uniqueness checks with writes
+	// nodeCreateLocks / relCreateLocks (BACKLOG 19q) replace a single
+	// whole-store create mutex with the SAME 256-shard per-ID striping
+	// internal/locks.Manager already provides for entity-level serialization
+	// elsewhere in this codebase (CLAUDE.md "Entity locks"). INVARIANT: the
+	// lock for entity ID X is held continuously from the start of X's
+	// duplicate-ID check through the completion of X's physical shard write
+	// (never released in between) — this is what closes the cross-shard/
+	// cross-class TOCTOU the whole-store mutex used to close, since two
+	// concurrent creates for the SAME raw snowflake ID always hash to the
+	// SAME shard index and therefore fully serialize against each other,
+	// while two DIFFERENT IDs (the common case) proceed with no contention
+	// beyond a 1-in-256 chance of sharing a stripe. Two independent Manager
+	// instances (not shared with internal/core's entityLockManager, a
+	// different layer/invariant, and not shared with each other) — nodes and
+	// rels never nest a lock from the other's Manager, so there is no
+	// cross-domain lock-ordering hazard. relCreateLocks ALSO guards
+	// DeleteRelationshipsBatch's rollback path (which re-creates rows via
+	// putRelationshipLocked on failure), for the same reason the old
+	// relCreateMu did.
+	nodeCreateLocks *lockspkg.Manager
+	relCreateLocks  *lockspkg.Manager
 
 	// Temporal indexes — tracked so new hot/archive shards inherit them.
 	tempIdxMu     sync.Mutex
@@ -358,6 +378,8 @@ func New(cfg Config) (*Store, error) {
 		hfIdxBuckets:          make(map[uint16]time.Duration),
 		vectorIndexes:         make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex),
 		logEnabled:            cfg.ChangeLog,
+		nodeCreateLocks:       lockspkg.NewManager(),
+		relCreateLocks:        lockspkg.NewManager(),
 	}
 	// Build the store-global change-log allocator BEFORE opening any shard, so it
 	// can be injected via badgerCfg (ChangeLogSeqSource). Each shard folds its

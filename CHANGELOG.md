@@ -2031,6 +2031,93 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   by running the FULL `store/tiered` package suite (not just the new tests), diagnosed by diffing against a clean
   `git stash` baseline, and fixed by restoring the loop. `go build`/`go vet` clean; `store/tiered` and
   `store/badger` package suites green under `-race`; full-repo `go test ./...` clean.
+- FIX (perf/concurrency) — BACKLOG 19q: `nodeCreateMu`/`relCreateMu` (`store/tiered/tieredstore.go`) held a SINGLE whole-store mutex across the ENTIRE create operation (duplicate-ID check AND the physical shard write) for every node/relationship create — so any two node (or rel) creates anywhere in the store, even routed to completely different shards, could never run concurrently. Root cause of the invariant this protected: two concurrent creates asserting the SAME externally-supplied ID under DIFFERENT primary-label classes (reference vs event) route to DIFFERENT shards, so neither shard's own local duplicate check can see the other — a genuine cross-shard TOCTOU that requires SOME serialization to close, confirmed by design analysis to be a real, non-benign failure mode (a torn two-shard row PLUS double-counted store-wide counters PLUS two `ChangeNodePut` records for one logical ID entering the change-log feed — not a harmless last-write-wins duplicate). A narrower "hold the mutex only for the check, release before the write" mitigation was investigated and confirmed UNSAFE (it reopens the exact race window, just narrower) and explicitly rejected.
+  **Fix**: replaced both whole-store mutexes with a 256-shard per-raw-snowflake-ID striped lock (`internal/locks.Manager` — the SAME battle-tested entity-locking primitive this codebase already uses elsewhere for identical write-skew-prevention reasons; two independent `*locks.Manager` instances, `nodeCreateLocks`/`relCreateLocks`, not shared with `internal/core`'s own entity-lock manager or with each other). The invariant is preserved exactly — the lock for entity ID X is still held continuously from the start of X's duplicate-ID check through the completion of X's physical shard write, never released in between — because `ShardIndex` is a pure function of the raw snowflake ID: two concurrent creates asserting the SAME id always hash to the SAME stripe and fully serialize against each other regardless of which class each one claims, while two DIFFERENT ids proceed with at most a 1-in-256 chance of incidental stripe contention. `PutNode`/`PutNodeGeneratedID`/`PutNodeGeneratedIDWithEndpointHashes` and their rel mirrors (`PutRelationship`/`PutRelationshipGeneratedID`/`PutRelationshipGeneratedIDWithEndpointHashes`) use `LockEntity`/`UnlockEntity`; `PutNodesBatch`/`PutRelationshipsBatch`/`DeleteRelationshipsBatch` use `LockMany`/`UnlockMany` over every ID the batch touches (deadlock-free ascending-shard-order acquisition, the same primitive/discipline used throughout this codebase) — `relCreateLocks` also still guards `DeleteRelationshipsBatch`'s rollback path (`rollbackDeletedRelationshipsBatchLocked` re-creates rows via `putRelationshipLocked` on failure), mirroring the old `relCreateMu`'s exact scope.
+  **Co-designed fix for `vectorIdxMu`** (confirmed necessary — a narrower `nodeCreateMu` alone would have delivered almost no concurrency win for node creates, since `vectorIdxMu` was ALSO held unconditionally across `shard.PutNode`, serializing every node create regardless of whether any vector index even exists): restructured `putNode`/`putNodesBatch` so `vectorIdxMu` is taken only as a brief `RLock` around `PrepareNodeVectorIndexUpdates` (a pure read of the `ts.vectorIndexes` map + each index's immutable `Dims`/`Metric`), and NOT held at all across the physical shard write or the `AddPreparedNodeToVectorIndexes` apply step — safe because each `*indexpkg.VectorIndex` already has its OWN internal `sync.RWMutex` guarding HNSW mutation (`VectorIndex.Add`/`AddOwned`/`Remove` all take `vi.mu.Lock()`), so concurrent inserts into the SAME vector index for DIFFERENT node IDs are already self-synchronized independent of the store-level map lock; the only residual race (an index created or dropped between prepare and apply) is confirmed harmless — a dropped index's captured pointer stays valid and the wasted insert has no observable effect, and a concurrently-created index cannot miss the node because vector-index creation's own 3-phase `Mutated`-tracking backfill already has to handle ANY concurrent write during its build window, independent of this change. The prepare→write→apply ORDER is unchanged (only the lock SPAN shrank), so the existing "vector updates only ever applied after a confirmed successful physical write" failure-mode contract is preserved exactly.
+  **Adversarial test battery** (`store/tiered/tieredstore_create_concurrency_test.go`, all run repeatedly under `-race`): `TestTieredPutNode_ConcurrentSameIDCrossClassRace` (200 goroutines × 20 iterations racing the SAME id under alternating reference/event primary labels — exactly one must win, node counters must fold to exactly 1, the change-log must carry exactly one `ChangeNodePut`); `TestTieredPutNode_ConcurrentDistinctIDsAcrossShards` (500 distinct concurrent creates, all must succeed, counters exact); `TestTieredPutNode_LockNotStuckAfterFailedCreate` (a failed create must not leave its id's stripe — or any other id — stuck); `TestTieredRelationship_ConcurrentSameIDSameShardRace` / `_ConcurrentSameIDCrossShardRace` (rel mirrors, the cross-shard variant additionally asserting BOTH shards' adjacency legs stay consistent with no torn half-write from a loser); `TestTieredPutNodesBatch_ConcurrentOverlappingBatches` / `TestTieredPutRelationshipsBatch_ConcurrentOverlappingBatches` (two concurrent batches sharing exactly one id — exactly one batch must win the shared id, and EVERY other non-overlapping id in both batches must end up correctly present-if-winner/absent-if-loser, proving `LockMany` doesn't corrupt a batch's all-or-nothing contract on a partial collision). Also added `TestTieredPutNode_GeneratedThenSuppliedDuplicateDetected`, a SEQUENTIAL (not concurrent) regression test locking in that a supplied-ID create still correctly detects an id already committed via the generated-ID fast path — see the "descoped, pre-existing" note below.
+  **Confirmed load-bearing** via targeted bug injection: (1) disabling `nodeCreateLocks`/`relCreateLocks`'s single-entity locking in `putNode`/`PutRelationship` turned `TestTieredPutNode_ConcurrentSameIDCrossClassRace` immediately RED (2/200 goroutines succeeded on one run) while the analogous rel test stayed green — investigated and confirmed this asymmetry is real and pre-existing, not a gap in the fix: relationship creates route their duplicate-ID probe (`relIDExists`) to the SAME shard as the eventual write regardless of which class either racing caller asserts (unlike nodes, whose routing depends on the CREATED node's own class), so badger's own per-shard `idxMu`-guarded entity check already closes this specific race for rels independent of the tiered-level lock — the striped lock for rels is still correctly scoped (matches the old mutex's exact discipline) but is defense-in-depth for the single-create path specifically, not the sole safety net the way it is for nodes; (2) disabling `LockMany` in `PutNodesBatch`/`PutRelationshipsBatch` turned `TestTieredPutNodesBatch_ConcurrentOverlappingBatches` immediately RED with a SEVERE failure mode — the shared id ended up MISSING entirely after both batch attempts (both concurrent batches' rollback paths raced and the id was lost, not merely duplicated) — proving `LockMany` is genuinely load-bearing for the batch path; the rel batch-overlap test did not reproduce a failure without the lock in 15 repeated runs, consistent with finding (1)'s explanation. All bug injections were restored and full green re-confirmed before finalizing.
+  **Descoped as pre-existing, unrelated to this fix** (both reproduced identically against the UNMODIFIED pre-19q code, so neither is a regression): (a) a genuinely CONCURRENT race between `PutNodeGeneratedID` (which deliberately skips the duplicate check — safe only because a graph-generated id is unique by construction) and a supplied-ID create for the IDENTICAL id is not a scenario the store needs to defend against (the generated-ID fast path's `generatedcreate.Proof` type is unexported specifically so no caller can legitimately construct this precondition violation); the test originally written to probe this was replaced with a sequential-ordering regression test instead. (b) A cross-shard tiered relationship create's change-log record is entirely absent today — `PutRelEntityAndOut`/`PutRelIncoming` (badger's split-write primitives `putRelationshipLocked` calls for a cross-shard rel) are documented "record-free split-write helpers"; this is a genuine, separate gap in tiered's change-log coverage, unrelated to and out of scope for this concurrency fix, flagged here rather than silently worked around or asserted against.
+  `go build`/`go vet` clean; `store/tiered` package suite green under `-race`, new concurrency tests stable across repeated `-count` runs; full-repo `go test ./...` clean.
+
+- FIX — BACKLOG 10b (the one remaining HIGH-severity item): an open-ended cascade correction starting
+  *before* an untouched open "current" row was silently capped and never won, even though it is the
+  newer belief. Root cause: `nodeVersionBounds`/`relVersionBounds` (`internal/core/temporal.go`) derive
+  a version's effective END **positionally** — the next sorted entry's `ValidFrom` — not by belief
+  recency, so an untouched older row's `ValidFrom` could truncate a newer, wider-reaching correction's
+  interval. Two prior fix attempts (this session's history) were reverted after breaking
+  `TestBitemporalOracleHarness` on ~50% of random seeds, because both touched `nodeVersionBounds` itself
+  (a function every OTHER temporal door also depends on — the fast path, the interval door, the Relate
+  door, `SelectAsOf`) with a pairwise-adjacent `TxFrom` comparison that could not track "which cascade
+  batch" a candidate pair belonged to once multiple cascades' rows accumulated on one chain.
+  **This fix never touches `nodeVersionBounds`/`relVersionBounds`.** It adds a separate, narrowly-scoped
+  own-interval computation (`nodeOwnBounds`/`relOwnBounds` — a row's OWN asserted `ValidTo`, never a
+  neighbor's `ValidFrom`) used ONLY by two call sites: (1) `resolveNodeVersionAt`/`resolveRelVersionAt`'s
+  cascade (non-monotonic) SLOW PATH — the fast/monotonic path, the interval door, the Relate door, and
+  `SelectAsOf` are unchanged; and (2) the cascade kernel's `newCurrent` selection
+  (`internal/core/temporal_cascade.go`), now "newest belief among own-open rows" instead of "last
+  positionally-open row in valid-from order". The resumption row a bounded correction constructs is also
+  given an EXPLICIT `ValidTo` (`nodeResumptionEnd`/`relResumptionEnd`) instead of being left open — computed
+  as the smallest own-interval boundary (any pre-correction row's own `vStart` or finite `vEnd`) strictly
+  after the correction's `newVT`, scanning EVERY row in the pre-correction chain rather than "the row
+  positionally next to the resumption's source" (an earlier attempt at this exact computation, using the
+  old positional array, produced an INVERTED interval — `ValidTo < ValidFrom` — the moment a second cascade
+  landed on an already-cascaded chain, since the resumption's source row can be selected by belief rather
+  than position; caught by `TestBitemporalOracleHarness` itself during this fix's own verification, not by
+  a hand-written unit test — exactly the kind of multi-cascade interaction the harness exists to catch).
+  **A required, and load-bearing-proven-necessary, companion fix to the fuzz oracle
+  (`internal/core/bitemporaloracle_test.go`)**: the oracle's `pointVisible` slow path shared the EXACT SAME
+  positional-`bounds()` bug as the pre-fix engine — its own `bounds()` function is a faithful independent
+  restatement of `nodeVersionBounds`, which is *why* the harness stayed green while 10b was live despite
+  running hundreds of randomized multi-cascade sequences every CI run. No correct 10b fix can leave the
+  oracle's slow path unchanged; the fix adds the identical own-interval `ownBounds` helper, used ONLY in
+  `pointVisible`'s slow-path branch — `bounds()` itself, `intervalVisible`, `asOfVisible`, and the fast path
+  are byte-for-byte unchanged, so the engine and the oracle remain two structurally SEPARATE
+  implementations of the same corrected rule (a divergence in the resolver still surfaces as a harness
+  mismatch — the whole point of the harness). **A second, independent bug was discovered during this fix's
+  own full-suite verification pass**, in a THIRD file the original design scope did not name:
+  `nodeAtLockedTx`/`relAtLockedTx` (`internal/core/temporal_queries.go`) had a separate current-row-alone
+  fast-path shortcut (`nodeCurrentAnswersAt`/`relCurrentAnswersAt`) whose soundness assumption — "no
+  history row can outrank the open current row's belief, since closed tiles always end at or before the
+  open tile's own valid-from" — was TRUE under the old "current = last positionally-open row" selection but
+  became FALSE under the new "current = newest belief among own-open rows" selection: a bounded cascade
+  can insert a HISTORY row with a newer belief (higher `TxFrom`) than the open current row, without ever
+  replacing current, precisely because that history row is bounded (not own-open) and therefore never a
+  `newCurrent` candidate in the first place. There is no cheap, current-row-local signal that rules this
+  out (it would require knowing the entity's overall maximum `TxFrom` across every version — exactly the
+  cost the shortcut existed to avoid) — found via `TestBitemporalOracleHarness` at full iteration count
+  surfacing a `NodesAtTx` mismatch, hand-minimized with a targeted debug capture of the actual stored rows
+  for the failing entity, and confirmed by tracing the exact call path (`nodeAtLockedTx`'s
+  `nodeCurrentAnswersAt` short-circuit) that was returning the stale answer. Per this session's standing
+  discipline (name a correctness/performance tradeoff explicitly rather than patch around it with a
+  fragile heuristic), the shortcut was REMOVED — both functions and their call sites deleted outright,
+  falling through unconditionally to the full chain-based resolution (already correct) — rather than
+  reworked into a more complex but still-fragile conditional. The removed shortcut's own direct test
+  (`TestNodeAt_CurrentRowFastPathSkipsHistory`, since it asserted the now-incorrect behavior) was deleted;
+  its sibling benchmark (`BenchmarkNodeAt_DeepHistory`) was kept but re-labeled, since there is no longer a
+  fast/slow path distinction to contrast — both benchmark subtests now exercise the same code path.
+  Test battery added: `TestCascade_OpenCorrectionBeforeUntouchedOpenCurrent`/`TestCascadeRel_...` (the
+  original repro, node + rel, asserting the point read, the bitemporal `NodeAtTx`/`RelAtTx` read at/after
+  and before the correction's `TxFrom`, and the live current row all agree); `TestCascade_
+  NestedMultiCascadeAccumulation` (the exact multi-cascade-batch-accumulation shape that broke the FIRST
+  reverted attempt — three overlapping cascades painting a 5-region timeline, asserted at 13 explicit
+  probe points with absolute expected values, not merely "engine agrees with itself" — rule 16);
+  `TestCascade_TwoOpenCascadesStacked` (proves belief recency alone decides an overlap among own-open
+  rows even when a later-belief correction's own interval starts EARLIER than an intermediate row's
+  start — interval "specificity" never overrides belief recency); `TestCascade_
+  ResumptionAgainstOpenTailStaysOpen` (the resumption-stays-open boundary case). Confirmed load-bearing:
+  reverting the three production files (`temporal.go`, `temporal_cascade.go`, `temporal_queries.go`) via a
+  captured patch turned every new test AND the harness (re-run on the specific previously-failing seed)
+  immediately RED; restored, all GREEN. `TestBitemporalOracleHarness` and `TestBitemporalOracle_
+  BadgerCommitWindow` run at FULL iteration count (not `-short` — 200 randomized sequences × 40 probes ×
+  18 ops each, memory/badger/sharded backends) — the project's own standing rule for this exact bug —
+  212 subtests, zero failures, confirmed twice. Full existing cascade/as-of suite (`cascade_test.go`,
+  `cascade_bitemporal_test.go`, `cascade_asof_parity_test.go`, `asof_cascade_delete_test.go`) green,
+  zero regressions. `go build`/`go vet` clean; `internal/core` package suite green under `-race`
+  (150s); full-repo `go test ./...` clean for every package this fix touches (the one other package
+  failure observed during a full-repo run was in `store/tiered`, in files this fix never touched,
+  concurrently being modified by an unrelated in-flight fix in the same session — confirmed unrelated by
+  file-level diff inspection). This closes out BACKLOG 10 (Bitemporal resolution engine hardening) —
+  no items remain.
 
 ## [4.23.0] - 2026-07-18
 

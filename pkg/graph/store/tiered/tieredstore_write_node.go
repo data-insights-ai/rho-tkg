@@ -103,8 +103,9 @@ func (ts *Store) putNode(n *types.Node, checkGlobalDuplicate bool) error {
 	if err := ts.checkRotation(); err != nil {
 		return err
 	}
-	ts.nodeCreateMu.Lock()
-	defer ts.nodeCreateMu.Unlock()
+	id := n.ID().SnowflakeID()
+	ts.nodeCreateLocks.LockEntity(id)
+	defer ts.nodeCreateLocks.UnlockEntity(id)
 
 	if checkGlobalDuplicate {
 		exists, err := ts.nodeIDExistsForCreate(n)
@@ -122,10 +123,7 @@ func (ts *Store) putNode(n *types.Node, checkGlobalDuplicate bool) error {
 	}
 	defer checkin()
 
-	id := n.ID().SnowflakeID()
-	ts.vectorIdxMu.Lock()
-	defer ts.vectorIdxMu.Unlock()
-	vectorUpdates, err := indexpkg.PrepareNodeVectorIndexUpdates(ts.vectorIndexes, n, id)
+	vectorUpdates, err := ts.prepareNodeVectorUpdates(n, id)
 	if err != nil {
 		return err
 	}
@@ -133,6 +131,27 @@ func (ts *Store) putNode(n *types.Node, checkGlobalDuplicate bool) error {
 		return err
 	}
 	return indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, id)
+}
+
+// prepareNodeVectorUpdates reads ts.vectorIndexes (structural map access) under
+// a brief RLock and returns without holding any lock across the physical
+// shard write. This is safe (BACKLOG 19q): each *indexpkg.VectorIndex has its
+// OWN internal mutex guarding HNSW mutation (CLAUDE.md "Vector Indexes:
+// Thread safety, no new lock class"), so AddPreparedNodeToVectorIndexes's
+// later update.idx.AddOwned(...) call is self-synchronized against concurrent
+// inserts/removes on the SAME index without needing ts.vectorIdxMu held. The
+// only structural race this leaves is "an index is created or dropped between
+// prepare and apply" — confirmed harmless: a concurrently-DROPPED index's
+// captured *VectorIndex pointer stays valid (Go GC keeps it alive) and the
+// wasted AddOwned call has no observable effect once the index is no longer
+// in ts.vectorIndexes; a concurrently-CREATED index cannot miss this node
+// because index creation's own 3-phase Mutated-tracking backfill (CLAUDE.md
+// "3-phase index creation") independently picks up any node written during
+// its build window, exactly as it already must for ANY concurrent write.
+func (ts *Store) prepareNodeVectorUpdates(n *types.Node, id snowflake.ID) ([]indexpkg.NodeVectorIndexUpdate, error) {
+	ts.vectorIdxMu.RLock()
+	defer ts.vectorIdxMu.RUnlock()
+	return indexpkg.PrepareNodeVectorIndexUpdates(ts.vectorIndexes, n, id)
 }
 
 func (ts *Store) ReplaceNode(n *types.Node) error {
@@ -416,8 +435,12 @@ func (ts *Store) putNodesBatch(nodes []*types.Node, checkGlobalDuplicate bool) e
 	if err := ts.checkRotation(); err != nil {
 		return err
 	}
-	ts.nodeCreateMu.Lock()
-	defer ts.nodeCreateMu.Unlock()
+	batchIDs := make([]snowflake.ID, len(nodes))
+	for i, n := range nodes {
+		batchIDs[i] = n.ID().SnowflakeID()
+	}
+	ts.nodeCreateLocks.LockMany(batchIDs)
+	defer ts.nodeCreateLocks.UnlockMany(batchIDs)
 
 	seen := make(map[types.NodeID]struct{}, len(nodes))
 	for _, n := range nodes {
@@ -470,11 +493,9 @@ func (ts *Store) putNodesBatch(nodes []*types.Node, checkGlobalDuplicate bool) e
 	}
 	defer releaseAll()
 
-	ts.vectorIdxMu.Lock()
-	defer ts.vectorIdxMu.Unlock()
 	vectorUpdates := make([][]indexpkg.NodeVectorIndexUpdate, len(nodes))
 	for i, n := range nodes {
-		updates, err := indexpkg.PrepareNodeVectorIndexUpdates(ts.vectorIndexes, n, n.ID().SnowflakeID())
+		updates, err := ts.prepareNodeVectorUpdates(n, n.ID().SnowflakeID())
 		if err != nil {
 			return err
 		}
