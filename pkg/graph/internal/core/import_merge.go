@@ -460,6 +460,16 @@ func (c *Core) mergeRegistryNamesLocked(reg appendNamer, want []string, kind str
 
 // strictCheckMergeRecord rejects an update or tombstone for an entity absent from
 // the base — the signal that a delta is being applied onto the wrong base.
+//
+// ChangeForeignIncoming / ChangeForeignIncomingDelete (ADR-0010 Model A stubs) are
+// deliberately left unchecked: their rel-IDs belong to a FOREIGN slot, so a plain
+// slot-routed GetRelationship would fail with ErrSlotNotLocal (not ErrRelNotFound),
+// making an absence probe meaningless without the bespoke END-node-slot-aware read
+// path — and both are structurally a create-or-idempotent-delete with no "a prior
+// version must already exist" signal to check in the first place (see
+// captureMergeRecord's own doc comment on this record shape). ChangeRangePurge
+// carries a PREDICATE, not a fixed entity set, so there is no per-entity absence
+// signal to probe at all.
 func (c *Core) strictCheckMergeRecord(rec storepkg.ChangeRecord) error {
 	switch rec.Tag {
 	case storepkg.ChangeNodePut:
@@ -498,8 +508,116 @@ func (c *Core) strictCheckMergeRecord(rec storepkg.ChangeRecord) error {
 		if _, gerr := c.store.GetRelationship(types.RelID(body.ID)); errors.Is(gerr, storepkg.ErrRelNotFound) {
 			return fmt.Errorf("%w: rel delete %d but rel absent in base (Strict)", ErrDeltaBaseMismatch, body.ID)
 		}
+
+	case storepkg.ChangeNodeHistoryVersion:
+		body, err := storeutil.DecodeHistoryVersionNode(rec.Payload)
+		if err != nil {
+			return corruptDelta(rec, "node history version", err)
+		}
+		// Gated on Version > 0 (conservative): a genesis (Version==0) history-version
+		// record is structurally unexpected on any door in this codebase, so this
+		// gate never suppresses a real check in practice — it only avoids a
+		// hypothetical false positive if such a record ever appeared.
+		if body.Version > 0 {
+			id := types.NodeID(body.Wire.ID)
+			known, kerr := c.baseKnowsNode(id)
+			if kerr != nil {
+				return kerr
+			}
+			if !known {
+				return fmt.Errorf("%w: node history version %d but node absent in base (Strict)", ErrDeltaBaseMismatch, body.Wire.ID)
+			}
+		}
+	case storepkg.ChangeRelHistoryVersion:
+		body, err := storeutil.DecodeHistoryVersionRel(rec.Payload)
+		if err != nil {
+			return corruptDelta(rec, "rel history version", err)
+		}
+		if body.Version > 0 {
+			id := types.RelID(body.Wire.ID)
+			known, kerr := c.baseKnowsRel(id)
+			if kerr != nil {
+				return kerr
+			}
+			if !known {
+				return fmt.Errorf("%w: rel history version %d but rel absent in base (Strict)", ErrDeltaBaseMismatch, body.Wire.ID)
+			}
+		}
+	case storepkg.ChangeNodeHistoryTruncate:
+		body, err := storeutil.DecodeHistoryTruncate(rec.Payload)
+		if err != nil {
+			return corruptDelta(rec, "node history truncate", err)
+		}
+		id := types.NodeID(body.ID)
+		known, kerr := c.baseKnowsNode(id)
+		if kerr != nil {
+			return kerr
+		}
+		if !known {
+			return fmt.Errorf("%w: node history truncate %d but node absent in base (Strict)", ErrDeltaBaseMismatch, body.ID)
+		}
+	case storepkg.ChangeRelHistoryTruncate:
+		body, err := storeutil.DecodeHistoryTruncate(rec.Payload)
+		if err != nil {
+			return corruptDelta(rec, "rel history truncate", err)
+		}
+		id := types.RelID(body.ID)
+		known, kerr := c.baseKnowsRel(id)
+		if kerr != nil {
+			return kerr
+		}
+		if !known {
+			return fmt.Errorf("%w: rel history truncate %d but rel absent in base (Strict)", ErrDeltaBaseMismatch, body.ID)
+		}
 	}
 	return nil
+}
+
+// baseKnowsNode reports whether the merge base has ANY record of id — a current
+// row, any history version, or a lingering compaction stub. Total ignorance of an
+// id a delta record references is the wrong-base signal (records replay in strict
+// LSN order onto a bootstrap that includes history-only entities, so a correct
+// base can never be ignorant of a legitimately-referenced id — see BACKLOG 12i
+// design writeup for the full proof). This is a Strict-mode-only probe.
+func (c *Core) baseKnowsNode(id types.NodeID) (bool, error) {
+	if _, err := c.store.GetNode(id); err == nil {
+		return true, nil
+	} else if !errors.Is(err, storepkg.ErrNodeNotFound) {
+		return false, err
+	}
+	hist, err := c.store.GetNodeHistory(id)
+	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
+		return false, err
+	}
+	if len(hist) > 0 {
+		return true, nil
+	}
+	_, ok, err := c.loadNodeCompactionStub(id)
+	if err != nil {
+		return false, err
+	}
+	return ok, nil
+}
+
+// baseKnowsRel is the relationship mirror of baseKnowsNode.
+func (c *Core) baseKnowsRel(id types.RelID) (bool, error) {
+	if _, err := c.store.GetRelationship(id); err == nil {
+		return true, nil
+	} else if !errors.Is(err, storepkg.ErrRelNotFound) {
+		return false, err
+	}
+	hist, err := c.store.GetRelHistory(id)
+	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
+		return false, err
+	}
+	if len(hist) > 0 {
+		return true, nil
+	}
+	_, ok, err := c.loadRelCompactionStub(id)
+	if err != nil {
+		return false, err
+	}
+	return ok, nil
 }
 
 // =============================================================================

@@ -1852,6 +1852,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `internal/index`/`internal/core` package suites (indirect consumers of these doors) green under
   `-race`; full-repo `go test ./...` clean. This closes out BACKLOG 17h — BACKLOG 17 (Store interface &
   MemoryStore hardening) has no remaining open items.
+- FIX — BACKLOG 12i: `strictCheckMergeRecord` (Strict mode's "delta applied onto the wrong base"
+  detector, `internal/core/import_merge.go`) checked only `ChangeNodePut`/`ChangeRelPut` (when
+  `WithHistory`) and `ChangeNodeDelete`/`ChangeRelDelete`; every other delta-valid tag —
+  `ChangeNodeHistoryVersion`/`ChangeRelHistoryVersion`, `ChangeNodeHistoryTruncate`/
+  `ChangeRelHistoryTruncate`, `ChangeForeignIncoming`/`ChangeForeignIncomingDelete` — fell through the
+  switch unchecked. Extended the check to `ChangeNodeHistoryVersion`/`ChangeRelHistoryVersion` (gated
+  on `Version > 0` — conservative, since a genesis history-version record is structurally unexpected on
+  any door in this codebase) and `ChangeNodeHistoryTruncate`/`ChangeRelHistoryTruncate` (unconditional,
+  no Version field to gate on). Added `baseKnowsNode`/`baseKnowsRel` (`import_merge.go`) — a total-
+  ignorance probe (current row, then history, then a lingering compaction stub) that is the wrong-base
+  signal: replay happens in strict LSN order onto a bootstrap that includes history-only entities, so a
+  correct base can never be totally ignorant of a legitimately-referenced id. `ChangeForeignIncoming`/
+  `ChangeForeignIncomingDelete` are left unchecked (documented in the switch's own comment): their
+  rel-IDs belong to a foreign slot, so a plain slot-routed `GetRelationship` would fail with
+  `ErrSlotNotLocal` (not `ErrRelNotFound`), making an absence probe meaningless, and both are structurally
+  a create-or-idempotent-delete with no "prior version must exist" signal to check. `ChangeRangePurge`
+  carries a predicate, not a fixed entity set — no per-entity absence signal exists.
+  Added `import_merge_strict_history_test.go`: 4 positive cases (wrong-base node/rel history-version
+  and history-truncate, each `errors.Is(err, ErrDeltaBaseMismatch)`); negative cases proving the two
+  `baseKnowsNode`/`baseKnowsRel` legs individually — a base-resident current row, and a history-only
+  (deleted-with-history, no current row) entity, both via direct history-version and truncate records;
+  a `Version==0` gate-correctness case (an absent entity's genesis-shaped record must NOT be flagged,
+  regardless of `baseKnowsNode`'s verdict); a `ChangeForeignIncoming` pass-through sanity check; and one
+  full end-to-end `ImportMerge` proof (mirroring `TestImportMerge_HistoryVersionCorruptionPreservesEdges`'s
+  setup — a bounded past-interval edit producing a BARE `ChangeNodeHistoryVersion` record with no
+  accompanying put) confirming the wiring (decode → capture → strict check → apply/rollback) works
+  together, not just the isolated function: flags onto an empty base, succeeds onto a base that already
+  knows the entity via a prior full export. Confirmed load-bearing: temporarily forcing
+  `baseKnowsNode` to always return `true` turned the wrong-base positive tests immediately RED; restored,
+  GREEN. `go build`/`go vet` clean; `internal/core` package suite green under `-race`; full-repo
+  `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 
