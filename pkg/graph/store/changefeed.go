@@ -311,3 +311,24 @@ type ScopedPutCapability interface {
 	PutNodeScoped(n *types.Node, token uint64) error
 	PutRelationshipScoped(r *types.Relationship, token uint64) error
 }
+
+// ScopedReplaceCapability is the BACKLOG 11f Batch B scoped counterpart of the
+// two atomic replace-plus-history update doors ReplaceNodeWithHistory /
+// ReplaceRelWithHistory (store/capabilities.go): each method behaves exactly
+// like its unscoped sibling — persisting the new current row AND a version-
+// history row for prevState/prevVersion in one atomic write — except the
+// change-log record it produces is routed into the ScopedTxChangeLog buffer
+// named by token (opened via BeginScopedLog) instead of the eager pending log
+// or the legacy single TxChangeLogScope buffer. token == 0 is exactly
+// ReplaceNodeWithHistory / ReplaceRelWithHistory. A store implementing
+// ScopedReplaceCapability MUST also implement ScopedTxChangeLog (the token
+// comes from nowhere else).
+//
+// FOUNDATION ONLY, same status as ScopedPutCapability: nothing in the core/tx
+// layer constructs a token-carrying context yet, so this has zero effect on
+// any existing behavior. See store.ScopedTxChangeLog's doc comment for the
+// full design rationale.
+type ScopedReplaceCapability interface {
+	ReplaceNodeWithHistoryScoped(n *types.Node, prevVersion uint32, prevState *types.Node, token uint64) error
+	ReplaceRelWithHistoryScoped(r *types.Relationship, prevVersion uint32, prevState *types.Relationship, token uint64) error
+}

@@ -76,6 +76,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     fails closed, concurrent scopes don't cross-contaminate — including a dedicated `-race` goroutine
     test — legacy single-scope mechanism unaffected). `go build`/`go vet`/`gofmt` clean; full-repo
     `go test ./...` green; `-race` clean on `internal/core`, `store/badger`, `store/memory`.
+- ADD — BACKLOG 11f Batch B — scoped change-log foundation, doors 4-5 (`ReplaceNodeWithHistory` /
+  `ReplaceRelWithHistory`, FOUNDATION ONLY — same no-lock-behavior-change status as Batch A). New
+  optional `store.ScopedReplaceCapability` (`ReplaceNodeWithHistoryScoped`/`ReplaceRelWithHistoryScoped`,
+  memory + badger), documented to the same rigor as Batch A's `ScopedPutCapability` — `token == 0` is
+  byte-identical to the unscoped door, a store implementing this MUST also implement
+  `store.ScopedTxChangeLog`. Badger's scoped variant reuses the same `logChangeRoutedRaw` helper Batch A
+  built (no re-encoding of an already-built payload); memory's reuses Batch A's existing
+  `logNodePutRoutedLocked`/`logRelPutRoutedLocked` directly — no new memory-side plumbing was needed.
+  - Wired ONLY through the two tx-exclusive update helpers (`updateNodePreparedInternal`/
+    `updateRelationshipPreparedInternal` in `node_update.go`/`relationship_update.go`), mirroring
+    `putGeneratedNode`'s exact `scopeTokenFrom(ctx)` + type-assert-and-route pattern. Confirmed by grep
+    (per the scoping instructions, to prevent the blast-radius the design explicitly guards against)
+    that the OTHER three call sites of `ReplaceNodeWithHistory`/`ReplaceRelWithHistory` are untouched:
+    the standalone `NodeOps.Update`/`RelOps.Update` path (`updateNodeInternal`/`updateRelationshipInternal`
+    — different functions from the two above, still call the plain unscoped door exactly as before), the
+    CAS path (`property_cas.go`), the generic version-chain path (`version_chain.go`), and — most
+    importantly — the replica-apply path (`apply_record.go`, which reproduces the primary's rows
+    VERBATIM and must never be tx-scoped).
+  - `GraphTx` still constructs no token-carrying ctx anywhere; `updateNodePreparedInternal`/
+    `updateRelationshipPreparedInternal` are still called with `context.Background()` from
+    `tx_mutations.go` exactly as before this batch, so production behavior is unchanged — same
+    "dormant foundation" shape as Batch A.
+  - The implementing agent's worktree had branched before Batch A merged to `main`; it discovered this
+    itself via `git log`, fast-forwarded onto Batch A's actual commit before starting (rather than
+    guessing at its shape), and reported the discrepancy plainly — the same "investigate the real state,
+    don't force a guess" discipline this whole session has followed.
+  - Tests: `update_scoped_test.go` (direct exercise of both `*PreparedInternal` functions' routing,
+    mirroring `generated_create_scoped_test.go`), `badgerstore_history_scoped_test.go` /
+    `memorystore_history_scoped_test.go` (the full `TestScopedChangeLog_*`/`TestMemoryScopedChangeLog_*`
+    battery from Batch A, replayed against the new doors, plus update-path-specific assertions that
+    `prevVersion`/`prevState` land correctly in history via the scoped route). `go build`/`go vet`/
+    `gofmt` clean (3 pre-existing gofmt-flagged files elsewhere in the tree are untouched by this change
+    and out of scope); full-repo `go test ./...` green; `-race` clean on `internal/core`, `store/badger`,
+    `store/memory`.
 - FIX/HARDEN — comprehensive backlog hardening pass: closed 32 findings from the standing code-review
   backlog (`tasks/backlog.md`), each with a genuine RED→GREEN TDD cycle (a failing test proving the
   bug, the fix, the test passing, package + `-race` where concurrency-relevant + full-repo `go test

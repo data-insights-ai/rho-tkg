@@ -688,6 +688,22 @@ func (ms *Store) TruncateRelHistory(rid types.RelID, keepVersions int) error {
 // ReplaceNodeWithHistory atomically replaces a node and writes a version history entry.
 // Both writes happen under a single lock acquisition — no interleaving possible.
 func (ms *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32, prevState *types.Node) error {
+	return ms.replaceNodeWithHistoryRouted(current, prevVersion, prevState, 0)
+}
+
+// ReplaceNodeWithHistoryScoped mirrors ReplaceNodeWithHistory but routes the
+// change-log record into the store.ScopedTxChangeLog buffer named by token
+// instead of the eager pending log. token == 0 is exactly
+// ReplaceNodeWithHistory. See memorystore_changelog_scoped.go (BACKLOG 11f
+// Batch B — foundation only).
+func (ms *Store) ReplaceNodeWithHistoryScoped(current *types.Node, prevVersion uint32, prevState *types.Node, token uint64) error {
+	if token == 0 {
+		return ms.ReplaceNodeWithHistory(current, prevVersion, prevState)
+	}
+	return ms.replaceNodeWithHistoryRouted(current, prevVersion, prevState, token)
+}
+
+func (ms *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion uint32, prevState *types.Node, token uint64) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -748,12 +764,28 @@ func (ms *Store) ReplaceNodeWithHistory(current *types.Node, prevVersion uint32,
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
-	return ms.logNodePutLocked(current, true)
+	return ms.logNodePutRoutedLocked(current, true, token)
 }
 
 // ReplaceRelWithHistory atomically replaces a relationship and writes a version history entry.
 // Both writes happen under a single lock acquisition — no interleaving possible.
 func (ms *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion uint32, prevState *types.Relationship) error {
+	return ms.replaceRelWithHistoryRouted(current, prevVersion, prevState, 0)
+}
+
+// ReplaceRelWithHistoryScoped mirrors ReplaceRelWithHistory but routes the
+// change-log record into the store.ScopedTxChangeLog buffer named by token
+// instead of the eager pending log. token == 0 is exactly
+// ReplaceRelWithHistory. See memorystore_changelog_scoped.go (BACKLOG 11f
+// Batch B — foundation only).
+func (ms *Store) ReplaceRelWithHistoryScoped(current *types.Relationship, prevVersion uint32, prevState *types.Relationship, token uint64) error {
+	if token == 0 {
+		return ms.ReplaceRelWithHistory(current, prevVersion, prevState)
+	}
+	return ms.replaceRelWithHistoryRouted(current, prevVersion, prevState, token)
+}
+
+func (ms *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVersion uint32, prevState *types.Relationship, token uint64) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -804,7 +836,7 @@ func (ms *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion 
 	ms.adjustRelPropertyTypeClassCounts(current, 1)
 	ms.adjustRelPropertyKeyCounts(current, 1)
 	indexpkg.AddRelToTemporalIndexes(ms.relTypeTemporalIndexes, current, id.SnowflakeID()) // BACKLOG 21c
-	return ms.logRelPutLocked(current, true)
+	return ms.logRelPutRoutedLocked(current, true, token)
 }
 
 // NodeAsOf returns the node version visible at txTime without materializing

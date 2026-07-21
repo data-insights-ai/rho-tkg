@@ -14,6 +14,22 @@ import (
 // Relationship-history methods.
 
 func (bs *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion uint32, prevState *types.Relationship) error {
+	return bs.replaceRelWithHistoryRouted(current, prevVersion, prevState, 0)
+}
+
+// ReplaceRelWithHistoryScoped mirrors ReplaceRelWithHistory but routes the
+// change-log record into the store.ScopedTxChangeLog buffer named by token
+// instead of the eager pending log. token == 0 is exactly
+// ReplaceRelWithHistory. See badgerstore_changelog_scoped.go (BACKLOG 11f
+// Batch B — foundation only).
+func (bs *Store) ReplaceRelWithHistoryScoped(current *types.Relationship, prevVersion uint32, prevState *types.Relationship, token uint64) error {
+	if token == 0 {
+		return bs.ReplaceRelWithHistory(current, prevVersion, prevState)
+	}
+	return bs.replaceRelWithHistoryRouted(current, prevVersion, prevState, token)
+}
+
+func (bs *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVersion uint32, prevState *types.Relationship, token uint64) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
@@ -93,8 +109,11 @@ func (bs *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion 
 		writeOp{opType: writeOpSet, key: storepkg.RelKey(id), value: data},
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
 	)
-	bs.logChangeRaw(storecontract.ChangeRelPut, changePayload)
+	logErr := bs.logChangeRoutedRaw(storecontract.ChangeRelPut, changePayload, token)
 	bs.idxMu.Unlock()
+	if logErr != nil {
+		return logErr
+	}
 
 	return bs.flushIfNeeded()
 }

@@ -97,6 +97,15 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   and call `withScopeToken` so a tx mutation can take the same shared read-lock a standalone mutation
   takes instead of `lockActiveCoreWrite`'s full exclusive lock — THAT flip is what actually resolves
   this item, and it is deliberately deferred to a later batch once every door has a Scoped sibling.
+  **Batch B landed (foundation only, zero behavior change):** doors 4-5 — `ReplaceNodeWithHistory`/
+  `ReplaceRelWithHistory` — now have `Scoped` siblings (new `store.ScopedReplaceCapability`, memory +
+  badger), wired ONLY through the two tx-exclusive update helpers (`updateNodePreparedInternal`/
+  `updateRelationshipPreparedInternal`), never through the standalone `NodeOps.Update`/`RelOps.Update`
+  path, the CAS path (`property_cas.go`), the generic version-chain path (`version_chain.go`), or the
+  replica-apply path (`apply_record.go`) — all four confirmed untouched by grep. Same "no lock-behavior
+  change yet" status as Batch A: `GraphTx` still constructs no token-carrying ctx anywhere, so this is
+  dormant in production. Remaining doors after A+B: ~17 more call sites (label-token doors, batch
+  doors, delete-with-history doors, import doors, …) before the `GraphTx` lock-relaxation flip itself.
 - **11h. [STILL OPEN — NOT resolved; original "clock re-probing" theory RULED OUT by direct experiment,
   but the real root cause remains unknown and no fix has been applied]
   `TestOutgoingIncomingForNodesAtTx_RandomizedDivergenceProbe/badger`

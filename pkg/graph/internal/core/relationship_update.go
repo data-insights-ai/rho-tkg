@@ -212,7 +212,21 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 		return nil, false, err
 	}
 
-	// Atomic replace + history — single store call prevents orphaned history entries.
+	// Atomic replace + history — single store call prevents orphaned history
+	// entries. Routes through the BACKLOG 11f scoped sibling when ctx carries a
+	// scoped change-log token and the store supports it — mirrors
+	// putGeneratedNode's routing pattern. FOUNDATION ONLY: nothing constructs a
+	// token-carrying ctx yet (see scope_token.go), so this branch is currently
+	// always dead in production.
+	if token, ok := scopeTokenFrom(ctx); ok && token != 0 {
+		if scoped, ok := c.store.(storepkg.ScopedReplaceCapability); ok {
+			if err := scoped.ReplaceRelWithHistoryScoped(current, prevVersion, prevState, token); err != nil {
+				return nil, false, err
+			}
+			c.opRelUpdates.Add(1)
+			return current, true, nil
+		}
+	}
 	if err := c.store.ReplaceRelWithHistory(current, prevVersion, prevState); err != nil {
 		return nil, false, err
 	}
