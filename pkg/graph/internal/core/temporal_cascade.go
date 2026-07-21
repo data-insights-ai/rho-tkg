@@ -169,9 +169,29 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 	// Resumption: re-assert, from newVT onward, whatever value held AT newVT in
 	// the pre-correction belief, so the part of the timeline after the
 	// correction is unchanged. Open-ended (newVT == 0) corrections need none.
+	//
+	// BACKLOG 10b: the resumption row's ValidTo is stamped EXPLICITLY here,
+	// via nodeResumptionEnd — the smallest own-interval boundary (any row's
+	// own vStart or vEnd) in the PRE-correction chain that is strictly after
+	// newVT. This is NOT "the positionally-next row after src" (that was
+	// tried and is UNSAFE on an already-cascaded preChain: src can be chosen
+	// by BELIEF, not position, so the row positionally after it in a
+	// valid-from-sorted array can have an own vStart earlier than newVT
+	// itself, producing an inverted [newVT, earlier) interval — caught by the
+	// oracle harness during this fix's own verification). Own-interval bounds
+	// make every row's own [vStart, vEnd) a fixed, position-independent
+	// interval, so the set of rows covering any t is piecewise-constant
+	// between consecutive own-boundary points — meaning the belief-winner
+	// (src) provably cannot change before the NEXT such boundary across ANY
+	// row, not just src's positional neighbor. A resumption left open (or
+	// bounded by the wrong point) would be structurally indistinguishable,
+	// via its own stored ValidFrom/ValidTo/TxFrom, from a genuine override
+	// starting at the same point — the two must resolve oppositely on
+	// overlap, which is exactly why the bound must be exact.
 	var resumption *types.Node
 	if newVT != 0 {
 		if src, err := c.resolveNodeVersionAt(append([]*types.Node(nil), preChain...), newVT); err == nil && src != nil {
+			resumptionEnd := nodeResumptionEnd(c, preChain, newVT)
 			resumption = src.DeepCopy()
 			ensureNodeTemporal(resumption)
 			resumption.SetVersion(nextVersion)
@@ -180,7 +200,7 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 				return nil, err
 			}
 			resumption.Temporal().ValidFrom = newVT
-			resumption.Temporal().ValidTo = 0 // open; tiles to the next existing version
+			resumption.Temporal().ValidTo = resumptionEnd // explicit; 0 == open (src was the pre-correction open tail)
 			resumption.Temporal().UpdatedAt = now
 			resumption.Temporal().TxFrom = now
 			rLabels := c.nodeLabelsUnlocked(resumption)
@@ -237,20 +257,26 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 		appended = append(appended, resumption)
 	}
 
-	// The new "current" row is the rightmost open-ended tile of the
-	// post-correction belief (the value at "now"). Build the post chain, sort by
-	// valid-from, and take the last row whose tiled interval is open-ended.
+	// The new "current" row is the NEWEST BELIEF among rows whose OWN interval
+	// is open-ended (the value at "now" — resolving the point query at +inf).
+	// BACKLOG 10b: this is deliberately NOT "the last positionally-open row in
+	// valid-from order" — a row's own-open status must never be decided by its
+	// neighbors, or an untouched older open row can wrongly keep the "current"
+	// slot from a newer, wider-reaching open correction. See nodeOwnBounds.
 	postChain := make([]*types.Node, 0, len(preChain)+len(appended))
 	postChain = append(postChain, preChain...)
 	postChain = append(postChain, appended...)
-	c.sortNodeChainForResolve(postChain)
 	var newCurrent *types.Node
 	for i := range postChain {
-		if eclipsedNodeBounds(postChain[i]) {
+		entry := postChain[i]
+		if eclipsedNodeBounds(entry) {
 			continue
 		}
-		if _, vEnd := c.nodeVersionBounds(postChain, i); vEnd == 0 {
-			newCurrent = postChain[i] // sorted asc → last open-ended wins
+		if _, vEnd := c.nodeOwnBounds(entry); vEnd != 0 {
+			continue // only own-open rows can own the current slot
+		}
+		if newCurrent == nil || nodeBeliefNewerThan(entry, newCurrent) {
+			newCurrent = entry
 		}
 	}
 
@@ -279,6 +305,58 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 
 	c.opNodeUpdates.Add(1)
 	return newVer, nil
+}
+
+// nodeResumptionEnd returns the smallest own-interval boundary (any row's own
+// vStart, or own vEnd when finite) in preChain that is STRICTLY AFTER newVT —
+// 0 (open) when no such boundary exists. BACKLOG 10b: own-interval bounds
+// make every row's [vStart, vEnd) a fixed, position-independent interval, so
+// the SET of rows covering any instant t is piecewise-constant between
+// consecutive own-boundary points across the WHOLE chain — therefore the
+// belief-winner at newVT (src) provably cannot change before the next such
+// boundary, from ANY row, not merely the row positionally adjacent to src.
+// Scanning every row (not just src's chain neighbor) is what makes this safe
+// on an already-cascaded preChain, where src can be selected by belief
+// rather than position.
+func nodeResumptionEnd(c *Core, preChain []*types.Node, newVT types.Instant) types.Instant {
+	var end types.Instant
+	consider := func(b types.Instant) {
+		if b > newVT && (end == 0 || b < end) {
+			end = b
+		}
+	}
+	for _, row := range preChain {
+		if eclipsedNodeBounds(row) {
+			continue
+		}
+		vStart, vEnd := c.nodeOwnBounds(row)
+		consider(vStart)
+		if vEnd != 0 {
+			consider(vEnd)
+		}
+	}
+	return end
+}
+
+// relResumptionEnd mirrors nodeResumptionEnd for relationships.
+func relResumptionEnd(c *Core, preChain []*types.Relationship, newVT types.Instant) types.Instant {
+	var end types.Instant
+	consider := func(b types.Instant) {
+		if b > newVT && (end == 0 || b < end) {
+			end = b
+		}
+	}
+	for _, row := range preChain {
+		if eclipsedRelBounds(row) {
+			continue
+		}
+		vStart, vEnd := c.relOwnBounds(row)
+		consider(vStart)
+		if vEnd != 0 {
+			consider(vEnd)
+		}
+	}
+	return end
 }
 
 func ensureNodeTemporal(n *types.Node) {
@@ -373,9 +451,13 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 		preChain = append(preChain, current)
 	}
 
+	// BACKLOG 10b: explicit resumption ValidTo via relResumptionEnd — see the
+	// node cascade above for the full rationale (own-interval boundary scan,
+	// not "positionally-next row after src").
 	var resumption *types.Relationship
 	if newVT != 0 {
 		if src, err := c.resolveRelVersionAt(append([]*types.Relationship(nil), preChain...), newVT); err == nil && src != nil {
+			resumptionEnd := relResumptionEnd(c, preChain, newVT)
 			resumption = src.DeepCopy()
 			ensureRelTemporal(resumption)
 			resumption.SetVersion(nextVersion)
@@ -384,7 +466,7 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 				return nil, err
 			}
 			resumption.Temporal().ValidFrom = newVT
-			resumption.Temporal().ValidTo = 0
+			resumption.Temporal().ValidTo = resumptionEnd
 			resumption.Temporal().UpdatedAt = now
 			resumption.Temporal().TxFrom = now
 			rType := c.relTypeUnlocked(resumption)
@@ -448,17 +530,21 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 		appended = append(appended, resumption)
 	}
 
+	// BACKLOG 10b: newest-belief-among-own-open — see the node cascade above.
 	postChain := make([]*types.Relationship, 0, len(preChain)+len(appended))
 	postChain = append(postChain, preChain...)
 	postChain = append(postChain, appended...)
-	c.sortRelChainForResolve(postChain)
 	var newCurrent *types.Relationship
 	for i := range postChain {
-		if eclipsedRelBounds(postChain[i]) {
+		entry := postChain[i]
+		if eclipsedRelBounds(entry) {
 			continue
 		}
-		if _, vEnd := c.relVersionBounds(postChain, i); vEnd == 0 {
-			newCurrent = postChain[i]
+		if _, vEnd := c.relOwnBounds(entry); vEnd != 0 {
+			continue
+		}
+		if newCurrent == nil || relBeliefNewerThan(entry, newCurrent) {
+			newCurrent = entry
 		}
 	}
 

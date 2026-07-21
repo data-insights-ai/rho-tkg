@@ -232,6 +232,25 @@ func beliefNewer(a, b oracleRow) bool {
 	return a.version > b.version
 }
 
+// ownBounds returns [vStart, vEnd) using r's OWN asserted end (validTo, 0 ==
+// open) rather than the positional next-row bound bounds() derives. Mirrors
+// the engine's nodeOwnBounds/relOwnBounds (temporal.go) — used ONLY by
+// pointVisible's slow (cascade) path, for the identical BACKLOG 10b reason:
+// an untouched older row's ValidFrom must never truncate a newer, wider-
+// reaching correction. vStart is effVF(r) — the SAME effective-start key
+// bounds() derives for a non-genesis row without the inheritance heuristic
+// (a migrated-store assumption already baked into this harness's op set,
+// which never exercises the pre-migration inheritance heuristic — see
+// runBitemporalMigrationBestEffort). bounds()/intervalVisible/asOfVisible and
+// pointVisible's fast path are UNCHANGED — see the BACKLOG 10b CHANGELOG
+// entry for why this one-clause change is required rather than optional: the
+// oracle's positional bounds() shares the exact same bug as the engine's
+// (pre-fix) nodeVersionBounds, which is why this harness could not catch 10b
+// before this change.
+func (e *oracleEntity) ownBounds(r oracleRow) (types.Instant, types.Instant) {
+	return e.effVF(r), r.validTo
+}
+
 // pointVisible resolves the version covering validAt as known at txAt, or
 // (row, false) when the entity has no covering version. Mirrors
 // resolveNodeVersionAt's fast/slow dispatch exactly. validAt is covered by a
@@ -254,13 +273,14 @@ func (e *oracleEntity) pointVisible(validAt, txAt types.Instant) (oracleRow, boo
 		}
 		return oracleRow{}, false
 	}
-	// Slow path (cascade): newest BELIEF covering version wins.
+	// Slow path (cascade): newest BELIEF covering version wins. BACKLOG 10b:
+	// own-interval bounds, not positional — see ownBounds.
 	best := -1
 	for i := range chain {
 		if eclipsedRow(chain[i]) {
 			continue
 		}
-		vs, ve := e.bounds(chain, i)
+		vs, ve := e.ownBounds(chain[i])
 		if vs <= validAt && (ve == 0 || ve > validAt) {
 			if best < 0 || beliefNewer(chain[i], chain[best]) {
 				best = i

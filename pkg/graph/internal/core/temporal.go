@@ -208,14 +208,18 @@ func (c *Core) resolveNodeVersionAt(chain []*types.Node, t types.Instant) (*type
 
 	// Cascade chain: effective intervals can overlap (an older, wider-valid row
 	// under a newer, narrower correction), so the newer BELIEF wins — higher
-	// TxFrom, then version.
+	// TxFrom, then version. BACKLOG 10b: bounds here MUST be each row's own
+	// asserted interval (nodeOwnBounds), never the positional next-neighbor
+	// bound (nodeVersionBounds) — an untouched older row's ValidFrom must
+	// never truncate a newer, wider-reaching correction. See nodeOwnBounds'
+	// doc comment.
 	var best *types.Node
 	for i := range chain {
 		entry := chain[i]
 		if eclipsedNodeBounds(entry) {
 			continue
 		}
-		vStart, vEnd := c.nodeVersionBounds(chain, i)
+		vStart, vEnd := c.nodeOwnBounds(entry)
 		if vStart <= t && (vEnd == 0 || vEnd > t) {
 			if best == nil || nodeBeliefNewerThan(entry, best) {
 				best = entry
@@ -370,6 +374,35 @@ func filterRelChainByTxAt(chain []*types.Relationship, txAt types.Instant) []*ty
 	return out
 }
 
+// nodeOwnBounds returns [vStart, vEnd) using the row's OWN asserted end
+// (ValidTo, 0 => +inf) rather than the positional next-version bound
+// nodeVersionBounds derives. Used ONLY by resolveNodeVersionAt's cascade
+// (non-monotonic) slow path and by the cascade kernel's newCurrent
+// selection (temporal_cascade.go) — both contexts where overlaps between
+// rows are resolved by belief recency (nodeBeliefNewerThan), not by
+// position. A row's end must be its own claim there, never a neighbor's
+// ValidFrom, or an untouched older row can wrongly truncate a newer,
+// wider-reaching correction (BACKLOG 10b). vStart reuses nodeSortValidFrom
+// — the same effective-start key the chain is already sorted by — so this
+// helper never needs the chain, only the entry.
+//
+// Deliberately does NOT replace nodeVersionBounds: the monotonic fast path,
+// the interval door, the Relate (Allen) door, and SelectAsOf all keep using
+// positional bounds, which is correct for them (see the design rationale in
+// CHANGELOG.md's BACKLOG 10b entry) — do not widen this helper's use
+// without re-running the full bitemporal oracle fuzz harness at full
+// iteration count (10b's two prior fix attempts were reverted after
+// touching nodeVersionBounds itself broke it in non-obvious multi-cascade
+// ways; this helper's whole purpose is to avoid ever needing to).
+func (c *Core) nodeOwnBounds(n *types.Node) (types.Instant, types.Instant) {
+	vStart := c.nodeSortValidFrom(n)
+	var vEnd types.Instant // 0 == open (+inf)
+	if tm := n.Temporal(); tm != nil && tm.ValidTo != 0 {
+		vEnd = tm.ValidTo
+	}
+	return vStart, vEnd
+}
+
 // nodeVersionBounds computes the effective [vStart, vEnd) for chain[i].
 //
 // Phase 3: vEnd uses the NEXT version's effective ValidFrom when explicit,
@@ -463,13 +496,14 @@ func (c *Core) resolveRelVersionAt(chain []*types.Relationship, t types.Instant)
 		return nil, storepkg.ErrNoVersionValidAt
 	}
 
+	// BACKLOG 10b: own-interval bounds, not positional — see resolveNodeVersionAt.
 	var best *types.Relationship
 	for i := range chain {
 		entry := chain[i]
 		if eclipsedRelBounds(entry) {
 			continue
 		}
-		vStart, vEnd := c.relVersionBounds(chain, i)
+		vStart, vEnd := c.relOwnBounds(entry)
 		if vStart <= t && (vEnd == 0 || vEnd > t) {
 			if best == nil || relBeliefNewerThan(entry, best) {
 				best = entry
@@ -520,6 +554,16 @@ func (c *Core) sortRelChainForResolve(chain []*types.Relationship) bool {
 		}
 	}
 	return false
+}
+
+// relOwnBounds mirrors nodeOwnBounds for relationships. See there.
+func (c *Core) relOwnBounds(r *types.Relationship) (types.Instant, types.Instant) {
+	vStart := c.relSortValidFrom(r)
+	var vEnd types.Instant // 0 == open (+inf)
+	if tm := r.Temporal(); tm != nil && tm.ValidTo != 0 {
+		vEnd = tm.ValidTo
+	}
+	return vStart, vEnd
 }
 
 // relVersionBounds computes the effective [vStart, vEnd) for chain[i].
