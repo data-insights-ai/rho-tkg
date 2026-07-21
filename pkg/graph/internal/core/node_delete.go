@@ -366,8 +366,25 @@ func (c *Core) deleteNodeLocked(ctx context.Context, id types.NodeID, current *t
 	tmN.TxTo = now
 
 	// Single atomic call: PutRelVersion×N + PutNodeVersion + DeleteNodeCascade.
+	// Routes through the BACKLOG 11f scoped sibling when ctx carries a scoped
+	// change-log token and the store supports it — mirrors putGeneratedNode's
+	// routing pattern. FOUNDATION ONLY: nothing constructs a token-carrying
+	// ctx yet (see scope_token.go), so this branch is currently always dead
+	// in production.
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
+	}
+	if token, ok := scopeTokenFrom(ctx); ok && token != 0 {
+		if scoped, ok := c.store.(storepkg.ScopedDeleteCapability); ok {
+			if err := scoped.DeleteNodeWithHistoryScoped(id, current.Version(), current, relTombstones, token); err != nil {
+				return nil, err
+			}
+			c.opNodeDeletes.Add(1)
+			if len(cascadeRelIDs) != 0 {
+				c.opRelDeletes.Add(int64(len(cascadeRelIDs)))
+			}
+			return cascadeRelIDs, nil
+		}
 	}
 	if err := c.store.DeleteNodeWithHistory(id, current.Version(), current, relTombstones); err != nil {
 		return nil, err

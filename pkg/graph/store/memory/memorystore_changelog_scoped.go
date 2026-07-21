@@ -3,6 +3,7 @@ package memory
 import (
 	"fmt"
 
+	snowflake "github.com/bds421/rho-snowflake-2026"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -121,5 +122,42 @@ func (ms *Store) logRelPutRoutedLocked(r *types.Relationship, withHistory bool, 
 		return ms.logChangeScopedLocked(token, storecontract.ChangeRelPut, p)
 	}
 	ms.logChangeLocked(storecontract.ChangeRelPut, p)
+	return nil
+}
+
+// logNodeDeleteWithHistoryRoutedLocked (BACKLOG 11f Batch C) builds and
+// appends the with-history node-delete change-log record: token == 0 routes
+// through the eager/legacy-scope path (ms.logChangeLocked); token != 0 routes
+// the record into that scope's buffer instead. The single call site for both
+// DeleteNodeWithHistory (token 0) and DeleteNodeWithHistoryScoped.
+func (ms *Store) logNodeDeleteWithHistoryRoutedLocked(id snowflake.ID, nodeTombstone *types.Node, relTombstones []RelTombstone, token uint64) error {
+	if !ms.logEnabled {
+		return nil
+	}
+	p, err := storeutil.NodeDeleteWithHistoryPayload(id, nodeTombstone, relTombstones)
+	if err != nil {
+		return changeLogEncodeErr(err)
+	}
+	if token != 0 {
+		return ms.logChangeScopedLocked(token, storecontract.ChangeNodeDelete, p)
+	}
+	ms.logChangeLocked(storecontract.ChangeNodeDelete, p)
+	return nil
+}
+
+// logRelDeleteWithHistoryRoutedLocked is the relationship mirror of
+// logNodeDeleteWithHistoryRoutedLocked — see its doc comment.
+func (ms *Store) logRelDeleteWithHistoryRoutedLocked(id snowflake.ID, tombstone *types.Relationship, token uint64) error {
+	if !ms.logEnabled {
+		return nil
+	}
+	p, err := storeutil.RelDeleteWithHistoryPayload(id, tombstone)
+	if err != nil {
+		return changeLogEncodeErr(err)
+	}
+	if token != 0 {
+		return ms.logChangeScopedLocked(token, storecontract.ChangeRelDelete, p)
+	}
+	ms.logChangeLocked(storecontract.ChangeRelDelete, p)
 	return nil
 }

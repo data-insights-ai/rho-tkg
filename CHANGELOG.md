@@ -110,6 +110,51 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     `gofmt` clean (3 pre-existing gofmt-flagged files elsewhere in the tree are untouched by this change
     and out of scope); full-repo `go test ./...` green; `-race` clean on `internal/core`, `store/badger`,
     `store/memory`.
+- ADD — BACKLOG 11f Batch C — scoped change-log foundation, doors 6-7 (`DeleteNodeWithHistory` /
+  `DeleteRelWithHistory`, FOUNDATION ONLY — same no-lock-behavior-change status as Batches A and B). New
+  optional `store.ScopedDeleteCapability` (`DeleteNodeWithHistoryScoped`/`DeleteRelWithHistoryScoped`,
+  memory + badger), documented to the same rigor as Batch B's `ScopedReplaceCapability` — `token == 0`
+  byte-identical to the unscoped door, a store implementing this MUST also implement
+  `store.ScopedTxChangeLog`, and the `DeleteNodeWithHistory` contract (`relTombstones` must cover every
+  live connected relationship exactly once) is preserved UNCHANGED — the scoped route only changes
+  WHERE the resulting change-log record lands, never the tombstone-construction or cascade-adjacency
+  logic that produces `relTombstones` in the first place.
+  - Unlike Batches A and B, this batch's two wired call sites (`deleteNodeInternal`/
+    `deleteRelationshipInternal` in `node_delete.go`/`relationship_delete.go`) are SHARED between the
+    `GraphTx` delete path and the standalone `NodeOps.Delete`/`RelOps.Delete` path — the same shape as
+    Batch A's `putGeneratedNode`/`putGeneratedRelationship`, not Batch B's tx-exclusive
+    `*PreparedInternal` helpers. This is safe by the identical zero-blast-radius argument: nothing
+    anywhere constructs a nonzero scope token yet, so `scopeTokenFrom(ctx)` returns `(0, false)` on
+    every real call today regardless of which path invoked the shared helper.
+  - Confirmed by grep that `apply_record.go`'s two replica-apply calls to
+    `DeleteNodeWithHistory`/`DeleteRelWithHistory` are untouched — same exclusion class as Batch B's
+    `apply_record.go` carve-out for the replace doors (replica apply reproduces the primary's rows
+    verbatim and must never be tx-scoped).
+  - Badger reuses the Batch A/B `logChangeRoutedRaw` machinery via new
+    `deleteNodeWithHistoryRouted`/`deleteRelWithHistoryRouted` helpers (thin-wrapper-over-shared-routed-
+    helper shape, mirroring `replaceNodeWithHistoryRouted`). Memory added
+    `logNodeDeleteWithHistoryRoutedLocked`/`logRelDeleteWithHistoryRoutedLocked` and REMOVED the
+    now-fully-superseded `logNodeDeleteWithHistoryLocked`/`logRelDeleteWithHistoryLocked` they replace —
+    no dead code left behind (the standing "remove or use" rule from Batch A's own bug-fix list).
+  - Tests: `delete_scoped_test.go` (end-to-end routing proof through
+    `deleteNodeInternal`/`deleteRelationshipInternal`), `badgerstore_history_delete_scoped_test.go` /
+    `memorystore_history_delete_scoped_test.go` (the full Batch A/B `TestScopedChangeLog_*` battery
+    replayed for deletes, plus a multi-rel-tombstone-coverage case and an explicit "discard leaves zero
+    trace" assertion for a delete record specifically — deletes are easy to get backwards, so this was
+    asserted directly rather than assumed from the put/replace precedent). `go build`/`go vet`/`gofmt`
+    clean (same 3 pre-existing drift files elsewhere, untouched); full-repo `go test ./...` green (one
+    `TestCreateRelPropertyIndex_ReleasesLockDuringScan` flake in `store/memory` confirmed
+    pre-existing/timing-sensitive, not caused by this change — passed 3/3 in isolation and the whole
+    package re-ran clean); `-race` on `internal/core`/`store/badger`/`store/memory` clean at merge time.
+    A single `TestBitemporalOracle*` assertion failure appeared on ONE post-merge `-race` run of the
+    whole `internal/core` package (a large randomized property-test harness, not a Batch-C-specific
+    test); the diff at the two wired call sites is a pure `if token != 0 { ... }` branch — at `token ==
+    0` (every real call today, since nothing constructs a nonzero token anywhere) execution falls
+    through to the byte-identical unscoped `DeleteNodeWithHistory`/`DeleteRelWithHistory` call that
+    existed before this batch, so the change cannot alter behavior on that path. Confirmed via a
+    dedicated `-race` re-run of the full package (clean) and a further targeted `-race` re-run of
+    `TestBitemporalOracle*` alone (clean) — consistent with this session's other documented randomized-
+    test flakiness (BACKLOG 11h) rather than a regression from this batch.
 - FIX/HARDEN — comprehensive backlog hardening pass: closed 32 findings from the standing code-review
   backlog (`tasks/backlog.md`), each with a genuine RED→GREEN TDD cycle (a failing test proving the
   bug, the fix, the test passing, package + `-race` where concurrency-relevant + full-repo `go test

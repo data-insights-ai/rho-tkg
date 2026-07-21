@@ -119,6 +119,22 @@ func (bs *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 }
 
 func (bs *Store) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombstone *types.Relationship) error {
+	return bs.deleteRelWithHistoryRouted(rid, prevVersion, tombstone, 0)
+}
+
+// DeleteRelWithHistoryScoped mirrors DeleteRelWithHistory but routes the
+// change-log record into the store.ScopedTxChangeLog buffer named by token
+// instead of the eager pending log. token == 0 is exactly
+// DeleteRelWithHistory. See badgerstore_changelog_scoped.go (BACKLOG 11f
+// Batch C — foundation only).
+func (bs *Store) DeleteRelWithHistoryScoped(rid types.RelID, prevVersion uint32, tombstone *types.Relationship, token uint64) error {
+	if token == 0 {
+		return bs.DeleteRelWithHistory(rid, prevVersion, tombstone)
+	}
+	return bs.deleteRelWithHistoryRouted(rid, prevVersion, tombstone, token)
+}
+
+func (bs *Store) deleteRelWithHistoryRouted(rid types.RelID, prevVersion uint32, tombstone *types.Relationship, token uint64) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
@@ -158,8 +174,11 @@ func (bs *Store) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombs
 	info := relDeleteInfoFromRelationship(r)
 	bs.deleteRelByInfo(info) // appends delete ops to pending under lock (no record — emitted here)
 	bs.appendOps(writeOp{opType: writeOpSet, key: histKey, value: tombData})
-	bs.logChangeRaw(storecontract.ChangeRelDelete, delPayload)
+	logErr := bs.logChangeRoutedRaw(storecontract.ChangeRelDelete, delPayload, token)
 	bs.idxMu.Unlock()
+	if logErr != nil {
+		return logErr
+	}
 
 	return bs.flushIfNeeded()
 }

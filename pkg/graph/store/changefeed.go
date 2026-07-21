@@ -332,3 +332,24 @@ type ScopedReplaceCapability interface {
 	ReplaceNodeWithHistoryScoped(n *types.Node, prevVersion uint32, prevState *types.Node, token uint64) error
 	ReplaceRelWithHistoryScoped(r *types.Relationship, prevVersion uint32, prevState *types.Relationship, token uint64) error
 }
+
+// ScopedDeleteCapability is the BACKLOG 11f Batch C scoped counterpart of the
+// two with-history delete doors DeleteNodeWithHistory / DeleteRelWithHistory
+// (store/capabilities.go): each method behaves EXACTLY like its unscoped
+// sibling — including DeleteNodeWithHistory's invariant that relTombstones
+// must cover every live connected relationship exactly once — except the
+// change-log record it produces is routed into the ScopedTxChangeLog buffer
+// named by token (opened via BeginScopedLog) instead of the eager pending log
+// or the legacy single TxChangeLogScope buffer. token == 0 is exactly
+// DeleteNodeWithHistory / DeleteRelWithHistory. A store implementing
+// ScopedDeleteCapability MUST also implement ScopedTxChangeLog (the token
+// comes from nowhere else).
+//
+// FOUNDATION ONLY, same status as ScopedPutCapability / ScopedReplaceCapability:
+// nothing in the core/tx layer constructs a token-carrying context yet, so this
+// has zero effect on any existing behavior. See store.ScopedTxChangeLog's doc
+// comment for the full design rationale.
+type ScopedDeleteCapability interface {
+	DeleteNodeWithHistoryScoped(id types.NodeID, prevNodeVersion uint32, nodeTombstone *types.Node, relTombstones []RelTombstone, token uint64) error
+	DeleteRelWithHistoryScoped(id types.RelID, prevVersion uint32, tombstone *types.Relationship, token uint64) error
+}

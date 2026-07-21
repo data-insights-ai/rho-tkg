@@ -109,9 +109,23 @@ func (c *Core) deleteRelationshipInternal(ctx context.Context, id types.RelID) e
 	}
 	tmR.TxTo = now
 
-	// Single atomic call: PutRelVersion + DeleteRelationship.
+	// Single atomic call: PutRelVersion + DeleteRelationship. Routes through
+	// the BACKLOG 11f scoped sibling when ctx carries a scoped change-log
+	// token and the store supports it — mirrors putGeneratedNode's routing
+	// pattern. FOUNDATION ONLY: nothing constructs a token-carrying ctx yet
+	// (see scope_token.go), so this branch is currently always dead in
+	// production.
 	if err := checkCtx(ctx); err != nil {
 		return err
+	}
+	if token, ok := scopeTokenFrom(ctx); ok && token != 0 {
+		if scoped, ok := c.store.(storepkg.ScopedDeleteCapability); ok {
+			if err := scoped.DeleteRelWithHistoryScoped(id, current.Version(), current, token); err != nil {
+				return err
+			}
+			c.opRelDeletes.Add(1)
+			return nil
+		}
 	}
 	if err := c.store.DeleteRelWithHistory(id, current.Version(), current); err != nil {
 		return err

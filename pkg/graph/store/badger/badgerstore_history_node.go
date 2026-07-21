@@ -377,6 +377,22 @@ func (bs *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 }
 
 func (bs *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32, nodeTombstone *types.Node, relTombstones []RelTombstone) error {
+	return bs.deleteNodeWithHistoryRouted(nid, prevNodeVersion, nodeTombstone, relTombstones, 0)
+}
+
+// DeleteNodeWithHistoryScoped mirrors DeleteNodeWithHistory but routes the
+// change-log record into the store.ScopedTxChangeLog buffer named by token
+// instead of the eager pending log. token == 0 is exactly
+// DeleteNodeWithHistory. See badgerstore_changelog_scoped.go (BACKLOG 11f
+// Batch C — foundation only).
+func (bs *Store) DeleteNodeWithHistoryScoped(nid types.NodeID, prevNodeVersion uint32, nodeTombstone *types.Node, relTombstones []RelTombstone, token uint64) error {
+	if token == 0 {
+		return bs.DeleteNodeWithHistory(nid, prevNodeVersion, nodeTombstone, relTombstones)
+	}
+	return bs.deleteNodeWithHistoryRouted(nid, prevNodeVersion, nodeTombstone, relTombstones, token)
+}
+
+func (bs *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion uint32, nodeTombstone *types.Node, relTombstones []RelTombstone, token uint64) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
@@ -454,11 +470,14 @@ func (bs *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 		ops = append(ops, writeOp{opType: writeOpSet, key: e.key, value: e.data})
 	}
 	bs.appendOps(ops...)
-	bs.logChangeRaw(storecontract.ChangeNodeDelete, delPayload)
+	logErr := bs.logChangeRoutedRaw(storecontract.ChangeNodeDelete, delPayload, token)
 	bs.idxMu.Unlock()
 
 	if corruptErr != nil {
 		return corruptErr
+	}
+	if logErr != nil {
+		return logErr
 	}
 	return bs.flushIfNeeded()
 }

@@ -172,30 +172,6 @@ func (ms *Store) logRelHardDeleteLocked(id snowflake.ID) error {
 	return nil
 }
 
-func (ms *Store) logNodeDeleteWithHistoryLocked(id snowflake.ID, nodeTombstone *types.Node, relTombstones []RelTombstone) error {
-	if !ms.logEnabled {
-		return nil
-	}
-	p, err := storeutil.NodeDeleteWithHistoryPayload(id, nodeTombstone, relTombstones)
-	if err != nil {
-		return changeLogEncodeErr(err)
-	}
-	ms.logChangeLocked(storecontract.ChangeNodeDelete, p)
-	return nil
-}
-
-func (ms *Store) logRelDeleteWithHistoryLocked(id snowflake.ID, tombstone *types.Relationship) error {
-	if !ms.logEnabled {
-		return nil
-	}
-	p, err := storeutil.RelDeleteWithHistoryPayload(id, tombstone)
-	if err != nil {
-		return changeLogEncodeErr(err)
-	}
-	ms.logChangeLocked(storecontract.ChangeRelDelete, p)
-	return nil
-}
-
 func (ms *Store) logNodeHistoryVersionLocked(version uint32, n *types.Node) error {
 	if !ms.logEnabled {
 		return nil

@@ -106,6 +106,17 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   change yet" status as Batch A: `GraphTx` still constructs no token-carrying ctx anywhere, so this is
   dormant in production. Remaining doors after A+B: ~17 more call sites (label-token doors, batch
   doors, delete-with-history doors, import doors, …) before the `GraphTx` lock-relaxation flip itself.
+  **Batch C landed (foundation only, zero behavior change):** doors 6-7 — `DeleteNodeWithHistory`/
+  `DeleteRelWithHistory` — now have `Scoped` siblings (new `store.ScopedDeleteCapability`, memory +
+  badger), wired through the SHARED `deleteNodeInternal`/`deleteRelationshipInternal` helpers (used by
+  both the `GraphTx` and standalone delete paths — safe by the same "nothing constructs a nonzero token
+  yet" argument Batch A already used for its shared `putGeneratedNode`/`putGeneratedRelationship`).
+  Confirmed by grep that `apply_record.go`'s two replica-apply calls to the same store doors are
+  untouched (same exclusion class as Batch A/B's replication-apply carve-out), and that the
+  relTombstones-cover-every-connected-relationship invariant is unchanged — the scoped route only
+  changes WHERE the change-log record for the delete lands, nothing about tombstone/cascade
+  construction. Remaining doors after A+B+C: ~15 more call sites (label-token doors, batch doors,
+  import doors, …).
 - **11h. [STILL OPEN — NOT resolved; original "clock re-probing" theory RULED OUT by direct experiment,
   but the real root cause remains unknown and no fix has been applied]
   `TestOutgoingIncomingForNodesAtTx_RandomizedDivergenceProbe/badger`

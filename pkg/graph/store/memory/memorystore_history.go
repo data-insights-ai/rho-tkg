@@ -168,6 +168,22 @@ func (ms *Store) AddNodeLabelTokenWithHistory(nid types.NodeID, tok uint16, upda
 // and deletes the live relationship in a single locked operation.
 // All under one lock: atomic with respect to concurrent readers.
 func (ms *Store) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombstone *types.Relationship) error {
+	return ms.deleteRelWithHistoryRouted(rid, prevVersion, tombstone, 0)
+}
+
+// DeleteRelWithHistoryScoped mirrors DeleteRelWithHistory but routes the
+// change-log record into the store.ScopedTxChangeLog buffer named by token
+// instead of the eager pending log. token == 0 is exactly
+// DeleteRelWithHistory. See memorystore_changelog_scoped.go (BACKLOG 11f
+// Batch C — foundation only).
+func (ms *Store) DeleteRelWithHistoryScoped(rid types.RelID, prevVersion uint32, tombstone *types.Relationship, token uint64) error {
+	if token == 0 {
+		return ms.DeleteRelWithHistory(rid, prevVersion, tombstone)
+	}
+	return ms.deleteRelWithHistoryRouted(rid, prevVersion, tombstone, token)
+}
+
+func (ms *Store) deleteRelWithHistoryRouted(rid types.RelID, prevVersion uint32, tombstone *types.Relationship, token uint64) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -203,13 +219,29 @@ func (ms *Store) DeleteRelWithHistory(rid types.RelID, prevVersion uint32, tombs
 	if err := ms.deleteRelLocked(rid); err != nil {
 		return err
 	}
-	return ms.logRelDeleteWithHistoryLocked(rid.SnowflakeID(), tombstone)
+	return ms.logRelDeleteWithHistoryRoutedLocked(rid.SnowflakeID(), tombstone, token)
 }
 
 // DeleteNodeWithHistory atomically writes tombstone history entries for the node
 // and all connected relationships, then performs the cascade delete.
 // All under one lock: atomic with respect to concurrent readers.
 func (ms *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32, nodeTombstone *types.Node, relTombstones []RelTombstone) error {
+	return ms.deleteNodeWithHistoryRouted(nid, prevNodeVersion, nodeTombstone, relTombstones, 0)
+}
+
+// DeleteNodeWithHistoryScoped mirrors DeleteNodeWithHistory but routes the
+// change-log record into the store.ScopedTxChangeLog buffer named by token
+// instead of the eager pending log. token == 0 is exactly
+// DeleteNodeWithHistory. See memorystore_changelog_scoped.go (BACKLOG 11f
+// Batch C — foundation only).
+func (ms *Store) DeleteNodeWithHistoryScoped(nid types.NodeID, prevNodeVersion uint32, nodeTombstone *types.Node, relTombstones []RelTombstone, token uint64) error {
+	if token == 0 {
+		return ms.DeleteNodeWithHistory(nid, prevNodeVersion, nodeTombstone, relTombstones)
+	}
+	return ms.deleteNodeWithHistoryRouted(nid, prevNodeVersion, nodeTombstone, relTombstones, token)
+}
+
+func (ms *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion uint32, nodeTombstone *types.Node, relTombstones []RelTombstone, token uint64) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -324,7 +356,7 @@ func (ms *Store) DeleteNodeWithHistory(nid types.NodeID, prevNodeVersion uint32,
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, n, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, n, rawID)
 	delete(ms.nodes, nid)
-	return ms.logNodeDeleteWithHistoryLocked(nid.SnowflakeID(), nodeTombstone, relTombstones)
+	return ms.logNodeDeleteWithHistoryRoutedLocked(nid.SnowflakeID(), nodeTombstone, relTombstones, token)
 }
 
 // --- Version history ---
