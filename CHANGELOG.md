@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- WILL NOT DO — BACKLOG 18t's last remaining test gap (a direct test pinning change-log-marshal-
+  failure-mid-write atomicity) closed as will-not-do rather than left indefinitely open. The gap would
+  require a registered custom property type whose `msgpack.CustomEncoder` deliberately errors mid-
+  write — nontrivial test-only infrastructure built purely to exercise a scenario that cannot arise in
+  practice, since every change-log-emitting door already builds its payload UP FRONT, before any
+  mutation op is enqueued (verified directly in `DeleteRelEntityAndOut` and others during the original
+  investigation) — the atomicity property is already structurally enforced by call order. Matches the
+  same "if it cannot happen we should not define something just for testing" decision already made for
+  a related finding earlier this session. No code or test change.
 - DOCS — BACKLOG 15u closed: documented the reflection-vs-`msgpack.CustomEncoder` performance
   recommendation for custom-registered property types directly on `types.RegisterPropertyStructType`'s
   doc comment. `propertyToWire`'s `ptCustom` branch (`storeutil/wire_value.go`) cannot avoid reflection

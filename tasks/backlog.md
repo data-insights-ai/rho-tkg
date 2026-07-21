@@ -170,22 +170,4 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   than were feasible here. NOT fixed — no code or test change applied; left explicitly open rather than
   closed by an unconfirmed theory or a speculative patch.
 
-### BACKLOG 18 — Badger backend hardening
-
-- **18t. [PARTIALLY RESOLVED — 2 of 3 test gaps closed; 1 STILL OPEN, not resolved].** Added
-  `TestBadgerStoreSelfLoopRoundTrip` (confirmed `AllowSelfLoops` is a graph/core-layer concern never
-  enforced by `pkg/graph/store` itself, so the raw Store already accepted self-loops correctly — a
-  pure test-gap closure, zero production change) and
-  `TestPutNodesBatchOwnedPreEncoded_FreezesInPlaceAndRejectsMutation` (the adversarial proof the
-  frozen-row guard fires on an ownership-transferred cache entry — `PutNodesBatchOwnedPreEncoded` had
-  ZERO direct badger-package tests before this one, only indirect ingest-package coverage, violating
-  Rule 1; confirmed load-bearing by temporarily reverting `freezeNodeForCache`'s owned branch to
-  always deep-copy, which turned the test immediately RED). Left open: a direct test pinning
-  change-log-marshal-failure-mid-write atomicity would need a registered custom property type whose
-  `msgpack.CustomEncoder` deliberately errors (property validation already rejects every other
-  unmarshalable shape before it reaches encode) — nontrivial test infrastructure for uncertain
-  marginal value, since every change-log-emitting door already builds its payload UP FRONT, before
-  any mutation op is enqueued (verified this ordering directly in `DeleteRelEntityAndOut` and others
-  this session) — the atomicity property is already structurally enforced by call order, not
-  something that could silently regress. Recommend a dedicated follow-up if this needs a hard proof.**
 
