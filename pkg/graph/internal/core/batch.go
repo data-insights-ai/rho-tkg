@@ -124,6 +124,19 @@ type pendingRel struct {
 	temporal *types.TemporalMetadata // ValidFrom/ValidTo/CreatedAt at queue time;
 	// TxFrom stamped + SetTemporal applied inside Execute
 	// backfillTxFrom: see pendingNode.backfillTxFrom (§4.1).
+	//
+	// Deliberately NO wireBody/logBody producer-thread pre-encode fields here
+	// (unlike pendingNode) — BACKLOG 21f/15p investigated this and found it
+	// inapplicable: FromNodeHash/ToNodeHash are captured under the per-rel
+	// LockTwo at APPLY time (batch_execute.go, ingest_concurrent.go), on the
+	// SAME thread that would consume a pre-encoded buffer, specifically to
+	// avoid a concurrent UpdateNode invalidating a queue-time hash before
+	// commit. A rel's wire content is therefore never fully known until the
+	// applier already holds the lock, so there is no producer/applier
+	// separation to exploit and no second msgpack pass to avoid. See
+	// storeutil.PreEncodeRelPutPayloadV2's doc comment for the primitive that
+	// remains correct and available if a future architecture change (e.g. a
+	// second patchable tail slot for endpoint hashes) makes this safe.
 	backfillTxFrom types.Instant
 }
 

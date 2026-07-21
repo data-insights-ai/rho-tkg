@@ -2187,6 +2187,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `HasComposite`/`ListComposites` doors had at the public-API layer). `-race` clean; full-repo
   `go test ./...` green.
 - DOCS/TEST — BACKLOG 21e (closes 20m) — export/import proven and documented as the sharded backend's re-sharding path. An architect design pass over the sharded store's slot catalog (`shardFor(id) = catalog[decompose(id).Node]`, a pure immutable function of the ID) found that a "re-sharding" primitive isn't missing — it's unbuildable and unnecessary: growing `Config.SlotCount` (or shrinking to a range that still covers every slot in use) already works with ZERO new routing code via `g.IO().Export` + `g.IO().Import`, because import replays every entity verbatim through the same store doors (`PutNode`/`PutRelationship`/`PutNodeVersion`/`PutRelVersion`) any other write uses, and those doors route by the entity's own already-fixed slot. An unsafe shrink or `BaseSlot` rebase that would drop a non-empty slot already failed closed via `ErrSlotNotLocal` inside `Import`'s existing rollback machinery — a correctness feature, not a gap. The only real gap was proof and documentation, so this closes it with tests, not new code: `TestShardedResharding_*` (`pkg/graph/sharded_resharding_test.go`) — grow round-trip with exact-set live/history parity + zero `ShardMismatch`es, rule-15 two-phase temporal survival across the migration, graph-level hash-chain re-verification (`g.Hash().VerifyNodeChain`/`VerifyRelChain`), an unsafe-shrink test that proves genuine MID-MIGRATION rollback (one entity's slot is covered and gets written successfully before a later entity's slot is found uncovered, so the rollback undoes real partial work, not just a pre-check), an empty-slot-shrink success case, a `BaseSlot`-rebase-fails-closed case, and a change-log-source export/import watermark-handoff case. Documented in a new "Sharded Backend Re-Sharding" doc-comment block in `pkg/graph/store/sharded/sharded.go` (above `Config`) and a new "Sharded Backend Re-Sharding (ADR-0007, BACKLOG 21e/20m)" section in CLAUDE.md, including the operator note that growing `SlotCount` does not by itself mint anything into the new slots — it must be paired with widening the consuming `Graph`'s `SnowflakeNodeID`/`IngestLanes` configuration. Live/online topology changes and non-identity `SlotShard` rebalancing remain explicitly out of scope (would require changing an already-minted entity's ID, which is architecturally unsound here). `go build`/`go vet`/`-race` clean across `pkg/graph`, `pkg/graph/store/sharded`, and `pkg/graph/internal/core`.
+- ADD — `storeutil.PreEncodeRelPutPayloadV2` (BACKLOG 21f/15p) — the relationship
+  counterpart of `PreEncodeNodePutPayloadV2` (ADR-0006 §4.5): pre-encodes a
+  CREATE's `ChangeRelPut` change-log body via `RelToWireChecked` with a ZERO
+  transaction-time tail, so an applier holding the buffer can
+  `PatchWireTemporalTail` in place instead of a second msgpack pass — same
+  CREATE-ONLY restriction as the node-side function (never for a `WithHistory`
+  body, whose `wh` field would follow the wire and un-terminal the tail).
+  Crown-equivalence verified byte-for-byte:
+  `Patch(PreEncodeRelPutPayloadV2(R,0),T) == RelPutPayload(R,T)` across 60
+  representative relationship shapes (empty/scalar/unicode/large/NaN±Inf/nested
+  properties) × 4 TxFrom stamps, plus a fail-closed truncated-payload gate
+  mirroring the node-side test exactly.
+  **Investigated and deliberately NOT wired into the ingest producer-thread
+  pipeline** (`pendingRel.wireBody`/`logBody`, `BatchBuilder.preEncode`, a
+  `PutRelationshipsBatchPreEncoded` store door): unlike a node, a
+  relationship's wire content is not fully determined until
+  `FromNodeHash`/`ToNodeHash` are captured under the per-rel `LockTwo` at
+  APPLY time (`batch_execute.go`, `ingest_concurrent.go`) — specifically so a
+  concurrent `UpdateNode` on an endpoint between queue and commit cannot
+  invalidate a stale queue-time hash (the documented reason `AddRelationship`
+  never captures endpoint hashes at queue time). That capture happens on the
+  SAME thread that would consume any pre-encoded buffer, so there is no
+  producer/applier separation to exploit and no second msgpack pass to avoid
+  by pre-encoding at queue time — doing so would either bake in wrong
+  (empty) endpoint hashes or relocate the encode within the same thread for
+  zero benefit. The wire-format-level primitives
+  (`storeutil.PreEncodeRelWireV2`/`PreEncodeRelWireV2WithKeys`) and this new
+  change-log-body-level function remain correct, tested, general-purpose
+  building blocks if a future architecture (e.g. a second patchable tail slot
+  for endpoint hashes) makes producer-thread rel pre-encode safe.
 
 ## [4.23.0] - 2026-07-18
 

@@ -123,8 +123,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 15 — Internal primitives hardening (storeutil / locks / registry / wire codec)
 
-- **15p. No `PreEncodeRelPutPayloadV2` counterpart to `PreEncodeNodePutPayloadV2` for §4.5 pre-encode —
-  see BACKLOG 21 (LOW, likely intentional node-first scope).**
 - **15u. `propertyToWire`'s `ptCustom` branch (`storeutil/wire_value.go:450`, kept per BACKLOG 15f's
   investigation as necessary defense-in-depth) cannot avoid reflection inside THIS library at all — an
   inherent limitation, not a bug to fix here (INFORMATIONAL).** `msgpack.Marshal(p.Value)` marshals an
@@ -169,9 +167,6 @@ none sigma's:
   can never get B4 acceleration unlike `nodesByLabelLocked`. Independently found from the query-door
   wiring angle too: `ByType`-with-property doors (`temporal_queries.go`) structurally cannot prune at
   all for exactly this reason, unlike their `ByLabel` node-side siblings.
-- **21f. No `PreEncodeRelPutPayloadV2` counterpart to the node-side §4.5 pre-encode fast path** — a
-  relationship-heavy concurrent-ingest workload always pays the second msgpack pass that a node-heavy
-  workload avoids (see BACKLOG 15p).
 - **21g. Badger backend: no zero-copy ownership-transfer cache path (`freezeRelForCache`) for bulk
   relationship writes, unlike nodes' `freezeNodeForCache`/`PutNodesBatchOwnedPreEncoded`** — the
   public `PreEncodedPutCapability` contract is explicitly node-scoped by design (ADR-0006 §4.5), so
