@@ -35,3 +35,23 @@ func freezeRelCopy(r *types.Relationship) *types.Relationship {
 	cp.Freeze()
 	return cp
 }
+
+// Deliberately NO freezeRelForCache / owned-transfer variant here (BACKLOG
+// 21g investigated this and found it inapplicable, not merely unbuilt):
+// freezeNodeForCache exists because bulk node CREATE has a real
+// producer/applier split — putGeneratedNodesBatchOwnedPreEncoded
+// (generated_create.go) is reachable from the concurrent-ingest apply path
+// with a caller-owned, never-read-again []*types.Node. Relationships have no
+// equivalent caller anywhere in the graph layer: PutRelationshipsBatch (this
+// file's own bulk door) has zero callers from internal/core or pkg/graph/io —
+// grep confirms it — because relationship_create_kernel.go always finalizes
+// FromNodeHash/ToNodeHash under the per-rel LockTwo at apply time (see the
+// BACKLOG 21f finding in CHANGELOG.md), so every rel-create path, strong-mode
+// batch included, calls the single-rel door one at a time; there is no bulk
+// caller ready to hand off ownership of a []*types.Relationship slice. Adding
+// an owned/zero-copy variant now would be dead code proven only by a
+// synthetic store-level test, not a real caller — the CLAUDE.md rule against
+// building test-only infrastructure applies. If a future architecture change
+// creates a genuine bulk relationship-create door (e.g. a second patchable
+// wire slot that defers endpoint-hash capture), freezeRelForCache can be
+// added the same way freezeNodeForCache was.

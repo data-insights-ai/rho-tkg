@@ -151,13 +151,3 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   this session) — the atomicity property is already structurally enforced by call order, not
   something that could silently regress. Recommend a dedicated follow-up if this needs a hard proof.**
 
-### BACKLOG 21 — Missing library-level features (cross-cutting)
-
-Collected here from "missing feature" notes scattered across the subsystem audits — all rho-tkg-owned,
-none sigma's:
-
-- **21g. Badger backend: no zero-copy ownership-transfer cache path (`freezeRelForCache`) for bulk
-  relationship writes, unlike nodes' `freezeNodeForCache`/`PutNodesBatchOwnedPreEncoded`** — the
-  public `PreEncodedPutCapability` contract is explicitly node-scoped by design (ADR-0006 §4.5), so
-  this is very likely deliberate, but flagged as a future-extension opportunity if bulk relationship
-  ingest throughput ever becomes a target (see BACKLOG 18u).
