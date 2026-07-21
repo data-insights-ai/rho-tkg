@@ -172,39 +172,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 13 — Retention / compaction / admin hardening
 
-- **13c. [STILL OPEN — NOT resolved; investigated in depth, a safe fix needs a new store-level chunked
-  capability across 3 backends, not a backlog-sweep patch].** `CompactHistoryNodes`/`Rels`
-  (`internal/core/compaction.go:518-599,601-681`) hold `c.mu.Lock()` (the FULL exclusive graph lock)
-  across a whole-graph plan-then-write pass: `c.allNodeChainIDs()`, a planning loop over EVERY entity
-  building an in-memory `plans` map, then a write loop calling `compactor.CompactNodeHistory` per
-  entity — all under one held lock, with no chunking, no periodic release, no `Label` scoping (always
-  the whole population). This genuinely contradicts retention purge's own documented "chunked-lock
-  discipline" (`retention_purge.go` `PurgeExpiredNodes`, invariant 5: "the graph lock is NOT held
-  across the range"). Investigated WHY the two differ structurally, not just that they do: retention
-  purge's chunking is possible because `store.RetentionPurgeCapability.PurgeNodesByLabelBefore(token,
-  before, chunkSize)` is a STORE-LEVEL RANGE primitive — the store internally chunks and self-locks
-  per chunk, so the Core layer never holds `c.mu` across the range at all (it just loops calling the
-  store's own chunked primitive). `store.HistoryCompactionCapability`, by contrast, is PURELY
-  per-entity (`CompactNodeHistory(id, keepVersions, metaWrites) error` — one entity, one atomic
-  write) — there is no store-level range/chunk primitive to loop over at all; the Core layer is doing
-  ALL of the range iteration and planning itself, in-process, which is why it ended up holding one
-  lock across everything. A safe fix therefore needs a NEW store capability (a chunked
-  `HistoryCompactionCapability` variant mirroring `RetentionPurgeCapability`'s shape) implemented
-  across memory/badger/tiered (tiered is the hard case: ADR-0001's own doc notes the stub and the trim
-  already land on DIFFERENT shards there and must be ordered stub-before-trim to fail closed on a
-  crash — a chunked version must preserve that same crash-safety property per chunk, not just per
-  entity). Rejected a smaller "just release c.mu every K entities inside the existing loop" patch as
-  UNSAFE, not just incomplete: the current code plans ALL entities up front (reads each entity's chain
-  once, computes `plan.stub`/`plan.keepVersions` from that snapshot), then applies every plan in a
-  second loop; releasing the lock between planning and a later entity's apply step opens a window
-  where a concurrent write to that not-yet-applied entity (another update, or even a second compaction
-  run) invalidates its plan — applying a stale plan atop changed history corrupts the compaction stub
-  (wrong `LastTrimmedTxTo`/`TrimmedThroughVersion`), a genuine data-corruption bug in exactly the
-  history/temporal caution class CLAUDE.md already flags for BACKLOG 10b-adjacent code. Any real fix
-  must re-plan (or re-validate) each entity immediately before applying it, which is what a proper
-  chunked store primitive does but a naive lock-release patch does not. Left open rather than force
-  either a correctness-risking naive patch or an unreviewed multi-backend capability redesign inside a
-  backlog sweep.**
 - **13l. [PARTIALLY OPEN — the currently-known checklist IS well tested; the systematic future-proofing
   gap is NOT closed and needs a design decision, not a backlog-sweep patch].** `Admin.Reset`'s
   correctness (`admin.go:250-268`, `reapCoreStateForClear`) depends on a hand-maintained checklist of

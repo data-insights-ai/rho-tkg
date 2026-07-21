@@ -1883,6 +1883,62 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `baseKnowsNode` to always return `true` turned the wrong-base positive tests immediately RED; restored,
   GREEN. `go build`/`go vet` clean; `internal/core` package suite green under `-race`; full-repo
   `go test ./...` clean.
+- FIX — BACKLOG 13c: `CompactHistoryNodes`/`CompactHistoryRels` (`internal/core/compaction.go`) held
+  `c.mu.Lock()` (the full exclusive graph lock) across a whole-graph plan-then-write pass — every
+  chain ID enumerated, every entity's compaction plan computed, THEN every plan applied, all under one
+  held lock, with no chunking and no periodic release. Rejected a smaller "just release `c.mu` every K
+  entities inside the existing loop" patch as UNSAFE, not just incomplete: the old code planned ALL
+  entities up front from a chain snapshot, then applied every plan in a SECOND loop — releasing the lock
+  between planning and a later entity's apply step would open a window where a concurrent write to that
+  not-yet-applied entity invalidates its plan, so applying a stale plan atop changed history corrupts
+  the compaction stub (wrong `LastTrimmedHash`/`TrimmedThroughVersion`), a genuine data-corruption bug.
+  Also rejected adding a new store-level chunked capability (mirroring `RetentionPurgeCapability`):
+  compaction's planning and stub SHA-256 self-hashing are irreducibly Core-layer (the policy math,
+  `nodeVersionInfo`/`planTrim`, and the stub's `compactStubDomain`-keyed hash all live in
+  `internal/core`), so a store-level range primitive would force duplicating that machinery across
+  memory/badger/tiered — the same cross-backend-divergence class CLAUDE.md's "single resolution seam"
+  rule exists to prevent. Fixed instead by CHUNKING THE LOCK IN CORE: both doors now loop fixed-size
+  chunks (`compactionChunk`, 256, a package `var` not `const` so tests can shrink it), each chunk
+  PLANNED THEN APPLIED under its OWN single `c.mu.Lock()` acquisition — released only BETWEEN chunks,
+  never across the whole population. Because a chunk's plan and its apply happen under one uninterrupted
+  lock hold, no entity's plan can ever go stale before that same entity's apply runs; a concurrent write
+  in a between-chunk gap only ever affects a NOT-YET-PLANNED entity in a later chunk, which is re-planned
+  FRESH against the current chain when its own chunk's turn comes. The existing per-entity
+  `HistoryCompactionCapability.CompactNodeHistory`/`CompactRelHistory` store door is reused completely
+  unchanged; `planTrim`/`planNodeCompaction`/`planRelCompaction`/the stub type/the watermark machinery/
+  `allNodeChainIDs`/`allRelChainIDs` are all untouched.
+  **Protected-as-of-tag semantics (a real, deliberate change):** a violation is now PARTIAL COMMIT, not
+  all-or-nothing — chunks already committed before the violating chunk stay committed (each one
+  independently satisfied `boundary <= minTag` for every one of its entities, so no protected knowledge
+  is ever trimmed), the violating chunk itself commits nothing, and the call still returns
+  `ErrCompactionProtectedTag`. This trades the old "zero writes on any error" property for never holding
+  the graph lock across the full population — accepted as provably tag-safe.
+  **Crash/interruption needs no resume cursor:** `CompactNodeHistory`/`CompactRelHistory` are already
+  idempotent per entity (an already-compacted entity's fresh re-plan yields `trim==0` and is skipped),
+  so simply re-running `CompactHistoryNodes`/`Rels` from scratch after any interruption converges to the
+  same end state as an uninterrupted run — confirmed directly by
+  `TestCompaction_IdempotentRerunAfterInterruption`. Tiered's per-entity stub-before-trim
+  cross-shard crash-safety ordering (ADR-0001) is preserved unchanged (chunking stays per-ENTITY
+  ordered within a chunk, never "stub every entity in the chunk, then trim every entity" — the latter
+  would only widen the crash window for zero atomicity benefit, since the two writes land on different
+  shards and can never be one batch regardless).
+  Added `compaction_chunked_test.go`: `TestCompaction_ChunkedUnderConcurrentWrite` /
+  `TestCompaction_RelChunkedUnderConcurrentWrite` (the primary correctness proof — 6 entities, chunk
+  size 2, a concurrent update lands on an entity in the LAST chunk while the FIRST chunk is being
+  processed via a new `compactionChunkHook` test seam; the updated entity's final stub/kept-history
+  reflect its POST-update chain, not the state it had when the outer ID snapshot was taken),
+  `TestCompaction_WatermarkAdvancesPerChunkAndUntouchedEntityStaysAnswerable` (the graph watermark
+  mid-run reflects only chunks committed so far, and a not-yet-compacted entity stays fully answerable
+  below the eventual FINAL watermark — a negative assertion against a premature `ErrHistoryCompacted`),
+  `TestCompaction_ProtectedTagPartialCommit` (chunk 1 stays committed with a valid stub after chunk 2
+  violates the tag; chunk 2 has NO stub and untouched history), `TestCompaction_CancelledBetweenChunks`,
+  `TestCompaction_IdempotentRerunAfterInterruption` (byte-identical stubs/watermark after a second,
+  now-no-op run). Confirmed load-bearing: temporarily reverted to the exact rejected naive pattern
+  (plan every entity up front from one snapshot, apply in chunks afterward) — the concurrent-write test
+  went immediately RED (`TrimmedThroughVersion = 1, want 2` — the stale pre-update plan won); restored,
+  GREEN. `go build`/`go vet` clean; full `internal/core` package suite (including the full existing
+  `TestCompaction_Tiered_*` cross-shard/protected-tag/tampered-stub battery, unmodified) green under
+  `-race`; `store/tiered` package suite green under `-race`; full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

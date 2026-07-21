@@ -459,6 +459,21 @@ type entityPlan struct {
 	stub         compactionStub
 }
 
+// compactionChunk bounds how many entities are planned-then-applied under a
+// SINGLE c.mu.Lock acquisition (BACKLOG 13c). A var, not a const, so tests can
+// shrink it to force a deterministic multi-chunk run. Mirrors
+// retentionPurgeChunk's role, though compaction's planning is Core-layer (see
+// the CompactHistoryNodes/Rels doc comment) rather than a store-level range
+// primitive, so chunking lives here instead of inside a Store capability.
+var compactionChunk = 256
+
+// compactionChunkHook, when non-nil, is invoked after each chunk's lock is
+// released (between chunks) — a test seam (mirrors graph_epoch.go's
+// epochRandRead pattern) letting a test deterministically interleave a
+// concurrent write with a specific between-chunk gap. Never set in
+// production code.
+var compactionChunkHook func()
+
 // preflightCompaction runs the shared refusal checks common to node and rel
 // compaction and returns the minimum registered as-of tag instant (0 = no tags).
 // It validates that the store has both MetaKV (for the stub/watermark) and the
@@ -510,11 +525,40 @@ func (c *Core) minAsOfTagInstant() (types.Instant, error) {
 // Refuses (no writes) when: the change-log is enabled
 // (ErrCompactionChangeLogEnabled), the backend implements neither MetaKV nor the
 // HistoryCompactionCapability (ErrCapabilityNotSupported), the policy is empty
-// (ErrInvalidRetentionPolicy), or a registered as-of tag pins knowledge the
-// policy would trim (ErrCompactionProtectedTag). Rejected on a read-only
-// replica. Runs on memory, badger, and tiered (tiered routes each entity's trim
-// to its owning shard and the stub + global watermark to the reference shard —
-// see tieredstore_compaction.go).
+// (ErrInvalidRetentionPolicy). Rejected on a read-only replica. Runs on memory,
+// badger, and tiered (tiered routes each entity's trim to its owning shard and
+// the stub + global watermark to the reference shard — see
+// tieredstore_compaction.go).
+//
+// BACKLOG 13c: processes the population in fixed-size chunks (compactionChunk),
+// each chunk PLANNED THEN APPLIED under its OWN single c.mu.Lock acquisition —
+// the lock is released only BETWEEN chunks, never held across the whole
+// population. This closes the staleness window a naive "plan everything, then
+// apply everything, releasing the lock in between" patch would open: because a
+// chunk's plan and its apply happen under one uninterrupted lock hold, no
+// entity's plan can ever go stale before that same entity's apply runs. A
+// concurrent write landing in a between-chunk gap only ever affects a
+// NOT-YET-PLANNED entity in a later chunk, which is planned FRESH when its
+// chunk's turn comes — never a stale-plan-applied-to-changed-history bug.
+//
+// Protected-as-of-tag violation (a registered as-of tag pins knowledge a
+// planned entity would trim): PARTIAL COMMIT, not all-or-nothing. Chunks
+// already committed before the violating chunk stay committed; the violating
+// chunk itself commits NOTHING (the violation aborts that chunk's own apply
+// phase) and CompactHistoryNodes returns ErrCompactionProtectedTag. This is
+// provably tag-safe: every chunk that DID commit independently satisfied
+// `boundary <= minTag` for every one of its entities, so no protected
+// knowledge is ever trimmed — only the "zero writes on any error" property of
+// the old whole-population version is given up, in exchange for never holding
+// the graph lock across the full population.
+//
+// Crash/interruption mid-run needs no resume cursor: CompactNodeHistory is
+// idempotent per entity (an already-compacted entity's fresh re-plan yields
+// trim==0 and is skipped; a plan interrupted between its stub write and its
+// physical trim recomputes byte-identically on retry, since the un-trimmed
+// chain it re-plans from is unchanged) — simply re-running CompactHistoryNodes
+// from scratch after any interruption converges to the same end state as an
+// uninterrupted run.
 func (a *AdminOps) CompactHistoryNodes(ctx context.Context, policy RetentionPolicy) (CompactReport, error) {
 	c := a.c
 	if err := c.checkOpen(); err != nil {
@@ -525,37 +569,81 @@ func (a *AdminOps) CompactHistoryNodes(ctx context.Context, policy RetentionPoli
 		return CompactReport{}, err
 	}
 
+	compactor := c.historyCompaction
+
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if c.closed.Load() {
+		c.mu.Unlock()
 		return CompactReport{}, ErrGraphClosed
 	}
-
-	compactor := c.historyCompaction
-	now := c.now()
-
-	// Planning pass: compute each entity's plan; refuse on a protected tag
-	// BEFORE any write so compaction is all-or-nothing on the protected-tag gate.
 	ids, err := c.allNodeChainIDs()
+	c.mu.Unlock()
 	if err != nil {
 		return CompactReport{}, err
 	}
-	plans := make(map[types.NodeID]entityPlan)
-	var maxBoundary types.Instant
-	for _, id := range ids {
+
+	var report CompactReport
+	haveWatermark := false
+	for start := 0; start < len(ids); start += compactionChunk {
 		if err := ctx.Err(); err != nil {
-			return CompactReport{}, err
+			return report, err
 		}
+		end := start + compactionChunk
+		if end > len(ids) {
+			end = len(ids)
+		}
+		chunk := ids[start:end]
+
+		chunkReport, chunkWatermark, ok, err := c.compactNodeChunk(chunk, policy, minTag, compactor)
+		// Fold the chunk's counts in regardless of err: a physical-write error
+		// partway through the chunk's apply loop does not undo the entities
+		// that already committed before it (each CompactNodeHistory call is
+		// its own atomic operation), so their counts must still be reported.
+		report.EntitiesCompacted += chunkReport.EntitiesCompacted
+		report.VersionsTrimmed += chunkReport.VersionsTrimmed
+		if ok {
+			report.Watermark = chunkWatermark
+			haveWatermark = true
+		}
+		if err != nil {
+			return report, err
+		}
+		if compactionChunkHook != nil {
+			compactionChunkHook()
+		}
+	}
+	if !haveWatermark {
+		report.Watermark = types.Instant(c.compactedThroughTx.Load())
+	}
+	return report, nil
+}
+
+// compactNodeChunk plans then applies ONE chunk of node IDs under a single
+// c.mu.Lock acquisition. ok is false when the chunk trimmed nothing (no
+// watermark advance to report).
+func (c *Core) compactNodeChunk(chunk []types.NodeID, policy RetentionPolicy, minTag types.Instant, compactor storepkg.HistoryCompactionCapability) (CompactReport, types.Instant, bool, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed.Load() {
+		return CompactReport{}, 0, false, ErrGraphClosed
+	}
+
+	now := c.now()
+	plans := make(map[types.NodeID]entityPlan, len(chunk))
+	var maxBoundary types.Instant
+	for _, id := range chunk {
 		plan, ok, err := c.planNodeCompaction(id, policy, now)
 		if err != nil {
-			return CompactReport{}, err
+			return CompactReport{}, 0, false, err
 		}
 		if !ok {
 			continue
 		}
 		boundary := types.Instant(plan.stub.LastTrimmedTxTo)
 		if minTag != 0 && minTag < boundary {
-			return CompactReport{}, ErrCompactionProtectedTag
+			// D2: partial commit — this chunk commits nothing, but prior
+			// chunks already committed stay committed.
+			return CompactReport{}, 0, false, ErrCompactionProtectedTag
 		}
 		if boundary > maxBoundary {
 			maxBoundary = boundary
@@ -563,42 +651,44 @@ func (a *AdminOps) CompactHistoryNodes(ctx context.Context, policy RetentionPoli
 		plans[id] = plan
 	}
 	if len(plans) == 0 {
-		return CompactReport{Watermark: types.Instant(c.compactedThroughTx.Load())}, nil
+		return CompactReport{}, 0, false, nil
 	}
 
 	newWatermark := types.Instant(c.compactedThroughTx.Load())
 	if maxBoundary > newWatermark {
 		newWatermark = maxBoundary
 	}
-	// Route the global watermark ONCE, BEFORE the per-entity trims (over-state =
-	// fail-closed; see advanceCompactionWatermark's SEAM note).
+	// Route the global watermark ONCE per chunk, BEFORE this chunk's per-entity
+	// trims (over-state = fail-closed; see advanceCompactionWatermark's SEAM note).
 	if err := c.advanceCompactionWatermark(newWatermark); err != nil {
-		return CompactReport{}, err
+		return CompactReport{}, 0, false, err
 	}
 
-	report := CompactReport{Watermark: newWatermark}
-	for _, id := range ids {
+	var report CompactReport
+	for _, id := range chunk {
 		plan, ok := plans[id]
 		if !ok {
 			continue
 		}
 		stubBytes, err := plan.stub.encode()
 		if err != nil {
-			return report, err
+			return report, newWatermark, true, err
 		}
 		writes := []storepkg.MetaWrite{
 			{Key: compactStubNodeKey(id), Value: stubBytes},
 		}
 		if err := compactor.CompactNodeHistory(id, plan.keepVersions, writes); err != nil {
-			return report, err
+			return report, newWatermark, true, err
 		}
 		report.EntitiesCompacted++
 		report.VersionsTrimmed += plan.trimmed
 	}
-	return report, nil
+	return report, newWatermark, true, nil
 }
 
-// CompactHistoryRels is the relationship mirror of CompactHistoryNodes.
+// CompactHistoryRels is the relationship mirror of CompactHistoryNodes,
+// including the same BACKLOG 13c chunked-lock, partial-commit-on-protected-tag,
+// and idempotent-resume semantics.
 func (a *AdminOps) CompactHistoryRels(ctx context.Context, policy RetentionPolicy) (CompactReport, error) {
 	c := a.c
 	if err := c.checkOpen(); err != nil {
@@ -609,35 +699,73 @@ func (a *AdminOps) CompactHistoryRels(ctx context.Context, policy RetentionPolic
 		return CompactReport{}, err
 	}
 
+	compactor := c.historyCompaction
+
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if c.closed.Load() {
+		c.mu.Unlock()
 		return CompactReport{}, ErrGraphClosed
 	}
-
-	compactor := c.historyCompaction
-	now := c.now()
-
 	ids, err := c.allRelChainIDs()
+	c.mu.Unlock()
 	if err != nil {
 		return CompactReport{}, err
 	}
-	plans := make(map[types.RelID]entityPlan)
-	var maxBoundary types.Instant
-	for _, id := range ids {
+
+	var report CompactReport
+	haveWatermark := false
+	for start := 0; start < len(ids); start += compactionChunk {
 		if err := ctx.Err(); err != nil {
-			return CompactReport{}, err
+			return report, err
 		}
+		end := start + compactionChunk
+		if end > len(ids) {
+			end = len(ids)
+		}
+		chunk := ids[start:end]
+
+		chunkReport, chunkWatermark, ok, err := c.compactRelChunk(chunk, policy, minTag, compactor)
+		report.EntitiesCompacted += chunkReport.EntitiesCompacted
+		report.VersionsTrimmed += chunkReport.VersionsTrimmed
+		if ok {
+			report.Watermark = chunkWatermark
+			haveWatermark = true
+		}
+		if err != nil {
+			return report, err
+		}
+		if compactionChunkHook != nil {
+			compactionChunkHook()
+		}
+	}
+	if !haveWatermark {
+		report.Watermark = types.Instant(c.compactedThroughTx.Load())
+	}
+	return report, nil
+}
+
+// compactRelChunk is the relationship mirror of compactNodeChunk.
+func (c *Core) compactRelChunk(chunk []types.RelID, policy RetentionPolicy, minTag types.Instant, compactor storepkg.HistoryCompactionCapability) (CompactReport, types.Instant, bool, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed.Load() {
+		return CompactReport{}, 0, false, ErrGraphClosed
+	}
+
+	now := c.now()
+	plans := make(map[types.RelID]entityPlan, len(chunk))
+	var maxBoundary types.Instant
+	for _, id := range chunk {
 		plan, ok, err := c.planRelCompaction(id, policy, now)
 		if err != nil {
-			return CompactReport{}, err
+			return CompactReport{}, 0, false, err
 		}
 		if !ok {
 			continue
 		}
 		boundary := types.Instant(plan.stub.LastTrimmedTxTo)
 		if minTag != 0 && minTag < boundary {
-			return CompactReport{}, ErrCompactionProtectedTag
+			return CompactReport{}, 0, false, ErrCompactionProtectedTag
 		}
 		if boundary > maxBoundary {
 			maxBoundary = boundary
@@ -645,39 +773,37 @@ func (a *AdminOps) CompactHistoryRels(ctx context.Context, policy RetentionPolic
 		plans[id] = plan
 	}
 	if len(plans) == 0 {
-		return CompactReport{Watermark: types.Instant(c.compactedThroughTx.Load())}, nil
+		return CompactReport{}, 0, false, nil
 	}
 
 	newWatermark := types.Instant(c.compactedThroughTx.Load())
 	if maxBoundary > newWatermark {
 		newWatermark = maxBoundary
 	}
-	// Route the global watermark ONCE, BEFORE the per-entity trims (over-state =
-	// fail-closed; see advanceCompactionWatermark's SEAM note).
 	if err := c.advanceCompactionWatermark(newWatermark); err != nil {
-		return CompactReport{}, err
+		return CompactReport{}, 0, false, err
 	}
 
-	report := CompactReport{Watermark: newWatermark}
-	for _, id := range ids {
+	var report CompactReport
+	for _, id := range chunk {
 		plan, ok := plans[id]
 		if !ok {
 			continue
 		}
 		stubBytes, err := plan.stub.encode()
 		if err != nil {
-			return report, err
+			return report, newWatermark, true, err
 		}
 		writes := []storepkg.MetaWrite{
 			{Key: compactStubRelKey(id), Value: stubBytes},
 		}
 		if err := compactor.CompactRelHistory(id, plan.keepVersions, writes); err != nil {
-			return report, err
+			return report, newWatermark, true, err
 		}
 		report.EntitiesCompacted++
 		report.VersionsTrimmed += plan.trimmed
 	}
-	return report, nil
+	return report, newWatermark, true, nil
 }
 
 // planNodeCompaction loads a node's history, runs the policy math, and builds
