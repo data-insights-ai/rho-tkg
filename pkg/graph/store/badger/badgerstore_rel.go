@@ -227,6 +227,52 @@ func (bs *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
 	return r.DeepCopy(), nil
 }
 
+// getRelInTxn is GetRelationship's body reading through an ALREADY-OPEN read
+// transaction instead of opening its own — used by RelsAsOf's single-transaction
+// bulk scan (BACKLOG 18k). Mirrors getNodeInTxn; see its doc comment. REQUIRES
+// the caller to hold bs.idxMu (at least RLock) for the entire surrounding scan.
+func (bs *Store) getRelInTxn(txn *badgerv4.Txn, rid types.RelID) (*types.Relationship, error) {
+	id := rid.SnowflakeID()
+	v, status := bs.relCache.Get(id)
+	switch status {
+	case indexpkg.CacheHit:
+		return v.DeepCopy(), nil
+	case indexpkg.CacheDeleted:
+		return nil, ErrRelNotFound
+	}
+
+	if _, exists := bs.relIDs[rid]; !exists {
+		return nil, ErrRelNotFound
+	}
+
+	item, err := txn.Get(storepkg.RelKey(id))
+	if err == badgerv4.ErrKeyNotFound {
+		return nil, ErrRelNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	var r *types.Relationship
+	if err := item.Value(func(val []byte) error {
+		var w storepkg.RelWire
+		if err := storepkg.SafeUnmarshal(val, &w); err != nil {
+			return fmt.Errorf("graph: unmarshal relationship: %w", err)
+		}
+		decoded, err := bs.decodeRelWireForKey(w, id)
+		if err != nil {
+			return fmt.Errorf("graph: decode relationship: %w", err)
+		}
+		r = decoded
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	r.Freeze()
+	bs.relCache.LoadClean(id, r)
+	return r.DeepCopy(), nil
+}
+
 // ReplaceRelationship overwrites an existing relationship's data in-place.
 // Returns ErrRelNotFound if the relationship does not exist.
 // No index changes — type and endpoints are immutable after creation.

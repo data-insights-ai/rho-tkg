@@ -2118,6 +2118,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   concurrently being modified by an unrelated in-flight fix in the same session — confirmed unrelated by
   file-level diff inspection). This closes out BACKLOG 10 (Bitemporal resolution engine hardening) —
   no items remain.
+- PERF FIX — BACKLOG 18k: `NodesAsOf`/`RelsAsOf` (`store/badger/badgerstore_txtime.go`) called
+  `NodeAsOf`/`RelAsOf` once per entity, and EACH call could open up to two INDEPENDENT
+  `bs.db.View(...)` transactions — the current-row arm (cache-aware, often free on a warm graph) and
+  the history-reverse-scan arm (`reverseScanHistoryVersion`, ALWAYS opens a fresh transaction since
+  history rows are never cache-backed). For a graph-wide scan over N entities, that's N fresh
+  transactions purely for the history arm, each paying badger's `oracle.readTs()` lock + `WaitForMark`.
+  Fixed by wrapping the whole scan in ONE `bs.db.View`: added transaction-scoped sibling functions
+  (`getNodeInTxn`/`getRelInTxn`, `reverseScanHistoryVersionInTxn`, `nodeAsOfInTxn`/`relAsOfInTxn`) so
+  `NodesAsOf`/`RelsAsOf` do their whole scan inside one shared transaction, while the general-purpose
+  `GetNode`/`GetRelationship`/`reverseScanHistoryVersion`/`NodeAsOf`/`RelAsOf` (used by ~110 other call
+  sites) are completely untouched. **A real gap the design pass did not anticipate, found by testing**:
+  batching into one transaction alone does NOT deliver single-snapshot consistency, because
+  `getNodeInTxn`'s cache-hit fast path reads the live, non-transactional node cache, which a concurrent
+  writer mutates OUTSIDE the transaction's isolation — a scan could still tear across entities. Fixed by
+  holding `bs.idxMu.RLock()` for the entire Phase-2 scan duration, fully excluding concurrent writers
+  (every writer already takes `idxMu.Lock()` around both cache mutation and the pending-buffer append)
+  — an explicit, documented trade appropriate for this bulk/infrequent door, giving a bulk `NodesAsOf`
+  query with a future pin a genuinely CONSISTENT snapshot (a concurrent write landing mid-scan is
+  uniformly invisible to the whole result) rather than the prior undefined per-entity-torn behavior —
+  the decision to adopt single-snapshot consistency for future pins over preserving that undefined
+  behavior was made explicitly rather than left as an accidental side effect. Added
+  `badgerstore_asof_bulk_txn_equivalence_test.go` (`TestNodesAsOfSingleTxnEquivalence`/
+  `TestRelsAsOfSingleTxnEquivalence`: multiset equivalence across the old per-entity-loop path, the new
+  single-txn path, and the canonical `SelectAsOf` oracle, 320+ entities, `HistoryDeltaEncoding` on and
+  off) and `badgerstore_asof_bulk_txn_concurrent_test.go` (`TestNodesAsOf_SingleSnapshotConsistencyUnderConcurrentWrite`:
+  60 trials racing a real writer against a real scan, asserting the writer's known commit order is
+  never observed non-monotonically). The existing `TestBadgerNodeAsOfEquivalentToSelectAsOf` oracle
+  (guarding `NodeAsOf`/`RelAsOf` themselves, untouched by this change) stays green. Confirmed load-
+  bearing: reverting the `idxMu.RLock()` hold reliably reproduces torn views under the concurrent test.
+  `go build`/`go vet` clean; `store/badger` and `internal/core` package suites green under `-race`;
+  full-repo `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

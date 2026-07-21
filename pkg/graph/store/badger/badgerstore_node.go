@@ -154,6 +154,69 @@ func (bs *Store) GetNode(nid types.NodeID) (*types.Node, error) {
 	return n.DeepCopy(), nil
 }
 
+// getNodeInTxn is GetNode's body reading through an ALREADY-OPEN read
+// transaction instead of opening its own — used by NodesAsOf's single-transaction
+// bulk scan (BACKLOG 18k). Cache-first identically to GetNode: a cache hit or the
+// nodeIDs existence short-circuit costs nothing extra from batching, since only
+// the badger fallback read benefits from the shared txn. Do not use this for any
+// caller outside a bulk scan already holding a txn — GetNode remains the public,
+// self-transacting door for the ~110 other call sites.
+//
+// REQUIRES the caller to hold bs.idxMu (at least RLock) for the caller's ENTIRE
+// surrounding scan, not just this call — single-snapshot consistency (the
+// documented NodesAsOf/RelsAsOf contract) needs BOTH no writer mutating the
+// cache mid-scan (idxMu exclusion — every writer takes idxMu.Lock() around its
+// cache.Put(), see badgerstore_flush.go's lock-ordering note) AND badger's own
+// MVCC snapshot for the persisted-state fallback; the cache read alone is NOT
+// covered by the badger transaction's isolation, so without the caller's idxMu
+// hold a concurrent write could tear the scan (some entities pre-write, others
+// post-write, within one NodesAsOf call) despite the shared transaction. This
+// function does NOT take idxMu itself — doing so would self-deadlock once a
+// writer is queued behind the caller's outer hold (sync.RWMutex is not
+// reentrant: a writer waiting on the outer RLock blocks this function's own
+// RLock attempt too, per lesson 9).
+func (bs *Store) getNodeInTxn(txn *badgerv4.Txn, nid types.NodeID) (*types.Node, error) {
+	id := nid.SnowflakeID()
+	v, status := bs.nodeCache.Get(id)
+	switch status {
+	case indexpkg.CacheHit:
+		return v.DeepCopy(), nil
+	case indexpkg.CacheDeleted:
+		return nil, ErrNodeNotFound
+	}
+
+	if _, exists := bs.nodeIDs[nid]; !exists {
+		return nil, ErrNodeNotFound
+	}
+
+	item, err := txn.Get(storepkg.NodeKey(id))
+	if err == badgerv4.ErrKeyNotFound {
+		return nil, ErrNodeNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	var n *types.Node
+	if err := item.Value(func(val []byte) error {
+		var w storepkg.NodeWire
+		if err := storepkg.SafeUnmarshal(val, &w); err != nil {
+			return fmt.Errorf("graph: unmarshal node: %w", err)
+		}
+		decoded, err := bs.decodeNodeWireForKey(w, id)
+		if err != nil {
+			return fmt.Errorf("graph: decode node: %w", err)
+		}
+		n = decoded
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	n.Freeze()
+	bs.nodeCache.LoadClean(id, n)
+	return n.DeepCopy(), nil
+}
+
 // NodeIntegrityHash returns a live node's integrity hash without exposing or
 // defensive-copying the whole node value.
 func (bs *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
