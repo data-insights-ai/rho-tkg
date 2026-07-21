@@ -619,6 +619,18 @@ type Store struct {
 	// Temporal indexes — in-memory only. Label tokens persisted, data rebuilt on startup.
 	temporalIndexes map[uint16]*indexpkg.TemporalIndex
 
+	// Relationship-type temporal indexes (BACKLOG 21c) — the rel-side mirror of
+	// temporalIndexes, keyed by rel-type token in its own independent map (a
+	// label token and a rel-type token are different registries and may
+	// numerically collide). Deliberately RAM-only and NOT persisted across
+	// reopen — no definitions record, no loadIndexes rebuild — unlike
+	// temporalIndexes/relPropertyIndexes. Safe: PruneRelTypeTemporalCandidates
+	// is a sound-superset optimization, so a reopened store simply starts
+	// unaccelerated for rel-type temporal queries until CreateRelTemporal is
+	// called again; no query ever returns a wrong answer as a result. See
+	// CHANGELOG BACKLOG 21c for the scope rationale.
+	relTypeTemporalIndexes map[uint16]*indexpkg.TemporalIndex
+
 	// Index-rebuild diagnostics — record count of node entries that the
 	// loadIndexes pass tolerated as missing/corrupt. Surfaced via
 	// IndexRebuildStats so operators can detect partially rebuilt indexes
@@ -873,6 +885,7 @@ func New(cfg Config) (*Store, error) {
 		propertyStats:           make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyStatsAccumulator),
 		relPropertyStats:        make(map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyStatsAccumulator),
 		temporalIndexes:         make(map[uint16]*indexpkg.TemporalIndex),
+		relTypeTemporalIndexes:  make(map[uint16]*indexpkg.TemporalIndex),
 		hfIndexes:               make(map[uint16]*indexpkg.HighFrequencyIndex),
 		vectorIndexes:           make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex),
 		inMemory:                cfg.InMemory,
@@ -1948,6 +1961,7 @@ func (bs *Store) Clear() error {
 	bs.compositeIndexes = make(map[indexpkg.CompositeIndexKey]*indexpkg.CompositePropertyIndex)
 	bs.compositeIndexesByLabel = make(map[uint16][]indexpkg.CompositeIndexKey)
 	bs.temporalIndexes = make(map[uint16]*indexpkg.TemporalIndex)
+	bs.relTypeTemporalIndexes = make(map[uint16]*indexpkg.TemporalIndex)
 	bs.hfIndexes = make(map[uint16]*indexpkg.HighFrequencyIndex)
 	bs.vectorIndexes = make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex)
 

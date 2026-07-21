@@ -88,6 +88,11 @@ type Core struct {
 	// support), so the query resolves every candidate (correct, unaccelerated).
 	// Sound for any store: an id the index does not cover is never pruned.
 	temporalCandidates storepkg.TemporalCandidateCapability
+	// relTypeTemporalCandidates — BACKLOG 21c, the rel-type-keyed mirror of
+	// temporalCandidates. nil = store declines (tiered, sharded today), so the
+	// rel-by-type temporal query resolves every candidate (correct,
+	// unaccelerated). Same sound-superset contract.
+	relTypeTemporalCandidates storepkg.RelTypeTemporalCandidateCapability
 	// preEncodedPut — ADR-0006 §4.5 Scenario B: the ingest applier hands the
 	// store a v2 entity-row wire pre-encoded on the producer thread (tail patched
 	// with the stamped TxFrom) instead of a second msgpack pass. nil = store
@@ -1592,6 +1597,7 @@ func New(config Config) (*Core, error) {
 	// exact-native-store guard — a plain probe admits memory/badger now and
 	// tiered/sharded once they implement it.
 	c.temporalCandidates, _ = store.(storepkg.TemporalCandidateCapability)
+	c.relTypeTemporalCandidates, _ = store.(storepkg.RelTypeTemporalCandidateCapability)
 	// Metadata facet: bare optional-capability probes, resolved once (byte-for-byte
 	// equal to the former per-site `_, ok := c.store.(X)` since store is immutable).
 	c.metaKV, _ = store.(storepkg.MetaKVCapability)

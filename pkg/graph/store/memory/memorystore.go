@@ -133,6 +133,12 @@ type Store struct {
 	// Temporal indexes — labelToken → interval index for temporal push-down.
 	temporalIndexes map[uint16]*indexpkg.TemporalIndex
 
+	// Relationship-type temporal indexes (BACKLOG 21c) — relType → interval
+	// index, the rel-side mirror of temporalIndexes. Independent map: a
+	// label token and a rel-type token are different registries and may
+	// numerically collide, so these must never share temporalIndexes.
+	relTypeTemporalIndexes map[uint16]*indexpkg.TemporalIndex
+
 	// High-frequency indexes — labelToken → time-bucketed index for O(1) insertion.
 	// Separate map from temporalIndexes; only one type can exist per label at a time.
 	hfIndexes map[uint16]*indexpkg.HighFrequencyIndex
@@ -277,6 +283,9 @@ func (ms *Store) ensureInitialized() {
 		if ms.temporalIndexes == nil {
 			ms.temporalIndexes = make(map[uint16]*indexpkg.TemporalIndex)
 		}
+		if ms.relTypeTemporalIndexes == nil {
+			ms.relTypeTemporalIndexes = make(map[uint16]*indexpkg.TemporalIndex)
+		}
 		if ms.hfIndexes == nil {
 			ms.hfIndexes = make(map[uint16]*indexpkg.HighFrequencyIndex)
 		}
@@ -328,6 +337,7 @@ func (ms *Store) Clear() error {
 	ms.relPropertyKeyCounts = make(map[uint16]map[string]int)
 	ms.relPropertyStats = make(map[uint16]map[string]*indexpkg.PropertyStatsAccumulator)
 	ms.temporalIndexes = make(map[uint16]*indexpkg.TemporalIndex)
+	ms.relTypeTemporalIndexes = make(map[uint16]*indexpkg.TemporalIndex)
 	ms.hfIndexes = make(map[uint16]*indexpkg.HighFrequencyIndex)
 	ms.vectorIndexes = make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex)
 	ms.docColumns = make(map[uint16]*indexpkg.LabelDocValues)

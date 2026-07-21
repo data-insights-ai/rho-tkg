@@ -575,6 +575,78 @@ func (ms *Store) DropTemporalIndex(labelToken uint16) error {
 	return nil
 }
 
+// --- Relationship-type temporal indexes (BACKLOG 21c) ---
+
+// CreateRelTemporalIndex creates a temporal interval index on relationships with
+// the given rel-type token. Scans existing relationships of that type to
+// populate the index. Returns ErrTemporalIndexExists if an index already
+// exists for this rel type. The rel-side mirror of CreateTemporalIndex — see
+// that method's doc comment for the envelope-fold rationale.
+func (ms *Store) CreateRelTemporalIndex(relType uint16) error {
+	if ms == nil {
+		return ErrNilStore
+	}
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateRelTypeToken(relType); err != nil {
+		return err
+	}
+
+	if _, exists := ms.relTypeTemporalIndexes[relType]; exists {
+		return ErrTemporalIndexExists
+	}
+
+	ti := indexpkg.NewTemporalIndex()
+	if relIDs, ok := ms.typeIdx[relType]; ok {
+		for relID := range relIDs {
+			r := ms.rels[relID]
+			if r == nil {
+				continue
+			}
+			rawID := relID.SnowflakeID()
+			from, to := indexpkg.RelTemporalBounds(rawID, r.Temporal())
+			ti.Extend(rawID, from, to)
+			for _, hv := range ms.relHistory[relID] {
+				if hv == nil {
+					continue
+				}
+				hf, ht := indexpkg.RelTemporalBounds(rawID, hv.Temporal())
+				ti.Extend(rawID, hf, ht)
+			}
+		}
+	}
+
+	ms.relTypeTemporalIndexes[relType] = ti
+	return nil
+}
+
+// DropRelTemporalIndex removes a rel-type temporal index.
+// Returns ErrTemporalIndexNotFound if no index exists.
+func (ms *Store) DropRelTemporalIndex(relType uint16) error {
+	if ms == nil {
+		return ErrNilStore
+	}
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	if err := ms.checkOpenLocked(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateRelTypeToken(relType); err != nil {
+		return err
+	}
+
+	if _, exists := ms.relTypeTemporalIndexes[relType]; !exists {
+		return ErrTemporalIndexNotFound
+	}
+	delete(ms.relTypeTemporalIndexes, relType)
+	return nil
+}
+
 // --- High-frequency indexes ---
 
 // CreateHighFrequencyIndex creates a time-bucketed high-frequency index on

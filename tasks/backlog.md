@@ -156,11 +156,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 Collected here from "missing feature" notes scattered across the subsystem audits — all rho-tkg-owned,
 none sigma's:
 
-- **21c. No `RelTypeTemporalCandidateCapability` mirror of the node-side B4 prune capability** — the
-  store contract's `PruneTemporalCandidates` is typed to `types.NodeID` only, so `relsByTypeLocked`
-  can never get B4 acceleration unlike `nodesByLabelLocked`. Independently found from the query-door
-  wiring angle too: `ByType`-with-property doors (`temporal_queries.go`) structurally cannot prune at
-  all for exactly this reason, unlike their `ByLabel` node-side siblings.
 - **21g. Badger backend: no zero-copy ownership-transfer cache path (`freezeRelForCache`) for bulk
   relationship writes, unlike nodes' `freezeNodeForCache`/`PutNodesBatchOwnedPreEncoded`** — the
   public `PreEncodedPutCapability` contract is explicitly node-scoped by design (ADR-0006 §4.5), so

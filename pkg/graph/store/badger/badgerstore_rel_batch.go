@@ -133,6 +133,7 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		bs.setRelValidStampLocked(rd.rid, r) // inline valid-time stamp
 		bs.recordRelTypeMemberLocked(r)      // transaction-time rel-type membership
 		bs.maintainRelPropertyIndexesAdd(r, rd.id)
+		bs.maintainRelTypeTemporalIndexesAdd(r, rd.id) // BACKLOG 21c
 		bs.addRelPropertyTypeClassCounts(r)
 		bs.addRelPropertyStatsCounts(r)
 

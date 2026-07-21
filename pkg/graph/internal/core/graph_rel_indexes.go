@@ -90,6 +90,81 @@ func (i *IndexOps) DeleteRelProperty(typeName, propertyKey string) error {
 	})
 }
 
+// --- Relationship-type temporal indexes (BACKLOG 21c) ---
+//
+// The relationship mirror of graph_indexes.go's CreateTemporal / DeleteTemporal,
+// keyed by rel type instead of label. Backed by the optional
+// store.RelTypeTemporalIndexCapability. Native memory/badger implement it;
+// tiered/sharded decline (mirroring the BACKLOG 20g precedent for tiered
+// rel-side capability declines), so CreateRelTemporal returns
+// storepkg.ErrCapabilityNotSupported there.
+
+// CreateRelTemporal creates a temporal interval index on relationships with the
+// given rel type. Resolves or creates the rel-type token so the index applies
+// to future matching relationships. Returns storepkg.ErrTemporalIndexExists if
+// an index already exists for this rel type.
+func (i *IndexOps) CreateRelTemporal(typeName string) error {
+	c := i.c
+	if err := c.checkWritable(); err != nil {
+		return err
+	}
+	return c.readUnderRLock(func() error {
+		if err := c.validateIndexName(typeName); err != nil {
+			return err
+		}
+		cap, err := c.relTypeTemporalIndexCap()
+		if err != nil {
+			return err
+		}
+		tok, snapshot, allocated, err := c.getOrCreateRelTypeWithSnapshot(typeName)
+		if err != nil {
+			return err
+		}
+		typeFinished := false
+		defer func() {
+			if !typeFinished {
+				_ = c.restoreNewRelTypeIndexOnError(snapshot, allocated, typeName,
+					fmt.Errorf("panic during relationship temporal index create"),
+					func() error { return cap.DropRelTemporalIndex(tok) },
+					storepkg.ErrTemporalIndexNotFound,
+					storepkg.ErrTemporalIndexExists,
+				)
+			}
+		}()
+		err = c.restoreNewRelTypeIndexOnError(snapshot, allocated, typeName,
+			cap.CreateRelTemporalIndex(tok),
+			func() error { return cap.DropRelTemporalIndex(tok) },
+			storepkg.ErrTemporalIndexNotFound,
+			storepkg.ErrTemporalIndexExists,
+		)
+		typeFinished = true
+		return err
+	})
+}
+
+// DeleteRelTemporal removes a temporal index for the given rel type.
+// Returns storepkg.ErrTemporalIndexNotFound if the index does not exist.
+func (i *IndexOps) DeleteRelTemporal(typeName string) error {
+	c := i.c
+	if err := c.checkWritable(); err != nil {
+		return err
+	}
+	return c.readUnderRLock(func() error {
+		if err := c.validateIndexName(typeName); err != nil {
+			return err
+		}
+		tok, ok := c.relTypes.Lookup(typeName)
+		if !ok {
+			return storepkg.ErrTemporalIndexNotFound
+		}
+		cap, err := c.relTypeTemporalIndexCap()
+		if err != nil {
+			return err
+		}
+		return cap.DropRelTemporalIndex(tok)
+	})
+}
+
 // restoreNewRelTypeIndexOnError is the rel-type mirror of
 // restoreNewLabelIndexOnError — it reconciles a freshly-allocated rel-type
 // token with the outcome of the index create it was allocated for. On success

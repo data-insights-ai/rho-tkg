@@ -718,6 +718,28 @@ type TemporalCandidateCapability interface {
 	PruneTemporalCandidates(labelToken uint16, ids []types.NodeID, opts QueryOpts) (kept []types.NodeID, ok bool)
 }
 
+// RelTypeTemporalIndexCapability is OPTIONAL — the relationship-type mirror of
+// TemporalIndexCapability (BACKLOG 21c), keyed by rel-type token instead of
+// label token, in its own independent index namespace.
+type RelTypeTemporalIndexCapability interface {
+	CreateRelTemporalIndex(relType uint16) error
+	DropRelTemporalIndex(relType uint16) error
+}
+
+// RelTypeTemporalCandidateCapability is OPTIONAL (B4 rel-side mirror,
+// BACKLOG 21c). It lets the graph layer prune a temporal query's candidate
+// relationship-ID set against the per-rel-type valid-time ENVELOPE index, the
+// same sound-superset contract as TemporalCandidateCapability: an id the
+// index does not cover is always kept, so an incomplete index costs pruning
+// recall, never correctness.
+type RelTypeTemporalCandidateCapability interface {
+	// PruneRelTypeTemporalCandidates returns the subset of ids that may still
+	// satisfy the valid-time filter in opts. ok is false when no temporal index
+	// covers relType or opts carries no valid-time filter — the caller then
+	// keeps ids unchanged.
+	PruneRelTypeTemporalCandidates(relType uint16, ids []types.RelID, opts QueryOpts) (kept []types.RelID, ok bool)
+}
+
 // VectorIndexCapability is OPTIONAL. The reference implementation is a
 // brute-force in-memory k-NN. Backends backed by a remote vector store
 // should plug in here without having to implement the rest of Store.

@@ -72,6 +72,7 @@ func (ms *Store) PutRelationship(r *types.Relationship) error {
 	indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID()) // K3b
 	ms.adjustRelPropertyTypeClassCounts(r, 1)
 	ms.adjustRelPropertyKeyCounts(r, 1)
+	indexpkg.AddRelToTemporalIndexes(ms.relTypeTemporalIndexes, r, id.SnowflakeID()) // BACKLOG 21c
 	return ms.logRelPutLocked(r, false)
 }
 
@@ -152,6 +153,7 @@ func (ms *Store) PutRelationshipGeneratedIDWithEndpointHashes(r *types.Relations
 	indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID()) // K3b
 	ms.adjustRelPropertyTypeClassCounts(r, 1)
 	ms.adjustRelPropertyKeyCounts(r, 1)
+	indexpkg.AddRelToTemporalIndexes(ms.relTypeTemporalIndexes, r, id.SnowflakeID()) // BACKLOG 21c
 	if err := ms.logRelPutLocked(r, false); err != nil {
 		return "", "", err
 	}
@@ -212,10 +214,12 @@ func (ms *Store) ReplaceRelationship(r *types.Relationship) error {
 	indexpkg.RemoveRelFromPropertyIndexes(ms.relPropertyIndexes, old, id.SnowflakeID())
 	ms.adjustRelPropertyTypeClassCounts(old, -1)
 	ms.adjustRelPropertyKeyCounts(old, -1)
+	indexpkg.RemoveRelFromTemporalIndexes(ms.relTypeTemporalIndexes, old, id.SnowflakeID()) // BACKLOG 21c
 	ms.rels[id] = freezeRelCopy(r)
 	indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID())
 	ms.adjustRelPropertyTypeClassCounts(r, 1)
 	ms.adjustRelPropertyKeyCounts(r, 1)
+	indexpkg.AddRelToTemporalIndexes(ms.relTypeTemporalIndexes, r, id.SnowflakeID()) // BACKLOG 21c
 	return ms.logRelPutLocked(r, false)
 }
 
@@ -279,6 +283,7 @@ func (ms *Store) deleteRelLocked(id types.RelID) error {
 	indexpkg.RemoveRelFromPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID()) // K3b
 	ms.adjustRelPropertyTypeClassCounts(r, -1)
 	ms.adjustRelPropertyKeyCounts(r, -1)
+	indexpkg.RemoveRelFromTemporalIndexes(ms.relTypeTemporalIndexes, r, id.SnowflakeID()) // BACKLOG 21c
 	delete(ms.rels, id)
 	return nil
 }
@@ -713,6 +718,7 @@ func (ms *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID()) // K3b
 		ms.adjustRelPropertyTypeClassCounts(r, 1)
 		ms.adjustRelPropertyKeyCounts(r, 1)
+		indexpkg.AddRelToTemporalIndexes(ms.relTypeTemporalIndexes, r, id.SnowflakeID()) // BACKLOG 21c
 		if err := ms.logRelPutLocked(r, false); err != nil {
 			return err
 		}

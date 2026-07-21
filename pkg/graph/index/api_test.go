@@ -27,6 +27,8 @@ func TestAPINilReceiversReturnErrNilGraphOrNil(t *testing.T) {
 		{name: "DropHighFrequency", run: func() error { return nilAPI.DeleteHighFrequency("Node") }},
 		{name: "CreateTemporal", run: func() error { return nilAPI.CreateTemporal("Node") }},
 		{name: "DropTemporal", run: func() error { return nilAPI.DeleteTemporal("Node") }},
+		{name: "CreateRelTemporal", run: func() error { return nilAPI.CreateRelTemporal("KNOWS") }},
+		{name: "DeleteRelTemporal", run: func() error { return nilAPI.DeleteRelTemporal("KNOWS") }},
 		{name: "CreateVector", run: func() error { return nilAPI.CreateVector("Node", "embedding", 3, storepkg.DistanceCosine) }},
 		{name: "CreateVectorWithOptions", run: func() error {
 			return nilAPI.CreateVectorWithOptions("Node", "embedding", 3, storepkg.DistanceCosine, storepkg.VectorIndexOptions{UseBruteForce: true})
@@ -93,6 +95,8 @@ func TestAPIForwardsMethodsAndErrors(t *testing.T) {
 		{name: "DropHighFrequency", run: func() error { return api.DeleteHighFrequency("Node") }},
 		{name: "CreateTemporal", run: func() error { return api.CreateTemporal("Node") }},
 		{name: "DropTemporal", run: func() error { return api.DeleteTemporal("Node") }},
+		{name: "CreateRelTemporal", run: func() error { return api.CreateRelTemporal("KNOWS") }},
+		{name: "DeleteRelTemporal", run: func() error { return api.DeleteRelTemporal("KNOWS") }},
 		{name: "CreateVector", run: func() error { return api.CreateVector("Node", "embedding", 3, storepkg.DistanceEuclidean) }},
 		{name: "CreateVectorWithOptions", run: func() error {
 			return api.CreateVectorWithOptions("Node", "embedding", 3, storepkg.DistanceCosine, storepkg.VectorIndexOptions{UseBruteForce: true, M: 8})
@@ -131,7 +135,7 @@ func TestAPIForwardsMethodsAndErrors(t *testing.T) {
 
 	wantCalls := []string{
 		"CreateProperty", "DropProperty", "CreateComposite", "DeleteComposite", "CreateHighFrequency", "DropHighFrequency",
-		"CreateTemporal", "DropTemporal", "CreateVector", "CreateVectorWithOptions", "DropVector",
+		"CreateTemporal", "DropTemporal", "CreateRelTemporal", "DeleteRelTemporal", "CreateVector", "CreateVectorWithOptions", "DropVector",
 		"RegisterProvider", "UnregisterProvider",
 		"SearchNearest", "HasProperty", "HasRelProperty", "HasTemporal", "VectorIndexInfo", "Providers", "Providers",
 	}
@@ -251,6 +255,16 @@ func (s *indexOpsSpy) DeleteTemporal(label string) error {
 func (s *indexOpsSpy) HasTemporal(label string) (bool, error) {
 	s.record("HasTemporal")
 	return false, s.err
+}
+
+func (s *indexOpsSpy) CreateRelTemporal(typeName string) error {
+	s.record("CreateRelTemporal")
+	return s.err
+}
+
+func (s *indexOpsSpy) DeleteRelTemporal(typeName string) error {
+	s.record("DeleteRelTemporal")
+	return s.err
 }
 
 func (s *indexOpsSpy) CreateVector(label, propertyKey string, dims int, metric storepkg.DistanceMetric) error {

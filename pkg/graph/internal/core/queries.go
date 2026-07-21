@@ -578,27 +578,43 @@ func (c *Core) relsByTypeLocked(typeName string, opts storepkg.QueryOpts) ([]*ty
 		return nil, err
 	}
 
+	// scope the candidate set to the type's ever-members when the store owns
+	// the transaction-time rel-type-membership sidecar (see nodesByLabelLocked).
+	var candIDs []types.RelID
+	gather := func(id types.RelID) error {
+		candIDs = append(candIDs, id)
+		return nil
+	}
+	if c.relTypeTxMembers != nil {
+		if err := c.forEachRelTypeTxCandidate(tok, currentIDs, opts, gather); err != nil {
+			return nil, err
+		}
+	} else if err := c.forEachRelCandidateIDByDepth(currentIDs, opts.Depth, gather); err != nil {
+		return nil, err
+	}
+
+	// BACKLOG 21c: when the store owns a per-rel-type valid-time ENVELOPE
+	// index, drop every candidate whose envelope provably cannot overlap the
+	// query's valid-time filter — the rel-side mirror of the temporalCandidates
+	// prune in nodesByLabelLocked. Sound superset: a kept id may still be
+	// rejected by the resolver, a pruned id never could have matched.
+	if c.relTypeTemporalCandidates != nil {
+		if kept, ok := c.relTypeTemporalCandidates.PruneRelTypeTemporalCandidates(tok, candIDs, opts); ok {
+			candIDs = kept
+		}
+	}
+
 	var result []*types.Relationship
 	pred := func(r *types.Relationship) bool { return r.HasTypeTokenRaw(tok) }
-	collect := func(id types.RelID) error {
+	for _, id := range candIDs {
 		r, err := c.findRelVersionForOpts(id, opts, pred)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
-				return nil
+				continue
 			}
-			return err
-		}
-		result = append(result, r)
-		return nil
-	}
-	// scope the candidate set to the type's ever-members when the store owns
-	// the transaction-time rel-type-membership sidecar (see nodesByLabelLocked).
-	if c.relTypeTxMembers != nil {
-		if err := c.forEachRelTypeTxCandidate(tok, currentIDs, opts, collect); err != nil {
 			return nil, err
 		}
-	} else if err := c.forEachRelCandidateIDByDepth(currentIDs, opts.Depth, collect); err != nil {
-		return nil, err
+		result = append(result, r)
 	}
 	storeutil.SortRelsByID(result)
 	result = storeutil.PaginateRels(result, opts.After, opts.Limit)

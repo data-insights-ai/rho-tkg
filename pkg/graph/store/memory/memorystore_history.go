@@ -797,11 +797,13 @@ func (ms *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion 
 	indexpkg.RemoveRelFromPropertyIndexes(ms.relPropertyIndexes, old, id.SnowflakeID())
 	ms.adjustRelPropertyTypeClassCounts(old, -1)
 	ms.adjustRelPropertyKeyCounts(old, -1)
+	indexpkg.RemoveRelFromTemporalIndexes(ms.relTypeTemporalIndexes, old, id.SnowflakeID()) // BACKLOG 21c
 	// Replace current entity.
 	ms.rels[id] = freezeRelCopy(current)
 	indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, current, id.SnowflakeID())
 	ms.adjustRelPropertyTypeClassCounts(current, 1)
 	ms.adjustRelPropertyKeyCounts(current, 1)
+	indexpkg.AddRelToTemporalIndexes(ms.relTypeTemporalIndexes, current, id.SnowflakeID()) // BACKLOG 21c
 	return ms.logRelPutLocked(current, true)
 }
 

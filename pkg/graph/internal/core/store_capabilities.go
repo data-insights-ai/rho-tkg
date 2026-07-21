@@ -77,6 +77,14 @@ func (c *Core) temporalIndexCap() (storepkg.TemporalIndexCapability, error) {
 	return cap, nil
 }
 
+func (c *Core) relTypeTemporalIndexCap() (storepkg.RelTypeTemporalIndexCapability, error) {
+	cap, ok := c.store.(storepkg.RelTypeTemporalIndexCapability)
+	if !ok {
+		return nil, fmt.Errorf("%w: RelTypeTemporalIndexCapability", storepkg.ErrCapabilityNotSupported)
+	}
+	return cap, nil
+}
+
 func (c *Core) vectorIndexCap() (storepkg.VectorIndexCapability, error) {
 	cap, ok := c.store.(storepkg.VectorIndexCapability)
 	if !ok {

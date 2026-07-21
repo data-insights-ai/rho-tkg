@@ -30,6 +30,8 @@ type Ops interface {
 	CreateTemporal(label string) error
 	DeleteTemporal(label string) error
 	HasTemporal(label string) (bool, error)
+	CreateRelTemporal(typeName string) error
+	DeleteRelTemporal(typeName string) error
 	CreateVector(label, propertyKey string, dims int, metric storepkg.DistanceMetric) error
 	CreateVectorWithOptions(label, propertyKey string, dims int, metric storepkg.DistanceMetric, opts storepkg.VectorIndexOptions) error
 	DeleteVector(label, propertyKey string) error
@@ -224,6 +226,26 @@ func (a *API) HasTemporal(label string) (bool, error) {
 		return false, err
 	}
 	return ops.HasTemporal(label)
+}
+
+// CreateRelTemporal creates a temporal interval index on relationships with
+// the given rel type (BACKLOG 21c). Returns storepkg.ErrCapabilityNotSupported
+// on stores that decline the capability (tiered, sharded).
+func (a *API) CreateRelTemporal(typeName string) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.CreateRelTemporal(typeName)
+}
+
+// DeleteRelTemporal drops a relationship-type temporal interval index.
+func (a *API) DeleteRelTemporal(typeName string) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.DeleteRelTemporal(typeName)
 }
 
 // CreateVector creates a vector (kNN) index. Existing indexed vectors with

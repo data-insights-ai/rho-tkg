@@ -74,11 +74,13 @@ func (bs *Store) ReplaceRelWithHistory(current *types.Relationship, prevVersion 
 
 	// Refresh the rel property index (property values may have changed).
 	bs.maintainRelPropertyIndexesRemove(old, id)
+	bs.maintainRelTypeTemporalIndexesRemove(old, id) // BACKLOG 21c
 	bs.removeRelPropertyTypeClassCountsByID(id, old.TypeToken().Value())
 	bs.removeRelPropertyStatsCountsByID(id, old.TypeToken().Value())
 	bs.relCache.Put(id, freezeRelCopy(current))
 	bs.bumpRelRevLocked(rid) // this door always re-reads via getRelLocked above, but must still bump so a concurrent ReplaceRelationship's prefetch detects this write (BACKLOG 18b)
 	bs.maintainRelPropertyIndexesAdd(current, id)
+	bs.maintainRelTypeTemporalIndexesAdd(current, id) // BACKLOG 21c
 	bs.addRelPropertyTypeClassCounts(current)
 	bs.addRelPropertyStatsCounts(current)
 	// Refresh the inline valid-time stamp — a history version-close moves

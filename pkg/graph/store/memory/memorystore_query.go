@@ -159,15 +159,43 @@ func (ms *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Rel
 		return nil, nil
 	}
 
+	// Temporal index fast path (BACKLOG 21c, the rel-side mirror of the
+	// NodesByLabel block above): use the rel-type interval index when one
+	// exists and a temporal filter is set. Authoritative — like the node
+	// side, nil means 0 matches, not "index not consulted."
+	if ti, ok := ms.relTypeTemporalIndexes[token]; ok {
+		var rawIDs []snowflake.ID
+		temporalQuery := false
+		if opts.ValidAt != 0 {
+			rawIDs = ti.QueryAt(opts.ValidAt)
+			temporalQuery = true
+		} else if opts.ValidStart > 0 && opts.ValidEnd > 0 {
+			rawIDs = ti.QueryOverlap(opts.ValidStart, opts.ValidEnd)
+			temporalQuery = true
+		}
+		if temporalQuery {
+			if len(rawIDs) == 0 {
+				return nil, nil
+			}
+			ids := storepkg.ToRelIDs(rawIDs)
+			storepkg.SortRelIDs(ids)
+			return ms.relationshipsByTypeFromIDs(token, ids, opts), nil
+		}
+	}
+
 	ids := make([]types.RelID, 0, len(set))
 	for id := range set {
 		ids = append(ids, id)
 	}
 	storepkg.SortRelIDs(ids)
 
+	return ms.relationshipsByTypeFromIDs(token, ids, opts), nil
+}
+
+func (ms *Store) relationshipsByTypeFromIDs(token uint16, ids []types.RelID, opts QueryOpts) []*types.Relationship {
 	ids = storepkg.PaginateRelIDs(ids, opts.After, 0)
 	if len(ids) == 0 {
-		return nil, nil
+		return nil
 	}
 
 	hasTemporal := storepkg.HasTemporalFilter(opts)
@@ -191,9 +219,9 @@ func (ms *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Rel
 		}
 	}
 	if len(result) == 0 {
-		return nil, nil
+		return nil
 	}
-	return result, nil
+	return result
 }
 
 // NodeCount returns the number of stored nodes.

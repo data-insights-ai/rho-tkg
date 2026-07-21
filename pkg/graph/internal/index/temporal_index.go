@@ -482,3 +482,61 @@ func PurgeNodeFromAllTemporalIndexes(idxs map[uint16]*TemporalIndex, id snowflak
 		}
 	}
 }
+
+// --- Relationship-type temporal indexes (BACKLOG 21c) ---
+//
+// A relationship-type-keyed mirror of the label-keyed helpers above. The
+// underlying TemporalIndex type is entity-agnostic (keyed by raw
+// snowflake.ID), so relationship-type indexes reuse it directly against a
+// SEPARATE map (keyed by rel-type token, never merged with the label-token
+// map — the two token namespaces are independent registries and a numeric
+// collision between a label token and a rel-type token must not cross-pollute
+// their indexes).
+
+// RelTemporalBounds returns the effective (from, to) for a relationship.
+// Identical computation to NodeTemporalBounds (both delegate to the same
+// entity-agnostic storepkg.EntityValidFrom); kept as a separate name for
+// call-site clarity, matching this codebase's node/rel mirror convention.
+func RelTemporalBounds(id snowflake.ID, tm *types.TemporalMetadata) (from, to types.Instant) {
+	return NodeTemporalBounds(id, tm)
+}
+
+// AddRelToTemporalIndexes folds the relationship's current effective [from,to)
+// into the temporal index covering its type, if one exists. Alias of
+// ExtendRelInTemporalIndexes, mirroring AddNodeToTemporalIndexes. Caller must
+// hold the store's write lock.
+func AddRelToTemporalIndexes(idxs map[uint16]*TemporalIndex, r *types.Relationship, id snowflake.ID) {
+	ExtendRelInTemporalIndexes(idxs, r, id)
+}
+
+// ExtendRelInTemporalIndexes UNIONs the relationship's current effective
+// [from,to) into the per-relationship envelope of the temporal index covering
+// its type (a relationship has exactly one type, unlike a node's multiple
+// labels, so this indexes at most one map entry rather than looping). Grows
+// the envelope rather than replacing it — the same sound-superset property
+// AddNodeToTemporalIndexes relies on. Caller must hold the store's write lock.
+func ExtendRelInTemporalIndexes(idxs map[uint16]*TemporalIndex, r *types.Relationship, id snowflake.ID) {
+	if len(idxs) == 0 {
+		return
+	}
+	if ti, ok := idxs[r.TypeToken().Value()]; ok {
+		from, to := RelTemporalBounds(id, r.Temporal())
+		ti.Extend(id, from, to)
+	}
+}
+
+// RemoveRelFromTemporalIndexes is a NO-OP, mirroring RemoveNodeFromTemporalIndexes
+// — see that function's doc comment for the full append-only-envelope rationale.
+func RemoveRelFromTemporalIndexes(_ map[uint16]*TemporalIndex, _ *types.Relationship, _ snowflake.ID) {
+}
+
+// PurgeRelFromAllTemporalIndexes removes a relationship ID from every rel-type
+// temporal index. Used during corrupt-relationship deletion when type token
+// data is unavailable. Caller must hold the store's write lock.
+func PurgeRelFromAllTemporalIndexes(idxs map[uint16]*TemporalIndex, id snowflake.ID) {
+	for _, ti := range idxs {
+		if ti != nil {
+			ti.Remove(id)
+		}
+	}
+}
