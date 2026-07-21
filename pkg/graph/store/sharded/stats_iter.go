@@ -173,26 +173,25 @@ func (s *Store) ForEachNodeHistoryID(fn func(types.NodeID) bool) error {
 	})
 }
 
-func (s *Store) ForEachRelID(fn func(types.RelID) bool) error {
-	return s.forEachRelID(fn, func(shard *badgerShard, cb func(types.RelID) bool) error {
-		return shard.ForEachRelID(cb)
-	})
-}
+// ForEachDeletedNodeID / ForEachDeletedRelID implement
+// storecontract.DeletedIterationCapability (BACKLOG 21d/20f) — each shard is
+// itself a *badger.Store, which already implements the capability natively
+// (visits IDs with history but no current row), so this is a thin sequential
+// fan-out reusing the SAME forEachID/forEachRelID helpers every other
+// ForEach* door on this store uses: one shard open at a time, callback
+// invoked outside any shard lock, early-stop on fn returning false. No
+// cross-shard filtering is needed — a node/rel's own ID determines which
+// single shard ever holds its rows (ADR-0007), so no shard can report an ID
+// it does not own and no ID can appear from more than one shard.
+//
+// DepthDeletedIterationCapability (the depth-aware counterpart) is NOT
+// implemented here: ShardDepth (hot/warm/cold) is a time-window/rotation
+// concept specific to tiered's routing; sharded routes by slot, so every
+// valid depth would trivially map to "all shards" here, same as tiered's own
+// documented "single-shard backends do not need it" case for DepthAll-only
+// backends — declined with reason, consumers fall back to DepthAll handling.
+var _ storecontract.DeletedIterationCapability = (*Store)(nil)
 
-func (s *Store) ForEachRelHistoryID(fn func(types.RelID) bool) error {
-	return s.forEachRelID(fn, func(shard *badgerShard, cb func(types.RelID) bool) error {
-		return shard.ForEachRelHistoryID(cb)
-	})
-}
-
-// ForEachDeletedNodeID and ForEachDeletedRelID implement
-// storecontract.DeletedIterationCapability by fanning out to every shard's
-// own DeletedIterationCapability (badger.Store already implements it
-// natively). Unlike tiered.Store, sharded.Store routes an entity to exactly
-// ONE shard by ID (never by time window), so no cross-shard dedup is needed
-// — each shard's deleted-ID set is already disjoint from every other
-// shard's, the same reasoning ForEachNodeID/ForEachNodeHistoryID above
-// already rely on.
 func (s *Store) ForEachDeletedNodeID(fn func(types.NodeID) bool) error {
 	return s.forEachID(fn, func(shard *badgerShard, cb func(types.NodeID) bool) error {
 		return shard.ForEachDeletedNodeID(cb)
@@ -202,6 +201,18 @@ func (s *Store) ForEachDeletedNodeID(fn func(types.NodeID) bool) error {
 func (s *Store) ForEachDeletedRelID(fn func(types.RelID) bool) error {
 	return s.forEachRelID(fn, func(shard *badgerShard, cb func(types.RelID) bool) error {
 		return shard.ForEachDeletedRelID(cb)
+	})
+}
+
+func (s *Store) ForEachRelID(fn func(types.RelID) bool) error {
+	return s.forEachRelID(fn, func(shard *badgerShard, cb func(types.RelID) bool) error {
+		return shard.ForEachRelID(cb)
+	})
+}
+
+func (s *Store) ForEachRelHistoryID(fn func(types.RelID) bool) error {
+	return s.forEachRelID(fn, func(shard *badgerShard, cb func(types.RelID) bool) error {
+		return shard.ForEachRelHistoryID(cb)
 	})
 }
 

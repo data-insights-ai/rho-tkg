@@ -185,8 +185,6 @@ none sigma's:
   can never get B4 acceleration unlike `nodesByLabelLocked`. Independently found from the query-door
   wiring angle too: `ByType`-with-property doors (`temporal_queries.go`) structurally cannot prune at
   all for exactly this reason, unlike their `ByLabel` node-side siblings.
-- **21d. Sharded backend: `DeletedIterationCapability` entirely absent (see BACKLOG 20f)** — worth
-  tracking here too since it's a genuine capability gap, not just a bug.
 - **21e. Sharded backend: no re-sharding/rebalancing path** — growing/shrinking `SlotCount` on an
   existing deployment is unsupported; a mismatch is a fail-closed `ErrCatalogConflict` with no
   migration tool (see BACKLOG 20m). Likely intentional for the current WIP stage but worth an explicit
