@@ -18,6 +18,21 @@ import (
 // Returns ErrNodeNotFound if start or end node does not exist.
 // Returns ErrRelExists if a relationship with the same ID already exists.
 func (ms *Store) PutRelationship(r *types.Relationship) error {
+	return ms.putRelationshipRouted(r, 0)
+}
+
+// PutRelationshipScoped mirrors PutRelationship but routes the change-log
+// record into the store.ScopedTxChangeLog buffer named by token instead of
+// the eager pending log. token == 0 is exactly PutRelationship. See
+// memorystore_changelog_scoped.go (BACKLOG 11f Batch A — foundation only).
+func (ms *Store) PutRelationshipScoped(r *types.Relationship, token uint64) error {
+	if token == 0 {
+		return ms.PutRelationship(r)
+	}
+	return ms.putRelationshipRouted(r, token)
+}
+
+func (ms *Store) putRelationshipRouted(r *types.Relationship, token uint64) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -73,14 +88,31 @@ func (ms *Store) PutRelationship(r *types.Relationship) error {
 	ms.adjustRelPropertyTypeClassCounts(r, 1)
 	ms.adjustRelPropertyKeyCounts(r, 1)
 	indexpkg.AddRelToTemporalIndexes(ms.relTypeTemporalIndexes, r, id.SnowflakeID()) // BACKLOG 21c
-	return ms.logRelPutLocked(r, false)
+	return ms.logRelPutRoutedLocked(r, false, token)
 }
 
 // PutRelationshipGeneratedIDWithEndpointHashes stores a graph-generated
 // relationship while capturing live endpoint hashes under the same store lock.
 func (ms *Store) PutRelationshipGeneratedIDWithEndpointHashes(r *types.Relationship, proof generatedcreate.Proof) (string, string, error) {
+	return ms.putRelationshipGeneratedIDWithEndpointHashesRouted(r, proof, 0)
+}
+
+// PutRelationshipGeneratedIDWithEndpointHashesScoped mirrors
+// PutRelationshipGeneratedIDWithEndpointHashes but routes the change-log
+// record into the store.ScopedTxChangeLog buffer named by token instead of
+// the eager pending log. token == 0 is exactly
+// PutRelationshipGeneratedIDWithEndpointHashes. See
+// memorystore_changelog_scoped.go (BACKLOG 11f Batch A — foundation only).
+func (ms *Store) PutRelationshipGeneratedIDWithEndpointHashesScoped(r *types.Relationship, token uint64, proof generatedcreate.Proof) (string, string, error) {
+	if token == 0 {
+		return ms.PutRelationshipGeneratedIDWithEndpointHashes(r, proof)
+	}
+	return ms.putRelationshipGeneratedIDWithEndpointHashesRouted(r, proof, token)
+}
+
+func (ms *Store) putRelationshipGeneratedIDWithEndpointHashesRouted(r *types.Relationship, proof generatedcreate.Proof, token uint64) (string, string, error) {
 	if !proof.Valid() {
-		if err := ms.PutRelationship(r); err != nil {
+		if err := ms.putRelationshipRouted(r, token); err != nil {
 			return "", "", err
 		}
 		if ig := r.Integrity(); ig != nil {
@@ -154,7 +186,7 @@ func (ms *Store) PutRelationshipGeneratedIDWithEndpointHashes(r *types.Relations
 	ms.adjustRelPropertyTypeClassCounts(r, 1)
 	ms.adjustRelPropertyKeyCounts(r, 1)
 	indexpkg.AddRelToTemporalIndexes(ms.relTypeTemporalIndexes, r, id.SnowflakeID()) // BACKLOG 21c
-	if err := ms.logRelPutLocked(r, false); err != nil {
+	if err := ms.logRelPutRoutedLocked(r, false, token); err != nil {
 		return "", "", err
 	}
 	return fromHash, toHash, nil

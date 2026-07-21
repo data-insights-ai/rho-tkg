@@ -84,6 +84,19 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   to `docs/api.md`'s "Ingest pipeline" section — that part is genuinely done, since the finding was ALSO
   a real doc gap — but the doc addition must not be mistaken for resolving the underlying bottleneck;
   the scope-tagged-routing redesign itself remains open, real engineering work.
+  **Batch A landed (foundation only, zero behavior change):** the ctx-value-token design from the
+  dedicated design pass — `context.WithValue`-carried scope token read only at store-door call sites,
+  never threaded through shared internal helpers the standalone path also uses (provably zero blast
+  radius there) — is now BUILT and independently tested for doors 1-3 (`PutNode`/`PutRelationship`/
+  `PutRelationshipGeneratedIDWithEndpointHashes`) plus the `store.ScopedTxChangeLog` capability skeleton
+  (`BeginScopedLog`/`CommitScopedLog`/`DiscardScopedLog`, memory + badger). `GraphTx` does NOT construct
+  a token-carrying ctx yet — the legacy single-scope `TxChangeLogScope`/`SetLogDivert` mechanism is
+  UNCHANGED and still what every real caller goes through, so this batch has zero effect on the
+  exclusive-lock bottleneck described above. Remaining: wire the other ~19 store-door call sites (full
+  enumeration in the design-pass notes), then flip `GraphTx` itself to open a `ScopedTxChangeLog` scope
+  and call `withScopeToken` so a tx mutation can take the same shared read-lock a standalone mutation
+  takes instead of `lockActiveCoreWrite`'s full exclusive lock — THAT flip is what actually resolves
+  this item, and it is deliberately deferred to a later batch once every door has a Scoped sibling.
 - **11h. [STILL OPEN — NOT resolved; original "clock re-probing" theory RULED OUT by direct experiment,
   but the real root cause remains unknown and no fix has been applied]
   `TestOutgoingIncomingForNodesAtTx_RandomizedDivergenceProbe/badger`

@@ -194,6 +194,16 @@ type Store struct {
 	scopeActive bool
 	scopeLog    []storecontract.ChangeRecord
 
+	// Scoped (multi-token) change-log buffers — store.ScopedTxChangeLog
+	// (BACKLOG 11f Batch A, foundation only; nothing wires a nonzero token
+	// into a tx yet). Unlike scopeActive/scopeLog above (a single implicit
+	// buffer requiring provable exclusion of every other writer for its
+	// entire open duration), each scope here is independently addressed by
+	// its token, so multiple scopes can be open concurrently with no shared
+	// "which scope is active" flag to race on. Both fields guarded by ms.mu.
+	scopedTokenSeq uint64
+	scopedLogs     map[uint64][]storecontract.ChangeRecord
+
 	// transaction-time membership sidecars (store.LabelTxMembershipCapability /
 	// RelTypeTxMembershipCapability). labelTxMembers maps a label token to the set
 	// of node IDs that EVER carried it (current OR any historical version), each

@@ -44,6 +44,19 @@ type RelationshipEndpointHashCapability interface {
 	PutRelationshipGeneratedIDWithEndpointHashes(r *types.Relationship, proof Proof) (string, string, error)
 }
 
+// RelationshipEndpointHashScopedCapability is the BACKLOG 11f Batch A scoped
+// counterpart of RelationshipEndpointHashCapability — FOUNDATION ONLY, see
+// store.ScopedTxChangeLog's doc comment for the full design rationale. It
+// behaves exactly like PutRelationshipGeneratedIDWithEndpointHashes except the
+// change-log record it produces is routed into the store.ScopedTxChangeLog
+// buffer named by token instead of the eager pending log. token == 0 is
+// exactly PutRelationshipGeneratedIDWithEndpointHashes. A store implementing
+// this MUST also implement both RelationshipEndpointHashCapability and
+// store.ScopedTxChangeLog.
+type RelationshipEndpointHashScopedCapability interface {
+	PutRelationshipGeneratedIDWithEndpointHashesScoped(r *types.Relationship, token uint64, proof Proof) (fromHash, toHash string, err error)
+}
+
 // ForeignEndpointRelCapability is an optional generated-ID create path for a
 // PARTITIONED store: it persists a relationship whose END node lives on a
 // FOREIGN partition — a slot owned by another machine and not present in this

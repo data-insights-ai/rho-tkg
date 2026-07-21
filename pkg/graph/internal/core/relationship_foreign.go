@@ -112,7 +112,7 @@ func (c *Core) addRelationshipByIDForeignEndInternal(ctx context.Context, typeNa
 
 	id := c.nextRelID()
 	spec := relCreateSpec{relCreatePrep: prep, id: id, fromHash: fromHash, toHash: toHash}
-	rel, err := c.createRelWithTypeRollback(typeName, relPersistForeignEnd, c.buildRelFromSpec(ctx, spec))
+	rel, err := c.createRelWithTypeRollback(ctx, typeName, relPersistForeignEnd, c.buildRelFromSpec(ctx, spec))
 	if rel != nil {
 		c.opRelAdds.Add(1)
 	}
@@ -217,7 +217,7 @@ func (c *Core) recordForeignIncomingInternal(ctx context.Context, edge storepkg.
 		return stub, ig, nil
 	}
 
-	rel, err := c.createRelWithTypeRollback(edge.TypeName, relPersistForeignIncoming, build)
+	rel, err := c.createRelWithTypeRollback(ctx, edge.TypeName, relPersistForeignIncoming, build)
 	if rel != nil {
 		c.opRelAdds.Add(1)
 	}

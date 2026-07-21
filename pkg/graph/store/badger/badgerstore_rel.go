@@ -15,7 +15,18 @@ import (
 )
 
 func (bs *Store) PutRelationship(r *types.Relationship) error {
-	return bs.putRelationship(r, true, false)
+	return bs.putRelationship(r, true, false, 0)
+}
+
+// PutRelationshipScoped mirrors PutRelationship but routes the change-log
+// record into the store.ScopedTxChangeLog buffer named by token instead of
+// the eager pending log. token == 0 is exactly PutRelationship. See
+// badgerstore_changelog_scoped.go (BACKLOG 11f Batch A — foundation only).
+func (bs *Store) PutRelationshipScoped(r *types.Relationship, token uint64) error {
+	if token == 0 {
+		return bs.PutRelationship(r)
+	}
+	return bs.putRelationship(r, true, false, token)
 }
 
 // PutRelationshipCoLocated writes a relationship whose entity AND both adjacency
@@ -27,7 +38,7 @@ func (bs *Store) PutRelationship(r *types.Relationship) error {
 // partial doors PutRelEntityAndOut/PutRelIncoming are record-free split-write
 // helpers and would leave a sharded rel create invisible to a tailing replica).
 func (bs *Store) PutRelationshipCoLocated(r *types.Relationship) error {
-	return bs.putRelationship(r, false, false)
+	return bs.putRelationship(r, false, false, 0)
 }
 
 // PutRelationshipForeignIncoming writes a cross-machine incoming half-edge STUB
@@ -39,10 +50,10 @@ func (bs *Store) PutRelationshipCoLocated(r *types.Relationship) error {
 // the distinct record tag lets a replica route apply by the END-node slot rather
 // than the (foreign) rel slot. Called by the sharded store's RecordForeignIncoming.
 func (bs *Store) PutRelationshipForeignIncoming(r *types.Relationship) error {
-	return bs.putRelationship(r, false, true)
+	return bs.putRelationship(r, false, true, 0)
 }
 
-func (bs *Store) putRelationship(r *types.Relationship, validateEndpoints, foreignIncoming bool) error {
+func (bs *Store) putRelationship(r *types.Relationship, validateEndpoints, foreignIncoming bool, token uint64) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
@@ -136,8 +147,11 @@ func (bs *Store) putRelationship(r *types.Relationship, validateEndpoints, forei
 	bs.appendOps(ops...)
 	bs.relCount.Add(1)
 	bs.getOrCreateTypeCounter(relType).Add(1)
-	bs.logChangeRaw(changeTag, changePayload)
+	logErr := bs.logChangeRoutedRaw(changeTag, changePayload, token)
 	bs.idxMu.Unlock()
+	if logErr != nil {
+		return logErr
+	}
 
 	return bs.flushIfNeeded()
 }

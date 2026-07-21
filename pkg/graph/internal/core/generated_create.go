@@ -1,21 +1,47 @@
 package core
 
 import (
+	"context"
+
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-func (c *Core) putGeneratedNode(n *types.Node) error {
+// putGeneratedNode persists a freshly-ID-minted node. When ctx carries a
+// BACKLOG 11f scoped change-log token (see scopeTokenFrom) and the store
+// supports store.ScopedPutCapability, the write routes through PutNodeScoped
+// so its change-log record lands in that scope's buffer instead of the eager
+// pending log. FOUNDATION ONLY: nothing constructs a token-carrying ctx yet
+// (see scope_token.go), so this branch is currently always dead in
+// production — it exists so a future batch can start calling withScopeToken
+// without touching this call site again. The c.generatedCreate != nil branch
+// (the normal production path, wrapping ID-minting semantics) is NOT yet
+// scope-token-aware — threading the token through internal/generatedcreate is
+// deferred to a later batch.
+func (c *Core) putGeneratedNode(ctx context.Context, n *types.Node) error {
 	if c.generatedCreate != nil {
 		return c.generatedCreate.PutNodeGeneratedID(n, generatedcreate.FreshGraphID())
+	}
+	if token, ok := scopeTokenFrom(ctx); ok && token != 0 {
+		if scoped, ok := c.store.(storepkg.ScopedPutCapability); ok {
+			return scoped.PutNodeScoped(n, token)
+		}
 	}
 	return c.store.PutNode(n)
 }
 
-func (c *Core) putGeneratedRelationship(r *types.Relationship) error {
+// putGeneratedRelationship is putGeneratedNode's relationship counterpart —
+// see its doc comment for the scoped-routing rationale and foundation-only
+// status.
+func (c *Core) putGeneratedRelationship(ctx context.Context, r *types.Relationship) error {
 	if c.generatedCreate != nil {
 		return c.generatedCreate.PutRelationshipGeneratedID(r, generatedcreate.FreshGraphID())
+	}
+	if token, ok := scopeTokenFrom(ctx); ok && token != 0 {
+		if scoped, ok := c.store.(storepkg.ScopedPutCapability); ok {
+			return scoped.PutRelationshipScoped(r, token)
+		}
 	}
 	return c.store.PutRelationship(r)
 }

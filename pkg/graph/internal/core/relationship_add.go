@@ -181,7 +181,7 @@ func (c *Core) createRelationshipLocked(ctx context.Context, typeName string, st
 	// passed — so an operational failure does not leave a permanent
 	// rel-type registration.
 	spec := relCreateSpec{relCreatePrep: prep, id: id, fromHash: fromHash, toHash: toHash}
-	rel, err := c.createRelWithTypeRollback(typeName, relPersistModeFor(useEndpointHashWrite), c.buildRelFromSpec(ctx, spec))
+	rel, err := c.createRelWithTypeRollback(ctx, typeName, relPersistModeFor(useEndpointHashWrite), c.buildRelFromSpec(ctx, spec))
 	if rel != nil {
 		c.opRelAdds.Add(1)
 	}
@@ -292,7 +292,7 @@ func (c *Core) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName
 	// Not found — the kernel allocates the token now and creates, rolling
 	// back a newly created type token if the final store write fails.
 	spec := relCreateSpec{relCreatePrep: prep, id: id, fromHash: fromHash, toHash: toHash}
-	rel, err := c.createRelWithTypeRollback(typeName, relPersistModeFor(useEndpointHashWrite), c.buildRelFromSpec(ctx, spec))
+	rel, err := c.createRelWithTypeRollback(ctx, typeName, relPersistModeFor(useEndpointHashWrite), c.buildRelFromSpec(ctx, spec))
 	if rel != nil {
 		c.opRelAdds.Add(1)
 		return rel, true, err

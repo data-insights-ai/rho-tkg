@@ -215,6 +215,20 @@ func relPersistModeFor(useEndpointHashWrite bool) relPersistMode {
 	return relPersistPlain
 }
 
+// putRelationshipEndpointHashWrite persists r via the endpointHashWrite
+// capability, routing through its BACKLOG 11f scoped sibling when ctx carries
+// a scoped change-log token and the store supports it — see
+// generatedcreate.RelationshipEndpointHashScopedCapability's doc comment.
+// FOUNDATION ONLY: see createRelWithTypeRollback's doc comment.
+func (c *Core) putRelationshipEndpointHashWrite(ctx context.Context, r *types.Relationship) (fromHash, toHash string, err error) {
+	if token, ok := scopeTokenFrom(ctx); ok && token != 0 {
+		if scoped, ok := c.endpointHashWrite.(generatedcreate.RelationshipEndpointHashScopedCapability); ok {
+			return scoped.PutRelationshipGeneratedIDWithEndpointHashesScoped(r, token, generatedcreate.FreshGraphID())
+		}
+	}
+	return c.endpointHashWrite.PutRelationshipGeneratedIDWithEndpointHashes(r, generatedcreate.FreshGraphID())
+}
+
 // createRelWithTypeRollback is the persistence kernel: allocate the rel-type
 // token (snapshotting the registry so a later failure can roll back a fresh
 // allocation), invoke build(token) to produce the relationship, persist it
@@ -230,7 +244,14 @@ func relPersistModeFor(useEndpointHashWrite bool) relPersistMode {
 // either a clean success (err == nil) or a partial-live outcome (the write
 // landed but post-write cleanup/registry persistence failed; err != nil).
 // Callers must count the create and surface the row whenever rel != nil.
-func (c *Core) createRelWithTypeRollback(typeName string, mode relPersistMode, build func(typeToken uint16) (*types.Relationship, *types.RelIntegrity, error)) (*types.Relationship, error) {
+//
+// ctx is consulted ONLY for a BACKLOG 11f scoped change-log token (see
+// scopeTokenFrom) in the relPersistEndpointHashWrite and relPersistPlain
+// persist branches below — FOUNDATION ONLY, nothing constructs a
+// token-carrying ctx yet, so this is currently always a no-op. Callers with
+// no naturally-available ctx pass context.Background(), which is exactly
+// today's behavior (scopeTokenFrom returns (0, false) either way).
+func (c *Core) createRelWithTypeRollback(ctx context.Context, typeName string, mode relPersistMode, build func(typeToken uint16) (*types.Relationship, *types.RelIntegrity, error)) (*types.Relationship, error) {
 	typeToken, relTypeSnapshot, allocatedRelType, err := c.getOrCreateRelTypeWithSnapshot(typeName)
 	if err != nil {
 		return nil, fmt.Errorf("graph: relationship type: %w", err)
@@ -266,7 +287,7 @@ func (c *Core) createRelWithTypeRollback(typeName string, mode relPersistMode, b
 
 	switch mode {
 	case relPersistEndpointHashWrite:
-		fromHash, toHash, err := c.endpointHashWrite.PutRelationshipGeneratedIDWithEndpointHashes(r, generatedcreate.FreshGraphID())
+		fromHash, toHash, err := c.putRelationshipEndpointHashWrite(ctx, r)
 		if err != nil {
 			return persistFailed(err)
 		}
@@ -285,7 +306,7 @@ func (c *Core) createRelWithTypeRollback(typeName string, mode relPersistMode, b
 			return persistFailed(err)
 		}
 	default: // relPersistPlain
-		if err := c.putGeneratedRelationship(r); err != nil {
+		if err := c.putGeneratedRelationship(ctx, r); err != nil {
 			return persistFailed(err)
 		}
 	}

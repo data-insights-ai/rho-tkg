@@ -15,6 +15,21 @@ import (
 )
 
 func (bs *Store) PutNode(n *types.Node) error {
+	return bs.putNodeRouted(n, 0)
+}
+
+// PutNodeScoped mirrors PutNode but routes the change-log record into the
+// store.ScopedTxChangeLog buffer named by token instead of the eager pending
+// log. token == 0 is exactly PutNode. See badgerstore_changelog_scoped.go
+// (BACKLOG 11f Batch A — foundation only).
+func (bs *Store) PutNodeScoped(n *types.Node, token uint64) error {
+	if token == 0 {
+		return bs.PutNode(n)
+	}
+	return bs.putNodeRouted(n, token)
+}
+
+func (bs *Store) putNodeRouted(n *types.Node, token uint64) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
@@ -85,8 +100,11 @@ func (bs *Store) PutNode(n *types.Node) error {
 	indexpkg.AddNodeToHighFrequencyIndexes(bs.hfIndexes, n, id)
 	bs.appendOps(ops...)
 	bs.nodeCount.Add(1)
-	bs.logChangeRaw(storecontract.ChangeNodePut, changePayload)
+	logErr := bs.logChangeRoutedRaw(storecontract.ChangeNodePut, changePayload, token)
 	bs.idxMu.Unlock()
+	if logErr != nil {
+		return logErr
+	}
 
 	return bs.flushIfNeeded()
 }

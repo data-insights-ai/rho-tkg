@@ -14,6 +14,21 @@ import (
 // PutNode stores a node and indexes all its label tokens.
 // Returns ErrNodeExists if a node with the same ID already exists.
 func (ms *Store) PutNode(n *types.Node) error {
+	return ms.putNodeRouted(n, 0)
+}
+
+// PutNodeScoped mirrors PutNode but routes the change-log record into the
+// store.ScopedTxChangeLog buffer named by token instead of the eager pending
+// log. token == 0 is exactly PutNode. See memorystore_changelog_scoped.go
+// (BACKLOG 11f Batch A — foundation only).
+func (ms *Store) PutNodeScoped(n *types.Node, token uint64) error {
+	if token == 0 {
+		return ms.PutNode(n)
+	}
+	return ms.putNodeRouted(n, token)
+}
+
+func (ms *Store) putNodeRouted(n *types.Node, token uint64) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -52,7 +67,7 @@ func (ms *Store) PutNode(n *types.Node) error {
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
-	return ms.logNodePutLocked(n, false)
+	return ms.logNodePutRoutedLocked(n, false, token)
 }
 
 // GetNode retrieves a node by its snowflake ID.

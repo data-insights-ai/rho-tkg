@@ -1,5 +1,7 @@
 package store
 
+import "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+
 // ChangeTag identifies the kind of mutation a change-log record describes. It
 // is the first byte of a persisted change-log value (followed by the
 // tag-specific msgpack body) and the discriminator a replica-apply path
@@ -242,4 +244,70 @@ type TxChangeLogScope interface {
 	// head). Returns 0 when the scope emitted no records (or the log is disabled).
 	CommitLogScope() (uint64, error)
 	DiscardLogScope() error
+}
+
+// ScopedTxChangeLog is an OPTIONAL capability (BACKLOG 11f Batch A —
+// FOUNDATION ONLY: implemented and independently testable, but nothing in the
+// core/tx layer constructs a nonzero token yet, so this has zero effect on any
+// existing behavior). It lets MULTIPLE independent transactions each buffer
+// their own change-log records CONCURRENTLY, each addressed by an explicit
+// token, instead of sharing the single implicit buffer TxChangeLogScope above
+// provides.
+//
+// Why this exists: TxChangeLogScope's single scopeActive flag is store-global,
+// so the core can only prove "no concurrent standalone mutation will misroute
+// its record into my tx's buffer" by holding the store's FULL exclusive write
+// lock for the duration of every scoped mutation (see lockActiveCoreWrite in
+// internal/core/tx.go) — a tx that only ever touches its own entities still
+// pays serialization against every unrelated concurrent writer. A token-keyed
+// scope removes the shared flag entirely: routing is decided by an explicit
+// argument on the call (see the *Scoped store doors, e.g. PutNodeScoped),
+// never by hidden ambient state, so two open scopes (or a scope and a
+// standalone eager write) cannot cross-contaminate regardless of what lock
+// discipline the caller uses. This is what will eventually let a tx mutation
+// take only the same shared read-lock a standalone mutation takes — that
+// lock-behavior flip is deliberately NOT part of this capability and lands in
+// a later BACKLOG 11f batch, once every mutation door has a Scoped sibling.
+//
+// token == 0 is reserved and always means "no scope" — it is the value
+// BeginScopedLog returns when the change-log is disabled, and every *Scoped
+// door treats token == 0 as behaviorally identical to its unscoped
+// counterpart. A store implementing ScopedTxChangeLog also implements
+// whichever of ScopedPutCapability / the generatedcreate scoped endpoint-hash
+// capability it supports (a store that opens scopes but exposes no Scoped
+// door would be useless in practice, but the interfaces are kept separate so
+// a store can decline door-level scoping while still supporting others, or
+// vice versa).
+type ScopedTxChangeLog interface {
+	// BeginScopedLog opens a new, independently-addressed scope and returns
+	// its token. Returns (0, nil) when the change-log is disabled (mirrors
+	// TxChangeLogScope.BeginLogScope's no-op).
+	BeginScopedLog() (token uint64, err error)
+	// CommitScopedLog mints contiguous LSNs for the scope's buffered records
+	// and co-commits them, returning the max (last) LSN assigned — 0 when the
+	// scope emitted no records or the log is disabled. The token is retired:
+	// reusing it after Commit/Discard fails closed with ErrInvalidStoreMutation.
+	CommitScopedLog(token uint64) (maxLSN uint64, err error)
+	// DiscardScopedLog drops the scope's buffered records without minting any
+	// LSN — a rolled-back tx emits nothing to the feed and burns no sequence
+	// number. The token is retired (see CommitScopedLog).
+	DiscardScopedLog(token uint64) error
+}
+
+// ScopedPutCapability is the BACKLOG 11f Batch A scoped counterpart of the two
+// plain create doors PutNode / PutRelationship (store/capabilities.go): each
+// method behaves exactly like its unscoped sibling except that the change-log
+// record it produces is routed into the ScopedTxChangeLog buffer named by
+// token (opened via BeginScopedLog) instead of the eager pending log or the
+// legacy single TxChangeLogScope buffer. token == 0 is exactly PutNode /
+// PutRelationship. A store implementing ScopedPutCapability MUST also
+// implement ScopedTxChangeLog (the token comes from nowhere else).
+//
+// See internal/generatedcreate.RelationshipEndpointHashScopedCapability for
+// the scoped counterpart of the third Batch-A door,
+// PutRelationshipGeneratedIDWithEndpointHashes — it lives in that internal
+// package (not here) because its unscoped sibling does too.
+type ScopedPutCapability interface {
+	PutNodeScoped(n *types.Node, token uint64) error
+	PutRelationshipScoped(r *types.Relationship, token uint64) error
 }

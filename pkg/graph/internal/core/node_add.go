@@ -232,7 +232,7 @@ func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[s
 	}
 	defer uniqueRelease()
 
-	if err := c.putGeneratedNode(n); err != nil {
+	if err := c.putGeneratedNode(ctx, n); err != nil {
 		err, partialLive := finishNodeCreateError(err)
 		if partialLive {
 			c.opNodeAdds.Add(1)

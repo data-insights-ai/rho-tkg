@@ -192,7 +192,7 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 		return r, ig, nil
 	}
 
-	rel, err := c.createRelWithTypeRollback(typeName, relPersistImport, build)
+	rel, err := c.createRelWithTypeRollback(ctx, typeName, relPersistImport, build)
 	if rel != nil {
 		c.opRelAdds.Add(1)
 	}

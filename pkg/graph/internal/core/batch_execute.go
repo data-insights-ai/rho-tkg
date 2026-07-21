@@ -428,7 +428,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			// batch path. rel != nil from the kernel means the row is live
 			// (clean success or partial-live failure) — that maps onto the
 			// batch's committed flag.
-			rel, kerr := b.g.createRelWithTypeRollback(pr.typeName, relPersistModeFor(storeCanCaptureEndpointHashes), func(typeToken uint16) (*types.Relationship, *types.RelIntegrity, error) {
+			rel, kerr := b.g.createRelWithTypeRollback(context.Background(), pr.typeName, relPersistModeFor(storeCanCaptureEndpointHashes), func(typeToken uint16) (*types.Relationship, *types.RelIntegrity, error) {
 				setPendingRelationshipType(pr, typeToken)
 				return pr.rel, pr.relIntegrity, nil
 			})

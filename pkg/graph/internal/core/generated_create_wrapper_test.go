@@ -61,7 +61,7 @@ func TestPutGeneratedRelationshipUsesGeneratedCreateCapability(t *testing.T) {
 	c := &Core{generatedCreate: rec}
 	rel := types.NewRelationship(types.RelID(123), 1, types.NodeID(10), types.NodeID(20))
 
-	if err := c.putGeneratedRelationship(rel); err != nil {
+	if err := c.putGeneratedRelationship(context.Background(), rel); err != nil {
 		t.Fatalf("putGeneratedRelationship: %v", err)
 	}
 	if rec.rel != rel {

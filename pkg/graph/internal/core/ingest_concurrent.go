@@ -188,7 +188,7 @@ func (c *Core) applyConcurrentNodeCreates(
 			markFailed(pn, err)
 			continue
 		}
-		err = c.putGeneratedNode(pn.node)
+		err = c.putGeneratedNode(context.Background(), pn.node)
 		release()
 		if err != nil {
 			markFailed(pn, err)
@@ -334,7 +334,7 @@ func (c *Core) applyConcurrentRelCreates(
 				}
 			}
 
-			rel, kerr := c.createRelWithTypeRollback(pr.typeName, relPersistModeFor(storeCanCaptureEndpointHashes), func(typeToken uint16) (*types.Relationship, *types.RelIntegrity, error) {
+			rel, kerr := c.createRelWithTypeRollback(context.Background(), pr.typeName, relPersistModeFor(storeCanCaptureEndpointHashes), func(typeToken uint16) (*types.Relationship, *types.RelIntegrity, error) {
 				setPendingRelationshipType(pr, typeToken)
 				return pr.rel, pr.relIntegrity, nil
 			})

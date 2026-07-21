@@ -6,6 +6,69 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- ADD — BACKLOG 11f Batch A — scoped change-log foundation (ctx-token routing, doors 1-3, FOUNDATION
+  ONLY — no lock-behavior change yet). Change-log-enabled `g.Tx()` mutations currently take the FULL
+  exclusive graph lock per mutation call because the single implicit `TxChangeLogScope`/`SetLogDivert`
+  divert mechanism can only prove "no concurrent standalone write misroutes its record into my tx's
+  buffer" by excluding every other writer for the duration. The dedicated design pass (see 11f's backlog
+  entry) found a token-keyed alternative: route the scope explicitly via a `context.Context` value
+  instead of hidden ambient store state, so routing is decided per-call by an argument, never by a
+  shared flag — this removes the correctness argument for the exclusive lock, but only once every
+  mutation door has a token-aware sibling.
+  - New `pkg/graph/internal/core/scope_token.go`: `scopeTokenKey{}` (unexported context key —
+    unforgeable outside this package, so `withScopeToken`/`scopeTokenFrom` can ride ctx through shared
+    internal helpers like `addNodeInternal`/`createRelWithTypeRollback` that ALSO serve the standalone
+    non-tx path, with zero blast radius there — a standalone caller never constructs a ctx carrying this
+    key, so `scopeTokenFrom` always returns `(0, false)` for it).
+  - New optional `store.ScopedTxChangeLog` capability (`pkg/graph/store/changefeed.go`):
+    `BeginScopedLog`/`CommitScopedLog`/`DiscardScopedLog` — lets MULTIPLE independent scopes buffer
+    change-log records concurrently, each addressed by an explicit token, instead of sharing the single
+    implicit buffer `TxChangeLogScope` provides. `token == 0` is reserved and always means "no scope."
+    New `store.ScopedPutCapability` (`PutNodeScoped`/`PutRelationshipScoped`) is the scoped counterpart
+    of the two plain create doors; `generatedcreate.RelationshipEndpointHashScopedCapability`
+    (`PutRelationshipGeneratedIDWithEndpointHashesScoped`) is the third door's scoped counterpart, kept
+    in `internal/generatedcreate` alongside its unscoped sibling.
+  - Implemented on memory and badger (both capabilities). Badger's `logChangeRoutedRaw` reuses the
+    SAME "encode the change-log payload once, outside `idxMu.Lock`" discipline `putNodeRouted`/
+    `putRelationship` already follow — routing decides only WHERE the pre-built payload lands
+    (`logChangeScoped` vs `logChangeRaw`), never re-encoding. Badger has no scoped sibling for door 3
+    (`PutRelationshipGeneratedIDWithEndpointHashesScoped`) reachable in practice: badger doesn't
+    implement the unscoped `RelationshipEndpointHashCapability` at all (only memory and tiered do — the
+    same fact BACKLOG 21g's investigation surfaced independently), so `c.endpointHashWrite` is nil for a
+    badger-backed `Core` and that branch of `putRelationshipEndpointHashWrite` never runs against this
+    backend — documented in place rather than left as a silent gap.
+  - `putGeneratedNode`/`putGeneratedRelationship`/`createRelWithTypeRollback`
+    (`generated_create.go`/`relationship_create_kernel.go`) now take a `ctx context.Context` first
+    parameter, consulted ONLY for a scope token. All call sites updated, including the ingest-apply
+    paths (`ingest_concurrent.go`, `batch_execute.go`), which deliberately pass `context.Background()`
+    (today's exact behavior — no lane presently constructs a token-carrying ctx) and
+    `relationship_import.go` (missed by the initial pass, fixed during verification).
+  - `GraphTx` does NOT construct a token-carrying ctx anywhere yet — `tx.go`'s `lockActiveCoreWrite`/
+    `SetLogDivert` mechanism is completely unchanged, so this batch is a no-op in production; every
+    `*Scoped` door and the whole `ScopedTxChangeLog` capability is reachable only by direct test calls
+    today. That is the intended shape of a foundation batch, per the "if we need a 'slow' function, name
+    it explicitly and don't hide the tradeoff" standing rule — the lock-relaxation itself is real,
+    consequential architecture work spanning ~19 more store-door call sites and is deliberately deferred
+    to a later batch, not smuggled in here as a side effect.
+  - Fixed during verification (not present in the shipped result): two `generatedcreate.FreshGraphID`
+    call sites (`relationship_create_kernel.go`, mirroring the same missing-`()` bug class found earlier
+    this session in BACKLOG 19q's test file) passed the function value instead of calling it — caught by
+    `go build`, not by a test, since a `func() Proof` doesn't satisfy a `Proof` parameter; two more
+    instances in `memorystore_changelog_scoped_test.go` caught the same way; badger's `logEnabled` field
+    was widened from `bool` to `atomic.Bool` by an unrelated concurrent hardening fix (BACKLOG 20f-era)
+    landed on `main` after this batch's own base commit, so `badgerstore_changelog_scoped.go`'s
+    `!bs.logEnabled` checks needed `.Load()`; two genuinely dead helper functions
+    (`logNodePutRouted`/`logRelPutTaggedRouted`, which re-encoded a payload `putNodeRouted`/
+    `putRelationship` had already built) were removed rather than left as unreachable code, replaced by
+    a single `logChangeRoutedRaw(tag, payload, token)` that both actual callers use.
+  - Tests: `scope_token_test.go` (ctx round-trip, absent-key zero value, nil-ctx safety),
+    `generated_create_scoped_test.go` (token routes through the scoped door only when both a token AND
+    capability are present, falls back correctly otherwise), `badgerstore_changelog_scoped_test.go` /
+    `memorystore_changelog_scoped_test.go` (disabled-by-default, token==0 byte-identical to the unscoped
+    door, uncommitted scope invisible to the feed, discard emits nothing and burns no LSN, unknown token
+    fails closed, concurrent scopes don't cross-contaminate — including a dedicated `-race` goroutine
+    test — legacy single-scope mechanism unaffected). `go build`/`go vet`/`gofmt` clean; full-repo
+    `go test ./...` green; `-race` clean on `internal/core`, `store/badger`, `store/memory`.
 - FIX/HARDEN — comprehensive backlog hardening pass: closed 32 findings from the standing code-review
   backlog (`tasks/backlog.md`), each with a genuine RED→GREEN TDD cycle (a failing test proving the
   bug, the fix, the test passing, package + `-race` where concurrency-relevant + full-repo `go test

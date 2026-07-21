@@ -402,8 +402,8 @@ type Store struct {
 	nodeHashes            map[types.NodeID]string   // current node integrity hash for live endpoint validation
 	nodeRevs              map[types.NodeID]uint64   // live node row revision for safe prefetch handoff
 	nextNodeRev           uint64
-	relIDs                map[types.RelID]struct{}                      // O(1) rel existence check
-	relRevs               map[types.RelID]uint64                        // live rel row revision for safe prefetch handoff (BACKLOG 18b — relRevs/nextRelRev mirror nodeRevs/nextNodeRev)
+	relIDs                map[types.RelID]struct{} // O(1) rel existence check
+	relRevs               map[types.RelID]uint64   // live rel row revision for safe prefetch handoff (BACKLOG 18b — relRevs/nextRelRev mirror nodeRevs/nextNodeRev)
 	nextRelRev            uint64
 	labelIdx              map[uint16]map[types.NodeID]struct{}          // labelToken → set(nodeID); EMPTY in labelOnDisk mode
 	labelOnDisk           bool                                          // answer label snapshots from the persisted keyspace
@@ -712,6 +712,17 @@ type Store struct {
 	// mutation (c.mu.RLock) can never observe it true and misroute its own record.
 	scopeActive bool
 	scopeLog    [][]byte // framed record values (tag‖payload), LSN assigned at commit
+
+	// Scoped (multi-token) change-log buffers — store.ScopedTxChangeLog
+	// (BACKLOG 11f Batch A, foundation only; nothing wires a nonzero token
+	// into a tx yet). Unlike scopeActive/scopeLog above (a single implicit
+	// buffer requiring provable exclusion of every other writer for its
+	// entire open duration), each scope here is independently addressed by
+	// its token, so multiple scopes can be open concurrently with no shared
+	// "which scope is active" flag to race on — see changefeed_scoped.go and
+	// store.ScopedTxChangeLog's doc comment. Both fields guarded by wbMu.
+	scopedTokenSeq uint64
+	scopedLogs     map[uint64][][]byte
 }
 
 var (
@@ -1217,7 +1228,7 @@ func (bs *Store) loadIndexesScan() error {
 				continue
 			}
 			bs.relIDs[rid] = struct{}{}
-			bs.bumpRelRevLocked(rid) // seed a non-zero rev so a pre-first-write prefetch doesn't fall back needlessly (mirrors nodeRevs seeding above)
+			bs.bumpRelRevLocked(rid)            // seed a non-zero rev so a pre-first-write prefetch doesn't fall back needlessly (mirrors nodeRevs seeding above)
 			bs.addRelPropertyTypeClassCounts(r) // rebuild rel type-class counters + contrib (BACKLOG 5B)
 			bs.addRelPropertyStatsCounts(r)     // rebuild rel NDV+min/max counters + contrib (BACKLOG 21a)
 			info := relDeleteInfoFromRelationship(r)
