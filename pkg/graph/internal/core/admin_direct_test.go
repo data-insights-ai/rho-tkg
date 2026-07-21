@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -223,6 +225,79 @@ func TestAdminOpsResetPersistsRegistrySnapshotAfterClear(t *testing.T) {
 	}
 	if !stringSliceContains(store.savedRelTypes, "RESET_REGISTRY_REL") {
 		t.Fatalf("saved reltypes after Reset = %v, want RESET_REGISTRY_REL preserved", store.savedRelTypes)
+	}
+}
+
+// TestAdminOpsResetPreservesIDSlotLease guards BACKLOG 13l: id_slot_lease is
+// an EXTERNAL ORCHESTRATOR's failover hint, not graph data, so Reset must not
+// wipe it — doing so would risk two nodes colliding on the same
+// ID-generation slot after a failover. Two-phase: set a lease, Reset, confirm
+// the lease value is still readable afterward (unchanged from what was set).
+//
+// Uses badger, not memory: memory.Store.Clear() never touches its metaKV map
+// at all (MetaKV trivially "survives" Clear on memory regardless of any fix,
+// making a memory-backed test non-load-bearing). Badger's Clear() genuinely
+// wipes the persisted MetaKV keyspace (DropAll / the LastLSNKey-preserving
+// variants), so it is the backend that actually exercises this fix.
+func TestAdminOpsResetPreservesIDSlotLease(t *testing.T) {
+	t.Parallel()
+
+	bs, err := badger.New(badger.Config{InMemory: true})
+	if err != nil {
+		t.Fatalf("badger.New: %v", err)
+	}
+	g, err := New(Config{Store: bs, AllowReset: true})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	want := &storepkg.IDSlotLeaseRecord{Slot: 7}
+	if err := g.Repl.SetIDSlotLease(want); err != nil {
+		t.Fatalf("SetIDSlotLease: %v", err)
+	}
+
+	if _, err := g.Nodes.Add(context.Background(), []string{"LeaseReset"}, nil); err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+
+	if err := g.Admin.Reset(); err != nil {
+		t.Fatalf("Reset: %v", err)
+	}
+
+	got, err := g.Repl.IDSlotLease()
+	if err != nil {
+		t.Fatalf("IDSlotLease after Reset: %v", err)
+	}
+	if got == nil {
+		t.Fatal("IDSlotLease after Reset = nil, want the lease to survive Reset")
+	}
+	if got.Slot != want.Slot {
+		t.Fatalf("IDSlotLease after Reset = %+v, want Slot=%d preserved", got, want.Slot)
+	}
+}
+
+// TestAdminOpsResetWithNoIDSlotLeaseIsNoOp confirms Reset does not fail or
+// fabricate a lease when none was ever set.
+func TestAdminOpsResetWithNoIDSlotLeaseIsNoOp(t *testing.T) {
+	t.Parallel()
+
+	bs, err := badger.New(badger.Config{InMemory: true})
+	if err != nil {
+		t.Fatalf("badger.New: %v", err)
+	}
+	g, err := New(Config{Store: bs, AllowReset: true})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := g.Admin.Reset(); err != nil {
+		t.Fatalf("Reset: %v", err)
+	}
+	got, err := g.Repl.IDSlotLease()
+	if err != nil {
+		t.Fatalf("IDSlotLease after Reset: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("IDSlotLease after Reset with none set = %+v, want nil", got)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -104,5 +105,45 @@ func TestApplyChangeRecord_ChangeClearReapsCoreStateLikeReset(t *testing.T) {
 	// test extends).
 	if count, err := g.Nodes.Count(); err != nil || count != 0 {
 		t.Fatalf("node count after ChangeClear apply = (%d, %v), want (0, nil)", count, err)
+	}
+}
+
+// TestApplyChangeRecord_ChangeClearPreservesIDSlotLease mirrors
+// TestAdminOpsResetPreservesIDSlotLease (BACKLOG 13l) for the replica
+// ChangeClear apply path: id_slot_lease is external orchestrator state, not
+// graph data, and must survive a ChangeClear apply exactly as it survives a
+// primary's Admin.Reset(). Uses badger, not memory: memory.Store.Clear()
+// never touches its metaKV map at all, so a memory-backed version of this
+// test would pass trivially regardless of whether the fix is present.
+func TestApplyChangeRecord_ChangeClearPreservesIDSlotLease(t *testing.T) {
+	t.Parallel()
+
+	bs, err := badger.New(badger.Config{InMemory: true})
+	if err != nil {
+		t.Fatalf("badger.New: %v", err)
+	}
+	g, err := New(Config{Store: bs})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	want := &storepkg.IDSlotLeaseRecord{Slot: 9}
+	if err := g.Repl.SetIDSlotLease(want); err != nil {
+		t.Fatalf("SetIDSlotLease: %v", err)
+	}
+
+	if err := g.Repl.ApplyChange(storepkg.ChangeRecord{LSN: 1, Tag: storepkg.ChangeClear}); err != nil {
+		t.Fatalf("ApplyChange(ChangeClear): %v", err)
+	}
+
+	got, err := g.Repl.IDSlotLease()
+	if err != nil {
+		t.Fatalf("IDSlotLease after ChangeClear apply: %v", err)
+	}
+	if got == nil {
+		t.Fatal("IDSlotLease after ChangeClear apply = nil, want the lease to survive")
+	}
+	if got.Slot != want.Slot {
+		t.Fatalf("IDSlotLease after ChangeClear apply = %+v, want Slot=%d preserved", got, want.Slot)
 	}
 }

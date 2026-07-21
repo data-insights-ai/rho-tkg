@@ -170,29 +170,6 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   than were feasible here. NOT fixed — no code or test change applied; left explicitly open rather than
   closed by an unconfirmed theory or a speculative patch.
 
-### BACKLOG 13 — Retention / compaction / admin hardening
-
-- **13l. [PARTIALLY OPEN — the currently-known checklist IS well tested; the systematic future-proofing
-  gap is NOT closed and needs a design decision, not a backlog-sweep patch].** `Admin.Reset`'s
-  correctness (`admin.go:250-268`, `reapCoreStateForClear`) depends on a hand-maintained checklist of
-  `reap*` calls. Investigated actual test coverage before treating this as a pure gap: EVERY currently-
-  known reaped category already has a direct assertion —
-  `TestApplyChangeRecord_ChangeClearReapsCoreStateLikeReset` (op counters, unique constraints,
-  UniqueForever owners, named as-of tags, compaction watermark, retention watermark, entity count, all
-  via the SAME `reapCoreStateForClear` Reset()/ChangeClear share), `TestAdminOpsResetClearsOperationCounters`,
-  `TestAdminOpsResetPersistsRegistrySnapshotAfterClear` (registries are deliberately PRESERVED not
-  reaped), and `TestAsOfColumnCache_RealChokesBumpEpoch` (as-of DocValues cache epoch bump). So the
-  practical risk described by the original finding — "a currently-known category silently stops being
-  reaped" — already has a regression net. What remains genuinely open is the SYSTEMATIC guarantee: a
-  test that enumerates every MetaKV key constant used anywhere in the codebase and asserts each is
-  either covered by `reapCoreStateForClear` or on an explicit preserved-by-design allowlist, so a BRAND
-  NEW future MetaKV-backed feature cannot land without being forced to make that choice. A hand-written
-  allowlist in a test file would just be a second hand-maintained checklist alongside the first,
-  duplicating the risk rather than closing it — a real fix needs either static analysis (a linter rule
-  grepping `MetaSet`/`MetaKey` call sites) or a `go generate`-driven registry, which is design work
-  outside a backlog-sweep patch. Left open rather than fake-close it with a checklist mirroring a
-  checklist.**
-
 ### BACKLOG 14 — Index / docvalues / stats / vector / events hardening (graph layer)
 
 - **14h. Composite-index introspection (`ListComposites`/`HasComposite`) has no counterpart for

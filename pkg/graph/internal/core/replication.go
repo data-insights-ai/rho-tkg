@@ -22,6 +22,43 @@ const replicaAppliedLSNMeta = "replica_applied_lsn"
 // (an orchestrator hint for failover). Distinct from replicaAppliedLSNMeta.
 const idSlotLeaseMeta = "id_slot_lease"
 
+// captureIDSlotLeaseForReset reads the raw persisted id_slot_lease bytes so
+// Reset can restore them after c.store.Clear() wipes MetaKV (BACKLOG 13l).
+// The lease is an EXTERNAL ORCHESTRATOR's failover hint — data-independent
+// identity, unrelated to the graph's own entities — so a data Reset must not
+// erase it: doing so risks two nodes colliding on the same ID-generation slot
+// after a failover. Returns nil when no lease was ever set or the backend has
+// no MetaKV (both are legitimate no-op cases for the caller).
+func (c *Core) captureIDSlotLeaseForReset() []byte {
+	mk := c.metaKV
+	if mk == nil {
+		return nil
+	}
+	v, err := mk.MetaGet(idSlotLeaseMeta)
+	if err != nil || len(v) == 0 {
+		return nil
+	}
+	return append([]byte(nil), v...)
+}
+
+// restoreIDSlotLeaseAfterReset re-persists a lease captured by
+// captureIDSlotLeaseForReset, mirroring how persistRegistries() re-persists
+// the label/reltype/property-key registries after Clear. No-op when captured
+// is empty (no lease existed) or the backend has no MetaKV.
+func (c *Core) restoreIDSlotLeaseAfterReset(captured []byte) error {
+	if len(captured) == 0 {
+		return nil
+	}
+	mk := c.metaKV
+	if mk == nil {
+		return nil
+	}
+	if err := mk.MetaSet(idSlotLeaseMeta, captured); err != nil {
+		return fmt.Errorf("graph: restore id-slot lease after reset: %w", err)
+	}
+	return nil
+}
+
 // changeFeedOrErr returns the store's change-feed capability or a wrapped
 // ErrCapabilityNotSupported when the backend does not provide one (e.g. tiered,
 // or a store opened without the change-log enabled does provide the methods but

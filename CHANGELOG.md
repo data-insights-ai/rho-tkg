@@ -1939,6 +1939,60 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   GREEN. `go build`/`go vet` clean; full `internal/core` package suite (including the full existing
   `TestCompaction_Tiered_*` cross-shard/protected-tag/tampered-stub battery, unmodified) green under
   `-race`; `store/tiered` package suite green under `-race`; full-repo `go test ./...` clean.
+- FIX — BACKLOG 13l: `id_slot_lease` (the durable snowflake-slot lease an EXTERNAL ORCHESTRATOR
+  writes as a failover hint — `pkg/graph/internal/core/replication.go`) was silently WIPED by
+  `Admin.Reset()` on any backend whose `Clear()` genuinely wipes the persisted MetaKV keyspace
+  (badger: `DropAll` / its `LastLSNKey`-preserving variants) — `reapCoreStateForClear`'s checklist
+  never mentioned it, so unlike the label/reltype/property-key registries (which `persistRegistries()`
+  explicitly re-persists after `Clear`), the lease had no restoration path at all. This is a real
+  operational hazard: after a data Reset, a node that forgot its leased ID-generation slot could mint
+  IDs from a DIFFERENT slot than the orchestrator intended, risking collision with another node during
+  a later failover. Fixed by capturing the lease's raw MetaKV bytes BEFORE `c.store.Clear()` and
+  re-persisting them AFTER, mirroring `persistRegistries()`'s own capture-then-restore shape exactly
+  (`captureIDSlotLeaseForReset`/`restoreIDSlotLeaseAfterReset`, `replication.go`). Added
+  `TestAdminOpsResetPreservesIDSlotLease` (two-phase: set a lease, Reset, confirm it survives
+  unchanged) and `TestAdminOpsResetWithNoIDSlotLeaseIsNoOp` (Reset must not fabricate a lease when
+  none was set) — both against **badger**, not memory: `memory.Store.Clear()` never touches its
+  `metaKV` map at all, so a memory-backed version of this test would pass trivially regardless of the
+  fix (caught during this fix's own load-bearing check — the first version of the test, written
+  against `memory.New()`, passed even with the fix reverted, exposing that it wasn't actually
+  exercising the bug). Confirmed genuinely load-bearing against badger: reverting the fix turned
+  `TestAdminOpsResetPreservesIDSlotLease` immediately RED (`"IDSlotLease after Reset = nil, want the
+  lease to survive Reset"`); restored, GREEN.
+  **Also closes the systematic half of BACKLOG 13l**: `Admin.Reset()`'s correctness depended on a
+  hand-maintained checklist of what to reap/preserve — exactly the class of gap that let `id_slot_lease`
+  go unnoticed. Added a GLOBAL, CI-enforced guarantee instead of a second hand-maintained checklist:
+  `pkg/graph/internal/core/metakv_reap_policy.go` is the single explicit classification (Reap vs.
+  Preserve, with a documented WHY for each) of every MetaKV key this package persists — the 9 fixed
+  keys (`asof_tags`, `compacted_through_tx`, `graph_epoch`, `replica_applied_lsn`, `id_slot_lease`,
+  `unique_forever_owners`, `schema_version`, `retention_max_watermark`, `unique_constraints`) plus the
+  3 dynamic per-entity key builders (`retentionWatermarkKey`, `compactStubNodeKey`,
+  `compactStubRelKey`). `TestMetaKVReapPolicyCoversEveryKey` (`metakv_reap_policy_check_test.go`)
+  AST-walks every non-test `.go` file in the package for `mk.MetaSet(...)` call sites and fails closed
+  if the key (or, for a dynamically-built key, its builder function) is not registered in the
+  classification — a Go-native check (not a shell/grep script) chosen because the population is small
+  (12 total) and uniform, and `go/ast`-based key resolution is more robust than regex against a
+  const-indirection convention; wired as `make check-metakv-reap`, folded into `ci`/`ci-docker`.
+  Confirmed the check actually fires: a temporary unclassified `MetaSet("__probe__", nil)` call
+  produced the exact expected failure message; removed, confirmed GREEN again. Classification
+  decisions and their rationale (each independently verified against the actual code, not assumed):
+  `graph_epoch` REAP (a stale epoch surviving Reset would let a pre-reset delta cursor look valid
+  against unrelated post-reset data — minting fresh forces any old cursor to fail closed);
+  `replica_applied_lsn` REAP (surviving Reset while the replicated data was wiped would make a replica
+  believe it's already caught up and never re-bootstrap); `id_slot_lease` PRESERVE (the fix above);
+  `schema_version` REAP (gates an explicitly idempotent one-shot migration — wiping it is harmless,
+  the migration just re-runs against empty data). The registries are correctly OUTSIDE this check's
+  scope — they persist via `SaveRegistries`, never a raw `MetaSet` call, and already have their own
+  dedicated preserve-and-restore behavior. **Also found, not fixed (out of scope for this pass)**: the
+  replica `ChangeClear` apply path (`apply_record.go`) calls ONLY `c.store.Clear()` with no reap logic
+  at all — unlike `Admin.Reset()`, it does not re-persist registries or reset any of `Reset()`'s other
+  in-memory state (op counters, as-of tags, unique constraints, compaction/retention watermarks). This
+  is a real, deeper divergence between what a primary's `Reset()` does and what a replica's `ChangeClear`
+  apply reproduces, discovered while implementing this fix — flagged for a dedicated follow-up rather
+  than folded into this change, since BACKLOG 13l's own scope was the MetaKV reap-completeness
+  guarantee for `Reset()`, not a `ChangeClear`-apply correctness audit. `go build`/`go vet` clean;
+  `pkg/graph/internal/core` package suite green under `-race`; `make check-metakv-reap` passes; full-repo
+  `go test ./...` clean.
 
 ## [4.23.0] - 2026-07-18
 

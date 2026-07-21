@@ -2,7 +2,7 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := build
 
-.PHONY: build test test-v test-race test-integration bench-types-footprint bench bench-baseline bench-check bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large bench-compare cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker ci-docker check ci clean
+.PHONY: build test test-v test-race test-integration bench-types-footprint bench bench-baseline bench-check bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large bench-compare cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker ci-docker check ci clean check-metakv-reap
 
 BENCH_COUNT ?= 1
 BENCH_TIME ?= 1s
@@ -124,6 +124,12 @@ cover-gate:
 vet:
 	go vet ./...
 
+# BACKLOG 13l: fails if pkg/graph/internal/core persists a MetaKV key with no
+# explicit reap-vs-preserve classification for Admin.Reset/ChangeClear — see
+# metakv_reap_policy.go and metakv_reap_policy_check_test.go.
+check-metakv-reap:
+	go test -count=1 -run '^TestMetaKVReapPolicyCoversEveryKey$$' ./pkg/graph/internal/core/
+
 # Format code
 fmt:
 	gofmt -w $$(git ls-files '*.go')
@@ -166,13 +172,13 @@ vulncheck-docker:
 
 # Full CI gate using the dockerized tools for the three host-optional binaries
 # (fmt-check/vet/build/test-race/cover-gate run natively on the host).
-ci-docker: fmt-check vet lint-docker build test-race security-docker vulncheck-docker cover-gate
+ci-docker: fmt-check vet lint-docker build test-race security-docker vulncheck-docker cover-gate check-metakv-reap
 
 # Quick pre-commit check
 check: vet build test
 
 # Full CI pipeline
-ci: fmt-check vet lint build test-race security vulncheck cover-gate
+ci: fmt-check vet lint build test-race security vulncheck cover-gate check-metakv-reap
 
 # Clean generated files
 clean:

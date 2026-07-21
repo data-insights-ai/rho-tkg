@@ -95,6 +95,10 @@ func (c *Core) applyChangeRecordLocked(rec storepkg.ChangeRecord) error {
 		}
 		return c.applyRangePurgeLocked(body)
 	case storepkg.ChangeClear:
+		// Captured BEFORE Clear (BACKLOG 13l), mirroring Admin.Reset(): a
+		// replica's id_slot_lease is data-independent orchestrator state that
+		// must survive a ChangeClear apply too, not just a primary-side Reset.
+		leaseBytes := c.captureIDSlotLeaseForReset()
 		if err := c.store.Clear(); err != nil {
 			return err
 		}
@@ -103,7 +107,7 @@ func (c *Core) applyChangeRecordLocked(rec storepkg.ChangeRecord) error {
 		// clears Core-level in-memory state (as-of DocValues cache, unique
 		// constraints/owners, compaction/retention watermarks, op counters)
 		// that store.Clear() cannot reach (BACKLOG 12a).
-		return c.reapCoreStateForClear()
+		return c.reapCoreStateForClear(leaseBytes)
 	default:
 		return fmt.Errorf("graph: apply: unknown change tag %d", byte(rec.Tag))
 	}
