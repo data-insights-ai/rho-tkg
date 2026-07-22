@@ -271,29 +271,30 @@ deltas, both traced via `git bisect` to `7919ad0` and `0b5d662` respectively:
   see the "fix: BACKLOG 18k" commit for the full root cause (a background-flush
   race the batching refactor's own tests didn't cover) and fix (a
   captured-once-before-the-shared-transaction overlay snapshot). Closed.
-- **NOT A BUG — `BenchmarkPinnedScanScaling/.../d_bylabel_txat` ~15x slowdown
-  (450µs/6133 allocs vs. 29µs/433 allocs), left as-is.** `git bisect` traced this to
+- **DONE — BACKLOG 10c — `BenchmarkPinnedScanScaling/.../d_bylabel_txat` ~15x slowdown
+  (450µs/6133 allocs vs. 29µs/433 allocs), fixed.** `git bisect` traced this to
   `0b5d662` ("BACKLOG 10b — durable override-vs-resumption resolution in bitemporal
-  cascades"), a genuine correctness fix. That commit removed `nodeCurrentAnswersAt`/
-  `relCurrentAnswersAt`, a fast path in `nodeAtLockedTx`/`relAtLockedTx` that
-  answered a point-in-time query from the current row alone, skipping the full
-  history fetch — on the theory that "no history row could outrank the open current
-  row's belief." BACKLOG 10b's own fix broke that theory: a bounded cascade
-  correction can insert a HISTORY row with a NEWER belief (higher TxFrom) than an
-  untouched, still-open current row, without replacing current — the fast path
-  would then silently return the STALE current row instead of the correction. The
-  commit's own message says a cheaper heuristic was tried and rejected ("no cheap,
-  current-row-local signal... it would require knowing the entity's overall max
-  TxFrom across every version, which is exactly the cost the shortcut existed to
-  avoid"), so the shortcut was removed outright. Every `TxAt`-only point query
-  (`ByLabel`/`ByType` with `QueryOpts{TxAt}`, `OutgoingForNodesAtTx`, etc.) now pays
-  a full history fetch+decode per candidate instead of a cache hit in the common
-  case — the necessary price of the correctness fix, not a regression to revert. A
-  legitimate future perf item: design a NEW fast path that can safely rule out the
-  cascade-correction case (e.g. by tracking a per-entity max-TxFrom-across-history
-  watermark cheaply maintained at write time) without reintroducing the bug —
-  **not attempted here**; left open as a genuine optimization opportunity, not a
-  defect.
+  cascades"), a genuine correctness fix that removed `nodeCurrentAnswersAt`/
+  `relCurrentAnswersAt` (a fast path in `nodeAtLockedTx`/`relAtLockedTx` answering a
+  point-in-time query from the current row alone) because a bounded cascade
+  correction can insert a HISTORY row with a NEWER belief than an untouched,
+  still-open current row without replacing it — the old shortcut had no way to
+  detect that and would silently return the stale current row. Confirmed real
+  downstream impact before attempting a fix: `sigma-tkgd`'s `TemporalSweep`/
+  `IncrementalTriangleSweep` hit this exact path via `NodesAtTx`/`RelsAtTx`, up to
+  10,000 points per sweep — not just a synthetic benchmark number. Restored the
+  shortcut SAFELY via a new per-entity `store.NodeBeliefWatermarkCapability`/
+  `RelBeliefWatermarkCapability` sidecar (memory + badger, lazily built, same shape
+  as `labelTxMembers`/`relValidIdx`) tracking the maximum TxFrom EVER recorded
+  across an entity's whole version chain, however it got there (cascade, plain
+  update, import, replica-apply, rollback) — the shortcut now additionally requires
+  `current.TxFrom == watermark(entity)`, i.e. current is PROVABLY the newest belief
+  in the chain; unknown or non-matching declines to the full scan (never a wrong
+  answer, only a slower one). See the "perf: BACKLOG 10c" commit for the full
+  design, the exhaustively-grepped write-door coverage, the adversarial invariant
+  test (load-bearing confirmed by temporarily disabling the gate), the full
+  200-seed non-short bitemporal oracle, and the confirmed perf recovery back to the
+  pre-10b baseline (~44µs/433 allocs).
 
 **Structural gap flagged, not yet addressed**: nothing in `go test ./...` or CI
 would have caught either finding on its own. `bench/` is deliberately excluded

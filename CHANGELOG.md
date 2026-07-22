@@ -48,20 +48,58 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   want 1500"), then pinpointed to the introducing commit via `git bisect`. Verified: full `go test ./...`,
   `go vet`, `gofmt`, `go test -race` on `store/badger` and `internal/core`, and `BenchmarkAsOfPin/badger`
   now passes cleanly at ~90ms (matching the pre-regression baseline).
-- INVESTIGATED, NOT A BUG — a `bench/`-suite perf-trajectory comparison (5 checkpoints from `v4.16.0`
-  through `HEAD`, spanning the last several days of work) also surfaced a ~15x slowdown in
-  `BenchmarkPinnedScanScaling/.../d_bylabel_txat` (`ByLabel`/`ByType` with `QueryOpts{TxAt}`), traced via
-  `git bisect` to `0b5d662` (BACKLOG 10b's bitemporal-cascade correctness fix), which deliberately removed
-  an UNSOUND fast path (`nodeCurrentAnswersAt`/`relCurrentAnswersAt`) that could return a stale current row
-  instead of a newer belief buried in history after certain cascade corrections — see `tasks/backlog.md`'s
-  11h entry for the full explanation. Every `TxAt`-only point query now pays a full history fetch+decode
-  per candidate instead of a cache hit in the common case: the necessary price of the correctness fix, not
-  a regression. Left open as a legitimate future optimization (a new, PROVABLY sound fast path), not
-  attempted here. Also flagged: nothing in `go test ./...`/CI would have caught either finding — `bench/`
-  benchmarks are excluded from the routine test run and the only CI benchmark workflow is manual-dispatch,
-  non-blocking by design; wiring `bench-check`'s regression threshold into CI (`bench/README.md`'s own
-  documented "flip-to-blocking plan") is flagged as worth pursuing but NOT actioned here — a CI/policy
-  decision needing explicit owner sign-off.
+- PERF/FIX — BACKLOG 10c closed: the ~15x `BenchmarkPinnedScanScaling/.../d_bylabel_txat` slowdown a
+  `bench/`-suite perf-trajectory comparison (5 checkpoints, `v4.16.0` through `HEAD`) traced via `git
+  bisect` to `0b5d662` (BACKLOG 10b's bitemporal-cascade correctness fix) is now FIXED, not merely
+  documented as an accepted trade-off. `0b5d662` deliberately removed `nodeCurrentAnswersAt`/
+  `relCurrentAnswersAt` — a fast path in `nodeAtLockedTx`/`relAtLockedTx` answering a point-in-time query
+  from the current row alone — because a bounded bitemporal cascade correction can insert a HISTORY row
+  with a NEWER belief (higher `TxFrom`) than an untouched, still-open current row without ever replacing
+  it, and the old shortcut had no way to detect that (it would silently return the stale current row).
+  Before attempting a fix, confirmed the regression has real downstream cost, not just a benchmark
+  artifact: `sigma-tkgd`'s `pkg/analytics` `TemporalSweep`/`IncrementalTriangleSweep` call `BuildSnapshot`
+  → `g.Temporal().NodesAtTx`/`RelsAtTx` once PER REQUESTED TIME POINT (documented ceiling
+  `maxSweepPoints = 10_000`), each a full-graph scan through the exact degraded path.
+  - New optional `store.NodeBeliefWatermarkCapability` / `RelBeliefWatermarkCapability`: a per-entity
+    sidecar (memory + badger, lazily built from the current+history keyspace on first use, same shape as
+    the existing `labelTxMembers`/`relValidIdx` sidecars; tiered/sharded correctly decline via the same
+    "exact native store only" guard `labelTxMembershipCapability` already established) tracking the
+    MAXIMUM `TxFrom` ever recorded across an entity's WHOLE version chain — current row AND every history
+    row, regardless of which write door produced it (cascade, plain `Update`, import, replica-apply,
+    transaction rollback).
+  - `nodeCurrentAnswersAt`/`relCurrentAnswersAt` restored with one additional, load-bearing condition:
+    `current.Temporal().TxFrom == watermark(entity)` — current is PROVABLY the newest belief anywhere in
+    the chain, so (by the same closed-tiles-can't-cover-validAt reasoning the original shortcut used, now
+    made SOUND instead of assumed) no history row can outrank it for any `validAt` at or after current's
+    own valid-from. An unknown watermark (capability absent) or a mismatch declines to the full chain scan
+    — never a wrong answer, only the pre-10c slower one.
+  - Maintenance wired at every door that persists a current or history row with a `TxFrom`, in BOTH
+    backends: create, in-place replace, the with-history label-add/remove doors, the ordinary `Update()`
+    door (`ReplaceNodeWithHistory`/`ReplaceRelWithHistory`), the tombstone-writing delete-with-history
+    doors, the raw history-append door (`PutNodeVersion`/`PutRelVersion` — the cascade's own write path),
+    and the batch create paths. Coverage confirmed via exhaustive grep of every `ms.nodes[]=`/`ms.rels[]=`
+    assignment (memory) and every `bumpNodeRevLocked`/`bumpRelRevLocked` call site (badger) — not a
+    door-by-door guess. No cleanup/drop helper: snowflake IDs are never reused, so a stale watermark entry
+    for a since-purged entity can never be misattributed to a different entity later; leaving it costs one
+    `int64` per ever-created entity, the same bounded trade-off already accepted for other per-entity
+    sidecars in this codebase.
+  - Verification matched BACKLOG 10b's own bar, given this is the identical code region with a history of
+    TWO reverted fix attempts: a new adversarial invariant test directly injects a history row via the raw
+    store door with a higher `TxFrom` overlapping current's own coverage — bypassing
+    `cascadeNodeVersionInterval`'s own self-consistent tiling entirely, since natural single-cascade
+    sequences turn out to always either leave the correction's window disjoint from current's (the exact
+    tiling discipline 10b's own fix guarantees) or promote a resumption row to current outright, making a
+    "natural" repro elusive — confirmed LOAD-BEARING by temporarily disabling the watermark check and
+    watching the test fail with exactly the stale-answer symptom on both backends, then re-enabling. Also:
+    a real cascade-resumption regression test, a fast-path-actually-engages positive test, the full
+    (non-short) 200-seed `TestBitemporalOracleHarness` and `TestBitemporalOracle_BadgerCommitWindow`, full
+    `go test ./...`, `go vet`, `gofmt`, and `go test -race` across `internal/core` + `store/badger` +
+    `store/memory` all clean, and `BenchmarkPinnedScanScaling/10000/V1/selective/d_bylabel_txat` confirmed
+    back to ~44µs/433 allocs — the exact pre-BACKLOG-10b baseline.
+  - Structural CI gap still flagged, NOT actioned (a policy decision needing explicit owner sign-off):
+    `bench/` benchmarks are excluded from the routine `go test ./...` run and the one CI benchmark workflow
+    is manual-dispatch, non-blocking by design; wiring `bench-check`'s regression threshold into CI
+    (`bench/README.md`'s own documented "flip-to-blocking plan") remains open.
 - WILL NOT DO — BACKLOG 18t's last remaining test gap (a direct test pinning change-log-marshal-
   failure-mid-write atomicity) closed as will-not-do rather than left indefinitely open. The gap would
   require a registered custom property type whose `msgpack.CustomEncoder` deliberately errors mid-
