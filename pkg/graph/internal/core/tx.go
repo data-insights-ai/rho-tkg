@@ -100,6 +100,42 @@ type GraphTx struct {
 	mu              sync.Mutex // protects done flag and snapshot tracking
 	done            bool
 	committedLSN    uint64 // max change-log LSN this tx's commit assigned (0 = none / log off)
+	// scopeToken (BACKLOG 11f) — set by BeginTx via c.scopedChangeLog.BeginScopedLog()
+	// when the store supports the full token-routed mechanism (see
+	// storepkg.ScopedTxCapability). 0 when the mechanism isn't in use (store
+	// doesn't support it) OR the change-log is disabled (BeginScopedLog itself
+	// returns 0 in that case) — either way every *ScopedAware door call and
+	// doorCtx() naturally fall through to the plain unscoped path. Read via
+	// doorCtx() (forward doors, ctx-threaded) or directly (Rollback's
+	// *ScopedAwareToken helpers, which have no ctx to thread it through).
+	scopeToken uint64
+}
+
+// doorCtx returns the context a GraphTx mutation method should pass to its
+// underlying *Internal helper: withScopeToken(ctx, tx.scopeToken) when the
+// tx is using the BACKLOG 11f token-routed mechanism (tx.g.scopedChangeLog
+// != nil), else a plain context.Background() — identical to every call site
+// before this mechanism existed. Every GraphTx mutation method that
+// previously passed a bare context.Background() to its *Internal call now
+// passes tx.doorCtx() instead; this is the ONE place that decision is made,
+// so no call site can drift out of sync with BeginTx's capability check.
+func (tx *GraphTx) doorCtx() context.Context {
+	if tx.g.scopedChangeLog != nil {
+		return withScopeToken(context.Background(), tx.scopeToken)
+	}
+	return context.Background()
+}
+
+// doorCtxFrom is doorCtx's sibling for GraphTx methods that already receive
+// a real ctx from their caller (e.g. ImportNodeWithID's cancellation
+// context) rather than constructing their own — it carries the scope token
+// on TOP of the caller's ctx (preserving its cancellation/deadline/values)
+// instead of starting fresh from context.Background().
+func (tx *GraphTx) doorCtxFrom(ctx context.Context) context.Context {
+	if tx.g.scopedChangeLog != nil {
+		return withScopeToken(ctx, tx.scopeToken)
+	}
+	return ctx
 }
 
 // BeginTx starts a new mutation transaction. Returns ErrGraphClosed if
@@ -153,10 +189,26 @@ func (c *Core) BeginTx() (*GraphTx, error) {
 		deletedRelSet:   make(map[snowflake.ID]struct{}),
 	}
 	c.txEventBuffer = &tx.pendingEvents
-	if c.txLogScope != nil {
-		// Open the per-tx change-log buffer: every mutation's record is diverted
-		// (under lockActiveCoreWrite's exclusive lock) into it and emitted on Commit
-		// / dropped on Rollback, so a rolled-back tx ships nothing to the feed.
+	if c.scopedChangeLog != nil {
+		// BACKLOG 11f: open this tx's OWN independently-addressed scope. Every
+		// mutation's record is routed into THIS token's buffer (via
+		// doorCtx()/scopeTokenFrom and the *ScopedAware store wrappers), never
+		// a single shared divert flag — so lockActiveCoreWrite can use a
+		// shared RLock instead of the legacy exclusive lock. token == 0 when
+		// the change-log is disabled (BeginScopedLog's own contract); every
+		// *ScopedAware wrapper then falls through to the plain unscoped door,
+		// identical to today's "log disabled" behavior.
+		token, err := c.scopedChangeLog.BeginScopedLog()
+		if err != nil {
+			c.txEventBuffer = nil
+			c.txMu.Unlock()
+			return nil, err
+		}
+		tx.scopeToken = token
+	} else if c.txLogScope != nil {
+		// Legacy mechanism: the store doesn't implement the full BACKLOG 11f
+		// contract, so fall back to the single shared implicit buffer + the
+		// exclusive-lock divert dance in lockActiveCoreWrite.
 		if err := c.txLogScope.BeginLogScope(); err != nil {
 			c.txEventBuffer = nil
 			c.txMu.Unlock()
@@ -387,19 +439,48 @@ func (tx *GraphTx) unlockActiveCore() {
 	tx.mu.Unlock()
 }
 
-// lockActiveCoreWrite is the MUTATION variant of lockActiveCore. When a per-tx
-// change-log scope is active it takes c.mu.Lock (EXCLUSIVE) instead of RLock and
-// turns on record diversion (SetLogDivert) — so for the duration of this single
-// mutation no concurrent standalone mutation (which holds only c.mu.RLock) can run
-// and have its own change-log record misrouted into this tx's buffer. The lock is
-// per-mutation (acquired+released around one mutation method), NOT held for the tx
-// lifetime, so in-tx reads (which take their own brief lock) never deadlock
-// against it (lesson 31). When there is no scope it is exactly lockActiveCore.
+// usesSharedLock reports whether this tx's mutation methods can use the
+// shared c.mu.RLock instead of the legacy exclusive c.mu.Lock — true when
+// EITHER the BACKLOG 11f token-routed mechanism is in use (tx.g.scopedChangeLog
+// != nil: routing is decided per-call by an explicit token argument, so
+// there is no shared divert flag a concurrent standalone write could ever
+// race) OR there is no legacy scope at all (tx.g.txLogScope == nil: nothing
+// to divert, change-log off or unsupported). Only false when the store is on
+// the legacy single-implicit-buffer SetLogDivert mechanism, which genuinely
+// needs the exclusive lock to stay correct — see lockActiveCoreWrite.
+func (tx *GraphTx) usesSharedLock() bool {
+	return tx.g.scopedChangeLog != nil || tx.g.txLogScope == nil
+}
+
+// lockActiveCoreWrite is the MUTATION variant of lockActiveCore.
+//
+// Two mechanisms decide the lock (see usesSharedLock):
+//   - BACKLOG 11f token-routed (tx.g.scopedChangeLog != nil): this tx opened
+//     its OWN scope at BeginTx (tx.scopeToken) and every mutation method
+//     threads that token through doorCtx() to the *ScopedAware store
+//     wrappers, which route each record into the token's OWN buffer. Because
+//     routing is decided per-call by an explicit argument — never a shared
+//     flag — a concurrent standalone mutation (also c.mu.RLock) can never
+//     have its record misrouted into this tx's buffer, so a shared RLock is
+//     sufficient. This is the actual point of BACKLOG 11f: a change-log-
+//     enabled tx no longer blocks concurrent standalone writers or
+//     concurrent-mode (Lanes:N) ingest for the duration of each mutation.
+//   - Legacy (tx.g.txLogScope != nil, scopedChangeLog nil — store doesn't
+//     implement the full BACKLOG 11f contract): takes c.mu.Lock (EXCLUSIVE)
+//     and turns on record diversion (SetLogDivert) — so for the duration of
+//     this single mutation no concurrent standalone mutation (which holds
+//     only c.mu.RLock) can run and have its own change-log record misrouted
+//     into this tx's single shared buffer.
+//
+// The lock is per-mutation (acquired+released around one mutation method),
+// NOT held for the tx lifetime, so in-tx reads (which take their own brief
+// lock) never deadlock against it (lesson 31). When there is no scope at all
+// it is exactly lockActiveCore either way.
 func (tx *GraphTx) lockActiveCoreWrite() error {
 	if err := tx.lockActive(); err != nil {
 		return err
 	}
-	if tx.g.txLogScope == nil {
+	if tx.usesSharedLock() {
 		tx.g.mu.RLock()
 		if tx.g.closed.Load() {
 			tx.g.mu.RUnlock()
@@ -423,7 +504,7 @@ func (tx *GraphTx) lockActiveCoreWriteContext(ctx context.Context) error {
 	if err := tx.lockActiveContext(ctx); err != nil {
 		return err
 	}
-	if tx.g.txLogScope == nil {
+	if tx.usesSharedLock() {
 		tx.g.mu.RLock()
 		if tx.g.closed.Load() {
 			tx.g.mu.RUnlock()
@@ -443,9 +524,10 @@ func (tx *GraphTx) lockActiveCoreWriteContext(ctx context.Context) error {
 }
 
 // unlockActiveCoreWrite reverses lockActiveCoreWrite (turns off diversion and
-// releases the exclusive lock when a scope is active; otherwise releases RLock).
+// releases the exclusive lock on the legacy path; otherwise just releases
+// the shared RLock — see usesSharedLock).
 func (tx *GraphTx) unlockActiveCoreWrite() {
-	if tx.g.txLogScope == nil {
+	if tx.usesSharedLock() {
 		tx.g.mu.RUnlock()
 		tx.mu.Unlock()
 		return
@@ -524,7 +606,14 @@ func (tx *GraphTx) Commit() error {
 	// references is already durable. On error the tx is NOT marked done (its data
 	// is in pending but unlogged — not yet durable-as-committed); the caller can
 	// retry. The scope's own records remain buffered for the retry.
-	if tx.g.txLogScope != nil {
+	if tx.g.scopedChangeLog != nil {
+		lsn, err := tx.g.scopedChangeLog.CommitScopedLog(tx.scopeToken)
+		if err != nil {
+			tx.g.mu.Unlock()
+			return err
+		}
+		tx.committedLSN = lsn
+	} else if tx.g.txLogScope != nil {
 		lsn, err := tx.g.txLogScope.CommitLogScope()
 		if err != nil {
 			tx.g.mu.Unlock()
@@ -610,12 +699,18 @@ func (tx *GraphTx) Rollback() error {
 	tx.g.txEventBuffer = nil
 	tx.pendingEvents = nil
 
-	// Keep change-log diversion ON across the reverse mutations below so their
-	// records (DeleteNodeCascade, ReplaceNode, PutNodeVersion, Truncate*) ALSO land
-	// in the scope buffer, then drop the whole buffer (forward + reverse) with
-	// DiscardLogScope before unlocking — a rolled-back tx emits NOTHING. Rollback
-	// holds c.mu.Lock, so no concurrent standalone mutation can run while diverted.
-	if tx.g.txLogScope != nil {
+	// Legacy mechanism only: keep change-log diversion ON across the reverse
+	// mutations below so their records ALSO land in the single shared scope
+	// buffer, then drop the whole buffer (forward + reverse) with
+	// DiscardLogScope before unlocking — a rolled-back tx emits NOTHING.
+	// Rollback holds c.mu.Lock, so no concurrent standalone mutation can run
+	// while diverted. BACKLOG 11f token-routed mechanism needs no divert
+	// flag at all: every reverse-mutation call below goes through the
+	// *ScopedAwareToken/*ScopedAware helpers (rollback_scoped.go), which
+	// route explicitly by tx.scopeToken — the SAME token the tx's forward
+	// mutations already used — so the reverse records land in the identical
+	// discardable buffer without needing exclusivity.
+	if tx.g.scopedChangeLog == nil && tx.g.txLogScope != nil {
 		tx.g.txLogScope.SetLogDivert(true)
 	}
 
@@ -654,7 +749,7 @@ func (tx *GraphTx) Rollback() error {
 	// 4. Restore updated relationships to pre-mutation snapshot (reverse order).
 	for i := len(tx.updatedRels) - 1; i >= 0; i-- {
 		snap := tx.updatedRels[i]
-		capture(tx.g.store.ReplaceRelationship(snap.prev))
+		capture(tx.g.replaceRelationshipScopedAwareToken(tx.scopeToken, snap.prev))
 		capture(tx.restoreRelSnapshotHistory(types.RelID(snap.id), snap))
 	}
 
@@ -668,15 +763,15 @@ func (tx *GraphTx) Rollback() error {
 	// 6. Delete created relationships in reverse creation order.
 	for i := len(tx.createdRels) - 1; i >= 0; i-- {
 		rid := types.RelID(tx.createdRels[i])
-		capture(tx.g.store.DeleteRelationship(rid))
-		capture(tx.g.store.TruncateRelHistory(rid, 0))
+		capture(tx.g.deleteRelationshipScopedAware(tx.scopeToken, rid))
+		capture(tx.g.truncateRelHistoryScopedAware(tx.scopeToken, rid, 0))
 	}
 
 	// 7. Delete created nodes in reverse creation order (cascade).
 	for i := len(tx.createdNodes) - 1; i >= 0; i-- {
 		nid := types.NodeID(tx.createdNodes[i])
-		capture(tx.g.store.DeleteNodeCascade(nid))
-		capture(tx.g.store.TruncateNodeHistory(nid, 0))
+		capture(tx.g.deleteNodeCascadeScopedAware(tx.scopeToken, nid))
+		capture(tx.g.truncateNodeHistoryScopedAware(tx.scopeToken, nid, 0))
 	}
 
 	capture(tx.restoreRegistries())
@@ -684,9 +779,11 @@ func (tx *GraphTx) Rollback() error {
 		tx.g.restoreOpCounters(tx.opSnapshot)
 	}
 
-	// Drop the buffered forward + reverse records (also clears diversion). No LSN
-	// was burned, so the feed has no gap.
-	if tx.g.txLogScope != nil {
+	// Drop the buffered forward + reverse records. No LSN was burned, so the
+	// feed has no gap either way.
+	if tx.g.scopedChangeLog != nil {
+		capture(tx.g.scopedChangeLog.DiscardScopedLog(tx.scopeToken))
+	} else if tx.g.txLogScope != nil {
 		capture(tx.g.txLogScope.DiscardLogScope())
 	}
 
@@ -696,7 +793,7 @@ func (tx *GraphTx) Rollback() error {
 func (tx *GraphTx) restoreDeletedNodeRow(n *types.Node) error {
 	current, err := tx.g.getCurrentNode(n.ID())
 	if errors.Is(err, storepkg.ErrNodeNotFound) {
-		return tx.g.store.PutNode(n)
+		return tx.g.putNodeScopedAwareToken(tx.scopeToken, n)
 	} else if err != nil {
 		return err
 	}
@@ -705,13 +802,13 @@ func (tx *GraphTx) restoreDeletedNodeRow(n *types.Node) error {
 			return err
 		}
 	}
-	return tx.g.store.ReplaceNode(n)
+	return tx.g.replaceNodeScopedAwareToken(tx.scopeToken, n)
 }
 
 func (tx *GraphTx) restoreDeletedRelRow(r *types.Relationship) error {
 	current, err := tx.g.getCurrentRelationship(r.ID())
 	if errors.Is(err, storepkg.ErrRelNotFound) {
-		return tx.g.store.PutRelationship(r)
+		return tx.g.putRelationshipScopedAwareToken(tx.scopeToken, r)
 	} else if errors.Is(err, storepkg.ErrSlotNotLocal) {
 		// A Model-A foreign-incoming stub (ADR-0010): its rel-ID slot is foreign, so
 		// a slot-routed point read fails closed and PutRelationship/ReplaceRelationship
@@ -730,12 +827,12 @@ func (tx *GraphTx) restoreDeletedRelRow(r *types.Relationship) error {
 		return err
 	}
 	if !sameRelationshipIndexFields(current, r) {
-		if err := tx.g.store.DeleteRelationship(r.ID()); err != nil {
+		if err := tx.g.deleteRelationshipScopedAware(tx.scopeToken, r.ID()); err != nil {
 			return err
 		}
-		return tx.g.store.PutRelationship(r)
+		return tx.g.putRelationshipScopedAwareToken(tx.scopeToken, r)
 	}
-	return tx.g.store.ReplaceRelationship(r)
+	return tx.g.replaceRelationshipScopedAwareToken(tx.scopeToken, r)
 }
 
 func sameRelationshipIndexFields(a, b *types.Relationship) bool {
@@ -783,7 +880,7 @@ func (tx *GraphTx) restoreUpdatedNode(snap nodeSnapshot) error {
 			return err
 		}
 	}
-	return tx.g.store.ReplaceNode(snap.prev)
+	return tx.g.replaceNodeScopedAwareToken(tx.scopeToken, snap.prev)
 }
 
 func (tx *GraphTx) restoreNodeLabels(id types.NodeID, current, target *types.Node) error {
@@ -804,7 +901,7 @@ func (tx *GraphTx) restoreNodeLabels(id types.NodeID, current, target *types.Nod
 				if !next.AddLabelTokenRaw(targetPrimary) {
 					return fmt.Errorf("%w: transaction rollback could not add label token %d for node %d", storepkg.ErrInvalidStoreMutation, targetPrimary, id)
 				}
-				if err := tx.g.store.AddNodeLabelToken(id, targetPrimary, next); err != nil {
+				if err := tx.g.addNodeLabelTokenScopedAware(tx.scopeToken, id, targetPrimary, next); err != nil {
 					return err
 				}
 				working = next
@@ -824,7 +921,7 @@ func (tx *GraphTx) restoreNodeLabels(id types.NodeID, current, target *types.Nod
 			if !next.RemoveLabelTokenRaw(tok) {
 				return fmt.Errorf("%w: transaction rollback could not remove label token %d for node %d", storepkg.ErrInvalidStoreMutation, tok, id)
 			}
-			if err := tx.g.store.RemoveNodeLabelToken(id, tok, next); err != nil {
+			if err := tx.g.removeNodeLabelTokenScopedAware(tx.scopeToken, id, tok, next); err != nil {
 				return err
 			}
 			working = next
@@ -836,7 +933,7 @@ func (tx *GraphTx) restoreNodeLabels(id types.NodeID, current, target *types.Nod
 			if !next.AddLabelTokenRaw(targetLabels[prefix]) {
 				return fmt.Errorf("%w: transaction rollback could not add label token %d for node %d", storepkg.ErrInvalidStoreMutation, targetLabels[prefix], id)
 			}
-			if err := tx.g.store.AddNodeLabelToken(id, targetLabels[prefix], next); err != nil {
+			if err := tx.g.addNodeLabelTokenScopedAware(tx.scopeToken, id, targetLabels[prefix], next); err != nil {
 				return err
 			}
 			working = next
@@ -855,7 +952,7 @@ func (tx *GraphTx) restoreNodeLabels(id types.NodeID, current, target *types.Nod
 		if !next.RemoveLabelTokenRaw(tok) {
 			return fmt.Errorf("%w: transaction rollback could not remove label token %d for node %d", storepkg.ErrInvalidStoreMutation, tok, id)
 		}
-		if err := tx.g.store.RemoveNodeLabelToken(id, tok, next); err != nil {
+		if err := tx.g.removeNodeLabelTokenScopedAware(tx.scopeToken, id, tok, next); err != nil {
 			return err
 		}
 		working = next
@@ -909,11 +1006,11 @@ func commonLabelPrefix(a, b []uint16) int {
 }
 
 func (tx *GraphTx) restoreNodeHistory(id types.NodeID, history []*types.Node) error {
-	if err := tx.g.store.TruncateNodeHistory(id, 0); err != nil {
+	if err := tx.g.truncateNodeHistoryScopedAware(tx.scopeToken, id, 0); err != nil {
 		return err
 	}
 	for _, n := range history {
-		if err := tx.g.store.PutNodeVersion(id, n.Version(), n); err != nil {
+		if err := tx.g.putNodeVersionScopedAwareToken(tx.scopeToken, id, n.Version(), n); err != nil {
 			return err
 		}
 	}
@@ -921,11 +1018,11 @@ func (tx *GraphTx) restoreNodeHistory(id types.NodeID, history []*types.Node) er
 }
 
 func (tx *GraphTx) restoreRelHistory(id types.RelID, history []*types.Relationship) error {
-	if err := tx.g.store.TruncateRelHistory(id, 0); err != nil {
+	if err := tx.g.truncateRelHistoryScopedAware(tx.scopeToken, id, 0); err != nil {
 		return err
 	}
 	for _, r := range history {
-		if err := tx.g.store.PutRelVersion(id, r.Version(), r); err != nil {
+		if err := tx.g.putRelVersionScopedAwareToken(tx.scopeToken, id, r.Version(), r); err != nil {
 			return err
 		}
 	}
@@ -934,28 +1031,28 @@ func (tx *GraphTx) restoreRelHistory(id types.RelID, history []*types.Relationsh
 
 func (tx *GraphTx) restoreDeletedNodeHistory(snap deletedNodeSnapshot) error {
 	if snap.useHistoryTrim {
-		return tx.g.historyTrim.TrimNodeHistoryFrom(snap.node.ID(), snap.historyTrimFrom)
+		return tx.g.trimNodeHistoryFromScopedAware(tx.scopeToken, snap.node.ID(), snap.historyTrimFrom)
 	}
 	return tx.restoreNodeHistory(snap.node.ID(), snap.nodeHistory)
 }
 
 func (tx *GraphTx) restoreDeletedRelHistory(snap deletedRelSnapshot) error {
 	if snap.useHistoryTrim {
-		return tx.g.historyTrim.TrimRelHistoryFrom(snap.rel.ID(), snap.historyTrimFrom)
+		return tx.g.trimRelHistoryFromScopedAware(tx.scopeToken, snap.rel.ID(), snap.historyTrimFrom)
 	}
 	return tx.restoreRelHistory(snap.rel.ID(), snap.history)
 }
 
 func (tx *GraphTx) restoreNodeSnapshotHistory(id types.NodeID, snap nodeSnapshot) error {
 	if snap.useHistoryTrim {
-		return tx.g.historyTrim.TrimNodeHistoryFrom(id, snap.historyTrimFrom)
+		return tx.g.trimNodeHistoryFromScopedAware(tx.scopeToken, id, snap.historyTrimFrom)
 	}
 	return tx.restoreNodeHistory(id, snap.history)
 }
 
 func (tx *GraphTx) restoreRelSnapshotHistory(id types.RelID, snap relSnapshot) error {
 	if snap.useHistoryTrim {
-		return tx.g.historyTrim.TrimRelHistoryFrom(id, snap.historyTrimFrom)
+		return tx.g.trimRelHistoryFromScopedAware(tx.scopeToken, id, snap.historyTrimFrom)
 	}
 	return tx.restoreRelHistory(id, snap.history)
 }

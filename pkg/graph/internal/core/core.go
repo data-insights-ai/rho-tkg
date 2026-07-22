@@ -107,6 +107,21 @@ type Core struct {
 	changeFeed       storepkg.ChangeFeedCapability
 	changeLogEnabled bool                      // store's change-log actually on (records emitted)
 	txLogScope       storepkg.TxChangeLogScope // per-tx record buffer (nil when off / unsupported)
+	// scopedChangeLog (BACKLOG 11f) — the token-routed multi-scope mechanism.
+	// Set ONLY when the store implements the FULL storepkg.ScopedTxCapability
+	// (every door's Scoped sibling AND ScopedTxChangeLog together) — partial
+	// support is deliberately never granted the fast path, see
+	// ScopedTxCapability's doc comment. When non-nil, GraphTx uses this
+	// INSTEAD of txLogScope: BeginTx opens a per-tx token via BeginScopedLog,
+	// every tx mutation method threads that token through ctx (scopeTokenFrom)
+	// so the *ScopedAware store wrappers route each record into the token's
+	// own buffer, and lockActiveCoreWrite takes only a shared RLock — the
+	// token-keyed routing (not a single shared divert flag) is what makes the
+	// exclusive lock unnecessary. txLogScope and its SetLogDivert mechanism
+	// stay completely unused for a GraphTx once this is set (BatchBuilder.
+	// Execute is unaffected either way — it still uses txLogScope always,
+	// out of scope for this flip).
+	scopedChangeLog storepkg.ScopedTxCapability
 	// Metadata facet (ADR-0003) — durable arbitrary-KV + atomic history
 	// compaction. Both are bare optional capabilities (no wrapper-visibility
 	// dance): the store is fixed after New, so a nil handle is exactly the
@@ -1286,6 +1301,23 @@ func txChangeLogScope(store storepkg.MandatoryStore, enabled bool) storepkg.TxCh
 	return s
 }
 
+// scopedTxCapability resolves the BACKLOG 11f token-routed multi-scope
+// capability. Unlike txChangeLogScope, this does NOT gate on the change-log
+// being enabled: BeginScopedLog itself returns (0, nil) when the log is off,
+// so scopeToken stays 0 for every tx and every *ScopedAware wrapper falls
+// through to its plain unscoped door — exactly the existing "log disabled"
+// behavior — while lockActiveCoreWrite still safely uses the shared RLock
+// (there is nothing to divert either way). Gating on the FULL
+// storepkg.ScopedTxCapability interface (not just ScopedTxChangeLog) is
+// deliberate: a store implementing the scope mechanism but missing even one
+// door's Scoped sibling must never be granted the fast path, or that one
+// door's *ScopedAware fallback could leak a record into the eager feed
+// before a possible rollback. See ScopedTxCapability's doc comment.
+func scopedTxCapability(store storepkg.MandatoryStore) storepkg.ScopedTxCapability {
+	s, _ := store.(storepkg.ScopedTxCapability)
+	return s
+}
+
 func nativeAdjacencyReadsValidateNodeExistence(store storepkg.MandatoryStore) bool {
 	switch store.(type) {
 	case *memory.Store, *badger.Store, *tiered.Store:
@@ -1589,6 +1621,7 @@ func New(config Config) (*Core, error) {
 	c.changeFeed = changeFeedCapability(store)
 	c.changeLogEnabled = changeLogStatusEnabled(store)
 	c.txLogScope = txChangeLogScope(store, c.changeLogEnabled)
+	c.scopedChangeLog = scopedTxCapability(store)
 	c.deletedDepthIter = depthDeletedIterationCapability(store)
 	c.labelTxMembers = labelTxMembershipCapability(store)
 	c.relTypeTxMembers = relTypeTxMembershipCapability(store)

@@ -28,7 +28,7 @@ func (tx *GraphTx) AddNode(labels []string, props map[string]any) (*types.Node, 
 	}
 	defer tx.unlockActiveCoreWrite()
 
-	n, err := tx.g.addNodeInternal(context.Background(), labels, props)
+	n, err := tx.g.addNodeInternal(tx.doorCtx(), labels, props)
 	tx.noteNodeCreateResultLocked(n)
 	if err != nil {
 		return n, err
@@ -46,7 +46,7 @@ func (tx *GraphTx) AddRelationship(typeName string, startNode, endNode *types.No
 	}
 	defer tx.unlockActiveCoreWrite()
 
-	r, err := tx.g.addRelationshipInternal(context.Background(), typeName, startNode, endNode, props)
+	r, err := tx.g.addRelationshipInternal(tx.doorCtx(), typeName, startNode, endNode, props)
 	tx.noteRelCreateResultLocked(r)
 	if err != nil {
 		return r, err
@@ -64,7 +64,7 @@ func (tx *GraphTx) AddRelationshipByID(typeName string, startID, endID types.Nod
 	}
 	defer tx.unlockActiveCoreWrite()
 
-	r, err := tx.g.addRelationshipByIDInternal(context.Background(), typeName, startID, endID, props)
+	r, err := tx.g.addRelationshipByIDInternal(tx.doorCtx(), typeName, startID, endID, props)
 	tx.noteRelCreateResultLocked(r)
 	if err != nil {
 		return r, err
@@ -84,7 +84,7 @@ func (tx *GraphTx) AddRelationshipByIDIfAbsent(typeName string, startID, endID t
 	}
 	defer tx.unlockActiveCoreWrite()
 
-	r, created, err := tx.g.addRelationshipByIDIfAbsentInternal(context.Background(), typeName, startID, endID, props)
+	r, created, err := tx.g.addRelationshipByIDIfAbsentInternal(tx.doorCtx(), typeName, startID, endID, props)
 	if created && r != nil {
 		tx.noteRelCreateResultLocked(r)
 	}
@@ -109,7 +109,7 @@ func (tx *GraphTx) ImportNodeWithID(ctx context.Context, id types.NodeID, labels
 		}
 	}
 
-	n, err := tx.g.importNodeWithIDInternal(ctx, id, labels, props)
+	n, err := tx.g.importNodeWithIDInternal(tx.doorCtxFrom(ctx), id, labels, props)
 	tx.noteNodeCreateResultLocked(n)
 	if err != nil {
 		return n, err
@@ -132,7 +132,7 @@ func (tx *GraphTx) ImportRelationshipWithID(ctx context.Context, id types.RelID,
 		}
 	}
 
-	r, err := tx.g.importRelWithIDInternal(ctx, id, typeName, startNode, endNode, props)
+	r, err := tx.g.importRelWithIDInternal(tx.doorCtxFrom(ctx), id, typeName, startNode, endNode, props)
 	tx.noteRelCreateResultLocked(r)
 	if err != nil {
 		return r, err
@@ -210,7 +210,7 @@ func (tx *GraphTx) UpdateNode(id types.NodeID, updates map[string]any) (*types.N
 		}
 	}
 
-	n, mutated, err := tx.g.updateNodePreparedInternal(context.Background(), id, prov, tmp, preparedUpdates)
+	n, mutated, err := tx.g.updateNodePreparedInternal(tx.doorCtx(), id, prov, tmp, preparedUpdates)
 	if err == nil && mutated {
 		tx.g.publishEvent(eventspkg.EventNodeUpdate, types.EntityID(id), tx.g.now(), eventspkg.PriorityNormal)
 	}
@@ -262,7 +262,7 @@ func (tx *GraphTx) UpdateRelationship(id types.RelID, updates map[string]any) (*
 		}
 	}
 
-	r, mutated, err := tx.g.updateRelationshipPreparedInternal(context.Background(), id, prov, tmp, preparedUpdates)
+	r, mutated, err := tx.g.updateRelationshipPreparedInternal(tx.doorCtx(), id, prov, tmp, preparedUpdates)
 	if err == nil && mutated {
 		tx.g.publishEvent(eventspkg.EventRelUpdate, types.EntityID(id), tx.g.now(), eventspkg.PriorityNormal)
 	}
@@ -288,7 +288,7 @@ func (tx *GraphTx) SetNodeVersionInterval(id types.NodeID, validFrom, validTo ty
 		return nil, err
 	}
 
-	n, err := tx.g.cascadeNodeVersionInterval(context.Background(), id, validFrom, validTo, props)
+	n, err := tx.g.cascadeNodeVersionInterval(tx.doorCtx(), id, validFrom, validTo, props)
 	if err == nil && n != nil {
 		tx.g.publishEvent(eventspkg.EventNodeUpdate, types.EntityID(id), tx.g.now(), eventspkg.PriorityNormal)
 	}
@@ -309,7 +309,7 @@ func (tx *GraphTx) SetRelVersionInterval(id types.RelID, validFrom, validTo type
 		return nil, err
 	}
 
-	r, err := tx.g.cascadeRelVersionInterval(context.Background(), id, validFrom, validTo, props)
+	r, err := tx.g.cascadeRelVersionInterval(tx.doorCtx(), id, validFrom, validTo, props)
 	if err == nil && r != nil {
 		tx.g.publishEvent(eventspkg.EventRelUpdate, types.EntityID(id), tx.g.now(), eventspkg.PriorityNormal)
 	}
@@ -411,7 +411,7 @@ func (tx *GraphTx) DeleteNode(id types.NodeID) error {
 	}
 
 	// Perform the actual deletion (internal — tx already holds c.mu.Lock).
-	cascadeRelIDs, err := tx.g.deleteNodeInternal(context.Background(), id)
+	cascadeRelIDs, err := tx.g.deleteNodeInternal(tx.doorCtx(), id)
 	if err != nil {
 		return err
 	}
@@ -456,7 +456,7 @@ func (tx *GraphTx) DeleteRelationship(id types.RelID) error {
 	}
 
 	// Perform the actual deletion (internal — tx already holds c.mu.Lock).
-	if err := tx.g.deleteRelationshipInternal(context.Background(), id); err != nil {
+	if err := tx.g.deleteRelationshipInternal(tx.doorCtx(), id); err != nil {
 		return err
 	}
 
@@ -635,7 +635,7 @@ func (tx *GraphTx) AddNodeLabel(id types.NodeID, label string) error {
 		return err
 	}
 
-	mutated, err := tx.g.addNodeLabelInternal(context.Background(), id, label)
+	mutated, err := tx.g.addNodeLabelInternal(tx.doorCtx(), id, label)
 	if err != nil {
 		return err
 	}
@@ -672,7 +672,7 @@ func (tx *GraphTx) RemoveNodeLabel(id types.NodeID, label string) error {
 		return err
 	}
 
-	if err := tx.g.removeNodeLabelInternal(context.Background(), id, label); err != nil {
+	if err := tx.g.removeNodeLabelInternal(tx.doorCtx(), id, label); err != nil {
 		return err
 	}
 

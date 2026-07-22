@@ -34,7 +34,7 @@ func (tx *GraphTx) GetOrCreateByKey(label, propertyKey string, value any, extraP
 		return nil, false, err
 	}
 	defer tx.unlockActiveCoreWrite()
-	return tx.getOrCreateByKeyLocked(context.Background(), label, propertyKey, value, extraProps)
+	return tx.getOrCreateByKeyLocked(tx.doorCtx(), label, propertyKey, value, extraProps)
 }
 
 // getOrCreateByKeyLocked is the lock-free body: the caller already holds tx.mu

@@ -9,14 +9,18 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// TestGraphTx_ImportWithID_UnderChangeLog exercises the change-log-scope-active
-// path of lockActiveCoreWriteContext (tx.g.txLogScope != nil): a transaction
-// importing nodes AND a relationship by explicit ID, with a store-global
-// change-log enabled, must take the EXCLUSIVE core lock and enable log diversion
-// (SetLogDivert) so the tx's writes are buffered into the tx scope and their LSNs
-// minted contiguously at Commit — never eagerly. The prior coverage exercised
-// only the txLogScope == nil (RLock) branch. Verifies the imports persist AND the
-// commit emitted change records (the whole point of the scope).
+// TestGraphTx_ImportWithID_UnderChangeLog exercises a transaction importing
+// nodes AND a relationship by explicit ID with a store-global change-log
+// enabled: the tx's writes must be buffered into a scope (never emitted
+// eagerly) and their LSNs minted contiguously at Commit. As of BACKLOG 11f
+// Batch F, badger (this test's backend) implements the full
+// storepkg.ScopedTxCapability, so lockActiveCoreWriteContext takes the
+// token-routed shared RLock path (tx.g.scopedChangeLog != nil), not the
+// legacy exclusive-lock SetLogDivert path this test originally exercised —
+// see tx_scoped_lock_test.go for dedicated coverage of the mechanism
+// selection and both lock behaviors directly. This test's own assertions
+// (imports persist, commit emitted the change records) are mechanism-
+// agnostic and remain valid either way.
 func TestGraphTx_ImportWithID_UnderChangeLog(t *testing.T) {
 	t.Parallel()
 	g, err := New(Config{BadgerInMemory: true, ChangeLog: true, SnowflakeNodeID: 3})
