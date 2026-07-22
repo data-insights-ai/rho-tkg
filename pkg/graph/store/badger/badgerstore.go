@@ -589,6 +589,15 @@ type Store struct {
 	// snapshot. Set only from the owning test.
 	historyScanTestHook func()
 
+	// bulkAsOfScanTestHook, when non-nil, is invoked by NodesAsOf/RelsAsOf once
+	// per candidate entity, right BEFORE that entity's nodeAsOfInTxn/relAsOfInTxn
+	// call, passing the 0-based candidate index. Production leaves it nil (zero
+	// overhead); tests use it to deterministically land a concurrent flush()
+	// commit in the middle of the bulk scan's per-entity loop — the exact
+	// commit-window gap historyOverlaySnapshot exists to close (BACKLOG 18k
+	// undercounting fix). Set only from the owning test.
+	bulkAsOfScanTestHook func(index int)
+
 	// replaceRelPrefetchTestHook, when non-nil, is invoked by ReplaceRelationship
 	// right after prefetchRelWithRev returns and BEFORE idxMu.Lock() is acquired.
 	// Production leaves it nil (zero overhead); tests use it to deterministically

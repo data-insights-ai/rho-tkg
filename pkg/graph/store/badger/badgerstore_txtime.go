@@ -79,13 +79,108 @@ func (bs *Store) reverseScanHistoryVersion(prefix []byte, consider func(version 
 
 // reverseScanHistoryVersionInTxn is reverseScanHistoryVersion's body reading
 // through an ALREADY-OPEN read transaction instead of opening its own — used by
-// NodesAsOf/RelsAsOf's single-transaction bulk scan (BACKLOG 18k). The pending
-// overlay read happens BEFORE this call in both reverseScanHistoryVersion (via
-// the wrapper above) and the bulk-scan callers, so it is unaffected by which txn
-// the badger iterator opens under.
+// a single-entity caller (NodeAsOf/RelAsOf via the wrapper above) that opens its
+// OWN transaction per call, so a live per-call overlay read is safe: nothing can
+// commit-and-drain the overlay between this call's overlay read and its own
+// txn's snapshot instant, because both happen back-to-back under the SAME call.
+// The bulk multi-entity scan (NodesAsOf/RelsAsOf, BACKLOG 18k) must NOT use this
+// path — see reverseScanHistoryVersionInTxnSnapshot.
 func (bs *Store) reverseScanHistoryVersionInTxn(txn *badgerv4.Txn, prefix []byte, consider func(version uint64, val []byte) (stop bool, err error)) error {
-	// Pending overlay for every version of this entity (startVersion 0).
 	pendingSets, pendingDeletes := bs.pendingHistoryVersionOverlay(prefix, 0)
+	return bs.reverseScanHistoryVersionInTxnOverlay(txn, prefix, pendingSets, pendingDeletes, consider)
+}
+
+// historyOverlaySnapshot is a frozen, whole-store copy of every buffered
+// (pending + flushing) history-version write op, captured ONCE via
+// snapshotHistoryOverlay(). NodesAsOf/RelsAsOf's bulk scan captures this
+// BEFORE opening its shared badger transaction and threads it through every
+// per-entity resolution call, instead of each call independently re-reading
+// the live pending/flushing buffers via bs.pendingHistoryVersionOverlay.
+//
+// Why this matters: a background flush() clears a version from pending only
+// AFTER it commits to badger (badgerstore_flush.go's wb.Flush() then
+// bs.flushing = nil). If a bulk scan's shared txn is opened at T0 and some
+// entity's overlay read happens later at T2, a flush that commits at T1
+// (T0 < T1 < T2) makes that version invisible to BOTH: the txn (opened
+// before the commit) and the now-drained live overlay (cleared after it) —
+// the exact "lesson 64" commit-window gap getNodeHistoryByPrefix closes by
+// capturing its overlay before opening its (per-call) View. NodesAsOf's
+// single-shared-txn-for-many-entities shape reopens that gap unless the
+// overlay is ALSO captured once, at the same instant as the txn snapshot.
+type historyOverlaySnapshot struct {
+	entries map[string][]byte
+	deletes map[string]struct{}
+}
+
+// snapshotHistoryOverlay captures every buffered history-version write op
+// (pending + flushing, across every entity) in one wbMu critical section.
+// Call ONCE per bulk scan, immediately before opening the scan's shared
+// badger transaction, so both are consistent with the same instant.
+func (bs *Store) snapshotHistoryOverlay() historyOverlaySnapshot {
+	snap := historyOverlaySnapshot{
+		entries: make(map[string][]byte),
+		deletes: make(map[string]struct{}),
+	}
+	bs.rangePending(func(k string, op writeOp) {
+		if len(k) != storepkg.SizeHistKey {
+			return
+		}
+		if op.opType == writeOpDelete {
+			delete(snap.entries, k)
+			snap.deletes[k] = struct{}{}
+			return
+		}
+		cp := make([]byte, len(op.value))
+		copy(cp, op.value)
+		snap.entries[k] = cp
+		delete(snap.deletes, k)
+	})
+	return snap
+}
+
+// forPrefix filters the frozen snapshot down to one entity's overlay,
+// matching pendingHistoryVersionOverlay's per-prefix, per-startVersion
+// filtering contract exactly — the only difference is the source is the
+// frozen snapshot instead of a live re-read of the write buffer.
+func (s historyOverlaySnapshot) forPrefix(prefix []byte, startVersion uint32) (map[string][]byte, map[string]struct{}) {
+	prefixStr := string(prefix)
+	entries := make(map[string][]byte, len(s.entries))
+	deletes := make(map[string]struct{}, len(s.deletes))
+	for k, v := range s.entries {
+		if len(k) < len(prefixStr) || k[:len(prefixStr)] != prefixStr {
+			continue
+		}
+		if historyVersionFromKey([]byte(k)) < uint64(startVersion) {
+			continue
+		}
+		entries[k] = v
+	}
+	for k := range s.deletes {
+		if len(k) < len(prefixStr) || k[:len(prefixStr)] != prefixStr {
+			continue
+		}
+		if historyVersionFromKey([]byte(k)) < uint64(startVersion) {
+			continue
+		}
+		deletes[k] = struct{}{}
+	}
+	return entries, deletes
+}
+
+// reverseScanHistoryVersionInTxnSnapshot is reverseScanHistoryVersionInTxn's
+// bulk-scan sibling: it takes its pending-overlay view from an
+// ALREADY-CAPTURED historyOverlaySnapshot instead of live-reading the write
+// buffer, closing the commit-window gap documented on historyOverlaySnapshot.
+func (bs *Store) reverseScanHistoryVersionInTxnSnapshot(txn *badgerv4.Txn, prefix []byte, snap historyOverlaySnapshot, consider func(version uint64, val []byte) (stop bool, err error)) error {
+	pendingSets, pendingDeletes := snap.forPrefix(prefix, 0)
+	return bs.reverseScanHistoryVersionInTxnOverlay(txn, prefix, pendingSets, pendingDeletes, consider)
+}
+
+// reverseScanHistoryVersionInTxnOverlay is the shared scan body: reverse-walks
+// prefix's badger history keys through txn, merged with the caller-supplied
+// pending overlay (either a live per-call read or a frozen bulk-scan
+// snapshot — see the two callers above).
+func (bs *Store) reverseScanHistoryVersionInTxnOverlay(txn *badgerv4.Txn, prefix []byte, pendingSets map[string][]byte, pendingDeletes map[string]struct{}, consider func(version uint64, val []byte) (stop bool, err error)) error {
 	pendKeys := make([]string, 0, len(pendingSets))
 	for k := range pendingSets {
 		pendKeys = append(pendKeys, k)
@@ -289,10 +384,12 @@ func (bs *Store) RelAsOf(rid types.RelID, txTime types.Instant) (*types.Relation
 }
 
 // nodeAsOfInTxn is NodeAsOf's body reading through an ALREADY-OPEN read
-// transaction instead of opening one (or two) of its own — used by NodesAsOf's
-// single-transaction bulk scan (BACKLOG 18k). Same selection algorithm and same
-// error contract as NodeAsOf (ErrVersionNotFound on no visible version).
-func (bs *Store) nodeAsOfInTxn(txn *badgerv4.Txn, nid types.NodeID, txTime types.Instant) (*types.Node, error) {
+// transaction and an ALREADY-CAPTURED overlay snapshot instead of opening/
+// reading its own — used by NodesAsOf's single-transaction bulk scan
+// (BACKLOG 18k). Same selection algorithm and same error contract as NodeAsOf
+// (ErrVersionNotFound on no visible version). See historyOverlaySnapshot for
+// why the overlay must be pre-captured rather than live-read per entity.
+func (bs *Store) nodeAsOfInTxn(txn *badgerv4.Txn, nid types.NodeID, txTime types.Instant, overlay historyOverlaySnapshot) (*types.Node, error) {
 	current, err := bs.getNodeInTxn(txn, nid)
 	if err != nil && !errors.Is(err, ErrNodeNotFound) {
 		return nil, err
@@ -305,7 +402,7 @@ func (bs *Store) nodeAsOfInTxn(txn *badgerv4.Txn, nid types.NodeID, txTime types
 	var winnerVersion uint64
 	var winnerRaw []byte
 	found := false
-	scanErr := bs.reverseScanHistoryVersionInTxn(txn, storepkg.HistNodePrefix(id), func(version uint64, val []byte) (bool, error) {
+	scanErr := bs.reverseScanHistoryVersionInTxnSnapshot(txn, storepkg.HistNodePrefix(id), overlay, func(version uint64, val []byte) (bool, error) {
 		n, err := bs.historyNodeTemporal(id, version, val)
 		if err != nil {
 			return false, err
@@ -338,7 +435,7 @@ func (bs *Store) nodeAsOfInTxn(txn *badgerv4.Txn, nid types.NodeID, txTime types
 }
 
 // relAsOfInTxn mirrors nodeAsOfInTxn for relationships.
-func (bs *Store) relAsOfInTxn(txn *badgerv4.Txn, rid types.RelID, txTime types.Instant) (*types.Relationship, error) {
+func (bs *Store) relAsOfInTxn(txn *badgerv4.Txn, rid types.RelID, txTime types.Instant, overlay historyOverlaySnapshot) (*types.Relationship, error) {
 	current, err := bs.getRelInTxn(txn, rid)
 	if err != nil && !errors.Is(err, ErrRelNotFound) {
 		return nil, err
@@ -351,7 +448,7 @@ func (bs *Store) relAsOfInTxn(txn *badgerv4.Txn, rid types.RelID, txTime types.I
 	var winnerVersion uint64
 	var winnerRaw []byte
 	found := false
-	scanErr := bs.reverseScanHistoryVersionInTxn(txn, storepkg.HistRelPrefix(id), func(version uint64, val []byte) (bool, error) {
+	scanErr := bs.reverseScanHistoryVersionInTxnSnapshot(txn, storepkg.HistRelPrefix(id), overlay, func(version uint64, val []byte) (bool, error) {
 		r, err := bs.historyRelTemporal(id, version, val)
 		if err != nil {
 			return false, err
@@ -434,11 +531,22 @@ func (bs *Store) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 
 	// Phase 2: one shared read transaction AND one continuous idxMu.RLock hold
 	// for the whole scan — see the doc comment above for why both are needed.
+	// The history-version overlay is ALSO captured once here, BEFORE opening
+	// the shared txn (same ordering discipline as getNodeHistoryByPrefix's
+	// lesson-64 fix) — see historyOverlaySnapshot's doc comment for why a
+	// per-entity live overlay re-read would reopen that exact commit-window
+	// gap across this scan's long real-time duration.
 	result := make([]*types.Node, 0, len(liveIDs)+len(deletedIDs))
 	bs.idxMu.RLock()
+	overlay := bs.snapshotHistoryOverlay()
+	idx := 0
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
 		for _, nid := range liveIDs {
-			n, err := bs.nodeAsOfInTxn(txn, nid, txTime)
+			if bs.bulkAsOfScanTestHook != nil {
+				bs.bulkAsOfScanTestHook(idx)
+			}
+			idx++
+			n, err := bs.nodeAsOfInTxn(txn, nid, txTime, overlay)
 			if errors.Is(err, ErrVersionNotFound) {
 				continue
 			}
@@ -448,7 +556,11 @@ func (bs *Store) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 			result = append(result, n)
 		}
 		for _, nid := range deletedIDs {
-			n, err := bs.nodeAsOfInTxn(txn, nid, txTime)
+			if bs.bulkAsOfScanTestHook != nil {
+				bs.bulkAsOfScanTestHook(idx)
+			}
+			idx++
+			n, err := bs.nodeAsOfInTxn(txn, nid, txTime, overlay)
 			if errors.Is(err, ErrVersionNotFound) {
 				continue
 			}
@@ -496,9 +608,15 @@ func (bs *Store) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 
 	result := make([]*types.Relationship, 0, len(liveIDs)+len(deletedIDs))
 	bs.idxMu.RLock()
+	overlay := bs.snapshotHistoryOverlay()
+	idx := 0
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
 		for _, rid := range liveIDs {
-			r, err := bs.relAsOfInTxn(txn, rid, txTime)
+			if bs.bulkAsOfScanTestHook != nil {
+				bs.bulkAsOfScanTestHook(idx)
+			}
+			idx++
+			r, err := bs.relAsOfInTxn(txn, rid, txTime, overlay)
 			if errors.Is(err, ErrVersionNotFound) {
 				continue
 			}
@@ -508,7 +626,11 @@ func (bs *Store) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 			result = append(result, r)
 		}
 		for _, rid := range deletedIDs {
-			r, err := bs.relAsOfInTxn(txn, rid, txTime)
+			if bs.bulkAsOfScanTestHook != nil {
+				bs.bulkAsOfScanTestHook(idx)
+			}
+			idx++
+			r, err := bs.relAsOfInTxn(txn, rid, txTime, overlay)
 			if errors.Is(err, ErrVersionNotFound) {
 				continue
 			}
