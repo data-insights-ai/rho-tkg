@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.24.0] - 2026-07-22
+
 - FIX — BACKLOG 11h closed: the intermittently-flaky
   `TestOutgoingIncomingForNodesAtTx_RandomizedDivergenceProbe/badger` root-caused via static code reading
   (not further reproduction attempts). `resolveOpenEndInstant(0)`'s bare wall-clock `nowInstant()` read
