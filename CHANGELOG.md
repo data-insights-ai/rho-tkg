@@ -6,6 +6,62 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- FIX — BACKLOG 11h closed: the intermittently-flaky
+  `TestOutgoingIncomingForNodesAtTx_RandomizedDivergenceProbe/badger` root-caused via static code reading
+  (not further reproduction attempts). `resolveOpenEndInstant(0)`'s bare wall-clock `nowInstant()` read
+  was being resolved PER-CANDIDATE inside the TxAt-only branches of `findNodeVersionForOpts`/
+  `findRelVersionForOpts`, instead of once per multi-entity scan — violating the exact iteration-timing
+  discipline `resolveOpenEndInstant`'s own doc comment warns about. A relationship/node whose
+  `ValidTo`/`DeletedAt` boundary fell between two of those per-candidate wall-clock reads could be
+  included by one candidate's probe and excluded by another's within the same logical query. New
+  `normalizeTxAtOnlyOpts(opts)` (`temporal.go`) resolves the "now" fallback into `opts.ValidAt` ONCE
+  before a scan starts, applied at all 9 affected top-level call sites (`ByLabel`/`ByType` TxAt-only,
+  `OutgoingForNodesAtTx`/`IncomingForNodesAtTx`, `NodeOps.All`/`RelOps.All`, `ByLabelAndProperty(Properties)`,
+  `ByTypeAndProperty`, `SearchNearest`'s temporal path). New deterministic proof test
+  (`TestFindRelVersionForOpts_TxAtOnly_PerCallNowDriftsAcrossWallClockTick`) reproduces the exact drift
+  with an explicit `tkg_valid_to` boundary and a controlled sleep — no random-race dependency, 10/10
+  reliable. `go test ./...`, `go vet`, `gofmt`, `go test -race ./pkg/graph/internal/core/...` all clean.
+- FIX — BACKLOG 18k undercounting bug closed: `NodesAsOf`/`RelsAsOf`'s batched single-transaction bulk
+  scan (introduced by the BACKLOG 18k perf change) silently returned too few results under a concurrent
+  BACKGROUND FLUSH (not a foreground writer — a race the perf change's own extensive test suite, a
+  360-line equivalence test and a 159-line concurrent-writer test, did not cover). Root cause: the scan
+  opens ONE shared badger read transaction up front, then loops many candidate entities, each
+  independently re-reading the LIVE pending/flushing write-buffer overlay — not once per scan, but once
+  per candidate over the scan's real-time duration. A background `flush()` that commits a version to
+  badger and clears it from the overlay strictly between the shared transaction's snapshot instant and a
+  later candidate's overlay read leaves that version invisible to BOTH — the "lesson 64" commit-window
+  gap `getNodeHistoryByPrefix` already closes elsewhere in the same file, reopened here because the new
+  batching refactor separated the transaction-open instant from the per-candidate overlay reads. Fix: new
+  `historyOverlaySnapshot`, captured ONCE via `snapshotHistoryOverlay()` immediately after acquiring
+  `idxMu.RLock` and before opening the shared transaction (mirroring `getNodeHistoryByPrefix`'s
+  overlay-then-view ordering, generalized to capture every candidate's overlay in one pass), threaded
+  through `nodeAsOfInTxn`/`relAsOfInTxn` and a new `reverseScanHistoryVersionInTxnSnapshot` sibling of the
+  existing per-call `reverseScanHistoryVersionInTxn` (left unchanged — still correct for its single-entity
+  callers, which open their own transaction per call). New deterministic regression tests
+  (`TestNodesAsOf_BulkScan_NoDropAcrossFlushMidScan`, `TestRelsAsOf_BulkScan_NoDropAcrossFlushMidScan`)
+  reuse the existing `parkPendingIntoFlushing`/`commitFlushingToBadger` primitives plus a new
+  `bulkAsOfScanTestHook` (fires once per candidate index) to land a real flush commit precisely mid-scan —
+  no goroutines, no timing luck. Load-bearing confirmed: temporarily reverting the new snapshot-based scan
+  to a live re-read (simulating the pre-fix code) makes both tests fail with exactly the undercounting
+  signature observed in production, then pass again once reverted back. Discovered via a `bench/`-suite
+  comparison against a several-days-old checkpoint (`BenchmarkAsOfPin/badger`: "got 876 nodes as of pin,
+  want 1500"), then pinpointed to the introducing commit via `git bisect`. Verified: full `go test ./...`,
+  `go vet`, `gofmt`, `go test -race` on `store/badger` and `internal/core`, and `BenchmarkAsOfPin/badger`
+  now passes cleanly at ~90ms (matching the pre-regression baseline).
+- INVESTIGATED, NOT A BUG — a `bench/`-suite perf-trajectory comparison (5 checkpoints from `v4.16.0`
+  through `HEAD`, spanning the last several days of work) also surfaced a ~15x slowdown in
+  `BenchmarkPinnedScanScaling/.../d_bylabel_txat` (`ByLabel`/`ByType` with `QueryOpts{TxAt}`), traced via
+  `git bisect` to `0b5d662` (BACKLOG 10b's bitemporal-cascade correctness fix), which deliberately removed
+  an UNSOUND fast path (`nodeCurrentAnswersAt`/`relCurrentAnswersAt`) that could return a stale current row
+  instead of a newer belief buried in history after certain cascade corrections — see `tasks/backlog.md`'s
+  11h entry for the full explanation. Every `TxAt`-only point query now pays a full history fetch+decode
+  per candidate instead of a cache hit in the common case: the necessary price of the correctness fix, not
+  a regression. Left open as a legitimate future optimization (a new, PROVABLY sound fast path), not
+  attempted here. Also flagged: nothing in `go test ./...`/CI would have caught either finding — `bench/`
+  benchmarks are excluded from the routine test run and the only CI benchmark workflow is manual-dispatch,
+  non-blocking by design; wiring `bench-check`'s regression threshold into CI (`bench/README.md`'s own
+  documented "flip-to-blocking plan") is flagged as worth pursuing but NOT actioned here — a CI/policy
+  decision needing explicit owner sign-off.
 - WILL NOT DO — BACKLOG 18t's last remaining test gap (a direct test pinning change-log-marshal-
   failure-mid-write atomicity) closed as will-not-do rather than left indefinitely open. The gap would
   require a registered custom property type whose `msgpack.CustomEncoder` deliberately errors mid-

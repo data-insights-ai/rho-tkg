@@ -192,8 +192,8 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   change — `TestBitemporalOracleHarness/seed=47645253227` occasionally fails under combined
   multi-package `-race` load on BOTH this change and unmodified `main` at a similar rate, confirming it's
   a pre-existing, load-triggered flake, not a regression).
-- **11h. [STILL OPEN — NOT resolved; original "clock re-probing" theory RULED OUT by direct experiment,
-  but the real root cause remains unknown and no fix has been applied]
+- **11h. [DONE — closed 2026-07-22, root-caused via static code reading rather than further reproduction
+  attempts]
   `TestOutgoingIncomingForNodesAtTx_RandomizedDivergenceProbe/badger`
   is intermittently flaky under full-suite load (MEDIUM, discovered during BACKLOG 12c's verification
   run, one failure ever observed, not yet reproduced).** `internal/core/adjacency_at_tx_test.go:402-554`.
@@ -215,32 +215,97 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   `nowInstant()` read in the query loop is unconditionally also > pinD — there is no window in which a
   LATER query's wall-now probe could read a SMALLER value than an EARLIER one, so "a later query races
   against a delay" does not by itself explain an extra/wrong relationship appearing.
-  **Conclusion: the specific mechanism the test's own comment theorized is not reproducible by direct,
-  aggressive experiment, and does not hold up under wall-clock-monotonicity analysis — but the ONE
-  observed failure is real and unexplained.** Candidate directions for whoever picks this up: (1) a
-  THIRD clock source — entities without explicit `tkg_valid_from` derive effective valid-from from
-  their snowflake ID's own embedded MICROSECOND timestamp (a different clock reading than both `c.now()`
-  and `nowInstant()`'s millisecond `time.Now()` — see CLAUDE.md "Snowflake Configuration"), not
-  investigated here; (2) true cross-test interference under genuine full-suite CPU/memory contention
-  (GC pause, scheduler starvation) that a targeted single-goroutine sleep injection cannot replicate,
-  since this test's `t.Parallel()` only affects scheduling relative to OTHER package tests, not
-  anything reproducible by delaying this test's own goroutine in isolation. A real repro likely needs
-  either genuine concurrent load from sibling tests (not a synthetic sleep) or many more full-suite runs
-  than were feasible here. NOT fixed — no code or test change applied; left explicitly open rather than
-  closed by an unconfirmed theory or a speculative patch.
-  **2026-07-22: additional negative-reproduction attempt.** Ran `go test -count=1
-  ./pkg/graph/internal/core/...` (the full package, matching the exact load shape the one historical
-  failure occurred under — NOT the single test in isolation) 25 times sequentially. Zero failures across
-  all 25 runs (25/25 green), consistent with the earlier 200+-run single-test attempt and the 20x
-  3ms-delay-injection attempt — this specific reproduction avenue (repeated full-package runs without
-  genuine sibling-test concurrent load) is now exhausted without a second occurrence. Still open,
-  root cause still unknown. The two remaining candidate directions from the prior investigation (a third,
-  snowflake-ID-embedded microsecond clock source; true cross-test CPU/GC/scheduler contention that a
-  single-goroutine's own repeated runs cannot replicate, since contention needs OTHER packages' tests
-  genuinely running at the same moment) remain untried and are the only avenues left — both require
-  either instrumenting the snowflake-derived valid-from path directly or a `go test ./...`-wide
-  (all-packages, `t.Parallel()`-heavy) loop rather than a single-package loop, which is a materially
-  larger time investment for a one-observed-failure-ever flake. Deferred rather than pursued further this
-  session.
+  **Conclusion of the reproduction-based investigation: the specific mechanism the test's own comment
+  theorized (a delay racing `waitWallPast`) is not reproducible by direct, aggressive experiment, and does
+  not hold up under wall-clock-monotonicity analysis.** 25 further sequential full-package runs (matching
+  the historical failure's exact load shape) also came back clean, exhausting the reproduction-only
+  avenue.
+  **2026-07-22: ROOT-CAUSED via static code reading instead of further reproduction attempts, per explicit
+  session direction ("check the code instead of tests").** `resolveOpenEndInstant(0)` (`temporal.go`)
+  resolves an open-ended "now" bound via a bare `nowInstant()` wall-clock read — its own doc comment warns
+  this must be resolved ONCE at a scan's entry point, "eliminates time drift on long iterations, where
+  each per-ID call would otherwise observe a different `nowInstant()`". That discipline was followed for
+  the `*MatchingDuring*` family but was VIOLATED by the TxAt-only branches of `findNodeVersionForOpts` /
+  `findRelVersionForOpts` (`temporal.go`): each is called ONCE PER CANDIDATE from inside a multi-entity
+  `ForEach` scan (`OutgoingForNodesAtTx`/`IncomingForNodesAtTx`, the generic `ByType`/`ByLabel` TxAt-only
+  door, `NodeOps.All`/`RelOps.All`/`ForEach`, `ByLabelAndProperty(Properties)`, `ByTypeAndProperty`,
+  `SearchNearest`'s temporal path — 12 call sites total), and each call independently re-resolves
+  `resolveOpenEndInstant(0)` — a FRESH wall-clock read per candidate, not once per query. A relationship
+  or node whose `ValidTo`/`DeletedAt` boundary falls between two of those per-candidate reads is included
+  by one candidate's probe and excluded by another's within the SAME logical query — or diverges from an
+  independent second scan over the same nominal opts run moments later (exactly what
+  `referenceAdjacencyAtTx`, the test's oracle, does: it calls the generic `ByType(opts)` door as a SEPARATE
+  scan AFTER the door under test already ran its own scan).
+  **Fix**: new `normalizeTxAtOnlyOpts(opts)` helper (`temporal.go`) resolves the "now" fallback into
+  `opts.ValidAt` ONCE, before a scan starts — this makes the (already-correct) `opts.ValidAt != 0` branch
+  fire instead of the per-candidate TxAt-only branch, so every candidate in a scan is evaluated against
+  the exact same valid-time pin. Applied at all 9 top-level call sites (some functions call
+  `findNodeVersionForOpts`/`findRelVersionForOpts` more than once, hence 12 invocations from 9 sites) in
+  `queries.go`, `graph_property_query.go`, `graph_rel_property_query.go`, `vector_search.go` — a no-op
+  for every other `QueryOpts` shape (`TxPin`, explicit `ValidAt`, an interval query, or no temporal
+  filter). `opts` itself is left untouched at every site except where it is used for nothing else
+  (`directionalRelsForNodesAtTxLocked`); elsewhere a separate `resolveOpts` local is introduced right
+  before the loop so earlier consumers of the raw `opts` (K1 sidecar candidate gathering, the B4 envelope
+  prune) are unaffected.
+  **Deterministic proof** (`TestFindRelVersionForOpts_TxAtOnly_PerCallNowDriftsAcrossWallClockTick`,
+  `adjacency_at_tx_test.go`) reproduces the hazard WITHOUT depending on a random race: creates a
+  relationship with an explicit `tkg_valid_to` boundary 30ms in the future, calls the RAW (unnormalized)
+  `findRelVersionForOpts` before the boundary (finds it), sleeps 60ms past the boundary, calls it again
+  with the identical opts value (now reports `ErrNoVersionValidAt` — the per-call drift, proven) — then
+  shows the fix: re-using an `opts` snapshot resolved via `normalizeTxAtOnlyOpts` BEFORE the boundary
+  still finds the relationship even after the same 60ms sleep, because its probe is frozen at resolution
+  time. Passed 10/10 deterministic runs. Verified via full `go test ./...`, `go vet`, `gofmt`, and
+  `go test -race ./pkg/graph/internal/core/...` (clean).
+
+### Perf trajectory investigation (2026-07-22) — two findings, one fixed
+
+Ran the `bench/` suite at 5 checkpoints spanning the last several days of work
+(`v4.16.0` → `v4.19.0` → `v4.23.0` → `7919ad0` "BACKLOG 18k, the last `perf:`-labeled
+commit before the sustained feature stretch" → `HEAD`) after the user asked whether
+recent perf work vs. subsequent feature work had regressed anything. Everything in
+the ~100-scenario suite was flat/noise-level across the whole range except two real
+deltas, both traced via `git bisect` to `7919ad0` and `0b5d662` respectively:
+
+- **DONE — `BenchmarkAsOfPin/badger` correctness bug, fixed.** `NodesAsOf`/`RelsAsOf`
+  silently undercounted results (876-988 of 1500 expected) once `7919ad0` landed —
+  see the "fix: BACKLOG 18k" commit for the full root cause (a background-flush
+  race the batching refactor's own tests didn't cover) and fix (a
+  captured-once-before-the-shared-transaction overlay snapshot). Closed.
+- **NOT A BUG — `BenchmarkPinnedScanScaling/.../d_bylabel_txat` ~15x slowdown
+  (450µs/6133 allocs vs. 29µs/433 allocs), left as-is.** `git bisect` traced this to
+  `0b5d662` ("BACKLOG 10b — durable override-vs-resumption resolution in bitemporal
+  cascades"), a genuine correctness fix. That commit removed `nodeCurrentAnswersAt`/
+  `relCurrentAnswersAt`, a fast path in `nodeAtLockedTx`/`relAtLockedTx` that
+  answered a point-in-time query from the current row alone, skipping the full
+  history fetch — on the theory that "no history row could outrank the open current
+  row's belief." BACKLOG 10b's own fix broke that theory: a bounded cascade
+  correction can insert a HISTORY row with a NEWER belief (higher TxFrom) than an
+  untouched, still-open current row, without replacing current — the fast path
+  would then silently return the STALE current row instead of the correction. The
+  commit's own message says a cheaper heuristic was tried and rejected ("no cheap,
+  current-row-local signal... it would require knowing the entity's overall max
+  TxFrom across every version, which is exactly the cost the shortcut existed to
+  avoid"), so the shortcut was removed outright. Every `TxAt`-only point query
+  (`ByLabel`/`ByType` with `QueryOpts{TxAt}`, `OutgoingForNodesAtTx`, etc.) now pays
+  a full history fetch+decode per candidate instead of a cache hit in the common
+  case — the necessary price of the correctness fix, not a regression to revert. A
+  legitimate future perf item: design a NEW fast path that can safely rule out the
+  cascade-correction case (e.g. by tracking a per-entity max-TxFrom-across-history
+  watermark cheaply maintained at write time) without reintroducing the bug —
+  **not attempted here**; left open as a genuine optimization opportunity, not a
+  defect.
+
+**Structural gap flagged, not yet addressed**: nothing in `go test ./...` or CI
+would have caught either finding on its own. `bench/` is deliberately excluded
+from `go test ./...` (fixture-build cost); the regression-detecting tool
+(`make bench-check`) needs a manually-captured, gitignored, per-machine baseline;
+and the one CI benchmark workflow that exists is manual-dispatch-only and its
+regression-check step runs with `continue-on-error: true` by explicit design
+(shared-runner noise). A real regression can therefore land and stay invisible
+indefinitely unless a human manually brackets a change with
+`make bench-baseline`/`make bench-check`. `bench/README.md` already documents a
+"flip-to-blocking plan" for wiring `bench-check` into CI once GitHub-hosted-runner
+noise is characterized — flagged here as worth pursuing but NOT actioned; it is a
+CI/policy decision needing explicit owner sign-off, not a code fix.
 
 
