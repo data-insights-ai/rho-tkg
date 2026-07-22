@@ -75,6 +75,7 @@ func (bs *Store) putNodeRouted(n *types.Node, token uint64) error {
 	bs.nodeIDs[nid] = struct{}{}
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(n)
 	bs.bumpNodeRevLocked(nid)
+	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n)) // BACKLOG 10c
 
 	// Build write ops.
 	labelCount := n.LabelTokenCount()
@@ -585,6 +586,7 @@ func (bs *Store) replaceNodeRouted(n *types.Node, token uint64) error {
 	bs.nodeCache.Put(id, freezeNodeCopy(n))
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(n)
 	bs.bumpNodeRevLocked(nid)
+	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n)) // BACKLOG 10c
 	bs.addNodePropertyKeyCounts(n)
 	ops = append(ops, bs.maintainPropertyIndexesAdd(n, id)...)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, n, id)
@@ -701,6 +703,7 @@ func (bs *Store) removeNodeLabelTokenRouted(nid types.NodeID, tok uint16, update
 	bs.nodeCache.Put(id, freezeNodeCopy(updatedNode))
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
 	bs.bumpNodeRevLocked(nid)
+	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
 	bs.addNodePropertyKeyCounts(updatedNode)
 	ops = append(ops, bs.maintainPropertyIndexesAdd(updatedNode, id)...)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
@@ -819,6 +822,7 @@ func (bs *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNo
 	bs.nodeCache.Put(id, freezeNodeCopy(updatedNode))
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
 	bs.bumpNodeRevLocked(nid)
+	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
 	bs.addNodePropertyKeyCounts(updatedNode)
 	ops = append(ops, bs.maintainPropertyIndexesAdd(updatedNode, id)...)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)

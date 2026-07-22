@@ -94,7 +94,9 @@ func (bs *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 	bs.removeRelPropertyTypeClassCountsByID(id, old.TypeToken().Value())
 	bs.removeRelPropertyStatsCountsByID(id, old.TypeToken().Value())
 	bs.relCache.Put(id, freezeRelCopy(current))
-	bs.bumpRelRevLocked(rid) // this door always re-reads via getRelLocked above, but must still bump so a concurrent ReplaceRelationship's prefetch detects this write (BACKLOG 18b)
+	bs.bumpRelRevLocked(rid)                                   // this door always re-reads via getRelLocked above, but must still bump so a concurrent ReplaceRelationship's prefetch detects this write (BACKLOG 18b)
+	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(current))   // BACKLOG 10c
+	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(prevState)) // BACKLOG 10c — the demoted history row
 	bs.maintainRelPropertyIndexesAdd(current, id)
 	bs.maintainRelTypeTemporalIndexesAdd(current, id) // BACKLOG 21c
 	bs.addRelPropertyTypeClassCounts(current)
@@ -172,7 +174,8 @@ func (bs *Store) deleteRelWithHistoryRouted(rid types.RelID, prevVersion uint32,
 		return err
 	}
 	info := relDeleteInfoFromRelationship(r)
-	bs.deleteRelByInfo(info) // appends delete ops to pending under lock (no record — emitted here)
+	bs.deleteRelByInfo(info)                                   // appends delete ops to pending under lock (no record — emitted here)
+	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(tombstone)) // BACKLOG 10c
 	bs.appendOps(writeOp{opType: writeOpSet, key: histKey, value: tombData})
 	logErr := bs.logChangeRoutedRaw(storecontract.ChangeRelDelete, delPayload, token)
 	bs.idxMu.Unlock()
@@ -221,10 +224,12 @@ func (bs *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 	key := storepkg.HistRelKey(id, uint64(version))
 	// Capture a history-only rel (deleted rel reconstructed via version
 	// inserts) once the sidecar is built; the bootstrap common case runs before
-	// any pinned scan, so the lazy build catches these rows.
-	if bs.relTypeMembersBuilt.Load() {
+	// any pinned scan, so the lazy build catches these rows. Same for the
+	// belief watermark (BACKLOG 10c) — the cascade's bounded-correction append door.
+	if bs.relTypeMembersBuilt.Load() || bs.relBeliefWatermarkBuilt.Load() {
 		bs.idxMu.Lock()
 		bs.recordRelTypeMemberLocked(r)
+		bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r))
 		bs.idxMu.Unlock()
 	}
 	// PutRelVersion holds no idxMu, so enqueue the op and its record together

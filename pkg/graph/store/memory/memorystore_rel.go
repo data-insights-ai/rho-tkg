@@ -63,6 +63,7 @@ func (ms *Store) putRelationshipRouted(r *types.Relationship, token uint64) erro
 	}
 
 	ms.rels[id] = freezeRelCopy(r)
+	ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(r)) // BACKLOG 10c
 
 	// Type index.
 	tv := r.TypeToken().Value()
@@ -164,6 +165,7 @@ func (ms *Store) putRelationshipGeneratedIDWithEndpointHashesRouted(r *types.Rel
 	ig.ToNodeHash = toHash
 
 	ms.rels[id] = freezeRelCopy(r)
+	ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(r)) // BACKLOG 10c
 
 	tv := r.TypeToken().Value()
 	if ms.typeIdx[tv] == nil {
@@ -264,6 +266,7 @@ func (ms *Store) replaceRelationshipRouted(r *types.Relationship, token uint64) 
 	ms.adjustRelPropertyKeyCounts(old, -1)
 	indexpkg.RemoveRelFromTemporalIndexes(ms.relTypeTemporalIndexes, old, id.SnowflakeID()) // BACKLOG 21c
 	ms.rels[id] = freezeRelCopy(r)
+	ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(r)) // BACKLOG 10c
 	indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID())
 	ms.adjustRelPropertyTypeClassCounts(r, 1)
 	ms.adjustRelPropertyKeyCounts(r, 1)
@@ -761,6 +764,7 @@ func (ms *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		endID := r.EndNodeID()
 
 		ms.rels[id] = freezeRelCopy(r)
+		ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(r)) // BACKLOG 10c
 
 		tv := r.TypeToken().Value()
 		if ms.typeIdx[tv] == nil {

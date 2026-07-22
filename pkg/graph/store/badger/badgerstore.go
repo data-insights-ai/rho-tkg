@@ -431,6 +431,20 @@ type Store struct {
 	relTypeTxMembers    map[uint16]map[types.RelID]types.Instant
 	relTypeMembersBuilt atomic.Bool
 
+	// Belief-watermark sidecars (store.NodeBeliefWatermarkCapability /
+	// RelBeliefWatermarkCapability, BACKLOG 10c). nodeBeliefWatermark maps a
+	// node ID to the MAXIMUM TxFrom ever recorded across its whole version
+	// chain (current + every history row); relBeliefWatermark mirrors it for
+	// relationships. Lazily built on first use (same nil-until-built shape as
+	// labelTxMembers above), maintained incrementally thereafter at every
+	// door that persists a current or history row. See
+	// store.NodeBeliefWatermarkCapability's doc comment for the invariant
+	// this restores. Guarded by idxMu.
+	nodeBeliefWatermark      map[types.NodeID]types.Instant
+	nodeBeliefWatermarkBuilt atomic.Bool
+	relBeliefWatermark       map[types.RelID]types.Instant
+	relBeliefWatermarkBuilt  atomic.Bool
+
 	// DocValues: cached per-label columnar snapshots + a global node-mutation
 	// epoch bumped on EVERY node write (incl. deletes). nextNodeRev above misses
 	// deletes, so DocValues keeps its own counter. docMu guards docColumns only
@@ -1906,6 +1920,10 @@ func (bs *Store) Clear() error {
 	bs.labelTxMembersBuilt.Store(false)
 	bs.relTypeTxMembers = nil // rel-type mirror
 	bs.relTypeMembersBuilt.Store(false)
+	bs.nodeBeliefWatermark = nil // drop the lazy belief-watermark sidecar; rebuilt on next use
+	bs.nodeBeliefWatermarkBuilt.Store(false)
+	bs.relBeliefWatermark = nil // rel mirror
+	bs.relBeliefWatermarkBuilt.Store(false)
 
 	// Reset atomic counters. Clear sync.Map contents via Range+Delete
 	// rather than struct reassignment: concurrent readers

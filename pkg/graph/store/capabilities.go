@@ -274,6 +274,44 @@ type RelTypeTxMembershipCapability interface {
 	ForEachRelTypeTxMember(token uint16, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
 }
 
+// NodeBeliefWatermarkCapability is OPTIONAL. A backend that maintains, per
+// node, the MAXIMUM TxFrom ever recorded across the entity's ENTIRE version
+// chain (current row + every history row, no matter which door wrote it)
+// lets the graph layer restore a SAFE current-row-only fast path for
+// point-in-time queries: when the current row's own TxFrom equals the
+// watermark, current itself IS the newest belief anywhere in the chain, so
+// no history row can outrank it for any validAt at or after current's own
+// valid-from — the history fetch can be skipped entirely.
+//
+// This closes the exact gap that made the equivalent OLD fast path
+// (nodeCurrentAnswersAt / relCurrentAnswersAt, removed by BACKLOG 10b) UNSAFE:
+// a bounded bitemporal cascade correction can append a HISTORY row with a
+// NEWER TxFrom than an untouched, still-open current row, without ever
+// replacing current. The old shortcut had no signal to detect that; this
+// watermark makes the check explicit instead of assumed — BACKLOG 10c.
+//
+// (0, false) means "unknown" — sidecar not yet built, or the entity has never
+// been written through this store instance since its last (re)build. The
+// caller MUST treat "unknown" as "fall back to the full scan," never as
+// "watermark is 0" (which would incorrectly gate the fast path OPEN for an
+// untracked entity whenever current.TxFrom also happens to be 0/unset).
+//
+// LAZY, RAM-only, rebuilt after Close/reopen on next use — same shape as
+// LabelTxMembershipCapability / relValidIdx. Maintained incrementally
+// thereafter: every door that persists a current OR history row with a
+// TxFrom bumps the watermark to max(existing, that row's TxFrom); doors that
+// restore an OLD, already-recorded TxFrom verbatim (transaction rollback) are
+// safe no-ops, since max() is idempotent against a value already recorded.
+type NodeBeliefWatermarkCapability interface {
+	NodeBeliefWatermark(id types.NodeID) (types.Instant, bool)
+}
+
+// RelBeliefWatermarkCapability mirrors NodeBeliefWatermarkCapability for
+// relationships (rule 2: structural parity).
+type RelBeliefWatermarkCapability interface {
+	RelBeliefWatermark(id types.RelID) (types.Instant, bool)
+}
+
 // HistoryRollbackTrimCapability is OPTIONAL. It supports transaction rollback
 // without eager deep copies of entire history chains. Graph mutation paths
 // append superseded versions at the entity's previous Version(); rollback can

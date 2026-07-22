@@ -214,6 +214,19 @@ type Store struct {
 	// graph that never runs a pinned label/type scan pays nothing. All under ms.mu.
 	labelTxMembers   map[uint16]map[types.NodeID]types.Instant
 	relTypeTxMembers map[uint16]map[types.RelID]types.Instant
+
+	// belief watermarks (store.NodeBeliefWatermarkCapability /
+	// RelBeliefWatermarkCapability, BACKLOG 10c). nodeBeliefWatermark maps a
+	// node ID to the MAXIMUM TxFrom ever recorded across its whole version
+	// chain (current + every history row); relBeliefWatermark mirrors it for
+	// relationships. Lazily built on first use (same nil-until-built shape as
+	// labelTxMembers above), maintained incrementally thereafter at every
+	// door that persists a current or history row. See
+	// store.NodeBeliefWatermarkCapability's doc comment for the invariant
+	// this restores (BACKLOG 10b's removed current-row-only fast path, made
+	// safe instead of assumed). All under ms.mu.
+	nodeBeliefWatermark map[types.NodeID]types.Instant
+	relBeliefWatermark  map[types.RelID]types.Instant
 }
 
 // bumpNodeEpoch marks every cached DocValues column potentially stale. Called by
@@ -352,10 +365,12 @@ func (ms *Store) Clear() error {
 	ms.vectorIndexes = make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex)
 	ms.docColumns = make(map[uint16]*indexpkg.LabelDocValues)
 	ms.docColumnsMulti = make(map[string]*indexpkg.LabelDocValues)
-	ms.labelTxMembers = nil   // drop the lazy membership sidecar; rebuilt on next pinned scan
-	ms.relTypeTxMembers = nil // rel-type mirror
-	ms.bumpNodeEpoch()        // any cached column from before Clear is now invalid
-	ms.bumpRelEpoch()         // and the adjacency view (X5 expand path)
+	ms.labelTxMembers = nil      // drop the lazy membership sidecar; rebuilt on next pinned scan
+	ms.relTypeTxMembers = nil    // rel-type mirror
+	ms.nodeBeliefWatermark = nil // drop the lazy belief-watermark sidecar; rebuilt on next use
+	ms.relBeliefWatermark = nil  // rel mirror
+	ms.bumpNodeEpoch()           // any cached column from before Clear is now invalid
+	ms.bumpRelEpoch()            // and the adjacency view (X5 expand path)
 	// Drop the change-log records (the store is now empty) and re-anchor with a
 	// ChangeClear marker at a fresh, still-monotonic LSN — mirrors badger.Clear.
 	ms.changeLog = nil

@@ -413,26 +413,79 @@ func (c *Core) nodeAtLocked(id types.NodeID, at types.Instant) (*types.Node, err
 	return c.nodeAtLockedTx(id, at, 0)
 }
 
+// nodeCurrentAnswersAt reports whether the live current row alone safely
+// answers a point query NodeAt(validAt) / NodeAtTx(validAt, txAt), letting the
+// caller skip the full-history materialize + decode + scan.
+//
+// BACKLOG 10b removed the original version of this shortcut: it assumed no
+// history row could ever outrank the open current row's belief, an assumption
+// a bounded bitemporal cascade correction can break — a correction can insert
+// a HISTORY row with a NEWER TxFrom than an untouched, still-open current
+// row, without ever replacing current (see the 10b commit for the full
+// mechanism). BACKLOG 10c restores this shortcut SAFELY by gating it on an
+// explicit invariant instead of the broken assumption: current only answers
+// the query if it IS the newest belief anywhere in the entity's WHOLE version
+// chain (current + every history row) — the store.NodeBeliefWatermarkCapability
+// sidecar tracks exactly that maximum. If current's own TxFrom equals the
+// watermark, no history row (however it got there) can outrank it for any
+// validAt at or after current's own valid-from, so the shortcut is sound. If
+// the watermark is unknown (capability absent, e.g. tiered/sharded) or does
+// not equal current's TxFrom, the shortcut is skipped and the caller falls
+// through to the full chain scan below — never a wrong answer, only a slower
+// one.
+func (c *Core) nodeCurrentAnswersAt(current *types.Node, validAt, txAt types.Instant) bool {
+	if !c.bitemporalMigrated {
+		return false
+	}
+	tm := current.Temporal()
+	if tm == nil || tm.ValidTo != 0 {
+		return false
+	}
+	if txAt != 0 && (tm.TxFrom == 0 || tm.TxFrom > txAt) {
+		return false
+	}
+	if validAt < c.nodeSortValidFrom(current) {
+		return false
+	}
+	if c.nodeBeliefWatermark == nil {
+		return false
+	}
+	watermark, ok := c.nodeBeliefWatermark.NodeBeliefWatermark(current.ID())
+	if !ok || tm.TxFrom != watermark {
+		return false
+	}
+	return true
+}
+
+// relCurrentAnswersAt mirrors nodeCurrentAnswersAt for relationships.
+func (c *Core) relCurrentAnswersAt(current *types.Relationship, validAt, txAt types.Instant) bool {
+	if !c.bitemporalMigrated {
+		return false
+	}
+	tm := current.Temporal()
+	if tm == nil || tm.ValidTo != 0 {
+		return false
+	}
+	if txAt != 0 && (tm.TxFrom == 0 || tm.TxFrom > txAt) {
+		return false
+	}
+	if validAt < c.relSortValidFrom(current) {
+		return false
+	}
+	if c.relBeliefWatermark == nil {
+		return false
+	}
+	watermark, ok := c.relBeliefWatermark.RelBeliefWatermark(current.ID())
+	if !ok || tm.TxFrom != watermark {
+		return false
+	}
+	return true
+}
+
 // nodeAtLockedTx is the bitemporal variant of nodeAtLocked: it filters the
 // version chain to only versions visible at txAt (TxFrom <= txAt < TxTo)
 // before resolving the valid-time match. txAt == 0 returns the same chain as
 // nodeAtLocked (no TX filter — current behaviour).
-//
-// BACKLOG 10b: this used to short-circuit to the live current row alone
-// ("nodeCurrentAnswersAt") whenever it was the open tile and validAt was at
-// or after its own valid-from, skipping the history fetch entirely on the
-// theory that "closed tiles end at or before the open tile's valid-from, so
-// none covers validAt, and no live row has a higher belief over the open
-// tail." That theory is FALSE once newCurrent is selected by belief recency
-// among own-open rows rather than by position (the 10b fix): a bounded
-// cascade can insert a history row with a NEWER belief (higher TxFrom) than
-// the current open row, without ever replacing current — a bounded
-// correction that lands "underneath" an untouched, still-open, older-belief
-// current. There is no cheap, current-row-local signal that rules this out
-// (it would require knowing the entity's overall max TxFrom across every
-// version, which is exactly the cost the shortcut existed to avoid), so the
-// shortcut was removed rather than patched with a fragile heuristic — always
-// resolve through the full chain below, which is correct by construction.
 func (c *Core) nodeAtLockedTx(id types.NodeID, validAt, txAt types.Instant) (*types.Node, error) {
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return nil, err
@@ -446,6 +499,11 @@ func (c *Core) nodeAtLockedTx(id types.NodeID, validAt, txAt types.Instant) (*ty
 	current, err := c.getCurrentNode(id)
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
+	}
+	// BACKLOG 10c: skip the history fetch when the current row alone provably
+	// answers the query — see nodeCurrentAnswersAt's doc comment.
+	if current != nil && c.nodeCurrentAnswersAt(current, validAt, txAt) {
+		return current, nil
 	}
 
 	history, err := c.getNodeHistory(id)
@@ -494,8 +552,8 @@ func (c *Core) relAtLocked(id types.RelID, at types.Instant) (*types.Relationshi
 }
 
 // relAtLockedTx is the bitemporal variant of relAtLocked. See nodeAtLockedTx
-// for why the former current-row-alone shortcut (relCurrentAnswersAt) was
-// removed rather than patched (BACKLOG 10b).
+// for the BACKLOG 10b/10c history of the current-row-alone shortcut
+// (relCurrentAnswersAt).
 func (c *Core) relAtLockedTx(id types.RelID, validAt, txAt types.Instant) (*types.Relationship, error) {
 	if err := storepkg.ValidateRelID(id); err != nil {
 		return nil, err
@@ -509,6 +567,11 @@ func (c *Core) relAtLockedTx(id types.RelID, validAt, txAt types.Instant) (*type
 	current, err := c.getCurrentRelationship(id)
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, err
+	}
+	// BACKLOG 10c: skip the history fetch when the current row alone provably
+	// answers the query — see nodeCurrentAnswersAt's doc comment (mirrored here).
+	if current != nil && c.relCurrentAnswersAt(current, validAt, txAt) {
+		return current, nil
 	}
 
 	history, err := c.getRelHistory(id)

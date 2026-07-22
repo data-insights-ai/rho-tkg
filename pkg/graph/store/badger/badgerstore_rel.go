@@ -109,6 +109,7 @@ func (bs *Store) putRelationship(r *types.Relationship, validateEndpoints, forei
 	bs.relCache.Put(id, freezeRelCopy(r))
 	bs.relIDs[rid] = struct{}{}
 	bs.bumpRelRevLocked(rid)
+	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r)) // BACKLOG 10c
 
 	// Type index.
 	if bs.typeIdx[relType] == nil {
@@ -366,6 +367,7 @@ func (bs *Store) replaceRelationshipRouted(r *types.Relationship, token uint64) 
 	bs.removeRelPropertyStatsCountsByID(id, old.TypeToken().Value())
 	bs.relCache.Put(id, freezeRelCopy(r))
 	bs.bumpRelRevLocked(rid)
+	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r)) // BACKLOG 10c
 	bs.maintainRelPropertyIndexesAdd(r, id)
 	bs.maintainRelTypeTemporalIndexesAdd(r, id) // BACKLOG 21c
 	bs.addRelPropertyTypeClassCounts(r)         // increment new

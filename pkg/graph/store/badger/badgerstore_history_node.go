@@ -132,6 +132,8 @@ func (bs *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 	bs.nodeCache.Put(id, freezeNodeCopy(updatedNode))
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
 	bs.bumpNodeRevLocked(nid)
+	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
+	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState))   // BACKLOG 10c — the demoted history row
 	bs.addNodePropertyKeyCounts(updatedNode)
 	ops = append(ops, bs.maintainPropertyIndexesAdd(updatedNode, id)...)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
@@ -271,6 +273,8 @@ func (bs *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 	bs.nodeCache.Put(id, freezeNodeCopy(updatedNode))
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
 	bs.bumpNodeRevLocked(nid)
+	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
+	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState))   // BACKLOG 10c — the demoted history row
 	bs.addNodePropertyKeyCounts(updatedNode)
 	ops = append(ops, bs.maintainPropertyIndexesAdd(updatedNode, id)...)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
@@ -396,6 +400,8 @@ func (bs *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 	bs.nodeCache.Put(id, freezeNodeCopy(current))
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(current)
 	bs.bumpNodeRevLocked(nid)
+	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(current))   // BACKLOG 10c
+	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState)) // BACKLOG 10c — the demoted history row
 	bs.addNodePropertyKeyCounts(current)
 	ops = append(ops, bs.maintainPropertyIndexesAdd(current, id)...)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, current, id)
@@ -508,8 +514,12 @@ func (bs *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion u
 	// Append tombstone history ops to SAME pending map before releasing lock.
 	ops := make([]writeOp, 0, 1+len(relEntries))
 	ops = append(ops, writeOp{opType: writeOpSet, key: nodeHistKey, value: nodeData})
+	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(nodeTombstone)) // BACKLOG 10c
 	for _, e := range relEntries {
 		ops = append(ops, writeOp{opType: writeOpSet, key: e.key, value: e.data})
+	}
+	for _, rt := range relTombstones {
+		bs.bumpRelBeliefWatermarkLocked(rt.ID, relTxFrom(rt.Tombstone)) // BACKLOG 10c
 	}
 	bs.appendOps(ops...)
 	logErr := bs.logChangeRoutedRaw(storecontract.ChangeNodeDelete, delPayload, token)
@@ -619,13 +629,16 @@ func (bs *Store) putNodeVersionRouted(nid types.NodeID, version uint32, n *types
 		return fmt.Errorf("graph: encode change-log: %w", err)
 	}
 	key := storepkg.HistNodeKey(id, uint64(version))
-	// A historical version may carry a label the current row no longer has.
-	// Only lock when the sidecar is already built (the import/replica bootstrap
-	// common case runs before any pinned scan, so the flag is false and the lazy
-	// build catches these history rows).
-	if bs.labelTxMembersBuilt.Load() {
+	// A historical version may carry a label the current row no longer has, and
+	// may carry a TxFrom that raises the belief watermark (the cascade's
+	// bounded-correction append door — BACKLOG 10c). Only lock when a sidecar
+	// is already built (the import/replica bootstrap common case runs before
+	// any pinned scan, so both flags are false and the lazy build catches
+	// these history rows).
+	if bs.labelTxMembersBuilt.Load() || bs.nodeBeliefWatermarkBuilt.Load() {
 		bs.idxMu.Lock()
 		bs.recordNodeLabelMembersLocked(n)
+		bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n))
 		bs.idxMu.Unlock()
 	}
 	// PutNodeVersion holds no idxMu, so enqueue the op and its record together

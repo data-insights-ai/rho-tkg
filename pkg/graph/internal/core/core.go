@@ -82,6 +82,14 @@ type Core struct {
 	// (tiered), so the query falls back to the full-history candidate fold.
 	labelTxMembers   storepkg.LabelTxMembershipCapability
 	relTypeTxMembers storepkg.RelTypeTxMembershipCapability
+	// belief watermarks (BACKLOG 10c): a store that maintains, per entity, the
+	// maximum TxFrom ever recorded across its whole version chain lets
+	// nodeAtLockedTx/relAtLockedTx take a SAFE current-row-only fast path for
+	// point-in-time queries — see store.NodeBeliefWatermarkCapability's doc
+	// comment. nil = store declines (tiered, sharded today), so every query
+	// resolves through the full chain scan (correct, unaccelerated).
+	nodeBeliefWatermark storepkg.NodeBeliefWatermarkCapability
+	relBeliefWatermark  storepkg.RelBeliefWatermarkCapability
 	// temporalCandidates — valid-time candidate prune: narrow a temporal
 	// ByLabel/ByType query's candidate set by the per-label valid-time envelope
 	// index before resolving each chain. nil = store declines (no temporal-index
@@ -1233,6 +1241,41 @@ func labelTxMembershipCapability(store storepkg.MandatoryStore) storepkg.LabelTx
 	return cap
 }
 
+// nodeBeliefWatermarkCapability resolves the BACKLOG 10c belief-watermark
+// sidecar (see the Core field's doc comment). Same "exact native store only"
+// discipline as labelTxMembershipCapability — a wrapper that merely embeds a
+// native store, or the multi-shard tiered/sharded stores, is forced to nil.
+func nodeBeliefWatermarkCapability(store storepkg.MandatoryStore) storepkg.NodeBeliefWatermarkCapability {
+	cap, ok := store.(storepkg.NodeBeliefWatermarkCapability)
+	if !ok {
+		return nil
+	}
+	if isExactNativeStore(store) {
+		return cap
+	}
+	if embedsNativeCapability(store, reflect.TypeOf((*storepkg.NodeBeliefWatermarkCapability)(nil)).Elem(),
+		"NodeBeliefWatermark") {
+		return nil
+	}
+	return cap
+}
+
+// relBeliefWatermarkCapability mirrors nodeBeliefWatermarkCapability for relationships.
+func relBeliefWatermarkCapability(store storepkg.MandatoryStore) storepkg.RelBeliefWatermarkCapability {
+	cap, ok := store.(storepkg.RelBeliefWatermarkCapability)
+	if !ok {
+		return nil
+	}
+	if isExactNativeStore(store) {
+		return cap
+	}
+	if embedsNativeCapability(store, reflect.TypeOf((*storepkg.RelBeliefWatermarkCapability)(nil)).Elem(),
+		"RelBeliefWatermark") {
+		return nil
+	}
+	return cap
+}
+
 // relTypeTxMembershipCapability is the rel-type mirror of labelTxMembershipCapability.
 func relTypeTxMembershipCapability(store storepkg.MandatoryStore) storepkg.RelTypeTxMembershipCapability {
 	cap, ok := store.(storepkg.RelTypeTxMembershipCapability)
@@ -1625,6 +1668,8 @@ func New(config Config) (*Core, error) {
 	c.deletedDepthIter = depthDeletedIterationCapability(store)
 	c.labelTxMembers = labelTxMembershipCapability(store)
 	c.relTypeTxMembers = relTypeTxMembershipCapability(store)
+	c.nodeBeliefWatermark = nodeBeliefWatermarkCapability(store)
+	c.relBeliefWatermark = relBeliefWatermarkCapability(store)
 	// valid-time candidate prune is sound for ANY store that offers it (an
 	// unknown id is never pruned), so unlike the membership sidecar it needs no
 	// exact-native-store guard — a plain probe admits memory/badger now and

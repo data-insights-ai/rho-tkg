@@ -57,7 +57,8 @@ func (ms *Store) putNodeRouted(n *types.Node, token uint64) error {
 	ms.nodes[nid] = freezeNodeCopy(n)
 
 	ms.addNodeLabelIndexes(nid, n)
-	ms.recordNodeLabelMembersLocked(n) // transaction-time label membership
+	ms.recordNodeLabelMembersLocked(n)                   // transaction-time label membership
+	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n)) // BACKLOG 10c
 	ms.addNodePropertyKeyCounts(n)
 
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, n, rawID)
@@ -263,6 +264,7 @@ func (ms *Store) removeNodeLabelTokenRouted(nid types.NodeID, tok uint16, update
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = freezeNodeCopy(updatedNode)
+	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
 	ms.addNodePropertyKeyCounts(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
 	ms.addNodeToCompositeIndexesLocked(updatedNode, rawID)
@@ -337,6 +339,7 @@ func (ms *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNo
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = freezeNodeCopy(updatedNode)
+	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
 	ms.addNodePropertyKeyCounts(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
 	ms.addNodeToCompositeIndexesLocked(updatedNode, rawID)
@@ -402,6 +405,7 @@ func (ms *Store) replaceNodeRouted(n *types.Node, token uint64) error {
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
 	ms.nodes[nid] = freezeNodeCopy(n)
+	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n)) // BACKLOG 10c
 	ms.addNodePropertyKeyCounts(n)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, n, rawID)
 	ms.addNodeToCompositeIndexesLocked(n, rawID)
@@ -548,6 +552,7 @@ func (ms *Store) PutNodesBatch(nodes []*types.Node) error {
 	for i, n := range nodes {
 		id := n.ID()
 		ms.nodes[id] = freezeNodeCopy(n)
+		ms.bumpNodeBeliefWatermarkLocked(id, nodeTxFrom(n)) // BACKLOG 10c
 
 		ms.addNodeLabelIndexes(id, n)
 		ms.recordNodeLabelMembersLocked(n) // transaction-time label membership
