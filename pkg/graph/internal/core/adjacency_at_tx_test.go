@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"sort"
 	"testing"
+	"time"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
@@ -907,4 +908,119 @@ func TestOutgoingIncomingForNodesAtTx_UntrustedStoreValidatesRows(t *testing.T) 
 		t.Fatalf("IncomingForNodesAtTx empty entry = (%v, %v), want nil, ErrInvalidStoreMutation", got, err)
 	}
 	fs.failInMap.Store(false)
+}
+
+// TestFindRelVersionForOpts_TxAtOnly_PerCallNowDriftsAcrossWallClockTick is a
+// deterministic, non-flaky proof of the BACKLOG 11h root cause: the TxAt-only
+// branch of findRelVersionForOpts (and its node twin, findNodeVersionForOpts)
+// independently reads a fresh wall-clock "now" via resolveOpenEndInstant(0) on
+// EVERY call, instead of once per top-level query. A caller looping this
+// function over many candidate relationships with the SAME nominal
+// storepkg.QueryOpts{TxAt: ...} value can therefore get a DIFFERENT internal
+// probe instant for different candidates within the SAME logical query,
+// purely depending on when the wall clock ticks relative to each call — this
+// is exactly the hazard the OutgoingIncomingForNodesAtTx_RandomizedDivergenceProbe
+// test's one historical failure exhibited (an extra/missing relationship at a
+// single pin), and exactly what resolveOpenEndInstant's own doc comment warns
+// against.
+//
+// This test proves the hazard directly and deterministically by controlling
+// WHEN the relationship's valid-time boundary (its ValidTo, stamped by
+// Delete) lands relative to two explicit findRelVersionForOpts calls, rather
+// than relying on a random race to expose it:
+//  1. Create a relationship with an open (ValidTo==0) valid interval.
+//  2. Call the RAW (unnormalized) findRelVersionForOpts with QueryOpts{TxAt}
+//     — succeeds, since the interval is still open.
+//  3. Delete the relationship (stamps ValidTo = now).
+//  4. Call the RAW findRelVersionForOpts AGAIN with an equivalent
+//     QueryOpts{TxAt} — its independently-resolved "now" probe now lands
+//     AFTER the just-stamped ValidTo, so the SAME logical query (same rel,
+//     same nominal opts shape) now reports "not valid" purely because the
+//     wall clock advanced between the two calls — proving per-call drift.
+//  5. Show the FIX: normalizeTxAtOnlyOpts resolves the "now" probe ONCE, and
+//     re-using that ALREADY-RESOLVED opts value after the delete still
+//     reports "valid" (because it was resolved before the delete) —
+//     demonstrating that a caller who normalizes once before its scan (as
+//     every production call site now does) gets one stable answer per
+//     candidate, immune to a wall-clock tick landing mid-scan.
+func TestFindRelVersionForOpts_TxAtOnly_PerCallNowDriftsAcrossWallClockTick(t *testing.T) {
+	t.Parallel()
+	g, err := New(Config{})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer g.Close()
+	ctx := context.Background()
+
+	a, err := g.Nodes.Add(ctx, []string{"P"}, nil)
+	if err != nil {
+		t.Fatalf("add node a: %v", err)
+	}
+	b, err := g.Nodes.Add(ctx, []string{"P"}, nil)
+	if err != nil {
+		t.Fatalf("add node b: %v", err)
+	}
+	r, err := g.Rels.Add(ctx, "KNOWS", a, b, nil)
+	if err != nil {
+		t.Fatalf("add rel: %v", err)
+	}
+	// Give the relationship an explicit, WALL-CLOCK-controlled ValidTo — a
+	// boundary 30ms in the future — so the test controls precisely when the
+	// interval closes relative to two later findRelVersionForOpts calls,
+	// instead of depending on the c.now() monotonic-floor ratchet (which can
+	// run ahead of wall-clock under rapid calls — the exact two-clock hazard
+	// documented on c.now()/waitWallPast — and would make a delete-based
+	// ValidTo unpredictably far from nowInstant()'s raw wall-clock reads).
+	validTo := nowInstant() + 30
+	if _, err := g.Rels.Update(ctx, r.ID(), map[string]any{"tkg_valid_to": validTo}); err != nil {
+		t.Fatalf("set tkg_valid_to: %v", err)
+	}
+	// Pin TxAt ONCE, after the interval is set, exactly as every production
+	// caller pins its scan's TxAt once before looping candidates — the bug
+	// under test is the per-call VALID-TIME "now" resolution inside a fixed
+	// TxAt, not TxAt itself.
+	txAt, err := g.Temporal.NowTx()
+	if err != nil {
+		t.Fatalf("NowTx: %v", err)
+	}
+	opts := storepkg.QueryOpts{TxAt: txAt}
+
+	// Step 2: called BEFORE the wall clock reaches validTo — the raw
+	// (unnormalized) call's internal resolveOpenEndInstant(0) probe still
+	// lands before validTo, so the relationship is found.
+	if _, err := g.findRelVersionForOpts(r.ID(), opts, nil); err != nil {
+		t.Fatalf("pre-boundary raw findRelVersionForOpts: %v", err)
+	}
+
+	// Fix demonstration setup: resolve the probe ONCE, before the boundary —
+	// this is exactly what every production call site does today via
+	// normalizeTxAtOnlyOpts, applied at the top of the scan rather than
+	// per-candidate.
+	resolvedOpts := normalizeTxAtOnlyOpts(opts)
+
+	// Sleep past validTo — guarantees the wall clock has genuinely crossed
+	// the boundary before the next call, making the crossing deterministic
+	// instead of racing real execution speed.
+	time.Sleep(60 * time.Millisecond)
+
+	// Step 4: the RAW call re-resolves "now" fresh — its probe now lands
+	// after validTo (the sleep guarantees the wall clock has passed it), so
+	// it reports the relationship as no longer valid — a DIFFERENT answer
+	// than step 2's IDENTICAL-SHAPED query (same rel, same opts value) got,
+	// purely due to call timing. This is the exact per-candidate drift a
+	// multi-candidate scan sharing one nominal opts value would exhibit if a
+	// boundary like this one falls mid-scan.
+	if _, err := g.findRelVersionForOpts(r.ID(), opts, nil); !errors.Is(err, storepkg.ErrNoVersionValidAt) {
+		t.Fatalf("post-boundary raw findRelVersionForOpts = %v, want ErrNoVersionValidAt (proves per-call wall-clock drift)", err)
+	}
+
+	// Step 5: the FIX — reusing the opts snapshot resolved BEFORE the
+	// boundary still finds the relationship, because its "now" probe is
+	// frozen at resolution time, not re-read at call time. This is the exact
+	// stability every production scan now gets by normalizing once before
+	// its loop (see normalizeTxAtOnlyOpts's call sites in queries.go,
+	// graph_property_query.go, graph_rel_property_query.go, vector_search.go).
+	if _, err := g.findRelVersionForOpts(r.ID(), resolvedOpts, nil); err != nil {
+		t.Fatalf("post-boundary findRelVersionForOpts with pre-resolved opts: %v, want success (the pinned probe predates the boundary)", err)
+	}
 }

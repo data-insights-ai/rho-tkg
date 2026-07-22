@@ -90,8 +90,9 @@ func (c *Core) relsByTypeAndPropertyLocked(typeName, key string, value any, opts
 		gotKey, found := r.IndexablePropertyValueKey(key)
 		return found && gotKey == targetKey
 	}
+	resolveOpts := normalizeTxAtOnlyOpts(opts)
 	if err := c.forEachRelCandidateIDByDepth(currentIDs, opts.Depth, func(id types.RelID) error {
-		rel, err := c.findRelVersionForOpts(id, opts, pred)
+		rel, err := c.findRelVersionForOpts(id, resolveOpts, pred)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
 				return nil

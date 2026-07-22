@@ -1034,6 +1034,34 @@ func validateTemporalQueryOpts(opts storepkg.QueryOpts) error {
 	return nil
 }
 
+// normalizeTxAtOnlyOpts resolves the open-ended "now" fallback ONCE for a
+// TxAt-only query (opts.TxAt set, no TxPin/ValidAt/ValidStart/ValidEnd) before
+// it is used across a multi-candidate scan. Without this, every call site that
+// loops findNodeVersionForOpts/findRelVersionForOpts over many candidate IDs
+// with the SAME opts value would have each candidate independently resolve
+// opts.TxAt's implicit "now" via resolveOpenEndInstant(0) inside the callee —
+// a fresh wall-clock read PER CANDIDATE, exactly the iteration-timing hazard
+// resolveOpenEndInstant's own doc comment warns against ("each per-ID call
+// would otherwise observe a different nowInstant() and produce inclusion/
+// exclusion that depends on iteration timing"). A relationship or node whose
+// ValidTo/DeletedAt boundary falls between two of those per-candidate reads
+// would be included by one candidate's probe and excluded by another's within
+// the SAME logical query — or diverge from an independent second scan over
+// the same opts (e.g. a test's reference-model door) run moments later.
+// Setting opts.ValidAt here makes the (already-correct, already-tested)
+// ValidAt branch fire instead of the per-candidate TxAt-only branch, so every
+// candidate in the scan is evaluated against the exact same valid-time pin.
+// A no-op for any other QueryOpts shape (TxPin, explicit ValidAt already set,
+// an interval query, or no temporal filter at all) — those either need no
+// resolution or already resolve their bound once via resolveOpenEndInstant at
+// their own entry point (findNodeVersionMatchingDuringTx / the interval arm).
+func normalizeTxAtOnlyOpts(opts storepkg.QueryOpts) storepkg.QueryOpts {
+	if opts.TxAt != 0 && opts.TxPin == 0 && opts.ValidAt == 0 && opts.ValidStart == 0 && opts.ValidEnd == 0 {
+		opts.ValidAt = resolveOpenEndInstant(0) - 1
+	}
+	return opts
+}
+
 // findNodeVersionForOpts returns a node version that satisfies pred under the
 // temporal filter in opts. ValidAt takes precedence over ValidStart/ValidEnd.
 // For interval queries, all overlapping versions are scanned (most-recent

@@ -77,6 +77,11 @@ func (i *IndexOps) SearchNearest(label, propertyKey string, query []float32, k i
 }
 
 func (c *Core) searchNearestLocked(label, propertyKey string, query []float32, k int, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	// Resolve a TxAt-only "now" fallback ONCE for the whole search (which
+	// resolves many node candidates across possibly several loop iterations)
+	// instead of letting each candidate's findNodeVersionForOpts call resolve
+	// its own fresh wall-clock value — see normalizeTxAtOnlyOpts.
+	opts = normalizeTxAtOnlyOpts(opts)
 	tok, ok := c.labels.Lookup(label)
 	if !ok {
 		return nil, storepkg.ErrVectorIndexNotFound

@@ -92,8 +92,9 @@ func (c *Core) nodesByLabelAndPropertyLocked(label, key string, value any, opts 
 		gotKey, found := n.IndexablePropertyValueKey(key)
 		return found && gotKey == targetKey
 	}
+	resolveOpts := normalizeTxAtOnlyOpts(opts)
 	if err := c.forEachNodeCandidateIDByDepth(currentIDs, opts.Depth, func(id types.NodeID) error {
-		n, err := c.findNodeVersionForOpts(id, opts, pred)
+		n, err := c.findNodeVersionForOpts(id, resolveOpts, pred)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
 				return nil
@@ -195,8 +196,9 @@ func (c *Core) nodesByLabelAndPropertiesLocked(label string, values map[string]a
 		}
 		return indexpkg.NodeMatchesAllProperties(n, values)
 	}
+	resolveOpts := normalizeTxAtOnlyOpts(opts)
 	if err := c.forEachNodeCandidateIDByDepth(currentIDs, opts.Depth, func(id types.NodeID) error {
-		n, err := c.findNodeVersionForOpts(id, opts, pred)
+		n, err := c.findNodeVersionForOpts(id, resolveOpts, pred)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
 				return nil

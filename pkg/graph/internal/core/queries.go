@@ -508,8 +508,9 @@ func (c *Core) nodesByLabelLocked(label string, opts storepkg.QueryOpts) ([]*typ
 
 	var result []*types.Node
 	pred := func(n *types.Node) bool { return n.HasLabelTokenRaw(tok) }
+	resolveOpts := normalizeTxAtOnlyOpts(opts)
 	for _, id := range candIDs {
-		n, err := c.findNodeVersionForOpts(id, opts, pred)
+		n, err := c.findNodeVersionForOpts(id, resolveOpts, pred)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
 				continue
@@ -606,8 +607,9 @@ func (c *Core) relsByTypeLocked(typeName string, opts storepkg.QueryOpts) ([]*ty
 
 	var result []*types.Relationship
 	pred := func(r *types.Relationship) bool { return r.HasTypeTokenRaw(tok) }
+	resolveOpts := normalizeTxAtOnlyOpts(opts)
 	for _, id := range candIDs {
-		r, err := c.findRelVersionForOpts(id, opts, pred)
+		r, err := c.findRelVersionForOpts(id, resolveOpts, pred)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
 				continue
@@ -1327,7 +1329,7 @@ func (c *Core) directionalRelsForNodesAtTxLocked(nodeIDs []types.NodeID, typeNam
 		requested[id] = struct{}{}
 	}
 
-	opts := storepkg.QueryOpts{TxAt: txAt}
+	opts := normalizeTxAtOnlyOpts(storepkg.QueryOpts{TxAt: txAt})
 	var pred func(*types.Relationship) bool
 	if hasType {
 		pred = func(r *types.Relationship) bool { return r.HasTypeTokenRaw(tok) }
@@ -1766,8 +1768,9 @@ func (c *Core) allNodesLocked(opts storepkg.QueryOpts) ([]*types.Node, error) {
 		return nodes, nil
 	}
 	var result []*types.Node
+	resolveOpts := normalizeTxAtOnlyOpts(opts)
 	err := c.forEachKnownNodeIDByDepth(opts.Depth, func(id types.NodeID) error {
-		n, err := c.findNodeVersionForOpts(id, opts, nil)
+		n, err := c.findNodeVersionForOpts(id, resolveOpts, nil)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
 				return nil
@@ -1881,8 +1884,9 @@ func (c *Core) allRelsLocked(opts storepkg.QueryOpts) ([]*types.Relationship, er
 		return rels, nil
 	}
 	var result []*types.Relationship
+	resolveOpts := normalizeTxAtOnlyOpts(opts)
 	err := c.forEachKnownRelIDByDepth(opts.Depth, func(id types.RelID) error {
-		r, err := c.findRelVersionForOpts(id, opts, nil)
+		r, err := c.findRelVersionForOpts(id, resolveOpts, nil)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
 				return nil
