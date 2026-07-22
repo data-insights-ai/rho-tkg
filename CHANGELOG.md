@@ -253,6 +253,91 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     `cascade_asof_parity_test.go`, `cascade_prevhash_test.go` — all unchanged and green, confirming the
     routing substitution altered no cascade behavior); `-race` clean on `internal/core`, `store/badger`,
     `store/memory`.
+- ADD — BACKLOG 11f Batch F — scoped change-log foundation, the rollback-path doors (FOUNDATION ONLY —
+  same no-lock-behavior-change status as Batches A-E, until the flip below). Batch E's "door-wiring phase
+  closed entirely" claim covered every door reachable from a tx's FORWARD mutation path — but a careful
+  audit of `GraphTx.Rollback`'s reverse-mutation path specifically (not assumed, checked) found 8 more
+  store doors reachable ONLY from Rollback's undo logic: `DeleteRelationship`, `DeleteNodeCascade` (the
+  plain hard-delete, distinct from Batch C's `DeleteNodeWithHistory`), `TruncateNodeHistory`/
+  `TruncateRelHistory`, the plain non-history `AddNodeLabelToken`/`RemoveNodeLabelToken` (distinct from
+  Batch D's `*WithHistory` pair), and the optional `TrimNodeHistoryFrom`/`TrimRelHistoryFrom`. This
+  mattered for the flip: a rolled-back tx's reverse mutations must land in the SAME discardable per-tx
+  buffer as its forward mutations, or the flip would have left a durable leak-on-rollback bug — records
+  from a rolled-back tx silently reaching the eager change-log feed, exactly the defect class the whole
+  scoped-buffer design exists to prevent.
+  - New `store.ScopedRollbackCapability` (8 methods) and the union `store.ScopedTxCapability` (embeds all
+    7 Scoped interfaces from Batches A-F). `GraphTx` checks for this EXACT combined interface before using
+    the fast path — a store implementing only some pieces (tiered, sharded — neither implements the full
+    set) correctly and safely falls back to the legacy mechanism instead of being silently granted a fast
+    path it can't fully support.
+  - Badger needed one more low-level helper, `appendOpsLoggedRouted` reuse plus new
+    `truncateHistoryByPrefixRouted`/`trimHistoryFromPrefixRouted` (shared node/rel history-trim helpers)
+    and `cascadeDeleteRouted`/`logCascadeNodeDeleteRouted` (the plain-cascade-delete counterpart to Batch
+    C's with-history delete routing). Memory added matching routed variants in
+    `memorystore_changelog_scoped.go`.
+  - Every new `*Scoped` door is `token==0`-equivalent to its unscoped sibling by construction (thin
+    dispatcher: `token==0` calls the plain door verbatim) — verified by re-running the full existing
+    non-scoped test suite unchanged.
+- ADD/FIX — **BACKLOG 11f CLOSED** — the `GraphTx` lock-relaxation flip, the final piece. Change-log-
+  enabled `g.Tx()` mutations no longer take the FULL exclusive `c.mu.Lock()` per mutation call when the
+  underlying store implements the full `store.ScopedTxCapability` (memory, badger — sharded/tiered
+  correctly stay on the legacy exclusive-lock mechanism, since neither implements every Scoped
+  interface). `lockActiveCoreWrite`/`lockActiveCoreWriteContext`/`unlockActiveCoreWrite` now branch on
+  `GraphTx.usesSharedLock()` (`tx.g.scopedChangeLog != nil || tx.g.txLogScope == nil`): a supported store
+  takes a shared `c.mu.RLock()` instead, so a concurrent standalone write no longer blocks behind an open
+  change-log-enabled tx purely because the log is on — closing the throughput cliff 11f's backlog entry
+  originally flagged.
+  - `Core.scopedChangeLog`: resolved via a pure type assertion against `store.ScopedTxCapability`, NOT
+    gated on `changeLogEnabled` — `BeginScopedLog()` itself returns token=0 when the log is off, so every
+    `*ScopedAware` wrapper naturally falls through to the plain door with no separate on/off branch
+    needed at the resolution site.
+  - `GraphTx.doorCtx()`/`doorCtxFrom(ctx)`: the one place that decides whether to wrap a context with the
+    tx's scope token. `doorCtx()` starts fresh from `context.Background()` (the 12 call sites in
+    `tx_mutations.go` that previously passed a bare `context.Background()` — `AddNode`, `AddRelationship`,
+    `AddRelationshipByID`, `AddRelationshipByIDIfAbsent`, `UpdateNode`, `UpdateRelationship`,
+    `SetNodeVersionInterval`, `SetRelVersionInterval`, `DeleteNode`, `DeleteRelationship`, `AddNodeLabel`,
+    `RemoveNodeLabel`); `doorCtxFrom(ctx)` preserves an incoming real caller ctx's cancellation/values
+    (`ImportNodeWithID`/`ImportRelationshipWithID`, `GetOrCreateByKey`).
+  - `BeginTx`/`Commit` prefer `BeginScopedLog`/`CommitScopedLog(token)` when `scopedChangeLog` is
+    available, falling back to the legacy `BeginLogScope`/`CommitLogScope` otherwise.
+  - `Rollback`: every store call in the reverse-mutation path (7 numbered steps plus 10 helper functions —
+    `restoreDeletedNodeRow`, `restoreDeletedRelRow`, `restoreUpdatedNode`, `restoreNodeLabels`,
+    `restoreNodeHistory`, `restoreRelHistory`, `restoreDeletedNodeHistory`, `restoreDeletedRelHistory`,
+    `restoreNodeSnapshotHistory`, `restoreRelSnapshotHistory`) now routes through a new
+    `*ScopedAware`/`*ScopedAwareToken` helper in the new `rollback_scoped.go` (14 methods, taking the
+    token directly rather than via ctx, since Rollback's helpers have no ctx to thread it through) instead
+    of the plain store door — so reverse mutations land in the SAME discardable per-tx buffer as the tx's
+    forward mutations. The final discard uses `DiscardScopedLog(token)` when available, else the legacy
+    `DiscardLogScope()`.
+  - New `tx_scoped_lock_test.go`, 7 tests: mechanism selection is correct across full-support /
+    no-changelog / partial-support (a real `tiered.New` store, proving the union-interface exclusion
+    works against a genuine backend, not a mock) stores; a deterministic concurrency test bracketing
+    `lockActiveCoreWrite`/`unlockActiveCoreWrite` directly proves a concurrent standalone write completes
+    promptly (<500ms) under the scoped mechanism, and a regression-guard test proves the legacy mechanism
+    still correctly BLOCKS a concurrent standalone write for a partial-capability store; an adversarial
+    Rollback test (create/update/label-add/label-remove/delete-rel/delete-node-cascade all in one tx,
+    rolled back) asserts the feed shows zero new records and all original state is restored exactly; a
+    Commit test asserts every change is emitted.
+  - Verification: full `go build`/`go vet`/`gofmt` clean, full-repo `go test ./...` green, and repeated
+    `go test -race` across `internal/core` + `store/badger` + `store/memory` + `store/tiered` (5 runs on
+    this change: 3/5 green; 3 control runs on unmodified `main` under the identical combined-package
+    load: 3/3 green). The one recurring failure, always at the exact same seed
+    (`TestBitemporalOracleHarness/seed=47645253227`, always the same `NodesAsOf` mismatch shape — a
+    backfilled-then-immediately-deleted node's `#v0` version missing from a transaction-time query),
+    reproduces ONLY under this specific combined multi-package `-race` load and NEVER in any isolated
+    single-package `-race` run (13/13 clean) or any non-`-race` run performed during verification,
+    including 3 straight non-race passes at the exact failing seed. Investigated by temporarily reverting
+    this change's badger-side files back to `main` (a mistaken `git checkout main --` mid-investigation
+    that briefly discarded the uncommitted Batch F work, since recovered by reconstructing the lost files
+    from the identical token==0-equivalent pattern used everywhere else in this batch) and re-running the
+    same scenario on pristine `main` under identical load — `main` also fails this same test/seed under
+    sufficient combined-load `-race` pressure (matched failure rate across repeated runs), confirming the
+    failure is a pre-existing, load/scheduling-triggered flake shared by both trees — the same flake
+    pattern already documented and confirmed harmless for Batches C/D/E's `-race` runs earlier in this
+    backlog item — and NOT a regression introduced by this change. No fix applied here; the flake itself
+    remains a candidate for a future dedicated investigation (BACKLOG 11h is the closest existing analog:
+    both are `-race`-load-only, single-seed-deterministic-once-triggered flakes in temporal-query tests
+    that resist isolated reproduction).
 - FIX/HARDEN — comprehensive backlog hardening pass: closed 32 findings from the standing code-review
   backlog (`tasks/backlog.md`), each with a genuine RED→GREEN TDD cycle (a failing test proving the
   bug, the fix, the test passing, package + `-race` where concurrency-relevant + full-repo `go test

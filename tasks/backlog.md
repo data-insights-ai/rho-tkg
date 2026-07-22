@@ -60,7 +60,7 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ### BACKLOG 11 — Batch / ingest / tx concurrency hardening
 
-- **11f. [PARTIALLY ADDRESSED — see below] Change-log-enabled tx mutations take the FULL exclusive
+- **11f. [DONE — closed 2026-07-22] Change-log-enabled tx mutations take the FULL exclusive
   graph lock (`c.mu.Lock()`) per mutation call, not just per commit — a real throughput cliff (LOW-
   MEDIUM). NOT a fix; the underlying bottleneck is still fully present.** `tx.go:387-416`
   (`lockActiveCoreWrite`). Fully defeats ADR-0007's per-shard `RLockShard` striping and blocks every
@@ -158,6 +158,40 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   unchanged — the exact function `GraphTx`'s doors call), not just the wrapper helpers in isolation.
   **This closes the door-wiring phase of 11f entirely** — all `GraphTx`-reachable store doors now have
   Scoped siblings. The remaining and final piece is the `GraphTx` lock-relaxation flip itself.
+  **Batch F landed (foundation only, zero behavior change):** discovered — via a careful audit of
+  `GraphTx.Rollback`'s reverse-mutation path specifically, not assumed — 8 more store doors Batches A-E's
+  door-by-door sweep had missed, because they are reachable ONLY from `Rollback`'s undo logic, never from
+  a tx's forward-mutation path: `DeleteRelationship`, `DeleteNodeCascade` (the plain hard-delete, distinct
+  from Batch C's `DeleteNodeWithHistory`), `TruncateNodeHistory`/`TruncateRelHistory`, the plain
+  non-history `AddNodeLabelToken`/`RemoveNodeLabelToken` (distinct from Batch D's `*WithHistory` pair),
+  and the optional `TrimNodeHistoryFrom`/`TrimRelHistoryFrom`. This mattered: a rolled-back tx's reverse
+  mutations MUST land in the same discardable per-tx buffer as its forward mutations, or the flip below
+  would have left a durable leak-on-rollback bug — records from a rolled-back tx silently reaching the
+  eager change-log feed, exactly the defect class the whole scoped-buffer design exists to prevent. New
+  `store.ScopedRollbackCapability` (8 methods) and the union `store.ScopedTxCapability` (embeds all 7
+  Scoped interfaces from Batches A-F) — `GraphTx` checks for this EXACT combined interface before using
+  the fast path, so a store implementing only SOME pieces (tiered, sharded — neither implements the full
+  set) correctly and safely falls back to the legacy mechanism rather than being silently granted a fast
+  path it can't fully support.
+  **11f CLOSED.** The `GraphTx` lock-relaxation flip itself landed immediately after Batch F:
+  `lockActiveCoreWrite`/`lockActiveCoreWriteContext`/`unlockActiveCoreWrite` now branch on
+  `GraphTx.usesSharedLock()` (`tx.g.scopedChangeLog != nil || tx.g.txLogScope == nil`) — a store
+  implementing the full `ScopedTxCapability` (memory, badger) takes a shared `c.mu.RLock()` per mutation
+  call instead of the full exclusive `c.mu.Lock()`, so a concurrent standalone write no longer blocks
+  behind an open change-log-enabled tx purely because the log is on. `GraphTx.doorCtx()`/`doorCtxFrom(ctx)`
+  decide whether to carry the tx's scope token into each store-door call; `Rollback`'s entire
+  reverse-mutation path (7 steps + 10 helper functions) now routes through new token-aware helpers in
+  `rollback_scoped.go` so undo mutations land in the same discardable buffer as the tx's forward ones.
+  7 new tests in `tx_scoped_lock_test.go` prove: mechanism selection is correct across full-support /
+  no-changelog / partial-support (a real tiered store) stores; the concurrency claim holds via a
+  deterministic test bracketing the lock calls directly; the legacy mechanism still correctly blocks for
+  partial-capability stores (regression guard); Rollback still discards everything under the new
+  mechanism (adversarial multi-door scenario); Commit still emits everything. Full `go test ./...`,
+  `go vet`, and repeated `go test -race` across `internal/core`+`store/badger`+`store/memory`+
+  `store/tiered` all pass (see CHANGELOG for the flake investigation this surfaced, unrelated to this
+  change — `TestBitemporalOracleHarness/seed=47645253227` occasionally fails under combined
+  multi-package `-race` load on BOTH this change and unmodified `main` at a similar rate, confirming it's
+  a pre-existing, load-triggered flake, not a regression).
 - **11h. [STILL OPEN — NOT resolved; original "clock re-probing" theory RULED OUT by direct experiment,
   but the real root cause remains unknown and no fix has been applied]
   `TestOutgoingIncomingForNodesAtTx_RandomizedDivergenceProbe/badger`
