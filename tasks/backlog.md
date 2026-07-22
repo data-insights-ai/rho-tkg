@@ -228,5 +228,19 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
   either genuine concurrent load from sibling tests (not a synthetic sleep) or many more full-suite runs
   than were feasible here. NOT fixed — no code or test change applied; left explicitly open rather than
   closed by an unconfirmed theory or a speculative patch.
+  **2026-07-22: additional negative-reproduction attempt.** Ran `go test -count=1
+  ./pkg/graph/internal/core/...` (the full package, matching the exact load shape the one historical
+  failure occurred under — NOT the single test in isolation) 25 times sequentially. Zero failures across
+  all 25 runs (25/25 green), consistent with the earlier 200+-run single-test attempt and the 20x
+  3ms-delay-injection attempt — this specific reproduction avenue (repeated full-package runs without
+  genuine sibling-test concurrent load) is now exhausted without a second occurrence. Still open,
+  root cause still unknown. The two remaining candidate directions from the prior investigation (a third,
+  snowflake-ID-embedded microsecond clock source; true cross-test CPU/GC/scheduler contention that a
+  single-goroutine's own repeated runs cannot replicate, since contention needs OTHER packages' tests
+  genuinely running at the same moment) remain untried and are the only avenues left — both require
+  either instrumenting the snowflake-derived valid-from path directly or a `go test ./...`-wide
+  (all-packages, `t.Parallel()`-heavy) loop rather than a single-package loop, which is a materially
+  larger time investment for a one-observed-failure-ever flake. Deferred rather than pursued further this
+  session.
 
 
