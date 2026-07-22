@@ -274,6 +274,22 @@ func (ms *Store) replaceRelationshipRouted(r *types.Relationship, token uint64) 
 // DeleteRelationship removes a relationship and cleans up type + adjacency indexes.
 // Returns ErrRelNotFound if the relationship does not exist.
 func (ms *Store) DeleteRelationship(rid types.RelID) error {
+	return ms.deleteRelationshipRouted(rid, 0)
+}
+
+// DeleteRelationshipScoped mirrors DeleteRelationship but routes the
+// change-log record into the store.ScopedTxChangeLog buffer named by token
+// instead of the eager pending log. token == 0 is exactly DeleteRelationship.
+// See memorystore_changelog_scoped.go (BACKLOG 11f Batch F — foundation
+// only).
+func (ms *Store) DeleteRelationshipScoped(rid types.RelID, token uint64) error {
+	if token == 0 {
+		return ms.DeleteRelationship(rid)
+	}
+	return ms.deleteRelationshipRouted(rid, token)
+}
+
+func (ms *Store) deleteRelationshipRouted(rid types.RelID, token uint64) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -291,7 +307,7 @@ func (ms *Store) DeleteRelationship(rid types.RelID) error {
 	if err := ms.deleteRelLocked(rid); err != nil {
 		return err
 	}
-	return ms.logRelHardDeleteLocked(rid.SnowflakeID())
+	return ms.logRelHardDeleteRoutedLocked(rid.SnowflakeID(), token)
 }
 
 // deleteRelLocked removes a relationship and cleans up indexes.

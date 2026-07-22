@@ -20,6 +20,14 @@ import (
 // badgerstore_history_rel.go.
 
 func (bs *Store) truncateHistoryByPrefix(prefix []byte, keepVersions int, logTag storecontract.ChangeTag, logPayload []byte) error {
+	return bs.truncateHistoryByPrefixRouted(prefix, keepVersions, logTag, logPayload, 0)
+}
+
+// truncateHistoryByPrefixRouted is truncateHistoryByPrefix's token-aware
+// sibling (BACKLOG 11f Batch F) — routes the truncation record through
+// appendOpsLoggedRouted instead of appendOpsLogged. token == 0 is exactly
+// truncateHistoryByPrefix.
+func (bs *Store) truncateHistoryByPrefixRouted(prefix []byte, keepVersions int, logTag storecontract.ChangeTag, logPayload []byte, token uint64) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
 	}
@@ -109,7 +117,9 @@ func (bs *Store) truncateHistoryByPrefix(prefix []byte, keepVersions int, logTag
 	// Emit the truncation record atomically with the delete ops (this helper
 	// holds no idxMu). The record is produced only when something is actually
 	// deleted — the no-op early returns above emit nothing.
-	bs.appendOpsLogged(logTag, logPayload, ops...)
+	if err := bs.appendOpsLoggedRouted(logTag, logPayload, token, ops...); err != nil {
+		return err
+	}
 	return bs.flushIfNeeded()
 }
 
@@ -241,6 +251,13 @@ func (bs *Store) compactHistoryByPrefix(prefix []byte, keepVersions int, metaWri
 }
 
 func (bs *Store) trimHistoryFromPrefix(prefix []byte, minVersion uint32, logTag storecontract.ChangeTag, logPayload []byte) error {
+	return bs.trimHistoryFromPrefixRouted(prefix, minVersion, logTag, logPayload, 0)
+}
+
+// trimHistoryFromPrefixRouted is trimHistoryFromPrefix's token-aware sibling
+// (BACKLOG 11f Batch F) — routes the trim record through appendOpsLoggedRouted
+// instead of appendOpsLogged. token == 0 is exactly trimHistoryFromPrefix.
+func (bs *Store) trimHistoryFromPrefixRouted(prefix []byte, minVersion uint32, logTag storecontract.ChangeTag, logPayload []byte, token uint64) error {
 	if err := bs.checkOpen(); err != nil {
 		return err
 	}
@@ -291,7 +308,9 @@ func (bs *Store) trimHistoryFromPrefix(prefix []byte, minVersion uint32, logTag 
 	for k := range keySet {
 		ops = append(ops, writeOp{opType: writeOpDelete, key: []byte(k)})
 	}
-	bs.appendOpsLogged(logTag, logPayload, ops...)
+	if err := bs.appendOpsLoggedRouted(logTag, logPayload, token, ops...); err != nil {
+		return err
+	}
 	return bs.flushIfNeeded()
 }
 

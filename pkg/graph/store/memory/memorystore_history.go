@@ -548,6 +548,22 @@ func (ms *Store) NodeHistoryVersionsFrom(nid types.NodeID, startVersion uint32, 
 // TruncateNodeHistory removes all but the N most recent node versions.
 // If keepVersions == 0, all history is cleared.
 func (ms *Store) TruncateNodeHistory(nid types.NodeID, keepVersions int) error {
+	return ms.truncateNodeHistoryRouted(nid, keepVersions, 0)
+}
+
+// TruncateNodeHistoryScoped mirrors TruncateNodeHistory but routes the
+// change-log record into the store.ScopedTxChangeLog buffer named by token
+// instead of the eager pending log. token == 0 is exactly
+// TruncateNodeHistory. See memorystore_changelog_scoped.go (BACKLOG 11f
+// Batch F — foundation only).
+func (ms *Store) TruncateNodeHistoryScoped(nid types.NodeID, keepVersions int, token uint64) error {
+	if token == 0 {
+		return ms.TruncateNodeHistory(nid, keepVersions)
+	}
+	return ms.truncateNodeHistoryRouted(nid, keepVersions, token)
+}
+
+func (ms *Store) truncateNodeHistoryRouted(nid types.NodeID, keepVersions int, token uint64) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -571,7 +587,7 @@ func (ms *Store) TruncateNodeHistory(nid types.NodeID, keepVersions int) error {
 
 	if keepVersions == 0 {
 		delete(ms.nodeHistory, nid)
-		return ms.logHistoryTruncateLocked(storecontract.ChangeNodeHistoryTruncate, nid.SnowflakeID(), false, 0)
+		return ms.logHistoryTruncateRoutedLocked(storecontract.ChangeNodeHistoryTruncate, nid.SnowflakeID(), false, 0, token)
 	}
 
 	if len(inner) <= keepVersions {
@@ -588,7 +604,7 @@ func (ms *Store) TruncateNodeHistory(nid types.NodeID, keepVersions int) error {
 	for _, v := range versions[:len(versions)-keepVersions] {
 		delete(inner, v)
 	}
-	return ms.logHistoryTruncateLocked(storecontract.ChangeNodeHistoryTruncate, nid.SnowflakeID(), false, int64(keepVersions))
+	return ms.logHistoryTruncateRoutedLocked(storecontract.ChangeNodeHistoryTruncate, nid.SnowflakeID(), false, int64(keepVersions), token)
 }
 
 // PutRelVersion stores a relationship snapshot at the given version.
@@ -741,6 +757,22 @@ func (ms *Store) RelHistoryVersionsFrom(rid types.RelID, startVersion uint32, li
 // TruncateRelHistory removes all but the N most recent relationship versions.
 // If keepVersions == 0, all history is cleared.
 func (ms *Store) TruncateRelHistory(rid types.RelID, keepVersions int) error {
+	return ms.truncateRelHistoryRouted(rid, keepVersions, 0)
+}
+
+// TruncateRelHistoryScoped mirrors TruncateRelHistory but routes the
+// change-log record into the store.ScopedTxChangeLog buffer named by token
+// instead of the eager pending log. token == 0 is exactly TruncateRelHistory.
+// See memorystore_changelog_scoped.go (BACKLOG 11f Batch F — foundation
+// only).
+func (ms *Store) TruncateRelHistoryScoped(rid types.RelID, keepVersions int, token uint64) error {
+	if token == 0 {
+		return ms.TruncateRelHistory(rid, keepVersions)
+	}
+	return ms.truncateRelHistoryRouted(rid, keepVersions, token)
+}
+
+func (ms *Store) truncateRelHistoryRouted(rid types.RelID, keepVersions int, token uint64) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -764,7 +796,7 @@ func (ms *Store) TruncateRelHistory(rid types.RelID, keepVersions int) error {
 
 	if keepVersions == 0 {
 		delete(ms.relHistory, rid)
-		return ms.logHistoryTruncateLocked(storecontract.ChangeRelHistoryTruncate, rid.SnowflakeID(), false, 0)
+		return ms.logHistoryTruncateRoutedLocked(storecontract.ChangeRelHistoryTruncate, rid.SnowflakeID(), false, 0, token)
 	}
 
 	if len(inner) <= keepVersions {
@@ -780,7 +812,7 @@ func (ms *Store) TruncateRelHistory(rid types.RelID, keepVersions int) error {
 	for _, v := range versions[:len(versions)-keepVersions] {
 		delete(inner, v)
 	}
-	return ms.logHistoryTruncateLocked(storecontract.ChangeRelHistoryTruncate, rid.SnowflakeID(), false, int64(keepVersions))
+	return ms.logHistoryTruncateRoutedLocked(storecontract.ChangeRelHistoryTruncate, rid.SnowflakeID(), false, int64(keepVersions), token)
 }
 
 // ReplaceNodeWithHistory atomically replaces a node and writes a version history entry.
@@ -1154,6 +1186,22 @@ func normalizeTemporalVisibleAtTxTime(tm *types.TemporalMetadata, txTime types.I
 // Transaction rollback uses this after restoring the pre-transaction current
 // row, because graph mutation paths append history at the previous Version().
 func (ms *Store) TrimNodeHistoryFrom(nid types.NodeID, minVersion uint32) error {
+	return ms.trimNodeHistoryFromRouted(nid, minVersion, 0)
+}
+
+// TrimNodeHistoryFromScoped mirrors TrimNodeHistoryFrom but routes the
+// change-log record into the store.ScopedTxChangeLog buffer named by token
+// instead of the eager pending log. token == 0 is exactly
+// TrimNodeHistoryFrom. See memorystore_changelog_scoped.go (BACKLOG 11f
+// Batch F — foundation only).
+func (ms *Store) TrimNodeHistoryFromScoped(nid types.NodeID, minVersion uint32, token uint64) error {
+	if token == 0 {
+		return ms.TrimNodeHistoryFrom(nid, minVersion)
+	}
+	return ms.trimNodeHistoryFromRouted(nid, minVersion, token)
+}
+
+func (ms *Store) trimNodeHistoryFromRouted(nid types.NodeID, minVersion uint32, token uint64) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -1180,12 +1228,28 @@ func (ms *Store) TrimNodeHistoryFrom(nid types.NodeID, minVersion uint32) error 
 	if !deleted {
 		return nil
 	}
-	return ms.logHistoryTruncateLocked(storecontract.ChangeNodeHistoryTruncate, nid.SnowflakeID(), true, int64(minVersion))
+	return ms.logHistoryTruncateRoutedLocked(storecontract.ChangeNodeHistoryTruncate, nid.SnowflakeID(), true, int64(minVersion), token)
 }
 
 // TrimRelHistoryFrom removes all relationship history entries at or after
 // minVersion. See TrimNodeHistoryFrom for the rollback invariant.
 func (ms *Store) TrimRelHistoryFrom(rid types.RelID, minVersion uint32) error {
+	return ms.trimRelHistoryFromRouted(rid, minVersion, 0)
+}
+
+// TrimRelHistoryFromScoped mirrors TrimRelHistoryFrom but routes the
+// change-log record into the store.ScopedTxChangeLog buffer named by token
+// instead of the eager pending log. token == 0 is exactly TrimRelHistoryFrom.
+// See memorystore_changelog_scoped.go (BACKLOG 11f Batch F — foundation
+// only).
+func (ms *Store) TrimRelHistoryFromScoped(rid types.RelID, minVersion uint32, token uint64) error {
+	if token == 0 {
+		return ms.TrimRelHistoryFrom(rid, minVersion)
+	}
+	return ms.trimRelHistoryFromRouted(rid, minVersion, token)
+}
+
+func (ms *Store) trimRelHistoryFromRouted(rid types.RelID, minVersion uint32, token uint64) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -1212,5 +1276,5 @@ func (ms *Store) TrimRelHistoryFrom(rid types.RelID, minVersion uint32) error {
 	if !deleted {
 		return nil
 	}
-	return ms.logHistoryTruncateLocked(storecontract.ChangeRelHistoryTruncate, rid.SnowflakeID(), true, int64(minVersion))
+	return ms.logHistoryTruncateRoutedLocked(storecontract.ChangeRelHistoryTruncate, rid.SnowflakeID(), true, int64(minVersion), token)
 }

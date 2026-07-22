@@ -2,6 +2,7 @@ package memory
 
 import (
 	"fmt"
+	"sort"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
@@ -194,5 +195,58 @@ func (ms *Store) logRelHistoryVersionRoutedLocked(version uint32, r *types.Relat
 		return ms.logChangeScopedLocked(token, storecontract.ChangeRelHistoryVersion, p)
 	}
 	ms.logChangeLocked(storecontract.ChangeRelHistoryVersion, p)
+	return nil
+}
+
+// logNodeHardDeleteRoutedLocked is logNodeHardDeleteLocked's token-aware
+// sibling (BACKLOG 11f Batch F) — see logNodeHistoryVersionRoutedLocked's
+// doc comment.
+func (ms *Store) logNodeHardDeleteRoutedLocked(id snowflake.ID, cascadedRelIDs []int64, token uint64) error {
+	if !ms.logEnabled {
+		return nil
+	}
+	sort.Slice(cascadedRelIDs, func(i, j int) bool { return cascadedRelIDs[i] < cascadedRelIDs[j] })
+	p, err := storeutil.MarshalChangeBody(storeutil.NodeDeleteBody{ID: int64(id), CascadedRelIDs: cascadedRelIDs})
+	if err != nil {
+		return changeLogEncodeErr(err)
+	}
+	if token != 0 {
+		return ms.logChangeScopedLocked(token, storecontract.ChangeNodeDelete, p)
+	}
+	ms.logChangeLocked(storecontract.ChangeNodeDelete, p)
+	return nil
+}
+
+// logRelHardDeleteRoutedLocked is logRelHardDeleteLocked's token-aware
+// sibling — see logNodeHardDeleteRoutedLocked's doc comment.
+func (ms *Store) logRelHardDeleteRoutedLocked(id snowflake.ID, token uint64) error {
+	if !ms.logEnabled {
+		return nil
+	}
+	p, err := storeutil.MarshalChangeBody(storeutil.RelDeleteBody{ID: int64(id)})
+	if err != nil {
+		return changeLogEncodeErr(err)
+	}
+	if token != 0 {
+		return ms.logChangeScopedLocked(token, storecontract.ChangeRelDelete, p)
+	}
+	ms.logChangeLocked(storecontract.ChangeRelDelete, p)
+	return nil
+}
+
+// logHistoryTruncateRoutedLocked is logHistoryTruncateLocked's token-aware
+// sibling — see logNodeHardDeleteRoutedLocked's doc comment.
+func (ms *Store) logHistoryTruncateRoutedLocked(tag storecontract.ChangeTag, id snowflake.ID, isTrim bool, bound int64, token uint64) error {
+	if !ms.logEnabled {
+		return nil
+	}
+	p, err := storeutil.MarshalChangeBody(storeutil.HistoryTruncateBody{ID: int64(id), IsTrim: isTrim, Bound: bound})
+	if err != nil {
+		return changeLogEncodeErr(err)
+	}
+	if token != 0 {
+		return ms.logChangeScopedLocked(token, tag, p)
+	}
+	ms.logChangeLocked(tag, p)
 	return nil
 }

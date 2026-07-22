@@ -203,6 +203,22 @@ func (ms *Store) DeleteNode(nid types.NodeID) error {
 // updatedNode must already have the label removed (via RemoveLabelTokenRaw).
 // Returns ErrNodeNotFound if the node does not exist.
 func (ms *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *types.Node) error {
+	return ms.removeNodeLabelTokenRouted(nid, tok, updatedNode, 0)
+}
+
+// RemoveNodeLabelTokenScoped mirrors RemoveNodeLabelToken but routes the
+// change-log record into the store.ScopedTxChangeLog buffer named by token
+// instead of the eager pending log. token == 0 is exactly
+// RemoveNodeLabelToken. See memorystore_changelog_scoped.go (BACKLOG 11f
+// Batch F — foundation only).
+func (ms *Store) RemoveNodeLabelTokenScoped(nid types.NodeID, tok uint16, updatedNode *types.Node, token uint64) error {
+	if token == 0 {
+		return ms.RemoveNodeLabelToken(nid, tok, updatedNode)
+	}
+	return ms.removeNodeLabelTokenRouted(nid, tok, updatedNode, token)
+}
+
+func (ms *Store) removeNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNode *types.Node, token uint64) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -255,13 +271,29 @@ func (ms *Store) RemoveNodeLabelToken(nid types.NodeID, tok uint16, updatedNode 
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
-	return ms.logNodePutLocked(updatedNode, false)
+	return ms.logNodePutRoutedLocked(updatedNode, false, token)
 }
 
 // AddNodeLabelToken adds tok to the label index for id and persists updatedNode.
 // No version bump; no history entry. Used by transaction rollback.
 // Returns ErrNodeNotFound if the node does not exist.
 func (ms *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *types.Node) error {
+	return ms.addNodeLabelTokenRouted(nid, tok, updatedNode, 0)
+}
+
+// AddNodeLabelTokenScoped mirrors AddNodeLabelToken but routes the
+// change-log record into the store.ScopedTxChangeLog buffer named by token
+// instead of the eager pending log. token == 0 is exactly AddNodeLabelToken.
+// See memorystore_changelog_scoped.go (BACKLOG 11f Batch F — foundation
+// only).
+func (ms *Store) AddNodeLabelTokenScoped(nid types.NodeID, tok uint16, updatedNode *types.Node, token uint64) error {
+	if token == 0 {
+		return ms.AddNodeLabelToken(nid, tok, updatedNode)
+	}
+	return ms.addNodeLabelTokenRouted(nid, tok, updatedNode, token)
+}
+
+func (ms *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNode *types.Node, token uint64) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -313,7 +345,7 @@ func (ms *Store) AddNodeLabelToken(nid types.NodeID, tok uint16, updatedNode *ty
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
-	return ms.logNodePutLocked(updatedNode, false)
+	return ms.logNodePutRoutedLocked(updatedNode, false, token)
 }
 
 // ReplaceNode overwrites an existing node's data in-place.
@@ -385,6 +417,22 @@ func (ms *Store) replaceNodeRouted(n *types.Node, token uint64) error {
 // Holds the write lock for the entire operation — no TOCTOU window.
 // Returns ErrNodeNotFound if the node does not exist.
 func (ms *Store) DeleteNodeCascade(nid types.NodeID) error {
+	return ms.deleteNodeCascadeRouted(nid, 0)
+}
+
+// DeleteNodeCascadeScoped mirrors DeleteNodeCascade but routes the
+// change-log record into the store.ScopedTxChangeLog buffer named by token
+// instead of the eager pending log. token == 0 is exactly DeleteNodeCascade.
+// See memorystore_changelog_scoped.go (BACKLOG 11f Batch F — foundation
+// only).
+func (ms *Store) DeleteNodeCascadeScoped(nid types.NodeID, token uint64) error {
+	if token == 0 {
+		return ms.DeleteNodeCascade(nid)
+	}
+	return ms.deleteNodeCascadeRouted(nid, token)
+}
+
+func (ms *Store) deleteNodeCascadeRouted(nid types.NodeID, token uint64) error {
 	if ms == nil {
 		return ErrNilStore
 	}
@@ -448,7 +496,7 @@ func (ms *Store) DeleteNodeCascade(nid types.NodeID) error {
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, n, rawID)
 	delete(ms.nodes, nid)
 
-	return ms.logNodeHardDeleteLocked(nid.SnowflakeID(), cascaded)
+	return ms.logNodeHardDeleteRoutedLocked(nid.SnowflakeID(), cascaded, token)
 }
 
 // --- Batch operations ---

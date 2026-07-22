@@ -528,6 +528,22 @@ func (bs *Store) relHistoryVersionsFromPrefix(prefix []byte, startVersion uint32
 }
 
 func (bs *Store) TruncateRelHistory(rid types.RelID, keepVersions int) error {
+	return bs.truncateRelHistoryRouted(rid, keepVersions, 0)
+}
+
+// TruncateRelHistoryScoped mirrors TruncateRelHistory but routes the
+// change-log record into the store.ScopedTxChangeLog buffer named by token
+// instead of the eager pending log. token == 0 is exactly
+// TruncateRelHistory. See badgerstore_changelog_scoped.go (BACKLOG 11f
+// Batch F — foundation only).
+func (bs *Store) TruncateRelHistoryScoped(rid types.RelID, keepVersions int, token uint64) error {
+	if token == 0 {
+		return bs.TruncateRelHistory(rid, keepVersions)
+	}
+	return bs.truncateRelHistoryRouted(rid, keepVersions, token)
+}
+
+func (bs *Store) truncateRelHistoryRouted(rid types.RelID, keepVersions int, token uint64) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
@@ -540,11 +556,27 @@ func (bs *Store) TruncateRelHistory(rid types.RelID, keepVersions int) error {
 	if err != nil {
 		return fmt.Errorf("graph: encode change-log: %w", err)
 	}
-	return bs.truncateHistoryByPrefix(prefix, keepVersions, storecontract.ChangeRelHistoryTruncate, payload)
+	return bs.truncateHistoryByPrefixRouted(prefix, keepVersions, storecontract.ChangeRelHistoryTruncate, payload, token)
 }
 
 // TrimRelHistoryFrom removes relationship history entries at or after minVersion.
 func (bs *Store) TrimRelHistoryFrom(rid types.RelID, minVersion uint32) error {
+	return bs.trimRelHistoryFromRouted(rid, minVersion, 0)
+}
+
+// TrimRelHistoryFromScoped mirrors TrimRelHistoryFrom but routes the
+// change-log record into the store.ScopedTxChangeLog buffer named by token
+// instead of the eager pending log. token == 0 is exactly
+// TrimRelHistoryFrom. See badgerstore_changelog_scoped.go (BACKLOG 11f
+// Batch F — foundation only).
+func (bs *Store) TrimRelHistoryFromScoped(rid types.RelID, minVersion uint32, token uint64) error {
+	if token == 0 {
+		return bs.TrimRelHistoryFrom(rid, minVersion)
+	}
+	return bs.trimRelHistoryFromRouted(rid, minVersion, token)
+}
+
+func (bs *Store) trimRelHistoryFromRouted(rid types.RelID, minVersion uint32, token uint64) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
@@ -557,7 +589,7 @@ func (bs *Store) TrimRelHistoryFrom(rid types.RelID, minVersion uint32) error {
 	if err != nil {
 		return fmt.Errorf("graph: encode change-log: %w", err)
 	}
-	return bs.trimHistoryFromPrefix(prefix, minVersion, storecontract.ChangeRelHistoryTruncate, payload)
+	return bs.trimHistoryFromPrefixRouted(prefix, minVersion, storecontract.ChangeRelHistoryTruncate, payload, token)
 }
 
 func (bs *Store) ForEachRelHistoryID(fn func(types.RelID) bool) error {

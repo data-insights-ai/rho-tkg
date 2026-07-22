@@ -402,3 +402,68 @@ type ScopedCascadeCapability interface {
 	PutRelVersionScoped(id types.RelID, version uint32, r *types.Relationship, token uint64) error
 	ReplaceRelationshipScoped(r *types.Relationship, token uint64) error
 }
+
+// ScopedRollbackCapability is the BACKLOG 11f Batch F scoped counterpart of
+// the eight store doors GraphTx.Rollback's reverse-mutation path calls that
+// no earlier batch covered: the hard-delete doors DeleteRelationship /
+// DeleteNodeCascade (MandatoryStore, store/capabilities.go — no history,
+// used by rollback's "undo a created entity" step), the history-truncate
+// doors TruncateNodeHistory / TruncateRelHistory (HistoryCapability — undo
+// the history rows a forward mutation wrote), the plain (no-history)
+// label doors AddNodeLabelToken / RemoveNodeLabelToken (MandatoryStore —
+// used ONLY by rollback's label-diff restore, distinct from
+// AddNodeLabelTokenWithHistory/RemoveNodeLabelTokenWithHistory which
+// ScopedLabelCapability already covers), and the optional
+// HistoryRollbackTrimCapability doors TrimNodeHistoryFrom / TrimRelHistoryFrom
+// (the cheaper trim-from-version rollback path used when no full history
+// snapshot was captured). Each Scoped method behaves EXACTLY like its
+// unscoped sibling except the change-log record it produces is routed into
+// the ScopedTxChangeLog buffer named by token. token == 0 is exactly the
+// unscoped door. A store implementing ScopedRollbackCapability MUST also
+// implement ScopedTxChangeLog.
+//
+// This capability exists because of WHY GraphTx currently needs the
+// exclusive lock at all: Rollback's reverse-mutation path must have its
+// records land in the SAME discardable buffer as the transaction's forward
+// mutations, or a rolled-back transaction would durably leak records into
+// the eager feed. Without Scoped siblings for these eight doors, relaxing
+// GraphTx's lock to a shared read-lock (the actual point of BACKLOG 11f)
+// would be UNSAFE — see the doc comment on GraphTx.lockActiveCoreWrite for
+// the full design.
+//
+// FOUNDATION ONLY, same status as every other BACKLOG 11f Scoped capability:
+// nothing in the core/tx layer constructs a token-carrying context yet, so
+// this has zero effect on any existing behavior. See
+// store.ScopedTxChangeLog's doc comment for the full design rationale.
+type ScopedRollbackCapability interface {
+	DeleteRelationshipScoped(id types.RelID, token uint64) error
+	DeleteNodeCascadeScoped(id types.NodeID, token uint64) error
+	TruncateNodeHistoryScoped(id types.NodeID, keepVersions int, token uint64) error
+	TruncateRelHistoryScoped(id types.RelID, keepVersions int, token uint64) error
+	AddNodeLabelTokenScoped(id types.NodeID, tok uint16, updatedNode *types.Node, token uint64) error
+	RemoveNodeLabelTokenScoped(id types.NodeID, tok uint16, updatedNode *types.Node, token uint64) error
+	TrimNodeHistoryFromScoped(id types.NodeID, minVersion uint32, token uint64) error
+	TrimRelHistoryFromScoped(id types.RelID, minVersion uint32, token uint64) error
+}
+
+// ScopedTxCapability is the UNION of every Scoped* capability plus
+// ScopedTxChangeLog — the full contract GraphTx requires from a store
+// before it will use the token-routed shared-read-lock fast path instead
+// of the legacy exclusive-lock TxChangeLogScope mechanism. A store must
+// implement ALL of these together: partial support would let an unscoped
+// fallback inside one of the *ScopedAware wrapper functions leak a record
+// into the eager, undiscardable feed before a possible rollback — silently
+// breaking the "a rolled-back transaction emits nothing" invariant.
+// GraphTx.BeginTx checks for this EXACT combined interface; a store
+// implementing only some of the pieces (e.g. a future backend with partial
+// Scoped support) correctly and safely falls back to the legacy mechanism
+// instead of being granted the fast path with a gap in it.
+type ScopedTxCapability interface {
+	ScopedTxChangeLog
+	ScopedPutCapability
+	ScopedReplaceCapability
+	ScopedDeleteCapability
+	ScopedLabelCapability
+	ScopedCascadeCapability
+	ScopedRollbackCapability
+}

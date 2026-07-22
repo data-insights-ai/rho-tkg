@@ -15,6 +15,22 @@ import (
 // Node batch writes + cascade-delete.
 
 func (bs *Store) DeleteNodeCascade(nid types.NodeID) error {
+	return bs.deleteNodeCascadeRouted(nid, 0)
+}
+
+// DeleteNodeCascadeScoped mirrors DeleteNodeCascade but routes the
+// change-log record into the store.ScopedTxChangeLog buffer named by token
+// instead of the eager pending log. token == 0 is exactly DeleteNodeCascade.
+// See badgerstore_changelog_scoped.go (BACKLOG 11f Batch F — foundation
+// only).
+func (bs *Store) DeleteNodeCascadeScoped(nid types.NodeID, token uint64) error {
+	if token == 0 {
+		return bs.DeleteNodeCascade(nid)
+	}
+	return bs.deleteNodeCascadeRouted(nid, token)
+}
+
+func (bs *Store) deleteNodeCascadeRouted(nid types.NodeID, token uint64) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
@@ -26,7 +42,7 @@ func (bs *Store) DeleteNodeCascade(nid types.NodeID) error {
 	if err != nil {
 		return err
 	}
-	_, corruptErr, err := bs.cascadeDeleteLocked(nid, prefetched)
+	_, corruptErr, err := bs.cascadeDeleteRouted(nid, prefetched, token)
 	if err != nil {
 		return err
 	}
@@ -248,8 +264,15 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePr
 }
 
 // cascadeDeleteLocked acquires idxMu.Lock() and delegates to cascadeDeleteInner.
-// Used by DeleteNodeCascade — same contract as before the refactor.
+// token == 0 (unscoped) convenience wrapper over cascadeDeleteRouted — kept
+// so existing direct callers (tests) are unaffected.
 func (bs *Store) cascadeDeleteLocked(nid types.NodeID, prefetched cascadeDeletePrefetch) ([]RelDeleteInfo, error, error) {
+	return bs.cascadeDeleteRouted(nid, prefetched, 0)
+}
+
+// cascadeDeleteRouted is cascadeDeleteLocked's token-aware sibling (BACKLOG
+// 11f Batch F) — see logChangeRoutedRaw's routing rule.
+func (bs *Store) cascadeDeleteRouted(nid types.NodeID, prefetched cascadeDeletePrefetch, token uint64) ([]RelDeleteInfo, error, error) {
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()
 	deleted, corruptErr, fatalErr := bs.cascadeDeleteInner(nid, prefetched)
@@ -258,7 +281,7 @@ func (bs *Store) cascadeDeleteLocked(nid types.NodeID, prefetched cascadeDeleteP
 	// so the node-cascade and with-history-delete paths each emit exactly one
 	// logical record). Skipped on a fatal error (no ops were committed).
 	if fatalErr == nil {
-		if logErr := bs.logCascadeNodeDelete(nid.SnowflakeID(), deleted); logErr != nil {
+		if logErr := bs.logCascadeNodeDeleteRouted(nid.SnowflakeID(), deleted, token); logErr != nil {
 			return deleted, corruptErr, logErr
 		}
 	}

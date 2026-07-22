@@ -947,6 +947,22 @@ func (bs *Store) nodeHistoryVersionsFromPrefix(prefix []byte, startVersion uint3
 }
 
 func (bs *Store) TruncateNodeHistory(nid types.NodeID, keepVersions int) error {
+	return bs.truncateNodeHistoryRouted(nid, keepVersions, 0)
+}
+
+// TruncateNodeHistoryScoped mirrors TruncateNodeHistory but routes the
+// change-log record into the store.ScopedTxChangeLog buffer named by token
+// instead of the eager pending log. token == 0 is exactly
+// TruncateNodeHistory. See badgerstore_changelog_scoped.go (BACKLOG 11f
+// Batch F — foundation only).
+func (bs *Store) TruncateNodeHistoryScoped(nid types.NodeID, keepVersions int, token uint64) error {
+	if token == 0 {
+		return bs.TruncateNodeHistory(nid, keepVersions)
+	}
+	return bs.truncateNodeHistoryRouted(nid, keepVersions, token)
+}
+
+func (bs *Store) truncateNodeHistoryRouted(nid types.NodeID, keepVersions int, token uint64) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
@@ -959,11 +975,27 @@ func (bs *Store) TruncateNodeHistory(nid types.NodeID, keepVersions int) error {
 	if err != nil {
 		return fmt.Errorf("graph: encode change-log: %w", err)
 	}
-	return bs.truncateHistoryByPrefix(prefix, keepVersions, storecontract.ChangeNodeHistoryTruncate, payload)
+	return bs.truncateHistoryByPrefixRouted(prefix, keepVersions, storecontract.ChangeNodeHistoryTruncate, payload, token)
 }
 
 // TrimNodeHistoryFrom removes node history entries at or after minVersion.
 func (bs *Store) TrimNodeHistoryFrom(nid types.NodeID, minVersion uint32) error {
+	return bs.trimNodeHistoryFromRouted(nid, minVersion, 0)
+}
+
+// TrimNodeHistoryFromScoped mirrors TrimNodeHistoryFrom but routes the
+// change-log record into the store.ScopedTxChangeLog buffer named by token
+// instead of the eager pending log. token == 0 is exactly
+// TrimNodeHistoryFrom. See badgerstore_changelog_scoped.go (BACKLOG 11f
+// Batch F — foundation only).
+func (bs *Store) TrimNodeHistoryFromScoped(nid types.NodeID, minVersion uint32, token uint64) error {
+	if token == 0 {
+		return bs.TrimNodeHistoryFrom(nid, minVersion)
+	}
+	return bs.trimNodeHistoryFromRouted(nid, minVersion, token)
+}
+
+func (bs *Store) trimNodeHistoryFromRouted(nid types.NodeID, minVersion uint32, token uint64) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
@@ -976,7 +1008,7 @@ func (bs *Store) TrimNodeHistoryFrom(nid types.NodeID, minVersion uint32) error 
 	if err != nil {
 		return fmt.Errorf("graph: encode change-log: %w", err)
 	}
-	return bs.trimHistoryFromPrefix(prefix, minVersion, storecontract.ChangeNodeHistoryTruncate, payload)
+	return bs.trimHistoryFromPrefixRouted(prefix, minVersion, storecontract.ChangeNodeHistoryTruncate, payload, token)
 }
 
 func (bs *Store) ForEachNodeHistoryID(fn func(types.NodeID) bool) error {

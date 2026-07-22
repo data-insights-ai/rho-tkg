@@ -190,6 +190,12 @@ func (bs *Store) nodeDeleteWithHistoryPayload(id snowflake.ID, nodeTombstone *ty
 // after the cascade's ops are enqueued; a marshal error is surfaced to the
 // caller (it never silently drops a record).
 func (bs *Store) logCascadeNodeDelete(id snowflake.ID, deleted []RelDeleteInfo) error {
+	return bs.logCascadeNodeDeleteRouted(id, deleted, 0)
+}
+
+// logCascadeNodeDeleteRouted is logCascadeNodeDelete's token-aware sibling
+// (BACKLOG 11f Batch F) — see logChangeRoutedRaw's routing rule.
+func (bs *Store) logCascadeNodeDeleteRouted(id snowflake.ID, deleted []RelDeleteInfo, token uint64) error {
 	if !bs.logEnabled.Load() {
 		return nil
 	}
@@ -208,8 +214,7 @@ func (bs *Store) logCascadeNodeDelete(id snowflake.ID, deleted []RelDeleteInfo) 
 	if err != nil {
 		return err
 	}
-	bs.logChangeRaw(storecontract.ChangeNodeDelete, payload)
-	return nil
+	return bs.logChangeRoutedRaw(storecontract.ChangeNodeDelete, payload, token)
 }
 
 // relDeleteWithHistoryPayload builds a with-history ChangeRelDelete body.

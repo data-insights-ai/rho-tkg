@@ -387,6 +387,22 @@ func (bs *Store) replaceRelationshipRouted(r *types.Relationship, token uint64) 
 // DeleteRelationship removes a relationship and cleans up type + adjacency indexes.
 // Returns ErrRelNotFound if the relationship does not exist.
 func (bs *Store) DeleteRelationship(rid types.RelID) error {
+	return bs.deleteRelationshipRouted(rid, 0)
+}
+
+// DeleteRelationshipScoped mirrors DeleteRelationship but routes the
+// change-log record into the store.ScopedTxChangeLog buffer named by token
+// instead of the eager pending log. token == 0 is exactly
+// DeleteRelationship. See badgerstore_changelog_scoped.go (BACKLOG 11f
+// Batch F — foundation only).
+func (bs *Store) DeleteRelationshipScoped(rid types.RelID, token uint64) error {
+	if token == 0 {
+		return bs.DeleteRelationship(rid)
+	}
+	return bs.deleteRelationshipRouted(rid, token)
+}
+
+func (bs *Store) deleteRelationshipRouted(rid types.RelID, token uint64) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
@@ -418,14 +434,18 @@ func (bs *Store) DeleteRelationship(rid types.RelID) error {
 		return ErrRelNotFound
 	}
 	r, err := bs.getRelLocked(rid)
+	var logErr error
 	if err == nil {
 		bs.deleteRelByInfo(relDeleteInfoFromRelationship(r))
-		bs.logChangeRaw(storecontract.ChangeRelDelete, relDelPayload)
+		logErr = bs.logChangeRoutedRaw(storecontract.ChangeRelDelete, relDelPayload, token)
 	}
 	bs.idxMu.Unlock()
 
 	if err != nil {
 		return err
+	}
+	if logErr != nil {
+		return logErr
 	}
 	return bs.flushIfNeeded()
 }
