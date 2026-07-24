@@ -299,6 +299,13 @@ func (c *Core) reapCoreStateForClear(leaseBytes []byte) error {
 	if err := c.restoreIDSlotLeaseAfterReset(leaseBytes); err != nil {
 		return err
 	}
+	// The commit-clock floor is Preserve, not Reap: it is this node's
+	// transaction-time position, not a description of the erased entities, so a
+	// data Reset must not let TX time regress across the Clear (lesson 71). No
+	// pre-Clear capture is needed — see restoreInstantFloorAfterReset.
+	if err := c.restoreInstantFloorAfterReset(); err != nil {
+		return err
+	}
 	c.restoreOpCounters(opCounterSnapshot{})
 	return c.persistRegistries()
 }

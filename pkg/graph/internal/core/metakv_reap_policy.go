@@ -33,6 +33,16 @@ package core
 //     watermark. If it survived Reset while the replicated DATA was wiped,
 //     the replica would believe it is already caught up and never
 //     re-bootstrap, silently serving an incomplete dataset.
+//   - instantFloorMeta (Preserve): the durable commit-clock floor watermark.
+//     Like idSlotLeaseMeta this is data-INDEPENDENT node state — this node's
+//     transaction-time position, not a description of the graph's entities. If
+//     Clear wiped it, transaction time could go BACKWARDS across the Clear: a
+//     write burst leaves the floor above the wall clock, the wipe drops the
+//     watermark, and after a reopen fresh writes stamp BELOW records the change
+//     log already emitted before the Clear. Unlike the id-slot lease it needs no
+//     capture-before-Clear, because the authoritative value is the in-memory
+//     lastInstant (which Clear never lowers), not the persisted blob — see
+//     restoreInstantFloorAfterReset (instant_floor.go).
 //   - idSlotLeaseMeta (Preserve): an EXTERNAL ORCHESTRATOR's failover hint
 //     (which snowflake slot this node is leased for) — data-independent
 //     identity, unrelated to the graph's own entities. Wiping it on a data
@@ -75,6 +85,7 @@ var metaKVFixedKeys = map[string]reapPolicy{
 	graphEpochMeta:            reapPolicyReap,
 	replicaAppliedLSNMeta:     reapPolicyReap,
 	idSlotLeaseMeta:           reapPolicyPreserve,
+	instantFloorMeta:          reapPolicyPreserve,
 	uniqueForeverOwnersMeta:   reapPolicyReap,
 	schemaVersionKey:          reapPolicyReap,
 	retentionMaxWatermarkMeta: reapPolicyReap,

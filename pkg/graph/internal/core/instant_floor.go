@@ -62,3 +62,23 @@ func (c *Core) persistInstantFloor() error {
 	}
 	return nil
 }
+
+// restoreInstantFloorAfterReset re-persists the commit-clock floor after
+// Admin.Reset() / a replica's ChangeClear apply wiped the MetaKV keyspace —
+// instantFloorMeta's reapPolicyPreserve half (BACKLOG 13l). The commit clock is
+// data-INDEPENDENT node state: like idSlotLeaseMeta, and unlike every Reap key,
+// it describes THIS NODE'S transaction-time position, not the graph's (now
+// erased) entities. Letting Clear wipe it would let transaction time go
+// BACKWARDS across the Clear — a burst leaves the floor above the wall, the
+// wipe drops the watermark, and after a reopen fresh writes are stamped below
+// records the change log already emitted before the Clear.
+//
+// Unlike captureIDSlotLeaseForReset there is deliberately NO capture-before-Clear
+// half, because the authoritative value is not the persisted blob: it is the
+// in-memory lastInstant, which Clear never lowers and which seedInstantFloor
+// already raised to >= the persisted watermark at open. Re-persisting the live
+// value after the wipe therefore always restores a floor >= the one Clear
+// removed. Caller must hold c.mu.Lock.
+func (c *Core) restoreInstantFloorAfterReset() error {
+	return c.persistInstantFloor()
+}

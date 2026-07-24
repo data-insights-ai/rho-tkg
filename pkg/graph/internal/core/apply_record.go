@@ -43,19 +43,33 @@ func (c *Core) applyChangeRecordLocked(rec storepkg.ChangeRecord) error {
 }
 
 // recordCommitStamp returns the largest system-minted transaction-time instant a
-// change record introduces (0 for records — truncate, clear — that carry none).
-// It re-decodes the body (cheap relative to the surrounding apply/hash-verify)
-// and reads only the wire's TX stamps, so the apply/merge floor advance covers
-// every verbatim-applied stamp regardless of which record kind carried it. A
-// decode error yields 0 — the inner apply already validated the same payload, so
-// this is only reached on a well-formed record.
+// change record introduces. It re-decodes the body (cheap relative to the
+// surrounding apply/hash-verify) and reads only the wire's TX stamps, so the
+// apply/merge floor advance covers every verbatim-applied stamp regardless of
+// which record kind carried it. A decode error yields 0 — the inner apply
+// already validated the same payload, so this is only reached on a well-formed
+// record.
+//
+// It returns 0 for the record kinds that introduce NO new system-minted stamp,
+// and that must stay an exhaustive, deliberate list — a stamp-carrying kind
+// silently falling through here would reopen the very anachronism this closes:
+//   - ChangeNodeHistoryTruncate / ChangeRelHistoryTruncate: remove history rows.
+//   - ChangeMeta / ChangeClear: metadata marker and full wipe, no entity wire.
+//   - ChangeForeignIncomingDelete: body is ForeignIncomingDeleteBody (rel ID +
+//     END-node ID for routing) — identifiers only, no temporal metadata.
+//   - ChangeRangePurge: names a PREDICATE the replica RE-EXECUTES locally, so
+//     any resulting stamp is minted by this node's own c.now().
 func recordCommitStamp(rec storepkg.ChangeRecord) types.Instant {
 	switch rec.Tag {
 	case storepkg.ChangeNodePut:
 		if b, err := storeutil.DecodeNodePut(rec.Payload); err == nil {
 			return nodeWireCommitStamp(b.Wire)
 		}
-	case storepkg.ChangeRelPut:
+	// ChangeForeignIncoming is the cross-machine incoming half-edge stub
+	// (ADR-0010 Model A). Its body IS a ChangeRelPut body (the stub's RelWire),
+	// carrying the ORIGINATING partition's TxFrom verbatim — the foreign-stamp
+	// ingress this floor exists for — so it advances the floor identically.
+	case storepkg.ChangeRelPut, storepkg.ChangeForeignIncoming:
 		if b, err := storeutil.DecodeRelPut(rec.Payload); err == nil {
 			return relWireCommitStamp(b.Wire)
 		}

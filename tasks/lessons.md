@@ -2251,7 +2251,29 @@ legitimately lie in the future (a future valid-to must not poison the commit clo
   EXACTLY on a clean shutdown; after an unclean crash the watermark is stale/absent
   and the floor falls back to the wall clock, self-healing as the wall advances past
   the drift — the pre-fix behavior.
+- **Corollary — "every door" is a MOVING set, so re-audit it on every rebase.**
+  This lesson was written against v4.11.2 and landed on v4.24.0, and the base had
+  grown two more doors in between, each of which the fix silently missed until
+  re-audited:
+  1. **`ChangeForeignIncoming`** (change tag 11, ADR-0010 Model A — did not exist
+     at v4.11.2, which stopped at tag 10). It is the cross-machine incoming
+     half-edge stub, and its body IS a `ChangeRelPut` body carrying the
+     ORIGINATING partition's `TxFrom` verbatim — a textbook foreign stamp. The
+     tag-driven `recordCommitStamp` switch returned 0 for it, skipping the
+     advance. The remaining unhandled tags are now enumerated with a reason each,
+     so the next added tag is a deliberate decision rather than a silent 0.
+  2. **`Admin.Reset()` / `ChangeClear`**, which wipe the whole MetaKV keyspace and
+     would take the durable watermark with them. Classified `reapPolicyPreserve`
+     (BACKLOG 13l): the commit clock is this NODE'S transaction-time position, not
+     a description of the erased entities — the same rationale as `idSlotLeaseMeta`
+     and the opposite of every Reap key. Uniquely among Preserve keys it needs no
+     capture-before-Clear, because the authoritative value is the in-memory
+     `lastInstant` (which `Clear` never lowers), not the persisted blob.
 - **Tests:** `TestNowTx_ReopenAfterBurst_MonotonicFloorAnachronism` (frozen-clock
   burst → reopen), `TestNowTx_ReplicaCoversAppliedFutureTxFrom` (clock-skewed
   primary → apply), `TestNowTx_BootstrapImportCoversFutureTxFrom` (future-stamped
-  snapshot → import). Each fails RED without its door's fix.
+  snapshot → import), `TestRecordCommitStamp_CoversForeignIncomingStub` (a real
+  encoded rel-put record RE-TAGGED, which also proves the "same body" premise), and
+  `TestInstantFloor_PreservedAcrossReset` (badger only — the memory store's `Clear`
+  leaves its meta map intact, so it cannot exhibit the defect). Each fails RED
+  without its door's fix.
