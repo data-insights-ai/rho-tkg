@@ -98,6 +98,64 @@ func (c *Core) advanceClockFloor(to types.Instant) (types.Instant, error) {
 	}
 }
 
+// advanceInstantFloor raises the per-Core monotonic commit-clock floor
+// (lastInstant) to at least inst, so a subsequent c.now() — and therefore
+// Temporal().NowTx() — cannot hand back a value BELOW a TxFrom that entered the
+// store by a path OTHER than this session's own c.now(): a stamp reloaded on
+// reopen (seedInstantFloorLocked), applied verbatim on a read replica
+// (applyChangeRecordLocked), or replayed from an import snapshot. Without this,
+// after such an event the commit clock could mint a new TxFrom below an
+// already-committed one (TX time going backwards), and NowTx would silently
+// under-cover it — the exact anachronism the pin exists to prevent (lesson 71,
+// extending lesson 61).
+//
+// This is the INTERNAL sibling of advanceClockFloor, and the difference is
+// deliberate: advanceClockFloor is the caller-facing HLC merge seam behind
+// AdvanceClock, so it screens its argument against maxClockAdvanceSkewMillis
+// and can refuse with ErrInvalidClockAdvance. advanceInstantFloor's argument is
+// never caller-supplied — it is a stamp this store itself minted earlier and has
+// already committed, so there is nothing to authorize and no caller to return an
+// error to; refusing it would leave the floor below a durable TxFrom, which is
+// precisely the anachronism being closed. A no-op when inst <= the current
+// floor. Concurrency-safe (CAS loop, mirroring now()).
+func (c *Core) advanceInstantFloor(inst types.Instant) {
+	if inst <= 0 {
+		return
+	}
+	target := int64(inst)
+	for {
+		last := c.lastInstant.Load()
+		if target <= last {
+			return
+		}
+		if c.lastInstant.CompareAndSwap(last, target) {
+			return
+		}
+	}
+}
+
+// maxCommitStamp returns the largest SYSTEM-minted transaction-time instant on
+// tm — the stamps that come from c.now() (TxFrom, TxTo, UpdatedAt, DeletedAt).
+// It deliberately EXCLUDES ValidFrom/ValidTo: those are caller-asserted world
+// time (valid time), which may legitimately lie in the future and must never
+// pull the commit-clock floor forward.
+func maxCommitStamp(tm *types.TemporalMetadata) types.Instant {
+	if tm == nil {
+		return 0
+	}
+	m := tm.TxFrom
+	if tm.TxTo > m {
+		m = tm.TxTo
+	}
+	if tm.UpdatedAt > m {
+		m = tm.UpdatedAt
+	}
+	if tm.DeletedAt > m {
+		m = tm.DeletedAt
+	}
+	return m
+}
+
 // checkCtx performs a non-blocking context cancellation check.
 // Returns ctx.Err() if the context is done, nil otherwise.
 // Zero overhead when the context is not cancelled.

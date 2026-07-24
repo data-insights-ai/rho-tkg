@@ -26,7 +26,94 @@ import (
 // Every handler is idempotent under at-least-once redelivery (a crash between a
 // door commit and the watermark advance replays the last record): an identical
 // row is a no-op, and a delete tolerates a missing entity as already-applied.
+//
+// After the record applies, the local commit-clock floor is advanced to cover
+// the record's transaction-time stamps (recordCommitStamp): the applied TxFrom
+// is the PRIMARY's stamp and can exceed this replica's wall clock (NTP skew, or
+// the primary's own monotonic-floor burst), so without this a later NowTx() /
+// c.now() could hand back a value below an already-applied TxFrom and the pin
+// would silently under-cover applied data (lesson 71). Advancing only AFTER a
+// successful apply keeps a rejected/corrupt record from pushing the floor.
 func (c *Core) applyChangeRecordLocked(rec storepkg.ChangeRecord) error {
+	if err := c.applyChangeRecordInnerLocked(rec); err != nil {
+		return err
+	}
+	c.advanceInstantFloor(recordCommitStamp(rec))
+	return nil
+}
+
+// recordCommitStamp returns the largest system-minted transaction-time instant a
+// change record introduces (0 for records — truncate, clear — that carry none).
+// It re-decodes the body (cheap relative to the surrounding apply/hash-verify)
+// and reads only the wire's TX stamps, so the apply/merge floor advance covers
+// every verbatim-applied stamp regardless of which record kind carried it. A
+// decode error yields 0 — the inner apply already validated the same payload, so
+// this is only reached on a well-formed record.
+func recordCommitStamp(rec storepkg.ChangeRecord) types.Instant {
+	switch rec.Tag {
+	case storepkg.ChangeNodePut:
+		if b, err := storeutil.DecodeNodePut(rec.Payload); err == nil {
+			return nodeWireCommitStamp(b.Wire)
+		}
+	case storepkg.ChangeRelPut:
+		if b, err := storeutil.DecodeRelPut(rec.Payload); err == nil {
+			return relWireCommitStamp(b.Wire)
+		}
+	case storepkg.ChangeNodeDelete:
+		if b, err := storeutil.DecodeNodeDelete(rec.Payload); err == nil {
+			var m types.Instant
+			if b.Tombstone != nil {
+				m = nodeWireCommitStamp(*b.Tombstone)
+			}
+			for i := range b.RelTombstones {
+				if s := relWireCommitStamp(b.RelTombstones[i]); s > m {
+					m = s
+				}
+			}
+			return m
+		}
+	case storepkg.ChangeRelDelete:
+		if b, err := storeutil.DecodeRelDelete(rec.Payload); err == nil && b.Tombstone != nil {
+			return relWireCommitStamp(*b.Tombstone)
+		}
+	case storepkg.ChangeNodeHistoryVersion:
+		if b, err := storeutil.DecodeHistoryVersionNode(rec.Payload); err == nil {
+			return nodeWireCommitStamp(b.Wire)
+		}
+	case storepkg.ChangeRelHistoryVersion:
+		if b, err := storeutil.DecodeHistoryVersionRel(rec.Payload); err == nil {
+			return relWireCommitStamp(b.Wire)
+		}
+	}
+	return 0
+}
+
+func nodeWireCommitStamp(w storeutil.NodeWire) types.Instant {
+	return maxWireStamp(w.TxFrom, w.TxTo, w.UpdatedAt, w.DeletedAt)
+}
+
+func relWireCommitStamp(w storeutil.RelWire) types.Instant {
+	return maxWireStamp(w.TxFrom, w.TxTo, w.UpdatedAt, w.DeletedAt)
+}
+
+func maxWireStamp(txFrom, txTo, updatedAt, deletedAt int64) types.Instant {
+	m := txFrom
+	if txTo > m {
+		m = txTo
+	}
+	if updatedAt > m {
+		m = updatedAt
+	}
+	if deletedAt > m {
+		m = deletedAt
+	}
+	if m < 0 {
+		return 0
+	}
+	return types.Instant(m)
+}
+
+func (c *Core) applyChangeRecordInnerLocked(rec storepkg.ChangeRecord) error {
 	switch rec.Tag {
 	case storepkg.ChangeNodePut:
 		body, err := storeutil.DecodeNodePut(rec.Payload)

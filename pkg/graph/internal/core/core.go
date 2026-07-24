@@ -1785,6 +1785,14 @@ func New(config Config) (*Core, error) {
 		return nil, err
 	}
 
+	// Reseed the commit-clock floor from the previous session's durable watermark
+	// so NowTx()/c.now() stay above every persisted TxFrom across a reopen (a burst
+	// whose monotonic floor outran the wall leaves stamps above the reopened wall).
+	// Deliberately NOT fail-closed, unlike the watermarks above: an absent or
+	// unreadable floor is the expected state after an unclean shutdown, and it
+	// self-heals as the wall clock advances past the drift (lesson 71).
+	c.seedInstantFloor()
+
 	return c, nil
 }
 
@@ -1860,6 +1868,11 @@ func (c *Core) Close() error {
 		c.registryMu.Lock()
 		closeErr = errors.Join(closeErr, c.persistRegistries())
 		c.registryMu.Unlock()
+		// Persist the commit-clock floor BEFORE the store closes+flushes it, so the
+		// next open can reseed NowTx()'s reopen-safety watermark (seedInstantFloor).
+		// Outside registryMu: that guard covers the registry pointers only, and this
+		// writes an independent MetaKV key.
+		closeErr = errors.Join(closeErr, c.persistInstantFloor())
 		closeErr = errors.Join(closeErr, c.store.Close())
 	})
 	return closeErr

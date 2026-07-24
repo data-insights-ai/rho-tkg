@@ -720,6 +720,10 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 		if err != nil {
 			return fmt.Errorf("import: node %d: %w: %v", wn.ID, ErrCorruptExport, err)
 		}
+		// An imported snapshot may carry TxFrom stamps from a clock-skewed / burst
+		// primary that exceed this graph's wall clock; cover them so a NowTx() on a
+		// bootstrap-only replica still includes the imported rows (lesson 71).
+		c.advanceInstantFloor(nodeWireCommitStamp(wn))
 		if err := validateNodeTokensInRegistry(&wn, c.labels); err != nil {
 			return fmt.Errorf("import: node %d: %w", wn.ID, err)
 		}
@@ -758,6 +762,7 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 		if err != nil {
 			return fmt.Errorf("import: node history %d: %w: %v", wn.ID, ErrCorruptExport, err)
 		}
+		c.advanceInstantFloor(nodeWireCommitStamp(wn))
 		if err := validateNodeTokensInRegistry(&wn, c.labels); err != nil {
 			return fmt.Errorf("import: node history %d: %w", wn.ID, err)
 		}
@@ -804,6 +809,7 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 		if err != nil {
 			return fmt.Errorf("import: rel %d: %w: %v", wr.ID, ErrCorruptExport, err)
 		}
+		c.advanceInstantFloor(relWireCommitStamp(wr))
 		if err := validateRelTokensInRegistry(&wr, c.relTypes); err != nil {
 			return fmt.Errorf("import: rel %d: %w", wr.ID, err)
 		}
@@ -842,6 +848,7 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 		if err != nil {
 			return fmt.Errorf("import: rel history %d: %w: %v", wr.ID, ErrCorruptExport, err)
 		}
+		c.advanceInstantFloor(relWireCommitStamp(wr))
 		if err := validateRelTokensInRegistry(&wr, c.relTypes); err != nil {
 			return fmt.Errorf("import: rel history %d: %w", wr.ID, err)
 		}

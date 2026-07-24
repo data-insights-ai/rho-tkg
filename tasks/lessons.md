@@ -1763,6 +1763,14 @@ Rules:
 
 ## 61. A "Current Transaction Time" Reader Must Consult The Commit Clock (Wall-Dominated), Not The Session High-Water Mark — The Latter Resets To Zero On Reopen
 
+> **Corrected by lesson 71.** The premise below — "`lastInstant` is deliberately
+> not seeded on open, because `Core.now()`'s `observed = wall.now()` already
+> dominates every historical stamp" — holds ONLY at throughput ≤ 1 write/ms. A
+> burst whose monotonic floor outran the wall leaves persisted `TxFrom` stamps
+> ABOVE the reopened wall clock, so `NowTx()=c.now()=wall` under-covers them.
+> Lesson 71 seeds the floor on open (durable watermark) and advances it on every
+> foreign-stamp ingress (apply / import).
+
 `Temporal().NowTx()` must return an instant that covers every committed write and
 precedes every future one, so a caller can pin an AS-OF read at it. The tempting
 implementation — return the in-memory monotonic high-water mark
@@ -2198,3 +2206,52 @@ means checking not just `grep '"reflect"'` in your own imports, but also
 Marshal/Unmarshal/Encode/Decode call on a hot path implement that library's
 opt-out interface" — a struct embedding an already-optimized field is NOT
 automatically itself optimized.
+
+## 71. A Wall-Dominated Monotonic Floor Is Not Reopen-Safe Once A Burst Outran The Wall — Seed It On Open And Advance It On Every Foreign-Stamp Ingress
+
+Lesson 61 made `NowTx()` return `c.now()` on the premise that the wall clock
+"dominates every historical stamp", so the session-local floor (`lastInstant`)
+need not be persisted or reseeded on open. That premise is false whenever
+throughput exceeds **1 write/ms**. `Core.now()`'s floor is `next = max(wall,
+last+1)`, so a burst (a bulk import, a tight write loop) stamps `TxFrom` at
+`wall, wall+1, …, wall+k` — up to `(writes − elapsed_ms)` **above** the wall. The
+inflated stamps are real, committed, persisted. Two ingress paths then let a
+persisted/foreign `TxFrom` exceed *this* session's wall clock:
+
+1. **Reopen.** `lastInstant` resets to 0 and is not reseeded. If a pre-close
+   burst left persisted `TxFrom` above the reopened wall, `NowTx()=c.now()=wall`
+   under-covers them — and worse, a **new** write is stamped `c.now()=wall`, which
+   is BELOW an already-committed `TxFrom`: transaction time goes *backwards* across
+   the reopen. Silent (`TxFrom` is not in the integrity hash, so `Verify*Chain`
+   passes; the AS-OF door just quietly drops the burst at a `NowTx` pin).
+2. **Replica apply / bootstrap import.** The row's `TxFrom` is the **primary's**
+   stamp, reproduced verbatim (never re-minted). Under NTP skew (replica trailing
+   the primary) or the primary's own burst floor, it exceeds the replica's wall, so
+   `NowTx()` on the replica under-covers already-applied/imported data.
+
+Root cause: `lastInstant` is advanced by **exactly one writer** — `c.now()`. Every
+`TxFrom` that enters the store by another door (reload on open, apply, import)
+escapes the floor. The fix closes all three doors: **(a)** persist the floor as a
+durable MetaKV watermark on `Close` and reseed it on open (`seedInstantFloor` /
+`persistInstantFloor`); **(b)** advance the floor to cover every applied record's
+stamp at the ONE central apply seam (`recordCommitStamp` in the
+`applyChangeRecordLocked` wrapper — so replica tail AND delta-merge are covered);
+**(c)** advance it per replayed wire on `Import`. Only the **system-minted** TX
+stamps pull the floor (`maxCommitStamp` = max of `TxFrom/TxTo/UpdatedAt/DeletedAt`)
+— NEVER `ValidFrom/ValidTo`, which are caller-asserted world time and may
+legitimately lie in the future (a future valid-to must not poison the commit clock).
+
+- **Rule:** a monotonic logical clock whose value must be correct **across
+  sessions / across nodes** cannot lean on "the wall dominates every stamp" — that
+  fails the moment the in-session floor legitimately outran the wall. Persist a
+  high-water watermark and reseed it on open, AND advance the floor at every door
+  that admits a foreign or reloaded stamp, not just the local mutation path.
+  Corollary: only the fields the clock itself mints may raise the floor.
+- **Caveat (documented, not a regression):** persist-on-close restores the floor
+  EXACTLY on a clean shutdown; after an unclean crash the watermark is stale/absent
+  and the floor falls back to the wall clock, self-healing as the wall advances past
+  the drift — the pre-fix behavior.
+- **Tests:** `TestNowTx_ReopenAfterBurst_MonotonicFloorAnachronism` (frozen-clock
+  burst → reopen), `TestNowTx_ReplicaCoversAppliedFutureTxFrom` (clock-skewed
+  primary → apply), `TestNowTx_BootstrapImportCoversFutureTxFrom` (future-stamped
+  snapshot → import). Each fails RED without its door's fix.
