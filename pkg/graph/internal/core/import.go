@@ -716,6 +716,9 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 		if err := storeutil.SafeUnmarshal(data, &wn); err != nil {
 			return fmt.Errorf("%w: unmarshal node: %v", ErrCorruptExport, err)
 		}
+		if err := c.checkImportedStamp(nodeWireCommitStamp(wn)); err != nil {
+			return err
+		}
 		n, err := storeutil.WireToNodeChecked(wn)
 		if err != nil {
 			return fmt.Errorf("import: node %d: %w: %v", wn.ID, ErrCorruptExport, err)
@@ -756,13 +759,14 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 		// clock, and those must be covered so a NowTx() on a bootstrap-only
 		// replica still includes the imported rows (lesson 71) — but only once
 		// the row is actually in the store.
-		if err := c.advanceImportedStamp(nodeWireCommitStamp(wn)); err != nil {
-			return err
-		}
+		c.advanceInstantFloor(nodeWireCommitStamp(wn))
 	case exportTagNodeHist:
 		var wn storeutil.NodeWire
 		if err := storeutil.SafeUnmarshal(data, &wn); err != nil {
 			return fmt.Errorf("%w: unmarshal node history: %v", ErrCorruptExport, err)
+		}
+		if err := c.checkImportedStamp(nodeWireCommitStamp(wn)); err != nil {
+			return err
 		}
 		n, err := storeutil.WireToNodeChecked(wn)
 		if err != nil {
@@ -805,13 +809,14 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 			return fmt.Errorf("import: load existing node history %d v%d for conflict check: %w", wn.ID, n.Version(), gerr)
 		}
 
-		if err := c.advanceImportedStamp(nodeWireCommitStamp(wn)); err != nil {
-			return err
-		}
+		c.advanceInstantFloor(nodeWireCommitStamp(wn))
 	case exportTagRel:
 		var wr storeutil.RelWire
 		if err := storeutil.SafeUnmarshal(data, &wr); err != nil {
 			return fmt.Errorf("%w: unmarshal rel: %v", ErrCorruptExport, err)
+		}
+		if err := c.checkImportedStamp(relWireCommitStamp(wr)); err != nil {
+			return err
 		}
 		rel, err := storeutil.WireToRelChecked(wr)
 		if err != nil {
@@ -846,13 +851,14 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 			}
 		}
 
-		if err := c.advanceImportedStamp(relWireCommitStamp(wr)); err != nil {
-			return err
-		}
+		c.advanceInstantFloor(relWireCommitStamp(wr))
 	case exportTagRelHist:
 		var wr storeutil.RelWire
 		if err := storeutil.SafeUnmarshal(data, &wr); err != nil {
 			return fmt.Errorf("%w: unmarshal rel history: %v", ErrCorruptExport, err)
+		}
+		if err := c.checkImportedStamp(relWireCommitStamp(wr)); err != nil {
+			return err
 		}
 		rel, err := storeutil.WireToRelChecked(wr)
 		if err != nil {
@@ -892,9 +898,7 @@ func importEntityRecord(c *Core, rollback *importRollback, seen *importReplaySee
 		default:
 			return fmt.Errorf("import: load existing rel history %d v%d for conflict check: %w", wr.ID, rel.Version(), gerr)
 		}
-		if err := c.advanceImportedStamp(relWireCommitStamp(wr)); err != nil {
-			return err
-		}
+		c.advanceInstantFloor(relWireCommitStamp(wr))
 	}
 	return nil
 }

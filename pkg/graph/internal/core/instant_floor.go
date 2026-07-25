@@ -50,10 +50,19 @@ func (c *Core) seedInstantFloor() {
 		return
 	}
 	seeded := types.Instant(binary.BigEndian.Uint64(v))
+	if seeded <= 0 {
+		// Malformed: cannot be a real instant. Leave the clock wall-derived and
+		// let Close REPLACE the garbage (the self-healing path).
+		return
+	}
 	if !c.plausibleForeignStamp(seeded) {
-		// Readable but absurd — bit rot, a rollback, a unit mix-up, a hostile
-		// write. Treat it as malformed: leave the clock wall-derived and let
-		// Close overwrite it (the self-healing path).
+		// Well-formed but unvalidatable against THIS host's wall clock — which
+		// on a host whose RTC is decades behind is a statement about the clock,
+		// not about the watermark. Treat it exactly like an unreadable value:
+		// refuse to seed from it, and refuse to OVERWRITE it at Close, because
+		// downgrading a monotone high-water mark silently drops committed rows
+		// from every future AS-OF pin.
+		c.floorSeedUnreadable = true
 		return
 	}
 	c.advanceInstantFloor(seeded)
@@ -73,10 +82,15 @@ func (c *Core) seedInstantFloor() {
 // serves replica apply, which reproduces a primary's already-committed row;
 // refusing there would leave NowTx() below durably stored data.
 func (c *Core) plausibleForeignStamp(inst types.Instant) bool {
-	return int64(inst) <= c.clock().UnixMilli()+maxClockAdvanceSkewMillis
+	// TWO-SIDED. An upper bound alone lets a NEGATIVE stamp through, and a
+	// negative is not "safely in the past": RecordForeignIncoming stores
+	// edge.TxFrom verbatim, so the row lands with negative transaction time,
+	// which no AS-OF pin can ever reach — and TxFrom is outside the integrity
+	// hash, so the chain verifiers still call the store healthy.
+	return inst > 0 && int64(inst) <= c.clock().UnixMilli()+maxClockAdvanceSkewMillis
 }
 
-// advanceImportedStamp is the IMPORT door's floor advance. An export stream is
+// checkImportedStamp is the IMPORT door's stamp bound. An export stream is
 // untrusted input in exactly the way the durable watermark is — a truncated
 // copy, a bit-rotted archive, a snapshot from a host with a broken RTC, or an
 // attacker-supplied file — so its stamps are bounded like the seed's.
@@ -88,12 +102,18 @@ func (c *Core) plausibleForeignStamp(inst types.Instant) bool {
 // instead treated as what it is, corruption: the record is REJECTED, and
 // Import's rollback unwinds the whole stream (see TestR9_ImportReplayError...).
 // Loud and atomic beats silent and half-applied.
-func (c *Core) advanceImportedStamp(inst types.Instant) error {
-	if !c.plausibleForeignStamp(inst) {
+// It runs at DECODE time, before the wire can reach the store. Bounding it after
+// the write was a real asymmetry with ImportMerge: the row (and, with the change
+// log on, a change-feed event) was already published, so a stamp Import itself
+// classified as corruption still escaped to replicas — whose apply door advances
+// the clock unconditionally and correctly, having no way to know the record was
+// about to be rejected upstream. Rollback unwinds the local store; it cannot
+// unpublish. The advance itself still happens only AFTER a successful store.
+func (c *Core) checkImportedStamp(inst types.Instant) error {
+	if inst != 0 && !c.plausibleForeignStamp(inst) {
 		return fmt.Errorf("%w: transaction stamp %d is implausibly far past this host's clock",
 			ErrCorruptExport, int64(inst))
 	}
-	c.advanceInstantFloor(inst)
 	return nil
 }
 
@@ -115,7 +135,15 @@ func (c *Core) persistInstantFloor() error {
 		// from every future AS-OF pin.
 		return nil
 	}
-	return c.writeInstantFloor()
+	if err := c.writeInstantFloor(); err != nil {
+		return err
+	}
+	// The flag says "this session never learned the durable value, so it must
+	// not overwrite it". That is no longer true: this session just WROTE it.
+	// Leaving it set makes the following Close decline to persist a floor that
+	// is strictly higher, stranding every post-Reset write above the watermark.
+	c.floorSeedUnreadable = false
+	return nil
 }
 
 // writeInstantFloor unconditionally writes the live floor to the durable
@@ -180,7 +208,11 @@ func (c *Core) restoreInstantFloorAfterReset() error {
 // corruption on this path (ErrCorruptExport), so mergeRollback unwinds the
 // whole delta atomically.
 func (c *Core) checkImportedRecordStamp(rec storepkg.ChangeRecord) error {
-	if stamp := recordCommitStamp(rec); !c.plausibleForeignStamp(stamp) {
+	// stamp == 0 means "this tag carries no transaction stamp" (ChangeMeta,
+	// ChangeClear, ChangeRangePurge, ChangeForeignIncomingDelete, the history
+	// truncations). There is nothing to bound, and rejecting it would misdiagnose
+	// a perfectly valid record as corruption.
+	if stamp := recordCommitStamp(rec); stamp != 0 && !c.plausibleForeignStamp(stamp) {
 		return fmt.Errorf("%w: change record LSN %d carries transaction stamp %d, implausibly far past this host's clock",
 			ErrCorruptExport, rec.LSN, int64(stamp))
 	}

@@ -260,7 +260,15 @@ func (a *AdminOps) Reset() error {
 	// like the label/reltype/property-key registries do, not be wiped.
 	leaseBytes := c.captureIDSlotLeaseForReset()
 	if err := c.store.Clear(); err != nil {
-		return err
+		// Clear is not atomic: a backend that wipes the MetaKV keyspace and then
+		// faults has already destroyed both Preserve-classified keys. Returning
+		// here loses them permanently (leaseBytes captured, then discarded), so
+		// transaction time could run backwards across the failed Reset and two
+		// nodes could collide on one snowflake slot after a failover. Restore
+		// what Clear may have taken, then report the original failure.
+		return errors.Join(err,
+			c.restoreIDSlotLeaseAfterReset(leaseBytes),
+			c.restoreInstantFloorAfterReset())
 	}
 	return c.reapCoreStateForClear(leaseBytes)
 }
