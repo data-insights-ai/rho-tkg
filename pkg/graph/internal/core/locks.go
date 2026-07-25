@@ -33,6 +33,11 @@ func (c *Core) checkWritable() error {
 	if c.readOnlyReplica {
 		return ErrReadOnlyReplica
 	}
+	if c.clockExhausted.Load() {
+		// Transaction time has hit its ceiling; another write would reuse a
+		// stamp and collapse a superseded version's tx interval to zero width.
+		return ErrCommitClockExhausted
+	}
 	return nil
 }
 

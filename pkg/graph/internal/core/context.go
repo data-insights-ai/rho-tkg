@@ -35,6 +35,10 @@ func (c *Core) now() types.Instant {
 		next := observed
 		if next <= last {
 			if last == math.MaxInt64 {
+				// Already at the ceiling. Writes are refused by checkWritable
+				// (clockExhausted was set when MaxInt64 was handed out), so this
+				// path serves READS only — NowTx as an AS-OF pin stays valid.
+				c.clockExhausted.Store(true)
 				// Saturated: never wrap past MaxInt64 into negative transaction
 				// time. Handing back the ceiling repeatedly is wrong but bounded;
 				// wrapping is catastrophic and silent (TxFrom is not in the
@@ -44,6 +48,15 @@ func (c *Core) now() types.Instant {
 			next = last + 1
 		}
 		if c.lastInstant.CompareAndSwap(last, next) {
+			if next == math.MaxInt64 {
+				// This instant is the LAST usable one. MaxInt64 itself is a
+				// perfectly good unique stamp, so this write proceeds; the flag
+				// makes checkWritable refuse the NEXT one, which could only
+				// reuse it. Setting the flag when saturation is DETECTED instead
+				// would be a call too late — the write that triggers it would
+				// already have committed a duplicate stamp.
+				c.clockExhausted.Store(true)
+			}
 			return types.Instant(next)
 		}
 	}

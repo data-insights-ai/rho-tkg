@@ -264,6 +264,10 @@ type Core struct {
 	// graph is published; read once in Close.
 	floorSeedUnreadable bool
 
+	// clockExhausted is set once now() saturates at MaxInt64. See
+	// ErrCommitClockExhausted.
+	clockExhausted atomic.Bool
+
 	indexProviders map[string]*indexProviderEntry
 
 	opNodeAdds    atomic.Int64
@@ -340,6 +344,15 @@ var (
 	// is implausibly far past this host's clock. RecordForeignIncoming stores
 	// edge.TxFrom verbatim and advances the commit-clock floor to it, so the
 	// stamp is untrusted input on a public door — bounded like an import stream.
+	// ErrCommitClockExhausted rejects a write once transaction time has reached
+	// MaxInt64. The clock saturates rather than wrapping (wrapping made every
+	// later TxFrom negative), but a saturated clock hands out the SAME instant
+	// repeatedly, so two versions would be stamped identically and the superseded
+	// row's [TxFrom, TxTo) would collapse to zero width — invisible, TxFrom/TxTo
+	// being outside the integrity hash. Refusing the write is the only outcome
+	// that is neither silent nor wrong. Unreachable in practice: every untrusted
+	// door bounds its stamps (v4.24.5-9), so this is defence in depth.
+	ErrCommitClockExhausted    = errors.New("graph: commit clock exhausted (transaction time reached its maximum)")
 	ErrForeignStampImplausible = errors.New("graph: foreign transaction stamp implausibly far past this host's clock")
 	ErrSelfLoop                = errors.New("graph: self-loop relationship not allowed; set AllowSelfLoops in ValidationLimits to permit")
 
