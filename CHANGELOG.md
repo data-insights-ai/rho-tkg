@@ -6,6 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.24.1] - 2026-07-25
+
+- FIX — `Temporal().NowTx()` is now reopen-safe against a monotonic-floor burst, and the commit clock
+  can no longer run BACKWARDS across a reopen, a replica apply, or a bootstrap import (lesson 71).
+  `Core.now()`'s floor is `max(wall, last+1)`, so a burst above 1 write/ms stamps `TxFrom` ABOVE the
+  wall clock. Those stamps are real, committed and persisted, but `lastInstant` was advanced by
+  exactly ONE writer — `c.now()` — so every `TxFrom` entering the store by another door escaped it:
+  reload on open (`lastInstant` resets to 0 and was never reseeded), a replica applying a primary's
+  stamp verbatim, and a bootstrap import replaying a foreign snapshot. After any of those,
+  `NowTx()=c.now()=wall` could sit BELOW an already-committed `TxFrom` — silently, since `TxFrom` is
+  not in the integrity hash, so `Verify*Chain` passed while the AS-OF door quietly dropped the burst.
+  Closed at all three doors: a durable MetaKV watermark persisted on `Close` and reseeded on open,
+  a floor advance at the ONE central apply seam, and one per replayed wire on `Import`. Only
+  SYSTEM-minted stamps raise the floor (`TxFrom`/`TxTo`/`UpdatedAt`/`DeletedAt`) — never
+  `ValidFrom`/`ValidTo`, which are caller-asserted world time and may legitimately lie in the future.
+- `instantFloorMeta` is classified `reapPolicyPreserve` (BACKLOG 13l): the commit clock is this
+  NODE'S transaction-time position, not a description of the graph's entities, so `Admin.Reset()` /
+  `ChangeClear` must not let TX time regress across the wipe. Unlike `idSlotLeaseMeta` it needs no
+  capture-before-Clear — the authoritative value is the in-memory `lastInstant`, which `Clear` never
+  lowers.
+- `ChangeForeignIncoming` (change tag 11, ADR-0010 Model A) now advances the floor like
+  `ChangeRelPut`. Its body IS a `ChangeRelPut` body carrying the ORIGINATING partition's `TxFrom`
+  verbatim — the exact foreign-stamp ingress this floor exists for — and it was returning 0. The
+  record kinds that legitimately mint no stamp are now enumerated with a reason each, so the next tag
+  added is a deliberate decision rather than a silent 0.
+- Caveat, documented not regressed: persist-on-close restores the floor exactly on a CLEAN shutdown;
+  after an unclean crash the watermark is stale or absent and the floor falls back to the wall clock,
+  self-healing as the wall advances past the drift — the pre-fix behaviour.
+- Tests: `TestNowTx_ReopenAfterBurst_MonotonicFloorAnachronism`,
+  `TestNowTx_ReplicaCoversAppliedFutureTxFrom`, `TestNowTx_BootstrapImportCoversFutureTxFrom`,
+  `TestInstantFloor_PreservedAcrossReset` (badger only — the memory store's `Clear` leaves its meta
+  map intact, so it cannot exhibit the defect) and `TestRecordCommitStamp_CoversForeignIncomingStub`.
+  Each fails RED without its door's fix.
+
+
 ## [4.24.0] - 2026-07-22
 
 - FIX — BACKLOG 11h closed: the intermittently-flaky
