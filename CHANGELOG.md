@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [4.24.4] - 2026-07-25
+## [4.24.5] - 2026-07-25
 
 Two more commit-clock-floor defects from the same break-round campaign, both introduced in 4.24.1.
 
