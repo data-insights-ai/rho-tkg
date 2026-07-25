@@ -147,9 +147,31 @@ func (o *IOOps) Import(r io.Reader, opts tkgio.ImportOptions) error {
 		return err
 	}
 	rollback.emptyTarget = emptyTarget
+	// The replay commits the bootstrap-handoff applied-LSN watermark as it goes
+	// (see the SnapshotLSN block in importReplayRecordsLocked). Rollback unwinds
+	// the DATA, so without capturing the prior value a failed import leaves a
+	// replica claiming a replay position for a snapshot it fully unwound — it
+	// then believes it is caught up and never re-bootstraps, silently serving an
+	// incomplete dataset. That is the same failure mode the reap policy calls out
+	// for replicaAppliedLSNMeta.
+	priorLSN, lsnErr := c.appliedLSNLocked()
+	restoreLSN := func() error {
+		if lsnErr != nil {
+			return nil // could not read it; do not guess
+		}
+		cur, err := c.appliedLSNLocked()
+		if err != nil || cur == priorLSN {
+			return err
+		}
+		return c.setAppliedLSNLocked(priorLSN)
+	}
+
 	if err := c.importReplayStageLocked(stage, br, rollback); err != nil {
 		if rbErr := rollback.rollback(); rbErr != nil {
 			return fmt.Errorf("%w (rollback failed: %v)", err, rbErr)
+		}
+		if lErr := restoreLSN(); lErr != nil {
+			return fmt.Errorf("%w (applied-LSN restore failed: %v)", err, lErr)
 		}
 		return err
 	}
@@ -163,6 +185,9 @@ func (o *IOOps) Import(r io.Reader, opts tkgio.ImportOptions) error {
 		if err := c.validateUniqueAfterImportLocked(); err != nil {
 			if rbErr := rollback.rollback(); rbErr != nil {
 				return fmt.Errorf("%w (rollback failed: %v)", err, rbErr)
+			}
+			if lErr := restoreLSN(); lErr != nil {
+				return fmt.Errorf("%w (applied-LSN restore failed: %v)", err, lErr)
 			}
 			return err
 		}

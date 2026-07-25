@@ -224,15 +224,24 @@ func (c *Core) recordForeignIncomingInternal(ctx context.Context, edge storepkg.
 		return stub, ig, nil
 	}
 
+	// Cover the stamp BEFORE the row can be observed, not after.
+	//
+	// The stub is stored carrying the FOREIGN TxFrom, so the floor must cover it
+	// or NowTx() sits below a row this call wrote and every AS-OF read at the pin
+	// drops it (lesson 71). Advancing AFTER the create leaves a window in which
+	// the row is durable and readable while the pin is still below it — this door
+	// runs under a shared RLock and NowTx takes no lock at all, so that window is
+	// concurrently observable, not theoretical.
+	//
+	// Advancing first is the safe direction: the stamp is already bounded by
+	// plausibleForeignStamp above, and if the create then fails the floor is
+	// merely higher than necessary. Over-coverage is harmless; under-coverage
+	// silently hides a stored row.
+	c.advanceInstantFloor(edge.TxFrom)
+
 	rel, err := c.createRelWithTypeRollback(ctx, edge.TypeName, relPersistForeignIncoming, build)
 	if rel != nil {
 		c.opRelAdds.Add(1)
-		// The stub is now durably stored carrying the FOREIGN TxFrom, so the
-		// commit-clock floor must cover it — otherwise NowTx() sits below a row
-		// this call just wrote and every AS-OF read at the pin drops it
-		// (lesson 71). Advanced only after a successful create, mirroring
-		// applyChangeRecordLocked.
-		c.advanceInstantFloor(edge.TxFrom)
 	}
 	return rel, err
 }

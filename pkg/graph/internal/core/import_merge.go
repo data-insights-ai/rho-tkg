@@ -27,6 +27,17 @@ import (
 // with no live primary, and the final pass re-verifies every touched entity's
 // hash chain. Any failure rolls the touched subgraph back to its pre-merge state.
 //
+// ONE DELIBERATE EXCEPTION, stated here because the sentence above reads as an
+// unqualified all-or-nothing guarantee and is not: a ChangeRangePurge record is
+// applied IRREVERSIBLY. It names a predicate rather than an entity set, and
+// capturing the rows it is about to remove — even transiently, even when no
+// later failure ever triggers a restore — would undermine the very
+// retention/compliance guarantee the primary's purge made. So a delta whose
+// purge record is followed by a corrupt one returns ErrCorruptExport with the
+// purge already applied and unrestored. applyRangePurgeLocked is idempotent, so
+// re-running the delta re-executes the same predicate; what does NOT happen is
+// the purged data coming back. See captureMergeRecord's ChangeRangePurge case.
+//
 // Two-phase, mirroring Import: Phase 1 streams the stream into a bounded staging
 // file with no lock held; Phase 2 replays it under c.mu.Lock.
 func (o *IOOps) ImportMerge(r io.Reader, opts tkgio.MergeOptions) error {
