@@ -76,12 +76,12 @@ func TestInstantFloor_SeedStillRefusesAnImplausibleWatermark(t *testing.T) {
 	}
 	defer g.Close()
 
-	if got := g.plausibleSeedFloor(types.Instant(math.MaxInt64)); got {
+	if got := g.plausibleForeignStamp(types.Instant(math.MaxInt64)); got {
 		t.Fatal("the seed door accepted a MaxInt64 watermark — untrusted disk bytes must still be " +
 			"bounded, or a corrupt value poisons the clock again")
 	}
 	sane := types.Instant(time.Now().UnixMilli())
-	if got := g.plausibleSeedFloor(sane); !got {
+	if got := g.plausibleForeignStamp(sane); !got {
 		t.Fatalf("the seed door refused a sane watermark %d", sane)
 	}
 }

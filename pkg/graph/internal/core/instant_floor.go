@@ -50,7 +50,7 @@ func (c *Core) seedInstantFloor() {
 		return
 	}
 	seeded := types.Instant(binary.BigEndian.Uint64(v))
-	if !c.plausibleSeedFloor(seeded) {
+	if !c.plausibleForeignStamp(seeded) {
 		// Readable but absurd — bit rot, a rollback, a unit mix-up, a hostile
 		// write. Treat it as malformed: leave the clock wall-derived and let
 		// Close overwrite it (the self-healing path).
@@ -59,16 +59,20 @@ func (c *Core) seedInstantFloor() {
 	c.advanceInstantFloor(seeded)
 }
 
-// plausibleSeedFloor bounds the UNTRUSTED durable watermark against this host's
-// wall clock, using the same tolerance advanceClockFloor applies to a
-// caller-supplied HLC merge (~10 years — generous enough that no genuine clock
-// skew is refused, tight enough to catch a unit/scale mixup or a corrupt blob).
+// plausibleForeignStamp bounds a transaction stamp that arrived from OUTSIDE
+// this process against the host's wall clock, using the same tolerance
+// advanceClockFloor applies to a caller-supplied HLC merge (~10 years —
+// generous enough that no genuine clock skew is refused, tight enough to catch
+// a unit/scale mixup or a corrupt blob).
 //
-// The bound lives HERE and not in advanceInstantFloor because this is the only
-// door whose input is bytes off disk. The apply and import doors carry stamps
-// for rows being committed, and refusing those would silently leave NowTx()
-// below durably stored data.
-func (c *Core) plausibleSeedFloor(inst types.Instant) bool {
+// Three doors take untrusted stamps and all three bound them here: the durable
+// watermark (bytes off disk), a full Import stream, and a delta ImportMerge
+// stream. What differs is the RESPONSE, not the bound — see advanceImportedStamp.
+//
+// The bound is deliberately NOT inside advanceInstantFloor. That function also
+// serves replica apply, which reproduces a primary's already-committed row;
+// refusing there would leave NowTx() below durably stored data.
+func (c *Core) plausibleForeignStamp(inst types.Instant) bool {
 	return int64(inst) <= c.clock().UnixMilli()+maxClockAdvanceSkewMillis
 }
 
@@ -85,7 +89,7 @@ func (c *Core) plausibleSeedFloor(inst types.Instant) bool {
 // Import's rollback unwinds the whole stream (see TestR9_ImportReplayError...).
 // Loud and atomic beats silent and half-applied.
 func (c *Core) advanceImportedStamp(inst types.Instant) error {
-	if !c.plausibleSeedFloor(inst) {
+	if !c.plausibleForeignStamp(inst) {
 		return fmt.Errorf("%w: transaction stamp %d is implausibly far past this host's clock",
 			ErrCorruptExport, int64(inst))
 	}
@@ -111,6 +115,13 @@ func (c *Core) persistInstantFloor() error {
 		// from every future AS-OF pin.
 		return nil
 	}
+	return c.writeInstantFloor()
+}
+
+// writeInstantFloor unconditionally writes the live floor to the durable
+// watermark. It carries NO floorSeedUnreadable guard — callers decide whether
+// the no-overwrite rule applies, because it does not apply everywhere.
+func (c *Core) writeInstantFloor() error {
 	mk, ok := c.store.(storepkg.MetaKVCapability)
 	if !ok {
 		return nil
@@ -144,5 +155,34 @@ func (c *Core) persistInstantFloor() error {
 // value after the wipe therefore always restores a floor >= the one Clear
 // removed. Caller must hold c.mu.Lock.
 func (c *Core) restoreInstantFloorAfterReset() error {
-	return c.persistInstantFloor()
+	// Deliberately writeInstantFloor, NOT persistInstantFloor.
+	//
+	// persistInstantFloor declines to write when this session could not READ the
+	// watermark at open, because the durable value may be intact and higher and
+	// must not be downgraded. That rule is right at Close and WRONG here: Clear
+	// has already destroyed the key, so there is no durable value left to
+	// protect, and honouring the rule would cost exactly the thing it exists to
+	// preserve — the watermark would simply be gone.
+	return c.writeInstantFloor()
+}
+
+// checkImportedRecordStamp is the DELTA-MERGE door's stamp bound.
+//
+// ImportMerge reads the same untrusted stream as Import, but applies each
+// record through applyChangeRecordLocked — the REPLICA-APPLY door, which
+// advances the commit-clock floor unconditionally. That is correct for a
+// replica (the primary already committed the row, so declining would strand it
+// above the pin) and wrong for a file. One function, two callers, two trust
+// levels: trust is a property of the CALLER, not of applyChangeRecordLocked.
+//
+// So the bound is applied here, at the merge trust boundary, BEFORE the record
+// can reach the clock — and a violation is classified exactly as every other
+// corruption on this path (ErrCorruptExport), so mergeRollback unwinds the
+// whole delta atomically.
+func (c *Core) checkImportedRecordStamp(rec storepkg.ChangeRecord) error {
+	if stamp := recordCommitStamp(rec); !c.plausibleForeignStamp(stamp) {
+		return fmt.Errorf("%w: change record LSN %d carries transaction stamp %d, implausibly far past this host's clock",
+			ErrCorruptExport, rec.LSN, int64(stamp))
+	}
+	return nil
 }

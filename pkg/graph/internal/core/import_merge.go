@@ -248,6 +248,12 @@ func (c *Core) applyMergeChangeRecord(mrb *mergeRollback, rec storepkg.ChangeRec
 			return err
 		}
 	}
+	// The delta stream is untrusted; applyChangeRecordLocked is the trusted
+	// replica-apply door and advances the commit-clock floor unconditionally.
+	// Bound the stamp here, before it reaches the clock.
+	if err := c.checkImportedRecordStamp(rec); err != nil {
+		return err
+	}
 	if err := c.applyChangeRecordLocked(rec); err != nil {
 		return fmt.Errorf("import merge: apply change LSN %d: %w", rec.LSN, err)
 	}

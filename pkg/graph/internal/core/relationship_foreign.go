@@ -164,6 +164,13 @@ func (c *Core) recordForeignIncomingInternal(ctx context.Context, edge storepkg.
 	if err := edge.Validate(); err != nil {
 		return nil, err
 	}
+	// edge.TxFrom is another machine's transaction stamp and is stored VERBATIM
+	// below, so this public door is an untrusted stamp boundary exactly like the
+	// import doors (BACKLOG 9h established the same for names and properties).
+	// Bound it before it can reach the commit clock.
+	if !c.plausibleForeignStamp(edge.TxFrom) {
+		return nil, fmt.Errorf("%w: TxFrom %d", ErrForeignStampImplausible, int64(edge.TxFrom))
+	}
 	// RecordForeignIncoming is a DIRECTLY CALLABLE public door (unlike
 	// apply_record.go's replica-apply path, which has a documented exemption
 	// because it reproduces a PRIMARY's already-validated state verbatim) — a
@@ -220,6 +227,12 @@ func (c *Core) recordForeignIncomingInternal(ctx context.Context, edge storepkg.
 	rel, err := c.createRelWithTypeRollback(ctx, edge.TypeName, relPersistForeignIncoming, build)
 	if rel != nil {
 		c.opRelAdds.Add(1)
+		// The stub is now durably stored carrying the FOREIGN TxFrom, so the
+		// commit-clock floor must cover it — otherwise NowTx() sits below a row
+		// this call just wrote and every AS-OF read at the pin drops it
+		// (lesson 71). Advanced only after a successful create, mirroring
+		// applyChangeRecordLocked.
+		c.advanceInstantFloor(edge.TxFrom)
 	}
 	return rel, err
 }

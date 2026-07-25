@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
@@ -281,31 +282,35 @@ func (a *AdminOps) Reset() error {
 // against data that was supposedly wiped. Caller must hold c.mu.Lock.
 func (c *Core) reapCoreStateForClear(leaseBytes []byte) error {
 	c.asOfColumns.bump() // whole state wiped — discard cached as-of columns
-	if err := c.reapAsOfTagsForReset(); err != nil {
-		return err
+
+	// PRESERVE FIRST. store.Clear() has already destroyed both Preserve-
+	// classified MetaKV keys (BACKLOG 13l), so restoring them is the first
+	// obligation after a Clear, not the last. Running them after the Reap steps
+	// meant any Reap failure skipped both restores and left that durable state
+	// permanently gone: transaction time could then run backwards across the
+	// Reset (lesson 71), and two nodes could collide on one snowflake slot after
+	// a failover.
+	//
+	// Nothing below can be harmed by these running first — the Reap steps only
+	// clear FURTHER state, and they touch different keys.
+	errs := []error{
+		c.restoreIDSlotLeaseAfterReset(leaseBytes),
+		c.restoreInstantFloorAfterReset(),
 	}
-	if err := c.reapUniqueConstraintsForReset(); err != nil {
-		return err
-	}
-	if err := c.reapCompactionForReset(); err != nil {
-		return err
-	}
-	if err := c.reapRetentionForReset(); err != nil {
-		return err
-	}
-	if err := c.reapUniqueForeverOwnersForReset(); err != nil {
-		return err
-	}
-	if err := c.restoreIDSlotLeaseAfterReset(leaseBytes); err != nil {
-		return err
-	}
-	// The commit-clock floor is Preserve, not Reap: it is this node's
-	// transaction-time position, not a description of the erased entities, so a
-	// data Reset must not let TX time regress across the Clear (lesson 71). No
-	// pre-Clear capture is needed — see restoreInstantFloorAfterReset.
-	if err := c.restoreInstantFloorAfterReset(); err != nil {
-		return err
-	}
+
+	// And no short-circuit: each step below wipes an INDEPENDENT key, so
+	// stopping at the first failure would leave the rest of the keyspace in a
+	// half-reaped state that no caller can distinguish from a clean Reset.
+	// Collect every error and report them together.
+	errs = append(errs,
+		c.reapAsOfTagsForReset(),
+		c.reapUniqueConstraintsForReset(),
+		c.reapCompactionForReset(),
+		c.reapRetentionForReset(),
+		c.reapUniqueForeverOwnersForReset(),
+	)
+
 	c.restoreOpCounters(opCounterSnapshot{})
-	return c.persistRegistries()
+	errs = append(errs, c.persistRegistries())
+	return errors.Join(errs...)
 }

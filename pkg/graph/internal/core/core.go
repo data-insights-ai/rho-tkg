@@ -336,7 +336,12 @@ var (
 	ErrKeyTooLong        = errors.New("graph: property key too long")
 	ErrValueTooLarge     = errors.New("graph: property value too large")
 	ErrNameTooLong       = errors.New("graph: name too long")
-	ErrSelfLoop          = errors.New("graph: self-loop relationship not allowed; set AllowSelfLoops in ValidationLimits to permit")
+	// ErrForeignStampImplausible rejects a cross-machine transaction stamp that
+	// is implausibly far past this host's clock. RecordForeignIncoming stores
+	// edge.TxFrom verbatim and advances the commit-clock floor to it, so the
+	// stamp is untrusted input on a public door — bounded like an import stream.
+	ErrForeignStampImplausible = errors.New("graph: foreign transaction stamp implausibly far past this host's clock")
+	ErrSelfLoop                = errors.New("graph: self-loop relationship not allowed; set AllowSelfLoops in ValidationLimits to permit")
 
 	// ErrValidFromBeforePrevious is returned by Update when the caller-supplied
 	// tkg_valid_from is <= the previous version's effective ValidFrom. This
