@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.24.2] - 2026-07-25
+
+- FIX (durable corruption, introduced in 4.24.1) — `advanceInstantFloor` accepted an UNBOUNDED
+  instant, so an implausible commit-clock watermark could poison the graph's transaction clock
+  permanently. Found by an adversarial break-round on 4.24.1, not by review.
+  Mechanism: `seedInstantFloor` reads 8 raw bytes off disk and feeds
+  `binary.BigEndian.Uint64` straight in. A value near `MaxInt64` — bit rot, a rollback, a unit
+  mix-up, a hostile write — installs a floor near `MaxInt64`; `Core.now()`'s
+  `next = max(wall, last+1)` then OVERFLOWS to `MinInt64`, so `NowTx()` and every subsequent
+  `TxFrom` go NEGATIVE, destroying transaction-time ordering. `Close` re-persists the poisoned
+  floor, so the damage survives the process. Silent: `TxFrom` is not in the integrity hash, so
+  `Verify*Chain` still passes.
+  `advanceInstantFloor` now enforces the SAME `maxClockAdvanceSkewMillis` bound its sibling
+  `advanceClockFloor` already did (the lesson-59 guard), and simply declines to advance rather than
+  returning an error, since it has no caller to answer. Declining is the safe direction: the floor
+  stays wall-derived — the documented pre-4.24.1 behaviour — and self-heals as the wall advances.
+  The 4.24.1 rationale for omitting the bound ("the argument is a stamp this store minted earlier")
+  was wrong on two of the three doors: an APPLIED record carries the primary's stamp and an IMPORTED
+  wire a foreign snapshot's, and even the reopen door reads untrusted bytes.
+- Legitimate foreign stamps are unaffected: the clock-skewed-primary apply and future-stamped import
+  regressions use ~1h of skew, far inside the ~10-year bound.
+- Test: `TestInstantFloor_CorruptWatermarkCannotPoisonTheCommitClock`, which asserts the PROPERTY
+  (the clock stays a plausible, positive instant) rather than a predicted failure mode — its first
+  two drafts passed against the buggy code, once because `Close` re-persisted a sane floor over the
+  corruption and once because the assertion looked for a far-future clock when the real symptom is a
+  wrapped-negative one.
+
+
 ## [4.24.1] - 2026-07-25
 
 - FIX — `Temporal().NowTx()` is now reopen-safe against a monotonic-floor burst, and the commit clock

@@ -109,17 +109,34 @@ func (c *Core) advanceClockFloor(to types.Instant) (types.Instant, error) {
 // under-cover it — the exact anachronism the pin exists to prevent (lesson 71,
 // extending lesson 61).
 //
-// This is the INTERNAL sibling of advanceClockFloor, and the difference is
-// deliberate: advanceClockFloor is the caller-facing HLC merge seam behind
-// AdvanceClock, so it screens its argument against maxClockAdvanceSkewMillis
-// and can refuse with ErrInvalidClockAdvance. advanceInstantFloor's argument is
-// never caller-supplied — it is a stamp this store itself minted earlier and has
-// already committed, so there is nothing to authorize and no caller to return an
-// error to; refusing it would leave the floor below a durable TxFrom, which is
-// precisely the anachronism being closed. A no-op when inst <= the current
-// floor. Concurrency-safe (CAS loop, mirroring now()).
+// This is the INTERNAL sibling of advanceClockFloor. It shares that function's
+// plausibility bound (maxClockAdvanceSkewMillis) and differs only in how it
+// reports refusal: advanceClockFloor is the caller-facing HLC seam and returns
+// ErrInvalidClockAdvance, while this one has no caller to answer, so it simply
+// does not advance.
+//
+// The bound is NOT optional, and an earlier version of this function omitted it
+// on the reasoning that the argument is "a stamp this store minted earlier and
+// already committed, so there is nothing to authorize". That reasoning was
+// wrong on two of the three doors: an APPLIED record carries the PRIMARY's
+// stamp and an IMPORTED wire carries a foreign snapshot's — neither is
+// self-minted — and even the reopen door reads bytes off disk that bit rot, a
+// rollback, or a unit mix-up can corrupt. Unbounded, a single absurd value is
+// catastrophic rather than merely wrong: it installs a floor near MaxInt64,
+// c.now()'s `next = max(wall, last+1)` then OVERFLOWS to MinInt64, every
+// subsequent write is stamped with NEGATIVE transaction time, and Close
+// persists the poisoned floor — so the corruption is durable, not
+// process-scoped. That is the lesson-59 bug class the sibling guard exists for.
+//
+// Refusing is the safe direction: the floor stays wall-derived, which is
+// exactly the documented pre-fix behaviour and self-heals as the wall advances.
+// A no-op when inst <= the current floor. Concurrency-safe (CAS loop,
+// mirroring now()).
 func (c *Core) advanceInstantFloor(inst types.Instant) {
 	if inst <= 0 {
+		return
+	}
+	if wall := c.clock().UnixMilli(); int64(inst) > wall+maxClockAdvanceSkewMillis {
 		return
 	}
 	target := int64(inst)
