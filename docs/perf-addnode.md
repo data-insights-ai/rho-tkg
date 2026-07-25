@@ -14,7 +14,7 @@ serialization, skiplist insertion, and write batch overhead.
 
 ## Pipeline Overview
 
-AddNode executes a linear pipeline through `addNodeInternal` (node_add.go:78).
+AddNode executes a linear pipeline through `addNodeInternal` (`pkg/graph/internal/core/node_add.go`).
 
 ```
 AddNode(labels, props)

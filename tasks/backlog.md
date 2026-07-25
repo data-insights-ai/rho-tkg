@@ -1,13 +1,16 @@
 # rho-tkg backlog
 
-**STATUS: hardening-pass findings in progress (started 2026-07-18).** Every
-previously-tracked design item (BACKLOG 1-5) is still shipped and unaffected. A
-full-library hardening review (16 parallel subsystem audits covering every package
-under `pkg/`, ~100K LOC) originally found ~196 items across BACKLOG 6-21; all
-CRITICAL items and most HIGH items are now resolved (fixed-and-verified or
-investigated-and-confirmed-safe) and removed from this file — see CHANGELOG.md for
-what shipped and why. What remains below is open work only. Nothing here is
-sigma-tkgd's — these are all rho-tkg-owned.
+**STATUS: hardening-pass findings closed (started 2026-07-18, last item closed
+2026-07-22, released in `[4.24.0]`).** Every previously-tracked design item
+(BACKLOG 1-5) is still shipped and unaffected. A full-library hardening review (16
+parallel subsystem audits covering every package under `pkg/`, ~100K LOC)
+originally found ~196 items across BACKLOG 6-21; they are now resolved
+(fixed-and-verified or investigated-and-confirmed-safe) and removed from this file
+— see CHANGELOG.md for what shipped and why. What remains below is the closing
+investigation record for the last of them, plus the two genuinely open things: the
+carried-over import-under-a-scope follow-up, and the flagged-but-not-actioned CI
+bench-gating gap at the end of this file. Nothing here is sigma-tkgd's — these are
+all rho-tkg-owned.
 
 **Severity legend:** CRITICAL = crash / data loss / replica divergence / silent
 corruption. HIGH = silent wrong answer or a real, reachable correctness bug. MEDIUM =
@@ -15,11 +18,14 @@ concurrency edge case, perf cliff, or API/contract inconsistency. LOW = code sme
 doc drift, or narrow-impact issue. TEST-GAP = a real behavior is unverified (may be
 hiding a bug). FEATURE = a capability the library plausibly should have but doesn't.
 
-**Remaining open work:** no CRITICAL items remain. BACKLOG 10's 10b (bitemporal
-cascade/resumption-row ambiguity) is the one remaining HIGH item — it needs a
-dedicated design session, not a quick patch (see its entry for the full
-investigation and why the first fix attempt was reverted). Everything else left is
-MEDIUM/LOW/TEST-GAP/FEATURE.
+**Remaining open work:** no CRITICAL and no HIGH items remain. BACKLOG 10's 10b
+(bitemporal cascade/resumption-row ambiguity), the last HIGH item, was fixed in
+`0b5d662` and released in `[4.24.0]` — see CHANGELOG.md's `FIX — BACKLOG 10b`
+entry for the full investigation and why the prior fix attempts were reverted; the
+perf regression that fix caused was closed the next day as 10c (below). What is
+still open is not severity-triaged hardening work at all: the import-under-a-scope
+follow-up carried over from the retired `tasks/todo.md`, and the CI bench-gating
+gap flagged at the end of this file.
 
 ## Shipped (was the backlog)
 
@@ -56,7 +62,22 @@ new rho-tkg primitive, it re-enters here as a fresh, concrete item.
 
 ---
 
-## Open — Hardening Pass (2026-07-18)
+## Open — carried over from the retired `tasks/todo.md`
+
+`tasks/todo.md` was deleted in `4f71fc3`; this is the one follow-up on it that is
+still real, kept here because this file is the single todo file.
+
+- **Import-under-a-scope** (the proper fix beyond the import stopgap): wrap
+  `IO().Import` in a `TxChangeLogScope` so a FAILED import emits NOTHING, not just
+  "no poison". Import emits its change-log records IN-BACKEND eagerly, outside any
+  scope, so `importRollback.restoreRegistries` (`import.go`) is still gated on
+  `changeLogEnabled` — the append-only stopgap — rather than de-allocating tokens
+  exactly. Needs import to also take `c.txMu` (it takes only `c.mu.Lock` today, so
+  a between-mutations open tx scope would collide with import's `BeginLogScope`);
+  a locking change, deferred. The current stopgap is correct, so this is an
+  improvement-not-bug item — see `tasks/lessons.md` 55.
+
+## Closed — Hardening Pass (2026-07-18)
 
 ### BACKLOG 11 — Batch / ingest / tx concurrency hardening
 
@@ -296,8 +317,8 @@ deltas, both traced via `git bisect` to `7919ad0` and `0b5d662` respectively:
   200-seed non-short bitemporal oracle, and the confirmed perf recovery back to the
   pre-10b baseline (~44µs/433 allocs).
 
-**Structural gap flagged, not yet addressed**: nothing in `go test ./...` or CI
-would have caught either finding on its own. `bench/` is deliberately excluded
+**OPEN — structural gap flagged, not yet addressed**: nothing in `go test ./...`
+or CI would have caught either finding on its own. `bench/` is deliberately excluded
 from `go test ./...` (fixture-build cost); the regression-detecting tool
 (`make bench-check`) needs a manually-captured, gitignored, per-machine baseline;
 and the one CI benchmark workflow that exists is manual-dispatch-only and its

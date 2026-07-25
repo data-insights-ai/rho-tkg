@@ -1494,7 +1494,7 @@ path). Two implementation lessons worth keeping:
   change rejected here.
 
 Still on the stopgap (their token-poison is PREVENTED by the append-only skip, so
-these are improvement-not-bug follow-ups, `tasks/todo.md`): `Batch.Execute` and
+these are improvement-not-bug follow-ups, `tasks/backlog.md`): `Batch.Execute` and
 `IO().Import` emit records eagerly (not through a scope), so their token-deallocation
 chokepoints KEEP the append-only skip — reverting it there would re-poison the feed.
 Import's `restoreRegistries` is now gated on `changeLogEnabled` (same as the others);
@@ -1530,7 +1530,7 @@ Fix: both history branches now `captureNodeAdjacency(id)` too. Rules:
   must record the TRANSITIVE closure the purge will destroy, not just the entity the
   record names.** `DeleteNodeCascade` destroys adjacency → capture adjacency, for
   EVERY record kind that can be the sole record touching a node.
-- **Audit by symmetry across the type switch (rule 3 / lesson A1).** The defect was
+- **Audit by symmetry across the type switch (rule 3).** The defect was
   one `switch` arm missing a call its sibling arms all make. Grep the capture switch:
   every node-touching arm must reach the same adjacency-capture as `ChangeNodePut`.
 - **The corruption test must use a node whose ONLY record is the under-tested kind,

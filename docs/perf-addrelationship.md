@@ -12,7 +12,7 @@ serialization (node + rel entries), skiplist insertion, and write batch overhead
 
 ## Pipeline Overview
 
-AddRelationship executes through `addRelationshipInternal` (relationship_add.go:88).
+AddRelationship executes through `addRelationshipInternal` (`pkg/graph/internal/core/relationship_add.go`).
 
 ```
 AddRelationship(typeName, startNode, endNode, props)

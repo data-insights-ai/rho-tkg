@@ -30,6 +30,7 @@ bottom.
 | Node count by label + property-key presence | `g.Stats().NodeCountByLabelAndPropertyKey(label, key)` | O(1) | O(open shards) | `ErrCapabilityNotSupported` on a store without the optional capability |
 | NDV + exact min/max + count | `g.Stats().PropertyStats(label, key)` | O(1) amortized; O(nodes carrying label) on a rescan after the current min/max holder is deleted | O(open shards) — per-shard HyperLogLog register-max merge, plus each shard's own independent Min/Max rescan on extremum deletion (see "Tiered NDV fold") | `ErrCapabilityNotSupported` on a store without the optional capability |
 | Numeric range cardinality | `g.Nodes().RangeCardinality(...)` / `g.Stats().RangeCardinality(...)` (alias) | O(distinct values in range), no node scan | always declines (tiered does not implement the capability) | `exact=false` (not an error) — see "RangeCardinality decline conditions" |
+| **Relationship-side mirrors** | `g.Stats().RelPropertyStats(typeName, key)`, `g.Stats().RelPropertyTypeClassCounts(typeName, key)`, `g.Stats().RelRangeCardinality(...)` / `g.Rels().RangeCardinality(...)` (same operation), `g.Rels().ForEachByTypePropertyRangeOrdered(...)` | same shapes as their node siblings, over the REL property index | always decline — rel property indexes are RAM-only per shard, so tiered and sharded implement none of these capabilities | `ErrCapabilityNotSupported` for the two stats doors (an unpopulated `(relType, key)` pair is a zero value, not an error); `exact=false` for `RelRangeCardinality`; `ErrIndexNotFound` for the non-temporal ordered scan |
 | Ordered / top-k range scan | `g.Nodes().ForEachByLabelPropertyRangeOrdered(...)` | O(k + log n) index work for a LIMIT-k top-k (RAM); disk mode is O(range) cheap-ID collection + O(k) node fetch. TEMPORAL opts: O(N log N) sound full fold (no index) | `ErrIndexNotFound` (tiered is not an exact native store — no ordered view) | non-temporal: `ErrIndexNotFound` when no property index / capability. Temporal opts are SERVED via the fold (no longer `ErrOrderedScanTemporal`) |
 | String prefix scan (`STARTS WITH`) | `g.Nodes().ForEachByLabelPropertyPrefix(...)` / `g.Rels().ForEachByTypePropertyPrefix(...)` | O(k + log n) top-k over the ordered STRING view (RAM); node disk mode is `0x0A` `"s:"+prefix` iteration; EXACT (no over-selection). TEMPORAL opts: O(N log N) sound full fold | `ErrIndexNotFound` (no ordered view) | lex value order asc/desc, ties by id ascending; empty prefix = all strings; temporal opts SERVED via the fold |
 | Outgoing / incoming degree | `g.Rels().OutgoingDegree(id, type)` / `IncomingDegree(id, type)` | O(1) via `DegreeCapability`, else O(degree) | O(1) — single-shard lookup on the node's owning shard | never — always answers (fast path or fallback) |
@@ -259,8 +260,8 @@ calling `Estimate()` exactly ONCE on the result
 precisions; every shard uses the same `index.DefaultHLLPrecision`, so this
 cannot fire in practice, but the tiered fold PROPAGATES the error rather than
 discarding it — silently ignoring a precision mismatch would silently
-under-count NDV, exactly the failure the merge exists to prevent. See
-docs/adr/0005-tiered-parity.md §3.1.
+under-count NDV, exactly the failure the merge exists to prevent (ADR-0005
+§3.1, tiered parity).
 
 Min/Max on tiered still uses the "mark dirty, rescan lazily" per-shard
 behavior described above — each shard's own `NodePropertyStatsSketch` call
@@ -298,10 +299,11 @@ is either unavailable or untrustworthy. Enumerated exactly as coded in
 1. **The graph is closed.** `RangeCardinality` on a closed graph returns
    `(0, false, graph.ErrGraphClosed)` — this is the one decline condition that
    is ALSO a sentinel error (every other decline below returns `err == nil`).
-2. **A temporal filter is set** (`opts.ValidAt != 0` or
-   `opts.ValidStart/ValidEnd != 0`). The property index's bucket sizes are
-   valid-time AGNOSTIC (built over current-state membership only), so a
-   temporal predicate always declines — `(0, false, nil)`.
+2. **Any temporal coordinate is set** — `opts.ValidAt`, `opts.ValidStart` /
+   `opts.ValidEnd`, `opts.TxAt`, or `opts.TxPin` (all four checked; a
+   knowledge-time pin declines exactly like a valid-time filter). The property
+   index's bucket sizes are valid-time AGNOSTIC (built over current-state
+   membership only), so a temporal predicate always declines — `(0, false, nil)`.
 3. **The store lacks the native capability** — no type assertion to the
    internal `NodeRangeCardinality(...)` scanner interface succeeds. Every
    in-tree backend implements it; an out-of-tree store need not.
@@ -446,6 +448,14 @@ throughout the columnar aggregation path. `NodeMutationEpoch`/
 DocValues capability — a planner reading `0` on every call cannot distinguish
 "never mutated" from "unsupported"; check the corresponding DocValues call's
 `ok` return if that distinction matters.
+
+`g.Nodes().NodeLabelMutationEpoch(label)` is the PER-LABEL sibling: it advances
+only when a node carrying THAT label is written, and it is the value a
+single-label DocValues result returns as its `gen`. A Gate-2 re-check on a
+single-label aggregate should use it rather than the global
+`NodeMutationEpoch`, which an unrelated-label write also advances — otherwise a
+still-valid result is discarded. Same `0`-means-`0`-or-unsupported caveat (an
+unknown label also returns `0`).
 
 ## Composite property indexes — `CreateComposite` / `ByLabelAndProperties`
 
@@ -619,8 +629,11 @@ doors use.
 
 Every OPTIONAL statistics primitive above (`NodeCountByLabelAndPropertyKey`,
 `PropertyStats`, the RangeCardinality fast path, `DegreeCapability`) is
-backed by a `Store` capability interface declared in
-`pkg/graph/store/capabilities.go` and type-asserted by the graph's core
+backed by a `Store` capability interface declared in `pkg/graph/store`
+(`capabilities.go` for `NodePropertyKeyStatsCapability` and
+`DegreeCapability`, `property_stats.go` for `NodePropertyStatsCapability`;
+the RangeCardinality scanner is an unexported interface asserted in
+`pkg/graph/internal/core/queries.go`) and type-asserted by the graph's core
 layer at the call site that needs it. A `Store` implementation only has to
 satisfy `store.MandatoryStore` — the capability interfaces above are all
 additive.

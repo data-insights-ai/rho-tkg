@@ -4,7 +4,7 @@
 
 Within the v4 major version (v4.0.0 through v4.x.x), the following surfaces are guaranteed **stable**: no breaking changes, only additive evolution.
 
-- **Sub-APIs** and their methods: `g.Nodes()`, `g.Rels()`, `g.Temporal()`, `g.Index()`, `g.Events()`, `g.Constraints()`, `g.IO()`, `g.Admin()`, `g.Stats()`, `g.Hash()`, `g.Resolve()`, `g.Tx()`, `g.Batch()` — plus the read-side change-feed accessors on `g.Replication()` (`ChangeFeed`, `ForEachChange`, `LastCommittedLSN`). The remaining `g.Replication()` methods and all of `g.Tier()` are experimental (see below)
+- **Sub-APIs** and their methods: `g.Nodes()`, `g.Rels()`, `g.Temporal()`, `g.Index()`, `g.Events()`, `g.Constraints()`, `g.IO()`, `g.Admin()`, `g.Stats()`, `g.Hash()`, `g.Resolve()`, `g.Ingest()`, `g.Tx()`, `g.Batch()` — plus the read-side change-feed accessors on `g.Replication()` (`ChangeFeed`, `ForEachChange`, `LastCommittedLSN`). The remaining `g.Replication()` methods and all of `g.Tier()` are experimental (see below)
 - **Core types** in `pkg/types` (`Node`, `Relationship`, `PropertySlice`, `Instant`, `TemporalMetadata`, `NodeIntegrity`, `RelIntegrity`, and related helpers)
 - **Store contract types** in `pkg/graph/store` (`Store` interface, `QueryOpts`, `ShardDepth`, `DistanceMetric`, sentinel errors)
 - **Error sentinels** (`ErrNodeNotFound`, `ErrNilGraph`, `ErrReadOnlyReplica`, etc.) — their identities and the guarantees they represent are fixed for the lifetime of v4

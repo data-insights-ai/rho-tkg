@@ -217,7 +217,7 @@ runnable example.
 | Byte-exact read replicas | `Config.ReadOnlyReplica` + `ApplyChange`/`ApplyChanges` reproduce a primary's rows verbatim (Phase 1: log-shipped bootstrap + tail; orchestration/failover automation is external) |
 | Delta backups | `g.IO().ExportSince`/`ImportMerge` ship and replay only what changed since a cursor |
 | One-call backups | `g.IO().BackupTo`/`BackupDeltaTo` write deterministic, LSN-named backup files; `graph.RestoreInto` replays a full+delta set — see [Backups](#backups) |
-| Property, temporal, and vector indexes | Property equality/range lookups, high-frequency temporal buckets, and brute-force k-NN vector search (not a production ANN index) |
+| Property, temporal, and vector indexes | Property equality/range lookups, high-frequency temporal buckets, and k-NN vector search — approximate HNSW by default, with an exact brute-force escape hatch (`VectorIndexOptions.UseBruteForce` via `CreateVectorIndexWithOptions`) |
 | Encryption at rest | `Config.EncryptionKey` (AES-128/192/256) encrypts every Badger-backed shard; requires `BlockCacheSize`/`IndexCacheSize` > 0 (validated at `New`, never a Badger panic) |
 | Transactions & batches | `g.Tx()` (serializable-per-entity) and `g.Batch()` (bulk ops with partial-failure reporting) |
 | Event bus | Sync/async hooks on every mutation, for building your own indexes or side effects |
@@ -243,6 +243,7 @@ restored, err := graph.RestoreInto(graph.Config{}, backupDir) // full + every de
 | `memory.Store` | `pkg/graph/store/memory` | Tests, scratch graphs, no persistence needed |
 | `badger.Store` | `pkg/graph/store/badger` | A single embedded on-disk graph, backed by Badger v4 |
 | `tiered.Store` | `pkg/graph/store/tiered` | Time-sharded persistence at scale — hot/warm/cold/archive rotation across many Badger shards |
+| `sharded.Store` | `pkg/graph/store/sharded` | EXPERIMENTAL (ADR-0007) — slot-topology persistence: N Badger shards routed by the snowflake node field. See [`docs/architecture.md`](docs/architecture.md) |
 
 ## Module
 
@@ -300,12 +301,13 @@ including the Docker-based `lint`/`security`/`vulncheck` targets.
 ## Version history
 
 See [CHANGELOG.md](CHANGELOG.md) for the full, dated release history — every
-version back to v3.1.7, with the defect it fixed or the feature it added.
+version back to v3.0.0, with the defect it fixed or the feature it added.
 
-Current release: **v4.11.2** — `g.Temporal().NowTx()` returns the graph's
-current transaction-time instant, the pin that `TagAsOf` and the AS-OF reads
-(`QueryOpts.TxAt` / `NodeAtTx` / `NodesAsOf`) use to snapshot "everything
-committed so far."
+Current release: **v4.24.0** — three temporal-read fixes: the wall-clock "now"
+fallback in `TxAt`-only scans is resolved once per scan instead of per
+candidate; `NodesAsOf`/`RelsAsOf` bulk scans capture the history overlay in one
+snapshot so a background flush mid-scan cannot drop rows; and a
+belief-watermark-gated fast path is restored for point-in-time queries.
 
 If you are upgrading from v3.x, see `CHANGELOG.md` `[4.0.0]` for the full
 public-API migration recipe (context-first methods, `g.Tier` split from

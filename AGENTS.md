@@ -33,11 +33,23 @@ make bench-graph-production-small  # production-shaped graph benchmark suite
 make bench-graph-production-large  # large stress graph benchmark suite
 make cover          # coverage report -> coverage.html
 make check          # pre-commit: vet + build + test
-make ci             # full pipeline: fmt-check + vet + lint + build + test-race + security + vulncheck
+make ci             # full pipeline: fmt-check + vet + lint + build + test-race + security + vulncheck + cover-gate + check-metakv-reap
 make fmt            # format code
 make lint           # golangci-lint (errcheck, govet, staticcheck, revive, ...)
 make security       # gosec static analysis
 make vulncheck      # govulncheck for known CVEs
+```
+
+`golangci-lint`, `gosec`, and `govulncheck` are usually absent from the host, so
+`make lint` / `make security` / `make vulncheck` fail with "command not found".
+Do NOT report the gate as un-runnable — run them in the go.mod-matching toolchain
+image instead (`GO_IMAGE` auto-tracks the `go` line in `go.mod`):
+
+```bash
+make lint-docker        # golangci-lint v2 (reads .golangci.yml)
+make security-docker    # gosec
+make vulncheck-docker   # govulncheck
+make ci-docker          # full gate: fmt-check + vet + lint-docker + build + test-race + security-docker + vulncheck-docker + cover-gate + check-metakv-reap
 ```
 
 Single test: `go test -run TestFoo ./pkg/types/`
@@ -75,23 +87,25 @@ These rules exist because every single one was violated at least once. Do not sk
 | `shadow.go` | Constants for virtual read-only `tkg_*` properties |
 | `temporal.go` | `Instant` type (Unix ms), `entityID`, `TemporalMetadata` struct |
 | `integrity.go` | `NodeIntegrity` / `RelIntegrity` — hash chain (`Hash`, `PrevHash`) |
-| `allen.go` | Allen's 13 interval relations — `AllenRelation`, masked `AllenRelationSet`, `Relate()`, `Compose()`, `ComposeSets()`, composition table |
+| `allen.go` | Allen's 13 interval relations — `AllenRelation`, masked `AllenRelationSet`, `Relate()` (closed intervals, rejects any zero endpoint), `RelateOpen()` (treats `end==0` as +∞ for open version-chain intervals — backs the `NodesRelating` / `RelsRelating` doors), `Compose()`, `ComposeSets()`, composition table |
 | `granularity.go` | `TimeGranularity` (8 levels), `TruncateInstant`, `RoundInstant`, `CeilInstant` — ISO 8601 week truncation |
 | `recurrence.go` | `RecurrencePattern`, `RecurrenceFrequency`, `WeekdayMask`, `Interval` — strict calendar selector and millisecond offset validation + `Expand(from, to)` |
+| `property_registry.go` | `RegisterPropertyStructType(v any) error` — validates `HashableValue` + `DeepCopier` at registration; `DeepCopier` interface (`DeepCopyValue() any`); `ErrTypeNotHashable`, `ErrTypeNotDeepCopyable` sentinels |
+| `property_type_class.go` | `PropertyTypeClass` (Numeric/NaN/String/Bool/Other — the total classification rule for storable values; ±Inf is Numeric, NaN split out as unorderable) + `Node.ForEachPropertyTypeClass` / Relationship mirror (key + class only, never the value) — backs the exact type-class counters |
 
 ### `pkg/graph` (thin façade)
 
-The v4.0 consolidation made `pkg/graph` a thin façade: the `Graph` struct holds an unexported `core *core.Core` plus unexported sub-API pointers, and the public surface is `New` / `Close` plus 15 nil-safe sub-API accessor methods. All implementation lives on `*core.Core` in `pkg/graph/internal/core`; customers interact through the sub-APIs (`g.Nodes().Add(...)`, `g.Temporal().NodesAt(...)`, etc.). See `CLAUDE.md` for the per-file map; `docs/architecture.md` carries the same map plus the dependency arrows between subpackages.
+The v4.0 consolidation made `pkg/graph` a thin façade: the `Graph` struct holds an unexported `core *core.Core` plus unexported sub-API pointers, and the public surface is `New` / `Close` plus 16 nil-safe sub-API accessor methods. All implementation lives on `*core.Core` in `pkg/graph/internal/core`; customers interact through the sub-APIs (`g.Nodes().Add(...)`, `g.Temporal().NodesAt(...)`, etc.). See `CLAUDE.md` for the per-file map; `docs/architecture.md` carries the same map plus the dependency arrows between subpackages.
 
 Top-level concerns:
 
-- `pkg/graph/graph.go` — the `Graph` façade: `New`, `Close`, and the 15 nil-safe sub-API accessors (`g.Nodes`, `g.Rels`, `g.Temporal`, `g.Index`, `g.Events`, `g.Constraints`, `g.IO`, `g.Admin`, `g.Tier`, `g.Stats`, `g.Hash`, `g.Resolve`, `g.Replication`, plus `g.Tx` / `g.Batch` in `subapi.go`). `errors.go` holds the public sentinel re-exports; `doc.go` the package docs.
-- `pkg/graph/{nodes,rels,temporal,index,events,constraints,io,admin,tier,stats,hash,resolve,replication}/` — the sub-API wrapper packages. Each declares a local `Ops` interface and 1-2 line wrappers forwarding to `*core.Core`; some also export the public types customers reference (temporal, index, events).
-- `pkg/graph/internal/core/` — `Core` plus 12 sub-Core types (`NodeOps`, `RelOps`, `TempOps`, `IndexOps`, `EventOps`, `AdminOps`, `ConstraintOps`, `HashOps`, `IOOps`, `ResolveOps`, `StatOps`, `ReplOps`) carrying the implementation.
-- `pkg/graph/store/` — the public `Store` interface, `QueryOpts`, store sentinels, and optional capabilities (`ChangeFeedCapability`, `ReplicationSource`, …), with `store/{memory,badger,tiered}/` the concrete `Store` implementations.
+- `pkg/graph/graph.go` — the `Graph` façade: `New`, `Close`, `SetReplicationSource`, and the 16 nil-safe sub-API accessors (`g.Nodes`, `g.Rels`, `g.Temporal`, `g.Index`, `g.Events`, `g.Constraints`, `g.IO`, `g.Admin`, `g.Tier`, `g.Stats`, `g.Hash`, `g.Resolve`, `g.Replication`, `g.Ingest`, plus `g.Tx` / `g.Batch`, whose `TxAPI` / `BatchAPI` types live in `subapi.go`). `errors.go` holds the public sentinel re-exports; `doc.go` the package docs.
+- `pkg/graph/{nodes,rels,temporal,index,events,constraints,io,admin,tier,stats,hash,resolve,replication,ingest}/` — the sub-API wrapper packages. Each declares a local `Ops` interface and 1-2 line wrappers forwarding to `*core.Core`; some also export the public types customers reference (temporal, index, events, ingest).
+- `pkg/graph/internal/core/` — `Core` plus 13 sub-Core types (`NodeOps`, `RelOps`, `TempOps`, `IndexOps`, `EventOps`, `AdminOps`, `ConstraintOps`, `HashOps`, `IOOps`, `ResolveOps`, `StatOps`, `ReplOps`, `IngestOps`) carrying the implementation.
+- `pkg/graph/store/` — the public `Store` interface, `QueryOpts`, store sentinels, and optional capabilities (`ChangeFeedCapability`, `ReplicationSource`, …), with `store/{memory,badger,tiered,sharded}/` the concrete `Store` implementations. `sharded` (ADR-0007) is the slot-topology backend: it claims a contiguous snowflake-slot range (`BaseSlot`/`SlotCount`, ≤32) and opens one `badger.Store` per slot, routing an entity to its shard by node-field, never by ontology class.
 - `pkg/graph/internal/snowflake/` — package-level snowflake `Epoch` + `Layout` + `IDComponents` + `DecomposeID`.
 - `pkg/graph/internal/storeutil/` — key encoding, msgpack wire types, pagination helpers, temporal-filter push-down.
-- `pkg/graph/internal/locks/` — 256-shard `Manager` (LockEntity / LockTwo / LockMany).
+- `pkg/graph/internal/locks/` — 256-shard entity-lock `Manager` (LockEntity / LockTwo / LockThree / LockMany) plus the separate `ValueManager` value-stripe class (256 stripes, unique-property-constraint enforcement).
 - `pkg/graph/internal/registry/` — `LabelRegistry`, `RelTypeRegistry`, `PropertyKeyRegistry`.
 - `pkg/graph/internal/index/` — property index, vector index, HF temporal index, `OntologyMapping`.
 - `pkg/graph/internal/integrity/` — pure SHA-256 hash primitives + fixed-vector anchors.
@@ -99,11 +113,13 @@ Top-level concerns:
 
 ### Configuration
 
-- **`Graph.Config`**: `SnowflakeNodeID` (0-15), `Store`, `BadgerDir`, `BadgerInMemory`, `Validation` (ValidationLimits). Whitespace-only `BadgerDir` rejected. Omitted `Store` selects the default backend path; typed nil Store interfaces are rejected with `ErrNilStore`.
-- **`ValidationLimits`**: `MaxLabelsPerNode` (50), `MaxPropertiesPerEntity` (1000), `MaxPropertyKeyLength` (256), `MaxPropertyValueSize` (64K strings nested inside property values), `MaxNameLength` (256). `AllowSelfLoops` (default `false` — reject self-loop relationships where start == end; set `true` to permit). Zero = default for numeric limits.
-- **`BadgerStoreConfig`**: `Dir`, `InMemory`, `Logger` (Badger logger, nil uses default), `CacheCapacity` (10K), `FlushInterval` (100ms), `GCInterval` (5min), `GCDiscardRatio` (0.5), `ReadOnly` (explicit read-only opens only; Tiered warm/cold owner shards use writable handles), `SyncWrites` (fsync after every write — disables async buffer, forces FlushInterval=0), `MaxPendingWrites` (100K ops — async write-buffer bound; at the bound the writer flushes synchronously; negative disables; moot under SyncWrites).
-- **`Graph.Config`**: also accepts `SyncWrites bool` which passes through to `BadgerStoreConfig`.
-- **`TieredStoreConfig`**: `DataDir`, `InMemory`, `RefLabels`, `ShardWindow` (1 week; must be at least 1 minute and a whole millisecond), `CacheCapacity` (10K), `FlushInterval` (100ms), `ColdAfter` (0=never; must not be negative), `IdleTimeout` (5min when cold enabled; if set, must be a positive whole millisecond). `RefLabels` entries must be non-empty after trimming whitespace because they share the registry's label-name invariant.
+**`CLAUDE.md`'s Configuration section carries the full, current field list for all four config structs; the bullets below are the load-bearing subset.**
+
+- **`Graph.Config`**: `SnowflakeNodeID` (0-15), `Store`, `BadgerDir`, `BadgerInMemory`, `Validation` (ValidationLimits). Whitespace-only `BadgerDir` rejected. Omitted `Store` selects the default backend path; typed nil Store interfaces are rejected with `ErrNilStore`. Core-level (NOT store pass-throughs) — three fail-closed gates, all off by default: `AllowTxBackfill` (a create door honoring a caller-supplied `tkg_tx_from` / `AddWithTx(…, txFrom)`; otherwise `ErrTxBackfillDisabled`), `AllowRetentionPurge` (`g.Admin().PurgeExpiredNodes`; otherwise `ErrRetentionPurgeDisabled`), `AllowReset` (`g.Admin().Reset()`; otherwise `ErrResetDisabled`) — plus `ChangeLog`, `ReadOnlyReplica`, `ReplicationSource`, and `IngestLanes uint8` (0 = off; extra per-lane unified ID generators for concurrent ingest, requires `2+IngestLanes ≤ 32`).
+- **`ValidationLimits`**: `MaxLabelsPerNode` (50), `MaxPropertiesPerEntity` (1000), `MaxPropertyKeyLength` (256), `MaxPropertyValueSize` (64K strings nested inside property values), `MaxPropertyContainerLength` (100000 — the aggregate element/entry count of a slice- or map-typed property value, or the byte length of a `[]byte`; a SEPARATE knob from `MaxPropertyValueSize` so a legitimate large numeric container, e.g. a vector-index embedding `[]float32`, is bounded on its own natural scale), `MaxNameLength` (256). `AllowSelfLoops` (default `false` — reject self-loop relationships where start == end; set `true` to permit). Zero = default for numeric limits.
+- **`BadgerStoreConfig`**: `Dir`, `InMemory`, `Logger` (Badger logger, nil uses default), `CacheCapacity` (10K), `FlushInterval` (100ms), `GCInterval` (5min), `GCDiscardRatio` (0.5), `ReadOnly` (explicit read-only opens only; Tiered warm/cold owner shards use writable handles), `SyncWrites` (fsync after every write — disables async buffer, forces FlushInterval=0), `MaxPendingWrites` (100K ops — async write-buffer bound; at the bound the writer flushes synchronously; negative disables; moot under SyncWrites). Since v4.5 it has also grown `Compression` / `ZSTDCompressionLevel`, `CacheBudgetBytes`, `ResidentCache`, `LabelIndexOnDisk` / `AdjacencyIndexOnDisk` / `PropertyIndexOnDisk` / `TemporalIndexOnDisk`, `DisablePlannerStats`, `HistoryDeltaEncoding` / `HistoryAnchorInterval`, `ValueLogFileSize` / `MemTableSize` / `BlockCacheSize` / `IndexCacheSize` / `NumCompactors`, and `EncryptionKey` / `EncryptionKeyRotation` — several behavior-changing or fail-closed; see CLAUDE.md for each field's contract.
+- **`Graph.Config` badger pass-throughs**: `SyncWrites` and every other `BadgerStoreConfig` knob above are settable directly on `Graph.Config` and forwarded to the store built from `BadgerDir`/`BadgerInMemory` (ignored when `Store` is supplied explicitly).
+- **`TieredStoreConfig`**: `DataDir`, `InMemory`, `RefLabels`, `ShardWindow` (1 week; must be at least 1 minute and a whole millisecond), `CacheCapacity` (10K), `FlushInterval` (100ms), `ColdAfter` (0=never; must not be negative), `IdleTimeout` (5min when cold enabled; if set, must be a positive whole millisecond), plus the per-shard badger knobs (compression, cache budget, encryption, footprint bounds, `PropertyIndexOnDisk` / `TemporalIndexOnDisk`, `DisablePlannerStats`) and `ChangeLog`, all passed through `badgerCfg` to every shard. `RefLabels` entries must be non-empty after trimming whitespace because they share the registry's label-name invariant.
 
 ### Snowflake Configuration
 
@@ -173,10 +189,10 @@ Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID`
 
 ### Concurrency
 
-- **Entity locks**: 256-shard `entityLockManager` for write-skew prevention. `shardIndex` uses low 8 bits of snowflake timestamp via `snowflakeLayout.Decompose(id).Time`.
-- **Lock ordering**: entity locks -> idxMu. Always.
+- **Entity locks**: 256-shard `internal/locks.Manager` (`NewManager()`) for write-skew prevention. `locks.ShardIndex` uses low 8 bits of snowflake timestamp via `snowflakeLayout.Decompose(id).Time`.
+- **Lock ordering**: entity locks -> value locks -> idxMu. Always. Value locks are the separate `internal/locks.ValueManager` class (256 stripes keyed by `hash(labelToken, keyToken, canonical value bytes)`) guarding unique-property-constraint enforcement: the stripe is held across BOTH the index check AND the store write, so concurrent same-value writers serialize to exactly one winner. An update that changes a constrained value takes BOTH the old and the new stripe in ascending order (`LockStripes` sorts + dedups). A caller holding value locks must never take an entity lock afterwards. The order is documented canonically in `internal/locks/value_locks.go`.
 - **Two-phase delete with TOCTOU retry**: Phase A reads adjacency under node lock. Phase B locks all entities via `LockMany`, re-reads the node under that full lock, re-verifies adjacency, retries if adjacency changed (max 10), then builds tombstones from the Phase B rows. Never build a node tombstone from the Phase A snapshot.
-- **Ascending shard order**: `LockTwo` normalizes. `LockMany` deduplicates + sorts. Deadlock-free.
+- **Ascending shard order**: `LockTwo` normalizes. `LockThree` (a relationship's own ID + its start/end node IDs — 3 entities) and `LockMany` deduplicate + sort. Deadlock-free.
 - **Transaction isolation via `c.txMu` (v4.1.0+ Path B)**: `Core.txMu` serializes tx-vs-tx and tx-vs-batch; `Core.mu` (an RWMutex) is taken with a brief `RLock` by each tx method around its body (`tx.lockActiveCore` / `tx.unlockActiveCore`) and is **no longer held for the tx lifetime**. Concurrent standalone mutations and reads on disjoint entities run in parallel with an open tx — only entity-level conflicts block, via the 256-shard entity-lock manager. Snapshot-style scans (`IO.Export`, `Temporal.Snapshot`, `Admin.VerifyShard`) and admin cascades (`ArchiveNode` / `RestoreNode`) take `c.mu.Lock()` to fence writers; tx Rollback briefly takes `c.mu.Lock` to swap registry pointers. Isolation level: "serializable per touched entity, snapshot-isolated elsewhere" — a concurrent reader can observe in-progress tx-allocated labels/types until commit/rollback; code needing "tx blocks all concurrent observation" must take an external lock.
 - **Inside a tx, both forms work (v4.1.0+)**: because the tx no longer holds `c.mu.Lock` for its lifetime, both `g.Nodes().ByLabel(...)` and the tx-side mirror `tx.NodesByLabel(...)` work inside an open tx. The tx-side read mirrors in `internal/core/tx_consistent_reads.go` remain for call-site clarity but are no longer required for correctness (lessons.md #31, SUPERSEDED).
 - **No-error resolver reads still need isolation**: `LookupLabel`, `LookupRelType`, node label/type resolution, and shadow-property resolution must take `c.mu.RLock()` before reading registry pointers and return zero values once graph close is visible. Internal code already under `c.mu` must call explicit lock-free resolver helpers instead of recursively taking `RLock`.
@@ -342,11 +358,11 @@ Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID`
 
 ### Events & Stats
 
-- **EventBus is opt-in**: `Graph.SetEventBus(bus)` — nil by default (zero overhead). Handlers are copied under RLock, invoked outside the lock (prevents deadlocks from re-entrant Graph calls in handlers).
+- **EventBus is opt-in**: `g.Events().SetSync(bus)` — nil by default (zero overhead). Handlers are copied under RLock, invoked outside the lock (prevents deadlocks from re-entrant Graph calls in handlers).
 - **Event bus setters fail closed**: `g.Events().SetSync` and `SetAsync` return `ErrGraphClosed` after graph close and must not detach or replace the installed publisher in that state.
 - **EventBus zero values work**: `events.EventBus.Subscribe` lazily initializes handler storage, and `events.AsyncEventBus` lazily starts default dispatcher/queues on first non-nil subscribe/publish/close. Nil subscriptions return no-op unsubscribers and must not install nil handlers or start a zero-value async dispatcher. Nil bus receivers no-op for no-error methods. Do not reintroduce required constructors for event buses.
 - **Tx/batch event buffering**: During a transaction or batch (`txEventBuffer != nil`), `publishEvent` appends to a buffer instead of dispatching. On transaction `Commit` and successful batch `Execute`, events are published after releasing graph locks so handlers can safely call Graph read methods. Rollback discards buffered transaction events — subscribers never see rolled-back mutations. Transaction and batch flushes must use `PublishBatch` when more than one event may be emitted.
-- **AsyncEventBus for async delivery**: `Graph.SetAsyncEventBus(bus)` — serialized dispatcher with per-priority `[5]chan Event` queues. `AsyncEventBusConfig.Workers` values above 1 are capped to 1 because concurrent lower-priority handlers can break `PublishBatch` priority ordering during drain/close. `BackpressureStrategy` controls full-queue behavior (Block/DropOldest/DropLatest); invalid strategy values must normalize to `BackpressureBlock` so bad enum input cannot turn publish into silent drop-all. `Close()` drains all pending events before stopping the dispatcher. `Graph.events` is typed as `eventPublisher` interface (unexported) — allows either bus type without breaking the external API.
+- **AsyncEventBus for async delivery**: `g.Events().SetAsync(bus)` — serialized dispatcher with per-priority `[5]chan Event` queues. `AsyncEventBusConfig.Workers` values above 1 are capped to 1 because concurrent lower-priority handlers can break `PublishBatch` priority ordering during drain/close. `BackpressureStrategy` controls full-queue behavior (Block/DropOldest/DropLatest); invalid strategy values must normalize to `BackpressureBlock` so bad enum input cannot turn publish into silent drop-all. `Close()` drains all pending events before stopping the dispatcher. `Graph.events` is typed as `eventPublisher` interface (unexported) — allows either bus type without breaking the external API.
 - **AsyncEventBus close gates publishers and unblocks blockers**: `Close` must mark the bus closing, close `stopCh` before waiting for `publishMu` so `BackpressureBlock` publishers stuck on full queues can return, then wait for publisher drain and dispatcher drain. `Publish`/`PublishBatch` must re-check the closing flag under `publishMu`, and `Subscribe` after close must be a no-op. Otherwise post-close work can be enqueued into stopped queues, or close can deadlock behind a blocked publisher.
 - **EventPriority**: 5 levels — `PriorityNormal` (0, zero value), `PriorityHigh` (1), `PriorityCritical` (2), `PriorityLow` (3), `PriorityDeferred` (4). Graph assigns internally: creates→High, deletes→Critical, updates→Normal. Backward-compatible: existing `Event{}` literals default to PriorityNormal. Priority ordering in `AsyncEventBus` uses one dispatcher with non-blocking drain per level (Critical first) before blocking select.
 - **IndexProvider errors are diagnostics, not silence**: `IndexProvider.OnEvent` errors do not abort already-committed mutations, but must be logged with provider name and event context. Do not drop them with `_ = p.OnEvent(ev)`.
@@ -400,7 +416,7 @@ Run these after any change to the relevant subsystem.
 
 **Hash computation**: `grep -rn 'ComputeNodeHash\|ComputeRelHash' pkg/` — every call site must pass canonical (registry-resolved) labels/type, not raw input.
 
-**Entity locks**: `grep -rn 'store\.Put\|store\.Delete\|store\.Replace' pkg/graph/` — every Store write must have `LockEntity`/`LockTwo`/`LockMany` before it.
+**Entity locks**: `grep -rn 'store\.Put\|store\.Delete\|store\.Replace' pkg/graph/` — every Store write must have `LockEntity`/`LockTwo`/`LockThree`/`LockMany` before it.
 
 **Index cleanup**: Every delete path handling missing entities must purge label, property, AND adjacency indexes. Brute-force purge is acceptable for corruption paths.
 
@@ -445,9 +461,12 @@ Resolved shadow values must keep their public wrapper types. In particular, `tkg
 | `0x04/<2B relTypeToken>/<8B relID>` | Type index | 11B |
 | `0x05/<8B startID>/<2B relType>/<8B endID>/<8B relID>` | Outgoing adjacency | 27B |
 | `0x06/<8B endID>/<2B relType>/<8B startID>/<8B relID>` | Incoming adjacency | 27B |
-| `0x07/<8B nodeID>/<8B version>` | Node version history | 17B |
-| `0x08/<8B relID>/<8B version>` | Rel version history | 17B |
-| `0x0F/*` | Metadata (registries, counters, prop index defs) | varies |
+| `0x07/<8B nodeID>/<8B version>` | Node version history — value is a full snapshot (anchor/legacy) OR, under `HistoryDeltaEncoding`, a 1-byte `'D'`-tagged delta vs the interval anchor | 17B |
+| `0x08/<8B relID>/<8B version>` | Rel version history — same anchor/delta framing as `0x07` | 17B |
+| `0x09/<8B LSN>` | Change-log (op-log) record — opt-in `ChangeLog`; value = `tag(1B) ‖ msgpack(body)` | 9B |
+| `0x0A/<2B propKeyToken>/<domain-tagged value bytes>/<8B nodeID>` | Property index entry — opt-in `PropertyIndexOnDisk` | 29B (numeric) / variable (raw) |
+| `0x0B/<2B labelToken>/<8B order-preserving from>/<8B nodeID>` | Temporal-index raw-entry log — opt-in `TemporalIndexOnDisk`; a REBUILD-AT-OPEN accelerator (the index itself stays RAM-resident); value = 8B raw `to` | 19B key / 8B value |
+| `0x0F/*` | Metadata (registries, counters, prop index defs, `last_lsn` watermark, `wire_format_version` / `history_anchor_interval` / `property_index_on_disk_built` / `temporal_index_on_disk_built` markers) | varies |
 
 ## Ecosystem
 

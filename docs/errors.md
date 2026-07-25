@@ -14,8 +14,8 @@ Coverage spans three sources:
 |----------|---------|---------|---------------|
 | `ErrNodeNotFound` | store | Node does not exist in the graph | `g.Nodes().Get()`, `g.Temporal().NodeAt*()`, all rel mutations requiring node validation |
 | `ErrRelNotFound` | store | Relationship does not exist | `g.Rels().Get()`, `g.Temporal().RelAt*()` |
-| `ErrNodeExists` | store | Node with the caller-supplied ID already exists | `g.Nodes().AddByID()`, `g.IO().Import()` (when ID collision occurs) |
-| `ErrRelExists` | store | Relationship with the caller-supplied ID already exists | `g.Rels().AddByID()`, `g.IO().Import()` (when ID collision occurs) |
+| `ErrNodeExists` | store | Node with the caller-supplied ID already exists | `g.Nodes().Import()`, `g.IO().Import()` (when ID collision occurs) |
+| `ErrRelExists` | store | Relationship with the caller-supplied ID already exists | `g.Rels().Import()`, `g.IO().Import()` (when ID collision occurs) |
 
 ## Store — Indexes
 
@@ -24,16 +24,16 @@ Coverage spans three sources:
 | `ErrIndexExists` | store | Property index already exists at the given name (node OR relationship) | `g.Index().CreateProperty()`, `g.Index().CreateRelProperty()` |
 | `ErrIndexNotFound` | store | Property index not found (also returned by the range doors when no usable index exists, so callers fall back to a scan) | `g.Index().SearchNearest()`, `g.Index().DeleteRelProperty()`, `g.Rels().ForEachByTypePropertyRange()`, index mutation/removal doors |
 | `ErrRelPropertyIndexUnsupported` | store | The backend recognizes relationship property indexes but declines to CREATE them (the tiered store — rel values are scattered across timestamp-routed event shards). Query still works via the type-scan fallback. Distinct from `ErrCapabilityNotSupported` | `g.Index().CreateRelProperty()` on a tiered-backed graph |
-| `ErrTemporalIndexExists` | store | Temporal index already exists | `g.Index().CreateTemporalIndex()` |
-| `ErrTemporalIndexNotFound` | store | Temporal index not found | `g.Index().QueryTemporalIndex()` |
-| `ErrVectorIndexExists` | store | Vector index already exists | `g.Index().CreateVectorIndex()` |
+| `ErrTemporalIndexExists` | store | Temporal index already exists | `g.Index().CreateTemporal()`, `g.Index().CreateHighFrequency()` |
+| `ErrTemporalIndexNotFound` | store | Temporal index not found | `g.Index().DeleteTemporal()`, `g.Index().DeleteHighFrequency()` |
+| `ErrVectorIndexExists` | store | Vector index already exists | `g.Index().CreateVector()` |
 | `ErrVectorIndexNotFound` | store | Vector index not found | `g.Index().SearchNearest()` |
 | `ErrDimensionMismatch` | store | Vector dimension does not match the index | `g.Index().SearchNearest()` |
-| `ErrInvalidTemporalIndexConfig` | store | Temporal index configuration is invalid | `g.Index().CreateTemporalIndex()` |
-| `ErrInvalidVectorIndexConfig` | store | Vector index configuration is invalid | `g.Index().CreateVectorIndex()` |
+| `ErrInvalidTemporalIndexConfig` | store | Temporal index configuration is invalid (non-positive or fractional-millisecond high-frequency bucket size) | `g.Index().CreateHighFrequency()` |
+| `ErrInvalidVectorIndexConfig` | store | Vector index configuration is invalid | `g.Index().CreateVector()` |
 | `ErrInvalidVectorValue` | store | Vector value is invalid (NaN, Inf, wrong dimension) | `g.Index().SearchNearest()`, vector index query paths |
-| `ErrInvalidShardDepth` | store | Shard depth is out of valid range | `g.Index().CreatePropertyIndex()` |
-| `ErrInvalidQueryLimit` | store | Query limit exceeds maximum allowed | Scan/query paths with limits |
+| `ErrInvalidShardDepth` | store | Shard depth is out of valid range | Any query door with an unknown `QueryOpts.Depth` (`g.Nodes().ByLabel()` / `All()`, `g.Rels().ByType()` / `All()`, index searches) |
+| `ErrInvalidQueryLimit` | store | Query limit is negative (`0` = unbounded; there is no upper cap) | Scan/query paths with limits |
 | `ErrInvalidQueryCursor` | store | Pagination cursor is invalid | Paginated query paths |
 
 ## Indexes — Provider Registration
@@ -43,7 +43,7 @@ Coverage spans three sources:
 | `ErrIndexProviderExists` | index | An index provider is already registered with that name | `g.Index().RegisterProvider()` |
 | `ErrIndexProviderNotFound` | index | No index provider registered with that name | `g.Index().SearchNearest()` when provider not found |
 | `ErrIndexProviderEmptyName` | index | Index provider name cannot be empty | `g.Index().RegisterProvider()` |
-| `ErrOrderedScanTemporal` | store | Ordered/top-k range door is current-state only — temporal QueryOpts decline | `g.Nodes().ForEachByLabelPropertyRangeOrdered()` |
+| `ErrOrderedScanTemporal` | store | **LEGACY — no longer returned by anything.** The ordered / prefix range doors used to decline temporal `QueryOpts` with it; they now SERVE those opts via a sound full fold (values resolved at the pin, then sorted — see query-planners.md). Kept exported so an `errors.Is` match still compiles | none (historically `g.Nodes().ForEachByLabelPropertyRangeOrdered()`) |
 | `ErrRelPropertyIndexUnsupported` | store | Backend lacks relationship property-index capability | `g.Index().CreateRelProperty()`, `g.Rels().ByTypeAndProperty()` |
 
 ## Registry
@@ -62,8 +62,8 @@ Coverage spans three sources:
 | `ErrNoVersionValidAt` | store | The entity is known (current or historical rows exist) but no version's effective valid-time interval covers the requested instant. Aliases `store.ErrNoVersionValidAt` — previously leaked raw from these four doors with no `pkg/graph` alias | `g.Temporal().NodeAt()`, `g.Temporal().RelAt()`, `g.Temporal().NodeAtTx()`, `g.Temporal().RelAtTx()` |
 | `ErrConflictingTemporalOpts` | core | `QueryOpts.TxPin` (the belief-state / knowledge-time pin) was set together with a valid-time filter (`ValidAt` / `ValidStart` / `ValidEnd`) or with `TxAt`; TxPin resolves like `NodesAsOf` with NO valid-time filtering, so combining it with any other temporal filter is contradictory and rejected rather than silently mis-resolved | `g.Nodes().All()` / `ByLabel()`, `g.Rels().All()` / `ByType()` with a conflicting `QueryOpts` |
 | `ErrInvalidClockAdvance` | core | The `AdvanceClock` target lands implausibly far ahead of wall-clock (more than the ~10-year skew tolerance) — guards against a unit/scale mixup (e.g. microseconds passed where milliseconds are expected) permanently poisoning the transaction clock | `g.Temporal().AdvanceClock()` |
-| `ErrTemporalConstraint` | temporal | A temporal constraint was violated (interval predicate failed) | `g.Temporal().AssertNodeConstraint()`, `g.Temporal().AssertRelConstraint()` |
-| `ErrInvalidTemporalConstraint` | temporal | Temporal constraint definition is invalid | `g.Temporal().AssertNodeConstraint()`, `g.Temporal().AssertRelConstraint()` |
+| `ErrTemporalConstraint` | temporal | A temporal constraint was violated (interval predicate failed) | `g.Rels().Add*()` / `g.Rels().Update()` / `g.IO().Import()` with a configured constraint set |
+| `ErrInvalidTemporalConstraint` | temporal | Temporal constraint definition is invalid (unknown kind, including the zero-value `TemporalConstraint{}`; also a nil `ConstraintSet.ForEach` callback) | `g.Constraints().Add()`, `g.Constraints().Set()` |
 | `ErrRelBeforeStartNode` | temporal | Relationship begins before its start node is valid | `g.Rels().Add*()` with temporal validation enabled |
 | `ErrRelBeforeEndNode` | temporal | Relationship begins before its end node is valid | `g.Rels().Add*()` with temporal validation enabled |
 | `ErrRelAfterStartNode` | temporal | Relationship begins after its start node expires | `g.Rels().Add*()` with temporal validation enabled |
@@ -78,7 +78,7 @@ Coverage spans three sources:
 | `ErrNoLabels` | core | Node requires at least one label | `g.Nodes().Add*()`, `g.Nodes().RemoveLabel()` (on last label) |
 | `ErrNilNode` | core | Pointer to Node is nil (canonically declared in `pkg/types` as `ErrNilNode` — same identity; see pkg/types Sentinels below) | All paths accepting `*Node` values |
 | `ErrNilRelationship` | core | Pointer to Relationship is nil (canonically declared in `pkg/types` as `ErrNilRelationship` — same identity; see pkg/types Sentinels below) | All paths accepting `*Relationship` values |
-| `ErrZeroID` | core | Entity ID is zero (invalid for import/creation) | `g.Nodes().AddByID()`, `g.Rels().AddByID()`, `g.IO().Import()` |
+| `ErrZeroID` | core | Entity ID is zero (invalid for import/creation) | `g.Nodes().Import()`, `g.Nodes().AddByIDIfAbsent()`, `g.Rels().Import()`, `g.IO().Import()` |
 | `ErrInvalidID` | core | Entity ID is invalid | `g.IO().Import()` with corrupted IDs |
 | `ErrVersionOverflow` | core | Entity version counter overflowed | `g.Nodes().Update()`, `g.Rels().Update()` after 2^32 mutations |
 | `ErrLabelNotFound` | core | Node does not have the specified label | `g.Nodes().RemoveLabel()` with non-existent label |
@@ -112,7 +112,7 @@ Coverage spans three sources:
 | `ErrNilTxCallback` | core | Transaction callback is nil | `g.Tx().Run()`, `g.Tx().RunContext()` with nil callback |
 | `ErrBatchFailed` | core | Batch had one or more failed operations | `g.Batch().Execute()` |
 | `ErrBatchDone` | core | Batch already executed (cannot reuse) | Multiple `g.Batch().Execute()` calls on the same batch |
-| `ErrInvalidTimeRange` | core | Supplied time range is invalid (start >= end or negative bounds). Aliases `store.ErrInvalidTimeRange`. Distinct identity from `types.ErrInvalidTimeRange` (see pkg/types Sentinels below) despite the identical name | `g.Temporal().NodesIn()`, `g.Temporal().RelsIn()`, constraint assertions |
+| `ErrInvalidTimeRange` | core | Supplied time range is invalid (start >= end or negative bounds). Aliases `store.ErrInvalidTimeRange`. Distinct identity from `types.ErrInvalidTimeRange` (see pkg/types Sentinels below) despite the identical name | `g.Temporal().NodesDuring()`, `g.Temporal().RelsDuring()`, `QueryOpts.ValidStart`/`ValidEnd` validation, `g.Nodes().CloseVersion()` with `t == 0` |
 
 ## Ingest Pipeline (ADR-0006)
 
@@ -181,8 +181,8 @@ Sentinels enforcing `tiered.Store`'s reference-vs-event primary-label class boun
 | Sentinel | Package | Meaning | Typical Doors |
 |----------|---------|---------|---------------|
 | `ErrNotReferenceEntity` | tiered | The target entity is not a reference entity — event entities cannot be archived | `g.Tier().Archive()` / `Restore()` on an event-classed node |
-| `ErrEventPropertyIndex` | tiered | Property indexes are reference-entities-only on a tiered store | `g.Index().CreatePropertyIndex()` on an event-classed label |
-| `ErrPrimaryLabelClassMutation` | tiered | A label mutation would change the primary label's reference↔event ontology class (routing depends on this class, so flipping it mid-flight would fragment the version chain across shards) | `g.Nodes().AddLabelToken()` / `RemoveLabelToken()` (and their `WithHistory` variants) |
+| `ErrEventPropertyIndex` | tiered | Property indexes are reference-entities-only on a tiered store | `g.Index().CreateProperty()` on an event-classed label |
+| `ErrPrimaryLabelClassMutation` | tiered | A label mutation would change the primary label's reference↔event ontology class (routing depends on this class, so flipping it mid-flight would fragment the version chain across shards) | `g.Nodes().AddLabel()` / `RemoveLabel()` — surfaced from the store-level label-token doors (`AddNodeLabelToken` / `RemoveNodeLabelToken` and their `WithHistory` variants) |
 
 ## Store-Internal Sentinels (Not Re-Exported Through pkg/graph)
 
@@ -194,6 +194,7 @@ These sentinels are declared in `pkg/graph/store/errors.go` and have **no alias 
 | `ErrVersionNotFound` | store | The requested history version *number* does not exist for the entity (version-number lookup, distinct from a time-based query) | Store-level `GetNodeVersion(id, version)` / `GetRelVersion(id, version)`. Consumed and converted internally by most public callers — `g.Nodes().VersionBefore()` / `VersionAfter()` fold it into `(nil, nil)` or `ErrNodeNotFound`; `g.Temporal().NodeAsOf()` / `RelAsOf()` fold it into `ErrNoVersionAsOf` — but a default-branch conflict check in `g.IO().Import()` can still surface it raw on an unexpected store error |
 | `ErrInvalidStoreMutation` | store | A `Store` implementation returned a result violating its documented contract (mismatched ID, non-ascending order, wrong row count, dangling adjacency reference), or a backend-specific mutation guard rejected the write (deleting a node that still has live relationships via a raw store call, a nil iteration callback, a write attempted against a read-only badger store) | Internal `store_validation.go` invariant checks that wrap a misbehaving custom `Store`; direct `memory.Store` / `badger.Store` / `tiered.Store` method calls that bypass the graph façade's cascade-safe doors |
 | `ErrChangesNotAscending` | store | A batch passed to `ApplyChanges` is not in strictly ascending LSN order | `g.Replication().ApplyChanges(recs)` — the successful ascending prefix before the out-of-order record is still applied and watermarked; this sentinel itself is not re-exported through `pkg/graph` or `pkg/graph/replication` |
+| `ErrSlotNotLocal` | store | A PARTITIONED store was handed an entity whose snowflake slot it does not own (its authority lives on another partition — ADR-0007/0010). Re-exported as `sharded.ErrSlotNotLocal` (same value) | A point read or write routed to the wrong `sharded.Store` partition (an ID whose slot is unclaimed fails closed — see api.md's Sharded store section); also raised inside `g.IO().Import()` when a re-shard would drop a non-empty slot, where it drives the import rollback |
 
 ## Transaction-Time Backfill (§4.1)
 
@@ -211,7 +212,7 @@ These sentinels are declared in `pkg/graph/store/errors.go` and have **no alias 
 
 ## Unique Property Constraints (ADR-0002)
 
-Unique property constraints (`g.Constraints().CreateUnique(...)`) forbid two current nodes carrying the same value for a constrained `(label, property)`. Enforcement currently covers the standalone node doors (Add / AddWithTx / AddByIDIfAbsent / Update / UpdateInPlace / CompareAndSetProperty / AddLabel); batch/tx/import enforcement is a follow-up wave.
+Unique property constraints (`g.Constraints().CreateUnique(...)`) forbid two current nodes carrying the same value for a constrained `(label, property)`. Enforcement covers the standalone node doors (Add / AddWithTx / AddByIDIfAbsent / Update / UpdateInPlace / CompareAndSetProperty / AddLabel), `BatchBuilder.AddNode`/`UpdateNode`, `GraphTx.AddNode`/`UpdateNode`, and `g.IO().Import` (default-strict — a duplicate rolls the whole import back; `ImportOptions.SkipUniqueValidation` opts a trusted restore out). Replica apply reproduces rows verbatim and does NOT enforce.
 
 | Sentinel | Package | Meaning | Typical Doors |
 |----------|---------|---------|---------------|
@@ -257,11 +258,13 @@ Compaction also declines with `ErrCapabilityNotSupported` on the tiered backend 
 | `ErrOpenInterval` | types | An Allen-relation interval endpoint is zero (intervals must be finite). Not re-exported through `pkg/graph` | `types.Relate(a, b)`, `types.Compose(...)` and other `pkg/types/allen.go` helpers |
 | `ErrInvalidInterval` | types | An Allen-relation interval has start >= end. Not re-exported through `pkg/graph` | `types.Relate(a, b)` and other Allen-relation helpers |
 | `ErrReservedPrefix` | types | A property key uses the reserved `tkg_` prefix. Not re-exported through `pkg/graph` | `types.PropertySlice.Set()`, `types.NewPropertySlice(map)` |
+| `ErrEmptyPropertyKey` | types | A property key is the empty string. Not re-exported through `pkg/graph` | `types.PropertySlice.Set()`, `types.NewPropertySlice(map)` |
 | `ErrUnsupportedValueType` | types | A property value is not on the recursive allowlist (or a deep-copy round-trip changed its shape — an internal invariant break). Not re-exported through `pkg/graph` | `types.PropertySlice.Set()`, `types.NewPropertySlice(map)`, `DeepCopy()` |
 | `ErrUnsupportedMapType` | types | A property value is a map type other than `map[string]any` / `map[string]string`. Not re-exported through `pkg/graph` | `types.PropertySlice.Set()` with an unsupported map value |
 | `ErrMaxDepthExceeded` | types | A property value's nesting exceeds the 32-level depth limit. Not re-exported through `pkg/graph` | `types.PropertySlice.Set()`, `types.NewPropertySlice(map)` |
 | `ErrInvalidTemporalValue` | types | A `TemporalValue` fails shape validation (unknown kind, empty rendering, oversized rendering). Not re-exported through `pkg/graph` | `pkg/types/temporal_value.go` validation helpers |
 | `ErrInvalidTimeRange` | types | **DISTINCT IDENTITY** from the `core`/`store`/`graph` sentinel of the same name (see Context & Transactions above) — `pkg/types/recurrence.go` declares its own `errors.New("types: invalid time range")`, never aliased to or from the core/store one. Returned when a `RecurrencePattern.Expand(from, to)` window is empty or inverted. Not re-exported through `pkg/graph` | `types.RecurrencePattern.Expand(from, to)` |
+| `ErrRecurrenceSpanTooLarge` | types | A `RecurrencePattern.Expand(from, to)` window exceeds the maximum expansion span (`to - from` too large). Not re-exported through `pkg/graph` | `types.RecurrencePattern.Expand(from, to)` |
 
 ---
 
@@ -286,7 +289,7 @@ func main() {
 	ctx := context.Background()
 
 	// Query a node that doesn't exist
-	node, err := g.Nodes().Get(ctx, types.NodeID(999999))
+	_, err := g.Nodes().Get(ctx, types.NodeID(999999))
 	if err != nil {
 		// Classify the error by type
 		if errors.Is(err, graph.ErrNodeNotFound) {
@@ -299,10 +302,13 @@ func main() {
 	}
 
 	// Batch operations report accumulated failures
-	batch := g.Batch()
-	batch.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
-	batch.AddNode([]string{"Person"}, nil) // missing name
-	if err := batch.Execute(ctx); err != nil {
+	bb, err := g.Batch().New()
+	if err != nil {
+		log.Fatal(err)
+	}
+	bb.AddNode([]string{"Person"}, map[string]any{"name": "Alice"})
+	bb.AddNode([]string{"Person"}, nil) // missing name
+	if _, err := bb.Execute(); err != nil {
 		if errors.Is(err, graph.ErrBatchFailed) {
 			log.Println("Batch had failures — check individual operation results")
 		}
