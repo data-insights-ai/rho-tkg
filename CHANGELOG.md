@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.24.3] - 2026-07-25
+
+Tests only, no behaviour change. Break-round coverage for the commit-clock floor, closing the gaps
+4.24.1 and 4.24.2 shipped without.
+
+- `TestInstantFloor_MalformedWatermarkIsAbsentAndSelfHeals` — the durable watermark is untrusted
+  input. Seven shapes (7-byte, 9-byte, empty, all-zero, all-0xFF, MinInt64, MaxInt64) must each be
+  treated as ABSENT, must not be fatal to `New`, must leave the clock wall-derived and positive, and
+  the next `Close` must REPLACE the garbage so it is not re-read forever. Two independent guards
+  carry this — `len(v) != 8` and `inst <= 0` — and they reject different shapes, so collapsing
+  either in a refactor would start feeding garbage into the commit clock.
+- `TestCommitStamp_ValidTimeAndCreatedAtNeverFeedTheCommitClock` — caller-asserted WORLD time must
+  never pull the commit clock. The wire structs carry ValidFrom/ValidTo/CreatedAt adjacent to the
+  four system-minted stamps, so this is one word from regressing, and the regression is silent: a
+  caller asserting next year's validity would drag the clock a year forward and every later TxFrom
+  with it. Deliberately non-vacuous — the future used is INSIDE the ~10y skew bound, so a naive
+  max-over-all-fields implementation is not rescued by the plausibility guard. Mutation-verified.
+- `TestRecordCommitStamp_NodeDeleteFoldsCascadedRelTombstones` — a ChangeNodeDelete carries a node
+  tombstone that may be NIL plus N cascaded relationship tombstones, and the record's stamp is the
+  max across all of them. A nil tombstone must not abort the fold, or a cascade delete's transaction
+  time escapes the floor on a replica — exactly the class of hole lesson 71 exists to close.
+  Mutation-verified.
+- `TestMaxWireStamp_NegativesClampAndNeverMaskAPositive` — a negative field must clamp and must never
+  mask a genuine positive stamp.
+
+
 ## [4.24.2] - 2026-07-25
 
 - FIX (durable corruption, introduced in 4.24.1) — `advanceInstantFloor` accepted an UNBOUNDED
