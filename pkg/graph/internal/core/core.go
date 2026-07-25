@@ -257,6 +257,13 @@ type Core struct {
 	// c.now() from different goroutines even though mutation state is guarded.
 	lastInstant atomic.Int64
 
+	// floorSeedUnreadable records that seedInstantFloor could not READ the
+	// durable commit-clock watermark at open (as opposed to reading a malformed
+	// one). Close then leaves the watermark alone rather than overwriting a
+	// high-water mark this session never saw. Written once during New before the
+	// graph is published; read once in Close.
+	floorSeedUnreadable bool
+
 	indexProviders map[string]*indexProviderEntry
 
 	opNodeAdds    atomic.Int64

@@ -31,7 +31,22 @@ func (c *Core) seedInstantFloor() {
 		return
 	}
 	v, err := mk.MetaGet(instantFloorMeta)
-	if err != nil || len(v) != 8 {
+	if err != nil {
+		// Could not READ the watermark — an IO / checksum / value-log fault, with
+		// the stored value very possibly INTACT on disk. That is a different
+		// failure from a readable-but-malformed blob and must be handled
+		// differently: this session must not later OVERWRITE a floor it never
+		// saw. The watermark is a monotone high-water mark, and persisting this
+		// session's (lower) lastInstant over an unread one downgrades it
+		// permanently — every later open then reseeds the regressed value and
+		// NowTx() under-covers burst rows still in the store, which is the exact
+		// anachronism lesson 71 exists to close.
+		c.floorSeedUnreadable = true
+		return
+	}
+	if len(v) != 8 {
+		// Readable but malformed. This one we DO overwrite at Close — that is the
+		// self-healing path the corrupt-watermark regression relies on.
 		return
 	}
 	c.advanceInstantFloor(types.Instant(binary.BigEndian.Uint64(v)))
@@ -47,6 +62,14 @@ func (c *Core) seedInstantFloor() {
 // (closed is already set), so the persisted floor still covers every committed
 // write.
 func (c *Core) persistInstantFloor() error {
+	if c.floorSeedUnreadable {
+		// The open could not read the watermark, so we do not know what it holds.
+		// Writing this session's floor over it could LOWER a durable high-water
+		// mark. Leaving it untouched is strictly safer: a stale-but-higher value
+		// only over-covers, while a downgraded one silently drops committed rows
+		// from every future AS-OF pin.
+		return nil
+	}
 	mk, ok := c.store.(storepkg.MetaKVCapability)
 	if !ok {
 		return nil

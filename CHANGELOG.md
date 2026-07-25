@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.24.4] - 2026-07-25
+
+Two more commit-clock-floor defects from the same break-round campaign, both introduced in 4.24.1.
+
+- FIX — a session that could not READ the watermark could permanently DOWNGRADE it.
+  `seedInstantFloor` collapsed two different failures into one silent return: an unreadable key (an
+  IO / checksum / value-log fault, with the stored value very possibly INTACT) and a readable but
+  malformed blob. Only the second justifies overwriting. `Close` then wrote this session's
+  `lastInstant` unconditionally, so ONE transient read fault destroyed a floor the session never
+  saw. Because the seed is the only door that raises the floor on a plain reopen, every later open
+  reseeded the regressed value and `NowTx()` under-covered burst rows still in the store — the exact
+  anachronism lesson 71 exists to close, made durable. `Core.floorSeedUnreadable` now records the
+  read failure and `persistInstantFloor` declines to write; a readable-but-malformed blob keeps the
+  4.24.2 overwrite-and-heal behaviour, so the two paths stay distinct.
+  Test: `TestInstantFloor_FailedSeedMustNotDowngradeTheWatermark`.
+- FIX — a REJECTED import advanced the commit clock. `importEntityRecord` advanced the floor as its
+  FIRST action on each wire, before token validation, property-limit checks and the integrity-hash
+  verification — so a corrupt snapshot that is rejected and rolled back still left its foreign stamp
+  installed in this graph's clock, durably once `Close` persisted it. The advance now happens only
+  after the record is validated and stored, which is what `applyChangeRecordLocked` already did and
+  documented ("advancing only AFTER a successful apply keeps a rejected/corrupt record from pushing
+  the floor"). The import path simply did not follow the rule its sibling stated.
+  NOT covered by a test: constructing an export stream that reaches the per-wire advance site and is
+  then rejected needs disproportionate plumbing. Stated rather than implied.
+
+
 ## [4.24.3] - 2026-07-25
 
 Tests only, no behaviour change. Break-round coverage for the commit-clock floor, closing the gaps
