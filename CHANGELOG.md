@@ -8,6 +8,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [4.24.5] - 2026-07-25
 
+The plausibility bound added in 4.24.2 was on the wrong door — in both directions.
+
+- FIX — a COMMITTED row's stamp could be silently refused. 4.24.2 bounded `advanceInstantFloor`
+  against the local wall clock and applied that bound to every caller. But the apply door
+  replicates a row that is ALREADY COMMITTED on the primary: declining to raise the floor stores
+  the row durably while leaving `NowTx()` below it, so every AS-OF read at the pin drops it. That
+  is the lesson-71 anachronism reintroduced, and silently. It is not an exotic case either — a
+  replica whose clock lags the primary by years (a stale VM image, a dead RTC, a container with no
+  NTP) reads EVERY legitimate primary stamp as out-of-bound and stops advancing altogether.
+
+- FIX — a corrupt EXPORT STREAM could poison the commit clock. An export file is untrusted input
+  in exactly the way the durable watermark is: a truncated copy, a bit-rotted archive, a snapshot
+  from a host with a broken RTC, an attacker-supplied stream. A well-formed, correctly-hashed wire
+  carrying `TxFrom = MaxInt64` installed a floor at MaxInt64, and the damage was not scoped to the
+  bad row — every subsequent write in the process took its stamp from that floor. Because `TxFrom`
+  is outside the integrity hash, `VerifyNodeChain` / `VerifyRelChain` kept reporting the store as
+  healthy throughout. The import door now bounds the stamp and REJECTS the record as
+  `ErrCorruptExport`; since the row is already stored at that point, silence would itself be an
+  anachronism, so the failure is loud and Import's existing rollback unwinds the stream atomically.
+
+  The resulting rule — three doors, not two:
+
+  | door   | input                | on an implausible stamp                     |
+  |--------|----------------------|---------------------------------------------|
+  | seed   | bytes off disk       | bound; fall back to the wall clock, self-heal |
+  | import | export stream        | bound; reject as `ErrCorruptExport` + rollback |
+  | apply  | already-committed row | always advance — the row exists either way   |
+
+- HARDEN — `Core.now()` now SATURATES at `MaxInt64` instead of computing `last + 1` into an
+  overflow. This is defence in depth and independent of where a large floor came from: 4.24.1's
+  catastrophic symptom was never the large floor itself but the wrap to `MinInt64`, which turned
+  every subsequent `TxFrom` negative while the integrity chains still verified.
+
+Every test was proven RED against the prior code before the fix landed:
+`CommittedStampAlwaysRaisesTheFloor` (NowTx 1784974338923 < a committed 2100335338923),
+`CommitClock_NeverWrapsPastMaxInt64` (`now()` = -9223372036854775808),
+`CorruptExportCannotPoisonTheCommitClock` (NowTx = 9223372036854775807), plus
+`SeedStillRefusesAnImplausibleWatermark` as the control that the seed bound was moved, not deleted.
+
+## [4.24.4] - 2026-07-25
+
+
 Two more commit-clock-floor defects from the same break-round campaign, both introduced in 4.24.1.
 
 - FIX — a session that could not READ the watermark could permanently DOWNGRADE it.
