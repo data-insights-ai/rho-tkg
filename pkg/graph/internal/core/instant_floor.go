@@ -135,15 +135,7 @@ func (c *Core) persistInstantFloor() error {
 		// from every future AS-OF pin.
 		return nil
 	}
-	if err := c.writeInstantFloor(); err != nil {
-		return err
-	}
-	// The flag says "this session never learned the durable value, so it must
-	// not overwrite it". That is no longer true: this session just WROTE it.
-	// Leaving it set makes the following Close decline to persist a floor that
-	// is strictly higher, stranding every post-Reset write above the watermark.
-	c.floorSeedUnreadable = false
-	return nil
+	return c.writeInstantFloor()
 }
 
 // writeInstantFloor unconditionally writes the live floor to the durable
@@ -191,7 +183,16 @@ func (c *Core) restoreInstantFloorAfterReset() error {
 	// has already destroyed the key, so there is no durable value left to
 	// protect, and honouring the rule would cost exactly the thing it exists to
 	// preserve — the watermark would simply be gone.
-	return c.writeInstantFloor()
+	if err := c.writeInstantFloor(); err != nil {
+		return err
+	}
+	// And clear the flag. It means "this session never learned the durable
+	// value, so it must not overwrite it" — no longer true, because this session
+	// just WROTE it. Left set, the following Close declines to persist a
+	// strictly higher floor, stranding every post-Reset write above the
+	// watermark.
+	c.floorSeedUnreadable = false
+	return nil
 }
 
 // checkImportedRecordStamp is the DELTA-MERGE door's stamp bound.
