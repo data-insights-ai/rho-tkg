@@ -6,6 +6,64 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.24.10] - 2026-07-25
+
+The last confirmed defect from the break campaign, written test-first: the property test was authored
+from the specification and observed RED against the unfixed code before the fix existed.
+
+- FIX — a SATURATED commit clock stamped two rows identically. 4.24.5 made `now()` saturate at MaxInt64
+  rather than wrap to MinInt64, because wrapping turned every later `TxFrom` negative. Saturating was
+  strictly better but replaced one silent corruption with another: at the ceiling every call returns the
+  same instant, so a version and the version it supersedes get identical stamps and the superseded row's
+  `[TxFrom, TxTo)` collapses to ZERO WIDTH — an AS-OF read then sees neither version or both. Silent in
+  the same way the wrap was, `TxFrom`/`TxTo` being outside the integrity hash.
+
+  A write is now REFUSED at exhaustion (`ErrCommitClockExhausted`) instead of silently duplicating.
+  `MaxInt64` is itself a valid unique stamp, so the flag is set when it is HANDED OUT and the NEXT write
+  is refused; flagging on detection would be a call too late, letting the write that triggers saturation
+  commit the duplicate. Reads are unaffected — `NowTx` stays valid as an AS-OF pin at the ceiling.
+
+  RED: `two committed rows share TxFrom=9223372036854775807`. Unreachable in practice (every untrusted
+  door bounds its stamps, 4.24.5-9), so this is defence in depth exactly like the saturation it corrects.
+
+## [4.24.9] - 2026-07-25
+
+- TEST — RED-proves the applied-LSN rollback guard from 4.24.7, done in the required order: the fix was
+  REVERTED first, the test written against the pre-fix code, RED observed, then the fix restored.
+  RED: `applied-LSN watermark = 9000 after a FAILED import, was 0 before`.
+
+  The previous version of that test was worthless, and reverting the fix is what exposed it: it drove a
+  MID-REPLAY failure, but the `SnapshotLSN` commit sits at the END of `importReplayRecordsLocked`, so the
+  watermark read 0 both before and after and the assertion held trivially. Reaching the defect needs the
+  replay to SUCCEED so the watermark commits, and post-replay validation to fail afterwards — a unique
+  constraint plus a stream carrying two conflicting nodes.
+
+- The foreign-stub ordering guard from 4.24.7 is documented as NOT RED-provable through that door, by
+  exhaustion rather than assumption: with the fix reverted, three distinct failure modes were driven
+  through `RecordForeignIncoming` and all three still advanced the floor, because
+  `createRelWithTypeRollback` returns a non-nil rel alongside its error whenever it cannot remove the
+  partial row. Proving it needs a concurrent reader calling `NowTx` mid-create, or a fault hook between
+  the store write and the advance.
+
+## [4.24.8] - 2026-07-25
+
+- FIX — the 4.24.6 clear of `floorSeedUnreadable` HAD LANDED IN THE WRONG FUNCTION and so was never in
+  effect. It was meant for `restoreInstantFloorAfterReset` (the Reset path, which writes the watermark
+  itself and therefore knows the durable value); a scripted replacement matched the first
+  `return c.writeInstantFloor()` in the file instead, which belongs to `persistInstantFloor`, where an
+  early return makes it unreachable. The defect 4.24.6 claimed to close was untouched: after a Reset,
+  Close still declined to persist a strictly higher floor and every post-Reset write stayed stranded
+  above the durable watermark. Found by writing the missing test.
+
+- TEST — the four 4.24.6 fixes shipped without tests. Added, each RED-proven: refused-seed watermark
+  destruction (`838296301877 < 1784981103174` — a 30-year-regressed clock refusing a valid watermark,
+  then overwriting it), negative foreign `TxFrom` accepted and stored, the stale seed flag after Reset,
+  and an import stamp bounded only after the row was already PUBLISHED to the change feed
+  (`tag NodePut` carrying MaxInt64 — rollback unwinds the store but cannot unpublish).
+
+- FIX — docs version drift: `AGENTS.md` and `docs/architecture.md` still read v4.24.5, so
+  `TestDocsMetadataMatchesSourceOfTruth` had been failing on main since the v4.24.7 tag.
+
 ## [4.24.7] - 2026-07-25
 
 Break-campaign round two: the remaining defects on the import/replica paths.
