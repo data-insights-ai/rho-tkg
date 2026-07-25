@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	constraintspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/constraints"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	tkgio "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -15,27 +16,27 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// NOT RED-PROVEN — read this before trusting either test below as a guard.
+// The LSN test below is RED-PROVEN; the foreign-stub test is NOT. Read this
+// before trusting the second one as a guard.
 //
-// Both assert the right property and both pass, but removing the production fix
-// does NOT make either fail, so neither has demonstrated it can detect the
-// defect it describes. They are documentation with a runnable assertion, not
-// verified regression guards.
-//
-//   - The LSN test drives a MID-REPLAY failure (an unresolvable relationship
-//     endpoint). The SnapshotLSN commit sits at the END of
-//     importReplayRecordsLocked, so that path never reaches it: the watermark is
-//     0 before and after, and the assertion holds trivially. The path that
-//     actually exhibits the bug is the OTHER one — replay SUCCEEDS, the
-//     watermark commits, and post-replay unique-constraint validation then fails
-//     and rolls back. Reproducing it needs a unique constraint installed against
-//     the imported label (installConstraintLocked) plus a stream carrying two
-//     conflicting nodes.
-//   - The foreign-stub test infers ordering from a FAILED create, but the create
-//     fails during validation, before either arrangement reaches its advance.
-//     Ordering is a concurrency property; a single-threaded observation of the
-//     end state cannot separate before-store from after-store. It needs a
-//     concurrent reader calling NowTx while the create is in flight.
+//   - TestImport_FailedReplayRestoresTheAppliedLSNWatermark: RED against the
+//     pre-fix code with `applied-LSN watermark = 9000 after a FAILED import,
+//     was 0 before`. Its first version was worthless: it drove a MID-REPLAY
+//     failure, but the SnapshotLSN commit sits at the END of
+//     importReplayRecordsLocked, so that path never reached it and the
+//     assertion held trivially at 0 == 0. The path that exhibits the bug needs
+//     the replay to SUCCEED — a unique constraint plus a stream carrying two
+//     conflicting nodes, so validation fails AFTER the watermark commits.
+//   - The foreign-stub test infers ordering from a FAILED create. Verified by
+//     reverting the fix: the create really does fail (ErrSlotNotLocal), but
+//     createRelWithTypeRollback returns a NON-NIL rel alongside the error when
+//     it cannot clean up the partial row ("failed to remove partial
+//     relationship ... after create failure"). The pre-fix guard is
+//     `if rel != nil`, so the advance runs in BOTH arrangements and the end
+//     states are identical. Ordering here is a concurrency property and no
+//     single-threaded observation can separate before-store from after-store;
+//     it needs a concurrent reader calling NowTx while the create is in flight,
+//     or a fault hook between the store write and the advance.
 //
 // Both gaps are named rather than papered over: a test that cannot fail is worse
 // than no test, because it reads as coverage.
@@ -49,45 +50,59 @@ import (
 // silently serves an incomplete dataset — the failure mode
 // metakv_reap_policy.go already documents for replicaAppliedLSNMeta.
 func TestImport_FailedReplayRestoresTheAppliedLSNWatermark(t *testing.T) {
+	ctx := context.Background()
 	g, err := New(Config{Store: memory.New()})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	defer g.Close()
 
+	// A unique constraint the imported stream will violate. This is the ONLY
+	// path that reaches the bug: the SnapshotLSN commit sits at the END of
+	// importReplayRecordsLocked, so a mid-replay failure never gets there. The
+	// replay must SUCCEED (committing the watermark) and post-replay validation
+	// must then fail and roll back.
+	seed, err := g.Nodes.Add(ctx, []string{"Person"}, map[string]any{"email": "seed@x"})
+	if err != nil {
+		t.Fatalf("seed node: %v", err)
+	}
+	labelTok, ok := g.labels.Lookup("Person")
+	if !ok {
+		t.Fatal("Person label token missing")
+	}
+	g.uniqueMu.Lock()
+	g.installConstraintLocked(labelTok, "email", "Person", constraintspkg.UniqueCurrent, true)
+	g.uniqueMu.Unlock()
+	_ = seed
+
 	before, err := g.appliedLSNLocked()
 	if err != nil {
 		t.Skipf("backend does not expose an applied-LSN watermark: %v", err)
 	}
 
-	// A snapshot claiming a high LSN whose LAST record is unresolvable, so the
-	// replay fails AFTER the watermark has been committed.
 	const snapshotLSN = 9_000
 	var stream bytes.Buffer
-	// NodeCount/RelCount must match the stream, or the header check rejects it
-	// before the replay ever reaches the watermark commit — which made the first
-	// version of this test vacuous.
 	writeImportMsgpackRecord(t, &stream, exportTagHeader, exportHeader{
-		Version: exportFormatVersion, SnapshotLSN: snapshotLSN, NodeCount: 1, RelCount: 1,
+		Version: exportFormatVersion, SnapshotLSN: snapshotLSN, NodeCount: 2,
 	})
 	writeImportMsgpackRecord(t, &stream, exportTagRegistry, tiered.RegistryFileData{
-		Labels: []string{"", "Person"}, RelTypes: []string{"", "KNOWS"},
+		Labels: g.labels.ExportNames(), RelTypes: g.relTypes.ExportNames(),
 	})
-	writeImportMsgpackRecord(t, &stream, exportTagNode, mustHashedNodeWire(t, storeutil.NodeWire{
-		ID: 100, PrimaryLabel: 1, Version: 1,
-	}, []string{"Person"}))
-	// Endpoint 200 does not exist: PutRelationship fails after the node replay.
-	writeImportMsgpackRecord(t, &stream, exportTagRel, mustHashedRelWire(t, storeutil.RelWire{
-		ID: 300, RelType: 1, StartID: 100, EndID: 200,
-	}, "KNOWS"))
-
-	if err := g.IO.Import(bytes.NewReader(stream.Bytes()), tkgio.ImportOptions{}); err == nil {
-		t.Fatal("precondition: the import was expected to fail")
+	// Two Person nodes sharing an email: both replay cleanly, then validation
+	// rejects the pair.
+	for _, id := range []int64{7001, 7002} {
+		writeImportMsgpackRecord(t, &stream, exportTagNode, mustHashedNodeWire(t, storeutil.NodeWire{
+			ID: id, PrimaryLabel: int(labelTok), Version: 1,
+			Properties: []storeutil.PropertyWire{{Key: "email", Value: "dup@x"}},
+		}, []string{"Person"}))
 	}
 
-	// The data really was unwound.
-	if _, err := g.store.GetNode(types.NodeID(100)); !errors.Is(err, storepkg.ErrNodeNotFound) {
-		t.Fatalf("precondition: node 100 survived the rollback (%v)", err)
+	err = g.IO.Import(bytes.NewReader(stream.Bytes()), tkgio.ImportOptions{})
+	if err == nil {
+		t.Fatal("precondition: the import was expected to fail unique validation")
+	}
+	if _, gerr := g.store.GetNode(types.NodeID(7001)); !errors.Is(gerr, storepkg.ErrNodeNotFound) {
+		t.Fatalf("precondition: node 7001 survived the rollback (%v)", gerr)
 	}
 
 	after, err := g.appliedLSNLocked()
@@ -95,10 +110,11 @@ func TestImport_FailedReplayRestoresTheAppliedLSNWatermark(t *testing.T) {
 		t.Fatalf("read applied LSN: %v", err)
 	}
 	if after != before {
-		t.Fatalf("applied-LSN watermark = %d after a FAILED import, was %d before. The data was "+
-			"rolled back but the replay position was not, so this replica now claims to hold a "+
-			"snapshot it fully unwound — it will consider itself caught up, never re-bootstrap, and "+
-			"silently serve an incomplete dataset.", after, before)
+		t.Fatalf("applied-LSN watermark = %d after a FAILED import, was %d before. The replay "+
+			"committed the snapshot watermark, then unique validation rolled the DATA back — but "+
+			"rollback knows nothing about the watermark. This replica now claims to hold a snapshot "+
+			"it fully unwound: it will consider itself caught up, never re-bootstrap, and silently "+
+			"serve an incomplete dataset.", after, before)
 	}
 }
 
