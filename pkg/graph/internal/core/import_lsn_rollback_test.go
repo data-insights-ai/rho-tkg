@@ -27,16 +27,23 @@ import (
 //     assertion held trivially at 0 == 0. The path that exhibits the bug needs
 //     the replay to SUCCEED — a unique constraint plus a stream carrying two
 //     conflicting nodes, so validation fails AFTER the watermark commits.
-//   - The foreign-stub test infers ordering from a FAILED create. Verified by
-//     reverting the fix: the create really does fail (ErrSlotNotLocal), but
-//     createRelWithTypeRollback returns a NON-NIL rel alongside the error when
-//     it cannot clean up the partial row ("failed to remove partial
-//     relationship ... after create failure"). The pre-fix guard is
-//     `if rel != nil`, so the advance runs in BOTH arrangements and the end
-//     states are identical. Ordering here is a concurrency property and no
-//     single-threaded observation can separate before-store from after-store;
-//     it needs a concurrent reader calling NowTx while the create is in flight,
-//     or a fault hook between the store write and the advance.
+//   - The foreign-stub test CANNOT be RED-proven through this door, and that is
+//     now established by exhaustion rather than assumed. With the fix reverted
+//     (advance back inside `if rel != nil`, after the create), three distinct
+//     failure modes were driven through it — an END id on a non-local slot, an
+//     absent END id on a local slot, and a bogus foreign START id — and ALL
+//     THREE still advanced the floor. The reason is that
+//     createRelWithTypeRollback returns a NON-NIL rel alongside its error
+//     whenever it cannot remove the partial row ("failed to remove partial
+//     relationship ... after create failure"), which in this harness it never
+//     can. So `rel != nil` holds on every reachable error path and the two
+//     arrangements produce identical end states.
+//
+//     Ordering is a concurrency property: the fix closes a window between the
+//     store write and the advance, and no single-threaded observation of the end
+//     state can see a window. Proving it needs a concurrent reader calling NowTx
+//     while the create is in flight, or a fault hook injected between the two
+//     steps — neither of which exists today.
 //
 // Both gaps are named rather than papered over: a test that cannot fail is worse
 // than no test, because it reads as coverage.
