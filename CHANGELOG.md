@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.24.7] - 2026-07-25
+
+Break-campaign round two: the remaining defects on the import/replica paths.
+
+- FIX — a rolled-back Import left the bootstrap-handoff applied-LSN watermark ADVANCED.
+  `importReplayRecordsLocked` commits `header.SnapshotLSN` as it replays; both failure paths (replay
+  error, post-replay unique-constraint violation) roll back entities and registries, which have no
+  knowledge of the watermark. The replica was left claiming a replay position for a snapshot it had
+  fully unwound — it then believes it is caught up, never re-bootstraps, and silently serves an
+  incomplete dataset, the exact failure mode `metakv_reap_policy.go` documents for
+  `replicaAppliedLSNMeta`. The prior value is captured before replay and restored on both paths.
+
+- FIX — `RecordForeignIncoming` advanced the commit-clock floor AFTER storing the stub, leaving a
+  window where the row is durable and readable while `NowTx()` is still below it. The door holds a
+  shared RLock and `NowTx` takes no lock, so the window is concurrently observable. The advance now
+  precedes the create; the stamp is already bounded, so a failed create leaves the floor merely
+  higher than needed (over-coverage is harmless, under-coverage hides a stored row).
+
+- DOC — `ImportMerge` promised unqualified all-or-nothing rollback while `ChangeRangePurge` is
+  deliberately IRREVERSIBLE: capturing the rows a retention purge is about to remove, even
+  transiently, would undermine the compliance guarantee the purge made. The reasoning stands; the
+  contract now states the exception rather than over-promising.
+
 ## [4.24.5] - 2026-07-25
 
 The plausibility bound added in 4.24.2 was on the wrong door — in both directions.
