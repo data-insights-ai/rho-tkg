@@ -29,6 +29,42 @@ Break-campaign round two: the remaining defects on the import/replica paths.
   transiently, would undermine the compliance guarantee the purge made. The reasoning stands; the
   contract now states the exception rather than over-promising.
 
+## [4.24.6] - 2026-07-25
+
+Five more commit-clock floor defects, all on doors introduced or touched by 4.24.5.
+
+- FIX — a REFUSED watermark was overwritten at Close. `seedInstantFloor`'s plausibility check took a
+  bare return without setting `floorSeedUnreadable`, so Close then wrote this session's lower floor
+  over a well-formed high-water mark. On a host whose RTC is decades behind — a dead battery, a
+  pre-NTP boot, a VM restored from an old snapshot — the bound is a statement about the CLOCK, not
+  the watermark, and the watermark is precisely the wall-independent defence that should cover it.
+  A refused value is unvalidated exactly as an unreadable one is; only a malformed blob (wrong
+  length, or <= 0, which cannot be a real instant) justifies overwriting, and those still self-heal.
+
+- FIX — `plausibleForeignStamp` was one-sided, so a NEGATIVE foreign `TxFrom` passed.
+  `RecordForeignIncoming` stores `edge.TxFrom` verbatim, so the row landed with negative transaction
+  time that no AS-OF pin can reach — invisibly, `TxFrom` being outside the integrity hash.
+
+- FIX — `floorSeedUnreadable` was never cleared after Reset. `restoreInstantFloorAfterReset`
+  deliberately bypasses the guard and writes the watermark itself, but left the flag set, so the
+  following Close declined to persist a strictly higher floor — protecting a value this session had
+  just written. Every post-Reset write was stranded above the durable floor.
+
+- FIX — `Admin.Reset` returned on a failing `store.Clear()` without restoring either Preserve key.
+  Clear is not atomic: a backend that wipes the MetaKV keyspace and then faults has already
+  destroyed both, and `leaseBytes` was captured then discarded.
+
+- FIX — Import bounded the wire stamp AFTER writing the row, while ImportMerge bounds before. A
+  stamp Import itself classified as corruption was therefore already in the store and, with the
+  change log on, already published to the change feed — escaping to replicas whose apply door
+  advances the clock unconditionally and correctly, having no way to know the record was about to be
+  rejected upstream. Rollback unwinds the local store; it cannot unpublish.
+
+  Regression caught by the existing suite while fixing this: `recordCommitStamp` returns 0 for every
+  tag carrying no transaction stamp (`ChangeMeta`, `ChangeClear`, `ChangeRangePurge`,
+  `ChangeForeignIncomingDelete`, the history truncations), and a two-sided bound rejects 0,
+  misdiagnosing valid delta records as corruption. Both stamp checks now skip zero explicitly.
+
 ## [4.24.5] - 2026-07-25
 
 The plausibility bound added in 4.24.2 was on the wrong door — in both directions.
