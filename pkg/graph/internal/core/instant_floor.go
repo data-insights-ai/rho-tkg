@@ -49,7 +49,48 @@ func (c *Core) seedInstantFloor() {
 		// self-healing path the corrupt-watermark regression relies on.
 		return
 	}
-	c.advanceInstantFloor(types.Instant(binary.BigEndian.Uint64(v)))
+	seeded := types.Instant(binary.BigEndian.Uint64(v))
+	if !c.plausibleSeedFloor(seeded) {
+		// Readable but absurd — bit rot, a rollback, a unit mix-up, a hostile
+		// write. Treat it as malformed: leave the clock wall-derived and let
+		// Close overwrite it (the self-healing path).
+		return
+	}
+	c.advanceInstantFloor(seeded)
+}
+
+// plausibleSeedFloor bounds the UNTRUSTED durable watermark against this host's
+// wall clock, using the same tolerance advanceClockFloor applies to a
+// caller-supplied HLC merge (~10 years — generous enough that no genuine clock
+// skew is refused, tight enough to catch a unit/scale mixup or a corrupt blob).
+//
+// The bound lives HERE and not in advanceInstantFloor because this is the only
+// door whose input is bytes off disk. The apply and import doors carry stamps
+// for rows being committed, and refusing those would silently leave NowTx()
+// below durably stored data.
+func (c *Core) plausibleSeedFloor(inst types.Instant) bool {
+	return int64(inst) <= c.clock().UnixMilli()+maxClockAdvanceSkewMillis
+}
+
+// advanceImportedStamp is the IMPORT door's floor advance. An export stream is
+// untrusted input in exactly the way the durable watermark is — a truncated
+// copy, a bit-rotted archive, a snapshot from a host with a broken RTC, or an
+// attacker-supplied file — so its stamps are bounded like the seed's.
+//
+// It differs from the seed in what it does on refusal. The seed can silently
+// fall back to a wall-derived clock because nothing has been stored yet. Here
+// the row is already in the store, so silently declining to advance would leave
+// NowTx() below durably stored data — the lesson-71 anachronism. The stamp is
+// instead treated as what it is, corruption: the record is REJECTED, and
+// Import's rollback unwinds the whole stream (see TestR9_ImportReplayError...).
+// Loud and atomic beats silent and half-applied.
+func (c *Core) advanceImportedStamp(inst types.Instant) error {
+	if !c.plausibleSeedFloor(inst) {
+		return fmt.Errorf("%w: transaction stamp %d is implausibly far past this host's clock",
+			ErrCorruptExport, int64(inst))
+	}
+	c.advanceInstantFloor(inst)
+	return nil
 }
 
 // persistInstantFloor writes the current commit-clock floor to the durable

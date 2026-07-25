@@ -34,6 +34,13 @@ func (c *Core) now() types.Instant {
 		last := c.lastInstant.Load()
 		next := observed
 		if next <= last {
+			if last == math.MaxInt64 {
+				// Saturated: never wrap past MaxInt64 into negative transaction
+				// time. Handing back the ceiling repeatedly is wrong but bounded;
+				// wrapping is catastrophic and silent (TxFrom is not in the
+				// integrity hash, so chain verification keeps passing).
+				return types.Instant(math.MaxInt64)
+			}
 			next = last + 1
 		}
 		if c.lastInstant.CompareAndSwap(last, next) {
@@ -115,28 +122,25 @@ func (c *Core) advanceClockFloor(to types.Instant) (types.Instant, error) {
 // ErrInvalidClockAdvance, while this one has no caller to answer, so it simply
 // does not advance.
 //
-// The bound is NOT optional, and an earlier version of this function omitted it
-// on the reasoning that the argument is "a stamp this store minted earlier and
-// already committed, so there is nothing to authorize". That reasoning was
-// wrong on two of the three doors: an APPLIED record carries the PRIMARY's
-// stamp and an IMPORTED wire carries a foreign snapshot's — neither is
-// self-minted — and even the reopen door reads bytes off disk that bit rot, a
-// rollback, or a unit mix-up can corrupt. Unbounded, a single absurd value is
-// catastrophic rather than merely wrong: it installs a floor near MaxInt64,
-// c.now()'s `next = max(wall, last+1)` then OVERFLOWS to MinInt64, every
-// subsequent write is stamped with NEGATIVE transaction time, and Close
-// persists the poisoned floor — so the corruption is durable, not
-// process-scoped. That is the lesson-59 bug class the sibling guard exists for.
+// It deliberately does NOT bound its argument against the local wall clock, and
+// that placement was got wrong twice. Its callers pass stamps for rows that are
+// being COMMITTED — an applied record's, an imported wire's — so silently
+// declining to advance stores the row durably while leaving NowTx() below it,
+// which is the very anachronism this floor exists to prevent, reintroduced
+// quietly. A replica whose own clock lags the primary by years (a stale image,
+// a dead RTC, no NTP) would see EVERY legitimate stamp as out-of-bound and stop
+// advancing altogether.
 //
-// Refusing is the safe direction: the floor stays wall-derived, which is
-// exactly the documented pre-fix behaviour and self-heals as the wall advances.
+// The plausibility bound belongs on the UNTRUSTED door instead — the durable
+// watermark read off disk on open, where bit rot, a rollback or a unit mix-up
+// can supply an absurd value (see plausibleSeedFloor). Overflow safety, the
+// catastrophic half of that failure, is enforced independently in now(), so a
+// large floor from any source can no longer wrap transaction time negative.
+//
 // A no-op when inst <= the current floor. Concurrency-safe (CAS loop,
 // mirroring now()).
 func (c *Core) advanceInstantFloor(inst types.Instant) {
 	if inst <= 0 {
-		return
-	}
-	if wall := c.clock().UnixMilli(); int64(inst) > wall+maxClockAdvanceSkewMillis {
 		return
 	}
 	target := int64(inst)
