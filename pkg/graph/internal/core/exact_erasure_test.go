@@ -11,6 +11,12 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
+var coreExactErasureBounds = ExactErasureBounds{
+	MaxRelationshipIdentities: 32,
+	MaxRelationshipVersions:   128,
+	MaxEndpointNodeIdentities: 64,
+}
+
 func TestAdminOpsExactEraseGateDigestMetadataAndRetry(t *testing.T) {
 	ctx := context.Background()
 	disabled, err := New(Config{Store: memory.New()})
@@ -68,6 +74,7 @@ func TestAdminOpsExactEraseGateDigestMetadataAndRetry(t *testing.T) {
 	first, err := g.Admin.ExactErase(ctx, ExactErasureRequest{
 		NodeIDs:         []types.NodeID{a.ID(), a.ID()},
 		RelationshipIDs: []types.RelID{r.ID(), r.ID()},
+		Bounds:          coreExactErasureBounds,
 	})
 	if err != nil {
 		t.Fatalf("ExactErase: %v", err)
@@ -85,6 +92,7 @@ func TestAdminOpsExactEraseGateDigestMetadataAndRetry(t *testing.T) {
 	second, err := g.Admin.ExactErase(ctx, ExactErasureRequest{
 		RelationshipIDs: []types.RelID{r.ID()},
 		NodeIDs:         []types.NodeID{a.ID()},
+		Bounds:          coreExactErasureBounds,
 	})
 	if err != nil {
 		t.Fatalf("idempotent ExactErase: %v", err)
@@ -129,7 +137,69 @@ func TestAdminOpsExactEraseCapabilityAndValidation(t *testing.T) {
 	if _, err := g.Admin.ExactErase(context.Background(), ExactErasureRequest{}); !errors.Is(err, ErrInvalidExactErasureRequest) {
 		t.Fatalf("empty request = %v, want ErrInvalidExactErasureRequest", err)
 	}
-	if _, err := g.Admin.ExactErase(context.Background(), ExactErasureRequest{NodeIDs: []types.NodeID{1}}); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
+	if _, err := g.Admin.ExactErase(context.Background(), ExactErasureRequest{
+		NodeIDs: []types.NodeID{1},
+		Bounds:  coreExactErasureBounds,
+	}); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
 		t.Fatalf("missing capability = %v, want ErrCapabilityNotSupported", err)
+	}
+	if _, err := g.Admin.ResolveExactErasure(
+		context.Background(),
+		ExactErasureRequest{NodeIDs: []types.NodeID{1}, Bounds: coreExactErasureBounds},
+	); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
+		t.Fatalf("missing resolve capability = %v, want ErrCapabilityNotSupported", err)
+	}
+}
+
+func TestAdminOpsResolveExactErasureValidationLifecycleAndClosure(t *testing.T) {
+	ctx := context.Background()
+	g, err := New(Config{Store: memory.New(), AllowExactErasure: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := g.Nodes.Add(ctx, []string{"Person"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := g.Nodes.Add(ctx, []string{"Person"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := g.Rels.Add(ctx, "KNOWS", a, b, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, err := g.Admin.ResolveExactErasure(ctx, ExactErasureRequest{
+		NodeIDs: []types.NodeID{a.ID(), a.ID()},
+		Bounds:  coreExactErasureBounds,
+	})
+	if err != nil {
+		t.Fatalf("ResolveExactErasure: %v", err)
+	}
+	if len(resolved.Request.NodeIDs) != 1 ||
+		len(resolved.Request.RelationshipIDs) != 1 ||
+		resolved.Request.RelationshipIDs[0] != r.ID() ||
+		len(resolved.EndpointNodeIDs) != 2 ||
+		len(resolved.RelationshipBindings) != 1 ||
+		resolved.RelationshipBindings[0].Type != "KNOWS" {
+		t.Fatalf("resolved = %+v", resolved)
+	}
+	if _, err = g.Admin.ResolveExactErasure(nil, resolved.Request); !errors.Is(err, ErrNilContext) {
+		t.Fatalf("nil context = %v, want ErrNilContext", err)
+	}
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err = g.Admin.ResolveExactErasure(cancelled, resolved.Request); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled context = %v, want context.Canceled", err)
+	}
+	if _, err = g.Admin.ResolveExactErasure(ctx, ExactErasureRequest{}); !errors.Is(err, ErrInvalidExactErasureRequest) {
+		t.Fatalf("empty resolve = %v, want ErrInvalidExactErasureRequest", err)
+	}
+	if err = g.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = g.Admin.ResolveExactErasure(ctx, resolved.Request); !errors.Is(err, ErrGraphClosed) {
+		t.Fatalf("closed resolve = %v, want ErrGraphClosed", err)
 	}
 }

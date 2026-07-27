@@ -620,6 +620,13 @@ type Store struct {
 	// rev check. Set only from the owning test.
 	replaceRelPrefetchTestHook func()
 
+	// exactErasureScanTestHook, when non-nil, runs immediately before each
+	// fallible exact-erasure preflight scan. Production leaves it nil. Tests
+	// inject a failure at a late scan and prove the destructive apply phase has
+	// not started: current rows/indexes remain visible and no delete op entered
+	// the write buffer.
+	exactErasureScanTestHook func(stage string, id uint64) error
+
 	// Property indexes — in-memory only. Definitions persisted, data rebuilt on startup.
 	propertyIndexes map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex
 

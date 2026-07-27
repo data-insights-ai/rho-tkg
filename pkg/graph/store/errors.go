@@ -38,9 +38,14 @@ var (
 	ErrTxDone                      = errors.New("graph: transaction already committed or rolled back")
 	ErrStoreClosed                 = errors.New("graph: store already closed")
 	// ErrExactErasureRelationshipEscape is returned before any mutation when a
-	// live relationship touching a declared node is absent from the caller's
-	// declared relationship set. Exact erasure never infers or widens scope.
+	// current or historical relationship version touching a declared node is
+	// absent from the caller's declared relationship set. Exact erasure never
+	// infers or widens scope.
 	ErrExactErasureRelationshipEscape = errors.New("graph: exact erasure scope excludes a relationship touching a declared node")
+	// ErrExactErasureClosureLimit is returned before mutation when resolving or
+	// rechecking historical relationship closure exhausts a caller-declared
+	// identity or version bound.
+	ErrExactErasureClosureLimit = errors.New("graph: exact erasure relationship closure exceeds its bound")
 	// ErrExactErasureChangeLogRetained is returned before any mutation when the
 	// backend has an enabled, buffered, scoped, or persisted change-log record.
 	// Change records carry full entity payloads, so erasing graph rows while

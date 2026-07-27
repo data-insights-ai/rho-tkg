@@ -39,6 +39,17 @@ type PurgeReport = core.PurgeReport
 // ExactErasureRequest declares the complete bounded graph scope to erase.
 type ExactErasureRequest = core.ExactErasureRequest
 
+// ExactErasureResolution separates the canonical deletion request from
+// historical endpoint evidence that its semantic owner must classify.
+type ExactErasureResolution = core.ExactErasureResolution
+
+// ExactErasureRelationshipBinding is one matching current or historical
+// relationship version with its resolved type and endpoint identities.
+type ExactErasureRelationshipBinding = core.ExactErasureRelationshipBinding
+
+// ExactErasureBounds makes current-plus-history relationship closure finite.
+type ExactErasureBounds = core.ExactErasureBounds
+
 // ExactErasureReceipt is the stable, content-addressed completion receipt.
 type ExactErasureReceipt = core.ExactErasureReceipt
 
@@ -57,6 +68,7 @@ type Ops interface {
 	CompactHistoryNodes(ctx context.Context, policy RetentionPolicy) (CompactReport, error)
 	CompactHistoryRels(ctx context.Context, policy RetentionPolicy) (CompactReport, error)
 	PurgeExpiredNodes(ctx context.Context, policy PurgePolicy) (PurgeReport, error)
+	ResolveExactErasure(ctx context.Context, request ExactErasureRequest) (ExactErasureResolution, error)
 	ExactErase(ctx context.Context, request ExactErasureRequest) (ExactErasureReceipt, error)
 }
 
@@ -138,10 +150,23 @@ func (a *API) PurgeExpiredNodes(ctx context.Context, policy PurgePolicy) (PurgeR
 	return ops.PurgeExpiredNodes(ctx, policy)
 }
 
+// ResolveExactErasure canonicalizes a bounded request and expands its
+// relationship IDs with every identity whose current row or any temporal
+// version references a declared node. It is read-only; ExactErase rechecks the
+// same closure under destructive backend exclusion.
+func (a *API) ResolveExactErasure(ctx context.Context, request ExactErasureRequest) (ExactErasureResolution, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return ExactErasureResolution{}, err
+	}
+	return ops.ResolveExactErasure(ctx, request)
+}
+
 // ExactErase hard-removes the caller-declared node and relationship sets,
 // including all history and index residue, without tombstones. The request is
-// fail-closed: every live relationship touching a declared node must itself be
-// declared. The returned SHA-256 digest is stable across idempotent retries.
+// fail-closed: every current or historical relationship version touching a
+// declared node must itself be declared. The returned SHA-256 digest is stable
+// across idempotent retries.
 func (a *API) ExactErase(ctx context.Context, request ExactErasureRequest) (ExactErasureReceipt, error) {
 	ops, err := a.ready()
 	if err != nil {

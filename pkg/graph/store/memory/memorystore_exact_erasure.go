@@ -2,11 +2,32 @@ package memory
 
 import (
 	"fmt"
+	"sort"
 
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
+
+// ExactErasureRelationshipClosure resolves every relationship identity whose
+// current row or any temporal version touches a declared node.
+func (ms *Store) ExactErasureRelationshipClosure(
+	req storecontract.ExactErasureClosureRequest,
+) (storecontract.ExactErasureClosure, error) {
+	var zero storecontract.ExactErasureClosure
+	if ms == nil {
+		return zero, ErrNilStore
+	}
+	if err := validateExactErasureClosureRequest(req); err != nil {
+		return zero, err
+	}
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	if err := ms.checkOpenLocked(); err != nil {
+		return zero, err
+	}
+	return ms.exactErasureRelationshipClosureLocked(req.NodeIDs, req.Bounds)
+}
 
 // ExactErase implements store.ExactErasureCapability. The memory backend's
 // single write lock is the commit boundary: every preflight completes before
@@ -38,6 +59,18 @@ func (ms *Store) ExactErase(req storecontract.ExactErasureRequest) (storecontrac
 	nodeSet := make(map[types.NodeID]struct{}, len(req.NodeIDs))
 	for _, id := range req.NodeIDs {
 		nodeSet[id] = struct{}{}
+	}
+	if len(req.NodeIDs) != 0 {
+		closure, err := ms.exactErasureRelationshipClosureLocked(req.NodeIDs, req.Bounds)
+		if err != nil {
+			return zero, err
+		}
+		for _, rid := range closure.RelationshipIDs {
+			if _, ok := relSet[rid]; !ok {
+				return zero, fmt.Errorf("%w: node history relationship %d",
+					storecontract.ErrExactErasureRelationshipEscape, rid)
+			}
+		}
 	}
 	for _, nid := range req.NodeIDs {
 		for rid := range ms.outIdx[nid] {
@@ -162,7 +195,150 @@ func validateExactErasureRequest(req storecontract.ExactErasureRequest) error {
 		}
 		prevRel = id
 	}
+	if len(req.NodeIDs) != 0 {
+		if err := validateExactErasureBounds(req.Bounds); err != nil {
+			return err
+		}
+		if len(req.RelIDs) > req.Bounds.MaxRelationshipIdentities {
+			return storecontract.ErrExactErasureClosureLimit
+		}
+	}
 	return nil
+}
+
+func validateExactErasureClosureRequest(req storecontract.ExactErasureClosureRequest) error {
+	if len(req.NodeIDs) == 0 {
+		return storecontract.ErrInvalidStoreMutation
+	}
+	var prev types.NodeID
+	for i, id := range req.NodeIDs {
+		if err := storecontract.ValidateNodeID(id); err != nil {
+			return err
+		}
+		if i > 0 && id <= prev {
+			return storecontract.ErrInvalidStoreMutation
+		}
+		prev = id
+	}
+	return validateExactErasureBounds(req.Bounds)
+}
+
+func validateExactErasureBounds(bounds storecontract.ExactErasureBounds) error {
+	if bounds.MaxRelationshipIdentities <= 0 ||
+		bounds.MaxRelationshipVersions <= 0 ||
+		bounds.MaxEndpointNodeIdentities <= 0 {
+		return storecontract.ErrInvalidStoreMutation
+	}
+	return nil
+}
+
+func (ms *Store) exactErasureRelationshipClosureLocked(
+	nodeIDs []types.NodeID,
+	bounds storecontract.ExactErasureBounds,
+) (storecontract.ExactErasureClosure, error) {
+	var zero storecontract.ExactErasureClosure
+	nodeSet := make(map[types.NodeID]struct{}, len(nodeIDs))
+	for _, id := range nodeIDs {
+		nodeSet[id] = struct{}{}
+	}
+	matches := make(map[types.RelID]struct{})
+	endpoints := make(map[types.NodeID]struct{})
+	bindings := make(map[storecontract.ExactErasureRelationshipBinding]struct{})
+	scanned := 0
+	inspect := func(rid types.RelID, rel *types.Relationship) error {
+		scanned++
+		if scanned > bounds.MaxRelationshipVersions {
+			return storecontract.ErrExactErasureClosureLimit
+		}
+		if rel == nil || rel.ID() != rid {
+			return storecontract.ErrInvalidStoreMutation
+		}
+		_, start := nodeSet[rel.StartNodeID()]
+		_, end := nodeSet[rel.EndNodeID()]
+		if !start && !end {
+			return nil
+		}
+		matches[rid] = struct{}{}
+		if len(matches) > bounds.MaxRelationshipIdentities {
+			return storecontract.ErrExactErasureClosureLimit
+		}
+		endpoints[rel.StartNodeID()] = struct{}{}
+		endpoints[rel.EndNodeID()] = struct{}{}
+		if len(endpoints) > bounds.MaxEndpointNodeIdentities {
+			return storecontract.ErrExactErasureClosureLimit
+		}
+		integrity := rel.Integrity()
+		integrityHash := ""
+		if integrity != nil {
+			integrityHash = integrity.Hash
+		}
+		bindings[storecontract.ExactErasureRelationshipBinding{
+			RelationshipID: rid,
+			TypeToken:      rel.TypeToken().Value(),
+			StartNodeID:    rel.StartNodeID(),
+			EndNodeID:      rel.EndNodeID(),
+			Version:        rel.Version(),
+			IntegrityHash:  integrityHash,
+		}] = struct{}{}
+		return nil
+	}
+	for rid, rel := range ms.rels {
+		if err := inspect(rid, rel); err != nil {
+			return zero, err
+		}
+	}
+	for rid, versions := range ms.relHistory {
+		for _, rel := range versions {
+			if err := inspect(rid, rel); err != nil {
+				return zero, err
+			}
+		}
+	}
+	result := storecontract.ExactErasureClosure{
+		RelationshipIDs: make([]types.RelID, 0, len(matches)),
+		EndpointNodeIDs: make([]types.NodeID, 0, len(endpoints)),
+		Bindings:        make([]storecontract.ExactErasureRelationshipBinding, 0, len(bindings)),
+	}
+	for rid := range matches {
+		result.RelationshipIDs = append(result.RelationshipIDs, rid)
+	}
+	for endpoint := range endpoints {
+		result.EndpointNodeIDs = append(result.EndpointNodeIDs, endpoint)
+	}
+	for binding := range bindings {
+		result.Bindings = append(result.Bindings, binding)
+	}
+	sort.Slice(result.RelationshipIDs, func(i, j int) bool {
+		return result.RelationshipIDs[i] < result.RelationshipIDs[j]
+	})
+	sort.Slice(result.EndpointNodeIDs, func(i, j int) bool {
+		return result.EndpointNodeIDs[i] < result.EndpointNodeIDs[j]
+	})
+	sort.Slice(result.Bindings, func(i, j int) bool {
+		return exactErasureBindingLess(result.Bindings[i], result.Bindings[j])
+	})
+	return result, nil
+}
+
+func exactErasureBindingLess(
+	left, right storecontract.ExactErasureRelationshipBinding,
+) bool {
+	if left.RelationshipID != right.RelationshipID {
+		return left.RelationshipID < right.RelationshipID
+	}
+	if left.Version != right.Version {
+		return left.Version < right.Version
+	}
+	if left.TypeToken != right.TypeToken {
+		return left.TypeToken < right.TypeToken
+	}
+	if left.StartNodeID != right.StartNodeID {
+		return left.StartNodeID < right.StartNodeID
+	}
+	if left.EndNodeID != right.EndNodeID {
+		return left.EndNodeID < right.EndNodeID
+	}
+	return left.IntegrityHash < right.IntegrityHash
 }
 
 func (ms *Store) rebuildPlannerStatsAfterExactErasureLocked() {

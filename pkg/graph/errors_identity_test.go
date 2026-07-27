@@ -46,6 +46,7 @@ func TestSentinelAliasesShareIdentity(t *testing.T) {
 		"VectorIdxExists/graph=store":       {graphpkg.ErrVectorIndexExists, storepkg.ErrVectorIndexExists},
 		"VectorIdxNotFound/graph=store":     {graphpkg.ErrVectorIndexNotFound, storepkg.ErrVectorIndexNotFound},
 		"ExactErasureEscape/graph=store":    {graphpkg.ErrExactErasureRelationshipEscape, storepkg.ErrExactErasureRelationshipEscape},
+		"ExactErasureLimit/graph=store":     {graphpkg.ErrExactErasureClosureLimit, storepkg.ErrExactErasureClosureLimit},
 		"ExactErasureLog/graph=store":       {graphpkg.ErrExactErasureChangeLogRetained, storepkg.ErrExactErasureChangeLogRetained},
 
 		// tiered re-exports of the same store sentinels — a third surface

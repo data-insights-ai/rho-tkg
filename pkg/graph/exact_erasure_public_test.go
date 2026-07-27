@@ -11,6 +11,12 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
+var publicExactErasureBounds = adminpkg.ExactErasureBounds{
+	MaxRelationshipIdentities: 32,
+	MaxRelationshipVersions:   128,
+	MaxEndpointNodeIdentities: 64,
+}
+
 func TestExactErasePublicContract(t *testing.T) {
 	ctx := context.Background()
 	g, err := graphpkg.New(graphpkg.Config{AllowExactErasure: true})
@@ -33,21 +39,35 @@ func TestExactErasePublicContract(t *testing.T) {
 
 	if _, err := g.Admin().ExactErase(ctx, adminpkg.ExactErasureRequest{
 		NodeIDs: []types.NodeID{erased.ID()},
+		Bounds:  publicExactErasureBounds,
 	}); !errors.Is(err, graphpkg.ErrExactErasureRelationshipEscape) {
 		t.Fatalf("incomplete scope = %v, want ErrExactErasureRelationshipEscape", err)
 	}
 
-	request := adminpkg.ExactErasureRequest{
+	resolution, err := g.Admin().ResolveExactErasure(ctx, adminpkg.ExactErasureRequest{
 		NodeIDs:         []types.NodeID{erased.ID(), erased.ID()},
-		RelationshipIDs: []types.RelID{rel.ID(), rel.ID()},
+		RelationshipIDs: []types.RelID{rel.ID()},
+		Bounds:          publicExactErasureBounds,
+	})
+	if err != nil {
+		t.Fatalf("ResolveExactErasure: %v", err)
 	}
-	first, err := g.Admin().ExactErase(ctx, request)
+	if len(resolution.Request.NodeIDs) != 1 ||
+		len(resolution.Request.RelationshipIDs) != 1 ||
+		resolution.Request.RelationshipIDs[0] != rel.ID() ||
+		len(resolution.EndpointNodeIDs) != 2 ||
+		len(resolution.RelationshipBindings) != 1 ||
+		resolution.RelationshipBindings[0].Type != "KNOWS" {
+		t.Fatalf("resolved request = %+v", resolution)
+	}
+	first, err := g.Admin().ExactErase(ctx, resolution.Request)
 	if err != nil {
 		t.Fatalf("ExactErase: %v", err)
 	}
 	second, err := g.Admin().ExactErase(ctx, adminpkg.ExactErasureRequest{
 		RelationshipIDs: []types.RelID{rel.ID()},
 		NodeIDs:         []types.NodeID{erased.ID()},
+		Bounds:          publicExactErasureBounds,
 	})
 	if err != nil {
 		t.Fatalf("retry: %v", err)
@@ -82,7 +102,10 @@ func TestExactErasePublicGates(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer withLog.Close()
-	if _, err := withLog.Admin().ExactErase(ctx, adminpkg.ExactErasureRequest{NodeIDs: []types.NodeID{1}}); !errors.Is(err, graphpkg.ErrExactErasureChangeLogRetained) {
+	if _, err := withLog.Admin().ExactErase(ctx, adminpkg.ExactErasureRequest{
+		NodeIDs: []types.NodeID{1},
+		Bounds:  publicExactErasureBounds,
+	}); !errors.Is(err, graphpkg.ErrExactErasureChangeLogRetained) {
 		t.Fatalf("change-log = %v, want ErrExactErasureChangeLogRetained", err)
 	}
 }

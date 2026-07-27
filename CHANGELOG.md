@@ -6,11 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-- API/FIX — added the opt-in `g.Admin().ExactErase(ctx, ExactErasureRequest)`
-  legal-erasure door plus optional `store.ExactErasureCapability` (native
-  memory + Badger). The caller declares the exact node/relationship set; the
-  operation fails before writing if any live edge touching a declared node is
-  outside that set, hard-removes current rows, complete temporal history,
+- API/FIX — added the opt-in
+  `g.Admin().ResolveExactErasure(ctx, ExactErasureRequest)` planning door and
+  `g.Admin().ExactErase(ctx, ExactErasureRequest)` legal-erasure door plus
+  optional `store.ExactErasureCapability` (native memory + Badger). The caller
+  declares finite relationship-identity and scanned-version bounds; planning
+  resolves every identity whose current row or any temporal version touches a
+  declared node and returns canonical relationship-version bindings plus every
+  matching endpoint node identity separately from the deletion request. An
+  explicit endpoint-identity bound prevents a historical fan-out from turning
+  planning into an unbounded authority scan. Semantic callers can therefore
+  classify owned versus shared/external historical endpoints before sealing a
+  plan without implicitly deleting every discovered endpoint. Destruction
+  independently rechecks that historical relationship closure
+  under backend write exclusion and fails before writing if the persisted plan
+  omitted an identity, so a deleted-before-planning edge cannot survive and a
+  post-plan edge cannot silently widen scope. The operation hard-removes current
+  rows, complete temporal history,
   indexes/membership sidecars/caches, UniqueForever value ownership, and
   compaction stubs, and emits neither graph tombstones nor change records.
   Canonical sorted/deduplicated IDs produce a stable SHA-256 receipt across

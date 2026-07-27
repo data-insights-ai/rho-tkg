@@ -173,6 +173,7 @@ var exactErasureSentinels = []string{
 	"ErrExactErasureDisabled",
 	"ErrInvalidExactErasureRequest",
 	"ErrExactErasureRelationshipEscape",
+	"ErrExactErasureClosureLimit",
 	"ErrExactErasureChangeLogRetained",
 }
 

@@ -235,6 +235,9 @@ func (fullOptionalStore) CommitLogScope() (uint64, error)                     { 
 func (fullOptionalStore) DiscardLogScope() error                              { return nil }
 func (fullOptionalStore) MetaGet(string) ([]byte, error)                      { return nil, nil }
 func (fullOptionalStore) MetaSet(string, []byte) error                        { return nil }
+func (fullOptionalStore) ExactErasureRelationshipClosure(ExactErasureClosureRequest) (ExactErasureClosure, error) {
+	return ExactErasureClosure{}, nil
+}
 func (fullOptionalStore) ExactErase(ExactErasureRequest) (ExactErasureResult, error) {
 	return ExactErasureResult{}, nil
 }

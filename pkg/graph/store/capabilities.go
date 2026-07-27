@@ -341,6 +341,57 @@ type MetaWrite struct {
 	Value []byte
 }
 
+// ExactErasureBounds makes relationship-closure discovery finite. Every
+// current relationship row and temporal relationship version inspected counts
+// against MaxRelationshipVersions; every distinct relationship identity that
+// touches a declared node in any inspected version counts against
+// MaxRelationshipIdentities; and every distinct endpoint named by a matching
+// version counts against MaxEndpointNodeIdentities. All values must be positive
+// for node erasure.
+//
+// The version bound deliberately covers the global scan, not only matches.
+// A backend without a durable historical-endpoint index must never turn an
+// unbounded proof scan into an accidental legal-erasure API.
+type ExactErasureBounds struct {
+	MaxRelationshipIdentities int
+	MaxRelationshipVersions   int
+	MaxEndpointNodeIdentities int
+}
+
+// ExactErasureClosureRequest asks the backend to resolve every relationship
+// identity whose current row or any temporal version references NodeIDs.
+// NodeIDs must be canonical (ascending and duplicate-free).
+type ExactErasureClosureRequest struct {
+	NodeIDs []types.NodeID
+	Bounds  ExactErasureBounds
+}
+
+// ExactErasureRelationshipBinding is one current or historical relationship
+// version that touches the requested node set. Relationship endpoints and type
+// are returned because a semantic owner must classify the historical boundary
+// before deciding which endpoint nodes, if any, belong in its deletion plan.
+// Version is the persisted relationship version, not result ordering.
+type ExactErasureRelationshipBinding struct {
+	RelationshipID types.RelID
+	TypeToken      uint16
+	StartNodeID    types.NodeID
+	EndNodeID      types.NodeID
+	Version        uint32
+	IntegrityHash  string
+}
+
+// ExactErasureClosure is the bounded historical endpoint proof for NodeIDs.
+// RelationshipIDs and EndpointNodeIDs are canonical (ascending,
+// duplicate-free). Bindings are canonical by relationship identity, version,
+// type, and endpoints and retain every distinct matching persisted shape.
+// EndpointNodeIDs includes the requested nodes named by a matching binding;
+// callers decide ownership and must not treat this list as a deletion request.
+type ExactErasureClosure struct {
+	RelationshipIDs []types.RelID
+	EndpointNodeIDs []types.NodeID
+	Bindings        []ExactErasureRelationshipBinding
+}
+
 // ExactErasureRequest is the backend plan for one bounded, caller-scoped legal
 // erasure. NodeIDs and RelIDs must be canonical (ascending, duplicate-free) and
 // contain only positive IDs. MetaWrites are graph-layer records whose values can
@@ -349,6 +400,7 @@ type MetaWrite struct {
 type ExactErasureRequest struct {
 	NodeIDs    []types.NodeID
 	RelIDs     []types.RelID
+	Bounds     ExactErasureBounds
 	MetaWrites []MetaWrite
 }
 
@@ -366,13 +418,23 @@ type ExactErasureResult struct {
 // secondary-index and temporal-membership residue, and the supplied metadata
 // writes, in one atomic backend commit and without tombstones or change records.
 //
+// ExactErasureRelationshipClosure resolves the complete relationship identity
+// set for planning. ExactErase independently recomputes that closure while
+// holding the backend's destructive write exclusion and fails closed when the
+// caller omitted any identity. Planning is therefore deterministic, while a
+// current or historical relationship introduced after planning cannot escape.
+//
 // Before writing, it fails with ErrExactErasureRelationshipEscape when any
-// live adjacency touching a declared node names a relationship outside RelIDs.
+// current OR historical relationship version touching a declared node names a
+// relationship outside RelIDs. Either operation fails with
+// ErrExactErasureClosureLimit before mutation when its finite proof bound is
+// exhausted.
 // It also fails with ErrExactErasureChangeLogRetained when ANY change-log
 // material exists, even if recording is currently disabled, because retained
 // records contain full historical payloads. Missing declared rows are success:
 // retries are idempotent and still scrub history/index residue.
 type ExactErasureCapability interface {
+	ExactErasureRelationshipClosure(ExactErasureClosureRequest) (ExactErasureClosure, error)
 	ExactErase(ExactErasureRequest) (ExactErasureResult, error)
 }
 

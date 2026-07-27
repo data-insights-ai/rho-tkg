@@ -8,6 +8,12 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
+var memoryExactErasureBounds = storecontract.ExactErasureBounds{
+	MaxRelationshipIdentities: 32,
+	MaxRelationshipVersions:   128,
+	MaxEndpointNodeIdentities: 64,
+}
+
 func TestMemoryExactEraseScopeHistoryIndexesAndIdempotency(t *testing.T) {
 	ms := New()
 	const label, relType = uint16(7), uint16(9)
@@ -61,6 +67,7 @@ func TestMemoryExactEraseScopeHistoryIndexesAndIdempotency(t *testing.T) {
 	_, err := ms.ExactErase(storecontract.ExactErasureRequest{
 		NodeIDs: []types.NodeID{n1},
 		RelIDs:  []types.RelID{r1.ID()},
+		Bounds:  memoryExactErasureBounds,
 	})
 	if !errors.Is(err, storecontract.ErrExactErasureRelationshipEscape) {
 		t.Fatalf("scope escape = %v, want ErrExactErasureRelationshipEscape", err)
@@ -78,7 +85,10 @@ func TestMemoryExactEraseScopeHistoryIndexesAndIdempotency(t *testing.T) {
 	delete(ms.inIdx, n2)
 	delete(ms.inIdx, n3)
 	ms.mu.Unlock()
-	_, err = ms.ExactErase(storecontract.ExactErasureRequest{NodeIDs: []types.NodeID{n1}})
+	_, err = ms.ExactErase(storecontract.ExactErasureRequest{
+		NodeIDs: []types.NodeID{n1},
+		Bounds:  memoryExactErasureBounds,
+	})
 	if !errors.Is(err, storecontract.ErrExactErasureRelationshipEscape) {
 		t.Fatalf("missing-adjacency scope escape = %v, want ErrExactErasureRelationshipEscape", err)
 	}
@@ -86,6 +96,7 @@ func TestMemoryExactEraseScopeHistoryIndexesAndIdempotency(t *testing.T) {
 	req := storecontract.ExactErasureRequest{
 		NodeIDs: []types.NodeID{n1},
 		RelIDs:  []types.RelID{r1.ID(), r2.ID()},
+		Bounds:  memoryExactErasureBounds,
 		MetaWrites: []storecontract.MetaWrite{
 			{Key: "compact_stub_node/1"},
 		},
@@ -170,8 +181,169 @@ func TestMemoryExactEraseScopeHistoryIndexesAndIdempotency(t *testing.T) {
 
 func TestMemoryExactEraseRefusesEnabledChangeLog(t *testing.T) {
 	ms := New(WithChangeLog())
-	_, err := ms.ExactErase(storecontract.ExactErasureRequest{NodeIDs: []types.NodeID{1}})
+	_, err := ms.ExactErase(storecontract.ExactErasureRequest{
+		NodeIDs: []types.NodeID{1},
+		Bounds:  memoryExactErasureBounds,
+	})
 	if !errors.Is(err, storecontract.ErrExactErasureChangeLogRetained) {
 		t.Fatalf("ExactErase with log = %v, want ErrExactErasureChangeLogRetained", err)
+	}
+}
+
+func TestMemoryExactErasureClosureIncludesDeletedHistoricalRelationship(t *testing.T) {
+	ms := New()
+	for _, id := range []types.NodeID{1, 2, 3} {
+		if err := ms.PutNode(types.NewNode(id, 1, nil)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	const (
+		historicalID = types.RelID(101)
+		deletedID    = types.RelID(102)
+	)
+	historical := types.NewRelationship(historicalID, 1, 1, 2)
+	if err := ms.PutRelVersion(historicalID, 0, historical); err != nil {
+		t.Fatal(err)
+	}
+	// The current row now references survivors only. Closure is identity-wide:
+	// one historical endpoint is sufficient to erase every version/current row.
+	current := types.NewRelationship(historicalID, 1, 2, 3)
+	if err := ms.PutRelationship(current); err != nil {
+		t.Fatal(err)
+	}
+	if err := ms.PutRelVersion(
+		deletedID, 0, types.NewRelationship(deletedID, 1, 1, 3),
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	closure, err := ms.ExactErasureRelationshipClosure(storecontract.ExactErasureClosureRequest{
+		NodeIDs: []types.NodeID{1},
+		Bounds:  memoryExactErasureBounds,
+	})
+	if err != nil {
+		t.Fatalf("ExactErasureRelationshipClosure: %v", err)
+	}
+	if len(closure.RelationshipIDs) != 2 ||
+		closure.RelationshipIDs[0] != historicalID ||
+		closure.RelationshipIDs[1] != deletedID {
+		t.Fatalf("closure = %v, want [%d %d]", closure, historicalID, deletedID)
+	}
+	if got := closure.EndpointNodeIDs; len(got) != 3 ||
+		got[0] != 1 || got[1] != 2 || got[2] != 3 {
+		t.Fatalf("endpoint closure = %v, want [1 2 3]", got)
+	}
+
+	_, err = ms.ExactErase(storecontract.ExactErasureRequest{
+		NodeIDs: []types.NodeID{1},
+		Bounds:  memoryExactErasureBounds,
+	})
+	if !errors.Is(err, storecontract.ErrExactErasureRelationshipEscape) {
+		t.Fatalf("undeclared historical relation = %v, want ErrExactErasureRelationshipEscape", err)
+	}
+	if _, err = ms.GetRelationship(historicalID); err != nil {
+		t.Fatalf("failed preflight mutated current relation: %v", err)
+	}
+
+	if _, err = ms.ExactErase(storecontract.ExactErasureRequest{
+		NodeIDs: []types.NodeID{1},
+		RelIDs:  closure.RelationshipIDs,
+		Bounds:  memoryExactErasureBounds,
+	}); err != nil {
+		t.Fatalf("ExactErase resolved closure: %v", err)
+	}
+	if _, err = ms.GetRelationship(historicalID); !errors.Is(err, ErrRelNotFound) {
+		t.Fatalf("current relationship survived: %v", err)
+	}
+	for _, rid := range []types.RelID{historicalID, deletedID} {
+		if history, historyErr := ms.GetRelHistory(rid); historyErr != nil || len(history) != 0 {
+			t.Fatalf("historical relationship %d survived = (%d, %v)", rid, len(history), historyErr)
+		}
+	}
+}
+
+func TestMemoryExactErasureClosureFailsClosedAtBounds(t *testing.T) {
+	ms := New()
+	for _, id := range []types.NodeID{1, 2, 3} {
+		if err := ms.PutNode(types.NewNode(id, 1, nil)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for rid, end := range map[types.RelID]types.NodeID{101: 2, 102: 3} {
+		if err := ms.PutRelationship(types.NewRelationship(rid, 1, 1, end)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, err := ms.ExactErasureRelationshipClosure(storecontract.ExactErasureClosureRequest{
+		NodeIDs: []types.NodeID{1},
+		Bounds: storecontract.ExactErasureBounds{
+			MaxRelationshipIdentities: 1,
+			MaxRelationshipVersions:   8,
+			MaxEndpointNodeIdentities: 8,
+		},
+	})
+	if !errors.Is(err, storecontract.ErrExactErasureClosureLimit) {
+		t.Fatalf("identity bound = %v, want ErrExactErasureClosureLimit", err)
+	}
+	_, err = ms.ExactErasureRelationshipClosure(storecontract.ExactErasureClosureRequest{
+		NodeIDs: []types.NodeID{1},
+		Bounds: storecontract.ExactErasureBounds{
+			MaxRelationshipIdentities: 8,
+			MaxRelationshipVersions:   1,
+			MaxEndpointNodeIdentities: 8,
+		},
+	})
+	if !errors.Is(err, storecontract.ErrExactErasureClosureLimit) {
+		t.Fatalf("version bound = %v, want ErrExactErasureClosureLimit", err)
+	}
+	_, err = ms.ExactErasureRelationshipClosure(storecontract.ExactErasureClosureRequest{
+		NodeIDs: []types.NodeID{1},
+		Bounds: storecontract.ExactErasureBounds{
+			MaxRelationshipIdentities: 8,
+			MaxRelationshipVersions:   8,
+			MaxEndpointNodeIdentities: 2,
+		},
+	})
+	if !errors.Is(err, storecontract.ErrExactErasureClosureLimit) {
+		t.Fatalf("endpoint bound = %v, want ErrExactErasureClosureLimit", err)
+	}
+}
+
+func TestMemoryExactErasureClosureValidationAndLifecycle(t *testing.T) {
+	var nilStore *Store
+	_, err := nilStore.ExactErasureRelationshipClosure(
+		storecontract.ExactErasureClosureRequest{
+			NodeIDs: []types.NodeID{1},
+			Bounds:  memoryExactErasureBounds,
+		},
+	)
+	if !errors.Is(err, ErrNilStore) {
+		t.Fatalf("nil store = %v, want ErrNilStore", err)
+	}
+	ms := New()
+	if _, err = ms.ExactErasureRelationshipClosure(
+		storecontract.ExactErasureClosureRequest{},
+	); !errors.Is(err, storecontract.ErrInvalidStoreMutation) {
+		t.Fatalf("empty request = %v, want ErrInvalidStoreMutation", err)
+	}
+	if _, err = ms.ExactErasureRelationshipClosure(
+		storecontract.ExactErasureClosureRequest{
+			NodeIDs: []types.NodeID{1, 1},
+			Bounds:  memoryExactErasureBounds,
+		},
+	); !errors.Is(err, storecontract.ErrInvalidStoreMutation) {
+		t.Fatalf("duplicate nodes = %v, want ErrInvalidStoreMutation", err)
+	}
+	if err = ms.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = ms.ExactErasureRelationshipClosure(
+		storecontract.ExactErasureClosureRequest{
+			NodeIDs: []types.NodeID{1},
+			Bounds:  memoryExactErasureBounds,
+		},
+	); !errors.Is(err, ErrStoreClosed) {
+		t.Fatalf("closed store = %v, want ErrStoreClosed", err)
 	}
 }

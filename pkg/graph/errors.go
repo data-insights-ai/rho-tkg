@@ -156,6 +156,7 @@ var (
 	ErrExactErasureDisabled           = core.ErrExactErasureDisabled
 	ErrInvalidExactErasureRequest     = core.ErrInvalidExactErasureRequest
 	ErrExactErasureRelationshipEscape = storepkg.ErrExactErasureRelationshipEscape
+	ErrExactErasureClosureLimit       = storepkg.ErrExactErasureClosureLimit
 	ErrExactErasureChangeLogRetained  = storepkg.ErrExactErasureChangeLogRetained
 )
 

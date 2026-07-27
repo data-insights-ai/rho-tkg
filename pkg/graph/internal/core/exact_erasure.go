@@ -16,12 +16,38 @@ import (
 
 const exactErasureDigestDomain = "rho-tkg/exact-erasure/v1"
 
+// ExactErasureBounds makes relationship-closure resolution finite.
+type ExactErasureBounds = storepkg.ExactErasureBounds
+
 // ExactErasureRequest is the complete caller-declared graph scope. The graph
-// canonicalizes ordering and duplicates; it never discovers extra relationships
-// on the caller's behalf.
+// canonicalizes ordering and duplicates. ResolveExactErasure expands
+// RelationshipIDs with identities found in current or temporal relationship
+// versions; ExactErase then independently rechecks the declared closure.
 type ExactErasureRequest struct {
 	NodeIDs         []types.NodeID
 	RelationshipIDs []types.RelID
+	Bounds          ExactErasureBounds
+}
+
+// ExactErasureRelationshipBinding is one current or historical relationship
+// version touching the request. It exposes only structural identity needed by
+// the semantic owner to classify an endpoint before sealing a deletion plan.
+type ExactErasureRelationshipBinding struct {
+	RelationshipID types.RelID
+	Type           string
+	StartNodeID    types.NodeID
+	EndNodeID      types.NodeID
+	Version        uint32
+	IntegrityHash  string
+}
+
+// ExactErasureResolution separates the canonical deletion request from the
+// historical endpoints it discovered. EndpointNodeIDs are evidence for
+// ownership classification, never an implicit request to delete those nodes.
+type ExactErasureResolution struct {
+	Request              ExactErasureRequest
+	EndpointNodeIDs      []types.NodeID
+	RelationshipBindings []ExactErasureRelationshipBinding
 }
 
 // ExactErasureReceipt is content-addressed by the canonical request. It is
@@ -31,6 +57,94 @@ type ExactErasureReceipt struct {
 	Digest            string
 	NodeCount         int
 	RelationshipCount int
+}
+
+// ResolveExactErasure returns the canonical, reference-closed plan for one
+// exact erasure. It performs no mutation. Callers must persist the returned
+// request and pass it unchanged to ExactErase so retries keep a stable receipt.
+func (a *AdminOps) ResolveExactErasure(
+	ctx context.Context,
+	request ExactErasureRequest,
+) (ExactErasureResolution, error) {
+	var zero ExactErasureResolution
+	c := a.c
+	if err := c.checkOpen(); err != nil {
+		return zero, err
+	}
+	if ctx == nil {
+		return zero, ErrNilContext
+	}
+	if err := ctx.Err(); err != nil {
+		return zero, err
+	}
+	if !c.allowExactErasure {
+		return zero, ErrExactErasureDisabled
+	}
+	if c.exactErasure == nil {
+		return zero, fmt.Errorf("graph: exact erasure: %w", storepkg.ErrCapabilityNotSupported)
+	}
+
+	nodes, rels, _, err := canonicalExactErasureRequest(request)
+	if err != nil {
+		return zero, err
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.closed.Load() {
+		return zero, ErrGraphClosed
+	}
+	if err := ctx.Err(); err != nil {
+		return zero, err
+	}
+	if len(nodes) != 0 {
+		closure, closureErr := c.exactErasure.ExactErasureRelationshipClosure(
+			storepkg.ExactErasureClosureRequest{
+				NodeIDs: nodes,
+				Bounds:  request.Bounds,
+			},
+		)
+		if closureErr != nil {
+			return zero, closureErr
+		}
+		rels = append(rels, closure.RelationshipIDs...)
+		sort.Slice(rels, func(i, j int) bool { return rels[i] < rels[j] })
+		rels = dedupRelIDs(rels)
+		if len(rels) > request.Bounds.MaxRelationshipIdentities {
+			return zero, storepkg.ErrExactErasureClosureLimit
+		}
+		bindings := make([]ExactErasureRelationshipBinding, 0, len(closure.Bindings))
+		for _, binding := range closure.Bindings {
+			typeName := c.relTypes.Resolve(binding.TypeToken)
+			if typeName == "" {
+				return zero, fmt.Errorf(
+					"graph: exact erasure relationship %d has unresolved type token %d: %w",
+					binding.RelationshipID, binding.TypeToken,
+					storepkg.ErrInvalidStoreMutation,
+				)
+			}
+			bindings = append(bindings, ExactErasureRelationshipBinding{
+				RelationshipID: binding.RelationshipID,
+				Type:           typeName,
+				StartNodeID:    binding.StartNodeID,
+				EndNodeID:      binding.EndNodeID,
+				Version:        binding.Version,
+				IntegrityHash:  binding.IntegrityHash,
+			})
+		}
+		return ExactErasureResolution{
+			Request: ExactErasureRequest{
+				NodeIDs: nodes, RelationshipIDs: rels, Bounds: request.Bounds,
+			},
+			EndpointNodeIDs:      append([]types.NodeID(nil), closure.EndpointNodeIDs...),
+			RelationshipBindings: bindings,
+		}, nil
+	}
+	return ExactErasureResolution{
+		Request: ExactErasureRequest{
+			NodeIDs: nodes, RelationshipIDs: rels, Bounds: request.Bounds,
+		},
+	}, nil
 }
 
 // ExactErase performs one bounded legal-erasure operation. It takes the same
@@ -109,6 +223,7 @@ func (a *AdminOps) ExactErase(ctx context.Context, request ExactErasureRequest) 
 	_, err = c.exactErasure.ExactErase(storepkg.ExactErasureRequest{
 		NodeIDs:    nodes,
 		RelIDs:     rels,
+		Bounds:     request.Bounds,
 		MetaWrites: metaWrites,
 	})
 	if err != nil {
@@ -140,6 +255,13 @@ func canonicalExactErasureRequest(request ExactErasureRequest) ([]types.NodeID, 
 		if err := storepkg.ValidateRelID(id); err != nil {
 			return nil, nil, ExactErasureReceipt{}, fmt.Errorf("%w: %v", ErrInvalidExactErasureRequest, err)
 		}
+	}
+	if len(nodes) != 0 &&
+		(request.Bounds.MaxRelationshipIdentities <= 0 ||
+			request.Bounds.MaxRelationshipVersions <= 0 ||
+			request.Bounds.MaxEndpointNodeIdentities <= 0 ||
+			len(rels) > request.Bounds.MaxRelationshipIdentities) {
+		return nil, nil, ExactErasureReceipt{}, ErrInvalidExactErasureRequest
 	}
 
 	h := sha256.New()
