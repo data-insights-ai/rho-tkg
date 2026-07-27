@@ -152,6 +152,12 @@ var (
 	ErrInvalidPurgePolicy             = core.ErrInvalidPurgePolicy
 	// Admin.Reset safety valve (BACKLOG 13d).
 	ErrResetDisabled = core.ErrResetDisabled
+	// Exact legal erasure.
+	ErrExactErasureDisabled           = core.ErrExactErasureDisabled
+	ErrInvalidExactErasureRequest     = core.ErrInvalidExactErasureRequest
+	ErrExactErasureRelationshipEscape = storepkg.ErrExactErasureRelationshipEscape
+	ErrExactErasureClosureLimit       = storepkg.ErrExactErasureClosureLimit
+	ErrExactErasureChangeLogRetained  = storepkg.ErrExactErasureChangeLogRetained
 )
 
 // IO sentinels. Re-exported so external callers can write

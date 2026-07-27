@@ -315,6 +315,19 @@ func (bs *Store) PurgeOrphanRelationshipIndexes(rid types.RelID) error {
 }
 
 func (bs *Store) purgeOrphanRelIDLocked(rid types.RelID) error {
+	indexKeys, err := bs.relationshipIndexKeysForRel(rid.SnowflakeID())
+	if err != nil {
+		return err
+	}
+	bs.purgeOrphanRelIDLockedWithIndexKeys(rid, indexKeys)
+	return nil
+}
+
+// purgeOrphanRelIDLockedWithIndexKeys is the non-fallible apply half of
+// purgeOrphanRelIDLocked. Exact erasure precomputes indexKeys before its first
+// mutation, then uses this helper so a later Badger scan cannot split the
+// destructive transition.
+func (bs *Store) purgeOrphanRelIDLockedWithIndexKeys(rid types.RelID, indexKeys [][]byte) {
 	rawID := rid.SnowflakeID()
 	typeTokens := make([]uint16, 0)
 	outNodes := make([]types.NodeID, 0)
@@ -336,10 +349,6 @@ func (bs *Store) purgeOrphanRelIDLocked(rid types.RelID) error {
 		}
 	}
 
-	indexKeys, err := bs.relationshipIndexKeysForRel(rawID)
-	if err != nil {
-		return err
-	}
 	ops := make([]writeOp, 0, len(indexKeys))
 	for _, key := range indexKeys {
 		ops = append(ops, writeOp{opType: writeOpDelete, key: key})
@@ -402,7 +411,6 @@ func (bs *Store) purgeOrphanRelIDLocked(rid types.RelID) error {
 	if len(ops) > 0 {
 		bs.appendOps(ops...)
 	}
-	return nil
 }
 
 func (bs *Store) relationshipIndexKeysForRel(relID snowflake.ID) ([][]byte, error) {

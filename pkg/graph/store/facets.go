@@ -82,6 +82,12 @@ type MetadataFacet interface {
 	HistoryCompactionCapability
 }
 
+// DestructiveAdminFacet groups narrowly-scoped, optional backend maintenance
+// operations that intentionally bypass the ordinary tombstone/history contract.
+type DestructiveAdminFacet interface {
+	ExactErasureCapability
+}
+
 // CapabilityReport is a full-fidelity, per-capability snapshot of which optional
 // capabilities a store exposes. It is grouped into the five facets above for
 // readability while keeping one named boolean per underlying capability — a
@@ -124,6 +130,9 @@ type CapabilityReport struct {
 		Feed        bool
 		StatusQuery bool
 		TxScope     bool
+	}
+	DestructiveAdmin struct {
+		ExactErasure bool
 	}
 	MetaKV bool
 }
@@ -183,6 +192,7 @@ func CapabilitiesOf(s MandatoryStore) CapabilityReport {
 	_, r.ChangeLog.StatusQuery = s.(ChangeLogStatusCapability)
 	_, r.ChangeLog.TxScope = s.(TxChangeLogScope)
 
+	_, r.DestructiveAdmin.ExactErasure = s.(ExactErasureCapability)
 	_, r.MetaKV = s.(MetaKVCapability)
 
 	return r

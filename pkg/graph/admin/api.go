@@ -1,5 +1,6 @@
-// Package admin is a sub-API accessor for generic graph admin operations
-// (Reset and ID decomposition) that work on every store backend.
+// Package admin is a sub-API accessor for generic graph admin operations:
+// ID decomposition plus capability-checked history maintenance, reset, and
+// bounded exact legal erasure.
 //
 // API 4.0 change: the tiered-only methods that previously lived here
 // (Archive, Restore, ForceRotate, ListShards, RebuildCatalog, Repair,
@@ -35,6 +36,23 @@ type PurgeMode = core.PurgeMode
 // PurgeReport summarizes a PurgeExpiredNodes run. See core.PurgeReport.
 type PurgeReport = core.PurgeReport
 
+// ExactErasureRequest declares the complete bounded graph scope to erase.
+type ExactErasureRequest = core.ExactErasureRequest
+
+// ExactErasureResolution separates the canonical deletion request from
+// historical endpoint evidence that its semantic owner must classify.
+type ExactErasureResolution = core.ExactErasureResolution
+
+// ExactErasureRelationshipBinding is one matching current or historical
+// relationship version with its resolved type and endpoint identities.
+type ExactErasureRelationshipBinding = core.ExactErasureRelationshipBinding
+
+// ExactErasureBounds makes current-plus-history relationship closure finite.
+type ExactErasureBounds = core.ExactErasureBounds
+
+// ExactErasureReceipt is the stable, content-addressed completion receipt.
+type ExactErasureReceipt = core.ExactErasureReceipt
+
 // PurgeByAge purges nodes below Before by IMMUTABLE snowflake mint-time (v1).
 const PurgeByAge = core.PurgeByAge
 
@@ -50,6 +68,8 @@ type Ops interface {
 	CompactHistoryNodes(ctx context.Context, policy RetentionPolicy) (CompactReport, error)
 	CompactHistoryRels(ctx context.Context, policy RetentionPolicy) (CompactReport, error)
 	PurgeExpiredNodes(ctx context.Context, policy PurgePolicy) (PurgeReport, error)
+	ResolveExactErasure(ctx context.Context, request ExactErasureRequest) (ExactErasureResolution, error)
+	ExactErase(ctx context.Context, request ExactErasureRequest) (ExactErasureReceipt, error)
 }
 
 // API is the admin sub-API accessor.
@@ -128,4 +148,29 @@ func (a *API) PurgeExpiredNodes(ctx context.Context, policy PurgePolicy) (PurgeR
 		return PurgeReport{}, err
 	}
 	return ops.PurgeExpiredNodes(ctx, policy)
+}
+
+// ResolveExactErasure canonicalizes a bounded request and expands its
+// relationship IDs with every identity whose current row or any temporal
+// version references a declared node. It is read-only; ExactErase rechecks the
+// same closure under destructive backend exclusion.
+func (a *API) ResolveExactErasure(ctx context.Context, request ExactErasureRequest) (ExactErasureResolution, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return ExactErasureResolution{}, err
+	}
+	return ops.ResolveExactErasure(ctx, request)
+}
+
+// ExactErase hard-removes the caller-declared node and relationship sets,
+// including all history and index residue, without tombstones. The request is
+// fail-closed: every current or historical relationship version touching a
+// declared node must itself be declared. The returned SHA-256 digest is stable
+// across idempotent retries.
+func (a *API) ExactErase(ctx context.Context, request ExactErasureRequest) (ExactErasureReceipt, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return ExactErasureReceipt{}, err
+	}
+	return ops.ExactErase(ctx, request)
 }

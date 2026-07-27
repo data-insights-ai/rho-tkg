@@ -37,6 +37,20 @@ var (
 	ErrNilStore                    = errors.New("graph: store must not be nil")
 	ErrTxDone                      = errors.New("graph: transaction already committed or rolled back")
 	ErrStoreClosed                 = errors.New("graph: store already closed")
+	// ErrExactErasureRelationshipEscape is returned before any mutation when a
+	// current or historical relationship version touching a declared node is
+	// absent from the caller's declared relationship set. Exact erasure never
+	// infers or widens scope.
+	ErrExactErasureRelationshipEscape = errors.New("graph: exact erasure scope excludes a relationship touching a declared node")
+	// ErrExactErasureClosureLimit is returned before mutation when resolving or
+	// rechecking historical relationship closure exhausts a caller-declared
+	// identity or version bound.
+	ErrExactErasureClosureLimit = errors.New("graph: exact erasure relationship closure exceeds its bound")
+	// ErrExactErasureChangeLogRetained is returned before any mutation when the
+	// backend has an enabled, buffered, scoped, or persisted change-log record.
+	// Change records carry full entity payloads, so erasing graph rows while
+	// retaining the log would not be legal-erasure complete.
+	ErrExactErasureChangeLogRetained = errors.New("graph: exact erasure is unavailable while change-log material is retained")
 
 	// ErrCapabilityNotSupported is returned by graph operations that depend
 	// on an optional Store capability when the configured backend does not

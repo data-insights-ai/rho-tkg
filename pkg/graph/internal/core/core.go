@@ -140,6 +140,7 @@ type Core struct {
 	historyCompaction     storepkg.HistoryCompactionCapability
 	retentionPurge        storepkg.RetentionPurgeCapability
 	retentionPurgeValidTo storepkg.RetentionPurgeByValidToCapability
+	exactErasure          storepkg.ExactErasureCapability
 	rangePurgeLog         storepkg.RangePurgeLogCapability
 	readOnlyReplica       bool
 	// allowRetentionPurge gates the ADR-0008 R2 hard-purge admin door
@@ -149,6 +150,9 @@ type Core struct {
 	// allowReset gates the whole-graph destructive wipe door (g.Admin().Reset()).
 	// Off by default. Wired from Config.AllowReset.
 	allowReset bool
+	// allowExactErasure gates the bounded legal-erasure admin door. Off by
+	// default; unlike Reset, scope is explicit and fail-closed.
+	allowExactErasure bool
 	// allowTxBackfill enables the privileged transaction-time backfill door:
 	// when true, create doors honor a caller-supplied tkg_tx_from (or
 	// AddWithTx) instead of stamping c.now(), so a re-ingest can faithfully
@@ -489,6 +493,14 @@ var (
 	// explicitly enabled, mirroring ErrRetentionPurgeDisabled.
 	ErrResetDisabled = errors.New("graph: reset is disabled (set Config.AllowReset to enable g.Admin().Reset)")
 
+	// ErrExactErasureDisabled is returned unless the destructive exact-erasure
+	// admin door was explicitly enabled.
+	ErrExactErasureDisabled = errors.New("graph: exact erasure is disabled (set Config.AllowExactErasure to enable g.Admin().ExactErase)")
+
+	// ErrInvalidExactErasureRequest is returned for an empty request or a
+	// non-positive node/relationship ID.
+	ErrInvalidExactErasureRequest = errors.New("graph: exact erasure requires at least one positive node or relationship ID")
+
 	// ErrRetentionPurgeChangeLogEnabled is returned by the purge admin door while a
 	// change-log is enabled: the single ChangeRangePurge record + a replica's
 	// re-execution of the predicate (ADR-0008 R3) are not yet built, so a purge on
@@ -737,6 +749,12 @@ type Config struct {
 	// holds a *Graph handle. When off the door fails closed with
 	// ErrResetDisabled.
 	AllowReset bool
+
+	// AllowExactErasure enables g.Admin().ExactErase, a bounded hard-removal
+	// door for caller-declared node/relationship sets. It removes current rows,
+	// full history and index residue without tombstones, refuses scope escape,
+	// and is unavailable while any change-log material is retained.
+	AllowExactErasure bool
 
 	// IngestLanes is the number of extra per-lane UNIFIED ID generators built for
 	// concurrent-ingest write parallelism (ADR-0007 S4). Zero (default) keeps the
@@ -1572,6 +1590,7 @@ func New(config Config) (*Core, error) {
 		allowTxBackfill:     config.AllowTxBackfill,
 		allowRetentionPurge: config.AllowRetentionPurge,
 		allowReset:          config.AllowReset,
+		allowExactErasure:   config.AllowExactErasure,
 		replSource:          config.ReplicationSource,
 	}
 	c.Nodes = &NodeOps{c: c}
@@ -1707,6 +1726,7 @@ func New(config Config) (*Core, error) {
 	c.historyCompaction, _ = store.(storepkg.HistoryCompactionCapability)
 	c.retentionPurge, _ = store.(storepkg.RetentionPurgeCapability)
 	c.retentionPurgeValidTo, _ = store.(storepkg.RetentionPurgeByValidToCapability)
+	c.exactErasure, _ = store.(storepkg.ExactErasureCapability)
 	c.rangePurgeLog, _ = store.(storepkg.RangePurgeLogCapability)
 	c.vectorRowsTrust = isExactNativeStore(store)
 	c.storeRowsTrust = isExactNativeStore(store)

@@ -88,6 +88,17 @@ func (a *asOfColumnCache) currentEpoch() uint64 { return a.epoch.Load() }
 // point (compaction / retention purge / truncate / backfill honored).
 func (a *asOfColumnCache) bump() { a.epoch.Add(1) }
 
+// clear invalidates and physically drops cached columns. Exact legal erasure
+// cannot leave an unreachable stale snapshot resident because it may still hold
+// erased property values; an epoch bump alone only prevents future reads.
+func (a *asOfColumnCache) clear() {
+	a.mu.Lock()
+	a.epoch.Add(1)
+	a.cols = make(map[asOfCacheKey]*indexpkg.LabelDocValues)
+	a.order = nil
+	a.mu.Unlock()
+}
+
 // noteAppliedTx records a replica apply's entity TxFrom: a forward apply advances the
 // high-water mark and leaves the cache warm; an out-of-order (past-dated) apply bumps
 // the epoch — the only apply class that can change a past belief. txFrom <= 0 (no
