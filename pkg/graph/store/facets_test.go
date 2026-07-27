@@ -235,6 +235,9 @@ func (fullOptionalStore) CommitLogScope() (uint64, error)                     { 
 func (fullOptionalStore) DiscardLogScope() error                              { return nil }
 func (fullOptionalStore) MetaGet(string) ([]byte, error)                      { return nil, nil }
 func (fullOptionalStore) MetaSet(string, []byte) error                        { return nil }
+func (fullOptionalStore) ExactErase(ExactErasureRequest) (ExactErasureResult, error) {
+	return ExactErasureResult{}, nil
+}
 func (fullOptionalStore) CreateCompositePropertyIndex(uint16, []string) error { return nil }
 func (fullOptionalStore) DropCompositePropertyIndex(uint16, []string) error   { return nil }
 func (fullOptionalStore) NodesByLabelAndProperties(uint16, map[string]any, QueryOpts) ([]*types.Node, error) {
@@ -250,6 +253,7 @@ var (
 	_ IndexAccelerationFacet     = fullOptionalStore{}
 	_ ChangeLogFacet             = fullOptionalStore{}
 	_ MetadataFacet              = fullOptionalStore{}
+	_ DestructiveAdminFacet      = fullOptionalStore{}
 )
 
 func TestCapabilitiesOfMandatoryOnlyReportsAllAbsent(t *testing.T) {
@@ -291,6 +295,7 @@ func TestCapabilitiesOfFullOptionalReportsAllPresent(t *testing.T) {
 		{"ChangeLog.Feed", r.ChangeLog.Feed},
 		{"ChangeLog.StatusQuery", r.ChangeLog.StatusQuery},
 		{"ChangeLog.TxScope", r.ChangeLog.TxScope},
+		{"DestructiveAdmin.ExactErasure", r.DestructiveAdmin.ExactErasure},
 		{"MetaKV", r.MetaKV},
 	}
 	for _, c := range present {

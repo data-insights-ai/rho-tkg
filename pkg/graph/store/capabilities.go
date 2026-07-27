@@ -341,6 +341,41 @@ type MetaWrite struct {
 	Value []byte
 }
 
+// ExactErasureRequest is the backend plan for one bounded, caller-scoped legal
+// erasure. NodeIDs and RelIDs must be canonical (ascending, duplicate-free) and
+// contain only positive IDs. MetaWrites are graph-layer records whose values can
+// retain erased entity information (UniqueForever ownership and per-entity
+// compaction stubs); they commit atomically with the row/index/history removal.
+type ExactErasureRequest struct {
+	NodeIDs    []types.NodeID
+	RelIDs     []types.RelID
+	MetaWrites []MetaWrite
+}
+
+// ExactErasureResult reports live rows removed. History/index-only cleanup is
+// intentionally not counted: callers use the canonical request digest as the
+// stable idempotency receipt, independent of whether this was the first run or
+// a retry.
+type ExactErasureResult struct {
+	NodesRemoved int
+	RelsRemoved  int
+}
+
+// ExactErasureCapability is OPTIONAL. It hard-removes exactly the declared
+// node/relationship IDs: current rows, every temporal-history row, all current
+// secondary-index and temporal-membership residue, and the supplied metadata
+// writes, in one atomic backend commit and without tombstones or change records.
+//
+// Before writing, it fails with ErrExactErasureRelationshipEscape when any
+// live adjacency touching a declared node names a relationship outside RelIDs.
+// It also fails with ErrExactErasureChangeLogRetained when ANY change-log
+// material exists, even if recording is currently disabled, because retained
+// records contain full historical payloads. Missing declared rows are success:
+// retries are idempotent and still scrub history/index residue.
+type ExactErasureCapability interface {
+	ExactErase(ExactErasureRequest) (ExactErasureResult, error)
+}
+
 // HistoryCompactionCapability is OPTIONAL. It trims an entity's oldest history
 // versions AND persists the accompanying per-entity compaction stub (the
 // metaWrites). keepVersions has the same meaning as TruncateNodeHistory: retain

@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- API/FIX — added the opt-in `g.Admin().ExactErase(ctx, ExactErasureRequest)`
+  legal-erasure door plus optional `store.ExactErasureCapability` (native
+  memory + Badger). The caller declares the exact node/relationship set; the
+  operation fails before writing if any live edge touching a declared node is
+  outside that set, hard-removes current rows, complete temporal history,
+  indexes/membership sidecars/caches, UniqueForever value ownership, and
+  compaction stubs, and emits neither graph tombstones nor change records.
+  Canonical sorted/deduplicated IDs produce a stable SHA-256 receipt across
+  idempotent retries. Badger holds store write exclusion through one durable
+  atomic batch and is restart-proven. Enabled, buffered, scoped, or persisted
+  change-log material fails closed because log records retain full payloads.
+
 ## [4.24.10] - 2026-07-25
 
 The last confirmed defect from the break campaign, written test-first: the property test was authored
@@ -278,7 +290,6 @@ Tests only, no behaviour change. Break-round coverage for the commit-clock floor
   `TestInstantFloor_PreservedAcrossReset` (badger only — the memory store's `Clear` leaves its meta
   map intact, so it cannot exhibit the defect) and `TestRecordCommitStamp_CoversForeignIncomingStub`.
   Each fails RED without its door's fix.
-
 
 ## [4.24.0] - 2026-07-22
 

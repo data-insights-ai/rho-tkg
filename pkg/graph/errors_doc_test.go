@@ -168,6 +168,14 @@ var adminResetSentinels = []string{
 	"ErrResetDisabled",
 }
 
+// Admin.ExactErase safety and scope sentinels.
+var exactErasureSentinels = []string{
+	"ErrExactErasureDisabled",
+	"ErrInvalidExactErasureRequest",
+	"ErrExactErasureRelationshipEscape",
+	"ErrExactErasureChangeLogRetained",
+}
+
 // IO sentinels
 var ioSentinels = []string{
 	"ErrNilReader",
@@ -329,6 +337,7 @@ func graphReexportSentinelNames() []string {
 	all = append(all, compactionSentinels...)
 	all = append(all, retentionSentinels...)
 	all = append(all, adminResetSentinels...)
+	all = append(all, exactErasureSentinels...)
 	all = append(all, ioSentinels...)
 	all = append(all, backupSentinels...)
 	all = append(all, deltaSentinels...)

@@ -307,6 +307,37 @@ func (vi *VectorIndex) Remove(id snowflake.ID) {
 	}
 }
 
+// RemoveExact deletes id and immediately rebuilds the HNSW graph from current
+// live entries. Ordinary Remove deliberately leaves an internal HNSW tombstone
+// for connectivity until the churn threshold is crossed; exact legal erasure
+// cannot retain that tombstoned vector in memory.
+func (vi *VectorIndex) RemoveExact(id snowflake.ID) {
+	if vi == nil {
+		return
+	}
+	vi.mu.Lock()
+	defer vi.mu.Unlock()
+
+	vi.ensurePositionsLocked()
+	if i, ok := vi.positions[id]; ok {
+		lastIdx := len(vi.entries) - 1
+		last := vi.entries[lastIdx]
+		vi.entries[i] = last
+		vi.entries[lastIdx] = vectorEntry{}
+		vi.entries = vi.entries[:lastIdx]
+		delete(vi.positions, id)
+		if i != lastIdx {
+			vi.positions[last.id] = i
+		}
+	}
+	if vi.hnsw != nil {
+		vi.rebuildHNSWLocked()
+	}
+	if vi.Mutated != nil {
+		vi.Mutated[id] = struct{}{}
+	}
+}
+
 // WasMutated reports whether id was touched while an index backfill was active.
 func (vi *VectorIndex) WasMutated(id snowflake.ID) bool {
 	if vi == nil {
@@ -665,6 +696,17 @@ func PurgeNodeFromAllVectorIndexes(idxs map[VectorIndexKey]*VectorIndex, id snow
 	for _, vi := range idxs {
 		if vi != nil {
 			vi.Remove(id)
+		}
+	}
+}
+
+// PurgeNodeFromAllVectorIndexesExact is the legal-erasure sibling of
+// PurgeNodeFromAllVectorIndexes. It removes both the live vector entry and any
+// ordinary HNSW tombstone that could still retain the vector payload.
+func PurgeNodeFromAllVectorIndexesExact(idxs map[VectorIndexKey]*VectorIndex, id snowflake.ID) {
+	for _, vi := range idxs {
+		if vi != nil {
+			vi.RemoveExact(id)
 		}
 	}
 }

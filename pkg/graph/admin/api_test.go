@@ -22,6 +22,9 @@ func TestAPINilReceiversReturnErrNilGraph(t *testing.T) {
 	if got := nilAPI.DecomposeRelID(1); got != (IDComponents{}) {
 		t.Fatalf("nil DecomposeRelID = %+v, want zero", got)
 	}
+	if _, err := nilAPI.ExactErase(context.Background(), ExactErasureRequest{NodeIDs: []types.NodeID{1}}); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil ExactErase = %v, want ErrNilGraph", err)
+	}
 
 	api := New((*adminOpsSpy)(nil))
 	if err := api.Reset(); !errors.Is(err, grapherr.ErrNilGraph) {
@@ -51,8 +54,11 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 	if _, err := api.PurgeExpiredNodes(context.Background(), PurgePolicy{Label: "Event", Before: 1}); err != nil {
 		t.Fatalf("PurgeExpiredNodes: %v", err)
 	}
+	if _, err := api.ExactErase(context.Background(), ExactErasureRequest{NodeIDs: []types.NodeID{1}}); err != nil {
+		t.Fatalf("ExactErase: %v", err)
+	}
 
-	if ops.resetCalls != 1 || ops.decomposeIDCalls != 2 || ops.purgeCalls != 1 {
+	if ops.resetCalls != 1 || ops.decomposeIDCalls != 2 || ops.purgeCalls != 1 || ops.exactEraseCalls != 1 {
 		t.Fatalf("unexpected call counts: %+v", ops)
 	}
 }
@@ -62,6 +68,7 @@ type adminOpsSpy struct {
 	decomposeIDCalls int
 	compactCalls     int
 	purgeCalls       int
+	exactEraseCalls  int
 }
 
 func (s *adminOpsSpy) Reset() error {
@@ -92,4 +99,9 @@ func (s *adminOpsSpy) CompactHistoryRels(ctx context.Context, policy RetentionPo
 func (s *adminOpsSpy) PurgeExpiredNodes(ctx context.Context, policy PurgePolicy) (PurgeReport, error) {
 	s.purgeCalls++
 	return PurgeReport{}, nil
+}
+
+func (s *adminOpsSpy) ExactErase(ctx context.Context, request ExactErasureRequest) (ExactErasureReceipt, error) {
+	s.exactEraseCalls++
+	return ExactErasureReceipt{}, nil
 }

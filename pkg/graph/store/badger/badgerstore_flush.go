@@ -120,13 +120,25 @@ func (bs *Store) Flush() error {
 func (bs *Store) flush() error {
 	bs.flushMu.Lock()
 	defer bs.flushMu.Unlock()
+	bs.idxMu.RLock()
+	return bs.flushIndexLocked(false)
+}
 
+// flushIndexLocked snapshots and commits the pending buffer while the caller
+// already holds idxMu (read or write). Normal flush releases its read lock as
+// soon as the coherent snapshot is captured. Exact erasure passes keep=true
+// while holding the write lock so no direct Store mutation can enter between
+// the destructive RAM transition and its durable atomic WriteBatch.
+//
+// Caller holds flushMu and idxMu. With keepIndexLock=false the held lock MUST
+// be an RLock and this function releases it after the snapshot. With true the
+// caller retains responsibility for unlocking.
+func (bs *Store) flushIndexLocked(keepIndexLock bool) error {
 	// Step 1: Atomically snapshot dirty cache versions, pending ops, pending
 	// change-log records, and counters. idxMu.RLock blocks writers (who hold
 	// idxMu.Lock) during this phase, ensuring no writer is between cache.Put and
 	// appendOps and that a change-log record and the entity ops it describes are
 	// snapshotted together (no committed-but-unlogged window).
-	bs.idxMu.RLock()
 	nodeDirty := bs.nodeCache.CollectDirty()
 	relDirty := bs.relCache.CollectDirty()
 	bs.wbMu.Lock()
@@ -142,7 +154,9 @@ func (bs *Store) flush() error {
 	bs.wbMu.Unlock()
 	nc := bs.nodeCount.Load()
 	rc := bs.relCount.Load()
-	bs.idxMu.RUnlock()
+	if !keepIndexLock {
+		bs.idxMu.RUnlock()
+	}
 
 	if len(ops) == 0 && len(logs) == 0 {
 		return nil

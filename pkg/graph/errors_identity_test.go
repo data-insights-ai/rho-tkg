@@ -45,6 +45,8 @@ func TestSentinelAliasesShareIdentity(t *testing.T) {
 		"TemporalIdxNotFound/graph=store":   {graphpkg.ErrTemporalIndexNotFound, storepkg.ErrTemporalIndexNotFound},
 		"VectorIdxExists/graph=store":       {graphpkg.ErrVectorIndexExists, storepkg.ErrVectorIndexExists},
 		"VectorIdxNotFound/graph=store":     {graphpkg.ErrVectorIndexNotFound, storepkg.ErrVectorIndexNotFound},
+		"ExactErasureEscape/graph=store":    {graphpkg.ErrExactErasureRelationshipEscape, storepkg.ErrExactErasureRelationshipEscape},
+		"ExactErasureLog/graph=store":       {graphpkg.ErrExactErasureChangeLogRetained, storepkg.ErrExactErasureChangeLogRetained},
 
 		// tiered re-exports of the same store sentinels — a third surface
 		// that must share the same identity, not merely the same message.
@@ -83,6 +85,8 @@ func TestSentinelAliasesShareIdentity(t *testing.T) {
 		"RetentionPurgeDisabled/graph=core":         {graphpkg.ErrRetentionPurgeDisabled, core.ErrRetentionPurgeDisabled},
 		"RetentionPurgeChangeLogEnabled/graph=core": {graphpkg.ErrRetentionPurgeChangeLogEnabled, core.ErrRetentionPurgeChangeLogEnabled},
 		"InvalidPurgePolicy/graph=core":             {graphpkg.ErrInvalidPurgePolicy, core.ErrInvalidPurgePolicy},
+		"ExactErasureDisabled/graph=core":           {graphpkg.ErrExactErasureDisabled, core.ErrExactErasureDisabled},
+		"InvalidExactErasureRequest/graph=core":     {graphpkg.ErrInvalidExactErasureRequest, core.ErrInvalidExactErasureRequest},
 
 		// pkg/graph aliases of index-provider sentinels.
 		"ProviderExists/graph=index":    {graphpkg.ErrIndexProviderExists, indexpkg.ErrIndexProviderExists},
