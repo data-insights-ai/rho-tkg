@@ -376,6 +376,16 @@ var (
 	// so the query fails loudly rather than silently mis-resolving.
 	ErrConflictingTemporalOpts = errors.New("graph: QueryOpts.TxPin is mutually exclusive with ValidAt / ValidStart / ValidEnd / TxAt")
 
+	// ErrVectorSearchTxPinUnsupported is returned by SearchNearest (standalone
+	// and tx mirror) when QueryOpts.TxPin is set. The vector index holds only
+	// the LATEST vector per node and drops deleted nodes entirely, so a
+	// belief-state (AS OF SYSTEM TIME) nearest-neighbor ranking is ill-defined:
+	// a node hard-deleted after the pin — visible to every other TxPin door —
+	// would be silently missing from the candidate set, and distances would
+	// rank by post-pin vector values. The door refuses loudly instead of
+	// returning a silently wrong belief state.
+	ErrVectorSearchTxPinUnsupported = errors.New("graph: SearchNearest does not support QueryOpts.TxPin (vector index holds only latest vectors; belief-state ranking is ill-defined)")
+
 	// ErrTxBackfillDisabled is returned by a create door when a caller supplies
 	// a transaction-time override (tkg_tx_from property or AddWithTx) but the
 	// graph was not opened with Config.AllowTxBackfill. TxFrom is normally

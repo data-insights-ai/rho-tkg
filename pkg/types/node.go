@@ -312,8 +312,9 @@ func (n *Node) ForEachIndexablePropertyValueKey(fn func(propertyKey, valueKey st
 }
 
 // Float32SlicePropertyCopy returns a caller-owned []float32 copy for vector
-// index input. It accepts []float32 and []any containing only float32/float64
-// values, matching vector-index input support.
+// index input. It accepts []float32, []float64 (elements narrowed to float32),
+// and []any containing only float32/float64 values, matching vector-index
+// input support.
 func (n *Node) Float32SlicePropertyCopy(key string) ([]float32, bool) {
 	if n == nil {
 		return nil, false

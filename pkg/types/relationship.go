@@ -238,8 +238,9 @@ func (r *Relationship) ForEachIndexablePropertyValueKey(fn func(propertyKey, val
 }
 
 // Float32SlicePropertyCopy returns a caller-owned []float32 copy for vector
-// index input. It accepts []float32 and []any containing only float32/float64
-// values, matching vector-index input support.
+// index input. It accepts []float32, []float64 (elements narrowed to float32),
+// and []any containing only float32/float64 values, matching vector-index
+// input support.
 func (r *Relationship) Float32SlicePropertyCopy(key string) ([]float32, bool) {
 	if r == nil {
 		return nil, false

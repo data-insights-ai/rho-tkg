@@ -37,6 +37,7 @@ type Ops interface {
 	DeleteVector(label, propertyKey string) error
 	VectorIndexInfo(label, propertyKey string) (storepkg.VectorIndexInfo, bool, error)
 	SearchNearest(label, propertyKey string, query []float32, k int, opts storepkg.QueryOpts) ([]*types.Node, error)
+	SearchNearestScored(label, propertyKey string, query []float32, k int, opts storepkg.QueryOpts) ([]VectorHit, error)
 	RegisterProvider(p IndexProvider) error
 	UnregisterProvider(name string) error
 	Providers() []string
@@ -313,6 +314,30 @@ func (a *API) SearchNearest(label, propertyKey string, query []float32, k int, o
 		return nil, err
 	}
 	return ops.SearchNearest(label, propertyKey, query, k, opts)
+}
+
+// VectorHit pairs a SearchNearestScored result node with its distance from
+// the query under the index's declared metric (1 - cosine_similarity for
+// DistanceCosine, Euclidean/L2 otherwise — the same primitive every engine
+// ranks by).
+type VectorHit struct {
+	Node     *types.Node
+	Distance float64
+}
+
+// SearchNearestScored is SearchNearest with distances: the SAME nodes in the
+// SAME order, each paired with its distance from the query under the index's
+// metric — for rerankers (e.g. GraphRAG) that need the score, not just the
+// rank ordinal. Distance is computed against the node's CURRENT vector (the
+// value the index ranked by), even when a temporal filter makes the returned
+// Node a historical version. QueryOpts.TxPin is rejected with
+// ErrVectorSearchTxPinUnsupported, like SearchNearest.
+func (a *API) SearchNearestScored(label, propertyKey string, query []float32, k int, opts storepkg.QueryOpts) ([]VectorHit, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.SearchNearestScored(label, propertyKey, query, k, opts)
 }
 
 // RegisterProvider registers a new IndexProvider.

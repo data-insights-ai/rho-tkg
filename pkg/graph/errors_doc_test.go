@@ -121,6 +121,7 @@ var temporalSentinels = []string{
 	"ErrValidFromBeforePrevious",
 	"ErrNoVersionAsOf",
 	"ErrConflictingTemporalOpts",
+	"ErrVectorSearchTxPinUnsupported",
 	"ErrNoVersionValidAt",
 	"ErrInvalidClockAdvance",
 }

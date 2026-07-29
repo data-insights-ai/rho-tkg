@@ -44,6 +44,9 @@ func TestAPINilReceiversReturnErrNilGraphOrNil(t *testing.T) {
 	if _, err := nilAPI.SearchNearest("Node", "embedding", []float32{1, 2, 3}, 2, storepkg.QueryOpts{}); !errors.Is(err, grapherr.ErrNilGraph) {
 		t.Fatalf("SearchNearest = %v, want ErrNilGraph", err)
 	}
+	if _, err := nilAPI.SearchNearestScored("Node", "embedding", []float32{1, 2, 3}, 2, storepkg.QueryOpts{}); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("SearchNearestScored = %v, want ErrNilGraph", err)
+	}
 	if _, err := nilAPI.HasProperty("Node", "name"); !errors.Is(err, grapherr.ErrNilGraph) {
 		t.Fatalf("HasProperty = %v, want ErrNilGraph", err)
 	}
@@ -112,6 +115,9 @@ func TestAPIForwardsMethodsAndErrors(t *testing.T) {
 	if _, err := api.SearchNearest("Node", "embedding", query, 4, opts); !errors.Is(err, wantErr) {
 		t.Fatalf("SearchNearest = %v, want %v", err, wantErr)
 	}
+	if _, err := api.SearchNearestScored("Node", "embedding", query, 4, opts); !errors.Is(err, wantErr) {
+		t.Fatalf("SearchNearestScored = %v, want %v", err, wantErr)
+	}
 	if _, err := api.HasProperty("Node", "name"); !errors.Is(err, wantErr) {
 		t.Fatalf("HasProperty = %v, want %v", err, wantErr)
 	}
@@ -137,7 +143,7 @@ func TestAPIForwardsMethodsAndErrors(t *testing.T) {
 		"CreateProperty", "DropProperty", "CreateComposite", "DeleteComposite", "CreateHighFrequency", "DropHighFrequency",
 		"CreateTemporal", "DropTemporal", "CreateRelTemporal", "DeleteRelTemporal", "CreateVector", "CreateVectorWithOptions", "DropVector",
 		"RegisterProvider", "UnregisterProvider",
-		"SearchNearest", "HasProperty", "HasRelProperty", "HasTemporal", "VectorIndexInfo", "Providers", "Providers",
+		"SearchNearest", "SearchNearestScored", "HasProperty", "HasRelProperty", "HasTemporal", "VectorIndexInfo", "Providers", "Providers",
 	}
 	if len(ops.calls) != len(wantCalls) {
 		t.Fatalf("calls = %v, want %v", ops.calls, wantCalls)
@@ -294,6 +300,14 @@ func (s *indexOpsSpy) VectorIndexInfo(label, propertyKey string) (storepkg.Vecto
 
 func (s *indexOpsSpy) SearchNearest(label, propertyKey string, query []float32, k int, opts storepkg.QueryOpts) ([]*types.Node, error) {
 	s.record("SearchNearest")
+	s.query = query
+	s.k = k
+	s.opts = opts
+	return nil, s.err
+}
+
+func (s *indexOpsSpy) SearchNearestScored(label, propertyKey string, query []float32, k int, opts storepkg.QueryOpts) ([]VectorHit, error) {
+	s.record("SearchNearestScored")
 	s.query = query
 	s.k = k
 	s.opts = opts

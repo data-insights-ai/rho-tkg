@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -74,6 +75,235 @@ func TestVectorIndex_CreateAndSearch_Euclidean(t *testing.T) {
 	}
 	_ = n2
 	_ = n3
+}
+
+// TestVectorIndex_SearchNearestScored covers the sigma-tkgd ask: GraphRAG
+// rerankers need the distance score, not just rank order. The scored door
+// returns the SAME nodes in the SAME order as SearchNearest, each paired with
+// its distance from the query under the index's metric.
+func TestVectorIndex_SearchNearestScored(t *testing.T) {
+	g, _ := New(Config{})
+	label := "Item"
+	key := "embedding"
+
+	n1, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{1, 0, 0}})
+	n2, _ := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{0, 1, 0}})
+
+	if err := g.Index.CreateVector(label, key, 3, storepkg.DistanceCosine); err != nil {
+		t.Fatalf("CreateVector: %v", err)
+	}
+
+	query := []float32{1, 0, 0}
+	hits, err := g.Index.SearchNearestScored(label, key, query, 2, storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("SearchNearestScored: %v", err)
+	}
+	if len(hits) != 2 {
+		t.Fatalf("expected 2 hits, got %d", len(hits))
+	}
+	if hits[0].Node.ID() != n1.ID() || hits[1].Node.ID() != n2.ID() {
+		t.Fatalf("hit order diverged from SearchNearest ranking")
+	}
+	// Cosine distance: exact match = 0, orthogonal = 1.
+	if hits[0].Distance > 1e-9 {
+		t.Errorf("exact-match distance = %v, want ~0", hits[0].Distance)
+	}
+	if d := hits[1].Distance; d < 1-1e-9 || d > 1+1e-9 {
+		t.Errorf("orthogonal cosine distance = %v, want ~1", d)
+	}
+	// Ordered non-decreasing by distance.
+	if hits[0].Distance > hits[1].Distance {
+		t.Errorf("hits not ordered by distance: %v > %v", hits[0].Distance, hits[1].Distance)
+	}
+
+	// TxPin is refused identically to the unscored door.
+	if _, err := g.Index.SearchNearestScored(label, key, query, 2, storepkg.QueryOpts{TxPin: 100}); !errors.Is(err, ErrVectorSearchTxPinUnsupported) {
+		t.Errorf("SearchNearestScored{TxPin} = %v, want ErrVectorSearchTxPinUnsupported", err)
+	}
+	// Non-positive k mirrors SearchNearest's nil, nil contract.
+	if hits, err := g.Index.SearchNearestScored(label, key, query, 0, storepkg.QueryOpts{}); hits != nil || err != nil {
+		t.Errorf("SearchNearestScored{k=0} = (%v, %v), want (nil, nil)", hits, err)
+	}
+
+	// Validation parity with SearchNearest: bad label, bad key, NaN query.
+	if _, err := g.Index.SearchNearestScored("", key, query, 1, storepkg.QueryOpts{}); err == nil {
+		t.Error("SearchNearestScored with empty label: want error, got nil")
+	}
+	if _, err := g.Index.SearchNearestScored(label, "tkg_reserved", query, 1, storepkg.QueryOpts{}); err == nil {
+		t.Error("SearchNearestScored with reserved key: want error, got nil")
+	}
+	nanQuery := []float32{float32(math.NaN()), 0, 0}
+	if _, err := g.Index.SearchNearestScored(label, key, nanQuery, 1, storepkg.QueryOpts{}); !errors.Is(err, storepkg.ErrInvalidVectorValue) {
+		t.Errorf("SearchNearestScored with NaN query = %v, want ErrInvalidVectorValue", err)
+	}
+	if _, err := g.Index.SearchNearestScored("Missing", key, query, 1, storepkg.QueryOpts{}); !errors.Is(err, storepkg.ErrVectorIndexNotFound) {
+		t.Errorf("SearchNearestScored on unindexed label = %v, want ErrVectorIndexNotFound", err)
+	}
+
+	// Tx-side mirror returns the same scored hits.
+	tx, err := g.BeginTx()
+	if err != nil {
+		t.Fatalf("BeginTx: %v", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.SearchNearestScored("", key, query, 1, storepkg.QueryOpts{}); err == nil {
+		t.Error("tx.SearchNearestScored with empty label: want error, got nil")
+	}
+	if _, err := tx.SearchNearestScored(label, "tkg_reserved", query, 1, storepkg.QueryOpts{}); err == nil {
+		t.Error("tx.SearchNearestScored with reserved key: want error, got nil")
+	}
+	txHits, err := tx.SearchNearestScored(label, key, query, 2, storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("tx.SearchNearestScored: %v", err)
+	}
+	if len(txHits) != 2 || txHits[0].Node.ID() != n1.ID() || txHits[0].Distance != hits[0].Distance {
+		t.Errorf("tx mirror diverged from standalone scored search")
+	}
+	if _, err := tx.SearchNearestScored(label, key, query, 2, storepkg.QueryOpts{TxPin: 100}); !errors.Is(err, ErrVectorSearchTxPinUnsupported) {
+		t.Errorf("tx.SearchNearestScored{TxPin} = %v, want ErrVectorSearchTxPinUnsupported", err)
+	}
+}
+
+// TestVectorIndex_SearchNearestScored_TemporalCaveat is the rule-15 two-phase
+// pin of the documented ranking caveat: with ValidAt=t the RETURNED node is
+// the historical version, but Distance is computed against the CURRENT vector
+// (the index holds only latest vectors).
+func TestVectorIndex_SearchNearestScored_TemporalCaveat(t *testing.T) {
+	g, _ := New(Config{})
+	label := "Doc"
+	key := "embedding"
+
+	// Phase 1: node exists at t0 with vector v1 and marker "old".
+	n, err := g.Nodes.Add(context.Background(), []string{label}, map[string]any{
+		key: []float32{1, 0}, "marker": "old",
+	})
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceEuclidean); err != nil {
+		t.Fatalf("CreateVector: %v", err)
+	}
+	t0 := types.Instant(time.Now().UnixMilli())
+	time.Sleep(5 * time.Millisecond)
+
+	// Phase 2: mutate vector AND marker after t0.
+	if _, err := g.Nodes.Update(context.Background(), n.ID(), map[string]any{
+		key: []float32{0, 3}, "marker": "new", "tkg_valid_from": types.Instant(time.Now().UnixMilli()),
+	}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	query := []float32{0, 0}
+	hits, err := g.Index.SearchNearestScored(label, key, query, 1, storepkg.QueryOpts{ValidAt: t0})
+	if err != nil {
+		t.Fatalf("SearchNearestScored{ValidAt}: %v", err)
+	}
+	if len(hits) != 1 {
+		t.Fatalf("expected 1 hit, got %d", len(hits))
+	}
+	// Returned node is the HISTORICAL version (marker "old")...
+	if v, _ := hits[0].Node.GetProperty("marker"); v != "old" {
+		t.Errorf("returned node marker = %v, want historical \"old\"", v)
+	}
+	// ...but Distance reflects the CURRENT vector [0,3] (euclidean d=3), not
+	// the t0 vector [1,0] (d=1) — the documented latest-vector caveat.
+	if d := hits[0].Distance; d < 3-1e-6 || d > 3+1e-6 {
+		t.Errorf("Distance = %v, want 3 (computed against CURRENT vector)", d)
+	}
+}
+
+// TestVectorIndex_TxPinRejected pins the SearchNearest × TxPin contract
+// (sigma-tkgd ask): the vector index holds only LATEST vectors and drops
+// deleted nodes, so a belief-state (AS OF SYSTEM TIME) ranking is ill-defined
+// — a node hard-deleted after the pin would be silently missing and distances
+// would rank by post-pin vectors. The door rejects TxPin explicitly instead of
+// returning a silently wrong belief state. Both doors (standalone + tx mirror)
+// funnel through searchNearestLocked, so both must reject (rule 17).
+func TestVectorIndex_TxPinRejected(t *testing.T) {
+	g, _ := New(Config{})
+	label := "Doc"
+	key := "embedding"
+
+	if _, err := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float32{1, 0}}); err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	if err := g.Index.CreateVector(label, key, 2, storepkg.DistanceCosine); err != nil {
+		t.Fatalf("CreateVectorIndex: %v", err)
+	}
+
+	pin, err := g.Temporal.NowTx()
+	if err != nil {
+		t.Fatalf("NowTx: %v", err)
+	}
+
+	_, err = g.Index.SearchNearest(label, key, []float32{1, 0}, 1, storepkg.QueryOpts{TxPin: pin})
+	if !errors.Is(err, ErrVectorSearchTxPinUnsupported) {
+		t.Fatalf("SearchNearest with TxPin: err = %v, want ErrVectorSearchTxPinUnsupported", err)
+	}
+
+	// TxPin combined with another temporal opt keeps the earlier, more specific
+	// conflict error from the shared scan validation.
+	_, err = g.Index.SearchNearest(label, key, []float32{1, 0}, 1, storepkg.QueryOpts{TxPin: pin, ValidAt: pin})
+	if !errors.Is(err, ErrConflictingTemporalOpts) {
+		t.Fatalf("SearchNearest with TxPin+ValidAt: err = %v, want ErrConflictingTemporalOpts", err)
+	}
+
+	// Tx-side mirror must reject identically.
+	tx, err := g.BeginTx()
+	if err != nil {
+		t.Fatalf("BeginTx: %v", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	_, err = tx.SearchNearest(label, key, []float32{1, 0}, 1, storepkg.QueryOpts{TxPin: pin})
+	if !errors.Is(err, ErrVectorSearchTxPinUnsupported) {
+		t.Fatalf("tx.SearchNearest with TxPin: err = %v, want ErrVectorSearchTxPinUnsupported", err)
+	}
+
+	// A pin-free search on the same graph still works.
+	results, err := g.Index.SearchNearest(label, key, []float32{1, 0}, 1, storepkg.QueryOpts{})
+	if err != nil || len(results) != 1 {
+		t.Fatalf("pin-free SearchNearest = (%d results, %v), want (1, nil)", len(results), err)
+	}
+}
+
+// TestVectorIndex_Float64Embeddings_Indexed covers the sigma-tkgd ask: a Go
+// embedder storing []float64 embeddings must get an INDEXED vector (narrowed
+// to float32), not a silently unindexed property. Exercises both index-build
+// (node added before CreateVector) and auto-maintenance (node added after).
+func TestVectorIndex_Float64Embeddings_Indexed(t *testing.T) {
+	g, _ := New(Config{})
+	label := "Doc"
+	key := "embedding"
+
+	// Added BEFORE index creation — picked up by the index build.
+	n1, err := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float64{1, 0, 0}})
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+
+	if err := g.Index.CreateVector(label, key, 3, storepkg.DistanceCosine); err != nil {
+		t.Fatalf("CreateVectorIndex: %v", err)
+	}
+
+	// Added AFTER index creation — picked up by auto-maintenance.
+	n2, err := g.Nodes.Add(context.Background(), []string{label}, map[string]any{key: []float64{0, 1, 0}})
+	if err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+
+	results, err := g.Index.SearchNearest(label, key, []float32{1, 0, 0}, 2, storepkg.QueryOpts{})
+	if err != nil {
+		t.Fatalf("SearchNearest: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected both []float64-embedded nodes indexed, got %d results", len(results))
+	}
+	if results[0].ID() != n1.ID() {
+		t.Errorf("first result should be n1 (exact match), got other")
+	}
+	if results[1].ID() != n2.ID() {
+		t.Errorf("second result should be n2 (orthogonal), got other")
+	}
 }
 
 func TestVectorIndex_AutoMaintained_OnAdd(t *testing.T) {

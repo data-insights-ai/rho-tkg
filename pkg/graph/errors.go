@@ -125,6 +125,8 @@ var (
 	ErrInvalidForeignEndpoint     = storepkg.ErrInvalidForeignEndpoint
 	// Generic-door belief-state pin conflict (QueryOpts.TxPin).
 	ErrConflictingTemporalOpts = core.ErrConflictingTemporalOpts
+	// Vector search refuses the belief-state pin (index holds latest vectors only).
+	ErrVectorSearchTxPinUnsupported = core.ErrVectorSearchTxPinUnsupported
 	// Transaction-time backfill.
 	ErrTxBackfillDisabled = core.ErrTxBackfillDisabled
 	ErrInvalidTxFrom      = core.ErrInvalidTxFrom

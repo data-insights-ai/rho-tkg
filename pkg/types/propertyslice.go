@@ -313,6 +313,15 @@ func (ps PropertySlice) float32SliceCopy(key string) ([]float32, bool) {
 		out := make([]float32, len(v))
 		copy(out, v)
 		return out, true
+	case []float64:
+		if v == nil {
+			return nil, true
+		}
+		out := make([]float32, len(v))
+		for i, f := range v {
+			out[i] = float32(f)
+		}
+		return out, true
 	case []any:
 		if v == nil {
 			return nil, true

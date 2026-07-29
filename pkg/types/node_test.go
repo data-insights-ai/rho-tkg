@@ -720,12 +720,19 @@ func TestNodeFloat32SlicePropertyCopy(t *testing.T) {
 	if err := n.SetProperty("tags", []string{"a"}); err != nil {
 		t.Fatal(err)
 	}
+	if err := n.SetProperty("embedding64", []float64{1.5, 2.5, 3.5}); err != nil {
+		t.Fatal(err)
+	}
 	var nilEmbedding []float32
 	if err := n.SetProperty("nil_embedding", nilEmbedding); err != nil {
 		t.Fatal(err)
 	}
 	var nilWire []any
 	if err := n.SetProperty("nil_wire", nilWire); err != nil {
+		t.Fatal(err)
+	}
+	var nilEmbedding64 []float64
+	if err := n.SetProperty("nil_embedding64", nilEmbedding64); err != nil {
 		t.Fatal(err)
 	}
 
@@ -748,6 +755,13 @@ func TestNodeFloat32SlicePropertyCopy(t *testing.T) {
 	}
 	if got, ok := n.Float32SlicePropertyCopy("nil_wire"); got != nil || !ok {
 		t.Fatalf("Float32SlicePropertyCopy(nil_wire) = (%v, %v), want (nil, true)", got, ok)
+	}
+	got64, ok := n.Float32SlicePropertyCopy("embedding64")
+	if !ok || len(got64) != 3 || got64[0] != 1.5 || got64[1] != 2.5 || got64[2] != 3.5 {
+		t.Fatalf("Float32SlicePropertyCopy(embedding64) = (%v, %v), want ([1.5 2.5 3.5], true)", got64, ok)
+	}
+	if got, ok := n.Float32SlicePropertyCopy("nil_embedding64"); got != nil || !ok {
+		t.Fatalf("Float32SlicePropertyCopy(nil_embedding64) = (%v, %v), want (nil, true)", got, ok)
 	}
 	for _, key := range []string{"bad", "tags", "missing"} {
 		if got, ok := n.Float32SlicePropertyCopy(key); got != nil || ok {

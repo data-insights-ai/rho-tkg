@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	eventspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events"
+	indexapi "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/index"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered"
 	temporalpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
@@ -717,6 +718,24 @@ func (tx *GraphTx) SearchNearest(label, propertyKey string, query []float32, k i
 		return nil, err
 	}
 	return tx.g.searchNearestLocked(label, propertyKey, query, k, opts)
+}
+
+// SearchNearestScored is a tx-side mirror for g.Index.SearchNearestScored.
+func (tx *GraphTx) SearchNearestScored(label, propertyKey string, query []float32, k int, opts storepkg.QueryOpts) ([]indexapi.VectorHit, error) {
+	if err := tx.lockActiveCore(); err != nil {
+		return nil, err
+	}
+	defer tx.unlockActiveCore()
+	if err := tx.g.validateTemporalQueryOptsScan(opts); err != nil {
+		return nil, err
+	}
+	if err := tx.g.validateIndexLabel(label); err != nil {
+		return nil, err
+	}
+	if err := tx.g.validateIndexPropertyKey(propertyKey); err != nil {
+		return nil, err
+	}
+	return tx.g.searchNearestScoredLocked(label, propertyKey, query, k, opts)
 }
 
 // IndexProviders is a tx-side mirror for g.Index.Providers.

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	indexapi "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/index"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -33,6 +34,9 @@ import (
 //   - After / Limit: cursor pagination over distance-ordered results.
 //     "After" matches by the cursor node's ID — entries up to and including
 //     that ID are skipped, then up to Limit entries are returned.
+//   - TxPin: REJECTED with ErrVectorSearchTxPinUnsupported. The index holds
+//     only latest vectors and drops deleted nodes, so a belief-state ranking
+//     is ill-defined (a node deleted after the pin would silently be missing).
 //
 // Distance ranking caveat (temporal queries): the vector index holds only
 // the latest vector per node — historical vector values are NOT indexed.
@@ -76,7 +80,96 @@ func (i *IndexOps) SearchNearest(label, propertyKey string, query []float32, k i
 	return nodes, err
 }
 
+// SearchNearestScored is SearchNearest with distances: the SAME nodes in the
+// SAME order (identical validation, temporal eligibility, pagination and
+// TxPin refusal — it delegates to the same searchNearestLocked body), each
+// paired with its distance from the query under the index's metric. Built for
+// rerankers (e.g. GraphRAG) that need the score, not just the rank ordinal.
+//
+// Distance is computed against the CURRENT vector — the same latest-vector
+// ranking caveat documented on SearchNearest. Under a temporal filter the
+// returned Node is the historical version, but Distance still reflects the
+// node's current vector value.
+//
+// Requires store.VectorIndexIntrospectionCapability to resolve the index's
+// metric (all in-tree backends implement it); otherwise fails with
+// store.ErrCapabilityNotSupported.
+func (i *IndexOps) SearchNearestScored(label, propertyKey string, query []float32, k int, opts storepkg.QueryOpts) ([]indexapi.VectorHit, error) {
+	c := i.c
+	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+		return nil, err
+	}
+	if err := c.validateIndexLabel(label); err != nil {
+		return nil, err
+	}
+	if err := c.validateIndexPropertyKey(propertyKey); err != nil {
+		return nil, err
+	}
+	if err := indexpkg.ValidateVectorValues(query); err != nil {
+		return nil, err
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.closed.Load() {
+		return nil, ErrGraphClosed
+	}
+	return c.searchNearestScoredLocked(label, propertyKey, query, k, opts)
+}
+
+// searchNearestScoredLocked is the lock-free shared body of the scored door
+// (standalone + tx mirror): the SearchNearest result set scored against the
+// index's metric.
+func (c *Core) searchNearestScoredLocked(label, propertyKey string, query []float32, k int, opts storepkg.QueryOpts) ([]indexapi.VectorHit, error) {
+	nodes, err := c.searchNearestLocked(label, propertyKey, query, k, opts)
+	if err != nil {
+		return nil, err
+	}
+	if nodes == nil {
+		return nil, nil
+	}
+	introspect, ok := c.store.(storepkg.VectorIndexIntrospectionCapability)
+	if !ok {
+		return nil, fmt.Errorf("%w: VectorIndexIntrospectionCapability (required by SearchNearestScored)", storepkg.ErrCapabilityNotSupported)
+	}
+	tok, ok := c.labels.Lookup(label)
+	if !ok {
+		// searchNearestLocked already resolved the label; unreachable in
+		// practice, kept as a fail-closed guard.
+		return nil, storepkg.ErrVectorIndexNotFound
+	}
+	info, has, err := introspect.VectorIndexInfo(tok, propertyKey)
+	if err != nil {
+		return nil, err
+	}
+	if !has {
+		return nil, storepkg.ErrVectorIndexNotFound
+	}
+	hits := make([]indexapi.VectorHit, 0, len(nodes))
+	for _, n := range nodes {
+		// Distance reflects the CURRENT vector (the value the index ranked
+		// by), even when the returned node is a historical version.
+		current, err := c.getCurrentNode(n.ID())
+		if err != nil {
+			return nil, fmt.Errorf("graph: scored vector search: resolving current vector for node %d: %w", n.ID().SnowflakeID(), err)
+		}
+		vec, ok := current.Float32SlicePropertyCopy(propertyKey)
+		if !ok || len(vec) != len(query) {
+			return nil, fmt.Errorf("%w: node %d current vector missing or wrong dimension for scored search", storepkg.ErrInvalidVectorValue, n.ID().SnowflakeID())
+		}
+		hits = append(hits, indexapi.VectorHit{Node: n, Distance: indexpkg.VectorDistance(info.Metric, query, vec)})
+	}
+	return hits, nil
+}
+
 func (c *Core) searchNearestLocked(label, propertyKey string, query []float32, k int, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	// TxPin is refused for vector search — see ErrVectorSearchTxPinUnsupported.
+	// Checked here (the one body both the standalone and tx-mirror doors share,
+	// rule 17) AFTER validateTemporalQueryOptsScan ran in the callers, so a
+	// TxPin combined with another temporal opt still surfaces the more specific
+	// ErrConflictingTemporalOpts.
+	if opts.TxPin != 0 {
+		return nil, ErrVectorSearchTxPinUnsupported
+	}
 	// Resolve a TxAt-only "now" fallback ONCE for the whole search (which
 	// resolves many node candidates across possibly several loop iterations)
 	// instead of letting each candidate's findNodeVersionForOpts call resolve
