@@ -44,10 +44,20 @@ type wireTemporalMetaPartial struct {
 // the row carries no temporal block, mirroring the full decoder). Rows written
 // by a newer release fail closed with ErrWireFormatVersionUnsupported, exactly
 // like the checked full decode.
+//
+// Fast path: scanWireTemporalMeta — a single-pass, reflection-free,
+// non-recursive token walk (the guardMsgpackDepth machinery extended to
+// CAPTURE the ten selection fields while skipping everything else) — the
+// no-format-change answer to the valid-time depth ask's residual per-version
+// cost. On ANY structural surprise the scanner declines (ok=false) and the
+// audited SafeUnmarshal partial decode below remains the authority, so the
+// scanner can only ever be a same-answer accelerator.
 func DecodeWireTemporalMeta(raw []byte) (uint32, *types.TemporalMetadata, error) {
-	var w wireTemporalMetaPartial
-	if err := SafeUnmarshal(raw, &w); err != nil {
-		return 0, nil, err
+	w, ok := scanWireTemporalMeta(raw)
+	if !ok {
+		if err := SafeUnmarshal(raw, &w); err != nil {
+			return 0, nil, err
+		}
 	}
 	if w.FormatVersion > CurrentWireFormatVersion {
 		return 0, nil, fmt.Errorf("wire temporal meta: row format version %d, this binary supports up to %d: %w",
