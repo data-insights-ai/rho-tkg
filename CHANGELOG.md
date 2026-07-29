@@ -6,6 +6,62 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+Five asks from sigma-tkgd (filed 2026-07-29; each backed by a committed oracle in sigma-tkgd)
+landed as four shipped changes and one redirected diagnosis. Numbers: Apple M4 Max, badger-in-memory,
+steady-state (async write buffer drained).
+
+- FIX — **`[]float64` vectors are now indexed** (sigma ask 3). `PropertySlice.float32SliceCopy`
+  (the single seam behind `Node`/`Relationship.Float32SlicePropertyCopy`, used by every backend's
+  vector-index maintenance and build) accepted `[]float32` and `[]any`-of-float32/float64 but fell
+  through to `(nil, false)` for a homogeneous `[]float64` — a Go embedder storing `[]float64`
+  embeddings got an unindexed vector with no error. Now coerced (elements narrowed to float32),
+  matching the `[]any` arm's existing float64 coercion precedent. End-to-end test covers both the
+  index-build (node added before `CreateVector`) and auto-maintenance (added after) paths; sigma's
+  `TestVectorIndex_EmbeddingShapePin` contract pin flips with this release.
+- API — **`SearchNearestScored`** (sigma ask 4): `g.Index().SearchNearestScored(...)
+  ([]index.VectorHit, error)` + tx mirror — `SearchNearest` with distances (`index.VectorHit{Node,
+  Distance}`), same nodes/order/validation/pagination via the same `searchNearestLocked` body, for
+  GraphRAG rerankers that need the score. Distance is computed graph-side against the CURRENT vector
+  via `index.VectorDistance` under the index's introspected metric (requires
+  `VectorIndexIntrospectionCapability` — all in-tree backends), preserving the documented
+  latest-vector ranking caveat verbatim (rule-15 two-phase test pins that a `ValidAt` hit returns the
+  historical node with a current-vector distance).
+- API — **`SearchNearest` × `TxPin` semantics pinned by explicit rejection** (sigma ask 5): a
+  belief-state pin on vector search was mechanically accepted but ill-defined — the index holds only
+  latest vectors and drops deleted nodes, so a node hard-deleted after the pin (visible to every
+  other TxPin door) was silently missing and ranking used post-pin vectors. Both vector doors now
+  fail closed with the new `graph.ErrVectorSearchTxPinUnsupported` (checked at the shared
+  `searchNearestLocked` seam, rule 17); TxPin + another temporal opt keeps the more specific
+  `ErrConflictingTemporalOpts`. Documented in docs/errors.md + docs/api.md.
+- PERF — **pinned-adjacency deleted-entity fold is O(distinct IDs), not O(total history rows)**
+  (sigma ask 2, diagnosis REDIRECTED). Sigma reported rel head-pin expand growing ~8x with version
+  depth and hypothesized the 10c `RelBeliefWatermarkCapability` was not consulted on
+  `OutgoingForNodesAtPin`. Reproduced (~14x at depth 100 here), but the watermark was innocent — the
+  as-of doors have their own current-row fast path. The real gate: `badger.ForEachDeletedRelID` →
+  `AllRelHistoryIDsFrom` stepped the iterator through EVERY `0x08` history row to enumerate distinct
+  rel IDs, so the whole-store deleted-rel fold scaled with total version depth. Both mirrors
+  (`AllNodeHistoryIDsFrom`/`AllRelHistoryIDsFrom`) now Seek past a decided id's remaining version
+  rows (pending-delete-masked rows still step row-wise, so an id with a masked row and a surviving
+  row is still emitted — regression test added). `BenchmarkRelHeadPinExpandDepth` (20 seeds x 4
+  rels, badger): depth-100 head-pin expand 627µs → ~80-90µs (~7-8x, confirmed -count=3), now flat
+  from depth 10 to 100 (was linear); memory backend unchanged (~26µs, always flat). Benefits every consumer of the
+  distinct-history-ID scans (deleted-entity folds, full-history candidate folds).
+- PERF — **as-of reverse walk classifies via fixed-tail peek, no per-version decode** (sigma ask 1,
+  TX axis). The badger native `NodeAsOf`/`RelAsOf` (+ bulk in-txn variants) reverse scan fully
+  msgpack-decoded EVERY walked version just to read TxFrom/TxTo for the skip/visible/hidden verdict
+  — the ~70-250x early-pin depth cost in sigma's oracle. The verdict needs exactly the two fields
+  the ADR-0006 §4.5 v2 fixed-width temporal tail carries, so the new
+  `storeutil.PeekWireTemporalTail` (marker-validated read-side sibling of `PatchWireTemporalTail`)
+  classifies a full (non-delta) row in a bounded byte-peek; delta rows and legacy v1 rows fall back
+  to the temporal-meta decode (same verdict, locked by the existing randomized as-of equivalence
+  battery). The scan driver no longer defensively copies each visited value (`consider` contract:
+  bytes valid only during the call; all four callbacks copy-on-retain) and iterates with
+  `PrefetchValues=false` (prefetch staged one alloc+memcpy per walked version).
+  `BenchmarkNodeEarlyPinPointDepth` (badger, early pin under 100 newer versions): 145µs → 18.8µs
+  (~7.7x), allocs 1917 → 141. SCOPE (as filed in the ask amendment): this serves the
+  TRANSACTION-time axis; the valid-time axis (vf/vt live mid-body) still needs the tail widened
+  (a wire `fv` bump) or the axis-agnostic inverted-suffix seek — deliberately not built here.
+
 - API/FIX — added the opt-in
   `g.Admin().ResolveExactErasure(ctx, ExactErasureRequest)` planning door and
   `g.Admin().ExactErase(ctx, ExactErasureRequest)` legal-erasure door plus

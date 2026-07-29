@@ -2277,3 +2277,35 @@ legitimately lie in the future (a future valid-to must not poison the commit clo
   `TestInstantFloor_PreservedAcrossReset` (badger only — the memory store's `Clear`
   leaves its meta map intact, so it cannot exhibit the defect). Each fails RED
   without its door's fix.
+
+## 72. An Externally-Filed Perf Diagnosis Names A Plausible Mechanism — Reproduce And Profile Before Touching The Named Component
+
+The sigma-tkgd rel head-pin ask (2026-07-29) reported a real ~8× depth
+degradation and attributed it to `RelBeliefWatermarkCapability` "not consulted
+on the `OutgoingForNodesAtPin` path" — a plausible hypothesis from outside the
+codebase, since the 10c watermark IS the known head-pin accelerator. Code
+reading alone already contradicted it (the as-of doors have their own
+current-row fast path, and the watermark was never part of the as-of seam), and
+a local repro benchmark + CPU profile located the actual gate somewhere the ask
+never mentioned: `ForEachDeletedRelID` → `AllRelHistoryIDsFrom` stepping the
+badger iterator through every `0x08` history row to enumerate distinct IDs —
+the whole-store deleted-rel candidate fold, O(total version rows) per query.
+
+- **Rule:** when a consumer files a perf ask with a numbered symptom AND a
+  named culprit, treat only the SYMPTOM as data. Reproduce it in-repo (mirror
+  the reporter's fixture shape), profile, and let the profile name the
+  component. Fixing the named-but-innocent component would have added a
+  watermark gate that changed nothing and left the real O(rows) scan behind.
+- **Corollary (profiling under async write buffers):** a benchmark that
+  measures reads immediately after seeding writes measures the PENDING-BUFFER
+  overlay (`rangePending`) as much as the read path — drain the flush tick
+  (sleep past `FlushInterval`) before `b.ResetTimer()` or the profile blames
+  the wrong frames. Both costs were real here, but only one was the reported
+  steady-state defect.
+- **Fix pattern (distinct-ID scans over versioned keyspaces):** enumerating
+  distinct entity IDs from a `prefix/<id>/<version>` keyspace by `it.Next()`
+  + last-ID dedup is O(total rows); once an id is decided, `Seek` to
+  `prefix/<id+1>` — O(distinct ids). Keep row-wise stepping for a
+  pending-delete-masked row (the same id may still be emitted via a surviving
+  row — regression test
+  `TestBadgerStore_AllNodeHistoryIDsFrom_PendingDeleteMasksSomeVersions`).

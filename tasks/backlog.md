@@ -330,4 +330,67 @@ indefinitely unless a human manually brackets a change with
 noise is characterized — flagged here as worth pursuing but NOT actioned; it is a
 CI/policy decision needing explicit owner sign-off, not a code fix.
 
+---
+
+## Asks from sigma-tkgd (filed 2026-07-29 — RESOLVED same day, see CHANGELOG [Unreleased])
+
+Batched per the consumer-gated convention (sigma ROADMAP §15.3/§15.4: every ask below has a
+concrete committed caller/oracle in sigma-tkgd pinning the shape). Numbers: Apple M4 Max,
+badger-in-memory, confirmed `-count=3`.
+
+**Status:** asks 3/4/5 shipped as filed ([]float64 coercion; `SearchNearestScored` +
+`index.VectorHit`; explicit `ErrVectorSearchTxPinUnsupported` rejection). Ask 2 was reproduced but
+the diagnosis was REDIRECTED: the watermark was consulted fine — the cost was the deleted-rel
+fold's O(total-history-rows) distinct-ID scan, fixed with a per-id Seek skip (627µs → 90µs at
+depth 100, now depth-flat). Ask 1's TX axis shipped via the fix-(a) tail-peek (145µs → 18.8µs
+early-pin point at depth 100); the VALID-TIME axis from the amendment remains OPEN — it needs the
+tail widened to vf/vt (wire `fv` bump, natural companion of the deferred eclipsed-row flag) or the
+axis-agnostic (b) inverted-suffix seek / (c) anchor tuning. Sigma should re-run its oracles and
+flip its contract pins.
+
+**Remaining open item from this batch:** ask 1's valid-time axis (see status above) — a design
+decision (wire bump vs. new keyspace), not a drive-by fix.
+
+1. **Historical-pin chain resolution decodes every walked version** (the priority ask).
+   sigma's depth oracle (`pkg/cypher/bitemporal_depth_bench_test.go`,
+   `BenchmarkBitemporalDepth`) holds population fixed and scales versions/entity 1→10→100.
+   HEAD-pin resolution is flat in depth (the 10c watermark sidecar works: 2000-node pinned
+   scan ~1.4ms, point ~2.2µs at depth 100). EARLY-pin — any pin with newer versions above it,
+   i.e. the audit query "what did we know at t" — is O(versions-newer-than-pin) with a FULL
+   msgpack decode per walked version (~80 allocs/version): point 2.4µs→173µs (~70×), pinned
+   scan 1.3ms→389ms (~250×), one-hop expand 53µs→9.3ms (~175×) at depth 100 vs 1. The memory
+   backend degrades only ~2–5× — the decode is the badger arm's cost.
+   Candidate fixes, least-invasive first: (a) during the reverse walk, peek the v2 wire's
+   fixed-width transaction-time tail (the ADR-0006 §4.5 patch slot) WITHOUT unmarshalling,
+   and decode only the winning version — O(depth) byte-peeks, O(1) decodes, no format change;
+   (b) bit-inverted TxFrom suffix on the history keys so the boundary is a direct `Seek`
+   (O(1) at any pin); (c) ADR-0009 anchor-interval tuning to bound reconstruction.
+   AMENDMENT (same day): the VALID-TIME axis shows the same shape —
+   `BenchmarkBitemporalDepthValidTime` (ascending explicit valid_from windows, value-asserted):
+   resolving an OLD validity window costs 255µs→87.8ms (~345×) on a 500-node `AT TIME` scan and
+   2.4µs→130µs (~55×) per point read at depth 100, recent-window/live flat. SCOPE NOTE for fix
+   (a): the fixed tail carries tf/tt only — a tail-peek serves TX pins but not valid-time walks
+   (vf/vt sit in the msgpack body). Serving all three axes needs either the tail widened to
+   vf/vt (a wire `fv` bump — the "explicit eclipsed-row wire flag" deferred decision is the
+   natural companion), or (b)/(c) which are axis-agnostic.
+2. **Rel head-pin resolution is not watermark-served on the pinned adjacency doors.**
+   `BenchmarkBitemporalDepthRels` (rels gain depth, endpoint nodes stay at one version,
+   `r.w` projected and value-asserted): rel HEAD-pin expand grows 53µs→418µs (~8×) at depth
+   100 while node head-pins stay flat — `RelBeliefWatermarkCapability` (10c) appears not
+   consulted on the `OutgoingForNodesAtPin` path. Independent of ask 1; likely a small gate.
+3. **`[]float64` vectors are stored but silently not indexed.** `Float32SlicePropertyCopy`
+   reads `[]float32` and `[]any` but not `[]float64` — a Go embedder storing `[]float64`
+   embeddings gets an unindexed vector with no error. sigma pins the current contract in
+   `TestVectorIndex_EmbeddingShapePin` (the pin flips when this ships). Ask: coerce
+   `[]float64` at index time, or reject it at the write door — either beats silence.
+4. **SearchNearest distance scores.** The door returns ordered nodes only; sigma's
+   `db.index.vector.query*` procedures expose a rank ordinal, but GraphRAG rerankers need
+   the score. Ask: a scored variant (e.g. `[]VectorHit{Node, Distance}`).
+5. **SearchNearest × TxPin semantics are unpinned.** The QueryOpts contract for vector
+   search documents ValidAt/ValidStart+ValidEnd/Depth/After/Limit; TxPin composition is
+   undocumented, so sigma deliberately does not expose an `AS OF SYSTEM TIME` vector variant
+   (Pattern-17 discipline: probe before consuming). Ask: pin the semantics — an explicit
+   rejection (`ErrConflictingTemporalOpts`) is a perfectly good answer, since the index
+   holds only latest vectors and a belief-state ranking would be ill-defined anyway.
+
 
