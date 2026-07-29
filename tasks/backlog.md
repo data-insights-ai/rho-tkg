@@ -330,7 +330,7 @@ local gate — the structural "stays invisible indefinitely" gap is closed.
 
 ---
 
-## Asks from sigma-tkgd (filed 2026-07-29 — RESOLVED same day, see CHANGELOG [Unreleased])
+## Asks from sigma-tkgd (filed 2026-07-29 — RESOLVED same day, released in [4.25.0])
 
 Batched per the consumer-gated convention (sigma ROADMAP §15.3/§15.4: every ask below has a
 concrete committed caller/oracle in sigma-tkgd pinning the shape). Numbers: Apple M4 Max,

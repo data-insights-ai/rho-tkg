@@ -303,11 +303,14 @@ including the Docker-based `lint`/`security`/`vulncheck` targets.
 See [CHANGELOG.md](CHANGELOG.md) for the full, dated release history — every
 version back to v3.0.0, with the defect it fixed or the feature it added.
 
-Current release: **v4.24.0** — three temporal-read fixes: the wall-clock "now"
-fallback in `TxAt`-only scans is resolved once per scan instead of per
-candidate; `NodesAsOf`/`RelsAsOf` bulk scans capture the history overlay in one
-snapshot so a background flush mid-scan cannot drop rows; and a
-belief-watermark-gated fast path is restored for point-in-time queries.
+Current release: **v4.25.0** — the sigma-tkgd ask-batch release: `[]float64`
+embeddings are indexed, `SearchNearestScored` returns distances for rerankers,
+`TxPin` on vector search fails closed instead of answering wrong; historical-pin
+resolution accelerated on both temporal axes with no wire-format change
+(tail-peek as-of walk, selection-skeleton + zero-alloc token-scanner valid-time
+resolution, seek-skip distinct-ID scans); the atomically-preflighted exact
+erasure door; an as-of overlay-ordering commit-window fix; and a blocking
+benchmark regression gate on every PR.
 
 If you are upgrading from v3.x, see `CHANGELOG.md` `[4.0.0]` for the full
 public-API migration recipe (context-first methods, `g.Tier` split from

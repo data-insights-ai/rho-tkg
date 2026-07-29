@@ -4,7 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [4.25.0] - 2026-07-29
+
+The sigma-tkgd ask-batch release: the five consumer-gated asks filed 2026-07-29 all resolved same
+day (three vector-door additions; two performance asks root-caused — one with a REDIRECTED
+diagnosis — and fixed on both temporal axes without any wire-format change, with the format bump
+DECIDED NOT BUILT and reopen criteria pinned), plus the atomically-preflighted exact-erasure door,
+a pre-existing lesson-64-class as-of overlay-ordering fix, and the long-standing bench flip-to-
+blocking CI plan wired. New public surface: `g.Admin().ResolveExactErasure`/`ExactErase`,
+`g.Index().SearchNearestScored` + `index.VectorHit`, `graph.ErrVectorSearchTxPinUnsupported`, and
+the optional `store.TemporalMetaHistoryCapability` / `store.ExactErasureCapability`.
 
 Five asks from sigma-tkgd (filed 2026-07-29; each backed by a committed oracle in sigma-tkgd)
 landed as four shipped changes and one redirected diagnosis. Numbers: Apple M4 Max, badger-in-memory,
