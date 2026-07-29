@@ -83,6 +83,13 @@ func (bs *Store) historyTemporalMetaByPrefix(prefix []byte, node bool) ([]storec
 	}
 
 	byVersion := make(map[uint64]storecontract.VersionTemporalMeta)
+	if bs.historyScanTestHook != nil {
+		// Same commit-window hook point as getNodeHistoryByPrefix: fires
+		// between the overlay capture above and the badger View below, so the
+		// deterministic TestFlushingCommitWindow_*TemporalMeta tests can land
+		// a concurrent flush completion inside the scan->merge window.
+		bs.historyScanTestHook()
+	}
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = false // decode happens inside Value(), no staging copy

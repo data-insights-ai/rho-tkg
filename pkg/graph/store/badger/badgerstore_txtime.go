@@ -125,22 +125,22 @@ func (bs *Store) classifyHistoryRelValueAtTxTime(id snowflake.ID, version uint64
 //
 // prefix is the 9-byte per-entity history prefix (HistNodePrefix / HistRelPrefix).
 func (bs *Store) reverseScanHistoryVersion(prefix []byte, consider func(version uint64, val []byte) (stop bool, err error)) error {
-	return bs.db.View(func(txn *badgerv4.Txn) error {
-		return bs.reverseScanHistoryVersionInTxn(txn, prefix, consider)
-	})
-}
-
-// reverseScanHistoryVersionInTxn is reverseScanHistoryVersion's body reading
-// through an ALREADY-OPEN read transaction instead of opening its own — used by
-// a single-entity caller (NodeAsOf/RelAsOf via the wrapper above) that opens its
-// OWN transaction per call, so a live per-call overlay read is safe: nothing can
-// commit-and-drain the overlay between this call's overlay read and its own
-// txn's snapshot instant, because both happen back-to-back under the SAME call.
-// The bulk multi-entity scan (NodesAsOf/RelsAsOf, BACKLOG 18k) must NOT use this
-// path — see reverseScanHistoryVersionInTxnSnapshot.
-func (bs *Store) reverseScanHistoryVersionInTxn(txn *badgerv4.Txn, prefix []byte, consider func(version uint64, val []byte) (stop bool, err error)) error {
+	// Overlay BEFORE the View — the lesson-64 commit-window ordering. The
+	// previous shape captured the overlay INSIDE the View callback, i.e. AFTER
+	// badger assigned the transaction's snapshot instant: a concurrent flush()
+	// that committed a parked row and cleared `flushing` between the snapshot
+	// instant and the overlay read left the row in NEITHER view — dropped. The
+	// gap is nanoseconds when the goroutine runs uninterrupted (the old
+	// comment's "back-to-back" argument), but a descheduled goroutine widens
+	// it arbitrarily under load — a probability argument, not a correctness
+	// one. Capturing first makes it structural: a row committed after the
+	// capture was still in `flushing` at capture time (flush clears strictly
+	// after commit) and is in the overlay; a row committed before the View is
+	// in the snapshot.
 	pendingSets, pendingDeletes := bs.pendingHistoryVersionOverlay(prefix, 0)
-	return bs.reverseScanHistoryVersionInTxnOverlay(txn, prefix, pendingSets, pendingDeletes, consider)
+	return bs.db.View(func(txn *badgerv4.Txn) error {
+		return bs.reverseScanHistoryVersionInTxnOverlay(txn, prefix, pendingSets, pendingDeletes, consider)
+	})
 }
 
 // historyOverlaySnapshot is a frozen, whole-store copy of every buffered

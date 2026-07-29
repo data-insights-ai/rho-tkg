@@ -119,6 +119,22 @@ steady-state (async write buffer drained).
   (verified against fabricated regressions: +50% fails at 15%, passes at 60%). bench/README.md's
   CI section rewritten to match.
 
+- FIX — **as-of reverse walk: overlay captured BEFORE the badger snapshot** (lesson-64 class,
+  pre-existing). `reverseScanHistoryVersion` (the single-entity NodeAsOf/RelAsOf walk) captured the
+  pending/flushing overlay INSIDE `db.View` — after the transaction's snapshot instant — leaving a
+  window in which a concurrent flush committing a parked row and clearing `flushing` dropped the
+  row from BOTH views. Its comment argued the window was negligible ("back-to-back") — a
+  probability argument the bulk variant (`reverseScanHistoryVersionInTxnSnapshot`) had already
+  rejected for itself. The overlay is now captured before the View, making the ordering structural.
+  Found while investigating a single, unreproduced-in-60-stress-runs
+  `TestBitemporalOracle_BadgerCommitWindow` MISMATCH observed during one heavily-loaded full-gate
+  run (attribution PLAUSIBLE, not proven — the observed mismatch was on point/set doors; the
+  observation stays flagged, see lesson 74). Also: the new
+  `TemporalMetaHistoryCapability` scan gained the `historyScanTestHook` hook point plus
+  deterministic commit-window guards (`TestFlushingCommitWindow_{Node,Rel}HistoryTemporalMeta_
+  NoDropAcrossFlush`) proving its overlay-first ordering the same way the full-history readers are
+  proven.
+
 - API/FIX — added the opt-in
   `g.Admin().ResolveExactErasure(ctx, ExactErasureRequest)` planning door and
   `g.Admin().ExactErase(ctx, ExactErasureRequest)` legal-erasure door plus

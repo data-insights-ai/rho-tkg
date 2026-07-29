@@ -2338,3 +2338,38 @@ differed.
   equivalence oracle wired into CI, not just targeted fixtures — the divergent
   input class here (created-closed + cascade-reopen + post-cascade-update +
   delete) was nothing anyone would have hand-written.
+
+## 74. "Back-To-Back, So The Window Is Negligible" Is A Probability Argument, Not A Correctness Argument — Every Overlay Reader Must Capture Before The Snapshot, Structurally
+
+One full `make check` run (under heavy parallel load AND a nearly-full disk from
+a 65GB go-build cache) failed `TestBitemporalOracle_BadgerCommitWindow` with a
+genuine MISMATCH — a rel vanishing from `ByType`/`*AtTx` doors — that then
+refused to reproduce in 60 targeted stress runs. Re-auditing EVERY
+overlay-merging reader's capture ordering (instead of chasing the
+reproduction) found that the single-entity as-of reverse walk
+(`reverseScanHistoryVersion`) captured the pending/flushing overlay INSIDE
+`db.View` — i.e. AFTER badger assigned the transaction's snapshot instant —
+while its own comment argued this was safe "because both happen back-to-back
+under the SAME call". That is the exact lesson-64 dropped-row window: a
+concurrent flush committing a parked row and clearing `flushing` between the
+snapshot instant and the overlay read leaves the row in NEITHER view; the gap
+is nanoseconds on an idle machine and arbitrarily wide when the goroutine is
+descheduled under load. The bulk variant (`...InTxnSnapshot`) already
+pre-captured for precisely this reason — the single-entity path had argued
+itself an exemption.
+
+- **Rule:** an ordering invariant ("overlay before snapshot") admits no
+  fast-path exemptions justified by expected timing. If the safety of a read
+  path depends on two operations happening "immediately" after one another,
+  it is not safe — make the ordering structural and delete the argument.
+- **Rule (audit recipe):** when a rare, load-dependent oracle failure will not
+  reproduce, stop rerunning and instead enumerate every reader that merges
+  the write-buffer overlay with a store snapshot and CHECK THE CAPTURE ORDER
+  of each: `grep -rn 'pendingHistoryVersionOverlay\|pendingHistoryIDOverlay\|snapshotHistoryOverlay' pkg/graph/store/badger/ | grep -v _test`
+  — each hit must capture BEFORE its `db.View`/`NewTransaction`, or receive a
+  pre-captured snapshot.
+- **Honesty note:** the observed mismatch was on point/set doors while the
+  flawed ordering was in the as-of walk, so the attribution is PLAUSIBLE, not
+  proven (the artifact is preserved in the failure log recorded in this
+  repo's CHANGELOG entry). The fix is justified by inspection regardless; the
+  observation stays flagged rather than silently explained away.
