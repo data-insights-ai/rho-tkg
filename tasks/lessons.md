@@ -2309,3 +2309,32 @@ the whole-store deleted-rel candidate fold, O(total version rows) per query.
   pending-delete-masked row (the same id may still be emitted via a surviving
   row — regression test
   `TestBadgerStore_AllNodeHistoryIDsFrom_PendingDeleteMasksSomeVersions`).
+
+## 73. The Chain Resolver's Input Order Is A Semantic Input — A Sorted Chain Fed Back In Flips The Monotonic-vs-Cascade Branch
+
+Discovered building the selection-skeleton fast path (TemporalMetaHistoryCapability):
+`resolveNodeChain`/`resolveRelChain` take the chain in ASCENDING-VERSION order and
+`sortNodeChainForResolve` both DETECTS non-monotonicity relative to that order AND
+sorts the slice IN PLACE. Resolving twice on the same slice (select on skeletons,
+hydrate the winner, re-resolve) made the second run see the first run's
+sorted-by-valid-from output — which looks MONOTONIC — so it took the positional-
+tiling arm instead of the cascade own-bounds arm and silently lost a
+cascade-reopened row (fast path returned "no version" where the full path returned
+the reopened row). The per-row selection inputs were byte-identical; only the ORDER
+differed.
+
+- **Rule:** when a resolver both classifies its input's shape AND mutates the input
+  in place, the input's order is part of the API contract. A caller that invokes it
+  more than once must hand EACH invocation its own pristine copy — and the contract
+  belongs in the resolver's doc comment (now in chain_resolver.go's funnel comment),
+  not in the caller's head.
+- **Debugging pattern that found it:** an env-gated divergence cross-check inside
+  the door (run fast AND full, panic with both chains + selection keys on
+  divergence) under the existing randomized oracle harness. The harness found the
+  divergent lifecycle in seconds; targeted-fixture guessing had failed to reproduce
+  it because the trigger was the RE-USE of a sorted slice, not any particular row
+  layout.
+- **Corollary:** an "accelerator must never change answers" claim needs an
+  equivalence oracle wired into CI, not just targeted fixtures — the divergent
+  input class here (created-closed + cascade-reopen + post-cascade-update +
+  delete) was nothing anyone would have hand-written.

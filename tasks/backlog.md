@@ -317,18 +317,16 @@ deltas, both traced via `git bisect` to `7919ad0` and `0b5d662` respectively:
   200-seed non-short bitemporal oracle, and the confirmed perf recovery back to the
   pre-10b baseline (~44µs/433 allocs).
 
-**OPEN — structural gap flagged, not yet addressed**: nothing in `go test ./...`
-or CI would have caught either finding on its own. `bench/` is deliberately excluded
-from `go test ./...` (fixture-build cost); the regression-detecting tool
-(`make bench-check`) needs a manually-captured, gitignored, per-machine baseline;
-and the one CI benchmark workflow that exists is manual-dispatch-only and its
-regression-check step runs with `continue-on-error: true` by explicit design
-(shared-runner noise). A real regression can therefore land and stay invisible
-indefinitely unless a human manually brackets a change with
-`make bench-baseline`/`make bench-check`. `bench/README.md` already documents a
-"flip-to-blocking plan" for wiring `bench-check` into CI once GitHub-hosted-runner
-noise is characterized — flagged here as worth pursuing but NOT actioned; it is a
-CI/policy decision needing explicit owner sign-off, not a code fix.
+**RESOLVED 2026-07-29 (owner-approved: "work on the open items")** — the
+flip-to-blocking plan is WIRED: `.github/workflows/bench.yml` now runs a BLOCKING
+`bench-gate` job on every PR touching `pkg/**`/`bench/**`/`go.mod` — merge-base vs
+HEAD on the SAME runner, `-count=3` medians, threshold 30% (looser than the 15%
+local gate to absorb shared-runner noise), the two multi-minute measurement
+studies excluded from the gate (still in the manual dispatch job). The threshold
+logic was factored into `bench/bench-compare.sh` — ONE comparator shared by the
+local `bench-check.sh` and the CI gate, so the two can never drift. A regression
+landing invisibly now requires it to be <30% on CI AND nobody running the 15%
+local gate — the structural "stays invisible indefinitely" gap is closed.
 
 ---
 
@@ -348,8 +346,14 @@ tail widened to vf/vt (wire `fv` bump, natural companion of the deferred eclipse
 axis-agnostic (b) inverted-suffix seek / (c) anchor tuning. Sigma should re-run its oracles and
 flip its contract pins.
 
-**Remaining open item from this batch:** ask 1's valid-time axis (see status above) — a design
-decision (wire bump vs. new keyspace), not a drive-by fix.
+**Remaining open item from this batch:** ask 1's valid-time axis — STAGE 1 SHIPPED (same day): the
+selection-skeleton fast path (`store.TemporalMetaHistoryCapability` + partial temporal decode +
+winner-only hydration, no wire change) — point 159µs→88µs, AT TIME scan 16.1ms→8.8ms at depth 100,
+allocs ~5x down (see CHANGELOG). The residual depth-linearity is the per-version partial decode
+itself; removing it needs the v2 fixed tail widened to the temporal envelope (a wire `fv` bump,
+bundled with the deferred eclipsed-row flag) or an inverted-suffix seek keyspace — that format
+decision is the ONE remaining open sub-item, and it should wait for sigma to re-run
+`BenchmarkBitemporalDepthValidTime` against stage 1 first.
 
 1. **Historical-pin chain resolution decodes every walked version** (the priority ask).
    sigma's depth oracle (`pkg/cypher/bitemporal_depth_bench_test.go`,

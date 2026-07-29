@@ -62,6 +62,43 @@ steady-state (async write buffer drained).
   TRANSACTION-time axis; the valid-time axis (vf/vt live mid-body) still needs the tail widened
   (a wire `fv` bump) or the axis-agnostic inverted-suffix seek — deliberately not built here.
 
+- PERF — **valid-time historical-pin resolution on selection skeletons** (sigma ask 1, VALID-TIME
+  axis, stage 1 — no wire change). The point doors (`NodeAt`/`NodeAtTx`/`RelAt`/`RelAtTx` and every
+  scan resolving per-candidate through them, e.g. `NodesByLabelAt`) materialized the FULL version
+  chain — every row fully msgpack-decoded — just to select one winner. New OPTIONAL
+  `store.TemporalMetaHistoryCapability` (`NodeHistoryTemporalMeta`/`RelHistoryTemporalMeta`, badger
+  native only): enumerates a chain's per-version SELECTION-SCOPE temporal metadata via a partial
+  wire decode (`storeutil.DecodeWireTemporalMeta` — version + numeric instants; properties/labels/
+  hashes skipped, never materialized; delta rows served from their Meta). Core's
+  `nodeAtViaTemporalMeta`/`relAtViaTemporalMeta` build skeleton rows, run THE SAME
+  `resolveNodeChain` point resolution over them, hydrate ONLY the winning version
+  (`GetNodeVersion`), and re-run the resolver with the winner hydrated — the chain resolver stays
+  the single selection authority (no re-implemented rule; a skeleton never leaves the seam; any
+  hydration anomaly falls back to the full-chain arm, never a wrong answer). DOCUMENTED RESOLVER
+  CONTRACT discovered en route (chain_resolver.go): the input chain must be ASCENDING-VERSION order
+  and the resolver may sort its argument in place — a caller resolving twice must hand each run its
+  own pristine copy, or the monotonic-vs-cascade branch flips and bounds derivation silently
+  changes (the bitemporal oracle harness caught exactly this during development; the
+  cascade-reopen-delete fixture is now pinned in `temporal_skeleton_test.go` with A/B fast-vs-full
+  grids, node+rel mirrors, and a randomized-lifecycle equivalence fuzz).
+  `BenchmarkNodeValidTimeEarlyWindowDepth` (badger, 100 nodes, ascending explicit valid_from
+  windows, OLD-window probe at depth 100): point 159µs → 87.8µs (~1.8x, allocs 2511 → 467), label
+  AT TIME scan 16.1ms → 8.8ms (~1.8x, allocs 251K → 47K). The remaining depth-linearity is the
+  per-version partial decode itself — removing it entirely needs the tail widened to the temporal
+  envelope (wire `fv` bump) or an inverted-suffix seek, still the flagged open decision.
+
+- CI — **the bench flip-to-blocking plan is wired** (the long-standing lone backlog item,
+  owner-approved). `.github/workflows/bench.yml` gains a BLOCKING `bench-gate` job on every PR
+  touching `pkg/**`/`bench/**`/`go.mod`: merge-base vs HEAD benchmarked on the SAME runner with
+  `-count=3` (benchstat medians absorb single-sample scheduler spikes), failing the check when a
+  core scenario regresses beyond 30% (deliberately looser than the 15% local gate — shared runners
+  are noisier than a dedicated machine). The two multi-minute measurement studies
+  (`PinnedScanScaling`, `ChangeLogTxSerialization`) are excluded from the gate (still in the manual
+  dispatch job, which stays informational/full-suite). The threshold logic moved to
+  `bench/bench-compare.sh` — ONE comparator shared by local `bench-check.sh` and the CI gate
+  (verified against fabricated regressions: +50% fails at 15%, passes at 60%). bench/README.md's
+  CI section rewritten to match.
+
 - API/FIX — added the opt-in
   `g.Admin().ResolveExactErasure(ctx, ExactErasureRequest)` planning door and
   `g.Admin().ExactErase(ctx, ExactErasureRequest)` legal-erasure door plus
