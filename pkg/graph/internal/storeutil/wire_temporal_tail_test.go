@@ -302,6 +302,68 @@ func TestCrownEquivalenceRel(t *testing.T) {
 
 // --- STAGE B: PatchWireTemporalTail fails closed on bad buffers ---
 
+// TestPeekWireTemporalTail pins the read-side of the fixed tail: peeking a v2
+// row returns exactly the tf/tt values a decode would see, without a decode;
+// non-v2 buffers (legacy v1 rows, short/corrupt buffers) report ok=false so
+// callers fall back to the decode path.
+func TestPeekWireTemporalTail(t *testing.T) {
+	t.Parallel()
+
+	// A marshalled v2 row peeks its own encoded tail values.
+	n := goldenNodeFullForTail(t)
+	buf, err := MarshalNodeWire(n)
+	if err != nil {
+		t.Fatalf("MarshalNodeWire: %v", err)
+	}
+	tm := n.Temporal()
+	tf, tt, ok := PeekWireTemporalTail(buf)
+	if !ok || tf != int64(tm.TxFrom) || tt != int64(tm.TxTo) {
+		t.Fatalf("peek = (%d, %d, %v), want (%d, %d, true)", tf, tt, ok, tm.TxFrom, tm.TxTo)
+	}
+
+	// Peek agrees with a full decode after an in-place patch.
+	if err := PatchWireTemporalTail(buf, 4242, 8484); err != nil {
+		t.Fatalf("patch: %v", err)
+	}
+	tf, tt, ok = PeekWireTemporalTail(buf)
+	if !ok || tf != 4242 || tt != 8484 {
+		t.Fatalf("post-patch peek = (%d, %d, %v), want (4242, 8484, true)", tf, tt, ok)
+	}
+	var w NodeWire
+	if err := SafeUnmarshal(buf, &w); err != nil {
+		t.Fatalf("decode patched: %v", err)
+	}
+	if w.TxFrom != 4242 || w.TxTo != 8484 {
+		t.Fatalf("decode = (%d, %d), diverges from peek", w.TxFrom, w.TxTo)
+	}
+
+	// A zero tail peeks as zeros (still ok — the tail is present).
+	nw, err := NodeToWireChecked(n)
+	if err != nil {
+		t.Fatalf("NodeToWireChecked: %v", err)
+	}
+	zeroed, err := PreEncodeNodeWireV2(nw)
+	if err != nil {
+		t.Fatalf("PreEncodeNodeWireV2: %v", err)
+	}
+	tf, tt, ok = PeekWireTemporalTail(zeroed)
+	if !ok || tf != 0 || tt != 0 {
+		t.Fatalf("zero-tail peek = (%d, %d, %v), want (0, 0, true)", tf, tt, ok)
+	}
+
+	// Legacy v1 rows and malformed buffers report ok=false.
+	for name, b := range map[string][]byte{
+		"v1 full":   mustHex(t, goldenV1NodeFull),
+		"v1 legacy": mustHex(t, goldenV1NodeLegacy),
+		"short":     {1, 2, 3},
+		"empty":     nil,
+	} {
+		if _, _, ok := PeekWireTemporalTail(b); ok {
+			t.Errorf("%s: peek reported ok=true, want false", name)
+		}
+	}
+}
+
 func TestPatchFailsClosed(t *testing.T) {
 	t.Parallel()
 

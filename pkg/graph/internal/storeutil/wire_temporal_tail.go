@@ -89,6 +89,27 @@ func HasWireTemporalTail(buf []byte) bool {
 		[4]byte(buf[L-wireTxFromValueEndFromEnd:L-wireTxToValueStartFromEnd]) == wireTtMarker
 }
 
+// PeekWireTemporalTail reads the transaction-time tail of a v2 wire buffer
+// WITHOUT unmarshalling: it validates the fixed slot markers (the same check
+// PatchWireTemporalTail performs before writing) and returns the raw TxFrom /
+// TxTo int64 values. ok is false when the buffer is too short or its trailing
+// bytes are not a well-formed v2 tail (e.g. a legacy v1 omitempty-tail row) —
+// callers must then fall back to a full decode.
+//
+// This is the read-side dividend of the ADR-0006 §4.5 fixed tail: a
+// transaction-time classification that needs ONLY TxFrom/TxTo (the as-of
+// reverse walk's skip/visible/hidden verdict) can decide per version row in a
+// bounded byte-peek instead of a full msgpack decode.
+func PeekWireTemporalTail(buf []byte) (txFrom, txTo int64, ok bool) {
+	if !HasWireTemporalTail(buf) {
+		return 0, 0, false
+	}
+	L := len(buf)
+	txFrom = int64(binary.BigEndian.Uint64(buf[L-wireTxFromValueStartFromEnd : L-wireTxFromValueEndFromEnd])) // #nosec G115 — round-trip of an int64
+	txTo = int64(binary.BigEndian.Uint64(buf[L-wireTxToValueStartFromEnd : L]))                               // #nosec G115 — round-trip of an int64
+	return txFrom, txTo, true
+}
+
 // PreEncodeNodeWireV2 encodes a node's wire with a ZERO transaction-time tail,
 // suitable for later PatchWireTemporalTail. The node's own TxFrom/TxTo are
 // ignored (forced to zero in the emitted slot); every other field is encoded

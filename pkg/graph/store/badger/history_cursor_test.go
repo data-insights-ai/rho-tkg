@@ -337,6 +337,56 @@ func TestBadgerStore_AllNodeHistoryIDsFrom_CursorMatchesUnpaginated_Mixed(t *tes
 	}
 }
 
+// TestBadgerStore_AllNodeHistoryIDsFrom_PendingDeleteMasksSomeVersions guards
+// the seek-skip scan's "step, don't skip" branch: when a pending DELETE masks
+// only SOME of an id's persisted version rows (e.g. an unflushed history
+// truncation), the id must still be emitted via its surviving rows — the scan
+// may only Seek past an id once one of its rows was actually seen live.
+func TestBadgerStore_AllNodeHistoryIDsFrom_PendingDeleteMasksSomeVersions(t *testing.T) {
+	t.Parallel()
+	bs := newTestBadgerStore(t)
+
+	idA := types.NodeID(snowflake.ID(42))
+	idB := types.NodeID(snowflake.ID(43))
+	for v := 0; v < 3; v++ {
+		n := types.NewNode(idA, 1, nil)
+		n.SetVersion(uint32(v))
+		if err := bs.PutNodeVersion(idA, uint32(v), n); err != nil {
+			t.Fatalf("PutNodeVersion(A, v%d): %v", v, err)
+		}
+	}
+	nb := types.NewNode(idB, 1, nil)
+	if err := bs.PutNodeVersion(idB, 0, nb); err != nil {
+		t.Fatalf("PutNodeVersion(B): %v", err)
+	}
+	bs.Flush()
+
+	// Truncate A's history to keep 1 version — the two oldest rows become
+	// PENDING deletes masking persisted keys until the next flush.
+	if err := bs.TruncateNodeHistory(idA, 1); err != nil {
+		t.Fatalf("TruncateNodeHistory: %v", err)
+	}
+
+	got, err := bs.AllNodeHistoryIDsFrom(types.NodeID(0), 0)
+	if err != nil {
+		t.Fatalf("AllNodeHistoryIDsFrom: %v", err)
+	}
+	want := []types.NodeID{idA, idB}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("scan with partially-masked id = %v, want %v", got, want)
+	}
+
+	// Same answer after the deletes flush (parity between overlay and disk).
+	bs.Flush()
+	got, err = bs.AllNodeHistoryIDsFrom(types.NodeID(0), 0)
+	if err != nil {
+		t.Fatalf("AllNodeHistoryIDsFrom post-flush: %v", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("post-flush scan = %v, want %v", got, want)
+	}
+}
+
 func TestBadgerStore_AllNodeHistoryIDsFrom_DedupsAcrossVersions(t *testing.T) {
 	t.Parallel()
 	bs := newTestBadgerStore(t)

@@ -731,26 +731,24 @@ func (bs *Store) AllRelHistoryIDsFrom(after types.RelID, limit int) ([]types.Rel
 		it := txn.NewIterator(opts)
 		defer it.Close()
 
-		var lastBadger snowflake.ID
-		var haveLastBadger bool
-
-		for it.Seek(seekKey); it.ValidForPrefix(prefix); it.Next() {
+		for it.Seek(seekKey); it.ValidForPrefix(prefix); {
 			key := it.Item().Key()
 			if len(key) != storepkg.SizeHistKey {
+				it.Next()
 				continue
 			}
 			if _, deleted := pendingDeletes[string(key)]; deleted {
+				// Only this version row is masked — the same id may still be
+				// emitted via one of its other (unmasked) version rows, so
+				// step to the next row rather than skipping the whole id.
+				it.Next()
 				continue
 			}
 			id := storepkg.ParseIDFromKey(key, 1)
 			if id <= afterRaw {
+				it.Next()
 				continue
 			}
-			if haveLastBadger && id == lastBadger {
-				continue
-			}
-			lastBadger = id
-			haveLastBadger = true
 
 			for pendingIdx < len(pendingSorted) && pendingSorted[pendingIdx] < id {
 				pid := pendingSorted[pendingIdx]
@@ -767,14 +765,23 @@ func (bs *Store) AllRelHistoryIDsFrom(after types.RelID, limit int) ([]types.Rel
 			if pendingIdx < len(pendingSorted) && pendingSorted[pendingIdx] == id {
 				pendingIdx++
 			}
-			if _, dup := emitted[id]; dup {
-				continue
+			if _, dup := emitted[id]; !dup {
+				emitted[id] = struct{}{}
+				out = append(out, types.RelID(id))
+				if limit > 0 && len(out) >= limit {
+					return nil
+				}
 			}
-			emitted[id] = struct{}{}
-			out = append(out, types.RelID(id))
-			if limit > 0 && len(out) >= limit {
-				return nil
+			// This id is decided — SKIP its remaining version rows with one
+			// Seek to the next id's first possible key instead of Next-ing
+			// through every row. Makes the scan O(distinct IDs), not O(total
+			// version rows) — the depth-dependent cost the pinned adjacency
+			// door's deleted-entity fold exposed (sigma-tkgd ask 2).
+			next := historyIDSeekKey(storepkg.KeyHistRel, id)
+			if next == nil {
+				break // id is the max snowflake ID — no successor exists.
 			}
+			it.Seek(next)
 		}
 		for pendingIdx < len(pendingSorted) {
 			pid := pendingSorted[pendingIdx]

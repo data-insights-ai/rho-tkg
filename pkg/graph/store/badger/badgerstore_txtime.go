@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sort"
 
+	snowflake "github.com/bds421/rho-snowflake-2026"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -64,11 +65,63 @@ func classifyVersionAtTxTime(tm *types.TemporalMetadata, txTime types.Instant) t
 	return txTimeHidden
 }
 
+// classifyTxWindowAtTxTime is classifyVersionAtTxTime on the raw tail ints —
+// the verdict needs ONLY TxFrom/TxTo, which is exactly what the v2 fixed
+// temporal tail carries, so a peeked pair classifies without a decode.
+func classifyTxWindowAtTxTime(txFrom, txTo int64, txTime types.Instant) txTimeVersionVerdict {
+	if txFrom == 0 || types.Instant(txFrom) > txTime {
+		return txTimeSkip
+	}
+	if txTo == 0 || types.Instant(txTo) > txTime {
+		return txTimeVisible
+	}
+	return txTimeHidden
+}
+
+// classifyHistoryNodeValueAtTxTime classifies a raw node history row against
+// txTime. A FULL (non-delta) v2 row is classified by PEEKING its fixed
+// transaction-time tail — no msgpack decode (the early-pin reverse walk used
+// to pay one full row decode PER WALKED VERSION just to read TxFrom/TxTo;
+// sigma-tkgd ask 1). Delta rows and legacy v1 rows fall back to the
+// temporal-meta decode, so every framing keeps the same verdict.
+func (bs *Store) classifyHistoryNodeValueAtTxTime(id snowflake.ID, version uint64, val []byte, txTime types.Instant) (txTimeVersionVerdict, error) {
+	if storepkg.HistoryValueKindOf(val) == storepkg.HistoryFull {
+		if tf, tt, ok := storepkg.PeekWireTemporalTail(val); ok {
+			return classifyTxWindowAtTxTime(tf, tt, txTime), nil
+		}
+	}
+	n, err := bs.historyNodeTemporal(id, version, val)
+	if err != nil {
+		return txTimeSkip, err
+	}
+	return classifyVersionAtTxTime(n.Temporal(), txTime), nil
+}
+
+// classifyHistoryRelValueAtTxTime mirrors classifyHistoryNodeValueAtTxTime.
+func (bs *Store) classifyHistoryRelValueAtTxTime(id snowflake.ID, version uint64, val []byte, txTime types.Instant) (txTimeVersionVerdict, error) {
+	if storepkg.HistoryValueKindOf(val) == storepkg.HistoryFull {
+		if tf, tt, ok := storepkg.PeekWireTemporalTail(val); ok {
+			return classifyTxWindowAtTxTime(tf, tt, txTime), nil
+		}
+	}
+	r, err := bs.historyRelTemporal(id, version, val)
+	if err != nil {
+		return txTimeSkip, err
+	}
+	return classifyVersionAtTxTime(r.Temporal(), txTime), nil
+}
+
 // reverseScanHistoryVersion walks one entity's version history newest-first and
 // invokes consider(version, valueBytes) for each version in DESCENDING version
 // order until consider returns stop=true (or the history is exhausted). It
 // merges the badger reverse iterator with the pending write overlay: a pending
 // SET overrides badger for the same key, a pending DELETE hides a badger key.
+//
+// CONTRACT: val is only valid for the DURATION of the consider call (for
+// persisted rows it is badger's internal buffer, surfaced inside an
+// Item().Value closure) — a callback that retains bytes past its return MUST
+// copy them. This is what lets the tail-peek classification walk versions
+// with zero per-version allocations.
 //
 // prefix is the 9-byte per-entity history prefix (HistNodePrefix / HistRelPrefix).
 func (bs *Store) reverseScanHistoryVersion(prefix []byte, consider func(version uint64, val []byte) (stop bool, err error)) error {
@@ -188,8 +241,13 @@ func (bs *Store) reverseScanHistoryVersionInTxnOverlay(txn *badgerv4.Txn, prefix
 	// Descending key order == descending version (big-endian version suffix).
 	sort.Sort(sort.Reverse(sort.StringSlice(pendKeys)))
 
+	// PrefetchValues=false: prefetch eagerly COPIES every visited item's whole
+	// value into an iterator-owned buffer — one alloc+memcpy per walked
+	// version, which re-dominates the walk once classification is a 24-byte
+	// tail peek. On-demand Item().Value reads hand the closure the underlying
+	// bytes without that per-item staging copy.
 	opts := badgerv4.DefaultIteratorOptions
-	opts.PrefetchValues = true
+	opts.PrefetchValues = false
 	opts.Reverse = true
 	it := txn.NewIterator(opts)
 	defer it.Close()
@@ -259,21 +317,28 @@ func (bs *Store) reverseScanHistoryVersionInTxnOverlay(txn *badgerv4.Txn, prefix
 			continue
 		}
 
-		var val []byte
+		// val is handed to consider WITHOUT a defensive copy — for the badger
+		// arm it is only valid inside the Item().Value closure. The consider
+		// contract (see reverseScanHistoryVersion) requires callbacks to copy
+		// any bytes they retain; the tail-peek classification makes most
+		// versions a bounded byte-peek, so an unconditional per-version copy
+		// here would dominate the walk again.
+		version := historyVersionFromKey([]byte(chooseKey))
+		var stop bool
 		if usePending {
-			val = pendingSets[chooseKey]
+			var err error
+			stop, err = consider(version, pendingSets[chooseKey])
+			if err != nil {
+				return err
+			}
 		} else {
 			if err := it.Item().Value(func(v []byte) error {
-				val = append([]byte(nil), v...)
-				return nil
+				var cErr error
+				stop, cErr = consider(version, v)
+				return cErr
 			}); err != nil {
 				return err
 			}
-		}
-
-		stop, err := consider(historyVersionFromKey([]byte(chooseKey)), val)
-		if err != nil {
-			return err
 		}
 		advance()
 		if stop {
@@ -311,11 +376,11 @@ func (bs *Store) NodeAsOf(nid types.NodeID, txTime types.Instant) (*types.Node, 
 	var winnerRaw []byte
 	found := false
 	scanErr := bs.reverseScanHistoryVersion(storepkg.HistNodePrefix(id), func(version uint64, val []byte) (bool, error) {
-		n, err := bs.historyNodeTemporal(id, version, val)
+		verdict, err := bs.classifyHistoryNodeValueAtTxTime(id, version, val, txTime)
 		if err != nil {
 			return false, err
 		}
-		switch classifyVersionAtTxTime(n.Temporal(), txTime) {
+		switch verdict {
 		case txTimeVisible:
 			winnerRaw = append([]byte(nil), val...)
 			winnerVersion = version
@@ -358,11 +423,11 @@ func (bs *Store) RelAsOf(rid types.RelID, txTime types.Instant) (*types.Relation
 	var winnerRaw []byte
 	found := false
 	scanErr := bs.reverseScanHistoryVersion(storepkg.HistRelPrefix(id), func(version uint64, val []byte) (bool, error) {
-		r, err := bs.historyRelTemporal(id, version, val)
+		verdict, err := bs.classifyHistoryRelValueAtTxTime(id, version, val, txTime)
 		if err != nil {
 			return false, err
 		}
-		switch classifyVersionAtTxTime(r.Temporal(), txTime) {
+		switch verdict {
 		case txTimeVisible:
 			winnerRaw = append([]byte(nil), val...)
 			winnerVersion = version
@@ -403,11 +468,11 @@ func (bs *Store) nodeAsOfInTxn(txn *badgerv4.Txn, nid types.NodeID, txTime types
 	var winnerRaw []byte
 	found := false
 	scanErr := bs.reverseScanHistoryVersionInTxnSnapshot(txn, storepkg.HistNodePrefix(id), overlay, func(version uint64, val []byte) (bool, error) {
-		n, err := bs.historyNodeTemporal(id, version, val)
+		verdict, err := bs.classifyHistoryNodeValueAtTxTime(id, version, val, txTime)
 		if err != nil {
 			return false, err
 		}
-		switch classifyVersionAtTxTime(n.Temporal(), txTime) {
+		switch verdict {
 		case txTimeVisible:
 			winnerRaw = append([]byte(nil), val...)
 			winnerVersion = version
@@ -449,11 +514,11 @@ func (bs *Store) relAsOfInTxn(txn *badgerv4.Txn, rid types.RelID, txTime types.I
 	var winnerRaw []byte
 	found := false
 	scanErr := bs.reverseScanHistoryVersionInTxnSnapshot(txn, storepkg.HistRelPrefix(id), overlay, func(version uint64, val []byte) (bool, error) {
-		r, err := bs.historyRelTemporal(id, version, val)
+		verdict, err := bs.classifyHistoryRelValueAtTxTime(id, version, val, txTime)
 		if err != nil {
 			return false, err
 		}
-		switch classifyVersionAtTxTime(r.Temporal(), txTime) {
+		switch verdict {
 		case txTimeVisible:
 			winnerRaw = append([]byte(nil), val...)
 			winnerVersion = version
