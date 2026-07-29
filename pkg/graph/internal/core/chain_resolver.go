@@ -20,8 +20,19 @@ import (
 // rule 17).
 //
 // The chain handed in is (history ‖ current); the caller owns loading it and
-// the "never existed" ErrNodeNotFound verdict. resolveNodeChain implements, and
-// is the ONLY place that implements:
+// the "never existed" ErrNodeNotFound verdict.
+//
+// INPUT CONTRACT — ascending-version order, single use: the chain MUST arrive
+// in ascending version order (history rows as stored ‖ current last), and the
+// resolver may SORT the slice IN PLACE (sortNodeChainForResolve, cascade
+// chains). Monotonicity detection is RELATIVE to the input order, so feeding a
+// previously-resolved (sorted-by-valid-from) chain back in flips the
+// monotonic-vs-cascade branch and silently changes bounds derivation
+// (positional tiling vs own-bounds) — a caller that resolves twice (e.g. the
+// skeleton-hydration fast path in nodeAtViaTemporalMeta) must hand EACH run
+// its own copy of the pristine ascending-version chain.
+//
+// resolveNodeChain implements, and is the ONLY place that implements:
 //
 //   - TX visibility: a version is recorded-by-then iff TxFrom <= txAt; TxTo does
 //     NOT bound visibility — superseded is not retracted (lesson 43). This lives

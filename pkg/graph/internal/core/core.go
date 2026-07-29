@@ -90,6 +90,16 @@ type Core struct {
 	// resolves through the full chain scan (correct, unaccelerated).
 	nodeBeliefWatermark storepkg.NodeBeliefWatermarkCapability
 	relBeliefWatermark  storepkg.RelBeliefWatermarkCapability
+	// temporalMetaHistory — historical-pin resolution on temporal skeletons: a
+	// store that enumerates a chain's per-version temporal metadata WITHOUT
+	// materializing full rows lets nodeAtLockedTx/relAtLockedTx select the
+	// winning version on skeletons and decode ONLY the winner (O(1) full
+	// decodes per resolution instead of O(chain) — the sigma-tkgd valid-time
+	// depth ask). nil = store declines (memory, tiered, sharded today), so the
+	// query materializes the full chain (correct, unaccelerated). The chain
+	// resolver stays the single selection authority: the SAME resolveNodeChain
+	// runs on skeletons and again after winner hydration.
+	temporalMetaHistory storepkg.TemporalMetaHistoryCapability
 	// temporalCandidates — valid-time candidate prune: narrow a temporal
 	// ByLabel/ByType query's candidate set by the per-label valid-time envelope
 	// index before resolving each chain. nil = store declines (no temporal-index
@@ -1314,6 +1324,24 @@ func nodeBeliefWatermarkCapability(store storepkg.MandatoryStore) storepkg.NodeB
 }
 
 // relBeliefWatermarkCapability mirrors nodeBeliefWatermarkCapability for relationships.
+// temporalMetaHistoryCapability admits the selection-skeleton history door for
+// exact native stores only — a wrapper embedding a native store must not
+// promote it (same visibility guard as every cached capability handle).
+func temporalMetaHistoryCapability(store storepkg.MandatoryStore) storepkg.TemporalMetaHistoryCapability {
+	cap, ok := store.(storepkg.TemporalMetaHistoryCapability)
+	if !ok {
+		return nil
+	}
+	if isExactNativeStore(store) {
+		return cap
+	}
+	if embedsNativeCapability(store, reflect.TypeOf((*storepkg.TemporalMetaHistoryCapability)(nil)).Elem(),
+		"NodeHistoryTemporalMeta") {
+		return nil
+	}
+	return cap
+}
+
 func relBeliefWatermarkCapability(store storepkg.MandatoryStore) storepkg.RelBeliefWatermarkCapability {
 	cap, ok := store.(storepkg.RelBeliefWatermarkCapability)
 	if !ok {
@@ -1724,6 +1752,7 @@ func New(config Config) (*Core, error) {
 	c.relTypeTxMembers = relTypeTxMembershipCapability(store)
 	c.nodeBeliefWatermark = nodeBeliefWatermarkCapability(store)
 	c.relBeliefWatermark = relBeliefWatermarkCapability(store)
+	c.temporalMetaHistory = temporalMetaHistoryCapability(store)
 	// valid-time candidate prune is sound for ANY store that offers it (an
 	// unknown id is never pruned), so unlike the membership sidecar it needs no
 	// exact-native-store guard — a plain probe admits memory/badger now and

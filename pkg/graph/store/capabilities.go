@@ -312,6 +312,33 @@ type RelBeliefWatermarkCapability interface {
 	RelBeliefWatermark(id types.RelID) (types.Instant, bool)
 }
 
+// VersionTemporalMeta is one history version's SELECTION-SCOPE temporal
+// skeleton: the version number plus the NUMERIC temporal instants a chain
+// resolver selects on. Temporal is nil when the stored row carried no temporal
+// block (mirroring the full decode). CONTRACT: selection scope only —
+// CreatedBy/UpdatedBy/BaseEntityID are deliberately absent, so a consumer must
+// hydrate the full row (GetNodeVersion/GetRelVersion) before returning any
+// version to a caller; a skeleton must never leave the resolution seam.
+type VersionTemporalMeta struct {
+	Version  uint32
+	Temporal *types.TemporalMetadata
+}
+
+// TemporalMetaHistoryCapability is OPTIONAL. A backend that can enumerate an
+// entity's history versions' temporal metadata WITHOUT materializing full rows
+// (e.g. a partial wire decode that skips properties/labels/hashes) implements
+// it so the graph layer's historical-pin resolution can select the winning
+// version on skeletons and decode ONLY the winner — O(1) full decodes per
+// resolution instead of O(chain). Results are ascending by version and include
+// every history row (tombstone versions included), exactly matching
+// GetNodeHistory/GetRelHistory's row set. A backend without a cheaper-than-full
+// path simply does not implement this; the graph layer falls back to the full
+// history fetch with identical results (accelerator, never an answer change).
+type TemporalMetaHistoryCapability interface {
+	NodeHistoryTemporalMeta(id types.NodeID) ([]VersionTemporalMeta, error)
+	RelHistoryTemporalMeta(id types.RelID) ([]VersionTemporalMeta, error)
+}
+
 // HistoryRollbackTrimCapability is OPTIONAL. It supports transaction rollback
 // without eager deep copies of entire history chains. Graph mutation paths
 // append superseded versions at the entity's previous Version(); rollback can

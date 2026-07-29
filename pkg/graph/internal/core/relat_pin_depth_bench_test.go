@@ -56,6 +56,74 @@ func BenchmarkNodeEarlyPinPointDepth(b *testing.B) {
 	}
 }
 
+// BenchmarkNodeValidTimeEarlyWindowDepth mirrors sigma-tkgd's
+// BenchmarkBitemporalDepthValidTime: each node gains versions with ASCENDING
+// explicit valid_from windows (adjacent tiling), then an OLD validity window
+// is resolved — the point read and the label AT TIME scan. Sigma reported
+// ~55x (point) / ~345x (scan) growth depth 1→100 on badger; the
+// selection-skeleton fast path (TemporalMetaHistoryCapability) resolves the
+// winner on temporal metadata and decodes only the winning row.
+func BenchmarkNodeValidTimeEarlyWindowDepth(b *testing.B) {
+	for _, depth := range []int{1, 10, 100} {
+		b.Run(fmt.Sprintf("badger/depth=%d", depth), func(b *testing.B) {
+			g, err := New(Config{BadgerInMemory: true})
+			if err != nil {
+				b.Fatalf("New: %v", err)
+			}
+			defer g.Close()
+			ctx := context.Background()
+
+			const nodes = 100
+			base := types.Instant(1_000_000)
+			window := types.Instant(1_000)
+			ids := make([]types.NodeID, 0, nodes)
+			for i := 0; i < nodes; i++ {
+				n, err := g.Nodes.Add(ctx, []string{"D"}, map[string]any{
+					"w": 0, "tkg_valid_from": base,
+				})
+				if err != nil {
+					b.Fatalf("add: %v", err)
+				}
+				ids = append(ids, n.ID())
+				for v := 1; v < depth; v++ {
+					if _, err := g.Nodes.Update(ctx, n.ID(), map[string]any{
+						"w": v, "tkg_valid_from": base + types.Instant(v)*window,
+					}); err != nil {
+						b.Fatalf("update: %v", err)
+					}
+				}
+			}
+			oldT := base + window/2 // inside the OLDEST window
+			time.Sleep(250 * time.Millisecond)
+
+			b.Run("point", func(b *testing.B) {
+				b.ReportAllocs()
+				for i := 0; i < b.N; i++ {
+					n, err := g.Temporal.NodeAt(ids[i%nodes], oldT)
+					if err != nil {
+						b.Fatalf("NodeAt: %v", err)
+					}
+					if v, _ := n.GetProperty("w"); fmt.Sprintf("%v", v) != "0" {
+						b.Fatalf("resolved wrong version: w=%v", v)
+					}
+				}
+			})
+			b.Run("scan", func(b *testing.B) {
+				b.ReportAllocs()
+				for i := 0; i < b.N; i++ {
+					out, err := g.Temporal.NodesByLabelAt("D", oldT)
+					if err != nil {
+						b.Fatalf("NodesByLabelAt: %v", err)
+					}
+					if len(out) != nodes {
+						b.Fatalf("scan returned %d, want %d", len(out), nodes)
+					}
+				}
+			})
+		})
+	}
+}
+
 // BenchmarkRelHeadPinExpandDepth mirrors sigma-tkgd's
 // BenchmarkBitemporalDepthRels shape: relationships gain version depth via
 // updates while their endpoint nodes stay at one version, then the pinned
