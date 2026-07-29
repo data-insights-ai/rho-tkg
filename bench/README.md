@@ -110,25 +110,31 @@ real regressions at this scale.
   spread between independent `-benchtime=1x` invocations), not systematic
   drift.
 
-## CI: `.github/workflows/bench.yml` (manual dispatch only)
+## CI: `.github/workflows/bench.yml` (blocking PR gate + manual dispatch)
 
-The workflow is NOT wired to pull requests: shared GitHub-hosted runners are
-too noisy (CPU steal, frequency scaling) for a trustworthy regression signal,
-and a permanently-informational job trains reviewers to ignore it. Local
-`make bench-baseline` + `make bench-check` on stable hardware is the
-authoritative gate; trigger the workflow manually (Actions tab) when a
-same-runner base-vs-head comparison is still useful.
+The flip-to-blocking plan is WIRED (owner-approved 2026-07-29). Two jobs, one
+comparator (`bench/bench-compare.sh` — the same threshold logic
+`bench-check.sh` uses locally, factored so it exists exactly once):
 
-On a pull request touching `pkg/**` or `bench/**`, one job benchmarks the
-merge-base commit and HEAD, then posts a `benchstat` comparison table to the
-job summary. The compare step runs with `continue-on-error: true` — it never
-fails the PR check today. **Flip-to-blocking plan**: once a few weeks of PR
-runs establish what "noise" looks like on GitHub-hosted runners specifically
-(they are more variable than a dedicated benchmark machine), the OWNER
-removes `continue-on-error: true` from that step and wires `bench-check`'s
-CSV-based threshold logic (see `bench/bench-check.sh`) into the workflow so a
-genuine >15% time regression fails the PR check instead of only appearing in
-the summary.
+- **`bench-gate` (pull_request, BLOCKING)**: on a PR touching `pkg/**`,
+  `bench/**`, `go.mod`, or the workflow itself, benchmarks the merge-base
+  and HEAD on the SAME runner with `-count=3` (benchstat compares MEDIANS,
+  absorbing single-sample scheduler spikes) and FAILS the check when a core
+  scenario's median time regresses beyond `REGRESSION_THRESHOLD_PCT=30`
+  (deliberately looser than the 15% local gate — GitHub-hosted runners are
+  noisier than a dedicated machine). The two multi-minute measurement
+  STUDIES (`PinnedScanScaling`, `ChangeLogTxSerialization`) are excluded
+  from the gate via the `-bench` filter — they are one-off measurement
+  campaigns, not regression canaries. A failure is a *signal to re-run
+  once, then look closer*: a repeated failure on the same PR is a real
+  regression signal.
+- **`bench-compare` (workflow_dispatch, informational)**: the original
+  manual full-suite comparison (single `-count=1` sample, studies included)
+  for sanity-checking a perf claim from a fork or ad-hoc branch.
+
+Local `make bench-baseline` + `make bench-check` on stable hardware remains
+the authoritative high-resolution tooling; the CI gate is the coarse
+backstop that catches large regressions before merge.
 
 ## Updating baselines intentionally
 
