@@ -83,9 +83,29 @@ steady-state (async write buffer drained).
   grids, node+rel mirrors, and a randomized-lifecycle equivalence fuzz).
   `BenchmarkNodeValidTimeEarlyWindowDepth` (badger, 100 nodes, ascending explicit valid_from
   windows, OLD-window probe at depth 100): point 159µs → 87.8µs (~1.8x, allocs 2511 → 467), label
-  AT TIME scan 16.1ms → 8.8ms (~1.8x, allocs 251K → 47K). The remaining depth-linearity is the
-  per-version partial decode itself — removing it entirely needs the tail widened to the temporal
-  envelope (wire `fv` bump) or an inverted-suffix seek, still the flagged open decision.
+  AT TIME scan 16.1ms → 8.8ms (~1.8x, allocs 251K → 47K).
+
+- PERF/DECISION — **valid-time stage 2: the per-version partial decode replaced by a zero-alloc
+  token scanner, and the wire-format bump REJECTED-FOR-NOW.** `scanWireTemporalMeta`
+  (`wire_temporal_scan.go`) extends the audited `guardMsgpackDepth` machinery (explicit-stack,
+  non-recursive, bounds-checked, panic-free by construction) into a SINGLE pass that captures the
+  ten selection fields while skipping every other value — replacing SafeUnmarshal's double walk
+  (depth-guard pass + reflection decode) on the skeleton path. FAIL-OPEN: any structural surprise
+  (truncation, non-map top, invalid byte, unexpected encoding, trailing garbage, over-deep
+  nesting) declines to the SafeUnmarshal partial decode, which remains the authority for decoding
+  AND malformed-input error classification — the scanner can only be a same-answer accelerator,
+  locked by a randomized + adversarial equivalence battery (golden v1 vectors, 400 randomized
+  rows, per-position truncations, bit flips, 2000-deep nesting, duplicate keys).
+  `BenchmarkDecodeWireTemporalMeta`: 971ns/2 allocs → 144ns/0 allocs per row (~6.7x). End-to-end
+  at depth 100 (badger): valid-time point 87.8µs → 51.8µs, AT TIME scan 8.8ms → 4.1ms — cumulative
+  vs pre-session baseline: point 159µs → 51.8µs (~3.1x), scan 16.1ms → 4.1ms (~3.9x). DECISION
+  (closes the last backlog item): the `fv` v3 tail-widening and the inverted-suffix keyspace are
+  NOT built — the bump's operational blast radius (downgrade refusal on every deployment,
+  golden-vector churn, ingest pre-encode lockstep, the eclipsed-flag semantic change riding along)
+  is not justified while the no-format-change path keeps compounding; REOPEN CRITERIA: sigma
+  re-runs `BenchmarkBitemporalDepth*` against this build and the residual depth-linearity still
+  breaks a concrete consumer latency budget — then the bundled v3 bump (full temporal envelope in
+  the fixed tail + eclipsed-row flag) is the prepared design.
 
 - CI — **the bench flip-to-blocking plan is wired** (the long-standing lone backlog item,
   owner-approved). `.github/workflows/bench.yml` gains a BLOCKING `bench-gate` job on every PR

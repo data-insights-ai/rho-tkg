@@ -7,10 +7,10 @@ parallel subsystem audits covering every package under `pkg/`, ~100K LOC)
 originally found ~196 items across BACKLOG 6-21; they are now resolved
 (fixed-and-verified or investigated-and-confirmed-safe) and removed from this file
 — see CHANGELOG.md for what shipped and why. What remains below is the closing
-investigation record for the last of them, plus the two genuinely open things: the
-carried-over import-under-a-scope follow-up, and the flagged-but-not-actioned CI
-bench-gating gap at the end of this file. Nothing here is sigma-tkgd's — these are
-all rho-tkg-owned.
+investigation record for the last of them, plus the ONE genuinely open thing: the
+carried-over import-under-a-scope follow-up (the CI bench-gating gap was RESOLVED
+2026-07-29 — blocking bench-gate wired, see the end of this file). Nothing here is
+sigma-tkgd's — these are all rho-tkg-owned.
 
 **Severity legend:** CRITICAL = crash / data loss / replica divergence / silent
 corruption. HIGH = silent wrong answer or a real, reachable correctness bug. MEDIUM =
@@ -24,8 +24,8 @@ hiding a bug). FEATURE = a capability the library plausibly should have but does
 entry for the full investigation and why the prior fix attempts were reverted; the
 perf regression that fix caused was closed the next day as 10c (below). What is
 still open is not severity-triaged hardening work at all: the import-under-a-scope
-follow-up carried over from the retired `tasks/todo.md`, and the CI bench-gating
-gap flagged at the end of this file.
+follow-up carried over from the retired `tasks/todo.md` (the CI bench-gating gap
+was resolved 2026-07-29).
 
 ## Shipped (was the backlog)
 
@@ -346,14 +346,17 @@ tail widened to vf/vt (wire `fv` bump, natural companion of the deferred eclipse
 axis-agnostic (b) inverted-suffix seek / (c) anchor tuning. Sigma should re-run its oracles and
 flip its contract pins.
 
-**Remaining open item from this batch:** ask 1's valid-time axis — STAGE 1 SHIPPED (same day): the
-selection-skeleton fast path (`store.TemporalMetaHistoryCapability` + partial temporal decode +
-winner-only hydration, no wire change) — point 159µs→88µs, AT TIME scan 16.1ms→8.8ms at depth 100,
-allocs ~5x down (see CHANGELOG). The residual depth-linearity is the per-version partial decode
-itself; removing it needs the v2 fixed tail widened to the temporal envelope (a wire `fv` bump,
-bundled with the deferred eclipsed-row flag) or an inverted-suffix seek keyspace — that format
-decision is the ONE remaining open sub-item, and it should wait for sigma to re-run
-`BenchmarkBitemporalDepthValidTime` against stage 1 first.
+**CLOSED (decision recorded 2026-07-29):** ask 1's valid-time axis shipped in TWO no-format-change
+stages — the selection-skeleton fast path (stage 1) and the zero-alloc token scanner replacing the
+partial decode (stage 2, `scanWireTemporalMeta`). Cumulative at depth 100: point 159µs→51.8µs
+(~3.1x), AT TIME scan 16.1ms→4.1ms (~3.9x). The wire `fv` bump (tail widened to the full temporal
+envelope + eclipsed-row flag) and the inverted-suffix keyspace are DECIDED NOT BUILT — operational
+blast radius (downgrade refusal, golden churn, pre-encode lockstep, resolver-semantics risk) not
+justified while the no-format-change path compounds. REOPEN CRITERIA: sigma re-runs its depth
+oracles against this build AND the residual depth-linearity still breaks a concrete consumer
+latency budget — the bundled v3 design is then the prepared next step. Until that evidence
+arrives, no sigma-batch item remains open; the backlog's one remaining open item is the
+pre-existing import-under-a-scope follow-up above (deferred locking design, improvement-not-bug).
 
 1. **Historical-pin chain resolution decodes every walked version** (the priority ask).
    sigma's depth oracle (`pkg/cypher/bitemporal_depth_bench_test.go`,
