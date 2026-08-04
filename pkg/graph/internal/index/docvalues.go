@@ -383,7 +383,7 @@ func (l *DocValues[T]) View(key string) (ColumnView, bool) {
 	}, true
 }
 
-// NodeIDs is the shared ordinal vector every column of this snapshot aligns to.
+// IDs is the shared ordinal vector every column of this snapshot aligns to.
 // Immutable; callers must not write to it.
 func (l *DocValues[T]) IDs() []T { return l.ids }
 
