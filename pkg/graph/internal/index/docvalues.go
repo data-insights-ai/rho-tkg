@@ -74,10 +74,14 @@ func UnionKeys(a, b []string) []string {
 // ColType is the storage class of a built column.
 type ColType uint8
 
+// Column storage classes. colUnbuildable stays unexported: it is a refusal, not a
+// class a reader can ask for.
 const (
 	colUnbuildable ColType = iota // mixed/unsupported value type — consumer falls back
-	ColNumeric                    // int64 and/or float64 (type preserved per row)
-	ColString                     // dictionary-encoded strings (covers ISO-string temporals)
+	// ColNumeric holds int64 and/or float64, with each row's type preserved.
+	ColNumeric
+	// ColString holds dictionary-encoded strings (covers ISO-string temporals).
+	ColString
 )
 
 // docColumn is one immutable, ordinal-aligned value column. Exactly one value
@@ -178,10 +182,14 @@ const zoneBlockSize = 4096
 // HasTemporal reports whether this snapshot carries validity columns.
 func (l *LabelDocValues) HasTemporal() bool { return l.hasTemporal }
 
-// ValidFrom/ValidTo are the ordinal-aligned validity bounds, or nil when the
-// snapshot has none. Immutable; callers must not write to them.
+// ValidFrom is the ordinal-aligned lower validity bound per row, or nil when the
+// snapshot has no temporal columns. Immutable; callers must not write to it.
 func (l *LabelDocValues) ValidFrom() []int64 { return l.validFrom }
-func (l *LabelDocValues) ValidTo() []int64   { return l.validTo }
+
+// ValidTo is the ordinal-aligned upper validity bound per row (0 = open-ended), or
+// nil when the snapshot has no temporal columns. Immutable; callers must not write
+// to it.
+func (l *LabelDocValues) ValidTo() []int64 { return l.validTo }
 
 // BlockCanMatch reports whether the ordinal block starting at `start` can contain
 // any row matching the half-open query window [qFrom, qTo). A false means the whole
@@ -597,10 +605,10 @@ func buildNumericColumn(ids []types.NodeID, key string, n int, present bitset, g
 	// Collapse to the cheapest exact representation. Keeping BOTH arrays when the
 	// column turns out uniform would silently double its memory, which is the cost
 	// this typed layout exists to remove.
-	switch {
-	case floatCount == 0: // uniformly int64 (incl. an all-absent column)
+	switch floatCount {
+	case 0: // uniformly int64 (incl. an all-absent column)
 		c.ints = ints
-	case floatCount == presentCount: // uniformly float64 — no selector needed
+	case presentCount: // uniformly float64 — no selector needed
 		c.flts = flts
 	default: // genuinely mixed
 		c.ints, c.flts, c.isFloat = ints, flts, isFloat

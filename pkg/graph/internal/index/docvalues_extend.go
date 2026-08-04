@@ -112,14 +112,14 @@ func (l *LabelDocValues) Extend(epoch uint64, newIDs []types.NodeID,
 //
 // Recomputing everything would be correct but would leave an O(label size) term in
 // what is meant to be an O(appended) operation.
-func (out *LabelDocValues) extendZoneMap(src *LabelDocValues, oldN int) {
-	n := len(out.nodeIDs)
+func (l *LabelDocValues) extendZoneMap(src *LabelDocValues, oldN int) {
+	n := len(l.nodeIDs)
 	blocks := (n + zoneBlockSize - 1) / zoneBlockSize
-	out.zoneMinFrom = make([]int64, blocks)
-	out.zoneMaxFrom = make([]int64, blocks)
-	out.zoneMinTo = make([]int64, blocks)
-	out.zoneMaxTo = make([]int64, blocks)
-	out.zoneOpenEnded = make([]bool, blocks)
+	l.zoneMinFrom = make([]int64, blocks)
+	l.zoneMaxFrom = make([]int64, blocks)
+	l.zoneMinTo = make([]int64, blocks)
+	l.zoneMaxTo = make([]int64, blocks)
+	l.zoneOpenEnded = make([]bool, blocks)
 
 	// Blocks entirely below oldN are unchanged. oldN/zoneBlockSize is the first block
 	// that can contain a new row; it is recomputed even when oldN lands exactly on a
@@ -128,14 +128,14 @@ func (out *LabelDocValues) extendZoneMap(src *LabelDocValues, oldN int) {
 	if carry > len(src.zoneMinFrom) {
 		carry = len(src.zoneMinFrom)
 	}
-	copy(out.zoneMinFrom, src.zoneMinFrom[:carry])
-	copy(out.zoneMaxFrom, src.zoneMaxFrom[:carry])
-	copy(out.zoneMinTo, src.zoneMinTo[:carry])
-	copy(out.zoneMaxTo, src.zoneMaxTo[:carry])
-	copy(out.zoneOpenEnded, src.zoneOpenEnded[:carry])
+	copy(l.zoneMinFrom, src.zoneMinFrom[:carry])
+	copy(l.zoneMaxFrom, src.zoneMaxFrom[:carry])
+	copy(l.zoneMinTo, src.zoneMinTo[:carry])
+	copy(l.zoneMaxTo, src.zoneMaxTo[:carry])
+	copy(l.zoneOpenEnded, src.zoneOpenEnded[:carry])
 
 	for b := carry; b < blocks; b++ {
-		out.computeZoneBlock(b, n)
+		l.computeZoneBlock(b, n)
 	}
 }
 

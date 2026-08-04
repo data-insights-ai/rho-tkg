@@ -98,8 +98,12 @@ func (ms *Store) clearAppendDeltaFor(token uint16) {
 	}
 }
 
-// ColumnExtendCount / ColumnRebuildCount report how columnar snapshots were
-// refreshed. Both paths return identical data by construction, so these are what let
-// a test prove the append path actually fired rather than silently never firing.
-func (ms *Store) ColumnExtendCount() uint64  { return ms.columnExtends.Load() }
+// ColumnExtendCount reports how many columnar snapshots were refreshed by APPEND-
+// EXTEND. Both refresh paths return identical data by construction, so this is what
+// lets a test prove the append path actually fired rather than never firing.
+func (ms *Store) ColumnExtendCount() uint64 { return ms.columnExtends.Load() }
+
+// ColumnRebuildCount reports how many columnar snapshots were refreshed by a FULL
+// REBUILD. Paired with ColumnExtendCount it is the builds-per-read telemetry the
+// cache-versus-native-columnar decision needs.
 func (ms *Store) ColumnRebuildCount() uint64 { return ms.columnRebuilds.Load() }

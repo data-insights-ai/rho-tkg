@@ -34,8 +34,8 @@ func (bs *Store) ScanNodeColumns(token uint16, props []string, opts storecontrac
 		return errNilIterationCallback()
 	}
 
-	if done, err := bs.scanNodeColumnsColumnar(token, props, opts, fn); done {
-		return err
+	if bs.scanNodeColumnsColumnar(token, props, opts, fn) {
+		return nil
 	}
 
 	nodes, err := bs.NodesByLabel(token, opts)
@@ -45,14 +45,16 @@ func (bs *Store) ScanNodeColumns(token uint16, props []string, opts storecontrac
 	return storecontract.ScanColumnsFromNodes(nodes, props, fn)
 }
 
-// scanNodeColumnsColumnar serves the scan from the DocValues snapshot. done=false
-// means it declined and the caller must use the row path; the scan has then emitted
-// NOTHING, so the fallback is a clean retry rather than a continuation.
+// scanNodeColumnsColumnar serves the scan from the DocValues snapshot, reporting
+// whether it did. false means it DECLINED and the caller must use the row path; the
+// scan has then emitted NOTHING, so the fallback is a clean retry rather than a
+// continuation. It returns no error: every way this path can fail to serve a request
+// is a decline, never a failure of the request itself.
 func (bs *Store) scanNodeColumnsColumnar(token uint16, props []string, opts storecontract.QueryOpts,
-	fn func(*storecontract.ColumnBatch) bool) (done bool, err error) {
+	fn func(*storecontract.ColumnBatch) bool) (done bool) {
 
 	if bs.labelOnDisk {
-		return false, nil // membership not materialised in RAM
+		return false // membership not materialised in RAM
 	}
 	// Only the temporal shape of QueryOpts can be answered from the snapshot's own
 	// columns. Anything else (property predicates, pagination, tx-time) is the row
@@ -60,7 +62,7 @@ func (bs *Store) scanNodeColumnsColumnar(token uint16, props []string, opts stor
 	// rows the caller did not ask for.
 	qFrom, qTo, temporalOnly := columnarValidTimeWindow(opts)
 	if !temporalOnly {
-		return false, nil
+		return false
 	}
 
 	gen := bs.labelEpoch(token)
@@ -70,26 +72,26 @@ func (bs *Store) scanNodeColumnsColumnar(token uint16, props []string, opts stor
 	if col == nil || col.Epoch() != gen || !col.HasAll(props) {
 		built, declined := bs.buildLabelColumns(token, props)
 		if declined {
-			return false, nil
+			return false
 		}
 		col = built
 	}
 	if !col.HasAll(props) || !col.HasTemporal() {
-		return false, nil
+		return false
 	}
 
 	views := make([]indexpkg.ColumnView, len(props))
 	for i, k := range props {
 		v, ok := col.View(k)
 		if !ok {
-			return false, nil
+			return false
 		}
 		// A MIXED numeric column has no single kind, and ColumnBatch carries exactly
 		// one per column. Declining here is what makes the row path's refusal
 		// (ErrMixedNumericColumn) reachable — picking a half would read the int array
 		// for a float row and emit a plausible wrong number instead.
 		if v.Mixed() {
-			return false, nil
+			return false
 		}
 		views[i] = v
 	}
@@ -122,10 +124,10 @@ func (bs *Store) scanNodeColumnsColumnar(token uint16, props []string, opts stor
 			continue
 		}
 		if !fn(batch) {
-			return true, nil
+			return true
 		}
 	}
-	return true, nil
+	return true
 }
 
 // columnarValidTimeWindow normalises opts into a half-open [start, end) window with

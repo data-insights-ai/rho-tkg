@@ -16,6 +16,8 @@ type (
 // follows.
 var ErrMixedNumericColumn = storepkg.ErrMixedNumericColumn
 
+// Column kinds, re-exported so a consumer never imports pkg/graph/store directly.
+// Column kinds, re-exported so a consumer never imports pkg/graph/store directly.
 const (
 	ColInt64   = storepkg.ColInt64
 	ColFloat64 = storepkg.ColFloat64
