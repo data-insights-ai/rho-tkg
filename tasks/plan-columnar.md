@@ -11,32 +11,40 @@ to a published contract.
 | R2a validity columns + zone map | **shipped** | +28.7% build, +16.1 B/row; snapshot now carries validity for what the OLD value-only column cost |
 | R2b badger ScanNodeColumns + shared row fallback | **shipped** | columnar path with zone-map skip; A/B oracle vs the row path |
 | R2c zone-map skipping | **shipped in R2a, used in R2b** | 98% of blocks skipped when clustered, 0% when scattered — both pinned |
-| R3 append-extend instead of rebuild | **mechanism shipped** | 5.5x faster than rebuild (1,013 -> 186 us), memory parity |
-| R3-wiring: use Extend on the store read path | **OPEN — the only one** | see below |
+| R3 append-extend instead of rebuild | **shipped** | 5.5x faster than rebuild (1,013 -> 186 us), memory parity |
+| R3-wiring badger | **shipped** | two-seam design; record on add, poison on remove |
+| R3-wiring memory | **shipped** | poison-by-DEFAULT; only the insert path opts in |
 
-### The one remaining item: wiring Extend into the stores
+**Nothing in this plan is open.** Both stores extend on a pure insert and rebuild
+on anything else; `ColumnExtendCount`/`ColumnRebuildCount` expose which path ran.
 
-`LabelDocValues.Extend` exists, is 5.5x faster than a rebuild, and is verified
-indistinguishable from one. Nothing calls it yet, because deciding "only appends
-happened since this snapshot" needs write-path bookkeeping the store does not
-keep today:
+### How the wiring came out (both stores, done)
 
-1. A per-label buffer of node IDs ADDED since the current snapshot epoch.
-2. A second epoch counter that advances only on NON-append changes (update,
-   delete, label change, purge). The existing `labelEpoch` keeps its meaning.
-3. Read path: if the non-append epoch is unchanged, `Extend` with the buffered
-   IDs; otherwise rebuild exactly as today.
+The two backends needed OPPOSITE safety arguments, and that is the part worth
+remembering:
 
-Deliberately NOT started in the same pass as the mechanism. It touches the node
-write path — the most safety-critical code in the store — across both backends,
-and a bug there is a wrong answer rather than a slow one. The mechanism is
-independently shippable and independently verified, which is what makes stopping
-here a clean boundary rather than a half-change.
+- **badger** funnels every node write through two ungated seams, so recording on
+  `addNodePropertyKeyCounts` and poisoning on `removeNodePropertyKeyCounts`
+  covers everything without auditing a single call site. An UPDATE is
+  remove-then-add and a DELETE is remove, so both poison.
+- **memory** has sixteen scattered `bumpNodeEpoch()` sites and no such seam.
+  Classifying them is the audit whose failure mode is a stale answer, and the
+  store's own comment already rejects that trade. So there, `bumpNodeEpoch`
+  POISONS and only the insert path opts in. Nothing can opt in by omission.
 
-Guard rails for whoever does it: `Extend` already refuses every non-append shape
-and returns nil, so the wiring's failure mode is a rebuild, never a wrong answer.
-The bookkeeping must be conservative in the same direction — when in doubt about
-whether a change was an append, treat it as not one.
+Exactness on top: each record stamps the epoch after its own bump and the fast
+path runs only if that stamp still matches at read time, so any unrecorded bump
+forces a rebuild. Every failure mode is a rebuild, never a wrong answer.
+
+**A mutation test found a real bug in the first test suite.** Deleting badger's
+poison broke nothing, because two other guards happened to cover every case
+written: an UPDATE's re-added ID is already in the snapshot so `Extend` refuses
+it as a duplicate, and a lone DELETE leaves the epoch stamp stale. Neither covers
+DELETE-THEN-INSERT WITH NO READ BETWEEN — the stamp matches, the insert is a
+clean append, and the deleted row's absence is INVISIBLE to `Extend`, which only
+inspects what is being added. The read returns a deleted node. Every probe had
+read after every write, which rebuilds and masks it. Both that case and its
+stale-value sibling are now pinned in both stores.
 
 ### What this does to the rewrite question
 
