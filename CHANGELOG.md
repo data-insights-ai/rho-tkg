@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.25.1] - 2026-08-04
+
+- CHORE — bumped the transitive `go.opentelemetry.io/otel{,/metric,/trace}` modules v1.37.0 →
+  v1.41.0 (and `go.opentelemetry.io/auto/sdk` v1.1.0 → v1.2.1 via tidy) to clear GitHub's
+  Dependabot alert #1 (high): OpenTelemetry-Go multi-value `baggage` header extraction causing
+  excessive allocations (remote DoS amplification), patched in 1.41.0. The vulnerable path is
+  OTel's HTTP header propagation, which nothing in this pure library invokes (otel arrives
+  transitively via badger; the call-graph-based `govulncheck` gate never flagged it) — this bump
+  clears the advisory rather than fixing a reachable defect. Full `make check` green on the
+  upgraded dependency set.
+
 ## [4.25.0] - 2026-07-29
 
 The sigma-tkgd ask-batch release: the five consumer-gated asks filed 2026-07-29 all resolved same
