@@ -75,7 +75,7 @@ func TestCodec_RoundTripIsIndistinguishable(t *testing.T) {
 		temporal bool
 	}{
 		"uniform_int":     {map[types.NodeID]any{1: int64(1), 2: int64(2), 3: big}, true},
-		"uniform_float":   {map[types.NodeID]any{1: 1.5, 2: -0.0, 3: math.MaxFloat64}, true},
+		"uniform_float":   {map[types.NodeID]any{1: 1.5, 2: math.Copysign(0, -1), 3: math.MaxFloat64}, true},
 		"mixed_numeric":   {map[types.NodeID]any{1: int64(7), 2: 2.25, 3: big}, true},
 		"strings":         {map[types.NodeID]any{1: "b", 2: "a", 3: "b"}, true},
 		"with_absent":     {map[types.NodeID]any{1: int64(7), 3: int64(9)}, true},
