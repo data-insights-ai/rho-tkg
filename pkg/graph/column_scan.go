@@ -31,11 +31,11 @@ const (
 // converts inside the store, where the type is still known, and hands back slices.
 //
 // The callback MUST NOT retain the batch: its slices are reused between calls.
-func (g *Graph) ScanNodeColumns(token uint16, props []string, opts QueryOpts,
+func (g *Graph) ScanNodeColumns(label string, props []string, opts QueryOpts,
 	fn func(*ColumnBatch) bool) (ok bool, err error) {
 
 	if g == nil {
 		return false, nil
 	}
-	return g.core.ScanNodeColumns(token, props, opts, fn)
+	return g.core.ScanNodeColumns(label, props, opts, fn)
 }
