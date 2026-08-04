@@ -96,7 +96,7 @@ func (bs *Store) scanNodeColumnsColumnar(token uint16, props []string, opts stor
 		views[i] = v
 	}
 
-	ids, vf, vt := col.NodeIDs(), col.ValidFrom(), col.ValidTo()
+	ids, vf, vt := col.IDs(), col.ValidFrom(), col.ValidTo()
 	batch := newColumnBatch(len(props))
 	for i, v := range views {
 		batch.Kinds[i] = columnKindOf(v)

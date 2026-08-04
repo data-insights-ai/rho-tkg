@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	snowflake "github.com/bds421/rho-snowflake-2026"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -137,13 +138,26 @@ type docColumn struct {
 	dictBoxed []any // ColString, per DISTINCT term (not per row)
 }
 
-// LabelDocValues is the immutable set of aligned columns for one label, built at a
-// single store mutation epoch. All columns share NodeIDs (the ordinal vector), so
-// ordinal i refers to the same node in every column.
-type LabelDocValues struct {
-	epoch   uint64
-	nodeIDs []types.NodeID
-	cols    map[string]*docColumn // propKey -> column (only buildable keys present)
+// EntityID is what the ordinal vector is generic over: any snowflake-backed entity
+// identifier. `types.NodeID` and `types.RelID` both satisfy it, which is what lets
+// one column implementation serve nodes AND relationships.
+//
+// Generic rather than punning a RelID through a NodeID-typed vector: the pun costs
+// nothing today and creates a permanent class of silent bug, because a rel snapshot
+// whose vector claims to hold NodeIDs will eventually be handed to something that
+// believes it.
+type EntityID interface {
+	comparable
+	SnowflakeID() snowflake.ID
+}
+
+// DocValues is the immutable set of aligned columns for one label (nodes) or one
+// relationship type, built at a single store mutation epoch. All columns share the
+// ordinal vector, so ordinal i refers to the same entity in every column.
+type DocValues[T EntityID] struct {
+	epoch uint64
+	ids   []T
+	cols  map[string]*docColumn // propKey -> column (only buildable keys present)
 
 	// Validity bounds, ordinal-aligned with nodeIDs, or nil when the builder was
 	// given no temporal accessor. A zero validTo means open-ended (the store-wide
@@ -175,21 +189,25 @@ type LabelDocValues struct {
 	zoneOpenEnded []bool
 }
 
+// LabelDocValues is the node-keyed instantiation. Every existing caller names this
+// type, so it stays as an alias rather than becoming a rename churn.
+type LabelDocValues = DocValues[types.NodeID]
+
 // zoneBlockSize is the zone-map granularity, matched to the column-scan batch size
 // so a skipped block is exactly a skipped batch.
 const zoneBlockSize = 4096
 
 // HasTemporal reports whether this snapshot carries validity columns.
-func (l *LabelDocValues) HasTemporal() bool { return l.hasTemporal }
+func (l *DocValues[T]) HasTemporal() bool { return l.hasTemporal }
 
 // ValidFrom is the ordinal-aligned lower validity bound per row, or nil when the
 // snapshot has no temporal columns. Immutable; callers must not write to it.
-func (l *LabelDocValues) ValidFrom() []int64 { return l.validFrom }
+func (l *DocValues[T]) ValidFrom() []int64 { return l.validFrom }
 
 // ValidTo is the ordinal-aligned upper validity bound per row (0 = open-ended), or
 // nil when the snapshot has no temporal columns. Immutable; callers must not write
 // to it.
-func (l *LabelDocValues) ValidTo() []int64 { return l.validTo }
+func (l *DocValues[T]) ValidTo() []int64 { return l.validTo }
 
 // BlockCanMatch reports whether the ordinal block starting at `start` can contain
 // any row matching the half-open query window [qFrom, qTo). A false means the whole
@@ -199,7 +217,7 @@ func (l *LabelDocValues) ValidTo() []int64 { return l.validTo }
 // storeutil's: a row [f,t) matches when f < qTo and (t == 0 || t > qFrom). The
 // upper bound is STRICT — a block whose earliest row starts exactly at qTo cannot
 // match, and using >= here rather than > would wrongly retain it.
-func (l *LabelDocValues) BlockCanMatch(start int, qFrom, qTo int64) bool {
+func (l *DocValues[T]) BlockCanMatch(start int, qFrom, qTo int64) bool {
 	if !l.hasTemporal || qTo == 0 {
 		return true // no zone map, or no filter — never skip
 	}
@@ -224,8 +242,8 @@ func (l *LabelDocValues) BlockCanMatch(start int, qFrom, qTo int64) bool {
 // work lives in computeZoneBlock, shared with the incremental path in Extend — two
 // copies would be two chances to disagree about the open-ended rule, and a
 // disagreement there silently drops live rows.
-func (l *LabelDocValues) buildZoneMap() {
-	n := len(l.nodeIDs)
+func (l *DocValues[T]) buildZoneMap() {
+	n := len(l.ids)
 	blocks := (n + zoneBlockSize - 1) / zoneBlockSize
 	l.zoneMinFrom = make([]int64, blocks)
 	l.zoneMaxFrom = make([]int64, blocks)
@@ -238,13 +256,13 @@ func (l *LabelDocValues) buildZoneMap() {
 }
 
 // Epoch returns the store node-mutation epoch this snapshot was built at.
-func (l *LabelDocValues) Epoch() uint64 { return l.epoch }
+func (l *DocValues[T]) Epoch() uint64 { return l.epoch }
 
 // Len is the number of label members (rows) in the ordinal vector.
-func (l *LabelDocValues) Len() int { return len(l.nodeIDs) }
+func (l *DocValues[T]) Len() int { return len(l.ids) }
 
 // Has reports whether propKey was built as a usable column.
-func (l *LabelDocValues) Has(propKey string) bool {
+func (l *DocValues[T]) Has(propKey string) bool {
 	c, ok := l.cols[propKey]
 	return ok && c.typ != colUnbuildable
 }
@@ -252,7 +270,7 @@ func (l *LabelDocValues) Has(propKey string) bool {
 // Keys returns the property keys this snapshot built columns for (buildable or
 // not). Used to keep a sticky union across rebuilds so a label's columns stay at
 // one epoch even as queries request different property subsets.
-func (l *LabelDocValues) Keys() []string {
+func (l *DocValues[T]) Keys() []string {
 	keys := make([]string, 0, len(l.cols))
 	for k := range l.cols {
 		keys = append(keys, k)
@@ -261,7 +279,7 @@ func (l *LabelDocValues) Keys() []string {
 }
 
 // HasAll reports whether every requested propKey is a usable column.
-func (l *LabelDocValues) HasAll(propKeys []string) bool {
+func (l *DocValues[T]) HasAll(propKeys []string) bool {
 	for _, k := range propKeys {
 		if !l.Has(k) {
 			return false
@@ -277,7 +295,7 @@ func (l *LabelDocValues) HasAll(propKeys []string) bool {
 // reproduces count(x)/sum/min/max null semantics. fn returns false to stop.
 // Returns false if any requested key is not a usable column (caller must check
 // HasAll first; this is a defensive guard).
-func (l *LabelDocValues) ForEachRow(propKeys []string, fn func(id types.NodeID, vals []any, present []bool) bool) bool {
+func (l *DocValues[T]) ForEachRow(propKeys []string, fn func(id T, vals []any, present []bool) bool) bool {
 	cols := make([]*docColumn, len(propKeys))
 	for i, k := range propKeys {
 		c, ok := l.cols[k]
@@ -288,7 +306,7 @@ func (l *LabelDocValues) ForEachRow(propKeys []string, fn func(id types.NodeID, 
 	}
 	vals := make([]any, len(propKeys))
 	present := make([]bool, len(propKeys))
-	for ord, id := range l.nodeIDs {
+	for ord, id := range l.ids {
 		for i, c := range cols {
 			if !c.present.get(ord) {
 				vals[i], present[i] = nil, false
@@ -352,7 +370,7 @@ func (v ColumnView) Mixed() bool { return v.isFloat != nil }
 // View returns the typed handle for a usable column, or ok=false for an absent or
 // unbuildable key — mirroring Has exactly, so a columnar reader declines the whole
 // query rather than reading an unbuildable column as spurious nulls.
-func (l *LabelDocValues) View(key string) (ColumnView, bool) {
+func (l *DocValues[T]) View(key string) (ColumnView, bool) {
 	c, ok := l.cols[key]
 	if !ok || c.typ == colUnbuildable {
 		return ColumnView{}, false
@@ -367,14 +385,14 @@ func (l *LabelDocValues) View(key string) (ColumnView, bool) {
 
 // NodeIDs is the shared ordinal vector every column of this snapshot aligns to.
 // Immutable; callers must not write to it.
-func (l *LabelDocValues) NodeIDs() []types.NodeID { return l.nodeIDs }
+func (l *DocValues[T]) IDs() []T { return l.ids }
 
 // lookup returns the ordinal of id via binary search on the sorted nodeIDs, or
 // (-1, false) if id is not a member. Uses the SAME comparator BuildLabelDocValues
 // sorted with (cmp.Compare on SnowflakeID) — a hand-rolled raw-int64 or unsigned
 // compare would disagree on the sort order and miss members (Pattern 12 sibling).
-func (l *LabelDocValues) lookup(id types.NodeID) (int, bool) {
-	return slices.BinarySearchFunc(l.nodeIDs, id, func(a, target types.NodeID) int {
+func (l *DocValues[T]) lookup(id T) (int, bool) {
+	return slices.BinarySearchFunc(l.ids, id, func(a, target T) int {
 		return cmp.Compare(a.SnowflakeID(), target.SnowflakeID())
 	})
 }
@@ -385,8 +403,8 @@ func (l *LabelDocValues) lookup(id types.NodeID) (int, bool) {
 // in REQUESTED order regardless of internal storage order (buildColumnsLocked unions
 // keys and does not preserve request order — Pattern 12). Implements
 // types.NodeColumnReader.
-type PointSnapshot struct {
-	l    *LabelDocValues
+type PointSnapshot[T EntityID] struct {
+	l    *DocValues[T]
 	cols []*docColumn
 }
 
@@ -394,7 +412,7 @@ type PointSnapshot struct {
 // ok=false if ANY requested key is not a usable (numeric/string) column — mirroring
 // HasAll exactly, so the consumer declines the WHOLE query to the per-node path
 // rather than reading an unbuildable column as spurious nulls.
-func (l *LabelDocValues) NewPointSnapshot(propKeys []string) (*PointSnapshot, bool) {
+func (l *DocValues[T]) NewPointSnapshot(propKeys []string) (*PointSnapshot[T], bool) {
 	cols := make([]*docColumn, len(propKeys))
 	for i, k := range propKeys {
 		c, ok := l.cols[k]
@@ -403,7 +421,7 @@ func (l *LabelDocValues) NewPointSnapshot(propKeys []string) (*PointSnapshot, bo
 		}
 		cols[i] = c
 	}
-	return &PointSnapshot{l: l, cols: cols}, true
+	return &PointSnapshot[T]{l: l, cols: cols}, true
 }
 
 // Row fills vals/present for id's bound columns and reports membership. Returns
@@ -411,7 +429,7 @@ func (l *LabelDocValues) NewPointSnapshot(propKeys []string) (*PointSnapshot, bo
 // filter. For a member, a cleared present bit yields a nil value (the absent-
 // property shape); Row still returns TRUE so the row is counted (an all-absent but
 // BUILDABLE column must count every member).
-func (s *PointSnapshot) Row(id types.NodeID, vals []any, present []bool) bool {
+func (s *PointSnapshot[T]) Row(id T, vals []any, present []bool) bool {
 	ord, ok := s.l.lookup(id)
 	if !ok {
 		return false
@@ -428,7 +446,7 @@ func (s *PointSnapshot) Row(id types.NodeID, vals []any, present []bool) bool {
 }
 
 // Epoch is the snapshot's build epoch, for the consumer's Gate-2 staleness check.
-func (s *PointSnapshot) Epoch() uint64 { return s.l.epoch }
+func (s *PointSnapshot[T]) Epoch() uint64 { return s.l.epoch }
 
 // valueAt returns the typed Go value at an ordinal whose present bit is set. Both
 // arms are allocation-free in steady state: the boxed views are materialised once,
@@ -505,17 +523,25 @@ func (c *docColumn) boxedDict() []any {
 // can carry them as columns and build a zone map. Pass nil to build value columns
 // only; a reader then sees HasTemporal() == false and must fall back for any
 // valid-time predicate rather than assuming "no bounds" means "valid for all time".
+// BuildLabelDocValues is the node-keyed instantiation, kept under its original name
+// because every existing caller names it.
 func BuildLabelDocValues(epoch uint64, nodeIDs []types.NodeID, propKeys []string,
 	getProp func(types.NodeID, string) (any, bool),
 	getTemporal func(types.NodeID) (validFrom, validTo int64, ok bool)) *LabelDocValues {
+	return BuildDocValues(epoch, nodeIDs, propKeys, getProp, getTemporal)
+}
 
-	ids := slices.Clone(nodeIDs)
-	slices.SortFunc(ids, func(a, b types.NodeID) int {
+func BuildDocValues[T EntityID](epoch uint64, entityIDs []T, propKeys []string,
+	getProp func(T, string) (any, bool),
+	getTemporal func(T) (validFrom, validTo int64, ok bool)) *DocValues[T] {
+
+	ids := slices.Clone(entityIDs)
+	slices.SortFunc(ids, func(a, b T) int {
 		return cmp.Compare(a.SnowflakeID(), b.SnowflakeID())
 	})
 	n := len(ids)
 
-	l := &LabelDocValues{epoch: epoch, nodeIDs: ids, cols: make(map[string]*docColumn, len(propKeys))}
+	l := &DocValues[T]{epoch: epoch, ids: ids, cols: make(map[string]*docColumn, len(propKeys))}
 
 	if getTemporal != nil && n > 0 {
 		l.validFrom = make([]int64, n)
@@ -541,7 +567,7 @@ func BuildLabelDocValues(epoch uint64, nodeIDs []types.NodeID, propKeys []string
 
 // buildColumn classifies the property's values and builds the typed column, or a
 // colUnbuildable marker if the values are not uniformly numeric/string.
-func buildColumn(ids []types.NodeID, key string, n int, getProp func(types.NodeID, string) (any, bool)) *docColumn {
+func buildColumn[T EntityID](ids []T, key string, n int, getProp func(T, string) (any, bool)) *docColumn {
 	present := newBitset(n)
 	// First pass: classify. numeric and string are the only buildable classes.
 	sawNumeric, sawString, sawOther := false, false, false
@@ -574,7 +600,7 @@ func buildColumn(ids []types.NodeID, key string, n int, getProp func(types.NodeI
 	return buildNumericColumn(ids, key, n, present, getProp)
 }
 
-func buildNumericColumn(ids []types.NodeID, key string, n int, present bitset, getProp func(types.NodeID, string) (any, bool)) *docColumn {
+func buildNumericColumn[T EntityID](ids []T, key string, n int, present bitset, getProp func(T, string) (any, bool)) *docColumn {
 	c := &docColumn{typ: ColNumeric, present: present, n: n}
 
 	ints := make([]int64, n)
@@ -663,7 +689,7 @@ func normalizeUint64(v uint64) (int64, float64, bool) {
 	return 0, float64(v), true
 }
 
-func buildStringColumn(ids []types.NodeID, key string, n int, present bitset, getProp func(types.NodeID, string) (any, bool)) *docColumn {
+func buildStringColumn[T EntityID](ids []T, key string, n int, present bitset, getProp func(T, string) (any, bool)) *docColumn {
 	c := &docColumn{typ: ColString, present: present, n: n, codes: make([]uint32, n)}
 	dictIdx := make(map[string]uint32)
 	for ord, id := range ids {

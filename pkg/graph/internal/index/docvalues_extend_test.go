@@ -33,7 +33,7 @@ func dump(t *testing.T, l *LabelDocValues) []string {
 		return []string{"unbuildable"}
 	}
 	out := make([]string, 0, l.Len()+8)
-	for ord, id := range l.NodeIDs() {
+	for ord, id := range l.IDs() {
 		s := ""
 		switch {
 		case !v.Present(ord):
@@ -228,7 +228,7 @@ func TestExtend_DoesNotMutateTheReceiver(t *testing.T) {
 	if ext == nil {
 		t.Fatal("Extend refused a legitimate append")
 	}
-	if got := len(base.NodeIDs()); got != 2 {
+	if got := len(base.IDs()); got != 2 {
 		t.Errorf("receiver grew to %d rows — Extend mutated it", got)
 	}
 	if base.Epoch() != 1 {

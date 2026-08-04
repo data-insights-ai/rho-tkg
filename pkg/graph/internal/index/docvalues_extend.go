@@ -3,8 +3,6 @@ package index
 import (
 	"cmp"
 	"slices"
-
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // Extend returns a NEW snapshot covering this snapshot's rows plus newIDs, without
@@ -41,9 +39,9 @@ import (
 //     consumer's equality test matches.
 //
 // A nil return is always safe: the caller falls back to a full rebuild.
-func (l *LabelDocValues) Extend(epoch uint64, newIDs []types.NodeID,
-	getProp func(types.NodeID, string) (any, bool),
-	getTemporal func(types.NodeID) (validFrom, validTo int64, ok bool)) *LabelDocValues {
+func (l *DocValues[T]) Extend(epoch uint64, newIDs []T,
+	getProp func(T, string) (any, bool),
+	getTemporal func(T) (validFrom, validTo int64, ok bool)) *DocValues[T] {
 
 	if l == nil || len(newIDs) == 0 {
 		return nil
@@ -53,13 +51,13 @@ func (l *LabelDocValues) Extend(epoch uint64, newIDs []types.NodeID,
 	}
 
 	added := slices.Clone(newIDs)
-	slices.SortFunc(added, func(a, b types.NodeID) int {
+	slices.SortFunc(added, func(a, b T) int {
 		return cmp.Compare(a.SnowflakeID(), b.SnowflakeID())
 	})
 	// Strictly greater than the current maximum, and strictly increasing among
 	// themselves — anything else is not an append.
-	if len(l.nodeIDs) > 0 {
-		maxCur := l.nodeIDs[len(l.nodeIDs)-1]
+	if len(l.ids) > 0 {
+		maxCur := l.ids[len(l.ids)-1]
 		if cmp.Compare(added[0].SnowflakeID(), maxCur.SnowflakeID()) <= 0 {
 			return nil
 		}
@@ -70,16 +68,16 @@ func (l *LabelDocValues) Extend(epoch uint64, newIDs []types.NodeID,
 		}
 	}
 
-	oldN := len(l.nodeIDs)
+	oldN := len(l.ids)
 	n := oldN + len(added)
 	if n > MaxDocValuesNodes {
 		return nil // over cap — the store's own rule, not ours to bend
 	}
 
-	out := &LabelDocValues{
-		epoch:   epoch,
-		nodeIDs: append(slices.Clone(l.nodeIDs), added...),
-		cols:    make(map[string]*docColumn, len(l.cols)),
+	out := &DocValues[T]{
+		epoch: epoch,
+		ids:   append(slices.Clone(l.ids), added...),
+		cols:  make(map[string]*docColumn, len(l.cols)),
 	}
 
 	for key, c := range l.cols {
@@ -112,8 +110,8 @@ func (l *LabelDocValues) Extend(epoch uint64, newIDs []types.NodeID,
 //
 // Recomputing everything would be correct but would leave an O(label size) term in
 // what is meant to be an O(appended) operation.
-func (l *LabelDocValues) extendZoneMap(src *LabelDocValues, oldN int) {
-	n := len(l.nodeIDs)
+func (l *DocValues[T]) extendZoneMap(src *DocValues[T], oldN int) {
+	n := len(l.ids)
 	blocks := (n + zoneBlockSize - 1) / zoneBlockSize
 	l.zoneMinFrom = make([]int64, blocks)
 	l.zoneMaxFrom = make([]int64, blocks)
@@ -140,7 +138,7 @@ func (l *LabelDocValues) extendZoneMap(src *LabelDocValues, oldN int) {
 }
 
 // computeZoneBlock fills one block's min/max from the validity columns.
-func (l *LabelDocValues) computeZoneBlock(b, n int) {
+func (l *DocValues[T]) computeZoneBlock(b, n int) {
 	lo := b * zoneBlockSize
 	hi := min(lo+zoneBlockSize, n)
 	minF, maxF := l.validFrom[lo], l.validFrom[lo]
@@ -167,8 +165,8 @@ func (l *LabelDocValues) computeZoneBlock(b, n int) {
 // extendColumn produces a column covering oldN existing ordinals plus the appended
 // ids. Existing values are COPIED, never re-read. Returns nil if an appended value
 // does not fit the column's established type.
-func extendColumn(c *docColumn, added []types.NodeID, key string, oldN, n int,
-	getProp func(types.NodeID, string) (any, bool)) *docColumn {
+func extendColumn[T EntityID](c *docColumn, added []T, key string, oldN, n int,
+	getProp func(T, string) (any, bool)) *docColumn {
 
 	if c.typ == colUnbuildable {
 		// Stays unbuildable — cheap and correct; the consumer already falls back.

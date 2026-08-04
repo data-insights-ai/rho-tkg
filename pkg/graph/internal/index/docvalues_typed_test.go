@@ -112,7 +112,7 @@ func TestTypedColumn_BothDoorsAgreeValueForValue(t *testing.T) {
 			}
 			_, boxed, present := collectRows(l, []string{"v"})
 
-			for ord := range l.NodeIDs() {
+			for ord := range l.IDs() {
 				gotPresent := view.Present(ord)
 				if gotPresent != present[ord][0] {
 					t.Fatalf("ord %d: presence disagrees: typed=%v boxed=%v",
