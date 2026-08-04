@@ -4,6 +4,121 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.27.0] - 2026-08-04
+
+The relationship-columns release: the columnar snapshot goes generic over its entity
+ID so one implementation serves nodes AND relationships, relationships gain columns
+with endpoint arrays, rel-type invalidation is striped, rel appends extend instead
+of rebuilding, and built columns can be persisted. New public surface:
+`Config.ColumnsOnDisk`, `types.Relationship.ValidRange`, and the rel column doors
+`RelColumnSnapshot` / `RelMutationEpochForType`.
+
+Numbers: Apple M4 Max, badger-in-memory, warm. Every one has a committed benchmark.
+
+- REFACTOR — **the column snapshot is generic over its entity ID.** `LabelDocValues`
+  becomes `DocValues[T EntityID]`; `types.NodeID` and `types.RelID` both satisfy it,
+  so relationships reuse the whole column implementation instead of getting a second
+  ~700-line copy. NO CALLER CHANGED: `LabelDocValues` stays as an alias for
+  `DocValues[types.NodeID]` and `BuildLabelDocValues` as the node-keyed
+  instantiation. `PointSnapshot` is generic too and, instantiated at `types.NodeID`,
+  still satisfies the published `types.NodeColumnReader` exactly.
+
+  Chosen over punning a `RelID` through a `NodeID`-typed vector: the pun costs
+  nothing today and creates a permanent class of silent bug, because a rel snapshot
+  claiming to hold NodeIDs eventually reaches something that believes it.
+
+- ADD — **relationship columns, with endpoint columns.** A columnar snapshot per
+  rel-type token, built from `typeIdx` (the exact mirror of `labelIdx`) and stamped
+  by the rel epoch. `StartNodeID`/`EndNodeID` are already int64, so as columns they
+  are free — and they are the point: a traversal aggregation reads
+  `(start, end, weight)` as three aligned typed arrays and never materialises a
+  `*types.Relationship`. Endpoints are ALWAYS built, unlike requested property
+  columns, and live under reserved `tkg_` keys so they ride the existing machinery.
+
+- PERF — **per-rel-type column invalidation**, so a write to one relationship type
+  no longer discards every other type's columns.
+
+  OVER-INVALIDATION IS THE DEFAULT, which is the whole safety argument. There are
+  ten relationship-mutation sites and classifying all ten is an audit whose failure
+  mode is a stale answer. So `bumpRelEpoch` still invalidates EVERY type — today's
+  behaviour exactly — and only the three sites that hold the `*types.Relationship`
+  opt into `bumpRelEpochForType`. A site left unconverted, today's or one added
+  later, is slower and never wrong.
+
+  That inversion earned itself immediately: a blanket edit converted a third site,
+  `deleteRelationshipRouted`, which holds only a `RelID`. The compiler caught it.
+  Under a precision-by-default design the same slip would have compiled and silently
+  served stale columns.
+
+  `RelMutationEpoch()` is UNTOUCHED — it is public and contracted as "bumped on
+  every edge write", and the node-side expand path's Gate-2 depends on it, so the
+  striping is a separate counter layered beside it.
+
+- PERF — **relationship append-extend**: a pure insert extends the type's cached
+  snapshot instead of rebuilding it.
+
+  | 100-rel append | rebuild | extend | speedup |
+  |---|---|---|---|
+  | 1,000 rels | 243,854 ns | 13,231 ns | 18.4x |
+  | 10,000 rels | 3,621,267 ns / 30,060 allocs | 21,217 ns / 21 allocs | **171x** |
+
+  The ratio GROWS with the type's size because a rebuild re-reads every relationship
+  individually (`bulkRelGetters`), where the node side uses one bulk scan. The node
+  equivalent is 5.5x.
+
+- FIX — **an extend could serve a DELETED row.** `poisonAllRelTypes` drops the whole
+  append record map, so the next insert created a FRESH, un-poisoned record stamped
+  at the current epoch; the stamp check passed and a stale snapshot — still holding a
+  deleted relationship — was extended.
+
+  The guard is now an ACCOUNTING IDENTITY rather than a matching stamp:
+  `gen - snapshotEpoch == len(recorded ids)`. Every recorded append bumps the epoch
+  exactly once, so a balance proves EVERY bump since the snapshot was built was a
+  recorded append; a delete plus an insert is two bumps against one record and
+  correctly refuses. Applied to ALL THREE paths — badger node, badger rel, memory —
+  because `poisonAllLabels` has the same drop-the-map shape, rather than arguing
+  about which removal paths happen to be reachable.
+
+- ADD — **`Config.ColumnsOnDisk`** (default OFF) persists built columns so a cold
+  read decodes a blob instead of re-reading every entity.
+
+  | cold refresh | rebuild | from disk | speedup |
+  |---|---|---|---|
+  | 10,000 nodes | 2,520,283 ns | 205,867 ns | 12.2x |
+  | 50,000 nodes | 39,316,262 ns / 759,890 allocs | 954,750 ns / 76 allocs | **41x** |
+
+  NO WIRE-FORMAT BUMP AND NO MIGRATION: a persisted column is a REBUILD ACCELERATOR
+  and never a read authority, the rule `TemporalIndexOnDisk` already states. Every
+  failure mode is "discard and rebuild", so an older binary simply never reads the
+  keys. Blobs carry their own one-byte version; raising
+  `CurrentWireFormatVersion` would make an older binary refuse to open the directory
+  at all, an absurd price for a cache.
+
+  Unlike the temporal index, the blob is written OUTSIDE any entity transaction —
+  columns are built lazily at READ time, so there is no entity write to ride along
+  with, and it must never be able to fail one.
+
+- FIX — **persistence silently pessimised large labels**, found by benchmarking
+  rather than review. Badger refuses a value over 1 MiB and a 50,000-row column
+  encodes to ~1.6 MB, so the write FAILED for exactly the labels persistence is most
+  worth having; because the error was swallowed as best-effort, every read then paid
+  an encode AND a full rebuild. The 50,000-row case measured 1.03x with HIGHER
+  allocations than the rebuild it replaced, which is what exposed it. Now chunked at
+  512 KiB, CHUNKS FIRST AND HEADER LAST so a partial write leaves orphan chunks and
+  no header — and a missing header means rebuild.
+
+- ADD — **`types.Relationship.ValidRange`**, the counterpart to the node-side
+  accessor: validity bounds without the copy `Temporal()` must make for a frozen
+  entity, which every entity a store scan returns is.
+
+- WITHDRAWN — **zone maps before I/O.** `PruneTemporalCandidates` already narrows a
+  candidate set against the per-label valid-time envelope index before any entity is
+  fetched, per-ENTITY rather than per-block; and the scan-time half shipped in
+  4.26.0 as `BlockCanMatch` (98% of blocks skipped on a time-clustered column).
+  Wiring a prune into a column BUILD would break the snapshot's full-unfiltered-
+  membership contract, which every consumer depends on. Reopen criteria recorded in
+  `tasks/plan-columnar-phase2.md`.
+
 ## [4.26.0] - 2026-08-04
 
 The columnar release: the DocValues snapshot gains typed storage, validity columns with a
