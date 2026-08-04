@@ -197,9 +197,6 @@ func (bs *Store) OutgoingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 	return result, nil
 }
 
-// IncomingRelationships returns relationships ending at the given node.
-// If typeToken is 0, returns all incoming; otherwise filters by type.
-// Results are sorted by snowflake.ID for deterministic output.
 // OutgoingDegree returns the number of outgoing relationships from nid
 // (type-filtered) by counting adjacency-index entries — no entity resolution,
 // no DeepCopy. See store.DegreeCapability for the exact/orphan semantics.
@@ -280,6 +277,9 @@ func (bs *Store) IncomingDegree(nid types.NodeID, typeToken uint16) (int, error)
 	return n, nil
 }
 
+// IncomingRelationships returns relationships ending at the given node.
+// If typeToken is 0, returns all incoming; otherwise filters by type.
+// Results are sorted by snowflake.ID for deterministic output.
 func (bs *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err

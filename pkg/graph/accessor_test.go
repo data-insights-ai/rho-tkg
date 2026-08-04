@@ -241,16 +241,24 @@ func TestGraphAccessor_AccessorsReturnSamePointerEachCall(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = g.Close() })
 
-	if g.Nodes() != g.Nodes() {
+	// Bound to locals: the assertion IS that two calls yield one pointer, which
+	// staticcheck reads as a tautology when written inline (SA4000).
+	if aNodes, bNodes := g.Nodes(), g.Nodes(); aNodes != bNodes {
 		t.Error("Nodes() returned different pointers on consecutive calls")
 	}
-	if g.Rels() != g.Rels() {
+	// Bound to locals: the assertion IS that two calls yield one pointer, which
+	// staticcheck reads as a tautology when written inline (SA4000).
+	if aRels, bRels := g.Rels(), g.Rels(); aRels != bRels {
 		t.Error("Rels() returned different pointers on consecutive calls")
 	}
-	if g.Temporal() != g.Temporal() {
+	// Bound to locals: the assertion IS that two calls yield one pointer, which
+	// staticcheck reads as a tautology when written inline (SA4000).
+	if aTemporal, bTemporal := g.Temporal(), g.Temporal(); aTemporal != bTemporal {
 		t.Error("Temporal() returned different pointers on consecutive calls")
 	}
-	if g.Tx() != g.Tx() {
+	// Bound to locals: the assertion IS that two calls yield one pointer, which
+	// staticcheck reads as a tautology when written inline (SA4000).
+	if aTx, bTx := g.Tx(), g.Tx(); aTx != bTx {
 		t.Error("Tx() returned different pointers on consecutive calls")
 	}
 }

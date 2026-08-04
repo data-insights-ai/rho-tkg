@@ -17,7 +17,7 @@ func (ms *Store) PruneRelTypeTemporalCandidates(relType uint16, ids []types.RelI
 		return ids, false
 	}
 	// Only a point/interval valid-time filter narrows on the envelope.
-	if opts.ValidAt == 0 && !(opts.ValidStart > 0 && opts.ValidEnd > 0) {
+	if opts.ValidAt == 0 && (opts.ValidStart <= 0 || opts.ValidEnd <= 0) {
 		return ids, false
 	}
 	ms.mu.RLock()

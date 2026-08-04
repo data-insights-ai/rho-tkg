@@ -198,7 +198,7 @@ func (tx *GraphTx) RelProperty(r *types.Relationship, key string) (any, bool) {
 
 // --- NodeOps mirrors ---
 
-// GetByIDs is a tx-side mirror for g.Nodes.GetByIDs.
+// GetNodesByIDs is a tx-side mirror for g.Nodes().GetByIDs.
 func (tx *GraphTx) GetNodesByIDs(ids []types.NodeID) ([]*types.Node, error) {
 	if err := tx.lockActiveCore(); err != nil {
 		return nil, err

@@ -39,11 +39,17 @@ linters:
           - errcheck
           - unparam
           - revive
-      - path: pkg/graph/internal/core/
+      # INTERNAL packages: an identifier is exported here only to cross the
+      # internal/ package boundary, never to a user. It is not public API, and
+      # godoc never renders it. Was listed per-package (core only); index and
+      # storeutil are the same category and were simply never added.
+      - path: pkg/graph/internal/
         text: "should have comment or be unexported"
-      - path: pkg/graph/store/tiered/
-        text: "should have comment or be unexported"
-      - path: pkg/graph/store/badger/
+      # STORE BACKENDS: these are Store-INTERFACE implementations whose contract is
+      # documented once, on the interface in pkg/graph/store. A per-backend copy
+      # would restate that contract in a fourth place and drift from it. badger and
+      # tiered were already listed; memory and sharded are the same category.
+      - path: pkg/graph/store/(badger|tiered|memory|sharded)/
         text: "should have comment or be unexported"
 formatters:
   enable:

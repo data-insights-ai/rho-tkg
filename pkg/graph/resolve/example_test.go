@@ -2,6 +2,7 @@ package resolve_test
 
 import (
 	"context"
+
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	_ "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/resolve" // godoc anchor: ExampleAPI_<method> resolves against resolve.API
 )

@@ -18,7 +18,7 @@ type captureBus struct {
 
 func newCaptureBus() *captureBus {
 	cb := &captureBus{EventBus: eventspkg.NewEventBus()}
-	cb.EventBus.Subscribe(func(ev eventspkg.Event) {
+	cb.Subscribe(func(ev eventspkg.Event) {
 		cb.mu.Lock()
 		cb.events = append(cb.events, ev)
 		cb.mu.Unlock()

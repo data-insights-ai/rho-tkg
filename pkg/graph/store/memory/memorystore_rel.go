@@ -513,10 +513,6 @@ func (ms *Store) OutgoingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 	return result, nil
 }
 
-// IncomingRelationships returns relationships ending at the given node.
-// If typeToken is 0, returns all incoming; otherwise filters by type.
-// Results are sorted by snowflake.ID for deterministic output.
-// Returns ErrNodeNotFound if the requested node does not exist.
 // OutgoingDegree counts outgoing relationships from nid (type-filtered) without
 // materializing them. See store.DegreeCapability.
 func (ms *Store) OutgoingDegree(nid types.NodeID, typeToken uint16) (int, error) {
@@ -579,6 +575,10 @@ func (ms *Store) degreeLocked(set map[types.RelID]struct{}, typeToken uint16) in
 	return n
 }
 
+// IncomingRelationships returns relationships ending at the given node.
+// If typeToken is 0, returns all incoming; otherwise filters by type.
+// Results are sorted by snowflake.ID for deterministic output.
+// Returns ErrNodeNotFound if the requested node does not exist.
 func (ms *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*types.Relationship, error) {
 	if ms == nil {
 		return nil, ErrNilStore

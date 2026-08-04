@@ -47,9 +47,9 @@ func TestShardedMutationEpochAdvancesOnWrite(t *testing.T) {
 
 	// Rel epoch likewise advances on a rel write.
 	r0 := g.Rels().RelMutationEpoch()
-	if _, err := g.Rels().Add(ctx, "KNOWS", a, a, nil); err == nil {
-		// self-loop may be rejected; fall through — the point is the epoch API
-	}
+	// A self-loop may or may not be rejected depending on config; either outcome is
+	// fine here because the point is the epoch API, not the write.
+	_, _ = g.Rels().Add(ctx, "KNOWS", a, a, nil)
 	// Use a valid rel between two live nodes.
 	b, _ := g.Nodes().Add(ctx, []string{"Person"}, nil)
 	if _, err := g.Rels().Add(ctx, "KNOWS", a, b, nil); err != nil {

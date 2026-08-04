@@ -388,7 +388,7 @@ func (c *Core) createUnique(ctx context.Context, label, propKey string, scope co
 	// own the values they already hold (validation above guaranteed no current
 	// duplicates). A seed failure uninstalls the just-activated constraint.
 	if scope == constraintspkg.UniqueForever {
-		if err := c.seedForeverOwnersFromCurrent(labelTok, label, propKey); err != nil {
+		if err := c.seedForeverOwnersFromCurrent(labelTok, propKey); err != nil {
 			c.uninstallActiveConstraint(labelTok, propKey, mk)
 			return err
 		}

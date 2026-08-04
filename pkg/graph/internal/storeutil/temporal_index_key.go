@@ -7,7 +7,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Disk-resident RAW INTERVAL ENTRY LOG backing the opt-in
+// KeyTemporalIndex is the disk-resident RAW INTERVAL ENTRY LOG backing the opt-in
 // badger.Config.TemporalIndexOnDisk rebuild accelerator.
 //
 // Unlike the KeyPropertyIndex / label / adjacency on-disk modes (which move

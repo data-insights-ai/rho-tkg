@@ -19,10 +19,6 @@ import (
 // Per-entity history methods live in badgerstore_history_node.go and
 // badgerstore_history_rel.go.
 
-func (bs *Store) truncateHistoryByPrefix(prefix []byte, keepVersions int, logTag storecontract.ChangeTag, logPayload []byte) error {
-	return bs.truncateHistoryByPrefixRouted(prefix, keepVersions, logTag, logPayload, 0)
-}
-
 // truncateHistoryByPrefixRouted is truncateHistoryByPrefix's token-aware
 // sibling (BACKLOG 11f Batch F) — routes the truncation record through
 // appendOpsLoggedRouted instead of appendOpsLogged. token == 0 is exactly
@@ -248,10 +244,6 @@ func (bs *Store) compactHistoryByPrefix(prefix []byte, keepVersions int, metaWri
 	}
 	bs.appendOps(ops...)
 	return bs.flush()
-}
-
-func (bs *Store) trimHistoryFromPrefix(prefix []byte, minVersion uint32, logTag storecontract.ChangeTag, logPayload []byte) error {
-	return bs.trimHistoryFromPrefixRouted(prefix, minVersion, logTag, logPayload, 0)
 }
 
 // trimHistoryFromPrefixRouted is trimHistoryFromPrefix's token-aware sibling

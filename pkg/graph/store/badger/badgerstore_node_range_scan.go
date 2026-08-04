@@ -11,18 +11,6 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// ForEachNodeByLabelPropertyRange streams the label's nodes whose NUMERIC
-// propKey value lies within [min, max] (per the inclusivity flags) to fn in
-// snowflake-ID order — the range-scan capability. Candidates come
-// from the property index's ordered numeric view; the view over-selects by
-// design (float64 sort keys, ulp-widened bounds), so fn receives CANDIDATES
-// and callers MUST re-check the predicate with exact comparison semantics.
-// fn returning false stops early.
-//
-// Returns ErrIndexNotFound when no property index exists for (token,
-// propKey) or its ordered view is unavailable (cardinality-capped) —
-// callers fall back to a label scan. Same isolation and frozen-row
-// contract as ForEachNodeByLabel.
 // NodeRangeCardinality returns the COUNT of the label's nodes whose numeric
 // propKey value lies within [min, max] (per the inclusivity flags), summed from
 // the property index's sorted per-value bucket sizes (R1) — O(distinct values in
@@ -51,6 +39,18 @@ func (bs *Store) NodeRangeCardinality(token uint16, propKey string, min, max flo
 	return count, exact, nil
 }
 
+// ForEachNodeByLabelPropertyRange streams the label's nodes whose NUMERIC
+// propKey value lies within [min, max] (per the inclusivity flags) to fn in
+// snowflake-ID order — the range-scan capability. Candidates come
+// from the property index's ordered numeric view; the view over-selects by
+// design (float64 sort keys, ulp-widened bounds), so fn receives CANDIDATES
+// and callers MUST re-check the predicate with exact comparison semantics.
+// fn returning false stops early.
+//
+// Returns ErrIndexNotFound when no property index exists for (token,
+// propKey) or its ordered view is unavailable (cardinality-capped) —
+// callers fall back to a label scan. Same isolation and frozen-row
+// contract as ForEachNodeByLabel.
 func (bs *Store) ForEachNodeByLabelPropertyRange(token uint16, propKey string, min, max float64, inclMin, inclMax bool, opts QueryOpts, fn func(*types.Node) bool) error {
 	if err := bs.checkOpen(); err != nil {
 		return err

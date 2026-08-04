@@ -75,9 +75,11 @@ var (
 	ErrForeignEndpointLocal = errors.New("graph: sharded: foreign-endpoint door reached with a local end node")
 )
 
-// QueryOpts / RelTombstone are Store-contract aliases.
+// Store-contract aliases.
 type (
-	QueryOpts    = storecontract.QueryOpts
+	// QueryOpts is the store-wide query option set.
+	QueryOpts = storecontract.QueryOpts
+	// RelTombstone marks a relationship deleted on a foreign shard.
 	RelTombstone = storecontract.RelTombstone
 )
 

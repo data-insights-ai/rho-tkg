@@ -537,21 +537,6 @@ func (tx *GraphTx) unlockActiveCoreWrite() {
 	tx.mu.Unlock()
 }
 
-// lockActiveCoreContext is the ctx-honouring variant of lockActiveCore.
-// Same release semantics — defer unlockActiveCore.
-func (tx *GraphTx) lockActiveCoreContext(ctx context.Context) error {
-	if err := tx.lockActiveContext(ctx); err != nil {
-		return err
-	}
-	tx.g.mu.RLock()
-	if tx.g.closed.Load() {
-		tx.g.mu.RUnlock()
-		tx.mu.Unlock()
-		return ErrGraphClosed
-	}
-	return nil
-}
-
 // lockActiveContext is lockActive with a pre-canceled context fast path.
 // If the transaction mutex is immediately available, ErrTxDone still wins so
 // the GraphTx lifecycle contract remains stable after Commit/Rollback. If
@@ -1098,7 +1083,9 @@ func (tx *GraphTx) restoreRegistries() error {
 	relTypeAllocated := newlyAllocatedNames(tx.relTypeSnapshot, tx.g.relTypes.ExportNames())
 
 	var firstErr error
-	if _, err := tx.g.rollbackLabelsIfUnreferenced(tx.labelSnapshot, labelAllocated); err != nil && firstErr == nil {
+	// No `firstErr == nil` guard on the FIRST assignment: it is provably nil here,
+	// and govet's nilness check flags the tautology.
+	if _, err := tx.g.rollbackLabelsIfUnreferenced(tx.labelSnapshot, labelAllocated); err != nil {
 		firstErr = err
 	}
 	if _, err := tx.g.rollbackRelTypesIfUnreferenced(tx.relTypeSnapshot, relTypeAllocated); err != nil && firstErr == nil {

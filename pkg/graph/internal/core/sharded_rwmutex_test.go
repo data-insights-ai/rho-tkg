@@ -175,8 +175,10 @@ func TestShardedRWMutexRLockShardPairing(t *testing.T) {
 	// A writer after all readers released must acquire immediately.
 	done := make(chan struct{})
 	go func() {
+		// The empty critical section IS the assertion: a writer must ACQUIRE
+		// immediately once all readers released (SA2001).
 		m.Lock()
-		m.Unlock()
+		m.Unlock() //nolint:staticcheck // see above
 		close(done)
 	}()
 	select {

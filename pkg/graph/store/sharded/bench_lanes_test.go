@@ -161,7 +161,7 @@ func BenchmarkIngestShardedLanesBulk(b *testing.B) {
 func BenchmarkIngestShardedLanesBulkScaling(b *testing.B) {
 	for _, lanes := range []uint8{2, 4, 8, 16} {
 		b.Run(fmt.Sprintf("lanes-%d", lanes), func(b *testing.B) {
-			st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2 + uint8(lanes)})
+			st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2 + lanes})
 			if err != nil {
 				b.Fatal(err)
 			}

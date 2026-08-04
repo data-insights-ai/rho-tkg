@@ -131,7 +131,8 @@ func TestAdminOpsExactEraseCapabilityAndValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer g.Close()
-	if _, err := g.Admin.ExactErase(nil, ExactErasureRequest{NodeIDs: []types.NodeID{1}}); !errors.Is(err, ErrNilContext) {
+	if _, err := g.Admin.ExactErase(nil, //nolint:staticcheck // passing nil IS the assertion: it must return ErrNilContext
+		ExactErasureRequest{NodeIDs: []types.NodeID{1}}); !errors.Is(err, ErrNilContext) {
 		t.Fatalf("nil context = %v, want ErrNilContext", err)
 	}
 	if _, err := g.Admin.ExactErase(context.Background(), ExactErasureRequest{}); !errors.Is(err, ErrInvalidExactErasureRequest) {
@@ -185,7 +186,8 @@ func TestAdminOpsResolveExactErasureValidationLifecycleAndClosure(t *testing.T) 
 		resolved.RelationshipBindings[0].Type != "KNOWS" {
 		t.Fatalf("resolved = %+v", resolved)
 	}
-	if _, err = g.Admin.ResolveExactErasure(nil, resolved.Request); !errors.Is(err, ErrNilContext) {
+	if _, err = g.Admin.ResolveExactErasure(nil, //nolint:staticcheck // passing nil IS the assertion: it must return ErrNilContext
+		resolved.Request); !errors.Is(err, ErrNilContext) {
 		t.Fatalf("nil context = %v, want ErrNilContext", err)
 	}
 	cancelled, cancel := context.WithCancel(ctx)

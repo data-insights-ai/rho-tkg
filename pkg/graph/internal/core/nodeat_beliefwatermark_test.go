@@ -75,7 +75,7 @@ func testNodeAtBoundedCascadeUnderOpenCurrent(t *testing.T, cfg Config) {
 		t.Fatalf("cascade SetNodeVersionInterval: %v", err)
 	}
 	txT1 := corrected.Temporal().TxFrom
-	if !(txT1 > txT0) {
+	if txT1 <= txT0 {
 		t.Fatalf("test setup invalid: want txT1 (%d) > txT0 (%d)", txT1, txT0)
 	}
 

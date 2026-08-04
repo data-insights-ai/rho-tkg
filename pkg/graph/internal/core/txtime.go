@@ -153,10 +153,6 @@ func (c *Core) relAsOfLocked(id types.RelID, txTime types.Instant) (*types.Relat
 	return c.resolveRelChain(hist, chainProbe{kind: probeAsOf, tx: txTime}, nil)
 }
 
-// NodesAsOf returns all nodes that existed at the given transaction time.
-// Collects all known node IDs (current + history) using ForEach iterators,
-// calls GetNodeAsOf per ID, skips ErrNoVersionAsOf.
-// Returns nil, nil if no nodes existed at txTime.
 // NowTx returns the current transaction-time instant of the graph's commit
 // clock — the pin to hand to the AS-OF reads (QueryOpts.TxAt / NodeAtTx /
 // NodesAsOf, or a named TagAsOf) to snapshot "everything committed so far".
@@ -221,6 +217,10 @@ func (t *TempOps) AdvanceClock(to types.Instant) (types.Instant, error) {
 	return c.advanceClockFloor(to)
 }
 
+// NodesAsOf returns all nodes that existed at the given transaction time.
+// Collects all known node IDs (current + history) using ForEach iterators,
+// calls GetNodeAsOf per ID, skips ErrNoVersionAsOf.
+// Returns nil, nil if no nodes existed at txTime.
 func (t *TempOps) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 	c := t.c
 	if err := c.checkOpen(); err != nil {

@@ -70,7 +70,6 @@ func TestRelPropertyIndexAddRemoveLookup(t *testing.T) {
 }
 
 func TestRelPropertyIndexRangeRelIDs(t *testing.T) {
-	const knows = uint16(7)
 	idx := NewPropertyIndex()
 	for id, w := range map[snowflake.ID]int64{10: 1, 20: 5, 30: 9, 40: 15} {
 		idx.AddKey(id, PropertyValueKey(w))

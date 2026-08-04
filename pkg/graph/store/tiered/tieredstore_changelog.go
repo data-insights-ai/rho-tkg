@@ -353,10 +353,7 @@ func (ts *Store) ForEachChange(afterLSN uint64, fn func(storecontract.ChangeReco
 // shard checked out at a time (checkout → page → checkin); only the small
 // per-shard buffers coexist in RAM (CLAUDE.md "Sequential ForEach").
 func (ts *Store) mergeChangeFeed(afterLSN, w uint64, fn func(storecontract.ChangeRecord) bool) error {
-	shards, err := ts.collectLogShards()
-	if err != nil {
-		return err
-	}
+	shards := ts.collectLogShards()
 	// Per-shard cursor state for the paged merge.
 	type shardCursor struct {
 		src    *logShardSource
@@ -547,7 +544,7 @@ const changeFeedPageSize = 256
 // collectLogShards snapshots every catalog-listed shard as a feed source under
 // ts.mu.RLock (tolerating a rotation mid-feed — the snapshot is stable). The
 // merge pages each source with its own checkout/checkin, one at a time.
-func (ts *Store) collectLogShards() ([]*logShardSource, error) {
+func (ts *Store) collectLogShards() []*logShardSource {
 	sources := []*logShardSource{{kind: logShardRef}}
 	// Archive is optional (nil until first archive/restore); include it as a
 	// source and let page() return nil when absent.
@@ -558,7 +555,7 @@ func (ts *Store) collectLogShards() ([]*logShardSource, error) {
 	for _, es := range shards {
 		sources = append(sources, &logShardSource{kind: logShardEvent, es: es})
 	}
-	return sources, nil
+	return sources
 }
 
 // forEachOpenShard folds fn over refShard + archive (if open) + every event

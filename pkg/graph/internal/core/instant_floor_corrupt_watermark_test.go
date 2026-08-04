@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // The durable commit-clock watermark is UNTRUSTED INPUT on reopen.
@@ -72,7 +71,7 @@ func TestInstantFloor_CorruptWatermarkCannotPoisonTheCommitClock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NowTx: %v", err)
 	}
-	wall := types.Instant(nowInstant())
+	wall := nowInstant()
 	t.Logf("after corrupt watermark: NowTx=%d wall=%d (MaxInt64=%d)", pin, wall, int64(math.MaxInt64))
 
 	// The property: after consuming an untrusted watermark the commit clock must

@@ -133,7 +133,7 @@ func TestDeleteNodeWithHistoryCrossShard_DeterministicAscendingOrder(t *testing.
 	// relB: slot 3, n=50  -> smaller snowflake ID despite the higher slot.
 	relA := putRel(t, st, mkRelID(1, 100), 5, hub, nbrA)
 	relB := putRel(t, st, mkRelID(3, 50), 5, hub, nbrB)
-	if !(relB.ID().SnowflakeID() < relA.ID().SnowflakeID()) {
+	if relB.ID().SnowflakeID() >= relA.ID().SnowflakeID() {
 		t.Fatalf("test setup invalid: want relB.ID (%d) < relA.ID (%d)", relB.ID().SnowflakeID(), relA.ID().SnowflakeID())
 	}
 

@@ -4,11 +4,13 @@ import (
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// ColumnBatch and ColumnKind are re-exported so a consumer never imports
-// pkg/graph/store directly — the same rule every other store type here follows.
+// Re-exported so a consumer never imports pkg/graph/store directly — the same rule
+// every other store type here follows.
 type (
+	// ColumnBatch is a block of node rows delivered as typed columns.
 	ColumnBatch = storepkg.ColumnBatch
-	ColumnKind  = storepkg.ColumnKind
+	// ColumnKind names the concrete Go type a scanned column carries.
+	ColumnKind = storepkg.ColumnKind
 )
 
 // ErrMixedNumericColumn is re-exported so a consumer can errors.Is against it

@@ -2,6 +2,7 @@ package stats_test
 
 import (
 	"context"
+
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	_ "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/stats" // godoc anchor: ExampleAPI_<method> resolves against stats.API
 )

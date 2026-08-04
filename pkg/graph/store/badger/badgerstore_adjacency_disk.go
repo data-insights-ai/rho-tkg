@@ -38,7 +38,7 @@ func (bs *Store) adjacentRelIDsSnapshotLocked(nid types.NodeID, typeToken uint16
 		return bs.adjacentRelIDsFromMapsLocked(nid, typeToken, incoming), nil
 	}
 
-	keyTag := byte(storepkg.KeyOut)
+	keyTag := storepkg.KeyOut
 	if incoming {
 		keyTag = storepkg.KeyIn
 	}
@@ -118,7 +118,7 @@ func (bs *Store) adjacentRelMetasSnapshotLocked(nid types.NodeID, typeToken uint
 		return bs.adjacentRelMetasFromMapsLocked(nid, typeToken, incoming), nil
 	}
 
-	keyTag := byte(storepkg.KeyOut)
+	keyTag := storepkg.KeyOut
 	if incoming {
 		keyTag = storepkg.KeyIn
 	}

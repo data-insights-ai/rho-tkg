@@ -1002,6 +1002,7 @@ type MandatoryStore interface {
 // ColumnKind names the concrete Go type a scanned column carries.
 type ColumnKind uint8
 
+// The column kinds a ColumnBatch can carry. Exactly one is live per column.
 const (
 	ColInt64 ColumnKind = iota
 	ColFloat64
@@ -1041,7 +1042,9 @@ type ColumnBatch struct {
 	Null      [][]bool
 }
 
-// NodeColumnScanCapability is OPTIONAL. Backends that do not implement it are
+// ErrMixedNumericColumn is returned when a scan cannot type a column.
+//
+// The scan capability is OPTIONAL. Backends that do not implement it are
 // unaffected; consumers type-assert and fall back to NodesByLabel.
 //
 // fn is called with batches in ID order and MUST NOT retain the batch — the slices
@@ -1056,6 +1059,9 @@ type ColumnBatch struct {
 // typed column here would trade a visible refusal for a silent behaviour change.
 var ErrMixedNumericColumn = errors.New("graph: column holds both integral and floating values")
 
+// NodeColumnScanCapability is implemented by backends that can deliver node rows
+// as typed columns. See ColumnBatch for why that matters and ErrMixedNumericColumn
+// for the one shape it refuses.
 type NodeColumnScanCapability interface {
 	ScanNodeColumns(token uint16, props []string, opts QueryOpts,
 		fn func(*ColumnBatch) bool) error

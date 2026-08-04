@@ -153,7 +153,7 @@ func TestShardedVectorFilteredSearch(t *testing.T) {
 	}
 	evenIDs := map[snowflake.ID]struct{}{}
 	for i := 2; i <= 12; i += 2 {
-		evenIDs[snowflake.ID(byI[i].SnowflakeID())] = struct{}{}
+		evenIDs[byI[i].SnowflakeID()] = struct{}{}
 	}
 	filter := func(id snowflake.ID) bool {
 		_, ok := evenIDs[id]
@@ -166,9 +166,9 @@ func TestShardedVectorFilteredSearch(t *testing.T) {
 	}
 	// Nearest even-i to origin: i=2,4,6 in that order.
 	want := []snowflake.ID{
-		snowflake.ID(byI[2].SnowflakeID()),
-		snowflake.ID(byI[4].SnowflakeID()),
-		snowflake.ID(byI[6].SnowflakeID()),
+		byI[2].SnowflakeID(),
+		byI[4].SnowflakeID(),
+		byI[6].SnowflakeID(),
 	}
 	if len(got) != len(want) {
 		t.Fatalf("got %d filtered results, want %d", len(got), len(want))

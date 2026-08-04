@@ -282,7 +282,7 @@ func (c *Core) checkForeverOwnership(labelTok uint16, propKey, valueKey string, 
 // a value under a freshly activated UniqueForever constraint, so existing values
 // are owned from day one. Caller holds no uniqueMu (takes it internally). Runs
 // after existing-data duplicate validation has already passed.
-func (c *Core) seedForeverOwnersFromCurrent(labelTok uint16, label, propKey string) error {
+func (c *Core) seedForeverOwnersFromCurrent(labelTok uint16, propKey string) error {
 	mk := c.metaKV
 	if mk == nil {
 		return fmt.Errorf("graph: unique-forever seed: %w", storepkg.ErrCapabilityNotSupported)

@@ -361,7 +361,7 @@ func TestReplicaApplyChanges_GuardTracksAcrossStaleSkips(t *testing.T) {
 	// still error, even though both records would otherwise be stale/applied. We
 	// build [staleB, staleA] where staleA.LSN < staleB.LSN — descending → the
 	// guard (which tracks prevLSN, not the watermark) must fire.
-	if !(staleA.LSN < staleB.LSN) {
+	if staleA.LSN >= staleB.LSN {
 		t.Fatalf("setup: expected staleA.LSN < staleB.LSN, got %d, %d", staleA.LSN, staleB.LSN)
 	}
 	_, err = replica.Replication().ApplyChanges([]store.ChangeRecord{staleB, staleA})

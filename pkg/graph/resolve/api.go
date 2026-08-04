@@ -26,13 +26,6 @@ type API struct {
 // New constructs a resolve sub-API.
 func New(ops Ops) *API { return &API{ops: ops, ok: !grapherr.IsNil(ops)} }
 
-func (a *API) ready() (Ops, error) {
-	if a == nil || !a.ok {
-		return nil, grapherr.ErrNilGraph
-	}
-	return a.ops, nil
-}
-
 // NodeProperty resolves a node property key (including tkg_* shadow keys).
 func (a *API) NodeProperty(n *types.Node, key string) (any, bool) {
 	if a == nil || !a.ok {

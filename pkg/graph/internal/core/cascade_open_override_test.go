@@ -46,7 +46,7 @@ func TestCascade_OpenCorrectionBeforeUntouchedOpenCurrent(t *testing.T) {
 		t.Fatalf("cascade: %v", err)
 	}
 	txT1 := v1.Temporal().TxFrom
-	if !(txT1 > txT0) {
+	if txT1 <= txT0 {
 		t.Fatalf("test setup invalid: want txT1 (%d) > txT0 (%d)", txT1, txT0)
 	}
 
@@ -116,7 +116,7 @@ func TestCascadeRel_OpenCorrectionBeforeUntouchedOpenCurrent(t *testing.T) {
 		t.Fatalf("cascade: %v", err)
 	}
 	txT1 := v1.Temporal().TxFrom
-	if !(txT1 > txT0) {
+	if txT1 <= txT0 {
 		t.Fatalf("test setup invalid: want txT1 (%d) > txT0 (%d)", txT1, txT0)
 	}
 

@@ -286,7 +286,7 @@ func TestVectorIndexInfo_Lifecycle(t *testing.T) {
 				t.Fatalf("unregistered label VectorIndexInfo = %+v, %v, %v, want zero, false, nil", info, found, err)
 			}
 
-			info, found, err = g.Index.VectorIndexInfo(label, "embedding")
+			_, found, err = g.Index.VectorIndexInfo(label, "embedding")
 			if err != nil {
 				t.Fatalf("VectorIndexInfo before create: %v", err)
 			}

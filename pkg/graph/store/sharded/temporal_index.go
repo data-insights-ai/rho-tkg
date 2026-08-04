@@ -60,7 +60,7 @@ func (s *Store) PruneTemporalCandidates(labelToken uint16, ids []types.NodeID, o
 	if s == nil {
 		return ids, false
 	}
-	if opts.ValidAt == 0 && !(opts.ValidStart > 0 && opts.ValidEnd > 0) {
+	if opts.ValidAt == 0 && (opts.ValidStart <= 0 || opts.ValidEnd <= 0) {
 		return ids, false
 	}
 	if err := s.checkOpen(); err != nil {

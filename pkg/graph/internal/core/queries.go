@@ -1577,9 +1577,6 @@ func (c *Core) directionalRelsForNodesAtPinLocked(nodeIDs []types.NodeID, typeNa
 	return result, nil
 }
 
-// Incoming returns all incoming relationships to the given node.
-// If typeName is empty, all types are returned. If typeName is non-empty, only
-// relationships of that type are returned (nil if the type is not registered).
 // OutgoingDegree returns the number of outgoing relationships from nodeID,
 // optionally filtered by type. It uses the store's DegreeCapability fast-path
 // (count from the adjacency index, no entity materialization) when available,
@@ -1653,6 +1650,9 @@ func (c *Core) degreeLocked(nodeID types.NodeID, typeName string, outgoing bool)
 	return len(rels), nil
 }
 
+// Incoming returns all incoming relationships to the given node.
+// If typeName is empty, all types are returned. If typeName is non-empty, only
+// relationships of that type are returned (nil if the type is not registered).
 func (r *RelOps) Incoming(nodeID types.NodeID, typeName string) ([]*types.Relationship, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {

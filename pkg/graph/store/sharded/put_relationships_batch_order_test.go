@@ -32,7 +32,7 @@ func TestPutRelationshipsBatchSameShard_DeterministicAscendingOrder(t *testing.T
 	// batch's input slice — deliberately the "wrong" order by ID.
 	relA := types.NewRelationship(mkRelID(1, 100), 5, hub, nbrA)
 	relB := types.NewRelationship(mkRelID(1, 50), 5, hub, nbrB)
-	if !(relB.ID().SnowflakeID() < relA.ID().SnowflakeID()) {
+	if relB.ID().SnowflakeID() >= relA.ID().SnowflakeID() {
 		t.Fatalf("test setup invalid: want relB.ID (%d) < relA.ID (%d)", relB.ID().SnowflakeID(), relA.ID().SnowflakeID())
 	}
 
@@ -63,7 +63,7 @@ func TestPutRelationshipsBatchSameShard_DeterministicAscendingOrder(t *testing.T
 	if !okA || !okB {
 		t.Fatalf("missing change-log records: relA present=%v relB present=%v", okA, okB)
 	}
-	if !(lsnB < lsnA) {
+	if lsnB >= lsnA {
 		t.Fatalf("BACKLOG 20i regression: relB (smaller ID) committed at LSN %d, relA (larger ID, listed first in input) at LSN %d — want relB before relA (ascending rel-ID order within the shard group), got caller input order instead", lsnB, lsnA)
 	}
 }

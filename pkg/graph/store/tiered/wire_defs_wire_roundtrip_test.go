@@ -37,7 +37,7 @@ func TestTieredWireRoundTrip(t *testing.T) {
 				t.Fatalf("Unmarshal: %v", err)
 			}
 			var got, want any
-			if rv := reflect.ValueOf(c.in); rv.Kind() == reflect.Ptr {
+			if rv := reflect.ValueOf(c.in); rv.Kind() == reflect.Pointer {
 				got = reflect.ValueOf(c.out).Elem().Interface()
 				want = rv.Elem().Interface()
 			} else {

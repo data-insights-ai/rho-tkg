@@ -854,25 +854,25 @@ func (bs *Store) nodeHistoryVersionsFromPrefix(prefix []byte, startVersion uint3
 	reachedLimit := func() bool {
 		return limit > 0 && len(collected) >= limit
 	}
-	emit := func(key string, data []byte) error {
+	// No error return: appending to a slice cannot fail, and threading a
+	// permanently-nil error through four call sites only obscures that.
+	emit := func(key string, data []byte) {
 		raw := make([]byte, len(data))
 		copy(raw, data)
 		collected = append(collected, historyRawRow{version: historyVersionFromKey([]byte(key)), raw: raw})
-		return nil
 	}
 
 	pendingIdx := 0
-	drainPendingBefore := func(bound string) error {
+	// No error return, for the same reason as emit: with emit errorless this can
+	// no longer fail either. Dropping it here is the cascade of that change.
+	drainPendingBefore := func(bound string) {
 		for pendingIdx < len(pendingKeys) && pendingKeys[pendingIdx] < bound {
-			if err := emit(pendingKeys[pendingIdx], pending[pendingKeys[pendingIdx]]); err != nil {
-				return err
-			}
+			emit(pendingKeys[pendingIdx], pending[pendingKeys[pendingIdx]])
 			pendingIdx++
 			if reachedLimit() {
-				return nil
+				return
 			}
 		}
-		return nil
 	}
 
 	seekKey := historyVersionSeekKey(prefix, startVersion)
@@ -891,16 +891,12 @@ func (bs *Store) nodeHistoryVersionsFromPrefix(prefix []byte, startVersion uint3
 				continue
 			}
 			k := string(key)
-			if err := drainPendingBefore(k); err != nil {
-				return err
-			}
+			drainPendingBefore(k)
 			if reachedLimit() {
 				return nil
 			}
 			if pendingIdx < len(pendingKeys) && pendingKeys[pendingIdx] == k {
-				if err := emit(k, pending[k]); err != nil {
-					return err
-				}
+				emit(k, pending[k])
 				pendingIdx++
 				if reachedLimit() {
 					return nil
@@ -911,7 +907,8 @@ func (bs *Store) nodeHistoryVersionsFromPrefix(prefix []byte, startVersion uint3
 				continue
 			}
 			if err := it.Item().Value(func(val []byte) error {
-				return emit(k, val)
+				emit(k, val)
+				return nil
 			}); err != nil {
 				return err
 			}
@@ -920,9 +917,7 @@ func (bs *Store) nodeHistoryVersionsFromPrefix(prefix []byte, startVersion uint3
 			}
 		}
 		for pendingIdx < len(pendingKeys) {
-			if err := emit(pendingKeys[pendingIdx], pending[pendingKeys[pendingIdx]]); err != nil {
-				return err
-			}
+			emit(pendingKeys[pendingIdx], pending[pendingKeys[pendingIdx]])
 			pendingIdx++
 			if reachedLimit() {
 				return nil

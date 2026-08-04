@@ -172,44 +172,6 @@ func (ms *Store) logRelHardDeleteLocked(id snowflake.ID) error {
 	return nil
 }
 
-func (ms *Store) logNodeHistoryVersionLocked(version uint32, n *types.Node) error {
-	if !ms.logEnabled {
-		return nil
-	}
-	p, err := storeutil.NodeHistoryVersionPayload(version, n)
-	if err != nil {
-		return changeLogEncodeErr(err)
-	}
-	ms.logChangeLocked(storecontract.ChangeNodeHistoryVersion, p)
-	return nil
-}
-
-func (ms *Store) logRelHistoryVersionLocked(version uint32, r *types.Relationship) error {
-	if !ms.logEnabled {
-		return nil
-	}
-	p, err := storeutil.RelHistoryVersionPayload(version, r)
-	if err != nil {
-		return changeLogEncodeErr(err)
-	}
-	ms.logChangeLocked(storecontract.ChangeRelHistoryVersion, p)
-	return nil
-}
-
-// logHistoryTruncateLocked records a node/rel history truncate (isTrim=false) or
-// trim-from (isTrim=true). Only call when something was actually removed.
-func (ms *Store) logHistoryTruncateLocked(tag storecontract.ChangeTag, id snowflake.ID, isTrim bool, bound int64) error {
-	if !ms.logEnabled {
-		return nil
-	}
-	p, err := storeutil.MarshalChangeBody(storeutil.HistoryTruncateBody{ID: int64(id), IsTrim: isTrim, Bound: bound})
-	if err != nil {
-		return changeLogEncodeErr(err)
-	}
-	ms.logChangeLocked(tag, p)
-	return nil
-}
-
 // LastCommittedLSN returns the highest change-log LSN, or 0 when the log is
 // empty/disabled. The memory store has no async buffer, so every appended record
 // is immediately "committed".

@@ -160,12 +160,12 @@ func TestDeletedNodeIntervalPlusTxAt_All(t *testing.T) {
 		"badger": {BadgerInMemory: true},
 	} {
 		t.Run(name, func(t *testing.T) {
-			testDeletedNodeIntervalPlusTxAt_All(t, cfg)
+			testDeletedNodeIntervalPlusTxAtAll(t, cfg)
 		})
 	}
 }
 
-func testDeletedNodeIntervalPlusTxAt_All(t *testing.T, cfg Config) {
+func testDeletedNodeIntervalPlusTxAtAll(t *testing.T, cfg Config) {
 	g, err := New(cfg)
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -229,12 +229,12 @@ func TestDeletedRelIntervalPlusTxAt_ByType(t *testing.T) {
 		"badger": {BadgerInMemory: true},
 	} {
 		t.Run(name, func(t *testing.T) {
-			testDeletedRelIntervalPlusTxAt_ByType(t, cfg)
+			testDeletedRelIntervalPlusTxAtByType(t, cfg)
 		})
 	}
 }
 
-func testDeletedRelIntervalPlusTxAt_ByType(t *testing.T, cfg Config) {
+func testDeletedRelIntervalPlusTxAtByType(t *testing.T, cfg Config) {
 	g, err := New(cfg)
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -314,12 +314,12 @@ func TestIntervalPlusTxAt_TwoVersionBelief(t *testing.T) {
 		"badger": {BadgerInMemory: true},
 	} {
 		t.Run(name, func(t *testing.T) {
-			testIntervalPlusTxAt_TwoVersionBelief(t, cfg)
+			testIntervalPlusTxAtTwoVersionBelief(t, cfg)
 		})
 	}
 }
 
-func testIntervalPlusTxAt_TwoVersionBelief(t *testing.T, cfg Config) {
+func testIntervalPlusTxAtTwoVersionBelief(t *testing.T, cfg Config) {
 	g, err := New(cfg)
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -381,12 +381,12 @@ func TestIntervalPlusTxAt_TwoVersionBelief_Rel(t *testing.T) {
 		"badger": {BadgerInMemory: true},
 	} {
 		t.Run(name, func(t *testing.T) {
-			testIntervalPlusTxAt_TwoVersionBelief_Rel(t, cfg)
+			testIntervalPlusTxAtTwoVersionBeliefRel(t, cfg)
 		})
 	}
 }
 
-func testIntervalPlusTxAt_TwoVersionBelief_Rel(t *testing.T, cfg Config) {
+func testIntervalPlusTxAtTwoVersionBeliefRel(t *testing.T, cfg Config) {
 	g, err := New(cfg)
 	if err != nil {
 		t.Fatalf("New: %v", err)

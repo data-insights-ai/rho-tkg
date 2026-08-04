@@ -81,7 +81,7 @@ func TestSkeletonResolve_CascadeReopenDelete(t *testing.T) {
 	if err := g.Nodes.Delete(ctx, id); err != nil {
 		t.Fatal(err)
 	}
-	now := types.Instant(g.now())
+	now := g.now()
 
 	if g.temporalMetaHistory == nil {
 		t.Fatal("badger must implement TemporalMetaHistoryCapability")
@@ -144,7 +144,7 @@ func TestSkeletonResolve_RelCascadeMirror(t *testing.T) {
 	if err := g.Rels.Delete(ctx, id); err != nil {
 		t.Fatal(err)
 	}
-	now := types.Instant(g.now())
+	now := g.now()
 
 	for _, va := range []types.Instant{1, 535, 1629, 2000, 2484, now + 1_000_000} {
 		for _, ta := range []types.Instant{0, now} {
@@ -222,7 +222,7 @@ func TestSkeletonResolve_RandomizedEquivalence(t *testing.T) {
 			_ = g.Nodes.Delete(ctx, n.ID())
 		}
 	}
-	now := types.Instant(g.now())
+	now := g.now()
 	probes := []types.Instant{1, 150, 600, 1200, 2500, 3300, 4100, 7000, now, now + 500_000}
 	for i, id := range ids {
 		t.Run(fmt.Sprintf("entity=%d", i), func(t *testing.T) {

@@ -92,31 +92,6 @@ func (bs *Store) buildChangePayload(body any) ([]byte, error) {
 	return storepkg.MarshalChangeBody(body)
 }
 
-// appendOpsLogged enqueues entity ops AND one change-log record under ONE wbMu
-// critical section, so flush (which swaps pending and pendingLog together under
-// wbMu) sees both or neither — atomic even for doors that do NOT hold idxMu.Lock
-// across the enqueue (PutNodeVersion / PutRelVersion / history truncation).
-// payload is the pre-marshaled body; when the log is disabled only the ops are
-// enqueued (equivalent to appendOps).
-func (bs *Store) appendOpsLogged(tag storecontract.ChangeTag, payload []byte, ops ...writeOp) {
-	bs.wbMu.Lock()
-	for _, op := range ops {
-		bs.pending[string(op.key)] = op
-	}
-	if bs.logEnabled.Load() {
-		value := storepkg.EncodeChangeValue(tag, payload)
-		if bs.scopeActive {
-			// Per-tx scope: buffer the record without an LSN (see logChangeRaw).
-			// The entity ops still go to pending (data flows normally).
-			bs.scopeLog = append(bs.scopeLog, value)
-		} else {
-			lsn := bs.nextLSN()
-			bs.pendingLog = append(bs.pendingLog, pendingLogRecord{lsn: lsn, value: value})
-		}
-	}
-	bs.wbMu.Unlock()
-}
-
 // historyVersionNodePayload builds a ChangeNodeHistoryVersion body for an
 // explicit-version history write (PutNodeVersion). nil when the log is disabled.
 // buildNodePutPayload / buildRelPutPayload marshal a ChangeNodePut/ChangeRelPut
@@ -182,15 +157,6 @@ func (bs *Store) nodeDeleteWithHistoryPayload(id snowflake.ID, nodeTombstone *ty
 		return nil, nil
 	}
 	return storepkg.NodeDeleteWithHistoryPayload(id, nodeTombstone, relTombstones)
-}
-
-// logCascadeNodeDelete emits the hard-cascade ChangeNodeDelete record (no
-// tombstone/history) carrying the IDs of the relationships the cascade removed,
-// so a replica deletes the same node and edges. Called under idxMu.Lock right
-// after the cascade's ops are enqueued; a marshal error is surfaced to the
-// caller (it never silently drops a record).
-func (bs *Store) logCascadeNodeDelete(id snowflake.ID, deleted []RelDeleteInfo) error {
-	return bs.logCascadeNodeDeleteRouted(id, deleted, 0)
 }
 
 // logCascadeNodeDeleteRouted is logCascadeNodeDelete's token-aware sibling

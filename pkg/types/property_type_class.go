@@ -66,9 +66,9 @@ func classifyPropertyValue(v any) PropertyTypeClass {
 // stopping early when fn returns false. No value reference escapes — only the
 // key and the class — so callers (store-side counter maintenance) never see
 // internal state.
-func (p PropertySlice) forEachPropertyTypeClass(fn func(key string, class PropertyTypeClass) bool) {
-	for i := range p {
-		if !fn(p[i].Key, classifyPropertyValue(p[i].Value)) {
+func (ps PropertySlice) forEachPropertyTypeClass(fn func(key string, class PropertyTypeClass) bool) {
+	for i := range ps {
+		if !fn(ps[i].Key, classifyPropertyValue(ps[i].Value)) {
 			return
 		}
 	}

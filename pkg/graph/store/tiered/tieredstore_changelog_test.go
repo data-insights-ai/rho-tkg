@@ -48,18 +48,15 @@ func TestTieredChangeFeedAscendingCrossShard(t *testing.T) {
 
 	// Interleave reference-shard and event-shard writes so a per-shard-only feed
 	// would emit them grouped, not globally ordered.
-	ids := make([]types.NodeID, 0, 6)
 	for i := 0; i < 3; i++ {
 		ref := types.NewNode(types.NodeID(nodeGen.Generate()), caseTok, nil)
 		if err := ts.PutNode(ref); err != nil {
 			t.Fatalf("PutNode ref: %v", err)
 		}
-		ids = append(ids, ref.ID())
 		evt := types.NewNode(types.NodeID(nodeGen.Generate()), signalTok, nil)
 		if err := ts.PutNode(evt); err != nil {
 			t.Fatalf("PutNode evt: %v", err)
 		}
-		ids = append(ids, evt.ID())
 	}
 
 	last, err := ts.LastCommittedLSN()
