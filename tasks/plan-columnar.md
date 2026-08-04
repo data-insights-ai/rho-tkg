@@ -1,0 +1,169 @@
+# Plan — typed columns, a typed column door, and temporal zone maps
+
+Status: proposed 2026-08-04. Scope is ADDITIVE. No redesign, no breaking change
+to a published contract.
+
+## What already exists (read this before proposing anything)
+
+The library is **not** missing a columnar structure. `index.LabelDocValues`
+(`pkg/graph/internal/index/docvalues.go`) is one:
+
+- ordinal-aligned columns sharing one `nodeIDs` vector,
+- a `present` bitset per column (absent/null without a sentinel value),
+- **strings already dictionary-encoded** — `dict []any` + `codes []uint32`,
+- immutable, built at one store mutation epoch, and validated **lock-free** by
+  re-reading that epoch after the scan (`NodeMutationEpoch`, per-label since
+  BACKLOG 4b). An interleaving write advances the epoch and the consumer
+  discards the rows.
+
+That epoch-validated snapshot substrate is the hard part and it is done. What
+follows is three narrow gaps inside it, not a new backend.
+
+## The gap, stated exactly
+
+**G1 — the numeric column is boxed.** `docColumn.boxed []any` holds one `any`
+per row. Its doc comment justifies this honestly: boxing once at build beats
+boxing per read, and it matches the memory of the per-node path it replaced.
+Both claims are true. But it means the column path *inherited* the row path's
+representation instead of improving on it:
+
+| representation | bytes/row | heap objects/row |
+|---|---|---|
+| `boxed []any` (today) | 16 (iface header) + 8 (boxed int64) = **24** | 1 |
+| `ints []int64` | **8** | 0 |
+
+The dynamic type of each boxed value is load-bearing — it is what preserves
+int64-vs-float64 so a consumer's accumulator stays bit-exact above 2^53. Any
+replacement MUST preserve that distinction. Collapsing to `[]float64` is
+therefore forbidden.
+
+**G2 — the door re-boxes.** `types.NodeColumnReader` is a PUBLISHED interface:
+
+```go
+type NodeColumnReader interface {
+    Row(id NodeID, vals []any, present []bool) bool
+    Epoch() uint64
+}
+```
+
+`[]any` is in the contract, as is `nodes.API.ForEachDocValues`. So a perfectly
+typed column would still hand out boxed values at the door. Fixing G1 without
+fixing G2 moves the allocation rather than removing it — and fixing G2 by
+changing these signatures is a breaking change. It needs a NEW door, not an
+edited one.
+
+**G3 — no temporal zone maps.** `ForEachDocValues` documents its membership as
+"the full in-RAM label index — the same unfiltered set the zero-QueryOpts scan
+returns (no valid-time filter)". A bitemporal predicate is therefore evaluated
+per row, after the scan. The library's defining feature is a post-filter at its
+fastest read path.
+
+## R1 — typed numeric columns, with boxing made lazy
+
+Replace `docColumn.boxed []any` for `ColNumeric` with:
+
+```go
+ints    []int64   // populated for every non-float row
+flts    []float64 // nil unless the column actually contains a float
+isFloat bitset    // nil when the column is uniformly int64 (the common case)
+```
+
+A uniformly-int64 column — overwhelmingly the common shape — stores `ints`
+only: 8 bytes per row, no bitset, no heap object. Mixed columns keep working
+(no consumer regresses into `colUnbuildable`); `isFloat` selects the array.
+
+**The trap, and why the obvious fix is wrong.** If typed storage replaces
+`boxed` outright, then `ForEachRow` must do `any(ints[ord])` per value — which
+*allocates*, because Go heap-escapes an int64 on interface conversion outside
+the small-value cache. That is a REGRESSION for every existing consumer of the
+published door, in exchange for a win only new consumers see. Do not do this.
+
+**Instead: keep `boxed` as a lazily-materialised compat cache**, built on first
+use of a boxed-API call and guarded by `sync.Once` (safe and race-free because
+the snapshot is immutable by construction).
+
+- typed consumers: never allocate `boxed` at all — pure win,
+- boxed consumers: pay exactly what they pay today, once per snapshot,
+  amortised over every read — no regression,
+- memory doubles only for a label a boxed consumer actually touches.
+
+Strictly better than today at both doors. This design is a consequence of
+checking the callers; it is not the first thing that comes to mind.
+
+Do NOT touch `ColString`. Dictionary encoding already boxes each distinct term
+once, so a string column with many duplicates is already better than typed
+storage would be.
+
+## R2 — a typed column door
+
+`store.NodeColumnScanCapability` (`ColumnBatch` with `Ints []int64`,
+`Flts []float64`, `Strs []string`, `Bools []bool`, `Null`, `Kinds`) is already
+the right typed shape and is already implemented for `memory`. Two moves:
+
+1. **Implement it for badger, backed by `LabelDocValues`.** With R1 the batch
+   fields are the column arrays — sliced, not transcoded. Today's memory
+   implementation converts from row structs at read time; this one does not
+   convert at all.
+2. **Expose a typed accessor on `LabelDocValues`** so the capability can reach
+   the arrays without the boxed path.
+
+`ForEachRow`, `ForEachDocValues`, `DocValuesSnapshot`, `NodeColumnReader` all
+keep working, unchanged, forever. New door beside the old one.
+
+**Existing refusals stay refusals** — `LabelIndexOnDisk` (membership not in
+RAM), empty/over-cap label, unbuildable column. A refusal is a visible
+`ok=false` fallback; silently returning something subtly different is the
+failure mode to avoid (a mixed-numeric column silently widened to float64
+changes which values a consumer's equality test matches).
+
+## R3 — temporal zone maps (specified, sized, NOT yet built)
+
+Carry `validFrom`/`validTo` as two `[]int64` columns in the snapshot, plus a
+per-block (suggested 4096 ordinals, matching the existing batch size) min/max
+of each. A scan carrying a valid-time predicate then skips whole blocks whose
+`[min,max]` cannot intersect the query interval.
+
+This is the item that turns bitemporality from a cost into an asset: today
+every row is tested; with zone maps a query over a narrow window touches only
+the blocks that can possibly match, and cold historical blocks are skipped on
+metadata alone.
+
+**Honest sizing: this is the largest of the three and it is not a
+drop-in.** The build path does not currently read temporal metadata at all,
+and DocValues membership is deliberately defined as the *unfiltered* label set
+— so the snapshot's contract, not just its contents, changes. It also
+interacts with the existing `DocValuesSnapshotAsOf` (label, txAt) cache, which
+is a transaction-time sibling of the same idea. Sequenced after R1+R2 rather
+than bundled with them, and specified here so it is not re-derived later.
+
+## Not an item: content-based shard placement
+
+For the record, so it stops being re-proposed: a shard is `catalog[decompose(id).Node]`,
+baked into the snowflake at MINT time. `sharded.go` argues correctly that an
+entity's row cannot move without changing its ID, which would break every
+relationship pointing at it, its hash chain, and any external reference —
+so non-identity rebalance is OUT OF SCOPE, and grow/empty-shrink via
+export/import plus a fail-closed `ErrSlotNotLocal` is the supported path.
+
+That is the right design for write locality and ID stability, and nothing here
+proposes changing it. The consequence worth writing down is what it means for
+readers: **placement is identity-derived and fixed, so it can never be made to
+match a query's partition key.** A consumer that wants data-parallel reads must
+own its own placement map above the store; the store can serve such a consumer
+with fast typed scans (R1–R3), but cannot push the partitioning down. This is a
+stated boundary, not a defect, and it needs no code.
+
+## Order and acceptance
+
+1. **R1** — typed numeric + lazy boxed cache. Accept: existing docvalues tests
+   pass UNCHANGED (they assert through the boxed door, which is the point); a
+   new test asserts int64 above 2^53 survives bit-exact and a mixed column
+   still builds; an allocation benchmark shows the typed path at 0 allocs/row.
+2. **R2** — badger capability over DocValues + typed accessor. Accept: a
+   value-level test that the typed door and the boxed door return the SAME
+   values for the same label (a shape match is not a payload match), and that
+   every documented refusal still refuses.
+3. **R3** — zone maps. Separate, sized above.
+
+Gate for each: `GOWORK=off go build ./... && GOWORK=off go test ./...`
+(31 packages), plus `go test -bench` on the docvalues benches for R1.

@@ -5,6 +5,7 @@ import (
 	"math"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -81,21 +82,55 @@ const (
 
 // docColumn is one immutable, ordinal-aligned value column. Exactly one value
 // representation is populated per col type.
+//
+// Storage is TYPED (`[]int64`/`[]float64`/`[]string`); the boxed `[]any` views the
+// older doors hand out are built LAZILY, on first use, and cached. That ordering is
+// deliberate and is the whole point of the layout:
+//
+//   - a typed reader (the column-scan capability) never materialises a boxed view
+//     at all, so it costs 8 bytes per numeric row and ZERO heap objects, against
+//     the 24 bytes (16B interface header + 8B boxed int64) and one object per row
+//     an eagerly-boxed column costs;
+//   - a boxed reader pays exactly what it paid when the column was boxed at build —
+//     once per snapshot, amortised over every read — so it does NOT regress. Boxing
+//     per read instead would allocate on every value, because Go heap-escapes an
+//     int64 on interface conversion outside the small-value cache. `[]any` is in the
+//     PUBLISHED contract (types.NodeColumnReader, nodes.API.ForEachDocValues), so
+//     that regression would land on every existing consumer.
+//
+// Contains a sync.Once, so a docColumn must only ever be handled as *docColumn
+// (go vet's copylocks enforces this).
 type docColumn struct {
 	typ     ColType
 	present bitset // 1 = node has the property; 0 = absent/null
+	n       int    // ordinal count (len of the label's nodeIDs vector)
 
-	// ColNumeric: the int64/float64 value boxed ONCE at build (its dynamic type
-	// preserves int64-vs-float64, so the consumer's int64-precise accumulators stay
-	// bit-exact above 2^53). Boxing at build, not per read, is what keeps the hot
-	// path allocation-free — the per-node path it replaces already holds boxed
-	// values, so this matches its memory without re-boxing every row.
-	boxed []any
+	// ColNumeric: typed storage in one of three exact states, so a column never
+	// carries an array it does not need. int64-vs-float64 must be PRESERVED (not
+	// collapsed to float64) or a consumer's accumulator stops being bit-exact above
+	// 2^53 — the invariant the previous boxed representation held via each value's
+	// dynamic type.
+	//
+	//	isFloat == nil && flts == nil  -> uniformly int64  (values in ints)
+	//	isFloat == nil && ints == nil  -> uniformly float64 (values in flts)
+	//	isFloat != nil                 -> mixed; isFloat.get(ord) selects flts[ord]
+	//
+	// The uniform-int64 case is overwhelmingly the common one and stores a single
+	// []int64 with no selector bitset.
+	ints    []int64
+	flts    []float64
+	isFloat bitset
 
-	// ColString: codes[ord] indexes into dict (deduplicated terms, each boxed ONCE
-	// at build so valueAt returns an `any` without re-boxing the string per read).
-	dict  []any
+	// ColString: codes[ord] indexes into dict (deduplicated terms).
+	dict  []string
 	codes []uint32
+
+	// Lazily-built boxed views of the typed storage above. Safe without a lock
+	// because a docColumn is immutable once built.
+	boxOnce   sync.Once
+	boxed     []any // ColNumeric, per ordinal
+	dictOnce  sync.Once
+	dictBoxed []any // ColString, per DISTINCT term (not per row)
 }
 
 // LabelDocValues is the immutable set of aligned columns for one label, built at a
@@ -174,6 +209,65 @@ func (l *LabelDocValues) ForEachRow(propKeys []string, fn func(id types.NodeID, 
 	return true
 }
 
+// ColumnView is a read-only, allocation-free handle on one built column's TYPED
+// storage — the door a columnar reader uses instead of ForEachRow, so it never
+// materialises the boxed view.
+//
+// The slices are the column's own backing arrays and are immutable; a caller must
+// not write to them. Which of Ints/Flts is live at an ordinal is decided by
+// IsFloat, never by the caller's expectation: a numeric column may be uniformly
+// int64, uniformly float64, or mixed, and reading the wrong half yields a
+// plausible zero rather than an error.
+type ColumnView struct {
+	Type ColType
+	N    int
+
+	Ints  []int64   // ColNumeric: live where !IsFloat(ord)
+	Flts  []float64 // ColNumeric: live where IsFloat(ord)
+	Dict  []string  // ColString: distinct terms
+	Codes []uint32  // ColString: Codes[ord] indexes Dict
+
+	present bitset
+	isFloat bitset
+}
+
+// Present reports whether the node at ord has the property (a cleared bit is the
+// absent/null case the boxed door renders as a nil value).
+func (v ColumnView) Present(ord int) bool { return v.present.get(ord) }
+
+// IsFloat reports whether ord's numeric value lives in Flts rather than Ints.
+func (v ColumnView) IsFloat(ord int) bool {
+	switch {
+	case v.isFloat != nil:
+		return v.isFloat.get(ord)
+	default:
+		return v.Flts != nil // uniformly float64 when the int half was never built
+	}
+}
+
+// StringAt returns the dictionary term at ord (a header copy, no allocation).
+func (v ColumnView) StringAt(ord int) string { return v.Dict[v.Codes[ord]] }
+
+// View returns the typed handle for a usable column, or ok=false for an absent or
+// unbuildable key — mirroring Has exactly, so a columnar reader declines the whole
+// query rather than reading an unbuildable column as spurious nulls.
+func (l *LabelDocValues) View(key string) (ColumnView, bool) {
+	c, ok := l.cols[key]
+	if !ok || c.typ == colUnbuildable {
+		return ColumnView{}, false
+	}
+	return ColumnView{
+		Type: c.typ, N: c.n,
+		Ints: c.ints, Flts: c.flts,
+		Dict: c.dict, Codes: c.codes,
+		present: c.present, isFloat: c.isFloat,
+	}, true
+}
+
+// NodeIDs is the shared ordinal vector every column of this snapshot aligns to.
+// Immutable; callers must not write to it.
+func (l *LabelDocValues) NodeIDs() []types.NodeID { return l.nodeIDs }
+
 // lookup returns the ordinal of id via binary search on the sorted nodeIDs, or
 // (-1, false) if id is not a member. Uses the SAME comparator BuildLabelDocValues
 // sorted with (cmp.Compare on SnowflakeID) — a hand-rolled raw-int64 or unsigned
@@ -236,17 +330,68 @@ func (s *PointSnapshot) Row(id types.NodeID, vals []any, present []bool) bool {
 func (s *PointSnapshot) Epoch() uint64 { return s.l.epoch }
 
 // valueAt returns the typed Go value at an ordinal whose present bit is set. Both
-// arms are allocation-free: numeric values were boxed at build, strings are
-// returned from the dictionary (a string header copy, no heap allocation).
+// arms are allocation-free in steady state: the boxed views are materialised once,
+// on the first boxed read of this column, and cached (see docColumn).
 func (c *docColumn) valueAt(ord int) any {
 	switch c.typ {
 	case ColNumeric:
-		return c.boxed[ord]
+		return c.boxedNumeric()[ord]
 	case ColString:
-		return c.dict[c.codes[ord]]
+		return c.boxedDict()[c.codes[ord]]
 	default:
 		return nil
 	}
+}
+
+// numericAt returns the typed numeric value at an ordinal whose present bit is
+// set, as (int64, float64, isFloat) — the allocation-free accessor the typed
+// readers use. Reading the wrong half of the pair is the hazard this signature
+// exists to prevent: isFloat, not the caller's expectation, decides which is live.
+func (c *docColumn) numericAt(ord int) (int64, float64, bool) {
+	switch {
+	case c.isFloat != nil: // mixed — the selector decides per row
+		if c.isFloat.get(ord) {
+			return 0, c.flts[ord], true
+		}
+		return c.ints[ord], 0, false
+	case c.flts != nil: // uniformly float64
+		return 0, c.flts[ord], true
+	default: // uniformly int64
+		return c.ints[ord], 0, false
+	}
+}
+
+// boxedNumeric materialises and caches the []any view of a numeric column. Absent
+// ordinals stay nil — the exact shape GetProperty returns for a missing property.
+func (c *docColumn) boxedNumeric() []any {
+	c.boxOnce.Do(func() {
+		b := make([]any, c.n)
+		for ord := 0; ord < c.n; ord++ {
+			if !c.present.get(ord) {
+				continue
+			}
+			if iv, fv, isF := c.numericAt(ord); isF {
+				b[ord] = fv
+			} else {
+				b[ord] = iv
+			}
+		}
+		c.boxed = b
+	})
+	return c.boxed
+}
+
+// boxedDict materialises and caches the []any view of a string dictionary. Sized by
+// DISTINCT terms, not rows, so it is cheap even for a large column.
+func (c *docColumn) boxedDict() []any {
+	c.dictOnce.Do(func() {
+		b := make([]any, len(c.dict))
+		for i, s := range c.dict {
+			b[i] = s
+		}
+		c.dictBoxed = b
+	})
+	return c.dictBoxed
 }
 
 // BuildLabelDocValues builds aligned columns for propKeys over the membership set.
@@ -310,63 +455,96 @@ func buildColumn(ids []types.NodeID, key string, n int, getProp func(types.NodeI
 }
 
 func buildNumericColumn(ids []types.NodeID, key string, n int, present bitset, getProp func(types.NodeID, string) (any, bool)) *docColumn {
-	c := &docColumn{typ: ColNumeric, present: present, boxed: make([]any, n)}
+	c := &docColumn{typ: ColNumeric, present: present, n: n}
+
+	ints := make([]int64, n)
+	var flts []float64
+	var isFloat bitset
+	presentCount, floatCount := 0, 0
+
 	for ord, id := range ids {
 		if !present.get(ord) {
 			continue
 		}
+		presentCount++
 		v, _ := getProp(id, key)
-		// Normalize to int64/float64 (the consumer's accumulator fast-path types)
-		// and box once; the boxed dynamic type preserves int64-vs-float64. All
-		// signed/unsigned integer widths up to 32 bits fit int64 exactly. uint/
-		// uint64 need a range check: only values <= math.MaxInt64 fit; a larger
-		// magnitude falls back to float64 (the same precision trade-off
-		// property_stats_accumulator.go's numericValue already documents and
-		// accepts for the same magnitude range) rather than silently wrapping
-		// negative via a raw int64(x) cast.
-		switch x := v.(type) {
-		case int64:
-			c.boxed[ord] = x
-		case int:
-			c.boxed[ord] = int64(x)
-		case int32:
-			c.boxed[ord] = int64(x)
-		case int16:
-			c.boxed[ord] = int64(x)
-		case int8:
-			c.boxed[ord] = int64(x)
-		case uint:
-			c.boxed[ord] = normalizeUint64(uint64(x))
-		case uint64:
-			c.boxed[ord] = normalizeUint64(x)
-		case uint32:
-			c.boxed[ord] = int64(x)
-		case uint16:
-			c.boxed[ord] = int64(x)
-		case uint8:
-			c.boxed[ord] = int64(x)
-		case float64:
-			c.boxed[ord] = x
-		case float32:
-			c.boxed[ord] = float64(x)
+		iv, fv, isF := normalizeNumeric(v)
+		if !isF {
+			ints[ord] = iv
+			continue
 		}
+		if flts == nil { // first float seen — allocate the float half lazily
+			flts = make([]float64, n)
+			isFloat = newBitset(n)
+		}
+		flts[ord] = fv
+		isFloat.set(ord)
+		floatCount++
+	}
+
+	// Collapse to the cheapest exact representation. Keeping BOTH arrays when the
+	// column turns out uniform would silently double its memory, which is the cost
+	// this typed layout exists to remove.
+	switch {
+	case floatCount == 0: // uniformly int64 (incl. an all-absent column)
+		c.ints = ints
+	case floatCount == presentCount: // uniformly float64 — no selector needed
+		c.flts = flts
+	default: // genuinely mixed
+		c.ints, c.flts, c.isFloat = ints, flts, isFloat
 	}
 	return c
 }
 
-// normalizeUint64 boxes a uint64 as int64 when it fits exactly (every
-// practical counter/ID/age value), else as float64 — the same magnitude-only
-// precision trade-off numericValue in property_stats_accumulator.go already
-// documents and accepts, rather than letting int64(x) wrap negative.
-func normalizeUint64(v uint64) any {
-	if v <= math.MaxInt64 {
-		return int64(v)
+// normalizeNumeric maps any stored numeric width onto the consumer's accumulator
+// fast-path types, reporting which half of the (int64, float64) pair is live.
+//
+// All signed/unsigned integer widths up to 32 bits fit int64 exactly. uint/uint64
+// need a range check: only values <= math.MaxInt64 fit, and a larger magnitude
+// becomes float64 — the same magnitude-only precision trade-off numericValue in
+// property_stats_accumulator.go already documents and accepts, rather than letting
+// a raw int64(x) cast silently wrap negative.
+func normalizeNumeric(v any) (int64, float64, bool) {
+	switch x := v.(type) {
+	case int64:
+		return x, 0, false
+	case int:
+		return int64(x), 0, false
+	case int32:
+		return int64(x), 0, false
+	case int16:
+		return int64(x), 0, false
+	case int8:
+		return int64(x), 0, false
+	case uint:
+		return normalizeUint64(uint64(x))
+	case uint64:
+		return normalizeUint64(x)
+	case uint32:
+		return int64(x), 0, false
+	case uint16:
+		return int64(x), 0, false
+	case uint8:
+		return int64(x), 0, false
+	case float64:
+		return 0, x, true
+	case float32:
+		return 0, float64(x), true
 	}
-	return float64(v)
+	return 0, 0, false
+}
+
+// normalizeUint64 keeps a uint64 as int64 when it fits exactly (every practical
+// counter/ID/age value), else widens to float64.
+func normalizeUint64(v uint64) (int64, float64, bool) {
+	if v <= math.MaxInt64 {
+		return int64(v), 0, false
+	}
+	return 0, float64(v), true
 }
 
 func buildStringColumn(ids []types.NodeID, key string, n int, present bitset, getProp func(types.NodeID, string) (any, bool)) *docColumn {
-	c := &docColumn{typ: ColString, present: present, codes: make([]uint32, n)}
+	c := &docColumn{typ: ColString, present: present, n: n, codes: make([]uint32, n)}
 	dictIdx := make(map[string]uint32)
 	for ord, id := range ids {
 		if !present.get(ord) {
@@ -377,7 +555,7 @@ func buildStringColumn(ids []types.NodeID, key string, n int, present bitset, ge
 		code, ok := dictIdx[str]
 		if !ok {
 			code = uint32(len(c.dict))
-			c.dict = append(c.dict, s) // box the original `any` once (s holds str)
+			c.dict = append(c.dict, str)
 			dictIdx[str] = code
 		}
 		c.codes[ord] = code
