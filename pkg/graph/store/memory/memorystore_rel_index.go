@@ -70,6 +70,7 @@ func (ms *Store) CreateRelPropertyIndex(relTypeToken uint16, propertyKey string)
 		ms.mu.RLock()
 		r, ok := ms.rels[rid]
 		ms.mu.RUnlock()
+		phase2Yield() // test seam: ms.mu is provably unheld here
 		if !ok {
 			continue // deleted between snapshot and fetch
 		}

@@ -2,7 +2,6 @@ package memory
 
 import (
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -38,35 +37,33 @@ func TestCreateCompositePropertyIndex_ReleasesLockDuringScan(t *testing.T) {
 		}
 	}
 
-	var tryLockSuccesses atomic.Int64
-	done := make(chan struct{})
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for {
-			select {
-			case <-done:
-				return
-			default:
-			}
-			if ms.mu.TryLock() {
-				tryLockSuccesses.Add(1)
-				ms.mu.Unlock()
-			}
+	// Deterministic: the probe runs ON the scanning goroutine via phase2ScanHook,
+	// at the point between per-row read locks. See
+	// TestCreatePropertyIndex_ReleasesLockDuringScan for why polling TryLock from a
+	// separate goroutine measured the scheduler instead of the code.
+	var free, checked int
+	phase2ScanHook = func() {
+		checked++
+		if ms.mu.TryLock() {
+			free++
+			ms.mu.Unlock()
 		}
-	}()
+	}
+	t.Cleanup(func() { phase2ScanHook = nil })
 
 	if err := ms.CreateCompositePropertyIndex(10, []string{"a", "b"}); err != nil {
 		t.Fatalf("CreateCompositePropertyIndex: %v", err)
 	}
-	close(done)
-	wg.Wait()
+	phase2ScanHook = nil
 
-	// Threshold rationale: see TestCreatePropertyIndex_ReleasesLockDuringScan.
-	if got := tryLockSuccesses.Load(); got < 100 {
-		t.Fatalf("TryLock succeeded only %d times while CreateCompositePropertyIndex scanned %d nodes — "+
-			"the exclusive lock was held for the whole scan (BACKLOG 17h regression)", got, n)
+	if checked == 0 {
+		t.Fatal("the scan hook never ran — Phase 2 did not reach its per-row loop, " +
+			"so this test proved nothing")
+	}
+	if free != checked {
+		t.Fatalf("ms.mu was held on %d of %d per-row scan points — Phase 2 must never "+
+			"hold the exclusive lock across the scan (BACKLOG 17h regression)",
+			checked-free, checked)
 	}
 }
 
@@ -175,34 +172,33 @@ func TestCreateTemporalIndex_ReleasesLockDuringScan(t *testing.T) {
 		}
 	}
 
-	var tryLockSuccesses atomic.Int64
-	done := make(chan struct{})
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for {
-			select {
-			case <-done:
-				return
-			default:
-			}
-			if ms.mu.TryLock() {
-				tryLockSuccesses.Add(1)
-				ms.mu.Unlock()
-			}
+	// Deterministic: the probe runs ON the scanning goroutine via phase2ScanHook,
+	// at the point between per-row read locks. See
+	// TestCreatePropertyIndex_ReleasesLockDuringScan for why polling TryLock from a
+	// separate goroutine measured the scheduler instead of the code.
+	var free, checked int
+	phase2ScanHook = func() {
+		checked++
+		if ms.mu.TryLock() {
+			free++
+			ms.mu.Unlock()
 		}
-	}()
+	}
+	t.Cleanup(func() { phase2ScanHook = nil })
 
 	if err := ms.CreateTemporalIndex(10); err != nil {
 		t.Fatalf("CreateTemporalIndex: %v", err)
 	}
-	close(done)
-	wg.Wait()
+	phase2ScanHook = nil
 
-	if got := tryLockSuccesses.Load(); got < 100 {
-		t.Fatalf("TryLock succeeded only %d times while CreateTemporalIndex scanned %d nodes — "+
-			"the exclusive lock was held for the whole scan (BACKLOG 17h regression)", got, n)
+	if checked == 0 {
+		t.Fatal("the scan hook never ran — Phase 2 did not reach its per-row loop, " +
+			"so this test proved nothing")
+	}
+	if free != checked {
+		t.Fatalf("ms.mu was held on %d of %d per-row scan points — Phase 2 must never "+
+			"hold the exclusive lock across the scan (BACKLOG 17h regression)",
+			checked-free, checked)
 	}
 }
 
@@ -282,34 +278,33 @@ func TestCreateHighFrequencyIndex_ReleasesLockDuringScan(t *testing.T) {
 		}
 	}
 
-	var tryLockSuccesses atomic.Int64
-	done := make(chan struct{})
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for {
-			select {
-			case <-done:
-				return
-			default:
-			}
-			if ms.mu.TryLock() {
-				tryLockSuccesses.Add(1)
-				ms.mu.Unlock()
-			}
+	// Deterministic: the probe runs ON the scanning goroutine via phase2ScanHook,
+	// at the point between per-row read locks. See
+	// TestCreatePropertyIndex_ReleasesLockDuringScan for why polling TryLock from a
+	// separate goroutine measured the scheduler instead of the code.
+	var free, checked int
+	phase2ScanHook = func() {
+		checked++
+		if ms.mu.TryLock() {
+			free++
+			ms.mu.Unlock()
 		}
-	}()
+	}
+	t.Cleanup(func() { phase2ScanHook = nil })
 
 	if err := ms.CreateHighFrequencyIndex(10, time.Hour); err != nil {
 		t.Fatalf("CreateHighFrequencyIndex: %v", err)
 	}
-	close(done)
-	wg.Wait()
+	phase2ScanHook = nil
 
-	if got := tryLockSuccesses.Load(); got < 100 {
-		t.Fatalf("TryLock succeeded only %d times while CreateHighFrequencyIndex scanned %d nodes — "+
-			"the exclusive lock was held for the whole scan (BACKLOG 17h regression)", got, n)
+	if checked == 0 {
+		t.Fatal("the scan hook never ran — Phase 2 did not reach its per-row loop, " +
+			"so this test proved nothing")
+	}
+	if free != checked {
+		t.Fatalf("ms.mu was held on %d of %d per-row scan points — Phase 2 must never "+
+			"hold the exclusive lock across the scan (BACKLOG 17h regression)",
+			checked-free, checked)
 	}
 }
 
@@ -415,38 +410,33 @@ func TestCreateVectorIndexWithOptions_ReleasesLockDuringScan(t *testing.T) {
 		}
 	}
 
-	var tryLockSuccesses atomic.Int64
-	done := make(chan struct{})
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for {
-			select {
-			case <-done:
-				return
-			default:
-			}
-			if ms.mu.TryLock() {
-				tryLockSuccesses.Add(1)
-				ms.mu.Unlock()
-			}
+	// Deterministic: the probe runs ON the scanning goroutine via phase2ScanHook,
+	// at the point between per-row read locks. See
+	// TestCreatePropertyIndex_ReleasesLockDuringScan for why polling TryLock from a
+	// separate goroutine measured the scheduler instead of the code.
+	var free, checked int
+	phase2ScanHook = func() {
+		checked++
+		if ms.mu.TryLock() {
+			free++
+			ms.mu.Unlock()
 		}
-	}()
+	}
+	t.Cleanup(func() { phase2ScanHook = nil })
 
 	if err := ms.CreateVectorIndex(10, "vec", dims, storecontract.DistanceCosine); err != nil {
 		t.Fatalf("CreateVectorIndex: %v", err)
 	}
-	close(done)
-	wg.Wait()
+	phase2ScanHook = nil
 
-	// Lower threshold than the 20,000-node property-index test: HNSW insert
-	// cost per node is much higher than a property-map insert, so even 5,000
-	// nodes takes comparable or longer wall-clock time and clears a lower
-	// TryLock-success bar comfortably under the 3-phase fix.
-	if got := tryLockSuccesses.Load(); got < 20 {
-		t.Fatalf("TryLock succeeded only %d times while CreateVectorIndex scanned %d nodes — "+
-			"the exclusive lock was held for the whole scan (BACKLOG 17h regression)", got, n)
+	if checked == 0 {
+		t.Fatal("the scan hook never ran — Phase 2 did not reach its per-row loop, " +
+			"so this test proved nothing")
+	}
+	if free != checked {
+		t.Fatalf("ms.mu was held on %d of %d per-row scan points — Phase 2 must never "+
+			"hold the exclusive lock across the scan (BACKLOG 17h regression)",
+			checked-free, checked)
 	}
 }
 

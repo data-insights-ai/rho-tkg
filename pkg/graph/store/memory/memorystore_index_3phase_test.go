@@ -2,7 +2,6 @@ package memory
 
 import (
 	"sync"
-	"sync/atomic"
 	"testing"
 
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
@@ -20,58 +19,56 @@ import (
 // itself is correct.
 
 // TestCreatePropertyIndex_ReleasesLockDuringScan proves Phase 2 does not hold
-// ms.mu continuously: a concurrent goroutine polling TryLock while
-// CreatePropertyIndex scans a large label must succeed at least once. Under
-// the pre-fix single-Lock-for-the-whole-scan code this could never succeed
-// until the scan (and the whole call) finished.
+// ms.mu continuously.
+//
+// DETERMINISTIC, and deliberately so. The previous version raced a goroutine
+// polling TryLock and required at least 100 wins; that measures the SCHEDULER, not
+// the code, and on a loaded CI runner the poller was starved to ZERO successes
+// while the implementation was perfectly correct (the threshold comment even
+// records that broken code scores 1-23, so 0 was never a signal about the lock).
+//
+// The probe now runs ON THE SCANNING GOROUTINE via phase2ScanHook, at the point
+// between releasing one per-row read lock and taking the next. There is no race
+// left: a TryLock there succeeds if and only if the lock really was released, so
+// the count is exactly the number of scanned rows.
 func TestCreatePropertyIndex_ReleasesLockDuringScan(t *testing.T) {
 	ms := New()
-	const n = 20_000
+	const n = 2_000
 	for i := 1; i <= n; i++ {
 		if err := ms.PutNode(memNode(int64(i), 10)); err != nil {
 			t.Fatalf("PutNode(%d): %v", i, err)
 		}
 	}
 
-	var tryLockSuccesses atomic.Int64
-	done := make(chan struct{})
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for {
-			select {
-			case <-done:
-				return
-			default:
-			}
-			if ms.mu.TryLock() {
-				tryLockSuccesses.Add(1)
-				ms.mu.Unlock()
-			}
+	var free, checked int
+	phase2ScanHook = func() {
+		checked++
+		if ms.mu.TryLock() {
+			free++
+			ms.mu.Unlock()
 		}
-	}()
+	}
+	t.Cleanup(func() { phase2ScanHook = nil })
 
 	if err := ms.CreatePropertyIndex(10, "prop"); err != nil {
 		t.Fatalf("CreatePropertyIndex: %v", err)
 	}
-	close(done)
-	wg.Wait()
+	phase2ScanHook = nil
 
-	// Threshold, not just >0: a lucky TryLock in the tail-end race window
-	// between CreatePropertyIndex's return (Unlock) and close(done) can hit
-	// once or twice even under the pre-fix single-Lock-for-the-whole-scan
-	// code (observed up to ~23 over repeated pre-fix runs); genuine per-row
-	// lock release during a 20,000-node Phase 2 scan produces thousands of
-	// successes (observed 2,400+). 100 sits comfortably between the two.
-	if got := tryLockSuccesses.Load(); got < 100 {
-		t.Fatalf("TryLock succeeded only %d times while CreatePropertyIndex scanned %d nodes — "+
-			"the exclusive lock was held for the whole scan (BACKLOG 17h regression)", got, n)
+	if checked == 0 {
+		t.Fatal("the scan hook never ran — Phase 2 did not reach its per-row loop, " +
+			"so this test proved nothing")
+	}
+	if free != checked {
+		t.Fatalf("ms.mu was held on %d of %d per-row scan points — Phase 2 must never "+
+			"hold the exclusive lock across the scan (BACKLOG 17h regression)",
+			checked-free, checked)
 	}
 }
 
-// TestCreateRelPropertyIndex_ReleasesLockDuringScan mirrors the node test for
-// the relationship-type-keyed door.
+// TestCreateRelPropertyIndex_ReleasesLockDuringScan mirrors the node test for the
+// relationship-type-keyed door, and is deterministic for the same reason — see
+// TestCreatePropertyIndex_ReleasesLockDuringScan.
 func TestCreateRelPropertyIndex_ReleasesLockDuringScan(t *testing.T) {
 	ms := New()
 	const n = 20_000
@@ -88,35 +85,28 @@ func TestCreateRelPropertyIndex_ReleasesLockDuringScan(t *testing.T) {
 		}
 	}
 
-	var tryLockSuccesses atomic.Int64
-	done := make(chan struct{})
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for {
-			select {
-			case <-done:
-				return
-			default:
-			}
-			if ms.mu.TryLock() {
-				tryLockSuccesses.Add(1)
-				ms.mu.Unlock()
-			}
+	var free, checked int
+	phase2ScanHook = func() {
+		checked++
+		if ms.mu.TryLock() {
+			free++
+			ms.mu.Unlock()
 		}
-	}()
+	}
+	t.Cleanup(func() { phase2ScanHook = nil })
 
 	if err := ms.CreateRelPropertyIndex(5, "prop"); err != nil {
 		t.Fatalf("CreateRelPropertyIndex: %v", err)
 	}
-	close(done)
-	wg.Wait()
+	phase2ScanHook = nil
 
-	// Threshold rationale: see TestCreatePropertyIndex_ReleasesLockDuringScan.
-	if got := tryLockSuccesses.Load(); got < 100 {
-		t.Fatalf("TryLock succeeded only %d times while CreateRelPropertyIndex scanned %d relationships — "+
-			"the exclusive lock was held for the whole scan (BACKLOG 17h regression)", got, n)
+	if checked == 0 {
+		t.Fatal("the scan hook never ran — Phase 2 did not reach its per-row loop")
+	}
+	if free != checked {
+		t.Fatalf("ms.mu was held on %d of %d per-row scan points — Phase 2 must never "+
+			"hold the exclusive lock across the scan (BACKLOG 17h regression)",
+			checked-free, checked)
 	}
 }
 

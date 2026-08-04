@@ -95,6 +95,7 @@ func (ms *Store) CreatePropertyIndex(labelToken uint16, propertyKey string) erro
 		ms.mu.RLock()
 		n, ok := ms.nodes[nid]
 		ms.mu.RUnlock()
+		phase2Yield() // test seam: ms.mu is provably unheld here
 		if !ok {
 			continue // deleted between snapshot and fetch
 		}
@@ -238,6 +239,7 @@ func (ms *Store) CreateCompositePropertyIndex(labelToken uint16, keys []string) 
 		ms.mu.RLock()
 		n, ok := ms.nodes[nid]
 		ms.mu.RUnlock()
+		phase2Yield() // test seam: ms.mu is provably unheld here
 		if !ok {
 			continue // deleted between snapshot and fetch
 		}
@@ -501,6 +503,7 @@ func (ms *Store) CreateTemporalIndex(labelToken uint16) error {
 			hist = ms.nodeHistory[nid]
 		}
 		ms.mu.RUnlock()
+		phase2Yield() // test seam: ms.mu is provably unheld here
 		if !ok {
 			continue // deleted between snapshot and fetch
 		}
@@ -701,6 +704,7 @@ func (ms *Store) CreateHighFrequencyIndex(labelToken uint16, bucketSize time.Dur
 		ms.mu.RLock()
 		n, ok := ms.nodes[nid]
 		ms.mu.RUnlock()
+		phase2Yield() // test seam: ms.mu is provably unheld here
 		if !ok {
 			continue // deleted between snapshot and fetch
 		}
@@ -834,6 +838,7 @@ func (ms *Store) CreateVectorIndexWithOptions(labelToken uint16, propertyKey str
 		ms.mu.RLock()
 		n, ok := ms.nodes[nid]
 		ms.mu.RUnlock()
+		phase2Yield() // test seam: ms.mu is provably unheld here
 		if !ok {
 			continue // deleted between snapshot and fetch
 		}
