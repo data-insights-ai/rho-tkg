@@ -153,6 +153,84 @@ own its own placement map above the store; the store can serve such a consumer
 with fast typed scans (R1–R3), but cannot push the partitioning down. This is a
 stated boundary, not a defect, and it needs no code.
 
+## CORRECTION (2026-08-04) — the row path does NOT box per read
+
+This RETRACTS a claim in `b8b80bd`'s commit message (and in G1 above, where it
+also shaped the framing): that the column build still pays ~2 allocations per
+row inside `getProp`, "the same defect one layer down".
+
+That number was the BENCHMARK'S OWN getter, which constructed `int64(id)` fresh
+on every call. The real getter returns the already-boxed `Property.Value`:
+
+| getter                                    | allocs / 100k rows |
+|---|---|
+| synthetic (constructs and boxes per call) | 199,497 |
+| realistic (returns the stored box)        | **7** |
+
+**The box already exists in storage.** `Property{Key string; Value any}` holds a
+boxed value, so reading it is an interface-header copy — measured 0.26 ns and
+zero allocations. Every "the accessor returns `any`, therefore it allocates"
+inference is wrong for reads.
+
+### What this means for adding typed accessors (asked directly, answered here)
+
+A typed accessor over `any` storage buys nothing in the common case. It is a 26x
+win in exactly ONE case — when the STORED type differs from the WANTED one,
+because a new value is then constructed:
+
+| read                                        | ns/op | allocs |
+|---|---|---|
+| already-boxed -> type assert                | 0.26  | 0 |
+| convert + re-box (`int32` -> `any(int64)`)  | 6.84  | 1 |
+| typed accessor (convert -> `int64`)         | 0.29  | 0 |
+
+So: add typed accessors ONLY where a conversion actually happens
+(Instant/int/int32 -> int64). Do NOT add a blanket typed surface — for a value
+already stored as the wanted type it is pure API surface for 0.26 ns.
+
+Eliminating the boxing generally is a different and much larger project: typed
+STORAGE, replacing `Property.Value any`. That would also cut the per-property
+footprint (16B string header + 16B interface + an 8B heap box). Not planned
+here; noted so the distinction between "typed accessor" (narrow, cheap, mostly
+pointless) and "typed storage" (broad, expensive, real) stays explicit.
+
+## Where the columnar layer SITS (asked directly, answered here)
+
+It is an accelerator INSIDE the existing backends. Not a replacement backend,
+not a new one, not a storage format:
+
+```
+        consumer (query engine, exporter, analytics)
+                 |
+       +---------+----------+
+  typed door           boxed door        <- both served from the SAME columns
+  ScanNodeColumns      ForEachDocValues
+  (optional            NodeColumnReader
+   capability)          (published)
+       +---------+----------+
+                 |
+       docColumns map[uint16]*LabelDocValues   <- DERIVED CACHE, a field on the
+                 |  built on demand, epoch-validated, dropped when stale
+                 |  NOT persisted, NOT a storage format         backend struct
+                 v
+       the row store (badger / memory)         <- system of record, unchanged
+```
+
+`memorystore.go:167` and badger's equivalent each hold this map. It is built
+lazily from the row store, stamped with the mutation epoch, and discarded when a
+write advances it. Nothing about it is durable, so there is no migration and no
+on-disk compat marker — which is why R1 could change the representation freely:
+it changed the representation of a CACHE, not of a storage format.
+
+Optional at every level: a backend that does not build columns still works, the
+capability is type-asserted, and every documented refusal falls back to the
+per-node path.
+
+R2a is where this stops being purely mechanical. Putting ValidFrom/ValidTo into
+the snapshot keeps it a derived cache, but it starts encoding bitemporal
+semantics, so the "membership is the UNFILTERED label set" contract must be
+restated deliberately rather than quietly extended.
+
 ## CORRECTION (2026-08-04, found while starting R2) — R2 and R3 are one item
 
 The ordering above (R1, then R2, then R3 "sequenced after") is WRONG, and the
