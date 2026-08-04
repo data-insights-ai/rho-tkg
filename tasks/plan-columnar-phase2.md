@@ -133,7 +133,37 @@ decode instead of re-reading every entity. Falls back to a full build otherwise.
   no-op) — asserted, not assumed.
 - Reopening a store with persisted columns answers identically to one without.
 
-## ZM — zone maps before I/O
+## ZM — WITHDRAWN (2026-08-04), and why
+
+Not built. The item rested on a premise that checking the code refutes.
+
+**"Before I/O" already exists, in a better form.**
+`store.TemporalCandidateCapability.PruneTemporalCandidates` narrows a candidate
+node-ID set against the per-label valid-time ENVELOPE index BEFORE any entity is
+fetched. It is per-ENTITY rather than per-block, so it prunes strictly more than a
+zone map could, and it is sound by construction: an id the index does not cover is
+always kept, so an incomplete index costs recall and never correctness.
+
+**The scan-time half already shipped.** R2b's `BlockCanMatch` skips whole blocks
+during a columnar scan — measured at 98% of blocks on a time-clustered column.
+
+**And wiring the prune into a column BUILD would break the snapshot's contract.**
+Membership is deliberately the FULL, unfiltered label set; every consumer depends
+on that (count(*) counts absent-property rows, and one snapshot serves every
+query). A snapshot pruned to one query's window is wrong for the next one, so it
+could not be cached under the label key — which defeats the cache that CP just
+made 41x cheaper to populate.
+
+What remains is a per-query, non-cacheable narrow build. Against CP's measured
+numbers that is a small, situational win carrying a real contract risk, and it is
+not what this item was scoped as.
+
+**Reopen criteria.** If a profile ever shows cold column builds dominated by a
+valid-time-selective workload where CP is enabled and the label is NOT
+time-clustered (so `BlockCanMatch` gives ~0% skip), revisit — as a per-query
+uncached build, explicitly, not as a change to snapshot membership.
+
+## ZM — original specification (superseded by the withdrawal above)
 
 **Depends on CP and cannot be built first.** "Before I/O" means skipping the bulk
 entity fetch during a build; to skip it you must consult the zone map before
