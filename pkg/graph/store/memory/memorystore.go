@@ -170,6 +170,9 @@ type Store struct {
 	columnExtends  atomic.Uint64
 	columnRebuilds atomic.Uint64
 	docColumns     map[uint16]*indexpkg.LabelDocValues
+	// relColumns is the rel-type keyed sibling of docColumns, carrying endpoint
+	// columns alongside properties. Stamped with the store-wide relEpoch.
+	relColumns map[uint16]*indexpkg.DocValues[types.RelID]
 	// docColumnsMulti caches columns for a LABEL INTERSECTION (multi-label
 	// patterns like (p:A:B)), keyed by the order-independent token-tuple key
 	// (indexpkg.MultiLabelKey). Same epoch-validated immutable-snapshot model as
@@ -280,6 +283,7 @@ func (ms *Store) ensureInitialized() {
 		}
 		if ms.typeIdx == nil {
 			ms.typeIdx = make(map[uint16]map[types.RelID]struct{})
+			ms.relColumns = nil // Clear invalidates every rel-type column
 		}
 		if ms.outIdx == nil {
 			ms.outIdx = make(map[types.NodeID]map[types.RelID]struct{})

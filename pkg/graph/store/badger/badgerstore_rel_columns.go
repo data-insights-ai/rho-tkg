@@ -140,12 +140,21 @@ func (bs *Store) bulkRelGetters(ids []types.RelID) (
 	func(types.RelID) (int64, int64, bool),
 ) {
 	mat := make(map[types.RelID]*types.Relationship, len(ids))
-	for _, id := range ids {
-		r, err := bs.GetRelationship(id)
-		if err != nil || r == nil {
-			continue // deleted between the membership snapshot and the scan
+	// ONE badger View with one shared iterator, not one transaction per edge. The
+	// per-ID path opens its own View per relationship, which is what made a rel
+	// column rebuild disproportionately expensive.
+	if err := bs.forEachRelBulk(ids, func(r *types.Relationship) bool {
+		mat[r.ID()] = r
+		return true
+	}); err != nil {
+		// Fall back to per-ID reads: a bulk decode failure must not fail the build.
+		for _, id := range ids {
+			r, gerr := bs.prefetchRelScan(id)
+			if gerr != nil || r == nil {
+				continue // deleted between the membership snapshot and the scan
+			}
+			mat[id] = r
 		}
-		mat[id] = r
 	}
 
 	getProp := func(id types.RelID, key string) (any, bool) {
