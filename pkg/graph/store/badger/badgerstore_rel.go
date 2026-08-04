@@ -57,7 +57,10 @@ func (bs *Store) putRelationship(r *types.Relationship, validateEndpoints, forei
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
-	defer bs.bumpRelEpoch() // expand path: adjacency view changed
+	// Per-type invalidation: this site holds the relationship, so it knows the
+	// type and can leave every OTHER type's columns valid. Sites that do not know
+	// the type keep the coarse bumpRelEpoch and invalidate everything.
+	defer bs.bumpRelEpochForType(uint16(r.TypeToken()))
 	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
 		return err
 	}
@@ -313,7 +316,10 @@ func (bs *Store) replaceRelationshipRouted(r *types.Relationship, token uint64) 
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
-	defer bs.bumpRelEpoch() // expand path: adjacency view changed
+	// Per-type invalidation: this site holds the relationship, so it knows the
+	// type and can leave every OTHER type's columns valid. Sites that do not know
+	// the type keep the coarse bumpRelEpoch and invalidate everything.
+	defer bs.bumpRelEpochForType(uint16(r.TypeToken()))
 	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
 		return err
 	}
@@ -408,7 +414,10 @@ func (bs *Store) deleteRelationshipRouted(rid types.RelID, token uint64) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
-	defer bs.bumpRelEpoch() // expand path: adjacency view changed
+	// Coarse on purpose: this site holds only a RelID, so it cannot name the type
+	// without an extra read. Deletes are the rarer path, and over-invalidating is
+	// the safe direction.
+	defer bs.bumpRelEpoch()
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return err
 	}

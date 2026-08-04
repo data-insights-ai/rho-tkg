@@ -37,21 +37,17 @@ func relColumnKeys(requested []string) []string {
 	return indexpkg.UnionKeys([]string{RelStartColumn, RelEndColumn}, requested)
 }
 
-// RelMutationEpochForType is the freshness stamp for a rel-type column snapshot.
-//
-// Unlike the node side there is no per-TYPE stripe: relEpoch is global across all
-// relationship types, so a write to any type invalidates every type's columns. That
-// is a real limitation and it is deliberate — the node side's per-label stripes were
-// added by a dedicated change (BACKLOG 4b) after the global counter proved too
-// coarse, and inventing a rel-side equivalent here would be a second, unmeasured
-// invalidation scheme landing in the same release as the columns themselves.
-func (bs *Store) RelMutationEpochForType(uint16) uint64 { return bs.relEpoch.Load() }
+// RelMutationEpochForType is the freshness stamp for a rel-type column snapshot:
+// the type's own stripe plus the coarse term every unconverted mutation site bumps.
+// A write to an UNRELATED type no longer discards this type's columns, provided the
+// writing site opted into precision. See badgerstore_rel_type_epoch.go.
+func (bs *Store) RelMutationEpochForType(token uint16) uint64 { return bs.relTypeEpoch(token) }
 
 // buildRelColumns builds a fresh immutable snapshot over every relationship of one
 // type, mirroring buildLabelColumns exactly (lock-free, epoch-stamped, cached only
 // if the epoch held). declined=true means an empty or over-cap type.
 func (bs *Store) buildRelColumns(typeToken uint16, requested []string) (col *indexpkg.DocValues[types.RelID], declined bool) {
-	gen := bs.relEpoch.Load()
+	gen := bs.relTypeEpoch(typeToken)
 
 	bs.idxMu.RLock()
 	set := bs.typeIdx[typeToken]
@@ -78,7 +74,7 @@ func (bs *Store) buildRelColumns(typeToken uint16, requested []string) (col *ind
 	bs.columnRebuilds.Add(1)
 
 	bs.docMu.Lock()
-	if bs.relEpoch.Load() == gen { // build saw a consistent snapshot — safe to cache
+	if bs.relTypeEpoch(typeToken) == gen { // build saw a consistent snapshot — safe to cache
 		if bs.relColumns == nil {
 			bs.relColumns = make(map[uint16]*indexpkg.DocValues[types.RelID])
 		}
@@ -151,7 +147,7 @@ func (bs *Store) RelColumnSnapshot(typeToken uint16, propKeys []string) (snap *i
 		return nil, 0, false, err
 	}
 
-	cur := bs.relEpoch.Load()
+	cur := bs.relTypeEpoch(typeToken)
 	keys := relColumnKeys(propKeys)
 
 	bs.docMu.Lock()

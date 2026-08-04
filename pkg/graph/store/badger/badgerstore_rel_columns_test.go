@@ -222,3 +222,85 @@ func TestRelColumns_StaleSnapshotRebuilds(t *testing.T) {
 		t.Errorf("second snapshot holds %d rels, want 2 — a stale snapshot was served", n)
 	}
 }
+
+// --- per-type invalidation ---
+
+// TestRelTypeEpoch_UnrelatedTypeWriteDoesNotInvalidate is the whole point of the
+// striping: inserting an edge of type B must leave type A's cached columns valid.
+// Before striping, relEpoch was global and this rebuilt every type on every write.
+func TestRelTypeEpoch_UnrelatedTypeWriteDoesNotInvalidate(t *testing.T) {
+	bs := rcStore(t)
+	rcRel(t, bs, 100, 1, 2, rcType, int64(5), 1000, 0)
+
+	_, genA, ok, _ := bs.RelColumnSnapshot(rcType, []string{"weight"})
+	if !ok {
+		t.Fatal("declined")
+	}
+	rebuilds := bs.ColumnRebuildCount()
+
+	// A write to a DIFFERENT type.
+	rcRel(t, bs, 400, 1, 3, rcOther, int64(7), 500, 0)
+
+	_, genA2, ok, _ := bs.RelColumnSnapshot(rcType, []string{"weight"})
+	if !ok {
+		t.Fatal("declined after unrelated write")
+	}
+	if genA2 != genA {
+		t.Errorf("type A's epoch moved (%d -> %d) on a write to type B; the stripe "+
+			"did not isolate it", genA, genA2)
+	}
+	if got := bs.ColumnRebuildCount(); got != rebuilds {
+		t.Errorf("type A rebuilt (%d -> %d) after a write to type B", rebuilds, got)
+	}
+}
+
+// TestRelTypeEpoch_SameTypeWriteDoesInvalidate is the other half: striping must not
+// make a type blind to its OWN writes. A stripe that never invalidates would pass
+// the probe above and serve stale columns forever.
+func TestRelTypeEpoch_SameTypeWriteDoesInvalidate(t *testing.T) {
+	bs := rcStore(t)
+	rcRel(t, bs, 100, 1, 2, rcType, int64(5), 1000, 0)
+	_, gen1, _, _ := bs.RelColumnSnapshot(rcType, []string{"weight"})
+
+	rcRel(t, bs, 200, 2, 3, rcType, int64(9), 2000, 0) // SAME type
+
+	snap, gen2, ok, _ := bs.RelColumnSnapshot(rcType, []string{"weight"})
+	if !ok {
+		t.Fatal("declined")
+	}
+	if gen2 == gen1 {
+		t.Fatal("a write to the type's OWN stripe did not advance its epoch")
+	}
+	if n := len(snap.IDs()); n != 2 {
+		t.Errorf("snapshot holds %d rels, want 2 — stale columns were served", n)
+	}
+}
+
+// TestRelTypeEpoch_CoarseSiteInvalidatesEverything pins the safety inversion: a
+// mutation path that does NOT know its type (here a delete, which holds only a
+// RelID) must invalidate every type. Getting this wrong is the failure mode the
+// whole design is arranged to avoid — an unconverted site must cost speed, never
+// correctness.
+func TestRelTypeEpoch_CoarseSiteInvalidatesEverything(t *testing.T) {
+	bs := rcStore(t)
+	rcRel(t, bs, 100, 1, 2, rcType, int64(5), 1000, 0)
+	rcRel(t, bs, 400, 1, 3, rcOther, int64(7), 500, 0)
+
+	_, genA, _, _ := bs.RelColumnSnapshot(rcType, nil)
+	_, genB, _, _ := bs.RelColumnSnapshot(rcOther, nil)
+
+	// A DELETE — the coarse path, which cannot name the type.
+	if err := bs.DeleteRelationship(types.RelID(400)); err != nil {
+		t.Fatalf("DeleteRelationship: %v", err)
+	}
+
+	_, genA2, _, _ := bs.RelColumnSnapshot(rcType, nil)
+	if genA2 == genA {
+		t.Error("an untyped mutation left type A's epoch unchanged; a site that " +
+			"cannot name its type MUST invalidate everything, or it serves stale columns")
+	}
+	_, genB2, _, _ := bs.RelColumnSnapshot(rcOther, nil)
+	if genB2 == genB {
+		t.Error("an untyped mutation left type B's epoch unchanged")
+	}
+}

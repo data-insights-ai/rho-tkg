@@ -363,7 +363,15 @@ func (bs *Store) bumpNodeEpoch() { bs.nodeEpoch.Add(1) }
 // bumpRelEpoch marks the adjacency view stale for the expand-aggregation column
 // path (which reads edges, not just node membership). Called by every relationship
 // mutation. A spurious bump is safe — it only forces a Gate-2 fall-back.
-func (bs *Store) bumpRelEpoch() { bs.relEpoch.Add(1) }
+//
+// It also advances relEpochCoarse, which invalidates EVERY rel-type column
+// snapshot. That is deliberate: this is the default door, so a mutation site that
+// has not opted into per-type precision (bumpRelEpochForType) must invalidate
+// everything rather than silently leave a type's columns stale.
+func (bs *Store) bumpRelEpoch() {
+	bs.relEpoch.Add(1)
+	bs.relEpochCoarse.Add(1)
+}
 
 func (bs *Store) deleteNodeRevLocked(nid types.NodeID) {
 	delete(bs.nodeRevs, nid)

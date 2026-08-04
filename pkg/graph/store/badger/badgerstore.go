@@ -478,9 +478,15 @@ type Store struct {
 	// see edge mutations (nodeEpoch alone would wave through a torn aggregate from a
 	// concurrent edge insert). Separate from nodeEpoch so node-only column caches do
 	// not rebuild on edge-heavy writes.
-	relEpoch   atomic.Uint64
-	docMu      sync.Mutex
-	docColumns map[uint16]*indexpkg.LabelDocValues
+	relEpoch atomic.Uint64
+	// relTypeEpochs stripes rel-type column invalidation so a write to one type does
+	// not discard another's columns; relEpochCoarse is the term every UNCONVERTED
+	// mutation site bumps, which is what makes over-invalidation the default. See
+	// badgerstore_rel_type_epoch.go.
+	relTypeEpochs  [relTypeEpochStripes]atomic.Uint64
+	relEpochCoarse atomic.Uint64
+	docMu          sync.Mutex
+	docColumns     map[uint16]*indexpkg.LabelDocValues
 	// relColumns is the REL-TYPE keyed sibling of docColumns: one columnar snapshot
 	// per relationship type, carrying endpoint columns alongside properties. Same
 	// immutable epoch-stamped model, but stamped with the GLOBAL relEpoch, so any
