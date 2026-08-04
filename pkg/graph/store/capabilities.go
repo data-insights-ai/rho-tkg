@@ -997,3 +997,45 @@ type MandatoryStore interface {
 	StatsCapability
 	IterationCapability
 }
+
+// ColumnKind names the concrete Go type a scanned column carries.
+type ColumnKind uint8
+
+const (
+	ColInt64 ColumnKind = iota
+	ColFloat64
+	ColString
+	ColBool
+)
+
+// ColumnBatch is a block of node rows delivered as TYPED COLUMNS.
+//
+// A consumer that wants scalars — a query engine, an exporter, an analytics pass —
+// otherwise receives []*types.Node and reads each property through GetProperty,
+// which hands back `any`. Values stored as Instant, int or int32 then cost one heap
+// box each to convert, and a caller that wants int64 columns cannot avoid it. This
+// carries the conversion into the store, where the stored type is already known,
+// and hands out slices the caller can read without boxing.
+//
+// Exactly one of Ints/Flts/Strs/Bools is populated per column, selected by Kinds.
+// Null marks a row where the property is absent; the corresponding typed slot holds
+// that type's zero value.
+type ColumnBatch struct {
+	IDs   []types.NodeID
+	Kinds []ColumnKind
+	Ints  [][]int64
+	Flts  [][]float64
+	Strs  [][]string
+	Bools [][]bool
+	Null  [][]bool
+}
+
+// NodeColumnScanCapability is OPTIONAL. Backends that do not implement it are
+// unaffected; consumers type-assert and fall back to NodesByLabel.
+//
+// fn is called with batches in ID order and MUST NOT retain the batch — the slices
+// are reused across calls. Returning false stops the scan.
+type NodeColumnScanCapability interface {
+	ScanNodeColumns(token uint16, props []string, opts QueryOpts,
+		fn func(*ColumnBatch) bool) error
+}
