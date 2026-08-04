@@ -42,17 +42,20 @@ func TestNodeDeleteRetryBackoff_BoundedAndCapped(t *testing.T) {
 func TestNodeDeleteRetryBackoff_GrowsWithAttempt(t *testing.T) {
 	t.Parallel()
 
+	// Samples the COMPUTED duration, not an observed sleep. Timing real sleeps made
+	// this a scheduler measurement: CI reported attempt=0 mean=2.002993ms when the
+	// whole range at attempt 0 is 50µs, i.e. the wake-up latency dwarfed the value
+	// under test and buried the signal. The distribution is the property; the sleep
+	// is not.
 	sample := func(attempt int, n int) time.Duration {
 		var total time.Duration
 		for i := 0; i < n; i++ {
-			start := time.Now()
-			nodeDeleteRetryBackoff(attempt)
-			total += time.Since(start)
+			total += nodeDeleteRetryBackoffDuration(attempt)
 		}
 		return total / time.Duration(n)
 	}
 
-	const n = 200
+	const n = 20_000 // free now that no sleeping happens; tightens the statistic
 	low := sample(0, n)
 	high := sample(nodeDeleteRetryBackoffCap, n)
 	if high <= low {
