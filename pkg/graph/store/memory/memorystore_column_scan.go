@@ -41,7 +41,9 @@ func (ms *Store) ScanNodeColumns(token uint16, props []string, opts storecontrac
 
 	nCols := len(props)
 	batch := &storecontract.ColumnBatch{
-		IDs:   make([]types.NodeID, 0, columnScanBatchRows),
+		IDs:       make([]types.NodeID, 0, columnScanBatchRows),
+		ValidFrom: make([]int64, 0, columnScanBatchRows),
+		ValidTo:   make([]int64, 0, columnScanBatchRows),
 		Kinds: make([]storecontract.ColumnKind, nCols),
 		Ints:  make([][]int64, nCols),
 		Flts:  make([][]float64, nCols),
@@ -52,6 +54,8 @@ func (ms *Store) ScanNodeColumns(token uint16, props []string, opts storecontrac
 	kindKnown := make([]bool, nCols)
 	reset := func() {
 		batch.IDs = batch.IDs[:0]
+		batch.ValidFrom = batch.ValidFrom[:0]
+		batch.ValidTo = batch.ValidTo[:0]
 		for c := range nCols {
 			batch.Ints[c] = batch.Ints[c][:0]
 			batch.Flts[c] = batch.Flts[c][:0]
@@ -63,6 +67,12 @@ func (ms *Store) ScanNodeColumns(token uint16, props []string, opts storecontrac
 
 	for _, n := range nodes {
 		batch.IDs = append(batch.IDs, n.InternalID())
+		var vf, vt int64
+		if tm := n.Temporal(); tm != nil {
+			vf, vt = int64(tm.ValidFrom), int64(tm.ValidTo)
+		}
+		batch.ValidFrom = append(batch.ValidFrom, vf)
+		batch.ValidTo = append(batch.ValidTo, vt)
 		for c, key := range props {
 			raw, found := n.GetProperty(key)
 			kind, i64, f64, str, b, ok := classifyScalar(raw)

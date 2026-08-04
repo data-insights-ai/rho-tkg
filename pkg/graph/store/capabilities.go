@@ -1021,8 +1021,18 @@ const (
 // Null marks a row where the property is absent; the corresponding typed slot holds
 // that type's zero value.
 type ColumnBatch struct {
-	IDs   []types.NodeID
-	Kinds []ColumnKind
+	IDs []types.NodeID
+	// ValidFrom/ValidTo are parallel to IDs, in the same scan.
+	//
+	// A caller that only wanted property values would not need them — but a
+	// bitemporal consumer reading columns still has to know WHEN each row holds,
+	// and fetching that separately means holding the entity after all, which is
+	// exactly the materialisation a column scan exists to avoid. Zero means the
+	// node carries no temporal metadata; ValidTo zero also means open-ended, which
+	// is the store-wide convention.
+	ValidFrom []int64
+	ValidTo   []int64
+	Kinds     []ColumnKind
 	Ints  [][]int64
 	Flts  [][]float64
 	Strs  [][]string
