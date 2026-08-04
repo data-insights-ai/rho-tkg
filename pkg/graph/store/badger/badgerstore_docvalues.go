@@ -206,6 +206,8 @@ func (bs *Store) buildMultiColumns(toks []uint16, key string, requested []string
 	getProp, getTemporal := bs.bulkNodeGetters(ids)
 	col = indexpkg.BuildLabelDocValues(gen, ids, keys, getProp, getTemporal)
 	bs.columnRebuilds.Add(1)
+	// Intersections are NOT persisted: the disk key is per single label, and an
+	// A-and-B snapshot is not reconstructible from either one's blob.
 
 	bs.docMu.Lock()
 	if bs.multiLabelEpoch(toks) == gen {
@@ -320,9 +322,25 @@ func (bs *Store) buildLabelColumns(labelToken uint16, requested []string) (col *
 		}
 	}
 
+	// PERSISTED COLUMN, if one is current for this epoch and covers these keys.
+	// Decoding a blob beats re-reading every entity; anything else means rebuild.
+	if disk := bs.loadNodeColumns(labelToken, gen, keys); disk != nil {
+		bs.docMu.Lock()
+		if bs.labelEpoch(labelToken) == gen {
+			if bs.docColumns == nil {
+				bs.docColumns = make(map[uint16]*indexpkg.LabelDocValues)
+			}
+			bs.docColumns[labelToken] = disk
+		}
+		bs.docMu.Unlock()
+		bs.clearAppendDelta(labelToken)
+		return disk, false
+	}
+
 	getProp, getTemporal := bs.bulkNodeGetters(ids)
 	col = indexpkg.BuildLabelDocValues(gen, ids, keys, getProp, getTemporal)
 	bs.columnRebuilds.Add(1)
+	persistColumns(bs, columnDiskKey(labelToken), col)
 
 	bs.docMu.Lock()
 	if bs.labelEpoch(labelToken) == gen { // build saw a consistent snapshot — safe to cache

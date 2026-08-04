@@ -93,9 +93,26 @@ func (bs *Store) buildRelColumns(typeToken uint16, requested []string) (col *ind
 		}
 	}
 
+	// PERSISTED COLUMN, if current for this epoch and covering these keys. Worth
+	// more here than on the node side: the rebuild it replaces reads every
+	// relationship individually.
+	if disk := bs.loadRelColumnsDisk(typeToken, gen, keys); disk != nil {
+		bs.docMu.Lock()
+		if bs.relTypeEpoch(typeToken) == gen {
+			if bs.relColumns == nil {
+				bs.relColumns = make(map[uint16]*indexpkg.DocValues[types.RelID])
+			}
+			bs.relColumns[typeToken] = disk
+		}
+		bs.docMu.Unlock()
+		bs.clearRelAppendDelta(typeToken)
+		return disk, false
+	}
+
 	getProp, getTemporal := bs.bulkRelGetters(ids)
 	col = indexpkg.BuildDocValues(gen, ids, keys, getProp, getTemporal)
 	bs.columnRebuilds.Add(1)
+	persistColumns(bs, relColumnDiskKey(typeToken), col)
 
 	bs.docMu.Lock()
 	if bs.relTypeEpoch(typeToken) == gen { // build saw a consistent snapshot — safe to cache

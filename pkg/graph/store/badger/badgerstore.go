@@ -174,6 +174,17 @@ type Config struct {
 	// PropertyIndexOnDiskBuiltKey pattern) — no manual migration step is
 	// required. Ignored when Store is provided explicitly.
 	TemporalIndexOnDisk bool
+	// ColumnsOnDisk persists built columnar snapshots so a cold store, or one whose
+	// in-RAM snapshot was dropped, can decode a column instead of re-reading every
+	// entity. OFF by default; on, it changes nothing a caller can observe except
+	// latency.
+	//
+	// A persisted column is a REBUILD ACCELERATOR, never a read authority (the rule
+	// TemporalIndexOnDisk states above). Every failure mode — a stale epoch stamp, an
+	// unreadable blob, a missing key — means "rebuild", so this needs no wire-format
+	// bump and no migration, and an older binary simply never reads the keys.
+	// Ignored when Store is provided explicitly.
+	ColumnsOnDisk bool
 	// DisablePlannerStats turns OFF maintenance of the query-planner statistics —
 	// the per-(label, property key) presence counts, NDV + min/max
 	// range-cardinality accumulator, and exact type-class counts. These are
@@ -487,6 +498,7 @@ type Store struct {
 	relEpochCoarse atomic.Uint64
 	// relAppendDeltas records pure inserts per rel type since that type's snapshot
 	// was built, letting a read EXTEND instead of rebuilding (measured 171x at 10k).
+	columnsOnDisk   bool
 	relAppendMu     sync.Mutex
 	relAppendDeltas map[uint16]*relAppendDelta
 	docMu           sync.Mutex
@@ -958,6 +970,7 @@ func New(cfg Config) (*Store, error) {
 		adjOnDisk:               cfg.AdjacencyIndexOnDisk,
 		propIdxOnDisk:           cfg.PropertyIndexOnDisk,
 		temporalIdxOnDisk:       cfg.TemporalIndexOnDisk,
+		columnsOnDisk:           cfg.ColumnsOnDisk,
 		disablePlannerStats:     cfg.DisablePlannerStats,
 		historyDelta:            cfg.HistoryDeltaEncoding,
 		historyAnchorInterval:   resolveHistoryAnchorInterval(cfg.HistoryAnchorInterval),
