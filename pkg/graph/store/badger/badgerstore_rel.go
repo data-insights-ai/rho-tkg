@@ -60,7 +60,7 @@ func (bs *Store) putRelationship(r *types.Relationship, validateEndpoints, forei
 	// Per-type invalidation: this site holds the relationship, so it knows the
 	// type and can leave every OTHER type's columns valid. Sites that do not know
 	// the type keep the coarse bumpRelEpoch and invalidate everything.
-	defer bs.bumpRelEpochForType(uint16(r.TypeToken()))
+	defer bs.bumpRelEpochAppend(r)
 	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
 		return err
 	}
@@ -319,7 +319,7 @@ func (bs *Store) replaceRelationshipRouted(r *types.Relationship, token uint64) 
 	// Per-type invalidation: this site holds the relationship, so it knows the
 	// type and can leave every OTHER type's columns valid. Sites that do not know
 	// the type keep the coarse bumpRelEpoch and invalidate everything.
-	defer bs.bumpRelEpochForType(uint16(r.TypeToken()))
+	defer bs.bumpRelEpochForType(uint16(r.TypeToken())) // UPDATE: poisons, never records an append
 	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
 		return err
 	}

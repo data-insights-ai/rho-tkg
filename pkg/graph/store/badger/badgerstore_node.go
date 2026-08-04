@@ -371,6 +371,7 @@ func (bs *Store) bumpNodeEpoch() { bs.nodeEpoch.Add(1) }
 func (bs *Store) bumpRelEpoch() {
 	bs.relEpoch.Add(1)
 	bs.relEpochCoarse.Add(1)
+	bs.poisonAllRelTypes() // the default door must void every append record too
 }
 
 func (bs *Store) deleteNodeRevLocked(nid types.NodeID) {

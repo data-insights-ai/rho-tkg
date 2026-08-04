@@ -76,13 +76,23 @@ func (ms *Store) bumpNodeEpochAppend(n *types.Node) {
 // appendDeltaFor returns the IDs appended to a label since its snapshot was built,
 // or ok=false if a rebuild is required. cur is the epoch the caller observed; a
 // mismatch proves some write was not a recorded append. Caller must hold ms.mu.
-func (ms *Store) appendDeltaFor(token uint16, cur uint64) ([]types.NodeID, bool) {
+func (ms *Store) appendDeltaFor(token uint16, cur, snapshotEpoch uint64) ([]types.NodeID, bool) {
 	d := &ms.appendDelta
 	if d.poisoned || d.byLabel == nil || d.epoch != cur {
 		return nil, false
 	}
 	ids := d.byLabel[token]
 	if len(ids) == 0 {
+		return nil, false
+	}
+	// Accounting identity, as on the badger path. The epoch here is GLOBAL, so it
+	// advances once per node write across ALL labels; the recorded appends for every
+	// label must therefore account for the whole delta, not just this label's share.
+	var recorded int
+	for _, l := range d.byLabel {
+		recorded += len(l)
+	}
+	if cur < snapshotEpoch || cur-snapshotEpoch != uint64(recorded) {
 		return nil, false
 	}
 	out := make([]types.NodeID, len(ids))

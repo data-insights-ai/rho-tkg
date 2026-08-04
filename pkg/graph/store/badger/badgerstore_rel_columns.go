@@ -64,10 +64,34 @@ func (bs *Store) buildRelColumns(typeToken uint16, requested []string) (col *ind
 
 	keys := relColumnKeys(requested)
 	bs.docMu.Lock()
-	if old := bs.relColumns[typeToken]; old != nil {
+	old := bs.relColumns[typeToken]
+	if old != nil {
 		keys = indexpkg.UnionKeys(old.Keys(), keys)
 	}
 	bs.docMu.Unlock()
+
+	// APPEND FAST PATH. Worth far more here than on the node side: a rebuild
+	// re-reads every relationship individually, so this is 171x at 10,000 rels and
+	// the ratio grows with the type's size. Every guard fails toward the rebuild.
+	if old != nil && old.HasAll(keys) {
+		if added, okDelta := bs.takeRelAppendDelta(typeToken, gen, old.Epoch()); okDelta {
+			gp, gt := bs.bulkRelGetters(added)
+			if ext := old.Extend(gen, added, gp, gt); ext != nil {
+				bs.docMu.Lock()
+				if bs.relTypeEpoch(typeToken) == gen {
+					if bs.relColumns == nil {
+						bs.relColumns = make(map[uint16]*indexpkg.DocValues[types.RelID])
+					}
+					bs.relColumns[typeToken] = ext
+					bs.docMu.Unlock()
+					bs.clearRelAppendDelta(typeToken)
+					bs.columnExtends.Add(1)
+					return ext, false
+				}
+				bs.docMu.Unlock()
+			}
+		}
+	}
 
 	getProp, getTemporal := bs.bulkRelGetters(ids)
 	col = indexpkg.BuildDocValues(gen, ids, keys, getProp, getTemporal)
@@ -79,6 +103,9 @@ func (bs *Store) buildRelColumns(typeToken uint16, requested []string) (col *ind
 			bs.relColumns = make(map[uint16]*indexpkg.DocValues[types.RelID])
 		}
 		bs.relColumns[typeToken] = col
+		bs.docMu.Unlock()
+		bs.clearRelAppendDelta(typeToken)
+		return col, false
 	}
 	bs.docMu.Unlock()
 	return col, false

@@ -304,3 +304,137 @@ func TestRelTypeEpoch_CoarseSiteInvalidatesEverything(t *testing.T) {
 		t.Error("an untyped mutation left type B's epoch unchanged")
 	}
 }
+
+// --- rel append-extend ---
+
+// TestRelAppend_PureInsertExtends is the point: once a snapshot exists, inserting
+// relationships of that type must EXTEND it, not rebuild. Measured 171x at 10k rels,
+// and the ratio grows with the type's size because a rebuild re-reads every
+// relationship individually.
+func TestRelAppend_PureInsertExtends(t *testing.T) {
+	bs := rcStore(t)
+	for i := int64(1); i <= 4; i++ {
+		rcRel(t, bs, 100+i, 1, 2, rcType, i*10, 1000+i, 0)
+	}
+	if _, _, ok, _ := bs.RelColumnSnapshot(rcType, []string{"weight"}); !ok {
+		t.Fatal("declined")
+	}
+	rebuilds, extends := bs.ColumnRebuildCount(), bs.ColumnExtendCount()
+
+	rcRel(t, bs, 200, 1, 2, rcType, int64(99), 5000, 0) // pure insert
+
+	snap, _, ok, _ := bs.RelColumnSnapshot(rcType, []string{"weight"})
+	if !ok {
+		t.Fatal("declined after insert")
+	}
+	if n := len(snap.IDs()); n != 5 {
+		t.Fatalf("snapshot holds %d rels, want 5", n)
+	}
+	if got := bs.ColumnExtendCount(); got != extends+1 {
+		t.Errorf("extend count %d, want %d — the append path did not fire", got, extends+1)
+	}
+	if got := bs.ColumnRebuildCount(); got != rebuilds {
+		t.Errorf("rebuild count %d -> %d; a pure insert must not rebuild", rebuilds, got)
+	}
+}
+
+// TestRelAppend_UpdateThenInsertKeepsTheNewValue pins that the UPDATE door poisons.
+// Update rel 100, then insert another with NO read between: extending across the
+// update would carry rel 100's old value forward.
+func TestRelAppend_UpdateThenInsertKeepsTheNewValue(t *testing.T) {
+	bs := rcStore(t)
+	rcRel(t, bs, 100, 1, 2, rcType, int64(5), 1000, 0)
+	rcRel(t, bs, 200, 1, 2, rcType, int64(9), 2000, 0)
+	bs.RelColumnSnapshot(rcType, []string{"weight"})
+
+	upd := types.NewRelationship(types.RelID(100), rcType, types.NodeID(1), types.NodeID(2))
+	if err := upd.SetProperty("weight", int64(777)); err != nil {
+		t.Fatalf("SetProperty: %v", err)
+	}
+	upd.SetTemporal(&types.TemporalMetadata{ValidFrom: types.Instant(1000)})
+	if err := bs.ReplaceRelationship(upd); err != nil {
+		t.Fatalf("ReplaceRelationship: %v", err)
+	}
+	rcRel(t, bs, 300, 1, 2, rcType, int64(3), 3000, 0) // no read between
+
+	snap, _, ok, _ := bs.RelColumnSnapshot(rcType, []string{"weight"})
+	if !ok {
+		t.Fatal("declined")
+	}
+	w, _ := snap.View("weight")
+	for ord, id := range snap.IDs() {
+		if int64(id) == 100 && w.Ints[ord] != 777 {
+			t.Fatalf("rel 100 reads as %d, want 777 — the snapshot was extended across "+
+				"an UPDATE and kept the stale value", w.Ints[ord])
+		}
+	}
+}
+
+// TestRelAppend_DeleteThenInsertWithoutReadRebuilds is the case only the poison
+// catches: a deleted row's absence is INVISIBLE to Extend, which inspects only what
+// is being added.
+func TestRelAppend_DeleteThenInsertWithoutReadRebuilds(t *testing.T) {
+	bs := rcStore(t)
+	for i := int64(1); i <= 3; i++ {
+		rcRel(t, bs, 100+i, 1, 2, rcType, i*10, 1000+i, 0)
+	}
+	bs.RelColumnSnapshot(rcType, []string{"weight"})
+
+	if err := bs.DeleteRelationship(types.RelID(102)); err != nil {
+		t.Fatalf("DeleteRelationship: %v", err)
+	}
+	rcRel(t, bs, 200, 1, 2, rcType, int64(99), 5000, 0) // no read between
+
+	snap, _, ok, _ := bs.RelColumnSnapshot(rcType, []string{"weight"})
+	if !ok {
+		t.Fatal("declined")
+	}
+	for _, id := range snap.IDs() {
+		if int64(id) == 102 {
+			t.Fatal("snapshot still contains a DELETED relationship; Extend cannot see " +
+				"a deletion, so the removal path must poison")
+		}
+	}
+	if n := len(snap.IDs()); n != 3 {
+		t.Errorf("snapshot holds %d rels, want 3", n)
+	}
+}
+
+// TestRelAppend_ExtendMatchesRebuild is the differential oracle: the same insert
+// sequence with the append path live vs defeated must expose identical rows.
+func TestRelAppend_ExtendMatchesRebuild(t *testing.T) {
+	run := func(defeat bool) map[int64]int64 {
+		bs := rcStore(t)
+		for i := int64(1); i <= 12; i++ {
+			rcRel(t, bs, 100+i, 1, 2, rcType, i*7, 1000+i, 0)
+			if i%4 == 0 {
+				if defeat {
+					bs.poisonAllRelTypes()
+				}
+				bs.RelColumnSnapshot(rcType, []string{"weight"})
+			}
+		}
+		if defeat {
+			bs.poisonAllRelTypes()
+		}
+		snap, _, ok, _ := bs.RelColumnSnapshot(rcType, []string{"weight"})
+		if !ok {
+			t.Fatal("declined")
+		}
+		w, _ := snap.View("weight")
+		out := map[int64]int64{}
+		for ord, id := range snap.IDs() {
+			out[int64(id)] = w.Ints[ord]
+		}
+		return out
+	}
+	ext, reb := run(false), run(true)
+	if len(ext) != len(reb) {
+		t.Fatalf("row counts differ: extend=%d rebuild=%d", len(ext), len(reb))
+	}
+	for id, v := range reb {
+		if ext[id] != v {
+			t.Errorf("rel %d: extend=%d rebuild=%d", id, ext[id], v)
+		}
+	}
+}

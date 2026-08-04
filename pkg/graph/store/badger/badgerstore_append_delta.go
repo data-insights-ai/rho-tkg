@@ -139,12 +139,28 @@ const maxAppendDeltaIDs = 50_000
 //
 // Does NOT clear the buffer — the caller clears it only if the extend succeeds, so a
 // refused extend still leaves the record intact for the rebuild path to discard.
-func (bs *Store) takeAppendDelta(token uint16, gen uint64) ([]types.NodeID, bool) {
+//
+// THE GUARD IS AN ACCOUNTING IDENTITY on top of the stamp:
+//
+//	gen - snapshotEpoch == len(recorded ids)
+//
+// Every recorded append bumped this label's epoch exactly once, so a balance proves
+// EVERY bump since the snapshot was built was a recorded append. The stamp alone is
+// weaker than it looks: poisonAllLabels DROPS the whole record map, so a subsequent
+// insert creates a FRESH, un-poisoned record stamped at the current epoch and the
+// stamp check passes over a snapshot that a label-less removal already invalidated.
+// That exact hole shipped on the relationship path and a probe caught it; the same
+// shape exists here, so it gets the same guard rather than an argument about which
+// call paths happen to be reachable.
+func (bs *Store) takeAppendDelta(token uint16, gen, snapshotEpoch uint64) ([]types.NodeID, bool) {
 	bs.appendMu.Lock()
 	defer bs.appendMu.Unlock()
 	d := bs.appendDeltas[token]
 	if d == nil || d.poisoned || len(d.ids) == 0 || d.epoch != gen {
 		return nil, false
+	}
+	if gen < snapshotEpoch || gen-snapshotEpoch != uint64(len(d.ids)) {
+		return nil, false // some bump since the snapshot was not a recorded append
 	}
 	out := make([]types.NodeID, len(d.ids))
 	copy(out, d.ids)

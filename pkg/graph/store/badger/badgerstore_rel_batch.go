@@ -21,15 +21,9 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
-	// Per-type invalidation over the batch's distinct types; a batch spanning
-	// several types still leaves every other type's columns valid.
-	relToks := make([]uint16, 0, len(rels))
-	for _, r := range rels {
-		if r != nil {
-			relToks = append(relToks, uint16(r.TypeToken()))
-		}
-	}
-	defer bs.bumpRelEpochForRels(relToks)
+	// Per-type invalidation over the batch's distinct types, recording each as an
+	// append so the next read can extend rather than rebuild.
+	defer bs.bumpRelEpochAppendBatch(rels)
 
 	// Pre-serialize all relationships outside the lock.
 	type relData struct {

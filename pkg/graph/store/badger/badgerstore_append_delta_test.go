@@ -426,3 +426,32 @@ func TestAppendDelta_IntersectionRebuildsAfterDelete(t *testing.T) {
 	}
 	adWant(t, got, map[int64]int64{1: 100, 3: 300, 4: 400, 5: 500})
 }
+
+// TestAppendDelta_LabelLessEventThenInsertRebuilds is the node-side sibling of a bug
+// found on the rel path: poisonAllLabels DROPS the whole record map, so a subsequent
+// insert creates a FRESH, un-poisoned record stamped at the current epoch, and a
+// stamp-only guard would extend a snapshot the label-less event already invalidated.
+//
+// HONEST SCOPE: this probe does not remove any data, so it would pass even with the
+// weaker guard — extending a still-accurate snapshot happens to be correct. It pins
+// the ROUTING (the accounting identity forces a rebuild here) rather than proving
+// data loss, because the label-less removal paths that would prove it are Clear,
+// exact erasure and retention purge, none of which compose into a small probe. The
+// identity is applied regardless, so correctness does not rest on which of those
+// paths is reachable.
+func TestAppendDelta_LabelLessEventThenInsertRebuilds(t *testing.T) {
+	bs := adStore(t)
+	for i := int64(1); i <= 4; i++ {
+		adPut(t, bs, i, i*100)
+	}
+	adRead(t, bs) // snapshot of 1..4
+
+	// A label-LESS invalidation (the class that drops the whole record map),
+	// followed by an insert with NO read between.
+	bs.poisonAllLabels()
+	bs.nodeEpochSalt.Add(1)
+	adPut(t, bs, 5, 500)
+
+	got := adRead(t, bs)
+	adWant(t, got, map[int64]int64{1: 100, 2: 200, 3: 300, 4: 400, 5: 500})
+}

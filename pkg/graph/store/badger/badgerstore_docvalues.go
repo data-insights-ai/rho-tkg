@@ -299,7 +299,7 @@ func (bs *Store) buildLabelColumns(labelToken uint16, requested []string) (col *
 	//     and never new columns;
 	//   - Extend itself returns nil for anything that is not a clean append.
 	if old != nil && old.HasAll(keys) {
-		if added, ok := bs.takeAppendDelta(labelToken, gen); ok {
+		if added, ok := bs.takeAppendDelta(labelToken, gen, old.Epoch()); ok {
 			getProp, getTemporal := bs.bulkNodeGetters(added)
 			if ext := old.Extend(gen, added, getProp, getTemporal); ext != nil {
 				bs.docMu.Lock()

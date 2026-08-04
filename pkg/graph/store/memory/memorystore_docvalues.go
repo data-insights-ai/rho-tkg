@@ -256,7 +256,7 @@ func (ms *Store) refreshLabelColumnsLocked(token uint16, set map[types.NodeID]st
 	if old != nil {
 		keys := indexpkg.UnionKeys(old.Keys(), requested)
 		if old.HasAll(keys) {
-			if added, ok := ms.appendDeltaFor(token, cur); ok {
+			if added, ok := ms.appendDeltaFor(token, cur, old.Epoch()); ok {
 				getProp := func(id types.NodeID, key string) (any, bool) {
 					n, present := ms.nodes[id]
 					if !present {
