@@ -212,7 +212,10 @@ func (l *LabelDocValues) BlockCanMatch(start int, qFrom, qTo int64) bool {
 	return true
 }
 
-// buildZoneMap computes per-block min/max over the validity columns.
+// buildZoneMap computes per-block min/max over the validity columns. The per-block
+// work lives in computeZoneBlock, shared with the incremental path in Extend — two
+// copies would be two chances to disagree about the open-ended rule, and a
+// disagreement there silently drops live rows.
 func (l *LabelDocValues) buildZoneMap() {
 	n := len(l.nodeIDs)
 	blocks := (n + zoneBlockSize - 1) / zoneBlockSize
@@ -221,29 +224,8 @@ func (l *LabelDocValues) buildZoneMap() {
 	l.zoneMinTo = make([]int64, blocks)
 	l.zoneMaxTo = make([]int64, blocks)
 	l.zoneOpenEnded = make([]bool, blocks)
-
 	for b := 0; b < blocks; b++ {
-		lo := b * zoneBlockSize
-		hi := min(lo+zoneBlockSize, n)
-		minF, maxF := l.validFrom[lo], l.validFrom[lo]
-		var minT, maxT int64
-		open, seenClosed := false, false
-		for ord := lo; ord < hi; ord++ {
-			f, t := l.validFrom[ord], l.validTo[ord]
-			minF, maxF = min(minF, f), max(maxF, f)
-			if t == 0 {
-				open = true
-				continue // an open-ended row contributes no upper bound
-			}
-			if !seenClosed {
-				minT, maxT, seenClosed = t, t, true
-				continue
-			}
-			minT, maxT = min(minT, t), max(maxT, t)
-		}
-		l.zoneMinFrom[b], l.zoneMaxFrom[b] = minF, maxF
-		l.zoneMinTo[b], l.zoneMaxTo[b] = minT, maxT
-		l.zoneOpenEnded[b] = open
+		l.computeZoneBlock(b, n)
 	}
 }
 
