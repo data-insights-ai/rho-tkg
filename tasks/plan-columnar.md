@@ -3,6 +3,51 @@
 Status: proposed 2026-08-04. Scope is ADDITIVE. No redesign, no breaking change
 to a published contract.
 
+## STATUS (2026-08-04)
+
+| item | state | result |
+|---|---|---|
+| R1 typed numeric columns + lazy boxed view | **shipped** | 2x less memory (32.1 -> 16.2 B/row); typed scan 0 allocs, 1.78x faster; legacy door flat |
+| R2a validity columns + zone map | **shipped** | +28.7% build, +16.1 B/row; snapshot now carries validity for what the OLD value-only column cost |
+| R2b badger ScanNodeColumns + shared row fallback | **shipped** | columnar path with zone-map skip; A/B oracle vs the row path |
+| R2c zone-map skipping | **shipped in R2a, used in R2b** | 98% of blocks skipped when clustered, 0% when scattered — both pinned |
+| R3 append-extend instead of rebuild | **mechanism shipped** | 5.5x faster than rebuild (1,013 -> 186 us), memory parity |
+| R3-wiring: use Extend on the store read path | **OPEN — the only one** | see below |
+
+### The one remaining item: wiring Extend into the stores
+
+`LabelDocValues.Extend` exists, is 5.5x faster than a rebuild, and is verified
+indistinguishable from one. Nothing calls it yet, because deciding "only appends
+happened since this snapshot" needs write-path bookkeeping the store does not
+keep today:
+
+1. A per-label buffer of node IDs ADDED since the current snapshot epoch.
+2. A second epoch counter that advances only on NON-append changes (update,
+   delete, label change, purge). The existing `labelEpoch` keeps its meaning.
+3. Read path: if the non-append epoch is unchanged, `Extend` with the buffered
+   IDs; otherwise rebuild exactly as today.
+
+Deliberately NOT started in the same pass as the mechanism. It touches the node
+write path — the most safety-critical code in the store — across both backends,
+and a bug there is a wrong answer rather than a slow one. The mechanism is
+independently shippable and independently verified, which is what makes stopping
+here a clean boundary rather than a half-change.
+
+Guard rails for whoever does it: `Extend` already refuses every non-append shape
+and returns nil, so the wiring's failure mode is a rebuild, never a wrong answer.
+The bookkeeping must be conservative in the same direction — when in doubt about
+whether a change was an append, treat it as not one.
+
+### What this does to the rewrite question
+
+R3 **removes the main argument** for replacing the derived cache with a native
+columnar store. The rebuild tax was the one thing a native structure had that the
+cache could not match; an append that costs 5.5x less than a rebuild closes most
+of that gap for the dominant write shape. What remains for a native structure is
+persistence across restart and zone maps applied BEFORE I/O — both real, neither
+a factor-level win. Recommendation is now firmly: wire R3, gather the
+builds-per-read telemetry, and revisit only if it still says otherwise.
+
 ## What already exists (read this before proposing anything)
 
 The library is **not** missing a columnar structure. `index.LabelDocValues`
