@@ -481,6 +481,11 @@ type Store struct {
 	relEpoch   atomic.Uint64
 	docMu      sync.Mutex
 	docColumns map[uint16]*indexpkg.LabelDocValues
+	// relColumns is the REL-TYPE keyed sibling of docColumns: one columnar snapshot
+	// per relationship type, carrying endpoint columns alongside properties. Same
+	// immutable epoch-stamped model, but stamped with the GLOBAL relEpoch, so any
+	// edge write invalidates every type (see RelMutationEpochForType).
+	relColumns map[uint16]*indexpkg.DocValues[types.RelID]
 	// docColumnsMulti caches label-INTERSECTION columns (multi-label patterns like
 	// (p:A:B)), keyed by the order-independent token-tuple key (MultiLabelKey).
 	// Same docMu guard + lock-free epoch-keyed build as docColumns.

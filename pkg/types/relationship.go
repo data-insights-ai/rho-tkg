@@ -355,6 +355,22 @@ func (r *Relationship) Temporal() *TemporalMetadata {
 	return r.temporal
 }
 
+// ValidRange returns the relationship's validity bounds and whether it carries
+// temporal metadata at all. ok=false means no metadata; a zero ValidTo means
+// open-ended, the store-wide convention.
+//
+// The node-side counterpart's rationale applies verbatim: Temporal() must COPY the
+// metadata for a frozen entity (its fields are exported, so a shared pointer is a
+// write escape hatch), and every entity a store scan hands back is frozen. Returning
+// two values by copy has nothing to alias, so it costs no allocation — which matters
+// wherever bounds are read once per entity across a whole relationship type.
+func (r *Relationship) ValidRange() (from, to Instant, ok bool) {
+	if r == nil || r.temporal == nil {
+		return 0, 0, false
+	}
+	return r.temporal.ValidFrom, r.temporal.ValidTo, true
+}
+
 // SetTemporal sets the relationship's temporal metadata.
 func (r *Relationship) SetTemporal(tm *TemporalMetadata) {
 	if r == nil {
