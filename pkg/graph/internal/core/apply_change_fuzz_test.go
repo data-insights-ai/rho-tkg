@@ -93,8 +93,8 @@ func FuzzApplyChange(f *testing.F) {
 		f.Add(tag, []byte{0xc0}) // a single msgpack nil byte
 		f.Add(tag, []byte{0xff, 0xff, 0xff, 0xff})
 	}
-	f.Add(byte(0), []byte(nil))   // invalid tag (0 is reserved/unused)
-	f.Add(byte(99), []byte(nil))  // invalid tag (out of range)
+	f.Add(byte(0), []byte(nil))  // invalid tag (0 is reserved/unused)
+	f.Add(byte(99), []byte(nil)) // invalid tag (out of range)
 	f.Add(byte(255), []byte{0x01})
 
 	f.Fuzz(func(t *testing.T, tag byte, payload []byte) {

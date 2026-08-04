@@ -2,6 +2,7 @@ package core
 
 import (
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -273,7 +274,14 @@ func (c *Core) buildAsOfColumns(label string, propKeys []string, txAt types.Inst
 				return 0, 0, false
 			}
 			f, t, ok := nd.ValidRange()
-			return int64(f), int64(t), ok
+			// EntityValidFrom's rule: an unset ValidFrom means the entity is valid
+			// from its MINT time, not from the epoch. Storing the raw 0 would make a
+			// columnar reader disagree with every row-path filter on exactly those
+			// nodes (Pattern 38).
+			if !ok || f == 0 {
+				f = storeutil.SnowflakeInstant(id.SnowflakeID())
+			}
+			return int64(f), int64(t), true
 		}
 		col = indexpkg.BuildLabelDocValues(epoch, ids, buildKeys, getProp, getTemporal)
 		return nil

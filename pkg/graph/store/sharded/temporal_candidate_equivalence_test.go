@@ -4,8 +4,8 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 

@@ -184,21 +184,23 @@ func (l *LabelDocValues) ValidFrom() []int64 { return l.validFrom }
 func (l *LabelDocValues) ValidTo() []int64   { return l.validTo }
 
 // BlockCanMatch reports whether the ordinal block starting at `start` can contain
-// any row whose validity interval overlaps [qFrom, qTo]. A false means the whole
+// any row matching the half-open query window [qFrom, qTo). A false means the whole
 // block is skippable; a true means "maybe", so the caller still tests rows.
 //
-// qTo == 0 means an open-ended query (no upper bound). Overlap is half-open in the
-// usual sense: a row [f,t) matches when f <= qTo and (t == 0 || t > qFrom).
+// qTo == 0 means NO FILTER (never skip). The row predicate this approximates is
+// storeutil's: a row [f,t) matches when f < qTo and (t == 0 || t > qFrom). The
+// upper bound is STRICT — a block whose earliest row starts exactly at qTo cannot
+// match, and using >= here rather than > would wrongly retain it.
 func (l *LabelDocValues) BlockCanMatch(start int, qFrom, qTo int64) bool {
-	if !l.hasTemporal {
-		return true // no zone map — never skip
+	if !l.hasTemporal || qTo == 0 {
+		return true // no zone map, or no filter — never skip
 	}
 	b := start / zoneBlockSize
 	if b < 0 || b >= len(l.zoneMinFrom) {
 		return true
 	}
-	// Every row in the block starts after the query's upper bound -> no overlap.
-	if qTo != 0 && l.zoneMinFrom[b] > qTo {
+	// Every row in the block starts at or after the query's upper bound -> no overlap.
+	if l.zoneMinFrom[b] >= qTo {
 		return false
 	}
 	// Every row in the block ended at or before the query's lower bound -> no
@@ -350,6 +352,12 @@ func (v ColumnView) IsFloat(ord int) bool {
 
 // StringAt returns the dictionary term at ord (a header copy, no allocation).
 func (v ColumnView) StringAt(ord int) string { return v.Dict[v.Codes[ord]] }
+
+// Mixed reports whether a numeric column holds BOTH integral and floating values,
+// so it has no single type. A consumer with a one-kind-per-column output contract
+// must refuse such a column rather than pick a half: reading the int array for a
+// float row returns a plausible wrong number, not an error.
+func (v ColumnView) Mixed() bool { return v.isFloat != nil }
 
 // View returns the typed handle for a usable column, or ok=false for an absent or
 // unbuildable key — mirroring Has exactly, so a columnar reader declines the whole

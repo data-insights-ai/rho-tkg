@@ -2,6 +2,7 @@ package memory
 
 import (
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
+	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -231,7 +232,11 @@ func (ms *Store) buildColumnsLocked(set map[types.NodeID]struct{}, requested []s
 			return 0, 0, false
 		}
 		f, t, has := n.ValidRange()
-		return int64(f), int64(t), has
+		// See core/docvalues.go: an unset ValidFrom resolves to the mint time.
+		if !has || f == 0 {
+			f = storeutil.SnowflakeInstant(id.SnowflakeID())
+		}
+		return int64(f), int64(t), true
 	}
 	return indexpkg.BuildLabelDocValues(cur, ids, keys, getProp, getTemporal)
 }

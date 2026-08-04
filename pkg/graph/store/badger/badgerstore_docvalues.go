@@ -326,7 +326,10 @@ func (bs *Store) bulkNodeGetters(ids []types.NodeID) (
 					return 0, 0, false
 				}
 				f, t, ok := nd.ValidRange()
-				return int64(f), int64(t), ok
+				if !ok || f == 0 {
+					f = storepkg.SnowflakeInstant(id.SnowflakeID())
+				}
+				return int64(f), int64(t), true
 			}
 	}
 	// Both closures read the SAME materialised map, so the value columns and the
@@ -343,6 +346,9 @@ func (bs *Store) bulkNodeGetters(ids []types.NodeID) (
 				return 0, 0, false
 			}
 			f, t, ok := nd.ValidRange()
-			return int64(f), int64(t), ok
+			if !ok || f == 0 {
+				f = storepkg.SnowflakeInstant(id.SnowflakeID())
+			}
+			return int64(f), int64(t), true
 		}
 }
