@@ -174,13 +174,38 @@ func (bs *Store) buildMultiColumns(toks []uint16, key string, requested []string
 
 	keys := requested
 	bs.docMu.Lock()
-	if old := bs.docColumnsMulti[key]; old != nil {
+	old := bs.docColumnsMulti[key]
+	if old != nil {
 		keys = indexpkg.UnionKeys(old.Keys(), requested)
 	}
 	bs.docMu.Unlock()
 
+	// APPEND FAST PATH for the intersection (R3). Same guards as the single-label
+	// path; the difference is that membership must be re-derived, since an appended
+	// node joins A∩B only if it carries every member label.
+	if old != nil && old.HasAll(keys) {
+		if added, ok := bs.takeMultiAppendDelta(toks, gen, old.Epoch()); ok {
+			gp, gt := bs.bulkNodeGetters(added)
+			if ext := old.Extend(gen, added, gp, gt); ext != nil {
+				bs.docMu.Lock()
+				if bs.multiLabelEpoch(toks) == gen {
+					if bs.docColumnsMulti == nil {
+						bs.docColumnsMulti = make(map[string]*indexpkg.LabelDocValues)
+					}
+					bs.docColumnsMulti[key] = ext
+					bs.docMu.Unlock()
+					bs.clearMultiAppendDelta(toks)
+					bs.columnExtends.Add(1)
+					return ext, false
+				}
+				bs.docMu.Unlock()
+			}
+		}
+	}
+
 	getProp, getTemporal := bs.bulkNodeGetters(ids)
 	col = indexpkg.BuildLabelDocValues(gen, ids, keys, getProp, getTemporal)
+	bs.columnRebuilds.Add(1)
 
 	bs.docMu.Lock()
 	if bs.multiLabelEpoch(toks) == gen {
@@ -188,6 +213,9 @@ func (bs *Store) buildMultiColumns(toks []uint16, key string, requested []string
 			bs.docColumnsMulti = make(map[string]*indexpkg.LabelDocValues)
 		}
 		bs.docColumnsMulti[key] = col
+		bs.docMu.Unlock()
+		bs.clearMultiAppendDelta(toks)
+		return col, false
 	}
 	bs.docMu.Unlock()
 	return col, false

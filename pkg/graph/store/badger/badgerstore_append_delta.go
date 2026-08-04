@@ -151,6 +151,71 @@ func (bs *Store) takeAppendDelta(token uint16, gen uint64) ([]types.NodeID, bool
 	return out, true
 }
 
+// takeMultiAppendDelta is the label-INTERSECTION analogue of takeAppendDelta: the
+// IDs appended since a snapshot over toks was built, restricted to nodes that
+// actually join the intersection.
+//
+// THE EXACTNESS CHECK IS AN ACCOUNTING IDENTITY, not a per-label epoch match, and
+// that is what makes the intersection case answerable at all. multiLabelEpoch is the
+// SUM of the member labels' epochs, and every recorded append bumped exactly one
+// epoch per label the node carries. So if
+//
+//	multiLabelEpoch(toks) - snapshotEpoch == sum over toks of len(delta[tok].ids)
+//
+// then EVERY epoch bump across every member label was a recorded append. A write
+// that bumped without being recorded — an unrelated label sharing a 256-stripe, a
+// direct bump, the global salt — leaves the sum short and the whole thing declines.
+// A node carrying a label outside toks bumps that label too, but multiLabelEpoch
+// does not sum it, so the identity still balances.
+//
+// MEMBERSHIP: an appended node joins A∩B only if it carries every token, which is
+// exactly "appears in every member label's list".
+func (bs *Store) takeMultiAppendDelta(toks []uint16, gen, snapshotEpoch uint64) ([]types.NodeID, bool) {
+	if len(toks) == 0 {
+		return nil, false
+	}
+	bs.appendMu.Lock()
+	defer bs.appendMu.Unlock()
+
+	var recorded uint64
+	counts := make(map[types.NodeID]int)
+	for _, tok := range toks {
+		d := bs.appendDeltas[tok]
+		if d == nil || d.poisoned {
+			return nil, false
+		}
+		recorded += uint64(len(d.ids))
+		for _, id := range d.ids {
+			counts[id]++
+		}
+	}
+	if gen < snapshotEpoch || gen-snapshotEpoch != recorded {
+		return nil, false // some bump was not a recorded append
+	}
+
+	need := len(toks)
+	out := make([]types.NodeID, 0, len(counts))
+	for id, c := range counts {
+		if c == need { // carries every member label
+			out = append(out, id)
+		}
+	}
+	if len(out) == 0 {
+		return nil, false // nothing joins the intersection — a rebuild is no worse
+	}
+	return out, true
+}
+
+// clearMultiAppendDelta drops the pending record for every member label of an
+// intersection once a snapshot covering those appends exists.
+func (bs *Store) clearMultiAppendDelta(toks []uint16) {
+	bs.appendMu.Lock()
+	for _, tok := range toks {
+		delete(bs.appendDeltas, tok)
+	}
+	bs.appendMu.Unlock()
+}
+
 // clearAppendDelta drops a label's pending record, called once a snapshot covering
 // those appends has been built or extended.
 func (bs *Store) clearAppendDelta(token uint16) {

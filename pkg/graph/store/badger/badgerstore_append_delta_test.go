@@ -338,3 +338,91 @@ func TestAppendDelta_ConcurrentInsertsAndReads(t *testing.T) {
 		}
 	}
 }
+
+// --- label-INTERSECTION append path ---
+
+const adLabelB uint16 = 12
+
+// adPutMulti inserts a node carrying adLabel and, optionally, adLabelB.
+func adPutMulti(t *testing.T, bs *Store, id, qty int64, both bool) {
+	t.Helper()
+	var extra []uint16
+	if both {
+		extra = []uint16{adLabelB}
+	}
+	n := types.NewNode(types.NodeID(id), adLabel, extra)
+	if err := n.SetProperty("qty", qty); err != nil {
+		t.Fatalf("SetProperty: %v", err)
+	}
+	n.SetTemporal(&types.TemporalMetadata{ValidFrom: types.Instant(id * 10)})
+	if err := bs.PutNode(n); err != nil {
+		t.Fatalf("PutNode %d: %v", id, err)
+	}
+}
+
+func adReadMulti(t *testing.T, bs *Store) map[int64]int64 {
+	t.Helper()
+	got := map[int64]int64{}
+	_, ok, err := bs.ForEachDocValuesMulti([]uint16{adLabel, adLabelB}, []string{"qty"},
+		func(id types.NodeID, vals []any, present []bool) bool {
+			if present[0] {
+				got[int64(id)] = vals[0].(int64)
+			}
+			return true
+		})
+	if err != nil {
+		t.Fatalf("ForEachDocValuesMulti: %v", err)
+	}
+	if !ok {
+		t.Fatal("ForEachDocValuesMulti declined")
+	}
+	return got
+}
+
+// TestAppendDelta_IntersectionExtendsAndExcludesNonMembers is the intersection
+// analogue, and its sharp edge is MEMBERSHIP: an appended node joins A∩B only if it
+// carries BOTH labels. A node with only A bumps A's epoch and lands in A's append
+// record, so a naive extend would splice it into the intersection snapshot.
+func TestAppendDelta_IntersectionExtendsAndExcludesNonMembers(t *testing.T) {
+	bs := adStore(t)
+	for i := int64(1); i <= 4; i++ {
+		adPutMulti(t, bs, i, i*100, true)
+	}
+	adWant(t, adReadMulti(t, bs), map[int64]int64{1: 100, 2: 200, 3: 300, 4: 400})
+	extends := bs.ColumnExtendCount()
+
+	adPutMulti(t, bs, 5, 500, true)  // joins A∩B
+	adPutMulti(t, bs, 6, 600, false) // A only — must NOT appear
+
+	got := adReadMulti(t, bs)
+	if _, wrong := got[6]; wrong {
+		t.Error("a node carrying only one label was spliced into the INTERSECTION " +
+			"snapshot; it bumps that label's epoch and lands in its append record, " +
+			"so membership must be re-derived rather than assumed")
+	}
+	adWant(t, got, map[int64]int64{1: 100, 2: 200, 3: 300, 4: 400, 5: 500})
+	if bs.ColumnExtendCount() == extends {
+		t.Error("the intersection refresh rebuilt instead of extending")
+	}
+}
+
+// TestAppendDelta_IntersectionRebuildsAfterDelete pins that the intersection path
+// obeys the same poison as the single-label one.
+func TestAppendDelta_IntersectionRebuildsAfterDelete(t *testing.T) {
+	bs := adStore(t)
+	for i := int64(1); i <= 4; i++ {
+		adPutMulti(t, bs, i, i*100, true)
+	}
+	adReadMulti(t, bs)
+
+	if err := bs.DeleteNode(types.NodeID(2)); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+	adPutMulti(t, bs, 5, 500, true) // no read between the two writes
+
+	got := adReadMulti(t, bs)
+	if _, stillThere := got[2]; stillThere {
+		t.Fatal("intersection read returned node 2 after it was deleted")
+	}
+	adWant(t, got, map[int64]int64{1: 100, 3: 300, 4: 400, 5: 500})
+}
