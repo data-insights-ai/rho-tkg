@@ -93,15 +93,15 @@ func (ms *Store) ScanNodeColumns(token uint16, props []string, opts storecontrac
 				// qty is 2, another's is 2.0) and dropping either side loses rows
 				// that every consumer expects to join.
 				if numericKind(batch.Kinds[c]) && numericKind(kind) {
-					promoteToFloat(batch, c)
-					if kind == storecontract.ColInt64 {
-						f64 = float64(i64)
-					}
-					kind = storecontract.ColFloat64
-				} else {
-					appendAbsent(batch, c, true)
-					continue
+					// REFUSE, do not widen. Promoting to float64 is lossless for
+					// the values and not for the caller: a consumer that decides
+					// something from OBSERVING a mixed column sees a uniform one
+					// and decides the opposite. A visible refusal is the honest
+					// outcome; the caller falls back to the row path.
+					return storecontract.ErrMixedNumericColumn
 				}
+				appendAbsent(batch, c, true)
+				continue
 			}
 			batch.Null[c] = append(batch.Null[c], false)
 			switch kind {
@@ -131,23 +131,6 @@ func (ms *Store) ScanNodeColumns(token uint16, props []string, opts storecontrac
 // numericKind reports whether a column kind participates in float widening.
 func numericKind(k storecontract.ColumnKind) bool {
 	return k == storecontract.ColInt64 || k == storecontract.ColFloat64
-}
-
-// promoteToFloat converts a column already accumulated as int64 into float64,
-// in place, so earlier rows survive the widening rather than being dropped.
-func promoteToFloat(b *storecontract.ColumnBatch, c int) {
-	if b.Kinds[c] == storecontract.ColFloat64 {
-		return
-	}
-	if cap(b.Flts[c]) < len(b.Ints[c]) {
-		b.Flts[c] = make([]float64, 0, len(b.Ints[c])+1)
-	}
-	b.Flts[c] = b.Flts[c][:0]
-	for _, v := range b.Ints[c] {
-		b.Flts[c] = append(b.Flts[c], float64(v))
-	}
-	b.Ints[c] = b.Ints[c][:0]
-	b.Kinds[c] = storecontract.ColFloat64
 }
 
 // appendAbsent records a missing value, keeping every column slice the same length

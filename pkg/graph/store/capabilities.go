@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -1045,6 +1046,16 @@ type ColumnBatch struct {
 //
 // fn is called with batches in ID order and MUST NOT retain the batch — the slices
 // are reused across calls. Returning false stops the scan.
+// ErrMixedNumericColumn reports that a requested column holds both integral and
+// floating values, so it has no single type.
+//
+// The scan REFUSES rather than widening. Promoting such a column to float64 is
+// lossless for the values and NOT lossless for the caller: a consumer that decides
+// something from observing a mixed column — a query planner widening literals to
+// match, say — sees a uniform one instead and decides the opposite. Handing back a
+// typed column here would trade a visible refusal for a silent behaviour change.
+var ErrMixedNumericColumn = errors.New("graph: column holds both integral and floating values")
+
 type NodeColumnScanCapability interface {
 	ScanNodeColumns(token uint16, props []string, opts QueryOpts,
 		fn func(*ColumnBatch) bool) error
