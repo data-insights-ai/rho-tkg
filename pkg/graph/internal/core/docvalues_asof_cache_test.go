@@ -338,7 +338,7 @@ func TestAsOfColumnCache_EvictionAndEpochGuard(t *testing.T) {
 	a := newAsOfColumnCache()
 	epoch := a.currentEpoch()
 	emptyCol := func() *indexpkg.LabelDocValues {
-		return indexpkg.BuildLabelDocValues(epoch, nil, nil, func(types.NodeID, string) (any, bool) { return nil, false })
+		return indexpkg.BuildLabelDocValues(epoch, nil, nil, func(types.NodeID, string) (any, bool) { return nil, false }, nil)
 	}
 
 	// Fill past the cap → oldest entries evicted, size stays bounded.
@@ -379,7 +379,7 @@ func TestAsOfColumnCache_LRUNotFIFO(t *testing.T) {
 	a := newAsOfColumnCache()
 	epoch := a.currentEpoch()
 	emptyCol := func() *indexpkg.LabelDocValues {
-		return indexpkg.BuildLabelDocValues(epoch, nil, nil, func(types.NodeID, string) (any, bool) { return nil, false })
+		return indexpkg.BuildLabelDocValues(epoch, nil, nil, func(types.NodeID, string) (any, bool) { return nil, false }, nil)
 	}
 
 	for i := 0; i < asOfCacheCap; i++ {

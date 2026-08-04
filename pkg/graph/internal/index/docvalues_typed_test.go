@@ -20,7 +20,7 @@ func buildOne(t *testing.T, ids []types.NodeID, vals map[types.NodeID]any) *Labe
 	for id, v := range vals {
 		props[id] = map[string]any{"v": v}
 	}
-	return BuildLabelDocValues(1, ids, []string{"v"}, getter(props))
+	return BuildLabelDocValues(1, ids, []string{"v"}, getter(props), nil)
 }
 
 // TestTypedColumn_StorageStateIsTheCheapestExactOne asserts the STRUCTURE, not an

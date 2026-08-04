@@ -42,7 +42,7 @@ func TestDocValues_Int64PrecisionPreserved(t *testing.T) {
 	props := map[types.NodeID]map[string]any{
 		1: {"v": big}, 2: {"v": int64(5)}, 3: {"v": 7.5},
 	}
-	l := BuildLabelDocValues(1, ids, []string{"v"}, getter(props))
+	l := BuildLabelDocValues(1, ids, []string{"v"}, getter(props), nil)
 	got := map[types.NodeID]any{}
 	l.ForEachRow([]string{"v"}, func(id types.NodeID, vs []any, ps []bool) bool {
 		got[id] = vs[0]
@@ -70,7 +70,7 @@ func TestDocValues_FullMembershipAndAbsent(t *testing.T) {
 		3: {"age": int64(40)},
 		// node 4: no properties at all
 	}
-	l := BuildLabelDocValues(1, ids, []string{"age"}, getter(props))
+	l := BuildLabelDocValues(1, ids, []string{"age"}, getter(props), nil)
 	gotIDs, vals, present := collectRows(l, []string{"age"})
 	if len(gotIDs) != 4 {
 		t.Fatalf("rows = %d, want 4 (full membership)", len(gotIDs))
@@ -96,7 +96,7 @@ func TestDocValues_StringDictEncoding(t *testing.T) {
 	props := map[types.NodeID]map[string]any{
 		1: {"city": "berlin"}, 2: {"city": "munich"}, 3: {"city": "berlin"}, 4: {"city": "berlin"},
 	}
-	l := BuildLabelDocValues(1, ids, []string{"city"}, getter(props))
+	l := BuildLabelDocValues(1, ids, []string{"city"}, getter(props), nil)
 	if !l.Has("city") {
 		t.Fatal("city column not buildable")
 	}
@@ -124,7 +124,7 @@ func TestDocValues_HeterogeneousUnbuildable(t *testing.T) {
 	}
 	for name, props := range cases {
 		t.Run(name, func(t *testing.T) {
-			l := BuildLabelDocValues(1, ids, []string{"x"}, getter(props))
+			l := BuildLabelDocValues(1, ids, []string{"x"}, getter(props), nil)
 			if l.Has("x") {
 				t.Fatalf("%s: column reported buildable, want unbuildable (fallback)", name)
 			}
@@ -144,7 +144,7 @@ func TestDocValues_ZippedAlignment(t *testing.T) {
 		3: {"city": "b", "age": int64(20)},
 		5: {"city": "a", "age": int64(30)},
 	}
-	l := BuildLabelDocValues(1, ids, []string{"city", "age"}, getter(props))
+	l := BuildLabelDocValues(1, ids, []string{"city", "age"}, getter(props), nil)
 	gotIDs, vals, _ := collectRows(l, []string{"city", "age"})
 	// Sorted ordinal order: 1, 3, 5.
 	want := []struct {
@@ -167,8 +167,8 @@ func TestDocValues_Immutable(t *testing.T) {
 	ids := []types.NodeID{1}
 	v1 := map[types.NodeID]map[string]any{1: {"v": int64(1)}}
 	v2 := map[types.NodeID]map[string]any{1: {"v": int64(2)}}
-	old := BuildLabelDocValues(1, ids, []string{"v"}, getter(v1))
-	_ = BuildLabelDocValues(2, ids, []string{"v"}, getter(v2)) // a "rebuild" at a new epoch
+	old := BuildLabelDocValues(1, ids, []string{"v"}, getter(v1), nil)
+	_ = BuildLabelDocValues(2, ids, []string{"v"}, getter(v2), nil) // a "rebuild" at a new epoch
 	var got any
 	old.ForEachRow([]string{"v"}, func(_ types.NodeID, vs []any, _ []bool) bool { got = vs[0]; return true })
 	if got.(int64) != 1 {
@@ -221,7 +221,7 @@ func TestPointSnapshot_OrderAndComparator(t *testing.T) {
 		40: {"amt": int64(4), "city": "d"},
 		50: {"amt": int64(5), "city": "e"},
 	}
-	col := BuildLabelDocValues(1, ids, []string{"amt", "city"}, getter(props))
+	col := BuildLabelDocValues(1, ids, []string{"amt", "city"}, getter(props), nil)
 
 	// Request the keys in the REVERSE of storage/sorted order to catch an order bug.
 	snap, ok := col.NewPointSnapshot([]string{"city", "amt"})
@@ -256,7 +256,7 @@ func TestPointSnapshot_DeclineUnbuildable(t *testing.T) {
 		1: {"score": int64(5)},
 		2: {"score": []any{int64(1)}}, // mixed numeric/list → unbuildable
 	}
-	col := BuildLabelDocValues(1, ids, []string{"score"}, getter(props))
+	col := BuildLabelDocValues(1, ids, []string{"score"}, getter(props), nil)
 	if _, ok := col.NewPointSnapshot([]string{"score"}); ok {
 		t.Fatal("NewPointSnapshot accepted an unbuildable (mixed-type) column — Trap B")
 	}
@@ -269,7 +269,7 @@ func TestPointSnapshot_AllAbsentBuildable(t *testing.T) {
 	ids := []types.NodeID{1, 2, 3}
 	// Members exist but NONE has "amt" — a buildable (numeric) all-absent column.
 	props := map[types.NodeID]map[string]any{1: {"other": int64(1)}, 2: {"other": int64(2)}, 3: {"other": int64(3)}}
-	col := BuildLabelDocValues(1, ids, []string{"amt"}, getter(props))
+	col := BuildLabelDocValues(1, ids, []string{"amt"}, getter(props), nil)
 	snap, ok := col.NewPointSnapshot([]string{"amt"})
 	if !ok {
 		t.Fatal("NewPointSnapshot declined an all-absent buildable column — must stay buildable (Trap B')")

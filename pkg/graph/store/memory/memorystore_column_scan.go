@@ -44,12 +44,12 @@ func (ms *Store) ScanNodeColumns(token uint16, props []string, opts storecontrac
 		IDs:       make([]types.NodeID, 0, columnScanBatchRows),
 		ValidFrom: make([]int64, 0, columnScanBatchRows),
 		ValidTo:   make([]int64, 0, columnScanBatchRows),
-		Kinds: make([]storecontract.ColumnKind, nCols),
-		Ints:  make([][]int64, nCols),
-		Flts:  make([][]float64, nCols),
-		Strs:  make([][]string, nCols),
-		Bools: make([][]bool, nCols),
-		Null:  make([][]bool, nCols),
+		Kinds:     make([]storecontract.ColumnKind, nCols),
+		Ints:      make([][]int64, nCols),
+		Flts:      make([][]float64, nCols),
+		Strs:      make([][]string, nCols),
+		Bools:     make([][]bool, nCols),
+		Null:      make([][]bool, nCols),
 	}
 	kindKnown := make([]bool, nCols)
 	reset := func() {

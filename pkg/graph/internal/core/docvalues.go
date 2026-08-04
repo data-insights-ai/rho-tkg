@@ -267,7 +267,15 @@ func (c *Core) buildAsOfColumns(label string, propKeys []string, txAt types.Inst
 			}
 			return nd.GetProperty(key)
 		}
-		col = indexpkg.BuildLabelDocValues(epoch, ids, buildKeys, getProp)
+		getTemporal := func(id types.NodeID) (int64, int64, bool) {
+			nd, present := byID[id]
+			if !present {
+				return 0, 0, false
+			}
+			f, t, ok := nd.ValidRange()
+			return int64(f), int64(t), ok
+		}
+		col = indexpkg.BuildLabelDocValues(epoch, ids, buildKeys, getProp, getTemporal)
 		return nil
 	})
 	if err != nil {

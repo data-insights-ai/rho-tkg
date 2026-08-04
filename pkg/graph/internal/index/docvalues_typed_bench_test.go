@@ -23,7 +23,7 @@ func BenchmarkBuildNumericColumn(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = BuildLabelDocValues(1, ids, []string{"v"}, get)
+		_ = BuildLabelDocValues(1, ids, []string{"v"}, get, nil)
 	}
 }
 
@@ -35,7 +35,7 @@ func BenchmarkBuildNumericColumn_ThenBoxedRead(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		l := BuildLabelDocValues(1, ids, []string{"v"}, get)
+		l := BuildLabelDocValues(1, ids, []string{"v"}, get, nil)
 		l.ForEachRow([]string{"v"}, func(types.NodeID, []any, []bool) bool { return true })
 	}
 }
@@ -43,7 +43,7 @@ func BenchmarkBuildNumericColumn_ThenBoxedRead(b *testing.B) {
 // BenchmarkScanColumn_Typed vs _Boxed: the per-read cost on an already-built column.
 func BenchmarkScanColumn_Typed(b *testing.B) {
 	ids, get := benchIDs(100_000)
-	l := BuildLabelDocValues(1, ids, []string{"v"}, get)
+	l := BuildLabelDocValues(1, ids, []string{"v"}, get, nil)
 	v, _ := l.View("v")
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -61,7 +61,7 @@ func BenchmarkScanColumn_Typed(b *testing.B) {
 
 func BenchmarkScanColumn_Boxed(b *testing.B) {
 	ids, get := benchIDs(100_000)
-	l := BuildLabelDocValues(1, ids, []string{"v"}, get)
+	l := BuildLabelDocValues(1, ids, []string{"v"}, get, nil)
 	l.ForEachRow([]string{"v"}, func(types.NodeID, []any, []bool) bool { return true }) // warm the view
 	b.ReportAllocs()
 	b.ResetTimer()

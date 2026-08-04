@@ -428,6 +428,24 @@ func (n *Node) Temporal() *TemporalMetadata {
 	return n.temporal
 }
 
+// ValidRange returns the node's validity bounds and whether it carries temporal
+// metadata at all. ok=false means no metadata; a zero ValidTo means open-ended,
+// the store-wide convention.
+//
+// Prefer this over Temporal() when only the validity bounds are wanted. Temporal()
+// must COPY the metadata for a frozen entity (exported fields, so a shared pointer
+// is a write escape hatch), which costs one allocation per call — and every entity
+// a store scan hands back is frozen. Returning the two values by copy has nothing
+// to alias, so it is safe for frozen and unfrozen entities alike and allocates
+// nothing. That matters wherever bounds are read once per entity across a whole
+// label (bulk/columnar builds), where the per-call copy would otherwise dominate.
+func (n *Node) ValidRange() (from, to Instant, ok bool) {
+	if n == nil || n.temporal == nil {
+		return 0, 0, false
+	}
+	return n.temporal.ValidFrom, n.temporal.ValidTo, true
+}
+
 // SetTemporal sets the node's temporal metadata.
 func (n *Node) SetTemporal(tm *TemporalMetadata) {
 	if n == nil {

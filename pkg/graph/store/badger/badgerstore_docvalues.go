@@ -179,7 +179,8 @@ func (bs *Store) buildMultiColumns(toks []uint16, key string, requested []string
 	}
 	bs.docMu.Unlock()
 
-	col = indexpkg.BuildLabelDocValues(gen, ids, keys, bs.bulkNodePropGetter(ids))
+	getProp, getTemporal := bs.bulkNodeGetters(ids)
+	col = indexpkg.BuildLabelDocValues(gen, ids, keys, getProp, getTemporal)
 
 	bs.docMu.Lock()
 	if bs.multiLabelEpoch(toks) == gen {
@@ -190,6 +191,13 @@ func (bs *Store) buildMultiColumns(toks []uint16, key string, requested []string
 	}
 	bs.docMu.Unlock()
 	return col, false
+}
+
+// bulkNodePropGetter is the property-only view of bulkNodeGetters, for callers
+// that build value columns without validity columns.
+func (bs *Store) bulkNodePropGetter(ids []types.NodeID) func(types.NodeID, string) (any, bool) {
+	getProp, _ := bs.bulkNodeGetters(ids)
+	return getProp
 }
 
 // intersectLabelsLocked returns the node IDs present in EVERY label token, driven
@@ -253,7 +261,8 @@ func (bs *Store) buildLabelColumns(labelToken uint16, requested []string) (col *
 	}
 	bs.docMu.Unlock()
 
-	col = indexpkg.BuildLabelDocValues(gen, ids, keys, bs.bulkNodePropGetter(ids))
+	getProp, getTemporal := bs.bulkNodeGetters(ids)
+	col = indexpkg.BuildLabelDocValues(gen, ids, keys, getProp, getTemporal)
 
 	bs.docMu.Lock()
 	if bs.labelEpoch(labelToken) == gen { // build saw a consistent snapshot — safe to cache
@@ -274,7 +283,10 @@ func (bs *Store) buildLabelColumns(labelToken uint16, requested []string) (col *
 // bulk scan is no-fill (scan discipline: cache hits served without promotion, so
 // it does not pollute the LRU). On a bulk-scan error it falls back to per-node
 // reads so the build still completes correctly.
-func (bs *Store) bulkNodePropGetter(ids []types.NodeID) func(types.NodeID, string) (any, bool) {
+func (bs *Store) bulkNodeGetters(ids []types.NodeID) (
+	func(types.NodeID, string) (any, bool),
+	func(types.NodeID) (int64, int64, bool),
+) {
 	sorted := append([]types.NodeID(nil), ids...)
 	storepkg.SortNodeIDs(sorted)
 	mat := make(map[types.NodeID]*types.Node, len(sorted))
@@ -299,19 +311,38 @@ func (bs *Store) bulkNodePropGetter(ids []types.NodeID) func(types.NodeID, strin
 		})
 	}
 	if buildErr != nil {
+		// Bulk decode failed — fall back to per-ID reads. Both closures degrade
+		// together; a getter pair where only one degraded would build a snapshot
+		// whose value and validity columns came from different reads.
 		return func(id types.NodeID, key string) (any, bool) {
-			nd, gerr := bs.GetNode(id)
-			if gerr != nil || nd == nil {
-				return nil, false
+				nd, gerr := bs.GetNode(id)
+				if gerr != nil || nd == nil {
+					return nil, false
+				}
+				return nd.GetProperty(key)
+			}, func(id types.NodeID) (int64, int64, bool) {
+				nd, gerr := bs.GetNode(id)
+				if gerr != nil || nd == nil {
+					return 0, 0, false
+				}
+				f, t, ok := nd.ValidRange()
+				return int64(f), int64(t), ok
+			}
+	}
+	// Both closures read the SAME materialised map, so the value columns and the
+	// validity columns are guaranteed to come from one consistent decode.
+	return func(id types.NodeID, key string) (any, bool) {
+			nd := mat[id]
+			if nd == nil {
+				return nil, false // deleted between the membership snapshot and the scan
 			}
 			return nd.GetProperty(key)
+		}, func(id types.NodeID) (int64, int64, bool) {
+			nd := mat[id]
+			if nd == nil {
+				return 0, 0, false
+			}
+			f, t, ok := nd.ValidRange()
+			return int64(f), int64(t), ok
 		}
-	}
-	return func(id types.NodeID, key string) (any, bool) {
-		nd := mat[id]
-		if nd == nil {
-			return nil, false // deleted between the membership snapshot and the scan
-		}
-		return nd.GetProperty(key)
-	}
 }

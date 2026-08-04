@@ -1034,11 +1034,11 @@ type ColumnBatch struct {
 	ValidFrom []int64
 	ValidTo   []int64
 	Kinds     []ColumnKind
-	Ints  [][]int64
-	Flts  [][]float64
-	Strs  [][]string
-	Bools [][]bool
-	Null  [][]bool
+	Ints      [][]int64
+	Flts      [][]float64
+	Strs      [][]string
+	Bools     [][]bool
+	Null      [][]bool
 }
 
 // NodeColumnScanCapability is OPTIONAL. Backends that do not implement it are

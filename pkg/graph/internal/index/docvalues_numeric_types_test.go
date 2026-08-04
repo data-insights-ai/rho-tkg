@@ -41,7 +41,7 @@ func TestDocValues_WidenedNumericTypesBuildable(t *testing.T) {
 				1: {"x": tc.val},
 				2: {"x": int64(99)},
 			}
-			l := BuildLabelDocValues(1, ids, []string{"x"}, getter(props))
+			l := BuildLabelDocValues(1, ids, []string{"x"}, getter(props), nil)
 			if !l.Has("x") {
 				t.Fatalf("%s: column reported unbuildable, want buildable (numeric) — BACKLOG 16c regression", tc.name)
 			}
@@ -74,7 +74,7 @@ func TestDocValues_Uint64OverflowFallsBackToFloat64(t *testing.T) {
 	huge := uint64(math.MaxInt64) + 1000
 	ids := []types.NodeID{1}
 	props := map[types.NodeID]map[string]any{1: {"x": huge}}
-	l := BuildLabelDocValues(1, ids, []string{"x"}, getter(props))
+	l := BuildLabelDocValues(1, ids, []string{"x"}, getter(props), nil)
 	if !l.Has("x") {
 		t.Fatalf("column reported unbuildable, want buildable (numeric)")
 	}
@@ -106,7 +106,7 @@ func TestDocValues_MixedWidenedTypesInOneColumn(t *testing.T) {
 		4: {"x": int64(4)},
 		5: {"x": float64(5.5)},
 	}
-	l := BuildLabelDocValues(1, ids, []string{"x"}, getter(props))
+	l := BuildLabelDocValues(1, ids, []string{"x"}, getter(props), nil)
 	if !l.Has("x") {
 		t.Fatalf("mixed-width numeric column reported unbuildable — BACKLOG 16c regression")
 	}

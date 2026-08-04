@@ -225,5 +225,13 @@ func (ms *Store) buildColumnsLocked(set map[types.NodeID]struct{}, requested []s
 		}
 		return n.GetProperty(key)
 	}
-	return indexpkg.BuildLabelDocValues(cur, ids, keys, getProp)
+	getTemporal := func(id types.NodeID) (int64, int64, bool) {
+		n, ok := ms.nodes[id]
+		if !ok {
+			return 0, 0, false
+		}
+		f, t, has := n.ValidRange()
+		return int64(f), int64(t), has
+	}
+	return indexpkg.BuildLabelDocValues(cur, ids, keys, getProp, getTemporal)
 }

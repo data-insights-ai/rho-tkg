@@ -140,6 +140,109 @@ type LabelDocValues struct {
 	epoch   uint64
 	nodeIDs []types.NodeID
 	cols    map[string]*docColumn // propKey -> column (only buildable keys present)
+
+	// Validity bounds, ordinal-aligned with nodeIDs, or nil when the builder was
+	// given no temporal accessor. A zero validTo means open-ended (the store-wide
+	// convention), NOT "ends at the epoch"; an entity with no temporal metadata at
+	// all gets zero in both, which is indistinguishable from "valid for all time"
+	// and is why hasTemporal is tracked separately rather than inferred.
+	//
+	// IMPORTANT — these do NOT filter membership. A snapshot's rows remain the FULL
+	// unfiltered label set (see the file header); these columns let a reader EVALUATE
+	// a valid-time predicate without materialising the entity, they do not pre-apply
+	// one. Any reader that wants an as-of view must still test them per row (or skip
+	// blocks via zoneBlocks, below).
+	validFrom   []int64
+	validTo     []int64
+	hasTemporal bool
+
+	// Zone map: per-block min/max of validFrom/validTo over zoneBlockSize ordinals,
+	// so a valid-time predicate can skip whole blocks on metadata alone instead of
+	// testing every row. nil when hasTemporal is false.
+	zoneMinFrom []int64
+	zoneMaxFrom []int64
+	zoneMinTo   []int64
+	zoneMaxTo   []int64
+	// zoneOpenEnded[b] reports whether block b contains any row with validTo == 0
+	// (open-ended). Such a row has no upper bound, so zoneMaxTo cannot represent it
+	// and a block containing one can never be skipped on its upper bound. Folding
+	// the zero into zoneMaxTo as a literal 0 would make the block look like it ends
+	// at the epoch and silently drop live rows.
+	zoneOpenEnded []bool
+}
+
+// zoneBlockSize is the zone-map granularity, matched to the column-scan batch size
+// so a skipped block is exactly a skipped batch.
+const zoneBlockSize = 4096
+
+// HasTemporal reports whether this snapshot carries validity columns.
+func (l *LabelDocValues) HasTemporal() bool { return l.hasTemporal }
+
+// ValidFrom/ValidTo are the ordinal-aligned validity bounds, or nil when the
+// snapshot has none. Immutable; callers must not write to them.
+func (l *LabelDocValues) ValidFrom() []int64 { return l.validFrom }
+func (l *LabelDocValues) ValidTo() []int64   { return l.validTo }
+
+// BlockCanMatch reports whether the ordinal block starting at `start` can contain
+// any row whose validity interval overlaps [qFrom, qTo]. A false means the whole
+// block is skippable; a true means "maybe", so the caller still tests rows.
+//
+// qTo == 0 means an open-ended query (no upper bound). Overlap is half-open in the
+// usual sense: a row [f,t) matches when f <= qTo and (t == 0 || t > qFrom).
+func (l *LabelDocValues) BlockCanMatch(start int, qFrom, qTo int64) bool {
+	if !l.hasTemporal {
+		return true // no zone map — never skip
+	}
+	b := start / zoneBlockSize
+	if b < 0 || b >= len(l.zoneMinFrom) {
+		return true
+	}
+	// Every row in the block starts after the query's upper bound -> no overlap.
+	if qTo != 0 && l.zoneMinFrom[b] > qTo {
+		return false
+	}
+	// Every row in the block ended at or before the query's lower bound -> no
+	// overlap. Only sound when NO row in the block is open-ended, since an
+	// open-ended row has no upper bound to compare.
+	if !l.zoneOpenEnded[b] && l.zoneMaxTo[b] != 0 && l.zoneMaxTo[b] <= qFrom {
+		return false
+	}
+	return true
+}
+
+// buildZoneMap computes per-block min/max over the validity columns.
+func (l *LabelDocValues) buildZoneMap() {
+	n := len(l.nodeIDs)
+	blocks := (n + zoneBlockSize - 1) / zoneBlockSize
+	l.zoneMinFrom = make([]int64, blocks)
+	l.zoneMaxFrom = make([]int64, blocks)
+	l.zoneMinTo = make([]int64, blocks)
+	l.zoneMaxTo = make([]int64, blocks)
+	l.zoneOpenEnded = make([]bool, blocks)
+
+	for b := 0; b < blocks; b++ {
+		lo := b * zoneBlockSize
+		hi := min(lo+zoneBlockSize, n)
+		minF, maxF := l.validFrom[lo], l.validFrom[lo]
+		var minT, maxT int64
+		open, seenClosed := false, false
+		for ord := lo; ord < hi; ord++ {
+			f, t := l.validFrom[ord], l.validTo[ord]
+			minF, maxF = min(minF, f), max(maxF, f)
+			if t == 0 {
+				open = true
+				continue // an open-ended row contributes no upper bound
+			}
+			if !seenClosed {
+				minT, maxT, seenClosed = t, t, true
+				continue
+			}
+			minT, maxT = min(minT, t), max(maxT, t)
+		}
+		l.zoneMinFrom[b], l.zoneMaxFrom[b] = minF, maxF
+		l.zoneMinTo[b], l.zoneMaxTo[b] = minT, maxT
+		l.zoneOpenEnded[b] = open
+	}
 }
 
 // Epoch returns the store node-mutation epoch this snapshot was built at.
@@ -400,8 +503,13 @@ func (c *docColumn) boxedDict() []any {
 // the raw stored property value exactly as the per-node path reads it. The
 // returned LabelDocValues contains only buildable columns; unbuildable propKeys
 // are omitted (Has reports false), so the consumer falls back for them.
+// getTemporal, when non-nil, supplies each node's validity bounds so the snapshot
+// can carry them as columns and build a zone map. Pass nil to build value columns
+// only; a reader then sees HasTemporal() == false and must fall back for any
+// valid-time predicate rather than assuming "no bounds" means "valid for all time".
 func BuildLabelDocValues(epoch uint64, nodeIDs []types.NodeID, propKeys []string,
-	getProp func(types.NodeID, string) (any, bool)) *LabelDocValues {
+	getProp func(types.NodeID, string) (any, bool),
+	getTemporal func(types.NodeID) (validFrom, validTo int64, ok bool)) *LabelDocValues {
 
 	ids := slices.Clone(nodeIDs)
 	slices.SortFunc(ids, func(a, b types.NodeID) int {
@@ -410,6 +518,20 @@ func BuildLabelDocValues(epoch uint64, nodeIDs []types.NodeID, propKeys []string
 	n := len(ids)
 
 	l := &LabelDocValues{epoch: epoch, nodeIDs: ids, cols: make(map[string]*docColumn, len(propKeys))}
+
+	if getTemporal != nil && n > 0 {
+		l.validFrom = make([]int64, n)
+		l.validTo = make([]int64, n)
+		l.hasTemporal = true
+		for ord, id := range ids {
+			// A node with no metadata keeps (0,0) — the same shape as an unbounded
+			// entity, which is why the column pair alone is not a membership filter.
+			if f, t, ok := getTemporal(id); ok {
+				l.validFrom[ord], l.validTo[ord] = f, t
+			}
+		}
+		l.buildZoneMap()
+	}
 	for _, key := range propKeys {
 		if _, done := l.cols[key]; done {
 			continue // duplicate requested key
