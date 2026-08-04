@@ -26,14 +26,22 @@ const (
 	nodeDeleteRetryBackoffCap  = 4
 )
 
-// nodeDeleteRetryBackoff sleeps for a randomized jitter interval before a
-// deleteNodeInternal TOCTOU retry, see the constants above.
-func nodeDeleteRetryBackoff(attempt int) {
+// nodeDeleteRetryBackoffDuration is the randomized jitter a TOCTOU retry waits,
+// split out from the sleep so a test can assert the BOUND without measuring wall
+// clock. The bound is the property BACKLOG 9r guards; how long the scheduler
+// actually parks the goroutine is not.
+func nodeDeleteRetryBackoffDuration(attempt int) time.Duration {
 	if attempt > nodeDeleteRetryBackoffCap {
 		attempt = nodeDeleteRetryBackoffCap
 	}
 	maxSleep := nodeDeleteRetryBackoffBase << attempt
-	time.Sleep(time.Duration(rand.Int64N(int64(maxSleep))))
+	return time.Duration(rand.Int64N(int64(maxSleep)))
+}
+
+// nodeDeleteRetryBackoff sleeps for a randomized jitter interval before a
+// deleteNodeInternal TOCTOU retry, see the constants above.
+func nodeDeleteRetryBackoff(attempt int) {
+	time.Sleep(nodeDeleteRetryBackoffDuration(attempt))
 }
 
 // =============================================================================

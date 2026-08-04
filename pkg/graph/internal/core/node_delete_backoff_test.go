@@ -10,23 +10,26 @@ import (
 // unconditional runtime.Gosched() it replaced) and must not grow unbounded
 // as the attempt number increases — nodeDeleteRetryBackoffCap caps the
 // exponent so even a pathological attempt count keeps the max sleep small.
+// Asserts the COMPUTED duration, not observed wall clock. It used to time an
+// actual sleep with 50ms of slack and still failed on CI at 61.8ms: a shared
+// runner can park a goroutine far past any slack a correctness test should carry,
+// so that assertion was measuring the scheduler rather than the code. The bound
+// and the cap are what BACKLOG 9r guards, and both are properties of the returned
+// duration.
 func TestNodeDeleteRetryBackoff_BoundedAndCapped(t *testing.T) {
 	t.Parallel()
 
 	maxAtCap := nodeDeleteRetryBackoffBase << nodeDeleteRetryBackoffCap
 
 	for _, attempt := range []int{0, 1, nodeDeleteRetryBackoffCap, nodeDeleteRetryBackoffCap + 1, 100} {
-		for i := 0; i < 20; i++ {
-			start := time.Now()
-			nodeDeleteRetryBackoff(attempt)
-			elapsed := time.Since(start)
-			if elapsed < 0 {
-				t.Fatalf("attempt %d: negative elapsed duration %v", attempt, elapsed)
+		for i := 0; i < 1000; i++ { // many more draws than the timed version could afford
+			d := nodeDeleteRetryBackoffDuration(attempt)
+			if d < 0 {
+				t.Fatalf("attempt %d: negative backoff %v", attempt, d)
 			}
-			// Generous upper bound: the randomized sleep itself is capped at
-			// maxAtCap, plus scheduling slack.
-			if elapsed > maxAtCap+50*time.Millisecond {
-				t.Fatalf("attempt %d: slept %v, want <= ~%v (capped)", attempt, elapsed, maxAtCap)
+			if d >= maxAtCap {
+				t.Fatalf("attempt %d: backoff %v, want < %v — the exponent cap did not hold",
+					attempt, d, maxAtCap)
 			}
 		}
 	}
