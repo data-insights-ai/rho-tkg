@@ -224,6 +224,7 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePr
 		// query could keep answering from a column snapshot still containing
 		// this node's now-deleted row.
 		bs.nodeEpochSalt.Add(1)
+		bs.poisonAllLabels() // label-less event: no per-label append record can describe it (R3)
 		return toDelete, fmt.Errorf("graph: cascade completed with corrupt node data: %w", err), nil
 	}
 

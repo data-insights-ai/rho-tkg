@@ -102,6 +102,7 @@ func (bs *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 	// against a purge path that skips the per-node count wrappers). BACKLOG 4b.
 	defer bs.bumpNodeEpoch()
 	defer bs.nodeEpochSalt.Add(1)
+	defer bs.poisonAllLabels() // label-less event: no per-label append record can describe it (R3)
 	defer bs.bumpRelEpoch()
 	if chunk <= 0 {
 		chunk = defaultRetentionPurgeChunk

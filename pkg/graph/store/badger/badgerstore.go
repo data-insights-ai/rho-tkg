@@ -464,6 +464,15 @@ type Store struct {
 	// (the ungated wrappers every node-content write funnels through, with the node).
 	nodeLabelEpochs [nodeLabelEpochStripes]atomic.Uint64
 	nodeEpochSalt   atomic.Uint64
+
+	// Append-delta bookkeeping (R3): per-label record of pure inserts since that
+	// label's columnar snapshot was built, letting a read EXTEND the snapshot
+	// instead of rebuilding it. See badgerstore_append_delta.go.
+	appendMu     sync.Mutex
+	appendDeltas map[uint16]*appendDelta
+	// Refresh counters: how many columnar snapshots were EXTENDED versus rebuilt.
+	columnExtends  atomic.Uint64
+	columnRebuilds atomic.Uint64
 	// relEpoch: DISTINCT generation counter bumped on every relationship write. The
 	// expand-aggregation column path reads ADJACENCY, so its Gate-2 re-check must
 	// see edge mutations (nodeEpoch alone would wave through a torn aggregate from a
@@ -1909,6 +1918,7 @@ func (bs *Store) Clear() error {
 	bs.nextNodeRev = 0
 	bs.nodeEpoch.Add(1)     // invalidate cached columns built before Clear
 	bs.nodeEpochSalt.Add(1) // label-less event: invalidate every per-label column too (BACKLOG 4b)
+	bs.poisonAllLabels()    // label-less event: no per-label append record can describe it (R3)
 	bs.relEpoch.Add(1)      // and the adjacency view (expand path)
 	bs.docMu.Lock()
 	bs.docColumns = nil

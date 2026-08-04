@@ -153,6 +153,7 @@ func (bs *Store) ExactErase(req storecontract.ExactErasureRequest) (storecontrac
 	bs.docMu.Unlock()
 	bs.bumpNodeEpoch()
 	bs.nodeEpochSalt.Add(1)
+	bs.poisonAllLabels() // label-less event: no per-label append record can describe it (R3)
 	bs.bumpRelEpoch()
 
 	if err := bs.flushIndexLocked(true); err != nil {
