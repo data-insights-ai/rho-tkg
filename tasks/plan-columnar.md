@@ -272,6 +272,61 @@ capability over its bulk ROW iterator instead, the way the memory backend does
 use the column store, so it should be chosen deliberately as a stopgap and
 labelled one, not slipped in as if it were the columnar path.
 
+## Would a full typed/columnar STRUCTURE win big? (asked directly)
+
+Short answer: **not on read CPU, and the honest case for it rests on one number
+nobody has measured yet — rebuild amortisation.** Setting out what is known, so
+the decision is not made on vibes.
+
+**Reads are already cheap, so "boxing is slow" is not the argument.** A stored
+value read through `any` costs 0.26 ns and zero allocations, because the box
+already exists in storage. Replacing the representation cannot beat 0.26 ns.
+Anyone proposing typed storage on read-CPU grounds is proposing it for a cost
+that is not there.
+
+**The real wins are memory and locality, and they are bounded and known:**
+
+| layer | per row | note |
+|---|---|---|
+| `Property{Key string; Value any}` | 32 B + 8 B box | 16 B key header + 16 B iface |
+| typed column (shipped, R1) | 8 B | already achieved, in the CACHE |
+
+So the columnar layer ALREADY captures the layout win for analytical reads.
+A native columnar backend does not add a new factor there — it makes the
+existing factor durable.
+
+**What a native structure would actually add, that the cache cannot:**
+
+1. **No rebuild.** This is the one that matters. The snapshot is invalidated by
+   epoch advance, so every write to a label throws away that label's columns and
+   the next read rebuilds them. Measured at 100k rows, one column:
+   build 1,038 us against a typed scan of 270 us — **one rebuild costs ~3.8
+   scans.** If a label is written more often than roughly once per four reads of
+   it, the cache is net-negative and a native columnar store wins by exactly the
+   margin the rebuild wastes. Below that ratio the cache already captures most of
+   the benefit and a rewrite buys little.
+2. **Persistence** — columns survive restart instead of being rebuilt cold.
+3. **Storage-level zone maps** — skip blocks before I/O, not after. The zone map
+   shipped in R2a skips work only once the snapshot is already in RAM.
+
+**Therefore the decision hinges on a read/write ratio per label, which is
+workload-specific and currently unmeasured.** Per-label epochs (BACKLOG 4b)
+already stop unrelated writes from invalidating a label, which pushes many
+workloads into the favourable region.
+
+**The measurement that would settle it**, before any rewrite is justified:
+instrument snapshot build count against snapshot read count per label under a
+representative workload. If builds/reads > ~0.26 (the 1/3.8 break-even), the
+rebuild tax is real and a native structure pays for itself. If it is far below,
+the cache is the right architecture and the remaining wins are persistence and
+cold-start only — worth doing eventually, not worth a redesign now.
+
+**Recommendation: finish R2b/R2c first.** They are additive, they are cheap, and
+they make the columnar path reachable by real consumers — which is also what
+produces the build/read telemetry the rewrite decision needs. Deciding on a
+rewrite before that telemetry exists would be deciding without the one number
+that distinguishes the two answers.
+
 ## Order and acceptance
 
 1. **R1** — typed numeric + lazy boxed cache. Accept: existing docvalues tests
