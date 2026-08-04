@@ -11,6 +11,11 @@ type (
 	ColumnKind  = storepkg.ColumnKind
 )
 
+// ErrMixedNumericColumn is re-exported so a consumer can errors.Is against it
+// without importing pkg/graph/store — the rule every other store sentinel here
+// follows.
+var ErrMixedNumericColumn = storepkg.ErrMixedNumericColumn
+
 const (
 	ColInt64   = storepkg.ColInt64
 	ColFloat64 = storepkg.ColFloat64
