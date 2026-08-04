@@ -147,14 +147,33 @@ func TestTieredColdShardFastDrop_ConcurrentWriters(t *testing.T) {
 				t.Errorf("GetNode(survivor): %v", err)
 				return
 			}
+			// ALTERNATE add and remove rather than re-adding.
+			//
+			// The previous version always added, on the premise that a re-add is
+			// "harmless because AddLabelTokenRaw is a no-op if already present".
+			// That is true of the in-memory helper and NOT of the store door:
+			// ts.AddNodeLabelToken rejects an already-present token with
+			// ErrInvalidStoreMutation. So once idx lapped survivorIDs, every
+			// iteration failed the test — and whether it lapped depended purely on
+			// how many iterations fitted before the drop finished, which is
+			// scheduling. It passed locally and failed on a loaded CI runner.
+			//
+			// Alternating is also what this loop is FOR: after the first lap the
+			// add-only version stopped mutating anything, so the write pressure the
+			// test exists to apply had already collapsed.
 			updated := n.DeepCopy()
-			updated.AddLabelTokenRaw(caseTok)
-			if err := ts.AddNodeLabelToken(id, caseTok, updated); err != nil {
-				t.Errorf("AddNodeLabelToken(survivor): %v", err)
+			var toggleErr error
+			if n.HasLabelTokenRaw(caseTok) {
+				updated.RemoveLabelTokenRaw(caseTok)
+				toggleErr = ts.RemoveNodeLabelToken(id, caseTok, updated)
+			} else {
+				updated.AddLabelTokenRaw(caseTok)
+				toggleErr = ts.AddNodeLabelToken(id, caseTok, updated)
+			}
+			if toggleErr != nil {
+				t.Errorf("toggle label token on survivor: %v", toggleErr)
 				return
 			}
-			// Idempotent re-add on the next pass is harmless (AddLabelTokenRaw
-			// is a no-op if already present) — no need to alternate add/remove.
 			time.Sleep(50 * time.Microsecond)
 		}
 	}()
