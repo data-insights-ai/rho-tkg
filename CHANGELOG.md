@@ -4,6 +4,121 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.26.0] - 2026-08-04
+
+The columnar release: the DocValues snapshot gains typed storage, validity columns with a
+zone map, a typed scan door on the badger backend, and — the one that changes the cache's
+economics — append-EXTEND instead of invalidate-and-rebuild. Plus a full golangci-lint
+cleanup that turned out to contain eleven real documentation bugs. New public surface:
+`store.NodeColumnScanCapability` on the badger backend, `store.ScanColumnsFromNodes`,
+`types.Node.ValidRange`, and `ColumnExtendCount`/`ColumnRebuildCount` on both stores.
+
+All numbers below: Apple M4 Max, in-memory, warm and isolated. Every claim here has a
+committed benchmark or oracle behind it.
+
+- PERF — **typed numeric columns with a lazily-materialised boxed view.** A numeric column
+  stored one `any` per row: 24 bytes and one heap object each (16B interface header + 8B
+  box). Storage is now `[]int64`/`[]float64` collapsed at build to whichever of three exact
+  states fits (uniform int64, uniform float64, or mixed with a selector bitset), preserving
+  int64-vs-float64 so a consumer's accumulator stays bit-exact above 2^53.
+
+  | retained, 200k int64 rows | old | new |
+  |---|---|---|
+  | build only (a typed reader) | 32.1 B/row | **16.2 B/row** |
+  | after a boxed read (a legacy reader) | 32.1 B/row | 32.2 B/row |
+
+  Scanning a built column: **0 allocations and 1.78x faster** (269,840 vs 481,562 ns per
+  100k rows). WHY LAZY: `[]any` is in the published contract (`types.NodeColumnReader.Row`,
+  `nodes.API.ForEachDocValues`), so it cannot simply go away, and boxing per read instead
+  would allocate on EVERY value because Go heap-escapes an int64 on interface conversion.
+  The boxed array therefore survives as a `sync.Once` cache built on first boxed read:
+  typed readers never materialise it, boxed readers pay exactly what they paid before.
+  Strictly better at both doors.
+
+- FEAT — **validity columns and a zone map on the snapshot.** `LabelDocValues` now carries
+  `validFrom`/`validTo` as ordinal-aligned int64 columns plus a per-4096-ordinal min/max,
+  so a reader can evaluate a valid-time predicate WITHOUT materialising the entity and skip
+  whole blocks that cannot match. Cost: +28.7% build time and +16.1 B/row — which leaves
+  the snapshot carrying validity AND a zone map for the same memory the old value-only
+  column cost. Membership is UNCHANGED: the rows remain the full unfiltered label set; the
+  columns let a reader EVALUATE a predicate, they do not pre-apply one.
+
+  Zone maps are a CLUSTERING BET and both sides are pinned by tests: **98% of blocks skipped
+  on a clustered column, 0% on a scattered one.** The clustered case is the natural one
+  rather than a lucky fixture — snapshots sort by NodeID, snowflake IDs ascend with mint
+  time, and an unset ValidFrom resolves to mint time — but backfilled data with arbitrary
+  explicit bounds gets no benefit.
+
+  Two soundness traps, both mutation-checked: a `validTo` of 0 means OPEN-ENDED, not "ended
+  at 0", so folding it into the block maximum would silently drop every live row in that
+  block; and a node with no temporal metadata lands at (0,0), indistinguishable from
+  unbounded, so the presence of temporal columns is tracked explicitly rather than inferred.
+
+- FEAT — **`ScanNodeColumns` on the badger backend**, served from the columnar snapshot:
+  values from the typed arrays, validity from the temporal columns, whole blocks skipped by
+  the zone map, no `*types.Node` materialised and no value boxed. The row path moved to the
+  shared `store.ScanColumnsFromNodes` so the two backends cannot drift on when a column
+  REFUSES versus reports a row absent. The fallback is not optional: the capability returns
+  only `error`, so the columnar path's every decline (membership not in RAM, empty or
+  over-cap label, unbuildable or mixed column, an unsupported `QueryOpts` shape) falls
+  through rather than failing the call.
+
+- PERF — **append-EXTEND instead of rebuild** (`LabelDocValues.Extend`), wired into both
+  stores. Epoch advance used to discard a label's columns so the next read rebuilt the
+  WHOLE label — O(label size) even when the read wanted a handful of rows. A pure insert now
+  extends: **1,013 us -> 186 us (5.5x) at memory parity** for a 100-row append to a 100k
+  label.
+
+  The two backends needed OPPOSITE safety arguments. badger funnels every node write
+  through two ungated seams, so recording on the add seam and poisoning on the remove seam
+  covers everything with no call-site audit (an UPDATE is remove-then-add and a DELETE is
+  remove, so both poison). memory has sixteen scattered epoch-bump sites and no such seam,
+  and its own field comment already rejects auditing them, so there the bump POISONS and
+  only the insert path opts in — nothing can opt in by omission, including code added later.
+  On top of both, each record stamps the epoch after its own bump and the fast path runs
+  only if that stamp still matches at read time, so any unrecorded bump forces a rebuild.
+  **Every failure mode is a rebuild, never a wrong answer.**
+
+  A mutation test found a real gap in the first test suite: deleting badger's poison broke
+  NOTHING, because two other guards happened to cover every case written. Neither covers
+  DELETE-THEN-INSERT WITH NO READ BETWEEN — the epoch stamp matches, the insert is a clean
+  append, and the deleted row's absence is invisible to `Extend`, which only inspects what is
+  being ADDED. The read returns a deleted node. Both that case and its stale-value sibling
+  are now pinned in both stores.
+
+- FEAT — **`types.Node.ValidRange`** returns validity bounds without the copy `Temporal()`
+  must make for a frozen entity (exported fields, so a shared pointer is a write escape
+  hatch, and every entity a store scan returns is frozen). One allocation per entity saved
+  across a whole-label read.
+
+- FEAT — **`ColumnExtendCount` / `ColumnRebuildCount`** on both stores. Both refresh paths
+  return identical data by construction, so no correctness test can distinguish them; these
+  are what let a test prove the append path fires rather than silently never firing, and
+  they are the builds-per-read telemetry for deciding whether a native columnar store would
+  ever pay for itself.
+
+- FIX — **eleven real documentation bugs**, surfaced by the lint sweep. SIX orphaned doc
+  comments had drifted onto the wrong declaration, leaving the function they describe
+  undocumented and the one above them documented twice (`Incoming`, `NodesAsOf`,
+  `IncomingRelationships` in both backends, `ForEachNodeByLabelPropertyRange`,
+  `ErrForeignStampImplausible`). FIVE were stale names left by renames: `DropProperty` /
+  `DropTemporal` / `DropHighFrequency` / `DropVector` documented methods now called
+  `Delete*`, and `GetByIDs` documented `GetNodesByIDs`.
+
+- CHORE — **golangci-lint is now clean (0 issues, from 99).** The previously-reported
+  count was capped: golangci-lint defaults to `max-issues-per-linter=50`, so revive was
+  truncated and the true total was 99. 42 were an incomplete exclusion list rather than
+  code — the "should have comment or be unexported" rule already excluded internal/core,
+  badger and tiered, and index/storeutil/memory/sharded are the same two categories
+  (internal packages export only across the internal boundary; store backends implement an
+  interface documented once on the interface). 10 were dead code with ZERO call sites,
+  now deleted. 6 were simplifications the linter was right about: `emit` in both history
+  scanners appends to a slice and cannot fail, so its always-nil error is gone — and that
+  cascaded, because `drainPendingBefore` could then no longer fail either. Deliberate
+  patterns (pointer-identity assertions, a nil context asserting `ErrNilContext`, an empty
+  critical section asserting a writer acquires immediately) keep narrow `//nolint` with a
+  reason rather than a rewrite that would destroy the assertion.
+
 ## [4.25.1] - 2026-08-04
 
 - CHORE — bumped the transitive `go.opentelemetry.io/otel{,/metric,/trace}` modules v1.37.0 →
