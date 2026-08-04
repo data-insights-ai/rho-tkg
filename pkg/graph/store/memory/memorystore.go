@@ -163,8 +163,13 @@ type Store struct {
 	// see edge mutations too — nodeEpoch alone would wave through a torn aggregate
 	// from a concurrent edge insert. Kept separate from nodeEpoch so node-only
 	// scan/projection column caches do not rebuild on edge-heavy writes.
-	relEpoch   atomic.Uint64
-	docColumns map[uint16]*indexpkg.LabelDocValues
+	relEpoch atomic.Uint64
+	// appendDelta records pure inserts since the last non-append write, letting a
+	// read EXTEND a cached column instead of rebuilding it. Guarded by ms.mu.
+	appendDelta    appendDeltaState
+	columnExtends  atomic.Uint64
+	columnRebuilds atomic.Uint64
+	docColumns     map[uint16]*indexpkg.LabelDocValues
 	// docColumnsMulti caches columns for a LABEL INTERSECTION (multi-label
 	// patterns like (p:A:B)), keyed by the order-independent token-tuple key
 	// (indexpkg.MultiLabelKey). Same epoch-validated immutable-snapshot model as
@@ -232,7 +237,19 @@ type Store struct {
 // bumpNodeEpoch marks every cached DocValues column potentially stale. Called by
 // every node-mutation path (add/replace/label-change/delete/batch). A spurious
 // bump (on a no-op or errored mutation) is safe — it only forces a rebuild.
-func (ms *Store) bumpNodeEpoch() { ms.nodeEpoch.Add(1) }
+// bumpNodeEpoch invalidates every cached column AND poisons the append record.
+// POISON IS THE DEFAULT: a write path that does not explicitly opt in via
+// bumpNodeEpochAppend keeps exactly today's rebuild behaviour, so no site has to be
+// audited and none can opt in by omission. See memorystore_append_delta.go.
+func (ms *Store) bumpNodeEpoch() {
+	ms.bumpNodeEpochRaw()
+	ms.appendDelta.poisoned = true
+	ms.appendDelta.byLabel = nil
+}
+
+// bumpNodeEpochRaw advances the epoch without touching the append record. Only the
+// two append-aware helpers call it.
+func (ms *Store) bumpNodeEpochRaw() { ms.nodeEpoch.Add(1) }
 
 // bumpRelEpoch marks the adjacency view stale for the X5 expand-aggregation column
 // path. Called by every relationship-mutation path. A spurious bump is safe.

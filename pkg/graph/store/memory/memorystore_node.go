@@ -34,7 +34,12 @@ func (ms *Store) putNodeRouted(n *types.Node, token uint64) error {
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
-	defer ms.bumpNodeEpoch()
+	// This is the INSERT path, so a successful write is an append and the label's
+	// cached column can be extended rather than rebuilt (R3). `inserted` stays nil on
+	// every error return, and a nil poisons — an error path must never leave a
+	// phantom append behind.
+	var inserted *types.Node
+	defer func() { ms.bumpNodeEpochAppend(inserted) }()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
@@ -68,7 +73,13 @@ func (ms *Store) putNodeRouted(n *types.Node, token uint64) error {
 	if err := indexpkg.AddPreparedNodeToVectorIndexes(vectorUpdates, rawID); err != nil {
 		return err
 	}
-	return ms.logNodePutRoutedLocked(n, false, token)
+	if err := ms.logNodePutRoutedLocked(n, false, token); err != nil {
+		return err
+	}
+	// Reached only on a fully successful INSERT, so the deferred bump records an
+	// append instead of poisoning.
+	inserted = n
+	return nil
 }
 
 // GetNode retrieves a node by its snowflake ID.

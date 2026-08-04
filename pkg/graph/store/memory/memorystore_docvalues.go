@@ -63,7 +63,7 @@ func (ms *Store) ForEachDocValues(labelToken uint16, propKeys []string,
 	cur := ms.nodeEpoch.Load()
 	col := ms.docColumns[labelToken]
 	if col == nil || col.Epoch() != cur || !col.HasAll(propKeys) {
-		col = ms.buildColumnsLocked(set, propKeys, ms.docColumns[labelToken], cur)
+		col = ms.refreshLabelColumnsLocked(labelToken, set, propKeys, ms.docColumns[labelToken], cur)
 		ms.docColumns[labelToken] = col
 	}
 	ms.mu.Unlock()
@@ -115,6 +115,8 @@ func (ms *Store) ForEachDocValuesMulti(toks []uint16, propKeys []string,
 			ms.mu.Unlock()
 			return 0, false, nil // empty intersection or over cap → fall back
 		}
+		// Intersection membership, NOT single-label: a per-label append record cannot
+		// say whether an appended node joins A∩B, so this path always rebuilds.
 		col = ms.buildColumnsLocked(set, propKeys, col, cur)
 		ms.docColumnsMulti[key] = col
 	}
@@ -188,7 +190,7 @@ func (ms *Store) DocValuesSnapshot(labelToken uint16, propKeys []string) (snap t
 	cur := ms.nodeEpoch.Load()
 	col := ms.docColumns[labelToken]
 	if col == nil || col.Epoch() != cur || !col.HasAll(propKeys) {
-		col = ms.buildColumnsLocked(set, propKeys, col, cur)
+		col = ms.refreshLabelColumnsLocked(labelToken, set, propKeys, col, cur)
 		ms.docColumns[labelToken] = col
 	}
 	ms.mu.Unlock()
@@ -238,5 +240,50 @@ func (ms *Store) buildColumnsLocked(set map[types.NodeID]struct{}, requested []s
 		}
 		return int64(f), int64(t), true
 	}
+	ms.columnRebuilds.Add(1)
 	return indexpkg.BuildLabelDocValues(cur, ids, keys, getProp, getTemporal)
+}
+
+// refreshLabelColumnsLocked returns a snapshot for one label at epoch cur, preferring
+// an APPEND-EXTEND of the cached one over a full rebuild (R3). Falls back to
+// buildColumnsLocked for anything that is not a clean append — including a poisoned
+// record, an epoch that does not match, a snapshot missing a requested key (Extend
+// adds rows, never columns), and every shape Extend itself refuses.
+// Must hold ms.mu (write lock).
+func (ms *Store) refreshLabelColumnsLocked(token uint16, set map[types.NodeID]struct{},
+	requested []string, old *indexpkg.LabelDocValues, cur uint64) *indexpkg.LabelDocValues {
+
+	if old != nil {
+		keys := indexpkg.UnionKeys(old.Keys(), requested)
+		if old.HasAll(keys) {
+			if added, ok := ms.appendDeltaFor(token, cur); ok {
+				getProp := func(id types.NodeID, key string) (any, bool) {
+					n, present := ms.nodes[id]
+					if !present {
+						return nil, false
+					}
+					return n.GetProperty(key)
+				}
+				getTemporal := func(id types.NodeID) (int64, int64, bool) {
+					n, present := ms.nodes[id]
+					if !present {
+						return 0, 0, false
+					}
+					f, t, has := n.ValidRange()
+					if !has || f == 0 {
+						f = storeutil.SnowflakeInstant(id.SnowflakeID())
+					}
+					return int64(f), int64(t), true
+				}
+				if ext := old.Extend(cur, added, getProp, getTemporal); ext != nil {
+					ms.clearAppendDeltaFor(token)
+					ms.columnExtends.Add(1)
+					return ext
+				}
+			}
+		}
+	}
+	col := ms.buildColumnsLocked(set, requested, old, cur)
+	ms.clearAppendDeltaFor(token)
+	return col
 }
