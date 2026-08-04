@@ -153,6 +153,47 @@ own its own placement map above the store; the store can serve such a consumer
 with fast typed scans (R1–R3), but cannot push the partitioning down. This is a
 stated boundary, not a defect, and it needs no code.
 
+## CORRECTION (2026-08-04, found while starting R2) — R2 and R3 are one item
+
+The ordering above (R1, then R2, then R3 "sequenced after") is WRONG, and the
+reason is worth keeping so it is not re-derived:
+
+**`ColumnBatch` mandates `ValidFrom []int64` / `ValidTo []int64`.** Its own doc
+comment explains why — a bitemporal consumer reading columns still has to know
+WHEN each row holds, and fetching that separately means holding the entity
+after all, which is the materialisation a column scan exists to avoid.
+
+**`LabelDocValues` carries no temporal metadata whatsoever.** Not at any of its
+three build sites (`core/docvalues.go`, `memory/memorystore_docvalues.go`,
+`badger/badgerstore_docvalues.go`), because its membership is DELIBERATELY the
+unfiltered label set.
+
+So a DocValues-backed `ScanNodeColumns` cannot fill the batch it is required to
+fill. The temporal columns are **R2's prerequisite, not R3's payload.**
+
+Compounding it: `ScanNodeColumns` takes `QueryOpts`. Serving it from an
+unfiltered snapshot means applying the valid-time predicate PER ROW after the
+scan — exactly the cost zone maps exist to remove. A DocValues-backed R2
+without zone maps would be correct and no faster on the temporal axis.
+
+**Revised sequence:**
+
+- **R2a — temporal columns in the snapshot.** `LabelDocValues` gains
+  `validFrom`/`validTo` `[]int64`, populated at build from the same node the
+  property getter already touches (so no extra I/O — badger's build already
+  iterates nodes via `bulkNodePropGetter`). Build signature gains a temporal
+  accessor; three call sites supply it. This is the unlock for everything below.
+- **R2b — badger `ScanNodeColumns` over the snapshot.** Now able to fill the
+  batch. Slices the typed arrays; no transcode.
+- **R2c/R3 — block min/max over the temporal columns.** Small once R2a exists:
+  a per-4096-ordinal min/max pair and a skip test in the scan loop.
+
+Do NOT attempt R2b before R2a. The obvious workaround — implementing badger's
+capability over its bulk ROW iterator instead, the way the memory backend does
+— is a legitimate independent option, but it converts at read time and does not
+use the column store, so it should be chosen deliberately as a stopgap and
+labelled one, not slipped in as if it were the columnar path.
+
 ## Order and acceptance
 
 1. **R1** — typed numeric + lazy boxed cache. Accept: existing docvalues tests
