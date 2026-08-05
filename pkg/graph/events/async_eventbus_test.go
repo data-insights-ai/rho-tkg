@@ -455,26 +455,96 @@ func TestAsyncEventBusPublishBatch_PriorityCeiling(t *testing.T) {
 	}
 }
 
-func TestAsyncEventBus_SlowHandlerDoesNotBlockPublish(t *testing.T) {
-	bus := NewAsyncEventBus(AsyncEventBusConfig{Workers: 1, QueueSize: 64, Backpressure: BackpressureDropLatest})
-	defer bus.Close()
+// publishBlockedTimeout bounds LIVENESS, not speed.
+//
+// It is deliberately enormous compared to the ~microseconds a non-blocking Publish
+// takes, and that is the point. These probes assert "Publish does not block", and
+// the earlier form — measure elapsed, fail if it exceeds 100ms — made a slow machine
+// indistinguishable from a blocked one, so a loaded CI runner could fail code that
+// was perfectly correct. Requiring the publishes to COMPLETE inverts the failure
+// mode: a slow runner simply uses more of this budget and still passes, while a
+// genuine block never completes and fails no matter how fast the machine is.
+const publishBlockedTimeout = 30 * time.Second
 
+// mustNotBlock runs publish on its own goroutine and requires it to finish.
+//
+// Returns only once the publishes are done, so a caller can safely release whatever
+// was holding the handler afterwards — the ordering IS the assertion in the
+// slow-handler probe.
+func mustNotBlock(t *testing.T, what string, publish func()) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		publish()
+	}()
+	select {
+	case <-done:
+	case <-time.After(publishBlockedTimeout):
+		t.Fatalf("%s: Publish did not return within %v — it BLOCKED. A non-blocking "+
+			"backpressure policy must drop rather than wait.", what, publishBlockedTimeout)
+	}
+}
+
+// stalledBus returns a bus whose every worker is BLOCKED inside the handler, and a
+// release function.
+//
+// This is what makes a queue-full probe real. Publishing "more events than
+// QueueSize" does NOT fill the queue while a worker is draining it concurrently —
+// the drop path is simply never reached, and a Publish that blocks on a full queue
+// would pass anyway. Verified: with a live worker, a mutation making DropOldest
+// block on the send passed all four probes.
+//
+// With every worker parked in the handler, exactly Workers events are in flight and
+// QueueSize more fit in the channel; everything beyond that MUST be dropped, so
+// publishing well past that boundary is the only way to exercise the policy.
+func stalledBus(t *testing.T, cfg AsyncEventBusConfig) (bus *AsyncEventBus, release func()) {
+	t.Helper()
+	bus = NewAsyncEventBus(cfg)
 	blockCh := make(chan struct{})
+	entered := make(chan struct{}, cfg.Workers)
 	bus.Subscribe(func(e Event) {
-		<-blockCh // blocks until we unblock it
+		select {
+		case entered <- struct{}{}:
+		default:
+		}
+		<-blockCh
 	})
+	var once sync.Once
+	release = func() { once.Do(func() { close(blockCh) }) }
+	t.Cleanup(release) // never leave workers parked, even on a failed assertion
 
-	// Publish many events quickly — should not block even with slow handler
-	start := time.Now()
-	for i := 0; i < 10; i++ {
+	// Park every worker before the probe publishes, so the queue state under test is
+	// deterministic rather than a race with worker start-up.
+	for i := 0; i < cfg.Workers; i++ {
 		bus.Publish(Event{Type: EventNodeCreate})
 	}
-	elapsed := time.Since(start)
-	close(blockCh)
-
-	if elapsed > 100*time.Millisecond {
-		t.Errorf("publish took too long with slow handler: %v", elapsed)
+	for i := 0; i < cfg.Workers; i++ {
+		select {
+		case <-entered:
+		case <-time.After(publishBlockedTimeout):
+			t.Fatalf("worker %d never entered the handler; the probe cannot fill the queue", i)
+		}
 	}
+	return bus, release
+}
+
+func TestAsyncEventBus_SlowHandlerDoesNotBlockPublish(t *testing.T) {
+	const queueSize = 64
+	bus, release := stalledBus(t, AsyncEventBusConfig{
+		Workers: 1, QueueSize: queueSize, Backpressure: BackpressureDropLatest,
+	})
+	defer bus.Close()
+	defer release()
+
+	// Publish PAST the queue capacity while the only worker is parked. The previous
+	// version sent 10 events into a queue of 64 and could never reach the full-queue
+	// path it meant to test.
+	mustNotBlock(t, "slow handler", func() {
+		for i := 0; i < queueSize*2; i++ {
+			bus.Publish(Event{Type: EventNodeCreate})
+		}
+	})
 }
 
 func TestAsyncEventBus_BackpressureBlock(t *testing.T) {
@@ -514,47 +584,35 @@ func TestAsyncEventBus_BackpressureBlock(t *testing.T) {
 }
 
 func TestAsyncEventBus_BackpressureDropOldest(t *testing.T) {
-	bus := NewAsyncEventBus(AsyncEventBusConfig{
-		Workers:      1,
-		QueueSize:    2,
-		Backpressure: BackpressureDropOldest,
+	bus, release := stalledBus(t, AsyncEventBusConfig{
+		Workers: 1, QueueSize: 2, Backpressure: BackpressureDropOldest,
 	})
 	defer bus.Close()
+	defer release()
 
-	var received []EventType
-	var mu sync.Mutex
-	bus.Subscribe(func(e Event) {
-		mu.Lock()
-		received = append(received, e.Type)
-		mu.Unlock()
+	// The worker is parked and the queue holds 2, so events past that MUST be
+	// evicted. A Publish that waits for space instead would never return.
+	mustNotBlock(t, "DropOldest", func() {
+		for i := 0; i < 50; i++ {
+			bus.Publish(Event{Type: EventNodeCreate})
+		}
 	})
-
-	// This just tests that publish does NOT block with DropOldest
-	start := time.Now()
-	for i := 0; i < 5; i++ {
-		bus.Publish(Event{Type: EventNodeCreate})
-	}
-	if time.Since(start) > 100*time.Millisecond {
-		t.Error("DropOldest: publish should not block")
-	}
 }
 
 func TestAsyncEventBus_BackpressureDropLatest(t *testing.T) {
-	bus := NewAsyncEventBus(AsyncEventBusConfig{
-		Workers:      1,
-		QueueSize:    2,
-		Backpressure: BackpressureDropLatest,
+	bus, release := stalledBus(t, AsyncEventBusConfig{
+		Workers: 1, QueueSize: 2, Backpressure: BackpressureDropLatest,
 	})
 	defer bus.Close()
+	defer release()
 
-	// Test that publish does NOT block when queue is full
-	start := time.Now()
-	for i := 0; i < 5; i++ {
-		bus.Publish(Event{Type: EventNodeCreate})
-	}
-	if time.Since(start) > 100*time.Millisecond {
-		t.Error("DropLatest: publish should not block")
-	}
+	// The worker is parked and the queue holds 2, so events past that MUST be
+	// discarded. A Publish that waits for space instead would never return.
+	mustNotBlock(t, "DropLatest", func() {
+		for i := 0; i < 50; i++ {
+			bus.Publish(Event{Type: EventNodeCreate})
+		}
+	})
 }
 
 func TestAsyncEventBusEnqueueLockedDefensiveBranches(t *testing.T) {

@@ -158,24 +158,24 @@ func TestAsyncEventBusOnDrop_DropLatestHandsRejectedNewcomer(t *testing.T) {
 // configured behaves exactly as before this feature: no panic, and existing
 // backpressure semantics (publish never blocks under Drop* strategies) hold.
 func TestAsyncEventBusOnDrop_NilConfigUnchanged(t *testing.T) {
-	bus := NewAsyncEventBus(AsyncEventBusConfig{
-		Workers:      1,
-		QueueSize:    2,
-		Backpressure: BackpressureDropOldest,
+	bus, release := stalledBus(t, AsyncEventBusConfig{
+		Workers: 1, QueueSize: 2, Backpressure: BackpressureDropOldest,
 	})
 	defer bus.Close()
+	defer release()
 
 	if bus.onDrop != nil {
 		t.Fatal("onDrop should be nil when AsyncEventBusConfig.OnDrop is unset")
 	}
 
-	start := time.Now()
-	for i := 0; i < 10; i++ {
-		bus.Publish(Event{Type: EventNodeCreate, Priority: PriorityNormal, EntityID: types.EntityID(i)})
-	}
-	if time.Since(start) > 500*time.Millisecond {
-		t.Error("nil OnDrop: publish should not block or slow down under DropOldest")
-	}
+	// The worker is parked and the queue holds 2, so this genuinely reaches the drop
+	// path with NO callback installed — the case where a nil onDrop would panic or,
+	// worse, turn the drop into a wait.
+	mustNotBlock(t, "nil OnDrop under DropOldest", func() {
+		for i := 0; i < 50; i++ {
+			bus.Publish(Event{Type: EventNodeCreate, Priority: PriorityNormal, EntityID: types.EntityID(i)})
+		}
+	})
 }
 
 // TestAsyncEventBusOnDrop_ReentrancyOutsideLock proves the load-bearing
