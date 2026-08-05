@@ -1348,7 +1348,7 @@ func (w *world) runIntervalProbe(backend string, seed uint64, snap *snapshot, p 
 		w.harnessFail(backend, seed, p, "Nodes.All(interval)", fmtNodeVer(oracleAll), fmtNodeVer(gm))
 	}
 
-	// NodesDuringTx (named bitemporal-interval door, sigma ask 2) — must equal the
+	// NodesDuringTx (named bitemporal-interval door) — must equal the
 	// same interval-visible-at-txAt oracle for EVERY txAt (0 included, where it
 	// collapses onto NodesDuring). This is the named-door half of the rule-17
 	// equivalence: NodesDuringTx == Nodes.All(interval) == oracle, on every backend

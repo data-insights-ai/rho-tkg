@@ -15,7 +15,7 @@ import (
 // historical-pin resolution selects the winning version on these skeletons and
 // then decodes only the winner (see core's resolve*AtViaTemporalMeta), which is
 // what turns the valid-time-axis depth cost from O(chain full decodes) into
-// O(1) full decodes (sigma-tkgd ask 1, valid-time amendment).
+// O(1) full decodes (valid-time historical resolution).
 //
 // Row handling mirrors getNodeHistoryByPrefix exactly: overlay captured BEFORE
 // the badger View (lesson 64 ordering), overlay deletes mask scanned keys,

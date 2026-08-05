@@ -96,7 +96,7 @@ const maxClockAdvanceSkewMillis = int64(10 * 365 * 24 * 60 * 60 * 1000)
 //
 // This is the Hybrid-Logical-Clock merge primitive for a distributed deployment.
 // rho-tkg's transaction clock is per-machine; two machines' clocks are not
-// globally ordered. A coordinator (sigma-tkgd) that observes a peer machine's
+// globally ordered. A coordinator (a consumer) that observes a peer machine's
 // transaction timestamp on an incoming message calls this before stamping any
 // local write, so every subsequent local TxFrom is >= every peer timestamp seen
 // — establishing a causal (happens-before) order across machines WITHOUT a

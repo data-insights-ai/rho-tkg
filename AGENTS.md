@@ -470,10 +470,7 @@ Resolved shadow values must keep their public wrapper types. In particular, `tkg
 
 ## Ecosystem
 
-| Module | Role |
-|---|---|
-| `rho/tkg/v4` | Internal library — graph types, persistence, registries (this repo) |
-| `rho/tkgd-v3` | Full product — Cypher engine, Vadalog reasoning, HTTP/gRPC server |
-| `rho/kit` | Service toolkit — app builder, logging, tracing, resilience, database |
-
-tkg/v4 does **not** depend on kit. tkgd-v3 depends on both.
+This repository is a **pure library**. Downstream applications embed it for
+graph storage, temporal history, and integrity; they own their own query
+language, network surface, and orchestration. tkg/v4 has no reverse dependency
+on those layers.

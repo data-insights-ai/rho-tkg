@@ -20,7 +20,7 @@ type RegistrySnapshot struct {
 // ReplicationSource is the replica's handle to its primary's registry. The
 // replica's apply path calls RegistrySnapshot() on an unresolved token, then
 // grows its own registry from the result. In-process, a primary's
-// g.Replication() satisfies this directly; across a network, sigma's transport
+// g.Replication() satisfies this directly; across a network, the caller's transport
 // implements it. It is injected via graph.Config.ReplicationSource or
 // g.SetReplicationSource — nil means "fail closed on an unknown token" (the
 // behaviour before this capability existed).
@@ -29,7 +29,7 @@ type ReplicationSource interface {
 }
 
 // IDSlotLeaseRecord is the durable snowflake-slot assignment an external
-// orchestrator (e.g. sigma) records for a node, read back to drive failover.
+// orchestrator (e.g. the consumer) records for a node, read back to drive failover.
 // It is a HINT, not a consensus primitive: the backing MetaSet is
 // last-writer-wins (the store runs DetectConflicts=false), so the orchestrator
 // MUST serialize lease writes — rho-tkg only persists and returns it.

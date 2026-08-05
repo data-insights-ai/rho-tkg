@@ -14,7 +14,7 @@ import (
 // checked AttestTx for presence (non-zero), never for age relative to local
 // commit time. The doc comments were rewritten to state this precisely:
 // rho-tkg enforces NO staleness bound — bounding acceptable staleness is the
-// caller's/orchestrator's (sigma-tkgd's) responsibility, enforced before
+// caller's/orchestrator's responsibility, enforced before
 // calling these doors. These tests pin the now-accurately-documented
 // behavior: Validate accepts ANY positive AttestTx, no matter how old, and
 // still rejects a zero AttestTx (the one check that DOES exist).

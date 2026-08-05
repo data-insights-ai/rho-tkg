@@ -2,7 +2,7 @@ package constraints
 
 import "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 
-// Dry-run constraint validation types (sigma HP2.5). A proposed fact set is
+// Dry-run constraint validation types. A proposed fact set is
 // validated against the configured unique + temporal constraints and the
 // violations reported WITHOUT asserting anything. See g.Constraints().DryRunValidate.
 

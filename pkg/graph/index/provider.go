@@ -1,5 +1,5 @@
 // Package index defines the public extension surface for auxiliary indexes
-// (e.g. tkgd's spatial R-tree) that live outside the graph's built-in
+// (e.g. a spatial R-tree) that live outside the graph's built-in
 // property/temporal/high-frequency/vector indexes and maintain their own
 // structures by reacting to graph lifecycle events.
 //
@@ -23,7 +23,7 @@ import (
 // graph package and are not persisted or queried through Store. The graph
 // forwards lifecycle events; providers supply their own persistence, query
 // routing, and threading. This is the extension point used by
-// tkgd's spatial R-tree.
+// an auxiliary index such as a spatial R-tree.
 //
 // Design constraints:
 //

@@ -573,7 +573,7 @@ durable snowflake-slot hint (MetaKV; `SafeUnmarshal` on read; last-writer-wins,
 not CAS); promotion is by reopen (`Close()` + `New()` under the leased
 `SnowflakeNodeID`, since the generators are built only in `New`). The
 network/orchestration half (Bolt routing, read-your-writes bookmarks, slot
-assignment) lives in sigma — rho-tkg exposes the primitives.
+assignment) lives in consumer — rho-tkg exposes the primitives.
 
 **ReadOnly mode:** `BadgerStoreConfig.ReadOnly` opens Badger read-only and skips flush/GC goroutines. TieredStore does not use read-only Badger handles for warm/cold owner shards: existing event entities still update/delete on their original shard after rotation and restart.
 

@@ -82,7 +82,7 @@ func classifyTxWindowAtTxTime(txFrom, txTo int64, txTime types.Instant) txTimeVe
 // txTime. A FULL (non-delta) v2 row is classified by PEEKING its fixed
 // transaction-time tail — no msgpack decode (the early-pin reverse walk used
 // to pay one full row decode PER WALKED VERSION just to read TxFrom/TxTo;
-// sigma-tkgd ask 1). Delta rows and legacy v1 rows fall back to the
+// a requirement). Delta rows and legacy v1 rows fall back to the
 // temporal-meta decode, so every framing keeps the same verdict.
 func (bs *Store) classifyHistoryNodeValueAtTxTime(id snowflake.ID, version uint64, val []byte, txTime types.Instant) (txTimeVersionVerdict, error) {
 	if storepkg.HistoryValueKindOf(val) == storepkg.HistoryFull {

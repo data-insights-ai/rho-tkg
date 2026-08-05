@@ -1,6 +1,6 @@
 // Package events provides the graph lifecycle event types and the two
 // publisher implementations (sync EventBus, async AsyncEventBus) used by
-// pkg/graph. This is a public sub-package: external callers (notably tkgd-v3)
+// pkg/graph. This is a public sub-package: external callers
 // import it directly to construct buses (events.NewEventBus,
 // events.NewAsyncEventBus) and observe events (events.Event, events.EventType,
 // the EventNode*/EventRel* constants, and the BackpressureStrategy variants).

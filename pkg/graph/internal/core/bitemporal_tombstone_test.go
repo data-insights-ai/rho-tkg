@@ -16,7 +16,7 @@ import (
 // already reconstructed this via normalizeTemporalVisibleAtTxTime; the
 // generic QueryOpts.TxAt scan door dropped the entity because the tombstone's
 // delete-stamped ValidTo failed valid-time coverage (rule 17: two doors, same
-// shape). Found from the consumer side: sigma-tkgd's Tyla AS OF pinning
+// shape). Found from a transaction-time AS OF pinning
 // probed 2026-07-03 that NodesAsOf resurrects while ByLabel{TxAt} does not.
 //
 // Timing discipline (two clock hazards, both observed as flakes here):

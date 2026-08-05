@@ -13,7 +13,7 @@ import (
 // the winning version of a chain purely from Version + the NUMERIC temporal
 // instants — properties, labels, hashes and provenance strings never influence
 // selection. Decoding the full wire per walked version (~80 allocs on a wide
-// row) just to read those few ints is the valid-time-axis cost sigma-tkgd's
+// row) just to read those few ints is the valid-time-axis cost a
 // depth oracle measured. wireTemporalMetaPartial decodes ONLY the selection
 // fields; msgpack skips every other map entry without materializing it.
 //

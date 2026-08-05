@@ -93,7 +93,7 @@ type DeepCopier interface {
 // domain types, and similar need an explicit opt-in via RegisterPropertyStructType.
 //
 // This is a package-level registry on purpose. Calls happen at init() time
-// of the registering package (e.g. tkgd/pkg/spatial), so they are effectively
+// of the registering package (e.g. a geometry package's init), so they are effectively
 // one-shot and visible to every subsequent PropertySlice.Set call.
 var (
 	propertyStructRegistryMu sync.RWMutex
@@ -116,7 +116,7 @@ var (
 // trust boundary). Registration fails loudly with ErrTypeNotHashable or
 // ErrTypeNotDeepCopyable rather than letting the bug reach the data plane.
 //
-// Intended for tkgd-bundled packages like pkg/spatial. Third-party callers
+// Intended for first-party packages that ship custom domain types (e.g. spatial). Third-party callers
 // are welcome, but review carefully: accepting arbitrary struct types in
 // properties widens the trust surface (serialisation, hashing, deep-copy
 // semantics must all hold).

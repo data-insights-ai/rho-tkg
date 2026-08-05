@@ -157,7 +157,7 @@ func (a *API) AddByIDForeignEnd(ctx context.Context, typeName string, startID ty
 // on the END node's machine (ADR-0010 Model A) so IncomingRelationships(END) is
 // locally complete. Called on the END node's machine after the authoritative edge
 // was created (via AddByIDForeignEnd) on the START node's machine; the caller
-// (sigma) supplies the edge fields via a store.ForeignIncomingEdge. Requires a
+// The caller supplies the edge fields via a store.ForeignIncomingEdge. Requires a
 // partitioned (sharded) store — returns ErrForeignEndpointUnsupported otherwise.
 func (a *API) RecordForeignIncoming(ctx context.Context, edge storepkg.ForeignIncomingEdge) error {
 	ops, err := a.ready()

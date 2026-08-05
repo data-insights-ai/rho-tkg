@@ -506,7 +506,7 @@ func (c *Core) nodeAtLockedTx(id types.NodeID, validAt, txAt types.Instant) (*ty
 		return current, nil
 	}
 
-	// Selection-skeleton fast path (sigma valid-time depth ask): resolve the
+	// Selection-skeleton fast path (valid-time historical resolution): resolve the
 	// point probe on per-version temporal metadata and decode ONLY the winner.
 	// Same resolver, same answer — see nodeAtViaTemporalMeta.
 	if c.temporalMetaHistory != nil {
@@ -1408,7 +1408,7 @@ func (c *Core) relsAtLockedTx(validAt, txAt types.Instant) ([]*types.Relationshi
 // superseded version is NOT retracted, so it remains the authority for its
 // valid-time slot at every later txAt — lesson 43), then applies the same
 // predicate-anywhere overlap test. This closes the multi-valid-version miss for
-// Cypher's `AS OF SYSTEM TIME t BETWEEN a AND b` (sigma ask 2), exactly as
+// transaction-time interval queries (`NodesDuringTx` / `RelsDuringTx`), exactly as
 // NodesAtTx closed it for the point case.
 //
 // to == 0 is "open-ended to now" (mirrors ValidTo == 0 and NodesDuring).

@@ -9,10 +9,10 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// BenchmarkNodeEarlyPinPointDepth mirrors sigma-tkgd's BenchmarkBitemporalDepth
+// BenchmarkNodeEarlyPinPointDepth mirrors a depth-scaling BenchmarkBitemporalDepth
 // EARLY-pin point-read arm: a node gains version depth via updates, and the
 // as-of point door is pinned at a NowTx captured right after creation — so the
-// reverse walk must skip every newer version to reach the pinned one. Sigma
+// reverse walk must skip every newer version to reach the pinned one. The consumer
 // reported ~70x growth depth 1→100 on badger (a full msgpack decode per walked
 // version); the v2 fixed-tail peek classifies each walked version without a
 // decode.
@@ -56,10 +56,10 @@ func BenchmarkNodeEarlyPinPointDepth(b *testing.B) {
 	}
 }
 
-// BenchmarkNodeValidTimeEarlyWindowDepth mirrors sigma-tkgd's
+// BenchmarkNodeValidTimeEarlyWindowDepth mirrors a depth-scaling
 // BenchmarkBitemporalDepthValidTime: each node gains versions with ASCENDING
 // explicit valid_from windows (adjacent tiling), then an OLD validity window
-// is resolved — the point read and the label AT TIME scan. Sigma reported
+// is resolved — the point read and the label AT TIME scan. Consumer reported
 // ~55x (point) / ~345x (scan) growth depth 1→100 on badger; the
 // selection-skeleton fast path (TemporalMetaHistoryCapability) resolves the
 // winner on temporal metadata and decodes only the winning row.
@@ -124,11 +124,11 @@ func BenchmarkNodeValidTimeEarlyWindowDepth(b *testing.B) {
 	}
 }
 
-// BenchmarkRelHeadPinExpandDepth mirrors sigma-tkgd's
+// BenchmarkRelHeadPinExpandDepth mirrors a depth-scaling
 // BenchmarkBitemporalDepthRels shape: relationships gain version depth via
 // updates while their endpoint nodes stay at one version, then the pinned
 // one-hop expand door (OutgoingForNodesAtPin) is measured at a HEAD pin (a
-// NowTx captured after every update). Sigma reported ~8x growth from depth 1
+// NowTx captured after every update). Consumer reported ~8x growth from depth 1
 // to depth 100 on badger while node head-pins stayed flat; this benchmark
 // exists to reproduce and localize that cost inside rho-tkg.
 func BenchmarkRelHeadPinExpandDepth(b *testing.B) {

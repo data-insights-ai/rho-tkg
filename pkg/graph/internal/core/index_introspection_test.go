@@ -1,7 +1,7 @@
 // Query-planner index-existence/config introspection doors (BACKLOG 21b) —
 // HasProperty / HasTemporal / VectorIndexInfo / HasRelProperty, the
 // single-key/vector/rel-property counterparts to HasComposite/ListComposites
-// (sigma_r3_test.go). Mirrors that test's structure: multi-backend battery,
+// (property_typeclass_test.go). Mirrors that test's structure: multi-backend battery,
 // unregistered-label/type = false (no error), create/drop lifecycle,
 // capability-absent = ErrCapabilityNotSupported.
 

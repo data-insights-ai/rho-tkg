@@ -17,7 +17,7 @@ import (
 // go through the normal create doors: the endpoint-hash ladder resolves both
 // endpoints from the local store, and a foreign end fails closed with
 // ErrSlotNotLocal. AddByIDForeignEnd is the door for that case. The caller
-// (which has RPC'd the owning machine — a sigma-tkgd concern) supplies the
+// (which has resolved the owning machine out-of-band) supplies the
 // foreign end as a store.ForeignEndpoint descriptor carrying the attested
 // tkg_to_hash and its provenance; rho-tkg locks + hashes only the LOCAL start,
 // stamps the attested to-hash, and persists via the partitioned store's
@@ -121,7 +121,7 @@ func (c *Core) addRelationshipByIDForeignEndInternal(ctx context.Context, typeNa
 
 // RecordForeignIncoming records a cross-machine edge as an incoming half-edge
 // STUB on the END node's machine (ADR-0010 Model A) so IncomingRelationships(END)
-// is locally complete. The caller (sigma), having created the authoritative edge
+// is locally complete. The caller (the caller), having created the authoritative edge
 // on the START node's machine, extracts the edge fields into a ForeignIncomingEdge
 // and RPCs them here. The type is re-tokenized in THIS machine's registry; the
 // content hash is RECOMPUTED from the same inputs, so the stub's tkg_hash is

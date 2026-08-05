@@ -31,7 +31,7 @@ var ErrInvalidForeignEndpoint = errors.New("graph: invalid foreign endpoint desc
 // old relative to local commit time. Bounding acceptable staleness (a
 // deployment policy — how large a gap is tolerable, clock-skew allowance,
 // whether to reject vs. warn) is the caller's/orchestrator's responsibility
-// (ADR-0010 §4.1; a sigma-tkgd concern per this repo's cross-team boundary),
+// (ADR-0010 §4.1; a deployment-policy concern),
 // enforced BEFORE calling AddByIDForeignEnd, not inside it. The tkg_to_hash
 // therefore reflects the foreign node's state at attest time, not at
 // local-commit time, and callers needing a bound must check AttestTx against
@@ -73,7 +73,7 @@ var ErrInvalidForeignIncoming = errors.New("graph: invalid foreign incoming edge
 // ForeignIncomingEdge describes a cross-machine edge to be recorded as an incoming
 // half-edge STUB on the END node's machine (ADR-0010 Model A). It is the mirror of
 // ForeignEndpoint, sent the OTHER direction: after the authoritative edge is
-// created on the START node's machine (via AddByIDForeignEnd), the caller (sigma)
+// created on the START node's machine (via AddByIDForeignEnd), the caller (the caller)
 // extracts these fields from the created relationship and RPCs them to the END
 // node's machine, which reconstructs a faithful stub (same rel-ID, endpoints,
 // properties, type NAME, integrity, and temporal) so IncomingRelationships(END) is

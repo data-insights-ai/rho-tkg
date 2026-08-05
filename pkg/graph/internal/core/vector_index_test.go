@@ -77,7 +77,7 @@ func TestVectorIndex_CreateAndSearch_Euclidean(t *testing.T) {
 	_ = n3
 }
 
-// TestVectorIndex_SearchNearestScored covers the sigma-tkgd ask: GraphRAG
+// TestVectorIndex_SearchNearestScored covers the requirement: GraphRAG
 // rerankers need the distance score, not just rank order. The scored door
 // returns the SAME nodes in the SAME order as SearchNearest, each paired with
 // its distance from the query under the index's metric.
@@ -213,7 +213,7 @@ func TestVectorIndex_SearchNearestScored_TemporalCaveat(t *testing.T) {
 }
 
 // TestVectorIndex_TxPinRejected pins the SearchNearest × TxPin contract
-// (sigma-tkgd ask): the vector index holds only LATEST vectors and drops
+// : the vector index holds only LATEST vectors and drops
 // deleted nodes, so a belief-state (AS OF SYSTEM TIME) ranking is ill-defined
 // — a node hard-deleted after the pin would be silently missing and distances
 // would rank by post-pin vectors. The door rejects TxPin explicitly instead of
@@ -266,7 +266,7 @@ func TestVectorIndex_TxPinRejected(t *testing.T) {
 	}
 }
 
-// TestVectorIndex_Float64Embeddings_Indexed covers the sigma-tkgd ask: a Go
+// TestVectorIndex_Float64Embeddings_Indexed covers the requirement: a Go
 // embedder storing []float64 embeddings must get an INDEXED vector (narrowed
 // to float32), not a silently unindexed property. Exercises both index-build
 // (node added before CreateVector) and auto-maintenance (node added after).

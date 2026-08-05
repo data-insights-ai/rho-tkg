@@ -10,7 +10,7 @@ import (
 )
 
 // These tests pin the selection-skeleton fast path (TemporalMetaHistoryCapability,
-// the sigma-tkgd valid-time depth ask) against the full-chain fold on IDENTICAL
+// the valid-time depth ask) against the full-chain fold on IDENTICAL
 // data: badger implements the capability, so the public doors take the skeleton
 // path; nilling c.temporalMetaHistory forces the same graph through the
 // full-chain arm. Any divergence is a fast-path bug by construction.

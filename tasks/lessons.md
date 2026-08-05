@@ -1734,7 +1734,7 @@ every generic `QueryOpts.TxAt` read (`ByLabel`/`ByType`/`All`, `NodesAtTx`,
 door (`NodeAsOf`/`NodesAsOf`) — which normalizes post-pin stamps away via
 `normalizeTemporalVisibleAtTxTime` — resurrected them correctly. Two doors, same
 shape, divergent for months (rule 17); found from the CONSUMER side when
-sigma-tkgd's Tyla `AS OF` pinning cross-probed the two doors (2026-07-03).
+Transaction-time `AS OF` pinning cross-probed the two doors (2026-07-03).
 
 Rules:
 
@@ -2280,7 +2280,7 @@ legitimately lie in the future (a future valid-to must not poison the commit clo
 
 ## 72. An Externally-Filed Perf Diagnosis Names A Plausible Mechanism — Reproduce And Profile Before Touching The Named Component
 
-The sigma-tkgd rel head-pin ask (2026-07-29) reported a real ~8× depth
+The a consumer rel head-pin ask (2026-07-29) reported a real ~8× depth
 degradation and attributed it to `RelBeliefWatermarkCapability` "not consulted
 on the `OutgoingForNodesAtPin` path" — a plausible hypothesis from outside the
 codebase, since the 10c watermark IS the known head-pin accelerator. Code

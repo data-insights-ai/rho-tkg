@@ -94,7 +94,7 @@ type Core struct {
 	// store that enumerates a chain's per-version temporal metadata WITHOUT
 	// materializing full rows lets nodeAtLockedTx/relAtLockedTx select the
 	// winning version on skeletons and decode ONLY the winner (O(1) full
-	// decodes per resolution instead of O(chain) — the sigma-tkgd valid-time
+	// decodes per resolution instead of O(chain) — the valid-time
 	// depth ask). nil = store declines (memory, tiered, sharded today), so the
 	// query materializes the full chain (correct, unaccelerated). The chain
 	// resolver stays the single selection authority: the SAME resolveNodeChain

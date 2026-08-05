@@ -10,7 +10,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 )
 
-func sigmaBackends(t *testing.T) map[string]func(t *testing.T) *Core {
+func multiBackends(t *testing.T) map[string]func(t *testing.T) *Core {
 	t.Helper()
 	return map[string]func(t *testing.T) *Core{
 		"memory": func(t *testing.T) *Core {
@@ -49,7 +49,7 @@ func assertClassCounts(t *testing.T, g *Core, label, key string, want storepkg.P
 // missing node (slices sort BEFORE numbers, nulls sort last — opposite ends);
 // the type-class partition separates every case exactly.
 func TestPropertyTypeClassCounts_SigmaProbe(t *testing.T) {
-	for name, mk := range sigmaBackends(t) {
+	for name, mk := range multiBackends(t) {
 		t.Run(name, func(t *testing.T) {
 			g := mk(t)
 			ctx := context.Background()
@@ -73,7 +73,7 @@ func TestPropertyTypeClassCounts_SigmaProbe(t *testing.T) {
 			}
 			assertClassCounts(t, g, "P", "v",
 				storepkg.PropertyTypeClassCounts{Numeric: 1, String: 1, Other: 1, Missing: 1},
-				"sigma probe")
+				"consumer probe")
 
 			// The two soundness gates the partition enables:
 			// "nulls-only gap" holds for a key where every present value is numeric.
@@ -93,7 +93,7 @@ func TestPropertyTypeClassCounts_SigmaProbe(t *testing.T) {
 // Exactness across the mutation lifecycle: class-changing update, delete,
 // label add/remove, NaN and ±Inf placement.
 func TestPropertyTypeClassCounts_MutationLifecycle(t *testing.T) {
-	for name, mk := range sigmaBackends(t) {
+	for name, mk := range multiBackends(t) {
 		t.Run(name, func(t *testing.T) {
 			g := mk(t)
 			ctx := context.Background()
@@ -183,7 +183,7 @@ func TestPropertyTypeClassCounts_BadgerReopenRebuild(t *testing.T) {
 // order-insensitive set matching — exactly the query door's routing rule;
 // definitions survive a badger reopen; drop removes them.
 func TestCompositeIntrospection(t *testing.T) {
-	for name, mk := range sigmaBackends(t) {
+	for name, mk := range multiBackends(t) {
 		t.Run(name, func(t *testing.T) {
 			g := mk(t)
 			if err := g.Index.CreateComposite("A", []string{"x", "y"}); err != nil {

@@ -9,7 +9,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Dry-run constraint validation (sigma HP2.5). Validate a proposed fact set
+// Dry-run constraint validation. Validate a proposed fact set
 // against the configured unique + temporal constraints and REPORT the violations
 // WITHOUT asserting anything — no store writes, no ID mint, no events, no LSN
 // burn, and (unlike the Tx+rollback emulation) no risk of leaving a permanent

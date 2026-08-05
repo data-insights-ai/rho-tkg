@@ -771,7 +771,7 @@ func (bs *Store) AllRelHistoryIDsFrom(after types.RelID, limit int) ([]types.Rel
 			// Seek to the next id's first possible key instead of Next-ing
 			// through every row. Makes the scan O(distinct IDs), not O(total
 			// version rows) — the depth-dependent cost the pinned adjacency
-			// door's deleted-entity fold exposed (sigma-tkgd ask 2).
+			// door's deleted-entity fold.
 			next := historyIDSeekKey(storepkg.KeyHistRel, id)
 			if next == nil {
 				break // id is the max snowflake ID — no successor exists.

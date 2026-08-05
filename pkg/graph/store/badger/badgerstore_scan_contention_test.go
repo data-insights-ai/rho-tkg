@@ -8,7 +8,7 @@ import (
 )
 
 // BenchmarkConcurrentLabelScan measures the concurrent-label-scan throughput the
-// sigma BF1/BF3 workload stresses: many workers repeatedly scanning the same
+// consumer BF1/BF3 workload stresses: many workers repeatedly scanning the same
 // label, every node served from the entity cache (capacity >= cardinality, so
 // this isolates cache-access contention, not miss/decode cost). Run it against
 // the sharded default and TKG_CACHE_SHARDS=1 (the pre-sharding single-mutex

@@ -4,8 +4,8 @@
 is the source of truth for what shipped, why, and measured numbers. Keep only
 genuinely open items (and short pointers to closed epics / reopen criteria).
 
-Nothing here is sigma-tkgd's unless it needs a new rho-tkg primitive; cross-team
-RPCs that already have local primitives stay out.
+This file tracks only rho-tkg work. External orchestration and product-layer
+RPCs that already have local primitives here are out of scope.
 
 **Severity legend:** CRITICAL = crash / data loss / replica divergence / silent
 corruption. HIGH = silent wrong answer or reachable correctness bug. MEDIUM =
@@ -91,12 +91,12 @@ sentinels where a limit exists.
 
 ## Not tracked here (cross-team)
 
-Sigma builds these; rho-tkg already exposes the local primitives:
+Consumer builds these; rho-tkg already exposes the local primitives:
 
 - START→END foreign-stub-delete fan-out (BACKLOG 2 Inc 4c)
 - Consumer-gated constraint dry-run (HP2.5)
 
-When sigma pins a shape that needs a **new** rho-tkg primitive, it re-enters
+When consumer pins a shape that needs a **new** rho-tkg primitive, it re-enters
 **Open** as a concrete item.
 
 ---
@@ -112,7 +112,7 @@ When sigma pins a shape that needs a **new** rho-tkg primitive, it re-enters
 | BACKLOG 5 — Rel ordering-soundness (`RelRangeCardinality`, type-class) | CHANGELOG |
 | BACKLOG 6–21 — full-library hardening (~196 findings) | closed 2026-07-18…22, `[4.24.0]` |
 | Last HIGH (10b cascade/resumption) + 10c perf follow-up | `[4.24.0]` / next-day fix |
-| Sigma-tkgd ask batch (5 asks, 2026-07-29) | `[4.25.0]` same day |
+| Consumer-gated ask batch (5 items, 2026-07-29) | `[4.25.0]` same day |
 | CI bench-gate (blocking) | 2026-07-29, `bench.yml` |
 
 Recover closed investigation prose via `git log --all -- tasks/backlog.md` if needed.
@@ -124,7 +124,7 @@ Recover closed investigation prose via `git log --all -- tasks/backlog.md` if ne
 - **Wire `fv` bump** (widen temporal tail to full envelope + eclipsed-row flag) **and
   inverted-suffix history keyspace:** DECIDED NOT BUILT 2026-07-29 after no-format-change
   paths shipped (tail-peek TX; selection-skeleton + zero-alloc token scanner VT).
-  **Reopen only if** sigma re-runs depth oracles against current HEAD **and** residual
+  **Reopen only if** consumer re-runs depth oracles against current HEAD **and** residual
   depth-linearity still breaks a concrete consumer latency budget — then the prepared
   v3 design is the next step.
 - **Zone maps before I/O (columnar phase-2 ZM):** withdrawn 2026-08-04; envelope prune +

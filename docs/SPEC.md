@@ -184,7 +184,7 @@ type Config struct {
 
 **Node and Relationship never hold references to the Graph, registries, or any external resolver.** They are pure data containers that hold tokens internally and never resolve them to strings themselves.
 
-String resolution lives in the layer that owns the registry: the Graph layer, or a downstream consumer that holds a `*graph.Graph` reference (e.g., `rho/tkgd-v3`'s Cypher engine, a REST/gRPC serialization layer).
+String resolution lives in the layer that owns the registry: the Graph layer, or a downstream consumer that holds a `*graph.Graph` reference (e.g. a Cypher engine or REST/gRPC serialization layer holding a `*graph.Graph`).
 
 ### 4.2 Rationale
 
@@ -208,7 +208,7 @@ There are exactly three consumers that need string labels/types. All three alrea
 | Consumer | Has registry? | Resolution method |
 |----------|--------------|-------------------|
 | **Graph layer (this library)** | Yes (owns registries) | `g.Nodes().Labels(n)`, `g.Rels().Type(r)`, `g.Resolve().NodeProperty(n, key)` |
-| **Downstream Cypher engine** (`rho/tkgd-v3`) | Yes (holds *graph.Graph ref) | Same `g.Resolve().*` / `g.Nodes().*` / `g.Rels().*` accessors |
+| **Downstream query engine** | Yes (holds *graph.Graph ref) | Same `g.Resolve().*` / `g.Nodes().*` / `g.Rels().*` accessors |
 | **REST/gRPC API** | Yes (holds *graph.Graph ref) | `g.Nodes().Labels(n)` before JSON encoding |
 
 All internal operations — index lookups, label matching, adjacency traversal, hash computation — work with tokens directly. String resolution is a **presentation concern**, not a data concern.
@@ -661,7 +661,7 @@ Plus per-index property-index definitions, counters, and other bookkeeping.
 
 ## 11. Token Resolution Patterns (for downstream query engines)
 
-This library does not ship a query language. Downstream engines (notably `rho/tkgd-v3`'s Cypher engine) integrate through token-based filtering. The patterns below are illustrative — the library's public surface is `g.Resolve` for shadow + registry resolution and `g.Nodes().ByLabel` / `g.Rels().ByType` for token-driven queries.
+This library does not ship a query language. Downstream query engines integrate through token-based filtering. The patterns below are illustrative — the library's public surface is `g.Resolve` for shadow + registry resolution and `g.Nodes().ByLabel` / `g.Rels().ByType` for token-driven queries.
 
 ### 11.1 Label Matching
 
@@ -706,7 +706,7 @@ matches, err := g.Nodes().ByLabelAndProperty("User", "external_id", "user:alice"
 
 ## 12. Public API (v3.4 sub-API surface)
 
-`tkg/v4` is a pure library: there is no Cypher engine, no HTTP server, and no query language. All access is through the thin `*graph.Graph` façade and its 16 sub-API accessor methods (`g.Nodes()`, `g.Rels()`, `g.Temporal()`, …). Cypher integration is a concern of the consuming product (`rho/tkgd-v3`), not this library.
+`tkg/v4` is a pure library: there is no Cypher engine, no HTTP server, and no query language. All access is through the thin `*graph.Graph` façade and its 16 sub-API accessor methods (`g.Nodes()`, `g.Rels()`, `g.Temporal()`, …). Cypher integration is a concern of the consuming product, not this library.
 
 ### 12.1 Node Creation
 
@@ -905,7 +905,7 @@ where the capability and a matching definition both exist. See
 ### Phase 4: Graph API Integration (historical — Cypher / api/api.go are NOT in this repo)
 
 > **Note (R4-F18):** Phase 4 originally tracked a Cypher engine and HTTP/gRPC
-> API. Those concerns moved to `rho/tkgd-v3` during the v3.0 split — this
+> API. Those concerns moved to a separate product repository during the v3.0 split — this
 > repository (`rho/tkg/v4`) is a pure library. The bullets below describe
 > the resolver and graph-API surface that remain here; pkg/cypher/ and
 > pkg/api/ are intentionally absent. See CLAUDE.md > Project Overview for
@@ -915,9 +915,9 @@ where the capability and a matching definition both exist. See
 - `pkg/graph/internal/core/resolution.go` — NodeLabels, NodePrimaryLabel, NodeHasLabel, RelationshipType, RelationshipHasType, ResolveNodeProperty, ResolveRelProperty (all 21 shadow keys)
 - `pkg/graph/resolve/api.go` — public sub-API surface (`g.Resolve().*`)
 
-**Files (moved to rho/tkgd-v3):**
-- Cypher engine, query plan, AST — superseded by tkgd-v3.
-- HTTP/gRPC API — superseded by tkgd-v3.
+**Files (moved out of this pure-library repo):**
+- Cypher engine, query plan, AST — owned by the consuming product, not this library.
+- HTTP/gRPC API — owned by the consuming product, not this library.
 
 **Tests:**
 - Graph API: NodeLabels, NodePrimaryLabel, NodeHasLabel

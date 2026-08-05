@@ -1,5 +1,5 @@
 // Package store defines the persistence contract for the graph layer.
-// External callers (notably tkgd-v3) implement this interface to plug
+// External callers implement this interface to plug
 // in custom backends; production implementations live in
 // pkg/graph/store/{memory,badger,tiered}.
 package store

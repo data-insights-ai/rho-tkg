@@ -16,7 +16,7 @@ import (
 // buffered and published on Commit, and it is undone by Rollback. This closes the
 // MERGE-inside-a-statement-tx correctness gap: the standalone g.Nodes() door
 // commits its create immediately, so a later clause failing could not roll the
-// create back (sigma V412-1).
+// create back.
 //
 // Semantics match the standalone door exactly. A single value stripe (shared with
 // the standalone door AND any active unique constraint on (label, propertyKey))
