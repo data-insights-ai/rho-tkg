@@ -34,6 +34,27 @@ Carried over from the retired `tasks/todo.md` (`4f71fc3`).
   a locking change, deferred. The current stopgap is correct — see
   `tasks/lessons.md` 55.
 
+  **Measured 2026-08-05** (`BenchmarkImport_ChangeLogCost`, 5,000 nodes + 5,000
+  rels, variance <1%):
+
+  | | time | allocs |
+  |---|---|---|
+  | ChangeLog off | 216ms | 1.4M |
+  | ChangeLog on | 621ms | 7.0M |
+
+  The STOPGAP itself costs nothing: `restoreRegistries` is reached only from
+  `rollback()`, i.e. only on a FAILED import, and its change-log branch is an early
+  `return nil` — cheaper, not dearer. Nothing on the success path touches it.
+
+  The eager emission the stopgap works around costs 2.9x, so the prize is real —
+  but a SECOND BLOCKER, not previously recorded here, is that the fix may not
+  collect it. A scope BUFFERS records in memory (badger: `bs.scopeLog`, an
+  unbounded `[][]byte` released only at commit). A transaction is small; an import
+  is the whole graph, and bootstrap-importing into a change-log-enabled store is
+  exactly the case that would hold every record at once. So the item trades a 2.9x
+  time cost for a memory cost proportional to the entire import, and wants a
+  spill/chunk story before the locking change is even worth planning.
+
 ---
 
 ## Open — BACKLOG 22: adversarial / soak research park
