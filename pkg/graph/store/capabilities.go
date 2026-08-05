@@ -1034,12 +1034,50 @@ type ColumnBatch struct {
 	// is the store-wide convention.
 	ValidFrom []int64
 	ValidTo   []int64
-	Kinds     []ColumnKind
-	Ints      [][]int64
-	Flts      [][]float64
-	Strs      [][]string
-	Bools     [][]bool
-	Null      [][]bool
+	ColumnData
+}
+
+// ColumnData is the typed column payload, shared by ColumnBatch and
+// RelColumnBatch.
+//
+// It is a separate struct so the kind-resolution and refusal rules have exactly
+// ONE implementation across entity kinds. The alternative — a parallel set of
+// column fields on the relationship batch — is the same hazard the package comment
+// on ScanColumnsFromNodes warns about between BACKENDS, one level up: two copies
+// would be two chances to disagree about when a column refuses versus reports a row
+// absent, and a consumer would see nodes and relationships answer differently for
+// identically-shaped data.
+//
+// Embedded, so existing node consumers keep reading batch.Ints / batch.Kinds
+// unchanged.
+type ColumnData struct {
+	Kinds []ColumnKind
+	Ints  [][]int64
+	Flts  [][]float64
+	Strs  [][]string
+	Bools [][]bool
+	Null  [][]bool
+}
+
+// RelColumnBatch is the relationship sibling of ColumnBatch.
+//
+// It carries StartIDs/EndIDs alongside the property columns because endpoints are
+// STRUCTURE, not an optional column: a traversal aggregation reading columns needs
+// (start, end, weight) together, and fetching endpoints separately means holding
+// the *types.Relationship after all — exactly the materialisation a column scan
+// exists to avoid.
+//
+// Same contract as ColumnBatch: batches arrive in ID order, fn MUST NOT retain the
+// batch (slices are reused across calls), and returning false stops the scan.
+type RelColumnBatch struct {
+	IDs      []types.RelID
+	StartIDs []types.NodeID
+	EndIDs   []types.NodeID
+	// ValidFrom/ValidTo are parallel to IDs, for the same bitemporal reason as on
+	// ColumnBatch. Zero ValidTo means open-ended.
+	ValidFrom []int64
+	ValidTo   []int64
+	ColumnData
 }
 
 // ErrMixedNumericColumn is returned when a scan cannot type a column.
@@ -1065,4 +1103,16 @@ var ErrMixedNumericColumn = errors.New("graph: column holds both integral and fl
 type NodeColumnScanCapability interface {
 	ScanNodeColumns(token uint16, props []string, opts QueryOpts,
 		fn func(*ColumnBatch) bool) error
+}
+
+// RelColumnScanCapability is implemented by backends that can deliver relationship
+// rows as typed columns, the sibling of NodeColumnScanCapability.
+//
+// Optional, like every capability here: consumers type-assert and fall back to
+// RelationshipsByType. Refuses on the same mixed-numeric shape, with the same
+// ErrMixedNumericColumn, because the refusal rules are shared code and not a
+// second implementation.
+type RelColumnScanCapability interface {
+	ScanRelColumns(token uint16, props []string, opts QueryOpts,
+		fn func(*RelColumnBatch) bool) error
 }

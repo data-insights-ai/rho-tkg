@@ -117,7 +117,7 @@ func (bs *Store) scanNodeColumnsColumnar(token uint16, props []string, opts stor
 			batch.ValidFrom = append(batch.ValidFrom, vf[ord])
 			batch.ValidTo = append(batch.ValidTo, vt[ord])
 			for c, v := range views {
-				appendFromView(batch, c, v, ord)
+				appendFromView(&batch.ColumnData, c, v, ord)
 			}
 		}
 		if len(batch.IDs) == 0 {
@@ -177,11 +177,15 @@ func columnKindOf(v indexpkg.ColumnView) storecontract.ColumnKind {
 // appendFromView copies one ordinal's value out of a typed column, padding the
 // typed slice on an absent row so column indices stay aligned with IDs.
 //
-// Every column reaching here is UNIFORM: scanNodeColumnsColumnar declines the whole
-// scan on v.Mixed(). That is load-bearing, not defensive — a mixed column has both
+// Takes the shared ColumnData rather than a ColumnBatch so the relationship fast
+// path reuses this padding logic instead of restating it — the same one-copy rule
+// the row builders follow.
+//
+// Every column reaching here is UNIFORM: the caller declines the whole scan on
+// v.Mixed(). That is load-bearing, not defensive — a mixed column has both
 // halves populated, so the default arm below would read the int array for a float
 // row and emit a plausible wrong number.
-func appendFromView(b *storecontract.ColumnBatch, c int, v indexpkg.ColumnView, ord int) {
+func appendFromView(b *storecontract.ColumnData, c int, v indexpkg.ColumnView, ord int) {
 	if !v.Present(ord) {
 		b.Null[c] = append(b.Null[c], true)
 		switch b.Kinds[c] {
@@ -207,15 +211,10 @@ func appendFromView(b *storecontract.ColumnBatch, c int, v indexpkg.ColumnView, 
 
 func newColumnBatch(nCols int) *storecontract.ColumnBatch {
 	return &storecontract.ColumnBatch{
-		IDs:       make([]types.NodeID, 0, storecontract.ColumnScanBatchRows),
-		ValidFrom: make([]int64, 0, storecontract.ColumnScanBatchRows),
-		ValidTo:   make([]int64, 0, storecontract.ColumnScanBatchRows),
-		Kinds:     make([]storecontract.ColumnKind, nCols),
-		Ints:      make([][]int64, nCols),
-		Flts:      make([][]float64, nCols),
-		Strs:      make([][]string, nCols),
-		Bools:     make([][]bool, nCols),
-		Null:      make([][]bool, nCols),
+		IDs:        make([]types.NodeID, 0, storecontract.ColumnScanBatchRows),
+		ValidFrom:  make([]int64, 0, storecontract.ColumnScanBatchRows),
+		ValidTo:    make([]int64, 0, storecontract.ColumnScanBatchRows),
+		ColumnData: storecontract.NewColumnData(nCols),
 	}
 }
 

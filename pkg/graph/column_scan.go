@@ -9,6 +9,9 @@ import (
 type (
 	// ColumnBatch is a block of node rows delivered as typed columns.
 	ColumnBatch = storepkg.ColumnBatch
+	// RelColumnBatch is a block of relationship rows delivered as typed columns,
+	// carrying the endpoint arrays alongside the property columns.
+	RelColumnBatch = storepkg.RelColumnBatch
 	// ColumnKind names the concrete Go type a scanned column carries.
 	ColumnKind = storepkg.ColumnKind
 )
@@ -46,4 +49,26 @@ func (g *Graph) ScanNodeColumns(label string, props []string, opts QueryOpts,
 		return false, nil
 	}
 	return g.core.ScanNodeColumns(label, props, opts, fn)
+}
+
+// ScanRelColumns streams relationships of a type as typed columns when the backend
+// supports it, the sibling of ScanNodeColumns.
+//
+// ok=false means the backend has no relationship column scan and the caller should
+// fall back to Rels().ByType — the capability is optional and consumers must handle
+// both.
+//
+// Beyond the boxing argument that motivates the node scan, this hands back StartIDs
+// and EndIDs as their own arrays, so a traversal aggregation reads (start, end,
+// weight) as three aligned typed slices with no *types.Relationship materialised at
+// all.
+//
+// The callback MUST NOT retain the batch: its slices are reused between calls.
+func (g *Graph) ScanRelColumns(relType string, props []string, opts QueryOpts,
+	fn func(*RelColumnBatch) bool) (ok bool, err error) {
+
+	if g == nil {
+		return false, nil
+	}
+	return g.core.ScanRelColumns(relType, props, opts, fn)
 }
