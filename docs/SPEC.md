@@ -4,19 +4,20 @@
 
 **Date:** 2026-02-16
 **Version:** 1.2 (Final)
-**Status:** Implemented (shipped through v4.24.0)
+**Status:** Implemented (live; release train is current `v4.x` in `CHANGELOG.md`)
 **Breaking Change:** Yes — Major version bump required
 **Migration:** None — existing data will be regenerated
 
-> **Reconciled to the implementation (2026-07-03):** the mechanics sections
-> (§6 registries, §10 Badger key layout, §12 public API) have been brought in
-> line with the shipped code — the store uses **1-byte binary key prefixes**
+> **Reconciled to the implementation (2026-07-03; layout note refreshed 2026-08-05):**
+> the mechanics sections (§6 registries, §10 Badger key layout, §12 public API)
+> match the shipped code — the store uses **1-byte binary key prefixes**
 > `0x01`–`0x0F` (not string prefixes), a **third property-key registry** exists,
 > and every door is **ctx-first**. Sections §13 (startup) and §15 (implementation
-> phases) retain the original pre-implementation plan; the authoritative current
-> file/package layout is `docs/architecture.md`. Illustrative struct names below
-> (lowercase `labelRegistry`, etc.) are design-time sketches — the real types live
-> in `pkg/graph/internal/registry` (`LabelRegistry`, `RelTypeRegistry`,
+> phases) retain the original pre-implementation plan with **historical path
+> names**; the authoritative current file/package layout is
+> `docs/architecture.md`. Illustrative struct names below (lowercase
+> `labelRegistry`, etc.) are design-time sketches — the real types live in
+> `pkg/graph/internal/registry` (`LabelRegistry`, `RelTypeRegistry`,
 > `PropertyKeyRegistry`).
 
 ---
@@ -851,11 +852,12 @@ where the capability and a matching definition both exist. See
 
 ### Phase 1: Core Types & Registries
 
-**Files:**
-- `pkg/types/model.go` — `nodeID`, `relID`, `labelToken`, `relTypeToken`, Node/Relationship structs, token-level methods
-- `pkg/types/shadow.go` — shadow property key constants
-- `pkg/graph/label_registry.go` — `labelRegistry`
-- `pkg/graph/reltype_registry.go` — `relTypeRegistry`
+**Files (historical plan → current):**
+- `pkg/types/model.go` → `pkg/types/node.go`, `relationship.go` (plus token helpers on those types) — Node/Relationship, ID wrappers, token-level methods
+- `pkg/types/shadow.go` — shadow property key constants (unchanged path)
+- `pkg/graph/label_registry.go` → `pkg/graph/internal/registry/label_registry.go` — `LabelRegistry`
+- `pkg/graph/reltype_registry.go` → `pkg/graph/internal/registry/reltype_registry.go` — `RelTypeRegistry`
+- *(also shipped)* `pkg/graph/internal/registry/property_key_registry.go` — third registry
 
 **Tests:**
 - Registry: concurrent GetOrCreate (50 goroutines), Resolve round-trip, Lookup miss
@@ -869,10 +871,10 @@ where the capability and a matching definition both exist. See
 
 ### Phase 2: Snowflake ID Generation & Serialization
 
-**Files:**
-- `pkg/graph/graph.go` — snowflake generator initialization, `nextNodeID()`, `nextRelID()`
-- `pkg/types/serialization.go` — `nodeWire`, `relWire`, marshal/unmarshal
-- `pkg/storage/badger.go` — registry persistence, entity serialization
+**Files (historical plan → current):**
+- `pkg/graph/graph.go` snowflake init → `pkg/graph/internal/core/core.go` (`New` builds dual generators) + `nextNodeID`/`nextRelID` on `*core.Core` (`validation.go` / lane helpers in `ingest_lanes.go`); façade is still `pkg/graph/graph.go` (`New`/`Close`/sub-API accessors only)
+- `pkg/types/serialization.go` → `pkg/graph/internal/storeutil/` wire types (`NodeWire`/`RelWire`, checked encode/decode)
+- `pkg/storage/badger.go` → `pkg/graph/store/badger/` — registry persistence, entity serialization
 
 **Dependencies:**
 - `github.com/bds421/rho-snowflake-2026`
@@ -889,9 +891,8 @@ where the capability and a matching definition both exist. See
 
 ### Phase 3: Index Migration
 
-**Files:**
-- `pkg/storage/badger.go` — new key format functions
-- `pkg/storage/badger_index.go` — updated index maintenance
+**Files (historical plan → current):**
+- `pkg/storage/badger.go` / `badger_index.go` → `pkg/graph/store/badger/` (key layout in `pkg/graph/internal/storeutil/`, index maintenance across the badger store files) + in-memory engines in `pkg/graph/internal/index/`
 
 **Tests:**
 - Label index: 1000 nodes x 5 labels, scan by each label, verify correct nodeIDs

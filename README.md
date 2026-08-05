@@ -269,7 +269,7 @@ leave the stdlib import unaliased.
 
 - [`docs/api.md`](docs/api.md) — API & Core Types: graph layer, registries, validation limits, temporal queries, transactions, and shadow properties.
 - [`docs/architecture.md`](docs/architecture.md) — Architecture & Concurrency: system boundaries, entity lock manager, multi-phase iteration, and thread safety.
-- [`docs/persistence.md`](docs/persistence.md) — Storage interfaces, `badger.Store`, and `tiered.Store` multi-shard persistence.
+- [`docs/persistence.md`](docs/persistence.md) — Storage interfaces, `badger.Store`, `tiered.Store`, and EXPERIMENTAL `sharded.Store` slot-topology persistence.
 - [`docs/design.md`](docs/design.md) — Design invariants: protocol guarantees, referential integrity, defensive copying, and error sentinels.
 - [`docs/stability.md`](docs/stability.md) — API Stability & Deprecation Policy: v4 stability promise, experimental surfaces, and release conventions.
 - [`docs/SPEC.md`](docs/SPEC.md) — Formal specifications and algorithms.
@@ -303,14 +303,14 @@ including the Docker-based `lint`/`security`/`vulncheck` targets.
 See [CHANGELOG.md](CHANGELOG.md) for the full, dated release history — every
 version back to v3.0.0, with the defect it fixed or the feature it added.
 
-Current release: **v4.25.0** — the sigma-tkgd ask-batch release: `[]float64`
-embeddings are indexed, `SearchNearestScored` returns distances for rerankers,
-`TxPin` on vector search fails closed instead of answering wrong; historical-pin
-resolution accelerated on both temporal axes with no wire-format change
-(tail-peek as-of walk, selection-skeleton + zero-alloc token-scanner valid-time
-resolution, seek-skip distinct-ID scans); the atomically-preflighted exact
-erasure door; an as-of overlay-ordering commit-window fix; and a blocking
-benchmark regression gate on every PR.
+Current release: **v4.28.1** — relationship columns on the memory backend (closing
+the asymmetry with badger), a bulk-scan path for badger rel column builds (large
+allocation collapse on full-type rebuilds), deterministic replacements for the
+last scheduler-dependent CI probes, and a patch so read-only graph transactions
+skip registry metadata checkpoint/restore when the global registry state is
+clean. Earlier 4.25–4.27 work (vector scored search, exact erasure, columnar
+typed scans / zone maps / append-extend, sharded S4–S5, retention purge across
+backends) is in `CHANGELOG.md`.
 
 If you are upgrading from v3.x, see `CHANGELOG.md` `[4.0.0]` for the full
 public-API migration recipe (context-first methods, `g.Tier` split from

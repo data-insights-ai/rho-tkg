@@ -74,9 +74,11 @@ that come up most often when reviewing a PR:
   wraps or forwards the error.
 - **Node and Relationship test parity.** They are structural mirrors; a test
   added for one usually needs its twin for the other.
-- **Fix in one Store implementation → check all three.** `MemoryStore`,
-  `BadgerStore`, and `TieredStore` must agree; a fix that only lands in one
-  backend is an incomplete fix, not a defect found and closed.
+- **Fix in one Store implementation → check the others.** `memory.Store`,
+  `badger.Store`, and `tiered.Store` must agree on the shared contract; when
+  the change touches slot routing, also check EXPERIMENTAL `sharded.Store`.
+  A fix that only lands in one backend is an incomplete fix, not a defect
+  found and closed.
 
 Follow the TDD workflow for any behavior change: write the test first, watch
 it fail for the right reason, then implement the minimal change to pass.

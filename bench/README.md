@@ -41,8 +41,8 @@ re-fires) and why the classic `b.N` loop is the correct shape here instead.
 | `Ingest10kBatch` | 10,000 nodes ingested via `BatchBuilder.AddNode` + one `Execute` |
 | `BulkAddNodes10k` | 10,000 nodes ingested via the write-only `BatchBuilder.AddNodes` bulk path |
 | `ANNSearch10k` | `g.Index().SearchNearest` (k=10) over a 10k x 128-dim vector index, `hnsw` (default approximate engine) vs `bruteforce` (`VectorIndexOptions.UseBruteForce`) sub-variants — memory backend only (the vector index is store-level in-memory regardless of which Store backend hosts the node rows, so the badger sub-benchmark would be redundant) |
-| `PinnedScanScaling` | M1 measurement (`tasks/measurements-2026-07-11.md`): `ByLabel` plain vs `TxPin`/`TxAt`-pinned vs `NodesAsOf`-filtered, across {10k,100k} entities x {1,5,5+20%-deleted}-version churn x {broad,selective} label selectivity — BadgerInMemory only. Quantifies whether a pinned/as-of scan costs `O(current matches)` like plain `ByLabel` or `O(everything that ever had history)`. |
-| `ChangeLogTxSerialization` | M2 measurement (`tasks/measurements-2026-07-11.md`): aggregate ops/sec for standalone `Add` vs tx-per-batch (`Begin`->10x`AddNode`->`Commit`) at {1,4,16} concurrent goroutines, `Config.ChangeLog` on/off — a manual goroutine-fan-out harness reporting a custom `ops/sec` metric (not `ns/op`), since throughput scaling with goroutine count — not single-call latency — is what's under test. BadgerInMemory only (`ChangeLog` is a Badger/memory capability). |
+| `PinnedScanScaling` | Historical M1 measurement (original write-up retired; scenario remains in-tree): `ByLabel` plain vs `TxPin`/`TxAt`-pinned vs `NodesAsOf`-filtered, across {10k,100k} entities x {1,5,5+20%-deleted}-version churn x {broad,selective} label selectivity — BadgerInMemory only. Quantifies whether a pinned/as-of scan costs `O(current matches)` like plain `ByLabel` or `O(everything that ever had history)`. |
+| `ChangeLogTxSerialization` | Historical M2 measurement (original write-up retired; scenario remains in-tree): aggregate ops/sec for standalone `Add` vs tx-per-batch (`Begin`->10x`AddNode`->`Commit`) at {1,4,16} concurrent goroutines, `Config.ChangeLog` on/off — a manual goroutine-fan-out harness reporting a custom `ops/sec` metric (not `ns/op`), since throughput scaling with goroutine count — not single-call latency — is what's under test. BadgerInMemory only (`ChangeLog` is a Badger/memory capability). |
 
 `ANNSearch10k` note: measured locally (Apple M4 Max, `-benchtime=200x`) at
 ~193µs/op (`hnsw`) vs ~816µs/op (`bruteforce`) — roughly a 4x speedup at this
@@ -96,6 +96,13 @@ real regressions at this scale.
   prefer `make bench-graph-baseline` / `make bench-graph-production-small`
   (which support `BENCH_COUNT`/`PROD_BENCH_COUNT` > 1 for a real statistical
   comparison) before concluding a change made something slower.
+- **Cross-revision micro-benchmarks** (optional, not a CI gate):
+  `make bench-compare` runs `bench/bench-compare-revisions.sh`, which checks
+  out each ref in a detached worktree and prints a TSV of
+  AddNode/AddRelationship/label mutator timings. Defaults are `HEAD`,
+  `v4.27.0`, `v4.26.0`. Pass explicit refs to the script for anything else.
+  This is diagnostic only — the blocking regression gate remains
+  `bench-gate` / `make bench-check`.
 - **Fixed: write-scenario accumulation drift.** `Ingest1kSingle`,
   `Ingest10kBatch`, and `BulkAddNodes10k` used to reuse one graph across every
   `b.Loop()` iteration, so ns/op grew with the run's total iteration count

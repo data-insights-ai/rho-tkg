@@ -1,10 +1,30 @@
 #!/usr/bin/env bash
+# bench/bench-compare-revisions.sh — multi-revision graph-API benchstat helper.
+#
+# Spins a detached worktree per git ref, runs the same benchmark pattern in each,
+# and prints a TSV summary (ref, benchmark, ns/op, B/op, allocs/op). Used by
+# `make bench-compare`. For the local/CI *regression gate* (threshold fail),
+# use bench/bench-check.sh + bench/bench-compare.sh instead — those compare
+# two already-captured go-test outputs, not two revisions.
+#
+# Usage:
+#   ./bench/bench-compare-revisions.sh [ref ...]
+# Defaults (when no refs given): HEAD, v4.27.0, v4.26.0
+#
+# Env:
+#   BENCH_COUNT    go test -count (default 1)
+#   BENCH_TIME     go test -benchtime (default 1s)
+#   BENCH_PATTERN  regex for -bench (default AddNode/AddRelationship/label mutators)
+#   BENCH_OUT      output directory (default /tmp/tkg-bench-compare-<timestamp>)
 set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"
 refs=("$@")
 if [[ ${#refs[@]} -eq 0 ]]; then
-  refs=(HEAD 4ee8c9e d0706de)
+  # Recent feature-bearing releases, not pre-v4 layout commits (those still
+  # work if you pass them explicitly — bench_pkg_for handles the old package
+  # path — but are rarely useful as a default comparison baseline).
+  refs=(HEAD v4.27.0 v4.26.0)
 fi
 
 bench_count="${BENCH_COUNT:-1}"
@@ -25,13 +45,17 @@ sanitize_ref() {
   printf '%s' "$1" | tr '/:@^~ ' '______'
 }
 
+# Resolve where the graph micro-benchmarks live for a given tree. Pre-v4.0 they
+# sat in pkg/graph/; after the façade split they live in internal/core.
 bench_pkg_for() {
   local wt="$1"
-  if [[ -f "$wt/pkg/graph/internal/core/bench_ingest_test.go" ]]; then
+  if [[ -f "$wt/pkg/graph/internal/core/bench_ingest_test.go" ]] \
+    || [[ -f "$wt/pkg/graph/internal/core/bench_baseline_test.go" ]]; then
     printf './pkg/graph/internal/core'
     return
   fi
-  if [[ -f "$wt/pkg/graph/bench_ingest_test.go" ]]; then
+  if [[ -f "$wt/pkg/graph/bench_ingest_test.go" ]] \
+    || [[ -f "$wt/pkg/graph/bench_baseline_test.go" ]]; then
     printf './pkg/graph'
     return
   fi

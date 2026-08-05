@@ -36,6 +36,7 @@ The following surfaces are **not** covered by the v4 stability promise. They are
 
 - **Replication Phase-1 API** (`g.Replication().ApplyChange`, `ApplyChanges`, `AppliedLSN`, `SetAppliedLSN`, `RegistrySnapshot`, `IDSlotLease`, `SetIDSlotLease`, `Watch`) — read-replica foundation, available but subject to refinement as horizontal-scaling matures
 - **`g.Tier()` sub-API** (tiered-store admin: `Archive`, `Restore`, `ForceRotate`, `ListShards`, `RebuildCatalog`, `Repair`, `VerifyShard`) — tiered-store backend-specific operations, not part of the generic graph contract
+- **`sharded.Store`** (`pkg/graph/store/sharded`, ADR-0007) — slot-topology backend over N Badger shards. S1–S5 (mandatory store, batches/cascade, change-log, ingest lanes, index/stats parity) are implemented and tested, but the public surface remains experimental until horizontal multi-machine routing is productized
 - **DocValues reader types** (`types.NodeColumnReader` and related) — performance-oriented columnar access, API shape pending use-case feedback from query planners
 - **Typed column scans** (`store.NodeColumnScanCapability`, `store.ColumnBatch`, `store.ColumnKind` and the `graph.ColumnBatch`/`ColumnKind`/`ColInt64`.. re-exports, `store.ScanColumnsFromNodes`, `store.ColumnScanBatchRows`, `graph.ErrMixedNumericColumn`) — the typed sibling of the DocValues doors above, experimental for the same reason: the batch shape is pending consumer feedback. The REFUSAL contract is the part most likely to matter to a consumer and the part least likely to change
 - **Relationship column doors** (`RelColumnSnapshot`, `RelMutationEpochForType`, and the `tkg_rel_start` / `tkg_rel_end` reserved column keys, on the badger AND memory stores) — the relationship sibling of the DocValues doors above, experimental for the same reason: the shape is pending consumer feedback. The epoch is a freshness token and never a change count, and its granularity is NOT portable — badger stripes per type (coarsened by any mutation site that cannot name its type), while memory uses a single store-wide stamp. Code that relies on a write to type A leaving type B's snapshot valid is correct on badger and wrong on memory.
@@ -48,7 +49,7 @@ Do not take a production dependency on experimental surfaces without understandi
 
 - **CHANGELOG.md is the source of truth** for version history. Each release is dated; a version bumped in `go.mod` must have a corresponding entry in CHANGELOG.
 - **Versions batch multiple changes.** A single feature, bug fix, or test improvement may span multiple internal commits (via rebase or squash) but appears as one bullet in the public CHANGELOG under the version it ships in.
-- **Docs-consistency check:** The version marker in `docs/` must match the current code's version (`go.mod`). Stale doc version strings are a catch-all blocker.
+- **Docs-consistency check:** `pkg/graph/internal/core/docs_consistency_test.go` pins the current release from the topmost `## [x.y.z]` heading in `CHANGELOG.md` against fixed strings in `AGENTS.md` and `docs/architecture.md`, and pins the Go version from `go.mod` against `README.md` / `AGENTS.md` / `docs/architecture.md`. Stale status lines fail that test.
 
 ## See Also
 

@@ -99,9 +99,12 @@ bench-graph-all: bench-graph-baseline bench-graph-production-small
 # Run both baseline and large production-shaped benchmark suites.
 bench-graph-all-large: bench-graph-baseline bench-graph-production-large
 
-# Compare the common graph benchmarks against historical release tags.
+# Compare the common graph micro-benchmarks across revisions (worktree-per-ref).
+# Defaults: HEAD vs v4.27.0 vs v4.26.0. Pass explicit refs to override, e.g.
+#   make bench-compare ARGS='HEAD v4.28.1 v4.25.0'
+# (ARGS is not a Make variable here — call the script directly for custom refs.)
 bench-compare:
-	./scripts/bench-compare-revisions.sh HEAD 4ee8c9e d0706de
+	./bench/bench-compare-revisions.sh
 
 # Run tests with coverage report
 cover:

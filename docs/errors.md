@@ -245,7 +245,7 @@ History compaction (`g.Admin().CompactHistoryNodes(...)` / `CompactHistoryRels(.
 | `ErrExactErasureClosureLimit` | store | Current-plus-history relationship closure exhausted its caller-declared relationship-identity, scanned-version, or endpoint-node-identity bound. Planning or execution refuses before mutation | `g.Admin().ResolveExactErasure()` / `g.Admin().ExactErase()` / direct `store.ExactErasureCapability` |
 | `ErrExactErasureChangeLogRetained` | store | Exact erasure found enabled, buffered, scoped, or persisted change-log material. Change records contain full entity payloads, so leaving them behind would retain erased data; the operation refuses before writing | `g.Admin().ExactErase()` / direct `store.ExactErasureCapability` |
 
-Compaction also declines with `ErrCapabilityNotSupported` on the tiered backend (per-shard trim + catalog counters are out of scope for v1). Retention purge (R2) likewise declines with `ErrCapabilityNotSupported` on the tiered/sharded backends until R4 wires their per-shard mapping.
+Compaction also declines with `ErrCapabilityNotSupported` on the tiered backend (per-shard trim + catalog counters are out of scope for v1). Retention purge (R2–R5) is implemented on memory, badger, tiered, and sharded; it is gated at the graph layer by `Config.AllowRetentionPurge` (`ErrRetentionPurgeDisabled` when off).
 
 ## pkg/types Sentinels
 

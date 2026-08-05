@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Documentation
+
+- **Docs cleanup / correction pass against the v4.28.1 tree.** Version pins
+  (`CLAUDE.md`, README current-release blurb), dependency table (`docs/dependencies.md`
+  vs `go list -m all`), sub-API wrapper counts, sharded S1–S5 status (no longer
+  "integration-branch WIP"), retention-purge capability on tiered/sharded,
+  SPEC historical path → current path maps, stability experimental list +
+  docs-consistency wording, backlog/bench references to missing files, and
+  CONTRIBUTING store-parity guidance updated. Removed completed plan files
+  (`tasks/plan-columnar.md`, `tasks/plan-columnar-phase2.md` — all items shipped
+  or withdrawn with criteria in CHANGELOG) and the stale June 2026 `.harden/`
+  ledger (fuzz posture lives in `SECURITY.md` / `CONTRIBUTING.md`; regressions
+  live as committed tests). Multi-revision bench helper moved under `bench/`
+  (`bench/bench-compare-revisions.sh`; defaults = recent tags) so all bench
+  tooling cohabits. CHANGELOG historical path archaeology left intact.
+
 ## [4.28.1] - 2026-08-05
 
 ### Fixed
@@ -214,8 +230,9 @@ Numbers: Apple M4 Max, badger-in-memory, warm. Every one has a committed benchma
   fetched, per-ENTITY rather than per-block; and the scan-time half shipped in
   4.26.0 as `BlockCanMatch` (98% of blocks skipped on a time-clustered column).
   Wiring a prune into a column BUILD would break the snapshot's full-unfiltered-
-  membership contract, which every consumer depends on. Reopen criteria recorded in
-  `tasks/plan-columnar-phase2.md`.
+  membership contract, which every consumer depends on. Reopen only if a concrete
+  consumer needs a block-level pre-I/O prune that the existing envelope prune +
+  in-RAM `BlockCanMatch` cannot express without breaking full-membership.
 
 ## [4.26.0] - 2026-08-04
 

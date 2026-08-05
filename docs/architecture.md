@@ -38,7 +38,7 @@ License: Apache-2.0
 
 **Registry zero values preserve token invariants.** Internal label and relationship-type registries lazily initialize the reserved token-0 entry, so direct zero-value use reports an empty registry, exports/imports the reserved-name shape, and allocates token 1 first.
 
-**Store** is a pure persistence interface composed from capability sub-interfaces in `pkg/graph/store/capabilities.go`. The mandatory composition (`MandatoryStore` — Lifecycle, NodeCRUD, RelationshipCRUD, Adjacency, BulkRead, Batch, History, Stats, Iteration) is what the graph layer depends on. Optional capabilities are type-asserted at the call sites that need them; the list below is illustrative — `capabilities.go` declares ~48 of them, and it is the authority: DepthHistoryIteration, DeletedIteration, DepthDeletedIteration, PropertyIndex, TemporalIndex, VectorIndex, VectorIndexOptions, FilteredVectorSearch, HighFrequencyIndex, CompositePropertyIndex, RelPropertyIndex, MetaKV, ChangeFeed, TransactionTimeQuery, HistoryCompaction, RetentionPurge, PreEncodedPut, Degree, BeliefWatermark, TemporalCandidate, …. `DeletedIterationCapability` (and the depth variant) yields IDs with history rows but no current row; the graph layer uses it for the deleted-rel coverage fold in `g.Temporal().OutgoingRelsAt`/`IncomingRelsAt`/`NeighborsAt` so cost is O(deleted_count) instead of O(total history). Four in-tree implementations satisfy the full composition: `memory.Store` (testing), `badger.Store` (single-instance persistent), `tiered.Store` (multi-shard persistent), and `sharded.Store` (slot-topology persistent — EXPERIMENTAL, ADR-0007). Nil concrete in-tree Store receivers return `ErrNilStore` from lifecycle `Close` and `Clear` calls. The `memory.Store` zero value is usable; persistent Store zero values fail closed with `ErrStoreClosed`.
+**Store** is a pure persistence interface composed from capability sub-interfaces in `pkg/graph/store/capabilities.go`. The mandatory composition (`MandatoryStore` — Lifecycle, NodeCRUD, RelationshipCRUD, Adjacency, BulkRead, Batch, History, Stats, Iteration) is what the graph layer depends on. Optional capabilities are type-asserted at the call sites that need them; the list below is illustrative — `capabilities.go` declares ~51 of them, and it is the authority: DepthHistoryIteration, DeletedIteration, DepthDeletedIteration, PropertyIndex, TemporalIndex, VectorIndex, VectorIndexOptions, FilteredVectorSearch, HighFrequencyIndex, CompositePropertyIndex, RelPropertyIndex, MetaKV, ChangeFeed, TransactionTimeQuery, HistoryCompaction, RetentionPurge, PreEncodedPut, Degree, BeliefWatermark, TemporalCandidate, …. `DeletedIterationCapability` (and the depth variant) yields IDs with history rows but no current row; the graph layer uses it for the deleted-rel coverage fold in `g.Temporal().OutgoingRelsAt`/`IncomingRelsAt`/`NeighborsAt` so cost is O(deleted_count) instead of O(total history). Four in-tree implementations satisfy the full composition: `memory.Store` (testing), `badger.Store` (single-instance persistent), `tiered.Store` (multi-shard persistent), and `sharded.Store` (slot-topology persistent — EXPERIMENTAL, ADR-0007). Nil concrete in-tree Store receivers return `ErrNilStore` from lifecycle `Close` and `Clear` calls. The `memory.Store` zero value is usable; persistent Store zero values fail closed with `ErrStoreClosed`.
 
 **Store registry inputs are lifecycle-checked.** BadgerStore and TieredStore registry save/load APIs reject nil label or relationship-type registry pointers with `ErrInvalidStoreMutation` before dereference on open stores. Closed stores still return `ErrStoreClosed` first. `tiered.Store.SetLabelRegistry(nil)` is a no-op so direct Store callers cannot accidentally clear ontology routing state. Tiered `registry.msgpack` loads validate both label and relationship-type slices before returning metadata to startup/load or deprecated single-registry save paths.
 
@@ -806,7 +806,7 @@ Cross-shard split writes use `badgerstore_partial.go` helpers: `putRelEntityAndO
 
 ## sharded.Store (`pkg/graph/store/sharded/`) — EXPERIMENTAL (ADR-0007)
 
-Slot-topology Store: N `badger.Store` shards, one per snowflake SLOT, routing every entity by the slot carried in its ID's node field — never by ontology class (that is tiered's job). The design target is the horizontal stage where `ErrSlotNotLocal` becomes "route to the owning machine." Integration-branch WIP; declared EXPERIMENTAL until the S4 throughput bar and S5 parity land in a numbered release.
+Slot-topology Store: N `badger.Store` shards, one per snowflake SLOT, routing every entity by the slot carried in its ID's node field — never by ontology class (that is tiered's job). The design target is the horizontal stage where `ErrSlotNotLocal` becomes "route to the owning machine." Stages S1–S5 (mandatory store, batches/cascade, store-global change-log, ingest lanes, index/stats parity) are implemented and tested; the surface remains **EXPERIMENTAL** in `docs/stability.md` until multi-machine routing is productized.
 
 ### Slot Model
 
@@ -876,14 +876,14 @@ Lock ordering: entity locks -> `idxMu`. Always.
 
 ---
 
-## Registries (`pkg/graph`)
+## Registries (`pkg/graph/internal/registry`)
 
-Three independent registries with independent token namespaces (label, rel-type, property-key).
+Three independent registries with independent token namespaces (label, rel-type, property-key). Types are internal (`LabelRegistry`, `RelTypeRegistry`, `PropertyKeyRegistry`); the Graph layer owns them and is the only public surface for name↔token resolution.
 
 ```
-labelRegistry:       map[string]labelToken   + []string reverse lookup
-relTypeRegistry:     map[string]relTypeToken + []string reverse lookup
-propertyKeyRegistry: map[string]propKeyToken + []string reverse lookup
+LabelRegistry:       map[string]labelToken   + []string reverse lookup
+RelTypeRegistry:     map[string]relTypeToken + []string reverse lookup
+PropertyKeyRegistry: map[string]propKeyToken + []string reverse lookup
 ```
 
 - Thread-safe: `sync.RWMutex`, double-check on write miss
@@ -1093,7 +1093,7 @@ After v3.4.0 (Option 3) and v4.2.0 (field→method), `pkg/graph/` is a thin faç
 
 | Package | Purpose |
 |---------|---------|
-| `pkg/graph/store` | `Store` interface, `QueryOpts`, `ShardDepth`, `RelTombstone`, `DistanceMetric`, `VectorIndexOptions`, `ChangeFeedCapability` + `ChangeRecord`/`ChangeTag`, `ReplicationSource` + `RegistrySnapshot`/`IDSlotLeaseRecord`, ~48 capability interfaces, 34 store sentinels. |
+| `pkg/graph/store` | `Store` interface, `QueryOpts`, `ShardDepth`, `RelTombstone`, `DistanceMetric`, `VectorIndexOptions`, `ChangeFeedCapability` + `ChangeRecord`/`ChangeTag`, `ReplicationSource` + `RegistrySnapshot`/`IDSlotLeaseRecord`, ~51 capability interfaces, 34 store sentinels. |
 | `pkg/graph/store/memory` | `memory.Store`, `memory.New()`. |
 | `pkg/graph/store/badger` | `badger.Store`, `badger.Config`, `badger.New()`. |
 | `pkg/graph/store/tiered` | `tiered.Store`, `tiered.Config`, `tiered.New()`, `MigrateFromBadger`, `EventShard`, `ShardInfo`, `VerifyResult`, `RepairResult`. |
@@ -1113,7 +1113,7 @@ After v3.4.0 (Option 3) and v4.2.0 (field→method), `pkg/graph/` is a thin faç
 | `internal/storeutil` | (renamed from `internal/store` in v3.3.0) Store-internal helpers: key encoding, msgpack wire types, pagination helpers, temporal-filter push-down. The public Store contract lives in `pkg/graph/store`. |
 | `internal/locks` | 256-shard entity-lock `Manager`, `LockEntity`/`LockTwo`/`LockMany` in ascending order. |
 | `internal/registry` | `LabelRegistry`, `RelTypeRegistry`, `PropertyKeyRegistry`. Internal types — not part of public API. |
-| `internal/index` | In-memory indexes only: property index, vector index, high-frequency temporal index, `OntologyMapping`. |
+| `internal/index` | In-memory indexes only: property index, vector index, high-frequency temporal index, DocValues / columnar helpers. (`OntologyMapping` lives in `pkg/graph/ontology`.) |
 | `internal/integrity` | Pure SHA-256 hash primitives — `ComputeNodeHash`, `ComputeRelHash`. Five fixed-vector anchors lock the on-disk hash format. |
 | `internal/grapherr` | `ErrNilGraph` / `ErrNilCallback` + the `IsNil` typed-nil detection every sub-API `ready()` uses to fail closed. |
 | `internal/apiutil` | Generic helpers shared by the sub-API wrapper packages (`CloneSlice`, `CloneMap`, `iterateForEach`) — de-duplicated from nodes/rels/index/tier/stats. |
@@ -1123,19 +1123,19 @@ After v3.4.0 (Option 3) and v4.2.0 (field→method), `pkg/graph/` is a thin faç
 
 | Package | Field on Graph | Methods |
 |---------|----------------|---------|
-| `pkg/graph/nodes` | `g.Nodes` | ~31 wrappers — node CRUD, label, property, version chain. |
-| `pkg/graph/rels` | `g.Rels` | ~30 wrappers — relationship CRUD, adjacency, property, version chain. |
-| `pkg/graph/temporal` | `g.Temporal` | ~24 wrappers — point-in-time, interval, bitemporal, snapshot/diff, Allen relations. Coexists with the temporal types (`GraphSnapshot`, `SnapshotDiff`, …) in the same package. |
-| `pkg/graph/index` | `g.Index` | ~13 wrappers — property/vector/high-frequency index management + IndexProvider. Coexists with `IndexProvider`, `Initializable`, `GraphReader` in the same package. |
-| `pkg/graph/events` | `g.Events` | ~3 wrappers — sync/async EventBus management. Coexists with `EventBus`, `AsyncEventBus`, `Event`, … in the same package. |
-| `pkg/graph/constraints` | `g.Constraints` | ~4 wrappers — temporal-constraint set management (`Set`, `Add`, `Get`, `DryRunValidate`) — plus the 5 unique-property-constraint doors (ADR-0002) in `unique.go`. |
-| `pkg/graph/io` | `g.IO` | ~2 wrappers — Export / Import. Shadows stdlib `io`; alias as `tkgio` at consumer sites that also need stdlib `io`. |
-| `pkg/graph/admin` | `g.Admin` | 6 wrappers — backend-agnostic admin (`Reset`, `DecomposeNodeID`, `DecomposeRelID`, `CompactHistoryNodes`, `CompactHistoryRels`, `PurgeExpiredNodes`). `Reset` and `PurgeExpiredNodes` are opt-in via `Config.AllowReset` / `Config.AllowRetentionPurge`. |
-| `pkg/graph/tier` | `g.Tier` | ~7 wrappers — tiered-store admin (archive, restore, rotate, shards, rebuild-catalog, repair, verify-shard). Reuses `core.AdminOps`. |
-| `pkg/graph/replication` | `g.Replication` | Change-log / op-log + replica apply: `ChangeFeed`, `ForEachChange`, `LastCommittedLSN`, `ApplyChange`/`ApplyChanges`, `AppliedLSN`/`SetAppliedLSN`, `RegistrySnapshot`, `IDSlotLease`/`SetIDSlotLease`. |
-| `pkg/graph/ingest` | `g.Ingest` | 3 wrappers — the ADR-0006 prepare-parallel / apply-sequential write door (`NewSession`, `AppliedSeq`, `WaitApplied`). |
-| `pkg/graph/stats` | `g.Stats` | ~7 wrappers — count helpers (including `NodeCountByLabelAndPropertyKey`). |
-| `pkg/graph/hash` | `g.Hash` | ~2 wrappers — hash-chain verification. Shadows stdlib `hash`; alias as `tkghash` at consumer sites that also need stdlib `hash`. |
+| `pkg/graph/nodes` | `g.Nodes` | ~45 wrappers — node CRUD, label, property, version chain, streaming ForEach/Iter. |
+| `pkg/graph/rels` | `g.Rels` | ~53 wrappers — relationship CRUD, adjacency, property, version chain, streaming ForEach. |
+| `pkg/graph/temporal` | `g.Temporal` | ~46 wrappers — point-in-time, interval, bitemporal, snapshot/diff, Allen relations, named as-of tags. Coexists with the temporal types (`GraphSnapshot`, `SnapshotDiff`, …) in the same package. |
+| `pkg/graph/index` | `g.Index` | ~27 wrappers — property/vector/high-frequency/composite index management + IndexProvider + scored search. Coexists with `IndexProvider`, `Initializable`, `GraphReader` in the same package. |
+| `pkg/graph/events` | `g.Events` | ~5 wrappers — sync/async EventBus management. Coexists with `EventBus`, `AsyncEventBus`, `Event`, … in the same package. |
+| `pkg/graph/constraints` | `g.Constraints` | ~5 wrappers — temporal-constraint set management (`Set`, `Add`, `Get`, `DryRunValidate`) — plus the unique-property-constraint doors (ADR-0002) in `unique.go`. |
+| `pkg/graph/io` | `g.IO` | ~6 wrappers — Export / Import plus delta backups (`Watermark`, `ExportSince`, `ImportMerge`, `HeaderOf`). Shadows stdlib `io`; alias as `tkgio` at consumer sites that also need stdlib `io`. |
+| `pkg/graph/admin` | `g.Admin` | ~9 wrappers — backend-agnostic admin (`Reset`, `DecomposeNodeID`, `DecomposeRelID`, `CompactHistoryNodes`/`Rels`, `PurgeExpiredNodes`, exact-erasure doors). `Reset` and `PurgeExpiredNodes` are opt-in via `Config.AllowReset` / `Config.AllowRetentionPurge`. |
+| `pkg/graph/tier` | `g.Tier` | ~8 wrappers — tiered-store admin (archive, restore, rotate, shards, rebuild-catalog, repair, verify-shard). Reuses `core.AdminOps`. |
+| `pkg/graph/replication` | `g.Replication` | ~11 wrappers — change-log / op-log + replica apply: `ChangeFeed`, `ForEachChange`, `LastCommittedLSN`, `ApplyChange`/`ApplyChanges`, `AppliedLSN`/`SetAppliedLSN`, `RegistrySnapshot`, `IDSlotLease`/`SetIDSlotLease`, `Watch`, `DecodeChangeIdentity`. |
+| `pkg/graph/ingest` | `g.Ingest` | ~4 wrappers — the ADR-0006 prepare-parallel / apply-sequential write door (`NewSession`, `AppliedSeq`, `WaitApplied`, …). |
+| `pkg/graph/stats` | `g.Stats` | ~15 wrappers — count helpers (including property-key presence, type-class partitions, range cardinality, rel-side mirrors). |
+| `pkg/graph/hash` | `g.Hash` | ~3 wrappers — hash-chain verification. Shadows stdlib `hash`; alias as `tkghash` at consumer sites that also need stdlib `hash`. |
 | `pkg/graph/resolve` | `g.Resolve` | 2 wrappers — shadow-property accessors (`NodeProperty`, `RelProperty`). |
 
 `g.Tx` (`TxAPI` in `subapi.go`) and `g.Batch` (`BatchAPI`) live in the `pkg/graph` package itself because they wrap the pkg/graph-private `*GraphTx` / `*BatchBuilder` types. `TxAPI.Run` / `TxAPI.RunContext` add closure-style transaction helpers on top of `Begin`.
@@ -1146,11 +1146,12 @@ After v3.4.0 (Option 3) and v4.2.0 (field→method), `pkg/graph/` is a thin faç
 
 Recorded so future readers know these are conscious choices, not oversights:
 
-- **Core sub-packaging**: `internal/core` is one ~20K-LOC package; the
-  sub-Ops decomposition is namespacing, not separation. Splitting into
-  `core/tx`, `core/temporal`, `core/mutate` is a multi-week, behavior-neutral
-  restructure — planned as its own effort. The shared relationship-create
-  kernel removed the most acute intra-core duplication.
+- **Core sub-packaging**: `internal/core` is one large package (~34K LOC of
+  implementation plus a larger test surface); the sub-Ops decomposition is
+  namespacing, not separation. Splitting into `core/tx`, `core/temporal`,
+  `core/mutate` is a multi-week, behavior-neutral restructure — planned as its
+  own effort. The shared relationship-create kernel removed the most acute
+  intra-core duplication.
 - **`pkg/graph/hash` / `pkg/graph/io` renames**: both shadow stdlib package
   names and force `tkghash`/`tkgio` aliasing on consumers. Renaming is
   breaking — v5 item.
