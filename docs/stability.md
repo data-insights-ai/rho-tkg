@@ -40,6 +40,13 @@ The following surfaces are **not** covered by the v4 stability promise. They are
 - **DocValues reader types** (`types.NodeColumnReader` and related) — performance-oriented columnar access, API shape pending use-case feedback from query planners
 - **Typed column scans** (`store.NodeColumnScanCapability`, `store.ColumnBatch`, `store.ColumnKind` and the `graph.ColumnBatch`/`ColumnKind`/`ColInt64`.. re-exports, `store.ScanColumnsFromNodes`, `store.ColumnScanBatchRows`, `graph.ErrMixedNumericColumn`) — the typed sibling of the DocValues doors above, experimental for the same reason: the batch shape is pending consumer feedback. The REFUSAL contract is the part most likely to matter to a consumer and the part least likely to change
 - **Relationship column doors** (`RelColumnSnapshot`, `RelMutationEpochForType`, and the `tkg_rel_start` / `tkg_rel_end` reserved column keys, on the badger AND memory stores) — the relationship sibling of the DocValues doors above, experimental for the same reason: the shape is pending consumer feedback. The epoch is a freshness token and never a change count, and its granularity is NOT portable — badger stripes per type (coarsened by any mutation site that cannot name its type), while memory uses a single store-wide stamp. Code that relies on a write to type A leaving type B's snapshot valid is correct on badger and wrong on memory.
+- **`ScanRelColumns` / `RelColumnBatch`** — the relationship column SCAN (distinct
+  from the snapshot doors above): streams typed column batches with `StartIDs` /
+  `EndIDs` alongside the property columns. Optional capability, so `ok=false` means
+  the backend has none and the caller must fall back to `Rels().ByType`. Experimental
+  for the same reason as its node sibling: the batch shape is pending consumer
+  feedback. The callback must not retain the batch — its slices are reused between
+  calls.
 - **Columnar refresh counters** (`ColumnExtendCount` / `ColumnRebuildCount` on the memory and badger stores) — telemetry for how a label's columnar snapshot was refreshed (append-extended versus fully rebuilt). Diagnostic only; not a stable metric contract
 - **`QueryOpts.IncludeEclipsed`** — reserved field with zero readers; pre-placeholder for a future cascade-edit feature (Phase 3). Consumers must not set it; it will either be implemented or removed at the next major version
 

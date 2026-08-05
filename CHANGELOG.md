@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`ScanRelColumns` — relationship rows as typed columns (RC4).** The last
+  node/relationship asymmetry in the columnar work. New optional capability
+  `RelColumnScanCapability`, reached through `Graph.ScanRelColumns(relType, props,
+  opts, fn)`, implemented on badger (columnar snapshot with a row fallback) and
+  memory (row path). `RelColumnBatch` carries `StartIDs` / `EndIDs` alongside the
+  property columns, so a traversal aggregation reads `(start, end, weight)` as three
+  aligned typed arrays with no `*types.Relationship` materialised. `ok=false` still
+  means "backend has no such scan, use `Rels().ByType`"; an unknown relationship type
+  is `ok=true` with zero rows. **Experimental surface** — see `docs/stability.md`.
+
+  The typed column payload moved into an embedded `ColumnData` so the
+  kind-resolution and refusal rules have exactly ONE implementation across entity
+  kinds — a second copy would let nodes and relationships disagree about when a
+  column refuses versus reports a row absent, for identically-shaped data. Badger's
+  fast path shares it too (`appendFromView` takes `*ColumnData`). `ColumnBatch` keeps
+  every field name it had, so no node consumer changes.
+
 ### Documentation
 
 - **Docs cleanup / correction pass against the v4.28.1 tree.** Version pins
@@ -15,8 +34,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   SPEC historical path → current path maps, stability experimental list +
   docs-consistency wording, backlog/bench references to missing files, and
   CONTRIBUTING store-parity guidance updated. Removed completed plan files
-  (`tasks/plan-columnar.md`, `tasks/plan-columnar-phase2.md` — all items shipped
-  or withdrawn with criteria in CHANGELOG) and the stale June 2026 `.harden/`
+  (`tasks/plan-columnar.md`, `tasks/plan-columnar-phase2.md`). **Correction:** that
+  sweep recorded the plans as fully shipped or withdrawn, and RC4 (`ScanRelColumns`)
+  was neither — it was still open and is implemented in this same Unreleased section.
+  The remaining items were shipped or withdrawn with criteria in CHANGELOG and the stale June 2026 `.harden/`
   ledger (fuzz posture lives in `SECURITY.md` / `CONTRIBUTING.md`; regressions
   live as committed tests). Multi-revision bench helper moved under `bench/`
   (`bench/bench-compare-revisions.sh`; defaults = recent tags) so all bench
