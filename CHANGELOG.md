@@ -4,6 +4,86 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.28.0] - 2026-08-05
+
+Relationship columns reach the memory backend, badger's rel column build stops
+paying a transaction per edge, and the last scheduler-dependent tests are made
+deterministic.
+
+### Added
+
+- **Relationship columns on the memory store.** `RelColumnSnapshot(typeToken,
+  propKeys)` and `RelMutationEpochForType(typeToken)` now exist on the memory
+  backend, closing the asymmetry with the node columns (which shipped on both).
+  Membership comes from `typeIdx`, endpoints live under the same reserved
+  `tkg_rel_start` / `tkg_rel_end` keys, so a consumer reads ONE name on both
+  backends. **Experimental surface** — see `docs/stability.md`.
+
+  **The invalidation granularity differs between the two backends, deliberately.**
+  Badger stripes the rel epoch per type; the memory store keeps a single
+  store-wide epoch. Striping exists to avoid an expensive rebuild, and the memory
+  rebuild walks an in-memory map — a second invalidation scheme to keep in step
+  with the first is not worth that. A caller must therefore treat the stamp as a
+  freshness token and never as a per-type change count. On memory, a write to ANY
+  relationship type invalidates every type's snapshot.
+
+### Performance
+
+- **Badger relationship bulk-scan for a column build.** `bulkRelGetters` called
+  `GetRelationship` per ID, and `prefetchRelNoFill` opens its own `bs.db.View`
+  per relationship — one transaction per edge for a build over an entire type.
+  `forEachRelBulk` mirrors the node path: a single `View`, one lazily-opened
+  iterator reused across `Seek`s, and `GetNoPromote` so a full-cardinality scan
+  neither takes an exclusive lock per row nor evicts the hot point-read entries
+  the cache exists to serve.
+
+  | rel column rebuild | before | after |
+  |---|---|---|
+  | 1,000 rels | 243,854 ns / 3,032 allocs | 194,569 ns / 34 allocs |
+  | 10,000 rels | 3,621,267 ns / 30,060 allocs | 2,396,598 ns / 62 allocs |
+
+  **The win is not where it was predicted.** Time improves 1.25-1.5x, against
+  append-extend's 171x, because the DECODE dominates rather than the transaction
+  overhead. What this actually delivers is the allocation collapse — 30,060 to
+  62, 485x fewer — which a ns/op microbenchmark barely shows and a loaded process
+  feels as GC pressure. Two different wins, and the larger one was guessed wrong.
+
+  A bulk decode failure falls back to per-ID `prefetchRelScan` (the no-promote
+  scan variant, not the promoting `GetRelationship` it replaced) rather than
+  failing the build.
+
+### Fixed
+
+- **Six lock-release probes, the node-delete backoff pair, and a concurrent-writer
+  drop probe no longer assert on the scheduler.** CI had been red across two
+  releases on tests that measured wall clock or goroutine scheduling rather than
+  the code under test:
+
+  - The `..._ReleasesLockDuringScan` family (6 tests) polled `TryLock` from a
+    competing goroutine and required 100+ wins. On a loaded runner the poller is
+    starved to zero — and the threshold comment records that BROKEN code scores
+    1-23, so zero never meant "the lock was held". The probe now runs on the
+    scanning goroutine itself through a `phase2ScanHook` seam placed between the
+    per-row read locks, where a `TryLock` succeeds if and only if the lock really
+    was released. The assertion is exact: `free == checked`.
+  - `TestNodeDeleteRetryBackoff_BoundedAndCapped` timed a real sleep with 50ms of
+    slack and CI still blew it at 61.8ms; its sibling `_GrowsWithAttempt` compared
+    means of timed sleeps and reported a 2.0ms mean where the entire range at that
+    attempt is 50µs — wake-up latency ~40x the value under test. Both now sample
+    `nodeDeleteRetryBackoffDuration`, the computed value, which is the property
+    being asserted; the sleeping never was.
+  - `TestTieredColdShardFastDrop_ConcurrentWriters` was NOT a timing bug. Its
+    comment claimed a re-add is "harmless because `AddLabelTokenRaw` is a no-op if
+    already present" — true of the in-memory helper on the copy, false of the
+    store door, which rejects an already-present token. It passed only when the
+    writer never lapped its ID list. Now alternates add and remove, which also
+    restores the write pressure the probe exists to apply (the add-only version
+    stopped mutating anything after the first lap).
+
+  All mutation-checked: the cap removal, a yield moved inside the read-lock
+  section, and returning the wrong endpoint column each fail the corresponding
+  probe.
+
 ## [4.27.0] - 2026-08-04
 
 The relationship-columns release: the columnar snapshot goes generic over its entity
