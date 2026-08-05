@@ -99,7 +99,13 @@ type GraphTx struct {
 	deletedRelSet   map[snowflake.ID]struct{}
 	mu              sync.Mutex // protects done flag and snapshot tracking
 	done            bool
-	committedLSN    uint64 // max change-log LSN this tx's commit assigned (0 = none / log off)
+	// writePathUsed is set by the shared transaction mutation-lock seam after
+	// it has acquired the graph lock and verified the graph is open. Commit
+	// uses it to preserve the final registry checkpoint for every mutation-
+	// capable transaction while allowing a clean read-only transaction to
+	// finalize without touching durable registry metadata.
+	writePathUsed bool
+	committedLSN  uint64 // max change-log LSN this tx's commit assigned (0 = none / log off)
 	// scopeToken (BACKLOG 11f) — set by BeginTx via c.scopedChangeLog.BeginScopedLog()
 	// when the store supports the full token-routed mechanism (see
 	// storepkg.ScopedTxCapability). 0 when the mechanism isn't in use (store
@@ -487,6 +493,7 @@ func (tx *GraphTx) lockActiveCoreWrite() error {
 			tx.mu.Unlock()
 			return ErrGraphClosed
 		}
+		tx.writePathUsed = true
 		return nil
 	}
 	tx.g.mu.Lock()
@@ -496,6 +503,7 @@ func (tx *GraphTx) lockActiveCoreWrite() error {
 		return ErrGraphClosed
 	}
 	tx.g.txLogScope.SetLogDivert(true)
+	tx.writePathUsed = true
 	return nil
 }
 
@@ -511,6 +519,7 @@ func (tx *GraphTx) lockActiveCoreWriteContext(ctx context.Context) error {
 			tx.mu.Unlock()
 			return ErrGraphClosed
 		}
+		tx.writePathUsed = true
 		return nil
 	}
 	tx.g.mu.Lock()
@@ -520,6 +529,7 @@ func (tx *GraphTx) lockActiveCoreWriteContext(ctx context.Context) error {
 		return ErrGraphClosed
 	}
 	tx.g.txLogScope.SetLogDivert(true)
+	tx.writePathUsed = true
 	return nil
 }
 
@@ -564,8 +574,10 @@ func (tx *GraphTx) lockActiveContext(ctx context.Context) error {
 // =============================================================================
 
 // Commit finalizes the transaction, making all mutations permanent.
-// Persists registries (briefly under c.mu.Lock for safe pointer mutation),
-// then releases c.txMu and publishes buffered events outside all locks.
+// Mutation-capable transactions take a final registry checkpoint; a clean
+// read-only transaction skips it. A previously failed registry checkpoint is
+// retried even when this transaction itself was read-only. Commit then releases
+// c.txMu and publishes buffered events outside all locks.
 // After Commit, all tx methods return storepkg.ErrTxDone.
 func (tx *GraphTx) Commit() error {
 	if err := tx.lockActive(); err != nil {
@@ -575,12 +587,12 @@ func (tx *GraphTx) Commit() error {
 
 	// A transaction can contain create/import calls that wrote rows but
 	// returned a trailing registry checkpoint error. Commit is the final
-	// durability boundary, so retry the registry checkpoint before making
-	// the transaction irreversible. Take c.mu.Lock briefly because
-	// persistRegistries may serialize via the store and we want to fence
-	// against concurrent registry mutations from standalone ops.
+	// durability boundary for every mutation-capable transaction, so preserve
+	// that checkpoint and retry any globally dirty registry state before making
+	// the transaction irreversible. A clean read-only transaction has no
+	// registry durability work and must not turn a read into an fsync.
 	tx.g.mu.Lock()
-	if err := tx.g.persistRegistries(); err != nil {
+	if err := tx.checkpointRegistriesOnCommit(); err != nil {
 		tx.g.mu.Unlock()
 		return err
 	}
@@ -626,6 +638,19 @@ func (tx *GraphTx) Commit() error {
 	return nil
 }
 
+// checkpointRegistriesOnCommit runs with c.mu held. registryMu closes the
+// second registry-access lock class used by ingest and Close (lesson 66); the
+// deferred unlock prevents that second lock from leaking if a backend
+// persister panics.
+func (tx *GraphTx) checkpointRegistriesOnCommit() error {
+	tx.g.registryMu.Lock()
+	defer tx.g.registryMu.Unlock()
+	if !tx.writePathUsed && !tx.g.registryDirty.Load() {
+		return nil
+	}
+	return tx.g.persistRegistries()
+}
+
 // CommittedLSN returns the MAX change-log LSN this transaction's commit assigned
 // — the exact commit-LSN for a read-your-writes write-bookmark, unaffected by
 // concurrent writers (unlike the global LastCommittedLSN head). Valid only AFTER
@@ -666,23 +691,33 @@ func (tx *GraphTx) Rollback() error {
 	defer tx.g.txMu.Unlock()
 	defer tx.g.mu.Unlock()
 
-	// Rollback rewrites history via direct store calls (ReplaceNode,
-	// TruncateNodeHistory, DeleteNodeCascade, PutNodeVersion, ...), bypassing
-	// the higher-level mutation doors that normally bump this cache as they
-	// run. The tx's OWN forward mutations DID bump it correctly when they
-	// executed (they go through those same doors) — but under this graph's
-	// relaxed per-entity isolation, a concurrent reader can observe an open
-	// tx's in-flight (not-yet-committed) state and build/cache an AS-OF
-	// DocValues column reflecting it. Without this bump, rolling that state
-	// back leaves the cache stale forever at whatever (label, txAt) pin was
-	// read mid-tx (BACKLOG 14a) — every other history-rewrite site
-	// (Admin.Reset, compaction, retention purge, import/import-merge, replica
-	// apply) already bumps; Rollback was the one gap.
-	tx.g.asOfColumns.bump()
-
 	// Discard buffered events — rolled-back mutations should never reach subscribers.
 	tx.g.txEventBuffer = nil
 	tx.pendingEvents = nil
+
+	// A read-only transaction has no entity/history/registry state to undo.
+	// It still restores read counters to the BeginTx snapshot and closes the
+	// change-log scope so the transaction releases every lifecycle resource.
+	// In particular, do not call restoreRegistries here: that performs durable
+	// registry writes and may reclaim unrelated concurrent allocations.
+	if !tx.writePathUsed {
+		tx.g.restoreOpCounters(tx.opSnapshot)
+		if tx.g.scopedChangeLog != nil {
+			return tx.g.scopedChangeLog.DiscardScopedLog(tx.scopeToken)
+		}
+		if tx.g.txLogScope != nil {
+			return tx.g.txLogScope.DiscardLogScope()
+		}
+		return nil
+	}
+
+	// Mutation rollback rewrites history via direct store calls (ReplaceNode,
+	// TruncateNodeHistory, DeleteNodeCascade, PutNodeVersion, ...), bypassing
+	// the higher-level mutation doors that normally bump this cache as they
+	// run. A clean read-only rollback returned above because it cannot have
+	// exposed an in-flight history rewrite and must not invalidate an AS-OF
+	// column merely for reading.
+	tx.g.asOfColumns.bump()
 
 	// Legacy mechanism only: keep change-log diversion ON across the reverse
 	// mutations below so their records ALSO land in the single shared scope

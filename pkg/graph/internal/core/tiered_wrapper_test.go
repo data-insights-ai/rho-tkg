@@ -70,6 +70,9 @@ func TestTieredWrapper_TxRollbackRewiresLabelRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BeginTx: %v", err)
 	}
+	if _, err := tx.AddNode([]string{"TxRollbackRewire"}, nil); err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
 	if err := tx.Rollback(); err != nil {
 		t.Fatalf("Rollback: %v", err)
 	}

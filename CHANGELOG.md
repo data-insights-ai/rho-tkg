@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Read-only transactions no longer write registry metadata during finalization.**
+  `GraphTx.Commit`, `TxAPI.Run`, `RunContext`, and `RunWithLSN` now skip the
+  label/relationship-type/property-key registry checkpoint when the transaction
+  used only read doors and the global registry state is clean. Mutation-capable
+  transactions retain the final checkpoint, and a read-only commit still retries
+  a previously failed dirty checkpoint before becoming irreversible. Read-only
+  rollback likewise skips registry restoration/persistence and the AS-OF column
+  invalidation pass while still restoring operation counters, discarding its
+  change-log scope, and releasing the transaction lifecycle lock. The mutation
+  classification is centralized in `lockActiveCoreWrite` and its context-aware
+  sibling, which every transaction write door uses.
+
 ## [4.28.0] - 2026-08-05
 
 Relationship columns reach the memory backend, badger's rel column build stops
