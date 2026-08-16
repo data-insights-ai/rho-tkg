@@ -95,7 +95,7 @@ func (bs *Store) scanRelColumnsColumnar(token uint16, props []string, opts store
 		end := min(start+storecontract.ColumnScanBatchRows, len(ids))
 		resetRelColumnBatch(batch, len(props))
 		for ord := start; ord < end; ord++ {
-			if !validTimeMatches(vf[ord], vt[ord], qFrom, qTo) {
+			if !validTimeMatches(effectiveValidFrom(vf[ord], ids[ord]), vt[ord], qFrom, qTo) {
 				continue
 			}
 			batch.IDs = append(batch.IDs, ids[ord])

@@ -164,11 +164,26 @@ func TestRelColumns_EndpointColumnsAlwaysBuilt(t *testing.T) {
 	}
 }
 
-// TestRelColumns_UnsetValidFromResolvesToMintTime is the Pattern-38 probe on the rel
-// side. A relationship with no explicit ValidFrom is valid from its MINT time, not
-// from the epoch; storing the raw 0 would make a columnar reader disagree with every
-// row-path valid-time filter on exactly those edges.
-func TestRelColumns_UnsetValidFromResolvesToMintTime(t *testing.T) {
+// TestRelColumns_UnsetValidFromReportsRaw pins WHAT THE COLUMN MEANS.
+//
+// This replaces TestRelColumns_UnsetValidFromResolvesToMintTime, which asserted the
+// opposite. That test conflated two questions that share one array:
+//
+//	what does this entity's stored validity say?   -> raw ValidFrom
+//	does this row pass a valid-time filter?        -> mint-time fallback
+//
+// Its stated rationale was the second ("or a columnar valid-time filter answers
+// differently from the row path") but its assertion was on the first. Folding the
+// fallback into the stored array satisfied the rationale and broke the meaning:
+// ValidFrom() is handed to callers as the entity's stored validity, and the MEMORY
+// backend's builder (column_batch_build.go) has always reported the raw value — so
+// one struct field meant two different things depending on the backend. An entity
+// with no valid-time metadata read as eternal through memory and as [mint, +inf)
+// through Badger.
+//
+// The fallback now lives in effectiveValidFrom, applied where filtering happens, so
+// the filter behaviour below is unchanged.
+func TestRelColumns_UnsetValidFromReportsRaw(t *testing.T) {
 	bs := rcStore(t)
 	rcRel(t, bs, 100, 1, 2, rcType, int64(5), 0, 0) // ValidFrom deliberately unset
 
@@ -176,9 +191,28 @@ func TestRelColumns_UnsetValidFromResolvesToMintTime(t *testing.T) {
 	if !ok {
 		t.Fatal("declined")
 	}
-	if got := snap.ValidFrom()[0]; got == 0 {
-		t.Fatal("unset ValidFrom stored as 0; it must resolve to the relationship's " +
-			"mint time, or a columnar valid-time filter answers differently from the row path")
+	if got := snap.ValidFrom()[0]; got != 0 {
+		t.Fatalf("ValidFrom() = %d, want 0: the reported column is the entity's "+
+			"STORED validity, the same value ValidRange() and tkg_valid_from give. "+
+			"The mint-time fallback belongs to the filter (effectiveValidFrom), not "+
+			"to this array — see the memory backend, which has always reported raw",
+			got)
+	}
+}
+
+// TestRelColumns_UnsetValidFromFiltersFromMintTime is the OTHER half, and the one
+// the replaced test's rationale was actually about: a valid-time filter must still
+// treat an unset ValidFrom as the mint time, so the columnar path answers exactly
+// as the row path does.
+func TestRelColumns_UnsetValidFromFiltersFromMintTime(t *testing.T) {
+	if got := effectiveValidFrom(0, types.RelID(100)); got == 0 {
+		t.Fatal("effectiveValidFrom(0) returned 0; an entity with no ValidFrom is " +
+			"valid from its mint time, which is what storeutil.MatchesTemporalFilter " +
+			"applies on the row path")
+	}
+	// An explicit bound is never overridden.
+	if got := effectiveValidFrom(5, types.RelID(100)); got != 5 {
+		t.Fatalf("effectiveValidFrom(5) = %d, want 5: an explicit bound is the answer", got)
 	}
 }
 

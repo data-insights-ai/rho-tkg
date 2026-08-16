@@ -2,7 +2,6 @@ package badger
 
 import (
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
-	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -176,13 +175,12 @@ func (bs *Store) bulkRelGetters(ids []types.RelID) (
 			return 0, 0, false
 		}
 		f, t, ok := r.ValidRange()
-		// Same rule as the node side: an unset ValidFrom resolves to the entity's
-		// MINT time, not to the epoch. Storing the raw 0 would make a columnar
-		// reader disagree with every row-path valid-time filter on exactly those
-		// relationships (Pattern 38).
-		if !ok || f == 0 {
-			f = storepkg.SnowflakeInstant(id.SnowflakeID())
+		if !ok {
+			return 0, 0, false
 		}
+		// RAW, like the node side. The mint-time fallback belongs to the FILTER
+		// (effectiveValidFrom), not to the reported column — see the long note in
+		// badgerstore_docvalues.go.
 		return int64(f), int64(t), true
 	}
 	return getProp, getTemporal

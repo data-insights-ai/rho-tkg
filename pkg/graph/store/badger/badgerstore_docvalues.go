@@ -409,9 +409,10 @@ func (bs *Store) bulkNodeGetters(ids []types.NodeID) (
 					return 0, 0, false
 				}
 				f, t, ok := nd.ValidRange()
-				if !ok || f == 0 {
-					f = storepkg.SnowflakeInstant(id.SnowflakeID())
+				if !ok {
+					return 0, 0, false
 				}
+				// RAW, not effective — see the note on getTemporal below.
 				return int64(f), int64(t), true
 			}
 	}
@@ -429,9 +430,24 @@ func (bs *Store) bulkNodeGetters(ids []types.NodeID) (
 				return 0, 0, false
 			}
 			f, t, ok := nd.ValidRange()
-			if !ok || f == 0 {
-				f = storepkg.SnowflakeInstant(id.SnowflakeID())
+			if !ok {
+				return 0, 0, false
 			}
+			// RAW ValidFrom, NOT the snowflake-effective one.
+			//
+			// These bounds are REPORTED to the caller as ColumnBatch.ValidFrom, and
+			// that field is a public surface with one meaning: the entity's stored
+			// validity, exactly what ValidRange() and the tkg_valid_from shadow key
+			// return. The memory backend's builder (column_batch_build.go) has
+			// always reported the raw value, so substituting the mint time here made
+			// ONE struct field mean two different things depending on the backend —
+			// an entity with no valid-time metadata read as Eternal through the
+			// memory store and as [mint, +inf) through Badger.
+			//
+			// The mint-time fallback is still right for FILTERING, and it has moved
+			// to where filtering happens (effectiveValidFrom, applied in
+			// validTimeMatches). Separating them keeps the row-path predicate
+			// identical while letting the reported column mean what it says.
 			return int64(f), int64(t), true
 		}
 }
