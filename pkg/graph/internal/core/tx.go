@@ -119,7 +119,7 @@ type GraphTx struct {
 	// checkpoints when it need not have. The opposite error -- missing a token this
 	// transaction interned -- cannot happen, and only that direction can lose data.
 	registrySizesAtBegin [3]int
-	committedLSN  uint64 // max change-log LSN this tx's commit assigned (0 = none / log off)
+	committedLSN         uint64 // max change-log LSN this tx's commit assigned (0 = none / log off)
 	// scopeToken (BACKLOG 11f) — set by BeginTx via c.scopedChangeLog.BeginScopedLog()
 	// when the store supports the full token-routed mechanism (see
 	// storepkg.ScopedTxCapability). 0 when the mechanism isn't in use (store

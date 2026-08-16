@@ -1,11 +1,11 @@
 package badger
 
 import (
+	snowflake "github.com/bds421/rho-snowflake-2026"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
-	snowflake "github.com/bds421/rho-snowflake-2026"
 )
 
 // ScanNodeColumns implements store.NodeColumnScanCapability.
