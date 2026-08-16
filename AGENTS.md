@@ -18,7 +18,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 Module: `github.com/data-insights-ai/rho-tkg/v4`
 Go: 1.26.1 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v4.28.1. **`CHANGELOG.md` is the source of truth for version history, migration recipes, and per-feature detail** (incl. measured numbers and ADR-stage narrative). This file is the STABLE architecture + design-rules reference and must not accumulate change narratives. (The release version-sync updates ONLY this `v<x.y.z>` — a docs-consistency test pins it to the current release; the per-feature narrative belongs in CHANGELOG, never here.)
+Status: v4.29.0. **`CHANGELOG.md` is the source of truth for version history, migration recipes, and per-feature detail** (incl. measured numbers and ADR-stage narrative). This file is the STABLE architecture + design-rules reference and must not accumulate change narratives. (The release version-sync updates ONLY this `v<x.y.z>` — a docs-consistency test pins it to the current release; the per-feature narrative belongs in CHANGELOG, never here.)
 
 ## Build & Test Commands
 

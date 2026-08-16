@@ -4,9 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [4.29.0] - 2026-08-16
+
+MINOR, not patch: `ScanRelColumns` is a new optional capability on the store
+interface, and an additive public surface is a minor bump even when the rest of
+the release is fixes.
 
 ### Fixed
+
+- **`ColumnBatch.ValidFrom` reported the mint time on Badger, diverging from memory.**
+  The field has one meaning — the entity's STORED validity, the same value
+  `ValidRange()` and the `tkg_valid_from` shadow key return — but the Badger column
+  path substituted the snowflake mint time when an entity carried no valid-time
+  metadata, while the memory backend's builder always reported the raw value. One
+  struct field therefore meant two different things depending on the backend: such an
+  entity read as Eternal through memory and as `[mint, +inf)` through Badger. The
+  mint-time fallback is still correct for FILTERING and has moved to where filtering
+  happens (`effectiveValidFrom`, applied in `validTimeMatches`), so the row path keeps
+  its predicate while the reported bounds stop lying. Downstream effect, and how it
+  was found: sigma-tkgd's temporal suite fails against v4.28.1 and passes against this
+  release, with failures of exactly this shape — `AS OF` pinning seeing four of five
+  facts, and temporal formula queries returning no rows.
 
 - **A write transaction no longer fsyncs on commit when it changed no registry.**
   `GraphTx.Commit` checkpointed the label/rel-type/property-key registries for every
