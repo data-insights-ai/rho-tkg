@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A write transaction no longer fsyncs on commit when it changed no registry.**
+  `GraphTx.Commit` checkpointed the label/rel-type/property-key registries for every
+  mutation-capable transaction. `SavePropertyKeyRegistry` fsyncs, so that was one full disk
+  sync per write transaction whether or not any registry had changed — and once a workload's
+  labels and property keys exist, no transaction changes one again. Measured on a
+  signal-ingestion workload: **1.000 fsync per signal at 12.5 ms, while the entire run
+  interned about thirty tokens**; through the caller's HTTP ingest, 52 signals/sec at one
+  worker and 65 at sixteen, with throughput refusing to scale because every commit serialised
+  on the drive. After: **1,341/sec and 4,144/sec — 26x and 64x** — and it scales with
+  concurrency again.
+
+  The checkpoint is now taken when there is something to checkpoint: this transaction interned
+  a token (the registries are compared against their sizes when it opened), or a previous
+  checkpoint failed (`registryDirty`, which is what the "retry before becoming irreversible"
+  contract was always about). Property-key durability does not depend on this path at all —
+  `persistRegistryIfGrew` write-ahead commits the registry from inside `flush()`, before the
+  row WriteBatch.
+
+  `TestGraphTxWritePathPreservesRegistryCheckpoint` asserted the unconditional behaviour and is
+  replaced by the two halves of the narrower contract: a write interning nothing does not
+  checkpoint, and a write interning a new label and property key does. A third test closes the
+  loop against disk rather than a counter — intern both inside a transaction, commit, close,
+  reopen from the same directory, and read the row back, since the risk this change carries is
+  precisely a row referencing a token that never reached stable storage.
+
 ### Added
 
 - **`ScanRelColumns` — relationship rows as typed columns (RC4).** The last

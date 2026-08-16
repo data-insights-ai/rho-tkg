@@ -105,6 +105,20 @@ type GraphTx struct {
 	// capable transaction while allowing a clean read-only transaction to
 	// finalize without touching durable registry metadata.
 	writePathUsed bool
+	// registrySizesAtBegin is the size of each registry (labels, rel types, property keys)
+	// when the transaction opened. Commit compares against it to decide whether there is any
+	// registry state to make durable.
+	//
+	// WHY A SIZE AND NOT A FLAG ON EVERY ALLOCATION SITE: a token can be interned through many
+	// doors -- node add, relationship add, import, and label resolution reached from a query --
+	// and a flag on each is a list that drifts. The registries themselves are the authority on
+	// whether they changed, and asking them costs three integer reads.
+	//
+	// SHARED REGISTRIES MAKE THIS CONSERVATIVE IN THE SAFE DIRECTION. Another transaction
+	// interning a token concurrently makes this one see growth it did not cause, so it
+	// checkpoints when it need not have. The opposite error -- missing a token this
+	// transaction interned -- cannot happen, and only that direction can lose data.
+	registrySizesAtBegin [3]int
 	committedLSN  uint64 // max change-log LSN this tx's commit assigned (0 = none / log off)
 	// scopeToken (BACKLOG 11f) — set by BeginTx via c.scopedChangeLog.BeginScopedLog()
 	// when the store supports the full token-routed mechanism (see
@@ -221,6 +235,9 @@ func (c *Core) BeginTx() (*GraphTx, error) {
 			return nil, err
 		}
 	}
+	// The registry sizes this transaction inherits. Commit compares against these to tell a
+	// transaction that interned a token from one that only touched existing ones.
+	tx.registrySizesAtBegin = tx.registrySizes()
 	return tx, nil
 }
 
@@ -645,10 +662,39 @@ func (tx *GraphTx) Commit() error {
 func (tx *GraphTx) checkpointRegistriesOnCommit() error {
 	tx.g.registryMu.Lock()
 	defer tx.g.registryMu.Unlock()
-	if !tx.writePathUsed && !tx.g.registryDirty.Load() {
+	// PERSIST WHEN THERE IS SOMETHING TO PERSIST, which is not the same as "a write happened".
+	//
+	// The previous condition checkpointed on every mutation-capable commit. Since
+	// SavePropertyKeyRegistry fsyncs, that was one full disk sync per write transaction
+	// whether or not any registry had changed -- and a workload whose transactions intern no
+	// new tokens (the steady state of any ingest, once its labels and property keys exist)
+	// paid a sync per commit forever. Measured on a signal-ingestion workload: 1.000 fsync per
+	// signal at 12.5ms, against ~30 tokens interned in total across the whole run.
+	//
+	// The two things that genuinely need the checkpoint are kept:
+	//   - this transaction interned a token, so a row it wrote may reference one that is not
+	//     yet durable; and
+	//   - a previous checkpoint FAILED, which is what registryDirty records and what the
+	//     "retry before becoming irreversible" contract is about.
+	if !tx.registriesChangedSinceBegin() && !tx.g.registryDirty.Load() {
 		return nil
 	}
 	return tx.g.persistRegistries()
+}
+
+// registriesChangedSinceBegin reports whether any registry has a different size than when the
+// transaction opened.
+//
+// Inequality rather than growth: a rollback restores the snapshot exactly, so equal sizes mean
+// equal contents, and any difference in either direction is a reason to write the registry
+// back rather than assume which way it moved.
+func (tx *GraphTx) registriesChangedSinceBegin() bool {
+	return tx.registrySizes() != tx.registrySizesAtBegin
+}
+
+// registrySizes reads the three registry sizes as one comparable value.
+func (tx *GraphTx) registrySizes() [3]int {
+	return [3]int{tx.g.labels.Len(), tx.g.relTypes.Len(), tx.g.propKeys.Len()}
 }
 
 // CommittedLSN returns the MAX change-log LSN this transaction's commit assigned

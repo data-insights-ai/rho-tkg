@@ -119,7 +119,18 @@ func TestGraphTxReadOnlyCommitSkipsRegistryPersistence(t *testing.T) {
 	}
 }
 
-func TestGraphTxWritePathPreservesRegistryCheckpoint(t *testing.T) {
+// TestGraphTxWriteWithoutNewTokensSkipsRegistryCheckpoint pins the cost of a commit that has
+// nothing to make durable.
+//
+// This test previously asserted the opposite -- that EVERY mutation-capable commit checkpoints
+// -- and that is what made the checkpoint unconditional. Since SavePropertyKeyRegistry fsyncs,
+// it cost one full disk sync per write transaction regardless of whether any registry had
+// changed. Measured on a signal-ingestion workload against this library: 1.000 fsync per
+// signal, 12.5ms per signal, while the whole run interned about thirty tokens in total.
+//
+// The narrower contract is the one that was always intended, and the sibling test below pins
+// its other half: a transaction that DOES intern a token still checkpoints.
+func TestGraphTxWriteWithoutNewTokensSkipsRegistryCheckpoint(t *testing.T) {
 	t.Parallel()
 	g, st := newTxRegistryCountingGraph(t, false)
 
@@ -133,6 +144,7 @@ func TestGraphTxWritePathPreservesRegistryCheckpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BeginTx: %v", err)
 	}
+	// Every label and property key this touches was interned by the seed above.
 	if _, err := tx.UpdateNode(n.ID(), map[string]any{"status": "after"}); err != nil {
 		t.Fatalf("UpdateNode: %v", err)
 	}
@@ -141,8 +153,44 @@ func TestGraphTxWritePathPreservesRegistryCheckpoint(t *testing.T) {
 		t.Fatalf("Commit: %v", err)
 	}
 	registries, properties, _, _ := st.counts()
-	if registries != beforeRegistries+1 || properties != beforeProperties+1 {
-		t.Fatalf("write Commit registry saves = (%d, %d), want (%d, %d)", registries, properties, beforeRegistries+1, beforeProperties+1)
+	if registries != beforeRegistries || properties != beforeProperties {
+		t.Fatalf("a commit that interned nothing saved registries (%d, %d), want (%d, %d) -- "+
+			"each save fsyncs, so this is a disk sync per transaction for no durable change",
+			registries, properties, beforeRegistries, beforeProperties)
+	}
+}
+
+// TestGraphTxWriteInterningNewTokenCheckpoints is the durability half, and the reason the
+// condition is "did a registry change" rather than "was anything written".
+//
+// A row referencing a token that is not durable is undecodable after a crash, so a transaction
+// that interns one MUST checkpoint before becoming irreversible.
+func TestGraphTxWriteInterningNewTokenCheckpoints(t *testing.T) {
+	t.Parallel()
+	g, st := newTxRegistryCountingGraph(t, false)
+
+	if _, err := g.Nodes.Add(context.Background(), []string{"Seeded"}, map[string]any{"status": "before"}); err != nil {
+		t.Fatalf("seed node: %v", err)
+	}
+	st.resetCounts()
+
+	tx, err := g.BeginTx()
+	if err != nil {
+		t.Fatalf("BeginTx: %v", err)
+	}
+	// A label AND a property key neither of which the graph has seen.
+	if _, err := tx.AddNode([]string{"NeverSeenLabel"}, map[string]any{"never_seen_key": 1}); err != nil {
+		t.Fatalf("AddNode: %v", err)
+	}
+	beforeRegistries, beforeProperties, _, _ := st.counts()
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	registries, properties, _, _ := st.counts()
+	if registries <= beforeRegistries || properties <= beforeProperties {
+		t.Fatalf("a commit that interned a new label and property key did NOT checkpoint "+
+			"(%d, %d) -> (%d, %d); a row referencing a non-durable token is undecodable after "+
+			"a crash", beforeRegistries, beforeProperties, registries, properties)
 	}
 }
 
