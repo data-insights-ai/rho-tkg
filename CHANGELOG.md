@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.34.0] - 2026-09-01
+
+### Added
+
+- **`MaxOpenColdShards`** lets a cold shard opened by a read stay open, up to N
+  at once, instead of being closed the moment the read finishes. Repeat reads of
+  the same historical data are then served from the handle the first one opened.
+
+  Measured through a caller: opening a case whose signals lived in demoted
+  shards took 16.9s, then 7.5s again on the very next read, because nothing was
+  retained. The same reads against the store with demotion off were 0.04s.
+
+  The bound stays hard — a shard that finds no room closes at check-in as
+  before, decided from an atomic counter without taking a lock — and the idle
+  sweep reclaims the least recently used, sealing their counts on the way out.
+
+  Opt-in: 0 (the default) keeps the previous behaviour, which is what a caller
+  scanning historical data without re-reading it wants, and the safer default
+  for a store whose shard count grows without bound.
+
 ## [4.33.0] - 2026-09-01
 
 MINOR: `ShardEntry` gains persisted count fields; `ShardCatalog` gains
