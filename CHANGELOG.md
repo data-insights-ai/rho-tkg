@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.31.0] - 2026-09-01
+
+MINOR: `ColdAfter` now takes effect at open, which is a behaviour change for
+any store that sets it.
+
+### Changed
+
+- **`ColdAfter` is applied when the store opens, not only when the hot shard
+  rotates.** Demotion was a side effect of rotation, so setting `ColdAfter` on
+  an existing store changed nothing until the next rotation — a week, on a
+  weekly window. It could not be observed or tested on a live store, and every
+  shard it should have demoted stayed open in the meantime.
+
+  `New()` now classifies a warm shard whose window closed before the cutoff as
+  cold, and persists that in the catalog after every shard has mounted.
+  Deciding the tier before the mount loop is what makes it pay: such a shard is
+  never opened at all. On a real 26-shard store with 19 past the cutoff, that
+  is 7 Badger instances mounted instead of 26 — 499 MB resident against 795 MB.
+
+  The catalog is saved only once the mounts succeed, so it cannot outlive a
+  failed open claiming a tier the store never reached. A failed save is logged
+  rather than fatal; the shards are already cold in memory and the next open
+  re-derives it.
+
 ## [4.30.0] - 2026-09-01
 
 MINOR: `badger.Store.CountSnapshot` is a new method on the store surface.
