@@ -149,6 +149,12 @@ func (ts *Store) NodeCount() (int, error) {
 	}
 	results := make([]result, len(eventShards))
 	queryEventShards(eventShards, func(i int, es *EventShard) {
+		// A closed shard answers from the counts it recorded on its way out,
+		// rather than being reopened to add up numbers it already knew.
+		if n, ok := es.countFromCache(func(c *shardCounts) int { return c.nodes }); ok {
+			results[i].count = n
+			return
+		}
 		store, release, err := es.checkoutStoreForRead(ts)
 		if err != nil {
 			results[i].err = err
@@ -209,6 +215,12 @@ func (ts *Store) NodeCountByLabel(token uint16) (int, error) {
 	}
 	results := make([]result, len(eventShards))
 	queryEventShards(eventShards, func(i int, es *EventShard) {
+		// A closed shard answers from the counts it recorded on its way out,
+		// rather than being reopened to add up numbers it already knew. This is the fold AllLabelCounts runs once per label, so a reopen here was paid |labels| times over.
+		if n, ok := es.countFromCache(func(c *shardCounts) int { return c.byLabel[token] }); ok {
+			results[i].count = n
+			return
+		}
 		store, release, err := es.checkoutStoreForRead(ts)
 		if err != nil {
 			results[i].err = err

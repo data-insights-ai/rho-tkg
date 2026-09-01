@@ -128,6 +128,12 @@ func (ts *Store) RelationshipCount() (int, error) {
 	}
 	results := make([]result, len(eventShards))
 	queryEventShards(eventShards, func(i int, es *EventShard) {
+		// A closed shard answers from the counts it recorded on its way out,
+		// rather than being reopened to add up numbers it already knew.
+		if n, ok := es.countFromCache(func(c *shardCounts) int { return c.rels }); ok {
+			results[i].count = n
+			return
+		}
 		store, release, err := es.checkoutStoreForRead(ts)
 		if err != nil {
 			results[i].err = err
@@ -188,6 +194,12 @@ func (ts *Store) RelCountByType(token uint16) (int, error) {
 	}
 	results := make([]result, len(eventShards))
 	queryEventShards(eventShards, func(i int, es *EventShard) {
+		// A closed shard answers from the counts it recorded on its way out,
+		// rather than being reopened to add up numbers it already knew.
+		if n, ok := es.countFromCache(func(c *shardCounts) int { return c.byRelType[token] }); ok {
+			results[i].count = n
+			return
+		}
 		store, release, err := es.checkoutStoreForRead(ts)
 		if err != nil {
 			results[i].err = err

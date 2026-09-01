@@ -49,6 +49,7 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 					return nil, fmt.Errorf("graph: lazy-open cold shard %s: %w", es.name, err)
 				}
 				es.store = store
+				es.dropCachedCounts()
 			}
 			es.readTransientOpen = false
 			store := es.store
@@ -72,6 +73,7 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 			return nil, fmt.Errorf("graph: lazy-open cold shard %s: %w", es.name, err)
 		}
 		es.store = store
+		es.dropCachedCounts()
 	}
 	es.readTransientOpen = false
 	es.activeReqs.Add(1)
@@ -122,6 +124,7 @@ func (es *EventShard) checkoutStoreForRead(ts *Store) (*BadgerStore, func(), err
 		}
 		es.store = store
 		es.readTransientOpen = true
+		es.dropCachedCounts()
 	}
 	es.activeReqs.Add(1)
 	if ts.closed.Load() {
@@ -181,6 +184,9 @@ func (es *EventShard) checkinReadStore(ts *Store) {
 	if es.store == nil || !es.readTransientOpen || es.activeReqs.Load() != 0 {
 		return
 	}
+	// Same reasoning as the idle-close: record the counts while the store is
+	// still open, so the shard can be counted afterwards without reopening.
+	es.snapshotCountsLocked()
 	if err := es.store.Close(); err != nil {
 		wrapped := fmt.Errorf("graph: close transient cold shard %s: %w", es.name, err)
 		ts.recordBackgroundError(wrapped)
@@ -347,6 +353,10 @@ func (ts *Store) closeIdleShards() {
 	for _, es := range coldShards {
 		es.shardMu.Lock()
 		if es.store != nil && es.activeReqs.Load() == 0 && (nowMs-es.lastAccess.Load()) > thresholdMs {
+			// Record what it holds BEFORE closing: after this the shard cannot
+			// change, so the snapshot stays true until it is opened again, and
+			// count folds stop reopening it just to add up numbers.
+			es.snapshotCountsLocked()
 			if err := es.store.Close(); err != nil {
 				wrapped := fmt.Errorf("graph: idle-close cold shard %s: %w", es.name, err)
 				ts.recordBackgroundError(wrapped)

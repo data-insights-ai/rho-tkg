@@ -145,6 +145,10 @@ type EventShard struct {
 	activeReqs        atomic.Int64 // outstanding read requests; blocks idle-close
 	lastAccess        atomic.Int64 // unix ms, idle-close tracking
 	readTransientOpen bool         // shardMu-protected: cold store was opened only for transient read fanout
+
+	// counts is what this shard held when it was last closed, so counting
+	// questions can be answered without reopening it. See shardCounts.
+	counts atomic.Pointer[shardCounts]
 }
 
 const (

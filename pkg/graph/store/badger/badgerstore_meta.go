@@ -400,3 +400,50 @@ func readPropertyKeyRegistryFromMeta(bs *Store) *registrypkg.PropertyKeyRegistry
 	}
 	return reg
 }
+
+// CountSnapshot returns every count this store maintains, in one read.
+//
+// It exists so a caller holding an open store can record what it contains
+// before closing it, and answer counting questions afterwards without
+// reopening. Every value here is an O(1) atomic or a small map, so taking all
+// of them costs no more than taking one.
+//
+// The snapshot is only as current as the moment it is taken; it is the
+// caller's responsibility to take it when no further writes can happen — for a
+// tiered store, immediately before the shard is closed.
+func (bs *Store) CountSnapshot() (nodes, rels int, byLabel, byRelType map[uint16]int, err error) {
+	if err := bs.checkOpen(); err != nil {
+		return 0, 0, nil, nil, err
+	}
+	nodes = int(bs.nodeCount.Load()) // #nosec G115 — non-negative, within int range
+	rels = int(bs.relCount.Load())   // #nosec G115 — non-negative, within int range
+
+	byLabel = make(map[uint16]int)
+	bs.labelCounts.Range(func(k, v any) bool {
+		token, ok := k.(uint16)
+		if !ok {
+			return true
+		}
+		counter, ok := v.(*atomic.Int64)
+		if !ok {
+			return true
+		}
+		byLabel[token] = int(counter.Load()) // #nosec G115 — non-negative, within int range
+		return true
+	})
+
+	byRelType = make(map[uint16]int)
+	bs.typeCounts.Range(func(k, v any) bool {
+		token, ok := k.(uint16)
+		if !ok {
+			return true
+		}
+		counter, ok := v.(*atomic.Int64)
+		if !ok {
+			return true
+		}
+		byRelType[token] = int(counter.Load()) // #nosec G115 — non-negative, within int range
+		return true
+	})
+	return nodes, rels, byLabel, byRelType, nil
+}
