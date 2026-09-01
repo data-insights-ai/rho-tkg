@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.33.0] - 2026-09-01
+
+MINOR: `ShardEntry` gains persisted count fields; `ShardCatalog` gains
+`SealShardCounts` / `UnsealShardCounts`.
+
+### Changed
+
+- **A closed shard's counts are now persisted, so they are computed once in the
+  life of the shard rather than once per process.** A shard whose window has
+  closed cannot change — every write path opens it first — yet the in-memory
+  snapshot added in 4.30.0 starts empty at every boot, so the first count fold
+  reopened every cold shard to rediscover settled numbers.
+
+  The catalog already had the fields (`ApproxNodes`, `ApproxRels`, `Verified`)
+  and an `UpdateShardStats` method with no callers: the persistence was designed
+  and never wired. A shard now seals its counts on close and adopts them at
+  open, and a sealed shard is never reopened to be counted.
+
+  Opening a shard unseals it, persisted, because an open shard can be written
+  to and a sealed count must not outlive the close it described. The read-only
+  checkout does not unseal, so the common path costs no catalog write. Saves are
+  best-effort and outside every shard lock: a lost one means recomputation, not
+  incorrectness.
+
 ## [4.32.0] - 2026-09-01
 
 ### Added
