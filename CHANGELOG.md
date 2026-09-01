@@ -4,6 +4,40 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.30.0] - 2026-09-01
+
+MINOR: `badger.Store.CountSnapshot` is a new method on the store surface.
+
+### Changed
+
+- **A closed cold shard is now counted from what it recorded on the way out,
+  instead of being reopened.** Counting is the one question about a shard that
+  needs no data from it — an open store keeps every count as an O(1) atomic —
+  yet each count fold called `checkoutStoreForRead` on every shard, which lazily
+  opens a closed cold one. `AllLabelCounts` runs that fold once per label, so
+  the reopen was paid once per label per shard.
+
+  Measured on a real 26-shard store with 19 cold, on the host that owns it:
+  `AllLabelCounts` **22.4s -> 3.5s on the first call and 0.0003s after**, and
+  `NodeCount` **2.8s -> 0.0001s**, against 0.001s when the same shards were
+  open. The caller's endpoint had a 30s timeout, so a store with cold shards
+  could not answer it at all — which made `ColdAfter` unusable in practice for
+  anyone who also reads counts.
+
+  A shard records its counts in the idle-close and in the transient close that
+  follows a cold read, and the folds answer a closed shard from that. Sound
+  because a closed shard cannot change: every write path opens it first. The
+  snapshot is dropped when the shard is opened, so a reopened shard is never
+  answered from a stale copy, and the first fold after a restart still opens
+  each shard once to take it.
+
+### Added
+
+- **`badger.Store.CountSnapshot`** returns node count, relationship count and
+  the per-label and per-type maps in one call. Every value is an atomic or a
+  small map, so taking all of them costs no more than taking one. Intended for
+  a caller that wants to record what a store holds before closing it.
+
 ## [4.29.1] - 2026-09-01
 
 PATCH: a startup performance change and an error-path leak fix, with no change
