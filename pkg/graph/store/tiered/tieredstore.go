@@ -590,8 +590,32 @@ func New(cfg Config) (*Store, error) {
 	entries := ts.catalog.EventShards()
 	shards := make([]*EventShard, len(entries))
 	warmIdx := make([]int, 0, len(entries))
+
+	// ColdAfter IS APPLIED HERE, not only at rotation.
+	//
+	// Demotion used to happen solely as a side effect of the hot shard
+	// rotating, so setting ColdAfter on an existing store changed nothing until
+	// the next rotation came round — a week, on a weekly window. That made the
+	// setting untestable on a live store and left every shard it should have
+	// demoted open in the meantime, which is the cost it exists to avoid.
+	//
+	// Deciding the tier BEFORE the mount loop is also what makes it pay: a
+	// shard classified cold here is never opened at all, rather than being
+	// opened and demoted afterwards.
+	coldCutoff := time.Time{}
+	if cfg.ColdAfter > 0 {
+		coldCutoff = time.Now().Add(-cfg.ColdAfter)
+	}
+	demotedAtOpen := 0
+
 	for i, entry := range entries {
-		switch entry.Tier {
+		tier := entry.Tier
+		if tier == TierWarm && !coldCutoff.IsZero() && entry.TimeEnd.Before(coldCutoff) {
+			tier = TierCold
+			ts.catalog.UpdateShardTier(entry.Name, TierCold)
+			demotedAtOpen++
+		}
+		switch tier {
 		case TierWarm:
 			warmIdx = append(warmIdx, i)
 		case TierCold:
@@ -628,6 +652,18 @@ func New(cfg Config) (*Store, error) {
 	for i, es := range shards {
 		if es != nil {
 			ts.eventShards[entries[i].Name] = es
+		}
+	}
+
+	// Persist the demotions only after every shard mounted. A catalog saved
+	// before a failed open would claim a tier the store never reached.
+	if demotedAtOpen > 0 {
+		if err := ts.catalog.Save(); err != nil {
+			// The store is usable — the shards are registered cold in memory —
+			// but the next open would have to work it out again. Not fatal.
+			slog.Error("graph: persist shard demotions taken at open", "demoted", demotedAtOpen, "error", err)
+		} else {
+			slog.Info("graph: demoted shards past ColdAfter at open", "demoted", demotedAtOpen)
 		}
 	}
 
