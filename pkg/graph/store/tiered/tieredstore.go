@@ -42,6 +42,16 @@ type Config struct {
 	// ColdAfter demotes warm shards to cold after this duration. 0 = never demote.
 	// Must not be negative.
 	ColdAfter time.Duration
+	// PromoteColdShardsAtOpen promotes EVERY cold event shard back to warm when
+	// the store opens, and persists that. It is the way back from ColdAfter:
+	// nothing else promotes a shard, so a store that has been demoted would
+	// otherwise stay demoted whatever the config later says.
+	//
+	// Deliberately separate from ColdAfter rather than implied by unsetting it.
+	// A shard can be cold for reasons unrelated to the policy, and "stop
+	// demoting" is not the same instruction as "undo the demotions". Set it for
+	// one start, then unset it.
+	PromoteColdShardsAtOpen bool
 	// IdleTimeout closes idle cold shards after this duration. 0 = never close.
 	// Default: 5 minutes when ColdAfter > 0. If set, must be at least 1ms.
 	IdleTimeout time.Duration
@@ -608,12 +618,28 @@ func New(cfg Config) (*Store, error) {
 	}
 	demotedAtOpen := 0
 
+	promotedAtOpen := 0
+
 	for i, entry := range entries {
 		tier := entry.Tier
-		if tier == TierWarm && !coldCutoff.IsZero() && entry.TimeEnd.Before(coldCutoff) {
+		switch {
+		case tier == TierWarm && !coldCutoff.IsZero() && entry.TimeEnd.Before(coldCutoff):
 			tier = TierCold
 			ts.catalog.UpdateShardTier(entry.Name, TierCold)
 			demotedAtOpen++
+		case tier == TierCold && cfg.PromoteColdShardsAtOpen:
+			// DEMOTION HAS TO BE REVERSIBLE, but only when asked. Nothing else
+			// in the store ever promotes a shard, so without an explicit way
+			// back a store demoted once stays demoted for good and ColdAfter
+			// is a one-way door rather than a setting an operator can try.
+			//
+			// It is NOT keyed off ColdAfter being zero. A shard can be cold for
+			// reasons that have nothing to do with the policy, and unsetting
+			// the policy means "stop demoting", not "undo what was demoted" —
+			// which is what the cold-restart and WAL-recovery tests encode.
+			tier = TierWarm
+			ts.catalog.UpdateShardTier(entry.Name, TierWarm)
+			promotedAtOpen++
 		}
 		switch tier {
 		case TierWarm:
@@ -657,13 +683,15 @@ func New(cfg Config) (*Store, error) {
 
 	// Persist the demotions only after every shard mounted. A catalog saved
 	// before a failed open would claim a tier the store never reached.
-	if demotedAtOpen > 0 {
+	if demotedAtOpen > 0 || promotedAtOpen > 0 {
 		if err := ts.catalog.Save(); err != nil {
-			// The store is usable — the shards are registered cold in memory —
-			// but the next open would have to work it out again. Not fatal.
-			slog.Error("graph: persist shard demotions taken at open", "demoted", demotedAtOpen, "error", err)
+			// The store is usable — the tiers are already right in memory — but
+			// the next open would have to work them out again. Not fatal.
+			slog.Error("graph: persist shard tier changes taken at open",
+				"demoted", demotedAtOpen, "promoted", promotedAtOpen, "error", err)
 		} else {
-			slog.Info("graph: demoted shards past ColdAfter at open", "demoted", demotedAtOpen)
+			slog.Info("graph: applied shard tier changes at open",
+				"demoted", demotedAtOpen, "promoted", promotedAtOpen)
 		}
 	}
 
