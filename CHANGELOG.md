@@ -4,6 +4,46 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.29.1] - 2026-09-01
+
+PATCH: a startup performance change and an error-path leak fix, with no change
+to the public surface.
+
+### Changed
+
+- **Warm event shards now open concurrently at store open — 2.15s to 1.28s on a
+  26-shard store, about 40%.** `New` mounted every warm shard one after another.
+  Each mount is dominated by waiting on the filesystem — manifest read, table
+  mmap, background goroutine start — so on a store with many shards the open sat
+  idle on one shard at a time while every core did nothing. Profiling a real
+  26-shard store showed the open spending most of its samples in runtime
+  scheduling rather than in any index or decode work: the cost was
+  serialisation, not the per-shard work.
+
+  The mounts now run on a bounded worker pool, capped by
+  `maxShardOpenParallelism` at 16 to mirror `maxEventShardQueryParallelism` on
+  the read path — each open holds a Badger handle and its background goroutines,
+  so the fan-out is capped rather than scaled to the shard count. Ordering is
+  unaffected: each worker writes its own slice index and `ts.eventShards` is
+  populated after the pool drains, in catalog order, so the shard map never
+  depends on which worker finished first. Cold shards are unchanged — still
+  registered without being opened, still lazy-opened on first access.
+
+  No configuration change and no API change; existing stores open as-is.
+
+### Fixed
+
+- **A failed shard open leaked file handles, wedging the next open of that
+  directory.** The cleanup path closed `ts.eventShards`, which at that moment
+  held only the shards published so far. Serially that already missed nothing
+  only by luck of ordering; with workers in flight, a shard that finished
+  opening after the failure was recorded was never closed, and the next open of
+  that directory fails with `Cannot acquire directory lock ... Another process
+  is using this Badger database`. Cleanup now walks the result slice, which
+  holds every shard any worker completed, so a failed `New` leaves no handle
+  behind. Covered by `TestParallelOpen_FailureLeaksNoHandles`, which fails with
+  exactly that directory-lock error if the previous cleanup is restored.
+
 ## [4.29.0] - 2026-08-16
 
 MINOR, not patch: `ScanRelColumns` is a new optional capability on the store
