@@ -39,10 +39,11 @@ func closeColdStores(t *testing.T, ts *Store) int {
 	ts.mu.RUnlock()
 
 	closed := 0
+	sealed := false
 	for _, es := range shards {
 		es.shardMu.Lock()
 		if es.store != nil {
-			es.snapshotCountsLocked()
+			sealed = es.snapshotCountsLocked(ts) || sealed
 			if err := es.store.Close(); err != nil {
 				es.shardMu.Unlock()
 				t.Fatalf("close cold shard %s: %v", es.name, err)
@@ -52,6 +53,11 @@ func closeColdStores(t *testing.T, ts *Store) int {
 			closed++
 		}
 		es.shardMu.Unlock()
+	}
+	// Mirror what the real idle-close does: persist the seal. Without this the
+	// catalog keeps the counts only in memory and a restart loses them.
+	if sealed {
+		ts.saveCatalogBestEffort("test close")
 	}
 	return closed
 }

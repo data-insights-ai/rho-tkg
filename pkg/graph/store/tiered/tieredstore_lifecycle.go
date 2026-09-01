@@ -49,7 +49,14 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 					return nil, fmt.Errorf("graph: lazy-open cold shard %s: %w", es.name, err)
 				}
 				es.store = store
-				es.dropCachedCounts()
+				// The general checkout, which write paths use. A shard that is
+				// open can be written to, so a sealed count must not outlive
+				// the close it described — persist the unseal, or a crash
+				// before the next close would leave the next start adopting
+				// counts from before the write.
+				if es.dropCachedCounts(ts) {
+					ts.saveCatalogBestEffort("unseal shard counts on open")
+				}
 			}
 			es.readTransientOpen = false
 			store := es.store
@@ -73,7 +80,9 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 			return nil, fmt.Errorf("graph: lazy-open cold shard %s: %w", es.name, err)
 		}
 		es.store = store
-		es.dropCachedCounts()
+		if es.dropCachedCounts(ts) {
+			ts.saveCatalogBestEffort("unseal shard counts on open")
+		}
 	}
 	es.readTransientOpen = false
 	es.activeReqs.Add(1)
@@ -124,7 +133,11 @@ func (es *EventShard) checkoutStoreForRead(ts *Store) (*BadgerStore, func(), err
 		}
 		es.store = store
 		es.readTransientOpen = true
-		es.dropCachedCounts()
+		// READ-ONLY checkout: the shard cannot change through it, so the
+		// sealed catalog entry stays valid and is left alone. Only the
+		// in-memory copy is dropped, because while the store is open it is the
+		// more direct answer.
+		es.counts.Store(nil)
 	}
 	es.activeReqs.Add(1)
 	if ts.closed.Load() {
@@ -186,7 +199,7 @@ func (es *EventShard) checkinReadStore(ts *Store) {
 	}
 	// Same reasoning as the idle-close: record the counts while the store is
 	// still open, so the shard can be counted afterwards without reopening.
-	es.snapshotCountsLocked()
+	sealedCounts := es.snapshotCountsLocked(ts)
 	if err := es.store.Close(); err != nil {
 		wrapped := fmt.Errorf("graph: close transient cold shard %s: %w", es.name, err)
 		ts.recordBackgroundError(wrapped)
@@ -195,6 +208,11 @@ func (es *EventShard) checkinReadStore(ts *Store) {
 	}
 	es.store = nil
 	es.readTransientOpen = false
+	if sealedCounts {
+		// Deferred to after this returns so the catalog write does not happen
+		// under es.shardMu.
+		defer ts.saveCatalogBestEffort("seal shard counts on transient close")
+	}
 }
 
 // checkoutStoreIfOpen pins a shard only if its BadgerStore is already open.
@@ -350,13 +368,14 @@ func (ts *Store) closeIdleShards() {
 	}
 	ts.mu.RUnlock()
 
+	sealedAny := false
 	for _, es := range coldShards {
 		es.shardMu.Lock()
 		if es.store != nil && es.activeReqs.Load() == 0 && (nowMs-es.lastAccess.Load()) > thresholdMs {
 			// Record what it holds BEFORE closing: after this the shard cannot
 			// change, so the snapshot stays true until it is opened again, and
 			// count folds stop reopening it just to add up numbers.
-			es.snapshotCountsLocked()
+			sealedAny = es.snapshotCountsLocked(ts) || sealedAny
 			if err := es.store.Close(); err != nil {
 				wrapped := fmt.Errorf("graph: idle-close cold shard %s: %w", es.name, err)
 				ts.recordBackgroundError(wrapped)
@@ -366,5 +385,23 @@ func (ts *Store) closeIdleShards() {
 			es.readTransientOpen = false
 		}
 		es.shardMu.Unlock()
+	}
+
+	// One save for the whole sweep, outside every shard lock. Sealing is worth
+	// persisting even if several shards closed: the alternative is the next
+	// start reopening each of them to recount what they held.
+	if sealedAny {
+		ts.saveCatalogBestEffort("seal shard counts on idle-close")
+	}
+}
+
+// saveCatalogBestEffort persists the catalog and logs rather than fails.
+//
+// Every caller here is adjusting COUNT bookkeeping, which is an optimisation:
+// if the save is lost the numbers are recomputed on the next start, slowly but
+// correctly. That is not worth failing a close or a checkout over.
+func (ts *Store) saveCatalogBestEffort(what string) {
+	if err := ts.catalog.Save(); err != nil {
+		slog.Error("graph: persist shard catalog", "for", what, "error", err)
 	}
 }

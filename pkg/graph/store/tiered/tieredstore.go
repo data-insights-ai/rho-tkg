@@ -656,6 +656,11 @@ func New(cfg Config) (*Store, error) {
 				path:      entry.Path,
 			}
 			coldES.initTier(TierCold)
+			// Adopt the counts sealed when this shard last closed. Without
+			// this the shard arrives countless, and the first fold that wants
+			// a total opens it — every cold shard, every start, for numbers
+			// that were settled when the shard's window closed.
+			coldES.adoptSealedCounts(entry)
 			shards[i] = coldES
 		}
 	}

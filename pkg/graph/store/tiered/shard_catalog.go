@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -47,6 +48,22 @@ type ShardEntry struct {
 	ApproxNodes int       `json:"approx_nodes"`
 	ApproxRels  int       `json:"approx_rels"`
 	Verified    bool      `json:"verified"`
+
+	// CountsSealed marks ApproxNodes/ApproxRels and the two maps below as
+	// EXACT and FINAL for a shard that can no longer change: a closed shard
+	// cannot be written to, because every write path opens it first.
+	//
+	// It exists so a count is computed once in the life of a shard rather than
+	// once per process. Without it, every start reopened every cold shard the
+	// first time anything asked for a total — for numbers that had been fixed
+	// since the shard's window closed, sometimes months earlier.
+	CountsSealed bool `json:"counts_sealed,omitempty"`
+	// NodeCountsByLabel and RelCountsByType are keyed by TOKEN, rendered in
+	// decimal, because JSON object keys must be strings. Tokens are safe to
+	// persist: the label and rel-type registries are themselves persisted and
+	// validated at open, so a token means the same thing across restarts.
+	NodeCountsByLabel map[string]int `json:"node_counts_by_label,omitempty"`
+	RelCountsByType   map[string]int `json:"rel_counts_by_type,omitempty"`
 }
 
 // ShardCatalog tracks all shards in a tiered store. It is persisted as JSON.
@@ -426,4 +443,72 @@ func (sc *ShardCatalog) AddRelType(shardName, relType string) {
 			return
 		}
 	}
+}
+
+// SealShardCounts records a shard's counts as exact and final. Call it only for
+// a shard that is closed, or about to be, and therefore cannot change again.
+//
+// Returns true if the shard was found. The maps are copied, so the caller may
+// reuse or mutate its own.
+func (sc *ShardCatalog) SealShardCounts(name string, nodes, rels int, byLabel, byRelType map[uint16]int) bool {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	for i := range sc.Shards {
+		if sc.Shards[i].Name != name {
+			continue
+		}
+		sc.Shards[i].ApproxNodes = nodes
+		sc.Shards[i].ApproxRels = rels
+		sc.Shards[i].NodeCountsByLabel = tokenCountsToJSON(byLabel)
+		sc.Shards[i].RelCountsByType = tokenCountsToJSON(byRelType)
+		sc.Shards[i].CountsSealed = true
+		return true
+	}
+	return false
+}
+
+// UnsealShardCounts clears the sealed marker, for a shard that is being opened
+// for writing again and can therefore change.
+func (sc *ShardCatalog) UnsealShardCounts(name string) bool {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	for i := range sc.Shards {
+		if sc.Shards[i].Name != name {
+			continue
+		}
+		sc.Shards[i].CountsSealed = false
+		sc.Shards[i].NodeCountsByLabel = nil
+		sc.Shards[i].RelCountsByType = nil
+		return true
+	}
+	return false
+}
+
+func tokenCountsToJSON(in map[uint16]int) map[string]int {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]int, len(in))
+	for tok, n := range in {
+		out[strconv.FormatUint(uint64(tok), 10)] = n
+	}
+	return out
+}
+
+// tokenCountsFromJSON is the inverse. An unparsable key is skipped rather than
+// failing the open: a count that cannot be read is recomputed, which is slow,
+// where a failed open is fatal.
+func tokenCountsFromJSON(in map[string]int) map[uint16]int {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[uint16]int, len(in))
+	for k, n := range in {
+		tok, err := strconv.ParseUint(k, 10, 16)
+		if err != nil {
+			continue
+		}
+		out[uint16(tok)] = n
+	}
+	return out
 }

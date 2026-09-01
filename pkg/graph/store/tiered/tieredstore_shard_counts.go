@@ -32,16 +32,23 @@ func (es *EventShard) cachedCounts() *shardCounts {
 // queries after it is closed. Caller must hold es.shardMu and es.store must be
 // non-nil; call it immediately before closing, so nothing can change between
 // the snapshot and the close.
-func (es *EventShard) snapshotCountsLocked() {
+//
+// It also SEALS the counts in the catalog, which is what makes them survive the
+// process. A shard's counts are fixed the moment it closes — nothing can write
+// to it without opening it first — so recomputing them on the next start is
+// work with a known answer. Returns true if the catalog was changed and needs
+// saving; the caller saves, because saving under this lock would hold it across
+// disk I/O.
+func (es *EventShard) snapshotCountsLocked(ts *Store) bool {
 	if es.store == nil {
-		return
+		return false
 	}
 	nodes, rels, byLabel, byRelType, err := es.store.CountSnapshot()
 	if err != nil {
 		// The store is already unusable; leaving the previous snapshot in
 		// place is better than clearing it, and a wrong count is not worth a
 		// failed close.
-		return
+		return false
 	}
 	es.counts.Store(&shardCounts{
 		nodes:     nodes,
@@ -49,12 +56,40 @@ func (es *EventShard) snapshotCountsLocked() {
 		byLabel:   byLabel,
 		byRelType: byRelType,
 	})
+	return ts.catalog.SealShardCounts(es.name, nodes, rels, byLabel, byRelType)
 }
 
-// dropCachedCounts forgets the snapshot. Called when a shard is opened, since
-// from then on the store itself is the answer and may diverge from the copy.
-func (es *EventShard) dropCachedCounts() {
+// adoptSealedCounts loads a shard's counts from the catalog, so a shard that has
+// not been opened in this process can still be counted.
+//
+// This is the point of sealing: without it the in-memory snapshot starts empty
+// at every boot, and the first fold reopens every cold shard to rebuild numbers
+// that were settled when the shard closed.
+func (es *EventShard) adoptSealedCounts(entry ShardEntry) {
+	if !entry.CountsSealed {
+		return
+	}
+	es.counts.Store(&shardCounts{
+		nodes:     entry.ApproxNodes,
+		rels:      entry.ApproxRels,
+		byLabel:   tokenCountsFromJSON(entry.NodeCountsByLabel),
+		byRelType: tokenCountsFromJSON(entry.RelCountsByType),
+	})
+}
+
+// dropCachedCounts forgets the snapshot, in memory and in the catalog. Called
+// when a shard is opened, since from then on the store itself is the answer and
+// the copy may diverge from it.
+//
+// Unsealing matters as much as sealing: a shard that is open can be written to,
+// so a sealed count left behind would outlive its truth and be adopted as exact
+// by the next start. Returns true if the catalog changed.
+func (es *EventShard) dropCachedCounts(ts *Store) bool {
 	es.counts.Store(nil)
+	if ts == nil {
+		return false
+	}
+	return ts.catalog.UnsealShardCounts(es.name)
 }
 
 // countFromShard answers one count for one shard without opening it when it is
