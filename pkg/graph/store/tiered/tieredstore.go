@@ -52,6 +52,28 @@ type Config struct {
 	// demoting" is not the same instruction as "undo the demotions". Set it for
 	// one start, then unset it.
 	PromoteColdShardsAtOpen bool
+	// MaxOpenColdShards lets a cold shard opened by a read STAY open, up to
+	// this many at once. 0 (the default) keeps the original behaviour: such a
+	// shard is closed again as soon as its read finishes.
+	//
+	// It exists so a cold shard opened by a read can STAY open. Without a cap
+	// the only way to stop a DepthAll scan accumulating one handle per
+	// historical shard was to close each one the moment its read finished —
+	// which made every read of the same old data reopen the same shards.
+	// Measured through a caller: opening a case whose signals live in demoted
+	// shards took 16.9s, and 7.5s again on the very next read, because nothing
+	// was retained between them.
+	//
+	// Setting it trades handles for latency: up to N stay open, so a repeat
+	// read is served from the handle the first one opened, and the count never
+	// exceeds N because the check-in closes the shard once it is reached. The
+	// least recently used are also reclaimed on the idle sweep.
+	//
+	// Left at 0 the behaviour is unchanged, which is why it is opt-in: a caller
+	// that scans historical data and does not re-read it wants the handles
+	// back immediately, and that is the safer default for a store whose shard
+	// count grows without bound.
+	MaxOpenColdShards int
 	// IdleTimeout closes idle cold shards after this duration. 0 = never close.
 	// Default: 5 minutes when ColdAfter > 0. If set, must be at least 1ms.
 	IdleTimeout time.Duration
@@ -218,28 +240,33 @@ func (es *EventShard) currentTier() ShardTier {
 // Event entities (Signal, Alert) live in time-windowed event shards.
 // Phase 3a: exactly one hot event shard. Phases 3b-3e add warm/cold/archive.
 type Store struct {
-	mu                    sync.RWMutex                                    // protects hotShard + eventShards during rotation
-	refShard              *BadgerStore                                    // reference shard (always hot)
-	propKeyReg            atomic.Pointer[registrypkg.PropertyKeyRegistry] // single canonical property-key registry, injected into every shard at open
-	refActiveReqs         atomic.Int64                                    // refcount for refShard — Close spin-waits on this before refShard.Close()
-	refArchive            atomic.Pointer[BadgerStore]                     // nil until first archive/restore or DepthAll with archive catalog; atomic so reads need not hold archiveMu
-	archiveMu             sync.Mutex                                      // serializes lazy-open of refArchive (single-flight)
-	migrateMu             sync.Mutex                                      // serializes concurrent MigrateFromBadger calls against this Store (BACKLOG 19k)
-	archiveActiveReqs     atomic.Int64                                    // refcount for refArchive — Close spin-waits on this before archive.Close()
-	eventShards           map[string]*EventShard                          // name -> event shard
-	hotShard              *EventShard                                     // convenience pointer to current hot shard
-	ontology              *OntologyMapping
-	catalog               *ShardCatalog
-	regFile               string // path to registry.msgpack
-	temporalIdxFile       string // path to temporal_indexes.msgpack
-	vectorIdxFile         string // path to vector_indexes.msgpack
-	dataDir               string
-	inMemory              bool
-	shardWindow           time.Duration
-	cacheCap              int
-	flushInt              time.Duration
-	coldAfter             time.Duration
-	idleTimeout           time.Duration
+	mu                sync.RWMutex                                    // protects hotShard + eventShards during rotation
+	refShard          *BadgerStore                                    // reference shard (always hot)
+	propKeyReg        atomic.Pointer[registrypkg.PropertyKeyRegistry] // single canonical property-key registry, injected into every shard at open
+	refActiveReqs     atomic.Int64                                    // refcount for refShard — Close spin-waits on this before refShard.Close()
+	refArchive        atomic.Pointer[BadgerStore]                     // nil until first archive/restore or DepthAll with archive catalog; atomic so reads need not hold archiveMu
+	archiveMu         sync.Mutex                                      // serializes lazy-open of refArchive (single-flight)
+	migrateMu         sync.Mutex                                      // serializes concurrent MigrateFromBadger calls against this Store (BACKLOG 19k)
+	archiveActiveReqs atomic.Int64                                    // refcount for refArchive — Close spin-waits on this before archive.Close()
+	eventShards       map[string]*EventShard                          // name -> event shard
+	hotShard          *EventShard                                     // convenience pointer to current hot shard
+	ontology          *OntologyMapping
+	catalog           *ShardCatalog
+	regFile           string // path to registry.msgpack
+	temporalIdxFile   string // path to temporal_indexes.msgpack
+	vectorIdxFile     string // path to vector_indexes.msgpack
+	dataDir           string
+	inMemory          bool
+	shardWindow       time.Duration
+	cacheCap          int
+	flushInt          time.Duration
+	coldAfter         time.Duration
+	idleTimeout       time.Duration
+	maxOpenColdShards int
+	// openColdShards counts cold shards currently holding a Badger handle. It
+	// is what makes retention hard-bounded without taking a lock: the check-in
+	// consults it while holding only its own shard's mutex.
+	openColdShards        atomic.Int64
 	compression           options.CompressionType
 	zstdLevel             int
 	valueLogFileSize      int64 // per-shard Badger footprint knobs; 0 = stock default
@@ -420,6 +447,10 @@ func New(cfg Config) (*Store, error) {
 		flushInt = badger.DefaultFlushInterval
 	}
 
+	maxOpenCold := cfg.MaxOpenColdShards
+	if maxOpenCold < 0 {
+		maxOpenCold = 0
+	}
 	idleTimeout := cfg.IdleTimeout
 	if idleTimeout == 0 && cfg.ColdAfter > 0 {
 		idleTimeout = 5 * time.Minute
@@ -444,6 +475,7 @@ func New(cfg Config) (*Store, error) {
 		flushInt:              flushInt,
 		coldAfter:             cfg.ColdAfter,
 		idleTimeout:           idleTimeout,
+		maxOpenColdShards:     maxOpenCold,
 		compression:           cfg.Compression,
 		zstdLevel:             cfg.ZSTDCompressionLevel,
 		valueLogFileSize:      cfg.ValueLogFileSize,

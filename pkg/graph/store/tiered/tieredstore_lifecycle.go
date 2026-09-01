@@ -99,11 +99,16 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 
 // checkoutStoreForRead pins a shard for read-only fanout work.
 //
-// Cold shards that were already open keep the normal idle-close behaviour.
-// Cold shards opened only for this checkout are closed again when the returned
-// release function runs and no other reader has checked them out. This prevents
-// DepthAll scans across many cold shards from accumulating one Badger handle
-// per historical shard until the idle-close timer eventually fires.
+// A cold shard opened here STAYS open, and is closed by the idle timer or by
+// the open-handle cap, whichever comes first. It used to be closed again the
+// moment its read finished, which bounded handles at the cost of making every
+// read of the same old data reopen the same shards — measured through a
+// caller as 16.9s to open a case whose signals live in demoted shards, and
+// 7.5s again on the very next read.
+//
+// MaxOpenColdShards is what makes retaining them safe: a DepthAll scan across
+// a years-old store no longer accumulates one handle per historical shard,
+// because the least recently used are closed once the cap is passed.
 func (es *EventShard) checkoutStoreForRead(ts *Store) (*BadgerStore, func(), error) {
 	noop := func() {}
 	if es.currentTier() != TierCold {
@@ -133,6 +138,7 @@ func (es *EventShard) checkoutStoreForRead(ts *Store) (*BadgerStore, func(), err
 		}
 		es.store = store
 		es.readTransientOpen = true
+		ts.openColdShards.Add(1)
 		// READ-ONLY checkout: the shard cannot change through it, so the
 		// sealed catalog entry stays valid and is left alone. Only the
 		// in-memory copy is dropped, because while the store is open it is the
@@ -149,6 +155,10 @@ func (es *EventShard) checkoutStoreForRead(ts *Store) (*BadgerStore, func(), err
 	store := es.store
 	es.shardMu.Unlock()
 
+	// The open-handle cap is NOT enforced here. This checkout is reached from
+	// callers that already hold ts.mu — RebuildCatalog among them — and the cap
+	// needs ts.mu to see the shard list, so taking it here deadlocks. It runs on
+	// the idle sweeper instead, which owns no lock when it starts.
 	return store, func() { es.checkinReadStore(ts) }, nil
 }
 
@@ -197,6 +207,19 @@ func (es *EventShard) checkinReadStore(ts *Store) {
 	if es.store == nil || !es.readTransientOpen || es.activeReqs.Load() != 0 {
 		return
 	}
+
+	// RETAINED, IF THE CALLER ASKED AND THERE IS ROOM. Closing here bounds
+	// handles absolutely, at the cost of paying the open again on every read of
+	// the same old data — measured through a caller as 16.9s to open a case
+	// whose signals live in demoted shards, then 7.5s again on the next read.
+	//
+	// With MaxOpenColdShards set, up to that many stay open and the count is
+	// still hard-bounded, because the shard that finds no room closes here just
+	// as it always did.
+	if ts.maxOpenColdShards > 0 && ts.openColdShards.Load() <= int64(ts.maxOpenColdShards) {
+		return
+	}
+
 	// Same reasoning as the idle-close: record the counts while the store is
 	// still open, so the shard can be counted afterwards without reopening.
 	sealedCounts := es.snapshotCountsLocked(ts)
@@ -208,9 +231,8 @@ func (es *EventShard) checkinReadStore(ts *Store) {
 	}
 	es.store = nil
 	es.readTransientOpen = false
+	ts.openColdShards.Add(-1)
 	if sealedCounts {
-		// Deferred to after this returns so the catalog write does not happen
-		// under es.shardMu.
 		defer ts.saveCatalogBestEffort("seal shard counts on transient close")
 	}
 }
@@ -350,6 +372,10 @@ func (ts *Store) idleCloseLoop() {
 			return
 		case <-tick.C:
 			ts.closeIdleShards()
+			// Then trim anything still over the cap. Retained read handles are
+			// reclaimed here rather than at check-in, so this is what keeps a
+			// scan across a years-old store from holding every shard open.
+			ts.enforceColdShardCap()
 		}
 	}
 }
@@ -383,6 +409,7 @@ func (ts *Store) closeIdleShards() {
 			}
 			es.store = nil
 			es.readTransientOpen = false
+			ts.openColdShards.Add(-1)
 		}
 		es.shardMu.Unlock()
 	}

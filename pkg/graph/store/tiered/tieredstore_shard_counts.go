@@ -1,6 +1,11 @@
 package tiered
 
-import "sync/atomic"
+import (
+	"fmt"
+	"log/slog"
+	"sort"
+	"sync/atomic"
+)
 
 // shardCounts is what a shard contained when it was last closed.
 //
@@ -107,3 +112,66 @@ func (es *EventShard) countFromCache(pick func(*shardCounts) int) (int, bool) {
 
 // countsCacheField is declared on EventShard; see tieredstore.go.
 var _ = atomic.Pointer[shardCounts]{}
+
+// enforceColdShardCap closes the least recently used open cold shards until no
+// more than maxOpenColdShards remain open.
+//
+// This is what lets a cold shard STAY open after a read. The alternative — the
+// behaviour this replaces — was to close it the moment its read finished, which
+// bounded handles but made every read of the same old data reopen the same
+// shards: 16.9s to open an old case, then 7.5s again on the next read.
+//
+// Shards with a reader in flight are never closed, and their counts are sealed
+// before closing so a shard evicted here can still be counted without reopening.
+func (ts *Store) enforceColdShardCap() {
+	cap := ts.maxOpenColdShards
+	if cap <= 0 {
+		return
+	}
+
+	ts.mu.RLock()
+	open := make([]*EventShard, 0, len(ts.eventShards))
+	for _, es := range ts.eventShards {
+		if es.currentTier() != TierCold {
+			continue
+		}
+		es.shardMu.Lock()
+		hasStore := es.store != nil
+		es.shardMu.Unlock()
+		if hasStore {
+			open = append(open, es)
+		}
+	}
+	ts.mu.RUnlock()
+
+	if len(open) <= cap {
+		return
+	}
+
+	// Oldest access first: those are the ones least likely to be wanted next.
+	sort.Slice(open, func(i, j int) bool {
+		return open[i].lastAccess.Load() < open[j].lastAccess.Load()
+	})
+
+	sealed := false
+	for _, es := range open[:len(open)-cap] {
+		es.shardMu.Lock()
+		// A shard being read right now is not a candidate however old its last
+		// access looks: closing it under a reader is the use-after-close this
+		// whole lifecycle is built to avoid.
+		if es.store != nil && es.activeReqs.Load() == 0 {
+			sealed = es.snapshotCountsLocked(ts) || sealed
+			if err := es.store.Close(); err != nil {
+				ts.recordBackgroundError(fmt.Errorf("graph: cap-close cold shard %s: %w", es.name, err))
+				slog.Error("tiered cold shard cap-close failed", "shard", es.name, "err", err)
+			}
+			es.store = nil
+			es.readTransientOpen = false
+			ts.openColdShards.Add(-1)
+		}
+		es.shardMu.Unlock()
+	}
+	if sealed {
+		ts.saveCatalogBestEffort("seal shard counts on cap-close")
+	}
+}
