@@ -303,6 +303,76 @@ type Store struct {
 	vectorIndexes map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex
 }
 
+// maxShardOpenParallelism bounds how many event shards are opened at once.
+// Mirrors maxEventShardQueryParallelism on the read path: each open holds a
+// Badger handle and its background goroutines, so the fan-out is capped rather
+// than scaled to the shard count.
+const maxShardOpenParallelism = 16
+
+// openWarmShards opens the warm shards named by warmIdx, writing each into
+// shards at its own index. Returns the first open error; on error the caller
+// closes whatever was opened.
+func (ts *Store) openWarmShards(cfg Config, entries []ShardEntry, warmIdx []int, shards []*EventShard) error {
+	if len(warmIdx) == 0 {
+		return nil
+	}
+	workerCount := len(warmIdx)
+	if workerCount > maxShardOpenParallelism {
+		workerCount = maxShardOpenParallelism
+	}
+
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	var errMu sync.Mutex
+	var firstErr error
+
+	wg.Add(workerCount)
+	for w := 0; w < workerCount; w++ {
+		go func() {
+			defer wg.Done()
+			for i := range jobs {
+				entry := entries[i]
+
+				// Warm is a routing tier, not a write permission. The shard may
+				// still own existing event entities that need updates/deletes.
+				var warmStore *BadgerStore
+				var err error
+				if cfg.InMemory {
+					warmStore, err = ts.openBadgerStore(entry.Path, false)
+				} else {
+					warmStore, err = ts.openBadgerStoreWithRecovery(entry.Path)
+				}
+				if err != nil {
+					errMu.Lock()
+					if firstErr == nil {
+						firstErr = fmt.Errorf("graph: open warm shard %s: %w", entry.Name, err)
+					}
+					errMu.Unlock()
+					continue
+				}
+				es := &EventShard{
+					name:      entry.Name,
+					store:     warmStore,
+					tier:      TierWarm,
+					timeStart: entry.TimeStart,
+					timeEnd:   entry.TimeEnd,
+					readOnly:  true,
+					path:      entry.Path,
+				}
+				es.initTier(TierWarm)
+				shards[i] = es
+			}
+		}()
+	}
+	for _, i := range warmIdx {
+		jobs <- i
+	}
+	close(jobs)
+	wg.Wait()
+
+	return firstErr
+}
+
 // New creates a Store with a reference shard and one hot event shard.
 func New(cfg Config) (*Store, error) {
 	if !cfg.InMemory && cfg.DataDir == "" {
@@ -506,40 +576,20 @@ func New(cfg Config) (*Store, error) {
 	}
 
 	// Reopen warm and cold event shards from catalog.
-	for _, entry := range ts.catalog.EventShards() {
+	//
+	// Warm shards open CONCURRENTLY. Each open is dominated by waiting on the
+	// filesystem — manifest read, table mmap, background goroutine start — so
+	// opening them one after another leaves every core idle while one shard
+	// waits. The shards are independent: each opens its own Badger under its
+	// own path and yields its own EventShard. The shared map is written below,
+	// after every worker has finished.
+	entries := ts.catalog.EventShards()
+	shards := make([]*EventShard, len(entries))
+	warmIdx := make([]int, 0, len(entries))
+	for i, entry := range entries {
 		switch entry.Tier {
 		case TierWarm:
-			// Warm is a routing tier, not a write permission. The shard may
-			// still own existing event entities that need updates/deletes.
-			var warmStore *BadgerStore
-			var err error
-			if cfg.InMemory {
-				warmStore, err = ts.openBadgerStore(entry.Path, false)
-			} else {
-				warmStore, err = ts.openBadgerStoreWithRecovery(entry.Path)
-			}
-			if err != nil {
-				// Clean up already-opened warm shards to prevent file handle leaks.
-				for _, es := range ts.eventShards {
-					if es.store != nil {
-						_ = es.store.Close()
-					}
-				}
-				_ = hotStore.Close()
-				_ = refStore.Close()
-				return nil, fmt.Errorf("graph: open warm shard %s: %w", entry.Name, err)
-			}
-			warmES := &EventShard{
-				name:      entry.Name,
-				store:     warmStore,
-				tier:      TierWarm,
-				timeStart: entry.TimeStart,
-				timeEnd:   entry.TimeEnd,
-				readOnly:  true,
-				path:      entry.Path,
-			}
-			warmES.initTier(TierWarm)
-			ts.eventShards[entry.Name] = warmES
+			warmIdx = append(warmIdx, i)
 		case TierCold:
 			// Cold shards are NOT opened on startup — lazy-open on first access.
 			coldES := &EventShard{
@@ -552,7 +602,28 @@ func New(cfg Config) (*Store, error) {
 				path:      entry.Path,
 			}
 			coldES.initTier(TierCold)
-			ts.eventShards[entry.Name] = coldES
+			shards[i] = coldES
+		}
+	}
+
+	if err := ts.openWarmShards(cfg, entries, warmIdx, shards); err != nil {
+		// Close everything this call opened, including shards other workers
+		// finished after the failure was recorded.
+		for _, es := range shards {
+			if es != nil && es.store != nil {
+				_ = es.store.Close()
+			}
+		}
+		_ = hotStore.Close()
+		_ = refStore.Close()
+		return nil, err
+	}
+
+	// Published in catalog order, not completion order, so the shard map never
+	// depends on which worker finished first.
+	for i, es := range shards {
+		if es != nil {
+			ts.eventShards[entries[i].Name] = es
 		}
 	}
 
