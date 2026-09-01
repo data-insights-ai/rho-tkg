@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.32.0] - 2026-09-01
+
+### Added
+
+- **`PromoteColdShardsAtOpen`** promotes every cold event shard back to warm
+  when the store opens, and persists it. Nothing else in the store promotes a
+  shard, so `ColdAfter` was a one-way door: unsetting it only stops further
+  demotions, leaving an operator who tried the setting unable to undo it.
+
+  Deliberately not implied by `ColdAfter == 0`. A shard can be cold for reasons
+  unrelated to the policy, and "stop demoting" is not "undo the demotions" —
+  which is what the cold-restart and WAL-recovery tests encode by creating cold
+  shards under `ColdAfter` and reopening without it.
+
 ## [4.31.0] - 2026-09-01
 
 MINOR: `ColdAfter` now takes effect at open, which is a behaviour change for
