@@ -168,3 +168,71 @@ func TestOpeningAShardUnsealsIt(t *testing.T) {
 		}
 	}
 }
+
+// TestPromotedShardDoesNotKeepItsSealedCounts is a bug found on a live store:
+// after a demote/promote cycle, 19 warm shards still carried counts_sealed with
+// the counts they had when cold.
+//
+// A sealed count means "this shard cannot change". A warm shard is open and
+// written to, so its recorded count goes stale the moment it is. The unseal on
+// the lazy-open path does not cover this — a warm shard is opened eagerly at
+// startup and never takes that path — so the seal survived indefinitely and
+// would be adopted verbatim if the shard were demoted again, silently
+// under-reporting every write it took while warm.
+func TestPromotedShardDoesNotKeepItsSealedCounts(t *testing.T) {
+	dir := t.TempDir()
+
+	// Build a store, demote and close so counts get sealed.
+	cfg := openParallelCfg(dir)
+	cfg.ColdAfter = time.Millisecond
+	ts, err := New(cfg)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	_, _, signalTok := installDefaultTestLabelRegistry(t, ts)
+	gen := tieredNodeGen(t)
+	for i := 0; i < 3; i++ {
+		if err := ts.PutNode(types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)); err != nil {
+			t.Fatalf("put %d: %v", i, err)
+		}
+		time.Sleep(2 * time.Millisecond)
+		if err := ts.RotateHotShard(); err != nil {
+			t.Fatalf("rotate %d: %v", i, err)
+		}
+	}
+	if n := closeColdStores(t, ts); n == 0 {
+		t.Skip("no cold shards were open; nothing to seal")
+	}
+	sealedBefore := 0
+	for _, e := range ts.catalog.EventShards() {
+		if e.CountsSealed {
+			sealedBefore++
+		}
+	}
+	if sealedBefore == 0 {
+		t.Fatal("closing cold shards sealed nothing; the test would prove nothing")
+	}
+	_ = ts.Close()
+
+	// Promote them back.
+	promoteCfg := openParallelCfg(dir)
+	promoteCfg.PromoteColdShardsAtOpen = true
+	ts2, err := New(promoteCfg)
+	if err != nil {
+		t.Fatalf("reopen with promotion: %v", err)
+	}
+	defer ts2.Close()
+
+	for _, e := range ts2.catalog.EventShards() {
+		if e.Tier == TierCold {
+			continue
+		}
+		if e.CountsSealed {
+			t.Fatalf("shard %s is %v but still carries sealed counts; a later demotion would adopt them",
+				e.Name, e.Tier)
+		}
+		if len(e.NodeCountsByLabel) != 0 {
+			t.Fatalf("shard %s is %v but kept its per-label counts", e.Name, e.Tier)
+		}
+	}
+}

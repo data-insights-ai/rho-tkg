@@ -651,6 +651,7 @@ func New(cfg Config) (*Store, error) {
 	demotedAtOpen := 0
 
 	promotedAtOpen := 0
+	unsealedAtOpen := 0
 
 	for i, entry := range entries {
 		tier := entry.Tier
@@ -672,6 +673,21 @@ func New(cfg Config) (*Store, error) {
 			tier = TierWarm
 			ts.catalog.UpdateShardTier(entry.Name, TierWarm)
 			promotedAtOpen++
+		}
+
+		// A SEALED COUNT BELONGS TO A CLOSED SHARD, so anything that is not
+		// cold must not carry one. Sealing means "this shard cannot change";
+		// a warm shard is open and written to, and its recorded count goes
+		// stale the moment it is.
+		//
+		// The unseal on the lazy-open path does not cover this: a warm shard is
+		// opened eagerly here at startup and never takes that path, so a shard
+		// promoted out of cold kept its seal indefinitely. It would then be
+		// adopted verbatim if the shard were ever demoted again — counts from
+		// before every write it took while warm, silently under-reporting.
+		if tier != TierCold && entry.CountsSealed {
+			ts.catalog.UnsealShardCounts(entry.Name)
+			unsealedAtOpen++
 		}
 		switch tier {
 		case TierWarm:
@@ -720,15 +736,17 @@ func New(cfg Config) (*Store, error) {
 
 	// Persist the demotions only after every shard mounted. A catalog saved
 	// before a failed open would claim a tier the store never reached.
-	if demotedAtOpen > 0 || promotedAtOpen > 0 {
+	if demotedAtOpen > 0 || promotedAtOpen > 0 || unsealedAtOpen > 0 {
 		if err := ts.catalog.Save(); err != nil {
 			// The store is usable — the tiers are already right in memory — but
 			// the next open would have to work them out again. Not fatal.
 			slog.Error("graph: persist shard tier changes taken at open",
-				"demoted", demotedAtOpen, "promoted", promotedAtOpen, "error", err)
+				"demoted", demotedAtOpen, "promoted", promotedAtOpen,
+				"unsealed", unsealedAtOpen, "error", err)
 		} else {
 			slog.Info("graph: applied shard tier changes at open",
-				"demoted", demotedAtOpen, "promoted", promotedAtOpen)
+				"demoted", demotedAtOpen, "promoted", promotedAtOpen,
+				"unsealed", unsealedAtOpen)
 		}
 	}
 
