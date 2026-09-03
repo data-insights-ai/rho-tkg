@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.34.1] - 2026-09-03
+
+### Fixed
+
+- **A shard that is not cold no longer keeps sealed counts.** Found on a live
+  store: after a demote/promote cycle, 19 warm shards still carried
+  `counts_sealed` with the counts they held when cold.
+
+  A sealed count means the shard cannot change; a warm shard is written to, so
+  the count is stale the moment it is. The unseal on the lazy-open path did not
+  cover this, because a warm shard is opened eagerly at startup and never takes
+  it. The seal would then have been adopted verbatim on a later demotion —
+  counts from before every write taken while warm.
+
+  Anything classified as not-cold at open now has its seal cleared, which also
+  self-heals stores already in that state.
+
 ## [4.34.0] - 2026-09-01
 
 ### Added
