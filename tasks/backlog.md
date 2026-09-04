@@ -110,6 +110,30 @@ sentinels where a limit exists.
 
 ---
 
+## Open — temporal adjacency scan cost (v4.35.0 follow-up)
+
+`Rels().ForEachAdjacentRelAt` / `ForEachAdjacentEndpointAt` under a valid-time
+filter now resolve relationship VERSIONS (`forEachAdjacentRelVersionLocked`,
+CHANGELOG 4.35.0). Two costs were accepted for correctness and are UNMEASURED:
+
+- the badger inline-stamp decode-skip (OPT15) is bypassed under a filter, so
+  every adjacent row is decoded and rows whose live version fails the filter
+  pay one chain read;
+- the deleted-rel fold (`forEachRelAdjacencyCandidateID`) is O(deleted rels)
+  per call — the same as `OutgoingRelsAt`, but a consumer's hop expansion
+  calls the scan door once per source node, so a graph with many deleted
+  edges pays it per node per hop.
+
+**Next action:** measure first, on the consumer's temporal hop benchmarks
+(sigma-tkgd `stream_spine` / count-reach fast paths) with a graph that has a
+deleted-edge population, before building anything. If the fold shows, the
+mechanism is a per-node deleted-adjacency index (deleted rel ids keyed by
+endpoint) so the candidate set becomes O(degree + deleted-at-this-node). If
+the decode shows, re-admit the stamp as a candidate PRUNER only: a stamp that
+passes yields the live row, a stamp that fails still resolves the chain.
+
+---
+
 ## Not tracked here (cross-team)
 
 Consumer builds these; rho-tkg already exposes the local primitives:
