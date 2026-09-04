@@ -861,14 +861,18 @@ type relEndpointScannerAt interface {
 }
 
 // ForEachAdjacentEndpointAt streams (relID, otherEndpoint) for the node's
-// adjacency in the given direction, yielding only edges whose valid interval
-// passes the opts temporal filter (ValidAt / ValidStart+ValidEnd) — WITHOUT
-// decoding relationship rows when the store carries inline valid-time stamps.
-// Stores without the native capability fall back to decoding via
-// Outgoing/Incoming and applying the canonical MatchesTemporalFilter (correct,
-// identical results — the in-memory store pays no decode anyway). With no
-// temporal filter set this is exactly ForEachAdjacentEndpoint. fn returning
-// false stops the scan.
+// adjacency in the given direction under the opts temporal filter (ValidAt /
+// ValidStart+ValidEnd). With a filter set the door is VERSION-AWARE (v4.35.0):
+// each adjacent relationship resolves to the version valid under opts, exactly
+// as the node doors and Temporal().OutgoingRelsAt do, and a since-deleted
+// edge stays visible inside its window — see forEachAdjacentRelVersionLocked.
+// (Before v4.35.0 the door filtered the live row only, so an updated edge
+// vanished from earlier instants.) With no temporal filter set this is exactly
+// ForEachAdjacentEndpoint. fn returning false stops the scan.
+//
+// The stores' inline-stamp scanners (relEndpointScannerAt) are no longer
+// consulted under a temporal filter: a stamp can only prove the LIVE row
+// out-of-window, which says nothing about older versions.
 func (r *RelOps) ForEachAdjacentEndpointAt(nodeID types.NodeID, typeName string, incoming bool, opts storepkg.QueryOpts, fn func(rel types.RelID, other types.NodeID) bool) error {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -887,6 +891,17 @@ func (r *RelOps) ForEachAdjacentEndpointAt(nodeID types.NodeID, typeName string,
 	}
 	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
 		return err
+	}
+	if storeutil.HasTemporalFilter(opts) {
+		return c.readUnderRLock(func() error {
+			return c.forEachAdjacentRelVersionLocked(nodeID, typeName, incoming, opts, func(rel *types.Relationship) bool {
+				other := rel.EndNodeID()
+				if incoming {
+					other = rel.StartNodeID()
+				}
+				return fn(rel.InternalID(), other)
+			})
+		})
 	}
 
 	scanner, native := c.store.(relEndpointScannerAt)
@@ -944,12 +959,11 @@ type relRelScannerAt interface {
 	ForEachAdjacentRelAt(nid types.NodeID, typeToken uint16, incoming bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 }
 
-// ForEachAdjacentRelAt streams the DECODED relationships for the node's adjacency
-// in the given direction, yielding only edges whose valid interval passes the
-// opts temporal filter — skipping the msgpack decode of expired edges when the
-// store carries inline valid-time stamps. Stores without the native capability
-// fall back to decoding via Outgoing/Incoming and applying the canonical
-// MatchesTemporalFilter. With no temporal filter this is exactly
+// ForEachAdjacentRelAt streams the DECODED relationships for the node's
+// adjacency in the given direction under the opts temporal filter. With a
+// filter set the door is VERSION-AWARE (v4.35.0): it yields, per adjacent
+// relationship, the version valid under opts — see ForEachAdjacentEndpointAt
+// and forEachAdjacentRelVersionLocked. With no temporal filter this is exactly
 // ForEachOutgoing/ForEachIncoming. fn returning false stops the scan.
 func (r *RelOps) ForEachAdjacentRelAt(nodeID types.NodeID, typeName string, incoming bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
 	c := r.c
@@ -969,6 +983,11 @@ func (r *RelOps) ForEachAdjacentRelAt(nodeID types.NodeID, typeName string, inco
 	}
 	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
 		return err
+	}
+	if storeutil.HasTemporalFilter(opts) {
+		return c.readUnderRLock(func() error {
+			return c.forEachAdjacentRelVersionLocked(nodeID, typeName, incoming, opts, fn)
+		})
 	}
 
 	scanner, native := c.store.(relRelScannerAt)

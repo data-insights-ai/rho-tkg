@@ -498,9 +498,11 @@ func (a *API) ForEachAdjacentEndpoint(nodeID types.NodeID, typeName string, inco
 }
 
 // ForEachAdjacentEndpointAt streams (relID, otherEndpoint) for nodeID's
-// adjacency in the given direction, yielding only edges valid under the opts
-// temporal filter and rejecting expired edges from inline valid-time stamps
-// WITHOUT decoding relationship rows. fn returning false stops the scan.
+// adjacency in the given direction under the opts temporal filter. With a
+// filter set the door is VERSION-AWARE (v4.35.0): each adjacent relationship
+// resolves to the version valid under opts, like the node doors and
+// Temporal().OutgoingRelsAt, and a since-deleted edge stays visible inside
+// its window. fn returning false stops the scan.
 // See core.RelOps.ForEachAdjacentEndpointAt.
 func (a *API) ForEachAdjacentEndpointAt(nodeID types.NodeID, typeName string, incoming bool, opts storepkg.QueryOpts, fn func(rel types.RelID, other types.NodeID) bool) error {
 	ops, err := a.ready()
@@ -511,9 +513,11 @@ func (a *API) ForEachAdjacentEndpointAt(nodeID types.NodeID, typeName string, in
 }
 
 // ForEachAdjacentRelAt streams the DECODED relationships for nodeID's adjacency
-// in the given direction, yielding only edges valid under the opts temporal
-// filter and skipping the decode of inline-stamp-rejected edges. fn
-// returning false stops the scan. See core.RelOps.ForEachAdjacentRelAt.
+// in the given direction under the opts temporal filter. With a filter set the
+// door is VERSION-AWARE (v4.35.0): it yields, per adjacent relationship, the
+// version valid under opts — never a live row the filter rejects while an
+// older version matches. fn returning false stops the scan.
+// See core.RelOps.ForEachAdjacentRelAt.
 func (a *API) ForEachAdjacentRelAt(nodeID types.NodeID, typeName string, incoming bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
 	ops, err := a.ready()
 	if err != nil {

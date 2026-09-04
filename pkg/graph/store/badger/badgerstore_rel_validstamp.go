@@ -12,6 +12,15 @@ import (
 // Inline valid-time adjacency stamps (LiveGraph VLDB 2020 inline-edge
 // timestamps, in-memory arm).
 //
+// v4.35.0: the graph layer no longer routes a temporally-filtered
+// ForEachAdjacentRelAt / ForEachAdjacentEndpointAt through these scanners.
+// A stamp describes the LIVE row only, so "stamp rejects" cannot mean "no
+// version matches" once a relationship has several valid-time versions; the
+// core resolves each adjacent relationship through its version chain instead
+// (core.forEachAdjacentRelVersionLocked). The store methods remain as a
+// store-level capability (and the RAM index still backs the temporal
+// candidate pruning), but they are not a correctness door.
+//
 // A temporal adjacency traversal (give me nid's neighbours valid at time T)
 // today fetches and msgpack-decodes EVERY incident relationship row just to
 // read its valid interval, then applies MatchesTemporalFilter. Profiling found

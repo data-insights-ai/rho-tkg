@@ -4,6 +4,54 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.35.0] - 2026-09-04
+
+### Changed
+
+- **`Rels().ForEachAdjacentRelAt` / `ForEachAdjacentEndpointAt` resolve the
+  version valid under the filter, not the live row.** Found through a consumer
+  (sigma-tkgd): after `Rels().Update(id, {…, tkg_valid_from: 2000})` on an edge
+  first asserted from 1000, a Cypher `MATCH ()-[r]->() AT TIME 1500` returned
+  nothing, while `Temporal().RelAt(id, 1500)` and the bitemporal `RelsAtTx`
+  door both returned the older version. Every node door resolves the version
+  chain (`nodesByLabelLocked` → `findNodeVersionForOpts`); the two adjacency
+  scan doors — the native badger inline-stamp arm and the memory decode
+  fallback alike — tested the CURRENT row against `MatchesTemporalFilter` and
+  dropped it. The contract said so in its own comment, so this was a design
+  gap, not an arm that drifted.
+
+  With `ValidAt` or `ValidStart+ValidEnd` set, both doors now share
+  `forEachAdjacentRelVersionLocked` (`adjacency_version.go`), built from the
+  parts `Temporal().OutgoingRelsAt` already used: candidates are the current
+  adjacency ids plus the deleted-rel fold (endpoints are immutable, so a
+  since-deleted edge stays visible inside its window — parity with the node
+  path's `forEachNodeCandidateIDByDepth`); each candidate resolves through
+  `findRelVersionForOpts` with a predicate on direction and type; a live row
+  that provably answers a point query (`relCurrentAnswersAt`, the same
+  belief-watermark shortcut the node path uses) is yielded without a history
+  read. Rows come back in ascending rel-id order. With no temporal filter the
+  doors are unchanged (`ForEachOutgoing` / `ForEachIncoming`).
+
+  Cost, stated plainly: under a temporal filter the badger inline-stamp
+  decode-skip (OPT15) is no longer consulted — a stamp can only prove the live
+  row out-of-window, which says nothing about older versions — so every
+  adjacent row is decoded and rows whose live version fails the filter pay one
+  chain read. The deleted-rel fold is O(deleted rels) per call, the same as
+  `OutgoingRelsAt`. Not benchmarked here; the consumer's hop-expansion
+  benchmarks are the place to measure it, and a per-node deleted-adjacency
+  index is the next step if that cost shows.
+
+  Tests: `foreach_adjacent_at_history_test.go` — two-phase (rule 15) probes on
+  both backends: updated-rel window boundaries through both doors and both
+  directions, interval yields exactly one version per rel, the lesson-42
+  cleared-valid_from shape, type/direction filters on the resolved version,
+  deleted rel visible in its window and not resurrected later, a value-level
+  oracle against `Temporal().OutgoingRelsAt` (Pattern 57), and the contract
+  edges (early stop, nil callback, missing node, ascending order, no-filter
+  path unchanged). The existing live-row parity gate
+  (`foreach_adjacent_endpoint_at_test.go`) still passes: on single-version
+  edges the resolved version IS the live row.
+
 ## [4.34.1] - 2026-09-03
 
 ### Fixed
