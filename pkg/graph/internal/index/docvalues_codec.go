@@ -45,25 +45,28 @@ type blobWriter struct{ b []byte }
 func (w *blobWriter) u8(v uint8)   { w.b = append(w.b, v) }
 func (w *blobWriter) u32(v uint32) { w.b = binary.LittleEndian.AppendUint32(w.b, v) }
 func (w *blobWriter) u64(v uint64) { w.b = binary.LittleEndian.AppendUint64(w.b, v) }
-func (w *blobWriter) i64(v int64)  { w.u64(uint64(v)) }
-func (w *blobWriter) str(s string) { w.u32(uint32(len(s))); w.b = append(w.b, s...) }
+func (w *blobWriter) i64(v int64)  { w.u64(uint64(v)) } // #nosec G115 -- bit-exact signed wire encoding
+func (w *blobWriter) str(s string) { // #nosec G115 -- in-memory string length fits the uint32 cache format
+	w.u32(uint32(len(s)))
+	w.b = append(w.b, s...)
+}
 
 func (w *blobWriter) i64s(xs []int64) {
-	w.u32(uint32(len(xs)))
+	w.u32(uint32(len(xs))) // #nosec G115 -- column length is bounded by MaxDocValuesNodes
 	for _, v := range xs {
 		w.i64(v)
 	}
 }
 
 func (w *blobWriter) f64s(xs []float64) {
-	w.u32(uint32(len(xs)))
+	w.u32(uint32(len(xs))) // #nosec G115 -- column length is bounded by MaxDocValuesNodes
 	for _, v := range xs {
 		w.u64(math.Float64bits(v)) // bit-exact: NaN and -0.0 must survive
 	}
 }
 
 func (w *blobWriter) bits(b bitset) {
-	w.u32(uint32(len(b)))
+	w.u32(uint32(len(b))) // #nosec G115 -- bitset backs a MaxDocValuesNodes-bounded column
 	for _, word := range b {
 		w.u64(word)
 	}
@@ -114,7 +117,7 @@ func (r *blobReader) u64() uint64 {
 	return binary.LittleEndian.Uint64(p)
 }
 
-func (r *blobReader) i64() int64 { return int64(r.u64()) }
+func (r *blobReader) i64() int64 { return int64(r.u64()) } // #nosec G115 -- reverses bit-exact signed wire encoding
 
 // count reads a length prefix, refusing one larger than the blob could possibly
 // contain. Without this a corrupt prefix allocates before truncation is noticed.
@@ -186,7 +189,7 @@ func EncodeColumns[T EntityID](l *DocValues[T]) []byte {
 	w.u8(columnBlobVersion)
 	w.u64(l.epoch)
 
-	w.u32(uint32(len(l.ids)))
+	w.u32(uint32(len(l.ids))) // #nosec G115 -- IDs are bounded by MaxDocValuesNodes
 	for _, id := range l.ids {
 		w.i64(int64(id.SnowflakeID()))
 	}
@@ -202,11 +205,11 @@ func EncodeColumns[T EntityID](l *DocValues[T]) []byte {
 	// Column order is not stable across map iterations, and it does not need to be:
 	// decode rebuilds a map. Nothing downstream depends on blob bytes matching
 	// between two encodes of the same snapshot.
-	w.u32(uint32(len(l.cols)))
+	w.u32(uint32(len(l.cols))) // #nosec G115 -- columns are bounded by the in-memory property set
 	for key, c := range l.cols {
 		w.str(key)
 		w.u8(uint8(c.typ))
-		w.u32(uint32(c.n))
+		w.u32(uint32(c.n)) // #nosec G115 -- row count is bounded by MaxDocValuesNodes
 		w.bits(c.present)
 		switch c.typ {
 		case ColNumeric:
@@ -214,11 +217,11 @@ func EncodeColumns[T EntityID](l *DocValues[T]) []byte {
 			w.f64s(c.flts)
 			w.bits(c.isFloat)
 		case ColString:
-			w.u32(uint32(len(c.dict)))
+			w.u32(uint32(len(c.dict))) // #nosec G115 -- dictionary rows are bounded by MaxDocValuesNodes
 			for _, s := range c.dict {
 				w.str(s)
 			}
-			w.u32(uint32(len(c.codes)))
+			w.u32(uint32(len(c.codes))) // #nosec G115 -- codes are bounded by MaxDocValuesNodes
 			for _, code := range c.codes {
 				w.u32(code)
 			}
@@ -289,7 +292,7 @@ func DecodeColumns[T EntityID](blob []byte, mk func(int64) T) (*DocValues[T], er
 				c.codes[j] = r.u32()
 				// A code outside the dictionary would panic on the first read.
 				// Catch it here, where the answer is still "rebuild".
-				if c.codes[j] >= uint32(nd) {
+				if c.codes[j] >= uint32(nd) { // #nosec G115 -- decoded count is capped at MaxDocValuesNodes
 					return nil, fmt.Errorf("%w: dictionary code out of range", ErrColumnBlobUnreadable)
 				}
 			}

@@ -1,6 +1,6 @@
 module github.com/data-insights-ai/rho-tkg/v4
 
-go 1.26.1
+go 1.26.7
 
 require (
 	github.com/bds421/rho-snowflake-2026 v1.3.2
@@ -25,5 +25,3 @@ require (
 	golang.org/x/sys v0.35.0 // indirect
 	google.golang.org/protobuf v1.36.7 // indirect
 )
-
-toolchain go1.26.2

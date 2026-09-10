@@ -35,7 +35,7 @@ func nodeDeleteRetryBackoffDuration(attempt int) time.Duration {
 		attempt = nodeDeleteRetryBackoffCap
 	}
 	maxSleep := nodeDeleteRetryBackoffBase << attempt
-	return time.Duration(rand.Int64N(int64(maxSleep)))
+	return time.Duration(rand.Int64N(int64(maxSleep))) // #nosec G404 -- randomized retry jitter, not security-sensitive randomness
 }
 
 // nodeDeleteRetryBackoff sleeps for a randomized jitter interval before a

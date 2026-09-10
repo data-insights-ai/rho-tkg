@@ -1,0 +1,53 @@
+{
+  "mode": "concurrent",
+  "producers": 4,
+  "batch_rows": 1,
+  "rows": 3000,
+  "distinct_facts": 750,
+  "wall_seconds": 63.540759452,
+  "rows_per_sec": 47.21378884786956,
+  "batches": 3000,
+  "commit_p50_ms": 81.062,
+  "commit_p99_ms": 149.865,
+  "commit_max_ms": 191.776,
+  "unique_retries": 0,
+  "write_syscalls": 62,
+  "write_bytes": 45649920,
+  "peak_rss_bytes": 137363456,
+  "dir_bytes": 5025347,
+  "phases": [
+    {
+      "rows": 750,
+      "seconds": 17.407384415,
+      "rows_per_sec": 43.08516329160414
+    },
+    {
+      "rows": 750,
+      "seconds": 14.888273183,
+      "rows_per_sec": 50.375217513900715
+    },
+    {
+      "rows": 750,
+      "seconds": 16.168588418,
+      "rows_per_sec": 46.38623858870993
+    },
+    {
+      "rows": 750,
+      "seconds": 15.076658462,
+      "rows_per_sec": 49.74577104670371
+    }
+  ],
+  "digest": {
+    "Assets": 264,
+    "Facts": 659,
+    "Occurrences": 3000,
+    "Inbox": 3000,
+    "OccurrenceOf": 3000,
+    "ObservedOn": 3000,
+    "Hash": "04ba15799ce9c54efd4fff91e3955396bbef645242338e4ce73d69a8100f2581",
+    "Problems": [
+      "fact fact-000055 last_seen=1788223226112 but max occurrence ts=1788223235672"
+    ]
+  },
+  "go_version": "go1.26.7"
+}

@@ -143,10 +143,10 @@ func (c slotCatalog) EncodeMsgpack(enc *msgpack.Encoder) error {
 		return err
 	}
 	for _, k := range keys {
-		if err := enc.EncodeUint8(uint8(k)); err != nil {
+		if err := enc.EncodeUint8(uint8(k)); err != nil { // #nosec G115 -- keys originate from map[uint8]uint8
 			return err
 		}
-		if err := enc.EncodeInt(int64(c.SlotShard[uint8(k)])); err != nil {
+		if err := enc.EncodeInt(int64(c.SlotShard[uint8(k)])); err != nil { // #nosec G115 -- keys originate from map[uint8]uint8
 			return err
 		}
 	}

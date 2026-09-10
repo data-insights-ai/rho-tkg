@@ -54,9 +54,9 @@ Execute these three phases in order when reviewing a merge request.
 **Temporal Knowledge Graph v4** — internal Go library providing the core graph engine for temporal knowledge graphs. Pure library (no main binary, no HTTP server, no query language).
 
 Module: `github.com/data-insights-ai/rho-tkg/v4`
-Go: 1.26.1 | License: Apache-2.0
+Go: 1.26.7 | License: Apache-2.0
 Dependencies: `rho-snowflake-2026` (IDs), `msgpack/v5` (serialization), `badger/v4` (persistence)
-Status: v4.35.0. **`CHANGELOG.md` is the source of truth for version history, migration recipes, and per-feature detail** (incl. measured numbers and ADR-stage narrative). This file is the STABLE architecture + design-rules reference and must not accumulate change narratives.
+Status: v4.35.1. **`CHANGELOG.md` is the source of truth for version history, migration recipes, and per-feature detail** (incl. measured numbers and ADR-stage narrative). This file is the STABLE architecture + design-rules reference and must not accumulate change narratives.
 
 **Roadmap: `tasks/backlog.md` is the SINGLE todo/roadmap file.** Open work there: the carried-over import-under-a-scope follow-up (deferred locking design, improvement-not-bug) and BACKLOG 22 (six TEST-GAP research items from the retired `.harden/` ledger — crash-fault injection, clock-skew rotation, meta/index fuzz, concurrency soak, resource cliffs). Everything else is closed: the consumer ask batch is fully resolved (TX axis via tail-peek; valid-time via the selection-skeleton fast path + the zero-alloc token scanner; the wire `fv` bump DECIDED NOT BUILT with reopen criteria recorded in the backlog — re-measure against this build first), and the bench-check CI gate is wired (`bench-gate` in bench.yml, blocking, one shared comparator). Any open work goes there and nowhere else; keep it that way. Everything rho-tkg owns has shipped — the BACKLOG 1–5 design items, and the BACKLOG 6–21 full-library hardening pass whose findings closed across 4.18.0–4.24.0: retention purge (ex-ADR-0008 R2–R5, incl. the tiered O(1) cold-shard-drop optimization), the cross-machine incoming half-edge "Model A" (ADR-0010 §3.3), the columnar/streaming whole-node fetch (bulk + parallel decode + `AllNodes`/DocValues-cold-build substrate + `g.Nodes().ForEachByLabel`/`IterByLabel`), the review-driven adaptations (per-label DocValues epoch, configurable `HistoryAnchorInterval`, ingest cleanup, `PeekTx`; the per-version temporal-envelope prune was owner-decided DO-NOT-BUILD), and the rel-side ordering-soundness primitives (`RelRangeCardinality`, `RelPropertyTypeClassCounts`). Full per-feature detail + measured numbers live in CHANGELOG (the source of truth). External orchestration RPCs (the START→END stub-delete fan-out, the consumer-gated constraint dry-run) are out of scope here — rho-tkg already exposes the local primitives. Removed ADR files recover via `git log --all -- docs/adr/`; code comments tag their originating increment (`BACKLOG 3`, `4b`, `5B`, `B6`, …) as stable archaeology keys matching CHANGELOG's vocabulary.
 
@@ -95,7 +95,7 @@ make vulncheck-docker   # govulncheck
 make ci-docker          # full gate: fmt-check + vet + lint-docker + build + test-race + security-docker + vulncheck-docker + cover-gate + check-metakv-reap
 ```
 
-`GO_IMAGE` auto-tracks the `go` line in `go.mod` (`golang:1.26.1`). The raw form,
+`GO_IMAGE` auto-tracks the `go` line in `go.mod` (`golang:1.26.7`). The raw form,
 if you need it ad hoc:
 
 ```bash
@@ -105,11 +105,10 @@ docker run --rm -v "$PWD":/src -w /src \
   sh -c 'go install golang.org/x/vuln/cmd/govulncheck@latest && govulncheck ./...'
 ```
 
-When reviewing a change, run the gate and then **filter the findings to the files
-the change actually touched** (`git diff --name-only`) — the repo carries a
-pre-existing baseline (a stdlib-only `govulncheck` vuln fixed in a later Go patch,
-some `#nosec`-worthy `gosec` G115s, and ~39 `golangci-lint` findings), so "the gate
-is non-empty" is not "the change is dirty". Report only findings inside the diff.
+Security tools are pinned by the Makefile and both security commands are clean,
+blocking gates. `#nosec` annotations document audited non-security conversions
+and deterministic/randomized algorithms at the exact call site; new unannotated
+findings fail CI. Golangci-lint still uses its pull-request new-issues mode.
 
 Single test: `go test -run TestFoo ./pkg/types/`
 Coverage check: `go tool cover -func=coverage.out` (after `make cover`)

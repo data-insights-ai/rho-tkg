@@ -49,7 +49,7 @@ func (c *Core) seedInstantFloor() {
 		// self-healing path the corrupt-watermark regression relies on.
 		return
 	}
-	seeded := types.Instant(binary.BigEndian.Uint64(v))
+	seeded := types.Instant(binary.BigEndian.Uint64(v)) // #nosec G115 -- reverses the persisted int64 bit encoding
 	if seeded <= 0 {
 		// Malformed: cannot be a real instant. Leave the clock wall-derived and
 		// let Close REPLACE the garbage (the self-healing path).

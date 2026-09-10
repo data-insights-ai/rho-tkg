@@ -1,10 +1,10 @@
-# Architecture — tkg/v4 (v4.35.0)
+# Architecture — tkg/v4 (v4.35.1)
 
 Temporal Knowledge Graph v4 is a pure Go library providing the core graph engine for temporal knowledge graphs. It is the low-level storage and type layer — no main binary, no HTTP server, no query language.
 
 ```
 Module:  github.com/data-insights-ai/rho-tkg/v4
-Go:      1.26.1
+Go:      1.26.7
 License: Apache-2.0
 ```
 

@@ -76,8 +76,8 @@ func validateShardedSlotCoverage(store storepkg.MandatoryStore, snowflakeNodeID 
 	covers := func(slot uint8) bool {
 		return slot >= base && slot < base+count
 	}
-	interactiveNode := uint8(snowflakeNodeID * 2)
-	interactiveRel := uint8(snowflakeNodeID*2 + 1)
+	interactiveNode := uint8(snowflakeNodeID * 2)  // #nosec G115 -- SnowflakeNodeID is validated in [0,127]
+	interactiveRel := uint8(snowflakeNodeID*2 + 1) // #nosec G115 -- SnowflakeNodeID is validated in [0,127]
 	if !covers(interactiveNode) || !covers(interactiveRel) {
 		return fmt.Errorf(
 			"graph: sharded store claims slots [%d,%d) but SnowflakeNodeID %d needs its interactive pair {%d,%d}: reconfigure BaseSlot/SlotCount or SnowflakeNodeID",
@@ -103,7 +103,7 @@ func (c *Core) laneGeneratorIndex(lane uint16) (int, bool) {
 	if lane == 0 || n == 0 {
 		return 0, false
 	}
-	return int((lane - 1) % uint16(n)), true
+	return int((lane - 1) % uint16(n)), true // #nosec G115 -- lane-generator count is bounded by the 256 snowflake slots
 }
 
 // nextNodeIDForLane mints a node ID for the given session lane. Lane 0 (and any

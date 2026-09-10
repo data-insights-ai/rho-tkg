@@ -2,11 +2,14 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := build
 
-.PHONY: build test test-v test-race test-integration bench-types-footprint bench bench-baseline bench-check bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large bench-compare cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker ci-docker check ci clean check-metakv-reap
+.PHONY: tools build test test-v test-race test-integration bench-types-footprint bench bench-baseline bench-check bench-graph-baseline bench-graph-production bench-graph-production-small bench-graph-production-large bench-graph-all bench-graph-all-large bench-compare cover cover-gate vet fmt fmt-check lint security vulncheck lint-docker security-docker vulncheck-docker ci-docker check ci clean check-metakv-reap
 
 BENCH_COUNT ?= 1
 BENCH_TIME ?= 1s
 PROD_BENCH_COUNT ?= 1
+GOLANGCI_LINT_VERSION ?= v2.13.2
+GOSEC_VERSION ?= v2.29.0
+GOVULNCHECK_VERSION ?= v1.7.0
 
 # Build (verify compilation)
 build:
@@ -148,11 +151,17 @@ lint:
 
 # Static security analysis
 security:
-	gosec $$(go list -f '{{.Dir}}' ./...)
+	gosec -quiet $$(go list -f '{{.Dir}}' ./...)
 
 # Known vulnerability check
 vulncheck:
 	govulncheck $$(go list ./...)
+
+# Pin security tools so CI results change only when this repository chooses to
+# update the analyzers, rather than whenever an upstream latest tag moves.
+tools:
+	go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION)
+	go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
 
 # --- Dockerized lint/security/vulncheck ------------------------------------
 # golangci-lint, gosec, and govulncheck are often NOT installed on the host.
@@ -165,13 +174,13 @@ DOCKER_GO  = docker run --rm -v "$(CURDIR)":/src -w /src \
 	-v rho-tkg-gocache:/go -v rho-tkg-buildcache:/root/.cache/go-build $(GO_IMAGE)
 
 lint-docker:
-	$(DOCKER_GO) sh -c 'go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest && golangci-lint run ./...'
+	$(DOCKER_GO) sh -c 'go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) && golangci-lint run ./...'
 
 security-docker:
-	$(DOCKER_GO) sh -c 'go install github.com/securego/gosec/v2/cmd/gosec@latest && gosec -quiet ./...'
+	$(DOCKER_GO) sh -c 'go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION) && gosec -quiet ./...'
 
 vulncheck-docker:
-	$(DOCKER_GO) sh -c 'go install golang.org/x/vuln/cmd/govulncheck@latest && govulncheck ./...'
+	$(DOCKER_GO) sh -c 'go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) && govulncheck ./...'
 
 # Full CI gate using the dockerized tools for the three host-optional binaries
 # (fmt-check/vet/build/test-race/cover-gate run natively on the host).

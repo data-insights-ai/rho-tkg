@@ -49,7 +49,7 @@ func scanWireTemporalMeta(data []byte) (wireTemporalMetaPartial, bool) {
 		case c <= 0x7f: // positive fixint
 			return int64(c), true
 		case c >= 0xe0: // negative fixint
-			return int64(int8(c)), true
+			return int64(int8(c)), true // #nosec G115 -- MessagePack negative-fixint sign reinterpretation
 		}
 		need := 0
 		switch c {
@@ -72,7 +72,7 @@ func scanWireTemporalMeta(data []byte) (wireTemporalMetaPartial, bool) {
 		case 0xcc:
 			v = int64(data[pos])
 		case 0xd0:
-			v = int64(int8(data[pos]))
+			v = int64(int8(data[pos])) // #nosec G115 -- MessagePack int8 sign reinterpretation
 		case 0xcd:
 			v = int64(binary.BigEndian.Uint16(data[pos:]))
 		case 0xd1:

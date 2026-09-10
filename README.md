@@ -251,7 +251,7 @@ restored, err := graph.RestoreInto(graph.Config{}, backupDir) // full + every de
 github.com/data-insights-ai/rho-tkg/v4
 ```
 
-**Go:** 1.26.1
+**Go:** 1.26.7
 **License:** Apache-2.0
 **Dependencies:** [`rho-snowflake-2026`](https://github.com/bds421/rho-snowflake-2026) (IDs), [`msgpack/v5`](https://github.com/vmihailenco/msgpack) (serialization), [`badger/v4`](https://github.com/dgraph-io/badger) (persistence)
 

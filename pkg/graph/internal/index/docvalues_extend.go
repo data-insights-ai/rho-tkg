@@ -196,7 +196,7 @@ func extendColumn[T EntityID](c *docColumn, added []T, key string, oldN, n int,
 			}
 			code, seen := idx[s]
 			if !seen {
-				code = uint32(len(out.dict))
+				code = uint32(len(out.dict)) // #nosec G115 -- dictionary rows are bounded by MaxDocValuesNodes
 				out.dict = append(out.dict, s)
 				idx[s] = code
 			}

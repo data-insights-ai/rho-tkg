@@ -97,11 +97,11 @@ func (bs *Store) recordRelTypeMemberLocked(r *types.Relationship) {
 func (bs *Store) recordNodeWireMembersLocked(nid types.NodeID, w *storepkg.NodeWire) {
 	tx := types.Instant(w.TxFrom)
 	if w.PrimaryLabel != 0 {
-		bs.recordLabelMemberLocked(uint16(w.PrimaryLabel), nid, tx)
+		bs.recordLabelMemberLocked(uint16(w.PrimaryLabel), nid, tx) // #nosec G115 -- wire label tokens are validated as uint16 on decode
 	}
 	for _, el := range w.ExtraLabels {
 		if el != 0 {
-			bs.recordLabelMemberLocked(uint16(el), nid, tx)
+			bs.recordLabelMemberLocked(uint16(el), nid, tx) // #nosec G115 -- wire label tokens are validated as uint16 on decode
 		}
 	}
 }
@@ -111,7 +111,7 @@ func (bs *Store) recordRelWireMembersLocked(rid types.RelID, w *storepkg.RelWire
 	if w.RelType == 0 || bs.relTypeTxMembers == nil {
 		return
 	}
-	tok := uint16(w.RelType)
+	tok := uint16(w.RelType) // #nosec G115 -- wire relationship token is validated as uint16 on decode
 	tx := types.Instant(w.TxFrom)
 	set := bs.relTypeTxMembers[tok]
 	if set == nil {

@@ -1,0 +1,18 @@
+{
+  "command": [
+    "make",
+    "fmt-check",
+    "vet",
+    "lint-docker",
+    "security-docker",
+    "vulncheck-docker",
+    "check-metakv-reap"
+  ],
+  "rss_limit_mib": 8192,
+  "wall_limit_s": 1800.0,
+  "sample_interval_s": 0.05,
+  "peak_tree_rss_mib": 2163.266,
+  "elapsed_s": 104.82,
+  "exit_code": 0,
+  "reason": "completed"
+}

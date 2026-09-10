@@ -74,7 +74,7 @@ func EncodeCompositeKeyTuple(parts []string) string {
 	b := make([]byte, 0, total)
 	var lenBuf [4]byte
 	for _, p := range parts {
-		binary.BigEndian.PutUint32(lenBuf[:], uint32(len(p))) //nolint:gosec // component length, never remotely near uint32 overflow
+		binary.BigEndian.PutUint32(lenBuf[:], uint32(len(p))) // #nosec G115 -- component is memory-backed and cannot approach uint32 overflow
 		b = append(b, lenBuf[:]...)
 		b = append(b, p...)
 	}

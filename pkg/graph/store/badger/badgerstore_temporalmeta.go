@@ -100,11 +100,10 @@ func (bs *Store) historyTemporalMetaByPrefix(prefix []byte, node bool) ([]storec
 			if len(key) != storepkg.SizeHistKey {
 				continue
 			}
-			k := string(key)
-			if _, deleted := overlayDeletes[k]; deleted {
+			if _, deleted := overlayDeletes[string(key)]; deleted {
 				continue
 			}
-			if _, pending := overlay[k]; pending {
+			if _, pending := overlay[string(key)]; pending {
 				continue // overlay set wins (byte-identical for history keys)
 			}
 			version := historyVersionFromKey(key)

@@ -1,0 +1,17 @@
+{
+  "command": [
+    "go",
+    "test",
+    "./pkg/graph/internal/core",
+    "-run",
+    "^TestDeclaredVocabularyRejectsBeforeAllocating$",
+    "-count=1"
+  ],
+  "rss_limit_mib": 4096,
+  "wall_limit_s": 300.0,
+  "sample_interval_s": 0.05,
+  "peak_tree_rss_mib": 2177.266,
+  "elapsed_s": 19.266,
+  "exit_code": 1,
+  "reason": "command-failed"
+}

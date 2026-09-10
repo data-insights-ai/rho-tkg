@@ -194,6 +194,14 @@ func TestRegistryPersistencePanicReleasesRegistryLock(t *testing.T) {
 			},
 		},
 		{
+			name: "declared label checkpoint",
+			run:  func(t *testing.T, c *Core) { _ = c.predeclareVocabulary([]string{"DECLARED"}, nil) },
+		},
+		{
+			name: "declared relationship checkpoint",
+			run:  func(t *testing.T, c *Core) { _ = c.predeclareVocabulary(nil, []string{"DECLARED"}) },
+		},
+		{
 			name: "dirty checkpoint",
 			run: func(t *testing.T, c *Core) {
 				c.registryDirty.Store(true)
@@ -264,4 +272,34 @@ type registryPersistPanicStore struct {
 
 func (s *registryPersistPanicStore) SaveRegistries(*registrypkg.LabelRegistry, *registrypkg.RelTypeRegistry) error {
 	panic("injected registry persistence panic")
+}
+
+func TestDeclaredVocabularyRejectsBeforeAllocating(t *testing.T) {
+	for _, opts := range []IngestOptions{
+		{DeclareLabels: []string{"reserved", " "}},
+		{DeclareLabels: []string{"reserved"}, DeclareRelTypes: []string{"reserved", " "}},
+	} {
+		c := newCoreForRegistryRollbackTest(t)
+		if _, err := c.Ingest.NewSession(opts); !errors.Is(err, ErrEmptyName) {
+			t.Fatalf("invalid declaration error = %v", err)
+		}
+		if c.labels.Len() != 0 || c.relTypes.Len() != 0 {
+			t.Fatalf("rejected declaration allocated vocabulary: labels=%d reltypes=%d", c.labels.Len(), c.relTypes.Len())
+		}
+	}
+}
+
+func TestVocabularyPreflightCapacityCountsDistinctNewNames(t *testing.T) {
+	c := newCoreForRegistryRollbackTest(t)
+	lookup := func(name string) (uint16, bool) { return 1, name == "existing" }
+	full := int(registrypkg.TokenCapacityMax)
+	if err := c.preflightVocabulary([]string{"existing", "new", "new"}, full-1, lookup); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.preflightVocabulary([]string{"existing", "new"}, full, lookup); err == nil {
+		t.Fatal("full registry accepted a new name")
+	}
+	if err := c.preflightVocabulary([]string{"existing", "existing"}, full, lookup); err != nil {
+		t.Fatal(err)
+	}
 }

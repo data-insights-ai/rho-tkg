@@ -1116,3 +1116,17 @@ type RelColumnScanCapability interface {
 	ScanRelColumns(token uint16, props []string, opts QueryOpts,
 		fn func(*RelColumnBatch) bool) error
 }
+
+// GroupCommitCapability coalesces the strong ingest applier's per-mutation
+// flushes. The caller serializes the entire Begin/End window with graph readers
+// and writers and bounds its memory footprint. EndGroupCommit flushes remaining
+// operations before acknowledgement, using the backend's configured durability.
+// A window is not a rollback transaction. A failed End must be reported to every
+// submitter; buffered operations may be retried by the backend's next flush.
+// Backend batch size limits, registry write-aheads and asynchronous background
+// flushing can require multiple physical writes. Crash atomicity is not promised.
+// Stores without this capability retain per-mutation flushing.
+type GroupCommitCapability interface {
+	BeginGroupCommit()
+	EndGroupCommit() error
+}

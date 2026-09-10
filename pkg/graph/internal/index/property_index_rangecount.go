@@ -47,7 +47,7 @@ func exactInt64FromVK(vk string) (int64, bool) {
 		if err != nil {
 			return 0, false
 		}
-		return int64(n), true // u32 max < MaxInt64
+		return int64(n), true // #nosec G115 -- u32 max is below MaxInt64
 	case "u64":
 		n, err := strconv.ParseUint(payload, 10, 64)
 		if err != nil || n > math.MaxInt64 {

@@ -9,24 +9,6 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// coldStoresOpen reports how many cold shards currently hold an open Badger.
-func coldStoresOpen(ts *Store) int {
-	ts.mu.RLock()
-	defer ts.mu.RUnlock()
-	n := 0
-	for _, es := range ts.eventShards {
-		if es.currentTier() != TierCold {
-			continue
-		}
-		es.shardMu.Lock()
-		if es.store != nil {
-			n++
-		}
-		es.shardMu.Unlock()
-	}
-	return n
-}
-
 func closeColdStores(t *testing.T, ts *Store) int {
 	t.Helper()
 	ts.mu.RLock()

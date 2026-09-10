@@ -4,6 +4,78 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.35.1] - 2026-09-10
+
+### Added
+
+- **Group commit on the strong ingest door (`store.GroupCommitCapability`).**
+  Under `SyncWrites` every store door flushed on its own, so one acknowledged
+  `Session.Submit` of a 128-row consumer group cost 1 node-batch flush + 256
+  relationship flushes + 126 update flushes (≈383 rho flushes, 833 physical
+  sync calls measured under strace; ≈5.6 msync per row, batch-size invariant)
+  and the process idled at 2–5% CPU waiting on msync. The strong-mode applier
+  now sets `BatchBuilder.groupCommit`; `Batch.Execute` asks a store that
+  implements the new optional capability to hold every per-mutation flush for
+  the exclusive-lock window and commits the whole group — entity rows, history
+  versions, on-disk index entries, counters and the change-log records minted
+  by `CommitLogScope` — in ONE `WriteBatch` at the end. Badger implements it
+  (`BeginGroupCommit` / `EndGroupCommit`; `flushIfNeeded` and `CommitLogScope`
+  defer inside the window); memory, tiered and sharded stores are unchanged.
+  Contract: an `EndGroupCommit` error is a whole-batch error — every coalesced
+  submitter's Sync ack / `WaitApplied` returns it and the store keeps the
+  operations pending for the next flush, so no consumer cut can advance on a
+  group that is not durable. The plain `g.Batch()`, transaction and concurrent
+  doors keep their per-mutation flush behaviour (pinned:
+  `TestGroupCommitWindowIsOpenedOnlyByTheStrongApplier`). SyncWrites stays on.
+  Measured on the AI-SOC consumer-shaped replay (bench/temporalreplay, NVMe,
+  3,000 rows): steady state 2 msync per 128-row group (one WriteBatch), pinned
+  by `TestGroupCommitIsOneDurableOperation` (strace child, 0/1/3 groups);
+  atomic visibility pinned by `TestGroupCommitAtomicVisibility`; SIGKILL after
+  ack + idempotent replay by `TestKillBeforeAndAfterDurableAck`. Consumer-shaped
+  replay, one producer, 128-row groups: 153 → 8,815 rows/s, commit p50 848 ms →
+  14 ms, identical durable digest; full tables in
+  `tasks/evidence/temporal-index/20260909-stream2/result.md`.
+
+### Fixed
+
+- Vocabulary declarations validate every name and available registry capacity
+  before allocating tokens, so an invalid suffix cannot leave an earlier name
+  reserved without its durability checkpoint.
+- Group-commit capability panics release graph and builder locks, including
+  a panic while closing a failed begin. Direct regression tests recover from
+  each backend panic and verify every lock can be acquired again.
+- Group-commit documentation distinguishes the final grouped flush from
+  physical transactions: large Badger batches can split, asynchronous flushes
+  can run during a group, and registry write-aheads add writes. Successful
+  acknowledgement uses the configured durability; a window is not rollback
+  or crash atomicity. The 128-row physical-sync measurement above is scoped
+  to that workload.
+
+- **Declared ingest vocabulary is durable before the first acknowledgement.**
+  `IngestOptions.DeclareLabels` / `DeclareRelTypes` and the concurrent door's
+  declare-on-prepare interned names through `predeclareVocabulary`, which only
+  checkpointed when a PREVIOUS registry save had failed. A relationship created
+  under a declared type was acknowledged by a Sync `Submit` while its type token
+  existed only in memory; after SIGKILL the row survived but its type resolved
+  to nothing (`CountByType` / `OutgoingDegree` = 0). The transaction door and
+  undeclared strong sessions were unaffected. `predeclareVocabulary` now
+  persists whenever it interned a name (the tx door's changed-since-begin
+  rule). Pinned by a SIGKILL child-process test
+  (`bench/temporalreplay.TestDeclaredRelTypesAreDurableBeforeAck`); cost is one
+  registry save per session that declares something new (measured: +4 msync on
+  a 3,000-row run, throughput unchanged at 151 vs 153 rows/s).
+
+### Fixed
+
+- **Security scans are blocking and reproducible.** The weekly workflow had
+  `continue-on-error` on both scanners and described a stale baseline, so a run
+  with 57 gosec findings and reachable standard-library vulnerabilities still
+  reported success. Go is updated to 1.26.7, gosec v2.29.0 and govulncheck
+  v1.7.0 are pinned, audited non-security findings are documented at their call
+  sites, and both scans now run as blocking weekly and per-change CI jobs.
+  GitHub's checkout and Go setup actions are upgraded to their Node-24-based v7
+  releases, eliminating the runner's Node 20 deprecation annotation.
+
 ## [4.35.0] - 2026-09-04
 
 ### Changed

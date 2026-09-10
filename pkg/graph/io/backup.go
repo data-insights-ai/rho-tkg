@@ -273,7 +273,7 @@ func renameNoClobber(tmpPath, finalPath string) error {
 // fsyncDir opens dir and fsyncs it, flushing pending directory-entry
 // metadata changes (create/link/remove) to durable storage.
 func fsyncDir(dir string) error {
-	d, err := os.Open(dir)
+	d, err := os.Open(dir) // #nosec G304 -- dir is filepath.Dir of the caller-selected backup destination
 	if err != nil {
 		return err
 	}

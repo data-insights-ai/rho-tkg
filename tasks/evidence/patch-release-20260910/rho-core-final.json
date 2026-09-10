@@ -1,0 +1,18 @@
+{
+  "command": [
+    "go",
+    "test",
+    "-short",
+    "-race",
+    "-count=1",
+    "-coverprofile=/tmp/library-patch-audit/rho-core-final.out",
+    "./pkg/graph/internal/core"
+  ],
+  "rss_limit_mib": 8192,
+  "wall_limit_s": 1800.0,
+  "sample_interval_s": 0.05,
+  "peak_tree_rss_mib": 2859.996,
+  "elapsed_s": 88.327,
+  "exit_code": 0,
+  "reason": "completed"
+}

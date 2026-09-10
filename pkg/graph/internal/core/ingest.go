@@ -2,9 +2,11 @@ package core
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 
+	registrypkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -230,7 +232,9 @@ func (a *ingestApplier) drainRemaining() {
 // and acks sync submitters. Reuses the batch applier verbatim rather than
 // building a second write path (feasibility §6d).
 func (a *ingestApplier) applyCommitGroup(batch []*ingestGroup) {
-	bb := &BatchBuilder{g: a.c}
+	// groupCommit coalesces per-mutation flushes on capable stores. Every
+	// submitter waits for the final grouped flush before acknowledgement.
+	bb := &BatchBuilder{g: a.c, groupCommit: true}
 	var maxSeq uint64
 	// idToGroup maps each intent's entity ID to its owning group so a per-op
 	// Batch.Execute failure (partitionBatchNodesByUnique rejects offenders while
@@ -508,6 +512,17 @@ func (c *Core) predeclareVocabulary(labels, relTypes []string) error {
 		return nil
 	}
 	c.registryMu.Lock()
+	before := [2]int{c.labels.Len(), c.relTypes.Len()}
+	// Validate the whole declaration before allocating any token. A rejected
+	// suffix must not reserve earlier names without their durability checkpoint.
+	if err := c.preflightVocabulary(labels, before[0], c.labels.Lookup); err != nil {
+		c.registryMu.Unlock()
+		return err
+	}
+	if err := c.preflightVocabulary(relTypes, before[1], c.relTypes.Lookup); err != nil {
+		c.registryMu.Unlock()
+		return err
+	}
 	for _, l := range labels {
 		if _, err := c.labels.GetOrCreate(l); err != nil {
 			c.registryMu.Unlock()
@@ -520,9 +535,38 @@ func (c *Core) predeclareVocabulary(labels, relTypes []string) error {
 			return err
 		}
 	}
-	err := c.persistRegistriesIfDirtyLockedPanicSafe()
+	// A name interned HERE is referenced by rows the batch/concurrent apply
+	// paths will acknowledge without checkpointing it again (they see an
+	// already-known token). Persist it now — the same "changed since begin"
+	// rule the tx door applies in checkpointRegistriesOnCommit. The dirty-only
+	// checkpoint below is kept for the retry-a-failed-save contract; on its own
+	// it made every declared vocabulary non-durable until Close (measured
+	// 2026-09-09: an acked Sync Submit's relationship type vanished on SIGKILL).
+	var err error
+	if before != [2]int{c.labels.Len(), c.relTypes.Len()} {
+		err = c.persistRegistriesLockedPanicSafe()
+	} else {
+		err = c.persistRegistriesIfDirtyLockedPanicSafe()
+	}
 	c.registryMu.Unlock()
 	return err
+}
+
+// Caller holds registryMu, which serializes vocabulary allocation.
+func (c *Core) preflightVocabulary(names []string, count int, lookup func(string) (uint16, bool)) error {
+	newNames := make(map[string]bool)
+	for _, name := range names {
+		if err := c.validateName(name); err != nil {
+			return err
+		}
+		if _, exists := lookup(name); !exists {
+			newNames[name] = true
+		}
+	}
+	if len(newNames) > int(registrypkg.TokenCapacityMax)-count {
+		return fmt.Errorf("graph: declaration exceeds registry capacity (%d tokens)", registrypkg.TokenCapacityMax)
+	}
+	return nil
 }
 
 // =============================================================================
@@ -585,7 +629,7 @@ func (i *IngestOps) NewSession(opts IngestOptions) (*Session, error) {
 // resource, so reuse after 65535 sessions is harmless.
 func (c *Core) nextIngestLane() uint16 {
 	for {
-		if lane := uint16(c.ingestLaneCtr.Add(1)); lane != 0 {
+		if lane := uint16(c.ingestLaneCtr.Add(1)); lane != 0 { // #nosec G115 -- deliberate wrapping lane counter; zero is skipped
 			return lane
 		}
 	}

@@ -78,6 +78,11 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		scopeOpen = true
 	}
 
+	// Group commit (strong-mode applier only): hold the store's per-mutation
+	// flushes for the whole exclusive-lock window and commit once at the end.
+	var groupStore storepkg.GroupCommitCapability
+	groupEnded := false
+
 	unlocked := false
 	builderUnlocked := false
 	defer func() {
@@ -95,6 +100,20 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			b.mu.Unlock()
 		}
 	}()
+	// Keep durability cleanup separate: even a backend panic in End must
+	// unwind through the graph/builder cleanup already installed above.
+	defer func() {
+		if groupStore != nil && !groupEnded {
+			groupEnded = true
+			_ = groupStore.EndGroupCommit()
+		}
+	}()
+	if b.groupCommit {
+		if gc, ok := b.g.store.(storepkg.GroupCommitCapability); ok {
+			groupStore = gc
+			gc.BeginGroupCommit()
+		}
+	}
 
 	start := time.Now()
 	result := &BatchResult{}
@@ -609,6 +628,20 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		scopeCommitted = true
 	}
 
+	// Group commit: flush every accepted mutation of the
+	// group and its metadata (history versions, index entries, counters, the
+	// change-log records minted just above). A failure here means nothing in
+	// the group is durable-as-acknowledged: it is surfaced as a whole-batch
+	// error (the applier fails every submitter's token, no consumer cut may
+	// advance), and the store keeps the operations pending for the next flush.
+	var groupErr error
+	if groupStore != nil {
+		groupEnded = true
+		if err := groupStore.EndGroupCommit(); err != nil {
+			groupErr = fmt.Errorf("graph: group commit: %w", err)
+		}
+	}
+
 	// Capture event publisher and clear buffer before releasing lock.
 	ep := b.g.events
 	b.g.txEventBuffer = nil
@@ -624,6 +657,11 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		ep.PublishBatch(batchEvents...)
 	}
 
+	if groupErr != nil {
+		// Whole-batch failure: no per-op attribution is possible because the
+		// failed durability boundary covers every op.
+		return nil, groupErr
+	}
 	if result.Failed > 0 {
 		return result, fmt.Errorf("%w: %d failed operation(s)", ErrBatchFailed, result.Failed)
 	}

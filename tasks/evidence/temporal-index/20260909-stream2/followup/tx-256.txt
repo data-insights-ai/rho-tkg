@@ -1,0 +1,9 @@
+FLUSHATTR 5 CreatePropertyIndex <- core.(*IndexOps).CreateProperty.func1
+FLUSHATTR 5 CreatePropertyIndex <- core.(*IndexOps).CreateProperty.func1
+FLUSHATTR 1 func1 <- core.(*Core).Close.func1
+FLUSHATTR 608 putNodeRouted <- core.(*Core).putGeneratedNode
+FLUSHATTR 608 putNodeRouted <- core.(*Core).putGeneratedNode
+FLUSHATTR 512 putRelationship <- core.(*Core).putGeneratedRelationship
+FLUSHATTR 512 putRelationship <- core.(*Core).putGeneratedRelationship
+FLUSHATTR 228 replaceNodeWithHistoryRouted <- core.(*Core).updateNodePreparedInternal
+FLUSHATTR 228 replaceNodeWithHistoryRouted <- core.(*Core).updateNodePreparedInternal

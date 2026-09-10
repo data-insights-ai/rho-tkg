@@ -54,9 +54,9 @@ func NewValueManager() *ValueManager { return &ValueManager{} }
 // test pinning this.
 func ValueStripe(labelToken, keyToken uint16, value []byte) uint8 {
 	h := fnvOffset64
-	h = (h ^ uint64(byte(labelToken))) * fnvPrime64
+	h = (h ^ uint64(byte(labelToken))) * fnvPrime64 // #nosec G115 -- deliberate low byte of uint16 token
 	h = (h ^ uint64(byte(labelToken>>8))) * fnvPrime64
-	h = (h ^ uint64(byte(keyToken))) * fnvPrime64
+	h = (h ^ uint64(byte(keyToken))) * fnvPrime64 // #nosec G115 -- deliberate low byte of uint16 token
 	h = (h ^ uint64(byte(keyToken>>8))) * fnvPrime64
 	for _, b := range value {
 		h = (h ^ uint64(b)) * fnvPrime64

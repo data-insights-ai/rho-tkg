@@ -510,10 +510,10 @@ func validateWireTemporal(v any) error {
 	if !ok {
 		return fmt.Errorf("temporal wire rendering has type %T, want string", pair[1])
 	}
-	tv := types.TemporalValue{Kind: types.TemporalKind(kind), Value: iso}
 	if kind > 255 {
 		return fmt.Errorf("temporal wire kind %d out of range", kind)
 	}
+	tv := types.TemporalValue{Kind: types.TemporalKind(kind), Value: iso} // #nosec G115 -- bounded above before conversion
 	return tv.Validate()
 }
 
@@ -537,7 +537,7 @@ func reconstructPropertyWireValue(p PropertyWire) (any, error) {
 		}
 		pair := p.Value.([]any)
 		kind, _ := wireUint64(pair[0])
-		return types.TemporalValue{Kind: types.TemporalKind(kind), Value: pair[1].(string)}, nil
+		return types.TemporalValue{Kind: types.TemporalKind(kind), Value: pair[1].(string)}, nil // #nosec G115 -- validateWireTemporal bounded kind above
 	}
 	return reconstructTypedValue(p.Value, p.Type), nil
 }

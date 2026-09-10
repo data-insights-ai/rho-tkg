@@ -47,11 +47,10 @@ make vulncheck-docker   # govulncheck
 make ci-docker          # full gate: fmt-check + vet + lint-docker + build + test-race + security-docker + vulncheck-docker + cover-gate
 ```
 
-The repo carries a small pre-existing baseline (a stdlib-only `govulncheck`
-finding fixed in a later Go patch, a handful of `#nosec`-worthy `gosec` G115s,
-and some existing `golangci-lint` findings). A non-empty gate is not
-automatically a blocked PR — filter findings to the files your change actually
-touched (`git diff --name-only`) before treating something as new.
+The security tools are version-pinned by the Makefile. Both `gosec` and
+`govulncheck` are clean, blocking gates; new findings must be fixed or documented
+at their exact call site. Golangci-lint uses its pull-request new-issues mode for
+the older lint backlog.
 
 ## Testing Rules (hard requirements)
 

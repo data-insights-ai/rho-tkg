@@ -1,0 +1,14 @@
+{
+  "command": [
+    "make",
+    "cover",
+    "cover-gate"
+  ],
+  "rss_limit_mib": 8192,
+  "wall_limit_s": 7200.0,
+  "sample_interval_s": 0.05,
+  "peak_tree_rss_mib": 5289.605,
+  "elapsed_s": 562.96,
+  "exit_code": 0,
+  "reason": "completed"
+}

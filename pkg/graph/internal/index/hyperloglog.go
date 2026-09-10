@@ -98,7 +98,7 @@ func (h *HyperLogLog) AddString(s string) {
 
 func (h *HyperLogLog) addHash(hash uint64) {
 	hash = mix64(hash)
-	idx := uint32(hash >> (64 - h.precision))
+	idx := uint32(hash >> (64 - h.precision)) // #nosec G115 -- precision bounds the shifted result to at most 2^18-1
 	h.setRegister(idx, rank(hash, h.precision))
 }
 
@@ -149,7 +149,7 @@ func (h *HyperLogLog) setRegister(idx uint32, rho uint8) {
 	if cur, ok := h.sparse[idx]; !ok || rho > cur {
 		h.sparse[idx] = rho
 	}
-	if uint32(len(h.sparse))*sparseToDenseDivisor > h.m {
+	if uint32(len(h.sparse))*sparseToDenseDivisor > h.m { // #nosec G115 -- sparse entries cannot exceed h.m <= 2^18
 		h.convertToDense()
 	}
 }

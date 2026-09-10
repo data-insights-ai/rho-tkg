@@ -1,0 +1,85 @@
+{
+  "mode": "concurrent",
+  "producers": 4,
+  "batch_rows": 128,
+  "rows": 3000,
+  "distinct_facts": 750,
+  "wall_seconds": 66.176214047,
+  "rows_per_sec": 45.33350907426232,
+  "batches": 24,
+  "commit_p50_ms": 10933.301,
+  "commit_p99_ms": 12726.601,
+  "commit_max_ms": 12726.601,
+  "unique_retries": 19,
+  "write_syscalls": 104,
+  "write_bytes": 49037312,
+  "peak_rss_bytes": 216793088,
+  "dir_bytes": 5021525,
+  "phases": [
+    {
+      "rows": 640,
+      "seconds": 22.567970215,
+      "rows_per_sec": 28.358775463759624
+    },
+    {
+      "rows": 768,
+      "seconds": 12.510320844,
+      "rows_per_sec": 61.38931283831428
+    },
+    {
+      "rows": 768,
+      "seconds": 17.596434994,
+      "rows_per_sec": 43.64520428495154
+    },
+    {
+      "rows": 824,
+      "seconds": 13.501513375,
+      "rows_per_sec": 61.030195439109434
+    }
+  ],
+  "digest": {
+    "Assets": 264,
+    "Facts": 659,
+    "Occurrences": 3000,
+    "Inbox": 3000,
+    "OccurrenceOf": 3000,
+    "ObservedOn": 3000,
+    "Hash": "521a7b69b0ec2ce7c24c2bd157764e55a7b36c2feb7f21802708c40bc5fd579b",
+    "Problems": [
+      "fact fact-000007 last_seen=1788223705461 but max occurrence ts=1788223775401",
+      "fact fact-000018 last_seen=1788223474392 but max occurrence ts=1788223755322",
+      "fact fact-000020 last_seen=1788223765117 but max occurrence ts=1788223786094",
+      "fact fact-000024 last_seen=1788223621994 but max occurrence ts=1788223724672",
+      "fact fact-000025 last_seen=1788223371683 but max occurrence ts=1788223759430",
+      "fact fact-000031 last_seen=1788223722441 but max occurrence ts=1788223772370",
+      "fact fact-000035 last_seen=1788223582083 but max occurrence ts=1788223679765",
+      "fact fact-000039 last_seen=1788223582852 but max occurrence ts=1788223703565",
+      "fact fact-000040 last_seen=1788223662611 but max occurrence ts=1788223736626",
+      "fact fact-000041 last_seen=1788223684710 but max occurrence ts=1788223719462",
+      "fact fact-000045 last_seen=1788223450055 but max occurrence ts=1788223763461",
+      "fact fact-000048 last_seen=1788223686590 but max occurrence ts=1788223688503",
+      "fact fact-000052 last_seen=1788223446195 but max occurrence ts=1788223695714",
+      "fact fact-000054 last_seen=1788223657807 but max occurrence ts=1788223727532",
+      "fact fact-000058 last_seen=1788223682489 but max occurrence ts=1788223700681",
+      "fact fact-000061 last_seen=1788223725556 but max occurrence ts=1788223747284",
+      "fact fact-000067 last_seen=1788223702564 but max occurrence ts=1788223756529",
+      "fact fact-000068 last_seen=1788223354360 but max occurrence ts=1788223441376",
+      "fact fact-000072 last_seen=1788223733355 but max occurrence ts=1788223744361",
+      "fact fact-000073 last_seen=1788223550006 but max occurrence ts=1788223599726",
+      "fact fact-000078 last_seen=1788223748385 but max occurrence ts=1788223787253",
+      "fact fact-000183 last_seen=1788222891987 but max occurrence ts=1788222957805",
+      "fact fact-000235 last_seen=1788222577976 but max occurrence ts=1788222581110",
+      "fact fact-000236 last_seen=1788223469352 but max occurrence ts=1788223591720",
+      "fact fact-000250 last_seen=1788223379318 but max occurrence ts=1788223707254",
+      "fact fact-000281 last_seen=1788223186001 but max occurrence ts=1788223276645",
+      "fact fact-000442 last_seen=1788223387669 but max occurrence ts=1788223563841",
+      "fact fact-000600 last_seen=1788223395636 but max occurrence ts=1788223457477",
+      "fact fact-000615 last_seen=1788223523005 but max occurrence ts=1788223675567",
+      "fact fact-000624 last_seen=1788222454086 but max occurrence ts=1788222457489",
+      "fact fact-000667 last_seen=1788222588861 but max occurrence ts=1788222829986",
+      "fact fact-000712 last_seen=1788222992871 but max occurrence ts=1788223130212",
+      "fact fact-000715 last_seen=1788222842991 but max occurrence ts=1788223300911"
+    ]
+  },
+  "go_version": "go1.26.7"
+}

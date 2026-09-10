@@ -145,7 +145,7 @@ func newHNSWGraph(metric storepkg.DistanceMetric, m, efConstruction, efSearch in
 		efSearch:       efSearch,
 		metric:         metric,
 		levelMult:      1.0 / math.Log(float64(m)),
-		rng:            rand.New(rand.NewPCG(hnswSeed1, hnswSeed2)),
+		rng:            rand.New(rand.NewPCG(hnswSeed1, hnswSeed2)), // #nosec G404 -- deterministic topology RNG, never used for security
 	}
 }
 
@@ -181,7 +181,7 @@ func (g *hnswGraph) randomLevel() int {
 // independent copy or explicitly owned.
 func (g *hnswGraph) insert(id snowflake.ID, vec []float32) {
 	level := g.randomLevel()
-	idx := int32(len(g.nodes))
+	idx := int32(len(g.nodes)) // #nosec G115 -- an in-memory graph cannot approach MaxInt32 nodes
 	g.nodes = append(g.nodes, hnswNode{
 		extID:     id,
 		vec:       vec,
@@ -509,7 +509,7 @@ func (g *hnswGraph) reassignEntryPoint() {
 		}
 		if g.nodes[i].level > bestLevel {
 			bestLevel = g.nodes[i].level
-			best = int32(i)
+			best = int32(i) // #nosec G115 -- i indexes the same MaxInt32-bounded node slice
 		}
 	}
 	g.entryPoint = best

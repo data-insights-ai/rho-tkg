@@ -1,0 +1,17 @@
+{
+  "command": [
+    "go",
+    "test",
+    "./pkg/graph/internal/core",
+    "-run",
+    "^TestGroupCommitPanicReleasesBatchLocks$",
+    "-count=1"
+  ],
+  "rss_limit_mib": 4096,
+  "wall_limit_s": 300.0,
+  "sample_interval_s": 0.05,
+  "peak_tree_rss_mib": 2153.07,
+  "elapsed_s": 10.169,
+  "exit_code": 1,
+  "reason": "command-failed"
+}

@@ -298,7 +298,7 @@ func New(cfg Config) (*Store, error) {
 			wg.Add(1)
 			go func(k int) {
 				defer wg.Done()
-				shard, oerr := badger.New(s.shardConfig(cfg, uint8(k), reg))
+				shard, oerr := badger.New(s.shardConfig(cfg, uint8(k), reg)) // #nosec G115 -- k is below uint8 SlotCount
 				if oerr != nil {
 					errs[k] = fmt.Errorf("graph: sharded: open shard %d: %w", k, oerr)
 					return
@@ -408,7 +408,7 @@ func (s *Store) loadOrCreateCatalog(cfg Config) error {
 
 // slotOf returns the snowflake slot carried by id.
 func slotOf(id snowflake.ID) uint8 {
-	return uint8(snowflakepkg.DecomposeID(id).NodeID)
+	return uint8(snowflakepkg.DecomposeID(id).NodeID) // #nosec G115 -- snowflake layout's node field is 8 bits
 }
 
 // shardForID resolves the shard owning id, or ErrSlotNotLocal if the slot is

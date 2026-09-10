@@ -270,13 +270,13 @@ func canonicalExactErasureRequest(request ExactErasureRequest) ([]types.NodeID, 
 	binary.BigEndian.PutUint64(buf[:], uint64(len(nodes)))
 	_, _ = h.Write(buf[:])
 	for _, id := range nodes {
-		binary.BigEndian.PutUint64(buf[:], uint64(id.SnowflakeID()))
+		binary.BigEndian.PutUint64(buf[:], uint64(id.SnowflakeID())) // #nosec G115 -- positive validated snowflake ID encoded bit-for-bit
 		_, _ = h.Write(buf[:])
 	}
 	binary.BigEndian.PutUint64(buf[:], uint64(len(rels)))
 	_, _ = h.Write(buf[:])
 	for _, id := range rels {
-		binary.BigEndian.PutUint64(buf[:], uint64(id.SnowflakeID()))
+		binary.BigEndian.PutUint64(buf[:], uint64(id.SnowflakeID())) // #nosec G115 -- positive validated snowflake ID encoded bit-for-bit
 		_, _ = h.Write(buf[:])
 	}
 	return nodes, rels, ExactErasureReceipt{

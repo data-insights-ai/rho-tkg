@@ -148,7 +148,7 @@ func NewShardedCacheWithBudget[V any](
 		}
 		shards[i] = NewCacheWithBudget(c, b, sizer)
 	}
-	return &ShardedCache[V]{shards: shards, mask: uint64(n - 1)}
+	return &ShardedCache[V]{shards: shards, mask: uint64(n - 1)} // #nosec G115 -- n is validated positive above
 }
 
 // indexFor mixes the snowflake ID and routes to a shard index by the low bits of
@@ -163,13 +163,13 @@ func NewShardedCacheWithBudget[V any](
 // splitmix64 finalizer avalanches every input bit into every output bit, so the
 // post-mix low bits are uniform even for a monotonic ID sequence.
 func (s *ShardedCache[V]) indexFor(key snowflake.ID) int {
-	x := uint64(key.Int64())
+	x := uint64(key.Int64()) // #nosec G115 -- deliberate ID bit-pattern avalanche
 	x ^= x >> 30
 	x *= 0xbf58476d1ce4e5b9
 	x ^= x >> 27
 	x *= 0x94d049bb133111eb
 	x ^= x >> 31
-	return int(x & s.mask) // post-avalanche low bits are uniform
+	return int(x & s.mask) // #nosec G115 -- mask is len(shards)-1 and therefore fits int
 }
 
 func (s *ShardedCache[V]) shardFor(key snowflake.ID) *Cache[V] {

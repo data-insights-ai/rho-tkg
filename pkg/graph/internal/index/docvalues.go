@@ -45,7 +45,7 @@ func MultiLabelKey(toks []uint16) string {
 	var b strings.Builder
 	b.Grow(len(s) * 2)
 	for _, t := range s {
-		b.WriteByte(byte(t))
+		b.WriteByte(byte(t)) // #nosec G115 -- deliberate low byte of uint16 token
 		b.WriteByte(byte(t >> 8))
 	}
 	return b.String()
@@ -700,7 +700,7 @@ func buildStringColumn[T EntityID](ids []T, key string, n int, present bitset, g
 		str := s.(string)
 		code, ok := dictIdx[str]
 		if !ok {
-			code = uint32(len(c.dict))
+			code = uint32(len(c.dict)) // #nosec G115 -- dictionary rows are bounded by MaxDocValuesNodes
 			c.dict = append(c.dict, str)
 			dictIdx[str] = code
 		}

@@ -2373,3 +2373,10 @@ itself an exemption.
   proven (the artifact is preserved in the failure log recorded in this
   repo's CHANGELOG entry). The fix is justified by inspection regardless; the
   observation stays flagged rather than silently explained away.
+
+## 75. A Green Workflow Must Mean Its Gates Passed
+
+`continue-on-error` plus a prose-only finding baseline turns a security scan
+into an unaudited log stream: findings can grow and reachable vulnerabilities
+can remain while the workflow reports success. Pin analyzer versions, document
+audited suppressions at the call site, and make the scan exit status blocking.

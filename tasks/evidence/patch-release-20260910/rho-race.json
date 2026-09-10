@@ -1,0 +1,13 @@
+{
+  "command": [
+    "make",
+    "test-race"
+  ],
+  "rss_limit_mib": 8192,
+  "wall_limit_s": 7200.0,
+  "sample_interval_s": 0.05,
+  "peak_tree_rss_mib": 7844.105,
+  "elapsed_s": 350.427,
+  "exit_code": 0,
+  "reason": "completed"
+}

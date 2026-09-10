@@ -1,0 +1,51 @@
+{
+  "mode": "strong",
+  "producers": 1,
+  "batch_rows": 1,
+  "rows": 3000,
+  "distinct_facts": 750,
+  "wall_seconds": 28.24152607,
+  "rows_per_sec": 106.22655420830097,
+  "batches": 3000,
+  "commit_p50_ms": 10.69,
+  "commit_p99_ms": 12.046,
+  "commit_max_ms": 33.906,
+  "unique_retries": 0,
+  "write_syscalls": 12,
+  "write_bytes": 58384384,
+  "peak_rss_bytes": 142082048,
+  "dir_bytes": 5020561,
+  "phases": [
+    {
+      "rows": 750,
+      "seconds": 6.738815532,
+      "rows_per_sec": 111.2955231432799
+    },
+    {
+      "rows": 750,
+      "seconds": 7.061370784,
+      "rows_per_sec": 106.21167234262599
+    },
+    {
+      "rows": 750,
+      "seconds": 7.169664684,
+      "rows_per_sec": 104.60740258518902
+    },
+    {
+      "rows": 750,
+      "seconds": 7.271854327,
+      "rows_per_sec": 103.13737958353907
+    }
+  ],
+  "digest": {
+    "Assets": 72,
+    "Facts": 659,
+    "Occurrences": 3000,
+    "Inbox": 3000,
+    "OccurrenceOf": 3000,
+    "ObservedOn": 3000,
+    "Hash": "76d0d1df09237496303b20ef2542acb96708eb20df8f2a925f22b2c38a7e1fd9",
+    "Problems": null
+  },
+  "go_version": "go1.26.7"
+}

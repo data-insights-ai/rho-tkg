@@ -52,7 +52,7 @@ const SizeTemporalIndexEntryKey = 1 + 2 + 8 + 8
 // unsigned value) below the non-negative half, exactly mirroring
 // orderPreservingFloat64Bits's IEEE-754 sign-flip for floats.
 func orderPreservingInt64Bits(v int64) uint64 {
-	return uint64(v) ^ (1 << 63)
+	return uint64(v) ^ (1 << 63) // #nosec G115 -- intentional two's-complement sign flip, reversed below
 }
 
 // orderPreservingInt64Value reverses orderPreservingInt64Bits.

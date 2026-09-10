@@ -463,6 +463,11 @@ func (bs *Store) CommitLogScope() (uint64, error) {
 	if len(buffered) == 0 {
 		return 0, nil
 	}
+	if bs.groupCommit.Load() {
+		// Group-commit window: the records ride EndGroupCommit's single
+		// WriteBatch together with the group's data, counters and watermark.
+		return maxLSN, nil
+	}
 	// Flush so the just-minted records co-commit with the tx's pending data. If a
 	// concurrent flushLoop tick drains pendingLog first, the records still commit
 	// (it drains ALL of pendingLog) and this flush is a no-op — either way the

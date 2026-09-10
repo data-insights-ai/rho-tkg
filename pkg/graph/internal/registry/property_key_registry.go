@@ -222,7 +222,7 @@ func (r *PropertyKeyRegistry) ImportNames(names []string) error {
 	for i := 1; i < len(names); i++ {
 		r.toToken[names[i]] = uint16(i)
 	}
-	r.nextToken = uint16(len(names))
+	r.nextToken = uint16(len(names)) // #nosec G115 -- capacity checked before the registry is replaced
 
 	if len(r.toKey) > tokenCapacityWarning {
 		r.warnOnce.Do(func() {

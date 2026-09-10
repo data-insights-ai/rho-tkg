@@ -1,0 +1,65 @@
+{
+  "mode": "concurrent",
+  "producers": 4,
+  "batch_rows": 16,
+  "rows": 3000,
+  "distinct_facts": 750,
+  "wall_seconds": 66.248285779,
+  "rows_per_sec": 45.2841905978942,
+  "batches": 188,
+  "commit_p50_ms": 1398.7,
+  "commit_p99_ms": 1819.296,
+  "commit_max_ms": 1860.694,
+  "unique_retries": 14,
+  "write_syscalls": 65,
+  "write_bytes": 47009792,
+  "peak_rss_bytes": 138936320,
+  "dir_bytes": 5006607,
+  "phases": [
+    {
+      "rows": 736,
+      "seconds": 17.18296837,
+      "rows_per_sec": 42.833111494577
+    },
+    {
+      "rows": 752,
+      "seconds": 16.328631701,
+      "rows_per_sec": 46.05407322365817
+    },
+    {
+      "rows": 752,
+      "seconds": 16.109520903,
+      "rows_per_sec": 46.680469551391724
+    },
+    {
+      "rows": 760,
+      "seconds": 16.627311221,
+      "rows_per_sec": 45.707931360551754
+    }
+  ],
+  "digest": {
+    "Assets": 264,
+    "Facts": 659,
+    "Occurrences": 3000,
+    "Inbox": 3000,
+    "OccurrenceOf": 3000,
+    "ObservedOn": 3000,
+    "Hash": "4c1a1f8dcc5cb8544f8a7bf3acf2a9e603fde7eb3a69925e3b674eb6fe11bfad",
+    "Problems": [
+      "fact fact-000019 last_seen=1788223634599 but max occurrence ts=1788223661479",
+      "fact fact-000042 last_seen=1788223735587 but max occurrence ts=1788223764342",
+      "fact fact-000046 last_seen=1788223555895 but max occurrence ts=1788223559157",
+      "fact fact-000047 last_seen=1788223431354 but max occurrence ts=1788223470189",
+      "fact fact-000048 last_seen=1788223686590 but max occurrence ts=1788223688503",
+      "fact fact-000058 last_seen=1788223682489 but max occurrence ts=1788223700681",
+      "fact fact-000059 last_seen=1788223643595 but max occurrence ts=1788223664761",
+      "fact fact-000065 last_seen=1788223304701 but max occurrence ts=1788223305834",
+      "fact fact-000066 last_seen=1788223723388 but max occurrence ts=1788223732449",
+      "fact fact-000235 last_seen=1788222577976 but max occurrence ts=1788222581110",
+      "fact fact-000468 last_seen=1788223583874 but max occurrence ts=1788223604898",
+      "fact fact-000624 last_seen=1788222454086 but max occurrence ts=1788222457489",
+      "fact fact-000665 last_seen=1788223364311 but max occurrence ts=1788223373659"
+    ]
+  },
+  "go_version": "go1.26.7"
+}

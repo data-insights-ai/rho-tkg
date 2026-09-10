@@ -1,0 +1,62 @@
+{
+  "mode": "concurrent",
+  "producers": 4,
+  "batch_rows": 16,
+  "rows": 3000,
+  "distinct_facts": 750,
+  "wall_seconds": 65.935628028,
+  "rows_per_sec": 45.49892205054952,
+  "batches": 188,
+  "commit_p50_ms": 1408.488,
+  "commit_p99_ms": 1640.635,
+  "commit_max_ms": 1649.002,
+  "unique_retries": 12,
+  "write_syscalls": 113,
+  "write_bytes": 48005120,
+  "peak_rss_bytes": 138674176,
+  "dir_bytes": 5011789,
+  "phases": [
+    {
+      "rows": 736,
+      "seconds": 17.002722731,
+      "rows_per_sec": 43.28718474354095
+    },
+    {
+      "rows": 752,
+      "seconds": 16.955901817,
+      "rows_per_sec": 44.35033937540522
+    },
+    {
+      "rows": 752,
+      "seconds": 16.311352521,
+      "rows_per_sec": 46.102859896617396
+    },
+    {
+      "rows": 760,
+      "seconds": 15.66567444,
+      "rows_per_sec": 48.513710846655385
+    }
+  ],
+  "digest": {
+    "Assets": 264,
+    "Facts": 659,
+    "Occurrences": 3000,
+    "Inbox": 3000,
+    "OccurrenceOf": 3000,
+    "ObservedOn": 3000,
+    "Hash": "f91f05564d385b47f769195a23a68ef0a330dbba5214b29102e6efac080b7747",
+    "Problems": [
+      "fact fact-000007 last_seen=1788223705461 but max occurrence ts=1788223775401",
+      "fact fact-000019 last_seen=1788223634599 but max occurrence ts=1788223661479",
+      "fact fact-000047 last_seen=1788223431354 but max occurrence ts=1788223470189",
+      "fact fact-000048 last_seen=1788223686590 but max occurrence ts=1788223688503",
+      "fact fact-000058 last_seen=1788223682489 but max occurrence ts=1788223700681",
+      "fact fact-000061 last_seen=1788223725556 but max occurrence ts=1788223747284",
+      "fact fact-000072 last_seen=1788223738288 but max occurrence ts=1788223744361",
+      "fact fact-000073 last_seen=1788223550006 but max occurrence ts=1788223599726",
+      "fact fact-000116 last_seen=1788223293762 but max occurrence ts=1788223352602",
+      "fact fact-000183 last_seen=1788222891987 but max occurrence ts=1788222957805"
+    ]
+  },
+  "go_version": "go1.26.7"
+}

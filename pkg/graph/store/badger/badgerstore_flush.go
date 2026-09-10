@@ -40,6 +40,11 @@ func (bs *Store) appendOps(ops ...writeOp) {
 //     entries without limit until OOM. The flush error surfaces to the
 //     writer (fail closed); the failed ops are requeued for the next cycle.
 func (bs *Store) flushIfNeeded() error {
+	if bs.groupCommit.Load() {
+		// Inside a group-commit window: the caller holds the exclusive graph
+		// lock and EndGroupCommit will flush everything in one WriteBatch.
+		return nil
+	}
 	if bs.syncWrites {
 		return bs.flush()
 	}
@@ -47,6 +52,29 @@ func (bs *Store) flushIfNeeded() error {
 		return bs.flush()
 	}
 	return nil
+}
+
+// BeginGroupCommit opens the store.GroupCommitCapability window: every
+// per-mutation flush (SyncWrites mode, or the MaxPendingWrites backpressure
+// flush) is held until EndGroupCommit. The caller holds the graph's exclusive
+// write lock for the whole window and bounds the group's size.
+func (bs *Store) BeginGroupCommit() {
+	bs.groupCommit.Store(true)
+}
+
+// EndGroupCommit closes the window and commits everything buffered since
+// BeginGroupCommit — entity rows, history versions, index entries, counters and
+// change-log records — through one final flush. Badger may split a large
+// WriteBatch into transactions; background flushes may already have drained
+// earlier operations in async mode. SyncWrites governs fsync durability.
+// On error the operations stay pending exactly as a failed
+// per-mutation flush leaves them; the caller reports the group as failed.
+func (bs *Store) EndGroupCommit() error {
+	bs.groupCommit.Store(false)
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
+	return bs.flush()
 }
 
 // pendingLen returns the current size of the pending write buffer. When the

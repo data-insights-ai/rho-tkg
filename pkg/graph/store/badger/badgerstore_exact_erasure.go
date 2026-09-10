@@ -207,7 +207,7 @@ func (bs *Store) buildExactErasurePlanLocked(
 	}
 
 	for _, nid := range req.NodeIDs {
-		if err := bs.exactErasureScanTest("node-history", uint64(nid.SnowflakeID())); err != nil {
+		if err := bs.exactErasureScanTest("node-history", uint64(nid.SnowflakeID())); err != nil { // #nosec G115 -- validated positive snowflake ID encoded bit-for-bit
 			return exactErasurePlan{}, err
 		}
 		keys, _, err := bs.historyTruncateDeleteKeys(storepkg.HistNodePrefix(nid.SnowflakeID()), 0)
@@ -222,7 +222,7 @@ func (bs *Store) buildExactErasurePlanLocked(
 		}
 	}
 	for _, rid := range req.RelIDs {
-		if err := bs.exactErasureScanTest("relationship-history", uint64(rid.SnowflakeID())); err != nil {
+		if err := bs.exactErasureScanTest("relationship-history", uint64(rid.SnowflakeID())); err != nil { // #nosec G115 -- validated positive snowflake ID encoded bit-for-bit
 			return exactErasurePlan{}, err
 		}
 		keys, _, err := bs.historyTruncateDeleteKeys(storepkg.HistRelPrefix(rid.SnowflakeID()), 0)
@@ -241,7 +241,7 @@ func (bs *Store) buildExactErasurePlanLocked(
 		relPlan := exactErasureRelPlan{id: rid}
 		_, relPlan.live = bs.relIDs[rid]
 		if relPlan.live {
-			if err := bs.exactErasureScanTest("relationship-current", uint64(rid.SnowflakeID())); err != nil {
+			if err := bs.exactErasureScanTest("relationship-current", uint64(rid.SnowflakeID())); err != nil { // #nosec G115 -- validated positive snowflake ID encoded bit-for-bit
 				return exactErasurePlan{}, err
 			}
 			if rel, err := bs.getRelLocked(rid); err == nil {
@@ -249,7 +249,7 @@ func (bs *Store) buildExactErasurePlanLocked(
 				relPlan.hasCurrent = true
 			}
 		}
-		if err := bs.exactErasureScanTest("relationship-index", uint64(rid.SnowflakeID())); err != nil {
+		if err := bs.exactErasureScanTest("relationship-index", uint64(rid.SnowflakeID())); err != nil { // #nosec G115 -- validated positive snowflake ID encoded bit-for-bit
 			return exactErasurePlan{}, err
 		}
 		indexKeys, err := bs.relationshipIndexKeysForRel(rid.SnowflakeID())
@@ -264,7 +264,7 @@ func (bs *Store) buildExactErasurePlanLocked(
 		nodePlan := exactErasureNodePlan{id: nid}
 		_, nodePlan.live = bs.nodeIDs[nid]
 		if nodePlan.live {
-			if err := bs.exactErasureScanTest("node-current", uint64(nid.SnowflakeID())); err != nil {
+			if err := bs.exactErasureScanTest("node-current", uint64(nid.SnowflakeID())); err != nil { // #nosec G115 -- validated positive snowflake ID encoded bit-for-bit
 				return exactErasurePlan{}, err
 			}
 			if node, err := bs.getNodeLocked(nid); err == nil {
@@ -277,7 +277,7 @@ func (bs *Store) buildExactErasurePlanLocked(
 			opType: writeOpDelete,
 			key:    storepkg.NodeKey(rawID),
 		})
-		if err := bs.exactErasureScanTest("node-label-index", uint64(rawID)); err != nil {
+		if err := bs.exactErasureScanTest("node-label-index", uint64(rawID)); err != nil { // #nosec G115 -- rawID came from a validated positive node ID
 			return exactErasurePlan{}, err
 		}
 		tokens, err := bs.nodeLabelTokensFromKeyspaceLocked(nid)
@@ -293,7 +293,7 @@ func (bs *Store) buildExactErasurePlanLocked(
 			})
 		}
 
-		if err := bs.exactErasureScanTest("node-property-index", uint64(rawID)); err != nil {
+		if err := bs.exactErasureScanTest("node-property-index", uint64(rawID)); err != nil { // #nosec G115 -- rawID came from a validated positive node ID
 			return exactErasurePlan{}, err
 		}
 		propertyOps, err := bs.exactErasurePropertyIndexOpsLocked(rawID)
@@ -301,7 +301,7 @@ func (bs *Store) buildExactErasurePlanLocked(
 			return exactErasurePlan{}, err
 		}
 		nodePlan.residueOps = append(nodePlan.residueOps, propertyOps...)
-		if err := bs.exactErasureScanTest("node-temporal-index", uint64(rawID)); err != nil {
+		if err := bs.exactErasureScanTest("node-temporal-index", uint64(rawID)); err != nil { // #nosec G115 -- rawID came from a validated positive node ID
 			return exactErasurePlan{}, err
 		}
 		temporalOps, err := bs.exactErasureTemporalIndexOpsLocked(rawID)

@@ -49,7 +49,13 @@ type BatchBuilder struct {
 	// legacy model, used by every plain g.Batch() and strong-mode ingest group. A
 	// concurrent ingest session sets a nonzero lane so its whole group mints in one
 	// slot -> one shard. Routed through c.nextNodeIDForLane / nextRelIDForLane.
-	genLane      uint16
+	genLane uint16
+	// groupCommit is set ONLY by the strong-mode ingest applier
+	// (applyCommitGroup): Execute then asks a store.GroupCommitCapability to
+	// hold every per-mutation durability flush and commit the whole group once,
+	// so acknowledged Submit waits for the final grouped flush. The plain g.Batch() door leaves it false and keeps flushing
+	// per mutation; stores without the capability are unaffected either way.
+	groupCommit  bool
 	nodes        []pendingNode
 	rels         []pendingRel
 	nodeUpdates  []pendingNodeUpdate

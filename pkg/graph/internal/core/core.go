@@ -1513,6 +1513,19 @@ func (c *Core) persistRegistriesIfDirtyLocked() error {
 	return c.persistRegistries()
 }
 
+// persistRegistriesLockedPanicSafe persists the registries unconditionally.
+// Caller holds registryMu; a backend panic releases it before propagating,
+// like the dirty-only sibling below.
+func (c *Core) persistRegistriesLockedPanicSafe() error {
+	defer func() {
+		if r := recover(); r != nil {
+			c.registryMu.Unlock()
+			panic(r)
+		}
+	}()
+	return c.persistRegistries()
+}
+
 func (c *Core) persistRegistriesIfDirtyLockedPanicSafe() error {
 	if !c.registryDirty.Load() {
 		return nil

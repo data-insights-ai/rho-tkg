@@ -721,14 +721,20 @@ type Store struct {
 	inMemory   bool
 	readOnly   bool
 	syncWrites bool
-	maxPending int // async write-buffer bound; 0 disables (see Config.MaxPendingWrites)
-	flushInt   time.Duration
-	gcInt      time.Duration
-	gcRatio    float64
-	stopCh     chan struct{}
-	flushDone  chan struct{}
-	gcDone     chan struct{}
-	closeOnce  sync.Once
+	// groupCommit is set between BeginGroupCommit and EndGroupCommit (the
+	// store.GroupCommitCapability window): flushIfNeeded holds every
+	// per-mutation flush and EndGroupCommit issues one. Only one exclusive
+	// writer may hold the window; the flag is atomic so the read in
+	// flushIfNeeded needs no lock.
+	groupCommit atomic.Bool
+	maxPending  int // async write-buffer bound; 0 disables (see Config.MaxPendingWrites)
+	flushInt    time.Duration
+	gcInt       time.Duration
+	gcRatio     float64
+	stopCh      chan struct{}
+	flushDone   chan struct{}
+	gcDone      chan struct{}
+	closeOnce   sync.Once
 	// closing is set at the start of Close(), before background goroutines are
 	// stopped and before the final flush snapshots pending writes. Public
 	// operations must fail closed after this point so no mutation can enqueue
