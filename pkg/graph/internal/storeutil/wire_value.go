@@ -439,6 +439,13 @@ func propertyToWire(p types.Property) (PropertyWire, error) {
 			pw.Nil = true
 			return pw, nil
 		}
+		// Nested temporals inside []any / map[string]any have no type tag of
+		// their own; carry them in the reversible envelope (see
+		// wire_nested_temporal.go). Untouched when there is nothing to rewrite.
+		if (tag == ptSliceAny || tag == ptMapStrAny) && nestedWireNeedsEncoding(p.Value, 0) {
+			pw.Value = encodeNestedWireValue(p.Value, 0)
+			return pw, nil
+		}
 		pw.Value = p.Value
 		return pw, nil
 	}
@@ -539,7 +546,15 @@ func reconstructPropertyWireValue(p PropertyWire) (any, error) {
 		kind, _ := wireUint64(pair[0])
 		return types.TemporalValue{Kind: types.TemporalKind(kind), Value: pair[1].(string)}, nil // #nosec G115 -- validateWireTemporal bounded kind above
 	}
-	return reconstructTypedValue(p.Value, p.Type), nil
+	value := reconstructTypedValue(p.Value, p.Type)
+	if p.Type == ptSliceAny || p.Type == ptMapStrAny {
+		decoded, err := decodeNestedWireValue(value, 0)
+		if err != nil {
+			return nil, fmt.Errorf("property %q: %w", p.Key, err)
+		}
+		return decoded, nil
+	}
+	return value, nil
 }
 
 func isTypedNilPropertyValue(v any) bool {

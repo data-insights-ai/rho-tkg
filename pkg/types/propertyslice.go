@@ -66,6 +66,8 @@ var (
 	propertyTypeSliceBool    = reflect.TypeOf([]bool(nil))
 	propertyTypeSliceAny     = reflect.TypeOf([]any(nil))
 
+	propertyTypeTemporalValue = reflect.TypeOf(TemporalValue{})
+
 	propertyTypeMapStringAny    = reflect.TypeOf(map[string]any(nil))
 	propertyTypeMapStringString = reflect.TypeOf(map[string]string(nil))
 )
@@ -147,10 +149,10 @@ func temporalValueFromTime(t time.Time) TemporalValue {
 // non-time value is returned untouched (changed=false, zero allocation).
 //
 // Only the top-level value is canonicalized: a time.Time nested inside an []any
-// / map[string]any is NOT rewritten and is rejected by the allowlist validator,
-// the same as a nested TemporalValue — nested temporal values are not a
-// supported wire shape (their content hash does not round-trip through
-// export/import), so accepting the sugar there would be a silent corruption.
+// / map[string]any is NOT rewritten and is rejected by the allowlist validator.
+// A nested types.TemporalValue IS accepted (it round-trips through hash, copy
+// and wire); the sugar stays top-level only because a nested time.Time would
+// have to guess a kind, and callers that want a nested temporal state it.
 func canonicalizeTemporalValue(v any) (any, bool) {
 	if tm, ok := v.(time.Time); ok {
 		return temporalValueFromTime(tm), true
@@ -752,6 +754,18 @@ func validateReflectValue(rv reflect.Value, depth int) error {
 	// RegisterPropertyStructType (e.g. for spatial geometry types). This is
 	// the opt-in extension point; unregistered structs/pointers are rejected.
 	case reflect.Pointer, reflect.Struct:
+		// TemporalValue is accepted at ANY depth: hash, deep copy, heap
+		// accounting and equality all dispatch on the type per element, and
+		// the wire layer carries nested temporals in a reversible envelope,
+		// so a temporal inside an []any / map[string]any round-trips with its
+		// kind intact. A nested plain string is NOT reinterpreted as one.
+		if rv.Kind() == reflect.Struct && rv.Type() == propertyTypeTemporalValue {
+			tv, ok := rv.Interface().(TemporalValue)
+			if !ok {
+				return ErrUnsupportedValueType
+			}
+			return tv.Validate()
+		}
 		if isRegisteredPropertyStructType(rv) {
 			return nil
 		}
@@ -819,6 +833,12 @@ func deepCopyValue(v any, depth int) any {
 		int, int8, int16, int32, int64,
 		uint, uint8, uint16, uint32, uint64,
 		float32, float64:
+		return val
+
+	// TemporalValue is an immutable value type (kind + string): assignment IS
+	// the deep copy. Explicit so a nested temporal never reaches the reflect
+	// fallback.
+	case TemporalValue:
 		return val
 
 	// Common slice types.
