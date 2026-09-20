@@ -4,6 +4,47 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.36.0] - 2026-09-20
+
+### Added
+
+- **Typed temporal property values at ANY nesting depth.** A
+  `types.TemporalValue` inside an `[]any` / `map[string]any` is now accepted,
+  stored and read back with its kind intact; previously only a TOP-LEVEL
+  temporal was typed and a nested one was rejected by the allowlist validator
+  (`ValidatePropertyValue`), forcing engines layered on the graph to flatten
+  list members to their ISO string. That flattening is exactly the type erasure
+  `TemporalValue` exists to prevent: a stored `"2024-01-01"` is then
+  indistinguishable from `date('2024-01-01')`, so a query engine's repeated
+  MERGE on a temporal list property cannot recognise the node it already wrote
+  and creates a duplicate (the consumer report this release closes).
+  - Wire: nested temporals have no property type tag of their own, so they are
+    carried in a reversible marker envelope (`["\x00tkg.tv", kind, iso]`,
+    `pkg/graph/internal/storeutil/wire_nested_temporal.go`). A caller list whose
+    FIRST element is a reserved marker string is escaped
+    (`["\x00tkg.esc", …]`), which makes the mapping total and injective — every
+    value has one encoding and every valid encoding one value. Only a list's
+    first element can collide, so the cost is one comparison per nested list,
+    and a value with no nested temporal and no marker keeps its exact previous
+    wire bytes (`TestWire_NonTemporalNestedValuesAreNotRewritten`). A malformed
+    envelope is an error, never a best-effort guess.
+  - Hash, deep copy, heap accounting, equality and the core value-size limit
+    already dispatched per element and needed no new case; deep copy gained an
+    explicit `TemporalValue` fast path so a nested temporal never reaches the
+    reflect fallback.
+  - Unchanged on purpose: a nested `time.Time` stays rejected (the top-level
+    sugar has to pick a kind, and at depth it would have to guess one), stored
+    strings are never reinterpreted as temporals, and identity stays the ISO
+    RENDERING — two zones of the same instant are distinct stored values.
+  - Tests: nested accept/reject boundary incl. invalid kinds at depth; hash
+    distinctness of a nested temporal vs a string of the same text, vs another
+    kind, vs another zone/precision; deep-copy independence; equality; wire
+    round-trip through msgpack for mixed kinds, nested lists and maps;
+    marker-shaped user lists; malformed-envelope rejection; envelope depth
+    bound; and a full Badger-backed graph round-trip with hash-chain verify and
+    export/import (`TestNode_NestedTemporalListRoundTrip`,
+    `TestNode_NestedTemporalListHashIdentity`).
+
 ## [4.35.1] - 2026-09-10
 
 ### Added
