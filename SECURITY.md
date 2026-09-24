@@ -75,12 +75,17 @@ process. Pointers into the code for anyone auditing this library:
   boundaries directly:
   - `FuzzImport` (`pkg/graph/internal/core/import_fuzz_test.go`) — the
     end-to-end snapshot-import trust boundary.
+  - `FuzzApplyChange` (`pkg/graph/internal/core/apply_change_fuzz_test.go`) —
+    the change-log replica-apply decode path (BACKLOG 12g); a primary's feed
+    record is exactly as untrusted as an import stream.
   - `FuzzWireToNodeChecked`, `FuzzWireToRelChecked`,
     `FuzzUnmarshalNodeWireWithKeys`
     (`pkg/graph/internal/storeutil/wire_fuzz_test.go`) — the checked wire
     decode/validate path for nodes and relationships.
 
-  Run any of them locally with, e.g.:
+  These five run weekly (and on-demand) with a bounded per-target fuzztime
+  in `.github/workflows/fuzz.yml`; each seed corpus also runs as an ordinary
+  test in `make test`. Run any of them locally with, e.g.:
 
   ```bash
   go test -fuzz=FuzzImport -fuzztime=60s ./pkg/graph/internal/core/

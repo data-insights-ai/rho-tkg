@@ -30,6 +30,11 @@ on:
       - "go.mod"
       - ".github/workflows/bench.yml"
 
+# Least-privilege default: both jobs only checkout, build worktrees locally,
+# and write to $GITHUB_STEP_SUMMARY — neither needs write access to the repo.
+permissions:
+  contents: read
+
 jobs:
   bench-gate:
     if: github.event_name == 'pull_request'

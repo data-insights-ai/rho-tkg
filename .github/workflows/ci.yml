@@ -6,6 +6,13 @@ on:
   pull_request:
     branches: [main]
 
+# Least-privilege default: every job here only checks out and runs local
+# tooling (make targets, golangci-lint-action) — none needs to write back to
+# the repo, open checks, or touch PRs. Override per-job only if a future job
+# genuinely needs more.
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -22,7 +29,24 @@ jobs:
           cache: true
       - run: make vet
       - run: make build
+      - run: make test
       - run: make test-race
+
+  # Blocking: fails below the 80% floor (project rule, Testing Rules #7).
+  # `make cover-gate` runs its own short-mode suite over ./pkg/... — separate
+  # from the test job's race run above — so the floor is measured and
+  # enforced on every push and PR, not only when someone remembers to run
+  # `make cover` locally.
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: make cover-gate
 
   # Lint runs on pull requests only and is BLOCKING for findings introduced by
   # the PR itself (only-new-issues). The repo carries a documented pre-existing
@@ -41,7 +65,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - uses: golangci/golangci-lint-action@v9
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.13.2
           only-new-issues: true

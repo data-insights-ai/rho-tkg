@@ -1,0 +1,72 @@
+name: Fuzz
+
+# Weekly (and on-demand) bounded fuzz run over the five trust-boundary decode
+# harnesses documented in SECURITY.md's "Fuzz harnesses" section: the
+# end-to-end import pipeline, the change-log replica-apply decode path (same
+# untrusted-stream contract as import — BACKLOG 12g), and the checked
+# wire-decode/validate path for nodes and relationships. Each target's own
+# seed corpus (committed under testdata/fuzz/) is exercised as an ordinary
+# test in `make test`; this job additionally spends bounded wall-clock time
+# generating NEW adversarial inputs via `go test -fuzz`, matching the
+# "never panic on any (tag, payload)" contract each harness pins.
+#
+# Reverses the earlier "fuzzing stays out of CI" owner decision (CHANGELOG
+# 4467): that decision predates a scheduled, time-boxed, non-blocking job.
+# A crasher this job finds is written by `go test -fuzz` to
+# testdata/fuzz/<FuzzName>/ and must be committed as a permanent regression
+# seed once triaged, per the existing seed-corpus discipline.
+
+on:
+  schedule:
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+    inputs:
+      fuzztime:
+        description: "Per-target fuzz duration (Go duration, e.g. 60s, 5m)"
+        required: false
+        default: "60s"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      FUZZTIME: ${{ inputs.fuzztime || '60s' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: FuzzImport
+        run: go test -run '^$' -fuzz=FuzzImport -fuzztime="$FUZZTIME" ./pkg/graph/internal/core/
+
+      - name: FuzzApplyChange
+        run: go test -run '^$' -fuzz=FuzzApplyChange -fuzztime="$FUZZTIME" ./pkg/graph/internal/core/
+
+      - name: FuzzWireToNodeChecked
+        run: go test -run '^$' -fuzz=FuzzWireToNodeChecked -fuzztime="$FUZZTIME" ./pkg/graph/internal/storeutil/
+
+      - name: FuzzWireToRelChecked
+        run: go test -run '^$' -fuzz=FuzzWireToRelChecked -fuzztime="$FUZZTIME" ./pkg/graph/internal/storeutil/
+
+      - name: FuzzUnmarshalNodeWireWithKeys
+        run: go test -run '^$' -fuzz=FuzzUnmarshalNodeWireWithKeys -fuzztime="$FUZZTIME" ./pkg/graph/internal/storeutil/
+
+      - name: Upload any new crashers
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashers
+          path: |
+            pkg/graph/internal/core/testdata/fuzz/**
+            pkg/graph/internal/storeutil/testdata/fuzz/**
+          retention-days: 14

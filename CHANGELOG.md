@@ -19,6 +19,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   bullets). `CLAUDE.md` is now a short pointer to `AGENTS.md`; `CONTRIBUTING.md`
   updated to match. No behavior change.
 
+### Added
+
+- **CI: coverage job and a weekly bounded fuzz job.** `.github/workflows/ci.yml`
+  gained a `coverage` job running `make cover-gate` (blocking, 80% floor) and
+  a plain non-race `make test` step on the existing `test` job. New
+  `.github/workflows/fuzz.yml` runs the five trust-boundary fuzz harnesses
+  (`FuzzImport`, `FuzzApplyChange`, `FuzzWireToNodeChecked`,
+  `FuzzWireToRelChecked`, `FuzzUnmarshalNodeWireWithKeys` — see SECURITY.md)
+  weekly and on-demand with a bounded per-target fuzztime (default 60s,
+  overridable on manual dispatch); this reverses the earlier "fuzzing stays
+  out of CI" owner decision now that a scheduled, time-boxed, non-blocking
+  slot exists for it.
+
+### Fixed
+
+- **CI/security hardening (code-scanning alerts #7, #9–#15).** Added an
+  explicit `permissions: contents: read` block to `ci.yml`, `bench.yml`, and
+  `security.yml` (six jobs previously ran with the default, broader token
+  scope). Pinned `golangci-lint-action` to its release SHA
+  (`ba0d7d2e…` = v9.3.0) instead of the mutable `@v9` tag. Fixed an incorrect
+  integer conversion in `pkg/graph/internal/index/property_index_rangecount.go`:
+  `exactInt64FromVK` grouped the bare `"u"` value-key prefix (a Go `uint`,
+  64 bits wide) into the same case as `"u8"`/`"u16"`/`"u32"` (all safely
+  below `MaxInt64`) and cast unconditionally, so a `uint` property value
+  above `math.MaxInt64` silently wrapped to a negative `int64` with `ok=true`
+  instead of being declined the way the sibling `"u64"` case already was.
+
 ## [4.37.0] - 2026-09-24
 
 Minor release: the entity wire gains a kind envelope for nested values (older 4.36.x
