@@ -3,6 +3,7 @@ package segment
 import (
 	"encoding/binary"
 	"encoding/hex"
+	"fmt"
 	"sort"
 )
 
@@ -18,9 +19,10 @@ import (
 // ADR-0011 §2.2), and dict otherwise. Dictionaries are sorted, so a value or
 // a range maps to a code range.
 const (
-	strDict  byte = 0
-	strPlain byte = 1
-	strHex32 byte = 2
+	strDict   byte = 0
+	strPlain  byte = 1
+	strHex32  byte = 2
+	strShared byte = 3 // int column of codes into the store's StringDict for the column
 
 	dictMinDistinct = 256
 	dictRowsPerCode = 16
@@ -46,6 +48,13 @@ func isLowerHex64(s string) bool {
 		}
 	}
 	return true
+}
+
+// encodeSharedStrCol writes codes into a StringDict.
+func encodeSharedStrCol(codes []int64, pageRows int) []byte {
+	out := binary.LittleEndian.AppendUint32(nil, uint32(len(codes))) // #nosec G115 -- bounded by the writer
+	out = append(out, strShared)
+	return append(out, encodeIntCol(codes, pageRows, intEncodeCtx{allowed: allow(transformNone)})...)
 }
 
 func encodeStrCol(vals []string, pageRows int) []byte {
@@ -109,6 +118,7 @@ type strCol struct {
 	n       int
 	mode    byte
 	dict    []string
+	shared  *StringDict // strShared: codes index its current snapshot
 	codes   intCol
 	ends    intCol
 	blob    []byte
@@ -117,7 +127,7 @@ type strCol struct {
 // parseStrCol validates a string column. The dictionary is copied into the
 // heap (strings handed to callers never alias the segment bytes); its size is
 // bounded by the section's own bytes. want -1 takes n from the section.
-func parseStrCol(name string, b []byte, want, pageRows int) (strCol, error) {
+func parseStrCol(name string, b []byte, want, pageRows int, sd *StringDict) (strCol, error) {
 	if len(b) < 5 {
 		return strCol{}, corrupt(name, "string column header truncated")
 	}
@@ -174,6 +184,28 @@ func parseStrCol(name string, b []byte, want, pageRows int) (strCol, error) {
 			return strCol{}, err
 		}
 		c.codes = codes
+	case strShared:
+		if sd == nil {
+			return strCol{}, fmt.Errorf("%w: column %s holds codes into its store's string dictionary", ErrUnsupportedVersion, name)
+		}
+		codes, err := parseIntCol(name, body, c.n, pageRows, allow(transformNone))
+		if err != nil {
+			return strCol{}, err
+		}
+		// Every code must name a value now (the dictionary only grows), so
+		// a column consumer can index the dictionary without a check.
+		limit := int64(sd.Len())
+		buf := make([]int64, min(pageRows, max(c.n, 1)))
+		for p := 0; p*pageRows < c.n; p++ {
+			cnt := min(pageRows, c.n-p*pageRows)
+			codes.decodePage(p, cnt, buf, nil, nil)
+			for k, x := range buf[:cnt] {
+				if x < 0 || x >= limit {
+					return strCol{}, corrupt(name, "value %d has code %d of %d", p*pageRows+k, x, limit)
+				}
+			}
+		}
+		c.codes, c.shared = codes, sd
 	default:
 		return strCol{}, corrupt(name, "unknown string mode %d", c.mode)
 	}
@@ -197,6 +229,13 @@ func (c *strCol) at(i int) (string, error) {
 			return "", corrupt(c.name, "value %d spans [%d,%d) of %d bytes", i, lo, hi, len(c.blob))
 		}
 		return string(c.blob[lo:hi]), nil
+	case strShared:
+		dict := *c.shared.snap.Load()
+		code := c.codes.atNoRef(i)
+		if code < 0 || code >= int64(len(dict)) {
+			return "", corrupt(c.name, "value %d has code %d of %d", i, code, len(dict))
+		}
+		return dict[code], nil
 	default:
 		code := c.codes.atNoRef(i)
 		if code < 0 || code >= int64(len(c.dict)) {
@@ -299,4 +338,17 @@ func (c *bytesCol) at(i int) ([]byte, error) {
 	default:
 		return nil, corrupt(c.name, "value %d has state %d", i, c.state.atNoRef(i))
 	}
+}
+
+// coded reports whether the column is stored as codes into a dictionary.
+func (c *strCol) coded() bool {
+	return c.present && (c.mode == strDict || c.mode == strShared)
+}
+
+// dictionary returns what a coded column's codes index.
+func (c *strCol) dictionary() []string {
+	if c.mode == strShared {
+		return *c.shared.snap.Load()
+	}
+	return c.dict
 }

@@ -31,6 +31,12 @@ type Segment struct {
 	root      [32]byte
 	idMin     int64
 	idMax     int64
+	// dict is the node dictionary of a NodeDict-encoded segment (nil for a
+	// self-contained one). Open checks every code against the snapshot
+	// current then; later snapshots only extend it, so readers load the
+	// current one (and old snapshots' arrays can be collected).
+	dict  *NodeDict
+	dicts *Dicts
 	// idSparse holds the ID-index entry at every idSparseStep-th position,
 	// built at Open, so Lookup reads at most idSparseStep entries instead of
 	// a whole delta-coded page (rows/8 bytes of heap per segment).
@@ -59,11 +65,27 @@ type propCol struct {
 }
 
 // Open validates data and returns a reader over it. data must not be
-// modified while the Segment is in use.
+// modified while the Segment is in use. A segment encoded with store-level
+// dictionaries fails with ErrUnsupportedVersion (use OpenWithDicts).
 func Open(data []byte) (*Segment, error) {
+	return OpenWithDicts(data, nil)
+}
+
+// OpenWithDicts opens a segment that may hold codes into the dictionaries dd
+// (see EncodeWithDicts); a self-contained segment opens as with Open. Every
+// code is checked against the dictionaries before use.
+func OpenWithDicts(data []byte, dd *Dicts) (*Segment, error) {
+	d := dd.nodeDict()
 	h, err := readHeader(data)
 	if err != nil {
 		return nil, err
+	}
+	var dict *NodeDict
+	if h.flags&flagNodeDict != 0 {
+		if d == nil {
+			return nil, fmt.Errorf("%w: the segment's endpoints are codes into its store's node dictionary", ErrUnsupportedVersion)
+		}
+		dict = d
 	}
 	fstart, fend, err := locateFooter(data)
 	if err != nil {
@@ -85,6 +107,8 @@ func Open(data []byte) (*Segment, error) {
 		root:      f.root,
 		idMin:     h.idMin,
 		idMax:     h.idMax,
+		dict:      dict,
+		dicts:     dd,
 		secs:      make(map[string]sectionInfo, len(f.sections)),
 	}
 	for _, sec := range f.sections {
@@ -151,7 +175,11 @@ func (s *Segment) parseSections() error {
 			*dst = strCol{name: name}
 			return nil
 		}
-		c, err := parseStrCol(name, b, want, s.pageRows)
+		var sd *StringDict
+		if col, isProp := strings.CutPrefix(name, propPrefix); isProp {
+			sd = s.dicts.stringDict(col)
+		}
+		c, err := parseStrCol(name, b, want, s.pageRows, sd)
 		*dst = c
 		return err
 	}
@@ -175,7 +203,12 @@ func (s *Segment) parseSections() error {
 	}
 	steps := []func() error{
 		func() error { return intSec(&s.nodeIDs, secNodes, nn, none) },
-		func() error { return strSec(&s.nodeHash, secNodeHash, nn) },
+		func() error {
+			if s.dict != nil {
+				return nil // NodeDict mode: no per-segment hashes
+			}
+			return strSec(&s.nodeHash, secNodeHash, nn)
+		},
 		func() error { return intSec(&s.outcsr, secOutCSR, nodeLevel1, none) },
 		func() error { return intSec(&s.inOff, secInOff, nodeLevel1, none) },
 		func() error { return intSec(&s.inPerm, secInPerm, n, none) },
@@ -196,7 +229,12 @@ func (s *Segment) parseSections() error {
 		func() error { return intSec(&s.authLevel, colAuthLevel, n, none) },
 		func() error { return intSec(&s.fromHash, colFromHash, n, none) },
 		func() error { return intSec(&s.toHash, colToHash, n, none) },
-		func() error { return strSec(&s.endpointExc, secEndpointExc, -1) },
+		func() error {
+			if s.dict != nil {
+				return nil
+			}
+			return strSec(&s.endpointExc, secEndpointExc, -1)
+		},
 		func() error { return strSec(&s.createdBy, colCreatedBy, n) },
 		func() error { return strSec(&s.updatedBy, colUpdatedBy, n) },
 		func() error { return strSec(&s.prevHash, colPrevHash, n) },
@@ -261,8 +299,16 @@ func (s *Segment) validateStructure() error {
 	if s.nodes == 0 {
 		return nil
 	}
+	if s.dict != nil {
+		ids := len(s.dict.snap.Load().ids)
+		for k := 0; k < s.nodes; k++ {
+			if c := s.nodeIDs.atNoRef(k); c < 0 || c >= int64(ids) {
+				return corrupt(secNodes, "node code %d of %d at %d", c, ids, k)
+			}
+		}
+	}
 	for k := 1; k < s.nodes; k++ {
-		if s.nodeIDs.atNoRef(k) <= s.nodeIDs.atNoRef(k-1) {
+		if s.nodeIDAt(k) <= s.nodeIDAt(k-1) {
 			return corrupt(secNodes, "node ids not ascending at %d", k)
 		}
 	}
@@ -283,6 +329,23 @@ func (s *Segment) validateStructure() error {
 		}
 	}
 	return nil
+}
+
+// nodeIDAt returns the NodeID of node ordinal k (validated by Open).
+func (s *Segment) nodeIDAt(k int) int64 {
+	if s.dict != nil {
+		return s.dict.snap.Load().ids[s.nodeIDs.atNoRef(k)]
+	}
+	return s.nodeIDs.atNoRef(k)
+}
+
+// usualHash returns node ordinal ord's usual endpoint hash.
+func (s *Segment) usualHash(ord int) (string, error) {
+	if s.dict != nil {
+		ds := s.dict.snap.Load()
+		return ds.hashString(uint64(ds.first[s.nodeIDs.atNoRef(ord)])), nil
+	}
+	return s.nodeHash.at(ord)
 }
 
 // Len is the number of rows.
@@ -432,7 +495,7 @@ func (s *Segment) build(i int, v *rowVals, withHash bool) (*types.Relationship, 
 		return nil, corrupt(colEnd, "row %d has node ordinals %d->%d of %d", i, v.startOrd, v.endOrd, s.nodes)
 	}
 	r := types.NewRelationship(types.RelID(v.id), s.typeToken,
-		types.NodeID(s.nodeIDs.atNoRef(v.startOrd)), types.NodeID(s.nodeIDs.atNoRef(int(v.endOrd))))
+		types.NodeID(s.nodeIDAt(v.startOrd)), types.NodeID(s.nodeIDAt(int(v.endOrd))))
 	props := v.scratch[:0]
 	for c := range s.props {
 		p := &s.props[c]
@@ -539,16 +602,23 @@ func (s *Segment) build(i int, v *rowVals, withHash bool) (*types.Relationship, 
 func (s *Segment) endpointHash(v *rowVals, section string, i int, code int64, ord int) (string, error) {
 	if code == 0 {
 		if v.nodeKnown == nil {
-			return s.nodeHash.at(ord)
+			return s.usualHash(ord)
 		}
 		if !v.nodeKnown[ord] {
-			h, err := s.nodeHash.at(ord)
+			h, err := s.usualHash(ord)
 			if err != nil {
 				return "", err
 			}
 			v.nodeHashs[ord], v.nodeKnown[ord] = h, true
 		}
 		return v.nodeHashs[ord], nil
+	}
+	if s.dict != nil {
+		ds := s.dict.snap.Load()
+		if code < 0 || !ds.validHash(uint64(code-1)) {
+			return "", corrupt(section, "row %d endpoint-hash code %d of %d", i, code, ds.hashCount())
+		}
+		return ds.hashString(uint64(code - 1)), nil
 	}
 	n := int64(0)
 	if s.endpointExc.present {
@@ -661,15 +731,17 @@ func (b *Batch) IntColumn(c int) (vals []int64, present func(k int) bool, ok boo
 }
 
 // StringColumn returns declared string column c as dictionary codes plus the
-// segment's sorted dictionary (the same slice for every page of a segment;
-// callers must not modify it). ok is false when the column is not
-// dictionary-encoded (plain or hex32 strings, or a non-string column).
+// dictionary they index: the segment's own sorted dictionary, or the store's
+// shared StringDict (the same values and codes for every segment of the
+// store; its current snapshot is returned). Callers must not modify it. ok is
+// false when the column is not dictionary-encoded (plain or hex32 strings,
+// or a non-string column).
 func (b *Batch) StringColumn(c int) (codes []int64, dict []string, present func(k int) bool, ok bool) {
 	p := &b.seg.props[c]
-	if p.col.Kind != KindString || !p.strs.present || p.strs.mode != strDict {
+	if p.col.Kind != KindString || !p.strs.coded() {
 		return nil, nil, nil, false
 	}
-	return b.propCodes[c][:b.N], p.strs.dict, b.presence(c), true
+	return b.propCodes[c][:b.N], p.strs.dictionary(), b.presence(c), true
 }
 
 func (b *Batch) presence(c int) func(k int) bool {
@@ -734,7 +806,7 @@ func (s *Segment) scanBatches(lo, hi int, fn func(b *Batch) error) error {
 	}
 	for c := range s.props {
 		b.propInts[c], b.propPresent[c] = buf(), buf()
-		if p := &s.props[c]; p.col.Kind == KindString && p.strs.present && p.strs.mode == strDict {
+		if p := &s.props[c]; p.col.Kind == KindString && p.strs.coded() {
 			b.propCodes[c] = buf()
 		}
 	}
@@ -773,9 +845,9 @@ func (s *Segment) scanBatches(lo, hi int, fn func(b *Batch) error) error {
 			}
 		}
 		for k := 0; k < cnt; k++ {
-			b.StartIDs[k] = s.nodeIDs.atNoRef(b.startOrds[k])
+			b.StartIDs[k] = s.nodeIDAt(b.startOrds[k])
 			if e := b.endOrd[k]; e >= 0 && e < int64(s.nodes) {
-				b.EndIDs[k] = s.nodeIDs.atNoRef(int(e))
+				b.EndIDs[k] = s.nodeIDAt(int(e))
 			} else {
 				return corrupt(colEnd, "row %d has end ordinal %d of %d", ps+k, e, s.nodes)
 			}
@@ -856,8 +928,8 @@ func (s *Segment) Lookup(id types.RelID) ([]int, error) {
 // nodeOrdinal returns the ordinal of node n, or -1.
 func (s *Segment) nodeOrdinal(n types.NodeID) int {
 	x := int64(n)
-	k := sort.Search(s.nodes, func(j int) bool { return s.nodeIDs.atNoRef(j) >= x })
-	if k < s.nodes && s.nodeIDs.atNoRef(k) == x {
+	k := sort.Search(s.nodes, func(j int) bool { return s.nodeIDAt(j) >= x })
+	if k < s.nodes && s.nodeIDAt(k) == x {
 		return k
 	}
 	return -1

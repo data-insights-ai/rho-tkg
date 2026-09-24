@@ -25,7 +25,7 @@ package memory_test
 // set, e.g.
 //
 //	RHO_TKG_SEGMENT_S2=790k,3.15M,12.6M RHO_TKG_SEGMENT_S2_SCHEMAS=p6,legacy \
-//	RHO_TKG_SEGMENT_S2_MODES=rows,segments \
+//	RHO_TKG_SEGMENT_S2_MODES=rows,segments [RHO_TKG_SEGMENT_S2_BUDGET_MB=64] \
 //	go test -run TestSegmentS2Scale -v -count=1 -timeout 0 ./pkg/graph/store/memory
 //
 // The numbers are recorded in CHANGELOG (Unreleased) and ADR-0011 §6 (S2).
@@ -37,6 +37,7 @@ import (
 	"os"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -110,6 +111,13 @@ func runS2(tb testing.TB, sz synthhop.Size, schema synthhop.Schema, mode string)
 	cfg := graph.Config{Store: st, Validation: graph.ValidationLimits{AllowSelfLoops: true}, AllowTxBackfill: true}
 	if mode == "segments" {
 		cfg.RelSegments = []graph.RelSegmentSpec{s2Spec(schema)}
+		if v := os.Getenv("RHO_TKG_SEGMENT_S2_BUDGET_MB"); v != "" {
+			mb, err := strconv.Atoi(v)
+			if err != nil || mb <= 0 {
+				tb.Fatalf("RHO_TKG_SEGMENT_S2_BUDGET_MB=%q", v)
+			}
+			cfg.SegmentMemoryBudget = int64(mb) << 20
+		}
 	}
 	g, err := graph.New(cfg)
 	if err != nil {

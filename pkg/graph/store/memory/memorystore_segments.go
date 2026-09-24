@@ -45,6 +45,7 @@ import (
 type segType struct {
 	decl          storecontract.RelSegmentDeclaration
 	schema        segment.Schema
+	dicts         *segment.Dicts // the store's node dictionary + this type's string-column dictionaries
 	segs          []*memSeg
 	sealedRows    int64
 	deadRows      int64
@@ -135,7 +136,9 @@ func (ms *Store) DeclareRelSegment(d storecontract.RelSegmentDeclaration) error 
 	if ms.segTypes == nil {
 		ms.segTypes = make(map[uint16]*segType)
 		ms.segDead = make(map[types.RelID]uint16)
+		ms.segNodeDict = segment.NewNodeDict()
 	}
+	st.dicts = ms.newSegDictsLocked(st.decl)
 	ms.segTypes[d.TypeToken] = st
 	// Rows that already exist become the type's unsealed tail.
 	for id := range ms.typeIdx[d.TypeToken] {
@@ -273,12 +276,13 @@ func (ms *Store) sealType(tok uint16, explicit bool) error {
 	}
 	schema := st.schema
 	blockRows := st.decl.IntegrityBlockRows
+	dicts := st.dicts
 	ms.mu.Unlock()
 
 	var data []byte
 	var err error
 	for try := 0; len(rows) > 0; try++ {
-		data, err = segment.Encode(schema, rows, segment.Options{IntegrityBlockRows: blockRows})
+		data, err = segment.EncodeWithDicts(schema, rows, segment.Options{IntegrityBlockRows: blockRows}, dicts)
 		var re *segment.RowError
 		if err == nil || try >= maxSealRetries || !errors.As(err, &re) {
 			break
@@ -298,7 +302,7 @@ func (ms *Store) sealType(tok uint16, explicit bool) error {
 	}
 	var seg *segment.Segment
 	if len(rows) > 0 {
-		if seg, err = segment.Open(data); err != nil {
+		if seg, err = segment.OpenWithDicts(data, dicts); err != nil {
 			rows = nil
 		}
 	}
@@ -326,6 +330,7 @@ func (ms *Store) sealType(tok uint16, explicit bool) error {
 	}
 	lo, hi := seg.IDRange()
 	sg := &memSeg{seg: seg, lo: lo, hi: hi, bytes: len(data)}
+	outBefore, inBefore := len(ms.outIdx), len(ms.inIdx)
 	for _, r := range rows {
 		id := r.ID()
 		if cur, ok := ms.rels[id]; ok && cur == r {
@@ -335,7 +340,7 @@ func (ms *Store) sealType(tok uint16, explicit bool) error {
 		ms.segDead[id] = tok
 		st.deadRows++
 	}
-	ms.shrinkMemtableMapsLocked(tok)
+	ms.shrinkMemtableMapsLocked(tok, outBefore, inBefore)
 	st.segs = append(st.segs, sg)
 	st.sealedRows += int64(len(rows))
 	st.segBytes += int64(len(data))
@@ -400,7 +405,9 @@ func (ms *Store) clearSegmentsLocked() {
 		return
 	}
 	ms.segEpoch++
+	ms.segNodeDict = segment.NewNodeDict() // a seal started before Clear keeps (and discards) the old dictionaries
 	for _, st := range ms.segTypes {
+		st.dicts = ms.newSegDictsLocked(st.decl)
 		st.segs, st.sealedRows, st.deadRows, st.segBytes = nil, 0, 0, 0
 		st.unsealedBytes, st.seals, st.maxID, st.refused = 0, 0, 0, nil
 	}
@@ -1016,7 +1023,15 @@ func (ms *Store) allRelationshipsSegmentsLocked(opts QueryOpts) ([]*types.Relati
 // deletes, which would leave the memtable's peak cost resident after every
 // seal. Copying the survivors is O(memtable) per seal, amortized over the
 // rows the seal moved out.
-func (ms *Store) shrinkMemtableMapsLocked(tok uint16) {
+func (ms *Store) shrinkMemtableMapsLocked(tok uint16, outBefore, inBefore int) {
+	// The adjacency maps' top level is keyed by node: a seal that emptied
+	// most nodes' sets leaves the buckets of every node ever seen.
+	if outBefore >= 1024 && len(ms.outIdx) <= outBefore/2 {
+		ms.outIdx = compactAdj(ms.outIdx)
+	}
+	if inBefore >= 1024 && len(ms.inIdx) <= inBefore/2 {
+		ms.inIdx = compactAdj(ms.inIdx)
+	}
 	if n := len(ms.rels); ms.relsPeak >= 4096 && n <= ms.relsPeak/2 {
 		fresh := make(map[types.RelID]*types.Relationship, n)
 		for id, r := range ms.rels {
@@ -1032,4 +1047,27 @@ func (ms *Store) shrinkMemtableMapsLocked(tok uint16) {
 		}
 		ms.typeIdx[tok] = fresh
 	}
+}
+
+// compactAdj copies an adjacency map's top level into a table sized for its
+// current entries (maps.Clone would keep the old table size).
+func compactAdj(m map[types.NodeID]map[types.RelID]struct{}) map[types.NodeID]map[types.RelID]struct{} {
+	out := make(map[types.NodeID]map[types.RelID]struct{}, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
+}
+
+// newSegDictsLocked builds a declared type's shared dictionaries: the
+// store-wide endpoint dictionary and one value dictionary per declared
+// string column.
+func (ms *Store) newSegDictsLocked(d storecontract.RelSegmentDeclaration) *segment.Dicts {
+	out := &segment.Dicts{Nodes: ms.segNodeDict, Strings: map[string]*segment.StringDict{}}
+	for _, c := range d.Columns {
+		if c.Kind == storecontract.SegmentString {
+			out.Strings[c.Name] = segment.NewStringDict()
+		}
+	}
+	return out
 }

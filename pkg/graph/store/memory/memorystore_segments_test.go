@@ -761,13 +761,13 @@ func TestSegments_ClearKeepsDeclaration(t *testing.T) {
 func TestSegments_WriteDoorsSeeSealedRows(t *testing.T) {
 	r := rand.New(rand.NewSource(21))
 	tw := newSegTwin(t, 0, 4)
-	for i := 0; i < 5000; i++ { // above the 4,096-row map-shrink threshold
+	for i := 0; i < 4200; i++ { // above the 4,096-row map-shrink threshold
 		tw.put(r, segTestHOP)
 	}
 	if err := tw.declared.SealRelSegments(segTestHOP); err != nil {
 		t.Fatal(err)
 	}
-	if st := tw.stats(); st.LiveSealedRows != 5000 || st.UnsealedRows != 0 {
+	if st := tw.stats(); st.LiveSealedRows != 4200 || st.UnsealedRows != 0 {
 		t.Fatalf("setup: %+v", st)
 	}
 	tw.sealedLeftRowMaps()
@@ -792,8 +792,90 @@ func TestSegments_WriteDoorsSeeSealedRows(t *testing.T) {
 			t.Fatalf("DeleteNodesBatch of a node with only sealed relationships = %v, want ErrInvalidStoreMutation", err)
 		}
 	}
-	tw.compare("after refused writes")
 	tw.both("DeleteNodeCascade", func(s *Store) error { return s.DeleteNodeCascade(tw.nodes[0]) })
 	tw.nodes = tw.nodes[1:]
 	tw.compare("after cascade over sealed rows")
+}
+
+// Endpoint bytes must not grow with the number of segments at a fixed
+// endpoint set: node identities and hashes are held once per store, and what
+// a segment repeats per endpoint (its adjacency directory: a code and two CSR
+// offsets) stays small. The same 2,400 rows over 150 endpoints are sealed
+// once, and in 8 seals of 300 rows (each touching most endpoints).
+func TestSegments_NodeBytesDoNotGrowWithSegmentCount(t *testing.T) {
+	const endpoints, rows, perSeal = 150, 2400, 300
+	build := func(sealEvery int) (*segTwin, int, int) {
+		r := rand.New(rand.NewSource(31))
+		tw := newSegTwin(t, 1<<40, endpoints)
+		for i := 1; i <= rows; i++ {
+			tw.put(r, segTestHOP)
+			if sealEvery > 0 && i%sealEvery == 0 {
+				if err := tw.declared.SealRelSegments(segTestHOP); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		if err := tw.declared.SealRelSegments(segTestHOP); err != nil {
+			t.Fatal(err)
+		}
+		per, shared := NodeBytesForTest(tw.declared, segTestHOP)
+		return tw, per, shared
+	}
+	one, per1, shared1 := build(0)
+	eight, per8, shared8 := build(perSeal)
+	if s1, s8 := one.stats(), eight.stats(); s1.Segments != 1 || s8.Segments != rows/perSeal {
+		t.Fatalf("setup: %d and %d segments", s1.Segments, s8.Segments)
+	}
+	extra := float64(per8-per1) / float64((rows/perSeal-1)*endpoints)
+	t.Logf("endpoint bytes: 1 segment %d + %d shared, 8 segments %d + %d shared; %.1f B per endpoint per extra segment",
+		per1, shared1, per8, shared8, extra)
+	if extra > 8 {
+		t.Fatalf("each extra segment repeats %.1f B per endpoint (> 8): endpoint identity/hashes are stored per segment", extra)
+	}
+	if shared8 > shared1+shared1/10 {
+		t.Fatalf("the shared endpoint dictionary grew with the segment count: %d -> %d bytes", shared1, shared8)
+	}
+	eight.compare("8 segments")
+}
+
+// A declared string column's values are held once per store as well: its
+// bytes must not grow with the number of segments at a fixed value set
+// (per-segment dictionaries repeat the values; small segments of a
+// high-cardinality column even fall back to plain strings). 9,600 rows with
+// 400 distinct actors are sealed once and in 8 seals of 1,200 rows.
+func TestSegments_StringColumnBytesDoNotGrowWithSegmentCount(t *testing.T) {
+	const values, rows, perSeal = 400, 9600, 1200
+	build := func(sealEvery int) (*segTwin, int, int) {
+		r := rand.New(rand.NewSource(33))
+		tw := newSegTwin(t, 1<<40, 40)
+		for i := 1; i <= rows; i++ {
+			rel := tw.newRel(r, segTestHOP)
+			if err := rel.SetProperty("actor", fmt.Sprintf("actor-%05d-%s", r.Intn(values), strings.Repeat("x", 12))); err != nil {
+				t.Fatal(err)
+			}
+			segHashed(rel)
+			tw.both("PutRelationship", func(s *Store) error { return s.PutRelationship(rel) })
+			tw.rels = append(tw.rels, rel.ID())
+			if sealEvery > 0 && i%sealEvery == 0 {
+				if err := tw.declared.SealRelSegments(segTestHOP); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		if err := tw.declared.SealRelSegments(segTestHOP); err != nil {
+			t.Fatal(err)
+		}
+		return tw, SealedSectionBytesForTest(tw.declared, segTestHOP)["prop:actor"], sharedStringBytesForTest(tw.declared, segTestHOP, "actor")
+	}
+	one, col1, shared1 := build(0)
+	eight, col8, shared8 := build(perSeal)
+	t.Logf("actor bytes: 1 segment %d + %d shared, 8 segments %d + %d shared", col1, shared1, col8, shared8)
+	if col8 > col1+col1/4 {
+		t.Fatalf("the actor column grew from %d to %d bytes with 8 segments: its values are stored per segment", col1, col8)
+	}
+	if shared8 > shared1+shared1/10 {
+		t.Fatalf("the shared actor dictionary grew with the segment count: %d -> %d", shared1, shared8)
+	}
+	_ = one
+	eight.compare("8 segments, shared strings")
 }

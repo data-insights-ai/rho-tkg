@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segment"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -241,6 +242,7 @@ type Store struct {
 	// declared; guarded by ms.mu except segDue (atomic).
 	segTypes        map[uint16]*segType
 	segDead         map[types.RelID]uint16 // sealed rows that are no longer current -> type token
+	segNodeDict     *segment.NodeDict      // endpoint identities and hashes shared by every segment of the store
 	segBudget       int64                  // memtable budget (bytes, all declared types)
 	segUnsealed     int64                  // unsealed bytes of all declared types
 	segRefusedBytes int64                  // unsealed bytes the codec refused (excluded from the trigger)
