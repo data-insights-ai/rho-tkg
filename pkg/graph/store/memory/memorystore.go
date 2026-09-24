@@ -247,6 +247,7 @@ type Store struct {
 	segMaxID        types.RelID            // largest sealed ID (0 = no segment)
 	segEpoch        uint64                 // bumped by Clear; a seal started before it is discarded
 	segDue          atomic.Bool            // a write pushed the unsealed bytes over the budget
+	relsPeak        int                    // len(rels) high-water mark since the last shrink (declared stores only)
 }
 
 // bumpNodeEpoch marks every cached DocValues column potentially stale. Called by

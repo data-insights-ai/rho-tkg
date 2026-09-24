@@ -189,6 +189,9 @@ func (ms *Store) segAccountLocked(r *types.Relationship, sign int64) {
 	if st == nil {
 		return
 	}
+	if n := len(ms.rels); n > ms.relsPeak {
+		ms.relsPeak = n
+	}
 	b := sign * int64(r.ApproxHeapBytes())
 	st.unsealedBytes += b
 	ms.segUnsealed += b
@@ -332,6 +335,7 @@ func (ms *Store) sealType(tok uint16, explicit bool) error {
 		ms.segDead[id] = tok
 		st.deadRows++
 	}
+	ms.shrinkMemtableMapsLocked(tok)
 	st.segs = append(st.segs, sg)
 	st.sealedRows += int64(len(rows))
 	st.segBytes += int64(len(data))
@@ -401,7 +405,7 @@ func (ms *Store) clearSegmentsLocked() {
 		st.unsealedBytes, st.seals, st.maxID, st.refused = 0, 0, 0, nil
 	}
 	ms.segDead = make(map[types.RelID]uint16)
-	ms.segUnsealed, ms.segRefusedBytes, ms.segMaxID = 0, 0, 0
+	ms.segUnsealed, ms.segRefusedBytes, ms.segMaxID, ms.relsPeak = 0, 0, 0, 0
 	ms.segDue.Store(false)
 }
 
@@ -1005,4 +1009,27 @@ func (ms *Store) allRelationshipsSegmentsLocked(opts QueryOpts) ([]*types.Relati
 		return nil, nil
 	}
 	return out, nil
+}
+
+// shrinkMemtableMapsLocked re-allocates rels and the type's typeIdx set when
+// a seal emptied most of them: a Go map keeps its peak bucket array after
+// deletes, which would leave the memtable's peak cost resident after every
+// seal. Copying the survivors is O(memtable) per seal, amortized over the
+// rows the seal moved out.
+func (ms *Store) shrinkMemtableMapsLocked(tok uint16) {
+	if n := len(ms.rels); ms.relsPeak >= 4096 && n <= ms.relsPeak/2 {
+		fresh := make(map[types.RelID]*types.Relationship, n)
+		for id, r := range ms.rels {
+			fresh[id] = r
+		}
+		ms.rels = fresh
+		ms.relsPeak = n
+	}
+	if set := ms.typeIdx[tok]; set != nil {
+		fresh := make(map[types.RelID]struct{}, len(set))
+		for id := range set {
+			fresh[id] = struct{}{}
+		}
+		ms.typeIdx[tok] = fresh
+	}
 }

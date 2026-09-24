@@ -199,3 +199,75 @@ func TestValidateSchema(t *testing.T) {
 		}
 	}
 }
+
+// TestBatch_TypedColumnsMatchRows: the typed per-column accessors hold what
+// the rows carry — dictionary codes resolve to the row's string, int columns
+// hold the declared value's bits, presence matches.
+func TestBatch_TypedColumnsMatchRows(t *testing.T) {
+	rows := corpus(t, 6000, 9)
+	seg := mustOpen(t, mustEncode(t, rows, Options{}, 1024))
+	want := scanAll(t, seg)
+	strSeen, intSeen := false, false
+	err := seg.ScanBatches(func(b *Batch) bool {
+		cols := b.Columns()
+		for c, col := range cols {
+			if codes, dict, present, ok := b.StringColumn(c); ok {
+				strSeen = true
+				for k := 0; k < b.N; k++ {
+					v, has := want[b.Base+k].GetProperty(col.Name)
+					s, isStr := v.(string)
+					if present(k) != (has && isStr) {
+						t.Fatalf("row %d col %s: presence %t, row has %v", b.Base+k, col.Name, present(k), v)
+					}
+					if present(k) && dict[codes[k]] != s {
+						t.Fatalf("row %d col %s: code resolves to %q, row holds %q", b.Base+k, col.Name, dict[codes[k]], s)
+					}
+				}
+			} else if col.Kind == KindString {
+				if _, _, ok := b.IntColumn(c); ok {
+					t.Fatalf("IntColumn(%s) must refuse a string column", col.Name)
+				}
+			}
+			if vals, present, ok := b.IntColumn(c); ok {
+				intSeen = true
+				if _, _, _, sok := b.StringColumn(c); sok {
+					t.Fatalf("StringColumn(%s) must refuse a non-string column", col.Name)
+				}
+				for k := 0; k < b.N; k++ {
+					v, has := want[b.Base+k].GetProperty(col.Name)
+					declared := has && kindOf(v) == col.Kind
+					if present(k) != declared {
+						t.Fatalf("row %d col %s: presence %t, row has %T", b.Base+k, col.Name, present(k), v)
+					}
+					if declared && vals[k] != valueBits(v) {
+						t.Fatalf("row %d col %s: stored %d, row value bits %d", b.Base+k, col.Name, vals[k], valueBits(v))
+					}
+				}
+			}
+		}
+		return true
+	})
+	if err != nil || !strSeen || !intSeen {
+		t.Fatalf("ScanBatches: %v (string column seen %t, int column seen %t)", err, strSeen, intSeen)
+	}
+}
+
+func TestSectionBytes_MatchesTheDirectoryAndSumsBelowTheSegment(t *testing.T) {
+	data := mustEncode(t, corpus(t, 2000, 10), Options{}, PageRows)
+	seg := mustOpen(t, data)
+	got := seg.SectionBytes()
+	total := 0
+	for name, n := range got {
+		if n != seg.sectionLen(name) || n <= 0 {
+			t.Fatalf("SectionBytes[%s] = %d, directory says %d", name, n, seg.sectionLen(name))
+		}
+		total += n
+	}
+	if len(got) != len(seg.secs) || total >= len(data) {
+		t.Fatalf("SectionBytes: %d sections, %d bytes of %d", len(got), total, len(data))
+	}
+	got["nodes"] = -1
+	if seg.SectionBytes()["nodes"] == -1 {
+		t.Fatal("SectionBytes must return a copy")
+	}
+}

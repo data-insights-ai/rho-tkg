@@ -31,7 +31,11 @@ type Segment struct {
 	root      [32]byte
 	idMin     int64
 	idMax     int64
-	secs      map[string]sectionInfo
+	// idSparse holds the ID-index entry at every idSparseStep-th position,
+	// built at Open, so Lookup reads at most idSparseStep entries instead of
+	// a whole delta-coded page (rows/8 bytes of heap per segment).
+	idSparse []int64
+	secs     map[string]sectionInfo
 
 	nodeIDs, outcsr, inOff, inPerm, idIDs, idRows intCol
 	nodeHash, endpointExc                         strCol
@@ -92,7 +96,31 @@ func Open(data []byte) (*Segment, error) {
 	if err := s.validateStructure(); err != nil {
 		return nil, err
 	}
+	s.buildIDSparse()
 	return s, nil
+}
+
+// idSparseStep divides every legal page size (a power of two >= 64 is not
+// required: a step that crosses a page boundary restarts from the page).
+const idSparseStep = 64
+
+func (s *Segment) buildIDSparse() {
+	if s.rows == 0 {
+		return
+	}
+	// rows is backed by the integrity section's bytes (32 B per group of at
+	// most 4,096 rows), so this allocation is bounded by bytes delivered.
+	s.idSparse = make([]int64, 0, (s.rows+idSparseStep-1)/idSparseStep)
+	buf := make([]int64, s.pageRows)
+	for p := 0; p*s.pageRows < s.rows; p++ {
+		cnt := min(s.pageRows, s.rows-p*s.pageRows)
+		s.idIDs.decodePage(p, cnt, buf, nil, nil)
+		for k := 0; k < cnt; k++ {
+			if (p*s.pageRows+k)%idSparseStep == 0 {
+				s.idSparse = append(s.idSparse, buf[k])
+			}
+		}
+	}
 }
 
 func (s *Segment) bytesOf(name string) ([]byte, bool) {
@@ -607,8 +635,49 @@ type Batch struct {
 	runStart                                 []bool
 	endOrd, noT, txTo, ca, ua, da, base, aut []int64
 	fc, tc                                   []int64
-	propInts, propPresent                    [][]int64
+	propInts, propPresent, propCodes         [][]int64
 	v                                        rowVals
+}
+
+// Columns returns the declared schema's columns, in the index order the
+// per-column accessors use.
+func (b *Batch) Columns() []Column {
+	out := make([]Column, len(b.seg.props))
+	for c := range b.seg.props {
+		out[c] = b.seg.props[c].col
+	}
+	return out
+}
+
+// IntColumn returns declared column c's stored values for the page (the
+// integer, bool 0/1 or float bits — see the codec) and each row's presence.
+// ok is false for a string column.
+func (b *Batch) IntColumn(c int) (vals []int64, present func(k int) bool, ok bool) {
+	p := &b.seg.props[c]
+	if p.col.Kind == KindString {
+		return nil, nil, false
+	}
+	return b.propInts[c][:b.N], b.presence(c), true
+}
+
+// StringColumn returns declared string column c as dictionary codes plus the
+// segment's sorted dictionary (the same slice for every page of a segment;
+// callers must not modify it). ok is false when the column is not
+// dictionary-encoded (plain or hex32 strings, or a non-string column).
+func (b *Batch) StringColumn(c int) (codes []int64, dict []string, present func(k int) bool, ok bool) {
+	p := &b.seg.props[c]
+	if p.col.Kind != KindString || !p.strs.present || p.strs.mode != strDict {
+		return nil, nil, nil, false
+	}
+	return b.propCodes[c][:b.N], p.strs.dict, b.presence(c), true
+}
+
+func (b *Batch) presence(c int) func(k int) bool {
+	if b.seg.props[c].allSet {
+		return func(int) bool { return true }
+	}
+	pr := b.propPresent[c]
+	return func(k int) bool { return pr[k] == 1 }
 }
 
 // Row builds row k of the batch (segment position Base+k) as an unfrozen,
@@ -659,12 +728,15 @@ func (s *Segment) scanBatches(lo, hi int, fn func(b *Batch) error) error {
 		seg: s, IDs: buf(), StartIDs: buf(), EndIDs: buf(), ValidFrom: buf(), ValidTo: buf(), TxFrom: buf(), Versions: buf(),
 		startOrds: make([]int, pr), runStart: make([]bool, pr),
 		endOrd: buf(), noT: buf(), txTo: buf(), ca: buf(), ua: buf(), da: buf(), base: buf(), aut: buf(), fc: buf(), tc: buf(),
-		propInts: make([][]int64, len(s.props)), propPresent: make([][]int64, len(s.props)),
+		propInts: make([][]int64, len(s.props)), propPresent: make([][]int64, len(s.props)), propCodes: make([][]int64, len(s.props)),
 		v: rowVals{propInts: make([]int64, len(s.props)), propSet: make([]bool, len(s.props)),
 			nodeHashs: make([]string, s.nodes), nodeKnown: make([]bool, s.nodes)},
 	}
 	for c := range s.props {
 		b.propInts[c], b.propPresent[c] = buf(), buf()
+		if p := &s.props[c]; p.col.Kind == KindString && p.strs.present && p.strs.mode == strDict {
+			b.propCodes[c] = buf()
+		}
 	}
 	for p := lo / pr; p*pr < hi; p++ {
 		ps := p * pr
@@ -696,6 +768,9 @@ func (s *Segment) scanBatches(lo, hi int, fn func(b *Batch) error) error {
 		for c := range s.props {
 			s.props[c].ints.decodePage(p, cnt, b.propInts[c], nil, nil)
 			s.props[c].present.decodePage(p, cnt, b.propPresent[c], nil, nil)
+			if b.propCodes[c] != nil {
+				s.props[c].strs.codes.decodePage(p, cnt, b.propCodes[c], nil, nil)
+			}
 		}
 		for k := 0; k < cnt; k++ {
 			b.StartIDs[k] = s.nodeIDs.atNoRef(b.startOrds[k])
@@ -722,37 +797,45 @@ func (s *Segment) IDRange() (lo, hi types.RelID) {
 }
 
 // Lookup returns the rows (segment order positions) holding relationship id,
-// one per stored version, ascending by version. It binary-searches the ID
-// index page by page (header range, page first values) and reads one page.
+// one per stored version, ascending by version. It binary-searches the
+// sparse ID sample built at Open and reads at most one sample step of the ID
+// index per match.
 func (s *Segment) Lookup(id types.RelID) ([]int, error) {
 	x := int64(id)
 	if s.rows == 0 || x < s.idMin || x > s.idMax {
 		return nil, nil
 	}
+	// The first sample >= x; the run of x (one entry per stored version) may
+	// begin inside the step before it.
+	b := max(0, sort.Search(len(s.idSparse), func(b int) bool { return s.idSparse[b] >= x })-1)
 	c := &s.idIDs
-	// The first page whose first value is >= x; the run of x (one entry per
-	// stored version) may begin on the page before it.
-	p := max(0, sort.Search(c.pageCount, func(p int) bool { return c.pageFirst(p) >= x })-1)
 	var out []int
-	for ; p < c.pageCount; p++ {
+	j := b * idSparseStep
+	for j < s.rows {
+		p := j / c.pageRows
 		v := c.page(p)
 		base := p * c.pageRows
-		k, val := 0, int64(0)
+		k := j - base
+		var val int64
 		if v.transform == transformDeltaPrev {
-			val = v.first
-		} else {
-			k = sort.Search(v.n, func(j int) bool { return v.d(j) >= x })
-			if k < v.n {
-				val = v.d(k)
+			if j%idSparseStep == 0 {
+				val = s.idSparse[j/idSparseStep]
+			} else { // a page boundary inside the step: restart from the page
+				val = v.first
+				for kk := 1; kk <= k; kk++ {
+					val += v.d(kk)
+				}
 			}
+		} else {
+			val = v.d(k)
 		}
 		for ; k < v.n; k++ {
-			if v.transform == transformDeltaPrev {
-				if k > 0 {
+			if k > j-base {
+				if v.transform == transformDeltaPrev {
 					val += v.d(k)
+				} else {
+					val = v.d(k)
 				}
-			} else {
-				val = v.d(k)
 			}
 			if val > x {
 				return out, nil
@@ -765,6 +848,7 @@ func (s *Segment) Lookup(id types.RelID) ([]int, error) {
 				out = append(out, int(row))
 			}
 		}
+		j = base + v.n
 	}
 	return out, nil
 }
@@ -913,4 +997,14 @@ func (s *Segment) ForEachID(fn func(id types.RelID, row int) bool) error {
 		}
 	}
 	return nil
+}
+
+// SectionBytes returns every stored section's encoded size by name (the
+// footer's section directory) — a measurement surface for the scale gates.
+func (s *Segment) SectionBytes() map[string]int {
+	out := make(map[string]int, len(s.secs))
+	for name, sec := range s.secs {
+		out[name] = sec.length
+	}
+	return out
 }
