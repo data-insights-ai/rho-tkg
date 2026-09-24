@@ -119,6 +119,9 @@ type segOracle struct {
 	allRels  []types.RelID
 	pins     []types.Instant
 	applied  uint64
+	// corrections / closedDeletes count the v4.38.0-semantics steps that took
+	// effect, so the test can require that they ran.
+	corrections, closedDeletes int
 }
 
 func newSegOracle(t *testing.T, budget int64) *segOracle {
@@ -255,7 +258,36 @@ func (o *segOracle) step(r *rand.Rand) {
 			}
 		}
 		o.liveHOP = kept
-	case x < 93:
+	case x < 92:
+		// v4.38.0 semantics on sealed rows: a valid-time correction (appends
+		// the patched then-valid pieces) and a close followed by a delete
+		// (the delete keeps the recorded close).
+		i := r.Intn(len(o.liveHOP))
+		id := o.liveHOP[i]
+		now, err := o.primary.Temporal().PeekTx()
+		if err != nil {
+			o.t.Fatal(err)
+		}
+		if r.Intn(2) == 0 {
+			vf := types.Instant(1_700_000_000_000 + int64(r.Intn(900_000)))
+			_, err = o.primary.Temporal().SetRelVersionInterval(ctx, id, vf, vf+types.Instant(1000+r.Intn(50_000)), map[string]any{"actor": "corrected"})
+			if err != nil && !errors.Is(err, graph.ErrAlreadyClosed) && !errors.Is(err, graph.ErrInvalidTimeRange) {
+				o.t.Fatalf("SetRelVersionInterval %d: %v", id, err)
+			}
+			if err == nil {
+				o.corrections++
+			}
+			break
+		}
+		if err := o.primary.Rels().CloseVersion(ctx, id, now); err != nil && !errors.Is(err, graph.ErrAlreadyClosed) {
+			o.t.Fatalf("close %d: %v", id, err)
+		}
+		if err := o.primary.Rels().Delete(ctx, id); err != nil {
+			o.t.Fatalf("delete after close %d: %v", id, err)
+		}
+		o.closedDeletes++
+		o.dropLive(i)
+	case x < 94:
 		n, err := o.primary.Nodes().Add(ctx, []string{"Asset"}, nil)
 		if err != nil {
 			o.t.Fatalf("add node: %v", err)
@@ -617,6 +649,9 @@ func TestRelSegmentsDifferentialOracle(t *testing.T) {
 			}
 			if st.LiveSealedRows >= st.SealedRows {
 				t.Fatalf("no sealed row was superseded by a later update/delete — the overlay went untested: %+v", st)
+			}
+			if o.corrections == 0 || o.closedDeletes == 0 {
+				t.Fatalf("the v4.38.0 steps never took effect: %d corrections, %d close+delete", o.corrections, o.closedDeletes)
 			}
 		})
 	}
