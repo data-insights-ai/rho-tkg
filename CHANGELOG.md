@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.38.0] - 2026-09-24
+
+Minor release: two HIGH bitemporal fixes (a delete no longer rewrites a recorded close; a
+valid-time correction patches the then-valid state), `OutgoingRelsAt`/`IncomingRelsAt` now
+mask edges by both endpoints (visible behavior change), and transaction isolation and
+durability are documented as they are. Gates on the released tree: `go vet`, `go build`,
+`make test` (41 packages), `go test -race ./pkg/graph/...` (32 packages) and the
+docs-consistency tests exit 0.
+
 ### Fixed
 
 - **HIGH — a hard delete rewrote an already-recorded valid-time close.** Every delete
