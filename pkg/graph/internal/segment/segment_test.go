@@ -441,15 +441,55 @@ func TestFallback_MixedKindColumnKeepsKindsAndHashes(t *testing.T) {
 	}
 }
 
-// TestFallback_ValueTheEntityWireCannotReproduceIsRefused pins the seal's
-// refusal rule: the fallback column uses the entity wire, which today widens
-// a nested small integer ([]any{int16(2)} reads back as int64 — the same
-// happens to such a row in the badger store). The encoder must refuse the row
-// rather than seal a value whose hash would change.
-func TestFallback_ValueTheEntityWireCannotReproduceIsRefused(t *testing.T) {
-	rows := []*types.Relationship{mkRow(t, 1, 0, 1, 2, map[string]any{"nested": []any{int16(2)}}, nil, nil)}
-	if _, err := Encode(testSchema(), rows, Options{}); !errors.Is(err, ErrInvalidRow) {
-		t.Fatalf("nested int16: %v, want ErrInvalidRow", err)
+// TestFallback_NestedKindsRoundTrip: the fallback column uses the entity
+// wire, which before backlog item 3 widened nested values ([]any{int16(2)}
+// read back as int64), so Encode refused such rows. The wire now keeps every
+// nested kind, so the rows seal, decode field for field and recompute their
+// stored hash.
+func TestFallback_NestedKindsRoundTrip(t *testing.T) {
+	values := []any{
+		[]any{int16(2)}, []any{int8(-1)}, []any{int32(3)}, []any{int(4)},
+		[]any{uint8(5)}, []any{uint16(6)}, []any{uint32(7)}, []any{uint(8)},
+		[]any{float32(1.5)}, []any{[]string{"a"}}, []any{[]int{1}}, []any{[]string(nil)},
+		map[string]any{"k": int16(2)}, map[string]any{"k": map[string]string{"a": "b"}},
+		map[string]any{"k": []any{uint8(9), map[string]any{"j": int8(1)}}},
+	}
+	rows := make([]*types.Relationship, 0, len(values))
+	for i, v := range values {
+		rows = append(rows, mkRow(t, int64(200+i), 0, 1, 2, map[string]any{"nested": v}, nil, nil))
+	}
+	data, err := Encode(testSchema(), rows, Options{})
+	if err != nil {
+		t.Fatalf("Encode: %v", err)
+	}
+	seg := mustOpen(t, data)
+	want := byKey(rows)
+	got := scanAll(t, seg)
+	if len(got) != len(rows) {
+		t.Fatalf("%d rows, want %d", len(got), len(rows))
+	}
+	for _, g := range got {
+		w := want[rowKey{g.ID(), g.Version()}]
+		assertSameRow(t, w, g)
+		if h := integrity.ComputeRelHash(g, testType); h != w.Integrity().Hash {
+			t.Fatalf("row %d: hash %s, stored %s", g.ID(), h, w.Integrity().Hash)
+		}
+	}
+	if err := seg.Verify(); err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+}
+
+// TestSeal_RowThatDoesNotRoundTripIsRefused pins the seal's refusal rule
+// directly (it held before backlog item 3 too; the nested-int16 row that used
+// to exercise it now round-trips): a decoded row that differs from its source
+// in a nested value's kind fails the seal with ErrInvalidRow.
+func TestSeal_RowThatDoesNotRoundTripIsRefused(t *testing.T) {
+	sealed := []*types.Relationship{mkRow(t, 1, 0, 1, 2, map[string]any{"nested": []any{int64(2)}}, nil, nil)}
+	data := mustEncode(t, sealed, Options{}, PageRows)
+	source := []*types.Relationship{mkRow(t, 1, 0, 1, 2, map[string]any{"nested": []any{int16(2)}}, nil, nil)}
+	if err := verifySealed(data, source, []int{0}); !errors.Is(err, ErrInvalidRow) {
+		t.Fatalf("verifySealed on a row whose nested kind differs: %v, want ErrInvalidRow", err)
 	}
 }
 

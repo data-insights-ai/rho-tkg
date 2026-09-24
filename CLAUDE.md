@@ -259,7 +259,7 @@ Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID`
 
 ### Properties
 
-- **Allowlist validation**: Recursive at insertion time. Primitives, slices, maps with safe elements only. Depth-limited to 32 (`ErrMaxDepthExceeded`). A TOP-LEVEL `time.Time` is accepted as caller sugar and canonicalized at the door (`Set`/`NewPropertySlice`) to `TemporalValue{Kind: TemporalDateTime, Value: RFC-3339}` before validation, so downstream sees no new type; nested `time.Time` is rejected like a nested `TemporalValue` (nested temporal values do not round-trip the wire hash).
+- **Allowlist validation**: Recursive at insertion time. Primitives, slices, maps with safe elements only. Depth-limited to 32 (`ErrMaxDepthExceeded`). A TOP-LEVEL `time.Time` is accepted as caller sugar and canonicalized at the door (`Set`/`NewPropertySlice`) to `TemporalValue{Kind: TemporalDateTime, Value: RFC-3339}` before validation, so downstream sees no new type; nested `time.Time` is rejected (a nested `TemporalValue` is accepted). Values nested in `[]any` / `map[string]any` keep their exact Go kind through the nested wire envelopes (`storeutil/wire_nested_temporal.go`): never normalize a nested value at write time, write raw only the kinds msgpack preserves, accept an envelope only in the form the encoder writes, and apply the property depth limit to the reconstructed value, not the raw wire value.
 - **`tkg_` prefix reserved**: `PropertySlice.Set()` rejects any key starting with `tkg_`.
 - **Sorted invariant**: Always use `Set()` — never modify the slice directly.
 - **Bulk construction**: `NewPropertySlice(map)` is O(N log N). `SetProperties(ps)` assigns directly. `AddNode`/`AddRelationship` use this path.
