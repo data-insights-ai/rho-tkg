@@ -150,12 +150,17 @@ These rules exist because every single one was violated at least once. Do not sk
 | `propertyslice.go` | Sorted key-value store with binary search; recursive exact-type allowlist validation aligned with hash/copy/wire support; depth-limited to 32 levels; `[]float32` support |
 | `shadow.go` | Constants for virtual read-only `tkg_*` properties |
 | `temporal.go` | `Instant` type (Unix ms), `entityID`, `TemporalMetadata` struct |
+| `temporal_time.go` | `InstantFromTime`/`Instant.Time()` — lossless-to-the-millisecond `time.Time` <-> `Instant` conversion (UTC, truncated) |
+| `temporal_value.go` | `TemporalValue` — a storage-typed temporal property value (KIND + canonical ISO-8601 rendering) so a query engine can round-trip temporal-ness through storage exactly, instead of guessing from a string's shape |
 | `integrity.go` | `NodeIntegrity` / `RelIntegrity` — hash chain (`Hash`, `PrevHash`) |
+| `property_hash.go` | Property hash type tags mirroring the persisted wire tags (`propertyHashType*` constants) — part of the integrity-hash byte layout; the per-type-tag property-value hashing switch (`appendPropertyValueHashBytes`) that `internal/integrity.appendPropertyValue` forwards to |
 | `allen.go` | Allen's 13 interval relations — `AllenRelation`, masked `AllenRelationSet`, `Relate()` (closed intervals, rejects any zero endpoint), `RelateOpen()` (treats `end==0` as +∞ for open version-chain intervals — backs the `NodesRelating` / `RelsRelating` doors), `Compose()`, `ComposeSets()`, composition table |
 | `granularity.go` | `TimeGranularity` (8 levels), `TruncateInstant`, `RoundInstant`, `CeilInstant` — ISO 8601 week truncation |
 | `recurrence.go` | `RecurrencePattern`, `RecurrenceFrequency`, `WeekdayMask`, `Interval` — strict calendar selector and millisecond offset validation + `Expand(from, to)` |
 | `property_registry.go` | `RegisterPropertyStructType(v any) error` — validates `HashableValue` + `DeepCopier` at registration; `DeepCopier` interface (`DeepCopyValue() any`); `ErrTypeNotHashable`, `ErrTypeNotDeepCopyable` sentinels |
 | `property_type_class.go` | `PropertyTypeClass` (Numeric/NaN/String/Bool/Other — the total classification rule for storable values; ±Inf is Numeric, NaN split out as unorderable) + `Node.ForEachPropertyTypeClass` / Relationship mirror (key + class only, never the value) — backs the exact type-class counters |
+| `column_reader.go` | `NodeColumnReader` — random-access point-lookup interface over a cached columnar snapshot of one label's nodes (X5 DocValues), exposed across the store boundary so the internal column type does not leak; `Row` fills caller buffers by node ID, `Epoch` pairs with the mutation-epoch staleness re-check |
+| `heapsize.go` | Approximate Go heap footprint estimation for cache byte budgets — O(properties), zero-allocation, conservative-cheap; unknown registered custom types fall back to a fixed pessimistic constant rather than walking user structs |
 
 ### `pkg/graph` (thin façade)
 
