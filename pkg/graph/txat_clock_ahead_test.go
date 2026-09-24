@@ -350,8 +350,9 @@ func TestTxAtDoorsWhenTxClockIsAheadOfWall(t *testing.T) {
 		},
 		{
 			name: "badger",
-			// SyncWrites: the feed serves committed records only, and the
-			// replica is fed right after the writes.
+			// SyncWrites: the feed serves flushed records only
+			// (store.ChangeFeedCapability); without it the replica, fed right
+			// after the writes, would first have to wait out the async flush.
 			primaryCfg: graph.Config{SnowflakeNodeID: 1, BadgerInMemory: true, ChangeLog: true, SyncWrites: true},
 			replCfg:    graph.Config{SnowflakeNodeID: 2, BadgerInMemory: true, ReadOnlyReplica: true},
 		},

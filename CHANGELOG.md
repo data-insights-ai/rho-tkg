@@ -43,6 +43,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   was yielded. Found by the same test (red at every pin on both backends); both doors now
   route on the core `hasTemporalFilter` (ValidAt, interval, TxAt or TxPin) into
   `forEachAdjacentRelVersionLocked`.
+
+### Documentation
+
+- **When a badger write reaches the change feed.** A badger primary with `SyncWrites=false`
+  returned 0 records from `ForEachChange` right after 20 writes, 20 after 250 ms, and all of
+  them after `Flush` or a reopen; a replica fed afterwards converged. That is the documented
+  `store.ChangeFeedCapability` contract (only flushed records are visible), not a defect, but
+  the public `Replication().ForEachChange` godoc and `docs/persistence.md` said only
+  "committed". Both now say a write appears at the next async flush (`FlushInterval`, default
+  100 ms) unless `SyncWrites` is on.
 - **TEST — tiered tests could mint the same ID twice.** `tieredNodeGen(t)` / `tieredRelGen(t)`
   built a fresh snowflake generator on every call, and tests call them inline, so two calls in
   the same microsecond returned the same ID.

@@ -55,6 +55,8 @@ func (a *API) ChangeFeed(afterLSN uint64, limit int) ([]store.ChangeRecord, erro
 // ForEachChange streams committed change-log records with LSN > afterLSN in
 // ascending order, invoking fn for each until it returns false or the log is
 // exhausted. The callback runs outside store locks and may re-enter the graph.
+// Committed means flushed: on badger without SyncWrites a write appears after
+// the next async flush (FlushInterval), not when the write call returns.
 func (a *API) ForEachChange(afterLSN uint64, fn func(store.ChangeRecord) bool) error {
 	ops, err := a.ready()
 	if err != nil {
