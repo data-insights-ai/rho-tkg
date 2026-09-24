@@ -15,8 +15,8 @@ import (
 // per-entity invariant instead of an assumption a bounded cascade correction
 // could silently break.
 //
-// LAZY, RAM-only, built from the committed current-node (0x01) + node-history
-// (0x07) keyspaces plus the pending write-buffer overlay (same shape as
+// LAZY, RAM-only, built from the write-buffer overlay (read first) plus the
+// committed current-node (0x01) + node-history (0x07) keyspaces (same shape as
 // labelTxMembers/relTypeTxMembers in badgerstore_labeltxmembers.go — this
 // file reuses decodeNodeWireForMembership/decodeRelWireForMembership since
 // TxFrom is exposed the same way labels/rel-type are, delta-aware). Never
@@ -65,7 +65,8 @@ func (bs *Store) bumpRelBeliefWatermarkLocked(id types.RelID, txFrom types.Insta
 }
 
 // ensureNodeBeliefWatermarkBuilt lazily builds the node watermark sidecar
-// from the committed current+history keyspaces + the pending overlay.
+// from the write-buffer overlay (read first) + the committed current+history
+// keyspaces.
 func (bs *Store) ensureNodeBeliefWatermarkBuilt() error {
 	if bs.nodeBeliefWatermarkBuilt.Load() {
 		return nil
@@ -77,6 +78,32 @@ func (bs *Store) ensureNodeBeliefWatermarkBuilt() error {
 	}
 	built := make(map[types.NodeID]types.Instant)
 	bs.nodeBeliefWatermark = built
+
+	// Write-buffer overlay FIRST, Badger View SECOND — see
+	// ensureLabelTxMembersBuilt: an already-parked flush still commits and
+	// clears `flushing` under our idxMu.Lock, and a row it commits between a
+	// View-first scan and the overlay read would be missed for the life of the
+	// store, leaving the watermark too low.
+	bs.rangePending(func(k string, op writeOp) {
+		if op.opType == writeOpDelete || len(op.value) == 0 {
+			return
+		}
+		kb := []byte(k)
+		if len(kb) == 0 {
+			return
+		}
+		switch kb[0] {
+		case storepkg.KeyNode, storepkg.KeyHistNode:
+		default:
+			return
+		}
+		nid := types.NodeID(storepkg.ParseIDFromKey(kb, 1))
+		w, ok := decodeNodeWireForMembership(op.value)
+		if !ok {
+			return
+		}
+		bs.bumpNodeBeliefWatermarkLocked(nid, types.Instant(w.TxFrom))
+	})
 
 	scanErr := bs.db.View(func(txn *badgerv4.Txn) error {
 		for _, prefix := range [][]byte{{storepkg.KeyNode}, {storepkg.KeyHistNode}} {
@@ -106,29 +133,9 @@ func (bs *Store) ensureNodeBeliefWatermarkBuilt() error {
 		bs.nodeBeliefWatermark = nil // failed build — retry on next call
 		return scanErr
 	}
-
-	// Pending write-buffer overlay: unflushed node/history rows. Under
-	// idxMu.Lock no writer/flush can mutate these maps.
-	bs.rangePending(func(k string, op writeOp) {
-		if op.opType == writeOpDelete || len(op.value) == 0 {
-			return
-		}
-		kb := []byte(k)
-		if len(kb) == 0 {
-			return
-		}
-		switch kb[0] {
-		case storepkg.KeyNode, storepkg.KeyHistNode:
-		default:
-			return
-		}
-		nid := types.NodeID(storepkg.ParseIDFromKey(kb, 1))
-		w, ok := decodeNodeWireForMembership(op.value)
-		if !ok {
-			return
-		}
-		bs.bumpNodeBeliefWatermarkLocked(nid, types.Instant(w.TxFrom))
-	})
+	if bs.historyScanTestHook != nil {
+		bs.historyScanTestHook()
+	}
 
 	bs.nodeBeliefWatermarkBuilt.Store(true)
 	return nil
@@ -146,6 +153,28 @@ func (bs *Store) ensureRelBeliefWatermarkBuilt() error {
 	}
 	built := make(map[types.RelID]types.Instant)
 	bs.relBeliefWatermark = built
+
+	// Overlay first, View second — see ensureNodeBeliefWatermarkBuilt.
+	bs.rangePending(func(k string, op writeOp) {
+		if op.opType == writeOpDelete || len(op.value) == 0 {
+			return
+		}
+		kb := []byte(k)
+		if len(kb) == 0 {
+			return
+		}
+		switch kb[0] {
+		case storepkg.KeyRel, storepkg.KeyHistRel:
+		default:
+			return
+		}
+		rid := types.RelID(storepkg.ParseIDFromKey(kb, 1))
+		w, ok := decodeRelWireForMembership(op.value)
+		if !ok {
+			return
+		}
+		bs.bumpRelBeliefWatermarkLocked(rid, types.Instant(w.TxFrom))
+	})
 
 	scanErr := bs.db.View(func(txn *badgerv4.Txn) error {
 		for _, prefix := range [][]byte{{storepkg.KeyRel}, {storepkg.KeyHistRel}} {
@@ -175,27 +204,9 @@ func (bs *Store) ensureRelBeliefWatermarkBuilt() error {
 		bs.relBeliefWatermark = nil
 		return scanErr
 	}
-
-	bs.rangePending(func(k string, op writeOp) {
-		if op.opType == writeOpDelete || len(op.value) == 0 {
-			return
-		}
-		kb := []byte(k)
-		if len(kb) == 0 {
-			return
-		}
-		switch kb[0] {
-		case storepkg.KeyRel, storepkg.KeyHistRel:
-		default:
-			return
-		}
-		rid := types.RelID(storepkg.ParseIDFromKey(kb, 1))
-		w, ok := decodeRelWireForMembership(op.value)
-		if !ok {
-			return
-		}
-		bs.bumpRelBeliefWatermarkLocked(rid, types.Instant(w.TxFrom))
-	})
+	if bs.historyScanTestHook != nil {
+		bs.historyScanTestHook()
+	}
 
 	bs.relBeliefWatermarkBuilt.Store(true)
 	return nil

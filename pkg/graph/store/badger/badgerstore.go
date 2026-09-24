@@ -636,7 +636,10 @@ type Store struct {
 	// commit (flushing rows -> Badger, `flushing` cleared) inside the
 	// scan->merge window — the window in which a scan-first reader drops a row
 	// that has left `flushing` but was not in the reader's older Badger
-	// snapshot. Set only from the owning test.
+	// snapshot. The lazy builds (K1 membership sidecars, belief watermarks)
+	// invoke it too, right after their Badger scan and before they mark
+	// themselves built, while holding idxMu.Lock; so does
+	// relationshipIndexKeysForRel after its scan. Set only from the owning test.
 	historyScanTestHook func()
 
 	// bulkAsOfScanTestHook, when non-nil, is invoked by NodesAsOf/RelsAsOf once
