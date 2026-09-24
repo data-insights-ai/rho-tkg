@@ -15,6 +15,22 @@ targets for the gates in §6. They are not results.
 
 ---
 
+## Decision (René, 2026-09-24)
+
+- **Accepted.** Steps S0–S7 enter the backlog in the order of §6.
+- **Integrity block size is a setting,** not a constant: `IntegrityBlockRows` per declared
+  type, default 64, a power of two from 1 to 4,096, written into each segment's footer so a
+  reader never assumes it. 1 gives one stored hash per row (exact location of a damaged row,
+  ~32 B/row more on disk); 64 locates it to within 64 rows and recomputes the row's hash on
+  demand (§4.3).
+- **Every step is scale-tested,** not only S3: its gate is measured on the three synthday
+  sizes (790 K, 3.15 M, 12.6 M rows) for resident bytes per relationship, on-disk bytes per
+  relationship and wall time, and must show no growth beyond the step's stated bound; from S2
+  on, ai-soc's parity golden and cross-check agree on all shapes; at S3, S5 and S7 also one
+  BA day on Flux (masked twin in git).
+- **P7** (compacting today's row records) shrinks to what stays in the row store (nodes,
+  undeclared types) and starts only after S2.
+
 ## 1. Goal and non-goals
 
 ### 1.1 Why
@@ -654,7 +670,7 @@ type RelSegmentBatch struct {
 ## 6. Build order
 
 Each step starts with a failing test that is run red, and ends with a measured
-gate. Nothing is merged on an estimate. Measurements are kept as executable
+gate, taken at the three synthday sizes (Decision, 2026-09-24). Nothing is merged on an estimate. Measurements are kept as executable
 decision records (lesson 67, rule 3). Customer data runs only on Flux, with masked
 twins in git.
 
