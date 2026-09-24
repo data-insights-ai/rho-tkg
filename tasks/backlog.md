@@ -15,6 +15,7 @@ capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 
 **Remaining open work:** no CRITICAL or HIGH items. Open:
 
+0. **Column segments on NVMe (ADR-0011, accepted 2026-09-24)** — FEATURE: steps S0–S7 in `docs/adr/0011-column-segments.md` §6, each with a failing test first and a gate measured at the three synthday sizes; integrity block size configurable (`IntegrityBlockRows`, default 64). Goal: resident memory independent of the day size for declared bulk relationship types (~744 B/rel today).
 1. **Import-under-a-scope** (improvement-not-bug, deferred locking)
 2. **BACKLOG 22** — six TEST-GAP research items (from the retired `.harden/` ledger)
 
