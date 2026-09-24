@@ -171,6 +171,7 @@ func (ms *Store) RelSegmentStats(typeToken uint16) (storecontract.RelSegmentStat
 		UnsealedRows:   int64(len(ms.typeIdx[typeToken])),
 		UnsealedBytes:  st.unsealedBytes,
 		Seals:          st.seals,
+		Sealing:        ms.sealerRunning,
 	}, nil
 }
 

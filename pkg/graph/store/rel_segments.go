@@ -96,6 +96,8 @@ type RelSegmentStats struct {
 	UnsealedBytes int64
 	// Seals is the number of seals that produced a segment.
 	Seals uint64
+	// Sealing is true while the store's background sealer is running.
+	Sealing bool
 }
 
 // RelSegmentCapability is the optional store capability behind

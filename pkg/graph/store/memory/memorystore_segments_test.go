@@ -925,6 +925,9 @@ func TestSegments_BudgetSealRunsOffTheWriter(t *testing.T) {
 	if !started {
 		t.Fatal("no budget seal started")
 	}
+	if !tw.stats().Sealing {
+		t.Fatal("RelSegmentStats.Sealing is false while a background seal encodes")
+	}
 	tw.compare("reads while a background seal encodes")
 
 	// Keep writing: once the unsealed rows reach twice the budget, a write
@@ -960,8 +963,8 @@ func TestSegments_BudgetSealRunsOffTheWriter(t *testing.T) {
 		t.Fatal("no write blocked although the sealer never finished: the memtable is unbounded")
 	}
 	waitSealsForTest(t, s)
-	if st := tw.stats(); st.Seals == 0 {
-		t.Fatalf("no seal completed: %+v", st)
+	if st := tw.stats(); st.Seals == 0 || st.Sealing {
+		t.Fatalf("no seal completed, or still sealing: %+v", st)
 	}
 	tw.compare("after the background seals")
 }

@@ -154,6 +154,9 @@ func runS2(tb testing.TB, sz synthhop.Size, schema synthhop.Schema, mode string)
 	res.hop = len(ids)
 	nodes = nil // the harness's node copies are not the graph's (S0)
 	runtime.KeepAlive(nodes)
+	if mode == "segments" {
+		s2WaitSealer(tb, g) // the tail reading excludes a background seal's buffers
+	}
 	hW := s2Heap()
 	hS := hW
 	if mode == "segments" {
@@ -228,6 +231,25 @@ func runS2(tb testing.TB, sz synthhop.Size, schema synthhop.Schema, mode string)
 	res.graphWithTail = int64(hW) - int64(h2)
 	res.graphSealed = int64(hS) - int64(h2)
 	return res
+}
+
+// s2WaitSealer waits until the store's background sealer is idle.
+func s2WaitSealer(tb testing.TB, g *graph.Graph) {
+	tb.Helper()
+	deadline := time.Now().Add(5 * time.Minute)
+	for {
+		st, err := g.Admin().RelSegmentStats("HOP")
+		if err != nil {
+			tb.Fatal(err)
+		}
+		if !st.Sealing {
+			return
+		}
+		if time.Now().After(deadline) {
+			tb.Fatal("background sealer did not go idle")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 func s2List(key, def string) []string {
