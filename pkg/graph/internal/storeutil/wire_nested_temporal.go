@@ -39,6 +39,9 @@ const (
 	nestedWireMarkerPrefix   = "\x00tkg."
 	nestedWireTemporalMarker = nestedWireMarkerPrefix + "tv"
 	nestedWireEscapeMarker   = nestedWireMarkerPrefix + "esc"
+	// Stub for the red run of backlog item 3; not yet written or read.
+	nestedWireKindMarker   = nestedWireMarkerPrefix + "k"
+	nestedWireCustomMarker = nestedWireMarkerPrefix + "c"
 )
 
 // nestedTemporalWireLen is the element count of a temporal envelope.
