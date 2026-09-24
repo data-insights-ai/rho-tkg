@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.37.1] - 2026-09-24
+
+Patch release: the badger scan/flush/evict fix (HIGH), a code-scanning integer-conversion
+fix, AGENTS.md as the single canonical guide, CI hardening, and tests that never ran fixed.
+Gates on the released tree (`c7d0c39` + this commit): `make check`, `make test-race`,
+`make fmt-check` and the docs-consistency tests exit 0.
+
 ### Fixed
 
 - **HIGH — badger reads dropped live rows or returned replaced versions when a
