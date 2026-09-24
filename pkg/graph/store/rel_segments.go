@@ -175,6 +175,9 @@ type RelSegmentBatch struct {
 	// row versions — what Relationship.Temporal() / Version() hold.
 	ValidFrom, ValidTo, TxFrom []int64
 	Versions                   []uint32
+	// HasTemporal is false for a row without temporal metadata (its
+	// temporal fields read 0 and its temporal shadow properties are absent).
+	HasTemporal []bool
 	// Cols holds one entry per requested property, in request order.
 	Cols []SegmentColumnValues
 	row  func(k int) (*types.Relationship, error)

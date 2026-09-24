@@ -154,6 +154,10 @@ func (tw *segTwin) mutate(r *rand.Rand) {
 	if err != nil {
 		tw.t.Fatal(err)
 	}
+	if cur.Temporal() == nil { // no history stamps to write
+		tw.both("DeleteRelationship", func(s *Store) error { return s.DeleteRelationship(id) })
+		return
+	}
 	switch r.Intn(5) {
 	case 0: // in-place replace
 		next := cur.DeepCopy()
@@ -1039,11 +1043,19 @@ func segRowFact(r *types.Relationship, props []string) string {
 func TestSegments_ScanRelSegmentsEqualsTheRowPath(t *testing.T) {
 	r := rand.New(rand.NewSource(61))
 	tw := newSegTwin(t, 1<<40, 12)
+	noTemporal := 0
 	for round := 0; round < 4; round++ {
 		for i := 0; i < 700; i++ {
-			if r.Intn(6) == 0 {
+			switch x := r.Intn(12); {
+			case x < 2:
 				tw.mutate(r)
-			} else {
+			case x < 3: // a row without temporal metadata
+				rel := tw.newRel(r, segTestHOP)
+				rel.SetTemporal(nil)
+				tw.both("PutRelationship", func(s *Store) error { return s.PutRelationship(rel) })
+				tw.rels = append(tw.rels, rel.ID())
+				noTemporal++
+			default:
 				tw.put(r, segTestHOP)
 			}
 		}
@@ -1094,6 +1106,9 @@ func TestSegments_ScanRelSegmentsEqualsTheRowPath(t *testing.T) {
 				}
 			}
 			fact := segScanFact(b.IDs[k], b.StartIDs[k], b.EndIDs[k], b.ValidFrom[k], b.ValidTo[k], b.TxFrom[k], b.Versions[k], vals)
+			if full, err := b.Row(k); err != nil || (full.Temporal() != nil) != b.HasTemporal[k] {
+				t.Fatalf("row %d: HasTemporal %t disagrees with the row (%v)", k, b.HasTemporal[k], err)
+			}
 			if got[fact] {
 				t.Fatalf("row handed out twice: %s", fact)
 			}
@@ -1118,6 +1133,9 @@ func TestSegments_ScanRelSegmentsEqualsTheRowPath(t *testing.T) {
 		if !got[f] {
 			t.Fatalf("row missing from the scan or different: %s", f)
 		}
+	}
+	if noTemporal == 0 {
+		t.Fatal("no row without temporal metadata was written")
 	}
 	if len(segments) < 3 || others == 0 {
 		t.Fatalf("the scan must span the sealed segments and exercise Other rows: %d segments, %d other values", len(segments), others)

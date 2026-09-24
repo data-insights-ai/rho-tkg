@@ -1103,3 +1103,6 @@ func (b *Batch) HasFallback(k int) bool {
 	f := &b.seg.fallback
 	return f.present && f.state.atNoRef(b.Base+k) == 1
 }
+
+// HasTemporal reports whether batch row k carries temporal metadata.
+func (b *Batch) HasTemporal(k int) bool { return b.noT[k] == 0 }

@@ -1202,6 +1202,7 @@ func (ms *Store) ScanRelSegments(typeToken uint16, props []string, fn func(*stor
 				b.ValidTo = append(b.ValidTo, pb.ValidTo[k])
 				b.TxFrom = append(b.TxFrom, pb.TxFrom[k])
 				b.Versions = append(b.Versions, uint32(pb.Versions[k])) // #nosec G115 -- a stored uint32
+				b.HasTemporal = append(b.HasTemporal, pb.HasTemporal(k))
 			}
 			b.keep = keep
 			if len(keep) == 0 {
@@ -1248,6 +1249,7 @@ func (ms *Store) ScanRelSegments(typeToken uint16, props []string, fn func(*stor
 			b.ValidTo = append(b.ValidTo, vt)
 			b.TxFrom = append(b.TxFrom, tx)
 			b.Versions = append(b.Versions, r.Version())
+			b.HasTemporal = append(b.HasTemporal, r.Temporal() != nil)
 			b.appendRowValues(r)
 		}
 		b.SetRowFunc(func(k int) (*types.Relationship, error) { return chunk[k], nil })
@@ -1277,6 +1279,7 @@ func (b *segScanBatch) reset(seg uint64, sorted bool) {
 	b.Segment, b.Sorted = seg, sorted
 	b.IDs, b.StartIDs, b.EndIDs = b.IDs[:0], b.StartIDs[:0], b.EndIDs[:0]
 	b.ValidFrom, b.ValidTo, b.TxFrom, b.Versions = b.ValidFrom[:0], b.ValidTo[:0], b.TxFrom[:0], b.Versions[:0]
+	b.HasTemporal = b.HasTemporal[:0]
 	for i := range b.Cols {
 		c := &b.Cols[i]
 		c.Present, c.Other, c.Ints, c.Codes, c.Strs, c.Dict = c.Present[:0], c.Other[:0], c.Ints[:0], nil, nil, nil
