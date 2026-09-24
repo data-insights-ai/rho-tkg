@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.37.2] - 2026-09-24
+
+Fixes the v4.37.1 release commit, which left README's release line at v4.37.0 so the
+docs-consistency test failed on the tagged tree (the release script read that test's result
+through a pipe). No code change. Docs-consistency tests exit 0 on this tree.
+
 ## [4.37.1] - 2026-09-24
 
 Patch release: the badger scan/flush/evict fix (HIGH), a code-scanning integer-conversion
