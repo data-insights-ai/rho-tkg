@@ -18,8 +18,9 @@ package memory_test
 //	with the tail       = (graph after the writes - graph with nodes only) / HOP
 //
 // Throughput: g.Rels().ByType and ForEachByType over HOP (the row doors),
-// g.Rels().Get over 20,000 random HOP IDs, and the column path
-// (memory.SealedColumnScanForTest: one page decode, no Relationship built).
+// g.Rels().Get over 20,000 random HOP IDs, g.ScanRelColumns (ID order; row
+// path on the row store, segment columns on the declared type) and
+// g.ScanRelSegments (segment order, dictionary codes, no Relationship built).
 //
 // A measurement, not a unit test: it runs only when RHO_TKG_SEGMENT_S2 is
 // set, e.g.
@@ -82,7 +83,7 @@ type s2Result struct {
 	seals                           uint64
 	write, finalSeal                time.Duration
 	byType, forEach, point, colRate float64 // rows/s
-	byTypeAgain                     float64
+	byTypeAgain, scanColsRate       float64
 }
 
 func (r s2Result) String() string {
@@ -98,9 +99,9 @@ func (r s2Result) String() string {
 			fmt.Fprintf(&sec, " %s=%.2f", k, float64(r.sections[k])/float64(r.hop))
 		}
 	}
-	return fmt.Sprintf("S2 size=%-6s schema=%-6s mode=%-8s hop=%d | resident %.1f B/HOP beyond memtable, %.1f B/HOP with tail | segments %d (%d seals) %.2f B/HOP encoded, tail %.1f B/HOP | write %.1fs final seal %.2fs | ByType %.2fM rows/s (again %.2fM) ForEachByType %.2fM rows/s Get %.3fM/s column path %.1fM rows/s",
+	return fmt.Sprintf("S2 size=%-6s schema=%-6s mode=%-8s hop=%d | resident %.1f B/HOP beyond memtable, %.1f B/HOP with tail | segments %d (%d seals) %.2f B/HOP encoded, tail %.1f B/HOP | write %.1fs final seal %.2fs | ByType %.2fM rows/s (again %.2fM) ForEachByType %.2fM rows/s Get %.3fM/s ScanRelColumns %.2fM rows/s ScanRelSegments %.1fM rows/s",
 		r.size, r.schema, r.mode, r.hop, r.sealed, r.withTail, r.segments, r.seals, r.segBytes, r.tailBytes,
-		r.write.Seconds(), r.finalSeal.Seconds(), r.byType/1e6, r.byTypeAgain/1e6, r.forEach/1e6, r.point/1e6, r.colRate/1e6) + sec.String()
+		r.write.Seconds(), r.finalSeal.Seconds(), r.byType/1e6, r.byTypeAgain/1e6, r.forEach/1e6, r.point/1e6, r.scanColsRate/1e6, r.colRate/1e6) + sec.String()
 }
 
 func runS2(tb testing.TB, sz synthhop.Size, schema synthhop.Schema, mode string) s2Result {
@@ -211,12 +212,40 @@ func runS2(tb testing.TB, sz synthhop.Size, schema synthhop.Schema, mode string)
 		}
 		res.point = probes / time.Since(t0).Seconds()
 	}
-	if mode == "segments" {
+	if mode != "nodes" {
+		// ScanRelColumns: the ID-ordered column door (row path on the row
+		// store, segment columns on a declared type).
+		props := []string{"actor", "asset_class", "orch", "family"}
 		t0 := time.Now()
-		rows, _, err := memory.SealedColumnScanForTest(st, 1)
-		if err != nil || rows != int64(res.hop) {
-			tb.Fatalf("column path: %d rows, %v", rows, err)
+		n := 0
+		ok, err := g.ScanRelColumns("HOP", props, graph.QueryOpts{}, func(b *graph.RelColumnBatch) bool { n += len(b.IDs); return true })
+		if err != nil || !ok || n != res.hop {
+			tb.Fatalf("ScanRelColumns: %d rows, %t, %v", n, ok, err)
 		}
+		res.scanColsRate = float64(n) / time.Since(t0).Seconds()
+	}
+	if mode == "segments" {
+		// ScanRelSegments: the segment-order column door S5 adds, touching
+		// every value a consumer reads.
+		props := []string{"actor", "asset_class", "orch", "family"}
+		t0 := time.Now()
+		rows, sum := 0, 0
+		ok, err := g.ScanRelSegments("HOP", props, func(b *graph.RelSegmentBatch) bool {
+			for k := 0; k < b.Len(); k++ {
+				sum += int(b.StartIDs[k]^b.EndIDs[k]) + int(b.ValidFrom[k]^b.ValidTo[k])
+				for c := range b.Cols {
+					if b.Cols[c].Present[k] && b.Cols[c].Codes != nil {
+						sum += int(b.Cols[c].Codes[k])
+					}
+				}
+			}
+			rows += b.Len()
+			return true
+		})
+		if err != nil || !ok || rows != res.hop {
+			tb.Fatalf("ScanRelSegments: %d rows, %t, %v", rows, ok, err)
+		}
+		runtime.KeepAlive(sum)
 		res.colRate = float64(rows) / time.Since(t0).Seconds()
 		res.sections = memory.SealedSectionBytesForTest(st, 1)
 	}
