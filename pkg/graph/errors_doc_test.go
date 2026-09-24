@@ -214,6 +214,8 @@ var capabilitySentinels = []string{
 	"ErrWireFormatVersionUnsupported",
 	"ErrHistoryAnchorIntervalMismatch",
 	"ErrTxDone",
+	"ErrRelSegmentDeclaration",
+	"ErrRelSegmentNotDeclared",
 }
 
 // TieredStore reference/event ontology sentinels (ADR-0007). BACKLOG 7c:

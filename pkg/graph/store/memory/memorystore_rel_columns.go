@@ -43,6 +43,13 @@ func (ms *Store) RelColumnSnapshot(typeToken uint16, propKeys []string) (snap *i
 		return nil, 0, false, cerr
 	}
 
+	if ms.segTypes[typeToken] != nil {
+		// ADR-0011 §7: a declared bulk type is never routed through the
+		// DocValues builder (it would rebuild the per-row heap the segments
+		// removed). ok=false sends the caller to the row path, which answers
+		// identically.
+		return nil, 0, false, nil
+	}
 	cur := ms.relEpoch.Load()
 	keys := indexpkg.UnionKeys([]string{RelStartColumn, RelEndColumn}, propKeys)
 

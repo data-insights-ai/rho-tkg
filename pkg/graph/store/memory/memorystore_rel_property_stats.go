@@ -116,7 +116,11 @@ func (ms *Store) RelPropertyStats(relTypeToken uint16, propertyKey string) (stor
 		return storecontract.PropertyStats{Count: int64(count)}, nil
 	}
 	if acc.Dirty() {
-		acc.Rescan(ms.collectCurrentRelPropertyValuesLocked(relTypeToken, propertyKey))
+		values, err := ms.collectCurrentRelPropertyValuesLocked(relTypeToken, propertyKey)
+		if err != nil {
+			return storecontract.PropertyStats{}, err
+		}
+		acc.Rescan(values)
 	}
 	ndv, min, max := acc.Snapshot()
 	return storecontract.PropertyStats{NDV: ndv, Min: min, Max: max, Count: int64(count)}, nil
@@ -127,7 +131,7 @@ func (ms *Store) RelPropertyStats(relTypeToken uint16, propertyKey string) (stor
 // hold ms.mu (any mode) — it reads ms.typeIdx/ms.rels directly rather than
 // calling a public Store method, so as not to re-enter ms.mu from within
 // RelPropertyStats.
-func (ms *Store) collectCurrentRelPropertyValuesLocked(relTypeToken uint16, propertyKey string) []any {
+func (ms *Store) collectCurrentRelPropertyValuesLocked(relTypeToken uint16, propertyKey string) ([]any, error) {
 	ids := ms.typeIdx[relTypeToken]
 	values := make([]any, 0, len(ids))
 	for id := range ids {
@@ -139,5 +143,12 @@ func (ms *Store) collectCurrentRelPropertyValuesLocked(relTypeToken uint16, prop
 			values = append(values, v)
 		}
 	}
-	return values
+	// ADR-0011: the declared type's sealed rows are current rows too.
+	err := ms.forEachSealedRowLocked(ms.segTypes[relTypeToken], func(r *types.Relationship) bool {
+		if v, ok := r.GetProperty(propertyKey); ok {
+			values = append(values, v)
+		}
+		return true
+	})
+	return values, err
 }

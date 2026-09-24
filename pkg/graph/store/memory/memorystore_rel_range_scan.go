@@ -60,8 +60,11 @@ func (ms *Store) ForEachRelByTypePropertyRangeOrdered(relTypeToken uint16, propK
 		}
 		for _, rawID := range ids {
 			ms.mu.RLock()
-			r, exists := ms.rels[types.RelID(rawID)]
+			r, exists, err := ms.relLocked(types.RelID(rawID)) // ADR-0011 union view
 			ms.mu.RUnlock()
+			if err != nil {
+				return err
+			}
 			if !exists || !r.HasTypeTokenRaw(relTypeToken) {
 				continue // deleted since snapshot, or orphaned ordered-view entry
 			}

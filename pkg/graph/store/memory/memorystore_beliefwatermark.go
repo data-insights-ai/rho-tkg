@@ -77,9 +77,14 @@ func (ms *Store) ensureRelBeliefWatermarkBuiltLocked() {
 	}
 	built := make(map[types.RelID]types.Instant, len(ms.rels))
 	ms.relBeliefWatermark = built
-	for id, r := range ms.rels {
-		ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(r))
-	}
+	// ADR-0011: every current row, sealed ones included. A decode error can
+	// only mean in-RAM corruption; the rows it could not reach simply keep
+	// no watermark entry (the capability then reports "unknown", which the
+	// caller treats as "consult the chain").
+	_ = ms.forEachCurrentRelLocked(func(r *types.Relationship) bool {
+		ms.bumpRelBeliefWatermarkLocked(r.ID(), relTxFrom(r))
+		return true
+	})
 	for id, versions := range ms.relHistory {
 		for _, r := range versions {
 			ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(r))

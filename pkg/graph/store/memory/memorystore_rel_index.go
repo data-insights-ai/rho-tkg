@@ -62,15 +62,32 @@ func (ms *Store) CreateRelPropertyIndex(relTypeToken uint16, propertyKey string)
 			rids = append(rids, rid)
 		}
 	}
+	refs, err := ms.appendSealedRefsLocked(nil, ms.segTypes[relTypeToken]) // ADR-0011: sealed rows too
+	if err != nil {
+		delete(ms.relPropertyIndexes, key)
+		ms.mu.Unlock()
+		return err
+	}
+	for _, ref := range refs {
+		rids = append(rids, ref.id)
+	}
 	ms.mu.Unlock()
 
 	// Phase 2.
 	backfill := indexpkg.NewPropertyIndex()
 	for _, rid := range rids {
 		ms.mu.RLock()
-		r, ok := ms.rels[rid]
+		r, ok, err := ms.relLocked(rid)
 		ms.mu.RUnlock()
 		phase2Yield() // test seam: ms.mu is provably unheld here
+		if err != nil {
+			ms.mu.Lock()
+			if ms.relPropertyIndexes[key] == liveIdx {
+				delete(ms.relPropertyIndexes, key)
+			}
+			ms.mu.Unlock()
+			return err
+		}
 		if !ok {
 			continue // deleted between snapshot and fetch
 		}
@@ -90,7 +107,9 @@ func (ms *Store) CreateRelPropertyIndex(relTypeToken uint16, propertyKey string)
 			if _, mutated := liveIdx.Mutated[id]; mutated {
 				continue // concurrent write handled this ID during Phase 2
 			}
-			if _, alive := ms.rels[types.RelID(id)]; !alive {
+			if alive, err := ms.relExistsLocked(types.RelID(id)); err != nil {
+				return err
+			} else if !alive {
 				continue // relationship deleted during Phase 2
 			}
 			liveIdx.AddKey(id, vk)
@@ -180,12 +199,39 @@ func (ms *Store) RelationshipsByTypeAndProperty(relTypeToken uint16, propKey str
 			return nil, nil
 		}
 		storepkg.SortRelIDs(ids)
+		if ms.anySegmentsLocked() {
+			rows, err := ms.relsFromIDsLocked(ids, opts.After, opts.Limit, func(r *types.Relationship) bool {
+				if !r.HasTypeTokenRaw(relTypeToken) {
+					return false
+				}
+				if valueKey, found := r.IndexablePropertyValueKey(propKey); !found || valueKey != targetKey {
+					return false
+				}
+				return !storepkg.HasTemporalFilter(opts) || storepkg.MatchesTemporalFilter(r.ID().SnowflakeID(), r.Temporal(), opts)
+			})
+			if err != nil || len(rows) == 0 {
+				return nil, err
+			}
+			return rows, nil
+		}
 		return ms.relsByTypePropertyFromIDs(relTypeToken, propKey, targetKey, ids, opts), nil
 	}
 
 	// Fallback: type scan + property filter.
 	slog.Debug("graph: RelationshipsByTypeAndProperty using full type scan (no rel property index)",
 		"relTypeToken", relTypeToken, "propertyKey", propKey)
+	if ms.hasSegmentsLocked(relTypeToken) {
+		rows, err := ms.typeRowsByIDLocked(relTypeToken, opts.After, opts.Limit, func(r *types.Relationship) bool {
+			if valueKey, found := r.IndexablePropertyValueKey(propKey); !found || valueKey != targetKey {
+				return false
+			}
+			return !storepkg.HasTemporalFilter(opts) || storepkg.MatchesTemporalFilter(r.ID().SnowflakeID(), r.Temporal(), opts)
+		})
+		if err != nil || len(rows) == 0 {
+			return nil, err
+		}
+		return rows, nil
+	}
 	typeIDs := ms.typeIdx[relTypeToken]
 	if len(typeIDs) == 0 {
 		return nil, nil
@@ -301,8 +347,11 @@ func (ms *Store) ForEachRelByTypePropertyRange(relTypeToken uint16, propKey stri
 	emitted := 0
 	for _, id := range ids {
 		ms.mu.RLock()
-		r, ok := ms.rels[id]
+		r, ok, err := ms.relLocked(id) // ADR-0011 union view
 		ms.mu.RUnlock()
+		if err != nil {
+			return err
+		}
 		if !ok {
 			continue
 		}

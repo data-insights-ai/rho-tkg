@@ -36,6 +36,7 @@ func (ms *Store) putRelationshipRouted(r *types.Relationship, token uint64) erro
 	if ms == nil {
 		return ErrNilStore
 	}
+	defer ms.sealIfDue() // ADR-0011: runs after the unlock below
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 	defer ms.bumpRelEpoch()
@@ -61,8 +62,12 @@ func (ms *Store) putRelationshipRouted(r *types.Relationship, token uint64) erro
 	if _, exists := ms.rels[id]; exists {
 		return ErrRelExists
 	}
+	if exists, err := ms.sealedExistsLocked(id); err != nil || exists {
+		return relExistsErr(err)
+	}
 
 	ms.rels[id] = freezeRelCopy(r)
+	ms.segAccountLocked(ms.rels[id], 1)
 	ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(r)) // BACKLOG 10c
 
 	// Type index.
@@ -124,6 +129,7 @@ func (ms *Store) putRelationshipGeneratedIDWithEndpointHashesRouted(r *types.Rel
 	if ms == nil {
 		return "", "", ErrNilStore
 	}
+	defer ms.sealIfDue() // ADR-0011: runs after the unlock below
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 	defer ms.bumpRelEpoch()
@@ -149,6 +155,9 @@ func (ms *Store) putRelationshipGeneratedIDWithEndpointHashesRouted(r *types.Rel
 	if _, exists := ms.rels[id]; exists {
 		return "", "", ErrRelExists
 	}
+	if exists, err := ms.sealedExistsLocked(id); err != nil || exists {
+		return "", "", relExistsErr(err)
+	}
 
 	fromHash := nodeIntegrityHash(start)
 	toHash := fromHash
@@ -165,6 +174,7 @@ func (ms *Store) putRelationshipGeneratedIDWithEndpointHashesRouted(r *types.Rel
 	ig.ToNodeHash = toHash
 
 	ms.rels[id] = freezeRelCopy(r)
+	ms.segAccountLocked(ms.rels[id], 1)
 	ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(r)) // BACKLOG 10c
 
 	tv := r.TypeToken().Value()
@@ -212,7 +222,16 @@ func (ms *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
 
 	r, ok := ms.rels[rid]
 	if !ok {
-		return nil, ErrRelNotFound
+		// ADR-0011: a sealed row decodes as a fresh, unfrozen, independent
+		// row — exactly what the DeepCopy below hands out.
+		sg, row, sealed, err := ms.sealedLocked(rid)
+		if err != nil {
+			return nil, err
+		}
+		if !sealed {
+			return nil, ErrRelNotFound
+		}
+		return sg.seg.Row(row)
 	}
 	return r.DeepCopy(), nil
 }
@@ -240,6 +259,7 @@ func (ms *Store) replaceRelationshipRouted(r *types.Relationship, token uint64) 
 	if ms == nil {
 		return ErrNilStore
 	}
+	defer ms.sealIfDue() // ADR-0011: runs after the unlock below
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 	defer ms.bumpRelEpoch()
@@ -251,6 +271,9 @@ func (ms *Store) replaceRelationshipRouted(r *types.Relationship, token uint64) 
 		return err
 	}
 	id := r.ID()
+	if err := ms.faultInLocked(id); err != nil { // ADR-0011 overlay: the new row shadows a sealed one
+		return err
+	}
 
 	old, exists := ms.rels[id]
 	if !exists {
@@ -265,7 +288,9 @@ func (ms *Store) replaceRelationshipRouted(r *types.Relationship, token uint64) 
 	ms.adjustRelPropertyTypeClassCounts(old, -1)
 	ms.adjustRelPropertyKeyCounts(old, -1)
 	indexpkg.RemoveRelFromTemporalIndexes(ms.relTypeTemporalIndexes, old, id.SnowflakeID()) // BACKLOG 21c
+	ms.segAccountLocked(old, -1)
 	ms.rels[id] = freezeRelCopy(r)
+	ms.segAccountLocked(ms.rels[id], 1)
 	ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(r)) // BACKLOG 10c
 	indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID())
 	ms.adjustRelPropertyTypeClassCounts(r, 1)
@@ -316,6 +341,9 @@ func (ms *Store) deleteRelationshipRouted(rid types.RelID, token uint64) error {
 // deleteRelLocked removes a relationship and cleans up indexes.
 // Caller must hold ms.mu write lock.
 func (ms *Store) deleteRelLocked(id types.RelID) error {
+	if err := ms.faultInLocked(id); err != nil { // ADR-0011 overlay: deleting a sealed row
+		return err
+	}
 	r, ok := ms.rels[id]
 	if !ok {
 		return ErrRelNotFound
@@ -351,6 +379,7 @@ func (ms *Store) deleteRelLocked(id types.RelID) error {
 	ms.adjustRelPropertyTypeClassCounts(r, -1)
 	ms.adjustRelPropertyKeyCounts(r, -1)
 	indexpkg.RemoveRelFromTemporalIndexes(ms.relTypeTemporalIndexes, r, id.SnowflakeID()) // BACKLOG 21c
+	ms.segAccountLocked(r, -1)
 	delete(ms.rels, id)
 	return nil
 }
@@ -407,6 +436,9 @@ func (ms *Store) OutgoingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 	}
 	if _, ok := ms.nodes[nid]; !ok {
 		return nil, ErrNodeNotFound
+	}
+	if ms.anySegmentsLocked() {
+		return ms.adjacentSortedLocked(nid, typeToken, false)
 	}
 
 	set := ms.outIdx[nid]
@@ -470,6 +502,9 @@ func (ms *Store) OutgoingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 		result[nid] = nil
 	}
 
+	if ms.anySegmentsLocked() {
+		return ms.adjacentForNodesLocked(result, typeToken, false)
+	}
 	var typeSet map[types.RelID]struct{}
 	if typeToken != 0 {
 		typeSet = ms.typeIdx[typeToken]
@@ -530,7 +565,12 @@ func (ms *Store) OutgoingDegree(nid types.NodeID, typeToken uint16) (int, error)
 	if _, ok := ms.nodes[nid]; !ok {
 		return 0, ErrNodeNotFound
 	}
-	return ms.degreeLocked(ms.outIdx[nid], typeToken), nil
+	n := ms.degreeLocked(ms.outIdx[nid], typeToken)
+	if ms.anySegmentsLocked() {
+		sealed, err := ms.sealedDegreeLocked(nid, typeToken, false)
+		return n + sealed, err
+	}
+	return n, nil
 }
 
 // IncomingDegree counts incoming relationships to nid (type-filtered) without
@@ -550,7 +590,12 @@ func (ms *Store) IncomingDegree(nid types.NodeID, typeToken uint16) (int, error)
 	if _, ok := ms.nodes[nid]; !ok {
 		return 0, ErrNodeNotFound
 	}
-	return ms.degreeLocked(ms.inIdx[nid], typeToken), nil
+	n := ms.degreeLocked(ms.inIdx[nid], typeToken)
+	if ms.anySegmentsLocked() {
+		sealed, err := ms.sealedDegreeLocked(nid, typeToken, true)
+		return n + sealed, err
+	}
+	return n, nil
 }
 
 // degreeLocked counts entries in an adjacency set, optionally filtered by type
@@ -594,6 +639,9 @@ func (ms *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 	}
 	if _, ok := ms.nodes[nid]; !ok {
 		return nil, ErrNodeNotFound
+	}
+	if ms.anySegmentsLocked() {
+		return ms.adjacentSortedLocked(nid, typeToken, true)
 	}
 
 	set := ms.inIdx[nid]
@@ -657,6 +705,9 @@ func (ms *Store) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 		result[nid] = nil
 	}
 
+	if ms.anySegmentsLocked() {
+		return ms.adjacentForNodesLocked(result, typeToken, true)
+	}
 	var typeSet map[types.RelID]struct{}
 	if typeToken != 0 {
 		typeSet = ms.typeIdx[typeToken]
@@ -721,6 +772,7 @@ func (ms *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 	if ms == nil {
 		return ErrNilStore
 	}
+	defer ms.sealIfDue() // ADR-0011: runs after the unlock below
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 	defer ms.bumpRelEpoch()
@@ -751,6 +803,9 @@ func (ms *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		if _, exists := ms.rels[id]; exists {
 			return ErrRelExists
 		}
+		if exists, err := ms.sealedExistsLocked(id); err != nil || exists {
+			return relExistsErr(err)
+		}
 		if _, exists := seen[id]; exists {
 			return fmt.Errorf("graph: duplicate relationship ID %d in batch", id)
 		}
@@ -764,6 +819,7 @@ func (ms *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		endID := r.EndNodeID()
 
 		ms.rels[id] = freezeRelCopy(r)
+		ms.segAccountLocked(ms.rels[id], 1)
 		ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(r)) // BACKLOG 10c
 
 		tv := r.TypeToken().Value()
@@ -823,7 +879,11 @@ func (ms *Store) DeleteRelationshipsBatch(typedIDs []types.RelID) error {
 
 	// Phase 1: validate — all must exist.
 	for _, id := range typedIDs {
-		if _, exists := ms.rels[id]; !exists {
+		exists, err := ms.relExistsLocked(id)
+		if err != nil {
+			return err
+		}
+		if !exists {
 			return ErrRelNotFound
 		}
 	}

@@ -123,6 +123,9 @@ func (ms *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 		if !ok {
 			continue // concurrently gone
 		}
+		if err := ms.faultInAdjacentLocked(nid); err != nil { // ADR-0011 overlay
+			return zero, err
+		}
 		// Connected rels (dedup self-loops across out+in adjacency).
 		relIDs := make(map[types.RelID]struct{})
 		for relID := range ms.outIdx[nid] {

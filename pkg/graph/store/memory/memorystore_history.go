@@ -238,6 +238,9 @@ func (ms *Store) deleteRelWithHistoryRouted(rid types.RelID, prevVersion uint32,
 		return err
 	}
 
+	if err := ms.faultInLocked(rid); err != nil { // ADR-0011 overlay
+		return err
+	}
 	old, ok := ms.rels[rid]
 	if !ok {
 		return ErrRelNotFound
@@ -317,6 +320,9 @@ func (ms *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion u
 		return err
 	}
 
+	if err := ms.faultInAdjacentLocked(nid); err != nil { // ADR-0011 overlay
+		return err
+	}
 	relIDs := make(map[types.RelID]struct{})
 	for relID := range ms.outIdx[nid] {
 		relIDs[relID] = struct{}{}
@@ -930,6 +936,7 @@ func (ms *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 	if ms == nil {
 		return ErrNilStore
 	}
+	defer ms.sealIfDue() // ADR-0011: runs after the unlock below
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
@@ -944,6 +951,9 @@ func (ms *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 		return err
 	}
 
+	if err := ms.faultInLocked(id); err != nil { // ADR-0011 overlay: the new version shadows a sealed one
+		return err
+	}
 	old, exists := ms.rels[id]
 	if !exists {
 		return ErrRelNotFound
@@ -973,7 +983,9 @@ func (ms *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 	ms.adjustRelPropertyKeyCounts(old, -1)
 	indexpkg.RemoveRelFromTemporalIndexes(ms.relTypeTemporalIndexes, old, id.SnowflakeID()) // BACKLOG 21c
 	// Replace current entity.
+	ms.segAccountLocked(old, -1)
 	ms.rels[id] = freezeRelCopy(current)
+	ms.segAccountLocked(ms.rels[id], 1)
 	ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(current)) // BACKLOG 10c
 	indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, current, id.SnowflakeID())
 	ms.adjustRelPropertyTypeClassCounts(current, 1)
@@ -1019,7 +1031,11 @@ func (ms *Store) RelAsOf(rid types.RelID, txTime types.Instant) (*types.Relation
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return nil, err
 	}
-	best := relAsOfLocked(ms.rels[rid], ms.relHistory[rid], txTime)
+	cur, _, err := ms.relLocked(rid) // ADR-0011 union view
+	if err != nil {
+		return nil, err
+	}
+	best := relAsOfLocked(cur, ms.relHistory[rid], txTime)
 	if best == nil {
 		return nil, ErrVersionNotFound
 	}
@@ -1075,13 +1091,29 @@ func (ms *Store) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 	}
 
 	result := make([]*types.Relationship, 0, len(ms.rels))
-	for id, current := range ms.rels {
+	var sealedLive map[types.RelID]struct{}
+	if ms.anySegmentsLocked() {
+		sealedLive = make(map[types.RelID]struct{})
+	}
+	if err := ms.forEachCurrentRelLocked(func(current *types.Relationship) bool {
+		id := current.ID()
+		if sealedLive != nil {
+			if _, mem := ms.rels[id]; !mem {
+				sealedLive[id] = struct{}{}
+			}
+		}
 		if best := relAsOfLocked(current, ms.relHistory[id], txTime); best != nil {
 			result = append(result, relCopyVisibleAtTxTime(best, txTime))
 		}
+		return true
+	}); err != nil {
+		return nil, err
 	}
 	for id, history := range ms.relHistory {
 		if _, live := ms.rels[id]; live {
+			continue
+		}
+		if _, live := sealedLive[id]; live {
 			continue
 		}
 		if best := relAsOfLocked(nil, history, txTime); best != nil {

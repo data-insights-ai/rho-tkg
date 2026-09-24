@@ -792,6 +792,21 @@ type Config struct {
 	// 5-bit node field); New fails closed otherwise. Interactive writes
 	// (standalone / tx / plain batch) always mint from the interactive pair.
 	IngestLanes uint8
+
+	// RelSegments declares bulk relationship types (ADR-0011): the store seals
+	// each declared type's unsealed rows into immutable column segments once
+	// the unsealed rows of all declared types exceed SegmentMemoryBudget, and
+	// every read door answers from the union of the unsealed rows and the
+	// segments — identical answers, per-row heap removed. Empty (default) =
+	// no segments, byte-for-byte today's behavior. S2: the memory store keeps
+	// segments in RAM; any other backend fails New with
+	// ErrCapabilityNotSupported. A declared type's token is created at New when
+	// the type is new.
+	RelSegments []storepkg.RelSegmentSpec
+	// SegmentMemoryBudget is the memtable budget in bytes (the unsealed rows'
+	// types.Relationship.ApproxHeapBytes, all declared types together); 0 =
+	// store.DefaultSegmentMemtableBudget (256 MiB); negative fails New.
+	SegmentMemoryBudget int64
 }
 
 // ValidationDefaults returns the resolved validation limits (for testing).
@@ -1889,6 +1904,15 @@ func New(config Config) (*Core, error) {
 	// unreadable floor is the expected state after an unclean shutdown, and it
 	// self-heals as the wall clock advances past the drift (lesson 71).
 	c.seedInstantFloor()
+
+	// ADR-0011: declare bulk relationship types last, once registries are
+	// loaded, so a declared name resolves to its persisted token.
+	if err := c.declareRelSegments(config.RelSegments, config.SegmentMemoryBudget); err != nil {
+		if config.Store == nil {
+			_ = store.Close()
+		}
+		return nil, err
+	}
 
 	return c, nil
 }

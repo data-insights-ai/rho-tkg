@@ -15,6 +15,7 @@ import (
 	core "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr"
 	snowflakepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/snowflake"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -53,6 +54,10 @@ type ExactErasureBounds = core.ExactErasureBounds
 // ExactErasureReceipt is the stable, content-addressed completion receipt.
 type ExactErasureReceipt = core.ExactErasureReceipt
 
+// RelSegmentStats describes a declared bulk relationship type's physical
+// layout (ADR-0011). Alias of store.RelSegmentStats.
+type RelSegmentStats = store.RelSegmentStats
+
 // PurgeByAge purges nodes below Before by IMMUTABLE snowflake mint-time (v1).
 const PurgeByAge = core.PurgeByAge
 
@@ -70,6 +75,8 @@ type Ops interface {
 	PurgeExpiredNodes(ctx context.Context, policy PurgePolicy) (PurgeReport, error)
 	ResolveExactErasure(ctx context.Context, request ExactErasureRequest) (ExactErasureResolution, error)
 	ExactErase(ctx context.Context, request ExactErasureRequest) (ExactErasureReceipt, error)
+	SealRelSegments(relType string) error
+	RelSegmentStats(relType string) (RelSegmentStats, error)
 }
 
 // API is the admin sub-API accessor.
@@ -173,4 +180,27 @@ func (a *API) ExactErase(ctx context.Context, request ExactErasureRequest) (Exac
 		return ExactErasureReceipt{}, err
 	}
 	return ops.ExactErase(ctx, request)
+}
+
+// SealRelSegments seals every unsealed row of a relationship type declared in
+// graph.Config.RelSegments now, regardless of the memtable budget (ADR-0011).
+// A seal is a physical move: no read answer changes and no change-log record
+// is written. store.ErrRelSegmentNotDeclared for an undeclared type,
+// store.ErrCapabilityNotSupported on a backend without segments.
+func (a *API) SealRelSegments(relType string) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.SealRelSegments(relType)
+}
+
+// RelSegmentStats reports a declared bulk relationship type's layout: segments,
+// sealed and unsealed rows, encoded bytes. A measurement surface only.
+func (a *API) RelSegmentStats(relType string) (RelSegmentStats, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return RelSegmentStats{}, err
+	}
+	return ops.RelSegmentStats(relType)
 }

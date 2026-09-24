@@ -604,23 +604,22 @@ func (ms *Store) CreateRelTemporalIndex(relType uint16) error {
 	}
 
 	ti := indexpkg.NewTemporalIndex()
-	if relIDs, ok := ms.typeIdx[relType]; ok {
-		for relID := range relIDs {
-			r := ms.rels[relID]
-			if r == nil {
+	// ADR-0011: every current row of the type — memtable and sealed.
+	if err := ms.forEachTypeRowLocked(relType, func(r *types.Relationship) bool {
+		relID := r.ID()
+		rawID := relID.SnowflakeID()
+		from, to := indexpkg.RelTemporalBounds(rawID, r.Temporal())
+		ti.Extend(rawID, from, to)
+		for _, hv := range ms.relHistory[relID] {
+			if hv == nil {
 				continue
 			}
-			rawID := relID.SnowflakeID()
-			from, to := indexpkg.RelTemporalBounds(rawID, r.Temporal())
-			ti.Extend(rawID, from, to)
-			for _, hv := range ms.relHistory[relID] {
-				if hv == nil {
-					continue
-				}
-				hf, ht := indexpkg.RelTemporalBounds(rawID, hv.Temporal())
-				ti.Extend(rawID, hf, ht)
-			}
+			hf, ht := indexpkg.RelTemporalBounds(rawID, hv.Temporal())
+			ti.Extend(rawID, hf, ht)
 		}
+		return true
+	}); err != nil {
+		return err
 	}
 
 	ms.relTypeTemporalIndexes[relType] = ti
