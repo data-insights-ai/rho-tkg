@@ -52,7 +52,7 @@ func TestBadgerStore_DeleteNode_NoDiskIOUnderWriteLock(t *testing.T) {
 		defer close(done)
 		start := time.Now()
 		bs.LockIdxMuRForTest()
-		close(rlockHeld) // signal: RLock is actually held, not just "should be by now"
+		close(rlockHeld)                 // signal: RLock is actually held, not just "should be by now"
 		time.Sleep(5 * time.Millisecond) // simulate RLock holder doing work
 		bs.UnlockIdxMuRForTest()
 		rLockDuration.Store(time.Since(start).Milliseconds())
