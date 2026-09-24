@@ -526,7 +526,7 @@ func (o *segOracle) answers(g *graph.Graph) map[string]string {
 // segKnownNondeterministic names doors whose answer on a PLAIN memory graph
 // (no declaration at all) varies between identical calls — a pre-existing
 // defect found by this oracle (reproduced on v4.37.2, 0659ece; tasks/backlog.md
-// item 4): the TxAt-only relationship doors return different superseded
+// item 5): the TxAt-only relationship doors return different superseded
 // versions of one relationship across calls. They cannot be an oracle until
 // that is fixed, so they are skipped here and NAMED; any other door that is
 // nondeterministic on the plain graph fails the test.
@@ -564,7 +564,7 @@ func (o *segOracle) compare(stage string) {
 		o.t.Fatalf("%s: %d of %d doors differ", stage, bad, len(names))
 	}
 	if skipped > 0 {
-		o.t.Logf("%s: %d door answers skipped: known nondeterministic on the plain graph (backlog item 4)", stage, skipped)
+		o.t.Logf("%s: %d door answers skipped: known nondeterministic on the plain graph (backlog item 5)", stage, skipped)
 	}
 }
 

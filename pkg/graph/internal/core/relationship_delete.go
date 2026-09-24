@@ -102,12 +102,7 @@ func (c *Core) deleteRelationshipInternal(ctx context.Context, id types.RelID) e
 		tmR = &types.TemporalMetadata{}
 		current.SetTemporal(tmR)
 	}
-	tmR.DeletedAt = now
-	tmR.ValidTo = now
-	if tmR.TxFrom == 0 {
-		tmR.TxFrom = now
-	}
-	tmR.TxTo = now
+	stampDeleteTombstone(tmR, now)
 
 	// Single atomic call: PutRelVersion + DeleteRelationship. Routes through
 	// the BACKLOG 11f scoped sibling when ctx carries a scoped change-log

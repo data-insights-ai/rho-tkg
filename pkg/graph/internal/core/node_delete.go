@@ -345,12 +345,7 @@ func (c *Core) deleteNodeLocked(ctx context.Context, id types.NodeID, current *t
 				tmR = &types.TemporalMetadata{}
 				tombstone.SetTemporal(tmR)
 			}
-			tmR.DeletedAt = now
-			tmR.ValidTo = now
-			if tmR.TxFrom == 0 {
-				tmR.TxFrom = now
-			}
-			tmR.TxTo = now
+			stampDeleteTombstone(tmR, now)
 			relTombstones = append(relTombstones, storepkg.RelTombstone{
 				ID:          types.RelID(rid),
 				PrevVersion: r.Version(),
@@ -366,12 +361,7 @@ func (c *Core) deleteNodeLocked(ctx context.Context, id types.NodeID, current *t
 		tmN = &types.TemporalMetadata{}
 		current.SetTemporal(tmN)
 	}
-	tmN.DeletedAt = now
-	tmN.ValidTo = now
-	if tmN.TxFrom == 0 {
-		tmN.TxFrom = now
-	}
-	tmN.TxTo = now
+	stampDeleteTombstone(tmN, now)
 
 	// Single atomic call: PutRelVersion×N + PutNodeVersion + DeleteNodeCascade.
 	// Routes through the BACKLOG 11f scoped sibling when ctx carries a scoped

@@ -13,17 +13,58 @@ concurrency edge / perf cliff / contract inconsistency. LOW = smell / doc drift.
 TEST-GAP = real behavior unverified (may hide a bug). FEATURE = plausible
 capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 
-**Remaining open work:** one HIGH item (4, found 2026-09-24 by the S2 oracle). Open:
+**Remaining open work:** one reproduced HIGH item (5, found 2026-09-24 by the S2 oracle). Open:
 
 0. **Column segments on NVMe (ADR-0011, accepted 2026-09-24)** — FEATURE: steps S0–S7 in `docs/adr/0011-column-segments.md` §6, each with a failing test first and a gate measured at the three synthday sizes; integrity block size configurable (`IntegrityBlockRows`, default 64). Goal: resident memory independent of the day size for declared bulk relationship types (~744 B/rel today). **Progress:** S0 done (baseline harness `bench/segment_baseline_test.go`; memory 718–723 B/rel, badger lean does not reproduce 191 — measures 301), S1 done (codec `pkg/graph/internal/segment`; 22–25 B/HOP on disk; decode of full rows below the memory store's zero-copy scan rate, columns alone 24–28 M rows/s), S2 done on the rho-tkg side (memory store seals declared types into in-RAM segments; `Config.RelSegments`; P6 HOP resident 25.0 / 26.7 / 31.4 B/HOP beyond the memtable, gate ≤ 60 met; legacy 75–87 B/HOP over it because of `support`; row doors on sealed rows slower than the zero-copy row store: `ByType` 5–9×, `ForEachByType` 10–20×, `Get` 3–4×, column path 12–14 M rows/s). **Open from S2:** (a) the ai-soc half of S2's gate — xcheck AGREE on the three synthday days and on BA on Flux with `engine.Open` declaring HOP (ai-soc work, after P6); (b) the per-segment node sections grow as O(segments × distinct endpoints) (`nodehash` 1.18 → 4.64 B/HOP from 1 to 4 segments) — S4's merge must bound it, measure there; (c) seals run synchronously in the writing goroutine (12.6 M write 12.5 s vs 6.0 s) — S3/S6 decide whether to move them off the write path; (d) the rel property / temporal indexes and the lazily built belief-watermark and rel-type tx-membership sidecars keep one entry per row when a caller creates or triggers them — check at the ai-soc gate whether ai-soc's queries build them. Next: S3 (and S5, the columnar door, which reads `segment.Batch` directly).
-4. **HIGH — `ByType{TxAt}` and `OutgoingForNodesAtTx` answer nondeterministically on a plain memory graph** — see below
 1. **Import-under-a-scope** (improvement-not-bug, deferred locking)
 2. **BACKLOG 22** — six TEST-GAP research items (from the retired `.harden/` ledger)
 3. **Temporal adjacency scan cost** (v4.35.0 follow-up) — measure before building anything (see below)
+4. **Temporal semantics review 2026-09-24** — traced findings, each needs a failing test before a fix (see below)
+5. **HIGH — `ByType{TxAt}` and `OutgoingForNodesAtTx` answer nondeterministically on a plain memory graph** — see below
+
+**v5:** the next engine generation is planned on branch `v5` (`docs/v5/PLAN.md`). v4 gets fixes, not features that v5 replaces. ADR-0011 S2+ waits for owner decision D6 in that plan (recommendation: continue the segments inside v5).
 
 ---
 
-## Open — item 4: TxAt-only relationship doors are nondeterministic (HIGH)
+## Open — temporal semantics review 2026-09-24
+
+Found by a code trace during the v1.3-handoff review. The three findings that were
+reproduced (delete after close, correction template, endpoint masking) are fixed on
+branch `fix/v4-temporal-semantics`. The items below are TRACED, NOT YET REPRODUCED:
+write the failing two-phase test first; drop the item if the test passes.
+
+- **(HIGH?) `NodesDuring` / `RelsDuring` open end.** `end == 0` is resolved to wall-now + 1
+  (`temporal.go` ~L27-32, `temporal_queries.go` ~L177-197), so an entity valid only in the
+  future is missed; `NodesRelating` keeps the open end as +inf.
+- **(HIGH?) Future transaction time from `validInstantAfter`.** Update/CloseVersion/Delete of a
+  row whose explicit ValidFrom is in the future stamps `TxFrom/TxTo = ValidFrom + 1` without
+  advancing the floor, contradicting "every committed entity has TxFrom <= NowTx()"
+  (`txtime.go` ~L159) and SPEC.md ~L439.
+- **(HIGH?) Re-import of a deleted ID.** `Nodes().Import(id, …)` checks only the current row;
+  the re-imported entity restarts at version 0 and its first Update writes history version 0,
+  overwriting the previous life's version 0 (`memorystore_history.go` ~L888).
+- **(MEDIUM?) As-of vs point resolver order.** `SelectAsOf` picks the newest candidate by
+  version; the point resolver breaks overlaps by (TxFrom, version). After a cascade whose rows
+  carry a lower TxFrom than a later-version Update, `NodeAsOf` and `NodeAtTx` can pick
+  different rows (`asof_select_test.go` ~L119-129 shows the inversion shape).
+- **(MEDIUM?) `NodeMatchesValidTime` on a current row with unset ValidFrom** answers "valid since
+  mint", so a consumer post-filtering current rows accepts today's properties for times
+  before the last update, where `NodeAt` returns the older version.
+- **(LOW) Snowflake ID horizon.** 48-bit microseconds from 2026-01-01 end on 2034-12-02
+  (arithmetic). Needs a plan before v4 data outlives it; v5 drops clock bits from IDs.
+- **(KNOWN LIMITATION) Future-scheduled close, then delete.** The delete clamps the scheduled
+  `ValidTo` in place, so a read pinned before the delete sees the row open-ended. Fixing it
+  needs either a separate tombstone version (store delete contract and chain shape change) or
+  readers using `min(ValidTo, DeletedAt)` everywhere (column scans, segments, valid-time
+  indexes). v5 replaces in-place tombstones with lifecycle closes.
+- **(KNOWN LIMITATION) 1 ms pieces look eclipsed.** A row with `ValidTo == ValidFrom + 1` is the
+  eclipse sentinel and invisible to valid-time reads. A caller-supplied 1 ms interval was always
+  affected; since the correction-base fix a `SetNodeVersionInterval` piece can also be 1 ms wide
+  when a pre-existing boundary sits 1 ms from `validFrom` or `validTo`.
+
+---
+
+## Open — item 5: TxAt-only relationship doors are nondeterministic (HIGH)
 
 Found 2026-09-24 by the ADR-0011 S2 differential oracle
 (`pkg/graph/rel_segments_oracle_test.go`, which now skips these two doors by

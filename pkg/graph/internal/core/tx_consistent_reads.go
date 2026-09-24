@@ -523,7 +523,8 @@ func (tx *GraphTx) NeighborsAt(nodeID types.NodeID, at types.Instant) ([]*types.
 	return tx.g.neighborsAtLocked(nodeID, at)
 }
 
-// OutgoingRelsAt is a tx-side mirror for g.Temporal.OutgoingRelsAt.
+// OutgoingRelsAt is a tx-side mirror for g.Temporal.OutgoingRelsAt (EFFECTIVE
+// view: both endpoints must be valid at t).
 func (tx *GraphTx) OutgoingRelsAt(nodeID types.NodeID, at types.Instant) ([]*types.Relationship, error) {
 	if err := tx.lockActiveCore(); err != nil {
 		return nil, err
@@ -535,7 +536,8 @@ func (tx *GraphTx) OutgoingRelsAt(nodeID types.NodeID, at types.Instant) ([]*typ
 	return tx.g.directionalRelsAtLocked(nodeID, at, true)
 }
 
-// IncomingRelsAt is a tx-side mirror for g.Temporal.IncomingRelsAt.
+// IncomingRelsAt is a tx-side mirror for g.Temporal.IncomingRelsAt (EFFECTIVE
+// view: both endpoints must be valid at t).
 func (tx *GraphTx) IncomingRelsAt(nodeID types.NodeID, at types.Instant) ([]*types.Relationship, error) {
 	if err := tx.lockActiveCore(); err != nil {
 		return nil, err

@@ -25,6 +25,24 @@ Write-pressure bound: `badger.Config.MaxPendingWrites` (default 100,000 ops; neg
 
 Sync writes: set `Config.SyncWrites: true` to eliminate the 100ms async flush window — each write is flushed to disk synchronously (Badger `WithSyncWrites(true)` + immediate `flush()` after every store call). This removes the in-memory buffer vulnerability at the cost of higher write latency. `FlushInterval` is forced to 0 and the background flush goroutine is not started when `SyncWrites` is true. Badger index definition mutations (`Create*Index` / `Drop*Index` for property, temporal, high-frequency, and vector indexes) use the same synchronous flush path after releasing `idxMu`; split relationship helper writeOps used by Tiered routing and repair do too.
 
+### Durability and crash semantics (what an acknowledged write survives)
+
+The badger backend acknowledges a write when it is applied in memory, not when it is on disk. What survives a failure depends on the mode:
+
+| Mode | Process crash (kill -9, panic) | OS crash / power loss |
+|---|---|---|
+| Default (`SyncWrites=false`, `FlushInterval`=100ms, `MaxPendingWrites`=100,000) | Loses every acknowledged write still in the async buffer: normally up to ~100 ms of writes, up to `MaxPendingWrites` ops under a burst. Flushed batches survive (they are in Badger's log, in the OS page cache). | Additionally may lose recently flushed batches: Badger does not fsync without `SyncWrites`. |
+| `SyncWrites=true` | Nothing acknowledged is lost: each Store call is flushed and fsynced before it returns. | Same. |
+
+Atomicity across a crash is per flush, not per logical operation group:
+
+- A flush writes one `WriteBatch` (data + counters + change-log records + LSN watermark). Badger may split a very large `WriteBatch` into several internal transactions, so even one flush is not guaranteed all-or-nothing at that size.
+- A multi-entity `g.Tx()` is **not** crash-atomic in either mode: its rows are flushed by the ordinary async flush or per call under `SyncWrites`, so a crash before `Commit` can persist part of it (see `docs/architecture.md`, "Transaction isolation — what v4 actually guarantees").
+- The strong ingest mode (`g.Ingest()`, `Sync`) commits one group per flush (group commit), which is the closest v4 has to an atomic multi-entity write.
+- `tiered.Store` cross-shard relationship writes are two shard commits; a crash between them leaves residue that `RunRepair` resolves.
+
+Choose `SyncWrites=true` when an acknowledged write must never be lost; the default trades that window for throughput. The memory store is not durable at all.
+
 Current and history entity reads validate semantic `NodeWire` / `RelWire`
 invariants after MsgPack decode and before constructing `types.Node` or
 `types.Relationship`. Corrupt-but-decodable rows with invalid IDs, token-0,

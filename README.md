@@ -219,7 +219,7 @@ runnable example.
 | One-call backups | `g.IO().BackupTo`/`BackupDeltaTo` write deterministic, LSN-named backup files; `graph.RestoreInto` replays a full+delta set — see [Backups](#backups) |
 | Property, temporal, and vector indexes | Property equality/range lookups, high-frequency temporal buckets, and k-NN vector search — approximate HNSW by default, with an exact brute-force escape hatch (`VectorIndexOptions.UseBruteForce` via `CreateVectorIndexWithOptions`) |
 | Encryption at rest | `Config.EncryptionKey` (AES-128/192/256) encrypts every Badger-backed shard; requires `BlockCacheSize`/`IndexCacheSize` > 0 (validated at `New`, never a Badger panic) |
-| Transactions & batches | `g.Tx()` (serializable-per-entity) and `g.Batch()` (bulk ops with partial-failure reporting) |
+| Transactions & batches | `g.Tx()` (serialized against other transactions; write-through with compensating rollback — not isolated from concurrent standalone reads/writes, see [architecture](docs/architecture.md#transaction-isolation--what-v4-actually-guarantees)) and `g.Batch()` (bulk ops, atomic against readers, with partial-failure reporting) |
 | Event bus | Sync/async hooks on every mutation, for building your own indexes or side effects |
 
 ## Backups
@@ -303,7 +303,7 @@ including the Docker-based `lint`/`security`/`vulncheck` targets.
 See [CHANGELOG.md](CHANGELOG.md) for the full, dated release history — every
 version back to v3.0.0, with the defect it fixed or the feature it added.
 
-Current release: **v4.37.2** — see [CHANGELOG.md](CHANGELOG.md) for what shipped
+Current release: **v4.38.0** — see [CHANGELOG.md](CHANGELOG.md) for what shipped
 and why; this line is pinned to the changelog's latest entry by
 `TestDocsMetadataMatchesSourceOfTruth` so it cannot go stale silently.
 
