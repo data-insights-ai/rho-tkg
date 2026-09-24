@@ -4,7 +4,7 @@ This document lists all dependencies of `github.com/data-insights-ai/rho-tkg/v4`
 
 `go list -m all` reports 36 dependency modules (plus the main module itself); the
 table below has 36 rows, one per dependency, kept in sync with that output
-(refreshed 2026-08-05 for the v4.28.1 line).
+(refreshed 2026-09-24 for the v4.37.0 line).
 
 **License Assertion:** All dependencies use licenses from the set {Apache-2.0, BSD-2-Clause, BSD-3-Clause, MIT, ISC}. Every row in the table below carries one of these five licenses.
 
@@ -27,7 +27,7 @@ table below has 36 rows, one per dependency, kept in sync with that output
 | github.com/google/go-cmp | v0.7.0 | BSD-3-Clause |
 | github.com/google/uuid | v1.6.0 | BSD-3-Clause |
 | github.com/inconshreveable/mousetrap | v1.1.0 | Apache-2.0 |
-| github.com/klauspost/compress | v1.18.0 | BSD-3-Clause |
+| github.com/klauspost/compress | v1.18.7 | BSD-3-Clause |
 | github.com/kr/pretty | v0.3.1 | MIT |
 | github.com/kr/text | v0.2.0 | MIT |
 | github.com/pmezard/go-difflib | v1.0.0 | BSD-3-Clause |
@@ -39,11 +39,11 @@ table below has 36 rows, one per dependency, kept in sync with that output
 | github.com/vmihailenco/tagparser/v2 | v2.0.0 | MIT |
 | go.opentelemetry.io/auto/sdk | v1.2.1 | Apache-2.0 |
 | go.opentelemetry.io/contrib/zpages | v0.62.0 | Apache-2.0 |
-| go.opentelemetry.io/otel | v1.41.0 | Apache-2.0 |
-| go.opentelemetry.io/otel/metric | v1.41.0 | Apache-2.0 |
+| go.opentelemetry.io/otel | v1.42.0 | Apache-2.0 |
+| go.opentelemetry.io/otel/metric | v1.42.0 | Apache-2.0 |
 | go.opentelemetry.io/otel/sdk | v1.37.0 | Apache-2.0 |
-| go.opentelemetry.io/otel/trace | v1.41.0 | Apache-2.0 |
-| golang.org/x/sys | v0.35.0 | BSD-3-Clause |
+| go.opentelemetry.io/otel/trace | v1.42.0 | Apache-2.0 |
+| golang.org/x/sys | v0.44.0 | BSD-3-Clause |
 | golang.org/x/xerrors | v0.0.0-20191204190536-9bdfabe68543 | BSD-3-Clause |
 | google.golang.org/protobuf | v1.36.7 | BSD-3-Clause |
 | gopkg.in/check.v1 | v1.0.0-20201130134442-10cb98267c6c | BSD-2-Clause |
