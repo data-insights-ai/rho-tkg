@@ -22,7 +22,8 @@ func hopSchema(token uint16) segment.Schema {
 }
 
 // writeHOP writes a synthday-shaped HOP workload through the real create
-// doors of an in-memory graph and returns the stored rows (ByType).
+// doors of an in-memory graph and returns the stored rows (ByType). The
+// caller closes the graph.
 func writeHOP(tb testing.TB, sz synthhop.Size, schema synthhop.Schema) (*graph.Graph, []*types.Relationship) {
 	tb.Helper()
 	ctx := context.Background()
@@ -30,7 +31,6 @@ func writeHOP(tb testing.TB, sz synthhop.Size, schema synthhop.Schema) (*graph.G
 	if err != nil {
 		tb.Fatal(err)
 	}
-	tb.Cleanup(func() { _ = g.Close() })
 	var nodes []*types.Node
 	err = synthhop.Generate(synthhop.Config{Size: sz, Schema: schema, Workload: synthhop.WorkloadHOP},
 		func(n synthhop.Node) error {
@@ -59,7 +59,8 @@ func writeHOP(tb testing.TB, sz synthhop.Size, schema synthhop.Schema) (*graph.G
 func TestRealKernelRows_HashesAndFieldsSurvive(t *testing.T) {
 	sz := synthhop.Size{Name: "t", HOP: 3000, Pairs: 900, Hosts: 120, Actors: 30}
 	for _, schema := range []synthhop.Schema{synthhop.SchemaP6, synthhop.SchemaLegacy} {
-		_, rows := writeHOP(t, sz, schema)
+		g, rows := writeHOP(t, sz, schema)
+		defer func() { _ = g.Close() }()
 		data, err := segment.Encode(hopSchema(rows[0].TypeToken().Value()), rows, segment.Options{})
 		if err != nil {
 			t.Fatal(err)

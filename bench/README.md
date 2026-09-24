@@ -53,6 +53,26 @@ the 10-100x gaps typically reported in the ANN literature at 100k-1M+ point
 scale, where the O(n) vs O(log n) gap widens substantially. Run
 `go test -bench=BenchmarkANNSearch10k -benchtime=200x ./bench` to reproduce.
 
+## ADR-0011 S0 baseline (a measurement test, not a benchmark)
+
+`segment_baseline_test.go` records the row store's cost for the column-segment
+gates: a synthday-shaped workload (`internal/synthhop`: the ai-soc mix of HOP,
+ORIGIN, VATTR and CATTR at the three synthday sizes, or HOP alone) written
+through `g.Rels().AddWithTx` into memory, badger (ai-soc's `engine.OpenAt`
+config) and badger lean; it reports resident B/rel, objects/rel, on-disk B/rel,
+HOP `ByType`/`ForEachByType` rows/s and write time. It is skipped unless
+`RHO_TKG_SEGMENT_BASELINE` is set (a tiny smoke variant always runs):
+
+```bash
+RHO_TKG_SEGMENT_BASELINE=790k,3.15M,12.6M RHO_TKG_SEGMENT_BASELINE_REPEAT=2 \
+  go test -run 'TestSegmentBaseline$' -v -count=1 -timeout 0 ./bench
+```
+
+Options: `RHO_TKG_SEGMENT_BASELINE_MODES` (memory,badger,lean),
+`RHO_TKG_SEGMENT_BASELINE_WORKLOADS` (mix,hop), `RHO_TKG_SEGMENT_BASELINE_DIR`.
+The 12.6 M badger configurations take ~1 min each and ~4 GB of heap. Measured
+numbers live in CHANGELOG and ADR-0011 §6.
+
 ## Running
 
 ```bash

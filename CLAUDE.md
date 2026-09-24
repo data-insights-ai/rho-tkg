@@ -206,6 +206,11 @@ Each sub-API package declares a local `Ops` interface listing only the methods i
 | `internal/generatedcreate` | `Proof` / `FreshGraphID()` — the unforgeable internal token a core create path passes to the Store's duplicate-check fast path immediately after minting a fresh snowflake ID. Internal by design: a public caller cannot name the type, so the fast path can never become a public duplicate-check bypass. |
 | `internal/grapherr` | Nil/unwired sentinels shared by the façade and every wrapper (`ErrNilGraph`, `ErrNilCallback`) plus `IsNil` (typed-nil-aware). |
 | `internal/integrity` | Pure SHA-256 hash primitives — `ComputeNodeHash`, `ComputeRelHash`, `appendProperties`, `appendPropertyValue` (a one-line forward — the actual per-type-tag property-value switch lives in `pkg/types.appendPropertyValueHashBytes`; Rule 3 branch-coverage for that switch belongs to `pkg/types/property_hash_test.go`, not this package). Five fixed-vector hash anchors lock the on-disk hash format. |
+| `internal/segment` | ADR-0011 column-segment codec (S1; not yet wired into any store): `Encode(Schema, rows, Options)` / `Open(bytes)` for one declared relationship type — pages of 4,096 rows, frame-of-reference bit-packed int columns with per-page transforms, dictionary/plain/hex32 string columns, a fallback column (entity-wire tags, `storeutil.MarshalPropertySlice`) for values outside the declared kinds, node table + out/in CSR, ID index, CRC32C per section, one SHA-256 root per `IntegrityBlockRows` (power of two 1..4096, default 64, written in the footer). The per-row hash is recomputed, never stored; `Encode` re-decodes every row and refuses (`ErrInvalidRow` / `ErrHashMismatch`) unless it round-trips bit-exactly. `Open` is a trust boundary: versioned magic, fail-closed `ErrUnsupportedVersion`, `*CorruptError` naming the section, no allocation sized from a claimed count. |
+
+### Module-root `internal/`
+
+- `internal/synthhop` — deterministic synthday-shaped relationship workload (the ai-soc mix of HOP/ORIGIN/VATTR/CATTR or HOP alone, legacy and post-P6 HOP schemas, the three ADR-0011 sizes). Measurement/test support only: imported by `bench/` (the S0 baseline) and the segment scale tests, never by library code.
 
 ### Configuration
 

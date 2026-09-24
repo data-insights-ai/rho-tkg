@@ -2,7 +2,9 @@ package segment
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"hash/crc32"
@@ -123,7 +125,7 @@ func corpus(tb testing.TB, n int, seed uint64) []*types.Relationship {
 		case 1:
 			props["s"] = int64(42)
 		case 2:
-			props["extra"] = []any{"x", int8(3), map[string]any{"k": 1.5}}
+			props["extra"] = []any{"x", int64(3), map[string]any{"k": 1.5, "u": uint64(9)}}
 			props["tags"] = []string{"a", "b"}
 		case 3:
 			props["when"] = types.TemporalValue{Kind: types.TemporalDate, Value: "2026-09-24"}
@@ -337,8 +339,8 @@ func TestHashes_RecomputedRowHashEqualsStoredHashAtEveryBlockSize(t *testing.T) 
 					t.Fatalf("VerifyGroup(%d): %v", gi, err)
 				}
 			}
-			if err := seg.VerifyGroup(groups); !errors.Is(err, ErrInvalidOptions) {
-				t.Fatalf("VerifyGroup past the end: %v, want ErrInvalidOptions", err)
+			if err := seg.VerifyGroup(groups); !errors.Is(err, ErrOutOfRange) {
+				t.Fatalf("VerifyGroup past the end: %v, want ErrOutOfRange", err)
 			}
 			if err := seg.Verify(); err != nil {
 				t.Fatalf("Verify: %v", err)
@@ -439,6 +441,18 @@ func TestFallback_MixedKindColumnKeepsKindsAndHashes(t *testing.T) {
 	}
 }
 
+// TestFallback_ValueTheEntityWireCannotReproduceIsRefused pins the seal's
+// refusal rule: the fallback column uses the entity wire, which today widens
+// a nested small integer ([]any{int16(2)} reads back as int64 — the same
+// happens to such a row in the badger store). The encoder must refuse the row
+// rather than seal a value whose hash would change.
+func TestFallback_ValueTheEntityWireCannotReproduceIsRefused(t *testing.T) {
+	rows := []*types.Relationship{mkRow(t, 1, 0, 1, 2, map[string]any{"nested": []any{int16(2)}}, nil, nil)}
+	if _, err := Encode(testSchema(), rows, Options{}); !errors.Is(err, ErrInvalidRow) {
+		t.Fatalf("nested int16: %v, want ErrInvalidRow", err)
+	}
+}
+
 func TestEdge_EmptySegment(t *testing.T) {
 	seg := mustOpen(t, mustEncode(t, nil, Options{}, PageRows))
 	if seg.Len() != 0 {
@@ -447,7 +461,7 @@ func TestEdge_EmptySegment(t *testing.T) {
 	if got := scanAll(t, seg); len(got) != 0 {
 		t.Fatalf("scanned %d rows", len(got))
 	}
-	if _, err := seg.Row(0); !errors.Is(err, ErrInvalidOptions) {
+	if _, err := seg.Row(0); !errors.Is(err, ErrOutOfRange) {
 		t.Fatalf("Row(0) on empty: %v", err)
 	}
 	if ids, err := seg.Lookup(1); err != nil || len(ids) != 0 {
@@ -482,7 +496,7 @@ func TestEdge_MaxBlockSizeWithPartialLastGroup(t *testing.T) {
 			t.Fatalf("group %d: %v", gi, err)
 		}
 	}
-	if err := seg.VerifyGroup(2); !errors.Is(err, ErrInvalidOptions) {
+	if err := seg.VerifyGroup(2); !errors.Is(err, ErrOutOfRange) {
 		t.Fatalf("group 2: %v", err)
 	}
 }
@@ -508,12 +522,21 @@ func TestEncode_RejectsInvalidInput(t *testing.T) {
 		"empty column name":  {Schema{TypeName: testType, TypeToken: testToken, Columns: []Column{{"", KindInt64}}}, good, ErrInvalidSchema},
 		"unsupported kind":   {Schema{TypeName: testType, TypeToken: testToken, Columns: []Column{{"a", Kind(15)}}}, good, ErrInvalidSchema},
 		"kind zero":          {Schema{TypeName: testType, TypeToken: testToken, Columns: []Column{{"a", 0}}}, good, ErrInvalidSchema},
+		"too many columns":   {Schema{TypeName: testType, TypeToken: testToken, Columns: manyColumns(MaxColumns + 1)}, good, ErrInvalidSchema},
 	}
 	for name, tc := range cases {
 		if _, err := Encode(tc.schema, tc.rows, Options{}); !errors.Is(err, tc.want) {
 			t.Errorf("%s: %v, want %v", name, err, tc.want)
 		}
 	}
+}
+
+func manyColumns(n int) []Column {
+	cols := make([]Column, n)
+	for i := range cols {
+		cols[i] = Column{Name: fmt.Sprintf("c%d", i), Kind: KindInt64}
+	}
+	return cols
 }
 
 func noIntegrity(tb testing.TB) *types.Relationship {
@@ -703,4 +726,55 @@ func resealSection(tb testing.TB, data []byte, s sectionInfo) {
 	tb.Helper()
 	binary.LittleEndian.PutUint32(data[s.crcAt:], crc32.Checksum(data[s.offset:s.offset+s.length], castagnoli))
 	resealFooter(tb, data)
+}
+
+// TestRoot_IsSHA256OverGroupRootsOfStoredHashes recomputes the witness
+// independently of the writer: group roots over the stored hashes in segment
+// order, the segment root over the group roots.
+func TestRoot_IsSHA256OverGroupRootsOfStoredHashes(t *testing.T) {
+	rows := corpus(t, 300, 13)
+	want := byKey(rows)
+	seg := mustOpen(t, mustEncode(t, rows, Options{IntegrityBlockRows: 16}, PageRows))
+	var roots, leaf []byte
+	for i, g := range scanAll(t, seg) {
+		h, err := hex.DecodeString(want[rowKey{g.ID(), g.Version()}].Integrity().Hash)
+		if err != nil {
+			t.Fatal(err)
+		}
+		leaf = append(leaf, h...)
+		if (i+1)%16 == 0 || i == len(rows)-1 {
+			sum := sha256.Sum256(leaf)
+			roots, leaf = append(roots, sum[:]...), leaf[:0]
+		}
+	}
+	if got, exp := seg.Root(), sha256.Sum256(roots); got != exp {
+		t.Fatalf("Root %x, want %x", got, exp)
+	}
+}
+
+func TestScan_StopsWhenTheCallbackSaysSo(t *testing.T) {
+	seg := mustOpen(t, mustEncode(t, corpus(t, 200, 14), Options{}, 16))
+	n := 0
+	if err := seg.Scan(func(int, *types.Relationship) bool { n++; return n < 5 }); err != nil {
+		t.Fatal(err)
+	}
+	if n != 5 {
+		t.Fatalf("callback ran %d times, want 5", n)
+	}
+	if _, err := seg.Row(-1); !errors.Is(err, ErrOutOfRange) {
+		t.Fatalf("Row(-1): %v", err)
+	}
+	if err := seg.VerifyGroup(-1); !errors.Is(err, ErrOutOfRange) {
+		t.Fatalf("VerifyGroup(-1): %v", err)
+	}
+}
+
+func TestCorruptError_NamesSectionAndReason(t *testing.T) {
+	err := error(&CorruptError{Section: "col:end", Reason: "page 3 truncated"})
+	if !errors.Is(err, ErrCorrupt) {
+		t.Fatal("CorruptError does not unwrap to ErrCorrupt")
+	}
+	if msg := err.Error(); msg != "segment: corrupt col:end: page 3 truncated" {
+		t.Fatalf("message %q", msg)
+	}
 }

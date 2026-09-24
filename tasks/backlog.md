@@ -13,11 +13,12 @@ concurrency edge / perf cliff / contract inconsistency. LOW = smell / doc drift.
 TEST-GAP = real behavior unverified (may hide a bug). FEATURE = plausible
 capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 
-**Remaining open work:** no CRITICAL or HIGH items. Open:
+**Remaining open work:** no CRITICAL items; one HIGH (item 3, found 2026-09-24). Open:
 
-0. **Column segments on NVMe (ADR-0011, accepted 2026-09-24)** — FEATURE: steps S0–S7 in `docs/adr/0011-column-segments.md` §6, each with a failing test first and a gate measured at the three synthday sizes; integrity block size configurable (`IntegrityBlockRows`, default 64). Goal: resident memory independent of the day size for declared bulk relationship types (~744 B/rel today).
+0. **Column segments on NVMe (ADR-0011, accepted 2026-09-24)** — FEATURE: steps S0–S7 in `docs/adr/0011-column-segments.md` §6, each with a failing test first and a gate measured at the three synthday sizes; integrity block size configurable (`IntegrityBlockRows`, default 64). Goal: resident memory independent of the day size for declared bulk relationship types (~744 B/rel today). **Progress:** S0 done (baseline harness `bench/segment_baseline_test.go`; memory 718–723 B/rel, badger lean does not reproduce 191 — measures 301), S1 done (codec `pkg/graph/internal/segment`; 22–25 B/HOP on disk; decode of full rows below the memory store's zero-copy scan rate, columns alone 24–28 M rows/s). Next: S2.
 1. **Import-under-a-scope** (improvement-not-bug, deferred locking)
 2. **BACKLOG 22** — six TEST-GAP research items (from the retired `.harden/` ledger)
+3. **Entity wire widens nested small integers** — HIGH (silent hash-chain false negative): a relationship property `[]any{int16(2)}` reads back from badger as `[]any{int64(2)}` (observed: nested int16 → int64, nested uint8 → uint64; the node wire is untested but shares the code), so the relationship fails `VerifyRelChain` after a reopen (probe 2026-09-24: add, close, reopen → `false`). Nested temporals got a typed envelope in 4.36.0; nested integers need the same, or the allowlist must canonicalize them to int64/uint64 at the door. The ADR-0011 fallback column inherits the wire, so `segment.Encode` refuses such rows until this is fixed (`TestFallback_ValueTheEntityWireCannotReproduceIsRefused`). UNDECIDED: envelope vs door canonicalization.
 
 ---
 
