@@ -25,12 +25,43 @@ import (
 //
 // LAZY, RAM-only: nil until the first pinned scan builds it (mirrors the
 // relValidIdx precedent), rebuilt after a Close/reopen on next use. The build
-// runs under idxMu.Lock (no writer/flush can progress — flush takes idxMu.RLock,
-// writers idxMu.Lock), reading each committed row's wire tokens directly (no
-// property decode, no registry resolve) plus the pending write-buffer overlay,
-// so it captures a consistent current+history snapshot. Afterwards every
+// runs under idxMu.Lock (no writer can progress and no NEW flush can park —
+// flush takes idxMu.RLock only for its snapshot+swap, so an already-parked flush
+// still commits during the build), reading the write-buffer overlay (flushing ++
+// pending) FIRST and then each committed row's wire tokens directly (no property
+// decode, no registry resolve), so it captures a complete current+history
+// snapshot (lesson 64 ordering). Afterwards every
 // label-acquiring door keeps it fresh incrementally; removal/delete doors are
 // no-ops (append-only).
+
+// enqueueVersionAgainstLazyBuilds enqueues a history-version op for a door that
+// does not hold idxMu across its write (PutNodeVersion / PutRelVersion), keeping
+// the lazily built RAM structures that must see every version row — the K1
+// membership sidecars and the belief watermarks — complete. built reports
+// whether any of them is built; record updates them (caller-provided, run under
+// idxMu.Lock); enqueue buffers the op.
+//
+// A lazy build holds idxMu.Lock from its overlay capture until it marks itself
+// built. Reading the flag without idxMu let a row be enqueued behind a running
+// build's overlay capture while the flag still read false: the build never saw
+// it and the door never recorded it, so the member was lost for the life of the
+// store. Checking the flag and enqueueing under idxMu.RLock closes that: the row
+// is either enqueued before the build starts (its overlay capture or Badger scan
+// sees it) or after it finished (record runs). The not-built path — import and
+// replica bootstrap before any pinned scan — stays on the shared lock.
+func (bs *Store) enqueueVersionAgainstLazyBuilds(built func() bool, record func(), enqueue func() error) error {
+	bs.idxMu.RLock()
+	if !built() {
+		err := enqueue()
+		bs.idxMu.RUnlock()
+		return err
+	}
+	bs.idxMu.RUnlock()
+	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
+	record()
+	return enqueue()
+}
 
 // recordLabelMemberLocked records node id as an ever-member of tok with the
 // given acquisition transaction time, keeping the lowest firstTxFrom seen.
@@ -172,7 +203,7 @@ func decodeRelWireForMembership(val []byte) (storepkg.RelWire, bool) {
 }
 
 // ensureLabelTxMembersBuilt lazily builds the label membership sidecar from the
-// committed node/history keyspaces + the pending write-buffer overlay.
+// write-buffer overlay (read first) + the committed node/history keyspaces.
 func (bs *Store) ensureLabelTxMembersBuilt() error {
 	if bs.labelTxMembersBuilt.Load() {
 		return nil
@@ -184,6 +215,37 @@ func (bs *Store) ensureLabelTxMembersBuilt() error {
 	}
 	members := make(map[uint16]map[types.NodeID]types.Instant)
 	bs.labelTxMembers = members
+
+	// Write-buffer overlay FIRST, Badger View SECOND (lesson 64). idxMu.Lock
+	// keeps writers out, but a flush that already parked `pending` into
+	// `flushing` has released its idxMu.RLock and still commits to Badger and
+	// clears `flushing` while this build runs. Read the other way round, a row
+	// that flush commits between the View and the overlay read is in neither
+	// and the member is lost for the life of the store (the build never
+	// repeats). Overlay first: a row committed before the capture is in the
+	// later View; a row committed after it was in the overlay. Deletes are
+	// ignored — membership is append-only (a deleted node stays a historical
+	// member).
+	bs.rangePending(func(k string, op writeOp) {
+		if op.opType == writeOpDelete || len(op.value) == 0 {
+			return
+		}
+		kb := []byte(k)
+		if len(kb) == 0 {
+			return
+		}
+		switch kb[0] {
+		case storepkg.KeyNode, storepkg.KeyHistNode:
+		default:
+			return
+		}
+		nid := types.NodeID(storepkg.ParseIDFromKey(kb, 1))
+		w, ok := decodeNodeWireForMembership(op.value)
+		if !ok {
+			return
+		}
+		bs.recordNodeWireMembersLocked(nid, &w)
+	})
 
 	// Committed rows: scan the current-node (0x01) and node-history (0x07)
 	// keyspaces, decoding only the wire label tokens + TxFrom.
@@ -215,30 +277,9 @@ func (bs *Store) ensureLabelTxMembersBuilt() error {
 		bs.labelTxMembers = nil // failed build — retry on next call
 		return scanErr
 	}
-
-	// Pending write-buffer overlay: unflushed node/history SET rows. Deletes are
-	// ignored — membership is append-only (a deleted node stays a historical
-	// member). Under idxMu.Lock no writer/flush can mutate these maps.
-	bs.rangePending(func(k string, op writeOp) {
-		if op.opType == writeOpDelete || len(op.value) == 0 {
-			return
-		}
-		kb := []byte(k)
-		if len(kb) == 0 {
-			return
-		}
-		switch kb[0] {
-		case storepkg.KeyNode, storepkg.KeyHistNode:
-		default:
-			return
-		}
-		nid := types.NodeID(storepkg.ParseIDFromKey(kb, 1))
-		w, ok := decodeNodeWireForMembership(op.value)
-		if !ok {
-			return
-		}
-		bs.recordNodeWireMembersLocked(nid, &w)
-	})
+	if bs.historyScanTestHook != nil {
+		bs.historyScanTestHook()
+	}
 
 	bs.labelTxMembersBuilt.Store(true)
 	return nil
@@ -256,6 +297,28 @@ func (bs *Store) ensureRelTypeTxMembersBuilt() error {
 	}
 	members := make(map[uint16]map[types.RelID]types.Instant)
 	bs.relTypeTxMembers = members
+
+	// Overlay first, View second — see ensureLabelTxMembersBuilt.
+	bs.rangePending(func(k string, op writeOp) {
+		if op.opType == writeOpDelete || len(op.value) == 0 {
+			return
+		}
+		kb := []byte(k)
+		if len(kb) == 0 {
+			return
+		}
+		switch kb[0] {
+		case storepkg.KeyRel, storepkg.KeyHistRel:
+		default:
+			return
+		}
+		rid := types.RelID(storepkg.ParseIDFromKey(kb, 1))
+		w, ok := decodeRelWireForMembership(op.value)
+		if !ok {
+			return
+		}
+		bs.recordRelWireMembersLocked(rid, &w)
+	})
 
 	scanErr := bs.db.View(func(txn *badgerv4.Txn) error {
 		for _, prefix := range [][]byte{{storepkg.KeyRel}, {storepkg.KeyHistRel}} {
@@ -285,27 +348,9 @@ func (bs *Store) ensureRelTypeTxMembersBuilt() error {
 		bs.relTypeTxMembers = nil
 		return scanErr
 	}
-
-	bs.rangePending(func(k string, op writeOp) {
-		if op.opType == writeOpDelete || len(op.value) == 0 {
-			return
-		}
-		kb := []byte(k)
-		if len(kb) == 0 {
-			return
-		}
-		switch kb[0] {
-		case storepkg.KeyRel, storepkg.KeyHistRel:
-		default:
-			return
-		}
-		rid := types.RelID(storepkg.ParseIDFromKey(kb, 1))
-		w, ok := decodeRelWireForMembership(op.value)
-		if !ok {
-			return
-		}
-		bs.recordRelWireMembersLocked(rid, &w)
-	})
+	if bs.historyScanTestHook != nil {
+		bs.historyScanTestHook()
+	}
 
 	bs.relTypeMembersBuilt.Store(true)
 	return nil

@@ -8,6 +8,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **HIGH — badger: a pinned `ByLabel` / `ByType` scan could silently and permanently omit a
+  node or relationship.** A temporal `Nodes.ByLabel` / `Rels.ByType` scan on badger takes its
+  candidates from the transaction-time membership sidecar, which is built once, lazily, on the
+  first such scan. The build read Badger first and the write buffer second. A flush that had
+  already moved rows into `flushing` could commit them and clear `flushing` between the two
+  reads, so those rows were in neither. The build never runs again, so every entity whose label
+  or type then survived only in a history row or a deleted row (deleted, relabelled, backfilled)
+  stayed missing from every pinned scan until the store was reopened. This was the cause of the
+  intermittent `TestBitemporalOracle_BadgerCommitWindow` failure: 15 of about 1,350 runs failed
+  on this branch (4 of about 350 on v4.37.2), always under parallel load, never with
+  `-cpu 1`. Each failure was a `Nodes.ByLabel` / `Rels.ByType` door missing an entity the
+  oracle expected. With logging added to the build, all 4 dropped nodes in 4 failing runs were
+  rows that the flush committed during the build's Badger scan. The build now reads the write
+  buffer before it opens the Badger view (lesson 64 ordering), for both the label and the
+  rel-type sidecar. A second hole with the same result is also closed. `PutNodeVersion` /
+  `PutRelVersion` checked the "sidecar built" flag without holding `idxMu`, so a version
+  written during a build could land after the build's buffer read while the flag still said
+  "not built". Neither side then recorded it. Both version doors now check the flag and buffer
+  the row under `idxMu`. Red before, all four new store tests
+  (`TestLabelTxMembership_NoDropAcrossFlushCommit`,
+  `TestRelTypeTxMembership_NoDropAcrossFlushCommit`,
+  `TestLabelTxMembership_NoDropForVersionInsertDuringBuild`,
+  `TestRelTypeTxMembership_NoDropForVersionInsertDuringBuild`). They force each interleaving
+  with `historyScanTestHook`.
+- **badger: two more readers read Badger before the write buffer (same window, found by
+  auditing every `rangePending` caller).** (1) The lazy belief-watermark builds
+  (`NodeBeliefWatermark` / `RelBeliefWatermark`) could miss a history row whose flush
+  committed during the build. Take a correction row whose `TxFrom` is newer than the untouched
+  current row. If the build missed it, the watermark stayed at the current row's `TxFrom` for
+  the life of the store. That opened the current-row fast path in `nodeCurrentAnswersAt` /
+  `relCurrentAnswersAt`, which exists to stay closed in exactly that case. (2) The orphan-rel
+  index purge (`PurgeOrphanRelationshipIndexes`, exact erasure) listed the rel's index keys
+  from Badger first and checked `flushing` later. An index key committed in between got no
+  delete and stayed on disk as an orphan. Both now read the buffer first.
+  `relationshipIndexKeysForRel` returns buffered keys too. Red before:
+  `TestNodeBeliefWatermark_NoDropAcrossFlushCommit` (watermark 100, want 300),
+  `TestRelBeliefWatermark_NoDropAcrossFlushCommit`, and
+  `TestPurgeOrphanRelIndexes_NoOrphanAcrossFlushCommit` (3 index keys left on disk).
+
 - **TEST — tiered tests could mint the same ID twice.** `tieredNodeGen(t)` / `tieredRelGen(t)`
   built a fresh snowflake generator on every call, and tests call them inline, so two calls in
   the same microsecond returned the same ID.

@@ -2367,14 +2367,29 @@ itself an exemption.
 - **Rule (audit recipe):** when a rare, load-dependent oracle failure will not
   reproduce, stop rerunning and instead enumerate every reader that merges
   the write-buffer overlay with a store snapshot and CHECK THE CAPTURE ORDER
-  of each: `grep -rn 'pendingHistoryVersionOverlay\|pendingHistoryIDOverlay\|snapshotHistoryOverlay' pkg/graph/store/badger/ | grep -v _test`
+  of each: `grep -rn 'pendingHistoryVersionOverlay\|pendingHistoryIDOverlay\|snapshotHistoryOverlay\|rangePending(\|lookupPending(' pkg/graph/store/badger/ | grep -v _test`
   — each hit must capture BEFORE its `db.View`/`NewTransaction`, or receive a
-  pre-captured snapshot.
+  pre-captured snapshot. (The first version of this grep left out
+  `rangePending`, and five readers that read Badger first survived the audit:
+  the K1 membership-sidecar builds (the cause of the 2026-09-24 flake), the
+  belief-watermark builds, and `relationshipIndexKeysForRel`.)
+- **Rule (lazy builds):** a structure built ONCE and then maintained
+  incrementally turns a transient drop into a permanent one: a row the build
+  misses is never looked at again. Holding `idxMu.Lock` during the build keeps
+  writers out but not the commit of a flush that parked before the build began.
+  And a door that enqueues without `idxMu` and decides from an atomic "built"
+  flag whether to record is a check-then-act against the build: read the flag
+  and enqueue under `idxMu.RLock` (`enqueueVersionAgainstLazyBuilds`).
 - **Honesty note:** the observed mismatch was on point/set doors while the
   flawed ordering was in the as-of walk, so the attribution is PLAUSIBLE, not
   proven (the artifact is preserved in the failure log recorded in this
   repo's CHANGELOG entry). The fix is justified by inspection regardless; the
   observation stays flagged rather than silently explained away.
+  2026-09-24 follow-up: the same symptom (an entity missing from
+  `ByType`/`ByLabel`) reproduced in about 1% of loaded runs. Logging added to the
+  sidecar build tied all 4 dropped nodes to rows a flush committed during that
+  build (CHANGELOG, Unreleased), so the earlier `ByType` observation was most
+  likely the sidecar build and not the as-of walk.
 
 ## 75. A Green Workflow Must Mean Its Gates Passed
 
