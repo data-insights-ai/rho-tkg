@@ -428,6 +428,12 @@ func (c *Core) relCapabilityVisibleAtTxTime(r *types.Relationship, txTime types.
 	return relVisibleAtTxTime(r, txTime)
 }
 
+// normalizeTemporalVisibleAtTxTime rewinds tm to the belief state as of txTime:
+// a TxTo or delete recorded after txTime is removed. "ValidTo == DeletedAt"
+// marks a ValidTo the delete itself wrote (the row was open, or its scheduled
+// close was clamped to the delete), so it reopens; any other ValidTo is a close
+// recorded before the delete and is kept. The delete doors guarantee the marker
+// is unambiguous (stampDeleteTombstone / deleteInstantClearOfCloses in core).
 func normalizeTemporalVisibleAtTxTime(tm *types.TemporalMetadata, txTime types.Instant) {
 	if tm == nil {
 		return

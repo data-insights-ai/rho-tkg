@@ -2,6 +2,7 @@ package core
 
 import (
 	"errors"
+	"math"
 	"sort"
 
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
@@ -73,11 +74,70 @@ func (c *Core) deleteInstantForNodeCascade(current *types.Node, outRels, inRels 
 	for _, r := range inRels {
 		at = validInstantAfter(at, c.relValidFrom(r))
 	}
-	return at
+	tms := make([]*types.TemporalMetadata, 0, 1+len(outRels)+len(inRels))
+	tms = append(tms, current.Temporal())
+	for _, r := range outRels {
+		tms = append(tms, r.Temporal())
+	}
+	for _, r := range inRels {
+		tms = append(tms, r.Temporal())
+	}
+	return c.deleteInstantClearOfCloses(at, tms...)
 }
 
 func (c *Core) deleteInstantForRelationship(current *types.Relationship) types.Instant {
-	return validInstantAfter(c.now(), c.relValidFrom(current))
+	return c.deleteInstantClearOfCloses(validInstantAfter(c.now(), c.relValidFrom(current)), current.Temporal())
+}
+
+// deleteInstantClearOfCloses moves a delete instant past any recorded close
+// (ValidTo) it would coincide with. The pinned-read normalizers
+// (normalizeTemporalVisibleAtTxTime, core and memory store) read
+// "ValidTo == DeletedAt" as "the delete wrote this ValidTo" and reopen the row
+// for a pin before the delete. stampDeleteTombstone keeps a close at or before
+// the delete instant, so a close landing exactly ON it would be indistinguishable
+// from a delete-stamped one; a later instant is not. Every row the delete
+// tombstones shares one instant, so the loop runs until no row collides.
+//
+// The replacement instant comes from c.now(), so it is reserved on the
+// transaction clock and no later write can be stamped with it. When `at` was
+// already pushed past the clock by validInstantAfter (an explicit future
+// valid-from), c.now() is below it and the candidate falls back to at+1: that
+// path hands out unreserved instants today regardless of this helper (see the
+// tasks/backlog.md "temporal semantics review 2026-09-24" section).
+func (c *Core) deleteInstantClearOfCloses(at types.Instant, tms ...*types.TemporalMetadata) types.Instant {
+	for moved := true; moved && at < math.MaxInt64; {
+		moved = false
+		for _, tm := range tms {
+			if tm != nil && tm.ValidTo == at {
+				at = max(at+1, c.now())
+				moved = true
+			}
+		}
+	}
+	return at
+}
+
+// stampDeleteTombstone turns tm (the final version of an entity being hard
+// deleted, already a private copy) into its delete tombstone at instant at.
+// It is the ONE place the tombstone temporal stamps are decided; every delete
+// door (standalone, tx, batch, ingest strong and concurrent mode, node cascade)
+// funnels through deleteNodeLocked / deleteRelationshipInternal, which call it.
+//
+// ValidTo is stamped only when the row is still open (0) or scheduled to close
+// after the delete (clamped to the delete). A close already recorded at or
+// before the delete is kept: overwriting it rewrote valid-time history, and a
+// reader pinned before the delete then reset the delete-stamped ValidTo to 0,
+// reporting the closed entity as open-ended (a later write changing a
+// historical answer). DeletedAt and TxTo are always the delete instant.
+func stampDeleteTombstone(tm *types.TemporalMetadata, at types.Instant) {
+	tm.DeletedAt = at
+	if tm.ValidTo == 0 || tm.ValidTo > at {
+		tm.ValidTo = at
+	}
+	if tm.TxFrom == 0 {
+		tm.TxFrom = at
+	}
+	tm.TxTo = at
 }
 
 func (c *Core) nodeCurrentVersionStart(n *types.Node) types.Instant {
@@ -324,7 +384,8 @@ func versionVisibleAtTx(tm *types.TemporalMetadata, txAt types.Instant) bool {
 // txAt. txAt == 0 returns chain unchanged (no allocation).
 //
 // Lesson 43 extended to DeletedAt (lesson 60): a hard Delete is a
-// TRANSACTION-TIME tombstone. Delete stamps DeletedAt/ValidTo/TxTo in place on
+// TRANSACTION-TIME tombstone. Delete stamps DeletedAt/TxTo (and ValidTo when the
+// row was open or closed after the delete — stampDeleteTombstone) in place on
 // the final version, so a row visible at an earlier txAt still carries
 // post-txAt delete stamps — and the delete-stamped ValidTo then fails
 // valid-time coverage in the resolver, silently rewriting history for every
