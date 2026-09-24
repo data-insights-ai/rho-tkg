@@ -478,11 +478,11 @@ func (w *columns) internNodes(d *NodeDict, nodes []int64) {
 	w.fromDict, w.toDict = make([]int64, w.n), make([]int64, w.n)
 	for i := 0; i < w.n; i++ {
 		if so := w.startOrd[i]; w.fromHash[i] != first[so] {
-			c, _ := txn.hash(uint32(w.nodeCodes[so]), w.fromHash[i]) // #nosec G115 -- a code
+			c := txn.hash(uint32(w.nodeCodes[so]), w.fromHash[i]) // #nosec G115 -- a code
 			w.fromDict[i] = int64(c) + 1
 		}
 		if eo := w.end[i]; w.toHash[i] != first[eo] {
-			c, _ := txn.hash(uint32(w.nodeCodes[eo]), w.toHash[i]) // #nosec G115 -- a code
+			c := txn.hash(uint32(w.nodeCodes[eo]), w.toHash[i]) // #nosec G115 -- a code
 			w.toDict[i] = int64(c) + 1
 		}
 	}

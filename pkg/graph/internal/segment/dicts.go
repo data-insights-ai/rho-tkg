@@ -166,20 +166,20 @@ func (t *dictTxn) node(id int64, h string) uint32 {
 	return c
 }
 
-// hash returns the code of hash h seen on node code n and whether it is the
-// node's first hash (then the rows store nothing for it).
-func (t *dictTxn) hash(n uint32, h string) (uint32, bool) {
+// hash returns the code of hash h seen on node code n (the node's first
+// hash's code when h is that hash).
+func (t *dictTxn) hash(n uint32, h string) uint32 {
 	fc := t.s.first[n]
 	if t.s.sameHash(uint64(fc), h) {
-		return fc, true
+		return fc
 	}
 	k := nodeHashKey{node: n, hash: h}
 	if c, ok := t.d.extra[k]; ok {
-		return c, false
+		return c
 	}
 	c := t.newHash(h)
 	t.d.extra[k] = c
-	return c, false
+	return c
 }
 
 // StringDict is an append-only dictionary of one declared string column's

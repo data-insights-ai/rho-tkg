@@ -615,10 +615,14 @@ func (s *Segment) endpointHash(v *rowVals, section string, i int, code int64, or
 	}
 	if s.dict != nil {
 		ds := s.dict.snap.Load()
-		if code < 0 || !ds.validHash(uint64(code-1)) {
+		if code < 1 {
+			return "", corrupt(section, "row %d endpoint-hash code %d", i, code)
+		}
+		hc := uint64(code - 1) // #nosec G115 -- code >= 1 checked above
+		if !ds.validHash(hc) {
 			return "", corrupt(section, "row %d endpoint-hash code %d of %d", i, code, ds.hashCount())
 		}
-		return ds.hashString(uint64(code - 1)), nil
+		return ds.hashString(hc), nil
 	}
 	n := int64(0)
 	if s.endpointExc.present {
