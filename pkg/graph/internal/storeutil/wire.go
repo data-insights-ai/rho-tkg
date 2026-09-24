@@ -488,7 +488,7 @@ func validatePropertyWire(p PropertyWire, index int, prev string) (types.Propert
 			return types.Property{}, fmt.Errorf("property[%d] key %q type tag: %w", index, p.Key, err)
 		}
 	}
-	if err := types.ValidatePropertyValue(p.Value); err != nil {
+	if err := validateRawPropertyWireValue(p); err != nil {
 		return types.Property{}, fmt.Errorf("property[%d] key %q raw value: %w", index, p.Key, err)
 	}
 	value, err := reconstructPropertyWireValue(p)
@@ -503,6 +503,45 @@ func validatePropertyWire(p PropertyWire, index int, prev string) (types.Propert
 		return types.Property{}, fmt.Errorf("property[%d] key %q reconstructed value install: %w", index, p.Key, err)
 	}
 	return types.Property{Key: p.Key, Value: value}, nil
+}
+
+// validateRawPropertyWireValue vets the decoded wire value before it is
+// reconstructed. An []any / map[string]any value can carry nested envelopes
+// (wire_nested_temporal.go) that sit one or two levels deeper than the values
+// they encode, so the property layer's depth limit would refuse a legitimate
+// value at the deepest accepted nesting. For those tags only the raw nesting
+// is bounded here (by the msgpack decode limit, so reconstruction recursion
+// stays bounded for in-memory wire too); the full property validation,
+// including the depth limit, runs on the reconstructed value right after.
+func validateRawPropertyWireValue(p PropertyWire) error {
+	if p.Type == ptSliceAny || p.Type == ptMapStrAny {
+		if !rawWireDepthWithin(p.Value, 0) {
+			return fmt.Errorf("%w: nesting exceeds %d levels", types.ErrMaxDepthExceeded, maxWireDecodeDepth)
+		}
+		return nil
+	}
+	return types.ValidatePropertyValue(p.Value)
+}
+
+func rawWireDepthWithin(v any, depth int) bool {
+	if depth > maxWireDecodeDepth {
+		return false
+	}
+	switch val := v.(type) {
+	case []any:
+		for _, e := range val {
+			if !rawWireDepthWithin(e, depth+1) {
+				return false
+			}
+		}
+	case map[string]any:
+		for _, e := range val {
+			if !rawWireDepthWithin(e, depth+1) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // ValidateNodeWire checks that a NodeWire can be reconstructed without

@@ -105,13 +105,63 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     (0.11–0.15 M rows/s, S0), and the column decode alone runs at 24–28 M
     rows/s — the ceiling for the columnar scan door of S5.
 
-### Known issue (found while building S1)
+### Fixed
 
-- The entity wire widens a nested small integer: a relationship holding
-  `[]any{int16(2)}` reads back from badger as `int64` and then fails
-  `VerifyRelChain` (probe: add, close, reopen, verify → false; nested uint8 likewise reads back as uint64). The segment
-  fallback uses the same wire, so `Encode` refuses such a row (pinned by
-  `TestFallback_ValueTheEntityWireCannotReproduceIsRefused`). Backlog item 3.
+- **HIGH — the entity wire lost the Go kind of values nested in an `[]any` /
+  `map[string]any`** (backlog item 3, found while building S1). A nested value
+  has no property type tag of its own, and the msgpack hop plus the historical
+  integer normalization turned `int`, `int8`, `int16`, `int32` and `uint` into
+  `int64`, `uint8` / `uint16` / `uint32` into `uint64`, `[]string` / `[]int` /
+  `[]int64` / `[]float32` / `[]float64` / `[]bool` into `[]any`,
+  `map[string]string` into `map[string]any`, a typed nil container (`[]any`,
+  `map[string]any`, `[]byte`, any typed slice or map) into `nil`, and a
+  registered custom struct into `map[string]any`. The content hash covers the
+  exact kinds, so every such entity failed `VerifyRelChain` /
+  `VerifyNodeChain` after a badger reopen (red: 90 of 115 relationships and 90
+  of 115 nodes in the reopen test), a memory-store export of one could not be
+  imported ("content does not match its integrity hash"), and the S1 segment
+  refused the row. Nested `int64`, `uint64`, `float32`, `float64`, `bool`,
+  `string`, `[]byte`, `nil` and temporals were already exact.
+  - Fix (decided 2026-09-24: keep the exact kind, never normalize at the
+    door): the nested envelope of 4.36.0 gains two markers,
+    `["\x00tkg.k", tag, payload]` (a scalar or typed container under its
+    property type tag, the payload validated exactly like a top-level property
+    of that tag), `["\x00tkg.k", tag]` (typed nil) and
+    `["\x00tkg.c", type, pointer, msgpack]` (a registered struct, with the same
+    per-value msgpack round-trip hash proof as a top-level one). The decoder
+    accepts an envelope only in the form the encoder writes (an `int64` or
+    `string` in a kind envelope, another envelope's tag, a nil payload, an
+    out-of-range or lossy payload are errors), so the mapping stays injective.
+    Kinds msgpack preserves are written raw: a value made only of those keeps
+    its exact previous bytes. Cost: about 9 bytes per enveloped value
+    (`[]any{1, 2, 3}` of Go `int` 16 → 43 bytes as a property slice).
+  - Compatibility: no `fv` bump, as for the 4.36.0 temporal envelope. Rows
+    written before this fix decode exactly as before (the widened values;
+    the original kind is not recoverable from those bytes, so their chains
+    still fail — pinned by a hex fixture from the unfixed encoder). A 4.36.x
+    binary reading a row with the new envelopes fails that row with
+    "unknown nested wire marker" instead of misreading it.
+  - Also fixed on the way (pre-existing since 4.36.0 for nested temporals):
+    checked wire validation ran the property depth limit on the raw wire value,
+    which counts the envelope's own levels, so a value at the deepest accepted
+    nesting whose leaf rides in an envelope was refused on read. For `[]any` /
+    `map[string]any` the raw value is now only depth-bounded (64, the msgpack
+    decode limit); the full validation incl. the depth limit runs on the
+    reconstructed value.
+  - The ADR-0011 fallback column inherits the fix: `segment.Encode` now seals
+    rows with nested small integers and round-trips them
+    (`TestFallback_NestedKindsRoundTrip`); the seal refusal rule is pinned
+    directly on `verifySealed`.
+  - Tests, written first and run red: every nested kind (all integer and float
+    widths at their range ends, NaN, −0, typed containers empty and nil,
+    registered struct by value and pointer) at depth 1 and 2 in both container
+    kinds through the relationship and node rows and the property-slice codec;
+    badger close/reopen with both chain verifies; memory export/import; the
+    pre-fix hex fixtures; malformed envelopes (25 shapes); a nested lossy
+    custom struct refused at write; envelopes at the maximum depth; the fuzz
+    seed corpus gains an enveloped row (`FuzzWireToRelChecked` 33 M execs /
+    60 s, `FuzzUnmarshalNodeWireWithKeys` 45 s, segment `FuzzOpenResealed`
+    45 s: clean).
 
 ## [4.36.1] - 2026-09-24
 

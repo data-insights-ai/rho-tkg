@@ -439,52 +439,69 @@ func propertyToWire(p types.Property) (PropertyWire, error) {
 			pw.Nil = true
 			return pw, nil
 		}
-		// Nested temporals inside []any / map[string]any have no type tag of
-		// their own; carry them in the reversible envelope (see
-		// wire_nested_temporal.go). Untouched when there is nothing to rewrite.
+		// Nested values inside []any / map[string]any have no type tag of
+		// their own; those whose kind msgpack would lose ride in a reversible
+		// envelope (see wire_nested_temporal.go). Untouched when there is
+		// nothing to rewrite.
 		if (tag == ptSliceAny || tag == ptMapStrAny) && nestedWireNeedsEncoding(p.Value, 0) {
-			pw.Value = encodeNestedWireValue(p.Value, 0)
+			enc, err := encodeNestedWireValue(p.Value, 0)
+			if err != nil {
+				return PropertyWire{}, err
+			}
+			pw.Value = enc
 			return pw, nil
 		}
 		pw.Value = p.Value
 		return pw, nil
 	}
 
-	typeName, pointer, ok := types.RegisteredPropertyStructWireType(p.Value)
-	if !ok {
-		return PropertyWire{}, fmt.Errorf("unregistered custom property value %T", p.Value)
-	}
-	data, err := msgpack.Marshal(p.Value)
+	data, typeName, pointer, err := encodeCustomWireValue(p.Value)
 	if err != nil {
-		return PropertyWire{}, fmt.Errorf("marshal custom property %s: %w", typeName, err)
-	}
-	decoded, err := reconstructCustomPropertyValue(data, typeName, pointer)
-	if err != nil {
-		return PropertyWire{}, fmt.Errorf("round-trip custom property %s: %w", typeName, err)
-	}
-	beforeHashable, ok := p.Value.(types.HashableValue)
-	if !ok {
-		return PropertyWire{}, fmt.Errorf("%w: custom property %s runtime value %T does not implement HashableValue", types.ErrUnsupportedValueType, typeName, p.Value)
-	}
-	before, err := hashBytesChecked(beforeHashable)
-	if err != nil {
-		return PropertyWire{}, fmt.Errorf("custom property %s source hash: %w", typeName, err)
-	}
-	afterHashable, ok := decoded.(types.HashableValue)
-	if !ok {
-		return PropertyWire{}, fmt.Errorf("%w: custom property %s decoded value %T does not implement HashableValue", types.ErrUnsupportedValueType, typeName, decoded)
-	}
-	after, err := hashBytesChecked(afterHashable)
-	if err != nil {
-		return PropertyWire{}, fmt.Errorf("custom property %s decoded hash: %w", typeName, err)
-	}
-	if !bytes.Equal(before, after) {
-		return PropertyWire{}, fmt.Errorf("custom property %s msgpack round-trip changed hash bytes", typeName)
+		return PropertyWire{}, err
 	}
 	pw.Value = data
 	pw.CustomType = typeName
 	pw.CustomPointer = pointer
 	return pw, nil
+}
+
+// encodeCustomWireValue marshals a registered custom struct value and proves
+// that its msgpack round trip keeps its hash bytes (see propertyToWire). A
+// top-level custom property and one nested in an []any / map[string]any share
+// it, so both get the same per-value proof.
+func encodeCustomWireValue(v any) (data []byte, typeName string, pointer bool, err error) {
+	typeName, pointer, ok := types.RegisteredPropertyStructWireType(v)
+	if !ok {
+		return nil, "", false, fmt.Errorf("unregistered custom property value %T", v)
+	}
+	data, err = msgpack.Marshal(v)
+	if err != nil {
+		return nil, "", false, fmt.Errorf("marshal custom property %s: %w", typeName, err)
+	}
+	decoded, err := reconstructCustomPropertyValue(data, typeName, pointer)
+	if err != nil {
+		return nil, "", false, fmt.Errorf("round-trip custom property %s: %w", typeName, err)
+	}
+	beforeHashable, ok := v.(types.HashableValue)
+	if !ok {
+		return nil, "", false, fmt.Errorf("%w: custom property %s runtime value %T does not implement HashableValue", types.ErrUnsupportedValueType, typeName, v)
+	}
+	before, err := hashBytesChecked(beforeHashable)
+	if err != nil {
+		return nil, "", false, fmt.Errorf("custom property %s source hash: %w", typeName, err)
+	}
+	afterHashable, ok := decoded.(types.HashableValue)
+	if !ok {
+		return nil, "", false, fmt.Errorf("%w: custom property %s decoded value %T does not implement HashableValue", types.ErrUnsupportedValueType, typeName, decoded)
+	}
+	after, err := hashBytesChecked(afterHashable)
+	if err != nil {
+		return nil, "", false, fmt.Errorf("custom property %s decoded hash: %w", typeName, err)
+	}
+	if !bytes.Equal(before, after) {
+		return nil, "", false, fmt.Errorf("custom property %s msgpack round-trip changed hash bytes", typeName)
+	}
+	return data, typeName, pointer, nil
 }
 
 func hashBytesChecked(v types.HashableValue) (hash []byte, err error) {

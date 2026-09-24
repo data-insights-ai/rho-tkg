@@ -401,7 +401,11 @@ is not in the manifest is deleted.
   columns the segment keeps: `rel_id`, `version`, the footer's type name, the
   endpoints, and properties with their exact Go kind. The declared schema records
   that kind. A value whose kind differs from the declared one goes to the fallback
-  column with its original wire tag, so the hash bytes are identical.
+  column with its original wire tag, so the hash bytes are identical. Values
+  nested in an `[]any` / `map[string]any` keep their exact kind too (the entity
+  wire's nested envelopes); until backlog item 3 was fixed (2026-09-24) the wire
+  widened nested small integers and the seal refused such rows — the fallback
+  now accepts them.
 - **The witness.** If the hash is only recomputed from the columns, verifying it
   against itself proves nothing. So the stored witness is a **SHA-256 root per
   64-row group**, and a segment root in the footer.

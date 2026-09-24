@@ -2380,3 +2380,18 @@ itself an exemption.
 into an unaudited log stream: findings can grow and reachable vulnerabilities
 can remain while the workflow reports success. Pin analyzer versions, document
 audited suppressions at the call site, and make the scan exit status blocking.
+
+## 76. A Type Tag Covers One Level — Test Every Kind At Depth, Through The Bytes
+
+The property wire tags the top-level value only. Values nested in `[]any` /
+`map[string]any` crossed msgpack untagged, and eight integer widths, six typed
+slices, `map[string]string`, typed nil and registered structs came back as
+other kinds for years; every such entity failed its hash chain after a reopen.
+The 4.36.0 temporal fix enveloped one kind and left the others (backlog item 3).
+
+- **Rule:** a codec round-trip test enumerates EVERY kind the allowlist accepts,
+  at depth 0, 1 and 2 in both container kinds, through the real bytes (marshal,
+  checked decode), and compares value AND Go kind (hash bytes for NaN / -0).
+- **Rule:** an envelope adds wire depth; apply the property depth limit to the
+  reconstructed value, never to the raw wire value, and bound the raw walk by
+  the decode limit instead.

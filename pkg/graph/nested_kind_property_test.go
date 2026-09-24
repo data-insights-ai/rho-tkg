@@ -24,13 +24,13 @@ func nestedKindGraphValues() map[string]any {
 	return map[string]any{
 		"int": int(-5), "int8": int8(math.MinInt8), "int16": int16(2), "int32": int32(math.MaxInt32),
 		"int64": int64(math.MinInt64),
-		"uint": uint(7), "uint8": uint8(math.MaxUint8), "uint16": uint16(2), "uint32": uint32(math.MaxUint32),
-		"uint64": uint64(math.MaxUint64),
+		"uint":  uint(7), "uint8": uint8(math.MaxUint8), "uint16": uint16(2), "uint32": uint32(math.MaxUint32),
+		"uint64":  uint64(math.MaxUint64),
 		"float32": float32(1.25), "float64": 2.5,
 		"[]string": []string{"a"}, "[]int": []int{1}, "[]int64": []int64{1}, "[]float32": []float32{1.5},
 		"[]float64": []float64{1.5}, "[]bool": []bool{true}, "[]byte": []byte{1},
 		"map[string]string": map[string]string{"a": "b"},
-		"[]string(nil)": []string(nil), "[]any(nil)": []any(nil), "map[string]any(nil)": map[string]any(nil),
+		"[]string(nil)":     []string(nil), "[]any(nil)": []any(nil), "map[string]any(nil)": map[string]any(nil),
 	}
 }
 
