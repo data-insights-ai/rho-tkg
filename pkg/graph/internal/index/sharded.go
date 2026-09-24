@@ -3,6 +3,7 @@ package index
 import (
 	"cmp"
 	"slices"
+	"sync/atomic"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 )
@@ -22,7 +23,8 @@ type EntityCache[V any] interface {
 	Peek(key snowflake.ID) (V, CacheStatus)
 	Put(key snowflake.ID, value V)
 	MarkDeleted(key snowflake.ID)
-	LoadClean(key snowflake.ID, value V)
+	LoadCleanAt(key snowflake.ID, value V, epoch uint64) bool
+	FlushEpoch() uint64
 	CollectDirty() []Entry[V]
 	MarkFlushed(flushed map[snowflake.ID]uint64)
 	Cap() int
@@ -61,7 +63,8 @@ const maxShards = 256
 // returns the sum across shards, so the configured totals round-trip.
 type ShardedCache[V any] struct {
 	shards []*Cache[V]
-	mask   uint64 // len(shards)-1; len(shards) is always a power of two
+	mask   uint64         // len(shards)-1; len(shards) is always a power of two
+	epoch  *atomic.Uint64 // ONE flush epoch for all shards — see FlushEpoch
 }
 
 // shardCount picks a power-of-two shard count >= hint, clamped to [1, maxShards].
@@ -148,7 +151,11 @@ func NewShardedCacheWithBudget[V any](
 		}
 		shards[i] = NewCacheWithBudget(c, b, sizer)
 	}
-	return &ShardedCache[V]{shards: shards, mask: uint64(n - 1)} // #nosec G115 -- n is validated positive above
+	epoch := new(atomic.Uint64)
+	for _, sh := range shards {
+		sh.epoch = epoch // before publication: no shard lock needed
+	}
+	return &ShardedCache[V]{shards: shards, mask: uint64(n - 1), epoch: epoch} // #nosec G115 -- n is validated positive above
 }
 
 // indexFor mixes the snowflake ID and routes to a shard index by the low bits of
@@ -212,6 +219,20 @@ func (s *ShardedCache[V]) MarkDeleted(key snowflake.ID) {
 
 func (s *ShardedCache[V]) LoadClean(key snowflake.ID, value V) {
 	s.shardFor(key).LoadClean(key, value)
+}
+
+// LoadCleanAt routes to the key's shard, which checks the SHARED epoch under its
+// own lock. See Cache.LoadCleanAt.
+func (s *ShardedCache[V]) LoadCleanAt(key snowflake.ID, value V, epoch uint64) bool {
+	return s.shardFor(key).LoadCleanAt(key, value, epoch)
+}
+
+// FlushEpoch returns the epoch every shard's MarkFlushed advances. It is one
+// counter, not one per shard, because a scan's Badger snapshot covers keys in
+// every shard: a flush that releases a key in shard A must invalidate that
+// snapshot for a key in shard B too. See Cache.FlushEpoch.
+func (s *ShardedCache[V]) FlushEpoch() uint64 {
+	return s.epoch.Load()
 }
 
 func (s *ShardedCache[V]) EvictForTest(key snowflake.ID) bool {

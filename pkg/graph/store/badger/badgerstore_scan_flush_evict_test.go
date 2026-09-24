@@ -509,9 +509,9 @@ func (c *hookBeforeFill[V]) before() {
 	}
 }
 
-func (c *hookBeforeFill[V]) LoadClean(id snowflake.ID, v V) {
+func (c *hookBeforeFill[V]) LoadCleanAt(id snowflake.ID, v V, epoch uint64) bool {
 	c.before()
-	c.EntityCache.LoadClean(id, v)
+	return c.EntityCache.LoadCleanAt(id, v, epoch)
 }
 
 func TestGetNode_NoStaleCacheFillAfterConcurrentFlushEvict(t *testing.T) {

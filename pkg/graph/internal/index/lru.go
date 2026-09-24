@@ -60,6 +60,7 @@ type Cache[V any] struct {
 	sizer      func(V) int64                  // value-size estimator; nil = byte budgeting off
 	hits       atomic.Int64                   // total cache hits (CacheHit + CacheDeleted)
 	misses     atomic.Int64                   // total cache misses (CacheMiss)
+	epoch      *atomic.Uint64                 // flush epoch (see FlushEpoch); shared by every shard of a ShardedCache
 }
 
 // NewCache creates an LRU cache with the given capacity.
@@ -74,6 +75,7 @@ func NewCache[V any](capacity int) *Cache[V] {
 		items:    make(map[snowflake.ID]*list.Element, capacity),
 		dirtySet: make(map[snowflake.ID]*list.Element),
 		order:    list.New(),
+		epoch:    new(atomic.Uint64),
 	}
 }
 
@@ -107,6 +109,9 @@ func (c *Cache[V]) ensureInitializedLocked() {
 	}
 	if c.order == nil {
 		c.order = list.New()
+	}
+	if c.epoch == nil {
+		c.epoch = new(atomic.Uint64)
 	}
 }
 
@@ -287,13 +292,53 @@ func (c *Cache[V]) MarkDeleted(key snowflake.ID) {
 
 // LoadClean inserts an entry loaded from Badger (not dirty, immediately evictable).
 // If the key already exists, this is a no-op (in-memory state takes precedence).
+// It does not check the flush epoch, so it is safe only where no flush can run
+// between the Badger read and the fill; stores fill through LoadCleanAt.
 func (c *Cache[V]) LoadClean(key snowflake.ID, value V) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.ensureInitializedLocked()
+	c.loadCleanLocked(key, value)
+}
 
+// FlushEpoch returns the cache's flush epoch. MarkFlushed advances it, under
+// the cache lock, BEFORE any entry turns clean — and only a clean entry can be
+// evicted. So a reader that reads the epoch, then misses the cache, then reads
+// Badger through a snapshot opened AFTER the epoch read, may trust that
+// snapshot for the missed key only while FlushEpoch still returns the value it
+// read: an unchanged epoch proves no flush committed a newer version and then
+// released it from the cache in between.
+func (c *Cache[V]) FlushEpoch() uint64 {
+	c.mu.RLock()
+	e := c.epoch
+	c.mu.RUnlock()
+	if e == nil {
+		return 0 // zero value: no MarkFlushed has run yet
+	}
+	return e.Load()
+}
+
+// LoadCleanAt is LoadClean for a value read from Badger by a snapshot opened
+// after FlushEpoch returned epoch. It fills only while the epoch is unchanged,
+// checked under the same lock MarkFlushed advances it under; otherwise the read
+// may predate a flush whose newer version this cache has already evicted, and
+// caching it would serve the replaced version to every later reader. Reports
+// whether the value was inserted.
+func (c *Cache[V]) LoadCleanAt(key snowflake.ID, value V, epoch uint64) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.ensureInitializedLocked()
+	if c.epoch.Load() != epoch {
+		return false
+	}
+	return c.loadCleanLocked(key, value)
+}
+
+// loadCleanLocked is the shared LoadClean body. Caller holds c.mu and has
+// called ensureInitializedLocked.
+func (c *Cache[V]) loadCleanLocked(key snowflake.ID, value V) bool {
 	if _, ok := c.items[key]; ok {
-		return // in-memory state takes precedence
+		return false // in-memory state takes precedence
 	}
 
 	entry := &Entry[V]{Key: key, Value: value, Size: c.entrySizeLocked(value)} // DirtyVer 0 = clean
@@ -303,6 +348,7 @@ func (c *Cache[V]) LoadClean(key snowflake.ID, value V) {
 	c.cleanCount++
 
 	c.evictClean()
+	return true
 }
 
 // CollectDirty returns a snapshot of all dirty entries without modifying state.
@@ -341,6 +387,11 @@ func (c *Cache[V]) CollectDirty() []Entry[V] {
 func (c *Cache[V]) MarkFlushed(flushed map[snowflake.ID]uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if len(flushed) == 0 {
+		return
+	}
+	c.ensureInitializedLocked()
+	c.epoch.Add(1) // BEFORE any entry turns clean — see FlushEpoch
 
 	for id, ver := range flushed {
 		el, ok := c.items[id]

@@ -454,8 +454,8 @@ func (bs *Store) RelAsOf(rid types.RelID, txTime types.Instant) (*types.Relation
 // (BACKLOG 18k). Same selection algorithm and same error contract as NodeAsOf
 // (ErrVersionNotFound on no visible version). See historyOverlaySnapshot for
 // why the overlay must be pre-captured rather than live-read per entity.
-func (bs *Store) nodeAsOfInTxn(txn *badgerv4.Txn, nid types.NodeID, txTime types.Instant, overlay historyOverlaySnapshot) (*types.Node, error) {
-	current, err := bs.getNodeInTxn(txn, nid)
+func (bs *Store) nodeAsOfInTxn(snap *scanSnapshot, nid types.NodeID, txTime types.Instant, overlay historyOverlaySnapshot) (*types.Node, error) {
+	current, err := bs.getNodeInTxn(snap, nid)
 	if err != nil && !errors.Is(err, ErrNodeNotFound) {
 		return nil, err
 	}
@@ -467,7 +467,7 @@ func (bs *Store) nodeAsOfInTxn(txn *badgerv4.Txn, nid types.NodeID, txTime types
 	var winnerVersion uint64
 	var winnerRaw []byte
 	found := false
-	scanErr := bs.reverseScanHistoryVersionInTxnSnapshot(txn, storepkg.HistNodePrefix(id), overlay, func(version uint64, val []byte) (bool, error) {
+	scanErr := bs.reverseScanHistoryVersionInTxnSnapshot(snap.anyTxn(), storepkg.HistNodePrefix(id), overlay, func(version uint64, val []byte) (bool, error) {
 		verdict, err := bs.classifyHistoryNodeValueAtTxTime(id, version, val, txTime)
 		if err != nil {
 			return false, err
@@ -500,8 +500,8 @@ func (bs *Store) nodeAsOfInTxn(txn *badgerv4.Txn, nid types.NodeID, txTime types
 }
 
 // relAsOfInTxn mirrors nodeAsOfInTxn for relationships.
-func (bs *Store) relAsOfInTxn(txn *badgerv4.Txn, rid types.RelID, txTime types.Instant, overlay historyOverlaySnapshot) (*types.Relationship, error) {
-	current, err := bs.getRelInTxn(txn, rid)
+func (bs *Store) relAsOfInTxn(snap *scanSnapshot, rid types.RelID, txTime types.Instant, overlay historyOverlaySnapshot) (*types.Relationship, error) {
+	current, err := bs.getRelInTxn(snap, rid)
 	if err != nil && !errors.Is(err, ErrRelNotFound) {
 		return nil, err
 	}
@@ -513,7 +513,7 @@ func (bs *Store) relAsOfInTxn(txn *badgerv4.Txn, rid types.RelID, txTime types.I
 	var winnerVersion uint64
 	var winnerRaw []byte
 	found := false
-	scanErr := bs.reverseScanHistoryVersionInTxnSnapshot(txn, storepkg.HistRelPrefix(id), overlay, func(version uint64, val []byte) (bool, error) {
+	scanErr := bs.reverseScanHistoryVersionInTxnSnapshot(snap.anyTxn(), storepkg.HistRelPrefix(id), overlay, func(version uint64, val []byte) (bool, error) {
 		verdict, err := bs.classifyHistoryRelValueAtTxTime(id, version, val, txTime)
 		if err != nil {
 			return false, err
@@ -605,13 +605,15 @@ func (bs *Store) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 	bs.idxMu.RLock()
 	overlay := bs.snapshotHistoryOverlay()
 	idx := 0
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	snap := newScanSnapshot(bs.db, bs.nodeCache.FlushEpoch)
+	err := func() error {
+		defer snap.close()
 		for _, nid := range liveIDs {
 			if bs.bulkAsOfScanTestHook != nil {
 				bs.bulkAsOfScanTestHook(idx)
 			}
 			idx++
-			n, err := bs.nodeAsOfInTxn(txn, nid, txTime, overlay)
+			n, err := bs.nodeAsOfInTxn(snap, nid, txTime, overlay)
 			if errors.Is(err, ErrVersionNotFound) {
 				continue
 			}
@@ -625,7 +627,7 @@ func (bs *Store) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 				bs.bulkAsOfScanTestHook(idx)
 			}
 			idx++
-			n, err := bs.nodeAsOfInTxn(txn, nid, txTime, overlay)
+			n, err := bs.nodeAsOfInTxn(snap, nid, txTime, overlay)
 			if errors.Is(err, ErrVersionNotFound) {
 				continue
 			}
@@ -635,7 +637,7 @@ func (bs *Store) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 			result = append(result, n)
 		}
 		return nil
-	})
+	}()
 	bs.idxMu.RUnlock()
 	if err != nil {
 		return nil, err
@@ -675,13 +677,15 @@ func (bs *Store) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 	bs.idxMu.RLock()
 	overlay := bs.snapshotHistoryOverlay()
 	idx := 0
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
+	snap := newScanSnapshot(bs.db, bs.relCache.FlushEpoch)
+	err := func() error {
+		defer snap.close()
 		for _, rid := range liveIDs {
 			if bs.bulkAsOfScanTestHook != nil {
 				bs.bulkAsOfScanTestHook(idx)
 			}
 			idx++
-			r, err := bs.relAsOfInTxn(txn, rid, txTime, overlay)
+			r, err := bs.relAsOfInTxn(snap, rid, txTime, overlay)
 			if errors.Is(err, ErrVersionNotFound) {
 				continue
 			}
@@ -695,7 +699,7 @@ func (bs *Store) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 				bs.bulkAsOfScanTestHook(idx)
 			}
 			idx++
-			r, err := bs.relAsOfInTxn(txn, rid, txTime, overlay)
+			r, err := bs.relAsOfInTxn(snap, rid, txTime, overlay)
 			if errors.Is(err, ErrVersionNotFound) {
 				continue
 			}
@@ -705,7 +709,7 @@ func (bs *Store) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 			result = append(result, r)
 		}
 		return nil
-	})
+	}()
 	bs.idxMu.RUnlock()
 	if err != nil {
 		return nil, err
