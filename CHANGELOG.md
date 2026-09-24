@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.36.1] - 2026-09-24
+
+### Security
+
+- Dependencies moved past versions with known vulnerabilities (govulncheck:
+  none of them was called by rho-tkg code): `github.com/klauspost/compress`
+  1.18.0 → 1.18.7 (GO-2026-5841, out-of-bounds read in s2),
+  `go.opentelemetry.io/otel` 1.41.0 → 1.42.0 (GO-2026-5158),
+  `golang.org/x/sys` 0.35.0 → 0.44.0 (GO-2026-5024). `make check` exit 0;
+  govulncheck reports no vulnerabilities. The open GitHub alert for otel ≤ 1.40.0
+  was already fixed by the move to 1.41.0 on 2026-08-04.
+
 ## [4.36.0] - 2026-09-20
 
 ### Added
