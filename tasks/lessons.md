@@ -571,7 +571,9 @@ explicit.
 
 
 
-## 35. Cascade Edit Rewrites History Rows In Place
+## 35. Cascade Edit Rewrites History Rows In Place (SUPERSEDED by 46)
+
+SUPERSEDED: the cascade is append-only since lesson 46; it never rewrites a stored row. Kept for the eclipse-sentinel and version-allocation history below.
 
 ```
 BAD:  cascade leaves overlapping history rows alone, relies on resolver

@@ -219,7 +219,7 @@ runnable example.
 | One-call backups | `g.IO().BackupTo`/`BackupDeltaTo` write deterministic, LSN-named backup files; `graph.RestoreInto` replays a full+delta set — see [Backups](#backups) |
 | Property, temporal, and vector indexes | Property equality/range lookups, high-frequency temporal buckets, and k-NN vector search — approximate HNSW by default, with an exact brute-force escape hatch (`VectorIndexOptions.UseBruteForce` via `CreateVectorIndexWithOptions`) |
 | Encryption at rest | `Config.EncryptionKey` (AES-128/192/256) encrypts every Badger-backed shard; requires `BlockCacheSize`/`IndexCacheSize` > 0 (validated at `New`, never a Badger panic) |
-| Transactions & batches | `g.Tx()` (serializable-per-entity) and `g.Batch()` (bulk ops with partial-failure reporting) |
+| Transactions & batches | `g.Tx()` (serialized against other transactions; write-through with compensating rollback — not isolated from concurrent standalone reads/writes, see [architecture](docs/architecture.md#transaction-isolation--what-v4-actually-guarantees)) and `g.Batch()` (bulk ops, atomic against readers, with partial-failure reporting) |
 | Event bus | Sync/async hooks on every mutation, for building your own indexes or side effects |
 
 ## Backups

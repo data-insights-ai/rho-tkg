@@ -54,10 +54,10 @@ type Ops interface {
 	NodesDuringTx(from, to, txAt types.Instant) ([]*types.Node, error)
 	RelsDuringTx(from, to, txAt types.Instant) ([]*types.Relationship, error)
 
-	// Cascade / timeline edit. Convenience wrapper that calls Update with
-	// tkg_valid_from / tkg_valid_to in the props map. Adjacent versions'
-	// effective intervals tile via the resolver's vEnd-from-next.ValidFrom
-	// derivation. Mid-history overlap is not handled by the MVP.
+	// Cascade / timeline edit: an append-only valid-time correction. props is
+	// a patch (nil deletes a key) applied to the state valid in each piece of
+	// [validFrom, validTo) as believed before the call; the newer belief wins
+	// on overlap at read time. See SetNodeVersionInterval on API.
 	SetNodeVersionInterval(ctx context.Context, id types.NodeID, validFrom, validTo types.Instant, props map[string]any) (*types.Node, error)
 	SetRelVersionInterval(ctx context.Context, id types.RelID, validFrom, validTo types.Instant, props map[string]any) (*types.Relationship, error)
 

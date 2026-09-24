@@ -6,6 +6,66 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **HIGH — a hard delete rewrote an already-recorded valid-time close.** Every delete
+  door (standalone, tx, batch, ingest strong and concurrent mode, node cascade) stamped
+  `ValidTo = DeletedAt = now` in place on the final row, overwriting a past close
+  (`CloseVersion(2022)`, deleted in 2026: `ValidTo` became 2026). A read pinned before the
+  delete then reset the delete-stamped `ValidTo` to 0, so the closed entity reappeared
+  open-ended: `NodeAtTx(n, 2025, pin)` returned absent before the delete and present after
+  it, and `NodeAt`/`RelsAt(2023)` changed the same way. Tombstones now stamp `ValidTo` only
+  when the row is open or closes after the delete (clamped to the delete, as before), in one
+  shared `stampDeleteTombstone`. A close landing exactly on the delete instant moves the
+  delete to a fresh reserved instant so `ValidTo == DeletedAt` keeps meaning "stamped by the
+  delete". Red before: 5 of the 6 new tests (all backends, all five doors, node and
+  relationship mirrors). Tombstones written by earlier versions are not repaired. Known
+  limitation: a close scheduled after the delete is still clamped in place, so a pin before
+  the delete sees that row open-ended.
+- **HIGH — `SetNodeVersionInterval` / `SetRelVersionInterval` copied today's values into the
+  past.** The inserted row was built from the most recent version and then patched, so every
+  property the patch did not name took its current value across the corrected interval:
+  `Add{city:X, name:A, vf:2020}`, `Update{city:Y, vf:2024}`,
+  `SetNodeVersionInterval(2021, 2022, {name:B})` made `NodeAt(2021)` return
+  `{city:Y, name:B}`. The patch is now applied to the state that was valid, as believed before
+  the call, at each instant: the interval is split where that state changes, each piece carries
+  its own version's properties and labels, and its `PrevHash` links to that version. A piece
+  where no version is valid still uses the most recent version. Rows stay append-only; reads
+  pinned before the correction are unchanged. Red before: 36 of 36 new subtests (memory,
+  badger, tiered; node and relationship). `TestCascade_MidHistoryInsertion_PrevHashLinksToTemplate`
+  became `...LinksToBase`: it asserted the old template link. Known limitation: a piece exactly
+  1 ms wide matches the eclipse sentinel (`ValidTo == ValidFrom + 1`) and is invisible to
+  valid-time reads.
+- **MEDIUM — `OutgoingRelsAt` / `IncomingRelsAt` ignored the far endpoint.** They checked
+  only the anchor node, so an edge whose other endpoint was closed or not yet valid at t was
+  returned while `Snapshot(t)`, `Diff` and `NeighborsAt(t)` hid it. Both endpoints must now
+  be valid at t (one check per distinct endpoint per call; tx mirrors included). Relationship
+  doors are now documented as EFFECTIVE (`Snapshot`, `Diff`, `NeighborsAt`,
+  `OutgoingRelsAt`, `IncomingRelsAt`: endpoint-masked) or DECLARED (`RelsAt[Tx]`,
+  `RelsDuring[Tx]`, `RelsAsOf`, `RelsRelating`, `RelsByType*`, generic `Rels()` doors with
+  `QueryOpts`: the relationship's own validity, unchanged). Cross-machine edges whose far
+  endpoint is not held locally are now hidden by these two doors, as they already were by
+  `Snapshot` and `NeighborsAt`.
+
+### Changed
+
+- **DOC — transaction isolation described as it is.** `g.Tx()` was documented as
+  "serializable per touched entity" and, in `docs/architecture.md`, as holding the graph
+  write lock; neither is true since v4.1.0. A transaction is serialized against other
+  transactions and batches only: its writes are visible to concurrent readers before
+  `Commit`, and `Rollback` restores pre-transaction snapshots, overwriting a standalone
+  write that landed on the same entity between two tx calls (reproduced: the standalone
+  write is lost). README, AGENTS.md, `docs/architecture.md` and the `BeginTx` comment now
+  say so. No behavior change.
+- **DOC — stale cascade descriptions.** `docs/architecture.md`, the `temporal.API` interface
+  comment and lesson 35 (now marked superseded by 46) described the cascade as rewriting history
+  rows in place; it is append-only.
+- **DOC — durability and crash semantics.** `docs/persistence.md` states what an
+  acknowledged write survives in the default mode (up to `FlushInterval`/`MaxPendingWrites`
+  of acknowledged writes lost on a process crash; recent batches on an OS crash) and with
+  `SyncWrites`, and that multi-entity transactions and tiered cross-shard writes are not
+  crash-atomic.
+
 ## [4.37.2] - 2026-09-24
 
 Fixes the v4.37.1 release commit, which left README's release line at v4.37.0 so the
