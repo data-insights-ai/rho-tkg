@@ -109,6 +109,8 @@ Top-level concerns:
 - `pkg/graph/internal/registry/` — `LabelRegistry`, `RelTypeRegistry`, `PropertyKeyRegistry`.
 - `pkg/graph/internal/index/` — property index, vector index, HF temporal index, `OntologyMapping`.
 - `pkg/graph/internal/integrity/` — pure SHA-256 hash primitives + fixed-vector anchors.
+- `pkg/graph/internal/segment/` — ADR-0011 column-segment codec (writer + reader for one declared relationship type; CRC32C per section, integrity roots per `IntegrityBlockRows`, re-decode-and-refuse on seal, fail-closed versions). Not yet wired into a store.
+- `internal/synthhop/` (module root) — deterministic synthday-shaped workload for the ADR-0011 baseline (`bench/segment_baseline_test.go`) and scale tests; test support only.
 - `pkg/graph/ontology/` — public `EntityClass` / `OntologyMapping` types.
 
 ### Configuration

@@ -1118,6 +1118,7 @@ After v3.4.0 (Option 3) and v4.2.0 (field→method), `pkg/graph/` is a thin faç
 | `internal/grapherr` | `ErrNilGraph` / `ErrNilCallback` + the `IsNil` typed-nil detection every sub-API `ready()` uses to fail closed. |
 | `internal/apiutil` | Generic helpers shared by the sub-API wrapper packages (`CloneSlice`, `CloneMap`, `iterateForEach`) — de-duplicated from nodes/rels/index/tier/stats. |
 | `internal/generatedcreate` | `Proof` / `FreshGraphID()` — the unforgeable internal token that marks a create as carrying a freshly minted graph ID, so the duplicate-check fast path cannot be reached from outside `pkg/graph`. |
+| `internal/segment` | ADR-0011 column-segment codec (step S1): an immutable, versioned, CRC32C-checked column format for one declared relationship type, with ID index, out/in CSR and per-group SHA-256 integrity roots; the per-row hash is recomputed from the columns. Not yet wired into a store (S2). See `docs/adr/0011-column-segments.md`. |
 
 ### `pkg/graph/<sub-api>/` packages (v3.4.0)
 

@@ -4,6 +4,115 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **ADR-0011 step S0 — row-store baseline harness** (`bench/segment_baseline_test.go`,
+  `internal/synthhop`). A synthday-shaped workload (the ai-soc mix of HOP, ORIGIN,
+  VATTR and CATTR with the counts measured on the three synthday days, or HOP
+  alone; HOP in its legacy or post-P6 schema) is written through
+  `g.Rels().AddWithTx` / `Add` into the memory store, badger as ai-soc's
+  `engine.OpenAt` configures it, and badger lean (planner stats off, indexes on
+  disk, 256 MB cache budget). Recorded: resident B/rel (heap after the writes and
+  a full read-back minus heap after `Close`, the analysis's method), objects/rel,
+  on-disk B/rel after badger compression, HOP `ByType` / `ForEachByType` rows/s,
+  write time. Gated by `RHO_TKG_SEGMENT_BASELINE`; a tiny smoke run keeps it in
+  the ordinary suite. Measured (office PC, two runs per badger configuration,
+  identical to within 1 % except lean at 3.15 M):
+
+  | configuration | 790 K | 3.15 M | 12.6 M | analysis | same analysis program re-run today |
+  |---|---|---|---|---|---|
+  | memory, ai-soc mix (B/rel) | 723 | 719 | 718 | 744 | 749 / 744 / 744 |
+  | memory, HOP only (B/HOP) | 852 | 855 | 856 | 852 | — |
+  | badger default (B/rel) | 2,378–2,383 | 1,776–1,792 | 1,066 | 1,043 (12.6 M) | 2,393 / 1,821 / 1,088 |
+  | badger lean (B/rel) | 1,928–1,930 | 1,694–1,850 | 301 | 191 (12.6 M) | 2,624 / 1,185 / 304 |
+  | badger on disk (B/rel) | 259 | 257 | 257 | 251 (790 K) | 251 / 250 / 252 |
+  | HOP ByType, memory / badger / lean (M rows/s) | 8–9 / 0.14 / 5.6 | 7 / 0.12 / 0.17 | 6 / 0.11 / 0.12 | — | — |
+
+  Memory reproduces within −3.5 %, HOP-only exactly, badger default within
+  +2.2 % and on-disk within +3 %. **Badger lean does not reproduce the analysis's
+  191 B/rel**: the analysis's own program (same binary, same day) measures 304
+  today, and this harness 301 (−1 % against that). Lean is a bounded cache, not a
+  per-row cost: 0.38–1.45 GB whatever the day size, so its B/rel figure only
+  falls with the day. Badger default at the two smaller days is dominated by
+  fixed buffers (memtables, caches); per relationship it costs ~820 B between
+  3.15 M and 12.6 M.
+- **ADR-0011 step S1 — the column-segment codec**, pure package
+  `pkg/graph/internal/segment` (not wired into any store yet; that is S2).
+  `Encode(Schema, rows, Options)` writes the rows of one declared relationship
+  type as an immutable segment; `Open` validates it and serves `Row`, `Scan`,
+  `Lookup` (ID index), `OutRows` / `InRows` (CSR), `VerifyGroup` / `Verify`.
+  - Format: 64-byte header (versioned magic), contiguous sections each with a
+    CRC32C, a footer (type name, declared schema, segment root, section
+    directory) and a trailer. Int columns are pages of 4,096 rows,
+    frame-of-reference bit-packed with a per-page transform (none, minus
+    valid_from, delta, delta inside a start run) chosen for size; string columns
+    are dictionary (sorted), plain (above 256 distinct values and one per 16
+    rows) or hex32 (64-hex hashes as 32 bytes). Rows sorted by (start, end,
+    valid_from, id, version); node table, out-CSR (runs), in-CSR (offsets +
+    permutation), ID index (sorted ids + rows), page index. Sections whose
+    values are all zero/empty are omitted, so the sparse system fields cost
+    nothing when unused. Endpoint hashes are a per-node hash plus a per-row
+    exception code (0 bits while no endpoint changed). Limits: 64 M rows (ADR §3.4)
+    and 1,024 declared columns per segment.
+  - Integrity: the per-row hash is not stored; it is recomputed from the
+    decoded row (`integrity.ComputeRelHash`) and installed as
+    `Integrity().Hash`. The witness is one SHA-256 root per
+    `IntegrityBlockRows` rows (power of two 1..4096, default 64, written in the
+    footer — René, 2026-09-24) over the rows' stored hashes, plus a segment root.
+    `Encode` re-opens its output, decodes every row and refuses the seal unless
+    each row equals its source field for field (`ErrInvalidRow`) and recomputes
+    its stored hash (`ErrHashMismatch`).
+  - Values of a declared column's exact kind are stored in the column; any
+    other value (undeclared key, other kind) goes to a fallback column with the
+    entity wire's type tags (new `storeutil.MarshalPropertySlice` /
+    `UnmarshalPropertySlice`), so Go kinds, NaN payloads and −0 round-trip.
+  - Trust boundary (lessons 44, 47, 48): unknown format or footer version →
+    `ErrUnsupportedVersion`; damage → `*CorruptError` naming the section; every
+    length checked before use; nothing allocated from a claimed count.
+  - Tests, written first and run red against a stub: round trip bit-exact
+    including Go kinds at three page sizes; recomputed hash == stored hash for
+    every row at block sizes 1, 64 and 4,096; a tampered column value (CRC
+    resealed) fails exactly its group; mixed-kind column → fallback with
+    identical hashes; every section flip rejected by name; truncation at any
+    offset; unknown versions; lying row/node counts allocate < 1 MiB; empty
+    segment, one row, maximum block size with a partial group; invalid
+    schema/options/rows; ID index and CSR against brute force; real
+    create-kernel rows. Fuzz: `FuzzOpen` 7.2 M execs / 90 s and
+    `FuzzOpenResealed` (mutations reach below the CRC layer) 3.3 M execs / 120 s,
+    no panic, `Open` allocation bounded by the input size.
+  - Scale (`RHO_TKG_SEGMENT_SCALE`, HOP after ai-soc P6 through the real create
+    doors; plus the dumped real synthday HOP rows):
+
+    | | 790 K | 3.15 M | 12.6 M |
+    |---|---|---|---|
+    | B/HOP on disk, real synthday rows (all sections) | 22.14 | 23.42 | 24.83 |
+    | — core columns (the prototype's subtotal; prototype) | 15.53 (15.51) | 16.56 (16.50) | 17.61 (17.51) |
+    | — ID index / node hashes / integrity roots | 4.93 / 1.18 / 0.50 | 5.13 / 1.23 / 0.50 | 5.45 / 1.27 / 0.50 |
+    | B/HOP, synthhop rows | 21.56 | 22.33 | 23.08 |
+    | encode incl. verify (M rows/s) | 0.45 | 0.44 | 0.42 |
+    | Scan, rows with recomputed hash (M rows/s) | 1.29 | 1.46 | 1.59 |
+    | decode without hash / columns only (M rows/s) | 2.17 / 24.2 | 2.33 / 26.9 | 2.73 / 28.4 |
+    | row path, memory ByType (M rows/s) | 10.7 | 8.6 | 7.0 |
+
+    ≤ 30 B/HOP gate met at every size; per-row encode cost ×1.06 and decode
+    ×0.79 from 790 K to 12.6 M (no super-linear term); bytes grow by the log
+    of the row count (ID and permutation widths). **Decode gate not met against
+    the memory store**: materializing `*types.Relationship` rows runs at
+    1.3–1.6 M rows/s with the hash (2.2–2.7 M without), below the memory
+    store's zero-copy `ByType` (7–11 M rows/s); it is ~10× the badger row path
+    (0.11–0.15 M rows/s, S0), and the column decode alone runs at 24–28 M
+    rows/s — the ceiling for the columnar scan door of S5.
+
+### Known issue (found while building S1)
+
+- The entity wire widens a nested small integer: a relationship holding
+  `[]any{int16(2)}` reads back from badger as `int64` and then fails
+  `VerifyRelChain` (probe: add, close, reopen, verify → false; nested uint8 likewise reads back as uint64). The segment
+  fallback uses the same wire, so `Encode` refuses such a row (pinned by
+  `TestFallback_ValueTheEntityWireCannotReproduceIsRefused`). Backlog item 3.
+
 ## [4.36.1] - 2026-09-24
 
 ### Security
