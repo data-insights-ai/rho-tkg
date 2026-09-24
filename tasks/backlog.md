@@ -160,7 +160,8 @@ When consumer pins a shape that needs a **new** rho-tkg primitive, it re-enters
 | Last HIGH (10b cascade/resumption) + 10c perf follow-up | `[4.24.0]` / next-day fix |
 | Consumer-gated ask batch (5 items, 2026-07-29) | `[4.25.0]` same day |
 | CI bench-gate (blocking) | 2026-07-29, `bench.yml` |
-| Item 3 (HIGH) — entity wire widened nested values (small ints, typed slices, typed nil, custom structs); DECIDED 2026-09-24: kind envelope, no write-time normalization | CHANGELOG `[Unreleased]` Fixed |
+| Item 3 (HIGH) — entity wire widened nested values (small ints, typed slices, typed nil, custom structs); DECIDED 2026-09-24: kind envelope, no write-time normalization | CHANGELOG `[4.37.0]` Fixed |
+| HIGH — badger reads dropped or replaced rows when a flush + eviction landed mid-read (scans, `NodesAsOf`/`RelsAsOf`, point-read cache fills); flush epoch + `scanSnapshot` + `LoadCleanAt`, 2026-09-24 | CHANGELOG `[Unreleased]` Fixed |
 
 Recover closed investigation prose via `git log --all -- tasks/backlog.md` if needed.
 

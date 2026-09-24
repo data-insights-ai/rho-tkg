@@ -142,6 +142,8 @@ func (bs *Store) GetNode(nid types.NodeID) (*types.Node, error) {
 
 	// Cache miss, node exists — read from Badger.
 	var n *types.Node
+	// Read before the snapshot opens — see LoadCleanAt.
+	epoch := bs.nodeCache.FlushEpoch()
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.NodeKey(id))
 		if err == badgerv4.ErrKeyNotFound {
@@ -169,7 +171,7 @@ func (bs *Store) GetNode(nid types.NodeID) (*types.Node, error) {
 
 	// Populate cache as clean (evictable).
 	n.Freeze() // shared between cache and caller
-	bs.nodeCache.LoadClean(id, n)
+	bs.nodeCache.LoadCleanAt(id, n, epoch)
 	return n.DeepCopy(), nil
 }
 
@@ -194,7 +196,7 @@ func (bs *Store) GetNode(nid types.NodeID) (*types.Node, error) {
 // writer is queued behind the caller's outer hold (sync.RWMutex is not
 // reentrant: a writer waiting on the outer RLock blocks this function's own
 // RLock attempt too, per lesson 9).
-func (bs *Store) getNodeInTxn(txn *badgerv4.Txn, nid types.NodeID) (*types.Node, error) {
+func (bs *Store) getNodeInTxn(snap *scanSnapshot, nid types.NodeID) (*types.Node, error) {
 	id := nid.SnowflakeID()
 	v, status := bs.nodeCache.Get(id)
 	switch status {
@@ -208,7 +210,7 @@ func (bs *Store) getNodeInTxn(txn *badgerv4.Txn, nid types.NodeID) (*types.Node,
 		return nil, ErrNodeNotFound
 	}
 
-	item, err := txn.Get(storepkg.NodeKey(id))
+	item, err := snap.txnAfterMiss().Get(storepkg.NodeKey(id))
 	if err == badgerv4.ErrKeyNotFound {
 		return nil, ErrNodeNotFound
 	}
@@ -232,7 +234,7 @@ func (bs *Store) getNodeInTxn(txn *badgerv4.Txn, nid types.NodeID) (*types.Node,
 	}
 
 	n.Freeze()
-	bs.nodeCache.LoadClean(id, n)
+	bs.nodeCache.LoadCleanAt(id, n, snap.pinned)
 	return n.DeepCopy(), nil
 }
 
@@ -274,6 +276,8 @@ func (bs *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
 	}
 
 	var n *types.Node
+	// Read before the snapshot opens — see LoadCleanAt.
+	epoch := bs.nodeCache.FlushEpoch()
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.NodeKey(id))
 		if err == badgerv4.ErrKeyNotFound {
@@ -300,7 +304,7 @@ func (bs *Store) NodeIntegrityHash(nid types.NodeID) (string, error) {
 	}
 	hash = badgerNodeIntegrityHash(n)
 	n.Freeze() // shared between cache and caller
-	bs.nodeCache.LoadClean(id, n)
+	bs.nodeCache.LoadCleanAt(id, n, epoch)
 	bs.idxMu.Lock()
 	if _, exists := bs.nodeIDs[nid]; exists {
 		bs.nodeHashes[nid] = hash
@@ -911,11 +915,13 @@ func (bs *Store) loadRelFromBadger(txn *badgerv4.Txn, id snowflake.ID) (*types.R
 // falls back to label scan + property filter.
 // Results are sorted by snowflake.ID for deterministic output.
 func (bs *Store) prefetchNode(nid types.NodeID) (*types.Node, error) {
+	// Read before the badger read opens — see LoadCleanAt.
+	epoch := bs.nodeCache.FlushEpoch()
 	n, miss, err := bs.prefetchNodeNoFill(nid, true) // point read: promote
 	if err != nil || !miss {
 		return n, err
 	}
-	bs.nodeCache.LoadClean(nid.SnowflakeID(), n)
+	bs.nodeCache.LoadCleanAt(nid.SnowflakeID(), n, epoch)
 	return n, nil
 }
 
@@ -1010,6 +1016,8 @@ func (bs *Store) getNodeLocked(nid types.NodeID) (*types.Node, error) {
 
 	// Cache miss — read from Badger.
 	var n *types.Node
+	// Read before the snapshot opens — see LoadCleanAt.
+	epoch := bs.nodeCache.FlushEpoch()
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.NodeKey(id))
 		if err == badgerv4.ErrKeyNotFound {
@@ -1035,6 +1043,6 @@ func (bs *Store) getNodeLocked(nid types.NodeID) (*types.Node, error) {
 		return nil, err
 	}
 	n.Freeze() // shared between cache and caller
-	bs.nodeCache.LoadClean(id, n)
+	bs.nodeCache.LoadCleanAt(id, n, epoch)
 	return n, nil
 }

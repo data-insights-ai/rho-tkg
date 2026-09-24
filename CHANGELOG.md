@@ -6,6 +6,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **HIGH — badger reads dropped live rows or returned replaced versions when a
+  flush and a cache eviction landed during the read.** Every multi-row badger read
+  (`NodesByLabel` serial and parallel, `ForEachNodeByLabel` and the other callers
+  of `forEachNodeBulk` / `collectNodesBulkParallel`, the rel-column build over
+  `forEachRelBulk`, and the current-row arm of `NodesAsOf` / `RelsAsOf`) opened ONE
+  badger snapshot and consulted the entity cache per row, reading badger only on a
+  miss. A miss proves the row's latest version is committed (dirty entries are
+  never evicted), not that the older snapshot sees it: a flush that committed
+  after the snapshot opened and then let the cache evict the row left the read
+  with the previous version (row updated before the read began) or no row (row
+  created before the read began). Point reads (`GetNode`, `GetRelationship`,
+  `NodeIntegrityHash`, the prefetch and locked readers) had the same gap between
+  their badger read and their cache fill: a replace + flush + evict in that window
+  cached the replaced version as a clean entry, served to every later reader until
+  evicted; `NodesAsOf` / `RelsAsOf` filled the cache from their stale snapshot the
+  same way. Nothing on disk was wrong; flushes persisted the right rows. Red before
+  the fix: all 11 deterministic tests (e.g. 62 of 64 rows dropped, or 62 of 64 the
+  replaced version, when one flush lands after the first row), and under a real
+  writer + flusher + small cache: node scans 4 of 20 runs, rel scans 20 of 20,
+  tiered `NodesByLabel` 4 of 20. After: 0 of 200 deterministic, 0 of 50 badger
+  stress and 0 of 100 tiered stress runs, all under `-race`. The WIP candidate
+  (a fresh point read for rows absent from the snapshot) fixed only the dropped
+  rows, not the replaced versions.
+  **Fix:** the entity cache carries a flush epoch (`FlushEpoch`), advanced by
+  `MarkFlushed` under the cache lock before any entry turns clean, one counter
+  shared by every shard of a `ShardedCache`. Multi-row reads go through
+  `scanSnapshot`, which reads the epoch before opening its transaction and, after a
+  miss, re-pins when the epoch has moved (one new transaction per flush that lands
+  during the read, not per row). Cache fills go through `LoadCleanAt(key, value,
+  epoch)`, which refuses the fill when the epoch moved since before the badger read;
+  `LoadClean` is no longer in the `EntityCache` interface, so a store cannot fill
+  without an epoch. No measurable cost on `BenchmarkNodeScanBulk`,
+  `BenchmarkNodeScanBulkParallel`, `BenchmarkForEachNodeByLabelStream` (5 runs each,
+  within run-to-run noise of v4.37.0).
+
 ## [4.37.0] - 2026-09-24
 
 Minor release: the entity wire gains a kind envelope for nested values (older 4.36.x

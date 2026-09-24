@@ -1,7 +1,6 @@
 package badger
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -11,7 +10,6 @@ import (
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
-	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
 func (bs *Store) NodesByLabel(token uint16, opts QueryOpts) ([]*types.Node, error) {
@@ -148,87 +146,65 @@ func (bs *Store) fetchNodesByLabelIDs(token uint16, ids []types.NodeID, opts Que
 	return nodes, nil
 }
 
-// forEachNodeBulk materializes the given (sorted, ascending) node IDs via ONE
-// badger read transaction and ONE forward-seeking iterator (value prefetch OFF —
-// see the load-bearing note below), instead of a separate bs.db.View + Txn.Get
-// per node. The dominant per-node cost
+// forEachNodeBulk materializes the given (sorted, ascending) node IDs through ONE
+// forward-seeking badger iterator (value prefetch OFF — see scanSnapshot.seekAfterMiss)
+// instead of a separate bs.db.View + Txn.Get per node. The dominant per-node cost
 // of the old path was N distinct read transactions — each acquiring an oracle
 // read-timestamp (a global-lock contention point) and setting up a txn; this pays
-// that once for the whole scan. fn is invoked for every present node in ID order
-// (frozen, scan-discipline: cache hits served WITHOUT promotion); returning false
-// stops early. Nodes absent from the store (deleted / orphaned index entry) are
-// skipped, matching the old ErrNodeNotFound-continue behavior.
+// that once per scan (plus once per flush that lands during it). fn is invoked for
+// every present node in ID order (frozen, scan-discipline: cache hits served
+// WITHOUT promotion); returning false stops early. Nodes absent from the store
+// (deleted / orphaned index entry) are skipped, matching the old
+// ErrNodeNotFound-continue behavior.
 //
-// Correctness of "misses come from badger": a cache MISS implies the node was
-// flushed to badger, because dirty (unflushed) cache entries are never evicted —
-// so a still-in-flight write is always a cache HIT and never reaches the iterator.
+// Misses read through a scanSnapshot, which re-pins after a flush: a flush that
+// commits and evicts a row mid-scan must not leave the scan reading that row
+// from a snapshot that predates the commit (a dropped or replaced row).
 func (bs *Store) forEachNodeBulk(ids []types.NodeID, fn func(*types.Node) bool) error {
-	return bs.db.View(func(txn *badgerv4.Txn) error {
-		var it *badgerv4.Iterator
-		defer func() {
-			if it != nil {
-				it.Close()
-			}
-		}()
-		for _, nid := range ids {
-			id := nid.SnowflakeID()
-			// Cache first (no promote — a full-cardinality scan must not pay one
-			// exclusive lock per row nor evict hot point-read entries).
-			v, status := bs.nodeCache.GetNoPromote(id)
-			switch status {
-			case indexpkg.CacheHit:
-				if !fn(v) {
-					return nil
-				}
-				continue
-			case indexpkg.CacheDeleted:
-				continue // tombstone — skip, as an orphaned index entry
-			}
-			// Miss → decode from badger via the shared iterator (opened lazily so a
-			// fully cache-resident scan never creates one).
-			if it == nil {
-				iopts := badgerv4.DefaultIteratorOptions
-				// PrefetchValues=false is LOAD-BEARING: this iterator does a
-				// Seek per target ID (not a linear Next-scan), and badger's
-				// value prefetch re-fills a value window on every Seek, almost
-				// all of it discarded. prefetch=true here is much SLOWER than
-				// the per-node Txn.Get path it replaces; prefetch=false is
-				// faster with fewer allocs. Do not flip this.
-				iopts.PrefetchValues = false
-				it = txn.NewIterator(iopts)
-			}
-			key := storepkg.NodeKey(id)
-			it.Seek(key)
-			if !it.Valid() {
-				continue // past end of keyspace — absent
-			}
-			item := it.Item()
-			if !bytes.Equal(item.Key(), key) {
-				continue // key not present — deleted / orphaned index entry
-			}
-			var decoded *types.Node
-			derr := item.Value(func(val []byte) error {
-				var w storepkg.NodeWire
-				if err := storepkg.SafeUnmarshal(val, &w); err != nil {
-					return fmt.Errorf("graph: unmarshal node: %w", err)
-				}
-				n, err := bs.decodeNodeWireForKey(w, id)
-				if err != nil {
-					return fmt.Errorf("graph: decode node: %w", err)
-				}
-				decoded = n
-				return nil
-			})
-			if derr != nil {
-				return derr
-			}
-			decoded.Freeze() // shared frozen scan row
-			if !fn(decoded) {
+	snap := newScanSnapshot(bs.db, bs.nodeCache.FlushEpoch)
+	defer snap.close()
+	for _, nid := range ids {
+		id := nid.SnowflakeID()
+		// Cache first (no promote — a full-cardinality scan must not pay one
+		// exclusive lock per row nor evict hot point-read entries).
+		v, status := bs.nodeCache.GetNoPromote(id)
+		switch status {
+		case indexpkg.CacheHit:
+			if !fn(v) {
 				return nil
 			}
+			continue
+		case indexpkg.CacheDeleted:
+			continue // tombstone — skip, as an orphaned index entry
 		}
-		return nil
-	})
+		// Miss → decode from badger via the shared iterator (opened lazily so a
+		// fully cache-resident scan never creates one).
+		item := snap.seekAfterMiss(storepkg.NodeKey(id))
+		if item == nil {
+			continue // deleted / orphaned index entry
+		}
+		var decoded *types.Node
+		derr := item.Value(func(val []byte) error {
+			var w storepkg.NodeWire
+			if err := storepkg.SafeUnmarshal(val, &w); err != nil {
+				return fmt.Errorf("graph: unmarshal node: %w", err)
+			}
+			n, err := bs.decodeNodeWireForKey(w, id)
+			if err != nil {
+				return fmt.Errorf("graph: decode node: %w", err)
+			}
+			decoded = n
+			return nil
+		})
+		if derr != nil {
+			return derr
+		}
+		decoded.Freeze() // shared frozen scan row
+		if !fn(decoded) {
+			return nil
+		}
+	}
+	return nil
 }
 
 // AllNodes returns all stored nodes, with optional pagination and temporal filtering.

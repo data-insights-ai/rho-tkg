@@ -216,6 +216,8 @@ func (bs *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
 
 	// Cache miss, rel exists — read from Badger.
 	var r *types.Relationship
+	// Read before the snapshot opens — see LoadCleanAt.
+	epoch := bs.relCache.FlushEpoch()
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.RelKey(id))
 		if err == badgerv4.ErrKeyNotFound {
@@ -243,7 +245,7 @@ func (bs *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
 
 	// Populate cache as clean.
 	r.Freeze() // shared between cache and caller
-	bs.relCache.LoadClean(id, r)
+	bs.relCache.LoadCleanAt(id, r, epoch)
 	return r.DeepCopy(), nil
 }
 
@@ -251,7 +253,7 @@ func (bs *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
 // transaction instead of opening its own — used by RelsAsOf's single-transaction
 // bulk scan (BACKLOG 18k). Mirrors getNodeInTxn; see its doc comment. REQUIRES
 // the caller to hold bs.idxMu (at least RLock) for the entire surrounding scan.
-func (bs *Store) getRelInTxn(txn *badgerv4.Txn, rid types.RelID) (*types.Relationship, error) {
+func (bs *Store) getRelInTxn(snap *scanSnapshot, rid types.RelID) (*types.Relationship, error) {
 	id := rid.SnowflakeID()
 	v, status := bs.relCache.Get(id)
 	switch status {
@@ -265,7 +267,7 @@ func (bs *Store) getRelInTxn(txn *badgerv4.Txn, rid types.RelID) (*types.Relatio
 		return nil, ErrRelNotFound
 	}
 
-	item, err := txn.Get(storepkg.RelKey(id))
+	item, err := snap.txnAfterMiss().Get(storepkg.RelKey(id))
 	if err == badgerv4.ErrKeyNotFound {
 		return nil, ErrRelNotFound
 	}
@@ -289,7 +291,7 @@ func (bs *Store) getRelInTxn(txn *badgerv4.Txn, rid types.RelID) (*types.Relatio
 	}
 
 	r.Freeze()
-	bs.relCache.LoadClean(id, r)
+	bs.relCache.LoadCleanAt(id, r, snap.pinned)
 	return r.DeepCopy(), nil
 }
 
@@ -695,6 +697,8 @@ func (bs *Store) getRelLocked(rid types.RelID) (*types.Relationship, error) {
 
 	// Cache miss — read from Badger.
 	var r *types.Relationship
+	// Read before the snapshot opens — see LoadCleanAt.
+	epoch := bs.relCache.FlushEpoch()
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
 		item, err := txn.Get(storepkg.RelKey(id))
 		if err == badgerv4.ErrKeyNotFound {
@@ -720,16 +724,18 @@ func (bs *Store) getRelLocked(rid types.RelID) (*types.Relationship, error) {
 		return nil, err
 	}
 	r.Freeze() // shared between cache and caller
-	bs.relCache.LoadClean(id, r)
+	bs.relCache.LoadCleanAt(id, r, epoch)
 	return r, nil
 }
 
 func (bs *Store) prefetchRel(rid types.RelID) (*types.Relationship, error) {
+	// Read before the badger read opens — see LoadCleanAt.
+	epoch := bs.relCache.FlushEpoch()
 	r, miss, err := bs.prefetchRelNoFill(rid, true) // point read: promote
 	if err != nil || !miss {
 		return r, err
 	}
-	bs.relCache.LoadClean(rid.SnowflakeID(), r)
+	bs.relCache.LoadCleanAt(rid.SnowflakeID(), r, epoch)
 	return r, nil
 }
 

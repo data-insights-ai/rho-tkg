@@ -1,7 +1,6 @@
 package badger
 
 import (
-	"bytes"
 	"fmt"
 	"runtime"
 	"sync"
@@ -10,7 +9,6 @@ import (
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
-	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
 // parallelDecodeMinIDs is the candidate-count floor below which parallel decode is
@@ -52,56 +50,38 @@ func (bs *Store) collectNodesBulkParallel(ids []types.NodeID) ([]*types.Node, er
 	var jobs []decodeJob
 
 	// Serial pass: cache hits fill results inline; misses stage their raw bytes.
-	err := bs.db.View(func(txn *badgerv4.Txn) error {
-		var it *badgerv4.Iterator
-		defer func() {
-			if it != nil {
-				it.Close()
-			}
-		}()
-		for i, nid := range ids {
-			id := nid.SnowflakeID()
-			v, status := bs.nodeCache.GetNoPromote(id)
-			switch status {
-			case indexpkg.CacheHit:
-				results[i] = v
-				continue
-			case indexpkg.CacheDeleted:
-				continue // tombstone — leave nil (skipped in compaction)
-			}
-			if it == nil {
-				iopts := badgerv4.DefaultIteratorOptions
-				iopts.PrefetchValues = false // load-bearing, see forEachNodeBulk
-				it = txn.NewIterator(iopts)
-			}
-			key := storepkg.NodeKey(id)
-			it.Seek(key)
-			if !it.Valid() {
-				continue
-			}
-			item := it.Item()
-			if !bytes.Equal(item.Key(), key) {
-				continue // deleted / orphaned index entry
-			}
-			raw, cerr := item.ValueCopy(nil) // copy — bytes must outlive the txn
-			if cerr != nil {
-				return fmt.Errorf("graph: read node value: %w", cerr)
-			}
-			jobs = append(jobs, decodeJob{idx: i, id: id, raw: raw})
-			// Flush a full batch: decode it in parallel, then reuse the buffer so the
-			// staged raw bytes stay bounded (jobs[:0] keeps the array; the decoded
-			// batch's raw slices become unreferenced and GC-able).
-			if len(jobs) >= parallelDecodeBatch {
-				if derr := bs.decodeJobsParallel(jobs, results); derr != nil {
-					return derr
-				}
-				jobs = jobs[:0]
-			}
+	// Misses read through a scanSnapshot, which re-pins after a flush (see its
+	// doc comment for the dropped/replaced row a single snapshot would cause).
+	snap := newScanSnapshot(bs.db, bs.nodeCache.FlushEpoch)
+	defer snap.close()
+	for i, nid := range ids {
+		id := nid.SnowflakeID()
+		v, status := bs.nodeCache.GetNoPromote(id)
+		switch status {
+		case indexpkg.CacheHit:
+			results[i] = v
+			continue
+		case indexpkg.CacheDeleted:
+			continue // tombstone — leave nil (skipped in compaction)
 		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
+		item := snap.seekAfterMiss(storepkg.NodeKey(id))
+		if item == nil {
+			continue // deleted / orphaned index entry
+		}
+		raw, cerr := item.ValueCopy(nil) // copy — bytes must outlive the txn
+		if cerr != nil {
+			return nil, fmt.Errorf("graph: read node value: %w", cerr)
+		}
+		jobs = append(jobs, decodeJob{idx: i, id: id, raw: raw})
+		// Flush a full batch: decode it in parallel, then reuse the buffer so the
+		// staged raw bytes stay bounded (jobs[:0] keeps the array; the decoded
+		// batch's raw slices become unreferenced and GC-able).
+		if len(jobs) >= parallelDecodeBatch {
+			if derr := bs.decodeJobsParallel(jobs, results); derr != nil {
+				return nil, derr
+			}
+			jobs = jobs[:0]
+		}
 	}
 
 	// Final partial batch (raw bytes are copies, valid after the txn closed).
