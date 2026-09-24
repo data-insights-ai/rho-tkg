@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.37.0] - 2026-09-24
+
+Minor release: the entity wire gains a kind envelope for nested values (older 4.36.x
+binaries refuse records that carry it, rather than misreading them). Gates on the released
+tree: `make check`, `make test-race`, `make fmt-check`, `make lint-docker`,
+`make security-docker` exit 0.
+
 ### Added
 
 - **ADR-0011 step S0 — row-store baseline harness** (`bench/segment_baseline_test.go`,
