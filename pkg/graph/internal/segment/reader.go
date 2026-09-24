@@ -29,6 +29,8 @@ type Segment struct {
 	typeToken uint16
 	schema    Schema
 	root      [32]byte
+	idMin     int64
+	idMax     int64
 	secs      map[string]sectionInfo
 
 	nodeIDs, outcsr, inOff, inPerm, idIDs, idRows intCol
@@ -77,6 +79,8 @@ func Open(data []byte) (*Segment, error) {
 		typeToken: uint16(h.typeToken),                                                              // #nosec G115 -- read from a u16
 		schema:    Schema{TypeName: f.typeName, TypeToken: uint16(h.typeToken), Columns: f.columns}, // #nosec G115 -- u16
 		root:      f.root,
+		idMin:     h.idMin,
+		idMax:     h.idMax,
 		secs:      make(map[string]sectionInfo, len(f.sections)),
 	}
 	for _, sec := range f.sections {
@@ -572,82 +576,195 @@ func (s *Segment) scan(lo, hi int, withHash bool, fn func(i int, r *types.Relati
 		}
 		return nil
 	}
+	return s.scanBatches(lo, hi, func(b *Batch) error {
+		for k := max(0, lo-b.Base); k < b.N && b.Base+k < hi; k++ {
+			r, err := b.row(k, withHash)
+			if err != nil {
+				return err
+			}
+			if err := fn(b.Base+k, r); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// Batch is one page of decoded columns, rows [Base, Base+N) in segment order.
+// It is the single decode step of every bulk read: the row door builds
+// relationships from it (Row), and a columnar consumer reads the exported
+// slices directly without a second decode (ADR-0011 §5.3). The slices are
+// owned by the scan and reused for the next page: a consumer must copy what
+// it keeps.
+type Batch struct {
+	Base, N int
+	// IDs, StartIDs, EndIDs, ValidFrom, ValidTo, TxFrom and Versions hold the
+	// page's system columns as stored (raw ValidFrom 0 stays 0).
+	IDs, StartIDs, EndIDs, ValidFrom, ValidTo, TxFrom, Versions []int64
+
+	seg                                      *Segment
+	startOrds                                []int
+	runStart                                 []bool
+	endOrd, noT, txTo, ca, ua, da, base, aut []int64
+	fc, tc                                   []int64
+	propInts, propPresent                    [][]int64
+	v                                        rowVals
+}
+
+// Row builds row k of the batch (segment position Base+k) as an unfrozen,
+// independent relationship whose Integrity().Hash is recomputed from the
+// columns.
+func (b *Batch) Row(k int) (*types.Relationship, error) {
+	if k < 0 || k >= b.N {
+		return nil, fmt.Errorf("%w: batch row %d of %d", ErrOutOfRange, k, b.N)
+	}
+	return b.row(k, true)
+}
+
+func (b *Batch) row(k int, withHash bool) (*types.Relationship, error) {
+	s, v := b.seg, &b.v
+	v.startOrd, v.endOrd = b.startOrds[k], b.endOrd[k]
+	v.id, v.version, v.vf, v.vt, v.tx, v.noTemporal = b.IDs[k], b.Versions[k], b.ValidFrom[k], b.ValidTo[k], b.TxFrom[k], b.noT[k]
+	v.txTo, v.createdAt, v.updatedAt, v.deletedAt = b.txTo[k], b.ca[k], b.ua[k], b.da[k]
+	v.baseEntity, v.authLevel, v.fromCode, v.toCode = b.base[k], b.aut[k], b.fc[k], b.tc[k]
+	for c := range s.props {
+		v.propInts[c] = b.propInts[c][k]
+		v.propSet[c] = s.props[c].allSet || b.propPresent[c][k] == 1
+	}
+	return s.build(b.Base+k, v, withHash)
+}
+
+// ScanBatches decodes every page in segment order and calls fn with it
+// until fn returns false (see Batch).
+func (s *Segment) ScanBatches(fn func(b *Batch) bool) error {
+	err := s.scanBatches(0, s.rows, func(b *Batch) error {
+		if !fn(b) {
+			return errStopScan
+		}
+		return nil
+	})
+	if errors.Is(err, errStopScan) {
+		return nil
+	}
+	return err
+}
+
+func (s *Segment) scanBatches(lo, hi int, fn func(b *Batch) error) error {
+	if lo >= hi {
+		return nil
+	}
 	pr := s.pageRows
 	buf := func() []int64 { return make([]int64, pr) }
-	end, vf, vt, tx, id, ver, noT := buf(), buf(), buf(), buf(), buf(), buf(), buf()
-	txTo, ca, ua, da, base, auth, fc, tc := buf(), buf(), buf(), buf(), buf(), buf(), buf(), buf()
-	propInts := make([][]int64, len(s.props))
-	propPresent := make([][]int64, len(s.props))
-	for c := range s.props {
-		propInts[c], propPresent[c] = buf(), buf()
+	b := &Batch{
+		seg: s, IDs: buf(), StartIDs: buf(), EndIDs: buf(), ValidFrom: buf(), ValidTo: buf(), TxFrom: buf(), Versions: buf(),
+		startOrds: make([]int, pr), runStart: make([]bool, pr),
+		endOrd: buf(), noT: buf(), txTo: buf(), ca: buf(), ua: buf(), da: buf(), base: buf(), aut: buf(), fc: buf(), tc: buf(),
+		propInts: make([][]int64, len(s.props)), propPresent: make([][]int64, len(s.props)),
+		v: rowVals{propInts: make([]int64, len(s.props)), propSet: make([]bool, len(s.props)),
+			nodeHashs: make([]string, s.nodes), nodeKnown: make([]bool, s.nodes)},
 	}
-	runStart := make([]bool, pr)
-	startOrds := make([]int, pr)
-	v := rowVals{propInts: make([]int64, len(s.props)), propSet: make([]bool, len(s.props)),
-		nodeHashs: make([]string, s.nodes), nodeKnown: make([]bool, s.nodes)}
+	for c := range s.props {
+		b.propInts[c], b.propPresent[c] = buf(), buf()
+	}
 	for p := lo / pr; p*pr < hi; p++ {
 		ps := p * pr
 		cnt := min(pr, s.rows-ps)
+		b.Base, b.N = ps, cnt
 		// Start ordinals of the page's rows, from the out-CSR runs.
 		o := s.startOrdinal(ps)
 		for k := 0; k < cnt; k++ {
 			for o < s.nodes-1 && s.outcsr.atNoRef(o+1) <= int64(ps+k) {
 				o++
 			}
-			startOrds[k] = o
-			runStart[k] = k == 0 || o != startOrds[k-1]
+			b.startOrds[k] = o
+			b.runStart[k] = k == 0 || o != b.startOrds[k-1]
 		}
-		s.end.decodePage(p, cnt, end, nil, runStart)
-		s.vf.decodePage(p, cnt, vf, nil, nil)
+		s.end.decodePage(p, cnt, b.endOrd, nil, b.runStart)
+		s.vf.decodePage(p, cnt, b.ValidFrom, nil, nil)
 		for _, c := range []struct {
 			col *intCol
 			out []int64
-		}{{&s.vt, vt}, {&s.tx, tx}, {&s.txTo, txTo}, {&s.createdAt, ca}, {&s.updatedAt, ua}, {&s.deletedAt, da}} {
-			c.col.decodePage(p, cnt, c.out, vf, nil)
+		}{{&s.vt, b.ValidTo}, {&s.tx, b.TxFrom}, {&s.txTo, b.txTo}, {&s.createdAt, b.ca}, {&s.updatedAt, b.ua}, {&s.deletedAt, b.da}} {
+			c.col.decodePage(p, cnt, c.out, b.ValidFrom, nil)
 		}
 		for _, c := range []struct {
 			col *intCol
 			out []int64
-		}{{&s.relID, id}, {&s.version, ver}, {&s.noTemporal, noT}, {&s.baseEntity, base}, {&s.authLevel, auth}, {&s.fromHash, fc}, {&s.toHash, tc}} {
+		}{{&s.relID, b.IDs}, {&s.version, b.Versions}, {&s.noTemporal, b.noT}, {&s.baseEntity, b.base}, {&s.authLevel, b.aut}, {&s.fromHash, b.fc}, {&s.toHash, b.tc}} {
 			c.col.decodePage(p, cnt, c.out, nil, nil)
 		}
 		for c := range s.props {
-			s.props[c].ints.decodePage(p, cnt, propInts[c], nil, nil)
-			s.props[c].present.decodePage(p, cnt, propPresent[c], nil, nil)
+			s.props[c].ints.decodePage(p, cnt, b.propInts[c], nil, nil)
+			s.props[c].present.decodePage(p, cnt, b.propPresent[c], nil, nil)
 		}
-		for k := max(0, lo-ps); k < cnt && ps+k < hi; k++ {
-			v.startOrd, v.endOrd = startOrds[k], end[k]
-			v.id, v.version, v.vf, v.vt, v.tx, v.noTemporal = id[k], ver[k], vf[k], vt[k], tx[k], noT[k]
-			v.txTo, v.createdAt, v.updatedAt, v.deletedAt = txTo[k], ca[k], ua[k], da[k]
-			v.baseEntity, v.authLevel, v.fromCode, v.toCode = base[k], auth[k], fc[k], tc[k]
-			for c := range s.props {
-				v.propInts[c] = propInts[c][k]
-				v.propSet[c] = s.props[c].allSet || propPresent[c][k] == 1
+		for k := 0; k < cnt; k++ {
+			b.StartIDs[k] = s.nodeIDs.atNoRef(b.startOrds[k])
+			if e := b.endOrd[k]; e >= 0 && e < int64(s.nodes) {
+				b.EndIDs[k] = s.nodeIDs.atNoRef(int(e))
+			} else {
+				return corrupt(colEnd, "row %d has end ordinal %d of %d", ps+k, e, s.nodes)
 			}
-			r, err := s.build(ps+k, &v, withHash)
-			if err != nil {
-				return err
-			}
-			if err := fn(ps+k, r); err != nil {
-				return err
-			}
+		}
+		if err := fn(b); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
+// IDRange returns the smallest and largest relationship ID in the segment
+// (from the header; 0, 0 when empty).
+func (s *Segment) IDRange() (lo, hi types.RelID) {
+	if s.rows == 0 {
+		return 0, 0
+	}
+	return types.RelID(s.idMin), types.RelID(s.idMax)
+}
+
 // Lookup returns the rows (segment order positions) holding relationship id,
-// one per stored version, ascending by version.
+// one per stored version, ascending by version. It binary-searches the ID
+// index page by page (header range, page first values) and reads one page.
 func (s *Segment) Lookup(id types.RelID) ([]int, error) {
 	x := int64(id)
-	k := sort.Search(s.rows, func(j int) bool { return s.idIDs.atNoRef(j) >= x })
+	if s.rows == 0 || x < s.idMin || x > s.idMax {
+		return nil, nil
+	}
+	c := &s.idIDs
+	// The first page whose first value is >= x; the run of x (one entry per
+	// stored version) may begin on the page before it.
+	p := max(0, sort.Search(c.pageCount, func(p int) bool { return c.pageFirst(p) >= x })-1)
 	var out []int
-	for ; k < s.rows && s.idIDs.atNoRef(k) == x; k++ {
-		row := s.idRows.atNoRef(k)
-		if row < 0 || row >= int64(s.rows) {
-			return nil, corrupt(secIDRows, "entry %d names row %d of %d", k, row, s.rows)
+	for ; p < c.pageCount; p++ {
+		v := c.page(p)
+		base := p * c.pageRows
+		k, val := 0, int64(0)
+		if v.transform == transformDeltaPrev {
+			val = v.first
+		} else {
+			k = sort.Search(v.n, func(j int) bool { return v.d(j) >= x })
+			if k < v.n {
+				val = v.d(k)
+			}
 		}
-		out = append(out, int(row))
+		for ; k < v.n; k++ {
+			if v.transform == transformDeltaPrev {
+				if k > 0 {
+					val += v.d(k)
+				}
+			} else {
+				val = v.d(k)
+			}
+			if val > x {
+				return out, nil
+			}
+			if val == x {
+				row := s.idRows.atNoRef(base + k)
+				if row < 0 || row >= int64(s.rows) {
+					return nil, corrupt(secIDRows, "entry %d names row %d of %d", base+k, row, s.rows)
+				}
+				out = append(out, int(row))
+			}
+		}
 	}
 	return out, nil
 }
@@ -742,6 +859,58 @@ func (s *Segment) verifyGroups(g0, g1 int) error {
 	}
 	if len(failed) > 0 {
 		return fmt.Errorf("%w: groups %s", ErrIntegrity, strings.Join(failed, ","))
+	}
+	return nil
+}
+
+// IDAt returns the relationship ID of row i (segment order) without building
+// the row. i must be in [0, Len()).
+func (s *Segment) IDAt(i int) (types.RelID, error) {
+	if i < 0 || i >= s.rows {
+		return 0, fmt.Errorf("%w: row %d of %d", ErrOutOfRange, i, s.rows)
+	}
+	return types.RelID(s.relID.atNoRef(i)), nil
+}
+
+// ScanRange decodes rows [lo, hi) in segment order and calls fn until it
+// returns false; rows are built as by Row.
+func (s *Segment) ScanRange(lo, hi int, fn func(i int, r *types.Relationship) bool) error {
+	if lo < 0 || hi > s.rows || lo > hi {
+		return fmt.Errorf("%w: range [%d,%d) of %d", ErrOutOfRange, lo, hi, s.rows)
+	}
+	err := s.scanRange(lo, hi, func(i int, r *types.Relationship) error {
+		if !fn(i, r) {
+			return errStopScan
+		}
+		return nil
+	})
+	if errors.Is(err, errStopScan) {
+		return nil
+	}
+	return err
+}
+
+// ForEachID calls fn with every (relationship ID, row) pair in ascending ID
+// order — the ID index, decoded page by page without building any row —
+// until fn returns false.
+func (s *Segment) ForEachID(fn func(id types.RelID, row int) bool) error {
+	if s.rows == 0 {
+		return nil
+	}
+	pr := s.pageRows
+	ids, rows := make([]int64, pr), make([]int64, pr)
+	for p := 0; p*pr < s.rows; p++ {
+		cnt := min(pr, s.rows-p*pr)
+		s.idIDs.decodePage(p, cnt, ids, nil, nil)
+		s.idRows.decodePage(p, cnt, rows, nil, nil)
+		for k := 0; k < cnt; k++ {
+			if rows[k] < 0 || rows[k] >= int64(s.rows) {
+				return corrupt(secIDRows, "entry %d names row %d of %d", p*pr+k, rows[k], s.rows)
+			}
+			if !fn(types.RelID(ids[k]), int(rows[k])) {
+				return nil
+			}
+		}
 	}
 	return nil
 }

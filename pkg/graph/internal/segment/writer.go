@@ -114,10 +114,10 @@ func encode(s Schema, rows []*types.Relationship, opts Options, pageRows int) ([
 			return nil, fmt.Errorf("%w: row %d is nil", ErrInvalidRow, i)
 		}
 		if r.TypeToken().Value() != s.TypeToken {
-			return nil, fmt.Errorf("%w: row %d (id %d) has type token %d, schema %d", ErrInvalidRow, i, r.ID(), r.TypeToken().Value(), s.TypeToken)
+			return nil, rowErr(r, ErrInvalidRow, "row %d (id %d) has type token %d, schema %d", i, r.ID(), r.TypeToken().Value(), s.TypeToken)
 		}
 		if ig := r.Integrity(); ig == nil || !isLowerHex64(ig.Hash) {
-			return nil, fmt.Errorf("%w: row %d (id %d) carries no stored 64-hex hash", ErrHashMismatch, i, r.ID())
+			return nil, rowErr(r, ErrHashMismatch, "row %d (id %d) carries no stored 64-hex hash", i, r.ID())
 		}
 		if tm := r.Temporal(); tm != nil {
 			vfIn[i] = int64(tm.ValidFrom)
@@ -218,7 +218,7 @@ func encode(s Schema, rows []*types.Relationship, opts Options, pageRows int) ([
 		if len(fallback) > 0 {
 			b, err := storeutil.MarshalPropertySlice(fallback)
 			if err != nil {
-				return nil, fmt.Errorf("%w: row id %d: fallback properties: %v", ErrInvalidRow, r.ID(), err)
+				return nil, rowErr(r, ErrInvalidRow, "row id %d: fallback properties: %v", r.ID(), err)
 			}
 			w.fallback[i] = b
 		}
@@ -474,11 +474,11 @@ func verifySealed(data []byte, rows []*types.Relationship, order []int) error {
 	return seg.scanRange(0, seg.rows, func(i int, got *types.Relationship) error {
 		want := rows[order[i]]
 		if diff := rowDiff(want, got); diff != "" {
-			return fmt.Errorf("%w: id %d version %d does not round-trip: %s", ErrInvalidRow, want.ID(), want.Version(), diff)
+			return rowErr(want, ErrInvalidRow, "id %d version %d does not round-trip: %s", want.ID(), want.Version(), diff)
 		}
 		if stored := want.Integrity().Hash; got.Integrity().Hash != stored {
-			return fmt.Errorf("%w: id %d version %d: sealed columns hash to %s, stored hash %s",
-				ErrHashMismatch, want.ID(), want.Version(), got.Integrity().Hash, stored)
+			return rowErr(want, ErrHashMismatch, "id %d version %d: sealed columns hash to %s, stored hash %s",
+				want.ID(), want.Version(), got.Integrity().Hash, stored)
 		}
 		return nil
 	})
