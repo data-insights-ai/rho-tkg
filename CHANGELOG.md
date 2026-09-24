@@ -6,6 +6,107 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **ADR-0011 step S2 — declared bulk relationship types seal into in-RAM column
+  segments (memory store).** `graph.Config.RelSegments` declares a relationship
+  type bulk (`RelSegmentSpec{Type, Columns, IntegrityBlockRows}`; the type's token
+  is created at `New`) and `SegmentMemoryBudget` bounds the unsealed rows of all
+  declared types (bytes by `ApproxHeapBytes`, default 256 MiB). When a write pushes
+  the unsealed bytes over the budget — or on `g.Admin().SealRelSegments(type)` —
+  the store encodes the type's memtable rows with the S1 codec into a new in-RAM
+  segment; sealed rows leave `rels`, `typeIdx`, `outIdx` and `inIdx`, and every
+  relationship read door (point, by-IDs, `ByType` with pagination and temporal
+  filters, streaming scans, adjacency and degrees, property and range/prefix
+  index doors, counts, stats rescans, as-of, deleted-ID iteration, column scans,
+  the lazily built sidecars) answers from memtable ∪ segments. `g.Admin().RelSegmentStats`
+  reports the layout. New optional `store.RelSegmentCapability`; only the memory
+  store implements it, so a declaration on any other backend fails `New` with
+  `ErrCapabilityNotSupported` (S3/S7). New sentinels `ErrRelSegmentDeclaration`,
+  `ErrRelSegmentNotDeclared`. Undeclared stores keep today's code paths.
+  - **Overlay:** a write that targets a sealed row first faults it back into the
+    memtable and marks the sealed copy dead, then runs the unchanged row-store
+    logic (update → new version in the memtable, delete → removed, cascade and
+    exact erasure and retention purge fault in the node's sealed adjacency). A
+    faulted-in ID is not resealed before S4, so an ID has at most one sealed row.
+    A seal writes no change-log record. The stats maps and the ID-keyed
+    property/temporal indexes are unchanged by a seal (they already describe the
+    same logical rows); a declared type declines the rel DocValues builder
+    (`RelColumnSnapshot` ok=false → the caller's row path, ADR §7).
+  - **Concurrency:** a seal snapshots the rows under the store lock, encodes
+    WITHOUT it (the rows are frozen), and installs only rows whose memtable
+    pointer is unchanged — a row replaced, deleted or faulted in meanwhile is
+    sealed dead from the start; a `Clear` in between discards the segment. A row
+    the codec refuses (no stored hash, or a hash its content does not reproduce)
+    stays in the memtable. `Clear` drops segments and keeps declarations.
+  - **Tests first**, run red on a store that recorded declarations and sealed
+    nothing (`TestSegments_*` in `pkg/graph/store/memory`, `TestRelSegments*` in
+    `pkg/graph`): a graph-level differential oracle — one primary's change-log
+    applied to two read-only replicas, one declared with a 48 KiB budget plus
+    explicit seals, compared on 102–162 read doors after every chunk (3 seeds;
+    updates, in-place updates, CloseVersion, deletes and node cascades after
+    seals; declared, missing, wrong-kind, NaN and nested-kind properties) — and a
+    store-level twin oracle with property and temporal indexes; seal of an empty
+    type, a declaration after rows exist, unsealable rows, concurrent reads
+    during seals (`-race`), `Clear`, declaration rules, config validation, a
+    two-phase temporal test across a seal. A deliberately broken dead-row check
+    turns both oracles red.
+  - **Measured** (`pkg/graph/store/memory/segments_scale_test.go`,
+    `RHO_TKG_SEGMENT_S2`; HOP only, 256 MiB budget, office PC; resident = graph
+    heap after a final explicit seal minus a nodes-only run, per HOP):
+
+    | | 790 K | 3.15 M | 12.6 M |
+    |---|---|---|---|
+    | P6 schema, row store (B/HOP) | 608 | 610 | 611 |
+    | P6 schema, declared, beyond the memtable (B/HOP) | **25.0–25.3** | **26.7** | **31.4** |
+    | P6 encoded (B/HOP; segments) | 21.5 (1) | 22.3 (1) | 26.9 (4) |
+    | legacy schema, row store / declared (B/HOP) | 833 / 87.4 | 835 / 75.7 | 836 / 78.5 |
+    | `ByType` rows/s, row store / sealed (P6) | 9.9–11.1 M / 1.2–1.5 M | 8.4–9.2 M / 1.3 M | 6.4–6.9 M / 1.1–1.3 M |
+    | `ForEachByType` rows/s, row store / sealed (P6) | 11.7 M / 0.6–0.8 M | 9.8 M / 0.7 M | 7.1 M / 0.7 M |
+    | `Get` /s, row store / sealed (P6) | 1.96 M / 0.46–0.50 M | 1.43 M / 0.44 M | 1.08 M / 0.32 M |
+    | column path, no Relationship built (P6) | 12.2–13.3 M rows/s | 13.7 M | 12.8–13.1 M |
+    | write time, row store / declared (P6) | 0.4 s / 0.4 s + 0.4 s seal | 1.5 s / 1.5 s + 1.8 s | 6.0 s / 12.0–12.5 s + 0.7 s |
+
+    The ≤ 60 B/HOP gate holds for the P6 schema. It is **not flat**: the rise
+    from 25 to 31 B/HOP is the segments' per-segment node sections (`nodehash`
+    1.18 → 4.64 B/HOP, `nodes` 0.13 → 0.52, actor dictionary 1.20 → 1.91, going
+    from 1 to 4 segments over 3,950 → 63,000 endpoints) — an O(segments × distinct
+    endpoints) term that S4's merge has to bound. The legacy schema is **over the
+    gate**: its fallback column (`support`, one or two random 16-hex ids per row)
+    alone is 38.8 B/HOP and `t_lo`/`t_hi` 3.4 B/HOP each; ai-soc P6 removes them.
+    The row doors on sealed rows are slower than the memory store's zero-copy
+    frozen pointers — `ByType` 5–9×, `ForEachByType` 10–20×, `Get` 3–4× (every row is decoded and its hash recomputed;
+    `ForEachByType` and `Get` pay a random-access decode per row); the column path
+    decodes each page once and builds nothing — the seam S5 exposes. Writes at
+    12.6 M take twice as long because each budget seal runs synchronously in the
+    writing goroutine. The undeclared baseline is unchanged: the S0 harness
+    re-run gives 723 / 719 / 718 B/rel (mix) and 852 / 855 / 856 B/HOP, identical
+    to S0; HOP `ByType` 8.5 / 6.6–8.1 / 5.7–6.0 M rows/s (one sequenced run read
+    3.3–3.7 M at 3.15 M; a standalone repeat 6.6–8.1, S0 recorded 7).
+  - **Limits recorded in the backlog (item 0):** the ai-soc half of S2's gate
+    (xcheck on the synthday days and BA with HOP declared) is ai-soc work; the
+    ID-keyed rel property/temporal indexes and the lazily built belief-watermark
+    and rel-type tx-membership sidecars still hold one entry per row when a
+    caller creates or triggers them; seals are synchronous in the writer.
+- **Segment codec, for S2 and S5** (`pkg/graph/internal/segment`): `Batch` — one
+  page decode behind both the row door (`Batch.Row`) and a columnar consumer
+  (`IDs`, `StartIDs`, `EndIDs`, `ValidFrom`, `ValidTo`, `TxFrom`, `Versions`,
+  `IntColumn`, `StringColumn` as dictionary codes); `ScanBatches`, `ForEachID`
+  (ID order without building rows), `IDAt`, `ScanRange`, `IDRange`,
+  `SectionBytes`, `ValidateSchema`; `Encode` names a refused row (`RowError`) so a
+  seal can drop it. `Lookup` binary-searches a sparse ID sample built at `Open`
+  (one entry per 64 rows, rows/8 bytes) instead of scanning a delta-coded page:
+  sealed-row `Get` 0.13 → 0.50 M/s at 790 K.
+
+### Found (not fixed here)
+
+- **HIGH — `g.Rels().ByType(type, QueryOpts{TxAt: t})` and `OutgoingForNodesAtTx`
+  answer nondeterministically on a plain memory graph** (no declaration;
+  reproduced on v4.37.2): 3 distinct answers over 200 identical calls on the
+  primary, 6–9 on a replica, each a different superseded version of one
+  relationship. Found by the S2 oracle, which skips these two doors by name.
+  Backlog item 4.
+
 ## [4.37.2] - 2026-09-24
 
 Fixes the v4.37.1 release commit, which left README's release line at v4.37.0 so the
