@@ -309,6 +309,9 @@ func (c *Core) nodesAsOfLocked(txTime types.Instant) ([]*types.Node, error) {
 
 // RelsAsOf returns all relationships that existed at the given transaction time.
 // Mirrors GetNodesAsOf for relationships.
+//
+// DECLARED view: the relationship rows believed at txTime, NOT masked by
+// endpoint validity or endpoint belief.
 func (t *TempOps) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 	c := t.c
 	if err := c.checkOpen(); err != nil {

@@ -222,6 +222,10 @@ func (a *API) Import(ctx context.Context, id types.RelID, typeName string, start
 }
 
 // All returns all relationships matching opts.
+//
+// DECLARED view under a temporal filter: each relationship's own asserted
+// validity only, NOT masked by endpoint validity; use Temporal().Snapshot /
+// NeighborsAt / OutgoingRelsAt for the effective graph view.
 func (a *API) All(opts storepkg.QueryOpts) ([]*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -234,6 +238,10 @@ func (a *API) All(opts storepkg.QueryOpts) ([]*types.Relationship, error) {
 // the full result slice when the backend can provide a current-state ID scan.
 // fn returning false stops early. Mirror of nodes.API.ForEach for Node/Rel
 // parity; see core.RelOps.ForEach for the exact fallback/isolation contract.
+//
+// DECLARED view under a temporal filter: each relationship's own asserted
+// validity only, NOT masked by endpoint validity; use Temporal().Snapshot /
+// NeighborsAt / OutgoingRelsAt for the effective graph view.
 func (a *API) ForEach(opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
 	ops, err := a.ready()
 	if err != nil {
@@ -278,6 +286,10 @@ func (a *API) Iter(ctx context.Context, opts storepkg.QueryOpts) iter.Seq2[*type
 }
 
 // ByType returns relationships of the given type.
+//
+// DECLARED view under a temporal filter: each relationship's own asserted
+// validity only, NOT masked by endpoint validity; use Temporal().Snapshot /
+// NeighborsAt / OutgoingRelsAt for the effective graph view.
 func (a *API) ByType(typeName string, opts storepkg.QueryOpts) ([]*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -293,6 +305,10 @@ func (a *API) ByType(typeName string, opts storepkg.QueryOpts) ([]*types.Relatio
 // without graph locks held — concurrent writers are neither blocked nor
 // observed atomically. Rows are shared frozen pointers; fn must not mutate
 // them.
+//
+// DECLARED view under a temporal filter: each relationship's own asserted
+// validity only, NOT masked by endpoint validity; use Temporal().Snapshot /
+// NeighborsAt / OutgoingRelsAt for the effective graph view.
 func (a *API) ForEachByType(typeName string, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
 	ops, err := a.ready()
 	if err != nil {
@@ -307,6 +323,10 @@ func (a *API) ForEachByType(typeName string, opts storepkg.QueryOpts, fn func(*t
 // otherwise falls back to a type-scan + property filter, so it works on every
 // backend (including the tiered store, which declines rel-property-index
 // CREATION but still answers this query). Temporal opts fold current + history.
+//
+// DECLARED view under a temporal filter: each relationship's own asserted
+// validity only, NOT masked by endpoint validity; use Temporal().Snapshot /
+// NeighborsAt / OutgoingRelsAt for the effective graph view.
 func (a *API) ByTypeAndProperty(typeName, key string, value any, opts storepkg.QueryOpts) ([]*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -504,6 +524,10 @@ func (a *API) ForEachAdjacentEndpoint(nodeID types.NodeID, typeName string, inco
 // Temporal().OutgoingRelsAt, and a since-deleted edge stays visible inside
 // its window. fn returning false stops the scan.
 // See core.RelOps.ForEachAdjacentEndpointAt.
+//
+// DECLARED view under a temporal filter: each relationship's own asserted
+// validity only, NOT masked by endpoint validity; use Temporal().Snapshot /
+// NeighborsAt / OutgoingRelsAt for the effective graph view.
 func (a *API) ForEachAdjacentEndpointAt(nodeID types.NodeID, typeName string, incoming bool, opts storepkg.QueryOpts, fn func(rel types.RelID, other types.NodeID) bool) error {
 	ops, err := a.ready()
 	if err != nil {
@@ -518,6 +542,10 @@ func (a *API) ForEachAdjacentEndpointAt(nodeID types.NodeID, typeName string, in
 // version valid under opts — never a live row the filter rejects while an
 // older version matches. fn returning false stops the scan.
 // See core.RelOps.ForEachAdjacentRelAt.
+//
+// DECLARED view under a temporal filter: each relationship's own asserted
+// validity only, NOT masked by endpoint validity; use Temporal().Snapshot /
+// NeighborsAt / OutgoingRelsAt for the effective graph view.
 func (a *API) ForEachAdjacentRelAt(nodeID types.NodeID, typeName string, incoming bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
 	ops, err := a.ready()
 	if err != nil {
@@ -593,6 +621,10 @@ func (a *API) IncomingForNodes(nodeIDs []types.NodeID, typeName string) (map[typ
 // is visible from its backfilled TxFrom onward. txAt == 0 delegates to
 // OutgoingForNodes verbatim (no TX filter, no caller churn).
 // See core.RelOps.OutgoingForNodesAtTx.
+//
+// DECLARED view under a temporal filter: each relationship's own asserted
+// validity only, NOT masked by endpoint validity; use Temporal().Snapshot /
+// NeighborsAt / OutgoingRelsAt for the effective graph view.
 func (a *API) OutgoingForNodesAtTx(nodeIDs []types.NodeID, typeName string, txAt types.Instant) (map[types.NodeID][]*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -603,6 +635,10 @@ func (a *API) OutgoingForNodesAtTx(nodeIDs []types.NodeID, typeName string, txAt
 
 // IncomingForNodesAtTx is the bitemporal counterpart of IncomingForNodes. See
 // OutgoingForNodesAtTx for the resolution semantics.
+//
+// DECLARED view under a temporal filter: each relationship's own asserted
+// validity only, NOT masked by endpoint validity; use Temporal().Snapshot /
+// NeighborsAt / OutgoingRelsAt for the effective graph view.
 func (a *API) IncomingForNodesAtTx(nodeIDs []types.NodeID, typeName string, txAt types.Instant) (map[types.NodeID][]*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -627,6 +663,10 @@ func (a *API) IncomingForNodesAtTx(nodeIDs []types.NodeID, typeName string, txAt
 // belief state at the pin is skipped silently (no ErrNodeNotFound, matching
 // ByType{TxPin} filtered by endpoint). pin == 0 delegates to OutgoingForNodes
 // verbatim. See core.RelOps.OutgoingForNodesAtPin.
+//
+// DECLARED view under a temporal filter: each relationship's own asserted
+// validity only, NOT masked by endpoint validity; use Temporal().Snapshot /
+// NeighborsAt / OutgoingRelsAt for the effective graph view.
 func (a *API) OutgoingForNodesAtPin(nodeIDs []types.NodeID, typeName string, pin types.Instant) (map[types.NodeID][]*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -637,6 +677,10 @@ func (a *API) OutgoingForNodesAtPin(nodeIDs []types.NodeID, typeName string, pin
 
 // IncomingForNodesAtPin is the belief-state counterpart of IncomingForNodes. See
 // OutgoingForNodesAtPin for the resolution semantics and seed-tolerance contract.
+//
+// DECLARED view under a temporal filter: each relationship's own asserted
+// validity only, NOT masked by endpoint validity; use Temporal().Snapshot /
+// NeighborsAt / OutgoingRelsAt for the effective graph view.
 func (a *API) IncomingForNodesAtPin(nodeIDs []types.NodeID, typeName string, pin types.Instant) (map[types.NodeID][]*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {

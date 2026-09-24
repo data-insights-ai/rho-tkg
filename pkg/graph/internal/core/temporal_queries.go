@@ -56,6 +56,11 @@ func (c *Core) nodesAtLocked(at types.Instant) ([]*types.Node, error) {
 
 // RelsAt returns all relationships valid at the given instant.
 // History-aware: includes deleted relationships that were valid at time t.
+//
+// DECLARED view: reports the relationship's own asserted validity only and is
+// NOT masked by endpoint validity — an edge whose start or end node is closed
+// or not yet valid is still returned. Use Snapshot, NeighborsAt or
+// OutgoingRelsAt/IncomingRelsAt for the EFFECTIVE graph view.
 func (t *TempOps) RelsAt(at types.Instant) ([]*types.Relationship, error) {
 	c := t.c
 	if err := c.checkOpen(); err != nil {
@@ -220,6 +225,11 @@ func (c *Core) nodesDuringLocked(start, end types.Instant) ([]*types.Node, error
 // History-aware: includes deleted or updated relationships.
 //
 // end == 0 is interpreted as "open-ended to now" — see GetNodesValidDuring.
+//
+// DECLARED view: reports the relationship's own asserted validity only and is
+// NOT masked by endpoint validity — an edge whose start or end node is closed
+// or not yet valid is still returned. Use Snapshot, NeighborsAt or
+// OutgoingRelsAt/IncomingRelsAt for the EFFECTIVE graph view.
 func (t *TempOps) RelsDuring(start, end types.Instant) ([]*types.Relationship, error) {
 	c := t.c
 	if err := c.checkOpen(); err != nil {
@@ -332,6 +342,11 @@ func (c *Core) nodesRelatingLocked(from, to types.Instant, rels types.AllenRelat
 }
 
 // RelsRelating is the relationship mirror of NodesRelating (Testing Rule 2).
+//
+// DECLARED view: reports the relationship's own asserted validity only and is
+// NOT masked by endpoint validity — an edge whose start or end node is closed
+// or not yet valid is still returned. Use Snapshot, NeighborsAt or
+// OutgoingRelsAt/IncomingRelsAt for the EFFECTIVE graph view.
 func (t *TempOps) RelsRelating(from, to types.Instant, rels types.AllenRelationSet) ([]*types.Relationship, error) {
 	c := t.c
 	if err := c.checkOpen(); err != nil {
@@ -729,7 +744,9 @@ func (c *Core) relAtViaTemporalMeta(id types.RelID, current *types.Relationship,
 
 // NeighborsAt returns all neighbor nodes reachable from nodeID via
 // relationships that are valid at the given instant, where the neighbor nodes
-// themselves are also valid at that instant. History-aware via the
+// themselves are also valid at that instant — the EFFECTIVE view shared with
+// Snapshot, Diff and OutgoingRelsAt/IncomingRelsAt (edge row valid at t AND
+// both endpoints valid at t). History-aware via the
 // deleted-rel candidate fold (see forEachRelCandidateID) which scales with
 // the number of deleted relationships when the underlying store implements
 // DeletedIterationCapability.
@@ -823,7 +840,18 @@ func (c *Core) neighborsAtLocked(nodeID types.NodeID, at types.Instant) ([]*type
 }
 
 // OutgoingRelsAt returns relationships where nodeID was the start endpoint and
-// the relationship was valid at the given instant. History-aware: includes
+// the relationship was valid at the given instant.
+//
+// EFFECTIVE view: a relationship is returned only if its own version is valid
+// at t AND BOTH endpoints are valid at t (NodeAt semantics) — the same rule as
+// Snapshot, Diff and NeighborsAt, so the three agree on every edge. An edge
+// whose far endpoint is closed, not yet valid, or unknown locally (e.g. a
+// cross-machine foreign end) is masked. The far-endpoint check is memoized per
+// call and skipped for a self-loop. The DECLARED row doors (RelsAt,
+// RelsDuring, Rels().ByType / ForEachAdjacentRelAt with QueryOpts, …) are NOT
+// endpoint-masked.
+//
+// History-aware: includes
 // relationships that have since been deleted but were valid at time t, and
 // returns the version of each relationship that was current at t (not the
 // most recent version). Relationship endpoints are immutable so a rel's
@@ -836,14 +864,16 @@ func (c *Core) neighborsAtLocked(nodeID types.NodeID, at types.Instant) ([]*type
 // DeletedIterationCapability when available (every in-tree backend
 // implements it), so cost is O(degree + deletedRelCount) rather than
 // O(degree + totalRelHistory). External backends that don't implement the
-// capability fall back to a full history scan.
+// capability fall back to a full history scan. The endpoint mask adds at most
+// one NodeAt resolution per DISTINCT far endpoint among the rels valid at t.
 func (t *TempOps) OutgoingRelsAt(nodeID types.NodeID, at types.Instant) ([]*types.Relationship, error) {
 	return t.directionalRelsAt(nodeID, at, true)
 }
 
 // IncomingRelsAt returns relationships where nodeID was the end endpoint and
-// the relationship was valid at the given instant. Mirror of OutgoingRelsAt;
-// see that method's documentation for semantics and scalability.
+// the relationship was valid at the given instant. EFFECTIVE view: the start
+// endpoint must also be valid at t. Mirror of OutgoingRelsAt; see that method's
+// documentation for semantics and scalability.
 func (t *TempOps) IncomingRelsAt(nodeID types.NodeID, at types.Instant) ([]*types.Relationship, error) {
 	return t.directionalRelsAt(nodeID, at, false)
 }
@@ -897,7 +927,13 @@ func (c *Core) directionalRelsAtLocked(nodeID types.NodeID, at types.Instant, ou
 		return nil, err
 	}
 
-	var result []*types.Relationship
+	var (
+		result []*types.Relationship
+		// otherValid memoizes the EFFECTIVE-visibility check of the far
+		// endpoint per call: a fan-out to the same neighbour resolves that
+		// neighbour's version chain once.
+		otherValid map[types.NodeID]bool
+	)
 	if err := c.forEachRelAdjacencyCandidateID(currentIDs, func(id types.RelID) error {
 		r, err := c.relAtLocked(id, at)
 		if err != nil {
@@ -906,11 +942,34 @@ func (c *Core) directionalRelsAtLocked(nodeID types.NodeID, at types.Instant, ou
 			}
 			return err
 		}
-		if outgoing && r.StartNodeID() == nodeID {
-			result = append(result, r)
-		} else if !outgoing && r.EndNodeID() == nodeID {
-			result = append(result, r)
+		var other types.NodeID
+		switch {
+		case outgoing && r.StartNodeID() == nodeID:
+			other = r.EndNodeID()
+		case !outgoing && r.EndNodeID() == nodeID:
+			other = r.StartNodeID()
+		default:
+			return nil
 		}
+		// EFFECTIVE rule (same as Snapshot/Diff/NeighborsAt): the edge is
+		// visible at t only if BOTH endpoints are valid at t. The anchor was
+		// proven above; a self-loop's far endpoint is the anchor.
+		if other != nodeID {
+			ok, seen := otherValid[other]
+			if !seen {
+				if ok, err = c.nodeExistsAt(other, at); err != nil {
+					return err
+				}
+				if otherValid == nil {
+					otherValid = make(map[types.NodeID]bool)
+				}
+				otherValid[other] = ok
+			}
+			if !ok {
+				return nil
+			}
+		}
+		result = append(result, r)
 		return nil
 	}); err != nil {
 		return nil, err
@@ -1097,6 +1156,11 @@ func (c *Core) nodesByLabelPropertyDuringLocked(label, key string, value any, st
 // the named convenience mirror of GetNodesByLabelValidAt. History-aware via
 // the generic-opts path: includes deleted relationships whose type matched
 // at t.
+//
+// DECLARED view: reports the relationship's own asserted validity only and is
+// NOT masked by endpoint validity — an edge whose start or end node is closed
+// or not yet valid is still returned. Use Snapshot, NeighborsAt or
+// OutgoingRelsAt/IncomingRelsAt for the EFFECTIVE graph view.
 func (t *TempOps) RelsByTypeAt(relType string, at types.Instant) ([]*types.Relationship, error) {
 	c := t.c
 	if err := c.checkOpen(); err != nil {
@@ -1113,6 +1177,11 @@ func (t *TempOps) RelsByTypeAt(relType string, at types.Instant) ([]*types.Relat
 // type+property index for relationships, so candidates are seeded from the
 // type index only and the property predicate is evaluated on each historical
 // version.
+//
+// DECLARED view: reports the relationship's own asserted validity only and is
+// NOT masked by endpoint validity — an edge whose start or end node is closed
+// or not yet valid is still returned. Use Snapshot, NeighborsAt or
+// OutgoingRelsAt/IncomingRelsAt for the EFFECTIVE graph view.
 func (t *TempOps) RelsByTypePropertyAt(relType, key string, value any, at types.Instant) ([]*types.Relationship, error) {
 	c := t.c
 	if err := c.checkOpen(); err != nil {
@@ -1190,6 +1259,11 @@ func (c *Core) relsByTypePropertyAtLocked(relType, key string, value any, at typ
 // per-version via findRelVersionMatchingDuring — so a relationship whose
 // property held during part of [start, end) but not on the most-recent
 // overlapping version is still included.
+//
+// DECLARED view: reports the relationship's own asserted validity only and is
+// NOT masked by endpoint validity — an edge whose start or end node is closed
+// or not yet valid is still returned. Use Snapshot, NeighborsAt or
+// OutgoingRelsAt/IncomingRelsAt for the EFFECTIVE graph view.
 func (t *TempOps) RelsByTypePropertyDuring(relType, key string, value any, start, end types.Instant) ([]*types.Relationship, error) {
 	c := t.c
 	if err := c.checkOpen(); err != nil {
@@ -1363,6 +1437,11 @@ func (c *Core) nodesAtLockedTx(validAt, txAt types.Instant) ([]*types.Node, erro
 }
 
 // RelsAtTx returns all relationships valid at validAt as known at txAt.
+//
+// DECLARED view: reports the relationship's own asserted validity only and is
+// NOT masked by endpoint validity — an edge whose start or end node is closed
+// or not yet valid is still returned. Use Snapshot, NeighborsAt or
+// OutgoingRelsAt/IncomingRelsAt for the EFFECTIVE graph view.
 func (t *TempOps) RelsAtTx(validAt, txAt types.Instant) ([]*types.Relationship, error) {
 	c := t.c
 	if err := c.checkOpen(); err != nil {
@@ -1457,6 +1536,11 @@ func (c *Core) nodesDuringTxLocked(start, end, txAt types.Instant) ([]*types.Nod
 }
 
 // RelsDuringTx is the relationship mirror of NodesDuringTx.
+//
+// DECLARED view: reports the relationship's own asserted validity only and is
+// NOT masked by endpoint validity — an edge whose start or end node is closed
+// or not yet valid is still returned. Use Snapshot, NeighborsAt or
+// OutgoingRelsAt/IncomingRelsAt for the EFFECTIVE graph view.
 func (t *TempOps) RelsDuringTx(from, to, txAt types.Instant) ([]*types.Relationship, error) {
 	c := t.c
 	if err := c.checkOpen(); err != nil {

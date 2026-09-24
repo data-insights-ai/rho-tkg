@@ -26,6 +26,10 @@ import (
 // the requested time and the predicate re-checked against that version, so a rel
 // whose type and property held at the requested time is included even if a later
 // version no longer matches.
+//
+// DECLARED view under a temporal filter: each relationship's own asserted
+// validity only, NOT masked by endpoint validity. Use Temporal().Snapshot /
+// NeighborsAt / OutgoingRelsAt for the EFFECTIVE graph view.
 func (r *RelOps) ByTypeAndProperty(typeName, key string, value any, opts storepkg.QueryOpts) ([]*types.Relationship, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {

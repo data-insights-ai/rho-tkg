@@ -137,6 +137,10 @@ func (a *API) RelAt(id types.RelID, t types.Instant) (*types.Relationship, error
 }
 
 // RelsAt returns relationships valid at t.
+//
+// DECLARED view: the relationship's own asserted validity only, NOT masked
+// by endpoint validity; use Snapshot/NeighborsAt/OutgoingRelsAt for the
+// effective graph view.
 func (a *API) RelsAt(t types.Instant) ([]*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -146,6 +150,10 @@ func (a *API) RelsAt(t types.Instant) ([]*types.Relationship, error) {
 }
 
 // RelsByTypeAt returns relationships of relType valid at t.
+//
+// DECLARED view: the relationship's own asserted validity only, NOT masked
+// by endpoint validity; use Snapshot/NeighborsAt/OutgoingRelsAt for the
+// effective graph view.
 func (a *API) RelsByTypeAt(relType string, t types.Instant) ([]*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -154,7 +162,9 @@ func (a *API) RelsByTypeAt(relType string, t types.Instant) ([]*types.Relationsh
 	return ops.RelsByTypeAt(relType, t)
 }
 
-// NeighborsAt returns the neighbours of nodeID valid at t. History-aware:
+// NeighborsAt returns the neighbours of nodeID valid at t. EFFECTIVE view: a
+// neighbour is reached only via a relationship valid at t whose both endpoints
+// are valid at t (same rule as Snapshot, Diff, OutgoingRelsAt). History-aware:
 // returns neighbours connected via rels (current or deleted) that were valid
 // at t. The deleted-rel fold scales with the number of deleted relationships,
 // not the total history size, when the underlying store implements
@@ -169,9 +179,13 @@ func (a *API) NeighborsAt(nodeID types.NodeID, t types.Instant) ([]*types.Node, 
 }
 
 // OutgoingRelsAt returns relationships where nodeID is the start endpoint and
-// the relationship was valid at t. History-aware: includes deleted rels that
-// were valid at t and returns the version-at-t of each. Sorted by rel ID.
-// Returns ErrNodeNotFound if nodeID was not valid at t.
+// the relationship was valid at t. EFFECTIVE view: a relationship is returned
+// only if its version is valid at t AND both endpoints are valid at t — the same
+// rule as Snapshot, Diff and NeighborsAt, so they agree on every edge. The
+// declared row doors (RelsAt, RelsDuring, Rels().ByType/ForEachAdjacentRelAt
+// with QueryOpts) are not endpoint-masked. History-aware: includes deleted rels
+// that were valid at t and returns the version-at-t of each. Sorted by rel ID.
+// Returns ErrNoVersionValidAt / ErrNodeNotFound if nodeID was not valid at t.
 func (a *API) OutgoingRelsAt(nodeID types.NodeID, t types.Instant) ([]*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -181,7 +195,8 @@ func (a *API) OutgoingRelsAt(nodeID types.NodeID, t types.Instant) ([]*types.Rel
 }
 
 // IncomingRelsAt returns relationships where nodeID is the end endpoint and
-// the relationship was valid at t. Mirror of OutgoingRelsAt.
+// the relationship was valid at t. EFFECTIVE view (start endpoint must also be
+// valid at t). Mirror of OutgoingRelsAt.
 func (a *API) IncomingRelsAt(nodeID types.NodeID, t types.Instant) ([]*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -200,6 +215,10 @@ func (a *API) NodesByLabelPropertyAt(label, key string, value any, t types.Insta
 }
 
 // RelsByTypePropertyAt returns relationships of relType with property at t.
+//
+// DECLARED view: the relationship's own asserted validity only, NOT masked
+// by endpoint validity; use Snapshot/NeighborsAt/OutgoingRelsAt for the
+// effective graph view.
 func (a *API) RelsByTypePropertyAt(relType, key string, value any, t types.Instant) ([]*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -218,6 +237,10 @@ func (a *API) NodesDuring(start, end types.Instant) ([]*types.Node, error) {
 }
 
 // RelsDuring returns relationships whose validity overlaps [start,end).
+//
+// DECLARED view: the relationship's own asserted validity only, NOT masked
+// by endpoint validity; use Snapshot/NeighborsAt/OutgoingRelsAt for the
+// effective graph view.
 func (a *API) RelsDuring(start, end types.Instant) ([]*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -239,6 +262,10 @@ func (a *API) NodesRelating(from, to types.Instant, rels types.AllenRelationSet)
 }
 
 // RelsRelating is the relationship mirror of NodesRelating.
+//
+// DECLARED view: the relationship's own asserted validity only, NOT masked
+// by endpoint validity; use Snapshot/NeighborsAt/OutgoingRelsAt for the
+// effective graph view.
 func (a *API) RelsRelating(from, to types.Instant, rels types.AllenRelationSet) ([]*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -257,6 +284,10 @@ func (a *API) NodesByLabelPropertyDuring(label, key string, value any, start, en
 }
 
 // RelsByTypePropertyDuring returns relationships of relType with property during [start,end).
+//
+// DECLARED view: the relationship's own asserted validity only, NOT masked
+// by endpoint validity; use Snapshot/NeighborsAt/OutgoingRelsAt for the
+// effective graph view.
 func (a *API) RelsByTypePropertyDuring(relType, key string, value any, start, end types.Instant) ([]*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -340,6 +371,10 @@ func (a *API) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 }
 
 // RelsAsOf returns relationships known at transaction time txTime.
+//
+// DECLARED view: the relationship's own asserted validity only, NOT masked
+// by endpoint validity; use Snapshot/NeighborsAt/OutgoingRelsAt for the
+// effective graph view.
 func (a *API) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -378,6 +413,10 @@ func (a *API) NodesAtTx(validAt, txAt types.Instant) ([]*types.Node, error) {
 }
 
 // RelsAtTx is the relationship counterpart of NodesAtTx.
+//
+// DECLARED view: the relationship's own asserted validity only, NOT masked
+// by endpoint validity; use Snapshot/NeighborsAt/OutgoingRelsAt for the
+// effective graph view.
 func (a *API) RelsAtTx(validAt, txAt types.Instant) ([]*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -398,6 +437,10 @@ func (a *API) NodesDuringTx(from, to, txAt types.Instant) ([]*types.Node, error)
 }
 
 // RelsDuringTx is the relationship counterpart of NodesDuringTx.
+//
+// DECLARED view: the relationship's own asserted validity only, NOT masked
+// by endpoint validity; use Snapshot/NeighborsAt/OutgoingRelsAt for the
+// effective graph view.
 func (a *API) RelsDuringTx(from, to, txAt types.Instant) ([]*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -425,7 +468,9 @@ func (a *API) SetRelVersionInterval(ctx context.Context, id types.RelID, validFr
 	return ops.SetRelVersionInterval(ctx, id, validFrom, validTo, props)
 }
 
-// Snapshot captures the graph state at t.
+// Snapshot captures the graph state at t. EFFECTIVE view: a relationship is
+// included only if it and both its endpoints are valid at t (RelsAt(t) is the
+// declared, unmasked row view and may return more).
 func (a *API) Snapshot(t types.Instant) (*GraphSnapshot, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -434,7 +479,8 @@ func (a *API) Snapshot(t types.Instant) (*GraphSnapshot, error) {
 	return ops.Snapshot(t)
 }
 
-// Diff returns the snapshot diff between t1 and t2.
+// Diff returns the snapshot diff between t1 and t2. Relationship presence at
+// each instant uses the EFFECTIVE rule of Snapshot.
 func (a *API) Diff(t1, t2 types.Instant) (*SnapshotDiff, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -444,6 +490,7 @@ func (a *API) Diff(t1, t2 types.Instant) (*SnapshotDiff, error) {
 }
 
 // DiffCallback streams the diff between t1 and t2 through the given handlers.
+// Relationship presence uses the EFFECTIVE rule of Snapshot.
 func (a *API) DiffCallback(t1, t2 types.Instant, h DiffHandlers) error {
 	ops, err := a.ready()
 	if err != nil {
