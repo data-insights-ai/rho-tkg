@@ -174,3 +174,34 @@ func TestRangeCardinality_FractionalValuesAndBounds(t *testing.T) {
 		t.Fatalf("2.0<=v<=3.4: got %d ok=%v, want 3", c, ok)
 	}
 }
+
+// TestExactInt64FromVK_BareUintPrefixIsFullWidth pins CodeQL alert #15
+// (go/incorrect-integer-conversion): the bare "u" value-key prefix encodes a
+// Go `uint`, which is 64 bits wide on every supported platform (see
+// PropertySlice's "u:" encoding in pkg/types/propertyslice.go) — NOT bounded
+// to uint32 the way "u8"/"u16"/"u32" are. exactInt64FromVK previously grouped
+// "u" into the same case as "u8"/"u16"/"u32" under a `#nosec G115 -- u32 max
+// is below MaxInt64` comment that is true for those three prefixes but false
+// for bare "u", then cast unconditionally via int64(n) — a uint value above
+// math.MaxInt64 silently wrapped to a negative int64 with ok=true instead of
+// being rejected the same way the "u64" case already rejects it.
+func TestExactInt64FromVK_BareUintPrefixIsFullWidth(t *testing.T) {
+	t.Parallel()
+	// A "u" value at MaxUint64 must be rejected (ok=false), exactly like the
+	// equivalent "u64" value already is — it cannot round-trip through int64.
+	if n, ok := exactInt64FromVK("u:18446744073709551615"); ok {
+		t.Fatalf("exactInt64FromVK(u:MaxUint64) = (%d, true), want ok=false (silently wrapped to a negative int64)", n)
+	}
+	// One past MaxInt64 must also be rejected.
+	if n, ok := exactInt64FromVK("u:9223372036854775808"); ok {
+		t.Fatalf("exactInt64FromVK(u:MaxInt64+1) = (%d, true), want ok=false", n)
+	}
+	// A "u" value within int64 range must still decode exactly.
+	if n, ok := exactInt64FromVK("u:100"); !ok || n != 100 {
+		t.Fatalf("exactInt64FromVK(u:100) = (%d, %v), want (100, true)", n, ok)
+	}
+	// u32's own max must still decode exactly (well within int64 range).
+	if n, ok := exactInt64FromVK("u32:4294967295"); !ok || n != 4294967295 {
+		t.Fatalf("exactInt64FromVK(u32:MaxUint32) = (%d, %v), want (4294967295, true)", n, ok)
+	}
+}
