@@ -48,7 +48,10 @@ type QueryOpts struct {
 	// WARNING — TxAt is NOT a "belief state as of T" pin. Setting TxAt WITHOUT a
 	// valid-time filter (ValidAt / ValidStart / ValidEnd) does NOT return
 	// "everything known at T": the generic scan doors (ByLabel / ByType / All)
-	// still apply an IMPLICIT valid-at-wall-now filter, so any entity whose fact
+	// still apply an IMPLICIT valid-at-now filter — now being the later of the
+	// wall clock and the graph's transaction clock (which runs ahead of the wall
+	// after a write burst), so no version the graph recorded starts after it —
+	// and any entity whose fact
 	// was only valid in the PAST (explicit tkg_valid_to before now) is silently
 	// dropped even though it was well and truly known at T. To reconstruct the
 	// pure knowledge-time belief state ("everything recorded by T, regardless of

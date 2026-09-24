@@ -508,7 +508,7 @@ func (c *Core) nodesByLabelLocked(label string, opts storepkg.QueryOpts) ([]*typ
 
 	var result []*types.Node
 	pred := func(n *types.Node) bool { return n.HasLabelTokenRaw(tok) }
-	resolveOpts := normalizeTxAtOnlyOpts(opts)
+	resolveOpts := c.normalizeTxAtOnlyOpts(opts)
 	for _, id := range candIDs {
 		n, err := c.findNodeVersionForOpts(id, resolveOpts, pred)
 		if err != nil {
@@ -611,7 +611,7 @@ func (c *Core) relsByTypeLocked(typeName string, opts storepkg.QueryOpts) ([]*ty
 
 	var result []*types.Relationship
 	pred := func(r *types.Relationship) bool { return r.HasTypeTokenRaw(tok) }
-	resolveOpts := normalizeTxAtOnlyOpts(opts)
+	resolveOpts := c.normalizeTxAtOnlyOpts(opts)
 	for _, id := range candIDs {
 		r, err := c.findRelVersionForOpts(id, resolveOpts, pred)
 		if err != nil {
@@ -870,7 +870,10 @@ type relEndpointScannerAt interface {
 
 // ForEachAdjacentEndpointAt streams (relID, otherEndpoint) for the node's
 // adjacency in the given direction under the opts temporal filter (ValidAt /
-// ValidStart+ValidEnd). With a filter set the door is VERSION-AWARE (v4.35.0):
+// ValidStart+ValidEnd / TxAt / TxPin). With a filter set the door is
+// VERSION-AWARE (v4.35.0; the transaction-time pins since the 2026-09-24 fix —
+// before, a TxAt- or TxPin-only query fell through to the live-row scan and
+// the pin was ignored):
 // each adjacent relationship resolves to the version valid under opts, exactly
 // as the node doors and Temporal().OutgoingRelsAt do, and a since-deleted
 // edge stays visible inside its window — see forEachAdjacentRelVersionLocked.
@@ -904,7 +907,7 @@ func (r *RelOps) ForEachAdjacentEndpointAt(nodeID types.NodeID, typeName string,
 	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
 		return err
 	}
-	if storeutil.HasTemporalFilter(opts) {
+	if hasTemporalFilter(opts) {
 		return c.readUnderRLock(func() error {
 			return c.forEachAdjacentRelVersionLocked(nodeID, typeName, incoming, opts, func(rel *types.Relationship) bool {
 				other := rel.EndNodeID()
@@ -1000,7 +1003,7 @@ func (r *RelOps) ForEachAdjacentRelAt(nodeID types.NodeID, typeName string, inco
 	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
 		return err
 	}
-	if storeutil.HasTemporalFilter(opts) {
+	if hasTemporalFilter(opts) {
 		return c.readUnderRLock(func() error {
 			return c.forEachAdjacentRelVersionLocked(nodeID, typeName, incoming, opts, fn)
 		})
@@ -1230,7 +1233,7 @@ func (c *Core) incomingRelsForNodesLocked(nodeIDs []types.NodeID, typeName strin
 //
 // SEMANTICS — this door agrees with the TxAt-pinned BITEMPORAL door
 // (QueryOpts{TxAt: txAt}) filtered by endpoint, NOT with a belief-state pin.
-// The TxAt arm applies a POINT valid-time probe at wall-now when no valid-time
+// The TxAt arm applies a POINT valid-time probe at c.readNow() when no valid-time
 // opts are set (see the QueryOpts.TxAt warning): an edge whose valid interval
 // lies wholly in the past — a CloseVersion-ed edge, or a width-1 [t, t+1)
 // point-event edge — is SILENTLY DROPPED here even though it was believed at
@@ -1372,7 +1375,7 @@ func (c *Core) directionalRelsForNodesAtTxLocked(nodeIDs []types.NodeID, typeNam
 		requested[id] = struct{}{}
 	}
 
-	opts := normalizeTxAtOnlyOpts(storepkg.QueryOpts{TxAt: txAt})
+	opts := c.normalizeTxAtOnlyOpts(storepkg.QueryOpts{TxAt: txAt})
 	var pred func(*types.Relationship) bool
 	if hasType {
 		pred = func(r *types.Relationship) bool { return r.HasTypeTokenRaw(tok) }
@@ -1421,7 +1424,7 @@ func (c *Core) directionalRelsForNodesAtTxLocked(nodeIDs []types.NodeID, typeNam
 // cannot drift (rule 17: two doors, same shape).
 //
 // This is the door to use for AS-OF-SYSTEM-TIME semantics. Unlike
-// OutgoingForNodesAtTx (which valid-filters at wall-now when no valid opts are
+// OutgoingForNodesAtTx (which valid-filters at c.readNow() when no valid opts are
 // set and therefore silently drops an edge whose valid interval lies wholly in
 // the past — a CloseVersion-ed edge, or a width-1 [t, t+1) point-event edge),
 // this door returns EVERY edge believed at the pin: past-valid facts, point
@@ -1819,7 +1822,7 @@ func (c *Core) allNodesLocked(opts storepkg.QueryOpts) ([]*types.Node, error) {
 		return nodes, nil
 	}
 	var result []*types.Node
-	resolveOpts := normalizeTxAtOnlyOpts(opts)
+	resolveOpts := c.normalizeTxAtOnlyOpts(opts)
 	err := c.forEachKnownNodeIDByDepth(opts.Depth, func(id types.NodeID) error {
 		n, err := c.findNodeVersionForOpts(id, resolveOpts, nil)
 		if err != nil {
@@ -1939,7 +1942,7 @@ func (c *Core) allRelsLocked(opts storepkg.QueryOpts) ([]*types.Relationship, er
 		return rels, nil
 	}
 	var result []*types.Relationship
-	resolveOpts := normalizeTxAtOnlyOpts(opts)
+	resolveOpts := c.normalizeTxAtOnlyOpts(opts)
 	err := c.forEachKnownRelIDByDepth(opts.Depth, func(id types.RelID) error {
 		r, err := c.findRelVersionForOpts(id, resolveOpts, nil)
 		if err != nil {
