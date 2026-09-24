@@ -203,26 +203,72 @@ func (ms *Store) segAccountLocked(r *types.Relationship, sign int64) {
 	}
 }
 
-// sealIfDue runs a budget-triggered seal after a write door released ms.mu
-// (deferred before the lock is taken). One atomic load when nothing is due.
+// sealIfDue runs after a write door released ms.mu (deferred before the
+// lock is taken): one atomic load when nothing is due. When the unsealed
+// bytes crossed the budget it starts the store's background sealer (at most
+// one goroutine, which exits when nothing is due) and returns: the writer
+// does not seal. Only a writer a full budget ahead of the sealer (unsealed
+// bytes at twice the budget) seals itself and so blocks until the memtable
+// is back under it (ADR-0011 §3.5: "if sealing cannot keep up, appends
+// block").
 func (ms *Store) sealIfDue() {
-	if !ms.segDue.Load() || !ms.segDue.CompareAndSwap(true, false) {
+	if !ms.segDue.Load() {
 		return
 	}
-	ms.mu.RLock()
+	ms.mu.Lock()
+	if ms.closed || !ms.segDue.Load() {
+		ms.mu.Unlock()
+		return
+	}
+	over := ms.segUnsealed >= 2*ms.segBudget+ms.segRefusedBytes
+	tok := ms.mostUnsealedLocked()
+	if !ms.sealerRunning {
+		ms.sealerRunning = true
+		ms.sealers.Add(1) // under ms.mu, before closed: Close's Wait sees it
+		go ms.sealLoop()
+	}
+	ms.mu.Unlock()
+	if over && tok != 0 {
+		// Explicit: waits for the running seal of the type, then seals
+		// what is left. A failure leaves rows in the memtable (correct).
+		_ = ms.sealType(tok, true)
+	}
+}
+
+// sealLoop is the background sealer: it seals the declared type with the
+// most unsealed bytes while a write has marked the budget exceeded, then
+// exits. Close waits for it.
+func (ms *Store) sealLoop() {
+	defer ms.sealers.Done()
+	for {
+		ms.mu.Lock()
+		if ms.closed || !ms.segDue.Load() {
+			ms.sealerRunning = false
+			ms.mu.Unlock()
+			return
+		}
+		ms.segDue.Store(false)
+		tok := ms.mostUnsealedLocked()
+		ms.mu.Unlock()
+		if tok != 0 {
+			// A failed budget seal leaves every row in the memtable, which
+			// is always correct; the next write over the budget retries.
+			_ = ms.sealType(tok, false)
+		}
+	}
+}
+
+// mostUnsealedLocked returns the declared type with the most unsealed
+// bytes (0 when none has any).
+func (ms *Store) mostUnsealedLocked() uint16 {
 	var tok uint16
-	var most int64 = -1
+	var most int64
 	for t, st := range ms.segTypes {
 		if st.unsealedBytes > most {
 			tok, most = t, st.unsealedBytes
 		}
 	}
-	ms.mu.RUnlock()
-	if most > 0 {
-		// A failed budget seal leaves every row in the memtable, which is
-		// always correct; the next write over the budget tries again.
-		_ = ms.sealType(tok, false)
-	}
+	return tok
 }
 
 // sealType seals the type's eligible memtable rows into one new segment.
@@ -279,6 +325,9 @@ func (ms *Store) sealType(tok uint16, explicit bool) error {
 	dicts := st.dicts
 	ms.mu.Unlock()
 
+	if hook := ms.sealEncodeHook; hook != nil {
+		hook() // test seam: the encode window, ms.mu not held
+	}
 	var data []byte
 	var err error
 	for try := 0; len(rows) > 0; try++ {

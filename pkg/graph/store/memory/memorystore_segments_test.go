@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -719,6 +720,7 @@ func TestSegments_ConcurrentReadsDuringSeal(t *testing.T) {
 	for err := range errc {
 		t.Fatal(err)
 	}
+	waitSealsForTest(t, s)
 	if st := tw.stats(); st.Seals < 3 {
 		t.Fatalf("the budget and the explicit seals must have sealed several times: %+v", st)
 	}
@@ -878,4 +880,128 @@ func TestSegments_StringColumnBytesDoNotGrowWithSegmentCount(t *testing.T) {
 	}
 	_ = one
 	eight.compare("8 segments, shared strings")
+}
+
+// waitSealsForTest waits until no background seal is running.
+func waitSealsForTest(t *testing.T, ms *Store) {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for sealerBusyForTest(ms) {
+		if time.Now().After(deadline) {
+			t.Fatal("background seal did not finish")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// A budget seal runs off the writing goroutine: the write that pushes the
+// memtable over the budget returns while the seal is still encoding, reads
+// during the seal answer like the twin, and a writer that gets a full budget
+// ahead of the sealer blocks until it catches up (ADR-0011 §3.5).
+func TestSegments_BudgetSealRunsOffTheWriter(t *testing.T) {
+	r := rand.New(rand.NewSource(51))
+	tw := newSegTwin(t, 12<<10, 8)
+	s := tw.declared
+	entered, release := make(chan struct{}, 64), make(chan struct{})
+	s.sealEncodeHook = func() { entered <- struct{}{}; <-release }
+	defer func() { s.sealEncodeHook = nil }()
+
+	// Write until a seal starts; every write must return promptly.
+	started := false
+	for i := 0; i < 400 && !started; i++ {
+		done := make(chan struct{})
+		go func() { tw.put(r, segTestHOP); close(done) }()
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("write %d did not return while a budget seal was encoding: the seal runs in the writer", i)
+		}
+		select {
+		case <-entered:
+			started = true
+		default:
+		}
+	}
+	if !started {
+		t.Fatal("no budget seal started")
+	}
+	tw.compare("reads while a background seal encodes")
+
+	// Keep writing: once the unsealed rows reach twice the budget, a write
+	// blocks until the sealer catches up.
+	blocked := false
+	for i := 0; i < 400 && !blocked; i++ {
+		done := make(chan struct{})
+		rel := tw.newRel(r, segTestHOP)
+		if err := tw.plain.PutRelationship(rel); err != nil {
+			t.Fatal(err)
+		}
+		tw.rels = append(tw.rels, rel.ID())
+		go func() {
+			if err := s.PutRelationship(rel); err != nil {
+				t.Error(err)
+			}
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(300 * time.Millisecond):
+			blocked = true
+			close(release)
+			select {
+			case <-done:
+			case <-time.After(30 * time.Second):
+				t.Fatal("the blocked write did not resume after the sealer caught up")
+			}
+		}
+	}
+	if !blocked {
+		close(release)
+		t.Fatal("no write blocked although the sealer never finished: the memtable is unbounded")
+	}
+	waitSealsForTest(t, s)
+	if st := tw.stats(); st.Seals == 0 {
+		t.Fatalf("no seal completed: %+v", st)
+	}
+	tw.compare("after the background seals")
+}
+
+// Close waits for a background seal in flight, and the seal's segment is
+// discarded (the store is closed); nothing outlives Close.
+func TestSegments_CloseWaitsForTheBackgroundSealer(t *testing.T) {
+	r := rand.New(rand.NewSource(52))
+	tw := newSegTwin(t, 8<<10, 6)
+	s := tw.declared
+	entered, release := make(chan struct{}, 64), make(chan struct{})
+	s.sealEncodeHook = func() { entered <- struct{}{}; <-release }
+	for i := 0; i < 400; i++ {
+		tw.put(r, segTestHOP)
+		if len(entered) > 0 {
+			break
+		}
+	}
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("no background seal started")
+	}
+	closed := make(chan error, 1)
+	go func() { closed <- s.Close() }()
+	select {
+	case err := <-closed:
+		t.Fatalf("Close returned (%v) while a background seal was still encoding", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case err := <-closed:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("Close did not return after the seal finished")
+	}
+	if sealerBusyForTest(s) {
+		t.Fatal("a sealer is still running after Close")
+	}
 }

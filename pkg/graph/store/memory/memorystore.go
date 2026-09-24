@@ -250,6 +250,9 @@ type Store struct {
 	segEpoch        uint64                 // bumped by Clear; a seal started before it is discarded
 	segDue          atomic.Bool            // a write pushed the unsealed bytes over the budget
 	relsPeak        int                    // len(rels) high-water mark since the last shrink (declared stores only)
+	sealEncodeHook  func()                 // test seam: runs in a seal's encode window (nil in production)
+	sealerRunning   bool                   // the background sealer goroutine is live (guarded by ms.mu)
+	sealers         sync.WaitGroup         // background sealers; Close waits for them
 }
 
 // bumpNodeEpoch marks every cached DocValues column potentially stale. Called by
@@ -456,9 +459,11 @@ func (ms *Store) Close() error {
 		return ErrNilStore
 	}
 	ms.mu.Lock()
-	defer ms.mu.Unlock()
-
 	ms.closed = true
+	ms.mu.Unlock()
+	// ADR-0011: a background seal in flight sees closed at its install and
+	// discards its segment; wait for it so no work outlives the store.
+	ms.sealers.Wait()
 	return nil
 }
 

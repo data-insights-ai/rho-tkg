@@ -22,3 +22,10 @@ func sharedStringBytesForTest(ms *Store, tok uint16, col string) int {
 	}
 	return st.dicts.Strings[col].Bytes()
 }
+
+// sealerBusyForTest reports whether a background seal is running or due.
+func sealerBusyForTest(ms *Store) bool {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	return ms.sealerRunning
+}
