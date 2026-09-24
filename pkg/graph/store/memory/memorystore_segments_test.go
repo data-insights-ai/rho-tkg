@@ -906,9 +906,10 @@ func TestSegments_BudgetSealRunsOffTheWriter(t *testing.T) {
 	s.sealEncodeHook = func() { entered <- struct{}{}; <-release }
 	defer func() { s.sealEncodeHook = nil }()
 
-	// Write until a seal starts; every write must return promptly.
-	started := false
-	for i := 0; i < 400 && !started; i++ {
+	// Write until a write crosses the budget (it starts the sealer before it
+	// returns); every write must return promptly, and the seal then reaches
+	// its encode window on the sealer, not in a writer.
+	for i := 0; i < 400 && !sealerBusyForTest(s); i++ {
 		done := make(chan struct{})
 		go func() { tw.put(r, segTestHOP); close(done) }()
 		select {
@@ -916,13 +917,10 @@ func TestSegments_BudgetSealRunsOffTheWriter(t *testing.T) {
 		case <-time.After(2 * time.Second):
 			t.Fatalf("write %d did not return while a budget seal was encoding: the seal runs in the writer", i)
 		}
-		select {
-		case <-entered:
-			started = true
-		default:
-		}
 	}
-	if !started {
+	select {
+	case <-entered:
+	case <-time.After(10 * time.Second):
 		t.Fatal("no budget seal started")
 	}
 	if !tw.stats().Sealing {
@@ -977,11 +975,8 @@ func TestSegments_CloseWaitsForTheBackgroundSealer(t *testing.T) {
 	s := tw.declared
 	entered, release := make(chan struct{}, 64), make(chan struct{})
 	s.sealEncodeHook = func() { entered <- struct{}{}; <-release }
-	for i := 0; i < 400; i++ {
+	for i := 0; i < 400 && !sealerBusyForTest(s); i++ {
 		tw.put(r, segTestHOP)
-		if len(entered) > 0 {
-			break
-		}
 	}
 	select {
 	case <-entered:
@@ -1006,5 +1001,194 @@ func TestSegments_CloseWaitsForTheBackgroundSealer(t *testing.T) {
 	}
 	if sealerBusyForTest(s) {
 		t.Fatal("a sealer is still running after Close")
+	}
+}
+
+// segScanRow is what one row of a scan door says about a relationship.
+func segScanFact(id types.RelID, start, end types.NodeID, vf, vt, tx int64, v uint32, props []any) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%d %d->%d vf=%d vt=%d tx=%d v=%d", id, start, end, vf, vt, tx, v)
+	for _, p := range props {
+		if p == nil {
+			b.WriteString(" <absent>")
+			continue
+		}
+		fmt.Fprintf(&b, " %T:%x", p, types.AppendPropertyValueHashBytes(nil, p))
+	}
+	return b.String()
+}
+
+func segRowFact(r *types.Relationship, props []string) string {
+	var vf, vt, tx int64
+	if tm := r.Temporal(); tm != nil {
+		vf, vt, tx = int64(tm.ValidFrom), int64(tm.ValidTo), int64(tm.TxFrom)
+	}
+	vals := make([]any, len(props))
+	for i, k := range props {
+		if v, ok := r.GetProperty(k); ok {
+			vals[i] = v
+		}
+	}
+	return segScanFact(r.ID(), r.StartNodeID(), r.EndNodeID(), vf, vt, tx, r.Version(), vals)
+}
+
+// ScanRelSegments hands out exactly the current rows the row doors return,
+// with every field and requested property equal — values from the columns,
+// or from Row(k) where the column says Other — over sealed rows, dead sealed
+// rows, faulted-in rows and the unsealed memtable.
+func TestSegments_ScanRelSegmentsEqualsTheRowPath(t *testing.T) {
+	r := rand.New(rand.NewSource(61))
+	tw := newSegTwin(t, 1<<40, 12)
+	for round := 0; round < 4; round++ {
+		for i := 0; i < 700; i++ {
+			if r.Intn(6) == 0 {
+				tw.mutate(r)
+			} else {
+				tw.put(r, segTestHOP)
+			}
+		}
+		if round < 3 {
+			if err := tw.declared.SealRelSegments(segTestHOP); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	props := []string{"weight", "actor", "n"}
+	want := map[string]bool{}
+	wantRows := map[types.RelID]string{}
+	rows, err := tw.plain.RelationshipsByType(segTestHOP, QueryOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows {
+		want[segRowFact(row, props)] = true
+		wantRows[row.ID()] = segFP(row)
+	}
+	got := map[string]bool{}
+	segments := map[uint64]bool{}
+	others := 0
+	ok, err := tw.declared.ScanRelSegments(segTestHOP, props, func(b *storecontract.RelSegmentBatch) bool {
+		if b.Segment != 0 {
+			segments[b.Segment] = true
+		}
+		for k := 0; k < b.Len(); k++ {
+			if b.Sorted && k > 0 && (b.StartIDs[k] < b.StartIDs[k-1] ||
+				b.StartIDs[k] == b.StartIDs[k-1] && (b.EndIDs[k] < b.EndIDs[k-1] || b.EndIDs[k] == b.EndIDs[k-1] && b.ValidFrom[k] < b.ValidFrom[k-1])) {
+				t.Fatalf("segment %d row %d breaks (start, end, valid_from) order", b.Segment, k)
+			}
+			vals := make([]any, len(props))
+			for c := range props {
+				col := &b.Cols[c]
+				switch {
+				case col.Present[k]:
+					vals[c] = col.Value(k)
+				case col.Other[k]:
+					others++
+					full, err := b.Row(k)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if v, has := full.GetProperty(props[c]); has {
+						vals[c] = v
+					}
+				}
+			}
+			fact := segScanFact(b.IDs[k], b.StartIDs[k], b.EndIDs[k], b.ValidFrom[k], b.ValidTo[k], b.TxFrom[k], b.Versions[k], vals)
+			if got[fact] {
+				t.Fatalf("row handed out twice: %s", fact)
+			}
+			got[fact] = true
+			full, err := b.Row(k)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if fp := strings.Replace(segFP(full), " f=true", " f=false", 1); fp != strings.Replace(wantRows[b.IDs[k]], " f=true", " f=false", 1) {
+				t.Fatalf("Row(%d) of segment %d differs from the row door:\n%s\n%s", k, b.Segment, fp, wantRows[b.IDs[k]])
+			}
+		}
+		return true
+	})
+	if err != nil || !ok {
+		t.Fatalf("ScanRelSegments = %t, %v", ok, err)
+	}
+	if len(got) != len(want) {
+		t.Fatalf("scan handed out %d rows, the row door has %d", len(got), len(want))
+	}
+	for f := range want {
+		if !got[f] {
+			t.Fatalf("row missing from the scan or different: %s", f)
+		}
+	}
+	if len(segments) < 3 || others == 0 {
+		t.Fatalf("the scan must span the sealed segments and exercise Other rows: %d segments, %d other values", len(segments), others)
+	}
+	calls := 0
+	if ok, err := tw.declared.ScanRelSegments(segTestHOP, props, func(*storecontract.RelSegmentBatch) bool { calls++; return false }); !ok || err != nil || calls != 1 {
+		t.Fatalf("early stop: ok %t err %v calls %d", ok, err, calls)
+	}
+	for name, try := range map[string]func() (bool, error){
+		"undeclared type":   func() (bool, error) { return tw.declared.ScanRelSegments(segTestOther, props, nil) },
+		"undeclared column": func() (bool, error) { return tw.declared.ScanRelSegments(segTestHOP, []string{"extra"}, nil) },
+		"plain store":       func() (bool, error) { return tw.plain.ScanRelSegments(segTestHOP, props, nil) },
+	} {
+		if ok, err := try(); ok || err != nil {
+			t.Fatalf("%s: ScanRelSegments = %t, %v; want false, nil", name, ok, err)
+		}
+	}
+}
+
+// ScanRelColumns over a declared type is served from the segment columns:
+// in ID order and equal to the row path (the twin), with no Relationship
+// built for a sealed row whose requested values sit in their columns.
+func TestSegments_ScanRelColumnsIsNativeAndEqual(t *testing.T) {
+	r := rand.New(rand.NewSource(71))
+	tw := newSegTwin(t, 1<<40, 10)
+	for i := 0; i < 3000; i++ {
+		rel := tw.newRel(r, segTestHOP)
+		ps, err := types.NewPropertySlice(map[string]any{"actor": fmt.Sprintf("a%d", r.Intn(9)), "weight": float64(r.Intn(90)), "n": int64(r.Intn(500))})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := rel.SetProperties(ps); err != nil {
+			t.Fatal(err)
+		}
+		segHashed(rel)
+		tw.both("PutRelationship", func(s *Store) error { return s.PutRelationship(rel) })
+		tw.rels = append(tw.rels, rel.ID())
+		if i == 1500 {
+			if err := tw.declared.SealRelSegments(segTestHOP); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := tw.declared.SealRelSegments(segTestHOP); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 200; i++ { // an unsealed tail and faulted-in rows
+		if r.Intn(2) == 0 {
+			tw.mutate(r)
+		} else {
+			tw.put(r, segTestHOP)
+		}
+	}
+	props := []string{"weight", "n", "actor"}
+	for _, opts := range []QueryOpts{{}, {Limit: 50}, {After: types.EntityID(tw.rels[700])}, {After: types.EntityID(tw.rels[700]), Limit: 9}} {
+		render := func(s *Store) string {
+			var b strings.Builder
+			err := s.ScanRelColumns(segTestHOP, props, opts, func(cb *storecontract.RelColumnBatch) bool {
+				fmt.Fprintf(&b, "%v %v %v %v %v %v\n", cb.IDs, cb.StartIDs, cb.EndIDs, cb.ValidFrom, cb.ValidTo, cb.ColumnData)
+				return true
+			})
+			return fmt.Sprint(err, "\n", b.String())
+		}
+		want := render(tw.plain)
+		tw.declared.sealedRowBuilds.Store(0)
+		got := render(tw.declared)
+		if got != want {
+			t.Fatalf("opts %+v: ScanRelColumns differs from the row path:\n%.400s\n%.400s", opts, segLineDiff(got, want), segLineDiff(want, got))
+		}
+		if n := tw.declared.sealedRowBuilds.Load(); n != 0 {
+			t.Fatalf("opts %+v: ScanRelColumns built %d relationships from sealed rows: not served from the columns", opts, n)
+		}
 	}
 }

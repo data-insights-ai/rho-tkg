@@ -1080,3 +1080,26 @@ func (s *Segment) SectionBytes() map[string]int {
 	}
 	return out
 }
+
+// StringAt returns declared string column c's value for batch row k ("" when
+// absent; see presence via StringColumn/IntColumn or HasValue).
+func (b *Batch) StringAt(c, k int) (string, error) {
+	if k < 0 || k >= b.N || c < 0 || c >= len(b.seg.props) || b.seg.props[c].col.Kind != KindString {
+		return "", fmt.Errorf("%w: batch string column %d row %d", ErrOutOfRange, c, k)
+	}
+	return b.seg.props[c].strs.at(b.Base + k)
+}
+
+// HasValue reports whether batch row k holds declared column c with its
+// declared kind.
+func (b *Batch) HasValue(c, k int) bool {
+	return b.seg.props[c].allSet || b.propPresent[c][k] == 1
+}
+
+// HasFallback reports whether batch row k carries properties outside the
+// declared columns (an undeclared key, or a declared key whose value has
+// another kind): only such a row can hold a requested key its column lacks.
+func (b *Batch) HasFallback(k int) bool {
+	f := &b.seg.fallback
+	return f.present && f.state.atNoRef(b.Base+k) == 1
+}

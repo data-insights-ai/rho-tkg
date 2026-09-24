@@ -248,11 +248,13 @@ type Store struct {
 	segRefusedBytes int64                  // unsealed bytes the codec refused (excluded from the trigger)
 	segMaxID        types.RelID            // largest sealed ID (0 = no segment)
 	segEpoch        uint64                 // bumped by Clear; a seal started before it is discarded
+	segSeq          uint64                 // last segment id handed out
 	segDue          atomic.Bool            // a write pushed the unsealed bytes over the budget
 	relsPeak        int                    // len(rels) high-water mark since the last shrink (declared stores only)
 	sealEncodeHook  func()                 // test seam: runs in a seal's encode window (nil in production)
 	sealerRunning   bool                   // the background sealer goroutine is live (guarded by ms.mu)
 	sealers         sync.WaitGroup         // background sealers; Close waits for them
+	sealedRowBuilds atomic.Uint64          // Relationships built from sealed rows (measurement)
 }
 
 // bumpNodeEpoch marks every cached DocValues column potentially stale. Called by

@@ -101,6 +101,17 @@ func TestColumnDrivers_NodeAndRelAgree(t *testing.T) {
 				return true
 			})
 
+			var srcCols string
+			srcErr := ScanColumnsFromRelSource(relSliceSource{rels, props}, len(props), func(b *RelColumnBatch) bool {
+				srcCols += renderColumns(&b.ColumnData, len(props), len(b.IDs))
+				return true
+			})
+			if !errors.Is(srcErr, relErr) && !errors.Is(relErr, srcErr) {
+				t.Fatalf("source driver disagrees on the ERROR: source=%v rel=%v", srcErr, relErr)
+			}
+			if relErr == nil && srcCols != relCols {
+				t.Errorf("source driver produced DIFFERENT columns:\n source: %s\n    rel: %s", srcCols, relCols)
+			}
 			if !errors.Is(nodeErr, relErr) && !errors.Is(relErr, nodeErr) {
 				t.Fatalf("drivers disagree on the ERROR: node=%v rel=%v", nodeErr, relErr)
 			}
@@ -153,4 +164,27 @@ func renderColumns(cd *ColumnData, nCols, nRows int) string {
 		out += "]"
 	}
 	return out
+}
+
+// relSliceSource adapts relationships to RelColumnSource for the agreement
+// test (the backend's own columns stand behind it in production).
+type relSliceSource struct {
+	rels  []*types.Relationship
+	props []string
+}
+
+func (s relSliceSource) Len() int { return len(s.rels) }
+
+func (s relSliceSource) Row(i int) (types.RelID, types.NodeID, types.NodeID, int64, int64) {
+	r := s.rels[i]
+	vf, vt, _ := r.ValidRange()
+	return r.InternalID(), r.StartNodeID(), r.EndNodeID(), int64(vf), int64(vt)
+}
+
+func (s relSliceSource) Value(i, c int) (ColumnKind, int64, float64, string, bool, bool) {
+	v, found := s.rels[i].GetProperty(s.props[c])
+	if !found {
+		return 0, 0, 0, "", false, false
+	}
+	return ClassifyScalar(v)
 }

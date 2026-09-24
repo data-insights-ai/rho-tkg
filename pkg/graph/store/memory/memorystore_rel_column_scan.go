@@ -30,6 +30,9 @@ func (ms *Store) ScanRelColumns(token uint16, props []string, opts storecontract
 	if fn == nil {
 		return errNilIterationCallback()
 	}
+	if handled, err := ms.scanRelColumnsFromSegments(token, props, opts, fn); handled {
+		return err
+	}
 	rels, err := ms.RelationshipsByType(token, opts)
 	if err != nil {
 		return err

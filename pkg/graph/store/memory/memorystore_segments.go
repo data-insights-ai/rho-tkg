@@ -3,6 +3,7 @@ package memory
 import (
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"sync"
 
@@ -64,6 +65,7 @@ type segType struct {
 
 // memSeg is one sealed in-RAM segment.
 type memSeg struct {
+	id     uint64 // > 0, unique for the store's life (RelSegmentBatch.Segment)
 	seg    *segment.Segment
 	lo, hi types.RelID
 	bytes  int
@@ -379,7 +381,8 @@ func (ms *Store) sealType(tok uint16, explicit bool) error {
 		return nil
 	}
 	lo, hi := seg.IDRange()
-	sg := &memSeg{seg: seg, lo: lo, hi: hi, bytes: len(data)}
+	ms.segSeq++
+	sg := &memSeg{id: ms.segSeq, seg: seg, lo: lo, hi: hi, bytes: len(data)}
 	outBefore, inBefore := len(ms.outIdx), len(ms.inIdx)
 	for _, r := range rows {
 		id := r.ID()
@@ -521,6 +524,7 @@ func (ms *Store) relLocked(id types.RelID) (*types.Relationship, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
+	ms.sealedRowBuilds.Add(1)
 	r.Freeze()
 	return r, true, nil
 }
@@ -575,6 +579,7 @@ func (ms *Store) forEachSealedRowLocked(st *segType, fn func(*types.Relationship
 					rerr = err
 					return false
 				}
+				ms.sealedRowBuilds.Add(1)
 				r.Freeze()
 				if !fn(r) {
 					stop = true
@@ -703,6 +708,7 @@ func (ms *Store) resolveRefLocked(ref sealedIDRef, epoch uint64) (*types.Relatio
 		if err != nil {
 			return nil, false, err
 		}
+		ms.sealedRowBuilds.Add(1)
 		r.Freeze()
 		return r, true, nil
 	}
@@ -1120,4 +1126,456 @@ func (ms *Store) newSegDictsLocked(d storecontract.RelSegmentDeclaration) *segme
 		}
 	}
 	return out
+}
+
+var _ storecontract.RelSegmentScanCapability = (*Store)(nil)
+
+// ScanRelSegments implements store.RelSegmentScanCapability: every current
+// row of a declared type, from one snapshot (the segment list, the type's
+// dead sealed IDs and the unsealed rows, taken under one read lock), handed
+// out without the lock — sealed rows page by page straight from the segment
+// columns (segment.Batch, no Relationship built), unsealed rows from their
+// row objects.
+func (ms *Store) ScanRelSegments(typeToken uint16, props []string, fn func(*storecontract.RelSegmentBatch) bool) (bool, error) {
+	if ms == nil {
+		return false, ErrNilStore
+	}
+	ms.mu.RLock()
+	if err := ms.checkOpenLocked(); err != nil {
+		ms.mu.RUnlock()
+		return false, err
+	}
+	st := ms.segTypes[typeToken]
+	if st == nil {
+		ms.mu.RUnlock()
+		return false, nil
+	}
+	cols := make([]int, len(props))
+	kinds := make([]storecontract.SegmentColumnKind, len(props))
+	for i, p := range props {
+		cols[i] = -1
+		for j, c := range st.decl.Columns {
+			if c.Name == p {
+				cols[i], kinds[i] = j, c.Kind
+			}
+		}
+		if cols[i] < 0 {
+			ms.mu.RUnlock()
+			return false, nil
+		}
+	}
+	if fn == nil {
+		ms.mu.RUnlock()
+		return false, errNilIterationCallback()
+	}
+	segs := slices.Clone(st.segs)
+	dead := make(map[types.RelID]struct{})
+	for id, tok := range ms.segDead {
+		if tok == typeToken {
+			dead[id] = struct{}{}
+		}
+	}
+	mem := make([]*types.Relationship, 0, len(ms.typeIdx[typeToken]))
+	for id := range ms.typeIdx[typeToken] {
+		if r := ms.rels[id]; r != nil {
+			mem = append(mem, r)
+		}
+	}
+	ms.mu.RUnlock()
+
+	b := newSegScanBatch(props, kinds)
+	for _, sg := range segs {
+		stop := false
+		var serr error
+		err := sg.seg.ScanBatches(func(pb *segment.Batch) bool {
+			b.reset(sg.id, true)
+			keep := b.keep[:0]
+			for k := 0; k < pb.N; k++ {
+				if _, gone := dead[types.RelID(pb.IDs[k])]; gone {
+					continue
+				}
+				keep = append(keep, k)
+				b.IDs = append(b.IDs, types.RelID(pb.IDs[k]))
+				b.StartIDs = append(b.StartIDs, types.NodeID(pb.StartIDs[k]))
+				b.EndIDs = append(b.EndIDs, types.NodeID(pb.EndIDs[k]))
+				b.ValidFrom = append(b.ValidFrom, pb.ValidFrom[k])
+				b.ValidTo = append(b.ValidTo, pb.ValidTo[k])
+				b.TxFrom = append(b.TxFrom, pb.TxFrom[k])
+				b.Versions = append(b.Versions, uint32(pb.Versions[k])) // #nosec G115 -- a stored uint32
+			}
+			b.keep = keep
+			if len(keep) == 0 {
+				return true
+			}
+			if serr = b.fillFromBatch(pb, cols); serr != nil {
+				return false
+			}
+			b.SetRowFunc(func(k int) (*types.Relationship, error) {
+				r, err := pb.Row(keep[k])
+				if err == nil {
+					r.Freeze()
+				}
+				return r, err
+			})
+			if !fn(&b.RelSegmentBatch) {
+				stop = true
+				return false
+			}
+			return true
+		})
+		if err == nil {
+			err = serr
+		}
+		if err != nil {
+			return true, err
+		}
+		if stop {
+			return true, nil
+		}
+	}
+	for lo := 0; lo < len(mem); lo += segment.PageRows {
+		chunk := mem[lo:min(len(mem), lo+segment.PageRows)]
+		b.reset(0, false)
+		for _, r := range chunk {
+			b.IDs = append(b.IDs, r.ID())
+			b.StartIDs = append(b.StartIDs, r.StartNodeID())
+			b.EndIDs = append(b.EndIDs, r.EndNodeID())
+			var vf, vt, tx int64
+			if tm := r.Temporal(); tm != nil {
+				vf, vt, tx = int64(tm.ValidFrom), int64(tm.ValidTo), int64(tm.TxFrom)
+			}
+			b.ValidFrom = append(b.ValidFrom, vf)
+			b.ValidTo = append(b.ValidTo, vt)
+			b.TxFrom = append(b.TxFrom, tx)
+			b.Versions = append(b.Versions, r.Version())
+			b.appendRowValues(r)
+		}
+		b.SetRowFunc(func(k int) (*types.Relationship, error) { return chunk[k], nil })
+		if !fn(&b.RelSegmentBatch) {
+			return true, nil
+		}
+	}
+	return true, nil
+}
+
+// segScanBatch is the reusable batch behind ScanRelSegments.
+type segScanBatch struct {
+	storecontract.RelSegmentBatch
+	keep []int
+}
+
+func newSegScanBatch(props []string, kinds []storecontract.SegmentColumnKind) *segScanBatch {
+	b := &segScanBatch{}
+	b.Cols = make([]storecontract.SegmentColumnValues, len(props))
+	for i := range props {
+		b.Cols[i].Name, b.Cols[i].Kind = props[i], kinds[i]
+	}
+	return b
+}
+
+func (b *segScanBatch) reset(seg uint64, sorted bool) {
+	b.Segment, b.Sorted = seg, sorted
+	b.IDs, b.StartIDs, b.EndIDs = b.IDs[:0], b.StartIDs[:0], b.EndIDs[:0]
+	b.ValidFrom, b.ValidTo, b.TxFrom, b.Versions = b.ValidFrom[:0], b.ValidTo[:0], b.TxFrom[:0], b.Versions[:0]
+	for i := range b.Cols {
+		c := &b.Cols[i]
+		c.Present, c.Other, c.Ints, c.Codes, c.Strs, c.Dict = c.Present[:0], c.Other[:0], c.Ints[:0], nil, nil, nil
+	}
+}
+
+// fillFromBatch copies the requested columns of the kept rows of pb.
+func (b *segScanBatch) fillFromBatch(pb *segment.Batch, cols []int) error {
+	for i, j := range cols {
+		c := &b.Cols[i]
+		var vals []int64
+		var codes []int64
+		if c.Kind == storecontract.SegmentString {
+			if cc, dict, _, ok := pb.StringColumn(j); ok {
+				codes, c.Dict, c.Codes = cc, dict, make([]uint32, 0, len(b.keep))
+			} else {
+				c.Strs = make([]string, 0, len(b.keep))
+			}
+		} else {
+			vals, _, _ = pb.IntColumn(j)
+		}
+		for _, k := range b.keep {
+			has := pb.HasValue(j, k)
+			c.Present = append(c.Present, has)
+			c.Other = append(c.Other, !has && pb.HasFallback(k))
+			switch {
+			case codes != nil:
+				c.Codes = append(c.Codes, uint32(codes[k])) // #nosec G115 -- a validated dictionary code
+			case c.Strs != nil || c.Kind == storecontract.SegmentString:
+				v := ""
+				if has {
+					var err error
+					if v, err = pb.StringAt(j, k); err != nil {
+						return err
+					}
+				}
+				c.Strs = append(c.Strs, v)
+			default:
+				c.Ints = append(c.Ints, vals[k])
+			}
+		}
+	}
+	return nil
+}
+
+// appendRowValues appends an unsealed row's requested values.
+func (b *segScanBatch) appendRowValues(r *types.Relationship) {
+	for i := range b.Cols {
+		c := &b.Cols[i]
+		v, found := r.GetProperty(c.Name)
+		has := found && storecontract.SegmentColumnKind(types.PropertyHashTypeTag(v)) == c.Kind
+		c.Present = append(c.Present, has)
+		c.Other = append(c.Other, found && !has)
+		if c.Kind == storecontract.SegmentString {
+			s := ""
+			if has {
+				s = v.(string)
+			}
+			c.Strs = append(c.Strs, s)
+			continue
+		}
+		var x int64
+		if has {
+			x = segment.ValueBits(v)
+		}
+		c.Ints = append(c.Ints, x)
+	}
+}
+
+// scanRelColumnsFromSegments serves ScanRelColumns for a declared type from
+// the segment columns (ADR-0011 S5): one snapshot, every sealed page decoded
+// once (a row is built only when a requested value may sit outside its
+// column), the rows sorted by ID and fed through the shared column driver
+// (store.ScanColumnsFromRelSource) — so kinds, absences and the mixed-numeric
+// refusal are the row path's. handled=false leaves the call to the row path:
+// an undeclared type, a temporal filter, or a property that is not a declared
+// column.
+func (ms *Store) scanRelColumnsFromSegments(token uint16, props []string, opts QueryOpts,
+	fn func(*storecontract.RelColumnBatch) bool) (bool, error) {
+	ms.mu.RLock()
+	if ms.checkOpenLocked() != nil || storecontract.ValidateRelTypeToken(token) != nil ||
+		storecontract.ValidateQueryOpts(opts) != nil || storepkg.HasTemporalFilter(opts) {
+		ms.mu.RUnlock()
+		return false, nil
+	}
+	st := ms.segTypes[token]
+	if st == nil || len(st.segs) == 0 {
+		ms.mu.RUnlock()
+		return false, nil
+	}
+	cols := make([]int, len(props))
+	for i, p := range props {
+		cols[i] = -1
+		for j, c := range st.decl.Columns {
+			if c.Name == p {
+				cols[i] = j
+			}
+		}
+		if cols[i] < 0 {
+			ms.mu.RUnlock()
+			return false, nil
+		}
+	}
+	segs := slices.Clone(st.segs)
+	dead := make(map[types.RelID]struct{})
+	for id, tok := range ms.segDead {
+		if tok == token {
+			dead[id] = struct{}{}
+		}
+	}
+	mem := make([]*types.Relationship, 0, len(ms.typeIdx[token]))
+	for id := range ms.typeIdx[token] {
+		if r := ms.rels[id]; r != nil {
+			mem = append(mem, r)
+		}
+	}
+	ms.mu.RUnlock()
+
+	src := newSegColumnSource(len(props))
+	for _, sg := range segs {
+		var serr error
+		segCols := sg.seg.Schema().Columns
+		err := sg.seg.ScanBatches(func(pb *segment.Batch) bool {
+			for k := 0; k < pb.N; k++ {
+				id := types.RelID(pb.IDs[k])
+				if _, gone := dead[id]; gone {
+					continue
+				}
+				src.addRow(id, types.NodeID(pb.StartIDs[k]), types.NodeID(pb.EndIDs[k]), pb.ValidFrom[k], pb.ValidTo[k])
+				var full *types.Relationship
+				for c, j := range cols {
+					if pb.HasValue(j, k) {
+						if serr = src.addColumnValue(c, pb, segCols[j].Kind, j, k); serr != nil {
+							return false
+						}
+						continue
+					}
+					if !pb.HasFallback(k) {
+						src.addAbsent(c)
+						continue
+					}
+					if full == nil { // the value may sit in the fallback column
+						if full, serr = pb.Row(k); serr != nil {
+							return false
+						}
+						ms.sealedRowBuilds.Add(1)
+					}
+					src.addAny(c, full, props[c])
+				}
+			}
+			return true
+		})
+		if err == nil {
+			err = serr
+		}
+		if err != nil {
+			return true, err
+		}
+	}
+	for _, r := range mem {
+		vf, vt, _ := r.ValidRange()
+		src.addRow(r.ID(), r.StartNodeID(), r.EndNodeID(), int64(vf), int64(vt))
+		for c := range props {
+			src.addAny(c, r, props[c])
+		}
+	}
+	src.order(opts.After, opts.Limit)
+	return true, storecontract.ScanColumnsFromRelSource(src, len(props), fn)
+}
+
+// segColumnSource is the row set behind scanRelColumnsFromSegments: flat
+// arrays per field and per requested column, and an ID-order permutation.
+type segColumnSource struct {
+	ids        []types.RelID
+	start, end []types.NodeID
+	vf, vt     []int64
+	kind       [][]storecontract.ColumnKind
+	ok         [][]bool   // false: the row does not hold the value as a column scalar
+	num        [][]int64  // ColInt64 value, ColFloat64 bits, ColBool 0/1
+	str        [][]string // ColString value
+	perm       []int
+}
+
+func newSegColumnSource(n int) *segColumnSource {
+	return &segColumnSource{
+		kind: make([][]storecontract.ColumnKind, n), ok: make([][]bool, n),
+		num: make([][]int64, n), str: make([][]string, n),
+	}
+}
+
+func (s *segColumnSource) addRow(id types.RelID, start, end types.NodeID, vf, vt int64) {
+	s.ids = append(s.ids, id)
+	s.start = append(s.start, start)
+	s.end = append(s.end, end)
+	s.vf = append(s.vf, vf)
+	s.vt = append(s.vt, vt)
+}
+
+func (s *segColumnSource) put(c int, k storecontract.ColumnKind, x int64, str string, ok bool) {
+	s.kind[c] = append(s.kind[c], k)
+	s.ok[c] = append(s.ok[c], ok)
+	s.num[c] = append(s.num[c], x)
+	s.str[c] = append(s.str[c], str)
+}
+
+func (s *segColumnSource) addAbsent(c int) { s.put(c, 0, 0, "", false) }
+
+// addAny classifies row r's property like the row path does.
+func (s *segColumnSource) addAny(c int, r *types.Relationship, key string) {
+	v, found := r.GetProperty(key)
+	if !found {
+		s.addAbsent(c)
+		return
+	}
+	k, i64, f64, str, b, ok := storecontract.ClassifyScalar(v)
+	switch k {
+	case storecontract.ColFloat64:
+		i64 = int64(math.Float64bits(f64)) // #nosec G115 -- bit pattern
+	case storecontract.ColBool:
+		i64 = 0
+		if b {
+			i64 = 1
+		}
+	}
+	s.put(c, k, i64, str, ok)
+}
+
+// addColumnValue classifies declared column j's stored value of batch row k
+// exactly as classifyScalar classifies the Go value it decodes to.
+func (s *segColumnSource) addColumnValue(c int, pb *segment.Batch, kind segment.Kind, j, k int) error {
+	if kind == segment.KindString {
+		str, err := pb.StringAt(j, k)
+		if err != nil {
+			return err
+		}
+		s.put(c, storecontract.ColString, 0, str, true)
+		return nil
+	}
+	vals, _, _ := pb.IntColumn(j)
+	x := vals[k]
+	switch kind {
+	case segment.KindInt64, segment.KindInt, segment.KindInt32:
+		s.put(c, storecontract.ColInt64, x, "", true)
+	case segment.KindFloat64:
+		s.put(c, storecontract.ColFloat64, x, "", true)
+	case segment.KindFloat32:
+		f := float64(math.Float32frombits(uint32(x)))                            // #nosec G115 -- IEEE bits
+		s.put(c, storecontract.ColFloat64, int64(math.Float64bits(f)), "", true) // #nosec G115 -- bit pattern
+	case segment.KindBool:
+		s.put(c, storecontract.ColBool, x, "", true)
+	default: // int8/int16/uints: not a column scalar (classifyScalar !ok)
+		s.addAbsent(c)
+	}
+	return nil
+}
+
+// order sorts by ID and applies After / Limit.
+func (s *segColumnSource) order(after types.EntityID, limit int) {
+	perm := make([]int, 0, len(s.ids))
+	for i := range s.ids {
+		if types.EntityID(s.ids[i]) > after {
+			perm = append(perm, i)
+		}
+	}
+	slices.SortFunc(perm, func(a, b int) int {
+		switch {
+		case s.ids[a] < s.ids[b]:
+			return -1
+		case s.ids[a] > s.ids[b]:
+			return 1
+		}
+		return 0
+	})
+	if limit > 0 && len(perm) > limit {
+		perm = perm[:limit]
+	}
+	s.perm = perm
+}
+
+func (s *segColumnSource) Len() int { return len(s.perm) }
+
+func (s *segColumnSource) Row(i int) (types.RelID, types.NodeID, types.NodeID, int64, int64) {
+	p := s.perm[i]
+	return s.ids[p], s.start[p], s.end[p], s.vf[p], s.vt[p]
+}
+
+func (s *segColumnSource) Value(i, c int) (storecontract.ColumnKind, int64, float64, string, bool, bool) {
+	p := s.perm[i]
+	if !s.ok[c][p] {
+		return 0, 0, 0, "", false, false
+	}
+	k, x := s.kind[c][p], s.num[c][p]
+	switch k {
+	case storecontract.ColFloat64:
+		return k, 0, math.Float64frombits(uint64(x)), "", false, true // #nosec G115 -- bit pattern
+	case storecontract.ColBool:
+		return k, 0, 0, "", x == 1, true
+	case storecontract.ColString:
+		return k, 0, 0, s.str[c][p], false, true
+	}
+	return k, x, 0, "", false, true
 }

@@ -35,8 +35,12 @@ func EncodeWithDicts(s Schema, rows []*types.Relationship, opts Options, d *Dict
 	return encode(s, rows, opts, PageRows, d)
 }
 
-// valueBits maps a declared-kind value to the int64 a column stores: the
-// integer (uint64 bit-cast), 0/1 for bool, the IEEE-754 bits for floats.
+// ValueBits maps a declared-kind value to the int64 a column stores: the
+// integer (uint64 bit-cast), 0/1 for bool, the IEEE-754 bits for floats
+// (0 for any other value).
+func ValueBits(v any) int64 { return valueBits(v) }
+
+// valueBits is ValueBits.
 func valueBits(v any) int64 {
 	switch x := v.(type) {
 	case bool:

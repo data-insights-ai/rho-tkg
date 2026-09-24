@@ -564,8 +564,84 @@ func (o *segOracle) answers(g *graph.Graph) map[string]string {
 // nondeterministic on the plain graph fails the test.
 var segKnownNondeterministic = []string{"ByType/TxAt@", "OutgoingForNodesAtTx@"}
 
+var segOracleProps = []string{"actor", "family", "orch", "t_lo", "weight", "hot"}
+
+func segOracleFact(id types.RelID, start, end types.NodeID, vf, vt, tx int64, v uint32, vals []any) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%d %d->%d vf=%d vt=%d tx=%d v=%d", id, start, end, vf, vt, tx, v)
+	for _, p := range vals {
+		if p == nil {
+			b.WriteString(" -")
+			continue
+		}
+		fmt.Fprintf(&b, " %T:%x", p, types.AppendPropertyValueHashBytes(nil, p))
+	}
+	return b.String()
+}
+
+// scanFacts is the columnar door's view of HOP (sorted), rowFacts the row
+// door's; on the declared replica they must agree.
+func (o *segOracle) scanFacts(g *graph.Graph) ([]string, bool) {
+	var out []string
+	ok, err := g.ScanRelSegments(segOracleHOP, segOracleProps, func(b *graph.RelSegmentBatch) bool {
+		for k := 0; k < b.Len(); k++ {
+			vals := make([]any, len(segOracleProps))
+			for c := range segOracleProps {
+				col := &b.Cols[c]
+				switch {
+				case col.Present[k]:
+					vals[c] = col.Value(k)
+				case col.Other[k]:
+					r, err := b.Row(k)
+					if err != nil {
+						o.t.Fatal(err)
+					}
+					vals[c], _ = r.GetProperty(segOracleProps[c])
+				}
+			}
+			out = append(out, segOracleFact(b.IDs[k], b.StartIDs[k], b.EndIDs[k], b.ValidFrom[k], b.ValidTo[k], b.TxFrom[k], b.Versions[k], vals))
+		}
+		return true
+	})
+	if err != nil {
+		o.t.Fatalf("ScanRelSegments: %v", err)
+	}
+	sort.Strings(out)
+	return out, ok
+}
+
+func (o *segOracle) rowFacts(g *graph.Graph) []string {
+	rs, err := g.Rels().ByType(segOracleHOP, graph.QueryOpts{})
+	if err != nil {
+		o.t.Fatal(err)
+	}
+	out := make([]string, 0, len(rs))
+	for _, r := range rs {
+		var vf, vt, tx int64
+		if tm := r.Temporal(); tm != nil {
+			vf, vt, tx = int64(tm.ValidFrom), int64(tm.ValidTo), int64(tm.TxFrom)
+		}
+		vals := make([]any, len(segOracleProps))
+		for c, key := range segOracleProps {
+			vals[c], _ = r.GetProperty(key)
+		}
+		out = append(out, segOracleFact(r.ID(), r.StartNodeID(), r.EndNodeID(), vf, vt, tx, r.Version(), vals))
+	}
+	sort.Strings(out)
+	return out
+}
+
 func (o *segOracle) compare(stage string) {
 	o.t.Helper()
+	if _, ok := o.scanFacts(o.plain); ok {
+		o.t.Fatalf("%s: ScanRelSegments on the undeclared replica must decline", stage)
+	}
+	scanGot, ok := o.scanFacts(o.declared)
+	rowWant := o.rowFacts(o.plain)
+	if !ok || strings.Join(scanGot, "\n") != strings.Join(rowWant, "\n") {
+		o.t.Fatalf("%s: ScanRelSegments (ok %t, %d rows) differs from the row door (%d rows):\n%s", stage, ok, len(scanGot), len(rowWant),
+			segFirstDiff(strings.Join(scanGot, "\n"), strings.Join(rowWant, "\n")))
+	}
 	want, want2, got := o.answers(o.plain), o.answers(o.plain), o.answers(o.declared)
 	names := make([]string, 0, len(want))
 	for k := range want {
@@ -771,5 +847,28 @@ func TestRelSegmentsConfigValidation(t *testing.T) {
 	}
 	if _, err := g.Admin().RelSegmentStats("HOP"); !errors.Is(err, graph.ErrGraphClosed) {
 		t.Fatalf("RelSegmentStats after Close = %v, want ErrGraphClosed", err)
+	}
+	if _, err := g.ScanRelSegments("HOP", nil, func(*graph.RelSegmentBatch) bool { return true }); !errors.Is(err, graph.ErrGraphClosed) {
+		t.Fatalf("ScanRelSegments after Close = %v, want ErrGraphClosed", err)
+	}
+	var nilG *graph.Graph
+	if ok, err := nilG.ScanRelSegments("HOP", nil, nil); ok || err != nil {
+		t.Fatalf("nil graph ScanRelSegments = %t, %v", ok, err)
+	}
+	// Badger has no segment scan; an unknown type declines.
+	bg, err := graph.New(graph.Config{BadgerInMemory: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bg.Close()
+	ba, _ := bg.Nodes().Add(context.Background(), []string{"A"}, nil)
+	bb, _ := bg.Nodes().Add(context.Background(), []string{"A"}, nil)
+	if _, err := bg.Rels().Add(context.Background(), "KNOWS", ba, bb, nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, typ := range []string{"NOPE", "KNOWS"} {
+		if ok, err := bg.ScanRelSegments(typ, nil, func(*graph.RelSegmentBatch) bool { return true }); ok || err != nil {
+			t.Fatalf("ScanRelSegments(%s) on badger = %t, %v; want false, nil", typ, ok, err)
+		}
 	}
 }

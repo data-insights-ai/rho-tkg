@@ -294,3 +294,97 @@ func classifyScalar(v any) (k ColumnKind, i64 int64, f64 float64, s string, b bo
 	}
 	return 0, 0, 0, "", false, false
 }
+
+// RelColumnSource is a relationship row set a backend reads from its own
+// columns (not from *types.Relationship values) for ScanColumnsFromRelSource:
+// Row(i) gives row i's identity, endpoints and ValidRange (from/to, 0 when
+// the row has no temporal metadata), Value(i, c) property c of row i already
+// classified with the classifyScalar rules (ClassifyScalar), ok=false when
+// the row does not hold it as a column scalar.
+type RelColumnSource interface {
+	Len() int
+	Row(i int) (id types.RelID, start, end types.NodeID, validFrom, validTo int64)
+	Value(i, c int) (kind ColumnKind, i64 int64, f64 float64, s string, b bool, ok bool)
+}
+
+// ClassifyScalar exposes the column-kind rule for RelColumnSource
+// implementations, so a backend never restates it.
+func ClassifyScalar(v any) (k ColumnKind, i64 int64, f64 float64, s string, b bool, ok bool) {
+	return classifyScalar(v)
+}
+
+// ScanColumnsFromRelSource is ScanColumnsFromRels over a RelColumnSource:
+// the same batches, kinds, absences and refusal for the same values in the
+// same order (pinned by TestColumnDrivers_NodeAndRelAgree, which runs all
+// three drivers). Rows are taken in source order: the source must already be
+// in ID order.
+func ScanColumnsFromRelSource(src RelColumnSource, nProps int, fn func(*RelColumnBatch) bool) error {
+	n := src.Len()
+	if n == 0 {
+		return nil
+	}
+	batch := &RelColumnBatch{
+		IDs:        make([]types.RelID, 0, ColumnScanBatchRows),
+		StartIDs:   make([]types.NodeID, 0, ColumnScanBatchRows),
+		EndIDs:     make([]types.NodeID, 0, ColumnScanBatchRows),
+		ValidFrom:  make([]int64, 0, ColumnScanBatchRows),
+		ValidTo:    make([]int64, 0, ColumnScanBatchRows),
+		ColumnData: NewColumnData(nProps),
+	}
+	kindKnown := make([]bool, nProps)
+	cd := &batch.ColumnData
+	reset := func() {
+		batch.IDs = batch.IDs[:0]
+		batch.StartIDs = batch.StartIDs[:0]
+		batch.EndIDs = batch.EndIDs[:0]
+		batch.ValidFrom = batch.ValidFrom[:0]
+		batch.ValidTo = batch.ValidTo[:0]
+		batch.reset(nProps)
+	}
+	for i := 0; i < n; i++ {
+		id, start, end, vf, vt := src.Row(i)
+		batch.IDs = append(batch.IDs, id)
+		batch.StartIDs = append(batch.StartIDs, start)
+		batch.EndIDs = append(batch.EndIDs, end)
+		batch.ValidFrom = append(batch.ValidFrom, vf)
+		batch.ValidTo = append(batch.ValidTo, vt)
+		for c := 0; c < nProps; c++ {
+			kind, i64, f64, str, b, ok := src.Value(i, c)
+			if !ok {
+				cd.appendAbsent(c, kindKnown[c])
+				continue
+			}
+			if !kindKnown[c] {
+				cd.Kinds[c], kindKnown[c] = kind, true
+			}
+			if cd.Kinds[c] != kind {
+				if numericKind(cd.Kinds[c]) && numericKind(kind) {
+					return ErrMixedNumericColumn
+				}
+				cd.appendAbsent(c, true)
+				continue
+			}
+			cd.Null[c] = append(cd.Null[c], false)
+			switch kind {
+			case ColInt64:
+				cd.Ints[c] = append(cd.Ints[c], i64)
+			case ColFloat64:
+				cd.Flts[c] = append(cd.Flts[c], f64)
+			case ColString:
+				cd.Strs[c] = append(cd.Strs[c], str)
+			case ColBool:
+				cd.Bools[c] = append(cd.Bools[c], b)
+			}
+		}
+		if len(batch.IDs) >= ColumnScanBatchRows {
+			if !fn(batch) {
+				return nil
+			}
+			reset()
+		}
+	}
+	if len(batch.IDs) > 0 {
+		fn(batch)
+	}
+	return nil
+}

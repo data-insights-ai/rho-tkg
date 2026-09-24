@@ -3,7 +3,10 @@ package store
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strings"
+
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // Column segments for declared bulk relationship types (ADR-0011).
@@ -151,4 +154,128 @@ func ValidateRelSegmentSpec(s RelSegmentSpec) error {
 		seen[c.Name] = struct{}{}
 	}
 	return nil
+}
+
+// RelSegmentBatch is one batch of a declared type's current rows handed out
+// by RelSegmentScanCapability.ScanRelSegments (ADR-0011 §5.3, S5): the rows'
+// columns as the segments store them, without building a Relationship per
+// row. Rows come in SEGMENT order, not ID order: a batch is up to one page
+// of one segment (Segment > 0, Sorted: rows ascend by (start, end,
+// valid_from) within the segment) or of the unsealed memtable rows
+// (Segment 0, unsorted). The slices are reused between batches: a consumer
+// copies what it keeps, and must not modify them.
+type RelSegmentBatch struct {
+	Segment  uint64
+	Sorted   bool
+	IDs      []types.RelID
+	StartIDs []types.NodeID
+	EndIDs   []types.NodeID
+	// ValidFrom, ValidTo and TxFrom are the stored temporal fields (0 =
+	// unset: a row without temporal metadata has all three 0), Versions the
+	// row versions — what Relationship.Temporal() / Version() hold.
+	ValidFrom, ValidTo, TxFrom []int64
+	Versions                   []uint32
+	// Cols holds one entry per requested property, in request order.
+	Cols []SegmentColumnValues
+	row  func(k int) (*types.Relationship, error)
+}
+
+// Len is the number of rows in the batch.
+func (b *RelSegmentBatch) Len() int { return len(b.IDs) }
+
+// Row returns row k in full, frozen and equal to what the row doors return
+// for it (Integrity().Hash included). It costs a row decode; consumers call it
+// only for rows whose column says Other, or when they need fields the batch
+// does not carry.
+func (b *RelSegmentBatch) Row(k int) (*types.Relationship, error) {
+	if b == nil || b.row == nil || k < 0 || k >= len(b.IDs) {
+		return nil, fmt.Errorf("%w: segment batch row %d", ErrInvalidStoreMutation, k)
+	}
+	return b.row(k)
+}
+
+// SetRowFunc installs the Row door (for store implementations).
+func (b *RelSegmentBatch) SetRowFunc(fn func(k int) (*types.Relationship, error)) { b.row = fn }
+
+// SegmentColumnValues is one requested declared property over a batch.
+//
+//   - Present[k]: row k holds the property with the declared Kind; its value
+//     is Value(k).
+//   - Other[k]: row k may hold the property in another Go kind or shape
+//     (stored outside the column); read it from Row(k).
+//   - neither: row k does not hold the property.
+//
+// A string column comes as dictionary Codes into Dict (Dict is the store's
+// shared dictionary when the segment uses one — then the same slice for every
+// segment — or the segment's own), or, when the segment stored it without a
+// dictionary, as Strs. Other kinds come as Ints: the stored bits (the integer
+// for integer kinds, uint64 bit-cast; 0/1 for bool; IEEE-754 bits for
+// floats).
+type SegmentColumnValues struct {
+	Name    string
+	Kind    SegmentColumnKind
+	Present []bool
+	Other   []bool
+	Ints    []int64
+	Codes   []uint32
+	Dict    []string
+	Strs    []string
+}
+
+// Value returns row k's value with its exact declared Go kind (nil when the
+// row does not hold it in that kind — check Other).
+func (c *SegmentColumnValues) Value(k int) any {
+	if k < 0 || k >= len(c.Present) || !c.Present[k] {
+		return nil
+	}
+	if c.Kind == SegmentString {
+		if c.Codes != nil {
+			return c.Dict[c.Codes[k]]
+		}
+		return c.Strs[k]
+	}
+	return SegmentKindValue(c.Kind, c.Ints[k])
+}
+
+// SegmentKindValue turns a declared kind's stored bits back into its Go value.
+func SegmentKindValue(kind SegmentColumnKind, x int64) any {
+	switch kind {
+	case SegmentBool:
+		return x == 1
+	case SegmentInt:
+		return int(x)
+	case SegmentInt8:
+		return int8(x) // #nosec G115 -- stored from an int8
+	case SegmentInt16:
+		return int16(x) // #nosec G115 -- stored from an int16
+	case SegmentInt32:
+		return int32(x) // #nosec G115 -- stored from an int32
+	case SegmentInt64:
+		return x
+	case SegmentUint:
+		return uint(x) // #nosec G115 -- bit-cast back
+	case SegmentUint8:
+		return uint8(x) // #nosec G115 -- stored from a uint8
+	case SegmentUint16:
+		return uint16(x) // #nosec G115 -- stored from a uint16
+	case SegmentUint32:
+		return uint32(x) // #nosec G115 -- stored from a uint32
+	case SegmentUint64:
+		return uint64(x) // #nosec G115 -- bit-cast back
+	case SegmentFloat32:
+		return math.Float32frombits(uint32(x)) // #nosec G115 -- IEEE bits
+	case SegmentFloat64:
+		return math.Float64frombits(uint64(x)) // #nosec G115 -- IEEE bits
+	}
+	return nil
+}
+
+// RelSegmentScanCapability is the optional columnar door over a declared bulk
+// type (ADR-0011 §5.3). ScanRelSegments hands every CURRENT row of the type
+// to fn in batches (see RelSegmentBatch) from one consistent snapshot, until
+// fn returns false. ok is false — and fn is never called — when the type is
+// not declared or a requested property is not one of its declared columns;
+// the caller then uses the row doors.
+type RelSegmentScanCapability interface {
+	ScanRelSegments(typeToken uint16, props []string, fn func(*RelSegmentBatch) bool) (ok bool, err error)
 }
