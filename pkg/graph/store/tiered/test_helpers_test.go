@@ -3,6 +3,7 @@ package tiered
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -82,14 +83,40 @@ func newTestGen(t *testing.T, nodeID int64) *snowflake.Node {
 }
 
 // tieredNodeGen and tieredRelGen for test entities.
+// tieredNodeGen and tieredRelGen return ONE generator per test and node slot.
+// Tests call them inline (`tieredNodeGen(t).Generate()`) many times; a fresh
+// generator per call has no memory of the previous call's step, so two calls
+// in the same microsecond minted the SAME ID (a node "already existing" before
+// it was created — TestCheckAndCleanArchiveNodeDestination_PurgesOrphanedAdjacency
+// failed 32 of 200 runs). Sharing the generator makes every ID in a test unique.
 func tieredNodeGen(t *testing.T) *snowflake.Node {
 	t.Helper()
-	return newTestGen(t, 0)
+	return sharedTestGen(t, 0)
 }
 
 func tieredRelGen(t *testing.T) *snowflake.Node {
 	t.Helper()
-	return newTestGen(t, 1)
+	return sharedTestGen(t, 1)
+}
+
+type testGenKey struct {
+	t      *testing.T
+	nodeID int64
+}
+
+var testGens sync.Map // testGenKey -> *snowflake.Node
+
+func sharedTestGen(t *testing.T, nodeID int64) *snowflake.Node {
+	t.Helper()
+	key := testGenKey{t: t, nodeID: nodeID}
+	if gen, ok := testGens.Load(key); ok {
+		return gen.(*snowflake.Node)
+	}
+	gen, loaded := testGens.LoadOrStore(key, newTestGen(t, nodeID))
+	if !loaded {
+		t.Cleanup(func() { testGens.Delete(key) })
+	}
+	return gen.(*snowflake.Node)
 }
 
 // makeRefNode creates a node with a reference label token.

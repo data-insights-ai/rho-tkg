@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **TEST — tiered tests could mint the same ID twice.** `tieredNodeGen(t)` / `tieredRelGen(t)`
+  built a fresh snowflake generator on every call, and tests call them inline, so two calls in
+  the same microsecond returned the same ID.
+  `TestCheckAndCleanArchiveNodeDestination_PurgesOrphanedAdjacency` failed 32 of 200 local runs
+  ("node already exists") and failed the v4.38.0 CI coverage job once. The helpers now return
+  one shared generator per test and slot: 0 of 200 runs fail; the tiered package passes under
+  `-race`. Test-only change.
+
 ## [4.38.0] - 2026-09-24
 
 Minor release: two HIGH bitemporal fixes (a delete no longer rewrites a recorded close; a
