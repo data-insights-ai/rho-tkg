@@ -249,16 +249,6 @@ func (c *intCol) page(p int) pageView {
 	return v
 }
 
-// pageFirst returns the first value of page p of a column whose pages use
-// only transformNone or transformDeltaPrev.
-func (c *intCol) pageFirst(p int) int64 {
-	v := c.page(p)
-	if v.transform == transformDeltaPrev {
-		return v.first
-	}
-	return v.d(0)
-}
-
 // d returns the stored (transformed) value k of the page.
 func (v *pageView) d(k int) int64 {
 	return int64(uint64(v.base) + unpackAt(v.packed, k, v.width)) // #nosec G115 -- wrapping bit pattern

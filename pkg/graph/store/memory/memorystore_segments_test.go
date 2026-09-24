@@ -754,3 +754,46 @@ func TestSegments_ClearKeepsDeclaration(t *testing.T) {
 	}
 	tw.compare("after Clear")
 }
+
+// Write doors that probe existence see sealed rows: a create with a sealed
+// row's ID is a duplicate, and a node whose only relationships are sealed is
+// still connected.
+func TestSegments_WriteDoorsSeeSealedRows(t *testing.T) {
+	r := rand.New(rand.NewSource(21))
+	tw := newSegTwin(t, 0, 4)
+	for i := 0; i < 5000; i++ { // above the 4,096-row map-shrink threshold
+		tw.put(r, segTestHOP)
+	}
+	if err := tw.declared.SealRelSegments(segTestHOP); err != nil {
+		t.Fatal(err)
+	}
+	if st := tw.stats(); st.LiveSealedRows != 5000 || st.UnsealedRows != 0 {
+		t.Fatalf("setup: %+v", st)
+	}
+	tw.sealedLeftRowMaps()
+	sealed, err := tw.declared.GetRelationship(tw.rels[7])
+	if err != nil {
+		t.Fatal(err)
+	}
+	dup := sealed.DeepCopy()
+	for name, fn := range map[string]func() error{
+		"PutRelationship":       func() error { return tw.declared.PutRelationship(dup) },
+		"PutRelationshipsBatch": func() error { return tw.declared.PutRelationshipsBatch([]*types.Relationship{dup}) },
+	} {
+		if err := fn(); !errors.Is(err, ErrRelExists) {
+			t.Fatalf("%s with a sealed row's ID = %v, want ErrRelExists", name, err)
+		}
+	}
+	for _, nid := range tw.nodes {
+		if err := tw.declared.DeleteNode(nid); !errors.Is(err, ErrInvalidStoreMutation) {
+			t.Fatalf("DeleteNode of a node with only sealed relationships = %v, want ErrInvalidStoreMutation", err)
+		}
+		if err := tw.declared.DeleteNodesBatch([]types.NodeID{nid}); !errors.Is(err, ErrInvalidStoreMutation) {
+			t.Fatalf("DeleteNodesBatch of a node with only sealed relationships = %v, want ErrInvalidStoreMutation", err)
+		}
+	}
+	tw.compare("after refused writes")
+	tw.both("DeleteNodeCascade", func(s *Store) error { return s.DeleteNodeCascade(tw.nodes[0]) })
+	tw.nodes = tw.nodes[1:]
+	tw.compare("after cascade over sealed rows")
+}

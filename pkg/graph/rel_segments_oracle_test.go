@@ -56,7 +56,7 @@ var segOracleSpec = graph.RelSegmentSpec{
 // allowlist accepts, at depth 1 or 2 inside []any / map[string]any).
 func segNestedValue(r *rand.Rand) any {
 	leaves := []any{
-		int(-5), int8(math.MinInt8), int16(r.Intn(100)), int32(math.MaxInt32), int64(r.Int63()),
+		int(-5), int8(math.MinInt8), int16(r.Intn(100)), int32(math.MaxInt32), r.Int63(),
 		uint(7), uint8(math.MaxUint8), uint16(r.Intn(100)), uint32(math.MaxUint32), uint64(math.MaxUint64),
 		float32(1.25), r.Float64(), math.Copysign(0, -1), "s" + fmt.Sprint(r.Intn(9)), true,
 		[]string{"a", "b"}, []int{1, 2}, []int64{3}, []float32{1.5}, []float64{2.5}, []bool{true}, []byte{1, 2},
