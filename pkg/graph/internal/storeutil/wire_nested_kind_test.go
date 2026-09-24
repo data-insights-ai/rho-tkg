@@ -267,7 +267,7 @@ func TestWire_NativeNestedKindsAreNotRewritten(t *testing.T) {
 // checked validator, as a stored row would.
 func decodeWireProperty(t *testing.T, value any) error {
 	t.Helper()
-	blob, err := msgpack.Marshal([]PropertyWire{{Key: "k", Type: ptSliceAny, Value: value}})
+	blob, err := msgpack.Marshal([]PropertyWire{{Key: "k", Type: PropertyTypeTag(value), Value: value}})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
@@ -317,8 +317,12 @@ func TestWire_MalformedNestedKindEnvelopeRejected(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if err := decodeWireProperty(t, c.value); err == nil {
+			err := decodeWireProperty(t, c.value)
+			if err == nil {
 				t.Fatalf("accepted malformed envelope %#v", c.value)
+			}
+			if !strings.Contains(err.Error(), "nested") && !strings.Contains(err.Error(), "custom property") {
+				t.Fatalf("rejected for an unrelated reason: %v", err)
 			}
 		})
 	}
@@ -351,5 +355,60 @@ func TestWire_KindMarkerShapedUserListRoundTrips(t *testing.T) {
 	if !strings.HasPrefix(nestedWireKindMarker, nestedWireMarkerPrefix) ||
 		!strings.HasPrefix(nestedWireCustomMarker, nestedWireMarkerPrefix) {
 		t.Fatalf("markers %q / %q outside the reserved prefix", nestedWireKindMarker, nestedWireCustomMarker)
+	}
+}
+
+// An envelope wraps its value one or two levels deeper than the value itself
+// sits (a typed slice's elements move from inside the slice to inside the
+// envelope's payload list). A value at the deepest nesting the property layer
+// accepts must still read back — the depth limit applies to the stored value,
+// not to its wire encoding.
+func TestWire_EnvelopeAtMaximumDepthRoundTrips(t *testing.T) {
+	registerNestedKindCustom(t)
+	leaves := []any{
+		int16(1), uint8(2), int(3), []string{"a"}, []string(nil), map[string]string{"a": "b"},
+		[]float32{1.5}, []any(nil), map[string]any(nil), wireValueDirectCustom{X: 7},
+		types.TemporalValue{Kind: types.TemporalDate, Value: "2024-01-01"},
+	}
+	for _, leaf := range leaves {
+		var deepest any
+		for v := any([]any{leaf}); ; v = []any{v} {
+			var ps types.PropertySlice
+			if err := ps.Set("p", v); err != nil {
+				break
+			}
+			deepest = v
+		}
+		if deepest == nil {
+			t.Fatalf("%T: no nesting accepted", leaf)
+		}
+		ps, err := types.NewPropertySlice(map[string]any{"p": deepest})
+		if err != nil {
+			t.Fatalf("%T: NewPropertySlice: %v", leaf, err)
+		}
+		b, err := MarshalPropertySlice(ps)
+		if err != nil {
+			t.Fatalf("%T at maximum depth: MarshalPropertySlice: %v", leaf, err)
+		}
+		got, err := UnmarshalPropertySlice(b)
+		if err != nil {
+			t.Fatalf("%T at maximum depth: UnmarshalPropertySlice: %v", leaf, err)
+		}
+		gv, _ := got.Get("p")
+		assertSameValue(t, deepest, gv)
+	}
+}
+
+// Relaxing the depth check for the envelope must not unbound it: a raw wire
+// value nested far past what any stored value can produce is still rejected
+// (an in-memory PropertyWire does not pass the msgpack depth guard).
+func TestWire_OverDeepRawNestedValueRejected(t *testing.T) {
+	var deep any = []any{int64(1)}
+	for range 2 * maxWireDecodeDepth {
+		deep = []any{deep}
+	}
+	err := ValidatePropertyWireSlice([]PropertyWire{{Key: "k", Type: ptSliceAny, Value: deep}})
+	if err == nil {
+		t.Fatal("ValidatePropertyWireSlice accepted an over-deep raw value")
 	}
 }
