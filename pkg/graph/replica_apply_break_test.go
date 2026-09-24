@@ -146,16 +146,25 @@ func TestReplicaApply_ChangeClearWipesAndReanchors(t *testing.T) {
 // record at LSN W+1 (above the watermark so it reaches the handler) and asserts
 // the watermark stays at W.
 func TestReplicaApply_CorruptRecordFailsClosed(t *testing.T) {
+	ctx := context.Background()
 	primary, replica, lsn0 := newReplicaPair(t, "")
 
-	// One real NodePut whose payload we can tamper for sub-case (b).
-	mustAdd(t, primary, []string{"A"}, map[string]any{"n": "real"})
+	// One real NodePut whose payload we can tamper for sub-case (b). Seed an
+	// UPDATE after the create (not just the create) so the captured record's
+	// NodeWire.Hash is guaranteed non-empty: a create's wire can in principle
+	// omit "h" via omitempty before the entity's first hash is persisted, but
+	// an update always recomputes Hash/PrevHash from the prior version before
+	// the changelog record is built, so the tamper-hash sub-case (b) below
+	// always has a real hash to corrupt instead of silently skipping.
+	n := mustAdd(t, primary, []string{"A"}, map[string]any{"n": "real"})
+	if _, err := primary.Nodes().Update(ctx, n.ID(), map[string]any{"n": "real2"}); err != nil {
+		t.Fatalf("seed update: %v", err)
+	}
 	recs := changesSince(t, primary, lsn0)
 	var realPut store.ChangeRecord
 	for _, r := range recs {
 		if r.Tag == store.ChangeNodePut {
-			realPut = r
-			break
+			realPut = r // last one wins: the update's record, not the create's
 		}
 	}
 	if realPut.Tag != store.ChangeNodePut {
@@ -174,7 +183,11 @@ func TestReplicaApply_CorruptRecordFailsClosed(t *testing.T) {
 			t.Fatalf("captured NodePut body has no wire map, got %T", body["w"])
 		}
 		if _, ok := wire["h"]; !ok {
-			t.Skipf("captured NodePut wire has no integrity hash field — cannot craft a hash-mismatch; skipping sub-case (b)")
+			// An update's wire always carries a computed Hash — see the seeding
+			// comment above. Fail loudly instead of silently skipping: a missing
+			// "h" here means the hash-chain contract regressed, not that this
+			// sub-case is inapplicable.
+			t.Fatalf("captured NodePut wire has no integrity hash field — cannot craft a hash-mismatch sub-case")
 		}
 		wire["h"] = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef0"
 		body["w"] = wire
