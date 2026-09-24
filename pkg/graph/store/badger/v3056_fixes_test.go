@@ -47,16 +47,18 @@ func TestBadgerStore_DeleteNode_NoDiskIOUnderWriteLock(t *testing.T) {
 	// does db.View before the write lock, so the RLock holder is not blocked.
 	var rLockDuration atomic.Int64
 	done := make(chan struct{})
+	rlockHeld := make(chan struct{})
 	go func() {
 		defer close(done)
 		start := time.Now()
 		bs.LockIdxMuRForTest()
+		close(rlockHeld)                 // signal: RLock is actually held, not just "should be by now"
 		time.Sleep(5 * time.Millisecond) // simulate RLock holder doing work
 		bs.UnlockIdxMuRForTest()
 		rLockDuration.Store(time.Since(start).Milliseconds())
 	}()
 
-	time.Sleep(1 * time.Millisecond) // let the goroutine acquire RLock first
+	<-rlockHeld // wait for the RLock to be held instead of guessing with a sleep
 	if err := bs.DeleteNode(types.NodeID(9901)); err != nil {
 		t.Fatalf("DeleteNode: %v", err)
 	}

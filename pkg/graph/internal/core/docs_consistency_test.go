@@ -32,7 +32,7 @@ func TestDocsMetadataMatchesSourceOfTruth(t *testing.T) {
 		path string
 		want []string
 	}{
-		{path: "../../../../README.md", want: []string{"**Go:** " + goVersion}},
+		{path: "../../../../README.md", want: []string{"**Go:** " + goVersion, "Current release: **v" + currentVersion + "**"}},
 		{path: "../../../../AGENTS.md", want: []string{"Go: " + goVersion, "Status: v" + currentVersion}},
 		{path: "../../../../docs/architecture.md", want: []string{"(v" + currentVersion + ")", "Go:      " + goVersion}},
 	}

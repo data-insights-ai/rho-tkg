@@ -27,8 +27,9 @@ import (
 
 // exactInt64FromVK decodes a canonical value key to its EXACT int64, or
 // ok=false when the value is not an integer (non-numeric, NaN, fractional float,
-// or u64 beyond MaxInt64). Used to detect integers past 2^53 whose float64 sort
-// key may collide — those poison the sorted-bucket count (numImprecise).
+// or a "u"/"u64" (both full 64-bit width) value beyond MaxInt64). Used to
+// detect integers past 2^53 whose float64 sort key may collide — those
+// poison the sorted-bucket count (numImprecise).
 func exactInt64FromVK(vk string) (int64, bool) {
 	colon := strings.IndexByte(vk, ':')
 	if colon < 0 {
@@ -42,13 +43,18 @@ func exactInt64FromVK(vk string) (int64, bool) {
 			return 0, false
 		}
 		return n, true
-	case "u", "u8", "u16", "u32":
+	case "u8", "u16", "u32":
+		// u32's own max (4294967295) is well below MaxInt64, so any value that
+		// parses at all for these three prefixes fits — safe to cast directly.
 		n, err := strconv.ParseUint(payload, 10, 64)
 		if err != nil {
 			return 0, false
 		}
 		return int64(n), true // #nosec G115 -- u32 max is below MaxInt64
-	case "u64":
+	case "u", "u64":
+		// Bare "u" encodes a Go `uint`, 64 bits wide on every supported
+		// platform (see PropertySlice's "u:" key encoding) — NOT bounded to
+		// uint32 like the three prefixes above. Same overflow gate as u64.
 		n, err := strconv.ParseUint(payload, 10, 64)
 		if err != nil || n > math.MaxInt64 {
 			return 0, false

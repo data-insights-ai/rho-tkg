@@ -303,14 +303,9 @@ including the Docker-based `lint`/`security`/`vulncheck` targets.
 See [CHANGELOG.md](CHANGELOG.md) for the full, dated release history — every
 version back to v3.0.0, with the defect it fixed or the feature it added.
 
-Current release: **v4.28.1** — relationship columns on the memory backend (closing
-the asymmetry with badger), a bulk-scan path for badger rel column builds (large
-allocation collapse on full-type rebuilds), deterministic replacements for the
-last scheduler-dependent CI probes, and a patch so read-only graph transactions
-skip registry metadata checkpoint/restore when the global registry state is
-clean. Earlier 4.25–4.27 work (vector scored search, exact erasure, columnar
-typed scans / zone maps / append-extend, sharded S4–S5, retention purge across
-backends) is in `CHANGELOG.md`.
+Current release: **v4.37.0** — see [CHANGELOG.md](CHANGELOG.md) for what shipped
+and why; this line is pinned to the changelog's latest entry by
+`TestDocsMetadataMatchesSourceOfTruth` so it cannot go stale silently.
 
 If you are upgrading from v3.x, see `CHANGELOG.md` `[4.0.0]` for the full
 public-API migration recipe (context-first methods, `g.Tier` split from
