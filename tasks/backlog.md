@@ -19,6 +19,47 @@ capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 1. **Import-under-a-scope** (improvement-not-bug, deferred locking)
 2. **BACKLOG 22** — six TEST-GAP research items (from the retired `.harden/` ledger)
 3. **Temporal adjacency scan cost** (v4.35.0 follow-up) — measure before building anything (see below)
+4. **Temporal semantics review 2026-09-24** — traced findings, each needs a failing test before a fix (see below)
+
+**v5:** the next engine generation is planned on branch `v5` (`docs/v5/PLAN.md`). v4 gets fixes, not features that v5 replaces. ADR-0011 S2+ waits for owner decision D6 in that plan (recommendation: continue the segments inside v5).
+
+---
+
+## Open — temporal semantics review 2026-09-24
+
+Found by a code trace during the v1.3-handoff review. The three findings that were
+reproduced (delete after close, correction template, endpoint masking) are fixed on
+branch `fix/v4-temporal-semantics`. The items below are TRACED, NOT YET REPRODUCED:
+write the failing two-phase test first; drop the item if the test passes.
+
+- **(HIGH?) `NodesDuring` / `RelsDuring` open end.** `end == 0` is resolved to wall-now + 1
+  (`temporal.go` ~L27-32, `temporal_queries.go` ~L177-197), so an entity valid only in the
+  future is missed; `NodesRelating` keeps the open end as +inf.
+- **(HIGH?) Future transaction time from `validInstantAfter`.** Update/CloseVersion/Delete of a
+  row whose explicit ValidFrom is in the future stamps `TxFrom/TxTo = ValidFrom + 1` without
+  advancing the floor, contradicting "every committed entity has TxFrom <= NowTx()"
+  (`txtime.go` ~L159) and SPEC.md ~L439.
+- **(HIGH?) Re-import of a deleted ID.** `Nodes().Import(id, …)` checks only the current row;
+  the re-imported entity restarts at version 0 and its first Update writes history version 0,
+  overwriting the previous life's version 0 (`memorystore_history.go` ~L888).
+- **(MEDIUM?) As-of vs point resolver order.** `SelectAsOf` picks the newest candidate by
+  version; the point resolver breaks overlaps by (TxFrom, version). After a cascade whose rows
+  carry a lower TxFrom than a later-version Update, `NodeAsOf` and `NodeAtTx` can pick
+  different rows (`asof_select_test.go` ~L119-129 shows the inversion shape).
+- **(MEDIUM?) `NodeMatchesValidTime` on a current row with unset ValidFrom** answers "valid since
+  mint", so a consumer post-filtering current rows accepts today's properties for times
+  before the last update, where `NodeAt` returns the older version.
+- **(LOW) Snowflake ID horizon.** 48-bit microseconds from 2026-01-01 end on 2034-12-02
+  (arithmetic). Needs a plan before v4 data outlives it; v5 drops clock bits from IDs.
+- **(KNOWN LIMITATION) Future-scheduled close, then delete.** The delete clamps the scheduled
+  `ValidTo` in place, so a read pinned before the delete sees the row open-ended. Fixing it
+  needs either a separate tombstone version (store delete contract and chain shape change) or
+  readers using `min(ValidTo, DeletedAt)` everywhere (column scans, segments, valid-time
+  indexes). v5 replaces in-place tombstones with lifecycle closes.
+- **(KNOWN LIMITATION) 1 ms pieces look eclipsed.** A row with `ValidTo == ValidFrom + 1` is the
+  eclipse sentinel and invisible to valid-time reads. A caller-supplied 1 ms interval was always
+  affected; since the correction-base fix a `SetNodeVersionInterval` piece can also be 1 ms wide
+  when a pre-existing boundary sits 1 ms from `validFrom` or `validTo`.
 
 ---
 

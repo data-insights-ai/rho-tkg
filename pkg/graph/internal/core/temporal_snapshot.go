@@ -18,7 +18,10 @@ import (
 // =============================================================================
 
 // Snapshot returns a complete graph state at the given instant.
-// Relationships are only included if both endpoints are valid at t.
+// Relationships are only included if both endpoints are valid at t — the
+// EFFECTIVE view shared with Diff, NeighborsAt and OutgoingRelsAt /
+// IncomingRelsAt. RelsAt(t) is the DECLARED row view and is not
+// endpoint-masked, so it may return more relationships than Snapshot(t).
 //
 // Takes c.mu.Lock for the duration, excluding standalone mutations,
 // tx/batch, and Reset while the node and relationship reads are composed.
@@ -80,6 +83,7 @@ func (c *Core) snapshotAt(t types.Instant) (*temporalpkg.GraphSnapshot, error) {
 // =============================================================================
 
 // Diff returns the set of entity changes between t1 and t2.
+// Relationship presence uses the EFFECTIVE rule (see Snapshot / DiffCallback).
 // Entities valid at T2 but not T1 → Created.
 // Entities valid at both but with different integrity hash → Updated.
 // Entities valid at T1 but not T2 → Deleted.
@@ -173,7 +177,8 @@ func sortSnapshotDiff(diff *temporalpkg.SnapshotDiff) {
 // additionally subject to endpoint filtering: a relationship is treated as
 // "present at t" only when both its start and end nodes are valid at t.
 // This matches the snapshotAt rel-endpoint filter exactly and preserves
-// behavioural parity with Temporal.Diff.
+// behavioural parity with Temporal.Diff — the EFFECTIVE view, shared with
+// NeighborsAt and OutgoingRelsAt/IncomingRelsAt.
 //
 // nil handler fields are skipped cleanly. Returning a non-nil error from
 // any handler halts iteration and returns that error. Handlers are invoked

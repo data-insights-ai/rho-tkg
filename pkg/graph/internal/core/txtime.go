@@ -309,6 +309,9 @@ func (c *Core) nodesAsOfLocked(txTime types.Instant) ([]*types.Node, error) {
 
 // RelsAsOf returns all relationships that existed at the given transaction time.
 // Mirrors GetNodesAsOf for relationships.
+//
+// DECLARED view: the relationship rows believed at txTime, NOT masked by
+// endpoint validity or endpoint belief.
 func (t *TempOps) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 	c := t.c
 	if err := c.checkOpen(); err != nil {
@@ -425,6 +428,12 @@ func (c *Core) relCapabilityVisibleAtTxTime(r *types.Relationship, txTime types.
 	return relVisibleAtTxTime(r, txTime)
 }
 
+// normalizeTemporalVisibleAtTxTime rewinds tm to the belief state as of txTime:
+// a TxTo or delete recorded after txTime is removed. "ValidTo == DeletedAt"
+// marks a ValidTo the delete itself wrote (the row was open, or its scheduled
+// close was clamped to the delete), so it reopens; any other ValidTo is a close
+// recorded before the delete and is kept. The delete doors guarantee the marker
+// is unambiguous (stampDeleteTombstone / deleteInstantClearOfCloses in core).
 func normalizeTemporalVisibleAtTxTime(tm *types.TemporalMetadata, txTime types.Instant) {
 	if tm == nil {
 		return

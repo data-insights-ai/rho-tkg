@@ -179,14 +179,17 @@ func (tx *GraphTx) doorCtxFrom(ctx context.Context) context.Context {
 // (or discarded on Rollback). Standalone mutations use dispatchEvent
 // with a per-call publisher and never touch c.txEventBuffer.
 //
-// Isolation semantics: serializable per touched entity. Entities the tx
-// has mutated stay consistent for the tx's view (entity locks taken by
-// the *Internal mutation paths). Reads inside the tx may observe
-// changes to entities NOT yet touched by this tx that were committed
-// by a concurrent standalone op — this is a relaxation of the v3.4
-// "tx blocks all concurrent mutations" guarantee, and is the
-// minor-bump price documented in CHANGELOG [4.1.0]. Code that relied
-// on the old guarantee must take its own external lock.
+// Isolation semantics (v4.1.0+): serialized against other transactions and
+// batches only. Tx mutations are write-through: a concurrent standalone
+// reader observes uncommitted tx rows before Commit. Entity locks are taken
+// and released per call by the *Internal mutation paths, not held until
+// Commit, so a standalone write can land on an entity between two tx calls;
+// Rollback restores the pre-transaction snapshot and overwrites that write.
+// Reads inside the tx may observe changes committed by concurrent standalone
+// ops. This is the price of the v3.4 -> v4.1.0 relaxation documented in
+// CHANGELOG [4.1.0] and docs/architecture.md ("Transaction isolation — what
+// v4 actually guarantees"). Code that needs isolation must serialize its
+// writers externally or use a batch.
 func (c *Core) BeginTx() (*GraphTx, error) {
 	c.txMu.Lock()
 	if c.closed.Load() {

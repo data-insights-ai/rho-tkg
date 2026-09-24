@@ -10,24 +10,19 @@ import (
 
 // BACKLOG 10e/10i: temporal_cascade.go's inserted-row PrevHash used to be
 // documented as linking to "whichever row it directly supersedes on the VT
-// axis," but the implementation actually always links to the "template" row
-// (the most-recent-non-eclipsed version chosen for label/property
-// carry-over) — a DIFFERENT selection rule from true VT-axis lineage. Query
-// correctness is unaffected (verifyChainLinkage only requires PrevHash to
-// match SOME hash present anywhere in the entity's chain, not the
-// VT-axis-adjacent one specifically — see temporal_cascade.go's file header
-// for the full analysis), so this was a documentation-accuracy fix, not a
-// behavior change: the doc comment was corrected to describe the actual
-// "template" rule and explicitly warn against "fixing" it toward true
-// VT-axis lineage without re-running the bitemporal oracle fuzz harness
-// (BACKLOG 10b already proved that class of change is a correctness
-// minefield in this exact file).
+// axis," but the implementation linked to the "template" row (the most
+// recent non-eclipsed version) — the row the inserted row's content was
+// copied from. Query correctness is unaffected either way (verifyChainLinkage
+// only requires PrevHash to match SOME hash present anywhere in the entity's
+// chain — see temporal_cascade.go's file header).
 //
-// This test pins the actual (correct, verification-passing) behavior for a
-// mid-history insertion — the same scenario TestCascade_MidHistoryInsertion
-// exercises for resolver correctness, extended to also inspect the inserted
-// row's PrevHash — closing the "zero test coverage" gap 10e/10i flagged.
-func TestCascade_MidHistoryInsertion_PrevHashLinksToTemplate(t *testing.T) {
+// Since the patch-over-then-valid-state fix, a correction row's content is
+// copied from its BASE — the pre-correction belief-winner over its piece of
+// the interval — and PrevHash follows the content: it is the base row's hash.
+// Only a gap piece (no version valid there) still uses the template as base,
+// and so links to the template's hash. This test pins both rules for a
+// mid-history insertion and a gap insertion, and that the chain verifies.
+func TestCascade_MidHistoryInsertion_PrevHashLinksToBase(t *testing.T) {
 	g := newTxTimeGraph(t)
 	clk := useTestClock(t, g)
 
@@ -47,9 +42,22 @@ func TestCascade_MidHistoryInsertion_PrevHashLinksToTemplate(t *testing.T) {
 		t.Fatalf("update to C: %v", err)
 	}
 
-	// Capture C's hash exactly as it stands right before the cascade — this
-	// is the row the cascade will pick as "template" (most-recent-non-eclipsed;
-	// the cascade interval [1500,2500) doesn't touch C's [3000,∞) interval).
+	// Capture A's hash (the then-valid base of the [1500,2500) correction)
+	// and C's hash (the template — most recent non-eclipsed — used for a gap
+	// piece) exactly as they stand right before the cascade.
+	preHistory, err := g.Nodes.History(n.ID())
+	if err != nil {
+		t.Fatalf("History before cascade: %v", err)
+	}
+	var baseHash string
+	for _, h := range preHistory {
+		if v, ok := h.GetProperty("state"); ok && v == "A" && h.Integrity() != nil {
+			baseHash = h.Integrity().Hash
+		}
+	}
+	if baseHash == "" {
+		t.Fatal("no hashed state=A history row before cascade")
+	}
 	beforeCascade, err := g.Nodes.Get(context.Background(), n.ID())
 	if err != nil {
 		t.Fatalf("Get before cascade: %v", err)
@@ -68,7 +76,7 @@ func TestCascade_MidHistoryInsertion_PrevHashLinksToTemplate(t *testing.T) {
 	}
 
 	// Find the inserted "B" row in history and assert its PrevHash equals
-	// the captured template (C's) hash — the documented (post-fix) rule.
+	// its base's (A's) hash — the row it corrects.
 	history, err := g.Nodes.History(n.ID())
 	if err != nil {
 		t.Fatalf("History: %v", err)
@@ -87,8 +95,21 @@ func TestCascade_MidHistoryInsertion_PrevHashLinksToTemplate(t *testing.T) {
 	if bIG == nil {
 		t.Fatal("B row has no integrity block")
 	}
-	if bIG.PrevHash != templateHash {
-		t.Fatalf("B row PrevHash = %q, want template (C's pre-cascade) hash %q — BACKLOG 10e regression", bIG.PrevHash, templateHash)
+	if bIG.PrevHash != baseHash {
+		t.Fatalf("B row PrevHash = %q, want base (A's) hash %q", bIG.PrevHash, baseHash)
+	}
+
+	// Gap piece: [100, 500) lies before the entity's first valid-from, so no
+	// version is valid there and the template (C) is the base.
+	clk.Advance(time.Millisecond)
+	gap, err := g.Temporal.SetNodeVersionInterval(context.Background(), n.ID(), 100, 500, map[string]any{
+		"state": "G",
+	})
+	if err != nil {
+		t.Fatalf("cascade insert G (gap): %v", err)
+	}
+	if gIG := gap.Integrity(); gIG == nil || gIG.PrevHash != templateHash {
+		t.Fatalf("gap row integrity = %+v, want PrevHash = template (C's) hash %q", gap.Integrity(), templateHash)
 	}
 
 	// The chain must still verify — PrevHash pointing at the template (not a

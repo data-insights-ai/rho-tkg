@@ -532,6 +532,10 @@ func (c *Core) nodesByLabelLocked(label string, opts storepkg.QueryOpts) ([]*typ
 // history-relevant information added by this scan is deleted/closed-out
 // relationships that the current type index no longer references. Without a
 // temporal filter, the call falls through to the store-level type index.
+//
+// DECLARED view under a temporal filter: each relationship's own asserted
+// validity only, NOT masked by endpoint validity. Use Temporal().Snapshot /
+// NeighborsAt / OutgoingRelsAt for the EFFECTIVE graph view.
 func (r *RelOps) ByType(typeName string, opts storepkg.QueryOpts) ([]*types.Relationship, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -647,6 +651,10 @@ type relTypeScanner interface {
 // machinery), so streaming currently applies to the plain current-state
 // scan — exactly the shape whose materialization cost scales with type
 // cardinality.
+//
+// DECLARED view under a temporal filter: each relationship's own asserted
+// validity only, NOT masked by endpoint validity. Use Temporal().Snapshot /
+// NeighborsAt / OutgoingRelsAt for the EFFECTIVE graph view.
 func (r *RelOps) ForEachByType(typeName string, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -873,6 +881,10 @@ type relEndpointScannerAt interface {
 // The stores' inline-stamp scanners (relEndpointScannerAt) are no longer
 // consulted under a temporal filter: a stamp can only prove the LIVE row
 // out-of-window, which says nothing about older versions.
+//
+// DECLARED view under a temporal filter: each relationship's own asserted
+// validity only, NOT masked by endpoint validity. Use Temporal().Snapshot /
+// NeighborsAt / OutgoingRelsAt for the EFFECTIVE graph view.
 func (r *RelOps) ForEachAdjacentEndpointAt(nodeID types.NodeID, typeName string, incoming bool, opts storepkg.QueryOpts, fn func(rel types.RelID, other types.NodeID) bool) error {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -965,6 +977,10 @@ type relRelScannerAt interface {
 // relationship, the version valid under opts — see ForEachAdjacentEndpointAt
 // and forEachAdjacentRelVersionLocked. With no temporal filter this is exactly
 // ForEachOutgoing/ForEachIncoming. fn returning false stops the scan.
+//
+// DECLARED view under a temporal filter: each relationship's own asserted
+// validity only, NOT masked by endpoint validity. Use Temporal().Snapshot /
+// NeighborsAt / OutgoingRelsAt for the EFFECTIVE graph view.
 func (r *RelOps) ForEachAdjacentRelAt(nodeID types.NodeID, typeName string, incoming bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -1241,6 +1257,10 @@ func (c *Core) incomingRelsForNodesLocked(nodeIDs []types.NodeID, typeName strin
 // that every requested node currently exists (mirrors OutgoingForNodes) and
 // returns (nil, nil) on success. Returned relationships are sorted by ID
 // within each node's slice.
+//
+// DECLARED view under a temporal filter: each relationship's own asserted
+// validity only, NOT masked by endpoint validity. Use Temporal().Snapshot /
+// NeighborsAt / OutgoingRelsAt for the EFFECTIVE graph view.
 func (r *RelOps) OutgoingForNodesAtTx(nodeIDs []types.NodeID, typeName string, txAt types.Instant) (map[types.NodeID][]*types.Relationship, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -1271,6 +1291,10 @@ func (r *RelOps) OutgoingForNodesAtTx(nodeIDs []types.NodeID, typeName string, t
 // IncomingForNodesAtTx is the bitemporal counterpart of IncomingForNodes. See
 // OutgoingForNodesAtTx for the resolution semantics (identical, mirrored for
 // the incoming direction).
+//
+// DECLARED view under a temporal filter: each relationship's own asserted
+// validity only, NOT masked by endpoint validity. Use Temporal().Snapshot /
+// NeighborsAt / OutgoingRelsAt for the EFFECTIVE graph view.
 func (r *RelOps) IncomingForNodesAtTx(nodeIDs []types.NodeID, typeName string, txAt types.Instant) (map[types.NodeID][]*types.Relationship, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -1431,6 +1455,10 @@ func (c *Core) directionalRelsForNodesAtTxLocked(nodeIDs []types.NodeID, typeNam
 // door's "no temporal filter" convention; the current-state door's
 // ErrNodeNotFound seed validation applies in that delegated case). Returned
 // relationships are sorted by ID within each node's slice.
+//
+// DECLARED view under a temporal filter: each relationship's own asserted
+// validity only, NOT masked by endpoint validity. Use Temporal().Snapshot /
+// NeighborsAt / OutgoingRelsAt for the EFFECTIVE graph view.
 func (r *RelOps) OutgoingForNodesAtPin(nodeIDs []types.NodeID, typeName string, pin types.Instant) (map[types.NodeID][]*types.Relationship, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -1461,6 +1489,10 @@ func (r *RelOps) OutgoingForNodesAtPin(nodeIDs []types.NodeID, typeName string, 
 // IncomingForNodesAtPin is the belief-state counterpart of IncomingForNodes. See
 // OutgoingForNodesAtPin for the resolution semantics (identical, mirrored for
 // the incoming direction).
+//
+// DECLARED view under a temporal filter: each relationship's own asserted
+// validity only, NOT masked by endpoint validity. Use Temporal().Snapshot /
+// NeighborsAt / OutgoingRelsAt for the EFFECTIVE graph view.
 func (r *RelOps) IncomingForNodesAtPin(nodeIDs []types.NodeID, typeName string, pin types.Instant) (map[types.NodeID][]*types.Relationship, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -1867,6 +1899,10 @@ func (n *NodeOps) ForEach(opts storepkg.QueryOpts, fn func(*types.Node) bool) er
 // the version chain, and surfaces deleted relationships that were valid at
 // the query time. Without a temporal filter the fast store-side pushdown
 // path is preserved.
+//
+// DECLARED view under a temporal filter: each relationship's own asserted
+// validity only, NOT masked by endpoint validity. Use Temporal().Snapshot /
+// NeighborsAt / OutgoingRelsAt for the EFFECTIVE graph view.
 func (r *RelOps) All(opts storepkg.QueryOpts) ([]*types.Relationship, error) {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -1934,6 +1970,10 @@ func (c *Core) allRelsLocked(opts storepkg.QueryOpts) ([]*types.Relationship, er
 // the store iterator, then each row is fetched and fn is called without
 // holding graph locks. Concurrently deleted rows may be skipped; concurrently
 // created rows are not guaranteed to be seen.
+//
+// DECLARED view under a temporal filter: each relationship's own asserted
+// validity only, NOT masked by endpoint validity. Use Temporal().Snapshot /
+// NeighborsAt / OutgoingRelsAt for the EFFECTIVE graph view.
 func (r *RelOps) ForEach(opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
