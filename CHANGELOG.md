@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.38.1] - 2026-09-24
+
+Patch release: three HIGH read fixes. Pinned `ByLabel`/`ByType` scans on badger no longer drop
+an entity whose flush committed during the lazy membership build; TxAt-only doors and open-ended
+interval reads no longer return an older version while the transaction clock runs ahead of the
+wall; `ForEachAdjacentRelAt`/`ForEachAdjacentEndpointAt` honour a TxAt/TxPin filter. Gates on the
+released tree: `make fmt-check`, `make check`, `make test-race` and the docs-consistency tests
+exit 0.
+
 ### Fixed
 
 - **HIGH — badger: a pinned `ByLabel` / `ByType` scan could silently and permanently omit a
