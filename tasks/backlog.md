@@ -32,8 +32,9 @@ reproduced (delete after close, correction template, endpoint masking) are fixed
 branch `fix/v4-temporal-semantics`. The items below are TRACED, NOT YET REPRODUCED:
 write the failing two-phase test first; drop the item if the test passes.
 
-- **(HIGH?) `NodesDuring` / `RelsDuring` open end.** `end == 0` is resolved to wall-now + 1
-  (`temporal.go` ~L27-32, `temporal_queries.go` ~L177-197), so an entity valid only in the
+- **(HIGH?) `NodesDuring` / `RelsDuring` open end.** `end == 0` is resolved to now + 1
+  (`c.resolveOpenEndInstant`, `temporal.go`; now = `c.readNow()` since 2026-09-24, so a
+  version stamped ahead of the wall is no longer missed), so an entity valid only in the
   future is missed; `NodesRelating` keeps the open end as +inf.
 - **(HIGH?) Future transaction time from `validInstantAfter`.** Update/CloseVersion/Delete of a
   row whose explicit ValidFrom is in the future stamps `TxFrom/TxTo = ValidFrom + 1` without
@@ -49,6 +50,11 @@ write the failing two-phase test first; drop the item if the test passes.
 - **(MEDIUM?) `NodeMatchesValidTime` on a current row with unset ValidFrom** answers "valid since
   mint", so a consumer post-filtering current rows accepts today's properties for times
   before the last update, where `NodeAt` returns the older version.
+- **CLOSED 2026-09-24 — TxAt-only doors "nondeterministic"** (seg/s2 backlog "item 4", found
+  by the S2 oracle). Not map order: the implicit valid-time "now" was the wall clock, below
+  the stamps of versions written while the transaction clock ran ahead. Fixed on
+  `fix/txat-determinism` (CHANGELOG Unreleased); seg/s2 drops `segKnownNondeterministic`
+  and its item 4 when it rebases.
 - **(LOW) Snowflake ID horizon.** 48-bit microseconds from 2026-01-01 end on 2034-12-02
   (arithmetic). Needs a plan before v4 data outlives it; v5 drops clock bits from IDs.
 - **(KNOWN LIMITATION) Future-scheduled close, then delete.** The delete clamps the scheduled

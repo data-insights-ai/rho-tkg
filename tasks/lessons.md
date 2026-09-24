@@ -1758,10 +1758,12 @@ Rules:
 - **Test-clock discipline for TxAt tests:** `Core.now()` has a monotonic ≥1ms
   floor, so a mutation burst outruns the wall clock — (a) a slept wall-clock pin
   can land BEFORE the last write's logical stamp (derive pins from the entities'
-  own `TxFrom` instead), and (b) the TxAt-only door probes valid time at WALL now
-  (`resolveOpenEndInstant`), so assertions flip while stamps are still "in the
-  future" (wait until the wall clock passes every minted stamp before asserting).
-  Both produced flakes in the first cut of `bitemporal_tombstone_test.go`.
+  own `TxFrom` instead), and (b) the TxAt-only door probed valid time at WALL now
+  (`resolveOpenEndInstant`), so assertions flipped while stamps were still "in the
+  future". Both produced flakes in the first cut of `bitemporal_tombstone_test.go`.
+  (b) was a product bug worked around in tests, not a test-clock quirk: fixed
+  2026-09-24 (reads use `c.readNow()`, lesson 71 corollary). A flake that tests
+  "fix" by waiting for the wall clock is a finding, not a discipline.
 
 ## 61. A "Current Transaction Time" Reader Must Consult The Commit Clock (Wall-Dominated), Not The Session High-Water Mark — The Latter Resets To Zero On Reopen
 
@@ -2271,6 +2273,13 @@ legitimately lie in the future (a future valid-to must not poison the commit clo
      and the opposite of every Reap key. Uniquely among Preserve keys it needs no
      capture-before-Clear, because the authoritative value is the in-memory
      `lastInstant` (which `Clear` never lowers), not the persisted blob.
+- **Corollary — the READ side too (2026-09-24).** Any implicit "now" a read
+  compares versions against must dominate every stamp as well: TxAt-only doors
+  and open-ended interval reads probed valid time at the bare wall clock, below
+  the `UpdatedAt` of versions stamped by a floor that had outrun it, and
+  returned an older superseded version — a different one per call, and
+  differently on primary and replica (found by the ADR-0011 S2 oracle as
+  "nondeterminism"). Reads now use `c.readNow()` = max(wall, floor).
 - **Tests:** `TestNowTx_ReopenAfterBurst_MonotonicFloorAnachronism` (frozen-clock
   burst → reopen), `TestNowTx_ReplicaCoversAppliedFutureTxFrom` (clock-skewed
   primary → apply), `TestNowTx_BootstrapImportCoversFutureTxFrom` (future-stamped
