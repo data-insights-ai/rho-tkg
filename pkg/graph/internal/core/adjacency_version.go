@@ -10,7 +10,8 @@ import (
 
 // forEachAdjacentRelVersionLocked is the version-aware body shared by
 // RelOps.ForEachAdjacentRelAt and RelOps.ForEachAdjacentEndpointAt when opts
-// carries a valid-time filter (ValidAt, or ValidStart+ValidEnd).
+// carries a temporal filter (ValidAt, ValidStart+ValidEnd, TxAt or TxPin —
+// hasTemporalFilter).
 //
 // v4.35.0: before this, both doors tested the CURRENT row only (native
 // inline-stamp arm and decode fallback alike), so a relationship whose latest
@@ -59,7 +60,7 @@ func (c *Core) forEachAdjacentRelVersionLocked(nodeID types.NodeID, typeName str
 		// No live row: the node is either unknown (error, as the no-filter
 		// path reports) or deleted but valid under opts (its since-deleted
 		// adjacency is reachable through the deleted fold below).
-		if _, nerr := c.findNodeVersionForOpts(nodeID, normalizeTxAtOnlyOpts(opts), nil); nerr != nil {
+		if _, nerr := c.findNodeVersionForOpts(nodeID, c.normalizeTxAtOnlyOpts(opts), nil); nerr != nil {
 			return storepkg.ErrNodeNotFound
 		}
 		rows = nil
@@ -97,7 +98,7 @@ func (c *Core) forEachAdjacentRelVersionLocked(nodeID types.NodeID, typeName str
 		}
 		return r.StartNodeID() == nodeID
 	}
-	resolveOpts := normalizeTxAtOnlyOpts(opts)
+	resolveOpts := c.normalizeTxAtOnlyOpts(opts)
 	for _, id := range ids {
 		var r *types.Relationship
 		if cur := live[id]; cur != nil && opts.ValidAt != 0 && c.relCurrentAnswersAt(cur, opts.ValidAt, opts.TxAt) && pred(cur) {

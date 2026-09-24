@@ -467,7 +467,7 @@ func (tx *GraphTx) NodesDuring(start, end types.Instant) ([]*types.Node, error) 
 		return nil, err
 	}
 	defer tx.unlockActiveCore()
-	resolvedEnd, err := normalizeDuringRange(start, end)
+	resolvedEnd, err := tx.g.normalizeDuringRange(start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -480,7 +480,7 @@ func (tx *GraphTx) RelsDuring(start, end types.Instant) ([]*types.Relationship, 
 		return nil, err
 	}
 	defer tx.unlockActiveCore()
-	resolvedEnd, err := normalizeDuringRange(start, end)
+	resolvedEnd, err := tx.g.normalizeDuringRange(start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -573,7 +573,7 @@ func (tx *GraphTx) NodesByLabelPropertyDuring(label, key string, value any, star
 		return nil, err
 	}
 	defer tx.unlockActiveCore()
-	resolvedEnd, err := normalizeDuringRange(start, end)
+	resolvedEnd, err := tx.g.normalizeDuringRange(start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -613,7 +613,7 @@ func (tx *GraphTx) RelsByTypePropertyDuring(relType, key string, value any, star
 		return nil, err
 	}
 	defer tx.unlockActiveCore()
-	resolvedEnd, err := normalizeDuringRange(start, end)
+	resolvedEnd, err := tx.g.normalizeDuringRange(start, end)
 	if err != nil {
 		return nil, err
 	}

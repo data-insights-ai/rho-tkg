@@ -26,11 +26,12 @@ import (
 //     BEFORE the last create's logical stamp. A pin at max(TxFrom of pre-pin
 //     writes) is visible for all of them (TxFrom <= txAt), and every later
 //     mutation is stamped strictly greater by the same floor.
-//   - TxAt-only scans probe valid time at WALL now (resolveOpenEndInstant),
-//     so while the monotonic-floor stamps are still ahead of the wall clock
-//     the just-written stamps sit "in the future" and coverage flips as the
-//     wall clock catches up. Tests wait until the wall clock passes every
-//     stamp they minted (waitWallPast over the history rows) before asserting.
+//   - TxAt-only scans used to probe valid time at WALL now, so while the
+//     monotonic-floor stamps were still ahead of the wall clock the
+//     just-written stamps sat "in the future" and coverage flipped as the
+//     wall clock caught up. Since the 2026-09-24 readNow fix they probe at Core.readNow()
+//     (>= every stamp the Core minted), so that hazard is gone; the
+//     waitWallPast waits below are kept and are now redundant, not required.
 
 // txFromStamp returns the entity's TxFrom, failing the test if unstamped.
 func txFromStamp(t *testing.T, tm *types.TemporalMetadata) types.Instant {

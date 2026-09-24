@@ -94,7 +94,7 @@ func (c *Core) relsByTypeAndPropertyLocked(typeName, key string, value any, opts
 		gotKey, found := r.IndexablePropertyValueKey(key)
 		return found && gotKey == targetKey
 	}
-	resolveOpts := normalizeTxAtOnlyOpts(opts)
+	resolveOpts := c.normalizeTxAtOnlyOpts(opts)
 	if err := c.forEachRelCandidateIDByDepth(currentIDs, opts.Depth, func(id types.RelID) error {
 		rel, err := c.findRelVersionForOpts(id, resolveOpts, pred)
 		if err != nil {

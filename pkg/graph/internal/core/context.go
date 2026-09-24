@@ -77,6 +77,36 @@ func (c *Core) peekNow() types.Instant {
 	return types.Instant(observed)
 }
 
+// readNow is the valid-time "now" of a READ: the later of the wall clock and
+// the transaction clock (peekNow), reserving nothing. It is the instant every
+// implicit "now" of a read resolves to — the TxAt-only doors' valid-time probe
+// (normalizeTxAtOnlyOpts, findNodeVersionForOpts / findRelVersionForOpts) and
+// the open end of an interval read (resolveOpenEndInstant).
+//
+// The wall clock alone is not enough (S2-oracle finding, 2026-09-24). A
+// version written without an explicit tkg_valid_from starts its valid time at
+// its UpdatedAt,
+// which c.now() stamps; c.now()'s monotonic floor runs AHEAD of the wall after
+// a burst of more than one write per millisecond, after AdvanceClock, and on
+// a replica that applied a primary's stamps (lesson 71). Probing at the wall
+// then put the newest versions "in the future": a TxAt-only door returned an
+// older superseded version, and a different one on each call as the wall
+// caught up. The floor dominates every stamp this Core minted or applied, so
+// no recorded version starts after readNow().
+//
+// The wall stays the lower bound — never c.clock() alone — so a test clock set
+// in the past does not move reads before the snowflake-derived valid-from of
+// rows minted at real time. Caller-asserted valid times never raise the floor
+// (lesson 71), so an explicit future tkg_valid_from/tkg_valid_to is still a
+// future fact to every read.
+func (c *Core) readNow() types.Instant {
+	wall := nowInstant()
+	if tx := c.peekNow(); tx > wall {
+		return tx
+	}
+	return wall
+}
+
 // maxClockAdvanceSkewMillis bounds how far ahead of wall-clock advanceClockFloor
 // will accept a floor target, in milliseconds (~10 years). AdvanceClock is the
 // HLC merge seam for legitimate cross-machine clock skew, which in practice is

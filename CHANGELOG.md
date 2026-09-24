@@ -46,7 +46,51 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestNodeBeliefWatermark_NoDropAcrossFlushCommit` (watermark 100, want 300),
   `TestRelBeliefWatermark_NoDropAcrossFlushCommit`, and
   `TestPurgeOrphanRelIndexes_NoOrphanAcrossFlushCommit` (3 index keys left on disk).
+- **HIGH — TxAt-only doors and open-ended interval reads returned an older version while the
+  transaction clock ran ahead of the wall.** Found by the ADR-0011 S2 differential oracle as
+  "nondeterminism": on a plain memory graph, `Rels().ByType(t, QueryOpts{TxAt: pin})` and
+  `OutgoingForNodesAtTx` returned 12 distinct answers over 200 identical calls on the primary
+  and 6 on a replica (seed 1 of the oracle workload, 90 steps; reproduced on v4.37.2 and
+  v4.38.0). The differing rows were superseded versions of one relationship (v0, then v1),
+  never the version the pin selects (v2). Cause: a TxAt-only query probes valid time at an
+  implicit "now", and so does the open end (`end == 0`) of `NodesDuring`/`RelsDuring` and
+  their siblings. That "now" was the bare wall clock, but a version without an explicit
+  `tkg_valid_from` starts its valid time at its `UpdatedAt`, stamped by the transaction clock,
+  whose monotonic floor runs ahead of the wall after a burst of more than one write per
+  millisecond, after `AdvanceClock`, and on a replica that applied a primary's stamps (lesson
+  71). The newest versions sat "in the future" of the probe, and the answer changed as the wall
+  caught up (dumped at the flip: wall 1790257149318, v1 `UpdatedAt` 1790257149318, pin
+  1790257149444). Not map iteration order: the chain arrives version-sorted. Every implicit
+  "now" of a read is now `Core.readNow()` = max(wall clock, transaction-clock floor), which no
+  recorded version starts after; the helpers (`resolveOpenEndInstant`, `normalizeDuringRange`,
+  `normalizeTxAtOnlyOpts`) became `Core` methods so no read can reach the bare wall clock.
+  Doors fixed: `Nodes().ByLabel`/`All`/`ByLabelAndProperty`/`ByLabelAndProperties`,
+  `Rels().ByType`/`ForEachByType`/`All`/`ByTypeAndProperty`, `Index().SearchNearest` with a
+  TxAt-only `QueryOpts`; `Rels().OutgoingForNodesAtTx`/`IncomingForNodesAtTx`;
+  `Temporal().NodesDuring`/`RelsDuring`/`NodesDuringTx`/`RelsDuringTx`/
+  `NodesByLabelPropertyDuring`/`RelsByTypePropertyDuring` and the `GraphTx` mirrors with an
+  open end. `TestTxAtDoorsWhenTxClockIsAheadOfWall` (every door, three pins, 25 calls each,
+  memory and badger, primary and a replica fed from its change log): 148 of 222 subtests red on
+  v4.38.0, all green now; the oracle probe answers 1 distinct value on primary and replica.
+  `RelAsOf`/`NodeAsOf` read no "now" and passed before and after. Tests that waited for the
+  wall clock to pass their stamps (`waitWallPast`) no longer need to; the waits stay.
+- **HIGH — `Rels().ForEachAdjacentRelAt` / `ForEachAdjacentEndpointAt` ignored a TxAt- or
+  TxPin-only filter.** They routed to the version-aware path only for a valid-time filter
+  (`storeutil.HasTemporalFilter`), so `QueryOpts{TxAt: pin}` fell through to the live-row
+  scan: the current version came back at every pin, and a relationship created after the pin
+  was yielded. Found by the same test (red at every pin on both backends); both doors now
+  route on the core `hasTemporalFilter` (ValidAt, interval, TxAt or TxPin) into
+  `forEachAdjacentRelVersionLocked`.
 
+### Documentation
+
+- **When a badger write reaches the change feed.** A badger primary with `SyncWrites=false`
+  returned 0 records from `ForEachChange` right after 20 writes, 20 after 250 ms, and all of
+  them after `Flush` or a reopen; a replica fed afterwards converged. That is the documented
+  `store.ChangeFeedCapability` contract (only flushed records are visible), not a defect, but
+  the public `Replication().ForEachChange` godoc and `docs/persistence.md` said only
+  "committed". Both now say a write appears at the next async flush (`FlushInterval`, default
+  100 ms) unless `SyncWrites` is on.
 - **TEST — tiered tests could mint the same ID twice.** `tieredNodeGen(t)` / `tieredRelGen(t)`
   built a fresh snowflake generator on every call, and tests call them inline, so two calls in
   the same microsecond returned the same ID.
