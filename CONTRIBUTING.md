@@ -6,9 +6,9 @@ binary, no server, no query language — so most changes are either a fix in
 
 ## Before you start
 
-- Read `CLAUDE.md` (agent-facing instructions, but the architecture, testing,
-  and invariant rules apply to every contributor, human or AI). If you use
-  Codex, `AGENTS.md` mirrors the same session protocol.
+- Read `AGENTS.md` (agent-facing instructions, but the architecture, testing,
+  and invariant rules apply to every contributor, human or AI — canonical for
+  Codex, Claude Code, and everyone else). `CLAUDE.md` is a short pointer to it.
 - Read `CHANGELOG.md`'s `[Unreleased]` section and the last few dated
   releases — it is the source of truth for version history, not a changelog
   written after the fact.
@@ -54,7 +54,7 @@ the older lint backlog.
 
 ## Testing Rules (hard requirements)
 
-`CLAUDE.md`'s "Testing Rules" section lists 17 rules that exist because every
+`AGENTS.md`'s "Testing Rules" section lists 17 rules that exist because every
 one of them was violated at least once in this codebase's history. The ones
 that come up most often when reviewing a PR:
 

@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **DOC — `AGENTS.md` is now the single canonical guidance file**, merging in
+  everything that existed only in `CLAUDE.md` (MR Review Protocol, Testing
+  Rules 15–17, the corrected backlog pointer, the Ingest Pipeline (ADR-0006),
+  Sharded Backend Re-Sharding (ADR-0007), and Unique Property Constraints
+  (ADR-0002) sections, the wire-format-v2 and canonical-temporal-predicate
+  detail, the SafeUnmarshal/change-log/replica-apply/registry-refetch/
+  bootstrap-LSN persistence rules, the anchor+delta history and history
+  compaction rules, and the bitemporal/chain-resolver Temporal Queries
+  bullets). `CLAUDE.md` is now a short pointer to `AGENTS.md`; `CONTRIBUTING.md`
+  updated to match. No behavior change.
+
 ## [4.37.0] - 2026-09-24
 
 Minor release: the entity wire gains a kind envelope for nested values (older 4.36.x
