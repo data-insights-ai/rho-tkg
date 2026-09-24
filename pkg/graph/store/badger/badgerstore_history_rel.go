@@ -223,18 +223,21 @@ func (bs *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 	}
 	key := storepkg.HistRelKey(id, uint64(version))
 	// Capture a history-only rel (deleted rel reconstructed via version
-	// inserts) once the sidecar is built; the bootstrap common case runs before
-	// any pinned scan, so the lazy build catches these rows. Same for the
-	// belief watermark (BACKLOG 10c) — the cascade's bounded-correction append door.
-	if bs.relTypeMembersBuilt.Load() || bs.relBeliefWatermarkBuilt.Load() {
-		bs.idxMu.Lock()
-		bs.recordRelTypeMemberLocked(r)
-		bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r))
-		bs.idxMu.Unlock()
-	}
-	// PutRelVersion holds no idxMu, so enqueue the op and its record together
-	// under one wbMu critical section (appendOpsLoggedRouted) for snapshot atomicity.
-	if err := bs.appendOpsLoggedRouted(storecontract.ChangeRelHistoryVersion, logPayload, token, writeOp{opType: writeOpSet, key: key, value: data}); err != nil {
+	// inserts) in the rel-type sidecar and the belief watermark (BACKLOG 10c) —
+	// the cascade's bounded-correction append door. The op and its record are
+	// enqueued together under one wbMu critical section (appendOpsLoggedRouted)
+	// for snapshot atomicity.
+	err = bs.enqueueVersionAgainstLazyBuilds(
+		func() bool { return bs.relTypeMembersBuilt.Load() || bs.relBeliefWatermarkBuilt.Load() },
+		func() {
+			bs.recordRelTypeMemberLocked(r)
+			bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r))
+		},
+		func() error {
+			return bs.appendOpsLoggedRouted(storecontract.ChangeRelHistoryVersion, logPayload, token, writeOp{opType: writeOpSet, key: key, value: data})
+		},
+	)
+	if err != nil {
 		return err
 	}
 	return bs.flushIfNeeded()

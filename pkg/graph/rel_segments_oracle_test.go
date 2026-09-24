@@ -555,15 +555,6 @@ func (o *segOracle) answers(g *graph.Graph) map[string]string {
 	return out
 }
 
-// segKnownNondeterministic names doors whose answer on a PLAIN memory graph
-// (no declaration at all) varies between identical calls — a pre-existing
-// defect found by this oracle (reproduced on v4.37.2, 0659ece; tasks/backlog.md
-// item 5): the TxAt-only relationship doors return different superseded
-// versions of one relationship across calls. They cannot be an oracle until
-// that is fixed, so they are skipped here and NAMED; any other door that is
-// nondeterministic on the plain graph fails the test.
-var segKnownNondeterministic = []string{"ByType/TxAt@", "OutgoingForNodesAtTx@"}
-
 var segOracleProps = []string{"actor", "family", "orch", "t_lo", "weight", "hot"}
 
 func segOracleFact(id types.RelID, start, end types.NodeID, vf, vt, tx int64, v uint32, vals []any) string {
@@ -648,18 +639,10 @@ func (o *segOracle) compare(stage string) {
 		names = append(names, k)
 	}
 	sort.Strings(names)
-	bad, skipped := 0, 0
+	bad := 0
 	for _, k := range names {
-		known := false
-		for _, p := range segKnownNondeterministic {
-			known = known || strings.HasPrefix(k, p)
-		}
-		if known {
-			skipped++
-			continue
-		}
 		if want[k] != want2[k] {
-			o.t.Fatalf("%s: door %s is nondeterministic on the plain graph and is not a known defect", stage, k)
+			o.t.Fatalf("%s: door %s is nondeterministic on the plain graph", stage, k)
 		}
 		if want[k] != got[k] {
 			bad++
@@ -670,9 +653,6 @@ func (o *segOracle) compare(stage string) {
 	}
 	if bad > 0 {
 		o.t.Fatalf("%s: %d of %d doors differ", stage, bad, len(names))
-	}
-	if skipped > 0 {
-		o.t.Logf("%s: %d door answers skipped: known nondeterministic on the plain graph (backlog item 5)", stage, skipped)
 	}
 }
 

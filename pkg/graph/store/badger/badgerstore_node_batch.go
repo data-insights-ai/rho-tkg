@@ -366,9 +366,11 @@ func (bs *Store) purgeOrphanRelIDLockedWithIndexKeys(rid types.RelID, indexKeys 
 		}
 	}
 	// A matching index key parked in `flushing` is mid-commit: gone from `pending`
-	// (swapped out) and not yet in Badger (so relationshipIndexKeysForRel's View
-	// missed it). Queue an explicit delete so a later flush removes it once the
-	// in-flight commit lands the key — otherwise it orphans a persisted index key.
+	// (swapped out) and not yet in Badger. Queue an explicit delete so a later
+	// flush removes it once the in-flight commit lands the key — otherwise it
+	// orphans a persisted index key. relationshipIndexKeysForRel already returns
+	// such keys (it reads the buffer before its View); this pass is kept as a
+	// second guard for callers that pass a precomputed key list.
 	for k, op := range bs.flushing {
 		if op.opType != writeOpSet || !relationshipIndexKeyMatchesRelID([]byte(k), rawID) {
 			continue
@@ -414,9 +416,26 @@ func (bs *Store) purgeOrphanRelIDLockedWithIndexKeys(rid types.RelID, indexKeys 
 	}
 }
 
+// relationshipIndexKeysForRel returns every type/adjacency index key of relID
+// that is buffered (flushing ++ pending) or committed. The buffer is read FIRST
+// and the Badger View opened SECOND (lesson 64): a parked flush can commit and
+// clear `flushing` while the caller holds idxMu.Lock, and a key it commits
+// between a View-first scan and a later `flushing` read would get no delete and
+// stay on disk as an orphan.
 func (bs *Store) relationshipIndexKeysForRel(relID snowflake.ID) ([][]byte, error) {
 	keys := make([][]byte, 0)
 	seen := make(map[string]struct{})
+
+	bs.rangePending(func(k string, op writeOp) {
+		if op.opType != writeOpSet || !relationshipIndexKeyMatchesRelID([]byte(k), relID) {
+			return
+		}
+		if _, ok := seen[k]; ok {
+			return
+		}
+		seen[k] = struct{}{}
+		keys = append(keys, []byte(k))
+	})
 
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
@@ -442,6 +461,9 @@ func (bs *Store) relationshipIndexKeysForRel(relID snowflake.ID) ([][]byte, erro
 		}
 		return nil
 	})
+	if bs.historyScanTestHook != nil {
+		bs.historyScanTestHook()
+	}
 	return keys, err
 }
 

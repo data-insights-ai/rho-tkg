@@ -38,7 +38,7 @@ bottom.
 | Pinned adjacency (transaction-time) | `g.Rels().OutgoingForNodesAtTx(nodeIDs, type, txAt)` / `IncomingForNodesAtTx(...)` | adjacency index + O(deleted rels) fold, not a full `ByType` history scan | same adjacency-index push-down per shard | `txAt == 0` delegates to `OutgoingForNodes`/`IncomingForNodes` (no TX filter) |
 | Composite (multi-key) equality lookup | `g.Nodes().ByLabelAndProperties(label, values, opts)` | O(matches) with a matching `g.Index().CreateComposite` definition; else O(label size) scan+filter | O(label size) scan+filter — v1 has no accelerated composite index on tiered | never errors; falls back to scan+filter when no exact-key-set definition exists (see "Composite property indexes" below) |
 
-| Pinned adjacency — bitemporal (TxAt) | `g.Rels().OutgoingForNodesAtTx(nodeIDs, type, txAt)` / `IncomingForNodesAtTx(...)` | adjacency index + O(deleted rels) fold, not a full `ByType` history scan | same adjacency-index push-down per shard | `txAt == 0` delegates to `OutgoingForNodes`/`IncomingForNodes` (no TX filter); **wall-now valid filter — drops past-valid edges**, see below |
+| Pinned adjacency — bitemporal (TxAt) | `g.Rels().OutgoingForNodesAtTx(nodeIDs, type, txAt)` / `IncomingForNodesAtTx(...)` | adjacency index + O(deleted rels) fold, not a full `ByType` history scan | same adjacency-index push-down per shard | `txAt == 0` delegates to `OutgoingForNodes`/`IncomingForNodes` (no TX filter); **valid-at-now filter — drops past-valid edges**, see below |
 | Pinned adjacency — belief-state (TxPin) | `g.Rels().OutgoingForNodesAtPin(nodeIDs, type, pin)` / `IncomingForNodesAtPin(...)` | adjacency index + O(deleted rels) fold; agrees with `ByType{TxPin}` filtered by endpoint by construction | same adjacency-index push-down per shard | `pin == 0` delegates to `OutgoingForNodes`/`IncomingForNodes`; a seed absent from the belief state at the pin is skipped silently (no `ErrNodeNotFound`) |
 
 ## Cardinality counters — `NodeCount` / `RelCount` / `AllLabelCounts` / `NodeCountByLabel` / `RelCountByType`
@@ -582,11 +582,13 @@ wrong one is the exact footgun that motivated the belief-state door:
 - **`OutgoingForNodesAtTx(nodeIDs, type, txAt)` / `IncomingForNodesAtTx(...)` —
   bitemporal.** Agrees with the `QueryOpts{TxAt: txAt}` scan door filtered by
   endpoint. When no valid-time opts are set, the `TxAt` arm applies a POINT
-  valid-time probe at **wall-now**, so an edge whose valid interval lies wholly
+  valid-time probe at **now** (the later of the wall clock and the graph's
+  transaction clock — never earlier than a version the graph recorded), so an
+  edge whose valid interval lies wholly
   in the past is SILENTLY DROPPED even though it was believed at `txAt`:
   a `CloseVersion`-ed edge, or a width-1 `[t, t+1)` point-event edge (the
   standard point-event encoding). Use this only when you genuinely want
-  "believed at `txAt` AND still valid at wall-now". `txAt == 0` delegates to the
+  "believed at `txAt` AND still valid now". `txAt == 0` delegates to the
   plain current-state door.
 
 - **`OutgoingForNodesAtPin(nodeIDs, type, pin)` / `IncomingForNodesAtPin(...)` —
@@ -603,9 +605,9 @@ wrong one is the exact footgun that motivated the belief-state door:
 
 **Which to use:** for reconstructing a historical knowledge state
 (AS-OF-SYSTEM-TIME `$pin`), always use the `*AtPin` doors — the `*AtTx` doors'
-wall-now valid filter will silently drop point events and closed intervals. The
+valid-at-now filter will silently drop point events and closed intervals. The
 `*AtTx` doors remain for callers who explicitly want the bitemporal "recorded by
-`txAt` and valid at wall-now" intersection.
+`txAt` and valid now" intersection.
 
 **Seed tolerance (AtPin only):** unlike the current-state and `*AtTx` doors —
 which hard-error `ErrNodeNotFound` on a seed that is absent from CURRENT state —

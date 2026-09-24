@@ -1758,10 +1758,12 @@ Rules:
 - **Test-clock discipline for TxAt tests:** `Core.now()` has a monotonic ≥1ms
   floor, so a mutation burst outruns the wall clock — (a) a slept wall-clock pin
   can land BEFORE the last write's logical stamp (derive pins from the entities'
-  own `TxFrom` instead), and (b) the TxAt-only door probes valid time at WALL now
-  (`resolveOpenEndInstant`), so assertions flip while stamps are still "in the
-  future" (wait until the wall clock passes every minted stamp before asserting).
-  Both produced flakes in the first cut of `bitemporal_tombstone_test.go`.
+  own `TxFrom` instead), and (b) the TxAt-only door probed valid time at WALL now
+  (`resolveOpenEndInstant`), so assertions flipped while stamps were still "in the
+  future". Both produced flakes in the first cut of `bitemporal_tombstone_test.go`.
+  (b) was a product bug worked around in tests, not a test-clock quirk: fixed
+  2026-09-24 (reads use `c.readNow()`, lesson 71 corollary). A flake that tests
+  "fix" by waiting for the wall clock is a finding, not a discipline.
 
 ## 61. A "Current Transaction Time" Reader Must Consult The Commit Clock (Wall-Dominated), Not The Session High-Water Mark — The Latter Resets To Zero On Reopen
 
@@ -2271,6 +2273,13 @@ legitimately lie in the future (a future valid-to must not poison the commit clo
      and the opposite of every Reap key. Uniquely among Preserve keys it needs no
      capture-before-Clear, because the authoritative value is the in-memory
      `lastInstant` (which `Clear` never lowers), not the persisted blob.
+- **Corollary — the READ side too (2026-09-24).** Any implicit "now" a read
+  compares versions against must dominate every stamp as well: TxAt-only doors
+  and open-ended interval reads probed valid time at the bare wall clock, below
+  the `UpdatedAt` of versions stamped by a floor that had outrun it, and
+  returned an older superseded version — a different one per call, and
+  differently on primary and replica (found by the ADR-0011 S2 oracle as
+  "nondeterminism"). Reads now use `c.readNow()` = max(wall, floor).
 - **Tests:** `TestNowTx_ReopenAfterBurst_MonotonicFloorAnachronism` (frozen-clock
   burst → reopen), `TestNowTx_ReplicaCoversAppliedFutureTxFrom` (clock-skewed
   primary → apply), `TestNowTx_BootstrapImportCoversFutureTxFrom` (future-stamped
@@ -2367,14 +2376,29 @@ itself an exemption.
 - **Rule (audit recipe):** when a rare, load-dependent oracle failure will not
   reproduce, stop rerunning and instead enumerate every reader that merges
   the write-buffer overlay with a store snapshot and CHECK THE CAPTURE ORDER
-  of each: `grep -rn 'pendingHistoryVersionOverlay\|pendingHistoryIDOverlay\|snapshotHistoryOverlay' pkg/graph/store/badger/ | grep -v _test`
+  of each: `grep -rn 'pendingHistoryVersionOverlay\|pendingHistoryIDOverlay\|snapshotHistoryOverlay\|rangePending(\|lookupPending(' pkg/graph/store/badger/ | grep -v _test`
   — each hit must capture BEFORE its `db.View`/`NewTransaction`, or receive a
-  pre-captured snapshot.
+  pre-captured snapshot. (The first version of this grep left out
+  `rangePending`, and five readers that read Badger first survived the audit:
+  the K1 membership-sidecar builds (the cause of the 2026-09-24 flake), the
+  belief-watermark builds, and `relationshipIndexKeysForRel`.)
+- **Rule (lazy builds):** a structure built ONCE and then maintained
+  incrementally turns a transient drop into a permanent one: a row the build
+  misses is never looked at again. Holding `idxMu.Lock` during the build keeps
+  writers out but not the commit of a flush that parked before the build began.
+  And a door that enqueues without `idxMu` and decides from an atomic "built"
+  flag whether to record is a check-then-act against the build: read the flag
+  and enqueue under `idxMu.RLock` (`enqueueVersionAgainstLazyBuilds`).
 - **Honesty note:** the observed mismatch was on point/set doors while the
   flawed ordering was in the as-of walk, so the attribution is PLAUSIBLE, not
   proven (the artifact is preserved in the failure log recorded in this
   repo's CHANGELOG entry). The fix is justified by inspection regardless; the
   observation stays flagged rather than silently explained away.
+  2026-09-24 follow-up: the same symptom (an entity missing from
+  `ByType`/`ByLabel`) reproduced in about 1% of loaded runs. Logging added to the
+  sidecar build tied all 4 dropped nodes to rows a flush committed during that
+  build (CHANGELOG, Unreleased), so the earlier `ByType` observation was most
+  likely the sidecar build and not the as-of walk.
 
 ## 75. A Green Workflow Must Mean Its Gates Passed
 

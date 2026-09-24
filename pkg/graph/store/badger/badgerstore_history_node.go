@@ -631,19 +631,20 @@ func (bs *Store) putNodeVersionRouted(nid types.NodeID, version uint32, n *types
 	key := storepkg.HistNodeKey(id, uint64(version))
 	// A historical version may carry a label the current row no longer has, and
 	// may carry a TxFrom that raises the belief watermark (the cascade's
-	// bounded-correction append door — BACKLOG 10c). Only lock when a sidecar
-	// is already built (the import/replica bootstrap common case runs before
-	// any pinned scan, so both flags are false and the lazy build catches
-	// these history rows).
-	if bs.labelTxMembersBuilt.Load() || bs.nodeBeliefWatermarkBuilt.Load() {
-		bs.idxMu.Lock()
-		bs.recordNodeLabelMembersLocked(n)
-		bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n))
-		bs.idxMu.Unlock()
-	}
-	// PutNodeVersion holds no idxMu, so enqueue the op and its record together
-	// under one wbMu critical section (appendOpsLoggedRouted) for snapshot atomicity.
-	if err := bs.appendOpsLoggedRouted(storecontract.ChangeNodeHistoryVersion, logPayload, token, writeOp{opType: writeOpSet, key: key, value: data}); err != nil {
+	// bounded-correction append door — BACKLOG 10c). The op and its record are
+	// enqueued together under one wbMu critical section (appendOpsLoggedRouted)
+	// for snapshot atomicity.
+	err = bs.enqueueVersionAgainstLazyBuilds(
+		func() bool { return bs.labelTxMembersBuilt.Load() || bs.nodeBeliefWatermarkBuilt.Load() },
+		func() {
+			bs.recordNodeLabelMembersLocked(n)
+			bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n))
+		},
+		func() error {
+			return bs.appendOpsLoggedRouted(storecontract.ChangeNodeHistoryVersion, logPayload, token, writeOp{opType: writeOpSet, key: key, value: data})
+		},
+	)
+	if err != nil {
 		return err
 	}
 	return bs.flushIfNeeded()

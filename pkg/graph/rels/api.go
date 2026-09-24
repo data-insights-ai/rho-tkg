@@ -610,7 +610,7 @@ func (a *API) IncomingForNodes(nodeIDs []types.NodeID, typeName string) (map[typ
 // ByType scan.
 //
 // This door agrees with the TxAt-pinned BITEMPORAL door (QueryOpts{TxAt: txAt})
-// filtered by endpoint — which valid-filters at wall-now when no valid-time
+// filtered by endpoint — which valid-filters at now (wall or transaction clock, whichever is later) when no valid-time
 // opts are set — NOT with a belief-state pin: an edge whose valid interval lies
 // wholly in the past (a CloseVersion-ed edge, or a width-1 [t, t+1) point-event
 // edge) is SILENTLY DROPPED even though it was believed at txAt. For pure

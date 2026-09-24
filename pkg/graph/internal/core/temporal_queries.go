@@ -184,7 +184,7 @@ func (t *TempOps) NodesDuring(start, end types.Instant) ([]*types.Node, error) {
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	resolvedEnd, err := normalizeDuringRange(start, end)
+	resolvedEnd, err := c.normalizeDuringRange(start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -235,7 +235,7 @@ func (t *TempOps) RelsDuring(start, end types.Instant) ([]*types.Relationship, e
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	resolvedEnd, err := normalizeDuringRange(start, end)
+	resolvedEnd, err := c.normalizeDuringRange(start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -1059,7 +1059,7 @@ func (t *TempOps) NodesByLabelPropertyDuring(label, key string, value any, start
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	resolvedEnd, err := normalizeDuringRange(start, end)
+	resolvedEnd, err := c.normalizeDuringRange(start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -1269,7 +1269,7 @@ func (t *TempOps) RelsByTypePropertyDuring(relType, key string, value any, start
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	resolvedEnd, err := normalizeDuringRange(start, end)
+	resolvedEnd, err := c.normalizeDuringRange(start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -1506,7 +1506,7 @@ func (t *TempOps) NodesDuringTx(from, to, txAt types.Instant) ([]*types.Node, er
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	resolvedEnd, err := normalizeDuringRange(from, to)
+	resolvedEnd, err := c.normalizeDuringRange(from, to)
 	if err != nil {
 		return nil, err
 	}
@@ -1554,7 +1554,7 @@ func (t *TempOps) RelsDuringTx(from, to, txAt types.Instant) ([]*types.Relations
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	resolvedEnd, err := normalizeDuringRange(from, to)
+	resolvedEnd, err := c.normalizeDuringRange(from, to)
 	if err != nil {
 		return nil, err
 	}

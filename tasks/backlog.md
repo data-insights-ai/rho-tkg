@@ -13,14 +13,13 @@ concurrency edge / perf cliff / contract inconsistency. LOW = smell / doc drift.
 TEST-GAP = real behavior unverified (may hide a bug). FEATURE = plausible
 capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 
-**Remaining open work:** one reproduced HIGH item (5, found 2026-09-24 by the S2 oracle). Open:
+**Remaining open work:** no CRITICAL or HIGH items (item 3 closed 2026-09-24). Open:
 
 0. **Column segments on NVMe (ADR-0011, accepted 2026-09-24)** — FEATURE: steps S0–S7 in `docs/adr/0011-column-segments.md` §6, each with a failing test first and a gate measured at the three synthday sizes; integrity block size configurable (`IntegrityBlockRows`, default 64). Goal: resident memory independent of the day size for declared bulk relationship types (~744 B/rel today). **Progress:** S0 done (baseline harness `bench/segment_baseline_test.go`; memory 718–723 B/rel, badger lean does not reproduce 191 — measures 301), S1 done (codec `pkg/graph/internal/segment`; 22–25 B/HOP on disk; decode of full rows below the memory store's zero-copy scan rate, columns alone 24–28 M rows/s), S2 done on the rho-tkg side (memory store seals declared types into in-RAM segments; `Config.RelSegments`; P6 HOP resident 25.0 / 26.7 / 31.4 B/HOP beyond the memtable, gate ≤ 60 met; legacy 75–87 B/HOP over it because of `support`; row doors on sealed rows slower than the zero-copy row store: `ByType` 5–9×, `ForEachByType` 10–20×, `Get` 3–4×, column path 12–14 M rows/s). **Open from S2:** (a) the ai-soc half of S2's gate — xcheck AGREE on the three synthday days and on BA on Flux with `engine.Open` declaring HOP (ai-soc work, after P6); (b) the per-segment node sections grow as O(segments × distinct endpoints) (`nodehash` 1.18 → 4.64 B/HOP from 1 to 4 segments) — S4's merge must bound it, measure there; (c) seals run synchronously in the writing goroutine (12.6 M write 12.5 s vs 6.0 s) — S3/S6 decide whether to move them off the write path; (d) the rel property / temporal indexes and the lazily built belief-watermark and rel-type tx-membership sidecars keep one entry per row when a caller creates or triggers them — check at the ai-soc gate whether ai-soc's queries build them. Next: S3 (and S5, the columnar door, which reads `segment.Batch` directly).
 1. **Import-under-a-scope** (improvement-not-bug, deferred locking)
 2. **BACKLOG 22** — six TEST-GAP research items (from the retired `.harden/` ledger)
 3. **Temporal adjacency scan cost** (v4.35.0 follow-up) — measure before building anything (see below)
 4. **Temporal semantics review 2026-09-24** — traced findings, each needs a failing test before a fix (see below)
-5. **HIGH — `ByType{TxAt}` and `OutgoingForNodesAtTx` answer nondeterministically on a plain memory graph** — see below
 
 **v5:** the next engine generation is planned on branch `v5` (`docs/v5/PLAN.md`). v4 gets fixes, not features that v5 replaces. ADR-0011 S2+ waits for owner decision D6 in that plan (recommendation: continue the segments inside v5).
 
@@ -33,8 +32,9 @@ reproduced (delete after close, correction template, endpoint masking) are fixed
 branch `fix/v4-temporal-semantics`. The items below are TRACED, NOT YET REPRODUCED:
 write the failing two-phase test first; drop the item if the test passes.
 
-- **(HIGH?) `NodesDuring` / `RelsDuring` open end.** `end == 0` is resolved to wall-now + 1
-  (`temporal.go` ~L27-32, `temporal_queries.go` ~L177-197), so an entity valid only in the
+- **(HIGH?) `NodesDuring` / `RelsDuring` open end.** `end == 0` is resolved to now + 1
+  (`c.resolveOpenEndInstant`, `temporal.go`; now = `c.readNow()` since 2026-09-24, so a
+  version stamped ahead of the wall is no longer missed), so an entity valid only in the
   future is missed; `NodesRelating` keeps the open end as +inf.
 - **(HIGH?) Future transaction time from `validInstantAfter`.** Update/CloseVersion/Delete of a
   row whose explicit ValidFrom is in the future stamps `TxFrom/TxTo = ValidFrom + 1` without
@@ -50,6 +50,11 @@ write the failing two-phase test first; drop the item if the test passes.
 - **(MEDIUM?) `NodeMatchesValidTime` on a current row with unset ValidFrom** answers "valid since
   mint", so a consumer post-filtering current rows accepts today's properties for times
   before the last update, where `NodeAt` returns the older version.
+- **CLOSED 2026-09-24 — TxAt-only doors "nondeterministic"** (seg/s2 backlog "item 4", later item 5, found
+  by the S2 oracle). Not map order: the implicit valid-time "now" was the wall clock, below
+  the stamps of versions written while the transaction clock ran ahead. Fixed on
+  `fix/txat-determinism` (CHANGELOG Unreleased); seg/s2 dropped `segKnownNondeterministic`
+  and its item after merging v4.38.1: the S2 oracle compares both doors again.
 - **(LOW) Snowflake ID horizon.** 48-bit microseconds from 2026-01-01 end on 2034-12-02
   (arithmetic). Needs a plan before v4 data outlives it; v5 drops clock bits from IDs.
 - **(KNOWN LIMITATION) Future-scheduled close, then delete.** The delete clamps the scheduled
@@ -61,27 +66,6 @@ write the failing two-phase test first; drop the item if the test passes.
   eclipse sentinel and invisible to valid-time reads. A caller-supplied 1 ms interval was always
   affected; since the correction-base fix a `SetNodeVersionInterval` piece can also be 1 ms wide
   when a pre-existing boundary sits 1 ms from `validFrom` or `validTo`.
-
----
-
-## Open — item 5: TxAt-only relationship doors are nondeterministic (HIGH)
-
-Found 2026-09-24 by the ADR-0011 S2 differential oracle
-(`pkg/graph/rel_segments_oracle_test.go`, which now skips these two doors by
-name). On a PLAIN memory graph — no declaration, reproduced on v4.37.2
-(`0659ece`) — `g.Rels().ByType(type, QueryOpts{TxAt: t})` returned 3 distinct
-answers over 200 identical calls on the primary and 6–9 on a replica of it;
-`g.Rels().OutgoingForNodesAtTx` likewise. The differing rows are different
-SUPERSEDED versions of one relationship (a back-filled version with an explicit
-`tkg_valid_from`, then two updates): e.g. v0 (`TxTo` < t) on one call, v1
-(`TxTo` < t) on the next, while the current v2 (`TxFrom` < t, `TxTo` 0) is the
-row a transaction-time pin at t should select. Reproduce: seed 1 of
-`TestRelSegmentsDifferentialOracle`'s workload, 90 steps, then call the door
-repeatedly (the probe used is in the S2 session notes: count distinct
-`segRelsFP` answers over 200 calls). Cause not yet identified; the
-lesson-73 area (chain resolver input order) and the memory store's
-map-ordered `relHistoryVersionSlice` are where to look first. Fix needs a
-failing deterministic test first.
 
 ---
 

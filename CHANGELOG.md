@@ -98,16 +98,100 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (one entry per 64 rows, rows/8 bytes) instead of scanning a delta-coded page:
   sealed-row `Get` 0.13 → 0.50 M/s at 790 K.
 
-### Found (not fixed here)
+## [4.38.1] - 2026-09-24
 
-- **HIGH — `g.Rels().ByType(type, QueryOpts{TxAt: t})` and `OutgoingForNodesAtTx`
-  answer nondeterministically on a plain memory graph** (no declaration;
-  reproduced on v4.37.2): 3 distinct answers over 200 identical calls on the
-  primary, 6–9 on a replica, each a different superseded version of one
-  relationship. Found by the S2 oracle, which skips these two doors by name.
-  Backlog item 5.
+Patch release: three HIGH read fixes. Pinned `ByLabel`/`ByType` scans on badger no longer drop
+an entity whose flush committed during the lazy membership build; TxAt-only doors and open-ended
+interval reads no longer return an older version while the transaction clock runs ahead of the
+wall; `ForEachAdjacentRelAt`/`ForEachAdjacentEndpointAt` honour a TxAt/TxPin filter. Gates on the
+released tree: `make fmt-check`, `make check`, `make test-race` and the docs-consistency tests
+exit 0.
+
 ### Fixed
 
+- **HIGH — badger: a pinned `ByLabel` / `ByType` scan could silently and permanently omit a
+  node or relationship.** A temporal `Nodes.ByLabel` / `Rels.ByType` scan on badger takes its
+  candidates from the transaction-time membership sidecar, which is built once, lazily, on the
+  first such scan. The build read Badger first and the write buffer second. A flush that had
+  already moved rows into `flushing` could commit them and clear `flushing` between the two
+  reads, so those rows were in neither. The build never runs again, so every entity whose label
+  or type then survived only in a history row or a deleted row (deleted, relabelled, backfilled)
+  stayed missing from every pinned scan until the store was reopened. This was the cause of the
+  intermittent `TestBitemporalOracle_BadgerCommitWindow` failure: 15 of about 1,350 runs failed
+  on this branch (4 of about 350 on v4.37.2), always under parallel load, never with
+  `-cpu 1`. Each failure was a `Nodes.ByLabel` / `Rels.ByType` door missing an entity the
+  oracle expected. With logging added to the build, all 4 dropped nodes in 4 failing runs were
+  rows that the flush committed during the build's Badger scan. The build now reads the write
+  buffer before it opens the Badger view (lesson 64 ordering), for both the label and the
+  rel-type sidecar. A second hole with the same result is also closed. `PutNodeVersion` /
+  `PutRelVersion` checked the "sidecar built" flag without holding `idxMu`, so a version
+  written during a build could land after the build's buffer read while the flag still said
+  "not built". Neither side then recorded it. Both version doors now check the flag and buffer
+  the row under `idxMu`. Red before, all four new store tests
+  (`TestLabelTxMembership_NoDropAcrossFlushCommit`,
+  `TestRelTypeTxMembership_NoDropAcrossFlushCommit`,
+  `TestLabelTxMembership_NoDropForVersionInsertDuringBuild`,
+  `TestRelTypeTxMembership_NoDropForVersionInsertDuringBuild`). They force each interleaving
+  with `historyScanTestHook`.
+- **badger: two more readers read Badger before the write buffer (same window, found by
+  auditing every `rangePending` caller).** (1) The lazy belief-watermark builds
+  (`NodeBeliefWatermark` / `RelBeliefWatermark`) could miss a history row whose flush
+  committed during the build. Take a correction row whose `TxFrom` is newer than the untouched
+  current row. If the build missed it, the watermark stayed at the current row's `TxFrom` for
+  the life of the store. That opened the current-row fast path in `nodeCurrentAnswersAt` /
+  `relCurrentAnswersAt`, which exists to stay closed in exactly that case. (2) The orphan-rel
+  index purge (`PurgeOrphanRelationshipIndexes`, exact erasure) listed the rel's index keys
+  from Badger first and checked `flushing` later. An index key committed in between got no
+  delete and stayed on disk as an orphan. Both now read the buffer first.
+  `relationshipIndexKeysForRel` returns buffered keys too. Red before:
+  `TestNodeBeliefWatermark_NoDropAcrossFlushCommit` (watermark 100, want 300),
+  `TestRelBeliefWatermark_NoDropAcrossFlushCommit`, and
+  `TestPurgeOrphanRelIndexes_NoOrphanAcrossFlushCommit` (3 index keys left on disk).
+- **HIGH — TxAt-only doors and open-ended interval reads returned an older version while the
+  transaction clock ran ahead of the wall.** Found by the ADR-0011 S2 differential oracle as
+  "nondeterminism": on a plain memory graph, `Rels().ByType(t, QueryOpts{TxAt: pin})` and
+  `OutgoingForNodesAtTx` returned 12 distinct answers over 200 identical calls on the primary
+  and 6 on a replica (seed 1 of the oracle workload, 90 steps; reproduced on v4.37.2 and
+  v4.38.0). The differing rows were superseded versions of one relationship (v0, then v1),
+  never the version the pin selects (v2). Cause: a TxAt-only query probes valid time at an
+  implicit "now", and so does the open end (`end == 0`) of `NodesDuring`/`RelsDuring` and
+  their siblings. That "now" was the bare wall clock, but a version without an explicit
+  `tkg_valid_from` starts its valid time at its `UpdatedAt`, stamped by the transaction clock,
+  whose monotonic floor runs ahead of the wall after a burst of more than one write per
+  millisecond, after `AdvanceClock`, and on a replica that applied a primary's stamps (lesson
+  71). The newest versions sat "in the future" of the probe, and the answer changed as the wall
+  caught up (dumped at the flip: wall 1790257149318, v1 `UpdatedAt` 1790257149318, pin
+  1790257149444). Not map iteration order: the chain arrives version-sorted. Every implicit
+  "now" of a read is now `Core.readNow()` = max(wall clock, transaction-clock floor), which no
+  recorded version starts after; the helpers (`resolveOpenEndInstant`, `normalizeDuringRange`,
+  `normalizeTxAtOnlyOpts`) became `Core` methods so no read can reach the bare wall clock.
+  Doors fixed: `Nodes().ByLabel`/`All`/`ByLabelAndProperty`/`ByLabelAndProperties`,
+  `Rels().ByType`/`ForEachByType`/`All`/`ByTypeAndProperty`, `Index().SearchNearest` with a
+  TxAt-only `QueryOpts`; `Rels().OutgoingForNodesAtTx`/`IncomingForNodesAtTx`;
+  `Temporal().NodesDuring`/`RelsDuring`/`NodesDuringTx`/`RelsDuringTx`/
+  `NodesByLabelPropertyDuring`/`RelsByTypePropertyDuring` and the `GraphTx` mirrors with an
+  open end. `TestTxAtDoorsWhenTxClockIsAheadOfWall` (every door, three pins, 25 calls each,
+  memory and badger, primary and a replica fed from its change log): 148 of 222 subtests red on
+  v4.38.0, all green now; the oracle probe answers 1 distinct value on primary and replica.
+  `RelAsOf`/`NodeAsOf` read no "now" and passed before and after. Tests that waited for the
+  wall clock to pass their stamps (`waitWallPast`) no longer need to; the waits stay.
+- **HIGH — `Rels().ForEachAdjacentRelAt` / `ForEachAdjacentEndpointAt` ignored a TxAt- or
+  TxPin-only filter.** They routed to the version-aware path only for a valid-time filter
+  (`storeutil.HasTemporalFilter`), so `QueryOpts{TxAt: pin}` fell through to the live-row
+  scan: the current version came back at every pin, and a relationship created after the pin
+  was yielded. Found by the same test (red at every pin on both backends); both doors now
+  route on the core `hasTemporalFilter` (ValidAt, interval, TxAt or TxPin) into
+  `forEachAdjacentRelVersionLocked`.
+
+### Documentation
+
+- **When a badger write reaches the change feed.** A badger primary with `SyncWrites=false`
+  returned 0 records from `ForEachChange` right after 20 writes, 20 after 250 ms, and all of
+  them after `Flush` or a reopen; a replica fed afterwards converged. That is the documented
+  `store.ChangeFeedCapability` contract (only flushed records are visible), not a defect, but
+  the public `Replication().ForEachChange` godoc and `docs/persistence.md` said only
+  "committed". Both now say a write appears at the next async flush (`FlushInterval`, default
+  100 ms) unless `SyncWrites` is on.
 - **TEST — tiered tests could mint the same ID twice.** `tieredNodeGen(t)` / `tieredRelGen(t)`
   built a fresh snowflake generator on every call, and tests call them inline, so two calls in
   the same microsecond returned the same ID.

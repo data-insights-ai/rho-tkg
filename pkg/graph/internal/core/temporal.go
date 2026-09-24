@@ -16,24 +16,24 @@ import (
 // =============================================================================
 
 // resolveOpenEndInstant maps an open-ended `end == 0` upper bound to a
-// concrete instant ("now + 1") so a single per-query value is shared
-// across every per-ID overlap predicate. Substituting at the entry
+// concrete instant ("now + 1", now = c.readNow()) so a single per-query value
+// is shared across every per-ID overlap predicate. Substituting at the entry
 // point — rather than inside findNodeVersionMatchingDuring per
 // invocation — eliminates time drift on long iterations, where each
-// per-ID call would otherwise observe a different `nowInstant()` and
+// per-ID call would otherwise observe a different "now" and
 // produce inclusion/exclusion that depends on iteration timing.
 //
 // Callers that hand `end` straight to findNodeVersionMatchingDuring /
 // findRelVersionMatchingDuring MUST pass through this helper first.
-func resolveOpenEndInstant(end types.Instant) types.Instant {
+func (c *Core) resolveOpenEndInstant(end types.Instant) types.Instant {
 	if end == 0 {
-		return nowInstant() + 1
+		return c.readNow() + 1
 	}
 	return end
 }
 
-func normalizeDuringRange(start, end types.Instant) (types.Instant, error) {
-	end = resolveOpenEndInstant(end)
+func (c *Core) normalizeDuringRange(start, end types.Instant) (types.Instant, error) {
+	end = c.resolveOpenEndInstant(end)
 	if start >= end {
 		return 0, ErrInvalidTimeRange
 	}
@@ -1101,9 +1101,9 @@ func validateTemporalQueryOpts(opts storepkg.QueryOpts) error {
 // loops findNodeVersionForOpts/findRelVersionForOpts over many candidate IDs
 // with the SAME opts value would have each candidate independently resolve
 // opts.TxAt's implicit "now" via resolveOpenEndInstant(0) inside the callee —
-// a fresh wall-clock read PER CANDIDATE, exactly the iteration-timing hazard
+// a fresh read of now PER CANDIDATE, exactly the iteration-timing hazard
 // resolveOpenEndInstant's own doc comment warns against ("each per-ID call
-// would otherwise observe a different nowInstant() and produce inclusion/
+// would otherwise observe a different "now" and produce inclusion/
 // exclusion that depends on iteration timing"). A relationship or node whose
 // ValidTo/DeletedAt boundary falls between two of those per-candidate reads
 // would be included by one candidate's probe and excluded by another's within
@@ -1116,9 +1116,9 @@ func validateTemporalQueryOpts(opts storepkg.QueryOpts) error {
 // an interval query, or no temporal filter at all) — those either need no
 // resolution or already resolve their bound once via resolveOpenEndInstant at
 // their own entry point (findNodeVersionMatchingDuringTx / the interval arm).
-func normalizeTxAtOnlyOpts(opts storepkg.QueryOpts) storepkg.QueryOpts {
+func (c *Core) normalizeTxAtOnlyOpts(opts storepkg.QueryOpts) storepkg.QueryOpts {
 	if opts.TxAt != 0 && opts.TxPin == 0 && opts.ValidAt == 0 && opts.ValidStart == 0 && opts.ValidEnd == 0 {
-		opts.ValidAt = resolveOpenEndInstant(0) - 1
+		opts.ValidAt = c.readNow()
 	}
 	return opts
 }
@@ -1165,7 +1165,7 @@ func (c *Core) findNodeVersionForOpts(id types.NodeID, opts storepkg.QueryOpts, 
 	if opts.TxAt != 0 {
 		// TX-only filter: return version visible at txAt as of "now" valid time
 		// — i.e. whatever was current-or-most-recent at txAt.
-		n, err := c.nodeAtLockedTx(id, resolveOpenEndInstant(0)-1, opts.TxAt)
+		n, err := c.nodeAtLockedTx(id, c.readNow(), opts.TxAt)
 		if err != nil {
 			return nil, err
 		}
@@ -1208,7 +1208,7 @@ func (c *Core) findRelVersionForOpts(id types.RelID, opts storepkg.QueryOpts, pr
 		return c.findRelVersionMatchingDuringTx(id, opts.ValidStart, opts.ValidEnd, opts.TxAt, pred)
 	}
 	if opts.TxAt != 0 {
-		r, err := c.relAtLockedTx(id, resolveOpenEndInstant(0)-1, opts.TxAt)
+		r, err := c.relAtLockedTx(id, c.readNow(), opts.TxAt)
 		if err != nil {
 			return nil, err
 		}

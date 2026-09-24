@@ -22,7 +22,7 @@ import (
 // bitemporal_tombstone_test.go and findings_regression_test.go (same
 // package) — see that file's header for the two test-clock hazards. Our
 // interval queries always supply an explicit ValidEnd (never 0), so they
-// never take the "valid at wall now" resolveOpenEndInstant(0) branch that
+// never take the "valid at now" resolveOpenEndInstant(0) branch that
 // motivates waitWallPast* in the TxAt-only tests; no extra waits are needed
 // here.
 

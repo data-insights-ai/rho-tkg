@@ -231,6 +231,9 @@ func testOutgoingIncomingForNodesAtTxAdversarial(t *testing.T, cfg Config) {
 
 	allTypes := []string{"KNOWS", "WORKS_WITH"}
 
+	// (Written before the 2026-09-24 readNow fix, when the TX-only probe was the wall
+	// clock; it is now Core.readNow(), which dominates every stamp, so this
+	// wait is redundant — kept, harmless.)
 	// The divergence probe below issues two SEPARATE calls per case (the new
 	// door, then the independent ByType-scan reference) that each
 	// independently probe wall-clock "now" for TX-only valid-time coverage
@@ -518,7 +521,9 @@ func testOutgoingIncomingForNodesAtTxRandomizedDivergence(t *testing.T, cfg Conf
 	}
 	pins = append(pins, pinD, backfillAt-1, backfillAt+1)
 
-	// The TX-only door's valid-time coverage check probes at WALL now
+	// (Written before the 2026-09-24 readNow fix: the probe is now Core.readNow(), which
+	// dominates every stamp, so the wait below is redundant — kept, harmless.)
+	// The TX-only door's valid-time coverage check probed at WALL now
 	// (resolveOpenEndInstant), while every stamp on every relationship row
 	// above (TxFrom/UpdatedAt/DeletedAt) is minted via the monotonic-floor
 	// clock (c.now()), which can run ahead of the wall clock during a fast
@@ -996,7 +1001,7 @@ func TestFindRelVersionForOpts_TxAtOnly_PerCallNowDriftsAcrossWallClockTick(t *t
 	// this is exactly what every production call site does today via
 	// normalizeTxAtOnlyOpts, applied at the top of the scan rather than
 	// per-candidate.
-	resolvedOpts := normalizeTxAtOnlyOpts(opts)
+	resolvedOpts := g.normalizeTxAtOnlyOpts(opts)
 
 	// Sleep past validTo — guarantees the wall clock has genuinely crossed
 	// the boundary before the next call, making the crossing deterministic
