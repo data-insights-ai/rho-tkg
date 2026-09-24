@@ -1297,19 +1297,27 @@ func (t *TempOps) RelsByTypePropertyDuring(relType, key string, value any, start
 
 // --- Cascade / timeline edit (Phase 3) ---
 
-// SetNodeVersionInterval declares that node `id` is in state `props` for the
-// valid-time interval [validFrom, validTo). validTo == 0 means open-ended.
+// SetNodeVersionInterval records, at the current transaction time, a
+// valid-time correction for node `id` over [validFrom, validTo) (validTo == 0
+// means open-ended).
 //
-// Full cascade: classifies every existing version vs the target interval and
-// applies one of five actions per overlap (keep / closeRight / openLeft /
-// eclipse / split). Existing history rows whose ValidFrom/ValidTo are
-// adjusted are written back in place; their hashes are unaffected because
-// TemporalMetadata is not part of the content hash. Split fragments get
-// freshly-allocated version numbers. Mid-history insertion (backdating with
-// existing versions on either side) is supported.
+// `props` is a PATCH (a nil value deletes the key) applied to the state that
+// was valid — as believed before this call — at each instant of the interval:
+// the interval is split wherever that state changes, and each piece is its
+// then-valid version plus the patch. Properties the patch does not name keep
+// their then-valid values; they are never copied from the current version.
+// Where no version was valid (e.g. before the node's first valid-from) the
+// patch is applied to the most recent version. The timeline after validTo is
+// re-asserted unchanged.
 //
-// Atomicity is bounded by the entity lock: a crash mid-cascade leaves
-// partial state. The committed-rows view from queries remains consistent
+// Append-only: existing rows are never mutated; the correction is expressed
+// by fresh rows stamped TxFrom = now, so *AtTx / *AsOf reads pinned before the
+// call still see the uncorrected belief. Returns the appended row covering
+// validFrom.
+//
+// Atomicity is bounded by the entity lock: every row is built and validated
+// before the first write, but a crash between store writes can leave a
+// partial append. The committed-rows view from queries remains consistent
 // because each store write is itself atomic and the resolver tolerates the
 // interleavings the partial state can produce.
 func (t *TempOps) SetNodeVersionInterval(ctx context.Context, id types.NodeID, validFrom, validTo types.Instant, props map[string]any) (*types.Node, error) {

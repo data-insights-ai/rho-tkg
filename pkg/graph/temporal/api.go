@@ -449,8 +449,13 @@ func (a *API) RelsDuringTx(from, to, txAt types.Instant) ([]*types.Relationship,
 	return ops.RelsDuringTx(from, to, txAt)
 }
 
-// SetNodeVersionInterval declares node id is in state props for [validFrom, validTo).
-// validTo == 0 means open-ended. Adjacent versions' intervals tile via the resolver.
+// SetNodeVersionInterval records a valid-time correction for node id over
+// [validFrom, validTo) (validTo == 0 means open-ended). props is a patch (a nil
+// value deletes the key) applied to the state valid at each instant of the
+// interval as believed before the call — unnamed properties keep their
+// then-valid values, not the current ones. Append-only: reads pinned to an
+// earlier transaction time still see the uncorrected belief. Returns the
+// appended version covering validFrom.
 func (a *API) SetNodeVersionInterval(ctx context.Context, id types.NodeID, validFrom, validTo types.Instant, props map[string]any) (*types.Node, error) {
 	ops, err := a.ready()
 	if err != nil {

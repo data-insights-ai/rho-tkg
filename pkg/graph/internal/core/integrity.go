@@ -104,9 +104,10 @@ type chainEntryMeta struct {
 //
 // The chain is a DAG, not a linear list. A bitemporal correction
 // (SetNodeVersionInterval / SetRelVersionInterval) appends a version whose
-// PrevHash points to whichever version it supersedes ON THE VALID-TIME AXIS, not
-// to the immediately higher version number (see temporal_cascade.go: "joins the
-// chain via PrevHash from whichever row it directly supersedes on the VT axis").
+// PrevHash points to the version it corrects ON THE VALID-TIME AXIS (its base:
+// the pre-correction winner over its piece of the interval, or the most recent
+// version for a gap piece — see temporal_cascade.go's file header), not to the
+// immediately lower version number.
 // So linkage is "every non-genesis version's PrevHash equals the Hash of SOME
 // version in the set" — a real predecessor exists — rather than the stricter (and
 // for corrected data, WRONG) "== the version-order predecessor". The genesis
