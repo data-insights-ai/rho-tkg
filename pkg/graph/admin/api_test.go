@@ -28,6 +28,12 @@ func TestAPINilReceiversReturnErrNilGraph(t *testing.T) {
 	if _, err := nilAPI.ResolveExactErasure(context.Background(), ExactErasureRequest{NodeIDs: []types.NodeID{1}}); !errors.Is(err, grapherr.ErrNilGraph) {
 		t.Fatalf("nil ResolveExactErasure = %v, want ErrNilGraph", err)
 	}
+	if err := nilAPI.SealRelSegments("HOP"); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil SealRelSegments = %v, want ErrNilGraph", err)
+	}
+	if _, err := nilAPI.RelSegmentStats("HOP"); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil RelSegmentStats = %v, want ErrNilGraph", err)
+	}
 
 	api := New((*adminOpsSpy)(nil))
 	if err := api.Reset(); !errors.Is(err, grapherr.ErrNilGraph) {
@@ -64,8 +70,15 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		t.Fatalf("ResolveExactErasure: %v", err)
 	}
 
+	if err := api.SealRelSegments("HOP"); err != nil {
+		t.Fatalf("SealRelSegments: %v", err)
+	}
+	if st, err := api.RelSegmentStats("HOP"); err != nil || st.Segments != 3 {
+		t.Fatalf("RelSegmentStats = %+v, %v; want Segments 3", st, err)
+	}
+
 	if ops.resetCalls != 1 || ops.decomposeIDCalls != 2 || ops.purgeCalls != 1 ||
-		ops.resolveExactEraseCalls != 1 || ops.exactEraseCalls != 1 {
+		ops.resolveExactEraseCalls != 1 || ops.exactEraseCalls != 1 || ops.segmentCalls != 2 {
 		t.Fatalf("unexpected call counts: %+v", ops)
 	}
 }
@@ -77,6 +90,17 @@ type adminOpsSpy struct {
 	purgeCalls             int
 	resolveExactEraseCalls int
 	exactEraseCalls        int
+	segmentCalls           int
+}
+
+func (s *adminOpsSpy) SealRelSegments(relType string) error {
+	s.segmentCalls++
+	return nil
+}
+
+func (s *adminOpsSpy) RelSegmentStats(relType string) (RelSegmentStats, error) {
+	s.segmentCalls++
+	return RelSegmentStats{Segments: 3}, nil
 }
 
 func (s *adminOpsSpy) Reset() error {

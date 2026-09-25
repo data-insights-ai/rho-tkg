@@ -16,7 +16,7 @@ func FuzzOpen(f *testing.F) {
 	for i, n := range []int{0, 1, 7, 70} {
 		rows := corpus(f, n, uint64(100+i))
 		for _, pr := range []int{4, 64} {
-			data, err := encode(testSchema(), rows, Options{IntegrityBlockRows: 2}, pr)
+			data, err := encode(testSchema(), rows, Options{IntegrityBlockRows: 2}, pr, nil)
 			if err != nil {
 				f.Fatal(err)
 			}
@@ -55,7 +55,7 @@ func FuzzOpen(f *testing.F) {
 // below the CRC layer — an adversary can compute CRCs too.
 func FuzzOpenResealed(f *testing.F) {
 	for i, n := range []int{1, 9, 70} {
-		data, err := encode(testSchema(), corpus(f, n, uint64(200+i)), Options{IntegrityBlockRows: 4}, 8)
+		data, err := encode(testSchema(), corpus(f, n, uint64(200+i)), Options{IntegrityBlockRows: 4}, 8, nil)
 		if err != nil {
 			f.Fatal(err)
 		}

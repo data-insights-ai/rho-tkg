@@ -154,6 +154,9 @@ func (ms *Store) RelationshipsByType(token uint16, opts QueryOpts) ([]*types.Rel
 		return nil, err
 	}
 
+	if ms.hasSegmentsLocked(token) {
+		return ms.relationshipsByTypeSegmentsLocked(token, opts)
+	}
 	set := ms.typeIdx[token]
 	if len(set) == 0 {
 		return nil, nil
@@ -249,7 +252,7 @@ func (ms *Store) RelationshipCount() (int, error) {
 	if err := ms.checkOpenLocked(); err != nil {
 		return 0, err
 	}
-	return len(ms.rels), nil
+	return len(ms.rels) + ms.liveSealedLocked(), nil
 }
 
 // NodeCountByLabel returns the number of nodes with the given label token. O(1).
@@ -283,7 +286,7 @@ func (ms *Store) RelCountByType(token uint16) (int, error) {
 	if token == 0 {
 		return 0, storecontract.ValidateRelTypeToken(token)
 	}
-	return len(ms.typeIdx[token]), nil
+	return len(ms.typeIdx[token]) + ms.liveSealedOfLocked(token), nil
 }
 
 // AllNodeIDs returns the IDs of all current nodes, with optional temporal
@@ -332,10 +335,13 @@ func (ms *Store) AllRelIDs(opts QueryOpts) ([]types.RelID, error) {
 		return nil, err
 	}
 
-	if len(ms.rels) == 0 {
+	if len(ms.rels) == 0 && !ms.anySegmentsLocked() {
 		return nil, nil
 	}
-	ids := ms.collectRelIDsByTemporalLocked(opts)
+	ids, err := ms.collectRelIDsByTemporalLocked(opts)
+	if err != nil {
+		return nil, err
+	}
 	storepkg.SortRelIDs(ids)
 	ids = storepkg.PaginateRelIDs(ids, opts.After, opts.Limit)
 	if len(ids) == 0 {
@@ -387,9 +393,19 @@ func (ms *Store) ForEachRelID(fn func(types.RelID) bool) error {
 		ms.mu.RUnlock()
 		return errNilIterationCallback()
 	}
-	ids := make([]types.RelID, 0, len(ms.rels))
+	ids := make([]types.RelID, 0, len(ms.rels)+ms.liveSealedLocked())
 	for id := range ms.rels {
 		ids = append(ids, id)
+	}
+	for _, st := range ms.segTypes {
+		refs, err := ms.appendSealedRefsLocked(nil, st)
+		if err != nil {
+			ms.mu.RUnlock()
+			return err
+		}
+		for _, ref := range refs {
+			ids = append(ids, ref.id)
+		}
 	}
 	ms.mu.RUnlock()
 	for _, id := range ids {
@@ -506,6 +522,12 @@ func (ms *Store) ForEachDeletedRelID(fn func(types.RelID) bool) error {
 	ids := make([]types.RelID, 0)
 	for id := range ms.relHistory {
 		if _, ok := ms.rels[id]; ok {
+			continue
+		}
+		if live, err := ms.sealedExistsLocked(id); err != nil {
+			ms.mu.RUnlock()
+			return err
+		} else if live {
 			continue
 		}
 		ids = append(ids, id)
@@ -648,11 +670,14 @@ func (ms *Store) AllRelationships(opts QueryOpts) ([]*types.Relationship, error)
 		return nil, err
 	}
 
-	if len(ms.rels) == 0 {
+	if len(ms.rels) == 0 && !ms.anySegmentsLocked() {
 		return nil, nil
 	}
+	if ms.anySegmentsLocked() {
+		return ms.allRelationshipsSegmentsLocked(opts)
+	}
 
-	ids := ms.collectRelIDsByTemporalLocked(opts)
+	ids, _ := ms.collectRelIDsByTemporalLocked(opts)
 	storepkg.SortRelIDs(ids)
 
 	ids = storepkg.PaginateRelIDs(ids, opts.After, opts.Limit)
@@ -728,7 +753,10 @@ func (ms *Store) GetRelationshipsByIDs(ids []types.RelID) ([]*types.Relationship
 
 	result := make([]*types.Relationship, 0, len(ids))
 	for _, id := range ids {
-		r, ok := ms.rels[id]
+		r, ok, err := ms.relLocked(id)
+		if err != nil {
+			return nil, err
+		}
 		if !ok {
 			return nil, fmt.Errorf("graph: get relationships by IDs %d: %w", id, ErrRelNotFound)
 		}
@@ -763,7 +791,7 @@ func (ms *Store) collectNodeIDsByTemporalLocked(opts QueryOpts) []types.NodeID {
 
 // collectRelIDsByTemporalLocked is the relationship counterpart to
 // collectNodeIDsByTemporalLocked. Caller must hold ms.mu (read or write).
-func (ms *Store) collectRelIDsByTemporalLocked(opts QueryOpts) []types.RelID {
+func (ms *Store) collectRelIDsByTemporalLocked(opts QueryOpts) ([]types.RelID, error) {
 	hasTemporal := storepkg.HasTemporalFilter(opts)
 	ids := make([]types.RelID, 0, len(ms.rels))
 	for id, r := range ms.rels {
@@ -772,8 +800,30 @@ func (ms *Store) collectRelIDsByTemporalLocked(opts QueryOpts) []types.RelID {
 		}
 		ids = append(ids, id)
 	}
-	if len(ids) == 0 {
-		return nil
+	if ms.anySegmentsLocked() {
+		for _, st := range ms.segTypes {
+			if !hasTemporal {
+				refs, err := ms.appendSealedRefsLocked(nil, st)
+				if err != nil {
+					return nil, err
+				}
+				for _, ref := range refs {
+					ids = append(ids, ref.id)
+				}
+				continue
+			}
+			if err := ms.forEachSealedRowLocked(st, func(r *types.Relationship) bool {
+				if storepkg.MatchesTemporalFilter(r.ID().SnowflakeID(), r.Temporal(), opts) {
+					ids = append(ids, r.ID())
+				}
+				return true
+			}); err != nil {
+				return nil, err
+			}
+		}
 	}
-	return ids
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	return ids, nil
 }

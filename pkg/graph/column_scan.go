@@ -72,3 +72,31 @@ func (g *Graph) ScanRelColumns(relType string, props []string, opts QueryOpts,
 	}
 	return g.core.ScanRelColumns(relType, props, opts, fn)
 }
+
+// RelSegmentBatch is a block of a declared bulk relationship type's rows as
+// segment columns (see ScanRelSegments). Alias of store.RelSegmentBatch.
+type RelSegmentBatch = storepkg.RelSegmentBatch
+
+// SegmentColumnValues is one requested declared property over a
+// RelSegmentBatch. Alias of store.SegmentColumnValues.
+type SegmentColumnValues = storepkg.SegmentColumnValues
+
+// ScanRelSegments reads every current row of a relationship type declared in
+// Config.RelSegments as segment columns (ADR-0011 §5.3): IDs, endpoints,
+// stored valid/transaction time, versions, and the requested declared
+// properties — strings as dictionary codes where the segment has them —
+// without building a *types.Relationship per row. Rows arrive in segment
+// order (Sorted batches ascend by start, end, valid_from), not ID order; use
+// ScanRelColumns for ID order. Batch.Row(k) builds a row in full, for values a
+// column marks Other.
+//
+// ok=false means the columnar door does not apply (backend without
+// segments, undeclared type, or a property that is not a declared column)
+// and fn was not called: use Rels().ByType / ForEachByType. The callback
+// MUST NOT retain the batch or call Row outside the callback.
+func (g *Graph) ScanRelSegments(relType string, props []string, fn func(*RelSegmentBatch) bool) (ok bool, err error) {
+	if g == nil {
+		return false, nil
+	}
+	return g.core.ScanRelSegments(relType, props, fn)
+}

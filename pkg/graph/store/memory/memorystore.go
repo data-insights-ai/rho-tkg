@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segment"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -235,6 +236,25 @@ type Store struct {
 	// safe instead of assumed). All under ms.mu.
 	nodeBeliefWatermark map[types.NodeID]types.Instant
 	relBeliefWatermark  map[types.RelID]types.Instant
+
+	// ADR-0011 S2: declared bulk relationship types and their in-RAM column
+	// segments (see memorystore_segments.go). All nil/zero until a type is
+	// declared; guarded by ms.mu except segDue (atomic).
+	segTypes        map[uint16]*segType
+	segDead         map[types.RelID]uint16 // sealed rows that are no longer current -> type token
+	segNodeDict     *segment.NodeDict      // endpoint identities and hashes shared by every segment of the store
+	segBudget       int64                  // memtable budget (bytes, all declared types)
+	segUnsealed     int64                  // unsealed bytes of all declared types
+	segRefusedBytes int64                  // unsealed bytes the codec refused (excluded from the trigger)
+	segMaxID        types.RelID            // largest sealed ID (0 = no segment)
+	segEpoch        uint64                 // bumped by Clear; a seal started before it is discarded
+	segSeq          uint64                 // last segment id handed out
+	segDue          atomic.Bool            // a write pushed the unsealed bytes over the budget
+	relsPeak        int                    // len(rels) high-water mark since the last shrink (declared stores only)
+	sealEncodeHook  func()                 // test seam: runs in a seal's encode window (nil in production)
+	sealerRunning   bool                   // the background sealer goroutine is live (guarded by ms.mu)
+	sealers         sync.WaitGroup         // background sealers; Close waits for them
+	sealedRowBuilds atomic.Uint64          // Relationships built from sealed rows (measurement)
 }
 
 // bumpNodeEpoch marks every cached DocValues column potentially stale. Called by
@@ -390,6 +410,7 @@ func (ms *Store) Clear() error {
 	ms.relTypeTxMembers = nil    // rel-type mirror
 	ms.nodeBeliefWatermark = nil // drop the lazy belief-watermark sidecar; rebuilt on next use
 	ms.relBeliefWatermark = nil  // rel mirror
+	ms.clearSegmentsLocked()     // ADR-0011: segments go, declarations stay
 	ms.bumpNodeEpoch()           // any cached column from before Clear is now invalid
 	ms.bumpRelEpoch()            // and the adjacency view (X5 expand path)
 	// Drop the change-log records (the store is now empty) and re-anchor with a
@@ -440,9 +461,11 @@ func (ms *Store) Close() error {
 		return ErrNilStore
 	}
 	ms.mu.Lock()
-	defer ms.mu.Unlock()
-
 	ms.closed = true
+	ms.mu.Unlock()
+	// ADR-0011: a background seal in flight sees closed at its install and
+	// discards its segment; wait for it so no work outlives the store.
+	ms.sealers.Wait()
 	return nil
 }
 

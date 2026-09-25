@@ -113,19 +113,26 @@ func (ms *Store) ensureLabelTxMembersBuiltLocked() {
 
 // ensureRelTypeTxMembersBuiltLocked builds the rel-type sidecar from current +
 // history relationship state on first use. Caller holds ms.mu (write).
-func (ms *Store) ensureRelTypeTxMembersBuiltLocked() {
+func (ms *Store) ensureRelTypeTxMembersBuiltLocked() error {
 	if ms.relTypeTxMembers != nil {
-		return
+		return nil
 	}
 	ms.relTypeTxMembers = make(map[uint16]map[types.RelID]types.Instant)
-	for _, r := range ms.rels {
+	// ADR-0011: every current row, sealed ones included. The sidecar must be
+	// a superset, so a decode error leaves it unbuilt and fails the read.
+	if err := ms.forEachCurrentRelLocked(func(r *types.Relationship) bool {
 		ms.recordRelTypeMemberLocked(r)
+		return true
+	}); err != nil {
+		ms.relTypeTxMembers = nil
+		return err
 	}
 	for _, versions := range ms.relHistory {
 		for _, r := range versions {
 			ms.recordRelTypeMemberLocked(r)
 		}
 	}
+	return nil
 }
 
 // ForEachLabelTxMember implements store.LabelTxMembershipCapability.
@@ -175,7 +182,10 @@ func (ms *Store) ForEachRelTypeTxMember(token uint16, fn func(id types.RelID, fi
 		ms.mu.Unlock()
 		return err
 	}
-	ms.ensureRelTypeTxMembersBuiltLocked()
+	if err := ms.ensureRelTypeTxMembersBuiltLocked(); err != nil {
+		ms.mu.Unlock()
+		return err
+	}
 	set := ms.relTypeTxMembers[token]
 	type member struct {
 		id types.RelID

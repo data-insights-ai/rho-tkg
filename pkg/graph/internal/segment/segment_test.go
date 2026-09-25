@@ -221,7 +221,7 @@ func byKey(rows []*types.Relationship) map[rowKey]*types.Relationship {
 
 func mustEncode(tb testing.TB, rows []*types.Relationship, opts Options, pageRows int) []byte {
 	tb.Helper()
-	data, err := encode(testSchema(), rows, opts, pageRows)
+	data, err := encode(testSchema(), rows, opts, pageRows, nil)
 	if err != nil {
 		tb.Fatalf("encode: %v", err)
 	}
@@ -488,7 +488,7 @@ func TestSeal_RowThatDoesNotRoundTripIsRefused(t *testing.T) {
 	sealed := []*types.Relationship{mkRow(t, 1, 0, 1, 2, map[string]any{"nested": []any{int64(2)}}, nil, nil)}
 	data := mustEncode(t, sealed, Options{}, PageRows)
 	source := []*types.Relationship{mkRow(t, 1, 0, 1, 2, map[string]any{"nested": []any{int16(2)}}, nil, nil)}
-	if err := verifySealed(data, source, []int{0}); !errors.Is(err, ErrInvalidRow) {
+	if err := verifySealed(data, source, []int{0}, nil); !errors.Is(err, ErrInvalidRow) {
 		t.Fatalf("verifySealed on a row whose nested kind differs: %v, want ErrInvalidRow", err)
 	}
 }

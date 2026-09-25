@@ -301,6 +301,37 @@ const (
 // hatch) and its tuning. Zero value = documented defaults.
 type VectorIndexOptions = store.VectorIndexOptions
 
+// RelSegmentSpec aliases store.RelSegmentSpec — one entry of
+// Config.RelSegments, declaring a bulk relationship type whose rows the store
+// seals into column segments (ADR-0011).
+type RelSegmentSpec = store.RelSegmentSpec
+
+// SegmentColumn aliases store.SegmentColumn — one declared property column of
+// a RelSegmentSpec.
+type SegmentColumn = store.SegmentColumn
+
+// SegmentColumnKind aliases store.SegmentColumnKind — the exact Go kind of a
+// declared segment column (a value of another kind is still stored exactly).
+type SegmentColumnKind = store.SegmentColumnKind
+
+// Declared segment column kinds (aliases of the store constants).
+const (
+	SegmentBool    = store.SegmentBool
+	SegmentInt     = store.SegmentInt
+	SegmentInt8    = store.SegmentInt8
+	SegmentInt16   = store.SegmentInt16
+	SegmentInt32   = store.SegmentInt32
+	SegmentInt64   = store.SegmentInt64
+	SegmentUint    = store.SegmentUint
+	SegmentUint8   = store.SegmentUint8
+	SegmentUint16  = store.SegmentUint16
+	SegmentUint32  = store.SegmentUint32
+	SegmentUint64  = store.SegmentUint64
+	SegmentFloat32 = store.SegmentFloat32
+	SegmentFloat64 = store.SegmentFloat64
+	SegmentString  = store.SegmentString
+)
+
 // New creates a new Graph with the given configuration. Delegates to core.New
 // and wires every sub-API accessor to the same *Core instance.
 func New(cfg Config) (*Graph, error) {

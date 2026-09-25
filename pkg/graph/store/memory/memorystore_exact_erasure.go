@@ -51,6 +51,18 @@ func (ms *Store) ExactErase(req storecontract.ExactErasureRequest) (storecontrac
 		ms.scopeActive || len(ms.scopeLog) != 0 || len(ms.scopedLogs) != 0 {
 		return zero, storecontract.ErrExactErasureChangeLogRetained
 	}
+	// ADR-0011 overlay: bring every sealed row the request can touch back
+	// into the memtable, so the preflight and teardown below see them.
+	for _, nid := range req.NodeIDs {
+		if err := ms.faultInAdjacentLocked(nid); err != nil {
+			return zero, err
+		}
+	}
+	for _, rid := range req.RelIDs {
+		if err := ms.faultInLocked(rid); err != nil {
+			return zero, err
+		}
+	}
 
 	relSet := make(map[types.RelID]struct{}, len(req.RelIDs))
 	for _, id := range req.RelIDs {
@@ -287,6 +299,18 @@ func (ms *Store) exactErasureRelationshipClosureLocked(
 			return zero, err
 		}
 	}
+	var inspectErr error
+	for _, st := range ms.segTypes { // ADR-0011: the sealed current rows too
+		if err := ms.forEachSealedRowLocked(st, func(rel *types.Relationship) bool {
+			inspectErr = inspect(rel.ID(), rel)
+			return inspectErr == nil
+		}); err != nil {
+			return zero, err
+		}
+		if inspectErr != nil {
+			return zero, inspectErr
+		}
+	}
 	for rid, versions := range ms.relHistory {
 		for _, rel := range versions {
 			if err := inspect(rid, rel); err != nil {
@@ -354,8 +378,12 @@ func (ms *Store) rebuildPlannerStatsAfterExactErasureLocked() {
 	for _, n := range ms.nodes {
 		ms.adjustNodePropertyKeyCounts(n, 1)
 	}
-	for _, r := range ms.rels {
+	// ADR-0011 union view. The segments are in-RAM bytes this store encoded
+	// and verified at seal; a decode error here would mean corrupted RAM and
+	// can only under-count the rebuilt planner statistics (never a row).
+	_ = ms.forEachCurrentRelLocked(func(r *types.Relationship) bool {
 		ms.adjustRelPropertyTypeClassCounts(r, 1)
 		ms.adjustRelPropertyKeyCounts(r, 1)
-	}
+		return true
+	})
 }

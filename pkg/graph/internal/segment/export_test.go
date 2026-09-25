@@ -47,7 +47,7 @@ func DecodeColumns(s *Segment) int64 {
 		s.tx.decodePage(p, cnt, buf[3], buf[1], nil)
 		s.relID.decodePage(p, cnt, buf[4], nil, nil)
 		for c := range s.props {
-			if s.props[c].col.Kind == KindString && s.props[c].strs.mode == strDict {
+			if s.props[c].col.Kind == KindString && s.props[c].strs.coded() {
 				s.props[c].strs.codes.decodePage(p, cnt, buf[6+c], nil, nil)
 			} else {
 				s.props[c].ints.decodePage(p, cnt, buf[6+c], nil, nil)

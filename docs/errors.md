@@ -173,7 +173,9 @@ Sentinels guarding the on-disk / on-wire trust boundary: format compatibility an
 
 | Sentinel | Package | Meaning | Typical Doors |
 |----------|---------|---------|---------------|
-| `ErrCapabilityNotSupported` | store | Required optional Store capability is not implemented by the configured backend | `g.Replication().ApplyChange()` on memory store, `g.IO().ExportSince()` on tiered store without change-log, `g.Replication().Watch()` on its very first pull — either no change-feed capability at all (e.g. tiered) or a badger/memory store whose change-log is present but disabled (`store.ChangeLogStatusCapability.ChangeLogEnabled() == false`), mirroring the same fail-closed check as `Watermark`/`ExportSince` |
+| `ErrCapabilityNotSupported` | store | Required optional Store capability is not implemented by the configured backend | `g.Replication().ApplyChange()` on memory store, `g.IO().ExportSince()` on tiered store without change-log, `g.Replication().Watch()` on its very first pull — either no change-feed capability at all (e.g. tiered) or a badger/memory store whose change-log is present but disabled (`store.ChangeLogStatusCapability.ChangeLogEnabled() == false`), mirroring the same fail-closed check as `Watermark`/`ExportSince`; `graph.New` with `Config.RelSegments` on a backend without column segments (ADR-0011 S2: every backend but memory) |
+| `ErrRelSegmentDeclaration` | store | A `Config.RelSegments` entry is malformed (blank type, `tkg_`/blank/duplicate column, unknown kind, `IntegrityBlockRows` not 0 or a power of two ≤ 4,096), a type is declared twice, `SegmentMemoryBudget` is negative, or a store re-declaration conflicts with an existing one (ADR-0011) | `graph.New`; `store.RelSegmentCapability.DeclareRelSegment` |
+| `ErrRelSegmentNotDeclared` | store | The relationship type is not declared as a bulk (segment) type | `g.Admin().SealRelSegments()`, `g.Admin().RelSegmentStats()` |
 
 ## TieredStore Reference/Event Ontology
 

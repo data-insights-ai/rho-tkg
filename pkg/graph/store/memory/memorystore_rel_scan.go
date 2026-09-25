@@ -35,6 +35,9 @@ func (ms *Store) ForEachRelByType(token uint16, opts QueryOpts, fn func(*types.R
 		ms.mu.RUnlock()
 		return err
 	}
+	if ms.segTypes[token] != nil {
+		return ms.forEachRelByTypeSegmentsRLocked(token, opts, fn) // releases ms.mu
+	}
 	set := ms.typeIdx[token]
 	ids := make([]types.RelID, 0, len(set))
 	for id := range set {
@@ -101,6 +104,9 @@ func (ms *Store) forEachAdjacentRel(nid types.NodeID, typeToken uint16, incoming
 		ms.mu.RUnlock()
 		return ErrNodeNotFound
 	}
+	if len(ms.segTypes) > 0 {
+		return ms.forEachAdjacentRelSegmentsRLocked(nid, typeToken, incoming, fn) // releases ms.mu
+	}
 	set := ms.outIdx[nid]
 	if incoming {
 		set = ms.inIdx[nid]
@@ -133,6 +139,98 @@ func (ms *Store) forEachAdjacentRel(nid types.NodeID, typeToken uint16, incoming
 		ms.mu.RLock()
 		r, ok := ms.rels[id]
 		ms.mu.RUnlock()
+		if !ok {
+			continue
+		}
+		match := relationshipMatchesOutgoing(r, nid, typeToken)
+		if incoming {
+			match = relationshipMatchesIncoming(r, nid, typeToken)
+		}
+		if !match {
+			continue
+		}
+		if !fn(r) {
+			return nil
+		}
+	}
+	return nil
+}
+
+// forEachRelByTypeSegmentsRLocked is ForEachRelByType for a declared type.
+// Called with ms.mu read-held; releases it. The snapshot holds every current
+// row as (ID, sealed position); each row is re-resolved under a brief read
+// lock, so a seal, an update or a delete between snapshot and emission is
+// seen exactly as the row-store path sees it (same isolation contract).
+func (ms *Store) forEachRelByTypeSegmentsRLocked(token uint16, opts QueryOpts, fn func(*types.Relationship) bool) error {
+	refs, err := ms.typeRefsLocked(token)
+	epoch := ms.segEpoch
+	ms.mu.RUnlock()
+	if err != nil {
+		return err
+	}
+	hasTemporal := storepkg.HasTemporalFilter(opts)
+	emitted := 0
+	for _, ref := range refs {
+		if opts.After != 0 && types.EntityID(ref.id) <= opts.After {
+			continue
+		}
+		ms.mu.RLock()
+		r, ok, err := ms.resolveRefLocked(ref, epoch)
+		ms.mu.RUnlock()
+		if err != nil {
+			return err
+		}
+		if !ok || !r.HasTypeTokenRaw(token) {
+			continue
+		}
+		if hasTemporal && !storepkg.MatchesTemporalFilter(ref.id.SnowflakeID(), r.Temporal(), opts) {
+			continue
+		}
+		if !fn(r) {
+			return nil
+		}
+		emitted++
+		if opts.Limit > 0 && emitted >= opts.Limit {
+			return nil
+		}
+	}
+	return nil
+}
+
+// forEachAdjacentRelSegmentsRLocked is forEachAdjacentRel when a type is
+// declared. Called with ms.mu read-held; releases it.
+func (ms *Store) forEachAdjacentRelSegmentsRLocked(nid types.NodeID, typeToken uint16, incoming bool, fn func(*types.Relationship) bool) error {
+	set := ms.outIdx[nid]
+	if incoming {
+		set = ms.inIdx[nid]
+	}
+	typeSet := ms.typeIdx[typeToken]
+	refs := make([]sealedIDRef, 0, len(set))
+	for id := range set {
+		if typeToken != 0 {
+			if _, ok := typeSet[id]; !ok {
+				continue
+			}
+		}
+		refs = append(refs, sealedIDRef{id: id})
+	}
+	err := ms.forEachSealedAdjacentLocked(nid, typeToken, incoming, func(sg *memSeg, row int, id types.RelID) (bool, error) {
+		refs = append(refs, sealedIDRef{id: id, sg: sg, row: row})
+		return true, nil
+	})
+	epoch := ms.segEpoch
+	ms.mu.RUnlock()
+	if err != nil {
+		return err
+	}
+	sortRefsByID(refs)
+	for _, ref := range refs {
+		ms.mu.RLock()
+		r, ok, err := ms.resolveRefLocked(ref, epoch)
+		ms.mu.RUnlock()
+		if err != nil {
+			return err
+		}
 		if !ok {
 			continue
 		}

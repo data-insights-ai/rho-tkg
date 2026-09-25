@@ -252,3 +252,11 @@ var (
 // core.ErrNilSession so external callers can classify it with
 // errors.Is(err, graph.ErrNilSession).
 var ErrNilSession = core.ErrNilSession
+
+// ErrRelSegmentDeclaration is returned by New when a Config.RelSegments entry
+// is malformed or conflicts with another (ADR-0011).
+var ErrRelSegmentDeclaration = storepkg.ErrRelSegmentDeclaration
+
+// ErrRelSegmentNotDeclared is returned by the g.Admin() segment doors for a
+// relationship type that Config.RelSegments did not declare.
+var ErrRelSegmentNotDeclared = storepkg.ErrRelSegmentNotDeclared

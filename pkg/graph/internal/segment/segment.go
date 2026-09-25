@@ -47,7 +47,10 @@ package segment
 
 import (
 	"errors"
+	"fmt"
 	"hash/crc32"
+
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // Kind is the exact Go kind of a declared column: the property type tag the
@@ -130,6 +133,28 @@ var (
 	// ErrOutOfRange: a row or group index outside the segment.
 	ErrOutOfRange = errors.New("segment: index out of range")
 )
+
+// RowError names the input row a seal refused (Encode). It wraps exactly one
+// of ErrInvalidRow or ErrHashMismatch, so a caller can drop that row and seal
+// the others.
+type RowError struct {
+	ID      types.RelID
+	Version uint32
+	Err     error
+	Reason  string
+}
+
+func (e *RowError) Error() string { return e.Err.Error() + ": " + e.Reason }
+
+// Unwrap returns ErrInvalidRow or ErrHashMismatch.
+func (e *RowError) Unwrap() error { return e.Err }
+
+func rowErr(r *types.Relationship, sentinel error, format string, args ...any) error {
+	return &RowError{ID: r.ID(), Version: r.Version(), Err: sentinel, Reason: fmt.Sprintf(format, args...)}
+}
+
+// ValidateSchema reports whether s can be used to Encode (ErrInvalidSchema).
+func ValidateSchema(s Schema) error { return s.validate() }
 
 // CorruptError names the damaged section: "header", "footer", "trailer", a
 // section name from the directory, or "row" for a row whose columns decode

@@ -194,7 +194,9 @@ func (ms *Store) DeleteNode(nid types.NodeID) error {
 	if !ok {
 		return ErrNodeNotFound
 	}
-	if len(ms.outIdx[nid]) != 0 || len(ms.inIdx[nid]) != 0 {
+	if connected, err := ms.hasAdjacencyLocked(nid); err != nil { // ADR-0011: sealed rows connect too
+		return err
+	} else if connected {
 		return fmt.Errorf("%w: node %d has connected relationships", ErrInvalidStoreMutation, nid)
 	}
 
@@ -472,6 +474,9 @@ func (ms *Store) deleteNodeCascadeRouted(nid types.NodeID, token uint64) error {
 		return ErrNodeNotFound
 	}
 
+	if err := ms.faultInAdjacentLocked(nid); err != nil { // ADR-0011 overlay
+		return err
+	}
 	// Collect all connected relIDs from adjacency indexes.
 	// Use a map for dedup (self-loops appear in both outgoing and incoming).
 	relIDs := make(map[types.RelID]struct{})
@@ -627,7 +632,9 @@ func (ms *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 		if _, exists := ms.nodes[id]; !exists {
 			return ErrNodeNotFound
 		}
-		if len(ms.outIdx[id]) != 0 || len(ms.inIdx[id]) != 0 {
+		if connected, err := ms.hasAdjacencyLocked(id); err != nil { // ADR-0011: sealed rows connect too
+			return err
+		} else if connected {
 			return fmt.Errorf("%w: node %d has connected relationships", ErrInvalidStoreMutation, id)
 		}
 	}

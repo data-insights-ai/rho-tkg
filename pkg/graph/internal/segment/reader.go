@@ -29,7 +29,19 @@ type Segment struct {
 	typeToken uint16
 	schema    Schema
 	root      [32]byte
-	secs      map[string]sectionInfo
+	idMin     int64
+	idMax     int64
+	// dict is the node dictionary of a NodeDict-encoded segment (nil for a
+	// self-contained one). Open checks every code against the snapshot
+	// current then; later snapshots only extend it, so readers load the
+	// current one (and old snapshots' arrays can be collected).
+	dict  *NodeDict
+	dicts *Dicts
+	// idSparse holds the ID-index entry at every idSparseStep-th position,
+	// built at Open, so Lookup reads at most idSparseStep entries instead of
+	// a whole delta-coded page (rows/8 bytes of heap per segment).
+	idSparse []int64
+	secs     map[string]sectionInfo
 
 	nodeIDs, outcsr, inOff, inPerm, idIDs, idRows intCol
 	nodeHash, endpointExc                         strCol
@@ -53,11 +65,27 @@ type propCol struct {
 }
 
 // Open validates data and returns a reader over it. data must not be
-// modified while the Segment is in use.
+// modified while the Segment is in use. A segment encoded with store-level
+// dictionaries fails with ErrUnsupportedVersion (use OpenWithDicts).
 func Open(data []byte) (*Segment, error) {
+	return OpenWithDicts(data, nil)
+}
+
+// OpenWithDicts opens a segment that may hold codes into the dictionaries dd
+// (see EncodeWithDicts); a self-contained segment opens as with Open. Every
+// code is checked against the dictionaries before use.
+func OpenWithDicts(data []byte, dd *Dicts) (*Segment, error) {
+	d := dd.nodeDict()
 	h, err := readHeader(data)
 	if err != nil {
 		return nil, err
+	}
+	var dict *NodeDict
+	if h.flags&flagNodeDict != 0 {
+		if d == nil {
+			return nil, fmt.Errorf("%w: the segment's endpoints are codes into its store's node dictionary", ErrUnsupportedVersion)
+		}
+		dict = d
 	}
 	fstart, fend, err := locateFooter(data)
 	if err != nil {
@@ -77,6 +105,10 @@ func Open(data []byte) (*Segment, error) {
 		typeToken: uint16(h.typeToken),                                                              // #nosec G115 -- read from a u16
 		schema:    Schema{TypeName: f.typeName, TypeToken: uint16(h.typeToken), Columns: f.columns}, // #nosec G115 -- u16
 		root:      f.root,
+		idMin:     h.idMin,
+		idMax:     h.idMax,
+		dict:      dict,
+		dicts:     dd,
 		secs:      make(map[string]sectionInfo, len(f.sections)),
 	}
 	for _, sec := range f.sections {
@@ -88,7 +120,31 @@ func Open(data []byte) (*Segment, error) {
 	if err := s.validateStructure(); err != nil {
 		return nil, err
 	}
+	s.buildIDSparse()
 	return s, nil
+}
+
+// idSparseStep divides every legal page size (a power of two >= 64 is not
+// required: a step that crosses a page boundary restarts from the page).
+const idSparseStep = 64
+
+func (s *Segment) buildIDSparse() {
+	if s.rows == 0 {
+		return
+	}
+	// rows is backed by the integrity section's bytes (32 B per group of at
+	// most 4,096 rows), so this allocation is bounded by bytes delivered.
+	s.idSparse = make([]int64, 0, (s.rows+idSparseStep-1)/idSparseStep)
+	buf := make([]int64, s.pageRows)
+	for p := 0; p*s.pageRows < s.rows; p++ {
+		cnt := min(s.pageRows, s.rows-p*s.pageRows)
+		s.idIDs.decodePage(p, cnt, buf, nil, nil)
+		for k := 0; k < cnt; k++ {
+			if (p*s.pageRows+k)%idSparseStep == 0 {
+				s.idSparse = append(s.idSparse, buf[k])
+			}
+		}
+	}
 }
 
 func (s *Segment) bytesOf(name string) ([]byte, bool) {
@@ -119,7 +175,11 @@ func (s *Segment) parseSections() error {
 			*dst = strCol{name: name}
 			return nil
 		}
-		c, err := parseStrCol(name, b, want, s.pageRows)
+		var sd *StringDict
+		if col, isProp := strings.CutPrefix(name, propPrefix); isProp {
+			sd = s.dicts.stringDict(col)
+		}
+		c, err := parseStrCol(name, b, want, s.pageRows, sd)
 		*dst = c
 		return err
 	}
@@ -143,7 +203,12 @@ func (s *Segment) parseSections() error {
 	}
 	steps := []func() error{
 		func() error { return intSec(&s.nodeIDs, secNodes, nn, none) },
-		func() error { return strSec(&s.nodeHash, secNodeHash, nn) },
+		func() error {
+			if s.dict != nil {
+				return nil // NodeDict mode: no per-segment hashes
+			}
+			return strSec(&s.nodeHash, secNodeHash, nn)
+		},
 		func() error { return intSec(&s.outcsr, secOutCSR, nodeLevel1, none) },
 		func() error { return intSec(&s.inOff, secInOff, nodeLevel1, none) },
 		func() error { return intSec(&s.inPerm, secInPerm, n, none) },
@@ -164,7 +229,12 @@ func (s *Segment) parseSections() error {
 		func() error { return intSec(&s.authLevel, colAuthLevel, n, none) },
 		func() error { return intSec(&s.fromHash, colFromHash, n, none) },
 		func() error { return intSec(&s.toHash, colToHash, n, none) },
-		func() error { return strSec(&s.endpointExc, secEndpointExc, -1) },
+		func() error {
+			if s.dict != nil {
+				return nil
+			}
+			return strSec(&s.endpointExc, secEndpointExc, -1)
+		},
 		func() error { return strSec(&s.createdBy, colCreatedBy, n) },
 		func() error { return strSec(&s.updatedBy, colUpdatedBy, n) },
 		func() error { return strSec(&s.prevHash, colPrevHash, n) },
@@ -229,8 +299,16 @@ func (s *Segment) validateStructure() error {
 	if s.nodes == 0 {
 		return nil
 	}
+	if s.dict != nil {
+		ids := len(s.dict.snap.Load().ids)
+		for k := 0; k < s.nodes; k++ {
+			if c := s.nodeIDs.atNoRef(k); c < 0 || c >= int64(ids) {
+				return corrupt(secNodes, "node code %d of %d at %d", c, ids, k)
+			}
+		}
+	}
 	for k := 1; k < s.nodes; k++ {
-		if s.nodeIDs.atNoRef(k) <= s.nodeIDs.atNoRef(k-1) {
+		if s.nodeIDAt(k) <= s.nodeIDAt(k-1) {
 			return corrupt(secNodes, "node ids not ascending at %d", k)
 		}
 	}
@@ -251,6 +329,23 @@ func (s *Segment) validateStructure() error {
 		}
 	}
 	return nil
+}
+
+// nodeIDAt returns the NodeID of node ordinal k (validated by Open).
+func (s *Segment) nodeIDAt(k int) int64 {
+	if s.dict != nil {
+		return s.dict.snap.Load().ids[s.nodeIDs.atNoRef(k)]
+	}
+	return s.nodeIDs.atNoRef(k)
+}
+
+// usualHash returns node ordinal ord's usual endpoint hash.
+func (s *Segment) usualHash(ord int) (string, error) {
+	if s.dict != nil {
+		ds := s.dict.snap.Load()
+		return ds.hashString(uint64(ds.first[s.nodeIDs.atNoRef(ord)])), nil
+	}
+	return s.nodeHash.at(ord)
 }
 
 // Len is the number of rows.
@@ -400,7 +495,7 @@ func (s *Segment) build(i int, v *rowVals, withHash bool) (*types.Relationship, 
 		return nil, corrupt(colEnd, "row %d has node ordinals %d->%d of %d", i, v.startOrd, v.endOrd, s.nodes)
 	}
 	r := types.NewRelationship(types.RelID(v.id), s.typeToken,
-		types.NodeID(s.nodeIDs.atNoRef(v.startOrd)), types.NodeID(s.nodeIDs.atNoRef(int(v.endOrd))))
+		types.NodeID(s.nodeIDAt(v.startOrd)), types.NodeID(s.nodeIDAt(int(v.endOrd))))
 	props := v.scratch[:0]
 	for c := range s.props {
 		p := &s.props[c]
@@ -507,16 +602,27 @@ func (s *Segment) build(i int, v *rowVals, withHash bool) (*types.Relationship, 
 func (s *Segment) endpointHash(v *rowVals, section string, i int, code int64, ord int) (string, error) {
 	if code == 0 {
 		if v.nodeKnown == nil {
-			return s.nodeHash.at(ord)
+			return s.usualHash(ord)
 		}
 		if !v.nodeKnown[ord] {
-			h, err := s.nodeHash.at(ord)
+			h, err := s.usualHash(ord)
 			if err != nil {
 				return "", err
 			}
 			v.nodeHashs[ord], v.nodeKnown[ord] = h, true
 		}
 		return v.nodeHashs[ord], nil
+	}
+	if s.dict != nil {
+		ds := s.dict.snap.Load()
+		if code < 1 {
+			return "", corrupt(section, "row %d endpoint-hash code %d", i, code)
+		}
+		hc := uint64(code - 1) // #nosec G115 -- code >= 1 checked above
+		if !ds.validHash(hc) {
+			return "", corrupt(section, "row %d endpoint-hash code %d of %d", i, code, ds.hashCount())
+		}
+		return ds.hashString(hc), nil
 	}
 	n := int64(0)
 	if s.endpointExc.present {
@@ -572,82 +678,253 @@ func (s *Segment) scan(lo, hi int, withHash bool, fn func(i int, r *types.Relati
 		}
 		return nil
 	}
+	return s.scanBatches(lo, hi, func(b *Batch) error {
+		for k := max(0, lo-b.Base); k < b.N && b.Base+k < hi; k++ {
+			r, err := b.row(k, withHash)
+			if err != nil {
+				return err
+			}
+			if err := fn(b.Base+k, r); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// Batch is one page of decoded columns, rows [Base, Base+N) in segment order.
+// It is the single decode step of every bulk read: the row door builds
+// relationships from it (Row), and a columnar consumer reads the exported
+// slices directly without a second decode (ADR-0011 §5.3). The slices are
+// owned by the scan and reused for the next page: a consumer must copy what
+// it keeps.
+type Batch struct {
+	Base, N int
+	// IDs, StartIDs, EndIDs, ValidFrom, ValidTo, TxFrom and Versions hold the
+	// page's system columns as stored (raw ValidFrom 0 stays 0).
+	IDs, StartIDs, EndIDs, ValidFrom, ValidTo, TxFrom, Versions []int64
+
+	seg                                      *Segment
+	startOrds                                []int
+	runStart                                 []bool
+	endOrd, noT, txTo, ca, ua, da, base, aut []int64
+	fc, tc                                   []int64
+	propInts, propPresent, propCodes         [][]int64
+	v                                        rowVals
+}
+
+// Columns returns the declared schema's columns, in the index order the
+// per-column accessors use.
+func (b *Batch) Columns() []Column {
+	out := make([]Column, len(b.seg.props))
+	for c := range b.seg.props {
+		out[c] = b.seg.props[c].col
+	}
+	return out
+}
+
+// IntColumn returns declared column c's stored values for the page (the
+// integer, bool 0/1 or float bits — see the codec) and each row's presence.
+// ok is false for a string column.
+func (b *Batch) IntColumn(c int) (vals []int64, present func(k int) bool, ok bool) {
+	p := &b.seg.props[c]
+	if p.col.Kind == KindString {
+		return nil, nil, false
+	}
+	return b.propInts[c][:b.N], b.presence(c), true
+}
+
+// StringColumn returns declared string column c as dictionary codes plus the
+// dictionary they index: the segment's own sorted dictionary, or the store's
+// shared StringDict (the same values and codes for every segment of the
+// store; its current snapshot is returned). Callers must not modify it. ok is
+// false when the column is not dictionary-encoded (plain or hex32 strings,
+// or a non-string column).
+func (b *Batch) StringColumn(c int) (codes []int64, dict []string, present func(k int) bool, ok bool) {
+	p := &b.seg.props[c]
+	if p.col.Kind != KindString || !p.strs.coded() {
+		return nil, nil, nil, false
+	}
+	return b.propCodes[c][:b.N], p.strs.dictionary(), b.presence(c), true
+}
+
+func (b *Batch) presence(c int) func(k int) bool {
+	if b.seg.props[c].allSet {
+		return func(int) bool { return true }
+	}
+	pr := b.propPresent[c]
+	return func(k int) bool { return pr[k] == 1 }
+}
+
+// Row builds row k of the batch (segment position Base+k) as an unfrozen,
+// independent relationship whose Integrity().Hash is recomputed from the
+// columns.
+func (b *Batch) Row(k int) (*types.Relationship, error) {
+	if k < 0 || k >= b.N {
+		return nil, fmt.Errorf("%w: batch row %d of %d", ErrOutOfRange, k, b.N)
+	}
+	return b.row(k, true)
+}
+
+func (b *Batch) row(k int, withHash bool) (*types.Relationship, error) {
+	s, v := b.seg, &b.v
+	v.startOrd, v.endOrd = b.startOrds[k], b.endOrd[k]
+	v.id, v.version, v.vf, v.vt, v.tx, v.noTemporal = b.IDs[k], b.Versions[k], b.ValidFrom[k], b.ValidTo[k], b.TxFrom[k], b.noT[k]
+	v.txTo, v.createdAt, v.updatedAt, v.deletedAt = b.txTo[k], b.ca[k], b.ua[k], b.da[k]
+	v.baseEntity, v.authLevel, v.fromCode, v.toCode = b.base[k], b.aut[k], b.fc[k], b.tc[k]
+	for c := range s.props {
+		v.propInts[c] = b.propInts[c][k]
+		v.propSet[c] = s.props[c].allSet || b.propPresent[c][k] == 1
+	}
+	return s.build(b.Base+k, v, withHash)
+}
+
+// ScanBatches decodes every page in segment order and calls fn with it
+// until fn returns false (see Batch).
+func (s *Segment) ScanBatches(fn func(b *Batch) bool) error {
+	err := s.scanBatches(0, s.rows, func(b *Batch) error {
+		if !fn(b) {
+			return errStopScan
+		}
+		return nil
+	})
+	if errors.Is(err, errStopScan) {
+		return nil
+	}
+	return err
+}
+
+func (s *Segment) scanBatches(lo, hi int, fn func(b *Batch) error) error {
+	if lo >= hi {
+		return nil
+	}
 	pr := s.pageRows
 	buf := func() []int64 { return make([]int64, pr) }
-	end, vf, vt, tx, id, ver, noT := buf(), buf(), buf(), buf(), buf(), buf(), buf()
-	txTo, ca, ua, da, base, auth, fc, tc := buf(), buf(), buf(), buf(), buf(), buf(), buf(), buf()
-	propInts := make([][]int64, len(s.props))
-	propPresent := make([][]int64, len(s.props))
-	for c := range s.props {
-		propInts[c], propPresent[c] = buf(), buf()
+	b := &Batch{
+		seg: s, IDs: buf(), StartIDs: buf(), EndIDs: buf(), ValidFrom: buf(), ValidTo: buf(), TxFrom: buf(), Versions: buf(),
+		startOrds: make([]int, pr), runStart: make([]bool, pr),
+		endOrd: buf(), noT: buf(), txTo: buf(), ca: buf(), ua: buf(), da: buf(), base: buf(), aut: buf(), fc: buf(), tc: buf(),
+		propInts: make([][]int64, len(s.props)), propPresent: make([][]int64, len(s.props)), propCodes: make([][]int64, len(s.props)),
+		v: rowVals{propInts: make([]int64, len(s.props)), propSet: make([]bool, len(s.props)),
+			nodeHashs: make([]string, s.nodes), nodeKnown: make([]bool, s.nodes)},
 	}
-	runStart := make([]bool, pr)
-	startOrds := make([]int, pr)
-	v := rowVals{propInts: make([]int64, len(s.props)), propSet: make([]bool, len(s.props)),
-		nodeHashs: make([]string, s.nodes), nodeKnown: make([]bool, s.nodes)}
+	for c := range s.props {
+		b.propInts[c], b.propPresent[c] = buf(), buf()
+		if p := &s.props[c]; p.col.Kind == KindString && p.strs.coded() {
+			b.propCodes[c] = buf()
+		}
+	}
 	for p := lo / pr; p*pr < hi; p++ {
 		ps := p * pr
 		cnt := min(pr, s.rows-ps)
+		b.Base, b.N = ps, cnt
 		// Start ordinals of the page's rows, from the out-CSR runs.
 		o := s.startOrdinal(ps)
 		for k := 0; k < cnt; k++ {
 			for o < s.nodes-1 && s.outcsr.atNoRef(o+1) <= int64(ps+k) {
 				o++
 			}
-			startOrds[k] = o
-			runStart[k] = k == 0 || o != startOrds[k-1]
+			b.startOrds[k] = o
+			b.runStart[k] = k == 0 || o != b.startOrds[k-1]
 		}
-		s.end.decodePage(p, cnt, end, nil, runStart)
-		s.vf.decodePage(p, cnt, vf, nil, nil)
+		s.end.decodePage(p, cnt, b.endOrd, nil, b.runStart)
+		s.vf.decodePage(p, cnt, b.ValidFrom, nil, nil)
 		for _, c := range []struct {
 			col *intCol
 			out []int64
-		}{{&s.vt, vt}, {&s.tx, tx}, {&s.txTo, txTo}, {&s.createdAt, ca}, {&s.updatedAt, ua}, {&s.deletedAt, da}} {
-			c.col.decodePage(p, cnt, c.out, vf, nil)
+		}{{&s.vt, b.ValidTo}, {&s.tx, b.TxFrom}, {&s.txTo, b.txTo}, {&s.createdAt, b.ca}, {&s.updatedAt, b.ua}, {&s.deletedAt, b.da}} {
+			c.col.decodePage(p, cnt, c.out, b.ValidFrom, nil)
 		}
 		for _, c := range []struct {
 			col *intCol
 			out []int64
-		}{{&s.relID, id}, {&s.version, ver}, {&s.noTemporal, noT}, {&s.baseEntity, base}, {&s.authLevel, auth}, {&s.fromHash, fc}, {&s.toHash, tc}} {
+		}{{&s.relID, b.IDs}, {&s.version, b.Versions}, {&s.noTemporal, b.noT}, {&s.baseEntity, b.base}, {&s.authLevel, b.aut}, {&s.fromHash, b.fc}, {&s.toHash, b.tc}} {
 			c.col.decodePage(p, cnt, c.out, nil, nil)
 		}
 		for c := range s.props {
-			s.props[c].ints.decodePage(p, cnt, propInts[c], nil, nil)
-			s.props[c].present.decodePage(p, cnt, propPresent[c], nil, nil)
+			s.props[c].ints.decodePage(p, cnt, b.propInts[c], nil, nil)
+			s.props[c].present.decodePage(p, cnt, b.propPresent[c], nil, nil)
+			if b.propCodes[c] != nil {
+				s.props[c].strs.codes.decodePage(p, cnt, b.propCodes[c], nil, nil)
+			}
 		}
-		for k := max(0, lo-ps); k < cnt && ps+k < hi; k++ {
-			v.startOrd, v.endOrd = startOrds[k], end[k]
-			v.id, v.version, v.vf, v.vt, v.tx, v.noTemporal = id[k], ver[k], vf[k], vt[k], tx[k], noT[k]
-			v.txTo, v.createdAt, v.updatedAt, v.deletedAt = txTo[k], ca[k], ua[k], da[k]
-			v.baseEntity, v.authLevel, v.fromCode, v.toCode = base[k], auth[k], fc[k], tc[k]
-			for c := range s.props {
-				v.propInts[c] = propInts[c][k]
-				v.propSet[c] = s.props[c].allSet || propPresent[c][k] == 1
+		for k := 0; k < cnt; k++ {
+			b.StartIDs[k] = s.nodeIDAt(b.startOrds[k])
+			if e := b.endOrd[k]; e >= 0 && e < int64(s.nodes) {
+				b.EndIDs[k] = s.nodeIDAt(int(e))
+			} else {
+				return corrupt(colEnd, "row %d has end ordinal %d of %d", ps+k, e, s.nodes)
 			}
-			r, err := s.build(ps+k, &v, withHash)
-			if err != nil {
-				return err
-			}
-			if err := fn(ps+k, r); err != nil {
-				return err
-			}
+		}
+		if err := fn(b); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
+// IDRange returns the smallest and largest relationship ID in the segment
+// (from the header; 0, 0 when empty).
+func (s *Segment) IDRange() (lo, hi types.RelID) {
+	if s.rows == 0 {
+		return 0, 0
+	}
+	return types.RelID(s.idMin), types.RelID(s.idMax)
+}
+
 // Lookup returns the rows (segment order positions) holding relationship id,
-// one per stored version, ascending by version.
+// one per stored version, ascending by version. It binary-searches the
+// sparse ID sample built at Open and reads at most one sample step of the ID
+// index per match.
 func (s *Segment) Lookup(id types.RelID) ([]int, error) {
 	x := int64(id)
-	k := sort.Search(s.rows, func(j int) bool { return s.idIDs.atNoRef(j) >= x })
+	if s.rows == 0 || x < s.idMin || x > s.idMax {
+		return nil, nil
+	}
+	// The first sample >= x; the run of x (one entry per stored version) may
+	// begin inside the step before it.
+	b := max(0, sort.Search(len(s.idSparse), func(b int) bool { return s.idSparse[b] >= x })-1)
+	c := &s.idIDs
 	var out []int
-	for ; k < s.rows && s.idIDs.atNoRef(k) == x; k++ {
-		row := s.idRows.atNoRef(k)
-		if row < 0 || row >= int64(s.rows) {
-			return nil, corrupt(secIDRows, "entry %d names row %d of %d", k, row, s.rows)
+	j := b * idSparseStep
+	for j < s.rows {
+		p := j / c.pageRows
+		v := c.page(p)
+		base := p * c.pageRows
+		k := j - base
+		var val int64
+		if v.transform == transformDeltaPrev {
+			if j%idSparseStep == 0 {
+				val = s.idSparse[j/idSparseStep]
+			} else { // a page boundary inside the step: restart from the page
+				val = v.first
+				for kk := 1; kk <= k; kk++ {
+					val += v.d(kk)
+				}
+			}
+		} else {
+			val = v.d(k)
 		}
-		out = append(out, int(row))
+		for ; k < v.n; k++ {
+			if k > j-base {
+				if v.transform == transformDeltaPrev {
+					val += v.d(k)
+				} else {
+					val = v.d(k)
+				}
+			}
+			if val > x {
+				return out, nil
+			}
+			if val == x {
+				row := s.idRows.atNoRef(base + k)
+				if row < 0 || row >= int64(s.rows) {
+					return nil, corrupt(secIDRows, "entry %d names row %d of %d", base+k, row, s.rows)
+				}
+				out = append(out, int(row))
+			}
+		}
+		j = base + v.n
 	}
 	return out, nil
 }
@@ -655,8 +932,8 @@ func (s *Segment) Lookup(id types.RelID) ([]int, error) {
 // nodeOrdinal returns the ordinal of node n, or -1.
 func (s *Segment) nodeOrdinal(n types.NodeID) int {
 	x := int64(n)
-	k := sort.Search(s.nodes, func(j int) bool { return s.nodeIDs.atNoRef(j) >= x })
-	if k < s.nodes && s.nodeIDs.atNoRef(k) == x {
+	k := sort.Search(s.nodes, func(j int) bool { return s.nodeIDAt(j) >= x })
+	if k < s.nodes && s.nodeIDAt(k) == x {
 		return k
 	}
 	return -1
@@ -745,3 +1022,91 @@ func (s *Segment) verifyGroups(g0, g1 int) error {
 	}
 	return nil
 }
+
+// IDAt returns the relationship ID of row i (segment order) without building
+// the row. i must be in [0, Len()).
+func (s *Segment) IDAt(i int) (types.RelID, error) {
+	if i < 0 || i >= s.rows {
+		return 0, fmt.Errorf("%w: row %d of %d", ErrOutOfRange, i, s.rows)
+	}
+	return types.RelID(s.relID.atNoRef(i)), nil
+}
+
+// ScanRange decodes rows [lo, hi) in segment order and calls fn until it
+// returns false; rows are built as by Row.
+func (s *Segment) ScanRange(lo, hi int, fn func(i int, r *types.Relationship) bool) error {
+	if lo < 0 || hi > s.rows || lo > hi {
+		return fmt.Errorf("%w: range [%d,%d) of %d", ErrOutOfRange, lo, hi, s.rows)
+	}
+	err := s.scanRange(lo, hi, func(i int, r *types.Relationship) error {
+		if !fn(i, r) {
+			return errStopScan
+		}
+		return nil
+	})
+	if errors.Is(err, errStopScan) {
+		return nil
+	}
+	return err
+}
+
+// ForEachID calls fn with every (relationship ID, row) pair in ascending ID
+// order — the ID index, decoded page by page without building any row —
+// until fn returns false.
+func (s *Segment) ForEachID(fn func(id types.RelID, row int) bool) error {
+	if s.rows == 0 {
+		return nil
+	}
+	pr := s.pageRows
+	ids, rows := make([]int64, pr), make([]int64, pr)
+	for p := 0; p*pr < s.rows; p++ {
+		cnt := min(pr, s.rows-p*pr)
+		s.idIDs.decodePage(p, cnt, ids, nil, nil)
+		s.idRows.decodePage(p, cnt, rows, nil, nil)
+		for k := 0; k < cnt; k++ {
+			if rows[k] < 0 || rows[k] >= int64(s.rows) {
+				return corrupt(secIDRows, "entry %d names row %d of %d", p*pr+k, rows[k], s.rows)
+			}
+			if !fn(types.RelID(ids[k]), int(rows[k])) {
+				return nil
+			}
+		}
+	}
+	return nil
+}
+
+// SectionBytes returns every stored section's encoded size by name (the
+// footer's section directory) — a measurement surface for the scale gates.
+func (s *Segment) SectionBytes() map[string]int {
+	out := make(map[string]int, len(s.secs))
+	for name, sec := range s.secs {
+		out[name] = sec.length
+	}
+	return out
+}
+
+// StringAt returns declared string column c's value for batch row k ("" when
+// absent; see presence via StringColumn/IntColumn or HasValue).
+func (b *Batch) StringAt(c, k int) (string, error) {
+	if k < 0 || k >= b.N || c < 0 || c >= len(b.seg.props) || b.seg.props[c].col.Kind != KindString {
+		return "", fmt.Errorf("%w: batch string column %d row %d", ErrOutOfRange, c, k)
+	}
+	return b.seg.props[c].strs.at(b.Base + k)
+}
+
+// HasValue reports whether batch row k holds declared column c with its
+// declared kind.
+func (b *Batch) HasValue(c, k int) bool {
+	return b.seg.props[c].allSet || b.propPresent[c][k] == 1
+}
+
+// HasFallback reports whether batch row k carries properties outside the
+// declared columns (an undeclared key, or a declared key whose value has
+// another kind): only such a row can hold a requested key its column lacks.
+func (b *Batch) HasFallback(k int) bool {
+	f := &b.seg.fallback
+	return f.present && f.state.atNoRef(b.Base+k) == 1
+}
+
+// HasTemporal reports whether batch row k carries temporal metadata.
+func (b *Batch) HasTemporal(k int) bool { return b.noT[k] == 0 }

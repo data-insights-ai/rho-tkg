@@ -15,7 +15,7 @@ capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 
 **Remaining open work:** no CRITICAL or HIGH items (item 3 closed 2026-09-24). Open:
 
-0. **Column segments on NVMe (ADR-0011, accepted 2026-09-24)** — FEATURE: steps S0–S7 in `docs/adr/0011-column-segments.md` §6, each with a failing test first and a gate measured at the three synthday sizes; integrity block size configurable (`IntegrityBlockRows`, default 64). Goal: resident memory independent of the day size for declared bulk relationship types (~744 B/rel today). **Progress:** S0 done (baseline harness `bench/segment_baseline_test.go`; memory 718–723 B/rel, badger lean does not reproduce 191 — measures 301), S1 done (codec `pkg/graph/internal/segment`; 22–25 B/HOP on disk; decode of full rows below the memory store's zero-copy scan rate, columns alone 24–28 M rows/s). Next: S2.
+0. **Column segments on NVMe (ADR-0011, accepted 2026-09-24)** — FEATURE: steps S0–S7 in `docs/adr/0011-column-segments.md` §6, each with a failing test first and a gate measured at the three synthday sizes; integrity block size configurable (`IntegrityBlockRows`, default 64). Goal: resident memory independent of the day size for declared bulk relationship types (~744 B/rel today). **Progress:** S0 done (baseline harness `bench/segment_baseline_test.go`; memory 718–723 B/rel, badger lean does not reproduce 191 — measures 301), S1 done (codec `pkg/graph/internal/segment`; 22–25 B/HOP on disk; decode of full rows below the memory store's zero-copy scan rate, columns alone 24–28 M rows/s), S2 done on the rho-tkg side (memory store seals declared types into in-RAM segments on a background sealer; `Config.RelSegments`; segments share store-level endpoint and string dictionaries; P6 HOP resident 24.0 / 24.8 / 25.7 B/HOP beyond the memtable, gate ≤ 60 met; legacy 70–71 B/HOP over it because of `support`), S5 done on the rho-tkg side (`ScanRelSegments`, `ScanRelColumns` from segment columns) with the sigma branch `seg/s5-columns` built and tested, not released. **Open from S2/S5:** (a) the ai-soc half of S2's gate — xcheck AGREE on the three synthday days and on BA on Flux with `engine.Open` declaring HOP (ai-soc work, after P6); (b) the per-segment adjacency directory (a node code and two CSR offsets per endpoint per segment, 0.22 → 0.68 B/HOP from 1 to 5 segments) — S4's merge bounds it; (c) a rho-tkg tag carrying S2/S5, then the sigma release that reads it (sigma's `go.mod` still requires v4.38.1); (d) the rel property / temporal indexes and the lazily built belief-watermark and rel-type tx-membership sidecars keep one entry per row when a caller creates or triggers them — check at the ai-soc gate whether ai-soc's queries build them; (e) the row doors on sealed rows stay 3–20× below the zero-copy row store: consumers of bulk types read `ScanRelSegments`. Next: S3.
 1. **Import-under-a-scope** (improvement-not-bug, deferred locking)
 2. **BACKLOG 22** — six TEST-GAP research items (from the retired `.harden/` ledger)
 3. **Temporal adjacency scan cost** (v4.35.0 follow-up) — measure before building anything (see below)
@@ -50,11 +50,11 @@ write the failing two-phase test first; drop the item if the test passes.
 - **(MEDIUM?) `NodeMatchesValidTime` on a current row with unset ValidFrom** answers "valid since
   mint", so a consumer post-filtering current rows accepts today's properties for times
   before the last update, where `NodeAt` returns the older version.
-- **CLOSED 2026-09-24 — TxAt-only doors "nondeterministic"** (seg/s2 backlog "item 4", found
+- **CLOSED 2026-09-24 — TxAt-only doors "nondeterministic"** (seg/s2 backlog "item 4", later item 5, found
   by the S2 oracle). Not map order: the implicit valid-time "now" was the wall clock, below
   the stamps of versions written while the transaction clock ran ahead. Fixed on
-  `fix/txat-determinism` (CHANGELOG Unreleased); seg/s2 drops `segKnownNondeterministic`
-  and its item 4 when it rebases.
+  `fix/txat-determinism` (CHANGELOG Unreleased); seg/s2 dropped `segKnownNondeterministic`
+  and its item after merging v4.38.1: the S2 oracle compares both doors again.
 - **(LOW) Snowflake ID horizon.** 48-bit microseconds from 2026-01-01 end on 2034-12-02
   (arithmetic). Needs a plan before v4 data outlives it; v5 drops clock bits from IDs.
 - **(KNOWN LIMITATION) Future-scheduled close, then delete.** The delete clamps the scheduled

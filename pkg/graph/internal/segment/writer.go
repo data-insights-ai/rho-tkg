@@ -20,11 +20,27 @@ import (
 // package comment for the contract; the returned bytes have already been
 // re-opened and every row decoded and compared with its source.
 func Encode(s Schema, rows []*types.Relationship, opts Options) ([]byte, error) {
-	return encode(s, rows, opts, PageRows)
+	return encode(s, rows, opts, PageRows, nil)
 }
 
-// valueBits maps a declared-kind value to the int64 a column stores: the
-// integer (uint64 bit-cast), 0/1 for bool, the IEEE-754 bits for floats.
+// EncodeWithDicts is Encode for a segment that stores codes into the
+// store-level dictionaries d (see Dicts) instead of its own endpoint table,
+// endpoint hashes and string dictionaries. It interns into d (d only grows)
+// and verifies the result by reopening it with d. The segment must be opened
+// with OpenWithDicts and the same d.
+func EncodeWithDicts(s Schema, rows []*types.Relationship, opts Options, d *Dicts) ([]byte, error) {
+	if d == nil {
+		return nil, fmt.Errorf("%w: nil dictionaries", ErrInvalidOptions)
+	}
+	return encode(s, rows, opts, PageRows, d)
+}
+
+// ValueBits maps a declared-kind value to the int64 a column stores: the
+// integer (uint64 bit-cast), 0/1 for bool, the IEEE-754 bits for floats
+// (0 for any other value).
+func ValueBits(v any) int64 { return valueBits(v) }
+
+// valueBits is ValueBits.
 func valueBits(v any) int64 {
 	switch x := v.(type) {
 	case bool:
@@ -90,7 +106,7 @@ type namedSection struct {
 	data []byte
 }
 
-func encode(s Schema, rows []*types.Relationship, opts Options, pageRows int) ([]byte, error) {
+func encode(s Schema, rows []*types.Relationship, opts Options, pageRows int, dicts *Dicts) ([]byte, error) {
 	if err := s.validate(); err != nil {
 		return nil, err
 	}
@@ -114,10 +130,10 @@ func encode(s Schema, rows []*types.Relationship, opts Options, pageRows int) ([
 			return nil, fmt.Errorf("%w: row %d is nil", ErrInvalidRow, i)
 		}
 		if r.TypeToken().Value() != s.TypeToken {
-			return nil, fmt.Errorf("%w: row %d (id %d) has type token %d, schema %d", ErrInvalidRow, i, r.ID(), r.TypeToken().Value(), s.TypeToken)
+			return nil, rowErr(r, ErrInvalidRow, "row %d (id %d) has type token %d, schema %d", i, r.ID(), r.TypeToken().Value(), s.TypeToken)
 		}
 		if ig := r.Integrity(); ig == nil || !isLowerHex64(ig.Hash) {
-			return nil, fmt.Errorf("%w: row %d (id %d) carries no stored 64-hex hash", ErrHashMismatch, i, r.ID())
+			return nil, rowErr(r, ErrHashMismatch, "row %d (id %d) carries no stored 64-hex hash", i, r.ID())
 		}
 		if tm := r.Temporal(); tm != nil {
 			vfIn[i] = int64(tm.ValidFrom)
@@ -218,13 +234,17 @@ func encode(s Schema, rows []*types.Relationship, opts Options, pageRows int) ([
 		if len(fallback) > 0 {
 			b, err := storeutil.MarshalPropertySlice(fallback)
 			if err != nil {
-				return nil, fmt.Errorf("%w: row id %d: fallback properties: %v", ErrInvalidRow, r.ID(), err)
+				return nil, rowErr(r, ErrInvalidRow, "row id %d: fallback properties: %v", r.ID(), err)
 			}
 			w.fallback[i] = b
 		}
 	}
+	if dicts.nodeDict() != nil {
+		w.internNodes(dicts.Nodes, nodes)
+	}
+	w.dicts = dicts
 	out := w.assemble(s, blockRows, pageRows, nodes, byID)
-	if err := verifySealed(out, rows, order); err != nil {
+	if err := verifySealed(out, rows, order, dicts); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -239,10 +259,16 @@ type columns struct {
 	createdBy, updatedBy, prevHash, authorID, authorizedBy       []string
 	fromHash, toHash, leaves                                     []string
 	nodeHash                                                     []string
-	signature, fallback                                          [][]byte
-	ints                                                         [][]int64
-	strs                                                         [][]string
-	present                                                      [][]int64
+	// Shared-dictionary encoding (dict != nil): node codes per ordinal and
+	// each row's endpoint-hash codes (0 = the node's first hash, k = hash
+	// code k-1).
+	shared                      bool
+	nodeCodes, fromDict, toDict []int64
+	dicts                       *Dicts
+	signature, fallback         [][]byte
+	ints                        [][]int64
+	strs                        [][]string
+	present                     [][]int64
 }
 
 func newColumns(n, nodes int, cols []Column) *columns {
@@ -290,8 +316,12 @@ func (w *columns) assemble(s Schema, blockRows, pageRows int, nodes []int64, byI
 	vsVF := intEncodeCtx{allowed: allow(transformNone, transformMinusRef), ref: w.vf}
 
 	// Node-level sections.
-	addInt(secNodes, nodes, none)
-	addStr(secNodeHash, w.nodeHash)
+	if w.shared {
+		addInt(secNodes, w.nodeCodes, none)
+	} else {
+		addInt(secNodes, nodes, none)
+		addStr(secNodeHash, w.nodeHash)
+	}
 	outcsr := make([]int64, w.nodes+1)
 	inOff := make([]int64, w.nodes+1)
 	for i := 0; i < n; i++ {
@@ -354,10 +384,15 @@ func (w *columns) assemble(s Schema, blockRows, pageRows int, nodes []int64, byI
 	addInt(colDeletedAt, w.deletedAt, vsVF)
 	addInt(colBaseEntity, w.baseEntity, none)
 	addInt(colAuthLevel, w.authLevel, none)
-	fromCode, toCode, exc := w.endpointCodes()
-	addInt(colFromHash, fromCode, none)
-	addInt(colToHash, toCode, none)
-	addStr(secEndpointExc, exc)
+	if w.shared {
+		addInt(colFromHash, w.fromDict, none)
+		addInt(colToHash, w.toDict, none)
+	} else {
+		fromCode, toCode, exc := w.endpointCodes()
+		addInt(colFromHash, fromCode, none)
+		addInt(colToHash, toCode, none)
+		addStr(secEndpointExc, exc)
+	}
 	addStr(colCreatedBy, w.createdBy)
 	addStr(colUpdatedBy, w.updatedBy)
 	addStr(colPrevHash, w.prevHash)
@@ -366,10 +401,17 @@ func (w *columns) assemble(s Schema, blockRows, pageRows int, nodes []int64, byI
 	addBytes(colSignature, w.signature)
 	for c, col := range s.Columns {
 		if col.Kind == KindString {
+			if sd := w.dicts.stringDict(col.Name); sd != nil && !allEmpty(w.strs[c]) {
+				if codes, ok := sd.intern(w.strs[c]); ok {
+					secs = append(secs, namedSection{propPrefix + col.Name, encodeSharedStrCol(codes, pageRows)})
+					goto presence
+				}
+			}
 			addStr(propPrefix+col.Name, w.strs[c])
 		} else {
 			addInt(propPrefix+col.Name, w.ints[c], none)
 		}
+	presence:
 		if !allOnes(w.present[c]) {
 			secs = append(secs, namedSection{presencePrefix + col.Name, encodeIntCol(w.present[c], pageRows, none)})
 		}
@@ -378,6 +420,9 @@ func (w *columns) assemble(s Schema, blockRows, pageRows int, nodes []int64, byI
 
 	// Header, sections, footer, trailer.
 	h := header{format: CurrentFormatVersion, typeToken: int(s.TypeToken), pageRows: pageRows, rows: n, nodes: w.nodes}
+	if w.shared {
+		h.flags = flagNodeDict
+	}
 	if n > 0 {
 		h.idMin, h.idMax, h.vfMin, h.vfMax = math.MaxInt64, math.MinInt64, math.MaxInt64, math.MinInt64
 		for i := 0; i < n; i++ {
@@ -385,14 +430,22 @@ func (w *columns) assemble(s Schema, blockRows, pageRows int, nodes []int64, byI
 			h.vfMin, h.vfMax = min(h.vfMin, w.vf[i]), max(h.vfMax, w.vf[i])
 		}
 	}
-	out := putHeader(h)
+	hb := putHeader(h)
 	f := footer{version: CurrentFooterVersion, blockRows: blockRows, typeName: s.TypeName, columns: s.Columns}
 	copy(f.root[:], root.Sum(nil))
+	off := len(hb)
 	for _, sec := range secs {
-		f.sections = append(f.sections, sectionInfo{name: sec.name, offset: len(out), length: len(sec.data), crc: crc32.Checksum(sec.data, castagnoli)})
-		out = append(out, sec.data...)
+		f.sections = append(f.sections, sectionInfo{name: sec.name, offset: off, length: len(sec.data), crc: crc32.Checksum(sec.data, castagnoli)})
+		off += len(sec.data)
 	}
 	fb := putFooter(f)
+	// One exact-size allocation: an in-RAM segment keeps these bytes for its
+	// lifetime, so append's growth slack would be resident too.
+	out := make([]byte, 0, off+len(fb)+trailerSize)
+	out = append(out, hb...)
+	for _, sec := range secs {
+		out = append(out, sec.data...)
+	}
 	out = append(out, fb...)
 	out = binary.LittleEndian.AppendUint32(out, uint32(len(fb))) // #nosec G115 -- a footer is a few KB
 	out = binary.LittleEndian.AppendUint32(out, crc32.Checksum(fb, castagnoli))
@@ -406,6 +459,33 @@ func allOnes(vals []int64) bool {
 		}
 	}
 	return true
+}
+
+// internNodes interns the segment's endpoints and their hashes into d and
+// fills the shared-dictionary columns. A node new to d takes the hash its
+// first row in this segment carries as its first hash.
+func (w *columns) internNodes(d *NodeDict, nodes []int64) {
+	w.shared = true
+	txn := d.begin()
+	defer txn.commit()
+	w.nodeCodes = make([]int64, len(nodes))
+	first := make([]string, len(nodes))
+	for ord, id := range nodes {
+		c := txn.node(id, w.nodeHash[ord])
+		w.nodeCodes[ord] = int64(c)
+		first[ord] = txn.s.hashString(uint64(txn.s.first[c]))
+	}
+	w.fromDict, w.toDict = make([]int64, w.n), make([]int64, w.n)
+	for i := 0; i < w.n; i++ {
+		if so := w.startOrd[i]; w.fromHash[i] != first[so] {
+			c := txn.hash(uint32(w.nodeCodes[so]), w.fromHash[i]) // #nosec G115 -- a code
+			w.fromDict[i] = int64(c) + 1
+		}
+		if eo := w.end[i]; w.toHash[i] != first[eo] {
+			c := txn.hash(uint32(w.nodeCodes[eo]), w.toHash[i]) // #nosec G115 -- a code
+			w.toDict[i] = int64(c) + 1
+		}
+	}
 }
 
 // endpointCodes encodes each row's endpoint hashes as 0 (the node's usual
@@ -466,19 +546,19 @@ func (w *columns) pageIndex(pageRows int) []byte {
 // verifySealed re-opens the written bytes and requires every decoded row to
 // equal its source row and to recompute its stored hash (ADR-0011 §4.3:
 // sealing refuses on any mismatch — lesson 44 applied to our own encoder).
-func verifySealed(data []byte, rows []*types.Relationship, order []int) error {
-	seg, err := Open(data)
+func verifySealed(data []byte, rows []*types.Relationship, order []int, dicts *Dicts) error {
+	seg, err := OpenWithDicts(data, dicts)
 	if err != nil {
 		return fmt.Errorf("segment: writer produced a segment its reader rejects: %w", err)
 	}
 	return seg.scanRange(0, seg.rows, func(i int, got *types.Relationship) error {
 		want := rows[order[i]]
 		if diff := rowDiff(want, got); diff != "" {
-			return fmt.Errorf("%w: id %d version %d does not round-trip: %s", ErrInvalidRow, want.ID(), want.Version(), diff)
+			return rowErr(want, ErrInvalidRow, "id %d version %d does not round-trip: %s", want.ID(), want.Version(), diff)
 		}
 		if stored := want.Integrity().Hash; got.Integrity().Hash != stored {
-			return fmt.Errorf("%w: id %d version %d: sealed columns hash to %s, stored hash %s",
-				ErrHashMismatch, want.ID(), want.Version(), got.Integrity().Hash, stored)
+			return rowErr(want, ErrHashMismatch, "id %d version %d: sealed columns hash to %s, stored hash %s",
+				want.ID(), want.Version(), got.Integrity().Hash, stored)
 		}
 		return nil
 	})

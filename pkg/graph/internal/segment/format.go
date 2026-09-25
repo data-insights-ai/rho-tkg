@@ -18,13 +18,18 @@ const (
 	// pageIndexEntry: min/max of valid_from, valid_to, tx_from, rel_id (8 ×
 	// i64) and a flags byte (bit 0: some row of the page has an open valid_to).
 	pageIndexEntry = 8*8 + 1
+
+	// flagNodeDict: endpoint identities and hashes are codes into the
+	// store's NodeDict ("nodes" holds node codes, no "nodehash" or
+	// "ephash.exc" section, endpoint-hash columns hold 0 or 1+hash code).
+	flagNodeDict = 1
 )
 
 // Section names. Row columns hold rowCount values in segment order; node
 // columns hold nodeCount values in node-ordinal order (ordinal = rank of the
 // NodeID among the segment's distinct endpoints).
 const (
-	secNodes        = "nodes"        // int, node ordinal -> NodeID, ascending
+	secNodes        = "nodes"        // int, node ordinal -> NodeID, ascending (NodeDict mode: -> node code, NodeIDs ascending)
 	secNodeHash     = "nodehash"     // string, node ordinal -> the node's usual endpoint hash
 	secOutCSR       = "outcsr"       // int, nodeCount+1 row offsets of each start run
 	secInOff        = "incsr.off"    // int, nodeCount+1 offsets into incsr.perm
@@ -117,7 +122,7 @@ func readHeader(data []byte) (header, error) {
 	if h.format != CurrentFormatVersion {
 		return header{}, fmt.Errorf("%w: segment format %d (this build reads %d)", ErrUnsupportedVersion, h.format, CurrentFormatVersion)
 	}
-	if h.flags != 0 {
+	if h.flags&^flagNodeDict != 0 {
 		return header{}, corrupt("header", "unknown flags %#x", h.flags)
 	}
 	if !pow2UpTo4096(h.pageRows) {
