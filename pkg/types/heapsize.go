@@ -40,6 +40,8 @@ var (
 	approxRelIntegrity  = int(unsafe.Sizeof(RelIntegrity{}))
 	approxNodeStruct    = int(unsafe.Sizeof(Node{}))
 	approxRelStruct     = int(unsafe.Sizeof(Relationship{}))
+	approxRelMeta       = int(unsafe.Sizeof(relMeta{}))
+	approxNodeMeta      = int(unsafe.Sizeof(nodeMeta{}))
 )
 
 // approxValueBytes estimates the heap bytes held by a property value.
@@ -123,6 +125,9 @@ func (n *Node) ApproxHeapBytes() int {
 	if len(n.extraLabels) > 0 {
 		size += approxSliceHeader + len(n.extraLabels)*2
 	}
+	if n.meta != nil {
+		size += approxNodeMeta
+	}
 	if n.temporal != nil {
 		size += approxTemporalMeta + len(n.temporal.CreatedBy) + len(n.temporal.UpdatedBy)
 	}
@@ -139,6 +144,9 @@ func (r *Relationship) ApproxHeapBytes() int {
 		return 0
 	}
 	size := approxRelStruct
+	if r.meta != nil {
+		size += approxRelMeta
+	}
 	if r.temporal != nil {
 		size += approxTemporalMeta + len(r.temporal.CreatedBy) + len(r.temporal.UpdatedBy)
 	}

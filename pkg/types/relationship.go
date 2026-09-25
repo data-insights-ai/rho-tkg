@@ -24,8 +24,9 @@ func (id RelID) SnowflakeID() snowflake.ID { return snowflake.ID(id) }
 // All fields are unexported; access is through methods only.
 //
 // Layout: fields are ordered by descending alignment to eliminate internal
-// padding. 8-byte fields first, then 4-byte, then 2-byte. Total: 72 bytes
-// with only 2 bytes of trailing padding (vs. 80 bytes with naive ordering).
+// padding. 8-byte fields first, then 4-byte, then 2-byte. Total: 80 bytes,
+// the allocator's size class for the former 72-byte layout, so the compact
+// metadata pointer (P7) costs nothing per object.
 type Relationship struct {
 	id         RelID             // 8B, offset  0
 	startID    NodeID            // 8B, offset  8
@@ -33,10 +34,11 @@ type Relationship struct {
 	properties PropertySlice     // 24B (slice header), offset 24
 	temporal   *TemporalMetadata // 8B, offset 48
 	integrity  *RelIntegrity     // 8B, offset 56
-	version    uint32            // 4B, offset 64
-	relType    relTypeToken      // 2B, offset 68
-	frozen     bool              // 1B, offset 70 — occupies former trailing padding
-	// 1B trailing padding → 72B total
+	meta       *relMeta          // 8B, offset 64 — compact frozen metadata (compact.go); nil otherwise
+	version    uint32            // 4B, offset 72
+	relType    relTypeToken      // 2B, offset 76
+	frozen     bool              // 1B, offset 78
+	// 1B trailing padding → 80B total
 }
 
 // NewRelationship creates a Relationship with typed IDs for all parties.
@@ -352,6 +354,10 @@ func (r *Relationship) Temporal() *TemporalMetadata {
 		cp := *r.temporal
 		return &cp
 	}
+	if m := r.meta; m != nil {
+		cp := TemporalMetadata{ValidFrom: m.validFrom, ValidTo: m.validTo, TxFrom: m.txFrom}
+		return &cp
+	}
 	return r.temporal
 }
 
@@ -365,7 +371,13 @@ func (r *Relationship) Temporal() *TemporalMetadata {
 // two values by copy has nothing to alias, so it costs no allocation — which matters
 // wherever bounds are read once per entity across a whole relationship type.
 func (r *Relationship) ValidRange() (from, to Instant, ok bool) {
-	if r == nil || r.temporal == nil {
+	if r == nil {
+		return 0, 0, false
+	}
+	if r.meta != nil {
+		return r.meta.validFrom, r.meta.validTo, true
+	}
+	if r.temporal == nil {
 		return 0, 0, false
 	}
 	return r.temporal.ValidFrom, r.temporal.ValidTo, true
@@ -395,6 +407,9 @@ func (r *Relationship) SetTemporal(tm *TemporalMetadata) {
 func (r *Relationship) Integrity() *RelIntegrity {
 	if r == nil {
 		return nil
+	}
+	if r.meta != nil {
+		return r.meta.integrity()
 	}
 	if r.frozen {
 		return r.integrity.DeepCopy()
@@ -430,6 +445,11 @@ func (r *Relationship) DeepCopy() *Relationship {
 		version: r.version,
 	}
 	cp.properties = r.properties.DeepCopy()
+	if r.meta != nil {
+		cp.temporal = &TemporalMetadata{ValidFrom: r.meta.validFrom, ValidTo: r.meta.validTo, TxFrom: r.meta.txFrom}
+		cp.integrity = r.meta.integrity()
+		return cp
+	}
 	if r.temporal != nil {
 		tm := *r.temporal
 		cp.temporal = &tm

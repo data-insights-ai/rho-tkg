@@ -7,13 +7,16 @@ import (
 )
 
 // The frozen flag must occupy the documented trailing padding — growing the
-// structs would regress every store cache and scan buffer.
+// structs would regress every store cache and scan buffer. (P7 added the
+// compact-metadata pointer: Relationship 80 B is the allocator's size class of
+// the former 72 B; Node 88 B pays 16 B per object against 192 B of metadata
+// saved per cached row.)
 func TestFrozen_FlagFitsInPadding(t *testing.T) {
-	if s := unsafe.Sizeof(Node{}); s != 80 {
-		t.Fatalf("Node grew to %d bytes (want 80)", s)
+	if s := unsafe.Sizeof(Node{}); s != 88 {
+		t.Fatalf("Node grew to %d bytes (want 88)", s)
 	}
-	if s := unsafe.Sizeof(Relationship{}); s != 72 {
-		t.Fatalf("Relationship grew to %d bytes (want 72)", s)
+	if s := unsafe.Sizeof(Relationship{}); s != 80 {
+		t.Fatalf("Relationship grew to %d bytes (want 80)", s)
 	}
 }
 

@@ -226,6 +226,7 @@ type Node struct {
     extraLabels  []labelToken      // nil for single-label nodes (99% case)
     temporal     *TemporalMetadata
     integrity    *NodeIntegrity    // SHA-256 hash chain
+    meta         *nodeMeta         // compact frozen metadata (store-cached first versions)
     version      uint32            // monotonic version counter
     primaryLabel labelToken        // always set (nodes require >=1 label)
     frozen       bool              // set by the store on cached rows; mutation is rejected
@@ -234,7 +235,7 @@ type Node struct {
 ```
 
 Every field is unexported — access is through methods only. Field order is by
-descending alignment (80B total; see `docs/architecture.md` "Core Types").
+descending alignment (88B total; see `docs/architecture.md` "Core Types").
 
 **Token-level methods (always work, no resolver needed):**
 
@@ -271,6 +272,7 @@ type Relationship struct {
     properties PropertySlice
     temporal   *TemporalMetadata
     integrity  *RelIntegrity
+    meta       *relMeta          // compact frozen metadata (store-cached first versions)
     version    uint32
     relType    relTypeToken      // exactly one type
     frozen     bool              // set by the store on cached rows; mutation is rejected
@@ -279,7 +281,7 @@ type Relationship struct {
 ```
 
 Same discipline as `Node`: every field unexported, ordered by descending
-alignment (72B total).
+alignment (80B total).
 
 **Token-level methods:**
 

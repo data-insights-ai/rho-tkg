@@ -145,8 +145,9 @@ These rules exist because every single one was violated at least once. Do not sk
 
 | File | Purpose |
 |---|---|
-| `node.go` | Node (graph vertex, 80B) — `nodeID` wrapping `snowflake.ID`, labels as `labelToken`, properties, version, temporal, integrity |
-| `relationship.go` | Relationship (directed edge, 72B) — `relID`, `relTypeToken`, start/end as `nodeID`, properties, version, temporal, integrity |
+| `node.go` | Node (graph vertex, 88B) — `nodeID` wrapping `snowflake.ID`, labels as `labelToken`, properties, version, temporal, integrity, compact frozen metadata |
+| `relationship.go` | Relationship (directed edge, 80B) — `relID`, `relTypeToken`, start/end as `nodeID`, properties, version, temporal, integrity, compact frozen metadata |
+| `compact.go` | `CompactFrozenCopy` (P7) — the compact frozen form stores cache: a first version's temporal + integrity metadata in one object (rel 96 B with the 32-byte hash as raw bytes, node 48 B), every accessor rebuilding the public structs exactly; any other shape keeps the ordinary objects |
 | `propertyslice.go` | Sorted key-value store with binary search; recursive exact-type allowlist validation aligned with hash/copy/wire support; depth-limited to 32 levels; `[]float32` support |
 | `shadow.go` | Constants for virtual read-only `tkg_*` properties |
 | `temporal.go` | `Instant` type (Unix ms), `entityID`, `TemporalMetadata` struct |
@@ -223,7 +224,7 @@ Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID`
 - **snowflake.ID everywhere**: All IDs are `snowflake.ID` wrapped in opaque types (`nodeID`, `relID`, `entityID`). Never use `int64` or `string` for entity IDs.
 - **Dual generators**: Nodes use even node field (`SnowflakeNodeID*2`), rels use odd (`*2+1`). Guarantees value-level uniqueness. Range: 0-15 (16 instances). Epoch: `2026-01-01`.
 - **Strict encapsulation**: All fields unexported. Access through methods only.
-- **Struct alignment**: Node (80B), Relationship (72B) packed by descending alignment. Verify with `unsafe.Sizeof`.
+- **Struct alignment**: Node (88B), Relationship (80B) packed by descending alignment. Verify with `unsafe.Sizeof`.
 - **Token 0 reserved**: `HasLabelToken(0)` and `HasTypeToken(0)` always return false.
 - **Validate before generating IDs**: `AddNode`/`AddRelationship` validate before `NextNodeID()`/`NextRelID()`.
 - **Validate names before unrelated work**: label/type mutation inputs, registry token helpers, imported registries, and rehydrated registries reject empty, whitespace-only, and overlong names before property validation, entity lookup, registry lookup, transaction snapshots, ID generation, token allocation, or store writes. Boolean name helpers fail closed for malformed names.
@@ -249,7 +250,7 @@ Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID`
 
 - **Entity nil guards**: public `types.Node`, `types.Relationship`, pointer-receiver `PropertySlice`, metadata, and integrity helper methods must not panic on nil receivers. Error-returning methods return type-layer nil sentinels; no-error accessors return zero values, no-error mutators no-op, nil `PropertySlice` pointer mutators return `ErrNilPropertySlice`, and nil integrity `DeepCopy` returns nil.
 - **Accessors/setters**: `ExtraLabelTokens()`, `AllLabelTokens()`, `Properties()`, `PropertiesMap()`, `ToMap()`, `DeepCopy()` always return independent copies. `NewPropertySlice`, `PropertySlice.Set()`, `Node.SetProperty()`, and `Relationship.SetProperty()` must deep-copy accepted reference values before storing them, validate the post-copy value, and preserve custom value-vs-pointer shape.
-- **Store boundary (since v4.5.0 — frozen rows)**: `Put*` deep-copy before caching, then freeze the cached entry. Point reads (`GetNode`/`GetRelationship`) deep-copy on return — callers get mutable, independent copies. Plural/scan reads (`*ByLabel*`, `All*`, `Get*ByIDs`, adjacency, temporal/index scans) return shared FROZEN pointers — zero-copy, safe because frozen entities reject mutation (`ErrFrozenNode`/`ErrFrozenRelationship` from error-returning mutators, panic from void/bool mutators). `DeepCopy()` thaws. Rows for duplicate requested IDs may alias the same frozen pointer.
+- **Store boundary (since v4.5.0 — frozen rows)**: `Put*` deep-copy before caching, then freeze the cached entry (the memory store caches `CompactFrozenCopy`: first versions keep their temporal + integrity metadata in one compact object; a new metadata field must be added to `compact.go`'s fit check and rebuild, or it is silently dropped from cached first versions). Point reads (`GetNode`/`GetRelationship`) deep-copy on return — callers get mutable, independent copies. Plural/scan reads (`*ByLabel*`, `All*`, `Get*ByIDs`, adjacency, temporal/index scans) return shared FROZEN pointers — zero-copy, safe because frozen entities reject mutation (`ErrFrozenNode`/`ErrFrozenRelationship` from error-returning mutators, panic from void/bool mutators). `DeepCopy()` thaws. Rows for duplicate requested IDs may alias the same frozen pointer.
 - **Exception**: `Temporal()` and `Integrity()` return internal pointer (graph layer needs mutation access).
 
 ### Properties

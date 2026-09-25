@@ -8,15 +8,14 @@ import "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 // one fails fast (types.ErrFrozenNode or a panic from void mutators) instead
 // of silently corrupting the store. Point reads (GetNode) still return
 // mutable deep copies because graph-core write flows mutate what they fetch.
+//
+// The copy is in the compact frozen form (P7, types.CompactFrozenCopy): a
+// first version's temporal and integrity metadata in one small object.
 func freezeNodeCopy(n *types.Node) *types.Node {
-	cp := n.DeepCopy()
-	cp.Freeze()
-	return cp
+	return n.CompactFrozenCopy()
 }
 
 // freezeRelCopy is the relationship counterpart of freezeNodeCopy.
 func freezeRelCopy(r *types.Relationship) *types.Relationship {
-	cp := r.DeepCopy()
-	cp.Freeze()
-	return cp
+	return r.CompactFrozenCopy()
 }
