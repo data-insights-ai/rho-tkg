@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.40.0] - 2026-09-25
+
+Minor release: ADR-0011 S3 (sealed segments as self-contained files on NVMe with `Config.SegmentDir`:
+mmap, manifest, crash recovery; Go heap +0.2–0.3 B/HOP from 790 K to 12.6 M rows, write median
+within 0.1 % of S2) and P7 (the memory row store keeps a P6 HOP relationship in 388–390 B instead of
+608–611 B, a node in 379–401 B instead of 507–531 B; content hashes and wire bytes unchanged). Gates
+on the released tree: `make fmt-check`, `make check`, `make test-race`, `make cover-gate`,
+`make lint-docker`, `make security-docker`, `make vulncheck-docker` and the docs-consistency tests
+exit 0.
+
 ### Added
 
 - **ADR-0011 S3: sealed segments as self-contained files on NVMe (`Config.SegmentDir`).** With a
