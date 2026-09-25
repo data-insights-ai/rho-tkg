@@ -14,8 +14,9 @@ package memory_test
 //	B/rel  = (graph bytes of the run - graph bytes of the nodes-only run) / rels
 //	B/node = (graph bytes of the nodes-only run - an empty graph) / nodes
 //
-// Throughput: write (relationships only), g.Rels().ByType / ForEachByType over
-// HOP, g.Rels().Get over 20,000 random HOP IDs.
+// Throughput: write (relationships only, one pass), g.Rels().ByType /
+// ForEachByType over HOP and g.Rels().Get over 200,000 random HOP IDs (best of
+// three passes each).
 //
 // RHO_TKG_P7_HEAPPROFILE=<dir> writes an in-use heap profile (after two GCs,
 // runtime.MemProfileRate = 4096) per run, for `go tool pprof -sample_index=
@@ -145,29 +146,43 @@ func runP7(tb testing.TB, sz synthhop.Size, run p7Run, profile string) p7Result 
 		}
 	}
 	if res.hop > 0 {
-		t0 := time.Now()
-		rs, err := g.Rels().ByType("HOP", graph.QueryOpts{})
-		if err != nil || len(rs) != res.hop {
-			tb.Fatalf("ByType: %d rows, %v", len(rs), err)
-		}
-		res.byType = float64(len(rs)) / time.Since(t0).Seconds()
-		rs = nil
-		runtime.KeepAlive(rs)
-		n := 0
-		t0 = time.Now()
-		if err := g.Rels().ForEachByType("HOP", graph.QueryOpts{}, func(*types.Relationship) bool { n++; return true }); err != nil || n != res.hop {
-			tb.Fatalf("ForEachByType: %d rows, %v", n, err)
-		}
-		res.forEach = float64(n) / time.Since(t0).Seconds()
-		rng := rand.New(rand.NewPCG(1, 2)) // #nosec G404 -- measurement sample
-		const probes = 20_000
-		t0 = time.Now()
-		for i := 0; i < probes; i++ {
-			if _, err := g.Rels().Get(ctx, hopIDs[rng.IntN(len(hopIDs))]); err != nil {
-				tb.Fatal(err)
+		// Best of three passes per door (the first pass also warms caches).
+		best := func(pass func() (int, time.Duration)) float64 {
+			rate := 0.0
+			for i := 0; i < 3; i++ {
+				n, d := pass()
+				rate = max(rate, float64(n)/d.Seconds())
 			}
+			return rate
 		}
-		res.gets = probes / time.Since(t0).Seconds()
+		res.byType = best(func() (int, time.Duration) {
+			t0 := time.Now()
+			rs, err := g.Rels().ByType("HOP", graph.QueryOpts{})
+			d := time.Since(t0)
+			if err != nil || len(rs) != res.hop {
+				tb.Fatalf("ByType: %d rows, %v", len(rs), err)
+			}
+			return len(rs), d
+		})
+		res.forEach = best(func() (int, time.Duration) {
+			n := 0
+			t0 := time.Now()
+			if err := g.Rels().ForEachByType("HOP", graph.QueryOpts{}, func(*types.Relationship) bool { n++; return true }); err != nil || n != res.hop {
+				tb.Fatalf("ForEachByType: %d rows, %v", n, err)
+			}
+			return n, time.Since(t0)
+		})
+		rng := rand.New(rand.NewPCG(1, 2)) // #nosec G404 -- measurement sample
+		const probes = 200_000
+		res.gets = best(func() (int, time.Duration) {
+			t0 := time.Now()
+			for i := 0; i < probes; i++ {
+				if _, err := g.Rels().Get(ctx, hopIDs[rng.IntN(len(hopIDs))]); err != nil {
+					tb.Fatal(err)
+				}
+			}
+			return probes, time.Since(t0)
+		})
 	}
 	if err := g.Close(); err != nil {
 		tb.Fatal(err)

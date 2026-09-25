@@ -96,7 +96,9 @@ func compactRelMeta(tm *TemporalMetadata, ig *RelIntegrity) (*relMeta, bool) {
 // integrity rebuilds the RelIntegrity the row was compacted from: a fresh,
 // caller-owned object with the same hash strings.
 func (m *relMeta) integrity() *RelIntegrity {
-	return &RelIntegrity{Hash: hex.EncodeToString(m.hash[:]), FromNodeHash: m.fromNodeHash, ToNodeHash: m.toNodeHash}
+	var buf [64]byte // one allocation for the string (hex.EncodeToString makes two)
+	hex.Encode(buf[:], m.hash[:])
+	return &RelIntegrity{Hash: string(buf[:]), FromNodeHash: m.fromNodeHash, ToNodeHash: m.toNodeHash}
 }
 
 // compactNodeMeta packs tm and ig, or reports false when the compact form

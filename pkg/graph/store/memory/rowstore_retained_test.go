@@ -24,6 +24,15 @@ import (
 // the graph dropped.
 func retainedGraphBytes(tb testing.TB, sz synthhop.Size, withRels bool) (bytes int64, nodes, rels int) {
 	tb.Helper()
+	// The smaller of two runs: a background goroutine left by an earlier test
+	// can only add to one reading, never subtract.
+	b1, nodes, rels := retainedGraphBytesOnce(tb, sz, withRels)
+	b2, _, _ := retainedGraphBytesOnce(tb, sz, withRels)
+	return min(b1, b2), nodes, rels
+}
+
+func retainedGraphBytesOnce(tb testing.TB, sz synthhop.Size, withRels bool) (bytes int64, nodes, rels int) {
+	tb.Helper()
 	ctx := context.Background()
 	g, err := graph.New(graph.Config{Store: memory.New(), Validation: graph.ValidationLimits{AllowSelfLoops: true}, AllowTxBackfill: true})
 	if err != nil {
