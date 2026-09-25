@@ -570,8 +570,9 @@ func segOracleFact(id types.RelID, start, end types.NodeID, vf, vt, tx int64, v 
 	return b.String()
 }
 
-// scanFacts is the columnar door's view of HOP (sorted), rowFacts the row
-// door's; on the declared replica they must agree.
+// scanFacts is the columnar door's view of HOP in the order it hands rows
+// out, rowFacts the row door's (ID order); on the declared replica they must
+// agree row for row, in order.
 func (o *segOracle) scanFacts(g *graph.Graph) ([]string, bool) {
 	var out []string
 	ok, err := g.ScanRelSegments(segOracleHOP, segOracleProps, func(b *graph.RelSegmentBatch) bool {
@@ -597,7 +598,6 @@ func (o *segOracle) scanFacts(g *graph.Graph) ([]string, bool) {
 	if err != nil {
 		o.t.Fatalf("ScanRelSegments: %v", err)
 	}
-	sort.Strings(out)
 	return out, ok
 }
 
@@ -618,7 +618,6 @@ func (o *segOracle) rowFacts(g *graph.Graph) []string {
 		}
 		out = append(out, segOracleFact(r.ID(), r.StartNodeID(), r.EndNodeID(), vf, vt, tx, r.Version(), vals))
 	}
-	sort.Strings(out)
 	return out
 }
 
@@ -629,6 +628,9 @@ func (o *segOracle) compare(stage string) {
 	}
 	scanGot, ok := o.scanFacts(o.declared)
 	rowWant := o.rowFacts(o.plain)
+	if again, _ := o.scanFacts(o.declared); strings.Join(again, "\n") != strings.Join(scanGot, "\n") {
+		o.t.Fatalf("%s: ScanRelSegments handed rows out in a different order on a second call", stage)
+	}
 	if !ok || strings.Join(scanGot, "\n") != strings.Join(rowWant, "\n") {
 		o.t.Fatalf("%s: ScanRelSegments (ok %t, %d rows) differs from the row door (%d rows):\n%s", stage, ok, len(scanGot), len(rowWant),
 			segFirstDiff(strings.Join(scanGot, "\n"), strings.Join(rowWant, "\n")))

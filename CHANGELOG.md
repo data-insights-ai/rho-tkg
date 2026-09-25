@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`ScanRelSegments` hands rows out in ascending ID order, the row doors' order, identical on
+  every call.** v4.39.0 handed sealed rows out in segment storage order (start, end,
+  valid_from) and the unsealed rows in Go map order, so the columnar door's order differed from
+  `Rels().ByType` / `ForEachByType` and changed between calls. sigma-tkgd builds an edge
+  `@source`'s facts in scan order, so answer order, witness order and tie-breaking moved between
+  runs (ai-soc: 55 of 4,080 comparisons at a 16 KiB memtable budget, 88 at the default; 0 with
+  the row feed over the same store). Now each segment is decoded once, page by page, with every
+  live row written to its rank in the segment's ID index; segments are merged by ID with the
+  ID-sorted unsealed rows and a run of one segment is handed out as sub-slices of its decoded
+  columns (no second copy). A segment is decoded when the scan reaches its lowest ID and
+  released after its last row, so a scan holds the segments whose ID ranges overlap the current
+  ID, not the type. `RelSegmentBatch.Sorted` is always false (kept for source compatibility); a
+  batch is consecutive rows of one source (one segment, or the unsealed rows). Tests, red
+  before: `TestSegments_ScanRelSegmentsIsInIDOrder` (interleaved and disjoint segments, dead and
+  faulted-in rows, an interleaved unsealed tail; 20 calls equal to `RelationshipsByType` row for
+  row), the order check in `TestSegments_ScanRelSegmentsEqualsTheRowPath`, and the graph oracle
+  (`TestRelSegmentsDifferentialOracle`, `TestRelSegmentsTwoPhaseAcrossSeal`) comparing in order
+  and across two calls; `TestSegments_ScanRelSegmentsHoldsOverlappingSegmentsOnly` pins the
+  memory bound (ten ID-disjoint segments of 500 rows: peak 500 decoded rows held; two
+  interleaved segments of 400: 800). Measured through sigma's hop `@source`
+  (`TestMeasureEdgeColumnsHOP`, 107,113 / 408,282 / 1,584,150 facts, one sealed segment):
+  materialize 0.06 / 0.23 / 1.08 s and 435 / 425 / 428 B/fact before, 0.05 / 0.22 / 1.03 s and
+  496 / 492 / 497 B/fact after (the decoded segment, about 60 B per row, is the new allocation);
+  under a 4 MiB memtable budget (many segments) 1.37 s / 639 B/fact before, 1.30 s / 751 B/fact
+  after at 1.58 M.
+
 ## [4.39.0] - 2026-09-25
 
 Minor release: ADR-0011 S2 (declared relationship types seal into in-RAM column segments with

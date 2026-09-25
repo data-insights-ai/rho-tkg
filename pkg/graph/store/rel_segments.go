@@ -159,13 +159,17 @@ func ValidateRelSegmentSpec(s RelSegmentSpec) error {
 // RelSegmentBatch is one batch of a declared type's current rows handed out
 // by RelSegmentScanCapability.ScanRelSegments (ADR-0011 §5.3, S5): the rows'
 // columns as the segments store them, without building a Relationship per
-// row. Rows come in SEGMENT order, not ID order: a batch is up to one page
-// of one segment (Segment > 0, Sorted: rows ascend by (start, end,
-// valid_from) within the segment) or of the unsealed memtable rows
-// (Segment 0, unsorted). The slices are reused between batches: a consumer
-// copies what it keeps, and must not modify them.
+// row. Rows come in ascending ID order across all batches of a scan — the
+// order of RelationshipsByType / ForEachRelByType — so a consumer that builds
+// output in scan order gets the row doors' output. A batch holds up to one
+// page of consecutive rows (in that order) of one source: one segment
+// (Segment > 0) or the unsealed memtable rows (Segment 0). The slices are
+// reused between batches: a consumer copies what it keeps, and must not
+// modify them.
 type RelSegmentBatch struct {
-	Segment  uint64
+	Segment uint64
+	// Sorted is always false: batches are in ID order, not in a segment's
+	// (start, end, valid_from) storage order. Kept for source compatibility.
 	Sorted   bool
 	IDs      []types.RelID
 	StartIDs []types.NodeID
@@ -275,8 +279,8 @@ func SegmentKindValue(kind SegmentColumnKind, x int64) any {
 
 // RelSegmentScanCapability is the optional columnar door over a declared bulk
 // type (ADR-0011 §5.3). ScanRelSegments hands every CURRENT row of the type
-// to fn in batches (see RelSegmentBatch) from one consistent snapshot, until
-// fn returns false. ok is false — and fn is never called — when the type is
+// to fn in batches (see RelSegmentBatch) from one consistent snapshot, in
+// ascending ID order, until fn returns false. ok is false — and fn is never called — when the type is
 // not declared or a requested property is not one of its declared columns;
 // the caller then uses the row doors.
 type RelSegmentScanCapability interface {

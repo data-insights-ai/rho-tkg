@@ -34,7 +34,8 @@ func (c *Core) ScanRelColumns(relType string, props []string, opts storepkg.Quer
 
 // ScanRelSegments is the columnar door over a declared bulk relationship type
 // (ADR-0011 §5.3, S5): every current row of relType in batches of segment
-// columns (see store.RelSegmentBatch) from one snapshot, in segment order.
+// columns (see store.RelSegmentBatch) from one snapshot, in ascending ID
+// order.
 // ok=false — fn is not called — when the backend has no segments, the type
 // is not declared, or a requested property is not one of its declared
 // columns; the caller then uses the row doors. An unknown type is ok with

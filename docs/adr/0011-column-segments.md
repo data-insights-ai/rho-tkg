@@ -640,6 +640,18 @@ type RelSegmentBatch struct {
   (`pkg/graph/store/memory/memorystore_rel_column_scan.go:24-38`). The new door hands over segment order
   plus dictionary codes, so the consumer interns each distinct value once per
   segment, not once per row.
+- **Amended 2026-09-25 (v4.39.1): ID order.** Segment order made the door's
+  output order differ from the row doors' and, for the unsealed rows (map
+  order), differ between calls; sigma builds facts, and so answers and witness
+  choice, in scan order, and ai-soc saw findings move between runs.
+  `ScanRelSegments` now hands rows out in ascending ID order (the order of
+  `ByType` / `ForEachByType`), identical on every call: each segment is decoded
+  once into flat columns and walked through its ID index, segments are merged
+  by ID with the ID-sorted unsealed rows, and a segment is decoded only when
+  the scan reaches its lowest ID and released after its last row, so the scan
+  holds the segments whose ID ranges overlap the current ID, not the type.
+  `Sorted` is always false. Pinned by `TestSegments_ScanRelSegmentsIsInIDOrder`
+  and the order-sensitive graph oracle (both red before).
 - **sigma-tkgd today.** It reads HOP through `ByTypeAndProperty(TYPE, "scenario",
   $sc)` into a full slice (`internal/tyla/source/graph/sources.go:179-192` in
   sigma-tkgd). It copies each row's terms with `GetProperty`

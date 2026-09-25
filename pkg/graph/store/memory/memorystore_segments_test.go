@@ -1079,15 +1079,19 @@ func TestSegments_ScanRelSegmentsEqualsTheRowPath(t *testing.T) {
 	got := map[string]bool{}
 	segments := map[uint64]bool{}
 	others := 0
+	var lastID types.RelID
 	ok, err := tw.declared.ScanRelSegments(segTestHOP, props, func(b *storecontract.RelSegmentBatch) bool {
 		if b.Segment != 0 {
 			segments[b.Segment] = true
 		}
+		if b.Sorted || b.Len() == 0 {
+			t.Fatalf("batch of segment %d: Sorted %t, %d rows", b.Segment, b.Sorted, b.Len())
+		}
 		for k := 0; k < b.Len(); k++ {
-			if b.Sorted && k > 0 && (b.StartIDs[k] < b.StartIDs[k-1] ||
-				b.StartIDs[k] == b.StartIDs[k-1] && (b.EndIDs[k] < b.EndIDs[k-1] || b.EndIDs[k] == b.EndIDs[k-1] && b.ValidFrom[k] < b.ValidFrom[k-1])) {
-				t.Fatalf("segment %d row %d breaks (start, end, valid_from) order", b.Segment, k)
+			if b.IDs[k] <= lastID {
+				t.Fatalf("segment %d row %d: ID %d after %d breaks ID order", b.Segment, k, b.IDs[k], lastID)
 			}
+			lastID = b.IDs[k]
 			vals := make([]any, len(props))
 			for c := range props {
 				col := &b.Cols[c]
@@ -1152,6 +1156,159 @@ func TestSegments_ScanRelSegmentsEqualsTheRowPath(t *testing.T) {
 		if ok, err := try(); ok || err != nil {
 			t.Fatalf("%s: ScanRelSegments = %t, %v; want false, nil", name, ok, err)
 		}
+	}
+}
+
+// segScanOrdered collects ScanRelSegments' rows as facts in the order the
+// door hands them out; a value the column marks Other is read from Row(k),
+// and Row(k) must be the batch's row k.
+func segScanOrdered(t *testing.T, s *Store, props []string) []string {
+	t.Helper()
+	var out []string
+	ok, err := s.ScanRelSegments(segTestHOP, props, func(b *storecontract.RelSegmentBatch) bool {
+		for k := 0; k < b.Len(); k++ {
+			full, err := b.Row(k)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if full.ID() != b.IDs[k] {
+				t.Fatalf("batch of segment %d: Row(%d) is %d, IDs[%d] is %d", b.Segment, k, full.ID(), k, b.IDs[k])
+			}
+			vals := make([]any, len(props))
+			for c := range props {
+				col := &b.Cols[c]
+				switch {
+				case col.Present[k]:
+					vals[c] = col.Value(k)
+				case col.Other[k]:
+					if v, has := full.GetProperty(props[c]); has {
+						vals[c] = v
+					}
+				}
+			}
+			out = append(out, segScanFact(b.IDs[k], b.StartIDs[k], b.EndIDs[k], b.ValidFrom[k], b.ValidTo[k], b.TxFrom[k], b.Versions[k], vals))
+		}
+		return true
+	})
+	if err != nil || !ok {
+		t.Fatalf("ScanRelSegments = %t, %v", ok, err)
+	}
+	return out
+}
+
+// ScanRelSegments hands rows out in the row doors' order — ascending ID,
+// the order of RelationshipsByType and ForEachRelByType — on every call:
+// over segments whose ID ranges interleave (a row written late with an
+// early ID), a disjoint segment, dead sealed rows, faulted-in rows (updated
+// after a seal, so their early IDs sit in the memtable) and the unsealed
+// tail. A consumer that builds output in scan order (sigma's edge @source)
+// is then deterministic and equal to the row feed.
+func TestSegments_ScanRelSegmentsIsInIDOrder(t *testing.T) {
+	r := rand.New(rand.NewSource(83))
+	tw := newSegTwin(t, 1<<40, 12)
+	base := tw.nextID + 10
+	putAt := func(id int64) {
+		tw.nextID = id - 1
+		tw.put(r, segTestHOP)
+	}
+	seal := func() {
+		if err := tw.declared.SealRelSegments(segTestHOP); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for k := int64(0); k < 900; k++ { // segment 1: even IDs
+		putAt(base + 2*k)
+	}
+	seal()
+	for k := int64(0); k < 900; k++ { // segment 2: odd IDs in the same range
+		putAt(base + 2*k + 1)
+	}
+	seal()
+	for k := int64(0); k < 700; k++ { // segment 3: above both
+		putAt(base + 5000 + k)
+	}
+	seal()
+	for i := 0; i < 150; i++ { // updates and deletes: faulted-in and dead rows
+		tw.mutate(r)
+	}
+	for k := int64(0); k < 300; k++ { // the unsealed tail, interleaved with segment 3
+		putAt(base + 5000 + 700 + 3*k)
+		if k%3 == 0 {
+			putAt(base + 3000 + k) // between segments 2 and 3
+		}
+	}
+	st, err := tw.declared.RelSegmentStats(segTestHOP)
+	if err != nil || st.Segments != 3 || st.UnsealedRows < 300 || st.LiveSealedRows == st.SealedRows {
+		t.Fatalf("setup: %+v, %v", st, err)
+	}
+	props := []string{"weight", "actor", "n"}
+	rows, err := tw.plain.RelationshipsByType(segTestHOP, QueryOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := make([]string, len(rows))
+	for i, row := range rows {
+		want[i] = segRowFact(row, props)
+	}
+	for call := 0; call < 20; call++ {
+		got := segScanOrdered(t, tw.declared, props)
+		if len(got) != len(want) {
+			t.Fatalf("call %d: %d rows, the row door has %d", call, len(got), len(want))
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("call %d: row %d differs from the row door's row %d (order or value):\n scan: %s\n rows: %s", call, i, i, got[i], want[i])
+			}
+		}
+	}
+	// Early stop still stops after the first batch.
+	calls := 0
+	if ok, err := tw.declared.ScanRelSegments(segTestHOP, props, func(*storecontract.RelSegmentBatch) bool { calls++; return false }); !ok || err != nil || calls != 1 {
+		t.Fatalf("early stop: ok %t err %v calls %d", ok, err, calls)
+	}
+}
+
+// The ID-order scan's memory bound: it holds the decoded rows of the
+// segments whose ID ranges overlap the current ID, never the whole type.
+// Ten ID-disjoint segments hold one segment at a time; two interleaved
+// segments are held together.
+func TestSegments_ScanRelSegmentsHoldsOverlappingSegmentsOnly(t *testing.T) {
+	r := rand.New(rand.NewSource(89))
+	tw := newSegTwin(t, 1<<40, 8)
+	seal := func() {
+		if err := tw.declared.SealRelSegments(segTestHOP); err != nil {
+			t.Fatal(err)
+		}
+	}
+	peak := -1
+	segScanDoneForTest = func(p int) { peak = p }
+	t.Cleanup(func() { segScanDoneForTest = nil })
+	scan := func() int {
+		peak = -1
+		if ok, err := tw.declared.ScanRelSegments(segTestHOP, []string{"n"}, func(*storecontract.RelSegmentBatch) bool { return true }); !ok || err != nil {
+			t.Fatalf("ScanRelSegments = %t, %v", ok, err)
+		}
+		return peak
+	}
+	for s := 0; s < 10; s++ {
+		for i := 0; i < 500; i++ {
+			tw.put(r, segTestHOP)
+		}
+		seal()
+	}
+	if got := scan(); got != 500 {
+		t.Fatalf("ten ID-disjoint segments of 500 rows: peak %d decoded rows held, want 500", got)
+	}
+	base := tw.nextID + 10
+	for _, odd := range []int64{0, 1} { // two segments interleaved by ID
+		for k := int64(0); k < 400; k++ {
+			tw.nextID = base + 2*k + odd - 1
+			tw.put(r, segTestHOP)
+		}
+		seal()
+	}
+	if got := scan(); got != 800 {
+		t.Fatalf("two interleaved segments of 400 rows: peak %d decoded rows held, want 800", got)
 	}
 }
 

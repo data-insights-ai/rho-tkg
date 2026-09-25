@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"math"
@@ -1133,9 +1134,8 @@ var _ storecontract.RelSegmentScanCapability = (*Store)(nil)
 // ScanRelSegments implements store.RelSegmentScanCapability: every current
 // row of a declared type, from one snapshot (the segment list, the type's
 // dead sealed IDs and the unsealed rows, taken under one read lock), handed
-// out without the lock — sealed rows page by page straight from the segment
-// columns (segment.Batch, no Relationship built), unsealed rows from their
-// row objects.
+// out without the lock in ascending ID order — the row doors' order — with no
+// Relationship built for a sealed row (see segIDScan).
 func (ms *Store) ScanRelSegments(typeToken uint16, props []string, fn func(*storecontract.RelSegmentBatch) bool) (bool, error) {
 	if ms == nil {
 		return false, ErrNilStore
@@ -1183,60 +1183,296 @@ func (ms *Store) ScanRelSegments(typeToken uint16, props []string, fn func(*stor
 	}
 	ms.mu.RUnlock()
 
-	b := newSegScanBatch(props, kinds)
-	for _, sg := range segs {
-		stop := false
-		var serr error
-		err := sg.seg.ScanBatches(func(pb *segment.Batch) bool {
-			b.reset(sg.id, true)
-			keep := b.keep[:0]
-			for k := 0; k < pb.N; k++ {
-				if _, gone := dead[types.RelID(pb.IDs[k])]; gone {
-					continue
-				}
-				keep = append(keep, k)
-				b.IDs = append(b.IDs, types.RelID(pb.IDs[k]))
-				b.StartIDs = append(b.StartIDs, types.NodeID(pb.StartIDs[k]))
-				b.EndIDs = append(b.EndIDs, types.NodeID(pb.EndIDs[k]))
-				b.ValidFrom = append(b.ValidFrom, pb.ValidFrom[k])
-				b.ValidTo = append(b.ValidTo, pb.ValidTo[k])
-				b.TxFrom = append(b.TxFrom, pb.TxFrom[k])
-				b.Versions = append(b.Versions, uint32(pb.Versions[k])) // #nosec G115 -- a stored uint32
-				b.HasTemporal = append(b.HasTemporal, pb.HasTemporal(k))
+	slices.SortFunc(mem, func(a, b *types.Relationship) int { return cmp.Compare(a.ID(), b.ID()) })
+	slices.SortStableFunc(segs, func(a, b *memSeg) int { return cmp.Compare(a.lo, b.lo) })
+	sc := &segIDScan{out: newSegScanBatch(props, kinds), cols: cols, dead: dead, fn: fn}
+	sc.memBuf.cols = make([]storecontract.SegmentColumnValues, len(props))
+	err := sc.run(segs, mem)
+	if segScanDoneForTest != nil {
+		segScanDoneForTest(sc.peakRows)
+	}
+	return true, err
+}
+
+// segScanDoneForTest, when set (tests only), receives each ScanRelSegments
+// call's peak of decoded segment rows held at once.
+var segScanDoneForTest func(peakRows int)
+
+// segIDScan hands out the union of a snapshot's segments and unsealed rows in
+// ascending ID order. A segment stores its rows in (start, end, valid_from)
+// order, so it is decoded once, page by page, and each live row is written
+// to its rank in the segment's ID index (segCursor): the cursor's columns are
+// in ID order, and a run of them is handed out as sub-slices, no second copy.
+// Segments are sorted by their lowest ID; a segment is decoded only when the
+// scan reaches that ID, and released after its last row. So the scan holds
+// the decoded columns of the segments whose ID ranges overlap the current ID
+// (one segment when seals are ID-disjoint, the common case), never the whole
+// type. Unsealed rows are already resident; they are sorted by ID and merged
+// in, copied into a reused page batch.
+//
+// A batch holds consecutive rows (in ID order) of ONE source — one segment
+// (Segment > 0) or the unsealed rows (Segment 0) — so each string column has
+// one dictionary and Row(k) one decoder.
+type segIDScan struct {
+	out    *segScanBatch
+	cols   []int
+	dead   map[types.RelID]struct{}
+	fn     func(*storecontract.RelSegmentBatch) bool
+	active []*segCursor
+	memBuf segMemBuf
+	stop   bool
+	// peakRows is the most decoded segment rows held at once (a measurement
+	// surface for the memory bound).
+	peakRows int
+}
+
+// segCursor is one segment's live rows decoded into flat columns in
+// ascending ID order; pos[i] is row i's segment position (for Row).
+type segCursor struct {
+	sg          *memSeg
+	ids         []types.RelID
+	start, end  []types.NodeID
+	vf, vt, tx  []int64
+	versions    []uint32
+	hasTemporal []bool
+	pos         []int32
+	cols        []storecontract.SegmentColumnValues
+	at          int
+}
+
+func (c *segCursor) done() bool { return c.at >= len(c.ids) }
+
+func (c *segCursor) headID() types.RelID { return c.ids[c.at] }
+
+func (sc *segIDScan) run(segs []*memSeg, mem []*types.Relationship) error {
+	mi, si := 0, 0
+	for !sc.stop {
+		// The smallest head among the decoded segments and the unsealed rows.
+		best := -1
+		var bestID types.RelID
+		for i, c := range sc.active {
+			if id := c.headID(); best < 0 || id < bestID {
+				best, bestID = i, id
 			}
-			b.keep = keep
-			if len(keep) == 0 {
-				return true
-			}
-			if serr = b.fillFromBatch(pb, cols); serr != nil {
-				return false
-			}
-			b.SetRowFunc(func(k int) (*types.Relationship, error) {
-				r, err := pb.Row(keep[k])
-				if err == nil {
-					r.Freeze()
-				}
-				return r, err
-			})
-			if !fn(&b.RelSegmentBatch) {
-				stop = true
-				return false
-			}
-			return true
-		})
-		if err == nil {
-			err = serr
 		}
-		if err != nil {
-			return true, err
+		fromMem := mi < len(mem) && (best < 0 || mem[mi].ID() < bestID)
+		if fromMem {
+			bestID = mem[mi].ID()
 		}
-		if stop {
-			return true, nil
+		// A segment whose lowest ID is not above the next row is decoded first.
+		if si < len(segs) && ((best < 0 && !fromMem) || segs[si].lo <= bestID) {
+			c, err := sc.load(segs[si])
+			if err != nil {
+				return err
+			}
+			si++
+			if !c.done() {
+				sc.active = append(sc.active, c)
+			}
+			held := 0
+			for _, a := range sc.active {
+				held += len(a.ids)
+			}
+			sc.peakRows = max(sc.peakRows, held)
+			continue
+		}
+		if best < 0 && !fromMem {
+			break
+		}
+		// Hand out the chosen source's run of rows below every other head
+		// (its first row unconditionally: a current ID lives in one source).
+		limit := types.RelID(math.MaxInt64)
+		if si < len(segs) {
+			limit = segs[si].lo
+		}
+		for i, c := range sc.active {
+			if (fromMem || i != best) && c.headID() < limit {
+				limit = c.headID()
+			}
+		}
+		if fromMem {
+			hi := mi + 1
+			for hi < len(mem) && mem[hi].ID() < limit {
+				hi++
+			}
+			sc.emitMem(mem[mi:hi])
+			mi = hi
+			continue
+		}
+		if mi < len(mem) && mem[mi].ID() < limit {
+			limit = mem[mi].ID()
+		}
+		c := sc.active[best]
+		hi := c.at + 1
+		for hi < len(c.ids) && c.ids[hi] < limit {
+			hi++
+		}
+		sc.emitSeg(c, hi)
+		if c.done() {
+			sc.active = slices.Delete(sc.active, best, best+1)
 		}
 	}
-	for lo := 0; lo < len(mem); lo += segment.PageRows {
-		chunk := mem[lo:min(len(mem), lo+segment.PageRows)]
-		b.reset(0, false)
+	return nil
+}
+
+// load decodes segment sg's live rows into ID order: the ID index gives each
+// segment position its rank, and one page-by-page decode writes every row to
+// its rank.
+func (sc *segIDScan) load(sg *memSeg) (*segCursor, error) {
+	n := sg.seg.Len()
+	rank := make([]int32, n)
+	for i := range rank {
+		rank[i] = -1
+	}
+	c := &segCursor{sg: sg, pos: make([]int32, 0, n)}
+	err := sg.seg.ForEachID(func(id types.RelID, row int) bool {
+		if _, gone := sc.dead[id]; !gone {
+			rank[row] = int32(len(c.pos))     // #nosec G115 -- a segment position (< 2^31 rows)
+			c.pos = append(c.pos, int32(row)) // #nosec G115 -- a segment position (< 2^31 rows)
+		}
+		return true
+	})
+	if err != nil {
+		return nil, err
+	}
+	m := len(c.pos)
+	c.ids, c.start, c.end = make([]types.RelID, m), make([]types.NodeID, m), make([]types.NodeID, m)
+	c.vf, c.vt, c.tx = make([]int64, m), make([]int64, m), make([]int64, m)
+	c.versions, c.hasTemporal = make([]uint32, m), make([]bool, m)
+	c.cols = make([]storecontract.SegmentColumnValues, len(sc.cols))
+	for i := range c.cols {
+		c.cols[i] = storecontract.SegmentColumnValues{
+			Name: sc.out.Cols[i].Name, Kind: sc.out.Cols[i].Kind, Present: make([]bool, m), Other: make([]bool, m),
+		}
+	}
+	var serr error
+	err = sg.seg.ScanBatches(func(pb *segment.Batch) bool {
+		for i, j := range sc.cols {
+			if serr = scatterColumn(&c.cols[i], pb, j, rank, m); serr != nil {
+				return false
+			}
+		}
+		for k := 0; k < pb.N; k++ {
+			r := rank[pb.Base+k]
+			if r < 0 {
+				continue
+			}
+			c.ids[r], c.start[r], c.end[r] = types.RelID(pb.IDs[k]), types.NodeID(pb.StartIDs[k]), types.NodeID(pb.EndIDs[k])
+			c.vf[r], c.vt[r], c.tx[r] = pb.ValidFrom[k], pb.ValidTo[k], pb.TxFrom[k]
+			c.versions[r] = uint32(pb.Versions[k]) // #nosec G115 -- a stored uint32
+			c.hasTemporal[r] = pb.HasTemporal(k)
+		}
+		return true
+	})
+	if err == nil {
+		err = serr
+	}
+	return c, err
+}
+
+// scatterColumn writes declared column j of page pb's live rows to their
+// ranks in col (m live rows): dictionary codes into the segment's dictionary
+// (a later snapshot of a shared dictionary extends an earlier one), plain
+// strings, or stored bits.
+func scatterColumn(col *storecontract.SegmentColumnValues, pb *segment.Batch, j int, rank []int32, m int) error {
+	var vals, codes []int64
+	if col.Kind == storecontract.SegmentString {
+		if cs, dict, _, ok := pb.StringColumn(j); ok {
+			codes, col.Dict = cs, dict
+			if col.Codes == nil {
+				col.Codes = make([]uint32, m)
+			}
+		} else if col.Strs == nil {
+			col.Strs = make([]string, m)
+		}
+	} else {
+		vals, _, _ = pb.IntColumn(j)
+		if col.Ints == nil {
+			col.Ints = make([]int64, m)
+		}
+	}
+	for k := 0; k < pb.N; k++ {
+		r := rank[pb.Base+k]
+		if r < 0 {
+			continue
+		}
+		has := pb.HasValue(j, k)
+		col.Present[r] = has
+		col.Other[r] = !has && pb.HasFallback(k)
+		switch {
+		case codes != nil:
+			col.Codes[r] = uint32(codes[k]) // #nosec G115 -- a validated dictionary code
+		case col.Kind == storecontract.SegmentString:
+			if has {
+				v, err := pb.StringAt(j, k)
+				if err != nil {
+					return err
+				}
+				col.Strs[r] = v
+			}
+		default:
+			col.Ints[r] = vals[k]
+		}
+	}
+	return nil
+}
+
+// emitSeg hands out cursor c's rows [c.at, hi) as sub-slices, a page at a
+// time.
+func (sc *segIDScan) emitSeg(c *segCursor, hi int) {
+	b := sc.out
+	for c.at < hi && !sc.stop {
+		lo, end := c.at, min(hi, c.at+segment.PageRows)
+		c.at = end
+		b.Segment, b.Sorted = c.sg.id, false
+		b.IDs, b.StartIDs, b.EndIDs = c.ids[lo:end], c.start[lo:end], c.end[lo:end]
+		b.ValidFrom, b.ValidTo, b.TxFrom = c.vf[lo:end], c.vt[lo:end], c.tx[lo:end]
+		b.Versions, b.HasTemporal = c.versions[lo:end], c.hasTemporal[lo:end]
+		for i := range b.Cols {
+			col, src := &b.Cols[i], &c.cols[i]
+			col.Present, col.Other, col.Dict = src.Present[lo:end], src.Other[lo:end], src.Dict
+			col.Ints, col.Codes, col.Strs = subslice(src.Ints, lo, end), subslice(src.Codes, lo, end), subslice(src.Strs, lo, end)
+		}
+		seg, pos := c.sg.seg, c.pos[lo:end]
+		b.SetRowFunc(func(k int) (*types.Relationship, error) {
+			if k < 0 || k >= len(pos) {
+				return nil, fmt.Errorf("%w: segment batch row %d", storecontract.ErrInvalidStoreMutation, k)
+			}
+			r, err := seg.Row(int(pos[k]))
+			if err == nil {
+				r.Freeze()
+			}
+			return r, err
+		})
+		sc.stop = !sc.fn(&b.RelSegmentBatch)
+	}
+}
+
+// subslice is s[lo:hi], nil for a nil s (an absent representation stays
+// absent: Value reads Codes only when non-nil).
+func subslice[T any](s []T, lo, hi int) []T {
+	if s == nil {
+		return nil
+	}
+	return s[lo:hi]
+}
+
+// emitMem hands out unsealed rows (consecutive in ID order), a page at a
+// time, copied into the reused batch buffers.
+func (sc *segIDScan) emitMem(rows []*types.Relationship) {
+	b := sc.out
+	for len(rows) > 0 && !sc.stop {
+		chunk := rows[:min(len(rows), segment.PageRows)]
+		rows = rows[len(chunk):]
+		b.Segment, b.Sorted = 0, false
+		b.IDs, b.StartIDs, b.EndIDs = sc.memBuf.ids[:0], sc.memBuf.start[:0], sc.memBuf.end[:0]
+		b.ValidFrom, b.ValidTo, b.TxFrom = sc.memBuf.vf[:0], sc.memBuf.vt[:0], sc.memBuf.tx[:0]
+		b.Versions, b.HasTemporal = sc.memBuf.versions[:0], sc.memBuf.hasTemporal[:0]
+		for i := range b.Cols {
+			col := &b.Cols[i]
+			col.Present, col.Other, col.Ints, col.Strs = sc.memBuf.cols[i].Present[:0], sc.memBuf.cols[i].Other[:0], sc.memBuf.cols[i].Ints[:0], sc.memBuf.cols[i].Strs[:0]
+			col.Codes, col.Dict = nil, nil
+		}
 		for _, r := range chunk {
 			b.IDs = append(b.IDs, r.ID())
 			b.StartIDs = append(b.StartIDs, r.StartNodeID())
@@ -1252,18 +1488,40 @@ func (ms *Store) ScanRelSegments(typeToken uint16, props []string, fn func(*stor
 			b.HasTemporal = append(b.HasTemporal, r.Temporal() != nil)
 			b.appendRowValues(r)
 		}
-		b.SetRowFunc(func(k int) (*types.Relationship, error) { return chunk[k], nil })
-		if !fn(&b.RelSegmentBatch) {
-			return true, nil
-		}
+		sc.memBuf.keep(b)
+		b.SetRowFunc(func(k int) (*types.Relationship, error) {
+			if k < 0 || k >= len(chunk) {
+				return nil, fmt.Errorf("%w: segment batch row %d", storecontract.ErrInvalidStoreMutation, k)
+			}
+			return chunk[k], nil
+		})
+		sc.stop = !sc.fn(&b.RelSegmentBatch)
 	}
-	return true, nil
+}
+
+// segMemBuf keeps the unsealed-row batch buffers across batches (a segment
+// batch's slices point into its cursor instead).
+type segMemBuf struct {
+	ids         []types.RelID
+	start, end  []types.NodeID
+	vf, vt, tx  []int64
+	versions    []uint32
+	hasTemporal []bool
+	cols        []storecontract.SegmentColumnValues
+}
+
+func (m *segMemBuf) keep(b *segScanBatch) {
+	m.ids, m.start, m.end = b.IDs, b.StartIDs, b.EndIDs
+	m.vf, m.vt, m.tx = b.ValidFrom, b.ValidTo, b.TxFrom
+	m.versions, m.hasTemporal = b.Versions, b.HasTemporal
+	for i := range b.Cols {
+		m.cols[i].Present, m.cols[i].Other, m.cols[i].Ints, m.cols[i].Strs = b.Cols[i].Present, b.Cols[i].Other, b.Cols[i].Ints, b.Cols[i].Strs
+	}
 }
 
 // segScanBatch is the reusable batch behind ScanRelSegments.
 type segScanBatch struct {
 	storecontract.RelSegmentBatch
-	keep []int
 }
 
 func newSegScanBatch(props []string, kinds []storecontract.SegmentColumnKind) *segScanBatch {
@@ -1273,56 +1531,6 @@ func newSegScanBatch(props []string, kinds []storecontract.SegmentColumnKind) *s
 		b.Cols[i].Name, b.Cols[i].Kind = props[i], kinds[i]
 	}
 	return b
-}
-
-func (b *segScanBatch) reset(seg uint64, sorted bool) {
-	b.Segment, b.Sorted = seg, sorted
-	b.IDs, b.StartIDs, b.EndIDs = b.IDs[:0], b.StartIDs[:0], b.EndIDs[:0]
-	b.ValidFrom, b.ValidTo, b.TxFrom, b.Versions = b.ValidFrom[:0], b.ValidTo[:0], b.TxFrom[:0], b.Versions[:0]
-	b.HasTemporal = b.HasTemporal[:0]
-	for i := range b.Cols {
-		c := &b.Cols[i]
-		c.Present, c.Other, c.Ints, c.Codes, c.Strs, c.Dict = c.Present[:0], c.Other[:0], c.Ints[:0], nil, nil, nil
-	}
-}
-
-// fillFromBatch copies the requested columns of the kept rows of pb.
-func (b *segScanBatch) fillFromBatch(pb *segment.Batch, cols []int) error {
-	for i, j := range cols {
-		c := &b.Cols[i]
-		var vals []int64
-		var codes []int64
-		if c.Kind == storecontract.SegmentString {
-			if cc, dict, _, ok := pb.StringColumn(j); ok {
-				codes, c.Dict, c.Codes = cc, dict, make([]uint32, 0, len(b.keep))
-			} else {
-				c.Strs = make([]string, 0, len(b.keep))
-			}
-		} else {
-			vals, _, _ = pb.IntColumn(j)
-		}
-		for _, k := range b.keep {
-			has := pb.HasValue(j, k)
-			c.Present = append(c.Present, has)
-			c.Other = append(c.Other, !has && pb.HasFallback(k))
-			switch {
-			case codes != nil:
-				c.Codes = append(c.Codes, uint32(codes[k])) // #nosec G115 -- a validated dictionary code
-			case c.Strs != nil || c.Kind == storecontract.SegmentString:
-				v := ""
-				if has {
-					var err error
-					if v, err = pb.StringAt(j, k); err != nil {
-						return err
-					}
-				}
-				c.Strs = append(c.Strs, v)
-			default:
-				c.Ints = append(c.Ints, vals[k])
-			}
-		}
-	}
-	return nil
 }
 
 // appendRowValues appends an unsealed row's requested values.
