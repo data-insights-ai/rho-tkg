@@ -85,10 +85,11 @@ type SegmentColumnValues = storepkg.SegmentColumnValues
 // Config.RelSegments as segment columns (ADR-0011 §5.3): IDs, endpoints,
 // stored valid/transaction time, versions, and the requested declared
 // properties — strings as dictionary codes where the segment has them —
-// without building a *types.Relationship per row. Rows arrive in segment
-// order (Sorted batches ascend by start, end, valid_from), not ID order; use
-// ScanRelColumns for ID order. Batch.Row(k) builds a row in full, for values a
-// column marks Other.
+// without building a *types.Relationship per row. Rows arrive in ascending
+// ID order, the order of Rels().ByType / ForEachByType, identical on every
+// call over the same graph; memory holds the decoded columns of the segments
+// whose ID ranges overlap the current ID, not the whole type. Batch.Row(k)
+// builds a row in full, for values a column marks Other.
 //
 // ok=false means the columnar door does not apply (backend without
 // segments, undeclared type, or a property that is not a declared column)

@@ -1268,6 +1268,50 @@ func TestSegments_ScanRelSegmentsIsInIDOrder(t *testing.T) {
 	}
 }
 
+// The ID-order scan's memory bound: it holds the decoded rows of the
+// segments whose ID ranges overlap the current ID, never the whole type.
+// Ten ID-disjoint segments hold one segment at a time; two interleaved
+// segments are held together.
+func TestSegments_ScanRelSegmentsHoldsOverlappingSegmentsOnly(t *testing.T) {
+	r := rand.New(rand.NewSource(89))
+	tw := newSegTwin(t, 1<<40, 8)
+	seal := func() {
+		if err := tw.declared.SealRelSegments(segTestHOP); err != nil {
+			t.Fatal(err)
+		}
+	}
+	peak := -1
+	segScanDoneForTest = func(p int) { peak = p }
+	t.Cleanup(func() { segScanDoneForTest = nil })
+	scan := func() int {
+		peak = -1
+		if ok, err := tw.declared.ScanRelSegments(segTestHOP, []string{"n"}, func(*storecontract.RelSegmentBatch) bool { return true }); !ok || err != nil {
+			t.Fatalf("ScanRelSegments = %t, %v", ok, err)
+		}
+		return peak
+	}
+	for s := 0; s < 10; s++ {
+		for i := 0; i < 500; i++ {
+			tw.put(r, segTestHOP)
+		}
+		seal()
+	}
+	if got := scan(); got != 500 {
+		t.Fatalf("ten ID-disjoint segments of 500 rows: peak %d decoded rows held, want 500", got)
+	}
+	base := tw.nextID + 10
+	for _, odd := range []int64{0, 1} { // two segments interleaved by ID
+		for k := int64(0); k < 400; k++ {
+			tw.nextID = base + 2*k + odd - 1
+			tw.put(r, segTestHOP)
+		}
+		seal()
+	}
+	if got := scan(); got != 800 {
+		t.Fatalf("two interleaved segments of 400 rows: peak %d decoded rows held, want 800", got)
+	}
+}
+
 // ScanRelColumns over a declared type is served from the segment columns:
 // in ID order and equal to the row path (the twin), with no Relationship
 // built for a sealed row whose requested values sit in their columns.
