@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.39.1] - 2026-09-25
+
+Patch release: `ScanRelSegments` yields ascending relationship-ID order (the row doors' order),
+identical on every call; v4.39.0 yielded segment storage order and the unsealed tail in map order,
+which made sigma-tkgd's columnar edge door reorder answers. Gates on the released tree:
+`make fmt-check`, `make check`, `make test-race` and the docs-consistency tests exit 0.
+
 ### Fixed
 
 - **`ScanRelSegments` hands rows out in ascending ID order, the row doors' order, identical on
