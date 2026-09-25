@@ -324,10 +324,10 @@ func (ms *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion u
 		return err
 	}
 	relIDs := make(map[types.RelID]struct{})
-	for relID := range ms.outIdx[nid] {
+	for relID := range ms.outIdx[nid].all() {
 		relIDs[relID] = struct{}{}
 	}
-	for relID := range ms.inIdx[nid] {
+	for relID := range ms.inIdx[nid].all() {
 		relIDs[relID] = struct{}{}
 	}
 	tombed := make(map[types.RelID]struct{}, len(relTombstones))

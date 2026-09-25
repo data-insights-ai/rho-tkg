@@ -651,7 +651,7 @@ func TestMemoryStoreOutgoingRelationshipsVerifiesFetchedRowStartNode(t *testing.
 	}
 
 	ms.mu.Lock()
-	ms.outIdx[nA.ID()] = map[types.RelID]struct{}{rel.ID(): {}}
+	ms.outIdx[nA.ID()] = newAdjSetOf(rel.ID())
 	ms.mu.Unlock()
 
 	got, err := ms.OutgoingRelationships(nA.ID(), 5)
@@ -681,7 +681,7 @@ func TestMemoryStoreOutgoingRelationshipsForNodesVerifiesFetchedRowStartNode(t *
 	}
 
 	ms.mu.Lock()
-	ms.outIdx[nA.ID()] = map[types.RelID]struct{}{rel.ID(): {}}
+	ms.outIdx[nA.ID()] = newAdjSetOf(rel.ID())
 	ms.mu.Unlock()
 
 	got, err := ms.OutgoingRelationshipsForNodes([]types.NodeID{nA.ID()}, 5)
@@ -763,7 +763,7 @@ func TestMemoryStoreIncomingRelationshipsVerifiesFetchedRowEndNode(t *testing.T)
 	}
 
 	ms.mu.Lock()
-	ms.inIdx[nB.ID()] = map[types.RelID]struct{}{rel.ID(): {}}
+	ms.inIdx[nB.ID()] = newAdjSetOf(rel.ID())
 	ms.mu.Unlock()
 
 	got, err := ms.IncomingRelationships(nB.ID(), 5)
@@ -793,7 +793,7 @@ func TestMemoryStoreIncomingRelationshipsForNodesVerifiesFetchedRowEndNode(t *te
 	}
 
 	ms.mu.Lock()
-	ms.inIdx[nB.ID()] = map[types.RelID]struct{}{rel.ID(): {}}
+	ms.inIdx[nB.ID()] = newAdjSetOf(rel.ID())
 	ms.mu.Unlock()
 
 	got, err := ms.IncomingRelationshipsForNodes([]types.NodeID{nB.ID()}, 5)
@@ -1193,8 +1193,8 @@ func TestMemoryStoreDeleteNodeCascadePurgesOrphanAdjacency(t *testing.T) {
 
 	orphan := types.RelID(snowflake.ID(999))
 	ms.mu.Lock()
-	ms.outIdx[nA.ID()] = map[types.RelID]struct{}{orphan: {}}
-	ms.inIdx[nB.ID()] = map[types.RelID]struct{}{orphan: {}}
+	ms.outIdx[nA.ID()] = newAdjSetOf(orphan)
+	ms.inIdx[nB.ID()] = newAdjSetOf(orphan)
 	ms.typeIdx[7] = map[types.RelID]struct{}{orphan: {}}
 	ms.mu.Unlock()
 
@@ -1204,10 +1204,10 @@ func TestMemoryStoreDeleteNodeCascadePurgesOrphanAdjacency(t *testing.T) {
 
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
-	if _, ok := ms.outIdx[nA.ID()][orphan]; ok {
+	if ok := ms.outIdx[nA.ID()].has(orphan); ok {
 		t.Fatal("orphan rel remained in outgoing adjacency after cascade")
 	}
-	if _, ok := ms.inIdx[nB.ID()][orphan]; ok {
+	if ok := ms.inIdx[nB.ID()].has(orphan); ok {
 		t.Fatal("orphan rel remained in incoming adjacency after cascade")
 	}
 	if _, ok := ms.typeIdx[7][orphan]; ok {

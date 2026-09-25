@@ -436,18 +436,8 @@ func (ms *Store) removeRowFromMemtableLocked(r *types.Relationship) {
 			delete(ms.typeIdx, tv)
 		}
 	}
-	if set := ms.outIdx[r.StartNodeID()]; set != nil {
-		delete(set, id)
-		if len(set) == 0 {
-			delete(ms.outIdx, r.StartNodeID())
-		}
-	}
-	if set := ms.inIdx[r.EndNodeID()]; set != nil {
-		delete(set, id)
-		if len(set) == 0 {
-			delete(ms.inIdx, r.EndNodeID())
-		}
-	}
+	removeAdjLocked(ms.outIdx, r.StartNodeID(), id)
+	removeAdjLocked(ms.inIdx, r.EndNodeID(), id)
 	delete(ms.rels, id)
 	ms.segAccountLocked(r, -1)
 }
@@ -772,7 +762,7 @@ func (ms *Store) adjacentRowsLocked(nid types.NodeID, typeToken uint16, incoming
 	if typeToken != 0 {
 		typeSet = ms.typeIdx[typeToken]
 	}
-	for id := range set {
+	for id := range set.all() {
 		if typeToken != 0 {
 			if _, ok := typeSet[id]; !ok {
 				continue
@@ -864,7 +854,7 @@ func (ms *Store) sealedDegreeLocked(nid types.NodeID, typeToken uint16, incoming
 
 // hasAdjacencyLocked reports whether any current relationship touches nid.
 func (ms *Store) hasAdjacencyLocked(nid types.NodeID) (bool, error) {
-	if len(ms.outIdx[nid]) != 0 || len(ms.inIdx[nid]) != 0 {
+	if ms.outIdx[nid].len() != 0 || ms.inIdx[nid].len() != 0 {
 		return true, nil
 	}
 	if !ms.anySegmentsLocked() {
@@ -905,14 +895,8 @@ func (ms *Store) faultInLocked(id types.RelID) error {
 		ms.typeIdx[tok] = make(map[types.RelID]struct{})
 	}
 	ms.typeIdx[tok][id] = struct{}{}
-	if ms.outIdx[r.StartNodeID()] == nil {
-		ms.outIdx[r.StartNodeID()] = make(map[types.RelID]struct{})
-	}
-	ms.outIdx[r.StartNodeID()][id] = struct{}{}
-	if ms.inIdx[r.EndNodeID()] == nil {
-		ms.inIdx[r.EndNodeID()] = make(map[types.RelID]struct{})
-	}
-	ms.inIdx[r.EndNodeID()][id] = struct{}{}
+	addAdjLocked(ms.outIdx, r.StartNodeID(), id)
+	addAdjLocked(ms.inIdx, r.EndNodeID(), id)
 	ms.segAccountLocked(r, 1)
 	return nil
 }
@@ -1108,8 +1092,8 @@ func (ms *Store) shrinkMemtableMapsLocked(tok uint16, outBefore, inBefore int) {
 
 // compactAdj copies an adjacency map's top level into a table sized for its
 // current entries (maps.Clone would keep the old table size).
-func compactAdj(m map[types.NodeID]map[types.RelID]struct{}) map[types.NodeID]map[types.RelID]struct{} {
-	out := make(map[types.NodeID]map[types.RelID]struct{}, len(m))
+func compactAdj(m map[types.NodeID]*adjSet) map[types.NodeID]*adjSet {
+	out := make(map[types.NodeID]*adjSet, len(m))
 	for k, v := range m {
 		out[k] = v
 	}

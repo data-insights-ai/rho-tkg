@@ -480,10 +480,10 @@ func (ms *Store) deleteNodeCascadeRouted(nid types.NodeID, token uint64) error {
 	// Collect all connected relIDs from adjacency indexes.
 	// Use a map for dedup (self-loops appear in both outgoing and incoming).
 	relIDs := make(map[types.RelID]struct{})
-	for relID := range ms.outIdx[nid] {
+	for relID := range ms.outIdx[nid].all() {
 		relIDs[relID] = struct{}{}
 	}
-	for relID := range ms.inIdx[nid] {
+	for relID := range ms.inIdx[nid].all() {
 		relIDs[relID] = struct{}{}
 	}
 

@@ -71,10 +71,10 @@ func TestRowStoreRetainedBytesPerRelationship(t *testing.T) {
 	if raceEnabled {
 		t.Skip("heap accounting under the race detector measures its shadow memory")
 	}
-	const maxBytesPerRel = 440 // before P7: ~600 (80 struct + 96 temporal + 128 integrity + 64 hex hash + 128 properties + ~110 maps)
+	const maxBytesPerRel = 410 // before P7 ~620 (80 struct + 96 temporal + 128 integrity + 64 hex hash + 128 properties + ~110 maps); compact metadata ~430; compact adjacency ~402
 	per := make([]float64, 0, 2)
 	for _, mult := range []int{1, 4} {
-		sz := retainedSize(10_000*mult, 400)
+		sz := retainedSize(10_000*mult, 400*mult) // synthday keeps the degree, not the node count, as the day grows
 		base, _, _ := retainedGraphBytes(t, sz, false)
 		full, _, rels := retainedGraphBytes(t, sz, true)
 		b := float64(full-base) / float64(rels)
