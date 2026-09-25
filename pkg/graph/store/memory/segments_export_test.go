@@ -30,3 +30,22 @@ func NodeBytesForTest(ms *Store, tok uint16) (perSegment, shared int) {
 	}
 	return perSegment, sharedNodeBytesForTest(ms)
 }
+
+// SealLogEntry is one seal of the store (see sealRecord).
+type SealLogEntry = sealRecord
+
+// SetSealLogForTest installs fn as the store's seal log (nil removes it).
+// Set it before the first write.
+func SetSealLogForTest(ms *Store, fn func(SealLogEntry)) { ms.sealLog = fn }
+
+// SetSegDirHookForTest installs fn as the segment directory's step hook.
+func SetSegDirHookForTest(ms *Store, fn func(step string) error) bool {
+	ms.mu.RLock()
+	d := ms.segDir
+	ms.mu.RUnlock()
+	if d == nil {
+		return false
+	}
+	d.SetHook(fn)
+	return true
+}

@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segdir"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segment"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -252,9 +253,11 @@ type Store struct {
 	segDue          atomic.Bool            // a write pushed the unsealed bytes over the budget
 	relsPeak        int                    // len(rels) high-water mark since the last shrink (declared stores only)
 	sealEncodeHook  func()                 // test seam: runs in a seal's encode window (nil in production)
+	sealLog         func(sealRecord)       // measurement seam: one record per seal that installed a segment (nil in production)
 	sealerRunning   bool                   // the background sealer goroutine is live (guarded by ms.mu)
 	sealers         sync.WaitGroup         // background sealers; Close waits for them
 	sealedRowBuilds atomic.Uint64          // Relationships built from sealed rows (measurement)
+	segDir          *segdir.Dir            // ADR-0011 S3: the segment directory (nil = in-RAM segments)
 }
 
 // bumpNodeEpoch marks every cached DocValues column potentially stale. Called by
@@ -406,18 +409,18 @@ func (ms *Store) Clear() error {
 	ms.vectorIndexes = make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex)
 	ms.docColumns = make(map[uint16]*indexpkg.LabelDocValues)
 	ms.docColumnsMulti = make(map[string]*indexpkg.LabelDocValues)
-	ms.labelTxMembers = nil      // drop the lazy membership sidecar; rebuilt on next pinned scan
-	ms.relTypeTxMembers = nil    // rel-type mirror
-	ms.nodeBeliefWatermark = nil // drop the lazy belief-watermark sidecar; rebuilt on next use
-	ms.relBeliefWatermark = nil  // rel mirror
-	ms.clearSegmentsLocked()     // ADR-0011: segments go, declarations stay
-	ms.bumpNodeEpoch()           // any cached column from before Clear is now invalid
-	ms.bumpRelEpoch()            // and the adjacency view (X5 expand path)
+	ms.labelTxMembers = nil            // drop the lazy membership sidecar; rebuilt on next pinned scan
+	ms.relTypeTxMembers = nil          // rel-type mirror
+	ms.nodeBeliefWatermark = nil       // drop the lazy belief-watermark sidecar; rebuilt on next use
+	ms.relBeliefWatermark = nil        // rel mirror
+	segErr := ms.clearSegmentsLocked() // ADR-0011: segments go (files too, S3), declarations stay
+	ms.bumpNodeEpoch()                 // any cached column from before Clear is now invalid
+	ms.bumpRelEpoch()                  // and the adjacency view (X5 expand path)
 	// Drop the change-log records (the store is now empty) and re-anchor with a
 	// ChangeClear marker at a fresh, still-monotonic LSN — mirrors badger.Clear.
 	ms.changeLog = nil
 	ms.logChangeLocked(storecontract.ChangeClear, nil)
-	return nil
+	return segErr
 }
 
 // MetaGet returns the bytes stored under key, or (nil, nil) if absent.
@@ -463,9 +466,14 @@ func (ms *Store) Close() error {
 	ms.mu.Lock()
 	ms.closed = true
 	ms.mu.Unlock()
-	// ADR-0011: a background seal in flight sees closed at its install and
-	// discards its segment; wait for it so no work outlives the store.
+	// ADR-0011: a seal in flight (background or explicit) sees closed at its
+	// install and discards its segment; wait for it so no work outlives the
+	// store. Then release the segment files (S3): a mapping a lock-free scan
+	// still holds is unmapped when that scan returns.
 	ms.sealers.Wait()
+	ms.mu.Lock()
+	ms.releaseSegmentDirLocked()
+	ms.mu.Unlock()
 	return nil
 }
 

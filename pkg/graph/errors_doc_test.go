@@ -216,6 +216,9 @@ var capabilitySentinels = []string{
 	"ErrTxDone",
 	"ErrRelSegmentDeclaration",
 	"ErrRelSegmentNotDeclared",
+	"ErrRelSegmentDirLocked",
+	"ErrRelSegmentManifestInvalid",
+	"ErrRelSegmentFileInvalid",
 }
 
 // TieredStore reference/event ontology sentinels (ADR-0007). BACKLOG 7c:

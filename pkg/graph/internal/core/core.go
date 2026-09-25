@@ -807,6 +807,15 @@ type Config struct {
 	// types.Relationship.ApproxHeapBytes, all declared types together); 0 =
 	// store.DefaultSegmentMemtableBudget (256 MiB); negative fails New.
 	SegmentMemoryBudget int64
+	// SegmentDir is the directory (the NVMe) that sealed segments of the
+	// declared types are written to as self-contained files, listed in its
+	// manifest and read memory-mapped (ADR-0011 S3). Empty (default) = the
+	// segments stay in RAM (S2). New takes the directory's lock, and a
+	// directory that already holds segments is recovered and its rows become
+	// sealed rows of the graph (the manifest is the truth). Requires
+	// RelSegments and a backend with store.RelSegmentDirCapability (memory);
+	// otherwise New fails closed. Whitespace-only is rejected.
+	SegmentDir string
 }
 
 // ValidationDefaults returns the resolved validation limits (for testing).
@@ -1907,7 +1916,7 @@ func New(config Config) (*Core, error) {
 
 	// ADR-0011: declare bulk relationship types last, once registries are
 	// loaded, so a declared name resolves to its persisted token.
-	if err := c.declareRelSegments(config.RelSegments, config.SegmentMemoryBudget); err != nil {
+	if err := c.declareRelSegments(config.RelSegments, config.SegmentMemoryBudget, config.SegmentDir); err != nil {
 		if config.Store == nil {
 			_ = store.Close()
 		}

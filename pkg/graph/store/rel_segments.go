@@ -19,9 +19,12 @@ import (
 // the same writes into a store with and without the declaration give
 // identical answers on every read door.
 //
-// S2 (this version): the memory store seals into in-RAM segments. Other
-// backends do not implement RelSegmentCapability; a graph that declares a
-// type on them fails closed at New with ErrCapabilityNotSupported.
+// S2: the memory store seals into in-RAM segments. S3: with a segment
+// directory (RelSegmentDirCapability, graph.Config.SegmentDir) it writes each
+// sealed segment as a self-contained file, lists it in the directory's
+// manifest, and reads it memory-mapped. Other backends do not implement
+// RelSegmentCapability; a graph that declares a type on them fails closed at
+// New with ErrCapabilityNotSupported.
 
 // SegmentColumnKind is the exact Go kind of a declared segment column. A value
 // of another kind (or an undeclared property) is still stored exactly — in the
@@ -125,7 +128,36 @@ var (
 	ErrRelSegmentDeclaration = errors.New("graph: invalid relationship segment declaration")
 	// ErrRelSegmentNotDeclared: the type is not declared bulk.
 	ErrRelSegmentNotDeclared = errors.New("graph: relationship type is not declared as a segment type")
+	// ErrRelSegmentDirLocked: another open store holds the segment
+	// directory.
+	ErrRelSegmentDirLocked = errors.New("graph: segment directory is in use by another open store")
+	// ErrRelSegmentManifestInvalid: the segment directory's manifest is
+	// unreadable, damaged, of an unknown version, or lists something
+	// impossible. The open fails closed; nothing in the directory is touched.
+	ErrRelSegmentManifestInvalid = errors.New("graph: invalid segment manifest")
+	// ErrRelSegmentFileInvalid: a segment file the manifest lists is missing,
+	// truncated, damaged (a section CRC), fails its integrity roots, or does
+	// not match its manifest entry or its type's declaration. The open fails
+	// closed; nothing in the directory is touched.
+	ErrRelSegmentFileInvalid = errors.New("graph: invalid segment file")
 )
+
+// RelSegmentDirCapability is the optional store capability behind
+// graph.Config.SegmentDir (ADR-0011 S3): sealed segments become files in dir.
+type RelSegmentDirCapability interface {
+	// OpenRelSegmentDir attaches the segment directory dir to the store. It
+	// must be called after every DeclareRelSegment and before the first
+	// seal. It takes the directory's lock (ErrRelSegmentDirLocked), reads the
+	// manifest (ErrRelSegmentManifestInvalid), requires every type the
+	// manifest lists to be declared identically (ErrRelSegmentDeclaration),
+	// maps and verifies every listed segment (ErrRelSegmentFileInvalid), and
+	// only then removes .tmp files and segment files the manifest does not
+	// list. The listed segments' rows become sealed rows of the store; a row
+	// the store already holds with the same ID, version and hash leaves the
+	// row store, one with another version or hash stays and shadows the
+	// sealed copy.
+	OpenRelSegmentDir(dir string) error
+}
 
 // MaxSegmentIntegrityBlockRows bounds RelSegmentSpec.IntegrityBlockRows.
 const MaxSegmentIntegrityBlockRows = 4096
@@ -193,7 +225,9 @@ func (b *RelSegmentBatch) Len() int { return len(b.IDs) }
 // Row returns row k in full, frozen and equal to what the row doors return
 // for it (Integrity().Hash included). It costs a row decode; consumers call it
 // only for rows whose column says Other, or when they need fields the batch
-// does not carry.
+// does not carry. It is valid only while the scan runs (inside fn): after the
+// scan returns it fails with ErrInvalidStoreMutation, because the segment it
+// decodes from may be released (a memory-mapped file, ADR-0011 S3).
 func (b *RelSegmentBatch) Row(k int) (*types.Relationship, error) {
 	if b == nil || b.row == nil || k < 0 || k >= len(b.IDs) {
 		return nil, fmt.Errorf("%w: segment batch row %d", ErrInvalidStoreMutation, k)

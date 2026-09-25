@@ -6,6 +6,60 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **ADR-0011 S3: sealed segments as self-contained files on NVMe (`Config.SegmentDir`).** With a
+  segment directory, a seal writes its segment as a self-contained file (its own endpoint table
+  and string dictionaries — S2's shared dictionaries stay an in-RAM format), fsyncs and renames
+  it, maps it read-only, commits it to the directory's `MANIFEST` (tmp, fsync, rename, directory
+  fsync), and only then moves the rows out of the memtable: every row is always in the memtable
+  or in a committed file. Every read door reads the mapping through the unchanged codec;
+  `ScanRelSegments` keeps its ascending-ID, overlap-bounded contract. `graph.New` with a
+  `SegmentDir` takes the directory's flock (`ErrRelSegmentDirLocked`), treats the manifest as the
+  truth (versioned, CRC32C, validated body; every listed type must be declared identically, else
+  `ErrRelSegmentDeclaration`), maps, matches (size, rows, root) and verifies every integrity group
+  of every listed file (`ErrRelSegmentFileInvalid`; a bad manifest `ErrRelSegmentManifestInvalid`
+  — both fail closed and touch nothing), then removes `.tmp` files and unlisted segment files. A
+  row the row store holds with the same ID, version and hash leaves it (idempotent recovery);
+  another version shadows the sealed copy. Mapped segments are reference-counted: lock-free scans
+  pin them, `Close`/`Clear` drop the store's hold, the last holder unmaps; a batch's `Row` door
+  fails after its scan returns. `Close` now also waits for explicit seals. `Clear` resets the
+  directory. On the memory store the directory makes the sealed rows durable, not the store:
+  nodes, memtable, overlay, history and indexes stay process memory, so a reopen serves the
+  committed segments' rows as sealed. New package `pkg/graph/internal/segdir`, capability
+  `store.RelSegmentDirCapability`, sentinels re-exported from `pkg/graph`.
+  - **Tests (red first):** a SIGKILLed child process at each seal step — after the segment
+    write, after its fsync+rename, after the manifest `.tmp` write (reopen serves the earlier
+    seal only), after the manifest is durable before the row removal, and after a completed seal
+    (reopen serves both) — with every store door equal to the oracle store; an injected I/O
+    failure at each pre-commit step keeps store and directory; the S2 store suite and the graph
+    differential oracle over mapped files; reopen equals the oracle twice with writes and seals
+    in between; damage fails closed (missing, truncated, a flipped byte, a value changed with
+    every CRC recomputed → caught by the integrity roots and located to its group at
+    `IntegrityBlockRows` 1 / 64 / 4,096, a damaged manifest); declaration and lock rules; a scan
+    pins its mappings across `Close` and `Clear`; readers during seals after a reopen, `-race`.
+  - **Measured** (`TestSegmentS2Scale` mode `nvme`, 3 runs, 256 MiB budget, NVMe, 790 K / 3.15 M /
+    12.6 M rows, 107 K / 408 K / 1.58 M HOP): Go heap beyond the memtable 0.3–0.5 / 0.3–0.4 / 0.7
+    B/HOP (S2 in RAM in the same runs 24.0–24.1 / 24.7–24.9 / 25.6–25.7) — growth +0.2–0.3 B/HOP,
+    gate ≤ 1 met. Write of 12.6 M (`TestSegmentS3WriteGate`: S2 and S3 alternating, 5 runs each,
+    pinned to 8 cores, host load 1.9–3.4, the P7 agent idle): median 7.86 s (7.85–7.88) against S2
+    7.87 s (7.37–7.97) — gate met; at an equal seal count (5 seals) 7.86 against 7.93 s. The
+    earlier +12 % run was a seal-count coincidence, not a byte-accounting difference: the budget
+    seals run on the background sealer and each snapshots what was written during the previous
+    one, so seal boundaries move by a few thousand rows between identical runs and a final seal
+    exists only if rows arrived after the last background snapshot (4 or 5 seals); both modes
+    snapshot 471,245–471,276 rows at the first budget crossing. S3's store phase per seal is
+    40–57 ms against S2's 8–10 ms (file write 5 ms, file fsync + rename + dir fsync 14 ms, map +
+    open + manifest write 9 ms, manifest fsync + rename + dir fsync 10 ms; ~0.1 µs per row), on
+    the background sealer, not the writer. Seal-log seam `sealRecord`; the answers do not depend
+    on the layout (`TestSegments_AnswersDoNotDependOnSealBoundaries`: the same writes sealed
+    never, once, every 97 or 500 rows, by the budget sealer, in RAM and to files).
+    `ScanRelSegments` 7.3–8.5 M rows/s (S2 reference 7.7–7.8). On disk 21.5 / 22.3 / 27.2–28.2
+    B/HOP: self-contained files repeat node hashes (5.2 B/HOP at 12.6 M) and dictionaries per
+    segment; S4's merge bounds it. RSS at 12.6 M after the reads: anonymous 121–132 MiB (S2
+    142–162), file-backed +27–28 B/HOP — the mapped segment pages, clean and reclaimable (page
+    cache, ADR §3.5 / Q8). Reopen (map + verify every group) 3.3–3.5 s at 12.6 M (0.46 M rows/s).
+
 ## [4.39.1] - 2026-09-25
 
 Patch release: `ScanRelSegments` yields ascending relationship-ID order (the row doors' order),

@@ -7,8 +7,11 @@ import (
 	"math"
 	"slices"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segdir"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segment"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -70,6 +73,44 @@ type memSeg struct {
 	seg    *segment.Segment
 	lo, hi types.RelID
 	bytes  int
+	m      *segdir.Mapping // the mapped file (nil: an in-RAM segment)
+	// refs counts the holders of a mapped segment (ADR-0011 §3.2): 1 for
+	// the store while it lists the segment, +1 per lock-free reader (a scan
+	// that runs its callbacks without ms.mu). The mapping is unmapped when
+	// the count reaches 0, so Close or Clear never unmaps under a scan.
+	// Readers under ms.mu need no pin: Close and Clear take ms.mu.
+	refs atomic.Int64
+}
+
+func newMemSeg(id uint64, seg *segment.Segment, bytes int, m *segdir.Mapping) *memSeg {
+	lo, hi := seg.IDRange()
+	sg := &memSeg{id: id, seg: seg, lo: lo, hi: hi, bytes: bytes, m: m}
+	sg.refs.Store(1)
+	return sg
+}
+
+// pin adds a reader's hold. The caller holds ms.mu (so the store's own hold
+// is still there).
+func (sg *memSeg) pin() { sg.refs.Add(1) }
+
+// unpin drops a hold (a reader's, or the store's when it stops listing the
+// segment); the last one unmaps.
+func (sg *memSeg) unpin() {
+	if sg.refs.Add(-1) == 0 && sg.m != nil {
+		_ = sg.m.Close()
+	}
+}
+
+func pinAll(segs []*memSeg) {
+	for _, sg := range segs {
+		sg.pin()
+	}
+}
+
+func unpinAll(segs []*memSeg) {
+	for _, sg := range segs {
+		sg.unpin()
+	}
 }
 
 var _ storecontract.RelSegmentCapability = (*Store)(nil)
@@ -108,6 +149,9 @@ func (ms *Store) DeclareRelSegment(d storecontract.RelSegmentDeclaration) error 
 	}
 	if d.MemtableBudget < 0 {
 		return fmt.Errorf("%w: memtable budget %d", storecontract.ErrRelSegmentDeclaration, d.MemtableBudget)
+	}
+	if ms.segDir != nil {
+		return fmt.Errorf("%w: type %q declared after the segment directory was opened", storecontract.ErrRelSegmentDeclaration, d.TypeName)
 	}
 	schema := segment.Schema{TypeName: d.TypeName, TypeToken: d.TypeToken, Columns: segColumnsOf(d.Columns)}
 	if err := segment.ValidateSchema(schema); err != nil {
@@ -291,7 +335,9 @@ func (ms *Store) sealType(tok uint16, explicit bool) error {
 		return err
 	}
 	st := ms.segTypes[tok]
+	ms.sealers.Add(1) // under ms.mu, before closed: Close waits for every seal
 	ms.mu.RUnlock()
+	defer ms.sealers.Done()
 	if st == nil {
 		return fmt.Errorf("%w: token %d", storecontract.ErrRelSegmentNotDeclared, tok)
 	}
@@ -327,15 +373,30 @@ func (ms *Store) sealType(tok uint16, explicit bool) error {
 	schema := st.schema
 	blockRows := st.decl.IntegrityBlockRows
 	dicts := st.dicts
+	dir := ms.segDir
+	var gen uint64
+	if dir != nil {
+		gen = dir.Gen() // under ms.mu, like segEpoch: Clear resets both under it
+	}
 	ms.mu.Unlock()
 
 	if hook := ms.sealEncodeHook; hook != nil {
 		hook() // test seam: the encode window, ms.mu not held
 	}
+	rec := sealRecord{Explicit: explicit, Start: time.Now(), Snapshot: len(rows)}
+	encode := func(rows []*types.Relationship) ([]byte, error) {
+		opts := segment.Options{IntegrityBlockRows: blockRows}
+		if dir != nil {
+			// A file is self-contained: its own endpoint table and string
+			// dictionaries (the shared dictionaries are an in-RAM format).
+			return segment.Encode(schema, rows, opts)
+		}
+		return segment.EncodeWithDicts(schema, rows, opts, dicts)
+	}
 	var data []byte
 	var err error
 	for try := 0; len(rows) > 0; try++ {
-		data, err = segment.EncodeWithDicts(schema, rows, segment.Options{IntegrityBlockRows: blockRows}, dicts)
+		data, err = encode(rows)
 		var re *segment.RowError
 		if err == nil || try >= maxSealRetries || !errors.As(err, &re) {
 			break
@@ -353,19 +414,37 @@ func (ms *Store) sealType(tok uint16, explicit bool) error {
 	if err != nil {
 		rows = nil // give up this seal: everything stays in the memtable
 	}
+	rec.Encode = time.Since(rec.Start)
 	var seg *segment.Segment
+	var m *segdir.Mapping
+	var seq uint64
+	size := len(data)
 	if len(rows) > 0 {
-		if seg, err = segment.OpenWithDicts(data, dicts); err != nil {
+		if dir != nil {
+			// S3: the rows leave the memtable (below) only after the
+			// manifest listing their file is durable.
+			seg, m, seq, err = spillSegment(dir, tok, data, gen)
+		} else {
+			seg, err = segment.OpenWithDicts(data, dicts)
+		}
+		if err != nil {
 			rows = nil
 		}
 	}
+	rec.Store = time.Since(rec.Start) - rec.Encode
 
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 	if cerr := ms.checkOpenLocked(); cerr != nil {
+		if m != nil {
+			_ = m.Close() // committed on disk; the next open serves it
+		}
 		return cerr
 	}
 	if ms.segEpoch != epoch || ms.segTypes[tok] != st {
+		if m != nil {
+			_ = m.Close() // Clear reset the directory: the file is gone
+		}
 		return nil // Clear ran meanwhile: the rows are gone
 	}
 	st.refused = refused
@@ -381,9 +460,15 @@ func (ms *Store) sealType(tok uint16, explicit bool) error {
 		}
 		return nil
 	}
-	lo, hi := seg.IDRange()
-	ms.segSeq++
-	sg := &memSeg{id: ms.segSeq, seg: seg, lo: lo, hi: hi, bytes: len(data)}
+	var sg *memSeg
+	if m != nil {
+		ms.segSeq = max(ms.segSeq, seq)
+		sg = newMemSeg(seq, seg, len(m.Bytes()), m)
+	} else {
+		ms.segSeq++
+		sg = newMemSeg(ms.segSeq, seg, size, nil)
+	}
+	hi := sg.hi
 	outBefore, inBefore := len(ms.outIdx), len(ms.inIdx)
 	for _, r := range rows {
 		id := r.ID()
@@ -397,7 +482,7 @@ func (ms *Store) sealType(tok uint16, explicit bool) error {
 	ms.shrinkMemtableMapsLocked(tok, outBefore, inBefore)
 	st.segs = append(st.segs, sg)
 	st.sealedRows += int64(len(rows))
-	st.segBytes += int64(len(data))
+	st.segBytes += int64(sg.bytes)
 	st.seals++
 	if hi > st.maxID {
 		st.maxID = hi
@@ -405,7 +490,25 @@ func (ms *Store) sealType(tok uint16, explicit bool) error {
 	if hi > ms.segMaxID {
 		ms.segMaxID = hi
 	}
+	if ms.sealLog != nil {
+		rec.Rows, rec.Bytes, rec.UnsealedAfter = len(rows), sg.bytes, len(ms.typeIdx[tok])
+		rec.Install = time.Since(rec.Start) - rec.Encode - rec.Store
+		ms.sealLog(rec)
+	}
 	return nil
+}
+
+// sealRecord is one seal as the measurement seam reports it: what it took
+// (Snapshot rows, Rows sealed after refusals), what it left (UnsealedAfter:
+// rows written during the seal), and where its time went — Encode (the codec,
+// incl. its verify), Store (S2: open over the bytes; S3: write, fsync,
+// rename, map, open, manifest commit) and Install (under ms.mu).
+type sealRecord struct {
+	Explicit               bool
+	Start                  time.Time
+	Snapshot, Rows, Bytes  int
+	UnsealedAfter          int
+	Encode, Store, Install time.Duration
 }
 
 // hasStoredHash mirrors the codec's precondition: a 64-character lowercase
@@ -454,9 +557,20 @@ func (ms *Store) removeRowFromMemtableLocked(r *types.Relationship) {
 
 // clearSegmentsLocked drops every segment and overlay entry (Clear); the
 // declarations and the budget stay.
-func (ms *Store) clearSegmentsLocked() {
+func (ms *Store) clearSegmentsLocked() error {
 	if len(ms.segTypes) == 0 {
-		return
+		return nil
+	}
+	var err error
+	if ms.segDir != nil {
+		// Files and manifest entries go with the rows; a seal whose commit
+		// races this sees a new generation (segdir.ErrStale) and discards.
+		if err = ms.segDir.Reset(); err != nil {
+			err = fmt.Errorf("memory: clear segment directory: %w", err)
+		}
+	}
+	for _, st := range ms.segTypes {
+		unpinAll(st.segs)
 	}
 	ms.segEpoch++
 	ms.segNodeDict = segment.NewNodeDict() // a seal started before Clear keeps (and discards) the old dictionaries
@@ -468,6 +582,7 @@ func (ms *Store) clearSegmentsLocked() {
 	ms.segDead = make(map[types.RelID]uint16)
 	ms.segUnsealed, ms.segRefusedBytes, ms.segMaxID, ms.relsPeak = 0, 0, 0, 0
 	ms.segDue.Store(false)
+	return err
 }
 
 // --- union view helpers (caller holds ms.mu, read or write) ---
@@ -1169,6 +1284,8 @@ func (ms *Store) ScanRelSegments(typeToken uint16, props []string, fn func(*stor
 		return false, errNilIterationCallback()
 	}
 	segs := slices.Clone(st.segs)
+	pinAll(segs) // the callbacks run without ms.mu: hold the mappings
+	defer unpinAll(segs)
 	dead := make(map[types.RelID]struct{})
 	for id, tok := range ms.segDead {
 		if tok == typeToken {
@@ -1188,6 +1305,7 @@ func (ms *Store) ScanRelSegments(typeToken uint16, props []string, fn func(*stor
 	sc := &segIDScan{out: newSegScanBatch(props, kinds), cols: cols, dead: dead, fn: fn}
 	sc.memBuf.cols = make([]storecontract.SegmentColumnValues, len(props))
 	err := sc.run(segs, mem)
+	sc.finished.Store(true) // a batch's Row door kept past the scan fails, never reads a released segment
 	if segScanDoneForTest != nil {
 		segScanDoneForTest(sc.peakRows)
 	}
@@ -1221,6 +1339,9 @@ type segIDScan struct {
 	active []*segCursor
 	memBuf segMemBuf
 	stop   bool
+	// finished is set when the scan returns: Row on a batch after that
+	// fails instead of decoding from a segment the scan no longer pins.
+	finished atomic.Bool
 	// peakRows is the most decoded segment rows held at once (a measurement
 	// surface for the memory bound).
 	peakRows int
@@ -1435,6 +1556,9 @@ func (sc *segIDScan) emitSeg(c *segCursor, hi int) {
 		}
 		seg, pos := c.sg.seg, c.pos[lo:end]
 		b.SetRowFunc(func(k int) (*types.Relationship, error) {
+			if sc.finished.Load() {
+				return nil, fmt.Errorf("%w: segment batch row %d after its scan returned", storecontract.ErrInvalidStoreMutation, k)
+			}
 			if k < 0 || k >= len(pos) {
 				return nil, fmt.Errorf("%w: segment batch row %d", storecontract.ErrInvalidStoreMutation, k)
 			}
@@ -1490,6 +1614,9 @@ func (sc *segIDScan) emitMem(rows []*types.Relationship) {
 		}
 		sc.memBuf.keep(b)
 		b.SetRowFunc(func(k int) (*types.Relationship, error) {
+			if sc.finished.Load() {
+				return nil, fmt.Errorf("%w: segment batch row %d after its scan returned", storecontract.ErrInvalidStoreMutation, k)
+			}
 			if k < 0 || k >= len(chunk) {
 				return nil, fmt.Errorf("%w: segment batch row %d", storecontract.ErrInvalidStoreMutation, k)
 			}
@@ -1592,6 +1719,8 @@ func (ms *Store) scanRelColumnsFromSegments(token uint16, props []string, opts Q
 		}
 	}
 	segs := slices.Clone(st.segs)
+	pinAll(segs) // decoded without ms.mu: hold the mappings
+	defer unpinAll(segs)
 	dead := make(map[types.RelID]struct{})
 	for id, tok := range ms.segDead {
 		if tok == token {
