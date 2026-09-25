@@ -1058,3 +1058,73 @@ func TestSegmentDir_ConcurrentReadersAndReopen(t *testing.T) {
 		t.Fatalf("the reopened store never sealed: %+v %v", st, err)
 	}
 }
+
+// The seal count on one input is not deterministic (a budget seal starts on
+// the background sealer and snapshots whatever the memtable holds when it
+// takes the lock; the writer keeps writing), so the layout — how many
+// segments, where their boundaries fall — varies between identical runs.
+// No answer may depend on it: the same writes sealed never, once, every 97
+// rows, every 500 rows, or by the budget sealer (in RAM and to files) give
+// every store door the undeclared twin's answer, and ScanRelSegments the same
+// rows in the same order.
+func TestSegments_AnswersDoNotDependOnSealBoundaries(t *testing.T) {
+	type layout struct {
+		name      string
+		budget    int64
+		sealEvery int
+		onDisk    bool
+	}
+	layouts := []layout{
+		{"never sealed", 1 << 40, 0, false},
+		{"sealed once", 1 << 40, -1, false},
+		{"every 97", 1 << 40, 97, false},
+		{"every 500", 1 << 40, 500, false},
+		{"budget sealer", 12 << 10, 0, false},
+		{"every 97, files", 1 << 40, 97, true},
+		{"budget sealer, files", 12 << 10, 0, true},
+	}
+	props := []string{"weight", "actor", "n"}
+	var ref []string
+	segCounts := map[int]bool{}
+	for _, l := range layouts {
+		t.Run(l.name, func(t *testing.T) {
+			r := rand.New(rand.NewSource(149)) // the same writes for every layout
+			tw := newSegTwin(t, l.budget, 10)
+			if l.onDisk {
+				if err := tw.declared.OpenRelSegmentDir(t.TempDir()); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = tw.declared.Close() })
+			}
+			for i := 1; i <= 1500; i++ {
+				if r.Intn(8) == 0 {
+					tw.mutate(r)
+				} else {
+					tw.put(r, segTestHOP)
+				}
+				if l.sealEvery > 0 && i%l.sealEvery == 0 {
+					if err := tw.declared.SealRelSegments(segTestHOP); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			if l.sealEvery < 0 {
+				if err := tw.declared.SealRelSegments(segTestHOP); err != nil {
+					t.Fatal(err)
+				}
+			}
+			waitSealsForTest(t, tw.declared)
+			segCounts[tw.stats().Segments] = true
+			tw.compare(l.name)
+			got := segScanOrdered(t, tw.declared, props)
+			if ref == nil {
+				ref = got
+			} else if strings.Join(got, "\n") != strings.Join(ref, "\n") {
+				t.Fatalf("%s: ScanRelSegments differs from the unsealed layout (%d vs %d rows, or order)", l.name, len(got), len(ref))
+			}
+		})
+	}
+	if len(segCounts) < 4 {
+		t.Fatalf("the layouts must differ in segment count: %v", segCounts)
+	}
+}

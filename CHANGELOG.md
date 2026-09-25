@@ -41,8 +41,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - **Measured** (`TestSegmentS2Scale` mode `nvme`, 3 runs, 256 MiB budget, NVMe, 790 K / 3.15 M /
     12.6 M rows, 107 K / 408 K / 1.58 M HOP): Go heap beyond the memtable 0.3–0.5 / 0.3–0.4 / 0.7
     B/HOP (S2 in RAM in the same runs 24.0–24.1 / 24.7–24.9 / 25.6–25.7) — growth +0.2–0.3 B/HOP,
-    gate ≤ 1 met. Write of 12.6 M 9.8 / 8.5 / 7.9 s against S2 9.4 / 7.6 / 7.9 s in the same runs
-    (+4 / +12 / 0 %; the +12 % run sealed 5 times against 4) — the 10 % gate held in 2 of 3 runs.
+    gate ≤ 1 met. Write of 12.6 M (`TestSegmentS3WriteGate`: S2 and S3 alternating, 5 runs each,
+    pinned to 8 cores, host load 1.9–3.4, the P7 agent idle): median 7.86 s (7.85–7.88) against S2
+    7.87 s (7.37–7.97) — gate met; at an equal seal count (5 seals) 7.86 against 7.93 s. The
+    earlier +12 % run was a seal-count coincidence, not a byte-accounting difference: the budget
+    seals run on the background sealer and each snapshots what was written during the previous
+    one, so seal boundaries move by a few thousand rows between identical runs and a final seal
+    exists only if rows arrived after the last background snapshot (4 or 5 seals); both modes
+    snapshot 471,245–471,276 rows at the first budget crossing. S3's store phase per seal is
+    40–57 ms against S2's 8–10 ms (file write 5 ms, file fsync + rename + dir fsync 14 ms, map +
+    open + manifest write 9 ms, manifest fsync + rename + dir fsync 10 ms; ~0.1 µs per row), on
+    the background sealer, not the writer. Seal-log seam `sealRecord`; the answers do not depend
+    on the layout (`TestSegments_AnswersDoNotDependOnSealBoundaries`: the same writes sealed
+    never, once, every 97 or 500 rows, by the budget sealer, in RAM and to files).
     `ScanRelSegments` 7.3–8.5 M rows/s (S2 reference 7.7–7.8). On disk 21.5 / 22.3 / 27.2–28.2
     B/HOP: self-contained files repeat node hashes (5.2 B/HOP at 12.6 M) and dictionaries per
     segment; S4's merge bounds it. RSS at 12.6 M after the reads: anonymous 121–132 MiB (S2

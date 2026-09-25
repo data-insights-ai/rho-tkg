@@ -8,6 +8,7 @@ import (
 	"slices"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segdir"
@@ -382,6 +383,7 @@ func (ms *Store) sealType(tok uint16, explicit bool) error {
 	if hook := ms.sealEncodeHook; hook != nil {
 		hook() // test seam: the encode window, ms.mu not held
 	}
+	rec := sealRecord{Explicit: explicit, Start: time.Now(), Snapshot: len(rows)}
 	encode := func(rows []*types.Relationship) ([]byte, error) {
 		opts := segment.Options{IntegrityBlockRows: blockRows}
 		if dir != nil {
@@ -412,6 +414,7 @@ func (ms *Store) sealType(tok uint16, explicit bool) error {
 	if err != nil {
 		rows = nil // give up this seal: everything stays in the memtable
 	}
+	rec.Encode = time.Since(rec.Start)
 	var seg *segment.Segment
 	var m *segdir.Mapping
 	var seq uint64
@@ -428,6 +431,7 @@ func (ms *Store) sealType(tok uint16, explicit bool) error {
 			rows = nil
 		}
 	}
+	rec.Store = time.Since(rec.Start) - rec.Encode
 
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
@@ -486,7 +490,25 @@ func (ms *Store) sealType(tok uint16, explicit bool) error {
 	if hi > ms.segMaxID {
 		ms.segMaxID = hi
 	}
+	if ms.sealLog != nil {
+		rec.Rows, rec.Bytes, rec.UnsealedAfter = len(rows), sg.bytes, len(ms.typeIdx[tok])
+		rec.Install = time.Since(rec.Start) - rec.Encode - rec.Store
+		ms.sealLog(rec)
+	}
 	return nil
+}
+
+// sealRecord is one seal as the measurement seam reports it: what it took
+// (Snapshot rows, Rows sealed after refusals), what it left (UnsealedAfter:
+// rows written during the seal), and where its time went — Encode (the codec,
+// incl. its verify), Store (S2: open over the bytes; S3: write, fsync,
+// rename, map, open, manifest commit) and Install (under ms.mu).
+type sealRecord struct {
+	Explicit               bool
+	Start                  time.Time
+	Snapshot, Rows, Bytes  int
+	UnsealedAfter          int
+	Encode, Store, Install time.Duration
 }
 
 // hasStoredHash mirrors the codec's precondition: a 64-character lowercase

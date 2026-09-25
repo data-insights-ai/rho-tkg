@@ -253,6 +253,7 @@ type Store struct {
 	segDue          atomic.Bool            // a write pushed the unsealed bytes over the budget
 	relsPeak        int                    // len(rels) high-water mark since the last shrink (declared stores only)
 	sealEncodeHook  func()                 // test seam: runs in a seal's encode window (nil in production)
+	sealLog         func(sealRecord)       // measurement seam: one record per seal that installed a segment (nil in production)
 	sealerRunning   bool                   // the background sealer goroutine is live (guarded by ms.mu)
 	sealers         sync.WaitGroup         // background sealers; Close waits for them
 	sealedRowBuilds atomic.Uint64          // Relationships built from sealed rows (measurement)
