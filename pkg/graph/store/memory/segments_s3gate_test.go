@@ -31,17 +31,16 @@ import (
 )
 
 type s3GateRun struct {
-	mode        string
-	load1       string
-	p7          int
-	write       time.Duration // the writes (background seals run concurrently)
-	finalSeal   time.Duration
-	seals       []memory.SealLogEntry
-	steps       [][]time.Time // S3: per seal, the four protocol step times
-	stepNames   []string
-	hop         int
-	segBytes    int64
-	writerSeals int
+	mode      string
+	load1     string
+	p7        int
+	write     time.Duration // the writes (background seals run concurrently)
+	finalSeal time.Duration
+	seals     []memory.SealLogEntry
+	steps     [][]time.Time // S3: per seal, the four protocol step times
+	stepNames []string
+	hop       int
+	segBytes  int64
 }
 
 // s3P7Procs counts processes whose working directory is the P7 worktree
