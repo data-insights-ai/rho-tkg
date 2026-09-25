@@ -427,7 +427,6 @@ func (ms *Store) sealType(tok uint16, explicit bool) error {
 		if err != nil {
 			rows = nil
 		}
-		data = nil // a spilled segment's heap copy is garbage from here on
 	}
 
 	ms.mu.Lock()

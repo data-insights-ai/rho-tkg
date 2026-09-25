@@ -469,7 +469,7 @@ func (d *Dir) Map(e Entry) (*Mapping, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s: %v", ErrFile, name, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }() // the mapping outlives the descriptor
 	fi, err := f.Stat()
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s: %v", ErrFile, name, err)
