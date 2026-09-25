@@ -29,7 +29,11 @@ targets for the gates in §6. They are not results.
   on, ai-soc's parity golden and cross-check agree on all shapes; at S3, S5 and S7 also one
   BA day on Flux (masked twin in git).
 - **P7** (compacting today's row records) shrinks to what stays in the row store (nodes,
-  undeclared types) and starts only after S2.
+  undeclared types) and starts only after S2. **Done 2026-09-25** (CHANGELOG Unreleased): the memory row store
+  keeps a P6 HOP row in 388–390 B (was 608–611) and a node in 379–401 B (was 507–531) at the
+  three synthday sizes; compact first-version metadata, no property copy on write, compact
+  adjacency sets. The 150–300 B arithmetic target was not reached; the remaining terms are in
+  `tasks/backlog.md` item 5.
 
 ## 1. Goal and non-goals
 
