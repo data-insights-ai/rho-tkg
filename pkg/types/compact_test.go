@@ -379,3 +379,98 @@ func TestDecodeCanonicalHash(t *testing.T) {
 		}
 	}
 }
+
+// TestRelationshipCompactFrozenCopySharesPropertiesCopyOnWrite: the compact
+// copy takes the source's property storage without copying it (the store's
+// write path no longer deep-copies what the graph layer just built), and the
+// source copies it before its next in-place property write, so neither side
+// ever sees the other's writes.
+func TestRelationshipCompactFrozenCopySharesPropertiesCopyOnWrite(t *testing.T) {
+	r := buildCompactTestRel(t, compactRelCases()[0])
+	if a := testing.AllocsPerRun(100, func() { _ = r.CompactFrozenCopy() }); a > 2 {
+		t.Fatalf("CompactFrozenCopy allocates %.0f objects, want <= 2 (row + compact metadata; properties shared)", a)
+	}
+	for _, write := range []struct {
+		name string
+		do   func(*Relationship) error
+	}{
+		{"overwrite existing key", func(r *Relationship) error { return r.SetProperty("actor", "other") }},
+		{"insert new key", func(r *Relationship) error { return r.SetProperty("aaa", int64(1)) }},
+		{"append new key", func(r *Relationship) error { return r.SetProperty("zzz", int64(1)) }},
+		{"delete key", func(r *Relationship) error { _, err := r.DeleteProperty("obs"); return err }},
+	} {
+		t.Run(write.name, func(t *testing.T) {
+			src := buildCompactTestRel(t, compactRelCases()[0])
+			cp := src.CompactFrozenCopy()
+			want := cp.DeepCopy()
+			before := src.DeepCopy()
+			if err := write.do(src); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(cp.DeepCopy(), want) {
+				t.Fatalf("source write reached the compact copy: %v, want %v", cp.Properties(), want.Properties())
+			}
+			if reflect.DeepEqual(src.Properties(), before.Properties()) {
+				t.Fatal("the write did not land on the source")
+			}
+			// A second copy of the (now private) source shares again and is
+			// again isolated.
+			cp2 := src.CompactFrozenCopy()
+			want2 := cp2.DeepCopy()
+			if err := src.SetProperty("actor", "third"); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(cp2.DeepCopy(), want2) || !reflect.DeepEqual(cp.DeepCopy(), want) {
+				t.Fatal("second write reached a compact copy")
+			}
+		})
+	}
+}
+
+// TestNodeCompactFrozenCopySharesPropertiesCopyOnWrite is the node mirror,
+// plus the aliasing bulk-create door (SetPropertiesCanonicalShared).
+func TestNodeCompactFrozenCopySharesPropertiesCopyOnWrite(t *testing.T) {
+	n := buildCompactTestNode(t, compactNodeCases()[0])
+	if a := testing.AllocsPerRun(100, func() { _ = n.CompactFrozenCopy() }); a > 3 {
+		t.Fatalf("CompactFrozenCopy allocates %.0f objects, want <= 3 (row + extra labels + compact metadata; properties shared)", a)
+	}
+	for _, write := range []struct {
+		name string
+		do   func(*Node) error
+	}{
+		{"overwrite existing key", func(n *Node) error { return n.SetProperty("name", "other") }},
+		{"insert new key", func(n *Node) error { return n.SetProperty("aaa", int64(1)) }},
+		{"delete key", func(n *Node) error { _, err := n.DeleteProperty("tags"); return err }},
+	} {
+		t.Run(write.name, func(t *testing.T) {
+			src := buildCompactTestNode(t, compactNodeCases()[0])
+			cp := src.CompactFrozenCopy()
+			want := cp.DeepCopy()
+			if err := write.do(src); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(cp.DeepCopy(), want) {
+				t.Fatalf("source write reached the compact copy: %v, want %v", cp.Properties(), want.Properties())
+			}
+		})
+	}
+	// Siblings aliasing one canonical slice: a write through one must reach
+	// neither the other sibling nor a cached copy.
+	ps, err := NewPropertySlice(map[string]any{"k": "v", "m": int64(1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, b := NewNode(NodeID(41), 1, nil), NewNode(NodeID(42), 1, nil)
+	a.SetPropertiesCanonicalShared(ps)
+	b.SetPropertiesCanonicalShared(ps)
+	cp := a.CompactFrozenCopy()
+	if err := b.SetProperty("k", "changed"); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := a.GetProperty("k"); v != "v" {
+		t.Fatalf("sibling write reached sibling: %v", v)
+	}
+	if v, _ := cp.GetProperty("k"); v != "v" {
+		t.Fatalf("sibling write reached the compact copy: %v", v)
+	}
+}

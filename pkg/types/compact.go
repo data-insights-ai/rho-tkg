@@ -112,7 +112,11 @@ func compactNodeMeta(tm *TemporalMetadata, ig *NodeIntegrity) (*nodeMeta, bool) 
 // CompactFrozenCopy returns a frozen, independent copy of r in the compact
 // form stores cache (see the comment at the top of compact.go). It answers
 // every accessor exactly as r.DeepCopy() followed by Freeze() would, and
-// DeepCopy on it returns the ordinary mutable form. Nil-safe.
+// DeepCopy on it returns the ordinary mutable form. The copy shares r's
+// property storage instead of deep-copying it; r copies its storage before
+// its next in-place property write, so writes through r never reach the copy
+// (the store's write path no longer copies what the graph layer just built).
+// Nil-safe.
 func (r *Relationship) CompactFrozenCopy() *Relationship {
 	if r == nil {
 		return nil
@@ -123,8 +127,14 @@ func (r *Relationship) CompactFrozenCopy() *Relationship {
 		endID:      r.endID,
 		relType:    r.relType,
 		version:    r.version,
-		properties: r.properties.DeepCopy(),
+		properties: r.properties,
 		frozen:     true,
+	}
+	// The properties are shared, not copied: the frozen copy never writes
+	// them, and an unfrozen source copies them before its next in-place
+	// write (ownProperties). Every accessor hands out deep copies of values.
+	if !r.frozen {
+		r.sharedProps = true
 	}
 	switch {
 	case r.meta != nil:
@@ -153,8 +163,12 @@ func (n *Node) CompactFrozenCopy() *Node {
 		id:           n.id,
 		primaryLabel: n.primaryLabel,
 		version:      n.version,
-		properties:   n.properties.DeepCopy(),
+		properties:   n.properties,
 		frozen:       true,
+	}
+	// Shared, not copied (see (*Relationship).CompactFrozenCopy).
+	if !n.frozen {
+		n.sharedProps = true
 	}
 	if len(n.extraLabels) > 0 {
 		cp.extraLabels = make([]labelToken, len(n.extraLabels))

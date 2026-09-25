@@ -1,6 +1,10 @@
 package types
 
-import snowflake "github.com/bds421/rho-snowflake-2026"
+import (
+	"slices"
+
+	snowflake "github.com/bds421/rho-snowflake-2026"
+)
 
 // relTypeToken is the internal integer type for interned relationship type strings.
 // Token 0 is reserved as the zero/invalid value and must never be assigned.
@@ -38,7 +42,10 @@ type Relationship struct {
 	version    uint32            // 4B, offset 72
 	relType    relTypeToken      // 2B, offset 76
 	frozen     bool              // 1B, offset 78
-	// 1B trailing padding → 80B total
+	// sharedProps: properties' backing array is shared with a store's compact
+	// frozen copy (or with sibling bulk-create nodes); copy before writing
+	// in place (ownProperties).
+	sharedProps bool // 1B, offset 79 → 80B total
 }
 
 // NewRelationship creates a Relationship with typed IDs for all parties.
@@ -163,6 +170,7 @@ func (r *Relationship) SetProperties(ps PropertySlice) error {
 		return err
 	}
 	r.properties = canonical
+	r.sharedProps = false
 	return nil
 }
 
@@ -180,6 +188,7 @@ func (r *Relationship) SetOwnedProperties(ps OwnedPropertySlice) error {
 		// Reject BEFORE consuming ps — the caller keeps ownership on error.
 		return ErrFrozenRelationship
 	}
+	r.sharedProps = false
 	if ps.ps == nil {
 		r.properties = nil
 		return nil
@@ -187,6 +196,15 @@ func (r *Relationship) SetOwnedProperties(ps OwnedPropertySlice) error {
 	r.properties = *ps.ps
 	*ps.ps = nil
 	return nil
+}
+
+// ownProperties gives r a private backing array before an in-place
+// property write when the current one is shared (sharedProps).
+func (r *Relationship) ownProperties() {
+	if r.sharedProps {
+		r.properties = slices.Clone(r.properties)
+		r.sharedProps = false
+	}
 }
 
 // SetProperty sets a property on the relationship.
@@ -198,6 +216,7 @@ func (r *Relationship) SetProperty(key string, value any) error {
 	if r.frozen {
 		return ErrFrozenRelationship
 	}
+	r.ownProperties()
 	return r.properties.Set(key, value)
 }
 
@@ -260,6 +279,7 @@ func (r *Relationship) DeleteProperty(key string) (bool, error) {
 	if r.frozen {
 		return false, ErrFrozenRelationship
 	}
+	r.ownProperties()
 	return r.properties.Delete(key)
 }
 

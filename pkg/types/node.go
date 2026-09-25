@@ -1,6 +1,10 @@
 package types
 
-import snowflake "github.com/bds421/rho-snowflake-2026"
+import (
+	"slices"
+
+	snowflake "github.com/bds421/rho-snowflake-2026"
+)
 
 // labelToken is the internal integer type for interned label strings.
 // Token 0 is reserved as the zero/invalid value and must never be assigned.
@@ -39,7 +43,10 @@ type Node struct {
 	version      uint32            // 4B, offset 80
 	primaryLabel labelToken        // 2B, offset 84
 	frozen       bool              // 1B, offset 86
-	// 1B trailing padding → 88B total
+	// sharedProps: properties' backing array is shared with a store's compact
+	// frozen copy (or with sibling bulk-create nodes); copy before writing
+	// in place (ownProperties).
+	sharedProps bool // 1B, offset 87 → 88B total
 }
 
 // NewNode creates a Node with the given typed node ID, primary label token,
@@ -219,6 +226,7 @@ func (n *Node) SetProperties(ps PropertySlice) error {
 		return err
 	}
 	n.properties = canonical
+	n.sharedProps = false
 	return nil
 }
 
@@ -239,6 +247,7 @@ func (n *Node) SetPropertiesCanonicalShared(ps PropertySlice) {
 		return
 	}
 	n.properties = ps
+	n.sharedProps = true // aliased by contract: an in-place write copies first
 }
 
 // SetOwnedProperties replaces the node's property slice without copying it.
@@ -254,6 +263,7 @@ func (n *Node) SetOwnedProperties(ps OwnedPropertySlice) error {
 		// Reject BEFORE consuming ps — the caller keeps ownership on error.
 		return ErrFrozenNode
 	}
+	n.sharedProps = false
 	if ps.ps == nil {
 		n.properties = nil
 		return nil
@@ -261,6 +271,15 @@ func (n *Node) SetOwnedProperties(ps OwnedPropertySlice) error {
 	n.properties = *ps.ps
 	*ps.ps = nil
 	return nil
+}
+
+// ownProperties gives n a private backing array before an in-place
+// property write when the current one is shared (sharedProps).
+func (n *Node) ownProperties() {
+	if n.sharedProps {
+		n.properties = slices.Clone(n.properties)
+		n.sharedProps = false
+	}
 }
 
 // SetProperty sets a property on the node.
@@ -272,6 +291,7 @@ func (n *Node) SetProperty(key string, value any) error {
 	if n.frozen {
 		return ErrFrozenNode
 	}
+	n.ownProperties()
 	return n.properties.Set(key, value)
 }
 
@@ -334,6 +354,7 @@ func (n *Node) DeleteProperty(key string) (bool, error) {
 	if n.frozen {
 		return false, ErrFrozenNode
 	}
+	n.ownProperties()
 	return n.properties.Delete(key)
 }
 
