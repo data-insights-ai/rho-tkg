@@ -323,7 +323,7 @@ func TestDir_ManifestDamageFailsClosed(t *testing.T) {
 	for name, b := range cases {
 		t.Run(name, func(t *testing.T) {
 			if name != "empty" && name != "truncated" && name != "flipped body" && name != "flipped header" &&
-				name != "bad magic" && name != "oversize length" && string(b[manifestHeaderSize:]) == string(body(good)) {
+				name != "bad magic" && name != "oversize length" && name != "future version" && string(b[manifestHeaderSize:]) == string(body(good)) {
 				t.Fatalf("case %q did not change the manifest body: %s", name, body(good))
 			}
 			if err := os.WriteFile(path, b, 0o600); err != nil {

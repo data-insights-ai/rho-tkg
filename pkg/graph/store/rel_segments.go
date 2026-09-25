@@ -225,7 +225,9 @@ func (b *RelSegmentBatch) Len() int { return len(b.IDs) }
 // Row returns row k in full, frozen and equal to what the row doors return
 // for it (Integrity().Hash included). It costs a row decode; consumers call it
 // only for rows whose column says Other, or when they need fields the batch
-// does not carry.
+// does not carry. It is valid only while the scan runs (inside fn): after the
+// scan returns it fails with ErrInvalidStoreMutation, because the segment it
+// decodes from may be released (a memory-mapped file, ADR-0011 S3).
 func (b *RelSegmentBatch) Row(k int) (*types.Relationship, error) {
 	if b == nil || b.row == nil || k < 0 || k >= len(b.IDs) {
 		return nil, fmt.Errorf("%w: segment batch row %d", ErrInvalidStoreMutation, k)

@@ -33,6 +33,7 @@ import (
 var (
 	segTwinOnDisk  bool
 	segTwinsOnDisk []*segTwin
+	segTwinDirRoot string
 )
 
 // segDirFiles lists the directory's file names, sorted.
@@ -99,6 +100,30 @@ func assertSegDirConsistent(t *testing.T, s *Store, dir string) {
 	slices.Sort(want)
 	if got := segDirSegmentFiles(t, dir); !slices.Equal(got, want) {
 		t.Fatalf("segment files %v, the store serves %v", got, want)
+	}
+	for _, name := range segDirFiles(t, dir) {
+		if strings.HasSuffix(name, ".tmp") {
+			t.Fatalf("a .tmp file outlived its seal: %s", name)
+		}
+	}
+}
+
+// assertSegDirClean checks a directory no store has open: its segment files
+// are exactly the ones its manifest lists, and no .tmp is left.
+func assertSegDirClean(t *testing.T, dir string) {
+	t.Helper()
+	d, err := segdir.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	var want []string
+	for _, e := range d.Manifest().Segments {
+		want = append(want, segdir.FileName(e.Token, e.Seq))
+	}
+	slices.Sort(want)
+	if got := segDirSegmentFiles(t, dir); !slices.Equal(got, want) {
+		t.Fatalf("%s: segment files %v, the manifest lists %v", dir, got, want)
 	}
 	for _, name := range segDirFiles(t, dir) {
 		if strings.HasSuffix(name, ".tmp") {
@@ -182,8 +207,8 @@ func oracleOf(t *testing.T, nodes []types.NodeID, rows []*types.Relationship) *S
 // that measure the in-RAM shared dictionaries do not apply: files are
 // self-contained by design.
 func TestSegmentDir_S2SuiteOverMappedFiles(t *testing.T) {
-	segTwinOnDisk = true
-	t.Cleanup(func() { segTwinOnDisk, segTwinsOnDisk = false, nil })
+	segTwinOnDisk, segTwinDirRoot = true, t.TempDir()
+	t.Cleanup(func() { segTwinOnDisk, segTwinsOnDisk, segTwinDirRoot = false, nil, "" })
 	for name, fn := range map[string]func(*testing.T){
 		"StoreDifferentialOracle":                     TestSegments_StoreDifferentialOracle,
 		"UnsealableRowsStayInMemtable":                TestSegments_UnsealableRowsStayInMemtable,
@@ -201,8 +226,15 @@ func TestSegmentDir_S2SuiteOverMappedFiles(t *testing.T) {
 			fn(t)
 			sealed := 0
 			for _, tw := range segTwinsOnDisk {
-				waitSealsForTest(t, tw.declared)
-				assertSegDirConsistent(t, tw.declared, tw.dir)
+				tw.declared.mu.RLock()
+				closed := tw.declared.closed
+				tw.declared.mu.RUnlock()
+				if closed { // a subtest's twin: its store closed with the subtest
+					assertSegDirClean(t, tw.dir)
+				} else {
+					waitSealsForTest(t, tw.declared)
+					assertSegDirConsistent(t, tw.declared, tw.dir)
+				}
 				sealed += len(segDirSegmentFiles(t, tw.dir))
 			}
 			if len(segTwinsOnDisk) == 0 || sealed == 0 {

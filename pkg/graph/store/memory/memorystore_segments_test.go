@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -55,7 +56,11 @@ func newSegTwin(t *testing.T, budget int64, nodes int) *segTwin {
 		t.Fatalf("DeclareRelSegment: %v", err)
 	}
 	if segTwinOnDisk { // ADR-0011 S3: the same test over mapped segment files
-		tw.dir = t.TempDir()
+		dir, err := os.MkdirTemp(segTwinDirRoot, "twin-") // outlives a subtest: the suite checks it
+		if err != nil {
+			t.Fatal(err)
+		}
+		tw.dir = dir
 		if err := tw.declared.OpenRelSegmentDir(tw.dir); err != nil {
 			t.Fatalf("OpenRelSegmentDir: %v", err)
 		}

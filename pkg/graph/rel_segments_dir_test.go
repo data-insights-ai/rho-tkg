@@ -36,8 +36,12 @@ func segFiles(t *testing.T, dir string) []string {
 // like the undeclared replica, ScanRelSegments included (ID order, twice).
 func TestRelSegmentsDifferentialOracleOnDisk(t *testing.T) {
 	var dirs []string
+	root := t.TempDir() // outlives the per-seed subtests: checked below
 	runSegOracle(t, func(t *testing.T) string {
-		d := filepath.Join(t.TempDir(), "segments")
+		d, err := os.MkdirTemp(root, "segments-")
+		if err != nil {
+			t.Fatal(err)
+		}
 		dirs = append(dirs, d)
 		return d
 	})
