@@ -26,6 +26,11 @@ import "encoding/hex"
 // 64 lowercase hex characters, or missing temporal or integrity metadata. The
 // compact form is an exact re-encoding or it is not used.
 //
+// A field added to TemporalMetadata, RelIntegrity, NodeIntegrity, Relationship
+// or Node must be taught to this file (fit check and rebuild, or the copy
+// constructors): compact_fields_test.go enumerates every field by reflection
+// and fails naming the one this file would drop.
+//
 // Invariant: meta != nil implies frozen, temporal == nil and integrity == nil.
 // Every accessor rebuilds the public structs from it, so callers see the same
 // values, the same nil-ness and the same hash strings as before.

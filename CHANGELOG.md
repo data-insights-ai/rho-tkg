@@ -55,8 +55,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   users and single passes varied by up to ±30 %): write 291 / 280 / 264 → 299 / 272 / 277 K
   rels/s; `ByType` 11.2 / 9.4 / 6.8 → 11.4 / 8.5 / 7.2 M rows/s; `ForEachByType` 11.9 / 9.7 /
   7.1 → 11.9 / 9.0 / 7.1 M rows/s; `Get` 2.5 / 1.4 / 1.3 → 2.4 (one pass 3.6) / 1.5 / 1.2 M/s.
-  The 3.15 M `ByType` best is 10 % lower, but the pass ranges overlap (7.2–8.5 against 5.3–9.4)
-  and the other sizes show no gap; not profiled. The one cost found
+  The 3.15 M `ByType` best pass above looked 10 % lower; re-run alternately before / after, five
+  passes each, each started only when no other test binary ran and the load average was below
+  2.5: median 9.07 M rows/s before (8.98–9.61), 9.56 after (9.30–9.73 over four clean passes; the
+  fifth, 5.32, overlapped another agent's test run) — no gap. The one cost found
   by a microbenchmark: thawing a compact row (`Get`'s `DeepCopy`) rebuilds the hex hash —
   ~150 vs ~127 ns, 5 vs 4 objects (`relMeta.integrity` encodes into a stack buffer; with
   `hex.EncodeToString` it was 6). Not reached: the arithmetic target of 150–300 B per
