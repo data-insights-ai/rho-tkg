@@ -26,17 +26,29 @@ package memory_test
 // set, e.g.
 //
 //	RHO_TKG_SEGMENT_S2=790k,3.15M,12.6M RHO_TKG_SEGMENT_S2_SCHEMAS=p6,legacy \
-//	RHO_TKG_SEGMENT_S2_MODES=rows,segments [RHO_TKG_SEGMENT_S2_BUDGET_MB=64] \
+//	RHO_TKG_SEGMENT_S2_MODES=rows,segments,nvme [RHO_TKG_SEGMENT_S2_BUDGET_MB=64] \
+//	[RHO_TKG_SEGMENT_S3_DIR=/nvme/scratch] \
 //	go test -run TestSegmentS2Scale -v -count=1 -timeout 0 ./pkg/graph/store/memory
 //
-// The numbers are recorded in CHANGELOG (Unreleased) and ADR-0011 §6 (S2).
+// Mode nvme (ADR-0011 S3) is mode segments with Config.SegmentDir set to a
+// fresh directory under RHO_TKG_SEGMENT_S3_DIR (default os.TempDir()):
+// segments are files, read memory-mapped. Its "resident" numbers are the Go
+// heap; the process RSS is reported next to them, split into anonymous
+// memory (the heap and runtime, after debug.FreeOSMemory) and file-backed
+// pages (the mapped segment pages the reads touched, plus the test binary's
+// text) — file-backed pages are clean and reclaimable, so they are the page
+// cache, not a bound on memory.
+//
+// The numbers are recorded in CHANGELOG (Unreleased) and ADR-0011 §6 (S2, S3).
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"math/rand/v2"
 	"os"
 	"runtime"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -84,6 +96,45 @@ type s2Result struct {
 	write, finalSeal                time.Duration
 	byType, forEach, point, colRate float64 // rows/s
 	byTypeAgain, scanColsRate       float64
+	reopen                          time.Duration // mode nvme: New over the directory (map + verify)
+	// RSS (mode nvme and segments): anonymous and file-backed resident
+	// bytes after the final seal and after the reads, and file-backed at
+	// the start of the run (the binary's text).
+	rssAnonSealed, rssFileSealed, rssAnonRead, rssFileRead, rssFileStart int64
+}
+
+// rssNow returns the process's resident anonymous and file-backed bytes
+// (/proc/self/status RssAnon, RssFile; 0, 0 where unavailable), after
+// returning freed heap to the OS so RssAnon is the live footprint.
+func rssNow() (anon, file int64) {
+	debug.FreeOSMemory()
+	f, err := os.Open("/proc/self/status")
+	if err != nil {
+		return 0, 0
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		k, v, ok := strings.Cut(sc.Text(), ":")
+		if !ok {
+			continue
+		}
+		fields := strings.Fields(v)
+		if len(fields) != 2 || fields[1] != "kB" {
+			continue
+		}
+		n, err := strconv.ParseInt(fields[0], 10, 64)
+		if err != nil {
+			continue
+		}
+		switch k {
+		case "RssAnon":
+			anon = n << 10
+		case "RssFile":
+			file = n << 10
+		}
+	}
+	return anon, file
 }
 
 func (r s2Result) String() string {
@@ -99,9 +150,19 @@ func (r s2Result) String() string {
 			fmt.Fprintf(&sec, " %s=%.2f", k, float64(r.sections[k])/float64(r.hop))
 		}
 	}
+	rss := ""
+	if r.rssAnonSealed > 0 {
+		mb := func(b int64) float64 { return float64(b) / (1 << 20) }
+		rss = fmt.Sprintf("\n    RSS MiB: after final seal anon %.0f file %.0f; after reads anon %.0f file %.0f (file at start %.0f: +%.1f B/HOP mapped pages)",
+			mb(r.rssAnonSealed), mb(r.rssFileSealed), mb(r.rssAnonRead), mb(r.rssFileRead), mb(r.rssFileStart),
+			float64(r.rssFileRead-r.rssFileStart)/float64(r.hop))
+	}
+	if r.reopen > 0 {
+		rss += fmt.Sprintf("\n    reopen (map + verify every integrity group) %.2fs = %.2fM rows/s", r.reopen.Seconds(), float64(r.hop)/r.reopen.Seconds()/1e6)
+	}
 	return fmt.Sprintf("S2 size=%-6s schema=%-6s mode=%-8s hop=%d | resident %.1f B/HOP beyond memtable, %.1f B/HOP with tail | segments %d (%d seals) %.2f B/HOP encoded, tail %.1f B/HOP | write %.1fs final seal %.2fs | ByType %.2fM rows/s (again %.2fM) ForEachByType %.2fM rows/s Get %.3fM/s ScanRelColumns %.2fM rows/s ScanRelSegments %.1fM rows/s",
 		r.size, r.schema, r.mode, r.hop, r.sealed, r.withTail, r.segments, r.seals, r.segBytes, r.tailBytes,
-		r.write.Seconds(), r.finalSeal.Seconds(), r.byType/1e6, r.byTypeAgain/1e6, r.forEach/1e6, r.point/1e6, r.scanColsRate/1e6, r.colRate/1e6) + sec.String()
+		r.write.Seconds(), r.finalSeal.Seconds(), r.byType/1e6, r.byTypeAgain/1e6, r.forEach/1e6, r.point/1e6, r.scanColsRate/1e6, r.colRate/1e6) + rss + sec.String()
 }
 
 func runS2(tb testing.TB, sz synthhop.Size, schema synthhop.Schema, mode string) s2Result {
@@ -110,7 +171,21 @@ func runS2(tb testing.TB, sz synthhop.Size, schema synthhop.Schema, mode string)
 	res := s2Result{size: sz.Name, mode: mode, schema: map[synthhop.Schema]string{synthhop.SchemaP6: "p6", synthhop.SchemaLegacy: "legacy"}[schema]}
 	st := memory.New()
 	cfg := graph.Config{Store: st, Validation: graph.ValidationLimits{AllowSelfLoops: true}, AllowTxBackfill: true}
-	if mode == "segments" {
+	_, res.rssFileStart = rssNow()
+	sealing := mode == "segments" || mode == "nvme"
+	if mode == "nvme" {
+		root := os.Getenv("RHO_TKG_SEGMENT_S3_DIR")
+		if root == "" {
+			root = os.TempDir()
+		}
+		dir, err := os.MkdirTemp(root, "rho-tkg-s3-")
+		if err != nil {
+			tb.Fatal(err)
+		}
+		defer os.RemoveAll(dir)
+		cfg.SegmentDir = dir
+	}
+	if sealing {
 		cfg.RelSegments = []graph.RelSegmentSpec{s2Spec(schema)}
 		if v := os.Getenv("RHO_TKG_SEGMENT_S2_BUDGET_MB"); v != "" {
 			mb, err := strconv.Atoi(v)
@@ -155,12 +230,12 @@ func runS2(tb testing.TB, sz synthhop.Size, schema synthhop.Schema, mode string)
 	res.hop = len(ids)
 	nodes = nil // the harness's node copies are not the graph's (S0)
 	runtime.KeepAlive(nodes)
-	if mode == "segments" {
+	if sealing {
 		s2WaitSealer(tb, g) // the tail reading excludes a background seal's buffers
 	}
 	hW := s2Heap()
 	hS := hW
-	if mode == "segments" {
+	if sealing {
 		pre, err := g.Admin().RelSegmentStats("HOP")
 		if err != nil {
 			tb.Fatal(err)
@@ -179,6 +254,7 @@ func runS2(tb testing.TB, sz synthhop.Size, schema synthhop.Schema, mode string)
 			tb.Fatalf("after the final seal every HOP row is sealed: %+v", stats)
 		}
 		hS = s2Heap()
+		res.rssAnonSealed, res.rssFileSealed = rssNow()
 		res.segments, res.seals = stats.Segments, stats.Seals
 		res.segBytes = float64(stats.SegmentBytes) / float64(res.hop)
 	}
@@ -224,7 +300,7 @@ func runS2(tb testing.TB, sz synthhop.Size, schema synthhop.Schema, mode string)
 		}
 		res.scanColsRate = float64(n) / time.Since(t0).Seconds()
 	}
-	if mode == "segments" {
+	if sealing {
 		// ScanRelSegments: the segment-order column door S5 adds, touching
 		// every value a consumer reads.
 		props := []string{"actor", "asset_class", "orch", "family"}
@@ -248,9 +324,29 @@ func runS2(tb testing.TB, sz synthhop.Size, schema synthhop.Schema, mode string)
 		runtime.KeepAlive(sum)
 		res.colRate = float64(rows) / time.Since(t0).Seconds()
 		res.sections = memory.SealedSectionBytesForTest(st, 1)
+		res.rssAnonRead, res.rssFileRead = rssNow()
 	}
 	if err := g.Close(); err != nil {
 		tb.Fatal(err)
+	}
+	if mode == "nvme" {
+		// Reopen: a new graph over the directory maps, verifies (every
+		// integrity group) and serves every sealed row.
+		rcfg := cfg
+		rcfg.Store = memory.New()
+		t0 := time.Now()
+		g2, err := graph.New(rcfg)
+		if err != nil {
+			tb.Fatalf("reopen: %v", err)
+		}
+		res.reopen = time.Since(t0)
+		stats, err := g2.Admin().RelSegmentStats("HOP")
+		if err != nil || stats.LiveSealedRows != int64(res.hop) {
+			tb.Fatalf("reopen serves %+v, %v; want %d rows", stats, err, res.hop)
+		}
+		if err := g2.Close(); err != nil {
+			tb.Fatal(err)
+		}
 	}
 	g, st = nil, nil
 	runtime.KeepAlive(g)
@@ -335,12 +431,12 @@ func TestSegmentS2ScaleSmoke(t *testing.T) {
 	if base.graphWithTail <= 0 {
 		t.Fatalf("nodes-only run measured no graph bytes: %+v", base)
 	}
-	for _, mode := range []string{"rows", "segments"} {
+	for _, mode := range []string{"rows", "segments", "nvme"} {
 		res := s2PerHOP(runS2(t, sz, synthhop.SchemaP6, mode), base)
 		if res.hop != sz.HOP || res.byType <= 0 || res.forEach <= 0 || res.point <= 0 || res.graphSealed <= 0 {
 			t.Fatalf("%s: empty measurement %s", mode, res)
 		}
-		if mode == "segments" && (res.segments == 0 || res.colRate <= 0 || res.segBytes <= 0) {
+		if mode != "rows" && (res.segments == 0 || res.colRate <= 0 || res.segBytes <= 0) {
 			t.Fatalf("segments: nothing sealed %s", res)
 		}
 	}
