@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.39.0] - 2026-09-25
+
+Minor release: ADR-0011 S2 (declared relationship types seal into in-RAM column segments with
+shared endpoint and string dictionaries and a background sealer; 24.0 / 24.8 / 25.7 B/HOP resident
+at 790 K / 3.15 M / 12.6 M rows against 608–611 in the row store) and S5 (`ScanRelSegments`,
+`ScanRelColumns` served from segment columns). Undeclared stores keep the v4.38.1 code paths.
+Shipped on v4 by owner decision D6 (René, 2026-09-25; `tasks/backlog.md`). Gates on the
+released tree: `make fmt-check`, `make check`, `make test-race`, `make cover-gate`,
+`make lint-docker`, `make security-docker`, `make vulncheck-docker` and the docs-consistency
+tests exit 0.
+
 ### Added
 
 - **ADR-0011 step S2 — declared bulk relationship types seal into in-RAM column
