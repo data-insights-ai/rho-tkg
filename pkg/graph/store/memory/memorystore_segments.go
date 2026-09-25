@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segdir"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segment"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -70,6 +71,7 @@ type memSeg struct {
 	seg    *segment.Segment
 	lo, hi types.RelID
 	bytes  int
+	m      *segdir.Mapping // the mapped file (nil: an in-RAM segment)
 }
 
 var _ storecontract.RelSegmentCapability = (*Store)(nil)
@@ -1789,4 +1791,14 @@ func (s *segColumnSource) Value(i, c int) (storecontract.ColumnKind, int64, floa
 		return k, 0, 0, s.str[c][p], false, true
 	}
 	return k, x, 0, "", false, true
+}
+
+var _ storecontract.RelSegmentDirCapability = (*Store)(nil)
+
+// OpenRelSegmentDir implements store.RelSegmentDirCapability (ADR-0011 S3).
+func (ms *Store) OpenRelSegmentDir(dir string) error {
+	if ms == nil {
+		return ErrNilStore
+	}
+	return nil // S3 skeleton
 }

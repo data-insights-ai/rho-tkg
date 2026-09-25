@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"strings"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
@@ -17,11 +18,17 @@ import (
 
 // declareRelSegments is called once from New after the store and the
 // registries are in place.
-func (c *Core) declareRelSegments(specs []storepkg.RelSegmentSpec, budget int64) error {
+func (c *Core) declareRelSegments(specs []storepkg.RelSegmentSpec, budget int64, dir string) error {
 	if budget < 0 {
 		return fmt.Errorf("graph: SegmentMemoryBudget %d: %w", budget, storepkg.ErrRelSegmentDeclaration)
 	}
+	if dir != "" && strings.TrimSpace(dir) == "" {
+		return fmt.Errorf("graph: SegmentDir is whitespace-only: %w", storepkg.ErrRelSegmentDeclaration)
+	}
 	if len(specs) == 0 {
+		if dir != "" {
+			return fmt.Errorf("graph: SegmentDir %q without RelSegments: %w", dir, storepkg.ErrRelSegmentDeclaration)
+		}
 		return nil
 	}
 	segCap, ok := c.store.(storepkg.RelSegmentCapability)
@@ -63,7 +70,20 @@ func (c *Core) declareRelSegments(specs []storepkg.RelSegmentSpec, budget int64)
 			return fmt.Errorf("graph: RelSegments: type %q: %w", spec.Type, err)
 		}
 	}
-	return c.persistRegistries()
+	if err := c.persistRegistries(); err != nil {
+		return err
+	}
+	if dir == "" {
+		return nil
+	}
+	dirCap, ok := c.store.(storepkg.RelSegmentDirCapability)
+	if !ok {
+		return fmt.Errorf("graph: SegmentDir: %w", storepkg.ErrCapabilityNotSupported)
+	}
+	if err := dirCap.OpenRelSegmentDir(dir); err != nil {
+		return fmt.Errorf("graph: SegmentDir %q: %w", dir, err)
+	}
+	return nil
 }
 
 // relSegmentTarget resolves a declared type name for the admin doors.

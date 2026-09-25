@@ -260,3 +260,16 @@ var ErrRelSegmentDeclaration = storepkg.ErrRelSegmentDeclaration
 // ErrRelSegmentNotDeclared is returned by the g.Admin() segment doors for a
 // relationship type that Config.RelSegments did not declare.
 var ErrRelSegmentNotDeclared = storepkg.ErrRelSegmentNotDeclared
+
+// ErrRelSegmentDirLocked is returned by New when Config.SegmentDir is held by
+// another open graph (ADR-0011 S3).
+var ErrRelSegmentDirLocked = storepkg.ErrRelSegmentDirLocked
+
+// ErrRelSegmentManifestInvalid is returned by New when Config.SegmentDir's
+// manifest is unreadable, damaged or of an unknown version (ADR-0011 S3).
+var ErrRelSegmentManifestInvalid = storepkg.ErrRelSegmentManifestInvalid
+
+// ErrRelSegmentFileInvalid is returned by New when a segment file that
+// Config.SegmentDir's manifest lists is missing, truncated, damaged or fails
+// its integrity roots (ADR-0011 S3).
+var ErrRelSegmentFileInvalid = storepkg.ErrRelSegmentFileInvalid

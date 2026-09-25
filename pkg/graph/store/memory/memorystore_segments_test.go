@@ -45,6 +45,7 @@ type segTwin struct {
 	rels     []types.RelID // every rel ever put
 	nextID   int64
 	clock    types.Instant
+	dir      string // the declared store's segment directory ("" = in-RAM segments)
 }
 
 func newSegTwin(t *testing.T, budget int64, nodes int) *segTwin {
@@ -52,6 +53,14 @@ func newSegTwin(t *testing.T, budget int64, nodes int) *segTwin {
 	tw := &segTwin{t: t, plain: New(), declared: New(), nextID: 1 << 40, clock: 1_700_000_000_000}
 	if err := tw.declared.DeclareRelSegment(segTestDecl(budget)); err != nil {
 		t.Fatalf("DeclareRelSegment: %v", err)
+	}
+	if segTwinOnDisk { // ADR-0011 S3: the same test over mapped segment files
+		tw.dir = t.TempDir()
+		if err := tw.declared.OpenRelSegmentDir(tw.dir); err != nil {
+			t.Fatalf("OpenRelSegmentDir: %v", err)
+		}
+		segTwinsOnDisk = append(segTwinsOnDisk, tw)
+		t.Cleanup(func() { _ = tw.declared.Close() })
 	}
 	for i := 0; i < nodes; i++ {
 		tw.addNode()

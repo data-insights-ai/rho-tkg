@@ -126,6 +126,13 @@ type segOracle struct {
 
 func newSegOracle(t *testing.T, budget int64) *segOracle {
 	t.Helper()
+	return newSegOracleDir(t, budget, "")
+}
+
+// newSegOracleDir is newSegOracle with the declared replica's sealed
+// segments in segDir (ADR-0011 S3; "" = in RAM).
+func newSegOracleDir(t *testing.T, budget int64, segDir string) *segOracle {
+	t.Helper()
 	o := &segOracle{t: t, ctx: context.Background()}
 	var err error
 	o.primary, err = graph.New(graph.Config{SnowflakeNodeID: 1, Store: memory.New(memory.WithChangeLog()), AllowTxBackfill: true})
@@ -140,7 +147,7 @@ func newSegOracle(t *testing.T, budget int64) *segOracle {
 	t.Cleanup(func() { _ = o.plain.Close() })
 	o.declared, err = graph.New(graph.Config{
 		SnowflakeNodeID: 3, Store: memory.New(), ReadOnlyReplica: true, ReplicationSource: o.primary.Replication(),
-		RelSegments: []graph.RelSegmentSpec{segOracleSpec}, SegmentMemoryBudget: budget,
+		RelSegments: []graph.RelSegmentSpec{segOracleSpec}, SegmentMemoryBudget: budget, SegmentDir: segDir,
 	})
 	if err != nil {
 		t.Fatalf("declared replica: %v", err)
@@ -678,10 +685,16 @@ func (o *segOracle) segStats() store.RelSegmentStats {
 }
 
 func TestRelSegmentsDifferentialOracle(t *testing.T) {
+	runSegOracle(t, func(t *testing.T) string { return "" })
+}
+
+// runSegOracle is the differential oracle; segDir names the declared
+// replica's segment directory ("" = in-RAM segments, S2).
+func runSegOracle(t *testing.T, segDir func(*testing.T) string) {
 	for _, seed := range []int64{1, 2, 3} {
 		t.Run(fmt.Sprint("seed", seed), func(t *testing.T) {
 			r := rand.New(rand.NewSource(seed))
-			o := newSegOracle(t, 48<<10) // ~60 HOP rows per seal
+			o := newSegOracleDir(t, 48<<10, segDir(t)) // ~60 HOP rows per seal
 			o.seed(r, 24)
 			const chunks, perChunk = 6, 90
 			sealedEver := false

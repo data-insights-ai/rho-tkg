@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segdir"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segment"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -255,6 +256,7 @@ type Store struct {
 	sealerRunning   bool                   // the background sealer goroutine is live (guarded by ms.mu)
 	sealers         sync.WaitGroup         // background sealers; Close waits for them
 	sealedRowBuilds atomic.Uint64          // Relationships built from sealed rows (measurement)
+	segDir          *segdir.Dir            // ADR-0011 S3: the segment directory (nil = in-RAM segments)
 }
 
 // bumpNodeEpoch marks every cached DocValues column potentially stale. Called by
