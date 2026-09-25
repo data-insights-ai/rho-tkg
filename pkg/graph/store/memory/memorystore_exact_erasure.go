@@ -85,13 +85,13 @@ func (ms *Store) ExactErase(req storecontract.ExactErasureRequest) (storecontrac
 		}
 	}
 	for _, nid := range req.NodeIDs {
-		for rid := range ms.outIdx[nid] {
+		for rid := range ms.outIdx[nid].all() {
 			if _, ok := relSet[rid]; !ok {
 				return zero, fmt.Errorf("%w: node %d relationship %d",
 					storecontract.ErrExactErasureRelationshipEscape, nid, rid)
 			}
 		}
-		for rid := range ms.inIdx[nid] {
+		for rid := range ms.inIdx[nid].all() {
 			if _, ok := relSet[rid]; !ok {
 				return zero, fmt.Errorf("%w: node %d relationship %d",
 					storecontract.ErrExactErasureRelationshipEscape, nid, rid)

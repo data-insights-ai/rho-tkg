@@ -60,6 +60,67 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     142–162), file-backed +27–28 B/HOP — the mapped segment pages, clean and reclaimable (page
     cache, ADR §3.5 / Q8). Reopen (map + verify every group) 3.3–3.5 s at 12.6 M (0.46 M rows/s).
 
+### Changed
+
+- **P7: the memory row store keeps a relationship in 388–390 B instead of 608–611 B (P6 HOP,
+  −36 %), a node in 379–401 B instead of 507–531 B.** This is the part of the memory store
+  ADR-0011's segments do not take over: nodes, undeclared relationship types and a declared
+  type's unsealed memtable. Measured first (`TestRowStoreP7Scale`, heap profile after two GCs,
+  790 K synthday HOP rows): per relationship the struct 80 B, `TemporalMetadata` 96 B,
+  `RelIntegrity` 128 B, the hex hash string 64 B, the property slice 128 B (4 × 32 B; keys and
+  P6's value boxes are shared, 0 B), store maps 106 B (`rels` ~23, `typeIdx` ~23, `outIdx` /
+  `inIdx` ~34 each). Three changes, each with a failing test first:
+  - **Compact frozen metadata** (`types.CompactFrozenCopy`, used by the memory store's
+    `freezeRelCopy` / `freezeNodeCopy`): a first version's temporal and integrity metadata in one
+    object — relationship 96 B (valid from/to, tx from, the content hash as 32 raw bytes, the
+    endpoint hashes shared with the nodes' rows), node 48 B (its hash stays a string because
+    relationships share it). Every accessor rebuilds the public structs exactly; `DeepCopy` thaws
+    to the ordinary form; any other shape (tx to, created/updated/deleted at, a previous hash,
+    provenance, a non-canonical hash, missing metadata) keeps the ordinary objects.
+    `Relationship` grows 72 → 80 B (its allocator size class already), `Node` 80 → 88 B.
+    Saving −192 B per relationship, −128 B per node. Tests: every accessor equal to
+    `DeepCopy()+Freeze()` for 25 relationship and 20 node metadata shapes; wire bytes and
+    content hashes of compact rows equal the ordinary form
+    (`TestCompactFrozenRowsKeepWireBytesAndHashes`).
+  - **No property copy on the write path**: the store's frozen copy shares the property slice
+    the graph layer just built; the unfrozen source clones its backing array before its next
+    in-place write (`sharedProps`; `SetPropertiesCanonicalShared` siblings are marked the same
+    way, so a write through one no longer reaches the others). Retained bytes unchanged; the
+    write allocates one object and the property payload less (`CompactFrozenCopy`: 2 objects
+    per relationship, was 9 on a row with nested values).
+  - **Compact adjacency sets** (`memorystore_adjset.go`): a node's outgoing or incoming set keeps
+    up to 64 members in an unordered slice and switches to a hash set above that. −29 B per
+    relationship at synthday's degrees (predicted −44: synthhop's heavy-tailed rows per pair put
+    many edges on nodes above 64); high-degree nodes unchanged (100 / 400 / 1,000 per node:
+    419 / 422 / 437 B against 425 / 421 / 437). A threshold of 128 / 256 saves 3 / 6 B more
+    for longer scans; not taken.
+
+  Resident bytes (`RHO_TKG_P7=790k,3.15M,12.6M`, two passes each, bytes identical to ±1 B):
+
+  | | 790 K | 3.15 M | 12.6 M |
+  |---|---|---|---|
+  | HOP P6, B/rel | 608 → 388 | 610 → 388 | 611 → 390 |
+  | HOP legacy schema, B/rel | 833 → 612 | 835 → 613 | 836 → 614 |
+  | ai-soc mix P6 (HOP, ORIGIN, VATTR, CATTR), B/rel | 572 → 353 | 571 → 352 | 571 → 352 |
+  | nodes, B/node | 531 → 401 | 517 → 388 | 507 → 379 |
+  | objects per HOP P6 row | 5.30 → 3.17 | 5.31 → 3.18 | 5.32 → 3.18 |
+
+  Throughput (HOP P6, best of 5–8 passes per tree; the host ran at load average 6–10 from other
+  users and single passes varied by up to ±30 %): write 291 / 280 / 264 → 299 / 272 / 277 K
+  rels/s; `ByType` 11.2 / 9.4 / 6.8 → 11.4 / 8.5 / 7.2 M rows/s; `ForEachByType` 11.9 / 9.7 /
+  7.1 → 11.9 / 9.0 / 7.1 M rows/s; `Get` 2.5 / 1.4 / 1.3 → 2.4 (one pass 3.6) / 1.5 / 1.2 M/s.
+  The 3.15 M `ByType` best pass above looked 10 % lower; re-run alternately before / after, five
+  passes each, each started only when no other test binary ran and the load average was below
+  2.5: median 9.07 M rows/s before (8.98–9.61), 9.56 after (9.30–9.73 over four clean passes; the
+  fifth, 5.32, overlapped another agent's test run) — no gap. The one cost found
+  by a microbenchmark: thawing a compact row (`Get`'s `DeepCopy`) rebuilds the hex hash —
+  ~150 vs ~127 ns, 5 vs 4 objects (`relMeta.integrity` encodes into a stack buffer; with
+  `hex.EncodeToString` it was 6). Not reached: the arithmetic target of 150–300 B per
+  relationship. What remains per P6 HOP row: struct 80, compact metadata 96, properties 128,
+  `rels` 22, `typeIdx` 21, adjacency ~35 (see `tasks/backlog.md` item 5 for the measured
+  options). Gates: `TestRowStoreRetainedBytesPerRelationship` (≤ 410 B at 10 K and 40 K
+  rows, no growth), `TestRowStoreRetainedBytesPerNode` (≤ 380 B marginal).
+
 ## [4.39.1] - 2026-09-25
 
 Patch release: `ScanRelSegments` yields ascending relationship-ID order (the row doors' order),

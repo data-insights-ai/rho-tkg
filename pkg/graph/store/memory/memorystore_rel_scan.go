@@ -119,8 +119,8 @@ func (ms *Store) forEachAdjacentRel(nid types.NodeID, typeToken uint16, incoming
 			return nil
 		}
 	}
-	ids := make([]types.RelID, 0, len(set))
-	for id := range set {
+	ids := make([]types.RelID, 0, set.len())
+	for id := range set.all() {
 		if typeToken != 0 {
 			if _, ok := typeSet[id]; !ok {
 				continue
@@ -205,8 +205,8 @@ func (ms *Store) forEachAdjacentRelSegmentsRLocked(nid types.NodeID, typeToken u
 		set = ms.inIdx[nid]
 	}
 	typeSet := ms.typeIdx[typeToken]
-	refs := make([]sealedIDRef, 0, len(set))
-	for id := range set {
+	refs := make([]sealedIDRef, 0, set.len())
+	for id := range set.all() {
 		if typeToken != 0 {
 			if _, ok := typeSet[id]; !ok {
 				continue

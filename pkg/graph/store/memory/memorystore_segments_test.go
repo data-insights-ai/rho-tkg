@@ -434,10 +434,10 @@ func (tw *segTwin) sealedLeftRowMaps() {
 			if _, ok := s.typeIdx[segTestHOP][id]; ok {
 				tw.t.Errorf("sealed live row %d still in typeIdx", id)
 			}
-			if _, ok := s.outIdx[r.StartNodeID()][id]; ok {
+			if ok := s.outIdx[r.StartNodeID()].has(id); ok {
 				tw.t.Errorf("sealed live row %d still in outIdx", id)
 			}
-			if _, ok := s.inIdx[r.EndNodeID()][id]; ok {
+			if ok := s.inIdx[r.EndNodeID()].has(id); ok {
 				tw.t.Errorf("sealed live row %d still in inIdx", id)
 			}
 			return true

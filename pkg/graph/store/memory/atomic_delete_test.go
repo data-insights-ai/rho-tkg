@@ -457,8 +457,8 @@ func TestDeleteNodeWithHistoryPurgesOrphanAdjacency(t *testing.T) {
 
 	orphan := types.RelID(999)
 	ms.mu.Lock()
-	ms.outIdx[nA.ID()] = map[types.RelID]struct{}{orphan: {}}
-	ms.inIdx[nB.ID()] = map[types.RelID]struct{}{orphan: {}}
+	ms.outIdx[nA.ID()] = newAdjSetOf(orphan)
+	ms.inIdx[nB.ID()] = newAdjSetOf(orphan)
 	ms.typeIdx[7] = map[types.RelID]struct{}{orphan: {}}
 	ms.mu.Unlock()
 
@@ -471,10 +471,10 @@ func TestDeleteNodeWithHistoryPurgesOrphanAdjacency(t *testing.T) {
 
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
-	if _, ok := ms.outIdx[nA.ID()][orphan]; ok {
+	if ok := ms.outIdx[nA.ID()].has(orphan); ok {
 		t.Fatal("orphan rel remained in outgoing adjacency after delete-with-history")
 	}
-	if _, ok := ms.inIdx[nB.ID()][orphan]; ok {
+	if ok := ms.inIdx[nB.ID()].has(orphan); ok {
 		t.Fatal("orphan rel remained in incoming adjacency after delete-with-history")
 	}
 	if _, ok := ms.typeIdx[7][orphan]; ok {

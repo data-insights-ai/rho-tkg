@@ -1,6 +1,10 @@
 package types
 
-import snowflake "github.com/bds421/rho-snowflake-2026"
+import (
+	"slices"
+
+	snowflake "github.com/bds421/rho-snowflake-2026"
+)
 
 // labelToken is the internal integer type for interned label strings.
 // Token 0 is reserved as the zero/invalid value and must never be assigned.
@@ -26,18 +30,23 @@ func (id NodeID) SnowflakeID() snowflake.ID { return snowflake.ID(id) }
 // with no graph back-reference required.
 //
 // Layout: fields are ordered by descending alignment to eliminate internal
-// padding. 8-byte fields first, then 4-byte, then 2-byte. Total: 80 bytes
-// with only 2 bytes of trailing padding (vs. 88 bytes with naive ordering).
+// padding. 8-byte fields first, then 4-byte, then 2-byte. Total: 88 bytes
+// (the 96-byte size class); the compact metadata pointer (P7) replaces a
+// 96-byte TemporalMetadata and a 96-byte NodeIntegrity on every cached row.
 type Node struct {
 	id           NodeID            // 8B, offset  0
 	properties   PropertySlice     // 24B (slice header), offset  8
 	extraLabels  []labelToken      // 24B (slice header), offset 32
 	temporal     *TemporalMetadata // 8B, offset 56
 	integrity    *NodeIntegrity    // 8B, offset 64
-	version      uint32            // 4B, offset 72
-	primaryLabel labelToken        // 2B, offset 76
-	frozen       bool              // 1B, offset 78 — occupies former trailing padding
-	// 1B trailing padding → 80B total
+	meta         *nodeMeta         // 8B, offset 72 — compact frozen metadata (compact.go); nil otherwise
+	version      uint32            // 4B, offset 80
+	primaryLabel labelToken        // 2B, offset 84
+	frozen       bool              // 1B, offset 86
+	// sharedProps: properties' backing array is shared with a store's compact
+	// frozen copy (or with sibling bulk-create nodes); copy before writing
+	// in place (ownProperties).
+	sharedProps bool // 1B, offset 87 → 88B total
 }
 
 // NewNode creates a Node with the given typed node ID, primary label token,
@@ -217,6 +226,7 @@ func (n *Node) SetProperties(ps PropertySlice) error {
 		return err
 	}
 	n.properties = canonical
+	n.sharedProps = false
 	return nil
 }
 
@@ -237,6 +247,7 @@ func (n *Node) SetPropertiesCanonicalShared(ps PropertySlice) {
 		return
 	}
 	n.properties = ps
+	n.sharedProps = true // aliased by contract: an in-place write copies first
 }
 
 // SetOwnedProperties replaces the node's property slice without copying it.
@@ -252,6 +263,7 @@ func (n *Node) SetOwnedProperties(ps OwnedPropertySlice) error {
 		// Reject BEFORE consuming ps — the caller keeps ownership on error.
 		return ErrFrozenNode
 	}
+	n.sharedProps = false
 	if ps.ps == nil {
 		n.properties = nil
 		return nil
@@ -259,6 +271,15 @@ func (n *Node) SetOwnedProperties(ps OwnedPropertySlice) error {
 	n.properties = *ps.ps
 	*ps.ps = nil
 	return nil
+}
+
+// ownProperties gives n a private backing array before an in-place
+// property write when the current one is shared (sharedProps).
+func (n *Node) ownProperties() {
+	if n.sharedProps {
+		n.properties = slices.Clone(n.properties)
+		n.sharedProps = false
+	}
 }
 
 // SetProperty sets a property on the node.
@@ -270,6 +291,7 @@ func (n *Node) SetProperty(key string, value any) error {
 	if n.frozen {
 		return ErrFrozenNode
 	}
+	n.ownProperties()
 	return n.properties.Set(key, value)
 }
 
@@ -332,6 +354,7 @@ func (n *Node) DeleteProperty(key string) (bool, error) {
 	if n.frozen {
 		return false, ErrFrozenNode
 	}
+	n.ownProperties()
 	return n.properties.Delete(key)
 }
 
@@ -425,6 +448,10 @@ func (n *Node) Temporal() *TemporalMetadata {
 		cp := *n.temporal
 		return &cp
 	}
+	if m := n.meta; m != nil {
+		cp := TemporalMetadata{ValidFrom: m.validFrom, ValidTo: m.validTo, TxFrom: m.txFrom}
+		return &cp
+	}
 	return n.temporal
 }
 
@@ -440,7 +467,13 @@ func (n *Node) Temporal() *TemporalMetadata {
 // nothing. That matters wherever bounds are read once per entity across a whole
 // label (bulk/columnar builds), where the per-call copy would otherwise dominate.
 func (n *Node) ValidRange() (from, to Instant, ok bool) {
-	if n == nil || n.temporal == nil {
+	if n == nil {
+		return 0, 0, false
+	}
+	if n.meta != nil {
+		return n.meta.validFrom, n.meta.validTo, true
+	}
+	if n.temporal == nil {
 		return 0, 0, false
 	}
 	return n.temporal.ValidFrom, n.temporal.ValidTo, true
@@ -470,6 +503,10 @@ func (n *Node) SetTemporal(tm *TemporalMetadata) {
 func (n *Node) Integrity() *NodeIntegrity {
 	if n == nil {
 		return nil
+	}
+	if n.meta != nil {
+		cp := NodeIntegrity{Hash: n.meta.hash}
+		return &cp
 	}
 	if n.frozen {
 		return n.integrity.DeepCopy()
@@ -606,6 +643,11 @@ func (n *Node) DeepCopy() *Node {
 		copy(cp.extraLabels, n.extraLabels)
 	}
 	cp.properties = n.properties.DeepCopy()
+	if n.meta != nil {
+		cp.temporal = &TemporalMetadata{ValidFrom: n.meta.validFrom, ValidTo: n.meta.validTo, TxFrom: n.meta.txFrom}
+		cp.integrity = &NodeIntegrity{Hash: n.meta.hash}
+		return cp
+	}
 	if n.temporal != nil {
 		tm := *n.temporal
 		cp.temporal = &tm

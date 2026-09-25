@@ -8,7 +8,7 @@ import (
 func TestNodeStructSize(t *testing.T) {
 	t.Parallel()
 
-	const want = 80
+	const want = 88 // P7: + the compact frozen metadata pointer
 	got := unsafe.Sizeof(Node{})
 	if got != want {
 		t.Fatalf("Node struct size = %d bytes, want %d bytes", got, want)
@@ -18,7 +18,7 @@ func TestNodeStructSize(t *testing.T) {
 func TestRelationshipStructSize(t *testing.T) {
 	t.Parallel()
 
-	const want = 72
+	const want = 80 // P7: + the compact frozen metadata pointer (the size class of the former 72)
 	got := unsafe.Sizeof(Relationship{})
 	if got != want {
 		t.Fatalf("Relationship struct size = %d bytes, want %d bytes", got, want)

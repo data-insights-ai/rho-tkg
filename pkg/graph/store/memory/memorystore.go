@@ -68,8 +68,8 @@ type Store struct {
 	typeIdx map[uint16]map[types.RelID]struct{}
 
 	// Adjacency indexes — nested hash sets for O(1) insert/delete.
-	outIdx map[types.NodeID]map[types.RelID]struct{} // startNodeID → set(relID)
-	inIdx  map[types.NodeID]map[types.RelID]struct{} // endNodeID → set(relID)
+	outIdx map[types.NodeID]*adjSet // startNodeID → set(relID) (memorystore_adjset.go)
+	inIdx  map[types.NodeID]*adjSet // endNodeID → set(relID)
 
 	// Version history — pre-mutation snapshots keyed by entity ID and version.
 	nodeHistory map[types.NodeID]map[uint32]*types.Node
@@ -309,10 +309,10 @@ func (ms *Store) ensureInitialized() {
 			ms.relColumns = nil // Clear invalidates every rel-type column
 		}
 		if ms.outIdx == nil {
-			ms.outIdx = make(map[types.NodeID]map[types.RelID]struct{})
+			ms.outIdx = make(map[types.NodeID]*adjSet)
 		}
 		if ms.inIdx == nil {
-			ms.inIdx = make(map[types.NodeID]map[types.RelID]struct{})
+			ms.inIdx = make(map[types.NodeID]*adjSet)
 		}
 		if ms.nodeHistory == nil {
 			ms.nodeHistory = make(map[types.NodeID]map[uint32]*types.Node)
@@ -389,8 +389,8 @@ func (ms *Store) Clear() error {
 	ms.rels = make(map[types.RelID]*types.Relationship)
 	ms.labelIdx = make(map[uint16]map[types.NodeID]struct{})
 	ms.typeIdx = make(map[uint16]map[types.RelID]struct{})
-	ms.outIdx = make(map[types.NodeID]map[types.RelID]struct{})
-	ms.inIdx = make(map[types.NodeID]map[types.RelID]struct{})
+	ms.outIdx = make(map[types.NodeID]*adjSet)
+	ms.inIdx = make(map[types.NodeID]*adjSet)
 	ms.nodeHistory = make(map[types.NodeID]map[uint32]*types.Node)
 	ms.relHistory = make(map[types.RelID]map[uint32]*types.Relationship)
 	ms.propertyIndexes = make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex)

@@ -1,6 +1,10 @@
 package types
 
-import snowflake "github.com/bds421/rho-snowflake-2026"
+import (
+	"slices"
+
+	snowflake "github.com/bds421/rho-snowflake-2026"
+)
 
 // relTypeToken is the internal integer type for interned relationship type strings.
 // Token 0 is reserved as the zero/invalid value and must never be assigned.
@@ -24,8 +28,9 @@ func (id RelID) SnowflakeID() snowflake.ID { return snowflake.ID(id) }
 // All fields are unexported; access is through methods only.
 //
 // Layout: fields are ordered by descending alignment to eliminate internal
-// padding. 8-byte fields first, then 4-byte, then 2-byte. Total: 72 bytes
-// with only 2 bytes of trailing padding (vs. 80 bytes with naive ordering).
+// padding. 8-byte fields first, then 4-byte, then 2-byte. Total: 80 bytes,
+// the allocator's size class for the former 72-byte layout, so the compact
+// metadata pointer (P7) costs nothing per object.
 type Relationship struct {
 	id         RelID             // 8B, offset  0
 	startID    NodeID            // 8B, offset  8
@@ -33,10 +38,14 @@ type Relationship struct {
 	properties PropertySlice     // 24B (slice header), offset 24
 	temporal   *TemporalMetadata // 8B, offset 48
 	integrity  *RelIntegrity     // 8B, offset 56
-	version    uint32            // 4B, offset 64
-	relType    relTypeToken      // 2B, offset 68
-	frozen     bool              // 1B, offset 70 — occupies former trailing padding
-	// 1B trailing padding → 72B total
+	meta       *relMeta          // 8B, offset 64 — compact frozen metadata (compact.go); nil otherwise
+	version    uint32            // 4B, offset 72
+	relType    relTypeToken      // 2B, offset 76
+	frozen     bool              // 1B, offset 78
+	// sharedProps: properties' backing array is shared with a store's compact
+	// frozen copy (or with sibling bulk-create nodes); copy before writing
+	// in place (ownProperties).
+	sharedProps bool // 1B, offset 79 → 80B total
 }
 
 // NewRelationship creates a Relationship with typed IDs for all parties.
@@ -161,6 +170,7 @@ func (r *Relationship) SetProperties(ps PropertySlice) error {
 		return err
 	}
 	r.properties = canonical
+	r.sharedProps = false
 	return nil
 }
 
@@ -178,6 +188,7 @@ func (r *Relationship) SetOwnedProperties(ps OwnedPropertySlice) error {
 		// Reject BEFORE consuming ps — the caller keeps ownership on error.
 		return ErrFrozenRelationship
 	}
+	r.sharedProps = false
 	if ps.ps == nil {
 		r.properties = nil
 		return nil
@@ -185,6 +196,15 @@ func (r *Relationship) SetOwnedProperties(ps OwnedPropertySlice) error {
 	r.properties = *ps.ps
 	*ps.ps = nil
 	return nil
+}
+
+// ownProperties gives r a private backing array before an in-place
+// property write when the current one is shared (sharedProps).
+func (r *Relationship) ownProperties() {
+	if r.sharedProps {
+		r.properties = slices.Clone(r.properties)
+		r.sharedProps = false
+	}
 }
 
 // SetProperty sets a property on the relationship.
@@ -196,6 +216,7 @@ func (r *Relationship) SetProperty(key string, value any) error {
 	if r.frozen {
 		return ErrFrozenRelationship
 	}
+	r.ownProperties()
 	return r.properties.Set(key, value)
 }
 
@@ -258,6 +279,7 @@ func (r *Relationship) DeleteProperty(key string) (bool, error) {
 	if r.frozen {
 		return false, ErrFrozenRelationship
 	}
+	r.ownProperties()
 	return r.properties.Delete(key)
 }
 
@@ -352,6 +374,10 @@ func (r *Relationship) Temporal() *TemporalMetadata {
 		cp := *r.temporal
 		return &cp
 	}
+	if m := r.meta; m != nil {
+		cp := TemporalMetadata{ValidFrom: m.validFrom, ValidTo: m.validTo, TxFrom: m.txFrom}
+		return &cp
+	}
 	return r.temporal
 }
 
@@ -365,7 +391,13 @@ func (r *Relationship) Temporal() *TemporalMetadata {
 // two values by copy has nothing to alias, so it costs no allocation — which matters
 // wherever bounds are read once per entity across a whole relationship type.
 func (r *Relationship) ValidRange() (from, to Instant, ok bool) {
-	if r == nil || r.temporal == nil {
+	if r == nil {
+		return 0, 0, false
+	}
+	if r.meta != nil {
+		return r.meta.validFrom, r.meta.validTo, true
+	}
+	if r.temporal == nil {
 		return 0, 0, false
 	}
 	return r.temporal.ValidFrom, r.temporal.ValidTo, true
@@ -395,6 +427,9 @@ func (r *Relationship) SetTemporal(tm *TemporalMetadata) {
 func (r *Relationship) Integrity() *RelIntegrity {
 	if r == nil {
 		return nil
+	}
+	if r.meta != nil {
+		return r.meta.integrity()
 	}
 	if r.frozen {
 		return r.integrity.DeepCopy()
@@ -430,6 +465,11 @@ func (r *Relationship) DeepCopy() *Relationship {
 		version: r.version,
 	}
 	cp.properties = r.properties.DeepCopy()
+	if r.meta != nil {
+		cp.temporal = &TemporalMetadata{ValidFrom: r.meta.validFrom, ValidTo: r.meta.validTo, TxFrom: r.meta.txFrom}
+		cp.integrity = r.meta.integrity()
+		return cp
+	}
 	if r.temporal != nil {
 		tm := *r.temporal
 		cp.temporal = &tm

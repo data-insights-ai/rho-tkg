@@ -64,8 +64,8 @@ License: Apache-2.0
 
 | Type | Size | Purpose |
 |------|------|---------|
-| `Node` | 80B | Graph vertex. `nodeID` (wraps `snowflake.ID`), primary + extra labels as `labelToken`, properties, `uint32` version, temporal, integrity |
-| `Relationship` | 72B | Directed edge. `relID` (wraps `snowflake.ID`), `relTypeToken`, start/end as `nodeID`, properties, `uint32` version, temporal, integrity |
+| `Node` | 88B | Graph vertex. `nodeID` (wraps `snowflake.ID`), primary + extra labels as `labelToken`, properties, `uint32` version, temporal, integrity (or, on a store's cached first version, one compact metadata object — `CompactFrozenCopy`) |
+| `Relationship` | 80B | Directed edge. `relID` (wraps `snowflake.ID`), `relTypeToken`, start/end as `nodeID`, properties, `uint32` version, temporal, integrity (or, on a store's cached first version, one compact metadata object — `CompactFrozenCopy`) |
 | `PropertySlice` | var | Sorted key-value store with binary search. Recursive exact-type allowlist validation aligned with hash/copy/wire support, depth-limited to 32 levels. `tkg_` prefix reserved. `Set` and entity `SetProperty` methods deep-copy accepted reference values and reject invalid post-copy custom values; `SetProperties` methods canonicalize and deep-copy direct slices before installing them |
 | `Instant` | 8B | Unix-millisecond timestamp. All temporal fields use this type |
 | `TemporalMetadata` | var | ValidFrom, ValidTo, TxFrom, TxTo, CreatedAt, UpdatedAt, DeletedAt, CreatedBy, UpdatedBy, BaseEntityID |

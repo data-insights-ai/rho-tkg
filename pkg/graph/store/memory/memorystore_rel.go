@@ -79,16 +79,10 @@ func (ms *Store) putRelationshipRouted(r *types.Relationship, token uint64) erro
 	ms.recordRelTypeMemberLocked(r) // transaction-time rel-type membership
 
 	// Adjacency: outgoing.
-	if ms.outIdx[startID] == nil {
-		ms.outIdx[startID] = make(map[types.RelID]struct{})
-	}
-	ms.outIdx[startID][id] = struct{}{}
+	addAdjLocked(ms.outIdx, startID, id)
 
 	// Adjacency: incoming.
-	if ms.inIdx[endID] == nil {
-		ms.inIdx[endID] = make(map[types.RelID]struct{})
-	}
-	ms.inIdx[endID][id] = struct{}{}
+	addAdjLocked(ms.inIdx, endID, id)
 
 	indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID()) // K3b
 	ms.adjustRelPropertyTypeClassCounts(r, 1)
@@ -184,15 +178,9 @@ func (ms *Store) putRelationshipGeneratedIDWithEndpointHashesRouted(r *types.Rel
 	ms.typeIdx[tv][id] = struct{}{}
 	ms.recordRelTypeMemberLocked(r) // transaction-time rel-type membership
 
-	if ms.outIdx[startID] == nil {
-		ms.outIdx[startID] = make(map[types.RelID]struct{})
-	}
-	ms.outIdx[startID][id] = struct{}{}
+	addAdjLocked(ms.outIdx, startID, id)
 
-	if ms.inIdx[endID] == nil {
-		ms.inIdx[endID] = make(map[types.RelID]struct{})
-	}
-	ms.inIdx[endID][id] = struct{}{}
+	addAdjLocked(ms.inIdx, endID, id)
 
 	indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID()) // K3b
 	ms.adjustRelPropertyTypeClassCounts(r, 1)
@@ -359,21 +347,8 @@ func (ms *Store) deleteRelLocked(id types.RelID) error {
 	}
 
 	// Adjacency cleanup — O(1) delete from hash sets.
-	startID := r.StartNodeID()
-	if set, exists := ms.outIdx[startID]; exists {
-		delete(set, id)
-		if len(set) == 0 {
-			delete(ms.outIdx, startID)
-		}
-	}
-
-	endID := r.EndNodeID()
-	if set, exists := ms.inIdx[endID]; exists {
-		delete(set, id)
-		if len(set) == 0 {
-			delete(ms.inIdx, endID)
-		}
-	}
+	removeAdjLocked(ms.outIdx, r.StartNodeID(), id)
+	removeAdjLocked(ms.inIdx, r.EndNodeID(), id)
 
 	indexpkg.RemoveRelFromPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID()) // K3b
 	ms.adjustRelPropertyTypeClassCounts(r, -1)
@@ -403,14 +378,12 @@ func (ms *Store) purgeRelIDFromIndexesLocked(id types.RelID) {
 		}
 	}
 	for nid, set := range ms.outIdx {
-		delete(set, id)
-		if len(set) == 0 {
+		if set.remove(id) && set.len() == 0 {
 			delete(ms.outIdx, nid)
 		}
 	}
 	for nid, set := range ms.inIdx {
-		delete(set, id)
-		if len(set) == 0 {
+		if set.remove(id) && set.len() == 0 {
 			delete(ms.inIdx, nid)
 		}
 	}
@@ -442,7 +415,7 @@ func (ms *Store) OutgoingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 	}
 
 	set := ms.outIdx[nid]
-	if len(set) == 0 {
+	if set.len() == 0 {
 		return nil, nil
 	}
 	var typeSet map[types.RelID]struct{}
@@ -452,8 +425,8 @@ func (ms *Store) OutgoingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 			return nil, nil
 		}
 	}
-	result := make([]*types.Relationship, 0, len(set))
-	for relID := range set {
+	result := make([]*types.Relationship, 0, set.len())
+	for relID := range set.all() {
 		if typeToken != 0 {
 			if _, ok := typeSet[relID]; !ok {
 				continue
@@ -511,7 +484,7 @@ func (ms *Store) OutgoingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 	}
 	for nid := range result {
 		set := ms.outIdx[nid]
-		if len(set) == 0 {
+		if set.len() == 0 {
 			delete(result, nid)
 			continue
 		}
@@ -519,8 +492,8 @@ func (ms *Store) OutgoingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 			delete(result, nid)
 			continue
 		}
-		rels := make([]*types.Relationship, 0, len(set))
-		for relID := range set {
+		rels := make([]*types.Relationship, 0, set.len())
+		for relID := range set.all() {
 			if typeToken != 0 {
 				if _, ok := typeSet[relID]; !ok {
 					continue
@@ -600,19 +573,19 @@ func (ms *Store) IncomingDegree(nid types.NodeID, typeToken uint16) (int, error)
 
 // degreeLocked counts entries in an adjacency set, optionally filtered by type
 // token via typeIdx. Caller holds ms.mu.
-func (ms *Store) degreeLocked(set map[types.RelID]struct{}, typeToken uint16) int {
-	if len(set) == 0 {
+func (ms *Store) degreeLocked(set *adjSet, typeToken uint16) int {
+	if set.len() == 0 {
 		return 0
 	}
 	if typeToken == 0 {
-		return len(set)
+		return set.len()
 	}
 	typeSet := ms.typeIdx[typeToken]
 	if len(typeSet) == 0 {
 		return 0
 	}
 	n := 0
-	for relID := range set {
+	for relID := range set.all() {
 		if _, ok := typeSet[relID]; ok {
 			n++
 		}
@@ -645,7 +618,7 @@ func (ms *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 	}
 
 	set := ms.inIdx[nid]
-	if len(set) == 0 {
+	if set.len() == 0 {
 		return nil, nil
 	}
 	var typeSet map[types.RelID]struct{}
@@ -655,8 +628,8 @@ func (ms *Store) IncomingRelationships(nid types.NodeID, typeToken uint16) ([]*t
 			return nil, nil
 		}
 	}
-	result := make([]*types.Relationship, 0, len(set))
-	for relID := range set {
+	result := make([]*types.Relationship, 0, set.len())
+	for relID := range set.all() {
 		if typeToken != 0 {
 			if _, ok := typeSet[relID]; !ok {
 				continue
@@ -717,12 +690,12 @@ func (ms *Store) IncomingRelationshipsForNodes(typedNodeIDs []types.NodeID, type
 	}
 	for nid := range result {
 		set := ms.inIdx[nid]
-		if len(set) == 0 {
+		if set.len() == 0 {
 			delete(result, nid)
 			continue
 		}
-		rels := make([]*types.Relationship, 0, len(set))
-		for relID := range set {
+		rels := make([]*types.Relationship, 0, set.len())
+		for relID := range set.all() {
 			if typeToken != 0 {
 				if _, ok := typeSet[relID]; !ok {
 					continue
@@ -829,15 +802,9 @@ func (ms *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		ms.typeIdx[tv][id] = struct{}{}
 		ms.recordRelTypeMemberLocked(r) // transaction-time rel-type membership
 
-		if ms.outIdx[startID] == nil {
-			ms.outIdx[startID] = make(map[types.RelID]struct{})
-		}
-		ms.outIdx[startID][id] = struct{}{}
+		addAdjLocked(ms.outIdx, startID, id)
 
-		if ms.inIdx[endID] == nil {
-			ms.inIdx[endID] = make(map[types.RelID]struct{})
-		}
-		ms.inIdx[endID][id] = struct{}{}
+		addAdjLocked(ms.inIdx, endID, id)
 
 		indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, r, id.SnowflakeID()) // K3b
 		ms.adjustRelPropertyTypeClassCounts(r, 1)

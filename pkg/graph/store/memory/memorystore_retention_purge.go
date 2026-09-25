@@ -128,10 +128,10 @@ func (ms *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 		}
 		// Connected rels (dedup self-loops across out+in adjacency).
 		relIDs := make(map[types.RelID]struct{})
-		for relID := range ms.outIdx[nid] {
+		for relID := range ms.outIdx[nid].all() {
 			relIDs[relID] = struct{}{}
 		}
-		for relID := range ms.inIdx[nid] {
+		for relID := range ms.inIdx[nid].all() {
 			relIDs[relID] = struct{}{}
 		}
 		for relID := range relIDs {
