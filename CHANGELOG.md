@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`g.Nodes().Lend(ctx, id)` / `g.Rels().Lend(ctx, id)`: a by-ID read without the copy.** Requested
+  by sigma-tkgd (task record C3d, store request 1: `memory.Store.GetNode` deep-copies, ~150 ns, for
+  every endpoint or constant a run looks up by ID; 11.5 % of q4's samples). Lend returns the store's
+  own frozen current row, the pointer label scans and `GetByIDs` already hand out. Lifetime: the store
+  never writes a lent row (a write stores a new one), so it can be held and read concurrently for as
+  long as the caller wants; it is the entity at the read, and `NodeMutationEpoch` /
+  `RelMutationEpoch` say whether it is still current. Mutation: frozen (`types.ErrFrozenNode` /
+  `ErrFrozenRelationship`, panics for the no-error mutators), `DeepCopy` thaws. Memory, badger and
+  tiered lend without a copy (new optional `store.EntityLendCapability`: `LendNode`,
+  `LendRelationship`; tiered routes as `GetNode` / `GetRelationship`, a cross-shard relationship
+  included; a sealed-segment relationship on memory is decoded per call); sharded, wrappers and
+  external stores get `Get`'s copy, frozen. Measured (`BenchmarkNodeGetVersusLend`, a 4-property
+  node, load 8–10): memory `Get` 95–104 ns, 4 allocations, 416 B → `Lend` 16–17 ns, 0; badger (cache
+  hit) 99–118 ns → 26 ns, 0. Tests: `TestLendNodeAndRelationship` (all four backends, tiered
+  cross-shard; two-phase: a row lent before a write keeps the old value, a lend after it has the
+  new one; same pointer twice; frozen sentinels with `errors.Is`; deleted entities),
+  `TestLendRejectsBadInput`, `TestLendThroughAWrapperIsAFrozenCopy`,
+  `TestLendSealedSegmentRelationship`, `TestLendConcurrentWithWrites` (race), and the store-level
+  `TestMemoryStoreLend` / `TestBadgerStoreLend` / `TestTieredStoreLend`.
+
 ### Fixed
 
 - **`RelMutationEpoch` moves on every relationship write, on every backend.** Found by sigma-tkgd

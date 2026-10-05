@@ -110,16 +110,54 @@ func (ts *Store) GetRelationship(rid types.RelID) (*types.Relationship, error) {
 	return ts.getRelationshipChecked(rid)
 }
 
+var _ storecontract.EntityLendCapability = (*Store)(nil)
+
+// LendNode returns nid's current row frozen and without a copy, from the
+// shard that owns it (store.EntityLendCapability). The row is a Go object
+// and stays valid after the shard is checked in or idle-closed.
+func (ts *Store) LendNode(nid types.NodeID) (*types.Node, error) {
+	if err := ts.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return nil, err
+	}
+	store, checkin, err := ts.shardForNodeIDChecked(nid)
+	if err != nil {
+		return nil, err
+	}
+	defer checkin()
+	return store.LendNode(nid)
+}
+
+// LendRelationship is LendNode for relationships, routed as GetRelationship
+// routes (reference shard, archive, the ID's event shard, then every other).
+func (ts *Store) LendRelationship(rid types.RelID) (*types.Relationship, error) {
+	if err := ts.checkOpen(); err != nil {
+		return nil, err
+	}
+	if err := storecontract.ValidateRelID(rid); err != nil {
+		return nil, err
+	}
+	return ts.routeRelationshipRow(rid, lendRelationshipRow)
+}
+
 // getRelationshipChecked returns a defensive relationship copy from whichever
 // shard owns rid. It preserves the stale-index guard from shardForRelIDChecked
 // but returns the verified row directly so callers do not read the same row
 // twice after routing.
 func (ts *Store) getRelationshipChecked(rid types.RelID) (*types.Relationship, error) {
+	return ts.routeRelationshipRow(rid, relationshipRow)
+}
+
+// routeRelationshipRow finds the shard holding rid's row and reads it with
+// row (a defensive copy or a lent frozen row).
+func (ts *Store) routeRelationshipRow(rid types.RelID, row func(*BadgerStore, types.RelID) (*types.Relationship, bool, error)) (*types.Relationship, error) {
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
 		return nil, err
 	}
-	rel, found, err := relationshipRow(ref, rid)
+	rel, found, err := row(ref, rid)
 	refCheckin()
 	if err != nil {
 		return nil, err
@@ -133,7 +171,7 @@ func (ts *Store) getRelationshipChecked(rid types.RelID) (*types.Relationship, e
 		return nil, err
 	}
 	if archive != nil {
-		rel, found, err = relationshipRow(archive, rid)
+		rel, found, err = row(archive, rid)
 		archiveCheckin()
 		if err != nil {
 			return nil, err
@@ -148,7 +186,7 @@ func (ts *Store) getRelationshipChecked(rid types.RelID) (*types.Relationship, e
 	if err != nil {
 		return nil, err
 	}
-	rel, found, err = relationshipRow(candidate, rid)
+	rel, found, err = row(candidate, rid)
 	candidateRelease()
 	if err != nil {
 		return nil, err
@@ -172,7 +210,7 @@ func (ts *Store) getRelationshipChecked(rid types.RelID) (*types.Relationship, e
 		if err != nil {
 			return nil, err
 		}
-		rel, found, err = relationshipRow(store, rid)
+		rel, found, err = row(store, rid)
 		release()
 		if err != nil {
 			return nil, err

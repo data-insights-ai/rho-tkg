@@ -44,6 +44,7 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 			return nilAPI.RecordForeignIncoming(context.Background(), storepkg.ForeignIncomingEdge{})
 		}},
 		{name: "Get", run: func() error { _, err := nilAPI.Get(context.Background(), relID); return err }},
+		{name: "Lend", run: func() error { _, err := nilAPI.Lend(context.Background(), relID); return err }},
 		{name: "GetWithContext", run: func() error { _, err := nilAPI.Get(ctx, relID); return err }},
 		{name: "GetByIDs", run: func() error { _, err := nilAPI.GetByIDs([]types.RelID{relID}); return err }},
 		{name: "Update", run: func() error { _, err := nilAPI.Update(context.Background(), relID, nil); return err }},
@@ -178,6 +179,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		}},
 		{name: "Get", run: func() error { _, err := api.Get(context.Background(), relID); return err }},
 		{name: "GetWithContext", run: func() error { _, err := api.Get(ctx, relID); return err }},
+		{name: "Lend", run: func() error { _, err := api.Lend(ctx, relID); return err }},
 		{name: "GetByIDs", run: func() error { _, err := api.GetByIDs([]types.RelID{relID}); return err }},
 		{name: "Update", run: func() error {
 			_, err := api.Update(context.Background(), relID, map[string]any{"since": 2027})
@@ -266,7 +268,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 
 	wantCalls := []string{
 		"Add", "Add", "AddWithTx", "AddByID", "AddByID",
-		"AddByIDIfAbsent", "AddByIDIfAbsent", "AddByIDForeignEnd", "RecordForeignIncoming", "Get", "Get", "GetByIDs",
+		"AddByIDIfAbsent", "AddByIDIfAbsent", "AddByIDForeignEnd", "RecordForeignIncoming", "Get", "Get", "Lend", "GetByIDs",
 		"Update", "Update", "UpdateInPlace", "UpdateInPlace",
 		"Delete", "Delete", "Import", "All",
 		"ForEach", "ForEach", "ForEachOutgoing", "ForEachIncoming", "ByType",
@@ -372,6 +374,12 @@ func (s *relOpsSpy) RecordForeignIncoming(ctx context.Context, edge storepkg.For
 
 func (s *relOpsSpy) Get(ctx context.Context, id types.RelID) (*types.Relationship, error) {
 	s.record("Get")
+	s.lastRelID = id
+	return nil, s.err
+}
+
+func (s *relOpsSpy) Lend(ctx context.Context, id types.RelID) (*types.Relationship, error) {
+	s.record("Lend")
 	s.lastRelID = id
 	return nil, s.err
 }
