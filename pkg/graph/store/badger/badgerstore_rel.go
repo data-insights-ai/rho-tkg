@@ -115,10 +115,7 @@ func (bs *Store) putRelationship(r *types.Relationship, validateEndpoints, forei
 	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r)) // BACKLOG 10c
 
 	// Type index.
-	if bs.typeIdx[relType] == nil {
-		bs.typeIdx[relType] = make(map[types.RelID]struct{})
-	}
-	bs.typeIdx[relType][rid] = struct{}{}
+	bs.addTypeIdxLocked(relType, rid)
 
 	// Adjacency indexes (RAM mirror — the persisted OutKey/InKey ops below
 	// are the durable truth; disk mode skips the mirror).

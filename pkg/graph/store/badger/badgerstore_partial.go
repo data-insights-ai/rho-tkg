@@ -83,10 +83,7 @@ func (bs *Store) PutRelEntityAndOut(r *types.Relationship) error {
 	bs.bumpRelRevLocked(rid)
 
 	// Type index.
-	if bs.typeIdx[relType] == nil {
-		bs.typeIdx[relType] = make(map[types.RelID]struct{})
-	}
-	bs.typeIdx[relType][rid] = struct{}{}
+	bs.addTypeIdxLocked(relType, rid)
 
 	// Outgoing adjacency only (RAM mirror; disk mode relies on the OutKey op).
 	if !bs.adjOnDisk {

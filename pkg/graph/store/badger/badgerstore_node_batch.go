@@ -638,10 +638,7 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 		for j := 0; j < labelCount; j++ {
 			tok := n.LabelTokenRawAt(j)
 			if !bs.labelOnDisk {
-				if bs.labelIdx[tok] == nil {
-					bs.labelIdx[tok] = make(map[types.NodeID]struct{})
-				}
-				bs.labelIdx[tok][nd.nid] = struct{}{}
+				bs.addLabelIdxLocked(tok, nd.nid)
 			}
 			ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tok, nd.id)})
 			bs.getOrCreateLabelCounter(tok).Add(1)

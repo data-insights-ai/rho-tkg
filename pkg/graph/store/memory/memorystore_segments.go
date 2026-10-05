@@ -532,13 +532,7 @@ func hasStoredHash(r *types.Relationship) bool {
 // row set did not change.
 func (ms *Store) removeRowFromMemtableLocked(r *types.Relationship) {
 	id := r.ID()
-	tv := r.TypeToken().Value()
-	if set := ms.typeIdx[tv]; set != nil {
-		delete(set, id)
-		if len(set) == 0 {
-			delete(ms.typeIdx, tv)
-		}
-	}
+	ms.removeRelTypeIndex(id, r.TypeToken().Value())
 	removeAdjLocked(ms.outIdx, r.StartNodeID(), id)
 	removeAdjLocked(ms.inIdx, r.EndNodeID(), id)
 	delete(ms.rels, id)
@@ -1006,10 +1000,7 @@ func (ms *Store) faultInLocked(id types.RelID) error {
 	ms.segDead[id] = tok
 	ms.segTypes[tok].deadRows++
 	ms.rels[id] = r
-	if ms.typeIdx[tok] == nil {
-		ms.typeIdx[tok] = make(map[types.RelID]struct{})
-	}
-	ms.typeIdx[tok][id] = struct{}{}
+	ms.addRelTypeIndex(id, tok)
 	addAdjLocked(ms.outIdx, r.StartNodeID(), id)
 	addAdjLocked(ms.inIdx, r.EndNodeID(), id)
 	ms.segAccountLocked(r, 1)

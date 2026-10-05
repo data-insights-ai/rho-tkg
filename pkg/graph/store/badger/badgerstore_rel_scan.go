@@ -29,6 +29,9 @@ import (
 // whose peak memory must stay O(1) in the type's cardinality. fn returning
 // false stops the scan early.
 //
+// The ID snapshot is the type's kept ascending member list (see
+// ForEachNodeByLabel), so an early stop costs the rows read.
+//
 // Temporal-index fast paths are intentionally NOT consulted beyond the Peek
 // pre-filter: with a temporal filter present the per-row
 // MatchesTemporalFilter check below is authoritative, just not pre-pruned.
@@ -43,18 +46,10 @@ func (bs *Store) ForEachRelByType(token uint16, opts QueryOpts, fn func(*types.R
 		return err
 	}
 
-	bs.idxMu.RLock()
-	set := bs.typeIdx[token]
-	rids := make([]types.RelID, 0, len(set))
-	for id := range set {
-		rids = append(rids, id)
-	}
-	bs.idxMu.RUnlock()
-
+	rids := bs.typeScanIDs(token)
 	if len(rids) == 0 {
 		return nil
 	}
-	storepkg.SortRelIDs(rids)
 	rids = bs.filterRelIDsByTemporalPeek(rids, opts)
 	rids = storepkg.PaginateRelIDs(rids, opts.After, 0)
 
@@ -187,4 +182,30 @@ func (bs *Store) ForEachAdjacentEndpoint(nid types.NodeID, typeToken uint16, inc
 		}
 	}
 	return nil
+}
+
+// typeScanIDs is the ID snapshot of ForEachRelByType: the type's kept
+// ascending member list (shared, read only), built from typeIdx when none is
+// kept. Takes and releases idxMu.
+func (bs *Store) typeScanIDs(token uint16) []types.RelID {
+	bs.idxMu.RLock()
+	set := bs.typeIdx[token]
+	ids, gen, ok := bs.typeOrder.Ordered(token, len(set))
+	if ok {
+		bs.idxMu.RUnlock()
+		return ids
+	}
+	ids = make([]types.RelID, 0, len(set))
+	for id := range set {
+		ids = append(ids, id)
+	}
+	bs.idxMu.RUnlock()
+	if len(ids) == 0 {
+		return nil
+	}
+	storepkg.SortMembers(ids)
+	bs.idxMu.RLock()
+	bs.typeOrder.Install(token, gen, ids)
+	bs.idxMu.RUnlock()
+	return ids
 }

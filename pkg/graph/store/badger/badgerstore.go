@@ -431,6 +431,8 @@ type Store struct {
 	historyDelta          bool                                          // store version-history rows as anchor+delta (ADR-0009); reads accept both forms regardless
 	historyAnchorInterval uint64                                        // anchor spacing for historyDelta (>=1, default 16); baked into the on-disk layout — verified against a persisted marker at open
 	typeIdx               map[uint16]map[types.RelID]struct{}           // relTypeToken → set(relID)
+	labelOrder            storepkg.MemberOrder[types.NodeID]            // scan order of labelIdx (addLabelIdxLocked; RAM label mode)
+	typeOrder             storepkg.MemberOrder[types.RelID]             // scan order of typeIdx (addTypeIdxLocked)
 	outIdx                map[types.NodeID]map[types.RelID]types.NodeID // startNodeID → relID → endNodeID
 	inIdx                 map[types.NodeID]map[types.RelID]inEdge       // endNodeID → relID → {startNodeID, typeToken}
 	relValidIdx           map[types.RelID]relValidStamp                 // relID → effective {validFrom, validTo} for inline-stamp temporal traversal; nil until lazily built on the first temporal traversal
@@ -1256,10 +1258,7 @@ func (bs *Store) loadIndexesScan() error {
 					continue
 				}
 			}
-			if bs.labelIdx[token] == nil {
-				bs.labelIdx[token] = make(map[types.NodeID]struct{})
-			}
-			bs.labelIdx[token][nid] = struct{}{}
+			bs.addLabelIdxLocked(token, nid)
 		}
 		it.Close()
 
@@ -1347,10 +1346,7 @@ func (bs *Store) loadIndexesScan() error {
 			if info.RelType != token {
 				continue
 			}
-			if bs.typeIdx[token] == nil {
-				bs.typeIdx[token] = make(map[types.RelID]struct{})
-			}
-			bs.typeIdx[token][rid] = struct{}{}
+			bs.addTypeIdxLocked(token, rid)
 		}
 		it.Close()
 
@@ -1893,10 +1889,7 @@ func (bs *Store) addNodeIndexesFromRow(nid types.NodeID, labelTokens []uint16) m
 	labels := make(map[uint16]struct{}, len(labelTokens))
 	for _, tok := range labelTokens {
 		labels[tok] = struct{}{}
-		if bs.labelIdx[tok] == nil {
-			bs.labelIdx[tok] = make(map[types.NodeID]struct{})
-		}
-		bs.labelIdx[tok][nid] = struct{}{}
+		bs.addLabelIdxLocked(tok, nid)
 	}
 	return labels
 }
@@ -1905,10 +1898,7 @@ func (bs *Store) addRelationshipIndexesFromRow(info RelDeleteInfo) {
 	rid := types.RelID(info.ID)
 	relType := info.RelType
 
-	if bs.typeIdx[relType] == nil {
-		bs.typeIdx[relType] = make(map[types.RelID]struct{})
-	}
-	bs.typeIdx[relType][rid] = struct{}{}
+	bs.addTypeIdxLocked(relType, rid)
 
 	if _, startLocal := bs.nodeIDs[types.NodeID(info.StartID)]; startLocal {
 		startNID := types.NodeID(info.StartID)
@@ -1977,6 +1967,8 @@ func (bs *Store) Clear() error {
 	bs.nextRelRev = 0
 	bs.labelIdx = make(map[uint16]map[types.NodeID]struct{})
 	bs.typeIdx = make(map[uint16]map[types.RelID]struct{})
+	bs.labelOrder.Reset()
+	bs.typeOrder.Reset()
 	bs.outIdx = make(map[types.NodeID]map[types.RelID]types.NodeID)
 	bs.inIdx = make(map[types.NodeID]map[types.RelID]inEdge)
 	bs.relValidIdx = nil // drop the lazy stamp index; rebuilt on next temporal traversal

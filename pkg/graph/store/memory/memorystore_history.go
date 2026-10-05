@@ -81,12 +81,7 @@ func (ms *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState)) // BACKLOG 10c
 
 	// Remove only the specified token from the label index.
-	if set, ok := ms.labelIdx[tok]; ok {
-		delete(set, nid)
-		if len(set) == 0 {
-			delete(ms.labelIdx, tok)
-		}
-	}
+	ms.removeNodeLabelIndex(nid, tok)
 
 	// Update property, temporal, and vector indexes.
 	ms.removeNodePropertyKeyCounts(old)
@@ -176,12 +171,7 @@ func (ms *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState)) // BACKLOG 10c
 
 	// Add tok to the label index.
-	set, ok := ms.labelIdx[tok]
-	if !ok {
-		set = make(map[types.NodeID]struct{})
-		ms.labelIdx[tok] = set
-	}
-	set[nid] = struct{}{}
+	ms.addNodeLabelIndex(nid, tok)
 	ms.recordNodeLabelMembersLocked(updatedNode) // transaction-time label membership (new token)
 
 	// Update property, temporal, and vector indexes.
@@ -388,13 +378,7 @@ func (ms *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion u
 
 	// Remove label index entries.
 	for i := 0; i < n.LabelTokenCount(); i++ {
-		tok := n.LabelTokenRawAt(i)
-		if set, exists := ms.labelIdx[tok]; exists {
-			delete(set, nid)
-			if len(set) == 0 {
-				delete(ms.labelIdx, tok)
-			}
-		}
+		ms.removeNodeLabelIndex(nid, n.LabelTokenRawAt(i))
 	}
 
 	rawID := nid.SnowflakeID()

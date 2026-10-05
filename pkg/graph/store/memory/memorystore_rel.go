@@ -72,10 +72,7 @@ func (ms *Store) putRelationshipRouted(r *types.Relationship, token uint64) erro
 
 	// Type index.
 	tv := r.TypeToken().Value()
-	if ms.typeIdx[tv] == nil {
-		ms.typeIdx[tv] = make(map[types.RelID]struct{})
-	}
-	ms.typeIdx[tv][id] = struct{}{}
+	ms.addRelTypeIndex(id, tv)
 	ms.recordRelTypeMemberLocked(r) // transaction-time rel-type membership
 
 	// Adjacency: outgoing.
@@ -172,10 +169,7 @@ func (ms *Store) putRelationshipGeneratedIDWithEndpointHashesRouted(r *types.Rel
 	ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(r)) // BACKLOG 10c
 
 	tv := r.TypeToken().Value()
-	if ms.typeIdx[tv] == nil {
-		ms.typeIdx[tv] = make(map[types.RelID]struct{})
-	}
-	ms.typeIdx[tv][id] = struct{}{}
+	ms.addRelTypeIndex(id, tv)
 	ms.recordRelTypeMemberLocked(r) // transaction-time rel-type membership
 
 	addAdjLocked(ms.outIdx, startID, id)
@@ -338,13 +332,7 @@ func (ms *Store) deleteRelLocked(id types.RelID) error {
 	}
 
 	// Type index cleanup.
-	tv := r.TypeToken().Value()
-	if set, exists := ms.typeIdx[tv]; exists {
-		delete(set, id)
-		if len(set) == 0 {
-			delete(ms.typeIdx, tv)
-		}
-	}
+	ms.removeRelTypeIndex(id, r.TypeToken().Value())
 
 	// Adjacency cleanup — O(1) delete from hash sets.
 	removeAdjLocked(ms.outIdx, r.StartNodeID(), id)
@@ -372,6 +360,9 @@ func (ms *Store) deleteRelOrPurgeOrphanLocked(id types.RelID) error {
 
 func (ms *Store) purgeRelIDFromIndexesLocked(id types.RelID) {
 	for tok, set := range ms.typeIdx {
+		if _, ok := set[id]; ok {
+			ms.typeOrder.Remove(tok)
+		}
 		delete(set, id)
 		if len(set) == 0 {
 			delete(ms.typeIdx, tok)
@@ -796,10 +787,7 @@ func (ms *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(r)) // BACKLOG 10c
 
 		tv := r.TypeToken().Value()
-		if ms.typeIdx[tv] == nil {
-			ms.typeIdx[tv] = make(map[types.RelID]struct{})
-		}
-		ms.typeIdx[tv][id] = struct{}{}
+		ms.addRelTypeIndex(id, tv)
 		ms.recordRelTypeMemberLocked(r) // transaction-time rel-type membership
 
 		addAdjLocked(ms.outIdx, startID, id)

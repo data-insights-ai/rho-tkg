@@ -8,6 +8,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Streaming label and type scans start without collecting their IDs.** Requested by sigma-tkgd (C3d,
+  store request 2: q15, q18 and q19 stop after 2 or 3 rows and paid 0.13–0.16 ms for collecting
+  20,000 IDs). `ForEachByLabel` / `ForEachByType` on memory and badger (RAM label index) walk a kept
+  ascending member list per label / type (`storeutil.MemberOrder`): built and sorted by the first
+  scan, extended in place by every insert of a higher ID, dropped by an insert of a lower one or when
+  more than half of it is stale, and checked against the membership set's size on every scan (a
+  change that bypassed the hooks makes the counts differ and the list is rebuilt). A scan takes the
+  list's header and walks it with no lock held, re-checking each row as before, so isolation is
+  unchanged: rows deleted since the snapshot are skipped, rows created after it are not seen. Order
+  is ascending with and without `NoSort` (BACKLOG 17e's sort skip is now a sort-once). Every add to
+  the RAM label / type maps goes through one helper per store (memory `addNodeLabelIndex` /
+  `addRelTypeIndex`, badger `addLabelIdxLocked` / `addTypeIdxLocked`). Measured
+  (`BenchmarkForEachByLabelEarlyStop`, 20,000 nodes, stop after 3, three runs each, load 10–18):
+  memory 1.31–1.33 ms (sorted) / 118 µs (`NoSort`), 164 KB → 0.57–0.63 µs, 106 B; badger 1.31 ms /
+  109–129 µs → 0.60–0.62 µs. `BenchmarkAddThenEarlyStopScan` (one insert, then the 3-row scan): memory
+  1.39–1.41 ms → 0.97–0.99 µs, badger 1.39 ms → 1.5–1.8 µs; an insert alone memory 0.73–0.88 →
+  0.85–0.90 µs (+70 B/op for the kept list), badger 1.35–1.50 → 1.39–1.60 µs (within the load's
+  noise). Memory cost: 8 B per member of each label or type that has been scanned. `LabelIndexOnDisk`,
+  declared segment types, tiered and sharded keep their paths. Tests:
+  `TestForEachByLabelFollowsEveryMembershipChange` and `TestForEachByTypeFollowsEveryMembershipChange`
+  (exact sets against `ByLabel` / `ByType` after an append, an older node gaining the label, a removal
+  and re-add, a delete, a batch, a tx, inside a tx, after its rollback, an import reusing an older ID,
+  churn past the stale threshold; with early stop and `After`; every backend plus badger with
+  `LabelIndexOnDisk`), `TestForEachByLabelConcurrentWithWrites` (race: ascending, no repeat, every
+  untouched member seen), `TestMemberOrder`; `TestMemStoreForEachNodeByLabel_NoSortSkipsSort` became
+  `..._NoSortWalksTheKeptOrder` (it pinned a per-scan unsorted order, which no longer exists).
 - **`g.Nodes().Lend(ctx, id)` / `g.Rels().Lend(ctx, id)`: a by-ID read without the copy.** Requested
   by sigma-tkgd (task record C3d, store request 1: `memory.Store.GetNode` deep-copies, ~150 ns, for
   every endpoint or constant a run looks up by ID; 11.5 % of q4's samples). Lend returns the store's

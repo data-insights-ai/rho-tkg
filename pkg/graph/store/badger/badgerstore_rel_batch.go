@@ -116,10 +116,7 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 		bs.relIDs[rd.rid] = struct{}{}
 		bs.bumpRelRevLocked(rd.rid)
 
-		if bs.typeIdx[rd.relType] == nil {
-			bs.typeIdx[rd.relType] = make(map[types.RelID]struct{})
-		}
-		bs.typeIdx[rd.relType][rd.rid] = struct{}{}
+		bs.addTypeIdxLocked(rd.relType, rd.rid)
 
 		if !bs.adjOnDisk {
 			if bs.outIdx[rd.startNID] == nil {

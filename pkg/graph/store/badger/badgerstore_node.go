@@ -84,10 +84,7 @@ func (bs *Store) putNodeRouted(n *types.Node, token uint64) error {
 	for i := 0; i < labelCount; i++ {
 		tok := n.LabelTokenRawAt(i)
 		if !bs.labelOnDisk {
-			if bs.labelIdx[tok] == nil {
-				bs.labelIdx[tok] = make(map[types.NodeID]struct{})
-			}
-			bs.labelIdx[tok][nid] = struct{}{}
+			bs.addLabelIdxLocked(tok, nid)
 		}
 		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tok, id)})
 		bs.getOrCreateLabelCounter(tok).Add(1)
@@ -827,12 +824,7 @@ func (bs *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNo
 	}
 
 	if !bs.labelOnDisk {
-		set, ok := bs.labelIdx[tok]
-		if !ok {
-			set = make(map[types.NodeID]struct{})
-			bs.labelIdx[tok] = set
-		}
-		set[nid] = struct{}{}
+		bs.addLabelIdxLocked(tok, nid)
 	}
 	bs.getOrCreateLabelCounter(tok).Add(1)
 	bs.recordNodeLabelMembersLocked(updatedNode) // transaction-time label membership (new token)

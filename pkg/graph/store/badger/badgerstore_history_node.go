@@ -259,12 +259,7 @@ func (bs *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 
 	// Add tok to the in-memory label index.
 	if !bs.labelOnDisk {
-		set, ok := bs.labelIdx[tok]
-		if !ok {
-			set = make(map[types.NodeID]struct{})
-			bs.labelIdx[tok] = set
-		}
-		set[nid] = struct{}{}
+		bs.addLabelIdxLocked(tok, nid)
 	}
 	bs.getOrCreateLabelCounter(tok).Add(1)
 	bs.recordNodeLabelMembersLocked(updatedNode) // transaction-time label membership (new token)
