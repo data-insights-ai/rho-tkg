@@ -514,7 +514,7 @@ func (bs *Store) PutNodesBatchPreEncodedLog(nodes []*types.Node, wireBodies, log
 // PutNodesBatchOwnedPreEncoded is PutNodesBatchPreEncodedLog with an OWNERSHIP
 // TRANSFER: the caller guarantees it will never read or mutate the nodes again,
 // so the store freezes each node IN PLACE and caches it directly instead of
-// deep-copying it (freezeNodeCopy). This eliminates the single largest per-node
+// deep-copying it (frozenNodeRow). This eliminates the single largest per-node
 // allocation on the ingest apply path. Satisfies store.OwnedPreEncodedPutCapability.
 //
 // UNDEFINED BEHAVIOR if the caller touches a node afterward — the store's cached

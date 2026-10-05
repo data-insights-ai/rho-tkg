@@ -199,7 +199,7 @@ type PreEncodedPutLogCapability interface {
 // like PutNodesBatchPreEncodedLog EXCEPT the caller transfers ownership of the
 // nodes: it guarantees it will never read or mutate them again, so the store MAY
 // freeze each node IN PLACE and cache it directly instead of deep-copying it
-// into the cache. That deep copy (freezeNodeCopy) is the single largest per-node
+// into the cache. That deep copy (frozenNodeRow) is the single largest per-node
 // allocation on the apply path; skipping it is the point of this capability.
 //
 // CONTRACT: the store's cached (frozen) entry IS the passed object. The caller

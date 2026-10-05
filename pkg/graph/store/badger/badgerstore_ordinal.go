@@ -169,30 +169,5 @@ func (bs *Store) MaxRelOrdinal() uint32 {
 	return bs.ords.alloc.MaxRelOrdinal()
 }
 
-// frozenNodeRow / frozenRelRow are the frozen cache rows of a write: the
-// entity's ordinal (assigned when the ID is new), then frozen.
-func (bs *Store) frozenNodeRow(n *types.Node) *types.Node {
-	cp := n.DeepCopyWithOrdinal(bs.ords.node(n.ID(), true))
-	cp.Freeze()
-	return cp
-}
-
-func (bs *Store) frozenRelRow(r *types.Relationship) *types.Relationship {
-	cp := r.DeepCopyWithOrdinal(bs.ords.rel(r.ID(), true))
-	cp.Freeze()
-	return cp
-}
-
-// frozenNodeRowForCache is freezeNodeForCache with the ordinal: an owned node
-// (ingest bulk apply) takes it in place before it is frozen.
-func (bs *Store) frozenNodeRowForCache(n *types.Node, owned bool) *types.Node {
-	if owned {
-		_ = n.SetOrdinal(bs.ords.node(n.ID(), true)) // owned, so not frozen yet
-		n.Freeze()
-		return n
-	}
-	return bs.frozenNodeRow(n)
-}
-
 // HasOrdinals is false when the store was opened with DisableOrdinals.
 func (bs *Store) HasOrdinals() bool { return bs != nil && bs.ords != nil && !bs.ords.disabled }
