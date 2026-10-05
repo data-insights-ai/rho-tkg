@@ -71,3 +71,36 @@ func TestTieredStoreLend(t *testing.T) {
 		t.Fatalf("LendRelationship after Close: %v", err)
 	}
 }
+
+func TestTieredLendHelpersAndNilEpochs(t *testing.T) {
+	var nilStore *Store
+	if nilStore.NodeMutationEpoch() != 0 || nilStore.RelMutationEpoch() != 0 {
+		t.Fatal("nil store epochs must be 0")
+	}
+	if r, found, err := lendRelationshipRow(nil, types.RelID(1)); r != nil || found || err != nil {
+		t.Fatal("a nil shard holds no row")
+	}
+	ts, _, signalTok := setupBatchDelete(t)
+	gen, rgen := tieredNodeGen(t), tieredRelGen(t)
+	a := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	b := types.NewNode(types.NodeID(gen.Generate()), signalTok, nil)
+	for _, n := range []*types.Node{a, b} {
+		if err := ts.PutNode(n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := types.NewRelationship(types.RelID(rgen.Generate()), 1, a.ID(), b.ID())
+	if err := ts.PutRelationship(r); err != nil {
+		t.Fatal(err)
+	}
+	shard := ts.HotShardForTest().Store()
+	if got, found, err := lendRelationshipRow(shard, r.ID()); err != nil || !found || got.ID() != r.ID() {
+		t.Fatalf("lendRelationshipRow = %v %v %v", got, found, err)
+	}
+	if err := ts.DeleteRelationship(r.ID()); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := lendRelationshipRow(shard, r.ID()); found || err != nil {
+		t.Fatalf("a deleted relationship: found=%v err=%v", found, err)
+	}
+}
