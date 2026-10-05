@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.41.0] - 2026-10-05
+
+Minor release: the sigma-tkgd store requests (C3d): dense ordinals of nodes and relationships
+(`Ordinal()`, `MaxOrdinal()`), `Nodes().Lend` / `Rels().Lend` (a by-ID read without the copy),
+`Stats().RelTypeDegreeStats`, `GraphTx.StartInstant`, streaming label and type scans over a kept
+member order, and the `RelMutationEpoch` fix (moves on every relationship write, on every backend).
+Gates on the released tree: `make fmt-check`, `make check`, `make test-race`, `make cover-gate`,
+`make lint-docker`, `make security-docker`, `make vulncheck-docker` and the docs-consistency tests
+exit 0.
+
 ### Added
 
 - **Dense ordinals of nodes and relationships: `types.Node.Ordinal()`, `types.Relationship.Ordinal()`,
