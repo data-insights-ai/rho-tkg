@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`GraphTx.StartInstant()`: the transaction's start in transaction time.** Requested by sigma-tkgd
+  (C3p item 4: openCypher's `datetime.transaction()` of a caller-managed transaction had no start
+  the store exposed). `Begin` reserves an instant on the commit clock (`c.now()`, the reservation
+  `Temporal().NowTx` makes); the transaction's own writes are stamped strictly after it, every
+  stamp reserved before `Begin` strictly before it, so `NodesAsOf(tx.StartInstant())` is the graph as
+  the transaction found it. Fixed for the transaction's life, readable after `Commit` and `Rollback`,
+  0 for a nil transaction. Test: `TestGraphTxStartInstant` (all four backends; two-phase: a node
+  updated inside the transaction reads with its old value as of the start, a node it created is
+  absent; ordering across Begin, Commit, Rollback and `Run`).
 - **Streaming label and type scans start without collecting their IDs.** Requested by sigma-tkgd (C3d,
   store request 2: q15, q18 and q19 stop after 2 or 3 rows and paid 0.13–0.16 ms for collecting
   20,000 IDs). `ForEachByLabel` / `ForEachByType` on memory and badger (RAM label index) walk a kept

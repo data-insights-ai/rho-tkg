@@ -120,6 +120,10 @@ type GraphTx struct {
 	// transaction interned -- cannot happen, and only that direction can lose data.
 	registrySizesAtBegin [3]int
 	committedLSN         uint64 // max change-log LSN this tx's commit assigned (0 = none / log off)
+	// startInstant is the transaction-time instant BeginTx reserved on the
+	// commit clock (c.now()); set once before the tx is handed out, never
+	// written again, so StartInstant reads it without tx.mu.
+	startInstant types.Instant
 	// scopeToken (BACKLOG 11f) — set by BeginTx via c.scopedChangeLog.BeginScopedLog()
 	// when the store supports the full token-routed mechanism (see
 	// storepkg.ScopedTxCapability). 0 when the mechanism isn't in use (store
@@ -241,7 +245,27 @@ func (c *Core) BeginTx() (*GraphTx, error) {
 	// The registry sizes this transaction inherits. Commit compares against these to tell a
 	// transaction that interned a token from one that only touched existing ones.
 	tx.registrySizesAtBegin = tx.registrySizes()
+	tx.startInstant = c.now()
 	return tx, nil
+}
+
+// StartInstant returns the transaction's start in transaction time: an
+// instant BeginTx reserved on the graph's commit clock, the clock that
+// stamps TxFrom (the same reservation Temporal().NowTx makes). Every write
+// this transaction makes is stamped strictly after it, and every write that
+// reserved its stamp before BeginTx did (any writer) strictly before it. So
+// it is an as-of pin of the graph as the transaction found it
+// (Temporal().NodesAsOf(tx.StartInstant()) excludes the transaction's own
+// writes and every later one), and a consumer's "transaction clock"
+// (openCypher's datetime.transaction()). The value is fixed for the
+// transaction's life and still readable after Commit or Rollback; 0 for a nil
+// transaction. It is millisecond transaction time, reopen-safe as NowTx is
+// (lesson 71): not a wall-clock reading when writes outran the wall.
+func (tx *GraphTx) StartInstant() types.Instant {
+	if tx == nil {
+		return 0
+	}
+	return tx.startInstant
 }
 
 // =============================================================================
