@@ -16,6 +16,13 @@ import (
 // fn may freely call back into the store. Rows deleted between snapshot
 // and lookup are skipped; rows created after the snapshot are not seen.
 // Rows are the store's FROZEN canonical entries — fn must not mutate them.
+//
+// The ID snapshot is the label's ordered member list (storeutil.MemberOrder):
+// after the first scan of a label it is kept and extended by inserts, so a
+// scan starts without collecting or sorting the label's IDs and costs the
+// rows it reads — a LIMIT 3 over 20,000 members reads 3. The first scan, and
+// the first after an out-of-order insert, collects and sorts as before.
+// Order is ascending ID with or without NoSort.
 func (ms *Store) ForEachNodeByLabel(token uint16, opts QueryOpts, fn func(*types.Node) bool) error {
 	if ms == nil {
 		return ErrNilStore
@@ -33,21 +40,9 @@ func (ms *Store) ForEachNodeByLabel(token uint16, opts QueryOpts, fn func(*types
 		ms.mu.RUnlock()
 		return err
 	}
-	set := ms.labelIdx[token]
-	ids := make([]types.NodeID, 0, len(set))
-	for id := range set {
-		ids = append(ids, id)
-	}
-	ms.mu.RUnlock()
-
+	ids := ms.orderedLabelMembersRLocked(token) // releases ms.mu
 	if len(ids) == 0 {
 		return nil
-	}
-	// BACKLOG 17e: mirror badger's ForEachNodeByLabel — order-independent
-	// streaming consumers set NoSort to drop the O(n log n) sort; pagination
-	// (After > 0) still needs sorted order regardless of the flag.
-	if !opts.NoSort || opts.After != 0 {
-		storepkg.SortNodeIDs(ids)
 	}
 	ids = storepkg.PaginateNodeIDs(ids, opts.After, 0)
 
@@ -72,4 +67,28 @@ func (ms *Store) ForEachNodeByLabel(token uint16, opts QueryOpts, fn func(*types
 		}
 	}
 	return nil
+}
+
+// orderedLabelMembersRLocked returns the label's members in ascending ID
+// order (a superset: removed members may still be listed). Called with
+// ms.mu read-held; releases it. The returned slice is shared: read only.
+func (ms *Store) orderedLabelMembersRLocked(token uint16) []types.NodeID {
+	ids, gen, ok := ms.labelOrder.Ordered(token, len(ms.labelIdx[token]))
+	if ok {
+		ms.mu.RUnlock()
+		return ids
+	}
+	set := ms.labelIdx[token]
+	ids = make([]types.NodeID, 0, len(set))
+	for id := range set {
+		ids = append(ids, id)
+	}
+	ms.mu.RUnlock()
+	storepkg.SortMembers(ids)
+	ms.mu.RLock()
+	if ms.checkOpenLocked() == nil {
+		ms.labelOrder.Install(token, gen, ids)
+	}
+	ms.mu.RUnlock()
+	return ids
 }

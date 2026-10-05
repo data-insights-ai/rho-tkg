@@ -49,7 +49,7 @@ func (ms *Store) NodeRangeCardinality(labelToken uint16, propertyKey string, min
 //	captured immediately via Mutated tracking. Snapshot the label's current node IDs.
 //	Phase 2 (brief per-row RLock, never held across the scan): read each snapshotted node's
 //	current value. Safe because every stored *types.Node is a frozen, immutable-once-cached
-//	copy (freezeNodeCopy) — a concurrent write always REPLACES the map entry rather than
+//	copy (storedNode) — a concurrent write always REPLACES the map entry rather than
 //	mutating a row in place, so a stale pointer read under a since-released lock can never
 //	tear.
 //	Phase 3 (Lock): merge the backfill into the live index, skipping IDs a concurrent write

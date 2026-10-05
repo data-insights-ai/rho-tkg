@@ -35,3 +35,24 @@ func (s *Store) RelMutationEpoch() uint64 {
 	}
 	return sum
 }
+
+// MaxNodeOrdinal / MaxRelOrdinal report the shared dense-ordinal allocator
+// (store.OrdinalCapability): every shard draws from it, so ordinals are
+// unique across slots. All shards stay open for the store's life, so an
+// entity's ordinal is stable while the store is open. 0 after Close.
+func (s *Store) MaxNodeOrdinal() uint32 {
+	if s == nil || s.checkOpen() != nil {
+		return 0
+	}
+	return s.ordinals.MaxNodeOrdinal()
+}
+
+func (s *Store) MaxRelOrdinal() uint32 {
+	if s == nil || s.checkOpen() != nil {
+		return 0
+	}
+	return s.ordinals.MaxRelOrdinal()
+}
+
+// HasOrdinals is true: every slot numbers its entities from the shared allocator.
+func (s *Store) HasOrdinals() bool { return s != nil }

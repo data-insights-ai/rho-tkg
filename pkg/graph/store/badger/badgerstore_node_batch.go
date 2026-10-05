@@ -35,6 +35,7 @@ func (bs *Store) deleteNodeCascadeRouted(nid types.NodeID, token uint64) error {
 		return err
 	}
 	defer bs.bumpNodeEpoch()
+	defer bs.bumpRelEpoch() // the cascade deletes the node's relationships
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return err
 	}
@@ -211,6 +212,7 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePr
 
 		bs.nodeCache.MarkDeleted(id)
 		delete(bs.nodeIDs, nid)
+		bs.ords.dropNode(nid)
 		delete(bs.nodeHashes, nid)
 		bs.deleteNodeRevLocked(nid)
 		bs.appendOps(ops...)
@@ -256,6 +258,7 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePr
 	// Update in-memory state.
 	bs.nodeCache.MarkDeleted(id)
 	delete(bs.nodeIDs, nid)
+	bs.ords.dropNode(nid)
 	delete(bs.nodeHashes, nid)
 	bs.deleteNodeRevLocked(nid)
 	bs.appendOps(ops...)
@@ -407,6 +410,7 @@ func (bs *Store) purgeOrphanRelIDLockedWithIndexKeys(rid types.RelID, indexKeys 
 	}
 	if _, tracked := bs.relIDs[rid]; tracked {
 		delete(bs.relIDs, rid)
+		bs.ords.dropRel(rid)
 		bs.relCount.Add(-1)
 	}
 	delete(bs.relValidIdx, rid) // drop the inline valid-time stamp on node-cascade rel purge
@@ -510,7 +514,7 @@ func (bs *Store) PutNodesBatchPreEncodedLog(nodes []*types.Node, wireBodies, log
 // PutNodesBatchOwnedPreEncoded is PutNodesBatchPreEncodedLog with an OWNERSHIP
 // TRANSFER: the caller guarantees it will never read or mutate the nodes again,
 // so the store freezes each node IN PLACE and caches it directly instead of
-// deep-copying it (freezeNodeCopy). This eliminates the single largest per-node
+// deep-copying it (frozenNodeRow). This eliminates the single largest per-node
 // allocation on the ingest apply path. Satisfies store.OwnedPreEncodedPutCapability.
 //
 // UNDEFINED BEHAVIOR if the caller touches a node afterward — the store's cached
@@ -574,7 +578,7 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 			data = d
 		}
 		nid := n.InternalID()
-		serialized[i] = nodeData{nid: nid, id: nid.SnowflakeID(), data: data, frozen: freezeNodeForCache(n, owned)}
+		serialized[i] = nodeData{nid: nid, id: nid.SnowflakeID(), data: data, frozen: bs.frozenNodeRowForCache(n, owned)}
 		if bs.logEnabled.Load() {
 			if i < len(logBodies) && logBodies[i] != nil {
 				putPayloads[i] = logBodies[i] // producer-encoded, applier-patched
@@ -637,10 +641,7 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 		for j := 0; j < labelCount; j++ {
 			tok := n.LabelTokenRawAt(j)
 			if !bs.labelOnDisk {
-				if bs.labelIdx[tok] == nil {
-					bs.labelIdx[tok] = make(map[types.NodeID]struct{})
-				}
-				bs.labelIdx[tok][nd.nid] = struct{}{}
+				bs.addLabelIdxLocked(tok, nd.nid)
 			}
 			ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tok, nd.id)})
 			bs.getOrCreateLabelCounter(tok).Add(1)
@@ -787,6 +788,7 @@ func (bs *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 		indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, n, id)
 		bs.nodeCache.MarkDeleted(id)
 		delete(bs.nodeIDs, nid)
+		bs.ords.dropNode(nid)
 		delete(bs.nodeHashes, nid)
 		bs.deleteNodeRevLocked(nid)
 		bs.appendOps(ops...)

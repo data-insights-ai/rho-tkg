@@ -28,6 +28,8 @@ type Ops interface {
 	AddByIDForeignEnd(ctx context.Context, typeName string, startID types.NodeID, foreignEnd storepkg.ForeignEndpoint, props map[string]any) (*types.Relationship, error)
 	RecordForeignIncoming(ctx context.Context, edge storepkg.ForeignIncomingEdge) error
 	Get(ctx context.Context, id types.RelID) (*types.Relationship, error)
+	Lend(ctx context.Context, id types.RelID) (*types.Relationship, error)
+	MaxOrdinal() (uint32, bool, error)
 	GetByIDs(ids []types.RelID) ([]*types.Relationship, error)
 	Update(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error)
 	UpdateInPlace(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error)
@@ -174,6 +176,29 @@ func (a *API) Get(ctx context.Context, id types.RelID) (*types.Relationship, err
 		return nil, err
 	}
 	return ops.Get(ctx, id)
+}
+
+// Lend returns the relationship's current row like Get, without Get's copy:
+// the store's own frozen row. Same lifetime and mutation rules as
+// nodes.API.Lend (types.ErrFrozenRelationship; re-check RelMutationEpoch to
+// know whether a held row is still current). Errors as Get.
+func (a *API) Lend(ctx context.Context, id types.RelID) (*types.Relationship, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.Lend(ctx, id)
+}
+
+// MaxOrdinal is nodes.API.MaxOrdinal for relationships
+// (types.Relationship.Ordinal); on a memory store a relationship of a declared
+// segment type carries 0.
+func (a *API) MaxOrdinal() (uint32, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, false, err
+	}
+	return ops.MaxOrdinal()
 }
 
 // GetByIDs returns relationships for the given IDs.

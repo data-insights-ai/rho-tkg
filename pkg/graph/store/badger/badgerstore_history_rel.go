@@ -41,6 +41,9 @@ func (bs *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 	if err := storecontract.ValidateRelationshipHistoryVersionSnapshot(rid, prevVersion, prevState); err != nil {
 		return err
 	}
+	// A property write, a close or an interval change of a relationship
+	// arrives here (UPDATE: poisons the type's columns, records no append).
+	defer bs.bumpRelEpochForType(uint16(current.TypeToken()))
 
 	_, prefetchErr := bs.prefetchRel(rid)
 
@@ -93,7 +96,7 @@ func (bs *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 	bs.maintainRelTypeTemporalIndexesRemove(old, id) // BACKLOG 21c
 	bs.removeRelPropertyTypeClassCountsByID(id, old.TypeToken().Value())
 	bs.removeRelPropertyStatsCountsByID(id, old.TypeToken().Value())
-	bs.relCache.Put(id, freezeRelCopy(current))
+	bs.relCache.Put(id, bs.frozenRelRow(current))
 	bs.bumpRelRevLocked(rid)                                   // this door always re-reads via getRelLocked above, but must still bump so a concurrent ReplaceRelationship's prefetch detects this write (BACKLOG 18b)
 	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(current))   // BACKLOG 10c
 	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(prevState)) // BACKLOG 10c — the demoted history row
@@ -143,6 +146,7 @@ func (bs *Store) deleteRelWithHistoryRouted(rid types.RelID, prevVersion uint32,
 	if err := storecontract.ValidateRelationshipHistoryVersionSnapshot(rid, prevVersion, tombstone); err != nil {
 		return err
 	}
+	defer bs.bumpRelEpoch() // the type and adjacency views lose the relationship
 	id := rid.SnowflakeID()
 	// Serialize tombstone OUTSIDE lock (no I/O under write lock).
 	tombData, err := bs.historyRelValue(id, uint64(prevVersion), tombstone)
@@ -212,6 +216,7 @@ func (bs *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 	if err := storecontract.ValidateRelationshipHistoryVersionSnapshot(rid, version, r); err != nil {
 		return err
 	}
+	defer bs.bumpRelEpochForType(uint16(r.TypeToken())) // a version-chain write, as PutNodeVersion bumps the node epoch
 	id := rid.SnowflakeID()
 	data, err := bs.historyRelValue(id, uint64(version), r)
 	if err != nil {

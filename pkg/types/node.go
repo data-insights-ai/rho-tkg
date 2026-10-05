@@ -46,7 +46,9 @@ type Node struct {
 	// sharedProps: properties' backing array is shared with a store's compact
 	// frozen copy (or with sibling bulk-create nodes); copy before writing
 	// in place (ownProperties).
-	sharedProps bool // 1B, offset 87 → 88B total
+	sharedProps bool // 1B, offset 87
+	// ordinal: the store-assigned dense ordinal (ordinal.go); 0 = none.
+	ordinal uint32 // 4B, offset 88 → 96B total, the allocator size class of the former 88B
 }
 
 // NewNode creates a Node with the given typed node ID, primary label token,
@@ -637,6 +639,7 @@ func (n *Node) DeepCopy() *Node {
 		id:           n.id,
 		primaryLabel: n.primaryLabel,
 		version:      n.version,
+		ordinal:      n.ordinal,
 	}
 	if len(n.extraLabels) > 0 {
 		cp.extraLabels = make([]labelToken, len(n.extraLabels))

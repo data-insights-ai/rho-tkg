@@ -51,6 +51,7 @@ type Ops interface {
 	PropertyStats(label, propertyKey string) (storepkg.PropertyStats, error)
 	RelPropertyStats(typeName, propertyKey string) (storepkg.PropertyStats, error)
 	RelCountByType(typeName string) (int, error)
+	RelTypeDegreeStats(typeName string) (storepkg.RelTypeDegreeStats, error)
 	RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
 	RelRangeCardinality(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
 	AllLabelCounts() (map[string]int, error)
@@ -184,6 +185,24 @@ func (a *API) RelPropertyTypeClassCounts(typeName, propertyKey string) (storepkg
 		return storepkg.PropertyTypeClassCounts{}, err
 	}
 	return ops.RelPropertyTypeClassCounts(typeName, propertyKey)
+}
+
+// RelTypeDegreeStats returns the largest out-degree and in-degree among a
+// relationship type's current relationships (with the nodes holding them),
+// the number of relationships and of distinct start and end nodes; typeName
+// "" means every relationship. A planner takes max(mean, MaxOut) where a hub
+// makes the mean fanout (Rels / Starts) misleading. Every backend. Derived,
+// not maintained: the first call after a write to the type scans its
+// relationships once; the result is cached against the relationship mutation
+// epoch (badger: the type's own stripe) and served in O(1) until it moves.
+// Exact reports that no write moved the epoch during the count. Unregistered
+// types return zero stats.
+func (a *API) RelTypeDegreeStats(typeName string) (storepkg.RelTypeDegreeStats, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.RelTypeDegreeStats{}, err
+	}
+	return ops.RelTypeDegreeStats(typeName)
 }
 
 // PropertyStats returns NDV (estimated distinct-value count via a

@@ -449,6 +449,17 @@ DocValues capability — a planner reading `0` on every call cannot distinguish
 "never mutated" from "unsupported"; check the corresponding DocValues call's
 `ok` return if that distinction matters.
 
+What moves `RelMutationEpoch` (since v4.41, on memory, badger, tiered and
+sharded): every write of a relationship's row — create, a property set or
+removed (`SetProperty`, `DeleteProperty`, `CompareAndSetProperty`, `Update`,
+`UpdateInPlace`, their tx and batch forms), `CloseVersion`,
+`SetRelVersionInterval`, a version-history write — and every removal — `Delete`,
+a node delete that cascades, a transaction rollback, retention purge, exact
+erasure, `Clear`. Before v4.41 a property write moved it on no backend and a
+delete moved it on memory only. On the tiered store both epochs are store-wide
+counters every shard advances, so a write to a cold shard that is closed again
+before the next read still moves them.
+
 `g.Nodes().NodeLabelMutationEpoch(label)` is the PER-LABEL sibling: it advances
 only when a node carrying THAT label is written, and it is the value a
 single-label DocValues result returns as its `gen`. A Gate-2 re-check on a

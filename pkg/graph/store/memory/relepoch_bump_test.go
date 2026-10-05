@@ -170,3 +170,46 @@ func TestDeleteNodeWithHistory_BumpsRelMutationEpochWithConnectedRel(t *testing.
 		t.Fatalf("RelMutationEpoch unchanged (%d) after DeleteNodeWithHistory removed connected rel 100 — BACKLOG 17a regression", after)
 	}
 }
+
+// A relationship's property write, close or interval change reaches the store
+// as ReplaceRelWithHistory, and a version write as PutRelVersion; both change
+// what relationship-derived caches read (sigma-tkgd C3q finding 1).
+func TestRelHistoryWrites_BumpRelMutationEpoch(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{"ReplaceRelWithHistory", "PutRelVersion"} {
+		t.Run(name, func(t *testing.T) {
+			ms := New()
+			defer ms.Close() //nolint:errcheck
+			nA := types.NewNode(types.NodeID(10), 1, nil)
+			nB := types.NewNode(types.NodeID(20), 2, nil)
+			if err := ms.PutNode(nA); err != nil {
+				t.Fatal(err)
+			}
+			if err := ms.PutNode(nB); err != nil {
+				t.Fatal(err)
+			}
+			r := types.NewRelationship(types.RelID(100), 1, nA.ID(), nB.ID())
+			if err := ms.PutRelationship(r); err != nil {
+				t.Fatal(err)
+			}
+			before := ms.RelMutationEpoch()
+			var err error
+			if name == "PutRelVersion" {
+				err = ms.PutRelVersion(r.ID(), r.Version(), r)
+			} else {
+				next := r.DeepCopy()
+				next.SetVersion(r.Version() + 1)
+				if err := next.SetProperty("w", int64(2)); err != nil {
+					t.Fatal(err)
+				}
+				err = ms.ReplaceRelWithHistory(next, r.Version(), r)
+			}
+			if err != nil {
+				t.Fatalf("%s: %v", name, err)
+			}
+			if ms.RelMutationEpoch() == before {
+				t.Fatalf("%s left RelMutationEpoch at %d", name, before)
+			}
+		})
+	}
+}

@@ -242,6 +242,7 @@ func (es *EventShard) currentTier() ShardTier {
 type Store struct {
 	mu                sync.RWMutex                                    // protects hotShard + eventShards during rotation
 	refShard          *BadgerStore                                    // reference shard (always hot)
+	mutationEpochs    badger.SharedMutationEpochs                     // advanced by every shard (badgerCfg injects it); NodeMutationEpoch / RelMutationEpoch read it
 	propKeyReg        atomic.Pointer[registrypkg.PropertyKeyRegistry] // single canonical property-key registry, injected into every shard at open
 	refActiveReqs     atomic.Int64                                    // refcount for refShard — Close spin-waits on this before refShard.Close()
 	refArchive        atomic.Pointer[BadgerStore]                     // nil until first archive/restore or DepthAll with archive catalog; atomic so reads need not hold archiveMu
@@ -1317,6 +1318,10 @@ func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 	// itself is being opened (it loads the canonical copy from its own meta);
 	// set for every shard opened afterwards — hot, warm, lazy cold/archive, and
 	// rotation-created shards (all route through here).
+	cfg.SharedMutationEpochs = &ts.mutationEpochs
+	// No dense ordinals on tiered: a cold shard that idle-closes and reopens
+	// would renumber its entities while the store stays open.
+	cfg.DisableOrdinals = true
 	if reg := ts.propKeyReg.Load(); reg != nil {
 		cfg.PropertyKeyRegistry = reg
 	}

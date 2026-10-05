@@ -404,3 +404,24 @@ func (s *statsOpsSpy) SnapshotCounters() (
 		s.snapshot[8], s.snapshot[9], s.snapshot[10], s.snapshot[11],
 		s.snapshotErr
 }
+
+func (s *statsOpsSpy) RelTypeDegreeStats(typeName string) (storepkg.RelTypeDegreeStats, error) {
+	s.relTypeArg = typeName
+	return storepkg.RelTypeDegreeStats{Rels: 4, MaxOut: 3, Exact: true}, s.relCountByTypeErr
+}
+
+func TestRelTypeDegreeStatsForwards(t *testing.T) {
+	var nilAPI *API
+	if _, err := nilAPI.RelTypeDegreeStats("KNOWS"); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil RelTypeDegreeStats error = %v", err)
+	}
+	ops := &statsOpsSpy{}
+	got, err := New(ops).RelTypeDegreeStats("KNOWS")
+	if err != nil || got.Rels != 4 || got.MaxOut != 3 || !got.Exact || ops.relTypeArg != "KNOWS" {
+		t.Fatalf("RelTypeDegreeStats = (%+v, %v), arg %q", got, err, ops.relTypeArg)
+	}
+	opErr := errors.New("boom")
+	if _, err := New(&statsOpsSpy{relCountByTypeErr: opErr}).RelTypeDegreeStats("KNOWS"); !errors.Is(err, opErr) {
+		t.Fatalf("error = %v, want %v", err, opErr)
+	}
+}

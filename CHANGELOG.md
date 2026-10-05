@@ -6,6 +6,139 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Dense ordinals of nodes and relationships: `types.Node.Ordinal()`, `types.Relationship.Ordinal()`,
+  `g.Nodes().MaxOrdinal()`, `g.Rels().MaxOrdinal()`.** Requested by sigma-tkgd (C3d, store request 3:
+  the run indexes its tables by entity and pays for maps, run searches and a second identity for a
+  relationship handed out twice — q7's run search 4.6 % of its samples, q4's endpoint interning
+  5.7 %, q10's identities 6.4 %, q1 4 MB of duplicate relationship identities). A store implementing
+  the new optional `store.OrdinalCapability` (`HasOrdinals`, `MaxNodeOrdinal`, `MaxRelOrdinal`)
+  numbers entities 1, 2, 3, … in the order it first holds them and every row it hands out carries the
+  number. Guarantees within one open store: stable while the entity has a current row; never given to
+  a second entity (a deleted entity's ordinal is retired, so a held one can go stale but never alias);
+  dense apart from deletes; assigned under the write lock before the row is visible. Not persisted:
+  not stable across a reopen, between primary and replica or between stores, and not in the wire, the
+  hash, the change log or exports. Memory: in the row (the store derives it from the current row, else
+  a history row, else assigns the next); relationships of a declared segment type (ADR-0011) carry 0.
+  Badger: RAM ID → ordinal maps under a leaf lock, numbered 1..N in ID order at open; a history row of
+  a deleted entity carries 0; `badger.Config.DisableOrdinals` turns it off. Sharded: one allocator
+  for all slots (`badger.Config.SharedOrdinals`, `badger.OrdinalAllocator`). **Tiered: none**
+  (`MaxOrdinal` ok=false, every row 0): a cold shard that idle-closes and reopens would renumber its
+  entities while the store stays open, which breaks stability. Not built: an adjacency door handing
+  out the other endpoint's ordinal (`Lend(other).Ordinal()` is the zero-copy way to read it).
+  **Cost**: `types.Node` 88 → 96 B (its allocator size class already: 0 B retained, the node gate
+  measures 371.8 B/node marginal); `types.Relationship` 80 → 88 B, i.e. the 80 B → 96 B size class:
+  +16 B per relationship row on the memory store (`TestRowStoreRetainedBytesPerRelationship`: 416–420
+  B/rel, the gate moved 410 → 426 with the reason in the test). Badger additionally holds the two maps
+  (estimated ~20 B per entity, not measured). Write cost within the run-to-run spread
+  (`BenchmarkAddThenEarlyStopScan` insert only, load 6–7: memory 757–817 → 785–904 ns, badger
+  1455–1609 → 1535–1591 ns). Tests: `TestOrdinalsAcrossDoorsAndWrites` (memory, badger with an
+  8-entry cache so rows are decoded, tiered (none), sharded: Get, Lend, GetByIDs, ByLabel,
+  ForEachByLabel, Outgoing, ForEachByType and history rows agree; property, label and update writes
+  keep the ordinal; a deleted entity's ordinal is not handed out again; MaxOrdinal bounds every
+  ordinal), `TestOrdinalsConcurrentCreates` (race; unique, MaxOrdinal equals the count),
+  `TestOrdinalsDeclaredSegmentTypeHasNone`, `TestOrdinalsBadgerReopen` (1..N in ID order after a
+  reopen with a deleted node), `TestOrdinalsShardedUniqueAcrossSlots`, `TestOrdinalCopiesAndFreezes`,
+  `TestOrdinalCopiesWithOrdinal`, `TestMaxOrdinalForwards`; the compact-field guard lists the new field.
+- **`g.Stats().RelTypeDegreeStats(typeName)`: a relationship type's largest out- and in-degree.**
+  Requested by sigma-tkgd (C4b open question 3: the path CSR's lookup estimate takes the mean fanout,
+  which a hub breaks; the pinned-chain rows stay 2x to 3x). Returns `store.RelTypeDegreeStats`
+  (relationships, distinct starts and ends, `MaxOut` / `MaxIn` with the smallest node holding each,
+  `Exact`); `""` means every relationship. Every backend. Derived, not maintained (maintained
+  per-node per-type counters would cost bytes per relationship the P7 gates hold): the first call
+  after a write to the type counts it once and caches the answer against the relationship mutation
+  epoch (badger: the type's stripe), so it relies on this release's epoch fix. Badger counts from its
+  RAM incoming-adjacency index without decoding a row (new optional `store.RelTypeDegreeCapability`;
+  declines with `AdjacencyIndexOnDisk`); the others stream the type's rows. Measured
+  (`BenchmarkRelTypeDegreeStats`, 20,000 nodes, 36,001 relationships, one relationship added per
+  iteration so every read counts): memory 3.0 ms, badger 41 ms streaming rows → 3.0 ms from the
+  index; a cached read ~70 ns, 0 allocations. Tests: `TestRelTypeDegreeStats` (all four backends,
+  tiered with a cross-shard edge; a hub, a fan-in, a self-loop, an unrelated type that must not count;
+  two-phase: deletes and a cascade lower the maxima and the cached answer does not survive them; a
+  property write; unregistered and malformed names; closed graph), `TestBadgerStoreRelTypeDegreeStats`
+  (native count, an orphan-free delete, the `AdjacencyIndexOnDisk` decline),
+  `TestRelTypeDegreeStatsForwards`.
+- **`GraphTx.StartInstant()`: the transaction's start in transaction time.** Requested by sigma-tkgd
+  (C3p item 4: openCypher's `datetime.transaction()` of a caller-managed transaction had no start
+  the store exposed). `Begin` reserves an instant on the commit clock (`c.now()`, the reservation
+  `Temporal().NowTx` makes); the transaction's own writes are stamped strictly after it, every
+  stamp reserved before `Begin` strictly before it, so `NodesAsOf(tx.StartInstant())` is the graph as
+  the transaction found it. Fixed for the transaction's life, readable after `Commit` and `Rollback`,
+  0 for a nil transaction. Test: `TestGraphTxStartInstant` (all four backends; two-phase: a node
+  updated inside the transaction reads with its old value as of the start, a node it created is
+  absent; ordering across Begin, Commit, Rollback and `Run`).
+- **Streaming label and type scans start without collecting their IDs.** Requested by sigma-tkgd (C3d,
+  store request 2: q15, q18 and q19 stop after 2 or 3 rows and paid 0.13–0.16 ms for collecting
+  20,000 IDs). `ForEachByLabel` / `ForEachByType` on memory and badger (RAM label index) walk a kept
+  ascending member list per label / type (`storeutil.MemberOrder`): built and sorted by the first
+  scan, extended in place by every insert of a higher ID, dropped by an insert of a lower one or when
+  more than half of it is stale, and checked against the membership set's size on every scan (a
+  change that bypassed the hooks makes the counts differ and the list is rebuilt). A scan takes the
+  list's header and walks it with no lock held, re-checking each row as before, so isolation is
+  unchanged: rows deleted since the snapshot are skipped, rows created after it are not seen. Order
+  is ascending with and without `NoSort` (BACKLOG 17e's sort skip is now a sort-once). Every add to
+  the RAM label / type maps goes through one helper per store (memory `addNodeLabelIndex` /
+  `addRelTypeIndex`, badger `addLabelIdxLocked` / `addTypeIdxLocked`). Measured
+  (`BenchmarkForEachByLabelEarlyStop`, 20,000 nodes, stop after 3, three runs each, load 10–18):
+  memory 1.31–1.33 ms (sorted) / 118 µs (`NoSort`), 164 KB → 0.57–0.63 µs, 106 B; badger 1.31 ms /
+  109–129 µs → 0.60–0.62 µs. `BenchmarkAddThenEarlyStopScan` (one insert, then the 3-row scan): memory
+  1.39–1.41 ms → 0.97–0.99 µs, badger 1.39 ms → 1.5–1.8 µs; an insert alone memory 0.73–0.88 →
+  0.85–0.90 µs (+70 B/op for the kept list), badger 1.35–1.50 → 1.39–1.60 µs (within the load's
+  noise). Memory cost: 8 B per member of each label or type that has been scanned. `LabelIndexOnDisk`,
+  declared segment types, tiered and sharded keep their paths. Tests:
+  `TestForEachByLabelFollowsEveryMembershipChange` and `TestForEachByTypeFollowsEveryMembershipChange`
+  (exact sets against `ByLabel` / `ByType` after an append, an older node gaining the label, a removal
+  and re-add, a delete, a batch, a tx, inside a tx, after its rollback, an import reusing an older ID,
+  churn past the stale threshold; with early stop and `After`; every backend plus badger with
+  `LabelIndexOnDisk`), `TestForEachByLabelConcurrentWithWrites` (race: ascending, no repeat, every
+  untouched member seen), `TestMemberOrder`; `TestMemStoreForEachNodeByLabel_NoSortSkipsSort` became
+  `..._NoSortWalksTheKeptOrder` (it pinned a per-scan unsorted order, which no longer exists).
+- **`g.Nodes().Lend(ctx, id)` / `g.Rels().Lend(ctx, id)`: a by-ID read without the copy.** Requested
+  by sigma-tkgd (task record C3d, store request 1: `memory.Store.GetNode` deep-copies, ~150 ns, for
+  every endpoint or constant a run looks up by ID; 11.5 % of q4's samples). Lend returns the store's
+  own frozen current row, the pointer label scans and `GetByIDs` already hand out. Lifetime: the store
+  never writes a lent row (a write stores a new one), so it can be held and read concurrently for as
+  long as the caller wants; it is the entity at the read, and `NodeMutationEpoch` /
+  `RelMutationEpoch` say whether it is still current. Mutation: frozen (`types.ErrFrozenNode` /
+  `ErrFrozenRelationship`, panics for the no-error mutators), `DeepCopy` thaws. Memory, badger and
+  tiered lend without a copy (new optional `store.EntityLendCapability`: `LendNode`,
+  `LendRelationship`; tiered routes as `GetNode` / `GetRelationship`, a cross-shard relationship
+  included; a sealed-segment relationship on memory is decoded per call); sharded, wrappers and
+  external stores get `Get`'s copy, frozen. Measured (`BenchmarkNodeGetVersusLend`, a 4-property
+  node, load 8–10): memory `Get` 95–104 ns, 4 allocations, 416 B → `Lend` 16–17 ns, 0; badger (cache
+  hit) 99–118 ns → 26 ns, 0. Tests: `TestLendNodeAndRelationship` (all four backends, tiered
+  cross-shard; two-phase: a row lent before a write keeps the old value, a lend after it has the
+  new one; same pointer twice; frozen sentinels with `errors.Is`; deleted entities),
+  `TestLendRejectsBadInput`, `TestLendThroughAWrapperIsAFrozenCopy`,
+  `TestLendSealedSegmentRelationship`, `TestLendConcurrentWithWrites` (race), and the store-level
+  `TestMemoryStoreLend` / `TestBadgerStoreLend` / `TestTieredStoreLend`.
+
+### Fixed
+
+- **`RelMutationEpoch` moves on every relationship write, on every backend.** Found by sigma-tkgd
+  (task record C3q, findings 1 and 2): a relationship's property set or removed moved the epoch on
+  neither memory nor badger, and a relationship delete did not move it on badger, so a consumer
+  keying statistics or plans on the epoch reused them after the write (sigma-tkgd saw a top-k by a
+  removed property answer without the relationship). The store doors that missed it: memory
+  `ReplaceRelWithHistory` and `PutRelVersion`; badger the same two plus `DeleteRelWithHistory`,
+  `DeleteNodeCascade`, `DeleteNodeWithHistory` and the six cross-shard split helpers
+  (`PutRelEntityAndOut`, `PutRelIncoming`, `DeleteRelEntityAndOut`, `DeleteRelIncoming`,
+  `DeleteIncomingByRelID`, `ScanAndDeleteIncoming`). The badger doors move the per-type epoch too,
+  so `ScanRelColumns` no longer serves a type's cached columns from before a property write or a
+  delete (it did). The tiered store had no `RelMutationEpoch` (0 at every read); it now has one,
+  and both its epochs are store-wide counters every shard advances (new
+  `badger.Config.SharedMutationEpochs`, `badger.SharedMutationEpochs`) instead of the sum of the
+  open shards' epochs, which returned to an earlier value when a cold shard took a write and was
+  closed before the next read. Tests (red first): `TestRelMutationEpochMovesOnEveryRelationshipWrite`
+  (17 doors — create, property set/remove/CAS, update, update in place, close, version interval,
+  delete, node cascade, the tx and batch forms — on memory, badger, tiered same-shard and
+  cross-shard, sharded), `TestRelMutationEpochMovesOnRollback`,
+  `TestRelColumnsFollowPropertyWritesAndDeletes` (two-phase: the cached column at the old value,
+  the scan after the write), `TestRelationshipDoorsBumpRelMutationEpochs` (badger store doors,
+  global, per-type and shared epoch), `TestRelHistoryWrites_BumpRelMutationEpoch` (memory),
+  `TestTieredMutationEpochsSurviveColdShardClose` (red with the former sum).
+
 ## [4.40.0] - 2026-09-25
 
 Minor release: ADR-0011 S3 (sealed segments as self-contained files on NVMe with `Config.SegmentDir`:

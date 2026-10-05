@@ -10,6 +10,7 @@ import (
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segdir"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segment"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -63,6 +64,12 @@ type Store struct {
 
 	// Label index: labelToken → set of node IDs.
 	labelIdx map[uint16]map[types.NodeID]struct{}
+	// labelOrder / typeOrder keep the scanned labels' and types' members in
+	// ascending ID order for the streaming scans (storeutil.MemberOrder),
+	// maintained by addNodeLabelIndex / removeNodeLabelIndex and
+	// addRelTypeIndex / removeRelTypeIndex under mu.
+	labelOrder storeutil.MemberOrder[types.NodeID]
+	typeOrder  storeutil.MemberOrder[types.RelID]
 
 	// RelType index: relTypeToken → set of rel IDs.
 	typeIdx map[uint16]map[types.RelID]struct{}
@@ -166,6 +173,10 @@ type Store struct {
 	// from a concurrent edge insert. Kept separate from nodeEpoch so node-only
 	// scan/projection column caches do not rebuild on edge-heavy writes.
 	relEpoch atomic.Uint64
+	// maxNodeOrdinal / maxRelOrdinal: the last dense ordinal handed out
+	// (memorystore_ordinal.go); advanced under mu, read lock-free by Max*.
+	maxNodeOrdinal atomic.Uint32
+	maxRelOrdinal  atomic.Uint32
 	// appendDelta records pure inserts since the last non-append write, letting a
 	// read EXTEND a cached column instead of rebuilding it. Guarded by ms.mu.
 	appendDelta    appendDeltaState
@@ -389,6 +400,8 @@ func (ms *Store) Clear() error {
 	ms.rels = make(map[types.RelID]*types.Relationship)
 	ms.labelIdx = make(map[uint16]map[types.NodeID]struct{})
 	ms.typeIdx = make(map[uint16]map[types.RelID]struct{})
+	ms.labelOrder.Reset()
+	ms.typeOrder.Reset()
 	ms.outIdx = make(map[types.NodeID]*adjSet)
 	ms.inIdx = make(map[types.NodeID]*adjSet)
 	ms.nodeHistory = make(map[types.NodeID]map[uint32]*types.Node)

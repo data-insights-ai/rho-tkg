@@ -26,6 +26,7 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 		{name: "AddWithContext", run: func() error { _, err := nilAPI.Add(ctx, []string{"Node"}, nil); return err }},
 		{name: "AddWithTx", run: func() error { _, err := nilAPI.AddWithTx(ctx, []string{"Node"}, nil, 1000); return err }},
 		{name: "Get", run: func() error { _, err := nilAPI.Get(context.Background(), id); return err }},
+		{name: "Lend", run: func() error { _, err := nilAPI.Lend(context.Background(), id); return err }},
 		{name: "GetWithContext", run: func() error { _, err := nilAPI.Get(ctx, id); return err }},
 		{name: "GetByIDs", run: func() error { _, err := nilAPI.GetByIDs([]types.NodeID{id}); return err }},
 		{name: "Update", run: func() error { _, err := nilAPI.Update(context.Background(), id, nil); return err }},
@@ -124,6 +125,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "AddWithTx", run: func() error { _, err := api.AddWithTx(ctx, []string{"Node"}, nil, 1000); return err }},
 		{name: "Get", run: func() error { _, err := api.Get(context.Background(), id); return err }},
 		{name: "GetWithContext", run: func() error { _, err := api.Get(ctx, id); return err }},
+		{name: "Lend", run: func() error { _, err := api.Lend(ctx, id); return err }},
 		{name: "GetByIDs", run: func() error { _, err := api.GetByIDs([]types.NodeID{id}); return err }},
 		{name: "Update", run: func() error {
 			_, err := api.Update(context.Background(), id, map[string]any{"name": "Grace"})
@@ -194,7 +196,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 	}
 
 	wantCalls := []string{
-		"Add", "Add", "AddWithTx", "Get", "Get", "GetByIDs",
+		"Add", "Add", "AddWithTx", "Get", "Get", "Lend", "GetByIDs",
 		"Update", "Update", "UpdateInPlace", "UpdateInPlace",
 		"Delete", "Delete", "Import", "AddByIDIfAbsent", "GetOrCreateByKey", "All", "ForEach", "ForEach", "ByLabel", "ByLabelAndProperty", "ByLabelAndProperties",
 		"Count", "CountByLabel", "SetProperty", "DeleteProperty",
@@ -259,6 +261,12 @@ func (s *nodeOpsSpy) AddWithContext(ctx context.Context, labels []string, props 
 
 func (s *nodeOpsSpy) Get(ctx context.Context, id types.NodeID) (*types.Node, error) {
 	s.record("Get")
+	s.lastID = id
+	return nil, s.err
+}
+
+func (s *nodeOpsSpy) Lend(ctx context.Context, id types.NodeID) (*types.Node, error) {
+	s.record("Lend")
 	s.lastID = id
 	return nil, s.err
 }
@@ -541,4 +549,19 @@ func (s *nodeOpsSpy) VersionBefore(id types.NodeID, version uint32) (*types.Node
 func (s *nodeOpsSpy) NextID() types.NodeID {
 	s.record("NextID")
 	return s.nextID
+}
+
+func (s *nodeOpsSpy) MaxOrdinal() (uint32, bool, error) {
+	s.record("MaxOrdinal")
+	return 7, true, s.err
+}
+
+func TestMaxOrdinalForwards(t *testing.T) {
+	var nilAPI *API
+	if _, _, err := nilAPI.MaxOrdinal(); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil MaxOrdinal: %v", err)
+	}
+	if m, ok, err := New(&nodeOpsSpy{}).MaxOrdinal(); m != 7 || !ok || err != nil {
+		t.Fatalf("MaxOrdinal = %d %v %v", m, ok, err)
+	}
 }

@@ -209,6 +209,10 @@ type Store struct {
 	// shard: it owns MetaKV, registries, markers, and the slot catalog.
 	shards []*badger.Store
 
+	// ordinals is the one dense-ordinal allocator every shard draws from
+	// (badger.Config.SharedOrdinals), so no two slots hand out the same one.
+	ordinals badger.OrdinalAllocator
+
 	// propKeyReg tracks the canonical property-key registry currently installed
 	// on every shard so SetPropertyKeyRegistry reaches all of them.
 	propKeyReg *registrypkg.PropertyKeyRegistry
@@ -329,6 +333,7 @@ func New(cfg Config) (*Store, error) {
 // shardConfig builds the per-shard badger.Config for shard index k.
 func (s *Store) shardConfig(cfg Config, k uint8, reg *registrypkg.PropertyKeyRegistry) badger.Config {
 	bc := badger.Config{
+		SharedOrdinals:        &s.ordinals,
 		InMemory:              cfg.InMemory,
 		Compression:           cfg.Compression,
 		ZSTDCompressionLevel:  cfg.ZSTDCompressionLevel,

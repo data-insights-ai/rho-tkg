@@ -129,7 +129,7 @@ func (bs *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 	bs.getOrCreateLabelCounter(tok).Add(-1)
 
 	// Update cache and property/temporal/vector indexes for the new node state.
-	bs.nodeCache.Put(id, freezeNodeCopy(updatedNode))
+	bs.nodeCache.Put(id, bs.frozenNodeRow(updatedNode))
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
@@ -259,18 +259,13 @@ func (bs *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 
 	// Add tok to the in-memory label index.
 	if !bs.labelOnDisk {
-		set, ok := bs.labelIdx[tok]
-		if !ok {
-			set = make(map[types.NodeID]struct{})
-			bs.labelIdx[tok] = set
-		}
-		set[nid] = struct{}{}
+		bs.addLabelIdxLocked(tok, nid)
 	}
 	bs.getOrCreateLabelCounter(tok).Add(1)
 	bs.recordNodeLabelMembersLocked(updatedNode) // transaction-time label membership (new token)
 
 	// Update cache and property/temporal/vector indexes for the new node state.
-	bs.nodeCache.Put(id, freezeNodeCopy(updatedNode))
+	bs.nodeCache.Put(id, bs.frozenNodeRow(updatedNode))
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
@@ -397,7 +392,7 @@ func (bs *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 		bs.idxMu.Unlock()
 		return err
 	}
-	bs.nodeCache.Put(id, freezeNodeCopy(current))
+	bs.nodeCache.Put(id, bs.frozenNodeRow(current))
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(current)
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(current))   // BACKLOG 10c
@@ -445,6 +440,7 @@ func (bs *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion u
 		return err
 	}
 	defer bs.bumpNodeEpoch()
+	defer bs.bumpRelEpoch() // the delete removes the node's relationships with it
 	if err := storecontract.ValidateNodeHistoryVersionSnapshot(nid, prevNodeVersion, nodeTombstone); err != nil {
 		return err
 	}

@@ -45,7 +45,9 @@ type Relationship struct {
 	// sharedProps: properties' backing array is shared with a store's compact
 	// frozen copy (or with sibling bulk-create nodes); copy before writing
 	// in place (ownProperties).
-	sharedProps bool // 1B, offset 79 → 80B total
+	sharedProps bool // 1B, offset 79
+	// ordinal: the store-assigned dense ordinal (ordinal.go); 0 = none.
+	ordinal uint32 // 4B, offset 80 → 88B total (allocator size class 96: +16B over the former 80B)
 }
 
 // NewRelationship creates a Relationship with typed IDs for all parties.
@@ -463,6 +465,7 @@ func (r *Relationship) DeepCopy() *Relationship {
 		endID:   r.endID,
 		relType: r.relType,
 		version: r.version,
+		ordinal: r.ordinal,
 	}
 	cp.properties = r.properties.DeepCopy()
 	if r.meta != nil {

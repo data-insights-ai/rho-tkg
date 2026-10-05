@@ -71,7 +71,7 @@ func (bs *Store) putNodeRouted(n *types.Node, token uint64) error {
 	}
 
 	// Update in-memory state.
-	bs.nodeCache.Put(id, freezeNodeCopy(n))
+	bs.nodeCache.Put(id, bs.frozenNodeRow(n))
 	bs.nodeIDs[nid] = struct{}{}
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(n)
 	bs.bumpNodeRevLocked(nid)
@@ -84,10 +84,7 @@ func (bs *Store) putNodeRouted(n *types.Node, token uint64) error {
 	for i := 0; i < labelCount; i++ {
 		tok := n.LabelTokenRawAt(i)
 		if !bs.labelOnDisk {
-			if bs.labelIdx[tok] == nil {
-				bs.labelIdx[tok] = make(map[types.NodeID]struct{})
-			}
-			bs.labelIdx[tok][nid] = struct{}{}
+			bs.addLabelIdxLocked(tok, nid)
 		}
 		ops = append(ops, writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tok, id)})
 		bs.getOrCreateLabelCounter(tok).Add(1)
@@ -357,12 +354,16 @@ func (bs *Store) bumpNodeRevLocked(nid types.NodeID) {
 	}
 	bs.nodeRevs[nid] = bs.nextNodeRev
 	bs.nodeEpoch.Add(1) // every non-delete node write invalidates cached columns
+	bs.sharedEpochs.node()
 }
 
 // bumpNodeEpoch marks every cached DocValues column stale. bumpNodeRevLocked
 // covers the non-delete writes; the delete and version-write paths (which do NOT
 // call it) call this directly. A spurious bump is safe — it only forces a rebuild.
-func (bs *Store) bumpNodeEpoch() { bs.nodeEpoch.Add(1) }
+func (bs *Store) bumpNodeEpoch() {
+	bs.nodeEpoch.Add(1)
+	bs.sharedEpochs.node()
+}
 
 // bumpRelEpoch marks the adjacency view stale for the expand-aggregation column
 // path (which reads edges, not just node membership). Called by every relationship
@@ -374,6 +375,7 @@ func (bs *Store) bumpNodeEpoch() { bs.nodeEpoch.Add(1) }
 // everything rather than silently leave a type's columns stale.
 func (bs *Store) bumpRelEpoch() {
 	bs.relEpoch.Add(1)
+	bs.sharedEpochs.rel()
 	bs.relEpochCoarse.Add(1)
 	bs.poisonAllRelTypes() // the default door must void every append record too
 }
@@ -498,6 +500,7 @@ func (bs *Store) DeleteNode(nid types.NodeID) error {
 	// Update in-memory state.
 	bs.nodeCache.MarkDeleted(id)
 	delete(bs.nodeIDs, nid)
+	bs.ords.dropNode(nid)
 	delete(bs.nodeHashes, nid)
 	bs.deleteNodeRevLocked(nid)
 	bs.appendOps(ops...)
@@ -596,7 +599,7 @@ func (bs *Store) replaceNodeRouted(n *types.Node, token uint64) error {
 		bs.idxMu.Unlock()
 		return err
 	}
-	bs.nodeCache.Put(id, freezeNodeCopy(n))
+	bs.nodeCache.Put(id, bs.frozenNodeRow(n))
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(n)
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n)) // BACKLOG 10c
@@ -713,7 +716,7 @@ func (bs *Store) removeNodeLabelTokenRouted(nid types.NodeID, tok uint16, update
 	bs.getOrCreateLabelCounter(tok).Add(-1)
 
 	// Update cache and property/temporal/vector indexes for the new node state.
-	bs.nodeCache.Put(id, freezeNodeCopy(updatedNode))
+	bs.nodeCache.Put(id, bs.frozenNodeRow(updatedNode))
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
@@ -822,17 +825,12 @@ func (bs *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNo
 	}
 
 	if !bs.labelOnDisk {
-		set, ok := bs.labelIdx[tok]
-		if !ok {
-			set = make(map[types.NodeID]struct{})
-			bs.labelIdx[tok] = set
-		}
-		set[nid] = struct{}{}
+		bs.addLabelIdxLocked(tok, nid)
 	}
 	bs.getOrCreateLabelCounter(tok).Add(1)
 	bs.recordNodeLabelMembersLocked(updatedNode) // transaction-time label membership (new token)
 
-	bs.nodeCache.Put(id, freezeNodeCopy(updatedNode))
+	bs.nodeCache.Put(id, bs.frozenNodeRow(updatedNode))
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c

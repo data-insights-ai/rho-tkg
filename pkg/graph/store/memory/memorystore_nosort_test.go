@@ -105,43 +105,38 @@ func TestMemStoreNodesByLabel_NoSortIgnoredWithPagination(t *testing.T) {
 	assertAscending(t, gotIDs)
 }
 
-func TestMemStoreForEachNodeByLabel_NoSortSkipsSort(t *testing.T) {
+// Since v4.41 ForEachNodeByLabel walks the label's kept ascending member list
+// (storeutil.MemberOrder): it is sorted once, when the first scan builds it,
+// so a later scan sorts nothing with or without NoSort (BACKLOG 17e's goal)
+// and every scan is ascending. The second scan must walk the same kept
+// array, not a fresh collection.
+func TestMemStoreForEachNodeByLabel_NoSortWalksTheKeptOrder(t *testing.T) {
 	const label = uint16(32)
 	want, ms := newNoSortTestStore(t, label)
 	wantSet := idSet(want)
-
-	var sortedIDs []types.NodeID
-	if err := ms.ForEachNodeByLabel(label, storecontract.QueryOpts{}, func(n *types.Node) bool {
-		sortedIDs = append(sortedIDs, n.ID())
-		return true
-	}); err != nil {
-		t.Fatalf("ForEachNodeByLabel (sorted): %v", err)
-	}
-	assertAscending(t, sortedIDs)
-
-	sawUnsorted := false
-	for attempt := 0; attempt < 20; attempt++ {
+	for _, opts := range []storecontract.QueryOpts{{}, {NoSort: true}, {NoSort: true}} {
 		var gotIDs []types.NodeID
-		if err := ms.ForEachNodeByLabel(label, storecontract.QueryOpts{NoSort: true}, func(n *types.Node) bool {
+		if err := ms.ForEachNodeByLabel(label, opts, func(n *types.Node) bool {
 			gotIDs = append(gotIDs, n.ID())
 			return true
 		}); err != nil {
-			t.Fatalf("ForEachNodeByLabel (NoSort): %v", err)
+			t.Fatalf("ForEachNodeByLabel: %v", err)
 		}
 		if len(gotIDs) != len(want) {
-			t.Fatalf("NoSort scan visited %d nodes, want %d", len(gotIDs), len(want))
+			t.Fatalf("scan visited %d nodes, want %d", len(gotIDs), len(want))
 		}
 		for _, id := range gotIDs {
 			if _, ok := wantSet[id]; !ok {
-				t.Fatalf("NoSort scan visited unexpected node %v", id)
+				t.Fatalf("scan visited unexpected node %v", id)
 			}
 		}
-		if !sort.SliceIsSorted(gotIDs, func(i, j int) bool { return gotIDs[i] < gotIDs[j] }) {
-			sawUnsorted = true
-			break
-		}
+		assertAscending(t, gotIDs)
 	}
-	if !sawUnsorted {
-		t.Fatal("ForEachNodeByLabel with NoSort:true visited nodes in ascending order on every one of 20 attempts — BACKLOG 17e regression: the sort is still running")
+	ms.mu.RLock()
+	first, _, ok := ms.labelOrder.Ordered(label, len(ms.labelIdx[label]))
+	again, _, ok2 := ms.labelOrder.Ordered(label, len(ms.labelIdx[label]))
+	ms.mu.RUnlock()
+	if !ok || !ok2 || len(first) == 0 || &first[0] != &again[0] {
+		t.Fatal("the label's member list is not kept between scans")
 	}
 }

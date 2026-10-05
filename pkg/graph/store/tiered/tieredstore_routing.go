@@ -200,6 +200,22 @@ func relationshipRow(store *BadgerStore, id types.RelID) (*types.Relationship, b
 	return rel, true, nil
 }
 
+// lendRelationshipRow is relationshipRow returning the shard's frozen row
+// without a copy (LendRelationship).
+func lendRelationshipRow(store *BadgerStore, id types.RelID) (*types.Relationship, bool, error) {
+	if store == nil || !store.HasRelID(id.SnowflakeID()) {
+		return nil, false, nil
+	}
+	rel, err := store.LendRelationship(id)
+	if err != nil {
+		if errors.Is(err, ErrRelNotFound) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	return rel, true, nil
+}
+
 func nodeRowLive(store *BadgerStore, id types.NodeID) (bool, error) {
 	if store == nil || !store.HasNodeID(id.SnowflakeID()) {
 		return false, nil

@@ -33,6 +33,13 @@ import (
 // shared pointers — fn must not mutate them and must not retain them past
 // its own return unless it accounts for the sharing.
 //
+// ID snapshot: with the RAM label index (the default) the label's kept
+// ascending member list (storeutil.MemberOrder; built on the first scan,
+// extended by inserts), so the scan starts without collecting or sorting the
+// label's IDs and an early stop costs the rows read. LabelIndexOnDisk
+// collects from the keyspace as before. The temporal Peek pre-filter below
+// still visits every ID when the query carries a temporal filter.
+//
 // Temporal-index fast paths are intentionally NOT consulted: with a
 // temporal filter present the per-row MatchesTemporalFilter check below is
 // authoritative, just not pre-pruned. Callers with heavy temporal scans
@@ -46,9 +53,7 @@ func (bs *Store) ForEachNodeByLabel(token uint16, opts QueryOpts, fn func(*types
 		return err
 	}
 
-	bs.idxMu.RLock()
-	nids, idErr := bs.labelNodeIDsSnapshotLocked(token)
-	bs.idxMu.RUnlock()
+	nids, sorted, idErr := bs.labelScanIDs(token)
 	if idErr != nil {
 		return idErr
 	}
@@ -57,7 +62,7 @@ func (bs *Store) ForEachNodeByLabel(token uint16, opts QueryOpts, fn func(*types
 	}
 	// Order-independent streaming consumers set NoSort to drop the
 	// O(n log n) sort; pagination (After > 0) still needs sorted order.
-	if !opts.NoSort || opts.After != 0 {
+	if !sorted && (!opts.NoSort || opts.After != 0) {
 		storepkg.SortNodeIDs(nids)
 	}
 	nids = bs.filterNodeIDsByTemporalPeek(nids, opts)
@@ -85,4 +90,31 @@ func (bs *Store) ForEachNodeByLabel(token uint16, opts QueryOpts, fn func(*types
 		emitted++
 		return opts.Limit == 0 || emitted < opts.Limit
 	})
+}
+
+// labelScanIDs is the ID snapshot of ForEachNodeByLabel: the kept ascending
+// member list in RAM label mode (sorted=true, shared, read only), else the
+// collected IDs in no particular order. Takes and releases idxMu.
+func (bs *Store) labelScanIDs(token uint16) (ids []types.NodeID, sorted bool, err error) {
+	bs.idxMu.RLock()
+	if bs.labelOnDisk {
+		ids, err = bs.labelNodeIDsSnapshotLocked(token)
+		bs.idxMu.RUnlock()
+		return ids, false, err
+	}
+	ids, gen, ok := bs.labelOrder.Ordered(token, len(bs.labelIdx[token]))
+	if ok {
+		bs.idxMu.RUnlock()
+		return ids, true, nil
+	}
+	ids, err = bs.labelNodeIDsSnapshotLocked(token)
+	bs.idxMu.RUnlock()
+	if err != nil || len(ids) == 0 {
+		return ids, false, err
+	}
+	storepkg.SortMembers(ids)
+	bs.idxMu.RLock()
+	bs.labelOrder.Install(token, gen, ids)
+	bs.idxMu.RUnlock()
+	return ids, true, nil
 }

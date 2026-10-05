@@ -17,7 +17,8 @@ import (
 
 // ForEachRelByType streams the type's relationships to fn in snowflake-ID
 // order without materializing a result slice. fn returning false stops the
-// scan early.
+// scan early. The ID snapshot is the type's kept ordered member list, as in
+// ForEachNodeByLabel; a declared segment type (ADR-0011) collects its refs.
 func (ms *Store) ForEachRelByType(token uint16, opts QueryOpts, fn func(*types.Relationship) bool) error {
 	if ms == nil {
 		return ErrNilStore
@@ -38,17 +39,10 @@ func (ms *Store) ForEachRelByType(token uint16, opts QueryOpts, fn func(*types.R
 	if ms.segTypes[token] != nil {
 		return ms.forEachRelByTypeSegmentsRLocked(token, opts, fn) // releases ms.mu
 	}
-	set := ms.typeIdx[token]
-	ids := make([]types.RelID, 0, len(set))
-	for id := range set {
-		ids = append(ids, id)
-	}
-	ms.mu.RUnlock()
-
+	ids := ms.orderedTypeMembersRLocked(token) // releases ms.mu
 	if len(ids) == 0 {
 		return nil
 	}
-	storepkg.SortRelIDs(ids)
 	ids = storepkg.PaginateRelIDs(ids, opts.After, 0)
 
 	hasTemporal := storepkg.HasTemporalFilter(opts)
@@ -246,4 +240,27 @@ func (ms *Store) forEachAdjacentRelSegmentsRLocked(nid types.NodeID, typeToken u
 		}
 	}
 	return nil
+}
+
+// orderedTypeMembersRLocked is orderedLabelMembersRLocked for a relationship
+// type's typeIdx (undeclared types). Called with ms.mu read-held; releases it.
+func (ms *Store) orderedTypeMembersRLocked(token uint16) []types.RelID {
+	ids, gen, ok := ms.typeOrder.Ordered(token, len(ms.typeIdx[token]))
+	if ok {
+		ms.mu.RUnlock()
+		return ids
+	}
+	set := ms.typeIdx[token]
+	ids = make([]types.RelID, 0, len(set))
+	for id := range set {
+		ids = append(ids, id)
+	}
+	ms.mu.RUnlock()
+	storepkg.SortMembers(ids)
+	ms.mu.RLock()
+	if ms.checkOpenLocked() == nil {
+		ms.typeOrder.Install(token, gen, ids)
+	}
+	ms.mu.RUnlock()
+	return ids
 }

@@ -141,6 +141,9 @@ func (ms *Store) ExactErase(req storecontract.ExactErasureRequest) (storecontrac
 		// Purge by ID from every index rather than relying only on the current
 		// row, so an idempotent retry also reaps corruption/orphan residue.
 		for tok, ids := range ms.labelIdx {
+			if _, ok := ids[nid]; ok {
+				ms.labelOrder.Remove(tok)
+			}
 			delete(ids, nid)
 			if len(ids) == 0 {
 				delete(ms.labelIdx, tok)

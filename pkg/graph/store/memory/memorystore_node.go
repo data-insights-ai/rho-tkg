@@ -59,7 +59,7 @@ func (ms *Store) putNodeRouted(n *types.Node, token uint64) error {
 		return err
 	}
 
-	ms.nodes[nid] = freezeNodeCopy(n)
+	ms.nodes[nid] = ms.storedNode(n)
 
 	ms.addNodeLabelIndexes(nid, n)
 	ms.recordNodeLabelMembersLocked(n)                   // transaction-time label membership
@@ -262,12 +262,7 @@ func (ms *Store) removeNodeLabelTokenRouted(nid types.NodeID, tok uint16, update
 	}
 
 	// Remove only the specified token from the label index.
-	if set, ok := ms.labelIdx[tok]; ok {
-		delete(set, nid)
-		if len(set) == 0 {
-			delete(ms.labelIdx, tok)
-		}
-	}
+	ms.removeNodeLabelIndex(nid, tok)
 
 	// Update property, temporal, and vector indexes (properties may have changed due to hash update).
 	ms.removeNodePropertyKeyCounts(old)
@@ -276,7 +271,7 @@ func (ms *Store) removeNodeLabelTokenRouted(nid types.NodeID, tok uint16, update
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
-	ms.nodes[nid] = freezeNodeCopy(updatedNode)
+	ms.nodes[nid] = ms.storedNode(updatedNode)
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
 	ms.addNodePropertyKeyCounts(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
@@ -337,12 +332,7 @@ func (ms *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNo
 		return err
 	}
 
-	set, ok := ms.labelIdx[tok]
-	if !ok {
-		set = make(map[types.NodeID]struct{})
-		ms.labelIdx[tok] = set
-	}
-	set[nid] = struct{}{}
+	ms.addNodeLabelIndex(nid, tok)
 	ms.recordNodeLabelMembersLocked(updatedNode) // transaction-time label membership (new token)
 
 	ms.removeNodePropertyKeyCounts(old)
@@ -351,7 +341,7 @@ func (ms *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNo
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
-	ms.nodes[nid] = freezeNodeCopy(updatedNode)
+	ms.nodes[nid] = ms.storedNode(updatedNode)
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
 	ms.addNodePropertyKeyCounts(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
@@ -417,7 +407,7 @@ func (ms *Store) replaceNodeRouted(n *types.Node, token uint64) error {
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
-	ms.nodes[nid] = freezeNodeCopy(n)
+	ms.nodes[nid] = ms.storedNode(n)
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n)) // BACKLOG 10c
 	ms.addNodePropertyKeyCounts(n)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, n, rawID)
@@ -567,7 +557,7 @@ func (ms *Store) PutNodesBatch(nodes []*types.Node) error {
 	// Phase 2: apply — all validated, safe to mutate.
 	for i, n := range nodes {
 		id := n.ID()
-		ms.nodes[id] = freezeNodeCopy(n)
+		ms.nodes[id] = ms.storedNode(n)
 		ms.bumpNodeBeliefWatermarkLocked(id, nodeTxFrom(n)) // BACKLOG 10c
 
 		ms.addNodeLabelIndexes(id, n)
@@ -680,10 +670,15 @@ func (ms *Store) addNodeLabelIndexes(id types.NodeID, n *types.Node) {
 }
 
 func (ms *Store) addNodeLabelIndex(id types.NodeID, tok uint16) {
-	if ms.labelIdx[tok] == nil {
-		ms.labelIdx[tok] = make(map[types.NodeID]struct{})
+	set := ms.labelIdx[tok]
+	if set == nil {
+		set = make(map[types.NodeID]struct{})
+		ms.labelIdx[tok] = set
 	}
-	ms.labelIdx[tok][id] = struct{}{}
+	if _, ok := set[id]; !ok {
+		set[id] = struct{}{}
+		ms.labelOrder.Add(tok, id)
+	}
 }
 
 func (ms *Store) removeNodeLabelIndexes(id types.NodeID, n *types.Node) {
@@ -695,9 +690,38 @@ func (ms *Store) removeNodeLabelIndexes(id types.NodeID, n *types.Node) {
 
 func (ms *Store) removeNodeLabelIndex(id types.NodeID, tok uint16) {
 	if set, exists := ms.labelIdx[tok]; exists {
+		if _, ok := set[id]; ok {
+			ms.labelOrder.Remove(tok)
+		}
 		delete(set, id)
 		if len(set) == 0 {
 			delete(ms.labelIdx, tok)
+		}
+	}
+}
+
+// addRelTypeIndex / removeRelTypeIndex maintain typeIdx and its scan order
+// (typeOrder); every type-index membership change goes through them.
+func (ms *Store) addRelTypeIndex(id types.RelID, tok uint16) {
+	set := ms.typeIdx[tok]
+	if set == nil {
+		set = make(map[types.RelID]struct{})
+		ms.typeIdx[tok] = set
+	}
+	if _, ok := set[id]; !ok {
+		set[id] = struct{}{}
+		ms.typeOrder.Add(tok, id)
+	}
+}
+
+func (ms *Store) removeRelTypeIndex(id types.RelID, tok uint16) {
+	if set, exists := ms.typeIdx[tok]; exists {
+		if _, ok := set[id]; ok {
+			ms.typeOrder.Remove(tok)
+		}
+		delete(set, id)
+		if len(set) == 0 {
+			delete(ms.typeIdx, tok)
 		}
 	}
 }

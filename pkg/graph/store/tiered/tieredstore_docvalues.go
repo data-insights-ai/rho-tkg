@@ -231,56 +231,28 @@ func (s *tieredColumnSnapshot) Row(id types.NodeID, vals []any, present []bool) 
 // Epoch is the aggregate (store-wide) epoch the tiered snapshot was built at.
 func (s *tieredColumnSnapshot) Epoch() uint64 { return s.epoch }
 
-// NodeMutationEpoch returns the store-global node-mutation epoch: the SUM of
-// every CURRENTLY-OPEN shard's own node-mutation epoch (refShard, refArchive
-// if open, every event shard that is not presently a closed cold shard).
-// ADR-0005 §3.4's Gate-2 fold: each mutation on a shard bumps that shard's own
-// atomic counter by exactly 1 (badger: bs.nodeEpoch.Add(1) on every non-delete
-// node write, delete, and Clear), so the SUM changes deterministically
-// whenever ANY shard is mutated — the consumer's post-scan
-// NodeMutationEpoch()==gen re-check (Gate 2) discards a torn cross-shard
-// aggregate whenever any shard the fold touched (or could have touched)
-// changed in between.
-//
-// Deliberately does NOT force-open a closed cold shard merely to read its
-// counter — that would turn every staleness poll into an O(shards) Badger
-// open storm, defeating tiered's lazy-open contract for a check callers run
-// after every aggregation. A closed cold shard therefore contributes 0
-// (documented ADR-0005 §3.4 risk: SUM is stable for a QUIESCENT store because
-// a shard that stays closed across two samples always contributes 0 both
-// times, and a rotation-created shard starts at epoch 0 too — but a write
-// that reaches a cold shard and is followed by that shard idle-closing again
-// before the NEXT poll can make the SUM return to its pre-write value,
-// masking that one mutation if no OTHER shard's contribution changed in the
-// same window. In practice a write requires the shard to be open, so the
-// unsafe window is the idle-close interval — several minutes by default,
-// narrow relative to a single aggregation's Gate-1→Gate-2 span, and the same
-// order of trade-off already accepted by every other tiered fold that treats
-// a closed cold shard as contributing nothing until touched, e.g.
-// NodeCountByLabelAndPropertyKey's checkout discipline).
+// NodeMutationEpoch returns the store-global node-mutation epoch. Every shard
+// (reference, archive, every event shard, including one opened lazily later
+// or created by rotation) is opened with the store's one
+// badger.SharedMutationEpochs, which a shard advances on each bump of its own
+// node epoch, so this moves on every node write of every shard, whether or
+// not that shard is still open when it is read. (Until v4.41 this was the sum
+// of the OPEN shards' own epochs: a write to a cold shard that idle-closed
+// before the next read contributed nothing, and the sum could return to a
+// value a reader already held, masking the write.) Never force-opens a shard.
 func (ts *Store) NodeMutationEpoch() uint64 {
 	if ts == nil {
 		return 0
 	}
-	var sum uint64
-	if ts.refShard != nil {
-		sum += ts.refShard.NodeMutationEpoch()
-	}
-	if archive := ts.refArchive.Load(); archive != nil {
-		sum += archive.NodeMutationEpoch()
-	}
+	return ts.mutationEpochs.NodeMutationEpoch()
+}
 
-	ts.mu.RLock()
-	shards := ts.eventShardSnapshot(DepthAll)
-	ts.mu.RUnlock()
-
-	for _, es := range shards {
-		store, release, open, err := es.checkoutOpenStoreForRead(ts)
-		if err != nil || !open {
-			continue // closed cold shard, or a fenced store — contributes 0
-		}
-		sum += store.NodeMutationEpoch()
-		release()
+// RelMutationEpoch is NodeMutationEpoch's relationship mirror: it moves on
+// every relationship write of every shard, a cross-shard relationship's
+// split writes included (each half bumps the epoch of the shard it lands on).
+func (ts *Store) RelMutationEpoch() uint64 {
+	if ts == nil {
+		return 0
 	}
-	return sum
+	return ts.mutationEpochs.RelMutationEpoch()
 }

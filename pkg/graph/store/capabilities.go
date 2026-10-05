@@ -76,6 +76,21 @@ type EndpointIntegrityHashCapability interface {
 	EndpointIntegrityHashes(startID, endID types.NodeID) (string, string, error)
 }
 
+// EntityLendCapability is OPTIONAL. LendNode / LendRelationship return the
+// store's own current row by ID WITHOUT the defensive copy GetNode /
+// GetRelationship make: the shared, FROZEN pointer the plural reads
+// (GetNodesByIDs, label and type scans) already hand out. The row is never
+// mutated by the store (a write replaces it), so it stays a consistent
+// snapshot of the entity at the read for as long as the caller holds it; it
+// is not refreshed by later writes. Frozen mutators fail (ErrFrozenNode /
+// ErrFrozenRelationship, or panic for the no-error ones); DeepCopy thaws.
+// Missing IDs return the typed not-found sentinel, malformed IDs
+// ErrInvalidStoreMutation, a closed store ErrStoreClosed.
+type EntityLendCapability interface {
+	LendNode(id types.NodeID) (*types.Node, error)
+	LendRelationship(id types.RelID) (*types.Relationship, error)
+}
+
 // RelationshipCRUDCapability is the relationship-mutation surface.
 type RelationshipCRUDCapability interface {
 	PutRelationship(r *types.Relationship) error
@@ -184,7 +199,7 @@ type PreEncodedPutLogCapability interface {
 // like PutNodesBatchPreEncodedLog EXCEPT the caller transfers ownership of the
 // nodes: it guarantees it will never read or mutate them again, so the store MAY
 // freeze each node IN PLACE and cache it directly instead of deep-copying it
-// into the cache. That deep copy (freezeNodeCopy) is the single largest per-node
+// into the cache. That deep copy (frozenNodeRow) is the single largest per-node
 // allocation on the apply path; skipping it is the point of this capability.
 //
 // CONTRACT: the store's cached (frozen) entry IS the passed object. The caller

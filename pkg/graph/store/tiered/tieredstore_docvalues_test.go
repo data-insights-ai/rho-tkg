@@ -550,3 +550,56 @@ func TestTieredDocValues_ClosedStoreErrors(t *testing.T) {
 		t.Fatalf("nil *Store NodeMutationEpoch() = %d, want 0", got)
 	}
 }
+
+// A write to a cold shard that is closed again before the next read must stay
+// visible in both store-wide epochs. The former sum of the OPEN shards' own
+// epochs returned to the value read before the write: the reopened shard
+// starts at 0 and the closed shard contributes nothing. Disk store, two
+// cycles of open-write-close, each read must differ from every earlier read.
+func TestTieredMutationEpochsSurviveColdShardClose(t *testing.T) {
+	ts := newDiskTestTieredStore(t)
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	signalTok, err := reg.GetOrCreate("Signal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gen := tieredNodeGen(t)
+	a := tieredLabelPropertyNode(t, types.NodeID(gen.Generate()), signalTok, nil)
+	b := tieredLabelPropertyNode(t, types.NodeID(gen.Generate()), signalTok, nil)
+	for _, n := range []*types.Node{a, b} {
+		if err := ts.PutNode(n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	coldName := ts.HotShardForTest().Name()
+	forceRotation(t, ts)
+	demoteToCold(ts, coldName)
+	closeCold := func() { closeEventShardStore(t, ts, coldName) }
+	closeCold()
+
+	seenNodes := map[uint64]bool{ts.NodeMutationEpoch(): true}
+	seenRels := map[uint64]bool{ts.RelMutationEpoch(): true}
+	relIDs := []types.RelID{types.RelID(gen.Generate()), types.RelID(gen.Generate())}
+	for i, rid := range relIDs {
+		if err := ts.PutRelationship(types.NewRelationship(rid, 1, a.ID(), b.ID())); err != nil {
+			t.Fatalf("cycle %d: PutRelationship on the cold shard: %v", i, err)
+		}
+		up := a.DeepCopy()
+		if err := up.SetProperty("cycle", int64(i)); err != nil {
+			t.Fatal(err)
+		}
+		if err := ts.ReplaceNode(up); err != nil {
+			t.Fatalf("cycle %d: ReplaceNode on the cold shard: %v", i, err)
+		}
+		closeCold()
+		n, r := ts.NodeMutationEpoch(), ts.RelMutationEpoch()
+		if seenNodes[n] {
+			t.Fatalf("cycle %d: NodeMutationEpoch %d repeats an earlier read across a node write", i, n)
+		}
+		if seenRels[r] {
+			t.Fatalf("cycle %d: RelMutationEpoch %d repeats an earlier read across a relationship write", i, r)
+		}
+		seenNodes[n], seenRels[r] = true, true
+	}
+}

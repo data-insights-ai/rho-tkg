@@ -50,6 +50,7 @@ func (bs *Store) PutRelEntityAndOut(r *types.Relationship) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
+	defer bs.bumpRelEpoch() // one half of a cross-shard relationship write
 	if err := storecontract.ValidateRelationshipWrite(r); err != nil {
 		return err
 	}
@@ -77,15 +78,12 @@ func (bs *Store) PutRelEntityAndOut(r *types.Relationship) error {
 	}
 
 	// Update in-memory state.
-	bs.relCache.Put(id, freezeRelCopy(r))
+	bs.relCache.Put(id, bs.frozenRelRow(r))
 	bs.relIDs[rid] = struct{}{}
 	bs.bumpRelRevLocked(rid)
 
 	// Type index.
-	if bs.typeIdx[relType] == nil {
-		bs.typeIdx[relType] = make(map[types.RelID]struct{})
-	}
-	bs.typeIdx[relType][rid] = struct{}{}
+	bs.addTypeIdxLocked(relType, rid)
 
 	// Outgoing adjacency only (RAM mirror; disk mode relies on the OutKey op).
 	if !bs.adjOnDisk {
@@ -143,6 +141,7 @@ func (bs *Store) PutRelIncoming(endID, startID snowflake.ID, relType uint16, rel
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
+	defer bs.bumpRelEpoch() // one half of a cross-shard relationship write
 	if err := storecontract.ValidateRelationshipIndexEntry(types.NodeID(startID), types.NodeID(endID), relType, types.RelID(relID)); err != nil {
 		return err
 	}
@@ -183,6 +182,7 @@ func (bs *Store) DeleteRelEntityAndOut(id snowflake.ID) (RelDeleteInfo, error) {
 	if err := bs.checkWritable(); err != nil {
 		return RelDeleteInfo{}, err
 	}
+	defer bs.bumpRelEpoch() // one half of a cross-shard relationship write
 	rid := types.RelID(id)
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return RelDeleteInfo{}, err
@@ -218,6 +218,7 @@ func (bs *Store) DeleteRelEntityAndOut(id snowflake.ID) (RelDeleteInfo, error) {
 	// Update in-memory state.
 	bs.relCache.MarkDeleted(id)
 	delete(bs.relIDs, rid)
+	bs.ords.dropRel(rid)
 	bs.deleteRelRevLocked(rid)
 	delete(bs.relValidIdx, rid) // drop the inline valid-time stamp
 
@@ -275,6 +276,7 @@ func (bs *Store) DeleteRelIncoming(info RelDeleteInfo) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
+	defer bs.bumpRelEpoch() // one half of a cross-shard relationship write
 	if err := storecontract.ValidateRelationshipIndexEntry(types.NodeID(info.StartID), types.NodeID(info.EndID), info.RelType, types.RelID(info.ID)); err != nil {
 		return err
 	}
@@ -319,6 +321,7 @@ func (bs *Store) DeleteIncomingByRelID(endNodeID snowflake.ID, relID snowflake.I
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
+	defer bs.bumpRelEpoch() // one half of a cross-shard relationship write
 	if err := validateIncomingDeleteTarget(endNodeID, relID); err != nil {
 		return err
 	}
@@ -340,6 +343,7 @@ func (bs *Store) ScanAndDeleteIncoming(endNodeID, relID snowflake.ID) error {
 	if err := bs.checkWritable(); err != nil {
 		return err
 	}
+	defer bs.bumpRelEpoch() // one half of a cross-shard relationship write
 	if err := validateIncomingDeleteTarget(endNodeID, relID); err != nil {
 		return err
 	}
