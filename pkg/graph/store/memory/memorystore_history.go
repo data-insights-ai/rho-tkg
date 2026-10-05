@@ -77,7 +77,7 @@ func (ms *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 		inner = make(map[uint32]*types.Node)
 		ms.nodeHistory[nid] = inner
 	}
-	inner[prevVersion] = prevState.DeepCopy()
+	inner[prevVersion] = ms.historyNode(prevState)
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState)) // BACKLOG 10c
 
 	// Remove only the specified token from the label index.
@@ -90,7 +90,7 @@ func (ms *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
-	ms.nodes[nid] = freezeNodeCopy(updatedNode)
+	ms.nodes[nid] = ms.storedNode(updatedNode)
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
 	ms.addNodePropertyKeyCounts(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
@@ -167,7 +167,7 @@ func (ms *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 		inner = make(map[uint32]*types.Node)
 		ms.nodeHistory[nid] = inner
 	}
-	inner[prevVersion] = prevState.DeepCopy()
+	inner[prevVersion] = ms.historyNode(prevState)
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState)) // BACKLOG 10c
 
 	// Add tok to the label index.
@@ -181,7 +181,7 @@ func (ms *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
-	ms.nodes[nid] = freezeNodeCopy(updatedNode)
+	ms.nodes[nid] = ms.storedNode(updatedNode)
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
 	ms.addNodePropertyKeyCounts(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
@@ -247,7 +247,7 @@ func (ms *Store) deleteRelWithHistoryRouted(rid types.RelID, prevVersion uint32,
 		inner = make(map[uint32]*types.Relationship)
 		ms.relHistory[rid] = inner
 	}
-	inner[prevVersion] = tombstone.DeepCopy()
+	inner[prevVersion] = ms.historyRel(tombstone)
 	ms.bumpRelBeliefWatermarkLocked(rid, relTxFrom(tombstone)) // BACKLOG 10c
 
 	if err := ms.deleteRelLocked(rid); err != nil {
@@ -355,7 +355,7 @@ func (ms *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion u
 		nodeInner = make(map[uint32]*types.Node)
 		ms.nodeHistory[nid] = nodeInner
 	}
-	nodeInner[prevNodeVersion] = nodeTombstone.DeepCopy()
+	nodeInner[prevNodeVersion] = ms.historyNode(nodeTombstone)
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(nodeTombstone)) // BACKLOG 10c
 
 	// Write rel tombstones to history.
@@ -365,7 +365,7 @@ func (ms *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion u
 			relInner = make(map[uint32]*types.Relationship)
 			ms.relHistory[rt.ID] = relInner
 		}
-		relInner[rt.PrevVersion] = rt.Tombstone.DeepCopy()
+		relInner[rt.PrevVersion] = ms.historyRel(rt.Tombstone)
 		ms.bumpRelBeliefWatermarkLocked(rt.ID, relTxFrom(rt.Tombstone)) // BACKLOG 10c
 	}
 
@@ -431,7 +431,7 @@ func (ms *Store) putNodeVersionRouted(nid types.NodeID, version uint32, n *types
 		inner = make(map[uint32]*types.Node)
 		ms.nodeHistory[nid] = inner
 	}
-	inner[version] = n.DeepCopy()
+	inner[version] = ms.historyNode(n)
 	ms.recordNodeLabelMembersLocked(n)                   // a historical version may carry labels the current row dropped
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n)) // BACKLOG 10c — the cascade's bounded-correction append door
 	return ms.logNodeHistoryVersionRoutedLocked(version, n, token)
@@ -642,7 +642,7 @@ func (ms *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 		inner = make(map[uint32]*types.Relationship)
 		ms.relHistory[rid] = inner
 	}
-	inner[version] = r.DeepCopy()
+	inner[version] = ms.historyRel(r)
 	ms.recordRelTypeMemberLocked(r)                    // transaction-time rel-type membership (history version)
 	ms.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r)) // BACKLOG 10c — the cascade's bounded-correction append door
 	return ms.logRelHistoryVersionRoutedLocked(version, r, token)
@@ -877,7 +877,7 @@ func (ms *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 		inner = make(map[uint32]*types.Node)
 		ms.nodeHistory[nid] = inner
 	}
-	inner[prevVersion] = prevState.DeepCopy()
+	inner[prevVersion] = ms.historyNode(prevState)
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState)) // BACKLOG 10c
 
 	ms.removeNodePropertyKeyCounts(old)
@@ -886,7 +886,7 @@ func (ms *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
-	ms.nodes[nid] = freezeNodeCopy(current)
+	ms.nodes[nid] = ms.storedNode(current)
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(current)) // BACKLOG 10c
 	ms.addNodePropertyKeyCounts(current)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, current, rawID)
@@ -962,7 +962,7 @@ func (ms *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 		inner = make(map[uint32]*types.Relationship)
 		ms.relHistory[id] = inner
 	}
-	inner[prevVersion] = prevState.DeepCopy()
+	inner[prevVersion] = ms.historyRel(prevState)
 	ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(prevState)) // BACKLOG 10c
 
 	// K3b: refresh the rel property index (property values may have changed).
@@ -972,7 +972,7 @@ func (ms *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 	indexpkg.RemoveRelFromTemporalIndexes(ms.relTypeTemporalIndexes, old, id.SnowflakeID()) // BACKLOG 21c
 	// Replace current entity.
 	ms.segAccountLocked(old, -1)
-	ms.rels[id] = freezeRelCopy(current)
+	ms.rels[id] = ms.storedRel(current)
 	ms.segAccountLocked(ms.rels[id], 1)
 	ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(current)) // BACKLOG 10c
 	indexpkg.AddRelToPropertyIndexes(ms.relPropertyIndexes, current, id.SnowflakeID())

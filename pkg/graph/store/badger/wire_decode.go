@@ -20,6 +20,7 @@ func (bs *Store) decodeNodeWireForKey(w storepkg.NodeWire, expected snowflake.ID
 	if got := n.ID().SnowflakeID(); got != expected {
 		return nil, fmt.Errorf("%w: node wire id %d does not match key %d", ErrInvalidStoreMutation, got, expected)
 	}
+	_ = n.SetOrdinal(bs.ords.node(n.ID(), false)) // freshly decoded, not frozen
 	return n, nil
 }
 
@@ -45,6 +46,7 @@ func (bs *Store) decodeRelWireForKey(w storepkg.RelWire, expected snowflake.ID) 
 	if got := r.ID().SnowflakeID(); got != expected {
 		return nil, fmt.Errorf("%w: relationship wire id %d does not match key %d", ErrInvalidStoreMutation, got, expected)
 	}
+	_ = r.SetOrdinal(bs.ords.rel(r.ID(), false)) // freshly decoded, not frozen
 	return r, nil
 }
 

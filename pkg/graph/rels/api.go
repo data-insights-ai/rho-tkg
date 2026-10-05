@@ -29,6 +29,7 @@ type Ops interface {
 	RecordForeignIncoming(ctx context.Context, edge storepkg.ForeignIncomingEdge) error
 	Get(ctx context.Context, id types.RelID) (*types.Relationship, error)
 	Lend(ctx context.Context, id types.RelID) (*types.Relationship, error)
+	MaxOrdinal() (uint32, bool, error)
 	GetByIDs(ids []types.RelID) ([]*types.Relationship, error)
 	Update(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error)
 	UpdateInPlace(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error)
@@ -187,6 +188,17 @@ func (a *API) Lend(ctx context.Context, id types.RelID) (*types.Relationship, er
 		return nil, err
 	}
 	return ops.Lend(ctx, id)
+}
+
+// MaxOrdinal is nodes.API.MaxOrdinal for relationships
+// (types.Relationship.Ordinal); on a memory store a relationship of a declared
+// segment type carries 0.
+func (a *API) MaxOrdinal() (uint32, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, false, err
+	}
+	return ops.MaxOrdinal()
 }
 
 // GetByIDs returns relationships for the given IDs.

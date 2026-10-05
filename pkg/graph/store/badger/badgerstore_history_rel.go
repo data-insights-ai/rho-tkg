@@ -96,7 +96,7 @@ func (bs *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 	bs.maintainRelTypeTemporalIndexesRemove(old, id) // BACKLOG 21c
 	bs.removeRelPropertyTypeClassCountsByID(id, old.TypeToken().Value())
 	bs.removeRelPropertyStatsCountsByID(id, old.TypeToken().Value())
-	bs.relCache.Put(id, freezeRelCopy(current))
+	bs.relCache.Put(id, bs.frozenRelRow(current))
 	bs.bumpRelRevLocked(rid)                                   // this door always re-reads via getRelLocked above, but must still bump so a concurrent ReplaceRelationship's prefetch detects this write (BACKLOG 18b)
 	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(current))   // BACKLOG 10c
 	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(prevState)) // BACKLOG 10c — the demoted history row

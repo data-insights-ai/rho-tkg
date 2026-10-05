@@ -235,7 +235,7 @@ type Node struct {
 ```
 
 Every field is unexported — access is through methods only. Field order is by
-descending alignment (88B total; see `docs/architecture.md` "Core Types").
+descending alignment (96B total with the dense ordinal; see `docs/architecture.md` "Core Types").
 
 **Token-level methods (always work, no resolver needed):**
 
@@ -281,7 +281,7 @@ type Relationship struct {
 ```
 
 Same discipline as `Node`: every field unexported, ordered by descending
-alignment (80B total).
+alignment (88B total with the dense ordinal).
 
 **Token-level methods:**
 

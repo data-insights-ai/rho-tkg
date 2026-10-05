@@ -702,3 +702,18 @@ func (s *relOpsSpy) NextID() types.RelID {
 	s.record("NextID")
 	return s.nextID
 }
+
+func (s *relOpsSpy) MaxOrdinal() (uint32, bool, error) {
+	s.record("MaxOrdinal")
+	return 7, true, s.err
+}
+
+func TestMaxOrdinalForwards(t *testing.T) {
+	var nilAPI *API
+	if _, _, err := nilAPI.MaxOrdinal(); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil MaxOrdinal: %v", err)
+	}
+	if m, ok, err := New(&relOpsSpy{}).MaxOrdinal(); m != 7 || !ok || err != nil {
+		t.Fatalf("MaxOrdinal = %d %v %v", m, ok, err)
+	}
+}

@@ -109,7 +109,7 @@ func (bs *Store) putRelationship(r *types.Relationship, validateEndpoints, forei
 	}
 
 	// Update in-memory state.
-	bs.relCache.Put(id, freezeRelCopy(r))
+	bs.relCache.Put(id, bs.frozenRelRow(r))
 	bs.relIDs[rid] = struct{}{}
 	bs.bumpRelRevLocked(rid)
 	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r)) // BACKLOG 10c
@@ -370,7 +370,7 @@ func (bs *Store) replaceRelationshipRouted(r *types.Relationship, token uint64) 
 	bs.maintainRelTypeTemporalIndexesRemove(old, id)                     // BACKLOG 21c
 	bs.removeRelPropertyTypeClassCountsByID(id, old.TypeToken().Value()) // decrement old (type immutable)
 	bs.removeRelPropertyStatsCountsByID(id, old.TypeToken().Value())
-	bs.relCache.Put(id, freezeRelCopy(r))
+	bs.relCache.Put(id, bs.frozenRelRow(r))
 	bs.bumpRelRevLocked(rid)
 	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r)) // BACKLOG 10c
 	bs.maintainRelPropertyIndexesAdd(r, id)
@@ -636,6 +636,7 @@ func (bs *Store) deleteRelByInfo(info RelDeleteInfo) {
 	// Update in-memory state.
 	bs.relCache.MarkDeleted(info.ID)
 	delete(bs.relIDs, rid)
+	bs.ords.dropRel(rid)
 	bs.deleteRelRevLocked(rid)
 	delete(bs.relValidIdx, rid)                                    // drop the inline valid-time stamp
 	bs.maintainRelPropertyIndexesPurge(info.ID)                    // brute-force (RelDeleteInfo has no property values)

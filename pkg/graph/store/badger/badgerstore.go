@@ -319,6 +319,15 @@ type Config struct {
 	// every write of every shard, whether that shard is open when the epochs
 	// are read or has been closed since. nil (the default) changes nothing.
 	SharedMutationEpochs *SharedMutationEpochs
+	// DisableOrdinals turns the dense ordinals (store.OrdinalCapability) off:
+	// every row carries 0 and Max*Ordinal return 0. The tiered store sets it
+	// for its shards: a cold shard that closes and reopens would renumber its
+	// entities while the tiered store stays open.
+	DisableOrdinals bool
+	// SharedOrdinals, when non-nil, is the allocator this store draws
+	// ordinals from instead of its own, so several stores never hand out
+	// the same ordinal (the sharded store's slots share one).
+	SharedOrdinals *OrdinalAllocator
 	// PropertyKeyRegistry, when non-nil, is the property-key token registry the
 	// store uses to tokenize on write and resolve tokens on read — supplied by
 	// an owner (e.g. the tiered store) that holds ONE canonical registry for all
@@ -500,6 +509,9 @@ type Store struct {
 	relEpoch atomic.Uint64
 	// sharedEpochs is Config.SharedMutationEpochs (nil standalone).
 	sharedEpochs *SharedMutationEpochs
+	// ords holds the dense ordinals (badgerstore_ordinal.go); nil on a zero
+	// value store, where every ordinal reads 0.
+	ords *ordinals
 	// relTypeEpochs stripes rel-type column invalidation so a write to one type does
 	// not discard another's columns; relEpochCoarse is the term every UNCONVERTED
 	// mutation site bumps, which is what makes over-invalidation the default. See
@@ -998,6 +1010,7 @@ func New(cfg Config) (*Store, error) {
 		logConfigured:           cfg.ChangeLog && !cfg.ReadOnly,
 		logSeqSource:            cfg.ChangeLogSeqSource,
 		sharedEpochs:            cfg.SharedMutationEpochs,
+		ords:                    newOrdinals(cfg),
 		onChangeLogFlush:        cfg.OnChangeLogFlush,
 		maxPending:              maxPending,
 		flushInt:                flushInt,
@@ -1226,6 +1239,7 @@ func (bs *Store) loadIndexesScan() error {
 				continue
 			}
 			bs.nodeIDs[nid] = struct{}{}
+			bs.ords.node(nid, true) // ID order: the open numbers the stored nodes 1..N
 			bs.nodeHashes[nid] = badgerNodeIntegrityHash(n)
 			bs.bumpNodeRevLocked(nid)
 			labels := bs.addNodeIndexesFromRow(nid, collectNodeLabelTokens(n))
@@ -1312,6 +1326,7 @@ func (bs *Store) loadIndexesScan() error {
 				continue
 			}
 			bs.relIDs[rid] = struct{}{}
+			bs.ords.rel(rid, true)              // ID order: the open numbers the stored relationships 1..N
 			bs.bumpRelRevLocked(rid)            // seed a non-zero rev so a pre-first-write prefetch doesn't fall back needlessly (mirrors nodeRevs seeding above)
 			bs.addRelPropertyTypeClassCounts(r) // rebuild rel type-class counters + contrib (BACKLOG 5B)
 			bs.addRelPropertyStatsCounts(r)     // rebuild rel NDV+min/max counters + contrib (BACKLOG 21a)
@@ -1969,6 +1984,7 @@ func (bs *Store) Clear() error {
 	bs.typeIdx = make(map[uint16]map[types.RelID]struct{})
 	bs.labelOrder.Reset()
 	bs.typeOrder.Reset()
+	bs.ords.reset()
 	bs.outIdx = make(map[types.NodeID]map[types.RelID]types.NodeID)
 	bs.inIdx = make(map[types.NodeID]map[types.RelID]inEdge)
 	bs.relValidIdx = nil // drop the lazy stamp index; rebuilt on next temporal traversal

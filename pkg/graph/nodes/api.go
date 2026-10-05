@@ -25,6 +25,7 @@ type Ops interface {
 	AddWithTx(ctx context.Context, labels []string, props map[string]any, txFrom types.Instant) (*types.Node, error)
 	Get(ctx context.Context, id types.NodeID) (*types.Node, error)
 	Lend(ctx context.Context, id types.NodeID) (*types.Node, error)
+	MaxOrdinal() (uint32, bool, error)
 	GetByIDs(ids []types.NodeID) ([]*types.Node, error)
 	Update(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error)
 	UpdateInPlace(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error)
@@ -154,6 +155,20 @@ func (a *API) Lend(ctx context.Context, id types.NodeID) (*types.Node, error) {
 		return nil, err
 	}
 	return ops.Lend(ctx, id)
+}
+
+// MaxOrdinal returns the largest dense node ordinal handed out
+// (types.Node.Ordinal; size an ordinal-indexed array max+1) and ok=false when
+// the store assigns none (tiered, badger with DisableOrdinals, external
+// stores; every row's Ordinal is then 0). Ordinals are stable while an entity
+// has a current row, never reused, and not persisted: see
+// store.OrdinalCapability.
+func (a *API) MaxOrdinal() (uint32, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, false, err
+	}
+	return ops.MaxOrdinal()
 }
 
 // GetByIDs returns nodes for the given IDs.

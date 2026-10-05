@@ -173,6 +173,10 @@ type Store struct {
 	// from a concurrent edge insert. Kept separate from nodeEpoch so node-only
 	// scan/projection column caches do not rebuild on edge-heavy writes.
 	relEpoch atomic.Uint64
+	// maxNodeOrdinal / maxRelOrdinal: the last dense ordinal handed out
+	// (memorystore_ordinal.go); advanced under mu, read lock-free by Max*.
+	maxNodeOrdinal atomic.Uint32
+	maxRelOrdinal  atomic.Uint32
 	// appendDelta records pure inserts since the last non-append write, letting a
 	// read EXTEND a cached column instead of rebuilding it. Guarded by ms.mu.
 	appendDelta    appendDeltaState

@@ -212,6 +212,7 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePr
 
 		bs.nodeCache.MarkDeleted(id)
 		delete(bs.nodeIDs, nid)
+		bs.ords.dropNode(nid)
 		delete(bs.nodeHashes, nid)
 		bs.deleteNodeRevLocked(nid)
 		bs.appendOps(ops...)
@@ -257,6 +258,7 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePr
 	// Update in-memory state.
 	bs.nodeCache.MarkDeleted(id)
 	delete(bs.nodeIDs, nid)
+	bs.ords.dropNode(nid)
 	delete(bs.nodeHashes, nid)
 	bs.deleteNodeRevLocked(nid)
 	bs.appendOps(ops...)
@@ -408,6 +410,7 @@ func (bs *Store) purgeOrphanRelIDLockedWithIndexKeys(rid types.RelID, indexKeys 
 	}
 	if _, tracked := bs.relIDs[rid]; tracked {
 		delete(bs.relIDs, rid)
+		bs.ords.dropRel(rid)
 		bs.relCount.Add(-1)
 	}
 	delete(bs.relValidIdx, rid) // drop the inline valid-time stamp on node-cascade rel purge
@@ -575,7 +578,7 @@ func (bs *Store) putNodesBatchInternal(nodes []*types.Node, wireBodies, logBodie
 			data = d
 		}
 		nid := n.InternalID()
-		serialized[i] = nodeData{nid: nid, id: nid.SnowflakeID(), data: data, frozen: freezeNodeForCache(n, owned)}
+		serialized[i] = nodeData{nid: nid, id: nid.SnowflakeID(), data: data, frozen: bs.frozenNodeRowForCache(n, owned)}
 		if bs.logEnabled.Load() {
 			if i < len(logBodies) && logBodies[i] != nil {
 				putPayloads[i] = logBodies[i] // producer-encoded, applier-patched
@@ -785,6 +788,7 @@ func (bs *Store) DeleteNodesBatch(typedIDs []types.NodeID) error {
 		indexpkg.RemoveNodeFromVectorIndexes(bs.vectorIndexes, n, id)
 		bs.nodeCache.MarkDeleted(id)
 		delete(bs.nodeIDs, nid)
+		bs.ords.dropNode(nid)
 		delete(bs.nodeHashes, nid)
 		bs.deleteNodeRevLocked(nid)
 		bs.appendOps(ops...)

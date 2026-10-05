@@ -72,7 +72,7 @@ func (bs *Store) PutRelationshipsBatch(rels []*types.Relationship) error {
 			endID:    endNID.SnowflakeID(),
 			relType:  r.TypeToken().Value(),
 			data:     data,
-			frozen:   freezeRelCopy(r),
+			frozen:   bs.frozenRelRow(r),
 		}
 	}
 	endpointIDs := make([]types.NodeID, 0, len(serialized)*2)

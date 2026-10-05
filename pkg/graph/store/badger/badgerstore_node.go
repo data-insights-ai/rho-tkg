@@ -71,7 +71,7 @@ func (bs *Store) putNodeRouted(n *types.Node, token uint64) error {
 	}
 
 	// Update in-memory state.
-	bs.nodeCache.Put(id, freezeNodeCopy(n))
+	bs.nodeCache.Put(id, bs.frozenNodeRow(n))
 	bs.nodeIDs[nid] = struct{}{}
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(n)
 	bs.bumpNodeRevLocked(nid)
@@ -500,6 +500,7 @@ func (bs *Store) DeleteNode(nid types.NodeID) error {
 	// Update in-memory state.
 	bs.nodeCache.MarkDeleted(id)
 	delete(bs.nodeIDs, nid)
+	bs.ords.dropNode(nid)
 	delete(bs.nodeHashes, nid)
 	bs.deleteNodeRevLocked(nid)
 	bs.appendOps(ops...)
@@ -598,7 +599,7 @@ func (bs *Store) replaceNodeRouted(n *types.Node, token uint64) error {
 		bs.idxMu.Unlock()
 		return err
 	}
-	bs.nodeCache.Put(id, freezeNodeCopy(n))
+	bs.nodeCache.Put(id, bs.frozenNodeRow(n))
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(n)
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n)) // BACKLOG 10c
@@ -715,7 +716,7 @@ func (bs *Store) removeNodeLabelTokenRouted(nid types.NodeID, tok uint16, update
 	bs.getOrCreateLabelCounter(tok).Add(-1)
 
 	// Update cache and property/temporal/vector indexes for the new node state.
-	bs.nodeCache.Put(id, freezeNodeCopy(updatedNode))
+	bs.nodeCache.Put(id, bs.frozenNodeRow(updatedNode))
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
@@ -829,7 +830,7 @@ func (bs *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNo
 	bs.getOrCreateLabelCounter(tok).Add(1)
 	bs.recordNodeLabelMembersLocked(updatedNode) // transaction-time label membership (new token)
 
-	bs.nodeCache.Put(id, freezeNodeCopy(updatedNode))
+	bs.nodeCache.Put(id, bs.frozenNodeRow(updatedNode))
 	bs.nodeHashes[nid] = badgerNodeIntegrityHash(updatedNode)
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c

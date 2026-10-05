@@ -59,7 +59,7 @@ func (ms *Store) putNodeRouted(n *types.Node, token uint64) error {
 		return err
 	}
 
-	ms.nodes[nid] = freezeNodeCopy(n)
+	ms.nodes[nid] = ms.storedNode(n)
 
 	ms.addNodeLabelIndexes(nid, n)
 	ms.recordNodeLabelMembersLocked(n)                   // transaction-time label membership
@@ -271,7 +271,7 @@ func (ms *Store) removeNodeLabelTokenRouted(nid types.NodeID, tok uint16, update
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
-	ms.nodes[nid] = freezeNodeCopy(updatedNode)
+	ms.nodes[nid] = ms.storedNode(updatedNode)
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
 	ms.addNodePropertyKeyCounts(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
@@ -341,7 +341,7 @@ func (ms *Store) addNodeLabelTokenRouted(nid types.NodeID, tok uint16, updatedNo
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
-	ms.nodes[nid] = freezeNodeCopy(updatedNode)
+	ms.nodes[nid] = ms.storedNode(updatedNode)
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
 	ms.addNodePropertyKeyCounts(updatedNode)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, updatedNode, rawID)
@@ -407,7 +407,7 @@ func (ms *Store) replaceNodeRouted(n *types.Node, token uint64) error {
 	indexpkg.RemoveNodeFromTemporalIndexes(ms.temporalIndexes, old, rawID)
 	indexpkg.RemoveNodeFromHighFrequencyIndexes(ms.hfIndexes, old, rawID)
 	indexpkg.RemoveNodeFromVectorIndexes(ms.vectorIndexes, old, rawID)
-	ms.nodes[nid] = freezeNodeCopy(n)
+	ms.nodes[nid] = ms.storedNode(n)
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n)) // BACKLOG 10c
 	ms.addNodePropertyKeyCounts(n)
 	indexpkg.AddNodeToPropertyIndexes(ms.propertyIndexes, n, rawID)
@@ -557,7 +557,7 @@ func (ms *Store) PutNodesBatch(nodes []*types.Node) error {
 	// Phase 2: apply — all validated, safe to mutate.
 	for i, n := range nodes {
 		id := n.ID()
-		ms.nodes[id] = freezeNodeCopy(n)
+		ms.nodes[id] = ms.storedNode(n)
 		ms.bumpNodeBeliefWatermarkLocked(id, nodeTxFrom(n)) // BACKLOG 10c
 
 		ms.addNodeLabelIndexes(id, n)

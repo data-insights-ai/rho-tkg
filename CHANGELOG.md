@@ -8,6 +8,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Dense ordinals of nodes and relationships: `types.Node.Ordinal()`, `types.Relationship.Ordinal()`,
+  `g.Nodes().MaxOrdinal()`, `g.Rels().MaxOrdinal()`.** Requested by sigma-tkgd (C3d, store request 3:
+  the run indexes its tables by entity and pays for maps, run searches and a second identity for a
+  relationship handed out twice — q7's run search 4.6 % of its samples, q4's endpoint interning
+  5.7 %, q10's identities 6.4 %, q1 4 MB of duplicate relationship identities). A store implementing
+  the new optional `store.OrdinalCapability` (`HasOrdinals`, `MaxNodeOrdinal`, `MaxRelOrdinal`)
+  numbers entities 1, 2, 3, … in the order it first holds them and every row it hands out carries the
+  number. Guarantees within one open store: stable while the entity has a current row; never given to
+  a second entity (a deleted entity's ordinal is retired, so a held one can go stale but never alias);
+  dense apart from deletes; assigned under the write lock before the row is visible. Not persisted:
+  not stable across a reopen, between primary and replica or between stores, and not in the wire, the
+  hash, the change log or exports. Memory: in the row (the store derives it from the current row, else
+  a history row, else assigns the next); relationships of a declared segment type (ADR-0011) carry 0.
+  Badger: RAM ID → ordinal maps under a leaf lock, numbered 1..N in ID order at open; a history row of
+  a deleted entity carries 0; `badger.Config.DisableOrdinals` turns it off. Sharded: one allocator
+  for all slots (`badger.Config.SharedOrdinals`, `badger.OrdinalAllocator`). **Tiered: none**
+  (`MaxOrdinal` ok=false, every row 0): a cold shard that idle-closes and reopens would renumber its
+  entities while the store stays open, which breaks stability. Not built: an adjacency door handing
+  out the other endpoint's ordinal (`Lend(other).Ordinal()` is the zero-copy way to read it).
+  **Cost**: `types.Node` 88 → 96 B (its allocator size class already: 0 B retained, the node gate
+  measures 371.8 B/node marginal); `types.Relationship` 80 → 88 B, i.e. the 80 B → 96 B size class:
+  +16 B per relationship row on the memory store (`TestRowStoreRetainedBytesPerRelationship`: 416–420
+  B/rel, the gate moved 410 → 426 with the reason in the test). Badger additionally holds the two maps
+  (estimated ~20 B per entity, not measured). Write cost within the run-to-run spread
+  (`BenchmarkAddThenEarlyStopScan` insert only, load 6–7: memory 757–817 → 785–904 ns, badger
+  1455–1609 → 1535–1591 ns). Tests: `TestOrdinalsAcrossDoorsAndWrites` (memory, badger with an
+  8-entry cache so rows are decoded, tiered (none), sharded: Get, Lend, GetByIDs, ByLabel,
+  ForEachByLabel, Outgoing, ForEachByType and history rows agree; property, label and update writes
+  keep the ordinal; a deleted entity's ordinal is not handed out again; MaxOrdinal bounds every
+  ordinal), `TestOrdinalsConcurrentCreates` (race; unique, MaxOrdinal equals the count),
+  `TestOrdinalsDeclaredSegmentTypeHasNone`, `TestOrdinalsBadgerReopen` (1..N in ID order after a
+  reopen with a deleted node), `TestOrdinalsShardedUniqueAcrossSlots`, `TestOrdinalCopiesAndFreezes`,
+  `TestOrdinalCopiesWithOrdinal`, `TestMaxOrdinalForwards`; the compact-field guard lists the new field.
 - **`g.Stats().RelTypeDegreeStats(typeName)`: a relationship type's largest out- and in-degree.**
   Requested by sigma-tkgd (C4b open question 3: the path CSR's lookup estimate takes the mean fanout,
   which a hub breaks; the pinned-chain rows stay 2x to 3x). Returns `store.RelTypeDegreeStats`

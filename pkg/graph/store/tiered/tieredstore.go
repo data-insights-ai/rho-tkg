@@ -1319,6 +1319,9 @@ func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 	// set for every shard opened afterwards — hot, warm, lazy cold/archive, and
 	// rotation-created shards (all route through here).
 	cfg.SharedMutationEpochs = &ts.mutationEpochs
+	// No dense ordinals on tiered: a cold shard that idle-closes and reopens
+	// would renumber its entities while the store stays open.
+	cfg.DisableOrdinals = true
 	if reg := ts.propKeyReg.Load(); reg != nil {
 		cfg.PropertyKeyRegistry = reg
 	}

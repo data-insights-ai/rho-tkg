@@ -78,7 +78,7 @@ func (bs *Store) PutRelEntityAndOut(r *types.Relationship) error {
 	}
 
 	// Update in-memory state.
-	bs.relCache.Put(id, freezeRelCopy(r))
+	bs.relCache.Put(id, bs.frozenRelRow(r))
 	bs.relIDs[rid] = struct{}{}
 	bs.bumpRelRevLocked(rid)
 
@@ -218,6 +218,7 @@ func (bs *Store) DeleteRelEntityAndOut(id snowflake.ID) (RelDeleteInfo, error) {
 	// Update in-memory state.
 	bs.relCache.MarkDeleted(id)
 	delete(bs.relIDs, rid)
+	bs.ords.dropRel(rid)
 	bs.deleteRelRevLocked(rid)
 	delete(bs.relValidIdx, rid) // drop the inline valid-time stamp
 
