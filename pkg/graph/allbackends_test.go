@@ -33,10 +33,10 @@ func allStoreBackends() []storeBackend {
 	}
 	return []storeBackend{
 		{name: "memory", open: func(t *testing.T) *graphpkg.Graph {
-			return newGraph(t, graphpkg.Config{SnowflakeNodeID: 0})
+			return newGraph(t, graphpkg.Config{Validation: graphpkg.ValidationLimits{AllowSelfLoops: true}, SnowflakeNodeID: 0})
 		}},
 		{name: "badger", open: func(t *testing.T) *graphpkg.Graph {
-			return newGraph(t, graphpkg.Config{SnowflakeNodeID: 0, BadgerInMemory: true, CacheCapacity: 8})
+			return newGraph(t, graphpkg.Config{Validation: graphpkg.ValidationLimits{AllowSelfLoops: true}, SnowflakeNodeID: 0, BadgerInMemory: true, CacheCapacity: 8})
 		}},
 		{name: "tiered", tiered: true, open: func(t *testing.T) *graphpkg.Graph {
 			ts, err := tiered.New(tiered.Config{
@@ -48,14 +48,14 @@ func allStoreBackends() []storeBackend {
 			if err != nil {
 				t.Fatalf("tiered.New: %v", err)
 			}
-			return newGraph(t, graphpkg.Config{SnowflakeNodeID: 0, Store: ts})
+			return newGraph(t, graphpkg.Config{Validation: graphpkg.ValidationLimits{AllowSelfLoops: true}, SnowflakeNodeID: 0, Store: ts})
 		}},
 		{name: "sharded", open: func(t *testing.T) *graphpkg.Graph {
 			st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2})
 			if err != nil {
 				t.Fatalf("sharded.New: %v", err)
 			}
-			return newGraph(t, graphpkg.Config{SnowflakeNodeID: 0, Store: st})
+			return newGraph(t, graphpkg.Config{Validation: graphpkg.ValidationLimits{AllowSelfLoops: true}, SnowflakeNodeID: 0, Store: st})
 		}},
 	}
 }

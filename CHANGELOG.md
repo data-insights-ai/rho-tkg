@@ -8,6 +8,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`g.Stats().RelTypeDegreeStats(typeName)`: a relationship type's largest out- and in-degree.**
+  Requested by sigma-tkgd (C4b open question 3: the path CSR's lookup estimate takes the mean fanout,
+  which a hub breaks; the pinned-chain rows stay 2x to 3x). Returns `store.RelTypeDegreeStats`
+  (relationships, distinct starts and ends, `MaxOut` / `MaxIn` with the smallest node holding each,
+  `Exact`); `""` means every relationship. Every backend. Derived, not maintained (maintained
+  per-node per-type counters would cost bytes per relationship the P7 gates hold): the first call
+  after a write to the type counts it once and caches the answer against the relationship mutation
+  epoch (badger: the type's stripe), so it relies on this release's epoch fix. Badger counts from its
+  RAM incoming-adjacency index without decoding a row (new optional `store.RelTypeDegreeCapability`;
+  declines with `AdjacencyIndexOnDisk`); the others stream the type's rows. Measured
+  (`BenchmarkRelTypeDegreeStats`, 20,000 nodes, 36,001 relationships, one relationship added per
+  iteration so every read counts): memory 3.0 ms, badger 41 ms streaming rows → 3.0 ms from the
+  index; a cached read ~70 ns, 0 allocations. Tests: `TestRelTypeDegreeStats` (all four backends,
+  tiered with a cross-shard edge; a hub, a fan-in, a self-loop, an unrelated type that must not count;
+  two-phase: deletes and a cascade lower the maxima and the cached answer does not survive them; a
+  property write; unregistered and malformed names; closed graph), `TestBadgerStoreRelTypeDegreeStats`
+  (native count, an orphan-free delete, the `AdjacencyIndexOnDisk` decline),
+  `TestRelTypeDegreeStatsForwards`.
 - **`GraphTx.StartInstant()`: the transaction's start in transaction time.** Requested by sigma-tkgd
   (C3p item 4: openCypher's `datetime.transaction()` of a caller-managed transaction had no start
   the store exposed). `Begin` reserves an instant on the commit clock (`c.now()`, the reservation
