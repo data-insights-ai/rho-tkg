@@ -35,6 +35,7 @@ func (bs *Store) deleteNodeCascadeRouted(nid types.NodeID, token uint64) error {
 		return err
 	}
 	defer bs.bumpNodeEpoch()
+	defer bs.bumpRelEpoch() // the cascade deletes the node's relationships
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return err
 	}

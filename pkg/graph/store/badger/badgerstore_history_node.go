@@ -445,6 +445,7 @@ func (bs *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion u
 		return err
 	}
 	defer bs.bumpNodeEpoch()
+	defer bs.bumpRelEpoch() // the delete removes the node's relationships with it
 	if err := storecontract.ValidateNodeHistoryVersionSnapshot(nid, prevNodeVersion, nodeTombstone); err != nil {
 		return err
 	}

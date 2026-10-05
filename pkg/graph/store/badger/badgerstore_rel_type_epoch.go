@@ -53,6 +53,7 @@ func (bs *Store) bumpRelEpochForType(token uint16) {
 		return
 	}
 	bs.relEpoch.Add(1)
+	bs.sharedEpochs.rel()
 	bs.relTypeEpochs[token%relTypeEpochStripes].Add(1)
 	bs.poisonRelType(token)
 }
@@ -108,6 +109,7 @@ func (bs *Store) bumpRelEpochAppendBatch(rels []*types.Relationship) {
 		}
 	}
 	bs.relEpoch.Add(1)
+	bs.sharedEpochs.rel()
 	for _, r := range rels {
 		tok := uint16(r.TypeToken())
 		bs.relTypeEpochs[tok%relTypeEpochStripes].Add(1)
@@ -125,6 +127,7 @@ func (bs *Store) bumpRelEpochForTypeNoPoison(token uint16) {
 		return
 	}
 	bs.relEpoch.Add(1)
+	bs.sharedEpochs.rel()
 	bs.relTypeEpochs[token%relTypeEpochStripes].Add(1)
 }
 

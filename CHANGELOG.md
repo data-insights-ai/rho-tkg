@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`RelMutationEpoch` moves on every relationship write, on every backend.** Found by sigma-tkgd
+  (task record C3q, findings 1 and 2): a relationship's property set or removed moved the epoch on
+  neither memory nor badger, and a relationship delete did not move it on badger, so a consumer
+  keying statistics or plans on the epoch reused them after the write (sigma-tkgd saw a top-k by a
+  removed property answer without the relationship). The store doors that missed it: memory
+  `ReplaceRelWithHistory` and `PutRelVersion`; badger the same two plus `DeleteRelWithHistory`,
+  `DeleteNodeCascade`, `DeleteNodeWithHistory` and the six cross-shard split helpers
+  (`PutRelEntityAndOut`, `PutRelIncoming`, `DeleteRelEntityAndOut`, `DeleteRelIncoming`,
+  `DeleteIncomingByRelID`, `ScanAndDeleteIncoming`). The badger doors move the per-type epoch too,
+  so `ScanRelColumns` no longer serves a type's cached columns from before a property write or a
+  delete (it did). The tiered store had no `RelMutationEpoch` (0 at every read); it now has one,
+  and both its epochs are store-wide counters every shard advances (new
+  `badger.Config.SharedMutationEpochs`, `badger.SharedMutationEpochs`) instead of the sum of the
+  open shards' epochs, which returned to an earlier value when a cold shard took a write and was
+  closed before the next read. Tests (red first): `TestRelMutationEpochMovesOnEveryRelationshipWrite`
+  (17 doors — create, property set/remove/CAS, update, update in place, close, version interval,
+  delete, node cascade, the tx and batch forms — on memory, badger, tiered same-shard and
+  cross-shard, sharded), `TestRelMutationEpochMovesOnRollback`,
+  `TestRelColumnsFollowPropertyWritesAndDeletes` (two-phase: the cached column at the old value,
+  the scan after the write), `TestRelationshipDoorsBumpRelMutationEpochs` (badger store doors,
+  global, per-type and shared epoch), `TestRelHistoryWrites_BumpRelMutationEpoch` (memory),
+  `TestTieredMutationEpochsSurviveColdShardClose` (red with the former sum).
+
 ## [4.40.0] - 2026-09-25
 
 Minor release: ADR-0011 S3 (sealed segments as self-contained files on NVMe with `Config.SegmentDir`:

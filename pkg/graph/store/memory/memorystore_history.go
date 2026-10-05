@@ -644,6 +644,7 @@ func (ms *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 	}
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
+	defer ms.bumpRelEpoch() // a version-chain write, as PutNodeVersion bumps the node epoch
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err
@@ -939,6 +940,9 @@ func (ms *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 	defer ms.sealIfDue() // ADR-0011: runs after the unlock below
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
+	// A property write, a close or an interval change of a relationship
+	// arrives here: it changes the row every relationship-derived cache reads.
+	defer ms.bumpRelEpoch()
 
 	if err := ms.checkOpenLocked(); err != nil {
 		return err

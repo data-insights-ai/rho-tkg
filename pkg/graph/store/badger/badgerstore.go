@@ -313,6 +313,12 @@ type Config struct {
 	// unchanged. Ignored when ChangeLog is off or in ReadOnly mode. See
 	// ChangeLogSeqSource and badgerstore_changelog.go.
 	ChangeLogSeqSource ChangeLogSeqSource
+	// SharedMutationEpochs, when non-nil, is advanced together with this
+	// store's own node and relationship mutation epochs: an owner of several
+	// stores (the tiered store) injects ONE so its store-wide epochs move on
+	// every write of every shard, whether that shard is open when the epochs
+	// are read or has been closed since. nil (the default) changes nothing.
+	SharedMutationEpochs *SharedMutationEpochs
 	// PropertyKeyRegistry, when non-nil, is the property-key token registry the
 	// store uses to tokenize on write and resolve tokens on read — supplied by
 	// an owner (e.g. the tiered store) that holds ONE canonical registry for all
@@ -490,6 +496,8 @@ type Store struct {
 	// concurrent edge insert). Separate from nodeEpoch so node-only column caches do
 	// not rebuild on edge-heavy writes.
 	relEpoch atomic.Uint64
+	// sharedEpochs is Config.SharedMutationEpochs (nil standalone).
+	sharedEpochs *SharedMutationEpochs
 	// relTypeEpochs stripes rel-type column invalidation so a write to one type does
 	// not discard another's columns; relEpochCoarse is the term every UNCONVERTED
 	// mutation site bumps, which is what makes over-invalidation the default. See
@@ -987,6 +995,7 @@ func New(cfg Config) (*Store, error) {
 		syncWrites:              cfg.SyncWrites && !cfg.ReadOnly,
 		logConfigured:           cfg.ChangeLog && !cfg.ReadOnly,
 		logSeqSource:            cfg.ChangeLogSeqSource,
+		sharedEpochs:            cfg.SharedMutationEpochs,
 		onChangeLogFlush:        cfg.OnChangeLogFlush,
 		maxPending:              maxPending,
 		flushInt:                flushInt,
@@ -1953,10 +1962,12 @@ func (bs *Store) Clear() error {
 	bs.nodeHashes = make(map[types.NodeID]string)
 	bs.nodeRevs = make(map[types.NodeID]uint64)
 	bs.nextNodeRev = 0
-	bs.nodeEpoch.Add(1)     // invalidate cached columns built before Clear
+	bs.nodeEpoch.Add(1) // invalidate cached columns built before Clear
+	bs.sharedEpochs.node()
 	bs.nodeEpochSalt.Add(1) // label-less event: invalidate every per-label column too (BACKLOG 4b)
 	bs.poisonAllLabels()    // label-less event: no per-label append record can describe it (R3)
 	bs.relEpoch.Add(1)      // and the adjacency view (expand path)
+	bs.sharedEpochs.rel()
 	bs.docMu.Lock()
 	bs.docColumns = nil
 	bs.docColumnsMulti = nil

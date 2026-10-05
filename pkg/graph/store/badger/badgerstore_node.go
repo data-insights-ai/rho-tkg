@@ -357,12 +357,16 @@ func (bs *Store) bumpNodeRevLocked(nid types.NodeID) {
 	}
 	bs.nodeRevs[nid] = bs.nextNodeRev
 	bs.nodeEpoch.Add(1) // every non-delete node write invalidates cached columns
+	bs.sharedEpochs.node()
 }
 
 // bumpNodeEpoch marks every cached DocValues column stale. bumpNodeRevLocked
 // covers the non-delete writes; the delete and version-write paths (which do NOT
 // call it) call this directly. A spurious bump is safe — it only forces a rebuild.
-func (bs *Store) bumpNodeEpoch() { bs.nodeEpoch.Add(1) }
+func (bs *Store) bumpNodeEpoch() {
+	bs.nodeEpoch.Add(1)
+	bs.sharedEpochs.node()
+}
 
 // bumpRelEpoch marks the adjacency view stale for the expand-aggregation column
 // path (which reads edges, not just node membership). Called by every relationship
@@ -374,6 +378,7 @@ func (bs *Store) bumpNodeEpoch() { bs.nodeEpoch.Add(1) }
 // everything rather than silently leave a type's columns stale.
 func (bs *Store) bumpRelEpoch() {
 	bs.relEpoch.Add(1)
+	bs.sharedEpochs.rel()
 	bs.relEpochCoarse.Add(1)
 	bs.poisonAllRelTypes() // the default door must void every append record too
 }
