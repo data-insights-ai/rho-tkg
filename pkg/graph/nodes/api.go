@@ -26,6 +26,7 @@ type Ops interface {
 	Get(ctx context.Context, id types.NodeID) (*types.Node, error)
 	Lend(ctx context.Context, id types.NodeID) (*types.Node, error)
 	MaxOrdinal() (uint32, bool, error)
+	ScanKeepsOrder(label string) (bool, error)
 	GetByIDs(ids []types.NodeID) ([]*types.Node, error)
 	Update(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error)
 	UpdateInPlace(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error)
@@ -169,6 +170,21 @@ func (a *API) MaxOrdinal() (uint32, bool, error) {
 		return 0, false, err
 	}
 	return ops.MaxOrdinal()
+}
+
+// ScanKeepsOrder reports whether a current-state ForEachByLabel scan of the
+// label walks a member list the store keeps in ascending ID order, so the
+// scan neither collects nor sorts the label's IDs (memory; badger with its RAM
+// label index). False where a scan collects and sorts (badger with
+// LabelIndexOnDisk, tiered, sharded, external stores) and for a scan with a
+// temporal filter. A query planner charges a scan's sort only where it is
+// false. See store.ScanOrderCapability.
+func (a *API) ScanKeepsOrder(label string) (bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return false, err
+	}
+	return ops.ScanKeepsOrder(label)
 }
 
 // GetByIDs returns nodes for the given IDs.

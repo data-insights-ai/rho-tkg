@@ -8,6 +8,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`g.Nodes().ScanKeepsOrder(label)` / `g.Rels().ScanKeepsOrder(typeName)`: whether a streaming
+  scan pays a sort.** Requested by sigma-tkgd (task record C3s open question 2, C4c store request 1:
+  since v4.41 memory and badger walk a kept member order, while tiered, sharded and an on-disk label
+  index still collect and sort, and the host could not tell which, so its planner either charged
+  every scan the sort or none). True where a current-state `ForEachByLabel` / `ForEachByType` scan
+  walks the store's kept ascending member list: memory (not a declared segment type, whose scan
+  collects its rows) and badger (labels: not with `LabelIndexOnDisk`); false on tiered, sharded and
+  external stores (the graph materializes their scans through `ByLabel`) and for a scan with a
+  temporal filter. New optional `store.ScanOrderCapability` (`LabelScanKeepsOrder`,
+  `TypeScanKeepsOrder`); a store without it is assumed to sort. Measured
+  (`BenchmarkLabelScanOrder`, 20,000 nodes, three runs, load 15–18): the statement costs 17 ns and no
+  allocation; a whole memory scan is 177–183 µs with or without `NoSort` (no sort is paid, which is
+  what the statement tells the planner); badger with `LabelIndexOnDisk` 11.8–15.8 ms against
+  8.4–11.0 ms with the RAM index (the collect from the keyspace, the sort itself is small at this
+  size). The gain is the consumer's: sigma-tkgd measured its planner with the scan's sort at zero on
+  memory (task record C4c) — q7 and q10 change plan, 1.00 / 0.96 and 1.00 / 0.95 of the base at 1 / 16
+  CPUs, 20,000 and 60,000 fewer allocations — and can now keep the sort where it is paid. Tests:
+  `TestScanKeepsOrder` (memory, badger, badger `LabelIndexOnDisk`, tiered, sharded; known and unknown
+  names; a kept-order scan with `NoSort` checked ascending; malformed names),
+  `TestScanKeepsOrderSegmentType` (a declared type says false, another type true; closed graph),
+  `TestScanKeepsOrderForwards` (nodes, rels).
+
 - **`GraphTx.AddNodes(labels, props)`: many nodes of one label set in one call inside a
   transaction.** Requested by sigma-tkgd (task record C5a item 2c, C5b store request 1: UNWIND …
   CREATE inside the statement's transaction pays one `GraphTx.AddNode` per row; the store's batch

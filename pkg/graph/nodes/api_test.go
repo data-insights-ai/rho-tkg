@@ -565,3 +565,18 @@ func TestMaxOrdinalForwards(t *testing.T) {
 		t.Fatalf("MaxOrdinal = %d %v %v", m, ok, err)
 	}
 }
+
+func (s *nodeOpsSpy) ScanKeepsOrder(string) (bool, error) {
+	s.record("ScanKeepsOrder")
+	return true, s.err
+}
+
+func TestScanKeepsOrderForwards(t *testing.T) {
+	var nilAPI *API
+	if _, err := nilAPI.ScanKeepsOrder("X"); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil ScanKeepsOrder: %v", err)
+	}
+	if ok, err := New(&nodeOpsSpy{}).ScanKeepsOrder("X"); !ok || err != nil {
+		t.Fatalf("ScanKeepsOrder = %v %v", ok, err)
+	}
+}

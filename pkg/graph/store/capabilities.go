@@ -91,6 +91,20 @@ type EntityLendCapability interface {
 	LendRelationship(id types.RelID) (*types.Relationship, error)
 }
 
+// ScanOrderCapability is OPTIONAL: a store's statement about its streaming
+// label and type scans (ForEachNodeByLabel, ForEachRelByType). True means the
+// scan walks the members in ascending ID order from a list the store keeps
+// between scans: it neither collects nor sorts the members per scan (the first
+// scan after the list was dropped sorts it once), so an early stop costs only
+// the rows read and a whole scan costs no O(n log n) sort. False means a scan
+// collects the members (and sorts them unless the caller passed NoSort). A
+// consumer pricing a scan charges the sort only where the answer is false. A
+// store without the capability is assumed to sort.
+type ScanOrderCapability interface {
+	LabelScanKeepsOrder(labelToken uint16) bool
+	TypeScanKeepsOrder(relTypeToken uint16) bool
+}
+
 // RelationshipCRUDCapability is the relationship-mutation surface.
 type RelationshipCRUDCapability interface {
 	PutRelationship(r *types.Relationship) error

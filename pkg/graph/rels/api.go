@@ -30,6 +30,7 @@ type Ops interface {
 	Get(ctx context.Context, id types.RelID) (*types.Relationship, error)
 	Lend(ctx context.Context, id types.RelID) (*types.Relationship, error)
 	MaxOrdinal() (uint32, bool, error)
+	ScanKeepsOrder(typeName string) (bool, error)
 	GetByIDs(ids []types.RelID) ([]*types.Relationship, error)
 	Update(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error)
 	UpdateInPlace(ctx context.Context, id types.RelID, updates map[string]any) (*types.Relationship, error)
@@ -199,6 +200,19 @@ func (a *API) MaxOrdinal() (uint32, bool, error) {
 		return 0, false, err
 	}
 	return ops.MaxOrdinal()
+}
+
+// ScanKeepsOrder reports whether a current-state ForEachByType scan of the
+// type walks a member list the store keeps in ascending ID order, so the scan
+// neither collects nor sorts the type's IDs (memory but for a declared segment
+// type; badger). False on tiered, sharded and external stores and for a scan
+// with a temporal filter. See store.ScanOrderCapability.
+func (a *API) ScanKeepsOrder(typeName string) (bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return false, err
+	}
+	return ops.ScanKeepsOrder(typeName)
 }
 
 // GetByIDs returns relationships for the given IDs.
