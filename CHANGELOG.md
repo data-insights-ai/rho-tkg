@@ -25,6 +25,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`g.Index().ListTemporal()`, `ListRelTemporal()`, `HasRelTemporal(typeName)`: the temporal
+  interval indexes listed.** Asked by sigma-tkgd as a conditional request (task record C3r: its
+  `CREATE TEMPORAL INDEX` DDL has no `SHOW INDEXES`, because the store had only `HasTemporal(label)`
+  and nothing for relationship types). The labels and relationship types carrying a temporal
+  interval index, sorted by name (a high-frequency index is not listed), and the relationship mirror
+  of `HasTemporal`. New optional `store.TemporalIndexListingCapability` (`TemporalIndexLabels`,
+  `RelTemporalIndexTypes`) on memory, badger, tiered (no relationship types: it has none) and
+  sharded (the anchor shard's definitions). Found while testing, not changed: badger keeps
+  relationship-type temporal indexes in RAM only (since BACKLOG 21c), so after a reopen the type is
+  no longer indexed and is not listed; label temporal indexes survive. Measured
+  (`BenchmarkTemporalIndexListing`, 1,000 labels of which 10 indexed, memory, load 36–76): the
+  listing 408–421 ns, probing every label with `HasTemporal` 32.9–34.9 µs. Tests:
+  `TestTemporalIndexListing` (all four backends: created, a high-frequency index not listed, a
+  dropped label and type leave the lists, `HasRelTemporal` for an indexed, an unindexed and an
+  unknown type), `TestTemporalIndexListingSurvivesReopen` (badger directory),
+  `TestTemporalIndexListingForwards`.
+
 - **`g.Rels().ForEachAdjacentEndpointOrdinal`: the adjacency hands out the relationship's and the
   other endpoint's dense ordinal.** Requested by sigma-tkgd (task record C3s open question 4: the
   host numbers relationships by ordinal but not nodes, because an endpoint's ordinal took a `Lend`

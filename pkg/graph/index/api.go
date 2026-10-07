@@ -30,6 +30,9 @@ type Ops interface {
 	CreateTemporal(label string) error
 	DeleteTemporal(label string) error
 	HasTemporal(label string) (bool, error)
+	ListTemporal() ([]string, error)
+	ListRelTemporal() ([]string, error)
+	HasRelTemporal(typeName string) (bool, error)
 	CreateRelTemporal(typeName string) error
 	DeleteRelTemporal(typeName string) error
 	CreateVector(label, propertyKey string, dims int, metric storepkg.DistanceMetric) error
@@ -227,6 +230,38 @@ func (a *API) HasTemporal(label string) (bool, error) {
 		return false, err
 	}
 	return ops.HasTemporal(label)
+}
+
+// ListTemporal returns the labels carrying a temporal interval index, sorted
+// by name (the interval KIND, as HasTemporal). Backends without the listing
+// return store.ErrCapabilityNotSupported.
+func (a *API) ListTemporal() ([]string, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.ListTemporal()
+}
+
+// ListRelTemporal returns the relationship types carrying a temporal interval
+// index (CreateRelTemporal), sorted by name; none on tiered.
+func (a *API) ListRelTemporal() ([]string, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.ListRelTemporal()
+}
+
+// HasRelTemporal reports whether a temporal interval index exists on the
+// relationship type, the mirror of HasTemporal. Unregistered types return
+// false.
+func (a *API) HasRelTemporal(typeName string) (bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return false, err
+	}
+	return ops.HasRelTemporal(typeName)
 }
 
 // CreateRelTemporal creates a temporal interval index on relationships with

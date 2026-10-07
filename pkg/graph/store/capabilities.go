@@ -817,6 +817,16 @@ type TemporalIndexIntrospectionCapability interface {
 	HasTemporalIndex(labelToken uint16) (bool, error)
 }
 
+// TemporalIndexListingCapability is OPTIONAL: the label and relationship-type
+// tokens that carry a temporal interval index, ascending, for a planner or an
+// index listing (SHOW INDEXES) that would otherwise probe every label with
+// HasTemporalIndex and could not probe relationship types at all. A store
+// without relationship-type temporal indexes lists none.
+type TemporalIndexListingCapability interface {
+	TemporalIndexLabels() ([]uint16, error)
+	RelTemporalIndexTypes() ([]uint16, error)
+}
+
 // VectorIndexInfo is the declared configuration of a vector index — the read
 // side of VectorIndexOptions plus the two fields fixed at creation
 // (Dims/Metric) that CreateVectorWithOptions takes as separate parameters

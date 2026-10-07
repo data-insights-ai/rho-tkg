@@ -343,3 +343,41 @@ func (p testIndexProvider) Name() string {
 func (testIndexProvider) OnEvent(events.Event) error { return nil }
 
 func (testIndexProvider) Close() error { return nil }
+
+func (s *indexOpsSpy) ListTemporal() ([]string, error) {
+	s.record("ListTemporal")
+	return []string{"L"}, s.err
+}
+
+func (s *indexOpsSpy) ListRelTemporal() ([]string, error) {
+	s.record("ListRelTemporal")
+	return []string{"T"}, s.err
+}
+
+func (s *indexOpsSpy) HasRelTemporal(string) (bool, error) {
+	s.record("HasRelTemporal")
+	return true, s.err
+}
+
+func TestTemporalIndexListingForwards(t *testing.T) {
+	var nilAPI *API
+	if _, err := nilAPI.ListTemporal(); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil ListTemporal: %v", err)
+	}
+	if _, err := nilAPI.ListRelTemporal(); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil ListRelTemporal: %v", err)
+	}
+	if _, err := nilAPI.HasRelTemporal("T"); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil HasRelTemporal: %v", err)
+	}
+	api := New(&indexOpsSpy{})
+	if got, err := api.ListTemporal(); err != nil || len(got) != 1 || got[0] != "L" {
+		t.Fatalf("ListTemporal = %v %v", got, err)
+	}
+	if got, err := api.ListRelTemporal(); err != nil || len(got) != 1 || got[0] != "T" {
+		t.Fatalf("ListRelTemporal = %v %v", got, err)
+	}
+	if ok, err := api.HasRelTemporal("T"); err != nil || !ok {
+		t.Fatalf("HasRelTemporal = %v %v", ok, err)
+	}
+}
