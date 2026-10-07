@@ -217,6 +217,34 @@ type tieredColumnSnapshot struct {
 	epoch   uint64
 }
 
+// Len is the member count over every shard when each shard's snapshot reads
+// rows by position, else 0 (then RowAt has no rows; use Row or
+// ForEachDocValues).
+func (s *tieredColumnSnapshot) Len() int {
+	n := 0
+	for _, r := range s.readers {
+		rr, ok := r.(types.NodeColumnRowReader)
+		if !ok {
+			return 0
+		}
+		n += rr.Len()
+	}
+	return n
+}
+
+// RowAt reads position i of the shards' rows concatenated in shard-fold order
+// (types.NodeColumnRowReader); i outside 0..Len()-1 panics.
+func (s *tieredColumnSnapshot) RowAt(i int, vals []any, present []bool) types.NodeID {
+	for _, r := range s.readers {
+		rr := r.(types.NodeColumnRowReader)
+		if i < rr.Len() {
+			return rr.RowAt(i, vals, present)
+		}
+		i -= rr.Len()
+	}
+	panic("tiered column snapshot: row position out of range")
+}
+
 // Row dispatches to the first underlying shard reader that reports id as a
 // member. Returns false (buffers untouched) if no shard's snapshot has id.
 func (s *tieredColumnSnapshot) Row(id types.NodeID, vals []any, present []bool) bool {
@@ -256,3 +284,5 @@ func (ts *Store) RelMutationEpoch() uint64 {
 	}
 	return ts.mutationEpochs.RelMutationEpoch()
 }
+
+var _ types.NodeColumnRowReader = (*tieredColumnSnapshot)(nil)

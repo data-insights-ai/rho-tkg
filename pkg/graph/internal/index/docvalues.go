@@ -429,6 +429,12 @@ func (s *PointSnapshot[T]) Row(id T, vals []any, present []bool) bool {
 	if !ok {
 		return false
 	}
+	s.fill(ord, vals, present)
+	return true
+}
+
+// fill writes the bound columns' values at ord into vals/present.
+func (s *PointSnapshot[T]) fill(ord int, vals []any, present []bool) {
 	for i, c := range s.cols {
 		if !c.present.get(ord) {
 			vals[i], present[i] = nil, false
@@ -437,11 +443,21 @@ func (s *PointSnapshot[T]) Row(id T, vals []any, present []bool) bool {
 		present[i] = true
 		vals[i] = c.valueAt(ord)
 	}
-	return true
 }
 
 // Epoch is the snapshot's build epoch, for the consumer's Gate-2 staleness check.
 func (s *PointSnapshot[T]) Epoch() uint64 { return s.l.epoch }
+
+// Len is the number of members (rows) of the snapshot.
+func (s *PointSnapshot[T]) Len() int { return len(s.l.ids) }
+
+// RowAt fills vals/present for the member at ordinal i, as Row does for its
+// ID, and returns that ID (types.NodeColumnRowReader). Ordinals run in
+// ascending ID order; i outside 0..Len()-1 panics.
+func (s *PointSnapshot[T]) RowAt(i int, vals []any, present []bool) T {
+	s.fill(i, vals, present)
+	return s.l.ids[i]
+}
 
 // valueAt returns the typed Go value at an ordinal whose present bit is set. Both
 // arms are allocation-free in steady state: the boxed views are materialised once,

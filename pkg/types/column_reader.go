@@ -18,3 +18,20 @@ type NodeColumnReader interface {
 	Row(id NodeID, vals []any, present []bool) bool
 	Epoch() uint64
 }
+
+// NodeColumnRowReader is an OPTIONAL extension of NodeColumnReader a snapshot
+// may implement (type-assert it): its rows by position, so one snapshot can be
+// read in ranges by several workers at once (morsels), each taking
+// [lo, hi) of 0..Len()-1, instead of one ForEachDocValues pass from the start.
+//
+// Len is the snapshot's member count. RowAt fills vals/present for the member
+// at position i exactly as Row does for its ID, and returns that ID; i outside
+// 0..Len()-1 panics. Every member is at exactly one position; positions run in
+// ascending ID order on memory and badger snapshots (a tiered snapshot
+// concatenates its shards' rows, each shard ascending). Safe for concurrent
+// use; vals/present belong to the caller (one pair per worker).
+type NodeColumnRowReader interface {
+	NodeColumnReader
+	Len() int
+	RowAt(i int, vals []any, present []bool) NodeID
+}

@@ -25,6 +25,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`types.NodeColumnRowReader`: a column snapshot read by position, for scans split across
+  workers.** Requested by sigma-tkgd (task record C4c, store request 4: a column scan split into
+  morsels needs the column read from a row, and `ForEachDocValues` reads a label's column from its
+  start). An optional extension of `types.NodeColumnReader` that the snapshots of
+  `DocValuesSnapshot` / `DocValuesSnapshotAsOf` implement on memory, badger and tiered: `Len()` and
+  `RowAt(i, vals, present) NodeID` (the member at position i, filled as `Row` fills it; positions
+  ascending by ID on memory and badger, a tiered snapshot concatenates its shards'). Safe for
+  concurrent use with a buffer pair per worker. The interface `NodeColumnReader` is unchanged.
+  Measured (`BenchmarkDocValuesMorsels`, a sum over one column of 200,000 members on memory, three
+  runs, load 17–24, 16 CPUs): `ForEachDocValues` 1.00–1.03 ms (one cold run 2.9 ms), `RowAt` with
+  1 worker 1.29–1.30 ms, 4 workers 0.59–0.63 ms, 8 workers 0.39 ms. Tests:
+  `TestDocValuesSnapshotRowsByPosition` (memory, badger, tiered: every member once with the
+  streamed values, ascending where stated, four workers equal one, members without the property,
+  two-phase: a snapshot before an update keeps the old value at its position, one after has the
+  new; out of range panics; sharded has no column snapshot).
+
 - **`g.Nodes().ScanKeepsOrder(label)` / `g.Rels().ScanKeepsOrder(typeName)`: whether a streaming
   scan pays a sort.** Requested by sigma-tkgd (task record C3s open question 2, C4c store request 1:
   since v4.41 memory and badger walk a kept member order, while tiered, sharded and an on-disk label

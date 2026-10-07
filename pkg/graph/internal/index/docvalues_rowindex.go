@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"slices"
 	"sync"
+
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // rowIndex finds an entity's row in a snapshot's sorted ID vector by hashing
@@ -76,3 +78,5 @@ func (l *DocValues[T]) lookup(id T) (int, bool) {
 		h = (h + 1) & l.rows.mask
 	}
 }
+
+var _ types.NodeColumnRowReader = (*PointSnapshot[types.NodeID])(nil)
