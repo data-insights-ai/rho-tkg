@@ -99,6 +99,7 @@ func (bs *Store) scanNodeColumnsColumnar(token uint16, props []string, opts stor
 	}
 
 	ids, vf, vt := col.IDs(), col.ValidFrom(), col.ValidTo()
+	ords := bs.labelColumnOrdinals(token, col)
 	batch := newColumnBatch(len(props))
 	for i, v := range views {
 		batch.Kinds[i] = columnKindOf(v)
@@ -116,6 +117,7 @@ func (bs *Store) scanNodeColumnsColumnar(token uint16, props []string, opts stor
 				continue
 			}
 			batch.IDs = append(batch.IDs, ids[ord])
+			batch.Ordinals = append(batch.Ordinals, ords[ord])
 			batch.ValidFrom = append(batch.ValidFrom, vf[ord])
 			batch.ValidTo = append(batch.ValidTo, vt[ord])
 			for c, v := range views {
@@ -234,6 +236,7 @@ func appendFromView(b *storecontract.ColumnData, c int, v indexpkg.ColumnView, o
 func newColumnBatch(nCols int) *storecontract.ColumnBatch {
 	return &storecontract.ColumnBatch{
 		IDs:        make([]types.NodeID, 0, storecontract.ColumnScanBatchRows),
+		Ordinals:   make([]uint32, 0, storecontract.ColumnScanBatchRows),
 		ValidFrom:  make([]int64, 0, storecontract.ColumnScanBatchRows),
 		ValidTo:    make([]int64, 0, storecontract.ColumnScanBatchRows),
 		ColumnData: storecontract.NewColumnData(nCols),
@@ -242,6 +245,7 @@ func newColumnBatch(nCols int) *storecontract.ColumnBatch {
 
 func resetColumnBatch(b *storecontract.ColumnBatch, nCols int) {
 	b.IDs = b.IDs[:0]
+	b.Ordinals = b.Ordinals[:0]
 	b.ValidFrom = b.ValidFrom[:0]
 	b.ValidTo = b.ValidTo[:0]
 	for c := range nCols {

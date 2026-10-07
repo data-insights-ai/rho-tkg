@@ -33,6 +33,7 @@ func ScanColumnsFromNodes(nodes []*types.Node, props []string,
 	}
 	batch := &ColumnBatch{
 		IDs:        make([]types.NodeID, 0, ColumnScanBatchRows),
+		Ordinals:   make([]uint32, 0, ColumnScanBatchRows),
 		ValidFrom:  make([]int64, 0, ColumnScanBatchRows),
 		ValidTo:    make([]int64, 0, ColumnScanBatchRows),
 		ColumnData: NewColumnData(len(props)),
@@ -41,6 +42,7 @@ func ScanColumnsFromNodes(nodes []*types.Node, props []string,
 	cd := &batch.ColumnData
 	reset := func() {
 		batch.IDs = batch.IDs[:0]
+		batch.Ordinals = batch.Ordinals[:0]
 		batch.ValidFrom = batch.ValidFrom[:0]
 		batch.ValidTo = batch.ValidTo[:0]
 		batch.reset(len(props))
@@ -48,6 +50,7 @@ func ScanColumnsFromNodes(nodes []*types.Node, props []string,
 
 	for _, n := range nodes {
 		batch.IDs = append(batch.IDs, n.InternalID())
+		batch.Ordinals = append(batch.Ordinals, n.Ordinal())
 		// ValidRange, not Temporal(): the latter must copy the metadata for a frozen
 		// entity, and every entity a store scan hands back is frozen — one
 		// allocation per row across the whole scan.
@@ -124,6 +127,7 @@ func ScanColumnsFromRels(rels []*types.Relationship, props []string,
 	}
 	batch := &RelColumnBatch{
 		IDs:        make([]types.RelID, 0, ColumnScanBatchRows),
+		Ordinals:   make([]uint32, 0, ColumnScanBatchRows),
 		StartIDs:   make([]types.NodeID, 0, ColumnScanBatchRows),
 		EndIDs:     make([]types.NodeID, 0, ColumnScanBatchRows),
 		ValidFrom:  make([]int64, 0, ColumnScanBatchRows),
@@ -134,6 +138,7 @@ func ScanColumnsFromRels(rels []*types.Relationship, props []string,
 	cd := &batch.ColumnData
 	reset := func() {
 		batch.IDs = batch.IDs[:0]
+		batch.Ordinals = batch.Ordinals[:0]
 		batch.StartIDs = batch.StartIDs[:0]
 		batch.EndIDs = batch.EndIDs[:0]
 		batch.ValidFrom = batch.ValidFrom[:0]
@@ -143,6 +148,7 @@ func ScanColumnsFromRels(rels []*types.Relationship, props []string,
 
 	for _, r := range rels {
 		batch.IDs = append(batch.IDs, r.InternalID())
+		batch.Ordinals = append(batch.Ordinals, r.Ordinal())
 		batch.StartIDs = append(batch.StartIDs, r.StartNodeID())
 		batch.EndIDs = append(batch.EndIDs, r.EndNodeID())
 		vf, vt, _ := r.ValidRange()
@@ -325,6 +331,7 @@ func ScanColumnsFromRelSource(src RelColumnSource, nProps int, fn func(*RelColum
 	}
 	batch := &RelColumnBatch{
 		IDs:        make([]types.RelID, 0, ColumnScanBatchRows),
+		Ordinals:   make([]uint32, 0, ColumnScanBatchRows),
 		StartIDs:   make([]types.NodeID, 0, ColumnScanBatchRows),
 		EndIDs:     make([]types.NodeID, 0, ColumnScanBatchRows),
 		ValidFrom:  make([]int64, 0, ColumnScanBatchRows),
@@ -335,6 +342,7 @@ func ScanColumnsFromRelSource(src RelColumnSource, nProps int, fn func(*RelColum
 	cd := &batch.ColumnData
 	reset := func() {
 		batch.IDs = batch.IDs[:0]
+		batch.Ordinals = batch.Ordinals[:0]
 		batch.StartIDs = batch.StartIDs[:0]
 		batch.EndIDs = batch.EndIDs[:0]
 		batch.ValidFrom = batch.ValidFrom[:0]
@@ -344,6 +352,7 @@ func ScanColumnsFromRelSource(src RelColumnSource, nProps int, fn func(*RelColum
 	for i := 0; i < n; i++ {
 		id, start, end, vf, vt := src.Row(i)
 		batch.IDs = append(batch.IDs, id)
+		batch.Ordinals = append(batch.Ordinals, 0) // a declared segment type's rows carry none
 		batch.StartIDs = append(batch.StartIDs, start)
 		batch.EndIDs = append(batch.EndIDs, end)
 		batch.ValidFrom = append(batch.ValidFrom, vf)

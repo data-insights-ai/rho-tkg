@@ -25,6 +25,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`RelColumnBatch.Ordinals` / `ColumnBatch.Ordinals`: the column scans carry each row's dense
+  ordinal.** Requested by sigma-tkgd (task record C4d, store request 5: `ScanRelColumns` hands out a
+  type's endpoints without decoding the relationships, which a CSR build could read, but a
+  relationship's identity by its ID alone cost a lend per relationship). A slice parallel to `IDs`
+  in both batches, filled on every path: the row path from the rows (`Ordinal()`), badger's
+  columnar path from its ID → ordinal maps once per column snapshot (kept with the snapshot, which a
+  write to the label or type replaces), 0 for a declared segment type's rows and wherever the store
+  numbers none (tiered, badger `DisableOrdinals`). A new field: existing callers are unaffected.
+  Measured (`BenchmarkRelColumnOrdinals`, 36,000 relationships over 20,000 nodes, three runs, load
+  31–103): badger, the scan alone 1.08–1.22 ms before and 1.19–1.24 ms after (the ordinals are read
+  once per snapshot), the scan plus a `Lend` per relationship for its ordinal 136–167 ms, the scan's
+  `Ordinals` 1.25–1.42 ms; memory (row path) the scan 4.4–6.4 ms, plus a `Lend` per relationship
+  5.9–18.6 ms, with `Ordinals` 4.6–5.1 ms. Tests: `TestColumnScansCarryOrdinals` (memory row path,
+  badger columnar path, badger `DisableOrdinals`: more rows than one batch, node and relationship
+  scans equal `Lend`'s ordinal, unique; two-phase: after a delete and a new relationship the
+  survivors keep theirs, the deleted one is gone, the new one has its own),
+  `TestRelColumnScanSegmentTypeOrdinals` (a sealed segment type's rows carry 0).
+
 - **`g.Nodes().DocValuesColumn(label, key)`: what a DocValues column holds, without building it.**
   Requested by sigma-tkgd (task record C4c, store request 3: the host inferred a column's
   buildability from the value-class counts with its own copy of the build rule; it should be the

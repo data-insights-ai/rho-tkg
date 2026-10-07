@@ -534,6 +534,11 @@ type Store struct {
 	// (p:A:B)), keyed by the order-independent token-tuple key (MultiLabelKey).
 	// Same docMu guard + lock-free epoch-keyed build as docColumns.
 	docColumnsMulti map[string]*indexpkg.LabelDocValues
+	// colOrds keeps, per label and per relationship type, the ordinals of the
+	// rows of the column snapshot a column scan last read (aligned with its
+	// IDs), so the scan's Ordinals column costs the ID → ordinal lookups once
+	// per snapshot (badgerstore_ordinal.go). docMu guards it.
+	colOrds columnOrdinalCache
 
 	// Entity caches (internal sync, N-way sharded — see indexpkg.ShardedCache).
 	// Typed as the EntityCache interface so the concrete sharded implementation
@@ -1976,6 +1981,7 @@ func (bs *Store) Clear() error {
 	bs.docMu.Lock()
 	bs.docColumns = nil
 	bs.docColumnsMulti = nil
+	bs.colOrds = columnOrdinalCache{}
 	bs.docMu.Unlock()
 	bs.relIDs = make(map[types.RelID]struct{})
 	bs.relRevs = make(map[types.RelID]uint64)

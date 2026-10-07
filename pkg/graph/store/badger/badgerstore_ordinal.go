@@ -5,6 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
@@ -171,3 +172,83 @@ func (bs *Store) MaxRelOrdinal() uint32 {
 
 // HasOrdinals is false when the store was opened with DisableOrdinals.
 func (bs *Store) HasOrdinals() bool { return bs != nil && bs.ords != nil && !bs.ords.disabled }
+
+// columnOrdinalCache holds the ordinals of a column snapshot's rows per
+// label and per relationship type, keyed by the snapshot itself: a snapshot is
+// immutable and replaced on every write that could change its rows, and an
+// entity keeps its ordinal while it has a current row, so the ordinals of one
+// snapshot's rows never change.
+type columnOrdinalCache struct {
+	nodes map[uint16]snapshotOrdinals[types.NodeID]
+	rels  map[uint16]snapshotOrdinals[types.RelID]
+}
+
+type snapshotOrdinals[T indexpkg.EntityID] struct {
+	col  *indexpkg.DocValues[T]
+	ords []uint32
+}
+
+// labelColumnOrdinals returns the ordinals aligned with col.IDs(), from the
+// cache when col is the snapshot they were read for.
+func (bs *Store) labelColumnOrdinals(token uint16, col *indexpkg.LabelDocValues) []uint32 {
+	bs.docMu.Lock()
+	c, ok := bs.colOrds.nodes[token]
+	bs.docMu.Unlock()
+	if ok && c.col == col {
+		return c.ords
+	}
+	ords := bs.ords.nodeOrdinals(col.IDs(), make([]uint32, 0, col.Len()))
+	bs.docMu.Lock()
+	if bs.colOrds.nodes == nil {
+		bs.colOrds.nodes = make(map[uint16]snapshotOrdinals[types.NodeID])
+	}
+	bs.colOrds.nodes[token] = snapshotOrdinals[types.NodeID]{col: col, ords: ords}
+	bs.docMu.Unlock()
+	return ords
+}
+
+// relColumnOrdinals is labelColumnOrdinals for a relationship type's snapshot.
+func (bs *Store) relColumnOrdinals(token uint16, col *indexpkg.DocValues[types.RelID]) []uint32 {
+	bs.docMu.Lock()
+	c, ok := bs.colOrds.rels[token]
+	bs.docMu.Unlock()
+	if ok && c.col == col {
+		return c.ords
+	}
+	ords := bs.ords.relOrdinals(col.IDs(), make([]uint32, 0, col.Len()))
+	bs.docMu.Lock()
+	if bs.colOrds.rels == nil {
+		bs.colOrds.rels = make(map[uint16]snapshotOrdinals[types.RelID])
+	}
+	bs.colOrds.rels[token] = snapshotOrdinals[types.RelID]{col: col, ords: ords}
+	bs.docMu.Unlock()
+	return ords
+}
+
+// nodeOrdinals appends the ordinals of ids to out (0 for an ID without one, or
+// every ID when ordinals are off) under one read lock: the column scans' batch
+// fill.
+func (o *ordinals) nodeOrdinals(ids []types.NodeID, out []uint32) []uint32 {
+	if o == nil || o.disabled {
+		return append(out, make([]uint32, len(ids))...)
+	}
+	o.mu.RLock()
+	for _, id := range ids {
+		out = append(out, o.nodes[id])
+	}
+	o.mu.RUnlock()
+	return out
+}
+
+// relOrdinals is nodeOrdinals for relationships.
+func (o *ordinals) relOrdinals(ids []types.RelID, out []uint32) []uint32 {
+	if o == nil || o.disabled {
+		return append(out, make([]uint32, len(ids))...)
+	}
+	o.mu.RLock()
+	for _, id := range ids {
+		out = append(out, o.rels[id])
+	}
+	o.mu.RUnlock()
+	return out
+}

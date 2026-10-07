@@ -1089,6 +1089,10 @@ const (
 // that type's zero value.
 type ColumnBatch struct {
 	IDs []types.NodeID
+	// Ordinals is parallel to IDs: each node's dense ordinal
+	// (types.Node.Ordinal), 0 where the store numbers none (tiered, badger with
+	// DisableOrdinals).
+	Ordinals []uint32
 	// ValidFrom/ValidTo are parallel to IDs, in the same scan.
 	//
 	// A caller that only wanted property values would not need them — but a
@@ -1135,7 +1139,12 @@ type ColumnData struct {
 // Same contract as ColumnBatch: batches arrive in ID order, fn MUST NOT retain the
 // batch (slices are reused across calls), and returning false stops the scan.
 type RelColumnBatch struct {
-	IDs      []types.RelID
+	IDs []types.RelID
+	// Ordinals is parallel to IDs: each relationship's dense ordinal
+	// (types.Relationship.Ordinal, store.OrdinalCapability), so a consumer
+	// numbering relationships needs no read per row; 0 where the store numbers
+	// none (tiered, badger with DisableOrdinals, a declared segment type).
+	Ordinals []uint32
 	StartIDs []types.NodeID
 	EndIDs   []types.NodeID
 	// ValidFrom/ValidTo are parallel to IDs, for the same bitemporal reason as on
