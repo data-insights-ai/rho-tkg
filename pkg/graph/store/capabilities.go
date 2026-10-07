@@ -867,6 +867,42 @@ func (c PropertyTypeClassCounts) Present() int64 {
 	return c.Numeric + c.NaN + c.String + c.Bool + c.Other
 }
 
+// DocValuesColumn is what a label's DocValues snapshot (ForEachDocValues,
+// DocValuesSnapshot) holds for one property key, as nodes.API.DocValuesColumn
+// states it without building the column.
+type DocValuesColumn uint8
+
+const (
+	// DocValuesNone means no column: the values mix numbers and strings or hold
+	// a bool, list, map or struct, the label is empty or over the column cap,
+	// or the store has no column path. The DocValues doors decline (ok=false).
+	DocValuesNone DocValuesColumn = iota
+	// DocValuesNumeric is a numeric column (int64 and float64 kept apart; NaN
+	// and ±Inf included). Also a key no member carries: every row absent.
+	DocValuesNumeric
+	// DocValuesString is a dictionary-encoded string column.
+	DocValuesString
+)
+
+// DocValuesColumnOf is the DocValues build rule over a key's exact value-class
+// counts on a label of labelCount members: the single statement of what
+// ForEachDocValues builds (TestDocValuesColumnAgreesWithTheBuild pins the two
+// together). maxRows is the column cap (index.MaxDocValuesNodes).
+func DocValuesColumnOf(counts PropertyTypeClassCounts, labelCount, maxRows int) DocValuesColumn {
+	switch {
+	case labelCount <= 0 || labelCount > maxRows:
+		return DocValuesNone
+	case counts.Bool > 0 || counts.Other > 0:
+		return DocValuesNone
+	case counts.String > 0 && counts.Numeric+counts.NaN > 0:
+		return DocValuesNone
+	case counts.String > 0:
+		return DocValuesString
+	default:
+		return DocValuesNumeric
+	}
+}
+
 // NodePropertyTypeClassCountsCapability is OPTIONAL — the exact O(1)
 // type-class cardinality door for query planners (ordering-soundness gates
 // like "the gap between label count and numeric count is nulls only" need

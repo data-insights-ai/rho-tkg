@@ -25,6 +25,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`g.Nodes().DocValuesColumn(label, key)`: what a DocValues column holds, without building it.**
+  Requested by sigma-tkgd (task record C4c, store request 3: the host inferred a column's
+  buildability from the value-class counts with its own copy of the build rule; it should be the
+  store's word). Returns `store.DocValuesNumeric`, `DocValuesString` or `DocValuesNone` (values mix
+  numbers and strings or hold a bool, list, map or struct; an empty label or one over the column
+  cap; a store without the column path), derived from the exact value-class counters through
+  `store.DocValuesColumnOf`, the one statement of the build rule. Valid until the next node write;
+  `ok=false` when the store keeps no class counters (badger `DisablePlannerStats`, external stores).
+  Measured (`BenchmarkDocValuesColumn`, 20,000 nodes, one update before each answer, three runs,
+  load 31–37): the statement with the update 2.1–3.9 µs on memory, 4.7–19 µs on badger; finding out
+  by building the column after the same update 6.1–6.7 ms on memory, 25–28 ms and 19 MB on badger.
+  Tests: `TestDocValuesColumnAgreesWithTheBuild` (memory, badger, tiered: random mixes of integers,
+  floats, NaN, -Inf, strings, bools and lists per key over creates, updates, a property removal and
+  deletes; the statement equals what `ForEachDocValues` builds at every step, a numeric key turning
+  none with a string and back), `TestDocValuesColumnOf` (every branch of the rule),
+  `TestDocValuesColumnWithoutCounters`, `TestDocValuesColumnForwards`.
+
 - **`types.NodeColumnRowReader`: a column snapshot read by position, for scans split across
   workers.** Requested by sigma-tkgd (task record C4c, store request 4: a column scan split into
   morsels needs the column read from a row, and `ForEachDocValues` reads a label's column from its

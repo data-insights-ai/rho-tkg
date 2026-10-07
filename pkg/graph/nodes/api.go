@@ -27,6 +27,7 @@ type Ops interface {
 	Lend(ctx context.Context, id types.NodeID) (*types.Node, error)
 	MaxOrdinal() (uint32, bool, error)
 	ScanKeepsOrder(label string) (bool, error)
+	DocValuesColumn(label, propertyKey string) (storepkg.DocValuesColumn, bool, error)
 	GetByIDs(ids []types.NodeID) ([]*types.Node, error)
 	Update(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error)
 	UpdateInPlace(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error)
@@ -185,6 +186,20 @@ func (a *API) ScanKeepsOrder(label string) (bool, error) {
 		return false, err
 	}
 	return ops.ScanKeepsOrder(label)
+}
+
+// DocValuesColumn states, without building it, what ForEachDocValues /
+// DocValuesSnapshot build for the key on the label's nodes: a numeric or a
+// string column, or none (mixed or unsupported values, an empty or over-cap
+// label, no column path). Derived from the store's exact value-class counters
+// (store.DocValuesColumnOf); valid until the next node write. ok=false when the
+// store keeps no such counters.
+func (a *API) DocValuesColumn(label, propertyKey string) (storepkg.DocValuesColumn, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.DocValuesNone, false, err
+	}
+	return ops.DocValuesColumn(label, propertyKey)
 }
 
 // GetByIDs returns nodes for the given IDs.

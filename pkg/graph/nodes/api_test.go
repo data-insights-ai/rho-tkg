@@ -580,3 +580,18 @@ func TestScanKeepsOrderForwards(t *testing.T) {
 		t.Fatalf("ScanKeepsOrder = %v %v", ok, err)
 	}
 }
+
+func (s *nodeOpsSpy) DocValuesColumn(string, string) (storepkg.DocValuesColumn, bool, error) {
+	s.record("DocValuesColumn")
+	return storepkg.DocValuesString, true, s.err
+}
+
+func TestDocValuesColumnForwards(t *testing.T) {
+	var nilAPI *API
+	if _, _, err := nilAPI.DocValuesColumn("L", "k"); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil DocValuesColumn: %v", err)
+	}
+	if kind, ok, err := New(&nodeOpsSpy{}).DocValuesColumn("L", "k"); kind != storepkg.DocValuesString || !ok || err != nil {
+		t.Fatalf("DocValuesColumn = %v %v %v", kind, ok, err)
+	}
+}
