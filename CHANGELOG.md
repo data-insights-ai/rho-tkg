@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`GraphTx.AddNodes(labels, props)`: many nodes of one label set in one call inside a
+  transaction.** Requested by sigma-tkgd (task record C5a item 2c, C5b store request 1: UNWIND …
+  CREATE inside the statement's transaction pays one `GraphTx.AddNode` per row; the store's batch
+  writer writes outside the transaction). One node per element of `props`, returned in order, each
+  with AddNode's checks (labels, provenance and temporal shadow keys, the backfill gate, property
+  limits), its own ID, hash chain, a strictly increasing transaction time, a create event and the
+  transaction's rollback tracking; the labels are resolved once, the transaction's locks taken once,
+  and the nodes reach the store in one `PutNodesBatch`. All or nothing: an element that fails a check
+  fails the call before an ID is minted (the error names the element), a failed or panicking store
+  write removes what it wrote and restores a label the call introduced. Where a node needs a check
+  the batch cannot make — a unique-property constraint exists, or the transaction writes under a
+  scoped change-log token — the call runs AddNode per element: same results, no saving, and an error
+  stops at that element with the earlier nodes kept until the transaction rolls back. Not built: a
+  relationship mirror (`AddRelationships`); the request named node creates. Measured
+  (`BenchmarkTxCreateNodes`, 1,000 nodes of three properties per committed transaction, three runs,
+  load 10): memory `AddNode` loop 1.30–1.35 ms → `AddNodes` 1.09–1.14 ms (−16 %), badger 2.90 ms
+  (one run 3.49) → 2.54–2.67 ms (−10 %). The rest is the store's per-node work (badger: the row's
+  encode, the cache's frozen copy, label and property-key counters, the write queue), which a batch
+  does not remove. Tests: `TestGraphTxAddNodes` (all four backends: order, labels, IDs, hash chains,
+  increasing TxFrom, a per-element valid time, visible inside the tx, one create event per node in
+  order, `NodesAdded`), `TestGraphTxAddNodesRollback` (all removed, counter restored, ErrTxDone
+  after), `TestGraphTxAddNodesRejectsBeforeCreating`, `TestGraphTxAddNodesUniqueConstraint` (a
+  repeated value within the call fails at that element), `TestGraphTxAddNodesEmpty`, and in core
+  `TestAddNodesInternalRestoresLabels`, `TestAddNodesInternalStoreFailure` (written nodes removed,
+  the label restored, a failing cleanup reported), `TestAddNodesInternalPanic`,
+  `TestAddNodesInternalScopedAndCancelled`, `TestAddNodesInternalTemporalKeys`.
+
 ### Changed
 
 - **The memory store's node property doors hand out frozen rows, as every plural read.** Requested
