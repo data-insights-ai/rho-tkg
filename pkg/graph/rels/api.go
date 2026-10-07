@@ -54,6 +54,7 @@ type Ops interface {
 	ForEachOutgoing(nodeID types.NodeID, typeName string, fn func(*types.Relationship) bool) error
 	ForEachIncoming(nodeID types.NodeID, typeName string, fn func(*types.Relationship) bool) error
 	ForEachAdjacentEndpoint(nodeID types.NodeID, typeName string, incoming bool, fn func(rel types.RelID, other types.NodeID) bool) error
+	ForEachAdjacentEndpointOrdinal(nodeID types.NodeID, typeName string, incoming bool, fn func(rel types.RelID, relOrdinal uint32, other types.NodeID, otherOrdinal uint32) bool) error
 	ForEachAdjacentEndpointAt(nodeID types.NodeID, typeName string, incoming bool, opts storepkg.QueryOpts, fn func(rel types.RelID, other types.NodeID) bool) error
 	ForEachAdjacentRelAt(nodeID types.NodeID, typeName string, incoming bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 	OutgoingForNodes(nodeIDs []types.NodeID, typeName string) (map[types.NodeID][]*types.Relationship, error)
@@ -554,6 +555,20 @@ func (a *API) ForEachAdjacentEndpoint(nodeID types.NodeID, typeName string, inco
 		return err
 	}
 	return ops.ForEachAdjacentEndpoint(nodeID, typeName, incoming, fn)
+}
+
+// ForEachAdjacentEndpointOrdinal is ForEachAdjacentEndpoint with the dense
+// ordinals of each relationship and of its other endpoint (Relationship.Ordinal,
+// Node.Ordinal), read by the store while it walks the adjacency (memory: from
+// its rows; badger: from its RAM maps, no row decoded), so a traversal
+// numbering both needs no Lend per edge. 0 where the store numbers none or the
+// other endpoint has no current row. See core.RelOps.ForEachAdjacentEndpointOrdinal.
+func (a *API) ForEachAdjacentEndpointOrdinal(nodeID types.NodeID, typeName string, incoming bool, fn func(rel types.RelID, relOrdinal uint32, other types.NodeID, otherOrdinal uint32) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachAdjacentEndpointOrdinal(nodeID, typeName, incoming, fn)
 }
 
 // ForEachAdjacentEndpointAt streams (relID, otherEndpoint) for nodeID's

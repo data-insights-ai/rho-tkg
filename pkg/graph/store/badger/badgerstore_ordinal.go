@@ -252,3 +252,19 @@ func (o *ordinals) relOrdinals(ids []types.RelID, out []uint32) []uint32 {
 	o.mu.RUnlock()
 	return out
 }
+
+// adjacentOrdinals returns, for each adjacency entry, the relationship's and
+// the other endpoint's ordinal (pairs, in order), under one read lock.
+func (o *ordinals) adjacentOrdinals(metas []adjMeta) []uint32 {
+	out := make([]uint32, 2*len(metas))
+	if o == nil || o.disabled {
+		return out
+	}
+	o.mu.RLock()
+	for i, m := range metas {
+		out[2*i] = o.rels[m.rel]
+		out[2*i+1] = o.nodes[m.other]
+	}
+	o.mu.RUnlock()
+	return out
+}

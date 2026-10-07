@@ -105,6 +105,17 @@ type ScanOrderCapability interface {
 	TypeScanKeepsOrder(relTypeToken uint16) bool
 }
 
+// AdjacentEndpointOrdinalCapability is OPTIONAL: ForEachAdjacentEndpoint
+// with the dense ordinals (OrdinalCapability) of each relationship and of its
+// other endpoint, read by the store while it walks the adjacency, so a
+// consumer numbering nodes and relationships needs no read per edge. An
+// ordinal is 0 where the store numbers none or the other endpoint has no
+// current row any more. Order and isolation as ForEachAdjacentEndpoint.
+type AdjacentEndpointOrdinalCapability interface {
+	ForEachAdjacentEndpointOrdinal(nid types.NodeID, typeToken uint16, incoming bool,
+		fn func(rel types.RelID, relOrdinal uint32, other types.NodeID, otherOrdinal uint32) bool) error
+}
+
 // RelationshipCRUDCapability is the relationship-mutation surface.
 type RelationshipCRUDCapability interface {
 	PutRelationship(r *types.Relationship) error

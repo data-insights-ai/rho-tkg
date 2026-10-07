@@ -732,3 +732,20 @@ func TestScanKeepsOrderForwards(t *testing.T) {
 		t.Fatalf("ScanKeepsOrder = %v %v", ok, err)
 	}
 }
+
+func (s *relOpsSpy) ForEachAdjacentEndpointOrdinal(types.NodeID, string, bool, func(types.RelID, uint32, types.NodeID, uint32) bool) error {
+	s.record("ForEachAdjacentEndpointOrdinal")
+	return s.err
+}
+
+func TestForEachAdjacentEndpointOrdinalForwards(t *testing.T) {
+	var nilAPI *API
+	fn := func(types.RelID, uint32, types.NodeID, uint32) bool { return true }
+	if err := nilAPI.ForEachAdjacentEndpointOrdinal(1, "T", false, fn); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil: %v", err)
+	}
+	spy := &relOpsSpy{}
+	if err := New(spy).ForEachAdjacentEndpointOrdinal(1, "T", false, fn); err != nil {
+		t.Fatal(err)
+	}
+}

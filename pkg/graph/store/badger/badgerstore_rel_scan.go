@@ -184,6 +184,43 @@ func (bs *Store) ForEachAdjacentEndpoint(nid types.NodeID, typeToken uint16, inc
 	return nil
 }
 
+var _ storecontract.AdjacentEndpointOrdinalCapability = (*Store)(nil)
+
+// ForEachAdjacentEndpointOrdinal is ForEachAdjacentEndpoint with the dense
+// ordinals of each relationship and of its other endpoint, read from the RAM
+// ID → ordinal maps under one lock for the node's whole adjacency: no
+// relationship or node row is decoded. 0 where ordinals are off or the other
+// endpoint has no current row.
+func (bs *Store) ForEachAdjacentEndpointOrdinal(nid types.NodeID, typeToken uint16, incoming bool,
+	fn func(rel types.RelID, relOrdinal uint32, other types.NodeID, otherOrdinal uint32) bool) error {
+	if err := bs.checkOpen(); err != nil {
+		return err
+	}
+	if err := storecontract.ValidateNodeID(nid); err != nil {
+		return err
+	}
+	if err := bs.ensureNodeRowLive(nid); err != nil {
+		return err
+	}
+	bs.idxMu.RLock()
+	if _, ok := bs.nodeIDs[nid]; !ok {
+		bs.idxMu.RUnlock()
+		return ErrNodeNotFound
+	}
+	metas, err := bs.adjacentRelMetasSnapshotLocked(nid, typeToken, incoming)
+	bs.idxMu.RUnlock()
+	if err != nil || len(metas) == 0 {
+		return err
+	}
+	ords := bs.ords.adjacentOrdinals(metas)
+	for i, m := range metas {
+		if !fn(m.rel, ords[2*i], m.other, ords[2*i+1]) {
+			return nil
+		}
+	}
+	return nil
+}
+
 // typeScanIDs is the ID snapshot of ForEachRelByType: the type's kept
 // ascending member list (shared, read only), built from typeIdx when none is
 // kept. Takes and releases idxMu.

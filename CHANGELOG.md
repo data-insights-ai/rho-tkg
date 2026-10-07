@@ -25,6 +25,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`g.Rels().ForEachAdjacentEndpointOrdinal`: the adjacency hands out the relationship's and the
+  other endpoint's dense ordinal.** Requested by sigma-tkgd (task record C3s open question 4: the
+  host numbers relationships by ordinal but not nodes, because an endpoint's ordinal took a `Lend`
+  per endpoint, which cost more than the map it would replace; v4.41.0 left this door out).
+  `ForEachAdjacentEndpoint` with `(rel, relOrdinal, other, otherOrdinal)`: memory reads the
+  ordinals from the rows it holds, badger from its RAM ID → ordinal maps (no row decoded), each under
+  one lock per node's adjacency (new optional `store.AdjacentEndpointOrdinalCapability`); other
+  stores decode the relationships and lend the other endpoint. 0 where the store numbers none
+  (tiered, badger `DisableOrdinals`, a declared segment type's relationship) or the endpoint has no
+  current row. Not built: `Relationship.StartOrdinal` / `EndOrdinal` on the row (8 bytes per
+  relationship, and badger would have to look them up at every decode); this door serves the
+  traversal without them. Measured (`BenchmarkAdjacentEndpointOrdinals`, every node's outgoing
+  `KNOWS` over 20,000 nodes and 36,000 relationships, three runs at load 141–144, so absolute
+  times are inflated): badger, `ForEachAdjacentEndpoint` plus two `Lend`s per edge 273–389 ms →
+  91–116 ms, 121 → 36 MB; memory 7.1–13.2 ms → 6.0–10.0 ms (memory's `Lend` is already a map
+  lookup). Tests: `TestForEachAdjacentEndpointOrdinal` (all four backends: both directions, with and
+  without a type, the same pairs as `ForEachAdjacentEndpoint` with `Lend`'s ordinals; two-phase:
+  after a relationship delete and a node's cascading delete the rest keep theirs; unknown type,
+  missing node, nil callback, early stop), `TestForEachAdjacentEndpointOrdinalSegmentType`,
+  `TestForEachAdjacentEndpointOrdinalForwards`.
+
 - **`RelColumnBatch.Ordinals` / `ColumnBatch.Ordinals`: the column scans carry each row's dense
   ordinal.** Requested by sigma-tkgd (task record C4d, store request 5: `ScanRelColumns` hands out a
   type's endpoints without decoding the relationships, which a CSR build could read, but a
