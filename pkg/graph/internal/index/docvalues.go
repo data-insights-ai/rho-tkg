@@ -187,6 +187,11 @@ type DocValues[T EntityID] struct {
 	// the zero into zoneMaxTo as a literal 0 would make the block look like it ends
 	// at the epoch and silently drop live rows.
 	zoneOpenEnded []bool
+
+	// rows finds an ID's ordinal for point lookups (docvalues_rowindex.go),
+	// built on the first lookup. Contains a sync.Once: a DocValues is only ever
+	// handled by pointer.
+	rows rowIndex
 }
 
 // LabelDocValues is the node-keyed instantiation. Every existing caller names this
@@ -386,16 +391,6 @@ func (l *DocValues[T]) View(key string) (ColumnView, bool) {
 // IDs is the shared ordinal vector every column of this snapshot aligns to.
 // Immutable; callers must not write to it.
 func (l *DocValues[T]) IDs() []T { return l.ids }
-
-// lookup returns the ordinal of id via binary search on the sorted nodeIDs, or
-// (-1, false) if id is not a member. Uses the SAME comparator BuildLabelDocValues
-// sorted with (cmp.Compare on SnowflakeID) — a hand-rolled raw-int64 or unsigned
-// compare would disagree on the sort order and miss members (Pattern 12 sibling).
-func (l *DocValues[T]) lookup(id T) (int, bool) {
-	return slices.BinarySearchFunc(l.ids, id, func(a, target T) int {
-		return cmp.Compare(a.SnowflakeID(), target.SnowflakeID())
-	})
-}
 
 // PointSnapshot is a LabelDocValues bound to a fixed requested-property order for
 // RANDOM-ACCESS point lookups (the expand-aggregation target side). cols[i] is the

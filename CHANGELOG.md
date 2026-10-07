@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Performance
+
+- **A column snapshot's point lookup hashes the ID instead of binary-searching.** Requested by
+  sigma-tkgd (task record C4d, store request 6: `PointSnapshot.Row` binary-searched the label's
+  sorted IDs, 62 ns at 20,000 members, more than a lent row on memory, so the host's column lookup
+  lost to the row read there). `DocValuesSnapshot` / `DocValuesSnapshotAsOf` readers (and every
+  `DocValues` point lookup) now find a row through an open-addressing table of row positions keyed by
+  the mixed snowflake ID (linear probing, load ≤ 0.5), built once per snapshot on its first point
+  lookup under a `sync.Once` and immutable after, so a snapshot only scanned never builds it; fewer
+  than 64 rows still binary-search. Memory: 4 B per slot, 8–16 B per row of a looked-up snapshot.
+  Same answers (`TestRowIndexAgreesWithBinarySearch`: dense and sparse IDs, sizes around the
+  threshold up to 20,000, members and probes between, below and above them, node and relationship
+  vectors; `TestRowIndexConcurrentFirstLookups` under `-race`). Measured
+  (`BenchmarkDocValuesPointLookup`, 20,000 members, every member in turn, three runs each, load
+  28–40): memory 274–504 ns → 45–72 ns, badger 244–301 ns → 36–39 ns; a non-member 73–109 ns →
+  9–16 ns; no allocation either way.
+
 ### Added
 
 - **`g.Nodes().ScanKeepsOrder(label)` / `g.Rels().ScanKeepsOrder(typeName)`: whether a streaming
