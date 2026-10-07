@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **The memory store's node property doors hand out frozen rows, as every plural read.** Requested
+  by sigma-tkgd (task record C5b, store request 2: in `PerRow_MergeIdempotent/index/4000`, 0.81 of
+  1.71 s was `NodesByLabelProperty`'s deep copy per match). `memory.Store.NodesByLabelAndProperty`,
+  `NodesByLabelAndProperties` and `SearchNearestNodes` deep-copied every match; they now return the
+  store's shared frozen row, which is what badger already returned from the same doors and what the
+  plural-read contract (v4.5.0) states. So `g.Nodes().ByLabelAndProperty`, `ByLabelAndProperties`
+  and `g.Index().SearchNearest` on memory hand out frozen rows: a caller that mutated a result must
+  `DeepCopy()` first (mutators fail with `types.ErrFrozenNode`), the same rule as on badger.
+  Tiered and sharded keep the graph layer's validating copy. Measured
+  (`BenchmarkNodesByLabelAndProperty`, 20,000 indexed nodes, memory, three runs, load 12–16):
+  200 matches 36.7–37.7 µs, 87.6 KB, 1,005 allocations → 20.0–23.0 µs, 4.4 KB, 205; one match
+  280 ns, 464 B, 10 → 234–366 ns (the load), 48 B, 6. Tests:
+  `TestNodePropertyDoorsReturnFrozenRows` (all four backends: the property and composite doors,
+  frozen on memory and badger, two-phase: a row read before an update keeps its value, a read after
+  it has the new one; a phantom value returns nothing), `TestVectorSearchReturnsFrozenRows`.
+
 ## [4.41.0] - 2026-10-05
 
 Minor release: the sigma-tkgd store requests (C3d): dense ordinals of nodes and relationships

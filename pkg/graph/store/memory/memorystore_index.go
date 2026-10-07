@@ -388,7 +388,7 @@ func (ms *Store) nodesByLabelPropertiesFromIDs(labelToken uint16, values map[str
 			if hasTemporal && !storepkg.MatchesTemporalFilter(id.SnowflakeID(), n.Temporal(), opts) {
 				continue
 			}
-			result = append(result, n.DeepCopy())
+			result = append(result, n) // the frozen stored row, as every plural read
 			if opts.Limit > 0 && len(result) >= opts.Limit {
 				break
 			}
@@ -976,7 +976,7 @@ func (ms *Store) SearchNearestNodes(labelToken uint16, propertyKey string, query
 			if hasTemporal && !storepkg.MatchesTemporalFilter(id, n.Temporal(), opts) {
 				continue
 			}
-			result = append(result, n.DeepCopy())
+			result = append(result, n) // the frozen stored row, as every plural read
 		}
 	}
 	if len(result) == 0 {
@@ -1090,7 +1090,9 @@ func (ms *Store) SearchNearestFiltered(labelToken uint16, propertyKey string, qu
 // NodesByLabelAndProperty returns nodes matching the label and property value,
 // with optional pagination and temporal filtering. Uses the property index if
 // one exists; falls back to label scan + property filter.
-// Results are sorted by snowflake.ID for deterministic output.
+// Results are sorted by snowflake.ID for deterministic output. Rows are the
+// store's shared FROZEN entries, as for every plural read (through v4.41 this
+// door, NodesByLabelAndProperties and SearchNearestNodes deep-copied).
 func (ms *Store) NodesByLabelAndProperty(labelToken uint16, propKey string, value any, opts QueryOpts) ([]*types.Node, error) {
 	if ms == nil {
 		return nil, ErrNilStore
@@ -1174,7 +1176,7 @@ func (ms *Store) nodesByLabelPropertyFromIDs(labelToken uint16, propKey, targetK
 			if hasTemporal && !storepkg.MatchesTemporalFilter(id.SnowflakeID(), n.Temporal(), opts) {
 				continue
 			}
-			result = append(result, n.DeepCopy())
+			result = append(result, n) // the frozen stored row, as every plural read
 			if opts.Limit > 0 && len(result) >= opts.Limit {
 				break
 			}
