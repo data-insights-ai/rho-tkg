@@ -425,3 +425,18 @@ func TestRelTypeDegreeStatsForwards(t *testing.T) {
 		t.Fatalf("error = %v, want %v", err, opErr)
 	}
 }
+
+func (s *statsOpsSpy) ReadCosts() (storepkg.ReadCosts, bool, error) {
+	return storepkg.ReadCosts{Backend: "spy", LendHeld: 1}, true, s.relCountByTypeErr
+}
+
+func TestReadCostsForwards(t *testing.T) {
+	var nilAPI *API
+	if _, _, err := nilAPI.ReadCosts(); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil ReadCosts error = %v", err)
+	}
+	got, ok, err := New(&statsOpsSpy{}).ReadCosts()
+	if err != nil || !ok || got.Backend != "spy" || got.LendHeld != 1 {
+		t.Fatalf("ReadCosts = (%+v, %v, %v)", got, ok, err)
+	}
+}

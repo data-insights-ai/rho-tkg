@@ -546,6 +546,7 @@ type Store struct {
 	nodeCache indexpkg.EntityCache[*types.Node]
 	relCache  indexpkg.EntityCache[*types.Relationship]
 	resident  bool // ResidentCache: caches never evict; fetches skip LRU promotion
+	heldRows  int  // ReadCosts.HeldRows: the entity caches' entry capacity, -1 resident, 0 byte-budgeted
 
 	// Counters (atomic — persisted atomically via flush WriteBatch).
 	nodeCount atomic.Int64
@@ -990,6 +991,7 @@ func New(cfg Config) (*Store, error) {
 		nodeCache:               newNodeCache(capacity, cfg.CacheBudgetBytes),
 		relCache:                newRelCache(capacity, cfg.CacheBudgetBytes),
 		resident:                cfg.ResidentCache,
+		heldRows:                heldRowsOf(capacity, cfg.ResidentCache),
 		pending:                 make(map[string]writeOp),
 		propertyIndexes:         make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex),
 		relPropertyIndexes:      make(map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyIndex),

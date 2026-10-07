@@ -116,6 +116,34 @@ type AdjacentEndpointOrdinalCapability interface {
 		fn func(rel types.RelID, relOrdinal uint32, other types.NodeID, otherOrdinal uint32) bool) error
 }
 
+// ReadCosts is a store's statement of what its read doors cost through the
+// graph, in nanoseconds per row: nominal figures, the medians of
+// BenchmarkReadCosts (pkg/graph, one CPU, an Apple M4 Max, 4,000 and 20,000
+// nodes of four properties, 1.8 relationships per node) rounded to two
+// digits. They are magnitudes for a query planner to price access paths per
+// backend (a fetch on memory against one on badger differs a hundredfold),
+// not a promise for any machine.
+//
+// "Held" is a row the store keeps decoded in RAM, "decoded" one it reads from
+// its backing store. HeldRows says how many rows of each kind (nodes,
+// relationships) stay held: -1 every row, 0 a byte budget governs (the count
+// depends on the rows' size), n up to n rows per kind (per shard on tiered
+// and sharded).
+type ReadCosts struct {
+	Backend  string // "memory", "badger", "tiered", "sharded"
+	HeldRows int
+
+	LendHeld, LendDecoded                 float64 // a by-ID read (Lend)
+	ScanRowHeld, ScanRowDecoded           float64 // a streaming label or type scan, per row
+	AdjacencyRelHeld, AdjacencyRelDecoded float64 // ForEachOutgoing / ForEachIncoming, per relationship
+}
+
+// ReadCostCapability is OPTIONAL: the store's ReadCosts. A store without it
+// states none.
+type ReadCostCapability interface {
+	ReadCosts() ReadCosts
+}
+
 // RelationshipCRUDCapability is the relationship-mutation surface.
 type RelationshipCRUDCapability interface {
 	PutRelationship(r *types.Relationship) error

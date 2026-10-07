@@ -52,6 +52,7 @@ type Ops interface {
 	RelPropertyStats(typeName, propertyKey string) (storepkg.PropertyStats, error)
 	RelCountByType(typeName string) (int, error)
 	RelTypeDegreeStats(typeName string) (storepkg.RelTypeDegreeStats, error)
+	ReadCosts() (storepkg.ReadCosts, bool, error)
 	RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
 	RelRangeCardinality(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
 	AllLabelCounts() (map[string]int, error)
@@ -203,6 +204,20 @@ func (a *API) RelTypeDegreeStats(typeName string) (storepkg.RelTypeDegreeStats, 
 		return storepkg.RelTypeDegreeStats{}, err
 	}
 	return ops.RelTypeDegreeStats(typeName)
+}
+
+// ReadCosts returns the store's statement of what its read doors cost
+// through the graph, in nominal nanoseconds per row (a by-ID Lend, a
+// streaming scan, an adjacency walk), for a row held decoded in RAM and for
+// one read from the backing store, plus how many rows stay held
+// (store.ReadCosts). A query planner prices access paths per backend with it.
+// ok=false when the store states none.
+func (a *API) ReadCosts() (storepkg.ReadCosts, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.ReadCosts{}, false, err
+	}
+	return ops.ReadCosts()
 }
 
 // PropertyStats returns NDV (estimated distinct-value count via a

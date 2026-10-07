@@ -25,6 +25,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`g.Stats().ReadCosts()`: the backend's read costs, stated.** Requested by sigma-tkgd (task
+  record C4c, store request 2, and C4d: a node by ID costs 33 ns on memory and 1.9 µs on badger, a
+  label scan 7.5 against 800 ns per node, a CSR edge 101 against 462 ns, and the host could not tell
+  the backends apart, so one constant served both and its planner chose the column lookup where it
+  loses on memory and priced badger's CSR build at memory's). `store.ReadCosts`: the backend's kind,
+  `HeldRows` (how many rows of each kind stay decoded in RAM: -1 every row, 0 when a byte budget
+  governs, else the cache capacity, per shard on tiered and sharded) and nominal nanoseconds per
+  row for a `Lend`, a streaming label or type scan and an adjacency walk, each held and decoded. The
+  figures are the medians of the new `BenchmarkReadCosts` (one CPU, 4,000 and 20,000 nodes, two
+  runs at load 23–28, rounded to two digits): memory 20 / 10 / 80 (all held); badger held 35 / 17 /
+  130, decoded 3,300 / 1,300 / 3,200; tiered held 180 / 60 / 300, decoded 3,800 / 1,300 / 4,300;
+  sharded held 400 / 250 / 1,600, decoded 3,400 / 1,700 / 9,300 (sharded scans go through the
+  graph's validating copy). They are magnitudes to price access paths per backend, not a promise for
+  a machine; a decision the user may want to revisit is whether a measuring door (sampling the live
+  graph) should replace the constants. New optional `store.ReadCostCapability` on all four
+  backends; a store without it states none (`ok=false`). Tests: `TestReadCosts` (every backend's kind
+  and held rows, badger resident, byte-budgeted and default caches, decoded never below held, memory
+  below badger, a store stating none, a closed graph), `TestReadCostsForwards`.
+
 - **`g.Index().ListTemporal()`, `ListRelTemporal()`, `HasRelTemporal(typeName)`: the temporal
   interval indexes listed.** Asked by sigma-tkgd as a conditional request (task record C3r: its
   `CREATE TEMPORAL INDEX` DDL has no `SHOW INDEXES`, because the store had only `HasTemporal(label)`
