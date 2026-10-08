@@ -1196,6 +1196,13 @@ type RelColumnBatch struct {
 	Ordinals []uint32
 	StartIDs []types.NodeID
 	EndIDs   []types.NodeID
+	// StartOrdinals/EndOrdinals are parallel to IDs: the endpoints' dense
+	// ordinals (types.Relationship.StartOrdinal / EndOrdinal), so a consumer
+	// numbering nodes builds an adjacency by ordinal with no read per
+	// endpoint; 0 where the store numbers none (tiered, badger with
+	// DisableOrdinals, a declared segment type).
+	StartOrdinals []uint32
+	EndOrdinals   []uint32
 	// ValidFrom/ValidTo are parallel to IDs, for the same bitemporal reason as on
 	// ColumnBatch. Zero ValidTo means open-ended.
 	ValidFrom []int64

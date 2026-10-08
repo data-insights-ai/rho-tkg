@@ -47,6 +47,7 @@ func (bs *Store) decodeRelWireForKey(w storepkg.RelWire, expected snowflake.ID) 
 		return nil, fmt.Errorf("%w: relationship wire id %d does not match key %d", ErrInvalidStoreMutation, got, expected)
 	}
 	_ = r.SetOrdinal(bs.ords.rel(r.ID(), false)) // freshly decoded, not frozen
+	_ = r.SetEndpointOrdinals(bs.relEndpointOrdinals(r))
 	return r, nil
 }
 
@@ -58,5 +59,6 @@ func (bs *Store) decodeRelHistoryWireForKey(w storepkg.RelWire, expected snowfla
 	if err := storecontract.ValidateRelationshipHistoryKeySnapshot(types.RelID(expected), version, r); err != nil {
 		return nil, err
 	}
+	_ = r.SetEndpointOrdinals(0, 0) // a history row carries none
 	return r, nil
 }

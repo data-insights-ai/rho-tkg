@@ -146,7 +146,7 @@ These rules exist because every single one was violated at least once. Do not sk
 | File | Purpose |
 |---|---|
 | `node.go` | Node (graph vertex, 96B) — `nodeID` wrapping `snowflake.ID`, labels as `labelToken`, properties, version, temporal, integrity, compact frozen metadata, store-assigned dense ordinal (`ordinal.go`) |
-| `relationship.go` | Relationship (directed edge, 88B) — `relID`, `relTypeToken`, start/end as `nodeID`, properties, version, temporal, integrity, compact frozen metadata, store-assigned dense ordinal |
+| `relationship.go` | Relationship (directed edge, 96B) — `relID`, `relTypeToken`, start/end as `nodeID`, properties, version, temporal, integrity, compact frozen metadata, store-assigned dense ordinal and its endpoints' ordinals |
 | `compact.go` | `CompactFrozenCopy` (P7) — the compact frozen form stores cache: a first version's temporal + integrity metadata in one object (rel 96 B with the 32-byte hash as raw bytes, node 48 B), every accessor rebuilding the public structs exactly; any other shape keeps the ordinary objects |
 | `propertyslice.go` | Sorted key-value store with binary search; recursive exact-type allowlist validation aligned with hash/copy/wire support; depth-limited to 32 levels; `[]float32` support |
 | `shadow.go` | Constants for virtual read-only `tkg_*` properties |
@@ -225,7 +225,7 @@ Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID`
 - **snowflake.ID everywhere**: All IDs are `snowflake.ID` wrapped in opaque types (`nodeID`, `relID`, `entityID`). Never use `int64` or `string` for entity IDs.
 - **Dual generators**: Nodes use even node field (`SnowflakeNodeID*2`), rels use odd (`*2+1`). Guarantees value-level uniqueness. Range: 0-15 (16 instances). Epoch: `2026-01-01`.
 - **Strict encapsulation**: All fields unexported. Access through methods only.
-- **Struct alignment**: Node (96B), Relationship (88B) packed by descending alignment. Verify with `unsafe.Sizeof`. The dense ordinal (v4.41) fills Node's 96 B size class at no cost and moves Relationship from the 80 B to the 96 B class (+16 B per row).
+- **Struct alignment**: Node (96B), Relationship (96B) packed by descending alignment. Verify with `unsafe.Sizeof`. The dense ordinal (v4.41) fills Node's 96 B size class at no cost and moves Relationship from the 80 B to the 96 B class (+16 B per row); the endpoints' ordinals fill the rest of that class (88 → 96 B, no allocation change).
 - **Token 0 reserved**: `HasLabelToken(0)` and `HasTypeToken(0)` always return false.
 - **Validate before generating IDs**: `AddNode`/`AddRelationship` validate before `NextNodeID()`/`NextRelID()`.
 - **Validate names before unrelated work**: label/type mutation inputs, registry token helpers, imported registries, and rehydrated registries reject empty, whitespace-only, and overlong names before property validation, entity lookup, registry lookup, transaction snapshots, ID generation, token allocation, or store writes. Boolean name helpers fail closed for malformed names.

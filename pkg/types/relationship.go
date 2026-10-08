@@ -28,9 +28,11 @@ func (id RelID) SnowflakeID() snowflake.ID { return snowflake.ID(id) }
 // All fields are unexported; access is through methods only.
 //
 // Layout: fields are ordered by descending alignment to eliminate internal
-// padding. 8-byte fields first, then 4-byte, then 2-byte. Total: 80 bytes,
-// the allocator's size class for the former 72-byte layout, so the compact
-// metadata pointer (P7) costs nothing per object.
+// padding. 8-byte fields first, then 4-byte, then 2-byte. Total: 96 bytes.
+// The compact metadata pointer (P7) fit the 80-byte size class of the former
+// 72-byte layout; the dense ordinal (v4.41) moved the struct to 88 bytes in
+// the 96-byte class, and the endpoints' ordinals fill that class, so they
+// cost nothing per object.
 type Relationship struct {
 	id         RelID             // 8B, offset  0
 	startID    NodeID            // 8B, offset  8
@@ -47,7 +49,11 @@ type Relationship struct {
 	// in place (ownProperties).
 	sharedProps bool // 1B, offset 79
 	// ordinal: the store-assigned dense ordinal (ordinal.go); 0 = none.
-	ordinal uint32 // 4B, offset 80 → 88B total (allocator size class 96: +16B over the former 80B)
+	ordinal uint32 // 4B, offset 80
+	// startOrdinal, endOrdinal: the endpoints' store-assigned dense ordinals
+	// on a current row the store keeps (ordinal.go); 0 = none.
+	startOrdinal uint32 // 4B, offset 84
+	endOrdinal   uint32 // 4B, offset 88 → 96B total, the allocator size class the 88B layout already used
 }
 
 // NewRelationship creates a Relationship with typed IDs for all parties.
@@ -466,6 +472,9 @@ func (r *Relationship) DeepCopy() *Relationship {
 		relType: r.relType,
 		version: r.version,
 		ordinal: r.ordinal,
+
+		startOrdinal: r.startOrdinal,
+		endOrdinal:   r.endOrdinal,
 	}
 	cp.properties = r.properties.DeepCopy()
 	if r.meta != nil {

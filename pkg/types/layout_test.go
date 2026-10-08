@@ -18,7 +18,7 @@ func TestNodeStructSize(t *testing.T) {
 func TestRelationshipStructSize(t *testing.T) {
 	t.Parallel()
 
-	const want = 88 // P7: + the compact frozen metadata pointer; v4.41: + the dense ordinal (size class 96)
+	const want = 96 // P7: + the compact frozen metadata pointer; v4.41: + the dense ordinal; + the endpoints' ordinals (all in the 96 B size class)
 	got := unsafe.Sizeof(Relationship{})
 	if got != want {
 		t.Fatalf("Relationship struct size = %d bytes, want %d bytes", got, want)

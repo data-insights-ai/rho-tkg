@@ -67,10 +67,13 @@ type ordinals struct {
 	rels     map[types.RelID]uint32
 	alloc    *OrdinalAllocator
 	disabled bool
+	// foreign resolves an endpoint this store holds no ordinal for
+	// (Config.ForeignNodeOrdinal); nil = 0.
+	foreign func(types.NodeID) uint32
 }
 
 func newOrdinals(cfg Config) *ordinals {
-	o := &ordinals{alloc: cfg.SharedOrdinals, disabled: cfg.DisableOrdinals}
+	o := &ordinals{alloc: cfg.SharedOrdinals, disabled: cfg.DisableOrdinals, foreign: cfg.ForeignNodeOrdinal}
 	if o.alloc == nil {
 		o.alloc = &OrdinalAllocator{}
 	}
@@ -170,6 +173,46 @@ func (bs *Store) MaxRelOrdinal() uint32 {
 	return bs.ords.alloc.MaxRelOrdinal()
 }
 
+// NodeOrdinal returns the dense ordinal of a node this store holds a current
+// row for, 0 otherwise (or with DisableOrdinals). It reads this store's map
+// only, never Config.ForeignNodeOrdinal: the sharded store's slots resolve
+// each other's endpoints through it.
+func (bs *Store) NodeOrdinal(id types.NodeID) uint32 {
+	if bs == nil {
+		return 0
+	}
+	return bs.ords.node(id, false)
+}
+
+// endpointNodeOrdinal is the ordinal of a relationship's endpoint: this
+// store's, else the one Config.ForeignNodeOrdinal states for a node held
+// elsewhere.
+func (bs *Store) endpointNodeOrdinal(id types.NodeID) uint32 {
+	if ord := bs.ords.node(id, false); ord != 0 {
+		return ord
+	}
+	return bs.foreignNodeOrdinal(id)
+}
+
+// foreignNodeOrdinal asks Config.ForeignNodeOrdinal; 0 without one.
+func (bs *Store) foreignNodeOrdinal(id types.NodeID) uint32 {
+	o := bs.ords
+	if o == nil || o.disabled || o.foreign == nil {
+		return 0
+	}
+	return o.foreign(id)
+}
+
+// relEndpointOrdinals returns the ordinals of r's endpoints, the values a
+// current row the store keeps or hands out carries.
+func (bs *Store) relEndpointOrdinals(r *types.Relationship) (start, end uint32) {
+	start = bs.endpointNodeOrdinal(r.StartNodeID())
+	if r.EndNodeID() == r.StartNodeID() {
+		return start, start
+	}
+	return start, bs.endpointNodeOrdinal(r.EndNodeID())
+}
+
 // HasOrdinals is false when the store was opened with DisableOrdinals.
 func (bs *Store) HasOrdinals() bool { return bs != nil && bs.ords != nil && !bs.ords.disabled }
 
@@ -186,6 +229,9 @@ type columnOrdinalCache struct {
 type snapshotOrdinals[T indexpkg.EntityID] struct {
 	col  *indexpkg.DocValues[T]
 	ords []uint32
+	// starts/ends: a relationship snapshot's endpoints' ordinals, aligned
+	// like ords (nil for a label's snapshot).
+	starts, ends []uint32
 }
 
 // labelColumnOrdinals returns the ordinals aligned with col.IDs(), from the
@@ -207,22 +253,49 @@ func (bs *Store) labelColumnOrdinals(token uint16, col *indexpkg.LabelDocValues)
 	return ords
 }
 
-// relColumnOrdinals is labelColumnOrdinals for a relationship type's snapshot.
-func (bs *Store) relColumnOrdinals(token uint16, col *indexpkg.DocValues[types.RelID]) []uint32 {
+// relColumnOrdinals is labelColumnOrdinals for a relationship type's
+// snapshot, with its endpoints' ordinals (starts, ends: the node IDs of the
+// snapshot's reserved endpoint columns, aligned with its IDs). An endpoint
+// keeps its ordinal while the relationship is current, so they are read once
+// per snapshot like the relationships' own.
+func (bs *Store) relColumnOrdinals(token uint16, col *indexpkg.DocValues[types.RelID], startIDs, endIDs []int64) (ords, starts, ends []uint32) {
 	bs.docMu.Lock()
 	c, ok := bs.colOrds.rels[token]
 	bs.docMu.Unlock()
 	if ok && c.col == col {
-		return c.ords
+		return c.ords, c.starts, c.ends
 	}
-	ords := bs.ords.relOrdinals(col.IDs(), make([]uint32, 0, col.Len()))
+	ords = bs.ords.relOrdinals(col.IDs(), make([]uint32, 0, col.Len()))
+	starts = bs.endpointOrdinals(startIDs)
+	ends = bs.endpointOrdinals(endIDs)
 	bs.docMu.Lock()
 	if bs.colOrds.rels == nil {
 		bs.colOrds.rels = make(map[uint16]snapshotOrdinals[types.RelID])
 	}
-	bs.colOrds.rels[token] = snapshotOrdinals[types.RelID]{col: col, ords: ords}
+	bs.colOrds.rels[token] = snapshotOrdinals[types.RelID]{col: col, ords: ords, starts: starts, ends: ends}
 	bs.docMu.Unlock()
-	return ords
+	return ords, starts, ends
+}
+
+// endpointOrdinals returns the node ordinals of the raw node IDs of a
+// relationship snapshot's endpoint column.
+func (bs *Store) endpointOrdinals(raw []int64) []uint32 {
+	out := make([]uint32, len(raw))
+	o := bs.ords
+	if o == nil || o.disabled {
+		return out
+	}
+	o.mu.RLock()
+	for i, id := range raw {
+		out[i] = o.nodes[types.NodeID(id)]
+	}
+	o.mu.RUnlock()
+	for i, id := range raw {
+		if out[i] == 0 {
+			out[i] = bs.foreignNodeOrdinal(types.NodeID(id))
+		}
+	}
+	return out
 }
 
 // nodeOrdinals appends the ordinals of ids to out (0 for an ID without one, or

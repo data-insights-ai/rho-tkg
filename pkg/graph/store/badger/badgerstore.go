@@ -328,6 +328,13 @@ type Config struct {
 	// ordinals from instead of its own, so several stores never hand out
 	// the same ordinal (the sharded store's slots share one).
 	SharedOrdinals *OrdinalAllocator
+	// ForeignNodeOrdinal, when non-nil, states the dense ordinal of a node
+	// this store holds no current row for, so a relationship whose endpoint
+	// lives in another store of the same owner carries that endpoint's
+	// ordinal (types.Relationship.StartOrdinal / EndOrdinal). The sharded
+	// store sets it to look the node up in its owning slot. It must not call
+	// back into this store's ordinal state; nil states 0.
+	ForeignNodeOrdinal func(types.NodeID) uint32
 	// PropertyKeyRegistry, when non-nil, is the property-key token registry the
 	// store uses to tokenize on write and resolve tokens on read — supplied by
 	// an owner (e.g. the tiered store) that holds ONE canonical registry for all

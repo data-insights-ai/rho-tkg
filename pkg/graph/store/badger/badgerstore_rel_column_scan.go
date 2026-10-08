@@ -82,7 +82,7 @@ func (bs *Store) scanRelColumnsColumnar(token uint16, props []string, opts store
 	}
 
 	ids, vf, vt := col.IDs(), col.ValidFrom(), col.ValidTo()
-	ords := bs.relColumnOrdinals(token, col)
+	ords, startOrds, endOrds := bs.relColumnOrdinals(token, col, startView.Ints, endView.Ints)
 	batch := newRelColumnBatch(len(props))
 	for i, v := range views {
 		batch.Kinds[i] = columnKindOf(v)
@@ -101,6 +101,8 @@ func (bs *Store) scanRelColumnsColumnar(token uint16, props []string, opts store
 			}
 			batch.IDs = append(batch.IDs, ids[ord])
 			batch.Ordinals = append(batch.Ordinals, ords[ord])
+			batch.StartOrdinals = append(batch.StartOrdinals, startOrds[ord])
+			batch.EndOrdinals = append(batch.EndOrdinals, endOrds[ord])
 			batch.StartIDs = append(batch.StartIDs, types.NodeID(startView.Ints[ord]))
 			batch.EndIDs = append(batch.EndIDs, types.NodeID(endView.Ints[ord]))
 			batch.ValidFrom = append(batch.ValidFrom, vf[ord])
@@ -121,19 +123,24 @@ func (bs *Store) scanRelColumnsColumnar(token uint16, props []string, opts store
 
 func newRelColumnBatch(nCols int) *storecontract.RelColumnBatch {
 	return &storecontract.RelColumnBatch{
-		IDs:        make([]types.RelID, 0, storecontract.ColumnScanBatchRows),
-		Ordinals:   make([]uint32, 0, storecontract.ColumnScanBatchRows),
-		StartIDs:   make([]types.NodeID, 0, storecontract.ColumnScanBatchRows),
-		EndIDs:     make([]types.NodeID, 0, storecontract.ColumnScanBatchRows),
-		ValidFrom:  make([]int64, 0, storecontract.ColumnScanBatchRows),
-		ValidTo:    make([]int64, 0, storecontract.ColumnScanBatchRows),
-		ColumnData: storecontract.NewColumnData(nCols),
+		IDs:      make([]types.RelID, 0, storecontract.ColumnScanBatchRows),
+		Ordinals: make([]uint32, 0, storecontract.ColumnScanBatchRows),
+		StartIDs: make([]types.NodeID, 0, storecontract.ColumnScanBatchRows),
+
+		StartOrdinals: make([]uint32, 0, storecontract.ColumnScanBatchRows),
+		EndOrdinals:   make([]uint32, 0, storecontract.ColumnScanBatchRows),
+		EndIDs:        make([]types.NodeID, 0, storecontract.ColumnScanBatchRows),
+		ValidFrom:     make([]int64, 0, storecontract.ColumnScanBatchRows),
+		ValidTo:       make([]int64, 0, storecontract.ColumnScanBatchRows),
+		ColumnData:    storecontract.NewColumnData(nCols),
 	}
 }
 
 func resetRelColumnBatch(b *storecontract.RelColumnBatch, nCols int) {
 	b.IDs = b.IDs[:0]
 	b.Ordinals = b.Ordinals[:0]
+	b.StartOrdinals = b.StartOrdinals[:0]
+	b.EndOrdinals = b.EndOrdinals[:0]
 	b.StartIDs = b.StartIDs[:0]
 	b.EndIDs = b.EndIDs[:0]
 	b.ValidFrom = b.ValidFrom[:0]

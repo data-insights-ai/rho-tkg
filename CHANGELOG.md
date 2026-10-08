@@ -83,6 +83,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestAddRelationshipsInternalPanic` (registry and endpoint locks released),
   `TestAddRelationshipsInternalScopedAndCancelled`, `TestAddRelationshipsInternalTemporalKeys`.
 
+- **`types.Relationship.StartOrdinal()` / `EndOrdinal()` and `RelColumnBatch.StartOrdinals` /
+  `EndOrdinals`: the endpoints' dense ordinals on the row and in the column scan.** Requested by
+  sigma-tkgd (task record C3s open question 4 and planner variants part 2, store request 2: the
+  host numbers relationships by ordinal but resolves each endpoint's ordinal with a `Lend`, so its
+  domain and CSR builds pay two lookups per relationship; v4.42.0 left the row fields out at 8
+  bytes per row). The 8 bytes cost nothing: `Relationship` grows from 88 to 96 bytes, the 96-byte
+  allocator class it already used (`TestEndpointOrdinalsCopiesAndFreezes` checks the size). On the
+  current rows a store keeps and hands out (point reads, `Lend`, scans, adjacency) the values equal
+  `Nodes().Lend(start/end).Ordinal()`: memory sets them when it stores the row, from the endpoints'
+  rows (an endpoint keeps its ordinal while it has a current row, and a current relationship's
+  endpoints have theirs); badger at every decode and cache fill from its RAM ID → ordinal maps (two
+  map reads; the column scan reads a snapshot's endpoint ordinals once and keeps them with the
+  snapshot, like `Ordinals`); sharded resolves an endpoint held by another slot through that slot
+  (new `badger.Config.ForeignNodeOrdinal`, set by the sharded store; `badger.Store.NodeOrdinal`
+  reads one store's map). 0 on history rows, where the store numbers none (tiered, badger
+  `DisableOrdinals`), on a declared segment type's rows, for an endpoint the store holds no current
+  row for, and on rows returned by create doors. Copies (`DeepCopy`, `CompactFrozenCopy`) keep them;
+  `SetEndpointOrdinals`, `CompactFrozenCopyWithOrdinals` and `DeepCopyWithOrdinals` are for store
+  implementations. Not persisted, hashed or exported. Measured (`BenchmarkRelEndpointOrdinals`, a
+  CSR-style build by node ordinal over 36,000 relationships of 20,000 nodes, three runs at load
+  27–36, so absolute times are inflated): badger, the column scan plus two `Lend`s per relationship
+  181–310 ms and 75–89 MB → the batch's `StartOrdinals` / `EndOrdinals` 1.2–2.1 ms and 0.6 MB; the
+  row scan plus two `Lend`s 171–215 ms → the rows' accessors 68–91 ms (the rest is the decode of
+  rows beyond the cache); memory, the column scan plus `Lend`s 7.1–8.8 ms → 4.6–5.0 ms, the row scan
+  plus `Lend`s 4.1–4.3 ms → 1.0–1.8 ms. A badger decode (`BenchmarkRelDecodeGet`, `Rels().Get` of
+  36,000 relationships through an 8-entry cache, base and head interleaved) 104–167 ms before and
+  101–141 ms after (one run 394 ms under the load), allocations unchanged: the two lookups are
+  below the noise. Tests: `TestRelEndpointOrdinals` (all four backends; every read door and the
+  column batches against `Lend`; sharded with every endpoint on another slot; a self-loop; two-phase:
+  after a delete, an update and new writes the survivors keep theirs, a history row carries 0),
+  `TestRelEndpointOrdinalsAfterReopen` (badger and sharded directories, renumbered on open),
+  `TestRelEndpointOrdinalsDisabled`, `TestRelEndpointOrdinalsSegmentType` (memtable and sealed),
+  `TestEndpointOrdinalsCopiesAndFreezes`.
+
 ## [4.42.0] - 2026-10-08
 
 Minor release: the sigma-tkgd store requests, round 2 (Cypher port onto the shared IR):

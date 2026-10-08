@@ -25,6 +25,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -212,6 +213,10 @@ type Store struct {
 	// ordinals is the one dense-ordinal allocator every shard draws from
 	// (badger.Config.SharedOrdinals), so no two slots hand out the same one.
 	ordinals badger.OrdinalAllocator
+	// opened is set once every shard is open: from then on a shard resolves
+	// a relationship endpoint held by another slot through that slot
+	// (endpointOrdinal, badger.Config.ForeignNodeOrdinal).
+	opened atomic.Bool
 
 	// propKeyReg tracks the canonical property-key registry currently installed
 	// on every shard so SetPropertyKeyRegistry reaches all of them.
@@ -327,13 +332,30 @@ func New(cfg Config) (*Store, error) {
 		return nil, err
 	}
 
+	s.opened.Store(true)
 	return s, nil
+}
+
+// endpointOrdinal is every shard's badger.Config.ForeignNodeOrdinal: the
+// dense ordinal of a node in the slot that owns it (ordinals are drawn from
+// the one shared allocator, so they are unique across slots), 0 while the
+// shards are still opening or for a slot this store does not claim.
+func (s *Store) endpointOrdinal(id types.NodeID) uint32 {
+	if !s.opened.Load() {
+		return 0
+	}
+	shard, err := s.shardForNodeID(id)
+	if err != nil || shard == nil {
+		return 0
+	}
+	return shard.NodeOrdinal(id)
 }
 
 // shardConfig builds the per-shard badger.Config for shard index k.
 func (s *Store) shardConfig(cfg Config, k uint8, reg *registrypkg.PropertyKeyRegistry) badger.Config {
 	bc := badger.Config{
 		SharedOrdinals:        &s.ordinals,
+		ForeignNodeOrdinal:    s.endpointOrdinal,
 		InMemory:              cfg.InMemory,
 		Compression:           cfg.Compression,
 		ZSTDCompressionLevel:  cfg.ZSTDCompressionLevel,

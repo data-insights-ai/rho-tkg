@@ -137,6 +137,9 @@ func (r *Relationship) CompactFrozenCopy() *Relationship {
 		properties: r.properties,
 		frozen:     true,
 		ordinal:    r.ordinal,
+
+		startOrdinal: r.startOrdinal,
+		endOrdinal:   r.endOrdinal,
 	}
 	// The properties are shared, not copied: the frozen copy never writes
 	// them, and an unfrozen source copies them before its next in-place

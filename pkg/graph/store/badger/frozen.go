@@ -34,7 +34,8 @@ func (bs *Store) frozenNodeRowForCache(n *types.Node, owned bool) *types.Node {
 
 // frozenRelRow is the relationship counterpart of frozenNodeRow.
 func (bs *Store) frozenRelRow(r *types.Relationship) *types.Relationship {
-	cp := r.DeepCopyWithOrdinal(bs.ords.rel(r.ID(), true))
+	start, end := bs.relEndpointOrdinals(r)
+	cp := r.DeepCopyWithOrdinals(bs.ords.rel(r.ID(), true), start, end)
 	cp.Freeze()
 	return cp
 }

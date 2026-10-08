@@ -16,8 +16,11 @@ var _ storecontract.OrdinalCapability = (*Store)(nil)
 // Every write of a current or history row goes through storedNode /
 // storedRel / historyNode / historyRel, under ms.mu held exclusively.
 //
+// A current relationship row also carries its endpoints' ordinals
+// (storedRel); a history row carries none.
+//
 // Not covered: a relationship of a declared segment type (ADR-0011) carries
-// 0 — its sealed rows are columns, not rows, and a row that moves between
+// 0 (its own and its endpoints') — its sealed rows are columns, not rows, and a row that moves between
 // the memtable and a segment would change ordinal.
 
 // MaxNodeOrdinal returns the largest node ordinal handed out (0 for none or a
@@ -89,9 +92,19 @@ func (ms *Store) storedNode(n *types.Node) *types.Node {
 	return n.CompactFrozenCopyWithOrdinal(ms.nodeOrdinalLocked(n.ID()))
 }
 
-// storedRel is the frozen current row the store keeps for r.
+// storedRel is the frozen current row the store keeps for r, carrying its
+// endpoints' ordinals from their current rows (0 for a declared segment type,
+// whose rows carry no ordinal, and for an endpoint the store holds no current
+// row for). An endpoint keeps its ordinal while it has a current row, and a
+// current relationship's endpoints have theirs, so the stored values stay
+// right for the row's life.
 func (ms *Store) storedRel(r *types.Relationship) *types.Relationship {
-	return r.CompactFrozenCopyWithOrdinal(ms.relOrdinalLocked(r.ID(), r.TypeToken().Value()))
+	ord := ms.relOrdinalLocked(r.ID(), r.TypeToken().Value())
+	var start, end uint32
+	if ms.segTypes[r.TypeToken().Value()] == nil {
+		start, end = ms.nodes[r.StartNodeID()].Ordinal(), ms.nodes[r.EndNodeID()].Ordinal()
+	}
+	return r.CompactFrozenCopyWithOrdinals(ord, start, end)
 }
 
 // historyNode is the history row the store keeps for a version of n.
@@ -101,7 +114,7 @@ func (ms *Store) historyNode(n *types.Node) *types.Node {
 
 // historyRel is the history row the store keeps for a version of r.
 func (ms *Store) historyRel(r *types.Relationship) *types.Relationship {
-	return r.DeepCopyWithOrdinal(ms.relOrdinalLocked(r.ID(), r.TypeToken().Value()))
+	return r.DeepCopyWithOrdinals(ms.relOrdinalLocked(r.ID(), r.TypeToken().Value()), 0, 0)
 }
 
 // HasOrdinals is true: the memory store numbers every node and every

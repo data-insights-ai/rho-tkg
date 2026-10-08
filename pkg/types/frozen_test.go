@@ -15,8 +15,8 @@ func TestFrozen_FlagFitsInPadding(t *testing.T) {
 	if s := unsafe.Sizeof(Node{}); s != 96 {
 		t.Fatalf("Node grew to %d bytes (want 96)", s)
 	}
-	if s := unsafe.Sizeof(Relationship{}); s != 88 {
-		t.Fatalf("Relationship grew to %d bytes (want 88)", s)
+	if s := unsafe.Sizeof(Relationship{}); s != 96 {
+		t.Fatalf("Relationship grew to %d bytes (want 96)", s)
 	}
 }
 
