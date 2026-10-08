@@ -480,6 +480,15 @@ type Store struct {
 	relBeliefWatermark       map[types.RelID]types.Instant
 	relBeliefWatermarkBuilt  atomic.Bool
 
+	// History counts (store.HistoryCountCapability, badgerstore_history_count.go):
+	// histNodeEpoch / histRelEpoch advance whenever a node (relationship) history
+	// key enters the write buffer (appendOps, appendOpsLoggedRouted) and on Clear;
+	// the exact counts are cached against them and recounted after a change.
+	histNodeEpoch atomic.Uint64
+	histRelEpoch  atomic.Uint64
+	histNodeCount historyCount
+	histRelCount  historyCount
+
 	// DocValues: cached per-label columnar snapshots + a global node-mutation
 	// epoch bumped on EVERY node write (incl. deletes). nextNodeRev above misses
 	// deletes, so DocValues keeps its own counter. docMu guards docColumns only
@@ -2073,6 +2082,8 @@ func (bs *Store) Clear() error {
 	bs.wbMu.Lock()
 	bs.pending = make(map[string]writeOp)
 	bs.pendingLog = nil
+	bs.histNodeEpoch.Add(1)
+	bs.histRelEpoch.Add(1)
 	// Drop any snapshot a just-completed flush parked (the success path clears it,
 	// but a leaked/in-flight snapshot must not survive the wipe below — otherwise
 	// rangePending would resurface pre-Clear history keys as phantom IDs).

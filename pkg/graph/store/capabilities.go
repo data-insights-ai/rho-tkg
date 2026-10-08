@@ -138,6 +138,30 @@ type ReadCosts struct {
 	AdjacencyRelHeld, AdjacencyRelDecoded float64 // ForEachOutgoing / ForEachIncoming, per relationship
 }
 
+// HistoryCounts is how many nodes and relationships have history rows: the
+// IDs ForEachNodeHistoryID / ForEachRelHistoryID visit (an entity updated,
+// relabelled, closed or deleted at least once whose history the store still
+// holds, deleted entities included). A temporal read by property value
+// (Nodes().ByLabelAndProperty with a temporal QueryOpts) resolves every node
+// with history beside the current matches, so a query planner prices that
+// read with Nodes.
+type HistoryCounts struct {
+	Nodes int
+	Rels  int
+}
+
+// HistoryCountCapability is OPTIONAL: the store's HistoryCounts, exact,
+// without a pass per call. Memory counts its history maps; badger caches a
+// count of its history keys against an epoch that every history key entering
+// its write buffer (and Clear) advances, so a call after a history change
+// recounts once; sharded sums its slots (an entity's rows live on one slot).
+// Tiered states none: an archive or restore moves a version chain between
+// shards, so a sum could count it twice.
+type HistoryCountCapability interface {
+	NodeHistoryCount() (int, error)
+	RelHistoryCount() (int, error)
+}
+
 // ReadCostCapability is OPTIONAL: the store's ReadCosts. A store without it
 // states none.
 type ReadCostCapability interface {

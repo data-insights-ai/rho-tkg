@@ -440,3 +440,18 @@ func TestReadCostsForwards(t *testing.T) {
 		t.Fatalf("ReadCosts = (%+v, %v, %v)", got, ok, err)
 	}
 }
+
+func (s *statsOpsSpy) HistoryCounts() (storepkg.HistoryCounts, bool, error) {
+	return storepkg.HistoryCounts{Nodes: 3, Rels: 2}, true, s.relCountByTypeErr
+}
+
+func TestHistoryCountsForwards(t *testing.T) {
+	var nilAPI *API
+	if _, _, err := nilAPI.HistoryCounts(); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil HistoryCounts error = %v", err)
+	}
+	got, ok, err := New(&statsOpsSpy{}).HistoryCounts()
+	if err != nil || !ok || got.Nodes != 3 || got.Rels != 2 {
+		t.Fatalf("HistoryCounts = (%+v, %v, %v)", got, ok, err)
+	}
+}

@@ -46,6 +46,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   options, an inverted window, an unknown type, a closed graph), `TestCountByLabelAtForwards`,
   `TestCountByTypeAtForwards`.
 
+- **`g.Stats().HistoryCounts()`: how many nodes and relationships have history.** Requested by
+  sigma-tkgd (task record C4f, store request 2: a temporal read by property value,
+  `Nodes().ByLabelAndProperty` at a coordinate, resolves every node with history beside the current
+  matches, and the planner could not price it against a filtered scan at the coordinate).
+  `store.HistoryCounts{Nodes, Rels}`: the IDs `ForEachNodeHistoryID` / `ForEachRelHistoryID` visit —
+  entities updated, relabelled, closed or deleted at least once whose history the store holds —
+  exact, without a pass per call. New optional `store.HistoryCountCapability`: memory counts its
+  history maps (O(1)); badger caches the count against a per-kind history epoch that every history
+  key entering its write buffer (`appendOps`, `appendOpsLoggedRouted`, the two doors every history
+  write and delete goes through) and `Clear` advance, so a call is O(1) until a history row changes
+  and the next call walks the history keys once; sharded sums its slots (an entity's rows live on one
+  slot). Tiered states none (`ok=false`): an archive or restore moves a version chain between
+  shards, so a sum could count one twice. Per label it is not stated: the property door visits every
+  node with history whatever its label. Measured (`BenchmarkHistoryCounts`, 20,000 nodes of which
+  5,000 updated, three runs at load 35–40): memory 24 ns (the walk 30–35 µs); badger 29 ns while no
+  history changed, 2.1–3.2 ms on the first call after an update (one walk, 1.9–3.3 ms). Tests:
+  `TestHistoryCountsEqualTheStoresWalk` (memory, badger, sharded: the count equals the store's walk
+  after creates, updates, a label change, a close, relationship updates and deletes, a cascading
+  node delete, inside a transaction and after its rollback, a compaction, a retention purge and a
+  reset; two-phase: the count before an update is the old one; it fails when badger's epoch is not
+  advanced on a history write or on `Clear`), `TestHistoryCountsAfterReopen` (badger directory),
+  `TestHistoryCountsConcurrentWriters` (under `-race`), `TestHistoryCountsUnstated` (tiered, a closed
+  graph), `TestHistoryCountsForwards`.
+
 - **`GraphTx.AddRelationships(typeName, rels)`: many relationships of one type in one call inside a
   transaction.** Requested by sigma-tkgd (the adoption of v4.42.0, open question 3 (c): its bulk
   create variant covers node creates only, because UNWIND … CREATE (a)-[:T]->(b) inside the

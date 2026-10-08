@@ -53,6 +53,7 @@ type Ops interface {
 	RelCountByType(typeName string) (int, error)
 	RelTypeDegreeStats(typeName string) (storepkg.RelTypeDegreeStats, error)
 	ReadCosts() (storepkg.ReadCosts, bool, error)
+	HistoryCounts() (storepkg.HistoryCounts, bool, error)
 	RangeCardinality(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
 	RelRangeCardinality(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts) (int64, bool, error)
 	AllLabelCounts() (map[string]int, error)
@@ -218,6 +219,19 @@ func (a *API) ReadCosts() (storepkg.ReadCosts, bool, error) {
 		return storepkg.ReadCosts{}, false, err
 	}
 	return ops.ReadCosts()
+}
+
+// HistoryCounts returns how many nodes and relationships have history rows
+// (store.HistoryCounts) — what a temporal read by property value resolves
+// beside the current matches — exact and without a pass per call where the
+// store states it (memory, badger, sharded). ok=false when it states none
+// (tiered).
+func (a *API) HistoryCounts() (storepkg.HistoryCounts, bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return storepkg.HistoryCounts{}, false, err
+	}
+	return ops.HistoryCounts()
 }
 
 // PropertyStats returns NDV (estimated distinct-value count via a
