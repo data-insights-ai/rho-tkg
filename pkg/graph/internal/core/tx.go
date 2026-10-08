@@ -246,6 +246,7 @@ func (c *Core) BeginTx() (*GraphTx, error) {
 	// transaction that interned a token from one that only touched existing ones.
 	tx.registrySizesAtBegin = tx.registrySizes()
 	tx.startInstant = c.now()
+	c.openTxStart.Store(int64(tx.startInstant))
 	return tx, nil
 }
 
@@ -670,6 +671,7 @@ func (tx *GraphTx) Commit() error {
 	tx.g.txEventBuffer = nil
 	tx.pendingEvents = nil
 
+	tx.g.openTxStart.Store(0)
 	tx.g.mu.Unlock()
 	tx.g.txMu.Unlock()
 
@@ -763,6 +765,9 @@ func (tx *GraphTx) Rollback() error {
 	tx.g.mu.Lock()
 	defer tx.g.txMu.Unlock()
 	defer tx.g.mu.Unlock()
+	// The restores below write rows with their pre-transaction stamps; the
+	// transaction counts as open (CommittedTx) until they are done.
+	defer tx.g.openTxStart.Store(0)
 
 	// Discard buffered events — rolled-back mutations should never reach subscribers.
 	tx.g.txEventBuffer = nil

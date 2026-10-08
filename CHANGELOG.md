@@ -70,6 +70,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestHistoryCountsConcurrentWriters` (under `-race`), `TestHistoryCountsUnstated` (tiered, a closed
   graph), `TestHistoryCountsForwards`.
 
+- **`g.Temporal().CommittedTx()`: a pin at which every write is committed.** Requested by
+  sigma-tkgd (task record C3v open question 1, C7 open question 4, decided 2026-10-08: "reads beside
+  a writer keep the rerun; rho-tkg is asked for a read barrier"): its shared Cypher path reruns a
+  read whenever a concurrent write moved the store's epochs, because `g.Tx()` writes are
+  write-through and a reader can see part of an open transaction; under a writer that never pauses
+  the rerun never ends. The pin is the open transaction's `StartInstant` while a `GraphTx` is open
+  (Core now records it at `BeginTx` and clears it when Commit or Rollback finishes), else a fresh
+  `NowTx`. Every write of an open transaction is stamped after its start on the one transaction
+  clock, so a read pinned there (`TxPin`, or `TxAt` with a valid time) sees none of it, and it gives
+  the same answer whatever commits, rolls back or starts meanwhile; a batch or ingest group in
+  progress is waited for (they hold the graph's write lock). Not covered, documented: a privileged
+  backfill stamps a caller's past instant; a standalone mutation in flight when the pin is taken is
+  stamped before it and may land after a read at it began. Transaction isolation is unchanged: a
+  blocking read barrier and snapshot isolation of the current state change locking or semantics
+  and are left to the owner (see the round's options). Measured (`BenchmarkCommittedTx`, three
+  runs at load 32): 136–230 ns idle, 102–172 ns with a transaction open, `NowTx` 100–138 ns.
+  Tests: `TestCommittedTxExcludesAnOpenTransaction` (all four backends: with a transaction open
+  holding two creates, an update and a relationship, the pin equals its start and a read there is
+  the committed state while the current state is not; two-phase: after Commit and after Rollback
+  the read at that pin is unchanged and a new pin sees what committed),
+  `TestCommittedTxNeverSeesAPartialTransaction` (all four backends: a writer commits and rolls
+  back transactions of five nodes while a reader counts at fresh pins; every count is a multiple of
+  five and repeats at its pin — with the open transaction ignored, readers saw 1, 7 and 9 nodes on
+  every backend), `TestCommittedTxWithoutATransaction`, `TestCommittedTxForwards`.
+
 - **`GraphTx.AddRelationships(typeName, rels)`: many relationships of one type in one call inside a
   transaction.** Requested by sigma-tkgd (the adoption of v4.42.0, open question 3 (c): its bulk
   create variant covers node creates only, because UNWIND … CREATE (a)-[:T]->(b) inside the

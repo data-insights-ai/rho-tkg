@@ -201,8 +201,13 @@ type Core struct {
 	// class introduced in v3.4 (see lesson 31). The tx code path takes a
 	// brief c.mu.RLock around each mutation/read so the *Internal/*Locked
 	// helpers run with a non-zero lock context they expect.
-	txMu       sync.Mutex
-	registryMu sync.Mutex
+	txMu sync.Mutex
+	// openTxStart is the start instant (GraphTx.StartInstant) of the open
+	// transaction, 0 when none is open: stored by BeginTx before it returns
+	// (before the transaction's first write) and cleared by Commit and
+	// Rollback before c.txMu is released. TempOps.CommittedTx reads it.
+	openTxStart atomic.Int64
+	registryMu  sync.Mutex
 	// asofMu serializes the read-modify-write of the durable named as-of-tag
 	// map (asof_tags MetaKV entry) so concurrent TagAsOf/RemoveAsOfTag calls
 	// cannot lose updates. Taken only by the WRITERS; readers (ResolveAsOf /

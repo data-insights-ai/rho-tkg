@@ -37,6 +37,7 @@ type Ops interface {
 
 	// Bitemporal (transaction time)
 	NowTx() (types.Instant, error)
+	CommittedTx() (types.Instant, error)
 	PeekTx() (types.Instant, error)
 	AdvanceClock(to types.Instant) (types.Instant, error)
 	NodeAsOf(id types.NodeID, txTime types.Instant) (*types.Node, error)
@@ -330,6 +331,21 @@ func (a *API) NowTx() (types.Instant, error) {
 		return 0, err
 	}
 	return ops.NowTx()
+}
+
+// CommittedTx returns a transaction-time pin at which every write is
+// committed: the open transaction's StartInstant while one is open, else a
+// fresh NowTx. A read pinned there (QueryOpts.TxPin, or TxAt with a valid
+// time) sees no uncommitted transaction write and is repeatable while
+// transactions commit, roll back or start. Not covered: a privileged backfill
+// and a standalone (non-transaction) mutation in flight when the pin is taken.
+// See core.TempOps.CommittedTx.
+func (a *API) CommittedTx() (types.Instant, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, err
+	}
+	return ops.CommittedTx()
 }
 
 // PeekTx returns the current transaction-clock value WITHOUT reserving an instant —

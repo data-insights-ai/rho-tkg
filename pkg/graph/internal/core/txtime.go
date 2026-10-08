@@ -181,6 +181,38 @@ func (t *TempOps) NowTx() (types.Instant, error) {
 	return c.now(), nil
 }
 
+// CommittedTx returns a transaction-time pin at which every write is
+// committed: the open transaction's start instant (GraphTx.StartInstant) while
+// one is open, else a fresh NowTx. A read pinned there (QueryOpts.TxPin, or
+// TxAt with a valid time) sees no uncommitted transaction write — every write
+// of an open transaction is stamped after its start — and no write stamped
+// after the pin, so repeating it gives the same answer, whatever commits,
+// rolls back or starts meanwhile (a history rewrite below the pin excepted:
+// compaction, purge, erasure). A batch or an ingest group in progress is waited
+// for (they hold the graph's write lock). Not covered: a privileged backfill
+// (AllowTxBackfill) stamps a caller's past instant, and a standalone mutation
+// (outside a transaction) in flight when the pin is taken is stamped before it
+// and may land after a read at it started. Never above NowTx; reserves an
+// instant only when no transaction is open. Errors: ErrGraphClosed.
+func (t *TempOps) CommittedTx() (types.Instant, error) {
+	c := t.c
+	var pin types.Instant
+	err := c.readUnderRLock(func() error {
+		// now() first, then the open transaction: a transaction whose start is
+		// not seen yet stores it after this load, so its writes are stamped
+		// after now() returned (the clock is one atomic sequence).
+		pin = c.now()
+		if start := types.Instant(c.openTxStart.Load()); start != 0 && start < pin {
+			pin = start
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return pin, nil
+}
+
 // PeekTx returns the current transaction-clock value WITHOUT reserving an instant —
 // the non-burning, observability-only sibling of NowTx. A metrics/polling loop can
 // call it as often as it likes without advancing the commit clock.

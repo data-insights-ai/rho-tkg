@@ -481,3 +481,18 @@ func (s *temporalOpsSpy) RelMatchesValidTime(r *types.Relationship, opts storepk
 	s.record("RelMatchesValidTime")
 	return true
 }
+
+func (s *temporalOpsSpy) CommittedTx() (types.Instant, error) {
+	s.record("CommittedTx")
+	return 42, s.err
+}
+
+func TestCommittedTxForwards(t *testing.T) {
+	var nilAPI *API
+	if _, err := nilAPI.CommittedTx(); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil CommittedTx: %v", err)
+	}
+	if pin, err := New(&temporalOpsSpy{}).CommittedTx(); pin != 42 || err != nil {
+		t.Fatalf("CommittedTx = %d %v", pin, err)
+	}
+}
