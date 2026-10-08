@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.43.0] - 2026-10-08
+
+Minor release: the sigma-tkgd store requests, round 3 (Cypher port onto the shared IR):
+`Nodes().CountByLabelAt` / `Rels().CountByTypeAt` (exact counts at a read coordinate, a cached pin
+answered without a pass), `Stats().HistoryCounts`, `Temporal().CommittedTx` (a pin no open
+transaction's write reaches), `GraphTx.AddRelationships`, `Relationship.StartOrdinal` / `EndOrdinal`
+and the column batches' `StartOrdinals` / `EndOrdinals`, `ScanRelColumns("")` of every type with
+`RelColumnBatch.RelType`, and DocValues columns plus relationship value-class counts on the sharded
+store. Gates on the released tree: `make fmt-check`, `make check`, `make check-metakv-reap`,
+`make cover-gate` (87.7 %), `make test-race`, `make lint-docker`, `make security-docker`,
+`make vulncheck-docker` and the docs-consistency tests exit 0.
+
 ### Added
 
 - **`g.Nodes().CountByLabelAt(label, opts)` / `g.Rels().CountByTypeAt(typeName, opts)`: exact
