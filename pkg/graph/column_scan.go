@@ -61,7 +61,11 @@ func (g *Graph) ScanNodeColumns(label string, props []string, opts QueryOpts,
 // Beyond the boxing argument that motivates the node scan, this hands back StartIDs
 // and EndIDs as their own arrays, so a traversal aggregation reads (start, end,
 // weight) as three aligned typed slices with no *types.Relationship materialised at
-// all.
+// all. Every batch names its type (RelColumnBatch.RelType).
+//
+// An empty relType reads the relationships of every type, type by type (each
+// type's batches in ID order; the order across types is by type token, not by
+// ID).
 //
 // The callback MUST NOT retain the batch: its slices are reused between calls.
 func (g *Graph) ScanRelColumns(relType string, props []string, opts QueryOpts,

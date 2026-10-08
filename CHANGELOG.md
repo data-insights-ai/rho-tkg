@@ -83,6 +83,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestAddRelationshipsInternalPanic` (registry and endpoint locks released),
   `TestAddRelationshipsInternalScopedAndCancelled`, `TestAddRelationshipsInternalTemporalKeys`.
 
+- **`g.ScanRelColumns("", …)`: the relationship column scan of every type, and
+  `RelColumnBatch.RelType`.** Requested by sigma-tkgd (planner variants part 2, store request 4:
+  `ScanRelColumns("")` returned no rows, so the host could not keep the relationships of every type
+  for an untyped pattern). An empty type name now reads every registered relationship type, type by
+  type in type-token order (each type's batches in ID order as before; the order across types is
+  not ID order), and every batch, typed scans included, names its type in the new `RelType` field.
+  A type whose relationships were all deleted contributes nothing; returning false stops the whole
+  scan. Memory (declared segment types included, sealed and memtable rows) and badger; tiered and
+  sharded have no column scan and answer `ok=false` for `""` as for a type. The empty name gains
+  this meaning at this door only; every other door keeps its own meaning for it. The gain
+  is functional (the rows were missing), so there is no benchmark. Tests:
+  `TestScanRelColumnsEveryType` (memory with a sealed and an unsealed segment type, badger: every
+  relationship once with its type, equal to the union of the typed scans, a deleted relationship
+  and an emptied type absent, early stop; tiered and sharded `ok=false`).
+
 - **`types.Relationship.StartOrdinal()` / `EndOrdinal()` and `RelColumnBatch.StartOrdinals` /
   `EndOrdinals`: the endpoints' dense ordinals on the row and in the column scan.** Requested by
   sigma-tkgd (task record C3s open question 4 and planner variants part 2, store request 2: the

@@ -5,7 +5,14 @@ import (
 )
 
 // ScanRelColumns exposes the backend's typed relationship column scan when it has
-// one, the sibling of ScanNodeColumns.
+// one, the sibling of ScanNodeColumns. Every batch names its type (RelType).
+//
+// An empty relType scans every registered relationship type, type by type in
+// type-token order (each type's batches in ID order, as a typed scan; the
+// order across types is not ID order), so a consumer reading the
+// relationships of every type (an untyped pattern) needs no listing of the
+// types. A type with no rows contributes nothing. fn returning false stops
+// the whole scan.
 //
 // ok=false means this backend does not implement RelColumnScanCapability and the
 // caller should use RelsByType — the capability is OPTIONAL, like every other one
@@ -18,6 +25,29 @@ func (c *Core) ScanRelColumns(relType string, props []string, opts storepkg.Quer
 	}
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+	scanner, has := c.store.(storepkg.RelColumnScanCapability)
+	if relType == "" {
+		if !has {
+			return false, nil
+		}
+		names := c.relTypes.ExportNames() // index = token; token 0 is reserved
+		for tok := 1; tok < len(names); tok++ {
+			stopped := false
+			name := names[tok]
+			err := scanner.ScanRelColumns(uint16(tok), props, opts, func(b *storepkg.RelColumnBatch) bool { // #nosec G115 -- tok < len(names) <= the uint16 token space
+				b.RelType = name
+				if !fn(b) {
+					stopped = true
+					return false
+				}
+				return true
+			})
+			if err != nil || stopped {
+				return true, err
+			}
+		}
+		return true, nil
+	}
 	// TAKES A TYPE NAME, not a token, for the reason the node door documents: every
 	// consumer-facing query here names its relationship type, and handing out the
 	// token would make a caller reach for an interning API that is not public.
@@ -25,11 +55,13 @@ func (c *Core) ScanRelColumns(relType string, props []string, opts storepkg.Quer
 	if !known {
 		return true, nil // known capability, no such type: zero rows
 	}
-	scanner, has := c.store.(storepkg.RelColumnScanCapability)
 	if !has {
 		return false, nil
 	}
-	return true, scanner.ScanRelColumns(token, props, opts, fn)
+	return true, scanner.ScanRelColumns(token, props, opts, func(b *storepkg.RelColumnBatch) bool {
+		b.RelType = relType
+		return fn(b)
+	})
 }
 
 // ScanRelSegments is the columnar door over a declared bulk relationship type

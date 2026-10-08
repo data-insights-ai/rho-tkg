@@ -1188,7 +1188,11 @@ type ColumnData struct {
 // Same contract as ColumnBatch: batches arrive in ID order, fn MUST NOT retain the
 // batch (slices are reused across calls), and returning false stops the scan.
 type RelColumnBatch struct {
-	IDs []types.RelID
+	// RelType names the relationship type of every row of the batch (a batch
+	// holds one type's rows). Set by the graph's ScanRelColumns door, which
+	// reads every type for an empty type name; empty at the store boundary.
+	RelType string
+	IDs     []types.RelID
 	// Ordinals is parallel to IDs: each relationship's dense ordinal
 	// (types.Relationship.Ordinal, store.OrdinalCapability), so a consumer
 	// numbering relationships needs no read per row; 0 where the store numbers
