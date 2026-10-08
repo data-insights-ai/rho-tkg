@@ -206,6 +206,11 @@ var RelPropIndexDefsKey = MetaKey("rel_prop_indexes")
 // TemporalIndexDefsKey is the Badger key for persisting temporal index label tokens.
 var TemporalIndexDefsKey = MetaKey("temporal_index_defs")
 
+// RelTypeTemporalIndexDefsKey is the Badger key for persisting the rel-type
+// tokens that carry a relationship-type temporal interval index (BACKLOG 21c);
+// the index data is rebuilt on open, as for TemporalIndexDefsKey.
+var RelTypeTemporalIndexDefsKey = MetaKey("reltype_temporal_index_defs")
+
 // HighFrequencyIndexDefsKey is the Badger key for persisting high-frequency temporal index definitions.
 var HighFrequencyIndexDefsKey = MetaKey("high_frequency_index_defs")
 

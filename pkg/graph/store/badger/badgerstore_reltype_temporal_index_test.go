@@ -101,59 +101,69 @@ func TestRelTypeTemporalEnvelope_ForwardMaintenance(t *testing.T) {
 	relEnvelopeCovers(t, bs, relType, snowflake.ID(100), 30, 40) // current version
 }
 
-// TestRelTypeTemporalIndex_DoesNotSurviveRestart pins the deliberate BACKLOG 21c
-// scope decision (see relTypeTemporalIndexes field doc comment): unlike the
-// node-side temporal index, the rel-type mirror is NOT persisted across reopen.
-// This is safe (PruneRelTypeTemporalCandidates is a sound-superset optimization
-// — an absent index just costs pruning recall, never correctness), and this
-// test makes the limitation explicit rather than silent.
-func TestRelTypeTemporalIndex_DoesNotSurviveRestart(t *testing.T) {
+// TestRelTypeTemporalIndex_SurvivesRestart: the rel-type temporal index's
+// definition is persisted like the node side's, and reopening rebuilds it from
+// the type's current rows and their history (the envelope of a past version
+// survives, two-phase: created in [10,20), moved to [30,40) before the close).
+// A relationship written after the reopen is maintained; a dropped index stays
+// dropped across the next reopen; another type was never indexed.
+func TestRelTypeTemporalIndex_SurvivesRestart(t *testing.T) {
 	dir := t.TempDir()
-	bs, err := New(Config{Dir: dir})
-	if err != nil {
-		t.Fatal(err)
+	open := func() *Store {
+		bs, err := New(Config{Dir: dir})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return bs
 	}
-	const relType = uint16(7)
+	bs := open()
+	const relType, otherType = uint16(7), uint16(8)
 	const label = uint16(1)
-
-	start := types.NewNode(types.NodeID(1), label, nil)
-	end := types.NewNode(types.NodeID(2), label, nil)
-	if err := bs.PutNode(start); err != nil {
-		t.Fatal(err)
+	for _, id := range []types.NodeID{1, 2} {
+		if err := bs.PutNode(types.NewNode(id, label, nil)); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := bs.PutNode(end); err != nil {
-		t.Fatal(err)
-	}
-	putRelTypeTemporalTestRel(t, bs, relType, types.RelID(200), types.NodeID(1), types.NodeID(2), 10, 20)
+	r := putRelTypeTemporalTestRel(t, bs, relType, types.RelID(200), 1, 2, 10, 20)
+	putRelTypeTemporalTestRel(t, bs, otherType, types.RelID(201), 1, 2, 10, 20)
 	if err := bs.CreateRelTemporalIndex(relType); err != nil {
 		t.Fatal(err)
 	}
-	if err := bs.Flush(); err != nil {
+	updated := types.NewRelationship(types.RelID(200), relType, 1, 2)
+	updated.SetTemporal(&types.TemporalMetadata{ValidFrom: 30, ValidTo: 40})
+	updated.SetVersion(1)
+	if err := bs.ReplaceRelWithHistory(updated, 0, r); err != nil {
 		t.Fatal(err)
 	}
 	if err := bs.Close(); err != nil {
 		t.Fatal(err)
 	}
 
-	bs2, err := New(Config{Dir: dir})
-	if err != nil {
+	bs = open()
+	relEnvelopeCovers(t, bs, relType, snowflake.ID(200), 10, 20) // the past version
+	relEnvelopeCovers(t, bs, relType, snowflake.ID(200), 30, 40) // the current one
+	if types, err := bs.RelTemporalIndexTypes(); err != nil || len(types) != 1 || types[0] != relType {
+		t.Fatalf("after reopen: indexed types %v, %v; want [%d]", types, err, relType)
+	}
+	putRelTypeTemporalTestRel(t, bs, relType, types.RelID(202), 2, 1, 50, 60)
+	relEnvelopeCovers(t, bs, relType, snowflake.ID(202), 50, 60)
+	if err := bs.CreateRelTemporalIndex(relType); !errors.Is(err, ErrTemporalIndexExists) {
+		t.Fatalf("create after reopen: %v, want ErrTemporalIndexExists", err)
+	}
+	if err := bs.DropRelTemporalIndex(relType); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { bs2.Close() })
+	if err := bs.Close(); err != nil {
+		t.Fatal(err)
+	}
 
-	bs2.idxMu.RLock()
-	_, exists := bs2.relTypeTemporalIndexes[relType]
-	bs2.idxMu.RUnlock()
-	if exists {
-		t.Fatal("rel-type temporal index survived restart — scope decision changed, update the doc comment and this test together")
+	bs = open()
+	t.Cleanup(func() { bs.Close() })
+	if types, err := bs.RelTemporalIndexTypes(); err != nil || len(types) != 0 {
+		t.Fatalf("after drop and reopen: indexed types %v, %v; want none", types, err)
 	}
-	// The data itself must still be intact and queryable (RelationshipsByType
-	// falls back to a full scan without the index — correctness unaffected).
-	rels, err := bs2.RelationshipsByType(relType, QueryOpts{})
-	if err != nil {
-		t.Fatalf("RelationshipsByType after reopen: %v", err)
-	}
-	if len(rels) != 1 || rels[0].ID() != types.RelID(200) {
-		t.Fatalf("RelationshipsByType after reopen = %v, want the single rel", rels)
+	rels, err := bs.RelationshipsByType(relType, QueryOpts{})
+	if err != nil || len(rels) != 2 {
+		t.Fatalf("RelationshipsByType after reopen = %d rows, %v; want 2", len(rels), err)
 	}
 }

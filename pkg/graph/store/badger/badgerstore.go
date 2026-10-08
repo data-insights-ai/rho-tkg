@@ -719,13 +719,10 @@ type Store struct {
 	// Relationship-type temporal indexes (BACKLOG 21c) — the rel-side mirror of
 	// temporalIndexes, keyed by rel-type token in its own independent map (a
 	// label token and a rel-type token are different registries and may
-	// numerically collide). Deliberately RAM-only and NOT persisted across
-	// reopen — no definitions record, no loadIndexes rebuild — unlike
-	// temporalIndexes/relPropertyIndexes. Safe: PruneRelTypeTemporalCandidates
-	// is a sound-superset optimization, so a reopened store simply starts
-	// unaccelerated for rel-type temporal queries until CreateRelTemporal is
-	// called again; no query ever returns a wrong answer as a result. See
-	// CHANGELOG BACKLOG 21c for the scope rationale.
+	// numerically collide). In memory only, like temporalIndexes: the indexed
+	// rel-type tokens are persisted under RelTypeTemporalIndexDefsKey and the
+	// data is rebuilt on open (loadRelTypeTemporalIndexes; through v4.41 the
+	// definitions were not persisted and a reopen dropped the index).
 	relTypeTemporalIndexes map[uint16]*indexpkg.TemporalIndex
 
 	// Index-rebuild diagnostics — record count of node entries that the
@@ -1098,6 +1095,11 @@ func New(cfg Config) (*Store, error) {
 			_ = db.Close() // best-effort cleanup
 			return nil, fmt.Errorf("graph: fold temporal history envelopes: %w", err)
 		}
+	}
+
+	if err := bs.loadRelTypeTemporalIndexes(); err != nil {
+		_ = db.Close() // best-effort cleanup
+		return nil, err
 	}
 
 	// Start background goroutines (skip when read-only or no flush interval).

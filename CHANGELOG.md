@@ -34,14 +34,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   interval index, sorted by name (a high-frequency index is not listed), and the relationship mirror
   of `HasTemporal`. New optional `store.TemporalIndexListingCapability` (`TemporalIndexLabels`,
   `RelTemporalIndexTypes`) on memory, badger, tiered (no relationship types: it has none) and
-  sharded (the anchor shard's definitions). Found while testing, not changed: badger keeps
-  relationship-type temporal indexes in RAM only (since BACKLOG 21c), so after a reopen the type is
-  no longer indexed and is not listed; label temporal indexes survive. Measured
+  sharded (the anchor shard's definitions); on badger both kinds survive a reopen (see Fixed).
+  Measured
   (`BenchmarkTemporalIndexListing`, 1,000 labels of which 10 indexed, memory, load 36–76): the
   listing 408–421 ns, probing every label with `HasTemporal` 32.9–34.9 µs. Tests:
   `TestTemporalIndexListing` (all four backends: created, a high-frequency index not listed, a
   dropped label and type leave the lists, `HasRelTemporal` for an indexed, an unindexed and an
-  unknown type), `TestTemporalIndexListingSurvivesReopen` (badger directory),
+  unknown type), `TestTemporalIndexListingSurvivesReopen` (badger directory, both kinds),
   `TestTemporalIndexListingForwards`.
 
 - **`g.Rels().ForEachAdjacentEndpointOrdinal`: the adjacency hands out the relationship's and the
@@ -164,6 +163,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestAddNodesInternalRestoresLabels`, `TestAddNodesInternalStoreFailure` (written nodes removed,
   the label restored, a failing cleanup reported), `TestAddNodesInternalPanic`,
   `TestAddNodesInternalScopedAndCancelled`, `TestAddNodesInternalTemporalKeys`.
+
+### Fixed
+
+- **Badger persists relationship-type temporal indexes.** Found by the listing's reopen test (and
+  asked to be fixed before v4.42.0): since BACKLOG 21c the badger store kept a relationship-type
+  temporal index (`g.Index().CreateRelTemporal`) in RAM only, so a reopen dropped it silently — the
+  type's valid-time queries lost their pruning and `ListRelTemporal` / `HasRelTemporal` no longer
+  named it. The indexed type tokens are now persisted under a meta key
+  (`reltype_temporal_index_defs`, written by `CreateRelTemporalIndex` / `DropRelTemporalIndex` in
+  the same write queue as the node definitions) and the index is rebuilt on open from each type's
+  current rows and their history, as the create builds it; the sharded store's slots inherit it.
+  A directory written by an earlier release has no such key and opens as before (no index). Tests:
+  `TestRelTypeTemporalIndex_SurvivesRestart` (replaces `..._DoesNotSurviveRestart`; two-phase:
+  a past version's envelope survives the reopen, a relationship written after it is maintained, a
+  drop survives the next reopen, an unindexed type stays unindexed), and
+  `TestTemporalIndexListingSurvivesReopen` now lists the type after a reopen; both failed before
+  the fix.
 
 ### Changed
 

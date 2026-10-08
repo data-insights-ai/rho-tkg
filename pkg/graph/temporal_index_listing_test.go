@@ -83,10 +83,8 @@ func TestTemporalIndexListing(t *testing.T) {
 	})
 }
 
-// A badger directory keeps its label temporal index definitions across a
-// reopen and the listing says so. Its relationship-type temporal indexes are
-// not persisted (RAM only since BACKLOG 21c): after a reopen the listing
-// reports none, which is the store's state.
+// A badger directory keeps its label and relationship-type temporal index
+// definitions across a reopen, and the listings say so.
 func TestTemporalIndexListingSurvivesReopen(t *testing.T) {
 	dir := t.TempDir()
 	open := func() *graphpkg.Graph {
@@ -122,7 +120,7 @@ func TestTemporalIndexListingSurvivesReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fmt.Sprint(labels, types) != "[B] []" {
+	if fmt.Sprint(labels, types) != "[B] [T]" {
 		t.Fatalf("after reopen: %v %v", labels, types)
 	}
 }

@@ -3,6 +3,12 @@ package badger
 import (
 	"errors"
 	"fmt"
+	"log/slog"
+	"maps"
+	"slices"
+
+	badgerv4 "github.com/dgraph-io/badger/v4"
+	"github.com/vmihailenco/msgpack/v5"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
@@ -46,6 +52,25 @@ func (bs *Store) CreateRelTemporalIndex(relType uint16) error {
 	rids := bs.relTypeRelIDsSnapshotLocked(relType)
 	bs.idxMu.Unlock()
 
+	ti, err := bs.buildRelTypeTemporalIndex(rids)
+	if err != nil {
+		return fmt.Errorf("graph: create relationship temporal index: %w", err)
+	}
+
+	bs.idxMu.Lock()
+	defer bs.idxMu.Unlock()
+	if _, exists := bs.relTypeTemporalIndexes[relType]; exists {
+		return ErrTemporalIndexExists
+	}
+	bs.relTypeTemporalIndexes[relType] = ti
+	bs.persistRelTypeTemporalIndexDefs()
+	return nil
+}
+
+// buildRelTypeTemporalIndex folds the current row and every history version
+// of rids into a fresh envelope index. A relationship deleted meanwhile is
+// skipped.
+func (bs *Store) buildRelTypeTemporalIndex(rids []types.RelID) (*indexpkg.TemporalIndex, error) {
 	ti := indexpkg.NewTemporalIndex()
 	for _, rid := range rids {
 		r, err := bs.prefetchRelScan(rid)
@@ -53,7 +78,7 @@ func (bs *Store) CreateRelTemporalIndex(relType uint16) error {
 			if errors.Is(err, ErrRelNotFound) {
 				continue // deleted between snapshot and fetch
 			}
-			return fmt.Errorf("graph: create relationship temporal index: %w", err)
+			return nil, err
 		}
 		rawID := rid.SnowflakeID()
 		from, to := indexpkg.RelTemporalBounds(rawID, r.Temporal())
@@ -64,7 +89,7 @@ func (bs *Store) CreateRelTemporalIndex(relType uint16) error {
 			if errors.Is(err, ErrRelNotFound) {
 				continue // deleted concurrently — its current row is already gone
 			}
-			return fmt.Errorf("graph: create relationship temporal index: history fold: %w", err)
+			return nil, fmt.Errorf("history fold: %w", err)
 		}
 		for _, hv := range hist {
 			if hv == nil {
@@ -74,13 +99,63 @@ func (bs *Store) CreateRelTemporalIndex(relType uint16) error {
 			ti.Extend(rawID, hf, ht)
 		}
 	}
+	return ti, nil
+}
 
-	bs.idxMu.Lock()
-	defer bs.idxMu.Unlock()
-	if _, exists := bs.relTypeTemporalIndexes[relType]; exists {
-		return ErrTemporalIndexExists
+// persistRelTypeTemporalIndexDefs writes the indexed rel-type tokens
+// (ascending) to RelTypeTemporalIndexDefsKey, or deletes the key when none is
+// left. Caller holds the idxMu write lock. Mirror of persistTemporalIndexDefs.
+func (bs *Store) persistRelTypeTemporalIndexDefs() {
+	tokens := slices.Sorted(maps.Keys(bs.relTypeTemporalIndexes))
+	if len(tokens) == 0 {
+		bs.appendOps(writeOp{opType: writeOpDelete, key: storepkg.RelTypeTemporalIndexDefsKey})
+		return
 	}
-	bs.relTypeTemporalIndexes[relType] = ti
+	data, err := msgpack.Marshal(tokens)
+	if err != nil {
+		slog.Error("graph: persist relationship temporal index defs: marshal failed", "error", err)
+		return // index still works in-memory; will retry on next change
+	}
+	bs.appendOps(writeOp{opType: writeOpSet, key: storepkg.RelTypeTemporalIndexDefsKey, value: data})
+}
+
+// loadRelTypeTemporalIndexes rebuilds the persisted rel-type temporal indexes
+// at open, after loadIndexes built the type index: each from the type's
+// current rows and their history, as CreateRelTemporalIndex builds it.
+func (bs *Store) loadRelTypeTemporalIndexes() error {
+	var tokens []uint16
+	err := bs.db.View(func(txn *badgerv4.Txn) error {
+		item, err := txn.Get(storepkg.RelTypeTemporalIndexDefsKey)
+		if errors.Is(err, badgerv4.ErrKeyNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		return item.Value(func(val []byte) error { return storepkg.SafeUnmarshal(val, &tokens) })
+	})
+	if err != nil {
+		return fmt.Errorf("graph: load relationship temporal index definitions: %w", err)
+	}
+	for _, tok := range tokens {
+		if err := storecontract.ValidateRelTypeToken(tok); err != nil {
+			return fmt.Errorf("graph: load relationship temporal index definition type %d: %w", tok, err)
+		}
+		bs.idxMu.RLock()
+		_, done := bs.relTypeTemporalIndexes[tok]
+		rids := bs.relTypeRelIDsSnapshotLocked(tok)
+		bs.idxMu.RUnlock()
+		if done {
+			continue
+		}
+		ti, err := bs.buildRelTypeTemporalIndex(rids)
+		if err != nil {
+			return fmt.Errorf("graph: rebuild relationship temporal index type %d: %w", tok, err)
+		}
+		bs.idxMu.Lock()
+		bs.relTypeTemporalIndexes[tok] = ti
+		bs.idxMu.Unlock()
+	}
 	return nil
 }
 
@@ -100,12 +175,14 @@ func (bs *Store) DropRelTemporalIndex(relType uint16) error {
 		return ErrTemporalIndexNotFound
 	}
 	delete(bs.relTypeTemporalIndexes, relType)
+	bs.persistRelTypeTemporalIndexDefs()
 	return nil
 }
 
 // maintainRelTypeTemporalIndexesAdd / Remove are the write-path maintenance
 // entry points every rel-mutation door calls, mirroring
-// maintainRelPropertyIndexesAdd/Remove. RAM-only, no disk ops. Caller must
+// maintainRelPropertyIndexesAdd/Remove. RAM-only, no disk ops (the data is
+// rebuilt on open; only the definitions are persisted). Caller must
 // already hold bs.idxMu (every existing maintainRelPropertyIndexes* call site
 // does).
 func (bs *Store) maintainRelTypeTemporalIndexesAdd(r *types.Relationship, id snowflake.ID) {
