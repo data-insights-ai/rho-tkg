@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.42.0] - 2026-10-08
+
+Minor release: the sigma-tkgd store requests, round 2 (Cypher port onto the shared IR):
+`GraphTx.AddNodes`, `Nodes().ScanKeepsOrder` / `Rels().ScanKeepsOrder`, `Stats().ReadCosts`,
+`Nodes().DocValuesColumn`, `types.NodeColumnRowReader` (a column snapshot read by position),
+`Ordinals` in the column-scan batches, `Rels().ForEachAdjacentEndpointOrdinal`,
+`Index().ListTemporal` / `ListRelTemporal` / `HasRelTemporal`, a hashed column point lookup, frozen
+rows from memory's property, composite and vector lookups, and badger persisting
+relationship-type temporal indexes across a reopen. Gates on the released tree: `make fmt-check`,
+`make check`, `make check-metakv-reap`, `make test-race`, `make cover-gate` (87.6 %),
+`make lint-docker`, `make security-docker`, `make vulncheck-docker` and the docs-consistency tests
+exit 0.
+
 ### Added
 
 - **`g.Stats().ReadCosts()`: the backend's read costs, stated.** Requested by sigma-tkgd (task
