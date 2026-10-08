@@ -749,3 +749,25 @@ func TestForEachAdjacentEndpointOrdinalForwards(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func (s *relOpsSpy) CountByTypeAt(typeName string, opts storepkg.QueryOpts) (int, error) {
+	s.record("CountByTypeAt")
+	s.lastType = typeName
+	s.lastOpts = opts
+	return s.count, s.err
+}
+
+func TestCountByTypeAtForwards(t *testing.T) {
+	var nilAPI *API
+	if _, err := nilAPI.CountByTypeAt("KNOWS", storepkg.QueryOpts{ValidAt: 1}); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil CountByTypeAt: %v", err)
+	}
+	spy := &relOpsSpy{count: 5}
+	opts := storepkg.QueryOpts{TxPin: 9}
+	if n, err := New(spy).CountByTypeAt("KNOWS", opts); n != 5 || err != nil {
+		t.Fatalf("CountByTypeAt = %d %v", n, err)
+	}
+	if spy.lastType != "KNOWS" || spy.lastOpts != opts {
+		t.Fatalf("forwarded %q %+v", spy.lastType, spy.lastOpts)
+	}
+}

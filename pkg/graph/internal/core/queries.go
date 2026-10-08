@@ -446,30 +446,17 @@ func (n *NodeOps) ForEachByLabelPropertyPrefix(label, propKey, prefix string, de
 	return scanner.ForEachNodeByLabelPropertyPrefix(tok, propKey, prefix, desc, fn)
 }
 
-// nodesByLabelLocked is the lock-free body of NodeOps.ByLabel. Callers must
-// hold c.mu (R or W). Used by the public method (under RLock) and by
-// (*GraphTx).NodesByLabel (under tx-inherited Lock).
-func (c *Core) nodesByLabelLocked(label string, opts storepkg.QueryOpts) ([]*types.Node, error) {
-	tok, ok := c.labels.Lookup(label)
-	if !ok {
-		return nil, nil
-	}
-	if !hasTemporalFilter(opts) {
-		nodes, err := c.store.NodesByLabel(tok, opts)
-		if err == nil && !c.storeRowsTrust {
-			if err = c.validateNodesByLabelPage(tok, opts, nodes); err == nil {
-				nodes = copyNodeRows(nodes)
-			}
-		}
-		return nodes, err
-	}
+// nodeLabelCandidatesAt gathers the candidate IDs a label read at a temporal
+// coordinate resolves (nodesByLabelLocked, countNodesByLabelLocked), with the
+// label's current rows the gather reads. Callers hold c.mu (R or W).
+func (c *Core) nodeLabelCandidatesAt(tok uint16, opts storepkg.QueryOpts) ([]*types.Node, []types.NodeID, error) {
 	current, err := c.store.NodesByLabel(tok, storepkg.QueryOpts{Depth: opts.Depth})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	currentIDs, err := c.nodeIDsFromLabelRows(tok, current)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Gather the candidate id set. K1: when the store owns a transaction-time
@@ -487,10 +474,10 @@ func (c *Core) nodesByLabelLocked(label string, opts storepkg.QueryOpts) ([]*typ
 	}
 	if c.labelTxMembers != nil {
 		if err := c.forEachLabelTxCandidate(tok, currentIDs, opts, gather); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	} else if err := c.forEachNodeCandidateIDByDepth(currentIDs, opts.Depth, gather); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// when the store owns a per-label valid-time ENVELOPE index, drop every
@@ -504,6 +491,31 @@ func (c *Core) nodesByLabelLocked(label string, opts storepkg.QueryOpts) ([]*typ
 		if kept, ok := c.temporalCandidates.PruneTemporalCandidates(tok, candIDs, opts); ok {
 			candIDs = kept
 		}
+	}
+
+	return current, candIDs, nil
+}
+
+// nodesByLabelLocked is the lock-free body of NodeOps.ByLabel. Callers must
+// hold c.mu (R or W). Used by the public method (under RLock) and by
+// (*GraphTx).NodesByLabel (under tx-inherited Lock).
+func (c *Core) nodesByLabelLocked(label string, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	tok, ok := c.labels.Lookup(label)
+	if !ok {
+		return nil, nil
+	}
+	if !hasTemporalFilter(opts) {
+		nodes, err := c.store.NodesByLabel(tok, opts)
+		if err == nil && !c.storeRowsTrust {
+			if err = c.validateNodesByLabelPage(tok, opts, nodes); err == nil {
+				nodes = copyNodeRows(nodes)
+			}
+		}
+		return nodes, err
+	}
+	_, candIDs, err := c.nodeLabelCandidatesAt(tok, opts)
+	if err != nil {
+		return nil, err
 	}
 
 	var result []*types.Node
@@ -559,6 +571,47 @@ func (r *RelOps) ByType(typeName string, opts storepkg.QueryOpts) ([]*types.Rela
 	return result, nil
 }
 
+// relTypeCandidatesAt is nodeLabelCandidatesAt for a relationship type
+// (relsByTypeLocked, countRelsByTypeLocked).
+func (c *Core) relTypeCandidatesAt(tok uint16, opts storepkg.QueryOpts) ([]*types.Relationship, []types.RelID, error) {
+	current, err := c.store.RelationshipsByType(tok, storepkg.QueryOpts{Depth: opts.Depth})
+	if err != nil {
+		return nil, nil, err
+	}
+	currentIDs, err := c.relIDsFromTypeRows(tok, current)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// scope the candidate set to the type's ever-members when the store owns
+	// the transaction-time rel-type-membership sidecar (see nodesByLabelLocked).
+	var candIDs []types.RelID
+	gather := func(id types.RelID) error {
+		candIDs = append(candIDs, id)
+		return nil
+	}
+	if c.relTypeTxMembers != nil {
+		if err := c.forEachRelTypeTxCandidate(tok, currentIDs, opts, gather); err != nil {
+			return nil, nil, err
+		}
+	} else if err := c.forEachRelCandidateIDByDepth(currentIDs, opts.Depth, gather); err != nil {
+		return nil, nil, err
+	}
+
+	// BACKLOG 21c: when the store owns a per-rel-type valid-time ENVELOPE
+	// index, drop every candidate whose envelope provably cannot overlap the
+	// query's valid-time filter — the rel-side mirror of the temporalCandidates
+	// prune in nodesByLabelLocked. Sound superset: a kept id may still be
+	// rejected by the resolver, a pruned id never could have matched.
+	if c.relTypeTemporalCandidates != nil {
+		if kept, ok := c.relTypeTemporalCandidates.PruneRelTypeTemporalCandidates(tok, candIDs, opts); ok {
+			candIDs = kept
+		}
+	}
+
+	return current, candIDs, nil
+}
+
 // relsByTypeLocked is the lock-free body of RelOps.ByType.
 func (c *Core) relsByTypeLocked(typeName string, opts storepkg.QueryOpts) ([]*types.Relationship, error) {
 	tok, ok := c.lookupRelTypeQueryToken(typeName)
@@ -574,39 +627,9 @@ func (c *Core) relsByTypeLocked(typeName string, opts storepkg.QueryOpts) ([]*ty
 		}
 		return rels, err
 	}
-	current, err := c.store.RelationshipsByType(tok, storepkg.QueryOpts{Depth: opts.Depth})
+	_, candIDs, err := c.relTypeCandidatesAt(tok, opts)
 	if err != nil {
 		return nil, err
-	}
-	currentIDs, err := c.relIDsFromTypeRows(tok, current)
-	if err != nil {
-		return nil, err
-	}
-
-	// scope the candidate set to the type's ever-members when the store owns
-	// the transaction-time rel-type-membership sidecar (see nodesByLabelLocked).
-	var candIDs []types.RelID
-	gather := func(id types.RelID) error {
-		candIDs = append(candIDs, id)
-		return nil
-	}
-	if c.relTypeTxMembers != nil {
-		if err := c.forEachRelTypeTxCandidate(tok, currentIDs, opts, gather); err != nil {
-			return nil, err
-		}
-	} else if err := c.forEachRelCandidateIDByDepth(currentIDs, opts.Depth, gather); err != nil {
-		return nil, err
-	}
-
-	// BACKLOG 21c: when the store owns a per-rel-type valid-time ENVELOPE
-	// index, drop every candidate whose envelope provably cannot overlap the
-	// query's valid-time filter — the rel-side mirror of the temporalCandidates
-	// prune in nodesByLabelLocked. Sound superset: a kept id may still be
-	// rejected by the resolver, a pruned id never could have matched.
-	if c.relTypeTemporalCandidates != nil {
-		if kept, ok := c.relTypeTemporalCandidates.PruneRelTypeTemporalCandidates(tok, candIDs, opts); ok {
-			candIDs = kept
-		}
 	}
 
 	var result []*types.Relationship

@@ -595,3 +595,22 @@ func TestDocValuesColumnForwards(t *testing.T) {
 		t.Fatalf("DocValuesColumn = %v %v %v", kind, ok, err)
 	}
 }
+
+func (s *nodeOpsSpy) CountByLabelAt(string, storepkg.QueryOpts) (int, error) {
+	s.record("CountByLabelAt")
+	return s.count, s.err
+}
+
+func TestCountByLabelAtForwards(t *testing.T) {
+	var nilAPI *API
+	if _, err := nilAPI.CountByLabelAt("L", storepkg.QueryOpts{ValidAt: 1}); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil CountByLabelAt: %v", err)
+	}
+	spy := &nodeOpsSpy{count: 7}
+	if n, err := New(spy).CountByLabelAt("L", storepkg.QueryOpts{ValidAt: 1}); n != 7 || err != nil {
+		t.Fatalf("CountByLabelAt = %d %v", n, err)
+	}
+	if len(spy.calls) != 1 || spy.calls[0] != "CountByLabelAt" {
+		t.Fatalf("calls = %v", spy.calls)
+	}
+}

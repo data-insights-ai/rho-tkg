@@ -147,6 +147,20 @@ func (a *asOfColumnCache) get(key asOfCacheKey, requiredKeys []string, epoch uin
 	return col, true
 }
 
+// memberCount returns the member count of the column set cached for key under
+// epoch, whatever keys it holds: the label's node count at the pin
+// (CountByLabelAt). A hit marks key most-recently-used.
+func (a *asOfColumnCache) memberCount(key asOfCacheKey, epoch uint64) (int, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	col := a.cols[key]
+	if col == nil || col.Epoch() != epoch {
+		return 0, false
+	}
+	a.touchLocked(key)
+	return len(col.IDs()), true
+}
+
 // unionKeysFor returns requested unioned with any keys an existing (possibly
 // stale-epoch) entry for key already built, so a rebuild is a superset — a column
 // once built for {a} then queried for {b} rebuilds for {a,b}, mirroring the

@@ -48,6 +48,7 @@ type Ops interface {
 	ForEachByTypePropertyPrefix(typeName, propKey, prefix string, desc bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error
 	Count() (int, error)
 	CountByType(typeName string) (int, error)
+	CountByTypeAt(typeName string, opts storepkg.QueryOpts) (int, error)
 
 	Outgoing(nodeID types.NodeID, typeName string) ([]*types.Relationship, error)
 	Incoming(nodeID types.NodeID, typeName string) ([]*types.Relationship, error)
@@ -467,6 +468,19 @@ func (a *API) CountByType(typeName string) (int, error) {
 		return 0, err
 	}
 	return ops.CountByType(typeName)
+}
+
+// CountByTypeAt returns len(ByType(typeName, opts)) without building the
+// relationships: the exact count at the read coordinate in opts. The type's
+// counter when opts has no temporal filter; otherwise a pass over ByType's
+// candidates that decides a candidate on its current row where that row alone
+// answers. See core.RelOps.CountByTypeAt.
+func (a *API) CountByTypeAt(typeName string, opts storepkg.QueryOpts) (int, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, err
+	}
+	return ops.CountByTypeAt(typeName, opts)
 }
 
 // Outgoing returns outgoing relationships from nodeID, optionally filtered by type.

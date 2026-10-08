@@ -6,6 +6,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`g.Nodes().CountByLabelAt(label, opts)` / `g.Rels().CountByTypeAt(typeName, opts)`: exact
+  counts at a read coordinate.** Requested by sigma-tkgd (task record C4f, store request 1, and
+  open question 6: its statistics at `AT TIME` / `AS OF` coordinates became estimates, because an
+  exact count cost a `ByLabel` at the coordinate, paid once for the statistic and once more by the
+  counting operator). The count equals `len(ByLabel(label, opts))` / `len(ByType(typeName, opts))`
+  for every `QueryOpts` — a valid-time point or window, `TxAt` with or without a valid time,
+  `TxPin`, `Depth`, `After`, `Limit` — with the same validation and errors, on every backend,
+  without building the rows. Without a temporal filter, paging or `Depth` it is the O(1) counter.
+  With `TxPin` alone it is the member count of the as-of column set `DocValuesSnapshotAsOf` /
+  `ForEachDocValuesAsOf` cached for the label and pin, when one is: the label's count at a pin
+  without a pass (C4f store request 3; the set's reader already states it as `Len()` since
+  v4.42.0). Otherwise it makes one pass over the candidates `ByLabel` resolves (the candidate
+  gather is now one function both use) and decides a candidate on the current row the label scan
+  already read wherever that row alone answers — under the conditions the point and as-of
+  resolvers use for their own current-row shortcut, and for a window when the row matches and
+  answers the window's first instant it covers — so no row is copied, no history read for it,
+  and nothing sorted or paged; every other candidate goes through the resolver `ByLabel` uses.
+  Measured (`BenchmarkCountAt`, 20,000 people and 20,000 others with a relationship each, then
+  2,000 people and 1,000 relationships updated and 1,000 people deleted; three runs at load
+  22–37, so absolute times are inflated): memory, a valid-time point 13.8–16.5 ms → 7.5–7.7 ms
+  (nodes), 17.0–22.7 → 8.9–16.8 ms (relationships), a window 16.7–19.8 → 8.3–10.3 ms and
+  15.0–16.3 → 7.6–8.2 ms, allocations 84,000–128,000 → 8,157; badger, a point 88–102 ms → 23–27
+  ms and 90–96 → 33–34 ms, a window 1.11–1.78 s → 65–70 ms and 1.03–3.46 s → 76–93 ms (the window
+  read loads every candidate's history; the count reads none for a candidate whose current row
+  answers); a `TxPin` without a cached set is the as-of resolver's cost either way (memory 14.7–15.6
+  → 12.3–13.8 ms, badger unchanged within the load); a `TxPin` with the set cached 0.5–1.5 µs
+  (memory) and 1.3–4.4 µs (badger), no allocation. Not built: a count without any pass for an
+  arbitrary valid-time coordinate (it would need a counting interval index per label). Tests:
+  `TestCountAtAgreesWithTheReads` (all four backends: random histories — explicit valid times,
+  closed versions, updates, label removals and additions, node and relationship deletes — counted
+  at valid-time points and windows, `TxPin`, `TxAt` alone and with a valid time, `After` and
+  `Limit`, each equal to the read's length; it fails when any of the current-row shortcuts is
+  widened), `TestCountAtRemembersThePast` (two-phase: counts at a pin and at valid instants before
+  deletes, a label removal and new nodes keep the old answers; a phantom label counts 0),
+  `TestCountAtPinMatchesTheAsOfColumnSet`, `TestCountAtValidates` (malformed names, conflicting
+  options, an inverted window, an unknown type, a closed graph), `TestCountByLabelAtForwards`,
+  `TestCountByTypeAtForwards`.
+
 ## [4.42.0] - 2026-10-08
 
 Minor release: the sigma-tkgd store requests, round 2 (Cypher port onto the shared IR):

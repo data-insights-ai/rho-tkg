@@ -55,6 +55,7 @@ type Ops interface {
 	ByLabelAndProperties(label string, values map[string]any, opts storepkg.QueryOpts) ([]*types.Node, error)
 	Count() (int, error)
 	CountByLabel(label string) (int, error)
+	CountByLabelAt(label string, opts storepkg.QueryOpts) (int, error)
 
 	SetProperty(ctx context.Context, id types.NodeID, key string, value any) error
 	DeleteProperty(ctx context.Context, id types.NodeID, key string) error
@@ -567,6 +568,21 @@ func (a *API) CountByLabel(label string) (int, error) {
 		return 0, err
 	}
 	return ops.CountByLabel(label)
+}
+
+// CountByLabelAt returns len(ByLabel(label, opts)) without building the
+// nodes: the exact count at the read coordinate in opts (valid time, a
+// transaction-time pin, Depth, After, Limit). The label's counter when opts
+// has no temporal filter, the as-of column set cached for the label and pin
+// when one is; otherwise a pass over ByLabel's candidates that decides a
+// candidate on its current row where that row alone answers. See
+// core.NodeOps.CountByLabelAt.
+func (a *API) CountByLabelAt(label string, opts storepkg.QueryOpts) (int, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, err
+	}
+	return ops.CountByLabelAt(label, opts)
 }
 
 // SetProperty sets a single property honoring ctx.
