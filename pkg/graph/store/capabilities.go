@@ -965,9 +965,9 @@ type NodePropertyTypeClassCountsCapability interface {
 // NodePropertyTypeClassCountsCapability (rule 2): the exact per-(relType, property
 // key) partition of a type's current relationships by value class, the correctness
 // gate for the rel ORDER BY r.prop LIMIT k push-down. Implemented by the native
-// memory + badger stores; tiered/sharded decline (rel property indexes — the whole
-// rel-ordering path — are RAM-only per-shard, so the primitive is memory/badger
-// only). See PropertyTypeClassCounts for semantics.
+// memory + badger stores and by sharded (the slots' counters summed: a
+// relationship's row lives on one slot); tiered declines. See
+// PropertyTypeClassCounts for semantics.
 type RelPropertyTypeClassCountsCapability interface {
 	RelPropertyTypeClassCounts(relTypeToken uint16, propertyKey string) (PropertyTypeClassCounts, error)
 }

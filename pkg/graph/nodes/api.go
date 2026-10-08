@@ -477,7 +477,7 @@ func (a *API) DocValuesSnapshot(label string, propKeys []string) (types.NodeColu
 // DocValuesSnapshot: a columnar handle over a label's members as believed at txAt
 // (a knowledge-time / TxPin belief-state pin) — the time-travel aggregation
 // target. It reuses the pinned ByLabel resolver, so it works on EVERY backend
-// (including tiered/sharded, which decline the current-state scanner) and is not
+// (including those without the current-state scanner) and is not
 // cached (a past pin is immutable + one-shot). ok=false means a requested property
 // is not a uniform column at txAt (caller falls back). A pin before a retention
 // watermark returns ErrRetentionExpired. gen is DELIBERATELY 0 — an as-of snapshot

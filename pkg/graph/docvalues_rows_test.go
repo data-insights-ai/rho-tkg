@@ -39,17 +39,15 @@ func readColumnRows(rr types.NodeColumnRowReader, workers int) []columnRow {
 	return out
 }
 
-// A label's column snapshot reads by position on memory, badger and tiered:
+// A label's column snapshot reads by position on every backend:
 // Len is the member count, the positions hold every member once with the
-// values ForEachDocValues streams, ascending on memory and badger, and four
+// values ForEachDocValues streams, ascending on memory and badger (tiered and
+// sharded concatenate their shards' rows), and four
 // workers on disjoint ranges read the same rows as one. Two-phase: a snapshot
 // taken before an update keeps the old value at its position, one taken after
 // has the new. A position outside the range panics.
 func TestDocValuesSnapshotRowsByPosition(t *testing.T) {
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
-		if b.name == "sharded" {
-			t.Skip("sharded has no column snapshot")
-		}
 		ctx := context.Background()
 		label := "P"
 		if b.tiered {
@@ -103,7 +101,7 @@ func TestDocValuesSnapshotRowsByPosition(t *testing.T) {
 		if !slices.Equal(byID(one), byID(streamed)) {
 			t.Fatal("the positions do not hold the streamed rows")
 		}
-		if !b.tiered && !slices.IsSortedFunc(one, func(a, b columnRow) int { return int(a.id.SnowflakeID() - b.id.SnowflakeID()) }) {
+		if !b.tiered && b.name != "sharded" && !slices.IsSortedFunc(one, func(a, b columnRow) int { return int(a.id.SnowflakeID() - b.id.SnowflakeID()) }) {
 			t.Fatal("positions are not in ascending ID order")
 		}
 		absent := 0

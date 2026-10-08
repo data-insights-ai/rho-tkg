@@ -112,3 +112,37 @@ func (s *Store) NodeRangeCardinality(token uint16, propKey string, min, max floa
 	}
 	return total, true, nil
 }
+
+var _ storecontract.RelPropertyTypeClassCountsCapability = (*Store)(nil)
+
+// RelPropertyTypeClassCounts sums the slots' exact per-(type, key) partitions.
+// A relationship's row lives only on its own ID's slot (both adjacency legs
+// with it; a Model-A incoming stub is not a row), so the sum counts every
+// current relationship of the type exactly once. Missing stays 0 at the store
+// boundary (graph-layer computed).
+func (s *Store) RelPropertyTypeClassCounts(relTypeToken uint16, propertyKey string) (storecontract.PropertyTypeClassCounts, error) {
+	var sum storecontract.PropertyTypeClassCounts
+	if err := s.checkOpen(); err != nil {
+		return sum, err
+	}
+	if err := storecontract.ValidateRelTypeToken(relTypeToken); err != nil {
+		return sum, err
+	}
+	per := make([]storecontract.PropertyTypeClassCounts, len(s.shards))
+	err := s.forEachShardErr(func(idx int, shard *badgerShard) error {
+		c, e := shard.RelPropertyTypeClassCounts(relTypeToken, propertyKey)
+		per[idx] = c
+		return e
+	})
+	if err != nil {
+		return storecontract.PropertyTypeClassCounts{}, err
+	}
+	for _, c := range per {
+		sum.Numeric += c.Numeric
+		sum.NaN += c.NaN
+		sum.String += c.String
+		sum.Bool += c.Bool
+		sum.Other += c.Other
+	}
+	return sum, nil
+}

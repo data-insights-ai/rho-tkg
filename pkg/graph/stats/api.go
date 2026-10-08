@@ -177,8 +177,8 @@ func (a *API) PropertyTypeClassCounts(label, propertyKey string) (storepkg.Prope
 // (rule 2, BACKLOG 5B): the EXACT per-(relType, property key) partition of the type's
 // current relationships by value class — the correctness gate for the rel ORDER BY
 // r.prop LIMIT k push-down (ordering is sound only when the ordered class is
-// unambiguous). Backends without store.RelPropertyTypeClassCountsCapability
-// (tiered/sharded — rel property indexes are RAM-only) return
+// unambiguous). Memory, badger and sharded (summed over its slots) state it;
+// tiered and stores without store.RelPropertyTypeClassCountsCapability return
 // store.ErrCapabilityNotSupported.
 func (a *API) RelPropertyTypeClassCounts(typeName, propertyKey string) (storepkg.PropertyTypeClassCounts, error) {
 	ops, err := a.ready()

@@ -9,8 +9,8 @@ import (
 
 // nodeDocValuesScanner is the OPTIONAL store capability behind the X5 columnar
 // DocValues aggregation fast path (NodeOps.ForEachDocValues). Implemented by the
-// in-tree memory and badger stores; stores without it cause the consumer to fall
-// back to the per-node aggregation path.
+// in-tree memory, badger and sharded stores (and tiered); stores without it cause
+// the consumer to fall back to the per-node aggregation path.
 type nodeDocValuesScanner interface {
 	ForEachDocValues(labelToken uint16, propKeys []string, fn func(types.NodeID, []any, []bool) bool) (gen uint64, ok bool, err error)
 	ForEachDocValuesMulti(labelTokens []uint16, propKeys []string, fn func(types.NodeID, []any, []bool) bool) (gen uint64, ok bool, err error)
@@ -21,9 +21,9 @@ type nodeDocValuesScanner interface {
 // nodeMutationEpochScanner exposes ONLY the node-mutation epoch, DECOUPLED from
 // the columnar DocValues path. A consumer keys a read cache on this epoch to
 // invalidate it on writes; the value need not be the DocValues cache's — only
-// monotonically advancing on every node mutation. Splitting it out lets a
-// partitioned backend (sharded) that declines DocValues STILL expose a correct
-// advancing epoch (folded across shards) — without it the epoch defaulted to a
+// monotonically advancing on every node mutation. Splitting it out let a
+// partitioned backend (sharded, which declined DocValues until v4.43) STILL
+// expose a correct advancing epoch (folded across shards) — without it the epoch defaulted to a
 // constant 0 there, so an epoch-keyed consumer cache never invalidated and
 // served stale reads after writes on a multi-lane deployment.
 type nodeMutationEpochScanner interface {
@@ -145,7 +145,7 @@ func (n *NodeOps) DocValuesSnapshot(label string, propKeys []string) (snap types
 // resolver (the SAME one g.Nodes().ByLabel{TxPin} uses — K1 ever-member scoped,
 // history/deleted-aware, chain-resolver-correct so a node whose CURRENT label
 // differs from its label-at-txAt is handled), so it works on EVERY backend,
-// INCLUDING tiered/sharded which decline the current-state column scanner.
+// including the stores without the current-state column scanner.
 //
 // It IS cached (buildAsOfColumns → Core.asOfColumns), keyed by (label, txAt). The
 // first build materializes the as-of members — the version-chain resolution is
@@ -317,7 +317,7 @@ type nodeLabelMutationEpochScanner interface {
 // invalidation event fires), NOT on unrelated-label writes, unlike NodeMutationEpoch.
 // A Gate-2 re-check on a single-label aggregate should use this to avoid discarding a
 // still-valid result after an unrelated-label write. Returns 0 for an unknown label or
-// a store without the capability (tiered/sharded — they decline the column scanner).
+// a store without the capability (tiered; sharded sums its slots' epochs).
 func (n *NodeOps) NodeLabelMutationEpoch(label string) uint64 {
 	c := n.c
 	scanner, native := c.store.(nodeLabelMutationEpochScanner)

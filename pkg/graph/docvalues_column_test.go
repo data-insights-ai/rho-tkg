@@ -39,8 +39,8 @@ func builtColumn(t *testing.T, g *graphpkg.Graph, label, key string) storepkg.Do
 
 // DocValuesColumn states what the build does, without building: over random
 // mixes of value kinds per key (integers, floats, NaN, ±Inf, strings, bools,
-// lists, absent), after creates, updates, removals and deletes, on memory,
-// badger and tiered, the statement equals the column ForEachDocValues builds.
+// lists, absent), after creates, updates, removals and deletes, on every
+// backend, the statement equals the column ForEachDocValues builds.
 // Two-phase: a key that was numeric turns none when a string arrives and
 // numeric again when it leaves.
 func TestDocValuesColumnAgreesWithTheBuild(t *testing.T) {
@@ -54,9 +54,6 @@ func TestDocValuesColumnAgreesWithTheBuild(t *testing.T) {
 		func(*rand.Rand) any { return []int64{1, 2} },
 	}
 	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
-		if b.name == "sharded" {
-			t.Skip("sharded has no column path")
-		}
 		ctx := context.Background()
 		label := "C"
 		if b.tiered {

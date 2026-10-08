@@ -132,6 +132,59 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestRelEndpointOrdinalsDisabled`, `TestRelEndpointOrdinalsSegmentType` (memtable and sealed),
   `TestEndpointOrdinalsCopiesAndFreezes`.
 
+- **The sharded store builds DocValues columns.** Requested by sigma-tkgd (task record C3v
+  question 7, C7 "found" and open question 5: its shared Cypher path plans column scans and column
+  lookups wherever a store offers them, the sharded store built none, so `DocValuesSnapshot`
+  answered `ok=false` and every such read failed there; one machine's aggregates on sharded ran
+  slower than before). `sharded.Store` now implements `ForEachDocValues`, `ForEachDocValuesMulti`,
+  `DocValuesSnapshot` and `NodeLabelMutationEpoch` over its slots: each slot's badger store builds
+  and caches its own column snapshot, the store streams the slots one after another in slot order
+  (each slot's rows ascending by ID; the whole stream is not), bounds every slot by its exact label
+  count first (a slot without members is skipped, a slot with members whose column cannot be
+  built declines the whole call, so no member is silently dropped) and declines a label with no
+  member, as badger does. The snapshot's `Row` goes straight to the ID's slot; it implements
+  `types.NodeColumnRowReader` (`Len`, `RowAt` over the slots' rows in the same order as the
+  stream). gen is the slots' per-label epochs summed, sampled before any slot is read, and equals
+  `g.Nodes().NodeLabelMutationEpoch(label)`, which now moves on a write to a member on any slot
+  (it was 0 on sharded). `g.Nodes().DocValuesColumn` therefore states numeric or string on sharded
+  where it stated none. The as-of doors are unchanged (graph-level, every backend). Not built: the
+  typed column scans `ScanNodeColumns` / `ScanRelColumns` on sharded (their batches promise one
+  ascending ID order across the label). Measured (`BenchmarkShardedDocValues`, a sum over one
+  integer column of a label spread over 2 or 4 lane slots, three runs at load 30–36, so absolute
+  times are inflated): 20,000 nodes, the row path (`ForEachByLabel` reading the property)
+  3.4–3.7 ms (2 slots) and 6.4–12.6 ms (4 slots), `ForEachDocValues` 0.11 ms once built (0.33 ms
+  with the build), the snapshot by position 0.17–0.30 ms with one worker and 0.09–0.27 ms with
+  four; reading every member by ID, `Lend` + `GetProperty` 17.9–21.5 ms, the snapshot's `Row`
+  0.58–0.72 ms. 200,000 nodes: rows 237–325 ms (2 slots) and 416–701 ms (4 slots), the columns
+  1.2 / 1.6–1.8 ms once built (the first build 49 / 74 ms), by position with four workers
+  1.1 / 1.4 ms; by ID 0.50–1.3 s against 8–50 ms. Tests: `TestShardedDocValuesAcrossSlots`
+  (four lane slots: the stream, the intersection stream and the snapshot's `Row`, `Len` and
+  `RowAt` with one and four workers equal the rows' own values, every member once, absent values
+  absent, a non-member and an unclaimed slot's ID not rows; two-phase: a snapshot before an update
+  keeps the old value, one after has the new, and the label epoch moved with the write; a mixed
+  column and an unknown label decline; `DocValuesColumn` numeric and none),
+  `TestShardedDocValuesSnapshotConcurrentReads` (under `-race`); `TestDocValuesSnapshotRowsByPosition`
+  and `TestDocValuesColumnAgreesWithTheBuild` now run on sharded too. All three failed before.
+
+- **The sharded store states a relationship property's value classes.** Requested by sigma-tkgd
+  (task record C3v question 7: without `RelPropertyTypeClassCountsCapability` on sharded, its
+  planner never plans the ordered walk over a relationship property there and sorts instead).
+  `sharded.Store.RelPropertyTypeClassCounts` sums its slots' exact counters; a relationship's row
+  lives on one slot (with both adjacency legs; a Model-A incoming stub is not a row), so every
+  current relationship is counted once. `g.Stats().RelPropertyTypeClassCounts` answers on sharded
+  (tiered still declines). The other relationship-index statistics stay declined on sharded.
+  Test: `TestShardedRelPropertyTypeClassCounts` (relationships on several lane slots between nodes
+  on other slots, numbers, NaN, strings, bools, lists and absent values; after creates, an update
+  to a string, a property removal and a delete, the counts equal a classification of the
+  relationships' own rows); it failed before with `ErrCapabilityNotSupported`.
+
+### Changed
+
+- **`DocValuesSnapshot` and `ForEachDocValues` on the sharded store no longer decline every
+  label** (see Added): code that relied on `ok=false` there to take its row path now gets columns,
+  in slot order rather than ascending ID order. `g.Nodes().NodeLabelMutationEpoch` on sharded is
+  the slots' per-label epochs summed instead of 0.
+
 ## [4.42.0] - 2026-10-08
 
 Minor release: the sigma-tkgd store requests, round 2 (Cypher port onto the shared IR):

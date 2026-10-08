@@ -192,8 +192,8 @@ func (s *StatOps) PropertyTypeClassCounts(label, propertyKey string) (storepkg.P
 // (rule 2, BACKLOG 5B): the exact per-(relType, property key) partition of the type's
 // current relationships by value class — the correctness gate for the rel ORDER BY
 // r.prop LIMIT k push-down. Missing = RelCountByType − Present. Backends without
-// store.RelPropertyTypeClassCountsCapability (tiered/sharded — rel indexes are
-// RAM-only) return storepkg.ErrCapabilityNotSupported.
+// store.RelPropertyTypeClassCountsCapability (tiered) return
+// storepkg.ErrCapabilityNotSupported.
 func (s *StatOps) RelPropertyTypeClassCounts(typeName, propertyKey string) (storepkg.PropertyTypeClassCounts, error) {
 	c := s.c
 	var zero storepkg.PropertyTypeClassCounts
