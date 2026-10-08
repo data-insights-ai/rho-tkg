@@ -255,6 +255,10 @@ type StoreStats = core.StoreStats
 // by g.Tx.Begin().
 type GraphTx = core.GraphTx
 
+// RelCreate aliases core.RelCreate: one element of GraphTx.AddRelationships
+// (the endpoints by ID and the relationship's properties).
+type RelCreate = core.RelCreate
+
 // BatchBuilder aliases core.BatchBuilder for the public API. It is the value
 // returned by NewBatchBuilder(g) and g.Batch.New().
 type BatchBuilder = core.BatchBuilder

@@ -46,6 +46,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   options, an inverted window, an unknown type, a closed graph), `TestCountByLabelAtForwards`,
   `TestCountByTypeAtForwards`.
 
+- **`GraphTx.AddRelationships(typeName, rels)`: many relationships of one type in one call inside a
+  transaction.** Requested by sigma-tkgd (the adoption of v4.42.0, open question 3 (c): its bulk
+  create variant covers node creates only, because UNWIND … CREATE (a)-[:T]->(b) inside the
+  statement's transaction paid one `GraphTx.AddRelationshipByID` per row; v4.42.0 left the
+  relationship mirror of `AddNodes` out). One relationship per element of `rels`
+  (`graph.RelCreate{StartID, EndID, Props}`), returned in order, each with AddRelationshipByID's
+  checks (type name, provenance and temporal shadow keys, the backfill gate, property limits,
+  endpoint IDs, the self-loop policy), its own ID, hash, endpoint hashes, a strictly increasing
+  transaction time, a create event and the transaction's rollback tracking; the type is resolved
+  once, the endpoints' entity locks taken once (`LockMany`), and the relationships reach the store in
+  one `PutRelationshipsBatch`. All or nothing: an element that fails a check, or whose endpoint has
+  no current row, fails the call before an ID is minted (the error names the element), and a failed
+  or panicking store write removes what it wrote and restores a type the call introduced. Where a
+  relationship needs a check the batch cannot make — a temporal constraint is configured, or the
+  transaction writes under a scoped change-log token — the call runs AddRelationshipByID per
+  element: same results, no saving, and an error stops at that element with the earlier
+  relationships kept until the transaction rolls back. Measured
+  (`BenchmarkTxCreateRelationships`, 1,000 relationships of three properties between 1,000 existing
+  nodes per committed transaction, three runs at load 40–43, so absolute times are inflated): memory
+  `AddRelationshipByID` loop 1.84–1.91 ms → `AddRelationships` 1.62–1.71 ms (−11 %), 12,191 → 11,224
+  allocations; badger 5.12–5.38 ms → 4.72–5.30 ms (0 to −8 %, within the load's spread), the rest
+  being the store's per-relationship work (the row's encode, the frozen cache copy, adjacency and
+  type indexes, the write queue), which a batch does not remove. Tests:
+  `TestGraphTxAddRelationships` (all four backends, cross-shard on tiered: order, type, endpoints,
+  IDs, hash chains, endpoint hashes, increasing TxFrom, a per-element valid time, visible inside the
+  tx in both adjacency directions and by type, one create event per relationship in order,
+  `RelsAdded`), `TestGraphTxAddRelationshipsMatchesAddRelationshipByID` (the same endpoint hashes and
+  row semantics as the single door), `TestGraphTxAddRelationshipsRollback` (all removed, adjacency
+  restored, counter restored, ErrTxDone after), `TestGraphTxAddRelationshipsRejectsBeforeCreating`
+  (a bad value, a reserved key, a missing endpoint, a zero endpoint ID, an empty type name),
+  `TestGraphTxAddRelationshipsSelfLoop`, `TestGraphTxAddRelationshipsConstraint` (the per-element
+  path stops at the violating element), `TestGraphTxAddRelationshipsEmpty`, and in core
+  `TestAddRelationshipsInternalRestoresType`, `TestAddRelationshipsInternalStoreFailure` (written
+  relationships removed, the type restored, a failing cleanup reported),
+  `TestAddRelationshipsInternalPanic` (registry and endpoint locks released),
+  `TestAddRelationshipsInternalScopedAndCancelled`, `TestAddRelationshipsInternalTemporalKeys`.
+
 ## [4.42.0] - 2026-10-08
 
 Minor release: the sigma-tkgd store requests, round 2 (Cypher port onto the shared IR):
