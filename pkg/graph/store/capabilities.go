@@ -380,6 +380,66 @@ type RelTypeTxMembershipCapability interface {
 	ForEachRelTypeTxMember(token uint16, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
 }
 
+// RelPropertyTxMembershipCapability is OPTIONAL (backlog 8). A backend that
+// keeps a transaction-time membership sidecar for a DECLARED relationship
+// property index (relType, key) can enumerate, for one canonical value key
+// (types.IndexablePropertyValueKey), the relationships whose rows EVER carried
+// that value under that type — the current row OR any history row, deleted
+// relationships included — each tagged with a lower bound on the transaction
+// time of the earliest row that carried it. It makes a temporal
+// ByTypeAndProperty lookup cost the value's ever-members instead of the
+// whole relationship history of the graph.
+//
+// The contract is the K1 one (RelTypeTxMembershipCapability): the set is an
+// APPEND-ONLY SOUND SUPERSET (a later value change, a delete, a truncation or
+// a compaction never drops a member), the core chain resolver stays the
+// correctness authority and rejects over-included candidates, and pruning is
+// sound only as `pin < firstTxFrom -> skip`; firstTxFrom 0 means unknown
+// (never prune) and stays 0.
+//
+// Returns store.ErrIndexNotFound, before calling fn, when no rel property
+// index is declared for (relType, key) (or one is still being created); the
+// caller then takes the full-history fold. The sidecar is built lazily on the
+// first call for a (relType, key) and maintained at every row write after
+// that; fn runs outside the store's locks and may re-enter the store; fn
+// returning false stops the enumeration. Order is unspecified.
+type RelPropertyTxMembershipCapability interface {
+	ForEachRelPropertyTxMember(relTypeToken uint16, propertyKey, valueKey string, fn func(id types.RelID, firstTxFrom types.Instant) bool) error
+}
+
+// NodePropertyTxMembershipCapability is the node twin of
+// RelPropertyTxMembershipCapability, keyed like the node property index
+// (label, key): it enumerates the nodes whose rows EVER carried the label and
+// the value IN THE SAME ROW. A temporal ByLabelAndProperty lookup matches a
+// node only through a version carrying both, so the set stays a sound superset
+// although labels are mutable. Same append-only, lower-bound and
+// ErrIndexNotFound contract.
+type NodePropertyTxMembershipCapability interface {
+	ForEachNodePropertyTxMember(labelToken uint16, propertyKey, valueKey string, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error
+}
+
+// PropertyTxMembershipStats reports a store's property membership sidecars
+// (backlog 8): how many (scope, key) sidecars are built, how many postings
+// (one per entity and distinct value ever carried) they hold, and the summed
+// wall time of the lazy builds since open. Builds is the number of completed
+// builds (a sidecar dropped by Clear, retention purge, exact erasure or an
+// index drop is rebuilt on its next lookup).
+type PropertyTxMembershipStats struct {
+	RelSidecars   int
+	NodeSidecars  int
+	RelPostings   int64
+	NodePostings  int64
+	Builds        int64
+	BuildDuration time.Duration
+}
+
+// PropertyTxMembershipStatsCapability is OPTIONAL: the sizes and build cost of
+// the property membership sidecars, so the lazy O(history) build is
+// observable.
+type PropertyTxMembershipStatsCapability interface {
+	PropertyTxMembershipStats() (PropertyTxMembershipStats, error)
+}
+
 // NodeBeliefWatermarkCapability is OPTIONAL. A backend that maintains, per
 // node, the MAXIMUM TxFrom ever recorded across the entity's ENTIRE version
 // chain (current row + every history row, no matter which door wrote it)

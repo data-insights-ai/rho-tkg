@@ -183,6 +183,7 @@ func (ms *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error 
 	}
 
 	delete(ms.propertyIndexes, key)
+	delete(ms.nodePropTxMembers, key) // its membership sidecar goes with it
 	return nil
 }
 

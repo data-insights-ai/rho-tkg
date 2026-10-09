@@ -157,6 +157,7 @@ func (ms *Store) DropRelPropertyIndex(relTypeToken uint16, propertyKey string) e
 	}
 
 	delete(ms.relPropertyIndexes, key)
+	delete(ms.relPropTxMembers, key) // its membership sidecar goes with it
 	return nil
 }
 
