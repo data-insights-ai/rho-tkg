@@ -1071,6 +1071,136 @@ func (c *Core) forEachRelTypeTxCandidate(tok uint16, currentIDs []types.RelID, o
 	return nil
 }
 
+// propertyCandidateSidecarUsable reports whether a temporal property lookup
+// with this depth may take its candidates from a property membership sidecar:
+// a depth-scoped read on a store with depth-aware history keeps the depth fold
+// (tiered, which declines the sidecar anyway).
+func (c *Core) propertyCandidateSidecarUsable(depth storepkg.ShardDepth) bool {
+	return depth == storepkg.DepthAll || c.depthHistory == nil
+}
+
+// forEachRelPropertyCandidateID streams the candidate set of a temporal
+// (relType, key = value) lookup into fn, once per candidate (backlog 8).
+//
+// With the store's property membership sidecar for a declared (relType, key)
+// index the candidates are the value's ever-members, minus those whose
+// earliest row carrying the value was recorded strictly after the effective
+// transaction-time pin (TxPin, else TxAt; a pure valid-time filter prunes
+// nothing), united with currentIDs (the current index matches). Otherwise —
+// no sidecar, no declared index (store.ErrIndexNotFound), or a depth-scoped
+// read — the full-history fold. Both paths feed the same resolver and
+// predicate, so they answer the same; the sidecar path loads only chains that
+// can carry the value.
+func (c *Core) forEachRelPropertyCandidateID(tok uint16, key, valueKey string, currentIDs []types.RelID, opts storepkg.QueryOpts, fn func(types.RelID) error) error {
+	if c.relPropTxMembers == nil || !c.propertyCandidateSidecarUsable(opts.Depth) {
+		return c.forEachRelCandidateIDByDepth(currentIDs, opts.Depth, fn)
+	}
+	pinTx := effectiveTxPin(opts)
+	seen := make(map[types.RelID]struct{}, len(currentIDs))
+	var invalid error
+	err := c.relPropTxMembers.ForEachRelPropertyTxMember(tok, key, valueKey, func(id types.RelID, firstTx types.Instant) bool {
+		if !c.storeRowsTrust {
+			if verr := storepkg.ValidateRelID(id); verr != nil {
+				invalid = verr
+				return false
+			}
+		}
+		if pinTx != 0 && firstTx != 0 && firstTx > pinTx {
+			return true // first carried the value after the pin: cannot match
+		}
+		seen[id] = struct{}{}
+		return true
+	})
+	if invalid != nil {
+		return invalid
+	}
+	if errors.Is(err, storepkg.ErrIndexNotFound) {
+		return c.forEachRelCandidateIDByDepth(currentIDs, opts.Depth, fn)
+	}
+	if err != nil {
+		return err
+	}
+	for _, id := range currentIDs {
+		seen[id] = struct{}{}
+	}
+	for id := range seen {
+		if err := fn(id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// forEachNodePropertyCandidateID is the node twin of
+// forEachRelPropertyCandidateID for a conjunction of (key = value) pairs under
+// one label (one pair for ByLabelAndProperty, 2..4 for ByLabelAndProperties).
+// A node matches through one version carrying the label and every value, so
+// it is an ever-member of each pair's (label, key) sidecar: the candidates are
+// the INTERSECTION of the sidecar sets of the pairs whose key has a declared
+// index (a pair without one, or with a non-indexable value, constrains
+// nothing), pruned by the pin per pair, united with currentIDs. No usable
+// pair at all: the full-history fold.
+func (c *Core) forEachNodePropertyCandidateID(tok uint16, valueKeys map[string]string, currentIDs []types.NodeID, opts storepkg.QueryOpts, fn func(types.NodeID) error) error {
+	if c.nodePropTxMembers == nil || !c.propertyCandidateSidecarUsable(opts.Depth) {
+		return c.forEachNodeCandidateIDByDepth(currentIDs, opts.Depth, fn)
+	}
+	pinTx := effectiveTxPin(opts)
+	keys := make([]string, 0, len(valueKeys))
+	for k := range valueKeys {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys) // deterministic intersection order
+	var cands map[types.NodeID]struct{}
+	for _, key := range keys {
+		vk := valueKeys[key]
+		if vk == "" {
+			continue
+		}
+		set := make(map[types.NodeID]struct{})
+		var invalid error
+		err := c.nodePropTxMembers.ForEachNodePropertyTxMember(tok, key, vk, func(id types.NodeID, firstTx types.Instant) bool {
+			if !c.storeRowsTrust {
+				if verr := storepkg.ValidateNodeID(id); verr != nil {
+					invalid = verr
+					return false
+				}
+			}
+			if pinTx != 0 && firstTx != 0 && firstTx > pinTx {
+				return true
+			}
+			if cands != nil {
+				if _, keep := cands[id]; !keep {
+					return true
+				}
+			}
+			set[id] = struct{}{}
+			return true
+		})
+		if invalid != nil {
+			return invalid
+		}
+		if errors.Is(err, storepkg.ErrIndexNotFound) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		cands = set
+	}
+	if cands == nil {
+		return c.forEachNodeCandidateIDByDepth(currentIDs, opts.Depth, fn)
+	}
+	for _, id := range currentIDs {
+		cands[id] = struct{}{}
+	}
+	for id := range cands {
+		if err := fn(id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // validateTemporalQueryOpts is the core-layer superset of
 // storepkg.ValidateQueryOpts: it adds the cross-field TxPin conflict check.
 // TxPin is a pure knowledge-time belief-state pin (identical semantics to

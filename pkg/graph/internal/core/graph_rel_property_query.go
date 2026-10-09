@@ -21,11 +21,13 @@ import (
 // type-scan + property filter over the mandatory RelationshipsByType surface
 // (so the query works on every backend, including the tiered store, which
 // declines rel-property-index CREATION). When opts carries a temporal filter,
-// the candidate set is the union of (rels currently matching type+property) and
-// every known history ID; each candidate is resolved to its version overlapping
-// the requested time and the predicate re-checked against that version, so a rel
-// whose type and property held at the requested time is included even if a later
-// version no longer matches.
+// the candidates are the rels currently matching type+property united with the
+// rels whose rows ever carried the value (the store's property membership
+// sidecar for a declared index, backlog 8; else every known history ID); each
+// candidate is resolved to its version overlapping the requested time and the
+// predicate re-checked against that version, so a rel whose type and property
+// held at the requested time is included even if a later version no longer
+// matches.
 //
 // DECLARED view under a temporal filter: each relationship's own asserted
 // validity only, NOT masked by endpoint validity. Use Temporal().Snapshot /
@@ -95,7 +97,7 @@ func (c *Core) relsByTypeAndPropertyLocked(typeName, key string, value any, opts
 		return found && gotKey == targetKey
 	}
 	resolveOpts := c.normalizeTxAtOnlyOpts(opts)
-	if err := c.forEachRelCandidateIDByDepth(currentIDs, opts.Depth, func(id types.RelID) error {
+	if err := c.forEachRelPropertyCandidateID(tok, key, targetKey, currentIDs, opts, func(id types.RelID) error {
 		rel, err := c.findRelVersionForOpts(id, resolveOpts, pred)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
@@ -168,4 +170,17 @@ func (c *Core) relsByTypeAndProperty(tok uint16, key string, value any, opts sto
 		out = copyRelationshipRows(out)
 	}
 	return out, nil
+}
+
+// relPropertyCurrentIDs returns the IDs of the relationships whose CURRENT row
+// matches (type, key = value): the seed of the named temporal property doors.
+// A current rel that does not match now and has no other row can match at no
+// time, so seeding with the matches instead of the whole type loses nothing;
+// every other candidate comes from history (forEachRelPropertyCandidateID).
+func (c *Core) relPropertyCurrentIDs(tok uint16, key string, value any) ([]types.RelID, error) {
+	current, err := c.relsByTypeAndProperty(tok, key, value, storepkg.QueryOpts{})
+	if err != nil {
+		return nil, err
+	}
+	return c.relIDsFromTypeRows(tok, current)
 }
