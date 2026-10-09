@@ -89,6 +89,33 @@ func (bs *Store) NodePropertyTypeClassCounts(labelToken uint16, propertyKey stri
 	}, nil
 }
 
+// CompositePropertyIndexDefs returns every composite definition this store
+// holds, label token -> declared key tuples in creation order. Caller-owned
+// copies. The tiered store reads its reference shard's definitions through it
+// to install them on a shard that opens later (a new hot shard, the archive).
+func (bs *Store) CompositePropertyIndexDefs() (map[uint16][][]string, error) {
+	if err := bs.checkOpen(); err != nil {
+		return nil, err
+	}
+	bs.idxMu.RLock()
+	labels := make([]uint16, 0, len(bs.compositeIndexesByLabel))
+	for tok := range bs.compositeIndexesByLabel {
+		labels = append(labels, tok)
+	}
+	bs.idxMu.RUnlock()
+	out := make(map[uint16][][]string, len(labels))
+	for _, tok := range labels {
+		defs, err := bs.ListCompositePropertyIndexes(tok)
+		if err != nil {
+			return nil, err
+		}
+		if len(defs) > 0 {
+			out[tok] = defs
+		}
+	}
+	return out, nil
+}
+
 // ListCompositePropertyIndexes satisfies the optional
 // store.CompositeIndexIntrospectionCapability: the declared, order-preserving
 // key tuple of every composite definition under labelToken. Caller-owned

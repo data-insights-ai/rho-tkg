@@ -113,6 +113,7 @@ func (bs *Store) PutRelEntityAndOut(r *types.Relationship) error {
 	// PutRelationship's maintenance exactly rather than leaving these caught
 	// up only via the full door.
 	bs.maintainRelPropertyIndexesAdd(r, id)
+	bs.maintainRelTypeTemporalIndexesAdd(r, id) // backlog 10: a tiered shard's cross-shard rows
 	bs.addRelPropertyTypeClassCounts(r)
 
 	bs.appendOps(ops...)
@@ -248,6 +249,7 @@ func (bs *Store) DeleteRelEntityAndOut(id snowflake.ID) (RelDeleteInfo, error) {
 	// so the precise value-based removal is used rather than the brute-force
 	// purge deleteRelByInfo falls back to when only RelDeleteInfo is known.
 	bs.maintainRelPropertyIndexesRemove(r, id)
+	bs.maintainRelTypeTemporalIndexesPurge(id) // the row leaves this shard: no envelope may vouch for it
 	bs.removeRelPropertyTypeClassCountsByID(id, info.RelType)
 
 	ops := []writeOp{

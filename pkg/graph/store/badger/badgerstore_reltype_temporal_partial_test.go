@@ -1,6 +1,7 @@
 package badger
 
 import (
+	"errors"
 	"slices"
 	"testing"
 
@@ -61,5 +62,46 @@ func TestRelTypeTemporalIndex_PartialDoorsMaintainEnvelope(t *testing.T) {
 	kept, _ = bs.PruneRelTypeTemporalCandidates(relType, ids, QueryOpts{ValidAt: 2500})
 	if !slices.Equal(kept, []types.RelID{101}) {
 		t.Errorf("after delete at 2500 kept %v, want [101] (uncovered ids are always kept)", kept)
+	}
+}
+
+// CompositePropertyIndexDefs (direct test, rule 1): every definition across
+// labels, copies, dropped definitions and labels gone, closed store refused.
+func TestCompositePropertyIndexDefs_ListsEveryLabel(t *testing.T) {
+	bs := newTestBadgerStoreInMemory(t)
+	if defs, err := bs.CompositePropertyIndexDefs(); err != nil || len(defs) != 0 {
+		t.Fatalf("empty store defs = %v, %v; want empty", defs, err)
+	}
+	for _, def := range []struct {
+		label uint16
+		keys  []string
+	}{{3, []string{"a", "b"}}, {3, []string{"b", "a"}}, {5, []string{"x", "y", "z"}}} {
+		if err := bs.CreateCompositePropertyIndex(def.label, def.keys); err != nil {
+			t.Fatalf("create %d %v: %v", def.label, def.keys, err)
+		}
+	}
+	defs, err := bs.CompositePropertyIndexDefs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(defs) != 2 || len(defs[3]) != 2 || !slices.Equal(defs[3][0], []string{"a", "b"}) ||
+		!slices.Equal(defs[3][1], []string{"b", "a"}) || len(defs[5]) != 1 || !slices.Equal(defs[5][0], []string{"x", "y", "z"}) {
+		t.Fatalf("defs = %v", defs)
+	}
+	defs[5][0][0] = "mutated"
+	if again, _ := bs.CompositePropertyIndexDefs(); again[5][0][0] != "x" {
+		t.Fatal("returned keys alias the store's definitions")
+	}
+	if err := bs.DropCompositePropertyIndex(5, []string{"x", "y", "z"}); err != nil {
+		t.Fatal(err)
+	}
+	if defs, _ := bs.CompositePropertyIndexDefs(); len(defs) != 1 || len(defs[5]) != 0 {
+		t.Fatalf("after drop defs = %v, want only label 3", defs)
+	}
+	if err := bs.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bs.CompositePropertyIndexDefs(); !errors.Is(err, ErrStoreClosed) {
+		t.Fatalf("closed store: err = %v, want ErrStoreClosed", err)
 	}
 }
