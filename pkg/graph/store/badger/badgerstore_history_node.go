@@ -134,6 +134,7 @@ func (bs *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState))   // BACKLOG 10c — the demoted history row
+	bs.recordNodeRowLocked(prevState)                              // backlog 8 — and its property values
 	bs.addNodePropertyKeyCounts(updatedNode)
 	ops = append(ops, bs.maintainPropertyIndexesAdd(updatedNode, id)...)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
@@ -270,6 +271,7 @@ func (bs *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(updatedNode)) // BACKLOG 10c
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState))   // BACKLOG 10c — the demoted history row
+	bs.recordNodeRowLocked(prevState)                              // backlog 8 — and its property values
 	bs.addNodePropertyKeyCounts(updatedNode)
 	ops = append(ops, bs.maintainPropertyIndexesAdd(updatedNode, id)...)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, updatedNode, id)
@@ -396,6 +398,7 @@ func (bs *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 	bs.bumpNodeRevLocked(nid)
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(current))   // BACKLOG 10c
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState)) // BACKLOG 10c — the demoted history row
+	bs.recordNodeRowLocked(prevState)                            // backlog 8 — and its property values
 	bs.addNodePropertyKeyCounts(current)
 	ops = append(ops, bs.maintainPropertyIndexesAdd(current, id)...)
 	indexpkg.AddNodeToTemporalIndexes(bs.temporalIndexes, current, id)
@@ -514,8 +517,10 @@ func (bs *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion u
 		return fatalErr
 	}
 	bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(nodeTombstone)) // BACKLOG 10c
+	bs.recordNodeRowLocked(nodeTombstone)                            // backlog 8
 	for _, rt := range relTombstones {
 		bs.bumpRelBeliefWatermarkLocked(rt.ID, relTxFrom(rt.Tombstone)) // BACKLOG 10c
+		bs.recordRelRowLocked(rt.Tombstone)                             // backlog 8
 	}
 	logErr := bs.logChangeRoutedRaw(storecontract.ChangeNodeDelete, delPayload, token)
 	bs.idxMu.Unlock()
@@ -630,10 +635,13 @@ func (bs *Store) putNodeVersionRouted(nid types.NodeID, version uint32, n *types
 	// enqueued together under one wbMu critical section (appendOpsLoggedRouted)
 	// for snapshot atomicity.
 	err = bs.enqueueVersionAgainstLazyBuilds(
-		func() bool { return bs.labelTxMembersBuilt.Load() || bs.nodeBeliefWatermarkBuilt.Load() },
+		func() bool {
+			return bs.labelTxMembersBuilt.Load() || bs.nodeBeliefWatermarkBuilt.Load() || len(bs.nodePropTx) > 0
+		},
 		func() {
 			bs.recordNodeLabelMembersLocked(n)
 			bs.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n))
+			bs.recordNodeRowLocked(n) // backlog 8: tracking or built property sidecars
 		},
 		func() error {
 			return bs.appendOpsLoggedRouted(storecontract.ChangeNodeHistoryVersion, logPayload, token, writeOp{opType: writeOpSet, key: key, value: data})

@@ -44,30 +44,19 @@ echo "bench-compare: comparing $old (old) vs $new (new), threshold ${threshold}%
 "$benchstat_bin" "$old" "$new" || true
 "$benchstat_bin" -format csv "$old" "$new" 2>/dev/null > "$csv_report"
 
-# Scan only the sec/op table (the first metric block in benchstat's CSV
-# output; a later B/op or allocs/op header line ends it) and flag any row
-# — including the trailing "geomean" aggregate row — whose current sec/op
-# exceeds its baseline sec/op by more than $threshold percent. A benchmark
-# name column is always non-empty for a data row; the per-table file-name
-# line and the metric header line both have an empty first column, so
-# `$1 != ""` alone excludes them without needing to track line order.
-awk -v thr="$threshold" '
-  BEGIN { FS = "," }
-  /^,sec\/op,/ { in_block = 1; next }
-  /^,B\/op,/ || /^,allocs\/op,/ { in_block = 0; next }
-  in_block && $1 != "" {
-    name = $1
-    base = $2 + 0
-    cur  = $4 + 0
-    if (base > 0) {
-      pct = (cur - base) / base * 100
-      if (pct > thr) {
-        printf "bench-compare: REGRESSION %s: baseline=%ss current=%ss (+%.2f%% > %s%%)\n", name, $2, $4, pct, thr
-        bad = 1
-      }
-    }
-  }
-  END { if (bad) { exit 1 } }
-' "$csv_report"
+# bench-gate.awk (see its header): a TIME gate on the sec/op table (the first
+# metric block in benchstat's CSV output; the next block's header line ends it,
+# whatever its unit — B/op, allocs/op or a custom b.ReportMetric unit such as
+# build-ms) and an ALLOCS gate (ALLOCS_THRESHOLD_PCT, default 10) for one
+# benchmark family (ALLOCS_GATE_FAMILY, default PinnedRelPropertyLookup): its
+# rows are allocs-gated; their time is reported, not gated, on shared hosts.
+# TIME_CANARY opts family rows back into the time gate (TIME_CANARY=canary:
+# the documented 8-row canary in bench-gate.awk, for quiet runners; any other
+# value: a regex). A time-gated row fails when its current sec/op exceeds the
+# baseline by more than $threshold percent; so does the geomean of the
+# time-gated rows.
+LC_ALL=C awk -v thr="$threshold" -v allocs_thr="${ALLOCS_THRESHOLD_PCT:-10}" \
+  -v family="${ALLOCS_GATE_FAMILY:-}" -v canary="${TIME_CANARY:-}" \
+  -f "$(dirname "$0")/bench-gate.awk" "$csv_report"
 
-echo "bench-compare: no scenario regressed time by more than ${threshold}% — ok"
+echo "bench-compare: no time-gated scenario regressed by more than ${threshold}% and no allocs-gated one by more than ${ALLOCS_THRESHOLD_PCT:-10}% allocs/op — ok"

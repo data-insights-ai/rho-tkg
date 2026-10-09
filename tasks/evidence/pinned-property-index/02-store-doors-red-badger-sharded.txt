@@ -1,0 +1,19 @@
+    property_tx_members_test.go:277: *badger.Store does not implement the property membership capabilities
+    property_tx_members_test.go:277: *badger.Store does not implement the property membership capabilities
+    property_tx_members_test.go:277: *sharded.Store does not implement the property membership capabilities
+--- FAIL: TestRelPropertyTxMembersEveryDoor (0.05s)
+    --- PASS: TestRelPropertyTxMembersEveryDoor/memory (0.00s)
+    --- FAIL: TestRelPropertyTxMembersEveryDoor/badger (0.00s)
+    --- FAIL: TestRelPropertyTxMembersEveryDoor/badger-delta (0.00s)
+    --- FAIL: TestRelPropertyTxMembersEveryDoor/sharded (0.04s)
+    property_tx_members_test.go:425: *badger.Store does not implement the property membership capabilities
+    property_tx_members_test.go:425: *badger.Store does not implement the property membership capabilities
+    property_tx_members_test.go:425: *sharded.Store does not implement the property membership capabilities
+--- FAIL: TestNodePropertyTxMembersEveryDoor (0.05s)
+    --- PASS: TestNodePropertyTxMembersEveryDoor/memory (0.00s)
+    --- FAIL: TestNodePropertyTxMembersEveryDoor/badger (0.00s)
+    --- FAIL: TestNodePropertyTxMembersEveryDoor/badger-delta (0.00s)
+    --- FAIL: TestNodePropertyTxMembersEveryDoor/sharded (0.04s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	0.108s
+FAIL

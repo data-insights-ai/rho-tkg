@@ -6,6 +6,56 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Temporal property lookups cost the value's ever-members, not the history of the graph** (backlog 8, requested
+  by sigma-tkgd's realtime ingest; handover `tasks/handover-pinned-index-churn-20261009.md`, recommendation D).
+  `g.Rels().ByTypeAndProperty` and `g.Nodes().ByLabelAndProperty` / `ByLabelAndProperties` with `TxPin`, `TxAt`,
+  `ValidAt` or `ValidStart`+`ValidEnd`, and the named `RelsByTypePropertyAt` / `RelsByTypePropertyDuring` /
+  `NodesByLabelPropertyAt` / `NodesByLabelPropertyDuring`, folded EVERY ID with a history row, of every type, into
+  their candidates and loaded each chain. With a declared property index they now resolve only the current matches
+  united with the value's ever-members from a new optional store capability,
+  `store.RelPropertyTxMembershipCapability.ForEachRelPropertyTxMember(typeTok, key, valueKey, fn)` and its node twin
+  `NodePropertyTxMembershipCapability` (keyed like the index, (label, key): a node row counts only if it carries the
+  label and the value itself), minus members whose earliest row carrying the value was recorded after the effective
+  pin. The sidecar is append-only (a sound superset: the chain resolver stays the authority, so indexed and unindexed
+  doors answer the same), RAM-only, built lazily per index on the first temporal lookup and recorded at every row
+  write (memory: the four row seams `storedRel`/`historyRel`/`storedNode`/`historyNode`; badger: the current-row index
+  maintenance seam and every history-row door), dropped by Clear, an index drop, retention purge and exact erasure.
+  A lookup on a built sidecar takes the memory store's read lock (K1's lookups too); badger builds one sidecar under
+  its own mutex, so a build never delays lookups on other indexes. memory, badger and sharded (union of the shards)
+  implement it; tiered and wrapper stores decline and keep the
+  full-history fold. `store.PropertyTxMembershipStatsCapability` reports built sidecars, postings, builds and build
+  time. `ByLabelAndProperties` intersects the sidecars of the keys that have a single-key index. The named rel doors
+  now seed from the current property matches instead of the whole type.
+  Measured (`BenchmarkPinnedRelPropertyLookup`, 32-core x86, shared machine; one value with 200 current matches,
+  sigma profile = 20 % of the rels revised, 5 % deleted; evidence `tasks/evidence/pinned-property-index/`):
+
+  | pinned 200-match lookup | main | this change |
+  |---|---|---|
+  | memory, 100 k, sigma | 13.8 ms | 0.095 ms |
+  | badger, 100 k, sigma | 227 ms | 0.127 ms |
+  | sharded, 100 k, sigma | 221 ms | 0.179 ms |
+  | badger, 100 k, 5 types, unrelated churn x10 | 789 ms | 0.128 ms |
+  | memory, 1 M, sigma | 462 ms (1 sample) | 0.097 ms |
+  | badger, 1 M, sigma | 3.33 s (1 sample) | 0.113 ms |
+
+  Targets met at 1 M: churned vs no-churn 1.10x (memory), 0.83x (badger), 0.80x (sharded) (target <= 2x); unrelated
+  churn x1 -> x10: +10 % / +11 % / -7 % ns/op, allocs/op identical (target +-20 %). Lazy build of one sidecar at
+  1 M sigma: memory 0.62 s, badger 3.7 s, sharded 3.1 s (100 k: 49 / 299 / 316 ms), once per index after open; on
+  badger the build does not hold the write lock (writers record into the sidecar while it scans; a Clear or drop
+  during the scan discards it, bounded retry). RAM: 25 B per posting at 1 M and 10 M postings (200 per value),
+  30 B (20 000 per value), 97-117 B when every value is distinct (first posting of a value held inline); one posting
+  per (rel, distinct value ever carried). Current (unpinned) lookups and writes: allocs/op unchanged; time within the shared machine's
+  order-dependent noise band (BulkAddNodes10k memory +15 % main-first, -10 % branch-first; `08-regression.txt`), no
+  consistent regression. Tests: T1 `TestPinnedByTypeAndPropertyEqualsPinnedScan` (exact sets per pin, 7
+  backends with and without the index; green on main as a guard), T5 `TestPinnedPropertyLookupLoadsOnlyEverMembers`
+  (chain loads = the value's ever-members, stable under 10x churn; red on main: 50 loads vs 10), T2
+  `TestPinnedPropertyDoorsAgree`, T3 the property doors in `TestBitemporalOracleHarness` (indexed vs unindexed vs
+  oracle), T4 `TestPinnedPropertyLookupLifecycle` (late index, drop/re-create, truncate, compaction, reset, purge,
+  reopen, replica apply, unflushed reads), store door matrices in `pkg/graph/store/property_tx_members_test.go`,
+  badger build windows in `badgerstore_propertytxmembers_test.go`; 18 of 18 mutants red.
+
 ### Changed
 
 - **A backfilled re-import of a deleted ID must be recorded after the ID's chain: a `tkg_tx_from` at or below
@@ -32,6 +82,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **K1 pinned label / rel-type scans no longer drop an entity whose rows include an unstamped one** (pre-existing,
+  found by the backlog-8 review). A row with `TxFrom` 0 (legacy or imported data, or a direct `Store.Replace*`) is
+  visible to a `TxAt` read at every pin, but the membership sidecars replaced a member's 0 first-TxFrom bound with
+  the next stamped row's and recorded rel-type / label membership only at creates and label doors, so
+  `ByLabel` / `ByType` with `TxAt` below the stamps pruned the entity (repro: unstamp a node's row, update it twice,
+  move it off the label; `ByLabel{TxAt:1}` returned 0, the fold 1; rels: unstamp, update, delete). Both sidecars now
+  merge with `index.MergeFirstTx` (0 is never raised) and record every row a door writes (memory: the four row
+  seams; badger: the current-row index seam and the history doors), like the property sidecars. `TxPin` reads were
+  never affected (as-of selection requires `TxFrom > 0`). Test `TestUnstampedRowKeepsMembershipBoundAtZero` (memory,
+  badger; lazy and incremental; label, rel type and both property sidecars), red before the fix.
+- **The bench gate no longer reads a custom benchmark metric as time**: `bench-compare.sh` left benchstat's sec/op
+  block only at a `B/op` / `allocs/op` header, so a `b.ReportMetric` unit printed between them (`build-ms`) was gated
+  as sec/op and identical code failed on a noisy one-shot sample. The check moved to `bench/bench-gate.awk`, ends the
+  block at the next header line of any unit and runs with `LC_ALL=C` (a comma-decimal locale read `1.429e-05` as 1);
+  tests `TestBenchGateIgnoresCustomMetricBlocks`, `TestBenchGateStillCatchesTimeRegression` over real benchstat CSV
+  fixtures in `bench/testdata/gate/`. `PinnedRelPropertyLookup` is allocs-gated (+10 %, `ALLOCS_THRESHOLD_PCT`, 5 samples) on the
+  24 rows of its default run (memory and badger, every profile, matches200 pinned and current); its time rows are
+  reported, not gated, on shared hosts: identical code swung +42..+178 % in time on that family while allocs/op did
+  not move, and the regression it exists to catch, the lookup falling back to the history fold, shows as 1,423 ->
+  106,555 allocs/op. Opt-in time canary for quiet runners: `TIME_CANARY=canary` (8 rows: memory and badger x
+  1type/sigma, 5types/unrelated-x10 x matches200; any other value is used as the regex). The time geomean covers the
+  time-gated rows only. Sharded and the broad lookup run only with `RHO_TKG_PINNED_REL_SIZES`.
+  `ALLOCS_GATE_FAMILY=none` time-gates every row. Tests `TestBenchGateFamily*`, `TestBenchGateNonFamilyTimeRegressionFails`
+  (a +200 % family time swing passes by default and fails with the canary opted in, allocs 1,423 -> 106,555 fails,
+  a non-family time regression fails) and `TestPinnedRelGateMatrixMatchesTheGate` (the benchmark's default rows
+  against the gate's own regexes).
 - **HIGH (data loss): a re-import of a deleted ID no longer overwrites the earlier life's history** (backlog 38
   and the 2026-09-24 review entry "(HIGH?) Re-import of a deleted ID", pre-existing). `Import` (node and rel),
   `Nodes().AddByIDIfAbsent` and the `GraphTx` twins restarted the entity at version 0; history is keyed by

@@ -179,6 +179,9 @@ func (ms *Store) ExactErase(req storecontract.ExactErasureRequest) (storecontrac
 	// min/max values. Rebuild every planner accumulator from surviving live rows
 	// so no property value or hash contribution remains resident.
 	ms.rebuildPlannerStatsAfterExactErasureLocked()
+	// Same for the property membership sidecars: an erased value must not stay
+	// resident; they rebuild from the surviving rows on the next lookup.
+	ms.dropPropertyTxMembersLocked()
 	ms.docColumns = make(map[uint16]*indexpkg.LabelDocValues)
 	ms.docColumnsMulti = make(map[string]*indexpkg.LabelDocValues)
 	ms.bumpNodeEpoch()

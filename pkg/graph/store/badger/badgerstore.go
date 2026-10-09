@@ -480,6 +480,20 @@ type Store struct {
 	relTypeTxMembers    map[uint16]map[types.RelID]types.Instant
 	relTypeMembersBuilt atomic.Bool
 
+	// Property membership sidecars (backlog 8, badgerstore_propertytxmembers.go):
+	// one per declared property index a temporal lookup asked for. relPropTx /
+	// nodePropTx and propTxGen are guarded by idxMu; propTxBuildMus holds one
+	// mutex per sidecar ((type|label, key)) that serializes ITS lazy builds, so a
+	// build of one index never delays a lookup on another (order: a build mutex
+	// -> idxMu; no build mutex is taken under another). propTxBuilds /
+	// propTxBuildNanos feed PropertyTxMembershipStats.
+	relPropTx        map[indexpkg.RelPropertyIndexKey]*propTxSidecar[types.RelID]
+	nodePropTx       map[indexpkg.PropertyIndexKey]*propTxSidecar[types.NodeID]
+	propTxGen        uint64
+	propTxBuildMus   sync.Map // propTxBuildKey -> *sync.Mutex
+	propTxBuilds     atomic.Int64
+	propTxBuildNanos atomic.Int64
+
 	// Belief-watermark sidecars (store.NodeBeliefWatermarkCapability /
 	// RelBeliefWatermarkCapability, BACKLOG 10c). nodeBeliefWatermark maps a
 	// node ID to the MAXIMUM TxFrom ever recorded across its whole version
@@ -718,6 +732,11 @@ type Store struct {
 	// themselves built, while holding idxMu.Lock; so does
 	// relationshipIndexKeysForRel after its scan. Set only from the owning test.
 	historyScanTestHook func()
+	// propTxScanTestHook runs inside a property membership build after the
+	// overlay capture and before the badger view; propTxBuildTestHook after the
+	// scan and before the install. Tests only.
+	propTxScanTestHook  func()
+	propTxBuildTestHook func()
 
 	// bulkAsOfScanTestHook, when non-nil, is invoked by NodesAsOf/RelsAsOf once
 	// per candidate entity, right BEFORE that entity's nodeAsOfInTxn/relAsOfInTxn
@@ -2123,7 +2142,8 @@ func (bs *Store) Clear() error {
 	bs.labelTxMembersBuilt.Store(false)
 	bs.relTypeTxMembers = nil // rel-type mirror
 	bs.relTypeMembersBuilt.Store(false)
-	bs.nodeBeliefWatermark = nil // drop the lazy belief-watermark sidecar; rebuilt on next use
+	bs.dropPropertyTxMembersLocked() // property sidecars; an in-flight build discards its scan
+	bs.nodeBeliefWatermark = nil     // drop the lazy belief-watermark sidecar; rebuilt on next use
 	bs.nodeBeliefWatermarkBuilt.Store(false)
 	bs.relBeliefWatermark = nil // rel mirror
 	bs.relBeliefWatermarkBuilt.Store(false)

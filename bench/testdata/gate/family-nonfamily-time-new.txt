@@ -1,0 +1,28 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/bench
+BenchmarkPinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/pinned-32	1000	95102 ns/op	3.5 build-ms	109823 B/op	1423 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/current-32	1000	14484 ns/op	4666 B/op	205 allocs/op
+BenchmarkPinnedRelPropertyLookup/badger/20000/5types/unrelated-x10/matches200/pinned-32	1000	123925 ns/op	60.0 build-ms	190900 B/op	2631 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/20000/1type/nochurn/matches200/pinned-32	1000	97065 ns/op	2.4 build-ms	109825 B/op	1423 allocs/op
+BenchmarkRelPropertyLookup10k/memory/indexed-32	1000	407 ns/op	0 B/op	6 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/pinned-32	1000	94612 ns/op	3.5 build-ms	109823 B/op	1423 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/current-32	1000	14282 ns/op	4666 B/op	205 allocs/op
+BenchmarkPinnedRelPropertyLookup/badger/20000/5types/unrelated-x10/matches200/pinned-32	1000	125288 ns/op	60.0 build-ms	190900 B/op	2631 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/20000/1type/nochurn/matches200/pinned-32	1000	97502 ns/op	2.4 build-ms	109825 B/op	1423 allocs/op
+BenchmarkRelPropertyLookup10k/memory/indexed-32	1000	420 ns/op	0 B/op	6 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/pinned-32	1000	93145 ns/op	3.5 build-ms	109823 B/op	1423 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/current-32	1000	14472 ns/op	4666 B/op	205 allocs/op
+BenchmarkPinnedRelPropertyLookup/badger/20000/5types/unrelated-x10/matches200/pinned-32	1000	125139 ns/op	60.0 build-ms	190900 B/op	2631 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/20000/1type/nochurn/matches200/pinned-32	1000	97662 ns/op	2.4 build-ms	109825 B/op	1423 allocs/op
+BenchmarkRelPropertyLookup10k/memory/indexed-32	1000	416 ns/op	0 B/op	6 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/pinned-32	1000	94684 ns/op	3.5 build-ms	109823 B/op	1423 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/current-32	1000	14124 ns/op	4666 B/op	205 allocs/op
+BenchmarkPinnedRelPropertyLookup/badger/20000/5types/unrelated-x10/matches200/pinned-32	1000	124265 ns/op	60.0 build-ms	190900 B/op	2631 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/20000/1type/nochurn/matches200/pinned-32	1000	99196 ns/op	2.4 build-ms	109825 B/op	1423 allocs/op
+BenchmarkRelPropertyLookup10k/memory/indexed-32	1000	412 ns/op	0 B/op	6 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/pinned-32	1000	95140 ns/op	3.5 build-ms	109823 B/op	1423 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/current-32	1000	14406 ns/op	4666 B/op	205 allocs/op
+BenchmarkPinnedRelPropertyLookup/badger/20000/5types/unrelated-x10/matches200/pinned-32	1000	125707 ns/op	60.0 build-ms	190900 B/op	2631 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/20000/1type/nochurn/matches200/pinned-32	1000	97355 ns/op	2.4 build-ms	109825 B/op	1423 allocs/op
+BenchmarkRelPropertyLookup10k/memory/indexed-32	1000	409 ns/op	0 B/op	6 allocs/op

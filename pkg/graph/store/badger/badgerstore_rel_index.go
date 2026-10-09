@@ -126,6 +126,10 @@ func (bs *Store) DropRelPropertyIndex(relTypeToken uint16, propertyKey string) e
 		return ErrIndexNotFound
 	}
 	delete(bs.relPropertyIndexes, key)
+	if _, ok := bs.relPropTx[key]; ok {
+		delete(bs.relPropTx, key) // its membership sidecar goes with it
+		bs.propTxGen++
+	}
 	bs.persistRelPropertyIndexDefs()
 	bs.idxMu.Unlock()
 	return bs.flushIfNeeded()
@@ -320,8 +324,12 @@ func (bs *Store) persistRelPropertyIndexDefs() {
 // points every rel-mutation door calls. RAM-only: they mutate the value maps
 // directly under idxMu (the caller already holds it). No disk ops (unlike the
 // node property index's disk mode).
+//
+// Every door that writes a current relationship row calls Add, so it also
+// records the row into the property membership sidecars (backlog 8).
 func (bs *Store) maintainRelPropertyIndexesAdd(r *types.Relationship, id snowflake.ID) {
 	indexpkg.AddRelToPropertyIndexes(bs.relPropertyIndexes, r, id)
+	bs.recordRelRowLocked(r)
 }
 
 func (bs *Store) maintainRelPropertyIndexesRemove(r *types.Relationship, id snowflake.ID) {

@@ -1,6 +1,7 @@
 package memory
 
 import (
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -27,7 +28,8 @@ import (
 
 // recordLabelMemberLocked records node id as an ever-member of tok with the
 // given acquisition transaction time, keeping the earliest (lowest) firstTxFrom
-// seen. No-op until the sidecar is built. Caller holds ms.mu.
+// seen; 0 (an unstamped row, visible to a TxAt read at every pin) is "unknown"
+// and is never raised (index.MergeFirstTx). No-op until the sidecar is built. Caller holds ms.mu.
 func (ms *Store) recordLabelMemberLocked(tok uint16, id types.NodeID, txFrom types.Instant) {
 	if ms.labelTxMembers == nil {
 		return // not built yet — the lazy build will capture current state
@@ -37,7 +39,9 @@ func (ms *Store) recordLabelMemberLocked(tok uint16, id types.NodeID, txFrom typ
 		set = make(map[types.NodeID]types.Instant)
 		ms.labelTxMembers[tok] = set
 	}
-	if prev, ok := set[id]; !ok || (txFrom != 0 && (prev == 0 || txFrom < prev)) {
+	if prev, ok := set[id]; ok {
+		set[id] = indexpkg.MergeFirstTx(prev, txFrom)
+	} else {
 		set[id] = txFrom
 	}
 }
@@ -74,7 +78,9 @@ func (ms *Store) recordRelTypeMemberLocked(r *types.Relationship) {
 		set = make(map[types.RelID]types.Instant)
 		ms.relTypeTxMembers[tok] = set
 	}
-	if prev, ok := set[id]; !ok || (tx != 0 && (prev == 0 || tx < prev)) {
+	if prev, ok := set[id]; ok {
+		set[id] = indexpkg.MergeFirstTx(prev, tx)
+	} else {
 		set[id] = tx
 	}
 }
@@ -135,7 +141,9 @@ func (ms *Store) ensureRelTypeTxMembersBuiltLocked() error {
 	return nil
 }
 
-// ForEachLabelTxMember implements store.LabelTxMembershipCapability.
+// ForEachLabelTxMember implements store.LabelTxMembershipCapability. A built
+// sidecar is read under ms.mu.RLock (readOrBuild); only the first call builds
+// under the write lock.
 func (ms *Store) ForEachLabelTxMember(token uint16, fn func(id types.NodeID, firstTxFrom types.Instant) bool) error {
 	if ms == nil {
 		return ErrNilStore
@@ -143,26 +151,31 @@ func (ms *Store) ForEachLabelTxMember(token uint16, fn func(id types.NodeID, fir
 	if fn == nil {
 		return errNilIterationCallback()
 	}
-	ms.mu.Lock()
-	if err := ms.checkOpenLocked(); err != nil {
-		ms.mu.Unlock()
+	var members []indexpkg.TxMember[types.NodeID]
+	snapshot := func() {
+		set := ms.labelTxMembers[token]
+		members = make([]indexpkg.TxMember[types.NodeID], 0, len(set))
+		for id, tx := range set {
+			members = append(members, indexpkg.TxMember[types.NodeID]{ID: id, FirstTx: tx})
+		}
+	}
+	err := ms.readOrBuild(func() (bool, error) {
+		if ms.labelTxMembers == nil {
+			return false, nil
+		}
+		snapshot()
+		return true, nil
+	}, func() error {
+		ms.ensureLabelTxMembersBuiltLocked()
+		snapshot()
+		return nil
+	})
+	if err != nil {
 		return err
 	}
-	ms.ensureLabelTxMembersBuiltLocked()
-	// Snapshot into a slice so fn runs OUTSIDE the store lock (fn re-enters the
-	// store to resolve chains — holding ms.mu across it would deadlock).
-	set := ms.labelTxMembers[token]
-	type member struct {
-		id types.NodeID
-		tx types.Instant
-	}
-	members := make([]member, 0, len(set))
-	for id, tx := range set {
-		members = append(members, member{id: id, tx: tx})
-	}
-	ms.mu.Unlock()
+	// fn runs outside the store lock (it re-enters the store to resolve chains).
 	for _, m := range members {
-		if !fn(m.id, m.tx) {
+		if !fn(m.ID, m.FirstTx) {
 			return nil
 		}
 	}
@@ -177,27 +190,32 @@ func (ms *Store) ForEachRelTypeTxMember(token uint16, fn func(id types.RelID, fi
 	if fn == nil {
 		return errNilIterationCallback()
 	}
-	ms.mu.Lock()
-	if err := ms.checkOpenLocked(); err != nil {
-		ms.mu.Unlock()
+	var members []indexpkg.TxMember[types.RelID]
+	snapshot := func() {
+		set := ms.relTypeTxMembers[token]
+		members = make([]indexpkg.TxMember[types.RelID], 0, len(set))
+		for id, tx := range set {
+			members = append(members, indexpkg.TxMember[types.RelID]{ID: id, FirstTx: tx})
+		}
+	}
+	err := ms.readOrBuild(func() (bool, error) {
+		if ms.relTypeTxMembers == nil {
+			return false, nil
+		}
+		snapshot()
+		return true, nil
+	}, func() error {
+		if err := ms.ensureRelTypeTxMembersBuiltLocked(); err != nil {
+			return err
+		}
+		snapshot()
+		return nil
+	})
+	if err != nil {
 		return err
 	}
-	if err := ms.ensureRelTypeTxMembersBuiltLocked(); err != nil {
-		ms.mu.Unlock()
-		return err
-	}
-	set := ms.relTypeTxMembers[token]
-	type member struct {
-		id types.RelID
-		tx types.Instant
-	}
-	members := make([]member, 0, len(set))
-	for id, tx := range set {
-		members = append(members, member{id: id, tx: tx})
-	}
-	ms.mu.Unlock()
 	for _, m := range members {
-		if !fn(m.id, m.tx) {
+		if !fn(m.ID, m.FirstTx) {
 			return nil
 		}
 	}

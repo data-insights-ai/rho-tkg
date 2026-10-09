@@ -1,0 +1,20 @@
+    txfrom_zero_membership_test.go:121: {Limit:0 After:0 ValidAt:1791580690436 ValidStart:0 ValidEnd:0 TxAt:1 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false} ByLabel (K1 sidecar): 0 nodes, the fold 1
+    txfrom_zero_membership_test.go:186: {Limit:0 After:0 ValidAt:1791580690437 ValidStart:0 ValidEnd:0 TxAt:1 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false} ByType (K1 sidecar): 0 rels, the fold 1
+    txfrom_zero_membership_test.go:121: {Limit:0 After:0 ValidAt:1791580690437 ValidStart:0 ValidEnd:0 TxAt:1 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false} ByLabel (K1 sidecar): 0 nodes, the fold 1
+    txfrom_zero_membership_test.go:186: {Limit:0 After:0 ValidAt:1791580690437 ValidStart:0 ValidEnd:0 TxAt:1 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false} ByType (K1 sidecar): 0 rels, the fold 1
+    txfrom_zero_membership_test.go:121: {Limit:0 After:0 ValidAt:1791580690439 ValidStart:0 ValidEnd:0 TxAt:1 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false} ByLabel (K1 sidecar): 0 nodes, the fold 1
+    txfrom_zero_membership_test.go:186: {Limit:0 After:0 ValidAt:1791580690441 ValidStart:0 ValidEnd:0 TxAt:1 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false} ByType (K1 sidecar): 0 rels, the fold 1
+    txfrom_zero_membership_test.go:121: {Limit:0 After:0 ValidAt:1791580690446 ValidStart:0 ValidEnd:0 TxAt:1 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false} ByLabel (K1 sidecar): 0 nodes, the fold 1
+    txfrom_zero_membership_test.go:186: {Limit:0 After:0 ValidAt:1791580690475 ValidStart:0 ValidEnd:0 TxAt:1 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false} ByType (K1 sidecar): 0 rels, the fold 1
+--- FAIL: TestUnstampedRowKeepsMembershipBoundAtZero (0.04s)
+    --- FAIL: TestUnstampedRowKeepsMembershipBoundAtZero/memory/warm=false/node (0.00s)
+    --- FAIL: TestUnstampedRowKeepsMembershipBoundAtZero/memory/warm=false/rel (0.00s)
+    --- FAIL: TestUnstampedRowKeepsMembershipBoundAtZero/memory/warm=true/node (0.00s)
+    --- FAIL: TestUnstampedRowKeepsMembershipBoundAtZero/memory/warm=true/rel (0.00s)
+    --- FAIL: TestUnstampedRowKeepsMembershipBoundAtZero/badger/warm=false/node (0.00s)
+    --- FAIL: TestUnstampedRowKeepsMembershipBoundAtZero/badger/warm=false/rel (0.00s)
+    --- FAIL: TestUnstampedRowKeepsMembershipBoundAtZero/badger/warm=true/node (0.00s)
+    --- FAIL: TestUnstampedRowKeepsMembershipBoundAtZero/badger/warm=true/rel (0.03s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.048s
+FAIL

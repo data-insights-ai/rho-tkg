@@ -184,6 +184,11 @@ func (ms *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 		nodesPurged++
 		purgedIDs = append(purgedIDs, nid)
 	}
+	if len(purgedIDs) > 0 {
+		// The purged rows' values must not outlive them in the property
+		// membership sidecars; rebuilt on the next temporal lookup (backlog 8).
+		ms.dropPropertyTxMembersLocked()
+	}
 
 	return storecontract.RetentionPurgeResult{
 		NodesPurged:   nodesPurged,

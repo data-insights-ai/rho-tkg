@@ -88,7 +88,11 @@ func (ms *Store) relOrdinalLocked(id types.RelID, typeToken uint16) uint32 {
 }
 
 // storedNode is the frozen current row the store keeps for n.
+//
+// Every current node row the store keeps passes here, so the membership
+// sidecars (K1 and property, backlog 8) record it here.
 func (ms *Store) storedNode(n *types.Node) *types.Node {
+	ms.recordNodeRowLocked(n)
 	return n.CompactFrozenCopyWithOrdinal(ms.nodeOrdinalLocked(n.ID()))
 }
 
@@ -98,7 +102,11 @@ func (ms *Store) storedNode(n *types.Node) *types.Node {
 // row for). An endpoint keeps its ordinal while it has a current row, and a
 // current relationship's endpoints have theirs, so the stored values stay
 // right for the row's life.
+//
+// Every current relationship row the store keeps passes here, so the membership
+// sidecars (K1 and property, backlog 8) record it here.
 func (ms *Store) storedRel(r *types.Relationship) *types.Relationship {
+	ms.recordRelRowLocked(r)
 	ord := ms.relOrdinalLocked(r.ID(), r.TypeToken().Value())
 	var start, end uint32
 	if ms.segTypes[r.TypeToken().Value()] == nil {
@@ -108,12 +116,16 @@ func (ms *Store) storedRel(r *types.Relationship) *types.Relationship {
 }
 
 // historyNode is the history row the store keeps for a version of n.
+// Every history row passes here; see storedNode.
 func (ms *Store) historyNode(n *types.Node) *types.Node {
+	ms.recordNodeRowLocked(n)
 	return n.DeepCopyWithOrdinal(ms.nodeOrdinalLocked(n.ID()))
 }
 
 // historyRel is the history row the store keeps for a version of r.
+// Every history row passes here; see storedRel.
 func (ms *Store) historyRel(r *types.Relationship) *types.Relationship {
+	ms.recordRelRowLocked(r)
 	return r.DeepCopyWithOrdinals(ms.relOrdinalLocked(r.ID(), r.TypeToken().Value()), 0, 0)
 }
 

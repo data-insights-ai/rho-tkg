@@ -1,0 +1,36 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/bench
+,family-old.txt,,family-canaryswing-new.txt,,,
+,sec/op,CI,sec/op,CI,vs base,P
+PinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/pinned-32,9.381000000000001e-05,∞,9.4999e-05,∞,~,p=0.151 n=5
+PinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/current-32,1.4323000000000002e-05,∞,1.4078000000000001e-05,∞,~,p=0.095 n=5
+PinnedRelPropertyLookup/badger/20000/5types/unrelated-x10/matches200/pinned-32,0.000125432,∞,0.00037153900000000005,∞,+196.21%,p=0.008 n=5
+PinnedRelPropertyLookup/memory/20000/1type/nochurn/matches200/pinned-32,9.7039e-05,∞,9.713500000000001e-05,∞,~,p=0.421 n=5
+RelPropertyLookup10k/memory/indexed-32,2.5700000000000004e-07,∞,2.61e-07,∞,+1.56%,p=0.008 n=5
+geomean,2.112098568187044e-05,,2.6306079657177374e-05,,+24.55%,
+
+,family-old.txt,,family-canaryswing-new.txt,,,
+,build-ms,CI,build-ms,CI,vs base,P
+PinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/pinned-32,3.5,∞,3.5,∞,~,p=1.000 n=5
+PinnedRelPropertyLookup/badger/20000/5types/unrelated-x10/matches200/pinned-32,60,∞,60,∞,~,p=1.000 n=5
+PinnedRelPropertyLookup/memory/20000/1type/nochurn/matches200/pinned-32,2.4,∞,2.4,∞,~,p=1.000 n=5
+geomean,7.958114415792782,,7.958114415792782,,+0.00%,
+
+,family-old.txt,,family-canaryswing-new.txt,,,
+,B/op,CI,B/op,CI,vs base,P
+PinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/pinned-32,109823,∞,109823,∞,~,p=1.000 n=5
+PinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/current-32,4666,∞,4666,∞,~,p=1.000 n=5
+PinnedRelPropertyLookup/badger/20000/5types/unrelated-x10/matches200/pinned-32,190900,∞,190900,∞,~,p=1.000 n=5
+PinnedRelPropertyLookup/memory/20000/1type/nochurn/matches200/pinned-32,109825,∞,109825,∞,~,p=1.000 n=5
+RelPropertyLookup10k/memory/indexed-32,0,∞,0,∞,~,p=1.000 n=5
+geomean,,,,,+0.00%,
+
+,family-old.txt,,family-canaryswing-new.txt,,,
+,allocs/op,CI,allocs/op,CI,vs base,P
+PinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/pinned-32,1423,∞,1423,∞,~,p=1.000 n=5
+PinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/current-32,205,∞,205,∞,~,p=1.000 n=5
+PinnedRelPropertyLookup/badger/20000/5types/unrelated-x10/matches200/pinned-32,2631,∞,2631,∞,~,p=1.000 n=5
+PinnedRelPropertyLookup/memory/20000/1type/nochurn/matches200/pinned-32,1423,∞,1423,∞,~,p=1.000 n=5
+RelPropertyLookup10k/memory/indexed-32,6,∞,6,∞,~,p=1.000 n=5
+geomean,365.8365998137806,,365.8365998137806,,+0.00%,

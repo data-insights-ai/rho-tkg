@@ -771,7 +771,7 @@ func (c *Core) relAtViaTemporalMeta(id types.RelID, current *types.Relationship,
 // themselves are also valid at that instant — the EFFECTIVE view shared with
 // Snapshot, Diff and OutgoingRelsAt/IncomingRelsAt (edge row valid at t AND
 // both endpoints valid at t). History-aware via the
-// deleted-rel candidate fold (see forEachRelCandidateID) which scales with
+// deleted-rel candidate fold (see forEachRelCandidateIDByDepth) which scales with
 // the number of deleted relationships when the underlying store implements
 // DeletedIterationCapability.
 func (t *TempOps) NeighborsAt(nodeID types.NodeID, at types.Instant) ([]*types.Node, error) {
@@ -1051,7 +1051,7 @@ func (c *Core) nodesByLabelPropertyAtLocked(label, key string, value any, at typ
 		return nil, err
 	}
 	var result []*types.Node
-	if err := c.forEachNodeCandidateID(currentIDs, func(id types.NodeID) error {
+	if err := c.forEachNodePropertyCandidateID(tok, map[string]string{key: targetKey}, currentIDs, storepkg.QueryOpts{ValidAt: at}, func(id types.NodeID) error {
 		n, err := c.nodeAtLocked(id, at)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
@@ -1129,7 +1129,7 @@ func (c *Core) nodesByLabelPropertyDuringLocked(label, key string, value any, st
 	// Gather the full-history candidate id set (id enumeration only), then apply
 	// the B4 Step-1 envelope prune before the expensive per-id chain resolve.
 	var candIDs []types.NodeID
-	if err := c.forEachNodeCandidateID(currentIDs, func(id types.NodeID) error {
+	if err := c.forEachNodePropertyCandidateID(tok, map[string]string{key: targetKey}, currentIDs, storepkg.QueryOpts{ValidStart: start, ValidEnd: end}, func(id types.NodeID) error {
 		candIDs = append(candIDs, id)
 		return nil
 	}); err != nil {
@@ -1241,16 +1241,12 @@ func (c *Core) relsByTypePropertyAtLocked(relType, key string, value any, at typ
 	if targetKey == "" {
 		return nil, nil
 	}
-	current, err := c.store.RelationshipsByType(tok, storepkg.QueryOpts{})
-	if err != nil {
-		return nil, err
-	}
-	currentIDs, err := c.relIDsFromTypeRows(tok, current)
+	currentIDs, err := c.relPropertyCurrentIDs(tok, key, value)
 	if err != nil {
 		return nil, err
 	}
 	var result []*types.Relationship
-	if err := c.forEachRelCandidateID(currentIDs, func(id types.RelID) error {
+	if err := c.forEachRelPropertyCandidateID(tok, key, targetKey, currentIDs, storepkg.QueryOpts{ValidAt: at}, func(id types.RelID) error {
 		r, err := c.relAtLocked(id, at)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {
@@ -1624,11 +1620,7 @@ func (c *Core) relsByTypePropertyDuringLocked(relType, key string, value any, st
 	if targetKey == "" {
 		return nil, nil
 	}
-	current, err := c.store.RelationshipsByType(tok, storepkg.QueryOpts{})
-	if err != nil {
-		return nil, err
-	}
-	currentIDs, err := c.relIDsFromTypeRows(tok, current)
+	currentIDs, err := c.relPropertyCurrentIDs(tok, key, value)
 	if err != nil {
 		return nil, err
 	}
@@ -1640,7 +1632,7 @@ func (c *Core) relsByTypePropertyDuringLocked(relType, key string, value any, st
 		return found && gotKey == targetKey
 	}
 	var result []*types.Relationship
-	if err := c.forEachRelCandidateID(currentIDs, func(id types.RelID) error {
+	if err := c.forEachRelPropertyCandidateID(tok, key, targetKey, currentIDs, storepkg.QueryOpts{ValidStart: start, ValidEnd: end}, func(id types.RelID) error {
 		r, err := c.findRelVersionMatchingDuring(id, start, end, pred)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrRelNotFound) {

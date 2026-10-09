@@ -1,0 +1,9 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/bench
+BenchmarkPinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/pinned-32	3692	94280 ns/op	5.186 build-ms	109823 B/op	1423 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/pinned-32	3700	94100 ns/op	5.186 build-ms	109823 B/op	1423 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/pinned-32	3650	94500 ns/op	5.186 build-ms	109823 B/op	1423 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/current-32	24378	14285 ns/op	4666 B/op	205 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/current-32	24400	14300 ns/op	4666 B/op	205 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/current-32	24300	14290 ns/op	4666 B/op	205 allocs/op

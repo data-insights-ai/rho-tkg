@@ -159,6 +159,10 @@ func (bs *Store) DropPropertyIndex(labelToken uint16, propertyKey string) error 
 		return ErrIndexNotFound
 	}
 	delete(bs.propertyIndexes, key)
+	if _, ok := bs.nodePropTx[key]; ok {
+		delete(bs.nodePropTx, key) // its membership sidecar goes with it (backlog 8)
+		bs.propTxGen++
+	}
 
 	// Disk mode: on-disk rows are shared across every definition indexing the
 	// SAME PropertyKey (regardless of label — see badgerstore_property_disk.go's

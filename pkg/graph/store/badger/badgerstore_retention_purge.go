@@ -209,6 +209,11 @@ func (bs *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 	if len(histOps) > 0 {
 		bs.appendOps(histOps...)
 	}
+	if nodesPurged > 0 {
+		// The purged rows' values must not outlive them in the property
+		// membership sidecars; rebuilt on the next temporal lookup (backlog 8).
+		bs.dropPropertyTxMembersLocked()
+	}
 	bs.idxMu.Unlock()
 
 	if err := bs.flush(); err != nil {
@@ -337,6 +342,7 @@ func (bs *Store) PurgeRelationshipByInfo(rel storecontract.PurgedRel) error {
 			EndID:   rel.EndID.SnowflakeID(),
 		})
 		bs.maintainRelTypeTemporalIndexesPurge(rid.SnowflakeID()) // history goes too: nothing left to cover
+		bs.dropPropertyTxMembersLocked()                          // and its values from the property sidecars (backlog 8)
 		histKeys, _, herr := bs.historyTruncateDeleteKeys(storepkg.HistRelPrefix(rid.SnowflakeID()), 0)
 		if herr != nil {
 			bs.idxMu.Unlock()
@@ -413,6 +419,7 @@ func (bs *Store) PurgeAdjacentRelsForNode(nodeID types.NodeID) (int, error) {
 		}
 		bs.deleteRelByInfo(relDeleteInfoFromRelationship(r))
 		bs.maintainRelTypeTemporalIndexesPurge(rid.SnowflakeID()) // history goes too: nothing left to cover
+		bs.dropPropertyTxMembersLocked()                          // and its values from the property sidecars (backlog 8)
 		removed++
 		relHistKeys, _, herr := bs.historyTruncateDeleteKeys(storepkg.HistRelPrefix(rid.SnowflakeID()), 0)
 		if herr != nil {

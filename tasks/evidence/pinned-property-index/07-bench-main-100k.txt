@@ -1,0 +1,60 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/bench
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkPinnedRelPropertyLookup/memory/100000/1type/nochurn/matches200/pinned-32         	    7812	     77317 ns/op	         0.1030 build-ms	  106570 B/op	    1421 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/100000/1type/nochurn/matches200/current-32        	   39296	     14908 ns/op	    4666 B/op	     205 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/100000/1type/nochurn/broad/pinned-32              	     240	   2482603 ns/op	 2718820 B/op	   35042 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/100000/1type/sigma/matches200/pinned-32           	      38	  13795874 ns/op	        15.68 build-ms	 9365110 B/op	  106555 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/100000/1type/sigma/matches200/current-32          	   37900	     15249 ns/op	    4666 B/op	     205 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/100000/1type/sigma/broad/pinned-32                	      31	  18742470 ns/op	12735487 B/op	  140258 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/100000/5types/nochurn/matches200/pinned-32        	    9382	     73669 ns/op	         0.1210 build-ms	  106570 B/op	    1421 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/100000/5types/nochurn/matches200/current-32       	   38172	     15184 ns/op	    4666 B/op	     205 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/100000/5types/nochurn/broad/pinned-32             	    1189	    449525 ns/op	  537800 B/op	    7025 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/100000/5types/sigma/matches200/pinned-32          	      46	  12500059 ns/op	        17.08 build-ms	 9236556 B/op	   90555 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/100000/5types/sigma/matches200/current-32         	   38564	     15097 ns/op	    4666 B/op	     205 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/100000/5types/sigma/broad/pinned-32               	      49	  13309044 ns/op	 9601544 B/op	   96150 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/100000/5types/unrelated-x1/matches200/pinned-32   	     169	   3573281 ns/op	         5.373 build-ms	 4610621 B/op	   41490 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/100000/5types/unrelated-x1/matches200/current-32  	   40358	     14814 ns/op	    4666 B/op	     205 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/100000/5types/unrelated-x1/broad/pinned-32        	     150	   4005432 ns/op	 4976938 B/op	   47085 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/100000/5types/unrelated-x10/matches200/pinned-32  	       9	  57733440 ns/op	        61.30 build-ms	36193728 B/op	  321941 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/100000/5types/unrelated-x10/matches200/current-32 	   40128	     15045 ns/op	    4666 B/op	     205 allocs/op
+BenchmarkPinnedRelPropertyLookup/memory/100000/5types/unrelated-x10/broad/pinned-32       	       9	  58037278 ns/op	36560045 B/op	  327536 allocs/op
+BenchmarkPinnedRelPropertyLookup/badger/100000/1type/nochurn/matches200/pinned-32         	    4417	    114188 ns/op	         2.753 build-ms	  188532 B/op	    2644 allocs/op
+BenchmarkPinnedRelPropertyLookup/badger/100000/1type/nochurn/matches200/current-32        	   31640	     18660 ns/op	    7346 B/op	     213 allocs/op
+BenchmarkPinnedRelPropertyLookup/badger/100000/1type/nochurn/broad/pinned-32              	     158	   3604116 ns/op	 4794047 B/op	   65077 allocs/op
+BenchmarkPinnedRelPropertyLookup/badger/100000/1type/sigma/matches200/pinned-32           	       3	 227262372 ns/op	       249.1 build-ms	131631706 B/op	 1550419 allocs/op
+BenchmarkPinnedRelPropertyLookup/badger/100000/1type/sigma/matches200/current-32          	    1276	    441976 ns/op	  310775 B/op	    3358 allocs/op
+BenchmarkPinnedRelPropertyLookup/badger/100000/1type/sigma/broad/pinned-32                	       2	 284937808 ns/op	165260912 B/op	 1918702 allocs/op
+BenchmarkPinnedRelPropertyLookup/badger/100000/5types/nochurn/matches200/pinned-32        	    4770	    124895 ns/op	         3.951 build-ms	  189518 B/op	    2711 allocs/op
+BenchmarkPinnedRelPropertyLookup/badger/100000/5types/nochurn/matches200/current-32       	   33188	     17943 ns/op	    7346 B/op	     213 allocs/op
+BenchmarkPinnedRelPropertyLookup/badger/100000/5types/nochurn/broad/pinned-32             	     780	    690751 ns/op	  944934 B/op	   13099 allocs/op
+BenchmarkPinnedRelPropertyLookup/badger/100000/5types/sigma/matches200/pinned-32          	       3	 229242368 ns/op	       241.6 build-ms	130530442 B/op	 1499806 allocs/op
+BenchmarkPinnedRelPropertyLookup/badger/100000/5types/sigma/matches200/current-32         	    1447	    389749 ns/op	  286627 B/op	    3108 allocs/op
+BenchmarkPinnedRelPropertyLookup/badger/100000/5types/sigma/broad/pinned-32               	       3	 234406527 ns/op	135877218 B/op	 1559106 allocs/op
+BenchmarkPinnedRelPropertyLookup/badger/100000/5types/unrelated-x1/matches200/pinned-32   	      18	  32400158 ns/op	        33.98 build-ms	23479001 B/op	  268188 allocs/op
+BenchmarkPinnedRelPropertyLookup/badger/100000/5types/unrelated-x1/matches200/current-32  	   15918	     37838 ns/op	   23730 B/op	     374 allocs/op
+BenchmarkPinnedRelPropertyLookup/badger/100000/5types/unrelated-x1/broad/pinned-32        	      12	  46151577 ns/op	29395016 B/op	  330109 allocs/op
+BenchmarkPinnedRelPropertyLookup/badger/100000/5types/unrelated-x10/matches200/pinned-32  	       1	 788952768 ns/op	       891.0 build-ms	453558312 B/op	 5480098 allocs/op
+BenchmarkPinnedRelPropertyLookup/badger/100000/5types/unrelated-x10/matches200/current-32 	     865	    665891 ns/op	  554825 B/op	    5874 allocs/op
+BenchmarkPinnedRelPropertyLookup/badger/100000/5types/unrelated-x10/broad/pinned-32       	       1	 797012448 ns/op	459348128 B/op	 5544245 allocs/op
+BenchmarkPinnedRelPropertyLookup/sharded/100000/1type/nochurn/matches200/pinned-32        	    3870	    152720 ns/op	         1.611 build-ms	  257016 B/op	    3075 allocs/op
+BenchmarkPinnedRelPropertyLookup/sharded/100000/1type/nochurn/matches200/current-32       	   10480	     56337 ns/op	   89296 B/op	    1225 allocs/op
+BenchmarkPinnedRelPropertyLookup/sharded/100000/1type/nochurn/broad/pinned-32             	     133	   4526982 ns/op	 6463588 B/op	   75105 allocs/op
+BenchmarkPinnedRelPropertyLookup/sharded/100000/1type/sigma/matches200/pinned-32          	       3	 221269915 ns/op	       246.7 build-ms	124864720 B/op	 1450443 allocs/op
+BenchmarkPinnedRelPropertyLookup/sharded/100000/1type/sigma/matches200/current-32         	    1291	    447093 ns/op	  377781 B/op	    4223 allocs/op
+BenchmarkPinnedRelPropertyLookup/sharded/100000/1type/sigma/broad/pinned-32               	       2	 293416328 ns/op	159804384 B/op	 1824952 allocs/op
+BenchmarkPinnedRelPropertyLookup/sharded/100000/5types/nochurn/matches200/pinned-32       	    3457	    162982 ns/op	         1.919 build-ms	  258798 B/op	    3117 allocs/op
+BenchmarkPinnedRelPropertyLookup/sharded/100000/5types/nochurn/matches200/current-32      	   10000	     53523 ns/op	   89293 B/op	    1225 allocs/op
+BenchmarkPinnedRelPropertyLookup/sharded/100000/5types/nochurn/broad/pinned-32            	     751	    800268 ns/op	 1275173 B/op	   15081 allocs/op
+BenchmarkPinnedRelPropertyLookup/sharded/100000/5types/sigma/matches200/pinned-32         	       3	 216794832 ns/op	       245.0 build-ms	124091725 B/op	 1407842 allocs/op
+BenchmarkPinnedRelPropertyLookup/sharded/100000/5types/sigma/matches200/current-32        	    1296	    460747 ns/op	  392583 B/op	    4360 allocs/op
+BenchmarkPinnedRelPropertyLookup/sharded/100000/5types/sigma/broad/pinned-32              	       3	 226925797 ns/op	129354037 B/op	 1465093 allocs/op
+BenchmarkPinnedRelPropertyLookup/sharded/100000/5types/unrelated-x1/matches200/pinned-32  	      15	  33554836 ns/op	        45.91 build-ms	22907709 B/op	  246904 allocs/op
+BenchmarkPinnedRelPropertyLookup/sharded/100000/5types/unrelated-x1/matches200/current-32 	    7293	     73046 ns/op	  100999 B/op	    1340 allocs/op
+BenchmarkPinnedRelPropertyLookup/sharded/100000/5types/unrelated-x1/broad/pinned-32       	      12	  42392116 ns/op	29107721 B/op	  310393 allocs/op
+BenchmarkPinnedRelPropertyLookup/sharded/100000/5types/unrelated-x10/matches200/pinned-32 	       1	 858332475 ns/op	       865.5 build-ms	455063784 B/op	 5405316 allocs/op
+BenchmarkPinnedRelPropertyLookup/sharded/100000/5types/unrelated-x10/matches200/current-32         	     796	    729474 ns/op	  627710 B/op	    6793 allocs/op
+BenchmarkPinnedRelPropertyLookup/sharded/100000/5types/unrelated-x10/broad/pinned-32               	       1	 808354218 ns/op	460888288 B/op	 5468511 allocs/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/bench	57.875s

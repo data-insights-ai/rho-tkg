@@ -1,0 +1,9 @@
+# the identical-code runs of 22-... (CI settings, 24 rows), re-gated with the allocs-alone default
+bench-compare: no time-gated scenario regressed by more than 30% and no allocs-gated one by more than 10% allocs/op — ok
+rc=0
+bench-compare: no time-gated scenario regressed by more than 30% and no allocs-gated one by more than 10% allocs/op — ok
+rc_swapped=0
+# same runs with the opt-in canary (TIME_CANARY=canary): the time swings are reported as before
+bench-compare: REGRESSION PinnedRelPropertyLookup/memory/20000/5types/unrelated-x10/matches200/current-32: baseline=1.4997e-05s current=2.2442000000000003e-05s (+49.64% > 30%)
+bench-compare: REGRESSION PinnedRelPropertyLookup/badger/20000/5types/unrelated-x10/matches200/current-32: baseline=1.9056000000000002e-05s current=2.7103e-05s (+42.23% > 30%)
+rc=1

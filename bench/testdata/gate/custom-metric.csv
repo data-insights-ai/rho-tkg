@@ -1,0 +1,25 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/bench
+,custom-metric-old.txt,,custom-metric-new.txt,,,
+,sec/op,CI,sec/op,CI,vs base,P
+PinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/pinned-32,9.428000000000001e-05,∞,9.428000000000001e-05,∞,~,p=1.000 n=3
+PinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/current-32,1.429e-05,∞,1.429e-05,∞,~,p=1.000 n=3
+geomean,3.6705056872316666e-05,,3.6705056872316666e-05,,+0.00%,
+
+,custom-metric-old.txt,,custom-metric-new.txt,,,
+,build-ms,CI,build-ms,CI,vs base,P
+PinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/pinned-32,3.54,∞,5.186,∞,~,p=0.100 n=3
+geomean,3.54,,5.186,,+46.50%,
+
+,custom-metric-old.txt,,custom-metric-new.txt,,,
+,B/op,CI,B/op,CI,vs base,P
+PinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/pinned-32,109823,∞,109823,∞,~,p=1.000 n=3
+PinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/current-32,4666,∞,4666,∞,~,p=1.000 n=3
+geomean,22637.007708617297,,22637.007708617297,,+0.00%,
+
+,custom-metric-old.txt,,custom-metric-new.txt,,,
+,allocs/op,CI,allocs/op,CI,vs base,P
+PinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/pinned-32,1423,∞,1423,∞,~,p=1.000 n=3
+PinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/current-32,205,∞,205,∞,~,p=1.000 n=3
+geomean,540.10647098512,,540.10647098512,,+0.00%,

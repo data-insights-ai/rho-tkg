@@ -1,0 +1,18 @@
+--- PASS: TestPropTxBuild_CommittedDeltaAndPendingRows (0.04s)
+    --- PASS: TestPropTxBuild_CommittedDeltaAndPendingRows/delta=false (0.04s)
+    --- PASS: TestPropTxBuild_CommittedDeltaAndPendingRows/delta=true (0.00s)
+--- PASS: TestPropTxBuild_NoDropAcrossFlushCommit (0.04s)
+--- PASS: TestPropTxBuild_WriteDuringBuildIsRecorded (0.03s)
+--- PASS: TestPropTxBuild_GenerationGuardDiscardsStaleScan (0.01s)
+--- PASS: TestPropTxBuild_GenerationGuardExhaustion (0.01s)
+--- PASS: TestPropTxBuild_RebuildAfterReopen (0.09s)
+--- PASS: TestPropTxBuild_CorruptRowFailsClosed (0.03s)
+    --- PASS: TestPropTxBuild_CorruptRowFailsClosed/rel_current (0.01s)
+    --- PASS: TestPropTxBuild_CorruptRowFailsClosed/rel_history (0.01s)
+    --- PASS: TestPropTxBuild_CorruptRowFailsClosed/rel_history_delta (0.01s)
+    --- PASS: TestPropTxBuild_CorruptRowFailsClosed/node_current (0.01s)
+    --- PASS: TestPropTxBuild_CorruptRowFailsClosed/node_history_delta (0.01s)
+--- PASS: TestPropTxBuild_ConcurrentWritersStress (0.01s)
+--- PASS: TestPropTxBuild_OtherKeyNotBlockedByRunningBuild (0.01s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.287s

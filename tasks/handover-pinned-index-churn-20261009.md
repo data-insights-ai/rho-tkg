@@ -1,5 +1,7 @@
 # Handover: a pinned property lookup costs the size of the history, not the number of matches
 
+**DONE 2026-10-09** — recommendation D implemented (property membership sidecar, memory / badger / sharded, rel and node); CHANGELOG `[Unreleased]`, evidence `tasks/evidence/pinned-property-index/`.
+
 Date 2026-10-09. From the sigma-tkgd realtime ingest work (stream B, branch `impl/pushdown`).
 Code is cited at v4.43.0 (`46f63fa`); the files cited are unchanged at HEAD `c688821` except `core.go`. Nothing here is
 implemented. Tests first, run red, then code (AGENTS.md rules 15-17).

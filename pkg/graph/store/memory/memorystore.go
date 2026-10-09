@@ -6,6 +6,7 @@ package memory
 import (
 	"sync"
 	"sync/atomic"
+	"time"
 
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segdir"
@@ -236,6 +237,16 @@ type Store struct {
 	labelTxMembers   map[uint16]map[types.NodeID]types.Instant
 	relTypeTxMembers map[uint16]map[types.RelID]types.Instant
 
+	// property membership sidecars (backlog 8,
+	// store.RelPropertyTxMembershipCapability / NodePropertyTxMembershipCapability):
+	// one per declared property index a temporal lookup asked for, built lazily
+	// and recorded at the row seams (memorystore_propertytxmembers.go). Built
+	// count and summed build time feed PropertyTxMembershipStats. All under ms.mu.
+	relPropTxMembers  map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyTxMembers[types.RelID]
+	nodePropTxMembers map[indexpkg.PropertyIndexKey]*indexpkg.PropertyTxMembers[types.NodeID]
+	propTxBuilds      int64
+	propTxBuildTime   time.Duration
+
 	// belief watermarks (store.NodeBeliefWatermarkCapability /
 	// RelBeliefWatermarkCapability, BACKLOG 10c). nodeBeliefWatermark maps a
 	// node ID to the MAXIMUM TxFrom ever recorded across its whole version
@@ -424,6 +435,7 @@ func (ms *Store) Clear() error {
 	ms.docColumnsMulti = make(map[string]*indexpkg.LabelDocValues)
 	ms.labelTxMembers = nil            // drop the lazy membership sidecar; rebuilt on next pinned scan
 	ms.relTypeTxMembers = nil          // rel-type mirror
+	ms.dropPropertyTxMembersLocked()   // property sidecars; rebuilt on next temporal lookup
 	ms.nodeBeliefWatermark = nil       // drop the lazy belief-watermark sidecar; rebuilt on next use
 	ms.relBeliefWatermark = nil        // rel mirror
 	segErr := ms.clearSegmentsLocked() // ADR-0011: segments go (files too, S3), declarations stay

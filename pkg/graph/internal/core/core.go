@@ -83,6 +83,19 @@ type Core struct {
 	// (tiered), so the query falls back to the full-history candidate fold.
 	labelTxMembers   storepkg.LabelTxMembershipCapability
 	relTypeTxMembers storepkg.RelTypeTxMembershipCapability
+	// property membership sidecars (backlog 8): scope a temporal property
+	// lookup (ByTypeAndProperty / ByLabelAndProperty(ies) and the named
+	// *PropertyAt / *PropertyDuring doors) to the value's ever-members for a
+	// declared index instead of the whole history fold. nil = store declines
+	// (tiered, wrappers): the fold, same answers.
+	relPropTxMembers  storepkg.RelPropertyTxMembershipCapability
+	nodePropTxMembers storepkg.NodePropertyTxMembershipCapability
+	// chainLoadTestHook, when set (tests only), is called once per candidate a
+	// generic temporal door hands to the per-entity resolver
+	// (findNodeVersionForOpts / findRelVersionForOpts): one call = one version
+	// chain loaded. It lets a test assert the STRUCTURAL cost of a pinned lookup
+	// (chain loads), which wall time cannot pin. nil in production.
+	chainLoadTestHook func()
 	// belief watermarks (BACKLOG 10c): a store that maintains, per entity, the
 	// maximum TxFrom ever recorded across its whole version chain lets
 	// nodeAtLockedTx/relAtLockedTx take a SAFE current-row-only fast path for
@@ -1475,6 +1488,43 @@ func relTypeTxMembershipCapability(store storepkg.MandatoryStore) storepkg.RelTy
 	return cap
 }
 
+// relPropertyTxMembershipCapability resolves the backlog-8 rel property
+// membership sidecar with the K1 discipline: exact native stores and direct
+// implementations (sharded) are trusted; a wrapper that merely embeds a native
+// store is forced to nil, because its read overrides would not be visible to
+// the sidecar, so its lookups take the full-history fold.
+func relPropertyTxMembershipCapability(store storepkg.MandatoryStore) storepkg.RelPropertyTxMembershipCapability {
+	cap, ok := store.(storepkg.RelPropertyTxMembershipCapability)
+	if !ok {
+		return nil
+	}
+	if isExactNativeStore(store) {
+		return cap
+	}
+	if embedsNativeCapability(store, reflect.TypeOf((*storepkg.RelPropertyTxMembershipCapability)(nil)).Elem(),
+		"ForEachRelPropertyTxMember") {
+		return nil
+	}
+	return cap
+}
+
+// nodePropertyTxMembershipCapability is the node twin of
+// relPropertyTxMembershipCapability.
+func nodePropertyTxMembershipCapability(store storepkg.MandatoryStore) storepkg.NodePropertyTxMembershipCapability {
+	cap, ok := store.(storepkg.NodePropertyTxMembershipCapability)
+	if !ok {
+		return nil
+	}
+	if isExactNativeStore(store) {
+		return cap
+	}
+	if embedsNativeCapability(store, reflect.TypeOf((*storepkg.NodePropertyTxMembershipCapability)(nil)).Elem(),
+		"ForEachNodePropertyTxMember") {
+		return nil
+	}
+	return cap
+}
+
 // changeFeedCapability resolves the optional change-log capability. Only the
 // exact native single-shard backends (memory, badger) own a coherent global
 // LSN sequence. A wrapper that merely EMBEDS a native store (e.g. a future
@@ -1877,6 +1927,8 @@ func New(config Config) (*Core, error) {
 	c.deletedDepthIter = depthDeletedIterationCapability(store)
 	c.labelTxMembers = labelTxMembershipCapability(store)
 	c.relTypeTxMembers = relTypeTxMembershipCapability(store)
+	c.relPropTxMembers = relPropertyTxMembershipCapability(store)
+	c.nodePropTxMembers = nodePropertyTxMembershipCapability(store)
 	c.nodeBeliefWatermark = nodeBeliefWatermarkCapability(store)
 	c.relBeliefWatermark = relBeliefWatermarkCapability(store)
 	c.temporalMetaHistory = temporalMetaHistoryCapability(store)

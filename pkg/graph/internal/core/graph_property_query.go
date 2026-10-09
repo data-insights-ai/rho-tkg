@@ -23,8 +23,9 @@ import (
 // applies the same scan-and-filter internally when no property index
 // covers the (label, key) pair). When opts carries a temporal filter,
 // the candidate set is the union of (nodes currently matching
-// label+property — seeded via the same path) and (every known history
-// ID). Each candidate is then resolved to its version overlapping the
+// label+property — seeded via the same path) and (the nodes whose rows ever
+// carried the label and value: the store's property membership sidecar for a
+// declared index, backlog 8; else every known history ID). Each candidate is then resolved to its version overlapping the
 // requested time and the predicate re-checked against that historical
 // version, so a node whose label and property held at the requested
 // time is included even if a later version no longer matches.
@@ -85,6 +86,7 @@ func (c *Core) nodesByLabelAndPropertyLocked(label, key string, value any, opts 
 	}
 
 	var result []*types.Node
+	valueKeys := map[string]string{key: targetKey}
 	pred := func(n *types.Node) bool {
 		if !n.HasLabelTokenRaw(tok) {
 			return false
@@ -93,7 +95,7 @@ func (c *Core) nodesByLabelAndPropertyLocked(label, key string, value any, opts 
 		return found && gotKey == targetKey
 	}
 	resolveOpts := c.normalizeTxAtOnlyOpts(opts)
-	if err := c.forEachNodeCandidateIDByDepth(currentIDs, opts.Depth, func(id types.NodeID) error {
+	if err := c.forEachNodePropertyCandidateID(tok, valueKeys, currentIDs, opts, func(id types.NodeID) error {
 		n, err := c.findNodeVersionForOpts(id, resolveOpts, pred)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
@@ -126,7 +128,9 @@ func (c *Core) nodesByLabelAndPropertyLocked(label, key string, value any, opts 
 // matching definition exists; otherwise falls back to a label-scan +
 // property filter using the mandatory NodesByLabel surface. When opts
 // carries a temporal filter, the candidate set is the union of (nodes
-// currently matching label+properties) and (every known history ID); each
+// currently matching label+properties) and (the intersection of the indexed
+// keys' property membership sidecars, backlog 8; else every known history
+// ID); each
 // candidate is resolved to its version overlapping the requested time and
 // the predicate re-checked against that historical version.
 func (n *NodeOps) ByLabelAndProperties(label string, values map[string]any, opts storepkg.QueryOpts) ([]*types.Node, error) {
@@ -190,6 +194,10 @@ func (c *Core) nodesByLabelAndPropertiesLocked(label string, values map[string]a
 	}
 
 	var result []*types.Node
+	valueKeys := make(map[string]string, len(values))
+	for k, v := range values {
+		valueKeys[k] = indexpkg.PropertyValueKey(v)
+	}
 	pred := func(n *types.Node) bool {
 		if !n.HasLabelTokenRaw(tok) {
 			return false
@@ -197,7 +205,7 @@ func (c *Core) nodesByLabelAndPropertiesLocked(label string, values map[string]a
 		return indexpkg.NodeMatchesAllProperties(n, values)
 	}
 	resolveOpts := c.normalizeTxAtOnlyOpts(opts)
-	if err := c.forEachNodeCandidateIDByDepth(currentIDs, opts.Depth, func(id types.NodeID) error {
+	if err := c.forEachNodePropertyCandidateID(tok, valueKeys, currentIDs, opts, func(id types.NodeID) error {
 		n, err := c.findNodeVersionForOpts(id, resolveOpts, pred)
 		if err != nil {
 			if errors.Is(err, storepkg.ErrNoVersionValidAt) || errors.Is(err, storepkg.ErrNodeNotFound) {
