@@ -90,6 +90,21 @@ func NewAxis(desc AxisDescriptor, l Limits) (Axis, error) {
 }
 
 func validProfile(p Profile) bool { return p >= ProfileIntegerZ && p <= ProfileLexicographicQN }
+
+// Validate checks the axis structure and descriptor against the operation's
+// resource policy. Invalid limits take precedence over an invalid axis, followed
+// by descriptor-budget refusal. It neither copies nor rehashes the definition.
+func (a Axis) Validate(l Limits) error {
+	l, err := l.resolved()
+	if err != nil {
+		return err
+	}
+	if err := a.validate(); err != nil {
+		return err
+	}
+	return a.validateDescriptorBudget(l)
+}
+
 func (a Axis) validate() error {
 	if a.desc.ID == (AxisID{}) || !validProfile(a.desc.Profile) || a.desc.Version != 1 || a.digest == ([32]byte{}) {
 		return ErrInvalidAxis
