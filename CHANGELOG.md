@@ -43,6 +43,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Column and range scans answer temporal options like `ByLabel` / `ByType`.**
+  `g.ScanNodeColumns`, `g.ScanRelColumns` (a named type and `""`), `g.Nodes().ForEachByLabelPropertyRange`
+  and `g.Rels().ForEachByTypePropertyRange` answered a temporal `QueryOpts` from the CURRENT rows: they
+  filtered each live row by `ValidAt` / `ValidStart`+`ValidEnd` and ignored `TxAt` and `TxPin`
+  (`storeutil.HasTemporalFilter` checks valid time only). An updated entity's earlier version, a deleted
+  entity, a node whose label held only on an earlier version, and anything pinned by transaction time
+  came back wrong or not at all. All four doors now answer every temporal opt (`ValidAt`,
+  `ValidStart`+`ValidEnd`, `TxAt` with or without a valid time, `TxPin`) through the same candidate fold
+  and chain resolver as `ByLabel` / `ByType`: the column batches carry each version's values and
+  `ValidFrom` / `ValidTo`, pagination and early stop behave as before, and the column scans validate
+  temporal opts like `ByLabel` (`ErrConflictingTemporalOpts`, `ErrHistoryCompacted`,
+  `ErrRetentionExpired`). The range doors serve a temporal opt without a property index on every backend
+  (the entities whose value in their version under opts lies in `[min, max]`, ID order, bounds applied
+  inclusively for fn to re-check); `ErrIndexNotFound` remains for non-temporal opts only. Under
+  `ValidStart`+`ValidEnd` the range doors, like the ordered siblings, test the value of the version
+  `ByLabel` / `ByType` resolve (the most recent overlapping one), whereas `ByLabelAndProperty` matches a
+  value held anywhere in the interval (backlog item 16). Non-temporal opts take the unchanged fast paths;
+  under a temporal opt the cost is that of `ByLabel` / `ByType` with the same opts. `ok=false` from a
+  column scan still means the backend has no column scan (tiered, sharded). Also fixed: the temporal
+  folds of `ForEachByLabelPropertyRangeOrdered` / `ForEachByTypePropertyRangeOrdered` applied
+  `inclMin` / `inclMax` in float64 and silently dropped an int64 past 2^53 that rounds onto an exclusive
+  bound; they now over-select at the bounds like their index path. Tests:
+  `TestScanDoorsAgreeWithByLabelOpts_*`, `TestScanDoorsTemporalOpts_*` (memory, badger, tiered, sharded),
+  and `TestScanDoorsNeverForwardTemporalOptsToStore` (no Core read door taking `QueryOpts`, GraphTx
+  mirrors included, hands an active temporal filter to a store query method). Consumer impact: none
+  known (the known consumers pass empty opts).
+
 - **One-tick valid intervals are ordinary spans: a row valid for exactly `[t, t+1)` is visible
   to every temporal door.** The
   resolvers treated `ValidTo == ValidFrom + 1` as the "eclipse" sentinel of the old in-place

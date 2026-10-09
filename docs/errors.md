@@ -22,7 +22,7 @@ Coverage spans three sources:
 | Sentinel | Package | Meaning | Typical Doors |
 |----------|---------|---------|---------------|
 | `ErrIndexExists` | store | Property index already exists at the given name (node OR relationship) | `g.Index().CreateProperty()`, `g.Index().CreateRelProperty()` |
-| `ErrIndexNotFound` | store | Property index not found (also returned by the range doors when no usable index exists, so callers fall back to a scan) | `g.Index().SearchNearest()`, `g.Index().DeleteRelProperty()`, `g.Rels().ForEachByTypePropertyRange()`, index mutation/removal doors |
+| `ErrIndexNotFound` | store | Property index not found (also returned by the range doors when no usable index exists for non-temporal opts, so callers fall back to a scan; a temporal `QueryOpts` needs no index) | `g.Index().SearchNearest()`, `g.Index().DeleteRelProperty()`, `g.Rels().ForEachByTypePropertyRange()`, index mutation/removal doors |
 | `ErrRelPropertyIndexUnsupported` | store | The backend recognizes relationship property indexes but declines to CREATE them (the tiered store — rel values are scattered across timestamp-routed event shards). Query still works via the type-scan fallback. Distinct from `ErrCapabilityNotSupported` | `g.Index().CreateRelProperty()` on a tiered-backed graph |
 | `ErrTemporalIndexExists` | store | Temporal index already exists | `g.Index().CreateTemporal()`, `g.Index().CreateHighFrequency()` |
 | `ErrTemporalIndexNotFound` | store | Temporal index not found | `g.Index().DeleteTemporal()`, `g.Index().DeleteHighFrequency()` |

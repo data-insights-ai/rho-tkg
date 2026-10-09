@@ -66,7 +66,14 @@ func MatchesTemporalFilter(id snowflake.ID, tm *types.TemporalMetadata, opts sto
 	return true // no filter
 }
 
-// HasTemporalFilter reports whether opts contains an active temporal filter.
+// HasTemporalFilter reports whether opts contains an active VALID-TIME filter
+// for the store's CURRENT-ROW push-down (MatchesTemporalFilter on the live row).
+// It deliberately ignores TxAt and TxPin: a store holds no answer for them in its
+// current rows. The graph layer therefore never forwards any temporal filter to
+// a store query method — its doors route ValidAt, ValidStart+ValidEnd, TxAt and
+// TxPin alike through the history-aware fold (core hasTemporalFilter), pinned by
+// TestScanDoorsNeverForwardTemporalOptsToStore. Do not use this predicate to
+// decide whether a graph-level read may take a current-row shortcut.
 func HasTemporalFilter(opts storepkg.QueryOpts) bool {
 	return opts.ValidAt != 0 || (opts.ValidStart > 0 && opts.ValidEnd > 0)
 }
