@@ -40,6 +40,7 @@ re-fires) and why the classic `b.N` loop is the correct shape here instead.
 | `RelHistoryPlain` | `g.Rels().History` for a relationship without history among 10k relationships of which 1 % hold history (the per-entity cost an effective-state read paid before `HasHistory`, handover effective-read-cost §1) |
 | `RelHasHistory` | `g.Rels().HasHistory` on the same fixture, `miss` (plain) and `hit` (updated) sub-variants; badger's RAM set is built by a warm-up call outside the timed loop |
 | `RelEffectiveTimeline` | `g.Temporal().RelEffectiveTimeline` at a pin over 200 K relationships (`BENCH_EFFECTIVE_RELS` overrides) of which 1 % carry a bounded correction; `plain` (one segment, no history) and `cascaded` (three segments) sub-variants; the fixture is built once per backend per process |
+| `NodeAtTxLongChain` / `NodeEffectiveTimelineLongChain` | one node with n = 300 / 1000 / 3000 Updates and one bounded correction (a non-monotonic chain: the resolver's own-bounds arm and its supersession rule run on every read): `NodeAtTx` at the correction, and the whole timeline (n + 3 segments) |
 | `RelEffectiveLoop` | the consumer loop the timeline replaces on the same fixture: `Get` + `History` + `RelAtTx` at every row bound |
 | `ForEachRelEffectiveByType` | one full `g.Temporal().ForEachRelEffectiveByType` scan of the fixture at the pin; `ns/rel` is the per-relationship cost |
 | `Ingest1kSingle` | 1,000 nodes ingested one at a time via `g.Nodes().Add` (the no-batching baseline) |
