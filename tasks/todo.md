@@ -43,7 +43,11 @@ Wave 2 (parallel, start now, merge after wave 1) → v4.45.0
 - [ ] F tiered composite + rel temporal indexes (Opus, backlog 10): measure one-entry-per-row budget on a week of
       raw edges first, then per-shard fan-out mirroring sharded; rotation, cold checkout and repair move/rebuild
       entries. Red: two-phase over rotation, parity with badger. Proof: evidence/tiered-indexes/.
-- [ ] Watchdog (Sonnet): reads every worktree's log/diff every few minutes; reports DIVERGENCE (scope creep,
+- [x] Origin watch (René 2026-10-09: "Monitor github, Markus is working on the v5"): Monitor task running
+      `scratchpad/watch-origin.sh` (polls origin every 60 s; emits pushes by anyone but git user "dev team",
+      new/deleted branches and tags, PR and issue changes); re-armed every 30 min while the session lives.
+      Baseline: origin/main c554251, origin/v5 b1193dc (docs only), PRs #1-#7 closed/merged.
+- [x] Watchdog (Sonnet): reads every worktree's log/diff every few minutes; reports DIVERGENCE (scope creep,
       happy-path-only tests, attribution lines, pushes) to me.
 
 ## Review
