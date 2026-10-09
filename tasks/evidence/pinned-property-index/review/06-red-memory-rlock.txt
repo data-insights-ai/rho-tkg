@@ -1,0 +1,5 @@
+    memorystore_txmembers_rlock_test.go:69: rel property: a lookup on a built sidecar waited for a concurrent reader (write lock)
+--- FAIL: TestBuiltMembershipLookupsTakeTheReadLock (5.00s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	5.014s
+FAIL

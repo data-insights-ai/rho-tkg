@@ -1,0 +1,5 @@
+--- PASS: TestMemoryLabelTxMembership_LazyBuildAndAppendOnly (0.00s)
+--- PASS: TestMemoryPurgeNodesByLabelBefore_ReapsLabelAndRelTypeTxMembers (0.00s)
+--- PASS: TestBuiltMembershipLookupsTakeTheReadLock (0.00s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	0.009s

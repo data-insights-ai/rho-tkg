@@ -165,6 +165,29 @@ func (ms *Store) nodePropTxSidecarLocked(key indexpkg.PropertyIndexKey) *indexpk
 	return m
 }
 
+// readOrBuild runs read under ms.mu.RLock; when it reports the sidecar
+// is not built yet, it runs build under ms.mu.Lock instead (build re-checks
+// everything: another caller may have built or dropped it meanwhile). A built
+// sidecar is a read, so lookups do not serialize on the write lock.
+func (ms *Store) readOrBuild(read func() (done bool, err error), build func() error) error {
+	ms.mu.RLock()
+	if err := ms.checkOpenLocked(); err != nil {
+		ms.mu.RUnlock()
+		return err
+	}
+	done, err := read()
+	ms.mu.RUnlock()
+	if done || err != nil {
+		return err
+	}
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	if err := ms.checkOpenLocked(); err != nil {
+		return err
+	}
+	return build()
+}
+
 // ForEachRelPropertyTxMember implements store.RelPropertyTxMembershipCapability.
 func (ms *Store) ForEachRelPropertyTxMember(relTypeToken uint16, propertyKey, valueKey string, fn func(id types.RelID, firstTxFrom types.Instant) bool) error {
 	if ms == nil {
@@ -173,31 +196,39 @@ func (ms *Store) ForEachRelPropertyTxMember(relTypeToken uint16, propertyKey, va
 	if fn == nil {
 		return errNilIterationCallback()
 	}
-	ms.mu.Lock()
-	if err := ms.checkOpenLocked(); err != nil {
-		ms.mu.Unlock()
-		return err
-	}
-	if err := storecontract.ValidateRelTypeToken(relTypeToken); err != nil {
-		ms.mu.Unlock()
-		return err
-	}
-	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
-		ms.mu.Unlock()
-		return err
-	}
-	m, err := ms.relPropTxSidecarLocked(indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propertyKey})
+	key := indexpkg.RelPropertyIndexKey{RelTypeToken: relTypeToken, PropertyKey: propertyKey}
+	var members []indexpkg.TxMember[types.RelID]
+	err := ms.readOrBuild(func() (bool, error) {
+		if err := storecontract.ValidateRelTypeToken(relTypeToken); err != nil {
+			return true, err
+		}
+		if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
+			return true, err
+		}
+		if idx, ok := ms.relPropertyIndexes[key]; !ok || idx.Mutated != nil {
+			return true, ErrIndexNotFound
+		}
+		m := ms.relPropTxMembers[key]
+		if m == nil {
+			return false, nil
+		}
+		members = m.Members(valueKey)
+		return true, nil
+	}, func() error {
+		m, err := ms.relPropTxSidecarLocked(key)
+		if err != nil {
+			return err
+		}
+		if m == nil {
+			return ErrIndexNotFound
+		}
+		members = m.Members(valueKey)
+		return nil
+	})
 	if err != nil {
-		ms.mu.Unlock()
 		return err
 	}
-	if m == nil {
-		ms.mu.Unlock()
-		return ErrIndexNotFound
-	}
-	// Snapshot, then run fn outside the lock (it re-enters the store).
-	members := m.Members(valueKey)
-	ms.mu.Unlock()
+	// fn runs outside the lock (it re-enters the store).
 	for _, mb := range members {
 		if !fn(mb.ID, mb.FirstTx) {
 			return nil
@@ -214,26 +245,35 @@ func (ms *Store) ForEachNodePropertyTxMember(labelToken uint16, propertyKey, val
 	if fn == nil {
 		return errNilIterationCallback()
 	}
-	ms.mu.Lock()
-	if err := ms.checkOpenLocked(); err != nil {
-		ms.mu.Unlock()
+	key := indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey}
+	var members []indexpkg.TxMember[types.NodeID]
+	err := ms.readOrBuild(func() (bool, error) {
+		if err := storecontract.ValidateLabelToken(labelToken); err != nil {
+			return true, err
+		}
+		if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
+			return true, err
+		}
+		if idx, ok := ms.propertyIndexes[key]; !ok || idx.Mutated != nil {
+			return true, ErrIndexNotFound
+		}
+		m := ms.nodePropTxMembers[key]
+		if m == nil {
+			return false, nil
+		}
+		members = m.Members(valueKey)
+		return true, nil
+	}, func() error {
+		m := ms.nodePropTxSidecarLocked(key)
+		if m == nil {
+			return ErrIndexNotFound
+		}
+		members = m.Members(valueKey)
+		return nil
+	})
+	if err != nil {
 		return err
 	}
-	if err := storecontract.ValidateLabelToken(labelToken); err != nil {
-		ms.mu.Unlock()
-		return err
-	}
-	if err := storecontract.ValidateIndexPropertyKey(propertyKey); err != nil {
-		ms.mu.Unlock()
-		return err
-	}
-	m := ms.nodePropTxSidecarLocked(indexpkg.PropertyIndexKey{LabelToken: labelToken, PropertyKey: propertyKey})
-	if m == nil {
-		ms.mu.Unlock()
-		return ErrIndexNotFound
-	}
-	members := m.Members(valueKey)
-	ms.mu.Unlock()
 	for _, mb := range members {
 		if !fn(mb.ID, mb.FirstTx) {
 			return nil
