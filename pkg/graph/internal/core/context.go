@@ -246,9 +246,12 @@ func checkCtx(ctx context.Context) error {
 // AS-OF query yet passing Verify*Chain (TxFrom is not hashed). A valid override
 // is honored ONLY when the graph was opened with Config.AllowTxBackfill,
 // otherwise ErrTxBackfillDisabled. Value validation precedes the gate check so a
-// malformed value is rejected as malformed regardless of privilege. Backfill is
-// create-only and TxFrom is not part of the integrity hash, so honoring a valid
-// override never affects the hash chain (§4.1).
+// malformed value is rejected as malformed regardless of privilege. The create
+// doors call it for tkg_tx_from; the DeleteWithTx / UpdateWithTx doors call it
+// through resolveCallerTxInstant (tx_order.go), which adds t <= 0 and the order
+// check against the recorded chain. TxFrom and TxTo are not part of the
+// integrity hash, so honoring a valid override never affects the hash chain
+// (§4.1).
 //
 // It does NOT touch the as-of column cache: a past-dated write is reported by
 // the door AFTER its store write (notePastDatedWrite, deferred right after this

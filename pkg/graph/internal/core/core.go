@@ -164,12 +164,14 @@ type Core struct {
 	// allowExactErasure gates the bounded legal-erasure admin door. Off by
 	// default; unlike Reset, scope is explicit and fail-closed.
 	allowExactErasure bool
-	// allowTxBackfill enables the privileged transaction-time backfill door:
+	// allowTxBackfill enables the privileged transaction-time backfill doors:
 	// when true, create doors honor a caller-supplied tkg_tx_from (or
-	// AddWithTx) instead of stamping c.now(), so a re-ingest can faithfully
-	// reproduce a historical knowledge time (Erkenntniszeit) addressable via
-	// AS OF SYSTEM TIME. Off by default (production rejects backfill with
-	// ErrTxBackfillDisabled). Wired from Config.AllowTxBackfill; set once in New.
+	// AddWithTx) instead of stamping c.now(), and DeleteWithTx / UpdateWithTx
+	// (and their GraphTx, batch and ingest twins) end or supersede belief at a
+	// caller instant, so a re-ingest can faithfully reproduce a historical
+	// knowledge time (Erkenntniszeit) addressable via AS OF SYSTEM TIME. Off by
+	// default (production rejects backfill with ErrTxBackfillDisabled). Wired
+	// from Config.AllowTxBackfill; set once in New.
 	allowTxBackfill bool
 	replSource      storepkg.ReplicationSource
 	replSourceMu    sync.RWMutex
@@ -772,10 +774,12 @@ type Config struct {
 	// reproducible via AS OF SYSTEM TIME; leave off in production, where any
 	// tkg_tx_from is rejected with ErrTxBackfillDisabled. The plain update and
 	// delete doors keep the monotonic system clock (a correction recorded now
-	// is stamped now); only the explicit Rels().DeleteWithTx / UpdateWithTx
-	// doors end or supersede belief at a caller instant, under the same gate
-	// and an order check against the recorded chain (ErrTxOrder). TxFrom is not part of the
-	// integrity hash, so a backfilled row still verifies and replicates verbatim.
+	// is stamped now); only the explicit DeleteWithTx / UpdateWithTx doors —
+	// Nodes() and Rels(), and their GraphTx, BatchBuilder and ingest Session
+	// twins — end or supersede belief at a caller instant, under the same gate
+	// and an order check against the recorded chain (ErrTxOrder). TxFrom and
+	// TxTo are not part of the integrity hash, so such a row still verifies and
+	// replicates verbatim.
 	AllowTxBackfill bool
 
 	// AllowRetentionPurge enables the ADR-0008 R2 retention-purge admin door
