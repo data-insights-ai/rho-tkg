@@ -55,7 +55,10 @@ jobs:
       # Sharded and the broad lookup run only with RHO_TKG_PINNED_REL_SIZES
       # (measurement sizes 100k / 1M). Rules in bench/bench-gate.awk.
       BENCH_FILTER: "Benchmark(PointReadHit|LabelScan10k|TwoHop|TemporalPoint|AsOfPin|Ingest|BulkAddNodes10k|ANNSearch10k|OrderedTopK|CompositeLookup|RelPropertyLookup10k|RelHistoryPlain|RelHasHistory|RelEffectiveTimeline|RelEffectiveLoop|ForEachRelEffectiveByType|NodeAtTxLongChain|NodeEffectiveTimelineLongChain)"
-      PINNED_REL_FILTER: "BenchmarkPinnedRelPropertyLookup"
+      # LatestStamps (backlog 30) joins the allocs-gated step: its door is
+      # 0 allocs/op and a fallback to the History fold allocates per row (a
+      # zero-alloc family row fails as soon as it allocates; 6 rows, ~3 s).
+      PINNED_REL_FILTER: "Benchmark(PinnedRelPropertyLookup|LatestStamps)"
     steps:
       - uses: actions/checkout@v7
         with:
@@ -94,7 +97,7 @@ jobs:
         if: steps.bench_base.outputs.has_base == 'true'
         run: |
           {
-            echo "### bench gate — merge-base vs HEAD (medians of 3, 5 for PinnedRelPropertyLookup; time threshold ${REGRESSION_THRESHOLD_PCT}%; PinnedRelPropertyLookup allocs-gated +${ALLOCS_THRESHOLD_PCT:-10}% allocs/op, time reported not gated)"
+            echo "### bench gate — merge-base vs HEAD (medians of 3, 5 for PinnedRelPropertyLookup and LatestStamps; time threshold ${REGRESSION_THRESHOLD_PCT}%; PinnedRelPropertyLookup and LatestStamps allocs-gated +${ALLOCS_THRESHOLD_PCT:-10}% allocs/op (a 0 allocs/op row: any alloc), time reported not gated)"
             echo '```'
             bash bench/bench-compare.sh bench-base.txt bench-head.txt bench-gate.csv 2>&1 | tee gate-output.txt
             status=${PIPESTATUS[0]}

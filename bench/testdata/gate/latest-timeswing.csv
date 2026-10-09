@@ -1,0 +1,35 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/bench
+,latest-old.txt,,latest-timeswing-new.txt,,,
+,sec/op,CI,sec/op,CI,vs base,P
+LatestStamps/memory/plain-32,4.998e-08,∞,1.4994e-07,∞,+200.00%,p=0.008 n=5
+LatestStamps/memory/versions=100-32,3.264e-08,∞,9.792e-08,∞,+200.00%,p=0.008 n=5
+LatestStamps/memory/versions=10000-32,3.162e-08,∞,9.486e-08,∞,+200.00%,p=0.008 n=5
+LatestStamps/badger/plain-32,8.466e-08,∞,2.5398e-07,∞,+200.00%,p=0.008 n=5
+LatestStamps/badger/versions=100-32,4.896e-08,∞,1.4688e-07,∞,+200.00%,p=0.008 n=5
+LatestStamps/badger/versions=10000-32,4.998e-08,∞,1.4994e-07,∞,+200.00%,p=0.008 n=5
+RelPropertyLookup10k/memory/indexed-32,2.66e-07,∞,2.66e-07,∞,~,p=1.000 n=5
+geomean,6.013133317770285e-08,,1.5419202363577487e-07,,+156.43%,
+
+,latest-old.txt,,latest-timeswing-new.txt,,,
+,B/op,CI,B/op,CI,vs base,P
+LatestStamps/memory/plain-32,0,∞,0,∞,~,p=1.000 n=5
+LatestStamps/memory/versions=100-32,0,∞,0,∞,~,p=1.000 n=5
+LatestStamps/memory/versions=10000-32,0,∞,0,∞,~,p=1.000 n=5
+LatestStamps/badger/plain-32,0,∞,0,∞,~,p=1.000 n=5
+LatestStamps/badger/versions=100-32,0,∞,0,∞,~,p=1.000 n=5
+LatestStamps/badger/versions=10000-32,0,∞,0,∞,~,p=1.000 n=5
+RelPropertyLookup10k/memory/indexed-32,0,∞,0,∞,~,p=1.000 n=5
+geomean,,,,,+0.00%,
+
+,latest-old.txt,,latest-timeswing-new.txt,,,
+,allocs/op,CI,allocs/op,CI,vs base,P
+LatestStamps/memory/plain-32,0,∞,0,∞,~,p=1.000 n=5
+LatestStamps/memory/versions=100-32,0,∞,0,∞,~,p=1.000 n=5
+LatestStamps/memory/versions=10000-32,0,∞,0,∞,~,p=1.000 n=5
+LatestStamps/badger/plain-32,0,∞,0,∞,~,p=1.000 n=5
+LatestStamps/badger/versions=100-32,0,∞,0,∞,~,p=1.000 n=5
+LatestStamps/badger/versions=10000-32,0,∞,0,∞,~,p=1.000 n=5
+RelPropertyLookup10k/memory/indexed-32,6,∞,6,∞,~,p=1.000 n=5
+geomean,,,,,+0.00%,
