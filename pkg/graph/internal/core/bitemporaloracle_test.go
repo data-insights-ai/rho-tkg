@@ -77,6 +77,7 @@ type oracleRow struct {
 	updatedAt types.Instant
 	version   uint32
 	labels    []string // node label set on this version ("" set for rels)
+	seatVK    string   // canonical value key of the "seat" property ("" = absent; backlog 8)
 }
 
 // oracleEntity is the captured chain for one entity, in engine chain order:
@@ -455,6 +456,7 @@ func snowflakeFallbackRel(id types.RelID) types.Instant {
 func nodeRow(g *Core, n *types.Node) oracleRow {
 	tm := n.Temporal()
 	r := oracleRow{version: n.Version(), labels: g.Nodes.Labels(n)}
+	r.seatVK, _ = n.IndexablePropertyValueKey("seat")
 	if tm != nil {
 		r.validFrom, r.validTo = tm.ValidFrom, tm.ValidTo
 		r.txFrom, r.txTo = tm.TxFrom, tm.TxTo
@@ -466,6 +468,7 @@ func nodeRow(g *Core, n *types.Node) oracleRow {
 func relRow(r *types.Relationship) oracleRow {
 	tm := r.Temporal()
 	out := oracleRow{version: r.Version()}
+	out.seatVK, _ = r.IndexablePropertyValueKey("seat")
 	if tm != nil {
 		out.validFrom, out.validTo = tm.ValidFrom, tm.ValidTo
 		out.txFrom, out.txTo = tm.TxFrom, tm.TxTo
@@ -543,8 +546,9 @@ type world struct {
 	relType  map[types.RelID]string
 	relAlive map[types.RelID]bool
 
-	vclock types.Instant // monotonically increasing logical valid-time cursor
-	seqno  int
+	vclock  types.Instant // monotonically increasing logical valid-time cursor
+	seqno   int
+	seatSeq int
 	log    []string
 }
 
@@ -556,6 +560,14 @@ func newWorld(t *testing.T, g *Core, rng *rand.Rand) *world {
 		relAlive:  map[types.RelID]bool{},
 		vclock:    1000,
 	}
+}
+
+// nextSeat is the next value of the small-domain "seat" property the
+// property lookups probe (backlog 8). A counter, not the RNG, so adding it left
+// every seed's op sequence unchanged.
+func (w *world) nextSeat() int64 {
+	w.seatSeq++
+	return int64(w.seatSeq % 3)
 }
 
 func (w *world) nextVF() types.Instant {
@@ -649,6 +661,7 @@ func (w *world) setup() {
 
 func (w *world) addNode() {
 	props, _ := w.maybeValidTo(w.nextVF())
+	props["seat"] = w.nextSeat()
 	n, err := w.g.Nodes.Add(w.ctx, w.pickLabels(), props)
 	w.record("addNode", err)
 	if err == nil {
@@ -659,6 +672,7 @@ func (w *world) addNode() {
 
 func (w *world) backfillNode() {
 	props, _ := w.maybeValidTo(w.nextVF())
+	props["seat"] = w.nextSeat()
 	txFrom := types.Instant(time.Now().UnixMilli()) - types.Instant(1000+w.rng.IntN(60000))
 	n, err := w.g.Nodes.AddWithTx(w.ctx, w.pickLabels(), props, txFrom)
 	w.record(fmt.Sprintf("backfillNode(tx=%d)", txFrom), err)
@@ -674,6 +688,7 @@ func (w *world) addRel() {
 	}
 	typ := oracleRelTypes[w.rng.IntN(len(oracleRelTypes))]
 	props, _ := w.maybeValidTo(w.nextVF())
+	props["seat"] = w.nextSeat()
 	s, e := w.anchors[0], w.anchors[1]
 	if w.rng.IntN(2) == 0 {
 		s, e = e, s
@@ -693,7 +708,7 @@ func (w *world) updateNode() {
 		return
 	}
 	id := alive[w.rng.IntN(len(alive))]
-	updates := map[string]any{"k": w.seqno}
+	updates := map[string]any{"k": w.seqno, "seat": w.nextSeat()}
 	w.seqno++
 	if w.rng.IntN(2) == 0 {
 		updates["tkg_valid_from"] = w.nextVF()
@@ -708,7 +723,7 @@ func (w *world) updateRel() {
 		return
 	}
 	id := alive[w.rng.IntN(len(alive))]
-	updates := map[string]any{"k": w.seqno}
+	updates := map[string]any{"k": w.seqno, "seat": w.nextSeat()}
 	w.seqno++
 	if w.rng.IntN(2) == 0 {
 		updates["tkg_valid_from"] = w.nextVF()
@@ -858,6 +873,7 @@ func (w *world) capture() *snapshot {
 // =============================================================================
 
 type probe struct {
+	asOf     bool // a TxPin probe (property lookups only)
 	interval bool
 	validAt  types.Instant // point
 	s, e     types.Instant // interval
@@ -1694,6 +1710,12 @@ func runOracleSequence(t *testing.T, seed uint64, nOps, nProbes int) {
 			t.Fatalf("backend %s: expected bitemporalMigrated=true; oracle assumptions invalid", be.name)
 		}
 
+		for _, ix := range []error{g.Index.CreateRelProperty("R", "seat"), g.Index.CreateProperty("A", "seat")} {
+			if ix != nil {
+				t.Fatalf("backend %s: declare property index: %v", be.name, ix)
+			}
+		}
+
 		rng := rand.New(rand.NewPCG(seed, seed^0x9E3779B97F4A7C15))
 		w := newWorld(t, g, rng)
 		w.setup()
@@ -1720,12 +1742,18 @@ func runOracleSequence(t *testing.T, seed uint64, nOps, nProbes int) {
 		seenTxAt := map[types.Instant]struct{}{}
 		asOfProbeCount := 0  // number of distinct txAt pins the as-of door was cross-checked at
 		txPinProbeCount := 0 // subset of the above with txAt != 0 — the ones that also ran the TxPin generic-door checks
-		for _, p := range probes {
+		for i, p := range probes {
 			w.runProbe(be.name, seed, snap, p)
+			if i%2 == 0 {
+				w.runPropertyProbe(be.name, seed, snap, p)
+			}
 			// As-of depends only on txAt; cross-check each distinct pin once.
 			if _, done := seenTxAt[p.txAt]; !done {
 				seenTxAt[p.txAt] = struct{}{}
 				w.runAsOfProbe(be.name, seed, snap, p.txAt)
+				if p.txAt != 0 {
+					w.runPropertyProbe(be.name, seed, snap, probe{asOf: true, txAt: p.txAt})
+				}
 				asOfProbeCount++
 				if p.txAt != 0 {
 					txPinProbeCount++

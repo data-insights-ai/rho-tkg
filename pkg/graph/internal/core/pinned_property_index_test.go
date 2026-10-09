@@ -635,3 +635,142 @@ func TestPinnedPropertyLookupLoadsOnlyEverMembers(t *testing.T) {
 		})
 	}
 }
+
+// --- T3: the property doors in the bitemporal oracle harness ---
+
+// withoutPropertySidecars runs fn with the property membership sidecars
+// declined, so the doors take the full-history fold (the unindexed arm).
+func withoutPropertySidecars(g *Core, fn func()) {
+	rel, node := g.relPropTxMembers, g.nodePropTxMembers
+	g.relPropTxMembers, g.nodePropTxMembers = nil, nil
+	defer func() { g.relPropTxMembers, g.nodePropTxMembers = rel, node }()
+	fn()
+}
+
+// propertyProbeDoors returns the temporal property doors that answer probe p
+// (generic always; the named door only without a transaction-time filter).
+func propertyProbeDoors[T any](p probe, generic func(storepkg.QueryOpts) ([]T, error), at func(types.Instant) ([]T, error), during func(types.Instant, types.Instant) ([]T, error)) map[string]func() ([]T, error) {
+	doors := map[string]func() ([]T, error){}
+	switch {
+	case p.asOf:
+		doors["generic{TxPin}"] = func() ([]T, error) { return generic(storepkg.QueryOpts{TxPin: p.txAt}) }
+	case p.interval:
+		doors["generic(interval)"] = func() ([]T, error) {
+			return generic(storepkg.QueryOpts{ValidStart: p.s, ValidEnd: p.e, TxAt: p.txAt})
+		}
+		if p.txAt == 0 {
+			doors["named During"] = func() ([]T, error) { return during(p.s, p.e) }
+		}
+	default:
+		doors["generic(point)"] = func() ([]T, error) { return generic(storepkg.QueryOpts{ValidAt: p.validAt, TxAt: p.txAt}) }
+		if p.txAt == 0 {
+			doors["named At"] = func() ([]T, error) { return at(p.validAt) }
+		}
+	}
+	return doors
+}
+
+// oracleProbeRow resolves one captured entity at probe p and applies match.
+func oracleProbeRow(e *oracleEntity, p probe, match func(oracleRow) bool) (oracleRow, bool) {
+	switch {
+	case p.asOf:
+		row, ok := e.asOfVisible(p.txAt)
+		return row, ok && match(row)
+	case p.interval:
+		return e.intervalVisible(p.s, p.e, p.txAt, match)
+	default:
+		row, ok := e.pointVisible(p.validAt, p.txAt)
+		return row, ok && match(row)
+	}
+}
+
+// runPropertyProbe cross-checks every temporal property door against the
+// oracle at one probe, twice: with the sidecars (R and A have a declared
+// index, S, B and C do not) and with them declined (the fold). Point and
+// as-of answers compare versions; interval answers compare membership (the
+// version an interval door returns is its newest match, as for ByLabel).
+func (w *world) runPropertyProbe(backend string, seed uint64, snap *snapshot, p probe) {
+	g := w.g
+	seatVals := []int64{0, 1, 2, 99}
+	for _, typ := range oracleRelTypes {
+		for _, v := range seatVals {
+			want := indexpkg.PropertyValueKey(v)
+			oracle := map[types.RelID]uint32{}
+			for id, e := range snap.rels {
+				if e.relType != typ {
+					continue
+				}
+				if row, ok := oracleProbeRow(e, p, func(r oracleRow) bool { return r.seatVK == want }); ok {
+					oracle[id] = row.version
+				}
+			}
+			doors := propertyProbeDoors(p,
+				func(o storepkg.QueryOpts) ([]*types.Relationship, error) {
+					return g.Rels.ByTypeAndProperty(typ, "seat", v, o)
+				},
+				func(at types.Instant) ([]*types.Relationship, error) {
+					return g.Temporal.RelsByTypePropertyAt(typ, "seat", v, at)
+				},
+				func(s, e types.Instant) ([]*types.Relationship, error) {
+					return g.Temporal.RelsByTypePropertyDuring(typ, "seat", v, s, e)
+				})
+			for name, door := range doors {
+				for _, arm := range []string{"indexed", "unindexed"} {
+					var got []*types.Relationship
+					var err error
+					if arm == "indexed" {
+						got, err = door()
+					} else {
+						withoutPropertySidecars(g, func() { got, err = door() })
+					}
+					if err != nil {
+						w.t.Fatalf("%s rel %s(%s, seat=%d) %s: %v", backend, name, typ, v, arm, err)
+					}
+					gm := relSetVer(got)
+					if (p.interval && !relKeysEqual(oracle, gm)) || (!p.interval && !relMapsEqual(oracle, gm)) {
+						w.harnessFail(backend, seed, p, fmt.Sprintf("rel %s(%s, seat=%d) %s", name, typ, v, arm), fmtRelVer(oracle), fmtRelVer(gm))
+					}
+				}
+			}
+		}
+	}
+	for _, label := range oracleNodeLabels {
+		for _, v := range seatVals {
+			want := indexpkg.PropertyValueKey(v)
+			oracle := map[types.NodeID]uint32{}
+			for id, e := range snap.nodes {
+				if row, ok := oracleProbeRow(e, p, func(r oracleRow) bool { return hasLabel(r, label) && r.seatVK == want }); ok {
+					oracle[id] = row.version
+				}
+			}
+			doors := propertyProbeDoors(p,
+				func(o storepkg.QueryOpts) ([]*types.Node, error) {
+					return g.Nodes.ByLabelAndProperty(label, "seat", v, o)
+				},
+				func(at types.Instant) ([]*types.Node, error) {
+					return g.Temporal.NodesByLabelPropertyAt(label, "seat", v, at)
+				},
+				func(s, e types.Instant) ([]*types.Node, error) {
+					return g.Temporal.NodesByLabelPropertyDuring(label, "seat", v, s, e)
+				})
+			for name, door := range doors {
+				for _, arm := range []string{"indexed", "unindexed"} {
+					var got []*types.Node
+					var err error
+					if arm == "indexed" {
+						got, err = door()
+					} else {
+						withoutPropertySidecars(g, func() { got, err = door() })
+					}
+					if err != nil {
+						w.t.Fatalf("%s node %s(%s, seat=%d) %s: %v", backend, name, label, v, arm, err)
+					}
+					gm := nodeSetVer(got)
+					if (p.interval && !nodeKeysEqual(oracle, gm)) || (!p.interval && !nodeMapsEqual(oracle, gm)) {
+						w.harnessFail(backend, seed, p, fmt.Sprintf("node %s(%s, seat=%d) %s", name, label, v, arm), fmtNodeVer(oracle), fmtNodeVer(gm))
+					}
+				}
+			}
+		}
+	}
+}
