@@ -4,9 +4,11 @@
 
 1. "lets go in the v4 main" — the open v4 work from `tasks/review-v5-plan-vs-code-20261009.md` §6/§9 and the
    backlog items 10, 11 — check: each step below ticked with proof; v4.44.0 tagged (fixes + `*WithTx`), v4.45.0
-   for the two features when their gates are green. [ ]
+   for the two features when their gates are green. [x] v4.44.0 f7cd0ba, v4.44.1 91d7c8c (history prefix, sigma),
+   v4.45.0 b30f66f (item 11 shipped in 4.44.0 as Config.DurableCommit; tiered indexes in 4.45.0)
 2. Standing (2026-10-09 earlier): tests first, break-the-code only, red output kept under `tasks/evidence/`;
-   parallel Opus agents in worktrees; a Sonnet watchdog reports divergence; no agent attribution in commits. [ ]
+   parallel Opus agents in worktrees; a Sonnet watchdog reports divergence; no agent attribution in commits. [x] (kept)
+3. Queue promised to sigma-tkgd / ai-soc (messages 2026-10-09): wave 3 below → v4.46.0. [ ]
 
 ## Plan (worktree agents, merged by me; CHANGELOG lines under `[Unreleased]` in one subsection per item)
 
@@ -40,7 +42,7 @@ Wave 2 (parallel, start now, merge after wave 1) → v4.45.0
       `Batch.Execute` flush the pending buffer before returning, one WriteBatch per call, every touched shard on
       tiered/sharded. Red: close-without-flush / SIGKILL after Commit returns shows the whole group; default off
       unchanged; oversized group documented. Proof: evidence/durable-commit/.
-- [ ] F tiered composite + rel temporal indexes (Opus, backlog 10): measure one-entry-per-row budget on a week of
+- [x] F tiered composite + rel temporal indexes (Opus, backlog 10; v4.45.0 = b30f66f after two Opus review rounds: delete-keeps-envelope hole + PutRelVersion covered-extend, probe double build, fan-out rollback seam, cold sync TryLock, retention purge; evidence/tiered-indexes/; hot+warm bound ≈156 B/rel, 6–9 GB per indexed type at ColdAfter 1 d; backlog 22 filed): measure one-entry-per-row budget on a week of
       raw edges first, then per-shard fan-out mirroring sharded; rotation, cold checkout and repair move/rebuild
       entries. Red: two-phase over rotation, parity with badger. Proof: evidence/tiered-indexes/.
 - [x] Origin watch (René 2026-10-09: "Monitor github, Markus is working on the v5"): Monitor task running
@@ -49,6 +51,21 @@ Wave 2 (parallel, start now, merge after wave 1) → v4.45.0
       Baseline: origin/main c554251, origin/v5 b1193dc (docs only), PRs #1-#7 closed/merged.
 - [x] Watchdog (Sonnet): reads every worktree's log/diff every few minutes; reports DIVERGENCE (scope creep,
       happy-path-only tests, attribution lines, pushes) to me.
+
+## Wave 3 (HIGH correctness bugs, same root; René default = take the listed default, state it) → v4.46.0
+- [ ] G cascade correctness (Opus; backlog 14 + 18 + 19 + handover-effective-read-cost §2 / fix 2a): one version
+      allocator for every appended row, appended rows never carry TxTo/DeletedAt (14 second trigger, unconditional),
+      a cascade on a deleted entity is REFUSED with a sentinel (default; lesson 46), GraphTx rollback keeps the higher-
+      version cascade row (full-copy snapshot when any history row version > current, `check*CallerUpdate` before the
+      snapshot), Delete after a bounded cascade ends the entity in declared reads. Remove the W5 oracle skips
+      (`txbTangled`, `txbNoTxRollback`) with the fixes. Red first: acceptance tests 1, 2, 4 of the handover + the
+      backlog 18/19/14 tests; evidence/cascade-correctness/.
+- [ ] H HasHistory presence (Opus; handover §1 fix 1b): `Rels().HasHistory(id)` / `Nodes().HasHistory(id)`,
+      badger RAM set maintained at `noteHistoryKey`, built lazily by a key-only scan; memory/tiered/sharded; acceptance
+      test 3; BenchmarkRelHasHistory; evidence/has-history/.
+- [ ] I unique bypass (Opus; backlog 12): enforce CreateUnique on `SetNodeVersionInterval` props patches on all four
+      doors (Temporal, GraphTx, Batch, Session), UniqueCurrent and UniqueForever; evidence/unique-cascade/.
+- [ ] Then 1c `RelEffectiveTimeline` (after G merges), handover 1 (backlog 8), handover 2 (backlog 21).
 
 ## Review
 
