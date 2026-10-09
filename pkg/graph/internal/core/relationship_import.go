@@ -76,6 +76,7 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 	if err != nil {
 		return nil, err
 	}
+	defer c.notePastDatedWrite(txFromOverride) // after the store write (as-of cache)
 	if err := c.validateProperties(props); err != nil {
 		return nil, err
 	}

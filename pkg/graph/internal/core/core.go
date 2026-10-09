@@ -255,12 +255,18 @@ type Core struct {
 	// truncate / past-dated backfill or replica apply) — a past belief is immutable
 	// under forward ingest, so the cache survives write-active ingest. See
 	// docvalues_asof_cache.go and buildAsOfColumns.
-	asOfColumns    *asOfColumnCache
-	registryDirty  atomic.Bool
-	relTypeCache   map[string]uint16
-	relTypeCacheMu sync.RWMutex
-	closeOnce      sync.Once
-	closed         atomic.Bool
+	asOfColumns *asOfColumnCache
+	// backfillGateHook, when non-nil, runs each time resolveBackfillTxFrom
+	// honors a caller transaction instant — before the door's store write. A test
+	// seam (like compactionChunkHook) letting a test run an as-of column build
+	// between the gate and the write. Set before the graph is shared; never set
+	// in production code.
+	backfillGateHook func()
+	registryDirty    atomic.Bool
+	relTypeCache     map[string]uint16
+	relTypeCacheMu   sync.RWMutex
+	closeOnce        sync.Once
+	closed           atomic.Bool
 
 	// clock is the time source used by every mutation path that stamps
 	// TxFrom / UpdatedAt / DeletedAt / event.Timestamp. Defaults to

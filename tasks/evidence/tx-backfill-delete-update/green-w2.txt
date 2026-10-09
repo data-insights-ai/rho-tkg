@@ -1,0 +1,112 @@
+=== RUN   TestAsOfCache_PrimaryCacheStale
+=== RUN   TestAsOfCache_PrimaryCacheStale/memory/Nodes.AddWithTx
+=== RUN   TestAsOfCache_PrimaryCacheStale/memory/Nodes.Import
+=== RUN   TestAsOfCache_PrimaryCacheStale/memory/GraphTx.AddNode
+=== RUN   TestAsOfCache_PrimaryCacheStale/memory/GraphTx.AddNodes
+=== RUN   TestAsOfCache_PrimaryCacheStale/memory/Batch.AddNode+Execute
+=== RUN   TestAsOfCache_PrimaryCacheStale/memory/Ingest.Session(sync)
+=== RUN   TestAsOfCache_PrimaryCacheStale/memory/Ingest.Session(concurrent)
+=== RUN   TestAsOfCache_PrimaryCacheStale/badger/Nodes.AddWithTx
+=== RUN   TestAsOfCache_PrimaryCacheStale/badger/Nodes.Import
+=== RUN   TestAsOfCache_PrimaryCacheStale/badger/GraphTx.AddNode
+=== RUN   TestAsOfCache_PrimaryCacheStale/badger/GraphTx.AddNodes
+=== RUN   TestAsOfCache_PrimaryCacheStale/badger/Batch.AddNode+Execute
+=== RUN   TestAsOfCache_PrimaryCacheStale/badger/Ingest.Session(sync)
+=== RUN   TestAsOfCache_PrimaryCacheStale/badger/Ingest.Session(concurrent)
+=== RUN   TestAsOfCache_PrimaryCacheStale/sharded/Nodes.AddWithTx
+=== RUN   TestAsOfCache_PrimaryCacheStale/sharded/Nodes.Import
+=== RUN   TestAsOfCache_PrimaryCacheStale/sharded/GraphTx.AddNode
+=== RUN   TestAsOfCache_PrimaryCacheStale/sharded/GraphTx.AddNodes
+=== RUN   TestAsOfCache_PrimaryCacheStale/sharded/Batch.AddNode+Execute
+=== RUN   TestAsOfCache_PrimaryCacheStale/sharded/Ingest.Session(sync)
+=== RUN   TestAsOfCache_PrimaryCacheStale/sharded/Ingest.Session(concurrent)
+=== RUN   TestAsOfCache_PrimaryCacheStale/tiered/Nodes.AddWithTx
+=== RUN   TestAsOfCache_PrimaryCacheStale/tiered/Nodes.Import
+=== RUN   TestAsOfCache_PrimaryCacheStale/tiered/GraphTx.AddNode
+=== RUN   TestAsOfCache_PrimaryCacheStale/tiered/GraphTx.AddNodes
+=== RUN   TestAsOfCache_PrimaryCacheStale/tiered/Batch.AddNode+Execute
+=== RUN   TestAsOfCache_PrimaryCacheStale/tiered/Ingest.Session(sync)
+=== RUN   TestAsOfCache_PrimaryCacheStale/tiered/Ingest.Session(concurrent)
+--- PASS: TestAsOfCache_PrimaryCacheStale (0.32s)
+    --- PASS: TestAsOfCache_PrimaryCacheStale/memory/Nodes.AddWithTx (0.00s)
+    --- PASS: TestAsOfCache_PrimaryCacheStale/memory/Nodes.Import (0.00s)
+    --- PASS: TestAsOfCache_PrimaryCacheStale/memory/GraphTx.AddNode (0.00s)
+    --- PASS: TestAsOfCache_PrimaryCacheStale/memory/GraphTx.AddNodes (0.00s)
+    --- PASS: TestAsOfCache_PrimaryCacheStale/memory/Batch.AddNode+Execute (0.00s)
+    --- PASS: TestAsOfCache_PrimaryCacheStale/memory/Ingest.Session(sync) (0.00s)
+    --- PASS: TestAsOfCache_PrimaryCacheStale/memory/Ingest.Session(concurrent) (0.00s)
+    --- PASS: TestAsOfCache_PrimaryCacheStale/badger/Nodes.AddWithTx (0.00s)
+    --- PASS: TestAsOfCache_PrimaryCacheStale/badger/Nodes.Import (0.00s)
+    --- PASS: TestAsOfCache_PrimaryCacheStale/badger/GraphTx.AddNode (0.00s)
+    --- PASS: TestAsOfCache_PrimaryCacheStale/badger/GraphTx.AddNodes (0.03s)
+    --- PASS: TestAsOfCache_PrimaryCacheStale/badger/Batch.AddNode+Execute (0.03s)
+    --- PASS: TestAsOfCache_PrimaryCacheStale/badger/Ingest.Session(sync) (0.03s)
+    --- PASS: TestAsOfCache_PrimaryCacheStale/badger/Ingest.Session(concurrent) (0.01s)
+    --- PASS: TestAsOfCache_PrimaryCacheStale/sharded/Nodes.AddWithTx (0.01s)
+    --- PASS: TestAsOfCache_PrimaryCacheStale/sharded/Nodes.Import (0.00s)
+    --- PASS: TestAsOfCache_PrimaryCacheStale/sharded/GraphTx.AddNode (0.01s)
+    --- PASS: TestAsOfCache_PrimaryCacheStale/sharded/GraphTx.AddNodes (0.06s)
+    --- PASS: TestAsOfCache_PrimaryCacheStale/sharded/Batch.AddNode+Execute (0.02s)
+    --- PASS: TestAsOfCache_PrimaryCacheStale/sharded/Ingest.Session(sync) (0.01s)
+    --- PASS: TestAsOfCache_PrimaryCacheStale/sharded/Ingest.Session(concurrent) (0.01s)
+    --- PASS: TestAsOfCache_PrimaryCacheStale/tiered/Nodes.AddWithTx (0.01s)
+    --- PASS: TestAsOfCache_PrimaryCacheStale/tiered/Nodes.Import (0.01s)
+    --- PASS: TestAsOfCache_PrimaryCacheStale/tiered/GraphTx.AddNode (0.01s)
+    --- PASS: TestAsOfCache_PrimaryCacheStale/tiered/GraphTx.AddNodes (0.01s)
+    --- PASS: TestAsOfCache_PrimaryCacheStale/tiered/Batch.AddNode+Execute (0.01s)
+    --- PASS: TestAsOfCache_PrimaryCacheStale/tiered/Ingest.Session(sync) (0.01s)
+    --- PASS: TestAsOfCache_PrimaryCacheStale/tiered/Ingest.Session(concurrent) (0.01s)
+=== RUN   TestAsOfCache_RelBackfillDoorsReportPastDatedWrite
+=== RUN   TestAsOfCache_RelBackfillDoorsReportPastDatedWrite/Rels.AddWithTx
+=== RUN   TestAsOfCache_RelBackfillDoorsReportPastDatedWrite/Rels.AddByID
+=== RUN   TestAsOfCache_RelBackfillDoorsReportPastDatedWrite/Rels.AddByIDIfAbsent
+=== RUN   TestAsOfCache_RelBackfillDoorsReportPastDatedWrite/Rels.Import
+=== RUN   TestAsOfCache_RelBackfillDoorsReportPastDatedWrite/GraphTx.AddRelationships
+=== RUN   TestAsOfCache_RelBackfillDoorsReportPastDatedWrite/Batch.AddRelationship+Execute
+--- PASS: TestAsOfCache_RelBackfillDoorsReportPastDatedWrite (0.00s)
+    --- PASS: TestAsOfCache_RelBackfillDoorsReportPastDatedWrite/Rels.AddWithTx (0.00s)
+    --- PASS: TestAsOfCache_RelBackfillDoorsReportPastDatedWrite/Rels.AddByID (0.00s)
+    --- PASS: TestAsOfCache_RelBackfillDoorsReportPastDatedWrite/Rels.AddByIDIfAbsent (0.00s)
+    --- PASS: TestAsOfCache_RelBackfillDoorsReportPastDatedWrite/Rels.Import (0.00s)
+    --- PASS: TestAsOfCache_RelBackfillDoorsReportPastDatedWrite/GraphTx.AddRelationships (0.00s)
+    --- PASS: TestAsOfCache_RelBackfillDoorsReportPastDatedWrite/Batch.AddRelationship+Execute (0.00s)
+=== RUN   TestAsOfCache_ReplicaDeleteStaleCache
+=== RUN   TestAsOfCache_ReplicaDeleteStaleCache/memory/below-high-water
+=== RUN   TestAsOfCache_ReplicaDeleteStaleCache/memory/above-high-water
+=== RUN   TestAsOfCache_ReplicaDeleteStaleCache/memory/hard-delete
+=== RUN   TestAsOfCache_ReplicaDeleteStaleCache/badger/below-high-water
+=== RUN   TestAsOfCache_ReplicaDeleteStaleCache/badger/above-high-water
+=== RUN   TestAsOfCache_ReplicaDeleteStaleCache/badger/hard-delete
+=== RUN   TestAsOfCache_ReplicaDeleteStaleCache/sharded/below-high-water
+=== RUN   TestAsOfCache_ReplicaDeleteStaleCache/sharded/above-high-water
+=== RUN   TestAsOfCache_ReplicaDeleteStaleCache/sharded/hard-delete
+=== RUN   TestAsOfCache_ReplicaDeleteStaleCache/tiered/below-high-water
+=== RUN   TestAsOfCache_ReplicaDeleteStaleCache/tiered/above-high-water
+=== RUN   TestAsOfCache_ReplicaDeleteStaleCache/tiered/hard-delete
+--- PASS: TestAsOfCache_ReplicaDeleteStaleCache (0.28s)
+    --- PASS: TestAsOfCache_ReplicaDeleteStaleCache/memory/below-high-water (0.00s)
+    --- PASS: TestAsOfCache_ReplicaDeleteStaleCache/memory/above-high-water (0.00s)
+    --- PASS: TestAsOfCache_ReplicaDeleteStaleCache/memory/hard-delete (0.00s)
+    --- PASS: TestAsOfCache_ReplicaDeleteStaleCache/badger/below-high-water (0.01s)
+    --- PASS: TestAsOfCache_ReplicaDeleteStaleCache/badger/above-high-water (0.01s)
+    --- PASS: TestAsOfCache_ReplicaDeleteStaleCache/badger/hard-delete (0.01s)
+    --- PASS: TestAsOfCache_ReplicaDeleteStaleCache/sharded/below-high-water (0.02s)
+    --- PASS: TestAsOfCache_ReplicaDeleteStaleCache/sharded/above-high-water (0.04s)
+    --- PASS: TestAsOfCache_ReplicaDeleteStaleCache/sharded/hard-delete (0.02s)
+    --- PASS: TestAsOfCache_ReplicaDeleteStaleCache/tiered/below-high-water (0.10s)
+    --- PASS: TestAsOfCache_ReplicaDeleteStaleCache/tiered/above-high-water (0.05s)
+    --- PASS: TestAsOfCache_ReplicaDeleteStaleCache/tiered/hard-delete (0.02s)
+=== RUN   TestAsOfCache_ReplicaPutBelowCachedPin
+=== RUN   TestAsOfCache_ReplicaPutBelowCachedPin/memory
+=== RUN   TestAsOfCache_ReplicaPutBelowCachedPin/badger
+=== RUN   TestAsOfCache_ReplicaPutBelowCachedPin/sharded
+=== RUN   TestAsOfCache_ReplicaPutBelowCachedPin/tiered
+--- PASS: TestAsOfCache_ReplicaPutBelowCachedPin (0.06s)
+    --- PASS: TestAsOfCache_ReplicaPutBelowCachedPin/memory (0.00s)
+    --- PASS: TestAsOfCache_ReplicaPutBelowCachedPin/badger (0.01s)
+    --- PASS: TestAsOfCache_ReplicaPutBelowCachedPin/sharded (0.02s)
+    --- PASS: TestAsOfCache_ReplicaPutBelowCachedPin/tiered (0.02s)
+=== RUN   TestAsOfCache_ReplicaRelDeleteFeedsDetector
+--- PASS: TestAsOfCache_ReplicaRelDeleteFeedsDetector (0.00s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.721s

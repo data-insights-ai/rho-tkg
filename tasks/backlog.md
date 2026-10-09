@@ -24,6 +24,8 @@ capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 
 6. **Belief endings at a caller instant** (FEATURE, requested by sigma-tkgd's realtime ingest design 2026-10-09): `DeleteWithTx` / `UpdateWithTx` behind `AllowTxBackfill`, so a replayed record can end or supersede belief at its own transaction instant instead of the write clock. Handover with API, semantics, file-level changes and the red tests to write first: `tasks/handover-tx-backfill-delete-update-20261009.md`.
 
+7. **Caller-instant delete of a row with a scheduled close** (FEATURE, follows item 6): `DeleteWithTx(id, t)` refuses when the recorded `ValidTo >= t`, because one tombstone row cannot end belief at `t` and keep the close that pins before `t` believed (decision 2026-10-09, handover §6.11). Lifting it needs a tombstone that keeps the believed `ValidTo` beside the deletion instant (no clamp for a caller instant), with the normalizer (`txtime.go:468-479`) and the valid-time history reads agreeing. Write the two-phase red test first.
+
 **v5:** the next engine generation is planned on branch `v5` (`docs/v5/PLAN.md`). v4 gets fixes, not features that v5 replaces. ADR-0011 S2+ waited for owner decision D6 in that plan. **DECIDED 2026-09-25 (René): S2 and S5 ship on v4 as v4.39.0**, because the AI-SOC cross-check needs them now (ADR-0011 §6 gate met: 24.0 / 24.8 / 25.7 B/HOP at 790 K / 3.15 M / 12.6 M); v5 carries the segments forward from this code.
 
 ---

@@ -1,0 +1,17 @@
+=== RUN   TestAsOfCache_ReplicaPutBelowCachedPin
+=== RUN   TestAsOfCache_ReplicaPutBelowCachedPin/memory
+    asof_cache_past_dated_write_test.go:599: replica pin after the lagging put: members [796240657542807552], want exactly [796240657542807552 796240657545953280]
+=== RUN   TestAsOfCache_ReplicaPutBelowCachedPin/badger
+    asof_cache_past_dated_write_test.go:599: replica pin after the lagging put: members [796240657646485504], want exactly [796240657646485504 796240657659559936]
+=== RUN   TestAsOfCache_ReplicaPutBelowCachedPin/sharded
+    asof_cache_past_dated_write_test.go:599: replica pin after the lagging put: members [796240659001081856], want exactly [796240659001081856 796240659015565312]
+=== RUN   TestAsOfCache_ReplicaPutBelowCachedPin/tiered
+    asof_cache_past_dated_write_test.go:599: replica pin after the lagging put: members [796240659650019328], want exactly [796240659650019328 796240659656835072]
+--- FAIL: TestAsOfCache_ReplicaPutBelowCachedPin (0.07s)
+    --- FAIL: TestAsOfCache_ReplicaPutBelowCachedPin/memory (0.00s)
+    --- FAIL: TestAsOfCache_ReplicaPutBelowCachedPin/badger (0.01s)
+    --- FAIL: TestAsOfCache_ReplicaPutBelowCachedPin/sharded (0.05s)
+    --- FAIL: TestAsOfCache_ReplicaPutBelowCachedPin/tiered (0.01s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.082s
+FAIL

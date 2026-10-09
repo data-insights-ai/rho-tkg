@@ -1,0 +1,144 @@
+=== RUN   TestAsOfCache_PrimaryCacheStale
+=== RUN   TestAsOfCache_PrimaryCacheStale/memory/Nodes.AddWithTx
+    asof_cache_past_dated_write_test.go:290: pin after the backfill: members [796239405232816128], want exactly [796239405232816128 796239405236453376]
+=== RUN   TestAsOfCache_PrimaryCacheStale/memory/Nodes.Import
+    asof_cache_past_dated_write_test.go:290: pin after the backfill: members [796239405238583296], want exactly [796239405238583296 796239405238878208]
+=== RUN   TestAsOfCache_PrimaryCacheStale/memory/GraphTx.AddNode
+    asof_cache_past_dated_write_test.go:290: pin after the backfill: members [796239405240614912], want exactly [796239405240614912 796239405241499648]
+=== RUN   TestAsOfCache_PrimaryCacheStale/memory/GraphTx.AddNodes
+    asof_cache_past_dated_write_test.go:290: pin after the backfill: members [796239405243203584], want exactly [796239405243203584 796239405243760640]
+=== RUN   TestAsOfCache_PrimaryCacheStale/memory/Batch.AddNode+Execute
+    asof_cache_past_dated_write_test.go:290: pin after the backfill: members [796239405245071360], want exactly [796239405245071360 796239405245759488]
+=== RUN   TestAsOfCache_PrimaryCacheStale/memory/Ingest.Session(sync)
+    asof_cache_past_dated_write_test.go:290: pin after the backfill: members [796239405247561728], want exactly [796239405247561728 796239405248741376]
+=== RUN   TestAsOfCache_PrimaryCacheStale/memory/Ingest.Session(concurrent)
+    asof_cache_past_dated_write_test.go:290: pin after the backfill: members [796239405252313088], want exactly [796239405252313088 796239405253001216]
+=== RUN   TestAsOfCache_PrimaryCacheStale/badger/Nodes.AddWithTx
+    asof_cache_past_dated_write_test.go:290: pin after the backfill: members [796239406356234240], want exactly [796239406356234240 796239406362492928]
+=== RUN   TestAsOfCache_PrimaryCacheStale/badger/Nodes.Import
+    asof_cache_past_dated_write_test.go:290: pin after the backfill: members [796239406430060544], want exactly [796239406430060544 796239406432223232]
+=== RUN   TestAsOfCache_PrimaryCacheStale/badger/GraphTx.AddNode
+    asof_cache_past_dated_write_test.go:290: pin after the backfill: members [796239406520467456], want exactly [796239406520467456 796239406523416576]
+=== RUN   TestAsOfCache_PrimaryCacheStale/badger/GraphTx.AddNodes
+    asof_cache_past_dated_write_test.go:290: pin after the backfill: members [796239407576121344], want exactly [796239407576121344 796239407580807168]
+=== RUN   TestAsOfCache_PrimaryCacheStale/badger/Batch.AddNode+Execute
+    asof_cache_past_dated_write_test.go:290: pin after the backfill: members [796239408636428288], want exactly [796239408636428288 796239408640196608]
+=== RUN   TestAsOfCache_PrimaryCacheStale/badger/Ingest.Session(sync)
+    asof_cache_past_dated_write_test.go:290: pin after the backfill: members [796239408891789312], want exactly [796239408891789312 796239408895000576]
+=== RUN   TestAsOfCache_PrimaryCacheStale/badger/Ingest.Session(concurrent)
+    asof_cache_past_dated_write_test.go:290: pin after the backfill: members [796239409072340992], want exactly [796239409072340992 796239409076600832]
+=== RUN   TestAsOfCache_PrimaryCacheStale/sharded/Nodes.AddWithTx
+    asof_cache_past_dated_write_test.go:290: pin after the backfill: members [796239409393139712], want exactly [796239409393139712 796239409397989376]
+=== RUN   TestAsOfCache_PrimaryCacheStale/sharded/Nodes.Import
+    asof_cache_past_dated_write_test.go:290: pin after the backfill: members [796239409502322688], want exactly [796239409502322688 796239409504321536]
+=== RUN   TestAsOfCache_PrimaryCacheStale/sharded/GraphTx.AddNode
+    asof_cache_past_dated_write_test.go:290: pin after the backfill: members [796239409824006144], want exactly [796239409824006144 796239409826267136]
+=== RUN   TestAsOfCache_PrimaryCacheStale/sharded/GraphTx.AddNodes
+    asof_cache_past_dated_write_test.go:290: pin after the backfill: members [796239411985055744], want exactly [796239411985055744 796239411989938176]
+=== RUN   TestAsOfCache_PrimaryCacheStale/sharded/Batch.AddNode+Execute
+    asof_cache_past_dated_write_test.go:290: pin after the backfill: members [796239412362805248], want exactly [796239412362805248 796239412366049280]
+=== RUN   TestAsOfCache_PrimaryCacheStale/sharded/Ingest.Session(sync)
+    asof_cache_past_dated_write_test.go:290: pin after the backfill: members [796239412704018432], want exactly [796239412704018432 796239412709130240]
+=== RUN   TestAsOfCache_PrimaryCacheStale/sharded/Ingest.Session(concurrent)
+    asof_cache_past_dated_write_test.go:290: pin after the backfill: members [796239413080129536], want exactly [796239413080129536 796239413084127232]
+=== RUN   TestAsOfCache_PrimaryCacheStale/tiered/Nodes.AddWithTx
+    asof_cache_past_dated_write_test.go:290: pin after the backfill: members [796239413487730688], want exactly [796239413487730688 796239413491597312]
+=== RUN   TestAsOfCache_PrimaryCacheStale/tiered/Nodes.Import
+    asof_cache_past_dated_write_test.go:290: pin after the backfill: members [796239413837037568], want exactly [796239413837037568 796239413839167488]
+=== RUN   TestAsOfCache_PrimaryCacheStale/tiered/GraphTx.AddNode
+    asof_cache_past_dated_write_test.go:290: pin after the backfill: members [796239414160621568], want exactly [796239414160621568 796239414162489344]
+=== RUN   TestAsOfCache_PrimaryCacheStale/tiered/GraphTx.AddNodes
+    asof_cache_past_dated_write_test.go:290: pin after the backfill: members [796239414493020160], want exactly [796239414493020160 796239414494986240]
+=== RUN   TestAsOfCache_PrimaryCacheStale/tiered/Batch.AddNode+Execute
+    asof_cache_past_dated_write_test.go:290: pin after the backfill: members [796239414811459584], want exactly [796239414811459584 796239414813392896]
+=== RUN   TestAsOfCache_PrimaryCacheStale/tiered/Ingest.Session(sync)
+    asof_cache_past_dated_write_test.go:290: pin after the backfill: members [796239415198580736], want exactly [796239415198580736 796239415201562624]
+=== RUN   TestAsOfCache_PrimaryCacheStale/tiered/Ingest.Session(concurrent)
+    asof_cache_past_dated_write_test.go:290: pin after the backfill: members [796239415549919232], want exactly [796239415549919232 796239415552507904]
+--- FAIL: TestAsOfCache_PrimaryCacheStale (0.32s)
+    --- FAIL: TestAsOfCache_PrimaryCacheStale/memory/Nodes.AddWithTx (0.00s)
+    --- FAIL: TestAsOfCache_PrimaryCacheStale/memory/Nodes.Import (0.00s)
+    --- FAIL: TestAsOfCache_PrimaryCacheStale/memory/GraphTx.AddNode (0.00s)
+    --- FAIL: TestAsOfCache_PrimaryCacheStale/memory/GraphTx.AddNodes (0.00s)
+    --- FAIL: TestAsOfCache_PrimaryCacheStale/memory/Batch.AddNode+Execute (0.00s)
+    --- FAIL: TestAsOfCache_PrimaryCacheStale/memory/Ingest.Session(sync) (0.00s)
+    --- FAIL: TestAsOfCache_PrimaryCacheStale/memory/Ingest.Session(concurrent) (0.00s)
+    --- FAIL: TestAsOfCache_PrimaryCacheStale/badger/Nodes.AddWithTx (0.04s)
+    --- FAIL: TestAsOfCache_PrimaryCacheStale/badger/Nodes.Import (0.00s)
+    --- FAIL: TestAsOfCache_PrimaryCacheStale/badger/GraphTx.AddNode (0.00s)
+    --- FAIL: TestAsOfCache_PrimaryCacheStale/badger/GraphTx.AddNodes (0.03s)
+    --- FAIL: TestAsOfCache_PrimaryCacheStale/badger/Batch.AddNode+Execute (0.03s)
+    --- FAIL: TestAsOfCache_PrimaryCacheStale/badger/Ingest.Session(sync) (0.01s)
+    --- FAIL: TestAsOfCache_PrimaryCacheStale/badger/Ingest.Session(concurrent) (0.01s)
+    --- FAIL: TestAsOfCache_PrimaryCacheStale/sharded/Nodes.AddWithTx (0.01s)
+    --- FAIL: TestAsOfCache_PrimaryCacheStale/sharded/Nodes.Import (0.00s)
+    --- FAIL: TestAsOfCache_PrimaryCacheStale/sharded/GraphTx.AddNode (0.01s)
+    --- FAIL: TestAsOfCache_PrimaryCacheStale/sharded/GraphTx.AddNodes (0.07s)
+    --- FAIL: TestAsOfCache_PrimaryCacheStale/sharded/Batch.AddNode+Execute (0.01s)
+    --- FAIL: TestAsOfCache_PrimaryCacheStale/sharded/Ingest.Session(sync) (0.01s)
+    --- FAIL: TestAsOfCache_PrimaryCacheStale/sharded/Ingest.Session(concurrent) (0.01s)
+    --- FAIL: TestAsOfCache_PrimaryCacheStale/tiered/Nodes.AddWithTx (0.01s)
+    --- FAIL: TestAsOfCache_PrimaryCacheStale/tiered/Nodes.Import (0.01s)
+    --- FAIL: TestAsOfCache_PrimaryCacheStale/tiered/GraphTx.AddNode (0.01s)
+    --- FAIL: TestAsOfCache_PrimaryCacheStale/tiered/GraphTx.AddNodes (0.01s)
+    --- FAIL: TestAsOfCache_PrimaryCacheStale/tiered/Batch.AddNode+Execute (0.01s)
+    --- FAIL: TestAsOfCache_PrimaryCacheStale/tiered/Ingest.Session(sync) (0.01s)
+    --- FAIL: TestAsOfCache_PrimaryCacheStale/tiered/Ingest.Session(concurrent) (0.01s)
+=== RUN   TestAsOfCache_RelBackfillDoorsReportPastDatedWrite
+=== RUN   TestAsOfCache_RelBackfillDoorsReportPastDatedWrite/Rels.AddWithTx
+=== RUN   TestAsOfCache_RelBackfillDoorsReportPastDatedWrite/Rels.AddByID
+=== RUN   TestAsOfCache_RelBackfillDoorsReportPastDatedWrite/Rels.AddByIDIfAbsent
+=== RUN   TestAsOfCache_RelBackfillDoorsReportPastDatedWrite/Rels.Import
+=== RUN   TestAsOfCache_RelBackfillDoorsReportPastDatedWrite/GraphTx.AddRelationships
+=== RUN   TestAsOfCache_RelBackfillDoorsReportPastDatedWrite/Batch.AddRelationship+Execute
+--- PASS: TestAsOfCache_RelBackfillDoorsReportPastDatedWrite (0.00s)
+    --- PASS: TestAsOfCache_RelBackfillDoorsReportPastDatedWrite/Rels.AddWithTx (0.00s)
+    --- PASS: TestAsOfCache_RelBackfillDoorsReportPastDatedWrite/Rels.AddByID (0.00s)
+    --- PASS: TestAsOfCache_RelBackfillDoorsReportPastDatedWrite/Rels.AddByIDIfAbsent (0.00s)
+    --- PASS: TestAsOfCache_RelBackfillDoorsReportPastDatedWrite/Rels.Import (0.00s)
+    --- PASS: TestAsOfCache_RelBackfillDoorsReportPastDatedWrite/GraphTx.AddRelationships (0.00s)
+    --- PASS: TestAsOfCache_RelBackfillDoorsReportPastDatedWrite/Batch.AddRelationship+Execute (0.00s)
+=== RUN   TestAsOfCache_ReplicaDeleteStaleCache
+=== RUN   TestAsOfCache_ReplicaDeleteStaleCache/memory/below-high-water
+    asof_cache_past_dated_write_test.go:547: replica pin after the delete: members [796239415599628288 796239415600152576], want exactly [796239415600152576]
+=== RUN   TestAsOfCache_ReplicaDeleteStaleCache/memory/above-high-water
+    asof_cache_past_dated_write_test.go:547: replica pin after the delete: members [796239415606181888 796239415606345728], want exactly [796239415606345728]
+=== RUN   TestAsOfCache_ReplicaDeleteStaleCache/memory/hard-delete
+    asof_cache_past_dated_write_test.go:547: replica pin after the delete: members [796239415608672256 796239415608836096], want exactly [796239415608836096]
+=== RUN   TestAsOfCache_ReplicaDeleteStaleCache/badger/below-high-water
+    asof_cache_past_dated_write_test.go:547: replica pin after the delete: members [796239415912890368 796239415915184128], want exactly [796239415915184128]
+=== RUN   TestAsOfCache_ReplicaDeleteStaleCache/badger/above-high-water
+    asof_cache_past_dated_write_test.go:547: replica pin after the delete: members [796239416257740800 796239416259706880], want exactly [796239416259706880]
+=== RUN   TestAsOfCache_ReplicaDeleteStaleCache/badger/hard-delete
+    asof_cache_past_dated_write_test.go:547: replica pin after the delete: members [796239416631656448 796239416633491456], want exactly [796239416633491456]
+=== RUN   TestAsOfCache_ReplicaDeleteStaleCache/sharded/below-high-water
+    asof_cache_past_dated_write_test.go:547: replica pin after the delete: members [796239417262211072 796239417263783936], want exactly [796239417263783936]
+=== RUN   TestAsOfCache_ReplicaDeleteStaleCache/sharded/above-high-water
+    asof_cache_past_dated_write_test.go:547: replica pin after the delete: members [796239417467437056 796239417468747776], want exactly [796239417468747776]
+=== RUN   TestAsOfCache_ReplicaDeleteStaleCache/sharded/hard-delete
+    asof_cache_past_dated_write_test.go:547: replica pin after the delete: members [796239418503069696 796239418505166848], want exactly [796239418505166848]
+=== RUN   TestAsOfCache_ReplicaDeleteStaleCache/tiered/below-high-water
+    asof_cache_past_dated_write_test.go:547: replica pin after the delete: members [796239422883299328 796239422885560320], want exactly [796239422885560320]
+=== RUN   TestAsOfCache_ReplicaDeleteStaleCache/tiered/above-high-water
+    asof_cache_past_dated_write_test.go:547: replica pin after the delete: members [796239423597641728 796239423599411200], want exactly [796239423599411200]
+=== RUN   TestAsOfCache_ReplicaDeleteStaleCache/tiered/hard-delete
+    asof_cache_past_dated_write_test.go:547: replica pin after the delete: members [796239424311066624 796239424312508416], want exactly [796239424312508416]
+--- FAIL: TestAsOfCache_ReplicaDeleteStaleCache (0.27s)
+    --- FAIL: TestAsOfCache_ReplicaDeleteStaleCache/memory/below-high-water (0.00s)
+    --- FAIL: TestAsOfCache_ReplicaDeleteStaleCache/memory/above-high-water (0.00s)
+    --- FAIL: TestAsOfCache_ReplicaDeleteStaleCache/memory/hard-delete (0.00s)
+    --- FAIL: TestAsOfCache_ReplicaDeleteStaleCache/badger/below-high-water (0.01s)
+    --- FAIL: TestAsOfCache_ReplicaDeleteStaleCache/badger/above-high-water (0.01s)
+    --- FAIL: TestAsOfCache_ReplicaDeleteStaleCache/badger/hard-delete (0.01s)
+    --- FAIL: TestAsOfCache_ReplicaDeleteStaleCache/sharded/below-high-water (0.02s)
+    --- FAIL: TestAsOfCache_ReplicaDeleteStaleCache/sharded/above-high-water (0.01s)
+    --- FAIL: TestAsOfCache_ReplicaDeleteStaleCache/sharded/hard-delete (0.03s)
+    --- FAIL: TestAsOfCache_ReplicaDeleteStaleCache/tiered/below-high-water (0.13s)
+    --- FAIL: TestAsOfCache_ReplicaDeleteStaleCache/tiered/above-high-water (0.02s)
+    --- FAIL: TestAsOfCache_ReplicaDeleteStaleCache/tiered/hard-delete (0.02s)
+=== RUN   TestAsOfCache_ReplicaRelDeleteFeedsDetector
+    asof_cache_past_dated_write_test.go:607: a rel tombstone (TxTo 1791524898843) below the applied high-water mark left the as-of epoch at 0
+--- FAIL: TestAsOfCache_ReplicaRelDeleteFeedsDetector (0.00s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.650s
+FAIL

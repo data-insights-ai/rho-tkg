@@ -95,7 +95,7 @@ TxFrom/TxTo identical). Every test is table-driven over memory, badger, sharded,
 | R5 | `IgnoresT` | TxTo = DeletedAt = t in History; `RelAsOf` at t-1 / t / NowTx; `RelsAsOf(t)` must NOT contain it; exact set at t-1; ByType TxPin t-1 | stamps now; off-by-one at the pin |
 | R6 | `UpdateStamps` | old TxTo = t, new TxFrom = UpdatedAt = t (field compare); next plain Update > t | prev.TxTo = now; UpdatedAt left at now |
 | R7 | `CloseCollision` | ValidTo == t on the rel and on a cascaded rel | t moved silently |
-| R8 | `ScheduledCloseAfterT` | pin t-1 shows the decided ValidTo (clamp then normalizer reopen, `txtime.go:468-479`) | close lost by the clamp |
+| R8 | `ScheduledCloseAfterT` | recorded ValidTo >= t refuses with `ErrTxOrder` ("recorded close at or after t", both instants), nothing changed; counterpart ValidTo < t untouched; plain Delete still clamps (R0) | close lost by the clamp (pin t-1 would show ValidTo = t, a falsified past belief) |
 | R9 | `CascadeOrder` | a cascaded rel with TxFrom > t refuses the whole delete; counterpart: all tombstones carry t, exact node+rel set at t-1 | cascade stamps rels with now; only the node checked |
 | R10 | `Duplicates` | `DeleteWithTx` twice: `ErrRelNotFound`, history +1 only; `UpdateWithTx` same t twice: `ErrTxOrder` | double tombstone / version |
 | R11 | `RaceClock` (-race) | N plain Updates racing the WithTx doors; TxFrom strictly rising, prev.TxTo == next.TxFrom | order check outside the entity lock |
@@ -137,7 +137,11 @@ Run `make test-race` and `make cover`; new code at or above 80 %.
     (picks up uncommitted edits; baseline already red on go 1.27.1). sigma's pinned-read promise
     (`sharedrun/run.go:70-76`) and Tyla EDB cache (`policy/tyla_limits.go:78`) need invalidation once sigma
     calls the doors.
-11. Open, unverified: a backfilled t below the retention purge watermark is unguarded (reads fail closed);
+11. Decision 2026-10-09 (R8): a caller-instant delete REFUSES a recorded close at or after t (§3's "clamped as
+    today" is superseded for the caller door only). One tombstone row cannot both end belief at t and keep the
+    close V that pins before t believed (the normalizer reopens ValidTo == DeletedAt, `txtime.go:468-479`).
+    Fail closed now; relaxing later is additive. Backlog item 7.
+12. Open, unverified: a backfilled t below the retention purge watermark is unguarded (reads fail closed);
     a rel version at t may reference endpoint versions recorded after t.
 
 Implementation order: R0, R2-R6 red → seam + `checkTxOrder` + `ErrTxOrder` → R7/R8 → node twins + cascade
