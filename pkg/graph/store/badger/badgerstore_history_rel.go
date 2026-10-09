@@ -356,6 +356,7 @@ func (bs *Store) getRelHistoryByPrefix(prefix []byte) ([]*types.Relationship, er
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = true
+		opts.Prefix = prefix // bound the scan and the value prefetch to this entity (backlog 20)
 		it := txn.NewIterator(opts)
 		defer it.Close()
 
@@ -463,6 +464,7 @@ func (bs *Store) relHistoryVersionsFromPrefix(prefix []byte, startVersion uint32
 	err := bs.db.View(func(txn *badgerv4.Txn) error {
 		opts := badgerv4.DefaultIteratorOptions
 		opts.PrefetchValues = true
+		opts.Prefix = prefix // bound the scan and the value prefetch to this entity (backlog 20)
 		it := txn.NewIterator(opts)
 		defer it.Close()
 

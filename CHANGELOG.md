@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Badger history reads no longer prefetch other entities' history rows.** `GetRelHistory` /
+  `GetNodeHistory` and the paged `RelHistoryVersionsFrom` / `NodeHistoryVersionsFrom` scanned with
+  `PrefetchValues = true` and no `opts.Prefix`, so badger prefetched the next 100 keys after the seek
+  whether or not they belonged to the entity: a lookup for an entity WITHOUT history paid for its
+  neighbours' rows (reported by sigma-tkgd). The four iterators now set `opts.Prefix` to the entity
+  prefix they already checked with `ValidForPrefix`. Plain entity, reopened on-disk badger, 200 K
+  entities, store level (`BenchmarkRelHistory`, `BenchmarkNodeHistory`): history on 0 / 0.1 % / 1 % of
+  the entities (medians of 3) went from 5.7 / 60 / 58 us (rel) and 3.9 / 63 / 58 us (node) to 1.4 / 1.5 / 2.0 us (rel)
+  and 1.3 / 1.8 / 1.8 us (node), 41 / 582 / 622 allocs to 20 / 20 / 20. Answers are unchanged
+  (`TestHistoryPrefix_*`); `TestHistoryScanAllocGate` pins the cost per door.
+
 ## [4.44.0] - 2026-10-09
 
 Minor release: transaction-time endings and supersessions at a caller instant (`DeleteWithTx` /

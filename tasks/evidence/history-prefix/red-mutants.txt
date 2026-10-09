@@ -1,0 +1,25 @@
+== mutate node:767 -> //MUT 		opts.Prefix = prefix // bound th
+--- FAIL: TestHistoryScanAllocGate (0.34s)
+    --- FAIL: TestHistoryScanAllocGate/node (0.16s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.355s
+FAIL
+== mutate node:880 -> //MUT 		opts.Prefix = prefix // bound th
+--- FAIL: TestHistoryScanAllocGate (0.36s)
+    --- FAIL: TestHistoryScanAllocGate/node (0.18s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.377s
+FAIL
+== mutate rel:359 -> //MUT 		opts.Prefix = prefix // bound th
+--- FAIL: TestHistoryScanAllocGate (0.31s)
+    --- FAIL: TestHistoryScanAllocGate/rel (0.18s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.321s
+FAIL
+== mutate rel:467 -> //MUT 		opts.Prefix = prefix // bound th
+--- FAIL: TestHistoryScanAllocGate (0.32s)
+    --- FAIL: TestHistoryScanAllocGate/rel (0.20s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.354s
+FAIL
+== restored

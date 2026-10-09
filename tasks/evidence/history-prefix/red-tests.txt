@@ -1,0 +1,261 @@
+=== RUN   TestHistoryPrefix_ExactRowsAmongNeighbours
+=== PAUSE TestHistoryPrefix_ExactRowsAmongNeighbours
+=== RUN   TestHistoryPrefix_PlainEntityEmpty
+=== PAUSE TestHistoryPrefix_PlainEntityEmpty
+=== RUN   TestHistoryPrefix_PagedDoor
+=== PAUSE TestHistoryPrefix_PagedDoor
+=== RUN   TestHistoryPrefix_MixedFlushedAndPending
+=== PAUSE TestHistoryPrefix_MixedFlushedAndPending
+=== RUN   TestHistoryPrefix_TruncateOverlayDelete
+=== PAUSE TestHistoryPrefix_TruncateOverlayDelete
+=== RUN   TestHistoryPrefix_DeleteWithHistoryTombstone
+=== PAUSE TestHistoryPrefix_DeleteWithHistoryTombstone
+=== RUN   TestHistoryScanAllocGate
+=== RUN   TestHistoryScanAllocGate/node
+    badgerstore_history_prefix_test.go:468: history/aboveAll: 40.0 allocs/op
+    badgerstore_history_prefix_test.go:468: history/amongDense: 622.0 allocs/op
+    badgerstore_history_prefix_test.go:486: history: plain entity among dense neighbour history allocates 622.0/op vs 40.0/op past the last key: the iterator reads other entities' rows (missing opts.Prefix)
+    badgerstore_history_prefix_test.go:468: paged/aboveAll: 40.0 allocs/op
+    badgerstore_history_prefix_test.go:468: paged/amongDense: 622.0 allocs/op
+    badgerstore_history_prefix_test.go:486: paged: plain entity among dense neighbour history allocates 622.0/op vs 40.0/op past the last key: the iterator reads other entities' rows (missing opts.Prefix)
+=== RUN   TestHistoryScanAllocGate/rel
+    badgerstore_history_prefix_test.go:468: history/aboveAll: 40.0 allocs/op
+    badgerstore_history_prefix_test.go:468: history/amongDense: 623.0 allocs/op
+    badgerstore_history_prefix_test.go:486: history: plain entity among dense neighbour history allocates 623.0/op vs 40.0/op past the last key: the iterator reads other entities' rows (missing opts.Prefix)
+    badgerstore_history_prefix_test.go:468: paged/aboveAll: 40.0 allocs/op
+    badgerstore_history_prefix_test.go:468: paged/amongDense: 623.0 allocs/op
+    badgerstore_history_prefix_test.go:486: paged: plain entity among dense neighbour history allocates 623.0/op vs 40.0/op past the last key: the iterator reads other entities' rows (missing opts.Prefix)
+--- FAIL: TestHistoryScanAllocGate (0.23s)
+    --- FAIL: TestHistoryScanAllocGate/node (0.10s)
+    --- FAIL: TestHistoryScanAllocGate/rel (0.13s)
+=== CONT  TestHistoryPrefix_ExactRowsAmongNeighbours
+=== CONT  TestHistoryPrefix_MixedFlushedAndPending
+=== CONT  TestHistoryPrefix_PagedDoor
+=== CONT  TestHistoryPrefix_PlainEntityEmpty
+=== RUN   TestHistoryPrefix_ExactRowsAmongNeighbours/node/pending
+=== PAUSE TestHistoryPrefix_ExactRowsAmongNeighbours/node/pending
+=== CONT  TestHistoryPrefix_TruncateOverlayDelete
+=== RUN   TestHistoryPrefix_MixedFlushedAndPending/node
+=== CONT  TestHistoryPrefix_DeleteWithHistoryTombstone
+=== PAUSE TestHistoryPrefix_MixedFlushedAndPending/node
+=== RUN   TestHistoryPrefix_PlainEntityEmpty/node/pending
+=== RUN   TestHistoryPrefix_PagedDoor/node/pending/all
+=== PAUSE TestHistoryPrefix_PlainEntityEmpty/node/pending
+=== PAUSE TestHistoryPrefix_PagedDoor/node/pending/all
+=== RUN   TestHistoryPrefix_PagedDoor/node/pending/from2
+=== RUN   TestHistoryPrefix_ExactRowsAmongNeighbours/node/flushed
+=== PAUSE TestHistoryPrefix_PagedDoor/node/pending/from2
+=== PAUSE TestHistoryPrefix_ExactRowsAmongNeighbours/node/flushed
+=== RUN   TestHistoryPrefix_TruncateOverlayDelete/node
+=== PAUSE TestHistoryPrefix_TruncateOverlayDelete/node
+=== RUN   TestHistoryPrefix_DeleteWithHistoryTombstone/rel
+=== RUN   TestHistoryPrefix_ExactRowsAmongNeighbours/node/reopened
+=== PAUSE TestHistoryPrefix_ExactRowsAmongNeighbours/node/reopened
+=== RUN   TestHistoryPrefix_ExactRowsAmongNeighbours/rel/pending
+=== PAUSE TestHistoryPrefix_ExactRowsAmongNeighbours/rel/pending
+=== RUN   TestHistoryPrefix_PagedDoor/node/pending/limit2
+=== RUN   TestHistoryPrefix_MixedFlushedAndPending/rel
+=== PAUSE TestHistoryPrefix_DeleteWithHistoryTombstone/rel
+=== PAUSE TestHistoryPrefix_MixedFlushedAndPending/rel
+=== PAUSE TestHistoryPrefix_PagedDoor/node/pending/limit2
+=== CONT  TestHistoryPrefix_MixedFlushedAndPending/node
+=== RUN   TestHistoryPrefix_TruncateOverlayDelete/rel
+=== RUN   TestHistoryPrefix_DeleteWithHistoryTombstone/node
+=== CONT  TestHistoryPrefix_MixedFlushedAndPending/rel
+=== PAUSE TestHistoryPrefix_TruncateOverlayDelete/rel
+=== RUN   TestHistoryPrefix_ExactRowsAmongNeighbours/rel/flushed
+=== PAUSE TestHistoryPrefix_DeleteWithHistoryTombstone/node
+=== CONT  TestHistoryPrefix_DeleteWithHistoryTombstone/rel
+=== PAUSE TestHistoryPrefix_ExactRowsAmongNeighbours/rel/flushed
+=== CONT  TestHistoryPrefix_TruncateOverlayDelete/node
+=== RUN   TestHistoryPrefix_PagedDoor/node/pending/from1limit2
+=== CONT  TestHistoryPrefix_TruncateOverlayDelete/rel
+=== PAUSE TestHistoryPrefix_PagedDoor/node/pending/from1limit2
+=== RUN   TestHistoryPrefix_PagedDoor/node/pending/pastEnd
+=== PAUSE TestHistoryPrefix_PagedDoor/node/pending/pastEnd
+=== RUN   TestHistoryPrefix_PagedDoor/node/pending/fromLast
+=== PAUSE TestHistoryPrefix_PagedDoor/node/pending/fromLast
+=== RUN   TestHistoryPrefix_PlainEntityEmpty/node/flushed
+=== PAUSE TestHistoryPrefix_PlainEntityEmpty/node/flushed
+=== RUN   TestHistoryPrefix_PagedDoor/node/flushed/all
+=== RUN   TestHistoryPrefix_PlainEntityEmpty/node/reopened
+=== PAUSE TestHistoryPrefix_PagedDoor/node/flushed/all
+=== PAUSE TestHistoryPrefix_PlainEntityEmpty/node/reopened
+=== CONT  TestHistoryPrefix_DeleteWithHistoryTombstone/node
+=== RUN   TestHistoryPrefix_PagedDoor/node/flushed/from2
+=== RUN   TestHistoryPrefix_ExactRowsAmongNeighbours/rel/reopened
+=== RUN   TestHistoryPrefix_PlainEntityEmpty/rel/pending
+=== PAUSE TestHistoryPrefix_PlainEntityEmpty/rel/pending
+=== PAUSE TestHistoryPrefix_ExactRowsAmongNeighbours/rel/reopened
+=== CONT  TestHistoryPrefix_ExactRowsAmongNeighbours/node/pending
+=== CONT  TestHistoryPrefix_ExactRowsAmongNeighbours/rel/flushed
+=== CONT  TestHistoryPrefix_ExactRowsAmongNeighbours/node/reopened
+=== RUN   TestHistoryPrefix_PlainEntityEmpty/rel/flushed
+=== CONT  TestHistoryPrefix_ExactRowsAmongNeighbours/rel/pending
+=== PAUSE TestHistoryPrefix_PlainEntityEmpty/rel/flushed
+=== RUN   TestHistoryPrefix_PlainEntityEmpty/rel/reopened
+=== CONT  TestHistoryPrefix_ExactRowsAmongNeighbours/rel/reopened
+=== PAUSE TestHistoryPrefix_PlainEntityEmpty/rel/reopened
+=== CONT  TestHistoryPrefix_ExactRowsAmongNeighbours/node/flushed
+=== CONT  TestHistoryPrefix_PlainEntityEmpty/rel/reopened
+=== CONT  TestHistoryPrefix_PlainEntityEmpty/rel/flushed
+=== PAUSE TestHistoryPrefix_PagedDoor/node/flushed/from2
+=== CONT  TestHistoryPrefix_PlainEntityEmpty/node/pending
+=== CONT  TestHistoryPrefix_PlainEntityEmpty/node/reopened
+=== CONT  TestHistoryPrefix_PlainEntityEmpty/node/flushed
+=== CONT  TestHistoryPrefix_PlainEntityEmpty/rel/pending
+=== RUN   TestHistoryPrefix_PagedDoor/node/flushed/limit2
+=== PAUSE TestHistoryPrefix_PagedDoor/node/flushed/limit2
+=== RUN   TestHistoryPrefix_PagedDoor/node/flushed/from1limit2
+=== PAUSE TestHistoryPrefix_PagedDoor/node/flushed/from1limit2
+=== RUN   TestHistoryPrefix_PagedDoor/node/flushed/pastEnd
+=== PAUSE TestHistoryPrefix_PagedDoor/node/flushed/pastEnd
+=== RUN   TestHistoryPrefix_PagedDoor/node/flushed/fromLast
+=== PAUSE TestHistoryPrefix_PagedDoor/node/flushed/fromLast
+=== RUN   TestHistoryPrefix_PagedDoor/node/reopened/all
+=== PAUSE TestHistoryPrefix_PagedDoor/node/reopened/all
+=== RUN   TestHistoryPrefix_PagedDoor/node/reopened/from2
+=== PAUSE TestHistoryPrefix_PagedDoor/node/reopened/from2
+=== RUN   TestHistoryPrefix_PagedDoor/node/reopened/limit2
+=== PAUSE TestHistoryPrefix_PagedDoor/node/reopened/limit2
+=== RUN   TestHistoryPrefix_PagedDoor/node/reopened/from1limit2
+=== PAUSE TestHistoryPrefix_PagedDoor/node/reopened/from1limit2
+=== RUN   TestHistoryPrefix_PagedDoor/node/reopened/pastEnd
+=== PAUSE TestHistoryPrefix_PagedDoor/node/reopened/pastEnd
+=== RUN   TestHistoryPrefix_PagedDoor/node/reopened/fromLast
+=== PAUSE TestHistoryPrefix_PagedDoor/node/reopened/fromLast
+=== RUN   TestHistoryPrefix_PagedDoor/rel/pending/all
+=== PAUSE TestHistoryPrefix_PagedDoor/rel/pending/all
+=== RUN   TestHistoryPrefix_PagedDoor/rel/pending/from2
+=== PAUSE TestHistoryPrefix_PagedDoor/rel/pending/from2
+=== RUN   TestHistoryPrefix_PagedDoor/rel/pending/limit2
+=== PAUSE TestHistoryPrefix_PagedDoor/rel/pending/limit2
+=== RUN   TestHistoryPrefix_PagedDoor/rel/pending/from1limit2
+=== PAUSE TestHistoryPrefix_PagedDoor/rel/pending/from1limit2
+=== RUN   TestHistoryPrefix_PagedDoor/rel/pending/pastEnd
+=== PAUSE TestHistoryPrefix_PagedDoor/rel/pending/pastEnd
+=== RUN   TestHistoryPrefix_PagedDoor/rel/pending/fromLast
+=== PAUSE TestHistoryPrefix_PagedDoor/rel/pending/fromLast
+=== RUN   TestHistoryPrefix_PagedDoor/rel/flushed/all
+=== PAUSE TestHistoryPrefix_PagedDoor/rel/flushed/all
+=== RUN   TestHistoryPrefix_PagedDoor/rel/flushed/from2
+=== PAUSE TestHistoryPrefix_PagedDoor/rel/flushed/from2
+=== RUN   TestHistoryPrefix_PagedDoor/rel/flushed/limit2
+=== PAUSE TestHistoryPrefix_PagedDoor/rel/flushed/limit2
+=== RUN   TestHistoryPrefix_PagedDoor/rel/flushed/from1limit2
+=== PAUSE TestHistoryPrefix_PagedDoor/rel/flushed/from1limit2
+=== RUN   TestHistoryPrefix_PagedDoor/rel/flushed/pastEnd
+=== PAUSE TestHistoryPrefix_PagedDoor/rel/flushed/pastEnd
+=== RUN   TestHistoryPrefix_PagedDoor/rel/flushed/fromLast
+=== PAUSE TestHistoryPrefix_PagedDoor/rel/flushed/fromLast
+=== RUN   TestHistoryPrefix_PagedDoor/rel/reopened/all
+=== PAUSE TestHistoryPrefix_PagedDoor/rel/reopened/all
+=== RUN   TestHistoryPrefix_PagedDoor/rel/reopened/from2
+=== PAUSE TestHistoryPrefix_PagedDoor/rel/reopened/from2
+=== RUN   TestHistoryPrefix_PagedDoor/rel/reopened/limit2
+=== PAUSE TestHistoryPrefix_PagedDoor/rel/reopened/limit2
+=== RUN   TestHistoryPrefix_PagedDoor/rel/reopened/from1limit2
+=== PAUSE TestHistoryPrefix_PagedDoor/rel/reopened/from1limit2
+=== RUN   TestHistoryPrefix_PagedDoor/rel/reopened/pastEnd
+=== PAUSE TestHistoryPrefix_PagedDoor/rel/reopened/pastEnd
+=== RUN   TestHistoryPrefix_PagedDoor/rel/reopened/fromLast
+=== PAUSE TestHistoryPrefix_PagedDoor/rel/reopened/fromLast
+=== CONT  TestHistoryPrefix_PagedDoor/node/pending/all
+=== CONT  TestHistoryPrefix_PagedDoor/rel/pending/all
+=== CONT  TestHistoryPrefix_PagedDoor/rel/flushed/from1limit2
+=== CONT  TestHistoryPrefix_PagedDoor/rel/reopened/fromLast
+=== CONT  TestHistoryPrefix_PagedDoor/rel/reopened/pastEnd
+=== CONT  TestHistoryPrefix_PagedDoor/rel/reopened/from1limit2
+=== CONT  TestHistoryPrefix_PagedDoor/rel/reopened/limit2
+=== CONT  TestHistoryPrefix_PagedDoor/rel/reopened/from2
+=== CONT  TestHistoryPrefix_PagedDoor/rel/reopened/all
+=== CONT  TestHistoryPrefix_PagedDoor/rel/flushed/fromLast
+=== CONT  TestHistoryPrefix_PagedDoor/rel/flushed/pastEnd
+=== CONT  TestHistoryPrefix_PagedDoor/rel/pending/fromLast
+=== CONT  TestHistoryPrefix_PagedDoor/rel/flushed/limit2
+=== CONT  TestHistoryPrefix_PagedDoor/rel/flushed/from2
+=== CONT  TestHistoryPrefix_PagedDoor/rel/flushed/all
+=== CONT  TestHistoryPrefix_PagedDoor/node/reopened/limit2
+=== CONT  TestHistoryPrefix_PagedDoor/node/reopened/fromLast
+=== CONT  TestHistoryPrefix_PagedDoor/node/reopened/pastEnd
+=== CONT  TestHistoryPrefix_PagedDoor/node/reopened/from1limit2
+=== CONT  TestHistoryPrefix_PagedDoor/node/flushed/from1limit2
+=== CONT  TestHistoryPrefix_PagedDoor/node/reopened/from2
+=== CONT  TestHistoryPrefix_PagedDoor/node/reopened/all
+=== CONT  TestHistoryPrefix_PagedDoor/node/flushed/fromLast
+=== CONT  TestHistoryPrefix_PagedDoor/rel/pending/from1limit2
+=== CONT  TestHistoryPrefix_PagedDoor/node/flushed/pastEnd
+=== CONT  TestHistoryPrefix_PagedDoor/rel/pending/pastEnd
+=== CONT  TestHistoryPrefix_PagedDoor/node/pending/pastEnd
+=== CONT  TestHistoryPrefix_PagedDoor/node/pending/from2
+=== CONT  TestHistoryPrefix_PagedDoor/node/flushed/limit2
+=== CONT  TestHistoryPrefix_PagedDoor/node/flushed/from2
+=== CONT  TestHistoryPrefix_PagedDoor/node/pending/from1limit2
+=== CONT  TestHistoryPrefix_PagedDoor/node/pending/limit2
+=== CONT  TestHistoryPrefix_PagedDoor/node/flushed/all
+=== CONT  TestHistoryPrefix_PagedDoor/node/pending/fromLast
+=== CONT  TestHistoryPrefix_PagedDoor/rel/pending/limit2
+=== CONT  TestHistoryPrefix_PagedDoor/rel/pending/from2
+--- PASS: TestHistoryPrefix_MixedFlushedAndPending (0.00s)
+    --- PASS: TestHistoryPrefix_MixedFlushedAndPending/node (0.07s)
+    --- PASS: TestHistoryPrefix_MixedFlushedAndPending/rel (0.08s)
+--- PASS: TestHistoryPrefix_DeleteWithHistoryTombstone (0.00s)
+    --- PASS: TestHistoryPrefix_DeleteWithHistoryTombstone/node (0.01s)
+    --- PASS: TestHistoryPrefix_DeleteWithHistoryTombstone/rel (0.08s)
+--- PASS: TestHistoryPrefix_TruncateOverlayDelete (0.00s)
+    --- PASS: TestHistoryPrefix_TruncateOverlayDelete/rel (0.20s)
+    --- PASS: TestHistoryPrefix_TruncateOverlayDelete/node (0.27s)
+--- PASS: TestHistoryPrefix_PlainEntityEmpty (0.00s)
+    --- PASS: TestHistoryPrefix_PlainEntityEmpty/node/pending (0.01s)
+    --- PASS: TestHistoryPrefix_PlainEntityEmpty/rel/pending (0.01s)
+    --- PASS: TestHistoryPrefix_PlainEntityEmpty/rel/flushed (0.01s)
+    --- PASS: TestHistoryPrefix_PlainEntityEmpty/node/flushed (0.01s)
+    --- PASS: TestHistoryPrefix_PlainEntityEmpty/node/reopened (0.25s)
+    --- PASS: TestHistoryPrefix_PlainEntityEmpty/rel/reopened (0.30s)
+--- PASS: TestHistoryPrefix_ExactRowsAmongNeighbours (0.00s)
+    --- PASS: TestHistoryPrefix_ExactRowsAmongNeighbours/rel/pending (0.01s)
+    --- PASS: TestHistoryPrefix_ExactRowsAmongNeighbours/node/pending (0.01s)
+    --- PASS: TestHistoryPrefix_ExactRowsAmongNeighbours/node/flushed (0.01s)
+    --- PASS: TestHistoryPrefix_ExactRowsAmongNeighbours/rel/flushed (0.01s)
+    --- PASS: TestHistoryPrefix_ExactRowsAmongNeighbours/node/reopened (0.30s)
+    --- PASS: TestHistoryPrefix_ExactRowsAmongNeighbours/rel/reopened (0.30s)
+--- PASS: TestHistoryPrefix_PagedDoor (0.01s)
+    --- PASS: TestHistoryPrefix_PagedDoor/node/pending/all (0.01s)
+    --- PASS: TestHistoryPrefix_PagedDoor/rel/pending/all (0.01s)
+    --- PASS: TestHistoryPrefix_PagedDoor/rel/flushed/from1limit2 (0.01s)
+    --- PASS: TestHistoryPrefix_PagedDoor/rel/flushed/pastEnd (0.01s)
+    --- PASS: TestHistoryPrefix_PagedDoor/rel/pending/fromLast (0.01s)
+    --- PASS: TestHistoryPrefix_PagedDoor/rel/flushed/all (0.01s)
+    --- PASS: TestHistoryPrefix_PagedDoor/rel/flushed/fromLast (0.01s)
+    --- PASS: TestHistoryPrefix_PagedDoor/node/flushed/from1limit2 (0.01s)
+    --- PASS: TestHistoryPrefix_PagedDoor/rel/flushed/from2 (0.01s)
+    --- PASS: TestHistoryPrefix_PagedDoor/rel/flushed/limit2 (0.01s)
+    --- PASS: TestHistoryPrefix_PagedDoor/node/flushed/fromLast (0.01s)
+    --- PASS: TestHistoryPrefix_PagedDoor/rel/pending/from1limit2 (0.01s)
+    --- PASS: TestHistoryPrefix_PagedDoor/node/pending/pastEnd (0.01s)
+    --- PASS: TestHistoryPrefix_PagedDoor/node/pending/fromLast (0.01s)
+    --- PASS: TestHistoryPrefix_PagedDoor/node/pending/from2 (0.01s)
+    --- PASS: TestHistoryPrefix_PagedDoor/node/flushed/pastEnd (0.01s)
+    --- PASS: TestHistoryPrefix_PagedDoor/rel/pending/pastEnd (0.01s)
+    --- PASS: TestHistoryPrefix_PagedDoor/rel/pending/limit2 (0.00s)
+    --- PASS: TestHistoryPrefix_PagedDoor/rel/pending/from2 (0.00s)
+    --- PASS: TestHistoryPrefix_PagedDoor/node/pending/limit2 (0.07s)
+    --- PASS: TestHistoryPrefix_PagedDoor/node/flushed/all (0.07s)
+    --- PASS: TestHistoryPrefix_PagedDoor/node/flushed/from2 (0.07s)
+    --- PASS: TestHistoryPrefix_PagedDoor/node/pending/from1limit2 (0.07s)
+    --- PASS: TestHistoryPrefix_PagedDoor/node/flushed/limit2 (0.07s)
+    --- PASS: TestHistoryPrefix_PagedDoor/rel/reopened/limit2 (0.28s)
+    --- PASS: TestHistoryPrefix_PagedDoor/rel/reopened/from2 (0.28s)
+    --- PASS: TestHistoryPrefix_PagedDoor/node/reopened/from1limit2 (0.29s)
+    --- PASS: TestHistoryPrefix_PagedDoor/node/reopened/pastEnd (0.29s)
+    --- PASS: TestHistoryPrefix_PagedDoor/rel/reopened/from1limit2 (0.29s)
+    --- PASS: TestHistoryPrefix_PagedDoor/node/reopened/fromLast (0.29s)
+    --- PASS: TestHistoryPrefix_PagedDoor/rel/reopened/all (0.29s)
+    --- PASS: TestHistoryPrefix_PagedDoor/rel/reopened/pastEnd (0.29s)
+    --- PASS: TestHistoryPrefix_PagedDoor/node/reopened/all (0.29s)
+    --- PASS: TestHistoryPrefix_PagedDoor/node/reopened/limit2 (0.29s)
+    --- PASS: TestHistoryPrefix_PagedDoor/rel/reopened/fromLast (0.29s)
+    --- PASS: TestHistoryPrefix_PagedDoor/node/reopened/from2 (0.29s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.725s
+FAIL

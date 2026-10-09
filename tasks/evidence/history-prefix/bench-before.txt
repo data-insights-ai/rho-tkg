@@ -1,0 +1,24 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkRelHistory/density=0-32         	   20000	      5702 ns/op	    1936 B/op	      41 allocs/op
+BenchmarkRelHistory/density=0-32         	   20000	      5961 ns/op	    1936 B/op	      41 allocs/op
+BenchmarkRelHistory/density=0-32         	   20000	      5331 ns/op	    1936 B/op	      41 allocs/op
+BenchmarkRelHistory/density=0.1%-32      	   20000	     57656 ns/op	   36725 B/op	     582 allocs/op
+BenchmarkRelHistory/density=0.1%-32      	   20000	     60571 ns/op	   36722 B/op	     582 allocs/op
+BenchmarkRelHistory/density=0.1%-32      	   20000	     59592 ns/op	   36721 B/op	     582 allocs/op
+BenchmarkRelHistory/density=1%-32        	   20000	     64549 ns/op	   39373 B/op	     622 allocs/op
+BenchmarkRelHistory/density=1%-32        	   20000	     57637 ns/op	   39372 B/op	     622 allocs/op
+BenchmarkRelHistory/density=1%-32        	   20000	     56234 ns/op	   39373 B/op	     622 allocs/op
+BenchmarkNodeHistory/density=0-32        	   20000	      4358 ns/op	    1888 B/op	      41 allocs/op
+BenchmarkNodeHistory/density=0-32        	   20000	      3892 ns/op	    1888 B/op	      41 allocs/op
+BenchmarkNodeHistory/density=0-32        	   20000	      3743 ns/op	    1888 B/op	      41 allocs/op
+BenchmarkNodeHistory/density=0.1%-32     	   20000	     63061 ns/op	   33752 B/op	     581 allocs/op
+BenchmarkNodeHistory/density=0.1%-32     	   20000	     51578 ns/op	   33750 B/op	     581 allocs/op
+BenchmarkNodeHistory/density=0.1%-32     	   20000	     63440 ns/op	   33751 B/op	     581 allocs/op
+BenchmarkNodeHistory/density=1%-32       	   20000	     57923 ns/op	   36167 B/op	     621 allocs/op
+BenchmarkNodeHistory/density=1%-32       	   20000	     59189 ns/op	   36167 B/op	     621 allocs/op
+BenchmarkNodeHistory/density=1%-32       	   20000	     53407 ns/op	   36166 B/op	     621 allocs/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	114.410s
