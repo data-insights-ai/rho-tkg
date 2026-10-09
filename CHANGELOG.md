@@ -22,7 +22,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   doors answer the same), RAM-only, built lazily per index on the first temporal lookup and recorded at every row
   write (memory: the four row seams `storedRel`/`historyRel`/`storedNode`/`historyNode`; badger: the current-row index
   maintenance seam and every history-row door), dropped by Clear, an index drop, retention purge and exact erasure.
-  memory, badger and sharded (union of the shards) implement it; tiered and wrapper stores decline and keep the
+  A lookup on a built sidecar takes the memory store's read lock (K1's lookups too); badger builds one sidecar under
+  its own mutex, so a build never delays lookups on other indexes. memory, badger and sharded (union of the shards)
+  implement it; tiered and wrapper stores decline and keep the
   full-history fold. `store.PropertyTxMembershipStatsCapability` reports built sidecars, postings, builds and build
   time. `ByLabelAndProperties` intersects the sidecars of the keys that have a single-key index. The named rel doors
   now seed from the current property matches instead of the whole type.
@@ -80,6 +82,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **K1 pinned label / rel-type scans no longer drop an entity whose rows include an unstamped one** (pre-existing,
+  found by the backlog-8 review). A row with `TxFrom` 0 (legacy or imported data, or a direct `Store.Replace*`) is
+  visible to a `TxAt` read at every pin, but the membership sidecars replaced a member's 0 first-TxFrom bound with
+  the next stamped row's and recorded rel-type / label membership only at creates and label doors, so
+  `ByLabel` / `ByType` with `TxAt` below the stamps pruned the entity (repro: unstamp a node's row, update it twice,
+  move it off the label; `ByLabel{TxAt:1}` returned 0, the fold 1; rels: unstamp, update, delete). Both sidecars now
+  merge with `index.MergeFirstTx` (0 is never raised) and record every row a door writes (memory: the four row
+  seams; badger: the current-row index seam and the history doors), like the property sidecars. `TxPin` reads were
+  never affected (as-of selection requires `TxFrom > 0`). Test `TestUnstampedRowKeepsMembershipBoundAtZero` (memory,
+  badger; lazy and incremental; label, rel type and both property sidecars), red before the fix.
+- **The bench gate no longer reads a custom benchmark metric as time**: `bench-compare.sh` left benchstat's sec/op
+  block only at a `B/op` / `allocs/op` header, so a `b.ReportMetric` unit printed between them (`build-ms`) was gated
+  as sec/op and identical code failed on a noisy one-shot sample. The check moved to `bench/bench-gate.awk`, ends the
+  block at the next header line of any unit and runs with `LC_ALL=C` (a comma-decimal locale read `1.429e-05` as 1);
+  tests `TestBenchGateIgnoresCustomMetricBlocks`, `TestBenchGateStillCatchesTimeRegression` over real benchstat CSV
+  fixtures in `bench/testdata/gate/`.
 - **HIGH (data loss): a re-import of a deleted ID no longer overwrites the earlier life's history** (backlog 38
   and the 2026-09-24 review entry "(HIGH?) Re-import of a deleted ID", pre-existing). `Import` (node and rel),
   `Nodes().AddByIDIfAbsent` and the `GraphTx` twins restarted the entity at version 0; history is keyed by
