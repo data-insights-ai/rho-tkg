@@ -549,7 +549,7 @@ type world struct {
 	vclock  types.Instant // monotonically increasing logical valid-time cursor
 	seqno   int
 	seatSeq int
-	log    []string
+	log     []string
 }
 
 func newWorld(t *testing.T, g *Core, rng *rand.Rand) *world {
