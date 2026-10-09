@@ -263,6 +263,9 @@ func (c *Core) resolveBackfillTxFrom(txFrom types.Instant) (types.Instant, error
 	// forward frontier — the one primary-side write that can change an as-of belief
 	// at a past txAt. Invalidate the as-of column cache.
 	c.asOfColumns.bump()
+	if c.backfillGateHook != nil {
+		c.backfillGateHook()
+	}
 	return txFrom, nil
 }
 
