@@ -1,0 +1,26 @@
+# identical code, interleaved a/b samples (3 each), real comparator, threshold 30 %
+bench-compare: REGRESSION PinnedRelPropertyLookup/sharded/20000/5types/nochurn/matches200/current-32: baseline=6.320200000000001e-05s current=0.000129274s (+104.54% > 30%)
+bench-compare: REGRESSION PinnedRelPropertyLookup/sharded/20000/5types/nochurn/broad/pinned-32: baseline=0.00018171200000000002s current=0.00044670800000000003s (+145.83% > 30%)
+bench-compare: REGRESSION PinnedRelPropertyLookup/sharded/20000/5types/unrelated-x1/broad/pinned-32: baseline=0.00020047600000000002s current=0.000464721s (+131.81% > 30%)
+bench-compare: REGRESSION RelPropertyLookup10k/memory/indexed-32: baseline=3.1430000000000005e-07s current=5.123e-07s (+63.00% > 30%)
+bench-compare: REGRESSION RelPropertyLookup10k/badger/scan-32: baseline=0.0027159940000000002s current=0.0037214720000000004s (+37.02% > 30%)
+rc=1
+bench-compare: REGRESSION PinnedRelPropertyLookup/memory/20000/5types/nochurn/broad/pinned-32: baseline=9.634900000000001e-05s current=0.00022138300000000002s (+129.77% > 30%)
+bench-compare: REGRESSION PinnedRelPropertyLookup/memory/20000/5types/unrelated-x10/matches200/current-32: baseline=1.6493e-05s current=2.345e-05s (+42.18% > 30%)
+bench-compare: REGRESSION PinnedRelPropertyLookup/memory/20000/5types/unrelated-x10/broad/pinned-32: baseline=0.00010945s current=0.00026173s (+139.13% > 30%)
+bench-compare: REGRESSION PinnedRelPropertyLookup/badger/20000/5types/sigma/broad/pinned-32: baseline=0.00020889400000000002s current=0.00035719800000000003s (+70.99% > 30%)
+bench-compare: REGRESSION PinnedRelPropertyLookup/badger/20000/5types/unrelated-x1/matches200/pinned-32: baseline=0.00013331900000000002s current=0.00026524000000000003s (+98.95% > 30%)
+bench-compare: REGRESSION PinnedRelPropertyLookup/badger/20000/5types/unrelated-x10/broad/pinned-32: baseline=0.00013571200000000002s current=0.00036666700000000005s (+170.18% > 30%)
+bench-compare: REGRESSION PinnedRelPropertyLookup/sharded/20000/1type/nochurn/matches200/pinned-32: baseline=0.00019249000000000002s current=0.00030002s (+55.86% > 30%)
+bench-compare: REGRESSION PinnedRelPropertyLookup/sharded/20000/1type/sigma/broad/pinned-32: baseline=0.000976737s current=0.001947043s (+99.34% > 30%)
+bench-compare: REGRESSION PinnedRelPropertyLookup/sharded/20000/5types/nochurn/matches200/pinned-32: baseline=0.00018861300000000002s current=0.000281819s (+49.42% > 30%)
+bench-compare: REGRESSION PinnedRelPropertyLookup/sharded/20000/5types/unrelated-x1/matches200/pinned-32: baseline=0.00020611700000000002s current=0.000434671s (+110.89% > 30%)
+bench-compare: REGRESSION RelPropertyLookup10k/memory/scan-32: baseline=0.000973758s current=0.001786821s (+83.50% > 30%)
+rc_swapped=1
+# the reviewer's repro shape: memory 20k sigma canary only
+bench-compare: no scenario regressed time by more than 30% — ok
+rc=0
+bench-compare: no scenario regressed time by more than 30% — ok
+rc_swapped=0
+# build-ms blocks present in the CSV (read only as their own unit):
+1
