@@ -24,7 +24,7 @@ type fixtureView struct {
 	lives      map[lifeKey]LifeRecord
 	values     map[ValueID]Scalar
 	components map[ComponentKey]state.State
-	defs       map[string]PropertyDefinition
+	defs       map[ownerSchemaKey]PropertyDefinition
 	pageHook   func(ComponentQuery, Cursor, ComponentPage) ComponentPage
 }
 
@@ -34,7 +34,7 @@ func newFixtureView(t testing.TB) *fixtureView {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &fixtureView{axis: a, id: ViewID{1}, entities: map[EntityID]EntityRecord{}, lives: map[lifeKey]LifeRecord{}, values: map[ValueID]Scalar{}, components: map[ComponentKey]state.State{}, defs: map[string]PropertyDefinition{}}
+	return &fixtureView{axis: a, id: ViewID{1}, entities: map[EntityID]EntityRecord{}, lives: map[lifeKey]LifeRecord{}, values: map[ValueID]Scalar{}, components: map[ComponentKey]state.State{}, defs: map[ownerSchemaKey]PropertyDefinition{}}
 }
 func (v *fixtureView) Graph() GraphID   { return GraphID{1} }
 func (v *fixtureView) Identity() ViewID { return v.id }
@@ -46,8 +46,8 @@ func (v *fixtureView) Life(_ context.Context, id EntityID, life LifeID) (LifeRea
 	x, ok := v.lives[lifeKey{id, life}]
 	return LifeRead{v.id, 1, ok, x}, nil
 }
-func (v *fixtureView) Property(_ context.Context, name string) (PropertyRead, error) {
-	x, ok := v.defs[name]
+func (v *fixtureView) Property(_ context.Context, owner EntityKind, name string) (PropertyRead, error) {
+	x, ok := v.defs[ownerSchemaKey{owner, name}]
 	return PropertyRead{v.id, 1, ok, x}, nil
 }
 func (v *fixtureView) Value(_ context.Context, id ValueID) (ValueRead, error) {
@@ -410,7 +410,7 @@ func TestOriginalSixteenFixturesThroughProductionPlanner(t *testing.T) {
 				if d.Unique {
 					unique = UniqueScalar
 				}
-				v.defs[name] = PropertyDefinition{name, owner, kind, card, unique}
+				v.defs[ownerSchemaKey{owner, name}] = PropertyDefinition{name, owner, kind, card, unique}
 			}
 			snapshots := map[string]*fixtureView{"EMPTY": v.clone()}
 			ids := map[string]EntityID{}

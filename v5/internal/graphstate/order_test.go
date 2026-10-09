@@ -13,8 +13,8 @@ import (
 func TestDeterministicPlanAndTypedSetEnumeration(t *testing.T) {
 	v := newFixtureView(t)
 	all, _ := temporal.All(v.axis)
-	v.defs["numbers"] = PropertyDefinition{"numbers", Node, ScalarI64, SetCardinality, UniqueMembers}
-	v.defs["scopes"] = PropertyDefinition{"scopes", Node, ScalarScope, SetCardinality, UniqueNone}
+	v.defs[ownerSchemaKey{Node, "numbers"}] = PropertyDefinition{"numbers", Node, ScalarI64, SetCardinality, UniqueMembers}
+	v.defs[ownerSchemaKey{Node, "scopes"}] = PropertyDefinition{"scopes", Node, ScalarScope, SetCardinality, UniqueNone}
 	ops := []Operation{{Kind: CreateNode, Owner: 1, Life: 1, Scope: all}, {Kind: Add, Owner: 1, Life: 1, Scope: all, Name: "numbers", Value: I64(2), ValueID: 1}, {Kind: Add, Owner: 1, Life: 1, Scope: all, Name: "numbers", Value: I64(10), ValueID: 2}, {Kind: Add, Owner: 1, Life: 1, Scope: all, Name: "scopes", Value: ScopeValue(testSpan(t, v.axis, 20, 30)), ValueID: 3}, {Kind: Add, Owner: 1, Life: 1, Scope: all, Name: "scopes", Value: ScopeValue(testSpan(t, v.axis, 0, 10)), ValueID: 4}}
 	r, _ := state.NewRevision(1, 0)
 	first, err := Plan(t.Context(), v, ops, r, Limits{})
@@ -54,7 +54,7 @@ func TestDeterministicPlanAndTypedSetEnumeration(t *testing.T) {
 func TestMalformedMembershipAndBindingCannotProject(t *testing.T) {
 	v := newFixtureView(t)
 	all, _ := temporal.All(v.axis)
-	v.defs["tags"] = PropertyDefinition{"tags", Node, ScalarString, SetCardinality, UniqueNone}
+	v.defs[ownerSchemaKey{Node, "tags"}] = PropertyDefinition{"tags", Node, ScalarString, SetCardinality, UniqueNone}
 	commitOps(t, v, 1, Operation{Kind: CreateNode, Owner: 1, Life: 1, Scope: all}, Operation{Kind: Add, Owner: 1, Life: 1, Scope: all, Name: "tags", Value: String("x"), ValueID: 1})
 	for _, key := range []ComponentKey{{Owner: 1, Life: 1, Kind: SetMember, Name: "tags", Member: 1}, {Owner: 1, Life: 1, Kind: Label, Name: "Label"}} {
 		bad := v.clone()

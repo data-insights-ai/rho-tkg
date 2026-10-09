@@ -227,11 +227,11 @@ func (e *engine) life(owner EntityID, id LifeID) (LifeRecord, bool, error) {
 	}
 	return read.Record, read.Found, nil
 }
-func (e *engine) property(name string) (PropertyDefinition, error) {
-	if !validName(name, e.limits) {
+func (e *engine) property(owner EntityKind, name string) (PropertyDefinition, error) {
+	if (owner != Node && owner != Relationship) || !validName(name, e.limits) {
 		return PropertyDefinition{}, ErrInvalidInput
 	}
-	read, err := e.view.Property(e.ctx, name)
+	read, err := e.view.Property(e.ctx, owner, name)
 	if err != nil {
 		return PropertyDefinition{}, err
 	}
@@ -241,14 +241,14 @@ func (e *engine) property(name string) (PropertyDefinition, error) {
 	if err := e.charge(1, 16+len(name)); err != nil {
 		return PropertyDefinition{}, err
 	}
-	if err := e.dep(Dependency{Kind: SchemaDependency, Name: name, Version: read.Version, Absent: !read.Found}); err != nil {
+	if err := e.dep(Dependency{Kind: SchemaDependency, OwnerKind: owner, Name: name, Version: read.Version, Absent: !read.Found}); err != nil {
 		return PropertyDefinition{}, err
 	}
 	if !read.Found {
 		return PropertyDefinition{}, ErrSchemaMismatch
 	}
 	d := read.Record
-	if d.Name != name || (d.Owner != Node && d.Owner != Relationship) || d.Type < ScalarString || d.Type > ScalarScope || (d.Cardinality != ScalarCardinality && d.Cardinality != SetCardinality) {
+	if d.Name != name || d.Owner != owner || d.Type < ScalarString || d.Type > ScalarScope || (d.Cardinality != ScalarCardinality && d.Cardinality != SetCardinality) {
 		return PropertyDefinition{}, ErrSchemaMismatch
 	}
 	if d.Unique > UniqueMembers || d.Unique == UniqueScalar && d.Cardinality != ScalarCardinality || d.Unique == UniqueMembers && d.Cardinality != SetCardinality {

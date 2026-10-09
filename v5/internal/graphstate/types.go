@@ -159,7 +159,7 @@ type LifeRead struct {
 	Record  LifeRecord
 }
 
-// PropertyRead returns a definition without any caller-selected schema fallback.
+// PropertyRead returns one owner-kind-qualified definition without a fallback.
 type PropertyRead struct {
 	View    ViewID
 	Version ReadVersion
@@ -263,7 +263,7 @@ type ReadView interface {
 	Identity() ViewID
 	Entity(context.Context, EntityID) (EntityRead, error)
 	Life(context.Context, EntityID, LifeID) (LifeRead, error)
-	Property(context.Context, string) (PropertyRead, error)
+	Property(context.Context, EntityKind, string) (PropertyRead, error)
 	Value(context.Context, ValueID) (ValueRead, error)
 	ValueIdentity(context.Context, Scalar) (ValueRead, error)
 	ComponentPage(context.Context, ComponentQuery, Cursor, ReadBudget) (ComponentPage, error)
@@ -323,20 +323,21 @@ const (
 
 // Dependency records the full requested predicate plus source/view/version.
 type Dependency struct {
-	Kind     DependencyKind
-	View     ViewID
-	Version  ReadVersion
-	Absent   bool
-	Owner    EntityID
-	Life     LifeID
-	Name     string
-	ValueID  ValueID
-	Value    Scalar
-	Key      ComponentKey
-	Window   temporal.Scope
-	Prefix   KeyPredicate
-	Unique   UniquePredicate
-	Incident IncidentPredicate
+	Kind      DependencyKind
+	View      ViewID
+	Version   ReadVersion
+	Absent    bool
+	Owner     EntityID
+	OwnerKind EntityKind // SchemaDependency qualifies Name, including checked absence.
+	Life      LifeID
+	Name      string
+	ValueID   ValueID
+	Value     Scalar
+	Key       ComponentKey
+	Window    temporal.Scope
+	Prefix    KeyPredicate
+	Unique    UniquePredicate
+	Incident  IncidentPredicate
 }
 
 // ComponentPatch replaces only Owned, retaining complete exact before/after CDC.

@@ -16,7 +16,7 @@ func FuzzGraphstateDeltaAndHistoryParity(f *testing.F) {
 			return
 		}
 		v := newFixtureView(t)
-		v.defs["x"] = PropertyDefinition{"x", Node, ScalarI64, ScalarCardinality, UniqueNone}
+		v.defs[ownerSchemaKey{Node, "x"}] = PropertyDefinition{"x", Node, ScalarI64, ScalarCardinality, UniqueNone}
 		life := testSpan(t, v.axis, -8, 8)
 		commitOps(t, v, 1, Operation{Kind: CreateNode, Owner: 1, Life: 1, Scope: life})
 		oracle := map[int64]Scalar{}

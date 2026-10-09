@@ -172,7 +172,7 @@ func (e *engine) candidates(p UniquePredicate) ([]UniqueClaim, error) {
 		}
 		bytes := 0
 		for _, claim := range page.Claims {
-			if !validKey(claim.Key, e.limits) || p.Definition.Cardinality == ScalarCardinality && claim.Key.Kind != ScalarProperty || p.Definition.Cardinality == SetCardinality && claim.Key.Kind != SetMember {
+			if !validKey(claim.Key, e.limits) || (claim.Key.Kind != ScalarProperty && claim.Key.Kind != SetMember) {
 				return nil, ErrContradictoryRead
 			}
 			if len(claim.Key.Name) > e.limits.MaxReadBytes-bytes-64 {
@@ -188,6 +188,22 @@ func (e *engine) candidates(p UniquePredicate) ([]UniqueClaim, error) {
 		}
 		for _, claim := range page.Claims {
 			if claim.Owner == 0 || claim.Life == 0 || claim.Key.Owner != claim.Owner || claim.Key.Life != claim.Life || claim.Key.Name != p.Definition.Name {
+				return nil, ErrContradictoryRead
+			}
+			owner, found, err := e.entity(claim.Owner)
+			if err != nil {
+				return nil, err
+			}
+			if !found {
+				return nil, ErrContradictoryRead
+			}
+			// Candidate access promises a complete superset. The same name may
+			// have a different cardinality in a foreign owner's schema; filter
+			// that irrelevant namespace before checking our schema's shape.
+			if owner.Kind != p.Definition.Owner {
+				continue
+			}
+			if p.Definition.Cardinality == ScalarCardinality && claim.Key.Kind != ScalarProperty || p.Definition.Cardinality == SetCardinality && claim.Key.Kind != SetMember {
 				return nil, ErrContradictoryRead
 			}
 			if _, ok := seen[claim]; ok {
@@ -274,6 +290,13 @@ func (e *engine) validateUniqueness() error {
 	}
 	slices.SortFunc(ordered, func(a, b lifeKey) int { return cmp.Or(cmp.Compare(a.owner, b.owner), cmp.Compare(a.life, b.life)) })
 	for _, target := range ordered {
+		owner, found, err := e.entity(target.owner)
+		if err != nil {
+			return err
+		}
+		if !found {
+			return ErrContradictoryRead
+		}
 		windows := targets[target]
 		keys, err := e.keys(KeyPredicate{Owner: target.owner, Life: target.life})
 		if err != nil {
@@ -283,7 +306,7 @@ func (e *engine) validateUniqueness() error {
 			if key.Kind != ScalarProperty && key.Kind != SetMember {
 				continue
 			}
-			definition, err := e.property(key.Name)
+			definition, err := e.property(owner.Kind, key.Name)
 			if err != nil {
 				return err
 			}

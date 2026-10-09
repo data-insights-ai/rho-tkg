@@ -100,7 +100,7 @@ func TestOrderedPagesUseOwnedStateWithoutContextCDC(t *testing.T) {
 func TestSparseReadOfVirtualMillionPieceHistory(t *testing.T) {
 	v := newFixtureView(t)
 	all, _ := temporal.All(v.axis)
-	v.defs["value"] = PropertyDefinition{"value", Node, ScalarI64, ScalarCardinality, UniqueNone}
+	v.defs[ownerSchemaKey{Node, "value"}] = PropertyDefinition{"value", Node, ScalarI64, ScalarCardinality, UniqueNone}
 	commitOps(t, v, 1, Operation{Kind: CreateNode, Owner: 1, Life: 1, Scope: all})
 	v.values[1] = I64(40)
 	const historyPieces = 1000000
@@ -149,7 +149,7 @@ func TestNilBoundaryKindsAndEmptyPredicates(t *testing.T) {
 		t.Fatal("non-nil provider rejected")
 	}
 	v := newFixtureView(t)
-	v.defs["tags"] = PropertyDefinition{"tags", Node, ScalarString, SetCardinality, UniqueMembers}
+	v.defs[ownerSchemaKey{Node, "tags"}] = PropertyDefinition{"tags", Node, ScalarString, SetCardinality, UniqueMembers}
 	all, _ := temporal.All(v.axis)
 	d := commitOps(t, v, 1, Operation{Kind: CreateNode, Owner: 1, Life: 1, Scope: all}, Operation{Kind: Add, Owner: 1, Life: 1, Scope: all, Name: "tags", Value: String("x"), ValueID: 1})
 	flags := map[DependencyKind]bool{}

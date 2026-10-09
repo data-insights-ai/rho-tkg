@@ -109,7 +109,7 @@ func Project(ctx context.Context, v ReadView, id EntityID, p temporal.Position, 
 	for _, key := range keys {
 		var definition PropertyDefinition
 		if key.Kind == ScalarProperty || key.Kind == SetMember {
-			definition, err = e.property(key.Name)
+			definition, err = e.property(record.Kind, key.Name)
 			if err != nil {
 				return Projection{}, err
 			}

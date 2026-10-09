@@ -31,8 +31,8 @@ func retainedFixture(t *testing.T, values ...Scalar) (*fixtureView, []Operation)
 	t.Helper()
 	v := newFixtureView(t)
 	all, _ := temporal.All(v.axis)
-	v.defs["scalar"] = PropertyDefinition{Name: "scalar", Owner: Node, Type: ScalarScope, Cardinality: ScalarCardinality}
-	v.defs["set"] = PropertyDefinition{Name: "set", Owner: Node, Type: ScalarScope, Cardinality: SetCardinality}
+	v.defs[ownerSchemaKey{Node, "scalar"}] = PropertyDefinition{Name: "scalar", Owner: Node, Type: ScalarScope, Cardinality: ScalarCardinality}
+	v.defs[ownerSchemaKey{Node, "set"}] = PropertyDefinition{Name: "set", Owner: Node, Type: ScalarScope, Cardinality: SetCardinality}
 	ops := []Operation{{Kind: CreateNode, Owner: 1, Life: 1, Scope: all}}
 	for j, value := range values {
 		kind, name := Set, "scalar"

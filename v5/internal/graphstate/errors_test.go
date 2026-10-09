@@ -27,11 +27,11 @@ func (v faultView) Life(c context.Context, id EntityID, l LifeID) (LifeRead, err
 	}
 	return v.ReadView.Life(c, id, l)
 }
-func (v faultView) Property(c context.Context, n string) (PropertyRead, error) {
+func (v faultView) Property(c context.Context, owner EntityKind, n string) (PropertyRead, error) {
 	if v.stage == "schema" {
 		return PropertyRead{}, v.failure
 	}
-	return v.ReadView.Property(c, n)
+	return v.ReadView.Property(c, owner, n)
 }
 func (v faultView) Value(c context.Context, id ValueID) (ValueRead, error) {
 	if v.stage == "value" {
@@ -72,7 +72,7 @@ func (v faultView) IncidentRelationships(c context.Context, q IncidentPredicate,
 func TestReadErrorsPropagateAtEveryLayer(t *testing.T) {
 	v := newFixtureView(t)
 	all, _ := temporal.All(v.axis)
-	v.defs["x"] = PropertyDefinition{"x", Node, ScalarString, ScalarCardinality, UniqueScalar}
+	v.defs[ownerSchemaKey{Node, "x"}] = PropertyDefinition{"x", Node, ScalarString, ScalarCardinality, UniqueScalar}
 	commitOps(t, v, 1, Operation{Kind: CreateNode, Owner: 1, Life: 1, Scope: all}, Operation{Kind: Set, Owner: 1, Life: 1, Scope: all, Name: "x", Value: String("a"), ValueID: 1})
 	failure := errors.New("injected storage failure")
 	r, _ := state.NewRevision(2, 0)
@@ -93,7 +93,7 @@ func TestReadErrorsPropagateAtEveryLayer(t *testing.T) {
 func TestFailClosedRecordSchemaAndValueShapes(t *testing.T) {
 	v := newFixtureView(t)
 	all, _ := temporal.All(v.axis)
-	v.defs["x"] = PropertyDefinition{"x", Node, ScalarString, ScalarCardinality, UniqueNone}
+	v.defs[ownerSchemaKey{Node, "x"}] = PropertyDefinition{"x", Node, ScalarString, ScalarCardinality, UniqueNone}
 	commitOps(t, v, 1, Operation{Kind: CreateNode, Owner: 1, Life: 1, Scope: all}, Operation{Kind: Set, Owner: 1, Life: 1, Scope: all, Name: "x", Value: String("a"), ValueID: 1})
 	for _, change := range []func(*fixtureView){
 		func(v *fixtureView) { r := v.entities[1]; r.Kind = EntityKind(99); v.entities[1] = r },
@@ -112,7 +112,11 @@ func TestFailClosedRecordSchemaAndValueShapes(t *testing.T) {
 			v.components[ComponentKey{Owner: 1, Life: 1, Kind: ComponentKind(99), Name: "x"}] = s
 		},
 		func(v *fixtureView) { v.values[1] = I64(1) },
-		func(v *fixtureView) { d := v.defs["x"]; d.Cardinality = SetCardinality; v.defs["x"] = d },
+		func(v *fixtureView) {
+			d := v.defs[ownerSchemaKey{Node, "x"}]
+			d.Cardinality = SetCardinality
+			v.defs[ownerSchemaKey{Node, "x"}] = d
+		},
 	} {
 		bad := v.clone()
 		change(bad)
@@ -123,15 +127,15 @@ func TestFailClosedRecordSchemaAndValueShapes(t *testing.T) {
 	r, _ := state.NewRevision(2, 0)
 	for _, def := range []PropertyDefinition{{"x", EntityKind(99), ScalarString, ScalarCardinality, UniqueNone}, {"wrong", Node, ScalarString, ScalarCardinality, UniqueNone}, {"x", Node, ScalarKind(99), ScalarCardinality, UniqueNone}} {
 		bad := v.clone()
-		bad.defs["x"] = def
+		bad.defs[ownerSchemaKey{Node, "x"}] = def
 		if _, err := Plan(t.Context(), bad, []Operation{{Kind: Set, Owner: 1, Life: 1, Scope: all, Name: "x", Value: String("b"), ValueID: 2}}, r, Limits{}); !errors.Is(err, ErrSchemaMismatch) {
 			t.Fatal(err)
 		}
 	}
 	bad := v.clone()
-	d := bad.defs["x"]
+	d := bad.defs[ownerSchemaKey{Node, "x"}]
 	d.Unique = UniqueMode(99)
-	bad.defs["x"] = d
+	bad.defs[ownerSchemaKey{Node, "x"}] = d
 	if _, err := Plan(t.Context(), bad, []Operation{{Kind: Set, Owner: 1, Life: 1, Scope: all, Name: "x", Value: String("b"), ValueID: 2}}, r, Limits{}); !errors.Is(err, ErrUnsupported) {
 		t.Fatal(err)
 	}
@@ -166,7 +170,7 @@ func TestUnboundedForeignAxisAndCoverageRevisionSplits(t *testing.T) {
 	v = newFixtureView(t)
 	commitOps(t, v, 1, Operation{Kind: CreateNode, Owner: 1, Life: 1, Scope: testSpan(t, v.axis, 0, 10)})
 	commitOps(t, v, 2, Operation{Kind: Correct, Owner: 1, Life: 1, Scope: testSpan(t, v.axis, 3, 7), Present: true})
-	v.defs["x"] = PropertyDefinition{"x", Node, ScalarString, ScalarCardinality, UniqueNone}
+	v.defs[ownerSchemaKey{Node, "x"}] = PropertyDefinition{"x", Node, ScalarString, ScalarCardinality, UniqueNone}
 	commitOps(t, v, 3, Operation{Kind: Set, Owner: 1, Life: 1, Scope: testSpan(t, v.axis, 0, 10), Name: "x", Value: String("a"), ValueID: 1})
 	assertActive(t, v, 1, 5, Effective, true)
 }

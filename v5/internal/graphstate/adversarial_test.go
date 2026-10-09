@@ -31,7 +31,7 @@ func assertActive(t testing.TB, v *fixtureView, id EntityID, at int64, mode Visi
 func TestFinalOverlaySwapAndRestoredLifeUniqueness(t *testing.T) {
 	v := newFixtureView(t)
 	all, _ := temporal.All(v.axis)
-	v.defs["email"] = PropertyDefinition{"email", Node, ScalarString, ScalarCardinality, UniqueScalar}
+	v.defs[ownerSchemaKey{Node, "email"}] = PropertyDefinition{"email", Node, ScalarString, ScalarCardinality, UniqueScalar}
 	commitOps(t, v, 1, Operation{Kind: CreateNode, Owner: 1, Life: 1, Scope: all}, Operation{Kind: CreateNode, Owner: 2, Life: 1, Scope: all}, Operation{Kind: Set, Owner: 1, Life: 1, Scope: all, Name: "email", Value: String("a"), ValueID: 1}, Operation{Kind: Set, Owner: 2, Life: 1, Scope: all, Name: "email", Value: String("b"), ValueID: 2})
 	old := v.clone()
 	d := commitOps(t, v, 2, Operation{Kind: Set, Owner: 1, Life: 1, Scope: all, Name: "email", Value: String("b"), ValueID: 3}, Operation{Kind: Set, Owner: 2, Life: 1, Scope: all, Name: "email", Value: String("a"), ValueID: 4})
@@ -88,7 +88,7 @@ func TestLifeBoundAndIdentityReferenceObservations(t *testing.T) {
 func TestRelationshipUniquenessRespectsEffectiveMasks(t *testing.T) {
 	v := newFixtureView(t)
 	all, _ := temporal.All(v.axis)
-	v.defs["code"] = PropertyDefinition{"code", Relationship, ScalarString, ScalarCardinality, UniqueScalar}
+	v.defs[ownerSchemaKey{Relationship, "code"}] = PropertyDefinition{"code", Relationship, ScalarString, ScalarCardinality, UniqueScalar}
 	commitOps(t, v, 1, Operation{Kind: CreateNode, Owner: 1, Life: 1, Scope: all}, Operation{Kind: CreateNode, Owner: 2, Life: 1, Scope: all}, Operation{Kind: CreateNode, Owner: 3, Life: 1, Scope: all}, Operation{Kind: CreateRelationship, Owner: 4, Life: 1, Scope: all, Record: EntityRecord{Type: "R", Source: 1, Target: 2, Mode: LifeBound}, Binding: LifeRecord{SourceLife: 1, TargetLife: 1}}, Operation{Kind: Set, Owner: 4, Life: 1, Scope: all, Name: "code", Value: String("x"), ValueID: 1})
 	future := testSpan(t, v.axis, 10, 100)
 	commitOps(t, v, 2, Operation{Kind: Close, Owner: 1, Life: 1, Scope: future}, Operation{Kind: CreateRelationship, Owner: 5, Life: 1, Scope: future, Record: EntityRecord{Type: "R", Source: 2, Target: 3, Mode: LifeBound}, Binding: LifeRecord{SourceLife: 1, TargetLife: 1}}, Operation{Kind: Set, Owner: 5, Life: 1, Scope: future, Name: "code", Value: String("x"), ValueID: 2})
@@ -103,7 +103,7 @@ func TestRelationshipUniquenessRespectsEffectiveMasks(t *testing.T) {
 func TestTypedValuesAndPassiveScopeProperty(t *testing.T) {
 	v := newFixtureView(t)
 	all, _ := temporal.All(v.axis)
-	v.defs["period"] = PropertyDefinition{"period", Node, ScalarScope, ScalarCardinality, UniqueNone}
+	v.defs[ownerSchemaKey{Node, "period"}] = PropertyDefinition{"period", Node, ScalarScope, ScalarCardinality, UniqueNone}
 	period := testSpan(t, v.axis, 50, 60)
 	commitOps(t, v, 1, Operation{Kind: CreateNode, Owner: 1, Life: 1, Scope: all}, Operation{Kind: Set, Owner: 1, Life: 1, Scope: all, Name: "period", Value: ScopeValue(period), ValueID: 1})
 	projected := assertActive(t, v, 1, 10, Effective, true)

@@ -118,7 +118,7 @@ func (e *engine) apply(op Operation) error {
 		}
 		return e.mutate(ComponentKey{Owner: op.Owner, Life: op.Life, Kind: Label, Name: op.Name}, op.Scope, state.Null(), op.Kind == AddLabel)
 	}
-	d, err := e.property(op.Name)
+	d, err := e.property(owner.Kind, op.Name)
 	if err != nil {
 		return err
 	}
