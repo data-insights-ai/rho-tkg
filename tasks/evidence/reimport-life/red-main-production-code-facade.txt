@@ -1,0 +1,33 @@
+=== RUN   TestNodesWithTx_TxBatchIngestFacade
+=== PAUSE TestNodesWithTx_TxBatchIngestFacade
+=== RUN   TestReImportContinuesTheChainFacade
+=== PAUSE TestReImportContinuesTheChainFacade
+=== CONT  TestNodesWithTx_TxBatchIngestFacade
+=== CONT  TestReImportContinuesTheChainFacade
+=== RUN   TestNodesWithTx_TxBatchIngestFacade/memory
+=== RUN   TestReImportContinuesTheChainFacade/memory
+    reimport_life_test.go:144: node backfilled re-import at 1791575008879 (delete 1791575008880): err = <nil>; want ErrTxOrder wrapping ErrInvalidTxFrom
+=== RUN   TestReImportContinuesTheChainFacade/badger
+=== RUN   TestNodesWithTx_TxBatchIngestFacade/badger
+=== NAME  TestReImportContinuesTheChainFacade/badger
+    reimport_life_test.go:144: node backfilled re-import at 1791575008880 (delete 1791575008881): err = <nil>; want ErrTxOrder wrapping ErrInvalidTxFrom
+=== RUN   TestReImportContinuesTheChainFacade/tiered
+=== RUN   TestNodesWithTx_TxBatchIngestFacade/tiered
+=== NAME  TestReImportContinuesTheChainFacade/tiered
+    reimport_life_test.go:144: node backfilled re-import at 1791575008884 (delete 1791575008885): err = <nil>; want ErrTxOrder wrapping ErrInvalidTxFrom
+=== RUN   TestReImportContinuesTheChainFacade/sharded
+    reimport_life_test.go:144: node backfilled re-import at 1791575008926 (delete 1791575008927): err = <nil>; want ErrTxOrder wrapping ErrInvalidTxFrom
+--- FAIL: TestReImportContinuesTheChainFacade (0.05s)
+    --- FAIL: TestReImportContinuesTheChainFacade/memory (0.00s)
+    --- FAIL: TestReImportContinuesTheChainFacade/badger (0.00s)
+    --- FAIL: TestReImportContinuesTheChainFacade/tiered (0.01s)
+    --- FAIL: TestReImportContinuesTheChainFacade/sharded (0.04s)
+=== RUN   TestNodesWithTx_TxBatchIngestFacade/sharded
+--- PASS: TestNodesWithTx_TxBatchIngestFacade (0.08s)
+    --- PASS: TestNodesWithTx_TxBatchIngestFacade/memory (0.00s)
+    --- PASS: TestNodesWithTx_TxBatchIngestFacade/badger (0.00s)
+    --- PASS: TestNodesWithTx_TxBatchIngestFacade/tiered (0.07s)
+    --- PASS: TestNodesWithTx_TxBatchIngestFacade/sharded (0.00s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.106s
+FAIL
