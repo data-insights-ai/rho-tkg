@@ -43,14 +43,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `TestCascadeOnDeletedEntityRefused` (four doors, four backends, node and rel; the as-of and TxAt doors still
   agree after the refusal), `TestCascadeTemplate_GapPieceUsesCurrentRow` (formerly
   `..._DeletedEntityUsesNewestHistoryRow`, which pinned the old behaviour).
-- **The as-of doors answer the newest row recorded by the pin** (`NodeAsOf` / `RelAsOf`, `NodesAsOf` /
-  `RelsAsOf`, `QueryOpts.TxPin` and its counts; one rule, `storeutil.SelectAsOfWithCurrent`, in the memory store,
-  the badger native scan and the core fallback). The live current row no longer wins over a row with a higher
-  version recorded at or after it: a bounded `Set*VersionInterval` whose resumption is bounded by a later version,
-  or one on a closed current row, appends such rows and leaves the current row in its slot. Before, the door
-  answered the current row while it was current and the cascade row once any later write superseded it, so the
-  answer at a pin changed after the fact (backlog 18). After the common correction (an open resumption) the
-  current row is the newest row (see the version fix below), so `NodeAsOf(now)` still equals `Get`.
+- **The as-of doors answer the newest row recorded by the pin — this reverses the 4.44.0 contract** ("`RelAsOf` /
+  `NodeAsOf` at a pin after the correction still answer that head row"). Doors: `NodeAsOf` / `RelAsOf`,
+  `NodesAsOf` / `RelsAsOf`, `QueryOpts.TxPin` and its counts; one rule, `storeutil.SelectAsOfWithCurrent`, in the
+  memory store, the badger native scan and the core fallback. The live current row no longer wins over a row with
+  a higher version recorded at or after it; among the rows of one write, the one whose own valid interval is open
+  answers. Before, the door answered the current row while it was current and the cascade row once any later write
+  superseded it, so the answer at a pin changed after the fact (backlog 18). **Migration — what changes:**
+
+  | Shape | main (4.45.0) | now |
+  |---|---|---|
+  | Add vf=1000 → bounded cascade [2000,3000) (open resumption takes the slot) | `NodeAsOf(now)` = `Get` | unchanged: `= Get` (also for chains written by 4.45 and earlier) |
+  | Add → Update vf=5000 → cascade [2000,3000) (the resumption is bounded by v1; v1 keeps the slot) | `NodeAsOf(now)` = `Get` until the next write, then the cascade row | the newest cascade row, before and after later writes |
+  | Add vf=1000 → `CloseVersion(4000)` → cascade [5000,6000) (gap piece; the closed row keeps the slot) | `NodeAsOf(now)` = the closed row [1000,4000); `NodeAt(6500)` / `NodeAt(far)` = the closed row (the closed entity read valid again) | `NodeAsOf(now)` = the gap piece; `NodeAt(6500)` / `NodeAt(far)` none |
+  | Add → bounded cascade → Delete | as-of and valid-time doors after the delete: present | absent in every door; pins before the delete unchanged |
+
+  For "the entity's state at valid time `t` as believed at pin `p`" call `NodeAtTx(id, t, p)` / `RelAtTx(id, t,
+  p)`, or `ByLabel` / `ByType` with `QueryOpts{ValidAt: t, TxAt: p}` — not `NodeAsOf`, which answers a row, not a
+  valid instant. Test expectations that pinned the old answer and now restate the rule:
+  `TestSessionSetNodeVersionInterval_TwoPhase` / `TestSessionSetRelVersionInterval_TwoPhase` (`pkg/graph`,
+  pinned the documented head-row answer) and the bitemporal oracle's `asOfVisible` model.
 
 ### Fixed
 
@@ -59,10 +71,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   used `current.Version()+1`, so the chain held two rows with one version and a later delete changed the TxAt
   answer at an earlier pin. Every appending door now takes one above the chain's highest version (derived under
   the entity lock: the history presence check, then a point read of version current+1; the history only when it
-  exists; no format change), and the cascade numbers the row that takes the current slot last. Measured (2,000
-  updated nodes, badger in-memory, 32-core host at load 16-19, medians): `Update` 5.5 → 7.2 us, `NodeAsOf` of a
-  current row with history 0.4 → 1.5 us (one point read of version current+1; a scan only when it exists);
-  memory unchanged within noise. Tests: `TestCascadeVersionsUniqueAndPastStable` (unique versions and
+  exists; no format change), and the cascade numbers the row that takes the current slot last. Measured against
+  main b2a5652 (2,000 nodes, badger in-memory, 6 runs each, medians, 32-core host at load 17-24, so +-20 %):
+  `NodeAsOf(now)` of an entity without history 0.45 → 0.43 us (8 → 11 allocs: the presence lookup replaces the
+  key read), with history 0.37 → 1.43 us (8 → 17 allocs: one badger point read of version current+1; a scan only
+  when that version exists); memory, 200 nodes with 100 versions each, 0.21 → 0.23 us (a map lookup of
+  version current+1); badger first `Update` 3.9 → 4.3 us (30 → 35 allocs); memory `Update` unchanged within
+  noise. Tests: `TestCascadeVersionsUniqueAndPastStable` (unique versions and
   unchanged as-of / TxAt answers at earlier pins across Update, CloseVersion, AddLabel and Delete, six cascade
   shapes).
 - **Rows a write appends carry no retraction** (backlog 14, live trigger). A cascade resumption copied the
@@ -81,6 +96,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `DeleteWithTx`), `TestValidTimeAfterDeleteBoundedCascade`, `TestOneTickCascadeRows` (handover acceptance 1, 2,
   4), `TestAsOfLabelCountAfterCascadeBelowLabelChange`; `TestSkeletonResolve_CascadeReopenDelete` expected a deleted
   node to read valid at a far-future instant and now expects none.
+- **Chains written by 4.45 and earlier read as before where they were consistent, and consistently where they
+  were not.** An old bounded cascade numbered the resumption that took the current slot below its pieces (one
+  write): among the rows of one write the row whose own valid interval is open answers, so `NodeAsOf(now)` still
+  equals `Get` on such a chain. An old resumption copied its source row's `TxTo` (below its own `TxFrom`): the
+  tombstone walk passes over it, so a delete after such a cascade ends the entity in the as-of doors as it does in
+  `NodeAt`. Tests: `TestOldChain_BoundedCascadeResumptionTookSlot`, `TestOldChain_ResumptionWithCopiedTxToThenDelete`
+  (rows written in the old shape through the store doors; four backends, node and rel).
 - **The chain resolver reads chains in version order** (lesson 73). `history ‖ current` is not version-ordered
   when a cascade left the current row below its rows; the resolver classified such a chain as a cascade chain while
   the row was current (a closed entity read valid again after a later gap correction) and as monotonic once a

@@ -14,7 +14,9 @@ import (
 // transaction time.
 var ErrNoVersionAsOf = errors.New("graph: no entity version recorded at the given transaction time")
 
-// NodeAsOf returns the node version that was current at the given transaction time.
+// NodeAsOf returns the newest row of node id recorded by transaction time
+// txTime (the as-of rule below). For the node's state at a valid instant t as
+// believed at a pin, call NodeAtTx(id, t, pin).
 //
 // The rule is storeutil.SelectAsOfWithCurrent's: the newest row (highest
 // version) recorded by txTime; the live current row answers unless a row with
@@ -100,8 +102,9 @@ func (c *Core) nodeAsOfLocked(id types.NodeID, txTime types.Instant) (*types.Nod
 	return c.resolveNodeChain(chain, chainProbe{kind: probeAsOf, tx: txTime, asOfCurrent: current != nil}, nil)
 }
 
-// RelAsOf returns the relationship version that was current at the given
-// transaction time. Mirrors GetNodeAsOf for relationships.
+// RelAsOf returns the newest row of relationship id recorded by transaction
+// time txTime — NodeAsOf's rule for relationships. For the relationship's
+// state at a valid instant t as believed at a pin, call RelAtTx(id, t, pin).
 func (t *TempOps) RelAsOf(id types.RelID, txTime types.Instant) (*types.Relationship, error) {
 	c := t.c
 	if err := c.checkOpen(); err != nil {
