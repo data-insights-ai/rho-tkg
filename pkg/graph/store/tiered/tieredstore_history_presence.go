@@ -23,30 +23,7 @@ func (ts *Store) HasNodeHistory(nid types.NodeID) (bool, error) {
 	if err := storecontract.ValidateNodeID(nid); err != nil {
 		return false, err
 	}
-	store, checkin, isArchive, err := ts.shardForNodeIDCheckedWithArchive(nid)
-	if err != nil {
-		return false, err
-	}
-	defer checkin()
-	has, err := store.HasNodeHistory(nid)
-	if err != nil {
-		return false, err
-	}
-
-	liveHere, err := nodeRowLive(store, nid)
-	if err != nil {
-		return false, err
-	}
-	if liveHere && !isArchive {
-		if store == ts.refShard {
-			return ts.historyPresentWithArchive(store, has, func(s *BadgerStore) (bool, error) { return s.HasNodeHistory(nid) })
-		}
-		return has, nil
-	}
-	if isArchive {
-		return ts.historyPresentWithReference(store, has, func(s *BadgerStore) (bool, error) { return s.HasNodeHistory(nid) })
-	}
-	return ts.historyPresentAnywhere(store, has, func(s *BadgerStore) (bool, error) { return s.HasNodeHistory(nid) })
+	return walkNodeHistoryShards(ts, nid, func(s *BadgerStore) (bool, error) { return s.HasNodeHistory(nid) }, orPresence)
 }
 
 // HasRelHistory is HasNodeHistory for relationships, walking the shards
@@ -59,85 +36,130 @@ func (ts *Store) HasRelHistory(rid types.RelID) (bool, error) {
 	if err := storecontract.ValidateRelID(rid); err != nil {
 		return false, err
 	}
-	shard, checkin, isArchive, err := ts.shardForRelIDCheckedWithArchive(rid)
+	return walkRelHistoryShards(ts, rid, func(s *BadgerStore) (bool, error) { return s.HasRelHistory(rid) }, orPresence)
+}
+
+func orPresence(a, b bool) bool { return a || b }
+
+// walkNodeHistoryShards asks every shard GetNodeHistory reads for node nid, in
+// its order and with its errors, and merges the answers: the owning shard;
+// with the archive for a node live on the reference shard; with the reference
+// shard for an archived node; with every history shard for a node live
+// nowhere. HasNodeHistory and NodeHistoryStamps share it, so the presence and
+// the stamps of one ID always come from the same rows.
+func walkNodeHistoryShards[T any](ts *Store, nid types.NodeID, ask func(*BadgerStore) (T, error), merge func(T, T) T) (T, error) {
+	var zero T
+	store, checkin, isArchive, err := ts.shardForNodeIDCheckedWithArchive(nid)
 	if err != nil {
-		return false, err
+		return zero, err
 	}
 	defer checkin()
-	has, err := shard.HasRelHistory(rid)
+	acc, err := ask(store)
 	if err != nil {
-		return false, err
+		return zero, err
 	}
+	liveHere, err := nodeRowLive(store, nid)
+	if err != nil {
+		return zero, err
+	}
+	if liveHere && !isArchive {
+		if store == ts.refShard {
+			return historyWalkWithArchive(ts, store, acc, ask, merge)
+		}
+		return acc, nil
+	}
+	if isArchive {
+		return historyWalkWithReference(ts, store, acc, ask, merge)
+	}
+	return historyWalkAnywhere(ts, store, acc, ask, merge)
+}
 
+// walkRelHistoryShards is walkNodeHistoryShards for relationships, walking
+// the shards GetRelHistory reads.
+func walkRelHistoryShards[T any](ts *Store, rid types.RelID, ask func(*BadgerStore) (T, error), merge func(T, T) T) (T, error) {
+	var zero T
+	shard, checkin, isArchive, err := ts.shardForRelIDCheckedWithArchive(rid)
+	if err != nil {
+		return zero, err
+	}
+	defer checkin()
+	acc, err := ask(shard)
+	if err != nil {
+		return zero, err
+	}
 	liveHere, err := relationshipRowLive(shard, rid)
 	if err != nil {
-		return false, err
+		return zero, err
 	}
 	if liveHere && !isArchive {
 		if shard == ts.refShard {
-			return ts.historyPresentWithArchive(shard, has, func(s *BadgerStore) (bool, error) { return s.HasRelHistory(rid) })
+			return historyWalkWithArchive(ts, shard, acc, ask, merge)
 		}
-		return has, nil
+		return acc, nil
 	}
 	if isArchive {
-		return ts.historyPresentWithReference(shard, has, func(s *BadgerStore) (bool, error) { return s.HasRelHistory(rid) })
+		return historyWalkWithReference(ts, shard, acc, ask, merge)
 	}
-	return ts.historyPresentAnywhere(shard, has, func(s *BadgerStore) (bool, error) { return s.HasRelHistory(rid) })
+	return historyWalkAnywhere(ts, shard, acc, ask, merge)
 }
 
-// historyPresentWithArchive mirrors nodeHistoryWithArchive /
-// relHistoryWithArchive: the owner's answer, or the archive's.
-func (ts *Store) historyPresentWithArchive(skip *BadgerStore, has bool, ask func(*BadgerStore) (bool, error)) (bool, error) {
+// historyWalkWithArchive mirrors nodeHistoryWithArchive /
+// relHistoryWithArchive: the owner's answer merged with the archive's.
+func historyWalkWithArchive[T any](ts *Store, skip *BadgerStore, acc T, ask func(*BadgerStore) (T, error), merge func(T, T) T) (T, error) {
+	var zero T
 	archive, archiveCheckin, err := ts.checkoutArchive()
 	if err != nil {
-		return false, err
+		return zero, err
 	}
 	if archive == nil {
-		return has, nil
+		return acc, nil
 	}
 	defer archiveCheckin()
 	if archive == skip {
-		return has, nil
+		return acc, nil
 	}
-	archiveHas, err := ask(archive)
+	other, err := ask(archive)
 	if err != nil {
-		return false, err
+		return zero, err
 	}
-	return has || archiveHas, nil
+	return merge(acc, other), nil
 }
 
-// historyPresentWithReference mirrors nodeHistoryWithReference /
-// relHistoryWithReference: the archive owner's answer, or the reference shard's.
-func (ts *Store) historyPresentWithReference(skip *BadgerStore, has bool, ask func(*BadgerStore) (bool, error)) (bool, error) {
+// historyWalkWithReference mirrors nodeHistoryWithReference /
+// relHistoryWithReference: the archive owner's answer merged with the
+// reference shard's.
+func historyWalkWithReference[T any](ts *Store, skip *BadgerStore, acc T, ask func(*BadgerStore) (T, error), merge func(T, T) T) (T, error) {
+	var zero T
 	ref, refCheckin, err := ts.checkoutRefShard()
 	if err != nil {
-		return false, err
+		return zero, err
 	}
 	defer refCheckin()
 	if ref == skip {
-		return has, nil
+		return acc, nil
 	}
-	refHas, err := ask(ref)
+	other, err := ask(ref)
 	if err != nil {
-		return false, err
+		return zero, err
 	}
-	return has || refHas, nil
+	return merge(acc, other), nil
 }
 
-// historyPresentAnywhere mirrors the deleted-entity fan-out of
-// GetNodeHistory / GetRelHistory: every history shard is asked (the fan-out
-// does not stop early, so a shard error surfaces exactly as History's does).
-func (ts *Store) historyPresentAnywhere(skip *BadgerStore, has bool, ask func(*BadgerStore) (bool, error)) (bool, error) {
+// historyWalkAnywhere mirrors the deleted-entity fan-out of GetNodeHistory /
+// GetRelHistory: every history shard is asked (the fan-out does not stop
+// early, so a shard error surfaces exactly as History's does).
+func historyWalkAnywhere[T any](ts *Store, skip *BadgerStore, acc T, ask func(*BadgerStore) (T, error), merge func(T, T) T) (T, error) {
+	var zero T
 	err := ts.forEachHistoryShard(skip, func(candidate *BadgerStore) (bool, error) {
-		candidateHas, err := ask(candidate)
+		other, err := ask(candidate)
 		if err != nil {
 			return false, err
 		}
-		has = has || candidateHas
+		acc = merge(acc, other)
 		return false, nil
 	})
 	if err != nil {
-		return false, err
+		return zero, err
 	}
-	return has, nil
+	return acc, nil
 }
