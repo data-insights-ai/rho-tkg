@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 
@@ -38,13 +39,72 @@ import (
 // and the current-slot replacement validated, right before its first store
 // write — so every kernel refusal (deleted entity, version overflow,
 // ErrTooManyProperties, hash, replacement) happens before any UniqueForever
-// claim, and only a store-write failure can leave a claim behind (as on the
-// update door). Locking (entity -> value -> idxMu): the stripes of every
+// claim. When a store write then fails, the kernel withdraws every claim this
+// call made whose value no already-written row carries (writeFailed): a value
+// that reached a stored row was written and stays owned. Locking (entity -> value -> idxMu): the stripes of every
 // checked value, plus the replaced current value's, are held until the kernel
 // returns, across every store write, so concurrent writers of one value
 // serialize to exactly one winner. All four doors (Temporal, GraphTx,
 // BatchBuilder, ingest Session in strong and concurrent mode) run the kernel.
 // =============================================================================
+
+// cascadeUniqueHold is what a passing check hands the kernel: the value
+// stripes it holds and the UniqueForever claims it made. The zero value (no
+// constraint bound) is a no-op hold.
+type cascadeUniqueHold struct {
+	c      *Core
+	id     types.NodeID
+	held   []uint8
+	claims []cascadeUniqueTuple // claims THIS call made (registry misses)
+}
+
+// release unlocks the value stripes. The kernel defers it, so the stripes are
+// held across every store write.
+func (h *cascadeUniqueHold) release() {
+	if h.c != nil && len(h.held) > 0 {
+		h.c.valueLocks.UnlockStripes(h.held)
+		h.held = nil
+	}
+}
+
+// writeFailed withdraws every claim this call made whose value no row in
+// written carries (under the still-held stripes) and returns writeErr, joined
+// with a withdrawal failure if there is one.
+func (h *cascadeUniqueHold) writeFailed(written []*types.Node, writeErr error) error {
+	if h.c == nil || len(h.claims) == 0 {
+		return writeErr
+	}
+	var keys []string
+	for _, tp := range h.claims {
+		if !rowsCarryValue(written, tp) {
+			keys = append(keys, foreverOwnerKey(tp.labelTok, tp.key, tp.valueKey))
+		}
+	}
+	if err := h.c.withdrawForeverClaims(keys, h.id); err != nil {
+		return errors.Join(writeErr, err)
+	}
+	return writeErr
+}
+
+// rowsCarryValue reports whether any row carries tp's label and value.
+func rowsCarryValue(rows []*types.Node, tp cascadeUniqueTuple) bool {
+	for _, r := range rows {
+		hasLabel := false
+		for i := 0; i < r.LabelTokenCount(); i++ {
+			if r.LabelTokenRawAt(i) == tp.labelTok {
+				hasLabel = true
+				break
+			}
+		}
+		if !hasLabel {
+			continue
+		}
+		if vk, ok := r.IndexablePropertyValueKey(tp.key); ok && vk == tp.valueKey {
+			return true
+		}
+	}
+	return false
+}
 
 type cascadeUniqueTuple struct {
 	labelTok uint16
@@ -59,9 +119,10 @@ type cascadeUniqueTuple struct {
 // slot when curIsNew (current is the row it replaces, nil if none). A row is a
 // correction piece when its ValidFrom lies in [newVF, newVT) (newVT == 0:
 // open), else it is the resumption. On success the caller defers the
-// returned release; on error nothing is held and nothing is claimed.
-func (c *Core) enforceUniqueForCascade(id types.NodeID, current *types.Node, appended []*types.Node, newCurrent *types.Node, curIsNew bool, newVT types.Instant, props map[string]any) (func(), error) {
-	noop := func() {}
+// hold's release and calls hold.writeFailed when a store write fails; on
+// error nothing is held and nothing is claimed.
+func (c *Core) enforceUniqueForCascade(id types.NodeID, current *types.Node, appended []*types.Node, newCurrent *types.Node, curIsNew bool, newVT types.Instant, props map[string]any) (*cascadeUniqueHold, error) {
+	noop := &cascadeUniqueHold{}
 	if len(appended) == 0 || !c.hasUniqueConstraints.Load() {
 		return noop, nil
 	}
@@ -133,11 +194,11 @@ func (c *Core) enforceUniqueForCascade(id types.NodeID, current *types.Node, app
 			uniqueSeenKey(ordered[j].labelTok, ordered[j].key, ordered[j].valueKey)
 	})
 
-	held := c.valueLocks.LockStripes(stripes)
+	hold := &cascadeUniqueHold{c: c, id: id, held: c.valueLocks.LockStripes(stripes)}
 	keep := false
 	defer func() {
 		if !keep {
-			c.valueLocks.UnlockStripes(held)
+			hold.release()
 		}
 	}()
 
@@ -159,17 +220,22 @@ func (c *Core) enforceUniqueForCascade(id types.NodeID, current *types.Node, app
 			}
 		}
 	}
-	// Pass 2: claim every UniqueForever value.
+	// Pass 2: claim every UniqueForever value; a failed claim withdraws the
+	// ones this pass already made (nothing was written).
 	for _, tp := range ordered {
 		if tp.scope != constraintspkg.UniqueForever {
 			continue
 		}
-		if err := c.checkAndClaimForever(tp.labelTok, tp.key, tp.valueKey, id); err != nil {
-			return noop, err
+		claimed, err := c.claimForever(tp.labelTok, tp.key, tp.valueKey, id)
+		if err != nil {
+			return noop, hold.writeFailed(nil, err)
+		}
+		if claimed {
+			hold.claims = append(hold.claims, tp)
 		}
 	}
 	keep = true
-	return func() { c.valueLocks.UnlockStripes(held) }, nil
+	return hold, nil
 }
 
 // cascadeConstraintsFor returns, per label token the rows carry, the

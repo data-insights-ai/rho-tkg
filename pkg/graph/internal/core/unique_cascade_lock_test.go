@@ -244,3 +244,112 @@ func TestUniqueCascade_StripeHeldAcrossStoreWrite(t *testing.T) {
 		t.Fatalf("holders of v = %d, want 1", len(rows))
 	}
 }
+
+// errInjectedWrite is the store failure cascadeFailStore injects.
+var errInjectedWrite = errors.New("injected store write failure")
+
+// cascadeFailStore fails the next PutNodeVersion or ReplaceNode for one node
+// id (one shot), so a test can make the cascade fail at a chosen write.
+type cascadeFailStore struct {
+	*memory.Store
+	mu          sync.Mutex
+	failID      types.NodeID
+	failPut     bool
+	failReplace bool
+}
+
+func (s *cascadeFailStore) NodesByLabelAndProperty(labelToken uint16, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	return s.Store.NodesByLabelAndProperty(labelToken, key, value, opts)
+}
+
+func (s *cascadeFailStore) arm(id types.NodeID, put, replace bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.failID, s.failPut, s.failReplace = id, put, replace
+}
+
+func (s *cascadeFailStore) take(id types.NodeID, put bool) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.failID == 0 || s.failID != id || (put && !s.failPut) || (!put && !s.failReplace) {
+		return false
+	}
+	s.failID = 0
+	return true
+}
+
+func (s *cascadeFailStore) PutNodeVersion(id types.NodeID, version uint32, n *types.Node) error {
+	if s.take(id, true) {
+		return errInjectedWrite
+	}
+	return s.Store.PutNodeVersion(id, version, n)
+}
+
+func (s *cascadeFailStore) ReplaceNode(n *types.Node) error {
+	if n != nil && s.take(n.ID(), false) {
+		return errInjectedWrite
+	}
+	return s.Store.ReplaceNode(n)
+}
+
+func newForeverFailCore(t *testing.T) (*Core, *cascadeFailStore) {
+	t.Helper()
+	st := &cascadeFailStore{Store: memory.New()}
+	c, err := New(Config{Store: st})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = c.Close() })
+	if err := c.Constraints.CreateUniqueForever(context.Background(), "Ref", "k"); err != nil {
+		t.Fatalf("CreateUniqueForever: %v", err)
+	}
+	return c, st
+}
+
+// RED before the fix. An open-ended cascade onto "z" whose first store write
+// fails has written no row carrying "z", so its UniqueForever claim must be
+// withdrawn: a later create with "z" passes. Catches: a kernel that claims
+// under the stripe and keeps the claim when the write that would have carried
+// the value fails (the value is owned forever by a node that never held it).
+func TestUniqueCascade_StoreWriteFailureWithdrawsUnwrittenClaim(t *testing.T) {
+	c, st := newForeverFailCore(t)
+	ctx := context.Background()
+	a := addRefK(t, c, "a")
+	st.arm(a.ID(), true, true) // the first write of the open-ended cascade is the demotion put
+	if _, err := c.Temporal.SetNodeVersionInterval(ctx, a.ID(), lockTestT+100, 0, map[string]any{"k": "z"}); !errors.Is(err, errInjectedWrite) {
+		t.Fatalf("cascade with a failing write: err = %v, want the injected failure", err)
+	}
+	if _, err := c.Nodes.Add(ctx, []string{"Ref"}, map[string]any{"k": "z"}); err != nil {
+		t.Fatalf("Add with the value of a cascade that wrote nothing: %v (claim must be withdrawn)", err)
+	}
+}
+
+// GUARD (passes before the fix too): when the write that fails comes AFTER a
+// correction row carrying "z" was stored, "z" was written by the node, so its
+// UniqueForever claim stays. Catches: a withdrawal that ignores which rows
+// were already written (it would free a value present in the node's history).
+func TestUniqueCascade_StoreWriteFailureKeepsWrittenClaim(t *testing.T) {
+	c, st := newForeverFailCore(t)
+	ctx := context.Background()
+	a := addRefK(t, c, "a")
+	st.arm(a.ID(), false, true) // corrections and the demotion are put first; ReplaceNode fails
+	if _, err := c.Temporal.SetNodeVersionInterval(ctx, a.ID(), lockTestT+10, lockTestT+20, map[string]any{"k": "z"}); !errors.Is(err, errInjectedWrite) {
+		t.Fatalf("cascade with a failing ReplaceNode: err = %v, want the injected failure", err)
+	}
+	hist, err := c.Nodes.History(a.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrote := false
+	for _, h := range hist {
+		if v, _ := h.GetProperty("k"); v == "z" {
+			wrote = true
+		}
+	}
+	if !wrote {
+		t.Fatal("precondition: no stored row carries z")
+	}
+	if _, err := c.Nodes.Add(ctx, []string{"Ref"}, map[string]any{"k": "z"}); !errors.Is(err, ErrUniqueViolation) {
+		t.Fatalf("Add with a value the node already wrote: err = %v, want ErrUniqueViolation", err)
+	}
+}

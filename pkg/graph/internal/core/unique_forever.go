@@ -233,14 +233,23 @@ func (c *Core) reapUniqueForeverOwnersForReset() error {
 // hit + different entity => ErrUniqueViolation; same entity (any version) =>
 // pass; miss => claim (owner = selfID) and persist. Returns nil on pass/claim.
 func (c *Core) checkAndClaimForever(labelTok uint16, propKey, valueKey string, selfID types.NodeID) error {
+	_, err := c.claimForever(labelTok, propKey, valueKey, selfID)
+	return err
+}
+
+// claimForever is checkAndClaimForever reporting whether THIS call made the
+// claim (a miss) rather than finding selfID already the owner, so a caller
+// whose write then fails can withdraw exactly the claims it made
+// (withdrawForeverClaims).
+func (c *Core) claimForever(labelTok uint16, propKey, valueKey string, selfID types.NodeID) (bool, error) {
 	key := foreverOwnerKey(labelTok, propKey, valueKey)
 	c.uniqueMu.Lock()
 	defer c.uniqueMu.Unlock()
 	if owner, ok := c.uniqueOwners[key]; ok {
 		if owner == selfID {
-			return nil // same entity (any version) may keep the value
+			return false, nil // same entity (any version) may keep the value
 		}
-		return fmt.Errorf("%w: label %q key %q value permanently owned by node %d (UniqueForever)",
+		return false, fmt.Errorf("%w: label %q key %q value permanently owned by node %d (UniqueForever)",
 			ErrUniqueViolation, c.labels.Resolve(labelTok), propKey, owner)
 	}
 	// Miss — claim under the stripe. Persist before returning so a crash does not
@@ -248,12 +257,47 @@ func (c *Core) checkAndClaimForever(labelTok uint16, propKey, valueKey string, s
 	// conservative claim, correctable via ReleaseOwnership).
 	mk := c.metaKV
 	if mk == nil {
-		return fmt.Errorf("graph: unique-forever claim: %w", storepkg.ErrCapabilityNotSupported)
+		return false, fmt.Errorf("graph: unique-forever claim: %w", storepkg.ErrCapabilityNotSupported)
 	}
 	c.uniqueOwners[key] = selfID
 	if err := c.storeForeverOwnersLocked(mk); err != nil {
 		delete(c.uniqueOwners, key) // roll the in-memory claim back on persist failure
-		return err
+		return false, err
+	}
+	return true, nil
+}
+
+// withdrawForeverClaims removes ownership claims (registry keys built by
+// foreverOwnerKey) that selfID made and whose value no stored row carries, so
+// a write that failed before storing the value leaves no owner behind. The
+// caller holds the value stripes of every key. A key now owned by another
+// entity is left alone. On a persist failure the in-memory registry is
+// restored so it never diverges from disk.
+func (c *Core) withdrawForeverClaims(keys []string, selfID types.NodeID) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	mk := c.metaKV
+	if mk == nil {
+		return fmt.Errorf("graph: unique-forever withdraw: %w", storepkg.ErrCapabilityNotSupported)
+	}
+	c.uniqueMu.Lock()
+	defer c.uniqueMu.Unlock()
+	var removed []string
+	for _, key := range keys {
+		if owner, ok := c.uniqueOwners[key]; ok && owner == selfID {
+			delete(c.uniqueOwners, key)
+			removed = append(removed, key)
+		}
+	}
+	if len(removed) == 0 {
+		return nil
+	}
+	if err := c.storeForeverOwnersLocked(mk); err != nil {
+		for _, key := range removed {
+			c.uniqueOwners[key] = selfID
+		}
+		return fmt.Errorf("graph: unique-forever withdraw: %w", err)
 	}
 	return nil
 }
