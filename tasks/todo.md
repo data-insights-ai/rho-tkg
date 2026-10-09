@@ -1,3 +1,57 @@
+# todo — v4 main: fixes, release, decided features (2026-10-09, "decisions are fine, lets go in the v4 main")
+
+## User requests
+
+1. "lets go in the v4 main" — the open v4 work from `tasks/review-v5-plan-vs-code-20261009.md` §6/§9 and the
+   backlog items 10, 11 — check: each step below ticked with proof; v4.44.0 tagged (fixes + `*WithTx`), v4.45.0
+   for the two features when their gates are green. [ ]
+2. Standing (2026-10-09 earlier): tests first, break-the-code only, red output kept under `tasks/evidence/`;
+   parallel Opus agents in worktrees; a Sonnet watchdog reports divergence; no agent attribution in commits. [ ]
+
+## Plan (worktree agents, merged by me; CHANGELOG lines under `[Unreleased]` in one subsection per item)
+
+Wave 1 (parallel) → v4.44.0
+- [ ] A W5-finish (Opus): R15 cross-backend oracle, R11 over every door, docs/api.md, lesson 59 amendment,
+      CHANGELOG 4.44.0 section for the `*WithTx` doors. In code? doors yes (W1-W4 merged), oracle no.
+      Red: `TestTxBackfillOracle_*` fails against a door stubbed to the plain stamp. Proof: evidence/w5/.
+- [ ] B eclipse-skip (Opus): remove `eclipsedNodeBounds`/`eclipsedRelBounds` skips (temporal_cascade.go:63-77;
+      chain_resolver.go:138,163,217,236; temporal.go:258,279,495,549,564,648; cascade template/piece sites).
+      In code? skip yes, writer no since 994df82. Red: `TestOneTickSpanVisible_*` — RelAt(t), RelsDuring,
+      ByType{ValidAt}, RelsRelating, NodeAt, CloseVersion(vf+1), Delete landing at vf+1, width-1 cascade piece;
+      4 backends; break cases: width 1 vs 2, boundary t and t+1, old pin after a width-1 correction.
+      Proof: evidence/eclipse/red-*.txt, green-*.txt; backlog KNOWN LIMITATION closed; stale header
+      temporal_cascade.go:18-27 rewritten.
+- [ ] C scan-temporal-opts (Opus): `ScanNodeColumns`/`ScanRelColumns` and `ForEachByLabelPropertyRange` filter
+      current rows and ignore `TxAt`/`TxPin` (memorystore_query.go:105-125, badger_column_scan.go:149-159,
+      badgerstore_node_range_scan.go:88, temporal_filter.go:70-72). Red: two-door parity vs `ByLabel(opts)` after
+      an update and a delete, per backend; break cases: ValidAt before the update, TxAt before the delete, TxPin.
+      Fix default: history-aware where a sound path exists, else fail closed (`ErrCapabilityNotSupported`) —
+      never current-only rows for a temporal opt. Proof: evidence/scan-opts/.
+- [ ] D ingest-doors + comments (Sonnet): `Session.SetRelVersionInterval`/`SetNodeVersionInterval` (ingest.go,
+      beside :830-880), red forwarding + two-phase test through the session; stale comments
+      store/changefeed.go:154-158, index/api.go:267-269 (+ core/graph_rel_indexes.go:97-100),
+      constraints/unique.go:74-75. Proof: evidence/ingest-doors/.
+- [ ] Merge A-D, `make ci-docker`, consumer `go build ./... && go vet ./...` (sigma-tkgd, ai-soc engine,
+      agent-bookkeeping with a scratch `replace`), release v4.44.0 (CHANGELOG, AGENTS.md version pin, README line,
+      docs-consistency tests), tag, push.
+
+Wave 2 (parallel, start now, merge after wave 1) → v4.45.0
+- [ ] E durable-on-return commit (Opus, backlog 11): opt-in `Config.DurableCommit`; `GraphTx.Commit` and
+      `Batch.Execute` flush the pending buffer before returning, one WriteBatch per call, every touched shard on
+      tiered/sharded. Red: close-without-flush / SIGKILL after Commit returns shows the whole group; default off
+      unchanged; oversized group documented. Proof: evidence/durable-commit/.
+- [ ] F tiered composite + rel temporal indexes (Opus, backlog 10): measure one-entry-per-row budget on a week of
+      raw edges first, then per-shard fan-out mirroring sharded; rotation, cold checkout and repair move/rebuild
+      entries. Red: two-phase over rotation, parity with badger. Proof: evidence/tiered-indexes/.
+- [ ] Watchdog (Sonnet): reads every worktree's log/diff every few minutes; reports DIVERGENCE (scope creep,
+      happy-path-only tests, attribution lines, pushes) to me.
+
+## Review
+
+(after wave 1 merge)
+
+---
+
 # todo — reanalysis: v5 plan (Downloads/PLAN.md, RESEARCH-REVIEW.md, DISCUSSION.md) vs the code (2026-10-09, later)
 
 ## User requests
