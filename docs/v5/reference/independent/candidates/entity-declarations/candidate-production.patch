@@ -1,0 +1,237 @@
+diff --git a/v5/internal/graphstate/declaration.go b/v5/internal/graphstate/declaration.go
+new file mode 100644
+--- /dev/null
++++ b/v5/internal/graphstate/declaration.go
+@@ -0,0 +1,76 @@
++package graphstate
++
++import (
++	"strings"
++	"unicode"
++	"unicode/utf8"
++)
++
++// Interpretation is a supplied, preservation-only declaration about this
++// immutable entity record. It never follows from entity kind or support shape.
++// Empty means undeclared. Unknown tokens decline in this provisional subset;
++// this is not an opaque extension registry or a semantic equality capability.
++type Interpretation string
++
++const (
++	InterpretationOccurrence       Interpretation = "occurrence"
++	InterpretationState            Interpretation = "state"
++	InterpretationObservation      Interpretation = "observation"
++	InterpretationAssertedRelation Interpretation = "asserted_relation"
++	InterpretationConstraint       Interpretation = "constraint"
++	InterpretationDerivedAssertion Interpretation = "derived_assertion"
++)
++
++// TemporalRole preserves the meaning declared for the record's native Axis
++// association. It supplies no roles for property values or other axes, and no
++// clock, causality or calendar evaluator. Empty means undeclared.
++type TemporalRole string
++
++const (
++	TemporalRoleOccurrenceTime   TemporalRole = "occurrence_time"
++	TemporalRoleSourceOccurrence TemporalRole = "source_occurrence"
++	TemporalRoleValidity         TemporalRole = "validity"
++	TemporalRoleCausalOrder      TemporalRole = "causal_order"
++)
++
++// Declaration accounting is a provisional conservative record envelope: two
++// uint32-length frames plus exact token bytes when either field is declared.
++// Two undeclared fields have no declaration envelope. It is not a compact wire layout,
++// total operation-input bound or physical allocator/RSS measurement.
++func declarationBytes(record EntityRecord) int {
++	if record.Interpretation == "" && record.TemporalRole == "" {
++		return 0
++	}
++	return 8 + len(record.Interpretation) + len(record.TemporalRole)
++}
++func entityBytes(record EntityRecord) int {
++	return 64 + len(record.Type) + axisBytes(record.Axis) + declarationBytes(record)
++}
++func validateDeclarations(record EntityRecord, limits Limits) error {
++	for _, token := range []string{string(record.Interpretation), string(record.TemporalRole)} {
++		if len(token) > limits.MaxNameBytes {
++			return ErrResourceLimit
++		}
++		if !utf8.ValidString(token) || strings.IndexFunc(token, func(r rune) bool { return unicode.IsControl(r) || unicode.IsSpace(r) }) >= 0 {
++			return ErrInvalidInput
++		}
++	}
++	switch record.Interpretation {
++	case "", InterpretationOccurrence, InterpretationState, InterpretationObservation, InterpretationAssertedRelation, InterpretationConstraint, InterpretationDerivedAssertion:
++	default:
++		return ErrUnsupported
++	}
++	switch record.TemporalRole {
++	case "", TemporalRoleOccurrenceTime, TemporalRoleSourceOccurrence, TemporalRoleValidity, TemporalRoleCausalOrder:
++	default:
++		return ErrUnsupported
++	}
++	return nil
++}
++func ownDeclarations(record EntityRecord) EntityRecord {
++	// Copy short supplied tokens so a known token sliced from an unrelated large
++	// backing string cannot make the owned Delta/Projection retain that backing.
++	record.Interpretation = Interpretation(strings.Clone(string(record.Interpretation)))
++	record.TemporalRole = TemporalRole(strings.Clone(string(record.TemporalRole)))
++	return record
++}
+diff --git a/v5/internal/graphstate/limits.go b/v5/internal/graphstate/limits.go
+--- a/v5/internal/graphstate/limits.go
++++ b/v5/internal/graphstate/limits.go
+@@ -14,11 +14,14 @@
+ type Limits struct {
+ 	Component                                                                                    state.Limits
+ 	MaxOperations, MaxPages, MaxRows, MaxReadBytes, MaxDeltaBytes, MaxDependencies, MaxNameBytes int
++	// MaxInputMetadataBytes counts supplied entity interpretation/role framing and
++	// bytes only; it does not claim a total operation-input or Go heap bound.
++	MaxInputMetadataBytes int
+ }
+ 
+ // DefaultLimits returns provisional bounded planning/materialization policy.
+ func DefaultLimits() Limits {
+-	return Limits{Component: state.DefaultLimits(), MaxOperations: 4096, MaxPages: 4096, MaxRows: 65536, MaxReadBytes: 16 << 20, MaxDeltaBytes: 16 << 20, MaxDependencies: 16384, MaxNameBytes: 256}
++	return Limits{Component: state.DefaultLimits(), MaxOperations: 4096, MaxPages: 4096, MaxRows: 65536, MaxReadBytes: 16 << 20, MaxDeltaBytes: 16 << 20, MaxDependencies: 16384, MaxNameBytes: 256, MaxInputMetadataBytes: 1 << 20}
+ }
+ 
+ // Validate checks overrides before any reader calls or working-map allocation.
+@@ -35,12 +38,13 @@
+ 	l.MaxDeltaBytes = cmp.Or(l.MaxDeltaBytes, d.MaxDeltaBytes)
+ 	l.MaxDependencies = cmp.Or(l.MaxDependencies, d.MaxDependencies)
+ 	l.MaxNameBytes = cmp.Or(l.MaxNameBytes, d.MaxNameBytes)
++	l.MaxInputMetadataBytes = cmp.Or(l.MaxInputMetadataBytes, d.MaxInputMetadataBytes)
+ 	for _, n := range []int{l.MaxOperations, l.MaxPages, l.MaxRows, l.MaxDependencies, l.MaxNameBytes} {
+ 		if n < 1 || n > 1<<20 {
+ 			return Limits{}, ErrInvalidInput
+ 		}
+ 	}
+-	for _, n := range []int{l.MaxReadBytes, l.MaxDeltaBytes} {
++	for _, n := range []int{l.MaxReadBytes, l.MaxDeltaBytes, l.MaxInputMetadataBytes} {
+ 		if n < 1 || n > 64<<20 {
+ 			return Limits{}, ErrInvalidInput
+ 		}
+diff --git a/v5/internal/graphstate/planner.go b/v5/internal/graphstate/planner.go
+--- a/v5/internal/graphstate/planner.go
++++ b/v5/internal/graphstate/planner.go
+@@ -31,11 +31,26 @@
+ 	if len(ops) > l.MaxOperations {
+ 		return Delta{}, ErrResourceLimit
+ 	}
++	inputMetadataBytes := 0
+ 	for _, op := range ops {
+ 		if err := mutationScope(op.Scope, l); err != nil {
+ 			return Delta{}, err
+ 		}
+ 		if op.Owner == 0 || op.Life == 0 || op.Kind < CreateNode || op.Kind > Remove {
++			return Delta{}, ErrInvalidInput
++		}
++		if op.Kind == CreateNode || op.Kind == CreateRelationship {
++			if err := validateDeclarations(op.Record, l); err != nil {
++				return Delta{}, err
++			}
++			n := declarationBytes(op.Record)
++			if n > l.MaxInputMetadataBytes-inputMetadataBytes {
++				return Delta{}, ErrResourceLimit
++			}
++			inputMetadataBytes += n
++		} else if op.Record.Interpretation != "" || op.Record.TemporalRole != "" {
++			// Declarations belong to the immutable identity record. There is no
++			// general metadata-correction API in this component candidate.
+ 			return Delta{}, ErrInvalidInput
+ 		}
+ 		if op.Kind == AddLabel || op.Kind == RemoveLabel || op.Kind >= Set {
+@@ -207,9 +222,10 @@
+ 			return ErrInvalidInput
+ 		}
+ 	}
+-	if err := e.output(64 + len(record.Type) + axisBytes(record.Axis)); err != nil {
+-		return err
+-	}
++	if err := e.output(entityBytes(record)); err != nil {
++		return err
++	}
++	record = ownDeclarations(record)
+ 	e.entities[op.Owner] = record
+ 	e.delta.Entities = append(e.delta.Entities, record)
+ 	return e.newLife(record, op)
+diff --git a/v5/internal/graphstate/project.go b/v5/internal/graphstate/project.go
+--- a/v5/internal/graphstate/project.go
++++ b/v5/internal/graphstate/project.go
+@@ -37,7 +37,7 @@
+ 		return Projection{}, err
+ 	}
+ 	out := Projection{Record: record, Exists: exists}
+-	if err := e.output(64 + len(record.Type) + axisBytes(record.Axis)); err != nil {
++	if err := e.output(entityBytes(record)); err != nil {
+ 		return Projection{}, err
+ 	}
+ 	if !exists {
+diff --git a/v5/internal/graphstate/reader.go b/v5/internal/graphstate/reader.go
+--- a/v5/internal/graphstate/reader.go
++++ b/v5/internal/graphstate/reader.go
+@@ -3,6 +3,7 @@
+ import (
+ 	"cmp"
+ 	"context"
++	"errors"
+ 	"reflect"
+ 	"slices"
+ 	"strings"
+@@ -167,13 +168,19 @@
+ 	if err := e.source(read.View); err != nil {
+ 		return EntityRecord{}, false, err
+ 	}
+-	if err := e.charge(1, 64+len(read.Record.Type)+axisBytes(read.Record.Axis)); err != nil {
++	if err := e.charge(1, entityBytes(read.Record)); err != nil {
+ 		return EntityRecord{}, false, err
+ 	}
+ 	if err := e.dep(Dependency{Kind: EntityDependency, Owner: id, Version: read.Version, Absent: !read.Found}); err != nil {
+ 		return EntityRecord{}, false, err
+ 	}
+ 	if read.Found {
++		if err := validateDeclarations(read.Record, e.limits); err != nil {
++			if errors.Is(err, ErrInvalidInput) {
++				return EntityRecord{}, false, ErrContradictoryRead
++			}
++			return EntityRecord{}, false, err
++		}
+ 		if read.Record.ID != id || (read.Record.Kind != Node && read.Record.Kind != Relationship) {
+ 			return EntityRecord{}, false, ErrContradictoryRead
+ 		}
+@@ -188,7 +195,10 @@
+ 			return EntityRecord{}, false, err
+ 		}
+ 	}
+-	return read.Record, read.Found, nil
++	if !read.Found && (read.Record.Interpretation != "" || read.Record.TemporalRole != "") {
++		return EntityRecord{}, false, ErrContradictoryRead
++	}
++	return ownDeclarations(read.Record), read.Found, nil
+ }
+ func (e *engine) life(owner EntityID, id LifeID) (LifeRecord, bool, error) {
+ 	if owner == 0 || id == 0 {
+diff --git a/v5/internal/graphstate/types.go b/v5/internal/graphstate/types.go
+--- a/v5/internal/graphstate/types.go
++++ b/v5/internal/graphstate/types.go
+@@ -98,7 +98,8 @@
+ 	Member ValueID
+ }
+ 
+-// EntityRecord is immutable identity/endpoints and its declared native life axis.
++// EntityRecord is immutable identity/endpoints, native life axis and optional
++// caller-supplied declaration tokens. Lifecycle edits do not revise declarations.
+ type EntityRecord struct {
+ 	ID             EntityID
+ 	Kind           EntityKind
+@@ -106,6 +107,8 @@
+ 	Type           string
+ 	Source, Target EntityID
+ 	Mode           ReferenceMode
++	Interpretation Interpretation
++	TemporalRole   TemporalRole
+ }
+ 
+ // LifeRecord retains endpoint bindings even after all its presence is closed.

@@ -1,0 +1,968 @@
+{
+  "schema": "independent-entity-declaration-lifecycle",
+  "version": 1,
+  "cases": [
+    {
+      "id": "declared-metadata-close-correct-reopen-node-relationship-parity",
+      "kind": "graph",
+      "axis": {
+        "identity": "entity-declaration-lifecycle-axis",
+        "profile": "Z",
+        "reference": "abstract-test-reference-v1",
+        "unit": "abstract-position",
+        "version": 1
+      },
+      "steps": [
+        {
+          "snapshot": "S1",
+          "operations": [
+            {
+              "op": "create_vertex",
+              "id": "A",
+              "life": 1,
+              "valid": [
+                0,
+                10
+              ],
+              "labels": [],
+              "properties": {},
+              "interpretation": "occurrence",
+              "temporal_role": "source_occurrence"
+            },
+            {
+              "op": "create_vertex",
+              "id": "B",
+              "life": 1,
+              "valid": [
+                0,
+                10
+              ],
+              "labels": [],
+              "properties": {}
+            },
+            {
+              "op": "create_edge",
+              "id": "R",
+              "life": 1,
+              "source": "A",
+              "target": "B",
+              "type": "LINK",
+              "reference_mode": "identity_reference",
+              "valid": [
+                0,
+                10
+              ],
+              "properties": {},
+              "interpretation": "state",
+              "temporal_role": "causal_order"
+            }
+          ]
+        },
+        {
+          "snapshot": "S2",
+          "operations": [
+            {
+              "op": "close",
+              "owner": "A",
+              "life": 1,
+              "valid": [
+                3,
+                7
+              ]
+            },
+            {
+              "op": "close",
+              "owner": "R",
+              "life": 1,
+              "valid": [
+                3,
+                7
+              ]
+            }
+          ]
+        },
+        {
+          "snapshot": "S3",
+          "operations": [
+            {
+              "op": "correct",
+              "owner": "A",
+              "life": 1,
+              "present": true,
+              "valid": [
+                3,
+                5
+              ]
+            },
+            {
+              "op": "correct",
+              "owner": "R",
+              "life": 1,
+              "present": true,
+              "valid": [
+                3,
+                5
+              ]
+            }
+          ]
+        },
+        {
+          "snapshot": "S4",
+          "operations": [
+            {
+              "op": "reopen",
+              "owner": "A",
+              "life": 2,
+              "valid": [
+                5,
+                7
+              ]
+            },
+            {
+              "op": "reopen",
+              "owner": "R",
+              "life": 2,
+              "valid": [
+                5,
+                7
+              ]
+            }
+          ]
+        }
+      ],
+      "reads": [
+        {
+          "snapshot": "S1",
+          "coordinate": 0,
+          "mode": "effective",
+          "expected": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "occurrence",
+                "temporal_role": "source_occurrence",
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "R": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "state",
+                "temporal_role": "causal_order",
+                "source": "A",
+                "target": "B",
+                "type": "LINK"
+              }
+            }
+          }
+        },
+        {
+          "snapshot": "S1",
+          "coordinate": 3,
+          "mode": "effective",
+          "expected": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "occurrence",
+                "temporal_role": "source_occurrence",
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "R": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "state",
+                "temporal_role": "causal_order",
+                "source": "A",
+                "target": "B",
+                "type": "LINK"
+              }
+            }
+          }
+        },
+        {
+          "snapshot": "S1",
+          "coordinate": 4,
+          "mode": "effective",
+          "expected": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "occurrence",
+                "temporal_role": "source_occurrence",
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "R": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "state",
+                "temporal_role": "causal_order",
+                "source": "A",
+                "target": "B",
+                "type": "LINK"
+              }
+            }
+          }
+        },
+        {
+          "snapshot": "S1",
+          "coordinate": 5,
+          "mode": "effective",
+          "expected": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "occurrence",
+                "temporal_role": "source_occurrence",
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "R": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "state",
+                "temporal_role": "causal_order",
+                "source": "A",
+                "target": "B",
+                "type": "LINK"
+              }
+            }
+          }
+        },
+        {
+          "snapshot": "S1",
+          "coordinate": 6,
+          "mode": "effective",
+          "expected": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "occurrence",
+                "temporal_role": "source_occurrence",
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "R": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "state",
+                "temporal_role": "causal_order",
+                "source": "A",
+                "target": "B",
+                "type": "LINK"
+              }
+            }
+          }
+        },
+        {
+          "snapshot": "S1",
+          "coordinate": 7,
+          "mode": "effective",
+          "expected": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "occurrence",
+                "temporal_role": "source_occurrence",
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "R": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "state",
+                "temporal_role": "causal_order",
+                "source": "A",
+                "target": "B",
+                "type": "LINK"
+              }
+            }
+          }
+        },
+        {
+          "snapshot": "S1",
+          "coordinate": 9,
+          "mode": "effective",
+          "expected": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "occurrence",
+                "temporal_role": "source_occurrence",
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "R": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "state",
+                "temporal_role": "causal_order",
+                "source": "A",
+                "target": "B",
+                "type": "LINK"
+              }
+            }
+          }
+        },
+        {
+          "snapshot": "S1",
+          "coordinate": 10,
+          "mode": "effective",
+          "expected": {
+            "nodes": {},
+            "edges": {}
+          }
+        },
+        {
+          "snapshot": "S2",
+          "coordinate": 0,
+          "mode": "effective",
+          "expected": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "occurrence",
+                "temporal_role": "source_occurrence",
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "R": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "state",
+                "temporal_role": "causal_order",
+                "source": "A",
+                "target": "B",
+                "type": "LINK"
+              }
+            }
+          }
+        },
+        {
+          "snapshot": "S2",
+          "coordinate": 3,
+          "mode": "effective",
+          "expected": {
+            "nodes": {
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        },
+        {
+          "snapshot": "S2",
+          "coordinate": 4,
+          "mode": "effective",
+          "expected": {
+            "nodes": {
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        },
+        {
+          "snapshot": "S2",
+          "coordinate": 5,
+          "mode": "effective",
+          "expected": {
+            "nodes": {
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        },
+        {
+          "snapshot": "S2",
+          "coordinate": 6,
+          "mode": "effective",
+          "expected": {
+            "nodes": {
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        },
+        {
+          "snapshot": "S2",
+          "coordinate": 7,
+          "mode": "effective",
+          "expected": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "occurrence",
+                "temporal_role": "source_occurrence",
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "R": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "state",
+                "temporal_role": "causal_order",
+                "source": "A",
+                "target": "B",
+                "type": "LINK"
+              }
+            }
+          }
+        },
+        {
+          "snapshot": "S2",
+          "coordinate": 9,
+          "mode": "effective",
+          "expected": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "occurrence",
+                "temporal_role": "source_occurrence",
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "R": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "state",
+                "temporal_role": "causal_order",
+                "source": "A",
+                "target": "B",
+                "type": "LINK"
+              }
+            }
+          }
+        },
+        {
+          "snapshot": "S2",
+          "coordinate": 10,
+          "mode": "effective",
+          "expected": {
+            "nodes": {},
+            "edges": {}
+          }
+        },
+        {
+          "snapshot": "S3",
+          "coordinate": 0,
+          "mode": "effective",
+          "expected": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "occurrence",
+                "temporal_role": "source_occurrence",
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "R": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "state",
+                "temporal_role": "causal_order",
+                "source": "A",
+                "target": "B",
+                "type": "LINK"
+              }
+            }
+          }
+        },
+        {
+          "snapshot": "S3",
+          "coordinate": 3,
+          "mode": "effective",
+          "expected": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "occurrence",
+                "temporal_role": "source_occurrence",
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "R": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "state",
+                "temporal_role": "causal_order",
+                "source": "A",
+                "target": "B",
+                "type": "LINK"
+              }
+            }
+          }
+        },
+        {
+          "snapshot": "S3",
+          "coordinate": 4,
+          "mode": "effective",
+          "expected": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "occurrence",
+                "temporal_role": "source_occurrence",
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "R": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "state",
+                "temporal_role": "causal_order",
+                "source": "A",
+                "target": "B",
+                "type": "LINK"
+              }
+            }
+          }
+        },
+        {
+          "snapshot": "S3",
+          "coordinate": 5,
+          "mode": "effective",
+          "expected": {
+            "nodes": {
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        },
+        {
+          "snapshot": "S3",
+          "coordinate": 6,
+          "mode": "effective",
+          "expected": {
+            "nodes": {
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {}
+          }
+        },
+        {
+          "snapshot": "S3",
+          "coordinate": 7,
+          "mode": "effective",
+          "expected": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "occurrence",
+                "temporal_role": "source_occurrence",
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "R": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "state",
+                "temporal_role": "causal_order",
+                "source": "A",
+                "target": "B",
+                "type": "LINK"
+              }
+            }
+          }
+        },
+        {
+          "snapshot": "S3",
+          "coordinate": 9,
+          "mode": "effective",
+          "expected": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "occurrence",
+                "temporal_role": "source_occurrence",
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "R": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "state",
+                "temporal_role": "causal_order",
+                "source": "A",
+                "target": "B",
+                "type": "LINK"
+              }
+            }
+          }
+        },
+        {
+          "snapshot": "S3",
+          "coordinate": 10,
+          "mode": "effective",
+          "expected": {
+            "nodes": {},
+            "edges": {}
+          }
+        },
+        {
+          "snapshot": "S4",
+          "coordinate": 0,
+          "mode": "effective",
+          "expected": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "occurrence",
+                "temporal_role": "source_occurrence",
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "R": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "state",
+                "temporal_role": "causal_order",
+                "source": "A",
+                "target": "B",
+                "type": "LINK"
+              }
+            }
+          }
+        },
+        {
+          "snapshot": "S4",
+          "coordinate": 3,
+          "mode": "effective",
+          "expected": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "occurrence",
+                "temporal_role": "source_occurrence",
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "R": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "state",
+                "temporal_role": "causal_order",
+                "source": "A",
+                "target": "B",
+                "type": "LINK"
+              }
+            }
+          }
+        },
+        {
+          "snapshot": "S4",
+          "coordinate": 4,
+          "mode": "effective",
+          "expected": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "occurrence",
+                "temporal_role": "source_occurrence",
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "R": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "state",
+                "temporal_role": "causal_order",
+                "source": "A",
+                "target": "B",
+                "type": "LINK"
+              }
+            }
+          }
+        },
+        {
+          "snapshot": "S4",
+          "coordinate": 5,
+          "mode": "effective",
+          "expected": {
+            "nodes": {
+              "A": {
+                "life": 2,
+                "properties": {},
+                "interpretation": "occurrence",
+                "temporal_role": "source_occurrence",
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "R": {
+                "life": 2,
+                "properties": {},
+                "interpretation": "state",
+                "temporal_role": "causal_order",
+                "source": "A",
+                "target": "B",
+                "type": "LINK"
+              }
+            }
+          }
+        },
+        {
+          "snapshot": "S4",
+          "coordinate": 6,
+          "mode": "effective",
+          "expected": {
+            "nodes": {
+              "A": {
+                "life": 2,
+                "properties": {},
+                "interpretation": "occurrence",
+                "temporal_role": "source_occurrence",
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "R": {
+                "life": 2,
+                "properties": {},
+                "interpretation": "state",
+                "temporal_role": "causal_order",
+                "source": "A",
+                "target": "B",
+                "type": "LINK"
+              }
+            }
+          }
+        },
+        {
+          "snapshot": "S4",
+          "coordinate": 7,
+          "mode": "effective",
+          "expected": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "occurrence",
+                "temporal_role": "source_occurrence",
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "R": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "state",
+                "temporal_role": "causal_order",
+                "source": "A",
+                "target": "B",
+                "type": "LINK"
+              }
+            }
+          }
+        },
+        {
+          "snapshot": "S4",
+          "coordinate": 9,
+          "mode": "effective",
+          "expected": {
+            "nodes": {
+              "A": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "occurrence",
+                "temporal_role": "source_occurrence",
+                "labels": []
+              },
+              "B": {
+                "life": 1,
+                "properties": {},
+                "labels": []
+              }
+            },
+            "edges": {
+              "R": {
+                "life": 1,
+                "properties": {},
+                "interpretation": "state",
+                "temporal_role": "causal_order",
+                "source": "A",
+                "target": "B",
+                "type": "LINK"
+              }
+            }
+          }
+        },
+        {
+          "snapshot": "S4",
+          "coordinate": 10,
+          "mode": "effective",
+          "expected": {
+            "nodes": {},
+            "edges": {}
+          }
+        }
+      ],
+      "failures": []
+    }
+  ]
+}

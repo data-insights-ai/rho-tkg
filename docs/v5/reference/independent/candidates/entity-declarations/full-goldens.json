@@ -1,0 +1,319 @@
+{
+  "cases": [
+    {
+      "axis": {
+        "identity": "E01-event-multiplicity-axis",
+        "profile": "Q",
+        "reference": "abstract-test-reference-v1",
+        "unit": "abstract-position",
+        "version": 1
+      },
+      "failures": [],
+      "id": "E01-event-multiplicity",
+      "kind": "graph",
+      "reads": [
+        {
+          "coordinate": 12,
+          "expected": {
+            "edges": {},
+            "nodes": {
+              "login-1": {
+                "interpretation": "occurrence",
+                "labels": [],
+                "life": 1,
+                "properties": {},
+                "temporal_role": "occurrence_time"
+              },
+              "login-2": {
+                "interpretation": "occurrence",
+                "labels": [],
+                "life": 1,
+                "properties": {},
+                "temporal_role": "occurrence_time"
+              }
+            }
+          },
+          "lifecycle_status": false,
+          "mode": "effective",
+          "snapshot": "S1"
+        },
+        {
+          "coordinate": 13,
+          "expected": {
+            "edges": {},
+            "nodes": {}
+          },
+          "lifecycle_status": false,
+          "mode": "effective",
+          "snapshot": "S1"
+        }
+      ],
+      "semantics": "Same point preserves two identities; point does not establish persistence.",
+      "steps": [
+        {
+          "change_count": 2,
+          "operations": [
+            {
+              "id": "login-1",
+              "interpretation": "occurrence",
+              "labels": [],
+              "life": 1,
+              "op": "create_vertex",
+              "properties": {},
+              "temporal_role": "occurrence_time",
+              "upper_closed": true,
+              "valid": [
+                12,
+                12
+              ]
+            },
+            {
+              "id": "login-2",
+              "interpretation": "occurrence",
+              "labels": [],
+              "life": 1,
+              "op": "create_vertex",
+              "properties": {},
+              "temporal_role": "occurrence_time",
+              "upper_closed": true,
+              "valid": [
+                12,
+                12
+              ]
+            }
+          ],
+          "provenance": "S1:provenance",
+          "revision": "S1:rev",
+          "snapshot": "S1"
+        }
+      ]
+    },
+    {
+      "axis": {
+        "identity": "E01-E03-interpretation-independent-of-support-Z-axis",
+        "profile": "Z",
+        "reference": "abstract-test-reference-v1",
+        "unit": "abstract-position",
+        "version": 1
+      },
+      "failures": [],
+      "id": "E01-E03-interpretation-independent-of-support-Z",
+      "kind": "graph",
+      "reads": [
+        {
+          "coordinate": 0,
+          "expected": {
+            "edges": {},
+            "nodes": {
+              "event": {
+                "interpretation": "occurrence",
+                "labels": [],
+                "life": 1,
+                "properties": {},
+                "temporal_role": "source_occurrence"
+              },
+              "state": {
+                "interpretation": "state",
+                "labels": [],
+                "life": 1,
+                "properties": {},
+                "temporal_role": "validity"
+              }
+            }
+          },
+          "lifecycle_status": false,
+          "mode": "effective",
+          "snapshot": "S1"
+        },
+        {
+          "coordinate": 1,
+          "expected": {
+            "edges": {},
+            "nodes": {}
+          },
+          "lifecycle_status": false,
+          "mode": "effective",
+          "snapshot": "S1"
+        }
+      ],
+      "semantics": "Point(0) and span[0,1) have equal support on Z but retain distinct supplied interpretation and temporal role; canonical support must not assign assertion meaning.",
+      "steps": [
+        {
+          "change_count": 2,
+          "operations": [
+            {
+              "id": "event",
+              "interpretation": "occurrence",
+              "labels": [],
+              "life": 1,
+              "op": "create_vertex",
+              "properties": {},
+              "temporal_role": "source_occurrence",
+              "upper_closed": true,
+              "valid": [
+                0,
+                0
+              ]
+            },
+            {
+              "id": "state",
+              "interpretation": "state",
+              "labels": [],
+              "life": 1,
+              "op": "create_vertex",
+              "properties": {},
+              "temporal_role": "validity",
+              "valid": [
+                0,
+                1
+              ]
+            }
+          ],
+          "provenance": "S1:provenance",
+          "revision": "S1:rev",
+          "snapshot": "S1"
+        }
+      ]
+    },
+    {
+      "axis": {
+        "identity": "E07-causal-records-axis",
+        "profile": "Q",
+        "reference": "abstract-test-reference-v1",
+        "unit": "abstract-position",
+        "version": 1
+      },
+      "failures": [],
+      "id": "E07-causal-records",
+      "kind": "graph",
+      "reads": [
+        {
+          "coordinate": 5,
+          "expected": {
+            "edges": {
+              "A-before-C": {
+                "interpretation": "asserted_relation",
+                "life": 1,
+                "properties": {},
+                "source": "A",
+                "target": "C",
+                "temporal_role": "causal_order",
+                "type": "PRECEDES"
+              },
+              "B-before-C": {
+                "interpretation": "asserted_relation",
+                "life": 1,
+                "properties": {},
+                "source": "B",
+                "target": "C",
+                "temporal_role": "causal_order",
+                "type": "PRECEDES"
+              }
+            },
+            "nodes": {
+              "A": {
+                "labels": [],
+                "life": 1,
+                "properties": {}
+              },
+              "B": {
+                "labels": [],
+                "life": 1,
+                "properties": {}
+              },
+              "C": {
+                "labels": [],
+                "life": 1,
+                "properties": {}
+              }
+            }
+          },
+          "lifecycle_status": false,
+          "mode": "effective",
+          "snapshot": "S1"
+        }
+      ],
+      "semantics": "Two asserted precedence edges enumerate without inventing A-vs-B precedence or running transitive closure.",
+      "steps": [
+        {
+          "change_count": 5,
+          "operations": [
+            {
+              "id": "A",
+              "labels": [],
+              "life": 1,
+              "op": "create_vertex",
+              "properties": {},
+              "valid": [
+                0,
+                10
+              ]
+            },
+            {
+              "id": "B",
+              "labels": [],
+              "life": 1,
+              "op": "create_vertex",
+              "properties": {},
+              "valid": [
+                0,
+                10
+              ]
+            },
+            {
+              "id": "C",
+              "labels": [],
+              "life": 1,
+              "op": "create_vertex",
+              "properties": {},
+              "valid": [
+                0,
+                10
+              ]
+            },
+            {
+              "id": "A-before-C",
+              "interpretation": "asserted_relation",
+              "life": 1,
+              "op": "create_edge",
+              "properties": {},
+              "reference_mode": "identity_reference",
+              "source": "A",
+              "target": "C",
+              "temporal_role": "causal_order",
+              "type": "PRECEDES",
+              "valid": [
+                0,
+                10
+              ]
+            },
+            {
+              "id": "B-before-C",
+              "interpretation": "asserted_relation",
+              "life": 1,
+              "op": "create_edge",
+              "properties": {},
+              "reference_mode": "identity_reference",
+              "source": "B",
+              "target": "C",
+              "temporal_role": "causal_order",
+              "type": "PRECEDES",
+              "valid": [
+                0,
+                10
+              ]
+            }
+          ],
+          "provenance": "S1:provenance",
+          "revision": "S1:rev",
+          "snapshot": "S1"
+        }
+      ]
+    }
+  ],
+  "schema": "rho-entity-declaration-full-golden-extraction",
+  "source": "../../temporal/revised-acceptance-v1.json",
+  "source_corpus_revision": 3,
+  "source_sha256": "263de8c0c2bfd078747bd26cc46c0b3e2f5897b264698bc2f891e5c0eeb06f85",
+  "version": 1
+}
