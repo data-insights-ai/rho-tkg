@@ -881,3 +881,126 @@ func TestBulkAsOfPresence_ClearDropsTops(t *testing.T) {
 		})
 	}
 }
+
+// TestBulkAsOfPresence_SetIntoUnknownIDKeepsRowsAbove (guard): after a history
+// delete the ID is unknown and rows above the current version remain; a later
+// SET of a LOWER version must not turn the ID into "top = that version", and a
+// probe that resolves the ID must see a pending row above the committed ones.
+func TestBulkAsOfPresence_SetIntoUnknownIDKeepsRowsAbove(t *testing.T) {
+	t.Parallel()
+	for _, k := range bulkPresenceKinds() {
+		t.Run(k.name, func(t *testing.T) {
+			t.Parallel()
+			bs := openBulkPresenceStore(t, t.TempDir(), false)
+			t.Cleanup(func() { _ = bs.Close() })
+			putBulkPresenceEndpoints(t, bs)
+			id := k.id(3)
+			k.put(t, bs, id, 0, 100, false)
+			k.put(t, bs, id, 1, 200, true)
+			for v := uint32(2); v <= 5; v++ {
+				k.put(t, bs, id, v, 300+types.Instant(v), false)
+			}
+			if err := bs.Flush(); err != nil {
+				t.Fatalf("Flush: %v", err)
+			}
+			has := func() {
+				t.Helper()
+				var present bool
+				var err error
+				if k.name == "node" {
+					present, err = bs.HasNodeHistory(types.NodeID(snowflake.ID(id)))
+				} else {
+					present, err = bs.HasRelHistory(types.RelID(snowflake.ID(id)))
+				}
+				if err != nil || !present {
+					t.Fatalf("HasHistory = (%v, %v), want true", present, err)
+				}
+			}
+			check := func(stage string) {
+				t.Helper()
+				assertBulkMatchesOracle(t, k, bs, []int64{id}, stage)
+			}
+			check("built")
+			if err := k.trim(bs, id, 5); err != nil { // v5 gone; the ID is unknown, v2..v4 remain above the current v1
+				t.Fatalf("trim: %v", err)
+			}
+			k.put(t, bs, id, 0, 100, false) // SET of a lower version into the unknown ID
+			check("set into unknown")
+			has() // resolves the ID: top must be 4, not 0
+			check("resolved")
+			if err := k.trim(bs, id, 3); err != nil {
+				t.Fatalf("trim: %v", err)
+			}
+			k.put(t, bs, id, 9, 400, false) // pending row above the committed ones, then the probe resolves
+			has()
+			check("pending row above")
+			if err := bs.Flush(); err != nil {
+				t.Fatalf("Flush: %v", err)
+			}
+			check("flushed")
+		})
+	}
+}
+
+// TestBulkAsOfPresence_BuildSeesUnflushedRows (guard): the first call builds the
+// set while the history rows are still in the write buffer.
+func TestBulkAsOfPresence_BuildSeesUnflushedRows(t *testing.T) {
+	t.Parallel()
+	for _, k := range bulkPresenceKinds() {
+		t.Run(k.name, func(t *testing.T) {
+			t.Parallel()
+			bs := openBulkPresenceStore(t, t.TempDir(), false)
+			t.Cleanup(func() { _ = bs.Close() })
+			putBulkPresenceEndpoints(t, bs)
+			ids := seedAboveCurrent(t, k, bs, 8) // nothing flushed
+			if k.built(bs) {
+				t.Fatal("set built before the first call")
+			}
+			got, err := k.bulk(bs, bulkPresencePin)
+			if err != nil {
+				t.Fatalf("bulk: %v", err)
+			}
+			for _, id := range ids {
+				if got[id] != 2 {
+					t.Fatalf("%s %d: bulk v%d, want v2 (a pending row above the current version)", k.name, id, got[id])
+				}
+			}
+		})
+	}
+}
+
+// TestBulkAsOfPresence_BuildMergesTopNotedDuringScan (guard): a row above the
+// committed ones written between the build's key scan and its install is noted
+// at its own version; the install must keep the higher of note and scan.
+func TestBulkAsOfPresence_BuildMergesTopNotedDuringScan(t *testing.T) {
+	t.Parallel()
+	for _, k := range bulkPresenceKinds() {
+		t.Run(k.name, func(t *testing.T) {
+			t.Parallel()
+			bs := openBulkPresenceStore(t, t.TempDir(), false)
+			t.Cleanup(func() { _ = bs.Close() })
+			putBulkPresenceEndpoints(t, bs)
+			var ids []int64
+			for e := 0; e < 5; e++ {
+				id := k.id(e)
+				ids = append(ids, id)
+				k.put(t, bs, id, 0, 100, false)
+				k.put(t, bs, id, 1, 200, true)
+			}
+			if err := bs.Flush(); err != nil {
+				t.Fatalf("Flush: %v", err)
+			}
+			bs.historyPresenceBuildHook = func() {
+				for _, id := range ids {
+					k.put(t, bs, id, 2, 300, false) // lands after the scan, before the install
+				}
+			}
+			t.Cleanup(func() { bs.historyPresenceBuildHook = nil })
+			if _, err := k.bulk(bs, bulkPresencePin); err != nil {
+				t.Fatalf("bulk: %v", err)
+			}
+			bs.historyPresenceBuildHook = nil
+			assertBulkMatchesOracle(t, k, bs, ids, "after build")
+		})
+	}
+}
