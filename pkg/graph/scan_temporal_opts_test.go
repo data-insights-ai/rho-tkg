@@ -540,3 +540,170 @@ func TestScanDoorsAgreeWithByLabelOpts_RelRange(t *testing.T) {
 		}
 	})
 }
+
+// TestScanDoorsTemporalOpts_RangeLimitAfterEarlyStop pins pagination and early
+// stop on the temporal range fold, node and relationship. Faulty implementations
+// caught: Limit applied by ID BEFORE the value filter (the page {A, B} holds A,
+// out of range, so one row instead of two), After ignored, fn's false ignored.
+func TestScanDoorsTemporalOpts_RangeLimitAfterEarlyStop(t *testing.T) {
+	forAllStoreBackends(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
+		buildScanOptsFixture(t, g)
+		base := graphpkg.QueryOpts{ValidAt: 1500}
+		const lo, hi = 15, 65
+
+		nodeIDs := sortedIDKeys(filterRows(nodeRowsByLabel(t, g, base), lo, hi))
+		relIDs := sortedIDKeys(filterRows(relRowsByType(t, g, base), lo, hi))
+		if len(nodeIDs) < 3 || len(relIDs) < 3 {
+			t.Fatalf("fixture too small: %d nodes, %d rels in range", len(nodeIDs), len(relIDs))
+		}
+
+		nodeRun := func(opts graphpkg.QueryOpts, stopAfter int) []int64 {
+			var out []int64
+			err := g.Nodes().ForEachByLabelPropertyRange(scanLabel, scanNodeKey, lo, hi, true, true, opts, func(n *types.Node) bool {
+				out = append(out, int64(n.ID()))
+				return stopAfter == 0 || len(out) < stopAfter
+			})
+			if err != nil {
+				t.Fatalf("node range %+v: %v", opts, err)
+			}
+			return out
+		}
+		relRun := func(opts graphpkg.QueryOpts, stopAfter int) []int64 {
+			var out []int64
+			err := g.Rels().ForEachByTypePropertyRange(scanRelType, scanRelKey, lo, hi, true, true, opts, func(r *types.Relationship) bool {
+				out = append(out, int64(r.ID()))
+				return stopAfter == 0 || len(out) < stopAfter
+			})
+			if err != nil {
+				t.Fatalf("rel range %+v: %v", opts, err)
+			}
+			return out
+		}
+		for _, side := range []struct {
+			name string
+			ids  []int64
+			run  func(graphpkg.QueryOpts, int) []int64
+		}{{"node", nodeIDs, nodeRun}, {"rel", relIDs, relRun}} {
+			limit := base
+			limit.Limit = 2
+			if got := side.run(limit, 0); fmt.Sprint(got) != fmt.Sprint(side.ids[:2]) {
+				t.Errorf("%s Limit 2: got %v, want %v", side.name, got, side.ids[:2])
+			}
+			after := base
+			after.After = types.EntityID(side.ids[0])
+			if got := side.run(after, 0); fmt.Sprint(got) != fmt.Sprint(side.ids[1:]) {
+				t.Errorf("%s After first: got %v, want %v", side.name, got, side.ids[1:])
+			}
+			if got := side.run(base, 1); len(got) != 1 {
+				t.Errorf("%s early stop: fn called %d times, want 1", side.name, len(got))
+			}
+		}
+	})
+}
+
+func sortedIDKeys[ID ~int64](m map[ID]scanRow) []int64 {
+	out := make([]int64, 0, len(m))
+	for id := range m {
+		out = append(out, int64(id))
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+// TestScanDoorsTemporalOpts_RangeNeverDropsAtExclusiveBound pins the
+// over-selection contract on the temporal range fold: an int64 past 2^53 whose
+// float64 rounds ONTO an exclusive bound is still offered to fn, which re-checks
+// exactly. Faulty implementation caught: the fold applying inclMin/inclMax in
+// float64 (numericInRange), which drops 2^53+1 for "> 2^53".
+func TestScanDoorsTemporalOpts_RangeNeverDropsAtExclusiveBound(t *testing.T) {
+	forAllStoreBackends(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
+		ctx := context.Background()
+		const big = int64(1)<<53 + 1
+		bound := float64(int64(1) << 53)
+		n, err := g.Nodes().Add(ctx, []string{scanLabel}, map[string]any{scanNodeKey: big, "tkg_valid_from": types.Instant(1000)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, err := g.Rels().Add(ctx, scanRelType, n, n, map[string]any{scanRelKey: big, "tkg_valid_from": types.Instant(1000)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		opts := graphpkg.QueryOpts{ValidAt: 1500}
+		var nodes, rels int
+		if err := g.Nodes().ForEachByLabelPropertyRange(scanLabel, scanNodeKey, bound, 1e300, false, true, opts, func(got *types.Node) bool {
+			v, _ := got.GetProperty(scanNodeKey)
+			if got.ID() == n.ID() && v.(int64) > int64(1)<<53 { // fn's exact re-check
+				nodes++
+			}
+			return true
+		}); err != nil {
+			t.Fatalf("node range: %v", err)
+		}
+		if err := g.Rels().ForEachByTypePropertyRange(scanRelType, scanRelKey, bound, 1e300, false, true, opts, func(got *types.Relationship) bool {
+			v, _ := got.GetProperty(scanRelKey)
+			if got.ID() == r.ID() && v.(int64) > int64(1)<<53 {
+				rels++
+			}
+			return true
+		}); err != nil {
+			t.Fatalf("rel range: %v", err)
+		}
+		if nodes != 1 || rels != 1 {
+			t.Errorf("2^53+1 under exclusive min 2^53: node offered %d times, rel %d times, want 1 each", nodes, rels)
+		}
+	})
+}
+
+// TestScanDoorsTemporalOpts_RelColumnsEveryTypeStops pins the every-type scan
+// (relType "") on the temporal path: each type's batches carry their own type
+// name and the version value at t, and fn returning false stops the WHOLE scan.
+// Faulty implementations caught: a stop that only ends the current type, a
+// batch labelled with the wrong type, a type skipped, the live value.
+func TestScanDoorsTemporalOpts_RelColumnsEveryTypeStops(t *testing.T) {
+	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
+		ctx := context.Background()
+		a, _ := g.Nodes().Add(ctx, []string{"H"}, nil)
+		c, _ := g.Nodes().Add(ctx, []string{"H"}, nil)
+		want := map[string]int64{}
+		for i, typ := range []string{"R1", "R2", "R3"} {
+			r, err := g.Rels().Add(ctx, typ, a, c, map[string]any{scanRelKey: int64(i), "tkg_valid_from": types.Instant(1000)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := g.Rels().Update(ctx, r.ID(), map[string]any{scanRelKey: int64(100 + i), "tkg_valid_from": types.Instant(2000)}); err != nil {
+				t.Fatal(err)
+			}
+			want[typ] = int64(i) // the value at 1500, before the update
+		}
+		opts := graphpkg.QueryOpts{ValidAt: 1500}
+		got := map[string]int64{}
+		ok, err := g.ScanRelColumns("", []string{scanRelKey}, opts, func(rb *graphpkg.RelColumnBatch) bool {
+			for i := range rb.IDs {
+				got[rb.RelType] = rb.Ints[0][i]
+			}
+			return true
+		})
+		if err != nil {
+			t.Fatalf("ScanRelColumns all: %v", err)
+		}
+		if !ok {
+			if columnScanNative(b) {
+				t.Fatalf("ok=false on %s", b.name)
+			}
+			return
+		}
+		if fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Errorf("every-type scan at 1500: got %v, want %v", got, want)
+		}
+		calls := 0
+		if _, err := g.ScanRelColumns("", []string{scanRelKey}, opts, func(*graphpkg.RelColumnBatch) bool {
+			calls++
+			return false
+		}); err != nil {
+			t.Fatalf("ScanRelColumns stop: %v", err)
+		}
+		if calls != 1 {
+			t.Errorf("fn returned false on the first batch; called %d times, want 1", calls)
+		}
+	})
+}
