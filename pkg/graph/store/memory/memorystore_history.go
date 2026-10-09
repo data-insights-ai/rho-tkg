@@ -643,7 +643,15 @@ func (ms *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 		ms.relHistory[rid] = inner
 	}
 	inner[version] = ms.historyRel(r)
-	ms.recordRelTypeMemberLocked(r)                    // transaction-time rel-type membership (history version)
+	ms.recordRelTypeMemberLocked(r) // transaction-time rel-type membership (history version)
+	// A live relationship's envelope covers every row it has had since the
+	// index existed, so this version's interval joins it (an imported or
+	// restored past version stays findable). A relationship without a current
+	// row is not covered at all and is never pruned — extending it here would
+	// vouch for this one version while its other history rows stay outside.
+	if _, live := ms.rels[rid]; live {
+		indexpkg.AddRelToTemporalIndexes(ms.relTypeTemporalIndexes, r, rid.SnowflakeID())
+	}
 	ms.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r)) // BACKLOG 10c — the cascade's bounded-correction append door
 	return ms.logRelHistoryVersionRoutedLocked(version, r, token)
 }

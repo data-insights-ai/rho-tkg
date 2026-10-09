@@ -232,11 +232,21 @@ func (bs *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 	// the cascade's bounded-correction append door. The op and its record are
 	// enqueued together under one wbMu critical section (appendOpsLoggedRouted)
 	// for snapshot atomicity.
+	// A live relationship's rel-type temporal envelope covers every row it has
+	// had since the index existed, so this version's interval joins it (an
+	// imported or restored past version stays findable). A relationship
+	// without a current row is not covered and is never pruned — extending it
+	// here would vouch for this one version while its other rows stay outside.
 	err = bs.enqueueVersionAgainstLazyBuilds(
-		func() bool { return bs.relTypeMembersBuilt.Load() || bs.relBeliefWatermarkBuilt.Load() },
+		func() bool {
+			return bs.relTypeMembersBuilt.Load() || bs.relBeliefWatermarkBuilt.Load() || len(bs.relTypeTemporalIndexes) > 0
+		},
 		func() {
 			bs.recordRelTypeMemberLocked(r)
 			bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r))
+			if _, live := bs.relIDs[rid]; live {
+				bs.maintainRelTypeTemporalIndexesAdd(r, id)
+			}
 		},
 		func() error {
 			return bs.appendOpsLoggedRouted(storecontract.ChangeRelHistoryVersion, logPayload, token, writeOp{opType: writeOpSet, key: key, value: data})
