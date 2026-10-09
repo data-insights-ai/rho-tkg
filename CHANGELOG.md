@@ -177,6 +177,44 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   index/hash. Bank B transfer works; activation, driver-fence
   relaxation, multi-voter integration and physical RSS/disk acceptance stay open.
 
+- **Bounded private allocation/request reduction** (`96cbfe7`): allocator,
+  recipient and grant effects use exact request identity/hash replay before
+  epoch/grant admission. Bounded failure cannot publish partial allocation
+  effects; the outer graph materializer's operational policy remains separate. Successful fresh initialization requires the
+  authoritative empty-application proof. Effects preserve the borrowed root;
+  the outer materializer owns composition/installation. Reviewed Go 1.26.9
+  gates pass (91.34% changed production coverage); no Host, graph admission,
+  consumed-ID index or issuance callback authority is granted.
+
+- **Durable publication and receiver-only snapshot activation** (`c3d3705`,
+  `2f5fb6b`, `e665ace`): publication retains a stable applied application
+  reference without scanning application history; bounded exact-cut export verifies
+  retained envelopes and charges skipped future rows. AS2 binds the published
+  reference and complete canonical history. Fresh fixed-three-voter RLM6 Store
+  activation requires a live verified claim and the actual snapshot-bearing
+  Raft Ready, then synchronously co-commits consensus state, bank, full image
+  and ledgers. Old views retain their generation. The Driver remains fenced;
+  application references are not certified graph cuts. Process/fault tests and
+  pinned gates pass; failure-cleanup tests (`d076dcd`) additionally prove four
+  real Fatal seams release publication gates and join workers without timeout.
+  This is not power-loss, multi-host or end-to-end replication acceptance.
+
+- **Complete local graphstore integration** (`b3c7de1`): fresh-only Full roots
+  contain real component-key, raw typed-uniqueness, canonical-incident and
+  declared-incident trees. Complete ReadView doors share one generation-bound
+  identity and aggregate source/output/cursor limits. Exact canonical lookup
+  prevents equal-content aliases/hash collisions bypassing uniqueness; retained
+  raw candidates include closed/retracted history, and incident merging
+  deduplicates self-loops/life runs while preserving parallel relationship IDs.
+  Typed staging runs Plan internally and atomically computes catalog/page/index
+  effects with ordered CDC; the outer materializer alone advances semantics
+  and installs the final batch. Historical correction/reopen, exact-set and
+  late-failure/cancellation tests pass. Go 1.26.9 frozen gates pass (89.2% whole
+  v5 coverage, 84.71% new production; every new file at least 80%). Budgets bound
+  owned representation/work, not heap/RSS. Driver/materializer integration,
+  certified distributed cuts, the 10-active versus 10k/100k-ended access gate,
+  all-in physical/comparative capacity and V0–V7 acceptance remain open.
+
 ### Fixed
 
 - **v5 correctness follow-ups**: prospective metadata obeys `MaxReadyBytes`

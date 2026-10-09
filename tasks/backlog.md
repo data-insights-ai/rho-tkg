@@ -75,7 +75,7 @@ and reference JSON specify contracts/evidence, not completed engine gates.
 |---|---|
 | V0 | Historical reference subset accepted. Broader independent revised models, profile units/import mapping, consumer door/capacity acceptance and numerical limit/threshold decisions remain open |
 | V1 | Reviewed/implemented temporal primitives and codecs (exact scalar/tuple values, scopes/regions/Allen, point knowledge and opaque descriptors), plus component-state reducer primitives. Graphstate `Plan`/`Project` and the byte-identical 16-fixture/52-assertion Go path accepted (local `e5b23d9`), including bounded page/type/uniqueness/CDC-delta behavior. Graph-engine/storage integration, remaining revised models and full V1 acceptance stay open |
-| V2 | Candidate Raft/Pebble log/replica adapter independently validated as an adapter only. Bounded idalloc primitive independently validated on Go 1.26.9 (99.3% coverage; eight source/config hashes match). Bounded two-group transaction correctness prototype accepted (`92312ae`; independent 24-source/config checks, scoped combined coverage 86.3%). Six-process crash-functional slice accepted (`f3a1ee7`); power-loss/multi-host durability and global cross-process cut transport stay open. Full graph transaction/cut integration and serial-history oracle, production graph identity reuse/fencing, application GC, dormant-snapshot activation and Raft application multi-voter integration, physical-host durability, comparative costs/faults and engine selection remain open |
+| V2 | Candidate Raft/Pebble log/replica adapter independently validated as an adapter only. Bounded idalloc primitive independently validated on Go 1.26.9 (99.3% coverage; eight source/config hashes match). Bounded two-group transaction correctness prototype accepted (`92312ae`; independent 24-source/config checks, scoped combined coverage 86.3%). Six-process crash-functional slice accepted (`f3a1ee7`); power-loss/multi-host durability and global cross-process cut transport stay open. Full graph transaction/cut integration and serial-history oracle, production graph identity reuse/fencing, application GC, end-to-end Driver snapshot activation and Raft application multi-voter integration, physical-host durability, comparative costs/faults and engine selection remain open |
 | V3 | Coordinate timeblock candidate independently validated (local commit `fa0c982`; scoped temporal+block coverage 95.7%, no exported method at 0%). Full engine seal/merge/recovery, paged structures and all-in budget/byte-ledger measurements remain open; resident-buffer prototype timings do not close V3 |
 | V4 | Production read/change APIs, historical cross-door parity, gap-free leased feed handoff and pinned sigma access-contract build and nonempty mutation-then-historical tests (the current signature/empty smoke is insufficient) |
 | V5 | Distributed access across 1/2/4/8 partitions, cross-edge/stall/rebalance/feed cases and sigma workload parity |
@@ -212,10 +212,11 @@ Local accepted prerequisites also include bounded state/change codecs
 (`a00a544`), the native FoundationDB functional comparator (`04d4fb3`),
 atomic retained ApplicationBatch/root/CDC/outcome storage in the same Pebble
 batch (`c99e1dc`) and cached ID recipient fencing across the actual two-group,
-six-process scalar protocol (`de9e0b7`). Application storage is singleton-voter
-only with retained-data quota backpressure; bounded dormant export/import
-(`7caf9d3`) is now accepted, but activation, Raft application multi-voter
-integration, application GC and production graph assembly remain open.
+six-process scalar protocol (`de9e0b7`). Initial application storage is
+singleton-voter with retained-data quota backpressure; bounded dormant export/import
+(`7caf9d3`) is accepted; the later receiver-only activation is recorded below.
+End-to-end Driver snapshot traffic, Raft application multi-voter integration,
+application GC and production graph assembly remain open.
 Allocation-service
 authority is separate from recipient/session epochs; production graph identity
 reuse validation remains open. Full graph/materializer/Host integration, graph
@@ -250,8 +251,8 @@ Dormant application snapshot transfer (`7caf9d3`) is independently accepted:
 451 review-input hashes match; worker full gates pass (90.2% v5 coverage), and
 parent raftlog race/coverage passes (87.4%). Export of the captured applied checkpoint and retained history uses bounded
 canonical chunks to import into an inactive bank; even verified imports never
-change active state. Activation, Raft application multi-voter integration,
-certified cuts and production topology transfer remain open.
+change active state on their own. End-to-end Driver activation, Raft application
+multi-voter integration, certified cuts and production topology transfer remain open.
 
 Component pages (`a2bd71c`) are accepted as a bounded local directory/checkpoint/
 patch prototype: 154 snapshot hashes match; parent graphstore race coverage is
@@ -287,8 +288,29 @@ Ready/lifecycle/binding, bootstrap and generation contracts are in CHANGELOG Unr
 Generation snapshot checks pin 1,966 inputs and pass Go 1.26.9 full v5
 race/vet/build/coverage (89.6%) and pinned lint/gosec/govulncheck; parent independent
 raftlog/replica/graphstore race coverage is 87.8%/90.5%/87.0%. All V0–V7 gates
-remain open, including activation, real indexes/cuts, multi-voter integration and
-physical capacity. Rho preserves/accesses data and database consistency; sigma reasons.
+remain open; later local index/receiver increments below do not certify graph
+cuts, end-to-end multi-voter integration or physical capacity. Rho preserves/accesses data and database consistency; sigma reasons.
+
+Accepted integration prerequisites now include private allocation/request reduction
+(`96cbfe7`), durable application publication (`c3d3705`), exact published export
+(`2f5fb6b`), receiver-only Store activation (`e665ace`) and real Fatal-seam
+publication-worker cleanup tests (`d076dcd`). Requests replay by exact identity/hash
+before epoch/grant checks. Export verifies complete retained history at the stable
+published application reference with bounded visited/output work; receiver activation
+requires a verified live claim and actual Raft Ready and retains old generations.
+Driver traffic remains fenced; these references are not certified graph cuts.
+
+Complete local graphstore (`b3c7de1`) supplies fresh-only Full indexes, one complete
+ReadView identity and Plan-running atomic graph-effect staging, including exact
+canonical alias handling, historical raw uniqueness candidates and deduplicated
+incident multiplicity. Frozen Go 1.26.9 gates pass (89.2% whole v5, 84.71% new
+production; every new file at least 80%). Exact-set historical/reopen, budget and
+late-cancellation regressions are covered. Outer graphapply materializer/Driver
+composition into one final root/CDC/outcome ApplicationBatch remains open, as do
+certified distributed cuts/transactions, the PLAN §4.2 10-active versus 10k/100k-ended
+access measurement, seal/merge/recovery and database-wide physical heap/RSS/page-cache
+and comparative capacity gates. Representation ledgers do not prove physical memory
+bounds. These are prerequisites; no V0–V7 phase or public engine release is closed.
 
 Binding validation (`0e4c96b`) adds accepted correctness cost; optimization
 remains pending. Five interleaved Go 1.26.9/M4 Max/GOMAXPROCS=4
