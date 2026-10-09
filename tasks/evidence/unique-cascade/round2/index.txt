@@ -1,0 +1,29 @@
+Round 2 (2026-10-09): merged main dae5c05 (item G, HasHistory); review finding: a UniqueForever
+claim made at the kernel's entry leaked when a later kernel step refused the cascade.
+
+red.txt                      on the merge (check still at entry, after G's ErrEntityDeleted refusal):
+                             TestUniqueCascade_KernelFailureClaimsNothing RED 24 of 48 subtests (every
+                             UniqueForever backend x door: an ErrTooManyProperties cascade left "z" owned).
+                             GUARD: TestUniqueCascade_DeletedNodeClaimsNothing passed already, because G
+                             refuses a deleted entity before the check; it guards the order, it is not the
+                             red test.
+red-store-write-failure.txt  after the move to the built rows: TestUniqueCascade_StoreWriteFailure-
+                             WithdrawsUnwrittenClaim RED (claim kept after the first write failed).
+                             GUARD: ...KeepsWrittenClaim passed already (claims were never withdrawn).
+green-store-write-failure.txt, green-final.txt
+                             after both fixes: 21 of 21 TestUniqueCascade_* tests (14 public, 7 core),
+                             632 of 632 public subtests pass. ...WithdrawPersistFailureKeepsClaim is a
+                             guard written with the withdrawal code (its persist-failure branch).
+mutant-*.txt, mutants-summary.txt
+                             final code, one real edit each, all 10 red: M1a-d check skipped at one door
+                             (temporal, tx, batch + strong session, concurrent session), M2 only the new
+                             value's stripe, M3 stripe released before the store write, M4 claim before
+                             the kernel's checks, M5 claims kept on a failed write, M6 claims withdrawn
+                             although a written row carries the value, M7 withdrawal persist failure
+                             drops the in-memory claim.
+build-vet-gofmt.txt          go build ./..., go vet ./..., gofmt -l pkg: clean.
+full-pkg-tests.txt           go test ./pkg/... -count=1: 34 packages ok, exit 0.
+race.txt                     go test -race on internal/core, constraints, pkg/graph: exit 0.
+w5-oracle-60.txt             TXB_ORACLE_SEEDS=60 TestTxBackfillOracle_CrossBackend: PASS.
+coverage.txt                 new code 88.9-100 % per function; claimForever 73.3 % (its uncovered lines are
+                             the pre-existing persist-failure path moved over from checkAndClaimForever).

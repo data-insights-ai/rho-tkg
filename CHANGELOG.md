@@ -66,6 +66,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **HIGH: unique constraints are enforced on `SetNodeVersionInterval` props patches** (found in the
+  review of the ingest interval doors, 2026-10-09; `tasks/backlog.md` item 12). The cascade kernel
+  appended rows from the patch without consulting `CreateUnique` / `CreateUniqueForever`, so on all
+  four doors (`Temporal().SetNodeVersionInterval`, `GraphTx`, `BatchBuilder`, ingest `Session` in
+  strong and concurrent mode) a patch could give a node a value another current node held or another
+  entity owned forever. The kernel now judges its built rows under the entity lock, after every
+  kernel check (deleted entity, version overflow, `ErrTooManyProperties`, hashing, the current-slot
+  replacement) and right before its first store write, as the update doors judge a write. Rule: `UniqueCurrent` binds the current row. An
+  open-ended call (`validTo == 0`) replaces it with base + patch, so a constrained value another
+  current node holds is refused and moving off a value frees it; a bounded call leaves the current
+  row's value (the resumption re-asserts it), so a past slice may repeat another node's value, as
+  history may. `UniqueForever` binds every value ever written: any patch value, on any piece, owned by
+  another entity (or held by another current node) is refused, and a passing patch claims it. A
+  patch that re-sets the node's own value, leaves the constrained key out, is nil, or deletes the key
+  passes; a float on a constrained key returns `ErrUniqueUnsupportedType`. A refusal returns
+  `ErrUniqueViolation`, appends nothing and claims nothing; a cascade the kernel refuses for any
+  other reason claims nothing either, and a failed store write withdraws every claim of the call
+  whose value no row it already wrote carries (a value that reached a stored row stays owned); in
+  a batch or session group it fails its
+  own op while the other ops commit, as an `UpdateNode` violation does. The value stripes (new values,
+  plus the replaced current value) are held until the kernel returns, across every store write, so
+  two concurrent patches onto one value give exactly one winner. `CreateUnique` over existing
+  duplicates is unchanged (`ErrUniqueViolationExisting`). Tests: `TestUniqueCascade_*` (memory,
+  badger, tiered, sharded × the four doors with the session in strong-sync, strong-async and
+  concurrent mode × both scopes, including `DeletedNodeClaimsNothing` and
+  `KernelFailureClaimsNothing`) and the core `TestUniqueCascade_*` (lock protocol; store-write
+  failure injected before and after the value was stored); evidence and mutants (one door skipped,
+  only the new stripe taken, stripe released before the write, claim before the kernel's checks,
+  claims kept on a failed write, claims withdrawn although written: each red) under
+  `tasks/evidence/unique-cascade/`.
+
 - **One version allocator: a write after a bounded cascade no longer reuses a cascade row's version** (backlog
   18). The cascade gave its rows `maxVersion+1` while Update, `CloseVersion`, label add/remove and property CAS
   used `current.Version()+1`, so the chain held two rows with one version and a later delete changed the TxAt

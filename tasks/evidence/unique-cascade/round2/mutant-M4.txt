@@ -1,0 +1,129 @@
+=== mutant M4-claim-before-kernel-checks
+diff --git a/pkg/graph/internal/core/temporal_cascade.go b/pkg/graph/internal/core/temporal_cascade.go
+index 97e4602..d0e145e 100644
+--- a/pkg/graph/internal/core/temporal_cascade.go
++++ b/pkg/graph/internal/core/temporal_cascade.go
+@@ -130,6 +130,28 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID,
+ 		// after it would be a belief no door reads consistently (backlog 14).
+ 		return nil, nodeDeletedErr(id)
+ 	}
++	if c.hasUniqueConstraints.Load() {
++		for pk, pv := range props {
++			if pv == nil {
++				continue
++			}
++			tmp := current.DeepCopy()
++			if tmp.SetProperty(pk, pv) != nil {
++				continue
++			}
++			vk, ok := tmp.IndexablePropertyValueKey(pk)
++			if !ok || vk == "" {
++				continue
++			}
++			for tok, byKey := range c.cascadeConstraintsFor([]*types.Node{tmp}) {
++				if sc, ok := byKey[pk]; ok && sc == 1 {
++					if err := c.checkAndClaimForever(tok, pk, vk, id); err != nil {
++						return nil, err
++					}
++				}
++			}
++		}
++	}
+ 
+ 	maxVersion := current.Version()
+ 	for _, h := range history {
+--- go test -run TestUniqueCascade_ ./pkg/graph/ (exit 1)
+--- FAIL: TestUniqueCascade_RefusalClaimsNothing (4.75s)
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/memory/tx/forever (0.00s)
+        unique_cascade_test.go:473: Add with the free half of a refused patch: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480200922890240 (UniqueForever) (a refused cascade must claim nothing)
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/memory/session-strong-sync/forever (0.00s)
+        unique_cascade_test.go:473: Add with the free half of a refused patch: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480201578840064 (UniqueForever) (a refused cascade must claim nothing)
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/memory/session-concurrent/forever (0.00s)
+        unique_cascade_test.go:473: Add with the free half of a refused patch: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480201766469632 (UniqueForever) (a refused cascade must claim nothing)
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/badger/temporal/forever (0.17s)
+        unique_cascade_test.go:473: Add with the free half of a refused patch: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480211549126656 (UniqueForever) (a refused cascade must claim nothing)
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/badger/tx/forever (0.08s)
+        unique_cascade_test.go:473: Add with the free half of a refused patch: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480216756322304 (UniqueForever) (a refused cascade must claim nothing)
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/badger/batch/forever (0.02s)
+        unique_cascade_test.go:473: Add with the free half of a refused patch: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480219028684800 (UniqueForever) (a refused cascade must claim nothing)
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/tiered/temporal/forever (0.25s)
+        unique_cascade_test.go:473: Add with the free half of a refused patch: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480247956766720 (UniqueForever) (a refused cascade must claim nothing)
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/tiered/tx/forever (0.25s)
+        unique_cascade_test.go:473: Add with the free half of a refused patch: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480258672066560 (UniqueForever) (a refused cascade must claim nothing)
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/tiered/batch/forever (0.15s)
+        unique_cascade_test.go:473: Add with the free half of a refused patch: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480268620660736 (UniqueForever) (a refused cascade must claim nothing)
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/tiered/session-strong-sync/forever (0.13s)
+        unique_cascade_test.go:473: Add with the free half of a refused patch: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480277809463296 (UniqueForever) (a refused cascade must claim nothing)
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/tiered/session-strong-async/forever (0.17s)
+        unique_cascade_test.go:473: Add with the free half of a refused patch: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480289082048512 (UniqueForever) (a refused cascade must claim nothing)
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/sharded/temporal/forever (0.12s)
+        unique_cascade_test.go:473: Add with the free half of a refused patch: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480310240935936 (UniqueForever) (a refused cascade must claim nothing)
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/sharded/tx/forever (0.17s)
+        unique_cascade_test.go:473: Add with the free half of a refused patch: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480320915013632 (UniqueForever) (a refused cascade must claim nothing)
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/sharded/batch/forever (0.16s)
+        unique_cascade_test.go:473: Add with the free half of a refused patch: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480331538759680 (UniqueForever) (a refused cascade must claim nothing)
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/sharded/session-strong-sync/forever (0.13s)
+        unique_cascade_test.go:473: Add with the free half of a refused patch: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480341772075008 (UniqueForever) (a refused cascade must claim nothing)
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/sharded/session-strong-async/forever (0.14s)
+        unique_cascade_test.go:473: Add with the free half of a refused patch: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480350808604672 (UniqueForever) (a refused cascade must claim nothing)
+    --- FAIL: TestUniqueCascade_RefusalClaimsNothing/sharded/session-concurrent/forever (0.07s)
+        unique_cascade_test.go:473: Add with the free half of a refused patch: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480356045586432 (UniqueForever) (a refused cascade must claim nothing)
+--- FAIL: TestUniqueCascade_KernelFailureClaimsNothing (4.79s)
+    --- FAIL: TestUniqueCascade_KernelFailureClaimsNothing/memory/temporal/forever (0.01s)
+        unique_cascade_test.go:685: Add with the value of a patch the kernel refused: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480201738944512 (UniqueForever) (must claim nothing)
+    --- FAIL: TestUniqueCascade_KernelFailureClaimsNothing/memory/tx/forever (0.00s)
+        unique_cascade_test.go:685: Add with the value of a patch the kernel refused: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480202467868672 (UniqueForever) (must claim nothing)
+    --- FAIL: TestUniqueCascade_KernelFailureClaimsNothing/memory/batch/forever (0.01s)
+        unique_cascade_test.go:685: Add with the value of a patch the kernel refused: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480202819436544 (UniqueForever) (must claim nothing)
+    --- FAIL: TestUniqueCascade_KernelFailureClaimsNothing/memory/session-strong-sync/forever (0.00s)
+        unique_cascade_test.go:685: Add with the value of a patch the kernel refused: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480203411718144 (UniqueForever) (must claim nothing)
+    --- FAIL: TestUniqueCascade_KernelFailureClaimsNothing/memory/session-strong-async/forever (0.00s)
+        unique_cascade_test.go:685: Add with the value of a patch the kernel refused: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480203598069760 (UniqueForever) (must claim nothing)
+    --- FAIL: TestUniqueCascade_KernelFailureClaimsNothing/memory/session-concurrent/forever (0.00s)
+        unique_cascade_test.go:685: Add with the value of a patch the kernel refused: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480203779047424 (UniqueForever) (must claim nothing)
+    --- FAIL: TestUniqueCascade_KernelFailureClaimsNothing/badger/temporal/forever (0.02s)
+        unique_cascade_test.go:685: Add with the value of a patch the kernel refused: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480208242475008 (UniqueForever) (must claim nothing)
+    --- FAIL: TestUniqueCascade_KernelFailureClaimsNothing/badger/tx/forever (0.02s)
+        unique_cascade_test.go:685: Add with the value of a patch the kernel refused: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480211183304704 (UniqueForever) (must claim nothing)
+    --- FAIL: TestUniqueCascade_KernelFailureClaimsNothing/badger/batch/forever (0.15s)
+        unique_cascade_test.go:685: Add with the value of a patch the kernel refused: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480218534051840 (UniqueForever) (must claim nothing)
+    --- FAIL: TestUniqueCascade_KernelFailureClaimsNothing/badger/session-strong-sync/forever (0.09s)
+        unique_cascade_test.go:685: Add with the value of a patch the kernel refused: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480224826425344 (UniqueForever) (must claim nothing)
+    --- FAIL: TestUniqueCascade_KernelFailureClaimsNothing/badger/session-strong-async/forever (0.10s)
+        unique_cascade_test.go:685: Add with the value of a patch the kernel refused: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480231967916032 (UniqueForever) (must claim nothing)
+    --- FAIL: TestUniqueCascade_KernelFailureClaimsNothing/badger/session-concurrent/forever (0.08s)
+        unique_cascade_test.go:685: Add with the value of a patch the kernel refused: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480237611450368 (UniqueForever) (must claim nothing)
+    --- FAIL: TestUniqueCascade_KernelFailureClaimsNothing/tiered/temporal/forever (0.24s)
+        unique_cascade_test.go:685: Add with the value of a patch the kernel refused: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480250211139584 (UniqueForever) (must claim nothing)
+    --- FAIL: TestUniqueCascade_KernelFailureClaimsNothing/tiered/tx/forever (0.20s)
+        unique_cascade_test.go:685: Add with the value of a patch the kernel refused: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480261158109184 (UniqueForever) (must claim nothing)
+    --- FAIL: TestUniqueCascade_KernelFailureClaimsNothing/tiered/batch/forever (0.15s)
+        unique_cascade_test.go:685: Add with the value of a patch the kernel refused: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480270875623424 (UniqueForever) (must claim nothing)
+    --- FAIL: TestUniqueCascade_KernelFailureClaimsNothing/tiered/session-strong-sync/forever (0.15s)
+        unique_cascade_test.go:685: Add with the value of a patch the kernel refused: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480282458324992 (UniqueForever) (must claim nothing)
+    --- FAIL: TestUniqueCascade_KernelFailureClaimsNothing/tiered/session-strong-async/forever (0.16s)
+        unique_cascade_test.go:685: Add with the value of a patch the kernel refused: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480293593251840 (UniqueForever) (must claim nothing)
+    --- FAIL: TestUniqueCascade_KernelFailureClaimsNothing/tiered/session-concurrent/forever (0.16s)
+        unique_cascade_test.go:685: Add with the value of a patch the kernel refused: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480305244176384 (UniqueForever) (must claim nothing)
+    --- FAIL: TestUniqueCascade_KernelFailureClaimsNothing/sharded/temporal/forever (0.16s)
+        unique_cascade_test.go:685: Add with the value of a patch the kernel refused: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480314504839168 (UniqueForever) (must claim nothing)
+    --- FAIL: TestUniqueCascade_KernelFailureClaimsNothing/sharded/tx/forever (0.15s)
+        unique_cascade_test.go:685: Add with the value of a patch the kernel refused: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480324192862208 (UniqueForever) (must claim nothing)
+    --- FAIL: TestUniqueCascade_KernelFailureClaimsNothing/sharded/batch/forever (0.15s)
+        unique_cascade_test.go:685: Add with the value of a patch the kernel refused: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480334705459200 (UniqueForever) (must claim nothing)
+    --- FAIL: TestUniqueCascade_KernelFailureClaimsNothing/sharded/session-strong-sync/forever (0.17s)
+        unique_cascade_test.go:685: Add with the value of a patch the kernel refused: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480345164939264 (UniqueForever) (must claim nothing)
+    --- FAIL: TestUniqueCascade_KernelFailureClaimsNothing/sharded/session-strong-async/forever (0.08s)
+        unique_cascade_test.go:685: Add with the value of a patch the kernel refused: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480353123827712 (UniqueForever) (must claim nothing)
+    --- FAIL: TestUniqueCascade_KernelFailureClaimsNothing/sharded/session-concurrent/forever (0.05s)
+        unique_cascade_test.go:685: Add with the value of a patch the kernel refused: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797480357468831744 (UniqueForever) (must claim nothing)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	5.368s
+FAIL
+--- go test -run TestUniqueCascade_ ./pkg/graph/internal/core/ (exit 1)
+--- FAIL: TestUniqueCascade_StoreWriteFailureWithdrawsUnwrittenClaim (0.00s)
+    unique_cascade_lock_test.go:323: Add with the value of a cascade that wrote nothing: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797481046427697152 (UniqueForever) (claim must be withdrawn)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.308s
+FAIL
+=== M4-claim-before-kernel-checks: RED (killed), 44 failing (sub)tests

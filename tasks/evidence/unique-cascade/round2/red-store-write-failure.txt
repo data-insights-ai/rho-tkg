@@ -1,0 +1,8 @@
+=== RUN   TestUniqueCascade_StoreWriteFailureWithdrawsUnwrittenClaim
+    unique_cascade_lock_test.go:323: Add with the value of a cascade that wrote nothing: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797442342044303360 (UniqueForever) (claim must be withdrawn)
+--- FAIL: TestUniqueCascade_StoreWriteFailureWithdrawsUnwrittenClaim (0.00s)
+=== RUN   TestUniqueCascade_StoreWriteFailureKeepsWrittenClaim
+--- PASS: TestUniqueCascade_StoreWriteFailureKeepsWrittenClaim (0.00s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.005s
+FAIL
