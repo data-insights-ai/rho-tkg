@@ -6,11 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### One-tick valid intervals are ordinary spans
+### Fixed
 
-**Fixed**
-
-- **A row valid for exactly one tick, `[t, t+1)`, is visible to every temporal door.** The
+- **One-tick valid intervals are ordinary spans: a row valid for exactly `[t, t+1)` is visible
+  to every temporal door.** The
   resolvers treated `ValidTo == ValidFrom + 1` as the "eclipse" sentinel of the old in-place
   cascade and skipped it, although no writer has produced that sentinel since the append-only
   cascade (994df82, 2026-06-12). The store's own predicates do not skip, so two doors disagreed:
@@ -31,6 +30,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   may still contain real eclipse markers; those rows now become visible as one-tick spans at
   their `ValidFrom`. No consumer deployment predates that commit. `QueryOpts.IncludeEclipsed`
   stays a reserved no-op field.
+  ai-soc's graphmgr rejects widths below 2 as a workaround (`MinValidWidth = 2`) and can relax
+  it after this release.
 
 ## [4.43.0] - 2026-10-08
 
