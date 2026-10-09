@@ -72,8 +72,18 @@ import (
 //
 // "Current" slot: the newest belief among rows whose OWN interval is open
 // (ValidTo == 0) takes the store's current slot; the prior current moves to
-// history with its bytes unchanged. If no own-open row remains, the entity has
-// no current — Get returns not-found, temporal queries still resolve history.
+// history with its bytes unchanged. If no appended row takes the slot, the
+// current row keeps it, below the appended rows' versions.
+//
+// Versions (backlog 18): appended rows take versions above every stored row;
+// the row that takes the current slot gets the highest, so after the common
+// correction (an open resumption) the current row is the newest row and a
+// later write's version (version_alloc.go) is above every row here.
+//
+// A hard-deleted entity (no current row, a tombstone in history) is refused
+// with ErrEntityDeleted (backlog 14): a correction appended after the
+// tombstone would be a belief the as-of and valid-time doors read
+// inconsistently.
 // =============================================================================
 
 // =============================================================================
@@ -115,6 +125,11 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 	if current == nil && len(history) == 0 {
 		return nil, storepkg.ErrNodeNotFound
 	}
+	if current == nil {
+		// Hard-deleted: the chain ends in a tombstone. A correction appended
+		// after it would be a belief no door reads consistently (backlog 14).
+		return nil, nodeDeletedErr(id)
+	}
 
 	// Unique constraints (unique_cascade.go): the props patch is judged before
 	// any row is built; the value stripes stay held across every write below.
@@ -124,14 +139,9 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 	}
 	defer uniqueRelease()
 
-	maxVersion := uint32(0)
+	maxVersion := current.Version()
 	for _, h := range history {
-		if h.Version() > maxVersion {
-			maxVersion = h.Version()
-		}
-	}
-	if current != nil && current.Version() > maxVersion {
-		maxVersion = current.Version()
+		maxVersion = max(maxVersion, h.Version())
 	}
 	nextVersion, err := nextEntityVersion(maxVersion)
 	if err != nil {
@@ -139,13 +149,10 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 	}
 	now := c.now()
 
-	// The template — the most recent version (current, else the newest
-	// history row) — is the content of a gap piece, where no version is
-	// valid to patch (see nodeCorrectionSegments).
+	// The template — the current row, the most recent version — is the
+	// content of a gap piece, where no version is valid to patch (see
+	// nodeCorrectionSegments).
 	template := current
-	if template == nil {
-		template = history[len(history)-1]
-	}
 
 	// APPEND-ONLY (audited correction). The cascade records, AT `now`, a new
 	// belief: "[newVF, newVT) is `props`". Transaction time is append-only and
@@ -163,6 +170,7 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 	if current != nil {
 		preChain = append(preChain, current)
 	}
+	preChain = versionOrdered(preChain) // the resolver's input contract (lesson 73)
 
 	// Resumption: re-assert, from newVT onward, whatever value held AT newVT in
 	// the pre-correction belief, so the part of the timeline after the
@@ -186,31 +194,22 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 	// via its own stored ValidFrom/ValidTo/TxFrom, from a genuine override
 	// starting at the same point — the two must resolve oppositely on
 	// overlap, which is exactly why the bound must be exact.
-	var resumption *types.Node
+	//
+	// Every appended row's PrevHash is its base row's hash (prevHashes, index
+	// aligned with appended); hashes are computed once the versions are final
+	// (the version is hashed), see the allocation step below.
+	appended := make([]*types.Node, 0, 4)
+	prevHashes := make([]string, 0, 4)
 	if newVT != 0 {
 		if src, err := c.resolveNodeVersionAt(append([]*types.Node(nil), preChain...), newVT); err == nil && src != nil {
 			resumptionEnd := nodeResumptionEnd(c, preChain, newVT)
-			resumption = src.DeepCopy()
+			resumption := src.DeepCopy()
 			ensureNodeTemporal(resumption)
-			resumption.SetVersion(nextVersion)
-			nextVersion, err = nextEntityVersion(nextVersion)
-			if err != nil {
-				return nil, err
-			}
 			resumption.Temporal().ValidFrom = newVT
 			resumption.Temporal().ValidTo = resumptionEnd // explicit; 0 == open (src was the pre-correction open tail)
-			resumption.Temporal().UpdatedAt = now
-			resumption.Temporal().TxFrom = now
-			rLabels := c.nodeLabelsUnlocked(resumption)
-			rHash, err := integrity.ComputeNodeHashChecked(resumption, rLabels)
-			if err != nil {
-				return nil, fmt.Errorf("graph: cascade compute resumption hash: %w", err)
-			}
-			rPrev := ""
-			if ig := src.Integrity(); ig != nil {
-				rPrev = ig.Hash
-			}
-			resumption.SetIntegrity(nodeIntegrityWithHash(resumption.Integrity(), rHash, rPrev))
+			stampAppendedRow(resumption.Temporal(), now)
+			appended = append(appended, resumption)
+			prevHashes = append(prevHashes, nodeHashOf(src))
 		} else if err != nil && !errors.Is(err, storepkg.ErrNoVersionValidAt) {
 			return nil, fmt.Errorf("graph: cascade resolve resumption source: %w", err)
 		}
@@ -227,18 +226,9 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 	if err != nil {
 		return nil, err
 	}
-	appended := make([]*types.Node, 0, len(segments)+1)
-	if resumption != nil {
-		appended = append(appended, resumption)
-	}
 	var newVer *types.Node // the appended row covering newVF — the return value
 	for i, seg := range segments {
-		if i > 0 {
-			if nextVersion, err = nextEntityVersion(nextVersion); err != nil {
-				return nil, err
-			}
-		}
-		row, err := c.buildNodeCorrectionRow(seg, template, nextVersion, now, props)
+		row, err := c.buildNodeCorrectionRow(seg, template, now, props)
 		if err != nil {
 			return nil, err
 		}
@@ -246,6 +236,19 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 			newVer = row
 		}
 		appended = append(appended, row)
+		prevHashes = append(prevHashes, nodeHashOf(seg.base))
+	}
+	// Provisional versions in build order, all above every stored version, so
+	// the newest-belief comparison below ranks appended rows above existing
+	// ones exactly as their final versions will.
+	firstVersion := nextVersion
+	for i, r := range appended {
+		if i > 0 {
+			if nextVersion, err = nextEntityVersion(nextVersion); err != nil {
+				return nil, err
+			}
+		}
+		r.SetVersion(nextVersion)
 	}
 
 	// The new "current" row is the NEWEST BELIEF among rows whose OWN interval
@@ -268,15 +271,21 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 		}
 	}
 
+	// Final versions (backlog 18): the row taking the current slot gets the
+	// highest version of the cascade, so the newest row recorded at `now` is
+	// the current row and a later write's version is above every row here.
+	// The other appended rows keep their build order below it.
+	curIsNew := moveToEnd(appended, prevHashes, newCurrent)
+	for i, r := range appended {
+		r.SetVersion(firstVersion + uint32(i)) // #nosec G115 -- bounded by the provisional allocation above
+		if err := c.hashAppendedNodeRow(r, prevHashes[i]); err != nil {
+			return nil, err
+		}
+	}
+
 	// Write: append the new rows, never touching existing ones. The store keeps
 	// one "current" KV slot; place newCurrent there (demoting the prior current
 	// to a history row — its bytes are unchanged, only its slot moves).
-	curIsNew := false
-	for _, r := range appended {
-		if r == newCurrent {
-			curIsNew = true
-		}
-	}
 	if curIsNew && current != nil {
 		// The store's current slot cannot change label tokens (ReplaceNode
 		// rejects it). A correction row's labels come from its base row, and
@@ -485,12 +494,12 @@ func (c *Core) relCorrectionSegments(preChain []*types.Relationship, template *t
 }
 
 // correctionTemporal returns the temporal block for an appended correction
-// row: the template's block (entity-level stamps — CreatedAt, TxTo/DeletedAt
-// of a deleted entity's tombstone, … — exactly as before this fix) with the
-// piece's valid interval and the correction's transaction time. The base row
-// supplies content (properties, labels, integrity metadata), never these
-// stamps: a base that is a superseded history row carries a TxTo that must not
-// retract a row recorded now.
+// row: the template's entity-level stamps (CreatedAt, …) with the piece's
+// valid interval and the correction's transaction time. The base row supplies
+// content (properties, labels, integrity metadata), never these stamps. A row
+// recorded now retracts nothing: TxTo and DeletedAt are 0 (stampAppendedRow) —
+// a copied TxTo (a superseded base or template) put TxTo below TxFrom and kept
+// the row out of the as-of door while the TxAt doors read it (backlog 14).
 func correctionTemporal(template *types.TemporalMetadata, from, to, now types.Instant) *types.TemporalMetadata {
 	var tm types.TemporalMetadata
 	if template != nil {
@@ -498,17 +507,88 @@ func correctionTemporal(template *types.TemporalMetadata, from, to, now types.In
 	}
 	tm.ValidFrom = from
 	tm.ValidTo = to
-	tm.UpdatedAt = now
-	tm.TxFrom = now
+	stampAppendedRow(&tm, now)
 	return &tm
 }
 
+// stampAppendedRow stamps a row a write appends at transaction instant now:
+// TxFrom = UpdatedAt = now, and no retraction (TxTo = DeletedAt = 0). Every
+// door that appends a version (cascade pieces and resumptions, Update,
+// CloseVersion, label changes, property CAS) starts its new row from a copy
+// of an existing one; this clears the stamps that copy may carry.
+func stampAppendedRow(tm *types.TemporalMetadata, now types.Instant) {
+	tm.UpdatedAt = now
+	tm.TxFrom = now
+	tm.TxTo = 0
+	tm.DeletedAt = 0
+}
+
+// nodeHashOf is n's content hash ("" without integrity metadata) — the
+// PrevHash of a row that corrects or re-asserts n.
+func nodeHashOf(n *types.Node) string {
+	if ig := n.Integrity(); ig != nil {
+		return ig.Hash
+	}
+	return ""
+}
+
+// relHashOf mirrors nodeHashOf for relationships.
+func relHashOf(r *types.Relationship) string {
+	if ig := r.Integrity(); ig != nil {
+		return ig.Hash
+	}
+	return ""
+}
+
+// moveToEnd moves target (when present) to the end of rows, shifting the rows
+// after it down by one, and moves the matching entry of hashes with it. It
+// reports whether target was found.
+func moveToEnd[T comparable](rows []T, hashes []string, target T) bool {
+	for i, r := range rows {
+		if r != target {
+			continue
+		}
+		h := hashes[i]
+		copy(rows[i:], rows[i+1:])
+		copy(hashes[i:], hashes[i+1:])
+		rows[len(rows)-1], hashes[len(hashes)-1] = target, h
+		return true
+	}
+	return false
+}
+
+// hashAppendedNodeRow computes an appended row's content hash (its version is
+// final) and sets its integrity metadata with PrevHash = prevHash, the hash of
+// the row it corrects.
+func (c *Core) hashAppendedNodeRow(row *types.Node, prevHash string) error {
+	hash, err := integrity.ComputeNodeHashChecked(row, c.nodeLabelsUnlocked(row))
+	if err != nil {
+		return fmt.Errorf("graph: cascade compute hash: %w", err)
+	}
+	row.SetIntegrity(nodeIntegrityWithHash(row.Integrity(), hash, prevHash))
+	return nil
+}
+
+// hashAppendedRelRow mirrors hashAppendedNodeRow for relationships, refreshing
+// the endpoint hashes as well.
+func (c *Core) hashAppendedRelRow(row *types.Relationship, prevHash string) error {
+	hash, err := integrity.ComputeRelHashChecked(row, c.relTypeUnlocked(row))
+	if err != nil {
+		return fmt.Errorf("graph: cascade compute rel hash: %w", err)
+	}
+	relIG := relIntegrityWithHash(row.Integrity(), hash, prevHash)
+	if err := c.refreshRelationshipEndpointHashes(row, relIG); err != nil {
+		return fmt.Errorf("graph: cascade refresh endpoint hashes: %w", err)
+	}
+	row.SetIntegrity(relIG)
+	return nil
+}
+
 // buildNodeCorrectionRow materializes one correction piece: base content +
-// patch, the piece's interval, TxFrom = now, and PrevHash = the base row's
-// hash (the version this row corrects).
-func (c *Core) buildNodeCorrectionRow(seg nodeCorrectionSegment, template *types.Node, version uint32, now types.Instant, props map[string]any) (*types.Node, error) {
+// patch, the piece's interval and TxFrom = now. Version and hash are set by
+// the caller once the cascade's versions are final.
+func (c *Core) buildNodeCorrectionRow(seg nodeCorrectionSegment, template *types.Node, now types.Instant, props map[string]any) (*types.Node, error) {
 	row := seg.base.DeepCopy()
-	row.SetVersion(version)
 	for key, val := range props {
 		if val == nil {
 			if _, err := row.DeleteProperty(key); err != nil {
@@ -522,23 +602,12 @@ func (c *Core) buildNodeCorrectionRow(seg nodeCorrectionSegment, template *types
 		return nil, fmt.Errorf("%w: %d > %d", ErrTooManyProperties, row.PropertyCount(), c.validation.MaxPropertiesPerEntity)
 	}
 	row.SetTemporal(correctionTemporal(template.Temporal(), seg.from, seg.to, now))
-
-	prevHash := ""
-	if ig := seg.base.Integrity(); ig != nil {
-		prevHash = ig.Hash
-	}
-	hash, err := integrity.ComputeNodeHashChecked(row, c.nodeLabelsUnlocked(row))
-	if err != nil {
-		return nil, fmt.Errorf("graph: cascade compute hash: %w", err)
-	}
-	row.SetIntegrity(nodeIntegrityWithHash(row.Integrity(), hash, prevHash))
 	return row, nil
 }
 
 // buildRelCorrectionRow mirrors buildNodeCorrectionRow for relationships.
-func (c *Core) buildRelCorrectionRow(seg relCorrectionSegment, template *types.Relationship, version uint32, now types.Instant, props map[string]any) (*types.Relationship, error) {
+func (c *Core) buildRelCorrectionRow(seg relCorrectionSegment, template *types.Relationship, now types.Instant, props map[string]any) (*types.Relationship, error) {
 	row := seg.base.DeepCopy()
-	row.SetVersion(version)
 	for key, val := range props {
 		if val == nil {
 			if _, err := row.DeleteProperty(key); err != nil {
@@ -552,20 +621,6 @@ func (c *Core) buildRelCorrectionRow(seg relCorrectionSegment, template *types.R
 		return nil, fmt.Errorf("%w: %d > %d", ErrTooManyProperties, row.PropertyCount(), c.validation.MaxPropertiesPerEntity)
 	}
 	row.SetTemporal(correctionTemporal(template.Temporal(), seg.from, seg.to, now))
-
-	prevHash := ""
-	if ig := seg.base.Integrity(); ig != nil {
-		prevHash = ig.Hash
-	}
-	hash, err := integrity.ComputeRelHashChecked(row, c.relTypeUnlocked(row))
-	if err != nil {
-		return nil, fmt.Errorf("graph: cascade compute rel hash: %w", err)
-	}
-	relIG := relIntegrityWithHash(row.Integrity(), hash, prevHash)
-	if err := c.refreshRelationshipEndpointHashes(row, relIG); err != nil {
-		return nil, fmt.Errorf("graph: cascade refresh endpoint hashes: %w", err)
-	}
-	row.SetIntegrity(relIG)
 	return row, nil
 }
 
@@ -620,15 +675,14 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 	if current == nil && len(history) == 0 {
 		return nil, storepkg.ErrRelNotFound
 	}
-
-	maxVersion := uint32(0)
-	for _, h := range history {
-		if h.Version() > maxVersion {
-			maxVersion = h.Version()
-		}
+	if current == nil {
+		// Hard-deleted — see the node cascade (backlog 14).
+		return nil, relDeletedErr(id)
 	}
-	if current != nil && current.Version() > maxVersion {
-		maxVersion = current.Version()
+
+	maxVersion := current.Version()
+	for _, h := range history {
+		maxVersion = max(maxVersion, h.Version())
 	}
 	nextVersion, err := nextEntityVersion(maxVersion)
 	if err != nil {
@@ -636,11 +690,8 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 	}
 	now := c.now()
 
-	// Template: the most recent version — see the node cascade.
+	// Template: the current row — see the node cascade.
 	template := current
-	if template == nil {
-		template = history[len(history)-1]
-	}
 
 	// APPEND-ONLY (audited correction) — mirror of cascadeNodeVersionInterval.
 	// Never mutate an existing row's stored interval or transaction stamps;
@@ -651,39 +702,23 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 	if current != nil {
 		preChain = append(preChain, current)
 	}
+	preChain = versionOrdered(preChain) // the resolver's input contract (lesson 73)
 
 	// BACKLOG 10b: explicit resumption ValidTo via relResumptionEnd — see the
 	// node cascade above for the full rationale (own-interval boundary scan,
 	// not "positionally-next row after src").
-	var resumption *types.Relationship
+	appended := make([]*types.Relationship, 0, 4)
+	prevHashes := make([]string, 0, 4)
 	if newVT != 0 {
 		if src, err := c.resolveRelVersionAt(append([]*types.Relationship(nil), preChain...), newVT); err == nil && src != nil {
 			resumptionEnd := relResumptionEnd(c, preChain, newVT)
-			resumption = src.DeepCopy()
+			resumption := src.DeepCopy()
 			ensureRelTemporal(resumption)
-			resumption.SetVersion(nextVersion)
-			nextVersion, err = nextEntityVersion(nextVersion)
-			if err != nil {
-				return nil, err
-			}
 			resumption.Temporal().ValidFrom = newVT
 			resumption.Temporal().ValidTo = resumptionEnd
-			resumption.Temporal().UpdatedAt = now
-			resumption.Temporal().TxFrom = now
-			rType := c.relTypeUnlocked(resumption)
-			rHash, err := integrity.ComputeRelHashChecked(resumption, rType)
-			if err != nil {
-				return nil, fmt.Errorf("graph: cascade compute rel resumption hash: %w", err)
-			}
-			rPrev := ""
-			if ig := src.Integrity(); ig != nil {
-				rPrev = ig.Hash
-			}
-			rIG := relIntegrityWithHash(resumption.Integrity(), rHash, rPrev)
-			if err := c.refreshRelationshipEndpointHashes(resumption, rIG); err != nil {
-				return nil, fmt.Errorf("graph: cascade refresh rel resumption endpoint hashes: %w", err)
-			}
-			resumption.SetIntegrity(rIG)
+			stampAppendedRow(resumption.Temporal(), now)
+			appended = append(appended, resumption)
+			prevHashes = append(prevHashes, relHashOf(src))
 		} else if err != nil && !errors.Is(err, storepkg.ErrNoVersionValidAt) {
 			return nil, fmt.Errorf("graph: cascade resolve rel resumption source: %w", err)
 		}
@@ -696,18 +731,9 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 	if err != nil {
 		return nil, err
 	}
-	appended := make([]*types.Relationship, 0, len(segments)+1)
-	if resumption != nil {
-		appended = append(appended, resumption)
-	}
 	var newVer *types.Relationship // the appended row covering newVF — the return value
 	for i, seg := range segments {
-		if i > 0 {
-			if nextVersion, err = nextEntityVersion(nextVersion); err != nil {
-				return nil, err
-			}
-		}
-		row, err := c.buildRelCorrectionRow(seg, template, nextVersion, now, props)
+		row, err := c.buildRelCorrectionRow(seg, template, now, props)
 		if err != nil {
 			return nil, err
 		}
@@ -715,6 +741,17 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 			newVer = row
 		}
 		appended = append(appended, row)
+		prevHashes = append(prevHashes, relHashOf(seg.base))
+	}
+	// Provisional versions — see the node cascade.
+	firstVersion := nextVersion
+	for i, r := range appended {
+		if i > 0 {
+			if nextVersion, err = nextEntityVersion(nextVersion); err != nil {
+				return nil, err
+			}
+		}
+		r.SetVersion(nextVersion)
 	}
 
 	// BACKLOG 10b: newest-belief-among-own-open — see the node cascade above.
@@ -732,10 +769,13 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 		}
 	}
 
-	curIsNew := false
-	for _, r := range appended {
-		if r == newCurrent {
-			curIsNew = true
+	// Final versions: the row taking the current slot is the highest — see the
+	// node cascade (backlog 18).
+	curIsNew := moveToEnd(appended, prevHashes, newCurrent)
+	for i, r := range appended {
+		r.SetVersion(firstVersion + uint32(i)) // #nosec G115 -- bounded by the provisional allocation above
+		if err := c.hashAppendedRelRow(r, prevHashes[i]); err != nil {
+			return nil, err
 		}
 	}
 	for _, r := range appended {
@@ -759,4 +799,42 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 
 	c.opRelUpdates.Add(1)
 	return newVer, nil
+}
+
+// nodeDeletedErr is the refusal of a cascade on a hard-deleted node: it wraps
+// ErrEntityDeleted and ErrNodeNotFound (backlog 14).
+func nodeDeletedErr(id types.NodeID) error {
+	return fmt.Errorf("%w: node %v: %w", ErrEntityDeleted, id, storepkg.ErrNodeNotFound)
+}
+
+// relDeletedErr mirrors nodeDeletedErr for relationships.
+func relDeletedErr(id types.RelID) error {
+	return fmt.Errorf("%w: relationship %v: %w", ErrEntityDeleted, id, storepkg.ErrRelNotFound)
+}
+
+// cascadeMissingNodeErr classifies a cascade target without a current row:
+// ErrNodeNotFound when the ID never existed (no history), nodeDeletedErr when
+// it was hard-deleted. A door that looks the current row up before the
+// cascade kernel (the GraphTx snapshot) uses it, so every door refuses alike.
+func (c *Core) cascadeMissingNodeErr(id types.NodeID) error {
+	history, err := c.getNodeHistory(id)
+	if err != nil {
+		return err
+	}
+	if len(history) == 0 {
+		return storepkg.ErrNodeNotFound
+	}
+	return nodeDeletedErr(id)
+}
+
+// cascadeMissingRelErr mirrors cascadeMissingNodeErr for relationships.
+func (c *Core) cascadeMissingRelErr(id types.RelID) error {
+	history, err := c.getRelHistory(id)
+	if err != nil {
+		return err
+	}
+	if len(history) == 0 {
+		return storepkg.ErrRelNotFound
+	}
+	return relDeletedErr(id)
 }

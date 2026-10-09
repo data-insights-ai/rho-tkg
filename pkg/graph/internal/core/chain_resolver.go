@@ -1,6 +1,9 @@
 package core
 
 import (
+	"cmp"
+	"slices"
+
 	storeutil "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 
@@ -100,6 +103,93 @@ type chainProbe struct {
 	// rels is meaningful only for probeRelate: the set of Allen relations a
 	// version's valid-interval must have with [validStart, validEnd) to match.
 	rels types.AllenRelationSet
+	// asOfCurrent is meaningful only for probeAsOf: the chain's last row is
+	// the live current row (storeutil.SelectAsOfWithCurrent's current arm).
+	asOfCurrent bool
+}
+
+// versionOrdered returns chain in ascending version order: chain itself when it
+// already is, else a sorted copy (stable, so rows of equal version keep their
+// order). The resolver's monotonic-vs-cascade classification and the
+// positional tiling are relative to its input order (lesson 73), and
+// "history ‖ current" is NOT ascending when a bounded SetVersionInterval left
+// the current row in its slot below the rows it appended: the same chain then
+// resolved one way while the row was current and another once a delete moved
+// it to history (a closed entity read as valid again after a cascade).
+func versionOrdered[T storeutil.TemporalRow](chain []T) []T {
+	byVersion := func(a, b T) int { return cmp.Compare(a.Version(), b.Version()) }
+	if slices.IsSortedFunc(chain, byVersion) {
+		return chain
+	}
+	out := slices.Clone(chain)
+	slices.SortStableFunc(out, byVersion)
+	return out
+}
+
+// selectAsOfChain runs storeutil.SelectAsOfWithCurrent over a chain whose last
+// row is the live current row when lastIsCurrent.
+func selectAsOfChain[T storeutil.TemporalRow](chain []T, pin types.Instant, lastIsCurrent bool) (T, bool) {
+	if lastIsCurrent && len(chain) > 0 {
+		return storeutil.SelectAsOfWithCurrent(chain[:len(chain)-1], chain[len(chain)-1], true, pin)
+	}
+	return storeutil.SelectAsOf(chain, pin)
+}
+
+// lifeEnds maps each row of a TxAt-filtered chain recorded before a hard
+// delete the chain holds to that delete's instant (handover 2a). A delete
+// tombstones only the row holding the current slot; an older row of the same
+// life that the cascade's own-bounds arm keeps open (the genesis under a
+// bounded correction) would otherwise stay valid forever after the delete. A
+// row's life is the span up to the first delete recorded at or after it, so a
+// re-imported ID's later rows (recorded after the delete) are not capped. A
+// nil map caps nothing.
+type lifeEnds[T comparable] map[T]types.Instant
+
+// chainLifeEnds builds the lifeEnds of a (TxAt-filtered, tombstone-normalized)
+// chain: nil when no row carries a DeletedAt.
+func chainLifeEnds[T interface {
+	comparable
+	storeutil.TemporalRow
+}](chain []T) lifeEnds[T] {
+	var deaths []types.Instant
+	for _, r := range chain {
+		if tm := r.Temporal(); tm != nil && tm.DeletedAt != 0 {
+			deaths = append(deaths, tm.DeletedAt)
+		}
+	}
+	if len(deaths) == 0 {
+		return nil
+	}
+	slices.Sort(deaths)
+	caps := make(lifeEnds[T], len(chain))
+	for _, r := range chain {
+		var recorded types.Instant
+		if tm := r.Temporal(); tm != nil {
+			recorded = tm.TxFrom
+		}
+		if i, _ := slices.BinarySearch(deaths, recorded); i < len(deaths) {
+			caps[r] = deaths[i]
+		}
+	}
+	return caps
+}
+
+// end caps a row's valid end at its life end (0 = open).
+func (m lifeEnds[T]) end(row T, vEnd types.Instant) types.Instant {
+	if lifeEnd, ok := m[row]; ok && (vEnd == 0 || vEnd > lifeEnd) {
+		return lifeEnd
+	}
+	return vEnd
+}
+
+// cut is end for the interval doors, which test overlap rather than point
+// coverage: gone reports a row whose capped interval is empty.
+func (m lifeEnds[T]) cut(row T, vStart, vEnd types.Instant) (types.Instant, bool) {
+	lifeEnd, ok := m[row]
+	if !ok || (vEnd != 0 && vEnd <= lifeEnd) {
+		return vEnd, false
+	}
+	return lifeEnd, lifeEnd <= vStart
 }
 
 // resolveNodeChain is the single node-side selection seam. pred is consulted
@@ -109,19 +199,20 @@ type chainProbe struct {
 // nodeAtLockedTx / nodeAsOfLocked did not).
 func (c *Core) resolveNodeChain(chain []*types.Node, probe chainProbe, pred func(*types.Node) bool) (*types.Node, error) {
 	if probe.kind == probeAsOf {
-		return c.resolveNodeChainAsOf(chain, probe.tx)
+		return c.resolveNodeChainAsOf(chain, probe.tx, probe.asOfCurrent)
 	}
-	chain = filterNodeChainByTxAt(chain, probe.tx)
+	chain = filterNodeChainByTxAt(versionOrdered(chain), probe.tx)
 	if len(chain) == 0 {
 		return nil, storepkg.ErrNoVersionValidAt
 	}
+	caps := chainLifeEnds(chain)
 	if probe.kind == probeInterval {
-		return c.resolveNodeChainDuring(chain, probe.validStart, probe.validEnd, pred)
+		return c.resolveNodeChainDuring(chain, probe.validStart, probe.validEnd, pred, caps)
 	}
 	if probe.kind == probeRelate {
-		return c.resolveNodeChainRelating(chain, probe.validStart, probe.validEnd, probe.rels, pred)
+		return c.resolveNodeChainRelating(chain, probe.validStart, probe.validEnd, probe.rels, pred, caps)
 	}
-	return c.resolveNodeVersionAt(chain, probe.validAt)
+	return c.resolveNodeVersionAtCapped(chain, probe.validAt, caps)
 }
 
 // resolveNodeChainRelating scans a chain for a version whose valid-interval has
@@ -129,13 +220,17 @@ func (c *Core) resolveNodeChain(chain []*types.Node, probe chainProbe, pred func
 // (predicate-anywhere — the same rationale as resolveNodeChainDuring). qEnd == 0
 // denotes an open query interval; types.RelateOpen substitutes +∞ for both the
 // query's and the version's open ends, so Before/After/Meets classify exactly.
-func (c *Core) resolveNodeChainRelating(chain []*types.Node, qStart, qEnd types.Instant, rels types.AllenRelationSet, pred func(*types.Node) bool) (*types.Node, error) {
+func (c *Core) resolveNodeChainRelating(chain []*types.Node, qStart, qEnd types.Instant, rels types.AllenRelationSet, pred func(*types.Node) bool, caps lifeEnds[*types.Node]) (*types.Node, error) {
 	if rels == 0 {
 		return nil, storepkg.ErrNoVersionValidAt
 	}
 	c.sortNodeChainForResolve(chain)
 	for i := len(chain) - 1; i >= 0; i-- {
 		vStart, vEnd := c.nodeVersionBounds(chain, i)
+		vEnd, gone := caps.cut(chain[i], vStart, vEnd)
+		if gone {
+			continue
+		}
 		rel, err := types.RelateOpen(vStart, vEnd, qStart, qEnd)
 		if err != nil {
 			continue
@@ -151,13 +246,17 @@ func (c *Core) resolveNodeChainRelating(chain []*types.Node, qStart, qEnd types.
 // validity overlaps [start, end) and (when pred != nil) satisfies pred,
 // most-recent-first so the newest overlapping match is preferred. See the
 // funnel comment for the predicate-anywhere rationale.
-func (c *Core) resolveNodeChainDuring(chain []*types.Node, start, end types.Instant, pred func(*types.Node) bool) (*types.Node, error) {
+func (c *Core) resolveNodeChainDuring(chain []*types.Node, start, end types.Instant, pred func(*types.Node) bool, caps lifeEnds[*types.Node]) (*types.Node, error) {
 	// Order by effective valid-from so next-version tiling is correct after an
 	// append-only cascade (see sortNodeChainForResolve). Scan highest-valid-from
 	// first to preserve the "most-recent overlapping match" semantic.
 	c.sortNodeChainForResolve(chain)
 	for i := len(chain) - 1; i >= 0; i-- {
 		vStart, vEnd := c.nodeVersionBounds(chain, i)
+		vEnd, gone := caps.cut(chain[i], vStart, vEnd)
+		if gone {
+			continue
+		}
 		// Overlap: vStart < end AND (vEnd == 0 OR vEnd > start).
 		if vStart < end && (vEnd == 0 || vEnd > start) {
 			if pred == nil || pred(chain[i]) {
@@ -173,8 +272,8 @@ func (c *Core) resolveNodeChainDuring(chain []*types.Node, start, end types.Inst
 // that decisive belief was retracted/deleted; lesson 62) and normalizes the
 // survivor to its then-visible state. Returns ErrNoVersionAsOf when SelectAsOf
 // reports the entity absent at the pin.
-func (c *Core) resolveNodeChainAsOf(chain []*types.Node, txPin types.Instant) (*types.Node, error) {
-	best, ok := storeutil.SelectAsOf(chain, txPin)
+func (c *Core) resolveNodeChainAsOf(chain []*types.Node, txPin types.Instant, lastIsCurrent bool) (*types.Node, error) {
+	best, ok := selectAsOfChain(chain, txPin, lastIsCurrent)
 	if !ok {
 		return nil, ErrNoVersionAsOf
 	}
@@ -186,29 +285,34 @@ func (c *Core) resolveNodeChainAsOf(chain []*types.Node, txPin types.Instant) (*
 // resolveRelChain is the relationship-side mirror of resolveNodeChain.
 func (c *Core) resolveRelChain(chain []*types.Relationship, probe chainProbe, pred func(*types.Relationship) bool) (*types.Relationship, error) {
 	if probe.kind == probeAsOf {
-		return c.resolveRelChainAsOf(chain, probe.tx)
+		return c.resolveRelChainAsOf(chain, probe.tx, probe.asOfCurrent)
 	}
-	chain = filterRelChainByTxAt(chain, probe.tx)
+	chain = filterRelChainByTxAt(versionOrdered(chain), probe.tx)
 	if len(chain) == 0 {
 		return nil, storepkg.ErrNoVersionValidAt
 	}
+	caps := chainLifeEnds(chain)
 	if probe.kind == probeInterval {
-		return c.resolveRelChainDuring(chain, probe.validStart, probe.validEnd, pred)
+		return c.resolveRelChainDuring(chain, probe.validStart, probe.validEnd, pred, caps)
 	}
 	if probe.kind == probeRelate {
-		return c.resolveRelChainRelating(chain, probe.validStart, probe.validEnd, probe.rels, pred)
+		return c.resolveRelChainRelating(chain, probe.validStart, probe.validEnd, probe.rels, pred, caps)
 	}
-	return c.resolveRelVersionAt(chain, probe.validAt)
+	return c.resolveRelVersionAtCapped(chain, probe.validAt, caps)
 }
 
 // resolveRelChainRelating mirrors resolveNodeChainRelating for relationships.
-func (c *Core) resolveRelChainRelating(chain []*types.Relationship, qStart, qEnd types.Instant, rels types.AllenRelationSet, pred func(*types.Relationship) bool) (*types.Relationship, error) {
+func (c *Core) resolveRelChainRelating(chain []*types.Relationship, qStart, qEnd types.Instant, rels types.AllenRelationSet, pred func(*types.Relationship) bool, caps lifeEnds[*types.Relationship]) (*types.Relationship, error) {
 	if rels == 0 {
 		return nil, storepkg.ErrNoVersionValidAt
 	}
 	c.sortRelChainForResolve(chain)
 	for i := len(chain) - 1; i >= 0; i-- {
 		vStart, vEnd := c.relVersionBounds(chain, i)
+		vEnd, gone := caps.cut(chain[i], vStart, vEnd)
+		if gone {
+			continue
+		}
 		rel, err := types.RelateOpen(vStart, vEnd, qStart, qEnd)
 		if err != nil {
 			continue
@@ -221,10 +325,14 @@ func (c *Core) resolveRelChainRelating(chain []*types.Relationship, qStart, qEnd
 }
 
 // resolveRelChainDuring mirrors resolveNodeChainDuring for relationships.
-func (c *Core) resolveRelChainDuring(chain []*types.Relationship, start, end types.Instant, pred func(*types.Relationship) bool) (*types.Relationship, error) {
+func (c *Core) resolveRelChainDuring(chain []*types.Relationship, start, end types.Instant, pred func(*types.Relationship) bool, caps lifeEnds[*types.Relationship]) (*types.Relationship, error) {
 	c.sortRelChainForResolve(chain)
 	for i := len(chain) - 1; i >= 0; i-- {
 		vStart, vEnd := c.relVersionBounds(chain, i)
+		vEnd, gone := caps.cut(chain[i], vStart, vEnd)
+		if gone {
+			continue
+		}
 		if vStart < end && (vEnd == 0 || vEnd > start) {
 			if pred == nil || pred(chain[i]) {
 				return chain[i], nil
@@ -235,8 +343,8 @@ func (c *Core) resolveRelChainDuring(chain []*types.Relationship, start, end typ
 }
 
 // resolveRelChainAsOf mirrors resolveNodeChainAsOf for relationships.
-func (c *Core) resolveRelChainAsOf(chain []*types.Relationship, txPin types.Instant) (*types.Relationship, error) {
-	best, ok := storeutil.SelectAsOf(chain, txPin)
+func (c *Core) resolveRelChainAsOf(chain []*types.Relationship, txPin types.Instant, lastIsCurrent bool) (*types.Relationship, error) {
+	best, ok := selectAsOfChain(chain, txPin, lastIsCurrent)
 	if !ok {
 		return nil, ErrNoVersionAsOf
 	}

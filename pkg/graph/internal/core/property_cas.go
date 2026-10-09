@@ -131,7 +131,7 @@ func (c *Core) compareAndSetPropertyInternal(ctx context.Context, id types.NodeI
 
 	// --- Capture pre-mutation state ---
 	prevVersion := current.Version()
-	nextVersion, err := nextEntityVersion(prevVersion)
+	nextVersion, err := c.nextNodeVersion(id, current)
 	if err != nil {
 		return false, false, err
 	}
@@ -182,7 +182,7 @@ func (c *Core) compareAndSetPropertyInternal(ctx context.Context, id types.NodeI
 	} else {
 		ptm.TxTo = now
 	}
-	tm.TxFrom = now
+	stampAppendedRow(tm, now)
 
 	nodeLabels := c.nodeLabelsUnlocked(current)
 	hash, err := integrity.ComputeNodeHashChecked(current, nodeLabels)
@@ -318,7 +318,7 @@ func (c *Core) compareAndSetRelPropertyInternal(ctx context.Context, id types.Re
 	}
 
 	prevVersion := current.Version()
-	nextVersion, err := nextEntityVersion(prevVersion)
+	nextVersion, err := c.nextRelVersion(id, current)
 	if err != nil {
 		return false, false, err
 	}
@@ -365,7 +365,7 @@ func (c *Core) compareAndSetRelPropertyInternal(ctx context.Context, id types.Re
 	} else {
 		ptm.TxTo = now
 	}
-	tm.TxFrom = now
+	stampAppendedRow(tm, now)
 
 	relTypeName := c.relTypeUnlocked(current)
 	hash, err := integrity.ComputeRelHashChecked(current, relTypeName)

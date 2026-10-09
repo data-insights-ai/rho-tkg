@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"sort"
 
@@ -396,9 +397,75 @@ func (c *Core) validateTemporalQueryOptsScan(opts storepkg.QueryOpts) error {
 // versionInfo is the per-version summary the policy math operates on,
 // type-agnostic across node / relationship.
 type versionInfo struct {
-	version uint32
-	txFrom  types.Instant
-	hash    string
+	version  uint32
+	txFrom   types.Instant
+	hash     string
+	prevHash string
+}
+
+// anchorSafeTrim lowers a planned trim count to the largest t <= trim whose
+// kept rows (hist[t:] and the current row, when present) still form a chain
+// verifyChainLinkage accepts with the stub the trim writes (LastTrimmedHash =
+// hist[t-1]'s hash): every kept row but the oldest links (PrevHash) to a kept
+// row, and the oldest kept row links to the trimmed boundary hist[t-1]
+// (backlog 24). After a bounded SetVersionInterval the newest history
+// versions can be cascade rows linking to an older base row, and the current
+// row links below them, so a version count alone trimmed rows the chain still
+// links to: it stopped verifying and an export of it failed import. A version
+// the chain still needs is kept (the policy's bounds are lower bounds on what
+// is kept). One pass: minRef[i] is the lowest history index a row of
+// hist[i:] ∪ {current} links to. A chain that did not verify before
+// compaction (a dangling PrevHash: rows without integrity data, a re-import
+// next to an old stub) keeps the policy's trim, as before backlog 24 — no keep
+// rule can make it verify, and it must not stop compacting. hist is ascending
+// by version.
+func anchorSafeTrim(hist []versionInfo, current *versionInfo, trim int) int {
+	if trim <= 0 {
+		return 0
+	}
+	all := make([]chainEntryMeta, 0, len(hist)+1)
+	for _, v := range hist {
+		all = append(all, chainEntryMeta{version: v.version, hash: v.hash, prevHash: v.prevHash})
+	}
+	if current != nil {
+		all = append(all, chainEntryMeta{version: current.version, hash: current.hash, prevHash: current.prevHash})
+	}
+	if !verifyChainLinkage(all, nil) {
+		return trim
+	}
+	index := make(map[string]int, len(hist))
+	for i, v := range hist {
+		index[v.hash] = i
+	}
+	n := len(hist)
+	minRef := make([]int, n+1) // minRef[n]: the current row's link alone
+	minRef[n] = n
+	if current != nil {
+		if i, ok := index[current.prevHash]; ok {
+			minRef[n] = i
+		}
+	}
+	for i := n - 1; i >= 0; i-- {
+		minRef[i] = minRef[i+1]
+		if j, ok := index[hist[i].prevHash]; ok && j < minRef[i] {
+			minRef[i] = j
+		}
+	}
+	for t := min(trim, n-1); t > 0; t-- {
+		if minRef[t+1] >= t && hist[t].prevHash == hist[t-1].hash {
+			return t
+		}
+	}
+	return 0
+}
+
+// planAnchorSafeTrim is planTrim followed by anchorSafeTrim.
+func planAnchorSafeTrim(hist []versionInfo, current *versionInfo, policy RetentionPolicy) (trimCount int, boundary versionInfo, oldestKept versionInfo) {
+	trim, _, _ := planTrim(hist, policy)
+	if trim = anchorSafeTrim(hist, current, trim); trim == 0 {
+		return 0, versionInfo{}, versionInfo{}
+	}
+	return trim, hist[trim-1], hist[trim]
 }
 
 // validateRetentionPolicy rejects an empty or negative policy.
@@ -818,8 +885,15 @@ func (c *Core) planNodeCompaction(id types.NodeID, policy RetentionPolicy, now t
 	for _, h := range history {
 		infos = append(infos, nodeVersionInfo(h))
 	}
+	var current *versionInfo
+	if cur, err := c.getCurrentNode(id); err == nil {
+		vi := nodeVersionInfo(cur)
+		current = &vi
+	} else if !errors.Is(err, storepkg.ErrNodeNotFound) {
+		return entityPlan{}, false, err
+	}
 	sort.Slice(infos, func(i, j int) bool { return infos[i].version < infos[j].version })
-	trim, boundary, oldestKept := planTrim(infos, policy)
+	trim, boundary, oldestKept := planAnchorSafeTrim(infos, current, policy)
 	if trim == 0 {
 		return entityPlan{}, false, nil
 	}
@@ -843,8 +917,15 @@ func (c *Core) planRelCompaction(id types.RelID, policy RetentionPolicy, now typ
 	for _, h := range history {
 		infos = append(infos, relVersionInfo(h))
 	}
+	var current *versionInfo
+	if cur, err := c.getCurrentRelationship(id); err == nil {
+		vi := relVersionInfo(cur)
+		current = &vi
+	} else if !errors.Is(err, storepkg.ErrRelNotFound) {
+		return entityPlan{}, false, err
+	}
 	sort.Slice(infos, func(i, j int) bool { return infos[i].version < infos[j].version })
-	trim, boundary, oldestKept := planTrim(infos, policy)
+	trim, boundary, oldestKept := planAnchorSafeTrim(infos, current, policy)
 	if trim == 0 {
 		return entityPlan{}, false, nil
 	}
@@ -864,7 +945,7 @@ func nodeVersionInfo(n *types.Node) versionInfo {
 		vi.txFrom = tm.TxFrom
 	}
 	if ig := n.Integrity(); ig != nil {
-		vi.hash = ig.Hash
+		vi.hash, vi.prevHash = ig.Hash, ig.PrevHash
 	}
 	return vi
 }
@@ -875,7 +956,7 @@ func relVersionInfo(r *types.Relationship) versionInfo {
 		vi.txFrom = tm.TxFrom
 	}
 	if ig := r.Integrity(); ig != nil {
-		vi.hash = ig.Hash
+		vi.hash, vi.prevHash = ig.Hash, ig.PrevHash
 	}
 	return vi
 }

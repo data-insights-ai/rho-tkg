@@ -434,29 +434,33 @@ func (bs *Store) maxHistoryID(prefix byte) (snowflake.ID, error) {
 }
 
 func (bs *Store) pendingHistoryIDOverlay(prefix byte, after snowflake.ID) (map[snowflake.ID]struct{}, map[string]struct{}) {
-	pendingSets := make(map[snowflake.ID]struct{})
+	setKeys := make(map[string]struct{})
 	pendingDeletes := make(map[string]struct{})
 
 	// rangePending visits flushing (older, in-flight) then pending (newer), so a
 	// newer op for the same key is applied last and wins. Resolve set-vs-delete
-	// per key so an id can never end up in BOTH result maps.
+	// per KEY, then map the surviving SET keys to IDs (as maxHistoryID does): a
+	// DELETE of one version must not hide a SET of another version of the same
+	// ID (Truncate*History(id, 1) after a fresh version buffers exactly that).
 	bs.rangePending(func(k string, op writeOp) {
 		if len(k) != storepkg.SizeHistKey || k[0] != prefix {
 			return
 		}
 		if op.opType == writeOpDelete {
 			pendingDeletes[k] = struct{}{}
-			id := storepkg.ParseIDFromKey([]byte(k), 1)
-			delete(pendingSets, id)
+			delete(setKeys, k)
 			return
 		}
-		id := storepkg.ParseIDFromKey([]byte(k), 1)
+		setKeys[k] = struct{}{}
 		delete(pendingDeletes, k)
-		if id > after {
-			pendingSets[id] = struct{}{}
-		}
 	})
 
+	pendingSets := make(map[snowflake.ID]struct{}, len(setKeys))
+	for k := range setKeys {
+		if id := storepkg.ParseIDFromKey([]byte(k), 1); id > after {
+			pendingSets[id] = struct{}{}
+		}
+	}
 	return pendingSets, pendingDeletes
 }
 

@@ -1,0 +1,15 @@
+$ go test ./pkg/graph/store/badger/ -run TestHistoryPresence -count=1
+--- FAIL: TestHistoryPresence_Clear (0.10s)
+    --- FAIL: TestHistoryPresence_Clear/node (0.04s)
+        badgerstore_history_presence_test.go:283: stats right after clear: built=true ids=0, want the set dropped
+    --- FAIL: TestHistoryPresence_Clear/rel (0.06s)
+        badgerstore_history_presence_test.go:283: stats right after clear: built=true ids=0, want the set dropped
+--- FAIL: TestHistoryPresence_FailedClearRebuilds (0.06s)
+    --- FAIL: TestHistoryPresence_FailedClearRebuilds/node (0.03s)
+        badgerstore_history_presence_test.go:318: node rows survived the failed Clear: has(110) = false, history has 1 rows
+    --- FAIL: TestHistoryPresence_FailedClearRebuilds/rel (0.03s)
+        badgerstore_history_presence_test.go:318: rel rows survived the failed Clear: has(110) = false, history has 1 rows
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	20.498s
+FAIL
+exit=1

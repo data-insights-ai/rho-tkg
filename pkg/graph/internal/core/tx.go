@@ -308,7 +308,7 @@ func (tx *GraphTx) snapshotCurrentNodeLocked(node *types.Node) error {
 
 	prev := node.DeepCopy()
 	if tx.g.historyTrim != nil {
-		if found, err := tx.nodeHistoryVersionExists(types.NodeID(id), node.Version()); err != nil {
+		if found, err := tx.nodeHistoryAtOrAbove(types.NodeID(id), node.Version()); err != nil {
 			return err
 		} else if !found {
 			tx.snapshotSet[key] = true
@@ -357,7 +357,7 @@ func (tx *GraphTx) snapshotCurrentRelLocked(rel *types.Relationship) error {
 
 	prev := rel.DeepCopy()
 	if tx.g.historyTrim != nil {
-		if found, err := tx.relHistoryVersionExists(types.RelID(id), rel.Version()); err != nil {
+		if found, err := tx.relHistoryAtOrAbove(types.RelID(id), rel.Version()); err != nil {
 			return err
 		} else if !found {
 			tx.snapshotSet[key] = true

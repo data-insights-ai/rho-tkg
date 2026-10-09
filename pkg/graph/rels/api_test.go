@@ -99,6 +99,7 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 		}},
 		{name: "CloseVersion", run: func() error { return nilAPI.CloseVersion(ctx, relID, 100) }},
 		{name: "History", run: func() error { _, err := nilAPI.History(relID); return err }},
+		{name: "HasHistory", run: func() error { _, err := nilAPI.HasHistory(relID); return err }},
 		{name: "VersionAfter", run: func() error { _, err := nilAPI.VersionAfter(relID, 1); return err }},
 		{name: "VersionBefore", run: func() error { _, err := nilAPI.VersionBefore(relID, 1); return err }},
 	} {
@@ -253,6 +254,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		}},
 		{name: "CloseVersion", run: func() error { return api.CloseVersion(ctx, relID, 100) }},
 		{name: "History", run: func() error { _, err := api.History(relID); return err }},
+		{name: "HasHistory", run: func() error { _, err := api.HasHistory(relID); return err }},
 		{name: "VersionAfter", run: func() error { _, err := api.VersionAfter(relID, 1); return err }},
 		{name: "VersionBefore", run: func() error { _, err := api.VersionBefore(relID, 1); return err }},
 	} {
@@ -281,7 +283,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		"OutgoingForNodesAtTx", "IncomingForNodesAtTx",
 		"OutgoingForNodesAtPin", "IncomingForNodesAtPin", "SetProperty", "DeleteProperty",
 		"CompareAndSetProperty", "CompareAndSetProperty",
-		"CloseVersion", "History", "VersionAfter", "VersionBefore", "HasType", "Type", "NextID",
+		"CloseVersion", "History", "HasHistory", "VersionAfter", "VersionBefore", "HasType", "Type", "NextID",
 	}
 	if len(ops.calls) != len(wantCalls) {
 		t.Fatalf("calls = %v, want %v", ops.calls, wantCalls)
@@ -306,6 +308,7 @@ type relOpsSpy struct {
 	hasType  bool
 	typeName string
 	nextID   types.RelID
+	hasHist  bool
 
 	calls      []string
 	lastRelID  types.RelID
@@ -702,6 +705,12 @@ func (s *relOpsSpy) CloseVersion(ctx context.Context, id types.RelID, tm types.I
 	return s.err
 }
 
+func (s *relOpsSpy) HasHistory(id types.RelID) (bool, error) {
+	s.record("HasHistory")
+	s.lastRelID = id
+	return s.hasHist, s.err
+}
+
 func (s *relOpsSpy) History(id types.RelID) ([]*types.Relationship, error) {
 	s.record("History")
 	s.lastRelID = id
@@ -824,5 +833,24 @@ func TestAPIWithTxDoorsForwardInstantVerbatim(t *testing.T) {
 		if len(ops.lastUpdates) != 1 || ops.lastUpdates["w"] != int64(2) {
 			t.Fatalf("%s: UpdateWithTx forwarded updates %v; want exactly {w:2}", tc.name, ops.lastUpdates)
 		}
+	}
+}
+
+// HasHistory forwards the id and returns the ops answer unchanged: a wrapper
+// that drops the bool (always false) or swaps the id fails here.
+func TestAPIHasHistoryForwardsAnswer(t *testing.T) {
+	t.Parallel()
+	for _, want := range []bool{true, false} {
+		spy := &relOpsSpy{hasHist: want}
+		got, err := New(spy).HasHistory(types.RelID(77))
+		if err != nil || got != want {
+			t.Fatalf("HasHistory = %v, %v; want %v, nil", got, err, want)
+		}
+		if spy.lastRelID != types.RelID(77) || len(spy.calls) != 1 || spy.calls[0] != "HasHistory" {
+			t.Fatalf("forwarded id %v calls %v", spy.lastRelID, spy.calls)
+		}
+	}
+	if got, err := New((*relOpsSpy)(nil)).HasHistory(1); got || !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("typed-nil HasHistory = %v, %v; want false, ErrNilGraph", got, err)
 	}
 }

@@ -207,6 +207,19 @@ func (tx *GraphTx) updateNodeAt(id types.NodeID, updates map[string]any, at type
 		return nil, err
 	}
 	tmp.txAt = at
+	if at != 0 {
+		// Refuse before the snapshot (backlog 19): a refused caller-instant
+		// update writes nothing, so it must not leave a snapshot whose
+		// rollback rewrites the entity's history. The tx holds c.mu
+		// exclusively; the seam re-checks under the entity lock.
+		current, err := tx.g.getCurrentNode(id)
+		if err != nil {
+			return nil, err
+		}
+		if err := tx.g.checkNodeCallerUpdate(id, current, prov, tmp, preparedUpdates); err != nil {
+			return nil, err
+		}
+	}
 	if at == 0 && preparedUpdateCanBeReadOnlyNoOp(prov, tmp) {
 		current, err := tx.g.getCurrentNode(id)
 		if err != nil {
@@ -300,6 +313,9 @@ func (tx *GraphTx) SetNodeVersionInterval(id types.NodeID, validFrom, validTo ty
 		return nil, err
 	}
 	if err := tx.snapshotNodeLocked(id.SnowflakeID()); err != nil {
+		if errors.Is(err, storepkg.ErrNodeNotFound) {
+			return nil, tx.g.cascadeMissingNodeErr(id)
+		}
 		return nil, err
 	}
 
@@ -321,6 +337,9 @@ func (tx *GraphTx) SetRelVersionInterval(id types.RelID, validFrom, validTo type
 		return nil, err
 	}
 	if err := tx.snapshotRelLocked(id.SnowflakeID()); err != nil {
+		if errors.Is(err, storepkg.ErrRelNotFound) {
+			return nil, tx.g.cascadeMissingRelErr(id)
+		}
 		return nil, err
 	}
 
@@ -555,8 +574,15 @@ func (tx *GraphTx) UpdateRelationshipWithTx(id types.RelID, updates map[string]a
 		return nil, err
 	}
 	tmp.txAt = at
-	// Snapshot before the seam (a refused call leaves the row as snapshotted,
-	// so Rollback restores what is already there).
+	// Refuse before the snapshot (backlog 19) — see updateNodeAt. The seam
+	// re-checks under the entity lock.
+	current, err := tx.g.getCurrentRelationship(id)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.g.checkRelCallerUpdate(id, current, prov, tmp, preparedUpdates); err != nil {
+		return nil, err
+	}
 	if err := tx.snapshotRelLocked(id.SnowflakeID()); err != nil {
 		return nil, err
 	}
@@ -574,7 +600,7 @@ func (tx *GraphTx) deletedNodeHistorySnapshot(id types.NodeID, node *types.Node)
 		history, err := tx.g.copyNodeHistory(id)
 		return history, 0, false, err
 	}
-	if found, err := tx.nodeHistoryVersionExists(id, node.Version()); err != nil {
+	if found, err := tx.nodeHistoryAtOrAbove(id, node.Version()); err != nil {
 		return nil, 0, false, err
 	} else if found {
 		history, err := tx.g.copyNodeHistory(id)
@@ -593,7 +619,7 @@ func (tx *GraphTx) deletedRelHistorySnapshot(id types.RelID, rel *types.Relation
 		}
 		return history, 0, false, err
 	}
-	if found, err := tx.relHistoryVersionExists(id, rel.Version()); err != nil {
+	if found, err := tx.relHistoryAtOrAbove(id, rel.Version()); err != nil {
 		return nil, 0, false, err
 	} else if found {
 		history, err := tx.g.copyRelHistory(id)
@@ -602,30 +628,35 @@ func (tx *GraphTx) deletedRelHistorySnapshot(id types.RelID, rel *types.Relation
 	return nil, rel.Version(), true, nil
 }
 
-func (tx *GraphTx) nodeHistoryVersionExists(id types.NodeID, version uint32) (bool, error) {
+// nodeHistoryAtOrAbove reports whether node id has a history row at version
+// or above it. The rollback trim (TrimNodeHistoryFrom(version)) removes every
+// row at or above version, so it is a sound snapshot only when there is none:
+// a row at version would be lost, and so would a cascade row above the
+// current version (a bounded SetVersionInterval that left the current row in
+// place, backlog 19) — the snapshot then takes the full-copy path.
+func (tx *GraphTx) nodeHistoryAtOrAbove(id types.NodeID, version uint32) (bool, error) {
 	if _, err := tx.g.getNodeVersion(id, version); err == nil {
 		return true, nil
-	} else if errors.Is(err, storepkg.ErrVersionNotFound) {
-		return false, nil
-	} else {
+	} else if !errors.Is(err, storepkg.ErrVersionNotFound) {
 		return false, err
 	}
+	return tx.g.nodeHasHistoryAbove(id, version)
 }
 
-func (tx *GraphTx) relHistoryVersionExists(id types.RelID, version uint32) (bool, error) {
+// relHistoryAtOrAbove mirrors nodeHistoryAtOrAbove for relationships.
+func (tx *GraphTx) relHistoryAtOrAbove(id types.RelID, version uint32) (bool, error) {
 	if _, err := tx.g.getRelVersion(id, version); err == nil {
 		return true, nil
-	} else if errors.Is(err, storepkg.ErrVersionNotFound) {
-		return false, nil
 	} else if errors.Is(err, storepkg.ErrSlotNotLocal) {
 		// A Model-A foreign-incoming stub (ADR-0010): its rel-ID slot is foreign, so
 		// a slot-routed history read fails closed. The stub is adjacency-only — its
 		// version history's authority is the START machine — so it has no local
 		// history version to snapshot for rollback.
 		return false, nil
-	} else {
+	} else if !errors.Is(err, storepkg.ErrVersionNotFound) {
 		return false, err
 	}
+	return tx.g.relHasHistoryAbove(id, version)
 }
 
 func (tx *GraphTx) materializeDeletedNodeHistoryLocked(id types.NodeID) error {

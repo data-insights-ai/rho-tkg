@@ -1,0 +1,223 @@
+=== RUN   TestCompactionKeepsPrevHashAnchors
+=== PAUSE TestCompactionKeepsPrevHashAnchors
+=== CONT  TestCompactionKeepsPrevHashAnchors
+=== RUN   TestCompactionKeepsPrevHashAnchors/memory/node/plain-updates
+=== RUN   TestCompactionKeepsPrevHashAnchors/memory/node/bounded
+    cascade_compaction_test.go:74: [after compaction] chain verify = false, <nil> (rows 4 -> 2):
+          v2 vf=3000 vt=0 tx=1791555627576..1791555627577 del=0 cur=false x=0
+          v3 vf=9000 vt=0 tx=1791555627577..0 del=0 cur=true x=7
+=== RUN   TestCompactionKeepsPrevHashAnchors/memory/node/at-genesis-vf
+    cascade_compaction_test.go:74: [after compaction] chain verify = false, <nil> (rows 4 -> 2):
+          v2 vf=3000 vt=0 tx=1791555627576..1791555627577 del=0 cur=false x=0
+          v3 vf=9000 vt=0 tx=1791555627577..0 del=0 cur=true x=7
+=== RUN   TestCompactionKeepsPrevHashAnchors/memory/node/nested
+    cascade_compaction_test.go:74: [after compaction] chain verify = false, <nil> (rows 6 -> 2):
+          v4 vf=2200 vt=2400 tx=1791555627577..0 del=0 cur=false x=2
+          v5 vf=9000 vt=0 tx=1791555627578..0 del=0 cur=true x=7
+=== RUN   TestCompactionKeepsPrevHashAnchors/memory/node/gap-before-first-vf
+    cascade_compaction_test.go:74: [after compaction] chain verify = false, <nil> (rows 3 -> 2):
+          v1 vf=500 vt=800 tx=1791555627576..0 del=0 cur=false x=1
+          v2 vf=9000 vt=0 tx=1791555627577..0 del=0 cur=true x=7
+=== RUN   TestCompactionKeepsPrevHashAnchors/memory/node/slot-kept-by-later-version
+    cascade_compaction_test.go:74: [after compaction] chain verify = false, <nil> (rows 5 -> 2):
+          v3 vf=2000 vt=3000 tx=1791555627578..0 del=0 cur=false x=1
+          v4 vf=9000 vt=0 tx=1791555627579..0 del=0 cur=true x=7
+=== RUN   TestCompactionKeepsPrevHashAnchors/memory/node/closed-then-gap
+=== RUN   TestCompactionKeepsPrevHashAnchors/memory/rel/plain-updates
+=== RUN   TestCompactionKeepsPrevHashAnchors/memory/rel/bounded
+    cascade_compaction_test.go:74: [after compaction] chain verify = false, <nil> (rows 4 -> 2):
+          v2 vf=3000 vt=0 tx=1791555627578..1791555627579 del=0 cur=false x=0
+          v3 vf=9000 vt=0 tx=1791555627579..0 del=0 cur=true x=7
+=== RUN   TestCompactionKeepsPrevHashAnchors/memory/rel/at-genesis-vf
+    cascade_compaction_test.go:74: [after compaction] chain verify = false, <nil> (rows 4 -> 2):
+          v2 vf=3000 vt=0 tx=1791555627578..1791555627579 del=0 cur=false x=0
+          v3 vf=9000 vt=0 tx=1791555627579..0 del=0 cur=true x=7
+=== RUN   TestCompactionKeepsPrevHashAnchors/memory/rel/nested
+    cascade_compaction_test.go:74: [after compaction] chain verify = false, <nil> (rows 6 -> 2):
+          v4 vf=2200 vt=2400 tx=1791555627579..0 del=0 cur=false x=2
+          v5 vf=9000 vt=0 tx=1791555627580..0 del=0 cur=true x=7
+=== RUN   TestCompactionKeepsPrevHashAnchors/memory/rel/gap-before-first-vf
+    cascade_compaction_test.go:74: [after compaction] chain verify = false, <nil> (rows 3 -> 2):
+          v1 vf=500 vt=800 tx=1791555627578..0 del=0 cur=false x=1
+          v2 vf=9000 vt=0 tx=1791555627579..0 del=0 cur=true x=7
+=== RUN   TestCompactionKeepsPrevHashAnchors/memory/rel/slot-kept-by-later-version
+    cascade_compaction_test.go:74: [after compaction] chain verify = false, <nil> (rows 5 -> 2):
+          v3 vf=2000 vt=3000 tx=1791555627580..0 del=0 cur=false x=1
+          v4 vf=9000 vt=0 tx=1791555627581..0 del=0 cur=true x=7
+=== RUN   TestCompactionKeepsPrevHashAnchors/memory/rel/closed-then-gap
+=== RUN   TestCompactionKeepsPrevHashAnchors/badger/node/plain-updates
+=== RUN   TestCompactionKeepsPrevHashAnchors/badger/node/bounded
+    cascade_compaction_test.go:74: [after compaction] chain verify = false, <nil> (rows 4 -> 2):
+          v2 vf=3000 vt=0 tx=1791555627583..1791555627584 del=0 cur=false x=0
+          v3 vf=9000 vt=0 tx=1791555627584..0 del=0 cur=true x=7
+=== RUN   TestCompactionKeepsPrevHashAnchors/badger/node/at-genesis-vf
+    cascade_compaction_test.go:74: [after compaction] chain verify = false, <nil> (rows 4 -> 2):
+          v2 vf=3000 vt=0 tx=1791555627585..1791555627586 del=0 cur=false x=0
+          v3 vf=9000 vt=0 tx=1791555627586..0 del=0 cur=true x=7
+=== RUN   TestCompactionKeepsPrevHashAnchors/badger/node/nested
+    cascade_compaction_test.go:74: [after compaction] chain verify = false, <nil> (rows 6 -> 2):
+          v4 vf=2200 vt=2400 tx=1791555627620..0 del=0 cur=false x=2
+          v5 vf=9000 vt=0 tx=1791555627621..0 del=0 cur=true x=7
+=== RUN   TestCompactionKeepsPrevHashAnchors/badger/node/gap-before-first-vf
+    cascade_compaction_test.go:74: [after compaction] chain verify = false, <nil> (rows 3 -> 2):
+          v1 vf=500 vt=800 tx=1791555627621..0 del=0 cur=false x=1
+          v2 vf=9000 vt=0 tx=1791555627622..0 del=0 cur=true x=7
+=== RUN   TestCompactionKeepsPrevHashAnchors/badger/node/slot-kept-by-later-version
+    cascade_compaction_test.go:74: [after compaction] chain verify = false, <nil> (rows 5 -> 2):
+          v3 vf=2000 vt=3000 tx=1791555627651..0 del=0 cur=false x=1
+          v4 vf=9000 vt=0 tx=1791555627652..0 del=0 cur=true x=7
+=== RUN   TestCompactionKeepsPrevHashAnchors/badger/node/closed-then-gap
+=== RUN   TestCompactionKeepsPrevHashAnchors/badger/rel/plain-updates
+=== RUN   TestCompactionKeepsPrevHashAnchors/badger/rel/bounded
+    cascade_compaction_test.go:74: [after compaction] chain verify = false, <nil> (rows 4 -> 2):
+          v2 vf=3000 vt=0 tx=1791555627695..1791555627696 del=0 cur=false x=0
+          v3 vf=9000 vt=0 tx=1791555627696..0 del=0 cur=true x=7
+=== RUN   TestCompactionKeepsPrevHashAnchors/badger/rel/at-genesis-vf
+    cascade_compaction_test.go:74: [after compaction] chain verify = false, <nil> (rows 4 -> 2):
+          v2 vf=3000 vt=0 tx=1791555627697..1791555627698 del=0 cur=false x=0
+          v3 vf=9000 vt=0 tx=1791555627698..0 del=0 cur=true x=7
+=== RUN   TestCompactionKeepsPrevHashAnchors/badger/rel/nested
+    cascade_compaction_test.go:74: [after compaction] chain verify = false, <nil> (rows 6 -> 2):
+          v4 vf=2200 vt=2400 tx=1791555627706..0 del=0 cur=false x=2
+          v5 vf=9000 vt=0 tx=1791555627707..0 del=0 cur=true x=7
+=== RUN   TestCompactionKeepsPrevHashAnchors/badger/rel/gap-before-first-vf
+    cascade_compaction_test.go:74: [after compaction] chain verify = false, <nil> (rows 3 -> 2):
+          v1 vf=500 vt=800 tx=1791555627707..0 del=0 cur=false x=1
+          v2 vf=9000 vt=0 tx=1791555627708..0 del=0 cur=true x=7
+=== RUN   TestCompactionKeepsPrevHashAnchors/badger/rel/slot-kept-by-later-version
+    cascade_compaction_test.go:74: [after compaction] chain verify = false, <nil> (rows 5 -> 2):
+          v3 vf=2000 vt=3000 tx=1791555627716..0 del=0 cur=false x=1
+          v4 vf=9000 vt=0 tx=1791555627717..0 del=0 cur=true x=7
+=== RUN   TestCompactionKeepsPrevHashAnchors/badger/rel/closed-then-gap
+=== RUN   TestCompactionKeepsPrevHashAnchors/sharded/node/plain-updates
+    cascade_compaction_test.go:52: sharded: compaction not supported (graph: history compaction: graph: store does not support this capability)
+=== RUN   TestCompactionKeepsPrevHashAnchors/sharded/node/bounded
+    cascade_compaction_test.go:52: sharded: compaction not supported (graph: history compaction: graph: store does not support this capability)
+=== RUN   TestCompactionKeepsPrevHashAnchors/sharded/node/at-genesis-vf
+    cascade_compaction_test.go:52: sharded: compaction not supported (graph: history compaction: graph: store does not support this capability)
+=== RUN   TestCompactionKeepsPrevHashAnchors/sharded/node/nested
+    cascade_compaction_test.go:52: sharded: compaction not supported (graph: history compaction: graph: store does not support this capability)
+=== RUN   TestCompactionKeepsPrevHashAnchors/sharded/node/gap-before-first-vf
+    cascade_compaction_test.go:52: sharded: compaction not supported (graph: history compaction: graph: store does not support this capability)
+=== RUN   TestCompactionKeepsPrevHashAnchors/sharded/node/slot-kept-by-later-version
+    cascade_compaction_test.go:52: sharded: compaction not supported (graph: history compaction: graph: store does not support this capability)
+=== RUN   TestCompactionKeepsPrevHashAnchors/sharded/node/closed-then-gap
+    cascade_compaction_test.go:52: sharded: compaction not supported (graph: history compaction: graph: store does not support this capability)
+=== RUN   TestCompactionKeepsPrevHashAnchors/sharded/rel/plain-updates
+    cascade_compaction_test.go:52: sharded: compaction not supported (graph: history compaction: graph: store does not support this capability)
+=== RUN   TestCompactionKeepsPrevHashAnchors/sharded/rel/bounded
+    cascade_compaction_test.go:52: sharded: compaction not supported (graph: history compaction: graph: store does not support this capability)
+=== RUN   TestCompactionKeepsPrevHashAnchors/sharded/rel/at-genesis-vf
+    cascade_compaction_test.go:52: sharded: compaction not supported (graph: history compaction: graph: store does not support this capability)
+=== RUN   TestCompactionKeepsPrevHashAnchors/sharded/rel/nested
+    cascade_compaction_test.go:52: sharded: compaction not supported (graph: history compaction: graph: store does not support this capability)
+=== RUN   TestCompactionKeepsPrevHashAnchors/sharded/rel/gap-before-first-vf
+    cascade_compaction_test.go:52: sharded: compaction not supported (graph: history compaction: graph: store does not support this capability)
+=== RUN   TestCompactionKeepsPrevHashAnchors/sharded/rel/slot-kept-by-later-version
+    cascade_compaction_test.go:52: sharded: compaction not supported (graph: history compaction: graph: store does not support this capability)
+=== RUN   TestCompactionKeepsPrevHashAnchors/sharded/rel/closed-then-gap
+    cascade_compaction_test.go:52: sharded: compaction not supported (graph: history compaction: graph: store does not support this capability)
+=== RUN   TestCompactionKeepsPrevHashAnchors/tiered/node/plain-updates
+=== RUN   TestCompactionKeepsPrevHashAnchors/tiered/node/bounded
+    cascade_compaction_test.go:74: [after compaction] chain verify = false, <nil> (rows 4 -> 2):
+          v2 vf=3000 vt=0 tx=1791555627977..1791555627978 del=0 cur=false x=0
+          v3 vf=9000 vt=0 tx=1791555627978..0 del=0 cur=true x=7
+=== RUN   TestCompactionKeepsPrevHashAnchors/tiered/node/at-genesis-vf
+    cascade_compaction_test.go:74: [after compaction] chain verify = false, <nil> (rows 4 -> 2):
+          v2 vf=3000 vt=0 tx=1791555627979..1791555627980 del=0 cur=false x=0
+          v3 vf=9000 vt=0 tx=1791555627980..0 del=0 cur=true x=7
+=== RUN   TestCompactionKeepsPrevHashAnchors/tiered/node/nested
+    cascade_compaction_test.go:74: [after compaction] chain verify = false, <nil> (rows 6 -> 2):
+          v4 vf=2200 vt=2400 tx=1791555627996..0 del=0 cur=false x=2
+          v5 vf=9000 vt=0 tx=1791555627997..0 del=0 cur=true x=7
+=== RUN   TestCompactionKeepsPrevHashAnchors/tiered/node/gap-before-first-vf
+    cascade_compaction_test.go:74: [after compaction] chain verify = false, <nil> (rows 3 -> 2):
+          v1 vf=500 vt=800 tx=1791555628010..0 del=0 cur=false x=1
+          v2 vf=9000 vt=0 tx=1791555628011..0 del=0 cur=true x=7
+=== RUN   TestCompactionKeepsPrevHashAnchors/tiered/node/slot-kept-by-later-version
+    cascade_compaction_test.go:74: [after compaction] chain verify = false, <nil> (rows 5 -> 2):
+          v3 vf=2000 vt=3000 tx=1791555628027..0 del=0 cur=false x=1
+          v4 vf=9000 vt=0 tx=1791555628028..0 del=0 cur=true x=7
+=== RUN   TestCompactionKeepsPrevHashAnchors/tiered/node/closed-then-gap
+=== RUN   TestCompactionKeepsPrevHashAnchors/tiered/rel/plain-updates
+=== RUN   TestCompactionKeepsPrevHashAnchors/tiered/rel/bounded
+    cascade_compaction_test.go:74: [after compaction] chain verify = false, <nil> (rows 4 -> 2):
+          v2 vf=3000 vt=0 tx=1791555628098..1791555628099 del=0 cur=false x=0
+          v3 vf=9000 vt=0 tx=1791555628099..0 del=0 cur=true x=7
+=== RUN   TestCompactionKeepsPrevHashAnchors/tiered/rel/at-genesis-vf
+    cascade_compaction_test.go:74: [after compaction] chain verify = false, <nil> (rows 4 -> 2):
+          v2 vf=3000 vt=0 tx=1791555628110..1791555628111 del=0 cur=false x=0
+          v3 vf=9000 vt=0 tx=1791555628111..0 del=0 cur=true x=7
+=== RUN   TestCompactionKeepsPrevHashAnchors/tiered/rel/nested
+    cascade_compaction_test.go:74: [after compaction] chain verify = false, <nil> (rows 6 -> 2):
+          v4 vf=2200 vt=2400 tx=1791555628126..0 del=0 cur=false x=2
+          v5 vf=9000 vt=0 tx=1791555628127..0 del=0 cur=true x=7
+=== RUN   TestCompactionKeepsPrevHashAnchors/tiered/rel/gap-before-first-vf
+    cascade_compaction_test.go:74: [after compaction] chain verify = false, <nil> (rows 3 -> 2):
+          v1 vf=500 vt=800 tx=1791555628138..0 del=0 cur=false x=1
+          v2 vf=9000 vt=0 tx=1791555628139..0 del=0 cur=true x=7
+=== RUN   TestCompactionKeepsPrevHashAnchors/tiered/rel/slot-kept-by-later-version
+    cascade_compaction_test.go:74: [after compaction] chain verify = false, <nil> (rows 5 -> 2):
+          v3 vf=2000 vt=3000 tx=1791555628153..0 del=0 cur=false x=1
+          v4 vf=9000 vt=0 tx=1791555628154..0 del=0 cur=true x=7
+=== RUN   TestCompactionKeepsPrevHashAnchors/tiered/rel/closed-then-gap
+--- FAIL: TestCompactionKeepsPrevHashAnchors (0.60s)
+    --- PASS: TestCompactionKeepsPrevHashAnchors/memory/node/plain-updates (0.00s)
+    --- FAIL: TestCompactionKeepsPrevHashAnchors/memory/node/bounded (0.00s)
+    --- FAIL: TestCompactionKeepsPrevHashAnchors/memory/node/at-genesis-vf (0.00s)
+    --- FAIL: TestCompactionKeepsPrevHashAnchors/memory/node/nested (0.00s)
+    --- FAIL: TestCompactionKeepsPrevHashAnchors/memory/node/gap-before-first-vf (0.00s)
+    --- FAIL: TestCompactionKeepsPrevHashAnchors/memory/node/slot-kept-by-later-version (0.00s)
+    --- PASS: TestCompactionKeepsPrevHashAnchors/memory/node/closed-then-gap (0.00s)
+    --- PASS: TestCompactionKeepsPrevHashAnchors/memory/rel/plain-updates (0.00s)
+    --- FAIL: TestCompactionKeepsPrevHashAnchors/memory/rel/bounded (0.00s)
+    --- FAIL: TestCompactionKeepsPrevHashAnchors/memory/rel/at-genesis-vf (0.00s)
+    --- FAIL: TestCompactionKeepsPrevHashAnchors/memory/rel/nested (0.00s)
+    --- FAIL: TestCompactionKeepsPrevHashAnchors/memory/rel/gap-before-first-vf (0.00s)
+    --- FAIL: TestCompactionKeepsPrevHashAnchors/memory/rel/slot-kept-by-later-version (0.00s)
+    --- PASS: TestCompactionKeepsPrevHashAnchors/memory/rel/closed-then-gap (0.00s)
+    --- PASS: TestCompactionKeepsPrevHashAnchors/badger/node/plain-updates (0.01s)
+    --- FAIL: TestCompactionKeepsPrevHashAnchors/badger/node/bounded (0.00s)
+    --- FAIL: TestCompactionKeepsPrevHashAnchors/badger/node/at-genesis-vf (0.00s)
+    --- FAIL: TestCompactionKeepsPrevHashAnchors/badger/node/nested (0.03s)
+    --- FAIL: TestCompactionKeepsPrevHashAnchors/badger/node/gap-before-first-vf (0.00s)
+    --- FAIL: TestCompactionKeepsPrevHashAnchors/badger/node/slot-kept-by-later-version (0.03s)
+    --- PASS: TestCompactionKeepsPrevHashAnchors/badger/node/closed-then-gap (0.04s)
+    --- PASS: TestCompactionKeepsPrevHashAnchors/badger/rel/plain-updates (0.00s)
+    --- FAIL: TestCompactionKeepsPrevHashAnchors/badger/rel/bounded (0.00s)
+    --- FAIL: TestCompactionKeepsPrevHashAnchors/badger/rel/at-genesis-vf (0.00s)
+    --- FAIL: TestCompactionKeepsPrevHashAnchors/badger/rel/nested (0.01s)
+    --- FAIL: TestCompactionKeepsPrevHashAnchors/badger/rel/gap-before-first-vf (0.00s)
+    --- FAIL: TestCompactionKeepsPrevHashAnchors/badger/rel/slot-kept-by-later-version (0.01s)
+    --- PASS: TestCompactionKeepsPrevHashAnchors/badger/rel/closed-then-gap (0.04s)
+    --- SKIP: TestCompactionKeepsPrevHashAnchors/sharded/node/plain-updates (0.00s)
+    --- SKIP: TestCompactionKeepsPrevHashAnchors/sharded/node/bounded (0.01s)
+    --- SKIP: TestCompactionKeepsPrevHashAnchors/sharded/node/at-genesis-vf (0.06s)
+    --- SKIP: TestCompactionKeepsPrevHashAnchors/sharded/node/nested (0.01s)
+    --- SKIP: TestCompactionKeepsPrevHashAnchors/sharded/node/gap-before-first-vf (0.01s)
+    --- SKIP: TestCompactionKeepsPrevHashAnchors/sharded/node/slot-kept-by-later-version (0.01s)
+    --- SKIP: TestCompactionKeepsPrevHashAnchors/sharded/node/closed-then-gap (0.01s)
+    --- SKIP: TestCompactionKeepsPrevHashAnchors/sharded/rel/plain-updates (0.01s)
+    --- SKIP: TestCompactionKeepsPrevHashAnchors/sharded/rel/bounded (0.01s)
+    --- SKIP: TestCompactionKeepsPrevHashAnchors/sharded/rel/at-genesis-vf (0.01s)
+    --- SKIP: TestCompactionKeepsPrevHashAnchors/sharded/rel/nested (0.01s)
+    --- SKIP: TestCompactionKeepsPrevHashAnchors/sharded/rel/gap-before-first-vf (0.01s)
+    --- SKIP: TestCompactionKeepsPrevHashAnchors/sharded/rel/slot-kept-by-later-version (0.01s)
+    --- SKIP: TestCompactionKeepsPrevHashAnchors/sharded/rel/closed-then-gap (0.01s)
+    --- PASS: TestCompactionKeepsPrevHashAnchors/tiered/node/plain-updates (0.02s)
+    --- FAIL: TestCompactionKeepsPrevHashAnchors/tiered/node/bounded (0.00s)
+    --- FAIL: TestCompactionKeepsPrevHashAnchors/tiered/node/at-genesis-vf (0.00s)
+    --- FAIL: TestCompactionKeepsPrevHashAnchors/tiered/node/nested (0.01s)
+    --- FAIL: TestCompactionKeepsPrevHashAnchors/tiered/node/gap-before-first-vf (0.02s)
+    --- FAIL: TestCompactionKeepsPrevHashAnchors/tiered/node/slot-kept-by-later-version (0.02s)
+    --- PASS: TestCompactionKeepsPrevHashAnchors/tiered/node/closed-then-gap (0.03s)
+    --- PASS: TestCompactionKeepsPrevHashAnchors/tiered/rel/plain-updates (0.04s)
+    --- FAIL: TestCompactionKeepsPrevHashAnchors/tiered/rel/bounded (0.01s)
+    --- FAIL: TestCompactionKeepsPrevHashAnchors/tiered/rel/at-genesis-vf (0.01s)
+    --- FAIL: TestCompactionKeepsPrevHashAnchors/tiered/rel/nested (0.01s)
+    --- FAIL: TestCompactionKeepsPrevHashAnchors/tiered/rel/gap-before-first-vf (0.01s)
+    --- FAIL: TestCompactionKeepsPrevHashAnchors/tiered/rel/slot-kept-by-later-version (0.01s)
+    --- PASS: TestCompactionKeepsPrevHashAnchors/tiered/rel/closed-then-gap (0.02s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.633s
+FAIL

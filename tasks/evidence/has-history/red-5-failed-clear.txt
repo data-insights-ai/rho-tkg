@@ -1,0 +1,8 @@
+--- FAIL: TestHistoryPresence_FailedClearRebuilds (0.04s)
+    --- FAIL: TestHistoryPresence_FailedClearRebuilds/node (0.04s)
+        badgerstore_history_presence_test.go:315: node rows survived the failed Clear: has(110) = false, history has 1 rows
+    --- FAIL: TestHistoryPresence_FailedClearRebuilds/rel (0.00s)
+        badgerstore_history_presence_test.go:315: rel rows survived the failed Clear: has(110) = false, history has 1 rows
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.056s
+FAIL

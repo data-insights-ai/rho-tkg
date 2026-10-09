@@ -1,0 +1,47 @@
+=== RUN   TestHasHistoryDifferential
+=== RUN   TestHasHistoryDifferential/badger-disk/seed=1
+    has_history_test.go:431: badger-disk seed 1: successful ops map[addRel:8 burstUpdate:11 cascadeNode:5 cascadeRel:2 clear:1 closeOrLabel:4 compact:9 deleteNode:5 deleteRel:2 erase:6 flush:7 purge:6 reopen:7 txCommit:6 txCreateUpdate:13 txRollback:7 txUpdateNode:4 updateNode:13 updateRel:2]
+    has_history_test.go:447: node 797220883706609664  hist []
+    has_history_test.go:447: node 797220884455948288  hist []
+    has_history_test.go:447: node 797220884605796352  hist []
+    has_history_test.go:447: node 797220884606582784  hist []
+    has_history_test.go:447: node 797220884606877696  hist []
+    has_history_test.go:447: node 797220884607369216  hist []
+    has_history_test.go:447: node 797220885959966720 cur v5 hist [v4 tx[1791554850946,1791554850966) vf[0,0) del=0]
+    has_history_test.go:447: node 797220885963079680  hist []
+    has_history_test.go:447: node 797220885992570880 cur v7 hist [v6 tx[1791554851414,1791554851416) vf[0,0) del=0]
+    has_history_test.go:447: node 797220888640585728  hist []
+    has_history_test.go:447: node 797220889354010624 cur v6 hist [v5 tx[1791554850924,1791554851600) vf[0,0) del=0]
+    has_history_test.go:447: node 797220889358204928  hist []
+    has_history_test.go:447: node 797220889361612800 cur v6 hist [v10 tx[1791554851441,0) vf[1791554855240,1791554855310) del=0]
+    has_history_test.go:447: node 797220889375473664 cur v5 hist [v4 tx[1791554851298,1791554851300) vf[0,0) del=0]
+    has_history_test.go:447: node 797220889383206912  hist [v1 tx[1791554851308,1791554850803) vf[1791554852801,1791554856801) del=1791554850803]
+    has_history_test.go:447: node 797220889385631744  hist []
+    has_history_test.go:447: node 797220889617596416  hist []
+    has_history_test.go:447: node 797220889638699008  hist []
+    has_history_test.go:447: node 797220893968629760  hist []
+    has_history_test.go:447: node 797220893972037632 cur v4 hist [v3 tx[1791554851203,1791554851205) vf[0,0) del=0]
+    has_history_test.go:447: node 797220893975543808  hist []
+    has_history_test.go:447: node 797220895236620288 cur v0 hist []
+    has_history_test.go:447: node 797220895258771456 cur v0 hist []
+    has_history_test.go:447: node 797220895271223296  hist []
+    has_history_test.go:447: node 797220895488311296  hist [v2 tx[1791554850980,1791554851216) vf[0,1791554851216) del=1791554851216]
+    has_history_test.go:447: node 797220895514689536  hist [v0 tx[1791554850969,1791554850979) vf[0,1791554850979) del=1791554850979]
+    has_history_test.go:447: node 797220895521177600  hist []
+    has_history_test.go:447: node 797220899555540992 cur v5 hist [v4 tx[1791554851410,1791554851447) vf[0,0) del=0]
+    has_history_test.go:447: node 797220903191085056 cur v0 hist []
+    has_history_test.go:447: node 797220906521952256 cur v1 hist [v0 tx[1791554851306,1791554851445) vf[0,0) del=0]
+    has_history_test.go:447: node 797220906575200256 cur v1 hist [v0 tx[1791554851312,1791554851314) vf[0,0) del=0]
+    has_history_test.go:447: node 797220910128889856 cur v1 hist [v0 tx[1791554851432,1791554851436) vf[0,0) del=0]
+    has_history_test.go:447: node 797220910136655872  hist [v0 tx[1791554851433,1791554851609) vf[0,1791554851609) del=1791554851609]
+    has_history_test.go:447: node 797220910226964480 cur v2 hist [v0 tx[1791554851450,1791554851452) vf[0,0) del=0 v1 tx[1791554851452,1791554851621) vf[0,0) del=0]
+    has_history_test.go:447: node 797220910235222016 cur v0 hist []
+    has_history_test.go:447: node 797220916185464832 cur v0 hist []
+    has_history_test.go:447: node 797220916326400000  hist []
+    has_history_test.go:447: node 797220917152972800  hist []
+    has_history_test.go:448: import: import: node 797220889361612800: graph: corrupt export record: imported hash chain does not verify
+--- FAIL: TestHasHistoryDifferential (1.34s)
+    --- FAIL: TestHasHistoryDifferential/badger-disk/seed=1 (1.34s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.388s
+FAIL

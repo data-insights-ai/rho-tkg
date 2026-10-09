@@ -1,0 +1,31 @@
+# Mutation checks (break-the-code), 2026-10-09, worktree item G.
+# Each mutation applied with sed to one line, the named test(s) run, the file restored to HEAD (clean status after
+# each). "FAIL lines" counts every "--- FAIL" line of the run (parents included). Every mutation went red.
+
+| # | mutation (file: change) | test(s) run | result |
+|---|---|---|---|
+| M1 | version_alloc.go: allocator off (`if above {` -> `if above && false {`; Update/Close/label/CAS take current+1) | TestCascadeVersionsUniqueAndPastStable | red, 33 FAIL lines: "[update] two rows with version 3" |
+| M2 | temporal_cascade.go: no slot-row reordering (`moveToEnd` -> `slices.Contains`) | TestAsOfBoundedCascadeThenDelete | red, 89: "the current row is not the highest version after the cascade" (first run also found the same-write as-of case, fixed in 6c0989a) |
+| M3 | tx_mutations.go: snapshot ignores rows above current (`nodeHasHistoryAbove` -> `false`) | TestTxRollbackKeepsCascadeRows | red, 53: "rollback changed the chain" (memory, badger) |
+| M4 | tx_mutations.go: no check before the snapshot in Update*WithTx | TestTxRefusedUpdateWithTxTakesNoSnapshot | red, 9: "a refused update left 1 snapshots" |
+| M5 | asof_select.go: tombstone life-end rule off | TestAsOfBoundedCascadeThenDelete | red, 127: "[as-of after the delete] want [B:v0]" (memory, sharded, tiered) |
+| M5b/c | badgerstore_txtime.go: badger tombstone walk off | TestAsOfBoundedCascadeThenDelete; TestBadgerAsOfCascadeShapesEquivalentToSelectAsOf | red, 43 (badger) and 1: "SelectAsOf absent, native (1)" |
+| M6 | chain_resolver.go: valid-time life caps off (`chainLifeEnds` returns nil) | TestValidTimeAfterDeleteBoundedCascade | red, 25: "valid >= delete (pinned) want [B:v0]" (nested, slot-kept shapes) |
+| M7 | chain_resolver.go: version ordering off (`versionOrdered` returns its input) | TestCascadeVersionsUniqueAndPastStable, TestValidTimeAfterDeleteBoundedCascade, TestAsOfBoundedCascadeThenDelete | red, 83: closed-then-gap shape in all three |
+| M8 | temporal_cascade.go: stampAppendedRow keeps TxTo | TestCascadeAppendedRowsCarryNoRetraction | red, 9: "v3 TxTo < TxFrom" |
+| M9 | temporal_cascade.go: deleted entity returns plain not-found | TestCascadeOnDeletedEntityRefused | red, 57: "want ErrEntityDeleted wrapping graph: node not found" |
+| M10 | badgerstore_txtime.go: badger current arm ignores rows above current | TestBadgerAsOfCascadeShapesEquivalentToSelectAsOf; core tests | red, 1 and 54 ("the past changed (rule 15)", badger) |
+| M11 | txtime.go: core fallback current arm ignores rows above current | TestCascadeVersionsUniqueAndPastStable, TestAsOfBoundedCascadeThenDelete | red, 106 (sharded, tiered) |
+| M12 | count_at.go: TxPin count arm decides from the current row | TestAsOfLabelCountAfterCascadeBelowLabelChange | red, 3: "CountByLabelAt(X){TxPin}=2; want 1" (sharded, tiered) |
+| M13 | compaction.go: anchor check off | TestCompactionKeepsPrevHashAnchors | red, 31: "[after compaction] chain verify = false" |
+| M14 | badgerstore_txtime.go: point probe always "no row above" | TestBadgerAsOfCascadeShapesEquivalentToSelectAsOf | red, 1: "SelectAsOf v1, native (0)" |
+
+## Review round 2 (old chains, re-import, compaction one pass)
+
+| # | mutation | test(s) run | result |
+|---|---|---|---|
+| M15 | badgerstore_txtime.go: write-run rule off (`answer` never takes an own-open row) | TestBadgerAsOfCascadeShapesEquivalentToSelectAsOf | red: "node 72 pin 2: SelectAsOf v1, native (3)" |
+| M16 | asof_select.go: copied-TxTo skip off (`TxTo < TxFrom` rows count as slot holders) | TestOldChain_* | red, 6 subtests (memory, sharded, tiered; ResumptionWithCopiedTxToThenDelete) |
+| M17 | asof_select.go: write-run rule off (`openInWrite` never takes an own-open row) | TestOldChain_* | red, 6 subtests (BoundedCascadeResumptionTookSlot; memory, sharded, tiered) |
+| M18 | asof_select.go and badgerstore_txtime.go: earlier-life rule off | TestAsOfBackfilledReImportOfDeletedID | red, 8 of 8 |
+| M19 | compaction.go (old anchorSafeTrim, before 6ec5bf1) | TestAnchorSafeTrim_Table | red: "unverifiable before: anchorSafeTrim = 0; want 2" (red-r2-anchor-trim.txt) |

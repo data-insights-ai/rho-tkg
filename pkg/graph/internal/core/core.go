@@ -438,6 +438,16 @@ var (
 	// ErrInvalidTxFrom, so errors.Is matches both.
 	ErrTxOrder = fmt.Errorf("graph: caller transaction instant does not follow the entity's recorded history (%w)", ErrInvalidTxFrom)
 
+	// ErrEntityDeleted is returned by Temporal().SetNodeVersionInterval /
+	// SetRelVersionInterval and their GraphTx, Batch and ingest Session twins
+	// when the entity was hard-deleted: its chain ends in a tombstone and a
+	// correction appended after it would be a belief nothing reads
+	// consistently. The returned error also wraps ErrNodeNotFound or
+	// ErrRelNotFound, so errors.Is matches both this sentinel and the kind's
+	// not-found sentinel. An ID that never existed returns only the not-found
+	// sentinel.
+	ErrEntityDeleted = errors.New("graph: entity is deleted")
+
 	// ErrInvalidClockAdvance is returned by TempOps.AdvanceClock when the
 	// caller-supplied floor target lands implausibly far ahead of wall-clock
 	// (see maxClockAdvanceSkewMillis) — the same bug class lesson 59 closed for

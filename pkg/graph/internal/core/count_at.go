@@ -191,6 +191,9 @@ func (c *Core) nodeCurrentDecides(id types.NodeID, current *types.Node, opts sto
 			return true, false, err
 		}
 		if tm := current.Temporal(); tm != nil && tm.TxFrom > 0 && tm.TxFrom <= opts.TxPin && tm.TxTo == 0 {
+			if above, err := c.nodeHasHistoryAbove(id, current.Version()); err != nil || above {
+				return err != nil, false, err // a row above the current version decides: resolve the chain
+			}
 			return true, pred(current), nil
 		}
 	case opts.ValidAt != 0:
@@ -281,6 +284,9 @@ func (c *Core) relCurrentDecides(id types.RelID, current *types.Relationship, op
 			return true, false, err
 		}
 		if tm := current.Temporal(); tm != nil && tm.TxFrom > 0 && tm.TxFrom <= opts.TxPin && tm.TxTo == 0 {
+			if above, err := c.relHasHistoryAbove(id, current.Version()); err != nil || above {
+				return err != nil, false, err // a row above the current version decides: resolve the chain
+			}
 			return true, pred(current), nil
 		}
 	case opts.ValidAt != 0:

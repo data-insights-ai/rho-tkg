@@ -297,7 +297,11 @@ func (a *API) RelsByTypePropertyDuring(relType, key string, value any, start, en
 	return ops.RelsByTypePropertyDuring(relType, key, value, start, end)
 }
 
-// NodeAsOf returns the version of node id known at transaction time txTime.
+// NodeAsOf returns the newest row of node id recorded by transaction time
+// txTime (absent once it was superseded or deleted by then). After a bounded
+// SetNodeVersionInterval that left the current row in place this is the
+// correction row, not Get's row; for the node's state at valid instant t as
+// believed at a pin use NodeAtTx(id, t, pin) or ByLabel with ValidAt+TxAt.
 func (a *API) NodeAsOf(id types.NodeID, txTime types.Instant) (*types.Node, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -306,7 +310,9 @@ func (a *API) NodeAsOf(id types.NodeID, txTime types.Instant) (*types.Node, erro
 	return ops.NodeAsOf(id, txTime)
 }
 
-// RelAsOf returns the version of relationship id known at transaction time txTime.
+// RelAsOf returns the newest row of relationship id recorded by transaction
+// time txTime — NodeAsOf's rule; for the state at valid instant t as believed
+// at a pin use RelAtTx(id, t, pin) or ByType with ValidAt+TxAt.
 func (a *API) RelAsOf(id types.RelID, txTime types.Instant) (*types.Relationship, error) {
 	ops, err := a.ready()
 	if err != nil {

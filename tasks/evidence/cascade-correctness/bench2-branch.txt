@@ -1,0 +1,42 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkCC2NodeAsOfNow/badger/no-history-32         	   20000	       590.7 ns/op	     712 B/op	      11 allocs/op
+BenchmarkCC2NodeAsOfNow/badger/no-history-32         	   20000	       356.3 ns/op	     712 B/op	      11 allocs/op
+BenchmarkCC2NodeAsOfNow/badger/no-history-32         	   20000	       345.5 ns/op	     712 B/op	      11 allocs/op
+BenchmarkCC2NodeAsOfNow/badger/no-history-32         	   20000	       570.8 ns/op	     712 B/op	      11 allocs/op
+BenchmarkCC2NodeAsOfNow/badger/no-history-32         	   20000	       303.6 ns/op	     712 B/op	      11 allocs/op
+BenchmarkCC2NodeAsOfNow/badger/no-history-32         	   20000	       504.9 ns/op	     712 B/op	      11 allocs/op
+BenchmarkCC2NodeAsOfNow/badger/with-history-32       	   20000	      1585 ns/op	    1104 B/op	      17 allocs/op
+BenchmarkCC2NodeAsOfNow/badger/with-history-32       	   20000	      1464 ns/op	    1104 B/op	      17 allocs/op
+BenchmarkCC2NodeAsOfNow/badger/with-history-32       	   20000	      1426 ns/op	    1104 B/op	      17 allocs/op
+BenchmarkCC2NodeAsOfNow/badger/with-history-32       	   20000	      1357 ns/op	    1104 B/op	      17 allocs/op
+BenchmarkCC2NodeAsOfNow/badger/with-history-32       	   20000	      1401 ns/op	    1104 B/op	      17 allocs/op
+BenchmarkCC2NodeAsOfNow/badger/with-history-32       	   20000	      1710 ns/op	    1104 B/op	      17 allocs/op
+BenchmarkCC2NodeAsOfNow/memory/no-history-32         	   20000	       218.8 ns/op	     320 B/op	       4 allocs/op
+BenchmarkCC2NodeAsOfNow/memory/no-history-32         	   20000	       242.7 ns/op	     320 B/op	       4 allocs/op
+BenchmarkCC2NodeAsOfNow/memory/no-history-32         	   20000	       184.5 ns/op	     320 B/op	       4 allocs/op
+BenchmarkCC2NodeAsOfNow/memory/no-history-32         	   20000	       213.7 ns/op	     320 B/op	       4 allocs/op
+BenchmarkCC2NodeAsOfNow/memory/no-history-32         	   20000	       160.1 ns/op	     320 B/op	       4 allocs/op
+BenchmarkCC2NodeAsOfNow/memory/no-history-32         	   20000	       182.8 ns/op	     320 B/op	       4 allocs/op
+BenchmarkCC2NodeAsOfNow/memory/100-versions-32       	   20000	       380.6 ns/op	     320 B/op	       4 allocs/op
+BenchmarkCC2NodeAsOfNow/memory/100-versions-32       	   20000	       185.7 ns/op	     320 B/op	       4 allocs/op
+BenchmarkCC2NodeAsOfNow/memory/100-versions-32       	   20000	       236.1 ns/op	     320 B/op	       4 allocs/op
+BenchmarkCC2NodeAsOfNow/memory/100-versions-32       	   20000	       256.8 ns/op	     320 B/op	       4 allocs/op
+BenchmarkCC2NodeAsOfNow/memory/100-versions-32       	   20000	       224.9 ns/op	     320 B/op	       4 allocs/op
+BenchmarkCC2NodeAsOfNow/memory/100-versions-32       	   20000	       228.5 ns/op	     320 B/op	       4 allocs/op
+BenchmarkCC2Update/badger/first-update-32            	   20000	      4916 ns/op	    3236 B/op	      37 allocs/op
+BenchmarkCC2Update/badger/first-update-32            	   20000	      4205 ns/op	    3057 B/op	      35 allocs/op
+BenchmarkCC2Update/badger/first-update-32            	   20000	      4222 ns/op	    3057 B/op	      35 allocs/op
+BenchmarkCC2Update/badger/first-update-32            	   20000	      4439 ns/op	    3057 B/op	      35 allocs/op
+BenchmarkCC2Update/badger/first-update-32            	   20000	      4361 ns/op	    3057 B/op	      35 allocs/op
+BenchmarkCC2Update/badger/first-update-32            	   20000	      4180 ns/op	    3057 B/op	      35 allocs/op
+BenchmarkCC2Update/memory-32                         	   20000	      2425 ns/op	    1524 B/op	      21 allocs/op
+BenchmarkCC2Update/memory-32                         	   20000	      2363 ns/op	    1522 B/op	      21 allocs/op
+BenchmarkCC2Update/memory-32                         	   20000	      2004 ns/op	    1522 B/op	      21 allocs/op
+BenchmarkCC2Update/memory-32                         	   20000	      2308 ns/op	    1522 B/op	      21 allocs/op
+BenchmarkCC2Update/memory-32                         	   20000	      2370 ns/op	    1522 B/op	      21 allocs/op
+BenchmarkCC2Update/memory-32                         	   20000	      2215 ns/op	    1522 B/op	      21 allocs/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	2.717s

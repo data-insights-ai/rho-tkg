@@ -1,0 +1,24 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/bench
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkRelHistoryPlain/memory-32         	13510906	        27.60 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHistoryPlain/memory-32         	13849146	        24.90 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHistoryPlain/memory-32         	12151380	        27.50 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHistoryPlain/badger-32         	  311307	      1083 ns/op	     578 B/op	      12 allocs/op
+BenchmarkRelHistoryPlain/badger-32         	  249279	      1211 ns/op	     591 B/op	      12 allocs/op
+BenchmarkRelHistoryPlain/badger-32         	  347442	       983.0 ns/op	     573 B/op	      12 allocs/op
+BenchmarkRelHasHistory/memory/miss-32      	12981072	        28.01 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/memory/miss-32      	12130983	        28.72 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/memory/miss-32      	12972544	        25.84 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/memory/hit-32       	15840632	        22.31 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/memory/hit-32       	15474208	        21.30 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/memory/hit-32       	17521792	        20.46 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/badger/miss-32      	14136435	        24.16 ns/op	       1 B/op	       0 allocs/op
+BenchmarkRelHasHistory/badger/miss-32      	12652401	        25.62 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/badger/miss-32      	12492807	        25.44 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/badger/hit-32       	19651706	        19.27 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/badger/hit-32       	17847796	        19.09 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/badger/hit-32       	19437943	        19.85 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/bench	6.672s

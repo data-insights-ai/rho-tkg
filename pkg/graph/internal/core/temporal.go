@@ -225,6 +225,12 @@ func (t *TempOps) RelMatchesValidTime(r *types.Relationship, opts storepkg.Query
 
 // resolveNodeVersionAt finds the version valid at time t from a pre-built chain.
 func (c *Core) resolveNodeVersionAt(chain []*types.Node, t types.Instant) (*types.Node, error) {
+	return c.resolveNodeVersionAtCapped(chain, t, nil)
+}
+
+// resolveNodeVersionAtCapped is resolveNodeVersionAt with every row's valid end
+// capped at its life end (lifeEnds; nil caps nothing).
+func (c *Core) resolveNodeVersionAtCapped(chain []*types.Node, t types.Instant, caps lifeEnds[*types.Node]) (*types.Node, error) {
 	// Monotonic histories (the overwhelming common case — Update rejects
 	// backdated valid-from) tile without overlap, so iterate newest-first and
 	// return the first covering version: O(1) for a current-state query, no
@@ -256,6 +262,7 @@ func (c *Core) resolveNodeVersionAt(chain []*types.Node, t types.Instant) (*type
 		for i := start; i >= 0; i-- {
 			entry := chain[i]
 			vStart, vEnd := c.nodeVersionBounds(chain, i)
+			vEnd = caps.end(entry, vEnd)
 			if vStart <= t && (vEnd == 0 || vEnd > t) {
 				return entry, nil
 			}
@@ -274,6 +281,7 @@ func (c *Core) resolveNodeVersionAt(chain []*types.Node, t types.Instant) (*type
 	for i := range chain {
 		entry := chain[i]
 		vStart, vEnd := c.nodeOwnBounds(entry)
+		vEnd = caps.end(entry, vEnd)
 		if vStart <= t && (vEnd == 0 || vEnd > t) {
 			if best == nil || nodeBeliefNewerThan(entry, best) {
 				best = entry
@@ -521,6 +529,11 @@ func nodeInheritedValidFrom(chain []*types.Node, i int, tm *types.TemporalMetada
 // See resolveNodeVersionAt: chain is ordered by effective valid-from and, on an
 // overlap, the newer belief (higher TxFrom, then version) wins.
 func (c *Core) resolveRelVersionAt(chain []*types.Relationship, t types.Instant) (*types.Relationship, error) {
+	return c.resolveRelVersionAtCapped(chain, t, nil)
+}
+
+// resolveRelVersionAtCapped mirrors resolveNodeVersionAtCapped.
+func (c *Core) resolveRelVersionAtCapped(chain []*types.Relationship, t types.Instant, caps lifeEnds[*types.Relationship]) (*types.Relationship, error) {
 	if !c.sortRelChainForResolve(chain) {
 		// BACKLOG 10m: mirrors resolveNodeVersionAt's binary-search-assisted
 		// scan start — see there for the bitemporalMigrated-gating rationale.
@@ -535,6 +548,7 @@ func (c *Core) resolveRelVersionAt(chain []*types.Relationship, t types.Instant)
 		for i := start; i >= 0; i-- {
 			entry := chain[i]
 			vStart, vEnd := c.relVersionBounds(chain, i)
+			vEnd = caps.end(entry, vEnd)
 			if vStart <= t && (vEnd == 0 || vEnd > t) {
 				return entry, nil
 			}
@@ -547,6 +561,7 @@ func (c *Core) resolveRelVersionAt(chain []*types.Relationship, t types.Instant)
 	for i := range chain {
 		entry := chain[i]
 		vStart, vEnd := c.relOwnBounds(entry)
+		vEnd = caps.end(entry, vEnd)
 		if vStart <= t && (vEnd == 0 || vEnd > t) {
 			if best == nil || relBeliefNewerThan(entry, best) {
 				best = entry

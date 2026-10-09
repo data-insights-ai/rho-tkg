@@ -1,0 +1,221 @@
+--- FAIL: TestOldChain_BoundedCascadeResumptionTookSlot (0.28s)
+    --- FAIL: TestOldChain_BoundedCascadeResumptionTookSlot/memory/node (0.00s)
+        cascade_oldchain_test.go:104: [node as-of after the old cascade] want [B:v0 T:v1] on every door; got:
+             ByLabel{TxPin} = [B:v0 T:v2]
+             CountByLabelAt{TxPin} = [B:v0 T:v2]
+             NodeAsOf = [B:v0 T:v2]
+             Nodes.All{TxPin} = [B:v0 T:v2]
+             NodesAsOf = [B:v0 T:v2]
+             chain T:
+              v0 vf=1000 vt=0 tx=1791558066019..0 del=0 cur=false x=0
+              v1 vf=3000 vt=0 tx=1791558066021..0 del=0 cur=true x=0
+              v2 vf=2000 vt=3000 tx=1791558066021..0 del=0 cur=false x=1
+             chain B:
+              v0 vf=1000 vt=0 tx=1791558066018..0 del=0 cur=true x=0
+    --- FAIL: TestOldChain_BoundedCascadeResumptionTookSlot/memory/rel (0.00s)
+        cascade_oldchain_test.go:104: [rel as-of after the old cascade] want [B:v0 T:v1] on every door; got:
+             ByType{TxPin} = [B:v0 T:v2]
+             CountByTypeAt{TxPin} = [B:v0 T:v2]
+             RelAsOf = [B:v0 T:v2]
+             Rels.All{TxPin} = [B:v0 T:v2]
+             RelsAsOf = [B:v0 T:v2]
+             chain T:
+              v0 vf=1000 vt=0 tx=1791558066021..0 del=0 cur=false x=0
+              v1 vf=3000 vt=0 tx=1791558066023..0 del=0 cur=true x=0
+              v2 vf=2000 vt=3000 tx=1791558066023..0 del=0 cur=false x=1
+             chain B:
+              v0 vf=1000 vt=0 tx=1791558066020..0 del=0 cur=true x=0
+    --- FAIL: TestOldChain_BoundedCascadeResumptionTookSlot/badger/node (0.07s)
+        cascade_oldchain_test.go:104: [node as-of after the old cascade] want [B:v0 T:v1] on every door; got:
+             ByLabel{TxPin} = [B:v0 T:v2]
+             CountByLabelAt{TxPin} = [B:v0 T:v2]
+             NodeAsOf = [B:v0 T:v2]
+             Nodes.All{TxPin} = [B:v0 T:v2]
+             NodesAsOf = [B:v0 T:v2]
+             chain T:
+              v0 vf=1000 vt=0 tx=1791558066081..0 del=0 cur=false x=0
+              v1 vf=3000 vt=0 tx=1791558066083..0 del=0 cur=true x=0
+              v2 vf=2000 vt=3000 tx=1791558066083..0 del=0 cur=false x=1
+             chain B:
+              v0 vf=1000 vt=0 tx=1791558066080..0 del=0 cur=true x=0
+    --- FAIL: TestOldChain_BoundedCascadeResumptionTookSlot/badger/rel (0.01s)
+        cascade_oldchain_test.go:104: [rel as-of after the old cascade] want [B:v0 T:v1] on every door; got:
+             ByType{TxPin} = [B:v0 T:v2]
+             CountByTypeAt{TxPin} = [B:v0 T:v2]
+             RelAsOf = [B:v0 T:v2]
+             Rels.All{TxPin} = [B:v0 T:v2]
+             RelsAsOf = [B:v0 T:v2]
+             chain T:
+              v0 vf=1000 vt=0 tx=1791558066097..0 del=0 cur=false x=0
+              v1 vf=3000 vt=0 tx=1791558066099..0 del=0 cur=true x=0
+              v2 vf=2000 vt=3000 tx=1791558066099..0 del=0 cur=false x=1
+             chain B:
+              v0 vf=1000 vt=0 tx=1791558066096..0 del=0 cur=true x=0
+    --- FAIL: TestOldChain_BoundedCascadeResumptionTookSlot/sharded/node (0.01s)
+        cascade_oldchain_test.go:104: [node as-of after the old cascade] want [B:v0 T:v1] on every door; got:
+             ByLabel{TxPin} = [B:v0 T:v2]
+             CountByLabelAt{TxPin} = [B:v0 T:v2]
+             NodeAsOf = [B:v0 T:v2]
+             Nodes.All{TxPin} = [B:v0 T:v2]
+             NodesAsOf = [B:v0 T:v2]
+             chain T:
+              v0 vf=1000 vt=0 tx=1791558066101..0 del=0 cur=false x=0
+              v1 vf=3000 vt=0 tx=1791558066103..0 del=0 cur=true x=0
+              v2 vf=2000 vt=3000 tx=1791558066103..0 del=0 cur=false x=1
+             chain B:
+              v0 vf=1000 vt=0 tx=1791558066100..0 del=0 cur=true x=0
+    --- FAIL: TestOldChain_BoundedCascadeResumptionTookSlot/sharded/rel (0.07s)
+        cascade_oldchain_test.go:104: [rel as-of after the old cascade] want [B:v0 T:v1] on every door; got:
+             ByType{TxPin} = [B:v0 T:v2]
+             CountByTypeAt{TxPin} = [B:v0 T:v2]
+             RelAsOf = [B:v0 T:v2]
+             Rels.All{TxPin} = [B:v0 T:v2]
+             RelsAsOf = [B:v0 T:v2]
+             chain T:
+              v0 vf=1000 vt=0 tx=1791558066170..0 del=0 cur=false x=0
+              v1 vf=3000 vt=0 tx=1791558066172..0 del=0 cur=true x=0
+              v2 vf=2000 vt=3000 tx=1791558066172..0 del=0 cur=false x=1
+             chain B:
+              v0 vf=1000 vt=0 tx=1791558066169..0 del=0 cur=true x=0
+    --- FAIL: TestOldChain_BoundedCascadeResumptionTookSlot/tiered/node (0.08s)
+        cascade_oldchain_test.go:104: [node as-of after the old cascade] want [B:v0 T:v1] on every door; got:
+             ByLabel{TxPin} = [B:v0 T:v2]
+             CountByLabelAt{TxPin} = [B:v0 T:v2]
+             NodeAsOf = [B:v0 T:v2]
+             Nodes.All{TxPin} = [B:v0 T:v2]
+             NodesAsOf = [B:v0 T:v2]
+             chain T:
+              v0 vf=1000 vt=0 tx=1791558066250..0 del=0 cur=false x=0
+              v1 vf=3000 vt=0 tx=1791558066252..0 del=0 cur=true x=0
+              v2 vf=2000 vt=3000 tx=1791558066252..0 del=0 cur=false x=1
+             chain B:
+              v0 vf=1000 vt=0 tx=1791558066249..0 del=0 cur=true x=0
+    --- FAIL: TestOldChain_BoundedCascadeResumptionTookSlot/tiered/rel (0.04s)
+        cascade_oldchain_test.go:104: [rel as-of after the old cascade] want [B:v0 T:v1] on every door; got:
+             ByType{TxPin} = [B:v0 T:v2]
+             CountByTypeAt{TxPin} = [B:v0 T:v2]
+             RelAsOf = [B:v0 T:v2]
+             Rels.All{TxPin} = [B:v0 T:v2]
+             RelsAsOf = [B:v0 T:v2]
+             chain T:
+              v0 vf=1000 vt=0 tx=1791558066297..0 del=0 cur=false x=0
+              v1 vf=3000 vt=0 tx=1791558066299..0 del=0 cur=true x=0
+              v2 vf=2000 vt=3000 tx=1791558066299..0 del=0 cur=false x=1
+             chain B:
+              v0 vf=1000 vt=0 tx=1791558066296..0 del=0 cur=true x=0
+--- FAIL: TestOldChain_ResumptionWithCopiedTxToThenDelete (0.35s)
+    --- FAIL: TestOldChain_ResumptionWithCopiedTxToThenDelete/memory/node (0.00s)
+        cascade_oldchain_test.go:162: [node as-of after the delete] want [B:v0] on every door; got:
+             ByLabel{TxPin} = [B:v0 T:v3]
+             CountByLabelAt{TxPin} = [B:v0 T:v3]
+             NodeAsOf = [B:v0 T:v3]
+             Nodes.All{TxPin} = [B:v0 T:v3]
+             NodesAsOf = [B:v0 T:v3]
+             chain T:
+              v0 vf=1000 vt=0 tx=1791558066019..1791558066020 del=0 cur=false x=0
+              v1 vf=5000 vt=1791558066024 tx=1791558066020..1791558066024 del=1791558066024 cur=false x=5
+              v2 vf=3000 vt=5000 tx=1791558066022..1791558066020 del=0 cur=false x=0
+              v3 vf=2000 vt=3000 tx=1791558066022..0 del=0 cur=false x=1
+             chain B:
+              v0 vf=1000 vt=0 tx=1791558066018..0 del=0 cur=true x=0
+    --- FAIL: TestOldChain_ResumptionWithCopiedTxToThenDelete/memory/rel (0.00s)
+        cascade_oldchain_test.go:162: [rel as-of after the delete] want [B:v0] on every door; got:
+             ByType{TxPin} = [B:v0 T:v3]
+             CountByTypeAt{TxPin} = [B:v0 T:v3]
+             RelAsOf = [B:v0 T:v3]
+             Rels.All{TxPin} = [B:v0 T:v3]
+             RelsAsOf = [B:v0 T:v3]
+             chain T:
+              v0 vf=1000 vt=0 tx=1791558066025..1791558066026 del=0 cur=false x=0
+              v1 vf=5000 vt=1791558066030 tx=1791558066026..1791558066030 del=1791558066030 cur=false x=5
+              v2 vf=3000 vt=5000 tx=1791558066028..1791558066026 del=0 cur=false x=0
+              v3 vf=2000 vt=3000 tx=1791558066028..0 del=0 cur=false x=1
+             chain B:
+              v0 vf=1000 vt=0 tx=1791558066024..0 del=0 cur=true x=0
+    --- FAIL: TestOldChain_ResumptionWithCopiedTxToThenDelete/badger/node (0.01s)
+        cascade_oldchain_test.go:162: [node as-of after the delete] want [B:v0] on every door; got:
+             ByLabel{TxPin} = [B:v0 T:v3]
+             CountByLabelAt{TxPin} = [B:v0 T:v3]
+             NodeAsOf = [B:v0 T:v3]
+             Nodes.All{TxPin} = [B:v0 T:v3]
+             NodesAsOf = [B:v0 T:v3]
+             chain T:
+              v0 vf=1000 vt=0 tx=1791558066028..1791558066029 del=0 cur=false x=0
+              v1 vf=5000 vt=1791558066033 tx=1791558066029..1791558066033 del=1791558066033 cur=false x=5
+              v2 vf=3000 vt=5000 tx=1791558066031..1791558066029 del=0 cur=false x=0
+              v3 vf=2000 vt=3000 tx=1791558066031..0 del=0 cur=false x=1
+             chain B:
+              v0 vf=1000 vt=0 tx=1791558066027..0 del=0 cur=true x=0
+    --- FAIL: TestOldChain_ResumptionWithCopiedTxToThenDelete/badger/rel (0.01s)
+        cascade_oldchain_test.go:162: [rel as-of after the delete] want [B:v0] on every door; got:
+             ByType{TxPin} = [B:v0 T:v3]
+             CountByTypeAt{TxPin} = [B:v0 T:v3]
+             RelAsOf = [B:v0 T:v3]
+             Rels.All{TxPin} = [B:v0 T:v3]
+             RelsAsOf = [B:v0 T:v3]
+             chain T:
+              v0 vf=1000 vt=0 tx=1791558066038..1791558066039 del=0 cur=false x=0
+              v1 vf=5000 vt=1791558066043 tx=1791558066039..1791558066043 del=1791558066043 cur=false x=5
+              v2 vf=3000 vt=5000 tx=1791558066041..1791558066039 del=0 cur=false x=0
+              v3 vf=2000 vt=3000 tx=1791558066041..0 del=0 cur=false x=1
+             chain B:
+              v0 vf=1000 vt=0 tx=1791558066037..0 del=0 cur=true x=0
+    --- FAIL: TestOldChain_ResumptionWithCopiedTxToThenDelete/sharded/node (0.08s)
+        cascade_oldchain_test.go:162: [node as-of after the delete] want [B:v0] on every door; got:
+             ByLabel{TxPin} = [B:v0 T:v3]
+             CountByLabelAt{TxPin} = [B:v0 T:v3]
+             NodeAsOf = [B:v0 T:v3]
+             Nodes.All{TxPin} = [B:v0 T:v3]
+             NodesAsOf = [B:v0 T:v3]
+             chain T:
+              v0 vf=1000 vt=0 tx=1791558066104..1791558066105 del=0 cur=false x=0
+              v1 vf=5000 vt=1791558066109 tx=1791558066105..1791558066109 del=1791558066109 cur=false x=5
+              v2 vf=3000 vt=5000 tx=1791558066107..1791558066105 del=0 cur=false x=0
+              v3 vf=2000 vt=3000 tx=1791558066107..0 del=0 cur=false x=1
+             chain B:
+              v0 vf=1000 vt=0 tx=1791558066103..0 del=0 cur=true x=0
+    --- FAIL: TestOldChain_ResumptionWithCopiedTxToThenDelete/sharded/rel (0.09s)
+        cascade_oldchain_test.go:162: [rel as-of after the delete] want [B:v0] on every door; got:
+             ByType{TxPin} = [B:v0 T:v3]
+             CountByTypeAt{TxPin} = [B:v0 T:v3]
+             RelAsOf = [B:v0 T:v3]
+             Rels.All{TxPin} = [B:v0 T:v3]
+             RelsAsOf = [B:v0 T:v3]
+             chain T:
+              v0 vf=1000 vt=0 tx=1791558066193..1791558066194 del=0 cur=false x=0
+              v1 vf=5000 vt=1791558066198 tx=1791558066194..1791558066198 del=1791558066198 cur=false x=5
+              v2 vf=3000 vt=5000 tx=1791558066196..1791558066194 del=0 cur=false x=0
+              v3 vf=2000 vt=3000 tx=1791558066196..0 del=0 cur=false x=1
+             chain B:
+              v0 vf=1000 vt=0 tx=1791558066192..0 del=0 cur=true x=0
+    --- FAIL: TestOldChain_ResumptionWithCopiedTxToThenDelete/tiered/node (0.10s)
+        cascade_oldchain_test.go:162: [node as-of after the delete] want [B:v0] on every door; got:
+             ByLabel{TxPin} = [B:v0 T:v3]
+             CountByLabelAt{TxPin} = [B:v0 T:v3]
+             NodeAsOf = [B:v0 T:v3]
+             Nodes.All{TxPin} = [B:v0 T:v3]
+             NodesAsOf = [B:v0 T:v3]
+             chain T:
+              v0 vf=1000 vt=0 tx=1791558066293..1791558066294 del=0 cur=false x=0
+              v1 vf=5000 vt=1791558066298 tx=1791558066294..1791558066298 del=1791558066298 cur=false x=5
+              v2 vf=3000 vt=5000 tx=1791558066296..1791558066294 del=0 cur=false x=0
+              v3 vf=2000 vt=3000 tx=1791558066296..0 del=0 cur=false x=1
+             chain B:
+              v0 vf=1000 vt=0 tx=1791558066292..0 del=0 cur=true x=0
+    --- FAIL: TestOldChain_ResumptionWithCopiedTxToThenDelete/tiered/rel (0.06s)
+        cascade_oldchain_test.go:162: [rel as-of after the delete] want [B:v0] on every door; got:
+             ByType{TxPin} = [B:v0 T:v3]
+             CountByTypeAt{TxPin} = [B:v0 T:v3]
+             RelAsOf = [B:v0 T:v3]
+             Rels.All{TxPin} = [B:v0 T:v3]
+             RelsAsOf = [B:v0 T:v3]
+             chain T:
+              v0 vf=1000 vt=0 tx=1791558066360..1791558066361 del=0 cur=false x=0
+              v1 vf=5000 vt=1791558066365 tx=1791558066361..1791558066365 del=1791558066365 cur=false x=5
+              v2 vf=3000 vt=5000 tx=1791558066363..1791558066361 del=0 cur=false x=0
+              v3 vf=2000 vt=3000 tx=1791558066363..0 del=0 cur=false x=1
+             chain B:
+              v0 vf=1000 vt=0 tx=1791558066359..0 del=0 cur=true x=0
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.440s
+FAIL

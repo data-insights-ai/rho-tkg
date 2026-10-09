@@ -65,6 +65,7 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 		{name: "RemoveLabel", run: func() error { return nilAPI.RemoveLabel(ctx, id, "Admin") }},
 		{name: "CloseVersion", run: func() error { return nilAPI.CloseVersion(ctx, id, 100) }},
 		{name: "History", run: func() error { _, err := nilAPI.History(id); return err }},
+		{name: "HasHistory", run: func() error { _, err := nilAPI.HasHistory(id); return err }},
 		{name: "VersionAfter", run: func() error { _, err := nilAPI.VersionAfter(id, 1); return err }},
 		{name: "VersionBefore", run: func() error { _, err := nilAPI.VersionBefore(id, 1); return err }},
 	} {
@@ -174,6 +175,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "RemoveLabel", run: func() error { return api.RemoveLabel(ctx, id, "Admin") }},
 		{name: "CloseVersion", run: func() error { return api.CloseVersion(ctx, id, 100) }},
 		{name: "History", run: func() error { _, err := api.History(id); return err }},
+		{name: "HasHistory", run: func() error { _, err := api.HasHistory(id); return err }},
 		{name: "VersionAfter", run: func() error { _, err := api.VersionAfter(id, 1); return err }},
 		{name: "VersionBefore", run: func() error { _, err := api.VersionBefore(id, 1); return err }},
 	} {
@@ -205,7 +207,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		"Delete", "Delete", "DeleteWithTx", "UpdateWithTx", "Import", "AddByIDIfAbsent", "GetOrCreateByKey", "All", "ForEach", "ForEach", "ByLabel", "ByLabelAndProperty", "ByLabelAndProperties",
 		"Count", "CountByLabel", "SetProperty", "DeleteProperty",
 		"CompareAndSetProperty", "CompareAndSetProperty",
-		"AddLabel", "RemoveLabel", "CloseVersion", "History", "VersionAfter", "VersionBefore",
+		"AddLabel", "RemoveLabel", "CloseVersion", "History", "HasHistory", "VersionAfter", "VersionBefore",
 		"HasLabel", "Labels", "Labels", "PrimaryLabel", "NextID",
 	}
 	if len(ops.calls) != len(wantCalls) {
@@ -232,6 +234,7 @@ type nodeOpsSpy struct {
 	labels       []string
 	primaryLabel string
 	nextID       types.NodeID
+	hasHistory   bool
 
 	calls     []string
 	lastID    types.NodeID
@@ -550,6 +553,12 @@ func (s *nodeOpsSpy) CloseVersion(ctx context.Context, id types.NodeID, tm types
 	return s.err
 }
 
+func (s *nodeOpsSpy) HasHistory(id types.NodeID) (bool, error) {
+	s.record("HasHistory")
+	s.lastID = id
+	return s.hasHistory, s.err
+}
+
 func (s *nodeOpsSpy) History(id types.NodeID) ([]*types.Node, error) {
 	s.record("History")
 	s.lastID = id
@@ -667,5 +676,24 @@ func TestAPIWithTxDoorsForwardInstantVerbatim(t *testing.T) {
 		if len(ops.lastUpdates) != 1 || ops.lastUpdates["w"] != int64(2) {
 			t.Fatalf("%s: UpdateWithTx forwarded updates %v; want exactly {w:2}", tc.name, ops.lastUpdates)
 		}
+	}
+}
+
+// HasHistory forwards the id and returns the ops answer unchanged: a wrapper
+// that drops the bool (always false) or swaps the id fails here.
+func TestAPIHasHistoryForwardsAnswer(t *testing.T) {
+	t.Parallel()
+	for _, want := range []bool{true, false} {
+		spy := &nodeOpsSpy{hasHistory: want}
+		got, err := New(spy).HasHistory(types.NodeID(77))
+		if err != nil || got != want {
+			t.Fatalf("HasHistory = %v, %v; want %v, nil", got, err, want)
+		}
+		if spy.lastID != types.NodeID(77) || len(spy.calls) != 1 || spy.calls[0] != "HasHistory" {
+			t.Fatalf("forwarded id %v calls %v", spy.lastID, spy.calls)
+		}
+	}
+	if got, err := New((*nodeOpsSpy)(nil)).HasHistory(1); got || !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("typed-nil HasHistory = %v, %v; want false, ErrNilGraph", got, err)
 	}
 }

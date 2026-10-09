@@ -1,0 +1,13 @@
+--- PASS: TestHistoryPresence_ErrorsMatchHistoryDoor (0.04s)
+--- PASS: TestHistoryPresence_BuildSeesPendingAndFlushing (0.14s)
+--- PASS: TestHistoryPresence_DeleteMaintenance (0.53s)
+--- PASS: TestHistoryPresence_ProbeSeesFlushingDeletes (0.04s)
+--- PASS: TestHistoryPresence_FailedFlushRequeue (0.04s)
+--- PASS: TestHistoryPresence_Clear (0.08s)
+--- PASS: TestHistoryPresence_BuildGuardKeepsWritesDuringScan (0.04s)
+--- PASS: TestHistoryPresence_ClearDuringBuild (0.47s)
+--- PASS: TestHistoryPresence_ProbeOnly (0.04s)
+--- PASS: TestHistoryPresence_RandomizedDifferential (18.96s)
+--- PASS: TestHistoryPresence_ConcurrentBuildWithWriters (0.33s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	21.751s

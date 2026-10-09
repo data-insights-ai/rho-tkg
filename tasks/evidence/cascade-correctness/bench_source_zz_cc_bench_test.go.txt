@@ -1,0 +1,80 @@
+package core
+
+import (
+	"context"
+	"testing"
+
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+)
+
+func ccBenchGraph(b *testing.B, mem bool) (*Core, []types.NodeID, types.Instant) {
+	cfg := Config{BadgerInMemory: true}
+	if mem {
+		cfg = Config{}
+	}
+	g, err := New(cfg)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = g.Close() })
+	ctx := context.Background()
+	ids := make([]types.NodeID, 2000)
+	for i := range ids {
+		n, err := g.Nodes.Add(ctx, []string{"C"}, map[string]any{"x": int64(i)})
+		if err != nil {
+			b.Fatal(err)
+		}
+		ids[i] = n.ID()
+	}
+	pin, _ := g.Temporal.NowTx()
+	for _, id := range ids {
+		if _, err := g.Nodes.Update(ctx, id, map[string]any{"x": int64(-1)}); err != nil {
+			b.Fatal(err)
+		}
+	}
+	return g, ids, pin
+}
+
+func BenchmarkCCUpdate(b *testing.B) {
+	for _, mem := range []bool{true, false} {
+		name := map[bool]string{true: "memory", false: "badger"}[mem]
+		b.Run(name, func(b *testing.B) {
+			g, ids, _ := ccBenchGraph(b, mem)
+			ctx := context.Background()
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if _, err := g.Nodes.Update(ctx, ids[i%len(ids)], map[string]any{"x": int64(i)}); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkCCNodeAsOf(b *testing.B) {
+	for _, mem := range []bool{true, false} {
+		name := map[bool]string{true: "memory", false: "badger"}[mem]
+		b.Run(name+"/current", func(b *testing.B) {
+			g, ids, _ := ccBenchGraph(b, mem)
+			now, _ := g.Temporal.NowTx()
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if _, err := g.Temporal.NodeAsOf(ids[i%len(ids)], now); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+		b.Run(name+"/past", func(b *testing.B) {
+			g, ids, pin := ccBenchGraph(b, mem)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if _, err := g.Temporal.NodeAsOf(ids[i%len(ids)], pin); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}

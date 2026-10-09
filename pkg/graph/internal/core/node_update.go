@@ -173,7 +173,7 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 
 	// Capture pre-mutation state for version history (deep copy before any mutations).
 	prevVersion := current.Version()
-	nextVersion, err := nextEntityVersion(prevVersion)
+	nextVersion, err := c.nextNodeVersion(id, current)
 	if err != nil {
 		return nil, false, err
 	}
@@ -243,7 +243,7 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 	}
 
 	// Set TxFrom on the new version (this is the commit time of the new version).
-	tm.TxFrom = now
+	stampAppendedRow(tm, now)
 
 	nodeLabels := c.nodeLabelsUnlocked(current)
 	hash, err := integrity.ComputeNodeHashChecked(current, nodeLabels)
