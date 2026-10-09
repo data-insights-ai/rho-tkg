@@ -455,8 +455,11 @@ func selectAsOfScan(scan func(consider func(version uint64, val []byte) (bool, e
 		} else if !above {
 			return asOfPick{found: true, fromCurrent: true}, nil
 		}
+		// Every version above cur's is visited: a row there carrying a
+		// retraction (TxTo at or after its TxFrom) belongs to an earlier life
+		// of the ID (a re-import), and then none of them answers for cur.
 		var run []asOfRow
-		broken := false
+		broken, earlierLife := false, false
 		err := scan(func(version uint64, val []byte) (bool, error) {
 			if version <= uint64(curVersion) {
 				return true, nil
@@ -465,23 +468,26 @@ func selectAsOfScan(scan func(consider func(version uint64, val []byte) (bool, e
 			if err != nil {
 				return false, err
 			}
-			if len(run) == 0 {
+			if tt != 0 && tt >= tf {
+				earlierLife = true
+				return true, nil
+			}
+			switch {
+			case len(run) == 0:
 				if tf >= int64(cur.TxFrom) && types.Instant(tf) <= txTime {
 					run = append(run, asOfRow{version: version, tf: tf, tt: tt, raw: append([]byte(nil), val...)})
 				}
-				return false, nil
-			}
-			if tf == run[0].tf {
+			case !broken && tf == run[0].tf:
 				run = append(run, asOfRow{version: version, tf: tf, tt: tt, raw: append([]byte(nil), val...)})
-				return false, nil
+			default:
+				broken = true
 			}
-			broken = true
-			return true, nil
+			return false, nil
 		})
 		if err != nil {
 			return asOfPick{}, err
 		}
-		if len(run) == 0 {
+		if len(run) == 0 || earlierLife {
 			return asOfPick{found: true, fromCurrent: true}, nil
 		}
 		pick, tm, err := answer(run, !broken && int64(cur.TxFrom) == run[0].tf)

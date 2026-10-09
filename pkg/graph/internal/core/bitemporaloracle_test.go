@@ -360,53 +360,74 @@ func (e *oracleEntity) asOfVisible(txTime types.Instant) (oracleRow, bool) {
 	retracted := func(r oracleRow) bool {
 		return (r.txTo != 0 && r.txTo <= txTime) || (r.deletedAt != 0 && r.deletedAt <= txTime)
 	}
+	open := func(r oracleRow) bool {
+		return r.validTo == 0 || (r.deletedAt != 0 && r.deletedAt > txTime && r.validTo == r.deletedAt)
+	}
+	// pick: within seq (newest first), the run from i sharing seq[i]'s
+	// txFrom answers with its first own-open row, else seq[i].
+	pick := func(seq []oracleRow, i int) oracleRow {
+		for _, r := range seq[i:] {
+			if r.txFrom != seq[i].txFrom {
+				break
+			}
+			if open(r) {
+				return r
+			}
+		}
+		return seq[i]
+	}
 	n := len(e.rows)
+	hist := e.rows
+	if e.currentAlive {
+		hist = e.rows[:n-1]
+	}
+	desc := append([]oracleRow(nil), hist...)
+	sort.SliceStable(desc, func(i, j int) bool { return desc[i].version > desc[j].version })
 	if e.currentAlive {
 		cur := e.rows[n-1]
-		n-- // the history arm scans everything except the live current row
 		if cur.txFrom > 0 && cur.txFrom <= txTime && cur.txTo == 0 {
-			best, above := cur, false
-			for _, r := range e.rows[:n] {
-				if r.version > best.version && r.txFrom >= cur.txFrom && r.txFrom <= txTime {
-					best, above = r, true
+			var seq []oracleRow
+			for _, r := range desc {
+				if r.version > cur.version {
+					if r.txTo != 0 && r.txTo >= r.txFrom {
+						return cur, true // rows of an earlier life above the current one
+					}
+					seq = append(seq, r)
 				}
 			}
-			if above && retracted(best) {
-				return oracleRow{}, false
+			seq = append(seq, cur)
+			for i, r := range seq[:len(seq)-1] {
+				if r.txFrom >= cur.txFrom && r.txFrom <= txTime {
+					a := pick(seq, i)
+					if retracted(a) {
+						return oracleRow{}, false
+					}
+					return a, true
+				}
 			}
-			return best, true
+			return cur, true
 		}
 	}
-	best := -1
-	for i := 0; i < n; i++ {
-		r := e.rows[i]
+	for i, r := range desc {
 		if r.txFrom == 0 || r.txFrom > txTime {
 			continue
 		}
-		if best < 0 || r.version > e.rows[best].version {
-			best = i
+		a := pick(desc, i)
+		if retracted(a) {
+			return oracleRow{}, false
 		}
-	}
-	if best < 0 {
-		return oracleRow{}, false
-	}
-	b := e.rows[best]
-	if retracted(b) { // decisive row superseded or deleted by the pin
-		return oracleRow{}, false
-	}
-	slot := -1
-	for i := 0; i < n; i++ {
-		r := e.rows[i]
-		if r.txTo != 0 && r.version < b.version && (slot < 0 || r.version > e.rows[slot].version) {
-			slot = i
+		for _, s := range desc[i+1:] {
+			if s.txTo == 0 || s.txTo < s.txFrom {
+				continue
+			}
+			if s.deletedAt != 0 && s.deletedAt > r.txFrom && s.deletedAt <= txTime {
+				return oracleRow{}, false // the slot holder's life ended after r was recorded
+			}
+			break
 		}
+		return a, true
 	}
-	if slot >= 0 {
-		if d := e.rows[slot].deletedAt; d != 0 && d > b.txFrom && d <= txTime {
-			return oracleRow{}, false // the slot holder's life ended after b was recorded
-		}
-	}
-	return b, true
+	return oracleRow{}, false
 }
 
 // hasLabel reports whether a captured node version carries label l.

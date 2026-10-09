@@ -85,11 +85,14 @@ func TestSelectAsOfWithCurrent_Table(t *testing.T) {
 			wantFound: true, wantVer: 4,
 		},
 		{
-			name:      "the row above the current version was retracted by the pin: absent",
+			// A cascade row above the current version never carries a retraction;
+			// one that does belongs to an earlier life of the ID (a re-import).
+			// Catches a current arm that lets it outrank (and so hide) the current row.
+			name:      "a retracted row above the current version is an earlier life: current",
 			history:   []fakeRow{row(2, 30, 35, 0)},
 			current:   cur(1, 20, 0),
 			pin:       100,
-			wantFound: false,
+			wantFound: true, wantVer: 1,
 		},
 		{
 			name:      "current recorded after the pin: history arm",
