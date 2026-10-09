@@ -1,0 +1,1140 @@
+MUTANT internal/core/effective_timeline.go
+--- old
+	for _, id := range ids {
+		var segs []temporal.RelSegment
+--- new
+	for _, id := range ids {
+		if _, err := c.getCurrentRelationship(id); err != nil {
+			continue
+		}
+		var segs []temporal.RelSegment
+=== go test ./internal/core/ -run TestEffectiveTimeline|TestAtTx
+--- FAIL: TestEffectiveTimeline_ConcurrentWriters (0.26s)
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/memory/rel (0.00s)
+        effective_timeline_test.go:811: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/badger/rel (0.06s)
+        effective_timeline_test.go:811: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/sharded/rel (0.10s)
+        effective_timeline_test.go:811: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/tiered/rel (0.03s)
+        effective_timeline_test.go:811: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+--- FAIL: TestEffectiveTimeline_ScanDeletedEntities (0.31s)
+    --- FAIL: TestEffectiveTimeline_ScanDeletedEntities/memory/rel (0.00s)
+        effective_timeline_test.go:549: rel scan at pin 1791563384283:
+             got 
+              Casc: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              Closed: [1000,4000) v1
+              Live: [1000,0) v0
+            want 
+              Casc: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              Closed: [1000,4000) v1
+              DelAfter: [1000,0) v0
+              DelBefore: [1000,1791563384279) v0
+              Live: [1000,0) v0
+    --- FAIL: TestEffectiveTimeline_ScanDeletedEntities/badger/rel (0.05s)
+        effective_timeline_test.go:549: rel scan at pin 1791563384336:
+             got 
+              Casc: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              Closed: [1000,4000) v1
+              Live: [1000,0) v0
+            want 
+              Casc: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              Closed: [1000,4000) v1
+              DelAfter: [1000,0) v0
+              DelBefore: [1000,1791563384332) v0
+              Live: [1000,0) v0
+    --- FAIL: TestEffectiveTimeline_ScanDeletedEntities/sharded/rel (0.05s)
+        effective_timeline_test.go:549: rel scan at pin 1791563384398:
+             got 
+              Casc: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              Closed: [1000,4000) v1
+              Live: [1000,0) v0
+            want 
+              Casc: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              Closed: [1000,4000) v1
+              DelAfter: [1000,0) v0
+              DelBefore: [1000,1791563384394) v0
+              Live: [1000,0) v0
+    --- FAIL: TestEffectiveTimeline_ScanDeletedEntities/tiered/rel (0.08s)
+        effective_timeline_test.go:549: rel scan at pin 1791563384581:
+             got 
+              Casc: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              Closed: [1000,4000) v1
+              Live: [1000,0) v0
+            want 
+              Casc: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              Closed: [1000,4000) v1
+              DelAfter: [1000,0) v0
+              DelBefore: [1000,1791563384577) v0
+              Live: [1000,0) v0
+--- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor (2.55s)
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/memory/seed=23719 (0.02s)
+        effective_timeline_test.go:609: type R pin 1791567001103 valid 2733:
+             ByType map[797500482152039424:v0 {ValidFrom:2733 ValidTo:0 TxFrom:1791567001004 TxTo:1791567011000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=1 797500482150629376->797500482151120896 props=k=2]
+             scan   map[]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/memory/seed=23720 (0.01s)
+        effective_timeline_test.go:609: type R pin 1791567003456 valid 2313:
+             ByType map[797500482842264576:v0 {ValidFrom:2313 ValidTo:0 TxFrom:1791567001006 TxTo:1791567001290 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=2 797500482841673728->797500482841837568 props=k=4]
+             scan   map[]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/memory/seed=23721 (0.02s)
+        effective_timeline_test.go:609: type R pin 1791567009945 valid 1767:
+             ByType map[797500483095364608:v1 {ValidFrom:1767 ValidTo:2064 TxFrom:1791567003000 TxTo:0 CreatedAt:0 UpdatedAt:1791567003000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=2 797500483094478848->797500483094183936 props=k=5]
+             scan   map[]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/memory/seed=23722 (0.01s)
+        effective_timeline_test.go:609: type R pin 1791567002226 valid 2433:
+             ByType map[797500483624829952:v0 {ValidFrom:2433 ValidTo:0 TxFrom:1791567001004 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=1 797500483624206336->797500483623813120 props=k=2]
+             scan   map[]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/badger/seed=23719 (0.24s)
+        effective_timeline_test.go:609: type R pin 1791567001103 valid 2733:
+             ByType map[797500486185649152:v0 {ValidFrom:2733 ValidTo:0 TxFrom:1791567001004 TxTo:1791567011000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=1 797500486179815424->797500486181879808 props=k=2]
+             scan   map[]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/badger/seed=23720 (0.12s)
+        effective_timeline_test.go:609: type R pin 1791567004001 valid 2313:
+             ByType map[797500492664472576:v0 {ValidFrom:2313 ValidTo:0 TxFrom:1791567001006 TxTo:1791567001290 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=2 797500492657491968->797500492660080640 props=k=4]
+             scan   map[]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/badger/seed=23721 (0.10s)
+        effective_timeline_test.go:609: type R pin 1791567001007 valid 2706:
+             ByType map[797500496008053760:v0 {ValidFrom:2706 ValidTo:0 TxFrom:1791567001005 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=2 797500496003923968->797500496005201920 props=k=3]
+             scan   map[]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/badger/seed=23722 (0.08s)
+        effective_timeline_test.go:609: type R pin 1791567013005 valid 545:
+             ByType map[797500499235996672:v1 {ValidFrom:545 ValidTo:0 TxFrom:1791567004000 TxTo:1791567007000 CreatedAt:0 UpdatedAt:1791567004000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=1 797500499224526848->797500499223216128 props=k=6]
+             scan   map[]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/sharded/seed=23719 (0.39s)
+        effective_timeline_test.go:609: type R pin 1791567001103 valid 2733:
+             ByType map[797500502324315136:v0 {ValidFrom:2733 ValidTo:0 TxFrom:1791567001004 TxTo:1791567011000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=1 797500502321659904->797500502322544640 props=k=2]
+             scan   map[]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/sharded/seed=23720 (0.27s)
+        effective_timeline_test.go:609: type R pin 1791567003456 valid 2313:
+             ByType map[797500515197944832:v0 {ValidFrom:2313 ValidTo:0 TxFrom:1791567001006 TxTo:1791567001290 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=2 797500515195879424->797500515196436480 props=k=4]
+             scan   map[]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/sharded/seed=23721 (0.30s)
+        effective_timeline_test.go:609: type R pin 1791567001007 valid 2706:
+             ByType map[797500523941856256:v0 {ValidFrom:2706 ValidTo:0 TxFrom:1791567001005 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=2 797500523933204480->797500523935137792 props=k=3]
+             scan   map[]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/sharded/seed=23722 (0.13s)
+        effective_timeline_test.go:609: type R pin 1791567002226 valid 2433:
+             ByType map[797500533959754752:v0 {ValidFrom:2433 ValidTo:0 TxFrom:1791567001004 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=1 797500533955297280->797500533953167360 props=k=2]
+             scan   map[]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/tiered/seed=23719 (0.23s)
+        effective_timeline_test.go:609: type R pin 1791567001103 valid 2733:
+             ByType map[797500538143540224:v0 {ValidFrom:2733 ValidTo:0 TxFrom:1791567001004 TxTo:1791567011000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=1 797500538140983296->797500538141999104 props=k=2]
+             scan   map[]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/tiered/seed=23720 (0.17s)
+        effective_timeline_test.go:609: type R pin 1791567003456 valid 2313:
+             ByType map[797500545711768576:v0 {ValidFrom:2313 ValidTo:0 TxFrom:1791567001006 TxTo:1791567001290 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=2 797500545710063616->797500545710489600 props=k=4]
+             scan   map[]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/tiered/seed=23721 (0.30s)
+        effective_timeline_test.go:609: type R pin 1791567001007 valid 2706:
+             ByType map[797500551233111040:v0 {ValidFrom:2706 ValidTo:0 TxFrom:1791567001005 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=2 797500551230062592->797500551230849024 props=k=3]
+             scan   map[]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/tiered/seed=23722 (0.16s)
+        effective_timeline_test.go:609: type R pin 1791567002226 valid 2433:
+             ByType map[797500561136452608:v0 {ValidFrom:2433 ValidTo:0 TxFrom:1791567001004 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=1 797500561134583808->797500561130913792 props=k=2]
+             scan   map[]
+--- FAIL: TestAtTxEndsAtDelete (3.26s)
+    --- FAIL: TestAtTxEndsAtDelete/memory/rel (0.02s)
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/delete/standalone (0.00s)
+            effective_timeline_life_end_test.go:295: rel delete (D=1791563384298):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563384297, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=1791563384298 tx=1791563384297..1791563384298 del=1791563384298 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/delete/graphtx (0.00s)
+            effective_timeline_life_end_test.go:295: rel delete (D=1791563384300):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563384299, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=1791563384300 tx=1791563384298..1791563384300 del=1791563384300 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/delete/batch (0.00s)
+            effective_timeline_life_end_test.go:295: rel delete (D=1791563384300):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563384299, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=1791563384300 tx=1791563384298..1791563384300 del=1791563384300 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/delete/ingest (0.00s)
+            effective_timeline_life_end_test.go:295: rel delete (D=1791563384301):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563384300, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=1791563384301 tx=1791563384299..1791563384301 del=1791563384301 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/delete/DeleteWithTx (0.00s)
+            effective_timeline_life_end_test.go:295: rel delete (D=1791563384300):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563384299, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=1791563384300 tx=1791563384299..1791563384300 del=1791563384300 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/update-then-delete/standalone (0.00s)
+            effective_timeline_life_end_test.go:295: rel update-then-delete (D=1791563384303):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563384302, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563384300..1791563384301 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563384303 tx=1791563384301..1791563384303 del=1791563384303 cur=false x=2
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/update-then-delete/graphtx (0.00s)
+            effective_timeline_life_end_test.go:295: rel update-then-delete (D=1791563384304):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563384303, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563384300..1791563384301 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563384304 tx=1791563384301..1791563384304 del=1791563384304 cur=false x=2
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/update-then-delete/batch (0.00s)
+            effective_timeline_life_end_test.go:295: rel update-then-delete (D=1791563384305):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563384304, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563384301..1791563384302 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563384305 tx=1791563384302..1791563384305 del=1791563384305 cur=false x=2
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/update-then-delete/ingest (0.00s)
+            effective_timeline_life_end_test.go:295: rel update-then-delete (D=1791563384305):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563384304, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563384301..1791563384302 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563384305 tx=1791563384302..1791563384305 del=1791563384305 cur=false x=2
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/update-then-delete/DeleteWithTx (0.00s)
+            effective_timeline_life_end_test.go:295: rel update-then-delete (D=1791563384305):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563384304, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563384302..1791563384303 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563384305 tx=1791563384303..1791563384305 del=1791563384305 cur=false x=2
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/open-cascade-then-delete/standalone (0.00s)
+            effective_timeline_life_end_test.go:295: rel open-cascade-then-delete (D=1791563384305):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563384304, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563384303..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563384305 tx=1791563384304..1791563384305 del=1791563384305 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/open-cascade-then-delete/graphtx (0.00s)
+            effective_timeline_life_end_test.go:295: rel open-cascade-then-delete (D=1791563384306):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563384305, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563384303..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563384306 tx=1791563384304..1791563384306 del=1791563384306 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/open-cascade-then-delete/batch (0.00s)
+            effective_timeline_life_end_test.go:295: rel open-cascade-then-delete (D=1791563384307):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563384306, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563384304..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563384307 tx=1791563384305..1791563384307 del=1791563384307 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/open-cascade-then-delete/ingest (0.00s)
+            effective_timeline_life_end_test.go:295: rel open-cascade-then-delete (D=1791563384307):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563384306, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563384304..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563384307 tx=1791563384305..1791563384307 del=1791563384307 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/open-cascade-then-delete/DeleteWithTx (0.00s)
+            effective_timeline_life_end_test.go:295: rel open-cascade-then-delete (D=1791563384307):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563384306, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563384305..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563384307 tx=1791563384306..1791563384307 del=1791563384307 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/bounded-cascade-then-delete/standalone (0.00s)
+            effective_timeline_life_end_test.go:295: rel bounded-cascade-then-delete (D=1791563384307):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563384306, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563384305..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=3000 tx=1791563384306..0 del=0 cur=false x=1
+                  v2 vf=3000 vt=1791563384307 tx=1791563384306..1791563384307 del=1791563384307 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/bounded-cascade-then-delete/graphtx (0.00s)
+            effective_timeline_life_end_test.go:295: rel bounded-cascade-then-delete (D=1791563384309):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563384308, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563384306..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=3000 tx=1791563384307..0 del=0 cur=false x=1
+                  v2 vf=3000 vt=1791563384309 tx=1791563384307..1791563384309 del=1791563384309 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/bounded-cascade-then-delete/batch (0.00s)
+            effective_timeline_life_end_test.go:295: rel bounded-cascade-then-delete (D=1791563384310):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563384309, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563384307..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=3000 tx=1791563384308..0 del=0 cur=false x=1
+                  v2 vf=3000 vt=1791563384310 tx=1791563384308..1791563384310 del=1791563384310 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/bounded-cascade-then-delete/ingest (0.00s)
+            effective_timeline_life_end_test.go:295: rel bounded-cascade-then-delete (D=1791563384311):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563384310, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563384308..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=3000 tx=1791563384309..0 del=0 cur=false x=1
+                  v2 vf=3000 vt=1791563384311 tx=1791563384309..1791563384311 del=1791563384311 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/bounded-cascade-then-delete/DeleteWithTx (0.00s)
+            effective_timeline_life_end_test.go:295: rel bounded-cascade-then-delete (D=1791563384311):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563384310, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563384309..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=3000 tx=1791563384310..0 del=0 cur=false x=1
+                  v2 vf=3000 vt=1791563384311 tx=1791563384310..1791563384311 del=1791563384311 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/close-then-delete/standalone (0.00s)
+            effective_timeline_life_end_test.go:295: rel close-then-delete (D=1791563384313):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563384310..1791563384311 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563384311..1791563384313 del=1791563384313 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/close-then-delete/graphtx (0.00s)
+            effective_timeline_life_end_test.go:295: rel close-then-delete (D=1791563384315):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563384311..1791563384312 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563384312..1791563384315 del=1791563384315 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/close-then-delete/batch (0.00s)
+            effective_timeline_life_end_test.go:295: rel close-then-delete (D=1791563384315):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563384311..1791563384312 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563384312..1791563384315 del=1791563384315 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/close-then-delete/ingest (0.00s)
+            effective_timeline_life_end_test.go:295: rel close-then-delete (D=1791563384316):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563384312..1791563384313 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563384313..1791563384316 del=1791563384316 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/close-then-delete/DeleteWithTx (0.00s)
+            effective_timeline_life_end_test.go:295: rel close-then-delete (D=1791563384316):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563384313..1791563384314 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563384314..1791563384316 del=1791563384316 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/close-bounded-inside-then-delete/standalone (0.00s)
+            effective_timeline_life_end_test.go:295: rel close-bounded-inside-then-delete (D=1791563384317):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563384313..1791563384314 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563384314..1791563384317 del=1791563384317 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791563384316..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791563384316..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/close-bounded-inside-then-delete/graphtx (0.00s)
+            effective_timeline_life_end_test.go:295: rel close-bounded-inside-then-delete (D=1791563384319):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563384314..1791563384315 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563384315..1791563384319 del=1791563384319 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791563384317..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791563384317..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/close-bounded-inside-then-delete/batch (0.00s)
+            effective_timeline_life_end_test.go:295: rel close-bounded-inside-then-delete (D=1791563384320):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563384315..1791563384316 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563384316..1791563384320 del=1791563384320 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791563384318..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791563384318..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/close-bounded-inside-then-delete/ingest (0.00s)
+            effective_timeline_life_end_test.go:295: rel close-bounded-inside-then-delete (D=1791563384320):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563384315..1791563384316 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563384316..1791563384320 del=1791563384320 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791563384318..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791563384318..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/close-bounded-inside-then-delete/DeleteWithTx (0.00s)
+            effective_timeline_life_end_test.go:295: rel close-bounded-inside-then-delete (D=1791563384320):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563384316..1791563384317 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563384317..1791563384320 del=1791563384320 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791563384319..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791563384319..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/close-gap-then-delete/standalone (0.00s)
+            effective_timeline_life_end_test.go:295: rel close-gap-then-delete (D=1791563384321):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563384317..1791563384318 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563384318..1791563384321 del=1791563384321 cur=false x=0
+                  v2 vf=5000 vt=6000 tx=1791563384320..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/close-gap-then-delete/graphtx (0.00s)
+            effective_timeline_life_end_test.go:295: rel close-gap-then-delete (D=1791563384323):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563384318..1791563384319 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563384319..1791563384323 del=1791563384323 cur=false x=0
+                  v2 vf=5000 vt=6000 tx=1791563384321..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/close-gap-then-delete/batch (0.00s)
+            effective_timeline_life_end_test.go:295: rel close-gap-then-delete (D=1791563384324):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563384319..1791563384320 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563384320..1791563384324 del=1791563384324 cur=false x=0
+                  v2 vf=5000 vt=6000 tx=1791563384322..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/close-gap-then-delete/ingest (0.00s)
+            effective_timeline_life_end_test.go:295: rel close-gap-then-delete (D=1791563384324):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563384319..1791563384320 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563384320..1791563384324 del=1791563384324 cur=false x=0
+                  v2 vf=5000 vt=6000 tx=1791563384322..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/memory/rel/close-gap-then-delete/DeleteWithTx (0.00s)
+            effective_timeline_life_end_test.go:295: rel close-gap-then-delete (D=1791563384324):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563384320..1791563384321 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563384321..1791563384324 del=1791563384324 cur=false x=0
+                  v2 vf=5000 vt=6000 tx=1791563384323..0 del=0 cur=false x=1
+    --- FAIL: TestAtTxEndsAtDelete/badger/rel (0.41s)
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/delete/standalone (0.01s)
+            effective_timeline_life_end_test.go:295: rel delete (D=1791563384970):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563384969, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=1791563384970 tx=1791563384969..1791563384970 del=1791563384970 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/delete/graphtx (0.01s)
+            effective_timeline_life_end_test.go:295: rel delete (D=1791563384982):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563384981, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=1791563384982 tx=1791563384980..1791563384982 del=1791563384982 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/delete/batch (0.01s)
+            effective_timeline_life_end_test.go:295: rel delete (D=1791563384992):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563384991, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=1791563384992 tx=1791563384990..1791563384992 del=1791563384992 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/delete/ingest (0.01s)
+            effective_timeline_life_end_test.go:295: rel delete (D=1791563385007):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563385006, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=1791563385007 tx=1791563385005..1791563385007 del=1791563385007 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/delete/DeleteWithTx (0.01s)
+            effective_timeline_life_end_test.go:295: rel delete (D=1791563385015):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563385014, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=1791563385015 tx=1791563385014..1791563385015 del=1791563385015 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/update-then-delete/standalone (0.01s)
+            effective_timeline_life_end_test.go:295: rel update-then-delete (D=1791563385029):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563385028, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385026..1791563385027 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563385029 tx=1791563385027..1791563385029 del=1791563385029 cur=false x=2
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/update-then-delete/graphtx (0.01s)
+            effective_timeline_life_end_test.go:295: rel update-then-delete (D=1791563385039):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563385038, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385035..1791563385036 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563385039 tx=1791563385036..1791563385039 del=1791563385039 cur=false x=2
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/update-then-delete/batch (0.01s)
+            effective_timeline_life_end_test.go:295: rel update-then-delete (D=1791563385051):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563385050, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385047..1791563385048 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563385051 tx=1791563385048..1791563385051 del=1791563385051 cur=false x=2
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/update-then-delete/ingest (0.01s)
+            effective_timeline_life_end_test.go:295: rel update-then-delete (D=1791563385061):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563385060, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385057..1791563385058 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563385061 tx=1791563385058..1791563385061 del=1791563385061 cur=false x=2
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/update-then-delete/DeleteWithTx (0.01s)
+            effective_timeline_life_end_test.go:295: rel update-then-delete (D=1791563385072):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563385071, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385069..1791563385070 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563385072 tx=1791563385070..1791563385072 del=1791563385072 cur=false x=2
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/open-cascade-then-delete/standalone (0.01s)
+            effective_timeline_life_end_test.go:295: rel open-cascade-then-delete (D=1791563385083):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563385082, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385081..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563385083 tx=1791563385082..1791563385083 del=1791563385083 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/open-cascade-then-delete/graphtx (0.01s)
+            effective_timeline_life_end_test.go:295: rel open-cascade-then-delete (D=1791563385094):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563385093, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385091..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563385094 tx=1791563385092..1791563385094 del=1791563385094 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/open-cascade-then-delete/batch (0.02s)
+            effective_timeline_life_end_test.go:295: rel open-cascade-then-delete (D=1791563385108):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563385107, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385105..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563385108 tx=1791563385106..1791563385108 del=1791563385108 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/open-cascade-then-delete/ingest (0.01s)
+            effective_timeline_life_end_test.go:295: rel open-cascade-then-delete (D=1791563385117):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563385116, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385114..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563385117 tx=1791563385115..1791563385117 del=1791563385117 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/open-cascade-then-delete/DeleteWithTx (0.01s)
+            effective_timeline_life_end_test.go:295: rel open-cascade-then-delete (D=1791563385131):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563385130, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385129..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563385131 tx=1791563385130..1791563385131 del=1791563385131 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/bounded-cascade-then-delete/standalone (0.01s)
+            effective_timeline_life_end_test.go:295: rel bounded-cascade-then-delete (D=1791563385143):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563385142, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385141..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=3000 tx=1791563385142..0 del=0 cur=false x=1
+                  v2 vf=3000 vt=1791563385143 tx=1791563385142..1791563385143 del=1791563385143 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/bounded-cascade-then-delete/graphtx (0.01s)
+            effective_timeline_life_end_test.go:295: rel bounded-cascade-then-delete (D=1791563385152):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563385151, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385149..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=3000 tx=1791563385150..0 del=0 cur=false x=1
+                  v2 vf=3000 vt=1791563385152 tx=1791563385150..1791563385152 del=1791563385152 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/bounded-cascade-then-delete/batch (0.01s)
+            effective_timeline_life_end_test.go:295: rel bounded-cascade-then-delete (D=1791563385163):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563385162, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385160..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=3000 tx=1791563385161..0 del=0 cur=false x=1
+                  v2 vf=3000 vt=1791563385163 tx=1791563385161..1791563385163 del=1791563385163 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/bounded-cascade-then-delete/ingest (0.01s)
+            effective_timeline_life_end_test.go:295: rel bounded-cascade-then-delete (D=1791563385174):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563385173, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385171..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=3000 tx=1791563385172..0 del=0 cur=false x=1
+                  v2 vf=3000 vt=1791563385174 tx=1791563385172..1791563385174 del=1791563385174 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/bounded-cascade-then-delete/DeleteWithTx (0.01s)
+            effective_timeline_life_end_test.go:295: rel bounded-cascade-then-delete (D=1791563385186):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563385185, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385184..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=3000 tx=1791563385185..0 del=0 cur=false x=1
+                  v2 vf=3000 vt=1791563385186 tx=1791563385185..1791563385186 del=1791563385186 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/close-then-delete/standalone (0.01s)
+            effective_timeline_life_end_test.go:295: rel close-then-delete (D=1791563385197):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385194..1791563385195 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563385195..1791563385197 del=1791563385197 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/close-then-delete/graphtx (0.01s)
+            effective_timeline_life_end_test.go:295: rel close-then-delete (D=1791563385212):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385208..1791563385209 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563385209..1791563385212 del=1791563385212 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/close-then-delete/batch (0.01s)
+            effective_timeline_life_end_test.go:295: rel close-then-delete (D=1791563385220):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385216..1791563385217 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563385217..1791563385220 del=1791563385220 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/close-then-delete/ingest (0.01s)
+            effective_timeline_life_end_test.go:295: rel close-then-delete (D=1791563385227):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385223..1791563385224 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563385224..1791563385227 del=1791563385227 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/close-then-delete/DeleteWithTx (0.01s)
+            effective_timeline_life_end_test.go:295: rel close-then-delete (D=1791563385238):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385235..1791563385236 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563385236..1791563385238 del=1791563385238 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/close-bounded-inside-then-delete/standalone (0.01s)
+            effective_timeline_life_end_test.go:295: rel close-bounded-inside-then-delete (D=1791563385247):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385243..1791563385244 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563385244..1791563385247 del=1791563385247 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791563385246..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791563385246..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/close-bounded-inside-then-delete/graphtx (0.04s)
+            effective_timeline_life_end_test.go:295: rel close-bounded-inside-then-delete (D=1791563385293):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385288..1791563385289 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563385289..1791563385293 del=1791563385293 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791563385291..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791563385291..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/close-bounded-inside-then-delete/batch (0.01s)
+            effective_timeline_life_end_test.go:295: rel close-bounded-inside-then-delete (D=1791563385304):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385299..1791563385300 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563385300..1791563385304 del=1791563385304 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791563385302..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791563385302..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/close-bounded-inside-then-delete/ingest (0.01s)
+            effective_timeline_life_end_test.go:295: rel close-bounded-inside-then-delete (D=1791563385316):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385311..1791563385312 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563385312..1791563385316 del=1791563385316 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791563385314..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791563385314..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/close-bounded-inside-then-delete/DeleteWithTx (0.01s)
+            effective_timeline_life_end_test.go:295: rel close-bounded-inside-then-delete (D=1791563385323):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385319..1791563385320 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563385320..1791563385323 del=1791563385323 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791563385322..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791563385322..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/close-gap-then-delete/standalone (0.01s)
+            effective_timeline_life_end_test.go:295: rel close-gap-then-delete (D=1791563385331):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385327..1791563385328 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563385328..1791563385331 del=1791563385331 cur=false x=0
+                  v2 vf=5000 vt=6000 tx=1791563385330..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/close-gap-then-delete/graphtx (0.01s)
+            effective_timeline_life_end_test.go:295: rel close-gap-then-delete (D=1791563385340):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385335..1791563385336 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563385336..1791563385340 del=1791563385340 cur=false x=0
+                  v2 vf=5000 vt=6000 tx=1791563385338..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/close-gap-then-delete/batch (0.01s)
+            effective_timeline_life_end_test.go:295: rel close-gap-then-delete (D=1791563385349):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385344..1791563385345 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563385345..1791563385349 del=1791563385349 cur=false x=0
+                  v2 vf=5000 vt=6000 tx=1791563385347..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/close-gap-then-delete/ingest (0.02s)
+            effective_timeline_life_end_test.go:295: rel close-gap-then-delete (D=1791563385362):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385357..1791563385358 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563385358..1791563385362 del=1791563385362 cur=false x=0
+                  v2 vf=5000 vt=6000 tx=1791563385360..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/badger/rel/close-gap-then-delete/DeleteWithTx (0.01s)
+            effective_timeline_life_end_test.go:295: rel close-gap-then-delete (D=1791563385373):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385369..1791563385370 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563385370..1791563385373 del=1791563385373 cur=false x=0
+                  v2 vf=5000 vt=6000 tx=1791563385372..0 del=0 cur=false x=1
+    --- FAIL: TestAtTxEndsAtDelete/sharded/rel (0.55s)
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/delete/standalone (0.01s)
+            effective_timeline_life_end_test.go:295: rel delete (D=1791563385920):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563385919, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=1791563385920 tx=1791563385919..1791563385920 del=1791563385920 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/delete/graphtx (0.01s)
+            effective_timeline_life_end_test.go:295: rel delete (D=1791563385934):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563385933, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=1791563385934 tx=1791563385932..1791563385934 del=1791563385934 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/delete/batch (0.02s)
+            effective_timeline_life_end_test.go:295: rel delete (D=1791563385949):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563385948, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=1791563385949 tx=1791563385947..1791563385949 del=1791563385949 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/delete/ingest (0.01s)
+            effective_timeline_life_end_test.go:295: rel delete (D=1791563385962):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563385961, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=1791563385962 tx=1791563385960..1791563385962 del=1791563385962 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/delete/DeleteWithTx (0.02s)
+            effective_timeline_life_end_test.go:295: rel delete (D=1791563385981):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563385980, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=1791563385981 tx=1791563385980..1791563385981 del=1791563385981 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/update-then-delete/standalone (0.01s)
+            effective_timeline_life_end_test.go:295: rel update-then-delete (D=1791563385995):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563385994, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563385992..1791563385993 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563385995 tx=1791563385993..1791563385995 del=1791563385995 cur=false x=2
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/update-then-delete/graphtx (0.01s)
+            effective_timeline_life_end_test.go:295: rel update-then-delete (D=1791563386010):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563386009, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563386006..1791563386007 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563386010 tx=1791563386007..1791563386010 del=1791563386010 cur=false x=2
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/update-then-delete/batch (0.01s)
+            effective_timeline_life_end_test.go:295: rel update-then-delete (D=1791563386024):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563386023, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563386020..1791563386021 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563386024 tx=1791563386021..1791563386024 del=1791563386024 cur=false x=2
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/update-then-delete/ingest (0.01s)
+            effective_timeline_life_end_test.go:295: rel update-then-delete (D=1791563386037):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563386036, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563386033..1791563386034 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563386037 tx=1791563386034..1791563386037 del=1791563386037 cur=false x=2
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/update-then-delete/DeleteWithTx (0.01s)
+            effective_timeline_life_end_test.go:295: rel update-then-delete (D=1791563386049):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563386048, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563386046..1791563386047 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563386049 tx=1791563386047..1791563386049 del=1791563386049 cur=false x=2
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/open-cascade-then-delete/standalone (0.01s)
+            effective_timeline_life_end_test.go:295: rel open-cascade-then-delete (D=1791563386062):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563386061, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563386060..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563386062 tx=1791563386061..1791563386062 del=1791563386062 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/open-cascade-then-delete/graphtx (0.01s)
+            effective_timeline_life_end_test.go:295: rel open-cascade-then-delete (D=1791563386076):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563386075, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563386073..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563386076 tx=1791563386074..1791563386076 del=1791563386076 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/open-cascade-then-delete/batch (0.02s)
+            effective_timeline_life_end_test.go:295: rel open-cascade-then-delete (D=1791563386094):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563386093, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563386091..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563386094 tx=1791563386092..1791563386094 del=1791563386094 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/open-cascade-then-delete/ingest (0.01s)
+            effective_timeline_life_end_test.go:295: rel open-cascade-then-delete (D=1791563386107):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563386106, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563386104..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563386107 tx=1791563386105..1791563386107 del=1791563386107 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/open-cascade-then-delete/DeleteWithTx (0.01s)
+            effective_timeline_life_end_test.go:295: rel open-cascade-then-delete (D=1791563386119):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563386118, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563386117..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563386119 tx=1791563386118..1791563386119 del=1791563386119 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/bounded-cascade-then-delete/standalone (0.01s)
+            effective_timeline_life_end_test.go:295: rel bounded-cascade-then-delete (D=1791563386131):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563386130, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563386129..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=3000 tx=1791563386130..0 del=0 cur=false x=1
+                  v2 vf=3000 vt=1791563386131 tx=1791563386130..1791563386131 del=1791563386131 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/bounded-cascade-then-delete/graphtx (0.01s)
+            effective_timeline_life_end_test.go:295: rel bounded-cascade-then-delete (D=1791563386145):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563386144, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563386142..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=3000 tx=1791563386143..0 del=0 cur=false x=1
+                  v2 vf=3000 vt=1791563386145 tx=1791563386143..1791563386145 del=1791563386145 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/bounded-cascade-then-delete/batch (0.01s)
+            effective_timeline_life_end_test.go:295: rel bounded-cascade-then-delete (D=1791563386159):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563386158, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563386156..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=3000 tx=1791563386157..0 del=0 cur=false x=1
+                  v2 vf=3000 vt=1791563386159 tx=1791563386157..1791563386159 del=1791563386159 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/bounded-cascade-then-delete/ingest (0.01s)
+            effective_timeline_life_end_test.go:295: rel bounded-cascade-then-delete (D=1791563386172):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563386171, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563386169..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=3000 tx=1791563386170..0 del=0 cur=false x=1
+                  v2 vf=3000 vt=1791563386172 tx=1791563386170..1791563386172 del=1791563386172 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/bounded-cascade-then-delete/DeleteWithTx (0.01s)
+            effective_timeline_life_end_test.go:295: rel bounded-cascade-then-delete (D=1791563386185):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563386184, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563386183..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=3000 tx=1791563386184..0 del=0 cur=false x=1
+                  v2 vf=3000 vt=1791563386185 tx=1791563386184..1791563386185 del=1791563386185 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/close-then-delete/standalone (0.03s)
+            effective_timeline_life_end_test.go:295: rel close-then-delete (D=1791563386210):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563386207..1791563386208 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563386208..1791563386210 del=1791563386210 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/close-then-delete/graphtx (0.01s)
+            effective_timeline_life_end_test.go:295: rel close-then-delete (D=1791563386227):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563386223..1791563386224 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563386224..1791563386227 del=1791563386227 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/close-then-delete/batch (0.01s)
+            effective_timeline_life_end_test.go:295: rel close-then-delete (D=1791563386240):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563386236..1791563386237 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563386237..1791563386240 del=1791563386240 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/close-then-delete/ingest (0.03s)
+            effective_timeline_life_end_test.go:295: rel close-then-delete (D=1791563386272):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563386268..1791563386269 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563386269..1791563386272 del=1791563386272 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/close-then-delete/DeleteWithTx (0.02s)
+            effective_timeline_life_end_test.go:295: rel close-then-delete (D=1791563386285):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563386282..1791563386283 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563386283..1791563386285 del=1791563386285 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/close-bounded-inside-then-delete/standalone (0.02s)
+            effective_timeline_life_end_test.go:295: rel close-bounded-inside-then-delete (D=1791563386302):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563386298..1791563386299 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563386299..1791563386302 del=1791563386302 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791563386301..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791563386301..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/close-bounded-inside-then-delete/graphtx (0.02s)
+            effective_timeline_life_end_test.go:295: rel close-bounded-inside-then-delete (D=1791563386321):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563386316..1791563386317 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563386317..1791563386321 del=1791563386321 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791563386319..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791563386319..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/close-bounded-inside-then-delete/batch (0.01s)
+            effective_timeline_life_end_test.go:295: rel close-bounded-inside-then-delete (D=1791563386335):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563386330..1791563386331 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563386331..1791563386335 del=1791563386335 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791563386333..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791563386333..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/close-bounded-inside-then-delete/ingest (0.03s)
+            effective_timeline_life_end_test.go:295: rel close-bounded-inside-then-delete (D=1791563386359):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563386354..1791563386355 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563386355..1791563386359 del=1791563386359 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791563386357..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791563386357..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/close-bounded-inside-then-delete/DeleteWithTx (0.02s)
+            effective_timeline_life_end_test.go:295: rel close-bounded-inside-then-delete (D=1791563386379):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563386375..1791563386376 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563386376..1791563386379 del=1791563386379 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791563386378..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791563386378..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/close-gap-then-delete/standalone (0.02s)
+            effective_timeline_life_end_test.go:295: rel close-gap-then-delete (D=1791563386400):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563386396..1791563386397 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563386397..1791563386400 del=1791563386400 cur=false x=0
+                  v2 vf=5000 vt=6000 tx=1791563386399..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/close-gap-then-delete/graphtx (0.02s)
+            effective_timeline_life_end_test.go:295: rel close-gap-then-delete (D=1791563386418):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563386413..1791563386414 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563386414..1791563386418 del=1791563386418 cur=false x=0
+                  v2 vf=5000 vt=6000 tx=1791563386416..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/close-gap-then-delete/batch (0.01s)
+            effective_timeline_life_end_test.go:295: rel close-gap-then-delete (D=1791563386433):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563386428..1791563386429 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563386429..1791563386433 del=1791563386433 cur=false x=0
+                  v2 vf=5000 vt=6000 tx=1791563386431..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/close-gap-then-delete/ingest (0.01s)
+            effective_timeline_life_end_test.go:295: rel close-gap-then-delete (D=1791563386448):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563386443..1791563386444 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563386444..1791563386448 del=1791563386448 cur=false x=0
+                  v2 vf=5000 vt=6000 tx=1791563386446..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/sharded/rel/close-gap-then-delete/DeleteWithTx (0.02s)
+            effective_timeline_life_end_test.go:295: rel close-gap-then-delete (D=1791563386463):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563386459..1791563386460 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563386460..1791563386463 del=1791563386463 cur=false x=0
+                  v2 vf=5000 vt=6000 tx=1791563386462..0 del=0 cur=false x=1
+    --- FAIL: TestAtTxEndsAtDelete/tiered/rel (0.55s)
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/delete/standalone (0.02s)
+            effective_timeline_life_end_test.go:295: rel delete (D=1791563386992):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563386991, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=1791563386992 tx=1791563386991..1791563386992 del=1791563386992 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/delete/graphtx (0.01s)
+            effective_timeline_life_end_test.go:295: rel delete (D=1791563387006):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563387005, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=1791563387006 tx=1791563387004..1791563387006 del=1791563387006 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/delete/batch (0.01s)
+            effective_timeline_life_end_test.go:295: rel delete (D=1791563387021):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563387020, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=1791563387021 tx=1791563387019..1791563387021 del=1791563387021 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/delete/ingest (0.01s)
+            effective_timeline_life_end_test.go:295: rel delete (D=1791563387036):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563387035, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=1791563387036 tx=1791563387034..1791563387036 del=1791563387036 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/delete/DeleteWithTx (0.01s)
+            effective_timeline_life_end_test.go:295: rel delete (D=1791563387046):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563387045, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=1791563387046 tx=1791563387045..1791563387046 del=1791563387046 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/update-then-delete/standalone (0.01s)
+            effective_timeline_life_end_test.go:295: rel update-then-delete (D=1791563387061):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563387060, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563387058..1791563387059 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563387061 tx=1791563387059..1791563387061 del=1791563387061 cur=false x=2
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/update-then-delete/graphtx (0.02s)
+            effective_timeline_life_end_test.go:295: rel update-then-delete (D=1791563387079):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563387078, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563387075..1791563387076 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563387079 tx=1791563387076..1791563387079 del=1791563387079 cur=false x=2
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/update-then-delete/batch (0.02s)
+            effective_timeline_life_end_test.go:295: rel update-then-delete (D=1791563387095):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563387094, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563387091..1791563387092 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563387095 tx=1791563387092..1791563387095 del=1791563387095 cur=false x=2
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/update-then-delete/ingest (0.02s)
+            effective_timeline_life_end_test.go:295: rel update-then-delete (D=1791563387109):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563387108, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563387105..1791563387106 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563387109 tx=1791563387106..1791563387109 del=1791563387109 cur=false x=2
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/update-then-delete/DeleteWithTx (0.01s)
+            effective_timeline_life_end_test.go:295: rel update-then-delete (D=1791563387124):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563387123, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563387121..1791563387122 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563387124 tx=1791563387122..1791563387124 del=1791563387124 cur=false x=2
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/open-cascade-then-delete/standalone (0.02s)
+            effective_timeline_life_end_test.go:295: rel open-cascade-then-delete (D=1791563387139):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563387138, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563387137..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563387139 tx=1791563387138..1791563387139 del=1791563387139 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/open-cascade-then-delete/graphtx (0.02s)
+            effective_timeline_life_end_test.go:295: rel open-cascade-then-delete (D=1791563387157):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563387156, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563387154..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563387157 tx=1791563387155..1791563387157 del=1791563387157 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/open-cascade-then-delete/batch (0.01s)
+            effective_timeline_life_end_test.go:295: rel open-cascade-then-delete (D=1791563387173):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563387172, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563387170..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563387173 tx=1791563387171..1791563387173 del=1791563387173 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/open-cascade-then-delete/ingest (0.02s)
+            effective_timeline_life_end_test.go:295: rel open-cascade-then-delete (D=1791563387188):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563387187, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563387185..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563387188 tx=1791563387186..1791563387188 del=1791563387188 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/open-cascade-then-delete/DeleteWithTx (0.02s)
+            effective_timeline_life_end_test.go:295: rel open-cascade-then-delete (D=1791563387209):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563387208, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563387207..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=1791563387209 tx=1791563387208..1791563387209 del=1791563387209 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/bounded-cascade-then-delete/standalone (0.01s)
+            effective_timeline_life_end_test.go:295: rel bounded-cascade-then-delete (D=1791563387222):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563387221, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563387220..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=3000 tx=1791563387221..0 del=0 cur=false x=1
+                  v2 vf=3000 vt=1791563387222 tx=1791563387221..1791563387222 del=1791563387222 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/bounded-cascade-then-delete/graphtx (0.01s)
+            effective_timeline_life_end_test.go:295: rel bounded-cascade-then-delete (D=1791563387239):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563387238, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563387236..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=3000 tx=1791563387237..0 del=0 cur=false x=1
+                  v2 vf=3000 vt=1791563387239 tx=1791563387237..1791563387239 del=1791563387239 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/bounded-cascade-then-delete/batch (0.02s)
+            effective_timeline_life_end_test.go:295: rel bounded-cascade-then-delete (D=1791563387257):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563387256, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563387254..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=3000 tx=1791563387255..0 del=0 cur=false x=1
+                  v2 vf=3000 vt=1791563387257 tx=1791563387255..1791563387257 del=1791563387257 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/bounded-cascade-then-delete/ingest (0.02s)
+            effective_timeline_life_end_test.go:295: rel bounded-cascade-then-delete (D=1791563387275):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563387274, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563387272..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=3000 tx=1791563387273..0 del=0 cur=false x=1
+                  v2 vf=3000 vt=1791563387275 tx=1791563387273..1791563387275 del=1791563387275 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/bounded-cascade-then-delete/DeleteWithTx (0.02s)
+            effective_timeline_life_end_test.go:295: rel bounded-cascade-then-delete (D=1791563387290):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 4000, pin after): present=false, want true ForEachRelEffectiveByType(valid 4001, pin after): present=false, want true ForEachRelEffectiveByType(valid 4500, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 6000, pin after): present=false, want true ForEachRelEffectiveByType(valid 6001, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000000000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1791563387289, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563387288..0 del=0 cur=false x=0
+                  v1 vf=2000 vt=3000 tx=1791563387289..0 del=0 cur=false x=1
+                  v2 vf=3000 vt=1791563387290 tx=1791563387289..1791563387290 del=1791563387290 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/close-then-delete/standalone (0.01s)
+            effective_timeline_life_end_test.go:295: rel close-then-delete (D=1791563387306):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563387303..1791563387304 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563387304..1791563387306 del=1791563387306 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/close-then-delete/graphtx (0.02s)
+            effective_timeline_life_end_test.go:295: rel close-then-delete (D=1791563387323):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563387319..1791563387320 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563387320..1791563387323 del=1791563387323 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/close-then-delete/batch (0.02s)
+            effective_timeline_life_end_test.go:295: rel close-then-delete (D=1791563387338):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563387334..1791563387335 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563387335..1791563387338 del=1791563387338 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/close-then-delete/ingest (0.01s)
+            effective_timeline_life_end_test.go:295: rel close-then-delete (D=1791563387352):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563387348..1791563387349 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563387349..1791563387352 del=1791563387352 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/close-then-delete/DeleteWithTx (0.02s)
+            effective_timeline_life_end_test.go:295: rel close-then-delete (D=1791563387369):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563387366..1791563387367 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563387367..1791563387369 del=1791563387369 cur=false x=0
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/close-bounded-inside-then-delete/standalone (0.01s)
+            effective_timeline_life_end_test.go:295: rel close-bounded-inside-then-delete (D=1791563387380):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563387376..1791563387377 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563387377..1791563387380 del=1791563387380 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791563387379..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791563387379..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/close-bounded-inside-then-delete/graphtx (0.01s)
+            effective_timeline_life_end_test.go:295: rel close-bounded-inside-then-delete (D=1791563387390):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563387385..1791563387386 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563387386..1791563387390 del=1791563387390 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791563387388..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791563387388..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/close-bounded-inside-then-delete/batch (0.02s)
+            effective_timeline_life_end_test.go:295: rel close-bounded-inside-then-delete (D=1791563387408):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563387403..1791563387404 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563387404..1791563387408 del=1791563387408 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791563387406..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791563387406..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/close-bounded-inside-then-delete/ingest (0.03s)
+            effective_timeline_life_end_test.go:295: rel close-bounded-inside-then-delete (D=1791563387441):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563387436..1791563387437 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563387437..1791563387441 del=1791563387441 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791563387439..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791563387439..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/close-bounded-inside-then-delete/DeleteWithTx (0.01s)
+            effective_timeline_life_end_test.go:295: rel close-bounded-inside-then-delete (D=1791563387453):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563387449..1791563387450 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563387450..1791563387453 del=1791563387453 cur=false x=0
+                  v2 vf=3000 vt=4000 tx=1791563387452..0 del=0 cur=false x=0
+                  v3 vf=2000 vt=3000 tx=1791563387452..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/close-gap-then-delete/standalone (0.02s)
+            effective_timeline_life_end_test.go:295: rel close-gap-then-delete (D=1791563387469):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563387465..1791563387466 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563387466..1791563387469 del=1791563387469 cur=false x=0
+                  v2 vf=5000 vt=6000 tx=1791563387468..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/close-gap-then-delete/graphtx (0.01s)
+            effective_timeline_life_end_test.go:295: rel close-gap-then-delete (D=1791563387486):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563387481..1791563387482 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563387482..1791563387486 del=1791563387486 cur=false x=0
+                  v2 vf=5000 vt=6000 tx=1791563387484..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/close-gap-then-delete/batch (0.01s)
+            effective_timeline_life_end_test.go:295: rel close-gap-then-delete (D=1791563387499):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563387494..1791563387495 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563387495..1791563387499 del=1791563387499 cur=false x=0
+                  v2 vf=5000 vt=6000 tx=1791563387497..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/close-gap-then-delete/ingest (0.01s)
+            effective_timeline_life_end_test.go:295: rel close-gap-then-delete (D=1791563387514):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563387509..1791563387510 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563387510..1791563387514 del=1791563387514 cur=false x=0
+                  v2 vf=5000 vt=6000 tx=1791563387512..0 del=0 cur=false x=1
+        --- FAIL: TestAtTxEndsAtDelete/tiered/rel/close-gap-then-delete/DeleteWithTx (0.02s)
+            effective_timeline_life_end_test.go:295: rel close-gap-then-delete (D=1791563387528):
+                  [ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 1500, pin after): present=false, want true ForEachRelEffectiveByType(valid 2500, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true ForEachRelEffectiveByType(valid 1000, pin after): present=false, want true ForEachRelEffectiveByType(valid 3999, pin after): present=false, want true ForEachRelEffectiveByType(valid 5000, pin after): present=false, want true ForEachRelEffectiveByType(valid 5999, pin after): present=false, want true]
+                chain:
+                  v0 vf=1000 vt=0 tx=1791563387524..1791563387525 del=0 cur=false x=0
+                  v1 vf=1000 vt=4000 tx=1791563387525..1791563387528 del=1791563387528 cur=false x=0
+                  v2 vf=5000 vt=6000 tx=1791563387527..0 del=0 cur=false x=1
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	25.749s
+FAIL
+
+exit=1

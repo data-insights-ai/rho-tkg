@@ -1,0 +1,542 @@
+MUTANT: entity lock removed from node/relEffectiveTimelineLocked; -count=40
+--- FAIL: TestEffectiveTimeline_ConcurrentWriters (0.27s)
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/badger/rel (0.03s)
+        effective_timeline_test.go:845: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+--- FAIL: TestEffectiveTimeline_ConcurrentWriters (0.16s)
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/sharded/rel (0.02s)
+        effective_timeline_test.go:845: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+--- FAIL: TestEffectiveTimeline_ConcurrentWriters (0.11s)
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/sharded/node (0.01s)
+        effective_timeline_test.go:845: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+--- FAIL: TestEffectiveTimeline_ConcurrentWriters (0.11s)
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/sharded/node (0.03s)
+        effective_timeline_test.go:845: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+--- FAIL: TestEffectiveTimeline_ConcurrentWriters (0.16s)
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/badger/rel (0.03s)
+        effective_timeline_test.go:845: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/sharded/rel (0.02s)
+        effective_timeline_test.go:845: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+--- FAIL: TestEffectiveTimeline_ConcurrentWriters (0.11s)
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/sharded/node (0.02s)
+        effective_timeline_test.go:845: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+--- FAIL: TestEffectiveTimeline_ConcurrentWriters (0.17s)
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/badger/node (0.01s)
+        effective_timeline_test.go:845: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+--- FAIL: TestEffectiveTimeline_ConcurrentWriters (0.14s)
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/sharded/rel (0.02s)
+        effective_timeline_test.go:845: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E11: [1000,0) v0
+--- FAIL: TestEffectiveTimeline_ConcurrentWriters (0.47s)
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/sharded/rel (0.03s)
+        effective_timeline_test.go:845: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+--- FAIL: TestEffectiveTimeline_ConcurrentWriters (0.16s)
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/sharded/rel (0.02s)
+        effective_timeline_test.go:845: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+--- FAIL: TestEffectiveTimeline_ConcurrentWriters (0.15s)
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/sharded/rel (0.05s)
+        effective_timeline_test.go:845: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+--- FAIL: TestEffectiveTimeline_ConcurrentWriters (0.16s)
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/sharded/node (0.02s)
+        effective_timeline_test.go:845: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+--- FAIL: TestEffectiveTimeline_ConcurrentWriters (0.18s)
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/sharded/rel (0.05s)
+        effective_timeline_test.go:845: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+--- FAIL: TestEffectiveTimeline_ConcurrentWriters (0.12s)
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/sharded/node (0.01s)
+        effective_timeline_test.go:845: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+--- FAIL: TestEffectiveTimeline_ConcurrentWriters (0.11s)
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/badger/rel (0.01s)
+        effective_timeline_test.go:845: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+--- FAIL: TestEffectiveTimeline_ConcurrentWriters (0.14s)
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/sharded/node (0.02s)
+        effective_timeline_test.go:845: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+--- FAIL: TestEffectiveTimeline_ConcurrentWriters (0.12s)
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/badger/rel (0.03s)
+        effective_timeline_test.go:845: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+--- FAIL: TestEffectiveTimeline_ConcurrentWriters (0.09s)
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/sharded/rel (0.02s)
+        effective_timeline_test.go:845: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	6.656s
+FAIL
+
+exit=1

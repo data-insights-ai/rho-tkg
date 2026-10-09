@@ -408,17 +408,26 @@ func filterNodeChainByTxAt(chain []*types.Node, txAt types.Instant) []*types.Nod
 	}
 	out := make([]*types.Node, 0, len(chain))
 	for _, entry := range chain {
-		tm := entry.Temporal()
-		if !versionVisibleAtTx(tm, txAt) {
-			continue
+		if row, ok := nodeRowAtTx(entry, txAt); ok {
+			out = append(out, row)
 		}
-		if tm != nil && tm.DeletedAt > txAt {
-			entry = entry.DeepCopy()
-			normalizeTemporalVisibleAtTxTime(entry.Temporal(), txAt)
-		}
-		out = append(out, entry)
 	}
 	return out
+}
+
+// nodeRowAtTx is filterNodeChainByTxAt for one row (txAt > 0): false when the
+// row was recorded after txAt; else the row, or a normalized deep copy when
+// its delete stamps post-date txAt.
+func nodeRowAtTx(entry *types.Node, txAt types.Instant) (*types.Node, bool) {
+	tm := entry.Temporal()
+	if !versionVisibleAtTx(tm, txAt) {
+		return nil, false
+	}
+	if tm != nil && tm.DeletedAt > txAt {
+		entry = entry.DeepCopy()
+		normalizeTemporalVisibleAtTxTime(entry.Temporal(), txAt)
+	}
+	return entry, true
 }
 
 // filterRelChainByTxAt is the relationship counterpart of filterNodeChainByTxAt,
@@ -429,17 +438,24 @@ func filterRelChainByTxAt(chain []*types.Relationship, txAt types.Instant) []*ty
 	}
 	out := make([]*types.Relationship, 0, len(chain))
 	for _, entry := range chain {
-		tm := entry.Temporal()
-		if !versionVisibleAtTx(tm, txAt) {
-			continue
+		if row, ok := relRowAtTx(entry, txAt); ok {
+			out = append(out, row)
 		}
-		if tm != nil && tm.DeletedAt > txAt {
-			entry = entry.DeepCopy()
-			normalizeTemporalVisibleAtTxTime(entry.Temporal(), txAt)
-		}
-		out = append(out, entry)
 	}
 	return out
+}
+
+// relRowAtTx mirrors nodeRowAtTx.
+func relRowAtTx(entry *types.Relationship, txAt types.Instant) (*types.Relationship, bool) {
+	tm := entry.Temporal()
+	if !versionVisibleAtTx(tm, txAt) {
+		return nil, false
+	}
+	if tm != nil && tm.DeletedAt > txAt {
+		entry = entry.DeepCopy()
+		normalizeTemporalVisibleAtTxTime(entry.Temporal(), txAt)
+	}
+	return entry, true
 }
 
 // nodeOwnBounds returns [vStart, vEnd) using the row's OWN asserted end

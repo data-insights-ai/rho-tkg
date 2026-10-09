@@ -1,0 +1,686 @@
+MUTANT internal/core/effective_timeline.go
+--- old
+		if r, ok := k.rowAtTx(chain[i], pin); ok {
+--- new
+		if r, ok := k.rowAtTx(chain[i], 1<<62); ok {
+=== go test ./internal/core/ -run TestEffectiveTimeline|TestAtTx
+--- FAIL: TestEffectiveTimeline_ScanDeletedEntities (0.35s)
+    --- FAIL: TestEffectiveTimeline_ScanDeletedEntities/memory/node (0.00s)
+        effective_timeline_test.go:549: node scan at pin 1791563524803:
+             got 
+              Casc: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              Closed: [1000,4000) v1
+              CreatedAfter: [1000,0) v0
+              DelAfter: [1000,1791563524804) v0
+              DelBefore: [1000,1791563524798) v0
+              Gains: [1791563524806,0) v1
+              Live: [1000,0) v0
+              Loses: [1000,1791563524807) v0
+            want 
+              Casc: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              Closed: [1000,4000) v1
+              DelAfter: [1000,0) v0
+              DelBefore: [1000,1791563524798) v0
+              Live: [1000,0) v0
+              Loses: [1000,0) v0
+    --- FAIL: TestEffectiveTimeline_ScanDeletedEntities/memory/rel (0.00s)
+        effective_timeline_test.go:549: rel scan at pin 1791563524805:
+             got 
+              Casc: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              Closed: [1000,4000) v1
+              CreatedAfter: [1000,0) v0
+              DelAfter: [1000,1791563524806) v0
+              DelBefore: [1000,1791563524801) v0
+              Live: [1000,0) v0
+            want 
+              Casc: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              Closed: [1000,4000) v1
+              DelAfter: [1000,0) v0
+              DelBefore: [1000,1791563524801) v0
+              Live: [1000,0) v0
+    --- FAIL: TestEffectiveTimeline_ScanDeletedEntities/badger/node (0.01s)
+        effective_timeline_test.go:549: node scan at pin 1791563524809:
+             got 
+              Casc: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              Closed: [1000,4000) v1
+              CreatedAfter: [1000,0) v0
+              DelAfter: [1000,1791563524810) v0
+              DelBefore: [1000,1791563524804) v0
+              Gains: [1791563524812,0) v1
+              Live: [1000,0) v0
+              Loses: [1000,1791563524813) v0
+            want 
+              Casc: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              Closed: [1000,4000) v1
+              DelAfter: [1000,0) v0
+              DelBefore: [1000,1791563524804) v0
+              Live: [1000,0) v0
+              Loses: [1000,0) v0
+    --- FAIL: TestEffectiveTimeline_ScanDeletedEntities/badger/rel (0.01s)
+        effective_timeline_test.go:549: rel scan at pin 1791563524814:
+             got 
+              Casc: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              Closed: [1000,4000) v1
+              CreatedAfter: [1000,0) v0
+              DelAfter: [1000,1791563524815) v0
+              DelBefore: [1000,1791563524810) v0
+              Live: [1000,0) v0
+            want 
+              Casc: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              Closed: [1000,4000) v1
+              DelAfter: [1000,0) v0
+              DelBefore: [1000,1791563524810) v0
+              Live: [1000,0) v0
+    --- FAIL: TestEffectiveTimeline_ScanDeletedEntities/sharded/node (0.01s)
+        effective_timeline_test.go:549: node scan at pin 1791563524822:
+             got 
+              Casc: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              Closed: [1000,4000) v1
+              CreatedAfter: [1000,0) v0
+              DelAfter: [1000,1791563524823) v0
+              DelBefore: [1000,1791563524817) v0
+              Gains: [1791563524825,0) v1
+              Live: [1000,0) v0
+              Loses: [1000,1791563524826) v0
+            want 
+              Casc: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              Closed: [1000,4000) v1
+              DelAfter: [1000,0) v0
+              DelBefore: [1000,1791563524817) v0
+              Live: [1000,0) v0
+              Loses: [1000,0) v0
+    --- FAIL: TestEffectiveTimeline_ScanDeletedEntities/sharded/rel (0.14s)
+        effective_timeline_test.go:549: rel scan at pin 1791563524962:
+             got 
+              Casc: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              Closed: [1000,4000) v1
+              CreatedAfter: [1000,0) v0
+              DelAfter: [1000,1791563524963) v0
+              DelBefore: [1000,1791563524958) v0
+              Live: [1000,0) v0
+            want 
+              Casc: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              Closed: [1000,4000) v1
+              DelAfter: [1000,0) v0
+              DelBefore: [1000,1791563524958) v0
+              Live: [1000,0) v0
+    --- FAIL: TestEffectiveTimeline_ScanDeletedEntities/tiered/node (0.08s)
+        effective_timeline_test.go:549: node scan at pin 1791563525044:
+             got 
+              Casc: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              Closed: [1000,4000) v1
+              CreatedAfter: [1000,0) v0
+              DelAfter: [1000,1791563525045) v0
+              DelBefore: [1000,1791563525039) v0
+              Gains: [1791563525047,0) v1
+              Live: [1000,0) v0
+              Loses: [1000,1791563525048) v0
+            want 
+              Casc: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              Closed: [1000,4000) v1
+              DelAfter: [1000,0) v0
+              DelBefore: [1000,1791563525039) v0
+              Live: [1000,0) v0
+              Loses: [1000,0) v0
+    --- FAIL: TestEffectiveTimeline_ScanDeletedEntities/tiered/rel (0.10s)
+        effective_timeline_test.go:549: rel scan at pin 1791563525143:
+             got 
+              Casc: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              Closed: [1000,4000) v1
+              CreatedAfter: [1000,0) v0
+              DelAfter: [1000,1791563525144) v0
+              DelBefore: [1000,1791563525139) v0
+              Live: [1000,0) v0
+            want 
+              Casc: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              Closed: [1000,4000) v1
+              DelAfter: [1000,0) v0
+              DelBefore: [1000,1791563525139) v0
+              Live: [1000,0) v0
+--- FAIL: TestEffectiveTimeline_ConcurrentWriters (0.37s)
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/memory/node (0.00s)
+        effective_timeline_test.go:811: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,1791563524819) v0
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/memory/rel (0.00s)
+        effective_timeline_test.go:811: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,1791563524817) v2 [1791563524817,0) v3
+              E01: [1000,1500) v0 [1500,2500) v1 [2500,0) v2
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,1791563524816) v2
+              E04: [1000,1791563524828) v0 [1791563524828,0) v1
+              E05: [1000,1500) v0 [1500,2500) v1 [2500,0) v2
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,9000) v3
+              E07: [1000,0) v0
+              E08: [1000,1791563524830) v0 [1791563524830,0) v1
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,9000) v1
+              E11: [1000,0) v0
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/badger/node (0.00s)
+        effective_timeline_test.go:811: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,1791563524818) v2 [1791563524818,0) v3
+              E01: [1000,0) v0
+              E02: [1000,9000) v1
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,1791563524819) v2
+              E04: [1000,1791563524822) v0 [1791563524822,0) v1
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/badger/rel (0.06s)
+        effective_timeline_test.go:811: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,1791563524879) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/sharded/node (0.04s)
+        effective_timeline_test.go:811: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,1500) v0 [1500,2500) v1
+              E02: [1000,9000) v1
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,1500) v0 [1500,2500) v1
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,9000) v3
+              E07: [1000,0) v0
+              E08: [1000,1791563524922) v0 [1791563524922,0) v1
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,9000) v1
+              E11: [1000,0) v0
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/sharded/rel (0.13s)
+        effective_timeline_test.go:811: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,1500) v0 [1500,2500) v1 [2500,0) v2
+              E02: [1000,9000) v1
+              E03: [1000,2000) v0 [2000,3000) v1
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,1791563525054) v0
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/tiered/node (0.07s)
+        effective_timeline_test.go:811: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,1791563525109) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,1500) v0 [1500,2000) v4 [2000,2500) v5 [2500,3000) v3 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+    --- FAIL: TestEffectiveTimeline_ConcurrentWriters/tiered/rel (0.06s)
+        effective_timeline_test.go:811: pinned scan changed under concurrent writers:
+             before 
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E01: [1000,0) v0
+              E02: [1000,0) v0
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E04: [1000,0) v0
+              E05: [1000,0) v0
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E07: [1000,0) v0
+              E08: [1000,0) v0
+              E09: [1000,2000) v0 [2000,3000) v1 [3000,0) v2
+              E10: [1000,0) v0
+              E11: [1000,0) v0
+             now    
+              E00: [1000,2000) v0 [2000,3000) v1 [3000,1791563525189) v2 [1791563525189,0) v3
+              E01: [1000,0) v0
+              E02: [1000,9000) v1
+              E03: [1000,2000) v0 [2000,3000) v1 [3000,1791563525175) v2
+              E04: [1000,0) v0
+              E05: [1000,1500) v0 [1500,2500) v1 [2500,0) v2
+              E06: [1000,2000) v0 [2000,3000) v1 [3000,9000) v3
+              E07: [1000,1791563525182) v0
+              E08: [1000,0) v0
+              E09: [1000,1500) v0 [1500,2000) v4 [2000,2500) v5 [2500,3000) v3 [3000,0) v2
+              E10: [1000,9000) v1
+              E11: [1000,1791563525186) v0
+--- FAIL: TestEffectiveTimeline_Shapes (0.39s)
+    --- FAIL: TestEffectiveTimeline_Shapes/memory/node (0.00s)
+        effective_timeline_test.go:193: created after the pin: "[1000,0) v0", want empty
+    --- FAIL: TestEffectiveTimeline_Shapes/memory/rel (0.00s)
+        effective_timeline_test.go:193: created after the pin: "[1000,0) v0", want empty
+    --- FAIL: TestEffectiveTimeline_Shapes/badger/node (0.01s)
+        effective_timeline_test.go:193: created after the pin: "[1000,0) v0", want empty
+    --- FAIL: TestEffectiveTimeline_Shapes/badger/rel (0.06s)
+        effective_timeline_test.go:193: created after the pin: "[1000,0) v0", want empty
+    --- FAIL: TestEffectiveTimeline_Shapes/sharded/node (0.10s)
+        effective_timeline_test.go:193: created after the pin: "[1000,0) v0", want empty
+    --- FAIL: TestEffectiveTimeline_Shapes/sharded/rel (0.10s)
+        effective_timeline_test.go:193: created after the pin: "[1000,0) v0", want empty
+    --- FAIL: TestEffectiveTimeline_Shapes/tiered/node (0.06s)
+        effective_timeline_test.go:193: created after the pin: "[1000,0) v0", want empty
+    --- FAIL: TestEffectiveTimeline_Shapes/tiered/rel (0.05s)
+        effective_timeline_test.go:193: created after the pin: "[1000,0) v0", want empty
+--- FAIL: TestEffectiveTimeline_DerivedStart (0.42s)
+    --- FAIL: TestEffectiveTimeline_DerivedStart/memory/node (0.00s)
+        --- FAIL: TestEffectiveTimeline_DerivedStart/memory/node/backfill=false (0.00s)
+            effective_timeline_test.go:171: timeline at the earlier pin changed: "[1791563523791,1791563524794) v0 [1791563524794,0) v1", want "[1791563523791,0) v0"
+        --- FAIL: TestEffectiveTimeline_DerivedStart/memory/node/backfill=true (0.00s)
+            effective_timeline_test.go:156: timeline before the backfill's TxFrom = "[1791563523792,0) v0", want empty
+    --- FAIL: TestEffectiveTimeline_DerivedStart/memory/rel (0.00s)
+        --- FAIL: TestEffectiveTimeline_DerivedStart/memory/rel/backfill=false (0.00s)
+            effective_timeline_test.go:171: timeline at the earlier pin changed: "[1791563523792,1791563524797) v0 [1791563524797,0) v1", want "[1791563523792,0) v0"
+        --- FAIL: TestEffectiveTimeline_DerivedStart/memory/rel/backfill=true (0.00s)
+            effective_timeline_test.go:156: timeline before the backfill's TxFrom = "[1791563523793,0) v0", want empty
+    --- FAIL: TestEffectiveTimeline_DerivedStart/badger/node (0.01s)
+        --- FAIL: TestEffectiveTimeline_DerivedStart/badger/node/backfill=false (0.00s)
+            effective_timeline_test.go:171: timeline at the earlier pin changed: "[1791563523797,1791563524800) v0 [1791563524800,0) v1", want "[1791563523797,0) v0"
+        --- FAIL: TestEffectiveTimeline_DerivedStart/badger/node/backfill=true (0.01s)
+            effective_timeline_test.go:156: timeline before the backfill's TxFrom = "[1791563523801,0) v0", want empty
+    --- FAIL: TestEffectiveTimeline_DerivedStart/badger/rel (0.01s)
+        --- FAIL: TestEffectiveTimeline_DerivedStart/badger/rel/backfill=false (0.01s)
+            effective_timeline_test.go:171: timeline at the earlier pin changed: "[1791563523809,1791563524814) v0 [1791563524814,0) v1", want "[1791563523809,0) v0"
+        --- FAIL: TestEffectiveTimeline_DerivedStart/badger/rel/backfill=true (0.01s)
+            effective_timeline_test.go:156: timeline before the backfill's TxFrom = "[1791563523817,0) v0", want empty
+    --- FAIL: TestEffectiveTimeline_DerivedStart/sharded/node (0.10s)
+        --- FAIL: TestEffectiveTimeline_DerivedStart/sharded/node/backfill=false (0.06s)
+            effective_timeline_test.go:171: timeline at the earlier pin changed: "[1791563523878,1791563524881) v0 [1791563524881,0) v1", want "[1791563523878,0) v0"
+        --- FAIL: TestEffectiveTimeline_DerivedStart/sharded/node/backfill=true (0.04s)
+            effective_timeline_test.go:156: timeline before the backfill's TxFrom = "[1791563523915,0) v0", want empty
+    --- FAIL: TestEffectiveTimeline_DerivedStart/sharded/rel (0.04s)
+        --- FAIL: TestEffectiveTimeline_DerivedStart/sharded/rel/backfill=false (0.01s)
+            effective_timeline_test.go:171: timeline at the earlier pin changed: "[1791563523924,1791563524929) v0 [1791563524929,0) v1", want "[1791563523924,0) v0"
+        --- FAIL: TestEffectiveTimeline_DerivedStart/sharded/rel/backfill=true (0.03s)
+            effective_timeline_test.go:156: timeline before the backfill's TxFrom = "[1791563523953,0) v0", want empty
+    --- FAIL: TestEffectiveTimeline_DerivedStart/tiered/node (0.17s)
+        --- FAIL: TestEffectiveTimeline_DerivedStart/tiered/node/backfill=false (0.10s)
+            effective_timeline_test.go:171: timeline at the earlier pin changed: "[1791563524051,1791563525054) v0 [1791563525054,0) v1", want "[1791563524051,0) v0"
+        --- FAIL: TestEffectiveTimeline_DerivedStart/tiered/node/backfill=true (0.07s)
+            effective_timeline_test.go:156: timeline before the backfill's TxFrom = "[1791563524120,0) v0", want empty
+    --- FAIL: TestEffectiveTimeline_DerivedStart/tiered/rel (0.09s)
+        --- FAIL: TestEffectiveTimeline_DerivedStart/tiered/rel/backfill=false (0.05s)
+            effective_timeline_test.go:171: timeline at the earlier pin changed: "[1791563524175,1791563525180) v0 [1791563525180,0) v1", want "[1791563524175,0) v0"
+        --- FAIL: TestEffectiveTimeline_DerivedStart/tiered/rel/backfill=true (0.04s)
+            effective_timeline_test.go:156: timeline before the backfill's TxFrom = "[1791563524211,0) v0", want empty
+--- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor (1.80s)
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/memory/seed=23719 (0.02s)
+        effective_timeline_test.go:620: label A pin 673 valid 1820:
+             ByLabel map[]
+             scan    map[797505086858428416:v0 {ValidFrom:1820 ValidTo:0 TxFrom:1791568001001 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=anchor=1]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/memory/seed=23720 (0.01s)
+        effective_timeline_test.go:620: label A pin 741 valid 1287:
+             ByLabel map[]
+             scan    map[797505087547932672:v0 {ValidFrom:1287 ValidTo:0 TxFrom:1791568001001 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=anchor=1]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/memory/seed=23721 (0.01s)
+        effective_timeline_test.go:620: label A pin 1270 valid 1638:
+             ByLabel map[]
+             scan    map[797505087884427264:v0 {ValidFrom:1638 ValidTo:0 TxFrom:1791568001001 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=anchor=1]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/memory/seed=23722 (0.01s)
+        effective_timeline_test.go:620: label A pin 1261 valid 1382:
+             ByLabel map[]
+             scan    map[797505088272564224:v0 {ValidFrom:1382 ValidTo:0 TxFrom:1791568001001 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=anchor=1]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/badger/seed=23719 (0.24s)
+        effective_timeline_test.go:620: label A pin 1270 valid 1820:
+             ByLabel map[]
+             scan    map[797505090618785792:v0 {ValidFrom:1820 ValidTo:0 TxFrom:1791568001001 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=anchor=1]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/badger/seed=23720 (0.13s)
+        effective_timeline_test.go:620: label A pin 741 valid 1287:
+             ByLabel map[]
+             scan    map[797505097321938944:v0 {ValidFrom:1287 ValidTo:0 TxFrom:1791568001001 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=anchor=1]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/badger/seed=23721 (0.10s)
+        effective_timeline_test.go:620: label A pin 1639 valid 1638:
+             ByLabel map[]
+             scan    map[797505101028130816:v0 {ValidFrom:1638 ValidTo:0 TxFrom:1791568001001 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=anchor=1]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/badger/seed=23722 (0.08s)
+        effective_timeline_test.go:620: label A pin 1383 valid 1382:
+             ByLabel map[]
+             scan    map[797505104168779776:v0 {ValidFrom:1382 ValidTo:0 TxFrom:1791568001001 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=anchor=1]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/sharded/seed=23719 (0.27s)
+        effective_timeline_test.go:609: type R pin 1270 valid 2733:
+             ByType map[]
+             scan   map[797505106849203200:v1 {ValidFrom:2733 ValidTo:4462 TxFrom:1791568011000 TxTo:1791568015000 CreatedAt:0 UpdatedAt:1791568011000 DeletedAt:1791568015000 CreatedBy: UpdatedBy: baseEntityID:0} type=1 797505106844352512->797505106845794304 props=k=2]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/sharded/seed=23720 (0.14s)
+        effective_timeline_test.go:609: type R pin 1133 valid 2313:
+             ByType map[]
+             scan   map[797505115699119104:v0 {ValidFrom:2313 ValidTo:0 TxFrom:1791568001006 TxTo:1791568001290 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=2 797505115690532864->797505115693088768 props=k=4]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/sharded/seed=23721 (0.11s)
+        effective_timeline_test.go:609: type R pin 1281 valid 1585:
+             ByType map[]
+             scan   map[797505119698093056:v3 {ValidFrom:1585 ValidTo:1767 TxFrom:1791568017000 TxTo:0 CreatedAt:0 UpdatedAt:1791568017000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=2 797505119688884224->797505119687475200 props=k=13]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/sharded/seed=23722 (0.11s)
+        effective_timeline_test.go:609: type R pin 1383 valid 545:
+             ByType map[]
+             scan   map[797505124010001408:v1 {ValidFrom:545 ValidTo:0 TxFrom:1791568004000 TxTo:1791568007000 CreatedAt:0 UpdatedAt:1791568004000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=1 797505124005576704->797505124003020800 props=k=6]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/tiered/seed=23719 (0.21s)
+        effective_timeline_test.go:609: type R pin 1474 valid 2733:
+             ByType map[]
+             scan   map[797505127249478656:v1 {ValidFrom:2733 ValidTo:4462 TxFrom:1791568011000 TxTo:1791568015000 CreatedAt:0 UpdatedAt:1791568011000 DeletedAt:1791568015000 CreatedBy: UpdatedBy: baseEntityID:0} type=1 797505127247675392->797505127248363520 props=k=2]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/tiered/seed=23720 (0.13s)
+        effective_timeline_test.go:609: type R pin 1133 valid 2313:
+             ByType map[]
+             scan   map[797505134122763264:v0 {ValidFrom:2313 ValidTo:0 TxFrom:1791568001006 TxTo:1791568001290 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=2 797505134120173568->797505134120796160 props=k=4]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/tiered/seed=23721 (0.14s)
+        effective_timeline_test.go:609: type R pin 1281 valid 1585:
+             ByType map[]
+             scan   map[797505138340594688:v3 {ValidFrom:1585 ValidTo:1767 TxFrom:1791568017000 TxTo:0 CreatedAt:0 UpdatedAt:1791568017000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=2 797505138338627584->797505138337906688 props=k=13]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/tiered/seed=23722 (0.11s)
+        effective_timeline_test.go:609: type R pin 1383 valid 545:
+             ByType map[]
+             scan   map[797505143502734336:v1 {ValidFrom:545 ValidTo:0 TxFrom:1791568004000 TxTo:1791568007000 CreatedAt:0 UpdatedAt:1791568004000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=1 797505143499620352->797505143497916416 props=k=6]
+--- FAIL: TestEffectiveTimeline_PointwiseOracle (5.19s)
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7399 (0.02s)
+        effective_timeline_oracle_test.go:427: [memory after the oracle sequence] node 797505086850859008 pin 1 valid 1291: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1291 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1291,0) v0 {ValidFrom:1291 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7400 (0.01s)
+        effective_timeline_oracle_test.go:427: [memory after the oracle sequence] node 797505087532171264 pin 1 valid 1459: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1459 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1459,0) v0 {ValidFrom:1459 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7401 (0.02s)
+        effective_timeline_oracle_test.go:427: [memory after the oracle sequence] node 797505087981256704 pin 1 valid 1395: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1395 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1395,0) v0 {ValidFrom:1395 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7402 (0.02s)
+        effective_timeline_oracle_test.go:427: [memory after the oracle sequence] node 797505088604897280 pin 1 valid 1351: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1351 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1351,0) v0 {ValidFrom:1351 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7403 (0.03s)
+        effective_timeline_oracle_test.go:427: [memory after the oracle sequence] node 797505089336180736 pin 1 valid 1133: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1133 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1133,0) v0 {ValidFrom:1133 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7404 (0.02s)
+        effective_timeline_oracle_test.go:427: [memory after the oracle sequence] node 797505090209120256 pin 1 valid 1247: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1247 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1247,0) v0 {ValidFrom:1247 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7405 (0.01s)
+        effective_timeline_oracle_test.go:427: [memory after the oracle sequence] node 797505091029073920 pin 1 valid 1420: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1420 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1420,0) v0 {ValidFrom:1420 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7406 (0.02s)
+        effective_timeline_oracle_test.go:427: [memory after the oracle sequence] node 797505091507060736 pin 1 valid 1156: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1156 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1156,0) v0 {ValidFrom:1156 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7407 (0.02s)
+        effective_timeline_oracle_test.go:427: [memory after the oracle sequence] node 797505092144857088 pin 1 valid 1230: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1230 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1230,0) v0 {ValidFrom:1230 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7408 (0.01s)
+        effective_timeline_oracle_test.go:427: [memory after the oracle sequence] node 797505092789534720 pin 1 valid 1352: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1352 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1352,0) v0 {ValidFrom:1352 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7409 (0.02s)
+        effective_timeline_oracle_test.go:427: [memory after the oracle sequence] node 797505093215617024 pin 1 valid 1317: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1317 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1317,0) v0 {ValidFrom:1317 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7410 (0.02s)
+        effective_timeline_oracle_test.go:427: [memory after the oracle sequence] node 797505093797478400 pin 1 valid 1466: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1466 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1466,0) v0 {ValidFrom:1466 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7411 (0.01s)
+        effective_timeline_oracle_test.go:427: [memory after the oracle sequence] node 797505094471778304 pin 1 valid 1385: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1385 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1385,0) v0 {ValidFrom:1385 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7412 (0.03s)
+        effective_timeline_oracle_test.go:427: [memory after the oracle sequence] node 797505094900088832 pin 1 valid 1162: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1162 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1162,0) v0 {ValidFrom:1162 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7413 (0.02s)
+        effective_timeline_oracle_test.go:427: [memory after the oracle sequence] node 797505095854686208 pin 1 valid 1320: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1320 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1320,0) v0 {ValidFrom:1320 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7414 (0.02s)
+        effective_timeline_oracle_test.go:427: [memory after the oracle sequence] node 797505096481341440 pin 1 valid 1457: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1457 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1457,0) v0 {ValidFrom:1457 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7399 (0.13s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505098085007360 pin 1 valid 1291: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1291 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1291,0) v0 {ValidFrom:1291 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7400 (0.12s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505102173175808 pin 1 valid 1459: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1459 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1459,0) v0 {ValidFrom:1459 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7401 (0.13s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505106115985408 pin 1 valid 1395: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1395 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1395,0) v0 {ValidFrom:1395 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7402 (0.11s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505110374121472 pin 1 valid 1351: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1351 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1351,0) v0 {ValidFrom:1351 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7403 (0.14s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505113921552384 pin 1 valid 1133: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1133 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1133,0) v0 {ValidFrom:1133 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7404 (0.14s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505118513561600 pin 1 valid 1247: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1247 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1247,0) v0 {ValidFrom:1247 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7405 (0.09s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505122996715520 pin 1 valid 1420: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1420 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1420,0) v0 {ValidFrom:1420 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7406 (0.12s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505125981061120 pin 1 valid 1156: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1156 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1156,0) v0 {ValidFrom:1156 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7407 (0.09s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505129995829248 pin 1 valid 1230: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1230 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1230,0) v0 {ValidFrom:1230 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7408 (0.08s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505133103611904 pin 1 valid 1352: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1352 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1352,0) v0 {ValidFrom:1352 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7409 (0.11s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505135443902464 pin 1 valid 1317: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1317 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1317,0) v0 {ValidFrom:1317 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7410 (0.08s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505138961481728 pin 1 valid 1466: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1466 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1466,0) v0 {ValidFrom:1466 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7411 (0.08s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505141483241472 pin 1 valid 1385: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1385 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1385,0) v0 {ValidFrom:1385 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7412 (0.10s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505144164286464 pin 1 valid 1162: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1162 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1162,0) v0 {ValidFrom:1162 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7413 (0.06s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505147214856192 pin 1 valid 1320: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1320 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1320,0) v0 {ValidFrom:1320 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7414 (0.07s)
+        effective_timeline_oracle_test.go:427: [badger after the oracle sequence] node 797505149226876928 pin 1 valid 1457: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1457 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1457,0) v0 {ValidFrom:1457 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7399 (0.11s)
+        effective_timeline_oracle_test.go:427: [sharded after the oracle sequence] node 797505152196018176 pin 1 valid 1291: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1291 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1291,0) v0 {ValidFrom:1291 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7400 (0.14s)
+        effective_timeline_oracle_test.go:427: [sharded after the oracle sequence] node 797505156146692096 pin 1 valid 1459: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1459 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1459,0) v0 {ValidFrom:1459 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7401 (0.14s)
+        effective_timeline_oracle_test.go:427: [sharded after the oracle sequence] node 797505159847706624 pin 1 valid 1395: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1395 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1395,0) v0 {ValidFrom:1395 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7402 (0.11s)
+        effective_timeline_oracle_test.go:427: [sharded after the oracle sequence] node 797505164636127232 pin 1 valid 1351: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1351 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1351,0) v0 {ValidFrom:1351 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7403 (0.15s)
+        effective_timeline_oracle_test.go:427: [sharded after the oracle sequence] node 797505168292872192 pin 1 valid 1133: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1133 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1133,0) v0 {ValidFrom:1133 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7404 (0.21s)
+        effective_timeline_oracle_test.go:427: [sharded after the oracle sequence] node 797505173297889280 pin 1 valid 1247: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1247 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1247,0) v0 {ValidFrom:1247 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7405 (0.09s)
+        effective_timeline_oracle_test.go:427: [sharded after the oracle sequence] node 797505179949072384 pin 1 valid 1420: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1420 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1420,0) v0 {ValidFrom:1420 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7406 (0.12s)
+        effective_timeline_oracle_test.go:427: [sharded after the oracle sequence] node 797505182776131584 pin 1 valid 1156: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1156 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1156,0) v0 {ValidFrom:1156 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7407 (0.11s)
+        effective_timeline_oracle_test.go:427: [sharded after the oracle sequence] node 797505186735489024 pin 1 valid 1230: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1230 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1230,0) v0 {ValidFrom:1230 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7408 (0.08s)
+        effective_timeline_oracle_test.go:427: [sharded after the oracle sequence] node 797505190539919360 pin 1 valid 1352: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1352 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1352,0) v0 {ValidFrom:1352 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7409 (0.11s)
+        effective_timeline_oracle_test.go:427: [sharded after the oracle sequence] node 797505193080193024 pin 1 valid 1317: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1317 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1317,0) v0 {ValidFrom:1317 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7410 (0.13s)
+        effective_timeline_oracle_test.go:427: [sharded after the oracle sequence] node 797505196567232512 pin 1 valid 1466: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1466 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1466,0) v0 {ValidFrom:1466 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7411 (0.09s)
+        effective_timeline_oracle_test.go:427: [sharded after the oracle sequence] node 797505201155997696 pin 1 valid 1385: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1385 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1385,0) v0 {ValidFrom:1385 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7412 (0.08s)
+        effective_timeline_oracle_test.go:427: [sharded after the oracle sequence] node 797505203963527168 pin 1 valid 1162: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1162 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1162,0) v0 {ValidFrom:1162 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7413 (0.06s)
+        effective_timeline_oracle_test.go:427: [sharded after the oracle sequence] node 797505206414671872 pin 1 valid 1320: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1320 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1320,0) v0 {ValidFrom:1320 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7414 (0.06s)
+        effective_timeline_oracle_test.go:427: [sharded after the oracle sequence] node 797505208570904576 pin 1 valid 1457: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1457 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1457,0) v0 {ValidFrom:1457 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7399 (0.09s)
+        effective_timeline_oracle_test.go:427: [tiered after the oracle sequence] node 797505211085488128 pin 1 valid 1291: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1291 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1291,0) v0 {ValidFrom:1291 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7400 (0.08s)
+        effective_timeline_oracle_test.go:427: [tiered after the oracle sequence] node 797505213617373184 pin 1 valid 1459: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1459 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1459,0) v0 {ValidFrom:1459 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7401 (0.09s)
+        effective_timeline_oracle_test.go:427: [tiered after the oracle sequence] node 797505215957991424 pin 1 valid 1395: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1395 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1395,0) v0 {ValidFrom:1395 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7402 (0.08s)
+        effective_timeline_oracle_test.go:427: [tiered after the oracle sequence] node 797505219186196480 pin 1 valid 1351: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1351 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1351,0) v0 {ValidFrom:1351 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7403 (0.13s)
+        effective_timeline_oracle_test.go:427: [tiered after the oracle sequence] node 797505223511506944 pin 1 valid 1133: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1133 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1133,0) v0 {ValidFrom:1133 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7404 (0.12s)
+        effective_timeline_oracle_test.go:427: [tiered after the oracle sequence] node 797505226227089408 pin 1 valid 1247: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1247 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1247,0) v0 {ValidFrom:1247 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7405 (0.08s)
+        effective_timeline_oracle_test.go:427: [tiered after the oracle sequence] node 797505230772273152 pin 1 valid 1420: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1420 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1420,0) v0 {ValidFrom:1420 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7406 (0.08s)
+        effective_timeline_oracle_test.go:427: [tiered after the oracle sequence] node 797505232663674880 pin 1 valid 1156: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1156 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1156,0) v0 {ValidFrom:1156 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7407 (0.10s)
+        effective_timeline_oracle_test.go:427: [tiered after the oracle sequence] node 797505236299251712 pin 1 valid 1230: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1230 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1230,0) v0 {ValidFrom:1230 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7408 (0.08s)
+        effective_timeline_oracle_test.go:427: [tiered after the oracle sequence] node 797505239551508480 pin 1 valid 1352: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1352 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1352,0) v0 {ValidFrom:1352 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7409 (0.07s)
+        effective_timeline_oracle_test.go:427: [tiered after the oracle sequence] node 797505241253642240 pin 1 valid 1317: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1317 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1317,0) v0 {ValidFrom:1317 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7410 (0.08s)
+        effective_timeline_oracle_test.go:427: [tiered after the oracle sequence] node 797505243475214336 pin 1 valid 1466: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1466 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1466,0) v0 {ValidFrom:1466 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7411 (0.07s)
+        effective_timeline_oracle_test.go:427: [tiered after the oracle sequence] node 797505246188142592 pin 1 valid 1385: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1385 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1385,0) v0 {ValidFrom:1385 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7412 (0.10s)
+        effective_timeline_oracle_test.go:427: [tiered after the oracle sequence] node 797505249175371776 pin 1 valid 1162: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1162 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1162,0) v0 {ValidFrom:1162 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7413 (0.07s)
+        effective_timeline_oracle_test.go:427: [tiered after the oracle sequence] node 797505251844227072 pin 1 valid 1320: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1320 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1320,0) v0 {ValidFrom:1320 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7414 (0.09s)
+        effective_timeline_oracle_test.go:427: [tiered after the oracle sequence] node 797505254781222912 pin 1 valid 1457: point door none (graph: no version valid at the given time), timeline v0 {ValidFrom:1457 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+                [1457,0) v0 {ValidFrom:1457 ValidTo:0 TxFrom:1791568001000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[1] props=anchor=0
+    effective_timeline_oracle_test.go:446: pointwise checks 0 at 0 (entity, pin) pairs, 0 segments, 0 refused pins
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	5.236s
+FAIL
+
+exit=1

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -184,6 +185,63 @@ func (e *ccEnt) duringTxPresent(id int64, t, pin types.Instant) bool {
 	return false
 }
 
+// scanDoorsPresent reports, per scan door, whether T is listed at valid
+// instant t as known at pin: the generic pinned door ByLabel / ByType
+// {ValidAt: t, TxAt: pin}, the named NodesAtTx / RelsAtTx(t, pin), and the
+// effective-timeline scan form (a segment of T containing t).
+func (e *ccEnt) scanDoorsPresent(id int64, t, pin types.Instant) map[string]bool {
+	e.t.Helper()
+	out := map[string]bool{}
+	if e.rel {
+		rs, err := e.g.Rels.ByType(ccType, storepkg.QueryOpts{ValidAt: t, TxAt: pin})
+		if err != nil {
+			e.t.Fatalf("ByType: %v", err)
+		}
+		for _, r := range rs {
+			out["ByType{ValidAt,TxAt}"] = out["ByType{ValidAt,TxAt}"] || int64(r.ID()) == id
+		}
+		rs, err = e.g.Temporal.RelsAtTx(t, pin)
+		if err != nil {
+			e.t.Fatalf("RelsAtTx: %v", err)
+		}
+		for _, r := range rs {
+			out["RelsAtTx"] = out["RelsAtTx"] || int64(r.ID()) == id
+		}
+		if err := e.g.Temporal.ForEachRelEffectiveByType(ccType, pin, func(s temporal.RelSegment) bool {
+			if int64(s.Rel.ID()) == id && t >= s.ValidFrom && (s.ValidTo == 0 || t < s.ValidTo) {
+				out["ForEachRelEffectiveByType"] = true
+			}
+			return true
+		}); err != nil {
+			e.t.Fatalf("ForEachRelEffectiveByType: %v", err)
+		}
+		return out
+	}
+	ns, err := e.g.Nodes.ByLabel(ccLabel, storepkg.QueryOpts{ValidAt: t, TxAt: pin})
+	if err != nil {
+		e.t.Fatalf("ByLabel: %v", err)
+	}
+	for _, n := range ns {
+		out["ByLabel{ValidAt,TxAt}"] = out["ByLabel{ValidAt,TxAt}"] || int64(n.ID()) == id
+	}
+	ns, err = e.g.Temporal.NodesAtTx(t, pin)
+	if err != nil {
+		e.t.Fatalf("NodesAtTx: %v", err)
+	}
+	for _, n := range ns {
+		out["NodesAtTx"] = out["NodesAtTx"] || int64(n.ID()) == id
+	}
+	if err := e.g.Temporal.ForEachNodeEffectiveByLabel(ccLabel, pin, func(s temporal.NodeSegment) bool {
+		if int64(s.Node.ID()) == id && t >= s.ValidFrom && (s.ValidTo == 0 || t < s.ValidTo) {
+			out["ForEachNodeEffectiveByLabel"] = true
+		}
+		return true
+	}); err != nil {
+		e.t.Fatalf("ForEachNodeEffectiveByLabel: %v", err)
+	}
+	return out
+}
+
 func runLifeShapes(t *testing.T, shapes []lifeShape, doors []ccDeleteDoor) {
 	ccRun(t, true, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
 		for _, sh := range shapes {
@@ -207,8 +265,19 @@ func runLifeShapes(t *testing.T, shapes []lifeShape, doors []ccDeleteDoor) {
 					}
 					pin := e.pin()
 					var bad []string
-					for _, va := range lifeProbes(sh.want, d) {
+					scanDoors := []string{"ByLabel{ValidAt,TxAt}", "NodesAtTx", "ForEachNodeEffectiveByLabel"}
+					if e.rel {
+						scanDoors = []string{"ByType{ValidAt,TxAt}", "RelsAtTx", "ForEachRelEffectiveByType"}
+					}
+					// The valid-now probe the consumer's label scan uses: the pin.
+					for _, va := range append(lifeProbes(sh.want, d), pin) {
 						want := lifeIn(sh.want, d, va)
+						got := e.scanDoorsPresent(id, va, pin)
+						for _, door := range scanDoors {
+							if got[door] != want {
+								bad = append(bad, fmt.Sprintf("%s(valid %d, pin after): present=%v, want %v", door, va, got[door], want))
+							}
+						}
 						if got := e.atTxPresent(id, va, pin); got != want {
 							bad = append(bad, fmt.Sprintf("AtTx(valid %d, pin after): present=%v, want %v", va, got, want))
 						}

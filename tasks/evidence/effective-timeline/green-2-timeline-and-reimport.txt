@@ -1,0 +1,1608 @@
+=== RUN   TestBitemporalOracle_BadgerCommitWindow
+=== RUN   TestBitemporalOracle_BadgerCommitWindow/iter=0/seed=762335780452
+=== RUN   TestBitemporalOracle_BadgerCommitWindow/iter=1/seed=762335780453
+=== RUN   TestBitemporalOracle_BadgerCommitWindow/iter=2/seed=762335780454
+=== RUN   TestBitemporalOracle_BadgerCommitWindow/iter=3/seed=762335780455
+=== RUN   TestBitemporalOracle_BadgerCommitWindow/iter=4/seed=762335780456
+=== RUN   TestBitemporalOracle_BadgerCommitWindow/iter=5/seed=762335780457
+=== RUN   TestBitemporalOracle_BadgerCommitWindow/iter=6/seed=762335780458
+=== RUN   TestBitemporalOracle_BadgerCommitWindow/iter=7/seed=762335780459
+=== RUN   TestBitemporalOracle_BadgerCommitWindow/iter=8/seed=762335780460
+=== RUN   TestBitemporalOracle_BadgerCommitWindow/iter=9/seed=762335780461
+--- PASS: TestBitemporalOracle_BadgerCommitWindow (0.38s)
+    --- PASS: TestBitemporalOracle_BadgerCommitWindow/iter=0/seed=762335780452 (0.04s)
+    --- PASS: TestBitemporalOracle_BadgerCommitWindow/iter=1/seed=762335780453 (0.04s)
+    --- PASS: TestBitemporalOracle_BadgerCommitWindow/iter=2/seed=762335780454 (0.03s)
+    --- PASS: TestBitemporalOracle_BadgerCommitWindow/iter=3/seed=762335780455 (0.05s)
+    --- PASS: TestBitemporalOracle_BadgerCommitWindow/iter=4/seed=762335780456 (0.06s)
+    --- PASS: TestBitemporalOracle_BadgerCommitWindow/iter=5/seed=762335780457 (0.04s)
+    --- PASS: TestBitemporalOracle_BadgerCommitWindow/iter=6/seed=762335780458 (0.03s)
+    --- PASS: TestBitemporalOracle_BadgerCommitWindow/iter=7/seed=762335780459 (0.04s)
+    --- PASS: TestBitemporalOracle_BadgerCommitWindow/iter=8/seed=762335780460 (0.03s)
+    --- PASS: TestBitemporalOracle_BadgerCommitWindow/iter=9/seed=762335780461 (0.03s)
+=== RUN   TestBitemporalOracleHarness
+=== PAUSE TestBitemporalOracleHarness
+=== RUN   TestAtTxEndsAtClose
+=== PAUSE TestAtTxEndsAtClose
+=== RUN   TestAtTxEndsAtDelete
+=== PAUSE TestAtTxEndsAtDelete
+=== RUN   TestEffectiveTimeline_PointwiseOracle
+=== PAUSE TestEffectiveTimeline_PointwiseOracle
+=== RUN   TestEffectiveTimeline_DerivedStart
+=== PAUSE TestEffectiveTimeline_DerivedStart
+=== RUN   TestEffectiveTimeline_Shapes
+=== PAUSE TestEffectiveTimeline_Shapes
+=== RUN   TestEffectiveTimeline_Errors
+=== PAUSE TestEffectiveTimeline_Errors
+=== RUN   TestEffectiveTimeline_CompactionAndRetention
+=== PAUSE TestEffectiveTimeline_CompactionAndRetention
+=== RUN   TestEffectiveTimeline_ScanDeletedEntities
+=== PAUSE TestEffectiveTimeline_ScanDeletedEntities
+=== RUN   TestEffectiveTimeline_ScanMatchesGenericDoor
+=== PAUSE TestEffectiveTimeline_ScanMatchesGenericDoor
+=== RUN   TestEffectiveTimeline_MergeAdjacentSameRow
+=== PAUSE TestEffectiveTimeline_MergeAdjacentSameRow
+=== RUN   TestEffectiveTimeline_ConcurrentWriters
+=== PAUSE TestEffectiveTimeline_ConcurrentWriters
+=== RUN   TestAtTxReImportOverlapsEarlierLife
+=== PAUSE TestAtTxReImportOverlapsEarlierLife
+=== RUN   TestTxBackfillOracle_CrossBackend
+=== PAUSE TestTxBackfillOracle_CrossBackend
+=== CONT  TestBitemporalOracleHarness
+=== CONT  TestEffectiveTimeline_CompactionAndRetention
+=== RUN   TestBitemporalOracleHarness/seed=47645253136
+=== CONT  TestEffectiveTimeline_DerivedStart
+=== CONT  TestEffectiveTimeline_PointwiseOracle
+=== RUN   TestEffectiveTimeline_CompactionAndRetention/node
+=== CONT  TestAtTxEndsAtClose
+=== CONT  TestEffectiveTimeline_ScanDeletedEntities
+=== CONT  TestEffectiveTimeline_ConcurrentWriters
+=== CONT  TestTxBackfillOracle_CrossBackend
+=== RUN   TestEffectiveTimeline_DerivedStart/memory/node
+=== CONT  TestAtTxReImportOverlapsEarlierLife
+=== RUN   TestAtTxEndsAtClose/memory/node
+=== RUN   TestAtTxReImportOverlapsEarlierLife/memory/node
+=== RUN   TestAtTxEndsAtClose/memory/node/close/standalone
+=== CONT  TestAtTxEndsAtDelete
+=== CONT  TestEffectiveTimeline_ScanMatchesGenericDoor
+=== CONT  TestEffectiveTimeline_MergeAdjacentSameRow
+--- PASS: TestEffectiveTimeline_MergeAdjacentSameRow (0.00s)
+=== CONT  TestEffectiveTimeline_Errors
+=== RUN   TestEffectiveTimeline_ScanDeletedEntities/memory/node
+=== RUN   TestEffectiveTimeline_Errors/memory/node
+=== RUN   TestAtTxReImportOverlapsEarlierLife/memory/rel
+=== CONT  TestEffectiveTimeline_Shapes
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064277
+=== RUN   TestEffectiveTimeline_DerivedStart/memory/node/backfill=false
+=== RUN   TestAtTxReImportOverlapsEarlierLife/badger/node
+=== RUN   TestEffectiveTimeline_PointwiseOracle/memory/seed=7399
+=== RUN   TestEffectiveTimeline_ScanDeletedEntities/memory/rel
+=== RUN   TestEffectiveTimeline_ConcurrentWriters/memory/node
+=== RUN   TestAtTxEndsAtDelete/memory/node
+=== RUN   TestEffectiveTimeline_ScanMatchesGenericDoor/memory/seed=23719
+=== RUN   TestEffectiveTimeline_Shapes/memory/node
+=== RUN   TestEffectiveTimeline_CompactionAndRetention/rel
+=== RUN   TestEffectiveTimeline_Errors/memory/rel
+=== RUN   TestAtTxEndsAtClose/memory/node/update-then-close/standalone
+--- PASS: TestEffectiveTimeline_CompactionAndRetention (0.00s)
+    --- PASS: TestEffectiveTimeline_CompactionAndRetention/node (0.00s)
+    --- PASS: TestEffectiveTimeline_CompactionAndRetention/rel (0.00s)
+=== RUN   TestEffectiveTimeline_DerivedStart/memory/node/backfill=true
+=== RUN   TestAtTxEndsAtDelete/memory/node/delete/standalone
+=== RUN   TestEffectiveTimeline_ScanDeletedEntities/badger/node
+=== RUN   TestEffectiveTimeline_DerivedStart/memory/rel
+=== RUN   TestEffectiveTimeline_DerivedStart/memory/rel/backfill=false
+=== RUN   TestEffectiveTimeline_ConcurrentWriters/memory/rel
+=== RUN   TestEffectiveTimeline_Errors/badger/node
+=== RUN   TestEffectiveTimeline_DerivedStart/memory/rel/backfill=true
+=== RUN   TestEffectiveTimeline_Shapes/memory/rel
+=== RUN   TestEffectiveTimeline_DerivedStart/badger/node
+=== RUN   TestAtTxEndsAtClose/memory/node/open-cascade-then-close/standalone
+=== RUN   TestEffectiveTimeline_DerivedStart/badger/node/backfill=false
+=== RUN   TestAtTxEndsAtDelete/memory/node/delete/graphtx
+=== RUN   TestEffectiveTimeline_Shapes/badger/node
+=== RUN   TestAtTxEndsAtClose/memory/node/bounded-cascade-then-close/standalone
+=== RUN   TestAtTxEndsAtDelete/memory/node/delete/batch
+=== RUN   TestEffectiveTimeline_ConcurrentWriters/badger/node
+=== RUN   TestAtTxEndsAtClose/memory/node/close-then-bounded-cascade-inside/standalone
+=== RUN   TestAtTxEndsAtDelete/memory/node/delete/ingest
+=== RUN   TestAtTxEndsAtDelete/memory/node/delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtClose/memory/node/close-then-gap-piece/standalone
+=== RUN   TestAtTxEndsAtDelete/memory/node/update-then-delete/standalone
+=== RUN   TestAtTxEndsAtClose/memory/node/close-then-cascade-across-the-end/standalone
+=== RUN   TestEffectiveTimeline_Shapes/badger/rel
+=== RUN   TestEffectiveTimeline_DerivedStart/badger/node/backfill=true
+=== RUN   TestAtTxEndsAtDelete/memory/node/update-then-delete/graphtx
+=== RUN   TestEffectiveTimeline_Errors/badger/rel
+=== RUN   TestAtTxEndsAtClose/memory/node/update-with-end-then-bounded-cascade/standalone
+=== RUN   TestAtTxEndsAtDelete/memory/node/update-then-delete/batch
+=== RUN   TestAtTxReImportOverlapsEarlierLife/badger/rel
+=== RUN   TestAtTxEndsAtClose/memory/node/close-then-one-tick-at-the-end/standalone
+=== RUN   TestAtTxEndsAtDelete/memory/node/update-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/memory/node/update-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtClose/memory/rel
+=== RUN   TestAtTxEndsAtClose/memory/rel/close/standalone
+=== RUN   TestAtTxEndsAtDelete/memory/node/open-cascade-then-delete/standalone
+=== RUN   TestAtTxEndsAtClose/memory/rel/update-then-close/standalone
+=== RUN   TestAtTxEndsAtDelete/memory/node/open-cascade-then-delete/graphtx
+=== RUN   TestAtTxEndsAtClose/memory/rel/open-cascade-then-close/standalone
+=== RUN   TestEffectiveTimeline_DerivedStart/badger/rel
+=== RUN   TestEffectiveTimeline_DerivedStart/badger/rel/backfill=false
+=== RUN   TestAtTxEndsAtClose/memory/rel/bounded-cascade-then-close/standalone
+=== RUN   TestAtTxEndsAtDelete/memory/node/open-cascade-then-delete/batch
+=== RUN   TestAtTxEndsAtClose/memory/rel/close-then-bounded-cascade-inside/standalone
+=== RUN   TestEffectiveTimeline_Errors/sharded/node
+=== RUN   TestAtTxEndsAtDelete/memory/node/open-cascade-then-delete/ingest
+=== RUN   TestEffectiveTimeline_ConcurrentWriters/badger/rel
+=== RUN   TestEffectiveTimeline_Shapes/sharded/node
+=== RUN   TestAtTxEndsAtClose/memory/rel/close-then-gap-piece/standalone
+=== RUN   TestAtTxEndsAtDelete/memory/node/open-cascade-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtClose/memory/rel/close-then-cascade-across-the-end/standalone
+=== RUN   TestEffectiveTimeline_ScanDeletedEntities/badger/rel
+=== RUN   TestAtTxEndsAtDelete/memory/node/bounded-cascade-then-delete/standalone
+=== RUN   TestAtTxEndsAtClose/memory/rel/update-with-end-then-bounded-cascade/standalone
+=== RUN   TestAtTxEndsAtDelete/memory/node/bounded-cascade-then-delete/graphtx
+=== RUN   TestAtTxEndsAtClose/memory/rel/close-then-one-tick-at-the-end/standalone
+=== RUN   TestAtTxEndsAtDelete/memory/node/bounded-cascade-then-delete/batch
+=== RUN   TestAtTxEndsAtClose/badger/node
+=== RUN   TestAtTxEndsAtClose/badger/node/close/standalone
+=== RUN   TestAtTxEndsAtDelete/memory/node/bounded-cascade-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/memory/node/bounded-cascade-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/memory/node/close-then-delete/standalone
+=== RUN   TestAtTxEndsAtDelete/memory/node/close-then-delete/graphtx
+=== RUN   TestAtTxEndsAtDelete/memory/node/close-then-delete/batch
+=== RUN   TestEffectiveTimeline_ScanDeletedEntities/sharded/node
+=== RUN   TestAtTxEndsAtDelete/memory/node/close-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/memory/node/close-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/memory/node/close-bounded-inside-then-delete/standalone
+=== RUN   TestAtTxReImportOverlapsEarlierLife/sharded/node
+=== RUN   TestAtTxEndsAtDelete/memory/node/close-bounded-inside-then-delete/graphtx
+=== RUN   TestAtTxEndsAtDelete/memory/node/close-bounded-inside-then-delete/batch
+=== RUN   TestAtTxEndsAtDelete/memory/node/close-bounded-inside-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/memory/node/close-bounded-inside-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/memory/node/close-gap-then-delete/standalone
+=== RUN   TestAtTxEndsAtDelete/memory/node/close-gap-then-delete/graphtx
+=== RUN   TestAtTxEndsAtDelete/memory/node/close-gap-then-delete/batch
+=== RUN   TestAtTxEndsAtDelete/memory/node/close-gap-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/memory/node/close-gap-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/memory/rel
+=== RUN   TestAtTxEndsAtDelete/memory/rel/delete/standalone
+=== RUN   TestAtTxEndsAtDelete/memory/rel/delete/graphtx
+=== RUN   TestAtTxEndsAtDelete/memory/rel/delete/batch
+=== RUN   TestAtTxEndsAtDelete/memory/rel/delete/ingest
+=== RUN   TestAtTxEndsAtDelete/memory/rel/delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/memory/rel/update-then-delete/standalone
+=== RUN   TestAtTxEndsAtDelete/memory/rel/update-then-delete/graphtx
+=== RUN   TestAtTxEndsAtDelete/memory/rel/update-then-delete/batch
+=== RUN   TestAtTxEndsAtDelete/memory/rel/update-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/memory/rel/update-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/memory/rel/open-cascade-then-delete/standalone
+=== RUN   TestAtTxEndsAtDelete/memory/rel/open-cascade-then-delete/graphtx
+=== RUN   TestEffectiveTimeline_Shapes/sharded/rel
+=== RUN   TestAtTxEndsAtDelete/memory/rel/open-cascade-then-delete/batch
+=== RUN   TestAtTxEndsAtDelete/memory/rel/open-cascade-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/memory/rel/open-cascade-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/memory/rel/bounded-cascade-then-delete/standalone
+=== RUN   TestAtTxEndsAtDelete/memory/rel/bounded-cascade-then-delete/graphtx
+=== RUN   TestAtTxEndsAtDelete/memory/rel/bounded-cascade-then-delete/batch
+=== RUN   TestAtTxEndsAtDelete/memory/rel/bounded-cascade-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/memory/rel/bounded-cascade-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/memory/rel/close-then-delete/standalone
+=== RUN   TestAtTxEndsAtDelete/memory/rel/close-then-delete/graphtx
+=== RUN   TestAtTxEndsAtDelete/memory/rel/close-then-delete/batch
+=== RUN   TestAtTxEndsAtDelete/memory/rel/close-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/memory/rel/close-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/memory/rel/close-bounded-inside-then-delete/standalone
+=== RUN   TestAtTxEndsAtDelete/memory/rel/close-bounded-inside-then-delete/graphtx
+=== RUN   TestAtTxEndsAtDelete/memory/rel/close-bounded-inside-then-delete/batch
+=== RUN   TestAtTxEndsAtDelete/memory/rel/close-bounded-inside-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/memory/rel/close-bounded-inside-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/memory/rel/close-gap-then-delete/standalone
+=== RUN   TestAtTxEndsAtDelete/memory/rel/close-gap-then-delete/graphtx
+=== RUN   TestAtTxEndsAtDelete/memory/rel/close-gap-then-delete/batch
+=== RUN   TestEffectiveTimeline_Shapes/tiered/node
+=== RUN   TestAtTxEndsAtDelete/memory/rel/close-gap-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/memory/rel/close-gap-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/badger/node
+=== RUN   TestAtTxEndsAtDelete/badger/node/delete/standalone
+=== RUN   TestEffectiveTimeline_DerivedStart/badger/rel/backfill=true
+=== RUN   TestEffectiveTimeline_ConcurrentWriters/sharded/node
+=== RUN   TestEffectiveTimeline_Shapes/tiered/rel
+=== RUN   TestAtTxEndsAtClose/badger/node/update-then-close/standalone
+=== RUN   TestEffectiveTimeline_DerivedStart/sharded/node
+=== RUN   TestEffectiveTimeline_DerivedStart/sharded/node/backfill=false
+=== RUN   TestEffectiveTimeline_ScanDeletedEntities/sharded/rel
+=== RUN   TestAtTxReImportOverlapsEarlierLife/sharded/rel
+=== RUN   TestEffectiveTimeline_DerivedStart/sharded/node/backfill=true
+=== RUN   TestEffectiveTimeline_ScanDeletedEntities/tiered/node
+=== RUN   TestAtTxReImportOverlapsEarlierLife/tiered/node
+=== RUN   TestEffectiveTimeline_DerivedStart/sharded/rel
+=== RUN   TestEffectiveTimeline_DerivedStart/sharded/rel/backfill=false
+=== RUN   TestAtTxEndsAtDelete/badger/node/delete/graphtx
+=== RUN   TestEffectiveTimeline_ScanDeletedEntities/tiered/rel
+--- PASS: TestEffectiveTimeline_Shapes (0.16s)
+    --- PASS: TestEffectiveTimeline_Shapes/memory/node (0.00s)
+    --- PASS: TestEffectiveTimeline_Shapes/memory/rel (0.00s)
+    --- PASS: TestEffectiveTimeline_Shapes/badger/node (0.01s)
+    --- PASS: TestEffectiveTimeline_Shapes/badger/rel (0.01s)
+    --- PASS: TestEffectiveTimeline_Shapes/sharded/node (0.03s)
+    --- PASS: TestEffectiveTimeline_Shapes/sharded/rel (0.02s)
+    --- PASS: TestEffectiveTimeline_Shapes/tiered/node (0.02s)
+    --- PASS: TestEffectiveTimeline_Shapes/tiered/rel (0.06s)
+=== RUN   TestEffectiveTimeline_ConcurrentWriters/sharded/rel
+=== RUN   TestEffectiveTimeline_Errors/sharded/rel
+=== RUN   TestEffectiveTimeline_ScanMatchesGenericDoor/memory/seed=23720
+=== RUN   TestEffectiveTimeline_PointwiseOracle/memory/seed=7400
+=== RUN   TestAtTxEndsAtClose/badger/node/open-cascade-then-close/standalone
+=== RUN   TestBitemporalOracleHarness/seed=47645253137
+=== RUN   TestAtTxReImportOverlapsEarlierLife/tiered/rel
+=== RUN   TestEffectiveTimeline_ScanMatchesGenericDoor/memory/seed=23721
+=== RUN   TestAtTxEndsAtDelete/badger/node/delete/batch
+=== RUN   TestEffectiveTimeline_DerivedStart/sharded/rel/backfill=true
+--- PASS: TestEffectiveTimeline_ScanDeletedEntities (0.25s)
+    --- PASS: TestEffectiveTimeline_ScanDeletedEntities/memory/node (0.00s)
+    --- PASS: TestEffectiveTimeline_ScanDeletedEntities/memory/rel (0.00s)
+    --- PASS: TestEffectiveTimeline_ScanDeletedEntities/badger/node (0.02s)
+    --- PASS: TestEffectiveTimeline_ScanDeletedEntities/badger/rel (0.01s)
+    --- PASS: TestEffectiveTimeline_ScanDeletedEntities/sharded/node (0.07s)
+    --- PASS: TestEffectiveTimeline_ScanDeletedEntities/sharded/rel (0.01s)
+    --- PASS: TestEffectiveTimeline_ScanDeletedEntities/tiered/node (0.04s)
+    --- PASS: TestEffectiveTimeline_ScanDeletedEntities/tiered/rel (0.09s)
+=== RUN   TestAtTxEndsAtClose/badger/node/bounded-cascade-then-close/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/node/delete/ingest
+=== RUN   TestEffectiveTimeline_Errors/tiered/node
+=== RUN   TestEffectiveTimeline_ConcurrentWriters/tiered/node
+--- PASS: TestAtTxReImportOverlapsEarlierLife (0.30s)
+    --- PASS: TestAtTxReImportOverlapsEarlierLife/memory/node (0.00s)
+    --- PASS: TestAtTxReImportOverlapsEarlierLife/memory/rel (0.00s)
+    --- PASS: TestAtTxReImportOverlapsEarlierLife/badger/node (0.01s)
+    --- PASS: TestAtTxReImportOverlapsEarlierLife/badger/rel (0.02s)
+    --- PASS: TestAtTxReImportOverlapsEarlierLife/sharded/node (0.08s)
+    --- PASS: TestAtTxReImportOverlapsEarlierLife/sharded/rel (0.01s)
+    --- PASS: TestAtTxReImportOverlapsEarlierLife/tiered/node (0.09s)
+    --- PASS: TestAtTxReImportOverlapsEarlierLife/tiered/rel (0.09s)
+=== RUN   TestAtTxEndsAtClose/badger/node/close-then-bounded-cascade-inside/standalone
+=== RUN   TestEffectiveTimeline_DerivedStart/tiered/node
+=== RUN   TestEffectiveTimeline_DerivedStart/tiered/node/backfill=false
+=== RUN   TestEffectiveTimeline_ScanMatchesGenericDoor/memory/seed=23722
+=== RUN   TestEffectiveTimeline_Errors/tiered/rel
+=== RUN   TestAtTxEndsAtDelete/badger/node/delete/DeleteWithTx
+=== RUN   TestEffectiveTimeline_ConcurrentWriters/tiered/rel
+=== RUN   TestEffectiveTimeline_PointwiseOracle/memory/seed=7401
+=== RUN   TestEffectiveTimeline_DerivedStart/tiered/node/backfill=true
+=== RUN   TestAtTxEndsAtClose/badger/node/close-then-gap-piece/standalone
+=== RUN   TestEffectiveTimeline_ScanMatchesGenericDoor/badger/seed=23719
+=== RUN   TestAtTxEndsAtDelete/badger/node/update-then-delete/standalone
+--- PASS: TestEffectiveTimeline_Errors (0.38s)
+    --- PASS: TestEffectiveTimeline_Errors/memory/node (0.00s)
+    --- PASS: TestEffectiveTimeline_Errors/memory/rel (0.00s)
+    --- PASS: TestEffectiveTimeline_Errors/badger/node (0.01s)
+    --- PASS: TestEffectiveTimeline_Errors/badger/rel (0.01s)
+    --- PASS: TestEffectiveTimeline_Errors/sharded/node (0.14s)
+    --- PASS: TestEffectiveTimeline_Errors/sharded/rel (0.11s)
+    --- PASS: TestEffectiveTimeline_Errors/tiered/node (0.06s)
+    --- PASS: TestEffectiveTimeline_Errors/tiered/rel (0.05s)
+=== RUN   TestAtTxEndsAtClose/badger/node/close-then-cascade-across-the-end/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/node/update-then-delete/graphtx
+=== RUN   TestEffectiveTimeline_DerivedStart/tiered/rel
+=== RUN   TestEffectiveTimeline_DerivedStart/tiered/rel/backfill=false
+--- PASS: TestEffectiveTimeline_ConcurrentWriters (0.41s)
+    --- PASS: TestEffectiveTimeline_ConcurrentWriters/memory/node (0.00s)
+    --- PASS: TestEffectiveTimeline_ConcurrentWriters/memory/rel (0.01s)
+    --- PASS: TestEffectiveTimeline_ConcurrentWriters/badger/node (0.01s)
+    --- PASS: TestEffectiveTimeline_ConcurrentWriters/badger/rel (0.07s)
+    --- PASS: TestEffectiveTimeline_ConcurrentWriters/sharded/node (0.06s)
+    --- PASS: TestEffectiveTimeline_ConcurrentWriters/sharded/rel (0.12s)
+    --- PASS: TestEffectiveTimeline_ConcurrentWriters/tiered/node (0.06s)
+    --- PASS: TestEffectiveTimeline_ConcurrentWriters/tiered/rel (0.07s)
+=== RUN   TestAtTxEndsAtClose/badger/node/update-with-end-then-bounded-cascade/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/node/update-then-delete/batch
+=== RUN   TestBitemporalOracleHarness/seed=47645253138
+=== RUN   TestEffectiveTimeline_DerivedStart/tiered/rel/backfill=true
+=== RUN   TestAtTxEndsAtClose/badger/node/close-then-one-tick-at-the-end/standalone
+=== RUN   TestAtTxEndsAtClose/badger/rel
+=== RUN   TestAtTxEndsAtClose/badger/rel/close/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/node/update-then-delete/ingest
+--- PASS: TestEffectiveTimeline_DerivedStart (0.48s)
+    --- PASS: TestEffectiveTimeline_DerivedStart/memory/node (0.00s)
+        --- PASS: TestEffectiveTimeline_DerivedStart/memory/node/backfill=false (0.00s)
+        --- PASS: TestEffectiveTimeline_DerivedStart/memory/node/backfill=true (0.00s)
+    --- PASS: TestEffectiveTimeline_DerivedStart/memory/rel (0.00s)
+        --- PASS: TestEffectiveTimeline_DerivedStart/memory/rel/backfill=false (0.00s)
+        --- PASS: TestEffectiveTimeline_DerivedStart/memory/rel/backfill=true (0.00s)
+    --- PASS: TestEffectiveTimeline_DerivedStart/badger/node (0.02s)
+        --- PASS: TestEffectiveTimeline_DerivedStart/badger/node/backfill=false (0.01s)
+        --- PASS: TestEffectiveTimeline_DerivedStart/badger/node/backfill=true (0.01s)
+    --- PASS: TestEffectiveTimeline_DerivedStart/badger/rel (0.08s)
+        --- PASS: TestEffectiveTimeline_DerivedStart/badger/rel/backfill=false (0.07s)
+        --- PASS: TestEffectiveTimeline_DerivedStart/badger/rel/backfill=true (0.01s)
+    --- PASS: TestEffectiveTimeline_DerivedStart/sharded/node (0.05s)
+        --- PASS: TestEffectiveTimeline_DerivedStart/sharded/node/backfill=false (0.01s)
+        --- PASS: TestEffectiveTimeline_DerivedStart/sharded/node/backfill=true (0.03s)
+    --- PASS: TestEffectiveTimeline_DerivedStart/sharded/rel (0.16s)
+        --- PASS: TestEffectiveTimeline_DerivedStart/sharded/rel/backfill=false (0.09s)
+        --- PASS: TestEffectiveTimeline_DerivedStart/sharded/rel/backfill=true (0.07s)
+    --- PASS: TestEffectiveTimeline_DerivedStart/tiered/node (0.10s)
+        --- PASS: TestEffectiveTimeline_DerivedStart/tiered/node/backfill=false (0.04s)
+        --- PASS: TestEffectiveTimeline_DerivedStart/tiered/node/backfill=true (0.05s)
+    --- PASS: TestEffectiveTimeline_DerivedStart/tiered/rel (0.07s)
+        --- PASS: TestEffectiveTimeline_DerivedStart/tiered/rel/backfill=false (0.03s)
+        --- PASS: TestEffectiveTimeline_DerivedStart/tiered/rel/backfill=true (0.03s)
+=== RUN   TestAtTxEndsAtClose/badger/rel/update-then-close/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/node/update-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtClose/badger/rel/open-cascade-then-close/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/node/open-cascade-then-delete/standalone
+=== RUN   TestAtTxEndsAtClose/badger/rel/bounded-cascade-then-close/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/node/open-cascade-then-delete/graphtx
+=== RUN   TestAtTxEndsAtClose/badger/rel/close-then-bounded-cascade-inside/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/node/open-cascade-then-delete/batch
+=== RUN   TestAtTxEndsAtClose/badger/rel/close-then-gap-piece/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/node/open-cascade-then-delete/ingest
+=== RUN   TestAtTxEndsAtClose/badger/rel/close-then-cascade-across-the-end/standalone
+=== RUN   TestBitemporalOracleHarness/seed=47645253139
+=== RUN   TestAtTxEndsAtDelete/badger/node/open-cascade-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtClose/badger/rel/update-with-end-then-bounded-cascade/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/node/bounded-cascade-then-delete/standalone
+=== RUN   TestAtTxEndsAtClose/badger/rel/close-then-one-tick-at-the-end/standalone
+=== RUN   TestEffectiveTimeline_PointwiseOracle/memory/seed=7402
+=== RUN   TestAtTxEndsAtDelete/badger/node/bounded-cascade-then-delete/graphtx
+=== RUN   TestAtTxEndsAtClose/sharded/node
+=== RUN   TestAtTxEndsAtClose/sharded/node/close/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/node/bounded-cascade-then-delete/batch
+=== RUN   TestAtTxEndsAtClose/sharded/node/update-then-close/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/node/bounded-cascade-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/badger/node/bounded-cascade-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtClose/sharded/node/open-cascade-then-close/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/node/close-then-delete/standalone
+=== RUN   TestBitemporalOracleHarness/seed=47645253140
+=== RUN   TestAtTxEndsAtDelete/badger/node/close-then-delete/graphtx
+=== RUN   TestAtTxEndsAtClose/sharded/node/bounded-cascade-then-close/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/node/close-then-delete/batch
+=== RUN   TestAtTxEndsAtDelete/badger/node/close-then-delete/ingest
+=== RUN   TestAtTxEndsAtClose/sharded/node/close-then-bounded-cascade-inside/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/node/close-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtClose/sharded/node/close-then-gap-piece/standalone
+=== RUN   TestEffectiveTimeline_PointwiseOracle/memory/seed=7403
+=== RUN   TestAtTxEndsAtDelete/badger/node/close-bounded-inside-then-delete/standalone
+=== RUN   TestAtTxEndsAtClose/sharded/node/close-then-cascade-across-the-end/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/node/close-bounded-inside-then-delete/graphtx
+=== RUN   TestBitemporalOracleHarness/seed=47645253141
+=== RUN   TestAtTxEndsAtDelete/badger/node/close-bounded-inside-then-delete/batch
+=== RUN   TestAtTxEndsAtClose/sharded/node/update-with-end-then-bounded-cascade/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/node/close-bounded-inside-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/badger/node/close-bounded-inside-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtClose/sharded/node/close-then-one-tick-at-the-end/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/node/close-gap-then-delete/standalone
+=== RUN   TestAtTxEndsAtClose/sharded/rel
+=== RUN   TestAtTxEndsAtClose/sharded/rel/close/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/node/close-gap-then-delete/graphtx
+=== RUN   TestEffectiveTimeline_ScanMatchesGenericDoor/badger/seed=23720
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064278
+=== RUN   TestAtTxEndsAtDelete/badger/node/close-gap-then-delete/batch
+=== RUN   TestAtTxEndsAtClose/sharded/rel/update-then-close/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/node/close-gap-then-delete/ingest
+=== RUN   TestAtTxEndsAtClose/sharded/rel/open-cascade-then-close/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/node/close-gap-then-delete/DeleteWithTx
+=== RUN   TestBitemporalOracleHarness/seed=47645253142
+=== RUN   TestAtTxEndsAtDelete/badger/rel
+=== RUN   TestAtTxEndsAtDelete/badger/rel/delete/standalone
+=== RUN   TestAtTxEndsAtClose/sharded/rel/bounded-cascade-then-close/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/rel/delete/graphtx
+=== RUN   TestEffectiveTimeline_PointwiseOracle/memory/seed=7404
+=== RUN   TestAtTxEndsAtDelete/badger/rel/delete/batch
+=== RUN   TestAtTxEndsAtClose/sharded/rel/close-then-bounded-cascade-inside/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/rel/delete/ingest
+=== RUN   TestAtTxEndsAtDelete/badger/rel/delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtClose/sharded/rel/close-then-gap-piece/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/rel/update-then-delete/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/rel/update-then-delete/graphtx
+=== RUN   TestAtTxEndsAtClose/sharded/rel/close-then-cascade-across-the-end/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/rel/update-then-delete/batch
+=== RUN   TestBitemporalOracleHarness/seed=47645253143
+=== RUN   TestAtTxEndsAtDelete/badger/rel/update-then-delete/ingest
+=== RUN   TestEffectiveTimeline_ScanMatchesGenericDoor/badger/seed=23721
+=== RUN   TestAtTxEndsAtClose/sharded/rel/update-with-end-then-bounded-cascade/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/rel/update-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtClose/sharded/rel/close-then-one-tick-at-the-end/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/rel/open-cascade-then-delete/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/rel/open-cascade-then-delete/graphtx
+=== RUN   TestAtTxEndsAtClose/tiered/node
+=== RUN   TestAtTxEndsAtClose/tiered/node/close/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/rel/open-cascade-then-delete/batch
+=== RUN   TestAtTxEndsAtDelete/badger/rel/open-cascade-then-delete/ingest
+=== RUN   TestAtTxEndsAtClose/tiered/node/update-then-close/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/rel/open-cascade-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtClose/tiered/node/open-cascade-then-close/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/rel/bounded-cascade-then-delete/standalone
+=== RUN   TestBitemporalOracleHarness/seed=47645253144
+=== RUN   TestAtTxEndsAtDelete/badger/rel/bounded-cascade-then-delete/graphtx
+=== RUN   TestAtTxEndsAtClose/tiered/node/bounded-cascade-then-close/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/rel/bounded-cascade-then-delete/batch
+=== RUN   TestAtTxEndsAtClose/tiered/node/close-then-bounded-cascade-inside/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/rel/bounded-cascade-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/badger/rel/bounded-cascade-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtClose/tiered/node/close-then-gap-piece/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/rel/close-then-delete/standalone
+=== RUN   TestEffectiveTimeline_PointwiseOracle/memory/seed=7405
+=== RUN   TestAtTxEndsAtDelete/badger/rel/close-then-delete/graphtx
+=== RUN   TestAtTxEndsAtClose/tiered/node/close-then-cascade-across-the-end/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/rel/close-then-delete/batch
+=== RUN   TestAtTxEndsAtDelete/badger/rel/close-then-delete/ingest
+=== RUN   TestBitemporalOracleHarness/seed=47645253145
+=== RUN   TestAtTxEndsAtDelete/badger/rel/close-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/badger/rel/close-bounded-inside-then-delete/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/rel/close-bounded-inside-then-delete/graphtx
+=== RUN   TestAtTxEndsAtClose/tiered/node/update-with-end-then-bounded-cascade/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/rel/close-bounded-inside-then-delete/batch
+=== RUN   TestEffectiveTimeline_ScanMatchesGenericDoor/badger/seed=23722
+=== RUN   TestAtTxEndsAtDelete/badger/rel/close-bounded-inside-then-delete/ingest
+=== RUN   TestAtTxEndsAtClose/tiered/node/close-then-one-tick-at-the-end/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/rel/close-bounded-inside-then-delete/DeleteWithTx
+=== RUN   TestEffectiveTimeline_PointwiseOracle/memory/seed=7406
+=== RUN   TestAtTxEndsAtDelete/badger/rel/close-gap-then-delete/standalone
+=== RUN   TestAtTxEndsAtClose/tiered/rel
+=== RUN   TestAtTxEndsAtClose/tiered/rel/close/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/rel/close-gap-then-delete/graphtx
+=== RUN   TestAtTxEndsAtClose/tiered/rel/update-then-close/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/rel/close-gap-then-delete/batch
+=== RUN   TestBitemporalOracleHarness/seed=47645253146
+=== RUN   TestAtTxEndsAtDelete/badger/rel/close-gap-then-delete/ingest
+=== RUN   TestAtTxEndsAtClose/tiered/rel/open-cascade-then-close/standalone
+=== RUN   TestAtTxEndsAtDelete/badger/rel/close-gap-then-delete/DeleteWithTx
+=== RUN   TestBitemporalOracleHarness/seed=47645253147
+=== RUN   TestEffectiveTimeline_ScanMatchesGenericDoor/sharded/seed=23719
+=== RUN   TestAtTxEndsAtDelete/sharded/node
+=== RUN   TestAtTxEndsAtDelete/sharded/node/delete/standalone
+=== RUN   TestAtTxEndsAtClose/tiered/rel/bounded-cascade-then-close/standalone
+=== RUN   TestAtTxEndsAtClose/tiered/rel/close-then-bounded-cascade-inside/standalone
+=== RUN   TestAtTxEndsAtDelete/sharded/node/delete/graphtx
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064279
+=== RUN   TestEffectiveTimeline_PointwiseOracle/memory/seed=7407
+=== RUN   TestAtTxEndsAtClose/tiered/rel/close-then-gap-piece/standalone
+=== RUN   TestAtTxEndsAtDelete/sharded/node/delete/batch
+=== RUN   TestAtTxEndsAtClose/tiered/rel/close-then-cascade-across-the-end/standalone
+=== RUN   TestAtTxEndsAtDelete/sharded/node/delete/ingest
+=== RUN   TestAtTxEndsAtClose/tiered/rel/update-with-end-then-bounded-cascade/standalone
+=== RUN   TestAtTxEndsAtDelete/sharded/node/delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtClose/tiered/rel/close-then-one-tick-at-the-end/standalone
+=== RUN   TestAtTxEndsAtDelete/sharded/node/update-then-delete/standalone
+--- PASS: TestAtTxEndsAtClose (1.57s)
+    --- PASS: TestAtTxEndsAtClose/memory/node (0.02s)
+        --- PASS: TestAtTxEndsAtClose/memory/node/close/standalone (0.00s)
+        --- PASS: TestAtTxEndsAtClose/memory/node/update-then-close/standalone (0.00s)
+        --- PASS: TestAtTxEndsAtClose/memory/node/open-cascade-then-close/standalone (0.00s)
+        --- PASS: TestAtTxEndsAtClose/memory/node/bounded-cascade-then-close/standalone (0.00s)
+        --- PASS: TestAtTxEndsAtClose/memory/node/close-then-bounded-cascade-inside/standalone (0.00s)
+        --- PASS: TestAtTxEndsAtClose/memory/node/close-then-gap-piece/standalone (0.00s)
+        --- PASS: TestAtTxEndsAtClose/memory/node/close-then-cascade-across-the-end/standalone (0.00s)
+        --- PASS: TestAtTxEndsAtClose/memory/node/update-with-end-then-bounded-cascade/standalone (0.00s)
+        --- PASS: TestAtTxEndsAtClose/memory/node/close-then-one-tick-at-the-end/standalone (0.00s)
+    --- PASS: TestAtTxEndsAtClose/memory/rel (0.01s)
+        --- PASS: TestAtTxEndsAtClose/memory/rel/close/standalone (0.00s)
+        --- PASS: TestAtTxEndsAtClose/memory/rel/update-then-close/standalone (0.00s)
+        --- PASS: TestAtTxEndsAtClose/memory/rel/open-cascade-then-close/standalone (0.00s)
+        --- PASS: TestAtTxEndsAtClose/memory/rel/bounded-cascade-then-close/standalone (0.00s)
+        --- PASS: TestAtTxEndsAtClose/memory/rel/close-then-bounded-cascade-inside/standalone (0.00s)
+        --- PASS: TestAtTxEndsAtClose/memory/rel/close-then-gap-piece/standalone (0.00s)
+        --- PASS: TestAtTxEndsAtClose/memory/rel/close-then-cascade-across-the-end/standalone (0.00s)
+        --- PASS: TestAtTxEndsAtClose/memory/rel/update-with-end-then-bounded-cascade/standalone (0.00s)
+        --- PASS: TestAtTxEndsAtClose/memory/rel/close-then-one-tick-at-the-end/standalone (0.00s)
+    --- PASS: TestAtTxEndsAtClose/badger/node (0.43s)
+        --- PASS: TestAtTxEndsAtClose/badger/node/close/standalone (0.07s)
+        --- PASS: TestAtTxEndsAtClose/badger/node/update-then-close/standalone (0.08s)
+        --- PASS: TestAtTxEndsAtClose/badger/node/open-cascade-then-close/standalone (0.07s)
+        --- PASS: TestAtTxEndsAtClose/badger/node/bounded-cascade-then-close/standalone (0.05s)
+        --- PASS: TestAtTxEndsAtClose/badger/node/close-then-bounded-cascade-inside/standalone (0.07s)
+        --- PASS: TestAtTxEndsAtClose/badger/node/close-then-gap-piece/standalone (0.03s)
+        --- PASS: TestAtTxEndsAtClose/badger/node/close-then-cascade-across-the-end/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtClose/badger/node/update-with-end-then-bounded-cascade/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtClose/badger/node/close-then-one-tick-at-the-end/standalone (0.02s)
+    --- PASS: TestAtTxEndsAtClose/badger/rel (0.13s)
+        --- PASS: TestAtTxEndsAtClose/badger/rel/close/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtClose/badger/rel/update-then-close/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtClose/badger/rel/open-cascade-then-close/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtClose/badger/rel/bounded-cascade-then-close/standalone (0.01s)
+        --- PASS: TestAtTxEndsAtClose/badger/rel/close-then-bounded-cascade-inside/standalone (0.01s)
+        --- PASS: TestAtTxEndsAtClose/badger/rel/close-then-gap-piece/standalone (0.01s)
+        --- PASS: TestAtTxEndsAtClose/badger/rel/close-then-cascade-across-the-end/standalone (0.01s)
+        --- PASS: TestAtTxEndsAtClose/badger/rel/update-with-end-then-bounded-cascade/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtClose/badger/rel/close-then-one-tick-at-the-end/standalone (0.01s)
+    --- PASS: TestAtTxEndsAtClose/sharded/node (0.25s)
+        --- PASS: TestAtTxEndsAtClose/sharded/node/close/standalone (0.03s)
+        --- PASS: TestAtTxEndsAtClose/sharded/node/update-then-close/standalone (0.03s)
+        --- PASS: TestAtTxEndsAtClose/sharded/node/open-cascade-then-close/standalone (0.03s)
+        --- PASS: TestAtTxEndsAtClose/sharded/node/bounded-cascade-then-close/standalone (0.04s)
+        --- PASS: TestAtTxEndsAtClose/sharded/node/close-then-bounded-cascade-inside/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtClose/sharded/node/close-then-gap-piece/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtClose/sharded/node/close-then-cascade-across-the-end/standalone (0.03s)
+        --- PASS: TestAtTxEndsAtClose/sharded/node/update-with-end-then-bounded-cascade/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtClose/sharded/node/close-then-one-tick-at-the-end/standalone (0.03s)
+    --- PASS: TestAtTxEndsAtClose/sharded/rel (0.25s)
+        --- PASS: TestAtTxEndsAtClose/sharded/rel/close/standalone (0.03s)
+        --- PASS: TestAtTxEndsAtClose/sharded/rel/update-then-close/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtClose/sharded/rel/open-cascade-then-close/standalone (0.03s)
+        --- PASS: TestAtTxEndsAtClose/sharded/rel/bounded-cascade-then-close/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtClose/sharded/rel/close-then-bounded-cascade-inside/standalone (0.03s)
+        --- PASS: TestAtTxEndsAtClose/sharded/rel/close-then-gap-piece/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtClose/sharded/rel/close-then-cascade-across-the-end/standalone (0.04s)
+        --- PASS: TestAtTxEndsAtClose/sharded/rel/update-with-end-then-bounded-cascade/standalone (0.03s)
+        --- PASS: TestAtTxEndsAtClose/sharded/rel/close-then-one-tick-at-the-end/standalone (0.03s)
+    --- PASS: TestAtTxEndsAtClose/tiered/node (0.24s)
+        --- PASS: TestAtTxEndsAtClose/tiered/node/close/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtClose/tiered/node/update-then-close/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtClose/tiered/node/open-cascade-then-close/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtClose/tiered/node/bounded-cascade-then-close/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtClose/tiered/node/close-then-bounded-cascade-inside/standalone (0.03s)
+        --- PASS: TestAtTxEndsAtClose/tiered/node/close-then-gap-piece/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtClose/tiered/node/close-then-cascade-across-the-end/standalone (0.06s)
+        --- PASS: TestAtTxEndsAtClose/tiered/node/update-with-end-then-bounded-cascade/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtClose/tiered/node/close-then-one-tick-at-the-end/standalone (0.03s)
+    --- PASS: TestAtTxEndsAtClose/tiered/rel (0.23s)
+        --- PASS: TestAtTxEndsAtClose/tiered/rel/close/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtClose/tiered/rel/update-then-close/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtClose/tiered/rel/open-cascade-then-close/standalone (0.05s)
+        --- PASS: TestAtTxEndsAtClose/tiered/rel/bounded-cascade-then-close/standalone (0.03s)
+        --- PASS: TestAtTxEndsAtClose/tiered/rel/close-then-bounded-cascade-inside/standalone (0.03s)
+        --- PASS: TestAtTxEndsAtClose/tiered/rel/close-then-gap-piece/standalone (0.01s)
+        --- PASS: TestAtTxEndsAtClose/tiered/rel/close-then-cascade-across-the-end/standalone (0.03s)
+        --- PASS: TestAtTxEndsAtClose/tiered/rel/update-with-end-then-bounded-cascade/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtClose/tiered/rel/close-then-one-tick-at-the-end/standalone (0.02s)
+=== RUN   TestAtTxEndsAtDelete/sharded/node/update-then-delete/graphtx
+=== RUN   TestBitemporalOracleHarness/seed=47645253148
+=== RUN   TestEffectiveTimeline_PointwiseOracle/memory/seed=7408
+=== RUN   TestAtTxEndsAtDelete/sharded/node/update-then-delete/batch
+=== RUN   TestAtTxEndsAtDelete/sharded/node/update-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/sharded/node/update-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/sharded/node/open-cascade-then-delete/standalone
+=== RUN   TestAtTxEndsAtDelete/sharded/node/open-cascade-then-delete/graphtx
+=== RUN   TestEffectiveTimeline_PointwiseOracle/memory/seed=7409
+=== RUN   TestAtTxEndsAtDelete/sharded/node/open-cascade-then-delete/batch
+=== RUN   TestBitemporalOracleHarness/seed=47645253149
+=== RUN   TestAtTxEndsAtDelete/sharded/node/open-cascade-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/sharded/node/open-cascade-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/sharded/node/bounded-cascade-then-delete/standalone
+=== RUN   TestAtTxEndsAtDelete/sharded/node/bounded-cascade-then-delete/graphtx
+=== RUN   TestAtTxEndsAtDelete/sharded/node/bounded-cascade-then-delete/batch
+=== RUN   TestEffectiveTimeline_PointwiseOracle/memory/seed=7410
+=== RUN   TestBitemporalOracleHarness/seed=47645253150
+=== RUN   TestAtTxEndsAtDelete/sharded/node/bounded-cascade-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/sharded/node/bounded-cascade-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/sharded/node/close-then-delete/standalone
+=== RUN   TestAtTxEndsAtDelete/sharded/node/close-then-delete/graphtx
+=== RUN   TestAtTxEndsAtDelete/sharded/node/close-then-delete/batch
+=== RUN   TestAtTxEndsAtDelete/sharded/node/close-then-delete/ingest
+=== RUN   TestBitemporalOracleHarness/seed=47645253151
+=== RUN   TestAtTxEndsAtDelete/sharded/node/close-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/sharded/node/close-bounded-inside-then-delete/standalone
+=== RUN   TestAtTxEndsAtDelete/sharded/node/close-bounded-inside-then-delete/graphtx
+=== RUN   TestEffectiveTimeline_PointwiseOracle/memory/seed=7411
+=== RUN   TestAtTxEndsAtDelete/sharded/node/close-bounded-inside-then-delete/batch
+=== RUN   TestAtTxEndsAtDelete/sharded/node/close-bounded-inside-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/sharded/node/close-bounded-inside-then-delete/DeleteWithTx
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064280
+=== RUN   TestAtTxEndsAtDelete/sharded/node/close-gap-then-delete/standalone
+=== RUN   TestEffectiveTimeline_PointwiseOracle/memory/seed=7412
+=== RUN   TestAtTxEndsAtDelete/sharded/node/close-gap-then-delete/graphtx
+=== RUN   TestBitemporalOracleHarness/seed=47645253152
+=== RUN   TestAtTxEndsAtDelete/sharded/node/close-gap-then-delete/batch
+=== RUN   TestAtTxEndsAtDelete/sharded/node/close-gap-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/sharded/node/close-gap-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/sharded/rel
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/delete/standalone
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/delete/graphtx
+=== RUN   TestBitemporalOracleHarness/seed=47645253153
+=== RUN   TestEffectiveTimeline_PointwiseOracle/memory/seed=7413
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/delete/batch
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/delete/ingest
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/update-then-delete/standalone
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/update-then-delete/graphtx
+=== RUN   TestBitemporalOracleHarness/seed=47645253154
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/update-then-delete/batch
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/update-then-delete/ingest
+=== RUN   TestEffectiveTimeline_PointwiseOracle/memory/seed=7414
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/update-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/open-cascade-then-delete/standalone
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064281
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/open-cascade-then-delete/graphtx
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/open-cascade-then-delete/batch
+=== RUN   TestBitemporalOracleHarness/seed=47645253155
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/open-cascade-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/open-cascade-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/bounded-cascade-then-delete/standalone
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/bounded-cascade-then-delete/graphtx
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/bounded-cascade-then-delete/batch
+=== RUN   TestEffectiveTimeline_PointwiseOracle/badger/seed=7399
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/bounded-cascade-then-delete/ingest
+=== RUN   TestBitemporalOracleHarness/seed=47645253156
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/bounded-cascade-then-delete/DeleteWithTx
+=== RUN   TestEffectiveTimeline_ScanMatchesGenericDoor/sharded/seed=23720
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/close-then-delete/standalone
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/close-then-delete/graphtx
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/close-then-delete/batch
+=== RUN   TestBitemporalOracleHarness/seed=47645253157
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/close-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/close-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/close-bounded-inside-then-delete/standalone
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/close-bounded-inside-then-delete/graphtx
+=== RUN   TestBitemporalOracleHarness/seed=47645253158
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064282
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/close-bounded-inside-then-delete/batch
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/close-bounded-inside-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/close-bounded-inside-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/close-gap-then-delete/standalone
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/close-gap-then-delete/graphtx
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/close-gap-then-delete/batch
+=== RUN   TestBitemporalOracleHarness/seed=47645253159
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/close-gap-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/sharded/rel/close-gap-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/tiered/node
+=== RUN   TestAtTxEndsAtDelete/tiered/node/delete/standalone
+=== RUN   TestAtTxEndsAtDelete/tiered/node/delete/graphtx
+=== RUN   TestBitemporalOracleHarness/seed=47645253160
+=== RUN   TestAtTxEndsAtDelete/tiered/node/delete/batch
+=== RUN   TestEffectiveTimeline_PointwiseOracle/badger/seed=7400
+=== RUN   TestAtTxEndsAtDelete/tiered/node/delete/ingest
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064283
+=== RUN   TestAtTxEndsAtDelete/tiered/node/delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/tiered/node/update-then-delete/standalone
+=== RUN   TestAtTxEndsAtDelete/tiered/node/update-then-delete/graphtx
+=== RUN   TestBitemporalOracleHarness/seed=47645253161
+=== RUN   TestEffectiveTimeline_ScanMatchesGenericDoor/sharded/seed=23721
+=== RUN   TestAtTxEndsAtDelete/tiered/node/update-then-delete/batch
+=== RUN   TestAtTxEndsAtDelete/tiered/node/update-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/tiered/node/update-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/tiered/node/open-cascade-then-delete/standalone
+=== RUN   TestAtTxEndsAtDelete/tiered/node/open-cascade-then-delete/graphtx
+=== RUN   TestBitemporalOracleHarness/seed=47645253162
+=== RUN   TestAtTxEndsAtDelete/tiered/node/open-cascade-then-delete/batch
+=== RUN   TestAtTxEndsAtDelete/tiered/node/open-cascade-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/tiered/node/open-cascade-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/tiered/node/bounded-cascade-then-delete/standalone
+=== RUN   TestBitemporalOracleHarness/seed=47645253163
+=== RUN   TestAtTxEndsAtDelete/tiered/node/bounded-cascade-then-delete/graphtx
+=== RUN   TestAtTxEndsAtDelete/tiered/node/bounded-cascade-then-delete/batch
+=== RUN   TestAtTxEndsAtDelete/tiered/node/bounded-cascade-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/tiered/node/bounded-cascade-then-delete/DeleteWithTx
+=== RUN   TestBitemporalOracleHarness/seed=47645253164
+=== RUN   TestAtTxEndsAtDelete/tiered/node/close-then-delete/standalone
+=== RUN   TestAtTxEndsAtDelete/tiered/node/close-then-delete/graphtx
+=== RUN   TestBitemporalOracleHarness/seed=47645253165
+=== RUN   TestAtTxEndsAtDelete/tiered/node/close-then-delete/batch
+=== RUN   TestAtTxEndsAtDelete/tiered/node/close-then-delete/ingest
+=== RUN   TestBitemporalOracleHarness/seed=47645253166
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064284
+=== RUN   TestAtTxEndsAtDelete/tiered/node/close-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/tiered/node/close-bounded-inside-then-delete/standalone
+=== RUN   TestAtTxEndsAtDelete/tiered/node/close-bounded-inside-then-delete/graphtx
+=== RUN   TestAtTxEndsAtDelete/tiered/node/close-bounded-inside-then-delete/batch
+=== RUN   TestAtTxEndsAtDelete/tiered/node/close-bounded-inside-then-delete/ingest
+=== RUN   TestBitemporalOracleHarness/seed=47645253167
+=== RUN   TestAtTxEndsAtDelete/tiered/node/close-bounded-inside-then-delete/DeleteWithTx
+=== RUN   TestEffectiveTimeline_PointwiseOracle/badger/seed=7401
+=== RUN   TestAtTxEndsAtDelete/tiered/node/close-gap-then-delete/standalone
+=== RUN   TestBitemporalOracleHarness/seed=47645253168
+=== RUN   TestAtTxEndsAtDelete/tiered/node/close-gap-then-delete/graphtx
+=== RUN   TestAtTxEndsAtDelete/tiered/node/close-gap-then-delete/batch
+=== RUN   TestAtTxEndsAtDelete/tiered/node/close-gap-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/tiered/node/close-gap-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/tiered/rel
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/delete/standalone
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/delete/graphtx
+=== RUN   TestBitemporalOracleHarness/seed=47645253169
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/delete/batch
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064285
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/delete/ingest
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/update-then-delete/standalone
+=== RUN   TestBitemporalOracleHarness/seed=47645253170
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/update-then-delete/graphtx
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/update-then-delete/batch
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/update-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/update-then-delete/DeleteWithTx
+=== RUN   TestEffectiveTimeline_ScanMatchesGenericDoor/sharded/seed=23722
+=== RUN   TestBitemporalOracleHarness/seed=47645253171
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/open-cascade-then-delete/standalone
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/open-cascade-then-delete/graphtx
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/open-cascade-then-delete/batch
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/open-cascade-then-delete/ingest
+=== RUN   TestBitemporalOracleHarness/seed=47645253172
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/open-cascade-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/bounded-cascade-then-delete/standalone
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/bounded-cascade-then-delete/graphtx
+=== RUN   TestBitemporalOracleHarness/seed=47645253173
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/bounded-cascade-then-delete/batch
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/bounded-cascade-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/bounded-cascade-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/close-then-delete/standalone
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/close-then-delete/graphtx
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/close-then-delete/batch
+=== RUN   TestBitemporalOracleHarness/seed=47645253174
+=== RUN   TestEffectiveTimeline_ScanMatchesGenericDoor/tiered/seed=23719
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/close-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/close-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/close-bounded-inside-then-delete/standalone
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/close-bounded-inside-then-delete/graphtx
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064286
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/close-bounded-inside-then-delete/batch
+=== RUN   TestBitemporalOracleHarness/seed=47645253175
+=== RUN   TestEffectiveTimeline_PointwiseOracle/badger/seed=7402
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/close-bounded-inside-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/close-bounded-inside-then-delete/DeleteWithTx
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/close-gap-then-delete/standalone
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/close-gap-then-delete/graphtx
+=== RUN   TestBitemporalOracleHarness/seed=47645253176
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/close-gap-then-delete/batch
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/close-gap-then-delete/ingest
+=== RUN   TestAtTxEndsAtDelete/tiered/rel/close-gap-then-delete/DeleteWithTx
+--- PASS: TestAtTxEndsAtDelete (4.24s)
+    --- PASS: TestAtTxEndsAtDelete/memory/node (0.04s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/delete/standalone (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/delete/graphtx (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/delete/batch (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/delete/ingest (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/delete/DeleteWithTx (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/update-then-delete/standalone (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/update-then-delete/graphtx (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/update-then-delete/batch (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/update-then-delete/ingest (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/update-then-delete/DeleteWithTx (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/open-cascade-then-delete/standalone (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/open-cascade-then-delete/graphtx (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/open-cascade-then-delete/batch (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/open-cascade-then-delete/ingest (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/open-cascade-then-delete/DeleteWithTx (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/bounded-cascade-then-delete/standalone (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/bounded-cascade-then-delete/graphtx (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/bounded-cascade-then-delete/batch (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/bounded-cascade-then-delete/ingest (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/bounded-cascade-then-delete/DeleteWithTx (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/close-then-delete/standalone (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/close-then-delete/graphtx (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/close-then-delete/batch (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/close-then-delete/ingest (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/close-then-delete/DeleteWithTx (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/close-bounded-inside-then-delete/standalone (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/close-bounded-inside-then-delete/graphtx (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/close-bounded-inside-then-delete/batch (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/close-bounded-inside-then-delete/ingest (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/close-bounded-inside-then-delete/DeleteWithTx (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/close-gap-then-delete/standalone (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/close-gap-then-delete/graphtx (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/close-gap-then-delete/batch (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/close-gap-then-delete/ingest (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/node/close-gap-then-delete/DeleteWithTx (0.00s)
+    --- PASS: TestAtTxEndsAtDelete/memory/rel (0.03s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/delete/standalone (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/delete/graphtx (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/delete/batch (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/delete/ingest (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/delete/DeleteWithTx (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/update-then-delete/standalone (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/update-then-delete/graphtx (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/update-then-delete/batch (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/update-then-delete/ingest (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/update-then-delete/DeleteWithTx (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/open-cascade-then-delete/standalone (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/open-cascade-then-delete/graphtx (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/open-cascade-then-delete/batch (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/open-cascade-then-delete/ingest (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/open-cascade-then-delete/DeleteWithTx (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/bounded-cascade-then-delete/standalone (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/bounded-cascade-then-delete/graphtx (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/bounded-cascade-then-delete/batch (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/bounded-cascade-then-delete/ingest (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/bounded-cascade-then-delete/DeleteWithTx (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/close-then-delete/standalone (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/close-then-delete/graphtx (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/close-then-delete/batch (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/close-then-delete/ingest (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/close-then-delete/DeleteWithTx (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/close-bounded-inside-then-delete/standalone (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/close-bounded-inside-then-delete/graphtx (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/close-bounded-inside-then-delete/batch (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/close-bounded-inside-then-delete/ingest (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/close-bounded-inside-then-delete/DeleteWithTx (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/close-gap-then-delete/standalone (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/close-gap-then-delete/graphtx (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/close-gap-then-delete/batch (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/close-gap-then-delete/ingest (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/memory/rel/close-gap-then-delete/DeleteWithTx (0.00s)
+    --- PASS: TestAtTxEndsAtDelete/badger/node (0.83s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/delete/standalone (0.08s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/delete/graphtx (0.07s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/delete/batch (0.05s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/delete/ingest (0.07s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/delete/DeleteWithTx (0.04s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/update-then-delete/standalone (0.03s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/update-then-delete/graphtx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/update-then-delete/batch (0.05s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/update-then-delete/ingest (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/update-then-delete/DeleteWithTx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/open-cascade-then-delete/standalone (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/open-cascade-then-delete/graphtx (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/open-cascade-then-delete/batch (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/open-cascade-then-delete/ingest (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/open-cascade-then-delete/DeleteWithTx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/bounded-cascade-then-delete/standalone (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/bounded-cascade-then-delete/graphtx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/bounded-cascade-then-delete/batch (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/bounded-cascade-then-delete/ingest (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/bounded-cascade-then-delete/DeleteWithTx (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/close-then-delete/standalone (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/close-then-delete/graphtx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/close-then-delete/batch (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/close-then-delete/ingest (0.04s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/close-then-delete/DeleteWithTx (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/close-bounded-inside-then-delete/standalone (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/close-bounded-inside-then-delete/graphtx (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/close-bounded-inside-then-delete/batch (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/close-bounded-inside-then-delete/ingest (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/close-bounded-inside-then-delete/DeleteWithTx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/close-gap-then-delete/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/close-gap-then-delete/graphtx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/close-gap-then-delete/batch (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/close-gap-then-delete/ingest (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/badger/node/close-gap-then-delete/DeleteWithTx (0.02s)
+    --- PASS: TestAtTxEndsAtDelete/badger/rel (0.51s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/delete/standalone (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/delete/graphtx (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/delete/batch (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/delete/ingest (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/delete/DeleteWithTx (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/update-then-delete/standalone (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/update-then-delete/graphtx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/update-then-delete/batch (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/update-then-delete/ingest (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/update-then-delete/DeleteWithTx (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/open-cascade-then-delete/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/open-cascade-then-delete/graphtx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/open-cascade-then-delete/batch (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/open-cascade-then-delete/ingest (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/open-cascade-then-delete/DeleteWithTx (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/bounded-cascade-then-delete/standalone (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/bounded-cascade-then-delete/graphtx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/bounded-cascade-then-delete/batch (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/bounded-cascade-then-delete/ingest (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/bounded-cascade-then-delete/DeleteWithTx (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/close-then-delete/standalone (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/close-then-delete/graphtx (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/close-then-delete/batch (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/close-then-delete/ingest (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/close-then-delete/DeleteWithTx (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/close-bounded-inside-then-delete/standalone (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/close-bounded-inside-then-delete/graphtx (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/close-bounded-inside-then-delete/batch (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/close-bounded-inside-then-delete/ingest (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/close-bounded-inside-then-delete/DeleteWithTx (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/close-gap-then-delete/standalone (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/close-gap-then-delete/graphtx (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/close-gap-then-delete/batch (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/close-gap-then-delete/ingest (0.04s)
+        --- PASS: TestAtTxEndsAtDelete/badger/rel/close-gap-then-delete/DeleteWithTx (0.02s)
+    --- PASS: TestAtTxEndsAtDelete/sharded/node (0.66s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/delete/standalone (0.04s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/delete/graphtx (0.03s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/delete/batch (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/delete/ingest (0.03s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/delete/DeleteWithTx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/update-then-delete/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/update-then-delete/graphtx (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/update-then-delete/batch (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/update-then-delete/ingest (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/update-then-delete/DeleteWithTx (0.03s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/open-cascade-then-delete/standalone (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/open-cascade-then-delete/graphtx (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/open-cascade-then-delete/batch (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/open-cascade-then-delete/ingest (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/open-cascade-then-delete/DeleteWithTx (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/bounded-cascade-then-delete/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/bounded-cascade-then-delete/graphtx (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/bounded-cascade-then-delete/batch (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/bounded-cascade-then-delete/ingest (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/bounded-cascade-then-delete/DeleteWithTx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/close-then-delete/standalone (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/close-then-delete/graphtx (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/close-then-delete/batch (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/close-then-delete/ingest (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/close-then-delete/DeleteWithTx (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/close-bounded-inside-then-delete/standalone (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/close-bounded-inside-then-delete/graphtx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/close-bounded-inside-then-delete/batch (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/close-bounded-inside-then-delete/ingest (0.03s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/close-bounded-inside-then-delete/DeleteWithTx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/close-gap-then-delete/standalone (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/close-gap-then-delete/graphtx (0.05s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/close-gap-then-delete/batch (0.03s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/close-gap-then-delete/ingest (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/node/close-gap-then-delete/DeleteWithTx (0.02s)
+    --- PASS: TestAtTxEndsAtDelete/sharded/rel (0.71s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/delete/standalone (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/delete/graphtx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/delete/batch (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/delete/ingest (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/delete/DeleteWithTx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/update-then-delete/standalone (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/update-then-delete/graphtx (0.04s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/update-then-delete/batch (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/update-then-delete/ingest (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/update-then-delete/DeleteWithTx (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/open-cascade-then-delete/standalone (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/open-cascade-then-delete/graphtx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/open-cascade-then-delete/batch (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/open-cascade-then-delete/ingest (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/open-cascade-then-delete/DeleteWithTx (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/bounded-cascade-then-delete/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/bounded-cascade-then-delete/graphtx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/bounded-cascade-then-delete/batch (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/bounded-cascade-then-delete/ingest (0.03s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/bounded-cascade-then-delete/DeleteWithTx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/close-then-delete/standalone (0.03s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/close-then-delete/graphtx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/close-then-delete/batch (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/close-then-delete/ingest (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/close-then-delete/DeleteWithTx (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/close-bounded-inside-then-delete/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/close-bounded-inside-then-delete/graphtx (0.05s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/close-bounded-inside-then-delete/batch (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/close-bounded-inside-then-delete/ingest (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/close-bounded-inside-then-delete/DeleteWithTx (0.05s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/close-gap-then-delete/standalone (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/close-gap-then-delete/graphtx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/close-gap-then-delete/batch (0.03s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/close-gap-then-delete/ingest (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/sharded/rel/close-gap-then-delete/DeleteWithTx (0.02s)
+    --- PASS: TestAtTxEndsAtDelete/tiered/node (0.75s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/delete/standalone (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/delete/graphtx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/delete/batch (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/delete/ingest (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/delete/DeleteWithTx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/update-then-delete/standalone (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/update-then-delete/graphtx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/update-then-delete/batch (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/update-then-delete/ingest (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/update-then-delete/DeleteWithTx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/open-cascade-then-delete/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/open-cascade-then-delete/graphtx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/open-cascade-then-delete/batch (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/open-cascade-then-delete/ingest (0.03s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/open-cascade-then-delete/DeleteWithTx (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/bounded-cascade-then-delete/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/bounded-cascade-then-delete/graphtx (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/bounded-cascade-then-delete/batch (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/bounded-cascade-then-delete/ingest (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/bounded-cascade-then-delete/DeleteWithTx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/close-then-delete/standalone (0.04s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/close-then-delete/graphtx (0.04s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/close-then-delete/batch (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/close-then-delete/ingest (0.04s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/close-then-delete/DeleteWithTx (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/close-bounded-inside-then-delete/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/close-bounded-inside-then-delete/graphtx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/close-bounded-inside-then-delete/batch (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/close-bounded-inside-then-delete/ingest (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/close-bounded-inside-then-delete/DeleteWithTx (0.03s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/close-gap-then-delete/standalone (0.03s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/close-gap-then-delete/graphtx (0.03s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/close-gap-then-delete/batch (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/close-gap-then-delete/ingest (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/node/close-gap-then-delete/DeleteWithTx (0.01s)
+    --- PASS: TestAtTxEndsAtDelete/tiered/rel (0.70s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/delete/standalone (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/delete/graphtx (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/delete/batch (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/delete/ingest (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/delete/DeleteWithTx (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/update-then-delete/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/update-then-delete/graphtx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/update-then-delete/batch (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/update-then-delete/ingest (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/update-then-delete/DeleteWithTx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/open-cascade-then-delete/standalone (0.03s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/open-cascade-then-delete/graphtx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/open-cascade-then-delete/batch (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/open-cascade-then-delete/ingest (0.04s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/open-cascade-then-delete/DeleteWithTx (0.03s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/bounded-cascade-then-delete/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/bounded-cascade-then-delete/graphtx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/bounded-cascade-then-delete/batch (0.00s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/bounded-cascade-then-delete/ingest (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/bounded-cascade-then-delete/DeleteWithTx (0.04s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/close-then-delete/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/close-then-delete/graphtx (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/close-then-delete/batch (0.07s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/close-then-delete/ingest (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/close-then-delete/DeleteWithTx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/close-bounded-inside-then-delete/standalone (0.01s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/close-bounded-inside-then-delete/graphtx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/close-bounded-inside-then-delete/batch (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/close-bounded-inside-then-delete/ingest (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/close-bounded-inside-then-delete/DeleteWithTx (0.03s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/close-gap-then-delete/standalone (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/close-gap-then-delete/graphtx (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/close-gap-then-delete/batch (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/close-gap-then-delete/ingest (0.02s)
+        --- PASS: TestAtTxEndsAtDelete/tiered/rel/close-gap-then-delete/DeleteWithTx (0.03s)
+=== RUN   TestBitemporalOracleHarness/seed=47645253177
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064287
+=== RUN   TestBitemporalOracleHarness/seed=47645253178
+=== RUN   TestBitemporalOracleHarness/seed=47645253179
+=== RUN   TestBitemporalOracleHarness/seed=47645253180
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064288
+=== RUN   TestEffectiveTimeline_PointwiseOracle/badger/seed=7403
+=== RUN   TestBitemporalOracleHarness/seed=47645253181
+=== RUN   TestBitemporalOracleHarness/seed=47645253182
+=== RUN   TestEffectiveTimeline_ScanMatchesGenericDoor/tiered/seed=23720
+=== RUN   TestBitemporalOracleHarness/seed=47645253183
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064289
+=== RUN   TestBitemporalOracleHarness/seed=47645253184
+=== RUN   TestBitemporalOracleHarness/seed=47645253185
+=== RUN   TestBitemporalOracleHarness/seed=47645253186
+=== RUN   TestBitemporalOracleHarness/seed=47645253187
+=== RUN   TestBitemporalOracleHarness/seed=47645253188
+=== RUN   TestEffectiveTimeline_ScanMatchesGenericDoor/tiered/seed=23721
+=== RUN   TestEffectiveTimeline_PointwiseOracle/badger/seed=7404
+=== RUN   TestBitemporalOracleHarness/seed=47645253189
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064290
+=== RUN   TestBitemporalOracleHarness/seed=47645253190
+=== RUN   TestBitemporalOracleHarness/seed=47645253191
+=== RUN   TestBitemporalOracleHarness/seed=47645253192
+=== RUN   TestBitemporalOracleHarness/seed=47645253193
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064291
+=== RUN   TestBitemporalOracleHarness/seed=47645253194
+=== RUN   TestBitemporalOracleHarness/seed=47645253195
+=== RUN   TestBitemporalOracleHarness/seed=47645253196
+=== RUN   TestEffectiveTimeline_ScanMatchesGenericDoor/tiered/seed=23722
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064292
+=== RUN   TestBitemporalOracleHarness/seed=47645253197
+=== RUN   TestBitemporalOracleHarness/seed=47645253198
+--- PASS: TestEffectiveTimeline_ScanMatchesGenericDoor (5.47s)
+    --- PASS: TestEffectiveTimeline_ScanMatchesGenericDoor/memory/seed=23719 (0.17s)
+    --- PASS: TestEffectiveTimeline_ScanMatchesGenericDoor/memory/seed=23720 (0.05s)
+    --- PASS: TestEffectiveTimeline_ScanMatchesGenericDoor/memory/seed=23721 (0.11s)
+    --- PASS: TestEffectiveTimeline_ScanMatchesGenericDoor/memory/seed=23722 (0.05s)
+    --- PASS: TestEffectiveTimeline_ScanMatchesGenericDoor/badger/seed=23719 (0.48s)
+    --- PASS: TestEffectiveTimeline_ScanMatchesGenericDoor/badger/seed=23720 (0.18s)
+    --- PASS: TestEffectiveTimeline_ScanMatchesGenericDoor/badger/seed=23721 (0.25s)
+    --- PASS: TestEffectiveTimeline_ScanMatchesGenericDoor/badger/seed=23722 (0.13s)
+    --- PASS: TestEffectiveTimeline_ScanMatchesGenericDoor/sharded/seed=23719 (1.02s)
+    --- PASS: TestEffectiveTimeline_ScanMatchesGenericDoor/sharded/seed=23720 (0.47s)
+    --- PASS: TestEffectiveTimeline_ScanMatchesGenericDoor/sharded/seed=23721 (0.78s)
+    --- PASS: TestEffectiveTimeline_ScanMatchesGenericDoor/sharded/seed=23722 (0.29s)
+    --- PASS: TestEffectiveTimeline_ScanMatchesGenericDoor/tiered/seed=23719 (0.62s)
+    --- PASS: TestEffectiveTimeline_ScanMatchesGenericDoor/tiered/seed=23720 (0.28s)
+    --- PASS: TestEffectiveTimeline_ScanMatchesGenericDoor/tiered/seed=23721 (0.40s)
+    --- PASS: TestEffectiveTimeline_ScanMatchesGenericDoor/tiered/seed=23722 (0.18s)
+=== RUN   TestEffectiveTimeline_PointwiseOracle/badger/seed=7405
+=== RUN   TestBitemporalOracleHarness/seed=47645253199
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064293
+=== RUN   TestBitemporalOracleHarness/seed=47645253200
+=== RUN   TestBitemporalOracleHarness/seed=47645253201
+=== RUN   TestBitemporalOracleHarness/seed=47645253202
+=== RUN   TestEffectiveTimeline_PointwiseOracle/badger/seed=7406
+=== RUN   TestBitemporalOracleHarness/seed=47645253203
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064294
+=== RUN   TestBitemporalOracleHarness/seed=47645253204
+=== RUN   TestBitemporalOracleHarness/seed=47645253205
+=== RUN   TestBitemporalOracleHarness/seed=47645253206
+=== RUN   TestBitemporalOracleHarness/seed=47645253207
+=== RUN   TestBitemporalOracleHarness/seed=47645253208
+=== RUN   TestEffectiveTimeline_PointwiseOracle/badger/seed=7407
+=== RUN   TestBitemporalOracleHarness/seed=47645253209
+=== RUN   TestBitemporalOracleHarness/seed=47645253210
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064295
+=== RUN   TestBitemporalOracleHarness/seed=47645253211
+=== RUN   TestBitemporalOracleHarness/seed=47645253212
+=== RUN   TestBitemporalOracleHarness/seed=47645253213
+=== RUN   TestEffectiveTimeline_PointwiseOracle/badger/seed=7408
+=== RUN   TestBitemporalOracleHarness/seed=47645253214
+=== RUN   TestBitemporalOracleHarness/seed=47645253215
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064296
+=== RUN   TestBitemporalOracleHarness/seed=47645253216
+=== RUN   TestEffectiveTimeline_PointwiseOracle/badger/seed=7409
+=== RUN   TestBitemporalOracleHarness/seed=47645253217
+=== RUN   TestBitemporalOracleHarness/seed=47645253218
+=== RUN   TestBitemporalOracleHarness/seed=47645253219
+=== RUN   TestBitemporalOracleHarness/seed=47645253220
+=== RUN   TestBitemporalOracleHarness/seed=47645253221
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064297
+=== RUN   TestEffectiveTimeline_PointwiseOracle/badger/seed=7410
+=== RUN   TestBitemporalOracleHarness/seed=47645253222
+=== RUN   TestBitemporalOracleHarness/seed=47645253223
+=== RUN   TestBitemporalOracleHarness/seed=47645253224
+=== RUN   TestBitemporalOracleHarness/seed=47645253225
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064298
+=== RUN   TestBitemporalOracleHarness/seed=47645253226
+=== RUN   TestBitemporalOracleHarness/seed=47645253227
+=== RUN   TestBitemporalOracleHarness/seed=47645253228
+=== RUN   TestEffectiveTimeline_PointwiseOracle/badger/seed=7411
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064299
+=== RUN   TestBitemporalOracleHarness/seed=47645253229
+=== RUN   TestBitemporalOracleHarness/seed=47645253230
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064300
+=== RUN   TestBitemporalOracleHarness/seed=47645253231
+=== RUN   TestEffectiveTimeline_PointwiseOracle/badger/seed=7412
+=== RUN   TestBitemporalOracleHarness/seed=47645253232
+=== RUN   TestBitemporalOracleHarness/seed=47645253233
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064301
+=== RUN   TestBitemporalOracleHarness/seed=47645253234
+=== RUN   TestBitemporalOracleHarness/seed=47645253235
+=== RUN   TestBitemporalOracleHarness/seed=47645253236
+=== RUN   TestBitemporalOracleHarness/seed=47645253237
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064302
+=== RUN   TestBitemporalOracleHarness/seed=47645253238
+=== RUN   TestBitemporalOracleHarness/seed=47645253239
+=== RUN   TestBitemporalOracleHarness/seed=47645253240
+=== RUN   TestEffectiveTimeline_PointwiseOracle/badger/seed=7413
+=== RUN   TestBitemporalOracleHarness/seed=47645253241
+=== RUN   TestBitemporalOracleHarness/seed=47645253242
+=== RUN   TestBitemporalOracleHarness/seed=47645253243
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064303
+=== RUN   TestBitemporalOracleHarness/seed=47645253244
+=== RUN   TestBitemporalOracleHarness/seed=47645253245
+=== RUN   TestBitemporalOracleHarness/seed=47645253246
+=== RUN   TestBitemporalOracleHarness/seed=47645253247
+=== RUN   TestEffectiveTimeline_PointwiseOracle/badger/seed=7414
+=== RUN   TestBitemporalOracleHarness/seed=47645253248
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064304
+=== RUN   TestBitemporalOracleHarness/seed=47645253249
+=== RUN   TestBitemporalOracleHarness/seed=47645253250
+=== RUN   TestBitemporalOracleHarness/seed=47645253251
+=== RUN   TestBitemporalOracleHarness/seed=47645253252
+=== RUN   TestBitemporalOracleHarness/seed=47645253253
+=== RUN   TestBitemporalOracleHarness/seed=47645253254
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064305
+=== RUN   TestEffectiveTimeline_PointwiseOracle/sharded/seed=7399
+=== RUN   TestBitemporalOracleHarness/seed=47645253255
+=== RUN   TestBitemporalOracleHarness/seed=47645253256
+=== RUN   TestBitemporalOracleHarness/seed=47645253257
+=== RUN   TestBitemporalOracleHarness/seed=47645253258
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064306
+=== RUN   TestBitemporalOracleHarness/seed=47645253259
+=== RUN   TestBitemporalOracleHarness/seed=47645253260
+=== RUN   TestBitemporalOracleHarness/seed=47645253261
+=== RUN   TestBitemporalOracleHarness/seed=47645253262
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064307
+=== RUN   TestBitemporalOracleHarness/seed=47645253263
+=== RUN   TestBitemporalOracleHarness/seed=47645253264
+=== RUN   TestBitemporalOracleHarness/seed=47645253265
+=== RUN   TestEffectiveTimeline_PointwiseOracle/sharded/seed=7400
+=== RUN   TestBitemporalOracleHarness/seed=47645253266
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064308
+=== RUN   TestBitemporalOracleHarness/seed=47645253267
+=== RUN   TestBitemporalOracleHarness/seed=47645253268
+=== RUN   TestBitemporalOracleHarness/seed=47645253269
+=== RUN   TestBitemporalOracleHarness/seed=47645253270
+=== RUN   TestBitemporalOracleHarness/seed=47645253271
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064309
+=== RUN   TestBitemporalOracleHarness/seed=47645253272
+=== RUN   TestBitemporalOracleHarness/seed=47645253273
+=== RUN   TestBitemporalOracleHarness/seed=47645253274
+=== RUN   TestBitemporalOracleHarness/seed=47645253275
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064310
+=== RUN   TestBitemporalOracleHarness/seed=47645253276
+=== RUN   TestBitemporalOracleHarness/seed=47645253277
+=== RUN   TestBitemporalOracleHarness/seed=47645253278
+=== RUN   TestEffectiveTimeline_PointwiseOracle/sharded/seed=7401
+=== RUN   TestBitemporalOracleHarness/seed=47645253279
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064311
+=== RUN   TestBitemporalOracleHarness/seed=47645253280
+=== RUN   TestBitemporalOracleHarness/seed=47645253281
+=== RUN   TestBitemporalOracleHarness/seed=47645253282
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064312
+=== RUN   TestBitemporalOracleHarness/seed=47645253283
+=== RUN   TestBitemporalOracleHarness/seed=47645253284
+=== RUN   TestBitemporalOracleHarness/seed=47645253285
+=== RUN   TestBitemporalOracleHarness/seed=47645253286
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064313
+=== RUN   TestBitemporalOracleHarness/seed=47645253287
+=== RUN   TestBitemporalOracleHarness/seed=47645253288
+=== RUN   TestBitemporalOracleHarness/seed=47645253289
+=== RUN   TestBitemporalOracleHarness/seed=47645253290
+=== RUN   TestBitemporalOracleHarness/seed=47645253291
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064314
+=== RUN   TestBitemporalOracleHarness/seed=47645253292
+=== RUN   TestEffectiveTimeline_PointwiseOracle/sharded/seed=7402
+=== RUN   TestBitemporalOracleHarness/seed=47645253293
+=== RUN   TestBitemporalOracleHarness/seed=47645253294
+=== RUN   TestBitemporalOracleHarness/seed=47645253295
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064315
+=== RUN   TestBitemporalOracleHarness/seed=47645253296
+=== RUN   TestBitemporalOracleHarness/seed=47645253297
+=== RUN   TestBitemporalOracleHarness/seed=47645253298
+=== RUN   TestBitemporalOracleHarness/seed=47645253299
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064316
+=== RUN   TestBitemporalOracleHarness/seed=47645253300
+=== RUN   TestBitemporalOracleHarness/seed=47645253301
+=== RUN   TestBitemporalOracleHarness/seed=47645253302
+=== RUN   TestBitemporalOracleHarness/seed=47645253303
+=== RUN   TestBitemporalOracleHarness/seed=47645253304
+=== RUN   TestBitemporalOracleHarness/seed=47645253305
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064317
+=== RUN   TestEffectiveTimeline_PointwiseOracle/sharded/seed=7403
+=== RUN   TestBitemporalOracleHarness/seed=47645253306
+=== RUN   TestBitemporalOracleHarness/seed=47645253307
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064318
+=== RUN   TestBitemporalOracleHarness/seed=47645253308
+=== RUN   TestBitemporalOracleHarness/seed=47645253309
+=== RUN   TestBitemporalOracleHarness/seed=47645253310
+=== RUN   TestBitemporalOracleHarness/seed=47645253311
+=== RUN   TestBitemporalOracleHarness/seed=47645253312
+=== RUN   TestBitemporalOracleHarness/seed=47645253313
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064319
+=== RUN   TestBitemporalOracleHarness/seed=47645253314
+=== RUN   TestBitemporalOracleHarness/seed=47645253315
+=== RUN   TestBitemporalOracleHarness/seed=47645253316
+=== RUN   TestBitemporalOracleHarness/seed=47645253317
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064320
+=== RUN   TestBitemporalOracleHarness/seed=47645253318
+=== RUN   TestBitemporalOracleHarness/seed=47645253319
+=== RUN   TestBitemporalOracleHarness/seed=47645253320
+=== RUN   TestBitemporalOracleHarness/seed=47645253321
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064321
+=== RUN   TestBitemporalOracleHarness/seed=47645253322
+=== RUN   TestBitemporalOracleHarness/seed=47645253323
+=== RUN   TestBitemporalOracleHarness/seed=47645253324
+=== RUN   TestBitemporalOracleHarness/seed=47645253325
+=== RUN   TestBitemporalOracleHarness/seed=47645253326
+=== RUN   TestEffectiveTimeline_PointwiseOracle/sharded/seed=7404
+=== RUN   TestBitemporalOracleHarness/seed=47645253327
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064322
+=== RUN   TestBitemporalOracleHarness/seed=47645253328
+=== RUN   TestBitemporalOracleHarness/seed=47645253329
+=== RUN   TestBitemporalOracleHarness/seed=47645253330
+=== RUN   TestBitemporalOracleHarness/seed=47645253331
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064323
+=== RUN   TestBitemporalOracleHarness/seed=47645253332
+=== RUN   TestBitemporalOracleHarness/seed=47645253333
+=== RUN   TestBitemporalOracleHarness/seed=47645253334
+=== RUN   TestBitemporalOracleHarness/seed=47645253335
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064324
+--- PASS: TestBitemporalOracleHarness (13.86s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253136 (0.20s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253137 (0.24s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253138 (0.12s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253139 (0.11s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253140 (0.10s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253141 (0.13s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253142 (0.12s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253143 (0.12s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253144 (0.10s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253145 (0.12s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253146 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253147 (0.16s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253148 (0.10s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253149 (0.08s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253150 (0.09s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253151 (0.12s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253152 (0.13s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253153 (0.09s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253154 (0.10s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253155 (0.13s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253156 (0.09s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253157 (0.07s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253158 (0.15s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253159 (0.09s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253160 (0.10s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253161 (0.09s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253162 (0.07s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253163 (0.09s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253164 (0.06s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253165 (0.07s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253166 (0.10s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253167 (0.07s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253168 (0.10s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253169 (0.07s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253170 (0.07s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253171 (0.08s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253172 (0.08s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253173 (0.09s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253174 (0.13s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253175 (0.08s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253176 (0.09s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253177 (0.06s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253178 (0.06s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253179 (0.06s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253180 (0.06s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253181 (0.06s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253182 (0.07s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253183 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253184 (0.06s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253185 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253186 (0.06s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253187 (0.04s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253188 (0.04s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253189 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253190 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253191 (0.06s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253192 (0.04s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253193 (0.04s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253194 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253195 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253196 (0.09s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253197 (0.06s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253198 (0.07s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253199 (0.11s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253200 (0.07s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253201 (0.06s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253202 (0.08s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253203 (0.04s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253204 (0.04s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253205 (0.06s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253206 (0.08s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253207 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253208 (0.04s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253209 (0.03s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253210 (0.09s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253211 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253212 (0.08s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253213 (0.04s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253214 (0.03s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253215 (0.09s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253216 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253217 (0.08s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253218 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253219 (0.04s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253220 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253221 (0.06s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253222 (0.08s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253223 (0.06s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253224 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253225 (0.07s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253226 (0.08s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253227 (0.08s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253228 (0.07s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253229 (0.04s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253230 (0.11s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253231 (0.15s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253232 (0.19s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253233 (0.24s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253234 (0.16s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253235 (0.07s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253236 (0.04s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253237 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253238 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253239 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253240 (0.06s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253241 (0.04s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253242 (0.04s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253243 (0.06s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253244 (0.09s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253245 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253246 (0.07s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253247 (0.04s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253248 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253249 (0.04s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253250 (0.06s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253251 (0.04s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253252 (0.08s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253253 (0.04s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253254 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253255 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253256 (0.12s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253257 (0.07s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253258 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253259 (0.04s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253260 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253261 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253262 (0.07s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253263 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253264 (0.08s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253265 (0.04s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253266 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253267 (0.10s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253268 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253269 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253270 (0.04s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253271 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253272 (0.04s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253273 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253274 (0.08s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253275 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253276 (0.07s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253277 (0.06s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253278 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253279 (0.04s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253280 (0.07s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253281 (0.06s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253282 (0.07s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253283 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253284 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253285 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253286 (0.04s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253287 (0.07s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253288 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253289 (0.04s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253290 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253291 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253292 (0.08s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253293 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253294 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253295 (0.08s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253296 (0.06s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253297 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253298 (0.04s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253299 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253300 (0.06s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253301 (0.06s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253302 (0.06s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253303 (0.04s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253304 (0.04s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253305 (0.09s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253306 (0.06s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253307 (0.06s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253308 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253309 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253310 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253311 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253312 (0.04s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253313 (0.06s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253314 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253315 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253316 (0.08s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253317 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253318 (0.04s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253319 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253320 (0.06s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253321 (0.06s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253322 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253323 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253324 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253325 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253326 (0.04s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253327 (0.06s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253328 (0.06s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253329 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253330 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253331 (0.08s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253332 (0.07s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253333 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253334 (0.05s)
+    --- PASS: TestBitemporalOracleHarness/seed=47645253335 (0.06s)
+=== NAME  TestTxBackfillOracle_CrossBackend
+    tx_backfill_oracle_test.go:953: accepted map[batch/node-delete:26 batch/node-update:18 batch/rel-delete:16 batch/rel-update:10 graphtx/node-delete:22 graphtx/node-update:13 graphtx/rel-delete:23 graphtx/rel-update:6 ingest_concurrent/node-delete:27 ingest_concurrent/node-update:10 ingest_concurrent/rel-delete:17 ingest_concurrent/rel-update:12 ingest_sync/node-delete:16 ingest_sync/node-update:16 ingest_sync/rel-delete:19 ingest_sync/rel-update:10 standalone/node-delete:30 standalone/node-update:6 standalone/rel-delete:13 standalone/rel-update:12], refused 100, pin checks 364 (37 on a chain with a row above the current one)
+--- PASS: TestTxBackfillOracle_CrossBackend (14.08s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064277 (0.86s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064278 (0.61s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064279 (0.48s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064280 (0.33s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064281 (0.32s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064282 (0.26s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064283 (0.43s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064284 (0.28s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064285 (0.51s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064286 (0.21s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064287 (0.18s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064288 (0.19s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064289 (0.28s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064290 (0.24s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064291 (0.15s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064292 (0.23s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064293 (0.30s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064294 (0.31s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064295 (0.28s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064296 (0.36s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064297 (0.25s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064298 (0.22s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064299 (0.19s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064300 (0.60s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064301 (0.31s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064302 (0.29s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064303 (0.30s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064304 (0.33s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064305 (0.30s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064306 (0.20s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064307 (0.22s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064308 (0.28s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064309 (0.27s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064310 (0.19s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064311 (0.22s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064312 (0.20s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064313 (0.24s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064314 (0.20s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064315 (0.26s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064316 (0.29s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064317 (0.20s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064318 (0.26s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064319 (0.25s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064320 (0.22s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064321 (0.27s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064322 (0.24s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064323 (0.25s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064324 (0.26s)
+=== RUN   TestEffectiveTimeline_PointwiseOracle/sharded/seed=7405
+=== RUN   TestEffectiveTimeline_PointwiseOracle/sharded/seed=7406
+=== RUN   TestEffectiveTimeline_PointwiseOracle/sharded/seed=7407
+=== RUN   TestEffectiveTimeline_PointwiseOracle/sharded/seed=7408
+=== RUN   TestEffectiveTimeline_PointwiseOracle/sharded/seed=7409
+=== RUN   TestEffectiveTimeline_PointwiseOracle/sharded/seed=7410
+=== RUN   TestEffectiveTimeline_PointwiseOracle/sharded/seed=7411
+=== RUN   TestEffectiveTimeline_PointwiseOracle/sharded/seed=7412
+=== RUN   TestEffectiveTimeline_PointwiseOracle/sharded/seed=7413
+=== RUN   TestEffectiveTimeline_PointwiseOracle/sharded/seed=7414
+=== RUN   TestEffectiveTimeline_PointwiseOracle/tiered/seed=7399
+=== RUN   TestEffectiveTimeline_PointwiseOracle/tiered/seed=7400
+=== RUN   TestEffectiveTimeline_PointwiseOracle/tiered/seed=7401
+=== RUN   TestEffectiveTimeline_PointwiseOracle/tiered/seed=7402
+=== RUN   TestEffectiveTimeline_PointwiseOracle/tiered/seed=7403
+=== RUN   TestEffectiveTimeline_PointwiseOracle/tiered/seed=7404
+=== RUN   TestEffectiveTimeline_PointwiseOracle/tiered/seed=7405
+=== RUN   TestEffectiveTimeline_PointwiseOracle/tiered/seed=7406
+=== RUN   TestEffectiveTimeline_PointwiseOracle/tiered/seed=7407
+=== RUN   TestEffectiveTimeline_PointwiseOracle/tiered/seed=7408
+=== RUN   TestEffectiveTimeline_PointwiseOracle/tiered/seed=7409
+=== RUN   TestEffectiveTimeline_PointwiseOracle/tiered/seed=7410
+=== RUN   TestEffectiveTimeline_PointwiseOracle/tiered/seed=7411
+=== RUN   TestEffectiveTimeline_PointwiseOracle/tiered/seed=7412
+=== RUN   TestEffectiveTimeline_PointwiseOracle/tiered/seed=7413
+=== RUN   TestEffectiveTimeline_PointwiseOracle/tiered/seed=7414
+=== NAME  TestEffectiveTimeline_PointwiseOracle
+    effective_timeline_oracle_test.go:446: pointwise checks 3096563 at 187985 (entity, pin) pairs, 110757 segments, 12630 refused pins
+--- PASS: TestEffectiveTimeline_PointwiseOracle (28.08s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/memory/seed=7399 (0.17s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/memory/seed=7400 (0.18s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/memory/seed=7401 (0.23s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/memory/seed=7402 (0.16s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/memory/seed=7403 (0.19s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/memory/seed=7404 (0.29s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/memory/seed=7405 (0.11s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/memory/seed=7406 (0.15s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/memory/seed=7407 (0.11s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/memory/seed=7408 (0.08s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/memory/seed=7409 (0.09s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/memory/seed=7410 (0.13s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/memory/seed=7411 (0.08s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/memory/seed=7412 (0.15s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/memory/seed=7413 (0.13s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/memory/seed=7414 (0.14s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/badger/seed=7399 (0.45s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/badger/seed=7400 (0.58s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/badger/seed=7401 (0.67s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/badger/seed=7402 (0.40s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/badger/seed=7403 (0.43s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/badger/seed=7404 (0.56s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/badger/seed=7405 (0.26s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/badger/seed=7406 (0.36s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/badger/seed=7407 (0.26s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/badger/seed=7408 (0.20s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/badger/seed=7409 (0.29s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/badger/seed=7410 (0.42s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/badger/seed=7411 (0.37s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/badger/seed=7412 (0.88s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/badger/seed=7413 (0.42s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/badger/seed=7414 (0.37s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7399 (0.65s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7400 (0.74s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7401 (0.79s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7402 (0.70s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7403 (1.10s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7404 (1.06s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7405 (0.28s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7406 (0.94s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7407 (0.46s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7408 (0.33s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7409 (0.80s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7410 (0.85s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7411 (0.32s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7412 (0.81s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7413 (0.56s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7414 (0.63s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7399 (0.35s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7400 (0.45s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7401 (0.50s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7402 (0.39s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7403 (0.51s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7404 (0.70s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7405 (0.28s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7406 (0.51s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7407 (0.32s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7408 (0.28s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7409 (0.33s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7410 (0.76s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7411 (0.76s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7412 (0.60s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7413 (0.45s)
+    --- PASS: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7414 (0.55s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	28.503s
