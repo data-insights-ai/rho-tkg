@@ -1,0 +1,87 @@
+=== RUN   TestDurableCommitCrashChild
+    durable_commit_crash_test.go:185: crash child: run only by the durable-commit parent tests
+--- SKIP: TestDurableCommitCrashChild (0.00s)
+=== RUN   TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup
+=== RUN   TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/tx
+=== RUN   TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/run
+=== RUN   TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/batch
+=== RUN   TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/ingest-group-commit
+--- PASS: TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup (1.44s)
+    --- PASS: TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/tx (0.36s)
+    --- PASS: TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/run (0.33s)
+    --- PASS: TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/batch (0.38s)
+    --- PASS: TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/ingest-group-commit (0.38s)
+=== RUN   TestDurableCommitOff_NoStoreFlushOnCommit
+--- PASS: TestDurableCommitOff_NoStoreFlushOnCommit (0.27s)
+=== RUN   TestDurableCommit_CrashAfterReturnKeepsWholeGroup_Badger
+=== RUN   TestDurableCommit_CrashAfterReturnKeepsWholeGroup_Badger/tx
+=== RUN   TestDurableCommit_CrashAfterReturnKeepsWholeGroup_Badger/run
+=== RUN   TestDurableCommit_CrashAfterReturnKeepsWholeGroup_Badger/batch
+=== RUN   TestDurableCommit_CrashAfterReturnKeepsWholeGroup_Badger/ingest
+--- PASS: TestDurableCommit_CrashAfterReturnKeepsWholeGroup_Badger (1.46s)
+    --- PASS: TestDurableCommit_CrashAfterReturnKeepsWholeGroup_Badger/tx (0.39s)
+    --- PASS: TestDurableCommit_CrashAfterReturnKeepsWholeGroup_Badger/run (0.35s)
+    --- PASS: TestDurableCommit_CrashAfterReturnKeepsWholeGroup_Badger/batch (0.33s)
+    --- PASS: TestDurableCommit_CrashAfterReturnKeepsWholeGroup_Badger/ingest (0.39s)
+=== RUN   TestDurableCommit_CrashAfterReturnKeepsWholeGroup_TieredTwoShards
+=== RUN   TestDurableCommit_CrashAfterReturnKeepsWholeGroup_TieredTwoShards/tx
+=== RUN   TestDurableCommit_CrashAfterReturnKeepsWholeGroup_TieredTwoShards/batch
+--- PASS: TestDurableCommit_CrashAfterReturnKeepsWholeGroup_TieredTwoShards (1.67s)
+    --- PASS: TestDurableCommit_CrashAfterReturnKeepsWholeGroup_TieredTwoShards/tx (0.92s)
+    --- PASS: TestDurableCommit_CrashAfterReturnKeepsWholeGroup_TieredTwoShards/batch (0.75s)
+=== RUN   TestDurableCommit_CrashAfterReturnKeepsWholeGroup_ShardedTwoSlots
+=== RUN   TestDurableCommit_CrashAfterReturnKeepsWholeGroup_ShardedTwoSlots/tx
+=== RUN   TestDurableCommit_CrashAfterReturnKeepsWholeGroup_ShardedTwoSlots/batch
+--- PASS: TestDurableCommit_CrashAfterReturnKeepsWholeGroup_ShardedTwoSlots (1.23s)
+    --- PASS: TestDurableCommit_CrashAfterReturnKeepsWholeGroup_ShardedTwoSlots/tx (0.60s)
+    --- PASS: TestDurableCommit_CrashAfterReturnKeepsWholeGroup_ShardedTwoSlots/batch (0.63s)
+=== RUN   TestDurableCommit_OneDurableFlushPerGroup
+--- PASS: TestDurableCommit_OneDurableFlushPerGroup (0.34s)
+=== RUN   TestDurableCommit_OffNeverDurableFlushes
+--- PASS: TestDurableCommit_OffNeverDurableFlushes (0.28s)
+=== RUN   TestDurableCommit_RollbackDoesNotFlush
+--- PASS: TestDurableCommit_RollbackDoesNotFlush (0.25s)
+=== RUN   TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending
+=== RUN   TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending/tx
+=== RUN   TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending/run
+=== RUN   TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending/batch
+=== RUN   TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending/ingest
+--- PASS: TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending (0.26s)
+    --- PASS: TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending/tx (0.06s)
+    --- PASS: TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending/run (0.01s)
+    --- PASS: TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending/batch (0.01s)
+    --- PASS: TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending/ingest (0.01s)
+=== RUN   TestDurableCommit_NewDeclinesStoreWithoutStableStorage
+=== RUN   TestDurableCommit_NewDeclinesStoreWithoutStableStorage/default-memory
+=== RUN   TestDurableCommit_NewDeclinesStoreWithoutStableStorage/memory-store
+=== RUN   TestDurableCommit_NewDeclinesStoreWithoutStableStorage/badger-in-memory-flag
+=== RUN   TestDurableCommit_NewDeclinesStoreWithoutStableStorage/badger-in-memory-store
+=== RUN   TestDurableCommit_NewDeclinesStoreWithoutStableStorage/sharded-in-memory
+=== RUN   TestDurableCommit_NewDeclinesStoreWithoutStableStorage/tiered-in-memory
+=== RUN   TestDurableCommit_NewDeclinesStoreWithoutStableStorage/badger-dir-accepted
+--- PASS: TestDurableCommit_NewDeclinesStoreWithoutStableStorage (0.24s)
+    --- PASS: TestDurableCommit_NewDeclinesStoreWithoutStableStorage/default-memory (0.00s)
+    --- PASS: TestDurableCommit_NewDeclinesStoreWithoutStableStorage/memory-store (0.00s)
+    --- PASS: TestDurableCommit_NewDeclinesStoreWithoutStableStorage/badger-in-memory-flag (0.00s)
+    --- PASS: TestDurableCommit_NewDeclinesStoreWithoutStableStorage/badger-in-memory-store (0.00s)
+    --- PASS: TestDurableCommit_NewDeclinesStoreWithoutStableStorage/sharded-in-memory (0.00s)
+    --- PASS: TestDurableCommit_NewDeclinesStoreWithoutStableStorage/tiered-in-memory (0.00s)
+    --- PASS: TestDurableCommit_NewDeclinesStoreWithoutStableStorage/badger-dir-accepted (0.21s)
+=== RUN   TestDurableFlush_Badger_SyncsExactlyWhatWasWritten
+--- PASS: TestDurableFlush_Badger_SyncsExactlyWhatWasWritten (0.23s)
+=== RUN   TestDurableFlush_Badger_SyncWritesNeedsNoExtraFsync
+--- PASS: TestDurableFlush_Badger_SyncWritesNeedsNoExtraFsync (0.63s)
+=== RUN   TestDurableFlush_Badger_SupportAndRefusals
+--- PASS: TestDurableFlush_Badger_SupportAndRefusals (0.21s)
+=== RUN   TestDurableFlush_Tiered_DrainsEveryTouchedShard
+--- PASS: TestDurableFlush_Tiered_DrainsEveryTouchedShard (0.71s)
+=== RUN   TestDurableFlush_Tiered_SupportAndRefusals
+--- PASS: TestDurableFlush_Tiered_SupportAndRefusals (0.48s)
+=== RUN   TestDurableFlush_Sharded_DrainsEverySlotAndRefuses
+--- PASS: TestDurableFlush_Sharded_DrainsEverySlotAndRefuses (0.58s)
+=== RUN   TestErrorsDocumentation
+--- PASS: TestErrorsDocumentation (0.00s)
+=== RUN   TestGraphErrorsFileInventoryComplete
+--- PASS: TestGraphErrorsFileInventoryComplete (0.00s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	10.348s

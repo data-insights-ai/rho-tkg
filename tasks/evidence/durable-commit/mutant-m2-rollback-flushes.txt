@@ -1,0 +1,5 @@
+--- FAIL: TestDurableCommit_RollbackDoesNotFlush (1.29s)
+    durable_commit_test.go:189: 2 durable flushes from Rollback / failed Run, want 0
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.293s
+FAIL

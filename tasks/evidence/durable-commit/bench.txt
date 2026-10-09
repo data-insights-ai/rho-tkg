@@ -1,0 +1,24 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkDurableCommit/off/nodes=1-32         	  293191	      8072 ns/op	    5335 B/op	      58 allocs/op
+BenchmarkDurableCommit/off/nodes=1-32         	  272556	      7953 ns/op	    5180 B/op	      58 allocs/op
+BenchmarkDurableCommit/off/nodes=1-32         	  308830	      7490 ns/op	    5361 B/op	      58 allocs/op
+BenchmarkDurableCommit/on/nodes=1-32          	    1124	   2120846 ns/op	   13875 B/op	     130 allocs/op
+BenchmarkDurableCommit/on/nodes=1-32          	    1108	   2124452 ns/op	   13970 B/op	     130 allocs/op
+BenchmarkDurableCommit/on/nodes=1-32          	    1063	   2165454 ns/op	   14287 B/op	     130 allocs/op
+BenchmarkDurableCommit/off/nodes=10-32        	   30621	     75882 ns/op	   46184 B/op	     502 allocs/op
+BenchmarkDurableCommit/off/nodes=10-32        	   32625	     67820 ns/op	   45151 B/op	     502 allocs/op
+BenchmarkDurableCommit/off/nodes=10-32        	   30841	     73446 ns/op	   46501 B/op	     502 allocs/op
+BenchmarkDurableCommit/on/nodes=10-32         	     345	   7066252 ns/op	   61284 B/op	     618 allocs/op
+BenchmarkDurableCommit/on/nodes=10-32         	     564	   4032551 ns/op	   52824 B/op	     615 allocs/op
+BenchmarkDurableCommit/on/nodes=10-32         	     496	   4033973 ns/op	   55060 B/op	     617 allocs/op
+BenchmarkDurableCommit/off/nodes=100-32       	    3392	    639205 ns/op	  449266 B/op	    4880 allocs/op
+BenchmarkDurableCommit/off/nodes=100-32       	    3314	    686520 ns/op	  449331 B/op	    4880 allocs/op
+BenchmarkDurableCommit/off/nodes=100-32       	    2960	    888295 ns/op	  449580 B/op	    4881 allocs/op
+BenchmarkDurableCommit/on/nodes=100-32        	     304	   7095744 ns/op	  407442 B/op	    5076 allocs/op
+BenchmarkDurableCommit/on/nodes=100-32        	     289	   7266715 ns/op	  403920 B/op	    5076 allocs/op
+BenchmarkDurableCommit/on/nodes=100-32        	     306	   7218665 ns/op	  406958 B/op	    5077 allocs/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	72.901s

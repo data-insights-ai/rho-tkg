@@ -1,0 +1,14 @@
+--- FAIL: TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup (1.41s)
+    --- FAIL: TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/tx (0.32s)
+        durable_commit_crash_test.go:280: flag off: 22 nodes, 1 rels on disk after the crash, want 0/0 — the door flushed although DurableCommit is off
+    --- FAIL: TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/run (0.34s)
+        durable_commit_crash_test.go:280: flag off: 22 nodes, 1 rels on disk after the crash, want 0/0 — the door flushed although DurableCommit is off
+    --- FAIL: TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/batch (0.39s)
+        durable_commit_crash_test.go:280: flag off: 22 nodes, 1 rels on disk after the crash, want 0/0 — the door flushed although DurableCommit is off
+--- FAIL: TestDurableCommitOff_NoStoreFlushOnCommit (0.31s)
+    durable_commit_crash_test.go:311: flag off: pending buffer empty after tx/run/batch — something flushed
+--- FAIL: TestDurableCommit_OffNeverDurableFlushes (0.27s)
+    durable_commit_test.go:160: flag off: 4 durable flushes, want 0
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	2.055s
+FAIL
