@@ -27,7 +27,7 @@ Wave 1 (parallel) → v4.44.0
       an update and a delete, per backend; break cases: ValidAt before the update, TxAt before the delete, TxPin.
       Fix default: history-aware where a sound path exists, else fail closed (`ErrCapabilityNotSupported`) —
       never current-only rows for a temporal opt. Proof: evidence/scan-opts/.
-- [ ] D ingest-doors + comments (Sonnet): `Session.SetRelVersionInterval`/`SetNodeVersionInterval` (ingest.go,
+- [x] D ingest-doors + comments (Sonnet; merged 675c7b3 after review: 4 findings fixed, evidence/ingest-doors/, 100 Session subtests under -race; backlog 12 (unique bypass via cascade props, HIGH) and 13 (applier attribution by numeric id) filed): `Session.SetRelVersionInterval`/`SetNodeVersionInterval` (ingest.go,
       beside :830-880), red forwarding + two-phase test through the session; stale comments
       store/changefeed.go:154-158, index/api.go:267-269 (+ core/graph_rel_indexes.go:97-100),
       constraints/unique.go:74-75. Proof: evidence/ingest-doors/.
