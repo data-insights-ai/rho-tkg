@@ -1,0 +1,250 @@
+{
+  "api": {
+    "temporal.AppendInstant": "func AppendInstant(dst []byte, value types.Instant, axis Axis, limits Limits) ([]byte,error)",
+    "temporal.ConvertCoordinateUnit": "func ConvertCoordinateUnit(value Rational, sourceUnit string, target Axis, limits Limits) (Position,error)",
+    "temporal.DecodeInstant": "func DecodeInstant(src []byte, axis Axis, limits Limits) (types.Instant,error)",
+    "temporal.InstantFromPosition": "func InstantFromPosition(value Position, limits Limits) (types.Instant,error)",
+    "temporal.InstantPosition": "func InstantPosition(axis Axis, value types.Instant, limits Limits) (Position,error)",
+    "types.Instant": "type Instant int64; default millisecond codec; zero ordinary coordinate"
+  },
+  "candidate_files_sha256": {
+    "v5/pkg/temporal/instant.go": "d3c7b8ca7db6ce19e6bcadd2054e2602f7999829d24136a84d4a9535397fb719",
+    "v5/pkg/temporal/instant_test.go": "cf4873c50522b8c5094e3d5e2aff09aab07e96843eefc3ab49ef2867915ebba2",
+    "v5/pkg/temporal/testdata/default-instant-units-v0.json": "cacdde7acb9d891b825089bc3c08e362b0b28922ec2827f4ff32068c9d2e8798",
+    "v5/pkg/temporal/unit_conversion.go": "c546886ee0476f71b80668e8beb230b4eed5a9419cfd1c5486efacb0f885ee0b",
+    "v5/pkg/temporal/unit_conversion_test.go": "fbaf334d7f2d502c82061e0d9debd9c4bf970b7522fcb6172bcb4f9814d3536f",
+    "v5/pkg/types/instant.go": "59e7d1134c4623d7a24b044ceb991abd0464d1c9c4a7d1c37077f6eed0b17ca7"
+  },
+  "canonical_go_patch_applied": false,
+  "current_applicability": {
+    "active_owner_draft_sha256": {
+      "v5/pkg/temporal/instant.go": "3157b4ca5756a037b9ae3047ce298356ffe4ba0b0b0acc05b31987d71deca674",
+      "v5/pkg/temporal/instant_test.go": "7041943a95007268e5721ac4a3147445fd5f6de8b5c87451b603ad85b6e0fb6f",
+      "v5/pkg/temporal/unit.go": "0c8455eae0b085e06c6f6b3ea985651ed59093babd8e6dff1d8da30b3bf30122",
+      "v5/pkg/temporal/unit_test.go": "04bd6cdea7cc12fa6fff90568ccb58556c9111d00310d45f5103f5272d3944fc"
+    },
+    "command": "git apply --check docs/v5/reference/independent/candidates/instant-units/instant-units.patch",
+    "cwd": ".",
+    "draft_boundary": "Current drafts are not a committed defect. Actual owner source/golden conformance review remains separate and pending.",
+    "existing_relevant_source_drift": [],
+    "exit": 1,
+    "head": "22f80a4f6e30385174a35a35c48d0d98e81f55d3",
+    "mutated_canonical_go": false,
+    "result": "New-file collisions with active independently authored owner drafts; do not apply this alternative."
+  },
+  "existing_source_files_changed": [],
+  "fixture_id_mapping": {
+    "AxisID_first_byte": {
+      "default-ms-explicit-test": 3,
+      "ms-Q": 2,
+      "ms-Z": 1
+    },
+    "identity_not_truncated_or_shape_derived": true,
+    "kind": "explicit test-only table; no production default identity",
+    "preserved_fields": [
+      "profile",
+      "reference",
+      "unit",
+      "version"
+    ],
+    "remaining_15_bytes": 0
+  },
+  "golden_extraction": {
+    "complete_ordered_record_arrays_compared_equal": true,
+    "evidence": "golden-extraction-proof.json",
+    "evidence_sha256": "d078bec1b98b93a0dd4361f03b7ffd1a2a478d693366a005acda8c21efa5cfa8",
+    "full_source_cases": 42,
+    "ids": [
+      "V0-units-us-to-ms-Z-1000",
+      "V0-units-us-to-ms-Q-1",
+      "V0-units-us-to-ms-Q-1001",
+      "V0-units-us-to-ms-Z-1",
+      "V0-default-ms-identity",
+      "V0-default-instant-codec-range",
+      "V0-order-only-no-seconds"
+    ],
+    "method": "Parsed full unchanged42-case corpus, selected all seven V0 records and compared complete ordered JSON objects with bundled testdata, independently of its header hash; per-record canonical content hashes are retained.",
+    "original16_52_sha256": "0598d593bd39ccf95ea2737bb55b0358631cfc6009a03f35b8f39101a7a4f6f2",
+    "provenance_sha256": "d3441b19e83768479503e5fac9ee6788fa319ef463ff74f6192aeb2043baeea6",
+    "selected_records": 7,
+    "source_corpus_sha256": "263de8c0c2bfd078747bd26cc46c0b3e2f5897b264698bc2f891e5c0eeb06f85"
+  },
+  "historical_apply_check": {
+    "exit_code": 0,
+    "head": "06c7fa25ad943248fb552959422e84f348284678",
+    "read_only": true
+  },
+  "own_scoped_validation": {
+    "command_normalization": "Executable represented portably as go; actual direct pinned compiler avoided downloads. Coverage destination normalized to a module-local filename; flags/scopes unchanged.",
+    "commands": [
+      {
+        "command": "go test -count=1 ./pkg/temporal ./pkg/types",
+        "compiler": "go1.26.9",
+        "cwd": "v5",
+        "exit": 0,
+        "kind": "normal",
+        "log_sha256": "d407ddfee2fb73ba4df58761538c478cdeea4f2823b6da1e8b0507a555f9476d"
+      },
+      {
+        "command": "go test -race -count=1 ./pkg/temporal ./pkg/types",
+        "compiler": "go1.26.9",
+        "cwd": "v5",
+        "exit": 0,
+        "kind": "race",
+        "log_sha256": "1edaf194d341fab37d3a24df2b83febe0dcaebd64e027a95404fab3068f606da"
+      },
+      {
+        "command": "go vet ./pkg/temporal ./pkg/types",
+        "compiler": "go1.26.9",
+        "cwd": "v5",
+        "exit": 0,
+        "kind": "vet",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "command": "go test -count=1 -coverprofile=instant-units.cover.out ./pkg/temporal ./pkg/types",
+        "compiler": "go1.26.9",
+        "cwd": "v5",
+        "exit": 0,
+        "kind": "coverage",
+        "log_sha256": "2372d22814ddd930a74deadfe610b3aad813045d3c1bfe9ba3e8febdd4f6e22b"
+      },
+      {
+        "command": "go build ./...",
+        "compiler": "go1.26.9",
+        "cwd": "v5",
+        "exit": 0,
+        "kind": "module-build",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ],
+    "compiler": "direct cached go1.26.9 darwin/arm64",
+    "coverage": {
+      "new_implementation_files": {
+        "instant.go": {
+          "covered_statements": 53,
+          "percent": 100.0,
+          "total_statements": 53
+        },
+        "unit_conversion.go": {
+          "covered_statements": 50,
+          "percent": 96.15384615384616,
+          "total_statements": 52
+        }
+      },
+      "temporal_percent": 95.3,
+      "types_Instant": "declaration-only named int64; no executable statements/methods. Directly exercised from temporal tests including underlying-kind, zero and min/max boundaries.",
+      "zero_coverage_functions": []
+    },
+    "environment": {
+      "GOPROXY": "off",
+      "GOSUMDB": "off",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off"
+    },
+    "scope": "Frozen full v5 source plus this six-file alternative; not current owner drafts or full release/CI.",
+    "tests": "Seven unchanged goldens, boundary/malformed/error/backing-immutability cases,300 independent big.Rat comparisons, shared-wide-input and refusal immutability."
+  },
+  "parent_focused_race": {
+    "command": "GOTOOLCHAIN=go1.26.9 GOWORK=off go test -race -count=1 -run '^Test(InstantUnitsSevenUnchangedGoldens|CoordinateUnitsAgainstIndependentBigRat|InstantDecodeRejectsMalformedAndConflictingAxes|CoordinateUnitsShareImmutableWideInputs)$' ./pkg/temporal",
+    "cwd": "v5",
+    "evidence": "parent tool/session transcript; no standalone log hash",
+    "exit_code": 0,
+    "scope": "accepted isolated candidate; distinct from complete scoped normal/race/vet/coverage",
+    "seconds": 1.333
+  },
+  "patch": "instant-units.patch",
+  "patch_sha256": "e3c528f09aced8b1c7ea2961e3f141fbacc52b765a0d89bb5ed406ec6a3f50d7",
+  "proof_limits": [
+    "Candidate conformance for seven selected numeric cases only, not full V0/V1/V2/V4/V6 or release acceptance.",
+    "No default axis registry, production graph/consumer adapter, legacy zero-sentinel importer or migration ambiguity handling.",
+    "Numeric codec extraction is not a reference-system map; point arithmetic does not certify interval-domain conversion.",
+    "Codec limits/resource budgets are separate from mathematical domain semantics and physical row-layout/throughput/heap/RSS/capacity acceptance."
+  ],
+  "red_before_implementation": {
+    "command": "go test -count=1 ./pkg/temporal",
+    "compiler": "go1.26.9",
+    "cwd": "v5",
+    "kind": "honest absent-API compile-red, not existing semantic defect reproduction",
+    "log_sha256": "9383ee218302be431a2e65a65727dce564a3e7cb759b229d2c4d4b284d72eed1",
+    "observed": "New pkg/types and Instant/unit APIs absent from original source; no production stubs introduced."
+  },
+  "schema_version": 1,
+  "scope": "Default int64 millisecond codec and exact explicit scalar point unit arithmetic; selected seven V0 records only.",
+  "semantics": [
+    "Named int64 types.Instant is a millisecond codec; zero is ordinary. All axes/ID/Reference/unit/profile/version are caller supplied.",
+    "Default codec wrappers reuse unchanged provisional TP bytes. Numeric-only extraction checks millisecond Z/Q, limits, integrality and int64 range; no reference mapping is implied.",
+    "Exact equal-unit identity may preserve ordinal/unknown unit spellings. Only unequal microsecond/millisecond scaling is implemented; unsupported pairs explicitly refuse without alias normalization.",
+    "Rational cancellation precedes multiplication, with bounded input/result magnitudes and at most10 extra fixed-factor scratch bits. General wider Z/fractional Q remain supported.",
+    "No clock/calendar/solver, guessed epoch/reference, temporal interpretation, affine-origin or interval-domain support conversion. Public names/API/wire remain provisional before V2 freeze."
+  ],
+  "source_capture_stable": true,
+  "source_files_sha256": {
+    "docs/v5/PLAN.md": "0f7c3ef438545656a490f02869fb8a7e859cbc9ff66763de1b1199da74b711df",
+    "docs/v5/reference/independent/provenance.json": "d3441b19e83768479503e5fac9ee6788fa319ef463ff74f6192aeb2043baeea6",
+    "docs/v5/reference/independent/temporal/generate_corpus.py": "737166ad789f4aa583ae8cecd3f86d50c8b4417723e3432f830d3b10b90a1e9e",
+    "docs/v5/reference/independent/temporal/reference_model.py": "863390e7b81c11d8e4ea28749c159c840321358211797bc9ff39cc658ba19ab3",
+    "docs/v5/reference/independent/temporal/revised-acceptance-v1.json": "263de8c0c2bfd078747bd26cc46c0b3e2f5897b264698bc2f891e5c0eeb06f85",
+    "docs/v5/reference/temporal-fixtures.json": "0598d593bd39ccf95ea2737bb55b0358631cfc6009a03f35b8f39101a7a4f6f2",
+    "v5/go.mod": "3bf8baf02d354420ddf87b8865f20b854bb606f04e0f0988f0f9eed2d89e8a24",
+    "v5/go.sum": "5679a7aa94d5ee71f5737dea65a4fa71ed69109c45b877b1dd1639ae5e6e60f0",
+    "v5/pkg/temporal/allen.go": "b8762552654593bbf2b87f62f0cfe85722d5f5d994b464aba9355bfd5d0b8c8f",
+    "v5/pkg/temporal/allen_test.go": "afbe53a4c6ae1695e2b89222075ae8389b61c8371553795ebc90f2e9fa646222",
+    "v5/pkg/temporal/axis.go": "c6f672daf1bc1979be4a0991444c5bf5e40eded88c7bdd2c001e24e2607a2a5e",
+    "v5/pkg/temporal/bound.go": "f65cf073ec45ccefd6b2006204167a0b839be7b22c150a6ede6cf95e1697b97e",
+    "v5/pkg/temporal/codec.go": "97e67a974d278997be72a2a65cbdcf039805e399c046803021fe8dfaaf7963fc",
+    "v5/pkg/temporal/codec_test.go": "cda2e0dbb82c6d130759522e979def197bbf9d78d299640ed721e1819a603c8a",
+    "v5/pkg/temporal/descriptor.go": "d93432ed70c87fe0e5420ca9cb459f583fa8a1e0c56a4351b7f223617468be23",
+    "v5/pkg/temporal/descriptor_codec.go": "96a0064f562df2d30e675fa3d023dc2fc13bccf40d87c6d4a7e57c3e9848500b",
+    "v5/pkg/temporal/descriptor_test.go": "3fb7a4d2c0022e3bf3e1a397a24adc2e84ee04466a3fbc1356a9aff89d45c198",
+    "v5/pkg/temporal/errors.go": "0324eae6dfea8e2494c0f6e7cc7bdb2ed749d02681d9944903ff7aa833e48f40",
+    "v5/pkg/temporal/integer.go": "fdf59c1faf2d198cc095d95d926f38362692fe7a6dda260ea9c76601a5e3ed5a",
+    "v5/pkg/temporal/knowledge.go": "f23a5f45ff34d8c8c1b682504432c1707315c14eda03498b2dcf87815ec0b649",
+    "v5/pkg/temporal/knowledge_codec.go": "3f2873ae7e60e180465f681bb37ede26e9252f7c160f18832b2f4aa041af794a",
+    "v5/pkg/temporal/knowledge_test.go": "621b53a697cdaec4b6d970c6b5952bc669d70022e7abf42d7ee8d72294d259ed",
+    "v5/pkg/temporal/limits.go": "1816fd46c102f5f16b87a2c32e77abb09093d626e1d9c3cb5bb515512c2e1f24",
+    "v5/pkg/temporal/position.go": "09cb9644b6d490722a47eb304e9f24603cd34a8af563677a81d3085d9fdd354e",
+    "v5/pkg/temporal/predicates.go": "8d63be2b398f4d31d74d3f100c1d3f869ae664cc92a7797c93cd8c9fcc28e345",
+    "v5/pkg/temporal/rational.go": "e337c528a17c0247ae292b0ddb0bfd9a73476891d1e39364f4cbb6f024eb7b99",
+    "v5/pkg/temporal/region.go": "2375bbcb37831e54447a0ae5e4f5b563d9f7dff911c25d1aaf48ae3a58fb7585",
+    "v5/pkg/temporal/region_bench_test.go": "202c24db4c8a0084a18e492b25986f9fcf857bea4cfecd3afd3dc093d94d4da3",
+    "v5/pkg/temporal/region_test.go": "a3603045902b2527b49eb34cfa17e9c03f27cfac61fb2c53099b187e302e0953",
+    "v5/pkg/temporal/scalar_test.go": "76e102b35fafb1177ad891b9ca0ccef16052abad19c8ae08ed297f74a9678594",
+    "v5/pkg/temporal/scope.go": "0e28372362470f3caf92d6c17d37c82361a0874e39f288e0486a313a06af80f0",
+    "v5/pkg/temporal/scope_codec.go": "882c80513a7aaa61036d2d030227e74eb369fad2ef207a63cd3493c4dbdcc85a",
+    "v5/pkg/temporal/scope_codec_test.go": "6202a9c932244d7fb98f310883071589d26f57a52aa66779e40f7e722dc51635",
+    "v5/pkg/temporal/scope_errors.go": "51aa5d04f9336a9c6adc92993ef9d0a5afbcdcf7ff69029b4c8d4bf5577c3aa0"
+  },
+  "source_head": "87c493b0515c19f4896ec148094623fe66d104d8",
+  "status": "DATA FOR REVIEW, HISTORICAL ALTERNATIVE; PENDING SOURCE REVIEW / INTEGRATION",
+  "synthetic_test_sensitivity": {
+    "drop_fractional_denominator": {
+      "actual_exit": 1,
+      "behavioral_failure": true,
+      "expected_exit": 1,
+      "kind": "deliberate mutant only; not an existing production defect",
+      "log_sha256": "a36526e521f75b04dfc8bec443e13a30019cc2c785575cf0d87cb1cace21d8e2"
+    },
+    "ignore_unit_factor": {
+      "actual_exit": 1,
+      "behavioral_failure": true,
+      "expected_exit": 1,
+      "kind": "deliberate mutant only; not an existing production defect",
+      "log_sha256": "a2cd59b15df6826aebf17803728fe06a5844a2db16034af3394908d184113b34"
+    },
+    "uncancelled_intermediate": {
+      "actual_exit": 1,
+      "behavioral_failure": true,
+      "expected_exit": 1,
+      "kind": "deliberate mutant only; not an existing production defect",
+      "log_sha256": "9c7be3b3652dabf65dbe8e42f0c092425c9f031291dd67897c57081ba84aa873"
+    },
+    "wrap_codec_range": {
+      "actual_exit": 1,
+      "behavioral_failure": true,
+      "expected_exit": 1,
+      "kind": "deliberate mutant only; not an existing production defect",
+      "log_sha256": "ed7bfe4d63ff76c3f77f5271fdb40ee532ea85536b9e703b8860d205390cf52d"
+    }
+  }
+}

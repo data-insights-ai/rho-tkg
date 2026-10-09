@@ -127,3 +127,10 @@ Its unapplied Go test patch requires stock fixtures and an explicit external
 Copied transport-overlay behavior and parent archived-commit stock checks remain
 separate evidence. Full protocol Evidence, Fresh orchestration, ownership moves
 and whole V2/production graph acceptance are not claimed.
+
+
+[`candidates/instant-units/`](candidates/instant-units/README.md) contains a
+reviewed historical default-Instant/scalar-unit alternative and complete
+seven-record extraction evidence. Owner drafts now differ; source review and
+integration are pending. This data does not apply a patch or establish a
+clock/reference/interval conversion or full phase/release verdict.

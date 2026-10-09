@@ -1,0 +1,54 @@
+{
+  "method": "Parsed original unchanged42-case JSON; selected the seven ordered V0 records; compared complete JSON record objects directly with bundled testdata cases, independently of the header hash. Per-record SHA256 uses sorted-key compact JSON for reproducible content equality.",
+  "full_source_cases": 42,
+  "selected_source_cases": 7,
+  "bundled_cases": 7,
+  "complete_record_arrays_equal": true,
+  "source_corpus_sha256": "263de8c0c2bfd078747bd26cc46c0b3e2f5897b264698bc2f891e5c0eeb06f85",
+  "current_canonical_corpus_sha256": "263de8c0c2bfd078747bd26cc46c0b3e2f5897b264698bc2f891e5c0eeb06f85",
+  "bundled_testdata_sha256": "cacdde7acb9d891b825089bc3c08e362b0b28922ec2827f4ff32068c9d2e8798",
+  "records": [
+    {
+      "id": "V0-units-us-to-ms-Z-1000",
+      "source_record_sha256": "670358d595e261e6315dffd1b68acaf411806afdfe546ef3788fadb37f704026",
+      "bundled_record_sha256": "670358d595e261e6315dffd1b68acaf411806afdfe546ef3788fadb37f704026",
+      "equal": true
+    },
+    {
+      "id": "V0-units-us-to-ms-Q-1",
+      "source_record_sha256": "8c05aef43190e2ee2802fe92578f7233328d25fbaee06b43e0fef96f1f004d29",
+      "bundled_record_sha256": "8c05aef43190e2ee2802fe92578f7233328d25fbaee06b43e0fef96f1f004d29",
+      "equal": true
+    },
+    {
+      "id": "V0-units-us-to-ms-Q-1001",
+      "source_record_sha256": "9fb5e5940d2d88eb059990248b943406187b2fa337d7b9a5c4f01bc1243b30c2",
+      "bundled_record_sha256": "9fb5e5940d2d88eb059990248b943406187b2fa337d7b9a5c4f01bc1243b30c2",
+      "equal": true
+    },
+    {
+      "id": "V0-units-us-to-ms-Z-1",
+      "source_record_sha256": "f252d5b6df1e5860b4d777bffc543b82fcc883eb24dcbedda11b7b7e6f3a49fe",
+      "bundled_record_sha256": "f252d5b6df1e5860b4d777bffc543b82fcc883eb24dcbedda11b7b7e6f3a49fe",
+      "equal": true
+    },
+    {
+      "id": "V0-default-ms-identity",
+      "source_record_sha256": "80da68930bf3dd2f0005604fdc842c3be96698c7e961769185ce5d1dbdb35203",
+      "bundled_record_sha256": "80da68930bf3dd2f0005604fdc842c3be96698c7e961769185ce5d1dbdb35203",
+      "equal": true
+    },
+    {
+      "id": "V0-default-instant-codec-range",
+      "source_record_sha256": "45f98863ea5c38886013608d6d11deda3be01ce965650888c48bca0a463bdd2d",
+      "bundled_record_sha256": "45f98863ea5c38886013608d6d11deda3be01ce965650888c48bca0a463bdd2d",
+      "equal": true
+    },
+    {
+      "id": "V0-order-only-no-seconds",
+      "source_record_sha256": "2f5b556733fdd73a06d9933f42b7cd532ace4d15b14ae41eace9a827627e0967",
+      "bundled_record_sha256": "2f5b556733fdd73a06d9933f42b7cd532ace4d15b14ae41eace9a827627e0967",
+      "equal": true
+    }
+  ]
+}

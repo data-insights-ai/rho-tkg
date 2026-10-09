@@ -1,0 +1,944 @@
+--- /dev/null
++++ b/v5/pkg/temporal/instant.go
+@@ -0,0 +1,119 @@
++package temporal
++
++import (
++	"errors"
++
++	"github.com/data-insights-ai/rho-tkg/v5/pkg/types"
++)
++
++var (
++	// ErrInstantCodecRange identifies an integral millisecond coordinate outside
++	// the default signed int64 codec. The mathematical Z/Q domain is unaffected.
++	ErrInstantCodecRange = errors.New("temporal: instant codec range exceeded")
++	// ErrNonintegralInstantCodec identifies an exact fractional millisecond that
++	// cannot be represented by the default Instant codec without rounding.
++	ErrNonintegralInstantCodec = errors.New("temporal: nonintegral instant codec coordinate")
++)
++
++func instantAxis(axis Axis, l Limits) error {
++	if err := axis.validate(); err != nil {
++		return err
++	}
++	if err := axis.validateDescriptorBudget(l); err != nil {
++		return err
++	}
++	if axis.desc.CanonicalUnit != millisecondUnit {
++		return ErrExplicitMappingRequired
++	}
++	if axis.desc.Profile != ProfileIntegerZ {
++		return ErrIncompatibleDomain
++	}
++	return nil
++}
++
++// InstantPosition places a bounded millisecond codec value on an explicitly
++// supplied IntegerZ millisecond axis. ID, Reference and version are never
++// invented. This constructs a point coordinate, not an interval or clock reading.
++func InstantPosition(axis Axis, value types.Instant, l Limits) (Position, error) {
++	l, err := l.resolved()
++	if err != nil {
++		return Position{}, err
++	}
++	if err := instantAxis(axis, l); err != nil {
++		return Position{}, err
++	}
++	p := Position{axis: axis, integer: Int64(int64(value))}
++	if err := p.validate(l); err != nil {
++		return Position{}, err
++	}
++	if positionWireBytes(p) > l.MaxValueBytes {
++		return Position{}, ErrResourceLimit
++	}
++	return p, nil
++}
++
++// InstantFromPosition extracts only an exact numeric millisecond codec value
++// from a validated Z/Q point. It does not map between reference systems or
++// retain axis identity in the bare numeric result. Fractions and out-of-range
++// integers refuse separately; neither the general Z nor Q domain is narrowed.
++func InstantFromPosition(p Position, l Limits) (types.Instant, error) {
++	l, err := l.resolved()
++	if err != nil {
++		return 0, err
++	}
++	if err := p.validate(l); err != nil {
++		return 0, err
++	}
++	if positionWireBytes(p) > l.MaxValueBytes {
++		return 0, ErrResourceLimit
++	}
++	if p.axis.desc.CanonicalUnit != millisecondUnit {
++		return 0, ErrExplicitMappingRequired
++	}
++	var n Integer
++	switch p.Profile() {
++	case ProfileIntegerZ:
++		n = p.integer
++	case ProfileRationalQ:
++		if compareInteger(p.rational.Denominator(), Int64(1)) != Equal {
++			return 0, ErrNonintegralInstantCodec
++		}
++		n = p.rational.num
++	default:
++		return 0, ErrIncompatibleDomain
++	}
++	value, fits := n.Int64()
++	if !fits {
++		return 0, ErrInstantCodecRange
++	}
++	return types.Instant(value), nil
++}
++
++// AppendInstant uses the existing provisional TP position format on an explicit
++// IntegerZ millisecond axis. It introduces no new wire version or physical row
++// layout. Refusal preserves dst's length and every byte of its backing storage.
++func AppendInstant(dst []byte, value types.Instant, axis Axis, l Limits) ([]byte, error) {
++	p, err := InstantPosition(axis, value, l)
++	if err != nil {
++		return dst, err
++	}
++	return AppendPosition(dst, p, l)
++}
++
++// DecodeInstant validates the existing provisional TP frame and supplied
++// IntegerZ millisecond axis before applying the signed int64 codec range.
++// Generic DecodePosition still accepts exact wider Z and fractional Q values.
++func DecodeInstant(src []byte, axis Axis, l Limits) (types.Instant, error) {
++	l, err := l.resolved()
++	if err != nil {
++		return 0, err
++	}
++	if err := instantAxis(axis, l); err != nil {
++		return 0, err
++	}
++	p, err := DecodePosition(src, axis, l)
++	if err != nil {
++		return 0, err
++	}
++	return InstantFromPosition(p, l)
++}
+--- /dev/null
++++ b/v5/pkg/temporal/instant_test.go
+@@ -0,0 +1,246 @@
++package temporal
++
++import (
++	"bytes"
++	"encoding/json"
++	"errors"
++	"math"
++	"reflect"
++	"strconv"
++	"testing"
++
++	"github.com/data-insights-ai/rho-tkg/v5/pkg/types"
++)
++
++func testInstantCodecGolden(t *testing.T, raw json.RawMessage) {
++	t.Helper()
++	var golden struct {
++		Minimum    string `json:"minimum_ms"`
++		Maximum    string `json:"maximum_ms"`
++		Below      string `json:"below_minimum"`
++		Above      string `json:"above_maximum"`
++		Fractional string `json:"fractional_ms"`
++		DenseQ     string `json:"general_dense_Q_value"`
++	}
++	if err := json.Unmarshal(raw, &golden); err != nil {
++		t.Fatal(err)
++	}
++	if golden.Below != "INSTANT_CODEC_RANGE" || golden.Above != "INSTANT_CODEC_RANGE" || golden.Fractional != "NONINTEGRAL_INSTANT_CODEC" || golden.DenseQ != "1/1000 remains exact" {
++		t.Fatal("codec golden changed", golden)
++	}
++	z := instantUnitAxis(t, ProfileIntegerZ, 30, "explicit-default-test-reference", "millisecond")
++	q := instantUnitAxis(t, ProfileRationalQ, 31, "explicit-dense-test-reference", "millisecond")
++	for _, text := range []string{golden.Minimum, golden.Maximum, "0", "-123"} {
++		p, err := ConvertCoordinateUnit(instantUnitRational(t, text), "millisecond", z, Limits{})
++		if err != nil {
++			t.Fatal(err)
++		}
++		i, err := InstantFromPosition(p, Limits{})
++		if err != nil || strconv.FormatInt(int64(i), 10) != text {
++			t.Fatal("bounded instant changed exact coordinate", text, i, err)
++		}
++		wire, err := AppendInstant(nil, i, z, Limits{})
++		if err != nil {
++			t.Fatal(err)
++		}
++		decoded, err := DecodeInstant(wire, z, Limits{})
++		if err != nil || decoded != i {
++			t.Fatal("bounded codec failed edge round-trip", text, decoded, err)
++		}
++		ordinary, err := AppendPosition(nil, p, Limits{})
++		if err != nil || !bytes.Equal(wire, ordinary) {
++			t.Fatal("new wire format invented", err)
++		}
++	}
++	for _, text := range []string{adjacentInstantText(t, golden.Minimum, -1), adjacentInstantText(t, golden.Maximum, 1)} {
++		p, err := ConvertCoordinateUnit(instantUnitRational(t, text), "millisecond", z, Limits{})
++		if err != nil {
++			t.Fatal(err)
++		}
++		if _, err := InstantFromPosition(p, Limits{}); !errors.Is(err, ErrInstantCodecRange) {
++			t.Fatal("wide Z narrowed or wrapped", text, err)
++		}
++		wire, err := AppendPosition(nil, p, Limits{})
++		if err != nil {
++			t.Fatal("general Z was incorrectly width-limited", err)
++		}
++		if _, err := DecodeInstant(wire, z, Limits{}); !errors.Is(err, ErrInstantCodecRange) || errors.Is(err, ErrInvalidEncoding) {
++			t.Fatal("valid generic wide Z accepted or labelled malformed by default codec", err)
++		}
++	}
++	p, err := ConvertCoordinateUnit(instantUnitRational(t, "1/1000"), "millisecond", q, Limits{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if _, err := InstantFromPosition(p, Limits{}); !errors.Is(err, ErrNonintegralInstantCodec) {
++		t.Fatal("fractional ms silently narrowed", err)
++	}
++	wire, err := AppendPosition(nil, p, Limits{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	decoded, err := DecodePosition(wire, q, Limits{})
++	if err != nil || instantUnitValue(t, decoded) != "1/1000" {
++		t.Fatal("dense Q was incorrectly reduced to Instant codec range", decoded, err)
++	}
++}
++
++func TestInstantNativeTypeZeroBoundariesAndQExtraction(t *testing.T) {
++	if reflect.TypeFor[types.Instant]().Kind() != reflect.Int64 {
++		t.Fatal("default Instant is not signed int64")
++	}
++	z := instantUnitAxis(t, ProfileIntegerZ, 40, "caller-reference", "millisecond")
++	q := instantUnitAxis(t, ProfileRationalQ, 41, "different-caller-reference", "millisecond")
++	for _, i := range []types.Instant{0, -1, 1, types.Instant(math.MinInt64), types.Instant(math.MaxInt64)} {
++		p, err := InstantPosition(z, i, Limits{})
++		if err != nil || p.Axis().Descriptor() != z.Descriptor() {
++			t.Fatal(i, p, err)
++		}
++		got, err := InstantFromPosition(p, Limits{})
++		if err != nil || got != i {
++			t.Fatal(i, got, err)
++		}
++		dense, err := RationalPosition(q, RationalInt64(int64(i)))
++		if err != nil {
++			t.Fatal(err)
++		}
++		got, err = InstantFromPosition(dense, Limits{})
++		if err != nil || got != i {
++			t.Fatal("numeric codec extraction guessed a reference mapping", i, got, err)
++		}
++	}
++	for _, text := range []string{"-1/1000", "1/3", "9223372036854775808"} {
++		p, err := RationalPosition(q, instantUnitRational(t, text))
++		if err != nil {
++			t.Fatal(err)
++		}
++		want := ErrNonintegralInstantCodec
++		if text == "9223372036854775808" {
++			want = ErrInstantCodecRange
++		}
++		if _, err := InstantFromPosition(p, Limits{}); !errors.Is(err, want) {
++			t.Fatal(text, err)
++		}
++	}
++	if _, err := InstantPosition(z, types.Instant(math.MinInt64), Limits{MaxMagnitudeBits: 63}); !errors.Is(err, ErrResourceLimit) {
++		t.Fatal(err)
++	}
++}
++
++func TestInstantAdmissionAndAppendBackingImmutability(t *testing.T) {
++	z := instantUnitAxis(t, ProfileIntegerZ, 50, "default-is-explicit", "millisecond")
++	q := instantUnitAxis(t, ProfileRationalQ, 51, "dense-is-explicit", "millisecond")
++	wrong := instantUnitAxis(t, ProfileIntegerZ, 52, "ordinal-is-explicit", "ordinal")
++	for _, c := range []struct {
++		axis Axis
++		l    Limits
++		want error
++	}{
++		{Axis{}, Limits{}, ErrInvalidAxis}, {wrong, Limits{}, ErrExplicitMappingRequired}, {q, Limits{}, ErrIncompatibleDomain},
++		{z, Limits{MaxValueBytes: 55}, ErrResourceLimit}, {z, Limits{MaxDescriptorBytes: 1}, ErrResourceLimit},
++		{z, Limits{MaxMagnitudeBits: 1}, ErrResourceLimit}, {z, Limits{MaxInputBytes: -1}, ErrInvalidLimits},
++	} {
++		backing := bytes.Repeat([]byte{0xa5}, 256)
++		prefix := backing[:4]
++		before := bytes.Clone(backing)
++		out, err := AppendInstant(prefix, 2, c.axis, c.l)
++		if !errors.Is(err, c.want) || len(out) != len(prefix) || !bytes.Equal(backing, before) {
++			t.Fatal("refused append changed caller backing", c, out, err)
++		}
++		if _, err := InstantPosition(c.axis, 2, c.l); !errors.Is(err, c.want) {
++			t.Fatal(c, err)
++		}
++	}
++	if _, err := InstantFromPosition(Position{}, Limits{}); !errors.Is(err, ErrInvalidPosition) {
++		t.Fatal(err)
++	}
++	p, _ := IntegerPosition(wrong, Int64(0))
++	if _, err := InstantFromPosition(p, Limits{}); !errors.Is(err, ErrExplicitMappingRequired) {
++		t.Fatal(err)
++	}
++	lex := instantUnitAxis(t, ProfileLexicographicQN, 53, "no-microstep-erasure", "millisecond")
++	lp, _ := LexPosition(lex, RationalInt64(0), Int64(0))
++	if _, err := InstantFromPosition(lp, Limits{}); !errors.Is(err, ErrIncompatibleDomain) {
++		t.Fatal(err)
++	}
++	good, _ := IntegerPosition(z, Int64(2))
++	for _, l := range []Limits{{MaxValueBytes: 55}, {MaxDescriptorBytes: 1}, {MaxMagnitudeBits: 1}} {
++		if _, err := InstantFromPosition(good, l); !errors.Is(err, ErrResourceLimit) {
++			t.Fatal(l, err)
++		}
++	}
++	if _, err := InstantFromPosition(good, Limits{MaxInputBytes: -1}); !errors.Is(err, ErrInvalidLimits) {
++		t.Fatal(err)
++	}
++}
++
++func TestInstantDecodeRejectsMalformedAndConflictingAxes(t *testing.T) {
++	z := instantUnitAxis(t, ProfileIntegerZ, 60, "supplied-A", "millisecond")
++	wire, err := AppendInstant(nil, types.Instant(math.MinInt64), z, Limits{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	for n := range len(wire) {
++		if _, err := DecodeInstant(wire[:n], z, Limits{}); !errors.Is(err, ErrInvalidEncoding) {
++			t.Fatal("truncated input accepted", n, err)
++		}
++	}
++	for _, c := range []struct {
++		offset int
++		want   error
++	}{{0, ErrInvalidEncoding}, {2, ErrUnknownVersion}, {3, ErrUnknownProfile}, {4, ErrAxisMismatch}, {20, ErrAxisMismatch}} {
++		bad := bytes.Clone(wire)
++		bad[c.offset] = 255
++		if _, err := DecodeInstant(bad, z, Limits{}); !errors.Is(err, c.want) || (errors.Is(c.want, ErrUnknownVersion) || errors.Is(c.want, ErrUnknownProfile)) && !errors.Is(err, ErrInvalidEncoding) {
++			t.Fatal(c, err)
++		}
++	}
++	if _, err := DecodeInstant(append(bytes.Clone(wire), 0), z, Limits{}); !errors.Is(err, ErrInvalidEncoding) {
++		t.Fatal(err)
++	}
++	changedReference := instantUnitAxis(t, ProfileIntegerZ, 60, "supplied-B", "millisecond")
++	if _, err := DecodeInstant(wire, changedReference, Limits{}); !errors.Is(err, ErrAxisMismatch) {
++		t.Fatal("definition conflict lost", err)
++	}
++	wrongUnit := instantUnitAxis(t, ProfileIntegerZ, 60, "supplied-A", "microsecond")
++	if _, err := DecodeInstant(wire, wrongUnit, Limits{}); !errors.Is(err, ErrExplicitMappingRequired) {
++		t.Fatal(err)
++	}
++	q := instantUnitAxis(t, ProfileRationalQ, 61, "supplied-dense", "millisecond")
++	if _, err := DecodeInstant(wire, q, Limits{}); !errors.Is(err, ErrIncompatibleDomain) {
++		t.Fatal(err)
++	}
++	if _, err := DecodeInstant(wire, Axis{}, Limits{}); !errors.Is(err, ErrInvalidAxis) {
++		t.Fatal(err)
++	}
++	for _, l := range []Limits{{MaxInputBytes: 1}, {MaxValueBytes: 1}, {MaxDescriptorBytes: 1}} {
++		if _, err := DecodeInstant(wire, z, l); !errors.Is(err, ErrResourceLimit) {
++			t.Fatal(l, err)
++		}
++	}
++	if _, err := DecodeInstant(wire, z, Limits{MaxInputBytes: -1}); !errors.Is(err, ErrInvalidLimits) {
++		t.Fatal(err)
++	}
++}
++
++func TestInstantCodecExactByteLimit(t *testing.T) {
++	axis := instantUnitAxis(t, ProfileIntegerZ, 72, "caller-exact-byte-reference", "millisecond")
++	l := Limits{MaxInputBytes: 63, MaxValueBytes: 63}
++	wire, err := AppendInstant(nil, types.Instant(math.MinInt64), axis, l)
++	if err != nil || len(wire) != 63 {
++		t.Fatal(len(wire), err)
++	}
++	got, err := DecodeInstant(wire, axis, l)
++	if err != nil || got != types.Instant(math.MinInt64) {
++		t.Fatal(got, err)
++	}
++	if _, err := DecodeInstant(wire, axis, Limits{MaxInputBytes: 62}); !errors.Is(err, ErrResourceLimit) {
++		t.Fatal(err)
++	}
++	backing := bytes.Repeat([]byte{0xb4}, 128)
++	before := bytes.Clone(backing)
++	out, err := AppendInstant(backing[:3], types.Instant(math.MinInt64), axis, Limits{MaxValueBytes: 62})
++	if !errors.Is(err, ErrResourceLimit) || len(out) != 3 || !bytes.Equal(backing, before) {
++		t.Fatal("one-byte-short append partially published", err)
++	}
++}
+--- /dev/null
++++ b/v5/pkg/temporal/testdata/default-instant-units-v0.json
+@@ -0,0 +1,108 @@
++{
++  "source_corpus_sha256": "263de8c0c2bfd078747bd26cc46c0b3e2f5897b264698bc2f891e5c0eeb06f85",
++  "cases": [
++    {
++      "expected": "1",
++      "id": "V0-units-us-to-ms-Z-1000",
++      "kind": "unit_mapping",
++      "mapping": "divide_by_1000",
++      "source_coordinate": "1000",
++      "source_unit": "microsecond",
++      "target_axis": {
++        "identity": "ms-Z",
++        "profile": "Z",
++        "reference": "explicit-ms-test-reference",
++        "unit": "millisecond",
++        "version": 1
++      }
++    },
++    {
++      "expected": "1/1000",
++      "id": "V0-units-us-to-ms-Q-1",
++      "kind": "unit_mapping",
++      "mapping": "divide_by_1000",
++      "source_coordinate": "1",
++      "source_unit": "microsecond",
++      "target_axis": {
++        "identity": "ms-Q",
++        "profile": "Q",
++        "reference": "explicit-ms-test-reference",
++        "unit": "millisecond",
++        "version": 1
++      }
++    },
++    {
++      "expected": "1001/1000",
++      "id": "V0-units-us-to-ms-Q-1001",
++      "kind": "unit_mapping",
++      "mapping": "divide_by_1000",
++      "source_coordinate": "1001",
++      "source_unit": "microsecond",
++      "target_axis": {
++        "identity": "ms-Q",
++        "profile": "Q",
++        "reference": "explicit-ms-test-reference",
++        "unit": "millisecond",
++        "version": 1
++      }
++    },
++    {
++      "expected_error": "INCOMPATIBLE_DOMAIN",
++      "id": "V0-units-us-to-ms-Z-1",
++      "kind": "unit_mapping",
++      "mapping": "divide_by_1000",
++      "source_coordinate": "1",
++      "source_unit": "microsecond",
++      "target_axis": {
++        "identity": "ms-Z",
++        "profile": "Z",
++        "reference": "explicit-ms-test-reference",
++        "unit": "millisecond",
++        "version": 1
++      }
++    },
++    {
++      "expected": "-123",
++      "id": "V0-default-ms-identity",
++      "kind": "unit_mapping",
++      "mapping": "identity",
++      "note": "Spec pins default Instant int64 millisecond codec; axis identity/reference itself is not guessed by this oracle.",
++      "source_coordinate": "-123",
++      "source_unit": "millisecond",
++      "target_axis": {
++        "identity": "default-ms-explicit-test",
++        "profile": "Z",
++        "reference": "fixture-default-reference",
++        "unit": "millisecond",
++        "version": 1
++      }
++    },
++    {
++      "expected": {
++        "above_maximum": "INSTANT_CODEC_RANGE",
++        "below_minimum": "INSTANT_CODEC_RANGE",
++        "fractional_ms": "NONINTEGRAL_INSTANT_CODEC",
++        "general_dense_Q_value": "1/1000 remains exact",
++        "maximum_ms": "9223372036854775807",
++        "minimum_ms": "-9223372036854775808"
++      },
++      "id": "V0-default-instant-codec-range",
++      "kind": "codec_contract",
++      "semantics": "Instant's signed int64 millisecond codec range is distinct from mathematical Z/Q domain."
++    },
++    {
++      "expected_error": "EXPLICIT_MAPPING_REQUIRED",
++      "id": "V0-order-only-no-seconds",
++      "kind": "unit_mapping",
++      "source_coordinate": "7",
++      "source_unit": "ordinal",
++      "target_axis": {
++        "identity": "default-ms-explicit-test",
++        "profile": "Z",
++        "reference": "fixture-default-reference",
++        "unit": "millisecond",
++        "version": 1
++      }
++    }
++  ]
++}
+--- /dev/null
++++ b/v5/pkg/temporal/unit_conversion.go
+@@ -0,0 +1,113 @@
++package temporal
++
++import (
++	"errors"
++	"math/big"
++	"strings"
++	"unicode/utf8"
++)
++
++var (
++	// ErrExplicitMappingRequired identifies an unequal unit pair without the
++	// scalar arithmetic mapping supplied by this candidate. Ordinal coordinates
++	// never acquire elapsed-time meaning from their numeric shape.
++	ErrExplicitMappingRequired = errors.New("temporal: explicit coordinate unit mapping required")
++	// ErrInvalidUnit identifies empty, whitespace-only or invalid UTF-8 source
++	// unit names. Valid spellings are exact, never trimmed or normalized.
++	ErrInvalidUnit = errors.New("temporal: invalid coordinate unit")
++)
++
++const millisecondUnit = "millisecond"
++const microsecondUnit = "microsecond"
++
++// ConvertCoordinateUnit performs explicitly requested scalar point arithmetic
++// and preserves the entire caller-supplied target axis. Exact equal-unit
++// identity also permits ordinal/unknown declared units. The only unequal unit
++// pairs implemented here are microsecond/millisecond, by exact factor 1000.
++// Z refuses fractional results; Q preserves them. Q×N declines because no
++// microstep or elapsed-time interpretation is supplied. This is not a mapping
++// between reference systems and does not convert scope/interval-domain support.
++// API and wire choices remain provisional before the distributed format freeze.
++func ConvertCoordinateUnit(value Rational, sourceUnit string, target Axis, l Limits) (Position, error) {
++	l, err := l.resolved()
++	if err != nil {
++		return Position{}, err
++	}
++	if len(sourceUnit) > l.MaxInputBytes {
++		return Position{}, ErrResourceLimit
++	}
++	if !utf8.ValidString(sourceUnit) || strings.TrimSpace(sourceUnit) == "" {
++		return Position{}, ErrInvalidUnit
++	}
++	if err := target.validate(); err != nil {
++		return Position{}, err
++	}
++	if err := target.validateDescriptorBudget(l); err != nil {
++		return Position{}, err
++	}
++	scale := 0
++	switch {
++	case sourceUnit == target.desc.CanonicalUnit:
++	case sourceUnit == microsecondUnit && target.desc.CanonicalUnit == millisecondUnit:
++		scale = -1
++	case sourceUnit == millisecondUnit && target.desc.CanonicalUnit == microsecondUnit:
++		scale = 1
++	default:
++		return Position{}, ErrExplicitMappingRequired
++	}
++	if target.desc.Profile != ProfileIntegerZ && target.desc.Profile != ProfileRationalQ {
++		return Position{}, ErrIncompatibleDomain
++	}
++	if err := value.validate(l); err != nil {
++		return Position{}, err
++	}
++	if integerWireBytes(value.num)+integerWireBytes(value.Denominator()) > l.MaxValueBytes {
++		return Position{}, ErrResourceLimit
++	}
++	if scale != 0 {
++		value, err = scaleMillisecondMicrosecond(value, scale > 0, l)
++		if err != nil {
++			return Position{}, err
++		}
++	}
++	var p Position
++	if target.desc.Profile == ProfileIntegerZ {
++		if compareInteger(value.Denominator(), Int64(1)) != Equal {
++			return Position{}, ErrIncompatibleDomain
++		}
++		p = Position{axis: target, integer: value.num}
++	} else {
++		p = Position{axis: target, rational: value}
++	}
++	if err := p.validate(l); err != nil {
++		return Position{}, err
++	}
++	if positionWireBytes(p) > l.MaxValueBytes {
++		return Position{}, ErrResourceLimit
++	}
++	return p, nil
++}
++
++func scaleMillisecondMicrosecond(value Rational, multiply bool, l Limits) (Rational, error) {
++	if value.num.Sign() == 0 {
++		return Rational{}, nil
++	}
++	// Input magnitudes were checked before any big.Int copies. Cancellation
++	// avoids refusing a representable result due to an unreduced intermediate.
++	// The fixed factor adds at most 10 scratch bits, never unbounded arithmetic.
++	num, den := value.num.bigCopy(), value.Denominator().bigCopy()
++	factor := big.NewInt(1000)
++	g := new(big.Int)
++	if multiply {
++		g.GCD(nil, nil, den, factor)
++		den.Quo(den, g)
++		factor.Quo(factor, g)
++		num.Mul(num, factor)
++	} else {
++		g.GCD(nil, nil, num, factor)
++		num.Quo(num, g)
++		factor.Quo(factor, g)
++		den.Mul(den, factor)
++	}
++	return Fraction(ownedInteger(num), ownedInteger(den), l)
++}
+--- /dev/null
++++ b/v5/pkg/temporal/unit_conversion_test.go
+@@ -0,0 +1,332 @@
++package temporal
++
++import (
++	_ "embed"
++	"encoding/json"
++	"errors"
++	"math"
++	"math/big"
++	"math/rand/v2"
++	"strconv"
++	"strings"
++	"sync"
++	"testing"
++)
++
++//go:embed testdata/default-instant-units-v0.json
++var instantUnitGoldens []byte
++
++func instantUnitAxis(t *testing.T, profile Profile, id byte, reference, unit string) Axis {
++	t.Helper()
++	a, err := NewAxis(AxisDescriptor{ID: AxisID{id}, Profile: profile, Version: 1, Reference: reference, CanonicalUnit: unit}, Limits{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	return a
++}
++func instantUnitRational(t *testing.T, text string) Rational {
++	t.Helper()
++	r, err := ParseRational(text, Limits{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	return r
++}
++func instantUnitValue(t *testing.T, p Position) string {
++	t.Helper()
++	if i, ok := p.Integer(); ok {
++		return i.String()
++	}
++	if q, ok := p.Rational(); ok {
++		return q.String()
++	}
++	t.Fatal("unexpected point profile", p.Profile())
++	return ""
++}
++
++type instantGoldenAxis struct {
++	Identity  string `json:"identity"`
++	Profile   string `json:"profile"`
++	Reference string `json:"reference"`
++	Unit      string `json:"unit"`
++	Version   uint16 `json:"version"`
++}
++type instantUnitGolden struct {
++	ID               string             `json:"id"`
++	Kind             string             `json:"kind"`
++	SourceUnit       string             `json:"source_unit"`
++	SourceCoordinate string             `json:"source_coordinate"`
++	TargetAxis       *instantGoldenAxis `json:"target_axis"`
++	Mapping          string             `json:"mapping"`
++	Note             string             `json:"note"`
++	Semantics        string             `json:"semantics"`
++	Expected         json.RawMessage    `json:"expected"`
++	ExpectedError    string             `json:"expected_error"`
++}
++
++func loadInstantUnitGoldens(t *testing.T) []instantUnitGolden {
++	t.Helper()
++	var corpus struct {
++		SourceHash string              `json:"source_corpus_sha256"`
++		Cases      []instantUnitGolden `json:"cases"`
++	}
++	if err := json.Unmarshal(instantUnitGoldens, &corpus); err != nil {
++		t.Fatal(err)
++	}
++	if corpus.SourceHash != "263de8c0c2bfd078747bd26cc46c0b3e2f5897b264698bc2f891e5c0eeb06f85" || len(corpus.Cases) != 7 {
++		t.Fatal("unit goldens changed", corpus.SourceHash, len(corpus.Cases))
++	}
++	return corpus.Cases
++}
++func fixtureInstantAxis(t *testing.T, a *instantGoldenAxis) Axis {
++	t.Helper()
++	if a == nil {
++		t.Fatal("golden lacks explicit axis")
++	}
++	// This declared fixture-only table maps model identities to native IDs.
++	// It does not infer a production reference system or truncate string IDs.
++	ids := map[string]byte{"ms-Z": 1, "ms-Q": 2, "default-ms-explicit-test": 3}
++	id, ok := ids[a.Identity]
++	if !ok || a.Version != 1 {
++		t.Fatal("unknown fixture axis", a)
++	}
++	profile := ProfileIntegerZ
++	if a.Profile == "Q" {
++		profile = ProfileRationalQ
++	} else if a.Profile != "Z" {
++		t.Fatal("unknown fixture profile", a.Profile)
++	}
++	return instantUnitAxis(t, profile, id, a.Reference, a.Unit)
++}
++
++func TestInstantUnitsSevenUnchangedGoldens(t *testing.T) {
++	seen := map[string]bool{}
++	for _, c := range loadInstantUnitGoldens(t) {
++		t.Run(c.ID, func(t *testing.T) {
++			if seen[c.ID] {
++				t.Fatal("duplicate golden", c.ID)
++			}
++			seen[c.ID] = true
++			if c.Kind == "codec_contract" {
++				testInstantCodecGolden(t, c.Expected)
++				return
++			}
++			if c.Kind != "unit_mapping" {
++				t.Fatal("unexpected golden kind", c.Kind)
++			}
++			a := fixtureInstantAxis(t, c.TargetAxis)
++			value := instantUnitRational(t, c.SourceCoordinate)
++			before := value.String()
++			p, err := ConvertCoordinateUnit(value, c.SourceUnit, a, Limits{})
++			if c.ExpectedError != "" {
++				want := map[string]error{"INCOMPATIBLE_DOMAIN": ErrIncompatibleDomain, "EXPLICIT_MAPPING_REQUIRED": ErrExplicitMappingRequired}[c.ExpectedError]
++				if want == nil || !errors.Is(err, want) || p.Profile() != 0 {
++					t.Fatal(c.ExpectedError, p, err)
++				}
++				return
++			}
++			var expected string
++			if err := json.Unmarshal(c.Expected, &expected); err != nil {
++				t.Fatal(err)
++			}
++			if err != nil || instantUnitValue(t, p) != expected || p.Axis().Descriptor() != a.Descriptor() || p.Axis().DefinitionHash() != a.DefinitionHash() || value.String() != before {
++				t.Fatal("conversion lost golden value/axis or changed input", p, err)
++			}
++			wire, err := AppendPosition(nil, p, Limits{})
++			if err != nil {
++				t.Fatal(err)
++			}
++			decoded, err := DecodePosition(wire, a, Limits{})
++			if err != nil || instantUnitValue(t, decoded) != expected {
++				t.Fatal("generic exact coordinate changed through bytes", decoded, err)
++			}
++		})
++	}
++}
++
++func TestCoordinateUnitsCancellationWideningAndRefusal(t *testing.T) {
++	msZ := instantUnitAxis(t, ProfileIntegerZ, 10, "supplied-reference", "millisecond")
++	usZ := instantUnitAxis(t, ProfileIntegerZ, 11, "supplied-reference", "microsecond")
++	msQ := instantUnitAxis(t, ProfileRationalQ, 12, "supplied-reference", "millisecond")
++	for _, c := range []struct {
++		input, from string
++		axis        Axis
++		want        string
++	}{
++		{"0", "microsecond", msZ, "0"}, {"-1000", "microsecond", msZ, "-1"}, {"-1", "microsecond", msQ, "-1/1000"},
++		{"997/1000", "millisecond", usZ, "997"}, {"-997/1000", "millisecond", usZ, "-997"},
++		{"9223372036854775807", "millisecond", usZ, "9223372036854775807000"}, {"-9223372036854775808", "millisecond", usZ, "-9223372036854775808000"},
++		{"9223372036854775807000", "microsecond", msZ, "9223372036854775807"}, {"-9223372036854775808000", "microsecond", msZ, "-9223372036854775808"},
++		{"9223372036854775808000", "microsecond", msZ, "9223372036854775808"},
++	} {
++		r := instantUnitRational(t, c.input)
++		before := r.String()
++		p, err := ConvertCoordinateUnit(r, c.from, c.axis, Limits{})
++		if err != nil || instantUnitValue(t, p) != c.want || r.String() != before {
++			t.Fatal(c, p, err)
++		}
++	}
++	value := instantUnitRational(t, "997/1000")
++	p, err := ConvertCoordinateUnit(value, "millisecond", usZ, Limits{MaxMagnitudeBits: 10})
++	if err != nil || instantUnitValue(t, p) != "997" {
++		t.Fatal("uncancelled intermediate falsely refused representable result", p, err)
++	}
++	if _, err := ConvertCoordinateUnit(value, "millisecond", usZ, Limits{MaxMagnitudeBits: 9}); !errors.Is(err, ErrResourceLimit) {
++		t.Fatal("oversized input escaped via cancellation", err)
++	}
++	if _, err := ConvertCoordinateUnit(RationalInt64(0), "microsecond", msQ, Limits{MaxMagnitudeBits: 1}); err != nil {
++		t.Fatal("fixed scaling factor treated as stored coordinate", err)
++	}
++	if _, err := ConvertCoordinateUnit(RationalInt64(1), "microsecond", msQ, Limits{MaxMagnitudeBits: 9}); !errors.Is(err, ErrResourceLimit) {
++		t.Fatal("oversized resulting denominator accepted", err)
++	}
++	if _, err := ConvertCoordinateUnit(RationalInt64(math.MaxInt64), "millisecond", usZ, Limits{MaxMagnitudeBits: 64}); !errors.Is(err, ErrResourceLimit) {
++		t.Fatal("scaled magnitude overflow hidden", err)
++	}
++	for _, text := range []string{"1", "-1", "1001", "-1001"} {
++		if _, err := ConvertCoordinateUnit(instantUnitRational(t, text), "microsecond", msZ, Limits{}); !errors.Is(err, ErrIncompatibleDomain) {
++			t.Fatal("fractional Z coordinate rounded", text, err)
++		}
++	}
++}
++
++func TestCoordinateUnitsDeclaredIdentityAndMalformedInputs(t *testing.T) {
++	ms := instantUnitAxis(t, ProfileIntegerZ, 20, "reference-is-supplied", "millisecond")
++	ordinal := instantUnitAxis(t, ProfileIntegerZ, 21, "ordinal-reference", "ordinal")
++	seconds := instantUnitAxis(t, ProfileRationalQ, 22, "seconds-reference", "second")
++	unknown := instantUnitAxis(t, ProfileRationalQ, 23, "model-reference", "unregistered-unit")
++	spelled := instantUnitAxis(t, ProfileRationalQ, 24, "spelled-reference", " millisecond ")
++	for _, c := range []struct {
++		axis        Axis
++		unit, value string
++	}{{ordinal, "ordinal", "7"}, {unknown, "unregistered-unit", "1/3"}, {spelled, " millisecond ", "-1/3"}} {
++		p, err := ConvertCoordinateUnit(instantUnitRational(t, c.value), c.unit, c.axis, Limits{})
++		if err != nil || instantUnitValue(t, p) != c.value || p.Axis().Descriptor() != c.axis.Descriptor() {
++			t.Fatal("declared identity converted or guessed semantics", c, p, err)
++		}
++	}
++	for _, c := range []struct {
++		axis Axis
++		unit string
++	}{{ms, "ordinal"}, {seconds, "ordinal"}, {ordinal, "millisecond"}, {ms, " millisecond "}, {ms, "MILLISECOND"}, {seconds, "millisecond"}} {
++		if _, err := ConvertCoordinateUnit(RationalInt64(0), c.unit, c.axis, Limits{}); !errors.Is(err, ErrExplicitMappingRequired) {
++			t.Fatal("unsupported unit pair inferred or zero bypassed admission", c, err)
++		}
++	}
++	for _, source := range []string{"", "  ", string([]byte{0xff})} {
++		if _, err := ConvertCoordinateUnit(RationalInt64(0), source, ms, Limits{}); !errors.Is(err, ErrInvalidUnit) {
++			t.Fatal(source, err)
++		}
++	}
++	if _, err := ConvertCoordinateUnit(RationalInt64(0), strings.Repeat("x", 65), ms, Limits{MaxInputBytes: 64}); !errors.Is(err, ErrResourceLimit) {
++		t.Fatal(err)
++	}
++	if _, err := ConvertCoordinateUnit(RationalInt64(0), "millisecond", Axis{}, Limits{}); !errors.Is(err, ErrInvalidAxis) {
++		t.Fatal(err)
++	}
++	if _, err := ConvertCoordinateUnit(RationalInt64(0), "millisecond", ms, Limits{MaxDescriptorBytes: 1}); !errors.Is(err, ErrResourceLimit) {
++		t.Fatal(err)
++	}
++	if _, err := ConvertCoordinateUnit(RationalInt64(0), "millisecond", ms, Limits{MaxValueBytes: 1}); !errors.Is(err, ErrResourceLimit) {
++		t.Fatal(err)
++	}
++	if _, err := ConvertCoordinateUnit(RationalInt64(0), "millisecond", ms, Limits{MaxInputBytes: -1}); !errors.Is(err, ErrInvalidLimits) {
++		t.Fatal(err)
++	}
++	lex := instantUnitAxis(t, ProfileLexicographicQN, 25, "no-inferred-microstep", "millisecond")
++	if _, err := ConvertCoordinateUnit(RationalInt64(0), "microsecond", lex, Limits{}); !errors.Is(err, ErrIncompatibleDomain) {
++		t.Fatal(err)
++	}
++	if _, err := ConvertCoordinateUnit(RationalInt64(0), "ordinal", lex, Limits{}); !errors.Is(err, ErrExplicitMappingRequired) {
++		t.Fatal(err)
++	}
++}
++
++func adjacentInstantText(t *testing.T, text string, delta int64) string {
++	t.Helper()
++	n, ok := new(big.Int).SetString(text, 10)
++	if !ok {
++		t.Fatal(text)
++	}
++	return n.Add(n, big.NewInt(delta)).String()
++}
++
++func TestCoordinateUnitsAgainstIndependentBigRat(t *testing.T) {
++	rng := rand.New(rand.NewPCG(0x413c, 0x921f))
++	for step := range 300 {
++		n := int64(rng.Uint64() >> 1)
++		if step%2 == 0 {
++			n = -n
++		}
++		d := int64(rng.Uint64()%10000) + 1
++		text := strconv.FormatInt(n, 10) + "/" + strconv.FormatInt(d, 10)
++		original := instantUnitRational(t, text)
++		expected, ok := new(big.Rat).SetString(text)
++		if !ok {
++			t.Fatal(text)
++		}
++		from, to := "microsecond", "millisecond"
++		if step%2 == 0 {
++			from, to = "millisecond", "microsecond"
++			expected.Mul(expected, big.NewRat(1000, 1))
++		} else {
++			expected.Quo(expected, big.NewRat(1000, 1))
++		}
++		profile := ProfileRationalQ
++		if step%3 == 0 {
++			profile = ProfileIntegerZ
++		}
++		axis := instantUnitAxis(t, profile, 70, "explicit-property-reference", to)
++		got, err := ConvertCoordinateUnit(original, from, axis, Limits{})
++		if profile == ProfileIntegerZ && !expected.IsInt() {
++			if !errors.Is(err, ErrIncompatibleDomain) {
++				t.Fatal(text, expected, got, err)
++			}
++			continue
++		}
++		if err != nil || instantUnitValue(t, got) != expected.RatString() {
++			t.Fatal(text, expected, got, err)
++		}
++	}
++}
++
++func TestCoordinateUnitsShareImmutableWideInputs(t *testing.T) {
++	value := instantUnitRational(t, "123456789012345678901234567890/1000")
++	before := value.String()
++	axis := instantUnitAxis(t, ProfileIntegerZ, 71, "supplied-concurrent-reference", "microsecond")
++	var wg sync.WaitGroup
++	for range 4 {
++		wg.Go(func() {
++			for range 100 {
++				got, err := ConvertCoordinateUnit(value, "millisecond", axis, Limits{})
++				if err != nil {
++					t.Error(err)
++					return
++				}
++				integer, ok := got.Integer()
++				if !ok || integer.String() != "123456789012345678901234567890" {
++					t.Error("shared wide input changed", integer.String())
++					return
++				}
++			}
++		})
++	}
++	wg.Wait()
++	if value.String() != before {
++		t.Fatal("conversion mutated its immutable source", value.String(), before)
++	}
++}
++
++func TestCoordinateUnitsRefusalPreservesWideInput(t *testing.T) {
++	text := "123456789012345678901234567890"
++	value := instantUnitRational(t, text)
++	n, ok := new(big.Int).SetString(text, 10)
++	if !ok {
++		t.Fatal(text)
++	}
++	axis := instantUnitAxis(t, ProfileRationalQ, 73, "caller-refusal-reference", "microsecond")
++	p, err := ConvertCoordinateUnit(value, "millisecond", axis, Limits{MaxMagnitudeBits: n.BitLen()})
++	if !errors.Is(err, ErrResourceLimit) || p.Profile() != 0 || value.String() != text {
++		t.Fatal("refused scaling changed source or exposed a partial result", p, err, value.String())
++	}
++}
+--- /dev/null
++++ b/v5/pkg/types/instant.go
+@@ -0,0 +1,8 @@
++// Package types contains provisional scalar compatibility types for v5.
++package types
++
++// Instant is the signed int64 millisecond codec of a caller-supplied default
++// axis. Zero is an ordinary coordinate, never an absence or infinity sentinel.
++// The numeric value does not identify a clock, epoch or reference system.
++// This candidate does not freeze the public v5 API or physical storage format.
++type Instant int64
