@@ -1,0 +1,28 @@
+MUTANT internal/core/effective_timeline.go
+--- old
+	if now := c.peekNow(); pin > now {
+--- new
+	if now := c.peekNow(); false && pin > now {
+=== go test ./internal/core/ -run TestEffectiveTimeline|TestAtTx
+--- FAIL: TestEffectiveTimeline_Errors (0.23s)
+    --- FAIL: TestEffectiveTimeline_Errors/memory/node (0.00s)
+        effective_timeline_test.go:289: timeline future pin: err = <nil>, want errors.Is graph: transaction-time pin is ahead of the commit clock
+    --- FAIL: TestEffectiveTimeline_Errors/memory/rel (0.00s)
+        effective_timeline_test.go:289: timeline future pin: err = <nil>, want errors.Is graph: transaction-time pin is ahead of the commit clock
+    --- FAIL: TestEffectiveTimeline_Errors/badger/node (0.01s)
+        effective_timeline_test.go:289: timeline future pin: err = <nil>, want errors.Is graph: transaction-time pin is ahead of the commit clock
+    --- FAIL: TestEffectiveTimeline_Errors/badger/rel (0.01s)
+        effective_timeline_test.go:289: timeline future pin: err = <nil>, want errors.Is graph: transaction-time pin is ahead of the commit clock
+    --- FAIL: TestEffectiveTimeline_Errors/sharded/node (0.07s)
+        effective_timeline_test.go:289: timeline future pin: err = <nil>, want errors.Is graph: transaction-time pin is ahead of the commit clock
+    --- FAIL: TestEffectiveTimeline_Errors/sharded/rel (0.01s)
+        effective_timeline_test.go:289: timeline future pin: err = <nil>, want errors.Is graph: transaction-time pin is ahead of the commit clock
+    --- FAIL: TestEffectiveTimeline_Errors/tiered/node (0.10s)
+        effective_timeline_test.go:289: timeline future pin: err = <nil>, want errors.Is graph: transaction-time pin is ahead of the commit clock
+    --- FAIL: TestEffectiveTimeline_Errors/tiered/rel (0.03s)
+        effective_timeline_test.go:289: timeline future pin: err = <nil>, want errors.Is graph: transaction-time pin is ahead of the commit clock
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	27.700s
+FAIL
+
+exit=1

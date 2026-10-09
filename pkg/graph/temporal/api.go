@@ -55,6 +55,12 @@ type Ops interface {
 	NodesDuringTx(from, to, txAt types.Instant) ([]*types.Node, error)
 	RelsDuringTx(from, to, txAt types.Instant) ([]*types.Relationship, error)
 
+	// Effective timeline: NodeAtTx / RelAtTx for every valid instant at once.
+	NodeEffectiveTimeline(id types.NodeID, pin types.Instant) ([]NodeSegment, error)
+	RelEffectiveTimeline(id types.RelID, pin types.Instant) ([]RelSegment, error)
+	ForEachNodeEffectiveByLabel(label string, pin types.Instant, fn func(NodeSegment) bool) error
+	ForEachRelEffectiveByType(typeName string, pin types.Instant, fn func(RelSegment) bool) error
+
 	// Cascade / timeline edit: an append-only valid-time correction. props is
 	// a patch (nil deletes a key) applied to the state valid in each piece of
 	// [validFrom, validTo) as believed before the call; the newer belief wins
@@ -422,6 +428,68 @@ func (a *API) RelAtTx(id types.RelID, validAt, txAt types.Instant) (*types.Relat
 		return nil, err
 	}
 	return ops.RelAtTx(id, validAt, txAt)
+}
+
+// NodeEffectiveTimeline returns node id's state over valid time as recorded
+// at transaction-time pin: NodeSegments ascending by ValidFrom, half-open,
+// non-overlapping, gaps omitted, adjacent segments holding different rows.
+// For every valid instant t the segment containing t holds the row
+// NodeAtTx(id, t, pin) returns; none contains t where NodeAtTx answers
+// ErrNoVersionValidAt. ValidFrom is the effective start, never 0 (the ID's
+// mint instant for a row without a recorded valid-from); a deleted node's last
+// segment ends at the delete instant; a node created after the pin returns
+// nil, nil. Rows are shared frozen pointers (DeepCopy to mutate).
+//
+// NodeAsOf is the record door (the newest row recorded by a pin); this is the
+// state door's interval form. Errors: ErrNilGraph, ErrGraphClosed,
+// ErrInvalidTimeRange (pin <= 0), ErrTxPinTooNew (pin above the commit
+// clock), ErrHistoryCompacted, ErrRetentionExpired, ErrNodeNotFound,
+// ErrInvalidStoreMutation (invalid ID).
+func (a *API) NodeEffectiveTimeline(id types.NodeID, pin types.Instant) ([]NodeSegment, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.NodeEffectiveTimeline(id, pin)
+}
+
+// RelEffectiveTimeline is NodeEffectiveTimeline for relationships (the row
+// RelAtTx(id, t, pin) returns; ErrRelNotFound for an unknown ID). DECLARED
+// view: not masked by endpoint validity.
+func (a *API) RelEffectiveTimeline(id types.RelID, pin types.Instant) ([]RelSegment, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.RelEffectiveTimeline(id, pin)
+}
+
+// ForEachNodeEffectiveByLabel streams the effective timeline at pin of every
+// node that carried label in a row recorded by the pin — including nodes
+// deleted before the pin, which ByLabel{TxPin} drops — limited to the segments
+// whose row carries the label: at every valid instant t the segments
+// containing t are exactly ByLabel(label, {ValidAt: t, TxAt: pin}). Segments of
+// one node are contiguous and ascending; node order is unspecified; fn
+// returning false stops the scan. fn runs without graph locks. Errors: those
+// of NodeEffectiveTimeline's pin, ErrNilCallback, an invalid label; the
+// compaction / retention watermarks fail the whole scan.
+func (a *API) ForEachNodeEffectiveByLabel(label string, pin types.Instant, fn func(NodeSegment) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachNodeEffectiveByLabel(label, pin, fn)
+}
+
+// ForEachRelEffectiveByType is ForEachNodeEffectiveByLabel for relationships
+// of a type (segments equal ByType(typeName, {ValidAt: t, TxAt: pin}) at every
+// t; each listed relationship streams its whole timeline).
+func (a *API) ForEachRelEffectiveByType(typeName string, pin types.Instant, fn func(RelSegment) bool) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.ForEachRelEffectiveByType(typeName, pin, fn)
 }
 
 // NodesAtTx returns nodes valid at validAt as known at txAt.

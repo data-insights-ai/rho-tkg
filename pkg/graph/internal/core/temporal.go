@@ -278,10 +278,23 @@ func (c *Core) resolveNodeVersionAtCapped(chain []*types.Node, t types.Instant, 
 	// bound (nodeVersionBounds) — an untouched older row's ValidFrom must
 	// never truncate a newer, wider-reaching correction. See nodeOwnBounds'
 	// doc comment.
+	//
+	// A replacing write (Update, CloseVersion, …) ends every older belief
+	// that started at or before its row's start, there (supersessionCaps).
+	sc := getSupersessionScratch()
+	defer putSupersessionScratch(sc)
+	superseded := supersessionCaps(chain, c.nodeSortValidFrom, sc)
+	starts := sc.startsOf(len(chain)) // nodeOwnBounds' start, computed once
 	var best *types.Node
 	for i := range chain {
 		entry := chain[i]
-		vStart, vEnd := c.nodeOwnBounds(entry)
+		vStart, vEnd := starts[i], types.Instant(0) // nodeOwnBounds: own ValidTo, 0 = open
+		if tm := entry.Temporal(); tm != nil {
+			vEnd = tm.ValidTo
+		}
+		if superseded != nil {
+			vEnd = capEnd(vEnd, superseded[i])
+		}
 		vEnd = caps.end(entry, vEnd)
 		if vStart <= t && (vEnd == 0 || vEnd > t) {
 			if best == nil || nodeBeliefNewerThan(entry, best) {
@@ -404,17 +417,26 @@ func filterNodeChainByTxAt(chain []*types.Node, txAt types.Instant) []*types.Nod
 	}
 	out := make([]*types.Node, 0, len(chain))
 	for _, entry := range chain {
-		tm := entry.Temporal()
-		if !versionVisibleAtTx(tm, txAt) {
-			continue
+		if row, ok := nodeRowAtTx(entry, txAt); ok {
+			out = append(out, row)
 		}
-		if tm != nil && tm.DeletedAt > txAt {
-			entry = entry.DeepCopy()
-			normalizeTemporalVisibleAtTxTime(entry.Temporal(), txAt)
-		}
-		out = append(out, entry)
 	}
 	return out
+}
+
+// nodeRowAtTx is filterNodeChainByTxAt for one row (txAt > 0): false when the
+// row was recorded after txAt; else the row, or a normalized deep copy when
+// its delete stamps post-date txAt.
+func nodeRowAtTx(entry *types.Node, txAt types.Instant) (*types.Node, bool) {
+	tm := entry.Temporal()
+	if !versionVisibleAtTx(tm, txAt) {
+		return nil, false
+	}
+	if tm != nil && tm.DeletedAt > txAt {
+		entry = entry.DeepCopy()
+		normalizeTemporalVisibleAtTxTime(entry.Temporal(), txAt)
+	}
+	return entry, true
 }
 
 // filterRelChainByTxAt is the relationship counterpart of filterNodeChainByTxAt,
@@ -425,17 +447,24 @@ func filterRelChainByTxAt(chain []*types.Relationship, txAt types.Instant) []*ty
 	}
 	out := make([]*types.Relationship, 0, len(chain))
 	for _, entry := range chain {
-		tm := entry.Temporal()
-		if !versionVisibleAtTx(tm, txAt) {
-			continue
+		if row, ok := relRowAtTx(entry, txAt); ok {
+			out = append(out, row)
 		}
-		if tm != nil && tm.DeletedAt > txAt {
-			entry = entry.DeepCopy()
-			normalizeTemporalVisibleAtTxTime(entry.Temporal(), txAt)
-		}
-		out = append(out, entry)
 	}
 	return out
+}
+
+// relRowAtTx mirrors nodeRowAtTx.
+func relRowAtTx(entry *types.Relationship, txAt types.Instant) (*types.Relationship, bool) {
+	tm := entry.Temporal()
+	if !versionVisibleAtTx(tm, txAt) {
+		return nil, false
+	}
+	if tm != nil && tm.DeletedAt > txAt {
+		entry = entry.DeepCopy()
+		normalizeTemporalVisibleAtTxTime(entry.Temporal(), txAt)
+	}
+	return entry, true
 }
 
 // nodeOwnBounds returns [vStart, vEnd) using the row's OWN asserted end
@@ -557,11 +586,22 @@ func (c *Core) resolveRelVersionAtCapped(chain []*types.Relationship, t types.In
 		return nil, storepkg.ErrNoVersionValidAt
 	}
 
-	// BACKLOG 10b: own-interval bounds, not positional — see resolveNodeVersionAt.
+	// BACKLOG 10b: own-interval bounds, not positional — see resolveNodeVersionAt
+	// (also for the supersession cap).
+	sc := getSupersessionScratch()
+	defer putSupersessionScratch(sc)
+	superseded := supersessionCaps(chain, c.relSortValidFrom, sc)
+	starts := sc.startsOf(len(chain)) // relOwnBounds' start, computed once
 	var best *types.Relationship
 	for i := range chain {
 		entry := chain[i]
-		vStart, vEnd := c.relOwnBounds(entry)
+		vStart, vEnd := starts[i], types.Instant(0) // relOwnBounds: own ValidTo, 0 = open
+		if tm := entry.Temporal(); tm != nil {
+			vEnd = tm.ValidTo
+		}
+		if superseded != nil {
+			vEnd = capEnd(vEnd, superseded[i])
+		}
 		vEnd = caps.end(entry, vEnd)
 		if vStart <= t && (vEnd == 0 || vEnd > t) {
 			if best == nil || relBeliefNewerThan(entry, best) {

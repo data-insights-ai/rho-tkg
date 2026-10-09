@@ -77,6 +77,7 @@ func TestSentinelAliasesShareIdentity(t *testing.T) {
 
 		// History retention & compaction (ADR-0001) graph aliases of core.
 		"HistoryCompacted/graph=core":           {graphpkg.ErrHistoryCompacted, core.ErrHistoryCompacted},
+		"TxPinTooNew/graph=core":                {graphpkg.ErrTxPinTooNew, core.ErrTxPinTooNew},
 		"CompactionProtectedTag/graph=core":     {graphpkg.ErrCompactionProtectedTag, core.ErrCompactionProtectedTag},
 		"InvalidRetentionPolicy/graph=core":     {graphpkg.ErrInvalidRetentionPolicy, core.ErrInvalidRetentionPolicy},
 		"CompactionChangeLogEnabled/graph=core": {graphpkg.ErrCompactionChangeLogEnabled, core.ErrCompactionChangeLogEnabled},

@@ -1,0 +1,516 @@
+MUTANT internal/core/effective_timeline.go
+--- old
+			ivs[i].prio = p
+
+--- new
+			ivs[i].prio = -p
+
+=== go test ./internal/core/ -run TestEffectiveTimeline|TestAtTx|TestZero
+--- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor (3.56s)
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/memory/seed=23719 (0.06s)
+        effective_timeline_test.go:658: label B pin 1791573014000 valid 1269:
+             ByLabel map[797676716345393152:v2 {ValidFrom:673 ValidTo:2291 TxFrom:1791573007000 TxTo:0 CreatedAt:0 UpdatedAt:1791573007000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3 4] props=k=7 797676716354895872:v2 {ValidFrom:1269 ValidTo:0 TxFrom:1791573013000 TxTo:1791573015946 CreatedAt:0 UpdatedAt:1791573013000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3 4] props=k=11]
+             scan    map[797676716345393152:v2 {ValidFrom:673 ValidTo:2291 TxFrom:1791573007000 TxTo:0 CreatedAt:0 UpdatedAt:1791573007000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3 4] props=k=7 797676716354895872:v1 {ValidFrom:865 ValidTo:0 TxFrom:1791573012000 TxTo:0 CreatedAt:0 UpdatedAt:1791573012000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3 4] props=k=10]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/memory/seed=23720 (0.08s)
+        effective_timeline_test.go:658: label C pin 1791573042000 valid 4557:
+             ByLabel map[797676718236467200:v0 {ValidFrom:3058 ValidTo:0 TxFrom:1791573012000 TxTo:1791573019560 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3 4] props=k=10 797676718240694272:v3 {ValidFrom:4557 ValidTo:4963 TxFrom:1791573040000 TxTo:0 CreatedAt:0 UpdatedAt:1791573040000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=27]
+             scan    map[797676718236467200:v0 {ValidFrom:3058 ValidTo:0 TxFrom:1791573012000 TxTo:1791573019560 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3 4] props=k=10 797676718240694272:v0 {ValidFrom:3735 ValidTo:5192 TxFrom:1791573021000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=17]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/memory/seed=23721 (0.03s)
+        effective_timeline_test.go:658: label A pin 1791573007000 valid 1959:
+             ByLabel map[797676720735715328:v0 {ValidFrom:1638 ValidTo:0 TxFrom:1791573001001 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=anchor=1 797676720735977472:v1 {ValidFrom:1280 ValidTo:2053 TxFrom:1791573007000 TxTo:0 CreatedAt:0 UpdatedAt:1791573007000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=8]
+             scan    map[797676720735715328:v0 {ValidFrom:1638 ValidTo:0 TxFrom:1791573001001 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=anchor=1 797676720735977472:v0 {ValidFrom:1959 ValidTo:0 TxFrom:1791573001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=0]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/memory/seed=23722 (0.03s)
+        effective_timeline_test.go:647: type R pin 1791573013005 valid 2754:
+             ByType map[797676721704076288:v0 {ValidFrom:2433 ValidTo:1791573002227 TxFrom:1791573001004 TxTo:1791573002227 CreatedAt:0 UpdatedAt:0 DeletedAt:1791573002227 CreatedBy: UpdatedBy: baseEntityID:0} type=1 797676721702895616->797676721701879808 props=k=2 797676721705485312:v1 {ValidFrom:545 ValidTo:0 TxFrom:1791573004000 TxTo:1791573007000 CreatedAt:0 UpdatedAt:1791573004000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=1 797676721702895616->797676721701879808 props=k=6]
+             scan   map[797676721704076288:v0 {ValidFrom:2433 ValidTo:1791573002227 TxFrom:1791573001004 TxTo:1791573002227 CreatedAt:0 UpdatedAt:0 DeletedAt:1791573002227 CreatedBy: UpdatedBy: baseEntityID:0} type=1 797676721702895616->797676721701879808 props=k=2 797676721705485312:v0 {ValidFrom:2754 ValidTo:0 TxFrom:1791573001005 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=1 797676721702895616->797676721701879808 props=k=3]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/badger/seed=23719 (0.31s)
+        effective_timeline_test.go:658: label B pin 1791573012000 valid 3832:
+             ByLabel map[797676723453984768:v0 {ValidFrom:2461 ValidTo:0 TxFrom:1791573001003 TxTo:1791573009000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=1 797676723568443392:v1 {ValidFrom:865 ValidTo:0 TxFrom:1791573012000 TxTo:0 CreatedAt:0 UpdatedAt:1791573012000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3 4] props=k=10]
+             scan    map[797676723453984768:v0 {ValidFrom:2461 ValidTo:0 TxFrom:1791573001003 TxTo:1791573009000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=1 797676723568443392:v0 {ValidFrom:3832 ValidTo:0 TxFrom:1791573008000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3 4] props=k=8]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/badger/seed=23720 (0.17s)
+        effective_timeline_test.go:658: label C pin 1791573042000 valid 4557:
+             ByLabel map[797676733463232512:v0 {ValidFrom:3058 ValidTo:0 TxFrom:1791573012000 TxTo:1791573019560 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3 4] props=k=10 797676733505863680:v3 {ValidFrom:4557 ValidTo:4963 TxFrom:1791573040000 TxTo:0 CreatedAt:0 UpdatedAt:1791573040000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=27]
+             scan    map[797676733463232512:v0 {ValidFrom:3058 ValidTo:0 TxFrom:1791573012000 TxTo:1791573019560 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3 4] props=k=10 797676733505863680:v0 {ValidFrom:3735 ValidTo:5192 TxFrom:1791573021000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=17]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/badger/seed=23721 (0.14s)
+        effective_timeline_test.go:647: type R pin 1791573014001 valid 2926:
+             ByType map[797676739146122240:v0 {ValidFrom:2706 ValidTo:1791573002000 TxFrom:1791573001005 TxTo:1791573002000 CreatedAt:0 UpdatedAt:0 DeletedAt:1791573002000 CreatedBy: UpdatedBy: baseEntityID:0} type=2 797676739133210624->797676739135963136 props=k=3 797676739146875904:v2 {ValidFrom:2499 ValidTo:0 TxFrom:1791573011000 TxTo:0 CreatedAt:0 UpdatedAt:1791573011000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=2 797676739143532544->797676739140288512 props=k=10]
+             scan   map[797676739146122240:v0 {ValidFrom:2706 ValidTo:1791573002000 TxFrom:1791573001005 TxTo:1791573002000 CreatedAt:0 UpdatedAt:0 DeletedAt:1791573002000 CreatedBy: UpdatedBy: baseEntityID:0} type=2 797676739133210624->797676739135963136 props=k=3 797676739146875904:v0 {ValidFrom:2926 ValidTo:0 TxFrom:1791573001006 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=2 797676739143532544->797676739140288512 props=k=4]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/badger/seed=23722 (0.09s)
+        effective_timeline_test.go:647: type R pin 1791573013005 valid 2754:
+             ByType map[797676743617774592:v0 {ValidFrom:2433 ValidTo:1791573002227 TxFrom:1791573001004 TxTo:1791573002227 CreatedAt:0 UpdatedAt:0 DeletedAt:1791573002227 CreatedBy: UpdatedBy: baseEntityID:0} type=1 797676743614136320->797676743612661760 props=k=2 797676743619511296:v1 {ValidFrom:545 ValidTo:0 TxFrom:1791573004000 TxTo:1791573007000 CreatedAt:0 UpdatedAt:1791573004000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=1 797676743614136320->797676743612661760 props=k=6]
+             scan   map[797676743617774592:v0 {ValidFrom:2433 ValidTo:1791573002227 TxFrom:1791573001004 TxTo:1791573002227 CreatedAt:0 UpdatedAt:0 DeletedAt:1791573002227 CreatedBy: UpdatedBy: baseEntityID:0} type=1 797676743614136320->797676743612661760 props=k=2 797676743619511296:v0 {ValidFrom:2754 ValidTo:0 TxFrom:1791573001005 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=1 797676743614136320->797676743612661760 props=k=3]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/sharded/seed=23719 (0.66s)
+        effective_timeline_test.go:658: label B pin 1791573014000 valid 1269:
+             ByLabel map[797676746833264640:v2 {ValidFrom:673 ValidTo:2291 TxFrom:1791573007000 TxTo:0 CreatedAt:0 UpdatedAt:1791573007000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3 4] props=k=7 797676746883465216:v2 {ValidFrom:1269 ValidTo:0 TxFrom:1791573013000 TxTo:1791573015946 CreatedAt:0 UpdatedAt:1791573013000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3 4] props=k=11]
+             scan    map[797676746833264640:v2 {ValidFrom:673 ValidTo:2291 TxFrom:1791573007000 TxTo:0 CreatedAt:0 UpdatedAt:1791573007000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3 4] props=k=7 797676746883465216:v1 {ValidFrom:865 ValidTo:0 TxFrom:1791573012000 TxTo:0 CreatedAt:0 UpdatedAt:1791573012000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3 4] props=k=10]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/sharded/seed=23720 (0.44s)
+        effective_timeline_test.go:658: label C pin 1791573042000 valid 4557:
+             ByLabel map[797676768531841024:v0 {ValidFrom:3058 ValidTo:0 TxFrom:1791573012000 TxTo:1791573019560 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3 4] props=k=10 797676768568705024:v3 {ValidFrom:4557 ValidTo:4963 TxFrom:1791573040000 TxTo:0 CreatedAt:0 UpdatedAt:1791573040000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=27]
+             scan    map[797676768531841024:v0 {ValidFrom:3058 ValidTo:0 TxFrom:1791573012000 TxTo:1791573019560 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3 4] props=k=10 797676768568705024:v0 {ValidFrom:3735 ValidTo:5192 TxFrom:1791573021000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=17]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/sharded/seed=23721 (0.35s)
+        effective_timeline_test.go:647: type R pin 1791573014001 valid 2926:
+             ByType map[797676782383727616:v0 {ValidFrom:2706 ValidTo:1791573002000 TxFrom:1791573001005 TxTo:1791573002000 CreatedAt:0 UpdatedAt:0 DeletedAt:1791573002000 CreatedBy: UpdatedBy: baseEntityID:0} type=2 797676782378680320->797676782380154880 props=k=3 797676782384415744:v2 {ValidFrom:2499 ValidTo:0 TxFrom:1791573011000 TxTo:0 CreatedAt:0 UpdatedAt:1791573011000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=2 797676782382022656->797676782381203456 props=k=10]
+             scan   map[797676782383727616:v0 {ValidFrom:2706 ValidTo:1791573002000 TxFrom:1791573001005 TxTo:1791573002000 CreatedAt:0 UpdatedAt:0 DeletedAt:1791573002000 CreatedBy: UpdatedBy: baseEntityID:0} type=2 797676782378680320->797676782380154880 props=k=3 797676782384415744:v0 {ValidFrom:2926 ValidTo:0 TxFrom:1791573001006 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=2 797676782382022656->797676782381203456 props=k=4]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/sharded/seed=23722 (0.15s)
+        effective_timeline_test.go:647: type R pin 1791573013005 valid 2754:
+             ByType map[797676794109658112:v0 {ValidFrom:2433 ValidTo:1791573002227 TxFrom:1791573001004 TxTo:1791573002227 CreatedAt:0 UpdatedAt:0 DeletedAt:1791573002227 CreatedBy: UpdatedBy: baseEntityID:0} type=1 797676794105659392->797676794104315904 props=k=2 797676794111820800:v1 {ValidFrom:545 ValidTo:0 TxFrom:1791573004000 TxTo:1791573007000 CreatedAt:0 UpdatedAt:1791573004000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=1 797676794105659392->797676794104315904 props=k=6]
+             scan   map[797676794109658112:v0 {ValidFrom:2433 ValidTo:1791573002227 TxFrom:1791573001004 TxTo:1791573002227 CreatedAt:0 UpdatedAt:0 DeletedAt:1791573002227 CreatedBy: UpdatedBy: baseEntityID:0} type=1 797676794105659392->797676794104315904 props=k=2 797676794111820800:v0 {ValidFrom:2754 ValidTo:0 TxFrom:1791573001005 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=1 797676794105659392->797676794104315904 props=k=3]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/tiered/seed=23719 (0.33s)
+        effective_timeline_test.go:658: label B pin 1791573014000 valid 1269:
+             ByLabel map[797676799114903552:v2 {ValidFrom:673 ValidTo:2291 TxFrom:1791573007000 TxTo:0 CreatedAt:0 UpdatedAt:1791573007000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3 4] props=k=7 797676799152488448:v2 {ValidFrom:1269 ValidTo:0 TxFrom:1791573013000 TxTo:1791573015946 CreatedAt:0 UpdatedAt:1791573013000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3 4] props=k=11]
+             scan    map[797676799114903552:v2 {ValidFrom:673 ValidTo:2291 TxFrom:1791573007000 TxTo:0 CreatedAt:0 UpdatedAt:1791573007000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3 4] props=k=7 797676799152488448:v1 {ValidFrom:865 ValidTo:0 TxFrom:1791573012000 TxTo:0 CreatedAt:0 UpdatedAt:1791573012000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3 4] props=k=10]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/tiered/seed=23720 (0.33s)
+        effective_timeline_test.go:658: label C pin 1791573042000 valid 4557:
+             ByLabel map[797676809760800768:v0 {ValidFrom:3058 ValidTo:0 TxFrom:1791573012000 TxTo:1791573019560 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3 4] props=k=10 797676809794617344:v3 {ValidFrom:4557 ValidTo:4963 TxFrom:1791573040000 TxTo:0 CreatedAt:0 UpdatedAt:1791573040000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=27]
+             scan    map[797676809760800768:v0 {ValidFrom:3058 ValidTo:0 TxFrom:1791573012000 TxTo:1791573019560 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3 4] props=k=10 797676809794617344:v0 {ValidFrom:3735 ValidTo:5192 TxFrom:1791573021000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=17]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/tiered/seed=23721 (0.24s)
+        effective_timeline_test.go:658: label A pin 1791573009945 valid 1959:
+             ByLabel map[797676820606648320:v0 {ValidFrom:1638 ValidTo:0 TxFrom:1791573001001 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=anchor=1 797676820607238144:v1 {ValidFrom:1280 ValidTo:2053 TxFrom:1791573007000 TxTo:0 CreatedAt:0 UpdatedAt:1791573007000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=8]
+             scan    map[797676820606648320:v0 {ValidFrom:1638 ValidTo:0 TxFrom:1791573001001 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=anchor=1 797676820607238144:v0 {ValidFrom:1959 ValidTo:0 TxFrom:1791573001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=0]
+    --- FAIL: TestEffectiveTimeline_ScanMatchesGenericDoor/tiered/seed=23722 (0.14s)
+        effective_timeline_test.go:647: type R pin 1791573013005 valid 2754:
+             ByType map[797676828396094464:v0 {ValidFrom:2433 ValidTo:1791573002227 TxFrom:1791573001004 TxTo:1791573002227 CreatedAt:0 UpdatedAt:0 DeletedAt:1791573002227 CreatedBy: UpdatedBy: baseEntityID:0} type=1 797676828393865216->797676828392062976 props=k=2 797676828397536256:v1 {ValidFrom:545 ValidTo:0 TxFrom:1791573004000 TxTo:1791573007000 CreatedAt:0 UpdatedAt:1791573004000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=1 797676828393865216->797676828392062976 props=k=6]
+             scan   map[797676828396094464:v0 {ValidFrom:2433 ValidTo:1791573002227 TxFrom:1791573001004 TxTo:1791573002227 CreatedAt:0 UpdatedAt:0 DeletedAt:1791573002227 CreatedBy: UpdatedBy: baseEntityID:0} type=1 797676828393865216->797676828392062976 props=k=2 797676828397536256:v0 {ValidFrom:2754 ValidTo:0 TxFrom:1791573001005 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} type=1 797676828393865216->797676828392062976 props=k=3]
+--- FAIL: TestEffectiveTimeline_PointwiseOracle (8.07s)
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7399 (0.03s)
+        effective_timeline_oracle_test.go:442: [memory after the oracle sequence] node 797676716348473344 pin 1791573010000 valid 2118:
+              point    v1 {ValidFrom:672 ValidTo:2327 TxFrom:1791573010000 TxTo:0 CreatedAt:0 UpdatedAt:1791573010000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=9
+              timeline v0 {ValidFrom:2118 ValidTo:0 TxFrom:1791573001003 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=1
+                [672,2118) v1 {ValidFrom:672 ValidTo:2327 TxFrom:1791573010000 TxTo:0 CreatedAt:0 UpdatedAt:1791573010000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=9
+                [2118,0) v0 {ValidFrom:2118 ValidTo:0 TxFrom:1791573001003 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=1
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7400 (0.08s)
+        effective_timeline_oracle_test.go:442: [memory after the oracle sequence] node 797676717515571200 pin 1791573049000 valid 5339:
+              point    v4 {ValidFrom:5339 ValidTo:7489 TxFrom:1791573049000 TxTo:0 CreatedAt:0 UpdatedAt:1791573049000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=36
+              timeline v0 {ValidFrom:5339 ValidTo:0 TxFrom:1791573031000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=24
+                [3432,5339) v3 {ValidFrom:3432 ValidTo:5339 TxFrom:1791573049000 TxTo:0 CreatedAt:0 UpdatedAt:1791573049000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=36
+                [5339,0) v0 {ValidFrom:5339 ValidTo:0 TxFrom:1791573031000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=24
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7401 (0.09s)
+        effective_timeline_oracle_test.go:442: [memory after the oracle sequence] node 797676720101064704 pin 1791573042000 valid 7177:
+              point    v8 {ValidFrom:7177 ValidTo:7841 TxFrom:1791573042000 TxTo:0 CreatedAt:0 UpdatedAt:1791573042000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=29
+              timeline v0 {ValidFrom:4956 ValidTo:0 TxFrom:1791573004000 TxTo:1791573005567 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=6
+                [3226,4055) v6 {ValidFrom:3226 ValidTo:4055 TxFrom:1791573040000 TxTo:0 CreatedAt:0 UpdatedAt:1791573040000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=27
+                [4956,1791573005567) v0 {ValidFrom:4956 ValidTo:0 TxFrom:1791573004000 TxTo:1791573005567 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=6
+                [1791573005567,1791573010646) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791573005567 TxTo:1791573010646 CreatedAt:0 UpdatedAt:1791573005567 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=9
+                [1791573010646,1791573015508) v2 {ValidFrom:0 ValidTo:0 TxFrom:1791573010646 TxTo:1791573015508 CreatedAt:0 UpdatedAt:1791573010646 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=15
+                [1791573015508,1791573020407) v3 {ValidFrom:0 ValidTo:0 TxFrom:1791573015508 TxTo:1791573020407 CreatedAt:0 UpdatedAt:1791573015508 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=16
+                [1791573020407,1791573028073) v4 {ValidFrom:0 ValidTo:0 TxFrom:1791573020407 TxTo:1791573028073 CreatedAt:0 UpdatedAt:1791573020407 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=18
+                [1791573028073,0) v5 {ValidFrom:0 ValidTo:0 TxFrom:1791573028073 TxTo:0 CreatedAt:0 UpdatedAt:1791573028073 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=23
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7402 (0.04s)
+        effective_timeline_oracle_test.go:442: [memory after the oracle sequence] node 797676722903941120 pin 1791573007000 valid 3284:
+              point    v1 {ValidFrom:1350 ValidTo:3398 TxFrom:1791573007000 TxTo:0 CreatedAt:0 UpdatedAt:1791573007000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=7
+              timeline v0 {ValidFrom:3284 ValidTo:0 TxFrom:1791573002000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=5
+                [1350,3284) v1 {ValidFrom:1350 ValidTo:3398 TxFrom:1791573007000 TxTo:0 CreatedAt:0 UpdatedAt:1791573007000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=7
+                [3284,0) v0 {ValidFrom:3284 ValidTo:0 TxFrom:1791573002000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=5
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7403 (0.04s)
+        effective_timeline_oracle_test.go:442: [memory after the oracle sequence] node 797676724117700608 pin 1791573005000 valid 2091:
+              point    v2 {ValidFrom:2091 ValidTo:1791573003731 TxFrom:1791573005000 TxTo:0 CreatedAt:0 UpdatedAt:1791573005000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=7
+              timeline v0 {ValidFrom:1732 ValidTo:0 TxFrom:1791573001002 TxTo:1791573003731 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=0
+                [1732,1791573003731) v0 {ValidFrom:1732 ValidTo:0 TxFrom:1791573001002 TxTo:1791573003731 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=0
+                [1791573003731,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791573003731 TxTo:0 CreatedAt:0 UpdatedAt:1791573003731 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=6
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7404 (0.11s)
+        effective_timeline_oracle_test.go:442: [memory after the oracle sequence] node 797676725336932352 pin 1791573017000 valid 4872:
+              point    v3 {ValidFrom:4872 ValidTo:5548 TxFrom:1791573017000 TxTo:0 CreatedAt:0 UpdatedAt:1791573017000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=15
+              timeline v0 {ValidFrom:3602 ValidTo:0 TxFrom:1791572970955 TxTo:1791573014000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=10
+                [3602,1791573014000) v0 {ValidFrom:3602 ValidTo:0 TxFrom:1791572970955 TxTo:1791573014000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=10
+                [1791573014000,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791573014000 TxTo:1791573025353 CreatedAt:0 UpdatedAt:1791573014000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3 4] props=k=10
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7405 (0.05s)
+        effective_timeline_oracle_test.go:442: [memory after the oracle sequence] node 797676728794349568 pin 1791573047000 valid 6085:
+              point    v3 {ValidFrom:6085 ValidTo:6263 TxFrom:1791573047000 TxTo:0 CreatedAt:0 UpdatedAt:1791573047000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=29
+              timeline v0 {ValidFrom:6085 ValidTo:0 TxFrom:1791572975385 TxTo:1791573028000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=20
+                [5938,6085) v2 {ValidFrom:5938 ValidTo:6085 TxFrom:1791573047000 TxTo:0 CreatedAt:0 UpdatedAt:1791573047000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=29
+                [6085,6263) v0 {ValidFrom:6085 ValidTo:0 TxFrom:1791572975385 TxTo:1791573028000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=20
+                [6263,0) v1 {ValidFrom:6263 ValidTo:0 TxFrom:1791573028000 TxTo:0 CreatedAt:0 UpdatedAt:1791573028000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=21
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7406 (0.04s)
+        effective_timeline_oracle_test.go:442: [memory after the oracle sequence] node 797676730416955392 pin 1791573010000 valid 3581:
+              point    v1 {ValidFrom:1766 ValidTo:3605 TxFrom:1791573010000 TxTo:0 CreatedAt:0 UpdatedAt:1791573010000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=9
+              timeline v0 {ValidFrom:3581 ValidTo:0 TxFrom:1791573005000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=7
+                [1766,3581) v1 {ValidFrom:1766 ValidTo:3605 TxFrom:1791573010000 TxTo:0 CreatedAt:0 UpdatedAt:1791573010000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=9
+                [3581,0) v0 {ValidFrom:3581 ValidTo:0 TxFrom:1791573005000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=7
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7407 (0.04s)
+        effective_timeline_oracle_test.go:442: [memory after the oracle sequence] node 797676731830501376 pin 1791573028000 valid 5267:
+              point    v1 {ValidFrom:1331 ValidTo:0 TxFrom:1791573028000 TxTo:0 CreatedAt:0 UpdatedAt:1791573028000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=21
+              timeline v0 {ValidFrom:5267 ValidTo:5268 TxFrom:1791573018000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=16
+                [1331,5267) v1 {ValidFrom:1331 ValidTo:0 TxFrom:1791573028000 TxTo:0 CreatedAt:0 UpdatedAt:1791573028000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=21
+                [5267,5268) v0 {ValidFrom:5267 ValidTo:5268 TxFrom:1791573018000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=16
+                [5268,0) v1 {ValidFrom:1331 ValidTo:0 TxFrom:1791573028000 TxTo:0 CreatedAt:0 UpdatedAt:1791573028000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=21
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7408 (0.03s)
+        effective_timeline_oracle_test.go:442: [memory after the oracle sequence] node 797676733187063808 pin 1791573024000 valid 4286:
+              point    v1 {ValidFrom:3576 ValidTo:0 TxFrom:1791573024000 TxTo:1791573028000 CreatedAt:0 UpdatedAt:1791573024000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=14
+              timeline v0 {ValidFrom:4286 ValidTo:5566 TxFrom:1791572994490 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=9
+                [3576,4286) v1 {ValidFrom:3576 ValidTo:0 TxFrom:1791573024000 TxTo:1791573028000 CreatedAt:0 UpdatedAt:1791573024000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=14
+                [4286,5566) v0 {ValidFrom:4286 ValidTo:5566 TxFrom:1791572994490 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=9
+                [5566,0) v1 {ValidFrom:3576 ValidTo:0 TxFrom:1791573024000 TxTo:1791573028000 CreatedAt:0 UpdatedAt:1791573024000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=14
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7409 (0.04s)
+        effective_timeline_oracle_test.go:442: [memory after the oracle sequence] node 797676734245830656 pin 1791573031000 valid 3732:
+              point    v3 {ValidFrom:3635 ValidTo:3818 TxFrom:1791573031000 TxTo:0 CreatedAt:0 UpdatedAt:1791573031000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=19
+              timeline v1 {ValidFrom:3732 ValidTo:4798 TxFrom:1791573013000 TxTo:0 CreatedAt:0 UpdatedAt:1791573013000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=8
+                [3635,3732) v3 {ValidFrom:3635 ValidTo:3818 TxFrom:1791573031000 TxTo:0 CreatedAt:0 UpdatedAt:1791573031000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=19
+                [3732,4798) v1 {ValidFrom:3732 ValidTo:4798 TxFrom:1791573013000 TxTo:0 CreatedAt:0 UpdatedAt:1791573013000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=8
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7410 (0.07s)
+        effective_timeline_oracle_test.go:442: [memory after the oracle sequence] node 797676735458541568 pin 1791573044000 valid 7910:
+              point    v4 {ValidFrom:7910 ValidTo:1791573036031 TxFrom:1791573044000 TxTo:0 CreatedAt:0 UpdatedAt:1791573044000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=30
+              timeline v0 {ValidFrom:7910 ValidTo:0 TxFrom:1791573036000 TxTo:1791573036031 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=25
+                [6929,7910) v3 {ValidFrom:6929 ValidTo:7910 TxFrom:1791573044000 TxTo:0 CreatedAt:0 UpdatedAt:1791573044000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=30
+                [7910,1791573036031) v0 {ValidFrom:7910 ValidTo:0 TxFrom:1791573036000 TxTo:1791573036031 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=25
+                [1791573036031,1791573039000) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791573036031 TxTo:1791573039000 CreatedAt:0 UpdatedAt:1791573036031 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=26
+                [1791573039000,0) v2 {ValidFrom:0 ValidTo:0 TxFrom:1791573039000 TxTo:0 CreatedAt:0 UpdatedAt:1791573039000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=26
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7411 (0.03s)
+        effective_timeline_oracle_test.go:442: [memory after the oracle sequence] node 797676737686863872 pin 1791573014000 valid 3467:
+              point    v1 {ValidFrom:2637 ValidTo:3611 TxFrom:1791573014000 TxTo:0 CreatedAt:0 UpdatedAt:1791573014000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=10
+              timeline v0 {ValidFrom:3467 ValidTo:0 TxFrom:1791573013000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=9
+                [2637,3467) v1 {ValidFrom:2637 ValidTo:3611 TxFrom:1791573014000 TxTo:0 CreatedAt:0 UpdatedAt:1791573014000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=10
+                [3467,0) v0 {ValidFrom:3467 ValidTo:0 TxFrom:1791573013000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=9
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7412 (0.03s)
+        effective_timeline_oracle_test.go:442: [memory after the oracle sequence] node 797676738557083648 pin 1791573006000 valid 1889:
+              point    v1 {ValidFrom:903 ValidTo:0 TxFrom:1791573006000 TxTo:1791573012000 CreatedAt:0 UpdatedAt:1791573006000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=8
+              timeline v0 {ValidFrom:1889 ValidTo:0 TxFrom:1791573001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=0
+                [903,1889) v1 {ValidFrom:903 ValidTo:0 TxFrom:1791573006000 TxTo:1791573012000 CreatedAt:0 UpdatedAt:1791573006000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=8
+                [1889,0) v0 {ValidFrom:1889 ValidTo:0 TxFrom:1791573001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7413 (0.03s)
+        effective_timeline_oracle_test.go:442: [memory after the oracle sequence] node 797676739391553536 pin 1791573003000 valid 2180:
+              point    v3 {ValidFrom:2180 ValidTo:3224 TxFrom:1791573003000 TxTo:0 CreatedAt:0 UpdatedAt:1791573003000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=6
+              timeline v0 {ValidFrom:2180 ValidTo:0 TxFrom:1791573001003 TxTo:1791573002000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=1
+                [1648,2180) v2 {ValidFrom:1648 ValidTo:2180 TxFrom:1791573003000 TxTo:0 CreatedAt:0 UpdatedAt:1791573003000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=6
+                [2180,3224) v0 {ValidFrom:2180 ValidTo:0 TxFrom:1791573001003 TxTo:1791573002000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=1
+                [3224,0) v1 {ValidFrom:3224 ValidTo:0 TxFrom:1791573002000 TxTo:0 CreatedAt:0 UpdatedAt:1791573002000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=5
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/memory/seed=7414 (0.04s)
+        effective_timeline_oracle_test.go:442: [memory after the oracle sequence] node 797676740529881088 pin 1791573044000 valid 4952:
+              point    v5 {ValidFrom:4952 ValidTo:5437 TxFrom:1791573044000 TxTo:0 CreatedAt:0 UpdatedAt:1791573044000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=22
+              timeline v0 {ValidFrom:4018 ValidTo:0 TxFrom:1791573028000 TxTo:1791573032655 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=10
+                [2961,3124) v1 {ValidFrom:2961 ValidTo:3124 TxFrom:1791573030000 TxTo:0 CreatedAt:0 UpdatedAt:1791573030000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=11
+                [4018,1791573032655) v0 {ValidFrom:4018 ValidTo:0 TxFrom:1791573028000 TxTo:1791573032655 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=10
+                [1791573032655,1791573040000) v2 {ValidFrom:0 ValidTo:0 TxFrom:1791573032655 TxTo:1791573040000 CreatedAt:0 UpdatedAt:1791573032655 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=13
+                [1791573040000,0) v3 {ValidFrom:0 ValidTo:0 TxFrom:1791573040000 TxTo:1791573047000 CreatedAt:0 UpdatedAt:1791573040000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=13
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7399 (0.16s)
+        effective_timeline_oracle_test.go:442: [badger after the oracle sequence] node 797676742119784448 pin 1791573010000 valid 2118:
+              point    v1 {ValidFrom:672 ValidTo:2327 TxFrom:1791573010000 TxTo:0 CreatedAt:0 UpdatedAt:1791573010000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=9
+              timeline v0 {ValidFrom:2118 ValidTo:0 TxFrom:1791573001003 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=1
+                [672,2118) v1 {ValidFrom:672 ValidTo:2327 TxFrom:1791573010000 TxTo:0 CreatedAt:0 UpdatedAt:1791573010000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=9
+                [2118,0) v0 {ValidFrom:2118 ValidTo:0 TxFrom:1791573001003 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=1
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7400 (0.30s)
+        effective_timeline_oracle_test.go:442: [badger after the oracle sequence] node 797676747565432832 pin 1791573049000 valid 5339:
+              point    v4 {ValidFrom:5339 ValidTo:7489 TxFrom:1791573049000 TxTo:0 CreatedAt:0 UpdatedAt:1791573049000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=36
+              timeline v0 {ValidFrom:5339 ValidTo:0 TxFrom:1791573031000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=24
+                [3432,5339) v3 {ValidFrom:3432 ValidTo:5339 TxFrom:1791573049000 TxTo:0 CreatedAt:0 UpdatedAt:1791573049000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=36
+                [5339,0) v0 {ValidFrom:5339 ValidTo:0 TxFrom:1791573031000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=24
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7401 (0.25s)
+        effective_timeline_oracle_test.go:442: [badger after the oracle sequence] node 797676757001273344 pin 1791573042000 valid 7177:
+              point    v8 {ValidFrom:7177 ValidTo:7841 TxFrom:1791573042000 TxTo:0 CreatedAt:0 UpdatedAt:1791573042000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=29
+              timeline v0 {ValidFrom:4956 ValidTo:0 TxFrom:1791573004000 TxTo:1791573005567 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=6
+                [3226,4055) v6 {ValidFrom:3226 ValidTo:4055 TxFrom:1791573040000 TxTo:0 CreatedAt:0 UpdatedAt:1791573040000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=27
+                [4956,1791573005567) v0 {ValidFrom:4956 ValidTo:0 TxFrom:1791573004000 TxTo:1791573005567 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=6
+                [1791573005567,1791573010646) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791573005567 TxTo:1791573010646 CreatedAt:0 UpdatedAt:1791573005567 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=9
+                [1791573010646,1791573015508) v2 {ValidFrom:0 ValidTo:0 TxFrom:1791573010646 TxTo:1791573015508 CreatedAt:0 UpdatedAt:1791573010646 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=15
+                [1791573015508,1791573020407) v3 {ValidFrom:0 ValidTo:0 TxFrom:1791573015508 TxTo:1791573020407 CreatedAt:0 UpdatedAt:1791573015508 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=16
+                [1791573020407,1791573028073) v4 {ValidFrom:0 ValidTo:0 TxFrom:1791573020407 TxTo:1791573028073 CreatedAt:0 UpdatedAt:1791573020407 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=18
+                [1791573028073,0) v5 {ValidFrom:0 ValidTo:0 TxFrom:1791573028073 TxTo:0 CreatedAt:0 UpdatedAt:1791573028073 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=23
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7402 (0.15s)
+        effective_timeline_oracle_test.go:442: [badger after the oracle sequence] node 797676765555130368 pin 1791573007000 valid 3284:
+              point    v1 {ValidFrom:1350 ValidTo:3398 TxFrom:1791573007000 TxTo:0 CreatedAt:0 UpdatedAt:1791573007000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=7
+              timeline v0 {ValidFrom:3284 ValidTo:0 TxFrom:1791573002000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=5
+                [1350,3284) v1 {ValidFrom:1350 ValidTo:3398 TxFrom:1791573007000 TxTo:0 CreatedAt:0 UpdatedAt:1791573007000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=7
+                [3284,0) v0 {ValidFrom:3284 ValidTo:0 TxFrom:1791573002000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=5
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7403 (0.10s)
+        effective_timeline_oracle_test.go:442: [badger after the oracle sequence] node 797676770263629824 pin 1791573005000 valid 2091:
+              point    v2 {ValidFrom:2091 ValidTo:1791573003731 TxFrom:1791573005000 TxTo:0 CreatedAt:0 UpdatedAt:1791573005000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=7
+              timeline v0 {ValidFrom:1732 ValidTo:0 TxFrom:1791573001002 TxTo:1791573003731 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=0
+                [1732,1791573003731) v0 {ValidFrom:1732 ValidTo:0 TxFrom:1791573001002 TxTo:1791573003731 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=0
+                [1791573003731,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791573003731 TxTo:0 CreatedAt:0 UpdatedAt:1791573003731 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=6
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7404 (0.25s)
+        effective_timeline_oracle_test.go:442: [badger after the oracle sequence] node 797676773503467520 pin 1791573017000 valid 4872:
+              point    v3 {ValidFrom:4872 ValidTo:5548 TxFrom:1791573017000 TxTo:0 CreatedAt:0 UpdatedAt:1791573017000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=15
+              timeline v0 {ValidFrom:3602 ValidTo:0 TxFrom:1791572970955 TxTo:1791573014000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=10
+                [3602,1791573014000) v0 {ValidFrom:3602 ValidTo:0 TxFrom:1791572970955 TxTo:1791573014000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=10
+                [1791573014000,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791573014000 TxTo:1791573025353 CreatedAt:0 UpdatedAt:1791573014000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3 4] props=k=10
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7405 (0.13s)
+        effective_timeline_oracle_test.go:442: [badger after the oracle sequence] node 797676781957808128 pin 1791573047000 valid 6085:
+              point    v3 {ValidFrom:6085 ValidTo:6263 TxFrom:1791573047000 TxTo:0 CreatedAt:0 UpdatedAt:1791573047000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=29
+              timeline v0 {ValidFrom:6085 ValidTo:0 TxFrom:1791572975385 TxTo:1791573028000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=20
+                [5938,6085) v2 {ValidFrom:5938 ValidTo:6085 TxFrom:1791573047000 TxTo:0 CreatedAt:0 UpdatedAt:1791573047000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=29
+                [6085,6263) v0 {ValidFrom:6085 ValidTo:0 TxFrom:1791572975385 TxTo:1791573028000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=20
+                [6263,0) v1 {ValidFrom:6263 ValidTo:0 TxFrom:1791573028000 TxTo:0 CreatedAt:0 UpdatedAt:1791573028000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=21
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7406 (0.11s)
+        effective_timeline_oracle_test.go:442: [badger after the oracle sequence] node 797676785880694784 pin 1791573010000 valid 3581:
+              point    v1 {ValidFrom:1766 ValidTo:3605 TxFrom:1791573010000 TxTo:0 CreatedAt:0 UpdatedAt:1791573010000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=9
+              timeline v0 {ValidFrom:3581 ValidTo:0 TxFrom:1791573005000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=7
+                [1766,3581) v1 {ValidFrom:1766 ValidTo:3605 TxFrom:1791573010000 TxTo:0 CreatedAt:0 UpdatedAt:1791573010000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=9
+                [3581,0) v0 {ValidFrom:3581 ValidTo:0 TxFrom:1791573005000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=7
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7407 (0.12s)
+        effective_timeline_oracle_test.go:442: [badger after the oracle sequence] node 797676789735587840 pin 1791573028000 valid 5267:
+              point    v1 {ValidFrom:1331 ValidTo:0 TxFrom:1791573028000 TxTo:0 CreatedAt:0 UpdatedAt:1791573028000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=21
+              timeline v0 {ValidFrom:5267 ValidTo:5268 TxFrom:1791573018000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=16
+                [1331,5267) v1 {ValidFrom:1331 ValidTo:0 TxFrom:1791573028000 TxTo:0 CreatedAt:0 UpdatedAt:1791573028000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=21
+                [5267,5268) v0 {ValidFrom:5267 ValidTo:5268 TxFrom:1791573018000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=16
+                [5268,0) v1 {ValidFrom:1331 ValidTo:0 TxFrom:1791573028000 TxTo:0 CreatedAt:0 UpdatedAt:1791573028000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=21
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7408 (0.08s)
+        effective_timeline_oracle_test.go:442: [badger after the oracle sequence] node 797676793635405824 pin 1791573024000 valid 4286:
+              point    v1 {ValidFrom:3576 ValidTo:0 TxFrom:1791573024000 TxTo:1791573028000 CreatedAt:0 UpdatedAt:1791573024000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=14
+              timeline v0 {ValidFrom:4286 ValidTo:5566 TxFrom:1791572994490 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=9
+                [3576,4286) v1 {ValidFrom:3576 ValidTo:0 TxFrom:1791573024000 TxTo:1791573028000 CreatedAt:0 UpdatedAt:1791573024000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=14
+                [4286,5566) v0 {ValidFrom:4286 ValidTo:5566 TxFrom:1791572994490 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=9
+                [5566,0) v1 {ValidFrom:3576 ValidTo:0 TxFrom:1791573024000 TxTo:1791573028000 CreatedAt:0 UpdatedAt:1791573024000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=14
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7409 (0.11s)
+        effective_timeline_oracle_test.go:442: [badger after the oracle sequence] node 797676796259631104 pin 1791573031000 valid 3732:
+              point    v3 {ValidFrom:3635 ValidTo:3818 TxFrom:1791573031000 TxTo:0 CreatedAt:0 UpdatedAt:1791573031000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=19
+              timeline v1 {ValidFrom:3732 ValidTo:4798 TxFrom:1791573013000 TxTo:0 CreatedAt:0 UpdatedAt:1791573013000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=8
+                [3635,3732) v3 {ValidFrom:3635 ValidTo:3818 TxFrom:1791573031000 TxTo:0 CreatedAt:0 UpdatedAt:1791573031000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=19
+                [3732,4798) v1 {ValidFrom:3732 ValidTo:4798 TxFrom:1791573013000 TxTo:0 CreatedAt:0 UpdatedAt:1791573013000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=8
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7410 (0.17s)
+        effective_timeline_oracle_test.go:442: [badger after the oracle sequence] node 797676799929516032 pin 1791573044000 valid 7910:
+              point    v4 {ValidFrom:7910 ValidTo:1791573036031 TxFrom:1791573044000 TxTo:0 CreatedAt:0 UpdatedAt:1791573044000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=30
+              timeline v0 {ValidFrom:7910 ValidTo:0 TxFrom:1791573036000 TxTo:1791573036031 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=25
+                [6929,7910) v3 {ValidFrom:6929 ValidTo:7910 TxFrom:1791573044000 TxTo:0 CreatedAt:0 UpdatedAt:1791573044000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=30
+                [7910,1791573036031) v0 {ValidFrom:7910 ValidTo:0 TxFrom:1791573036000 TxTo:1791573036031 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=25
+                [1791573036031,1791573039000) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791573036031 TxTo:1791573039000 CreatedAt:0 UpdatedAt:1791573036031 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=26
+                [1791573039000,0) v2 {ValidFrom:0 ValidTo:0 TxFrom:1791573039000 TxTo:0 CreatedAt:0 UpdatedAt:1791573039000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=26
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7411 (0.10s)
+        effective_timeline_oracle_test.go:442: [badger after the oracle sequence] node 797676805248548864 pin 1791573014000 valid 3467:
+              point    v1 {ValidFrom:2637 ValidTo:3611 TxFrom:1791573014000 TxTo:0 CreatedAt:0 UpdatedAt:1791573014000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=10
+              timeline v0 {ValidFrom:3467 ValidTo:0 TxFrom:1791573013000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=9
+                [2637,3467) v1 {ValidFrom:2637 ValidTo:3611 TxFrom:1791573014000 TxTo:0 CreatedAt:0 UpdatedAt:1791573014000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=10
+                [3467,0) v0 {ValidFrom:3467 ValidTo:0 TxFrom:1791573013000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=9
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7412 (0.10s)
+        effective_timeline_oracle_test.go:442: [badger after the oracle sequence] node 797676808466923520 pin 1791573006000 valid 1889:
+              point    v1 {ValidFrom:903 ValidTo:0 TxFrom:1791573006000 TxTo:1791573012000 CreatedAt:0 UpdatedAt:1791573006000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=8
+              timeline v0 {ValidFrom:1889 ValidTo:0 TxFrom:1791573001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=0
+                [903,1889) v1 {ValidFrom:903 ValidTo:0 TxFrom:1791573006000 TxTo:1791573012000 CreatedAt:0 UpdatedAt:1791573006000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=8
+                [1889,0) v0 {ValidFrom:1889 ValidTo:0 TxFrom:1791573001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7413 (0.09s)
+        effective_timeline_oracle_test.go:442: [badger after the oracle sequence] node 797676811882364928 pin 1791573003000 valid 2180:
+              point    v3 {ValidFrom:2180 ValidTo:3224 TxFrom:1791573003000 TxTo:0 CreatedAt:0 UpdatedAt:1791573003000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=6
+              timeline v0 {ValidFrom:2180 ValidTo:0 TxFrom:1791573001003 TxTo:1791573002000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=1
+                [1648,2180) v2 {ValidFrom:1648 ValidTo:2180 TxFrom:1791573003000 TxTo:0 CreatedAt:0 UpdatedAt:1791573003000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=6
+                [2180,3224) v0 {ValidFrom:2180 ValidTo:0 TxFrom:1791573001003 TxTo:1791573002000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=1
+                [3224,0) v1 {ValidFrom:3224 ValidTo:0 TxFrom:1791573002000 TxTo:0 CreatedAt:0 UpdatedAt:1791573002000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=5
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/badger/seed=7414 (0.15s)
+        effective_timeline_oracle_test.go:442: [badger after the oracle sequence] node 797676814939521024 pin 1791573044000 valid 4952:
+              point    v5 {ValidFrom:4952 ValidTo:5437 TxFrom:1791573044000 TxTo:0 CreatedAt:0 UpdatedAt:1791573044000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=22
+              timeline v0 {ValidFrom:4018 ValidTo:0 TxFrom:1791573028000 TxTo:1791573032655 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=10
+                [2961,3124) v1 {ValidFrom:2961 ValidTo:3124 TxFrom:1791573030000 TxTo:0 CreatedAt:0 UpdatedAt:1791573030000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=11
+                [4018,1791573032655) v0 {ValidFrom:4018 ValidTo:0 TxFrom:1791573028000 TxTo:1791573032655 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=10
+                [1791573032655,1791573040000) v2 {ValidFrom:0 ValidTo:0 TxFrom:1791573032655 TxTo:1791573040000 CreatedAt:0 UpdatedAt:1791573032655 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=13
+                [1791573040000,0) v3 {ValidFrom:0 ValidTo:0 TxFrom:1791573040000 TxTo:1791573047000 CreatedAt:0 UpdatedAt:1791573040000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=13
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7399 (0.16s)
+        effective_timeline_oracle_test.go:442: [sharded after the oracle sequence] node 797676820241842176 pin 1791573010000 valid 2118:
+              point    v1 {ValidFrom:672 ValidTo:2327 TxFrom:1791573010000 TxTo:0 CreatedAt:0 UpdatedAt:1791573010000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=9
+              timeline v0 {ValidFrom:2118 ValidTo:0 TxFrom:1791573001003 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=1
+                [672,2118) v1 {ValidFrom:672 ValidTo:2327 TxFrom:1791573010000 TxTo:0 CreatedAt:0 UpdatedAt:1791573010000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=9
+                [2118,0) v0 {ValidFrom:2118 ValidTo:0 TxFrom:1791573001003 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=1
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7400 (0.34s)
+        effective_timeline_oracle_test.go:442: [sharded after the oracle sequence] node 797676825446612992 pin 1791573049000 valid 5339:
+              point    v4 {ValidFrom:5339 ValidTo:7489 TxFrom:1791573049000 TxTo:0 CreatedAt:0 UpdatedAt:1791573049000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=36
+              timeline v0 {ValidFrom:5339 ValidTo:0 TxFrom:1791573031000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=24
+                [3432,5339) v3 {ValidFrom:3432 ValidTo:5339 TxFrom:1791573049000 TxTo:0 CreatedAt:0 UpdatedAt:1791573049000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=36
+                [5339,0) v0 {ValidFrom:5339 ValidTo:0 TxFrom:1791573031000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=24
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7401 (0.35s)
+        effective_timeline_oracle_test.go:442: [sharded after the oracle sequence] node 797676836541038592 pin 1791573042000 valid 7177:
+              point    v8 {ValidFrom:7177 ValidTo:7841 TxFrom:1791573042000 TxTo:0 CreatedAt:0 UpdatedAt:1791573042000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=29
+              timeline v0 {ValidFrom:4956 ValidTo:0 TxFrom:1791573004000 TxTo:1791573005567 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=6
+                [3226,4055) v6 {ValidFrom:3226 ValidTo:4055 TxFrom:1791573040000 TxTo:0 CreatedAt:0 UpdatedAt:1791573040000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=27
+                [4956,1791573005567) v0 {ValidFrom:4956 ValidTo:0 TxFrom:1791573004000 TxTo:1791573005567 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=6
+                [1791573005567,1791573010646) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791573005567 TxTo:1791573010646 CreatedAt:0 UpdatedAt:1791573005567 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=9
+                [1791573010646,1791573015508) v2 {ValidFrom:0 ValidTo:0 TxFrom:1791573010646 TxTo:1791573015508 CreatedAt:0 UpdatedAt:1791573010646 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=15
+                [1791573015508,1791573020407) v3 {ValidFrom:0 ValidTo:0 TxFrom:1791573015508 TxTo:1791573020407 CreatedAt:0 UpdatedAt:1791573015508 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=16
+                [1791573020407,1791573028073) v4 {ValidFrom:0 ValidTo:0 TxFrom:1791573020407 TxTo:1791573028073 CreatedAt:0 UpdatedAt:1791573020407 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=18
+                [1791573028073,0) v5 {ValidFrom:0 ValidTo:0 TxFrom:1791573028073 TxTo:0 CreatedAt:0 UpdatedAt:1791573028073 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=23
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7402 (0.16s)
+        effective_timeline_oracle_test.go:442: [sharded after the oracle sequence] node 797676848081698816 pin 1791573007000 valid 3284:
+              point    v1 {ValidFrom:1350 ValidTo:3398 TxFrom:1791573007000 TxTo:0 CreatedAt:0 UpdatedAt:1791573007000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=7
+              timeline v0 {ValidFrom:3284 ValidTo:0 TxFrom:1791573002000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=5
+                [1350,3284) v1 {ValidFrom:1350 ValidTo:3398 TxFrom:1791573007000 TxTo:0 CreatedAt:0 UpdatedAt:1791573007000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=7
+                [3284,0) v0 {ValidFrom:3284 ValidTo:0 TxFrom:1791573002000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=5
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7403 (0.10s)
+        effective_timeline_oracle_test.go:442: [sharded after the oracle sequence] node 797676853262057472 pin 1791573005000 valid 2091:
+              point    v2 {ValidFrom:2091 ValidTo:1791573003731 TxFrom:1791573005000 TxTo:0 CreatedAt:0 UpdatedAt:1791573005000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=7
+              timeline v0 {ValidFrom:1732 ValidTo:0 TxFrom:1791573001002 TxTo:1791573003731 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=0
+                [1732,1791573003731) v0 {ValidFrom:1732 ValidTo:0 TxFrom:1791573001002 TxTo:1791573003731 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=0
+                [1791573003731,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791573003731 TxTo:0 CreatedAt:0 UpdatedAt:1791573003731 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=6
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7404 (0.30s)
+        effective_timeline_oracle_test.go:442: [sharded after the oracle sequence] node 797676856369250304 pin 1791573017000 valid 4872:
+              point    v3 {ValidFrom:4872 ValidTo:5548 TxFrom:1791573017000 TxTo:0 CreatedAt:0 UpdatedAt:1791573017000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=15
+              timeline v0 {ValidFrom:3602 ValidTo:0 TxFrom:1791572970955 TxTo:1791573014000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=10
+                [3602,1791573014000) v0 {ValidFrom:3602 ValidTo:0 TxFrom:1791572970955 TxTo:1791573014000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=10
+                [1791573014000,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791573014000 TxTo:1791573025353 CreatedAt:0 UpdatedAt:1791573014000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3 4] props=k=10
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7405 (0.11s)
+        effective_timeline_oracle_test.go:442: [sharded after the oracle sequence] node 797676866380922880 pin 1791573047000 valid 6085:
+              point    v3 {ValidFrom:6085 ValidTo:6263 TxFrom:1791573047000 TxTo:0 CreatedAt:0 UpdatedAt:1791573047000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=29
+              timeline v0 {ValidFrom:6085 ValidTo:0 TxFrom:1791572975385 TxTo:1791573028000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=20
+                [5938,6085) v2 {ValidFrom:5938 ValidTo:6085 TxFrom:1791573047000 TxTo:0 CreatedAt:0 UpdatedAt:1791573047000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=29
+                [6085,6263) v0 {ValidFrom:6085 ValidTo:0 TxFrom:1791572975385 TxTo:1791573028000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=20
+                [6263,0) v1 {ValidFrom:6263 ValidTo:0 TxFrom:1791573028000 TxTo:0 CreatedAt:0 UpdatedAt:1791573028000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=21
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7406 (0.12s)
+        effective_timeline_oracle_test.go:442: [sharded after the oracle sequence] node 797676870008504320 pin 1791573010000 valid 3581:
+              point    v1 {ValidFrom:1766 ValidTo:3605 TxFrom:1791573010000 TxTo:0 CreatedAt:0 UpdatedAt:1791573010000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=9
+              timeline v0 {ValidFrom:3581 ValidTo:0 TxFrom:1791573005000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=7
+                [1766,3581) v1 {ValidFrom:1766 ValidTo:3605 TxFrom:1791573010000 TxTo:0 CreatedAt:0 UpdatedAt:1791573010000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=9
+                [3581,0) v0 {ValidFrom:3581 ValidTo:0 TxFrom:1791573005000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=7
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7407 (0.12s)
+        effective_timeline_oracle_test.go:442: [sharded after the oracle sequence] node 797676873802547200 pin 1791573028000 valid 5267:
+              point    v1 {ValidFrom:1331 ValidTo:0 TxFrom:1791573028000 TxTo:0 CreatedAt:0 UpdatedAt:1791573028000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=21
+              timeline v0 {ValidFrom:5267 ValidTo:5268 TxFrom:1791573018000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=16
+                [1331,5267) v1 {ValidFrom:1331 ValidTo:0 TxFrom:1791573028000 TxTo:0 CreatedAt:0 UpdatedAt:1791573028000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=21
+                [5267,5268) v0 {ValidFrom:5267 ValidTo:5268 TxFrom:1791573018000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=16
+                [5268,0) v1 {ValidFrom:1331 ValidTo:0 TxFrom:1791573028000 TxTo:0 CreatedAt:0 UpdatedAt:1791573028000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=21
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7408 (0.08s)
+        effective_timeline_oracle_test.go:442: [sharded after the oracle sequence] node 797676877709213696 pin 1791573024000 valid 4286:
+              point    v1 {ValidFrom:3576 ValidTo:0 TxFrom:1791573024000 TxTo:1791573028000 CreatedAt:0 UpdatedAt:1791573024000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=14
+              timeline v0 {ValidFrom:4286 ValidTo:5566 TxFrom:1791572994490 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=9
+                [3576,4286) v1 {ValidFrom:3576 ValidTo:0 TxFrom:1791573024000 TxTo:1791573028000 CreatedAt:0 UpdatedAt:1791573024000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=14
+                [4286,5566) v0 {ValidFrom:4286 ValidTo:5566 TxFrom:1791572994490 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=9
+                [5566,0) v1 {ValidFrom:3576 ValidTo:0 TxFrom:1791573024000 TxTo:1791573028000 CreatedAt:0 UpdatedAt:1791573024000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=14
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7409 (0.09s)
+        effective_timeline_oracle_test.go:442: [sharded after the oracle sequence] node 797676880501899264 pin 1791573031000 valid 3732:
+              point    v3 {ValidFrom:3635 ValidTo:3818 TxFrom:1791573031000 TxTo:0 CreatedAt:0 UpdatedAt:1791573031000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=19
+              timeline v1 {ValidFrom:3732 ValidTo:4798 TxFrom:1791573013000 TxTo:0 CreatedAt:0 UpdatedAt:1791573013000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=8
+                [3635,3732) v3 {ValidFrom:3635 ValidTo:3818 TxFrom:1791573031000 TxTo:0 CreatedAt:0 UpdatedAt:1791573031000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=19
+                [3732,4798) v1 {ValidFrom:3732 ValidTo:4798 TxFrom:1791573013000 TxTo:0 CreatedAt:0 UpdatedAt:1791573013000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=8
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7410 (0.23s)
+        effective_timeline_oracle_test.go:442: [sharded after the oracle sequence] node 797676883492536320 pin 1791573044000 valid 7910:
+              point    v4 {ValidFrom:7910 ValidTo:1791573036031 TxFrom:1791573044000 TxTo:0 CreatedAt:0 UpdatedAt:1791573044000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=30
+              timeline v0 {ValidFrom:7910 ValidTo:0 TxFrom:1791573036000 TxTo:1791573036031 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=25
+                [6929,7910) v3 {ValidFrom:6929 ValidTo:7910 TxFrom:1791573044000 TxTo:0 CreatedAt:0 UpdatedAt:1791573044000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=30
+                [7910,1791573036031) v0 {ValidFrom:7910 ValidTo:0 TxFrom:1791573036000 TxTo:1791573036031 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=25
+                [1791573036031,1791573039000) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791573036031 TxTo:1791573039000 CreatedAt:0 UpdatedAt:1791573036031 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=26
+                [1791573039000,0) v2 {ValidFrom:0 ValidTo:0 TxFrom:1791573039000 TxTo:0 CreatedAt:0 UpdatedAt:1791573039000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=26
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7411 (0.10s)
+        effective_timeline_oracle_test.go:442: [sharded after the oracle sequence] node 797676891089633280 pin 1791573014000 valid 3467:
+              point    v1 {ValidFrom:2637 ValidTo:3611 TxFrom:1791573014000 TxTo:0 CreatedAt:0 UpdatedAt:1791573014000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=10
+              timeline v0 {ValidFrom:3467 ValidTo:0 TxFrom:1791573013000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=9
+                [2637,3467) v1 {ValidFrom:2637 ValidTo:3611 TxFrom:1791573014000 TxTo:0 CreatedAt:0 UpdatedAt:1791573014000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=10
+                [3467,0) v0 {ValidFrom:3467 ValidTo:0 TxFrom:1791573013000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=9
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7412 (0.10s)
+        effective_timeline_oracle_test.go:442: [sharded after the oracle sequence] node 797676894025842688 pin 1791573006000 valid 1889:
+              point    v1 {ValidFrom:903 ValidTo:0 TxFrom:1791573006000 TxTo:1791573012000 CreatedAt:0 UpdatedAt:1791573006000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=8
+              timeline v0 {ValidFrom:1889 ValidTo:0 TxFrom:1791573001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=0
+                [903,1889) v1 {ValidFrom:903 ValidTo:0 TxFrom:1791573006000 TxTo:1791573012000 CreatedAt:0 UpdatedAt:1791573006000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=8
+                [1889,0) v0 {ValidFrom:1889 ValidTo:0 TxFrom:1791573001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7413 (0.14s)
+        effective_timeline_oracle_test.go:442: [sharded after the oracle sequence] node 797676897275936768 pin 1791573003000 valid 2180:
+              point    v3 {ValidFrom:2180 ValidTo:3224 TxFrom:1791573003000 TxTo:0 CreatedAt:0 UpdatedAt:1791573003000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=6
+              timeline v0 {ValidFrom:2180 ValidTo:0 TxFrom:1791573001003 TxTo:1791573002000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=1
+                [1648,2180) v2 {ValidFrom:1648 ValidTo:2180 TxFrom:1791573003000 TxTo:0 CreatedAt:0 UpdatedAt:1791573003000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=6
+                [2180,3224) v0 {ValidFrom:2180 ValidTo:0 TxFrom:1791573001003 TxTo:1791573002000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=1
+                [3224,0) v1 {ValidFrom:3224 ValidTo:0 TxFrom:1791573002000 TxTo:0 CreatedAt:0 UpdatedAt:1791573002000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=5
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/sharded/seed=7414 (0.16s)
+        effective_timeline_oracle_test.go:442: [sharded after the oracle sequence] node 797676901838782464 pin 1791573044000 valid 4952:
+              point    v5 {ValidFrom:4952 ValidTo:5437 TxFrom:1791573044000 TxTo:0 CreatedAt:0 UpdatedAt:1791573044000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=22
+              timeline v0 {ValidFrom:4018 ValidTo:0 TxFrom:1791573028000 TxTo:1791573032655 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=10
+                [2961,3124) v1 {ValidFrom:2961 ValidTo:3124 TxFrom:1791573030000 TxTo:0 CreatedAt:0 UpdatedAt:1791573030000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=11
+                [4018,1791573032655) v0 {ValidFrom:4018 ValidTo:0 TxFrom:1791573028000 TxTo:1791573032655 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=10
+                [1791573032655,1791573040000) v2 {ValidFrom:0 ValidTo:0 TxFrom:1791573032655 TxTo:1791573040000 CreatedAt:0 UpdatedAt:1791573032655 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=13
+                [1791573040000,0) v3 {ValidFrom:0 ValidTo:0 TxFrom:1791573040000 TxTo:1791573047000 CreatedAt:0 UpdatedAt:1791573040000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=13
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7399 (0.11s)
+        effective_timeline_oracle_test.go:442: [tiered after the oracle sequence] node 797676906923655168 pin 1791573010000 valid 2118:
+              point    v1 {ValidFrom:672 ValidTo:2327 TxFrom:1791573010000 TxTo:0 CreatedAt:0 UpdatedAt:1791573010000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=9
+              timeline v0 {ValidFrom:2118 ValidTo:0 TxFrom:1791573001003 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=1
+                [672,2118) v1 {ValidFrom:672 ValidTo:2327 TxFrom:1791573010000 TxTo:0 CreatedAt:0 UpdatedAt:1791573010000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=9
+                [2118,0) v0 {ValidFrom:2118 ValidTo:0 TxFrom:1791573001003 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=1
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7400 (0.20s)
+        effective_timeline_oracle_test.go:442: [tiered after the oracle sequence] node 797676910709014528 pin 1791573049000 valid 5339:
+              point    v4 {ValidFrom:5339 ValidTo:7489 TxFrom:1791573049000 TxTo:0 CreatedAt:0 UpdatedAt:1791573049000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=36
+              timeline v0 {ValidFrom:5339 ValidTo:0 TxFrom:1791573031000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=24
+                [3432,5339) v3 {ValidFrom:3432 ValidTo:5339 TxFrom:1791573049000 TxTo:0 CreatedAt:0 UpdatedAt:1791573049000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=36
+                [5339,0) v0 {ValidFrom:5339 ValidTo:0 TxFrom:1791573031000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=24
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7401 (0.21s)
+        effective_timeline_oracle_test.go:442: [tiered after the oracle sequence] node 797676917044969472 pin 1791573042000 valid 7177:
+              point    v8 {ValidFrom:7177 ValidTo:7841 TxFrom:1791573042000 TxTo:0 CreatedAt:0 UpdatedAt:1791573042000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=29
+              timeline v0 {ValidFrom:4956 ValidTo:0 TxFrom:1791573004000 TxTo:1791573005567 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=6
+                [3226,4055) v6 {ValidFrom:3226 ValidTo:4055 TxFrom:1791573040000 TxTo:0 CreatedAt:0 UpdatedAt:1791573040000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=27
+                [4956,1791573005567) v0 {ValidFrom:4956 ValidTo:0 TxFrom:1791573004000 TxTo:1791573005567 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=6
+                [1791573005567,1791573010646) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791573005567 TxTo:1791573010646 CreatedAt:0 UpdatedAt:1791573005567 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=9
+                [1791573010646,1791573015508) v2 {ValidFrom:0 ValidTo:0 TxFrom:1791573010646 TxTo:1791573015508 CreatedAt:0 UpdatedAt:1791573010646 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=15
+                [1791573015508,1791573020407) v3 {ValidFrom:0 ValidTo:0 TxFrom:1791573015508 TxTo:1791573020407 CreatedAt:0 UpdatedAt:1791573015508 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=16
+                [1791573020407,1791573028073) v4 {ValidFrom:0 ValidTo:0 TxFrom:1791573020407 TxTo:1791573028073 CreatedAt:0 UpdatedAt:1791573020407 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=18
+                [1791573028073,0) v5 {ValidFrom:0 ValidTo:0 TxFrom:1791573028073 TxTo:0 CreatedAt:0 UpdatedAt:1791573028073 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 4] props=k=23
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7402 (0.11s)
+        effective_timeline_oracle_test.go:442: [tiered after the oracle sequence] node 797676923765882880 pin 1791573007000 valid 3284:
+              point    v1 {ValidFrom:1350 ValidTo:3398 TxFrom:1791573007000 TxTo:0 CreatedAt:0 UpdatedAt:1791573007000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=7
+              timeline v0 {ValidFrom:3284 ValidTo:0 TxFrom:1791573002000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=5
+                [1350,3284) v1 {ValidFrom:1350 ValidTo:3398 TxFrom:1791573007000 TxTo:0 CreatedAt:0 UpdatedAt:1791573007000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=7
+                [3284,0) v0 {ValidFrom:3284 ValidTo:0 TxFrom:1791573002000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=5
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7403 (0.10s)
+        effective_timeline_oracle_test.go:442: [tiered after the oracle sequence] node 797676927238733824 pin 1791573005000 valid 2091:
+              point    v2 {ValidFrom:2091 ValidTo:1791573003731 TxFrom:1791573005000 TxTo:0 CreatedAt:0 UpdatedAt:1791573005000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=7
+              timeline v0 {ValidFrom:1732 ValidTo:0 TxFrom:1791573001002 TxTo:1791573003731 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=0
+                [1732,1791573003731) v0 {ValidFrom:1732 ValidTo:0 TxFrom:1791573001002 TxTo:1791573003731 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=0
+                [1791573003731,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791573003731 TxTo:0 CreatedAt:0 UpdatedAt:1791573003731 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=6
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7404 (0.26s)
+        effective_timeline_oracle_test.go:442: [tiered after the oracle sequence] node 797676930693824512 pin 1791573017000 valid 4872:
+              point    v3 {ValidFrom:4872 ValidTo:5548 TxFrom:1791573017000 TxTo:0 CreatedAt:0 UpdatedAt:1791573017000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=15
+              timeline v0 {ValidFrom:3602 ValidTo:0 TxFrom:1791572970955 TxTo:1791573014000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=10
+                [3602,1791573014000) v0 {ValidFrom:3602 ValidTo:0 TxFrom:1791572970955 TxTo:1791573014000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=10
+                [1791573014000,0) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791573014000 TxTo:1791573025353 CreatedAt:0 UpdatedAt:1791573014000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3 4] props=k=10
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7405 (0.15s)
+        effective_timeline_oracle_test.go:442: [tiered after the oracle sequence] node 797676939610423296 pin 1791573047000 valid 6085:
+              point    v3 {ValidFrom:6085 ValidTo:6263 TxFrom:1791573047000 TxTo:0 CreatedAt:0 UpdatedAt:1791573047000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=29
+              timeline v0 {ValidFrom:6085 ValidTo:0 TxFrom:1791572975385 TxTo:1791573028000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=20
+                [5938,6085) v2 {ValidFrom:5938 ValidTo:6085 TxFrom:1791573047000 TxTo:0 CreatedAt:0 UpdatedAt:1791573047000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=29
+                [6085,6263) v0 {ValidFrom:6085 ValidTo:0 TxFrom:1791572975385 TxTo:1791573028000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=20
+                [6263,0) v1 {ValidFrom:6263 ValidTo:0 TxFrom:1791573028000 TxTo:0 CreatedAt:0 UpdatedAt:1791573028000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=21
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7406 (0.12s)
+        effective_timeline_oracle_test.go:442: [tiered after the oracle sequence] node 797676943887204352 pin 1791573010000 valid 3581:
+              point    v1 {ValidFrom:1766 ValidTo:3605 TxFrom:1791573010000 TxTo:0 CreatedAt:0 UpdatedAt:1791573010000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=9
+              timeline v0 {ValidFrom:3581 ValidTo:0 TxFrom:1791573005000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=7
+                [1766,3581) v1 {ValidFrom:1766 ValidTo:3605 TxFrom:1791573010000 TxTo:0 CreatedAt:0 UpdatedAt:1791573010000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=9
+                [3581,0) v0 {ValidFrom:3581 ValidTo:0 TxFrom:1791573005000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=7
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7407 (0.13s)
+        effective_timeline_oracle_test.go:442: [tiered after the oracle sequence] node 797676948200423424 pin 1791573028000 valid 5267:
+              point    v1 {ValidFrom:1331 ValidTo:0 TxFrom:1791573028000 TxTo:0 CreatedAt:0 UpdatedAt:1791573028000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=21
+              timeline v0 {ValidFrom:5267 ValidTo:5268 TxFrom:1791573018000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=16
+                [1331,5267) v1 {ValidFrom:1331 ValidTo:0 TxFrom:1791573028000 TxTo:0 CreatedAt:0 UpdatedAt:1791573028000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=21
+                [5267,5268) v0 {ValidFrom:5267 ValidTo:5268 TxFrom:1791573018000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=16
+                [5268,0) v1 {ValidFrom:1331 ValidTo:0 TxFrom:1791573028000 TxTo:0 CreatedAt:0 UpdatedAt:1791573028000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=21
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7408 (0.09s)
+        effective_timeline_oracle_test.go:442: [tiered after the oracle sequence] node 797676952358617088 pin 1791573024000 valid 4286:
+              point    v1 {ValidFrom:3576 ValidTo:0 TxFrom:1791573024000 TxTo:1791573028000 CreatedAt:0 UpdatedAt:1791573024000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=14
+              timeline v0 {ValidFrom:4286 ValidTo:5566 TxFrom:1791572994490 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=9
+                [3576,4286) v1 {ValidFrom:3576 ValidTo:0 TxFrom:1791573024000 TxTo:1791573028000 CreatedAt:0 UpdatedAt:1791573024000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=14
+                [4286,5566) v0 {ValidFrom:4286 ValidTo:5566 TxFrom:1791572994490 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=9
+                [5566,0) v1 {ValidFrom:3576 ValidTo:0 TxFrom:1791573024000 TxTo:1791573028000 CreatedAt:0 UpdatedAt:1791573024000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=14
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7409 (0.11s)
+        effective_timeline_oracle_test.go:442: [tiered after the oracle sequence] node 797676955327594496 pin 1791573031000 valid 3732:
+              point    v3 {ValidFrom:3635 ValidTo:3818 TxFrom:1791573031000 TxTo:0 CreatedAt:0 UpdatedAt:1791573031000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=19
+              timeline v1 {ValidFrom:3732 ValidTo:4798 TxFrom:1791573013000 TxTo:0 CreatedAt:0 UpdatedAt:1791573013000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=8
+                [3635,3732) v3 {ValidFrom:3635 ValidTo:3818 TxFrom:1791573031000 TxTo:0 CreatedAt:0 UpdatedAt:1791573031000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=19
+                [3732,4798) v1 {ValidFrom:3732 ValidTo:4798 TxFrom:1791573013000 TxTo:0 CreatedAt:0 UpdatedAt:1791573013000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=8
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7410 (0.22s)
+        effective_timeline_oracle_test.go:442: [tiered after the oracle sequence] node 797676958946328576 pin 1791573044000 valid 7910:
+              point    v4 {ValidFrom:7910 ValidTo:1791573036031 TxFrom:1791573044000 TxTo:0 CreatedAt:0 UpdatedAt:1791573044000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=30
+              timeline v0 {ValidFrom:7910 ValidTo:0 TxFrom:1791573036000 TxTo:1791573036031 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=25
+                [6929,7910) v3 {ValidFrom:6929 ValidTo:7910 TxFrom:1791573044000 TxTo:0 CreatedAt:0 UpdatedAt:1791573044000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=30
+                [7910,1791573036031) v0 {ValidFrom:7910 ValidTo:0 TxFrom:1791573036000 TxTo:1791573036031 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=25
+                [1791573036031,1791573039000) v1 {ValidFrom:0 ValidTo:0 TxFrom:1791573036031 TxTo:1791573039000 CreatedAt:0 UpdatedAt:1791573036031 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=26
+                [1791573039000,0) v2 {ValidFrom:0 ValidTo:0 TxFrom:1791573039000 TxTo:0 CreatedAt:0 UpdatedAt:1791573039000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=26
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7411 (0.10s)
+        effective_timeline_oracle_test.go:442: [tiered after the oracle sequence] node 797676965917360128 pin 1791573014000 valid 3467:
+              point    v1 {ValidFrom:2637 ValidTo:3611 TxFrom:1791573014000 TxTo:0 CreatedAt:0 UpdatedAt:1791573014000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=10
+              timeline v0 {ValidFrom:3467 ValidTo:0 TxFrom:1791573013000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=9
+                [2637,3467) v1 {ValidFrom:2637 ValidTo:3611 TxFrom:1791573014000 TxTo:0 CreatedAt:0 UpdatedAt:1791573014000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=10
+                [3467,0) v0 {ValidFrom:3467 ValidTo:0 TxFrom:1791573013000 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[4] props=k=9
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7412 (0.10s)
+        effective_timeline_oracle_test.go:442: [tiered after the oracle sequence] node 797676969226141696 pin 1791573006000 valid 1889:
+              point    v1 {ValidFrom:903 ValidTo:0 TxFrom:1791573006000 TxTo:1791573012000 CreatedAt:0 UpdatedAt:1791573006000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=8
+              timeline v0 {ValidFrom:1889 ValidTo:0 TxFrom:1791573001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=0
+                [903,1889) v1 {ValidFrom:903 ValidTo:0 TxFrom:1791573006000 TxTo:1791573012000 CreatedAt:0 UpdatedAt:1791573006000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=8
+                [1889,0) v0 {ValidFrom:1889 ValidTo:0 TxFrom:1791573001002 TxTo:0 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=0
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7413 (0.12s)
+        effective_timeline_oracle_test.go:442: [tiered after the oracle sequence] node 797676972540723200 pin 1791573003000 valid 2180:
+              point    v3 {ValidFrom:2180 ValidTo:3224 TxFrom:1791573003000 TxTo:0 CreatedAt:0 UpdatedAt:1791573003000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=6
+              timeline v0 {ValidFrom:2180 ValidTo:0 TxFrom:1791573001003 TxTo:1791573002000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=1
+                [1648,2180) v2 {ValidFrom:1648 ValidTo:2180 TxFrom:1791573003000 TxTo:0 CreatedAt:0 UpdatedAt:1791573003000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=6
+                [2180,3224) v0 {ValidFrom:2180 ValidTo:0 TxFrom:1791573001003 TxTo:1791573002000 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=1
+                [3224,0) v1 {ValidFrom:3224 ValidTo:0 TxFrom:1791573002000 TxTo:0 CreatedAt:0 UpdatedAt:1791573002000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[3] props=k=5
+    --- FAIL: TestEffectiveTimeline_PointwiseOracle/tiered/seed=7414 (0.14s)
+        effective_timeline_oracle_test.go:442: [tiered after the oracle sequence] node 797676976495460352 pin 1791573044000 valid 4952:
+              point    v5 {ValidFrom:4952 ValidTo:5437 TxFrom:1791573044000 TxTo:0 CreatedAt:0 UpdatedAt:1791573044000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=22
+              timeline v0 {ValidFrom:4018 ValidTo:0 TxFrom:1791573028000 TxTo:1791573032655 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=10
+                [2961,3124) v1 {ValidFrom:2961 ValidTo:3124 TxFrom:1791573030000 TxTo:0 CreatedAt:0 UpdatedAt:1791573030000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=11
+                [4018,1791573032655) v0 {ValidFrom:4018 ValidTo:0 TxFrom:1791573028000 TxTo:1791573032655 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=10
+                [1791573032655,1791573040000) v2 {ValidFrom:0 ValidTo:0 TxFrom:1791573032655 TxTo:1791573040000 CreatedAt:0 UpdatedAt:1791573032655 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2] props=k=13
+                [1791573040000,0) v3 {ValidFrom:0 ValidTo:0 TxFrom:1791573040000 TxTo:1791573047000 CreatedAt:0 UpdatedAt:1791573040000 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} labels=[2 3] props=k=13
+    effective_timeline_oracle_test.go:461: pointwise checks 0 at 0 (entity, pin) pairs, 0 segments, 0 refused pins
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	8.119s
+FAIL
+
+exit=1

@@ -1,0 +1,59 @@
+package core
+
+import (
+	"errors"
+	"fmt"
+	"sync"
+	"testing"
+
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+)
+
+// Probe (not committed): does the point door AtTx at a pin read an entity as
+// unknown / absent while a concurrent write moves its current row to history?
+func TestProbePointDoorUnderWriters(t *testing.T) {
+	ccRun(t, false, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
+		e := mk(t)
+		var ids []int64
+		for i := 0; i < 12; i++ {
+			ids = append(ids, e.add(fmt.Sprintf("E%02d", i), 1000, nil))
+		}
+		pin := e.pin()
+		var wg sync.WaitGroup
+		for w := 0; w < 4; w++ {
+			wg.Add(1)
+			go func(w int) {
+				defer wg.Done()
+				for j := w; j < len(ids); j += 4 {
+					switch j % 3 {
+					case 0:
+						_ = e.update(ids[j], map[string]any{"x": int64(j)})
+					case 1:
+						_ = e.closeAt(ids[j], 9000)
+					case 2:
+						_ = e.del(ids[j])
+					}
+				}
+			}(w)
+		}
+		bad := 0
+		for r := 0; r < 20; r++ {
+			for _, id := range ids {
+				var err error
+				if e.rel {
+					_, err = e.g.Temporal.RelAtTx(types.RelID(id), 1500, pin)
+				} else {
+					_, err = e.g.Temporal.NodeAtTx(types.NodeID(id), 1500, pin)
+				}
+				if errors.Is(err, storepkg.ErrNodeNotFound) || errors.Is(err, storepkg.ErrRelNotFound) || errors.Is(err, storepkg.ErrNoVersionValidAt) || err != nil {
+					bad++
+				}
+			}
+		}
+		wg.Wait()
+		if bad > 0 {
+			t.Errorf("point door missed the entity %d times", bad)
+		}
+	})
+}

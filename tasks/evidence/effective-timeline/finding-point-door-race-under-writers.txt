@@ -1,0 +1,111 @@
+--- FAIL: TestProbePointDoorUnderWriters (0.19s)
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/rel (0.01s)
+        zz_probe_race_test.go:56: point door missed the entity 1 times
+--- FAIL: TestProbePointDoorUnderWriters (0.14s)
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/node (0.02s)
+        zz_probe_race_test.go:56: point door missed the entity 1 times
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/rel (0.03s)
+        zz_probe_race_test.go:56: point door missed the entity 1 times
+--- FAIL: TestProbePointDoorUnderWriters (0.07s)
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/node (0.01s)
+        zz_probe_race_test.go:56: point door missed the entity 1 times
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/rel (0.02s)
+        zz_probe_race_test.go:56: point door missed the entity 1 times
+--- FAIL: TestProbePointDoorUnderWriters (0.07s)
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/node (0.01s)
+        zz_probe_race_test.go:56: point door missed the entity 2 times
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/rel (0.02s)
+        zz_probe_race_test.go:56: point door missed the entity 2 times
+--- FAIL: TestProbePointDoorUnderWriters (0.07s)
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/rel (0.02s)
+        zz_probe_race_test.go:56: point door missed the entity 1 times
+--- FAIL: TestProbePointDoorUnderWriters (0.07s)
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/rel (0.02s)
+        zz_probe_race_test.go:56: point door missed the entity 1 times
+--- FAIL: TestProbePointDoorUnderWriters (0.07s)
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/rel (0.02s)
+        zz_probe_race_test.go:56: point door missed the entity 2 times
+--- FAIL: TestProbePointDoorUnderWriters (0.07s)
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/rel (0.02s)
+        zz_probe_race_test.go:56: point door missed the entity 1 times
+--- FAIL: TestProbePointDoorUnderWriters (0.07s)
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/node (0.01s)
+        zz_probe_race_test.go:56: point door missed the entity 1 times
+--- FAIL: TestProbePointDoorUnderWriters (0.07s)
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/rel (0.02s)
+        zz_probe_race_test.go:56: point door missed the entity 1 times
+--- FAIL: TestProbePointDoorUnderWriters (0.08s)
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/node (0.02s)
+        zz_probe_race_test.go:56: point door missed the entity 1 times
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/rel (0.02s)
+        zz_probe_race_test.go:56: point door missed the entity 1 times
+--- FAIL: TestProbePointDoorUnderWriters (0.07s)
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/rel (0.02s)
+        zz_probe_race_test.go:56: point door missed the entity 1 times
+--- FAIL: TestProbePointDoorUnderWriters (0.08s)
+    --- FAIL: TestProbePointDoorUnderWriters/badger/rel (0.01s)
+        zz_probe_race_test.go:56: point door missed the entity 1 times
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/rel (0.02s)
+        zz_probe_race_test.go:56: point door missed the entity 3 times
+--- FAIL: TestProbePointDoorUnderWriters (0.07s)
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/rel (0.02s)
+        zz_probe_race_test.go:56: point door missed the entity 1 times
+--- FAIL: TestProbePointDoorUnderWriters (0.07s)
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/node (0.01s)
+        zz_probe_race_test.go:56: point door missed the entity 3 times
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/rel (0.02s)
+        zz_probe_race_test.go:56: point door missed the entity 1 times
+--- FAIL: TestProbePointDoorUnderWriters (0.07s)
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/node (0.01s)
+        zz_probe_race_test.go:56: point door missed the entity 1 times
+--- FAIL: TestProbePointDoorUnderWriters (0.07s)
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/rel (0.02s)
+        zz_probe_race_test.go:56: point door missed the entity 2 times
+--- FAIL: TestProbePointDoorUnderWriters (0.07s)
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/rel (0.02s)
+        zz_probe_race_test.go:56: point door missed the entity 1 times
+--- FAIL: TestProbePointDoorUnderWriters (0.08s)
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/rel (0.02s)
+        zz_probe_race_test.go:56: point door missed the entity 1 times
+--- FAIL: TestProbePointDoorUnderWriters (0.07s)
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/rel (0.02s)
+        zz_probe_race_test.go:56: point door missed the entity 5 times
+--- FAIL: TestProbePointDoorUnderWriters (0.07s)
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/node (0.01s)
+        zz_probe_race_test.go:56: point door missed the entity 2 times
+--- FAIL: TestProbePointDoorUnderWriters (0.07s)
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/node (0.02s)
+        zz_probe_race_test.go:56: point door missed the entity 2 times
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/rel (0.02s)
+        zz_probe_race_test.go:56: point door missed the entity 1 times
+--- FAIL: TestProbePointDoorUnderWriters (0.07s)
+    --- FAIL: TestProbePointDoorUnderWriters/badger/rel (0.01s)
+        zz_probe_race_test.go:56: point door missed the entity 1 times
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/rel (0.02s)
+        zz_probe_race_test.go:56: point door missed the entity 1 times
+--- FAIL: TestProbePointDoorUnderWriters (0.06s)
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/node (0.01s)
+        zz_probe_race_test.go:56: point door missed the entity 3 times
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/rel (0.02s)
+        zz_probe_race_test.go:56: point door missed the entity 4 times
+--- FAIL: TestProbePointDoorUnderWriters (0.07s)
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/node (0.01s)
+        zz_probe_race_test.go:56: point door missed the entity 1 times
+--- FAIL: TestProbePointDoorUnderWriters (0.07s)
+    --- FAIL: TestProbePointDoorUnderWriters/badger/rel (0.01s)
+        zz_probe_race_test.go:56: point door missed the entity 1 times
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/node (0.01s)
+        zz_probe_race_test.go:56: point door missed the entity 1 times
+--- FAIL: TestProbePointDoorUnderWriters (0.06s)
+    --- FAIL: TestProbePointDoorUnderWriters/badger/node (0.01s)
+        zz_probe_race_test.go:56: point door missed the entity 1 times
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/node (0.01s)
+        zz_probe_race_test.go:56: point door missed the entity 1 times
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/rel (0.01s)
+        zz_probe_race_test.go:56: point door missed the entity 1 times
+--- FAIL: TestProbePointDoorUnderWriters (0.07s)
+    --- FAIL: TestProbePointDoorUnderWriters/sharded/rel (0.02s)
+        zz_probe_race_test.go:56: point door missed the entity 1 times
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	2.353s
+FAIL

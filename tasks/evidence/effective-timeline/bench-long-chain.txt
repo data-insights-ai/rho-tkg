@@ -1,0 +1,82 @@
+ 20:18:49 up 9 days, 11:34, 16 users,  load average: 11,50, 14,72, 17,92
+=== round 1 main
+BenchmarkNodeAtTxLongChain/memory/n=300-32         	    6986	     78947 ns/op	  109106 B/op	    1221 allocs/op
+BenchmarkNodeAtTxLongChain/memory/n=1000-32        	    1755	    331944 ns/op	  357936 B/op	    4021 allocs/op
+BenchmarkNodeAtTxLongChain/memory/n=3000-32        	     582	   1216069 ns/op	 1071675 B/op	   12021 allocs/op
+BenchmarkNodeAtTxLongChain/badger/n=300-32         	    3087	    187821 ns/op	  164411 B/op	    1032 allocs/op
+BenchmarkNodeAtTxLongChain/badger/n=1000-32        	    1046	    558161 ns/op	  559596 B/op	    3238 allocs/op
+BenchmarkNodeAtTxLongChain/badger/n=3000-32        	     328	   1776138 ns/op	 1505495 B/op	    9589 allocs/op
+=== round 1 branch
+BenchmarkNodeAtTxLongChain/memory/n=300-32    	    8606	     68785 ns/op	  110525 B/op	    1222 allocs/op
+BenchmarkNodeAtTxLongChain/memory/n=1000-32   	    2740	    255076 ns/op	  374496 B/op	    4026 allocs/op
+BenchmarkNodeAtTxLongChain/memory/n=3000-32   	     750	    883875 ns/op	 1210399 B/op	   12035 allocs/op
+BenchmarkNodeAtTxLongChain/badger/n=300-32    	    4099	    143581 ns/op	  161668 B/op	    1031 allocs/op
+BenchmarkNodeAtTxLongChain/badger/n=1000-32   	    1124	    485403 ns/op	  569184 B/op	    3271 allocs/op
+BenchmarkNodeAtTxLongChain/badger/n=3000-32   	     385	   1505305 ns/op	 1487519 B/op	    9610 allocs/op
+BenchmarkNodeEffectiveTimelineLongChain/memory/n=300-32         	    5830	    104248 ns/op	  209859 B/op	    1257 allocs/op
+BenchmarkNodeEffectiveTimelineLongChain/memory/n=1000-32        	    1569	    424837 ns/op	  732300 B/op	    4074 allocs/op
+BenchmarkNodeEffectiveTimelineLongChain/memory/n=3000-32        	     512	   1218908 ns/op	 2450507 B/op	   12098 allocs/op
+BenchmarkNodeEffectiveTimelineLongChain/badger/n=300-32         	     802	    733985 ns/op	  918850 B/op	    8232 allocs/op
+BenchmarkNodeEffectiveTimelineLongChain/badger/n=1000-32        	     301	   2274409 ns/op	 3081228 B/op	   28207 allocs/op
+BenchmarkNodeEffectiveTimelineLongChain/badger/n=3000-32        	     100	   7456965 ns/op	 9220309 B/op	   86143 allocs/op
+=== round 2 main
+BenchmarkNodeAtTxLongChain/memory/n=300-32         	    7639	     75416 ns/op	  109105 B/op	    1221 allocs/op
+BenchmarkNodeAtTxLongChain/memory/n=1000-32        	    2263	    229782 ns/op	  357937 B/op	    4021 allocs/op
+BenchmarkNodeAtTxLongChain/memory/n=3000-32        	     913	    875567 ns/op	 1071672 B/op	   12021 allocs/op
+BenchmarkNodeAtTxLongChain/badger/n=300-32         	    4058	    143822 ns/op	  166764 B/op	    1038 allocs/op
+BenchmarkNodeAtTxLongChain/badger/n=1000-32        	    1296	    437001 ns/op	  575892 B/op	    3275 allocs/op
+BenchmarkNodeAtTxLongChain/badger/n=3000-32        	     440	   1347603 ns/op	 1524033 B/op	    9621 allocs/op
+=== round 2 branch
+BenchmarkNodeAtTxLongChain/memory/n=300-32    	    6189	     88486 ns/op	  110495 B/op	    1222 allocs/op
+BenchmarkNodeAtTxLongChain/memory/n=1000-32   	    2158	    279794 ns/op	  374924 B/op	    4026 allocs/op
+BenchmarkNodeAtTxLongChain/memory/n=3000-32   	     632	    894936 ns/op	 1206496 B/op	   12035 allocs/op
+BenchmarkNodeAtTxLongChain/badger/n=300-32    	    4070	    142618 ns/op	  160503 B/op	    1028 allocs/op
+BenchmarkNodeAtTxLongChain/badger/n=1000-32   	    1220	    477671 ns/op	  569544 B/op	    3270 allocs/op
+BenchmarkNodeAtTxLongChain/badger/n=3000-32   	     426	   1449486 ns/op	 1481142 B/op	    9584 allocs/op
+BenchmarkNodeEffectiveTimelineLongChain/memory/n=300-32         	    4936	    124677 ns/op	  209816 B/op	    1257 allocs/op
+BenchmarkNodeEffectiveTimelineLongChain/memory/n=1000-32        	    1214	    546812 ns/op	  726627 B/op	    4072 allocs/op
+BenchmarkNodeEffectiveTimelineLongChain/memory/n=3000-32        	     378	   1871196 ns/op	 2441620 B/op	   12097 allocs/op
+BenchmarkNodeEffectiveTimelineLongChain/badger/n=300-32         	     391	   2475403 ns/op	  920890 B/op	    8247 allocs/op
+BenchmarkNodeEffectiveTimelineLongChain/badger/n=1000-32        	      63	   9871645 ns/op	 3094499 B/op	   28349 allocs/op
+BenchmarkNodeEffectiveTimelineLongChain/badger/n=3000-32        	      25	  24679524 ns/op	 9527310 B/op	   89424 allocs/op
+=== round 3 main
+BenchmarkNodeAtTxLongChain/memory/n=300-32         	    3440	    212109 ns/op	  109108 B/op	    1221 allocs/op
+BenchmarkNodeAtTxLongChain/memory/n=1000-32        	     728	    828797 ns/op	  357938 B/op	    4021 allocs/op
+BenchmarkNodeAtTxLongChain/memory/n=3000-32        	     361	   1489883 ns/op	 1071668 B/op	   12021 allocs/op
+BenchmarkNodeAtTxLongChain/badger/n=300-32         	    3762	    154916 ns/op	  165728 B/op	    1035 allocs/op
+BenchmarkNodeAtTxLongChain/badger/n=1000-32        	    1099	    542826 ns/op	  577284 B/op	    3279 allocs/op
+BenchmarkNodeAtTxLongChain/badger/n=3000-32        	     307	   1656830 ns/op	 1457804 B/op	    9464 allocs/op
+=== round 3 branch
+BenchmarkNodeAtTxLongChain/memory/n=300-32    	    7326	     81789 ns/op	  110545 B/op	    1222 allocs/op
+BenchmarkNodeAtTxLongChain/memory/n=1000-32   	    2164	    325699 ns/op	  375514 B/op	    4026 allocs/op
+BenchmarkNodeAtTxLongChain/memory/n=3000-32   	     675	    999478 ns/op	 1213124 B/op	   12036 allocs/op
+BenchmarkNodeAtTxLongChain/badger/n=300-32    	    4075	    143226 ns/op	  163123 B/op	    1035 allocs/op
+BenchmarkNodeAtTxLongChain/badger/n=1000-32   	    1155	    478483 ns/op	  567144 B/op	    3266 allocs/op
+BenchmarkNodeAtTxLongChain/badger/n=3000-32   	     380	   1421522 ns/op	 1493514 B/op	    9625 allocs/op
+BenchmarkNodeEffectiveTimelineLongChain/memory/n=300-32         	    4641	    121456 ns/op	  209858 B/op	    1257 allocs/op
+BenchmarkNodeEffectiveTimelineLongChain/memory/n=1000-32        	    1382	    448932 ns/op	  730890 B/op	    4073 allocs/op
+BenchmarkNodeEffectiveTimelineLongChain/memory/n=3000-32        	     486	   1272727 ns/op	 2446319 B/op	   12097 allocs/op
+BenchmarkNodeEffectiveTimelineLongChain/badger/n=300-32         	     784	    753411 ns/op	  919678 B/op	    8242 allocs/op
+BenchmarkNodeEffectiveTimelineLongChain/badger/n=1000-32        	     286	   2371517 ns/op	 3080868 B/op	   28199 allocs/op
+BenchmarkNodeEffectiveTimelineLongChain/badger/n=3000-32        	     100	   7529587 ns/op	 9231867 B/op	   86269 allocs/op
+=== round 4 main
+BenchmarkNodeAtTxLongChain/memory/n=300-32         	   10033	     60163 ns/op	  109104 B/op	    1221 allocs/op
+BenchmarkNodeAtTxLongChain/memory/n=1000-32        	    2536	    235340 ns/op	  357938 B/op	    4021 allocs/op
+BenchmarkNodeAtTxLongChain/memory/n=3000-32        	     657	    782193 ns/op	 1071674 B/op	   12021 allocs/op
+BenchmarkNodeAtTxLongChain/badger/n=300-32         	    4106	    145204 ns/op	  167109 B/op	    1039 allocs/op
+BenchmarkNodeAtTxLongChain/badger/n=1000-32        	    1087	    475412 ns/op	  572950 B/op	    3269 allocs/op
+BenchmarkNodeAtTxLongChain/badger/n=3000-32        	     410	   1363847 ns/op	 1519792 B/op	    9613 allocs/op
+=== round 4 branch
+BenchmarkNodeAtTxLongChain/memory/n=300-32    	    8078	     70815 ns/op	  110485 B/op	    1222 allocs/op
+BenchmarkNodeAtTxLongChain/memory/n=1000-32   	    2634	    232031 ns/op	  374134 B/op	    4026 allocs/op
+BenchmarkNodeAtTxLongChain/memory/n=3000-32   	     800	    752073 ns/op	 1213284 B/op	   12036 allocs/op
+BenchmarkNodeAtTxLongChain/badger/n=300-32    	    4250	    135997 ns/op	  161274 B/op	    1030 allocs/op
+BenchmarkNodeAtTxLongChain/badger/n=1000-32   	    1149	    450202 ns/op	  571295 B/op	    3275 allocs/op
+BenchmarkNodeAtTxLongChain/badger/n=3000-32   	     427	   1321715 ns/op	 1482528 B/op	    9590 allocs/op
+BenchmarkNodeEffectiveTimelineLongChain/memory/n=300-32         	    5599	    101341 ns/op	  209889 B/op	    1257 allocs/op
+BenchmarkNodeEffectiveTimelineLongChain/memory/n=1000-32        	    1701	    381922 ns/op	  730382 B/op	    4073 allocs/op
+BenchmarkNodeEffectiveTimelineLongChain/memory/n=3000-32        	     212	   3766122 ns/op	 2388674 B/op	   12092 allocs/op
+BenchmarkNodeEffectiveTimelineLongChain/badger/n=300-32         	     631	    905276 ns/op	  928767 B/op	    8341 allocs/op
+BenchmarkNodeEffectiveTimelineLongChain/badger/n=1000-32        	     277	   2295699 ns/op	 3075872 B/op	   28122 allocs/op
+BenchmarkNodeEffectiveTimelineLongChain/badger/n=3000-32        	     100	   6889470 ns/op	 9200186 B/op	   85919 allocs/op
+done

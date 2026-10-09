@@ -1,0 +1,48 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/bench
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkRelEffectiveTimeline/memory/plain-32         	 1796996	       653.6 ns/op	     504 B/op	      10 allocs/op
+BenchmarkRelEffectiveTimeline/memory/plain-32         	 1353760	       828.7 ns/op	     504 B/op	      10 allocs/op
+BenchmarkRelEffectiveTimeline/memory/plain-32         	 1710691	       706.4 ns/op	     504 B/op	      10 allocs/op
+BenchmarkRelEffectiveTimeline/memory/cascaded-32      	  593853	      2615 ns/op	    1632 B/op	      24 allocs/op
+BenchmarkRelEffectiveTimeline/memory/cascaded-32      	  564330	      2304 ns/op	    1632 B/op	      24 allocs/op
+BenchmarkRelEffectiveTimeline/memory/cascaded-32      	  569228	      1951 ns/op	    1632 B/op	      24 allocs/op
+BenchmarkRelEffectiveTimeline/badger/plain-32         	  119182	      9686 ns/op	    6065 B/op	      45 allocs/op
+BenchmarkRelEffectiveTimeline/badger/plain-32         	  169255	      7468 ns/op	    3177 B/op	      41 allocs/op
+BenchmarkRelEffectiveTimeline/badger/plain-32         	  166149	      6658 ns/op	    3138 B/op	      41 allocs/op
+BenchmarkRelEffectiveTimeline/badger/cascaded-32      	   44840	     22832 ns/op	   11441 B/op	     124 allocs/op
+BenchmarkRelEffectiveTimeline/badger/cascaded-32      	   67862	     19183 ns/op	   11302 B/op	     122 allocs/op
+BenchmarkRelEffectiveTimeline/badger/cascaded-32      	   48148	     21802 ns/op	   11302 B/op	     122 allocs/op
+BenchmarkRelEffectiveLoop/memory/plain-32             	 1135054	      1023 ns/op	     852 B/op	      12 allocs/op
+BenchmarkRelEffectiveLoop/memory/plain-32             	 1112133	      1023 ns/op	     848 B/op	      12 allocs/op
+BenchmarkRelEffectiveLoop/memory/plain-32             	 1385364	       867.6 ns/op	     848 B/op	      12 allocs/op
+BenchmarkRelEffectiveLoop/memory/cascaded-32          	  327272	      3514 ns/op	    3976 B/op	      62 allocs/op
+BenchmarkRelEffectiveLoop/memory/cascaded-32          	  254374	      6447 ns/op	    3976 B/op	      62 allocs/op
+BenchmarkRelEffectiveLoop/memory/cascaded-32          	  356810	      4299 ns/op	    3976 B/op	      62 allocs/op
+BenchmarkRelEffectiveLoop/badger/plain-32             	   65552	     15280 ns/op	    6909 B/op	      93 allocs/op
+BenchmarkRelEffectiveLoop/badger/plain-32             	  138432	      8266 ns/op	    4577 B/op	      63 allocs/op
+BenchmarkRelEffectiveLoop/badger/plain-32             	  137530	     10060 ns/op	    4581 B/op	      63 allocs/op
+BenchmarkRelEffectiveLoop/badger/cascaded-32          	   30824	     38345 ns/op	   22920 B/op	     265 allocs/op
+BenchmarkRelEffectiveLoop/badger/cascaded-32          	   28911	     39644 ns/op	   22731 B/op	     263 allocs/op
+BenchmarkRelEffectiveLoop/badger/cascaded-32          	   23800	     69607 ns/op	   22723 B/op	     263 allocs/op
+BenchmarkForEachRelEffectiveByType/memory-32          	       3	 413589359 ns/op	      2068 ns/rel	127332762 B/op	 2029005 allocs/op
+BenchmarkForEachRelEffectiveByType/memory-32          	       4	 260854867 ns/op	      1304 ns/rel	124177838 B/op	 2028616 allocs/op
+BenchmarkForEachRelEffectiveByType/memory-32          	       4	 255578418 ns/op	      1278 ns/rel	124177812 B/op	 2028616 allocs/op
+BenchmarkForEachRelEffectiveByType/badger-32          	       1	2859189655 ns/op	     14296 ns/rel	1295676040 B/op	15835065 allocs/op
+BenchmarkForEachRelEffectiveByType/badger-32          	       1	3334214848 ns/op	     16671 ns/rel	1145014712 B/op	13938518 allocs/op
+BenchmarkForEachRelEffectiveByType/badger-32          	       1	2667460069 ns/op	     13337 ns/rel	1144964752 B/op	13937854 allocs/op
+BenchmarkRelHasHistory/memory/miss-32                 	34628725	        30.74 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/memory/miss-32                 	44237593	        30.52 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/memory/miss-32                 	39659466	        30.58 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/memory/hit-32                  	41871130	        29.52 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/memory/hit-32                  	41799235	        35.00 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/memory/hit-32                  	36039831	        29.96 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/badger/miss-32                 	32523621	        33.59 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/badger/miss-32                 	33662276	        32.69 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/badger/miss-32                 	36259516	        32.83 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/badger/hit-32                  	50219294	        25.54 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/badger/hit-32                  	37713814	        29.77 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHasHistory/badger/hit-32                  	48776503	        27.53 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/bench	63.204s

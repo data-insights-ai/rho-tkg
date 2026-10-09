@@ -1,0 +1,18 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/bench
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkRelEffectiveTimeline/memory/plain-hot-32         	 2567320	       686.6 ns/op	     504 B/op	      10 allocs/op
+BenchmarkRelEffectiveTimeline/memory/plain-hot-32         	 2439534	       476.8 ns/op	     504 B/op	      10 allocs/op
+BenchmarkRelEffectiveTimeline/memory/plain-hot-32         	 2574642	       565.3 ns/op	     504 B/op	      10 allocs/op
+BenchmarkRelEffectiveTimeline/badger/plain-hot-32         	 2140404	       584.5 ns/op	     440 B/op	       9 allocs/op
+BenchmarkRelEffectiveTimeline/badger/plain-hot-32         	 1893050	       557.3 ns/op	     440 B/op	       9 allocs/op
+BenchmarkRelEffectiveTimeline/badger/plain-hot-32         	 2432352	       792.9 ns/op	     440 B/op	       9 allocs/op
+BenchmarkRelEffectiveLoop/memory/plain-hot-32             	 1734108	       586.0 ns/op	     850 B/op	      12 allocs/op
+BenchmarkRelEffectiveLoop/memory/plain-hot-32             	 2323330	       502.0 ns/op	     848 B/op	      12 allocs/op
+BenchmarkRelEffectiveLoop/memory/plain-hot-32             	 2389305	       500.5 ns/op	     848 B/op	      12 allocs/op
+BenchmarkRelEffectiveLoop/badger/plain-hot-32             	  300458	      3582 ns/op	    2467 B/op	      36 allocs/op
+BenchmarkRelEffectiveLoop/badger/plain-hot-32             	  468669	      2997 ns/op	    1816 B/op	      30 allocs/op
+BenchmarkRelEffectiveLoop/badger/plain-hot-32             	  482258	      2827 ns/op	    1816 B/op	      30 allocs/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/bench	20.369s

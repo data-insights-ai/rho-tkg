@@ -8,6 +8,76 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`g.Temporal().NodeEffectiveTimeline(id, pin)` / `RelEffectiveTimeline(id, pin)`: the entity's state over
+  valid time as recorded at a pin, in one call** (handover `tasks/handover-effective-read-cost-20261009.md` fix
+  1c). Returns `[]temporal.NodeSegment` / `[]temporal.RelSegment` (`{ValidFrom, ValidTo, Node|Rel}`): ascending by
+  `ValidFrom`, non-overlapping, half-open `[ValidFrom, ValidTo)` (`ValidTo == 0` open-ended), gaps omitted,
+  adjacent segments holding different rows. For every valid instant `t` the segment containing `t` holds the row
+  `NodeAtTx(id, t, pin)` / `RelAtTx` returns, and none contains `t` where that door answers `ErrNoVersionValidAt`
+  — the state door's interval form (`NodeAsOf` stays the record door: the newest row recorded by a pin).
+  `ValidFrom` is the effective start and never 0: a row without a recorded valid-from (a plain create without
+  `tkg_valid_from`, an `AddWithTx` backfill) starts at the ID's mint instant (`types.NodeID.MintInstant()`), a
+  later version without one at its `UpdatedAt`; a deleted entity's last segment ends at the delete instant; an
+  entity created after the pin returns nil, nil. Rows are shared frozen pointers (DeepCopy to mutate). Errors:
+  pin `<= 0` → `ErrInvalidTimeRange`; a pin above the commit clock (`PeekTx`) → the new `ErrTxPinTooNew`; below
+  compacted knowledge or a retention watermark → `ErrHistoryCompacted` / `ErrRetentionExpired` (as `NodeAtTx`);
+  unknown ID → `ErrNodeNotFound` / `ErrRelNotFound`. How: the chain is loaded once (per-version skeletons on
+  badger) and given the point resolver's input preparation (TxAt filter, write order, life ends) and
+  classification; each row's covering interval in the resolver's arm (positional, or own bounds capped by the
+  supersession rule) and its selection priority are computed once with the resolver's own bounds functions, and one
+  sweep with a max-heap yields every piece — O(n log n) for a chain of n rows (n = 3000: memory 1.3-1.8 ms, badger
+  7.4-8.8 ms per call; the first round re-resolved every piece, O(n^3)). Only the rows that answer are decoded. A
+  plain entity costs its row read and the history presence bit. The read holds the entity's exclusive lock (readers
+  of one entity serialize), so a concurrent Update / Delete cannot make the entity read as unknown. The point doors
+  (`NodeAtTx` / `RelAtTx` and the scans built on them) do not take it and can still miss an entity for the
+  duration of such a write on badger and sharded (pre-existing, backlog 32). No `context.Context` on these doors
+  (like `ForEachByType`).
+- **Scan forms (backlog 27): `g.Temporal().ForEachRelEffectiveByType(typeName, pin, fn)` /
+  `ForEachNodeEffectiveByLabel(label, pin, fn)`** stream the timeline of every relationship of the type (node that
+  carried the label) recorded by the pin — including entities deleted before the pin, which `ByType{TxPin}` /
+  `ByLabel{TxPin}` drop — limited to the segments whose row carries the type / label: at every valid instant `t`
+  the segments containing `t` are exactly `ByType(typeName, {ValidAt: t, TxAt: pin})` (`ByLabel` for nodes; a node
+  that gained the label is listed from the gaining row's start). Segments of one entity are contiguous and
+  ascending; entity order is unspecified; `fn` returning false stops the scan; `fn` runs without graph locks.
+  Candidates and gates are the pinned `ByType` / `ByLabel`'s (the graph's compaction and retention watermarks fail
+  the whole scan, checked before an unknown type or label returns nothing); nil `fn` → `ErrNilCallback`.
+- **`tkg_valid_from = 0` is unset, in every door** (question from sigma-tkgd): an explicit 0 on a create stores the
+  same row as an omitted key and reads from the ID's mint instant in the point, scan, generic, record and timeline
+  doors alike; it stays accepted (no refusal; stability policy). Guard `TestZeroValidFromIsUnsetInEveryDoor` (Add,
+  AddWithTx, Import; four backends, node and rel) passes on the branch; `docs/api.md` records the answer.
+- Tests (`tasks/evidence/effective-timeline/`): `TestEffectiveTimeline_PointwiseOracle` checks the pointwise rule on
+  the cross-backend oracle's chains (creates, backfills, updates, label changes, bounded / open / one-tick
+  cascades, closes, deletes, `DeleteWithTx` / `UpdateWithTx` through every door family) plus GraphTx rollbacks,
+  re-imports of deleted IDs and a compaction, at every recorded instant of each entity as a pin, memory, badger,
+  sharded and tiered, node and relationship (3.1 M point comparisons at 187 K entity-pin pairs in `-short`);
+  `TestEffectiveTimeline_ScanMatchesGenericDoor` the scan forms against `ByType` / `ByLabel{ValidAt, TxAt}` on the
+  same chains; derived start, shapes, errors, compaction / retention gates, deleted-entity scan sets, merge and
+  concurrent writers (`-race`). Ten mutants (segment end off by one, scan skipping deleted entities, raw valid-from
+  as the start, no merge, current knowledge instead of the pin, skeleton winner not hydrated, future pin accepted,
+  scan gates skipped, no entity lock, no supersession cap; after review: the sweep's segment end, merge, priority and
+  end-inclusive interval, the hydrated winner not normalized) are each red. Measured (`./bench`, 200 K relationships,
+  1 % with a bounded correction, 3 runs, 32-core host shared with other jobs (load 9-20), medians;
+  `RelEffectiveLoop` is the consumer's loop it replaces — `Get` + `History` + `RelAtTx` per row bound;
+  `bench-200k-round2.txt`, hot rows after the one-row path):
+
+  | | badger timeline | badger loop | memory timeline | memory loop |
+  |---|---|---|---|---|
+  | plain rel, random over 200 K (row read cold) | 4.7 us, 40 allocs | 9.8 us, 62 allocs | 0.58 us, 10 allocs | 1.41 us, 12 allocs |
+  | plain rel, 64 hot rows | 0.29 us, 7 allocs | 2.2 us, 30 allocs | 0.34 us, 8 allocs | 0.43 us, 12 allocs |
+  | rel with a bounded correction (3 segments) | 13.9 us, 125 allocs | 45.5 us, 257 allocs | 1.61 us, 27 allocs | 2.84 us, 62 allocs |
+
+  What a plain-entity call costs (CPU profiles, `profile-plain-timeline.txt`): cold on badger the row read is 93 %
+  (a store point read that deep-copies the row); hot, the row read with its copy is about 40 %, building the
+  segment about 25 % (before the one-row path 40 %), pin validation (one clock read) about 10 %, the history
+  presence bit 5-7 %, the entity lock 2-3 %; the 7-8 allocations are the store's row copy (4) and the result.
+  Long chains (`NodeAtTxLongChain` / `NodeEffectiveTimelineLongChain`, one node with n Updates and one bounded
+  correction, 4 interleaved rounds against main, `bench-long-chain-final.txt`): `NodeAtTx` badger 0.14 / 0.48 /
+  1.44 ms at n = 300 / 1000 / 3000 (main 0.15 / 0.51 / 1.51), memory 0.08 / 0.27 / 0.89 ms (main 0.08 / 0.28 /
+  1.05); the timeline badger 0.83 / 2.33 / 7.49 ms, memory 0.11 / 0.44 / 1.57 ms (linear in n).
+  `ForEachRelEffectiveByType` over the 200 K: memory 1.3 us per relationship, badger 13-17 us (the pinned `ByType`
+  candidate gather decodes every current row, then each relationship's row is read again under its lock; backlog
+  33). Bench gate: `RelEffectiveTimeline`, `RelEffectiveLoop`, `ForEachRelEffectiveByType`, `NodeAtTxLongChain`,
+  `NodeEffectiveTimelineLongChain`. Additive surface: `temporal.Ops` gains the four methods.
 - **`types.NodeID.MintInstant()` / `types.RelID.MintInstant()` (`types.Instant`): the public derivation of an ID's
   derived valid-from** (backlog 36, requested by sigma-tkgd for its adoption of the rule "`ValidFrom` 0 = unset; the
   derived start is the ID's mint instant" on unpinned reads and column scans, which carry no derived start and where
@@ -141,6 +211,50 @@ ai-soc engine and agent-bookkeeping build and vet against it.
 
 ### Fixed
 
+- **A replacing write (Update, `CloseVersion`, a label change, a property CAS) ends every older belief that started
+  at or before its row's start — also once a cascade made the chain non-monotonic** (consumer report, sigma-tkgd,
+  effective timeline; completed after review). The point resolver's own-bounds arm (a chain a `SetVersionInterval`
+  made non-monotonic) read every row over its own interval, so after a close an older open row answered again
+  beyond it wherever no newer row reached: `NodeAt` / `NodeAtTx(t, pin)` / `RelAt*`, `NodesAt[Tx]` / `RelsAt[Tx]`,
+  `ByLabel` / `ByType{ValidAt[, TxAt]}`, `Snapshot` and the effective timeline answered a row at `t >= 4000` after
+  `CloseVersion(4000)`. A cascade BEFORE the close is enough to trigger it: the cascade moves the genesis out of the
+  current slot without a `TxTo`, so only the row the close replaced carries one. Rule now
+  (`supersessionCaps`, `chain_supersession.go`, the monotonic arm's "a row ends where the next starts" stated for
+  the own-bounds arm): a replacing row `s` — one recorded at the `TxTo` of a row it replaced — ends, at its start
+  `S`, every belief older than `s` (`TxFrom`, then version) that started at or before `S`; older beliefs that start
+  after `S` and newer ones are untouched; when `s` was recorded after the pin nothing changes at that pin. One
+  O(n log n) pass per resolve (no allocation in steady state). Read seam only; repairs existing chains.
+  **Migration — what changes** (`NodeAtTx` / `RelAtTx` at a pin after the last write, and the unpinned doors; every
+  backend, node and rel; `tasks/evidence/effective-timeline/migration-table-main-then-branch.txt`):
+
+  | Shape (Add vf=1000 first; cascades as `[from,to)`) | t | main (4.45 + G) | now | correct |
+  |---|---|---|---|---|
+  | `CloseVersion(4000)` → cascade `[2000,3000)` | 5000 | v0 (the pre-close row) | none | none |
+  | Update `[2000,4000)` → cascade `[2500,3000)` | 5000 | v0 | none | none |
+  | cascade `[2000,3000)` → `CloseVersion(4000)` → cascade `[1500,1800)` | 5000 | v2 | none | none |
+  | cascade `[2000,∞)` → `CloseVersion(4000)` → cascade `[1500,1800)` | 5000 | v1 | none | none |
+  | cascade `[2000,3000)` → Update vf=3500 → `CloseVersion(4000)` → cascade `[1500,1800)` | 5000 | v3 | none | none |
+  | the same shapes | 3500 | unchanged | unchanged | — |
+  | monotonic chains (Updates, `CloseVersion`, no cascade) | any | unchanged | unchanged | — |
+  | cascade `[2000,∞)` → Update vf=4500 | 3500 / 5000 | v1 / v2 | v1 / v2 | — |
+
+  Pins before the replacing write are unchanged (the rule needs the replacing row recorded by the pin). Tests:
+  `TestAtTxEndsAtClose` / `TestAtTxEndsAtDelete` (hand-written windows, four backends, node and rel, every delete
+  door; the point, `*AtTx`, generic `{ValidAt, TxAt}`, `NodesAtTx` / `RelsAtTx`, interval and scan-form doors; the
+  review repros cascade-close-cascade, open-cascade-close-cascade, cascade-update-close-cascade and its delete; the
+  delete instant, consumer report (2), holds on main and stays as a guard) and the cross-backend oracle, whose model
+  now states the belief definition by brute force per instant (`replacedAt`) instead of restating the engine's caps;
+  mutants (cap only the replaced row — the first-round rule —, ignore belief age, strict start) each red.
+- **A re-imported ID's rows order after the earlier life's**: a re-import numbers its versions from 0 again, and
+  the resolver's version-ordered chain interleaved the two lives, so where the re-import's valid start lay before
+  the first life's later rows tiered and sharded (full chain fold) answered the first life's row while memory and
+  badger (current-row shortcut) answered the re-imported row. The chain is ordered by life (deletes recorded before
+  the row), then version (`chainWriteOrder`). **Migration — what changes:** Add vf=1000 → Update (starts at its
+  write time U) → Delete at D → `Import` vf=5000: tiered and sharded answered the first life's Update row on
+  `[U, D)` and nothing from D on, now the re-imported row on all of `[5000, ∞)` (memory and badger already did); `t < 5000` and pins
+  before the import are unchanged. Test: `TestAtTxReImportOverlapsEarlierLife`. Not covered (backlog 38): a
+  backfilled re-import whose `tkg_tx_from` lies inside the deleted life joins that life and reads absent from the
+  delete instant on (pre-existing).
 - **Bulk badger `NodesAsOf` / `RelsAsOf` no longer read the key above the current version per entity.** The
   pin-stable as-of rule made the bulk scan look for a row at `current+1` for every entity (a badger point read
   each, measured +0.6 us per entity without history, +1.2 us with one history row; about +0.6 s per 1 M entities;
