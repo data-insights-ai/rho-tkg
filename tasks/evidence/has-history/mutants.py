@@ -8,6 +8,7 @@ BADGER = "pkg/graph/store/badger/badgerstore_history_presence.go"
 BSTORE = "pkg/graph/store/badger/badgerstore.go"
 TIERED = "pkg/graph/store/tiered/tieredstore_history_presence.go"
 TCFG = "pkg/graph/store/tiered/tieredstore.go"
+HIST = "pkg/graph/store/badger/badgerstore_history.go"
 
 BADGER_TESTS = ("./pkg/graph/store/badger/", "TestHistoryPresence")
 GRAPH_TESTS = ("./pkg/graph/", "TestHasHistoryDifferential")
@@ -126,6 +127,31 @@ MUTANTS = [
 	if true {
 		return has, nil // MUTANT
 	}""")], [TIERED_TESTS]),
+    ("m9-id-overlay-resolves-per-id", HIST, [(
+        """		if op.opType == writeOpDelete {
+			pendingDeletes[k] = struct{}{}
+			delete(setKeys, k)
+			return
+		}""",
+        """		if op.opType == writeOpDelete {
+			pendingDeletes[k] = struct{}{}
+			for sk := range setKeys { // MUTANT: a delete drops every SET of the same ID
+				if sk[:9] == k[:9] {
+					delete(setKeys, sk)
+				}
+			}
+			return
+		}""")], [("./pkg/graph/store/badger/", "TestHistoryPresence_RandomizedDifferential"),
+             ("./pkg/graph/store/badger/", "TestHistoryIDOverlay"), GRAPH_TESTS]),
+    ("m10-failed-clear-keeps-built-empty-set", BADGER, [(
+        """	p.built.Store(false)
+	p.tracking = false
+	p.has, p.unknown = nil, nil
+""", """	if p.tracking { // MUTANT: reset in place, set stays built
+		p.has = make(map[snowflake.ID]struct{})
+		p.unknown = make(map[snowflake.ID]uint64)
+	}
+""")], [BADGER_TESTS]),
     ("m8-tiered-cold-shards-build-the-set", TCFG, [(
         "	cfg.HistoryPresenceProbeOnly = cold\n", "	cfg.HistoryPresenceProbeOnly = false // MUTANT\n")], [TIERED_TESTS]),
 ]

@@ -449,10 +449,14 @@ func TestHistoryPresence_ProbeOnly(t *testing.T) {
 }
 
 // Randomized store-level differential on an on-disk store: puts, partial and
-// full trims, flushes, parks into `flushing`, failed flushes, Clear and
-// reopens; after every step has(id) == len(history(id)) > 0 for every id.
+// full trims, truncations that keep the newest rows, flushes, parks into
+// `flushing`, failed flushes, Clear and reopens; after every checked step
+// has(id) == len(history(id)) > 0 for every id, and the ID walk and the history
+// count list exactly the ids with rows. After a reopen or a Clear the next
+// steps run unchecked, so several ops per ID (SETs and DELETEs of different
+// versions) sit in the buffer when the first call builds the set.
 func TestHistoryPresence_RandomizedDifferential(t *testing.T) {
-	for _, k := range presenceKinds() {
+	for _, k := range idOverlayKinds() {
 		for seed := int64(1); seed <= 4; seed++ {
 			t.Run(fmt.Sprintf("%s/seed=%d", k.name, seed), func(t *testing.T) {
 				r := rand.New(rand.NewSource(seed)) // #nosec G404 -- deterministic test sequence
@@ -469,6 +473,7 @@ func TestHistoryPresence_RandomizedDifferential(t *testing.T) {
 				const ids = 24
 				ver := map[int64]uint32{}
 				check := func(step string) {
+					var want []int64
 					for id := int64(1); id <= ids; id++ {
 						got, err := k.has(bs, id)
 						if err != nil {
@@ -481,54 +486,76 @@ func TestHistoryPresence_RandomizedDifferential(t *testing.T) {
 						if got != (rows > 0) {
 							t.Fatalf("%s: has(%d) = %v, history has %d rows", step, id, got, rows)
 						}
+						if rows > 0 {
+							want = append(want, id)
+						}
+					}
+					listed, err := k.allIDs(bs)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if fmt.Sprint(listed) != fmt.Sprint(want) {
+						t.Fatalf("%s: AllHistoryIDs = %v, ids with rows %v", step, listed, want)
+					}
+					if n, err := k.count(bs); err != nil || n != len(want) {
+						t.Fatalf("%s: HistoryCount = %d, %v; want %d", step, n, err, len(want))
 					}
 				}
+				unchecked := 0
 				for step := 0; step < 250; step++ {
 					id := int64(1 + r.Intn(ids))
 					name := ""
-					checkNow := true
 					switch op := r.Intn(100); {
-					case op < 40:
+					case op < 36:
 						name = "put"
 						if err := k.put(bs, id, ver[id]); err != nil {
 							t.Fatal(err)
 						}
 						ver[id]++
-					case op < 55:
+					case op < 46:
 						name = "trimSome"
 						if ver[id] > 0 {
 							if err := k.trimFrom(bs, id, uint32(r.Intn(int(ver[id])))); err != nil {
 								t.Fatal(err)
 							}
 						}
-					case op < 65:
+					case op < 54:
 						name = "trimAll"
 						if err := k.trimFrom(bs, id, 0); err != nil {
 							t.Fatal(err)
 						}
-					case op < 78:
+					case op < 64:
+						name = "truncateKeep"
+						if err := k.truncate(bs, id, 1+r.Intn(2)); err != nil {
+							t.Fatal(err)
+						}
+					case op < 74:
 						name = "flush"
 						if err := bs.Flush(); err != nil {
 							t.Fatal(err)
 						}
-					case op < 84:
+					case op < 80:
 						name = "park"
 						if pendingLen(bs) > 0 && flushingLen(bs) == 0 {
 							parkPendingIntoFlushing(t, bs)
-							check("parked")
+							if unchecked == 0 {
+								check("parked")
+							}
 							requeueParked(bs)
 						}
-					case op < 89:
+					case op < 85:
 						name = "failedFlush"
 						bs.FailNextFlushForTest(errors.New("injected"))
 						_ = bs.Flush()
 						bs.failNextFlush.Store(nil) // disarm when the buffer was empty
-					case op < 93:
+					case op < 90:
 						name = "clear"
 						if err := bs.Clear(); err != nil {
 							t.Fatal(err)
 						}
-					case op < 97:
+						ver = map[int64]uint32{}
+						unchecked = 5
+					case op < 95:
 						name = "flush2"
 						if err := bs.Flush(); err != nil {
 							t.Fatal(err)
@@ -539,11 +566,13 @@ func TestHistoryPresence_RandomizedDifferential(t *testing.T) {
 							t.Fatal(err)
 						}
 						bs = open()
-						checkNow = false // the next step writes before the first (building) call
+						unchecked = 5
 					}
-					if checkNow {
-						check(fmt.Sprintf("step %d %s", step, name))
+					if unchecked > 0 {
+						unchecked--
+						continue
 					}
+					check(fmt.Sprintf("step %d %s", step, name))
 				}
 				check("final")
 			})

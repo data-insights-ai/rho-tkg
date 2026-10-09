@@ -1,0 +1,48 @@
+$ go test ./pkg/graph/store/badger/ -run TestHistoryPresence_RandomizedDifferential -count=1
+--- FAIL: TestHistoryPresence_RandomizedDifferential (7.42s)
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/node/seed=2 (0.83s)
+        badgerstore_history_presence_test.go:501: step 187 truncateKeep: HistoryCount = 1, <nil>; want 2
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/node/seed=4 (0.28s)
+        badgerstore_history_presence_test.go:498: step 67 park: AllHistoryIDs = [2 3 4 6 9 10 11 12 13 14 16 17 19 22 24], ids with rows [2 3 4 6 9 10 11 12 13 14 16 17 19 21 22 24]
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/rel/seed=2 (0.90s)
+        badgerstore_history_presence_test.go:501: step 187 truncateKeep: HistoryCount = 1, <nil>; want 2
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/rel/seed=3 (0.93s)
+        badgerstore_history_presence_test.go:501: step 157 put: HistoryCount = 9, <nil>; want 10
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/rel/seed=4 (0.29s)
+        badgerstore_history_presence_test.go:498: step 65 put: AllHistoryIDs = [2 3 4 6 9 10 11 12 13 14 16 17 19 22 24], ids with rows [2 3 4 6 9 10 11 12 13 14 16 17 19 21 22 24]
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	7.441s
+FAIL
+exit=1
+
+$ go test ./pkg/graph/store/badger/ -run TestHistoryIDOverlay -count=1
+--- FAIL: TestHistoryIDOverlay_SetAndDeleteOfDifferentVersionsSameID (1.67s)
+    --- FAIL: TestHistoryIDOverlay_SetAndDeleteOfDifferentVersionsSameID/node/both_pending (0.23s)
+        badgerstore_history_id_overlay_test.go:125: iter 0: first HasHistory=false, AllHistoryIDs=[], HistoryCount=1; want true / [77]? / 1
+        badgerstore_history_id_overlay_test.go:133: wrong in 20 of 20 fresh stores
+    --- FAIL: TestHistoryIDOverlay_SetAndDeleteOfDifferentVersionsSameID/node/set_flushing,_delete_pending (0.19s)
+        badgerstore_history_id_overlay_test.go:125: iter 0: first HasHistory=false, AllHistoryIDs=[], HistoryCount=0; want true / [77]? / 1
+        badgerstore_history_id_overlay_test.go:133: wrong in 20 of 20 fresh stores
+    --- FAIL: TestHistoryIDOverlay_SetAndDeleteOfDifferentVersionsSameID/rel/both_pending (0.18s)
+        badgerstore_history_id_overlay_test.go:125: iter 0: first HasHistory=false, AllHistoryIDs=[], HistoryCount=1; want true / [77]? / 1
+        badgerstore_history_id_overlay_test.go:133: wrong in 20 of 20 fresh stores
+    --- FAIL: TestHistoryIDOverlay_SetAndDeleteOfDifferentVersionsSameID/rel/set_flushing,_delete_pending (0.40s)
+        badgerstore_history_id_overlay_test.go:125: iter 0: first HasHistory=false, AllHistoryIDs=[], HistoryCount=0; want true / [77]? / 1
+        badgerstore_history_id_overlay_test.go:133: wrong in 20 of 20 fresh stores
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.699s
+FAIL
+exit=1
+
+$ go test ./pkg/graph/ -run TestHasHistoryDifferential -count=1
+--- FAIL: TestHasHistoryDifferential (12.26s)
+    --- FAIL: TestHasHistoryDifferential/tiered-disk/seed=1 (0.92s)
+        has_history_test.go:427: step 22 reopen: node 797223317012119552 HasHistory=false store=false, History has 1 rows
+    --- FAIL: TestHasHistoryDifferential/tiered-disk/seed=2 (0.94s)
+        has_history_test.go:427: step 13 reopen: node 797223341745012736 HasHistory=false store=false, History has 1 rows
+    --- FAIL: TestHasHistoryDifferential/tiered-disk/seed=3 (0.79s)
+        has_history_test.go:427: step 8 reopen: node 797223372396789760 HasHistory=false store=false, History has 1 rows
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	12.298s
+FAIL
+exit=1

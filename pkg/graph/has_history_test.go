@@ -128,7 +128,9 @@ func hasHistorySeeds() []int64 {
 // included) plus IDs that never existed. Faults it catches: a set that is not
 // maintained when a history key is deleted (rollback, purge, erasure, Clear), a
 // build or probe that skips the pending write buffer (reopen, then writes, then
-// the first call builds), a store answer the core fallback would hide.
+// the first call builds), a first build over a buffer holding a SET and a
+// DELETE of different versions of one entity (the burst after every reopen and
+// Clear), a store answer the core fallback would hide.
 func TestHasHistoryDifferential(t *testing.T) {
 	steps := 160
 	if testing.Short() {
@@ -186,6 +188,56 @@ func runHasHistoryDifferential(t *testing.T, b hasHistoryBackend, seed int64, st
 		if err == nil {
 			rels = append(rels, rel.ID())
 			ok["addRel"]++
+		}
+	}
+	// burst buffers several history ops per entity before the next check: an
+	// update that flushes (older version committed), two more updates (SETs of
+	// newer versions, still buffered), then a compaction keeping one history
+	// version (DELETEs of the committed older versions). Run right after a
+	// reopen or a Clear, the next check is the first call and builds the set
+	// over a buffer holding a SET and a DELETE of different versions per ID.
+	burst := func() {
+		for i := 0; i < 4 && len(nodes) > 0; i++ {
+			id := nodes[pick(len(nodes))]
+			if _, err := g.Nodes().Update(ctx, id, map[string]any{"v": int64(1000 + i)}); err != nil {
+				continue
+			}
+			ok["burstUpdate"]++
+			if flush != nil {
+				if err := flush(); err != nil {
+					t.Fatalf("burst flush: %v", err)
+				}
+			}
+			for j := 0; j < 2; j++ {
+				if _, err := g.Nodes().Update(ctx, id, map[string]any{"v": int64(2000 + 10*i + j)}); err != nil {
+					t.Fatalf("burst update: %v", err)
+				}
+			}
+		}
+		for i := 0; i < 4 && len(rels) > 0; i++ {
+			id := rels[pick(len(rels))]
+			if _, err := g.Rels().Update(ctx, id, map[string]any{"w": int64(1000 + i)}); err != nil {
+				continue
+			}
+			if flush != nil {
+				if err := flush(); err != nil {
+					t.Fatalf("burst flush: %v", err)
+				}
+			}
+			for j := 0; j < 2; j++ {
+				if _, err := g.Rels().Update(ctx, id, map[string]any{"w": int64(2000 + 10*i + j)}); err != nil {
+					t.Fatalf("burst update: %v", err)
+				}
+			}
+		}
+		keep := adminpkg.RetentionPolicy{KeepVersions: 1}
+		for _, err := range []error{
+			func() error { _, err := g.Admin().CompactHistoryNodes(ctx, keep); return err }(),
+			func() error { _, err := g.Admin().CompactHistoryRels(ctx, keep); return err }(),
+		} {
+			if err != nil && !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
+				t.Fatalf("burst compact: %v", err)
+			}
 		}
 	}
 	for range 6 {
@@ -345,6 +397,12 @@ func runHasHistoryDifferential(t *testing.T, b hasHistoryBackend, seed int64, st
 			// Keep the old IDs: after Clear every one must read false.
 			addNode()
 			addNode()
+			r1, err := g.Rels().AddByID(ctx, "LINK", nodes[len(nodes)-2], nodes[len(nodes)-1], nil)
+			if err != nil {
+				t.Fatalf("add rel after clear: %v", err)
+			}
+			rels = append(rels, r1.ID())
+			burst()
 		case op < 95:
 			name = "flush"
 			if flush != nil {
@@ -362,9 +420,7 @@ func runHasHistoryDifferential(t *testing.T, b hasHistoryBackend, seed int64, st
 				st, flush = b.open(t, dir)
 				g = hasHistoryGraph(t, st)
 				ok[name]++
-				// No check now: the next step writes first, so the first call
-				// after the reopen builds with unflushed history in the buffer.
-				check = false
+				burst()
 			}
 		}
 		if check {
@@ -373,24 +429,80 @@ func runHasHistoryDifferential(t *testing.T, b hasHistoryBackend, seed int64, st
 	}
 	assertHasHistoryAgrees(t, "final", g, st, append(nodes, ghostNodes...), append(rels, ghostRels...))
 	t.Logf("%s seed %d: successful ops %v", b.name, seed, ok)
-	for _, must := range []string{"updateNode", "cascadeNode", "deleteNode", "txRollback", "addRel", "updateRel"} {
+	for _, must := range []string{"updateNode", "cascadeNode", "deleteNode", "txRollback", "addRel", "updateRel", "burstUpdate"} {
 		if ok[must] == 0 && steps >= 100 {
 			t.Errorf("op %s never succeeded; the sequence does not exercise it", must)
 		}
 	}
 
-	// Import: the history a bootstrap import writes reads the same through both doors.
-	var snap bytes.Buffer
-	if err := g.IO().Export(&snap); err != nil {
-		t.Fatalf("export: %v", err)
+}
+
+// TestHasHistoryImport: the history a bootstrap import writes reads the same
+// through both doors, on every backend, for updated, cascaded, closed,
+// deleted and plain entities. Separate from the randomized differential: an
+// export taken after a compaction that trimmed an entity whose newest history
+// row is a bounded-cascade piece above its current slot does not import
+// (pre-existing, reported with the HasHistory review fixes).
+func TestHasHistoryImport(t *testing.T) {
+	for _, b := range hasHistoryBackends() {
+		t.Run(b.name, func(t *testing.T) {
+			ctx := context.Background()
+			st, _ := b.open(t, t.TempDir())
+			g := hasHistoryGraph(t, st)
+			t.Cleanup(func() { _ = g.Close() })
+			var nodes []types.NodeID
+			var rels []types.RelID
+			for i := range 6 {
+				n, err := g.Nodes().Add(ctx, []string{"Event"}, map[string]any{"v": int64(i)})
+				if err != nil {
+					t.Fatal(err)
+				}
+				nodes = append(nodes, n.ID())
+			}
+			for i := 1; i < len(nodes); i++ {
+				r, err := g.Rels().AddByID(ctx, "LINK", nodes[i-1], nodes[i], map[string]any{"w": int64(i)})
+				if err != nil {
+					t.Fatal(err)
+				}
+				rels = append(rels, r.ID())
+			}
+			for _, id := range nodes[:2] {
+				if _, err := g.Nodes().Update(ctx, id, map[string]any{"v": int64(-1)}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := g.Rels().Update(ctx, rels[0], map[string]any{"w": int64(-1)}); err != nil {
+				t.Fatal(err)
+			}
+			now, err := g.Temporal().NowTx()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := g.Temporal().SetNodeVersionInterval(ctx, nodes[2], now+10, 0, map[string]any{"v": int64(9)}); err != nil {
+				t.Fatal(err)
+			}
+			if err := g.Rels().Delete(ctx, rels[3]); err != nil {
+				t.Fatal(err)
+			}
+			var snap bytes.Buffer
+			if err := g.IO().Export(&snap); err != nil {
+				t.Fatalf("export: %v", err)
+			}
+			st2, _ := b.open(t, t.TempDir())
+			g2 := hasHistoryGraph(t, st2)
+			t.Cleanup(func() { _ = g2.Close() })
+			if err := g2.IO().Import(&snap, tkgio.ImportOptions{}); err != nil {
+				t.Fatalf("import: %v", err)
+			}
+			assertHasHistoryAgrees(t, "imported", g2, st2, nodes, rels)
+			if has, err := g2.Nodes().HasHistory(nodes[0]); err != nil || !has {
+				t.Fatalf("imported updated node: HasHistory = %v, %v", has, err)
+			}
+			if has, err := g2.Nodes().HasHistory(nodes[5]); err != nil || has {
+				t.Fatalf("imported plain node: HasHistory = %v, %v", has, err)
+			}
+		})
 	}
-	st2, _ := b.open(t, t.TempDir())
-	g2 := hasHistoryGraph(t, st2)
-	t.Cleanup(func() { _ = g2.Close() })
-	if err := g2.IO().Import(&snap, tkgio.ImportOptions{}); err != nil {
-		t.Fatalf("import: %v", err)
-	}
-	assertHasHistoryAgrees(t, "imported", g2, st2, nodes, rels)
 }
 
 // Replica apply writes history through the replica's own doors: after
