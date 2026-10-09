@@ -1,0 +1,542 @@
+package graph_test
+
+// Item C (scan-temporal-opts), testing rules 15-17: the column scans
+// (ScanNodeColumns / ScanRelColumns) and the numeric range scans
+// (Nodes().ForEachByLabelPropertyRange / Rels().ForEachByTypePropertyRange) are
+// doors with the same shape as ByLabel / ByType. Under a temporal QueryOpts they
+// must answer EXACTLY what ByLabel(opts) / ByType(opts) answer — the version each
+// entity had under the opts, history included — or fail closed. Never the CURRENT
+// rows filtered by the opts' valid-time fields with TxAt / TxPin dropped.
+//
+// Faulty implementations these tests catch (every assertion is a break case):
+//   - "current-row push-down": the door forwards opts to the store, which filters
+//     LIVE rows by valid time. It drops an updated entity's old version (ValidAt
+//     before the update), a deleted entity (no live row), a node whose label was
+//     removed later (rule 16: the label held only on an earlier version), and
+//     yields the live value instead of the value at t.
+//   - "transaction-time pins ignored": storeutil.HasTemporalFilter checks valid
+//     time only, so a TxAt / TxPin scan takes the unfiltered current-row shortcut:
+//     it over-reports an entity created after the pin and misses one deleted after
+//     it.
+//   - "no validation": the column door accepts TxPin together with ValidAt
+//     instead of returning ErrConflictingTemporalOpts.
+//   - "pagination dropped": the exact path ignores Limit.
+//   - "range door needs the index under a temporal opt": the ordered sibling serves
+//     temporal opts by a full fold without an index; the unordered door must not
+//     answer ErrIndexNotFound (or silently current rows) instead.
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sort"
+	"strings"
+	"testing"
+	"time"
+
+	graphpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+)
+
+// scanOptsFixture is the adversarial dataset: per entity one lifecycle.
+//
+//	A  value 10 valid from 1000, updated to 20 valid from 2000      (before the pin)
+//	B  value 30 valid from 1000, DELETED after the pin
+//	C  value 40 valid from 1000, CLOSED at 1800 after the pin
+//	D  value 50 valid from 1000, label S REMOVED after the pin       (nodes only)
+//	E  value 70 valid from 1000, CREATED after the pin
+//	F  value 60 valid from 1000, never touched
+//
+// pin is the transaction time of the last write before the post-pin mutations
+// (derived from the entities' own TxFrom, never the wall clock — lesson 60).
+type scanOptsFixture struct {
+	pin   types.Instant
+	far   types.Instant
+	nodes map[types.NodeID]string
+	rels  map[types.RelID]string
+}
+
+const (
+	scanLabel   = "S"
+	scanRelType = "R"
+	scanNodeKey = "score"
+	scanRelKey  = "w"
+)
+
+func buildScanOptsFixture(t *testing.T, g *graphpkg.Graph) scanOptsFixture {
+	t.Helper()
+	ctx := context.Background()
+	fx := scanOptsFixture{nodes: map[types.NodeID]string{}, rels: map[types.RelID]string{}}
+
+	// Indexes first so the non-temporal fast paths exist where a backend has them.
+	// A backend without (rel) property indexes declines; the temporal doors under
+	// test must not depend on an index.
+	if err := g.Index().CreateProperty(scanLabel, scanNodeKey); err != nil {
+		t.Logf("CreateProperty: %v (backend declines; temporal path needs no index)", err)
+	}
+	if err := g.Index().CreateRelProperty(scanRelType, scanRelKey); err != nil {
+		t.Logf("CreateRelProperty: %v (backend declines; temporal path needs no index)", err)
+	}
+
+	addNode := func(name string, labels []string, v int64) *types.Node {
+		n, err := g.Nodes().Add(ctx, labels, map[string]any{scanNodeKey: v, "tkg_valid_from": types.Instant(1000)})
+		if err != nil {
+			t.Fatalf("add node %s: %v", name, err)
+		}
+		fx.nodes[n.ID()] = name
+		return n
+	}
+	hub, err := g.Nodes().Add(ctx, []string{"H"}, nil)
+	if err != nil {
+		t.Fatalf("add hub: %v", err)
+	}
+	tgt, err := g.Nodes().Add(ctx, []string{"H"}, nil)
+	if err != nil {
+		t.Fatalf("add tgt: %v", err)
+	}
+	addRel := func(name string, v int64) *types.Relationship {
+		r, err := g.Rels().Add(ctx, scanRelType, hub, tgt, map[string]any{scanRelKey: v, "tkg_valid_from": types.Instant(1000)})
+		if err != nil {
+			t.Fatalf("add rel %s: %v", name, err)
+		}
+		fx.rels[r.ID()] = name
+		return r
+	}
+
+	nA := addNode("A", []string{scanLabel}, 10)
+	nB := addNode("B", []string{scanLabel}, 30)
+	nC := addNode("C", []string{scanLabel}, 40)
+	nD := addNode("D", []string{scanLabel, "Keep"}, 50)
+	addNode("F", []string{scanLabel}, 60)
+	rA := addRel("A", 10)
+	rB := addRel("B", 30)
+	rC := addRel("C", 40)
+	addRel("F", 60)
+	if _, err := g.Nodes().Update(ctx, nA.ID(), map[string]any{scanNodeKey: int64(20), "tkg_valid_from": types.Instant(2000)}); err != nil {
+		t.Fatalf("update node A: %v", err)
+	}
+	last, err := g.Rels().Update(ctx, rA.ID(), map[string]any{scanRelKey: int64(20), "tkg_valid_from": types.Instant(2000)})
+	if err != nil {
+		t.Fatalf("update rel A: %v", err)
+	}
+	// The pin is the recorded transaction time of the last pre-pin write: the
+	// clock is monotonic, so every write below is stamped strictly later.
+	fx.pin = last.Temporal().TxFrom
+	if fx.pin == 0 {
+		t.Fatal("rel update carries no TxFrom")
+	}
+
+	if err := g.Nodes().Delete(ctx, nB.ID()); err != nil {
+		t.Fatalf("delete node B: %v", err)
+	}
+	if err := g.Rels().Delete(ctx, rB.ID()); err != nil {
+		t.Fatalf("delete rel B: %v", err)
+	}
+	if err := g.Nodes().CloseVersion(ctx, nC.ID(), 1800); err != nil {
+		t.Fatalf("close node C: %v", err)
+	}
+	if err := g.Rels().CloseVersion(ctx, rC.ID(), 1800); err != nil {
+		t.Fatalf("close rel C: %v", err)
+	}
+	if err := g.Nodes().RemoveLabel(ctx, nD.ID(), scanLabel); err != nil {
+		t.Fatalf("remove label from D: %v", err)
+	}
+	addNode("E", []string{scanLabel}, 70)
+	addRel("E", 70)
+
+	fx.far = types.Instant(time.Now().Add(time.Hour).UnixMilli())
+	return fx
+}
+
+// scanOptsCase is one temporal QueryOpts with the hand-derived answer (entity
+// name -> value) for nodes and for relationships.
+type scanOptsCase struct {
+	name  string
+	opts  graphpkg.QueryOpts
+	nodes map[string]int64
+	rels  map[string]int64
+}
+
+func scanOptsCases(fx scanOptsFixture) []scanOptsCase {
+	return []scanOptsCase{
+		{
+			// Before A's update: A is 10 (the live row starts at 2000), B still
+			// exists, D still carries S.
+			name:  "ValidAt before the update",
+			opts:  graphpkg.QueryOpts{ValidAt: 1500},
+			nodes: map[string]int64{"A": 10, "B": 30, "C": 40, "D": 50, "E": 70, "F": 60},
+			rels:  map[string]int64{"A": 10, "B": 30, "C": 40, "E": 70, "F": 60},
+		},
+		{
+			// Spans A's update: the most recent overlapping version (20).
+			name:  "ValidStart/ValidEnd spanning the update",
+			opts:  graphpkg.QueryOpts{ValidStart: 1500, ValidEnd: 2500},
+			nodes: map[string]int64{"A": 20, "B": 30, "C": 40, "D": 50, "E": 70, "F": 60},
+			rels:  map[string]int64{"A": 20, "B": 30, "C": 40, "E": 70, "F": 60},
+		},
+		{
+			// Rule 16: D's most recent overlapping version lacks S; S held only on
+			// the earlier version inside the interval, so D is found with it.
+			name:  "interval where the label held only on an earlier version",
+			opts:  graphpkg.QueryOpts{ValidStart: 1500, ValidEnd: fx.far},
+			nodes: map[string]int64{"A": 20, "B": 30, "C": 40, "D": 50, "E": 70, "F": 60},
+			rels:  map[string]int64{"A": 20, "B": 30, "C": 40, "E": 70, "F": 60},
+		},
+		{
+			// Bitemporal: valid at 1500 as recorded by the pin. E is not yet
+			// recorded; B's delete and C's close are not yet recorded.
+			name:  "TxAt before the delete with ValidAt before the update",
+			opts:  graphpkg.QueryOpts{ValidAt: 1500, TxAt: fx.pin},
+			nodes: map[string]int64{"A": 10, "B": 30, "C": 40, "D": 50, "F": 60},
+			rels:  map[string]int64{"A": 10, "B": 30, "C": 40, "F": 60},
+		},
+		{
+			// TxAt alone (valid at now) as recorded by the pin.
+			name:  "TxAt before the delete",
+			opts:  graphpkg.QueryOpts{TxAt: fx.pin},
+			nodes: map[string]int64{"A": 20, "B": 30, "C": 40, "D": 50, "F": 60},
+			rels:  map[string]int64{"A": 20, "B": 30, "C": 40, "F": 60},
+		},
+		{
+			// Belief state at the pin.
+			name:  "TxPin before the delete",
+			opts:  graphpkg.QueryOpts{TxPin: fx.pin},
+			nodes: map[string]int64{"A": 20, "B": 30, "C": 40, "D": 50, "F": 60},
+			rels:  map[string]int64{"A": 20, "B": 30, "C": 40, "F": 60},
+		},
+	}
+}
+
+// scanRow is what a door reports for one entity: the value and the version's
+// valid range.
+type scanRow struct {
+	v      int64
+	vf, vt int64
+}
+
+func (r scanRow) String() string { return fmt.Sprintf("{v=%d vf=%d vt=%d}", r.v, r.vf, r.vt) }
+
+func nodeRowsByLabel(t *testing.T, g *graphpkg.Graph, opts graphpkg.QueryOpts) map[types.NodeID]scanRow {
+	t.Helper()
+	nodes, err := g.Nodes().ByLabel(scanLabel, opts)
+	if err != nil {
+		t.Fatalf("ByLabel(%+v): %v", opts, err)
+	}
+	out := map[types.NodeID]scanRow{}
+	for _, n := range nodes {
+		v, _ := n.GetProperty(scanNodeKey)
+		vf, vt, _ := n.ValidRange()
+		out[n.ID()] = scanRow{v: v.(int64), vf: int64(vf), vt: int64(vt)}
+	}
+	return out
+}
+
+func relRowsByType(t *testing.T, g *graphpkg.Graph, opts graphpkg.QueryOpts) map[types.RelID]scanRow {
+	t.Helper()
+	rels, err := g.Rels().ByType(scanRelType, opts)
+	if err != nil {
+		t.Fatalf("ByType(%+v): %v", opts, err)
+	}
+	out := map[types.RelID]scanRow{}
+	for _, r := range rels {
+		v, _ := r.GetProperty(scanRelKey)
+		vf, vt, _ := r.ValidRange()
+		out[r.ID()] = scanRow{v: v.(int64), vf: int64(vf), vt: int64(vt)}
+	}
+	return out
+}
+
+// columnInt64 reads row i of column c, failing on an absent or non-int column:
+// every fixture row carries the property.
+func columnInt64(t *testing.T, cd *graphpkg.ColumnBatch, c, i int) int64 {
+	t.Helper()
+	if cd.Kinds[c] != graphpkg.ColInt64 || cd.Null[c][i] || len(cd.Ints[c]) <= i {
+		t.Fatalf("column %d row %d: kind=%v null=%v len=%d, want a present int64", c, i, cd.Kinds[c], cd.Null[c][i], len(cd.Ints[c]))
+	}
+	return cd.Ints[c][i]
+}
+
+func nodeRowsFromColumns(t *testing.T, g *graphpkg.Graph, opts graphpkg.QueryOpts) (map[types.NodeID]scanRow, bool, error) {
+	t.Helper()
+	out := map[types.NodeID]scanRow{}
+	ok, err := g.ScanNodeColumns(scanLabel, []string{scanNodeKey}, opts, func(b *graphpkg.ColumnBatch) bool {
+		for i, id := range b.IDs {
+			if _, dup := out[id]; dup {
+				t.Errorf("ScanNodeColumns %+v: node %d twice", opts, id)
+			}
+			out[id] = scanRow{v: columnInt64(t, b, 0, i), vf: b.ValidFrom[i], vt: b.ValidTo[i]}
+		}
+		return true
+	})
+	return out, ok, err
+}
+
+func relRowsFromColumns(t *testing.T, g *graphpkg.Graph, relType string, opts graphpkg.QueryOpts) (map[types.RelID]scanRow, bool, error) {
+	t.Helper()
+	out := map[types.RelID]scanRow{}
+	ok, err := g.ScanRelColumns(relType, []string{scanRelKey}, opts, func(b *graphpkg.RelColumnBatch) bool {
+		if b.RelType != scanRelType {
+			t.Errorf("ScanRelColumns %+v: batch type %q, want %q", opts, b.RelType, scanRelType)
+		}
+		for i, id := range b.IDs {
+			if _, dup := out[id]; dup {
+				t.Errorf("ScanRelColumns %+v: rel %d twice", opts, id)
+			}
+			if b.Kinds[0] != graphpkg.ColInt64 || b.Null[0][i] || len(b.Ints[0]) <= i {
+				t.Fatalf("rel column row %d: kind=%v null=%v, want a present int64", i, b.Kinds[0], b.Null[0][i])
+			}
+			out[id] = scanRow{v: b.Ints[0][i], vf: b.ValidFrom[i], vt: b.ValidTo[i]}
+		}
+		return true
+	})
+	return out, ok, err
+}
+
+// assertNamedValues checks a door's ID -> value answer against the hand-derived
+// name -> value map: catches a reference door that is wrong in the same way.
+func assertNamedValues[ID comparable](t *testing.T, what string, got map[ID]scanRow, names map[ID]string, want map[string]int64) {
+	t.Helper()
+	gotNamed := map[string]int64{}
+	for id, row := range got {
+		name, known := names[id]
+		if !known {
+			t.Errorf("%s: unknown entity %v", what, id)
+			continue
+		}
+		gotNamed[name] = row.v
+	}
+	if fmt.Sprint(sortedNamed(gotNamed)) != fmt.Sprint(sortedNamed(want)) {
+		t.Errorf("%s:\n got  %v\n want %v", what, sortedNamed(gotNamed), sortedNamed(want))
+	}
+}
+
+func sortedNamed(m map[string]int64) []string {
+	out := make([]string, 0, len(m))
+	for k, v := range m {
+		out = append(out, fmt.Sprintf("%s=%d", k, v))
+	}
+	sort.Strings(out)
+	return out
+}
+
+// assertSameRows is the two-door parity check: exact ID set, value and the
+// version's valid range.
+func assertSameRows[ID comparable](t *testing.T, what string, got, want map[ID]scanRow) {
+	t.Helper()
+	var diffs []string
+	for id, w := range want {
+		g, ok := got[id]
+		switch {
+		case !ok:
+			diffs = append(diffs, fmt.Sprintf("missing %v %v", id, w))
+		case g != w:
+			diffs = append(diffs, fmt.Sprintf("%v: got %v want %v", id, g, w))
+		}
+	}
+	for id, g := range got {
+		if _, ok := want[id]; !ok {
+			diffs = append(diffs, fmt.Sprintf("extra %v %v", id, g))
+		}
+	}
+	if len(diffs) > 0 {
+		sort.Strings(diffs)
+		t.Errorf("%s disagrees with the reference door:\n  %s", what, strings.Join(diffs, "\n  "))
+	}
+}
+
+func columnScanNative(b storeBackend) bool { return b.name == "memory" || b.name == "badger" }
+
+// TestScanDoorsAgreeWithByLabelOpts_NodeColumns catches the current-row
+// push-down in ScanNodeColumns (core column_scan.go forwarding opts to
+// memory NodesByLabel / badger's columnar path, which filter live rows and
+// ignore TxAt/TxPin) and the missing opts validation.
+func TestScanDoorsAgreeWithByLabelOpts_NodeColumns(t *testing.T) {
+	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
+		fx := buildScanOptsFixture(t, g)
+		for _, tc := range scanOptsCases(fx) {
+			ref := nodeRowsByLabel(t, g, tc.opts)
+			assertNamedValues(t, tc.name+"/ByLabel", ref, fx.nodes, tc.nodes)
+			got, ok, err := nodeRowsFromColumns(t, g, tc.opts)
+			if err != nil {
+				t.Errorf("%s: ScanNodeColumns: %v", tc.name, err)
+				continue
+			}
+			if !ok {
+				if columnScanNative(b) {
+					t.Errorf("%s: ScanNodeColumns ok=false on %s, which has the capability", tc.name, b.name)
+				}
+				continue
+			}
+			assertSameRows(t, tc.name+"/ScanNodeColumns", got, ref)
+		}
+
+		// Pagination survives the exact path.
+		paged := graphpkg.QueryOpts{ValidAt: 1500, Limit: 2}
+		if got, ok, err := nodeRowsFromColumns(t, g, paged); err != nil {
+			t.Errorf("paged ScanNodeColumns: %v", err)
+		} else if ok {
+			assertSameRows(t, "paged ScanNodeColumns", got, nodeRowsByLabel(t, g, paged))
+		}
+
+		// TxPin with a valid-time filter is a query error, as on ByLabel.
+		conflict := graphpkg.QueryOpts{TxPin: fx.pin, ValidAt: 1500}
+		if _, err := g.Nodes().ByLabel(scanLabel, conflict); !errors.Is(err, graphpkg.ErrConflictingTemporalOpts) {
+			t.Fatalf("ByLabel conflict err = %v, want ErrConflictingTemporalOpts", err)
+		}
+		if _, ok, err := nodeRowsFromColumns(t, g, conflict); ok && !errors.Is(err, graphpkg.ErrConflictingTemporalOpts) {
+			t.Errorf("ScanNodeColumns conflict err = %v, want ErrConflictingTemporalOpts", err)
+		}
+	})
+}
+
+// TestScanDoorsAgreeWithByLabelOpts_RelColumns is the relationship mirror
+// (rule 2): catches the current-row push-down in ScanRelColumns (memory
+// RelationshipsByType / segments, badger's columnar path) for a named type AND
+// for the every-type scan (relType ""), and the missing opts validation.
+func TestScanDoorsAgreeWithByLabelOpts_RelColumns(t *testing.T) {
+	forAllStoreBackends(t, func(t *testing.T, b storeBackend, g *graphpkg.Graph) {
+		fx := buildScanOptsFixture(t, g)
+		for _, tc := range scanOptsCases(fx) {
+			ref := relRowsByType(t, g, tc.opts)
+			assertNamedValues(t, tc.name+"/ByType", ref, fx.rels, tc.rels)
+			for _, relType := range []string{scanRelType, ""} {
+				got, ok, err := relRowsFromColumns(t, g, relType, tc.opts)
+				if err != nil {
+					t.Errorf("%s: ScanRelColumns(%q): %v", tc.name, relType, err)
+					continue
+				}
+				if !ok {
+					if columnScanNative(b) {
+						t.Errorf("%s: ScanRelColumns(%q) ok=false on %s, which has the capability", tc.name, relType, b.name)
+					}
+					continue
+				}
+				assertSameRows(t, fmt.Sprintf("%s/ScanRelColumns(%q)", tc.name, relType), got, ref)
+			}
+		}
+
+		paged := graphpkg.QueryOpts{ValidAt: 1500, Limit: 2}
+		if got, ok, err := relRowsFromColumns(t, g, scanRelType, paged); err != nil {
+			t.Errorf("paged ScanRelColumns: %v", err)
+		} else if ok {
+			assertSameRows(t, "paged ScanRelColumns", got, relRowsByType(t, g, paged))
+		}
+
+		conflict := graphpkg.QueryOpts{TxPin: fx.pin, ValidAt: 1500}
+		for _, relType := range []string{scanRelType, ""} {
+			if _, ok, err := relRowsFromColumns(t, g, relType, conflict); ok && !errors.Is(err, graphpkg.ErrConflictingTemporalOpts) {
+				t.Errorf("ScanRelColumns(%q) conflict err = %v, want ErrConflictingTemporalOpts", relType, err)
+			}
+		}
+	})
+}
+
+// scanRanges are the numeric windows the range doors are probed with: one that
+// holds only A's OLD value (a door yielding the live value 20 misses it) and
+// one that holds A's NEW value but not its old one.
+var scanRanges = []struct {
+	name     string
+	min, max float64
+}{
+	{"[5,15]", 5, 15},
+	{"[15,65]", 15, 65},
+}
+
+func inScanRange(v int64, min, max float64) bool { return float64(v) >= min && float64(v) <= max }
+
+func filterRows[ID comparable](rows map[ID]scanRow, min, max float64) map[ID]scanRow {
+	out := map[ID]scanRow{}
+	for id, r := range rows {
+		if inScanRange(r.v, min, max) {
+			out[id] = r
+		}
+	}
+	return out
+}
+
+func filterNamed(m map[string]int64, min, max float64) map[string]int64 {
+	out := map[string]int64{}
+	for k, v := range m {
+		if inScanRange(v, min, max) {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+// TestScanDoorsAgreeWithByLabelOpts_NodeRange catches the current-row
+// push-down in Nodes().ForEachByLabelPropertyRange (badger
+// ForEachNodeByLabelPropertyRange filtering the live row through
+// storeutil.HasTemporalFilter, which ignores TxAt/TxPin) and the
+// index-required decline under a temporal opt (memory, tiered, sharded). The
+// reference is ByLabel(opts) with the range applied to the resolved version's
+// value — the same value-at-t the ordered sibling sorts on.
+func TestScanDoorsAgreeWithByLabelOpts_NodeRange(t *testing.T) {
+	forAllStoreBackends(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
+		fx := buildScanOptsFixture(t, g)
+		for _, tc := range scanOptsCases(fx) {
+			ref := nodeRowsByLabel(t, g, tc.opts)
+			for _, rg := range scanRanges {
+				want := filterRows(ref, rg.min, rg.max)
+				what := tc.name + "/ForEachByLabelPropertyRange" + rg.name
+				assertNamedValues(t, what+"/reference", want, fx.nodes, filterNamed(tc.nodes, rg.min, rg.max))
+				got := map[types.NodeID]scanRow{}
+				err := g.Nodes().ForEachByLabelPropertyRange(scanLabel, scanNodeKey, rg.min, rg.max, true, true, tc.opts, func(n *types.Node) bool {
+					v, _ := n.GetProperty(scanNodeKey)
+					iv, isInt := v.(int64)
+					if !isInt || !inScanRange(iv, rg.min, rg.max) {
+						return true // the door may over-select; fn re-checks (door contract)
+					}
+					if _, dup := got[n.ID()]; dup {
+						t.Errorf("%s: node %d twice", what, n.ID())
+					}
+					vf, vt, _ := n.ValidRange()
+					got[n.ID()] = scanRow{v: iv, vf: int64(vf), vt: int64(vt)}
+					return true
+				})
+				if err != nil {
+					t.Errorf("%s: %v", what, err)
+					continue
+				}
+				assertSameRows(t, what, got, want)
+			}
+		}
+	})
+}
+
+// TestScanDoorsAgreeWithByLabelOpts_RelRange is the relationship mirror (rule
+// 2): catches the current-row push-down in Rels().ForEachByTypePropertyRange
+// (memory and badger ForEachRelByTypePropertyRange) and the index-required
+// decline under a temporal opt (tiered, sharded).
+func TestScanDoorsAgreeWithByLabelOpts_RelRange(t *testing.T) {
+	forAllStoreBackends(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
+		fx := buildScanOptsFixture(t, g)
+		for _, tc := range scanOptsCases(fx) {
+			ref := relRowsByType(t, g, tc.opts)
+			for _, rg := range scanRanges {
+				want := filterRows(ref, rg.min, rg.max)
+				what := tc.name + "/ForEachByTypePropertyRange" + rg.name
+				assertNamedValues(t, what+"/reference", want, fx.rels, filterNamed(tc.rels, rg.min, rg.max))
+				got := map[types.RelID]scanRow{}
+				err := g.Rels().ForEachByTypePropertyRange(scanRelType, scanRelKey, rg.min, rg.max, true, true, tc.opts, func(r *types.Relationship) bool {
+					v, _ := r.GetProperty(scanRelKey)
+					iv, isInt := v.(int64)
+					if !isInt || !inScanRange(iv, rg.min, rg.max) {
+						return true
+					}
+					if _, dup := got[r.ID()]; dup {
+						t.Errorf("%s: rel %d twice", what, r.ID())
+					}
+					vf, vt, _ := r.ValidRange()
+					got[r.ID()] = scanRow{v: iv, vf: int64(vf), vt: int64(vt)}
+					return true
+				})
+				if err != nil {
+					t.Errorf("%s: %v", what, err)
+					continue
+				}
+				assertSameRows(t, what, got, want)
+			}
+		}
+	})
+}
