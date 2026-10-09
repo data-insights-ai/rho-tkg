@@ -403,28 +403,57 @@ type versionInfo struct {
 	prevHash string
 }
 
-// anchorSafeTrim lowers a planned trim count until the kept rows (hist[trim:]
-// and the current row, when present) still form a chain verifyChainLinkage
-// accepts with the stub the trim writes (LastTrimmedHash = hist[trim-1]'s
-// hash): every kept row's PrevHash names a kept row, and the oldest kept row
-// names the trimmed boundary (backlog 24). After a bounded SetVersionInterval
-// the newest history versions can be cascade rows whose PrevHash points at an
-// older base row, and the current row's PrevHash at a row below them, so a
-// version count alone trimmed rows the hash chain still links to: the chain
-// stopped verifying and an export of it failed import. A version the chain
-// still needs is kept (the policy's bounds are lower bounds on what is kept).
-// hist is ascending by version.
+// anchorSafeTrim lowers a planned trim count to the largest t <= trim whose
+// kept rows (hist[t:] and the current row, when present) still form a chain
+// verifyChainLinkage accepts with the stub the trim writes (LastTrimmedHash =
+// hist[t-1]'s hash): every kept row but the oldest links (PrevHash) to a kept
+// row, and the oldest kept row links to the trimmed boundary hist[t-1]
+// (backlog 24). After a bounded SetVersionInterval the newest history
+// versions can be cascade rows linking to an older base row, and the current
+// row links below them, so a version count alone trimmed rows the chain still
+// links to: it stopped verifying and an export of it failed import. A version
+// the chain still needs is kept (the policy's bounds are lower bounds on what
+// is kept). One pass: minRef[i] is the lowest history index a row of
+// hist[i:] ∪ {current} links to. A chain that did not verify before
+// compaction (a dangling PrevHash: rows without integrity data, a re-import
+// next to an old stub) keeps the policy's trim, as before backlog 24 — no keep
+// rule can make it verify, and it must not stop compacting. hist is ascending
+// by version.
 func anchorSafeTrim(hist []versionInfo, current *versionInfo, trim int) int {
-	for ; trim > 0; trim-- {
-		metas := make([]chainEntryMeta, 0, len(hist)-trim+1)
-		for _, v := range hist[trim:] {
-			metas = append(metas, chainEntryMeta{version: v.version, hash: v.hash, prevHash: v.prevHash})
+	if trim <= 0 {
+		return 0
+	}
+	all := make([]chainEntryMeta, 0, len(hist)+1)
+	for _, v := range hist {
+		all = append(all, chainEntryMeta{version: v.version, hash: v.hash, prevHash: v.prevHash})
+	}
+	if current != nil {
+		all = append(all, chainEntryMeta{version: current.version, hash: current.hash, prevHash: current.prevHash})
+	}
+	if !verifyChainLinkage(all, nil) {
+		return trim
+	}
+	index := make(map[string]int, len(hist))
+	for i, v := range hist {
+		index[v.hash] = i
+	}
+	n := len(hist)
+	minRef := make([]int, n+1) // minRef[n]: the current row's link alone
+	minRef[n] = n
+	if current != nil {
+		if i, ok := index[current.prevHash]; ok {
+			minRef[n] = i
 		}
-		if current != nil {
-			metas = append(metas, chainEntryMeta{version: current.version, hash: current.hash, prevHash: current.prevHash})
+	}
+	for i := n - 1; i >= 0; i-- {
+		minRef[i] = minRef[i+1]
+		if j, ok := index[hist[i].prevHash]; ok && j < minRef[i] {
+			minRef[i] = j
 		}
-		if verifyChainLinkage(metas, &compactionStub{LastTrimmedHash: hist[trim-1].hash}) {
-			return trim
+	}
+	for t := min(trim, n-1); t > 0; t-- {
+		if minRef[t+1] >= t && hist[t].prevHash == hist[t-1].hash {
+			return t
 		}
 	}
 	return 0
