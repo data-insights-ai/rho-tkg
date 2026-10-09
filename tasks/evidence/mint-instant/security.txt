@@ -1,0 +1,2 @@
+docker run --rm -v "/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-ac987645fb985660e":/src -w /src -v rho-tkg-gocache:/go -v rho-tkg-buildcache:/root/.cache/go-build golang:1.26.9 sh -c 'go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0 && gosec -quiet ./...'
+exit=0

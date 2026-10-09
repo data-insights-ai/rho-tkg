@@ -1,0 +1,90 @@
+--- FAIL: TestMintInstantMillis_NodeFieldDoesNotMoveTheInstant (0.00s)
+    idlayout_test.go:86: node field 0 step 0: 0, want 1767225723456
+--- FAIL: TestMintInstantMillis_AgreesWithLayoutCreatedAt (0.00s)
+    idlayout_test.go:125: us 0: 0, want CreatedAt.UnixMilli 1767225600000
+--- FAIL: TestMintInstantMillis_MonotoneInIDOrder (0.00s)
+    idlayout_test.go:116: not strictly increasing end to end: first 0 last 0
+--- FAIL: TestMintInstantMillis_Table (0.00s)
+    --- FAIL: TestMintInstantMillis_Table/time_field_0_is_exactly_the_epoch (0.00s)
+        idlayout_test.go:70: MintInstantMillis(1) = 0, want 1767225600000
+    --- FAIL: TestMintInstantMillis_Table/MaxInt64_(all_63_bits_set)_decodes_without_overflow (0.00s)
+        idlayout_test.go:70: MintInstantMillis(9223372036854775807) = 0, want 2048700576710
+    --- FAIL: TestMintInstantMillis_Table/999_us_truncates_down,_not_rounds (0.00s)
+        idlayout_test.go:70: MintInstantMillis(32735233) = 0, want 1767225600000
+    --- FAIL: TestMintInstantMillis_Table/node_31_step_1023_at_us_0_does_not_leak_into_time (0.00s)
+        idlayout_test.go:70: MintInstantMillis(32767) = 0, want 1767225600000
+    --- FAIL: TestMintInstantMillis_Table/one_hour (0.00s)
+        idlayout_test.go:70: MintInstantMillis(117964800000000) = 0, want 1767229200000
+    --- FAIL: TestMintInstantMillis_Table/high_bit_of_the_48-bit_time_field_set (0.00s)
+        idlayout_test.go:70: MintInstantMillis(4611686018427387904) = 0, want 1907963088355
+    --- FAIL: TestMintInstantMillis_Table/max_48-bit_time_field,_all_node_and_step_bits_set (0.00s)
+        idlayout_test.go:70: MintInstantMillis(9223372036854775807) = 0, want 2048700576710
+    --- FAIL: TestMintInstantMillis_Table/one_second_of_microseconds_is_+1000_ms_(unit_confusion_us_vs_ms) (0.00s)
+        idlayout_test.go:70: MintInstantMillis(32768000000) = 0, want 1767225601000
+    --- FAIL: TestMintInstantMillis_Table/1500_us_floors_to_+1_ms (0.00s)
+        idlayout_test.go:70: MintInstantMillis(49152001) = 0, want 1767225600001
+    --- FAIL: TestMintInstantMillis_Table/1000_us_is_exactly_+1_ms (0.00s)
+        idlayout_test.go:70: MintInstantMillis(32768001) = 0, want 1767225600001
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/internal/idlayout	0.002s
+--- FAIL: TestMintInstant_NodeRelParityAcrossEverySnowflakeNodeID (0.00s)
+    mint_instant_test.go:75: SnowflakeNodeID 0 step 0: node = 0, want 1767226587654
+--- FAIL: TestNodeID_MintInstant (0.00s)
+    --- FAIL: TestNodeID_MintInstant/time_field_0_is_exactly_the_epoch_(off-by-epoch_mutant_fails) (0.00s)
+        mint_instant_test.go:43: NodeID(1).MintInstant() = 0, want 1767225600000
+    --- FAIL: TestNodeID_MintInstant/bit_47_of_the_time_field_(sign/overflow_at_high_bits) (0.00s)
+        mint_instant_test.go:43: NodeID(4611686018427387904).MintInstant() = 0, want 1907963088355
+    --- FAIL: TestNodeID_MintInstant/MaxInt64 (0.00s)
+        mint_instant_test.go:43: NodeID(9223372036854775807).MintInstant() = 0, want 2048700576710
+    --- FAIL: TestNodeID_MintInstant/max_time_field,_node_31,_step_1023 (0.00s)
+        mint_instant_test.go:43: NodeID(9223372036854775807).MintInstant() = 0, want 2048700576710
+    --- FAIL: TestNodeID_MintInstant/one_second (0.00s)
+        mint_instant_test.go:43: NodeID(32768000000).MintInstant() = 0, want 1767225601000
+    --- FAIL: TestNodeID_MintInstant/one_day (0.00s)
+        mint_instant_test.go:43: NodeID(2831155200002053).MintInstant() = 0, want 1767312000000
+    --- FAIL: TestNodeID_MintInstant/1000_us_is_+1_ms_(unit_confusion_us/ms_fails) (0.00s)
+        mint_instant_test.go:43: NodeID(32768001).MintInstant() = 0, want 1767225600001
+    --- FAIL: TestNodeID_MintInstant/999_us_floors_to_the_same_ms_(round_instead_of_floor_fails) (0.00s)
+        mint_instant_test.go:43: NodeID(32735233).MintInstant() = 0, want 1767225600000
+--- FAIL: TestRelID_MintInstant (0.00s)
+    --- FAIL: TestRelID_MintInstant/time_field_0_is_exactly_the_epoch_(off-by-epoch_mutant_fails) (0.00s)
+        mint_instant_test.go:56: RelID(1).MintInstant() = 0, want 1767225600000
+    --- FAIL: TestRelID_MintInstant/max_time_field,_node_31,_step_1023 (0.00s)
+        mint_instant_test.go:56: RelID(9223372036854775807).MintInstant() = 0, want 2048700576710
+    --- FAIL: TestRelID_MintInstant/1000_us_is_+1_ms_(unit_confusion_us/ms_fails) (0.00s)
+        mint_instant_test.go:56: RelID(32768001).MintInstant() = 0, want 1767225600001
+    --- FAIL: TestRelID_MintInstant/MaxInt64 (0.00s)
+        mint_instant_test.go:56: RelID(9223372036854775807).MintInstant() = 0, want 2048700576710
+    --- FAIL: TestRelID_MintInstant/one_second (0.00s)
+        mint_instant_test.go:56: RelID(32768000000).MintInstant() = 0, want 1767225601000
+    --- FAIL: TestRelID_MintInstant/bit_47_of_the_time_field_(sign/overflow_at_high_bits) (0.00s)
+        mint_instant_test.go:56: RelID(4611686018427387904).MintInstant() = 0, want 1907963088355
+    --- FAIL: TestRelID_MintInstant/one_day (0.00s)
+        mint_instant_test.go:56: RelID(2831155200002053).MintInstant() = 0, want 1767312000000
+    --- FAIL: TestRelID_MintInstant/999_us_floors_to_the_same_ms_(round_instead_of_floor_fails) (0.00s)
+        mint_instant_test.go:56: RelID(32735233).MintInstant() = 0, want 1767225600000
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/types	0.010s
+--- FAIL: TestMintInstant_ResolverAndPublicDoorsAgreeForAllIDs (0.00s)
+    mint_instant_test.go:47: id 0: EntityValidFrom(nil) 1767225600000 != MintInstant 0
+--- FAIL: TestMintInstant_PredicateStartsAtMintInstant (0.00s)
+    mint_instant_test.go:91: not valid at the mint instant
+--- FAIL: TestMintInstant_NonPositiveIDsDeriveZero (0.00s)
+    mint_instant_test.go:63: EntityValidFrom(0, nil) = 1767225600000, want 0
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil	0.003s
+--- FAIL: TestMintInstant_MatchesResolverStartForAddAndAddWithTx_AllBackends (0.05s)
+    --- FAIL: TestMintInstant_MatchesResolverStartForAddAndAddWithTx_AllBackends/memory (0.00s)
+        mint_instant_test.go:66: node NodeAt: MintInstant 0 outside the wall-clock window [1791567542665, 1791567542665] (epoch or us/ms unit error)
+    --- FAIL: TestMintInstant_MatchesResolverStartForAddAndAddWithTx_AllBackends/badger (0.00s)
+        mint_instant_test.go:66: node NodeAt: MintInstant 0 outside the wall-clock window [1791567542666, 1791567542666] (epoch or us/ms unit error)
+    --- FAIL: TestMintInstant_MatchesResolverStartForAddAndAddWithTx_AllBackends/tiered (0.04s)
+        mint_instant_test.go:66: node NodeAt: MintInstant 0 outside the wall-clock window [1791567542702, 1791567542702] (epoch or us/ms unit error)
+    --- FAIL: TestMintInstant_MatchesResolverStartForAddAndAddWithTx_AllBackends/sharded (0.00s)
+        mint_instant_test.go:66: node NodeAt: MintInstant 0 outside the wall-clock window [1791567542709, 1791567542709] (epoch or us/ms unit error)
+--- FAIL: TestMintInstant_EverySnowflakeNodeID_AgreesWithAdminDecompose (0.00s)
+    mint_instant_test.go:123: SnowflakeNodeID 0: node MintInstant 0 != Admin decompose 1791567542711
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.698s
+FAIL
+exit=1

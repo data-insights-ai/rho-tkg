@@ -30,6 +30,17 @@ func (g *Graph) SomeMethod() { ... }
 
 Removals and breaking changes land only at major-version boundaries or after a documented, released deprecation period.
 
+## Documented Exceptions To The Deprecation Ritual
+
+- **v4.46.0, the record doors' answer after a bounded cascade.** `NodeAsOf` / `RelAsOf` / `NodesAsOf` / `RelsAsOf`
+  and the `TxPin` scans changed from "the current row while it is current" (v4.44.0) to "the newest row recorded by
+  the pin" (pin-stable: a later write can never change an answer at an earlier pin). It is shipped without the
+  deprecation period because the old rule was a correctness bug (answers at an earlier pin changed after a later
+  write; a Delete after a bounded cascade left the entity valid in declared reads, backlog 18 / 20), it had been
+  documented for one day, and both known consumers (sigma-tkgd, ai-soc) were told beforehand and adapted. The
+  state doors (`NodeAtTx` / `RelAtTx`, `ByLabel` / `ByType` with `ValidAt` + `TxAt`) did not change meaning.
+  Future behaviour changes follow the ritual above.
+
 ## Experimental Surfaces
 
 The following surfaces are **not** covered by the v4 stability promise. They are either in active development or pending a future decision and may be removed, changed incompatibly, or stabilized with different semantics at **any time** — including within a minor release.

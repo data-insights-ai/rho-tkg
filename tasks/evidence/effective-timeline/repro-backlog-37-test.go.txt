@@ -6,7 +6,7 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
-// Repro (backlog 34): a backfilled re-import whose tkg_tx_from lies inside
+// Repro (backlog 37): a backfilled re-import whose tkg_tx_from lies inside
 // the first life (before its delete D) joins the first life in the chain's
 // write order (life = deletes recorded before the row's TxFrom), so lifeEnds
 // caps it at D: the as-of doors read it present at a pin after the import,

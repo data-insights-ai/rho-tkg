@@ -54,8 +54,8 @@ ROUND 2 (review FIX FIRST, 2026-10-09)
   mutant-16 hydrated skeleton winner not normalized        red
   mutant-17 point door never hydrates a skeleton winner    red
   guard-zero-valid-from.txt                passes (no door reads tkg_valid_from = 0 as eternal)
-  repro-backlog-34-*                       backfilled re-import inside the deleted life: red 8/8 on main and branch,
-                                           filed as backlog 34 (pre-existing)
+  repro-backlog-37-*                       backfilled re-import inside the deleted life: red 8/8 on main and branch,
+                                           filed as backlog 37 (pre-existing)
   migration-table-main-then-branch.txt     NodeAtTx answers on main, then on the branch, for the changed shapes
   race-effective-count2.txt                -race -count=2 of the effective suite: 141.7 s (was 593.8 s)
   bench-long-chain-final.txt               NodeAtTx within +/-10 % of main on n = 300/1000/3000; timeline linear
