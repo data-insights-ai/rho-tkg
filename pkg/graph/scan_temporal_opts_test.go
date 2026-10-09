@@ -654,6 +654,55 @@ func TestScanDoorsTemporalOpts_RangeNeverDropsAtExclusiveBound(t *testing.T) {
 	})
 }
 
+// TestScanDoorsTemporalOpts_OrderedRangeNeverDropsAtExclusiveBound is the
+// ordered-sibling twin of RangeNeverDropsAtExclusiveBound (lesson 58): the
+// temporal folds behind ForEachByLabelPropertyRangeOrdered /
+// ForEachByTypePropertyRangeOrdered must over-select like their index path
+// (docs/query-planners.md "Over-selecting candidate filter"). Faulty
+// implementation caught: the fold applying inclMin/inclMax in float64
+// (numericInRange(f, min, max, inclMin, inclMax)), which silently drops 2^53+1
+// for "> 2^53".
+func TestScanDoorsTemporalOpts_OrderedRangeNeverDropsAtExclusiveBound(t *testing.T) {
+	forAllStoreBackends(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
+		ctx := context.Background()
+		const big = int64(1)<<53 + 1
+		bound := float64(int64(1) << 53)
+		n, err := g.Nodes().Add(ctx, []string{scanLabel}, map[string]any{scanNodeKey: big, "tkg_valid_from": types.Instant(1000)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, err := g.Rels().Add(ctx, scanRelType, n, n, map[string]any{scanRelKey: big, "tkg_valid_from": types.Instant(1000)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		opts := graphpkg.QueryOpts{ValidAt: 1500}
+		for _, desc := range []bool{false, true} {
+			var nodes, rels int
+			if err := g.Nodes().ForEachByLabelPropertyRangeOrdered(scanLabel, scanNodeKey, bound, 1e300, false, true, desc, opts, func(got *types.Node) bool {
+				v, _ := got.GetProperty(scanNodeKey)
+				if got.ID() == n.ID() && v.(int64) > int64(1)<<53 { // fn's exact re-check
+					nodes++
+				}
+				return true
+			}); err != nil {
+				t.Fatalf("node ordered range desc=%v: %v", desc, err)
+			}
+			if err := g.Rels().ForEachByTypePropertyRangeOrdered(scanRelType, scanRelKey, bound, 1e300, false, true, desc, opts, func(got *types.Relationship) bool {
+				v, _ := got.GetProperty(scanRelKey)
+				if got.ID() == r.ID() && v.(int64) > int64(1)<<53 {
+					rels++
+				}
+				return true
+			}); err != nil {
+				t.Fatalf("rel ordered range desc=%v: %v", desc, err)
+			}
+			if nodes != 1 || rels != 1 {
+				t.Errorf("desc=%v: 2^53+1 under exclusive min 2^53: node offered %d times, rel %d times, want 1 each", desc, nodes, rels)
+			}
+		}
+	})
+}
+
 // TestScanDoorsTemporalOpts_RangeSkipsAbsentAndNonNumeric pins the value test on
 // the temporal range fold: an entity whose version at t lacks the property, or
 // holds a string, is not offered — even when its CURRENT version holds an
