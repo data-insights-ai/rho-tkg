@@ -116,6 +116,14 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 		return nil, storepkg.ErrNodeNotFound
 	}
 
+	// Unique constraints (unique_cascade.go): the props patch is judged before
+	// any row is built; the value stripes stay held across every write below.
+	uniqueRelease, err := c.enforceUniqueForCascade(id, current, history, newVF, newVT, props)
+	if err != nil {
+		return nil, err
+	}
+	defer uniqueRelease()
+
 	maxVersion := uint32(0)
 	for _, h := range history {
 		if h.Version() > maxVersion {
