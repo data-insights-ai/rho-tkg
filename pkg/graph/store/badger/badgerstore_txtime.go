@@ -385,11 +385,10 @@ func (bs *Store) snapshotHistoryKeyExists(txn *badgerv4.Txn, overlay historyOver
 		if bs.bulkAsOfKeyProbeTestHook != nil {
 			bs.bulkAsOfKeyProbeTestHook()
 		}
-		k := string(key)
-		if _, ok := overlay.entries[k]; ok {
+		if _, ok := overlay.entries[string(key)]; ok { // a map index: string(key) does not allocate
 			return true, nil
 		}
-		if _, ok := overlay.deletes[k]; ok {
+		if _, ok := overlay.deletes[string(key)]; ok {
 			return false, nil
 		}
 		_, err := txn.Get(key)

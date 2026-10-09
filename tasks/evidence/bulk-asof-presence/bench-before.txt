@@ -2,17 +2,33 @@ goos: linux
 goarch: amd64
 pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
 cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
-BenchmarkNodesAsOfBulk/history=none-32         	      20	  48749946 ns/op	      2437 ns/entity	29249666 B/op	  452966 allocs/op
-BenchmarkNodesAsOfBulk/history=none-32         	      20	  45968364 ns/op	      2298 ns/entity	28327546 B/op	  440269 allocs/op
-BenchmarkNodesAsOfBulk/history=none-32         	      20	  49543934 ns/op	      2477 ns/entity	29875507 B/op	  461607 allocs/op
-BenchmarkNodesAsOfBulk/history=one-32          	      20	 107064434 ns/op	      5353 ns/entity	36549548 B/op	  565854 allocs/op
-BenchmarkNodesAsOfBulk/history=one-32          	      20	 102824467 ns/op	      5141 ns/entity	36457350 B/op	  564584 allocs/op
-BenchmarkNodesAsOfBulk/history=one-32          	      20	  84932363 ns/op	      4247 ns/entity	35884482 B/op	  556690 allocs/op
-BenchmarkRelsAsOfBulk/history=none-32          	      20	 134729680 ns/op	      6736 ns/entity	28893136 B/op	  433385 allocs/op
-BenchmarkRelsAsOfBulk/history=none-32          	      20	  57423845 ns/op	      2871 ns/entity	29342303 B/op	  439205 allocs/op
-BenchmarkRelsAsOfBulk/history=none-32          	      20	  84914480 ns/op	      4246 ns/entity	29610733 B/op	  442687 allocs/op
-BenchmarkRelsAsOfBulk/history=one-32           	      20	 124200196 ns/op	      6210 ns/entity	40057456 B/op	  603686 allocs/op
-BenchmarkRelsAsOfBulk/history=one-32           	      20	  93538379 ns/op	      4677 ns/entity	37713807 B/op	  572074 allocs/op
-BenchmarkRelsAsOfBulk/history=one-32           	      20	  78166033 ns/op	      3908 ns/entity	38959456 B/op	  588876 allocs/op
+BenchmarkNodesAsOfBulk/history=none-32         	      20	  81162247 ns/op	      4058 ns/entity	28240010 B/op	  439053 allocs/op
+BenchmarkNodesAsOfBulk/history=none-32         	      20	 134501133 ns/op	      6725 ns/entity	28506360 B/op	  442748 allocs/op
+BenchmarkNodesAsOfBulk/history=none-32         	      20	  59810006 ns/op	      2990 ns/entity	29238868 B/op	  452832 allocs/op
+BenchmarkNodesAsOfBulk/history=none-32         	      20	  98922299 ns/op	      4946 ns/entity	29011448 B/op	  449710 allocs/op
+BenchmarkNodesAsOfBulk/history=none-32         	      20	  52614497 ns/op	      2631 ns/entity	28014794 B/op	  435971 allocs/op
+BenchmarkNodesAsOfBulk/history=none-32         	      20	  78231806 ns/op	      3912 ns/entity	29766841 B/op	  460116 allocs/op
+BenchmarkNodesAsOfBulk/history=none-32         	      20	  82955462 ns/op	      4148 ns/entity	29393503 B/op	  454973 allocs/op
+BenchmarkNodesAsOfBulk/history=one-32          	      20	  90557002 ns/op	      4528 ns/entity	36178444 B/op	  560742 allocs/op
+BenchmarkNodesAsOfBulk/history=one-32          	      20	  98347534 ns/op	      4917 ns/entity	36745723 B/op	  568554 allocs/op
+BenchmarkNodesAsOfBulk/history=one-32          	      20	 179773088 ns/op	      8989 ns/entity	36760032 B/op	  568762 allocs/op
+BenchmarkNodesAsOfBulk/history=one-32          	      20	 143766266 ns/op	      7188 ns/entity	35536435 B/op	  551899 allocs/op
+BenchmarkNodesAsOfBulk/history=one-32          	      20	  78218381 ns/op	      3911 ns/entity	36922962 B/op	  570998 allocs/op
+BenchmarkNodesAsOfBulk/history=one-32          	      20	  93112175 ns/op	      4656 ns/entity	35390403 B/op	  549881 allocs/op
+BenchmarkNodesAsOfBulk/history=one-32          	      20	  79202143 ns/op	      3960 ns/entity	37418687 B/op	  577830 allocs/op
+BenchmarkRelsAsOfBulk/history=none-32          	      20	  53877247 ns/op	      2694 ns/entity	29685512 B/op	  443648 allocs/op
+BenchmarkRelsAsOfBulk/history=none-32          	      20	  55571989 ns/op	      2779 ns/entity	29123106 B/op	  436363 allocs/op
+BenchmarkRelsAsOfBulk/history=none-32          	      20	  56840920 ns/op	      2842 ns/entity	30549208 B/op	  454843 allocs/op
+BenchmarkRelsAsOfBulk/history=none-32          	      20	  61014595 ns/op	      3051 ns/entity	28470797 B/op	  427908 allocs/op
+BenchmarkRelsAsOfBulk/history=none-32          	      20	 185510561 ns/op	      9276 ns/entity	29864175 B/op	  445980 allocs/op
+BenchmarkRelsAsOfBulk/history=none-32          	      20	 183929507 ns/op	      9196 ns/entity	28162225 B/op	  423920 allocs/op
+BenchmarkRelsAsOfBulk/history=none-32          	      20	 242680252 ns/op	     12134 ns/entity	30926779 B/op	  459761 allocs/op
+BenchmarkRelsAsOfBulk/history=one-32           	      20	 318537431 ns/op	     15927 ns/entity	38061181 B/op	  576773 allocs/op
+BenchmarkRelsAsOfBulk/history=one-32           	      20	 275483005 ns/op	     13774 ns/entity	38625777 B/op	  584392 allocs/op
+BenchmarkRelsAsOfBulk/history=one-32           	      20	 242336492 ns/op	     12117 ns/entity	39324004 B/op	  593808 allocs/op
+BenchmarkRelsAsOfBulk/history=one-32           	      20	 224275084 ns/op	     11214 ns/entity	38805565 B/op	  586813 allocs/op
+BenchmarkRelsAsOfBulk/history=one-32           	      20	 191615848 ns/op	      9581 ns/entity	38926148 B/op	  588437 allocs/op
+BenchmarkRelsAsOfBulk/history=one-32           	      20	 221018821 ns/op	     11051 ns/entity	38632026 B/op	  584472 allocs/op
+BenchmarkRelsAsOfBulk/history=one-32           	      20	 193857684 ns/op	      9693 ns/entity	37251248 B/op	  565844 allocs/op
 PASS
-ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	31.589s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	120.891s

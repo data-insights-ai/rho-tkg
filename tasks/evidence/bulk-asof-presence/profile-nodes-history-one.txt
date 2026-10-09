@@ -1,0 +1,39 @@
+File: bench.test
+Build ID: f477d036d73ba0b0209576cb77889c14f049f8dc
+Type: cpu
+Time: 2026-10-09 17:54:32 CEST
+Duration: 5.61s, Total samples = 5.70s (101.69%)
+Showing nodes accounting for 1.41s, 24.74% of 5.70s total
+Dropped 206 nodes (cum <= 0.03s)
+Showing top 30 nodes out of 203
+      flat  flat%   sum%        cum   cum%
+         0     0%     0%      5.13s 90.00%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.benchAsOfBulk.func1
+         0     0%     0%      5.13s 90.00%  testing.(*B).runN
+         0     0%     0%      4.82s 84.56%  testing.(*B).launch
+     0.01s  0.18%  0.18%      4.81s 84.39%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.(*Store).NodesAsOf
+         0     0%  0.18%      4.81s 84.39%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.benchAsOfBulk.func1.2 (inline)
+     0.01s  0.18%  0.35%      3.93s 68.95%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.(*Store).NodesAsOf.func2
+         0     0%  0.35%      3.92s 68.77%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.(*Store).nodeAsOfInTxn
+     0.01s  0.18%  0.53%      2.48s 43.51%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.(*Store).getNodeInTxn
+     0.01s  0.18%   0.7%      1.90s 33.33%  github.com/dgraph-io/badger/v4.(*Txn).Get
+     0.11s  1.93%  2.63%      1.70s 29.82%  github.com/dgraph-io/badger/v4.(*DB).get
+     0.19s  3.33%  5.96%      1.43s 25.09%  github.com/dgraph-io/badger/v4/skl.(*Skiplist).findNear
+         0     0%  5.96%      1.29s 22.63%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.(*Store).nodeAsOfPick
+     0.03s  0.53%  6.49%      1.27s 22.28%  github.com/dgraph-io/badger/v4/skl.(*Skiplist).Get
+     0.01s  0.18%  6.67%      1.25s 21.93%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.selectAsOfScan
+     0.01s  0.18%  6.84%      1.24s 21.75%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.(*Store).nodeAsOfPick.func1
+         0     0%  6.84%      1.14s 20.00%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.(*Store).nodeAsOfInTxn.(*Store).snapshotHistoryKeyExists.func2
+     0.02s  0.35%  7.19%      1.08s 18.95%  github.com/dgraph-io/badger/v4.(*Item).Value
+     0.03s  0.53%  7.72%         1s 17.54%  runtime.mallocgc
+         0     0%  7.72%      0.94s 16.49%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.(*Store).getNodeInTxn.func1
+     0.01s  0.18%  7.89%      0.72s 12.63%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.(*Store).ForEachDeletedNodeID
+     0.62s 10.88% 18.77%      0.70s 12.28%  github.com/dgraph-io/badger/v4/skl.(*node).key (inline)
+         0     0% 18.77%      0.68s 11.93%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.(*Store).AllNodeHistoryIDsFrom
+     0.01s  0.18% 18.95%      0.68s 11.93%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.(*Store).AllNodeHistoryIDsFrom.func1
+         0     0% 18.95%      0.68s 11.93%  github.com/dgraph-io/badger/v4.(*DB).View
+         0     0% 18.95%      0.63s 11.05%  github.com/dgraph-io/badger/v4.(*Iterator).Seek
+     0.02s  0.35% 19.30%      0.62s 10.88%  runtime.newobject
+     0.13s  2.28% 21.58%      0.61s 10.70%  runtime.mallocgcSmallScanNoHeader
+     0.07s  1.23% 22.81%      0.56s  9.82%  github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil.SafeUnmarshal
+     0.10s  1.75% 24.56%      0.52s  9.12%  github.com/dgraph-io/badger/v4/y.CompareKeys
+     0.01s  0.18% 24.74%      0.42s  7.37%  bytes.Compare (inline)

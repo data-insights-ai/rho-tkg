@@ -66,6 +66,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Bulk badger `NodesAsOf` / `RelsAsOf` no longer read the key above the current version for entities without
+  history.** The pin-stable as-of rule made the bulk scan look for a row at `current+1` for every entity (a
+  badger point read each, measured +0.6 us per entity without history, +1.2 us with one history row; about +0.6 s
+  per 1 M entities; it hit sigma-tkgd's tx-only `AS OF`), while the point doors already gated on `HasNodeHistory` /
+  `HasRelHistory`. The bulk doors now use the history presence set: it is built BEFORE the scan takes `idxMu` (a
+  build is a key-only scan of the history keyspace; nothing is held, so the lock order flushMu -> idxMu ->
+  buildMu -> wbMu is unchanged), and inside the scan an ID in neither the `has` nor the `unknown` set reads as
+  having no history. The set is live while the scan reads an older snapshot (overlay captured once, then one
+  badger transaction), so a negative is trusted only if the set was built when the scan began and no history
+  delete was noted since just before the overlay capture (new `deletes` counter; the trim doors take no `idxMu`,
+  so a delete can land mid-scan); without deletes the set only grows, hence a live negative implies a snapshot
+  negative. Unknown IDs, a delete since scan start, an unbuilt set (a `Clear` between the build and the lock) and
+  `HistoryPresenceProbeOnly` stores fall back to the snapshot key read, as before. Measured (`BenchmarkNodesAsOfBulk`
+  / `BenchmarkRelsAsOfBulk`, 20 K entities, three builds run interleaved on a loaded 32-core host, minimum of 8
+  runs): no history, nodes 44.2 -> 34.0 ms and rels 46.9 -> 37.1 ms (before the as-of rule change: 31.4 / 33.8 ms,
+  so +8 % / +10 %), allocations 453 K -> 346 K per scan. **Known limit:** with one history row per entity the key
+  read is still needed (the presence set says "has history", not which versions), 63.9 -> 66.7 ms nodes and
+  75.1 -> 70.0 ms rels against 41.8 / 50.6 ms before the rule change; the read is about a quarter of the scan
+  (`profile-nodes-history-one.txt` in `tasks/evidence/bulk-asof-presence/`: the existence closure is 20 % of the scan, mostly the badger Get). Closing it needs the highest history version per ID in
+  the set. Tests: `TestBulkAsOfPresence_*` (probe count, unknown IDs, delete mid-scan, probe-only, randomized
+  chains across pending / flushed / trimmed / deleted / reopened / cleared states, writers racing scans under
+  `-race`), evidence `tasks/evidence/bulk-asof-presence/`.
+
 - **One version allocator: a write after a bounded cascade no longer reuses a cascade row's version** (backlog
   18). The cascade gave its rows `maxVersion+1` while Update, `CloseVersion`, label add/remove and property CAS
   used `current.Version()+1`, so the chain held two rows with one version and a later delete changed the TxAt
