@@ -240,3 +240,7 @@ func (bs *Store) FailNextDurableSyncForTest(err error) { bs.failNextSync.Store(&
 // inside every with-history door between the two halves of publishing the
 // move. Exported solely for tests; not for production use.
 func (bs *Store) SetMoveTestHookForTest(fn func()) { bs.moveTestHook = fn }
+
+// SetAsOfAfterCurrentTestHookForTest installs asOfAfterCurrentTestHook (see
+// the Store field). Exported solely for tests; not for production use.
+func (bs *Store) SetAsOfAfterCurrentTestHookForTest(fn func()) { bs.asOfAfterCurrentTestHook = fn }

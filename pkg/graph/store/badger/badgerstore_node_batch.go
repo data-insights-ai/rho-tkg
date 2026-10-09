@@ -168,7 +168,10 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePr
 	}
 
 	var corruptErr error
-	apply := func() { corruptErr = bs.cascadeDeleteApply(nid, prefetched, toDelete, orphanRelIDs, orphanKeys) }
+	apply := func() {
+		corruptErr = bs.cascadeDeleteApply(nid, prefetched, toDelete, orphanRelIDs, orphanKeys)
+		bs.moveHook() // the node left its current slot (backlog 32 tests)
+	}
 	if history == nil {
 		apply()
 	} else {

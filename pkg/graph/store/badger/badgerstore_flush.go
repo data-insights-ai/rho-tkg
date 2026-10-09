@@ -50,10 +50,28 @@ func (bs *Store) appendOps(ops ...writeOp) {
 // section, so a flush (idxMu.RLock) still commits them in one WriteBatch.
 func (bs *Store) publishMoveLocked(ops []writeOp, publishCurrent func()) {
 	bs.appendOps(ops...)
-	if bs.moveTestHook != nil {
-		bs.moveTestHook()
-	}
+	bs.moveHook()
 	publishCurrent()
+}
+
+// moveHook runs moveTestHook (tests only).
+func (bs *Store) moveHook() {
+	if h := bs.moveTestHook; h != nil {
+		h()
+	}
+}
+
+// putMovedNodeLocked / putMovedRelLocked are a with-history door's cache
+// change: the moved entity's new current row, then moveHook. Caller holds
+// idxMu.Lock and runs them as publishMoveLocked's publishCurrent.
+func (bs *Store) putMovedNodeLocked(id snowflake.ID, n *types.Node) {
+	bs.nodeCache.Put(id, bs.frozenNodeRow(n))
+	bs.moveHook()
+}
+
+func (bs *Store) putMovedRelLocked(id snowflake.ID, r *types.Relationship) {
+	bs.relCache.Put(id, bs.frozenRelRow(r))
+	bs.moveHook()
 }
 
 // flushIfNeeded is the post-mutation flush hook called by every write path

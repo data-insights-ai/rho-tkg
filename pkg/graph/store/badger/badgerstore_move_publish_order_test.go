@@ -133,40 +133,47 @@ func mpoRelView(bs *Store, id types.RelID) mpoView {
 	return v
 }
 
-// TestWithHistoryDoorsPublishHistoryBeforeCurrent pauses each with-history
-// door between the two halves of its move and reads the moved entity there:
-// the moved row must be visible (current or history) and the as-of answer at
-// a pin before the move must be that row. Breaks: cache published before the
-// history row (the fault), on every door; per backend flavour (in-memory, on
-// disk, rows flushed to badger before the move).
-func TestWithHistoryDoorsPublishHistoryBeforeCurrent(t *testing.T) {
-	const (
-		nodeID  = types.NodeID(1)
-		otherID = types.NodeID(2)
-		relID   = types.RelID(100)
-	)
-	type door struct {
-		name string
-		rel  bool // the moved entity is relationship relID, else node nodeID
-		run  func(bs *Store) error
+const (
+	mpoNodeID  = types.NodeID(1)
+	mpoOtherID = types.NodeID(2)
+	mpoRelID   = types.RelID(100)
+)
+
+// mpoDoor is one with-history door moving mpoNodeID (or relationship mpoRelID
+// when rel) out of its current slot.
+type mpoDoor struct {
+	name string
+	rel  bool
+	run  func(bs *Store) error
+}
+
+func mpoNode(bs *Store) *types.Node {
+	n, err := bs.GetNode(mpoNodeID)
+	if err != nil {
+		panic(err)
 	}
-	node := func(bs *Store) *types.Node {
-		n, err := bs.GetNode(nodeID)
-		if err != nil {
-			panic(err)
-		}
-		return n
+	return n
+}
+
+func mpoRel(bs *Store) *types.Relationship {
+	r, err := bs.GetRelationship(mpoRelID)
+	if err != nil {
+		panic(err)
 	}
-	rel := func(bs *Store) *types.Relationship {
-		r, err := bs.GetRelationship(relID)
-		if err != nil {
-			panic(err)
-		}
-		return r
+	return r
+}
+
+func mpoDoors() []mpoDoor {
+	deleteNode := func(bs *Store) error {
+		tomb := mpoNode(bs).DeepCopy()
+		tomb.SetTemporal(mpoSuperseded(true))
+		rt := mpoRel(bs).DeepCopy()
+		rt.SetTemporal(mpoSuperseded(true))
+		return bs.DeleteNodeWithHistory(mpoNodeID, 0, tomb, []RelTombstone{{ID: mpoRelID, PrevVersion: 0, Tombstone: rt}})
 	}
-	doors := []door{
+	return []mpoDoor{
 		{"ReplaceNodeWithHistory", false, func(bs *Store) error {
-			cur := node(bs)
+			cur := mpoNode(bs)
 			next, prev := cur.DeepCopy(), cur.DeepCopy()
 			next.SetVersion(1)
 			next.SetTemporal(mpoNext())
@@ -177,39 +184,27 @@ func TestWithHistoryDoorsPublishHistoryBeforeCurrent(t *testing.T) {
 			return bs.ReplaceNodeWithHistory(next, 0, prev)
 		}},
 		{"AddNodeLabelTokenWithHistory", false, func(bs *Store) error {
-			cur := node(bs)
+			cur := mpoNode(bs)
 			next, prev := cur.DeepCopy(), cur.DeepCopy()
 			next.AddLabelTokenRaw(30)
 			next.SetVersion(1)
 			next.SetTemporal(mpoNext())
 			prev.SetTemporal(mpoSuperseded(false))
-			return bs.AddNodeLabelTokenWithHistory(nodeID, 30, next, 0, prev)
+			return bs.AddNodeLabelTokenWithHistory(mpoNodeID, 30, next, 0, prev)
 		}},
 		{"RemoveNodeLabelTokenWithHistory", false, func(bs *Store) error {
-			cur := node(bs)
+			cur := mpoNode(bs)
 			next, prev := cur.DeepCopy(), cur.DeepCopy()
 			next.RemoveLabelTokenRaw(20)
 			next.SetVersion(1)
 			next.SetTemporal(mpoNext())
 			prev.SetTemporal(mpoSuperseded(false))
-			return bs.RemoveNodeLabelTokenWithHistory(nodeID, 20, next, 0, prev)
+			return bs.RemoveNodeLabelTokenWithHistory(mpoNodeID, 20, next, 0, prev)
 		}},
-		{"DeleteNodeWithHistory/node", false, func(bs *Store) error {
-			tomb := node(bs).DeepCopy()
-			tomb.SetTemporal(mpoSuperseded(true))
-			rt := rel(bs).DeepCopy()
-			rt.SetTemporal(mpoSuperseded(true))
-			return bs.DeleteNodeWithHistory(nodeID, 0, tomb, []RelTombstone{{ID: relID, PrevVersion: 0, Tombstone: rt}})
-		}},
-		{"DeleteNodeWithHistory/rel", true, func(bs *Store) error {
-			tomb := node(bs).DeepCopy()
-			tomb.SetTemporal(mpoSuperseded(true))
-			rt := rel(bs).DeepCopy()
-			rt.SetTemporal(mpoSuperseded(true))
-			return bs.DeleteNodeWithHistory(nodeID, 0, tomb, []RelTombstone{{ID: relID, PrevVersion: 0, Tombstone: rt}})
-		}},
+		{"DeleteNodeWithHistory/node", false, deleteNode},
+		{"DeleteNodeWithHistory/rel", true, deleteNode},
 		{"ReplaceRelWithHistory", true, func(bs *Store) error {
-			cur := rel(bs)
+			cur := mpoRel(bs)
 			next, prev := cur.DeepCopy(), cur.DeepCopy()
 			next.SetVersion(1)
 			next.SetTemporal(mpoNext())
@@ -220,64 +215,86 @@ func TestWithHistoryDoorsPublishHistoryBeforeCurrent(t *testing.T) {
 			return bs.ReplaceRelWithHistory(next, 0, prev)
 		}},
 		{"DeleteRelWithHistory", true, func(bs *Store) error {
-			tomb := rel(bs).DeepCopy()
+			tomb := mpoRel(bs).DeepCopy()
 			tomb.SetTemporal(mpoSuperseded(true))
-			return bs.DeleteRelWithHistory(relID, 0, tomb)
+			return bs.DeleteRelWithHistory(mpoRelID, 0, tomb)
 		}},
 	}
-	flavours := []struct {
-		name  string
-		open  func(t *testing.T) *Store
-		flush bool
-	}{
-		{"in-memory", func(t *testing.T) *Store { return mpoOpen(t, Config{InMemory: true, FlushInterval: time.Hour}) }, false},
-		{"on-disk", func(t *testing.T) *Store { return mpoOpen(t, Config{Dir: t.TempDir(), FlushInterval: time.Hour}) }, false},
-		{"flushed", func(t *testing.T) *Store { return mpoOpen(t, Config{InMemory: true, FlushInterval: time.Hour}) }, true},
+}
+
+// mpoFlavours are the badger flavours: in memory, on disk, and with the rows
+// flushed to badger before the move (a clean cache entry).
+var mpoFlavours = []struct {
+	name  string
+	open  func(t *testing.T) *Store
+	flush bool
+}{
+	{"in-memory", func(t *testing.T) *Store { return mpoOpen(t, Config{InMemory: true, FlushInterval: time.Hour}) }, false},
+	{"on-disk", func(t *testing.T) *Store { return mpoOpen(t, Config{Dir: t.TempDir(), FlushInterval: time.Hour}) }, false},
+	{"flushed", func(t *testing.T) *Store { return mpoOpen(t, Config{InMemory: true, FlushInterval: time.Hour}) }, true},
+}
+
+// mpoSetup puts node mpoNodeID (labels 10, 20), node mpoOtherID and the
+// relationship mpoRelID between them, all v0 recorded at mpoTxBefore, then
+// returns the reader view of the door's entity after warming the lazy builds
+// (history presence) outside any hook: they take idxMu, which a paused door
+// holds.
+func mpoSetup(t *testing.T, bs *Store, flush, rel bool) func() mpoView {
+	t.Helper()
+	n := types.NewNode(mpoNodeID, 10, []uint16{20})
+	n.SetTemporal(mpoTemporal())
+	if err := n.SetProperty("x", int64(0)); err != nil {
+		t.Fatal(err)
 	}
-	for _, fl := range flavours {
-		for _, d := range doors {
+	other := types.NewNode(mpoOtherID, 10, nil)
+	other.SetTemporal(mpoTemporal())
+	r := types.NewRelationship(mpoRelID, 5, mpoNodeID, mpoOtherID)
+	r.SetTemporal(mpoTemporal())
+	if err := r.SetProperty("x", int64(0)); err != nil {
+		t.Fatal(err)
+	}
+	for _, err := range []error{bs.PutNode(n), bs.PutNode(other), bs.PutRelationship(r)} {
+		if err != nil {
+			t.Fatalf("setup: %v", err)
+		}
+	}
+	if flush {
+		if err := bs.Flush(); err != nil {
+			t.Fatalf("Flush: %v", err)
+		}
+	}
+	view := func() mpoView {
+		if rel {
+			return mpoRelView(bs, mpoRelID)
+		}
+		return mpoNodeView(bs, mpoNodeID)
+	}
+	if err := view().moved(); err != nil {
+		t.Fatalf("before the move: %v", err)
+	}
+	return view
+}
+
+// TestWithHistoryDoorsPublishHistoryBeforeCurrent pauses each with-history
+// door between the two halves of its move, and again right after every
+// change of a current slot (moveTestHook), and reads the moved entity there:
+// the moved row must be visible (current or history) and the as-of answer at
+// a pin before the move must be that row. Breaks: the cache published before
+// the history row (the fault), on every door, including a cascade delete that
+// removes the node or a relationship before their tombstones are published;
+// per badger flavour.
+func TestWithHistoryDoorsPublishHistoryBeforeCurrent(t *testing.T) {
+	for _, fl := range mpoFlavours {
+		for _, d := range mpoDoors() {
 			t.Run(fl.name+"/"+d.name, func(t *testing.T) {
 				bs := fl.open(t)
-				n := types.NewNode(nodeID, 10, []uint16{20})
-				n.SetTemporal(mpoTemporal())
-				if err := n.SetProperty("x", int64(0)); err != nil {
-					t.Fatal(err)
-				}
-				other := types.NewNode(otherID, 10, nil)
-				other.SetTemporal(mpoTemporal())
-				r := types.NewRelationship(relID, 5, nodeID, otherID)
-				r.SetTemporal(mpoTemporal())
-				if err := r.SetProperty("x", int64(0)); err != nil {
-					t.Fatal(err)
-				}
-				for _, err := range []error{bs.PutNode(n), bs.PutNode(other), bs.PutRelationship(r)} {
-					if err != nil {
-						t.Fatalf("setup: %v", err)
-					}
-				}
-				if fl.flush {
-					if err := bs.Flush(); err != nil {
-						t.Fatalf("Flush: %v", err)
-					}
-				}
-				view := func() mpoView {
-					if d.rel {
-						return mpoRelView(bs, relID)
-					}
-					return mpoNodeView(bs, nodeID)
-				}
-				// Warm the lazy builds (history presence) outside the hook:
-				// they take idxMu, which the paused door holds.
-				if err := view().moved(); err != nil {
-					t.Fatalf("before the move: %v", err)
-				}
-
+				view := mpoSetup(t, bs, fl.flush, d.rel)
 				fired := 0
-				var mid error
+				var mid []error
 				bs.SetMoveTestHookForTest(func() {
 					fired++
-					if fired == 1 {
-						mid = view().moved()
+					if err := view().moved(); err != nil {
+						mid = append(mid, fmt.Errorf("hook %d: %w", fired, err))
 					}
 				})
 				if err := d.run(bs); err != nil {
@@ -287,11 +304,58 @@ func TestWithHistoryDoorsPublishHistoryBeforeCurrent(t *testing.T) {
 				if fired == 0 {
 					t.Fatalf("%s never reached the move hook", d.name)
 				}
-				if mid != nil {
-					t.Errorf("mid-move read of %s: %v", d.name, mid)
+				for _, err := range mid {
+					t.Errorf("mid-move read of %s: %v", d.name, err)
 				}
 				if err := view().moved(); err != nil {
 					t.Errorf("after the move: %v", err)
+				}
+			})
+		}
+	}
+}
+
+// TestNativeAsOfReadsCurrentBeforeHistory lands a whole with-history move
+// between the native as-of door's current-row read and its history scan
+// (asOfAfterCurrentTestHook): NodeAsOf / RelAsOf at a pin before the move must
+// still answer v0. Guard (green before this test was written: the door already
+// reads the current row first); breaks: a door that scans history before
+// reading the current row (history before the move + current after it = v0 in
+// neither read: ErrVersionNotFound).
+func TestNativeAsOfReadsCurrentBeforeHistory(t *testing.T) {
+	for _, fl := range mpoFlavours {
+		for _, d := range mpoDoors() {
+			t.Run(fl.name+"/"+d.name, func(t *testing.T) {
+				bs := fl.open(t)
+				mpoSetup(t, bs, fl.flush, d.rel)
+				fired := 0
+				var moveErr error
+				bs.asOfAfterCurrentTestHook = func() {
+					fired++
+					if fired == 1 {
+						moveErr = d.run(bs)
+					}
+				}
+				var got mpoEntity
+				var err error
+				if d.rel {
+					var r *types.Relationship
+					r, err = bs.RelAsOf(mpoRelID, mpoPin)
+					got = r
+				} else {
+					var n *types.Node
+					n, err = bs.NodeAsOf(mpoNodeID, mpoPin)
+					got = n
+				}
+				bs.asOfAfterCurrentTestHook = nil
+				if fired != 1 || moveErr != nil {
+					t.Fatalf("hook fired %d times, move: %v", fired, moveErr)
+				}
+				if err != nil {
+					t.Fatalf("AsOf(pin before the move) with the move between the reads: %v", err)
+				}
+				if got.Version() != 0 {
+					t.Fatalf("AsOf(pin before the move) = v%d, want v0", got.Version())
 				}
 			})
 		}

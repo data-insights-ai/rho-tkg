@@ -113,7 +113,7 @@ func (bs *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 	bs.publishMoveLocked([]writeOp{
 		{opType: writeOpSet, key: storepkg.RelKey(id), value: data},
 		{opType: writeOpSet, key: histKey, value: histData},
-	}, func() { bs.relCache.Put(id, bs.frozenRelRow(current)) })
+	}, func() { bs.putMovedRelLocked(id, current) })
 	logErr := bs.logChangeRoutedRaw(storecontract.ChangeRelPut, changePayload, token)
 	bs.idxMu.Unlock()
 	if logErr != nil {
