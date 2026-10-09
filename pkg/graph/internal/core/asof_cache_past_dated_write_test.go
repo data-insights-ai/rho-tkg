@@ -560,6 +560,49 @@ func TestAsOfCache_ReplicaDeleteStaleCache(t *testing.T) {
 	}
 }
 
+// TestAsOfCache_ReplicaPutBelowCachedPin (R13, the put twin) — a replica pins
+// P at its own clock, which runs ahead of the primary's in-flight stamps
+// (replication lag): a node put applied later with TxFrom <= P belongs to the
+// belief at P although its TxFrom is above every TxFrom applied before.
+//
+// Faulty implementation caught: the detector judges an applied stamp only
+// against the applied high-water mark (TxFrom >= max ⇒ "forward, cannot change
+// a past belief"), never against the pins it has cached, so the warm column at
+// P keeps missing the node.
+func TestAsOfCache_ReplicaPutBelowCachedPin(t *testing.T) {
+	ctx := context.Background()
+	for _, be := range pastDatedBackends() {
+		t.Run(be.name, func(t *testing.T) {
+			primary, replica := replicaPair(t, be)
+			a, err := primary.Nodes.Add(ctx, []string{pastDatedLabel}, map[string]any{"k": int64(1)})
+			if err != nil {
+				t.Fatalf("seed a: %v", err)
+			}
+			applyAll(t, replica, changeFeed(t, primary))
+			applied := len(changeFeed(t, primary))
+			ta := txFromStamp(t, a.Temporal())
+			if _, err := primary.Temporal.AdvanceClock(ta + 100); err != nil {
+				t.Fatalf("AdvanceClock: %v", err)
+			}
+			b, err := primary.Nodes.Add(ctx, []string{pastDatedLabel}, map[string]any{"k": int64(2)})
+			if err != nil {
+				t.Fatalf("seed b: %v", err)
+			}
+			tb := txFromStamp(t, b.Temporal())
+			// The replica's reader pins above b's stamp before b's record arrives.
+			pin := tb + 50
+			warmAsOf(t, replica, pin)
+			assertMembers(t, "replica warm pin", asOfMembers(t, replica, pin), a.ID())
+
+			applyAll(t, replica, changeFeed(t, primary)[applied:])
+
+			assertMembers(t, "replica pin after the lagging put", asOfMembers(t, replica, pin), a.ID(), b.ID())
+			// Counterpart: one tick before b's stamp only a is believed.
+			assertMembers(t, "replica pin tb-1", asOfMembers(t, replica, tb-1), a.ID())
+		})
+	}
+}
+
 // TestAsOfCache_ReplicaRelDeleteFeedsDetector (R13, relationships) — rel deletes
 // cannot stale a cached column (the cache holds node label columns only; the
 // key is a node label token), so there is no stale read to observe. The
