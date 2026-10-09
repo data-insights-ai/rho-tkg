@@ -91,21 +91,10 @@ func (q *pageReader) readMeta(k graphstate.ComponentKey) (componentMeta, bool, e
 		if !found {
 			return componentMeta{}, false, ErrCorrupt
 		}
-	} else if q.q.indexes != nil || q.q.c.root.topology == keysOnlyTopology {
-		var tree componentKeyTreeRoot
-		limits := keyTreeLimits(q.limits)
-		if q.q.indexes != nil {
-			tree = q.q.indexes.descriptor.tree
-			limits = q.q.indexes.limits
-		} else {
-			descriptor, exists, err := q.q.componentIndexDescriptor(q.q.c.root)
-			if err != nil {
-				return componentMeta{}, false, err
-			}
-			if !exists {
-				return componentMeta{}, false, ErrCorrupt
-			}
-			tree = descriptor.tree
+	} else if q.q.indexes != nil || q.q.full != nil || q.q.fullView != nil || q.q.c.root.topology == keysOnlyTopology || q.q.c.root.topology == fullTopology {
+		tree, limits, err := q.membershipRoot()
+		if err != nil {
+			return componentMeta{}, false, err
 		}
 		member, err := q.hasComponentKey(tree, k, limits)
 		if err != nil {
@@ -115,6 +104,7 @@ func (q *pageReader) readMeta(k graphstate.ComponentKey) (componentMeta, bool, e
 			return componentMeta{}, false, ErrCorrupt
 		}
 	}
+
 	if !found {
 		return componentMeta{}, false, nil
 	}

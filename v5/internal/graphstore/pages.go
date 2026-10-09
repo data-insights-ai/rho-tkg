@@ -86,6 +86,9 @@ func (q *pageReader) storedCell(k graphstate.ComponentKey, axis temporal.Axis, c
 	if err := q.validateCell(k, definition, cell); err != nil {
 		return storedBindingError(err)
 	}
+	if err := q.checkRawCell(k, cell); err != nil {
+		return err
+	}
 	if cell.Present() && !cell.Value().IsNull() {
 		if len(q.binding.references) >= q.limits.MaxWorkRecords {
 			return ErrResourceLimit
@@ -508,7 +511,14 @@ func (q *pageReader) fitPage(s state.State, w temporal.Scope, budget graphstate.
 		if err != nil {
 			return state.State{}, false, err
 		}
-		return out, out.Usage().Pieces()+1 <= budget.Rows && out.Usage().MetadataBytes()+len(wire) <= budget.Bytes, nil
+		bytes := out.Usage().MetadataBytes() + len(wire)
+		if q.q.fullView != nil {
+			bytes, err = componentOwnedBytes(out, w, wire)
+			if err != nil {
+				return state.State{}, false, err
+			}
+		}
+		return out, out.Usage().Pieces()+1 <= budget.Rows && bytes <= budget.Bytes, nil
 	}
 	out, ok, err := fit(w)
 	if err != nil {
@@ -586,6 +596,7 @@ func (p *PageReader) ComponentPage(ctx context.Context, query graphstate.Compone
 		return graphstate.ComponentPage{}, err
 	}
 	base.maxRows, base.maxBytes = p.limits.MaxWorkRecords, p.limits.MaxWorkBytes
+	base.fullView = p.complete
 	q := pageReader{q: base, limits: p.limits}
 	defer func() { _ = q.budget(); p.last = q.work }()
 	m, found, err := q.readMeta(query.Key)
@@ -630,6 +641,12 @@ func (p *PageReader) ComponentPage(ctx context.Context, query graphstate.Compone
 	if err != nil {
 		return graphstate.ComponentPage{}, pageFailure(p.c, err, false)
 	}
+	if p.complete != nil {
+		data, owned, err = q.exactComponentOutput(data, owned, budget)
+		if err != nil {
+			return graphstate.ComponentPage{}, pageFailure(p.c, err, false)
+		}
+	}
 	rest, err := remaining.Difference(owned, p.c.limits.Temporal)
 	if err != nil {
 		return graphstate.ComponentPage{}, pageFailure(p.c, err, false)
@@ -647,6 +664,20 @@ func (p *PageReader) ComponentPage(ctx context.Context, query graphstate.Compone
 		}
 		d := rest.Axis().Descriptor()
 		cost = len(wire) + 27 + len(d.Reference) + len(d.CanonicalUnit) + 64
+		if p.complete != nil {
+			backing, e := scopeOwnedBacking(wire)
+			if e != nil {
+				return graphstate.ComponentPage{}, p.c.failure(e)
+			}
+			cost = 256 + backing + len(d.Reference) + len(d.CanonicalUnit)
+			if err := q.q.materialize(cost + 2*cap(wire)); err != nil {
+				return graphstate.ComponentPage{}, err
+			}
+			rest, e = temporal.DecodeScope(wire, rest.Axis(), p.c.limits.Temporal)
+			if e != nil {
+				return graphstate.ComponentPage{}, callerError(e)
+			}
+		}
 		count := len(p.cursors)
 		if token != 0 {
 			count--

@@ -415,12 +415,25 @@ func (q *pageStage) installPatch(p graphstate.ComponentPatch) error {
 			}
 			q.q.indexes.descriptor.tree = tree
 		}
+		if q.q.full != nil {
+			tree, err := q.insertComponentKey(q.q.full.descriptor.keys, p.Key, keyTreeLimits(q.limits))
+			if err != nil {
+				return err
+			}
+			q.q.full.descriptor.keys = tree
+		}
 		return nil
 	}
 	return q.budget()
 }
 func validatePrivateRoot(s *Stage, r Root) error {
 	baseline := s.c.root
+	if s.full != nil {
+		if r != s.full.root {
+			return ErrInvalid
+		}
+		baseline = s.full.root
+	}
 	if s.indexed != nil {
 		if r != s.indexed.root {
 			return ErrInvalid
@@ -456,6 +469,9 @@ func validatePrivateRoot(s *Stage, r Root) error {
 func StageComponentPatches(ctx context.Context, s *Stage, root Root, patches []graphstate.ComponentPatch, l PageLimits) (StagedComponents, error) {
 	if s == nil {
 		return StagedComponents{}, ErrInvalid
+	}
+	if s.full != nil {
+		return StagedComponents{}, ErrTopologyUnsupported
 	}
 	l, err := l.resolve()
 	if err != nil {

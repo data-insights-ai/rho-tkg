@@ -120,6 +120,7 @@ type continuation struct {
 type PageReader struct {
 	mu          sync.Mutex
 	c           *Catalog
+	complete    *fullIndexDescriptor
 	limits      PageLimits
 	id          graphstate.ViewID
 	cursors     map[graphstate.Cursor]continuation

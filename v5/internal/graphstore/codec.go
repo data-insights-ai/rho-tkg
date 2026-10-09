@@ -64,7 +64,7 @@ func DecodeRoot(src []byte) (Root, error) {
 	copy(r.effect[:], src[52:84])
 	if single {
 		r.topology = topologyDeclaration{binary.BigEndian.Uint64(src[84:92]), binary.BigEndian.Uint64(src[92:100]), binary.BigEndian.Uint64(src[100:108])}
-		if r.topology != bootstrapTopology && r.topology != keysOnlyTopology {
+		if r.topology != bootstrapTopology && r.topology != keysOnlyTopology && r.topology != fullTopology {
 			return Root{}, ErrCorrupt
 		}
 	}

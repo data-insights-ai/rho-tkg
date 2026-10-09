@@ -11,6 +11,7 @@ import (
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/state"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
 )
 
@@ -25,6 +26,7 @@ type Catalog struct {
 	mu                          sync.Mutex
 	poison                      error
 	stages, records, stageBytes int
+	fullViews, fullViewBytes    int
 	hash                        func(string) [32]byte // fixed production hash; private collision-test seam
 }
 
@@ -82,7 +84,7 @@ func (c *Catalog) failure(err error) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, raftlog.ErrLimit) || errors.Is(err, temporal.ErrResourceLimit) || errors.Is(err, graphstate.ErrResourceLimit) {
+	if errors.Is(err, raftlog.ErrLimit) || errors.Is(err, temporal.ErrResourceLimit) || errors.Is(err, graphstate.ErrResourceLimit) || errors.Is(err, state.ErrResourceLimit) {
 		return errors.Join(ErrResourceLimit, err)
 	}
 	if errors.Is(err, ErrInvalid) || errors.Is(err, ErrNamespace) || errors.Is(err, ErrRebinding) || errors.Is(err, ErrResourceLimit) || errors.Is(err, ErrTopologyUnsupported) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, raftlog.ErrClosed) || errors.Is(err, ErrClosed) {
@@ -110,8 +112,11 @@ type reader struct {
 	stage             *Stage
 	pending           map[string]raftlog.KV
 	rows, bytes       int
-	indexes           *indexedStageState // operation-local copy; published only after shared caps
-	maxRows, maxBytes int                // optional operation caps; zero preserves catalog policy
+	denyReads         bool // explicit exhausted aggregate allowance, never zero-as-default
+	full              *fullStageState
+	fullView          *fullIndexDescriptor // borrowed immutable descriptor owned by the complete reader
+	indexes           *indexedStageState   // operation-local copy; published only after shared caps
+	maxRows, maxBytes int                  // optional operation caps; zero preserves catalog policy
 }
 
 func (c *Catalog) reader(ctx context.Context) (*reader, error) {
@@ -134,7 +139,7 @@ func (q *reader) get(key []byte) ([]byte, bool, error) {
 	if err := q.ctx.Err(); err != nil {
 		return nil, false, err
 	}
-	if q.rows >= l.MaxReadRows || len(key)+64 > l.MaxReadBytes-q.bytes {
+	if q.denyReads || q.rows >= l.MaxReadRows || len(key)+64 > l.MaxReadBytes-q.bytes {
 		return nil, false, ErrResourceLimit
 	}
 	q.rows++
@@ -181,6 +186,11 @@ func (q *reader) axis(id temporal.AxisID) (temporal.Axis, bool, error) {
 	if err != nil || !found {
 		return temporal.Axis{}, found, err
 	}
+	if q.full != nil || q.fullView != nil || q.c.root.topology == fullTopology {
+		if err := q.materialize(96); err != nil {
+			return temporal.Axis{}, false, err
+		}
+	}
 	a, err := readAxis(b, q.c.root.namespace, q.c.limits)
 	if err == nil && a.Descriptor().ID != id {
 		err = ErrCorrupt
@@ -209,6 +219,11 @@ func (q *reader) property(owner graphstate.EntityKind, name string) (graphstate.
 	if err != nil || !found {
 		return graphstate.PropertyDefinition{}, found, err
 	}
+	if q.full != nil || q.fullView != nil || q.c.root.topology == fullTopology {
+		if err := q.materialize(64); err != nil {
+			return graphstate.PropertyDefinition{}, false, err
+		}
+	}
 	d, err := readProperty(b, q.c.root.namespace, q.c.limits)
 	if err == nil && (d.Owner != owner || d.Name != name) {
 		err = ErrCorrupt
@@ -228,6 +243,11 @@ func (q *reader) entity(ref EntityRef) (graphstate.EntityRecord, bool, error) {
 	b, found, err := q.get(entityKey(q.c.root.namespace, ref.ID))
 	if err != nil || !found {
 		return graphstate.EntityRecord{}, found, err
+	}
+	if q.full != nil || q.fullView != nil || q.c.root.topology == fullTopology {
+		if err := q.materialize(192); err != nil {
+			return graphstate.EntityRecord{}, false, err
+		}
 	}
 	r, err := readEntity(b, q.c.root.namespace, q.c.limits)
 	if err == nil && r.ID != ref.ID {
@@ -258,6 +278,11 @@ func (q *reader) life(ref LifeRef) (graphstate.LifeRecord, bool, error) {
 	b, found, err := q.get(lifeKey(q.c.root.namespace, ref.Owner, ref.ID))
 	if err != nil || !found {
 		return graphstate.LifeRecord{}, found, err
+	}
+	if q.full != nil || q.fullView != nil || q.c.root.topology == fullTopology {
+		if err := q.materialize(64); err != nil {
+			return graphstate.LifeRecord{}, false, err
+		}
 	}
 	r, err := readLife(b, q.c.root.namespace, q.c.limits)
 	if err == nil && (r.Owner != ref.Owner || r.Life != ref.ID) {
@@ -311,6 +336,14 @@ func (q *reader) value(ref ValueRef) (ValueEntry, []byte, bool, error) {
 	b, found, err := q.get(valueKey(q.c.root.namespace, ref.ID))
 	if err != nil || !found {
 		return ValueEntry{}, nil, found, err
+	}
+	if q.full != nil || q.fullView != nil || q.c.root.topology == fullTopology {
+		if err := q.materialize(256); err != nil {
+			return ValueEntry{}, nil, false, err
+		}
+	}
+	if err := q.preflightFullValue(b); err != nil {
+		return ValueEntry{}, nil, false, err
 	}
 	entry, key, ordinal, err := readValue(b, q.c.root.namespace, q.c.limits)
 	if err == nil && entry.Ref != ref {
@@ -474,6 +507,7 @@ type Stage struct {
 	bytes   int
 	closed  bool
 	indexed *indexedStageState
+	full    *fullStageState
 }
 
 // NewStage creates a bounded private staging handle. Close releases shared caps.
@@ -511,7 +545,7 @@ func (s *Stage) operation(ctx context.Context, fn func(*reader) error) error {
 	if err != nil {
 		return err
 	}
-	if s.c.root.topology != (topologyDeclaration{}) && s.indexed == nil {
+	if s.c.root.topology != (topologyDeclaration{}) && s.indexed == nil && s.full == nil {
 		return ErrTopologyUnsupported
 	}
 	q.stage = s
@@ -523,6 +557,15 @@ func (s *Stage) operation(ctx context.Context, fn func(*reader) error) error {
 		}
 		state := *s.indexed
 		q.indexes = &state
+	}
+	if s.full != nil {
+		q.maxRows, q.maxBytes = s.full.pages.MaxWorkRecords, s.full.pages.MaxWorkBytes
+		q.denyReads = q.maxRows == 0
+		if err := q.materialize(fullStageMetadataBytes); err != nil {
+			return err
+		}
+		state := *s.full
+		q.full = &state
 	}
 	q.pending = make(map[string]raftlog.KV)
 	if err := fn(q); err != nil {
@@ -553,6 +596,7 @@ func (s *Stage) operation(ctx context.Context, fn func(*reader) error) error {
 	s.c.stageBytes += extraBytes
 	s.bytes += extraBytes
 	s.indexed = q.indexes
+	s.full = q.full
 	return nil
 }
 func (q *reader) put(key, value []byte) error {
@@ -617,72 +661,78 @@ func (s *Stage) Property(ctx context.Context, d graphstate.PropertyDefinition) e
 // Entity stages shape/identity and descriptor metadata. Endpoint existence/life
 // coverage belongs to validated graph planning; remote references are not forced
 // into this partition's entity catalog.
+func (q *reader) stageEntity(ref EntityRef, r graphstate.EntityRecord) error {
+	if err := q.graph(ref.Graph); err != nil {
+		return err
+	}
+	if ref.ID == 0 || r.ID != ref.ID {
+		return ErrInvalid
+	}
+	encoded, err := encodeEntity(q.c.root.namespace, r, q.c.limits)
+	if err != nil {
+		return err
+	}
+	old, found, err := q.entity(ref)
+	if err != nil {
+		return err
+	}
+	if found {
+		prior, err := encodeEntity(q.c.root.namespace, old, q.c.limits)
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(prior, encoded) {
+			return ErrRebinding
+		}
+		return nil
+	}
+	if err := q.stageAxis(r.Axis); err != nil {
+		return err
+	}
+	return q.put(entityKey(q.c.root.namespace, ref.ID), encoded)
+}
+
+// Entity stages immutable entity identity with exact rebinding checks.
 func (s *Stage) Entity(ctx context.Context, ref EntityRef, r graphstate.EntityRecord) error {
-	return s.operation(ctx, func(q *reader) error {
-		if err := q.graph(ref.Graph); err != nil {
-			return err
-		}
-		if ref.ID == 0 || r.ID != ref.ID {
-			return ErrInvalid
-		}
-		encoded, err := encodeEntity(q.c.root.namespace, r, q.c.limits)
-		if err != nil {
-			return err
-		}
-		old, found, err := q.entity(ref)
-		if err != nil {
-			return err
-		}
-		if found {
-			prior, err := encodeEntity(q.c.root.namespace, old, q.c.limits)
-			if err != nil {
-				return err
-			}
-			if !bytes.Equal(prior, encoded) {
-				return ErrRebinding
-			}
-			return nil
-		}
-		if err := q.stageAxis(r.Axis); err != nil {
-			return err
-		}
-		return q.put(entityKey(q.c.root.namespace, ref.ID), encoded)
-	})
+	return s.operation(ctx, func(q *reader) error { return q.stageEntity(ref, r) })
 }
 
 // Life stages owner/binding identity; temporal coverage and remote endpoint
 // references are validated by the graph planner, not this catalog layer.
+func (q *reader) stageLife(ref LifeRef, r graphstate.LifeRecord) error {
+	if err := q.graph(ref.Graph); err != nil {
+		return err
+	}
+	if ref.Owner != r.Owner || ref.ID != r.Life || ref.Owner == 0 || ref.ID == 0 {
+		return ErrInvalid
+	}
+	owner, found, err := q.entity(EntityRef{ref.Graph, ref.Owner})
+	if err != nil {
+		return err
+	}
+	if !found || !lifeShape(owner, r) {
+		return ErrInvalid
+	}
+	old, found, err := q.life(ref)
+	if err != nil {
+		return err
+	}
+	if found {
+		if old != r {
+			return ErrRebinding
+		}
+		return nil
+	}
+	encoded, err := encodeLife(q.c.root.namespace, r, q.c.limits)
+	if err != nil {
+		return err
+	}
+	return q.put(lifeKey(q.c.root.namespace, ref.Owner, ref.ID), encoded)
+}
+
+// Life stages owner-qualified immutable life and endpoint bindings.
 func (s *Stage) Life(ctx context.Context, ref LifeRef, r graphstate.LifeRecord) error {
-	return s.operation(ctx, func(q *reader) error {
-		if err := q.graph(ref.Graph); err != nil {
-			return err
-		}
-		if ref.Owner != r.Owner || ref.ID != r.Life || ref.Owner == 0 || ref.ID == 0 {
-			return ErrInvalid
-		}
-		owner, found, err := q.entity(EntityRef{ref.Graph, ref.Owner})
-		if err != nil {
-			return err
-		}
-		if !found || !lifeShape(owner, r) {
-			return ErrInvalid
-		}
-		old, found, err := q.life(ref)
-		if err != nil {
-			return err
-		}
-		if found {
-			if old != r {
-				return ErrRebinding
-			}
-			return nil
-		}
-		encoded, err := encodeLife(q.c.root.namespace, r, q.c.limits)
-		if err != nil {
-			return err
-		}
-		return q.put(lifeKey(q.c.root.namespace, ref.Owner, ref.ID), encoded)
-	})
+	return s.operation(ctx, func(q *reader) error { return q.stageLife(ref, r) })
 }
 func (q *reader) stageValue(ref ValueRef, value graphstate.Scalar, key string) error {
 	if err := q.graph(ref.Graph); err != nil {
@@ -816,6 +866,7 @@ func (s *Stage) Close() error {
 	s.closed = true
 	s.writes = nil
 	s.indexed = nil
+	s.full = nil
 	return nil
 }
 
@@ -832,7 +883,7 @@ func callerError(err error) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, temporal.ErrResourceLimit) || errors.Is(err, graphstate.ErrResourceLimit) {
+	if errors.Is(err, temporal.ErrResourceLimit) || errors.Is(err, graphstate.ErrResourceLimit) || errors.Is(err, state.ErrResourceLimit) {
 		return errors.Join(ErrResourceLimit, err)
 	}
 	return errors.Join(ErrInvalid, err)
