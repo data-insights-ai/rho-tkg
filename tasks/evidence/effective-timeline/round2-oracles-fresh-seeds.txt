@@ -1,0 +1,11 @@
+Fr 09 Okt 2026 20:27:40 CEST
+--- PASS: TestBitemporalOracleHarness (11.17s)
+    tx_backfill_oracle_test.go:953: accepted map[batch/node-delete:152 batch/node-update:85 batch/rel-delete:114 batch/rel-update:63 graphtx/node-delete:130 graphtx/node-update:89 graphtx/rel-delete:123 graphtx/rel-update:76 ingest_concurrent/node-delete:143 ingest_concurrent/node-update:99 ingest_concurrent/rel-delete:104 ingest_concurrent/rel-update:71 ingest_sync/node-delete:145 ingest_sync/node-update:97 ingest_sync/rel-delete:118 ingest_sync/rel-update:60 standalone/node-delete:146 standalone/node-update:96 standalone/rel-delete:93 standalone/rel-update:71], refused 635, pin checks 2329 (220 on a chain with a row above the current one)
+--- PASS: TestTxBackfillOracle_CrossBackend (58.11s)
+    effective_timeline_oracle_test.go:461: pointwise checks 11694651 at 716664 (entity, pin) pairs, 424175 segments, 46191 refused pins
+--- FAIL: TestEffectiveTimeline_PointwiseOracle (81.35s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	81.402s
+FAIL
+exit=1
+Fr 09 Okt 2026 20:29:02 CEST

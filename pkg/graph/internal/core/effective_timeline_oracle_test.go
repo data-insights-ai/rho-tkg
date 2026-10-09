@@ -389,15 +389,17 @@ func etTail(o *txbOracle) (compacted bool) {
 		break
 	}
 	o.tick()
-	_, errN := g.Admin.CompactHistoryNodes(ctx, RetentionPolicy{KeepVersions: 1})
-	_, errR := g.Admin.CompactHistoryRels(ctx, RetentionPolicy{KeepVersions: 1})
+	repN, errN := g.Admin.CompactHistoryNodes(ctx, RetentionPolicy{KeepVersions: 1})
+	repR, errR := g.Admin.CompactHistoryRels(ctx, RetentionPolicy{KeepVersions: 1})
 	for _, err := range []error{errN, errR} {
 		if err != nil && !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
 			o.t.Fatalf("compact: %v", err)
 		}
 	}
 	o.tick()
-	return errN == nil
+	// compacted: a version was trimmed (a sequence whose chains hold one
+	// history row each trims nothing, and then no pin can be refused).
+	return errN == nil && (repN.VersionsTrimmed > 0 || repR.VersionsTrimmed > 0)
 }
 
 // etX0 is a test-clock origin above the wall clock, shared by every backend of
@@ -449,7 +451,7 @@ func TestEffectiveTimeline_PointwiseOracle(t *testing.T) {
 				compacted := etTail(o)
 				check("after rollback, re-import, compaction")
 				if compacted && k.errs == 0 {
-					t.Fatalf("compaction ran but no pin was refused with ErrHistoryCompacted")
+					t.Fatalf("compaction trimmed versions but no pin was refused with ErrHistoryCompacted")
 				}
 				total.checks += k.checks
 				total.pins += k.pins

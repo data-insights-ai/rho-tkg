@@ -41,3 +41,23 @@ FINDING (pre-existing, not fixed here)
   NodeAtTx / RelAtTx at a fixed pin miss an entity (ErrNotFound / no version) while a concurrent
   Update / CloseVersion / Delete moves its current row to history — badger and sharded, 40 misses in 30 runs.
   The effective-timeline doors hold the entity lock and are stable (mutant-9 shows the same race without it).
+
+ROUND 2 (review FIX FIRST, 2026-10-09)
+  red-4-review-cascade-close-cascade.txt   review repros (a) cascade-close-cascade, (b) open-cascade-close-cascade,
+                                           (c) cascade-update-close-cascade, (a)+delete: 64 subtests red on the
+                                           first-round rule
+  mutant-10 cap only the replaced row (first-round rule)   red (life-end tests, cross-backend oracle)
+  mutant-11 ignore belief age                              red
+  mutant-12 strict start (<, not <=)                       red
+  mutant-1b/4b/5b/13/14 the new sweep (end, merge, pin, priority, end inclusive)  red
+  mutant-15 own-bounds arm reads an unset start as 0       red (TestZeroValidFromIsUnsetInEveryDoor, DerivedStart)
+  mutant-16 hydrated skeleton winner not normalized        red
+  mutant-17 point door never hydrates a skeleton winner    red
+  guard-zero-valid-from.txt                passes (no door reads tkg_valid_from = 0 as eternal)
+  repro-backlog-34-*                       backfilled re-import inside the deleted life: red 8/8 on main and branch,
+                                           filed as backlog 34 (pre-existing)
+  migration-table-main-then-branch.txt     NodeAtTx answers on main, then on the branch, for the changed shapes
+  race-effective-count2.txt                -race -count=2 of the effective suite: 141.7 s (was 593.8 s)
+  bench-long-chain-final.txt               NodeAtTx within +/-10 % of main on n = 300/1000/3000; timeline linear
+  bench-200k-round2.txt, profile-plain-timeline.txt   plain-entity cost and what dominates
+  round2-*.txt                             gates: build/vet/gofmt, full suite, oracles on fresh seeds, race, lint
