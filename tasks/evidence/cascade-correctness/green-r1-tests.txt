@@ -1,0 +1,1518 @@
+=== RUN   TestAsOfBoundedCascadeThenDelete
+=== PAUSE TestAsOfBoundedCascadeThenDelete
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport
+=== PAUSE TestAsOfBoundedCascadeThenDelete_ReImport
+=== RUN   TestValidTimeAfterDeleteBoundedCascade
+=== PAUSE TestValidTimeAfterDeleteBoundedCascade
+=== RUN   TestOneTickCascadeRows
+=== PAUSE TestOneTickCascadeRows
+=== RUN   TestCascadeOnDeletedEntityRefused
+=== PAUSE TestCascadeOnDeletedEntityRefused
+=== RUN   TestCascadeAppendedRowsCarryNoRetraction
+=== PAUSE TestCascadeAppendedRowsCarryNoRetraction
+=== RUN   TestCascadeVersionsUniqueAndPastStable
+=== PAUSE TestCascadeVersionsUniqueAndPastStable
+=== RUN   TestTxRollbackKeepsCascadeRows
+=== PAUSE TestTxRollbackKeepsCascadeRows
+=== RUN   TestTxRefusedUpdateWithTxTakesNoSnapshot
+=== PAUSE TestTxRefusedUpdateWithTxTakesNoSnapshot
+=== RUN   TestCascadeTemplate_GapPieceUsesCurrentRow
+=== PAUSE TestCascadeTemplate_GapPieceUsesCurrentRow
+=== RUN   TestSkeletonResolve_CascadeReopenDelete
+=== PAUSE TestSkeletonResolve_CascadeReopenDelete
+=== RUN   TestSkeletonResolve_RelCascadeMirror
+=== PAUSE TestSkeletonResolve_RelCascadeMirror
+=== RUN   TestSkeletonResolve_RandomizedEquivalence
+=== PAUSE TestSkeletonResolve_RandomizedEquivalence
+=== CONT  TestAsOfBoundedCascadeThenDelete
+=== CONT  TestAsOfBoundedCascadeThenDelete_ReImport
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/memory/node
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node/bounded/standalone
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/memory/node/bounded
+=== CONT  TestTxRollbackKeepsCascadeRows
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/node
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/node/bounded/update
+=== CONT  TestSkeletonResolve_RandomizedEquivalence
+=== CONT  TestSkeletonResolve_RelCascadeMirror
+=== CONT  TestSkeletonResolve_CascadeReopenDelete
+=== CONT  TestCascadeTemplate_GapPieceUsesCurrentRow
+=== CONT  TestTxRefusedUpdateWithTxTakesNoSnapshot
+=== CONT  TestCascadeOnDeletedEntityRefused
+=== CONT  TestCascadeVersionsUniqueAndPastStable
+=== CONT  TestCascadeAppendedRowsCarryNoRetraction
+=== CONT  TestValidTimeAfterDeleteBoundedCascade
+=== CONT  TestOneTickCascadeRows
+=== RUN   TestCascadeTemplate_GapPieceUsesCurrentRow/memory/node
+=== RUN   TestOneTickCascadeRows/memory/node
+=== RUN   TestCascadeOnDeletedEntityRefused/memory/node
+=== RUN   TestCascadeOnDeletedEntityRefused/memory/node/cascaded=false/standalone
+=== RUN   TestCascadeAppendedRowsCarryNoRetraction/memory/node
+=== RUN   TestOneTickCascadeRows/memory/rel
+=== RUN   TestCascadeVersionsUniqueAndPastStable/memory/node
+=== RUN   TestCascadeVersionsUniqueAndPastStable/memory/node/bounded
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/memory/node
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/memory/node/bounded
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/memory/node/at-genesis-vf
+=== RUN   TestCascadeAppendedRowsCarryNoRetraction/memory/rel
+=== RUN   TestCascadeTemplate_GapPieceUsesCurrentRow/memory/rel
+=== RUN   TestCascadeOnDeletedEntityRefused/memory/node/cascaded=false/graphtx
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node/bounded/graphtx
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/node/bounded/delete
+=== RUN   TestTxRefusedUpdateWithTxTakesNoSnapshot/memory/node
+=== RUN   TestOneTickCascadeRows/badger/node
+=== RUN   TestCascadeTemplate_GapPieceUsesCurrentRow/badger/node
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/memory/node/nested
+=== RUN   TestTxRefusedUpdateWithTxTakesNoSnapshot/memory/rel
+=== RUN   TestCascadeOnDeletedEntityRefused/memory/node/cascaded=false/batch
+=== RUN   TestTxRefusedUpdateWithTxTakesNoSnapshot/badger/node
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/memory/node/at-genesis-vf
+=== RUN   TestCascadeAppendedRowsCarryNoRetraction/badger/node
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node/bounded/batch
+=== RUN   TestCascadeOnDeletedEntityRefused/memory/node/cascaded=false/ingest
+=== RUN   TestSkeletonResolve_RandomizedEquivalence/entity=0
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/node/bounded/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/memory/node/gap-before-first-vf
+=== RUN   TestCascadeOnDeletedEntityRefused/memory/node/cascaded=true/standalone
+=== RUN   TestSkeletonResolve_RandomizedEquivalence/entity=1
+=== RUN   TestCascadeOnDeletedEntityRefused/memory/node/cascaded=true/graphtx
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/memory/node/nested
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/memory/node/slot-kept-by-later-version
+=== RUN   TestCascadeOnDeletedEntityRefused/memory/node/cascaded=true/batch
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node/bounded/ingest
+=== RUN   TestSkeletonResolve_RandomizedEquivalence/entity=2
+=== RUN   TestCascadeOnDeletedEntityRefused/memory/node/cascaded=true/ingest
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/node/bounded/refused-UpdateWithTx
+=== RUN   TestSkeletonResolve_RandomizedEquivalence/entity=3
+--- PASS: TestSkeletonResolve_CascadeReopenDelete (0.01s)
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/memory/node/closed-then-gap
+=== RUN   TestCascadeOnDeletedEntityRefused/memory/rel
+=== RUN   TestCascadeOnDeletedEntityRefused/memory/rel/cascaded=false/standalone
+=== RUN   TestSkeletonResolve_RandomizedEquivalence/entity=4
+=== RUN   TestCascadeOnDeletedEntityRefused/memory/rel/cascaded=false/graphtx
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/memory/node/gap-before-first-vf
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/node/at-genesis-vf/update
+=== RUN   TestCascadeOnDeletedEntityRefused/memory/rel/cascaded=false/batch
+--- PASS: TestSkeletonResolve_RelCascadeMirror (0.01s)
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node/bounded/DeleteWithTx
+=== RUN   TestSkeletonResolve_RandomizedEquivalence/entity=5
+=== RUN   TestCascadeTemplate_GapPieceUsesCurrentRow/badger/rel
+=== RUN   TestSkeletonResolve_RandomizedEquivalence/entity=6
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/memory/rel
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/memory/rel/bounded
+=== RUN   TestCascadeOnDeletedEntityRefused/memory/rel/cascaded=false/ingest
+=== RUN   TestOneTickCascadeRows/badger/rel
+=== RUN   TestSkeletonResolve_RandomizedEquivalence/entity=7
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/memory/node/slot-kept-by-later-version
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/node/at-genesis-vf/delete
+=== RUN   TestSkeletonResolve_RandomizedEquivalence/entity=8
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node/at-genesis-vf/standalone
+=== RUN   TestTxRefusedUpdateWithTxTakesNoSnapshot/badger/rel
+=== RUN   TestCascadeOnDeletedEntityRefused/memory/rel/cascaded=true/standalone
+=== RUN   TestSkeletonResolve_RandomizedEquivalence/entity=9
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/memory/rel/at-genesis-vf
+=== RUN   TestCascadeAppendedRowsCarryNoRetraction/badger/rel
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/node/at-genesis-vf/update-then-delete
+=== RUN   TestCascadeOnDeletedEntityRefused/memory/rel/cascaded=true/graphtx
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node/at-genesis-vf/graphtx
+=== RUN   TestSkeletonResolve_RandomizedEquivalence/entity=10
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/memory/rel/nested
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/memory/node/closed-then-gap
+=== RUN   TestCascadeOnDeletedEntityRefused/memory/rel/cascaded=true/batch
+=== RUN   TestSkeletonResolve_RandomizedEquivalence/entity=11
+=== RUN   TestCascadeOnDeletedEntityRefused/memory/rel/cascaded=true/ingest
+=== RUN   TestCascadeOnDeletedEntityRefused/badger/node
+=== RUN   TestCascadeOnDeletedEntityRefused/badger/node/cascaded=false/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/node/at-genesis-vf/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node/at-genesis-vf/batch
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/memory/rel/gap-before-first-vf
+--- PASS: TestSkeletonResolve_RandomizedEquivalence (0.01s)
+    --- PASS: TestSkeletonResolve_RandomizedEquivalence/entity=0 (0.00s)
+    --- PASS: TestSkeletonResolve_RandomizedEquivalence/entity=1 (0.00s)
+    --- PASS: TestSkeletonResolve_RandomizedEquivalence/entity=2 (0.00s)
+    --- PASS: TestSkeletonResolve_RandomizedEquivalence/entity=3 (0.00s)
+    --- PASS: TestSkeletonResolve_RandomizedEquivalence/entity=4 (0.00s)
+    --- PASS: TestSkeletonResolve_RandomizedEquivalence/entity=5 (0.00s)
+    --- PASS: TestSkeletonResolve_RandomizedEquivalence/entity=6 (0.00s)
+    --- PASS: TestSkeletonResolve_RandomizedEquivalence/entity=7 (0.00s)
+    --- PASS: TestSkeletonResolve_RandomizedEquivalence/entity=8 (0.00s)
+    --- PASS: TestSkeletonResolve_RandomizedEquivalence/entity=9 (0.00s)
+    --- PASS: TestSkeletonResolve_RandomizedEquivalence/entity=10 (0.00s)
+    --- PASS: TestSkeletonResolve_RandomizedEquivalence/entity=11 (0.00s)
+=== RUN   TestTxRefusedUpdateWithTxTakesNoSnapshot/sharded/node
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/memory/rel
+=== RUN   TestCascadeTemplate_GapPieceUsesCurrentRow/sharded/node
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/memory/rel/bounded
+=== RUN   TestOneTickCascadeRows/sharded/node
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/memory/rel/slot-kept-by-later-version
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/node/nested/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node/at-genesis-vf/ingest
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/memory/rel/closed-then-gap
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node/at-genesis-vf/DeleteWithTx
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/node/nested/delete
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/memory/rel/at-genesis-vf
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/badger/node
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/badger/node/bounded
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node/nested/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/node/nested/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node/nested/graphtx
+=== RUN   TestCascadeVersionsUniqueAndPastStable/memory/node/at-genesis-vf
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/memory/rel/nested
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/node/nested/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node/nested/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/node/gap-before-first-vf/update
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/memory/rel/gap-before-first-vf
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node/nested/ingest
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/node/gap-before-first-vf/delete
+=== RUN   TestCascadeAppendedRowsCarryNoRetraction/sharded/node
+=== RUN   TestCascadeOnDeletedEntityRefused/badger/node/cascaded=false/graphtx
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/memory/rel/slot-kept-by-later-version
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node/nested/DeleteWithTx
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/node/gap-before-first-vf/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node/gap-before-first-vf/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/node/gap-before-first-vf/refused-UpdateWithTx
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/memory/rel/closed-then-gap
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node/gap-before-first-vf/graphtx
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/node/slot-kept-by-later-version/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node/gap-before-first-vf/batch
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/badger/node
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/badger/node/bounded
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node/gap-before-first-vf/ingest
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/node/slot-kept-by-later-version/delete
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/node/slot-kept-by-later-version/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node/gap-before-first-vf/DeleteWithTx
+=== RUN   TestCascadeVersionsUniqueAndPastStable/memory/node/nested
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/node/slot-kept-by-later-version/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node/slot-kept-by-later-version/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/node/closed-then-gap/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node/slot-kept-by-later-version/graphtx
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/node/closed-then-gap/delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node/slot-kept-by-later-version/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/node/closed-then-gap/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node/slot-kept-by-later-version/ingest
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node/slot-kept-by-later-version/DeleteWithTx
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/node/closed-then-gap/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node/closed-then-gap/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/rel
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/rel/bounded/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node/closed-then-gap/graphtx
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node/closed-then-gap/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/rel/bounded/delete
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/rel/bounded/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node/closed-then-gap/ingest
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/node/closed-then-gap/DeleteWithTx
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/rel/bounded/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel/bounded/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/rel/at-genesis-vf/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel/bounded/graphtx
+=== RUN   TestCascadeVersionsUniqueAndPastStable/memory/node/gap-before-first-vf
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel/bounded/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/rel/at-genesis-vf/delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel/bounded/ingest
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel/bounded/DeleteWithTx
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/rel/at-genesis-vf/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel/at-genesis-vf/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/rel/at-genesis-vf/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel/at-genesis-vf/graphtx
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel/at-genesis-vf/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/rel/nested/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel/at-genesis-vf/ingest
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/rel/nested/delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel/at-genesis-vf/DeleteWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel/nested/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/rel/nested/update-then-delete
+=== RUN   TestCascadeVersionsUniqueAndPastStable/memory/node/slot-kept-by-later-version
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel/nested/graphtx
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel/nested/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/rel/nested/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel/nested/ingest
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/rel/gap-before-first-vf/update
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/rel/gap-before-first-vf/delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel/nested/DeleteWithTx
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/rel/gap-before-first-vf/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel/gap-before-first-vf/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/rel/gap-before-first-vf/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel/gap-before-first-vf/graphtx
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/rel/slot-kept-by-later-version/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel/gap-before-first-vf/batch
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel/gap-before-first-vf/ingest
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/rel/slot-kept-by-later-version/delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel/gap-before-first-vf/DeleteWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel/slot-kept-by-later-version/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/rel/slot-kept-by-later-version/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel/slot-kept-by-later-version/graphtx
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/rel/slot-kept-by-later-version/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel/slot-kept-by-later-version/batch
+=== RUN   TestCascadeVersionsUniqueAndPastStable/memory/node/closed-then-gap
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/rel/closed-then-gap/update
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/rel/closed-then-gap/delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel/slot-kept-by-later-version/ingest
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/rel/closed-then-gap/update-then-delete
+=== RUN   TestCascadeVersionsUniqueAndPastStable/memory/rel
+=== RUN   TestCascadeVersionsUniqueAndPastStable/memory/rel/bounded
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel/slot-kept-by-later-version/DeleteWithTx
+=== RUN   TestTxRollbackKeepsCascadeRows/memory/rel/closed-then-gap/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel/closed-then-gap/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/node
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel/closed-then-gap/graphtx
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/node/bounded/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel/closed-then-gap/batch
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel/closed-then-gap/ingest
+=== RUN   TestAsOfBoundedCascadeThenDelete/memory/rel/closed-then-gap/DeleteWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node/bounded/standalone
+=== RUN   TestCascadeVersionsUniqueAndPastStable/memory/rel/at-genesis-vf
+=== RUN   TestCascadeOnDeletedEntityRefused/badger/node/cascaded=false/batch
+=== RUN   TestCascadeVersionsUniqueAndPastStable/memory/rel/nested
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/badger/node/at-genesis-vf
+=== RUN   TestOneTickCascadeRows/sharded/rel
+=== RUN   TestCascadeOnDeletedEntityRefused/badger/node/cascaded=false/ingest
+=== RUN   TestCascadeVersionsUniqueAndPastStable/memory/rel/gap-before-first-vf
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/badger/node/at-genesis-vf
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/badger/node/nested
+=== RUN   TestCascadeTemplate_GapPieceUsesCurrentRow/sharded/rel
+=== RUN   TestCascadeOnDeletedEntityRefused/badger/node/cascaded=true/standalone
+=== RUN   TestOneTickCascadeRows/tiered/node
+=== RUN   TestCascadeVersionsUniqueAndPastStable/memory/rel/slot-kept-by-later-version
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/badger/node/gap-before-first-vf
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/badger/node/nested
+=== RUN   TestCascadeVersionsUniqueAndPastStable/memory/rel/closed-then-gap
+=== RUN   TestCascadeVersionsUniqueAndPastStable/badger/node
+=== RUN   TestCascadeVersionsUniqueAndPastStable/badger/node/bounded
+=== RUN   TestCascadeOnDeletedEntityRefused/badger/node/cascaded=true/graphtx
+=== RUN   TestCascadeOnDeletedEntityRefused/badger/node/cascaded=true/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/node/bounded/delete
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/badger/node/slot-kept-by-later-version
+=== RUN   TestCascadeOnDeletedEntityRefused/badger/node/cascaded=true/ingest
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node/bounded/graphtx
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/node/bounded/update-then-delete
+=== RUN   TestTxRefusedUpdateWithTxTakesNoSnapshot/sharded/rel
+=== RUN   TestCascadeAppendedRowsCarryNoRetraction/sharded/rel
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/badger/node/closed-then-gap
+=== RUN   TestCascadeOnDeletedEntityRefused/badger/rel
+=== RUN   TestCascadeOnDeletedEntityRefused/badger/rel/cascaded=false/standalone
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node/bounded/batch
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/badger/node/gap-before-first-vf
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node/bounded/ingest
+=== RUN   TestCascadeTemplate_GapPieceUsesCurrentRow/tiered/node
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node/bounded/DeleteWithTx
+=== RUN   TestOneTickCascadeRows/tiered/rel
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node/at-genesis-vf/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/node/bounded/refused-UpdateWithTx
+=== RUN   TestCascadeTemplate_GapPieceUsesCurrentRow/tiered/rel
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node/at-genesis-vf/graphtx
+=== RUN   TestCascadeOnDeletedEntityRefused/badger/rel/cascaded=false/graphtx
+=== RUN   TestCascadeVersionsUniqueAndPastStable/badger/node/at-genesis-vf
+=== RUN   TestTxRefusedUpdateWithTxTakesNoSnapshot/tiered/node
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/badger/rel
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/badger/rel/bounded
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/badger/node/slot-kept-by-later-version
+--- PASS: TestOneTickCascadeRows (0.39s)
+    --- PASS: TestOneTickCascadeRows/memory/node (0.00s)
+    --- PASS: TestOneTickCascadeRows/memory/rel (0.00s)
+    --- PASS: TestOneTickCascadeRows/badger/node (0.00s)
+    --- PASS: TestOneTickCascadeRows/badger/rel (0.00s)
+    --- PASS: TestOneTickCascadeRows/sharded/node (0.08s)
+    --- PASS: TestOneTickCascadeRows/sharded/rel (0.02s)
+    --- PASS: TestOneTickCascadeRows/tiered/node (0.16s)
+    --- PASS: TestOneTickCascadeRows/tiered/rel (0.11s)
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/node/at-genesis-vf/update
+=== RUN   TestCascadeAppendedRowsCarryNoRetraction/tiered/node
+=== RUN   TestCascadeOnDeletedEntityRefused/badger/rel/cascaded=false/batch
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node/at-genesis-vf/batch
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/badger/rel/at-genesis-vf
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/badger/node/closed-then-gap
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node/at-genesis-vf/ingest
+--- PASS: TestCascadeTemplate_GapPieceUsesCurrentRow (0.45s)
+    --- PASS: TestCascadeTemplate_GapPieceUsesCurrentRow/memory/node (0.00s)
+    --- PASS: TestCascadeTemplate_GapPieceUsesCurrentRow/memory/rel (0.00s)
+    --- PASS: TestCascadeTemplate_GapPieceUsesCurrentRow/badger/node (0.00s)
+    --- PASS: TestCascadeTemplate_GapPieceUsesCurrentRow/badger/rel (0.00s)
+    --- PASS: TestCascadeTemplate_GapPieceUsesCurrentRow/sharded/node (0.09s)
+    --- PASS: TestCascadeTemplate_GapPieceUsesCurrentRow/sharded/rel (0.16s)
+    --- PASS: TestCascadeTemplate_GapPieceUsesCurrentRow/tiered/node (0.06s)
+    --- PASS: TestCascadeTemplate_GapPieceUsesCurrentRow/tiered/rel (0.13s)
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/node/at-genesis-vf/delete
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/badger/rel
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/badger/rel/bounded
+=== RUN   TestCascadeVersionsUniqueAndPastStable/badger/node/nested
+=== RUN   TestCascadeAppendedRowsCarryNoRetraction/tiered/rel
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node/at-genesis-vf/DeleteWithTx
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/node/at-genesis-vf/update-then-delete
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/badger/rel/at-genesis-vf
+=== RUN   TestCascadeOnDeletedEntityRefused/badger/rel/cascaded=false/ingest
+=== RUN   TestTxRefusedUpdateWithTxTakesNoSnapshot/tiered/rel
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node/nested/standalone
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/badger/rel/nested
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/node/at-genesis-vf/refused-UpdateWithTx
+=== RUN   TestCascadeOnDeletedEntityRefused/badger/rel/cascaded=true/standalone
+--- PASS: TestCascadeAppendedRowsCarryNoRetraction (0.55s)
+    --- PASS: TestCascadeAppendedRowsCarryNoRetraction/memory/node (0.00s)
+    --- PASS: TestCascadeAppendedRowsCarryNoRetraction/memory/rel (0.00s)
+    --- PASS: TestCascadeAppendedRowsCarryNoRetraction/badger/node (0.00s)
+    --- PASS: TestCascadeAppendedRowsCarryNoRetraction/badger/rel (0.01s)
+    --- PASS: TestCascadeAppendedRowsCarryNoRetraction/sharded/node (0.18s)
+    --- PASS: TestCascadeAppendedRowsCarryNoRetraction/sharded/rel (0.20s)
+    --- PASS: TestCascadeAppendedRowsCarryNoRetraction/tiered/node (0.08s)
+    --- PASS: TestCascadeAppendedRowsCarryNoRetraction/tiered/rel (0.07s)
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/badger/rel/nested
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node/nested/graphtx
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/badger/rel/gap-before-first-vf
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/node/nested/update
+=== RUN   TestCascadeOnDeletedEntityRefused/badger/rel/cascaded=true/graphtx
+=== RUN   TestCascadeVersionsUniqueAndPastStable/badger/node/gap-before-first-vf
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node/nested/batch
+--- PASS: TestTxRefusedUpdateWithTxTakesNoSnapshot (0.60s)
+    --- PASS: TestTxRefusedUpdateWithTxTakesNoSnapshot/memory/node (0.00s)
+    --- PASS: TestTxRefusedUpdateWithTxTakesNoSnapshot/memory/rel (0.00s)
+    --- PASS: TestTxRefusedUpdateWithTxTakesNoSnapshot/badger/node (0.00s)
+    --- PASS: TestTxRefusedUpdateWithTxTakesNoSnapshot/badger/rel (0.00s)
+    --- PASS: TestTxRefusedUpdateWithTxTakesNoSnapshot/sharded/node (0.18s)
+    --- PASS: TestTxRefusedUpdateWithTxTakesNoSnapshot/sharded/rel (0.17s)
+    --- PASS: TestTxRefusedUpdateWithTxTakesNoSnapshot/tiered/node (0.17s)
+    --- PASS: TestTxRefusedUpdateWithTxTakesNoSnapshot/tiered/rel (0.08s)
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/badger/rel/gap-before-first-vf
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/badger/rel/slot-kept-by-later-version
+=== RUN   TestCascadeOnDeletedEntityRefused/badger/rel/cascaded=true/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/node/nested/delete
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/badger/rel/slot-kept-by-later-version
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node/nested/ingest
+=== RUN   TestCascadeOnDeletedEntityRefused/badger/rel/cascaded=true/ingest
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/badger/rel/closed-then-gap
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/node/nested/update-then-delete
+=== RUN   TestCascadeOnDeletedEntityRefused/sharded/node
+=== RUN   TestCascadeOnDeletedEntityRefused/sharded/node/cascaded=false/standalone
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/badger/rel/closed-then-gap
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node/nested/DeleteWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/sharded/node
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/sharded/node/bounded
+=== RUN   TestCascadeVersionsUniqueAndPastStable/badger/node/slot-kept-by-later-version
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/node/nested/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node/gap-before-first-vf/standalone
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/sharded/node
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/sharded/node/bounded
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/node/gap-before-first-vf/update
+=== RUN   TestCascadeOnDeletedEntityRefused/sharded/node/cascaded=false/graphtx
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/sharded/node/at-genesis-vf
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node/gap-before-first-vf/graphtx
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/node/gap-before-first-vf/delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node/gap-before-first-vf/batch
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/sharded/node/at-genesis-vf
+=== RUN   TestCascadeOnDeletedEntityRefused/sharded/node/cascaded=false/batch
+=== RUN   TestCascadeVersionsUniqueAndPastStable/badger/node/closed-then-gap
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/node/gap-before-first-vf/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/sharded/node/nested
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node/gap-before-first-vf/ingest
+=== RUN   TestCascadeVersionsUniqueAndPastStable/badger/rel
+=== RUN   TestCascadeVersionsUniqueAndPastStable/badger/rel/bounded
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/node/gap-before-first-vf/refused-UpdateWithTx
+=== RUN   TestCascadeOnDeletedEntityRefused/sharded/node/cascaded=false/ingest
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node/gap-before-first-vf/DeleteWithTx
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/sharded/node/nested
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/sharded/node/gap-before-first-vf
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/node/slot-kept-by-later-version/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node/slot-kept-by-later-version/standalone
+=== RUN   TestCascadeOnDeletedEntityRefused/sharded/node/cascaded=true/standalone
+=== RUN   TestCascadeVersionsUniqueAndPastStable/badger/rel/at-genesis-vf
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/node/slot-kept-by-later-version/delete
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/sharded/node/gap-before-first-vf
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node/slot-kept-by-later-version/graphtx
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/sharded/node/slot-kept-by-later-version
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/node/slot-kept-by-later-version/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node/slot-kept-by-later-version/batch
+=== RUN   TestCascadeOnDeletedEntityRefused/sharded/node/cascaded=true/graphtx
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/node/slot-kept-by-later-version/refused-UpdateWithTx
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/sharded/node/slot-kept-by-later-version
+=== RUN   TestCascadeVersionsUniqueAndPastStable/badger/rel/nested
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/sharded/node/closed-then-gap
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node/slot-kept-by-later-version/ingest
+=== RUN   TestCascadeOnDeletedEntityRefused/sharded/node/cascaded=true/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/node/closed-then-gap/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node/slot-kept-by-later-version/DeleteWithTx
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/sharded/node/closed-then-gap
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/node/closed-then-gap/delete
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/sharded/rel
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/sharded/rel/bounded
+=== RUN   TestCascadeOnDeletedEntityRefused/sharded/node/cascaded=true/ingest
+=== RUN   TestCascadeVersionsUniqueAndPastStable/badger/rel/gap-before-first-vf
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node/closed-then-gap/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/node/closed-then-gap/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node/closed-then-gap/graphtx
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/sharded/rel/at-genesis-vf
+=== RUN   TestCascadeOnDeletedEntityRefused/sharded/rel
+=== RUN   TestCascadeOnDeletedEntityRefused/sharded/rel/cascaded=false/standalone
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/sharded/rel
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/sharded/rel/bounded
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/node/closed-then-gap/refused-UpdateWithTx
+=== RUN   TestCascadeVersionsUniqueAndPastStable/badger/rel/slot-kept-by-later-version
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node/closed-then-gap/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/rel
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/rel/bounded/update
+=== RUN   TestCascadeOnDeletedEntityRefused/sharded/rel/cascaded=false/graphtx
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/sharded/rel/nested
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node/closed-then-gap/ingest
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/rel/bounded/delete
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/sharded/rel/at-genesis-vf
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/node/closed-then-gap/DeleteWithTx
+=== RUN   TestCascadeVersionsUniqueAndPastStable/badger/rel/closed-then-gap
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/rel/bounded/update-then-delete
+=== RUN   TestCascadeOnDeletedEntityRefused/sharded/rel/cascaded=false/batch
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/sharded/rel/gap-before-first-vf
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel/bounded/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/rel/bounded/refused-UpdateWithTx
+=== RUN   TestCascadeVersionsUniqueAndPastStable/sharded/node
+=== RUN   TestCascadeVersionsUniqueAndPastStable/sharded/node/bounded
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel/bounded/graphtx
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/rel/at-genesis-vf/update
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/sharded/rel/nested
+=== RUN   TestCascadeOnDeletedEntityRefused/sharded/rel/cascaded=false/ingest
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/sharded/rel/slot-kept-by-later-version
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel/bounded/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/rel/at-genesis-vf/delete
+=== RUN   TestCascadeOnDeletedEntityRefused/sharded/rel/cascaded=true/standalone
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel/bounded/ingest
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/rel/at-genesis-vf/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/sharded/rel/closed-then-gap
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel/bounded/DeleteWithTx
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/sharded/rel/gap-before-first-vf
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/rel/at-genesis-vf/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel/at-genesis-vf/standalone
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel/at-genesis-vf/graphtx
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/rel/nested/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel/at-genesis-vf/batch
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/tiered/node
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/tiered/node/bounded
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/sharded/rel/slot-kept-by-later-version
+=== RUN   TestCascadeOnDeletedEntityRefused/sharded/rel/cascaded=true/graphtx
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel/at-genesis-vf/ingest
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/rel/nested/delete
+=== RUN   TestCascadeVersionsUniqueAndPastStable/sharded/node/at-genesis-vf
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/tiered/node/at-genesis-vf
+=== RUN   TestCascadeOnDeletedEntityRefused/sharded/rel/cascaded=true/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/rel/nested/update-then-delete
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/sharded/rel/closed-then-gap
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel/at-genesis-vf/DeleteWithTx
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/rel/nested/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/tiered/node/nested
+=== RUN   TestCascadeOnDeletedEntityRefused/sharded/rel/cascaded=true/ingest
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/tiered/node
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/tiered/node/bounded
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/rel/gap-before-first-vf/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel/nested/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/rel/gap-before-first-vf/delete
+=== RUN   TestCascadeOnDeletedEntityRefused/tiered/node
+=== RUN   TestCascadeOnDeletedEntityRefused/tiered/node/cascaded=false/standalone
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel/nested/graphtx
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/tiered/node/gap-before-first-vf
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/rel/gap-before-first-vf/update-then-delete
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/tiered/node/at-genesis-vf
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel/nested/batch
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/tiered/node/nested
+=== RUN   TestCascadeOnDeletedEntityRefused/tiered/node/cascaded=false/graphtx
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/rel/gap-before-first-vf/refused-UpdateWithTx
+=== RUN   TestCascadeVersionsUniqueAndPastStable/sharded/node/nested
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/tiered/node/slot-kept-by-later-version
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel/nested/ingest
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/rel/slot-kept-by-later-version/update
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/tiered/node/gap-before-first-vf
+=== RUN   TestCascadeOnDeletedEntityRefused/tiered/node/cascaded=false/batch
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel/nested/DeleteWithTx
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/rel/slot-kept-by-later-version/delete
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/tiered/node/closed-then-gap
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel/gap-before-first-vf/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/rel/slot-kept-by-later-version/update-then-delete
+=== RUN   TestCascadeOnDeletedEntityRefused/tiered/node/cascaded=false/ingest
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/tiered/node/slot-kept-by-later-version
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel/gap-before-first-vf/graphtx
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/tiered/rel
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/tiered/rel/bounded
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/rel/slot-kept-by-later-version/refused-UpdateWithTx
+=== RUN   TestCascadeOnDeletedEntityRefused/tiered/node/cascaded=true/standalone
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel/gap-before-first-vf/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/rel/closed-then-gap/update
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/tiered/node/closed-then-gap
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel/gap-before-first-vf/ingest
+=== RUN   TestCascadeOnDeletedEntityRefused/tiered/node/cascaded=true/graphtx
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/rel/closed-then-gap/delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel/gap-before-first-vf/DeleteWithTx
+=== RUN   TestCascadeOnDeletedEntityRefused/tiered/node/cascaded=true/batch
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/tiered/rel/at-genesis-vf
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel/slot-kept-by-later-version/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/rel/closed-then-gap/update-then-delete
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/tiered/rel
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/tiered/rel/bounded
+=== RUN   TestCascadeVersionsUniqueAndPastStable/sharded/node/gap-before-first-vf
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel/slot-kept-by-later-version/graphtx
+=== RUN   TestTxRollbackKeepsCascadeRows/badger/rel/closed-then-gap/refused-UpdateWithTx
+=== RUN   TestCascadeOnDeletedEntityRefused/tiered/node/cascaded=true/ingest
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/tiered/rel/nested
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel/slot-kept-by-later-version/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/node
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/node/bounded/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel/slot-kept-by-later-version/ingest
+=== RUN   TestCascadeOnDeletedEntityRefused/tiered/rel
+=== RUN   TestCascadeOnDeletedEntityRefused/tiered/rel/cascaded=false/standalone
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/tiered/rel/gap-before-first-vf
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/tiered/rel/at-genesis-vf
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel/slot-kept-by-later-version/DeleteWithTx
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/node/bounded/delete
+=== RUN   TestCascadeOnDeletedEntityRefused/tiered/rel/cascaded=false/graphtx
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel/closed-then-gap/standalone
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/tiered/rel/slot-kept-by-later-version
+=== RUN   TestCascadeVersionsUniqueAndPastStable/sharded/node/slot-kept-by-later-version
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel/closed-then-gap/graphtx
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/tiered/rel/nested
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/node/bounded/update-then-delete
+=== RUN   TestCascadeOnDeletedEntityRefused/tiered/rel/cascaded=false/batch
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel/closed-then-gap/batch
+=== RUN   TestCascadeOnDeletedEntityRefused/tiered/rel/cascaded=false/ingest
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel/closed-then-gap/ingest
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/node/bounded/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete_ReImport/tiered/rel/closed-then-gap
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/tiered/rel/gap-before-first-vf
+=== RUN   TestAsOfBoundedCascadeThenDelete/badger/rel/closed-then-gap/DeleteWithTx
+=== RUN   TestCascadeOnDeletedEntityRefused/tiered/rel/cascaded=true/standalone
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node/bounded/standalone
+--- PASS: TestAsOfBoundedCascadeThenDelete_ReImport (2.24s)
+    --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/memory/node (0.01s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/memory/node/bounded (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/memory/node/at-genesis-vf (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/memory/node/nested (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/memory/node/gap-before-first-vf (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/memory/node/slot-kept-by-later-version (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/memory/node/closed-then-gap (0.00s)
+    --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/memory/rel (0.01s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/memory/rel/bounded (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/memory/rel/at-genesis-vf (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/memory/rel/nested (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/memory/rel/gap-before-first-vf (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/memory/rel/slot-kept-by-later-version (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/memory/rel/closed-then-gap (0.00s)
+    --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/badger/node (0.35s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/badger/node/bounded (0.08s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/badger/node/at-genesis-vf (0.01s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/badger/node/nested (0.01s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/badger/node/gap-before-first-vf (0.06s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/badger/node/slot-kept-by-later-version (0.06s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/badger/node/closed-then-gap (0.14s)
+    --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/badger/rel (0.32s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/badger/rel/bounded (0.06s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/badger/rel/at-genesis-vf (0.10s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/badger/rel/nested (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/badger/rel/gap-before-first-vf (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/badger/rel/slot-kept-by-later-version (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/badger/rel/closed-then-gap (0.03s)
+    --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/sharded/node (0.38s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/sharded/node/bounded (0.06s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/sharded/node/at-genesis-vf (0.06s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/sharded/node/nested (0.07s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/sharded/node/gap-before-first-vf (0.07s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/sharded/node/slot-kept-by-later-version (0.07s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/sharded/node/closed-then-gap (0.05s)
+    --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/sharded/rel (0.37s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/sharded/rel/bounded (0.06s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/sharded/rel/at-genesis-vf (0.07s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/sharded/rel/nested (0.06s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/sharded/rel/gap-before-first-vf (0.07s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/sharded/rel/slot-kept-by-later-version (0.06s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/sharded/rel/closed-then-gap (0.05s)
+    --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/tiered/node (0.37s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/tiered/node/bounded (0.06s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/tiered/node/at-genesis-vf (0.07s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/tiered/node/nested (0.06s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/tiered/node/gap-before-first-vf (0.05s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/tiered/node/slot-kept-by-later-version (0.07s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/tiered/node/closed-then-gap (0.06s)
+    --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/tiered/rel (0.44s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/tiered/rel/bounded (0.09s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/tiered/rel/at-genesis-vf (0.06s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/tiered/rel/nested (0.06s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/tiered/rel/gap-before-first-vf (0.06s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/tiered/rel/slot-kept-by-later-version (0.10s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete_ReImport/tiered/rel/closed-then-gap (0.06s)
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/node/at-genesis-vf/update
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/tiered/rel/slot-kept-by-later-version
+=== RUN   TestCascadeOnDeletedEntityRefused/tiered/rel/cascaded=true/graphtx
+=== RUN   TestCascadeOnDeletedEntityRefused/tiered/rel/cascaded=true/batch
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node/bounded/graphtx
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/node/at-genesis-vf/delete
+=== RUN   TestCascadeOnDeletedEntityRefused/tiered/rel/cascaded=true/ingest
+=== RUN   TestValidTimeAfterDeleteBoundedCascade/tiered/rel/closed-then-gap
+=== RUN   TestCascadeVersionsUniqueAndPastStable/sharded/node/closed-then-gap
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node/bounded/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/node/at-genesis-vf/update-then-delete
+--- PASS: TestValidTimeAfterDeleteBoundedCascade (2.35s)
+    --- PASS: TestValidTimeAfterDeleteBoundedCascade/memory/node (0.01s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/memory/node/bounded (0.00s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/memory/node/at-genesis-vf (0.00s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/memory/node/nested (0.00s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/memory/node/gap-before-first-vf (0.00s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/memory/node/slot-kept-by-later-version (0.00s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/memory/node/closed-then-gap (0.00s)
+    --- PASS: TestValidTimeAfterDeleteBoundedCascade/memory/rel (0.01s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/memory/rel/bounded (0.00s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/memory/rel/at-genesis-vf (0.00s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/memory/rel/nested (0.00s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/memory/rel/gap-before-first-vf (0.00s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/memory/rel/slot-kept-by-later-version (0.00s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/memory/rel/closed-then-gap (0.00s)
+    --- PASS: TestValidTimeAfterDeleteBoundedCascade/badger/node (0.45s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/badger/node/bounded (0.08s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/badger/node/at-genesis-vf (0.02s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/badger/node/nested (0.12s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/badger/node/gap-before-first-vf (0.13s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/badger/node/slot-kept-by-later-version (0.07s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/badger/node/closed-then-gap (0.04s)
+    --- PASS: TestValidTimeAfterDeleteBoundedCascade/badger/rel (0.23s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/badger/rel/bounded (0.04s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/badger/rel/at-genesis-vf (0.04s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/badger/rel/nested (0.04s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/badger/rel/gap-before-first-vf (0.03s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/badger/rel/slot-kept-by-later-version (0.04s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/badger/rel/closed-then-gap (0.04s)
+    --- PASS: TestValidTimeAfterDeleteBoundedCascade/sharded/node (0.42s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/sharded/node/bounded (0.07s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/sharded/node/at-genesis-vf (0.08s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/sharded/node/nested (0.07s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/sharded/node/gap-before-first-vf (0.07s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/sharded/node/slot-kept-by-later-version (0.06s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/sharded/node/closed-then-gap (0.07s)
+    --- PASS: TestValidTimeAfterDeleteBoundedCascade/sharded/rel (0.44s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/sharded/rel/bounded (0.07s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/sharded/rel/at-genesis-vf (0.10s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/sharded/rel/nested (0.08s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/sharded/rel/gap-before-first-vf (0.06s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/sharded/rel/slot-kept-by-later-version (0.06s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/sharded/rel/closed-then-gap (0.07s)
+    --- PASS: TestValidTimeAfterDeleteBoundedCascade/tiered/node (0.33s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/tiered/node/bounded (0.06s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/tiered/node/at-genesis-vf (0.02s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/tiered/node/nested (0.05s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/tiered/node/gap-before-first-vf (0.07s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/tiered/node/slot-kept-by-later-version (0.07s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/tiered/node/closed-then-gap (0.06s)
+    --- PASS: TestValidTimeAfterDeleteBoundedCascade/tiered/rel (0.46s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/tiered/rel/bounded (0.12s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/tiered/rel/at-genesis-vf (0.07s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/tiered/rel/nested (0.08s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/tiered/rel/gap-before-first-vf (0.07s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/tiered/rel/slot-kept-by-later-version (0.06s)
+        --- PASS: TestValidTimeAfterDeleteBoundedCascade/tiered/rel/closed-then-gap (0.06s)
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node/bounded/ingest
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/node/at-genesis-vf/refused-UpdateWithTx
+--- PASS: TestCascadeOnDeletedEntityRefused (2.38s)
+    --- PASS: TestCascadeOnDeletedEntityRefused/memory/node (0.00s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/memory/node/cascaded=false/standalone (0.00s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/memory/node/cascaded=false/graphtx (0.00s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/memory/node/cascaded=false/batch (0.00s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/memory/node/cascaded=false/ingest (0.00s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/memory/node/cascaded=true/standalone (0.00s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/memory/node/cascaded=true/graphtx (0.00s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/memory/node/cascaded=true/batch (0.00s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/memory/node/cascaded=true/ingest (0.00s)
+    --- PASS: TestCascadeOnDeletedEntityRefused/memory/rel (0.00s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/memory/rel/cascaded=false/standalone (0.00s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/memory/rel/cascaded=false/graphtx (0.00s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/memory/rel/cascaded=false/batch (0.00s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/memory/rel/cascaded=false/ingest (0.00s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/memory/rel/cascaded=true/standalone (0.00s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/memory/rel/cascaded=true/graphtx (0.00s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/memory/rel/cascaded=true/batch (0.00s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/memory/rel/cascaded=true/ingest (0.00s)
+    --- PASS: TestCascadeOnDeletedEntityRefused/badger/node (0.22s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/badger/node/cascaded=false/standalone (0.01s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/badger/node/cascaded=false/graphtx (0.07s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/badger/node/cascaded=false/batch (0.01s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/badger/node/cascaded=false/ingest (0.01s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/badger/node/cascaded=true/standalone (0.05s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/badger/node/cascaded=true/graphtx (0.01s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/badger/node/cascaded=true/batch (0.01s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/badger/node/cascaded=true/ingest (0.05s)
+    --- PASS: TestCascadeOnDeletedEntityRefused/badger/rel (0.44s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/badger/rel/cascaded=false/standalone (0.12s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/badger/rel/cascaded=false/graphtx (0.08s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/badger/rel/cascaded=false/batch (0.09s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/badger/rel/cascaded=false/ingest (0.03s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/badger/rel/cascaded=true/standalone (0.03s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/badger/rel/cascaded=true/graphtx (0.04s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/badger/rel/cascaded=true/batch (0.02s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/badger/rel/cascaded=true/ingest (0.03s)
+    --- PASS: TestCascadeOnDeletedEntityRefused/sharded/node (0.46s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/sharded/node/cascaded=false/standalone (0.06s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/sharded/node/cascaded=false/graphtx (0.05s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/sharded/node/cascaded=false/batch (0.06s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/sharded/node/cascaded=false/ingest (0.06s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/sharded/node/cascaded=true/standalone (0.07s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/sharded/node/cascaded=true/graphtx (0.05s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/sharded/node/cascaded=true/batch (0.04s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/sharded/node/cascaded=true/ingest (0.06s)
+    --- PASS: TestCascadeOnDeletedEntityRefused/sharded/rel (0.47s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/sharded/rel/cascaded=false/standalone (0.06s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/sharded/rel/cascaded=false/graphtx (0.06s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/sharded/rel/cascaded=false/batch (0.06s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/sharded/rel/cascaded=false/ingest (0.06s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/sharded/rel/cascaded=true/standalone (0.07s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/sharded/rel/cascaded=true/graphtx (0.05s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/sharded/rel/cascaded=true/batch (0.06s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/sharded/rel/cascaded=true/ingest (0.05s)
+    --- PASS: TestCascadeOnDeletedEntityRefused/tiered/node (0.39s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/tiered/node/cascaded=false/standalone (0.05s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/tiered/node/cascaded=false/graphtx (0.05s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/tiered/node/cascaded=false/batch (0.06s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/tiered/node/cascaded=false/ingest (0.05s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/tiered/node/cascaded=true/standalone (0.05s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/tiered/node/cascaded=true/graphtx (0.03s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/tiered/node/cascaded=true/batch (0.05s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/tiered/node/cascaded=true/ingest (0.06s)
+    --- PASS: TestCascadeOnDeletedEntityRefused/tiered/rel (0.39s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/tiered/rel/cascaded=false/standalone (0.05s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/tiered/rel/cascaded=false/graphtx (0.05s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/tiered/rel/cascaded=false/batch (0.07s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/tiered/rel/cascaded=false/ingest (0.06s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/tiered/rel/cascaded=true/standalone (0.04s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/tiered/rel/cascaded=true/graphtx (0.01s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/tiered/rel/cascaded=true/batch (0.02s)
+        --- PASS: TestCascadeOnDeletedEntityRefused/tiered/rel/cascaded=true/ingest (0.09s)
+=== RUN   TestCascadeVersionsUniqueAndPastStable/sharded/rel
+=== RUN   TestCascadeVersionsUniqueAndPastStable/sharded/rel/bounded
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node/bounded/DeleteWithTx
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/node/nested/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node/at-genesis-vf/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/node/nested/delete
+=== RUN   TestCascadeVersionsUniqueAndPastStable/sharded/rel/at-genesis-vf
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node/at-genesis-vf/graphtx
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/node/nested/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node/at-genesis-vf/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/node/nested/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node/at-genesis-vf/ingest
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/node/gap-before-first-vf/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node/at-genesis-vf/DeleteWithTx
+=== RUN   TestCascadeVersionsUniqueAndPastStable/sharded/rel/nested
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/node/gap-before-first-vf/delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node/nested/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/node/gap-before-first-vf/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node/nested/graphtx
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/node/gap-before-first-vf/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node/nested/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/node/slot-kept-by-later-version/update
+=== RUN   TestCascadeVersionsUniqueAndPastStable/sharded/rel/gap-before-first-vf
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node/nested/ingest
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/node/slot-kept-by-later-version/delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node/nested/DeleteWithTx
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/node/slot-kept-by-later-version/update-then-delete
+=== RUN   TestCascadeVersionsUniqueAndPastStable/sharded/rel/slot-kept-by-later-version
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node/gap-before-first-vf/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/node/slot-kept-by-later-version/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node/gap-before-first-vf/graphtx
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/node/closed-then-gap/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node/gap-before-first-vf/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/node/closed-then-gap/delete
+=== RUN   TestCascadeVersionsUniqueAndPastStable/sharded/rel/closed-then-gap
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node/gap-before-first-vf/ingest
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/node/closed-then-gap/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node/gap-before-first-vf/DeleteWithTx
+=== RUN   TestCascadeVersionsUniqueAndPastStable/tiered/node
+=== RUN   TestCascadeVersionsUniqueAndPastStable/tiered/node/bounded
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/node/closed-then-gap/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node/slot-kept-by-later-version/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/rel
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/rel/bounded/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node/slot-kept-by-later-version/graphtx
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/rel/bounded/delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node/slot-kept-by-later-version/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/rel/bounded/update-then-delete
+=== RUN   TestCascadeVersionsUniqueAndPastStable/tiered/node/at-genesis-vf
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node/slot-kept-by-later-version/ingest
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/rel/bounded/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node/slot-kept-by-later-version/DeleteWithTx
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/rel/at-genesis-vf/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node/closed-then-gap/standalone
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node/closed-then-gap/graphtx
+=== RUN   TestCascadeVersionsUniqueAndPastStable/tiered/node/nested
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node/closed-then-gap/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/rel/at-genesis-vf/delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node/closed-then-gap/ingest
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/node/closed-then-gap/DeleteWithTx
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/rel/at-genesis-vf/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel/bounded/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/rel/at-genesis-vf/refused-UpdateWithTx
+=== RUN   TestCascadeVersionsUniqueAndPastStable/tiered/node/gap-before-first-vf
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel/bounded/graphtx
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/rel/nested/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel/bounded/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/rel/nested/delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel/bounded/ingest
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel/bounded/DeleteWithTx
+=== RUN   TestCascadeVersionsUniqueAndPastStable/tiered/node/slot-kept-by-later-version
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/rel/nested/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel/at-genesis-vf/standalone
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel/at-genesis-vf/graphtx
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/rel/nested/refused-UpdateWithTx
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/rel/gap-before-first-vf/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel/at-genesis-vf/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/rel/gap-before-first-vf/delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel/at-genesis-vf/ingest
+=== RUN   TestCascadeVersionsUniqueAndPastStable/tiered/node/closed-then-gap
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/rel/gap-before-first-vf/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel/at-genesis-vf/DeleteWithTx
+=== RUN   TestCascadeVersionsUniqueAndPastStable/tiered/rel
+=== RUN   TestCascadeVersionsUniqueAndPastStable/tiered/rel/bounded
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel/nested/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/rel/gap-before-first-vf/refused-UpdateWithTx
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/rel/slot-kept-by-later-version/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel/nested/graphtx
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/rel/slot-kept-by-later-version/delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel/nested/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/rel/slot-kept-by-later-version/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel/nested/ingest
+=== RUN   TestCascadeVersionsUniqueAndPastStable/tiered/rel/at-genesis-vf
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel/nested/DeleteWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel/gap-before-first-vf/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/rel/slot-kept-by-later-version/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel/gap-before-first-vf/graphtx
+=== RUN   TestCascadeVersionsUniqueAndPastStable/tiered/rel/nested
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/rel/closed-then-gap/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel/gap-before-first-vf/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/rel/closed-then-gap/delete
+=== RUN   TestCascadeVersionsUniqueAndPastStable/tiered/rel/gap-before-first-vf
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel/gap-before-first-vf/ingest
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/rel/closed-then-gap/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel/gap-before-first-vf/DeleteWithTx
+=== RUN   TestTxRollbackKeepsCascadeRows/sharded/rel/closed-then-gap/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel/slot-kept-by-later-version/standalone
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel/slot-kept-by-later-version/graphtx
+=== RUN   TestCascadeVersionsUniqueAndPastStable/tiered/rel/slot-kept-by-later-version
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/node
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/node/bounded/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel/slot-kept-by-later-version/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/node/bounded/delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel/slot-kept-by-later-version/ingest
+=== RUN   TestCascadeVersionsUniqueAndPastStable/tiered/rel/closed-then-gap
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/node/bounded/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel/slot-kept-by-later-version/DeleteWithTx
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/node/bounded/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel/closed-then-gap/standalone
+--- PASS: TestCascadeVersionsUniqueAndPastStable (4.06s)
+    --- PASS: TestCascadeVersionsUniqueAndPastStable/memory/node (0.06s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/memory/node/bounded (0.01s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/memory/node/at-genesis-vf (0.01s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/memory/node/nested (0.01s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/memory/node/gap-before-first-vf (0.01s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/memory/node/slot-kept-by-later-version (0.01s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/memory/node/closed-then-gap (0.00s)
+    --- PASS: TestCascadeVersionsUniqueAndPastStable/memory/rel (0.08s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/memory/rel/bounded (0.01s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/memory/rel/at-genesis-vf (0.02s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/memory/rel/nested (0.01s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/memory/rel/gap-before-first-vf (0.02s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/memory/rel/slot-kept-by-later-version (0.02s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/memory/rel/closed-then-gap (0.00s)
+    --- PASS: TestCascadeVersionsUniqueAndPastStable/badger/node (0.69s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/badger/node/bounded (0.20s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/badger/node/at-genesis-vf (0.13s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/badger/node/nested (0.11s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/badger/node/gap-before-first-vf (0.10s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/badger/node/slot-kept-by-later-version (0.10s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/badger/node/closed-then-gap (0.05s)
+    --- PASS: TestCascadeVersionsUniqueAndPastStable/badger/rel (0.43s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/badger/rel/bounded (0.07s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/badger/rel/at-genesis-vf (0.09s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/badger/rel/nested (0.08s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/badger/rel/gap-before-first-vf (0.06s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/badger/rel/slot-kept-by-later-version (0.09s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/badger/rel/closed-then-gap (0.04s)
+    --- PASS: TestCascadeVersionsUniqueAndPastStable/sharded/node (1.11s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/sharded/node/bounded (0.20s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/sharded/node/at-genesis-vf (0.19s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/sharded/node/nested (0.26s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/sharded/node/gap-before-first-vf (0.17s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/sharded/node/slot-kept-by-later-version (0.23s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/sharded/node/closed-then-gap (0.06s)
+    --- PASS: TestCascadeVersionsUniqueAndPastStable/sharded/rel (0.52s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/sharded/rel/bounded (0.09s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/sharded/rel/at-genesis-vf (0.10s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/sharded/rel/nested (0.11s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/sharded/rel/gap-before-first-vf (0.08s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/sharded/rel/slot-kept-by-later-version (0.09s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/sharded/rel/closed-then-gap (0.05s)
+    --- PASS: TestCascadeVersionsUniqueAndPastStable/tiered/node (0.63s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/tiered/node/bounded (0.12s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/tiered/node/at-genesis-vf (0.12s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/tiered/node/nested (0.12s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/tiered/node/gap-before-first-vf (0.11s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/tiered/node/slot-kept-by-later-version (0.12s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/tiered/node/closed-then-gap (0.05s)
+    --- PASS: TestCascadeVersionsUniqueAndPastStable/tiered/rel (0.53s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/tiered/rel/bounded (0.13s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/tiered/rel/at-genesis-vf (0.08s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/tiered/rel/nested (0.09s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/tiered/rel/gap-before-first-vf (0.10s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/tiered/rel/slot-kept-by-later-version (0.08s)
+        --- PASS: TestCascadeVersionsUniqueAndPastStable/tiered/rel/closed-then-gap (0.05s)
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/node/at-genesis-vf/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel/closed-then-gap/graphtx
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/node/at-genesis-vf/delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel/closed-then-gap/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/node/at-genesis-vf/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel/closed-then-gap/ingest
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/node/at-genesis-vf/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/sharded/rel/closed-then-gap/DeleteWithTx
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/node/nested/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node/bounded/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/node/nested/delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node/bounded/graphtx
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/node/nested/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node/bounded/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/node/nested/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node/bounded/ingest
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/node/gap-before-first-vf/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node/bounded/DeleteWithTx
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/node/gap-before-first-vf/delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node/at-genesis-vf/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/node/gap-before-first-vf/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node/at-genesis-vf/graphtx
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/node/gap-before-first-vf/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node/at-genesis-vf/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/node/slot-kept-by-later-version/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node/at-genesis-vf/ingest
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/node/slot-kept-by-later-version/delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node/at-genesis-vf/DeleteWithTx
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/node/slot-kept-by-later-version/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node/nested/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/node/slot-kept-by-later-version/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node/nested/graphtx
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/node/closed-then-gap/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node/nested/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/node/closed-then-gap/delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node/nested/ingest
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/node/closed-then-gap/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node/nested/DeleteWithTx
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/node/closed-then-gap/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node/gap-before-first-vf/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/rel
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/rel/bounded/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node/gap-before-first-vf/graphtx
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/rel/bounded/delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node/gap-before-first-vf/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/rel/bounded/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node/gap-before-first-vf/ingest
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/rel/bounded/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node/gap-before-first-vf/DeleteWithTx
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/rel/at-genesis-vf/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node/slot-kept-by-later-version/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/rel/at-genesis-vf/delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node/slot-kept-by-later-version/graphtx
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/rel/at-genesis-vf/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node/slot-kept-by-later-version/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/rel/at-genesis-vf/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node/slot-kept-by-later-version/ingest
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/rel/nested/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node/slot-kept-by-later-version/DeleteWithTx
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/rel/nested/delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node/closed-then-gap/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/rel/nested/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node/closed-then-gap/graphtx
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node/closed-then-gap/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/rel/nested/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node/closed-then-gap/ingest
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/rel/gap-before-first-vf/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/node/closed-then-gap/DeleteWithTx
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/rel/gap-before-first-vf/delete
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/rel/gap-before-first-vf/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel/bounded/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/rel/gap-before-first-vf/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel/bounded/graphtx
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/rel/slot-kept-by-later-version/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel/bounded/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/rel/slot-kept-by-later-version/delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel/bounded/ingest
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel/bounded/DeleteWithTx
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/rel/slot-kept-by-later-version/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel/at-genesis-vf/standalone
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/rel/slot-kept-by-later-version/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel/at-genesis-vf/graphtx
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/rel/closed-then-gap/update
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel/at-genesis-vf/batch
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/rel/closed-then-gap/delete
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/rel/closed-then-gap/update-then-delete
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel/at-genesis-vf/ingest
+=== RUN   TestTxRollbackKeepsCascadeRows/tiered/rel/closed-then-gap/refused-UpdateWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel/at-genesis-vf/DeleteWithTx
+--- PASS: TestTxRollbackKeepsCascadeRows (5.38s)
+    --- PASS: TestTxRollbackKeepsCascadeRows/memory/node (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/node/bounded/update (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/node/bounded/delete (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/node/bounded/update-then-delete (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/node/bounded/refused-UpdateWithTx (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/node/at-genesis-vf/update (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/node/at-genesis-vf/delete (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/node/at-genesis-vf/update-then-delete (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/node/at-genesis-vf/refused-UpdateWithTx (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/node/nested/update (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/node/nested/delete (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/node/nested/update-then-delete (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/node/nested/refused-UpdateWithTx (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/node/gap-before-first-vf/update (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/node/gap-before-first-vf/delete (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/node/gap-before-first-vf/update-then-delete (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/node/gap-before-first-vf/refused-UpdateWithTx (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/node/slot-kept-by-later-version/update (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/node/slot-kept-by-later-version/delete (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/node/slot-kept-by-later-version/update-then-delete (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/node/slot-kept-by-later-version/refused-UpdateWithTx (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/node/closed-then-gap/update (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/node/closed-then-gap/delete (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/node/closed-then-gap/update-then-delete (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/node/closed-then-gap/refused-UpdateWithTx (0.00s)
+    --- PASS: TestTxRollbackKeepsCascadeRows/memory/rel (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/rel/bounded/update (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/rel/bounded/delete (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/rel/bounded/update-then-delete (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/rel/bounded/refused-UpdateWithTx (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/rel/at-genesis-vf/update (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/rel/at-genesis-vf/delete (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/rel/at-genesis-vf/update-then-delete (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/rel/at-genesis-vf/refused-UpdateWithTx (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/rel/nested/update (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/rel/nested/delete (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/rel/nested/update-then-delete (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/rel/nested/refused-UpdateWithTx (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/rel/gap-before-first-vf/update (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/rel/gap-before-first-vf/delete (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/rel/gap-before-first-vf/update-then-delete (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/rel/gap-before-first-vf/refused-UpdateWithTx (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/rel/slot-kept-by-later-version/update (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/rel/slot-kept-by-later-version/delete (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/rel/slot-kept-by-later-version/update-then-delete (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/rel/slot-kept-by-later-version/refused-UpdateWithTx (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/rel/closed-then-gap/update (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/rel/closed-then-gap/delete (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/rel/closed-then-gap/update-then-delete (0.00s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/memory/rel/closed-then-gap/refused-UpdateWithTx (0.00s)
+    --- PASS: TestTxRollbackKeepsCascadeRows/badger/node (1.10s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/node/bounded/update (0.10s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/node/bounded/delete (0.02s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/node/bounded/update-then-delete (0.13s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/node/bounded/refused-UpdateWithTx (0.08s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/node/at-genesis-vf/update (0.06s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/node/at-genesis-vf/delete (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/node/at-genesis-vf/update-then-delete (0.05s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/node/at-genesis-vf/refused-UpdateWithTx (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/node/nested/update (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/node/nested/delete (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/node/nested/update-then-delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/node/nested/refused-UpdateWithTx (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/node/gap-before-first-vf/update (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/node/gap-before-first-vf/delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/node/gap-before-first-vf/update-then-delete (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/node/gap-before-first-vf/refused-UpdateWithTx (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/node/slot-kept-by-later-version/update (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/node/slot-kept-by-later-version/delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/node/slot-kept-by-later-version/update-then-delete (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/node/slot-kept-by-later-version/refused-UpdateWithTx (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/node/closed-then-gap/update (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/node/closed-then-gap/delete (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/node/closed-then-gap/update-then-delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/node/closed-then-gap/refused-UpdateWithTx (0.04s)
+    --- PASS: TestTxRollbackKeepsCascadeRows/badger/rel (0.80s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/rel/bounded/update (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/rel/bounded/delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/rel/bounded/update-then-delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/rel/bounded/refused-UpdateWithTx (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/rel/at-genesis-vf/update (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/rel/at-genesis-vf/delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/rel/at-genesis-vf/update-then-delete (0.02s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/rel/at-genesis-vf/refused-UpdateWithTx (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/rel/nested/update (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/rel/nested/delete (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/rel/nested/update-then-delete (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/rel/nested/refused-UpdateWithTx (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/rel/gap-before-first-vf/update (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/rel/gap-before-first-vf/delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/rel/gap-before-first-vf/update-then-delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/rel/gap-before-first-vf/refused-UpdateWithTx (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/rel/slot-kept-by-later-version/update (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/rel/slot-kept-by-later-version/delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/rel/slot-kept-by-later-version/update-then-delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/rel/slot-kept-by-later-version/refused-UpdateWithTx (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/rel/closed-then-gap/update (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/rel/closed-then-gap/delete (0.02s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/rel/closed-then-gap/update-then-delete (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/badger/rel/closed-then-gap/refused-UpdateWithTx (0.04s)
+    --- PASS: TestTxRollbackKeepsCascadeRows/sharded/node (0.98s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/node/bounded/update (0.06s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/node/bounded/delete (0.06s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/node/bounded/update-then-delete (0.07s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/node/bounded/refused-UpdateWithTx (0.07s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/node/at-genesis-vf/update (0.05s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/node/at-genesis-vf/delete (0.06s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/node/at-genesis-vf/update-then-delete (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/node/at-genesis-vf/refused-UpdateWithTx (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/node/nested/update (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/node/nested/delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/node/nested/update-then-delete (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/node/nested/refused-UpdateWithTx (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/node/gap-before-first-vf/update (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/node/gap-before-first-vf/delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/node/gap-before-first-vf/update-then-delete (0.02s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/node/gap-before-first-vf/refused-UpdateWithTx (0.02s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/node/slot-kept-by-later-version/update (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/node/slot-kept-by-later-version/delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/node/slot-kept-by-later-version/update-then-delete (0.05s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/node/slot-kept-by-later-version/refused-UpdateWithTx (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/node/closed-then-gap/update (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/node/closed-then-gap/delete (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/node/closed-then-gap/update-then-delete (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/node/closed-then-gap/refused-UpdateWithTx (0.03s)
+    --- PASS: TestTxRollbackKeepsCascadeRows/sharded/rel (0.99s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/rel/bounded/update (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/rel/bounded/delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/rel/bounded/update-then-delete (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/rel/bounded/refused-UpdateWithTx (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/rel/at-genesis-vf/update (0.07s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/rel/at-genesis-vf/delete (0.06s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/rel/at-genesis-vf/update-then-delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/rel/at-genesis-vf/refused-UpdateWithTx (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/rel/nested/update (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/rel/nested/delete (0.06s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/rel/nested/update-then-delete (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/rel/nested/refused-UpdateWithTx (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/rel/gap-before-first-vf/update (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/rel/gap-before-first-vf/delete (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/rel/gap-before-first-vf/update-then-delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/rel/gap-before-first-vf/refused-UpdateWithTx (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/rel/slot-kept-by-later-version/update (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/rel/slot-kept-by-later-version/delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/rel/slot-kept-by-later-version/update-then-delete (0.07s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/rel/slot-kept-by-later-version/refused-UpdateWithTx (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/rel/closed-then-gap/update (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/rel/closed-then-gap/delete (0.06s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/rel/closed-then-gap/update-then-delete (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/sharded/rel/closed-then-gap/refused-UpdateWithTx (0.07s)
+    --- PASS: TestTxRollbackKeepsCascadeRows/tiered/node (0.72s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/node/bounded/update (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/node/bounded/delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/node/bounded/update-then-delete (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/node/bounded/refused-UpdateWithTx (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/node/at-genesis-vf/update (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/node/at-genesis-vf/delete (0.02s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/node/at-genesis-vf/update-then-delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/node/at-genesis-vf/refused-UpdateWithTx (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/node/nested/update (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/node/nested/delete (0.04s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/node/nested/update-then-delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/node/nested/refused-UpdateWithTx (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/node/gap-before-first-vf/update (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/node/gap-before-first-vf/delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/node/gap-before-first-vf/update-then-delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/node/gap-before-first-vf/refused-UpdateWithTx (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/node/slot-kept-by-later-version/update (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/node/slot-kept-by-later-version/delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/node/slot-kept-by-later-version/update-then-delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/node/slot-kept-by-later-version/refused-UpdateWithTx (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/node/closed-then-gap/update (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/node/closed-then-gap/delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/node/closed-then-gap/update-then-delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/node/closed-then-gap/refused-UpdateWithTx (0.03s)
+    --- PASS: TestTxRollbackKeepsCascadeRows/tiered/rel (0.71s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/rel/bounded/update (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/rel/bounded/delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/rel/bounded/update-then-delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/rel/bounded/refused-UpdateWithTx (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/rel/at-genesis-vf/update (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/rel/at-genesis-vf/delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/rel/at-genesis-vf/update-then-delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/rel/at-genesis-vf/refused-UpdateWithTx (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/rel/nested/update (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/rel/nested/delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/rel/nested/update-then-delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/rel/nested/refused-UpdateWithTx (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/rel/gap-before-first-vf/update (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/rel/gap-before-first-vf/delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/rel/gap-before-first-vf/update-then-delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/rel/gap-before-first-vf/refused-UpdateWithTx (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/rel/slot-kept-by-later-version/update (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/rel/slot-kept-by-later-version/delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/rel/slot-kept-by-later-version/update-then-delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/rel/slot-kept-by-later-version/refused-UpdateWithTx (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/rel/closed-then-gap/update (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/rel/closed-then-gap/delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/rel/closed-then-gap/update-then-delete (0.03s)
+        --- PASS: TestTxRollbackKeepsCascadeRows/tiered/rel/closed-then-gap/refused-UpdateWithTx (0.03s)
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel/nested/standalone
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel/nested/graphtx
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel/nested/batch
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel/nested/ingest
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel/nested/DeleteWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel/gap-before-first-vf/standalone
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel/gap-before-first-vf/graphtx
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel/gap-before-first-vf/batch
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel/gap-before-first-vf/ingest
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel/gap-before-first-vf/DeleteWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel/slot-kept-by-later-version/standalone
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel/slot-kept-by-later-version/graphtx
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel/slot-kept-by-later-version/batch
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel/slot-kept-by-later-version/ingest
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel/slot-kept-by-later-version/DeleteWithTx
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel/closed-then-gap/standalone
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel/closed-then-gap/graphtx
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel/closed-then-gap/batch
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel/closed-then-gap/ingest
+=== RUN   TestAsOfBoundedCascadeThenDelete/tiered/rel/closed-then-gap/DeleteWithTx
+--- PASS: TestAsOfBoundedCascadeThenDelete (5.85s)
+    --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node/bounded/standalone (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node/bounded/graphtx (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node/bounded/batch (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node/bounded/ingest (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node/bounded/DeleteWithTx (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node/at-genesis-vf/standalone (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node/at-genesis-vf/graphtx (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node/at-genesis-vf/batch (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node/at-genesis-vf/ingest (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node/at-genesis-vf/DeleteWithTx (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node/nested/standalone (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node/nested/graphtx (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node/nested/batch (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node/nested/ingest (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node/nested/DeleteWithTx (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node/gap-before-first-vf/standalone (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node/gap-before-first-vf/graphtx (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node/gap-before-first-vf/batch (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node/gap-before-first-vf/ingest (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node/gap-before-first-vf/DeleteWithTx (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node/slot-kept-by-later-version/standalone (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node/slot-kept-by-later-version/graphtx (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node/slot-kept-by-later-version/batch (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node/slot-kept-by-later-version/ingest (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node/slot-kept-by-later-version/DeleteWithTx (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node/closed-then-gap/standalone (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node/closed-then-gap/graphtx (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node/closed-then-gap/batch (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node/closed-then-gap/ingest (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/node/closed-then-gap/DeleteWithTx (0.00s)
+    --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel/bounded/standalone (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel/bounded/graphtx (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel/bounded/batch (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel/bounded/ingest (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel/bounded/DeleteWithTx (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel/at-genesis-vf/standalone (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel/at-genesis-vf/graphtx (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel/at-genesis-vf/batch (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel/at-genesis-vf/ingest (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel/at-genesis-vf/DeleteWithTx (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel/nested/standalone (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel/nested/graphtx (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel/nested/batch (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel/nested/ingest (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel/nested/DeleteWithTx (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel/gap-before-first-vf/standalone (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel/gap-before-first-vf/graphtx (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel/gap-before-first-vf/batch (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel/gap-before-first-vf/ingest (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel/gap-before-first-vf/DeleteWithTx (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel/slot-kept-by-later-version/standalone (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel/slot-kept-by-later-version/graphtx (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel/slot-kept-by-later-version/batch (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel/slot-kept-by-later-version/ingest (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel/slot-kept-by-later-version/DeleteWithTx (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel/closed-then-gap/standalone (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel/closed-then-gap/graphtx (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel/closed-then-gap/batch (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel/closed-then-gap/ingest (0.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/memory/rel/closed-then-gap/DeleteWithTx (0.00s)
+    --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node (1.19s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node/bounded/standalone (0.11s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node/bounded/graphtx (0.05s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node/bounded/batch (0.01s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node/bounded/ingest (0.01s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node/bounded/DeleteWithTx (0.02s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node/at-genesis-vf/standalone (0.06s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node/at-genesis-vf/graphtx (0.09s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node/at-genesis-vf/batch (0.02s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node/at-genesis-vf/ingest (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node/at-genesis-vf/DeleteWithTx (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node/nested/standalone (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node/nested/graphtx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node/nested/batch (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node/nested/ingest (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node/nested/DeleteWithTx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node/gap-before-first-vf/standalone (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node/gap-before-first-vf/graphtx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node/gap-before-first-vf/batch (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node/gap-before-first-vf/ingest (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node/gap-before-first-vf/DeleteWithTx (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node/slot-kept-by-later-version/standalone (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node/slot-kept-by-later-version/graphtx (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node/slot-kept-by-later-version/batch (0.05s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node/slot-kept-by-later-version/ingest (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node/slot-kept-by-later-version/DeleteWithTx (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node/closed-then-gap/standalone (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node/closed-then-gap/graphtx (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node/closed-then-gap/batch (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node/closed-then-gap/ingest (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/node/closed-then-gap/DeleteWithTx (0.04s)
+    --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel (0.96s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel/bounded/standalone (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel/bounded/graphtx (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel/bounded/batch (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel/bounded/ingest (0.01s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel/bounded/DeleteWithTx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel/at-genesis-vf/standalone (0.01s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel/at-genesis-vf/graphtx (0.01s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel/at-genesis-vf/batch (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel/at-genesis-vf/ingest (0.08s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel/at-genesis-vf/DeleteWithTx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel/nested/standalone (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel/nested/graphtx (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel/nested/batch (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel/nested/ingest (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel/nested/DeleteWithTx (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel/gap-before-first-vf/standalone (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel/gap-before-first-vf/graphtx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel/gap-before-first-vf/batch (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel/gap-before-first-vf/ingest (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel/gap-before-first-vf/DeleteWithTx (0.01s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel/slot-kept-by-later-version/standalone (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel/slot-kept-by-later-version/graphtx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel/slot-kept-by-later-version/batch (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel/slot-kept-by-later-version/ingest (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel/slot-kept-by-later-version/DeleteWithTx (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel/closed-then-gap/standalone (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel/closed-then-gap/graphtx (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel/closed-then-gap/batch (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel/closed-then-gap/ingest (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/badger/rel/closed-then-gap/DeleteWithTx (0.03s)
+    --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node (1.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node/bounded/standalone (0.06s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node/bounded/graphtx (0.06s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node/bounded/batch (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node/bounded/ingest (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node/bounded/DeleteWithTx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node/at-genesis-vf/standalone (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node/at-genesis-vf/graphtx (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node/at-genesis-vf/batch (0.02s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node/at-genesis-vf/ingest (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node/at-genesis-vf/DeleteWithTx (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node/nested/standalone (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node/nested/graphtx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node/nested/batch (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node/nested/ingest (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node/nested/DeleteWithTx (0.05s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node/gap-before-first-vf/standalone (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node/gap-before-first-vf/graphtx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node/gap-before-first-vf/batch (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node/gap-before-first-vf/ingest (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node/gap-before-first-vf/DeleteWithTx (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node/slot-kept-by-later-version/standalone (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node/slot-kept-by-later-version/graphtx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node/slot-kept-by-later-version/batch (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node/slot-kept-by-later-version/ingest (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node/slot-kept-by-later-version/DeleteWithTx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node/closed-then-gap/standalone (0.02s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node/closed-then-gap/graphtx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node/closed-then-gap/batch (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node/closed-then-gap/ingest (0.02s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/node/closed-then-gap/DeleteWithTx (0.02s)
+    --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel (1.00s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel/bounded/standalone (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel/bounded/graphtx (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel/bounded/batch (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel/bounded/ingest (0.02s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel/bounded/DeleteWithTx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel/at-genesis-vf/standalone (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel/at-genesis-vf/graphtx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel/at-genesis-vf/batch (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel/at-genesis-vf/ingest (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel/at-genesis-vf/DeleteWithTx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel/nested/standalone (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel/nested/graphtx (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel/nested/batch (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel/nested/ingest (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel/nested/DeleteWithTx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel/gap-before-first-vf/standalone (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel/gap-before-first-vf/graphtx (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel/gap-before-first-vf/batch (0.05s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel/gap-before-first-vf/ingest (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel/gap-before-first-vf/DeleteWithTx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel/slot-kept-by-later-version/standalone (0.02s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel/slot-kept-by-later-version/graphtx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel/slot-kept-by-later-version/batch (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel/slot-kept-by-later-version/ingest (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel/slot-kept-by-later-version/DeleteWithTx (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel/closed-then-gap/standalone (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel/closed-then-gap/graphtx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel/closed-then-gap/batch (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel/closed-then-gap/ingest (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/sharded/rel/closed-then-gap/DeleteWithTx (0.03s)
+    --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node (0.86s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node/bounded/standalone (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node/bounded/graphtx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node/bounded/batch (0.02s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node/bounded/ingest (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node/bounded/DeleteWithTx (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node/at-genesis-vf/standalone (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node/at-genesis-vf/graphtx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node/at-genesis-vf/batch (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node/at-genesis-vf/ingest (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node/at-genesis-vf/DeleteWithTx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node/nested/standalone (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node/nested/graphtx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node/nested/batch (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node/nested/ingest (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node/nested/DeleteWithTx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node/gap-before-first-vf/standalone (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node/gap-before-first-vf/graphtx (0.04s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node/gap-before-first-vf/batch (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node/gap-before-first-vf/ingest (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node/gap-before-first-vf/DeleteWithTx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node/slot-kept-by-later-version/standalone (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node/slot-kept-by-later-version/graphtx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node/slot-kept-by-later-version/batch (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node/slot-kept-by-later-version/ingest (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node/slot-kept-by-later-version/DeleteWithTx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node/closed-then-gap/standalone (0.02s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node/closed-then-gap/graphtx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node/closed-then-gap/batch (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node/closed-then-gap/ingest (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/node/closed-then-gap/DeleteWithTx (0.03s)
+    --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel (0.77s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel/bounded/standalone (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel/bounded/graphtx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel/bounded/batch (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel/bounded/ingest (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel/bounded/DeleteWithTx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel/at-genesis-vf/standalone (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel/at-genesis-vf/graphtx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel/at-genesis-vf/batch (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel/at-genesis-vf/ingest (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel/at-genesis-vf/DeleteWithTx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel/nested/standalone (0.02s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel/nested/graphtx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel/nested/batch (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel/nested/ingest (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel/nested/DeleteWithTx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel/gap-before-first-vf/standalone (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel/gap-before-first-vf/graphtx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel/gap-before-first-vf/batch (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel/gap-before-first-vf/ingest (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel/gap-before-first-vf/DeleteWithTx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel/slot-kept-by-later-version/standalone (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel/slot-kept-by-later-version/graphtx (0.03s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel/slot-kept-by-later-version/batch (0.02s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel/slot-kept-by-later-version/ingest (0.02s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel/slot-kept-by-later-version/DeleteWithTx (0.02s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel/closed-then-gap/standalone (0.02s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel/closed-then-gap/graphtx (0.02s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel/closed-then-gap/batch (0.02s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel/closed-then-gap/ingest (0.02s)
+        --- PASS: TestAsOfBoundedCascadeThenDelete/tiered/rel/closed-then-gap/DeleteWithTx (0.02s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	5.952s
