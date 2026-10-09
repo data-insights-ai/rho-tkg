@@ -526,6 +526,27 @@ func TestTxRollbackKeepsCascadeRows(t *testing.T) {
 			}
 			return tx.DeleteNode(types.NodeID(id))
 		}, false},
+		// The other tx doors that write a version share snapshotCurrent*Locked.
+		{"set-property", func(e *ccEnt, tx *GraphTx, id int64) error {
+			if e.rel {
+				return tx.SetRelationshipProperty(types.RelID(id), "x", int64(43))
+			}
+			return tx.SetNodeProperty(types.NodeID(id), "x", int64(43))
+		}, false},
+		{"add-label-or-property", func(e *ccEnt, tx *GraphTx, id int64) error {
+			if e.rel {
+				return tx.SetRelationshipProperty(types.RelID(id), "y", int64(1))
+			}
+			return tx.AddNodeLabel(types.NodeID(id), "Extra")
+		}, false},
+		{"cascade", func(e *ccEnt, tx *GraphTx, id int64) error {
+			if e.rel {
+				_, err := tx.SetRelVersionInterval(types.RelID(id), 2200, 2300, map[string]any{"x": int64(44)})
+				return err
+			}
+			_, err := tx.SetNodeVersionInterval(types.NodeID(id), 2200, 2300, map[string]any{"x": int64(44)})
+			return err
+		}, false},
 		{"refused-UpdateWithTx", func(e *ccEnt, tx *GraphTx, id int64) error {
 			if e.rel {
 				_, err := tx.UpdateRelationshipWithTx(types.RelID(id), map[string]any{"x": int64(42)}, 1)
