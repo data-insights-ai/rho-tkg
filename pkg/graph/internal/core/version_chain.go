@@ -152,7 +152,7 @@ func (c *Core) closeNodeVersionInternal(id types.NodeID, t types.Instant) error 
 	}
 
 	prevVersion := current.Version()
-	nextVersion, err := nextEntityVersion(prevVersion)
+	nextVersion, err := c.nextNodeVersion(id, current)
 	if err != nil {
 		return err
 	}
@@ -174,7 +174,7 @@ func (c *Core) closeNodeVersionInternal(id types.NodeID, t types.Instant) error 
 	}
 	tm.ValidTo = t
 	tm.UpdatedAt = now
-	tm.TxFrom = now
+	stampAppendedRow(tm, now)
 
 	// The closed row is a new chain entry superseding the open one — its
 	// PrevHash chains to the open row's own Hash, not to that row's PrevHash.
@@ -384,7 +384,7 @@ func (c *Core) closeRelVersionInternal(id types.RelID, t types.Instant) error {
 	}
 
 	prevVersion := current.Version()
-	nextVersion, err := nextEntityVersion(prevVersion)
+	nextVersion, err := c.nextRelVersion(id, current)
 	if err != nil {
 		return err
 	}
@@ -406,7 +406,7 @@ func (c *Core) closeRelVersionInternal(id types.RelID, t types.Instant) error {
 	}
 	tm.ValidTo = t
 	tm.UpdatedAt = now
-	tm.TxFrom = now
+	stampAppendedRow(tm, now)
 
 	// The closed row is a new chain entry superseding the open one — its
 	// PrevHash chains to the open row's own Hash, not to that row's PrevHash.

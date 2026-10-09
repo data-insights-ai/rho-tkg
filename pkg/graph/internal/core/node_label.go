@@ -87,7 +87,7 @@ func (c *Core) addNodeLabelInternal(ctx context.Context, id types.NodeID, label 
 	}
 
 	prevVersion := current.Version()
-	nextVersion, err := nextEntityVersion(prevVersion)
+	nextVersion, err := c.nextNodeVersion(id, current)
 	if err != nil {
 		return false, err
 	}
@@ -160,7 +160,7 @@ func (c *Core) addNodeLabelInternal(ctx context.Context, id types.NodeID, label 
 	tm.ValidFrom = 0
 	tm.ValidTo = 0
 	tm.UpdatedAt = now
-	tm.TxFrom = now
+	stampAppendedRow(tm, now)
 
 	// Unique-constraint enforcement (standalone label-add door — the door that
 	// binds a constraint without touching the property). The finalized node
@@ -249,7 +249,7 @@ func (c *Core) removeNodeLabelInternal(ctx context.Context, id types.NodeID, lab
 
 	// Capture pre-mutation state for version history (before any modification).
 	prevVersion := current.Version()
-	nextVersion, err := nextEntityVersion(prevVersion)
+	nextVersion, err := c.nextNodeVersion(id, current)
 	if err != nil {
 		return err
 	}
@@ -293,7 +293,7 @@ func (c *Core) removeNodeLabelInternal(ctx context.Context, id types.NodeID, lab
 	tm.ValidFrom = 0
 	tm.ValidTo = 0
 	tm.UpdatedAt = now
-	tm.TxFrom = now
+	stampAppendedRow(tm, now)
 
 	// Atomic: write history entry + remove label index + persist updated node in one call.
 	if err := c.removeNodeLabelTokenWithHistory(ctx, id, tok, copy, prevVersion, prevState); err != nil {
