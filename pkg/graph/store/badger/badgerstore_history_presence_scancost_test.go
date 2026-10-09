@@ -57,25 +57,29 @@ func TestHistoryPresenceBuildScanCost(t *testing.T) {
 				}
 				return min
 			}
-			var idOnly int
-			old := best(func() error {
-				idOnly = 0
-				return bs.ForEachNodeHistoryID(func(types.NodeID) bool { idOnly++; return true })
-			})
-			var tops int
-			cur := best(func() error {
-				res, err := bs.scanHistoryTops(storepkg.KeyHistNode)
-				tops = len(res)
-				return err
-			})
-			if idOnly != ids || tops != ids {
-				t.Fatalf("ID-only scan saw %d IDs, tops scan %d, want %d", idOnly, tops, ids)
+			var idOnly, tops int
+			var ratio float64
+			// A shared host scatters timings; a regression fails every attempt.
+			for attempt := 0; attempt < 3; attempt++ {
+				old := best(func() error {
+					idOnly = 0
+					return bs.ForEachNodeHistoryID(func(types.NodeID) bool { idOnly++; return true })
+				})
+				cur := best(func() error {
+					res, err := bs.scanHistoryTops(storepkg.KeyHistNode)
+					tops = len(res)
+					return err
+				})
+				if idOnly != ids || tops != ids {
+					t.Fatalf("ID-only scan saw %d IDs, tops scan %d, want %d", idOnly, tops, ids)
+				}
+				ratio = float64(cur) / float64(old)
+				t.Logf("%s: ID-only scan %v, tops scan %v (x%.2f)", shape.name, old, cur, ratio)
+				if ratio <= shape.limit {
+					return
+				}
 			}
-			ratio := float64(cur) / float64(old)
-			t.Logf("%s: ID-only scan %v, tops scan %v (x%.2f)", shape.name, old, cur, ratio)
-			if ratio > shape.limit {
-				t.Fatalf("%s: the tops scan takes x%.2f of the ID-only scan (%v vs %v), limit x%.2f", shape.name, ratio, cur, old, shape.limit)
-			}
+			t.Fatalf("%s: the tops scan takes x%.2f of the ID-only scan in three attempts, limit x%.2f", shape.name, ratio, shape.limit)
 		})
 	}
 }

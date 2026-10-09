@@ -54,3 +54,5 @@
     --- FAIL: TestBulkAsOfPresence_UnknownIDStillProbed (0.00s)
     --- FAIL: TestBulkAsOfPresence_SetIntoUnknownIDKeepsRowsAbove (0.00s)
     --- FAIL: TestBulkAsOfPresence_EquivalentAcrossStates (0.00s)
+### N13 delete counter read after the overlay capture (both doors) -> RED (caught)
+    --- FAIL: TestBulkAsOfPresence_CounterReadBeforeOverlayCapture (0.00s)

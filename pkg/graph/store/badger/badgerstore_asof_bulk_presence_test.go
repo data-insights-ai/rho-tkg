@@ -36,10 +36,12 @@ type bulkPresenceKind struct {
 	id   func(n int) int64 // n-th entity id of the kind (nodes even, rels odd)
 	// put writes version ver (TxFrom txFrom, open valid interval) as the
 	// current row (current) or a history row.
-	put   func(t *testing.T, bs *Store, id int64, ver uint32, txFrom types.Instant, current bool)
-	trim  func(bs *Store, id int64, minVer uint32) error
-	bulk  func(bs *Store, pin types.Instant) (map[int64]uint32, error)
-	want  func(bs *Store, id int64, pin types.Instant) (uint32, bool, error)
+	put  func(t *testing.T, bs *Store, id int64, ver uint32, txFrom types.Instant, current bool)
+	trim func(bs *Store, id int64, minVer uint32) error
+	bulk func(bs *Store, pin types.Instant) (map[int64]uint32, error)
+	want func(bs *Store, id int64, pin types.Instant) (uint32, bool, error)
+	// point answers through the per-entity door (NodeAsOf / RelAsOf).
+	point func(t *testing.T, bs *Store, id int64, pin types.Instant) (uint32, bool)
 	built func(bs *Store) bool
 }
 
@@ -89,6 +91,17 @@ func bulkPresenceKinds() []bulkPresenceKind {
 				return v, ok, nil
 			},
 			built: func(bs *Store) bool { return bs.HistoryPresenceStats().NodesBuilt },
+			point: func(t *testing.T, bs *Store, id int64, pin types.Instant) (uint32, bool) {
+				t.Helper()
+				n, err := bs.NodeAsOf(types.NodeID(snowflake.ID(id)), pin)
+				if errors.Is(err, ErrVersionNotFound) || errors.Is(err, ErrNodeNotFound) {
+					return 0, false
+				}
+				if err != nil {
+					t.Fatalf("NodeAsOf(%d, %d): %v", id, pin, err)
+				}
+				return n.Version(), true
+			},
 		},
 		{
 			name: "rel",
@@ -134,6 +147,17 @@ func bulkPresenceKinds() []bulkPresenceKind {
 				return v, ok, nil
 			},
 			built: func(bs *Store) bool { return bs.HistoryPresenceStats().RelsBuilt },
+			point: func(t *testing.T, bs *Store, id int64, pin types.Instant) (uint32, bool) {
+				t.Helper()
+				r, err := bs.RelAsOf(types.RelID(snowflake.ID(id)), pin)
+				if errors.Is(err, ErrVersionNotFound) || errors.Is(err, ErrRelNotFound) {
+					return 0, false
+				}
+				if err != nil {
+					t.Fatalf("RelAsOf(%d, %d): %v", id, pin, err)
+				}
+				return r.Version(), true
+			},
 		},
 	}
 }
@@ -1002,5 +1026,128 @@ func TestBulkAsOfPresence_BuildMergesTopNotedDuringScan(t *testing.T) {
 			bs.historyPresenceBuildHook = nil
 			assertBulkMatchesOracle(t, k, bs, ids, "after build")
 		})
+	}
+}
+
+// TestBulkAsOfPresence_CounterReadBeforeOverlayCapture (guard; red for the
+// mutant that reads the delete counter AFTER the overlay capture): a history
+// delete that lands after the overlay is captured is not in the scan's snapshot
+// (the overlay lacks it and the transaction opens before it commits), yet a
+// HasHistory read resolves the ID to "no rows". The scan must answer from its
+// snapshot, which still holds the rows: the counter, read before the capture,
+// has moved, so the presence set is not used. Read after the capture it would
+// already include the delete and answer from the (now lower) set.
+func TestBulkAsOfPresence_CounterReadBeforeOverlayCapture(t *testing.T) {
+	t.Parallel()
+	for _, k := range bulkPresenceKinds() {
+		t.Run(k.name, func(t *testing.T) {
+			t.Parallel()
+			bs := openBulkPresenceStore(t, t.TempDir(), false)
+			t.Cleanup(func() { _ = bs.Close() })
+			putBulkPresenceEndpoints(t, bs)
+			ids := seedAboveCurrent(t, k, bs, 6) // committed row at current+1
+			if err := bs.Flush(); err != nil {
+				t.Fatalf("Flush: %v", err)
+			}
+			if _, err := k.bulk(bs, bulkPresencePin); err != nil { // builds the set
+				t.Fatalf("bulk: %v", err)
+			}
+			has := func(id int64) (bool, error) {
+				if k.name == "node" {
+					return bs.HasNodeHistory(types.NodeID(snowflake.ID(id)))
+				}
+				return bs.HasRelHistory(types.RelID(snowflake.ID(id)))
+			}
+			fired := false
+			bs.bulkAsOfOverlayTestHook = func() {
+				fired = true
+				for _, id := range ids {
+					if err := k.trim(bs, id, 0); err != nil {
+						t.Errorf("trim %d: %v", id, err)
+					}
+					if present, err := has(id); err != nil || present {
+						t.Errorf("HasHistory(%d) after the trim = (%v, %v), want (false, nil)", id, present, err)
+					}
+				}
+			}
+			t.Cleanup(func() { bs.bulkAsOfOverlayTestHook = nil })
+			got, err := k.bulk(bs, bulkPresencePin)
+			if err != nil {
+				t.Fatalf("bulk: %v", err)
+			}
+			if !fired {
+				t.Fatal("the overlay hook never fired")
+			}
+			for _, id := range ids {
+				if got[id] != 2 {
+					t.Fatalf("%s %d: bulk v%d, want v2 from the scan's snapshot (the delete landed after the overlay capture)", k.name, id, got[id])
+				}
+			}
+		})
+	}
+}
+
+// TestBulkAsOfPresence_VersionGapsMatchPointDoors (guard): chains with version
+// gaps - a row above the current version behind a gap, a gap below, a lone row
+// at current+1, two gaps, a high version with an older tx time. The bulk doors
+// (which bound the key read by the set's top) must equal the point doors
+// (NodeAsOf / RelAsOf, HasHistory-gated read at current+1) at every pin, with
+// and without a reopen. Not compared with the SelectAsOf oracle: both doors
+// disagree with it on gaps, on main as before this change (a row above a gap
+// past current+1 is never seen; reported to the backlog).
+func TestBulkAsOfPresence_VersionGapsMatchPointDoors(t *testing.T) {
+	t.Parallel()
+	type row struct {
+		v    uint32
+		tx   types.Instant
+		curr bool
+	}
+	chains := [][]row{
+		{{0, 10, false}, {5, 60, false}, {2, 30, true}},                 // row above current behind a gap (3, 4 missing)
+		{{0, 10, false}, {1, 20, false}, {4, 50, true}},                 // gap below current
+		{{3, 40, false}, {2, 30, true}},                                 // only a row at current+1
+		{{0, 10, false}, {3, 40, false}, {7, 80, false}, {1, 20, true}}, // two gaps above
+		{{0, 10, false}, {9, 15, false}, {2, 30, true}},                 // high version, older tx
+	}
+	pins := []types.Instant{0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 70, 80, 90, 1000}
+	for _, k := range bulkPresenceKinds() {
+		for _, reopen := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/reopen=%v", k.name, reopen), func(t *testing.T) {
+				t.Parallel()
+				dir := t.TempDir()
+				bs := openBulkPresenceStore(t, dir, false)
+				putBulkPresenceEndpoints(t, bs)
+				var ids []int64
+				for i, ch := range chains {
+					id := k.id(9000 + i)
+					ids = append(ids, id)
+					for _, r := range ch {
+						k.put(t, bs, id, r.v, r.tx, r.curr)
+					}
+				}
+				if err := bs.Flush(); err != nil {
+					t.Fatalf("Flush: %v", err)
+				}
+				if reopen {
+					if err := bs.Close(); err != nil {
+						t.Fatalf("Close: %v", err)
+					}
+					bs = openBulkPresenceStore(t, dir, false)
+				}
+				t.Cleanup(func() { _ = bs.Close() })
+				for _, pin := range pins {
+					got, err := k.bulk(bs, pin)
+					if err != nil {
+						t.Fatalf("pin %d: bulk: %v", pin, err)
+					}
+					for _, id := range ids {
+						pv, pok := k.point(t, bs, id, pin)
+						if gv, gok := got[id]; gok != pok || (gok && gv != pv) {
+							t.Errorf("%s reopen=%v id %d pin %d: bulk (v%d, %v), point door (v%d, %v)", k.name, reopen, id, pin, gv, gok, pv, pok)
+						}
+					}
+				}
+			})
+		}
 	}
 }

@@ -782,6 +782,9 @@ func (bs *Store) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 	bs.idxMu.RLock()
 	presence := bs.beginBulkPresence(&bs.histNodePresence) // before the overlay capture
 	overlay := bs.snapshotHistoryOverlay()
+	if bs.bulkAsOfOverlayTestHook != nil {
+		bs.bulkAsOfOverlayTestHook()
+	}
 	idx := 0
 	snap := newScanSnapshot(bs.db, bs.nodeCache.FlushEpoch)
 	err := func() error {
@@ -859,6 +862,9 @@ func (bs *Store) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 	bs.idxMu.RLock()
 	presence := bs.beginBulkPresence(&bs.histRelPresence) // before the overlay capture
 	overlay := bs.snapshotHistoryOverlay()
+	if bs.bulkAsOfOverlayTestHook != nil {
+		bs.bulkAsOfOverlayTestHook()
+	}
 	idx := 0
 	snap := newScanSnapshot(bs.db, bs.relCache.FlushEpoch)
 	err := func() error {

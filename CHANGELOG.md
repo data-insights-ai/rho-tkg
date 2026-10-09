@@ -92,11 +92,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ms): nodes none 31.4 -> 31.7 (before the as-of rule change 31.4), one 43.8 -> 63.6 -> 48.6, three 47.5 ->
   75.8 -> 51.1; rels none 33.0 / 34.6 / 35.6, one 53.1 -> 74.4 -> 57.4, three 51.9 -> 82.0 -> 54.5 (each triple:
   before the as-of rule change, presence for entities without history only, with the top version): within 3-11 %
-  of the figures before the rule change at the minimum, 14 % at the median for rels with one row. Build cost
-  2-7 us per ID (1 M entities at 1 %: rel 20-28 ms, node 56-68 ms; before: 25 / 23-32 ms). Tests: `TestBulkAsOfPresence_*` (probe
+  of the figures before the rule change at the minimum, 14 % at the median for rels with one row. The build
+  (10 K IDs with three history rows: rel 4.1 ms, node 4.9 ms, minimum of 7 interleaved runs) is 2.5-4x FASTER than
+  main's ID-only build (10.4 / 19.9 ms): it walks an ID's rows forward and reverse-seeks only past 16 rows (a
+  first version reverse-seeked every multi-row ID and ran 1.6-2x slower than main; guard
+  `TestHistoryPresenceBuildScanCost`); IDs deeper than 16 rows cost about 4 us. Tests: `TestBulkAsOfPresence_*` (probe
   counts per state, unknown IDs, delete mid-scan, probe-only, build merge, randomized chains across pending /
   flushed / trimmed / deleted / reopened / cleared, writers racing scans under `-race`),
-  `TestHistoryPresenceNoteTop`, `TestScanHistoryTopsAndProbeMatchHistory`, 12 mutants each red; evidence
+  `TestHistoryPresenceNoteTop`, `TestScanHistoryTopsAndProbeMatchHistory`, `TestBulkAsOfPresence_VersionGapsMatchPointDoors`
+  (gap chains: bulk equals the point doors), 13 mutants each red; evidence
   `tasks/evidence/bulk-asof-presence/`.
 
 - **HIGH: unique constraints are enforced on `SetNodeVersionInterval` props patches** (found in the
