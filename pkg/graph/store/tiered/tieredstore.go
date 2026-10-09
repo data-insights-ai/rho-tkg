@@ -1417,7 +1417,10 @@ func (ts *Store) openShardStoreWithRecovery(name string, cold bool) (*BadgerStor
 	if err := badger.MigrateOversizedWAL(ts.shardCfg(name, false, cold)); err != nil {
 		return nil, fmt.Errorf("graph: WAL migration %s: %w", name, err)
 	}
-	probe, err := NewBadgerStore(ts.shardCfg(name, true, cold))
+	// The probe is closed right away: open it with the discard option so it
+	// skips the relationship temporal rebuild (read-only, it leaves the
+	// persisted definitions for the real open).
+	probe, err := NewBadgerStore(ts.shardCfg(name, true, true))
 	if err == nil {
 		if err := probe.Close(); err != nil {
 			return nil, fmt.Errorf("graph: recovery probe close %s: %w", name, err)
