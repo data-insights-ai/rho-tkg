@@ -151,10 +151,13 @@ type ChangeRecord struct {
 //     and rely only on monotonic ascending order.
 //   - Only DURABLY-COMMITTED records are visible: a record buffered but not yet
 //     flushed is not surfaced. A consumer resumes from LastCommittedLSN.
-//   - The feed is MUTATION-LEVEL: a rolled-back transaction appears as its
-//     forward operations followed by its compensating operations. Replaying the
-//     full ordered feed still converges a replica to the primary's state, but a
-//     CDC consumer observes the intermediate (later-undone) operations.
+//   - The feed is MUTATION-LEVEL, scoped per transaction: a GraphTx buffers its
+//     records (TxChangeLogScope, below) and mints LSNs at Commit, so a
+//     rolled-back or never-committed GraphTx emits NO records — no forward
+//     operations, no compensating operations, no burned LSN. A write door that
+//     is not scoped (a store without TxChangeLogScope, the standalone doors,
+//     the concurrent ingest session) appends its record eagerly, one per store
+//     mutation, in commit order.
 //   - The change-log ALONE does not converge a replica from empty: a replica
 //     bootstraps from a full snapshot (export, including the token registry)
 //     and then tails the feed from the snapshot's LSN. Tokens referenced by a
@@ -215,8 +218,9 @@ type ChangeLogStatusCapability interface {
 //     them with the tx's pending data in one atomic batch.
 //   - DiscardLogScope drops the buffer; the rolled-back tx emits nothing.
 //
-// A store that does not implement this (e.g. tiered) makes the core emit records
-// eagerly as before. All methods are no-ops when the change-log is disabled.
+// A store that does not implement this makes the core emit records eagerly as
+// before (memory, badger, tiered and sharded all implement it). All methods are
+// no-ops when the change-log is disabled.
 //
 // CONCURRENCY POSITION (deliberate design, not a gap): the scope is
 // EXCLUSIVE-WRITE-LOCK-ONLY machinery. There is exactly one implicit scope, and
