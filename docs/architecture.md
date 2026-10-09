@@ -89,7 +89,7 @@ Read-only virtual properties dispatched by the graph layer from internal metadat
 | `tkg_type` | `string` | Relationship | Structural |
 | `tkg_valid_from` | `Instant` | Both | Temporal — world-time (VT) assertion, caller-only, NO fallback: resolves to `(Instant(0), ok=true)` when never asserted |
 | `tkg_valid_to` | `Instant` | Both | Temporal — world-time (VT) assertion, caller-only, NO fallback |
-| `tkg_tx_from` | `Instant` | Both | Temporal — transaction time (TX), stamped by the system on every Add; caller-settable on CREATE doors only under `Config.AllowTxBackfill` (backfill, §4.1) |
+| `tkg_tx_from` | `Instant` | Both | Temporal — transaction time (TX), stamped by the system on every Add; caller-settable as a property on CREATE doors only under `Config.AllowTxBackfill` (backfill, §4.1); under the same gate `UpdateWithTx`/`DeleteWithTx` take a caller instant as an argument for a supersession or an ending (`ErrTxOrder` when it does not follow the chain) |
 | `tkg_tx_to` | `Instant` | Both | Temporal — transaction time (TX) |
 | `tkg_created_at` | `Instant` | Both | Temporal (auto-derived from snowflake ID when unset — the only temporal shadow key with a resolver fallback) |
 | `tkg_updated_at` | `Instant` | Both | Temporal |

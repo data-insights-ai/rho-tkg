@@ -21,8 +21,8 @@ import (
 // change the belief at a past txAt, because the as-of resolver selects the version
 // with TxFrom <= txAt. ONLY a history rewrite that touches versions with
 // TxFrom <= txAt can — compaction, retention purge, truncate/rollback-trim, or a
-// past-dated write: a backfilled create (and later a backdated delete/update) on
-// the primary, or a replica apply whose stamp (a put's TxFrom, a tombstone's
+// past-dated write: a backfilled create, or a DeleteWithTx / UpdateWithTx at a
+// caller instant, on the primary, or a replica apply whose stamp (a put's TxFrom, a tombstone's
 // TxTo/DeletedAt) is at or below a cached pin. So this cache SURVIVES
 // write-active ingest, where the current-state cache is perpetually cold.
 //

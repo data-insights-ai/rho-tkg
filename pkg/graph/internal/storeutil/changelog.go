@@ -237,7 +237,11 @@ func NodePutPayload(n *types.Node, withHistory bool) ([]byte, error) {
 // the crown property Patch(PreEncodePayload(E, 0), T) == NodePutPayload(E@T)
 // holds byte-for-byte (the outer map framing cannot shift — the slot is
 // fixed-width). CREATE-ONLY: never use for a WithHistory body (the "wh" field
-// would follow the wire and the tail would no longer be terminal).
+// would follow the wire and the tail would no longer be terminal). This is
+// about the body shape, not the stamp's origin: a backfilled create's TxFrom
+// patches in like the clock's, while an update or delete — also one at a caller
+// instant (UpdateWithTx / DeleteWithTx) — writes a WithHistory body encoded at
+// apply.
 func PreEncodeNodePutPayloadV2(n *types.Node) ([]byte, error) {
 	w, err := NodeToWireChecked(n)
 	if err != nil {
@@ -270,7 +274,8 @@ func RelPutPayload(r *types.Relationship, withHistory bool) ([]byte, error) {
 // RelPutPayload(R, T) holds byte-for-byte (the outer map framing cannot
 // shift — the slot is fixed-width). CREATE-ONLY: never use for a WithHistory
 // body (the "wh" field would follow the wire and the tail would no longer be
-// terminal).
+// terminal) — including a caller-instant UpdateWithTx / DeleteWithTx, whose
+// body is encoded at apply (see PreEncodeNodePutPayloadV2).
 func PreEncodeRelPutPayloadV2(r *types.Relationship) ([]byte, error) {
 	w, err := RelToWireChecked(r)
 	if err != nil {

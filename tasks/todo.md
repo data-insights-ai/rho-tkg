@@ -112,8 +112,29 @@ Phase 2 (parallel, after W1+W2 merged)
 - [x] W4 rel GraphTx twins + batch + ingest (merged e44e95d; red-w4.txt 152 red, green-w4.txt; all 8 doors seamed, whole-unit pre-flight refusal): R12 (rollback, door equivalence), R16 (batch/ingest: seam or explicit refusal).
 
 Phase 3
-- [ ] W5 finish: R15 cross-backend oracle, R11 over every door, docs/api.md, stale comments (§6.8), lesson 59
+- [x] W5 finish (branch worktree-agent-abdf7ef774350985f, d9f11aa..; red: evidence/red-w5-{oracle,race,facade}.txt,
+      green: evidence/green-w5.txt — full `go test ./pkg/...` and `-race` on core/storeutil/graph green, changed
+      lines 4126bb1..HEAD 90.0 % covered (-short); `make cover` / `make test-race` targets not run as such):
+      R15 cross-backend oracle, R11 over every door, docs/api.md, stale comments (§6.8), lesson 59
       amendment, CHANGELOG `[Unreleased]` 4.44.0, `make test-race`, `make cover`.
+      W5 ledger (worktree agent-abdf7ef774350985f, written before the first test edit):
+      - R15 in code? doors seamed (tx_order.go checkTxOrder; relationship_delete.go/node_delete.go `at` seam;
+        updateTemporal.txAt); the generative oracle (bitemporaloracle_test.go) has no caller-instant op and no
+        tiered arm. Red test `TestTxBackfillOracle_CrossBackend` (memory, badger, sharded, tiered): random plain
+        Add/Update/Delete/CloseVersion/SetVersionInterval interleaved with node/rel DeleteWithTx/UpdateWithTx over
+        standalone, GraphTx, Batch, ingest strong + concurrent; per op the stamps carry t and pin t answers as the
+        far-future pin right after it; per seed every point/during/TxAt/as-of/TxPin/ByLabel/ByType door equals the
+        oracle and the four backends give identical answers. Break-the-code: a door stubbed to the plain stamp
+        (rel delete seam, node update seam), t off by one, a backend diverging. Proof:
+        evidence/red-w5-oracle.txt (seam reverted), green-w5.txt.
+      - R11 every door in code? only the standalone doors race (TestTxBackfillRel/Node_RaceClock). Red test
+        `TestTxBackfill_RaceClockEveryDoor` (nodes and rels × GraphTx, Batch, ingest strong, ingest concurrent,
+        -race). Break: the seam's order check removed (the concurrent pre-flight runs under the shared lock only).
+        Proof: evidence/red-w5-race.txt.
+      - Ordering on every door with errors.Is: core R3 already runs all 10 rel and 10 node doors; facade gap: the
+        node GraphTx/Batch/Session doors have no pkg/graph test. Red test `TestNodesWithTx_TxBatchIngestFacade`
+        (t = TxFrom, TxFrom-1, below a history TxTo; errors.Is graph.ErrTxOrder and ErrInvalidTxFrom). Break: a
+        door forwarded to its plain twin.
 - [ ] Review agent per AGENTS.md MR protocol on the merged diff; fixes applied.
 - [ ] Dependents build/vet against the merged tree (request 3).
 
@@ -122,3 +143,21 @@ Commits: no agent attribution lines (user rule 2026-10-02). No push, no tag.
 ## Review
 
 (after phase 3)
+
+W5 findings (pre-existing, plain doors only, gate off, reproduced at 4126bb1 = v4.43.0; not fixed here, the
+oracle routes around them and says so in `txbTangled` / `txbNoTxRollback`):
+1. A bounded `SetVersionInterval` cascade appends a row whose version is above the current row's. NodeAsOf /
+   RelAsOf at a pin after the cascade answer the current row until any later write supersedes or deletes it;
+   then the history arm answers the cascade row for those same pins (a plain Update changes the past answer
+   v1 -> v2, all four backends).
+2. The next version-advancing write after such a cascade (Update, CloseVersion) reuses the cascade row's version
+   number: two rows with one version in the chain (all four backends). After it, the TxAt point door's answer at
+   a pin before a later Delete changes (v1 -> absent).
+3. `SetNodeVersionInterval` on an updated and closed node writes cascade rows whose TxTo lies below their TxFrom
+   (inherited from the archived row); the remainder row is current with a TxTo; a later Update keeps that TxTo
+   on its new version (inverted TX interval on the current row).
+4. A GraphTx rollback after `tx.UpdateRelationship` / `tx.DeleteRelationship` (or a refused
+   `UpdateRelationshipWithTx`, whose refusal comes after the snapshot) drops the cascade history row above the
+   current one on memory and badger (history 1 -> 0); sharded and tiered keep it.
+Repros: scratch tests in the session scratchpad (`zz_scratch_*`); each is one short test, worth a backlog item
+with a red test first.
