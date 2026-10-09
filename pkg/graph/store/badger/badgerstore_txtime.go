@@ -375,8 +375,12 @@ func (bs *Store) historyKeyExistsWithPresence(has bool, err error) func(key []by
 
 // snapshotHistoryKeyExists is liveHistoryKeyExists for the bulk as-of scans:
 // the overlay captured once before the shared transaction decides, else the
-// shared transaction's point read.
-func (bs *Store) snapshotHistoryKeyExists(txn *badgerv4.Txn, overlay historyOverlaySnapshot) func(key []byte) (bool, error) {
+// shared transaction's point read. none (bulkPresence.none) says the entity
+// has no history row at the scan's snapshot: no key can exist, nothing is read.
+func (bs *Store) snapshotHistoryKeyExists(txn *badgerv4.Txn, overlay historyOverlaySnapshot, none bool) func(key []byte) (bool, error) {
+	if none {
+		return noHistoryKeyExists
+	}
 	return func(key []byte) (bool, error) {
 		if bs.bulkAsOfKeyProbeTestHook != nil {
 			bs.bulkAsOfKeyProbeTestHook()
@@ -395,6 +399,8 @@ func (bs *Store) snapshotHistoryKeyExists(txn *badgerv4.Txn, overlay historyOver
 		return err == nil, err
 	}
 }
+
+func noHistoryKeyExists([]byte) (bool, error) { return false, nil }
 
 // asOfRow is one visited history row of selectAsOfScan (raw copied: the scan's
 // value is only valid inside its callback).
@@ -659,7 +665,7 @@ func (bs *Store) relAsOfPick(id snowflake.ID, current *types.Relationship, txTim
 // txns nest fine — just not yet folded into the shared txn; BACKLOG 18k design
 // section 6a defers that elimination as a follow-up since delta mode is
 // opt-in/default-off).
-func (bs *Store) nodeAsOfInTxn(snap *scanSnapshot, nid types.NodeID, txTime types.Instant, overlay historyOverlaySnapshot) (*types.Node, error) {
+func (bs *Store) nodeAsOfInTxn(snap *scanSnapshot, nid types.NodeID, txTime types.Instant, overlay historyOverlaySnapshot, presence *bulkPresence) (*types.Node, error) {
 	current, err := bs.getNodeInTxn(snap, nid)
 	if err != nil && !errors.Is(err, ErrNodeNotFound) {
 		return nil, err
@@ -669,11 +675,11 @@ func (bs *Store) nodeAsOfInTxn(snap *scanSnapshot, nid types.NodeID, txTime type
 	scan := func(consider func(version uint64, val []byte) (bool, error)) error {
 		return bs.reverseScanHistoryVersionInTxnSnapshot(snap.anyTxn(), prefix, overlay, consider)
 	}
-	return bs.nodeAsOfPick(id, current, txTime, scan, bs.snapshotHistoryKeyExists(snap.anyTxn(), overlay))
+	return bs.nodeAsOfPick(id, current, txTime, scan, bs.snapshotHistoryKeyExists(snap.anyTxn(), overlay, presence.none(id)))
 }
 
 // relAsOfInTxn mirrors nodeAsOfInTxn for relationships.
-func (bs *Store) relAsOfInTxn(snap *scanSnapshot, rid types.RelID, txTime types.Instant, overlay historyOverlaySnapshot) (*types.Relationship, error) {
+func (bs *Store) relAsOfInTxn(snap *scanSnapshot, rid types.RelID, txTime types.Instant, overlay historyOverlaySnapshot, presence *bulkPresence) (*types.Relationship, error) {
 	current, err := bs.getRelInTxn(snap, rid)
 	if err != nil && !errors.Is(err, ErrRelNotFound) {
 		return nil, err
@@ -683,7 +689,7 @@ func (bs *Store) relAsOfInTxn(snap *scanSnapshot, rid types.RelID, txTime types.
 	scan := func(consider func(version uint64, val []byte) (bool, error)) error {
 		return bs.reverseScanHistoryVersionInTxnSnapshot(snap.anyTxn(), prefix, overlay, consider)
 	}
-	return bs.relAsOfPick(id, current, txTime, scan, bs.snapshotHistoryKeyExists(snap.anyTxn(), overlay))
+	return bs.relAsOfPick(id, current, txTime, scan, bs.snapshotHistoryKeyExists(snap.anyTxn(), overlay, presence.none(id)))
 }
 
 // NodesAsOf returns every node version visible at txTime: the union of live
@@ -748,8 +754,18 @@ func (bs *Store) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 	// lesson-64 fix) — see historyOverlaySnapshot's doc comment for why a
 	// per-entity live overlay re-read would reopen that exact commit-window
 	// gap across this scan's long real-time duration.
+	// The history presence set is built here, before idxMu is taken: a build is
+	// a key-only scan of the whole history keyspace and must not run inside the
+	// scan's long RLock hold (it would keep every writer out meanwhile). A set
+	// that is still unbuilt under the lock (Clear in between) is not used; the
+	// scan then probes keys as before (bulkPresence).
+	if err := bs.ensureHistoryPresenceBuilt(&bs.histNodePresence, storepkg.KeyHistNode); err != nil {
+		return nil, err
+	}
+
 	result := make([]*types.Node, 0, len(liveIDs)+len(deletedIDs))
 	bs.idxMu.RLock()
+	presence := bs.beginBulkPresence(&bs.histNodePresence) // before the overlay capture
 	overlay := bs.snapshotHistoryOverlay()
 	idx := 0
 	snap := newScanSnapshot(bs.db, bs.nodeCache.FlushEpoch)
@@ -760,7 +776,7 @@ func (bs *Store) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 				bs.bulkAsOfScanTestHook(idx)
 			}
 			idx++
-			n, err := bs.nodeAsOfInTxn(snap, nid, txTime, overlay)
+			n, err := bs.nodeAsOfInTxn(snap, nid, txTime, overlay, &presence)
 			if errors.Is(err, ErrVersionNotFound) {
 				continue
 			}
@@ -774,7 +790,7 @@ func (bs *Store) NodesAsOf(txTime types.Instant) ([]*types.Node, error) {
 				bs.bulkAsOfScanTestHook(idx)
 			}
 			idx++
-			n, err := bs.nodeAsOfInTxn(snap, nid, txTime, overlay)
+			n, err := bs.nodeAsOfInTxn(snap, nid, txTime, overlay, &presence)
 			if errors.Is(err, ErrVersionNotFound) {
 				continue
 			}
@@ -820,8 +836,13 @@ func (bs *Store) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 		return nil, err
 	}
 
+	if err := bs.ensureHistoryPresenceBuilt(&bs.histRelPresence, storepkg.KeyHistRel); err != nil {
+		return nil, err
+	}
+
 	result := make([]*types.Relationship, 0, len(liveIDs)+len(deletedIDs))
 	bs.idxMu.RLock()
+	presence := bs.beginBulkPresence(&bs.histRelPresence) // before the overlay capture
 	overlay := bs.snapshotHistoryOverlay()
 	idx := 0
 	snap := newScanSnapshot(bs.db, bs.relCache.FlushEpoch)
@@ -832,7 +853,7 @@ func (bs *Store) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 				bs.bulkAsOfScanTestHook(idx)
 			}
 			idx++
-			r, err := bs.relAsOfInTxn(snap, rid, txTime, overlay)
+			r, err := bs.relAsOfInTxn(snap, rid, txTime, overlay, &presence)
 			if errors.Is(err, ErrVersionNotFound) {
 				continue
 			}
@@ -846,7 +867,7 @@ func (bs *Store) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 				bs.bulkAsOfScanTestHook(idx)
 			}
 			idx++
-			r, err := bs.relAsOfInTxn(snap, rid, txTime, overlay)
+			r, err := bs.relAsOfInTxn(snap, rid, txTime, overlay, &presence)
 			if errors.Is(err, ErrVersionNotFound) {
 				continue
 			}

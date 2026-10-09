@@ -45,6 +45,11 @@ type historyPresence struct {
 	buildMu sync.Mutex // serializes builds; Clear holds it for its whole run
 	built   atomic.Bool
 
+	// deletes counts the history-key deletes noted since the store opened (not
+	// reset by Clear). A bulk as-of scan (bulkPresence) trusts the set's "no
+	// history" only while it has not moved since the scan began.
+	deletes atomic.Uint64
+
 	mu       sync.RWMutex // guards has, unknown, stamp; taken inside wbMu by notes
 	tracking bool         // written under wbMu AND mu; notes read it under wbMu
 	has      map[snowflake.ID]struct{}
@@ -59,6 +64,7 @@ func (p *historyPresence) note(id snowflake.ID, isDelete bool) {
 	}
 	p.mu.Lock()
 	if isDelete {
+		p.deletes.Add(1)
 		delete(p.has, id)
 		p.stamp++
 		p.unknown[id] = p.stamp
@@ -180,6 +186,67 @@ func (bs *Store) hasHistory(p *historyPresence, kind byte, id snowflake.ID) (boo
 	}
 	p.mu.Unlock()
 	return present, nil
+}
+
+// ensureHistoryPresenceBuilt builds p when it is not built yet, unless the
+// store is probe-only. The bulk as-of doors call it BEFORE taking idxMu: a
+// build scans the whole history keyspace, and nothing is held here, so the lock
+// order flushMu -> idxMu -> buildMu -> wbMu is not touched.
+func (bs *Store) ensureHistoryPresenceBuilt(p *historyPresence, kind byte) error {
+	if bs.historyPresenceProbeOnly || p.built.Load() {
+		return nil
+	}
+	return bs.buildHistoryPresence(p, kind)
+}
+
+// bulkPresence is a bulk as-of scan's view of one kind's presence set: it
+// answers "this ID has no history row at the scan's snapshot" from RAM, so the
+// scan skips the version-current+1 key read for entities without history.
+//
+// The set is live; the scan reads an older snapshot (the overlay captured once,
+// then the shared badger transaction). A live negative implies a snapshot
+// negative as long as no history key was deleted since: without deletes the
+// set only grows. none therefore answers true only if
+//   - the set was built when the scan began (beginBulkPresence, under the
+//     scan's idxMu.RLock; Clear resets the set under idxMu.Lock, so that
+//     cannot change during the hold) and the store is not probe-only;
+//   - the ID is in neither has nor unknown (an unknown ID lost some rows to a
+//     delete and may hold others);
+//   - the delete counter still equals its value from before the overlay
+//     capture (a delete noted earlier is in the overlay or already committed,
+//     so the snapshot reflects it; a later one may have removed rows the
+//     snapshot still holds - the trim doors take no idxMu).
+//
+// Every other case falls back to the snapshot key read (lessons 63, 64, 74).
+// The zero value never answers true.
+type bulkPresence struct {
+	p       *historyPresence
+	deletes uint64
+}
+
+// beginBulkPresence captures the scan-start state. Caller holds idxMu.RLock and
+// calls it BEFORE snapshotHistoryOverlay, so every delete the snapshot may not
+// contain moves the counter past the value read here.
+func (bs *Store) beginBulkPresence(p *historyPresence) bulkPresence {
+	if bs.historyPresenceProbeOnly || !p.built.Load() {
+		return bulkPresence{}
+	}
+	return bulkPresence{p: p, deletes: p.deletes.Load()}
+}
+
+// none reports that id has no history row at the scan's snapshot.
+func (b *bulkPresence) none(id snowflake.ID) bool {
+	if b.p == nil {
+		return false
+	}
+	b.p.mu.RLock()
+	_, has := b.p.has[id]
+	unresolved := false
+	if !has && len(b.p.unknown) > 0 {
+		_, unresolved = b.p.unknown[id]
+	}
+	b.p.mu.RUnlock()
+	return !has && !unresolved && b.p.deletes.Load() == b.deletes
 }
 
 // buildHistoryPresence builds p once (see historyPresence).
