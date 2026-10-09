@@ -466,9 +466,27 @@ flush that carries the cut fits one Badger transaction (about 15 % of
 plus any other write still pending); all-or-nothing on disk for larger flushes
 is v5. On a flush failure the door returns `ErrCommitNotDurable`: the group is
 committed in memory, its operations stay pending (requeued), and the next
-successful flush persists them; until then a crash can lose them. Rollback
-never flushes. Standalone mutations and concurrent-mode ingest `Submit` keep the
-async flush.
+successful flush persists them; until then a crash can lose them. `RunWithLSN`
+still returns the group's LSN and `Batch.Execute` its result (with a
+`durable-commit` `BatchError`), so a caller never has to re-apply a committed
+group. Rollback never flushes. Standalone mutations and concurrent-mode ingest
+`Submit` keep the async flush.
+
+"Crash" above means a process crash. Power loss is narrower: Badger v4's
+`db.Sync()` fsyncs only the active memtable's WAL and the current value-log
+file. A memtable switch during the flush (`ensureRoomForWrite`) retires the old
+WAL without an fsync, and a finished value-log file is fsynced only under
+`SyncWrites`, so rows of a group whose flush filled the memtable or a value-log
+file can still be unsynced after `DurableFlush` returned. `SyncWrites` is the
+setting for strict power-loss durability (backlog 15 tracks syncing the retired
+WAL on switch, or measuring `SyncWrites`' cost instead).
+
+`DurableFlush` re-checks the store's closed state under `flushMu`: `Close`
+sets `closing` before its final flush, which needs `flushMu`, so a durable
+flush never syncs a DB that `Close` already closed (a commit can race
+`Graph.Close`, since it flushes after releasing the graph locks; it then gets
+`ErrCommitNotDurable` wrapping `ErrStoreClosed`, while `Close`'s own final
+flush writes the group). Sharded holds its store lock across the fold.
 
 ### Key Architecture
 

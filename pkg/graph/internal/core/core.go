@@ -825,10 +825,14 @@ type Config struct {
 	// for the next flush. Not covered: standalone mutations and
 	// concurrent-mode ingest Submit, which keep the async flush. A buffer
 	// above Badger's transaction size limit is split by Badger, so a crash
-	// during that flush can persist a subset. New fails with
+	// during that flush can persist a subset. Power loss: Badger's Sync covers
+	// only the active memtable WAL and the current value-log file, so rows of
+	// a group whose flush filled the memtable (or a value-log file) can stay
+	// unsynced after the return — safe against a process crash, not a power
+	// loss; use SyncWrites for strict power-loss durability. New fails with
 	// ErrCapabilityNotSupported when the store has no stable storage (memory
-	// store, BadgerInMemory, an in-memory sharded store). Default false: no
-	// flush on commit, today's behavior.
+	// store, BadgerInMemory, an in-memory tiered or sharded store). Default
+	// false: no flush on commit, today's behavior.
 	DurableCommit bool
 
 	// IngestLanes is the number of extra per-lane UNIFIED ID generators built for

@@ -1304,6 +1304,13 @@ type GroupCommitCapability interface {
 // a crash during that flush can persist a subset: crash atomicity of a group is
 // not promised.
 //
+// Power-loss limit (Badger v4): its Sync fsyncs only the active memtable's WAL
+// and the current value-log file. A flush that fills the memtable retires the
+// WAL without an fsync, and a finished value-log file is synced only under
+// SyncWrites, so part of a group can be unsynced after DurableFlush returns.
+// It survives a process crash, not necessarily a power loss; SyncWrites is the
+// setting for strict power-loss durability.
+//
 // DurableFlushSupported reports whether the instance has stable storage at all
 // (false for an in-memory instance); a store without the capability, or one
 // reporting false, makes New with DurableCommit fail closed.

@@ -101,8 +101,9 @@ func TestDurableFlush_Badger_SyncWritesNeedsNoExtraFsync(t *testing.T) {
 	}
 }
 
-// Catches: claiming durability for an in-memory instance, a nil-WAL panic
-// (db.Sync on an in-memory Badger), and a closed store answering nil.
+// Catches: claiming durability for an in-memory instance (Badger's Sync is a
+// silent no-op there, so a nil answer would be a false promise), and a closed
+// store answering nil.
 func TestDurableFlush_Badger_SupportAndRefusals(t *testing.T) {
 	disk, err := badger.New(badger.Config{Dir: t.TempDir()})
 	if err != nil {
