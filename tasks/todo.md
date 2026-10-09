@@ -67,7 +67,8 @@ Wave 2 (parallel, start now, merge after wave 1) → v4.45.0
       doors (Temporal, GraphTx, Batch, Session), UniqueCurrent and UniqueForever; evidence/unique-cascade/.
 - [x] Bulk as-of presence (Sonnet→Opus rounds; merged d7049e5 after Opus review: top version per ID, forward-walk build 2.5–4× faster than main, N13 ordering hook, gap guard; evidence/bulk-asof-presence/)
 - [ ] J effective timeline + scan forms (Opus; candidate 7261cf9 handed to sigma; review a562a3ef… running): merge, then v4.46.0 gate and tag (or fold J into it).
-- [ ] K point as-of doors race (backlog 32; Opus a620e67d… running).
+- [x] K point as-of doors race (backlog 32; merged 68f99ad after two review rounds: badger with-history doors publish history first; native as-of guard, mutants A-F deterministic, cost within noise; evidence/point-door-race/; backlog 37 filed)
+- [x] Mint instant (backlog 36; merged 8afb1f0: NodeID/RelID.MintInstant, shared idlayout, shadow fallbacks)
 - [ ] Next: handover 1 (backlog 8), LatestStamps (30), badger scan cost (33), update-door claims (29), state column doors (28), handover 2 (backlog 21).
 
 ## Review
