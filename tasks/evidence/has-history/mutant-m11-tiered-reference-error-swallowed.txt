@@ -1,0 +1,7 @@
+$ go test ./pkg/graph/store/tiered/ -run TestTieredHistoryPresence -count=1
+--- FAIL: TestTieredHistoryPresence_ReferenceErrorForArchivedEntity (0.03s)
+    tieredstore_history_presence_test.go:318: archived node, reference failing: HasNodeHistory <nil>, GetNodeHistory graph: store already closed; want both ErrStoreClosed
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	1.958s
+FAIL
+exit=1

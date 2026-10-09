@@ -152,6 +152,14 @@ MUTANTS = [
 		p.unknown = make(map[snowflake.ID]uint64)
 	}
 """)], [BADGER_TESTS]),
+    ("m11-tiered-reference-error-swallowed", TIERED, [(
+        """	refHas, err := ask(ref)
+	if err != nil {
+		return false, err
+	}""", """	refHas, err := ask(ref)
+	if err != nil {
+		return has, nil // MUTANT: a failing reference shard reads as no history
+	}""")], [TIERED_TESTS]),
     ("m8-tiered-cold-shards-build-the-set", TCFG, [(
         "	cfg.HistoryPresenceProbeOnly = cold\n", "	cfg.HistoryPresenceProbeOnly = false // MUTANT\n")], [TIERED_TESTS]),
 ]

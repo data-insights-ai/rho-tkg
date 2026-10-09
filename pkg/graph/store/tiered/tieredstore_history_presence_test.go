@@ -295,3 +295,30 @@ func TestTieredHistoryPresence_ShardErrorsSurfaceLikeHistory(t *testing.T) {
 		t.Fatalf("deleted rel, archive failing: HasRelHistory %v, GetRelHistory %v; want both errors", err, herr)
 	}
 }
+
+// The reference shard failing while an ARCHIVED entity's walk asks it (shape
+// C: the archive owns the row, the reference shard may hold older history):
+// HasHistory fails where History fails, node and relationship. A walk that
+// treated the failing reference shard as "no history" would answer the
+// archive's false.
+func TestTieredHistoryPresence_ReferenceErrorForArchivedEntity(t *testing.T) {
+	e := newBranchTestEnv(t)
+	a, b := e.newRefNode(t), e.newRefNode(t)
+	r := e.putRelBetween(t, a, b)
+	for _, id := range []types.NodeID{a.ID(), b.ID()} {
+		if err := e.ts.ArchiveNode(id); err != nil {
+			t.Fatalf("ArchiveNode: %v", err)
+		}
+	}
+	ref := e.ts.RefShardForTest()
+	ref.SetDBClosedForTest(true)
+	defer ref.SetDBClosedForTest(false)
+	_, herr := e.ts.GetNodeHistory(a.ID())
+	if _, err := e.ts.HasNodeHistory(a.ID()); err == nil || herr == nil || !errors.Is(err, ErrStoreClosed) {
+		t.Fatalf("archived node, reference failing: HasNodeHistory %v, GetNodeHistory %v; want both ErrStoreClosed", err, herr)
+	}
+	_, herr = e.ts.GetRelHistory(r.ID())
+	if _, err := e.ts.HasRelHistory(r.ID()); err == nil || herr == nil || !errors.Is(err, ErrStoreClosed) {
+		t.Fatalf("archived rel, reference failing: HasRelHistory %v, GetRelHistory %v; want both ErrStoreClosed", err, herr)
+	}
+}
