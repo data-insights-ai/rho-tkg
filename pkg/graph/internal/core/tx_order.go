@@ -104,3 +104,41 @@ func (c *Core) checkRelCallerTx(id types.RelID, current *types.Relationship, t, 
 	}
 	return checkTxOrder(t, start, chain...)
 }
+
+// checkRelCallerDelete is every refusal a caller-instant delete of current can
+// meet before it writes: the order rule (after the version start, which for a
+// delete includes the valid-from) and a recorded close at or after t. Shared
+// by the delete seam (deleteRelationshipInternal) and the Batch/ingest
+// pre-flight (precheckRelCallerTxOps), so the two cannot disagree. Call under
+// the relationship's entity lock.
+func (c *Core) checkRelCallerDelete(id types.RelID, current *types.Relationship, at types.Instant) error {
+	if err := c.checkRelCallerTx(id, current, at, c.relTxDeleteStart(current)); err != nil {
+		return err
+	}
+	return checkCallerDeleteCloses(at, current.Temporal())
+}
+
+// checkRelCallerUpdate is every refusal a caller-instant update (tmp.txAt) of
+// current can meet before it writes: the order rule, an update that changes
+// nothing (there is no version to stamp at t), a closed relationship, and a
+// tkg_valid_from not after the previous effective valid-from. Shared by the
+// update seam (updateRelationshipPreparedInternal) and the Batch/ingest
+// pre-flight (precheckRelCallerTxOps). Call under the relationship's entity
+// lock.
+func (c *Core) checkRelCallerUpdate(id types.RelID, current *types.Relationship, prov updateProvenance, tmp updateTemporal, updates map[string]any) error {
+	if err := c.checkRelCallerTx(id, current, tmp.txAt, c.relCurrentVersionStart(current)); err != nil {
+		return err
+	}
+	if !relPreparedUpdateMutates(current, prov, tmp, updates) {
+		return fmt.Errorf("%w: an update at t %d with no changes records nothing", ErrTxOrder, tmp.txAt)
+	}
+	if err := rejectClosedRelMutation(current); err != nil {
+		return err
+	}
+	if tmp.hasValidFrom && tmp.validFrom != 0 {
+		if prevEff := c.relValidFrom(current); tmp.validFrom <= prevEff {
+			return fmt.Errorf("%w: %d <= prev %d", ErrValidFromBeforePrevious, tmp.validFrom, prevEff)
+		}
+	}
+	return nil
+}

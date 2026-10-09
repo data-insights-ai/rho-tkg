@@ -128,10 +128,7 @@ func (c *Core) deleteRelationshipInternal(ctx context.Context, id types.RelID, a
 		return err
 	}
 	if at != 0 {
-		if err := c.checkRelCallerTx(id, current, at, c.relTxDeleteStart(current)); err != nil {
-			return err
-		}
-		if err := checkCallerDeleteCloses(at, current.Temporal()); err != nil {
+		if err := c.checkRelCallerDelete(id, current, at); err != nil {
 			return err
 		}
 	}

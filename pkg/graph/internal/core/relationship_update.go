@@ -146,14 +146,11 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 		return nil, false, err
 	}
 	if tmp.txAt != 0 {
-		if err := c.checkRelCallerTx(id, current, tmp.txAt, c.relCurrentVersionStart(current)); err != nil {
+		if err := c.checkRelCallerUpdate(id, current, prov, tmp, updates); err != nil {
 			return nil, false, err
 		}
 	}
 	if !relPreparedUpdateMutates(current, prov, tmp, updates) {
-		if tmp.txAt != 0 {
-			return nil, false, fmt.Errorf("%w: an update at t %d with no changes records nothing", ErrTxOrder, tmp.txAt)
-		}
 		c.opRelReads.Add(1)
 		return current, false, nil
 	}
