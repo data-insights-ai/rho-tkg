@@ -654,6 +654,66 @@ func TestScanDoorsTemporalOpts_RangeNeverDropsAtExclusiveBound(t *testing.T) {
 	})
 }
 
+// TestScanDoorsTemporalOpts_RangeSkipsAbsentAndNonNumeric pins the value test on
+// the temporal range fold: an entity whose version at t lacks the property, or
+// holds a string, is not offered — even when its CURRENT version holds an
+// in-range number. Faulty implementations caught: reading the live value, a
+// fold that offers every label member and leaves the whole predicate to fn.
+func TestScanDoorsTemporalOpts_RangeSkipsAbsentAndNonNumeric(t *testing.T) {
+	forAllStoreBackends(t, func(t *testing.T, _ storeBackend, g *graphpkg.Graph) {
+		ctx := context.Background()
+		absent, err := g.Nodes().Add(ctx, []string{scanLabel}, map[string]any{"tkg_valid_from": types.Instant(1000)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		str, err := g.Nodes().Add(ctx, []string{scanLabel}, map[string]any{scanNodeKey: "7", "tkg_valid_from": types.Instant(1000)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rAbsent, err := g.Rels().Add(ctx, scanRelType, absent, str, map[string]any{"tkg_valid_from": types.Instant(1000)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rStr, err := g.Rels().Add(ctx, scanRelType, absent, str, map[string]any{scanRelKey: "7", "tkg_valid_from": types.Instant(1000)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// From 2000 on every one of them holds the in-range number 7.
+		for _, id := range []types.NodeID{absent.ID(), str.ID()} {
+			if _, err := g.Nodes().Update(ctx, id, map[string]any{scanNodeKey: int64(7), "tkg_valid_from": types.Instant(2000)}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for _, id := range []types.RelID{rAbsent.ID(), rStr.ID()} {
+			if _, err := g.Rels().Update(ctx, id, map[string]any{scanRelKey: int64(7), "tkg_valid_from": types.Instant(2000)}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for _, tc := range []struct {
+			at   types.Instant
+			want int
+		}{{1500, 0}, {2500, 2}} {
+			opts := graphpkg.QueryOpts{ValidAt: tc.at}
+			nodes, rels := 0, 0
+			if err := g.Nodes().ForEachByLabelPropertyRange(scanLabel, scanNodeKey, 0, 10, true, true, opts, func(*types.Node) bool {
+				nodes++
+				return true
+			}); err != nil {
+				t.Fatalf("node range at %d: %v", tc.at, err)
+			}
+			if err := g.Rels().ForEachByTypePropertyRange(scanRelType, scanRelKey, 0, 10, true, true, opts, func(*types.Relationship) bool {
+				rels++
+				return true
+			}); err != nil {
+				t.Fatalf("rel range at %d: %v", tc.at, err)
+			}
+			if nodes != tc.want || rels != tc.want {
+				t.Errorf("at %d: offered %d nodes and %d rels, want %d each", tc.at, nodes, rels, tc.want)
+			}
+		}
+	})
+}
+
 // TestScanDoorsTemporalOpts_RelColumnsEveryTypeStops pins the every-type scan
 // (relType "") on the temporal path: each type's batches carry their own type
 // name and the version value at t, and fn returning false stops the WHOLE scan.
