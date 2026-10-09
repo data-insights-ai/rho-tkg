@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`types.NodeID.MintInstant()` / `types.RelID.MintInstant()` (`types.Instant`): the public derivation of an ID's
+  derived valid-from** (backlog 36, requested by sigma-tkgd for its adoption of the rule "`ValidFrom` 0 = unset; the
+  derived start is the ID's mint instant" on unpinned reads and column scans, which carry no derived start and where
+  it refuses to decode snowflake bits itself). It is the resolver's own function, not a copy: `storeutil.EntityValidFrom`
+  (without explicit metadata) and `storeutil.SnowflakeInstant` now call the same `idlayout.MintInstantMillis` the two
+  methods call, so a consumer agrees with every temporal read by construction. The result is Unix MILLISECONDS (the
+  layout is 48-bit microseconds since 2026-01-01 UTC, floored), identical for nodes (even node field) and relationships
+  (odd node field), monotone in ID order, a pure function of the ID and the package-level epoch and layout (every graph
+  in a process shares them; no `Config` is consulted), allocation-free, and never panics: a zero or negative ID, which no
+  generator mints, returns 0 (unset) rather than the epoch or a pre-epoch instant (this also makes the resolver's derived
+  start for such an ID 0, where it was the epoch; non-positive IDs are never persisted, `ErrInvalidStoreMutation`).
+  Decision on the home: `pkg/types` already imports the snowflake library (`SnowflakeID()`), and the methods return
+  `types.Instant`, so no dependency leaks (AGENTS.md rule 12); the layout constants moved from
+  `pkg/graph/internal/snowflake` into the new `pkg/internal/idlayout` (importable by `pkg/types` and `pkg/graph/**`,
+  not public API), and `graph/internal/snowflake` re-exports `Epoch` / `Layout` from it. A facade method on
+  `g.Temporal()` was rejected: it would need an Ops method, a wrapper and fakes for a pure function of the ID and would
+  force a graph handle where none is needed. Tests name the faulty implementations (wrong epoch, microsecond vs
+  millisecond, round vs floor, node/rel node-field offset, 32-bit and high-bit truncation, missing or partial
+  non-positive guard, allocation, resolver divergence); evidence under `tasks/evidence/mint-instant/`.
+
 ## [4.46.0] - 2026-10-09
 
 Minor release: cascade correctness (one version allocator for every appended row, appended rows carry no

@@ -217,6 +217,8 @@ Both generator sets (nodes and relationships) are initialized with explicit para
 
 Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID` (0-15).
 
+The epoch and layout have ONE definition, `pkg/internal/idlayout` (re-exported by `pkg/graph/internal/snowflake`), shared by every graph in the process. The mint instant of an ID — the derived valid-from of a row with `ValidFrom == 0` — is `idlayout.MintInstantMillis`, public as `types.NodeID.MintInstant()` / `types.RelID.MintInstant()`; the resolver (`storeutil.EntityValidFrom`, `SnowflakeInstant`) calls the same function. Never decode time bits anywhere else.
+
 ## Design Rules
 
 ### Data Model
