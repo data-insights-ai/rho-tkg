@@ -177,16 +177,28 @@ reproduces the stamps from the change feed and reports the past-dated tombstones
 
 ### Fixed
 
-- **Badger split-write doors maintain the relationship temporal envelope.**
-  `PutRelEntityAndOut` / `DeleteRelEntityAndOut` (the tiered cross-shard doors) now extend / purge
-  the rel-type temporal envelope like `PutRelationship` / delete: a cross-shard row was never
-  pruned, and a deleted one stayed covered.
+- **Badger split-write door maintains the relationship temporal envelope.** `PutRelEntityAndOut`
+  (the tiered cross-shard door) now extends the rel-type temporal envelope like `PutRelationship`:
+  a cross-shard row was never pruned.
+- **A relationship delete keeps the relationship temporal envelope (badger).** `deleteRelByInfo`
+  and `DeleteRelEntityAndOut` purged it, while the deleted row's history stays on the store: a
+  `GraphTx` that deleted a relationship and was rolled back restored the row without its history in
+  the envelope, so with `CreateRelTemporal` `Temporal().RelsByTypeAt` and
+  `Rels().ByType(QueryOpts{ValidAt})` lost its past version (memory, whose delete keeps the
+  envelope, answered; `TestRelTemporalIndex_RolledBackDeleteKeepsPastVersion`). The tiered
+  split-write rollback (`DeleteRelIncoming` failing after `DeleteRelEntityAndOut`) had the same
+  hole. The envelope is now append-only on delete, as in memory; only exact erasure removes it.
 - **Imported relationship versions stay findable with a rel temporal index (memory, badger).**
   `g.IO().Import` replays history through `PutRelVersion`, which did not join the version into the
   envelope: with `CreateRelTemporal` done first, an imported past version vanished from
   `Rels().ByType(type, QueryOpts{ValidAt})` and `Temporal().RelsByTypeAt`
   (`TestRelTemporalIndex_ImportedHistoryVersionStaysFindable`). A live relationship's version now
-  extends its envelope; one without a current row stays uncovered and is never pruned.
+  extends its envelope, and so does a deleted one that is still covered (the delete keeps its
+  envelope); an uncovered one without a current row stays uncovered and is never pruned.
+- **Tiered: a warm shard's WAL-recovery probe no longer rebuilds the relationship temporal index**
+  (it opened read-only, built every index and was closed; now it skips the rebuild), and **a lazily
+  opened cold shard is synced to the anchoring reference shard** (an orphan composite definition
+  left by an interrupted fan-out is dropped instead of being rebuilt on every open).
 - **The as-of column cache is invalidated after a past-dated write lands, not before.**
   `resolveBackfillTxFrom` bumped the cache epoch at the gate, before the store write, so an as-of
   build starting in between read the new epoch, missed the row and was cached as current (R14). Every
