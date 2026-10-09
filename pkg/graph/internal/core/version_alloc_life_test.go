@@ -50,27 +50,56 @@ func TestLifeStartOf(t *testing.T) {
 		t.Fatalf("ceiling: err = %v; want ErrVersionOverflow", err)
 	}
 
-	// begin: a caller instant must exceed maxStamp; the plain door raises the
-	// clock floor past it.
-	g, err := New(Config{})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer g.Close()
+	// A caller instant must exceed maxStamp; 0 (the plain door) is not checked.
 	for _, at := range []types.Instant{1, 54, 55} {
-		if err := ls.begin(g, at); !errors.Is(err, ErrTxOrder) || !errors.Is(err, ErrInvalidTxFrom) {
-			t.Fatalf("begin(t=%d) = %v; want ErrTxOrder wrapping ErrInvalidTxFrom", at, err)
+		if err := ls.checkCallerTx(at); !errors.Is(err, ErrTxOrder) || !errors.Is(err, ErrInvalidTxFrom) {
+			t.Fatalf("checkCallerTx(t=%d) = %v; want ErrTxOrder wrapping ErrInvalidTxFrom", at, err)
 		}
 	}
-	if err := ls.begin(g, 56); err != nil {
-		t.Fatalf("begin(t=56) = %v", err)
+	for _, at := range []types.Instant{0, 56} {
+		if err := ls.checkCallerTx(at); err != nil {
+			t.Fatalf("checkCallerTx(t=%d) = %v", at, err)
+		}
 	}
-	ahead := lifeStart{maxStamp: g.now() + 3_600_000}
-	if err := ahead.begin(g, 0); err != nil {
-		t.Fatalf("begin(plain) = %v", err)
+	// The plain door's stamp: the clock, or one past a chain stamp ahead of it.
+	if got := ls.txFrom(100); got != 100 {
+		t.Fatalf("txFrom(100) = %d; want the clock 100", got)
 	}
-	if now := g.now(); now <= ahead.maxStamp {
-		t.Fatalf("plain begin left the clock at %d, not past the chain's stamp %d", now, ahead.maxStamp)
+	if got := ls.txFrom(55); got != 56 {
+		t.Fatalf("txFrom(55) = %d; want 56 (one past the chain's stamp)", got)
+	}
+	if got := (lifeStart{}).txFrom(7); got != 7 {
+		t.Fatalf("fresh ID txFrom(7) = %d; want 7", got)
+	}
+}
+
+// TestStubLifeStart: an ID whose rows are gone but whose compaction stub
+// remains continues above the trimmed versions, linked to the last trimmed
+// hash; no stub, a graph that never compacted, a failing stub read and the
+// version ceiling each answer as stated.
+func TestStubLifeStart(t *testing.T) {
+	t.Parallel()
+	c := &Core{}
+	stub := compactionStub{TrimmedThroughVersion: 4, LastTrimmedHash: "h4", LastTrimmedTxTo: 77}
+	found := func() (compactionStub, bool, error) { return stub, true, nil }
+	if ls, err := c.stubLifeStart(found); err != nil || ls != (lifeStart{}) {
+		t.Fatalf("never compacted: %+v, %v; want the zero lifeStart (no probe)", ls, err)
+	}
+	c.compactedThroughTx.Store(1)
+	if ls, err := c.stubLifeStart(found); err != nil || ls != (lifeStart{version: 5, prevHash: "h4", maxStamp: 77}) {
+		t.Fatalf("stub: %+v, %v; want version 5, prevHash h4, maxStamp 77", ls, err)
+	}
+	if ls, err := c.stubLifeStart(func() (compactionStub, bool, error) { return compactionStub{}, false, nil }); err != nil || ls != (lifeStart{}) {
+		t.Fatalf("no stub: %+v, %v", ls, err)
+	}
+	boom := errors.New("stub read failed")
+	if _, err := c.stubLifeStart(func() (compactionStub, bool, error) { return compactionStub{}, false, boom }); !errors.Is(err, boom) {
+		t.Fatalf("stub read error: %v", err)
+	}
+	if _, err := c.stubLifeStart(func() (compactionStub, bool, error) {
+		return compactionStub{TrimmedThroughVersion: math.MaxUint32}, true, nil
+	}); !errors.Is(err, ErrVersionOverflow) {
+		t.Fatalf("ceiling: %v; want ErrVersionOverflow", err)
 	}
 }
 

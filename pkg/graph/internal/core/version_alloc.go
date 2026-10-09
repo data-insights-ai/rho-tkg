@@ -148,10 +148,10 @@ func (c *Core) nextRelVersion(id types.RelID, current *types.Relationship) (uint
 // (newest by version) read it present, and no stamp could tell it apart from
 // a cascade row of the earlier life once it is demoted. So a caller instant
 // (tkg_tx_from) at or below a stamp of the chain is refused with ErrTxOrder —
-// the ordering rule of UpdateWithTx / DeleteWithTx — and the plain door raises
-// the clock floor past the chain's stamps (a delete of a row whose valid start
-// lies ahead is stamped ahead of the clock), so the import and every later
-// write follow them. Versions then grow in write order across lives and
+// the ordering rule of UpdateWithTx / DeleteWithTx — and the plain door stamps
+// the row one past the chain's stamps when they lie ahead of the clock (a
+// delete of a row whose valid start lies ahead is stamped after it), on this
+// row only, without moving the commit clock. Versions then grow in write order across lives and
 // (life, version) order is version order. Chains stored before the fix (a
 // re-import at version 0) are read by the same life rule and never rewritten.
 
@@ -188,33 +188,66 @@ func lifeStartOf[T storeutil.TemporalRow](history []T, hash func(T) string) (lif
 	return ls, nil
 }
 
-// begin decides a re-import's transaction instant before anything is
-// allocated. A caller instant t (tkg_tx_from) at or below a stamp of the chain
-// is refused with ErrTxOrder; for the plain door (t == 0) the clock floor
-// moves past every stamp of the chain, so the import's c.now() and every
-// later write follow them.
-func (l lifeStart) begin(c *Core, t types.Instant) error {
-	if t == 0 {
-		c.advanceInstantFloor(l.maxStamp)
-		return nil
-	}
-	if t <= l.maxStamp {
+// checkCallerTx refuses, before anything is allocated, a caller instant t
+// (tkg_tx_from) at or below a stamp of the chain with ErrTxOrder. t == 0 is
+// the plain door: nothing to check (see txFrom).
+func (l lifeStart) checkCallerTx(t types.Instant) error {
+	if t != 0 && t <= l.maxStamp {
 		return fmt.Errorf("%w: a re-import at t %d is not after the ID's recorded stamp %d", ErrTxOrder, t, l.maxStamp)
 	}
 	return nil
 }
 
+// txFrom is the plain door's stamp for the re-imported row: the clock reading
+// now, or one past the chain's largest stamp when that lies ahead of the clock
+// (a delete of a row whose valid start lies ahead is stamped after it,
+// validInstantAfter). Like the delete's own stamp it is local to this row: the
+// commit-clock floor is NOT raised — that stamp came from caller valid time,
+// which must never pull the floor forward (maxCommitStamp), and an unbounded
+// raise would stamp every later write of every entity decades ahead.
+func (l lifeStart) txFrom(now types.Instant) types.Instant {
+	return validInstantAfter(now, l.maxStamp)
+}
+
+// stubLifeStart continues a chain whose rows are all gone but whose
+// compaction stub remains — a retention purge after a history compaction
+// removes the entity's rows, not its stub: the new life starts one above the
+// trimmed versions and links to the last trimmed hash, which is what
+// Verify*Chain checks the oldest stored row against when a stub exists (a
+// version-0 row under a stub fails it). Only a graph that ever compacted can
+// hold a stub (watermark > 0), so the probe costs nothing elsewhere.
+func (c *Core) stubLifeStart(load func() (compactionStub, bool, error)) (lifeStart, error) {
+	if c.compactedThroughTx.Load() == 0 {
+		return lifeStart{}, nil
+	}
+	s, ok, err := load()
+	if err != nil || !ok {
+		return lifeStart{}, err
+	}
+	v, err := nextEntityVersion(s.TrimmedThroughVersion)
+	if err != nil {
+		return lifeStart{}, err
+	}
+	return lifeStart{version: v, prevHash: s.LastTrimmedHash, maxStamp: types.Instant(s.LastTrimmedTxTo)}, nil
+}
+
 // nodeLifeStart returns where a re-import of node id starts. Caller holds the
 // entity lock and has seen no current row.
 func (c *Core) nodeLifeStart(id types.NodeID) (lifeStart, error) {
+	stub := func() (compactionStub, bool, error) { return c.loadNodeCompactionStub(id) }
 	if p, ok := c.store.(storepkg.HistoryPresenceCapability); ok {
-		if has, err := p.HasNodeHistory(id); err != nil || !has {
+		if has, err := p.HasNodeHistory(id); err != nil {
 			return lifeStart{}, err
+		} else if !has {
+			return c.stubLifeStart(stub)
 		}
 	}
 	history, err := c.getNodeHistory(id)
 	if err != nil {
 		return lifeStart{}, err
+	}
+	if len(history) == 0 {
+		return c.stubLifeStart(stub)
 	}
 	return lifeStartOf(history, nodeIntegrityHash)
 }
@@ -222,12 +255,14 @@ func (c *Core) nodeLifeStart(id types.NodeID) (lifeStart, error) {
 // relLifeStart mirrors nodeLifeStart for relationships. A slot that is not
 // local holds no history here.
 func (c *Core) relLifeStart(id types.RelID) (lifeStart, error) {
+	stub := func() (compactionStub, bool, error) { return c.loadRelCompactionStub(id) }
 	if p, ok := c.store.(storepkg.HistoryPresenceCapability); ok {
-		if has, err := p.HasRelHistory(id); err != nil || !has {
-			if errors.Is(err, storepkg.ErrSlotNotLocal) {
-				return lifeStart{}, nil
-			}
+		if has, err := p.HasRelHistory(id); errors.Is(err, storepkg.ErrSlotNotLocal) {
+			return lifeStart{}, nil
+		} else if err != nil {
 			return lifeStart{}, err
+		} else if !has {
+			return c.stubLifeStart(stub)
 		}
 	}
 	history, err := c.getRelHistory(id)
@@ -236,6 +271,9 @@ func (c *Core) relLifeStart(id types.RelID) (lifeStart, error) {
 	}
 	if err != nil {
 		return lifeStart{}, err
+	}
+	if len(history) == 0 {
+		return c.stubLifeStart(stub)
 	}
 	return lifeStartOf(history, func(r *types.Relationship) string {
 		if ig := r.Integrity(); ig != nil {

@@ -424,7 +424,7 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 	if err != nil {
 		return nil, err
 	}
-	if err := life.begin(c, txFromOverride); err != nil {
+	if err := life.checkCallerTx(txFromOverride); err != nil {
 		return nil, err
 	}
 
@@ -490,9 +490,11 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 		AuthorizationLevel: authLevel,
 	})
 
-	txNow := c.now()
-	if txFromOverride != 0 {
-		txNow = txFromOverride
+	// The plain door follows the earlier lives' stamps on this row only
+	// (lifeStart.txFrom); a caller instant was checked above.
+	txNow := txFromOverride
+	if txNow == 0 {
+		txNow = life.txFrom(c.now())
 	}
 	tm := n.Temporal()
 	if tm == nil {

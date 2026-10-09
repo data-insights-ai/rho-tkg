@@ -134,7 +134,7 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 	if err != nil {
 		return nil, err
 	}
-	if err := life.begin(c, txFromOverride); err != nil {
+	if err := life.checkCallerTx(txFromOverride); err != nil {
 		return nil, err
 	}
 
@@ -197,6 +197,11 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 		ig.ToNodeHash = toHash
 		r.SetIntegrity(ig)
 		c.applyRelCreateTemporal(r, validFrom, validTo, createdAt, txFromOverride)
+		if txFromOverride == 0 {
+			// The plain door follows the earlier lives' stamps on this row
+			// only (lifeStart.txFrom); a caller instant was checked above.
+			r.Temporal().TxFrom = life.txFrom(r.Temporal().TxFrom)
+		}
 		if err := checkCtx(ctx); err != nil {
 			return nil, nil, err
 		}

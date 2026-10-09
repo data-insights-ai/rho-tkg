@@ -370,14 +370,17 @@ func TestReImportBackfillRefusalLeavesNoToken(t *testing.T) {
 
 // TestReImportAfterDeleteAheadOfClock: a delete of an entity whose valid start
 // lies in the future is stamped after that start (ahead of the transaction
-// clock). A plain re-import is still recorded after the delete — it moves the
-// clock floor past every stamp of the chain — and a later Update follows it:
-// the re-import and its successor belong to the new life on every door.
+// clock). A plain re-import is still recorded after the delete — its own row
+// is stamped one past the chain's stamps, like the delete's, without moving
+// the commit clock (TestReImportDoesNotAdvanceTheClock) — so it belongs to
+// the new life on every door.
 //
 // Catches: a plain re-import stamped with the clock below the delete (it joins
 // the earlier life and reads absent from the delete on in the valid-time
-// doors), and a re-import stamped past the delete without moving the clock
-// (the next Update is stamped below the re-import).
+// doors). Not covered here: a later plain Update of the re-imported row is
+// stamped at the clock, below the re-import — the open "(HIGH?) Future
+// transaction time from validInstantAfter" item of the 2026-09-24 review
+// (every plain door stamps ahead of the clock without a floor).
 func TestReImportAfterDeleteAheadOfClock(t *testing.T) {
 	t.Parallel()
 	ccRun(t, true, func(t *testing.T, mk func(t *testing.T) *ccEnt) {
@@ -394,29 +397,25 @@ func TestReImportAfterDeleteAheadOfClock(t *testing.T) {
 		views := e.record(pins, valids)
 		rows := e.historyRows(id)
 		importV := e.mustReimport(id, map[string]any{"tkg_valid_from": types.Instant(5000), "x": int64(9)})
-		e.mustUpdate(id, map[string]any{"x": int64(5)})
-		rows = e.keepsRows("re-import and update", id, rows)
+		rows = e.keepsRows("re-import", id, rows)
 		_ = rows
-		e.unchanged("re-import and update", views, e.record(pins, valids), id)
-		var importTx, updateTx types.Instant
+		e.unchanged("re-import", views, e.record(pins, valids), id)
 		for _, r := range e.chain(id) {
-			switch r.x {
-			case int64(9):
-				importTx = r.tm.TxFrom
-			case int64(5):
-				updateTx = r.tm.TxFrom
+			if r.current && r.tm.TxFrom <= d {
+				t.Fatalf("[%s] delete %d, re-import TxFrom %d: not after the delete:%s", e.kind(), d, r.tm.TxFrom, e.chainString(id))
 			}
 		}
-		if importTx <= d || updateTx <= importTx {
-			t.Fatalf("[%s] delete %d, re-import TxFrom %d, update TxFrom %d: not in write order:%s", e.kind(), d, importTx, updateTx, e.chainString(id))
-		}
+		// Both the delete and the re-import lie ahead of every pin the clock
+		// can hand out: the pinned doors still read the first life; the
+		// unpinned doors (every row) read the new life after D.
 		pins = append(pins, e.pin())
-		e.agree("after re-import and update", pins, valids)
-		// The re-imported row (valid from 5000, the new life) answers at D+1:
-		// the update starts later, at its UpdatedAt.
-		if got := e.wantAt(d+1, 0); got != ccVer("T", importV) {
+		e.agree("after re-import", pins, valids)
+		want := ccVer("T", importV)
+		if got := e.wantAt(d+1, 0); got != want {
 			t.Fatalf("[%s] oracle: valid D+1 = [%s]; want the re-imported row v%d", e.kind(), got, importV)
 		}
+		e.expect("valid D+1, unpinned", e.validDoors(d+1), want, id)
+		e.expect("valid future, unpinned", e.validDoors(future), want, id)
 	})
 }
 
