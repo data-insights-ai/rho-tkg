@@ -239,8 +239,9 @@ func TestTxBackfillRel_InvalidInstant(t *testing.T) {
 //
 // Catches: ">=" instead of ">" (t == TxFrom accepted: a zero-width belief
 // interval), a reversed order accepted (t below TxFrom), and a rule that checks
-// only the current row: after a delete and a backfilled re-import the history
-// holds a TxFrom and a TxTo ABOVE the current row's TxFrom (the lesson 62
+// only the current row: after a delete and a backfilled re-import (a chain
+// stored by v4.43–v4.47; the import door refuses it since backlog 38) the
+// history holds a TxFrom and a TxTo ABOVE the current row's TxFrom (the lesson 62
 // inversion: TxFrom is not co-monotonic with version), so t between them must
 // refuse; t between the history TxFrom and TxTo catches a rule that reads
 // TxFrom but not TxTo.
@@ -287,9 +288,10 @@ func TestTxBackfillRel_OrderEqualReversed(t *testing.T) {
 			if err := g.Rels.Delete(ctx, r.ID()); err != nil {
 				t.Fatalf("Delete: %v", err)
 			}
-			if _, err := g.Rels.Import(ctx, r.ID(), "LINK", s, e, map[string]any{"tkg_valid_from": vf, "tkg_tx_from": base + 10, "w": int64(3)}); err != nil {
-				t.Fatalf("Import: %v", err)
-			}
+			// The backfilled re-import inside the first life, as v4.43–v4.47
+			// stored it (since backlog 38 the import door refuses it; stored
+			// chains keep it).
+			oldImportRel(t, g, r.ID(), "LINK", s.ID(), e.ID(), map[string]any{"w": int64(3)}, vf, base+10)
 			cur, err := g.Rels.Get(ctx, r.ID())
 			if err != nil {
 				t.Fatalf("Get: %v", err)

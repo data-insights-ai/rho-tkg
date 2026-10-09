@@ -314,7 +314,8 @@ func TestTxBackfillNode_InvalidInstant(t *testing.T) {
 //
 // Catches: ">=" instead of ">" (t == TxFrom accepted: a zero-width belief
 // interval), a reversed order accepted, and a rule that checks only the
-// current row: after a delete and a backfilled re-import the node's history
+// current row: after a delete and a backfilled re-import (a chain stored by
+// v4.43–v4.47; the import door refuses it since backlog 38) the node's history
 // holds a TxFrom and a TxTo ABOVE the current row's TxFrom (lesson 62), so t
 // between them must refuse.
 func TestTxBackfillNode_OrderEqualReversed(t *testing.T) {
@@ -356,9 +357,10 @@ func TestTxBackfillNode_OrderEqualReversed(t *testing.T) {
 			if err := g.Nodes.Delete(ctx, n.ID()); err != nil {
 				t.Fatalf("Delete: %v", err)
 			}
-			if _, err := g.Nodes.Import(ctx, n.ID(), []string{"Ref"}, map[string]any{"tkg_valid_from": vf, "tkg_tx_from": base + 10, "w": int64(3)}); err != nil {
-				t.Fatalf("Import: %v", err)
-			}
+			// The backfilled re-import inside the first life, as v4.43–v4.47
+			// stored it (since backlog 38 the import door refuses it; stored
+			// chains keep it).
+			oldImportNode(t, g, n.ID(), "Ref", map[string]any{"w": int64(3)}, vf, base+10)
 			cur, err := g.Nodes.Get(ctx, n.ID())
 			if err != nil {
 				t.Fatalf("Get: %v", err)
