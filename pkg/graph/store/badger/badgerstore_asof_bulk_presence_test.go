@@ -217,7 +217,22 @@ func TestBulkAsOfPresence_EquivalentAcrossStates(t *testing.T) {
 				}
 				return ids
 			}
+			// Deep: the current row is the newest; k history rows below it.
+			deep := func(base, n int) []int64 {
+				ids := make([]int64, 0, n)
+				for e := 0; e < n; e++ {
+					id := k.id(base + e)
+					ids = append(ids, id)
+					rows := 1 + e%4
+					for v := 0; v < rows; v++ {
+						k.put(t, bs, id, uint32(v), types.Instant(10+10*v), false)
+					}
+					k.put(t, bs, id, uint32(rows), types.Instant(10+10*rows), true)
+				}
+				return ids
+			}
 			ids := append(populate(0, 80), plain(1000, 40)...)
+			ids = append(ids, deep(2000, 40)...)
 			flush := func() {
 				if err := bs.Flush(); err != nil {
 					t.Fatalf("Flush: %v", err)
@@ -278,7 +293,7 @@ func TestBulkAsOfPresence_EquivalentAcrossStates(t *testing.T) {
 				t.Fatalf("Clear: %v", err)
 			}
 			putBulkPresenceEndpoints(t, bs)
-			ids = append(populate(5000, 30), plain(6000, 10)...)
+			ids = append(append(populate(5000, 30), plain(6000, 10)...), deep(7000, 10)...)
 			flush()
 			check("cleared")
 		})
@@ -667,5 +682,202 @@ func (k bulkPresenceKind) putNoFatal(bs *Store, id int64, ver uint32, txFrom typ
 	}
 	if err != nil {
 		fail(fmt.Errorf("put %s %d v%d: %w", k.name, id, ver, err))
+	}
+}
+
+// seedBelowCurrent writes n entities whose current row is the newest: 1 + e%3
+// history rows below it (versions 0..), the current row one above them.
+func seedBelowCurrent(t *testing.T, k bulkPresenceKind, bs *Store, base, n int) []int64 {
+	t.Helper()
+	ids := make([]int64, 0, n)
+	for e := 0; e < n; e++ {
+		id := k.id(base + e)
+		ids = append(ids, id)
+		rows := 1 + e%3
+		for v := 0; v < rows; v++ {
+			k.put(t, bs, id, uint32(v), types.Instant(10+10*v), false)
+		}
+		k.put(t, bs, id, uint32(rows), types.Instant(10+10*rows), true)
+	}
+	return ids
+}
+
+// countProbes runs the bulk door and returns the number of key probes the scan
+// made (entities not answered from the presence set) and the result.
+func countProbes(t *testing.T, k bulkPresenceKind, bs *Store, pin types.Instant) (int64, map[int64]uint32) {
+	t.Helper()
+	var probes atomic.Int64
+	bs.bulkAsOfKeyProbeTestHook = func() { probes.Add(1) }
+	defer func() { bs.bulkAsOfKeyProbeTestHook = nil }()
+	got, err := k.bulk(bs, pin)
+	if err != nil {
+		t.Fatalf("bulk: %v", err)
+	}
+	return probes.Load(), got
+}
+
+// TestBulkAsOfPresence_TopVersionSkipsProbeForHistoryBelowCurrent: an entity
+// whose history rows all sit below the current version has no row above it,
+// which the presence set knows from the highest history version it keeps per
+// ID: the bulk scan reads no key for it. Entities with rows above the current
+// version (cascade rows) still read the key. (Red before the top version: every
+// entity with history was probed.)
+func TestBulkAsOfPresence_TopVersionSkipsProbeForHistoryBelowCurrent(t *testing.T) {
+	t.Parallel()
+	for _, k := range bulkPresenceKinds() {
+		t.Run(k.name, func(t *testing.T) {
+			t.Parallel()
+			for _, reopen := range []bool{false, true} { // true: the set is built from the keys
+				dir := t.TempDir()
+				bs := openBulkPresenceStore(t, dir, false)
+				putBulkPresenceEndpoints(t, bs)
+				below := seedBelowCurrent(t, k, bs, 0, 30)
+				aboveIDs := make([]int64, 0, 5)
+				for e := 0; e < 5; e++ {
+					id := k.id(500 + e)
+					aboveIDs = append(aboveIDs, id)
+					k.put(t, bs, id, 0, 100, false)
+					k.put(t, bs, id, 1, 200, true)
+					k.put(t, bs, id, 2, 300, false)
+				}
+				if err := bs.Flush(); err != nil {
+					t.Fatalf("Flush: %v", err)
+				}
+				if reopen {
+					if err := bs.Close(); err != nil {
+						t.Fatalf("Close: %v", err)
+					}
+					bs = openBulkPresenceStore(t, dir, false)
+				}
+				probes, got := countProbes(t, k, bs, bulkPresencePin)
+				_ = bs.Close()
+				if probes < int64(len(aboveIDs)) || probes > 2*int64(len(aboveIDs)) {
+					t.Fatalf("reopen=%v: %d key probes for %d entities with a row above the current version and %d with history only below it; want about one per entity of the first kind and none for the second", reopen, probes, len(aboveIDs), len(below))
+				}
+				for _, id := range aboveIDs {
+					if got[id] != 2 {
+						t.Fatalf("reopen=%v %s %d: bulk v%d, want v2", reopen, k.name, id, got[id])
+					}
+				}
+				for i, id := range below {
+					if want := uint32(1 + i%3); got[id] != want {
+						t.Fatalf("reopen=%v %s %d: bulk v%d, want the current row v%d", reopen, k.name, id, got[id], want)
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestBulkAsOfPresence_TopResolvedByNextRead: a history delete (trim) marks the
+// ID unknown, so the scan reads its key; the next HasHistory read resolves the
+// exact highest version, and the scan after that reads nothing for an ID whose
+// remaining rows are below the current version. (Red before the top version:
+// the second scan still probed.)
+func TestBulkAsOfPresence_TopResolvedByNextRead(t *testing.T) {
+	t.Parallel()
+	for _, k := range bulkPresenceKinds() {
+		t.Run(k.name, func(t *testing.T) {
+			t.Parallel()
+			bs := openBulkPresenceStore(t, t.TempDir(), false)
+			t.Cleanup(func() { _ = bs.Close() })
+			putBulkPresenceEndpoints(t, bs)
+			var ids []int64
+			for e := 0; e < 6; e++ { // current v1 (TxFrom 200), history v0, and rows above that the trim removes
+				id := k.id(e)
+				ids = append(ids, id)
+				k.put(t, bs, id, 0, 100, false)
+				k.put(t, bs, id, 1, 200, true)
+				k.put(t, bs, id, 2, 300, false)
+				k.put(t, bs, id, 3, 301, false)
+			}
+			if err := bs.Flush(); err != nil {
+				t.Fatalf("Flush: %v", err)
+			}
+			if _, got := countProbes(t, k, bs, bulkPresencePin); got[ids[0]] != 3 && got[ids[0]] != 2 {
+				t.Fatalf("scenario: rows above the current version must outrank it, got v%d", got[ids[0]])
+			}
+			has := func(id int64) (bool, error) {
+				if k.name == "node" {
+					return bs.HasNodeHistory(types.NodeID(snowflake.ID(id)))
+				}
+				return bs.HasRelHistory(types.RelID(snowflake.ID(id)))
+			}
+			for _, flushed := range []bool{false, true} {
+				for _, id := range ids {
+					if err := k.trim(bs, id, 2); err != nil { // v2, v3 gone; v0 and the current v1 remain
+						t.Fatalf("trim %d: %v", id, err)
+					}
+				}
+				if flushed {
+					if err := bs.Flush(); err != nil {
+						t.Fatalf("Flush: %v", err)
+					}
+				}
+				probes, got := countProbes(t, k, bs, bulkPresencePin)
+				if probes < int64(len(ids)) {
+					t.Fatalf("flushed=%v: %d probes before the IDs were resolved, want at least one per unknown ID (%d)", flushed, probes, len(ids))
+				}
+				for _, id := range ids {
+					if got[id] != 1 {
+						t.Fatalf("flushed=%v %s %d: bulk v%d, want the current row v1 after the trim", flushed, k.name, id, got[id])
+					}
+					if present, err := has(id); err != nil || !present {
+						t.Fatalf("HasHistory(%d) = (%v, %v), want true (v0 remains)", id, present, err)
+					}
+				}
+				if probes, _ = countProbes(t, k, bs, bulkPresencePin); probes != 0 {
+					t.Fatalf("flushed=%v: %d probes after HasHistory resolved every ID, want 0 (the remaining row v0 is below the current v1)", flushed, probes)
+				}
+				// Put the rows back for the second round.
+				for _, id := range ids {
+					k.put(t, bs, id, 2, 300, false)
+					k.put(t, bs, id, 3, 301, false)
+				}
+			}
+		})
+	}
+}
+
+// TestBulkAsOfPresence_ClearDropsTops: Clear drops the keys and the set; an ID
+// rewritten afterwards with lower versions must not keep the old, higher top.
+// (Red before the top version: every entity with history was probed. With a
+// top kept across Clear the entity below would still be probed.)
+func TestBulkAsOfPresence_ClearDropsTops(t *testing.T) {
+	t.Parallel()
+	for _, k := range bulkPresenceKinds() {
+		t.Run(k.name, func(t *testing.T) {
+			t.Parallel()
+			bs := openBulkPresenceStore(t, t.TempDir(), false)
+			t.Cleanup(func() { _ = bs.Close() })
+			putBulkPresenceEndpoints(t, bs)
+			id := k.id(1)
+			for v := uint32(0); v <= 6; v++ {
+				k.put(t, bs, id, v, types.Instant(10+10*v), v == 1) // current v1, rows up to v6 above it
+			}
+			if err := bs.Flush(); err != nil {
+				t.Fatalf("Flush: %v", err)
+			}
+			if _, got := countProbes(t, k, bs, bulkPresencePin); got[id] == 1 {
+				t.Fatalf("scenario: a row above the current version must outrank it, got v%d", got[id])
+			}
+			if err := bs.Clear(); err != nil {
+				t.Fatalf("Clear: %v", err)
+			}
+			putBulkPresenceEndpoints(t, bs)
+			k.put(t, bs, id, 0, 10, false)
+			k.put(t, bs, id, 1, 20, false)
+			k.put(t, bs, id, 2, 30, true)
+			if err := bs.Flush(); err != nil {
+				t.Fatalf("Flush: %v", err)
+			}
+			probes, got := countProbes(t, k, bs, bulkPresencePin)
+			if got[id] != 2 {
+				t.Fatalf("%s %d: bulk v%d after Clear, want the current row v2", k.name, id, got[id])
+			}
+			if probes != 0 {
+				t.Fatalf("%d probes after Clear for an entity whose rows are all below the current version, want 0", probes)
+			}
+		})
 	}
 }

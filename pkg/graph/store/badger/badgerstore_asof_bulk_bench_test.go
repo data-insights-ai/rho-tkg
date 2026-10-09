@@ -11,9 +11,11 @@ import (
 
 // BenchmarkNodesAsOfBulk / BenchmarkRelsAsOfBulk measure the bulk as-of doors
 // over 20 K entities whose current row is visible at the pin, with no history
-// row ("none") or one history row each ("one"). NodesAsOf/RelsAsOf look for a
+// row ("none"), one ("one") or three ("three") history rows each, all below the
+// current version. NodesAsOf/RelsAsOf look for a
 // row above the current version per entity (the pin-stable as-of rule); the
-// history presence set answers "none" without a key read.
+// history presence set (highest history version per ID) answers it without a
+// key read.
 //
 //	go test ./pkg/graph/store/badger/ -run '^$' -bench 'AsOfBulk$' -benchmem
 func BenchmarkNodesAsOfBulk(b *testing.B) { benchAsOfBulk(b, true) }
@@ -22,11 +24,8 @@ func BenchmarkRelsAsOfBulk(b *testing.B)  { benchAsOfBulk(b, false) }
 const asOfBulkBenchEntities = 20_000
 
 func benchAsOfBulk(b *testing.B, node bool) {
-	for _, history := range []bool{false, true} {
-		name := "history=none"
-		if history {
-			name = "history=one"
-		}
+	for _, history := range []int{0, 1, 3} {
+		name := map[int]string{0: "history=none", 1: "history=one", 3: "history=three"}[history]
 		b.Run(name, func(b *testing.B) {
 			bs, err := New(Config{Dir: b.TempDir(), FlushInterval: time.Hour})
 			if err != nil {
@@ -58,7 +57,7 @@ func benchAsOfBulk(b *testing.B, node bool) {
 	}
 }
 
-func seedAsOfBulkBench(b *testing.B, bs *Store, node, history bool) {
+func seedAsOfBulkBench(b *testing.B, bs *Store, node bool, history int) {
 	b.Helper()
 	if !node {
 		for _, ep := range []types.NodeID{types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2))} {
@@ -78,30 +77,40 @@ func seedAsOfBulkBench(b *testing.B, bs *Store, node, history bool) {
 	}
 }
 
-// putAsOfBulkBenchEntity writes one entity: version 0 (TxFrom 100) as the
-// current row, or, with history, version 0 replaced by version 1 (TxFrom 200).
-func putAsOfBulkBenchEntity(bs *Store, node, history bool, id int64) error {
-	if node {
-		nid := types.NodeID(snowflake.ID(id))
-		v0 := types.NewNode(nid, 1, nil)
-		v0.SetTemporal(&types.TemporalMetadata{TxFrom: 100})
-		if err := bs.PutNode(v0); err != nil || !history {
+// putAsOfBulkBenchEntity writes one entity: `history` rows (versions 0..) below
+// the current row, which carries version `history`; version v has TxFrom
+// 10+10*v. Each Replace moves the previous current row into history.
+func putAsOfBulkBenchEntity(bs *Store, node bool, history int, id int64) error {
+	start, end := types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2))
+	var prevN *types.Node
+	var prevR *types.Relationship
+	for v := 0; v <= history; v++ {
+		tm := &types.TemporalMetadata{TxFrom: types.Instant(10 + 10*v)}
+		var err error
+		if node {
+			n := types.NewNode(types.NodeID(snowflake.ID(id)), 1, nil)
+			n.SetVersion(uint32(v))
+			n.SetTemporal(tm)
+			if v == 0 {
+				err = bs.PutNode(n)
+			} else {
+				err = bs.ReplaceNodeWithHistory(n, uint32(v-1), prevN)
+			}
+			prevN = n
+		} else {
+			r := types.NewRelationship(types.RelID(snowflake.ID(id)), 1, start, end)
+			r.SetVersion(uint32(v))
+			r.SetTemporal(tm)
+			if v == 0 {
+				err = bs.PutRelationship(r)
+			} else {
+				err = bs.ReplaceRelWithHistory(r, uint32(v-1), prevR)
+			}
+			prevR = r
+		}
+		if err != nil {
 			return err
 		}
-		v1 := types.NewNode(nid, 1, nil)
-		v1.SetVersion(1)
-		v1.SetTemporal(&types.TemporalMetadata{TxFrom: 200})
-		return bs.ReplaceNodeWithHistory(v1, 0, v0)
 	}
-	rid := types.RelID(snowflake.ID(id))
-	start, end := types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2))
-	v0 := types.NewRelationship(rid, 1, start, end)
-	v0.SetTemporal(&types.TemporalMetadata{TxFrom: 100})
-	if err := bs.PutRelationship(v0); err != nil || !history {
-		return err
-	}
-	v1 := types.NewRelationship(rid, 1, start, end)
-	v1.SetVersion(1)
-	v1.SetTemporal(&types.TemporalMetadata{TxFrom: 200})
-	return bs.ReplaceRelWithHistory(v1, 0, v0)
+	return nil
 }
