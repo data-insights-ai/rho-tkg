@@ -644,32 +644,43 @@ func TestPublishedApplicationExportConcurrentReplacementAndClose(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer e.Close()
+			ctx, cancel := context.WithCancel(t.Context())
+			t.Cleanup(cancel)
+			_, resume, release := publicationTestGate(t)
 			first := make(chan error, 1)
-			resume := make(chan struct{})
-			result := make(chan error, 1)
-			go func() {
-				_, err := e.BuildManifest(t.Context(), ReadBudget{1, 4096})
+			result := publicationTestWorker(t, func() { release(); cancel() }, func() error {
+				_, err := e.BuildManifest(ctx, ReadBudget{1, 4096})
 				first <- err
-				<-resume
-				for err == nil {
+				select {
+				case <-resume:
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+				for n := 0; err == nil; n++ {
+					if n >= 1000 {
+						return ErrLimit
+					}
 					var done bool
-					done, err = e.BuildManifest(t.Context(), ReadBudget{1, 4096})
+					done, err = e.BuildManifest(ctx, ReadBudget{1, 4096})
 					if done {
 						break
 					}
 				}
 				if err == nil {
-					for {
+					for n := 0; ; n++ {
+						if n >= 1000 {
+							return ErrLimit
+						}
 						var c ApplicationSnapshotChunk
-						c, err = e.Next(t.Context(), ReadBudget{1, 4096})
+						c, err = e.Next(ctx, ReadBudget{1, 4096})
 						if err != nil || c.Final {
 							break
 						}
 					}
 				}
-				result <- err
-			}()
-			if err := <-first; err != nil {
+				return err
+			})
+			if err := publicationTestResult(t, first); err != nil {
 				t.Fatal(err)
 			}
 			if closeStore {
@@ -682,8 +693,8 @@ func TestPublishedApplicationExportConcurrentReplacementAndClose(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			close(resume)
-			err = <-result
+			release()
+			err = publicationTestResult(t, result)
 			if closeStore {
 				if !errors.Is(err, ErrClosed) {
 					t.Fatal(err)

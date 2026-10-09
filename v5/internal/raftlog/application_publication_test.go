@@ -101,18 +101,13 @@ func TestApplicationPublicationCheapReclaimDoesNotScanRetainedHistory(t *testing
 func TestApplicationPublicationCapturePreservesNewerCheckpointAndSerializesReclaim(t *testing.T) {
 	s := publicationStore(t, vfs.NewMem())
 	generationApply(t, s, "old", KV{Key: []byte("a"), Value: []byte("old")})
-	reached, resume := make(chan struct{}), make(chan struct{})
+	reached, resume, release := publicationTestGate(t)
 	s.publicationCaptureHook = func() { close(reached); <-resume }
-	result := make(chan error, 1)
-	go func() { result <- s.PublishSnapshot() }()
-	select {
-	case <-reached:
-	case <-time.After(5 * time.Second):
-		t.Fatal("capture stalled")
-	}
+	result := publicationTestWorker(t, release, s.PublishSnapshot)
+	publicationTestReached(t, reached)
 	generationApply(t, s, "new", KV{Key: []byte("a"), Value: []byte("new")})
-	close(resume)
-	if err := <-result; err != nil {
+	release()
+	if err := publicationTestResult(t, result); err != nil {
 		t.Fatal(err)
 	}
 	cut, err := s.PublishedApplicationCut()
@@ -123,26 +118,21 @@ func TestApplicationPublicationCapturePreservesNewerCheckpointAndSerializesRecla
 	if err != nil || index != 3 || string(image) != "new" {
 		t.Fatal("moving checkpoint overwritten", index, string(image), err)
 	}
-	reached, resume = make(chan struct{}), make(chan struct{})
-	s.publicationCaptureHook = func() { close(reached); <-resume }
-	go func() { result <- s.PublishSnapshot() }()
-	select {
-	case <-reached:
-	case <-time.After(5 * time.Second):
-		t.Fatal("second capture stalled")
-	}
-	reclaim := make(chan error, 1)
-	go func() { reclaim <- s.ReclaimApplication() }()
+	secondReached, secondResume, secondRelease := publicationTestGate(t)
+	s.publicationCaptureHook = func() { close(secondReached); <-secondResume }
+	secondResult := publicationTestWorker(t, secondRelease, s.PublishSnapshot)
+	publicationTestReached(t, secondReached)
+	reclaim := publicationTestWorker(t, secondRelease, s.ReclaimApplication)
 	select {
 	case err := <-reclaim:
 		t.Fatal("reclaim bypassed serialized publication", err)
 	case <-time.After(20 * time.Millisecond):
 	}
-	close(resume)
-	if err := <-result; err != nil {
+	secondRelease()
+	if err := publicationTestResult(t, secondResult); err != nil {
 		t.Fatal(err)
 	}
-	if err := <-reclaim; err != nil {
+	if err := publicationTestResult(t, reclaim); err != nil {
 		t.Fatal("healthy reclaim stopped after external publication", err)
 	}
 	s.publicationCaptureHook = nil
@@ -306,26 +296,21 @@ func TestApplicationPublicationCloseWaitsForOwnedCaptureAndReopensComplete(t *te
 	mem := vfs.NewCrashableMem()
 	s := publicationStore(t, mem)
 	generationApply(t, s, "old", KV{Key: []byte("a"), Value: []byte("old")})
-	reached, resume := make(chan struct{}), make(chan struct{})
+	reached, resume, release := publicationTestGate(t)
 	s.publicationCaptureHook = func() { close(reached); <-resume }
-	published, closed := make(chan error, 1), make(chan error, 1)
-	go func() { published <- s.PublishSnapshot() }()
-	select {
-	case <-reached:
-	case <-time.After(5 * time.Second):
-		t.Fatal("capture stalled")
-	}
-	go func() { closed <- s.Close() }()
+	published := publicationTestWorker(t, release, s.PublishSnapshot)
+	publicationTestReached(t, reached)
+	closed := publicationTestWorker(t, release, s.Close)
 	select {
 	case err := <-closed:
 		t.Fatal("close bypassed capture lifetime", err)
 	case <-time.After(20 * time.Millisecond):
 	}
-	close(resume)
-	if err := <-published; err != nil {
+	release()
+	if err := publicationTestResult(t, published); err != nil {
 		t.Fatal(err)
 	}
-	if err := <-closed; err != nil {
+	if err := publicationTestResult(t, closed); err != nil {
 		t.Fatal(err)
 	}
 	r, err := Open(Config{Dir: "db", FS: mem.CrashClone(vfs.CrashCloneCfg{}), Application: s.meta.App.Policy, Transfer: s.meta.Transfer, Generations: s.meta.Gen.Limits, PublishedCuts: s.meta.Gen.Publication.Limits})
