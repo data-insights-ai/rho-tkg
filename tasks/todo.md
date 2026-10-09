@@ -60,6 +60,24 @@ Phase 2 (parallel, after W1+W2 merged)
 Phase 3
 - [ ] W5 finish: R15 cross-backend oracle, R11 over every door, docs/api.md, stale comments (§6.8), lesson 59
       amendment, CHANGELOG `[Unreleased]` 4.44.0, `make test-race`, `make cover`.
+      W5 ledger (worktree agent-abdf7ef774350985f, written before the first test edit):
+      - R15 in code? doors seamed (tx_order.go checkTxOrder; relationship_delete.go/node_delete.go `at` seam;
+        updateTemporal.txAt); the generative oracle (bitemporaloracle_test.go) has no caller-instant op and no
+        tiered arm. Red test `TestTxBackfillOracle_CrossBackend` (memory, badger, sharded, tiered): random plain
+        Add/Update/Delete/CloseVersion/SetVersionInterval interleaved with node/rel DeleteWithTx/UpdateWithTx over
+        standalone, GraphTx, Batch, ingest strong + concurrent; per op the stamps carry t and pin t answers as the
+        far-future pin right after it; per seed every point/during/TxAt/as-of/TxPin/ByLabel/ByType door equals the
+        oracle and the four backends give identical answers. Break-the-code: a door stubbed to the plain stamp
+        (rel delete seam, node update seam), t off by one, a backend diverging. Proof:
+        evidence/red-w5-oracle.txt (seam reverted), green-w5.txt.
+      - R11 every door in code? only the standalone doors race (TestTxBackfillRel/Node_RaceClock). Red test
+        `TestTxBackfill_RaceClockEveryDoor` (nodes and rels × GraphTx, Batch, ingest strong, ingest concurrent,
+        -race). Break: the seam's order check removed (the concurrent pre-flight runs under the shared lock only).
+        Proof: evidence/red-w5-race.txt.
+      - Ordering on every door with errors.Is: core R3 already runs all 10 rel and 10 node doors; facade gap: the
+        node GraphTx/Batch/Session doors have no pkg/graph test. Red test `TestNodesWithTx_TxBatchIngestFacade`
+        (t = TxFrom, TxFrom-1, below a history TxTo; errors.Is graph.ErrTxOrder and ErrInvalidTxFrom). Break: a
+        door forwarded to its plain twin.
 - [ ] Review agent per AGENTS.md MR protocol on the merged diff; fixes applied.
 - [ ] Dependents build/vet against the merged tree (request 3).
 
