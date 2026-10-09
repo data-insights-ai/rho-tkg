@@ -632,6 +632,17 @@ func (v *ApplicationView) fail(err error) error {
 	return err
 }
 
+// ReadLimits returns immutable configured per-call row/byte maxima, not remaining
+// quota, view validity or a retention lease. Nil returns zero. A closed view may
+// still report its configuration; the store's application policy never changes.
+func (v *ApplicationView) ReadLimits() ReadBudget {
+	if v == nil {
+		return ReadBudget{}
+	}
+	p := v.s.ApplicationLimits()
+	return ReadBudget{Rows: p.MaxPageRows, Bytes: p.MaxPageBytes}
+}
+
 // Scan enumerates logical keys in byte order, seeking over version runs without
 // decoding history or building a resident key map. Tombstones are omitted but
 // budgeted. nil upper is unbounded; nil lower starts the namespace. after must
