@@ -1,0 +1,42 @@
+=== mutant M3-release-before-store-write
+diff --git a/pkg/graph/internal/core/temporal_cascade.go b/pkg/graph/internal/core/temporal_cascade.go
+index dedfaef..3aecb9d 100644
+--- a/pkg/graph/internal/core/temporal_cascade.go
++++ b/pkg/graph/internal/core/temporal_cascade.go
+@@ -122,7 +122,7 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID,
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	defer uniqueRelease()
++	uniqueRelease()
+ 
+ 	maxVersion := uint32(0)
+ 	for _, h := range history {
+--- go test -run TestUniqueCascade_ ./pkg/graph/ (exit 1)
+--- FAIL: TestUniqueCascade_ConcurrentOneWinner (3.23s)
+    --- FAIL: TestUniqueCascade_ConcurrentOneWinner/memory/temporal/current (0.00s)
+        unique_cascade_test.go:624: round 4: wins=2 losses=0 (errs [<nil> <nil>]), want exactly one winner
+    --- FAIL: TestUniqueCascade_ConcurrentOneWinner/memory/session-concurrent/current (0.00s)
+        unique_cascade_test.go:624: round 1: wins=2 losses=0 (errs [<nil> <nil>]), want exactly one winner
+    --- FAIL: TestUniqueCascade_ConcurrentOneWinner/badger/temporal/current (0.10s)
+        unique_cascade_test.go:624: round 5: wins=2 losses=0 (errs [<nil> <nil>]), want exactly one winner
+    --- FAIL: TestUniqueCascade_ConcurrentOneWinner/badger/session-concurrent/current (0.06s)
+        unique_cascade_test.go:624: round 0: wins=2 losses=0 (errs [<nil> <nil>]), want exactly one winner
+    --- FAIL: TestUniqueCascade_ConcurrentOneWinner/tiered/temporal/current (0.13s)
+        unique_cascade_test.go:624: round 1: wins=2 losses=0 (errs [<nil> <nil>]), want exactly one winner
+    --- FAIL: TestUniqueCascade_ConcurrentOneWinner/tiered/session-concurrent/current (0.08s)
+        unique_cascade_test.go:624: round 0: wins=2 losses=0 (errs [<nil> <nil>]), want exactly one winner
+    --- FAIL: TestUniqueCascade_ConcurrentOneWinner/sharded/temporal/current (0.11s)
+        unique_cascade_test.go:624: round 5: wins=2 losses=0 (errs [<nil> <nil>]), want exactly one winner
+    --- FAIL: TestUniqueCascade_ConcurrentOneWinner/sharded/session-concurrent/current (0.02s)
+        unique_cascade_test.go:624: round 3: wins=2 losses=0 (errs [<nil> <nil>]), want exactly one winner
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	3.425s
+FAIL
+--- go test -run TestCascadeUnique_ ./pkg/graph/internal/core/ (exit 1)
+--- FAIL: TestCascadeUnique_StripeHeldAcrossStoreWrite (0.00s)
+    unique_cascade_lock_test.go:206: Update onto v finished (err=<nil>) while the cascade claiming v was inside its store write
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.156s
+FAIL
+=== M3-release-before-store-write: RED (killed), 10 failing (sub)tests

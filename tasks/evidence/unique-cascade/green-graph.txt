@@ -1,0 +1,1122 @@
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused
+=== PAUSE TestUniqueCascade_OpenEndedOntoHeldValueRefused
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue
+=== PAUSE TestUniqueCascade_PastIntervalOntoHeldValue
+=== RUN   TestUniqueCascade_FreeValuePasses
+=== PAUSE TestUniqueCascade_FreeValuePasses
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly
+=== PAUSE TestUniqueCascade_PastFreeValueClaimsForeverOnly
+=== RUN   TestUniqueCascade_SelfResetPasses
+=== PAUSE TestUniqueCascade_SelfResetPasses
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly
+=== PAUSE TestUniqueCascade_MoveReleasesForCurrentOnly
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass
+=== PAUSE TestUniqueCascade_NilPropsAndKeyAbsentPass
+=== RUN   TestUniqueCascade_FloatRefused
+=== PAUSE TestUniqueCascade_FloatRefused
+=== RUN   TestUniqueCascade_RefusalClaimsNothing
+=== PAUSE TestUniqueCascade_RefusalClaimsNothing
+=== RUN   TestUniqueCascade_ConstraintAfterDuplicate
+=== PAUSE TestUniqueCascade_ConstraintAfterDuplicate
+=== RUN   TestUniqueCascade_GroupSemantics
+=== PAUSE TestUniqueCascade_GroupSemantics
+=== RUN   TestUniqueCascade_ConcurrentOneWinner
+=== PAUSE TestUniqueCascade_ConcurrentOneWinner
+=== CONT  TestUniqueCascade_OpenEndedOntoHeldValueRefused
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/memory/temporal/current
+=== CONT  TestUniqueCascade_NilPropsAndKeyAbsentPass
+=== CONT  TestUniqueCascade_ConstraintAfterDuplicate
+=== CONT  TestUniqueCascade_ConcurrentOneWinner
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/memory/temporal/current
+=== RUN   TestUniqueCascade_ConstraintAfterDuplicate/memory/temporal
+=== CONT  TestUniqueCascade_GroupSemantics
+=== CONT  TestUniqueCascade_PastFreeValueClaimsForeverOnly
+=== RUN   TestUniqueCascade_GroupSemantics/memory/batch/current
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/memory/temporal/current
+=== RUN   TestUniqueCascade_ConstraintAfterDuplicate/memory/tx
+=== CONT  TestUniqueCascade_MoveReleasesForCurrentOnly
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/memory/temporal/forever
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/memory/temporal/current
+=== RUN   TestUniqueCascade_ConstraintAfterDuplicate/memory/batch
+=== CONT  TestUniqueCascade_SelfResetPasses
+=== CONT  TestUniqueCascade_RefusalClaimsNothing
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/memory/temporal/current
+=== RUN   TestUniqueCascade_SelfResetPasses/memory/temporal/current
+=== CONT  TestUniqueCascade_FloatRefused
+=== RUN   TestUniqueCascade_FloatRefused/memory/temporal/current
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/memory/temporal/forever
+=== RUN   TestUniqueCascade_FloatRefused/memory/temporal/forever
+=== CONT  TestUniqueCascade_FreeValuePasses
+=== CONT  TestUniqueCascade_PastIntervalOntoHeldValue
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/memory/temporal/current
+=== RUN   TestUniqueCascade_SelfResetPasses/memory/temporal/forever
+=== RUN   TestUniqueCascade_FreeValuePasses/memory/temporal/current
+=== RUN   TestUniqueCascade_FloatRefused/memory/tx/current
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/memory/temporal/forever
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/memory/temporal/current
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/memory/tx/current
+=== RUN   TestUniqueCascade_ConstraintAfterDuplicate/memory/session-strong-sync
+=== RUN   TestUniqueCascade_GroupSemantics/memory/batch/forever
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/memory/temporal/forever
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/memory/temporal/forever
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/memory/tx/current
+=== RUN   TestUniqueCascade_SelfResetPasses/memory/tx/current
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/memory/tx/current
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/memory/temporal/forever
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/memory/tx/forever
+=== RUN   TestUniqueCascade_GroupSemantics/memory/session-strong-sync/current
+=== RUN   TestUniqueCascade_FreeValuePasses/memory/temporal/forever
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/memory/tx/forever
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/memory/tx/forever
+=== RUN   TestUniqueCascade_FreeValuePasses/memory/tx/current
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/memory/batch/current
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/memory/temporal/forever
+=== RUN   TestUniqueCascade_ConstraintAfterDuplicate/memory/session-strong-async
+=== RUN   TestUniqueCascade_FloatRefused/memory/tx/forever
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/memory/tx/current
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/memory/tx/current
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/memory/batch/current
+=== RUN   TestUniqueCascade_SelfResetPasses/memory/tx/forever
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/memory/batch/forever
+=== RUN   TestUniqueCascade_ConstraintAfterDuplicate/memory/session-concurrent
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/memory/tx/current
+=== RUN   TestUniqueCascade_FreeValuePasses/memory/tx/forever
+=== RUN   TestUniqueCascade_GroupSemantics/memory/session-strong-sync/forever
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/memory/batch/current
+=== RUN   TestUniqueCascade_FloatRefused/memory/batch/current
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/memory/tx/forever
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/memory/batch/forever
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/memory/tx/forever
+=== RUN   TestUniqueCascade_ConstraintAfterDuplicate/badger/temporal
+=== RUN   TestUniqueCascade_FreeValuePasses/memory/batch/current
+=== RUN   TestUniqueCascade_SelfResetPasses/memory/batch/current
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/memory/session-strong-sync/current
+=== RUN   TestUniqueCascade_FloatRefused/memory/batch/forever
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/memory/tx/forever
+=== RUN   TestUniqueCascade_SelfResetPasses/memory/batch/forever
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/memory/batch/current
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/memory/session-strong-sync/forever
+=== RUN   TestUniqueCascade_FreeValuePasses/memory/batch/forever
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/memory/batch/forever
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/memory/batch/forever
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/memory/session-strong-async/current
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/memory/session-strong-sync/current
+=== RUN   TestUniqueCascade_GroupSemantics/memory/session-strong-async/current
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/memory/session-strong-sync/current
+=== RUN   TestUniqueCascade_SelfResetPasses/memory/session-strong-sync/current
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/memory/batch/current
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/memory/batch/current
+=== RUN   TestUniqueCascade_FloatRefused/memory/session-strong-sync/current
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/memory/session-strong-sync/current
+=== RUN   TestUniqueCascade_FreeValuePasses/memory/session-strong-sync/current
+=== RUN   TestUniqueCascade_FloatRefused/memory/session-strong-sync/forever
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/memory/session-strong-async/forever
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/memory/batch/forever
+=== RUN   TestUniqueCascade_FloatRefused/memory/session-strong-async/current
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/memory/session-strong-sync/forever
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/memory/session-strong-sync/forever
+=== RUN   TestUniqueCascade_FreeValuePasses/memory/session-strong-sync/forever
+=== RUN   TestUniqueCascade_SelfResetPasses/memory/session-strong-sync/forever
+=== RUN   TestUniqueCascade_FloatRefused/memory/session-strong-async/forever
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/memory/session-concurrent/current
+=== RUN   TestUniqueCascade_GroupSemantics/memory/session-strong-async/forever
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/memory/session-strong-sync/forever
+=== RUN   TestUniqueCascade_FreeValuePasses/memory/session-strong-async/current
+=== RUN   TestUniqueCascade_FloatRefused/memory/session-concurrent/current
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/memory/tx/current
+=== RUN   TestUniqueCascade_FreeValuePasses/memory/session-strong-async/forever
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/memory/session-concurrent/forever
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/memory/batch/forever
+=== RUN   TestUniqueCascade_FloatRefused/memory/session-concurrent/forever
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/memory/session-strong-async/current
+=== RUN   TestUniqueCascade_GroupSemantics/memory/session-concurrent/current
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/memory/session-strong-sync/current
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/memory/session-strong-async/forever
+=== RUN   TestUniqueCascade_FreeValuePasses/memory/session-concurrent/current
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/memory/session-strong-async/current
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/memory/session-strong-async/current
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/memory/session-strong-sync/current
+=== RUN   TestUniqueCascade_GroupSemantics/memory/session-concurrent/forever
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/badger/temporal/current
+=== RUN   TestUniqueCascade_SelfResetPasses/memory/session-strong-async/current
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/memory/session-strong-sync/forever
+=== RUN   TestUniqueCascade_FreeValuePasses/memory/session-concurrent/forever
+=== RUN   TestUniqueCascade_FloatRefused/badger/temporal/current
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/memory/session-concurrent/current
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/memory/session-strong-async/forever
+=== RUN   TestUniqueCascade_GroupSemantics/badger/batch/current
+=== RUN   TestUniqueCascade_FreeValuePasses/badger/temporal/current
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/memory/session-strong-async/forever
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/memory/session-strong-sync/forever
+=== RUN   TestUniqueCascade_SelfResetPasses/memory/session-strong-async/forever
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/memory/session-concurrent/forever
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/memory/session-concurrent/current
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/memory/session-strong-async/current
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/badger/temporal/current
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/memory/session-concurrent/forever
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/memory/session-concurrent/current
+=== RUN   TestUniqueCascade_SelfResetPasses/memory/session-concurrent/current
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/memory/session-strong-async/forever
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/badger/temporal/current
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/memory/session-concurrent/forever
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/memory/session-strong-async/current
+=== RUN   TestUniqueCascade_SelfResetPasses/memory/session-concurrent/forever
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/memory/session-concurrent/current
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/memory/session-concurrent/forever
+=== RUN   TestUniqueCascade_ConstraintAfterDuplicate/badger/tx
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/badger/temporal/current
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/badger/temporal/current
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/memory/session-strong-async/forever
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/memory/session-concurrent/current
+=== RUN   TestUniqueCascade_SelfResetPasses/badger/temporal/current
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/memory/session-concurrent/forever
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/memory/tx/forever
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/badger/temporal/current
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/memory/batch/current
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/memory/batch/forever
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/memory/session-strong-sync/current
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/badger/temporal/forever
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/memory/session-strong-sync/forever
+=== RUN   TestUniqueCascade_FloatRefused/badger/temporal/forever
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/memory/session-strong-async/current
+=== RUN   TestUniqueCascade_ConstraintAfterDuplicate/badger/batch
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/badger/temporal/forever
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/memory/session-strong-async/forever
+=== RUN   TestUniqueCascade_SelfResetPasses/badger/temporal/forever
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/badger/temporal/forever
+=== RUN   TestUniqueCascade_GroupSemantics/badger/batch/forever
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/badger/temporal/forever
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/badger/temporal/forever
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/badger/tx/current
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/badger/temporal/forever
+=== RUN   TestUniqueCascade_FreeValuePasses/badger/temporal/forever
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/memory/session-concurrent/current
+=== RUN   TestUniqueCascade_ConstraintAfterDuplicate/badger/session-strong-sync
+=== RUN   TestUniqueCascade_FloatRefused/badger/tx/current
+=== RUN   TestUniqueCascade_SelfResetPasses/badger/tx/current
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/badger/tx/current
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/memory/session-concurrent/forever
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/badger/temporal/current
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/badger/tx/current
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/badger/tx/current
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/badger/tx/current
+=== RUN   TestUniqueCascade_GroupSemantics/badger/session-strong-sync/current
+=== RUN   TestUniqueCascade_SelfResetPasses/badger/tx/forever
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/badger/temporal/forever
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/badger/tx/forever
+=== RUN   TestUniqueCascade_FreeValuePasses/badger/tx/current
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/badger/tx/forever
+=== RUN   TestUniqueCascade_FloatRefused/badger/tx/forever
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/badger/tx/forever
+=== RUN   TestUniqueCascade_ConstraintAfterDuplicate/badger/session-strong-async
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/badger/tx/current
+=== RUN   TestUniqueCascade_GroupSemantics/badger/session-strong-sync/forever
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/badger/tx/forever
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/badger/batch/current
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/badger/batch/current
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/badger/batch/current
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/badger/tx/forever
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/badger/tx/forever
+=== RUN   TestUniqueCascade_FloatRefused/badger/batch/current
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/badger/batch/forever
+=== RUN   TestUniqueCascade_ConstraintAfterDuplicate/badger/session-concurrent
+=== RUN   TestUniqueCascade_GroupSemantics/badger/session-strong-async/current
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/badger/batch/current
+=== RUN   TestUniqueCascade_FloatRefused/badger/batch/forever
+=== RUN   TestUniqueCascade_ConstraintAfterDuplicate/tiered/temporal
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/badger/session-strong-sync/current
+=== RUN   TestUniqueCascade_GroupSemantics/badger/session-strong-async/forever
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/badger/batch/forever
+=== RUN   TestUniqueCascade_SelfResetPasses/badger/batch/current
+=== RUN   TestUniqueCascade_FreeValuePasses/badger/tx/forever
+=== RUN   TestUniqueCascade_FloatRefused/badger/session-strong-sync/current
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/badger/session-strong-sync/forever
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/badger/tx/current
+=== RUN   TestUniqueCascade_GroupSemantics/badger/session-concurrent/current
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/badger/batch/forever
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/badger/batch/current
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/badger/session-strong-sync/current
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/badger/batch/forever
+=== RUN   TestUniqueCascade_FreeValuePasses/badger/batch/current
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/badger/tx/forever
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/badger/batch/current
+=== RUN   TestUniqueCascade_SelfResetPasses/badger/batch/forever
+=== RUN   TestUniqueCascade_ConstraintAfterDuplicate/tiered/tx
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/badger/session-strong-async/current
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/badger/session-strong-sync/current
+=== RUN   TestUniqueCascade_GroupSemantics/badger/session-concurrent/forever
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/badger/batch/forever
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/badger/session-strong-sync/forever
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/badger/session-strong-sync/forever
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/badger/session-strong-async/forever
+=== RUN   TestUniqueCascade_GroupSemantics/tiered/batch/current
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/badger/session-strong-sync/current
+=== RUN   TestUniqueCascade_FloatRefused/badger/session-strong-sync/forever
+=== RUN   TestUniqueCascade_ConstraintAfterDuplicate/tiered/batch
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/badger/session-strong-async/current
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/badger/session-concurrent/current
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/badger/session-strong-async/current
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/badger/batch/current
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/badger/session-strong-sync/current
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/badger/session-strong-sync/forever
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/badger/batch/forever
+=== RUN   TestUniqueCascade_FreeValuePasses/badger/batch/forever
+=== RUN   TestUniqueCascade_SelfResetPasses/badger/session-strong-sync/current
+=== RUN   TestUniqueCascade_FloatRefused/badger/session-strong-async/current
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/badger/session-strong-async/forever
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/badger/session-concurrent/forever
+=== RUN   TestUniqueCascade_FreeValuePasses/badger/session-strong-sync/current
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/badger/session-strong-sync/current
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/badger/session-strong-async/forever
+=== RUN   TestUniqueCascade_GroupSemantics/tiered/batch/forever
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/tiered/temporal/current
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/badger/session-strong-sync/forever
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/badger/batch/forever
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/badger/session-strong-async/current
+=== RUN   TestUniqueCascade_FloatRefused/badger/session-strong-async/forever
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/badger/session-concurrent/current
+=== RUN   TestUniqueCascade_FloatRefused/badger/session-concurrent/current
+=== RUN   TestUniqueCascade_SelfResetPasses/badger/session-strong-sync/forever
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/badger/session-strong-async/forever
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/badger/session-strong-sync/current
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/badger/session-strong-async/current
+=== RUN   TestUniqueCascade_FreeValuePasses/badger/session-strong-sync/forever
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/badger/session-strong-sync/forever
+=== RUN   TestUniqueCascade_ConstraintAfterDuplicate/tiered/session-strong-sync
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/badger/session-concurrent/current
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/badger/session-concurrent/forever
+=== RUN   TestUniqueCascade_FloatRefused/badger/session-concurrent/forever
+=== RUN   TestUniqueCascade_FreeValuePasses/badger/session-strong-async/current
+=== RUN   TestUniqueCascade_SelfResetPasses/badger/session-strong-async/current
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/badger/session-concurrent/current
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/badger/session-strong-async/forever
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/badger/session-strong-sync/forever
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/badger/session-strong-async/current
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/badger/session-concurrent/forever
+=== RUN   TestUniqueCascade_GroupSemantics/tiered/session-strong-sync/current
+=== RUN   TestUniqueCascade_FloatRefused/tiered/temporal/current
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/badger/session-concurrent/forever
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/tiered/temporal/forever
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/tiered/temporal/current
+=== RUN   TestUniqueCascade_ConstraintAfterDuplicate/tiered/session-strong-async
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/badger/session-concurrent/current
+=== RUN   TestUniqueCascade_FreeValuePasses/badger/session-strong-async/forever
+=== RUN   TestUniqueCascade_SelfResetPasses/badger/session-strong-async/forever
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/badger/session-strong-async/current
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/badger/session-strong-async/forever
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/tiered/temporal/current
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/tiered/temporal/current
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/badger/session-concurrent/forever
+=== RUN   TestUniqueCascade_FloatRefused/tiered/temporal/forever
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/badger/session-concurrent/current
+=== RUN   TestUniqueCascade_FreeValuePasses/badger/session-concurrent/current
+=== RUN   TestUniqueCascade_GroupSemantics/tiered/session-strong-sync/forever
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/tiered/tx/current
+=== RUN   TestUniqueCascade_ConstraintAfterDuplicate/tiered/session-concurrent
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/tiered/temporal/forever
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/tiered/temporal/current
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/badger/session-strong-async/forever
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/badger/session-concurrent/forever
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/tiered/temporal/current
+=== RUN   TestUniqueCascade_FreeValuePasses/badger/session-concurrent/forever
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/tiered/temporal/forever
+=== RUN   TestUniqueCascade_SelfResetPasses/badger/session-concurrent/current
+=== RUN   TestUniqueCascade_FreeValuePasses/tiered/temporal/current
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/tiered/temporal/forever
+=== RUN   TestUniqueCascade_FloatRefused/tiered/tx/current
+=== RUN   TestUniqueCascade_SelfResetPasses/badger/session-concurrent/forever
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/tiered/temporal/forever
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/badger/session-concurrent/current
+=== RUN   TestUniqueCascade_SelfResetPasses/tiered/temporal/current
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/tiered/tx/current
+=== RUN   TestUniqueCascade_GroupSemantics/tiered/session-strong-async/current
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/tiered/temporal/forever
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/tiered/tx/current
+=== RUN   TestUniqueCascade_ConstraintAfterDuplicate/sharded/temporal
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/tiered/tx/forever
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/badger/session-concurrent/forever
+=== RUN   TestUniqueCascade_FreeValuePasses/tiered/temporal/forever
+=== RUN   TestUniqueCascade_FloatRefused/tiered/tx/forever
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/tiered/tx/current
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/tiered/tx/current
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/tiered/temporal/current
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/tiered/tx/forever
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/tiered/tx/current
+=== RUN   TestUniqueCascade_GroupSemantics/tiered/session-strong-async/forever
+=== RUN   TestUniqueCascade_SelfResetPasses/tiered/temporal/forever
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/tiered/tx/forever
+=== RUN   TestUniqueCascade_FreeValuePasses/tiered/tx/current
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/tiered/batch/current
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/tiered/tx/forever
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/tiered/tx/forever
+=== RUN   TestUniqueCascade_FloatRefused/tiered/batch/current
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/tiered/tx/forever
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/tiered/batch/current
+=== RUN   TestUniqueCascade_ConstraintAfterDuplicate/sharded/tx
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/tiered/batch/forever
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/tiered/temporal/forever
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/tiered/batch/current
+=== RUN   TestUniqueCascade_GroupSemantics/tiered/session-concurrent/current
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/tiered/batch/current
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/tiered/session-strong-sync/current
+=== RUN   TestUniqueCascade_SelfResetPasses/tiered/tx/current
+=== RUN   TestUniqueCascade_ConstraintAfterDuplicate/sharded/batch
+=== RUN   TestUniqueCascade_FloatRefused/tiered/batch/forever
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/tiered/batch/current
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/tiered/batch/forever
+=== RUN   TestUniqueCascade_FreeValuePasses/tiered/tx/forever
+=== RUN   TestUniqueCascade_GroupSemantics/tiered/session-concurrent/forever
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/tiered/batch/forever
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/tiered/batch/forever
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/tiered/tx/current
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/tiered/session-strong-sync/forever
+=== RUN   TestUniqueCascade_SelfResetPasses/tiered/tx/forever
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/tiered/batch/current
+=== RUN   TestUniqueCascade_FloatRefused/tiered/session-strong-sync/current
+=== RUN   TestUniqueCascade_FreeValuePasses/tiered/batch/current
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/tiered/batch/forever
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/tiered/session-strong-sync/current
+=== RUN   TestUniqueCascade_ConstraintAfterDuplicate/sharded/session-strong-sync
+=== RUN   TestUniqueCascade_GroupSemantics/sharded/batch/current
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/tiered/session-strong-sync/current
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/tiered/tx/forever
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/tiered/session-strong-sync/current
+=== RUN   TestUniqueCascade_SelfResetPasses/tiered/batch/current
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/tiered/session-strong-async/current
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/tiered/session-strong-sync/current
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/tiered/batch/forever
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/tiered/session-strong-sync/forever
+=== RUN   TestUniqueCascade_FloatRefused/tiered/session-strong-sync/forever
+=== RUN   TestUniqueCascade_ConstraintAfterDuplicate/sharded/session-strong-async
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/tiered/session-strong-sync/forever
+=== RUN   TestUniqueCascade_FreeValuePasses/tiered/batch/forever
+=== RUN   TestUniqueCascade_GroupSemantics/sharded/batch/forever
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/tiered/batch/current
+=== RUN   TestUniqueCascade_SelfResetPasses/tiered/batch/forever
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/tiered/session-strong-sync/forever
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/tiered/session-strong-async/forever
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/tiered/session-strong-sync/forever
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/tiered/session-strong-sync/current
+=== RUN   TestUniqueCascade_GroupSemantics/sharded/session-strong-sync/current
+=== RUN   TestUniqueCascade_FloatRefused/tiered/session-strong-async/current
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/tiered/session-strong-async/current
+=== RUN   TestUniqueCascade_ConstraintAfterDuplicate/sharded/session-concurrent
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/tiered/session-strong-async/current
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/tiered/batch/forever
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/tiered/session-strong-async/current
+=== RUN   TestUniqueCascade_SelfResetPasses/tiered/session-strong-sync/current
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/tiered/session-strong-sync/forever
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/tiered/session-concurrent/current
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/tiered/session-strong-async/current
+=== RUN   TestUniqueCascade_FreeValuePasses/tiered/session-strong-sync/current
+=== RUN   TestUniqueCascade_GroupSemantics/sharded/session-strong-sync/forever
+=== RUN   TestUniqueCascade_FloatRefused/tiered/session-strong-async/forever
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/tiered/session-strong-async/forever
+--- PASS: TestUniqueCascade_ConstraintAfterDuplicate (1.56s)
+    --- PASS: TestUniqueCascade_ConstraintAfterDuplicate/memory/temporal (0.00s)
+    --- PASS: TestUniqueCascade_ConstraintAfterDuplicate/memory/tx (0.00s)
+    --- PASS: TestUniqueCascade_ConstraintAfterDuplicate/memory/batch (0.00s)
+    --- PASS: TestUniqueCascade_ConstraintAfterDuplicate/memory/session-strong-sync (0.00s)
+    --- PASS: TestUniqueCascade_ConstraintAfterDuplicate/memory/session-strong-async (0.00s)
+    --- PASS: TestUniqueCascade_ConstraintAfterDuplicate/memory/session-concurrent (0.00s)
+    --- PASS: TestUniqueCascade_ConstraintAfterDuplicate/badger/temporal (0.00s)
+    --- PASS: TestUniqueCascade_ConstraintAfterDuplicate/badger/tx (0.01s)
+    --- PASS: TestUniqueCascade_ConstraintAfterDuplicate/badger/batch (0.00s)
+    --- PASS: TestUniqueCascade_ConstraintAfterDuplicate/badger/session-strong-sync (0.09s)
+    --- PASS: TestUniqueCascade_ConstraintAfterDuplicate/badger/session-strong-async (0.04s)
+    --- PASS: TestUniqueCascade_ConstraintAfterDuplicate/badger/session-concurrent (0.01s)
+    --- PASS: TestUniqueCascade_ConstraintAfterDuplicate/tiered/temporal (0.09s)
+    --- PASS: TestUniqueCascade_ConstraintAfterDuplicate/tiered/tx (0.08s)
+    --- PASS: TestUniqueCascade_ConstraintAfterDuplicate/tiered/batch (0.12s)
+    --- PASS: TestUniqueCascade_ConstraintAfterDuplicate/tiered/session-strong-sync (0.09s)
+    --- PASS: TestUniqueCascade_ConstraintAfterDuplicate/tiered/session-strong-async (0.11s)
+    --- PASS: TestUniqueCascade_ConstraintAfterDuplicate/tiered/session-concurrent (0.11s)
+    --- PASS: TestUniqueCascade_ConstraintAfterDuplicate/sharded/temporal (0.17s)
+    --- PASS: TestUniqueCascade_ConstraintAfterDuplicate/sharded/tx (0.08s)
+    --- PASS: TestUniqueCascade_ConstraintAfterDuplicate/sharded/batch (0.18s)
+    --- PASS: TestUniqueCascade_ConstraintAfterDuplicate/sharded/session-strong-sync (0.11s)
+    --- PASS: TestUniqueCascade_ConstraintAfterDuplicate/sharded/session-strong-async (0.11s)
+    --- PASS: TestUniqueCascade_ConstraintAfterDuplicate/sharded/session-concurrent (0.12s)
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/tiered/session-strong-async/forever
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/tiered/session-strong-sync/current
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/tiered/session-strong-async/forever
+=== RUN   TestUniqueCascade_SelfResetPasses/tiered/session-strong-sync/forever
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/tiered/session-strong-async/current
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/tiered/session-concurrent/forever
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/tiered/session-strong-async/forever
+=== RUN   TestUniqueCascade_FreeValuePasses/tiered/session-strong-sync/forever
+=== RUN   TestUniqueCascade_GroupSemantics/sharded/session-strong-async/current
+=== RUN   TestUniqueCascade_FloatRefused/tiered/session-concurrent/current
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/tiered/session-concurrent/current
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/tiered/session-concurrent/current
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/tiered/session-strong-async/forever
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/tiered/session-strong-sync/forever
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/tiered/session-concurrent/current
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/sharded/temporal/current
+=== RUN   TestUniqueCascade_GroupSemantics/sharded/session-strong-async/forever
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/tiered/session-concurrent/current
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/tiered/session-concurrent/forever
+=== RUN   TestUniqueCascade_FreeValuePasses/tiered/session-strong-async/current
+=== RUN   TestUniqueCascade_SelfResetPasses/tiered/session-strong-async/current
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/tiered/session-concurrent/forever
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/tiered/session-concurrent/current
+=== RUN   TestUniqueCascade_FloatRefused/tiered/session-concurrent/forever
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/tiered/session-strong-async/current
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/tiered/session-concurrent/forever
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/sharded/temporal/forever
+=== RUN   TestUniqueCascade_GroupSemantics/sharded/session-concurrent/current
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/tiered/session-concurrent/forever
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/sharded/temporal/current
+=== RUN   TestUniqueCascade_SelfResetPasses/tiered/session-strong-async/forever
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/sharded/temporal/current
+=== RUN   TestUniqueCascade_FloatRefused/sharded/temporal/current
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/tiered/session-concurrent/forever
+=== RUN   TestUniqueCascade_FreeValuePasses/tiered/session-strong-async/forever
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/tiered/session-strong-async/forever
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/sharded/temporal/current
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/sharded/tx/current
+=== RUN   TestUniqueCascade_GroupSemantics/sharded/session-concurrent/forever
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/sharded/temporal/current
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/sharded/temporal/current
+=== RUN   TestUniqueCascade_SelfResetPasses/tiered/session-concurrent/current
+=== RUN   TestUniqueCascade_FloatRefused/sharded/temporal/forever
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/sharded/temporal/forever
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/sharded/temporal/forever
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/sharded/temporal/forever
+=== RUN   TestUniqueCascade_FreeValuePasses/tiered/session-concurrent/current
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/tiered/session-concurrent/current
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/sharded/temporal/forever
+=== RUN   TestUniqueCascade_FloatRefused/sharded/tx/current
+=== RUN   TestUniqueCascade_SelfResetPasses/tiered/session-concurrent/forever
+=== RUN   TestUniqueCascade_FreeValuePasses/tiered/session-concurrent/forever
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/sharded/tx/forever
+--- PASS: TestUniqueCascade_GroupSemantics (2.07s)
+    --- PASS: TestUniqueCascade_GroupSemantics/memory/batch/current (0.00s)
+    --- PASS: TestUniqueCascade_GroupSemantics/memory/batch/forever (0.00s)
+    --- PASS: TestUniqueCascade_GroupSemantics/memory/session-strong-sync/current (0.00s)
+    --- PASS: TestUniqueCascade_GroupSemantics/memory/session-strong-sync/forever (0.00s)
+    --- PASS: TestUniqueCascade_GroupSemantics/memory/session-strong-async/current (0.00s)
+    --- PASS: TestUniqueCascade_GroupSemantics/memory/session-strong-async/forever (0.00s)
+    --- PASS: TestUniqueCascade_GroupSemantics/memory/session-concurrent/current (0.00s)
+    --- PASS: TestUniqueCascade_GroupSemantics/memory/session-concurrent/forever (0.00s)
+    --- PASS: TestUniqueCascade_GroupSemantics/badger/batch/current (0.01s)
+    --- PASS: TestUniqueCascade_GroupSemantics/badger/batch/forever (0.02s)
+    --- PASS: TestUniqueCascade_GroupSemantics/badger/session-strong-sync/current (0.08s)
+    --- PASS: TestUniqueCascade_GroupSemantics/badger/session-strong-sync/forever (0.04s)
+    --- PASS: TestUniqueCascade_GroupSemantics/badger/session-strong-async/current (0.04s)
+    --- PASS: TestUniqueCascade_GroupSemantics/badger/session-strong-async/forever (0.04s)
+    --- PASS: TestUniqueCascade_GroupSemantics/badger/session-concurrent/current (0.04s)
+    --- PASS: TestUniqueCascade_GroupSemantics/badger/session-concurrent/forever (0.04s)
+    --- PASS: TestUniqueCascade_GroupSemantics/tiered/batch/current (0.12s)
+    --- PASS: TestUniqueCascade_GroupSemantics/tiered/batch/forever (0.12s)
+    --- PASS: TestUniqueCascade_GroupSemantics/tiered/session-strong-sync/current (0.12s)
+    --- PASS: TestUniqueCascade_GroupSemantics/tiered/session-strong-sync/forever (0.11s)
+    --- PASS: TestUniqueCascade_GroupSemantics/tiered/session-strong-async/current (0.10s)
+    --- PASS: TestUniqueCascade_GroupSemantics/tiered/session-strong-async/forever (0.10s)
+    --- PASS: TestUniqueCascade_GroupSemantics/tiered/session-concurrent/current (0.12s)
+    --- PASS: TestUniqueCascade_GroupSemantics/tiered/session-concurrent/forever (0.13s)
+    --- PASS: TestUniqueCascade_GroupSemantics/sharded/batch/current (0.12s)
+    --- PASS: TestUniqueCascade_GroupSemantics/sharded/batch/forever (0.07s)
+    --- PASS: TestUniqueCascade_GroupSemantics/sharded/session-strong-sync/current (0.10s)
+    --- PASS: TestUniqueCascade_GroupSemantics/sharded/session-strong-sync/forever (0.11s)
+    --- PASS: TestUniqueCascade_GroupSemantics/sharded/session-strong-async/current (0.10s)
+    --- PASS: TestUniqueCascade_GroupSemantics/sharded/session-strong-async/forever (0.11s)
+    --- PASS: TestUniqueCascade_GroupSemantics/sharded/session-concurrent/current (0.11s)
+    --- PASS: TestUniqueCascade_GroupSemantics/sharded/session-concurrent/forever (0.14s)
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/sharded/temporal/forever
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/sharded/tx/current
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/sharded/tx/current
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/sharded/tx/current
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/tiered/session-concurrent/forever
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/sharded/tx/current
+=== RUN   TestUniqueCascade_FloatRefused/sharded/tx/forever
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/sharded/tx/current
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/sharded/tx/forever
+=== RUN   TestUniqueCascade_SelfResetPasses/sharded/temporal/current
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/sharded/batch/current
+=== RUN   TestUniqueCascade_FreeValuePasses/sharded/temporal/current
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/sharded/tx/forever
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/sharded/tx/forever
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/sharded/temporal/current
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/sharded/batch/forever
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/sharded/tx/forever
+=== RUN   TestUniqueCascade_FreeValuePasses/sharded/temporal/forever
+=== RUN   TestUniqueCascade_FloatRefused/sharded/batch/current
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/sharded/batch/current
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/sharded/tx/forever
+=== RUN   TestUniqueCascade_SelfResetPasses/sharded/temporal/forever
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/sharded/batch/current
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/sharded/batch/current
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/sharded/temporal/forever
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/sharded/batch/current
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/sharded/batch/forever
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/sharded/session-strong-sync/current
+=== RUN   TestUniqueCascade_FreeValuePasses/sharded/tx/current
+=== RUN   TestUniqueCascade_FloatRefused/sharded/batch/forever
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/sharded/batch/current
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/sharded/batch/forever
+=== RUN   TestUniqueCascade_SelfResetPasses/sharded/tx/current
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/sharded/batch/forever
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/sharded/tx/current
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/sharded/session-strong-sync/forever
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/sharded/session-strong-sync/current
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/sharded/batch/forever
+=== RUN   TestUniqueCascade_FreeValuePasses/sharded/tx/forever
+=== RUN   TestUniqueCascade_FloatRefused/sharded/session-strong-sync/current
+=== RUN   TestUniqueCascade_SelfResetPasses/sharded/tx/forever
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/sharded/session-strong-sync/current
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/sharded/batch/forever
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/sharded/session-strong-sync/current
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/sharded/session-strong-async/current
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/sharded/session-strong-sync/current
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/sharded/tx/forever
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/sharded/session-strong-sync/forever
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/sharded/session-strong-sync/current
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/sharded/session-strong-sync/forever
+=== RUN   TestUniqueCascade_FreeValuePasses/sharded/batch/current
+=== RUN   TestUniqueCascade_FloatRefused/sharded/session-strong-sync/forever
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/sharded/session-strong-async/forever
+=== RUN   TestUniqueCascade_SelfResetPasses/sharded/batch/current
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/sharded/session-strong-sync/forever
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/sharded/session-strong-sync/forever
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/sharded/session-strong-async/current
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/sharded/session-strong-sync/forever
+=== RUN   TestUniqueCascade_FreeValuePasses/sharded/batch/forever
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/sharded/session-strong-async/current
+=== RUN   TestUniqueCascade_FloatRefused/sharded/session-strong-async/current
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/sharded/batch/current
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/sharded/session-concurrent/current
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/sharded/session-strong-async/current
+=== RUN   TestUniqueCascade_SelfResetPasses/sharded/batch/forever
+=== RUN   TestUniqueCascade_SelfResetPasses/sharded/session-strong-sync/current
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/sharded/session-strong-async/current
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/sharded/session-strong-async/forever
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/sharded/session-strong-async/forever
+=== RUN   TestUniqueCascade_FreeValuePasses/sharded/session-strong-sync/current
+=== RUN   TestUniqueCascade_FloatRefused/sharded/session-strong-async/forever
+=== RUN   TestUniqueCascade_PastIntervalOntoHeldValue/sharded/session-concurrent/forever
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/sharded/session-strong-async/current
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/sharded/batch/forever
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/sharded/session-strong-async/forever
+=== RUN   TestUniqueCascade_FloatRefused/sharded/session-concurrent/current
+=== RUN   TestUniqueCascade_SelfResetPasses/sharded/session-strong-sync/forever
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/sharded/session-strong-async/forever
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/sharded/session-concurrent/current
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/sharded/session-strong-sync/current
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/sharded/session-concurrent/current
+--- PASS: TestUniqueCascade_PastIntervalOntoHeldValue (2.86s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/memory/temporal/current (0.00s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/memory/temporal/forever (0.00s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/memory/tx/current (0.00s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/memory/tx/forever (0.00s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/memory/batch/current (0.00s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/memory/batch/forever (0.00s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/memory/session-strong-sync/current (0.00s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/memory/session-strong-sync/forever (0.00s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/memory/session-strong-async/current (0.00s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/memory/session-strong-async/forever (0.00s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/memory/session-concurrent/current (0.00s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/memory/session-concurrent/forever (0.00s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/badger/temporal/current (0.01s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/badger/temporal/forever (0.01s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/badger/tx/current (0.09s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/badger/tx/forever (0.11s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/badger/batch/current (0.04s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/badger/batch/forever (0.04s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/badger/session-strong-sync/current (0.05s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/badger/session-strong-sync/forever (0.08s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/badger/session-strong-async/current (0.01s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/badger/session-strong-async/forever (0.06s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/badger/session-concurrent/current (0.05s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/badger/session-concurrent/forever (0.05s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/tiered/temporal/current (0.09s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/tiered/temporal/forever (0.07s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/tiered/tx/current (0.10s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/tiered/tx/forever (0.06s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/tiered/batch/current (0.02s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/tiered/batch/forever (0.07s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/tiered/session-strong-sync/current (0.10s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/tiered/session-strong-sync/forever (0.12s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/tiered/session-strong-async/current (0.13s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/tiered/session-strong-async/forever (0.12s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/tiered/session-concurrent/current (0.12s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/tiered/session-concurrent/forever (0.10s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/sharded/temporal/current (0.09s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/sharded/temporal/forever (0.13s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/sharded/tx/current (0.13s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/sharded/tx/forever (0.10s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/sharded/batch/current (0.07s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/sharded/batch/forever (0.11s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/sharded/session-strong-sync/current (0.09s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/sharded/session-strong-sync/forever (0.09s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/sharded/session-strong-async/current (0.08s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/sharded/session-strong-async/forever (0.08s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/sharded/session-concurrent/current (0.08s)
+    --- PASS: TestUniqueCascade_PastIntervalOntoHeldValue/sharded/session-concurrent/forever (0.11s)
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/sharded/session-strong-async/forever
+=== RUN   TestUniqueCascade_FreeValuePasses/sharded/session-strong-sync/forever
+=== RUN   TestUniqueCascade_FloatRefused/sharded/session-concurrent/forever
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/sharded/session-concurrent/current
+=== RUN   TestUniqueCascade_SelfResetPasses/sharded/session-strong-async/current
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/sharded/session-concurrent/current
+=== RUN   TestUniqueCascade_NilPropsAndKeyAbsentPass/sharded/session-concurrent/forever
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/sharded/session-concurrent/current
+=== RUN   TestUniqueCascade_RefusalClaimsNothing/sharded/session-concurrent/forever
+=== RUN   TestUniqueCascade_FreeValuePasses/sharded/session-strong-async/current
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/sharded/session-strong-sync/forever
+--- PASS: TestUniqueCascade_FloatRefused (2.98s)
+    --- PASS: TestUniqueCascade_FloatRefused/memory/temporal/current (0.00s)
+    --- PASS: TestUniqueCascade_FloatRefused/memory/temporal/forever (0.00s)
+    --- PASS: TestUniqueCascade_FloatRefused/memory/tx/current (0.00s)
+    --- PASS: TestUniqueCascade_FloatRefused/memory/tx/forever (0.00s)
+    --- PASS: TestUniqueCascade_FloatRefused/memory/batch/current (0.00s)
+    --- PASS: TestUniqueCascade_FloatRefused/memory/batch/forever (0.00s)
+    --- PASS: TestUniqueCascade_FloatRefused/memory/session-strong-sync/current (0.00s)
+    --- PASS: TestUniqueCascade_FloatRefused/memory/session-strong-sync/forever (0.00s)
+    --- PASS: TestUniqueCascade_FloatRefused/memory/session-strong-async/current (0.00s)
+    --- PASS: TestUniqueCascade_FloatRefused/memory/session-strong-async/forever (0.00s)
+    --- PASS: TestUniqueCascade_FloatRefused/memory/session-concurrent/current (0.00s)
+    --- PASS: TestUniqueCascade_FloatRefused/memory/session-concurrent/forever (0.00s)
+    --- PASS: TestUniqueCascade_FloatRefused/badger/temporal/current (0.01s)
+    --- PASS: TestUniqueCascade_FloatRefused/badger/temporal/forever (0.01s)
+    --- PASS: TestUniqueCascade_FloatRefused/badger/tx/current (0.09s)
+    --- PASS: TestUniqueCascade_FloatRefused/badger/tx/forever (0.04s)
+    --- PASS: TestUniqueCascade_FloatRefused/badger/batch/current (0.01s)
+    --- PASS: TestUniqueCascade_FloatRefused/badger/batch/forever (0.04s)
+    --- PASS: TestUniqueCascade_FloatRefused/badger/session-strong-sync/current (0.13s)
+    --- PASS: TestUniqueCascade_FloatRefused/badger/session-strong-sync/forever (0.05s)
+    --- PASS: TestUniqueCascade_FloatRefused/badger/session-strong-async/current (0.05s)
+    --- PASS: TestUniqueCascade_FloatRefused/badger/session-strong-async/forever (0.01s)
+    --- PASS: TestUniqueCascade_FloatRefused/badger/session-concurrent/current (0.06s)
+    --- PASS: TestUniqueCascade_FloatRefused/badger/session-concurrent/forever (0.05s)
+    --- PASS: TestUniqueCascade_FloatRefused/tiered/temporal/current (0.09s)
+    --- PASS: TestUniqueCascade_FloatRefused/tiered/temporal/forever (0.07s)
+    --- PASS: TestUniqueCascade_FloatRefused/tiered/tx/current (0.12s)
+    --- PASS: TestUniqueCascade_FloatRefused/tiered/tx/forever (0.12s)
+    --- PASS: TestUniqueCascade_FloatRefused/tiered/batch/current (0.11s)
+    --- PASS: TestUniqueCascade_FloatRefused/tiered/batch/forever (0.12s)
+    --- PASS: TestUniqueCascade_FloatRefused/tiered/session-strong-sync/current (0.13s)
+    --- PASS: TestUniqueCascade_FloatRefused/tiered/session-strong-sync/forever (0.11s)
+    --- PASS: TestUniqueCascade_FloatRefused/tiered/session-strong-async/current (0.11s)
+    --- PASS: TestUniqueCascade_FloatRefused/tiered/session-strong-async/forever (0.12s)
+    --- PASS: TestUniqueCascade_FloatRefused/tiered/session-concurrent/current (0.13s)
+    --- PASS: TestUniqueCascade_FloatRefused/tiered/session-concurrent/forever (0.08s)
+    --- PASS: TestUniqueCascade_FloatRefused/sharded/temporal/current (0.11s)
+    --- PASS: TestUniqueCascade_FloatRefused/sharded/temporal/forever (0.08s)
+    --- PASS: TestUniqueCascade_FloatRefused/sharded/tx/current (0.10s)
+    --- PASS: TestUniqueCascade_FloatRefused/sharded/tx/forever (0.11s)
+    --- PASS: TestUniqueCascade_FloatRefused/sharded/batch/current (0.11s)
+    --- PASS: TestUniqueCascade_FloatRefused/sharded/batch/forever (0.10s)
+    --- PASS: TestUniqueCascade_FloatRefused/sharded/session-strong-sync/current (0.10s)
+    --- PASS: TestUniqueCascade_FloatRefused/sharded/session-strong-sync/forever (0.10s)
+    --- PASS: TestUniqueCascade_FloatRefused/sharded/session-strong-async/current (0.09s)
+    --- PASS: TestUniqueCascade_FloatRefused/sharded/session-strong-async/forever (0.05s)
+    --- PASS: TestUniqueCascade_FloatRefused/sharded/session-concurrent/current (0.08s)
+    --- PASS: TestUniqueCascade_FloatRefused/sharded/session-concurrent/forever (0.08s)
+=== RUN   TestUniqueCascade_FreeValuePasses/sharded/session-strong-async/forever
+=== RUN   TestUniqueCascade_MoveReleasesForCurrentOnly/sharded/session-concurrent/forever
+=== RUN   TestUniqueCascade_SelfResetPasses/sharded/session-strong-async/forever
+=== RUN   TestUniqueCascade_PastFreeValueClaimsForeverOnly/sharded/session-concurrent/forever
+--- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass (3.02s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/memory/temporal/current (0.00s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/memory/temporal/forever (0.00s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/memory/tx/current (0.00s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/memory/tx/forever (0.00s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/memory/batch/current (0.00s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/memory/batch/forever (0.00s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/memory/session-strong-sync/current (0.00s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/memory/session-strong-sync/forever (0.00s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/memory/session-strong-async/current (0.00s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/memory/session-strong-async/forever (0.00s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/memory/session-concurrent/current (0.00s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/memory/session-concurrent/forever (0.00s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/badger/temporal/current (0.01s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/badger/temporal/forever (0.09s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/badger/tx/current (0.04s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/badger/tx/forever (0.01s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/badger/batch/current (0.03s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/badger/batch/forever (0.05s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/badger/session-strong-sync/current (0.06s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/badger/session-strong-sync/forever (0.06s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/badger/session-strong-async/current (0.07s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/badger/session-strong-async/forever (0.06s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/badger/session-concurrent/current (0.06s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/badger/session-concurrent/forever (0.06s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/tiered/temporal/current (0.11s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/tiered/temporal/forever (0.13s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/tiered/tx/current (0.10s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/tiered/tx/forever (0.02s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/tiered/batch/current (0.15s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/tiered/batch/forever (0.11s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/tiered/session-strong-sync/current (0.11s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/tiered/session-strong-sync/forever (0.12s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/tiered/session-strong-async/current (0.12s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/tiered/session-strong-async/forever (0.08s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/tiered/session-concurrent/current (0.08s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/tiered/session-concurrent/forever (0.11s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/sharded/temporal/current (0.12s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/sharded/temporal/forever (0.12s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/sharded/tx/current (0.07s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/sharded/tx/forever (0.12s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/sharded/batch/current (0.10s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/sharded/batch/forever (0.10s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/sharded/session-strong-sync/current (0.08s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/sharded/session-strong-sync/forever (0.10s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/sharded/session-strong-async/current (0.08s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/sharded/session-strong-async/forever (0.11s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/sharded/session-concurrent/current (0.08s)
+    --- PASS: TestUniqueCascade_NilPropsAndKeyAbsentPass/sharded/session-concurrent/forever (0.08s)
+=== RUN   TestUniqueCascade_OpenEndedOntoHeldValueRefused/sharded/session-concurrent/forever
+--- PASS: TestUniqueCascade_RefusalClaimsNothing (3.04s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/memory/temporal/current (0.00s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/memory/temporal/forever (0.00s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/memory/tx/current (0.00s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/memory/tx/forever (0.00s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/memory/batch/current (0.00s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/memory/batch/forever (0.00s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/memory/session-strong-sync/current (0.00s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/memory/session-strong-sync/forever (0.00s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/memory/session-strong-async/current (0.00s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/memory/session-strong-async/forever (0.00s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/memory/session-concurrent/current (0.00s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/memory/session-concurrent/forever (0.00s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/badger/temporal/current (0.01s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/badger/temporal/forever (0.00s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/badger/tx/current (0.09s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/badger/tx/forever (0.01s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/badger/batch/current (0.03s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/badger/batch/forever (0.01s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/badger/session-strong-sync/current (0.04s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/badger/session-strong-sync/forever (0.05s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/badger/session-strong-async/current (0.04s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/badger/session-strong-async/forever (0.04s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/badger/session-concurrent/current (0.04s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/badger/session-concurrent/forever (0.04s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/tiered/temporal/current (0.12s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/tiered/temporal/forever (0.12s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/tiered/tx/current (0.12s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/tiered/tx/forever (0.16s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/tiered/batch/current (0.12s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/tiered/batch/forever (0.12s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/tiered/session-strong-sync/current (0.10s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/tiered/session-strong-sync/forever (0.12s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/tiered/session-strong-async/current (0.12s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/tiered/session-strong-async/forever (0.11s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/tiered/session-concurrent/current (0.10s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/tiered/session-concurrent/forever (0.10s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/sharded/temporal/current (0.13s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/sharded/temporal/forever (0.12s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/sharded/tx/current (0.10s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/sharded/tx/forever (0.07s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/sharded/batch/current (0.08s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/sharded/batch/forever (0.10s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/sharded/session-strong-sync/current (0.11s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/sharded/session-strong-sync/forever (0.10s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/sharded/session-strong-async/current (0.11s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/sharded/session-strong-async/forever (0.11s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/sharded/session-concurrent/current (0.09s)
+    --- PASS: TestUniqueCascade_RefusalClaimsNothing/sharded/session-concurrent/forever (0.09s)
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/sharded/session-strong-async/current
+=== RUN   TestUniqueCascade_FreeValuePasses/sharded/session-concurrent/current
+=== RUN   TestUniqueCascade_SelfResetPasses/sharded/session-concurrent/current
+--- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly (3.09s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/memory/temporal/current (0.00s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/memory/temporal/forever (0.00s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/memory/tx/current (0.00s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/memory/tx/forever (0.00s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/memory/batch/current (0.00s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/memory/batch/forever (0.00s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/memory/session-strong-sync/current (0.00s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/memory/session-strong-sync/forever (0.00s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/memory/session-strong-async/current (0.00s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/memory/session-strong-async/forever (0.00s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/memory/session-concurrent/current (0.00s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/memory/session-concurrent/forever (0.00s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/badger/temporal/current (0.01s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/badger/temporal/forever (0.01s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/badger/tx/current (0.08s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/badger/tx/forever (0.13s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/badger/batch/current (0.11s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/badger/batch/forever (0.06s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/badger/session-strong-sync/current (0.05s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/badger/session-strong-sync/forever (0.05s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/badger/session-strong-async/current (0.07s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/badger/session-strong-async/forever (0.06s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/badger/session-concurrent/current (0.05s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/badger/session-concurrent/forever (0.01s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/tiered/temporal/current (0.02s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/tiered/temporal/forever (0.13s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/tiered/tx/current (0.10s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/tiered/tx/forever (0.13s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/tiered/batch/current (0.12s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/tiered/batch/forever (0.06s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/tiered/session-strong-sync/current (0.12s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/tiered/session-strong-sync/forever (0.12s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/tiered/session-strong-async/current (0.12s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/tiered/session-strong-async/forever (0.11s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/tiered/session-concurrent/current (0.11s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/tiered/session-concurrent/forever (0.11s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/sharded/temporal/current (0.10s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/sharded/temporal/forever (0.10s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/sharded/tx/current (0.11s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/sharded/tx/forever (0.08s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/sharded/batch/current (0.11s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/sharded/batch/forever (0.09s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/sharded/session-strong-sync/current (0.11s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/sharded/session-strong-sync/forever (0.10s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/sharded/session-strong-async/current (0.08s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/sharded/session-strong-async/forever (0.10s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/sharded/session-concurrent/current (0.09s)
+    --- PASS: TestUniqueCascade_MoveReleasesForCurrentOnly/sharded/session-concurrent/forever (0.08s)
+--- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly (3.09s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/memory/temporal/current (0.00s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/memory/temporal/forever (0.00s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/memory/tx/current (0.00s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/memory/tx/forever (0.00s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/memory/batch/current (0.00s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/memory/batch/forever (0.00s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/memory/session-strong-sync/current (0.00s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/memory/session-strong-sync/forever (0.00s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/memory/session-strong-async/current (0.00s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/memory/session-strong-async/forever (0.00s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/memory/session-concurrent/current (0.00s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/memory/session-concurrent/forever (0.00s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/badger/temporal/current (0.01s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/badger/temporal/forever (0.01s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/badger/tx/current (0.07s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/badger/tx/forever (0.01s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/badger/batch/current (0.11s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/badger/batch/forever (0.03s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/badger/session-strong-sync/current (0.03s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/badger/session-strong-sync/forever (0.05s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/badger/session-strong-async/current (0.04s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/badger/session-strong-async/forever (0.05s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/badger/session-concurrent/current (0.05s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/badger/session-concurrent/forever (0.07s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/tiered/temporal/current (0.11s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/tiered/temporal/forever (0.11s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/tiered/tx/current (0.12s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/tiered/tx/forever (0.09s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/tiered/batch/current (0.12s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/tiered/batch/forever (0.12s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/tiered/session-strong-sync/current (0.13s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/tiered/session-strong-sync/forever (0.11s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/tiered/session-strong-async/current (0.11s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/tiered/session-strong-async/forever (0.10s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/tiered/session-concurrent/current (0.11s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/tiered/session-concurrent/forever (0.13s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/sharded/temporal/current (0.06s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/sharded/temporal/forever (0.13s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/sharded/tx/current (0.10s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/sharded/tx/forever (0.10s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/sharded/batch/current (0.10s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/sharded/batch/forever (0.10s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/sharded/session-strong-sync/current (0.12s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/sharded/session-strong-sync/forever (0.10s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/sharded/session-strong-async/current (0.10s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/sharded/session-strong-async/forever (0.10s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/sharded/session-concurrent/current (0.10s)
+    --- PASS: TestUniqueCascade_PastFreeValueClaimsForeverOnly/sharded/session-concurrent/forever (0.08s)
+--- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused (3.09s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/memory/temporal/current (0.00s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/memory/temporal/forever (0.00s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/memory/tx/current (0.00s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/memory/tx/forever (0.00s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/memory/batch/current (0.00s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/memory/batch/forever (0.00s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/memory/session-strong-sync/current (0.00s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/memory/session-strong-sync/forever (0.00s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/memory/session-strong-async/current (0.00s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/memory/session-strong-async/forever (0.00s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/memory/session-concurrent/current (0.00s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/memory/session-concurrent/forever (0.00s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/badger/temporal/current (0.01s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/badger/temporal/forever (0.01s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/badger/tx/current (0.09s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/badger/tx/forever (0.01s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/badger/batch/current (0.12s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/badger/batch/forever (0.12s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/badger/session-strong-sync/current (0.07s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/badger/session-strong-sync/forever (0.02s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/badger/session-strong-async/current (0.06s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/badger/session-strong-async/forever (0.06s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/badger/session-concurrent/current (0.06s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/badger/session-concurrent/forever (0.04s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/tiered/temporal/current (0.10s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/tiered/temporal/forever (0.10s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/tiered/tx/current (0.06s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/tiered/tx/forever (0.22s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/tiered/batch/current (0.11s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/tiered/batch/forever (0.12s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/tiered/session-strong-sync/current (0.10s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/tiered/session-strong-sync/forever (0.11s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/tiered/session-strong-async/current (0.07s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/tiered/session-strong-async/forever (0.10s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/tiered/session-concurrent/current (0.10s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/tiered/session-concurrent/forever (0.09s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/sharded/temporal/current (0.13s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/sharded/temporal/forever (0.08s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/sharded/tx/current (0.11s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/sharded/tx/forever (0.11s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/sharded/batch/current (0.11s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/sharded/batch/forever (0.07s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/sharded/session-strong-sync/current (0.10s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/sharded/session-strong-sync/forever (0.11s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/sharded/session-strong-async/current (0.10s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/sharded/session-strong-async/forever (0.09s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/sharded/session-concurrent/current (0.08s)
+    --- PASS: TestUniqueCascade_OpenEndedOntoHeldValueRefused/sharded/session-concurrent/forever (0.06s)
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/sharded/session-strong-async/forever
+=== RUN   TestUniqueCascade_FreeValuePasses/sharded/session-concurrent/forever
+=== RUN   TestUniqueCascade_SelfResetPasses/sharded/session-concurrent/forever
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/sharded/session-concurrent/current
+--- PASS: TestUniqueCascade_SelfResetPasses (3.14s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/memory/temporal/current (0.00s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/memory/temporal/forever (0.00s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/memory/tx/current (0.00s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/memory/tx/forever (0.00s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/memory/batch/current (0.00s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/memory/batch/forever (0.00s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/memory/session-strong-sync/current (0.00s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/memory/session-strong-sync/forever (0.00s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/memory/session-strong-async/current (0.00s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/memory/session-strong-async/forever (0.00s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/memory/session-concurrent/current (0.00s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/memory/session-concurrent/forever (0.00s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/badger/temporal/current (0.01s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/badger/temporal/forever (0.01s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/badger/tx/current (0.08s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/badger/tx/forever (0.09s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/badger/batch/current (0.05s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/badger/batch/forever (0.12s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/badger/session-strong-sync/current (0.07s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/badger/session-strong-sync/forever (0.06s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/badger/session-strong-async/current (0.07s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/badger/session-strong-async/forever (0.13s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/badger/session-concurrent/current (0.01s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/badger/session-concurrent/forever (0.06s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/tiered/temporal/current (0.11s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/tiered/temporal/forever (0.15s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/tiered/tx/current (0.12s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/tiered/tx/forever (0.10s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/tiered/batch/current (0.12s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/tiered/batch/forever (0.11s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/tiered/session-strong-sync/current (0.11s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/tiered/session-strong-sync/forever (0.16s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/tiered/session-strong-async/current (0.09s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/tiered/session-strong-async/forever (0.12s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/tiered/session-concurrent/current (0.09s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/tiered/session-concurrent/forever (0.11s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/sharded/temporal/current (0.11s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/sharded/temporal/forever (0.11s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/sharded/tx/current (0.09s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/sharded/tx/forever (0.12s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/sharded/batch/current (0.10s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/sharded/batch/forever (0.02s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/sharded/session-strong-sync/current (0.10s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/sharded/session-strong-sync/forever (0.09s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/sharded/session-strong-async/current (0.10s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/sharded/session-strong-async/forever (0.08s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/sharded/session-concurrent/current (0.03s)
+    --- PASS: TestUniqueCascade_SelfResetPasses/sharded/session-concurrent/forever (0.02s)
+--- PASS: TestUniqueCascade_FreeValuePasses (3.14s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/memory/temporal/current (0.00s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/memory/temporal/forever (0.00s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/memory/tx/current (0.00s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/memory/tx/forever (0.00s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/memory/batch/current (0.00s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/memory/batch/forever (0.00s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/memory/session-strong-sync/current (0.00s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/memory/session-strong-sync/forever (0.00s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/memory/session-strong-async/current (0.00s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/memory/session-strong-async/forever (0.00s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/memory/session-concurrent/current (0.00s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/memory/session-concurrent/forever (0.00s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/badger/temporal/current (0.01s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/badger/temporal/forever (0.09s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/badger/tx/current (0.09s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/badger/tx/forever (0.04s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/badger/batch/current (0.12s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/badger/batch/forever (0.04s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/badger/session-strong-sync/current (0.04s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/badger/session-strong-sync/forever (0.05s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/badger/session-strong-async/current (0.07s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/badger/session-strong-async/forever (0.07s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/badger/session-concurrent/current (0.05s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/badger/session-concurrent/forever (0.01s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/tiered/temporal/current (0.12s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/tiered/temporal/forever (0.11s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/tiered/tx/current (0.15s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/tiered/tx/forever (0.10s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/tiered/batch/current (0.15s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/tiered/batch/forever (0.17s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/tiered/session-strong-sync/current (0.12s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/tiered/session-strong-sync/forever (0.13s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/tiered/session-strong-async/current (0.13s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/tiered/session-strong-async/forever (0.11s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/tiered/session-concurrent/current (0.09s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/tiered/session-concurrent/forever (0.11s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/sharded/temporal/current (0.08s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/sharded/temporal/forever (0.10s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/sharded/tx/current (0.10s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/sharded/tx/forever (0.11s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/sharded/batch/current (0.10s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/sharded/batch/forever (0.09s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/sharded/session-strong-sync/current (0.11s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/sharded/session-strong-sync/forever (0.09s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/sharded/session-strong-async/current (0.04s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/sharded/session-strong-async/forever (0.08s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/sharded/session-concurrent/current (0.03s)
+    --- PASS: TestUniqueCascade_FreeValuePasses/sharded/session-concurrent/forever (0.03s)
+=== RUN   TestUniqueCascade_ConcurrentOneWinner/sharded/session-concurrent/forever
+--- PASS: TestUniqueCascade_ConcurrentOneWinner (3.16s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/memory/temporal/current (0.00s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/memory/temporal/forever (0.00s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/memory/tx/current (0.00s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/memory/tx/forever (0.00s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/memory/batch/current (0.00s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/memory/batch/forever (0.00s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/memory/session-strong-sync/current (0.00s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/memory/session-strong-sync/forever (0.00s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/memory/session-strong-async/current (0.00s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/memory/session-strong-async/forever (0.00s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/memory/session-concurrent/current (0.00s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/memory/session-concurrent/forever (0.00s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/badger/temporal/current (0.08s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/badger/temporal/forever (0.10s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/badger/tx/current (0.04s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/badger/tx/forever (0.11s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/badger/batch/current (0.07s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/badger/batch/forever (0.01s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/badger/session-strong-sync/current (0.06s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/badger/session-strong-sync/forever (0.07s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/badger/session-strong-async/current (0.10s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/badger/session-strong-async/forever (0.05s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/badger/session-concurrent/current (0.06s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/badger/session-concurrent/forever (0.05s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/tiered/temporal/current (0.11s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/tiered/temporal/forever (0.17s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/tiered/tx/current (0.11s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/tiered/tx/forever (0.11s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/tiered/batch/current (0.12s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/tiered/batch/forever (0.12s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/tiered/session-strong-sync/current (0.09s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/tiered/session-strong-sync/forever (0.10s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/tiered/session-strong-async/current (0.11s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/tiered/session-strong-async/forever (0.12s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/tiered/session-concurrent/current (0.13s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/tiered/session-concurrent/forever (0.11s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/sharded/temporal/current (0.10s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/sharded/temporal/forever (0.10s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/sharded/tx/current (0.11s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/sharded/tx/forever (0.13s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/sharded/batch/current (0.10s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/sharded/batch/forever (0.08s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/sharded/session-strong-sync/current (0.11s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/sharded/session-strong-sync/forever (0.08s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/sharded/session-strong-async/current (0.05s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/sharded/session-strong-async/forever (0.03s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/sharded/session-concurrent/current (0.02s)
+    --- PASS: TestUniqueCascade_ConcurrentOneWinner/sharded/session-concurrent/forever (0.01s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	3.371s

@@ -1,0 +1,24 @@
+=== mutant M5-keep-claims-on-write-failure
+diff --git a/pkg/graph/internal/core/unique_cascade.go b/pkg/graph/internal/core/unique_cascade.go
+index 71a3d63..bc4e74c 100644
+--- a/pkg/graph/internal/core/unique_cascade.go
++++ b/pkg/graph/internal/core/unique_cascade.go
+@@ -80,6 +80,7 @@ func (h *cascadeUniqueHold) writeFailed(written []*types.Node, writeErr error) e
+ 			keys = append(keys, foreverOwnerKey(tp.labelTok, tp.key, tp.valueKey))
+ 		}
+ 	}
++	keys = nil
+ 	if err := h.c.withdrawForeverClaims(keys, h.id); err != nil {
+ 		return errors.Join(writeErr, err)
+ 	}
+--- go test -run TestUniqueCascade_ ./pkg/graph/ (exit 0)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	4.318s
+--- go test -run TestUniqueCascade_ ./pkg/graph/internal/core/ (exit 1)
+--- FAIL: TestUniqueCascade_StoreWriteFailureWithdrawsUnwrittenClaim (0.00s)
+    unique_cascade_lock_test.go:323: Add with the value of a cascade that wrote nothing: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 797477149296885760 (UniqueForever) (claim must be withdrawn)
+--- FAIL: TestUniqueCascade_StoreWriteFailureWithdrawPersistFailureKeepsClaim (0.00s)
+    unique_cascade_lock_test.go:383: writeFailed with a failing persist: err = injected store write failure, want the write failure joined with the withdrawal failure
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.307s
+FAIL
+=== M5-keep-claims-on-write-failure: RED (killed), 2 failing (sub)tests

@@ -1,0 +1,22 @@
+Unique constraints on SetNodeVersionInterval (tasks/backlog.md item 12), 2026-10-09
+
+red-graph.txt        before the fix: TestUniqueCascade_* (pkg/graph): 7 of 12 tests red, 272 of 536
+                     subtests red (memory/badger/tiered/sharded x temporal/tx/batch/session
+                     strong-sync/strong-async/concurrent x current/forever). The 5 green tests
+                     (FreeValuePasses, SelfResetPasses, MoveReleasesForCurrentOnly,
+                     NilPropsAndKeyAbsentPass, ConstraintAfterDuplicate) held before the fix too:
+                     they guard against an over-strict fix, they do not prove it.
+red-core-lock.txt    before the fix: TestCascadeUnique_* (internal/core): 2 of 3 red
+                     (HoldsOldValueStripe, StripeHeldAcrossStoreWrite); BoundedCurrentScopeTakesNoStripe
+                     held before too (guards against over-locking).
+green-graph.txt      after the fix: 12 of 12 tests, 536 of 536 subtests pass.
+green-core-lock.txt  after the fix: 3 of 3 pass (InvalidPatchValueKeepsKernelError added later, passes,
+                     would have held before the fix).
+mutant-*.txt         M1a-d skip the check at one door (temporal, tx, batch+session-strong,
+                     session-concurrent), M2 only the new value's stripe, M3 stripe released before
+                     the store write: all 6 red (mutants-summary.txt).
+coverage.txt         unique_cascade.go: enforceUniqueForCascade 89.2 %, cascadeConstraintsFor 100 %,
+                     applyCascadePatch 71.4 % (its DeleteProperty error branch is not reached from the
+                     public doors).
+full-pkg-tests.txt   go test ./pkg/... -count=1: exit 0.
+race.txt             go test -race on internal/core, constraints, pkg/graph.

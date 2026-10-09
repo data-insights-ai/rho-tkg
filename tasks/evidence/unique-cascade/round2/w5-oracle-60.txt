@@ -1,0 +1,129 @@
+=== RUN   TestTxBackfillOracle_CrossBackend
+=== PAUSE TestTxBackfillOracle_CrossBackend
+=== CONT  TestTxBackfillOracle_CrossBackend
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064277
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064278
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064279
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064280
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064281
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064282
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064283
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064284
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064285
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064286
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064287
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064288
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064289
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064290
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064291
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064292
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064293
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064294
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064295
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064296
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064297
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064298
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064299
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064300
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064301
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064302
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064303
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064304
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064305
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064306
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064307
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064308
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064309
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064310
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064311
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064312
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064313
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064314
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064315
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064316
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064317
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064318
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064319
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064320
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064321
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064322
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064323
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064324
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064325
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064326
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064327
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064328
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064329
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064330
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064331
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064332
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064333
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064334
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064335
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064336
+=== NAME  TestTxBackfillOracle_CrossBackend
+    tx_backfill_oracle_test.go:953: accepted map[batch/node-delete:31 batch/node-update:20 batch/rel-delete:18 batch/rel-update:10 graphtx/node-delete:26 graphtx/node-update:18 graphtx/rel-delete:29 graphtx/rel-update:10 ingest_concurrent/node-delete:32 ingest_concurrent/node-update:10 ingest_concurrent/rel-delete:19 ingest_concurrent/rel-update:17 ingest_sync/node-delete:21 ingest_sync/node-update:18 ingest_sync/rel-delete:29 ingest_sync/rel-update:10 standalone/node-delete:37 standalone/node-update:9 standalone/rel-delete:17 standalone/rel-update:14], refused 122, pin checks 444 (44 on a chain with a row above the current one)
+--- PASS: TestTxBackfillOracle_CrossBackend (28.92s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064277 (0.41s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064278 (0.65s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064279 (0.61s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064280 (0.55s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064281 (0.48s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064282 (0.46s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064283 (0.65s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064284 (0.43s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064285 (0.70s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064286 (0.31s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064287 (0.31s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064288 (0.47s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064289 (1.01s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064290 (0.50s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064291 (0.35s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064292 (0.77s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064293 (0.68s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064294 (0.64s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064295 (0.44s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064296 (0.68s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064297 (0.70s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064298 (0.63s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064299 (0.58s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064300 (0.27s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064301 (0.35s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064302 (0.39s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064303 (0.37s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064304 (0.45s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064305 (0.29s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064306 (0.32s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064307 (0.41s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064308 (0.43s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064309 (0.42s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064310 (0.34s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064311 (0.41s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064312 (0.35s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064313 (0.34s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064314 (0.40s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064315 (0.43s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064316 (0.51s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064317 (0.41s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064318 (0.49s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064319 (0.47s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064320 (0.36s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064321 (0.60s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064322 (0.48s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064323 (0.63s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064324 (0.70s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064325 (0.65s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064326 (0.34s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064327 (0.27s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064328 (0.44s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064329 (0.64s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064330 (0.50s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064331 (0.45s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064332 (0.34s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064333 (0.51s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064334 (0.32s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064335 (0.38s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064336 (0.47s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	29.070s
+exit 0

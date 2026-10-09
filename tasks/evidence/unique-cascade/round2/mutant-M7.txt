@@ -1,0 +1,24 @@
+=== mutant M7-withdraw-persist-failure-drops-memory-claim
+diff --git a/pkg/graph/internal/core/unique_forever.go b/pkg/graph/internal/core/unique_forever.go
+index c054a53..72ba04a 100644
+--- a/pkg/graph/internal/core/unique_forever.go
++++ b/pkg/graph/internal/core/unique_forever.go
+@@ -294,9 +294,6 @@ func (c *Core) withdrawForeverClaims(keys []string, selfID types.NodeID) error {
+ 		return nil
+ 	}
+ 	if err := c.storeForeverOwnersLocked(mk); err != nil {
+-		for _, key := range removed {
+-			c.uniqueOwners[key] = selfID
+-		}
+ 		return fmt.Errorf("graph: unique-forever withdraw: %w", err)
+ 	}
+ 	return nil
+--- go test -run TestUniqueCascade_ ./pkg/graph/ (exit 0)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	6.228s
+--- go test -run TestUniqueCascade_ ./pkg/graph/internal/core/ (exit 1)
+--- FAIL: TestUniqueCascade_StoreWriteFailureWithdrawPersistFailureKeepsClaim (0.00s)
+    unique_cascade_lock_test.go:386: after a failed withdrawal persist, the in-memory claim must stay: err = <nil>
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.314s
+FAIL
+=== M7-withdraw-persist-failure-drops-memory-claim: RED (killed), 1 failing (sub)tests

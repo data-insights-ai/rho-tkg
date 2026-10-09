@@ -77,11 +77,15 @@ type UniqueOps interface {
 // CompareAndSetProperty / AddLabel), the BatchBuilder (AddNode / AddNodes
 // creates are partitioned before the write, UpdateNode runs the update door),
 // GraphTx (AddNode / ImportNodeWithID / UpdateNode / UpdateNodeWithTx /
-// AddNodeLabel), and the ingest Session
-// in strong and concurrent mode (creates and UpdateNode). NOT checked:
-// SetNodeVersionInterval on all four doors (Temporal, GraphTx, BatchBuilder,
-// Session) — its props patch can give a node a value another node holds
-// (tasks/backlog.md item 12). RemoveLabel cannot introduce a value. Replica
+// AddNodeLabel), the ingest Session in strong and concurrent mode (creates
+// and UpdateNode), and SetNodeVersionInterval on all four doors
+// (Temporal().SetNodeVersionInterval, GraphTx, BatchBuilder, Session). A
+// SetNodeVersionInterval props patch is judged like an update: an open-ended
+// call (validTo == 0) replaces the current row and is checked for both
+// scopes; a bounded call leaves the current row's value, so it is checked
+// against UniqueForever (every value ever written) only — under
+// UniqueCurrent a past slice may repeat another node's value, as history may.
+// RemoveLabel cannot introduce a value. Replica
 // apply reproduces rows verbatim and does not enforce; g.IO().Import validates
 // the replayed state instead.
 func (a *API) CreateUnique(ctx context.Context, label, propertyKey string) error {
