@@ -267,6 +267,19 @@ func (e *engine) validateUniqueness() error {
 						return err
 					}
 					for _, id := range incident {
+						relation, found, err := e.entity(id)
+						if err != nil {
+							return err
+						}
+						if !found || relation.Kind != Relationship || relation.Source != owner.ID && relation.Target != owner.ID {
+							return ErrContradictoryRead
+						}
+						// Stable-identity references do not depend on endpoint lives
+						// and may use another axis. Do not read their presence using
+						// this endpoint's coordinate window.
+						if relation.Mode == IdentityReference {
+							continue
+						}
 						pages, err := e.component(ComponentKey{Owner: id, Kind: Presence}, change.Scope())
 						if err != nil {
 							return err
@@ -275,6 +288,18 @@ func (e *engine) validateUniqueness() error {
 							for _, p := range page.Data.Pieces() {
 								if p.Cell().Present() {
 									lk := lifeKey{id, LifeID(p.Cell().Value().ID())}
+									binding, found, err := e.life(id, lk.life)
+									if err != nil {
+										return err
+									}
+									if !found {
+										return ErrContradictoryRead
+									}
+									sourceAffected := relation.Source == owner.ID && binding.SourceLife == life
+									targetAffected := relation.Target == owner.ID && binding.TargetLife == life
+									if !sourceAffected && !targetAffected {
+										continue
+									}
 									targets[lk] = append(targets[lk], p.Scope())
 								}
 							}
