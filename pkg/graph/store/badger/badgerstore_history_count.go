@@ -44,19 +44,27 @@ func (h *historyCount) get(epoch uint64, count func() (int, error)) (int, error)
 	return n, nil
 }
 
-// noteHistoryKey advances the history epoch of key's kind when key is a node
-// or relationship history key. Every history row write and delete enters the
-// write buffer through appendOps / appendOpsLoggedRouted, which call this
-// under wbMu with the op.
-func (bs *Store) noteHistoryKey(key []byte) {
+// noteHistoryKey advances the history epoch of op's kind when op's key is a
+// node or relationship history key, and records the op in that kind's history
+// presence set (badgerstore_history_presence.go). Every history row write and
+// delete enters the write buffer through appendOps / appendOpsLoggedRouted,
+// which call this under wbMu with the op.
+func (bs *Store) noteHistoryKey(op writeOp) {
+	key := op.key
 	if len(key) == 0 {
 		return
 	}
 	switch key[0] {
 	case storepkg.KeyHistNode:
 		bs.histNodeEpoch.Add(1)
+		if len(key) == storepkg.SizeHistKey {
+			bs.histNodePresence.note(storepkg.ParseIDFromKey(key, 1), op.opType == writeOpDelete)
+		}
 	case storepkg.KeyHistRel:
 		bs.histRelEpoch.Add(1)
+		if len(key) == storepkg.SizeHistKey {
+			bs.histRelPresence.note(storepkg.ParseIDFromKey(key, 1), op.opType == writeOpDelete)
+		}
 	}
 }
 

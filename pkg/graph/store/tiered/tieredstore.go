@@ -1399,10 +1399,13 @@ func (ts *Store) openColdBadgerStoreWithRecovery(name string) (*BadgerStore, err
 	return ts.openShardStoreWithRecovery(name, true)
 }
 
-// shardCfg is badgerCfg plus the cold-shard option.
+// shardCfg is badgerCfg plus the cold-shard options.
 func (ts *Store) shardCfg(name string, readOnly, cold bool) BadgerStoreConfig {
 	cfg := ts.badgerCfg(name, readOnly)
 	cfg.DropRelTemporalIndexesAtOpen = cold
+	// A cold shard is often opened for one read: answer HasHistory by a per-ID
+	// key probe instead of a scan of its whole history keyspace.
+	cfg.HistoryPresenceProbeOnly = cold
 	return cfg
 }
 

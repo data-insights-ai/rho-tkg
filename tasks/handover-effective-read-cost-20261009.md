@@ -27,7 +27,7 @@ whether or not they share the prefix, so a lookup for an entity WITHOUT history 
 | `HasHistory(id)` (new) | - | <= 0.1 us, 0 allocs |
 
 - **1a, now, own commit:** `opts.Prefix = prefix` at the four sites (node and rel mirrors). 1 M entities x 1.8 us = 1.8 s per scan: 8x better, not enough.
-- **1b:** per-entity presence without a row-format change. Badger keeps a RAM set of IDs with history rows, updated where every history key already
+- **1b (done, Unreleased: `Nodes()/Rels().HasHistory`, `store.HistoryPresenceCapability`; tests and mutants in `tasks/evidence/has-history/`):** per-entity presence without a row-format change. Badger keeps a RAM set of IDs with history rows, updated where every history key already
   passes (`noteHistoryKey`, badgerstore_history_count.go:51, under wbMu), built lazily once by the key-only `ForEachRelHistoryID` (history_rel.go:603;
   200 IDs took 0.2-0.5 ms). RAM is O(IDs with history); the belief-watermark sidecar is O(N) plus a value scan on first use (79 ms at 50 K rels).
   Surface `Rels().HasHistory(id)` / `Nodes()`; memory is `len(relHistory[id]) > 0`; tiered/sharded route by shard.

@@ -1,8 +1,8 @@
 package badger
 
 import (
+	"fmt"
 	"testing"
-	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -31,82 +31,68 @@ var historyBenchDensities = []struct {
 // stride-th entity, closes the store and reopens it so reads hit SSTables.
 func seedHistoryBenchStore(b *testing.B, node bool, stride int) *Store {
 	b.Helper()
-	dir := b.TempDir()
-	bs, err := New(Config{Dir: dir})
-	if err != nil {
-		b.Fatalf("open: %v", err)
-	}
+	return seedHistoryBenchStoreN(b, node, stride, historyBenchEntities)
+}
+
+// seedHistoryBenchRows writes entities current rows plus three history rows
+// on every stride-th entity (stride 0 = none).
+func seedHistoryBenchRows(bs *Store, node bool, stride, entities int) error {
 	const batch = 5000
 	if !node {
 		for _, id := range []int{1, 2} { // rel endpoints
 			if err := bs.PutNode(types.NewNode(types.NodeID(snowflake.ID(id)), 1, nil)); err != nil {
-				b.Fatalf("PutNode: %v", err)
+				return fmt.Errorf("PutNode: %w", err)
 			}
 		}
 	}
-	for lo := 1; lo <= historyBenchEntities; lo += batch {
+	for lo := 1; lo <= entities; lo += batch {
 		if node {
 			ns := make([]*types.Node, 0, batch)
-			for i := lo; i < lo+batch && i <= historyBenchEntities; i++ {
+			for i := lo; i < lo+batch && i <= entities; i++ {
 				ns = append(ns, types.NewNode(types.NodeID(snowflake.ID(i)), 1, nil))
 			}
 			if err := bs.PutNodesBatch(ns); err != nil {
-				b.Fatalf("PutNodesBatch: %v", err)
+				return fmt.Errorf("PutNodesBatch: %w", err)
 			}
 		} else {
 			rs := make([]*types.Relationship, 0, batch)
-			for i := lo; i < lo+batch && i <= historyBenchEntities; i++ {
+			for i := lo; i < lo+batch && i <= entities; i++ {
 				rs = append(rs, types.NewRelationship(types.RelID(snowflake.ID(i)), 5,
 					types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2))))
 			}
 			if err := bs.PutRelationshipsBatch(rs); err != nil {
-				b.Fatalf("PutRelationshipsBatch: %v", err)
+				return fmt.Errorf("PutRelationshipsBatch: %w", err)
 			}
 		}
 	}
-	if stride > 0 {
-		for i := stride; i <= historyBenchEntities; i += stride {
-			for ver := uint32(0); ver < 3; ver++ {
-				if node {
-					n := types.NewNode(types.NodeID(snowflake.ID(i)), 1, nil)
-					n.SetVersion(ver)
-					if err := bs.PutNodeVersion(n.ID(), ver, n); err != nil {
-						b.Fatalf("PutNodeVersion: %v", err)
-					}
-				} else {
-					r := types.NewRelationship(types.RelID(snowflake.ID(i)), 5,
-						types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2)))
-					r.SetVersion(ver)
-					if err := bs.PutRelVersion(r.ID(), ver, r); err != nil {
-						b.Fatalf("PutRelVersion: %v", err)
-					}
+	if stride <= 0 {
+		return nil
+	}
+	for i := stride; i <= entities; i += stride {
+		for ver := uint32(0); ver < 3; ver++ {
+			if node {
+				n := types.NewNode(types.NodeID(snowflake.ID(i)), 1, nil)
+				n.SetVersion(ver)
+				if err := bs.PutNodeVersion(n.ID(), ver, n); err != nil {
+					return fmt.Errorf("PutNodeVersion: %w", err)
+				}
+			} else {
+				r := types.NewRelationship(types.RelID(snowflake.ID(i)), 5,
+					types.NodeID(snowflake.ID(1)), types.NodeID(snowflake.ID(2)))
+				r.SetVersion(ver)
+				if err := bs.PutRelVersion(r.ID(), ver, r); err != nil {
+					return fmt.Errorf("PutRelVersion: %w", err)
 				}
 			}
 		}
 	}
-	if err := bs.Close(); err != nil {
-		b.Fatalf("close: %v", err)
-	}
-	bs, err = New(Config{Dir: dir, FlushInterval: time.Hour})
-	if err != nil {
-		b.Fatalf("reopen: %v", err)
-	}
-	b.Cleanup(func() { _ = bs.Close() })
-	return bs
+	return nil
 }
 
 // plainHistoryBenchIDs returns 1024 ids spread over the key space that hold no
 // history for the given stride (never a multiple of the stride).
 func plainHistoryBenchIDs(stride int) []int64 {
-	ids := make([]int64, 0, 1024)
-	for j := int64(0); len(ids) < 1024; j++ {
-		id := 1 + j*(historyBenchEntities/1024)
-		if stride > 0 && id%int64(stride) == 0 {
-			id++
-		}
-		ids = append(ids, id)
-	}
-	return ids
+	return plainHistoryBenchIDsN(stride, historyBenchEntities)
 }
 
 func benchHistory(b *testing.B, node bool) {

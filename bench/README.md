@@ -37,6 +37,8 @@ re-fires) and why the classic `b.N` loop is the correct shape here instead.
 | `TwoHop` | Decode-free two-hop traversal via `g.Rels().ForEachAdjacentEndpoint` over a 10k-node / 30k-relationship fixture |
 | `TemporalPoint` | `g.Temporal().NodesAt` (valid-time point query) over a graph where every node has an explicit 5-version `tkg_valid_from` chain, pinned mid-chain |
 | `AsOfPin` | `g.Temporal().NodesAsOf` (transaction-time query) pinned to the middle of a 5-round update history via `NowTx()` |
+| `RelHistoryPlain` | `g.Rels().History` for a relationship without history among 10k relationships of which 1 % hold history (the per-entity cost an effective-state read paid before `HasHistory`, handover effective-read-cost §1) |
+| `RelHasHistory` | `g.Rels().HasHistory` on the same fixture, `miss` (plain) and `hit` (updated) sub-variants; badger's RAM set is built by a warm-up call outside the timed loop |
 | `Ingest1kSingle` | 1,000 nodes ingested one at a time via `g.Nodes().Add` (the no-batching baseline) |
 | `Ingest10kBatch` | 10,000 nodes ingested via `BatchBuilder.AddNode` + one `Execute` |
 | `BulkAddNodes10k` | 10,000 nodes ingested via the write-only `BatchBuilder.AddNodes` bulk path |

@@ -1,0 +1,10 @@
+$ go test ./pkg/graph/store/badger/ -run TestHistoryPresence -count=1
+--- FAIL: TestHistoryPresence_ProbeKeepsWriteDuringProbe (0.01s)
+    --- FAIL: TestHistoryPresence_ProbeKeepsWriteDuringProbe/node (0.01s)
+        badgerstore_history_presence_test.go:382: node after the delete in the probe window: has(100) = true, history has 0 rows
+    --- FAIL: TestHistoryPresence_ProbeKeepsWriteDuringProbe/rel (0.01s)
+        badgerstore_history_presence_test.go:382: rel after the delete in the probe window: has(100) = true, history has 0 rows
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	7.179s
+FAIL
+exit=1
