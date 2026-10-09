@@ -160,7 +160,7 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 	preChain := make([]*types.Node, 0, len(history)+1)
 	preChain = append(preChain, history...)
 	preChain = append(preChain, current) // non-nil: a deleted entity was refused above
-	preChain = versionOrdered(preChain) // the resolver's input contract (lesson 73)
+	preChain = versionOrdered(preChain)  // the resolver's input contract (lesson 73)
 
 	// Resumption: re-assert, from newVT onward, whatever value held AT newVT in
 	// the pre-correction belief, so the part of the timeline after the
