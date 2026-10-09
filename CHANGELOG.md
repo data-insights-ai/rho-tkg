@@ -82,17 +82,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   patch that re-sets the node's own value, leaves the constrained key out, is nil, or deletes the key
   passes; a float on a constrained key returns `ErrUniqueUnsupportedType`. A refusal returns
   `ErrUniqueViolation`, appends nothing and claims nothing; a cascade the kernel refuses for any
-  other reason claims nothing either (only a failed store write can leave a `UniqueForever` claim,
-  as on the update door; `ReleaseOwnership` frees it); in a batch or session group it fails its
+  other reason claims nothing either, and a failed store write withdraws every claim of the call
+  whose value no row it already wrote carries (a value that reached a stored row stays owned); in
+  a batch or session group it fails its
   own op while the other ops commit, as an `UpdateNode` violation does. The value stripes (new values,
   plus the replaced current value) are held until the kernel returns, across every store write, so
   two concurrent patches onto one value give exactly one winner. `CreateUnique` over existing
   duplicates is unchanged (`ErrUniqueViolationExisting`). Tests: `TestUniqueCascade_*` (memory,
   badger, tiered, sharded × the four doors with the session in strong-sync, strong-async and
   concurrent mode × both scopes, including `DeletedNodeClaimsNothing` and
-  `KernelFailureClaimsNothing`) and the core lock-protocol `TestUniqueCascade_*`; evidence and mutants
-  (one door skipped, only the new stripe taken, stripe released before the write, claim before the
-  kernel's checks: each red) under `tasks/evidence/unique-cascade/`.
+  `KernelFailureClaimsNothing`) and the core `TestUniqueCascade_*` (lock protocol; store-write
+  failure injected before and after the value was stored); evidence and mutants (one door skipped,
+  only the new stripe taken, stripe released before the write, claim before the kernel's checks,
+  claims kept on a failed write, claims withdrawn although written: each red) under
+  `tasks/evidence/unique-cascade/`.
 
 - **One version allocator: a write after a bounded cascade no longer reuses a cascade row's version** (backlog
   18). The cascade gave its rows `maxVersion+1` while Update, `CloseVersion`, label add/remove and property CAS
