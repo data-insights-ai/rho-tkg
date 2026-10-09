@@ -6,6 +6,7 @@ import (
 	"sort"
 	"sync"
 	"testing"
+	"time"
 
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -401,5 +402,81 @@ func TestPropTxBuild_CorruptRowFailsClosed(t *testing.T) {
 				t.Fatalf("lookup after the repair: %v", err)
 			}
 		})
+	}
+}
+
+// TestPropTxBuild_ConcurrentWritersStress: writers keep moving rels between
+// values (with history) and flushing while a reader drops, re-creates and
+// rebuilds the index and looks up. Afterwards the sidecar must hold every
+// (rel, value) any stored row carries. Faulty implementations caught: any
+// window in which a write lands unrecorded (between tracking-on and the
+// overlay capture, during the scan, across a flush commit or an
+// invalidation); run under -race it also checks the lock discipline.
+func TestPropTxBuild_ConcurrentWritersStress(t *testing.T) {
+	bs := newFlushParkStore(t, func(c *Config) { c.FlushInterval = time.Millisecond })
+	ptxSetup(t, bs)
+	const writers, perWriter, values = 4, 60, 5
+	var wg, readers sync.WaitGroup
+	stop := make(chan struct{})
+	for w := 0; w < writers; w++ {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			for i := 0; i < perWriter; i++ {
+				id := int64(1000 + w*perWriter + i)
+				if err := bs.PutRelationship(ptxRel(id, int64(i%values), 0, types.Instant(100+i))); err != nil {
+					t.Errorf("put: %v", err)
+					return
+				}
+				next := ptxRel(id, int64((i+1)%values), 1, types.Instant(200+i))
+				if err := bs.ReplaceRelWithHistory(next, 0, ptxRel(id, int64(i%values), 0, types.Instant(100+i))); err != nil {
+					t.Errorf("replace: %v", err)
+					return
+				}
+			}
+		}(w)
+	}
+	readers.Add(1)
+	go func() {
+		defer readers.Done()
+		for i := 0; ; i++ {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			if i%7 == 6 {
+				_ = bs.DropRelPropertyIndex(ptxT, "seat")
+				_ = bs.CreateRelPropertyIndex(ptxT, "seat")
+			}
+			err := bs.ForEachRelPropertyTxMember(ptxT, "seat", ptxVK(int64(i%values)), func(types.RelID, types.Instant) bool { return true })
+			if err != nil && !errors.Is(err, ErrIndexNotFound) {
+				t.Errorf("lookup: %v", err)
+				return
+			}
+		}
+	}()
+	wg.Wait()
+	close(stop)
+	readers.Wait()
+	if t.Failed() {
+		return
+	}
+	for v := 0; v < values; v++ {
+		got := map[types.RelID]bool{}
+		if err := bs.ForEachRelPropertyTxMember(ptxT, "seat", ptxVK(int64(v)), func(id types.RelID, _ types.Instant) bool {
+			got[id] = true
+			return true
+		}); err != nil {
+			t.Fatalf("final lookup: %v", err)
+		}
+		for w := 0; w < writers; w++ {
+			for i := 0; i < perWriter; i++ {
+				id := types.RelID(1000 + w*perWriter + i)
+				if (i%values == v || (i+1)%values == v) && !got[id] {
+					t.Fatalf("value %d: rel %d carried it in a stored row but is no member", v, id)
+				}
+			}
+		}
 	}
 }
