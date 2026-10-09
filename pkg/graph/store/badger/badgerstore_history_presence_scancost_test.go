@@ -15,10 +15,10 @@ import (
 // rows it must stay within a small factor of it (deep IDs cost a reverse seek and
 // a seek to the next ID, so their limit is loose). The first version walked a
 // reverse seek per multi-row ID and ran 1.6-2x slower on the 3-row shape.
-// Timing is best-of-N on one reopened store; skipped under -short.
+// Timing is best-of-N on one reopened store; skipped under -short and -race.
 func TestHistoryPresenceBuildScanCost(t *testing.T) {
-	if testing.Short() {
-		t.Skip("timing guard")
+	if testing.Short() || raceEnabled {
+		t.Skip("timing guard (skipped under -short and -race)")
 	}
 	const ids = 10_000
 	for _, shape := range []struct {
