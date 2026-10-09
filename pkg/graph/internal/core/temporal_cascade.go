@@ -699,10 +699,8 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 	// newer belief winning on overlap. See the node cascade for the rationale.
 	preChain := make([]*types.Relationship, 0, len(history)+1)
 	preChain = append(preChain, history...)
-	if current != nil {
-		preChain = append(preChain, current)
-	}
-	preChain = versionOrdered(preChain) // the resolver's input contract (lesson 73)
+	preChain = append(preChain, current) // non-nil: a deleted entity was refused above
+	preChain = versionOrdered(preChain)  // the resolver's input contract (lesson 73)
 
 	// BACKLOG 10b: explicit resumption ValidTo via relResumptionEnd — see the
 	// node cascade above for the full rationale (own-interval boundary scan,
@@ -787,10 +785,8 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 		}
 	}
 	if curIsNew {
-		if current != nil {
-			if err := c.putRelVersionScopedAware(ctx, id, current.Version(), current); err != nil {
-				return nil, fmt.Errorf("graph: cascade demote rel current: %w", err)
-			}
+		if err := c.putRelVersionScopedAware(ctx, id, current.Version(), current); err != nil {
+			return nil, fmt.Errorf("graph: cascade demote rel current: %w", err)
 		}
 		if err := c.replaceRelationshipScopedAware(ctx, newCurrent); err != nil {
 			return nil, fmt.Errorf("graph: cascade replace rel current: %w", err)
