@@ -6,6 +6,87 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Transaction-time endings and supersessions at a caller instant (DeleteWithTx / UpdateWithTx)
+
+Additive surface for a minor release (4.44.0 when released): `nodes.Ops` and `rels.Ops` gain
+methods, so an out-of-tree implementation of either interface must add them (none of the known
+dependents — sigma-tkgd, ai-soc engine, agent-bookkeeping — implements them). Migration: upgrade replicas before any writer uses the new doors — a replica
+reproduces the stamps from the change feed and reports the past-dated tombstones to its as-of cache.
+
+#### Added
+
+- **`g.Nodes().DeleteWithTx(ctx, id, txTo)` / `UpdateWithTx(ctx, id, updates, txFrom)` and the
+  `g.Rels()` mirrors: end or supersede belief at a caller transaction instant.** Requested by
+  sigma-tkgd (realtime ingest design, `design-realtime-ingest-session.md` §4: a replayed or streamed
+  record carries its own knowledge time, and nothing could end belief at it — `AddWithTx` covered
+  creates only); it also lets the AI-SOC drop its `ENDED`-relationship workaround (an ending
+  modelled in its rules instead of in the store). A delete's tombstone carries `TxTo = DeletedAt = t`; a
+  node delete stamps the one instant `t` on the node and every relationship it cascades. An update
+  stamps the superseded version `TxTo = t` and the new one `TxFrom = UpdatedAt = t`. Pins before `t`
+  see the old belief, pins at or after `t` the new one, through every as-of, `TxPin` and `TxAt` door.
+  Same gate as `AddWithTx` (`Config.AllowTxBackfill`, `ErrTxBackfillDisabled`); `t <= 0` or in the
+  future is `ErrInvalidTxFrom` (value before privilege). The instant travels only as an argument —
+  `tkg_tx_from`/`tkg_tx_to` stay rejected as properties. The commit clock is not advanced by `t`.
+- **Twins on every write door**: `GraphTx.DeleteNodeWithTx` / `UpdateNodeWithTx` /
+  `DeleteRelationshipWithTx` / `UpdateRelationshipWithTx`, and the `BatchBuilder` and ingest
+  `Session` queue doors of the same names (strong and concurrent mode). All ten reach one seam (`at`
+  on `deleteRelationshipInternal` / `deleteNodeLocked`, `updateTemporal.txAt` in the temporal update
+  path; `at == 0` is the plain door, its stamps pinned unchanged by `*_PlainDoorsUnchanged`).
+- **`ErrTxOrder`** (wraps `ErrInvalidTxFrom`, so a consumer mapping that to a validation error keeps
+  working): `t` must lie after every `TxFrom` and `TxTo` on the entity's chain — history and current,
+  because `TxFrom` is not co-monotonic with the version (lesson 62) — and after the current version's
+  start (`UpdatedAt`; for a delete also the effective valid-from), on the node and on every cascaded
+  relationship, checked under the entity lock; the message names the binding stamp. Also returned
+  for an update at `t` that changes nothing, the same `t` twice, and a caller-instant delete over a
+  **recorded close at or after `t`** (`ValidTo >= t`): one tombstone cannot both end belief at `t` and
+  keep the close that pins before `t` believed, so the door refuses instead of clamping (the plain
+  `Delete` keeps moving its own instant past a colliding close; relaxing the refusal later is
+  additive, backlog item 7).
+- **Batch and ingest units refuse as a whole.** The instant and gate are checked at queue time (an
+  empty update map refuses there); the order, close and no-op rules run in one pre-flight over every
+  caller-instant op of the unit before any write, reusing the seam's own refusal functions, so a
+  batch never keeps a partial past that no later write at an earlier `t` could repair (`ErrBatchFailed`
+  ⊃ `BatchError` ⊃ `ErrTxOrder`, nothing written). A caller-instant op must be the only op of the unit
+  on its entity (node deletes count the relationships they cascade): apply order is not queue order.
+  A strong-mode ingest group carrying one is applied in a commit unit of its own, never coalesced.
+  Concurrent mode runs the pre-flight under the shared lock; a racing standalone write can still make
+  the seam refuse that one op afterwards (per-entity atomicity, as every concurrent-mode op).
+- Tests (break-the-code, red first; every refusal asserts nothing changed; memory, badger, sharded,
+  tiered with cross-shard relationships): `TestTxBackfillRel_*` and `TestTxBackfillNode_*`
+  (`PlainDoorsUnchanged`, `GateOff`, `InvalidInstant`, `OrderEqualReversed`, `OrderValidStart`,
+  `DeleteIgnoresT`, `UpdateStamps`, `CloseCollision`, `ScheduledCloseAfterT`, `Duplicates`,
+  `NoopUpdateRefuses`, `RaceClock`; nodes also `CascadeOrder`, `CascadeForeignStub`, `TxRollbackEquiv`,
+  `UnitPreflight`, `IngestCoalescedGroups`, `PrimaryCacheStale`, `ReplicaDropsNode`),
+  `TestTxBackfillRelW4_*` (`CloseCollision`, `ScheduledCloseAfterT`, `TxRollbackEquiv`,
+  `DoorEquivalence`, `BatchIngestDoors`, `IngestCoalescedGroups`), `TestAsOfCache_*`,
+  `TestRelsWithTx_*` / `TestNodesWithTx_*` (pkg/graph facade, `errors.Is` at the public layer on every
+  door), `TestTxBackfill_RaceClockEveryDoor` (plain updates racing the GraphTx, Batch and both ingest
+  doors under `-race`; red with the order check removed), and `TestTxBackfillOracle_CrossBackend`: a
+  seeded generator interleaving plain create, backfill, update, delete, `CloseVersion`,
+  `SetVersionInterval` and label changes with the ten caller-instant doors, asserting per op the
+  stamps and the pin `t-1` / `t` answers, then every point, during, `TxAt`, as-of, `TxPin`,
+  `ByLabel`/`ByType(opts)` door against the bitemporal oracle and identical chains and answers on the
+  four backends (48 seeds × 48 ops by default; red with the rel delete or node update seam stubbed
+  to the plain stamp).
+
+#### Changed
+
+- **The as-of column cache is invalidated after a past-dated write lands, not before.**
+  `resolveBackfillTxFrom` bumped the cache epoch at the gate, before the store write, so an as-of
+  build starting in between read the new epoch, missed the row and was cached as current (R14). Every
+  backfill door (`AddWithTx`, `tkg_tx_from` creates, batch, ingest, and the new caller-instant doors)
+  now reports its instant after its write (`notePastDatedWrite`). On a replica, node and relationship
+  delete applies report the tombstone's `min(TxTo, DeletedAt)`, builds register their pin before
+  reading the epoch, and a node apply bumps when its stamp lies at or below a cached pin (not only
+  below the applied high-water mark). Tests: `TestAsOfCache_PrimaryCacheStale`,
+  `TestAsOfCache_ReplicaDeleteStaleCache`, `TestAsOfCache_ReplicaPutBelowCachedPin`,
+  `TestAsOfCache_ReplicaRelDeleteFeedsDetector`, `TestAsOfCache_RelBackfillDoorsReportPastDatedWrite`.
+- Docs: "Backfill is CREATE-only — updates/deletes keep the monotonic system TxFrom" (`docs/api.md`)
+  and its copies in `SPEC.md`, `architecture.md`, `AGENTS.md` and code comments now say what holds:
+  the `tkg_tx_from` property stays create-only, the plain update/delete doors keep the clock, and the
+  `*WithTx` doors take the instant as an argument. Replays pass `tkg_valid_from` on creates and
+  updates: a derived valid-from is the mint or update time, and a later `t` before it refuses.
+
 ## [4.43.0] - 2026-10-08
 
 Minor release: the sigma-tkgd store requests, round 3 (Cypher port onto the shared IR):
