@@ -416,7 +416,9 @@ func (m *Machine) allocationTransition(s *state, a allocationCommand) (bool, err
 			return false, ErrStale
 		}
 		old := s.Recipients[recipientKey(r.Session.ID)]
-		if recipientMatches(old, r) && old.Phase == "fenced" {
+		// A delayed fence for this exact session must not undo activation or
+		// reset issuance state. A newer session still checks its predecessor below.
+		if recipientMatches(old, r) && (old.Phase == "fenced" || old.Phase == "active") {
 			return false, nil
 		}
 		if m.config.Group == 0 && !recipientMatches(old, r) || m.config.Group == 1 && (old == nil && r.Previous != 0 || old != nil && (old.Phase != "active" && old.Phase != "fenced" || old.Session.Epoch != r.Previous || old.Home != r.Home)) {
