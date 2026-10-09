@@ -19,8 +19,10 @@ import (
 // RetainedApplicationBytes counts ALL immutable logical keys/frames/values,
 // roots, changes and outcomes; it is NOT a physical disk quota. WAL/SST and
 // compaction amplification, OS cache and caller-retained copies are separate.
-// One backend call is serialized and uses at most MaxPageBytes owned output
-// plus one bounded key/value lookahead. Views retain only bounded root images.
+// KV/envelope reads are serialized and expose at most MaxPageBytes owned output
+// capacity plus one bounded key/value lookahead. Root image capacity is bounded
+// separately by MaxImageBytes; retained views share MaxViewBytes. These visible
+// slice capacities do not measure allocator rounding, heap/RSS or temporary work.
 // Policies are explicit, versioned and must match exactly on reopen.
 type ApplicationPolicy struct {
 	LocalVoter                                                         uint64
@@ -448,6 +450,8 @@ func (s *Store) ReclaimApplication() error {
 type ReadBudget struct{ Rows, Bytes int }
 
 // ApplicationPage owns copied rows and a last-visited logical key continuation.
+// Bytes conservatively covers both visited-key work and retained output, including
+// the Rows backing capacity; it is not a heap/RSS or allocator-size measurement.
 // Next must be reused with the same view/range. Complete is explicit; empty
 // output can have a continuation when a page contains only tombstones.
 type ApplicationPage struct {
@@ -509,7 +513,7 @@ func (s *Store) ApplicationView(index uint64) (*ApplicationView, error) {
 	fits := len(data) <= p.MaxViewBytes-s.viewBytes
 	var owned []byte
 	if inspectErr == nil && fits {
-		owned = bytes.Clone(data)
+		owned = copyApplicationBytes(data)
 	}
 	if err := errors.Join(inspectErr, closer.Close()); err != nil {
 		s.poison = err
@@ -546,12 +550,13 @@ func (v *ApplicationView) lock(ctx context.Context) error {
 func (v *ApplicationView) unlock() { v.s.mu.Unlock(); v.mu.Unlock() }
 
 // Root returns owned root bytes after checking both view and store lifetime.
+// The image has exact capacity within MaxImageBytes; root metadata is fixed-size.
 func (v *ApplicationView) Root() (ApplicationRoot, error) {
 	if err := v.lock(context.Background()); err != nil {
 		return ApplicationRoot{}, err
 	}
 	defer v.unlock()
-	return ApplicationRoot{v.index, bytes.Clone(v.image), sha256.Sum256(v.image)}, nil
+	return ApplicationRoot{v.index, copyApplicationBytes(v.image), sha256.Sum256(v.image)}, nil
 }
 
 // Close releases root accounting and is safe to repeat, including after Store.Close.
@@ -578,6 +583,8 @@ func (v *ApplicationView) iterator(lower, upper []byte) (*pebble.Iterator, error
 
 // Get returns exact old/current content, including an explicit tombstone.
 // found=false means never written at this root; Deleted distinguishes retraction.
+// maxBytes bounds key/value payload length; exact-cap copies and the policy
+// headroom additionally bound the complete owned KV output.
 func (v *ApplicationView) Get(ctx context.Context, key []byte, maxBytes int) (out KV, found bool, err error) {
 	if err = v.lock(ctx); err != nil {
 		return KV{}, false, err
@@ -616,7 +623,7 @@ func (v *ApplicationView) Get(ctx context.Context, key []byte, maxBytes int) (ou
 	if len(key)+len(value) > maxBytes {
 		return KV{}, false, ErrLimit
 	}
-	return KV{bytes.Clone(key), bytes.Clone(value), deleted}, true, nil
+	return KV{copyApplicationBytes(key), copyApplicationBytes(value), deleted}, true, nil
 }
 func (v *ApplicationView) fail(err error) error {
 	if err != nil {
@@ -629,7 +636,8 @@ func (v *ApplicationView) fail(err error) error {
 // decoding history or building a resident key map. Tombstones are omitted but
 // budgeted. nil upper is unbounded; nil lower starts the namespace. after must
 // be empty or a key in this exact range. Owned bytes include keys/Next and a
-// conservative 64-byte row header; one bounded lookahead is borrowed internally.
+// conservative 64-byte header for each retained row-capacity slot; one bounded
+// lookahead is borrowed internally.
 func (v *ApplicationView) Scan(ctx context.Context, lower, upper, after []byte, b ReadBudget) (page ApplicationPage, err error) {
 	if err = v.lock(ctx); err != nil {
 		return page, err
@@ -665,6 +673,9 @@ func (v *ApplicationView) Scan(ctx context.Context, lower, upper, after []byte, 
 	if len(after) > 0 {
 		seek = appNextPrefix(appPrefix(after))
 	}
+	// Work includes every visited key. Owned output additionally reserves the
+	// complete Rows backing array, including capacity beyond its length.
+	workBytes, outputBytes := 0, 0
 	for valid := it.SeekGE(seek); valid; {
 		if e := ctx.Err(); e != nil {
 			return ApplicationPage{}, e
@@ -697,19 +708,38 @@ func (v *ApplicationView) Scan(ctx context.Context, lower, upper, after []byte, 
 		// after this view. Otherwise an old empty root could scan an unbounded
 		// later database in a single Rows=1 call.
 		cost := len(key) + len(value) + 64
-		needed := cost + len(key)
-		if page.Visited >= b.Rows || needed > b.Bytes-page.Bytes {
+		emit := visible && !deleted
+		rowBytes, capacity := 0, cap(page.Rows)
+		if emit {
+			rowBytes = len(key) + len(value)
+			if len(page.Rows) == capacity {
+				// Grow geometrically where room permits, but never retain an
+				// uncharged backing array. Header accounting is conservative
+				// on supported Go architectures; byte copies have exact cap.
+				available := b.Bytes - (outputBytes - 64*capacity) - rowBytes - len(key)
+				capacity = min(max(1, 2*capacity), available/64, b.Rows)
+			}
+		}
+		owned := outputBytes + 64*(capacity-cap(page.Rows)) + rowBytes + len(key)
+		if page.Visited >= b.Rows || cost+len(key) > b.Bytes-workBytes || emit && capacity < len(page.Rows)+1 || owned > b.Bytes {
 			if page.Visited == 0 {
 				return ApplicationPage{}, ErrLimit
 			}
-			page.Bytes += len(page.Next)
+			page.Bytes = max(workBytes+len(page.Next), outputBytes+len(page.Next))
 			return page, nil
 		}
 		page.Visited++
-		page.Bytes += cost
-		page.Next = bytes.Clone(key)
-		if visible && !deleted {
-			page.Rows = append(page.Rows, KV{Key: bytes.Clone(key), Value: bytes.Clone(value)})
+		workBytes += cost
+		page.Next = copyApplicationBytes(key)
+		if emit {
+			if capacity > cap(page.Rows) {
+				rows := make([]KV, len(page.Rows), capacity)
+				copy(rows, page.Rows)
+				outputBytes += 64 * (capacity - cap(page.Rows))
+				page.Rows = rows
+			}
+			page.Rows = append(page.Rows, KV{Key: copyApplicationBytes(key), Value: copyApplicationBytes(value)})
+			outputBytes += rowBytes
 		}
 		valid = it.SeekGE(appNextPrefix(prefix))
 	}
@@ -718,7 +748,19 @@ func (v *ApplicationView) Scan(ctx context.Context, lower, upper, after []byte, 
 	}
 	page.Complete = true
 	page.Next = nil
+	page.Bytes = max(workBytes, outputBytes)
 	return page, nil
+}
+
+// copyApplicationBytes owns only the requested length; unlike append/Clone,
+// it exposes no spare byte capacity in returned application output.
+func copyApplicationBytes(src []byte) []byte {
+	if src == nil {
+		return nil
+	}
+	dst := make([]byte, len(src))
+	copy(dst, src)
+	return dst
 }
 
 // ApplicationRecord retrieves a retained complete change/outcome envelope at a
@@ -761,7 +803,7 @@ func (s *Store) ApplicationRecord(ctx context.Context, index uint64, outcome boo
 	data, deleted, inspectErr := inspectAppFrame(key, raw, limit)
 	var out []byte
 	if inspectErr == nil && !deleted && len(data) <= maxBytes {
-		out = bytes.Clone(data)
+		out = copyApplicationBytes(data)
 	}
 	if deleted {
 		inspectErr = ErrCorrupt
