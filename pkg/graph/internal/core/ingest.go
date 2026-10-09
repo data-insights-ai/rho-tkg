@@ -120,8 +120,6 @@ func (g *ingestGroup) count() int {
 		len(g.nodeDeletes) + len(g.relDeletes) + len(g.relTxDeletes) + len(g.nodeCascades) + len(g.relCascades)
 }
 
-func (g *ingestGroup) empty() bool { return g.count() == 0 }
-
 // ingestApplier is the single-writer apply stage. One per Core, started lazily.
 type ingestApplier struct {
 	c         *Core
@@ -500,7 +498,8 @@ func (a *ingestApplier) stop() {
 // has begun (ingestClosing) — both checks under ingestMu, which serializes
 // against stopIngestApplier so a session racing Close can never leave an
 // orphaned applier running behind the shutdown sweep (C1 lifecycle race).
-func (c *Core) ensureIngestApplier(groupSize, queueBound int) (*ingestApplier, error) {
+func (c *Core) ensureIngestApplier(queueBound int) (*ingestApplier, error) {
+	groupSize := defaultIngestGroupSize
 	c.ingestMu.Lock()
 	defer c.ingestMu.Unlock()
 	if c.closed.Load() || c.ingestClosing {
@@ -625,7 +624,7 @@ func (i *IngestOps) NewSession(opts IngestOptions) (*Session, error) {
 		lane = c.nextIngestLane()
 	} else {
 		var err error
-		a, err = c.ensureIngestApplier(defaultIngestGroupSize, opts.QueueBound)
+		a, err = c.ensureIngestApplier(opts.QueueBound)
 		if err != nil {
 			return nil, err
 		}

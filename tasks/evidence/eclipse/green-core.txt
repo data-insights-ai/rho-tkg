@@ -1,0 +1,138 @@
+=== RUN   TestOneTickSpanVisible_NodeDoors
+=== PAUSE TestOneTickSpanVisible_NodeDoors
+=== RUN   TestOneTickSpanVisible_RelDoors
+=== PAUSE TestOneTickSpanVisible_RelDoors
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne
+=== PAUSE TestOneTickSpanVisible_CloseVersionAtVfPlusOne
+=== RUN   TestOneTickSpanVisible_DeleteAtVfPlusOne
+=== PAUSE TestOneTickSpanVisible_DeleteAtVfPlusOne
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece
+=== PAUSE TestOneTickSpanVisible_CascadeWidthOnePiece
+=== RUN   TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow
+=== PAUSE TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow
+=== CONT  TestOneTickSpanVisible_NodeDoors
+=== CONT  TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow
+=== CONT  TestOneTickSpanVisible_RelDoors
+=== CONT  TestOneTickSpanVisible_CloseVersionAtVfPlusOne
+=== RUN   TestOneTickSpanVisible_NodeDoors/memory
+=== RUN   TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow/memory/node
+=== CONT  TestOneTickSpanVisible_CascadeWidthOnePiece
+=== CONT  TestOneTickSpanVisible_DeleteAtVfPlusOne
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/memory/width1/node
+=== RUN   TestOneTickSpanVisible_RelDoors/memory
+=== RUN   TestOneTickSpanVisible_DeleteAtVfPlusOne/memory/node
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/memory/node
+=== RUN   TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow/memory/rel
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/memory/width1/rel
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/memory/rel
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/memory/width2/node
+=== RUN   TestOneTickSpanVisible_DeleteAtVfPlusOne/memory/rel
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/memory/node/boundary_split
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/memory/width2/rel
+=== RUN   TestOneTickSpanVisible_NodeDoors/badger
+=== RUN   TestOneTickSpanVisible_RelDoors/badger
+=== RUN   TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow/badger/node
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/badger/width1/node
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/memory/rel/boundary_split
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/badger/node
+=== RUN   TestOneTickSpanVisible_DeleteAtVfPlusOne/badger/node
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/badger/width1/rel
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/badger/rel
+=== RUN   TestOneTickSpanVisible_NodeDoors/sharded
+=== RUN   TestOneTickSpanVisible_DeleteAtVfPlusOne/badger/rel
+=== RUN   TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow/badger/rel
+=== RUN   TestOneTickSpanVisible_RelDoors/sharded
+=== RUN   TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow/sharded/node
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/badger/node/boundary_split
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/badger/width2/node
+=== RUN   TestOneTickSpanVisible_DeleteAtVfPlusOne/sharded/node
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/badger/width2/rel
+=== RUN   TestOneTickSpanVisible_NodeDoors/tiered
+=== RUN   TestOneTickSpanVisible_RelDoors/tiered
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/badger/rel/boundary_split
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/sharded/node
+=== RUN   TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow/sharded/rel
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/sharded/width1/node
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/sharded/rel
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/sharded/width1/rel
+=== RUN   TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow/tiered/node
+=== RUN   TestOneTickSpanVisible_DeleteAtVfPlusOne/sharded/rel
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/sharded/node/boundary_split
+--- PASS: TestOneTickSpanVisible_NodeDoors (0.22s)
+    --- PASS: TestOneTickSpanVisible_NodeDoors/memory (0.00s)
+    --- PASS: TestOneTickSpanVisible_NodeDoors/badger (0.01s)
+    --- PASS: TestOneTickSpanVisible_NodeDoors/sharded (0.07s)
+    --- PASS: TestOneTickSpanVisible_NodeDoors/tiered (0.14s)
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/sharded/width2/node
+--- PASS: TestOneTickSpanVisible_RelDoors (0.22s)
+    --- PASS: TestOneTickSpanVisible_RelDoors/memory (0.00s)
+    --- PASS: TestOneTickSpanVisible_RelDoors/badger (0.01s)
+    --- PASS: TestOneTickSpanVisible_RelDoors/sharded (0.07s)
+    --- PASS: TestOneTickSpanVisible_RelDoors/tiered (0.14s)
+=== RUN   TestOneTickSpanVisible_DeleteAtVfPlusOne/tiered/node
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/sharded/width2/rel
+=== RUN   TestOneTickSpanVisible_DeleteAtVfPlusOne/tiered/rel
+=== RUN   TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow/tiered/rel
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/sharded/rel/boundary_split
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/tiered/width1/node
+--- PASS: TestOneTickSpanVisible_DeleteAtVfPlusOne (0.32s)
+    --- PASS: TestOneTickSpanVisible_DeleteAtVfPlusOne/memory/node (0.00s)
+    --- PASS: TestOneTickSpanVisible_DeleteAtVfPlusOne/memory/rel (0.00s)
+    --- PASS: TestOneTickSpanVisible_DeleteAtVfPlusOne/badger/node (0.01s)
+    --- PASS: TestOneTickSpanVisible_DeleteAtVfPlusOne/badger/rel (0.01s)
+    --- PASS: TestOneTickSpanVisible_DeleteAtVfPlusOne/sharded/node (0.14s)
+    --- PASS: TestOneTickSpanVisible_DeleteAtVfPlusOne/sharded/rel (0.06s)
+    --- PASS: TestOneTickSpanVisible_DeleteAtVfPlusOne/tiered/node (0.04s)
+    --- PASS: TestOneTickSpanVisible_DeleteAtVfPlusOne/tiered/rel (0.06s)
+--- PASS: TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow (0.33s)
+    --- PASS: TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow/memory/node (0.00s)
+    --- PASS: TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow/memory/rel (0.00s)
+    --- PASS: TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow/badger/node (0.01s)
+    --- PASS: TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow/badger/rel (0.01s)
+    --- PASS: TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow/sharded/node (0.08s)
+    --- PASS: TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow/sharded/rel (0.05s)
+    --- PASS: TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow/tiered/node (0.12s)
+    --- PASS: TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow/tiered/rel (0.06s)
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/tiered/node
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/tiered/width1/rel
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/tiered/width2/node
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/tiered/rel
+=== RUN   TestOneTickSpanVisible_CloseVersionAtVfPlusOne/tiered/width2/rel
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/tiered/node/boundary_split
+--- PASS: TestOneTickSpanVisible_CloseVersionAtVfPlusOne (0.41s)
+    --- PASS: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/memory/width1/node (0.00s)
+    --- PASS: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/memory/width1/rel (0.00s)
+    --- PASS: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/memory/width2/node (0.00s)
+    --- PASS: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/memory/width2/rel (0.00s)
+    --- PASS: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/badger/width1/node (0.01s)
+    --- PASS: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/badger/width1/rel (0.01s)
+    --- PASS: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/badger/width2/node (0.01s)
+    --- PASS: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/badger/width2/rel (0.07s)
+    --- PASS: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/sharded/width1/node (0.05s)
+    --- PASS: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/sharded/width1/rel (0.07s)
+    --- PASS: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/sharded/width2/node (0.04s)
+    --- PASS: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/sharded/width2/rel (0.06s)
+    --- PASS: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/tiered/width1/node (0.04s)
+    --- PASS: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/tiered/width1/rel (0.02s)
+    --- PASS: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/tiered/width2/node (0.02s)
+    --- PASS: TestOneTickSpanVisible_CloseVersionAtVfPlusOne/tiered/width2/rel (0.02s)
+=== RUN   TestOneTickSpanVisible_CascadeWidthOnePiece/tiered/rel/boundary_split
+--- PASS: TestOneTickSpanVisible_CascadeWidthOnePiece (0.43s)
+    --- PASS: TestOneTickSpanVisible_CascadeWidthOnePiece/memory/node (0.00s)
+    --- PASS: TestOneTickSpanVisible_CascadeWidthOnePiece/memory/rel (0.00s)
+    --- PASS: TestOneTickSpanVisible_CascadeWidthOnePiece/memory/node/boundary_split (0.00s)
+    --- PASS: TestOneTickSpanVisible_CascadeWidthOnePiece/memory/rel/boundary_split (0.00s)
+    --- PASS: TestOneTickSpanVisible_CascadeWidthOnePiece/badger/node (0.01s)
+    --- PASS: TestOneTickSpanVisible_CascadeWidthOnePiece/badger/rel (0.01s)
+    --- PASS: TestOneTickSpanVisible_CascadeWidthOnePiece/badger/node/boundary_split (0.07s)
+    --- PASS: TestOneTickSpanVisible_CascadeWidthOnePiece/badger/rel/boundary_split (0.01s)
+    --- PASS: TestOneTickSpanVisible_CascadeWidthOnePiece/sharded/node (0.01s)
+    --- PASS: TestOneTickSpanVisible_CascadeWidthOnePiece/sharded/rel (0.09s)
+    --- PASS: TestOneTickSpanVisible_CascadeWidthOnePiece/sharded/node/boundary_split (0.08s)
+    --- PASS: TestOneTickSpanVisible_CascadeWidthOnePiece/sharded/rel/boundary_split (0.06s)
+    --- PASS: TestOneTickSpanVisible_CascadeWidthOnePiece/tiered/node (0.03s)
+    --- PASS: TestOneTickSpanVisible_CascadeWidthOnePiece/tiered/rel (0.02s)
+    --- PASS: TestOneTickSpanVisible_CascadeWidthOnePiece/tiered/node/boundary_split (0.02s)
+    --- PASS: TestOneTickSpanVisible_CascadeWidthOnePiece/tiered/rel/boundary_split (0.02s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.614s

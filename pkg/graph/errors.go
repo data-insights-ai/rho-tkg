@@ -155,6 +155,8 @@ var (
 	ErrInvalidPurgePolicy             = core.ErrInvalidPurgePolicy
 	// Admin.Reset safety valve (BACKLOG 13d).
 	ErrResetDisabled = core.ErrResetDisabled
+	// Config.DurableCommit (backlog 11).
+	ErrCommitNotDurable = core.ErrCommitNotDurable
 	// Exact legal erasure.
 	ErrExactErasureDisabled           = core.ErrExactErasureDisabled
 	ErrInvalidExactErasureRequest     = core.ErrInvalidExactErasureRequest

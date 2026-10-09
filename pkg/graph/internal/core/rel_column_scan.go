@@ -17,20 +17,35 @@ import (
 // ok=false means this backend does not implement RelColumnScanCapability and the
 // caller should use RelsByType — the capability is OPTIONAL, like every other one
 // asserted in this package.
+//
+// A temporal opt (ValidAt, ValidStart+ValidEnd, TxAt or TxPin) is answered
+// exactly like RelsByType answers it — each relationship's version under opts,
+// history included — not from the store's current rows (scan_temporal_opts.go).
+// It is validated like RelsByType (ErrConflictingTemporalOpts, compaction and
+// retention watermarks).
 func (c *Core) ScanRelColumns(relType string, props []string, opts storepkg.QueryOpts,
 	fn func(*storepkg.RelColumnBatch) bool) (ok bool, err error) {
 
 	if c == nil {
 		return false, nil
 	}
+	scanner, has := c.store.(storepkg.RelColumnScanCapability)
+	temporal := hasTemporalFilter(opts)
+	if temporal && has {
+		if err := c.validateTemporalQueryOptsScan(opts); err != nil {
+			return true, err
+		}
+	}
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	scanner, has := c.store.(storepkg.RelColumnScanCapability)
 	if relType == "" {
 		if !has {
 			return false, nil
 		}
 		names := c.relTypes.ExportNames() // index = token; token 0 is reserved
+		if temporal {
+			return true, c.scanRelColumnsTemporalLocked(names[min(1, len(names)):], props, opts, fn)
+		}
 		for tok := 1; tok < len(names); tok++ {
 			stopped := false
 			name := names[tok]
@@ -57,6 +72,9 @@ func (c *Core) ScanRelColumns(relType string, props []string, opts storepkg.Quer
 	}
 	if !has {
 		return false, nil
+	}
+	if temporal {
+		return true, c.scanRelColumnsTemporalLocked([]string{relType}, props, opts, fn)
 	}
 	return true, scanner.ScanRelColumns(token, props, opts, func(b *storepkg.RelColumnBatch) bool {
 		b.RelType = relType

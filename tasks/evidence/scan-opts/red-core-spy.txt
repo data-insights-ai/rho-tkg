@@ -1,0 +1,6 @@
+=== RUN   TestScanDoorsNeverForwardTemporalOptsToStore
+    scan_opts_store_spy_test.go:223: store query methods received an active temporal filter (current-row answer for a temporal opt): [ScanNodeColumns ScanRelColumns]
+--- FAIL: TestScanDoorsNeverForwardTemporalOptsToStore (0.00s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.011s
+FAIL

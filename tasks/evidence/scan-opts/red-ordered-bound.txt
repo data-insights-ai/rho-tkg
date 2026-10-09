@@ -1,0 +1,16 @@
+--- FAIL: TestScanDoorsTemporalOpts_OrderedRangeNeverDropsAtExclusiveBound (0.15s)
+    --- FAIL: TestScanDoorsTemporalOpts_OrderedRangeNeverDropsAtExclusiveBound/memory (0.00s)
+        scan_temporal_opts_test.go:700: desc=false: 2^53+1 under exclusive min 2^53: node offered 0 times, rel 0 times, want 1 each
+        scan_temporal_opts_test.go:700: desc=true: 2^53+1 under exclusive min 2^53: node offered 0 times, rel 0 times, want 1 each
+    --- FAIL: TestScanDoorsTemporalOpts_OrderedRangeNeverDropsAtExclusiveBound/badger (0.02s)
+        scan_temporal_opts_test.go:700: desc=false: 2^53+1 under exclusive min 2^53: node offered 0 times, rel 0 times, want 1 each
+        scan_temporal_opts_test.go:700: desc=true: 2^53+1 under exclusive min 2^53: node offered 0 times, rel 0 times, want 1 each
+    --- FAIL: TestScanDoorsTemporalOpts_OrderedRangeNeverDropsAtExclusiveBound/tiered (0.11s)
+        scan_temporal_opts_test.go:700: desc=false: 2^53+1 under exclusive min 2^53: node offered 0 times, rel 0 times, want 1 each
+        scan_temporal_opts_test.go:700: desc=true: 2^53+1 under exclusive min 2^53: node offered 0 times, rel 0 times, want 1 each
+    --- FAIL: TestScanDoorsTemporalOpts_OrderedRangeNeverDropsAtExclusiveBound/sharded (0.02s)
+        scan_temporal_opts_test.go:700: desc=false: 2^53+1 under exclusive min 2^53: node offered 0 times, rel 0 times, want 1 each
+        scan_temporal_opts_test.go:700: desc=true: 2^53+1 under exclusive min 2^53: node offered 0 times, rel 0 times, want 1 each
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.194s
+FAIL

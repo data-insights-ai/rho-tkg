@@ -418,9 +418,10 @@ func validateRetentionPolicy(policy RetentionPolicy) error {
 // trimmed) and the oldest kept version.
 //
 // The kept set is a SUFFIX (the store trims newest-by-version), so trimming
-// stops at the first version the policy keeps. History TxFrom is monotonic
-// (updates stamp the system clock; §4.1 backfill is create-only), so the age
-// bound keeps a clean suffix.
+// stops at the first version the policy keeps. The update doors keep history
+// TxFrom rising with the version (a plain update stamps the system clock; a
+// caller-instant UpdateWithTx must follow every TxFrom and TxTo on the chain,
+// else ErrTxOrder), so the age bound keeps a clean suffix.
 func planTrim(hist []versionInfo, policy RetentionPolicy) (trimCount int, boundary versionInfo, oldestKept versionInfo) {
 	m := len(hist)
 	if m < 2 {

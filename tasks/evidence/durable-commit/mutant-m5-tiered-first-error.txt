@@ -1,0 +1,6 @@
+--- FAIL: TestDurableFlush_FailedShardReportedOthersStillFlushed (0.46s)
+    --- FAIL: TestDurableFlush_FailedShardReportedOthersStillFlushed/reference-shard-fails (0.22s)
+        durable_flush_test.go:173: hot shard: 2 writes pending — the flush stopped at the failing reference shard
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.468s
+FAIL

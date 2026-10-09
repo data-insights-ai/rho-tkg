@@ -1,0 +1,73 @@
+# W5 R15 red — TestTxBackfillOracle_CrossBackend (-short: 16 seeds x 40 ops x 4 backends), 2026-10-09
+# Each mutation applied in the worktree, the test run, the line restored (git status clean on the file after).
+
+## Mutation 1: pkg/graph/internal/core/relationship_delete.go:142  'now := at' -> 'now := types.Instant(0)' (rel delete seam stubbed to the plain stamp)
+## go test ./pkg/graph/internal/core/ -run 'TestTxBackfillOracle_CrossBackend$' -count=1 -short -v
+    tx_backfill_oracle_test.go:614: [memory] standalone/Rels.DeleteWithTx(796891380656571392,t=1791549006471): tombstone v0 TxTo=1791549010001 DeletedAt=1791549010001; want both 1791549006471
+    tx_backfill_oracle_test.go:614: [memory] standalone/Rels.DeleteWithTx(796891380671480832,t=1791549015154): tombstone v9 TxTo=1791549018001 DeletedAt=1791549018001; want both 1791549015154
+    tx_backfill_oracle_test.go:614: [memory] graphtx/Rels.DeleteWithTx(796891380691764224,t=1791549002093): tombstone v0 TxTo=1791549003002 DeletedAt=1791549003002; want both 1791549002093
+    tx_backfill_oracle_test.go:614: [memory] ingest_concurrent/Rels.DeleteWithTx(796891380695499776,t=1791549007041): tombstone v0 TxTo=1791549010001 DeletedAt=1791549010001; want both 1791549007041
+    tx_backfill_oracle_test.go:614: [memory] graphtx/Rels.DeleteWithTx(796891380706903040,t=1791549001139): tombstone v0 TxTo=1791549013002 DeletedAt=1791549013002; want both 1791549001139
+    tx_backfill_oracle_test.go:614: [memory] ingest_concurrent/Rels.DeleteWithTx(796891380718502912,t=1791549002816): tombstone v0 TxTo=1791549003001 DeletedAt=1791549003001; want both 1791549002816
+    tx_backfill_oracle_test.go:614: [memory] standalone/Rels.DeleteWithTx(796891380729938944,t=1791549037284): tombstone v1 TxTo=1791549038001 DeletedAt=1791549038001; want both 1791549037284
+    tx_backfill_oracle_test.go:614: [memory] batch/Rels.DeleteWithTx(796891380754416640,t=1791549005675): tombstone v0 TxTo=1791549009002 DeletedAt=1791549009002; want both 1791549005675
+    tx_backfill_oracle_test.go:614: [memory] batch/Rels.DeleteWithTx(796891380764378112,t=1791549002489): tombstone v0 TxTo=1791549004002 DeletedAt=1791549004002; want both 1791549002489
+    tx_backfill_oracle_test.go:614: [memory] graphtx/Rels.DeleteWithTx(796891380768015360,t=1791549020509): tombstone v3 TxTo=1791549021002 DeletedAt=1791549021002; want both 1791549020509
+    tx_backfill_oracle_test.go:614: [memory] ingest_concurrent/Rels.DeleteWithTx(796891393172177920,t=1791549015790): tombstone v1 TxTo=1791549027001 DeletedAt=1791549027001; want both 1791549015790
+    tx_backfill_oracle_test.go:614: [memory] graphtx/Rels.DeleteWithTx(796891393184957440,t=1791549031794): tombstone v3 TxTo=1791549038002 DeletedAt=1791549038002; want both 1791549031794
+    tx_backfill_oracle_test.go:614: [memory] standalone/Rels.DeleteWithTx(796891393225851904,t=1791549001498): tombstone v0 TxTo=1791549003001 DeletedAt=1791549003001; want both 1791549001498
+    tx_backfill_oracle_test.go:614: [memory] graphtx/Rels.DeleteWithTx(796891393231455232,t=1791549006918): tombstone v1 TxTo=1791549010002 DeletedAt=1791549010002; want both 1791549006918
+    tx_backfill_oracle_test.go:614: [memory] standalone/Rels.DeleteWithTx(796891393246036992,t=1791549005792): tombstone v2 TxTo=1791549009001 DeletedAt=1791549009001; want both 1791549005792
+--- FAIL: TestTxBackfillOracle_CrossBackend (0.38s)
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064277 (0.00s)
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064278 (0.00s)
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064279 (0.00s)
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064280 (0.00s)
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064281 (0.00s)
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064282 (0.00s)
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064283 (0.00s)
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064284 (0.00s)
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064285 (0.00s)
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064286 (0.00s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064287 (0.38s)
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064288 (0.00s)
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064289 (0.00s)
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064290 (0.00s)
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064291 (0.00s)
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064292 (0.00s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.400s
+FAIL
+
+## Mutation 2: pkg/graph/internal/core/node_update.go:213  'now := tmp.txAt' -> 'now := types.Instant(0)' (node update seam stubbed to the plain stamp)
+## same command
+    tx_backfill_oracle_test.go:575: [memory] standalone/Nodes.UpdateWithTx(796892206286733312,t=1791549012670) closed=false: new version v2 TxFrom=1791549013001 UpdatedAt=1791549013001; want a version above v1 at 1791549012670
+    tx_backfill_oracle_test.go:575: [memory] graphtx/Nodes.UpdateWithTx(796892206314553344,t=1791549019812) closed=false: new version v1 TxFrom=1791549020002 UpdatedAt=1791549020002; want a version above v0 at 1791549019812
+    tx_backfill_oracle_test.go:575: [memory] batch/Nodes.UpdateWithTx(796892206319435776,t=1791549003722) closed=false: new version v1 TxFrom=1791549009002 UpdatedAt=1791549009002; want a version above v0 at 1791549003722
+    tx_backfill_oracle_test.go:575: [memory] standalone/Nodes.UpdateWithTx(796892206328840192,t=1791549012258) closed=false: new version v2 TxFrom=1791549015001 UpdatedAt=1791549015001; want a version above v1 at 1791549012258
+    tx_backfill_oracle_test.go:575: [memory] ingest_sync/Nodes.UpdateWithTx(796892206350893056,t=1791549020918) closed=false: new version v1 TxFrom=1791549025002 UpdatedAt=1791549025002; want a version above v0 at 1791549020918
+    tx_backfill_oracle_test.go:575: [memory] ingest_concurrent/Nodes.UpdateWithTx(796892206358724608,t=1791549002351) closed=false: new version v1 TxFrom=1791549004001 UpdatedAt=1791549004001; want a version above v0 at 1791549002351
+    tx_backfill_oracle_test.go:575: [memory] graphtx/Nodes.UpdateWithTx(796892218781958144,t=1791549018375) closed=false: new version v1 TxFrom=1791549031002 UpdatedAt=1791549031002; want a version above v0 at 1791549018375
+    tx_backfill_oracle_test.go:575: [memory] standalone/Nodes.UpdateWithTx(796892218822852608,t=1791549017596) closed=false: new version v1 TxFrom=1791549036001 UpdatedAt=1791549036001; want a version above v0 at 1791549017596
+    tx_backfill_oracle_test.go:575: [memory] standalone/Nodes.UpdateWithTx(796892218846150656,t=1791549019939) closed=false: new version v7 TxFrom=1791549020001 UpdatedAt=1791549020001; want a version above v6 at 1791549019939
+    tx_backfill_oracle_test.go:575: [memory] graphtx/Nodes.UpdateWithTx(796892271293956096,t=1791549010480) closed=false: new version v6 TxFrom=1791549011002 UpdatedAt=1791549011002; want a version above v5 at 1791549010480
+--- FAIL: TestTxBackfillOracle_CrossBackend (2.29s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064277 (0.30s)
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064278 (0.00s)
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064279 (0.00s)
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064280 (0.00s)
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064281 (0.00s)
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064282 (0.00s)
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064283 (0.00s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064284 (0.38s)
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064285 (0.00s)
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064286 (0.00s)
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064287 (0.00s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064288 (0.36s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064289 (0.47s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064290 (0.52s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064291 (0.25s)
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064292 (0.00s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	2.370s
+FAIL

@@ -170,6 +170,11 @@ var adminResetSentinels = []string{
 	"ErrResetDisabled",
 }
 
+// Config.DurableCommit (backlog 11)
+var durableCommitSentinels = []string{
+	"ErrCommitNotDurable",
+}
+
 // Admin.ExactErase safety and scope sentinels.
 var exactErasureSentinels = []string{
 	"ErrExactErasureDisabled",
@@ -345,6 +350,7 @@ func graphReexportSentinelNames() []string {
 	all = append(all, compactionSentinels...)
 	all = append(all, retentionSentinels...)
 	all = append(all, adminResetSentinels...)
+	all = append(all, durableCommitSentinels...)
 	all = append(all, exactErasureSentinels...)
 	all = append(all, ioSentinels...)
 	all = append(all, backupSentinels...)

@@ -1,0 +1,20 @@
+--- FAIL: TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow (0.17s)
+    --- FAIL: TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow/memory/node (0.00s)
+        one_tick_span_test.go:817: gap piece = v:1 w:x, want v:2 w:x (template = newest history row)
+    --- FAIL: TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow/memory/rel (0.00s)
+        one_tick_span_test.go:845: gap piece = v:1 w:x, want v:2 w:x (template = newest history row)
+    --- FAIL: TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow/badger/node (0.00s)
+        one_tick_span_test.go:817: gap piece = v:1 w:x, want v:2 w:x (template = newest history row)
+    --- FAIL: TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow/badger/rel (0.00s)
+        one_tick_span_test.go:845: gap piece = v:1 w:x, want v:2 w:x (template = newest history row)
+    --- FAIL: TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow/sharded/node (0.04s)
+        one_tick_span_test.go:817: gap piece = v:1 w:x, want v:2 w:x (template = newest history row)
+    --- FAIL: TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow/sharded/rel (0.01s)
+        one_tick_span_test.go:845: gap piece = v:1 w:x, want v:2 w:x (template = newest history row)
+    --- FAIL: TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow/tiered/node (0.04s)
+        one_tick_span_test.go:817: gap piece = v:1 w:x, want v:2 w:x (template = newest history row)
+    --- FAIL: TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow/tiered/rel (0.07s)
+        one_tick_span_test.go:845: gap piece = v:1 w:x, want v:2 w:x (template = newest history row)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.211s
+FAIL

@@ -255,9 +255,6 @@ func (c *Core) resolveNodeVersionAt(chain []*types.Node, t types.Instant) (*type
 		}
 		for i := start; i >= 0; i-- {
 			entry := chain[i]
-			if eclipsedNodeBounds(entry) {
-				continue
-			}
 			vStart, vEnd := c.nodeVersionBounds(chain, i)
 			if vStart <= t && (vEnd == 0 || vEnd > t) {
 				return entry, nil
@@ -276,9 +273,6 @@ func (c *Core) resolveNodeVersionAt(chain []*types.Node, t types.Instant) (*type
 	var best *types.Node
 	for i := range chain {
 		entry := chain[i]
-		if eclipsedNodeBounds(entry) {
-			continue
-		}
 		vStart, vEnd := c.nodeOwnBounds(entry)
 		if vStart <= t && (vEnd == 0 || vEnd > t) {
 			if best == nil || nodeBeliefNewerThan(entry, best) {
@@ -488,13 +482,8 @@ func (c *Core) nodeVersionBounds(chain []*types.Node, i int) (types.Instant, typ
 
 	// Determine version end. Use next's effective ValidFrom when set
 	// (timeline tiles cleanly); otherwise fall back to next.UpdatedAt.
-	// Skip eclipsed rows (cascade-marked zero-length intervals) — they are
-	// invisible to VT queries and must not contribute to vEnd derivation.
-	for j := i + 1; j < len(chain); j++ {
-		next := chain[j]
-		if eclipsedNodeBounds(next) {
-			continue
-		}
+	if i+1 < len(chain) {
+		next := chain[i+1]
 		if tm := next.Temporal(); tm != nil && tm.ValidFrom != 0 {
 			vEnd = tm.ValidFrom
 		} else if tm := next.Temporal(); tm != nil && tm.UpdatedAt != 0 {
@@ -502,9 +491,8 @@ func (c *Core) nodeVersionBounds(chain []*types.Node, i int) (types.Instant, typ
 		} else {
 			vEnd = c.nodeValidFrom(next)
 		}
-		break
 	}
-	// vEnd == 0 means open-ended (no future non-eclipsed version).
+	// vEnd == 0 means open-ended (no later version).
 
 	// Post-migration: every non-zero ValidFrom is caller-supplied. Pre-
 	// migration: keep the legacy inheritance heuristic for back-compat
@@ -546,9 +534,6 @@ func (c *Core) resolveRelVersionAt(chain []*types.Relationship, t types.Instant)
 		}
 		for i := start; i >= 0; i-- {
 			entry := chain[i]
-			if eclipsedRelBounds(entry) {
-				continue
-			}
 			vStart, vEnd := c.relVersionBounds(chain, i)
 			if vStart <= t && (vEnd == 0 || vEnd > t) {
 				return entry, nil
@@ -561,9 +546,6 @@ func (c *Core) resolveRelVersionAt(chain []*types.Relationship, t types.Instant)
 	var best *types.Relationship
 	for i := range chain {
 		entry := chain[i]
-		if eclipsedRelBounds(entry) {
-			continue
-		}
 		vStart, vEnd := c.relOwnBounds(entry)
 		if vStart <= t && (vEnd == 0 || vEnd > t) {
 			if best == nil || relBeliefNewerThan(entry, best) {
@@ -643,11 +625,8 @@ func (c *Core) relVersionBounds(chain []*types.Relationship, i int) (types.Insta
 		}
 	}
 
-	for j := i + 1; j < len(chain); j++ {
-		next := chain[j]
-		if eclipsedRelBounds(next) {
-			continue
-		}
+	if i+1 < len(chain) {
+		next := chain[i+1]
 		if tm := next.Temporal(); tm != nil && tm.ValidFrom != 0 {
 			vEnd = tm.ValidFrom
 		} else if tm := next.Temporal(); tm != nil && tm.UpdatedAt != 0 {
@@ -655,7 +634,6 @@ func (c *Core) relVersionBounds(chain []*types.Relationship, i int) (types.Insta
 		} else {
 			vEnd = c.relValidFrom(next)
 		}
-		break
 	}
 
 	if tm := entry.Temporal(); tm != nil {

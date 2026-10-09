@@ -71,8 +71,19 @@ type UniqueOps interface {
 // (label, propertyKey). Requires a backend with MetaKV; rejected on a
 // read-only replica.
 //
-// Enforcement currently covers the STANDALONE node doors (Add / AddWithTx /
-// AddByIDIfAbsent / Update / UpdateInPlace / CompareAndSetProperty / AddLabel).
+// Enforcement covers the node doors that write a value through the create and
+// update kernels: the standalone doors (Add / AddWithTx / GetOrCreateByKey /
+// AddByIDIfAbsent / Import / Update / UpdateWithTx / UpdateInPlace /
+// CompareAndSetProperty / AddLabel), the BatchBuilder (AddNode / AddNodes
+// creates are partitioned before the write, UpdateNode runs the update door),
+// GraphTx (AddNode / ImportNodeWithID / UpdateNode / UpdateNodeWithTx /
+// AddNodeLabel), and the ingest Session
+// in strong and concurrent mode (creates and UpdateNode). NOT checked:
+// SetNodeVersionInterval on all four doors (Temporal, GraphTx, BatchBuilder,
+// Session) — its props patch can give a node a value another node holds
+// (tasks/backlog.md item 12). RemoveLabel cannot introduce a value. Replica
+// apply reproduces rows verbatim and does not enforce; g.IO().Import validates
+// the replayed state instead.
 func (a *API) CreateUnique(ctx context.Context, label, propertyKey string) error {
 	ops, err := a.uniqueReady()
 	if err != nil {

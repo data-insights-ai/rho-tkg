@@ -623,6 +623,9 @@ func (tx *GraphTx) lockActiveContext(ctx context.Context) error {
 // read-only transaction skips it. A previously failed registry checkpoint is
 // retried even when this transaction itself was read-only. Commit then releases
 // c.txMu and publishes buffered events outside all locks.
+// With Config.DurableCommit it makes the group durable (one store DurableFlush)
+// after releasing the locks and before returning; a flush failure returns
+// ErrCommitNotDurable for a group that is nevertheless committed.
 // After Commit, all tx methods return storepkg.ErrTxDone.
 func (tx *GraphTx) Commit() error {
 	if err := tx.lockActive(); err != nil {
@@ -675,13 +678,18 @@ func (tx *GraphTx) Commit() error {
 	tx.g.mu.Unlock()
 	tx.g.txMu.Unlock()
 
+	// Config.DurableCommit: make the group durable before returning success.
+	// The tx is already done; a flush error reports a committed-but-not-durable
+	// group (ErrCommitNotDurable), whose operations stay pending.
+	durableErr := tx.g.flushDurableCommit()
+
 	// Publish buffered events outside all locks. PublishBatch is
 	// atomic on AsyncEventBus, so all tx events land in priority
 	// order even if other goroutines are publishing concurrently.
 	if ep != nil && len(events) > 0 {
 		ep.PublishBatch(events...)
 	}
-	return nil
+	return durableErr
 }
 
 // checkpointRegistriesOnCommit runs with c.mu held. registryMu closes the

@@ -1,0 +1,28 @@
+# W5 facade red — TestNodesWithTx_TxBatchIngestFacade (pkg/graph, 4 backends), 2026-10-09
+## Run 1 mutation: batch_queue.go BatchBuilder.DeleteNodeWithTx forwards to DeleteNode; ingest.go Session.UpdateNodeWithTx forwards to UpdateNode
+## Run 2 mutation: only the Session one (the batch line removed). Both restored after (git diff clean).
+## go test ./pkg/graph/ -run TestNodesWithTx_TxBatchIngestFacade -count=1 -v
+    nodes_withtx_doors_test.go:122: BatchBuilder.DeleteNodeWithTx(t=1791537710067) err = <nil>; want ErrTxOrder wrapping ErrInvalidTxFrom
+    nodes_withtx_doors_test.go:122: BatchBuilder.DeleteNodeWithTx(t=1791537710071) err = <nil>; want ErrTxOrder wrapping ErrInvalidTxFrom
+    nodes_withtx_doors_test.go:122: BatchBuilder.DeleteNodeWithTx(t=1791537710115) err = <nil>; want ErrTxOrder wrapping ErrInvalidTxFrom
+    nodes_withtx_doors_test.go:122: BatchBuilder.DeleteNodeWithTx(t=1791537710122) err = <nil>; want ErrTxOrder wrapping ErrInvalidTxFrom
+--- FAIL: TestNodesWithTx_TxBatchIngestFacade (0.06s)
+    --- FAIL: TestNodesWithTx_TxBatchIngestFacade/memory (0.00s)
+    --- FAIL: TestNodesWithTx_TxBatchIngestFacade/badger (0.01s)
+    --- FAIL: TestNodesWithTx_TxBatchIngestFacade/tiered (0.05s)
+    --- FAIL: TestNodesWithTx_TxBatchIngestFacade/sharded (0.01s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.078s
+FAIL
+    nodes_withtx_doors_test.go:122: Session(concurrent=false).UpdateNodeWithTx(t=1791537723674) err = <nil>; want ErrTxOrder wrapping ErrInvalidTxFrom
+    nodes_withtx_doors_test.go:122: Session(concurrent=false).UpdateNodeWithTx(t=1791537723710) err = <nil>; want ErrTxOrder wrapping ErrInvalidTxFrom
+    nodes_withtx_doors_test.go:122: Session(concurrent=false).UpdateNodeWithTx(t=1791537723717) err = <nil>; want ErrTxOrder wrapping ErrInvalidTxFrom
+    nodes_withtx_doors_test.go:122: Session(concurrent=false).UpdateNodeWithTx(t=1791537723724) err = <nil>; want ErrTxOrder wrapping ErrInvalidTxFrom
+--- FAIL: TestNodesWithTx_TxBatchIngestFacade (0.05s)
+    --- FAIL: TestNodesWithTx_TxBatchIngestFacade/memory (0.00s)
+    --- FAIL: TestNodesWithTx_TxBatchIngestFacade/badger (0.04s)
+    --- FAIL: TestNodesWithTx_TxBatchIngestFacade/tiered (0.01s)
+    --- FAIL: TestNodesWithTx_TxBatchIngestFacade/sharded (0.01s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.067s
+FAIL

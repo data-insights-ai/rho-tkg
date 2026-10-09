@@ -23,7 +23,10 @@ import (
 // operations fail, the result contains per-operation errors and the returned
 // error wraps ErrBatchFailed so callers that only check err still see failure.
 // A builder can be executed once; calls after execution begins return
-// ErrBatchDone.
+// ErrBatchDone. With Config.DurableCommit the group is made durable (one store
+// DurableFlush) before Execute returns; a flush failure returns the result
+// (the ops are committed) with a "durable-commit" BatchError and an error
+// wrapping both ErrBatchFailed and ErrCommitNotDurable.
 func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	if err := b.lockOpen(); err != nil {
 		return nil, err
@@ -682,6 +685,20 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	b.mu.Unlock()
 	builderUnlocked = true
 
+	// Config.DurableCommit: make the group durable before returning success.
+	// A failure keeps the result (the ops ARE committed: their IDs and LSN let a
+	// caller avoid re-applying them) and records an op-less "durable-commit"
+	// BatchError, which the ingest applier attributes to every group of the
+	// batch (groupApplyError's unowned-error branch).
+	var durableErr error
+	if groupErr == nil {
+		if err := b.g.flushDurableCommit(); err != nil {
+			durableErr = fmt.Errorf("graph: durable commit: %w", err)
+			result.Errors = append(result.Errors, BatchError{Op: "durable-commit", Err: durableErr})
+			result.Failed++
+		}
+	}
+
 	// Dispatch buffered events outside all locks as one publisher batch so
 	// async buses preserve priority order across the full Execute result.
 	if ep != nil && len(batchEvents) > 0 {
@@ -692,6 +709,9 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		// Whole-batch failure: no per-op attribution is possible because the
 		// failed durability boundary covers every op.
 		return nil, groupErr
+	}
+	if durableErr != nil {
+		return result, fmt.Errorf("%w: %w", ErrBatchFailed, durableErr)
 	}
 	if result.Failed > 0 {
 		return result, fmt.Errorf("%w: %d failed operation(s)", ErrBatchFailed, result.Failed)

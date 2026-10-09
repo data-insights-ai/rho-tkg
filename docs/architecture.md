@@ -4,7 +4,7 @@ Temporal Knowledge Graph v4 is a pure Go library providing the core graph engine
 
 ```
 Module:  github.com/data-insights-ai/rho-tkg/v4
-Go:      1.26.7
+Go:      1.26.9
 License: Apache-2.0
 ```
 
@@ -89,7 +89,7 @@ Read-only virtual properties dispatched by the graph layer from internal metadat
 | `tkg_type` | `string` | Relationship | Structural |
 | `tkg_valid_from` | `Instant` | Both | Temporal — world-time (VT) assertion, caller-only, NO fallback: resolves to `(Instant(0), ok=true)` when never asserted |
 | `tkg_valid_to` | `Instant` | Both | Temporal — world-time (VT) assertion, caller-only, NO fallback |
-| `tkg_tx_from` | `Instant` | Both | Temporal — transaction time (TX), stamped by the system on every Add; caller-settable on CREATE doors only under `Config.AllowTxBackfill` (backfill, §4.1) |
+| `tkg_tx_from` | `Instant` | Both | Temporal — transaction time (TX), stamped by the system on every Add; caller-settable as a property on CREATE doors only under `Config.AllowTxBackfill` (backfill, §4.1); under the same gate `UpdateWithTx`/`DeleteWithTx` take a caller instant as an argument for a supersession or an ending (`ErrTxOrder` when it does not follow the chain) |
 | `tkg_tx_to` | `Instant` | Both | Temporal — transaction time (TX) |
 | `tkg_created_at` | `Instant` | Both | Temporal (auto-derived from snowflake ID when unset — the only temporal shadow key with a resolver fallback) |
 | `tkg_updated_at` | `Instant` | Both | Temporal |
@@ -267,7 +267,7 @@ Most point and query reads acquire `g.mu.RLock()`: they are blocked while a tx/b
 - **Tx vs tx / batch:** serialized (`txMu`). Two transactions never interleave.
 - **Tx vs standalone reads:** every tx mutation is applied to the Store immediately. A concurrent standalone reader sees the transaction's uncommitted rows before `Commit` (dirty read), and sees them disappear again after `Rollback`.
 - **Tx vs standalone writes:** entity locks are taken and released per call, not held until commit. A standalone write can land on an entity between two calls of an open transaction. `Rollback` restores the transaction's pre-transaction snapshot of that entity and therefore **overwrites the standalone write** (lost update).
-- **Crash:** the tx's rows reach disk through the normal async flush (or per call under `SyncWrites`); a crash before `Commit` can leave part of the transaction persisted. The change-log is scoped: a rolled-back or uncommitted transaction emits no records, so replicas never see its rows.
+- **Crash:** the tx's rows reach disk through the normal async flush (or per call under `SyncWrites`); a crash before `Commit` can leave part of the transaction persisted. With `Config.DurableCommit`, `Commit` (and `Batch.Execute`, the strong ingest applier) does not return success before one durable flush — the pending buffer as one WriteBatch plus a WAL fsync on every open shard that took writes — so a crash after the return keeps the whole group; see "Durable-on-return commit" below. The change-log is scoped: a rolled-back or uncommitted transaction emits no records, so replicas never see its rows.
 
 This is the v4.1.0 performance trade-off (standalone mutations and reads on disjoint entities run in parallel with an open tx). Use `g.Tx()` when no standalone writer touches the same entities concurrently, or serialize those writers yourself; use `g.Batch()` when readers must never observe a partial group (it holds `g.mu.Lock()` for the whole execution). Isolated transactions (private write set applied atomically at commit, locks held to commit) are a v5 item.
 
@@ -292,7 +292,7 @@ type QueryOpts struct {
     ValidEnd        types.Instant  // Interval filter end (0 = disabled)
     TxAt            types.Instant  // Bitemporal: restrict chain to TxFrom <= TxAt (0 = no TX filter)
     TxPin           types.Instant  // Belief state: pure knowledge-time resolution, NO valid-time filter (0 = disabled)
-    IncludeEclipsed bool           // Include cascade-superseded history rows (reserved; default false)
+    IncludeEclipsed bool           // Reserved no-op, kept for API compatibility
     Depth           ShardDepth     // Shard tier filter (0 = all tiers)
     NoSort          bool           // Skip the label-scan ID sort (honoured only when After == 0)
 }
@@ -438,6 +438,56 @@ flushes synchronously (backpressure); a failing backpressure flush surfaces
 its error to the writer and requeues the ops. `Store.PendingWriteCount()`
 exposes the pressure signal.
 
+### Durable-on-return commit
+
+`graph.Config.DurableCommit` (off by default; backlog 11, ai-soc request 9)
+makes `GraphTx.Commit`, `Tx().Run*`, `Batch.Execute` and the strong ingest
+applier call `store.DurableFlushCapability.DurableFlush` once per group, after
+the group is applied and the graph locks are released (readers and the next
+writer do not wait for the fsync). Badger's `DurableFlush` holds `flushMu`
+across the normal flush (the whole pending buffer, counters and change-log
+records in one WriteBatch) and a `db.Sync()` of the WAL; the sync runs only
+when a WriteBatch reached the WAL without an fsync since the last one (an
+`unsynced` flag set by every flush, background ones included), and never under
+`SyncWrites`. Tiered folds it over the reference shard, the open archive and
+the open event shards without lazy-opening a closed cold shard (it has nothing
+pending); sharded over every slot. A store without stable storage (memory,
+`BadgerInMemory`, in-memory tiered/sharded) fails `New` with
+`ErrCapabilityNotSupported`.
+
+What a caller may assume: after success, a crash keeps the whole group. Before
+the return, a crash can keep any subset — the background flush may already
+have written part of it, and the flush snapshot is a map, so Badger can split a
+buffer above its transaction size limit into several transactions in arbitrary
+order. A consumer that writes its cut record LAST in the group and recovers by
+"rows above the last durable cut are unfinished" is therefore safe while the
+flush that carries the cut fits one Badger transaction (about 15 % of
+`MemTableSize`, ≈ 9.6 MB at the 64 MB default — the flush carries the group
+plus any other write still pending); all-or-nothing on disk for larger flushes
+is v5. On a flush failure the door returns `ErrCommitNotDurable`: the group is
+committed in memory, its operations stay pending (requeued), and the next
+successful flush persists them; until then a crash can lose them. `RunWithLSN`
+still returns the group's LSN and `Batch.Execute` its result (with a
+`durable-commit` `BatchError`), so a caller never has to re-apply a committed
+group. Rollback never flushes. Standalone mutations and concurrent-mode ingest
+`Submit` keep the async flush.
+
+"Crash" above means a process crash. Power loss is narrower: Badger v4's
+`db.Sync()` fsyncs only the active memtable's WAL and the current value-log
+file. A memtable switch during the flush (`ensureRoomForWrite`) retires the old
+WAL without an fsync, and a finished value-log file is fsynced only under
+`SyncWrites`, so rows of a group whose flush filled the memtable or a value-log
+file can still be unsynced after `DurableFlush` returned. `SyncWrites` is the
+setting for strict power-loss durability (backlog 15 tracks syncing the retired
+WAL on switch, or measuring `SyncWrites`' cost instead).
+
+`DurableFlush` re-checks the store's closed state under `flushMu`: `Close`
+sets `closing` before its final flush, which needs `flushMu`, so a durable
+flush never syncs a DB that `Close` already closed (a commit can race
+`Graph.Close`, since it flushes after releasing the graph locks; it then gets
+`ErrCommitNotDurable` wrapping `ErrStoreClosed`, while `Close`'s own final
+flush writes the group). Sharded holds its store lock across the fold.
+
 ### Key Architecture
 
 ```
@@ -541,7 +591,11 @@ is surfaced through `g.Replication()` (`ChangeFeed` / `ForEachChange` /
 `Store` decorator, because crash-safety requires co-committing the record in the
 data batch and a decorator would lose native-store trust. The log alone does not
 converge a replica from empty — bootstrap from a full export snapshot (registry
-included), then tail the feed. See `tasks/backlog.md`.
+included), then tail the feed. The feed is scoped per `GraphTx`: its records are
+buffered (`store.TxChangeLogScope`) and get their LSNs at `Commit`, so a rolled-back
+or uncommitted transaction emits no records and burns no LSN; an unscoped door (a
+store without the capability, the standalone doors, the concurrent ingest session)
+appends its record eagerly, one per store mutation. See `tasks/backlog.md`.
 
 ### Read replicas: apply engine + read-only gate (Phase 1, opt-in)
 
@@ -1172,10 +1226,6 @@ Recorded so future readers know these are conscious choices, not oversights:
 - **Iteration-capability matrix**: the history × deleted × depth × paged
   optional-interface grid grows combinatorially; a parameterized iteration
   interface is a breaking store-contract redesign — v5 item.
-- **Eclipsed-row explicit wire flag**: the zero-width `ValidTo==ValidFrom+1`
-  sentinel works but is an in-band magic value; an explicit flag becomes
-  cheap at the next wire-format version bump (the versioning machinery now
-  exists) — schedule together.
 - **`tier` package returning `tiered.*` types** (forces the tiered import on
   consumers) and `RecoverBackgroundError` exposure via `g.Tier()`: both are
   additive-but-coupled API changes — bundle with the next planned API pass.

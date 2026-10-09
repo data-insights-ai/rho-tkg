@@ -1288,3 +1288,33 @@ type GroupCommitCapability interface {
 	BeginGroupCommit()
 	EndGroupCommit() error
 }
+
+// DurableFlushCapability makes every write the backend has accepted durable on
+// demand: Config.DurableCommit calls DurableFlush once at the end of each commit
+// group (GraphTx.Commit, Batch.Execute, the strong ingest applier) before the
+// door returns success.
+//
+// DurableFlush writes the whole pending write buffer (this group plus any earlier
+// unflushed writes) and fsyncs the write-ahead log, on every open shard of a
+// sharded or tiered store; a shard with nothing written since its last sync is
+// not synced again, and a closed shard is not opened. On error the buffered
+// operations stay pending for the next flush (nothing is dropped) and the caller
+// must treat the group as not durable. A buffer larger than the backend's
+// transaction size limit is split into several transactions by the backend, so
+// a crash during that flush can persist a subset: crash atomicity of a group is
+// not promised.
+//
+// Power-loss limit (Badger v4): its Sync fsyncs only the active memtable's WAL
+// and the current value-log file. A flush that fills the memtable retires the
+// WAL without an fsync, and a finished value-log file is synced only under
+// SyncWrites, so part of a group can be unsynced after DurableFlush returns.
+// It survives a process crash, not necessarily a power loss; SyncWrites is the
+// setting for strict power-loss durability.
+//
+// DurableFlushSupported reports whether the instance has stable storage at all
+// (false for an in-memory instance); a store without the capability, or one
+// reporting false, makes New with DurableCommit fail closed.
+type DurableFlushCapability interface {
+	DurableFlushSupported() bool
+	DurableFlush() error
+}

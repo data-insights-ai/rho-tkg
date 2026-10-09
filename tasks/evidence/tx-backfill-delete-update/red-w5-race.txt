@@ -1,0 +1,39 @@
+# W5 R11 every door red — TestTxBackfill_RaceClockEveryDoor (-race; 4 backends x GraphTx, Batch, IngestStrong, IngestConcurrent), 2026-10-09
+## Mutation: pkg/graph/internal/core/tx_order.go:51  'if t <= bound {' -> 'if false && t <= bound {' (order check removed), restored after
+## go test ./pkg/graph/internal/core/ -run TestTxBackfill_RaceClockEveryDoor -count=1 -race -v
+    tx_backfill_race_doors_test.go:216: [updated node] chain broken at v3 -> v4: prev [1791544742316,1791544742292) next TxFrom 1791544742292
+    tx_backfill_race_doors_test.go:216: [updated node] chain broken at v2 -> v3: prev [1791544742338,1791544742331) next TxFrom 1791544742331
+    tx_backfill_race_doors_test.go:216: [updated node] chain broken at v3 -> v4: prev [1791544742395,1791544742386) next TxFrom 1791544742386
+    tx_backfill_race_doors_test.go:216: [updated node] chain broken at v2 -> v3: prev [1791544742442,1791544742431) next TxFrom 1791544742431
+    tx_backfill_race_doors_test.go:216: [updated node] chain broken at v2 -> v3: prev [1791544742479,1791544742472) next TxFrom 1791544742472
+    tx_backfill_race_doors_test.go:216: [updated node] chain broken at v3 -> v4: prev [1791544742856,1791544742848) next TxFrom 1791544742848
+    tx_backfill_race_doors_test.go:216: [updated node] chain broken at v3 -> v4: prev [1791544743508,1791544743499) next TxFrom 1791544743499
+    tx_backfill_race_doors_test.go:216: [updated node] chain broken at v3 -> v4: prev [1791544744249,1791544744237) next TxFrom 1791544744237
+    tx_backfill_race_doors_test.go:216: [updated node] chain broken at v3 -> v4: prev [1791544744611,1791544744599) next TxFrom 1791544744599
+    tx_backfill_race_doors_test.go:216: [updated node] chain broken at v2 -> v3: prev [1791544746584,1791544746578) next TxFrom 1791544746578
+    tx_backfill_race_doors_test.go:216: [updated node] chain broken at v4 -> v5: prev [1791544749961,1791544749942) next TxFrom 1791544749942
+    tx_backfill_race_doors_test.go:216: [updated node] chain broken at v9 -> v10: prev [1791544752755,1791544752722) next TxFrom 1791544752722
+    tx_backfill_race_doors_test.go:216: [updated node] chain broken at v3 -> v4: prev [1791544754091,1791544754075) next TxFrom 1791544754075
+    tx_backfill_race_doors_test.go:216: [updated node] chain broken at v3 -> v4: prev [1791544755544,1791544755535) next TxFrom 1791544755535
+    tx_backfill_race_doors_test.go:216: [updated node] chain broken at v2 -> v3: prev [1791544756503,1791544756495) next TxFrom 1791544756495
+    tx_backfill_race_doors_test.go:216: [updated node] chain broken at v3 -> v4: prev [1791544757360,1791544757345) next TxFrom 1791544757345
+--- FAIL: TestTxBackfill_RaceClockEveryDoor (15.45s)
+    --- FAIL: TestTxBackfill_RaceClockEveryDoor/memory/GraphTx (0.04s)
+    --- FAIL: TestTxBackfill_RaceClockEveryDoor/memory/Batch (0.05s)
+    --- FAIL: TestTxBackfill_RaceClockEveryDoor/memory/IngestStrong (0.05s)
+    --- FAIL: TestTxBackfill_RaceClockEveryDoor/memory/IngestConcurrent (0.04s)
+    --- FAIL: TestTxBackfill_RaceClockEveryDoor/badger/GraphTx (0.38s)
+    --- FAIL: TestTxBackfill_RaceClockEveryDoor/badger/Batch (0.65s)
+    --- FAIL: TestTxBackfill_RaceClockEveryDoor/badger/IngestStrong (0.70s)
+    --- FAIL: TestTxBackfill_RaceClockEveryDoor/badger/IngestConcurrent (0.36s)
+    --- FAIL: TestTxBackfill_RaceClockEveryDoor/sharded/GraphTx (1.97s)
+    --- FAIL: TestTxBackfill_RaceClockEveryDoor/sharded/Batch (3.26s)
+    --- FAIL: TestTxBackfill_RaceClockEveryDoor/sharded/IngestStrong (2.71s)
+    --- FAIL: TestTxBackfill_RaceClockEveryDoor/sharded/IngestConcurrent (1.49s)
+    --- FAIL: TestTxBackfill_RaceClockEveryDoor/tiered/GraphTx (1.51s)
+    --- FAIL: TestTxBackfill_RaceClockEveryDoor/tiered/Batch (0.95s)
+    --- FAIL: TestTxBackfill_RaceClockEveryDoor/tiered/IngestStrong (0.85s)
+    --- FAIL: TestTxBackfill_RaceClockEveryDoor/tiered/IngestConcurrent (0.44s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	15.586s
+FAIL

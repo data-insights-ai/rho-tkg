@@ -1,0 +1,3 @@
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph_test
+# [github.com/data-insights-ai/rho-tkg/v4/pkg/graph_test]
+vet: pkg/graph/ingest_interval_doors_test.go:110:17: s.SetRelVersionInterval undefined (type *ingest.Session has no field or method SetRelVersionInterval)

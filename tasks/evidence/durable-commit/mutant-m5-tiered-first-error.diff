@@ -1,0 +1,86 @@
+diff --git a/pkg/graph/store/tiered/tieredstore_durable.go b/pkg/graph/store/tiered/tieredstore_durable.go
+index f498fdc..cc4526e 100644
+--- a/pkg/graph/store/tiered/tieredstore_durable.go
++++ b/pkg/graph/store/tiered/tieredstore_durable.go
+@@ -35,7 +35,8 @@ func (ts *Store) DurableFlush() error {
+ 		return err
+ 	}
+ 	if err := ref.DurableFlush(); err != nil {
+-		errs = append(errs, fmt.Errorf("graph: tiered: durable flush reference shard: %w", err))
++		refCheckin()
++		return err // MUTANT M5: stop at the first failing shard
+ 	}
+ 	refCheckin()
+ 	if ts.refArchive.Load() != nil { // open archive only; never open one for a flush
+diff --git a/tasks/evidence/durable-commit/mutant-m1-flush-when-off.txt b/tasks/evidence/durable-commit/mutant-m1-flush-when-off.txt
+index 1833d28..59d81f6 100644
+--- a/tasks/evidence/durable-commit/mutant-m1-flush-when-off.txt
++++ b/tasks/evidence/durable-commit/mutant-m1-flush-when-off.txt
+@@ -1,14 +1,14 @@
+---- FAIL: TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup (1.41s)
+-    --- FAIL: TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/tx (0.32s)
+-        durable_commit_crash_test.go:280: flag off: 22 nodes, 1 rels on disk after the crash, want 0/0 — the door flushed although DurableCommit is off
+-    --- FAIL: TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/run (0.34s)
+-        durable_commit_crash_test.go:280: flag off: 22 nodes, 1 rels on disk after the crash, want 0/0 — the door flushed although DurableCommit is off
+-    --- FAIL: TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/batch (0.39s)
+-        durable_commit_crash_test.go:280: flag off: 22 nodes, 1 rels on disk after the crash, want 0/0 — the door flushed although DurableCommit is off
+---- FAIL: TestDurableCommitOff_NoStoreFlushOnCommit (0.31s)
+-    durable_commit_crash_test.go:311: flag off: pending buffer empty after tx/run/batch — something flushed
+---- FAIL: TestDurableCommit_OffNeverDurableFlushes (0.27s)
+-    durable_commit_test.go:160: flag off: 4 durable flushes, want 0
++--- FAIL: TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup (0.83s)
++    --- FAIL: TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/tx (0.20s)
++        durable_commit_crash_test.go:318: flag off: 22 nodes, 1 rels on disk after the crash, want 0/0 — the door flushed although DurableCommit is off
++    --- FAIL: TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/run (0.18s)
++        durable_commit_crash_test.go:318: flag off: 22 nodes, 1 rels on disk after the crash, want 0/0 — the door flushed although DurableCommit is off
++    --- FAIL: TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/batch (0.20s)
++        durable_commit_crash_test.go:318: flag off: 22 nodes, 1 rels on disk after the crash, want 0/0 — the door flushed although DurableCommit is off
++--- FAIL: TestDurableCommitOff_NoStoreFlushOnCommit (0.22s)
++    durable_commit_crash_test.go:349: flag off: pending buffer empty after tx/run/batch — something flushed
++--- FAIL: TestDurableCommit_OffNeverDurableFlushes (0.18s)
++    durable_commit_test.go:189: flag off: 4 durable flushes, want 0
+ FAIL
+-FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	2.055s
++FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.275s
+ FAIL
+diff --git a/tasks/evidence/durable-commit/mutant-m2-rollback-flushes.txt b/tasks/evidence/durable-commit/mutant-m2-rollback-flushes.txt
+index 7756a12..3c72e00 100644
+--- a/tasks/evidence/durable-commit/mutant-m2-rollback-flushes.txt
++++ b/tasks/evidence/durable-commit/mutant-m2-rollback-flushes.txt
+@@ -1,5 +1,5 @@
+---- FAIL: TestDurableCommit_RollbackDoesNotFlush (1.29s)
+-    durable_commit_test.go:189: 2 durable flushes from Rollback / failed Run, want 0
++--- FAIL: TestDurableCommit_RollbackDoesNotFlush (0.15s)
++    durable_commit_test.go:218: 2 durable flushes from Rollback / failed Run, want 0
+ FAIL
+-FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.293s
++FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.160s
+ FAIL
+diff --git a/tasks/evidence/durable-commit/mutant-m3-always-fsync.txt b/tasks/evidence/durable-commit/mutant-m3-always-fsync.txt
+index 055c955..4d082df 100644
+--- a/tasks/evidence/durable-commit/mutant-m3-always-fsync.txt
++++ b/tasks/evidence/durable-commit/mutant-m3-always-fsync.txt
+@@ -1,7 +1,7 @@
+---- FAIL: TestDurableFlush_Badger_SyncsExactlyWhatWasWritten (0.17s)
++--- FAIL: TestDurableFlush_Badger_SyncsExactlyWhatWasWritten (0.10s)
+     durable_flush_store_test.go:45: idle DurableFlush issued 1 fsyncs, want 0
+---- FAIL: TestDurableFlush_Badger_SyncWritesNeedsNoExtraFsync (0.49s)
++--- FAIL: TestDurableFlush_Badger_SyncWritesNeedsNoExtraFsync (0.24s)
+     durable_flush_store_test.go:100: SyncWrites store: DurableFlush issued 1 extra fsyncs, want 0
+ FAIL
+-FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.874s
++FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.482s
+ FAIL
+diff --git a/tasks/evidence/durable-commit/mutant-m4-tiered-lazy-open.txt b/tasks/evidence/durable-commit/mutant-m4-tiered-lazy-open.txt
+index 80bd5c7..6af164e 100644
+--- a/tasks/evidence/durable-commit/mutant-m4-tiered-lazy-open.txt
++++ b/tasks/evidence/durable-commit/mutant-m4-tiered-lazy-open.txt
+@@ -1,5 +1,5 @@
+---- FAIL: TestDurableFlush_DoesNotOpenClosedColdShard (0.45s)
+-    durable_flush_test.go:53: DurableFlush left a transiently opened cold shard open
++--- FAIL: TestDurableFlush_DoesNotOpenClosedColdShard (0.36s)
++    durable_flush_test.go:54: DurableFlush left a transiently opened cold shard open
+ FAIL
+-FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.456s
++FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.370s
+ FAIL

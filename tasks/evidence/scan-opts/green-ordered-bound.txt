@@ -1,0 +1,12 @@
+=== RUN   TestScanDoorsTemporalOpts_OrderedRangeNeverDropsAtExclusiveBound
+=== RUN   TestScanDoorsTemporalOpts_OrderedRangeNeverDropsAtExclusiveBound/memory
+=== RUN   TestScanDoorsTemporalOpts_OrderedRangeNeverDropsAtExclusiveBound/badger
+=== RUN   TestScanDoorsTemporalOpts_OrderedRangeNeverDropsAtExclusiveBound/tiered
+=== RUN   TestScanDoorsTemporalOpts_OrderedRangeNeverDropsAtExclusiveBound/sharded
+--- PASS: TestScanDoorsTemporalOpts_OrderedRangeNeverDropsAtExclusiveBound (0.02s)
+    --- PASS: TestScanDoorsTemporalOpts_OrderedRangeNeverDropsAtExclusiveBound/memory (0.00s)
+    --- PASS: TestScanDoorsTemporalOpts_OrderedRangeNeverDropsAtExclusiveBound/badger (0.00s)
+    --- PASS: TestScanDoorsTemporalOpts_OrderedRangeNeverDropsAtExclusiveBound/tiered (0.01s)
+    --- PASS: TestScanDoorsTemporalOpts_OrderedRangeNeverDropsAtExclusiveBound/sharded (0.01s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.028s

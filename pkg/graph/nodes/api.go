@@ -400,7 +400,10 @@ func (a *API) ForEachByLabel(label string, opts storepkg.QueryOpts, fn func(*typ
 // The view over-selects (float64 sort keys, ulp-widened bounds) — fn must
 // re-check its predicate exactly. Returns graph.ErrIndexNotFound when no
 // usable ordered view exists; callers fall back to a label scan. Same
-// relaxed isolation and frozen-row contract as ForEachByLabel.
+// relaxed isolation and frozen-row contract as ForEachByLabel. A temporal
+// opts (ValidAt, ValidStart+ValidEnd, TxAt, TxPin) is served without an index
+// by a fold over ByLabel(label, opts): the nodes whose value in their version
+// under opts is in range, in ID order.
 func (a *API) ForEachByLabelPropertyRange(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
 	ops, err := a.ready()
 	if err != nil {

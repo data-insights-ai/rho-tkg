@@ -1,0 +1,6 @@
+--- FAIL: TestZZTilingProbesOnly (0.00s)
+    zz_tiling_probe_test.go:25: point 55 (gap [51,60)): err = <nil>, want ErrNoVersionValidAt
+    zz_tiling_probe_test.go:29: {Meets [50,100)}: got <nil>, graph: no version valid at the given time; want v0 [10,50)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.005s
+FAIL

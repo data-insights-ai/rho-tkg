@@ -1,0 +1,218 @@
+=== RUN   TestSessionSetVersionInterval_FailedGroupShape
+=== PAUSE TestSessionSetVersionInterval_FailedGroupShape
+=== RUN   TestSessionSetVersionInterval_SiblingAndChained
+=== PAUSE TestSessionSetVersionInterval_SiblingAndChained
+=== RUN   TestSessionSetRelVersionInterval_TwoPhase
+=== PAUSE TestSessionSetRelVersionInterval_TwoPhase
+=== RUN   TestSessionSetNodeVersionInterval_TwoPhase
+=== PAUSE TestSessionSetNodeVersionInterval_TwoPhase
+=== RUN   TestSessionSetVersionInterval_QueueRefusals
+=== PAUSE TestSessionSetVersionInterval_QueueRefusals
+=== RUN   TestSessionSetVersionInterval_ClosedAndNilSession
+=== PAUSE TestSessionSetVersionInterval_ClosedAndNilSession
+=== RUN   TestSessionSetVersionInterval_NilProps
+=== PAUSE TestSessionSetVersionInterval_NilProps
+=== RUN   TestSessionSetVersionInterval_PropsCopiedAtQueue
+=== PAUSE TestSessionSetVersionInterval_PropsCopiedAtQueue
+=== CONT  TestSessionSetVersionInterval_FailedGroupShape
+=== CONT  TestSessionSetVersionInterval_QueueRefusals
+=== CONT  TestSessionSetVersionInterval_SiblingAndChained
+=== CONT  TestSessionSetVersionInterval_ClosedAndNilSession
+=== CONT  TestSessionSetRelVersionInterval_TwoPhase
+=== CONT  TestSessionSetVersionInterval_NilProps
+=== RUN   TestSessionSetVersionInterval_QueueRefusals/memory/from==to
+=== CONT  TestSessionSetVersionInterval_PropsCopiedAtQueue
+=== CONT  TestSessionSetNodeVersionInterval_TwoPhase
+=== RUN   TestSessionSetVersionInterval_ClosedAndNilSession/memory
+=== RUN   TestSessionSetRelVersionInterval_TwoPhase/memory/strong-sync
+=== RUN   TestSessionSetVersionInterval_FailedGroupShape/memory/strong-sync
+=== RUN   TestSessionSetVersionInterval_SiblingAndChained/memory/strong-sync/rel
+=== RUN   TestSessionSetVersionInterval_NilProps/memory
+=== RUN   TestSessionSetVersionInterval_PropsCopiedAtQueue/memory
+=== RUN   TestSessionSetNodeVersionInterval_TwoPhase/memory/strong-sync
+=== RUN   TestSessionSetVersionInterval_QueueRefusals/memory/from>to
+=== RUN   TestSessionSetVersionInterval_QueueRefusals/memory/from_zero
+=== RUN   TestSessionSetVersionInterval_ClosedAndNilSession/badger
+=== RUN   TestSessionSetVersionInterval_QueueRefusals/memory/zero_id
+=== RUN   TestSessionSetVersionInterval_NilProps/badger
+=== RUN   TestSessionSetVersionInterval_PropsCopiedAtQueue/badger
+=== RUN   TestSessionSetVersionInterval_QueueRefusals/memory/negative_id
+=== RUN   TestSessionSetVersionInterval_FailedGroupShape/memory/strong-async
+=== RUN   TestSessionSetNodeVersionInterval_TwoPhase/memory/strong-async
+=== RUN   TestSessionSetVersionInterval_QueueRefusals/badger/from==to
+=== RUN   TestSessionSetRelVersionInterval_TwoPhase/memory/strong-async
+=== RUN   TestSessionSetVersionInterval_FailedGroupShape/memory/concurrent
+=== RUN   TestSessionSetVersionInterval_FailedGroupShape/badger/strong-sync
+=== RUN   TestSessionSetVersionInterval_SiblingAndChained/memory/strong-sync/node
+=== RUN   TestSessionSetNodeVersionInterval_TwoPhase/memory/concurrent
+=== RUN   TestSessionSetRelVersionInterval_TwoPhase/memory/concurrent
+=== RUN   TestSessionSetNodeVersionInterval_TwoPhase/badger/strong-sync
+=== RUN   TestSessionSetRelVersionInterval_TwoPhase/badger/strong-sync
+=== RUN   TestSessionSetVersionInterval_SiblingAndChained/memory/strong-async/rel
+=== RUN   TestSessionSetVersionInterval_SiblingAndChained/memory/strong-async/node
+=== RUN   TestSessionSetVersionInterval_QueueRefusals/badger/from>to
+=== RUN   TestSessionSetVersionInterval_SiblingAndChained/memory/concurrent/rel
+=== RUN   TestSessionSetVersionInterval_NilProps/tiered
+=== RUN   TestSessionSetVersionInterval_FailedGroupShape/badger/strong-async
+=== RUN   TestSessionSetVersionInterval_ClosedAndNilSession/tiered
+=== RUN   TestSessionSetVersionInterval_PropsCopiedAtQueue/tiered
+=== RUN   TestSessionSetVersionInterval_SiblingAndChained/memory/concurrent/node
+=== RUN   TestSessionSetNodeVersionInterval_TwoPhase/badger/strong-async
+=== RUN   TestSessionSetRelVersionInterval_TwoPhase/badger/strong-async
+=== RUN   TestSessionSetVersionInterval_QueueRefusals/badger/from_zero
+=== RUN   TestSessionSetVersionInterval_SiblingAndChained/badger/strong-sync/rel
+=== RUN   TestSessionSetVersionInterval_FailedGroupShape/badger/concurrent
+=== RUN   TestSessionSetRelVersionInterval_TwoPhase/badger/concurrent
+=== RUN   TestSessionSetVersionInterval_QueueRefusals/badger/zero_id
+=== RUN   TestSessionSetNodeVersionInterval_TwoPhase/badger/concurrent
+=== RUN   TestSessionSetVersionInterval_SiblingAndChained/badger/strong-sync/node
+=== RUN   TestSessionSetVersionInterval_ClosedAndNilSession/sharded
+=== RUN   TestSessionSetVersionInterval_FailedGroupShape/tiered/strong-sync
+=== RUN   TestSessionSetVersionInterval_NilProps/sharded
+=== RUN   TestSessionSetVersionInterval_QueueRefusals/badger/negative_id
+=== RUN   TestSessionSetNodeVersionInterval_TwoPhase/tiered/strong-sync
+=== RUN   TestSessionSetRelVersionInterval_TwoPhase/tiered/strong-sync
+=== RUN   TestSessionSetVersionInterval_SiblingAndChained/badger/strong-async/rel
+=== RUN   TestSessionSetVersionInterval_QueueRefusals/tiered/from==to
+=== RUN   TestSessionSetVersionInterval_PropsCopiedAtQueue/sharded
+--- PASS: TestSessionSetVersionInterval_ClosedAndNilSession (0.37s)
+    --- PASS: TestSessionSetVersionInterval_ClosedAndNilSession/memory (0.00s)
+    --- PASS: TestSessionSetVersionInterval_ClosedAndNilSession/badger (0.06s)
+    --- PASS: TestSessionSetVersionInterval_ClosedAndNilSession/tiered (0.17s)
+    --- PASS: TestSessionSetVersionInterval_ClosedAndNilSession/sharded (0.14s)
+=== RUN   TestSessionSetVersionInterval_FailedGroupShape/tiered/strong-async
+--- PASS: TestSessionSetVersionInterval_NilProps (0.42s)
+    --- PASS: TestSessionSetVersionInterval_NilProps/memory (0.00s)
+    --- PASS: TestSessionSetVersionInterval_NilProps/badger (0.05s)
+    --- PASS: TestSessionSetVersionInterval_NilProps/tiered (0.19s)
+    --- PASS: TestSessionSetVersionInterval_NilProps/sharded (0.17s)
+=== RUN   TestSessionSetRelVersionInterval_TwoPhase/tiered/strong-async
+=== RUN   TestSessionSetNodeVersionInterval_TwoPhase/tiered/strong-async
+=== RUN   TestSessionSetVersionInterval_SiblingAndChained/badger/strong-async/node
+=== RUN   TestSessionSetVersionInterval_QueueRefusals/tiered/from>to
+=== RUN   TestSessionSetVersionInterval_FailedGroupShape/tiered/concurrent
+=== RUN   TestSessionSetVersionInterval_SiblingAndChained/badger/concurrent/rel
+--- PASS: TestSessionSetVersionInterval_PropsCopiedAtQueue (0.55s)
+    --- PASS: TestSessionSetVersionInterval_PropsCopiedAtQueue/memory (0.01s)
+    --- PASS: TestSessionSetVersionInterval_PropsCopiedAtQueue/badger (0.05s)
+    --- PASS: TestSessionSetVersionInterval_PropsCopiedAtQueue/tiered (0.28s)
+    --- PASS: TestSessionSetVersionInterval_PropsCopiedAtQueue/sharded (0.21s)
+=== RUN   TestSessionSetRelVersionInterval_TwoPhase/tiered/concurrent
+=== RUN   TestSessionSetVersionInterval_SiblingAndChained/badger/concurrent/node
+=== RUN   TestSessionSetVersionInterval_QueueRefusals/tiered/from_zero
+=== RUN   TestSessionSetVersionInterval_SiblingAndChained/tiered/strong-sync/rel
+=== RUN   TestSessionSetNodeVersionInterval_TwoPhase/tiered/concurrent
+=== RUN   TestSessionSetVersionInterval_FailedGroupShape/sharded/strong-sync
+=== RUN   TestSessionSetVersionInterval_QueueRefusals/tiered/zero_id
+=== RUN   TestSessionSetRelVersionInterval_TwoPhase/sharded/strong-sync
+=== RUN   TestSessionSetVersionInterval_SiblingAndChained/tiered/strong-sync/node
+=== RUN   TestSessionSetNodeVersionInterval_TwoPhase/sharded/strong-sync
+=== RUN   TestSessionSetVersionInterval_FailedGroupShape/sharded/strong-async
+=== RUN   TestSessionSetVersionInterval_QueueRefusals/tiered/negative_id
+=== RUN   TestSessionSetRelVersionInterval_TwoPhase/sharded/strong-async
+=== RUN   TestSessionSetVersionInterval_SiblingAndChained/tiered/strong-async/rel
+=== RUN   TestSessionSetVersionInterval_QueueRefusals/sharded/from==to
+=== RUN   TestSessionSetVersionInterval_FailedGroupShape/sharded/concurrent
+=== RUN   TestSessionSetNodeVersionInterval_TwoPhase/sharded/strong-async
+=== RUN   TestSessionSetRelVersionInterval_TwoPhase/sharded/concurrent
+--- PASS: TestSessionSetVersionInterval_FailedGroupShape (1.04s)
+    --- PASS: TestSessionSetVersionInterval_FailedGroupShape/memory/strong-sync (0.01s)
+    --- PASS: TestSessionSetVersionInterval_FailedGroupShape/memory/strong-async (0.00s)
+    --- PASS: TestSessionSetVersionInterval_FailedGroupShape/memory/concurrent (0.00s)
+    --- PASS: TestSessionSetVersionInterval_FailedGroupShape/badger/strong-sync (0.05s)
+    --- PASS: TestSessionSetVersionInterval_FailedGroupShape/badger/strong-async (0.07s)
+    --- PASS: TestSessionSetVersionInterval_FailedGroupShape/badger/concurrent (0.11s)
+    --- PASS: TestSessionSetVersionInterval_FailedGroupShape/tiered/strong-sync (0.16s)
+    --- PASS: TestSessionSetVersionInterval_FailedGroupShape/tiered/strong-async (0.13s)
+    --- PASS: TestSessionSetVersionInterval_FailedGroupShape/tiered/concurrent (0.17s)
+    --- PASS: TestSessionSetVersionInterval_FailedGroupShape/sharded/strong-sync (0.11s)
+    --- PASS: TestSessionSetVersionInterval_FailedGroupShape/sharded/strong-async (0.12s)
+    --- PASS: TestSessionSetVersionInterval_FailedGroupShape/sharded/concurrent (0.11s)
+=== RUN   TestSessionSetVersionInterval_QueueRefusals/sharded/from>to
+=== RUN   TestSessionSetVersionInterval_SiblingAndChained/tiered/strong-async/node
+=== RUN   TestSessionSetNodeVersionInterval_TwoPhase/sharded/concurrent
+--- PASS: TestSessionSetRelVersionInterval_TwoPhase (1.08s)
+    --- PASS: TestSessionSetRelVersionInterval_TwoPhase/memory/strong-sync (0.01s)
+    --- PASS: TestSessionSetRelVersionInterval_TwoPhase/memory/strong-async (0.01s)
+    --- PASS: TestSessionSetRelVersionInterval_TwoPhase/memory/concurrent (0.01s)
+    --- PASS: TestSessionSetRelVersionInterval_TwoPhase/badger/strong-sync (0.05s)
+    --- PASS: TestSessionSetRelVersionInterval_TwoPhase/badger/strong-async (0.07s)
+    --- PASS: TestSessionSetRelVersionInterval_TwoPhase/badger/concurrent (0.15s)
+    --- PASS: TestSessionSetRelVersionInterval_TwoPhase/tiered/strong-sync (0.15s)
+    --- PASS: TestSessionSetRelVersionInterval_TwoPhase/tiered/strong-async (0.14s)
+    --- PASS: TestSessionSetRelVersionInterval_TwoPhase/tiered/concurrent (0.18s)
+    --- PASS: TestSessionSetRelVersionInterval_TwoPhase/sharded/strong-sync (0.11s)
+    --- PASS: TestSessionSetRelVersionInterval_TwoPhase/sharded/strong-async (0.13s)
+    --- PASS: TestSessionSetRelVersionInterval_TwoPhase/sharded/concurrent (0.09s)
+=== RUN   TestSessionSetVersionInterval_QueueRefusals/sharded/from_zero
+=== RUN   TestSessionSetVersionInterval_SiblingAndChained/tiered/concurrent/rel
+--- PASS: TestSessionSetNodeVersionInterval_TwoPhase (1.16s)
+    --- PASS: TestSessionSetNodeVersionInterval_TwoPhase/memory/strong-sync (0.01s)
+    --- PASS: TestSessionSetNodeVersionInterval_TwoPhase/memory/strong-async (0.01s)
+    --- PASS: TestSessionSetNodeVersionInterval_TwoPhase/memory/concurrent (0.01s)
+    --- PASS: TestSessionSetNodeVersionInterval_TwoPhase/badger/strong-sync (0.05s)
+    --- PASS: TestSessionSetNodeVersionInterval_TwoPhase/badger/strong-async (0.14s)
+    --- PASS: TestSessionSetNodeVersionInterval_TwoPhase/badger/concurrent (0.07s)
+    --- PASS: TestSessionSetNodeVersionInterval_TwoPhase/tiered/strong-sync (0.17s)
+    --- PASS: TestSessionSetNodeVersionInterval_TwoPhase/tiered/strong-async (0.21s)
+    --- PASS: TestSessionSetNodeVersionInterval_TwoPhase/tiered/concurrent (0.12s)
+    --- PASS: TestSessionSetNodeVersionInterval_TwoPhase/sharded/strong-sync (0.17s)
+    --- PASS: TestSessionSetNodeVersionInterval_TwoPhase/sharded/strong-async (0.11s)
+    --- PASS: TestSessionSetNodeVersionInterval_TwoPhase/sharded/concurrent (0.08s)
+=== RUN   TestSessionSetVersionInterval_QueueRefusals/sharded/zero_id
+=== RUN   TestSessionSetVersionInterval_SiblingAndChained/tiered/concurrent/node
+=== RUN   TestSessionSetVersionInterval_QueueRefusals/sharded/negative_id
+--- PASS: TestSessionSetVersionInterval_QueueRefusals (1.31s)
+    --- PASS: TestSessionSetVersionInterval_QueueRefusals/memory/from==to (0.00s)
+    --- PASS: TestSessionSetVersionInterval_QueueRefusals/memory/from>to (0.00s)
+    --- PASS: TestSessionSetVersionInterval_QueueRefusals/memory/from_zero (0.00s)
+    --- PASS: TestSessionSetVersionInterval_QueueRefusals/memory/zero_id (0.00s)
+    --- PASS: TestSessionSetVersionInterval_QueueRefusals/memory/negative_id (0.00s)
+    --- PASS: TestSessionSetVersionInterval_QueueRefusals/badger/from==to (0.04s)
+    --- PASS: TestSessionSetVersionInterval_QueueRefusals/badger/from>to (0.03s)
+    --- PASS: TestSessionSetVersionInterval_QueueRefusals/badger/from_zero (0.12s)
+    --- PASS: TestSessionSetVersionInterval_QueueRefusals/badger/zero_id (0.05s)
+    --- PASS: TestSessionSetVersionInterval_QueueRefusals/badger/negative_id (0.09s)
+    --- PASS: TestSessionSetVersionInterval_QueueRefusals/tiered/from==to (0.18s)
+    --- PASS: TestSessionSetVersionInterval_QueueRefusals/tiered/from>to (0.10s)
+    --- PASS: TestSessionSetVersionInterval_QueueRefusals/tiered/from_zero (0.11s)
+    --- PASS: TestSessionSetVersionInterval_QueueRefusals/tiered/zero_id (0.10s)
+    --- PASS: TestSessionSetVersionInterval_QueueRefusals/tiered/negative_id (0.10s)
+    --- PASS: TestSessionSetVersionInterval_QueueRefusals/sharded/from==to (0.12s)
+    --- PASS: TestSessionSetVersionInterval_QueueRefusals/sharded/from>to (0.08s)
+    --- PASS: TestSessionSetVersionInterval_QueueRefusals/sharded/from_zero (0.06s)
+    --- PASS: TestSessionSetVersionInterval_QueueRefusals/sharded/zero_id (0.07s)
+    --- PASS: TestSessionSetVersionInterval_QueueRefusals/sharded/negative_id (0.06s)
+=== RUN   TestSessionSetVersionInterval_SiblingAndChained/sharded/strong-sync/rel
+=== RUN   TestSessionSetVersionInterval_SiblingAndChained/sharded/strong-sync/node
+=== RUN   TestSessionSetVersionInterval_SiblingAndChained/sharded/strong-async/rel
+=== RUN   TestSessionSetVersionInterval_SiblingAndChained/sharded/strong-async/node
+=== RUN   TestSessionSetVersionInterval_SiblingAndChained/sharded/concurrent/rel
+=== RUN   TestSessionSetVersionInterval_SiblingAndChained/sharded/concurrent/node
+--- PASS: TestSessionSetVersionInterval_SiblingAndChained (1.67s)
+    --- PASS: TestSessionSetVersionInterval_SiblingAndChained/memory/strong-sync/rel (0.01s)
+    --- PASS: TestSessionSetVersionInterval_SiblingAndChained/memory/strong-sync/node (0.01s)
+    --- PASS: TestSessionSetVersionInterval_SiblingAndChained/memory/strong-async/rel (0.01s)
+    --- PASS: TestSessionSetVersionInterval_SiblingAndChained/memory/strong-async/node (0.01s)
+    --- PASS: TestSessionSetVersionInterval_SiblingAndChained/memory/concurrent/rel (0.01s)
+    --- PASS: TestSessionSetVersionInterval_SiblingAndChained/memory/concurrent/node (0.03s)
+    --- PASS: TestSessionSetVersionInterval_SiblingAndChained/badger/strong-sync/rel (0.14s)
+    --- PASS: TestSessionSetVersionInterval_SiblingAndChained/badger/strong-sync/node (0.09s)
+    --- PASS: TestSessionSetVersionInterval_SiblingAndChained/badger/strong-async/rel (0.13s)
+    --- PASS: TestSessionSetVersionInterval_SiblingAndChained/badger/strong-async/node (0.06s)
+    --- PASS: TestSessionSetVersionInterval_SiblingAndChained/badger/concurrent/rel (0.08s)
+    --- PASS: TestSessionSetVersionInterval_SiblingAndChained/badger/concurrent/node (0.06s)
+    --- PASS: TestSessionSetVersionInterval_SiblingAndChained/tiered/strong-sync/rel (0.12s)
+    --- PASS: TestSessionSetVersionInterval_SiblingAndChained/tiered/strong-sync/node (0.12s)
+    --- PASS: TestSessionSetVersionInterval_SiblingAndChained/tiered/strong-async/rel (0.14s)
+    --- PASS: TestSessionSetVersionInterval_SiblingAndChained/tiered/strong-async/node (0.10s)
+    --- PASS: TestSessionSetVersionInterval_SiblingAndChained/tiered/concurrent/rel (0.08s)
+    --- PASS: TestSessionSetVersionInterval_SiblingAndChained/tiered/concurrent/node (0.07s)
+    --- PASS: TestSessionSetVersionInterval_SiblingAndChained/sharded/strong-sync/rel (0.06s)
+    --- PASS: TestSessionSetVersionInterval_SiblingAndChained/sharded/strong-sync/node (0.06s)
+    --- PASS: TestSessionSetVersionInterval_SiblingAndChained/sharded/strong-async/rel (0.06s)
+    --- PASS: TestSessionSetVersionInterval_SiblingAndChained/sharded/strong-async/node (0.07s)
+    --- PASS: TestSessionSetVersionInterval_SiblingAndChained/sharded/concurrent/rel (0.06s)
+    --- PASS: TestSessionSetVersionInterval_SiblingAndChained/sharded/concurrent/node (0.05s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	2.770s

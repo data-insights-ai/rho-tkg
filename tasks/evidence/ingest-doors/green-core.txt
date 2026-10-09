@@ -1,0 +1,14 @@
+=== RUN   TestSessionIntervalDoors_MatchStandaloneAndBatch
+=== PAUSE TestSessionIntervalDoors_MatchStandaloneAndBatch
+=== RUN   TestSessionSetVersionInterval_QueueErrorsCore
+=== PAUSE TestSessionSetVersionInterval_QueueErrorsCore
+=== RUN   TestSessionSetVersionInterval_GraphClosed
+=== PAUSE TestSessionSetVersionInterval_GraphClosed
+=== CONT  TestSessionIntervalDoors_MatchStandaloneAndBatch
+=== CONT  TestSessionSetVersionInterval_QueueErrorsCore
+=== CONT  TestSessionSetVersionInterval_GraphClosed
+--- PASS: TestSessionSetVersionInterval_GraphClosed (0.00s)
+--- PASS: TestSessionSetVersionInterval_QueueErrorsCore (0.00s)
+--- PASS: TestSessionIntervalDoors_MatchStandaloneAndBatch (0.01s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	1.469s

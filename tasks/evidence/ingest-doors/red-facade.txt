@@ -1,0 +1,146 @@
+--- FAIL: TestSessionSetVersionInterval_PropsCopiedAtQueue (0.13s)
+    --- FAIL: TestSessionSetVersionInterval_PropsCopiedAtQueue/memory (0.00s)
+        ingest_interval_doors_test.go:455: SetRelVersionInterval: stub: session interval door not implemented
+    --- FAIL: TestSessionSetVersionInterval_PropsCopiedAtQueue/badger (0.01s)
+        ingest_interval_doors_test.go:455: SetRelVersionInterval: stub: session interval door not implemented
+    --- FAIL: TestSessionSetVersionInterval_PropsCopiedAtQueue/tiered (0.10s)
+        ingest_interval_doors_test.go:455: SetRelVersionInterval: stub: session interval door not implemented
+    --- FAIL: TestSessionSetVersionInterval_PropsCopiedAtQueue/sharded (0.02s)
+        ingest_interval_doors_test.go:455: SetRelVersionInterval: stub: session interval door not implemented
+--- FAIL: TestSessionSetVersionInterval_ClosedAndNilSession (0.16s)
+    --- FAIL: TestSessionSetVersionInterval_ClosedAndNilSession/memory (0.00s)
+        ingest_interval_doors_test.go:311: closed SetRelVersionInterval = stub: session interval door not implemented, want ErrIngestClosed
+    --- FAIL: TestSessionSetVersionInterval_ClosedAndNilSession/badger (0.01s)
+        ingest_interval_doors_test.go:311: closed SetRelVersionInterval = stub: session interval door not implemented, want ErrIngestClosed
+    --- FAIL: TestSessionSetVersionInterval_ClosedAndNilSession/tiered (0.03s)
+        ingest_interval_doors_test.go:311: closed SetRelVersionInterval = stub: session interval door not implemented, want ErrIngestClosed
+    --- FAIL: TestSessionSetVersionInterval_ClosedAndNilSession/sharded (0.12s)
+        ingest_interval_doors_test.go:311: closed SetRelVersionInterval = stub: session interval door not implemented, want ErrIngestClosed
+--- FAIL: TestSessionSetVersionInterval_NilProps (0.27s)
+    --- FAIL: TestSessionSetVersionInterval_NilProps/memory (0.00s)
+        ingest_interval_doors_test.go:409: SetRelVersionInterval(nil props): stub: session interval door not implemented
+    --- FAIL: TestSessionSetVersionInterval_NilProps/badger (0.10s)
+        ingest_interval_doors_test.go:409: SetRelVersionInterval(nil props): stub: session interval door not implemented
+    --- FAIL: TestSessionSetVersionInterval_NilProps/tiered (0.02s)
+        ingest_interval_doors_test.go:409: SetRelVersionInterval(nil props): stub: session interval door not implemented
+    --- FAIL: TestSessionSetVersionInterval_NilProps/sharded (0.15s)
+        ingest_interval_doors_test.go:409: SetRelVersionInterval(nil props): stub: session interval door not implemented
+--- FAIL: TestSessionSetRelVersionInterval_TwoPhase (0.51s)
+    --- FAIL: TestSessionSetRelVersionInterval_TwoPhase/memory/strong-sync (0.01s)
+        ingest_interval_doors_test.go:111: SetRelVersionInterval: stub: session interval door not implemented
+    --- FAIL: TestSessionSetRelVersionInterval_TwoPhase/memory/strong-async (0.01s)
+        ingest_interval_doors_test.go:111: SetRelVersionInterval: stub: session interval door not implemented
+    --- FAIL: TestSessionSetRelVersionInterval_TwoPhase/memory/concurrent (0.01s)
+        ingest_interval_doors_test.go:111: SetRelVersionInterval: stub: session interval door not implemented
+    --- FAIL: TestSessionSetRelVersionInterval_TwoPhase/badger/strong-sync (0.03s)
+        ingest_interval_doors_test.go:111: SetRelVersionInterval: stub: session interval door not implemented
+    --- FAIL: TestSessionSetRelVersionInterval_TwoPhase/badger/strong-async (0.09s)
+        ingest_interval_doors_test.go:111: SetRelVersionInterval: stub: session interval door not implemented
+    --- FAIL: TestSessionSetRelVersionInterval_TwoPhase/badger/concurrent (0.08s)
+        ingest_interval_doors_test.go:111: SetRelVersionInterval: stub: session interval door not implemented
+    --- FAIL: TestSessionSetRelVersionInterval_TwoPhase/tiered/strong-sync (0.04s)
+        ingest_interval_doors_test.go:111: SetRelVersionInterval: stub: session interval door not implemented
+    --- FAIL: TestSessionSetRelVersionInterval_TwoPhase/tiered/strong-async (0.05s)
+        ingest_interval_doors_test.go:111: SetRelVersionInterval: stub: session interval door not implemented
+    --- FAIL: TestSessionSetRelVersionInterval_TwoPhase/tiered/concurrent (0.05s)
+        ingest_interval_doors_test.go:111: SetRelVersionInterval: stub: session interval door not implemented
+    --- FAIL: TestSessionSetRelVersionInterval_TwoPhase/sharded/strong-sync (0.03s)
+        ingest_interval_doors_test.go:111: SetRelVersionInterval: stub: session interval door not implemented
+    --- FAIL: TestSessionSetRelVersionInterval_TwoPhase/sharded/strong-async (0.05s)
+        ingest_interval_doors_test.go:111: SetRelVersionInterval: stub: session interval door not implemented
+    --- FAIL: TestSessionSetRelVersionInterval_TwoPhase/sharded/concurrent (0.07s)
+        ingest_interval_doors_test.go:111: SetRelVersionInterval: stub: session interval door not implemented
+--- FAIL: TestSessionSetVersionInterval_FailedGroupShape (0.54s)
+    --- FAIL: TestSessionSetVersionInterval_FailedGroupShape/memory/strong-sync (0.00s)
+        ingest_interval_doors_test.go:356: queue unknown rel: stub: session interval door not implemented
+    --- FAIL: TestSessionSetVersionInterval_FailedGroupShape/memory/strong-async (0.00s)
+        ingest_interval_doors_test.go:356: queue unknown rel: stub: session interval door not implemented
+    --- FAIL: TestSessionSetVersionInterval_FailedGroupShape/memory/concurrent (0.00s)
+        ingest_interval_doors_test.go:356: queue unknown rel: stub: session interval door not implemented
+    --- FAIL: TestSessionSetVersionInterval_FailedGroupShape/badger/strong-sync (0.00s)
+        ingest_interval_doors_test.go:356: queue unknown rel: stub: session interval door not implemented
+    --- FAIL: TestSessionSetVersionInterval_FailedGroupShape/badger/strong-async (0.01s)
+        ingest_interval_doors_test.go:356: queue unknown rel: stub: session interval door not implemented
+    --- FAIL: TestSessionSetVersionInterval_FailedGroupShape/badger/concurrent (0.10s)
+        ingest_interval_doors_test.go:356: queue unknown rel: stub: session interval door not implemented
+    --- FAIL: TestSessionSetVersionInterval_FailedGroupShape/tiered/strong-sync (0.06s)
+        ingest_interval_doors_test.go:356: queue unknown rel: stub: session interval door not implemented
+    --- FAIL: TestSessionSetVersionInterval_FailedGroupShape/tiered/strong-async (0.09s)
+        ingest_interval_doors_test.go:356: queue unknown rel: stub: session interval door not implemented
+    --- FAIL: TestSessionSetVersionInterval_FailedGroupShape/tiered/concurrent (0.09s)
+        ingest_interval_doors_test.go:356: queue unknown rel: stub: session interval door not implemented
+    --- FAIL: TestSessionSetVersionInterval_FailedGroupShape/sharded/strong-sync (0.07s)
+        ingest_interval_doors_test.go:356: queue unknown rel: stub: session interval door not implemented
+    --- FAIL: TestSessionSetVersionInterval_FailedGroupShape/sharded/strong-async (0.06s)
+        ingest_interval_doors_test.go:356: queue unknown rel: stub: session interval door not implemented
+    --- FAIL: TestSessionSetVersionInterval_FailedGroupShape/sharded/concurrent (0.04s)
+        ingest_interval_doors_test.go:356: queue unknown rel: stub: session interval door not implemented
+--- FAIL: TestSessionSetNodeVersionInterval_TwoPhase (0.60s)
+    --- FAIL: TestSessionSetNodeVersionInterval_TwoPhase/memory/strong-sync (0.01s)
+        ingest_interval_doors_test.go:188: SetNodeVersionInterval: stub: session interval door not implemented
+    --- FAIL: TestSessionSetNodeVersionInterval_TwoPhase/memory/strong-async (0.01s)
+        ingest_interval_doors_test.go:188: SetNodeVersionInterval: stub: session interval door not implemented
+    --- FAIL: TestSessionSetNodeVersionInterval_TwoPhase/memory/concurrent (0.01s)
+        ingest_interval_doors_test.go:188: SetNodeVersionInterval: stub: session interval door not implemented
+    --- FAIL: TestSessionSetNodeVersionInterval_TwoPhase/badger/strong-sync (0.11s)
+        ingest_interval_doors_test.go:188: SetNodeVersionInterval: stub: session interval door not implemented
+    --- FAIL: TestSessionSetNodeVersionInterval_TwoPhase/badger/strong-async (0.08s)
+        ingest_interval_doors_test.go:188: SetNodeVersionInterval: stub: session interval door not implemented
+    --- FAIL: TestSessionSetNodeVersionInterval_TwoPhase/badger/concurrent (0.09s)
+        ingest_interval_doors_test.go:188: SetNodeVersionInterval: stub: session interval door not implemented
+    --- FAIL: TestSessionSetNodeVersionInterval_TwoPhase/tiered/strong-sync (0.05s)
+        ingest_interval_doors_test.go:188: SetNodeVersionInterval: stub: session interval door not implemented
+    --- FAIL: TestSessionSetNodeVersionInterval_TwoPhase/tiered/strong-async (0.06s)
+        ingest_interval_doors_test.go:188: SetNodeVersionInterval: stub: session interval door not implemented
+    --- FAIL: TestSessionSetNodeVersionInterval_TwoPhase/tiered/concurrent (0.06s)
+        ingest_interval_doors_test.go:188: SetNodeVersionInterval: stub: session interval door not implemented
+    --- FAIL: TestSessionSetNodeVersionInterval_TwoPhase/sharded/strong-sync (0.05s)
+        ingest_interval_doors_test.go:188: SetNodeVersionInterval: stub: session interval door not implemented
+    --- FAIL: TestSessionSetNodeVersionInterval_TwoPhase/sharded/strong-async (0.04s)
+        ingest_interval_doors_test.go:188: SetNodeVersionInterval: stub: session interval door not implemented
+    --- FAIL: TestSessionSetNodeVersionInterval_TwoPhase/sharded/concurrent (0.04s)
+        ingest_interval_doors_test.go:188: SetNodeVersionInterval: stub: session interval door not implemented
+--- FAIL: TestSessionSetVersionInterval_QueueRefusals (0.60s)
+    --- FAIL: TestSessionSetVersionInterval_QueueRefusals/memory/from==to (0.00s)
+        ingest_interval_doors_test.go:279: SetNodeVersionInterval err = stub: session interval door not implemented, want graph: invalid time range
+    --- FAIL: TestSessionSetVersionInterval_QueueRefusals/memory/from>to (0.00s)
+        ingest_interval_doors_test.go:279: SetNodeVersionInterval err = stub: session interval door not implemented, want graph: invalid time range
+    --- FAIL: TestSessionSetVersionInterval_QueueRefusals/memory/from_zero (0.00s)
+        ingest_interval_doors_test.go:279: SetNodeVersionInterval err = stub: session interval door not implemented, want graph: invalid time range
+    --- FAIL: TestSessionSetVersionInterval_QueueRefusals/memory/zero_id (0.00s)
+        ingest_interval_doors_test.go:279: SetNodeVersionInterval err = stub: session interval door not implemented, want graph: invalid store mutation
+    --- FAIL: TestSessionSetVersionInterval_QueueRefusals/memory/negative_id (0.00s)
+        ingest_interval_doors_test.go:279: SetNodeVersionInterval err = stub: session interval door not implemented, want graph: invalid store mutation
+    --- FAIL: TestSessionSetVersionInterval_QueueRefusals/badger/from==to (0.01s)
+        ingest_interval_doors_test.go:279: SetNodeVersionInterval err = stub: session interval door not implemented, want graph: invalid time range
+    --- FAIL: TestSessionSetVersionInterval_QueueRefusals/badger/from>to (0.00s)
+        ingest_interval_doors_test.go:279: SetNodeVersionInterval err = stub: session interval door not implemented, want graph: invalid time range
+    --- FAIL: TestSessionSetVersionInterval_QueueRefusals/badger/from_zero (0.10s)
+        ingest_interval_doors_test.go:279: SetNodeVersionInterval err = stub: session interval door not implemented, want graph: invalid time range
+    --- FAIL: TestSessionSetVersionInterval_QueueRefusals/badger/zero_id (0.01s)
+        ingest_interval_doors_test.go:279: SetNodeVersionInterval err = stub: session interval door not implemented, want graph: invalid store mutation
+    --- FAIL: TestSessionSetVersionInterval_QueueRefusals/badger/negative_id (0.04s)
+        ingest_interval_doors_test.go:279: SetNodeVersionInterval err = stub: session interval door not implemented, want graph: invalid store mutation
+    --- FAIL: TestSessionSetVersionInterval_QueueRefusals/tiered/from==to (0.10s)
+        ingest_interval_doors_test.go:279: SetNodeVersionInterval err = stub: session interval door not implemented, want graph: invalid time range
+    --- FAIL: TestSessionSetVersionInterval_QueueRefusals/tiered/from>to (0.05s)
+        ingest_interval_doors_test.go:279: SetNodeVersionInterval err = stub: session interval door not implemented, want graph: invalid time range
+    --- FAIL: TestSessionSetVersionInterval_QueueRefusals/tiered/from_zero (0.04s)
+        ingest_interval_doors_test.go:279: SetNodeVersionInterval err = stub: session interval door not implemented, want graph: invalid time range
+    --- FAIL: TestSessionSetVersionInterval_QueueRefusals/tiered/zero_id (0.03s)
+        ingest_interval_doors_test.go:279: SetNodeVersionInterval err = stub: session interval door not implemented, want graph: invalid store mutation
+    --- FAIL: TestSessionSetVersionInterval_QueueRefusals/tiered/negative_id (0.05s)
+        ingest_interval_doors_test.go:279: SetNodeVersionInterval err = stub: session interval door not implemented, want graph: invalid store mutation
+    --- FAIL: TestSessionSetVersionInterval_QueueRefusals/sharded/from==to (0.06s)
+        ingest_interval_doors_test.go:279: SetNodeVersionInterval err = stub: session interval door not implemented, want graph: invalid time range
+    --- FAIL: TestSessionSetVersionInterval_QueueRefusals/sharded/from>to (0.04s)
+        ingest_interval_doors_test.go:279: SetNodeVersionInterval err = stub: session interval door not implemented, want graph: invalid time range
+    --- FAIL: TestSessionSetVersionInterval_QueueRefusals/sharded/from_zero (0.03s)
+        ingest_interval_doors_test.go:279: SetNodeVersionInterval err = stub: session interval door not implemented, want graph: invalid time range
+    --- FAIL: TestSessionSetVersionInterval_QueueRefusals/sharded/zero_id (0.03s)
+        ingest_interval_doors_test.go:279: SetNodeVersionInterval err = stub: session interval door not implemented, want graph: invalid store mutation
+    --- FAIL: TestSessionSetVersionInterval_QueueRefusals/sharded/negative_id (0.02s)
+        ingest_interval_doors_test.go:279: SetNodeVersionInterval err = stub: session interval door not implemented, want graph: invalid store mutation
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.760s
+FAIL

@@ -1,0 +1,14 @@
+=== RUN   TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup
+=== RUN   TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/tx
+=== RUN   TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/run
+=== RUN   TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/batch
+=== RUN   TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/ingest-group-commit
+--- PASS: TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup (1.26s)
+    --- PASS: TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/tx (0.23s)
+    --- PASS: TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/run (0.18s)
+    --- PASS: TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/batch (0.32s)
+    --- PASS: TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/ingest-group-commit (0.54s)
+=== RUN   TestDurableCommitOff_NoStoreFlushOnCommit
+--- PASS: TestDurableCommitOff_NoStoreFlushOnCommit (0.16s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.566s

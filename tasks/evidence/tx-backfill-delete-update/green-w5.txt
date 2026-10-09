@@ -1,0 +1,100 @@
+# W5 green, 2026-10-09 (worktree agent-abdf7ef774350985f)
+
+## go build ./... && go vet ./...  -> exit 0
+## go test ./pkg/... -count=1 (full, not -short)  -> every package ok, exit 0
+## go test -race ./pkg/graph/internal/core/ ./pkg/graph/internal/storeutil/ ./pkg/graph/ -count=1 (full)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil	5.347s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	189.359s
+
+## go test -race ./pkg/graph/internal/core/ ./pkg/graph/ -run 'TxBackfill|WithTx|AsOfCache' -count=1 -v (top-level results)
+--- PASS: TestAsOfCache_PrimaryCacheStale (1.25s)
+--- PASS: TestAsOfCache_RelBackfillDoorsReportPastDatedWrite (0.00s)
+--- PASS: TestAsOfCache_ReplicaDeleteStaleCache (1.75s)
+--- PASS: TestAsOfCache_ReplicaPutBelowCachedPin (0.81s)
+--- PASS: TestAsOfCache_ReplicaRelDeleteFeedsDetector (0.00s)
+--- PASS: TestTxBackfillNode_PrimaryCacheStale (2.28s)
+--- PASS: TestTxBackfillNode_ReplicaDropsNode (0.68s)
+--- PASS: TestApplyChange_RejectedNodePutDoesNotBumpAsOfCacheEpoch (0.00s)
+--- PASS: TestTxBackfillNode_CascadeForeignStub (0.31s)
+--- PASS: TestTxBackfillRel_Duplicates (1.02s)
+--- PASS: TestTxBackfillRel_GateOff (1.16s)
+--- PASS: TestTxBackfillRel_DeleteIgnoresT (1.16s)
+--- PASS: TestTxBackfillRel_CloseCollision (1.17s)
+--- PASS: TestTxBackfillNode_IngestCoalescedGroups (1.24s)
+--- PASS: TestTxBackfillRel_UpdateStamps (1.30s)
+--- PASS: TestTxBackfillNode_Duplicates (1.32s)
+--- PASS: TestTxBackfillRel_ScheduledCloseAfterT (1.33s)
+--- PASS: TestTxBackfillRelW4_IngestCoalescedGroups (1.34s)
+--- PASS: TestApplyForeignIncoming_OutOfOrderTxFromBumpsAsOfCacheEpoch (0.41s)
+--- PASS: TestTxBackfillRel_NoopUpdateRefuses (1.25s)
+--- PASS: TestTxBackfillNode_CloseCollision (2.42s)
+--- PASS: TestTxBackfillNode_ScheduledCloseAfterT (2.44s)
+--- PASS: TestTxBackfillNode_GateOff (1.41s)
+--- PASS: TestTxBackfillRelW4_TxRollbackEquiv (2.86s)
+--- PASS: TestTxBackfillRel_InvalidInstant (3.06s)
+--- PASS: TestTxBackfillRel_OrderEqualReversed (3.48s)
+--- PASS: TestTxBackfillNode_OrderValidStart (3.38s)
+--- PASS: TestTxBackfillNode_InvalidInstant (3.70s)
+--- PASS: TestTxBackfillNode_OrderEqualReversed (4.03s)
+--- PASS: TestTxBackfillRelW4_ScheduledCloseAfterT (4.27s)
+--- PASS: TestTxBackfillRelW4_CloseCollision (4.36s)
+--- PASS: TestTxBackfillRel_OrderValidStart (4.42s)
+--- PASS: TestTxBackfillRelW4_BatchIngestDoors (4.56s)
+--- PASS: TestTxBackfillNode_UpdateStamps (4.77s)
+--- PASS: TestTxBackfillNode_NoopUpdateRefuses (4.82s)
+--- PASS: TestTxBackfillNode_DeleteIgnoresT (5.14s)
+--- PASS: TestTxBackfillNode_TxRollbackEquiv (5.53s)
+--- PASS: TestTxBackfillNode_UnitPreflight (5.56s)
+--- PASS: TestTxBackfillRel_DoorsReportPastDatedWrite (5.74s)
+--- PASS: TestTxBackfillRel_PlainDoorsUnchanged (5.80s)
+--- PASS: TestTxBackfillNode_RaceClock (8.02s)
+--- PASS: TestTxBackfillRelW4_DoorEquivalence (8.63s)
+--- PASS: TestTxBackfillNode_PlainDoorsUnchanged (8.66s)
+--- PASS: TestTxBackfillRel_RaceClock (7.96s)
+--- PASS: TestTxBackfillNode_CascadeOrder (10.54s)
+--- PASS: TestTxBackfill_RaceClockEveryDoor (13.84s)
+--- PASS: TestTxBackfillOracle_CrossBackend (230.69s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	239.482s
+--- PASS: TestNodesWithTx_FacadeRefusesAndStampsT (0.20s)
+--- PASS: TestRelsWithTx_FacadeRefusesAndStampsT (0.31s)
+--- PASS: TestRelsWithTx_TxBatchIngestFacade (0.42s)
+--- PASS: TestNodesWithTx_TxBatchIngestFacade (0.48s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.860s
+
+## Coverage of the changed non-test lines 4126bb1..HEAD (W1-W5), -short, coverpkg core+graph+nodes+rels+ingest
+pkg/graph/internal/core/apply_record.go: 16/18 = 88.9%
+pkg/graph/internal/core/batch.go: 12/12 = 100.0%
+pkg/graph/internal/core/batch_callertx_preflight.go: 133/142 = 93.7%
+pkg/graph/internal/core/batch_execute.go: 26/28 = 92.9%
+pkg/graph/internal/core/batch_queue.go: 32/40 = 80.0%
+pkg/graph/internal/core/batch_rel_withtx.go: 46/57 = 80.7%
+pkg/graph/internal/core/context.go: 2/2 = 100.0%
+pkg/graph/internal/core/docvalues.go: 5/5 = 100.0%
+pkg/graph/internal/core/docvalues_asof_cache.go: 19/21 = 90.5%
+pkg/graph/internal/core/ingest.go: 45/47 = 95.7%
+pkg/graph/internal/core/ingest_concurrent.go: 17/20 = 85.0%
+pkg/graph/internal/core/node_add.go: 4/4 = 100.0%
+pkg/graph/internal/core/node_add_many.go: 6/6 = 100.0%
+pkg/graph/internal/core/node_delete.go: 27/31 = 87.1%
+pkg/graph/internal/core/node_update.go: 28/31 = 90.3%
+pkg/graph/internal/core/rel_add_many.go: 5/5 = 100.0%
+pkg/graph/internal/core/relationship_add.go: 4/4 = 100.0%
+pkg/graph/internal/core/relationship_delete.go: 21/24 = 87.5%
+pkg/graph/internal/core/relationship_foreign.go: 0/2 = 0.0%
+pkg/graph/internal/core/relationship_import.go: 2/2 = 100.0%
+pkg/graph/internal/core/relationship_update.go: 28/31 = 90.3%
+pkg/graph/internal/core/tx_mutations.go: 42/50 = 84.0%
+pkg/graph/internal/core/tx_mutations_node_withtx.go: 10/10 = 100.0%
+pkg/graph/internal/core/tx_order.go: 76/83 = 91.6%
+pkg/graph/nodes/api.go: 8/8 = 100.0%
+pkg/graph/rels/api.go: 8/8 = 100.0%
+TOTAL new/changed statements (4126bb1..HEAD): 622/691 = 90.0%
+
+## TestTxBackfillOracle_CrossBackend sweeps (TXB_ORACLE_SEEDS=300, 4 backends each)
+before the fixture fix (67d681d): 300 seeds x 1 green; 300 x 3 green; 300 x 1 with 1 failure (seed 8064467,
+  badger chains differ, not reproducible alone); 300 x 4 with 1 failure that printed the diff: every stamp of the
+  later backend shifted by exactly 1,000,000 ms — the test-clock origin was read per backend and rounded to 10^6 ms,
+  so a run crossing that boundary between two backends diverged. Test-fixture bug, not an engine divergence.
+after the fix: TXB_ORACLE_SEEDS=300 go test -run TestTxBackfillOracle_CrossBackend -count=3 -> ok (478 s), 900 sequences x 4 backends green.

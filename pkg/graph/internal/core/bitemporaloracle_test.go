@@ -102,13 +102,6 @@ func (e *oracleEntity) effVF(r oracleRow) types.Instant {
 	return e.sfFallback
 }
 
-// eclipsedRow reports a cascade zero-width sentinel row (lesson 35): ValidTo ==
-// ValidFrom+1. Such rows are invisible to valid-time resolution and must not
-// contribute to a neighbor's vEnd.
-func eclipsedRow(r oracleRow) bool {
-	return r.validFrom != 0 && r.validTo != 0 && r.validTo == r.validFrom+1
-}
-
 // bounds computes the effective [vStart, vEnd) for rows[i] over a chain already
 // ordered by (effVF asc, version asc). Faithful, independent re-statement of
 // nodeVersionBounds/relVersionBounds (temporal.go):
@@ -117,7 +110,7 @@ func eclipsedRow(r oracleRow) bool {
 //     effective valid-from); then an explicit ValidFrom overrides absolutely
 //     (lesson 33 — on a migrated store every non-zero ValidFrom is
 //     caller-supplied, so no inheritance heuristic is needed).
-//   - vEnd: the NEXT non-eclipsed version's effective valid-from (its explicit
+//   - vEnd: the NEXT version's effective valid-from (its explicit
 //     ValidFrom, else its UpdatedAt, else the snowflake fallback — lesson 32:
 //     the next VALID-time boundary, never the supersede TX time as a rule);
 //     then an explicit ValidTo overrides absolutely; 0 = open.
@@ -142,11 +135,8 @@ func (e *oracleEntity) bounds(chain []oracleRow, i int) (types.Instant, types.In
 		}
 	}
 
-	for j := i + 1; j < len(chain); j++ {
-		next := chain[j]
-		if eclipsedRow(next) {
-			continue
-		}
+	if i+1 < len(chain) {
+		next := chain[i+1]
 		switch {
 		case next.validFrom != 0:
 			vEnd = next.validFrom
@@ -155,7 +145,6 @@ func (e *oracleEntity) bounds(chain []oracleRow, i int) (types.Instant, types.In
 		default:
 			vEnd = e.sfFallback
 		}
-		break
 	}
 
 	if r.validFrom != 0 { // explicit ValidFrom override (migrated store)
@@ -263,9 +252,6 @@ func (e *oracleEntity) pointVisible(validAt, txAt types.Instant) (oracleRow, boo
 	if !needed {
 		// Fast path: newest covering version (highest effVF) wins.
 		for i := len(chain) - 1; i >= 0; i-- {
-			if eclipsedRow(chain[i]) {
-				continue
-			}
 			vs, ve := e.bounds(chain, i)
 			if vs <= validAt && (ve == 0 || ve > validAt) {
 				return chain[i], true
@@ -277,9 +263,6 @@ func (e *oracleEntity) pointVisible(validAt, txAt types.Instant) (oracleRow, boo
 	// own-interval bounds, not positional — see ownBounds.
 	best := -1
 	for i := range chain {
-		if eclipsedRow(chain[i]) {
-			continue
-		}
 		vs, ve := e.ownBounds(chain[i])
 		if vs <= validAt && (ve == 0 || ve > validAt) {
 			if best < 0 || beliefNewer(chain[i], chain[best]) {
@@ -301,9 +284,6 @@ func (e *oracleEntity) pointVisible(validAt, txAt types.Instant) (oracleRow, boo
 func (e *oracleEntity) intervalVisible(s, end, txAt types.Instant, pred func(oracleRow) bool) (oracleRow, bool) {
 	chain, _ := e.sortChain(e.txFilter(txAt)) // interval path always sorts
 	for i := len(chain) - 1; i >= 0; i-- {
-		if eclipsedRow(chain[i]) {
-			continue
-		}
 		vs, ve := e.bounds(chain, i)
 		if vs < end && (ve == 0 || ve > s) {
 			if pred == nil || pred(chain[i]) {
@@ -525,11 +505,22 @@ func (w *world) pickLabels() []string {
 	return out
 }
 
+// width draws a finite valid-interval width. One in eight is a one-tick
+// [vf, vf+1) span — an ordinary interval, never a sentinel — so the harness
+// keeps the point-at-t / boundary-at-t+1 shape (and width-1 cascade pieces)
+// under differential test.
+func (w *world) width() types.Instant {
+	if w.rng.IntN(8) == 0 {
+		return 1
+	}
+	return types.Instant(100 + w.rng.IntN(2000))
+}
+
 func (w *world) maybeValidTo(vf types.Instant) (map[string]any, types.Instant) {
 	props := map[string]any{"tkg_valid_from": vf, "k": w.seqno}
 	w.seqno++
 	if w.rng.IntN(100) < 30 {
-		vt := vf + types.Instant(100+w.rng.IntN(2000))
+		vt := vf + w.width()
 		props["tkg_valid_to"] = vt
 		return props, vt
 	}
@@ -683,7 +674,7 @@ func (w *world) cascadeNode() {
 	vf := w.cascadeVF()
 	var vt types.Instant
 	if w.rng.IntN(2) == 0 {
-		vt = vf + types.Instant(100+w.rng.IntN(2000))
+		vt = vf + w.width()
 	}
 	_, err := w.g.Temporal.SetNodeVersionInterval(w.ctx, id, vf, vt, map[string]any{"k": w.seqno})
 	w.seqno++
@@ -699,7 +690,7 @@ func (w *world) cascadeRel() {
 	vf := w.cascadeVF()
 	var vt types.Instant
 	if w.rng.IntN(2) == 0 {
-		vt = vf + types.Instant(100+w.rng.IntN(2000))
+		vt = vf + w.width()
 	}
 	_, err := w.g.Temporal.SetRelVersionInterval(w.ctx, id, vf, vt, map[string]any{"k": w.seqno})
 	w.seqno++

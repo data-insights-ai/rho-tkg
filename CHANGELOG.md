@@ -6,8 +6,127 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+Additive surface for a minor release (4.44.0 when released): `nodes.Ops` and `rels.Ops` gain
+methods, so an out-of-tree implementation of either interface must add them (none of the known
+dependents — sigma-tkgd, ai-soc engine, agent-bookkeeping — implements them). Migration: upgrade replicas before any writer uses the new doors — a replica
+reproduces the stamps from the change feed and reports the past-dated tombstones to its as-of cache.
+
 ### Added
 
+- **`g.Nodes().DeleteWithTx(ctx, id, txTo)` / `UpdateWithTx(ctx, id, updates, txFrom)` and the
+  `g.Rels()` mirrors: end or supersede belief at a caller transaction instant.** Requested by
+  sigma-tkgd (realtime ingest design, `design-realtime-ingest-session.md` §4: a replayed or streamed
+  record carries its own knowledge time, and nothing could end belief at it — `AddWithTx` covered
+  creates only); it also lets the AI-SOC drop its `ENDED`-relationship workaround (an ending
+  modelled in its rules instead of in the store). A delete's tombstone carries `TxTo = DeletedAt = t`; a
+  node delete stamps the one instant `t` on the node and every relationship it cascades. An update
+  stamps the superseded version `TxTo = t` and the new one `TxFrom = UpdatedAt = t`. Pins before `t`
+  see the old belief, pins at or after `t` the new one, through every as-of, `TxPin` and `TxAt` door.
+  Same gate as `AddWithTx` (`Config.AllowTxBackfill`, `ErrTxBackfillDisabled`); `t <= 0` or in the
+  future is `ErrInvalidTxFrom` (value before privilege). The instant travels only as an argument —
+  `tkg_tx_from`/`tkg_tx_to` stay rejected as properties. The commit clock is not advanced by `t`.
+- **Twins on every write door**: `GraphTx.DeleteNodeWithTx` / `UpdateNodeWithTx` /
+  `DeleteRelationshipWithTx` / `UpdateRelationshipWithTx`, and the `BatchBuilder` and ingest
+  `Session` queue doors of the same names (strong and concurrent mode). All ten reach one seam (`at`
+  on `deleteRelationshipInternal` / `deleteNodeLocked`, `updateTemporal.txAt` in the temporal update
+  path; `at == 0` is the plain door, its stamps pinned unchanged by `*_PlainDoorsUnchanged`).
+- **`ErrTxOrder`** (wraps `ErrInvalidTxFrom`, so a consumer mapping that to a validation error keeps
+  working): `t` must lie after every `TxFrom` and `TxTo` on the entity's chain — history and current,
+  because `TxFrom` is not co-monotonic with the version (lesson 62) — and after the current version's
+  start (`UpdatedAt`; for a delete also the effective valid-from), on the node and on every cascaded
+  relationship, checked under the entity lock; the message names the binding stamp. Also returned
+  for an update at `t` that changes nothing, the same `t` twice, and a caller-instant delete over a
+  **recorded close at or after `t`** (`ValidTo >= t`): one tombstone cannot both end belief at `t` and
+  keep the close that pins before `t` believed, so the door refuses instead of clamping (the plain
+  `Delete` keeps moving its own instant past a colliding close; relaxing the refusal later is
+  additive, backlog item 7).
+- **Batch and ingest units refuse as a whole.** The instant and gate are checked at queue time (an
+  empty update map refuses there); the order, close and no-op rules run in one pre-flight over every
+  caller-instant op of the unit before any write, reusing the seam's own refusal functions, so a
+  batch never keeps a partial past that no later write at an earlier `t` could repair (`ErrBatchFailed`
+  ⊃ `BatchError` ⊃ `ErrTxOrder`, nothing written). A caller-instant op must be the only op of the unit
+  on its entity (node deletes count the relationships they cascade): apply order is not queue order.
+  A strong-mode ingest group carrying one is applied in a commit unit of its own, never coalesced.
+  Concurrent mode runs the pre-flight under the shared lock; a racing standalone write can still make
+  the seam refuse that one op afterwards (per-entity atomicity, as every concurrent-mode op).
+- Tests (break-the-code, red first; every refusal asserts nothing changed; memory, badger, sharded,
+  tiered with cross-shard relationships): `TestTxBackfillRel_*` and `TestTxBackfillNode_*`
+  (`PlainDoorsUnchanged`, `GateOff`, `InvalidInstant`, `OrderEqualReversed`, `OrderValidStart`,
+  `DeleteIgnoresT`, `UpdateStamps`, `CloseCollision`, `ScheduledCloseAfterT`, `Duplicates`,
+  `NoopUpdateRefuses`, `RaceClock`; nodes also `CascadeOrder`, `CascadeForeignStub`, `TxRollbackEquiv`,
+  `UnitPreflight`, `IngestCoalescedGroups`, `PrimaryCacheStale`, `ReplicaDropsNode`),
+  `TestTxBackfillRelW4_*` (`CloseCollision`, `ScheduledCloseAfterT`, `TxRollbackEquiv`,
+  `DoorEquivalence`, `BatchIngestDoors`, `IngestCoalescedGroups`), `TestAsOfCache_*`,
+  `TestRelsWithTx_*` / `TestNodesWithTx_*` (pkg/graph facade, `errors.Is` at the public layer on every
+  door), `TestTxBackfill_RaceClockEveryDoor` (plain updates racing the GraphTx, Batch and both ingest
+  doors under `-race`; red with the order check removed), and `TestTxBackfillOracle_CrossBackend`: a
+  seeded generator interleaving plain create, backfill, update, delete, `CloseVersion`,
+  `SetVersionInterval` and label changes with the ten caller-instant doors, asserting per op the
+  stamps and the pin `t-1` / `t` answers, then every point, during, `TxAt`, as-of, `TxPin`,
+  `ByLabel`/`ByType(opts)` door against the bitemporal oracle and identical chains and answers on the
+  four backends (48 seeds × 48 ops by default; red with the rel delete or node update seam stubbed
+  to the plain stamp).
+
+- **Durable-on-return commit: `graph.Config.DurableCommit` puts a commit group on disk before its
+  door returns success.** Requested by ai-soc (request 9; backlog item 11, decided 2026-10-09): it
+  writes one commit group per `GraphTx` with a cut record as the last write and recovers by "rows
+  above the last cut record's pin are unfinished", which needs the cut record to be durable only
+  together with its group. Before, `GraphTx.Commit` and `Batch.Execute` did not fsync, and without
+  the change-log they did not flush at all: the group reached disk with the next background flush,
+  and only `SyncWrites` (an fsync per mutation) closed the window. With the flag,
+  `GraphTx.Commit` (so `Tx().Run` / `RunContext` / `RunWithLSN`), `Batch.Execute` and the strong
+  ingest applier call the new optional `store.DurableFlushCapability.DurableFlush` once per group,
+  after the group is applied and the graph locks are released: the whole pending buffer as one
+  WriteBatch, then one WAL fsync — on badger, on every slot of a sharded store, and on the reference
+  shard, the open archive and the open event shards of a tiered store (a closed cold shard is not
+  opened). A shard with nothing written since its last sync is not fsynced again, and under
+  `SyncWrites` no second fsync is issued. `DurableFlush` re-checks the closed state under the flush
+  lock, so a commit racing `Graph.Close` gets an error, not a crash. Rollback never flushes. A flush
+  failure returns the new `ErrCommitNotDurable` wrapping the store error: the group is committed in
+  memory (the tx is done, its change-log records are minted), its operations stay pending, and the
+  next successful flush persists them — an empty `g.Tx().Run` is the explicit retry. `RunWithLSN`
+  then still returns the group's LSN, and `Batch.Execute` its result with a `durable-commit`
+  `BatchError` (error wraps `ErrBatchFailed` and `ErrCommitNotDurable`; every ingest submitter of
+  the group fails), so nothing has to be re-applied. `New` declines with `ErrCapabilityNotSupported`
+  for a store without stable storage (memory, `BadgerInMemory`, an in-memory tiered or sharded
+  store). Default off: no flush on commit, unchanged. Not promised: a flush larger than one Badger
+  transaction (about 15 % of `MemTableSize`) is split by Badger, so a crash during that flush can
+  persist a subset (all-or-nothing on disk is v5); and power-loss durability is narrower than
+  process-crash durability — Badger's `Sync` covers only the active memtable WAL and the current
+  value-log file, so rows of a group whose flush filled the memtable can still be unsynced after
+  the return (use `SyncWrites` for strict power-loss durability; backlog 15). Standalone mutations
+  and concurrent-mode ingest `Submit` keep the async flush. Proven by crash children that exit
+  without `Close` right after the door returned (badger: tx, Run, Batch, ingest, also with the
+  default 100 ms background flush; tiered: two shards; sharded: two slots — all 22 nodes and the
+  relationship back on reopen; with the flag off the same GraphTx/Run/Batch group is gone; a flush
+  that fails once is requeued and the next durable commit persists it). Measured
+  (`BenchmarkDurableCommit`, disk badger on NVMe, one `Tx().Run` per op, 3 runs, shared host):
+  1 node 7.5–8.1 µs off vs 2.12–2.17 ms on; 10 nodes 68–76 µs vs 4.0–7.1 ms; 100 nodes
+  0.64–0.89 ms vs 7.1–7.3 ms — the cost is dominated by the one WAL fsync per commit (≈ 2–7 ms on
+  this disk), so it amortizes over a group and is steep for single-row transactions.
+
+- **Ingest session interval corrections: `Session.SetNodeVersionInterval` /
+  `Session.SetRelVersionInterval` grow a valid interval through the ingest session.** Requested by ai-soc (a burst fact `[vs, ve)` grows to `[vs, ve')` as new
+  events arrive; the producer already writes through the session and had to leave it for the
+  standalone `Temporal()` door to record the correction). The two methods queue the same
+  append-only cascade `Temporal().SetNodeVersionInterval` / `SetRelVersionInterval` and the
+  `BatchBuilder` doors run, and are applied by the same kernel in strong and concurrent mode: the
+  correction is expressed by fresh rows stamped `TxFrom = now`, so `NodeAtTx` / `RelAtTx` pinned
+  before the apply still see `[vs, ve)` and the old values, and a pin after it sees `[vs, ve')`
+  with the new ones. `props` is a patch over the state valid at each instant (nil keeps every
+  property) and is copied at queue time. `Get` keeps returning the head row, and `RelAsOf` /
+  `NodeAsOf` at a pin after the correction still answer that head row; the appended rows appear in
+  `History` and in `*AtTx` reads. Refusals: an interval with `validFrom == 0` or `validTo != 0 &&
+  validFrom >= validTo` returns `ErrInvalidTimeRange` at queue time and a zero or negative id an
+  `ErrInvalidStoreMutation` error, both with nothing queued; an unknown id fails its own group at
+  apply with `ErrNodeNotFound` / `ErrRelNotFound` (the group's `Submit` / `WaitApplied` result)
+  while sibling groups commit; a closed or nil session returns `ErrIngestClosed` /
+  `ErrNilSession`. Tests: `TestSessionSetRelVersionInterval_TwoPhase` and the node twin (memory,
+  badger, tiered, sharded; strong sync, strong async, concurrent), `TestSessionSetVersionInterval_*`,
+  `TestSessionIntervalDoors_MatchStandaloneAndBatch`. Known gap, on all four doors alike
+  (`Temporal()`, `GraphTx`, `BatchBuilder`, `Session`): `SetNodeVersionInterval` does not check
+  unique constraints, so its props patch can give a node a value another node holds
+  (`tasks/backlog.md` item 12).
 - **Tiered store: composite and relationship temporal indexes (backlog 10, ai-soc request 3).**
   `tiered.Store` implements `RelTypeTemporalIndexCapability`, `RelTypeTemporalCandidateCapability`,
   `CompositePropertyIndexCapability` and `CompositeIndexIntrospectionCapability`, so
@@ -40,6 +159,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   per indexed type**, and a reopened or promoted day shard rebuilds in **29–54 min**. Composites
   are not bounded: ~310 B per indexed node on every open shard, rebuilt on every open.
 
+### Changed
+
+- Docs: "Backfill is CREATE-only — updates/deletes keep the monotonic system TxFrom" (`docs/api.md`)
+  and its copies in `SPEC.md`, `architecture.md`, `AGENTS.md` and code comments now say what holds:
+  the `tkg_tx_from` property stays create-only, the plain update/delete doors keep the clock, and the
+  `*WithTx` doors take the instant as an argument. Replays pass `tkg_valid_from` on creates and
+  updates: a derived valid-from is the mint or update time, and a later `t` before it refuses.
+
+- **Comments and docs only.** The change-feed comment no longer says a rolled-back transaction appears as forward plus
+  compensating operations: since the scoped log a rolled-back or uncommitted `GraphTx` emits no
+  records (and `TxChangeLogScope` is implemented by tiered and sharded as well). The op-log
+  section of `docs/architecture.md` says so; lesson 55 notes it is superseded for `GraphTx`.
+- `CreateRelTemporal` is documented as declined on tiered only (sharded implements it).
+- `CreateUnique` lists the doors its enforcement covers: the standalone node doors, the batch,
+  `GraphTx` and the ingest session in both modes, and says `SetNodeVersionInterval` is not checked.
+
 ### Fixed
 
 - **Badger split-write doors maintain the relationship temporal envelope.**
@@ -52,6 +187,68 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `Rels().ByType(type, QueryOpts{ValidAt})` and `Temporal().RelsByTypeAt`
   (`TestRelTemporalIndex_ImportedHistoryVersionStaysFindable`). A live relationship's version now
   extends its envelope; one without a current row stays uncovered and is never pruned.
+- **The as-of column cache is invalidated after a past-dated write lands, not before.**
+  `resolveBackfillTxFrom` bumped the cache epoch at the gate, before the store write, so an as-of
+  build starting in between read the new epoch, missed the row and was cached as current (R14). Every
+  backfill door (`AddWithTx`, `tkg_tx_from` creates, batch, ingest, and the new caller-instant doors)
+  now reports its instant after its write (`notePastDatedWrite`). On a replica, node and relationship
+  delete applies report the tombstone's `min(TxTo, DeletedAt)`, builds register their pin before
+  reading the epoch, and a node apply bumps when its stamp lies at or below a cached pin (not only
+  below the applied high-water mark). Tests: `TestAsOfCache_PrimaryCacheStale`,
+  `TestAsOfCache_ReplicaDeleteStaleCache`, `TestAsOfCache_ReplicaPutBelowCachedPin`,
+  `TestAsOfCache_ReplicaRelDeleteFeedsDetector`, `TestAsOfCache_RelBackfillDoorsReportPastDatedWrite`.
+
+- **Column and range scans answer temporal options like `ByLabel` / `ByType`.**
+  `g.ScanNodeColumns`, `g.ScanRelColumns` (a named type and `""`), `g.Nodes().ForEachByLabelPropertyRange`
+  and `g.Rels().ForEachByTypePropertyRange` answered a temporal `QueryOpts` from the CURRENT rows: they
+  filtered each live row by `ValidAt` / `ValidStart`+`ValidEnd` and ignored `TxAt` and `TxPin`
+  (`storeutil.HasTemporalFilter` checks valid time only). An updated entity's earlier version, a deleted
+  entity, a node whose label held only on an earlier version, and anything pinned by transaction time
+  came back wrong or not at all. All four doors now answer every temporal opt (`ValidAt`,
+  `ValidStart`+`ValidEnd`, `TxAt` with or without a valid time, `TxPin`) through the same candidate fold
+  and chain resolver as `ByLabel` / `ByType`: the column batches carry each version's values and
+  `ValidFrom` / `ValidTo`, pagination and early stop behave as before, and the column scans validate
+  temporal opts like `ByLabel` (`ErrConflictingTemporalOpts`, `ErrHistoryCompacted`,
+  `ErrRetentionExpired`). The range doors serve a temporal opt without a property index on every backend
+  (the entities whose value in their version under opts lies in `[min, max]`, ID order, bounds applied
+  inclusively for fn to re-check); `ErrIndexNotFound` remains for non-temporal opts only. Under
+  `ValidStart`+`ValidEnd` the range doors, like the ordered siblings, test the value of the version
+  `ByLabel` / `ByType` resolve (the most recent overlapping one), whereas `ByLabelAndProperty` matches a
+  value held anywhere in the interval (backlog item 16). Non-temporal opts take the unchanged fast paths;
+  under a temporal opt the cost is that of `ByLabel` / `ByType` with the same opts. `ok=false` from a
+  column scan still means the backend has no column scan (tiered, sharded). Also fixed: the temporal
+  folds of `ForEachByLabelPropertyRangeOrdered` / `ForEachByTypePropertyRangeOrdered` applied
+  `inclMin` / `inclMax` in float64 and silently dropped an int64 past 2^53 that rounds onto an exclusive
+  bound; they now over-select at the bounds like their index path. Tests:
+  `TestScanDoorsAgreeWithByLabelOpts_*`, `TestScanDoorsTemporalOpts_*` (memory, badger, tiered, sharded),
+  and `TestScanDoorsNeverForwardTemporalOptsToStore` (no Core read door taking `QueryOpts`, GraphTx
+  mirrors included, hands an active temporal filter to a store query method). Consumer impact: none
+  known (the known consumers pass empty opts).
+
+- **One-tick valid intervals are ordinary spans: a row valid for exactly `[t, t+1)` is visible
+  to every temporal door.** The
+  resolvers treated `ValidTo == ValidFrom + 1` as the "eclipse" sentinel of the old in-place
+  cascade and skipped it, although no writer has produced that sentinel since the append-only
+  cascade (994df82, 2026-06-12). The store's own predicates do not skip, so two doors disagreed:
+  `Rels().ByType("T", QueryOpts{})` found a `[t, t+1)` edge while `Temporal().RelAt(id, t)`,
+  `RelsAt`, `RelsByTypeAt`, `RelsDuring`, `RelsRelating`, `RelsAtTx`, `RelsDuringTx`, `Snapshot`,
+  `OutgoingRelsAt` / `IncomingRelsAt` and `ByType{ValidAt | ValidStart/ValidEnd}` missed it (node
+  mirrors likewise). Collateral, all fixed by the same change: `CloseVersion(id, vf+1)` was lost
+  (the superseded open row kept answering every later instant); a delete whose instant landed at
+  `vf+1` hid the deleted entity's history row at `vf`; a width-1 `SetNodeVersionInterval` /
+  `SetRelVersionInterval` piece — written directly, or cut by the patch-base split when an
+  existing boundary sits 1 ms from the target's edge — was invisible, so `NodeAt(t)` answered the
+  uncorrected value. Half-open semantics are unchanged: the row matches at `t`, not at `t+1`. The
+  cascade's gap-piece template is now simply the most recent version. Red tests:
+  `TestOneTickSpanVisible_*` (memory, badger, sharded, tiered; nodes and rels; two-phase over
+  transaction-time pins); the bitemporal oracle harness now draws one-tick widths and no longer
+  models the skip.
+- **Behaviour change:** a store holding rows written before 2026-06-12 by a pre-994df82 cascade
+  may still contain real eclipse markers; those rows now become visible as one-tick spans at
+  their `ValidFrom`. No consumer deployment predates that commit. `QueryOpts.IncludeEclipsed`
+  stays a reserved no-op field.
+  ai-soc's graphmgr rejects widths below 2 as a workaround (`MinValidWidth = 2`) and can relax
+  it after this release.
 
 ## [4.43.0] - 2026-10-08
 

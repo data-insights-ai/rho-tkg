@@ -13,68 +13,68 @@ import (
 )
 
 // =============================================================================
-// Cascade timeline edit — full implementation
+// Cascade timeline edit — append-only (since 994df82, 2026-06-12)
 //
-// Five overlap classifications between an existing version's valid interval
-// [vf, vt) and the cascade target [newVF, newVT):
+// SetNodeVersionInterval / SetRelVersionInterval record, at transaction time
+// `now`, the belief "[newVF, newVT) is `props` (a patch)". Existing rows are
+// NEVER rewritten (lesson 46): no stored ValidFrom/ValidTo/TxFrom/TxTo of a
+// prior row changes. The cascade appends fresh rows stamped
+// TxFrom = UpdatedAt = now:
 //
-//   - keep            no overlap, version untouched
-//   - closeRight      vf < newVF < vt — close existing at newVF (vt becomes newVF)
-//   - openLeft        newVF <= vf < newVT < vt — open existing from newVT
-//   - eclipse         newVF <= vf < vt <= newVT — version fully contained,
-//                     marked zero-length (ValidFrom == ValidTo) so the
-//                     resolver never matches it for any VT query
-//   - split           vf < newVF < newVT < vt — version spans the target;
-//                     becomes two rows: [vf, newVF) at original version
-//                     number, [newVT, vt) at a freshly-allocated version
+//   - correction pieces covering [newVF, newVT), cut wherever the
+//     pre-correction belief-winner changes; each piece is its base row's
+//     content plus the patch (nodeCorrectionSegments);
+//   - a resumption row [newVT, next own boundary) re-asserting the value that
+//     held at newVT, so the timeline after the target is unchanged (none when
+//     newVT is open).
 //
-// Per-row hashes are unchanged because TemporalMetadata is NOT part of the
-// content hash (see integrity.computeNodeHashWithBuffer). Each appended
-// correction row gets a fresh hash and its PrevHash is set to its BASE row's
-// hash — the pre-correction belief-winner over that row's piece of the
-// target interval, whose labels/properties the row carries (patched); for a
+// How an existing row [vf, vt) relates to the target is still described with
+// the old classification names, but now only as vocabulary for what the
+// appended rows do to the READ result — the stored row is untouched in every
+// case:
+//
+//   - keep            no overlap; reads unchanged
+//   - closeRight      vf < newVF < vt — reads of [newVF, vt) see the pieces
+//   - openLeft        newVF <= vf < newVT < vt — reads from newVT see the
+//                     resumption
+//   - eclipse         newVF <= vf < vt <= newVT — the row is fully covered by
+//                     newer pieces; it stays an ordinary row that answers at
+//                     transaction pins before `now`
+//   - split           vf < newVF < newVT < vt — pieces in the middle, the row
+//                     itself on the left, the resumption on the right
+//
+// Resolution: the resolver filters the chain to TxFrom <= txAt and, where own
+// intervals overlap, the newer belief (higher TxFrom, then version) wins
+// (resolveNodeVersionAt). Pins before `now` therefore reconstruct the
+// pre-correction belief exactly, pins at or after it the corrected one. Every
+// row is an ordinary half-open span, including a one-tick [t, t+1) piece:
+// there is no sentinel width (the pre-994df82 in-place cascade marked an
+// eclipsed row as ValidTo == ValidFrom+1 and the resolvers skipped that
+// shape; nothing has written it since, and the skip was removed because it
+// hid legitimate one-tick rows).
+//
+// Integrity: TemporalMetadata is NOT part of the content hash (see
+// integrity.computeNodeHashWithBuffer). Each appended row gets a fresh hash and
+// its PrevHash is its BASE row's hash — the pre-correction belief-winner over
+// that row's piece, whose labels/properties the row carries (patched); for a
 // gap piece (no version valid there) the base is the "template", the most
-// recent non-eclipsed row (BACKLOG 10e). The base is selected by the READ-time
-// resolver (resolveNodeVersionAt on a pristine copy of the pre-correction
-// chain) — the cascade never derives a VT-axis predecessor from
-// nodeVersionBounds/relVersionBounds' positional derivation at write time
-// (see BACKLOG 10b for why that is a known correctness minefield in this
-// file). PrevHash never affects resolution: verifyChainLinkage (integrity.go)
-// only requires a non-genesis row's PrevHash to match SOME hash present
-// anywhere in the same entity's full chain, and the base is always a member of
-// that chain. Any change to how pieces or bases are chosen must re-run the
-// full bitemporal oracle fuzz harness (bitemporaloracle_test.go /
-// bitemporaloracle_commitwindow_test.go) — 10b's reverted fix attempts prove
-// this file's bounds logic breaks in non-obvious multi-cascade ways.
+// recent version (BACKLOG 10e). The base is selected by the READ-time resolver
+// (resolveNodeVersionAt on a pristine copy of the pre-correction chain) — the
+// cascade never derives a VT-axis predecessor from nodeVersionBounds/
+// relVersionBounds' positional derivation at write time (BACKLOG 10b).
+// PrevHash never affects resolution: verifyChainLinkage (integrity.go) only
+// requires a non-genesis row's PrevHash to match SOME hash in the same
+// entity's chain, and the base is always a member of that chain. Any change to
+// how pieces or bases are chosen must re-run the full bitemporal oracle fuzz
+// harness (bitemporaloracle_test.go / bitemporaloracle_commitwindow_test.go) —
+// 10b's reverted fix attempts prove this file's bounds logic breaks in
+// non-obvious multi-cascade ways.
 //
-// "Current" semantics: the row that has the latest open-ended interval
-// (max(effectiveValidFrom) where ValidTo == 0) is the new current. If the
-// cascade leaves no open-ended row, the entity has no current — the store
-// still holds history rows, queries by ID return ErrNodeNotFound, but
-// temporal queries find the appropriate version.
+// "Current" slot: the newest belief among rows whose OWN interval is open
+// (ValidTo == 0) takes the store's current slot; the prior current moves to
+// history with its bytes unchanged. If no own-open row remains, the entity has
+// no current — Get returns not-found, temporal queries still resolve history.
 // =============================================================================
-
-// eclipsedNodeBounds returns whether a node's temporal metadata represents
-// a cascade-eclipsed (near-zero-length, 1-instant) interval. Sentinel:
-// ValidTo == ValidFrom + 1. The store rejects ValidFrom == ValidTo, so we
-// use +1 as the smallest tile the store accepts. The resolver explicitly
-// skips eclipsed rows during version selection so the 1-instant width does
-// not cause spurious matches at t == ValidFrom.
-func eclipsedNodeBounds(n *types.Node) bool {
-	tm := n.Temporal()
-	if tm == nil {
-		return false
-	}
-	return tm.ValidFrom != 0 && tm.ValidTo != 0 && tm.ValidTo == tm.ValidFrom+1
-}
-
-func eclipsedRelBounds(r *types.Relationship) bool {
-	tm := r.Temporal()
-	if tm == nil {
-		return false
-	}
-	return tm.ValidFrom != 0 && tm.ValidTo != 0 && tm.ValidTo == tm.ValidFrom+1
-}
 
 // =============================================================================
 // Node cascade
@@ -131,21 +131,12 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 	}
 	now := c.now()
 
-	// Pick the most recent non-eclipsed version as the template for
-	// labels/integrity carry-over for the inserted row.
-	var template *types.Node
-	if current != nil && !eclipsedNodeBounds(current) {
-		template = current
-	} else {
-		for i := len(history) - 1; i >= 0; i-- {
-			if !eclipsedNodeBounds(history[i]) {
-				template = history[i]
-				break
-			}
-		}
-	}
+	// The template — the most recent version (current, else the newest
+	// history row) — is the content of a gap piece, where no version is
+	// valid to patch (see nodeCorrectionSegments).
+	template := current
 	if template == nil {
-		return nil, fmt.Errorf("%w: cascade requires at least one non-eclipsed version", storepkg.ErrNodeNotFound)
+		template = history[len(history)-1]
 	}
 
 	// APPEND-ONLY (audited correction). The cascade records, AT `now`, a new
@@ -261,9 +252,6 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 	var newCurrent *types.Node
 	for i := range postChain {
 		entry := postChain[i]
-		if eclipsedNodeBounds(entry) {
-			continue
-		}
 		if _, vEnd := c.nodeOwnBounds(entry); vEnd != 0 {
 			continue // only own-open rows can own the current slot
 		}
@@ -334,9 +322,6 @@ func nodeResumptionEnd(c *Core, preChain []*types.Node, newVT types.Instant) typ
 		}
 	}
 	for _, row := range preChain {
-		if eclipsedNodeBounds(row) {
-			continue
-		}
 		vStart, vEnd := c.nodeOwnBounds(row)
 		consider(vStart)
 		if vEnd != 0 {
@@ -355,9 +340,6 @@ func relResumptionEnd(c *Core, preChain []*types.Relationship, newVT types.Insta
 		}
 	}
 	for _, row := range preChain {
-		if eclipsedRelBounds(row) {
-			continue
-		}
 		vStart, vEnd := c.relOwnBounds(row)
 		consider(vStart)
 		if vEnd != 0 {
@@ -413,7 +395,7 @@ func correctionCuts(bounds []types.Instant, newVF, newVT types.Instant) []types.
 // nodeCorrectionSegments splits [newVF, newVT) at every boundary where the
 // pre-correction belief-winner can change and pairs each piece with its base.
 //
-// Cut points are every non-eclipsed row's OWN vStart/vEnd (the cascade-arm
+// Cut points are every row's OWN vStart/vEnd (the cascade-arm
 // bounds, as in nodeResumptionEnd) plus its positional bounds (the monotonic
 // arm's tiling, which on a legacy pre-migration chain can start a row at
 // UpdatedAt rather than ValidFrom). Extra cuts are harmless — pieces with the
@@ -423,16 +405,13 @@ func correctionCuts(bounds []types.Instant, newVF, newVT types.Instant) []types.
 // ascending-version preChain (the resolver sorts in place and classifies by
 // input order — lesson 73). Where NO version is valid (a gap: before the
 // entity's first valid-from, after a close, …) there is no then-valid state
-// to patch, so the piece keeps the pre-fix base: the template (the most recent
-// non-eclipsed version). That is a choice, not a derivation — a gap piece
-// asserts a state the entity was never believed to have, and the most recent
-// state is the least surprising content for it.
+// to patch, so the piece keeps the pre-fix base: the template (the most
+// recent version). That is a choice, not a derivation — a gap piece asserts a
+// state the entity was never believed to have, and the most recent state is
+// the least surprising content for it.
 func (c *Core) nodeCorrectionSegments(preChain []*types.Node, template *types.Node, newVF, newVT types.Instant) ([]nodeCorrectionSegment, error) {
 	bounds := make([]types.Instant, 0, 4*len(preChain))
 	for i, row := range preChain {
-		if eclipsedNodeBounds(row) {
-			continue
-		}
 		vStart, vEnd := c.nodeOwnBounds(row)
 		pStart, pEnd := c.nodeVersionBounds(preChain, i)
 		bounds = append(bounds, vStart, vEnd, pStart, pEnd)
@@ -467,9 +446,6 @@ func (c *Core) nodeCorrectionSegments(preChain []*types.Node, template *types.No
 func (c *Core) relCorrectionSegments(preChain []*types.Relationship, template *types.Relationship, newVF, newVT types.Instant) ([]relCorrectionSegment, error) {
 	bounds := make([]types.Instant, 0, 4*len(preChain))
 	for i, row := range preChain {
-		if eclipsedRelBounds(row) {
-			continue
-		}
 		vStart, vEnd := c.relOwnBounds(row)
 		pStart, pEnd := c.relVersionBounds(preChain, i)
 		bounds = append(bounds, vStart, vEnd, pStart, pEnd)
@@ -652,19 +628,10 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 	}
 	now := c.now()
 
-	var template *types.Relationship
-	if current != nil && !eclipsedRelBounds(current) {
-		template = current
-	} else {
-		for i := len(history) - 1; i >= 0; i-- {
-			if !eclipsedRelBounds(history[i]) {
-				template = history[i]
-				break
-			}
-		}
-	}
+	// Template: the most recent version — see the node cascade.
+	template := current
 	if template == nil {
-		return nil, fmt.Errorf("%w: cascade requires at least one non-eclipsed version", storepkg.ErrRelNotFound)
+		template = history[len(history)-1]
 	}
 
 	// APPEND-ONLY (audited correction) — mirror of cascadeNodeVersionInterval.
@@ -749,9 +716,6 @@ func (c *Core) cascadeRelVersionInterval(ctx context.Context, id types.RelID, ne
 	var newCurrent *types.Relationship
 	for i := range postChain {
 		entry := postChain[i]
-		if eclipsedRelBounds(entry) {
-			continue
-		}
 		if _, vEnd := c.relOwnBounds(entry); vEnd != 0 {
 			continue
 		}

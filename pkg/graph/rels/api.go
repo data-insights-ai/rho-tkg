@@ -418,7 +418,9 @@ func (a *API) ByTypeAndProperty(typeName, key string, value any, opts storepkg.Q
 // index's ordered numeric view, which OVER-SELECTS by design, so fn must
 // re-check its predicate with exact comparison semantics. Returns
 // store.ErrIndexNotFound when no usable rel property index exists for
-// (type, propKey) — callers fall back to a type scan.
+// (type, propKey) — callers fall back to a type scan. A temporal opts is served
+// without an index by a fold over ByType(typeName, opts): the relationships
+// whose value in their version under opts is in range, in ID order.
 func (a *API) ForEachByTypePropertyRange(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
 	ops, err := a.ready()
 	if err != nil {
