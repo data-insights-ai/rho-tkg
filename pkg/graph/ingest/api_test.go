@@ -152,6 +152,12 @@ func TestSessionNilReceiverReturnsErrNilSession(t *testing.T) {
 	if err := nilSession.DeleteRelationship(0); !errors.Is(err, core.ErrNilSession) {
 		t.Fatalf("nil Session.DeleteRelationship = %v, want ErrNilSession — BACKLOG 7b regression", err)
 	}
+	if err := nilSession.SetNodeVersionInterval(0, 1, 2, nil); !errors.Is(err, core.ErrNilSession) {
+		t.Fatalf("nil Session.SetNodeVersionInterval = %v, want ErrNilSession", err)
+	}
+	if err := nilSession.SetRelVersionInterval(0, 1, 2, nil); !errors.Is(err, core.ErrNilSession) {
+		t.Fatalf("nil Session.SetRelVersionInterval = %v, want ErrNilSession", err)
+	}
 	if _, err := nilSession.Submit(); !errors.Is(err, core.ErrNilSession) {
 		t.Fatalf("nil Session.Submit = %v, want ErrNilSession — BACKLOG 7b regression", err)
 	}

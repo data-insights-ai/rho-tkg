@@ -320,11 +320,11 @@ func TestSessionSetVersionInterval_ClosedAndNilSession(t *testing.T) {
 			if err := nilS.SetNodeVersionInterval(n.ID(), ivT, ivT+5000, nil); !errors.Is(err, graphpkg.ErrNilSession) {
 				t.Fatalf("nil SetNodeVersionInterval = %v, want ErrNilSession", err)
 			}
-			if h, err := g.Rels().History(r.ID()); err != nil || len(h) != 1 {
-				t.Fatalf("rel history after refused doors = %d, %v; want 1", len(h), err)
+			if h, err := g.Rels().History(r.ID()); err != nil || len(h) != 0 {
+				t.Fatalf("rel history after refused doors = %d, %v; want 0 (History holds appended rows only)", len(h), err)
 			}
-			if h, err := g.Nodes().History(n.ID()); err != nil || len(h) != 1 {
-				t.Fatalf("node history after refused doors = %d, %v; want 1", len(h), err)
+			if h, err := g.Nodes().History(n.ID()); err != nil || len(h) != 0 {
+				t.Fatalf("node history after refused doors = %d, %v; want 0 (History holds appended rows only)", len(h), err)
 			}
 		})
 	}
