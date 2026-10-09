@@ -176,6 +176,86 @@ func TestUniqueClaims_StripeHeldAcrossWithdrawal(t *testing.T) {
 	}
 }
 
+// panicPutStore panics in the first PutNode carrying k == value.
+type panicPutStore struct {
+	*memory.Store
+	mu    sync.Mutex
+	value any
+}
+
+func (s *panicPutStore) PutNode(n *types.Node) error {
+	s.mu.Lock()
+	fire := false
+	if v, ok := n.GetProperty("k"); ok && s.value != nil && v == s.value {
+		fire, s.value = true, nil
+	}
+	s.mu.Unlock()
+	if fire {
+		panic("injected PutNode panic")
+	}
+	return s.Store.PutNode(n)
+}
+
+func (s *panicPutStore) NodesByLabelAndProperty(labelToken uint16, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	return s.Store.NodesByLabelAndProperty(labelToken, key, value, opts)
+}
+
+// RED before the fix (ingest_concurrent released the stripes with a plain call
+// after the put, so a panicking put left them locked). A concurrent-ingest
+// create whose store put panics must release its value stripes: the panic
+// reaches the caller, and the next writer of the same value finishes instead
+// of blocking forever on the stripe. As on the standalone doors, a panic keeps
+// the claim (no withdrawal runs during a panic: conservative, freed by
+// ReleaseOwnership), so the next writer is refused, not deadlocked.
+func TestUniqueClaims_ConcurrentIngestPutPanicReleasesStripes(t *testing.T) {
+	st := &panicPutStore{Store: memory.New()}
+	c, err := New(Config{Store: st})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = c.Close() })
+	if err := c.Constraints.CreateUniqueForever(context.Background(), "Ref", "k"); err != nil {
+		t.Fatalf("CreateUniqueForever: %v", err)
+	}
+	add := func(v string) error {
+		s, err := c.Ingest.NewSession(IngestOptions{Concurrent: true})
+		if err != nil {
+			return err
+		}
+		defer s.Close()
+		if _, err := s.AddNode([]string{"Ref"}, map[string]any{"k": v}); err != nil {
+			return err
+		}
+		_, err = s.Submit()
+		return err
+	}
+	st.mu.Lock()
+	st.value = "v"
+	st.mu.Unlock()
+	panicked := func() (p any) {
+		defer func() { p = recover() }()
+		_ = add("v")
+		return nil
+	}()
+	if panicked == nil {
+		t.Fatal("precondition: the injected PutNode panic did not reach the caller")
+	}
+	done := make(chan error, 1)
+	go func() { done <- add("v") }()
+	err, finished := waitDone(done, 5*time.Second)
+	if !finished {
+		// Free the leaked stripe so the blocked writer and Close can drain,
+		// then fail.
+		tok, _ := c.labels.Lookup("Ref")
+		c.valueLocks.UnlockStripes([]uint8{uniqueValueStripe(tok, "k", types.IndexablePropertyValueKey("v"))})
+		<-done
+		t.Fatal("next writer of the value blocked: the panicking create left its value stripes locked")
+	}
+	if !errors.Is(err, ErrUniqueViolation) {
+		t.Fatalf("next writer of the value: err = %v, want ErrUniqueViolation (the panicked call's claim is kept)", err)
+	}
+}
+
 // errInjectedRead is the stored-row re-read failure readFailStore injects.
 var errInjectedRead = errors.New("injected stored-row read failure")
 
@@ -216,11 +296,13 @@ func (s *readFailStore) NodesByLabelAndProperty(labelToken uint16, key string, v
 	return s.Store.NodesByLabelAndProperty(labelToken, key, value, opts)
 }
 
-// GUARD on the withdrawal's unreadable-row branch (written with it): when the
-// failed writer cannot re-read its stored row, it cannot prove the value was
-// not stored, so the claim stays (never admits a duplicate) and the door
-// returns the write failure joined with the read failure. Catches: a
-// withdrawal that treats an unreadable row as "nothing stored".
+// Red on main only on the error shape (main never re-reads, so its error lacks
+// the joined read failure; the claim-kept assertion holds on main — a guard).
+// The withdrawal's unreadable-row branch: when the failed writer cannot
+// re-read its stored row, it cannot prove the value was not stored, so the
+// claim stays (never admits a duplicate) and the door returns the write
+// failure joined with the read failure. Catches: a withdrawal that treats an
+// unreadable row as "nothing stored".
 func TestUniqueClaims_UnreadableStoredRowKeepsClaim(t *testing.T) {
 	st := &readFailStore{Store: memory.New()}
 	c, err := New(Config{Store: st})
