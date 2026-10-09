@@ -136,6 +136,8 @@ Answered to ai-soc-main-e7 in full; summary:
 | 6 | tag with `*WithTx` | on main, CHANGELOG Unreleased empty, gates open | take: v4.44.0 after gates |
 | 7 | commit pin | cut record as last tx write is sound under single-writer; no door returns a group instant | confirmed with condition; group-instant door not taken |
 | 8 | successor keeping vs, later ve | cascade is append-only since 994df82; header comment `temporal_cascade.go:18-27` is stale; ingest Session lacks the door | already have via GraphTx; take Session door + comment fix |
+| 9 | all-or-nothing durable tx, or open-time discard | Commit/Execute never flush; pending buffer is a map flushed in map order, badger splits big WriteBatches; no tx journal. ai-soc's "rows above the last cut record" recovery is sound only under `SyncWrites` | v5 §5.2; v4 candidate for René: durable-on-return commit option (flush at Commit/Execute); open-time discard not taken |
+| 10 | does `RelAsOf` show a cascade extension | no, on memory/badger/tiered (probed): the cascade never changes a closed current row; `RelAtTx(id, t, pin)`, `RelsDuringTx`, `ByType{ValidAt, TxAt}` do | answered; sigma-facing: `edb.go:180` needs a valid-time coordinate |
 
 ## 6. v4 findings that need a failing test now (independent of v5)
 
@@ -143,7 +145,11 @@ Answered to ai-soc-main-e7 in full; summary:
 2. **Column scans and ordered range scans ignore `TxAt`/`TxPin` and filter current rows only** (HIGH?, rule 17).
 3. **Stale contracts**: `store/changefeed.go:154-158` (rolled-back tx in feed), `temporal_cascade.go:18-27`
    (in-place classification), `index/api.go:267-269` (sharded), `constraints/unique.go:74-75` (batch enforcement).
-4. **Instant floor persisted only at Close**: a crash after a burst that outran the wall reopens with
+4. **`RelAsOf` / `Get` / `ByType{TxPin}` keep answering the old closed row after a finite cascade extension** (by
+   design: the current row is the latest open-ended row, `temporal_cascade.go:50-55`). Not a bug, but a contract
+   gap for consumers growing closed facts (ai-soc bursts, sigma `edb.go:180`); v5 E02 needs "state at a cut" as one
+   read, not two doors.
+5. **Instant floor persisted only at Close**: a crash after a burst that outran the wall reopens with
    `NowTx` below committed stamps (lesson 71's reopen case for the crash path). `persistInstantFloor` is called
    only from `Close` (`core.go:2029`; `instant_floor.go:120-129`). MEDIUM; needs a crash-shaped red test.
 
