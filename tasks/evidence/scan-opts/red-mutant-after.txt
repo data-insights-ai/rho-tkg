@@ -1,0 +1,29 @@
+--- FAIL: TestScanDoorsAgreeWithByLabelOpts_NodeColumns (0.04s)
+    --- FAIL: TestScanDoorsAgreeWithByLabelOpts_NodeColumns/memory (0.00s)
+        scan_temporal_opts_test.go:395: paged ScanNodeColumns {Limit:0 After:796913095957676032 ValidAt:1500 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false} disagrees with the reference door:
+              extra 796913095957676032 {v=10 vf=1000 vt=0}
+        scan_temporal_opts_test.go:395: paged ScanNodeColumns {Limit:2 After:796913095957676032 ValidAt:1500 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false} disagrees with the reference door:
+              extra 796913095957676032 {v=10 vf=1000 vt=0}
+              missing 796913095958953984 {v=40 vf=1000 vt=1800}
+    --- FAIL: TestScanDoorsAgreeWithByLabelOpts_NodeColumns/badger (0.01s)
+        scan_temporal_opts_test.go:395: paged ScanNodeColumns {Limit:0 After:796913096189313024 ValidAt:1500 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false} disagrees with the reference door:
+              extra 796913096189313024 {v=10 vf=1000 vt=0}
+        scan_temporal_opts_test.go:395: paged ScanNodeColumns {Limit:2 After:796913096189313024 ValidAt:1500 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false} disagrees with the reference door:
+              extra 796913096189313024 {v=10 vf=1000 vt=0}
+              missing 796913096191803392 {v=40 vf=1000 vt=1800}
+--- FAIL: TestScanDoorsAgreeWithByLabelOpts_RelColumns (0.24s)
+    --- FAIL: TestScanDoorsAgreeWithByLabelOpts_RelColumns/memory (0.00s)
+        scan_temporal_opts_test.go:446: paged ScanRelColumns {Limit:0 After:796913097316566016 ValidAt:1500 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false} disagrees with the reference door:
+              extra 796913097316566016 {v=10 vf=1000 vt=0}
+        scan_temporal_opts_test.go:446: paged ScanRelColumns {Limit:2 After:796913097316566016 ValidAt:1500 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false} disagrees with the reference door:
+              extra 796913097316566016 {v=10 vf=1000 vt=0}
+              missing 796913097317614592 {v=40 vf=1000 vt=1800}
+    --- FAIL: TestScanDoorsAgreeWithByLabelOpts_RelColumns/badger (0.06s)
+        scan_temporal_opts_test.go:446: paged ScanRelColumns {Limit:0 After:796913098924131328 ValidAt:1500 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false} disagrees with the reference door:
+              extra 796913098924131328 {v=10 vf=1000 vt=0}
+        scan_temporal_opts_test.go:446: paged ScanRelColumns {Limit:2 After:796913098924131328 ValidAt:1500 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:0 IncludeEclipsed:false Depth:0 NoSort:false} disagrees with the reference door:
+              extra 796913098924131328 {v=10 vf=1000 vt=0}
+              missing 796913098925310976 {v=40 vf=1000 vt=1800}
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.353s
+FAIL

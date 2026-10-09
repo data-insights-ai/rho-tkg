@@ -1,0 +1,4 @@
+=== RUN   TestScanDoorsNeverForwardTemporalOptsToStore
+--- PASS: TestScanDoorsNeverForwardTemporalOptsToStore (0.00s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.009s

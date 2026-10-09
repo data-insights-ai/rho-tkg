@@ -1,0 +1,306 @@
+--- FAIL: TestScanDoorsAgreeWithByLabelOpts_NodeColumns (0.19s)
+    --- FAIL: TestScanDoorsAgreeWithByLabelOpts_NodeColumns/memory (0.00s)
+        scan_temporal_opts_test.go:370: ValidAt before the update/ScanNodeColumns disagrees with the reference door:
+              missing 796843517468606464 {v=10 vf=1000 vt=0}
+              missing 796843517470081024 {v=30 vf=1000 vt=1791543334312}
+              missing 796843517470605312 {v=50 vf=1000 vt=0}
+        scan_temporal_opts_test.go:370: ValidStart/ValidEnd spanning the update/ScanNodeColumns disagrees with the reference door:
+              missing 796843517470081024 {v=30 vf=1000 vt=1791543334312}
+              missing 796843517470605312 {v=50 vf=1000 vt=0}
+        scan_temporal_opts_test.go:370: interval where the label held only on an earlier version/ScanNodeColumns disagrees with the reference door:
+              missing 796843517470081024 {v=30 vf=1000 vt=1791543334312}
+              missing 796843517470605312 {v=50 vf=1000 vt=0}
+        scan_temporal_opts_test.go:370: TxAt before the delete with ValidAt before the update/ScanNodeColumns disagrees with the reference door:
+              796843517470375936: got {v=40 vf=1000 vt=1800} want {v=40 vf=1000 vt=0}
+              extra 796843517478469632 {v=70 vf=1000 vt=0}
+              missing 796843517468606464 {v=10 vf=1000 vt=0}
+              missing 796843517470081024 {v=30 vf=1000 vt=0}
+              missing 796843517470605312 {v=50 vf=1000 vt=0}
+        scan_temporal_opts_test.go:370: TxAt before the delete/ScanNodeColumns disagrees with the reference door:
+              796843517470375936: got {v=40 vf=1000 vt=1800} want {v=40 vf=1000 vt=0}
+              extra 796843517478469632 {v=70 vf=1000 vt=0}
+              missing 796843517470081024 {v=30 vf=1000 vt=0}
+              missing 796843517470605312 {v=50 vf=1000 vt=0}
+        scan_temporal_opts_test.go:370: TxPin before the delete/ScanNodeColumns disagrees with the reference door:
+              796843517470375936: got {v=40 vf=1000 vt=1800} want {v=40 vf=1000 vt=0}
+              extra 796843517478469632 {v=70 vf=1000 vt=0}
+              missing 796843517470081024 {v=30 vf=1000 vt=0}
+              missing 796843517470605312 {v=50 vf=1000 vt=0}
+        scan_temporal_opts_test.go:378: paged ScanNodeColumns disagrees with the reference door:
+              extra 796843517470375936 {v=40 vf=1000 vt=1800}
+              extra 796843517470900224 {v=60 vf=1000 vt=0}
+              missing 796843517468606464 {v=10 vf=1000 vt=0}
+              missing 796843517470081024 {v=30 vf=1000 vt=1791543334312}
+        scan_temporal_opts_test.go:387: ScanNodeColumns conflict err = <nil>, want ErrConflictingTemporalOpts
+    --- FAIL: TestScanDoorsAgreeWithByLabelOpts_NodeColumns/badger (0.02s)
+        scan_temporal_opts_test.go:370: ValidAt before the update/ScanNodeColumns disagrees with the reference door:
+              missing 796843518092607488 {v=10 vf=1000 vt=0}
+              missing 796843518094114816 {v=30 vf=1000 vt=1791543334331}
+              missing 796843518095458304 {v=50 vf=1000 vt=0}
+        scan_temporal_opts_test.go:370: ValidStart/ValidEnd spanning the update/ScanNodeColumns disagrees with the reference door:
+              missing 796843518094114816 {v=30 vf=1000 vt=1791543334331}
+              missing 796843518095458304 {v=50 vf=1000 vt=0}
+        scan_temporal_opts_test.go:370: interval where the label held only on an earlier version/ScanNodeColumns disagrees with the reference door:
+              missing 796843518094114816 {v=30 vf=1000 vt=1791543334331}
+              missing 796843518095458304 {v=50 vf=1000 vt=0}
+        scan_temporal_opts_test.go:370: TxAt before the delete with ValidAt before the update/ScanNodeColumns disagrees with the reference door:
+              796843518094999552: got {v=40 vf=1000 vt=1800} want {v=40 vf=1000 vt=0}
+              extra 796843518144741376 {v=70 vf=1000 vt=0}
+              missing 796843518092607488 {v=10 vf=1000 vt=0}
+              missing 796843518094114816 {v=30 vf=1000 vt=0}
+              missing 796843518095458304 {v=50 vf=1000 vt=0}
+        scan_temporal_opts_test.go:370: TxAt before the delete/ScanNodeColumns disagrees with the reference door:
+              796843518094999552: got {v=40 vf=1000 vt=1800} want {v=40 vf=1000 vt=0}
+              extra 796843518144741376 {v=70 vf=1000 vt=0}
+              missing 796843518094114816 {v=30 vf=1000 vt=0}
+              missing 796843518095458304 {v=50 vf=1000 vt=0}
+        scan_temporal_opts_test.go:370: TxPin before the delete/ScanNodeColumns disagrees with the reference door:
+              796843518094999552: got {v=40 vf=1000 vt=1800} want {v=40 vf=1000 vt=0}
+              extra 796843518144741376 {v=70 vf=1000 vt=0}
+              missing 796843518094114816 {v=30 vf=1000 vt=0}
+              missing 796843518095458304 {v=50 vf=1000 vt=0}
+        scan_temporal_opts_test.go:378: paged ScanNodeColumns disagrees with the reference door:
+              extra 796843518094999552 {v=40 vf=1000 vt=1800}
+              extra 796843518098735104 {v=60 vf=1000 vt=0}
+              extra 796843518144741376 {v=70 vf=1000 vt=0}
+              missing 796843518092607488 {v=10 vf=1000 vt=0}
+              missing 796843518094114816 {v=30 vf=1000 vt=1791543334331}
+        scan_temporal_opts_test.go:387: ScanNodeColumns conflict err = <nil>, want ErrConflictingTemporalOpts
+--- FAIL: TestScanDoorsAgreeWithByLabelOpts_RelColumns (0.16s)
+    --- FAIL: TestScanDoorsAgreeWithByLabelOpts_RelColumns/memory (0.00s)
+        scan_temporal_opts_test.go:414: ValidAt before the update/ScanRelColumns("R") disagrees with the reference door:
+              missing 796843523594552320 {v=10 vf=1000 vt=0}
+              missing 796843523595928576 {v=30 vf=1000 vt=1791543334500}
+        scan_temporal_opts_test.go:414: ValidAt before the update/ScanRelColumns("") disagrees with the reference door:
+              missing 796843523594552320 {v=10 vf=1000 vt=0}
+              missing 796843523595928576 {v=30 vf=1000 vt=1791543334500}
+        scan_temporal_opts_test.go:414: ValidStart/ValidEnd spanning the update/ScanRelColumns("R") disagrees with the reference door:
+              missing 796843523595928576 {v=30 vf=1000 vt=1791543334500}
+        scan_temporal_opts_test.go:414: ValidStart/ValidEnd spanning the update/ScanRelColumns("") disagrees with the reference door:
+              missing 796843523595928576 {v=30 vf=1000 vt=1791543334500}
+        scan_temporal_opts_test.go:414: interval where the label held only on an earlier version/ScanRelColumns("R") disagrees with the reference door:
+              missing 796843523595928576 {v=30 vf=1000 vt=1791543334500}
+        scan_temporal_opts_test.go:414: interval where the label held only on an earlier version/ScanRelColumns("") disagrees with the reference door:
+              missing 796843523595928576 {v=30 vf=1000 vt=1791543334500}
+        scan_temporal_opts_test.go:414: TxAt before the delete with ValidAt before the update/ScanRelColumns("R") disagrees with the reference door:
+              796843523596092416: got {v=40 vf=1000 vt=1800} want {v=40 vf=1000 vt=0}
+              extra 796843523599631360 {v=70 vf=1000 vt=0}
+              missing 796843523594552320 {v=10 vf=1000 vt=0}
+              missing 796843523595928576 {v=30 vf=1000 vt=0}
+        scan_temporal_opts_test.go:414: TxAt before the delete with ValidAt before the update/ScanRelColumns("") disagrees with the reference door:
+              796843523596092416: got {v=40 vf=1000 vt=1800} want {v=40 vf=1000 vt=0}
+              extra 796843523599631360 {v=70 vf=1000 vt=0}
+              missing 796843523594552320 {v=10 vf=1000 vt=0}
+              missing 796843523595928576 {v=30 vf=1000 vt=0}
+        scan_temporal_opts_test.go:414: TxAt before the delete/ScanRelColumns("R") disagrees with the reference door:
+              796843523596092416: got {v=40 vf=1000 vt=1800} want {v=40 vf=1000 vt=0}
+              extra 796843523599631360 {v=70 vf=1000 vt=0}
+              missing 796843523595928576 {v=30 vf=1000 vt=0}
+        scan_temporal_opts_test.go:414: TxAt before the delete/ScanRelColumns("") disagrees with the reference door:
+              796843523596092416: got {v=40 vf=1000 vt=1800} want {v=40 vf=1000 vt=0}
+              extra 796843523599631360 {v=70 vf=1000 vt=0}
+              missing 796843523595928576 {v=30 vf=1000 vt=0}
+        scan_temporal_opts_test.go:414: TxPin before the delete/ScanRelColumns("R") disagrees with the reference door:
+              796843523596092416: got {v=40 vf=1000 vt=1800} want {v=40 vf=1000 vt=0}
+              extra 796843523599631360 {v=70 vf=1000 vt=0}
+              missing 796843523595928576 {v=30 vf=1000 vt=0}
+        scan_temporal_opts_test.go:414: TxPin before the delete/ScanRelColumns("") disagrees with the reference door:
+              796843523596092416: got {v=40 vf=1000 vt=1800} want {v=40 vf=1000 vt=0}
+              extra 796843523599631360 {v=70 vf=1000 vt=0}
+              missing 796843523595928576 {v=30 vf=1000 vt=0}
+        scan_temporal_opts_test.go:422: paged ScanRelColumns disagrees with the reference door:
+              extra 796843523596092416 {v=40 vf=1000 vt=1800}
+              extra 796843523596452864 {v=60 vf=1000 vt=0}
+              missing 796843523594552320 {v=10 vf=1000 vt=0}
+              missing 796843523595928576 {v=30 vf=1000 vt=1791543334500}
+        scan_temporal_opts_test.go:428: ScanRelColumns("R") conflict err = <nil>, want ErrConflictingTemporalOpts
+        scan_temporal_opts_test.go:428: ScanRelColumns("") conflict err = <nil>, want ErrConflictingTemporalOpts
+    --- FAIL: TestScanDoorsAgreeWithByLabelOpts_RelColumns/badger (0.01s)
+        scan_temporal_opts_test.go:414: ValidAt before the update/ScanRelColumns("R") disagrees with the reference door:
+              missing 796843523714188288 {v=10 vf=1000 vt=0}
+              missing 796843523715466240 {v=30 vf=1000 vt=1791543334504}
+        scan_temporal_opts_test.go:414: ValidAt before the update/ScanRelColumns("") disagrees with the reference door:
+              missing 796843523714188288 {v=10 vf=1000 vt=0}
+              missing 796843523715466240 {v=30 vf=1000 vt=1791543334504}
+        scan_temporal_opts_test.go:414: ValidStart/ValidEnd spanning the update/ScanRelColumns("R") disagrees with the reference door:
+              missing 796843523715466240 {v=30 vf=1000 vt=1791543334504}
+        scan_temporal_opts_test.go:414: ValidStart/ValidEnd spanning the update/ScanRelColumns("") disagrees with the reference door:
+              missing 796843523715466240 {v=30 vf=1000 vt=1791543334504}
+        scan_temporal_opts_test.go:414: interval where the label held only on an earlier version/ScanRelColumns("R") disagrees with the reference door:
+              missing 796843523715466240 {v=30 vf=1000 vt=1791543334504}
+        scan_temporal_opts_test.go:414: interval where the label held only on an earlier version/ScanRelColumns("") disagrees with the reference door:
+              missing 796843523715466240 {v=30 vf=1000 vt=1791543334504}
+        scan_temporal_opts_test.go:414: TxAt before the delete with ValidAt before the update/ScanRelColumns("R") disagrees with the reference door:
+              796843523715728384: got {v=40 vf=1000 vt=1800} want {v=40 vf=1000 vt=0}
+              extra 796843523720709120 {v=70 vf=1000 vt=0}
+              missing 796843523714188288 {v=10 vf=1000 vt=0}
+              missing 796843523715466240 {v=30 vf=1000 vt=0}
+        scan_temporal_opts_test.go:414: TxAt before the delete with ValidAt before the update/ScanRelColumns("") disagrees with the reference door:
+              796843523715728384: got {v=40 vf=1000 vt=1800} want {v=40 vf=1000 vt=0}
+              extra 796843523720709120 {v=70 vf=1000 vt=0}
+              missing 796843523714188288 {v=10 vf=1000 vt=0}
+              missing 796843523715466240 {v=30 vf=1000 vt=0}
+        scan_temporal_opts_test.go:414: TxAt before the delete/ScanRelColumns("R") disagrees with the reference door:
+              796843523715728384: got {v=40 vf=1000 vt=1800} want {v=40 vf=1000 vt=0}
+              extra 796843523720709120 {v=70 vf=1000 vt=0}
+              missing 796843523715466240 {v=30 vf=1000 vt=0}
+        scan_temporal_opts_test.go:414: TxAt before the delete/ScanRelColumns("") disagrees with the reference door:
+              796843523715728384: got {v=40 vf=1000 vt=1800} want {v=40 vf=1000 vt=0}
+              extra 796843523720709120 {v=70 vf=1000 vt=0}
+              missing 796843523715466240 {v=30 vf=1000 vt=0}
+        scan_temporal_opts_test.go:414: TxPin before the delete/ScanRelColumns("R") disagrees with the reference door:
+              796843523715728384: got {v=40 vf=1000 vt=1800} want {v=40 vf=1000 vt=0}
+              extra 796843523720709120 {v=70 vf=1000 vt=0}
+              missing 796843523715466240 {v=30 vf=1000 vt=0}
+        scan_temporal_opts_test.go:414: TxPin before the delete/ScanRelColumns("") disagrees with the reference door:
+              796843523715728384: got {v=40 vf=1000 vt=1800} want {v=40 vf=1000 vt=0}
+              extra 796843523720709120 {v=70 vf=1000 vt=0}
+              missing 796843523715466240 {v=30 vf=1000 vt=0}
+        scan_temporal_opts_test.go:422: paged ScanRelColumns disagrees with the reference door:
+              extra 796843523715728384 {v=40 vf=1000 vt=1800}
+              extra 796843523716252672 {v=60 vf=1000 vt=0}
+              extra 796843523720709120 {v=70 vf=1000 vt=0}
+              missing 796843523714188288 {v=10 vf=1000 vt=0}
+              missing 796843523715466240 {v=30 vf=1000 vt=1791543334504}
+        scan_temporal_opts_test.go:428: ScanRelColumns("R") conflict err = <nil>, want ErrConflictingTemporalOpts
+        scan_temporal_opts_test.go:428: ScanRelColumns("") conflict err = <nil>, want ErrConflictingTemporalOpts
+--- FAIL: TestScanDoorsAgreeWithByLabelOpts_NodeRange (0.22s)
+    --- FAIL: TestScanDoorsAgreeWithByLabelOpts_NodeRange/memory (0.00s)
+        scan_temporal_opts_test.go:498: ValidAt before the update/ForEachByLabelPropertyRange[5,15]: graph: property index not found
+        scan_temporal_opts_test.go:498: ValidAt before the update/ForEachByLabelPropertyRange[15,65]: graph: property index not found
+        scan_temporal_opts_test.go:498: ValidStart/ValidEnd spanning the update/ForEachByLabelPropertyRange[5,15]: graph: property index not found
+        scan_temporal_opts_test.go:498: ValidStart/ValidEnd spanning the update/ForEachByLabelPropertyRange[15,65]: graph: property index not found
+        scan_temporal_opts_test.go:498: interval where the label held only on an earlier version/ForEachByLabelPropertyRange[5,15]: graph: property index not found
+        scan_temporal_opts_test.go:498: interval where the label held only on an earlier version/ForEachByLabelPropertyRange[15,65]: graph: property index not found
+        scan_temporal_opts_test.go:498: TxAt before the delete with ValidAt before the update/ForEachByLabelPropertyRange[5,15]: graph: property index not found
+        scan_temporal_opts_test.go:498: TxAt before the delete with ValidAt before the update/ForEachByLabelPropertyRange[15,65]: graph: property index not found
+        scan_temporal_opts_test.go:498: TxAt before the delete/ForEachByLabelPropertyRange[5,15]: graph: property index not found
+        scan_temporal_opts_test.go:498: TxAt before the delete/ForEachByLabelPropertyRange[15,65]: graph: property index not found
+        scan_temporal_opts_test.go:498: TxPin before the delete/ForEachByLabelPropertyRange[5,15]: graph: property index not found
+        scan_temporal_opts_test.go:498: TxPin before the delete/ForEachByLabelPropertyRange[15,65]: graph: property index not found
+    --- FAIL: TestScanDoorsAgreeWithByLabelOpts_NodeRange/badger (0.06s)
+        scan_temporal_opts_test.go:501: ValidAt before the update/ForEachByLabelPropertyRange[5,15] disagrees with the reference door:
+              missing 796843530815930368 {v=10 vf=1000 vt=0}
+        scan_temporal_opts_test.go:501: ValidAt before the update/ForEachByLabelPropertyRange[15,65] disagrees with the reference door:
+              missing 796843530817208320 {v=30 vf=1000 vt=1791543334720}
+              missing 796843530818322432 {v=50 vf=1000 vt=0}
+        scan_temporal_opts_test.go:501: ValidStart/ValidEnd spanning the update/ForEachByLabelPropertyRange[15,65] disagrees with the reference door:
+              missing 796843530817208320 {v=30 vf=1000 vt=1791543334720}
+              missing 796843530818322432 {v=50 vf=1000 vt=0}
+        scan_temporal_opts_test.go:501: interval where the label held only on an earlier version/ForEachByLabelPropertyRange[15,65] disagrees with the reference door:
+              missing 796843530817208320 {v=30 vf=1000 vt=1791543334720}
+              missing 796843530818322432 {v=50 vf=1000 vt=0}
+        scan_temporal_opts_test.go:501: TxAt before the delete with ValidAt before the update/ForEachByLabelPropertyRange[5,15] disagrees with the reference door:
+              missing 796843530815930368 {v=10 vf=1000 vt=0}
+        scan_temporal_opts_test.go:501: TxAt before the delete with ValidAt before the update/ForEachByLabelPropertyRange[15,65] disagrees with the reference door:
+              796843530817699840: got {v=40 vf=1000 vt=1800} want {v=40 vf=1000 vt=0}
+              missing 796843530817208320 {v=30 vf=1000 vt=0}
+              missing 796843530818322432 {v=50 vf=1000 vt=0}
+        scan_temporal_opts_test.go:501: TxAt before the delete/ForEachByLabelPropertyRange[15,65] disagrees with the reference door:
+              796843530817699840: got {v=40 vf=1000 vt=1800} want {v=40 vf=1000 vt=0}
+              missing 796843530817208320 {v=30 vf=1000 vt=0}
+              missing 796843530818322432 {v=50 vf=1000 vt=0}
+        scan_temporal_opts_test.go:501: TxPin before the delete/ForEachByLabelPropertyRange[15,65] disagrees with the reference door:
+              796843530817699840: got {v=40 vf=1000 vt=1800} want {v=40 vf=1000 vt=0}
+              missing 796843530817208320 {v=30 vf=1000 vt=0}
+              missing 796843530818322432 {v=50 vf=1000 vt=0}
+    --- FAIL: TestScanDoorsAgreeWithByLabelOpts_NodeRange/tiered (0.10s)
+        scan_temporal_opts_test.go:476: CreateProperty: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "S": graph: property indexes only supported for reference entities in Store (backend declines; temporal path needs no index)
+        scan_temporal_opts_test.go:476: CreateRelProperty: graph: relationship property indexes are not supported on this backend (backend declines; temporal path needs no index)
+        scan_temporal_opts_test.go:498: ValidAt before the update/ForEachByLabelPropertyRange[5,15]: graph: property index not found
+        scan_temporal_opts_test.go:498: ValidAt before the update/ForEachByLabelPropertyRange[15,65]: graph: property index not found
+        scan_temporal_opts_test.go:498: ValidStart/ValidEnd spanning the update/ForEachByLabelPropertyRange[5,15]: graph: property index not found
+        scan_temporal_opts_test.go:498: ValidStart/ValidEnd spanning the update/ForEachByLabelPropertyRange[15,65]: graph: property index not found
+        scan_temporal_opts_test.go:498: interval where the label held only on an earlier version/ForEachByLabelPropertyRange[5,15]: graph: property index not found
+        scan_temporal_opts_test.go:498: interval where the label held only on an earlier version/ForEachByLabelPropertyRange[15,65]: graph: property index not found
+        scan_temporal_opts_test.go:498: TxAt before the delete with ValidAt before the update/ForEachByLabelPropertyRange[5,15]: graph: property index not found
+        scan_temporal_opts_test.go:498: TxAt before the delete with ValidAt before the update/ForEachByLabelPropertyRange[15,65]: graph: property index not found
+        scan_temporal_opts_test.go:498: TxAt before the delete/ForEachByLabelPropertyRange[5,15]: graph: property index not found
+        scan_temporal_opts_test.go:498: TxAt before the delete/ForEachByLabelPropertyRange[15,65]: graph: property index not found
+        scan_temporal_opts_test.go:498: TxPin before the delete/ForEachByLabelPropertyRange[5,15]: graph: property index not found
+        scan_temporal_opts_test.go:498: TxPin before the delete/ForEachByLabelPropertyRange[15,65]: graph: property index not found
+    --- FAIL: TestScanDoorsAgreeWithByLabelOpts_NodeRange/sharded (0.06s)
+        scan_temporal_opts_test.go:498: ValidAt before the update/ForEachByLabelPropertyRange[5,15]: graph: property index not found
+        scan_temporal_opts_test.go:498: ValidAt before the update/ForEachByLabelPropertyRange[15,65]: graph: property index not found
+        scan_temporal_opts_test.go:498: ValidStart/ValidEnd spanning the update/ForEachByLabelPropertyRange[5,15]: graph: property index not found
+        scan_temporal_opts_test.go:498: ValidStart/ValidEnd spanning the update/ForEachByLabelPropertyRange[15,65]: graph: property index not found
+        scan_temporal_opts_test.go:498: interval where the label held only on an earlier version/ForEachByLabelPropertyRange[5,15]: graph: property index not found
+        scan_temporal_opts_test.go:498: interval where the label held only on an earlier version/ForEachByLabelPropertyRange[15,65]: graph: property index not found
+        scan_temporal_opts_test.go:498: TxAt before the delete with ValidAt before the update/ForEachByLabelPropertyRange[5,15]: graph: property index not found
+        scan_temporal_opts_test.go:498: TxAt before the delete with ValidAt before the update/ForEachByLabelPropertyRange[15,65]: graph: property index not found
+        scan_temporal_opts_test.go:498: TxAt before the delete/ForEachByLabelPropertyRange[5,15]: graph: property index not found
+        scan_temporal_opts_test.go:498: TxAt before the delete/ForEachByLabelPropertyRange[15,65]: graph: property index not found
+        scan_temporal_opts_test.go:498: TxPin before the delete/ForEachByLabelPropertyRange[5,15]: graph: property index not found
+        scan_temporal_opts_test.go:498: TxPin before the delete/ForEachByLabelPropertyRange[15,65]: graph: property index not found
+--- FAIL: TestScanDoorsAgreeWithByLabelOpts_RelRange (0.13s)
+    --- FAIL: TestScanDoorsAgreeWithByLabelOpts_RelRange/memory (0.00s)
+        scan_temporal_opts_test.go:538: ValidAt before the update/ForEachByTypePropertyRange[5,15] disagrees with the reference door:
+              missing 796843536149545984 {v=10 vf=1000 vt=0}
+        scan_temporal_opts_test.go:538: ValidAt before the update/ForEachByTypePropertyRange[15,65] disagrees with the reference door:
+              missing 796843536150037504 {v=30 vf=1000 vt=1791543334883}
+        scan_temporal_opts_test.go:538: ValidStart/ValidEnd spanning the update/ForEachByTypePropertyRange[15,65] disagrees with the reference door:
+              missing 796843536150037504 {v=30 vf=1000 vt=1791543334883}
+        scan_temporal_opts_test.go:538: interval where the label held only on an earlier version/ForEachByTypePropertyRange[15,65] disagrees with the reference door:
+              missing 796843536150037504 {v=30 vf=1000 vt=1791543334883}
+        scan_temporal_opts_test.go:538: TxAt before the delete with ValidAt before the update/ForEachByTypePropertyRange[5,15] disagrees with the reference door:
+              missing 796843536149545984 {v=10 vf=1000 vt=0}
+        scan_temporal_opts_test.go:538: TxAt before the delete with ValidAt before the update/ForEachByTypePropertyRange[15,65] disagrees with the reference door:
+              796843536150135808: got {v=40 vf=1000 vt=1800} want {v=40 vf=1000 vt=0}
+              missing 796843536150037504 {v=30 vf=1000 vt=0}
+        scan_temporal_opts_test.go:538: TxAt before the delete/ForEachByTypePropertyRange[15,65] disagrees with the reference door:
+              796843536150135808: got {v=40 vf=1000 vt=1800} want {v=40 vf=1000 vt=0}
+              missing 796843536150037504 {v=30 vf=1000 vt=0}
+        scan_temporal_opts_test.go:538: TxPin before the delete/ForEachByTypePropertyRange[15,65] disagrees with the reference door:
+              796843536150135808: got {v=40 vf=1000 vt=1800} want {v=40 vf=1000 vt=0}
+              missing 796843536150037504 {v=30 vf=1000 vt=0}
+    --- FAIL: TestScanDoorsAgreeWithByLabelOpts_RelRange/badger (0.02s)
+        scan_temporal_opts_test.go:538: ValidAt before the update/ForEachByTypePropertyRange[5,15] disagrees with the reference door:
+              missing 796843536637559808 {v=10 vf=1000 vt=0}
+        scan_temporal_opts_test.go:538: ValidAt before the update/ForEachByTypePropertyRange[15,65] disagrees with the reference door:
+              missing 796843536638837760 {v=30 vf=1000 vt=1791543334898}
+        scan_temporal_opts_test.go:538: ValidStart/ValidEnd spanning the update/ForEachByTypePropertyRange[15,65] disagrees with the reference door:
+              missing 796843536638837760 {v=30 vf=1000 vt=1791543334898}
+        scan_temporal_opts_test.go:538: interval where the label held only on an earlier version/ForEachByTypePropertyRange[15,65] disagrees with the reference door:
+              missing 796843536638837760 {v=30 vf=1000 vt=1791543334898}
+        scan_temporal_opts_test.go:538: TxAt before the delete with ValidAt before the update/ForEachByTypePropertyRange[5,15] disagrees with the reference door:
+              missing 796843536637559808 {v=10 vf=1000 vt=0}
+        scan_temporal_opts_test.go:538: TxAt before the delete with ValidAt before the update/ForEachByTypePropertyRange[15,65] disagrees with the reference door:
+              796843536639165440: got {v=40 vf=1000 vt=1800} want {v=40 vf=1000 vt=0}
+              missing 796843536638837760 {v=30 vf=1000 vt=0}
+        scan_temporal_opts_test.go:538: TxAt before the delete/ForEachByTypePropertyRange[15,65] disagrees with the reference door:
+              796843536639165440: got {v=40 vf=1000 vt=1800} want {v=40 vf=1000 vt=0}
+              missing 796843536638837760 {v=30 vf=1000 vt=0}
+        scan_temporal_opts_test.go:538: TxPin before the delete/ForEachByTypePropertyRange[15,65] disagrees with the reference door:
+              796843536639165440: got {v=40 vf=1000 vt=1800} want {v=40 vf=1000 vt=0}
+              missing 796843536638837760 {v=30 vf=1000 vt=0}
+    --- FAIL: TestScanDoorsAgreeWithByLabelOpts_RelRange/tiered (0.06s)
+        scan_temporal_opts_test.go:513: CreateProperty: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "S": graph: property indexes only supported for reference entities in Store (backend declines; temporal path needs no index)
+        scan_temporal_opts_test.go:513: CreateRelProperty: graph: relationship property indexes are not supported on this backend (backend declines; temporal path needs no index)
+        scan_temporal_opts_test.go:535: ValidAt before the update/ForEachByTypePropertyRange[5,15]: graph: property index not found
+        scan_temporal_opts_test.go:535: ValidAt before the update/ForEachByTypePropertyRange[15,65]: graph: property index not found
+        scan_temporal_opts_test.go:535: ValidStart/ValidEnd spanning the update/ForEachByTypePropertyRange[5,15]: graph: property index not found
+        scan_temporal_opts_test.go:535: ValidStart/ValidEnd spanning the update/ForEachByTypePropertyRange[15,65]: graph: property index not found
+        scan_temporal_opts_test.go:535: interval where the label held only on an earlier version/ForEachByTypePropertyRange[5,15]: graph: property index not found
+        scan_temporal_opts_test.go:535: interval where the label held only on an earlier version/ForEachByTypePropertyRange[15,65]: graph: property index not found
+        scan_temporal_opts_test.go:535: TxAt before the delete with ValidAt before the update/ForEachByTypePropertyRange[5,15]: graph: property index not found
+        scan_temporal_opts_test.go:535: TxAt before the delete with ValidAt before the update/ForEachByTypePropertyRange[15,65]: graph: property index not found
+        scan_temporal_opts_test.go:535: TxAt before the delete/ForEachByTypePropertyRange[5,15]: graph: property index not found
+        scan_temporal_opts_test.go:535: TxAt before the delete/ForEachByTypePropertyRange[15,65]: graph: property index not found
+        scan_temporal_opts_test.go:535: TxPin before the delete/ForEachByTypePropertyRange[5,15]: graph: property index not found
+        scan_temporal_opts_test.go:535: TxPin before the delete/ForEachByTypePropertyRange[15,65]: graph: property index not found
+    --- FAIL: TestScanDoorsAgreeWithByLabelOpts_RelRange/sharded (0.05s)
+        scan_temporal_opts_test.go:535: ValidAt before the update/ForEachByTypePropertyRange[5,15]: graph: property index not found
+        scan_temporal_opts_test.go:535: ValidAt before the update/ForEachByTypePropertyRange[15,65]: graph: property index not found
+        scan_temporal_opts_test.go:535: ValidStart/ValidEnd spanning the update/ForEachByTypePropertyRange[5,15]: graph: property index not found
+        scan_temporal_opts_test.go:535: ValidStart/ValidEnd spanning the update/ForEachByTypePropertyRange[15,65]: graph: property index not found
+        scan_temporal_opts_test.go:535: interval where the label held only on an earlier version/ForEachByTypePropertyRange[5,15]: graph: property index not found
+        scan_temporal_opts_test.go:535: interval where the label held only on an earlier version/ForEachByTypePropertyRange[15,65]: graph: property index not found
+        scan_temporal_opts_test.go:535: TxAt before the delete with ValidAt before the update/ForEachByTypePropertyRange[5,15]: graph: property index not found
+        scan_temporal_opts_test.go:535: TxAt before the delete with ValidAt before the update/ForEachByTypePropertyRange[15,65]: graph: property index not found
+        scan_temporal_opts_test.go:535: TxAt before the delete/ForEachByTypePropertyRange[5,15]: graph: property index not found
+        scan_temporal_opts_test.go:535: TxAt before the delete/ForEachByTypePropertyRange[15,65]: graph: property index not found
+        scan_temporal_opts_test.go:535: TxPin before the delete/ForEachByTypePropertyRange[5,15]: graph: property index not found
+        scan_temporal_opts_test.go:535: TxPin before the delete/ForEachByTypePropertyRange[15,65]: graph: property index not found
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.790s
+FAIL

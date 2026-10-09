@@ -41,6 +41,13 @@ const (
 // int or int32 — after the concrete type has already been erased. A column scan
 // converts inside the store, where the type is still known, and hands back slices.
 //
+// A temporal opts (ValidAt, ValidStart+ValidEnd, TxAt or TxPin) is answered
+// exactly as Nodes().ByLabel(label, opts) answers it: each node's version under
+// opts, history included (deleted nodes, a label held only on an earlier
+// version), with that version's ValidFrom/ValidTo, validated the same way
+// (ErrConflictingTemporalOpts). It is never served from the current rows. Cost:
+// that of ByLabel under the same opts.
+//
 // The callback MUST NOT retain the batch: its slices are reused between calls.
 func (g *Graph) ScanNodeColumns(label string, props []string, opts QueryOpts,
 	fn func(*ColumnBatch) bool) (ok bool, err error) {
@@ -66,6 +73,10 @@ func (g *Graph) ScanNodeColumns(label string, props []string, opts QueryOpts,
 // An empty relType reads the relationships of every type, type by type (each
 // type's batches in ID order; the order across types is by type token, not by
 // ID).
+//
+// A temporal opts is answered exactly as Rels().ByType(relType, opts) answers it
+// (per type for the empty type name), never from the current rows — see
+// ScanNodeColumns.
 //
 // The callback MUST NOT retain the batch: its slices are reused between calls.
 func (g *Graph) ScanRelColumns(relType string, props []string, opts QueryOpts,

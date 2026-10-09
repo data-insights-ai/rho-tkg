@@ -236,8 +236,16 @@ type nodeRangeScanner interface {
 // exact comparison semantics. Returns storepkg.ErrIndexNotFound when no
 // property index with a usable ordered view exists for (label, propKey)
 // or the store lacks the capability — callers fall back to a label scan.
-// Same relaxed isolation and frozen-row contract as ForEachByLabel;
-// temporal-filter opts route through the store's per-row temporal check.
+// Same relaxed isolation and frozen-row contract as ForEachByLabel.
+//
+// A TEMPORAL QueryOpts (ValidAt / ValidStart+ValidEnd / TxAt / TxPin) is served
+// by a full fold instead (forEachNodeInRangeTemporal): ByLabel's resolved
+// version of every label member, kept when its value AT THE PIN is in range, in
+// ID order — the same value-at-t the ordered sibling uses. It needs no property
+// index, so it never returns ErrIndexNotFound, and it never filters current rows.
+// Under ValidStart+ValidEnd the range is tested on the ONE version ByLabel
+// resolves (the most recent overlapping one), unlike ByLabelAndProperty, which
+// matches a value held anywhere in the interval (backlog item 16).
 func (n *NodeOps) ForEachByLabelPropertyRange(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
@@ -251,6 +259,9 @@ func (n *NodeOps) ForEachByLabelPropertyRange(label, propKey string, min, max fl
 	}
 	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
 		return err
+	}
+	if hasTemporalFilter(opts) {
+		return forEachNodeInRangeTemporal(c, label, propKey, min, max, opts, fn)
 	}
 	scanner, native := c.store.(nodeRangeScanner)
 	if !native || !c.storeRowsTrust {
@@ -333,7 +344,7 @@ func (n *NodeOps) ForEachByLabelPropertyRangeOrdered(label, propKey string, min,
 					return 0, false
 				}
 				f, ok := coerceFloat64(v)
-				if !ok || !numericInRange(f, min, max, inclMin, inclMax) {
+				if !ok || !numericInRange(f, min, max, true, true) { // over-select; fn re-checks inclusivity
 					return 0, false
 				}
 				return f, true
@@ -2211,8 +2222,12 @@ type relRangeScanner interface {
 // comparison semantics. Returns storepkg.ErrIndexNotFound when no rel property
 // index with a usable ordered view exists for (type, propKey) or the store
 // lacks the capability — callers fall back to a type scan. Same relaxed
-// isolation and frozen-row contract as ForEachByType; temporal-filter opts route
-// through the store's per-row temporal check.
+// isolation and frozen-row contract as ForEachByType. A TEMPORAL QueryOpts is
+// served by a full fold over ByType's resolved versions (forEachRelInRangeTemporal),
+// the mirror of NodeOps.ForEachByLabelPropertyRange: value at the pin, ID order,
+// no property index needed, never current rows. Under ValidStart+ValidEnd the
+// range is tested on the version ByType resolves (the most recent overlapping
+// one), unlike ByTypeAndProperty's anywhere-in-the-interval match (backlog 16).
 func (r *RelOps) ForEachByTypePropertyRange(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
@@ -2226,6 +2241,9 @@ func (r *RelOps) ForEachByTypePropertyRange(typeName, propKey string, min, max f
 	}
 	if err := c.validateTemporalQueryOptsScan(opts); err != nil {
 		return err
+	}
+	if hasTemporalFilter(opts) {
+		return forEachRelInRangeTemporal(c, typeName, propKey, min, max, opts, fn)
 	}
 	scanner, native := c.store.(relRangeScanner)
 	if !native || !c.storeRowsTrust {
@@ -2305,7 +2323,7 @@ func (r *RelOps) ForEachByTypePropertyRangeOrdered(typeName, propKey string, min
 					return 0, false
 				}
 				f, ok := coerceFloat64(v)
-				if !ok || !numericInRange(f, min, max, inclMin, inclMax) {
+				if !ok || !numericInRange(f, min, max, true, true) { // over-select; fn re-checks inclusivity
 					return 0, false
 				}
 				return f, true

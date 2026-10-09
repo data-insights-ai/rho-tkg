@@ -1,0 +1,18 @@
+--- FAIL: TestScanDoorsTemporalOpts_RangeLimitAfterEarlyStop (0.05s)
+    --- FAIL: TestScanDoorsTemporalOpts_RangeLimitAfterEarlyStop/memory (0.00s)
+        scan_temporal_opts_test.go:590: node Limit 2: got [796848404391657472], want [796848404391657472 796848404391755776]
+        scan_temporal_opts_test.go:590: rel Limit 2: got [796848404392346624], want [796848404392346624 796848404392444928]
+    --- FAIL: TestScanDoorsTemporalOpts_RangeLimitAfterEarlyStop/badger (0.00s)
+        scan_temporal_opts_test.go:590: node Limit 2: got [796848404454834176], want [796848404454834176 796848404455030784]
+        scan_temporal_opts_test.go:590: rel Limit 2: got [796848404457063424], want [796848404457063424 796848404457227264]
+    --- FAIL: TestScanDoorsTemporalOpts_RangeLimitAfterEarlyStop/tiered (0.04s)
+        scan_temporal_opts_test.go:550: CreateProperty: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "S": graph: property indexes only supported for reference entities in Store (backend declines; temporal path needs no index)
+        scan_temporal_opts_test.go:550: CreateRelProperty: graph: relationship property indexes are not supported on this backend (backend declines; temporal path needs no index)
+        scan_temporal_opts_test.go:590: node Limit 2: got [796848405716205568], want [796848405716205568 796848405716369408]
+        scan_temporal_opts_test.go:590: rel Limit 2: got [796848405718008832], want [796848405718008832 796848405718205440]
+    --- FAIL: TestScanDoorsTemporalOpts_RangeLimitAfterEarlyStop/sharded (0.01s)
+        scan_temporal_opts_test.go:590: node Limit 2: got [796848405914583040], want [796848405914583040 796848405914714112]
+        scan_temporal_opts_test.go:590: rel Limit 2: got [796848405919073280], want [796848405919073280 796848405919499264]
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.063s
+FAIL

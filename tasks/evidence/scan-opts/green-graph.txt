@@ -1,0 +1,82 @@
+=== RUN   TestScanDoorsAgreeWithByLabelOpts_NodeColumns
+=== RUN   TestScanDoorsAgreeWithByLabelOpts_NodeColumns/memory
+=== RUN   TestScanDoorsAgreeWithByLabelOpts_NodeColumns/badger
+=== RUN   TestScanDoorsAgreeWithByLabelOpts_NodeColumns/tiered
+    scan_temporal_opts_test.go:355: CreateProperty: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "S": graph: property indexes only supported for reference entities in Store (backend declines; temporal path needs no index)
+    scan_temporal_opts_test.go:355: CreateRelProperty: graph: relationship property indexes are not supported on this backend (backend declines; temporal path needs no index)
+=== RUN   TestScanDoorsAgreeWithByLabelOpts_NodeColumns/sharded
+--- PASS: TestScanDoorsAgreeWithByLabelOpts_NodeColumns (0.07s)
+    --- PASS: TestScanDoorsAgreeWithByLabelOpts_NodeColumns/memory (0.00s)
+    --- PASS: TestScanDoorsAgreeWithByLabelOpts_NodeColumns/badger (0.01s)
+    --- PASS: TestScanDoorsAgreeWithByLabelOpts_NodeColumns/tiered (0.06s)
+    --- PASS: TestScanDoorsAgreeWithByLabelOpts_NodeColumns/sharded (0.01s)
+=== RUN   TestScanDoorsAgreeWithByLabelOpts_RelColumns
+=== RUN   TestScanDoorsAgreeWithByLabelOpts_RelColumns/memory
+=== RUN   TestScanDoorsAgreeWithByLabelOpts_RelColumns/badger
+=== RUN   TestScanDoorsAgreeWithByLabelOpts_RelColumns/tiered
+    scan_temporal_opts_test.go:398: CreateProperty: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "S": graph: property indexes only supported for reference entities in Store (backend declines; temporal path needs no index)
+    scan_temporal_opts_test.go:398: CreateRelProperty: graph: relationship property indexes are not supported on this backend (backend declines; temporal path needs no index)
+=== RUN   TestScanDoorsAgreeWithByLabelOpts_RelColumns/sharded
+--- PASS: TestScanDoorsAgreeWithByLabelOpts_RelColumns (0.16s)
+    --- PASS: TestScanDoorsAgreeWithByLabelOpts_RelColumns/memory (0.00s)
+    --- PASS: TestScanDoorsAgreeWithByLabelOpts_RelColumns/badger (0.05s)
+    --- PASS: TestScanDoorsAgreeWithByLabelOpts_RelColumns/tiered (0.02s)
+    --- PASS: TestScanDoorsAgreeWithByLabelOpts_RelColumns/sharded (0.09s)
+=== RUN   TestScanDoorsAgreeWithByLabelOpts_NodeRange
+=== RUN   TestScanDoorsAgreeWithByLabelOpts_NodeRange/memory
+=== RUN   TestScanDoorsAgreeWithByLabelOpts_NodeRange/badger
+=== RUN   TestScanDoorsAgreeWithByLabelOpts_NodeRange/tiered
+    scan_temporal_opts_test.go:476: CreateProperty: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "S": graph: property indexes only supported for reference entities in Store (backend declines; temporal path needs no index)
+    scan_temporal_opts_test.go:476: CreateRelProperty: graph: relationship property indexes are not supported on this backend (backend declines; temporal path needs no index)
+=== RUN   TestScanDoorsAgreeWithByLabelOpts_NodeRange/sharded
+--- PASS: TestScanDoorsAgreeWithByLabelOpts_NodeRange (0.12s)
+    --- PASS: TestScanDoorsAgreeWithByLabelOpts_NodeRange/memory (0.00s)
+    --- PASS: TestScanDoorsAgreeWithByLabelOpts_NodeRange/badger (0.03s)
+    --- PASS: TestScanDoorsAgreeWithByLabelOpts_NodeRange/tiered (0.05s)
+    --- PASS: TestScanDoorsAgreeWithByLabelOpts_NodeRange/sharded (0.04s)
+=== RUN   TestScanDoorsAgreeWithByLabelOpts_RelRange
+=== RUN   TestScanDoorsAgreeWithByLabelOpts_RelRange/memory
+=== RUN   TestScanDoorsAgreeWithByLabelOpts_RelRange/badger
+=== RUN   TestScanDoorsAgreeWithByLabelOpts_RelRange/tiered
+    scan_temporal_opts_test.go:513: CreateProperty: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "S": graph: property indexes only supported for reference entities in Store (backend declines; temporal path needs no index)
+    scan_temporal_opts_test.go:513: CreateRelProperty: graph: relationship property indexes are not supported on this backend (backend declines; temporal path needs no index)
+=== RUN   TestScanDoorsAgreeWithByLabelOpts_RelRange/sharded
+--- PASS: TestScanDoorsAgreeWithByLabelOpts_RelRange (0.13s)
+    --- PASS: TestScanDoorsAgreeWithByLabelOpts_RelRange/memory (0.00s)
+    --- PASS: TestScanDoorsAgreeWithByLabelOpts_RelRange/badger (0.02s)
+    --- PASS: TestScanDoorsAgreeWithByLabelOpts_RelRange/tiered (0.04s)
+    --- PASS: TestScanDoorsAgreeWithByLabelOpts_RelRange/sharded (0.07s)
+=== RUN   TestScanDoorsTemporalOpts_RangeLimitAfterEarlyStop
+=== RUN   TestScanDoorsTemporalOpts_RangeLimitAfterEarlyStop/memory
+=== RUN   TestScanDoorsTemporalOpts_RangeLimitAfterEarlyStop/badger
+=== RUN   TestScanDoorsTemporalOpts_RangeLimitAfterEarlyStop/tiered
+    scan_temporal_opts_test.go:550: CreateProperty: graph: property indexes only supported for reference entities in Store; additionally failed to remove partial index for rolled-back label "S": graph: property indexes only supported for reference entities in Store (backend declines; temporal path needs no index)
+    scan_temporal_opts_test.go:550: CreateRelProperty: graph: relationship property indexes are not supported on this backend (backend declines; temporal path needs no index)
+=== RUN   TestScanDoorsTemporalOpts_RangeLimitAfterEarlyStop/sharded
+--- PASS: TestScanDoorsTemporalOpts_RangeLimitAfterEarlyStop (0.11s)
+    --- PASS: TestScanDoorsTemporalOpts_RangeLimitAfterEarlyStop/memory (0.00s)
+    --- PASS: TestScanDoorsTemporalOpts_RangeLimitAfterEarlyStop/badger (0.03s)
+    --- PASS: TestScanDoorsTemporalOpts_RangeLimitAfterEarlyStop/tiered (0.03s)
+    --- PASS: TestScanDoorsTemporalOpts_RangeLimitAfterEarlyStop/sharded (0.05s)
+=== RUN   TestScanDoorsTemporalOpts_RangeNeverDropsAtExclusiveBound
+=== RUN   TestScanDoorsTemporalOpts_RangeNeverDropsAtExclusiveBound/memory
+=== RUN   TestScanDoorsTemporalOpts_RangeNeverDropsAtExclusiveBound/badger
+=== RUN   TestScanDoorsTemporalOpts_RangeNeverDropsAtExclusiveBound/tiered
+=== RUN   TestScanDoorsTemporalOpts_RangeNeverDropsAtExclusiveBound/sharded
+--- PASS: TestScanDoorsTemporalOpts_RangeNeverDropsAtExclusiveBound (0.09s)
+    --- PASS: TestScanDoorsTemporalOpts_RangeNeverDropsAtExclusiveBound/memory (0.00s)
+    --- PASS: TestScanDoorsTemporalOpts_RangeNeverDropsAtExclusiveBound/badger (0.02s)
+    --- PASS: TestScanDoorsTemporalOpts_RangeNeverDropsAtExclusiveBound/tiered (0.05s)
+    --- PASS: TestScanDoorsTemporalOpts_RangeNeverDropsAtExclusiveBound/sharded (0.03s)
+=== RUN   TestScanDoorsTemporalOpts_RelColumnsEveryTypeStops
+=== RUN   TestScanDoorsTemporalOpts_RelColumnsEveryTypeStops/memory
+=== RUN   TestScanDoorsTemporalOpts_RelColumnsEveryTypeStops/badger
+=== RUN   TestScanDoorsTemporalOpts_RelColumnsEveryTypeStops/tiered
+=== RUN   TestScanDoorsTemporalOpts_RelColumnsEveryTypeStops/sharded
+--- PASS: TestScanDoorsTemporalOpts_RelColumnsEveryTypeStops (0.08s)
+    --- PASS: TestScanDoorsTemporalOpts_RelColumnsEveryTypeStops/memory (0.00s)
+    --- PASS: TestScanDoorsTemporalOpts_RelColumnsEveryTypeStops/badger (0.02s)
+    --- PASS: TestScanDoorsTemporalOpts_RelColumnsEveryTypeStops/tiered (0.03s)
+    --- PASS: TestScanDoorsTemporalOpts_RelColumnsEveryTypeStops/sharded (0.03s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.832s

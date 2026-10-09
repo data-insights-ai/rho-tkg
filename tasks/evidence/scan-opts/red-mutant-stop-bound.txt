@@ -1,0 +1,17 @@
+--- FAIL: TestScanDoorsTemporalOpts_RangeNeverDropsAtExclusiveBound (0.17s)
+    --- FAIL: TestScanDoorsTemporalOpts_RangeNeverDropsAtExclusiveBound/memory (0.00s)
+        scan_temporal_opts_test.go:652: 2^53+1 under exclusive min 2^53: node offered 0 times, rel 0 times, want 1 each
+    --- FAIL: TestScanDoorsTemporalOpts_RangeNeverDropsAtExclusiveBound/badger (0.04s)
+        scan_temporal_opts_test.go:652: 2^53+1 under exclusive min 2^53: node offered 0 times, rel 0 times, want 1 each
+    --- FAIL: TestScanDoorsTemporalOpts_RangeNeverDropsAtExclusiveBound/tiered (0.05s)
+        scan_temporal_opts_test.go:652: 2^53+1 under exclusive min 2^53: node offered 0 times, rel 0 times, want 1 each
+    --- FAIL: TestScanDoorsTemporalOpts_RangeNeverDropsAtExclusiveBound/sharded (0.08s)
+        scan_temporal_opts_test.go:652: 2^53+1 under exclusive min 2^53: node offered 0 times, rel 0 times, want 1 each
+--- FAIL: TestScanDoorsTemporalOpts_RelColumnsEveryTypeStops (0.04s)
+    --- FAIL: TestScanDoorsTemporalOpts_RelColumnsEveryTypeStops/memory (0.00s)
+        scan_temporal_opts_test.go:706: fn returned false on the first batch; called 3 times, want 1
+    --- FAIL: TestScanDoorsTemporalOpts_RelColumnsEveryTypeStops/badger (0.01s)
+        scan_temporal_opts_test.go:706: fn returned false on the first batch; called 3 times, want 1
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.297s
+FAIL
