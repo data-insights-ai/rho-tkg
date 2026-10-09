@@ -1099,3 +1099,388 @@ func TestPinnedPropertyDoorsAgree(t *testing.T) {
 		}
 	}
 }
+
+// --- T4: lifecycle ---
+
+// buildNodeChurn writes the node side of the lifecycle scenario: label L with
+// an index on "seat" (the caller declares it), value changes, a delete, and a
+// node of another label carrying the same value.
+func buildNodeChurn(t *testing.T, g *Core) {
+	t.Helper()
+	ctx := context.Background()
+	add := func(label string, seat int64) types.NodeID {
+		n, err := g.Nodes.Add(ctx, []string{label}, map[string]any{"seat": seat})
+		if err != nil {
+			t.Fatalf("add node: %v", err)
+		}
+		return n.ID()
+	}
+	upd := func(id types.NodeID, seat int64) {
+		if _, err := g.Nodes.Update(ctx, id, map[string]any{"seat": seat}); err != nil {
+			t.Fatalf("update node: %v", err)
+		}
+	}
+	n1 := add("L", 1)
+	n2 := add("L", 1)
+	n3 := add("L", 2)
+	add("M", 1)
+	upd(n1, 2)
+	upd(n3, 1)
+	if err := g.Nodes.Delete(ctx, n2); err != nil {
+		t.Fatalf("delete node: %v", err)
+	}
+}
+
+// lifecyclePins returns a pin before every write, the phase pins of the rel
+// fixture and a pin after everything.
+func lifecyclePins(t *testing.T, g *Core, f *pinnedPropFixture) []types.Instant {
+	t.Helper()
+	pins := []types.Instant{1}
+	for _, ph := range f.phases {
+		pins = append(pins, ph.pin)
+	}
+	now, err := g.Temporal.NowTx()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return append(pins, f.hTx-1, f.hTx, now)
+}
+
+// assertPropertyArmsAgree checks, at every pin, that the indexed lookups equal
+// the folded ones (errors included: a pin below a compaction watermark must
+// fail closed on both) and, where they answer, RelsAsOf / NodesAsOf filtered.
+func assertPropertyArmsAgree(t *testing.T, g *Core, pins []types.Instant, stage string) (answered int) {
+	t.Helper()
+	sameErr := func(a, b error) bool {
+		if a == nil || b == nil {
+			return a == nil && b == nil
+		}
+		return errors.Is(a, ErrHistoryCompacted) == errors.Is(b, ErrHistoryCompacted) && a.Error() == b.Error()
+	}
+	lTok, _ := g.labels.Lookup("L")
+	for _, pin := range pins {
+		opts := storepkg.QueryOpts{TxPin: pin}
+		for _, v := range []int64{1, 2, 3, 4, 99} {
+			ix, ierr := g.Rels.ByTypeAndProperty("T", "seat", v, opts)
+			var fold []*types.Relationship
+			var ferr error
+			withoutPropertySidecars(g, func() { fold, ferr = g.Rels.ByTypeAndProperty("T", "seat", v, opts) })
+			if !sameErr(ierr, ferr) {
+				t.Fatalf("%s rel pin %d seat=%d: indexed err %v, fold err %v", stage, pin, v, ierr, ferr)
+			}
+			if ierr != nil {
+				continue
+			}
+			answered++
+			if a, b := relVersionSetOf(ix), relVersionSetOf(fold); !relVersionSetsEqual(a, b) {
+				t.Fatalf("%s rel pin %d seat=%d: indexed %v != fold %v", stage, pin, v, a, b)
+			}
+			if a, b := relVersionSetOf(ix), relsAsOfMatching(t, g, pin, "T", "seat", v); !relVersionSetsEqual(a, b) {
+				t.Fatalf("%s rel pin %d seat=%d: indexed %v != RelsAsOf %v", stage, pin, v, a, b)
+			}
+		}
+		for _, v := range []int64{1, 2} {
+			ix, ierr := g.Nodes.ByLabelAndProperty("L", "seat", v, opts)
+			var fold []*types.Node
+			var ferr error
+			withoutPropertySidecars(g, func() { fold, ferr = g.Nodes.ByLabelAndProperty("L", "seat", v, opts) })
+			if !sameErr(ierr, ferr) {
+				t.Fatalf("%s node pin %d seat=%d: indexed err %v, fold err %v", stage, pin, v, ierr, ferr)
+			}
+			if ierr != nil {
+				continue
+			}
+			if a, b := nodeSetVer(ix), nodeSetVer(fold); !nodeMapsEqual(a, b) {
+				t.Fatalf("%s node pin %d seat=%d: indexed %v != fold %v", stage, pin, v, fmtNodeVer(a), fmtNodeVer(b))
+			}
+			asOf, err := g.Temporal.NodesAsOf(pin)
+			if err != nil {
+				t.Fatalf("NodesAsOf: %v", err)
+			}
+			want := map[types.NodeID]uint32{}
+			wk := indexpkg.PropertyValueKey(v)
+			for _, n := range asOf {
+				if got, ok := n.IndexablePropertyValueKey("seat"); ok && got == wk && n.HasLabelTokenRaw(lTok) {
+					want[n.ID()] = n.Version()
+				}
+			}
+			if a := nodeSetVer(ix); !nodeMapsEqual(a, want) {
+				t.Fatalf("%s node pin %d seat=%d: indexed %v != NodesAsOf %v", stage, pin, v, fmtNodeVer(a), fmtNodeVer(want))
+			}
+		}
+	}
+	return answered
+}
+
+// lifecycleBackends: memory, badger with a write buffer that never flushes on
+// its own (every read runs before the flush), sharded.
+func lifecycleBackends() []pinnedPropBackend {
+	return []pinnedPropBackend{
+		{name: "memory", canIndex: true, open: func(t *testing.T) *Core {
+			return pinnedPropOpen(t, Config{Store: memory.New(), AllowReset: true, AllowRetentionPurge: true})
+		}},
+		{name: "badger-unflushed", canIndex: true, open: func(t *testing.T) *Core {
+			bs, err := badger.New(badger.Config{InMemory: true, FlushInterval: time.Hour, HistoryDeltaEncoding: true, HistoryAnchorInterval: 2})
+			if err != nil {
+				t.Fatalf("badger.New: %v", err)
+			}
+			return pinnedPropOpen(t, Config{Store: bs, AllowReset: true, AllowRetentionPurge: true})
+		}},
+		{name: "sharded", canIndex: true, open: func(t *testing.T) *Core {
+			st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2})
+			if err != nil {
+				t.Fatalf("sharded.New: %v", err)
+			}
+			return pinnedPropOpen(t, Config{Store: st, AllowReset: true, AllowRetentionPurge: true})
+		}},
+	}
+}
+
+// TestPinnedPropertyLookupLifecycle is T4: the indexed lookup keeps equal to
+// the fold (and to the as-of doors) through every event that changes what the
+// store holds without going through an ordinary write door. Faulty
+// implementations caught: a sidecar kept across Clear (stale members after a
+// reset that also reuses no IDs would still be rejected by the resolver, so
+// the stats check pins the drop), an index drop that keeps serving the old
+// sidecar, a re-created or late index that builds from current rows only,
+// truncation or compaction that removes members the remaining rows still
+// carry, purge or erasure leaving the removed rows' values resident, a
+// replica whose apply doors skip the recording, a read before the write
+// buffer flushes missing rows, and a compacted pin answered instead of
+// failing closed.
+func TestPinnedPropertyLookupLifecycle(t *testing.T) {
+	ctx := context.Background()
+	for _, be := range lifecycleBackends() {
+		t.Run(be.name+"/late-index-drop-recreate", func(t *testing.T) {
+			f := buildPinnedPropFixture(t, be, false, false)
+			g := f.g
+			buildNodeChurn(t, g)
+			pins := lifecyclePins(t, g, f)
+			// Index created after the history exists.
+			if err := g.Index.CreateRelProperty("T", "seat"); err != nil {
+				t.Fatal(err)
+			}
+			if err := g.Index.CreateProperty("L", "seat"); err != nil {
+				t.Fatal(err)
+			}
+			if n := assertPropertyArmsAgree(t, g, pins, "late index"); n == 0 {
+				t.Fatal("no pin answered")
+			}
+			st := propTxStats(t, g)
+			if st.RelPostings == 0 || st.NodePostings == 0 {
+				t.Fatalf("the late index built no sidecar: %+v", st)
+			}
+			if err := g.Index.DeleteRelProperty("T", "seat"); err != nil {
+				t.Fatal(err)
+			}
+			if err := g.Index.DeleteProperty("L", "seat"); err != nil {
+				t.Fatal(err)
+			}
+			if st := propTxStats(t, g); st.RelPostings != 0 || st.NodePostings != 0 {
+				t.Fatalf("a dropped index kept its sidecar: %+v", st)
+			}
+			assertPropertyArmsAgree(t, g, pins, "dropped")
+			if err := g.Index.CreateRelProperty("T", "seat"); err != nil {
+				t.Fatal(err)
+			}
+			if err := g.Index.CreateProperty("L", "seat"); err != nil {
+				t.Fatal(err)
+			}
+			assertPropertyArmsAgree(t, g, pins, "re-created")
+		})
+		t.Run(be.name+"/truncate-compact", func(t *testing.T) {
+			f := buildPinnedPropFixture(t, be, true, true)
+			g := f.g
+			if err := g.Index.CreateProperty("L", "seat"); err != nil {
+				t.Fatal(err)
+			}
+			buildNodeChurn(t, g)
+			pins := lifecyclePins(t, g, f)
+			assertPropertyArmsAgree(t, g, pins, "before truncate")
+			if err := g.store.TruncateRelHistory(f.rel["A"], 1); err != nil {
+				t.Fatalf("TruncateRelHistory: %v", err)
+			}
+			assertPropertyArmsAgree(t, g, pins, "after truncate")
+			if be.name == "sharded" {
+				return // sharded declines history compaction
+			}
+			if _, err := g.Admin.CompactHistoryRels(ctx, RetentionPolicy{KeepVersions: 1}); err != nil {
+				t.Fatalf("CompactHistoryRels: %v", err)
+			}
+			wm := types.Instant(g.compactedThroughTx.Load())
+			if wm == 0 {
+				t.Fatal("compaction set no watermark")
+			}
+			for _, pin := range []types.Instant{1, wm - 1} {
+				if _, err := g.Rels.ByTypeAndProperty("T", "seat", int64(1), storepkg.QueryOpts{TxPin: pin}); !errors.Is(err, ErrHistoryCompacted) {
+					t.Fatalf("pin %d below the watermark %d: %v, want ErrHistoryCompacted", pin, wm, err)
+				}
+			}
+			assertPropertyArmsAgree(t, g, append(pins, wm, wm+1), "after compaction")
+		})
+		t.Run(be.name+"/reset", func(t *testing.T) {
+			f := buildPinnedPropFixture(t, be, true, true)
+			g := f.g
+			if err := g.Admin.Reset(); err != nil {
+				t.Fatalf("Reset: %v", err)
+			}
+			if st := propTxStats(t, g); st.RelPostings != 0 || st.NodePostings != 0 {
+				t.Fatalf("Reset kept a sidecar: %+v", st)
+			}
+			f2 := buildPinnedPropFixture(t, pinnedPropBackend{name: be.name, open: func(*testing.T) *Core { return g }}, true, true)
+			assertPropertyArmsAgree(t, g, lifecyclePins(t, g, f2), "after reset")
+		})
+		t.Run(be.name+"/retention-purge", func(t *testing.T) {
+			f := buildPinnedPropFixture(t, be, true, true)
+			g := f.g
+			before := propTxStats(t, g)
+			if before.RelPostings == 0 {
+				t.Fatalf("no sidecar built before the purge: %+v", before)
+			}
+			now, _ := g.Temporal.NowTx()
+			rep, err := g.Admin.PurgeExpiredNodes(ctx, PurgePolicy{Label: "P", Mode: PurgeByAge, Before: now + 1})
+			if err != nil {
+				t.Fatalf("PurgeExpiredNodes: %v", err)
+			}
+			if rep.NodesPurged == 0 {
+				t.Fatalf("purge removed nothing: %+v", rep)
+			}
+			if st := propTxStats(t, g); st.RelPostings != 0 {
+				t.Fatalf("purged rels' values stayed resident: %+v", st)
+			}
+			// The purge removed the live rels with their history; the rels
+			// deleted before it (B, C) keep their history rows, so they stay
+			// members. A purged rel without any row left must be gone.
+			stored := func(id types.RelID) bool {
+				hist, err := g.Rels.History(id)
+				if err != nil {
+					t.Fatalf("History: %v", err)
+				}
+				_, gerr := g.Rels.Get(ctx, id)
+				return len(hist) > 0 || gerr == nil
+			}
+			gone := 0
+			for _, id := range f.rel {
+				if !stored(id) {
+					gone++
+				}
+			}
+			if gone == 0 {
+				t.Fatal("the purge left every rel's rows: the scenario does not test the drop")
+			}
+			for _, v := range []int64{1, 2, 3, 4} {
+				err := g.relPropTxMembers.ForEachRelPropertyTxMember(mustRelTok(t, g, "T"), "seat", indexpkg.PropertyValueKey(v), func(id types.RelID, _ types.Instant) bool {
+					if !stored(id) {
+						t.Errorf("purged rel %d (no row left) still a member of seat=%d", id.SnowflakeID(), v)
+					}
+					return true
+				})
+				if err != nil {
+					t.Fatalf("ForEachRelPropertyTxMember: %v", err)
+				}
+			}
+			assertPropertyArmsAgree(t, g, lifecyclePins(t, g, f), "after purge")
+		})
+	}
+	t.Run("badger/reopen", func(t *testing.T) {
+		dir := t.TempDir()
+		be := pinnedPropBackend{name: "badger-disk", canIndex: true, open: func(t *testing.T) *Core {
+			g, err := New(Config{BadgerDir: dir, AllowTxBackfill: true})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			return g
+		}}
+		f := buildPinnedPropFixture(t, be, true, true)
+		if err := f.g.Index.CreateProperty("L", "seat"); err != nil {
+			t.Fatal(err)
+		}
+		buildNodeChurn(t, f.g)
+		pins := lifecyclePins(t, f.g, f)
+		assertPropertyArmsAgree(t, f.g, pins, "before reopen")
+		if err := f.g.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+		g := be.open(t)
+		defer g.Close()
+		if st := propTxStats(t, g); st.Builds != 0 {
+			t.Fatalf("a reopened store starts with built sidecars: %+v", st)
+		}
+		assertPropertyArmsAgree(t, g, pins, "after reopen")
+		if st := propTxStats(t, g); st.RelSidecars != 1 || st.NodeSidecars != 1 {
+			t.Fatalf("lookups after reopen did not rebuild lazily: %+v", st)
+		}
+	})
+	for _, be := range pastDatedBackends() {
+		if be.name == "tiered" {
+			continue // no rel property index on tiered: nothing to keep in sync
+		}
+		t.Run(be.name+"/replica-apply", func(t *testing.T) {
+			primary := be.open(t, Config{SnowflakeNodeID: 0, AllowTxBackfill: true}, true)
+			replica := be.open(t, Config{SnowflakeNodeID: 1, ReadOnlyReplica: true, ReplicationSource: primary.Repl}, false)
+			f := buildPinnedPropFixture(t, pinnedPropBackend{name: be.name, canIndex: true, open: func(*testing.T) *Core { return primary }}, true, true)
+			if err := primary.Index.CreateProperty("L", "seat"); err != nil {
+				t.Fatal(err)
+			}
+			buildNodeChurn(t, primary)
+			recs := changeFeed(t, primary)
+			half := len(recs) / 2
+			applyAll(t, replica, recs[:half])
+			// The replica declares its own indexes (DDL is local, the replica
+			// is read-only, so through its store) and builds the sidecars from
+			// the first half; the second half arrives through the apply doors.
+			tTok := mustRelTok(t, replica, "T")
+			if err := replica.store.(storepkg.RelPropertyIndexCapability).CreateRelPropertyIndex(tTok, "seat"); err != nil {
+				t.Fatalf("replica CreateRelPropertyIndex: %v", err)
+			}
+			lTok, ok := replica.labels.Lookup("L")
+			if !ok {
+				t.Fatal("label L not applied to the replica yet")
+			}
+			if err := replica.store.(storepkg.PropertyIndexCapability).CreatePropertyIndex(lTok, "seat"); err != nil {
+				t.Fatalf("replica CreatePropertyIndex: %v", err)
+			}
+			pins := lifecyclePins(t, primary, f)
+			assertPropertyArmsAgree(t, replica, pins, "replica, half applied")
+			applyAll(t, replica, recs[half:])
+			assertPropertyArmsAgree(t, replica, pins, "replica, all applied")
+			for _, pin := range pins {
+				for _, v := range []int64{1, 2} {
+					p, err := primary.Rels.ByTypeAndProperty("T", "seat", v, storepkg.QueryOpts{TxPin: pin})
+					if err != nil {
+						t.Fatal(err)
+					}
+					r, err := replica.Rels.ByTypeAndProperty("T", "seat", v, storepkg.QueryOpts{TxPin: pin})
+					if err != nil {
+						t.Fatal(err)
+					}
+					if a, b := relVersionSetOf(p), relVersionSetOf(r); !relVersionSetsEqual(a, b) {
+						t.Fatalf("pin %d seat=%d: primary %v != replica %v", pin, v, a, b)
+					}
+				}
+			}
+		})
+	}
+}
+
+func mustRelTok(t *testing.T, g *Core, typ string) uint16 {
+	t.Helper()
+	tok, ok := g.relTypes.Lookup(typ)
+	if !ok {
+		t.Fatalf("rel type %s not registered", typ)
+	}
+	return tok
+}
+
+func propTxStats(t *testing.T, g *Core) storepkg.PropertyTxMembershipStats {
+	t.Helper()
+	sc, ok := g.store.(storepkg.PropertyTxMembershipStatsCapability)
+	if !ok {
+		t.Fatalf("%T has no property membership stats", g.store)
+	}
+	st, err := sc.PropertyTxMembershipStats()
+	if err != nil {
+		t.Fatalf("PropertyTxMembershipStats: %v", err)
+	}
+	return st
+}

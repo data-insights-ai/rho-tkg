@@ -518,3 +518,53 @@ func TestNodePropertyTxMembersEveryDoor(t *testing.T) {
 		})
 	}
 }
+
+// TestPropertyTxMembersExactErasureDropsValues: an exactly erased rel or node
+// must leave no posting behind (its values must not stay resident). Faulty
+// implementation caught: keeping the append-only sidecar across ExactErase.
+// Runs on the backends that offer exact erasure (memory, badger).
+func TestPropertyTxMembersExactErasureDropsValues(t *testing.T) {
+	for _, be := range propTxBackends() {
+		if be.name == "sharded" {
+			continue // the sharded store does not offer exact erasure
+		}
+		t.Run(be.name, func(t *testing.T) {
+			st := be.open(t)
+			defer func() { _ = st.Close() }()
+			c := propTxCapsOf(t, st)
+			er, ok := st.(storecontract.ExactErasureCapability)
+			if !ok {
+				t.Fatalf("%T has no exact erasure", st)
+			}
+			pidx := st.(storecontract.PropertyIndexCapability)
+			mustOK(t, "put node 1", st.PutNode(ptxNode(1, []uint16{ptxLabelP}, 0, 0, 1)))
+			mustOK(t, "put node 2", st.PutNode(ptxNode(2, []uint16{ptxLabelP}, 0, 0, 1)))
+			mustOK(t, "rel index", c.CreateRelPropertyIndex(ptxTypeT, "seat"))
+			mustOK(t, "node index", pidx.CreatePropertyIndex(ptxLabelL, "seat"))
+			mustOK(t, "put 101", st.PutRelationship(ptxRel(101, ptxTypeT, 1, 1, 100)))
+			mustOK(t, "put 102", st.PutRelationship(ptxRel(102, ptxTypeT, 1, 0, 110)))
+			mustOK(t, "history 101", st.PutRelVersion(101, 0, ptxRel(101, ptxTypeT, 7, 0, 90)))
+			mustOK(t, "put 201", st.PutNode(ptxNode(201, []uint16{ptxLabelL}, 1, 0, 100)))
+			mustOK(t, "put 202", st.PutNode(ptxNode(202, []uint16{ptxLabelL}, 1, 0, 110)))
+			if got := fmtMembers(relMembers(t, c, ptxTypeT, ptxVK(1))); got != "{101:100 102:110}" {
+				t.Fatalf("before erasure members(1) = %s", got)
+			}
+			if got := fmtMembers(nodeMembers(t, c, ptxLabelL, ptxVK(1))); got != "{201:100 202:110}" {
+				t.Fatalf("before erasure node members(1) = %s", got)
+			}
+			bounds := storecontract.ExactErasureBounds{MaxRelationshipIdentities: 8, MaxRelationshipVersions: 32, MaxEndpointNodeIdentities: 8}
+			if _, err := er.ExactErase(storecontract.ExactErasureRequest{RelIDs: []types.RelID{101}, NodeIDs: []types.NodeID{201}, Bounds: bounds}); err != nil {
+				t.Fatalf("ExactErase: %v", err)
+			}
+			if got := fmtMembers(relMembers(t, c, ptxTypeT, ptxVK(1))); got != "{102:110}" {
+				t.Fatalf("after erasure members(1) = %s, want {102:110}", got)
+			}
+			if got := fmtMembers(relMembers(t, c, ptxTypeT, ptxVK(7))); got != "{}" {
+				t.Fatalf("after erasure the erased history value 7 has members %s", got)
+			}
+			if got := fmtMembers(nodeMembers(t, c, ptxLabelL, ptxVK(1))); got != "{202:110}" {
+				t.Fatalf("after erasure node members(1) = %s, want {202:110}", got)
+			}
+		})
+	}
+}
