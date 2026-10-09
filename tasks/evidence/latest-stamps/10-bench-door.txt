@@ -1,0 +1,13 @@
+BenchmarkLatestStamps/memory/plain/door-32    	    2000	        48.97 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/memory/plain/history-scan-32         	    2000	       509.0 ns/op	     416 B/op	       5 allocs/op
+BenchmarkLatestStamps/memory/versions=100/door-32          	    2000	        31.68 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/memory/versions=100/history-scan-32  	    2000	     23696 ns/op	   36925 B/op	     408 allocs/op
+BenchmarkLatestStamps/memory/versions=10000/door-32        	    2000	        30.56 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/memory/versions=10000/history-scan-32         	    2000	   6449723 ns/op	 3643301 B/op	   40008 allocs/op
+BenchmarkLatestStamps/badger/plain/door-32                          	    2000	        82.62 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/badger/plain/history-scan-32                  	    2000	       378.4 ns/op	     352 B/op	       4 allocs/op
+BenchmarkLatestStamps/badger/versions=100/door-32                   	    2000	        47.99 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/badger/versions=100/history-scan-32           	    2000	    353920 ns/op	  309489 B/op	    2638 allocs/op
+BenchmarkLatestStamps/badger/versions=10000/door-32                 	    2000	        49.29 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/badger/versions=10000/history-scan-32         	    2000	  36447619 ns/op	21827755 B/op	  230388 allocs/op
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	153.850s

@@ -1,0 +1,13 @@
+BenchmarkUpdateStampsMaintenance/badger/unbuilt-32         	  121191	     10296 ns/op	    5383 B/op	      68 allocs/op
+BenchmarkUpdateStampsMaintenance/badger/unbuilt-32         	  118930	      9668 ns/op	    5341 B/op	      68 allocs/op
+BenchmarkUpdateStampsMaintenance/badger/unbuilt-32         	   98660	     18483 ns/op	    5487 B/op	      69 allocs/op
+BenchmarkUpdateStampsMaintenance/badger/unbuilt-32         	  115488	      9983 ns/op	    5366 B/op	      68 allocs/op
+BenchmarkUpdateStampsMaintenance/badger/unbuilt-32         	  104250	     14536 ns/op	    5475 B/op	      69 allocs/op
+BenchmarkUpdateStampsMaintenance/badger/unbuilt-32         	  116511	     14785 ns/op	    5495 B/op	      69 allocs/op
+BenchmarkUpdateStampsMaintenance/badger/built-32           	   44510	     28158 ns/op	    5714 B/op	      72 allocs/op
+BenchmarkUpdateStampsMaintenance/badger/built-32           	  117463	     10862 ns/op	    5384 B/op	      67 allocs/op
+BenchmarkUpdateStampsMaintenance/badger/built-32           	   46536	     24205 ns/op	    5647 B/op	      72 allocs/op
+BenchmarkUpdateStampsMaintenance/badger/built-32           	  121382	      9975 ns/op	    5355 B/op	      67 allocs/op
+BenchmarkUpdateStampsMaintenance/badger/built-32           	   71094	     20406 ns/op	    5546 B/op	      70 allocs/op
+BenchmarkUpdateStampsMaintenance/badger/built-32           	  123195	     10256 ns/op	    5354 B/op	      67 allocs/op
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	29.923s

@@ -6,6 +6,54 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`Nodes().LatestStamps(id)` / `Rels().LatestStamps(id)`: an entity's newest transaction stamps without reading
+  its history** (backlog 30, requested by sigma-tkgd from ai-soc's real-data profile: its cut check "written after
+  the pin" (`ErrCutAhead`) and its late-belief detection read a full `History` per entity per cut, 8.3 ms at 10,000
+  versions, 88 % of the CPU of ai-soc's BA run). Returns `(txFrom, txTo types.Instant, deleted bool, err error)` over
+  ALL rows of the entity — the current row, every history row (superseded versions, the rows a correction appends
+  after the current row's `TxFrom` while the current row stays, the delete tombstone): `txFrom` is the largest
+  `TxFrom`, `txTo` the largest `TxTo` or `DeletedAt` (a tombstone's delete stamp counts as an end stamp; 0 when no
+  row was ended), `deleted` is true when the entity has rows but no current row (a re-imported ID whose newest life
+  is live reads false). It equals the fold of `Get` + `History` at every moment (compaction, purge and erasure
+  remove rows from both). An ID without any row returns `ErrNodeNotFound` / `ErrRelNotFound`; zero/negative IDs
+  `ErrInvalidStoreMutation`, a closed graph `ErrGraphClosed`, a nil graph `ErrNilGraph`. Neither the current row
+  (the appended correction rows lie above it; an ended entity has none) nor the top history version (`TxFrom` is not
+  co-monotonic with version) carries the answer. The door lends the current row (new zero-alloc accessors
+  `types.Node.TxStamps()` / `types.Relationship.TxStamps()`) and takes the history half from a new optional store
+  capability, `store.HistoryStampsCapability` (`NodeHistoryStamps` / `RelHistoryStamps`: the fold of
+  `Get*History(id)`, one fold `store.FoldTxStamps`): memory caches it per ID against the ID's row count, maintained
+  at the one history-row seam every write now passes; badger keeps a RAM sidecar next to the `HasHistory` presence
+  set with its protocol (lazy build reading only the temporal fields of each history value, overlay before the
+  badger view, maintained where every history key enters the write buffer, a delete or a write below the fold marks
+  the ID for one per-ID read installed under a write-generation stamp, Clear drops it); sharded asks the slot; tiered
+  walks the shards `History` reads (one walk now shared with `HasHistory`), cold shards per ID. A store without the
+  capability is folded from `History`. Measured (32-core x86, shared machine; evidence
+  `tasks/evidence/latest-stamps/`):
+
+  | one relationship | memory door | memory History scan | badger door | badger History scan |
+  |---|---|---|---|---|
+  | plain | 49 ns, 0 allocs | 509 ns | 83 ns, 0 allocs | 378 ns |
+  | 100 versions | 32 ns, 0 allocs | 23.7 us | 48 ns, 0 allocs | 354 us |
+  | 10,000 versions | 31 ns, 0 allocs | 6.4 ms | 49 ns, 0 allocs | 36.4 ms |
+
+  (`BenchmarkLatestStamps`; badger on disk, current row cached — a cold current row adds one point read.) Store
+  half on a reopened badger store, 1 % of the entities with three history rows: 11-20 ns, 0 allocs for a hit or a
+  miss at 200 K and 1 M entities; the one-time build of the first call 1.4-4.5 ms at 200 K and 7.8 ms (rel) /
+  20.9 ms (node) at 1 M entities (`Benchmark{Rel,Node}HistoryStamps`); RAM 66 B per ID with history at 10 K IDs,
+  85 B at 2 K (map growth; `badger.Store.HistoryStampsStats()` reports it). A built sidecar adds 100-180 ns and no
+  allocation to every history write (`BenchmarkHistoryStampsNote`); an end-to-end badger `Update` is within the
+  machine's noise (10-28 us in both arms, `BenchmarkUpdateStampsMaintenance`). Tests: randomized differential
+  against `Get` + `History` after every step on memory, badger on disk (unflushed writes, first call after reopen
+  and Clear), tiered and sharded, nodes and relationships (`TestLatestStampsDifferential`: updates, future valid
+  starts, `UpdateInPlace`, `UpdateWithTx`, `AddWithTx`, cascades and corrections, close, label, delete,
+  `DeleteWithTx`, re-import, tx commit and rollback, compaction, purge, erasure, Clear, flush, reopen), door
+  contract, fallback, import, replica apply, concurrent writers (-race); store matrix on five backends incl.
+  badger delta encoding; badger build, probe, commit-window and Clear-during-build windows; 19 of 19 mutants red.
+  `BenchmarkLatestStamps` joins the allocs-gated bench-gate family; a family row with a 0 allocs/op baseline now
+  fails as soon as it allocates.
+
 ## [4.48.0] - 2026-10-10
 
 Minor release: pinned property lookups no longer scale with the history (the property tx-membership sidecar,

@@ -1,0 +1,9 @@
+BenchmarkRelHistoryStamps/entities=200K/density=1%/hit-32     	93619831	        11.49 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHistoryStamps/entities=200K/density=1%/miss-32    	100000000	        17.05 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHistoryStamps/entities=1000K/density=1%/hit-32    	88966024	        18.13 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHistoryStamps/entities=1000K/density=1%/miss-32   	109366867	        11.55 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNodeHistoryStamps/entities=200K/density=1%/hit-32    	93045824	        11.58 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNodeHistoryStamps/entities=200K/density=1%/miss-32   	100000000	        16.53 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNodeHistoryStamps/entities=1000K/density=1%/hit-32   	88889310	        19.70 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNodeHistoryStamps/entities=1000K/density=1%/miss-32  	99742870	        11.26 ns/op	       0 B/op	       0 allocs/op
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	45.861s

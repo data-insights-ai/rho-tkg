@@ -1,0 +1,13 @@
+BenchmarkRelHistoryStamps/entities=200K/density=1%/build-32   	       5	   4466853 ns/op	      2000 ids	        84.76 setB/id	  655803 B/op	     439 allocs/op
+BenchmarkRelHistoryStamps/entities=200K/density=1%/hit-32     	       5	       376.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHistoryStamps/entities=200K/density=1%/miss-32    	       5	       276.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHistoryStamps/entities=1000K/density=1%/build-32  	       5	   7806077 ns/op	     10000 ids	        66.15 setB/id	 2639505 B/op	    1776 allocs/op
+BenchmarkRelHistoryStamps/entities=1000K/density=1%/hit-32    	       5	       218.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRelHistoryStamps/entities=1000K/density=1%/miss-32   	       5	       138.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNodeHistoryStamps/entities=200K/density=1%/build-32  	       5	   1390659 ns/op	      2000 ids	        84.77 setB/id	  654868 B/op	     375 allocs/op
+BenchmarkNodeHistoryStamps/entities=200K/density=1%/hit-32    	       5	        90.00 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNodeHistoryStamps/entities=200K/density=1%/miss-32   	       5	        96.00 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNodeHistoryStamps/entities=1000K/density=1%/build-32 	       5	  20863159 ns/op	     10000 ids	        66.11 setB/id	 2637859 B/op	    1622 allocs/op
+BenchmarkNodeHistoryStamps/entities=1000K/density=1%/hit-32   	       5	      1348 ns/op	       0 B/op	       0 allocs/op
+BenchmarkNodeHistoryStamps/entities=1000K/density=1%/miss-32  	       5	       492.0 ns/op	       0 B/op	       0 allocs/op
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	35.297s

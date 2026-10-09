@@ -68,3 +68,6 @@ non-eclipsed version") and RelAt/RelsAt miss the row on all three backends; on m
    re-cascade over a one-tick piece (`one_tick_span_test.go` lacks both).
 Benchmarks (ReportAllocs, into bench-gate): `BenchmarkRelHistory/density={0,0.1%,1%}`, `BenchmarkRelAtTx/{plain,cascaded}/{hot,cold}`,
 `BenchmarkRelHasHistory`, `BenchmarkRelEffectiveTimeline`; targets above (profile `RelAtTx` first: 0.15 of its 2.0 us is the row read).
+
+Note 2026-10-10: sigma's cut check and late-belief detection no longer need a History read per entity: backlog 30 added
+`Nodes()/Rels().LatestStamps(id)` (31-83 ns, 0 allocs at 0-10,000 versions; CHANGELOG [Unreleased] Added).

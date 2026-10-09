@@ -1,0 +1,7 @@
+BenchmarkLatestStamps/memory/plain-32         	14702564	        27.77 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/memory/versions=100-32  	 6384181	        48.33 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/memory/versions=1000-32 	 7972652	        43.02 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/badger/plain-32         	 5420062	        62.74 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/badger/versions=100-32  	 9872196	        35.60 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLatestStamps/badger/versions=1000-32 	10062889	        34.98 ns/op	       0 B/op	       0 allocs/op
+ok  	github.com/data-insights-ai/rho-tkg/v4/bench	2.893s
