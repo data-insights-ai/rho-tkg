@@ -749,7 +749,7 @@ func (c *Core) relAtViaTemporalMeta(id types.RelID, current *types.Relationship,
 // themselves are also valid at that instant — the EFFECTIVE view shared with
 // Snapshot, Diff and OutgoingRelsAt/IncomingRelsAt (edge row valid at t AND
 // both endpoints valid at t). History-aware via the
-// deleted-rel candidate fold (see forEachRelCandidateID) which scales with
+// deleted-rel candidate fold (see forEachRelCandidateIDByDepth) which scales with
 // the number of deleted relationships when the underlying store implements
 // DeletedIterationCapability.
 func (t *TempOps) NeighborsAt(nodeID types.NodeID, at types.Instant) ([]*types.Node, error) {

@@ -705,14 +705,10 @@ func (c *Core) forEachNodeCandidateIDByDepth(currentIDs []types.NodeID, depth st
 	return nil
 }
 
-// forEachRelCandidateID is the relationship counterpart of
-// forEachNodeCandidateID — same all-history fold. For rel-type-flavored
-// temporal queries (a rel's type changes via a new version), this is needed.
-// For adjacency queries, prefer forEachRelAdjacencyCandidateIDByDepth.
-func (c *Core) forEachRelCandidateID(currentIDs []types.RelID, fn func(types.RelID) error) error {
-	return c.forEachRelCandidateIDByDepth(currentIDs, storepkg.DepthAll, fn)
-}
-
+// forEachRelCandidateIDByDepth is the relationship counterpart of
+// forEachNodeCandidateIDByDepth — the all-history fold (the fallback of
+// forEachRelPropertyCandidateID and of the rel-type scans without the K1
+// sidecar). For adjacency queries, prefer forEachRelAdjacencyCandidateIDByDepth.
 func (c *Core) forEachRelCandidateIDByDepth(currentIDs []types.RelID, depth storepkg.ShardDepth, fn func(types.RelID) error) error {
 	seen := make(map[types.RelID]struct{}, len(currentIDs))
 	for _, id := range currentIDs {
@@ -733,7 +729,7 @@ func (c *Core) forEachRelCandidateIDByDepth(currentIDs []types.RelID, depth stor
 }
 
 // forEachRelAdjacencyCandidateID is the adjacency-query specialization of
-// forEachRelCandidateID. Adjacency endpoints are immutable, so a rel that
+// forEachRelCandidateIDByDepth. Adjacency endpoints are immutable, so a rel that
 // ever pointed at the queried node still points at it if alive — therefore
 // the candidate set is (currentIDs ∪ DELETED rel IDs), not (currentIDs ∪ ALL
 // rel history). When the underlying store implements
