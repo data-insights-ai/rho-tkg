@@ -541,7 +541,11 @@ is surfaced through `g.Replication()` (`ChangeFeed` / `ForEachChange` /
 `Store` decorator, because crash-safety requires co-committing the record in the
 data batch and a decorator would lose native-store trust. The log alone does not
 converge a replica from empty — bootstrap from a full export snapshot (registry
-included), then tail the feed. See `tasks/backlog.md`.
+included), then tail the feed. The feed is scoped per `GraphTx`: its records are
+buffered (`store.TxChangeLogScope`) and get their LSNs at `Commit`, so a rolled-back
+or uncommitted transaction emits no records and burns no LSN; an unscoped door (a
+store without the capability, the standalone doors, the concurrent ingest session)
+appends its record eagerly, one per store mutation. See `tasks/backlog.md`.
 
 ### Read replicas: apply engine + read-only gate (Phase 1, opt-in)
 

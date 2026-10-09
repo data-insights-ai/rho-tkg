@@ -1381,6 +1381,10 @@ record. A break-test audit confirmed it concretely: a tx that creates a node the
 (LSN N) then a hard-cascade `ChangeNodeDelete` (LSN N+1) — even though the final
 local state is empty.
 
+*Superseded for `GraphTx` by the scoped log
+(`store.TxChangeLogScope`, `DiscardScopedLog` in `GraphTx.Rollback`; memory, badger, tiered,
+sharded): a rolled-back tx now emits no records. The text below is the history that led there.*
+
 Consequences, none of which is a convergence bug but all of which are contract:
 - **Replicas CONVERGE but transiently materialize uncommitted state.** A replica
   tailing create-then-hard-delete ends in the correct final state (phantom
