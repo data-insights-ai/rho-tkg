@@ -16,11 +16,12 @@ var ErrNoVersionAsOf = errors.New("graph: no entity version recorded at the give
 
 // NodeAsOf returns the node version that was current at the given transaction time.
 //
-// Algorithm:
-//  1. Try current: if TxFrom > 0 && TxFrom <= txTime && TxTo == 0 → return it.
-//  2. Scan Nodes.History(id): find version where TxFrom > 0 && TxFrom <= txTime
-//     && (TxTo == 0 || TxTo > txTime) → return latest matching.
-//  3. None found → ErrNoVersionAsOf.
+// The rule is storeutil.SelectAsOfWithCurrent's: the newest row (highest
+// version) recorded by txTime; the live current row answers unless a row with
+// a higher version was recorded at or after it (a bounded cascade that left
+// the current row in its slot); absent when that row was superseded or deleted
+// by txTime, or when the row holding the current slot was deleted after it and
+// by txTime. None found → ErrNoVersionAsOf.
 func (t *TempOps) NodeAsOf(id types.NodeID, txTime types.Instant) (*types.Node, error) {
 	c := t.c
 	if err := c.checkOpen(); err != nil {

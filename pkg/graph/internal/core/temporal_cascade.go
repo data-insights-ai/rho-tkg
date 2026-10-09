@@ -72,8 +72,18 @@ import (
 //
 // "Current" slot: the newest belief among rows whose OWN interval is open
 // (ValidTo == 0) takes the store's current slot; the prior current moves to
-// history with its bytes unchanged. If no own-open row remains, the entity has
-// no current — Get returns not-found, temporal queries still resolve history.
+// history with its bytes unchanged. If no appended row takes the slot, the
+// current row keeps it, below the appended rows' versions.
+//
+// Versions (backlog 18): appended rows take versions above every stored row;
+// the row that takes the current slot gets the highest, so after the common
+// correction (an open resumption) the current row is the newest row and a
+// later write's version (version_alloc.go) is above every row here.
+//
+// A hard-deleted entity (no current row, a tombstone in history) is refused
+// with ErrEntityDeleted (backlog 14): a correction appended after the
+// tombstone would be a belief the as-of and valid-time doors read
+// inconsistently.
 // =============================================================================
 
 // =============================================================================

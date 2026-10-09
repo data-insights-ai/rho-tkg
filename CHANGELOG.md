@@ -32,8 +32,74 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   0.1 % or 1 % of them; the build costs about 1-2 us per ID with history (1 M entities at 1 %: 9-12 ms rel,
   19-22 ms node; two runs on a 32-core host at load average 12-25).
 
+### Changed
+
+- **A valid-time correction on a hard-deleted entity is refused with the new `ErrEntityDeleted`** (backlog 14,
+  decided default). `Temporal().SetNodeVersionInterval` / `SetRelVersionInterval` and the `GraphTx`, `BatchBuilder`
+  and ingest `Session` twins appended rows after the tombstone, copying its `TxTo` (below the new `TxFrom`) and
+  `DeletedAt`: `NodeAsOf(now)` read the node absent while `NodeAtTx(t, now)` returned the correction. The error
+  wraps `ErrNodeNotFound` / `ErrRelNotFound`, so `errors.Is` matches both; an ID that never existed returns only
+  the not-found sentinel. Nothing is written. To correct a deleted entity, re-import it first. Tests:
+  `TestCascadeOnDeletedEntityRefused` (four doors, four backends, node and rel; the as-of and TxAt doors still
+  agree after the refusal), `TestCascadeTemplate_GapPieceUsesCurrentRow` (formerly
+  `..._DeletedEntityUsesNewestHistoryRow`, which pinned the old behaviour).
+- **The as-of doors answer the newest row recorded by the pin** (`NodeAsOf` / `RelAsOf`, `NodesAsOf` /
+  `RelsAsOf`, `QueryOpts.TxPin` and its counts; one rule, `storeutil.SelectAsOfWithCurrent`, in the memory store,
+  the badger native scan and the core fallback). The live current row no longer wins over a row with a higher
+  version recorded at or after it: a bounded `Set*VersionInterval` whose resumption is bounded by a later version,
+  or one on a closed current row, appends such rows and leaves the current row in its slot. Before, the door
+  answered the current row while it was current and the cascade row once any later write superseded it, so the
+  answer at a pin changed after the fact (backlog 18). After the common correction (an open resumption) the
+  current row is the newest row (see the version fix below), so `NodeAsOf(now)` still equals `Get`.
+
 ### Fixed
 
+- **One version allocator: a write after a bounded cascade no longer reuses a cascade row's version** (backlog
+  18). The cascade gave its rows `maxVersion+1` while Update, `CloseVersion`, label add/remove and property CAS
+  used `current.Version()+1`, so the chain held two rows with one version and a later delete changed the TxAt
+  answer at an earlier pin. Every appending door now takes one above the chain's highest version (derived under
+  the entity lock: the history presence check, then a point read of version current+1; the history only when it
+  exists; no format change), and the cascade numbers the row that takes the current slot last. Measured (2,000
+  updated nodes, badger in-memory, 32-core host at load 16-19, medians): `Update` 5.5 → 7.2 us, `NodeAsOf` of a
+  current row with history 0.4 → 1.5 us (one point read of version current+1; a scan only when it exists);
+  memory unchanged within noise. Tests: `TestCascadeVersionsUniqueAndPastStable` (unique versions and
+  unchanged as-of / TxAt answers at earlier pins across Update, CloseVersion, AddLabel and Delete, six cascade
+  shapes).
+- **Rows a write appends carry no retraction** (backlog 14, live trigger). A cascade resumption copied the
+  superseded source row's `TxTo` (below its own `TxFrom`), and a later Update kept it on the new current row; every
+  appended row (cascade pieces and resumptions, Update, `CloseVersion`, label changes, CAS) now has `TxTo` and
+  `DeletedAt` 0. Test: `TestCascadeAppendedRowsCarryNoRetraction`.
+- **A delete after a bounded cascade ends the entity in every door** (handover 2a, the as-of and valid-time half of
+  backlog 20). As-of: when the row that held the current slot (the highest lower row with a `TxTo`) was
+  hard-deleted after the newest row was recorded and by the pin, the entity is absent; before, the cascade row
+  above the tombstone stayed readable. Valid time (`NodeAt` / `RelAt`, `*AtTx`, `NodesAt` / `RelsAt`, `Snapshot`,
+  `OutgoingRelsAt`, `ByLabel` / `ByType` with `ValidAt`, interval and Allen doors): every row recorded before a
+  delete is capped at the delete instant at the resolver seam (`lifeEnds`), so the open genesis under a bounded
+  correction no longer reads valid forever; past valid time stays readable, pins before the delete are unchanged,
+  and a re-imported ID's later rows are not capped. Repairs chains written before this release (read seam).
+  Tests: `TestAsOfBoundedCascadeThenDelete` (+ `_ReImport`; delete via standalone, GraphTx, batch, ingest and
+  `DeleteWithTx`), `TestValidTimeAfterDeleteBoundedCascade`, `TestOneTickCascadeRows` (handover acceptance 1, 2,
+  4), `TestAsOfLabelCountAfterCascadeBelowLabelChange`; `TestSkeletonResolve_CascadeReopenDelete` expected a deleted
+  node to read valid at a far-future instant and now expects none.
+- **The chain resolver reads chains in version order** (lesson 73). `history ‖ current` is not version-ordered
+  when a cascade left the current row below its rows; the resolver classified such a chain as a cascade chain while
+  the row was current (a closed entity read valid again after a later gap correction) and as monotonic once a
+  delete moved the row into history, so the same pin answered differently. Found by the W5 oracle once its skips
+  were removed; shape `closed-then-gap` in the tests above.
+- **GraphTx rollback keeps the cascade rows above the current version** (backlog 19, memory and badger). The
+  snapshot took the trim path, and Rollback trimmed every history row at or above `current.Version()`; it now
+  copies the history when a row lies at or above it. A caller-instant `tx.UpdateNodeWithTx` /
+  `UpdateRelationshipWithTx` is refused before the snapshot. Tests: `TestTxRollbackKeepsCascadeRows`,
+  `TestTxRefusedUpdateWithTxTakesNoSnapshot`.
+- **History compaction keeps every row the kept chain's hash links point to** (backlog 24). `KeepVersions` kept
+  the newest history versions; after a bounded cascade those are cascade rows linking to an older base row, and
+  the current row links below them, so the trim left a chain that did not verify and an export of it failed import
+  ("imported hash chain does not verify"). The trim count is lowered until the kept rows pass the chain-linkage
+  check with the stub the trim writes; the policy's bounds stay lower bounds on what is kept. Test:
+  `TestCompactionKeepsPrevHashAnchors` (memory, badger, tiered; sharded declines compaction).
+- **W5 oracle skips removed**: `TestTxBackfillOracle_CrossBackend` runs its strict pin checks and the GraphTx
+  family on every chain (`txbTangled` / `txbNoTxRollback` deleted); green at `TXB_ORACLE_SEEDS=200` (1561 pin
+  checks, 157 on chains with a row above the current one). Evidence: `tasks/evidence/cascade-correctness/`.
 - **Badger history ID walks no longer drop an ID whose write buffer holds a SET of one history version and a
   DELETE of another.** The buffered-write overlay of `AllNodeHistoryIDs(From)` / `AllRelHistoryIDs(From)`,
   `ForEachNodeHistoryID` / `ForEachRelHistoryID` and `NodeHistoryCount` / `RelHistoryCount` resolved
