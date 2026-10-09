@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
+	"math"
 	"reflect"
 	"sync"
 
@@ -23,11 +24,16 @@ var (
 	ErrInvalid = errors.New("replica: invalid input")
 	// ErrStopped requires recovery before additional events.
 	ErrStopped = errors.New("replica: stopped; reopen required")
-	// ErrLimit marks bounded adapter admission or output exhaustion.
+	// ErrLimit marks bounded adapter admission, output or finite-term exhaustion.
 	ErrLimit = errors.New("replica: resource limit")
 	// ErrUnavailable requires routing or retry at an authoritative leader.
 	ErrUnavailable = errors.New("replica: authoritative leader read unavailable")
 )
+
+// replicaTermCeiling reserves MaxUint64 as headroom for the pinned Raft's
+// election/restore +1 paths. Reaching this final supported term is terminal:
+// no further driver events or reopen are admitted, though Close remains valid.
+const replicaTermCeiling uint64 = math.MaxUint64 - 1
 
 // Entry is an owned application record. Empty normal records are Raft no-ops;
 // configuration records advance Applied but are not application commands.
@@ -95,6 +101,8 @@ type Config struct {
 }
 
 // Driver serializes all RawNode operations and application callbacks.
+// At term MaxUint64-1, driver events return ErrLimit without further mutation;
+// Close and Applied remain available. No term reset or wraparound is performed.
 type Driver struct {
 	mu                 sync.Mutex
 	raw                *raft.RawNode
@@ -114,6 +122,7 @@ type Driver struct {
 
 // Open restores the durable checkpoint and uses its index/membership together.
 // It never bootstraps; first-open Initialize is an explicit separate store action.
+// A durable term at or above the finite ceiling returns ErrLimit before Restore.
 func Open(c Config) (*Driver, error) {
 	// Normalize unused typed-nil providers before storing interface fields.
 	if isNilMachine(c.Machine) {
@@ -161,9 +170,12 @@ func Open(c Config) (*Driver, error) {
 	if err != nil {
 		return nil, err
 	}
-	_, cs, err := c.Store.InitialState()
+	hard, cs, err := c.Store.InitialState()
 	if err != nil {
 		return nil, err
+	}
+	if hard.GetTerm() >= replicaTermCeiling {
+		return nil, ErrLimit
 	}
 	app := c.Store.ApplicationLimits()
 	if app.Enabled() != !isNilMachine(c.ApplicationMachine) || app.Enabled() && (c.ID != app.LocalVoter || len(cs.GetVoters()) != 1 || cs.GetVoters()[0] != c.ID || len(cs.GetVotersOutgoing()) != 0 || len(cs.GetLearners()) != 0 || len(cs.GetLearnersNext()) != 0 || cs.GetAutoLeave()) {
@@ -196,11 +208,15 @@ func (d *Driver) check() error {
 	if d.stopped != nil {
 		return errors.Join(ErrStopped, d.stopped)
 	}
+	if d.raw.BasicStatus().GetTerm() >= replicaTermCeiling {
+		return ErrLimit
+	}
 	return nil
 }
 func (d *Driver) stop(err error) (Output, error) { d.stopped = err; return Output{}, err }
 
 // Tick advances one logical liveness tick and processes resulting work.
+// At the finite term ceiling it returns ErrLimit before election advancement.
 func (d *Driver) Tick() (Output, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -212,6 +228,7 @@ func (d *Driver) Tick() (Output, error) {
 }
 
 // Campaign asks the established consensus implementation to run an election.
+// At the finite term ceiling it returns ErrLimit before advancing RawNode.
 func (d *Driver) Campaign() (Output, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -249,7 +266,10 @@ func (d *Driver) Propose(data []byte) (Output, error) {
 	return d.drain()
 }
 
-// Step rejects local-message injection and mismatched transport identities.
+// Step rejects malformed consensus input before RawNode can mutate state.
+// It also rejects local-message injection and mismatched transport identities.
+// MaxUint64 transport terms are unsupported; a TimeoutNow that would elect
+// beyond the finite ceiling returns ErrLimit before any term/state change.
 func (d *Driver) Step(p Packet) (Output, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -283,6 +303,35 @@ func (d *Driver) Step(p Packet) (Output, error) {
 		total += proto.Size(e)
 		if total > d.config.Limits.MaxReadBytes {
 			return Output{}, ErrLimit
+		}
+	}
+	status := d.raw.BasicStatus()
+	if err := validateIncoming(m, d.conf, d.applied, status.RaftState == raft.StateLeader, d.config.Limits); err != nil {
+		return Output{}, err
+	}
+	// TimeoutNow may first raise our term and then immediately campaign in
+	// that new term; guard both increments before handing it to RawNode.
+	if m.GetType() == pb.MsgTimeoutNow && max(status.GetTerm(), m.GetTerm()) >= replicaTermCeiling {
+		return Output{}, ErrLimit
+	}
+	if m.GetType() == pb.MsgHeartbeat {
+		last, err := d.store.LastIndex()
+		if err != nil {
+			return d.stop(err)
+		}
+		// sendHeartbeat caps commit at the follower's acknowledged Match.
+		// Every public event drains and syncs entries before returning packets.
+		if m.GetCommit() > last {
+			return Output{}, ErrInvalid
+		}
+	}
+	if m.GetType() == pb.MsgSnap && m.GetSnapshot().GetMetadata().GetIndex() > status.GetCommit() {
+		term, err := d.store.Term(status.GetCommit())
+		if err != nil {
+			return d.stop(err)
+		}
+		if m.GetSnapshot().GetMetadata().GetTerm() < term {
+			return Output{}, ErrInvalid
 		}
 	}
 	if err := d.raw.Step(m); err != nil {
@@ -425,8 +474,9 @@ func (d *Driver) TransferLeader(id uint64) (Output, error) {
 	return d.drain()
 }
 
-// ProposeConfChange accepts V1 and V2 only after checking the resulting config
-// with the library's established changer. Ownership moves remain an application protocol.
+// ProposeConfChange checks V1/V2 schema before admission. The leader checks
+// resulting membership with the library changer; lagging followers may forward
+// against a newer leader membership. Ownership moves remain an application protocol.
 func (d *Driver) ProposeConfChange(change pb.ConfChangeI) (Output, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -460,8 +510,13 @@ func (d *Driver) ProposeConfChange(change pb.ConfChangeI) (Output, error) {
 	default:
 		return Output{}, ErrInvalid
 	}
-	if err := validateChange(d.conf, cc.AsV2(), d.applied); err != nil {
+	if err := validateChangeSchema(cc.AsV2()); err != nil {
 		return Output{}, err
+	}
+	if d.raw.BasicStatus().RaftState == raft.StateLeader {
+		if err := validateChange(d.conf, cc.AsV2(), d.applied); err != nil {
+			return Output{}, err
+		}
 	}
 	if proto.Size(cc.AsV2()) > d.config.Limits.MaxEntryBytes-74 {
 		return Output{}, ErrLimit
@@ -472,7 +527,7 @@ func (d *Driver) ProposeConfChange(change pb.ConfChangeI) (Output, error) {
 	return d.drain()
 }
 
-func validateChange(cs *pb.ConfState, cc *pb.ConfChangeV2, last uint64) error {
+func validateChangeSchema(cc *pb.ConfChangeV2) error {
 	if cc == nil || len(cc.ProtoReflect().GetUnknown()) != 0 || len(cc.GetChanges()) > 256 || cc.GetTransition() < pb.ConfChangeTransitionAuto || cc.GetTransition() > pb.ConfChangeTransitionJointExplicit {
 		return ErrInvalid
 	}
@@ -480,6 +535,13 @@ func validateChange(cs *pb.ConfState, cc *pb.ConfChangeV2, last uint64) error {
 		if c == nil || len(c.ProtoReflect().GetUnknown()) != 0 || c.GetNodeId() == 0 || raft.IsLocalMsgTarget(c.GetNodeId()) || c.GetType() < pb.ConfChangeAddNode || c.GetType() > pb.ConfChangeAddLearnerNode {
 			return ErrInvalid
 		}
+	}
+	return nil
+}
+
+func validateChange(cs *pb.ConfState, cc *pb.ConfChangeV2, last uint64) error {
+	if err := validateChangeSchema(cc); err != nil {
+		return err
 	}
 	t := tracker.MakeProgressTracker(1, 1)
 	cfg, progress, err := confchange.Restore(confchange.Changer{Tracker: t, LastIndex: last}, cs)

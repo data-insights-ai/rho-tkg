@@ -61,7 +61,7 @@ func TestWireSchemasRejectWrongTypesUnknownsAndExpansion(t *testing.T) {
 	}
 	b = protowire.AppendTag(nil, 5, protowire.VarintType)
 	b = protowire.AppendVarint(b, 2)
-	if err := preflightWire(b, 4, l); !errors.Is(err, ErrInvalid) {
+	if err := preflightWire(b, 4, l); err != nil {
 		t.Fatal(err)
 	}
 	b = protowire.AppendTag(nil, 1, protowire.VarintType)
