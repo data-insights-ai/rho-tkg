@@ -121,7 +121,8 @@ const (
 	Current      = "current"
 )
 
-// Query binds a completed leader read to one precise application question.
+// Query identifies the application question. Host.ReadID separately binds each
+// invocation; identical questions must never be used as caller correlation IDs.
 type Query struct {
 	Kind, TxID string
 	Round      uint64

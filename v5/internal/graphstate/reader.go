@@ -110,7 +110,8 @@ func (e *engine) dep(d Dependency) error {
 			if err != nil {
 				return err
 			}
-			bytes += len(data)
+			n := v.retainedBytes(len(data))
+			bytes += n
 		}
 	}
 	if err := e.output(bytes); err != nil {
@@ -276,7 +277,8 @@ func (e *engine) value(id ValueID) (Scalar, error) {
 	if err != nil {
 		return Scalar{}, err
 	}
-	if err := e.charge(1, len(b)); err != nil {
+	n := read.Value.retainedBytes(len(b))
+	if err := e.charge(1, n); err != nil {
 		return Scalar{}, err
 	}
 	return read.Value, nil
@@ -289,9 +291,10 @@ func (e *engine) intern(v Scalar, fresh ValueID) (state.ValueRef, error) {
 	if err != nil {
 		return state.ValueRef{}, err
 	}
+	n := v.retainedBytes(len(key))
 	if id, ok := e.identity[key]; ok {
-		return state.NewValueRef(uint64(id), uint64(len(key)))
-	} // #nosec G115 -- key byte length nonnegative and budget bounded.
+		return state.NewValueRef(uint64(id), uint64(n))
+	} // #nosec G115 -- retained-value size is nonnegative and budget bounded.
 	read, err := e.view.ValueIdentity(e.ctx, v)
 	if err != nil {
 		return state.ValueRef{}, err
@@ -302,7 +305,7 @@ func (e *engine) intern(v Scalar, fresh ValueID) (state.ValueRef, error) {
 	if err := e.dep(Dependency{Kind: ValueIdentityDependency, Value: v, Version: read.Version, Absent: !read.Found}); err != nil {
 		return state.ValueRef{}, err
 	}
-	if err := e.charge(1, len(key)); err != nil {
+	if err := e.charge(1, n); err != nil {
 		return state.ValueRef{}, err
 	}
 	id := read.ID
@@ -335,14 +338,14 @@ func (e *engine) intern(v Scalar, fresh ValueID) (state.ValueRef, error) {
 			return state.ValueRef{}, ErrAlreadyExists
 		}
 		id = fresh
-		if err := e.output(8 + len(key)); err != nil {
+		if err := e.output(8 + n); err != nil {
 			return state.ValueRef{}, err
 		}
 		e.delta.Values = append(e.delta.Values, ValueWrite{id, v})
 		e.values[id] = v
 	}
 	e.identity[key] = id
-	return state.NewValueRef(uint64(id), uint64(len(key))) // #nosec G115 -- canonical payload key is budget bounded.
+	return state.NewValueRef(uint64(id), uint64(n)) // #nosec G115 -- retained-value size is nonnegative and budget bounded.
 }
 
 type pageTracker struct {

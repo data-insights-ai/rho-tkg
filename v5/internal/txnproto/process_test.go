@@ -44,6 +44,7 @@ type processRequest struct {
 }
 
 type processEvidence struct {
+	ReadID   ReadID
 	Handle   string
 	Sequence uint64
 	Query    Query
@@ -60,6 +61,7 @@ type processProposal struct {
 }
 
 type processResponse struct {
+	ReadID                        ReadID
 	Source, Incarnation, Sequence uint64
 	Packets                       []replica.Packet
 	Evidence                      []processEvidence
@@ -166,7 +168,7 @@ func TestTxnProcessChild(t *testing.T) {
 	defer h.Close()
 	pid := uint64(os.Getpid())
 	proofs := map[string]Proof{}
-	pending := map[Query]uint64{}
+	pending := map[ReadID]uint64{}
 	if err := processWrite(os.Stdout, processResponse{Source: id, Incarnation: pid}); err != nil {
 		t.Fatal(err)
 	}
@@ -204,10 +206,16 @@ func TestTxnProcessChild(t *testing.T) {
 		case "step":
 			event, e = h.Step(r.Packet)
 		case "read":
-			pending[r.Query] = sequence
+			// The harness retains unresolved correlation until reply or process restart.
+			// Bound it independently even when Raft drops reads on a leader change.
+			if len(pending) >= 32 {
+				e = ErrLimit
+				break
+			}
 			event, e = h.Read(r.Query)
-			if e != nil {
-				delete(pending, r.Query)
+			if e == nil {
+				pending[event.ReadID] = sequence
+				out.ReadID = event.ReadID
 			}
 		case "checkpoint":
 			e = h.SaveCheckpoint()
@@ -286,12 +294,12 @@ func TestTxnProcessChild(t *testing.T) {
 		out.Err = processError(e)
 		out.Packets = event.Packets
 		for _, reply := range event.Replies {
-			readSequence, ok := pending[reply.Query]
+			readSequence, ok := pending[reply.ReadID]
 			if !ok {
 				t.Fatal("Host reply has no owned pending request")
 			}
-			delete(pending, reply.Query)
-			item := processEvidence{Sequence: readSequence, Query: reply.Query, Err: processError(reply.Err)}
+			delete(pending, reply.ReadID)
+			item := processEvidence{ReadID: reply.ReadID, Sequence: readSequence, Query: reply.Query, Err: processError(reply.Err)}
 			if reply.Err == nil {
 				if len(proofs) >= 256 {
 					t.Fatal("proof handle budget")
@@ -544,7 +552,7 @@ func (n *processCluster) readResult(id uint64, q Query) (processEvidence, error)
 	}
 	n.deliver(id, out)
 	for _, p := range n.replies[id] {
-		if p.Query == q && p.Sequence == out.Sequence {
+		if p.ReadID == out.ReadID && p.Query == q && p.Sequence == out.Sequence {
 			if err := processErr(p.Err); err != nil {
 				return p, err
 			}

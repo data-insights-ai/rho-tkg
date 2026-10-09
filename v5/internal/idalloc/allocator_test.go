@@ -471,10 +471,11 @@ func TestFinalUint64AndSequenceNoWrap(t *testing.T) {
 	// Max request sequence cannot wrap into a fresh zero sequence.
 	s, r = fixture(t)
 	r.Sequence = math.MaxUint64
+	r.Count = 1
 	s.sequence = r.Sequence
 	s.count = r.Count
-	s.first = 1
-	s.high = r.Count
+	s.first = math.MaxUint64
+	s.high = math.MaxUint64
 	s.digest = r.Digest()
 	_, _, replay, err := Reserve(&s, r)
 	if err != nil || !replay {

@@ -104,7 +104,7 @@ func (n *network) read(t *testing.T, id uint64, q Query) Proof {
 	e, err := n.hosts[id].Read(q)
 	n.run(t, id, e, err)
 	for _, r := range n.replies[id] {
-		if r.Query == q {
+		if r.ReadID == e.ReadID && r.Query == q {
 			if r.Err != nil {
 				t.Fatal(r.Err)
 			}
@@ -290,7 +290,13 @@ func (n *network) elect(t *testing.T, id uint64) {
 				continue
 			}
 			n.run(t, peer, out, err)
-			if len(n.replies[peer]) == 0 {
+			matched := false
+			for _, reply := range n.replies[peer] {
+				if reply.ReadID == out.ReadID && reply.Err == nil {
+					matched = true
+				}
+			}
+			if !matched {
 				continue
 			}
 			if peer == id {

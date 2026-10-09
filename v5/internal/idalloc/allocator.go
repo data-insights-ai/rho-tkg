@@ -106,8 +106,10 @@ type Reservation struct {
 	First, Last uint64
 }
 
+// Every successful sequence consumes at least one ID. Transfers preserve the
+// high-water and reset sequence, so First >= Sequence also holds after handoff.
 func (b Reservation) validFor(r Request) bool {
-	return r.valid() && b.Request == r && b.First != 0 && b.Last >= b.First && b.Last-b.First == r.Count-1
+	return r.valid() && b.Request == r && b.First >= r.Sequence && b.Last >= b.First && b.Last-b.First == r.Count-1
 }
 
 // State is immutable, fixed-size derived replicated state. Its high-water must

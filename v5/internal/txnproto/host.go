@@ -1,6 +1,7 @@
 package txnproto
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"sync"
 	"unicode/utf8"
@@ -9,16 +10,33 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
 )
 
+// ReadID names one Host.Read invocation. The random session changes on reopen;
+// Sequence never wraps. Callers must match this ID, not just the application Query.
+// It identifies a request, never a durability or quorum certificate.
+type ReadID struct {
+	Session  [16]byte
+	Sequence uint64
+}
+
+type readRequest struct {
+	ID    ReadID
+	Query Query
+}
+
 // Reply is either authoritative request-bound evidence or explicit unavailability.
 type Reply struct {
-	Query Query
-	Proof Proof
-	Err   error
+	ReadID ReadID
+	Query  Query
+	Proof  Proof
+	Err    error
 }
 
 // Event owns consensus traffic and completed authoritative application reads.
 // Submit acceptance and Applied progress are never transaction acknowledgements.
 type Event struct {
+	// ReadID is nonzero only for a successfully accepted Read invocation. Replies
+	// in the same event may belong to earlier reads; each carries its own ID.
+	ReadID  ReadID
 	Packets []replica.Packet
 	Replies []Reply
 }
@@ -28,9 +46,11 @@ type Event struct {
 // Embedding transport must authenticate group/peer identity under the crash-only
 // model. These opaque in-process capabilities are not Byzantine signatures.
 type Host struct {
-	mu      sync.Mutex
-	driver  *replica.Driver
-	machine *Machine
+	mu           sync.Mutex
+	driver       *replica.Driver
+	machine      *Machine
+	readSession  [16]byte
+	readSequence uint64
 }
 
 // OpenHost attaches the protocol to an already initialized durable replica store.
@@ -43,7 +63,11 @@ func OpenHost(c Config, s *raftlog.Store, id uint64) (*Host, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Host{driver: d, machine: m}, nil
+	h := &Host{driver: d, machine: m}
+	if _, err := rand.Read(h.readSession[:]); err != nil {
+		return nil, err
+	}
+	return h, nil
 }
 func (h *Host) event(out replica.Output, err error) (Event, error) {
 	if err != nil {
@@ -52,10 +76,11 @@ func (h *Host) event(out replica.Output, err error) (Event, error) {
 	e := Event{Packets: out.Packets}
 	proofBytes := 0
 	for _, r := range out.Reads {
-		q, err := decode[Query](r.Context, 1024)
-		if err != nil || r.Index > out.Applied || h.driver.Applied() < r.Index {
+		request, err := decode[readRequest](r.Context, 1024)
+		if err != nil || request.ID.Session != h.readSession || request.ID.Sequence == 0 || request.ID.Sequence > h.readSequence || r.Index > out.Applied || h.driver.Applied() < r.Index {
 			return Event{}, ErrInvalid
 		}
+		q := request.Query
 		v, err := h.machine.answer(q, out.Applied)
 		if err == nil {
 			b, _ := json.Marshal(v)
@@ -65,7 +90,7 @@ func (h *Host) event(out replica.Output, err error) (Event, error) {
 				proofBytes += len(b)
 			}
 		}
-		reply := Reply{Query: q, Err: err}
+		reply := Reply{ReadID: request.ID, Query: q, Err: err}
 		if err == nil {
 			reply.Proof = Proof{v}
 		}
@@ -132,6 +157,8 @@ func (h *Host) Submit(p Proposal) (Event, error) {
 // Read requests a leader-only, request-bound quorum barrier. No returned Reply
 // until Driver.ReadIndex has completed AND the barrier is applied. Quorum loss
 // returns/preserves unavailability; a caller cannot assert a quorum boolean.
+// Each invocation gets a distinct Event.ReadID, including identical questions.
+// Match Reply.ReadID exactly; an older reply cannot satisfy a later invocation.
 func (h *Host) Read(q Query) (Event, error) {
 	if h == nil {
 		return Event{}, ErrInvalid
@@ -141,9 +168,19 @@ func (h *Host) Read(q Query) (Event, error) {
 	if err := checkQuery(q); err != nil {
 		return Event{}, err
 	}
-	b, _ := json.Marshal(q)
+	if h.readSequence == ^uint64(0) {
+		return Event{}, ErrLimit
+	}
+	h.readSequence++
+	id := ReadID{Session: h.readSession, Sequence: h.readSequence}
+	b, _ := json.Marshal(readRequest{ID: id, Query: q})
 	o, e := h.driver.ReadIndex(b)
-	return h.event(o, e)
+	out, err := h.event(o, e)
+	if err != nil {
+		return Event{}, err
+	}
+	out.ReadID = id
+	return out, nil
 }
 
 // SaveCheckpoint publishes the complete reducer image at the driver's applied

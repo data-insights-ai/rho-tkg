@@ -133,6 +133,17 @@ func (v Scalar) bytes(l Limits) ([]byte, error) {
 	return b, nil
 }
 
+// retainedBytes charges canonical typed payload plus definitions retained by the
+// immutable value. EqualityKey intentionally uses axis identity/hash only; its
+// byte length is not the retained-value ledger and is not a Go heap measurement.
+func (v Scalar) retainedBytes(canonicalBytes int) int {
+	n := canonicalBytes
+	if v.kind == ScalarScope {
+		n += axisBytes(v.scope.Axis())
+	}
+	return n
+}
+
 // Equal compares declared typed values with finite-F64 numeric zero semantics.
 func (v Scalar) Equal(other Scalar, l Limits) (bool, error) {
 	l, err := l.resolve()

@@ -148,7 +148,8 @@ func Project(ctx context.Context, v ReadView, id EntityID, p temporal.Position, 
 			if err != nil {
 				return Projection{}, err
 			}
-			if err := e.output(16 + len(key.Name) + len(data)); err != nil {
+			n := scalar.retainedBytes(len(data))
+			if err := e.output(16 + len(key.Name) + n); err != nil {
 				return Projection{}, err
 			}
 			properties[key.Name] = PropertyValue{Name: key.Name, Cardinality: ScalarCardinality, Scalar: scalar}
@@ -164,7 +165,8 @@ func Project(ctx context.Context, v ReadView, id EntityID, p temporal.Position, 
 			if err != nil {
 				return Projection{}, err
 			}
-			if err := e.output(16 + len(key.Name) + len(data)); err != nil {
+			n := scalar.retainedBytes(len(data))
+			if err := e.output(16 + len(key.Name) + n); err != nil {
 				return Projection{}, err
 			}
 			entry := properties[key.Name]
