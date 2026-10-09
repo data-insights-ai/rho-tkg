@@ -1,0 +1,5 @@
+--- FAIL: TestDurableFlush_DoesNotOpenClosedColdShard (0.36s)
+    durable_flush_test.go:54: DurableFlush left a transiently opened cold shard open
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.370s
+FAIL

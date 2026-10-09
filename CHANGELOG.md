@@ -8,6 +8,44 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Durable-on-return commit: `graph.Config.DurableCommit` puts a commit group on disk before its
+  door returns success.** Requested by ai-soc (request 9; backlog item 11, decided 2026-10-09): it
+  writes one commit group per `GraphTx` with a cut record as the last write and recovers by "rows
+  above the last cut record's pin are unfinished", which needs the cut record to be durable only
+  together with its group. Before, `GraphTx.Commit` and `Batch.Execute` did not fsync, and without
+  the change-log they did not flush at all: the group reached disk with the next background flush,
+  and only `SyncWrites` (an fsync per mutation) closed the window. With the flag,
+  `GraphTx.Commit` (so `Tx().Run` / `RunContext` / `RunWithLSN`), `Batch.Execute` and the strong
+  ingest applier call the new optional `store.DurableFlushCapability.DurableFlush` once per group,
+  after the group is applied and the graph locks are released: the whole pending buffer as one
+  WriteBatch, then one WAL fsync — on badger, on every slot of a sharded store, and on the reference
+  shard, the open archive and the open event shards of a tiered store (a closed cold shard is not
+  opened). A shard with nothing written since its last sync is not fsynced again, and under
+  `SyncWrites` no second fsync is issued. `DurableFlush` re-checks the closed state under the flush
+  lock, so a commit racing `Graph.Close` gets an error, not a crash. Rollback never flushes. A flush
+  failure returns the new `ErrCommitNotDurable` wrapping the store error: the group is committed in
+  memory (the tx is done, its change-log records are minted), its operations stay pending, and the
+  next successful flush persists them — an empty `g.Tx().Run` is the explicit retry. `RunWithLSN`
+  then still returns the group's LSN, and `Batch.Execute` its result with a `durable-commit`
+  `BatchError` (error wraps `ErrBatchFailed` and `ErrCommitNotDurable`; every ingest submitter of
+  the group fails), so nothing has to be re-applied. `New` declines with `ErrCapabilityNotSupported`
+  for a store without stable storage (memory, `BadgerInMemory`, an in-memory tiered or sharded
+  store). Default off: no flush on commit, unchanged. Not promised: a flush larger than one Badger
+  transaction (about 15 % of `MemTableSize`) is split by Badger, so a crash during that flush can
+  persist a subset (all-or-nothing on disk is v5); and power-loss durability is narrower than
+  process-crash durability — Badger's `Sync` covers only the active memtable WAL and the current
+  value-log file, so rows of a group whose flush filled the memtable can still be unsynced after
+  the return (use `SyncWrites` for strict power-loss durability; backlog 15). Standalone mutations
+  and concurrent-mode ingest `Submit` keep the async flush. Proven by crash children that exit
+  without `Close` right after the door returned (badger: tx, Run, Batch, ingest, also with the
+  default 100 ms background flush; tiered: two shards; sharded: two slots — all 22 nodes and the
+  relationship back on reopen; with the flag off the same GraphTx/Run/Batch group is gone; a flush
+  that fails once is requeued and the next durable commit persists it). Measured
+  (`BenchmarkDurableCommit`, disk badger on NVMe, one `Tx().Run` per op, 3 runs, shared host):
+  1 node 7.5–8.1 µs off vs 2.12–2.17 ms on; 10 nodes 68–76 µs vs 4.0–7.1 ms; 100 nodes
+  0.64–0.89 ms vs 7.1–7.3 ms — the cost is dominated by the one WAL fsync per commit (≈ 2–7 ms on
+  this disk), so it amortizes over a group and is steep for single-row transactions.
+
 - **Ingest session interval corrections: `Session.SetNodeVersionInterval` /
   `Session.SetRelVersionInterval` grow a valid interval through the ingest session.** Requested by ai-soc (a burst fact `[vs, ve)` grows to `[vs, ve')` as new
   events arrive; the producer already writes through the session and had to leave it for the

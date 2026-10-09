@@ -1,0 +1,14 @@
+=== RUN   TestDurableFlush_DoesNotOpenClosedColdShard
+--- PASS: TestDurableFlush_DoesNotOpenClosedColdShard (0.24s)
+=== RUN   TestDurableFlush_ShardClosedBetweenWriteAndFlushKeepsRows
+--- PASS: TestDurableFlush_ShardClosedBetweenWriteAndFlushKeepsRows (0.46s)
+=== RUN   TestDurableFlush_ReachesOpenArchive
+--- PASS: TestDurableFlush_ReachesOpenArchive (0.26s)
+=== RUN   TestDurableFlush_FailedShardReportedOthersStillFlushed
+=== RUN   TestDurableFlush_FailedShardReportedOthersStillFlushed/reference-shard-fails
+=== RUN   TestDurableFlush_FailedShardReportedOthersStillFlushed/event-shard-fails
+--- PASS: TestDurableFlush_FailedShardReportedOthersStillFlushed (0.31s)
+    --- PASS: TestDurableFlush_FailedShardReportedOthersStillFlushed/reference-shard-fails (0.16s)
+    --- PASS: TestDurableFlush_FailedShardReportedOthersStillFlushed/event-shard-fails (0.15s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	1.310s

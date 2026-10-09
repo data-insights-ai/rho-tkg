@@ -789,6 +789,20 @@ type Store struct {
 	// blocking indefinitely — Badger v4 hangs in WaitForMark when the DB
 	// is closed while a WriteBatch is in progress.
 	dbClosed atomic.Bool
+	// unsynced is set by every successful WriteBatch commit in
+	// flushIndexLocked that Badger did not fsync (SyncWrites off) and cleared
+	// by DurableFlush's db.Sync, so a durable flush fsyncs exactly when
+	// something reached the WAL without an fsync. durableSyncs counts those
+	// syncs (DurableSyncCountForTest).
+	unsynced     atomic.Bool
+	durableSyncs atomic.Int64
+	// Test seams (nil in production): failNextFlush makes the next WriteBatch
+	// commit fail through the real requeue path (FailNextFlushForTest);
+	// testHookDurableAfterCheckOpen runs inside DurableFlush right after its
+	// checkOpen, so a test can interleave Close there.
+	failNextFlush                 atomic.Pointer[error]
+	failNextSync                  atomic.Pointer[error]
+	testHookDurableAfterCheckOpen func()
 
 	// Change-log (op-log) — opt-in via Config.ChangeLog. logEnabled gates ALL
 	// record production (zero overhead when off). logSeq is the monotonic LSN

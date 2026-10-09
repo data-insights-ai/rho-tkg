@@ -164,6 +164,10 @@ type Core struct {
 	// allowExactErasure gates the bounded legal-erasure admin door. Off by
 	// default; unlike Reset, scope is explicit and fail-closed.
 	allowExactErasure bool
+	// durableFlush is set when Config.DurableCommit is on: every commit group
+	// (GraphTx.Commit, Batch.Execute) calls it once before returning success
+	// (flushDurableCommit). Nil = off, no flush on commit.
+	durableFlush storepkg.DurableFlushCapability
 	// allowTxBackfill enables the privileged transaction-time backfill door:
 	// when true, create doors honor a caller-supplied tkg_tx_from (or
 	// AddWithTx) instead of stamping c.now(), so a re-ingest can faithfully
@@ -535,6 +539,15 @@ var (
 	// explicitly enabled, mirroring ErrRetentionPurgeDisabled.
 	ErrResetDisabled = errors.New("graph: reset is disabled (set Config.AllowReset to enable g.Admin().Reset)")
 
+	// ErrCommitNotDurable is returned by GraphTx.Commit, Batch.Execute and the
+	// strong ingest applier under Config.DurableCommit when the group committed
+	// (it is visible, cannot be rolled back, and its change-log records are
+	// minted) but the store could not make it durable. The group stays in the
+	// store's pending write buffer; the next successful flush (the next durable
+	// commit, an empty Tx().Run, the background flush, or Close) persists it.
+	// Until then a crash can lose it. The store's error is wrapped alongside.
+	ErrCommitNotDurable = errors.New("graph: commit applied but not durable")
+
 	// ErrExactErasureDisabled is returned unless the destructive exact-erasure
 	// admin door was explicitly enabled.
 	ErrExactErasureDisabled = errors.New("graph: exact erasure is disabled (set Config.AllowExactErasure to enable g.Admin().ExactErase)")
@@ -799,6 +812,28 @@ type Config struct {
 	// full history and index residue without tombstones, refuses scope escape,
 	// and is unavailable while any change-log material is retained.
 	AllowExactErasure bool
+
+	// DurableCommit makes every commit group durable before its door returns
+	// success: GraphTx.Commit (and so Tx().Run / RunContext / RunWithLSN),
+	// Batch.Execute and the strong ingest applier call the store's
+	// store.DurableFlushCapability once, after the group is applied, which
+	// writes the pending write buffer and fsyncs the write-ahead log of every
+	// open shard that took writes. A crash after the door returned keeps the
+	// whole group; a crash before it returned can keep any subset (not
+	// promised either way). Rollback never flushes. A failed flush returns
+	// ErrCommitNotDurable: the group is committed in memory and stays pending
+	// for the next flush. Not covered: standalone mutations and
+	// concurrent-mode ingest Submit, which keep the async flush. A buffer
+	// above Badger's transaction size limit is split by Badger, so a crash
+	// during that flush can persist a subset. Power loss: Badger's Sync covers
+	// only the active memtable WAL and the current value-log file, so rows of
+	// a group whose flush filled the memtable (or a value-log file) can stay
+	// unsynced after the return — safe against a process crash, not a power
+	// loss; use SyncWrites for strict power-loss durability. New fails with
+	// ErrCapabilityNotSupported when the store has no stable storage (memory
+	// store, BadgerInMemory, an in-memory tiered or sharded store). Default
+	// false: no flush on commit, today's behavior.
+	DurableCommit bool
 
 	// IngestLanes is the number of extra per-lane UNIFIED ID generators built for
 	// concurrent-ingest write parallelism (ADR-0007 S4). Zero (default) keeps the
@@ -1776,6 +1811,18 @@ func New(config Config) (*Core, error) {
 	}
 
 	c.store = store
+	if config.DurableCommit {
+		// The flag promises durability; a store without stable storage
+		// declines instead of turning it into a silent no-op.
+		df, ok := store.(storepkg.DurableFlushCapability)
+		if !ok || !df.DurableFlushSupported() {
+			if config.Store == nil {
+				_ = store.Close()
+			}
+			return nil, fmt.Errorf("graph: Config.DurableCommit needs a store with stable storage (a disk badger, tiered or sharded store): %w", storepkg.ErrCapabilityNotSupported)
+		}
+		c.durableFlush = df
+	}
 	c.preEncodedPut = nativePreEncodedPut(store)
 	// Ownership-transfer put (lever #2) is independent of the §4.5 pre-encode
 	// gate (which is badger-only): any store implementing the capability honors

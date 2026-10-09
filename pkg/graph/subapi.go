@@ -130,7 +130,8 @@ func (a *TxAPI) RunContext(ctx context.Context, fn func(*GraphTx) error) (retErr
 // read-your-writes under concurrency (the global LastCommittedLSN head can
 // already reflect another writer's commit). Returns 0 when the tx emitted no
 // change-log records (no mutations, or the change-log is disabled) and on any
-// error. Same panic-safety + rollback semantics as Run.
+// error except ErrCommitNotDurable (Config.DurableCommit), which comes with the
+// committed group's LSN. Same panic-safety + rollback semantics as Run.
 //
 // Scope: the LSN is a bookmark WITHIN the current change-log epoch — comparable
 // against LastCommittedLSN / a replica's AppliedLSN, but not meaningful across a
@@ -162,6 +163,12 @@ func (a *TxAPI) RunWithLSN(fn func(*GraphTx) error) (lsn uint64, retErr error) {
 		return 0, err
 	}
 	if err := tx.Commit(); err != nil {
+		if errors.Is(err, core.ErrCommitNotDurable) {
+			// The group IS committed (only its durability failed): return its
+			// LSN so a caller does not re-apply it blind.
+			committed = true
+			return tx.CommittedLSN(), err
+		}
 		return 0, err
 	}
 	committed = true

@@ -1,0 +1,5 @@
+--- FAIL: TestDurableFlush_ReachesOpenArchive (0.22s)
+    durable_flush_test.go:145: archive: 2 writes pending after DurableFlush, want 0
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.227s
+FAIL

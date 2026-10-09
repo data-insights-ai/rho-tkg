@@ -1,0 +1,34 @@
+=== RUN   TestDurableCommit_CrashAfterReturnKeepsWholeGroup_DefaultFlushInterval
+--- PASS: TestDurableCommit_CrashAfterReturnKeepsWholeGroup_DefaultFlushInterval (1.19s)
+=== RUN   TestDurableCommit_FailedFlushRequeuesAndNextFlushPersists
+=== RUN   TestDurableCommit_FailedFlushRequeuesAndNextFlushPersists/no-retry-lost
+=== RUN   TestDurableCommit_FailedFlushRequeuesAndNextFlushPersists/retry-persists
+--- PASS: TestDurableCommit_FailedFlushRequeuesAndNextFlushPersists (2.51s)
+    --- PASS: TestDurableCommit_FailedFlushRequeuesAndNextFlushPersists/no-retry-lost (1.23s)
+    --- PASS: TestDurableCommit_FailedFlushRequeuesAndNextFlushPersists/retry-persists (1.28s)
+=== RUN   TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending
+=== RUN   TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending/tx
+=== RUN   TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending/run
+=== RUN   TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending/batch
+    durable_commit_test.go:310: Batch.Execute returned a nil result with ErrCommitNotDurable — the committed ops are lost to the caller
+=== RUN   TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending/ingest
+--- FAIL: TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending (0.19s)
+    --- PASS: TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending/tx (0.00s)
+    --- PASS: TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending/run (0.00s)
+    --- FAIL: TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending/batch (0.00s)
+    --- PASS: TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending/ingest (0.00s)
+=== RUN   TestDurableCommit_NotDurableKeepsLSNAndResult
+=== RUN   TestDurableCommit_NotDurableKeepsLSNAndResult/tx
+=== RUN   TestDurableCommit_NotDurableKeepsLSNAndResult/run-with-lsn
+    durable_commit_test.go:366: RunWithLSN returned LSN 0 with ErrCommitNotDurable — the committed group's LSN is lost
+=== RUN   TestDurableCommit_NotDurableKeepsLSNAndResult/batch
+    durable_commit_test.go:380: Batch.Execute returned a nil result with ErrCommitNotDurable — the committed ops are lost to the caller
+--- FAIL: TestDurableCommit_NotDurableKeepsLSNAndResult (0.18s)
+    --- PASS: TestDurableCommit_NotDurableKeepsLSNAndResult/tx (0.01s)
+    --- FAIL: TestDurableCommit_NotDurableKeepsLSNAndResult/run-with-lsn (0.00s)
+    --- FAIL: TestDurableCommit_NotDurableKeepsLSNAndResult/batch (0.00s)
+=== RUN   TestDurableCommit_CommitRacingCloseNeverPanics
+--- PASS: TestDurableCommit_CommitRacingCloseNeverPanics (0.14s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	4.261s
+FAIL

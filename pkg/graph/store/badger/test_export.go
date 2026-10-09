@@ -212,3 +212,16 @@ func (bs *Store) ReadOnlyForTest() bool { return bs.readOnly }
 // tests that wait on goroutine shutdown.
 func (bs *Store) FlushDoneForTest() <-chan struct{} { return bs.flushDone }
 func (bs *Store) GCDoneForTest() <-chan struct{}    { return bs.gcDone }
+
+// DurableSyncCountForTest reports how many write-ahead-log fsyncs DurableFlush
+// has issued. Exported solely for tests; not for production use.
+func (bs *Store) DurableSyncCountForTest() int64 { return bs.durableSyncs.Load() }
+
+// FailNextFlushForTest makes the next flush that has something to write fail
+// with err just before its WriteBatch commits, through the real requeue path
+// (the operations go back to the pending buffer). Not for production use.
+func (bs *Store) FailNextFlushForTest(err error) { bs.failNextFlush.Store(&err) }
+
+// FailNextDurableSyncForTest makes the next WAL fsync of DurableFlush fail with
+// err (the written rows stay marked unsynced). Not for production use.
+func (bs *Store) FailNextDurableSyncForTest(err error) { bs.failNextSync.Store(&err) }

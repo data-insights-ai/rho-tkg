@@ -1,0 +1,4 @@
+=== RUN   TestDurableFlush_DoesNotOpenClosedColdShard
+--- PASS: TestDurableFlush_DoesNotOpenClosedColdShard (0.40s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.415s

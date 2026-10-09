@@ -278,9 +278,18 @@ func (bs *Store) flushIndexLocked(keepIndexLock bool) error {
 		requeue()
 		return fmt.Errorf("graph: write batch flush: %w", badgerv4.ErrDBClosed)
 	}
+	if injected := bs.failNextFlush.Swap(nil); injected != nil { // test seam
+		wb.Cancel()
+		requeue()
+		return fmt.Errorf("graph: write batch flush: %w", *injected)
+	}
 	if err := wb.Flush(); err != nil {
 		requeue()
 		return fmt.Errorf("graph: write batch flush: %w", err)
+	}
+	if !bs.syncWrites {
+		// In the WAL but not fsynced: the next DurableFlush must sync.
+		bs.unsynced.Store(true)
 	}
 
 	// Commit succeeded: the rows are now durable in Badger, so overlay readers
