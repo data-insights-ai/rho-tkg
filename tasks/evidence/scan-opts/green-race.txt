@@ -1,6 +1,15 @@
-ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	244.384s
-ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	261.219s
-ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil	5.170s
-ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/nodes	1.048s
-ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/rels	1.049s
-race exit 0
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	257.213s
+2026/10/09 13:38:13 WARN tiered store repair fixed cross-shard inconsistencies orphaned_in_entries=1 stale_in_entries=0 missing_in_entries=0 shards_scanned=2 cross_shard_rels_checked=0
+2026/10/09 13:38:13 ERROR graph: event handler panicked panic="intentional panic in handler" eventType=1 entityID=0
+2026/10/09 13:38:14 ERROR graph: index provider event handler failed provider=spatial eventType=1 entityID=796927416978079744 error=provider-failed
+2026/10/09 13:39:19 WARN label registry approaching capacity count=65534 max=65535
+2026/10/09 13:39:20 WARN label registry approaching capacity count=65534 max=65535
+--- FAIL: TestAdvanceClock_RejectsImplausibleFarFutureTarget (0.41s)
+    advance_clock_test.go:95: PeekTx after rejected AdvanceClock = 1791545968674, want unchanged 1791545968673
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	366.142s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil	3.204s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/nodes	1.019s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/rels	1.020s
+FAIL
+race exit 1
