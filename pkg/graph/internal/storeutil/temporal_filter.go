@@ -2,19 +2,22 @@ package storeutil
 
 import (
 	snowflake "github.com/bds421/rho-snowflake-2026"
-	snowflakepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/snowflake"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/internal/idlayout"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // EntityValidFrom derives the effective valid-from time for an entity.
-// Uses explicit ValidFrom if set on TemporalMetadata, otherwise derives
-// from the snowflake ID via the package-level snowflake.Layout.
+// Uses explicit ValidFrom if set on TemporalMetadata, otherwise the ID's mint
+// instant: the same single function (idlayout.MintInstantMillis) behind the
+// public types.NodeID.MintInstant / types.RelID.MintInstant, so a consumer that
+// applies "0 = unset, the start is the mint instant" agrees with the resolver
+// by construction.
 func EntityValidFrom(id snowflake.ID, tm *types.TemporalMetadata) types.Instant {
 	if tm != nil && tm.ValidFrom != 0 {
 		return tm.ValidFrom
 	}
-	return types.Instant(snowflakepkg.Layout.CreatedAt(id).UnixMilli())
+	return types.Instant(idlayout.MintInstantMillis(id))
 }
 
 // SnowflakeInstant returns the IMMUTABLE mint-time of a snowflake ID as a
@@ -23,7 +26,7 @@ func EntityValidFrom(id snowflake.ID, tm *types.TemporalMetadata) types.Instant 
 // deliberately independent of a caller-set ValidFrom or a backfilled TxFrom so a
 // backfilled fact cannot dodge (or be silently caught by) the purge predicate.
 func SnowflakeInstant(id snowflake.ID) types.Instant {
-	return types.Instant(snowflakepkg.Layout.CreatedAt(id).UnixMilli())
+	return types.Instant(idlayout.MintInstantMillis(id))
 }
 
 // EnvelopeOverlaps reports whether a node's valid-time ENVELOPE [from, to) (to == 0

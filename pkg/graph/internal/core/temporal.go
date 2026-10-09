@@ -44,10 +44,11 @@ func (c *Core) normalizeDuringRange(start, end types.Instant) (types.Instant, er
 // Uses explicit ValidFrom if set, falls back to snowflake ID timestamp.
 //
 // Delegates to storeutil.EntityValidFrom — the single canonical definition
-// shared with the store-level temporal push-down. The Core generators and
-// snowflakepkg.Layout are configured identically (same epoch, microsecond
-// precision, 5/10 bit split), so the derivation is the same; defining it
-// twice is exactly the drift the delegation prevents.
+// shared with the store-level temporal push-down. The Core generators and the
+// decoding layout both take their epoch and bit split from
+// pkg/internal/idlayout, and the derived start is idlayout.MintInstantMillis,
+// the function behind types.NodeID.MintInstant / types.RelID.MintInstant;
+// defining it twice is exactly the drift the delegation prevents.
 func (c *Core) nodeValidFrom(n *types.Node) types.Instant {
 	return storeutil.EntityValidFrom(n.ID().SnowflakeID(), n.Temporal())
 }

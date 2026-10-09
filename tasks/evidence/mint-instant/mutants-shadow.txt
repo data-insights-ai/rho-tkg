@@ -1,0 +1,2 @@
+mutant own-arithmetic fallback restored in node: KILLED ['--- FAIL: TestShadowCreatedAtFallbackEqualsMintInstant_Node (0.00s)']
+mutant own-arithmetic fallback restored in rel: KILLED ['--- FAIL: TestShadowCreatedAtFallbackEqualsMintInstant_Rel (0.00s)']

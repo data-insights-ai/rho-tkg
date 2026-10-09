@@ -1,0 +1,8 @@
+--- FAIL: TestShadowCreatedAtFallbackEqualsMintInstant_Node (0.00s)
+    shadow_mint_instant_test.go:41: node id 0 meta=false: tkg_created_at = (1767225600000, true), want (0, true) == MintInstant 0
+--- FAIL: TestShadowCreatedAtFallbackEqualsMintInstant_Rel (0.00s)
+    shadow_mint_instant_test.go:71: rel id 0 meta=false: tkg_created_at = (1767225600000, true), want (0, true) == MintInstant 0
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.004s
+FAIL
+exit=1
