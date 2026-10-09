@@ -266,7 +266,7 @@ func (a *API) HasRelTemporal(typeName string) (bool, error) {
 
 // CreateRelTemporal creates a temporal interval index on relationships with
 // the given rel type (BACKLOG 21c). Returns storepkg.ErrCapabilityNotSupported
-// on stores that decline the capability (tiered, sharded).
+// on stores that decline the capability (tiered; memory, badger and sharded implement it).
 func (a *API) CreateRelTemporal(typeName string) error {
 	ops, err := a.ready()
 	if err != nil {
