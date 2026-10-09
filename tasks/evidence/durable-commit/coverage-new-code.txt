@@ -1,9 +1,12 @@
 github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core/durable_commit.go:16:				flushDurableCommit				100.0%
 github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger/badgerstore_durable.go:11:			DurableFlushSupported				100.0%
-github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger/badgerstore_durable.go:29:			DurableFlush					81.2%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger/badgerstore_durable.go:39:			DurableFlush					91.3%
 github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger/test_export.go:218:				DurableSyncCountForTest				100.0%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger/test_export.go:223:				FailNextFlushForTest				100.0%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger/test_export.go:227:				FailNextDurableSyncForTest			100.0%
 github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded/durable.go:12:					DurableFlushSupported				100.0%
-github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded/durable.go:21:					DurableFlush					88.9%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded/durable.go:21:					DurableFlush					84.6%
 github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded/test_export.go:5:				ShardPendingWritesForTest			100.0%
 github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered/tieredstore_durable.go:12:			DurableFlushSupported				100.0%
 github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered/tieredstore_durable.go:25:			DurableFlush					84.8%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/subapi.go:142:							RunWithLSN					68.2%

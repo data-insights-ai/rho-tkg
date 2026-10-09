@@ -1,0 +1,18 @@
+diff --git a/pkg/graph/internal/core/durable_commit.go b/pkg/graph/internal/core/durable_commit.go
+index 1d4db5b..1839a80 100644
+--- a/pkg/graph/internal/core/durable_commit.go
++++ b/pkg/graph/internal/core/durable_commit.go
+@@ -14,10 +14,11 @@ import "fmt"
+ // change-log records minted, not rolled back) and its operations stay pending
+ // for the next flush.
+ func (c *Core) flushDurableCommit() error {
+-	if c.durableFlush == nil {
++	df, ok := c.store.(interface{ DurableFlush() error }) // MUTANT M1: flush regardless of the flag
++	if !ok {
+ 		return nil
+ 	}
+-	if err := c.durableFlush.DurableFlush(); err != nil {
++	if err := df.DurableFlush(); err != nil {
+ 		return fmt.Errorf("%w: %w", ErrCommitNotDurable, err)
+ 	}
+ 	return nil
