@@ -1,0 +1,43 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkScanColumnsTemporalOpts/memory/ScanNodeColumns/none-32         	     367	   7988137 ns/op	  583560 B/op	      44 allocs/op
+BenchmarkScanColumnsTemporalOpts/memory/ScanNodeColumns/none-32         	     174	   6090598 ns/op	  583560 B/op	      44 allocs/op
+BenchmarkScanColumnsTemporalOpts/memory/ScanNodeColumns/none-32         	     435	   2775159 ns/op	  583560 B/op	      44 allocs/op
+BenchmarkScanColumnsTemporalOpts/memory/ScanRelColumns/none-32          	     350	   5172355 ns/op	  682008 B/op	      49 allocs/op
+BenchmarkScanColumnsTemporalOpts/memory/ScanRelColumns/none-32          	     308	   4526088 ns/op	  682009 B/op	      49 allocs/op
+BenchmarkScanColumnsTemporalOpts/memory/ScanRelColumns/none-32          	     453	   3202137 ns/op	  682020 B/op	      49 allocs/op
+--- FAIL: BenchmarkScanColumnsTemporalOpts/memory/ScanNodeColumns/ValidAt
+    scan_temporal_opts_bench_test.go:80: rows 18000, want 20000
+--- FAIL: BenchmarkScanColumnsTemporalOpts/memory/ScanRelColumns/ValidAt
+    scan_temporal_opts_bench_test.go:101: rows 18000, want 20000
+BenchmarkScanColumnsTemporalOpts/memory/ScanNodeColumns/TxPin-32        	     434	   2522394 ns/op	  583560 B/op	      44 allocs/op
+BenchmarkScanColumnsTemporalOpts/memory/ScanNodeColumns/TxPin-32        	     468	   2649217 ns/op	  583560 B/op	      44 allocs/op
+BenchmarkScanColumnsTemporalOpts/memory/ScanNodeColumns/TxPin-32        	     475	   2579547 ns/op	  583560 B/op	      44 allocs/op
+BenchmarkScanColumnsTemporalOpts/memory/ScanRelColumns/TxPin-32         	     382	   2830245 ns/op	  682008 B/op	      49 allocs/op
+BenchmarkScanColumnsTemporalOpts/memory/ScanRelColumns/TxPin-32         	     438	   2730174 ns/op	  682008 B/op	      49 allocs/op
+BenchmarkScanColumnsTemporalOpts/memory/ScanRelColumns/TxPin-32         	     432	   2676691 ns/op	  682008 B/op	      49 allocs/op
+--- FAIL: BenchmarkScanColumnsTemporalOpts/memory
+BenchmarkScanColumnsTemporalOpts/badger/ScanNodeColumns/none-32         	    1768	    696320 ns/op	  428742 B/op	   20222 allocs/op
+BenchmarkScanColumnsTemporalOpts/badger/ScanNodeColumns/none-32         	    1526	    801410 ns/op	  416050 B/op	   20043 allocs/op
+BenchmarkScanColumnsTemporalOpts/badger/ScanNodeColumns/none-32         	    1964	    590787 ns/op	  416047 B/op	   20043 allocs/op
+BenchmarkScanColumnsTemporalOpts/badger/ScanRelColumns/none-32          	    1436	    825127 ns/op	  530053 B/op	   20250 allocs/op
+BenchmarkScanColumnsTemporalOpts/badger/ScanRelColumns/none-32          	    1561	    789190 ns/op	  514546 B/op	   20049 allocs/op
+BenchmarkScanColumnsTemporalOpts/badger/ScanRelColumns/none-32          	    1500	    809714 ns/op	  514546 B/op	   20049 allocs/op
+--- FAIL: BenchmarkScanColumnsTemporalOpts/badger/ScanNodeColumns/ValidAt
+    scan_temporal_opts_bench_test.go:80: rows 18000, want 20000
+--- FAIL: BenchmarkScanColumnsTemporalOpts/badger/ScanRelColumns/ValidAt
+    scan_temporal_opts_bench_test.go:101: rows 18000, want 20000
+BenchmarkScanColumnsTemporalOpts/badger/ScanNodeColumns/TxPin-32        	    1989	    598585 ns/op	  416047 B/op	   20043 allocs/op
+BenchmarkScanColumnsTemporalOpts/badger/ScanNodeColumns/TxPin-32        	    1960	    602646 ns/op	  416050 B/op	   20043 allocs/op
+BenchmarkScanColumnsTemporalOpts/badger/ScanNodeColumns/TxPin-32        	    2029	    579699 ns/op	  416047 B/op	   20043 allocs/op
+BenchmarkScanColumnsTemporalOpts/badger/ScanRelColumns/TxPin-32         	    1492	    851206 ns/op	  514546 B/op	   20049 allocs/op
+BenchmarkScanColumnsTemporalOpts/badger/ScanRelColumns/TxPin-32         	    1393	    821444 ns/op	  514546 B/op	   20049 allocs/op
+BenchmarkScanColumnsTemporalOpts/badger/ScanRelColumns/TxPin-32         	    1476	    816781 ns/op	  514546 B/op	   20049 allocs/op
+--- FAIL: BenchmarkScanColumnsTemporalOpts/badger
+--- FAIL: BenchmarkScanColumnsTemporalOpts
+FAIL
+exit status 1
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	32.347s
+FAIL

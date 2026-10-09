@@ -1,0 +1,38 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkScanColumnsTemporalOpts/memory/ScanNodeColumns/none-32         	     487	   2896977 ns/op	  583560 B/op	      44 allocs/op
+BenchmarkScanColumnsTemporalOpts/memory/ScanNodeColumns/none-32         	     457	   2519685 ns/op	  583560 B/op	      44 allocs/op
+BenchmarkScanColumnsTemporalOpts/memory/ScanNodeColumns/none-32         	     454	   2973439 ns/op	  583560 B/op	      44 allocs/op
+BenchmarkScanColumnsTemporalOpts/memory/ScanNodeColumns/none-32         	     390	   2606985 ns/op	  583560 B/op	      44 allocs/op
+BenchmarkScanColumnsTemporalOpts/memory/ScanNodeColumns/none-32         	     489	   2335485 ns/op	  583572 B/op	      44 allocs/op
+BenchmarkScanColumnsTemporalOpts/memory/ScanNodeColumns/none-32         	     481	   2362919 ns/op	  583572 B/op	      44 allocs/op
+BenchmarkScanColumnsTemporalOpts/memory/ScanNodeColumns/none-32         	     477	   2377585 ns/op	  583560 B/op	      44 allocs/op
+BenchmarkScanColumnsTemporalOpts/memory/ScanNodeColumns/none-32         	     549	   2301561 ns/op	  583560 B/op	      44 allocs/op
+BenchmarkScanColumnsTemporalOpts/memory/ScanRelColumns/none-32          	     444	   2691648 ns/op	  682008 B/op	      49 allocs/op
+BenchmarkScanColumnsTemporalOpts/memory/ScanRelColumns/none-32          	     445	   2433429 ns/op	  682008 B/op	      49 allocs/op
+BenchmarkScanColumnsTemporalOpts/memory/ScanRelColumns/none-32          	     450	   2604564 ns/op	  682008 B/op	      49 allocs/op
+BenchmarkScanColumnsTemporalOpts/memory/ScanRelColumns/none-32          	     492	   2570867 ns/op	  682008 B/op	      49 allocs/op
+BenchmarkScanColumnsTemporalOpts/memory/ScanRelColumns/none-32          	     502	   2492301 ns/op	  682019 B/op	      49 allocs/op
+BenchmarkScanColumnsTemporalOpts/memory/ScanRelColumns/none-32          	     391	   2691478 ns/op	  682008 B/op	      49 allocs/op
+BenchmarkScanColumnsTemporalOpts/memory/ScanRelColumns/none-32          	     424	   2604917 ns/op	  682021 B/op	      49 allocs/op
+BenchmarkScanColumnsTemporalOpts/memory/ScanRelColumns/none-32          	     454	   2477290 ns/op	  682008 B/op	      49 allocs/op
+BenchmarkScanColumnsTemporalOpts/badger/ScanNodeColumns/none-32         	    1798	    619784 ns/op	  430661 B/op	   20355 allocs/op
+BenchmarkScanColumnsTemporalOpts/badger/ScanNodeColumns/none-32         	    2134	    560126 ns/op	  416047 B/op	   20043 allocs/op
+BenchmarkScanColumnsTemporalOpts/badger/ScanNodeColumns/none-32         	    2098	    564856 ns/op	  416047 B/op	   20043 allocs/op
+BenchmarkScanColumnsTemporalOpts/badger/ScanNodeColumns/none-32         	    2155	    560942 ns/op	  416047 B/op	   20043 allocs/op
+BenchmarkScanColumnsTemporalOpts/badger/ScanNodeColumns/none-32         	    1927	    604146 ns/op	  416047 B/op	   20043 allocs/op
+BenchmarkScanColumnsTemporalOpts/badger/ScanNodeColumns/none-32         	    1826	    577599 ns/op	  416047 B/op	   20043 allocs/op
+BenchmarkScanColumnsTemporalOpts/badger/ScanNodeColumns/none-32         	    2065	    628381 ns/op	  416048 B/op	   20043 allocs/op
+BenchmarkScanColumnsTemporalOpts/badger/ScanNodeColumns/none-32         	    2095	    573690 ns/op	  416047 B/op	   20043 allocs/op
+BenchmarkScanColumnsTemporalOpts/badger/ScanRelColumns/none-32          	    1250	    828975 ns/op	  532361 B/op	   20280 allocs/op
+BenchmarkScanColumnsTemporalOpts/badger/ScanRelColumns/none-32          	    1602	    756354 ns/op	  514545 B/op	   20049 allocs/op
+BenchmarkScanColumnsTemporalOpts/badger/ScanRelColumns/none-32          	    1419	    859218 ns/op	  514546 B/op	   20049 allocs/op
+BenchmarkScanColumnsTemporalOpts/badger/ScanRelColumns/none-32          	    1419	    793232 ns/op	  514546 B/op	   20049 allocs/op
+BenchmarkScanColumnsTemporalOpts/badger/ScanRelColumns/none-32          	    1532	    799151 ns/op	  514546 B/op	   20049 allocs/op
+BenchmarkScanColumnsTemporalOpts/badger/ScanRelColumns/none-32          	    1449	    778944 ns/op	  514545 B/op	   20049 allocs/op
+BenchmarkScanColumnsTemporalOpts/badger/ScanRelColumns/none-32          	    1512	    781105 ns/op	  514545 B/op	   20049 allocs/op
+BenchmarkScanColumnsTemporalOpts/badger/ScanRelColumns/none-32          	    1627	    761639 ns/op	  514545 B/op	   20049 allocs/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	38.506s
