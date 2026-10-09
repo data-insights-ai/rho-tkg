@@ -1,0 +1,75 @@
+=== RUN   TestAtTxReImportOverlapsEarlierLife
+=== PAUSE TestAtTxReImportOverlapsEarlierLife
+=== CONT  TestAtTxReImportOverlapsEarlierLife
+=== RUN   TestAtTxReImportOverlapsEarlierLife/memory/node
+=== RUN   TestAtTxReImportOverlapsEarlierLife/memory/rel
+=== RUN   TestAtTxReImportOverlapsEarlierLife/badger/node
+=== RUN   TestAtTxReImportOverlapsEarlierLife/badger/rel
+=== RUN   TestAtTxReImportOverlapsEarlierLife/sharded/node
+    effective_timeline_life_end_test.go:303: node (update at 1791562947245, delete at 1791562947247):
+          valid 1791562947245 pin 1791562947249: x=1, want 9
+          valid 1791562947245 pin 0: x=1, want 9
+          valid 1791562947246 pin 1791562947249: x=1, want 9
+          valid 1791562947246 pin 0: x=1, want 9
+          valid 1791562947247 pin 1791562947249: x=none, want 9
+          valid 1791562947247 pin 0: x=none, want 9
+          valid 1791563947247 pin 1791562947249: x=none, want 9
+          valid 1791563947247 pin 0: x=none, want 9
+        chain:
+          v0 vf=1000 vt=0 tx=1791562947244..1791562947245 del=0 cur=false x=0
+          v0 vf=5000 vt=0 tx=1791562947248..0 del=0 cur=true x=9
+          v1 vf=0 vt=1791562947247 tx=1791562947245..1791562947247 del=1791562947247 cur=false x=1
+=== RUN   TestAtTxReImportOverlapsEarlierLife/sharded/rel
+    effective_timeline_life_end_test.go:303: rel (update at 1791562947251, delete at 1791562947253):
+          valid 1791562947251 pin 1791562947256: x=1, want 9
+          valid 1791562947251 pin 0: x=1, want 9
+          valid 1791562947252 pin 1791562947256: x=1, want 9
+          valid 1791562947252 pin 0: x=1, want 9
+          valid 1791562947253 pin 1791562947256: x=none, want 9
+          valid 1791562947253 pin 0: x=none, want 9
+          valid 1791563947253 pin 1791562947256: x=none, want 9
+          valid 1791563947253 pin 0: x=none, want 9
+        chain:
+          v0 vf=1000 vt=0 tx=1791562947250..1791562947251 del=0 cur=false x=0
+          v0 vf=5000 vt=0 tx=1791562947255..0 del=0 cur=true x=9
+          v1 vf=0 vt=1791562947253 tx=1791562947251..1791562947253 del=1791562947253 cur=false x=1
+=== RUN   TestAtTxReImportOverlapsEarlierLife/tiered/node
+    effective_timeline_life_end_test.go:303: node (update at 1791562947291, delete at 1791562947293):
+          valid 1791562947291 pin 1791562947295: x=1, want 9
+          valid 1791562947291 pin 0: x=1, want 9
+          valid 1791562947292 pin 1791562947295: x=1, want 9
+          valid 1791562947292 pin 0: x=1, want 9
+          valid 1791562947293 pin 1791562947295: x=none, want 9
+          valid 1791562947293 pin 0: x=none, want 9
+          valid 1791563947293 pin 1791562947295: x=none, want 9
+          valid 1791563947293 pin 0: x=none, want 9
+        chain:
+          v0 vf=1000 vt=0 tx=1791562947290..1791562947291 del=0 cur=false x=0
+          v0 vf=5000 vt=0 tx=1791562947294..0 del=0 cur=true x=9
+          v1 vf=0 vt=1791562947293 tx=1791562947291..1791562947293 del=1791562947293 cur=false x=1
+=== RUN   TestAtTxReImportOverlapsEarlierLife/tiered/rel
+    effective_timeline_life_end_test.go:303: rel (update at 1791562947360, delete at 1791562947362):
+          valid 1791562947360 pin 1791562947365: x=1, want 9
+          valid 1791562947360 pin 0: x=1, want 9
+          valid 1791562947361 pin 1791562947365: x=1, want 9
+          valid 1791562947361 pin 0: x=1, want 9
+          valid 1791562947362 pin 1791562947365: x=none, want 9
+          valid 1791562947362 pin 0: x=none, want 9
+          valid 1791563947362 pin 1791562947365: x=none, want 9
+          valid 1791563947362 pin 0: x=none, want 9
+        chain:
+          v0 vf=1000 vt=0 tx=1791562947359..1791562947360 del=0 cur=false x=0
+          v0 vf=5000 vt=0 tx=1791562947364..0 del=0 cur=true x=9
+          v1 vf=0 vt=1791562947362 tx=1791562947360..1791562947362 del=1791562947362 cur=false x=1
+--- FAIL: TestAtTxReImportOverlapsEarlierLife (0.19s)
+    --- PASS: TestAtTxReImportOverlapsEarlierLife/memory/node (0.00s)
+    --- PASS: TestAtTxReImportOverlapsEarlierLife/memory/rel (0.00s)
+    --- PASS: TestAtTxReImportOverlapsEarlierLife/badger/node (0.04s)
+    --- PASS: TestAtTxReImportOverlapsEarlierLife/badger/rel (0.01s)
+    --- FAIL: TestAtTxReImportOverlapsEarlierLife/sharded/node (0.04s)
+    --- FAIL: TestAtTxReImportOverlapsEarlierLife/sharded/rel (0.00s)
+    --- FAIL: TestAtTxReImportOverlapsEarlierLife/tiered/node (0.04s)
+    --- FAIL: TestAtTxReImportOverlapsEarlierLife/tiered/rel (0.07s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.238s
+FAIL

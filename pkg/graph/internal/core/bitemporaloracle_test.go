@@ -167,8 +167,24 @@ func (e *oracleEntity) txFilter(txAt types.Instant) []oracleRow {
 	out := e.txFilterCaptureOrder(txAt)
 	// The resolver classifies a chain in ascending VERSION order (lesson 73):
 	// e.rows is history ‖ current, which is not version-ordered when a bounded
-	// cascade left the current row below the rows it appended.
-	sort.SliceStable(out, func(i, j int) bool { return out[i].version < out[j].version })
+	// cascade left the current row below the rows it appended. Rows of a later
+	// life (recorded after a delete the chain holds: a re-imported ID, whose
+	// versions start again) order after every row of the earlier life.
+	life := func(r oracleRow) int {
+		n := 0
+		for _, x := range e.rows {
+			if x.deletedAt != 0 && x.deletedAt < r.txFrom {
+				n++
+			}
+		}
+		return n
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if li, lj := life(out[i]), life(out[j]); li != lj {
+			return li < lj
+		}
+		return out[i].version < out[j].version
+	})
 	return out
 }
 
