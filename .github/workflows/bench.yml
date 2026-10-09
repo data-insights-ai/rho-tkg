@@ -44,7 +44,7 @@ jobs:
       # Core regression canaries only — everything EXCEPT the two multi-minute
       # measurement studies (PinnedScanScaling, ChangeLogTxSerialization).
       # "Ingest" is a deliberate prefix match covering every ingest variant.
-      BENCH_FILTER: "Benchmark(PointReadHit|LabelScan10k|TwoHop|TemporalPoint|AsOfPin|Ingest|BulkAddNodes10k|ANNSearch10k|OrderedTopK|CompositeLookup|RelPropertyLookup10k|RelHistoryPlain|RelHasHistory)"
+      BENCH_FILTER: "Benchmark(PointReadHit|LabelScan10k|TwoHop|TemporalPoint|AsOfPin|Ingest|BulkAddNodes10k|ANNSearch10k|OrderedTopK|CompositeLookup|RelPropertyLookup10k|RelHistoryPlain|RelHasHistory|RelEffectiveTimeline|RelEffectiveLoop|ForEachRelEffectiveByType)"
     steps:
       - uses: actions/checkout@v7
         with:
