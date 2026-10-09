@@ -73,12 +73,7 @@ func (ms *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 	}
 
 	// Write history entry.
-	inner, ok := ms.nodeHistory[nid]
-	if !ok {
-		inner = make(map[uint32]*types.Node)
-		ms.nodeHistory[nid] = inner
-	}
-	inner[prevVersion] = ms.historyNode(prevState)
+	ms.putNodeHistoryRowLocked(nid, prevVersion, prevState)
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState)) // BACKLOG 10c
 
 	// Remove only the specified token from the label index.
@@ -163,12 +158,7 @@ func (ms *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 	}
 
 	// Write history entry.
-	inner, ok := ms.nodeHistory[nid]
-	if !ok {
-		inner = make(map[uint32]*types.Node)
-		ms.nodeHistory[nid] = inner
-	}
-	inner[prevVersion] = ms.historyNode(prevState)
+	ms.putNodeHistoryRowLocked(nid, prevVersion, prevState)
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState)) // BACKLOG 10c
 
 	// Add tok to the label index.
@@ -243,12 +233,7 @@ func (ms *Store) deleteRelWithHistoryRouted(rid types.RelID, prevVersion uint32,
 		return err
 	}
 	// Write tombstone to history before deleting live entity.
-	inner, ok := ms.relHistory[rid]
-	if !ok {
-		inner = make(map[uint32]*types.Relationship)
-		ms.relHistory[rid] = inner
-	}
-	inner[prevVersion] = ms.historyRel(tombstone)
+	ms.putRelHistoryRowLocked(rid, prevVersion, tombstone)
 	ms.bumpRelBeliefWatermarkLocked(rid, relTxFrom(tombstone)) // BACKLOG 10c
 
 	if err := ms.deleteRelLocked(rid); err != nil {
@@ -351,22 +336,12 @@ func (ms *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion u
 	}
 
 	// Write node tombstone to history.
-	nodeInner, ok := ms.nodeHistory[nid]
-	if !ok {
-		nodeInner = make(map[uint32]*types.Node)
-		ms.nodeHistory[nid] = nodeInner
-	}
-	nodeInner[prevNodeVersion] = ms.historyNode(nodeTombstone)
+	ms.putNodeHistoryRowLocked(nid, prevNodeVersion, nodeTombstone)
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(nodeTombstone)) // BACKLOG 10c
 
 	// Write rel tombstones to history.
 	for _, rt := range relTombstones {
-		relInner, ok := ms.relHistory[rt.ID]
-		if !ok {
-			relInner = make(map[uint32]*types.Relationship)
-			ms.relHistory[rt.ID] = relInner
-		}
-		relInner[rt.PrevVersion] = ms.historyRel(rt.Tombstone)
+		ms.putRelHistoryRowLocked(rt.ID, rt.PrevVersion, rt.Tombstone)
 		ms.bumpRelBeliefWatermarkLocked(rt.ID, relTxFrom(rt.Tombstone)) // BACKLOG 10c
 	}
 
@@ -427,12 +402,7 @@ func (ms *Store) putNodeVersionRouted(nid types.NodeID, version uint32, n *types
 		return err
 	}
 
-	inner, ok := ms.nodeHistory[nid]
-	if !ok {
-		inner = make(map[uint32]*types.Node)
-		ms.nodeHistory[nid] = inner
-	}
-	inner[version] = ms.historyNode(n)
+	ms.putNodeHistoryRowLocked(nid, version, n)
 	ms.recordNodeLabelMembersLocked(n)                   // a historical version may carry labels the current row dropped
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(n)) // BACKLOG 10c — the cascade's bounded-correction append door
 	return ms.logNodeHistoryVersionRoutedLocked(version, n, token)
@@ -638,12 +608,7 @@ func (ms *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 		return err
 	}
 
-	inner, ok := ms.relHistory[rid]
-	if !ok {
-		inner = make(map[uint32]*types.Relationship)
-		ms.relHistory[rid] = inner
-	}
-	inner[version] = ms.historyRel(r)
+	ms.putRelHistoryRowLocked(rid, version, r)
 	ms.recordRelTypeMemberLocked(r) // transaction-time rel-type membership (history version)
 	// A live or already-covered relationship's envelope covers every row it
 	// has had since the index existed (a delete keeps the envelope), so this
@@ -882,12 +847,7 @@ func (ms *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 	}
 
 	// Write history entry.
-	inner, ok := ms.nodeHistory[nid]
-	if !ok {
-		inner = make(map[uint32]*types.Node)
-		ms.nodeHistory[nid] = inner
-	}
-	inner[prevVersion] = ms.historyNode(prevState)
+	ms.putNodeHistoryRowLocked(nid, prevVersion, prevState)
 	ms.bumpNodeBeliefWatermarkLocked(nid, nodeTxFrom(prevState)) // BACKLOG 10c
 
 	ms.removeNodePropertyKeyCounts(old)
@@ -967,12 +927,7 @@ func (ms *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 	}
 
 	// Write history entry.
-	inner, ok := ms.relHistory[id]
-	if !ok {
-		inner = make(map[uint32]*types.Relationship)
-		ms.relHistory[id] = inner
-	}
-	inner[prevVersion] = ms.historyRel(prevState)
+	ms.putRelHistoryRowLocked(id, prevVersion, prevState)
 	ms.bumpRelBeliefWatermarkLocked(id, relTxFrom(prevState)) // BACKLOG 10c
 
 	// K3b: refresh the rel property index (property values may have changed).

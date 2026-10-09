@@ -260,6 +260,15 @@ type Store struct {
 	nodeBeliefWatermark map[types.NodeID]types.Instant
 	relBeliefWatermark  map[types.RelID]types.Instant
 
+	// History stamps (store.HistoryStampsCapability, backlog 30,
+	// memorystore_history_stamps.go): per ID, the cached fold of its history
+	// rows' newest TxFrom / TxTo-or-DeletedAt with the row count it was
+	// computed at. Writers hold ms.mu exclusively; readers share it and take
+	// histStampsMu for these two maps.
+	histStampsMu   sync.RWMutex
+	nodeHistStamps map[types.NodeID]histStampsEntry
+	relHistStamps  map[types.RelID]histStampsEntry
+
 	// ADR-0011 S2: declared bulk relationship types and their in-RAM column
 	// segments (see memorystore_segments.go). All nil/zero until a type is
 	// declared; guarded by ms.mu except segDue (atomic).
@@ -417,6 +426,9 @@ func (ms *Store) Clear() error {
 	ms.inIdx = make(map[types.NodeID]*adjSet)
 	ms.nodeHistory = make(map[types.NodeID]map[uint32]*types.Node)
 	ms.relHistory = make(map[types.RelID]map[uint32]*types.Relationship)
+	ms.histStampsMu.Lock()
+	ms.nodeHistStamps, ms.relHistStamps = nil, nil
+	ms.histStampsMu.Unlock()
 	ms.propertyIndexes = make(map[indexpkg.PropertyIndexKey]*indexpkg.PropertyIndex)
 	ms.relPropertyIndexes = make(map[indexpkg.RelPropertyIndexKey]*indexpkg.PropertyIndex)
 	ms.compositeIndexes = make(map[indexpkg.CompositeIndexKey]*indexpkg.CompositePropertyIndex)

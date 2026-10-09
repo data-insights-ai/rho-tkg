@@ -49,6 +49,7 @@ func (ms *Store) SetNodeHistoryEntryForTest(id types.NodeID, version uint32, n *
 		return
 	}
 	hist[version] = n.DeepCopy()
+	ms.invalidateNodeHistStampsLocked(id)
 }
 
 // SetNodeForTest replaces the stored current node entry with a deep copy of n.
