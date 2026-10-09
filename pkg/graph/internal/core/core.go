@@ -535,6 +535,15 @@ var (
 	// explicitly enabled, mirroring ErrRetentionPurgeDisabled.
 	ErrResetDisabled = errors.New("graph: reset is disabled (set Config.AllowReset to enable g.Admin().Reset)")
 
+	// ErrCommitNotDurable is returned by GraphTx.Commit, Batch.Execute and the
+	// strong ingest applier under Config.DurableCommit when the group committed
+	// (it is visible, cannot be rolled back, and its change-log records are
+	// minted) but the store could not make it durable. The group stays in the
+	// store's pending write buffer; the next successful flush (the next durable
+	// commit, an empty Tx().Run, the background flush, or Close) persists it.
+	// Until then a crash can lose it. The store's error is wrapped alongside.
+	ErrCommitNotDurable = errors.New("graph: commit applied but not durable")
+
 	// ErrExactErasureDisabled is returned unless the destructive exact-erasure
 	// admin door was explicitly enabled.
 	ErrExactErasureDisabled = errors.New("graph: exact erasure is disabled (set Config.AllowExactErasure to enable g.Admin().ExactErase)")
@@ -799,6 +808,24 @@ type Config struct {
 	// full history and index residue without tombstones, refuses scope escape,
 	// and is unavailable while any change-log material is retained.
 	AllowExactErasure bool
+
+	// DurableCommit makes every commit group durable before its door returns
+	// success: GraphTx.Commit (and so Tx().Run / RunContext / RunWithLSN),
+	// Batch.Execute and the strong ingest applier call the store's
+	// store.DurableFlushCapability once, after the group is applied, which
+	// writes the pending write buffer and fsyncs the write-ahead log of every
+	// open shard that took writes. A crash after the door returned keeps the
+	// whole group; a crash before it returned can keep any subset (not
+	// promised either way). Rollback never flushes. A failed flush returns
+	// ErrCommitNotDurable: the group is committed in memory and stays pending
+	// for the next flush. Not covered: standalone mutations and
+	// concurrent-mode ingest Submit, which keep the async flush. A buffer
+	// above Badger's transaction size limit is split by Badger, so a crash
+	// during that flush can persist a subset. New fails with
+	// ErrCapabilityNotSupported when the store has no stable storage (memory
+	// store, BadgerInMemory, an in-memory sharded store). Default false: no
+	// flush on commit, today's behavior.
+	DurableCommit bool
 
 	// IngestLanes is the number of extra per-lane UNIFIED ID generators built for
 	// concurrent-ingest write parallelism (ADR-0007 S4). Zero (default) keeps the

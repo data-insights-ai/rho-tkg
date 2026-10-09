@@ -1,0 +1,121 @@
+=== RUN   TestDurableCommitCrashChild
+    durable_commit_crash_test.go:185: crash child: run only by the durable-commit parent tests
+--- SKIP: TestDurableCommitCrashChild (0.00s)
+=== RUN   TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup
+=== RUN   TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/tx
+=== RUN   TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/run
+=== RUN   TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/batch
+=== RUN   TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/ingest-group-commit
+--- PASS: TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup (2.07s)
+    --- PASS: TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/tx (0.31s)
+    --- PASS: TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/run (0.32s)
+    --- PASS: TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/batch (0.68s)
+    --- PASS: TestDurableCommitOff_CrashBeforeBackgroundFlushLosesGroup/ingest-group-commit (0.75s)
+=== RUN   TestDurableCommitOff_NoStoreFlushOnCommit
+--- PASS: TestDurableCommitOff_NoStoreFlushOnCommit (0.41s)
+=== RUN   TestDurableCommit_CrashAfterReturnKeepsWholeGroup_Badger
+=== RUN   TestDurableCommit_CrashAfterReturnKeepsWholeGroup_Badger/tx
+    durable_commit_test.go:70: DurableCommit: 0 nodes, 0 rels on disk after a crash after tx returned, want 22/1
+=== RUN   TestDurableCommit_CrashAfterReturnKeepsWholeGroup_Badger/run
+    durable_commit_test.go:70: DurableCommit: 0 nodes, 0 rels on disk after a crash after run returned, want 22/1
+=== RUN   TestDurableCommit_CrashAfterReturnKeepsWholeGroup_Badger/batch
+    durable_commit_test.go:70: DurableCommit: 0 nodes, 0 rels on disk after a crash after batch returned, want 22/1
+=== RUN   TestDurableCommit_CrashAfterReturnKeepsWholeGroup_Badger/ingest
+--- FAIL: TestDurableCommit_CrashAfterReturnKeepsWholeGroup_Badger (2.61s)
+    --- FAIL: TestDurableCommit_CrashAfterReturnKeepsWholeGroup_Badger/tx (0.78s)
+    --- FAIL: TestDurableCommit_CrashAfterReturnKeepsWholeGroup_Badger/run (0.61s)
+    --- FAIL: TestDurableCommit_CrashAfterReturnKeepsWholeGroup_Badger/batch (0.89s)
+    --- PASS: TestDurableCommit_CrashAfterReturnKeepsWholeGroup_Badger/ingest (0.33s)
+=== RUN   TestDurableCommit_CrashAfterReturnKeepsWholeGroup_TieredTwoShards
+=== RUN   TestDurableCommit_CrashAfterReturnKeepsWholeGroup_TieredTwoShards/tx
+    durable_commit_test.go:87: tiered DurableCommit: 0 nodes, 0 rels on disk after the crash, want 22/1 (both shards durable)
+=== RUN   TestDurableCommit_CrashAfterReturnKeepsWholeGroup_TieredTwoShards/batch
+    durable_commit_test.go:87: tiered DurableCommit: 0 nodes, 0 rels on disk after the crash, want 22/1 (both shards durable)
+--- FAIL: TestDurableCommit_CrashAfterReturnKeepsWholeGroup_TieredTwoShards (1.59s)
+    --- FAIL: TestDurableCommit_CrashAfterReturnKeepsWholeGroup_TieredTwoShards/tx (0.87s)
+    --- FAIL: TestDurableCommit_CrashAfterReturnKeepsWholeGroup_TieredTwoShards/batch (0.72s)
+=== RUN   TestDurableCommit_CrashAfterReturnKeepsWholeGroup_ShardedTwoSlots
+=== RUN   TestDurableCommit_CrashAfterReturnKeepsWholeGroup_ShardedTwoSlots/tx
+    durable_commit_test.go:103: sharded DurableCommit: 0 nodes, 0 rels on disk after the crash, want 22/1 (both slots durable)
+=== RUN   TestDurableCommit_CrashAfterReturnKeepsWholeGroup_ShardedTwoSlots/batch
+    durable_commit_test.go:103: sharded DurableCommit: 0 nodes, 0 rels on disk after the crash, want 22/1 (both slots durable)
+--- FAIL: TestDurableCommit_CrashAfterReturnKeepsWholeGroup_ShardedTwoSlots (1.13s)
+    --- FAIL: TestDurableCommit_CrashAfterReturnKeepsWholeGroup_ShardedTwoSlots/tx (0.56s)
+    --- FAIL: TestDurableCommit_CrashAfterReturnKeepsWholeGroup_ShardedTwoSlots/batch (0.58s)
+=== RUN   TestDurableCommit_OneDurableFlushPerGroup
+    durable_commit_test.go:142: tx: 0 durable flushes for one group, want exactly 1
+    durable_commit_test.go:145: tx: 48 writes still pending after the door returned under DurableCommit
+    durable_commit_test.go:142: run: 0 durable flushes for one group, want exactly 1
+    durable_commit_test.go:145: run: 96 writes still pending after the door returned under DurableCommit
+    durable_commit_test.go:142: batch: 0 durable flushes for one group, want exactly 1
+    durable_commit_test.go:145: batch: 144 writes still pending after the door returned under DurableCommit
+    durable_commit_test.go:142: ingest: 0 durable flushes for one group, want exactly 1
+    durable_commit_test.go:142: run-context: 0 durable flushes for one group, want exactly 1
+    durable_commit_test.go:145: run-context: 2 writes still pending after the door returned under DurableCommit
+    durable_commit_test.go:142: run-with-lsn: 0 durable flushes for one group, want exactly 1
+    durable_commit_test.go:145: run-with-lsn: 4 writes still pending after the door returned under DurableCommit
+--- FAIL: TestDurableCommit_OneDurableFlushPerGroup (0.22s)
+=== RUN   TestDurableCommit_OffNeverDurableFlushes
+--- PASS: TestDurableCommit_OffNeverDurableFlushes (0.21s)
+=== RUN   TestDurableCommit_RollbackDoesNotFlush
+--- PASS: TestDurableCommit_RollbackDoesNotFlush (0.16s)
+=== RUN   TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending
+=== RUN   TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending/tx
+    durable_commit_test.go:214: Commit: got <nil>, want ErrCommitNotDurable wrapping the store error
+=== RUN   TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending/run
+    durable_commit_test.go:229: Run: got <nil>, want ErrCommitNotDurable wrapping the store error
+=== RUN   TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending/batch
+    durable_commit_test.go:241: Batch.Execute: got <nil>, want ErrCommitNotDurable wrapping the store error
+=== RUN   TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending/ingest
+    durable_commit_test.go:258: Submit: got <nil>, want ErrCommitNotDurable wrapping the store error
+--- FAIL: TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending (0.17s)
+    --- FAIL: TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending/tx (0.03s)
+    --- FAIL: TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending/run (0.00s)
+    --- FAIL: TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending/batch (0.00s)
+    --- FAIL: TestDurableCommit_FlushErrorSurfacesAndGroupStaysPending/ingest (0.01s)
+=== RUN   TestDurableCommit_NewDeclinesStoreWithoutStableStorage
+=== RUN   TestDurableCommit_NewDeclinesStoreWithoutStableStorage/default-memory
+    durable_commit_test.go:335: New: got <nil>, want ErrCapabilityNotSupported
+=== RUN   TestDurableCommit_NewDeclinesStoreWithoutStableStorage/memory-store
+    durable_commit_test.go:335: New: got <nil>, want ErrCapabilityNotSupported
+=== RUN   TestDurableCommit_NewDeclinesStoreWithoutStableStorage/badger-in-memory-flag
+    durable_commit_test.go:335: New: got <nil>, want ErrCapabilityNotSupported
+=== RUN   TestDurableCommit_NewDeclinesStoreWithoutStableStorage/badger-in-memory-store
+    durable_commit_test.go:335: New: got <nil>, want ErrCapabilityNotSupported
+=== RUN   TestDurableCommit_NewDeclinesStoreWithoutStableStorage/sharded-in-memory
+    durable_commit_test.go:335: New: got <nil>, want ErrCapabilityNotSupported
+=== RUN   TestDurableCommit_NewDeclinesStoreWithoutStableStorage/tiered-in-memory
+    durable_commit_test.go:335: New: got <nil>, want ErrCapabilityNotSupported
+=== RUN   TestDurableCommit_NewDeclinesStoreWithoutStableStorage/badger-dir-accepted
+--- FAIL: TestDurableCommit_NewDeclinesStoreWithoutStableStorage (0.35s)
+    --- FAIL: TestDurableCommit_NewDeclinesStoreWithoutStableStorage/default-memory (0.00s)
+    --- FAIL: TestDurableCommit_NewDeclinesStoreWithoutStableStorage/memory-store (0.00s)
+    --- FAIL: TestDurableCommit_NewDeclinesStoreWithoutStableStorage/badger-in-memory-flag (0.00s)
+    --- FAIL: TestDurableCommit_NewDeclinesStoreWithoutStableStorage/badger-in-memory-store (0.00s)
+    --- FAIL: TestDurableCommit_NewDeclinesStoreWithoutStableStorage/sharded-in-memory (0.00s)
+    --- FAIL: TestDurableCommit_NewDeclinesStoreWithoutStableStorage/tiered-in-memory (0.00s)
+    --- PASS: TestDurableCommit_NewDeclinesStoreWithoutStableStorage/badger-dir-accepted (0.13s)
+=== RUN   TestDurableFlush_Badger_SyncsExactlyWhatWasWritten
+    durable_flush_store_test.go:58: 2 writes pending after DurableFlush, want 0
+--- FAIL: TestDurableFlush_Badger_SyncsExactlyWhatWasWritten (0.14s)
+=== RUN   TestDurableFlush_Badger_SyncWritesNeedsNoExtraFsync
+--- PASS: TestDurableFlush_Badger_SyncWritesNeedsNoExtraFsync (0.46s)
+=== RUN   TestDurableFlush_Badger_SupportAndRefusals
+    durable_flush_store_test.go:118: DurableFlush on a closed store: got <nil>, want ErrStoreClosed
+--- FAIL: TestDurableFlush_Badger_SupportAndRefusals (0.12s)
+=== RUN   TestDurableFlush_Tiered_DrainsEveryTouchedShard
+    durable_flush_store_test.go:161: after DurableFlush: ref 5, hot 43 writes pending, want 0/0
+--- FAIL: TestDurableFlush_Tiered_DrainsEveryTouchedShard (0.47s)
+=== RUN   TestDurableFlush_Tiered_SupportAndRefusals
+    durable_flush_store_test.go:176: in-memory tiered: DurableFlushSupported = true
+--- FAIL: TestDurableFlush_Tiered_SupportAndRefusals (0.08s)
+=== RUN   TestDurableFlush_Sharded_DrainsEverySlotAndRefuses
+    durable_flush_store_test.go:221: slot 0: 44 writes pending after DurableFlush, want 0
+--- FAIL: TestDurableFlush_Sharded_DrainsEverySlotAndRefuses (0.28s)
+=== RUN   TestErrorsDocumentation
+--- PASS: TestErrorsDocumentation (0.00s)
+=== RUN   TestGraphErrorsFileInventoryComplete
+--- PASS: TestGraphErrorsFileInventoryComplete (0.00s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	10.560s
+FAIL
