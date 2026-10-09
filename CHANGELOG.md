@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### One-tick valid intervals are ordinary spans
+
+**Fixed**
+
+- **A row valid for exactly one tick, `[t, t+1)`, is visible to every temporal door.** The
+  resolvers treated `ValidTo == ValidFrom + 1` as the "eclipse" sentinel of the old in-place
+  cascade and skipped it, although no writer has produced that sentinel since the append-only
+  cascade (994df82, 2026-06-12). The store's own predicates do not skip, so two doors disagreed:
+  `Rels().ByType("T", QueryOpts{})` found a `[t, t+1)` edge while `Temporal().RelAt(id, t)`,
+  `RelsAt`, `RelsByTypeAt`, `RelsDuring`, `RelsRelating`, `RelsAtTx`, `RelsDuringTx`, `Snapshot`,
+  `OutgoingRelsAt` / `IncomingRelsAt` and `ByType{ValidAt | ValidStart/ValidEnd}` missed it (node
+  mirrors likewise). Collateral, all fixed by the same change: `CloseVersion(id, vf+1)` was lost
+  (the superseded open row kept answering every later instant); a delete whose instant landed at
+  `vf+1` hid the deleted entity's history row at `vf`; a width-1 `SetNodeVersionInterval` /
+  `SetRelVersionInterval` piece — written directly, or cut by the patch-base split when an
+  existing boundary sits 1 ms from the target's edge — was invisible, so `NodeAt(t)` answered the
+  uncorrected value. Half-open semantics are unchanged: the row matches at `t`, not at `t+1`. The
+  cascade's gap-piece template is now simply the most recent version. Red tests:
+  `TestOneTickSpanVisible_*` (memory, badger, sharded, tiered; nodes and rels; two-phase over
+  transaction-time pins); the bitemporal oracle harness now draws one-tick widths and no longer
+  models the skip.
+- **Behaviour change:** a store holding rows written before 2026-06-12 by a pre-994df82 cascade
+  may still contain real eclipse markers; those rows now become visible as one-tick spans at
+  their `ValidFrom`. No consumer deployment predates that commit. `QueryOpts.IncludeEclipsed`
+  stays a reserved no-op field.
+
 ## [4.43.0] - 2026-10-08
 
 Minor release: the sigma-tkgd store requests, round 3 (Cypher port onto the shared IR):

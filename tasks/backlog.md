@@ -77,10 +77,6 @@ write the failing two-phase test first; drop the item if the test passes.
   needs either a separate tombstone version (store delete contract and chain shape change) or
   readers using `min(ValidTo, DeletedAt)` everywhere (column scans, segments, valid-time
   indexes). v5 replaces in-place tombstones with lifecycle closes.
-- **(KNOWN LIMITATION) 1 ms pieces look eclipsed.** A row with `ValidTo == ValidFrom + 1` is the
-  eclipse sentinel and invisible to valid-time reads. A caller-supplied 1 ms interval was always
-  affected; since the correction-base fix a `SetNodeVersionInterval` piece can also be 1 ms wide
-  when a pre-existing boundary sits 1 ms from `validFrom` or `validTo`.
 
 ---
 
@@ -225,6 +221,7 @@ When consumer pins a shape that needs a **new** rho-tkg primitive, it re-enters
 | CI bench-gate (blocking) | 2026-07-29, `bench.yml` |
 | Item 3 (HIGH) — entity wire widened nested values (small ints, typed slices, typed nil, custom structs); DECIDED 2026-09-24: kind envelope, no write-time normalization | CHANGELOG `[4.37.0]` Fixed |
 | HIGH — badger reads dropped or replaced rows when a flush + eviction landed mid-read (scans, `NodesAsOf`/`RelsAsOf`, point-read cache fills); flush epoch + `scanSnapshot` + `LoadCleanAt`, 2026-09-24 | CHANGELOG `[Unreleased]` Fixed |
+| HIGH — one-tick `[t, t+1)` rows skipped as the eclipse sentinel (ex-KNOWN LIMITATION "1 ms pieces look eclipsed"; CloseVersion at vf+1 lost, delete at vf+1 hid history, width-1 cascade piece invisible); skip removed 2026-10-09 | CHANGELOG `[Unreleased]` "One-tick valid intervals are ordinary spans" |
 
 Recover closed investigation prose via `git log --all -- tasks/backlog.md` if needed.
 
