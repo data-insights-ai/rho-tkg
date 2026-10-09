@@ -85,7 +85,7 @@ process. Pointers into the code for anyone auditing this library:
     (`pkg/graph/internal/storeutil/wire_fuzz_test.go`) — the checked wire
     decode/validate path for nodes and relationships.
 
-  The unreleased nested v5 module adds eleven targets:
+  The unreleased nested v5 module adds thirteen targets:
 
   - `FuzzDecodePosition`, `FuzzRegionSetAlgebra`, `FuzzDecodeScope`,
     `FuzzDecodeOpaqueDescriptor`, `FuzzDecodePointKnowledge`
@@ -99,9 +99,14 @@ process. Pointers into the code for anyone auditing this library:
     `FuzzStrictApplicationAndCheckpoint` (`v5/internal/txnproto/`) — bounded
     historical projection and transaction/application/checkpoint parity.
 
-  All sixteen run weekly (and on-demand) with a bounded per-target fuzztime
+  - `FuzzRecordCanonicalRoundTrip` (`v5/internal/assertion/fuzz_test.go`) —
+    canonical assertion decoding and exact current-record replay.
+  - `FuzzCatalogDecoders` (`v5/internal/graphstore/codec_test.go`) — bounded
+    local-root, catalog and value decode/round-trip admission.
+
+  All eighteen run weekly (and on-demand) with a bounded per-target fuzztime
   in `.github/workflows/fuzz.yml`; each seed corpus also runs as an ordinary
-  test in `make test`. The anchor+delta history decoders
+  test in root `make test` for v4 or `make -C v5 test` for v5. The anchor+delta history decoders
   (`FuzzDecodeNodeHistoryDelta`, `FuzzDecodeRelHistoryDelta`,
   `pkg/graph/internal/storeutil/wire_history_delta_fuzz_test.go`) and the
   column-segment reader (`FuzzOpen`, `FuzzOpenResealed`,

@@ -23,7 +23,7 @@ on:
   workflow_dispatch:
     inputs:
       fuzztime:
-        description: "Per-target fuzz duration (16 targets share a 30-minute job; default 60s)"
+        description: "Per-target fuzz duration (18 targets share a 30-minute job; default 60s)"
         required: false
         default: "60s"
 
@@ -37,7 +37,7 @@ concurrency:
 jobs:
   fuzz:
     runs-on: ubuntu-latest
-    # Sixteen targets at 60s leave 14 nominal minutes for setup/build/artifacts.
+    # Eighteen targets at 60s leave 12 nominal minutes for setup/build/artifacts.
     timeout-minutes: 30
     env:
       FUZZTIME: ${{ inputs.fuzztime || '60s' }}
@@ -108,6 +108,14 @@ jobs:
         working-directory: v5
         run: go test -run '^$' -fuzz=FuzzStrictApplicationAndCheckpoint -fuzztime="$FUZZTIME" ./internal/txnproto/
 
+      - name: FuzzRecordCanonicalRoundTrip (v5)
+        working-directory: v5
+        run: go test -run '^$' -fuzz=FuzzRecordCanonicalRoundTrip -fuzztime="$FUZZTIME" ./internal/assertion/
+
+      - name: FuzzCatalogDecoders (v5)
+        working-directory: v5
+        run: go test -run '^$' -fuzz=FuzzCatalogDecoders -fuzztime="$FUZZTIME" ./internal/graphstore/
+
       - name: Upload any new crashers
         if: failure()
         uses: actions/upload-artifact@v4
@@ -123,4 +131,6 @@ jobs:
             v5/internal/timeblock/testdata/fuzz/**
             v5/internal/graphstate/testdata/fuzz/**
             v5/internal/txnproto/testdata/fuzz/**
+            v5/internal/assertion/testdata/fuzz/**
+            v5/internal/graphstore/testdata/fuzz/**
           retention-days: 14

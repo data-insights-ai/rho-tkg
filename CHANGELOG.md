@@ -78,6 +78,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   caller-visible capacity bounds, not physical allocator, heap or RSS accounting.
   This storage prerequisite is not a durable production graph engine.
 
+- **Bounded local catalogs and assertion records** (`a308f8f`, `667e9c1`):
+  graph-qualified immutable entity/life/value catalogs, a constant-size local
+  root and bounded staging build on retained application views. Pure assertion
+  records/codecs preserve supplied interpretation, role, placement and knowledge
+  with exact current replay and immediate-predecessor validation. Assertion
+  storage attachment and graph pages/materializer/Host integration remain open;
+  these primitives do not establish a production graph engine or capacity result.
+
 - **Pure application batch preflight** (`738719e`):
   `ApplicationPolicy.Preflight(batch, concreteRaftLimits)` shares installation
   shape/work accounting and reports logical retained bytes/records, returning

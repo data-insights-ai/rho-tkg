@@ -185,7 +185,8 @@ deadline expiry. Recovery assertions and deadlines remain intact. Twenty
 repetitions across six crash modes (120 subtests), full serial race, coverage,
 build/vet and pinned gates pass; the parent independently checked 122 hashes
 and focused race. This corrects test evidence, not product persistence behavior.
-Graphstore and the new assertion package remain unaccepted.
+Accepted catalog/assertion prerequisites are recorded below; graph pages and
+transactional assertion attachment remain open.
 
 `ApplicationPolicy.Preflight` (`738719e`) is a pure shared batch shape/work
 check with logical retained-byte/record output and zero usage on error. Concrete
@@ -211,8 +212,36 @@ six-process scalar protocol (`de9e0b7`). Application storage is singleton-voter
 only with retained-data quota backpressure; application GC, transferable
 snapshots and production graph assembly remain open. Allocation-service
 authority is separate from recipient/session epochs; production graph identity
-reuse validation remains open. Production graphstore design remains unaccepted;
+reuse validation remains open. Production graph pages/materializer/Host
+integration remain open;
 public default graph axis/Instant and importer integration remain open.
+
+Accepted local prerequisites `667e9c1` (pure assertion records/codecs) and
+`a308f8f` (bounded namespace catalogs/root/staging) do not install graph pages,
+transactional assertion attachment or a materializer/Host. Assertion currently
+supports five interpretation kinds; a sixth relation kind and integration design
+remain pending. Parent combined isolated v5 build/vet/race/coverage passes
+(90.2%, 137 stable hashes); individual assertion coverage is 95.4% and catalog
+88.6%. Worker pinned Docker gates pass; catalog vulnerability checks find zero
+reachable and four uncalled advisories. Provisional catalog bytes are root 116,
+node 142, LINK relationship 146 and integer PointScopeValue 191 (15-byte reference,
+10-byte unit), excluding keys/application frames/log/CDC/backend/replicas.
+Repeated axis bodies cost 84 bytes; this is not comparative capacity acceptance.
+Separate coordinator verification of actual `a308f8f` compared all 134 archived
+v5 files with their Git blobs; Go 1.26.9 full v5 race (ten packages) and vet pass.
+The committed comparison-input checker passes 17 tests, 93 complete outputs and
+three code-mutant refusals, including input/answer metadata tamper checks. These
+are source/fixture checks, not graph materializer or vendor benchmark acceptance.
+Historical entity-declaration review artifacts (`a538b08`) remain unapplied to
+canonical Go; they do not close attachment or phase acceptance. The revised
+adapter split remains 21 native / 7 preservation / 5 refusal / 9 pending.
+
+Comparison [input fixtures](../docs/v5/reference/independent/comparison-inputs/README.md)
+are accepted as `7d8b75d`: the standalone input-integrity comparator passes
+17 tests, 93 complete outputs and three sensitivity mutants; the fresh main
+independent suite also passes. The parent verified all 116 artifact hashes.
+This is a benchmark fixture/input-integrity prerequisite, not a vendor benchmark
+or space/latency acceptance result.
 
 Reviewed foundations are committed locally as `6ef233c`; the coordinate block
 candidate is `fa0c982`. Neither is a v5 release or phase-completion claim.
