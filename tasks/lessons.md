@@ -597,7 +597,8 @@ Split fragments need fresh version numbers (allocate as `maxVersion+1+i`).
 Eclipsed rows must be invisible to VT queries — use `ValidTo ==
 ValidFrom + 1` (the store rejects `ValidFrom == ValidTo`) and add an
 explicit skip in `resolveNodeVersionAt` / `resolveRelVersionAt` so the
-1-instant width does not cause spurious matches.
+1-instant width does not cause spurious matches. Skip removed 2026-10-09;
+one-tick rows are ordinary spans.
 
 The new-current decision: the cascade row becomes current iff
 `newVT == 0 AND no surviving post-cascade row has a later open-ended
