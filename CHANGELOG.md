@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.48.0] - 2026-10-10
+
+Minor release: pinned property lookups no longer scale with the history (the property tx-membership sidecar,
+sigma-tkgd's handover: a pinned `ByTypeAndProperty` at 100 k relationships with churn 227 ms → 0.13 ms on badger,
+13.8 ms → 0.095 ms on memory), and a re-import of a deleted ID no longer overwrites the earlier life's history
+(pre-existing data loss: the re-import now continues the ID's version numbering above everything stored and links its
+`PrevHash` across lives). **Behaviour change: a backfilled re-import (`AllowTxBackfill`, a raw `tkg_tx_from`) whose
+tx-from is at or below any stamp of that ID's chain now returns `ErrTxOrder` and writes nothing (the documented
+exception in `docs/stability.md`; sigma-tkgd's `/admin/import` is the one known caller that can see it); a plain
+re-import's `Version()` is the earlier life's top + 1 instead of 0.** The older label and relationship-type
+sidecars (K1) also stop pruning rows with an unset (0) first `TxFrom` for `TxAt` reads. Gates on the released
+tree: `make ci-docker` exit 0; sigma-tkgd, ai-soc engine and agent-bookkeeping build and vet against it.
+
 ### Added
 
 - **Temporal property lookups cost the value's ever-members, not the history of the graph** (backlog 8, requested
