@@ -98,3 +98,63 @@ func selectionTemporalMeta(ht bool, vf, vt, tf, tt, ca, ua, da int64) *types.Tem
 		DeletedAt: types.Instant(da),
 	}
 }
+
+// DecodeWireTxStamps is DecodeWireTemporalMeta reduced to the transaction
+// stamps of a FULL (non-delta) row: TxFrom, TxTo and DeletedAt, zeros when the
+// row carries no temporal block. It returns values, so the scanner path
+// allocates nothing; the same errors as DecodeWireTemporalMeta.
+func DecodeWireTxStamps(raw []byte) (txFrom, txTo, deletedAt types.Instant, err error) {
+	w, ok := scanWireTemporalMeta(raw)
+	if !ok {
+		if w, err = decodeWireTemporalMetaSlow(raw); err != nil {
+			return 0, 0, 0, err
+		}
+	}
+	if w.FormatVersion > CurrentWireFormatVersion {
+		return 0, 0, 0, fmt.Errorf("wire tx stamps: row format version %d, this binary supports up to %d: %w",
+			w.FormatVersion, CurrentWireFormatVersion, storepkg.ErrWireFormatVersionUnsupported)
+	}
+	if w.Version < 0 {
+		return 0, 0, 0, fmt.Errorf("wire tx stamps: negative version %d: %w", w.Version, storepkg.ErrCorruptWire)
+	}
+	if !w.HasTemporal {
+		return 0, 0, 0, nil
+	}
+	return types.Instant(w.TxFrom), types.Instant(w.TxTo), types.Instant(w.DeletedAt), nil
+}
+
+// HistoryValueTxStamps returns the transaction stamps of one stored history
+// value: a full row (DecodeWireTxStamps) or a 'D'-tagged delta, whose Meta
+// carries the version's temporal block verbatim (node selects the node or
+// relationship delta decoder).
+func HistoryValueTxStamps(raw []byte, node bool) (txFrom, txTo, deletedAt types.Instant, err error) {
+	if HistoryValueKindOf(raw) != HistoryDelta {
+		return DecodeWireTxStamps(raw)
+	}
+	var tm *types.TemporalMetadata
+	if node {
+		d, err := DecodeNodeHistoryDelta(raw)
+		if err != nil {
+			return 0, 0, 0, err
+		}
+		tm = SelectionTemporalMetaOfNodeWire(d.Meta)
+	} else {
+		d, err := DecodeRelHistoryDelta(raw)
+		if err != nil {
+			return 0, 0, 0, err
+		}
+		tm = SelectionTemporalMetaOfRelWire(d.Meta)
+	}
+	if tm == nil {
+		return 0, 0, 0, nil
+	}
+	return tm.TxFrom, tm.TxTo, tm.DeletedAt, nil
+}
+
+// decodeWireTemporalMetaSlow is the SafeUnmarshal authority behind a declined
+// scan, kept out of line so the scanner path's result stays on the stack.
+func decodeWireTemporalMetaSlow(raw []byte) (wireTemporalMetaPartial, error) {
+	var w wireTemporalMetaPartial
+	err := SafeUnmarshal(raw, &w)
+	return w, err
+}
