@@ -120,6 +120,9 @@ func (q *pageReader) readMeta(k graphstate.ComponentKey) (componentMeta, bool, e
 	if !found || !bytes.Equal(hash, actual[:]) {
 		return componentMeta{}, false, ErrCorrupt
 	}
+	if _, err := q.storedBinding(k, axis); err != nil {
+		return componentMeta{}, false, err
+	}
 	return componentMeta{k, axis, root}, true, nil
 }
 func appendScopeField(dst []byte, s temporal.Scope, l temporal.Limits) ([]byte, error) {
@@ -332,6 +335,14 @@ func (q *pageReader) checkpoint(id uint64, k graphstate.ComponentKey, axis tempo
 	if s.Usage().Pieces() > q.limits.MaxCells {
 		return state.State{}, ErrResourceLimit
 	}
+	if _, err := q.storedBinding(k, axis); err != nil {
+		return state.State{}, err
+	}
+	for _, piece := range s.Pieces() {
+		if err := q.storedCell(k, axis, piece.Cell()); err != nil {
+			return state.State{}, err
+		}
+	}
 	q.work.DecodedCells += s.Usage().Pieces()
 	return s, nil
 }
@@ -396,6 +407,17 @@ func (q *pageReader) patch(id uint64, k graphstate.ComponentKey, axis temporal.A
 			return patchPage{}, 0, errors.Join(ErrResourceLimit, err)
 		}
 		return patchPage{}, 0, errors.Join(ErrCorrupt, err)
+	}
+	if _, err := q.storedBinding(k, axis); err != nil {
+		return patchPage{}, 0, err
+	}
+	for _, change := range changes {
+		if err := q.storedCell(k, axis, change.Before()); err != nil {
+			return patchPage{}, 0, err
+		}
+		if err := q.storedCell(k, axis, change.After()); err != nil {
+			return patchPage{}, 0, err
+		}
 	}
 	return patchPage{id, previous, key, owned, changes}, len(b), nil
 }

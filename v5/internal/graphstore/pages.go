@@ -34,8 +34,159 @@ type pageReader struct {
 	limits     PageLimits
 	work       PageWork
 	allocation *Root
+	binding    *storedComponentBinding
 }
 
+// Binding/reference reuse is operation-local and charged before retention.
+// Catalog identities are immutable, including in the private staging overlay.
+type storedComponentBinding struct {
+	key        graphstate.ComponentKey
+	axis       temporal.Axis
+	definition graphstate.PropertyDefinition
+	references map[state.ValueRef]bool
+}
+
+func storedBindingError(err error) error {
+	if errors.Is(err, ErrInvalid) {
+		// Do not retain the caller-input sentinel: Catalog.failure deliberately
+		// leaves ErrInvalid unpoisoned, whereas stored semantic violations stop it.
+		return fmt.Errorf("%w: persisted component binding: %v", ErrCorrupt, err)
+	}
+	return err
+}
+
+func (q *pageReader) storedBinding(k graphstate.ComponentKey, axis temporal.Axis) (graphstate.PropertyDefinition, error) {
+	if q.binding != nil && q.binding.key == k && q.binding.axis == axis {
+		return q.binding.definition, nil
+	}
+	definition, err := q.validateKey(k, axis)
+	if err != nil {
+		return graphstate.PropertyDefinition{}, storedBindingError(err)
+	}
+	if err := q.q.materialize(128 + len(k.Name)); err != nil {
+		return graphstate.PropertyDefinition{}, err
+	}
+	if err := q.budget(); err != nil {
+		return graphstate.PropertyDefinition{}, err
+	}
+	q.binding = &storedComponentBinding{key: k, axis: axis, definition: definition}
+	return definition, nil
+}
+
+func (q *pageReader) storedCell(k graphstate.ComponentKey, axis temporal.Axis, cell state.Cell) error {
+	definition, err := q.storedBinding(k, axis)
+	if err != nil {
+		return err
+	}
+	if cell.Present() && q.binding.references[cell.Value()] {
+		return nil
+	}
+	if err := q.validateCell(k, definition, cell); err != nil {
+		return storedBindingError(err)
+	}
+	if cell.Present() && !cell.Value().IsNull() {
+		if len(q.binding.references) >= q.limits.MaxWorkRecords {
+			return ErrResourceLimit
+		}
+		if err := q.q.materialize(64); err != nil {
+			return err
+		}
+		if err := q.budget(); err != nil {
+			return err
+		}
+		if q.binding.references == nil {
+			q.binding.references = make(map[state.ValueRef]bool)
+		}
+		q.binding.references[cell.Value()] = true
+	}
+	return nil
+}
+
+// Addressability is independent of whether a patch asserts a value. Immutable
+// node/relationship targets, schema and set members also govern no-op/unset.
+func (q *pageReader) validateKey(k graphstate.ComponentKey, axis temporal.Axis) (graphstate.PropertyDefinition, error) {
+	if !validComponent(k, q.q.c.limits) {
+		return graphstate.PropertyDefinition{}, ErrInvalid
+	}
+	entity, found, err := q.q.entity(EntityRef{q.q.c.root.namespace.Graph, k.Owner})
+	if err != nil {
+		return graphstate.PropertyDefinition{}, err
+	}
+	if !found || entity.Axis.Descriptor() != axis.Descriptor() || entity.Axis.DefinitionHash() != axis.DefinitionHash() {
+		return graphstate.PropertyDefinition{}, ErrInvalid
+	}
+	if k.Kind == graphstate.Label && entity.Kind != graphstate.Node {
+		return graphstate.PropertyDefinition{}, errors.Join(ErrInvalid, graphstate.ErrTypeMismatch)
+	}
+	if k.Kind != graphstate.Presence {
+		_, found, err := q.q.life(LifeRef{q.q.c.root.namespace.Graph, k.Owner, k.Life})
+		if err != nil {
+			return graphstate.PropertyDefinition{}, err
+		}
+		if !found {
+			return graphstate.PropertyDefinition{}, ErrInvalid
+		}
+	}
+	var definition graphstate.PropertyDefinition
+	if k.Kind == graphstate.ScalarProperty || k.Kind == graphstate.SetMember {
+		definition, found, err = q.q.property(entity.Kind, k.Name)
+		if err != nil {
+			return graphstate.PropertyDefinition{}, err
+		}
+		cardinality := graphstate.ScalarCardinality
+		if k.Kind == graphstate.SetMember {
+			cardinality = graphstate.SetCardinality
+		}
+		if !found || definition.Cardinality != cardinality {
+			return graphstate.PropertyDefinition{}, errors.Join(ErrInvalid, graphstate.ErrTypeMismatch)
+		}
+		if k.Kind == graphstate.SetMember {
+			entry, _, found, err := q.q.value(ValueRef{q.q.c.root.namespace.Graph, k.Member})
+			if err != nil {
+				return graphstate.PropertyDefinition{}, err
+			}
+			if !found || entry.Value.Kind() != definition.Type {
+				return graphstate.PropertyDefinition{}, errors.Join(ErrInvalid, graphstate.ErrTypeMismatch)
+			}
+		}
+	}
+	return definition, q.budget()
+}
+func (q *pageReader) validateCell(k graphstate.ComponentKey, definition graphstate.PropertyDefinition, cell state.Cell) error {
+	if !cell.Present() {
+		return nil
+	}
+	value := cell.Value()
+	switch k.Kind {
+	case graphstate.Presence:
+		if value.IsNull() || value.PayloadBytes() != 0 {
+			return ErrInvalid
+		}
+		_, found, err := q.q.life(LifeRef{q.q.c.root.namespace.Graph, k.Owner, graphstate.LifeID(value.ID())})
+		if err != nil {
+			return err
+		}
+		if !found {
+			return ErrInvalid
+		}
+	case graphstate.Label, graphstate.SetMember:
+		if !value.IsNull() {
+			return ErrInvalid
+		}
+	case graphstate.ScalarProperty:
+		if value.IsNull() {
+			return nil
+		}
+		entry, _, found, err := q.q.value(ValueRef{q.q.c.root.namespace.Graph, graphstate.ValueID(value.ID())})
+		if err != nil {
+			return err
+		}
+		if !found || entry.Value.Kind() != definition.Type || entry.PayloadBytes != value.PayloadBytes() {
+			return ErrInvalid
+		}
+	}
+	return q.budget()
+}
 func (q *pageReader) validPhysical(id uint64) bool {
 	next := q.q.c.root.next
 	if q.allocation != nil {

@@ -18,7 +18,18 @@ func decoderReader(axis temporal.Axis, k graphstate.ComponentKey, kind recordKin
 	root.next = 16
 	c := &Catalog{root: root, limits: catalogLimits}
 	key := physicalKey(testNamespace(), kind, 1)
-	return &pageReader{q: &reader{c: c, ctx: context.Background(), pending: map[string]raftlog.KV{string(key): {Key: key, Value: b}}}, limits: l}
+	pending := map[string]raftlog.KV{string(key): {Key: key, Value: b}}
+	axisWire, _ := encodeAxis(testNamespace(), axis, catalogLimits)
+	entityWire, _ := encodeEntity(testNamespace(), graphstate.EntityRecord{ID: k.Owner, Kind: graphstate.Node, Axis: axis}, catalogLimits)
+	lifeWire, _ := encodeLife(testNamespace(), graphstate.LifeRecord{Owner: k.Owner, Life: 11}, catalogLimits)
+	for _, row := range []raftlog.KV{
+		{Key: axisKey(testNamespace(), axis.Descriptor().ID), Value: axisWire},
+		{Key: entityKey(testNamespace(), k.Owner), Value: entityWire},
+		{Key: lifeKey(testNamespace(), k.Owner, 11), Value: lifeWire},
+	} {
+		pending[string(row.Key)] = row
+	}
+	return &pageReader{q: &reader{c: c, ctx: context.Background(), pending: pending}, limits: l}
 }
 func decodePhysical(q *pageReader, kind recordKind, k graphstate.ComponentKey, a temporal.Axis) error {
 	switch kind {
