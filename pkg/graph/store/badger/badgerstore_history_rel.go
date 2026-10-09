@@ -111,6 +111,9 @@ func (bs *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 
 	// Single appendOps call — atomic in the pending buffer.
 	histKey := storepkg.HistRelKey(id, uint64(prevVersion))
+	if bs.moveTestHook != nil {
+		bs.moveTestHook()
+	}
 	bs.appendOps(
 		writeOp{opType: writeOpSet, key: storepkg.RelKey(id), value: data},
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
@@ -181,6 +184,9 @@ func (bs *Store) deleteRelWithHistoryRouted(rid types.RelID, prevVersion uint32,
 	info := relDeleteInfoFromRelationship(r)
 	bs.deleteRelByInfo(info)                                   // appends delete ops to pending under lock (no record — emitted here)
 	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(tombstone)) // BACKLOG 10c
+	if bs.moveTestHook != nil {
+		bs.moveTestHook()
+	}
 	bs.appendOps(writeOp{opType: writeOpSet, key: histKey, value: tombData})
 	logErr := bs.logChangeRoutedRaw(storecontract.ChangeRelDelete, delPayload, token)
 	bs.idxMu.Unlock()

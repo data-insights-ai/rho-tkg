@@ -515,6 +515,7 @@ func (c *Core) nodeAtLockedTx(id types.NodeID, validAt, txAt types.Instant) (*ty
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
 	}
+	c.afterCurrentRead(int64(id))
 	// BACKLOG 10c: skip the history fetch when the current row alone provably
 	// answers the query — see nodeCurrentAnswersAt's doc comment.
 	if current != nil && c.nodeCurrentAnswersAt(current, validAt, txAt) {
@@ -664,6 +665,7 @@ func (c *Core) relAtLockedTx(id types.RelID, validAt, txAt types.Instant) (*type
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, err
 	}
+	c.afterCurrentRead(int64(id))
 	// BACKLOG 10c: skip the history fetch when the current row alone provably
 	// answers the query — see nodeCurrentAnswersAt's doc comment (mirrored here).
 	if current != nil && c.relCurrentAnswersAt(current, validAt, txAt) {

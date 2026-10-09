@@ -73,6 +73,7 @@ func (c *Core) nodeAsOfLocked(id types.NodeID, txTime types.Instant) (*types.Nod
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
 	}
+	c.afterCurrentRead(int64(id))
 	if current != nil {
 		if tm := current.Temporal(); tm != nil && tm.TxFrom > 0 && tm.TxFrom <= txTime && tm.TxTo == 0 {
 			// Fast path: no history row above the current version (versions
@@ -153,6 +154,7 @@ func (c *Core) relAsOfLocked(id types.RelID, txTime types.Instant) (*types.Relat
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, err
 	}
+	c.afterCurrentRead(int64(id))
 	if current != nil {
 		if tm := current.Temporal(); tm != nil && tm.TxFrom > 0 && tm.TxFrom <= txTime && tm.TxTo == 0 {
 			above, err := c.relHasHistoryAbove(id, current.Version())

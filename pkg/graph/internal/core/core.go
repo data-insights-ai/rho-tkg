@@ -339,6 +339,11 @@ type Core struct {
 	// ingestLaneCtr mints nonzero lane identifiers for CONCURRENT ingest
 	// sessions (§14 concurrent mode); lane 0 is the strong-mode applier.
 	ingestLaneCtr atomic.Uint32
+
+	// chainReadHook, when non-nil, runs between a per-entity chain
+	// assembly's current-row read and its history read (afterCurrentRead).
+	// Production leaves it nil; tests land a concurrent move there.
+	chainReadHook func(id int64)
 }
 
 // =============================================================================

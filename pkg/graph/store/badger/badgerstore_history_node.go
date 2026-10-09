@@ -147,6 +147,9 @@ func (bs *Store) removeNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uin
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
 		writeOp{opType: writeOpDelete, key: storepkg.LabelIndexKey(tok, id)},
 	)
+	if bs.moveTestHook != nil {
+		bs.moveTestHook()
+	}
 	bs.appendOps(ops...)
 	logErr := bs.logChangeRoutedRaw(storecontract.ChangeNodePut, changePayload, token)
 	bs.idxMu.Unlock()
@@ -283,6 +286,9 @@ func (bs *Store) addNodeLabelTokenWithHistoryRouted(nid types.NodeID, tok uint16
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
 		writeOp{opType: writeOpSet, key: storepkg.LabelIndexKey(tok, id)},
 	)
+	if bs.moveTestHook != nil {
+		bs.moveTestHook()
+	}
 	bs.appendOps(ops...)
 	logErr := bs.logChangeRoutedRaw(storecontract.ChangeNodePut, changePayload, token)
 	bs.idxMu.Unlock()
@@ -409,6 +415,9 @@ func (bs *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
 		writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data},
 		writeOp{opType: writeOpSet, key: histKey, value: histData},
 	)
+	if bs.moveTestHook != nil {
+		bs.moveTestHook()
+	}
 	bs.appendOps(ops...)
 	logErr := bs.logChangeRoutedRaw(storecontract.ChangeNodePut, changePayload, token)
 	bs.idxMu.Unlock()
@@ -516,6 +525,9 @@ func (bs *Store) deleteNodeWithHistoryRouted(nid types.NodeID, prevNodeVersion u
 	}
 	for _, rt := range relTombstones {
 		bs.bumpRelBeliefWatermarkLocked(rt.ID, relTxFrom(rt.Tombstone)) // BACKLOG 10c
+	}
+	if bs.moveTestHook != nil {
+		bs.moveTestHook()
 	}
 	bs.appendOps(ops...)
 	logErr := bs.logChangeRoutedRaw(storecontract.ChangeNodeDelete, delPayload, token)

@@ -1,0 +1,46 @@
+--- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent (0.53s)
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/in-memory/ReplaceNodeWithHistory (0.00s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of ReplaceNodeWithHistory: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/in-memory/AddNodeLabelTokenWithHistory (0.00s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of AddNodeLabelTokenWithHistory: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/in-memory/RemoveNodeLabelTokenWithHistory (0.00s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of RemoveNodeLabelTokenWithHistory: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/in-memory/DeleteNodeWithHistory/node (0.03s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of DeleteNodeWithHistory/node: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/in-memory/DeleteNodeWithHistory/rel (0.03s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of DeleteNodeWithHistory/rel: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/in-memory/ReplaceRelWithHistory (0.01s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of ReplaceRelWithHistory: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/in-memory/DeleteRelWithHistory (0.00s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of DeleteRelWithHistory: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/on-disk/ReplaceNodeWithHistory (0.06s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of ReplaceNodeWithHistory: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/on-disk/AddNodeLabelTokenWithHistory (0.06s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of AddNodeLabelTokenWithHistory: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/on-disk/RemoveNodeLabelTokenWithHistory (0.06s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of RemoveNodeLabelTokenWithHistory: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/on-disk/DeleteNodeWithHistory/node (0.06s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of DeleteNodeWithHistory/node: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/on-disk/DeleteNodeWithHistory/rel (0.06s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of DeleteNodeWithHistory/rel: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/on-disk/ReplaceRelWithHistory (0.06s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of ReplaceRelWithHistory: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/on-disk/DeleteRelWithHistory (0.06s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of DeleteRelWithHistory: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/flushed/ReplaceNodeWithHistory (0.01s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of ReplaceNodeWithHistory: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/flushed/AddNodeLabelTokenWithHistory (0.01s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of AddNodeLabelTokenWithHistory: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/flushed/RemoveNodeLabelTokenWithHistory (0.00s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of RemoveNodeLabelTokenWithHistory: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/flushed/DeleteNodeWithHistory/node (0.01s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of DeleteNodeWithHistory/node: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/flushed/DeleteNodeWithHistory/rel (0.01s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of DeleteNodeWithHistory/rel: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/flushed/ReplaceRelWithHistory (0.01s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of ReplaceRelWithHistory: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/flushed/DeleteRelWithHistory (0.00s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of DeleteRelWithHistory: moved row v0 in neither the current row nor GetHistory
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.544s
+FAIL

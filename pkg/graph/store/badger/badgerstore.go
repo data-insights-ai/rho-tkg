@@ -728,6 +728,16 @@ type Store struct {
 	// undercounting fix). Set only from the owning test.
 	bulkAsOfScanTestHook func(index int)
 
+	// moveTestHook, when non-nil, is invoked by every with-history door
+	// (Replace*WithHistory, the label-token history doors, Delete*WithHistory)
+	// while it holds idxMu.Lock, between the two halves of publishing the move:
+	// the pending buffer (the history readers' overlay) and the entity cache
+	// (the GetNode / GetRelationship answer). Production leaves it nil; tests
+	// read the entity there through the lock-free point doors to prove a
+	// reader never sees the move half done (backlog 32). Set only from the
+	// owning test.
+	moveTestHook func()
+
 	// replaceRelPrefetchTestHook, when non-nil, is invoked by ReplaceRelationship
 	// right after prefetchRelWithRev returns and BEFORE idxMu.Lock() is acquired.
 	// Production leaves it nil (zero overhead); tests use it to deterministically
