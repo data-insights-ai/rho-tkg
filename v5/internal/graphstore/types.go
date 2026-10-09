@@ -25,6 +25,9 @@ var (
 	ErrCorrupt       = errors.New("graphstore: corrupt catalog")
 	ErrClosed        = errors.New("graphstore: closed stage")
 	ErrPoisoned      = errors.New("graphstore: catalog stopped; recover required")
+	// ErrTopologyUnsupported means the root has no single-partition declaration,
+	// or its declared topology lacks the index-aware graph writer needed to stage.
+	ErrTopologyUnsupported = errors.New("graphstore: topology capability unavailable")
 )
 
 // Namespace identifies storage routing. Partition is a logical partition, not
@@ -77,6 +80,7 @@ type Root struct {
 	namespace          Namespace
 	owner, epoch, next uint64
 	effect             [32]byte
+	topology           topologyDeclaration
 }
 
 // NewRoot creates an empty local-root descriptor without allocating logical IDs.
@@ -96,6 +100,9 @@ func (r Root) validate() error {
 		return err
 	}
 	if r.owner == 0 || r.next == 0 || r.effect == ([32]byte{}) {
+		return ErrInvalid
+	}
+	if r.topology != (topologyDeclaration{}) && r.topology != bootstrapTopology {
 		return ErrInvalid
 	}
 	return nil

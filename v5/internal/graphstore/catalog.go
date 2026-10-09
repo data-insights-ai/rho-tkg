@@ -20,6 +20,7 @@ import (
 type Catalog struct {
 	view                        *raftlog.ApplicationView
 	root                        Root
+	rootImageBytes              int
 	limits                      Limits
 	mu                          sync.Mutex
 	poison                      error
@@ -59,7 +60,7 @@ func OpenCatalog(view *raftlog.ApplicationView, n Namespace, ownershipEpoch uint
 	if root.owner != ownershipEpoch {
 		return nil, ErrStaleOwner
 	}
-	return &Catalog{view: view, root: root, limits: l, hash: equalityDigest}, nil
+	return &Catalog{view: view, root: root, rootImageBytes: len(image.Image), limits: l, hash: equalityDigest}, nil
 }
 func (c *Catalog) check(ctx context.Context) error {
 	if c == nil || ctx == nil {
@@ -84,7 +85,7 @@ func (c *Catalog) failure(err error) error {
 	if errors.Is(err, raftlog.ErrLimit) || errors.Is(err, temporal.ErrResourceLimit) || errors.Is(err, graphstate.ErrResourceLimit) {
 		return errors.Join(ErrResourceLimit, err)
 	}
-	if errors.Is(err, ErrInvalid) || errors.Is(err, ErrNamespace) || errors.Is(err, ErrRebinding) || errors.Is(err, ErrResourceLimit) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, raftlog.ErrClosed) || errors.Is(err, ErrClosed) {
+	if errors.Is(err, ErrInvalid) || errors.Is(err, ErrNamespace) || errors.Is(err, ErrRebinding) || errors.Is(err, ErrResourceLimit) || errors.Is(err, ErrTopologyUnsupported) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, raftlog.ErrClosed) || errors.Is(err, ErrClosed) {
 		return err
 	}
 	c.mu.Lock()
@@ -116,7 +117,10 @@ func (c *Catalog) reader(ctx context.Context) (*reader, error) {
 	if err := c.check(ctx); err != nil {
 		return nil, err
 	}
-	return &reader{c: c, ctx: ctx, bytes: rootBytes}, nil
+	if c.rootImageBytes > c.limits.MaxReadBytes {
+		return nil, ErrResourceLimit
+	}
+	return &reader{c: c, ctx: ctx, bytes: c.rootImageBytes}, nil
 }
 func (q *reader) get(key []byte) ([]byte, bool, error) {
 	l := q.c.limits
@@ -471,9 +475,14 @@ type Stage struct {
 }
 
 // NewStage creates a bounded private staging handle. Close releases shared caps.
+// Single-partition declarations refuse with ErrTopologyUnsupported until an
+// index-aware graph writer can maintain their declared access structures.
 func (c *Catalog) NewStage(ctx context.Context) (*Stage, error) {
 	if err := c.check(ctx); err != nil {
 		return nil, err
+	}
+	if c.root.topology != (topologyDeclaration{}) {
+		return nil, ErrTopologyUnsupported
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -499,6 +508,9 @@ func (s *Stage) operation(ctx context.Context, fn func(*reader) error) error {
 	q, err := s.c.reader(ctx)
 	if err != nil {
 		return err
+	}
+	if s.c.root.topology != (topologyDeclaration{}) {
+		return ErrTopologyUnsupported
 	}
 	q.stage = s
 	q.pending = make(map[string]raftlog.KV)

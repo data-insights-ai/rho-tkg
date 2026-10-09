@@ -13,7 +13,10 @@ import (
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
 )
 
-const rootBytes = 116
+const (
+	rootBytes                = 116 // Primitive v1 image; retained for byte-for-byte compatibility.
+	singlePartitionRootBytes = rootBytes + 3*8
+)
 
 // EncodeRoot returns a constant-size owned provisional local root image. Its
 // checksum protects bytes; it does not certify effects or distributed closure.
@@ -21,11 +24,20 @@ func EncodeRoot(r Root) ([]byte, error) {
 	if err := r.validate(); err != nil {
 		return nil, err
 	}
-	b := append([]byte{'G', 'R', 1, 1}, r.namespace.Graph[:]...)
+	header := []byte{'G', 'R', 1, 1}
+	if r.topology != (topologyDeclaration{}) {
+		header = []byte{'G', 'R', 2, 2}
+	}
+	b := append(header, r.namespace.Graph[:]...)
 	for _, n := range []uint64{r.namespace.Partition, r.owner, r.epoch, r.next} {
 		b = binary.BigEndian.AppendUint64(b, n)
 	}
 	b = append(b, r.effect[:]...)
+	if r.topology != (topologyDeclaration{}) {
+		for _, n := range []uint64{r.topology.epoch, r.topology.schema, r.topology.index} {
+			b = binary.BigEndian.AppendUint64(b, n)
+		}
+	}
 	digest := sha256.Sum256(b)
 	return exactCopy(append(b, digest[:]...)), nil
 }
@@ -33,11 +45,14 @@ func EncodeRoot(r Root) ([]byte, error) {
 // DecodeRoot rejects unknown formats/modes, truncation and trailing bytes. It
 // retains no input alias. Routing/ownership are checked by OpenCatalog.
 func DecodeRoot(src []byte) (Root, error) {
-	if len(src) != rootBytes || !bytes.Equal(src[:4], []byte{'G', 'R', 1, 1}) {
+	primitive := len(src) == rootBytes && bytes.Equal(src[:4], []byte{'G', 'R', 1, 1})
+	single := len(src) == singlePartitionRootBytes && bytes.Equal(src[:4], []byte{'G', 'R', 2, 2})
+	if !primitive && !single {
 		return Root{}, ErrCorrupt
 	}
-	sum := sha256.Sum256(src[:84])
-	if !bytes.Equal(src[84:], sum[:]) {
+	bodyBytes := len(src) - sha256.Size
+	sum := sha256.Sum256(src[:bodyBytes])
+	if !bytes.Equal(src[bodyBytes:], sum[:]) {
 		return Root{}, ErrCorrupt
 	}
 	var r Root
@@ -47,6 +62,12 @@ func DecodeRoot(src []byte) (Root, error) {
 	r.epoch = binary.BigEndian.Uint64(src[36:44])
 	r.next = binary.BigEndian.Uint64(src[44:52])
 	copy(r.effect[:], src[52:84])
+	if single {
+		r.topology = topologyDeclaration{binary.BigEndian.Uint64(src[84:92]), binary.BigEndian.Uint64(src[92:100]), binary.BigEndian.Uint64(src[100:108])}
+		if r.topology != bootstrapTopology {
+			return Root{}, ErrCorrupt
+		}
+	}
 	if err := r.validate(); err != nil {
 		return Root{}, ErrCorrupt
 	}

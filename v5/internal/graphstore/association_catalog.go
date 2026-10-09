@@ -30,7 +30,7 @@ func associationStart(ctx context.Context, c *Catalog, graph graphstate.GraphID,
 		return nil, associationCallerError(err)
 	}
 	l = l.bounded(c.limits)
-	if rootBytes > l.MaxReadBytes || 64 > l.MaxOutputBytes {
+	if c.rootImageBytes > l.MaxReadBytes || 64 > l.MaxOutputBytes {
 		return nil, ErrResourceLimit
 	}
 	q, err := c.reader(ctx)
@@ -548,7 +548,7 @@ func (c *Catalog) Associations(ctx context.Context, query AssociationQuery, afte
 	if err != nil {
 		return AssociationPage{}, err
 	}
-	if err := a.materialize(len(queryBytes) + len(after) + rootBytes); err != nil {
+	if err := a.materialize(len(queryBytes) + len(after) + c.rootImageBytes); err != nil {
 		return AssociationPage{}, err
 	}
 	root, err := c.view.Root()
