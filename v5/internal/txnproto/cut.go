@@ -10,7 +10,7 @@ const mathMaxRound = uint64(math.MaxUint64)
 
 func sortTxs(ts []Tx) { slices.SortFunc(ts, func(a, b Tx) int { return cmp.Compare(a.ID, b.ID) }) }
 func compatible(a, b View) bool {
-	return a.Graph == b.Graph && a.Topology == b.Topology && a.Group <= 1 && b.Group <= 1 && a.Epoch != 0 && b.Epoch != 0 && a.Index > 0 && b.Index > 0
+	return a.Namespace == b.Namespace && a.Graph == b.Graph && a.Topology == b.Topology && a.Group <= 1 && b.Group <= 1 && a.Epoch != 0 && b.Epoch != 0 && a.Index > 0 && b.Index > 0
 }
 
 // ChooseRound performs Fresh's authoritative collection. Every prepared intent
@@ -115,7 +115,7 @@ func (m *Machine) At(c Cut) (Snapshot, error) {
 		if v.Group != m.config.Group {
 			continue
 		}
-		if v.Graph != m.config.Graph || v.Topology != m.config.Topology || v.Epoch != m.config.Epochs[v.Group] {
+		if v.Namespace != m.config.Namespace || v.Graph != m.config.Graph || v.Topology != m.config.Topology || v.Epoch != m.config.Epochs[v.Group] {
 			return Snapshot{}, ErrStale
 		}
 		if v.Certificate == nil || v.Certificate.Index > m.applied {

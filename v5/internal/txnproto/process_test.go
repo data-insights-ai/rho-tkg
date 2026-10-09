@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/data-insights-ai/rho-tkg/v5/internal/idalloc"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/replica"
 )
@@ -31,16 +32,19 @@ import (
 const processFrameLimit = 4 << 20
 
 type processRequest struct {
-	Sequence uint64
-	Op       string
-	Tx       Tx
-	Query    Query
-	Packet   replica.Packet
-	Handle   string
-	Prior    string
-	Proposal *processProposal
-	Round    uint64
-	Target   uint64
+	RecipientID          [16]byte
+	GrantSequence, Count uint64
+	IDs                  []uint64
+	Sequence             uint64
+	Op                   string
+	Tx                   Tx
+	Query                Query
+	Packet               replica.Packet
+	Handle               string
+	Prior                string
+	Proposal             *processProposal
+	Round                uint64
+	Target               uint64
 }
 
 type processEvidence struct {
@@ -61,6 +65,9 @@ type processProposal struct {
 }
 
 type processResponse struct {
+	Resource                      string
+	AllocationQuery               Query
+	ID                            uint64
 	ReadID                        ReadID
 	Source, Incarnation, Sequence uint64
 	Packets                       []replica.Packet
@@ -113,10 +120,13 @@ func processRead(r io.Reader, v any) error {
 // Known sentinels retain errors.Is semantics across this test-only wire. Unknown
 // errors remain diagnostics; they cannot silently become an availability result.
 func processError(err error) string {
+	if errors.Is(err, idalloc.ErrUnknown) {
+		return idalloc.ErrUnknown.Error()
+	}
 	if err == nil {
 		return ""
 	}
-	for _, sentinel := range []error{ErrInvalid, ErrMismatch, ErrStale, ErrRetry, ErrPending, ErrUnavailable, ErrLimit, replica.ErrUnavailable, replica.ErrInvalid, replica.ErrStopped, raftlog.ErrCorrupt} {
+	for _, sentinel := range []error{ErrInvalid, ErrMismatch, ErrStale, ErrRetry, ErrPending, ErrUnavailable, ErrLimit, replica.ErrUnavailable, replica.ErrInvalid, replica.ErrStopped, raftlog.ErrCorrupt, idalloc.ErrInvalid, idalloc.ErrStaleAuthority, idalloc.ErrExhausted, idalloc.ErrAlreadyReserved, idalloc.ErrUnknown, idalloc.ErrPayloadMismatch} {
 		if errors.Is(err, sentinel) {
 			return sentinel.Error()
 		}
@@ -128,7 +138,7 @@ func processErr(s string) error {
 	if s == "" {
 		return nil
 	}
-	for _, sentinel := range []error{ErrInvalid, ErrMismatch, ErrStale, ErrRetry, ErrPending, ErrUnavailable, ErrLimit, replica.ErrUnavailable, replica.ErrInvalid, replica.ErrStopped, raftlog.ErrCorrupt} {
+	for _, sentinel := range []error{ErrInvalid, ErrMismatch, ErrStale, ErrRetry, ErrPending, ErrUnavailable, ErrLimit, replica.ErrUnavailable, replica.ErrInvalid, replica.ErrStopped, raftlog.ErrCorrupt, idalloc.ErrInvalid, idalloc.ErrStaleAuthority, idalloc.ErrExhausted, idalloc.ErrAlreadyReserved, idalloc.ErrUnknown, idalloc.ErrPayloadMismatch} {
 		if s == sentinel.Error() {
 			return sentinel
 		}
@@ -161,7 +171,11 @@ func TestTxnProcessChild(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	h, err := OpenHost(config(group), s, id)
+	cfg := config(group)
+	if os.Getenv("RHO_TXN_PROCESS_ALLOCATION") == "true" {
+		cfg = allocationConfig(group)
+	}
+	h, err := OpenHost(cfg, s, id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,6 +183,9 @@ func TestTxnProcessChild(t *testing.T) {
 	pid := uint64(os.Getpid())
 	proofs := map[string]Proof{}
 	pending := map[ReadID]uint64{}
+	recipients := map[string]*RecipientHandle{}
+	cursors := map[string]*idalloc.Cursor{}
+	acquisitions := map[string]*processAcquisition{}
 	if err := processWrite(os.Stdout, processResponse{Source: id, Incarnation: pid}); err != nil {
 		t.Fatal(err)
 	}
@@ -196,89 +213,93 @@ func TestTxnProcessChild(t *testing.T) {
 			}
 			return p, nil
 		}
-		switch r.Op {
-		case "campaign":
-			event, e = h.Campaign()
-		case "tick":
-			event, e = h.Tick()
-		case "transfer":
-			event, e = h.TransferLeader(r.Target)
-		case "step":
-			event, e = h.Step(r.Packet)
-		case "read":
-			// The harness retains unresolved correlation until reply or process restart.
-			// Bound it independently even when Raft drops reads on a leader change.
-			if len(pending) >= 32 {
-				e = ErrLimit
-				break
-			}
-			event, e = h.Read(r.Query)
-			if e == nil {
-				pending[event.ReadID] = sequence
-				out.ReadID = event.ReadID
-			}
-		case "checkpoint":
-			e = h.SaveCheckpoint()
-		case "last":
-			// Applied-command diagnostics ONLY, never authoritative evidence.
-			h.machine.mu.Lock()
-			e = h.machine.last
-			h.machine.mu.Unlock()
-		case "at":
-			p, err := lookup(r.Handle)
-			e = err
-			if e == nil {
-				var c Cut
-				c, e = AssembleCut([]uint8{group}, []Proof{p})
-				if e == nil {
-					var state Snapshot
-					state, e = h.At(c)
-					out.State = &state
-				}
-			}
-		case "submit":
-			if r.Proposal == nil || r.Proposal.Source < 1 || r.Proposal.Source > 6 || r.Proposal.Incarnation == 0 || r.Proposal.Hash != sha256.Sum256(r.Proposal.Bytes) {
-				e = ErrInvalid
-				break
-			}
-			var c command
-			c, e = decode[command](r.Proposal.Bytes, DefaultLimits().CommandBytes)
-			if e == nil {
-				// This is an actual source-produced Proposal, NOT a Proof import.
-				event, e = h.Submit(Proposal{command: c})
-			}
-		case "register":
-			proposal, e = Register(r.Tx)
-		case "local":
-			proposal, e = Local(r.Tx)
-		case "fence":
-			proposal, e = Fence(r.Round)
-		case "certify":
-			proposal, e = Certify(r.Round)
-		case "prepare", "vote", "decide", "resolve":
-			p, err := lookup(r.Handle)
-			e = err
-			if e != nil {
-				break
-			}
+		if processAllocationOperation(r.Op) {
+			proposal, e = processAllocationDispatch(t, h, r, lookup, recipients, cursors, acquisitions, &out)
+		} else {
 			switch r.Op {
-			case "prepare":
-				var prior Proof
-				if r.Prior != "" {
-					prior, e = lookup(r.Prior)
+			case "campaign":
+				event, e = h.Campaign()
+			case "tick":
+				event, e = h.Tick()
+			case "transfer":
+				event, e = h.TransferLeader(r.Target)
+			case "step":
+				event, e = h.Step(r.Packet)
+			case "read":
+				// The harness retains unresolved correlation until reply or process restart.
+				// Bound it independently even when Raft drops reads on a leader change.
+				if len(pending) >= 32 {
+					e = ErrLimit
+					break
 				}
+				event, e = h.Read(r.Query)
 				if e == nil {
-					proposal, e = Prepare(p, prior)
+					pending[event.ReadID] = sequence
+					out.ReadID = event.ReadID
 				}
-			case "vote":
-				proposal, e = RecordVote(p)
-			case "decide":
-				proposal, e = Decide(p, true)
-			case "resolve":
-				proposal, e = Resolve(p)
+			case "checkpoint":
+				e = h.SaveCheckpoint()
+			case "last":
+				// Applied-command diagnostics ONLY, never authoritative evidence.
+				h.machine.mu.Lock()
+				e = h.machine.last
+				h.machine.mu.Unlock()
+			case "at":
+				p, err := lookup(r.Handle)
+				e = err
+				if e == nil {
+					var c Cut
+					c, e = AssembleCut([]uint8{group}, []Proof{p})
+					if e == nil {
+						var state Snapshot
+						state, e = h.At(c)
+						out.State = &state
+					}
+				}
+			case "submit":
+				if r.Proposal == nil || r.Proposal.Source < 1 || r.Proposal.Source > 6 || r.Proposal.Incarnation == 0 || r.Proposal.Hash != sha256.Sum256(r.Proposal.Bytes) {
+					e = ErrInvalid
+					break
+				}
+				var c command
+				c, e = decode[command](r.Proposal.Bytes, DefaultLimits().CommandBytes)
+				if e == nil {
+					// This is an actual source-produced Proposal, NOT a Proof import.
+					event, e = h.Submit(Proposal{command: c})
+				}
+			case "register":
+				proposal, e = Register(r.Tx)
+			case "local":
+				proposal, e = Local(r.Tx)
+			case "fence":
+				proposal, e = Fence(r.Round)
+			case "certify":
+				proposal, e = Certify(r.Round)
+			case "prepare", "vote", "decide", "resolve":
+				p, err := lookup(r.Handle)
+				e = err
+				if e != nil {
+					break
+				}
+				switch r.Op {
+				case "prepare":
+					var prior Proof
+					if r.Prior != "" {
+						prior, e = lookup(r.Prior)
+					}
+					if e == nil {
+						proposal, e = Prepare(p, prior)
+					}
+				case "vote":
+					proposal, e = RecordVote(p)
+				case "decide":
+					proposal, e = Decide(p, true)
+				case "resolve":
+					proposal, e = Resolve(p)
+				}
+			default:
+				e = ErrInvalid
 			}
-		default:
-			e = ErrInvalid
 		}
 		if proposal.command.Kind != "" && e == nil {
 			b, err := json.Marshal(proposal.command)
@@ -327,18 +348,20 @@ type processChild struct {
 }
 
 type processCluster struct {
-	t        *testing.T
-	dir      string
-	children map[uint64]*processChild
-	drop     map[uint64]bool
-	replies  map[uint64][]processEvidence
-	stage    string
-	steps    int
+	allocation bool
+	t          *testing.T
+	dir        string
+	children   map[uint64]*processChild
+	drop       map[uint64]bool
+	replies    map[uint64][]processEvidence
+	stage      string
+	steps      int
 }
 
-func newProcessCluster(t *testing.T) *processCluster {
+func newProcessCluster(t *testing.T) *processCluster { return newProcessClusterMode(t, false) }
+func newProcessClusterMode(t *testing.T, allocation bool) *processCluster {
 	t.Helper()
-	n := &processCluster{t: t, dir: t.TempDir(), children: map[uint64]*processChild{}, drop: map[uint64]bool{}, replies: map[uint64][]processEvidence{}, stage: "open"}
+	n := &processCluster{allocation: allocation, t: t, dir: t.TempDir(), children: map[uint64]*processChild{}, drop: map[uint64]bool{}, replies: map[uint64][]processEvidence{}, stage: "open"}
 	t.Cleanup(func() {
 		for id := uint64(1); id <= 6; id++ {
 			if p := n.children[id]; p != nil {
@@ -377,7 +400,7 @@ func (n *processCluster) start(id uint64, create bool) {
 	}
 	ctx, cancel := context.WithTimeout(n.t.Context(), 2*time.Minute)
 	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestTxnProcessChild$", "-test.timeout=110s")
-	cmd.Env = append(os.Environ(), "RHO_TXN_PROCESS_DIR="+filepath.Join(n.dir, fmt.Sprintf("replica-%d", id)), fmt.Sprintf("RHO_TXN_PROCESS_ID=%d", id), fmt.Sprintf("RHO_TXN_PROCESS_CREATE=%t", create))
+	cmd.Env = append(os.Environ(), "RHO_TXN_PROCESS_DIR="+filepath.Join(n.dir, fmt.Sprintf("replica-%d", id)), fmt.Sprintf("RHO_TXN_PROCESS_ID=%d", id), fmt.Sprintf("RHO_TXN_PROCESS_CREATE=%t", create), fmt.Sprintf("RHO_TXN_PROCESS_ALLOCATION=%t", n.allocation))
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = input, output, log
 	p := &processChild{id: id, cmd: cmd, in: toChild, out: fromChild, log: log, done: make(chan error, 1), cancel: cancel}
 	if err := cmd.Start(); err != nil {

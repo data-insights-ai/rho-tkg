@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"errors"
 	"unicode/utf8"
+
+	"github.com/data-insights-ai/rho-tkg/v5/internal/idalloc"
 )
 
 // Protocol sentinels distinguish rejection, pending work and retained limits.
@@ -36,11 +38,15 @@ func DefaultLimits() Limits { return Limits{4 << 20, 4096, 256, 4096, 256, 64 <<
 // Config pins one graph, topology and both authority epochs. This slice rejects
 // stale epochs but does not implement ownership transfer/catalog activation.
 type Config struct {
-	Graph    string
-	Topology uint64
-	Group    uint8
-	Epochs   [2]uint64
-	Limits   Limits
+	Namespace      idalloc.GraphID `json:",omitzero"`
+	AllocatorOwner [16]byte        `json:",omitzero"`
+	AllocatorEpoch uint64          `json:",omitzero"`
+	MaxIDBlock     uint64          `json:",omitzero"`
+	Graph          string
+	Topology       uint64
+	Group          uint8
+	Epochs         [2]uint64
+	Limits         Limits
 }
 
 // Read validates revision identity, including tombstones and value ABA.
@@ -70,6 +76,8 @@ type Participant struct {
 // Tx freezes the request, dependencies, participants and scalar effects.
 // IDs are supplied by the caller's separate durable allocator, never minted here.
 type Tx struct {
+	Namespace    idalloc.GraphID `json:",omitzero"`
+	Claim        *IDClaim        `json:",omitempty"`
 	Graph        string
 	Topology     uint64
 	ID, Request  string
@@ -124,8 +132,10 @@ const (
 // Query identifies the application question. Host.ReadID separately binds each
 // invocation; identical questions must never be used as caller correlation IDs.
 type Query struct {
-	Kind, TxID string
-	Round      uint64
+	RecipientID, Incarnation, Nonce [16]byte `json:",omitzero"`
+	RecipientEpoch, Sequence, Count uint64   `json:",omitzero"`
+	Kind, TxID                      string
+	Round                           uint64
 }
 
 // Certificate covers one fixed participant at a closed round and applied position.
@@ -133,6 +143,10 @@ type Certificate struct{ Round, Index uint64 }
 
 // View is owned inspection data. Constructing a View does not construct Proof.
 type View struct {
+	Namespace    idalloc.GraphID  `json:",omitzero"`
+	Allocator    *AllocatorView   `json:",omitempty"`
+	Recipient    *RecipientRecord `json:",omitempty"`
+	Grant        *GrantWire       `json:",omitempty"`
 	Graph        string
 	Topology     uint64
 	Group        uint8
@@ -150,7 +164,11 @@ type View struct {
 // Proof has no public constructor. Only Host's completed, request-bound
 // ReadIndex responses produce it. Serialized proofs in replay are trusted
 // crash-fault protocol data, NOT cryptographic or Byzantine quorum certificates.
-type Proof struct{ view View }
+type Proof struct {
+	view     View
+	readID   ReadID
+	question Query
+}
 
 // View returns an owned copy; changing it cannot change the proof.
 func (p Proof) View() View { return clone(p.view) }
@@ -173,6 +191,9 @@ func part(t Tx, g uint8) (Participant, bool) {
 	return Participant{}, false
 }
 func checkConfig(c Config) error {
+	if err := checkAllocationConfig(c); err != nil {
+		return err
+	}
 	l := c.Limits
 	if !utf8.ValidString(c.Graph) || c.Graph == "" || len(c.Graph) > 128 || c.Topology == 0 || c.Group > 1 || c.Epochs[0] == 0 || c.Epochs[1] == 0 || l.JournalBytes < 8192 || l.JournalBytes > 16<<20 || l.Transitions < 8 || l.Transitions > 16384 || l.Transactions < 1 || l.Transactions > 1024 || l.Versions < 1 || l.Versions > 65536 || l.Certificates < 1 || l.Certificates > 1024 || l.CommandBytes < 1024 || l.CommandBytes > 64<<10 {
 		return ErrInvalid
@@ -209,6 +230,7 @@ func validateTx(t Tx) error {
 }
 
 type command struct {
+	Alloc         *allocationCommand `json:",omitempty"`
 	Version       int
 	Kind          string
 	Tx            *Tx
@@ -228,6 +250,9 @@ func proposal(c command) (Proposal, error) {
 
 // Register proposes the immutable coordinator/request binding before prepare.
 func Register(t Tx) (Proposal, error) {
+	if t.Claim != nil {
+		return Proposal{}, ErrInvalid
+	}
 	if err := validateTx(t); err != nil {
 		return Proposal{}, err
 	}
@@ -237,6 +262,9 @@ func Register(t Tx) (Proposal, error) {
 // Local validates, decides and installs a single-participant transaction in ONE
 // application entry; no other group/coordinator service participates.
 func Local(t Tx) (Proposal, error) {
+	if t.Claim != nil {
+		return Proposal{}, ErrInvalid
+	}
 	if err := validateTx(t); err != nil {
 		return Proposal{}, err
 	}

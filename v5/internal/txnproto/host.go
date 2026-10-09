@@ -46,6 +46,8 @@ type Event struct {
 // Embedding transport must authenticate group/peer identity under the crash-only
 // model. These opaque in-process capabilities are not Byzantine signatures.
 type Host struct {
+	closed       bool
+	recipients   map[[16]byte]*RecipientHandle
 	mu           sync.Mutex
 	driver       *replica.Driver
 	machine      *Machine
@@ -63,7 +65,7 @@ func OpenHost(c Config, s *raftlog.Store, id uint64) (*Host, error) {
 	if err != nil {
 		return nil, err
 	}
-	h := &Host{driver: d, machine: m}
+	h := &Host{driver: d, machine: m, recipients: map[[16]byte]*RecipientHandle{}}
 	if _, err := rand.Read(h.readSession[:]); err != nil {
 		return nil, err
 	}
@@ -92,7 +94,7 @@ func (h *Host) event(out replica.Output, err error) (Event, error) {
 		}
 		reply := Reply{ReadID: request.ID, Query: q, Err: err}
 		if err == nil {
-			reply.Proof = Proof{v}
+			reply.Proof = Proof{view: v, readID: request.ID, question: q}
 		}
 		e.Replies = append(e.Replies, reply)
 	}
@@ -201,10 +203,17 @@ func (h *Host) Close() error {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	h.closed = true
 	return h.driver.Close()
 }
 
 func checkQuery(q Query) error {
+	if isAllocationQuery(q.Kind) {
+		return checkAllocationQuery(q)
+	}
+	if q.RecipientID != ([16]byte{}) || q.Incarnation != ([16]byte{}) || q.Nonce != ([16]byte{}) || q.RecipientEpoch != 0 || q.Sequence != 0 || q.Count != 0 {
+		return ErrInvalid
+	}
 	if !utf8.ValidString(q.TxID) {
 		return ErrInvalid
 	}
@@ -236,7 +245,10 @@ func (m *Machine) answer(q Query, index uint64) (View, error) {
 		return View{}, ErrUnavailable
 	}
 	c, s := m.config, m.state
-	v := View{Graph: c.Graph, Topology: c.Topology, Group: c.Group, Epoch: c.Epochs[c.Group], Index: index, Kind: q.Kind}
+	v := View{Namespace: c.Namespace, Graph: c.Graph, Topology: c.Topology, Group: c.Group, Epoch: c.Epochs[c.Group], Index: index, Kind: q.Kind}
+	if isAllocationQuery(q.Kind) {
+		return m.allocationAnswer(q, index)
+	}
 	switch q.Kind {
 	case Registration, Decided:
 		r := s.Coordinators[q.TxID]

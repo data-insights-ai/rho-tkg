@@ -11,7 +11,7 @@ import (
 // NO reasons use the longest reason this reducer can generate. This reserves
 // future command framing, not only retained journal capacity.
 func recoveryBudgets(t Tx, limit int) (coordinatorBytes, intentBytes int, err error) {
-	reg := View{Graph: t.Graph, Topology: t.Topology, Group: t.Coordinator, Index: math.MaxUint64, Kind: Registration, Tx: &t}
+	reg := View{Namespace: t.Namespace, Graph: t.Graph, Topology: t.Topology, Group: t.Coordinator, Index: math.MaxUint64, Kind: Registration, Tx: &t}
 	cp, _ := part(t, t.Coordinator)
 	reg.Epoch = cp.Epoch
 	shapes := []command{}

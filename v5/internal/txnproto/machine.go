@@ -25,6 +25,9 @@ type intent struct {
 	ReserveBytes, ReserveSlots int
 }
 type state struct {
+	AllocImage               []byte                      `json:",omitempty"`
+	Recipients               map[string]*RecipientRecord `json:",omitempty"`
+	Grants                   map[string]*GrantWire       `json:",omitempty"`
 	Coordinators             map[string]*coordinator
 	Requests                 map[string]string
 	Intents                  map[string]*intent
@@ -73,6 +76,7 @@ func New(c Config) (*Machine, error) {
 }
 func (m *Machine) reset() {
 	m.state = state{Coordinators: map[string]*coordinator{}, Requests: map[string]string{}, Intents: map[string]*intent{}, Rows: map[string][]Value{}, Certificates: map[uint64]Certificate{}}
+	m.initAllocation()
 	m.journal = nil
 	m.journalBytes = 0
 	m.applied = 0
@@ -131,6 +135,9 @@ func (m *Machine) checkTx(t Tx) error {
 		return err
 	}
 	c := m.config
+	if t.Namespace != c.Namespace {
+		return ErrStale
+	}
 	if t.Graph != c.Graph || t.Topology != c.Topology {
 		return ErrStale
 	}
@@ -142,13 +149,13 @@ func (m *Machine) checkTx(t Tx) error {
 	return nil
 }
 func (m *Machine) checkView(v *View, kind string) error {
-	if v == nil || v.Kind != kind || v.Index == 0 || v.Group > 1 || v.Graph != m.config.Graph || v.Topology != m.config.Topology || v.Epoch != m.config.Epochs[v.Group] {
+	if v == nil || v.Kind != kind || v.Index == 0 || v.Group > 1 || v.Namespace != m.config.Namespace || v.Graph != m.config.Graph || v.Topology != m.config.Topology || v.Epoch != m.config.Epochs[v.Group] {
 		return ErrStale
 	}
 	if v.Tx == nil {
 		return ErrInvalid
 	}
-	expected := View{Graph: v.Graph, Topology: v.Topology, Group: v.Group, Epoch: v.Epoch, Index: v.Index, Kind: v.Kind, Tx: v.Tx}
+	expected := View{Namespace: v.Namespace, Graph: v.Graph, Topology: v.Topology, Group: v.Group, Epoch: v.Epoch, Index: v.Index, Kind: v.Kind, Tx: v.Tx}
 	switch kind {
 	case Registration:
 	case Prepared:
@@ -186,8 +193,12 @@ func reserve(s state) (b, n, versions int) {
 }
 func (m *Machine) budget(s state, extraBytes, extraSlots int) error {
 	b, n, v := reserve(s)
+	for _, r := range s.Recipients {
+		b += r.ReserveBytes
+		n += r.ReserveSlots
+	}
 	l := m.config.Limits
-	if m.journalBytes+extraBytes+b > l.JournalBytes || len(m.journal)+extraSlots+n > l.Transitions || len(s.Coordinators) > l.Transactions || len(s.Intents) > l.Transactions || s.Versions+v > l.Versions || len(s.Certificates) > l.Certificates {
+	if m.journalBytes+extraBytes+b > l.JournalBytes || len(m.journal)+extraSlots+n > l.Transitions || len(s.Coordinators) > l.Transactions || len(s.Intents) > l.Transactions || s.Versions+v > l.Versions || len(s.Certificates) > l.Certificates || len(s.Recipients) > l.Transactions || len(s.Grants) > l.Transactions {
 		return ErrLimit
 	}
 	return nil
@@ -226,9 +237,21 @@ func validateCommand(c command) error {
 	// Canonical shape prevents hidden ignored payloads changing a request digest.
 	expected := command{Version: 1, Kind: c.Kind}
 	switch c.Kind {
+	case "allocation":
+		expected.Alloc = c.Alloc
+		if c.Alloc == nil || !validAllocationCommand(*c.Alloc) {
+			return ErrInvalid
+		}
 	case "register", "local":
+		expected.Alloc = c.Alloc
+		if c.Alloc != nil && (!validAllocationCommand(*c.Alloc) || c.Alloc.Op != "claim") {
+			return ErrInvalid
+		}
 		expected.Tx = c.Tx
 		if c.Tx == nil {
+			return ErrInvalid
+		}
+		if c.Tx.Claim != nil && (c.Alloc == nil || c.Alloc.Op != "claim" || c.Alloc.Remote == nil) {
 			return ErrInvalid
 		}
 	case "prepare":
@@ -263,6 +286,14 @@ func validateCommand(c command) error {
 }
 func (m *Machine) apply(c command, index uint64, data []byte) {
 	s := clone(m.state)
+	if allocationEnabled(m.config) {
+		if s.Recipients == nil {
+			s.Recipients = map[string]*RecipientRecord{}
+		}
+		if s.Grants == nil {
+			s.Grants = map[string]*GrantWire{}
+		}
+	}
 	changed, err := m.transition(&s, c, index, len(data)+32)
 	if err == nil && changed {
 		err = m.budget(s, len(data)+32, 1)
@@ -312,6 +343,8 @@ func (m *Machine) validate(s *state, p Participant, id string) error {
 }
 func (m *Machine) transition(s *state, c command, index uint64, wireBytes int) (bool, error) {
 	switch c.Kind {
+	case "allocation":
+		return m.allocationTransition(s, *c.Alloc)
 	case "register", "local":
 		t := *c.Tx
 		if err := m.bound(s, t); err != nil {
@@ -319,6 +352,9 @@ func (m *Machine) transition(s *state, c command, index uint64, wireBytes int) (
 		}
 		if s.Coordinators[t.ID] != nil {
 			return false, nil
+		}
+		if err := m.checkIDClaim(s, t, c.Alloc); err != nil {
+			return false, err
 		}
 		if len(s.Coordinators) >= m.config.Limits.Transactions {
 			return false, ErrLimit
@@ -330,7 +366,7 @@ func (m *Machine) transition(s *state, c command, index uint64, wireBytes int) (
 				return false, ErrInvalid
 			}
 			p := t.Participants[0]
-			proofView := View{Graph: t.Graph, Topology: t.Topology, Group: t.Coordinator, Epoch: p.Epoch, Index: math.MaxUint64, Kind: Decided, Tx: &t, Decision: &Decision{Commit: true, Round: math.MaxUint64, Digest: digest(t), Reason: ErrRetry.Error()}}
+			proofView := View{Namespace: t.Namespace, Graph: t.Graph, Topology: t.Topology, Group: t.Coordinator, Epoch: p.Epoch, Index: math.MaxUint64, Kind: Decided, Tx: &t, Decision: &Decision{Commit: true, Round: math.MaxUint64, Digest: digest(t), Reason: ErrRetry.Error()}}
 			proofWire, _ := json.Marshal(proofView)
 			if len(proofWire) > m.config.Limits.CommandBytes {
 				return false, ErrLimit
@@ -389,6 +425,9 @@ func (m *Machine) transition(s *state, c command, index uint64, wireBytes int) (
 				return false, ErrMismatch
 			}
 			return false, nil
+		}
+		if err := m.checkIDClaim(s, t, nil); err != nil {
+			return false, err
 		}
 		pos := 0
 		for j, x := range t.Participants {
@@ -473,6 +512,11 @@ func (m *Machine) transition(s *state, c command, index uint64, wireBytes int) (
 				return false, ErrMismatch
 			}
 			return false, nil
+		}
+		if c.Commit {
+			if err := m.checkIDClaim(s, t, nil); err != nil {
+				return false, err
+			}
 		}
 		d := &Decision{Commit: c.Commit, Digest: digest(t)}
 		floor := max(s.Floor, s.Fence, t.Dependency)

@@ -54,11 +54,11 @@ func submit(t *testing.T, m *Machine, p Proposal) {
 // separate Host integration tests create production-authoritative Proof values.
 func proof(t *testing.T, m *Machine, kind, id string, round uint64) Proof {
 	t.Helper()
-	v, e := m.answer(Query{kind, id, round}, max(m.applied, 1))
+	v, e := m.answer(Query{Kind: kind, TxID: id, Round: round}, max(m.applied, 1))
 	if e != nil {
 		t.Fatal(e)
 	}
-	return Proof{v}
+	return Proof{view: v}
 }
 func tx(id string, coord uint8, ps ...Participant) Tx {
 	return Tx{Graph: "fixture", Topology: 1, ID: id, Request: "request/" + id, Coordinator: coord, Participants: ps}
@@ -587,12 +587,12 @@ func TestRecoveryByteReservationWithMaximumScalarPayload(t *testing.T) {
 		t.Fatal(e)
 	}
 	regWire, _ := json.Marshal(rp.command)
-	pa, e := Prepare(Proof{regView}, Proof{})
+	pa, e := Prepare(Proof{view: regView}, Proof{})
 	if e != nil {
 		t.Fatal(e)
 	}
 	paWire, _ := json.Marshal(pa.command)
-	pb, e := Prepare(Proof{regView}, Proof{firstView})
+	pb, e := Prepare(Proof{view: regView}, Proof{view: firstView})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -793,7 +793,7 @@ func TestDelayedPrepareCannotReacquireReadOnlyLocalTerminal(t *testing.T) {
 	// Known but irrelevant nested fields are invalid, not ignored on replay.
 	bad := r.View()
 	bad.State = &Snapshot{Values: map[string]Value{"phantom": {Value: 1}}}
-	p, e = Prepare(Proof{bad}, Proof{})
+	p, e = Prepare(Proof{view: bad}, Proof{})
 	if err := apply(t, m, must(t, p, e)); !errors.Is(err, ErrInvalid) {
 		t.Fatal("ignored nested proof payload", err)
 	}
