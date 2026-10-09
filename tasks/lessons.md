@@ -2460,3 +2460,25 @@ corrected it: tests always come first, and none of them is a happy-path test.
   as the counterpart assertion inside such a test.
 - **Rule:** a handover's §tests is written before its §file changes and is run
   red before the first line of code.
+
+## 78. A New Item Gets The Clean Root-Cause Solution And A Red Break-The-Code Test First — No Shortcut Is Delivered Quietly
+
+René (2026-10-09, during the v4.44-v4.46 waves): "Always clean solutions to new items.. no hacks or
+shortcuts .. always write a no-happy-path test before the code." It repeats lesson 77 and the CLAUDE.md
+TDD rule for every NEW item, including ones I delegate and ones I do myself.
+
+- **Rule:** the test that names the faulty implementation and its breaking input is written and run RED
+  (output kept under `tasks/evidence/<item>/`) before the first line of the fix. A test that already passes
+  before the fix is a guard, labelled as such; it never replaces the red one. Mutants (one real edit each)
+  prove the tests catch the fault.
+- **Rule:** the fix lands at the root and at the shared seam the door family funnels through (lessons 58-60),
+  not behind a flag, a skip, a per-caller special case, a heuristic in the consumer, or a documented limit
+  that stands in for work that is possible. A documented limit is allowed only after the sound solution has
+  been tried and shown impossible (state why: lock order, format change), and it goes into the backlog with
+  its red test.
+- **Rule:** when delegating, the prompt carries both rules verbatim and the reviewer checks them: the red
+  evidence exists, the guards are labelled, no test skip hides a known failure. A change I make myself
+  (even a lint or release edit) goes through the same gates; a pure refactor is covered by the existing
+  tests and says so in the commit.
+- **Detector:** `grep -rn 't.Skip' pkg | grep -v 'sharded does not support'` against the change; evidence files
+  whose red run is missing; "unaffected" claims without a test.
