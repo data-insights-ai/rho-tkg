@@ -1,0 +1,18 @@
+--- FAIL: TestBulkAsOfPresence_TopVersionSkipsProbeForHistoryBelowCurrent (0.00s)
+    --- FAIL: TestBulkAsOfPresence_TopVersionSkipsProbeForHistoryBelowCurrent/node (0.25s)
+        badgerstore_asof_bulk_presence_test.go:755: reopen=false: 35 key probes for 5 entities with a row above the current version and 30 with history only below it; want about one per entity of the first kind and none for the second
+    --- FAIL: TestBulkAsOfPresence_TopVersionSkipsProbeForHistoryBelowCurrent/rel (0.26s)
+        badgerstore_asof_bulk_presence_test.go:755: reopen=false: 35 key probes for 5 entities with a row above the current version and 30 with history only below it; want about one per entity of the first kind and none for the second
+--- FAIL: TestBulkAsOfPresence_TopResolvedByNextRead (0.00s)
+    --- FAIL: TestBulkAsOfPresence_TopResolvedByNextRead/rel (0.27s)
+        badgerstore_asof_bulk_presence_test.go:830: flushed=false: 6 probes after HasHistory resolved every ID, want 0 (the remaining row v0 is below the current v1)
+    --- FAIL: TestBulkAsOfPresence_TopResolvedByNextRead/node (0.27s)
+        badgerstore_asof_bulk_presence_test.go:830: flushed=false: 6 probes after HasHistory resolved every ID, want 0 (the remaining row v0 is below the current v1)
+--- FAIL: TestBulkAsOfPresence_ClearDropsTops (0.00s)
+    --- FAIL: TestBulkAsOfPresence_ClearDropsTops/node (0.27s)
+        badgerstore_asof_bulk_presence_test.go:879: 1 probes after Clear for an entity whose rows are all below the current version, want 0
+    --- FAIL: TestBulkAsOfPresence_ClearDropsTops/rel (0.28s)
+        badgerstore_asof_bulk_presence_test.go:879: 1 probes after Clear for an entity whose rows are all below the current version, want 0
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	2.320s
+FAIL

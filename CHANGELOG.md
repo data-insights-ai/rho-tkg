@@ -8,6 +8,75 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`types.NodeID.MintInstant()` / `types.RelID.MintInstant()` (`types.Instant`): the public derivation of an ID's
+  derived valid-from** (backlog 36, requested by sigma-tkgd for its adoption of the rule "`ValidFrom` 0 = unset; the
+  derived start is the ID's mint instant" on unpinned reads and column scans, which carry no derived start and where
+  it refuses to decode snowflake bits itself). It is the resolver's own function, not a copy: `storeutil.EntityValidFrom`
+  (without explicit metadata) and `storeutil.SnowflakeInstant` now call the same `idlayout.MintInstantMillis` the two
+  methods call, so a consumer agrees with every temporal read by construction. The result is Unix MILLISECONDS (the
+  layout is 48-bit microseconds since 2026-01-01 UTC, floored), identical for nodes (even node field) and relationships
+  (odd node field), monotone in ID order, a pure function of the ID and the package-level epoch and layout (every graph
+  in a process shares them; no `Config` is consulted), allocation-free, and never panics: a zero or negative ID, which no
+  generator mints, returns 0 (unset) rather than the epoch or a pre-epoch instant (this also makes the resolver's derived
+  start for such an ID 0, where it was the epoch; non-positive IDs are never persisted, `ErrInvalidStoreMutation`). The `tkg_created_at` shadow fallback (no explicit `CreatedAt`) uses the same function.
+  Decision on the home: `pkg/types` already imports the snowflake library (`SnowflakeID()`), and the methods return
+  `types.Instant`, so no dependency leaks (AGENTS.md rule 12); the layout constants moved from
+  `pkg/graph/internal/snowflake` into the new `pkg/internal/idlayout` (importable by `pkg/types` and `pkg/graph/**`,
+  not public API), and `graph/internal/snowflake` re-exports `Epoch` / `Layout` from it. A facade method on
+  `g.Temporal()` was rejected: it would need an Ops method, a wrapper and fakes for a pure function of the ID and would
+  force a graph handle where none is needed. Tests name the faulty implementations (wrong epoch, microsecond vs
+  millisecond, round vs floor, node/rel node-field offset, 32-bit and high-bit truncation, missing or partial
+  non-positive guard, allocation, resolver divergence); evidence under `tasks/evidence/mint-instant/`.
+
+### Fixed
+
+- **HIGH: pinned doors no longer miss an entity while a write moves its row to history** (backlog 32,
+  pre-existing, found by the effective-timeline pointwise test 2026-10-09). On badger, sharded and tiered
+  (badger shards) a reader at a FIXED pin could get `ErrNoVersionValidAt` / `ErrNoVersionAsOf` / not-found,
+  or a scan without the entity, for an entity that existed at the pin while a concurrent Update,
+  `CloseVersion`, label change, Delete or `SetVersionInterval` moved its current row into history. Doors seen
+  failing on main (2 × 30 stress runs, every backend, node and rel): `NodeAtTx`/`RelAtTx`,
+  `NodeAsOf`/`RelAsOf`, `NodesAtTx`/`RelsAtTx`, `NodesAsOf`/`RelsAsOf`, `NodesDuringTx`/`RelsDuringTx`,
+  `ByType{ValidAt,TxAt}`, `ByType{TxPin}`, `Nodes.All{TxPin}`/`Rels.All{TxPin}`; memory never failed. The
+  other pinned scans (`ByLabel` with `{ValidAt,TxAt}`, `{TxPin}`, an interval, `CountByLabelAt`/
+  `CountByTypeAt`) resolve candidates through the same resolvers and were exposed without a recorded miss
+  (`ByLabel{ValidAt,TxAt}` missed under a mutant). `Get` and `History` (one store call each), and the
+  current-knowledge doors `NodeAt`/`RelAt`, `NodesAt`/`RelsAt`, `ByLabel`/`ByType{ValidAt}` and the
+  `Relating` doors (checked for membership only), never missed. Cause: the per-entity resolvers read
+  the current row and then the history in two store calls without a snapshot or the entity lock, and every
+  badger with-history door (`Replace*WithHistory`, the label-token history doors, `Delete*WithHistory`)
+  changed the entity cache, which `GetNode`/`GetRelationship` answer from, before it appended the moved row
+  to the pending buffer the history readers overlay. Both happen under one `idxMu.Lock`, which the point
+  readers do not take, so a reader between the two halves saw the new current row and a history without the
+  moved row. Fix: `publishMoveLocked` appends the batch first and changes the cache last; the node delete
+  publishes its node and relationship tombstones before the cascade removes the rows from the cache (the
+  cascade now reads orphan index keys in its preflight, so no mutation precedes a fallible read). The
+  resolvers keep reading the current row first (`chain_read.go`), so a reader sees the moved row at least
+  once. No lock on the read path. Cost (interleaved A/B, 6 runs each, medians, 32-core host at load 13-18):
+  point reads within noise (memory -6 % to +10 %; badger hot `NodeAtTx`/`RelAtTx` +12 % on the median,
+  +3-4 % on the best run, cold -2 % to +1 %), badger `Nodes.Update` +5 %, `Rels.Update` +1 %. Tests:
+  `TestPointDoorRace_UnderMovingWriters` (writers vs readers of every door, all five backend flavours, zero
+  misses; record doors checked for monotone answers), `TestWithHistoryDoorsPublishHistoryBeforeCurrent`
+  (every badger with-history door paused between its two halves, in memory, on disk, flushed: 21 of 21 red
+  on main), `TestPointDoorRace_MoveBetweenChainReads` (a whole move between a resolver's two reads, every
+  backend; guard, green on main). Evidence and mutants (one door unfixed, publication order swapped at the
+  seam, interval and as-of resolvers reading history first: each red) under `tasks/evidence/point-door-race/`.
+
+## [4.46.0] - 2026-10-09
+
+Minor release: cascade correctness (one version allocator for every appended row, appended rows carry no
+`TxTo`/`DeletedAt`, `ErrEntityDeleted`, GraphTx rollback keeps cascade rows, delete after a bounded cascade ends
+the entity in every read door, compaction keeps the hash anchors), the pin-stable as-of rule, `HasHistory`,
+`CreateUnique` on `SetNodeVersionInterval` patches, bulk as-of presence, `Config.DurableCommit` fixes and the
+history-presence overlay fix. **Read this before upgrading from 4.45.x: the record doors `NodeAsOf` / `RelAsOf`
+/ `NodesAsOf` / `RelsAsOf` and the `TxPin` scans answer "the newest row recorded by the pin", which after a
+bounded cascade is the corrected slice and no longer the current row; for "the state at valid time t as recorded at
+the pin" call `NodeAtTx` / `RelAtTx` or `ByLabel` / `ByType` with `ValidAt` + `TxAt` (see `### Changed` and the
+documented exception in `docs/stability.md`).** Gates on the released tree: `make ci-docker` exit 0; sigma-tkgd,
+ai-soc engine and agent-bookkeeping build and vet against it.
+
+### Added
+
 - **`g.Nodes().HasHistory(id)` / `g.Rels().HasHistory(id) (bool, error)`: whether an entity has a history row,
   without reading one** (handover `tasks/handover-effective-read-cost-20261009.md` fix 1b, backlog 20). sigma-tkgd's
   effective-state read on a pinned scan called `History` once per entity to learn whether the current row alone
@@ -21,9 +90,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `GetNodeHistory` / `GetRelHistory` read (reference + archive, archive + reference, the deleted-entity fan-out),
   and a cold shard is opened the way `History` opens it and answers by a per-ID key probe
   (`badger.Config.HistoryPresenceProbeOnly`, set on cold shards) instead of building a set. Badger keeps a RAM set
-  of the IDs with history rows: built on the first call by one key-only scan (`ForEach*HistoryID`, write buffer
-  included), maintained where every history key enters the write buffer (`noteHistoryKey`, under `wbMu`): a SET
-  adds the ID, a DELETE marks it for a per-ID key probe on the next read. Writes during the build's scan and
+  of the IDs with history rows and their highest history version: built on the first call by one key-only scan (write
+  buffer included), maintained where every history key enters the write buffer (`noteHistoryKey`, under `wbMu`): a
+  SET adds the ID and raises its top, a DELETE marks it for a per-ID key probe on the next read. Writes during the build's scan and
   during a probe are kept by a per-ID write generation (lessons 63 / 74, deterministic hook tests), and `Clear`
   excludes builds and drops the set (the next call rebuilds; a failed drop leaves no stale set). RAM, measured
   (live heap after GC around one build, `setB/id` in the build benchmark): 30 B per ID at 10 K IDs, 40 B at
@@ -66,37 +135,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- **HIGH: pinned doors no longer miss an entity while a write moves its row to history** (backlog 32,
-  pre-existing, found by the effective-timeline pointwise test 2026-10-09). On badger, sharded and tiered
-  (badger shards) a reader at a FIXED pin could get `ErrNoVersionValidAt` / `ErrNoVersionAsOf` / not-found,
-  or a scan without the entity, for an entity that existed at the pin while a concurrent Update,
-  `CloseVersion`, label change, Delete or `SetVersionInterval` moved its current row into history. Doors seen
-  failing on main (2 × 30 stress runs, every backend, node and rel): `NodeAtTx`/`RelAtTx`,
-  `NodeAsOf`/`RelAsOf`, `NodesAtTx`/`RelsAtTx`, `NodesAsOf`/`RelsAsOf`, `NodesDuringTx`/`RelsDuringTx`,
-  `ByType{ValidAt,TxAt}`, `ByType{TxPin}`, `Nodes.All{TxPin}`/`Rels.All{TxPin}`; memory never failed. The
-  other pinned scans (`ByLabel` with `{ValidAt,TxAt}`, `{TxPin}`, an interval, `CountByLabelAt`/
-  `CountByTypeAt`) resolve candidates through the same resolvers and were exposed without a recorded miss
-  (`ByLabel{ValidAt,TxAt}` missed under a mutant). `Get` and `History` (one store call each), and the
-  current-knowledge doors `NodeAt`/`RelAt`, `NodesAt`/`RelsAt`, `ByLabel`/`ByType{ValidAt}` and the
-  `Relating` doors (checked for membership only), never missed. Cause: the per-entity resolvers read
-  the current row and then the history in two store calls without a snapshot or the entity lock, and every
-  badger with-history door (`Replace*WithHistory`, the label-token history doors, `Delete*WithHistory`)
-  changed the entity cache, which `GetNode`/`GetRelationship` answer from, before it appended the moved row
-  to the pending buffer the history readers overlay. Both happen under one `idxMu.Lock`, which the point
-  readers do not take, so a reader between the two halves saw the new current row and a history without the
-  moved row. Fix: `publishMoveLocked` appends the batch first and changes the cache last; the node delete
-  publishes its node and relationship tombstones before the cascade removes the rows from the cache (the
-  cascade now reads orphan index keys in its preflight, so no mutation precedes a fallible read). The
-  resolvers keep reading the current row first (`chain_read.go`), so a reader sees the moved row at least
-  once. No lock on the read path. Cost (interleaved A/B, 6 runs each, medians, 32-core host at load 13-18):
-  point reads within noise (memory -6 % to +10 %; badger hot `NodeAtTx`/`RelAtTx` +12 % on the median,
-  +3-4 % on the best run, cold -2 % to +1 %), badger `Nodes.Update` +5 %, `Rels.Update` +1 %. Tests:
-  `TestPointDoorRace_UnderMovingWriters` (writers vs readers of every door, all five backend flavours, zero
-  misses; record doors checked for monotone answers), `TestWithHistoryDoorsPublishHistoryBeforeCurrent`
-  (every badger with-history door paused between its two halves, in memory, on disk, flushed: 21 of 21 red
-  on main), `TestPointDoorRace_MoveBetweenChainReads` (a whole move between a resolver's two reads, every
-  backend; guard, green on main). Evidence and mutants (one door unfixed, publication order swapped at the
-  seam, interval and as-of resolvers reading history first: each red) under `tasks/evidence/point-door-race/`.
+- **Bulk badger `NodesAsOf` / `RelsAsOf` no longer read the key above the current version per entity.** The
+  pin-stable as-of rule made the bulk scan look for a row at `current+1` for every entity (a badger point read
+  each, measured +0.6 us per entity without history, +1.2 us with one history row; about +0.6 s per 1 M entities;
+  it hit sigma-tkgd's tx-only `AS OF`), while the point doors already gated on `HasNodeHistory` /
+  `HasRelHistory`. The history presence set now keeps the highest history version per ID (a `uint32` top; no
+  measurable RAM: the map slot was already padded, 30.1 B per ID at 10 K IDs before and after), and the bulk
+  doors answer "is there a row at that version" from it: an ID without history, or with every row below the
+  current version, costs no key read. The set is built BEFORE the scan takes `idxMu` (a build is a key-only scan
+  of the history keyspace; nothing is held, so the lock order flushMu -> idxMu -> buildMu -> wbMu is
+  unchanged). Maintenance is at the one place every history key passes (`noteHistoryKey`): a SET raises the top;
+  a DELETE (trim, truncate, compaction, rollback trim, retention purge, exact erasure) marks the ID unknown, and
+  so does a SET into an unknown ID (rows the delete left may sit above it), each under a fresh stamp so a probe in
+  flight does not install a stale top; the next `HasHistory` read resolves the exact top by one reverse seek; the
+  build reads the highest version per ID (single-row IDs cost one `Next`, others one reverse seek), merges a SET
+  noted during the scan by max, and `Clear` drops it all. The set is live while the scan reads an older snapshot
+  (overlay captured once, then one badger transaction), so an answer is used only if the set was built when the
+  scan began, the ID is not unknown, its top is bounded, and no history delete was noted since just before the
+  overlay capture (new `deletes` counter; the trim doors take no `idxMu`, so a delete can land mid-scan, and a
+  probe may since have resolved a lower top). Otherwise the scan reads the key as before, so a `Clear` between
+  build and lock, probe-only stores (`HistoryPresenceProbeOnly`) and unknown IDs stay correct. The answer is
+  "no key at a version above the top", never "a key exists", so chains with version gaps behave exactly as the
+  point doors. Measured (`BenchmarkNodesAsOfBulk` / `BenchmarkRelsAsOfBulk`, 20 K entities with no, one or three
+  history rows below the current row; three builds run interleaved on a loaded 32-core host, minimum of 8 runs,
+  ms): nodes none 31.4 -> 31.7 (before the as-of rule change 31.4), one 43.8 -> 63.6 -> 48.6, three 47.5 ->
+  75.8 -> 51.1; rels none 33.0 / 34.6 / 35.6, one 53.1 -> 74.4 -> 57.4, three 51.9 -> 82.0 -> 54.5 (each triple:
+  before the as-of rule change, presence for entities without history only, with the top version): within 3-11 %
+  of the figures before the rule change at the minimum, 14 % at the median for rels with one row. The build
+  (10 K IDs with three history rows: rel 4.1 ms, node 4.9 ms, minimum of 7 interleaved runs) is 2.5-4x FASTER than
+  main's ID-only build (10.4 / 19.9 ms): it walks an ID's rows forward and reverse-seeks only past 16 rows (a
+  first version reverse-seeked every multi-row ID and ran 1.6-2x slower than main; guard
+  `TestHistoryPresenceBuildScanCost`); IDs deeper than 16 rows cost about 4 us. Tests: `TestBulkAsOfPresence_*` (probe
+  counts per state, unknown IDs, delete mid-scan, probe-only, build merge, randomized chains across pending /
+  flushed / trimmed / deleted / reopened / cleared, writers racing scans under `-race`),
+  `TestHistoryPresenceNoteTop`, `TestScanHistoryTopsAndProbeMatchHistory`, `TestBulkAsOfPresence_VersionGapsMatchPointDoors`
+  (gap chains: bulk equals the point doors), 13 mutants each red; evidence
+  `tasks/evidence/bulk-asof-presence/`.
 
 - **HIGH: unique constraints are enforced on `SetNodeVersionInterval` props patches** (found in the
   review of the ingest interval doors, 2026-10-09; `tasks/backlog.md` item 12). The cascade kernel

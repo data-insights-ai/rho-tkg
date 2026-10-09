@@ -58,12 +58,12 @@ func (bs *Store) noteHistoryKey(op writeOp) {
 	case storepkg.KeyHistNode:
 		bs.histNodeEpoch.Add(1)
 		if len(key) == storepkg.SizeHistKey {
-			bs.histNodePresence.note(storepkg.ParseIDFromKey(key, 1), op.opType == writeOpDelete)
+			bs.histNodePresence.note(storepkg.ParseIDFromKey(key, 1), historyVersionFromKey(key), op.opType == writeOpDelete)
 		}
 	case storepkg.KeyHistRel:
 		bs.histRelEpoch.Add(1)
 		if len(key) == storepkg.SizeHistKey {
-			bs.histRelPresence.note(storepkg.ParseIDFromKey(key, 1), op.opType == writeOpDelete)
+			bs.histRelPresence.note(storepkg.ParseIDFromKey(key, 1), historyVersionFromKey(key), op.opType == writeOpDelete)
 		}
 	}
 }

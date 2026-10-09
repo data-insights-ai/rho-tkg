@@ -1,0 +1,79 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkNodesAsOfBulk/history=none-32         	      15	  33964480 ns/op	      1698 ns/entity	23469788 B/op	  346088 allocs/op
+BenchmarkNodesAsOfBulk/history=one-32          	      15	  66678384 ns/op	      3334 ns/entity	36373770 B/op	  563417 allocs/op
+BenchmarkRelsAsOfBulk/history=none-32          	      15	  37800769 ns/op	      1890 ns/entity	23636654 B/op	  333682 allocs/op
+BenchmarkRelsAsOfBulk/history=one-32           	      15	  70023010 ns/op	      3501 ns/entity	35274219 B/op	  539158 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkNodesAsOfBulk/history=none-32         	      15	  37186791 ns/op	      1859 ns/entity	23477865 B/op	  346200 allocs/op
+BenchmarkNodesAsOfBulk/history=one-32          	      15	  67568163 ns/op	      3378 ns/entity	36488257 B/op	  565002 allocs/op
+BenchmarkRelsAsOfBulk/history=none-32          	      15	  37146476 ns/op	      1857 ns/entity	24733214 B/op	  347898 allocs/op
+BenchmarkRelsAsOfBulk/history=one-32           	      15	  91081699 ns/op	      4554 ns/entity	39164528 B/op	  591637 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkNodesAsOfBulk/history=none-32         	      15	  38735405 ns/op	      1937 ns/entity	24239693 B/op	  356692 allocs/op
+BenchmarkNodesAsOfBulk/history=one-32          	      15	  75443539 ns/op	      3772 ns/entity	35404500 B/op	  550075 allocs/op
+BenchmarkRelsAsOfBulk/history=none-32          	      15	  44042134 ns/op	      2202 ns/entity	23789156 B/op	  335660 allocs/op
+BenchmarkRelsAsOfBulk/history=one-32           	      15	 146866097 ns/op	      7343 ns/entity	39231091 B/op	  592538 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkNodesAsOfBulk/history=none-32         	      15	  95197704 ns/op	      4760 ns/entity	22266515 B/op	  329528 allocs/op
+BenchmarkNodesAsOfBulk/history=one-32          	      15	 297450552 ns/op	     14873 ns/entity	37260387 B/op	  575659 allocs/op
+BenchmarkRelsAsOfBulk/history=none-32          	      15	  90147312 ns/op	      4507 ns/entity	25226481 B/op	  354297 allocs/op
+BenchmarkRelsAsOfBulk/history=one-32           	      15	 133128900 ns/op	      6656 ns/entity	39044548 B/op	  590016 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkNodesAsOfBulk/history=none-32         	      15	 126708559 ns/op	      6335 ns/entity	23619562 B/op	  348171 allocs/op
+BenchmarkNodesAsOfBulk/history=one-32          	      15	 157552268 ns/op	      7878 ns/entity	37293604 B/op	  576102 allocs/op
+BenchmarkRelsAsOfBulk/history=none-32          	      15	  94488776 ns/op	      4724 ns/entity	24997354 B/op	  351327 allocs/op
+BenchmarkRelsAsOfBulk/history=one-32           	      15	 210841665 ns/op	     10542 ns/entity	39332249 B/op	  593909 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkNodesAsOfBulk/history=none-32         	      15	  44065064 ns/op	      2203 ns/entity	21748711 B/op	  322363 allocs/op
+BenchmarkNodesAsOfBulk/history=one-32          	      15	  94506382 ns/op	      4725 ns/entity	36586612 B/op	  566354 allocs/op
+BenchmarkRelsAsOfBulk/history=none-32          	      15	  44383499 ns/op	      2219 ns/entity	24386167 B/op	  343397 allocs/op
+BenchmarkRelsAsOfBulk/history=one-32           	      15	 296649644 ns/op	     14832 ns/entity	37649650 B/op	  571217 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkNodesAsOfBulk/history=none-32         	      15	  40292179 ns/op	      2015 ns/entity	23959398 B/op	  352831 allocs/op
+BenchmarkNodesAsOfBulk/history=one-32          	      15	  77113993 ns/op	      3856 ns/entity	34687672 B/op	  540193 allocs/op
+BenchmarkRelsAsOfBulk/history=none-32          	      15	  44127052 ns/op	      2206 ns/entity	24759835 B/op	  348243 allocs/op
+BenchmarkRelsAsOfBulk/history=one-32           	      15	 116974628 ns/op	      5849 ns/entity	38306441 B/op	  580063 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkNodesAsOfBulk/history=none-32         	      15	  42792068 ns/op	      2140 ns/entity	23095209 B/op	  340929 allocs/op
+BenchmarkNodesAsOfBulk/history=one-32          	      15	 118040874 ns/op	      5902 ns/entity	36911488 B/op	  570837 allocs/op
+BenchmarkRelsAsOfBulk/history=none-32          	      15	 170822659 ns/op	      8541 ns/entity	25674500 B/op	  360113 allocs/op
+BenchmarkRelsAsOfBulk/history=one-32           	      15	  87959345 ns/op	      4398 ns/entity	37915327 B/op	  574785 allocs/op
+PASS

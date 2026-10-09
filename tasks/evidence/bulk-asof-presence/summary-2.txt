@@ -1,0 +1,41 @@
+Round 2 - highest history version per ID (summary.txt covers round 1: presence for entities without history)
+
+Why: round 1 left entities WITH history probing the key at current+1 (the set held IDs, not versions). Round 2 keeps
+a uint32 top per ID so the bulk scans skip the key whenever the bound is below the version asked for.
+
+RED before the code (red-2-before-top-version.txt, run on the test-only commit):
+  TestBulkAsOfPresence_TopVersionSkipsProbeForHistoryBelowCurrent  35 probes, 5 expected (node, rel)
+  TestBulkAsOfPresence_TopResolvedByNextRead                       6 probes after HasHistory resolved every ID, want 0
+  TestBulkAsOfPresence_ClearDropsTops                              1 probe after Clear, want 0
+GUARDS (green before and after; they fail on a wrong top):
+  the equivalence matrix (now with deep chains: current row newest, 1-4 history rows below, plus the cascade chains
+  above the slot), _SetIntoUnknownIDKeepsRowsAbove, _BuildSeesUnflushedRows, _BuildMergesTopNotedDuringScan,
+  _UnknownIDStillProbed, _DeleteMidScanKeepsSnapshot, _ProbeOnlyStillCorrect, _WritersRace.
+Unit tests written with the code (they name the new field, so they could not run red first):
+  TestHistoryPresenceNoteTop, TestHistoryPresenceSetIntoUnknownMovesStamp, TestBulkPresenceBound,
+  TestScanHistoryTopsAndProbeMatchHistory.
+Mutants (mutants-2.txt), 12, all red: N1 top not raised on SET, N2 top not invalidated on DELETE, N3 SET into unknown
+  handled as a plain SET, N4 build reads the lowest version, N5 stale top after Clear, N6 build ignores buffered-only
+  IDs, N7 probe ignores the overlay, N8 install overwrites a noted top, N9 off by one at the top, N10 scan ignores
+  pending deletes, N11 topUnbounded read as a bound, N12 unknown ID answered from a stale entry.
+  (Round 1 mutants M1..M7 in mutants.txt: M1 and M2 target the old none() and are subsumed by N12 / the delete counter.)
+GREEN: green-2-after-top-version.txt; go test ./pkg/graph/store/... ./pkg/graph passes; race run of
+  'AsOf|HistoryPresence|HasHistory|BulkPresenceBound|ScanHistoryTops' -count=2 passes; coverage-2.txt (new functions 90-100 %).
+
+RAM (bench-presence-build-before-top.txt / -after-top.txt, BenchmarkRelHasHistory .../build):
+  10 K IDs 30.11 B/ID before, 30.11 after; 2 K IDs 39.7 after (40 before); 200 IDs 52.3 after (52 before).
+  The uint32 adds nothing measurable: the Go map slot is padded to 16 B with or without it
+  (standalone check: map[int64]struct{} and map[int64]uint32 both 29.0 B/id at 10 K entries).
+Build time per 10 K IDs: rel 25 ms -> 20-28 ms, node 23-32 ms -> 56-68 ms (the node fixture takes the reverse-seek path).
+
+Benchmarks (bench2-summary.txt, bench2-paired-*.txt; three binaries interleaved, 8 rounds, host load 15-25; min ms, 20 K entities):
+                          before the rule  round 1   round 2
+  nodes, no history            31.4          31.7      32.5   (+3 %)
+  nodes, one history row       43.8          63.6      48.6   (+11 %)
+  nodes, three history rows    47.5          75.8      51.1   (+8 %)
+  rels,  no history            33.0          34.6      35.6   (+8 %)
+  rels,  one history row       53.1          74.4      57.4   (+8 %)
+  rels,  three history rows    51.9          82.0      54.5   (+5 %)
+Medians: nodes one 53.9 -> 57.2 (+6 %), rels one 60.9 -> 69.6 (+14 %), the rest within 12 %. The host was loaded, so
+single runs scatter by 10-20 %; the minimum of 8 is the stable figure. Remaining difference to the pre-rule scan is
+allocations (about +10 %: one closure and the key per entity that still reads, bound() lock).

@@ -1,0 +1,6 @@
+BenchmarkRelHasHistory/entities=1000K/density=1%/build-32   	       3	  24982906 ns/op	     10000 ids	        30.11 setB/id	 5266293 B/op	   79579 allocs/op
+BenchmarkRelHasHistory/entities=1000K/density=1%/build-32   	       3	  24722074 ns/op	     10000 ids	        30.17 setB/id	 5256464 B/op	   79558 allocs/op
+BenchmarkNodeHasHistory/entities=1000K/density=1%/build-32  	       3	  23483676 ns/op	     10000 ids	        30.09 setB/id	 5612285 B/op	  122304 allocs/op
+BenchmarkNodeHasHistory/entities=1000K/density=1%/build-32  	       3	  32515625 ns/op	     10000 ids	        30.11 setB/id	 5616994 B/op	  122315 allocs/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	42.574s

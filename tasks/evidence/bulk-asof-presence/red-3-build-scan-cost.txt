@@ -1,0 +1,11 @@
+    badgerstore_history_presence_scancost_test.go:74: 1 row: ID-only scan 8.408241ms, tops scan 1.264146ms (x0.15)
+    badgerstore_history_presence_scancost_test.go:74: 3 rows: ID-only scan 9.890678ms, tops scan 19.500944ms (x1.97)
+    badgerstore_history_presence_scancost_test.go:76: 3 rows: the tops scan takes x1.97 of the ID-only scan (19.500944ms vs 9.890678ms), limit x1.35
+    badgerstore_history_presence_scancost_test.go:74: 12 rows: ID-only scan 12.991034ms, tops scan 19.537417ms (x1.50)
+--- FAIL: TestHistoryPresenceBuildScanCost (2.10s)
+    --- PASS: TestHistoryPresenceBuildScanCost/1_row (0.29s)
+    --- FAIL: TestHistoryPresenceBuildScanCost/3_rows (0.60s)
+    --- PASS: TestHistoryPresenceBuildScanCost/12_rows (1.22s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	2.124s
+FAIL

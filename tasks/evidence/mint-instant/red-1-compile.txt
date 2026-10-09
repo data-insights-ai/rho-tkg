@@ -1,0 +1,43 @@
+# github.com/data-insights-ai/rho-tkg/v4/pkg/internal/idlayout [github.com/data-insights-ai/rho-tkg/v4/pkg/internal/idlayout.test]
+pkg/internal/idlayout/idlayout_test.go:23:12: undefined: Epoch
+pkg/internal/idlayout/idlayout_test.go:26:5: undefined: Epoch
+pkg/internal/idlayout/idlayout_test.go:27:45: undefined: Epoch
+pkg/internal/idlayout/idlayout_test.go:33:6: undefined: Layout
+pkg/internal/idlayout/idlayout_test.go:36:6: undefined: Layout
+pkg/internal/idlayout/idlayout_test.go:36:27: undefined: Epoch
+pkg/internal/idlayout/idlayout_test.go:37:44: undefined: Layout
+pkg/internal/idlayout/idlayout_test.go:37:60: undefined: Epoch
+pkg/internal/idlayout/idlayout_test.go:40:7: undefined: Layout
+pkg/internal/idlayout/idlayout_test.go:69:14: undefined: MintInstantMillis
+pkg/internal/idlayout/idlayout_test.go:69:14: too many errors
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/internal/idlayout [build failed]
+# github.com/data-insights-ai/rho-tkg/v4/pkg/types [github.com/data-insights-ai/rho-tkg/v4/pkg/types.test]
+pkg/types/mint_instant_test.go:41:37: NodeID(tc.raw).MintInstant undefined (type NodeID has no field or method MintInstant)
+pkg/types/mint_instant_test.go:54:36: RelID(tc.raw).MintInstant undefined (type RelID has no field or method MintInstant)
+pkg/types/mint_instant_test.go:74:16: n.MintInstant undefined (type NodeID has no field or method MintInstant)
+pkg/types/mint_instant_test.go:77:16: r.MintInstant undefined (type RelID has no field or method MintInstant)
+pkg/types/mint_instant_test.go:92:23: NodeID(raw).MintInstant undefined (type NodeID has no field or method MintInstant)
+pkg/types/mint_instant_test.go:92:49: RelID(raw).MintInstant undefined (type RelID has no field or method MintInstant)
+pkg/types/mint_instant_test.go:106:56: n.MintInstant undefined (type NodeID has no field or method MintInstant)
+pkg/types/mint_instant_test.go:106:74: r.MintInstant undefined (type RelID has no field or method MintInstant)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/types [build failed]
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil [github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil.test]
+pkg/graph/internal/storeutil/mint_instant_test.go:27:27: types.NodeID(id).MintInstant undefined (type types.NodeID has no field or method MintInstant)
+pkg/graph/internal/storeutil/mint_instant_test.go:28:29: types.RelID(id).MintInstant undefined (type types.RelID has no field or method MintInstant)
+pkg/graph/internal/storeutil/mint_instant_test.go:86:27: types.NodeID(id).MintInstant undefined (type types.NodeID has no field or method MintInstant)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil [build failed]
+# github.com/data-insights-ai/rho-tkg/v4/pkg/graph_test [github.com/data-insights-ai/rho-tkg/v4/pkg/graph.test]
+pkg/graph/mint_instant_test.go:64:20: n.ID().MintInstant undefined (type types.NodeID has no field or method MintInstant)
+pkg/graph/mint_instant_test.go:75:20: r.ID().MintInstant undefined (type types.RelID has no field or method MintInstant)
+pkg/graph/mint_instant_test.go:85:17: peer.ID().MintInstant undefined (type types.NodeID has no field or method MintInstant)
+pkg/graph/mint_instant_test.go:85:44: plain.ID().MintInstant undefined (type types.NodeID has no field or method MintInstant)
+pkg/graph/mint_instant_test.go:85:77: backfilled.ID().MintInstant undefined (type types.NodeID has no field or method MintInstant)
+pkg/graph/mint_instant_test.go:85:103: peer.ID().MintInstant undefined (type types.NodeID has no field or method MintInstant)
+pkg/graph/mint_instant_test.go:86:77: plain.ID().MintInstant undefined (type types.NodeID has no field or method MintInstant)
+pkg/graph/mint_instant_test.go:86:102: peer.ID().MintInstant undefined (type types.NodeID has no field or method MintInstant)
+pkg/graph/mint_instant_test.go:86:133: backfilled.ID().MintInstant undefined (type types.NodeID has no field or method MintInstant)
+pkg/graph/mint_instant_test.go:122:26: a.ID().MintInstant undefined (type types.NodeID has no field or method MintInstant)
+pkg/graph/mint_instant_test.go:122:26: too many errors
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph [build failed]
+FAIL
+exit=1
