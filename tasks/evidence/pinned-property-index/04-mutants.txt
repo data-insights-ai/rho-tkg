@@ -1,0 +1,233 @@
+## M1: record only the current value (memory build skips history rows)  (pkg/graph/store/memory/memorystore_propertytxmembers.go)
+   --- FAIL: TestPinnedByTypeAndPropertyEqualsPinnedScan (0.80s)
+       --- FAIL: TestPinnedByTypeAndPropertyEqualsPinnedScan/memory/index=true/warm=false (0.01s)
+           pinned_property_index_test.go:441: p2 seat=2: got {}, want {797905847991305216:v0} (names map[797905847990617088:A 797905847991305216:B 797905847991436288:C 797905848337892352:D 797905848338187264:G 7979058483382
+       --- FAIL: TestPinnedByTypeAndPropertyEqualsPinnedScan/memory-segments/index=true/warm=false (0.01s)
+           pinned_property_index_test.go:441: p2 seat=2: got {}, want {797905849204605952:v0} (names map[797905849204179968:A 797905849204605952:B 797905849204704256:C 797905849549652992:D 797905849550865408:G 7979058495509
+   --- FAIL: TestPinnedPropertyLookupLoadsOnlyEverMembers (0.08s)
+       --- FAIL: TestPinnedPropertyLookupLoadsOnlyEverMembers/memory/rel (0.00s)
+           pinned_property_index_test.go:565: churn x1 {Limit:0 After:0 ValidAt:0 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:1791575754991 IncludeEclipsed:false Depth:0 NoSort:false}: lookup loaded 5 chains, want 10 (the value's 
+   --- FAIL: TestRelPropertyTxMembersEveryDoor (0.13s)
+       --- FAIL: TestRelPropertyTxMembersEveryDoor/memory (0.00s)
+           property_tx_members_test.go:303: lazy build members(1) = {101:100}
+   FAIL
+   FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	0.219s
+   ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.342s
+   ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded	0.018s
+   FAIL
+   => RED (caught)
+
+## M2: record only the current value (memory history rows not recorded at write)  (pkg/graph/store/memory/memorystore_ordinal.go)
+   ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	8.007s
+   --- FAIL: TestRelPropertyTxMembersEveryDoor (0.11s)
+       --- FAIL: TestRelPropertyTxMembersEveryDoor/memory (0.00s)
+           property_tx_members_test.go:353: door ReplaceRelWithHistory prevState: members(1005) = {}, want {102:120}
+   FAIL
+   FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	0.202s
+   ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.481s
+   ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded	0.058s
+   FAIL
+   => RED (caught)
+
+## M3: record only the current value (badger demoted row not recorded)  (pkg/graph/store/badger/badgerstore_history_rel.go)
+   ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	7.904s
+   --- FAIL: TestRelPropertyTxMembersEveryDoor (0.07s)
+       --- FAIL: TestRelPropertyTxMembersEveryDoor/badger (0.00s)
+           property_tx_members_test.go:353: door ReplaceRelWithHistory prevState: members(1005) = {}, want {102:120}
+       --- FAIL: TestRelPropertyTxMembersEveryDoor/badger-delta (0.01s)
+           property_tx_members_test.go:353: door ReplaceRelWithHistory prevState: members(1005) = {}, want {102:120}
+       --- FAIL: TestRelPropertyTxMembersEveryDoor/sharded (0.05s)
+           property_tx_members_test.go:353: door ReplaceRelWithHistory prevState: members(1005) = {}, want {102:120}
+   FAIL
+   => RED (caught)
+
+## M4: drop deleted rels (memory build skips rels without a current row)  (pkg/graph/store/memory/memorystore_propertytxmembers.go)
+   --- FAIL: TestPinnedByTypeAndPropertyEqualsPinnedScan (0.72s)
+       --- FAIL: TestPinnedByTypeAndPropertyEqualsPinnedScan/memory/index=true/warm=false (0.01s)
+           pinned_property_index_test.go:441: p2 seat=2: got {}, want {797908141293896704:v0} (names map[797908141293241344:A 797908141293896704:B 797908141294027776:C 797908141640549376:D 797908141640713216:G 7979081416407
+       --- FAIL: TestPinnedByTypeAndPropertyEqualsPinnedScan/memory-segments/index=true/warm=false (0.01s)
+           pinned_property_index_test.go:441: p2 seat=2: got {}, want {797908142467318784:v0} (names map[797908142467122176:A 797908142467318784:B 797908142467384320:C 797908142828356608:D 797908142829044736:G 7979081428291
+   --- FAIL: TestPinnedPropertyLookupLoadsOnlyEverMembers (0.08s)
+       --- FAIL: TestPinnedPropertyLookupLoadsOnlyEverMembers/memory/rel (0.00s)
+           pinned_property_index_test.go:565: churn x1 {Limit:0 After:0 ValidAt:0 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:1791575824904 IncludeEclipsed:false Depth:0 NoSort:false}: lookup loaded 8 chains, want 10 (the value's 
+   --- FAIL: TestRelPropertyTxMembersEveryDoor (0.22s)
+       --- FAIL: TestRelPropertyTxMembersEveryDoor/memory (0.00s)
+           property_tx_members_test.go:303: lazy build members(1) = {101:100 102:110 105:50}
+   FAIL
+   FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	0.421s
+   ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.591s
+   ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded	0.023s
+   FAIL
+   => RED (caught)
+
+## M5: drop deleted rels (badger tombstone not recorded)  (pkg/graph/store/badger/badgerstore_history_rel.go)
+   --- FAIL: TestRelPropertyTxMembersEveryDoor (0.22s)
+       --- FAIL: TestRelPropertyTxMembersEveryDoor/badger (0.02s)
+           property_tx_members_test.go:353: door DeleteRelWithHistory tombstone: members(1006) = {}, want {109:330}
+       --- FAIL: TestRelPropertyTxMembersEveryDoor/badger-delta (0.01s)
+           property_tx_members_test.go:353: door DeleteRelWithHistory tombstone: members(1006) = {}, want {109:330}
+       --- FAIL: TestRelPropertyTxMembersEveryDoor/sharded (0.19s)
+           property_tx_members_test.go:353: door DeleteRelWithHistory tombstone: members(1006) = {}, want {109:330}
+   FAIL
+   => RED (caught)
+
+## M6: prune off by one (firstTx == pin pruned)  (pkg/graph/internal/core/temporal.go)
+   --- FAIL: TestPinnedByTypeAndPropertyEqualsPinnedScan (0.97s)
+       --- FAIL: TestPinnedByTypeAndPropertyEqualsPinnedScan/memory/index=true/warm=false (0.01s)
+           pinned_property_index_test.go:464: pin 1791575873742 seat=2: lookup {} != RelsAsOf {797909769829975040:v0} (names map[797909769828271104:A 797909769829975040:B 797909769830106112:C 797909770177938432:D 7979097701
+       --- FAIL: TestPinnedByTypeAndPropertyEqualsPinnedScan/memory/index=true/warm=true (0.01s)
+           pinned_property_index_test.go:464: pin 1791575873753 seat=2: lookup {} != RelsAsOf {797909770193372160:v0} (names map[797909770193044480:A 797909770193372160:B 797909770193503232:C 797909770538910720:D 7979097705
+       --- FAIL: TestPinnedByTypeAndPropertyEqualsPinnedScan/memory-segments/index=true/warm=false (0.02s)
+           pinned_property_index_test.go:464: pin 1791575873777 seat=2: lookup {} != RelsAsOf {797909770961585152:v0} (names map[797909770961257472:A 797909770961585152:B 797909770961683456:C 797909771341661184:D 7979097713
+       --- FAIL: TestPinnedByTypeAndPropertyEqualsPinnedScan/memory-segments/index=true/warm=true (0.02s)
+   => RED (caught)
+
+## M7: prune off by one, node twin  (pkg/graph/internal/core/temporal.go)
+   --- FAIL: TestBitemporalOracleHarness (2.93s)
+       --- FAIL: TestBitemporalOracleHarness/seed=47645253139 (0.00s)
+           bitemporaloracle_test.go:1172: MISMATCH [node generic{TxPin}(A, seat=2) indexed] seed=47645253139 backend=memory
+       --- FAIL: TestBitemporalOracleHarness/seed=47645253141 (0.00s)
+           bitemporaloracle_test.go:1172: MISMATCH [node generic{TxPin}(A, seat=2) indexed] seed=47645253141 backend=memory
+       --- FAIL: TestBitemporalOracleHarness/seed=47645253147 (0.00s)
+           bitemporaloracle_test.go:1172: MISMATCH [node generic{TxPin}(A, seat=2) indexed] seed=47645253147 backend=memory
+       --- FAIL: TestBitemporalOracleHarness/seed=47645253149 (0.00s)
+   => RED (caught)
+
+## M8: skip the pending buffer in the build  (pkg/graph/store/badger/badgerstore_propertytxmembers.go)
+   --- FAIL: TestPinnedByTypeAndPropertyEqualsPinnedScan (0.95s)
+       --- FAIL: TestPinnedByTypeAndPropertyEqualsPinnedScan/badger/index=true/warm=false (0.06s)
+           pinned_property_index_test.go:441: p2 seat=2: got {}, want {797911945490269184:v0} (names map[797911945489155072:A 797911945490269184:B 797911945490498560:C 797911945872475136:D 797911945875162112:G 7979119458754
+       --- FAIL: TestPinnedByTypeAndPropertyEqualsPinnedScan/badger-delta/index=true/warm=false (0.05s)
+           pinned_property_index_test.go:441: p2 seat=2: got {}, want {797911949346505728:v0} (names map[797911949345457152:A 797911949346505728:B 797911949346800640:C 797911949694239744:D 797911949696271360:G 7979119496965
+       --- FAIL: TestPinnedByTypeAndPropertyEqualsPinnedScan/sharded/index=true/warm=false (0.02s)
+           pinned_property_index_test.go:441: p2 seat=2: got {}, want {797911953768907776:v0} (names map[797911953767597056:A 797911953768907776:B 797911953769333760:C 797911954118673408:D 797911954121196544:G 7979119541214
+   --- FAIL: TestPinnedPropertyLookupLoadsOnlyEverMembers (0.12s)
+   --- FAIL: TestRelPropertyTxMembersEveryDoor (0.07s)
+       --- FAIL: TestRelPropertyTxMembersEveryDoor/badger (0.01s)
+           property_tx_members_test.go:303: lazy build members(1) = {}
+       --- FAIL: TestRelPropertyTxMembersEveryDoor/badger-delta (0.01s)
+           property_tx_members_test.go:303: lazy build members(1) = {}
+       --- FAIL: TestRelPropertyTxMembersEveryDoor/sharded (0.05s)
+           property_tx_members_test.go:303: lazy build members(1) = {}
+   --- FAIL: TestNodePropertyTxMembersEveryDoor (0.02s)
+   => RED (caught)
+
+## M9: skip the generation guard  (pkg/graph/store/badger/badgerstore_propertytxmembers.go)
+   FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store [build failed]
+   FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger [build failed]
+   FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded [build failed]
+   FAIL
+   => RED (caught)
+
+## M10: turn tracking on only at install (writes during the build lost)  (pkg/graph/store/badger/badgerstore_propertytxmembers.go)
+   --- FAIL: TestRelPropertyTxMembersEveryDoor (0.06s)
+       --- FAIL: TestRelPropertyTxMembersEveryDoor/badger (0.00s)
+           property_tx_members_test.go:302: ForEachRelPropertyTxMember(11, i64:1): graph: build relationship property membership: raced 4 invalidations: graph: property index not found
+       --- FAIL: TestRelPropertyTxMembersEveryDoor/badger-delta (0.01s)
+           property_tx_members_test.go:302: ForEachRelPropertyTxMember(11, i64:1): graph: build relationship property membership: raced 4 invalidations: graph: property index not found
+       --- FAIL: TestRelPropertyTxMembersEveryDoor/sharded (0.05s)
+           property_tx_members_test.go:302: ForEachRelPropertyTxMember(11, i64:1): graph: build relationship property membership: raced 4 invalidations: graph: property index not found
+   --- FAIL: TestPropertyTxMembersExactErasureDropsValues (0.05s)
+   => RED (caught)
+
+## M11: ignore the capability absence (no sidecar: current matches only, no fold)  (pkg/graph/internal/core/temporal.go)
+   --- FAIL: TestPinnedByTypeAndPropertyEqualsPinnedScan (0.83s)
+       --- FAIL: TestPinnedByTypeAndPropertyEqualsPinnedScan/tiered/index=false/warm=false (0.10s)
+           pinned_property_index_test.go:441: p2 seat=2: got {}, want {797932572406875136:v0} (names map[797932572405498880:A 797932572406875136:B 797932572407104512:C 797932572753626112:D 797932572755690496:G 7979325727559
+       --- FAIL: TestPinnedByTypeAndPropertyEqualsPinnedScan/wrapper/index=true/warm=false (0.01s)
+           pinned_property_index_test.go:441: p2 seat=2: got {}, want {797932572874277888:v0} (names map[797932572873524224:A 797932572874277888:B 797932572874408960:C 797932573257663488:D 797932573258122240:G 7979325732582
+       --- FAIL: TestPinnedByTypeAndPropertyEqualsPinnedScan/wrapper/index=true/warm=true (0.01s)
+           pinned_property_index_test.go:441: p2 seat=2: got {}, want {797932573268509696:v0} (names map[797932573268018176:A 797932573268509696:B 797932573268608000:C 797932573649732608:D 797932573649994752:G 7979325736500
+       --- FAIL: TestPinnedByTypeAndPropertyEqualsPinnedScan/wrapper/index=false/warm=false (0.01s)
+   => RED (caught)
+
+## M12: ignore an undeclared index (ErrIndexNotFound treated as no members)  (pkg/graph/internal/core/temporal.go)
+   --- FAIL: TestPinnedByTypeAndPropertyEqualsPinnedScan (1.22s)
+       --- FAIL: TestPinnedByTypeAndPropertyEqualsPinnedScan/memory/index=false/warm=false (0.01s)
+           pinned_property_index_test.go:441: p2 seat=2: got {}, want {797933045579777024:v0} (names map[797933045579547648:A 797933045579777024:B 797933045579875328:C 797933045928559616:D 797933045929378816:G 7979330459295
+       --- FAIL: TestPinnedByTypeAndPropertyEqualsPinnedScan/memory-segments/index=false/warm=false (0.02s)
+           pinned_property_index_test.go:441: p2 seat=2: got {}, want {797933058482144256:v0} (names map[797933058480833536:A 797933058482144256:B 797933058482308096:C 797933058848064512:D 797933058850030592:G 7979330588501
+       --- FAIL: TestPinnedByTypeAndPropertyEqualsPinnedScan/badger/index=false/warm=false (0.02s)
+           pinned_property_index_test.go:441: p2 seat=2: got {}, want {797933064004174848:v0} (names map[797933064000799744:A 797933064004174848:B 797933064005190656:C 797933064350893056:D 797933064353186816:G 7979330643538
+       --- FAIL: TestPinnedByTypeAndPropertyEqualsPinnedScan/badger-delta/index=false/warm=false (0.02s)
+   => RED (caught)
+
+## M13: composite: a key without an index constrains to nothing  (pkg/graph/internal/core/temporal.go)
+   --- FAIL: TestPinnedPropertyDoorsAgree (1.57s)
+       --- FAIL: TestPinnedPropertyDoorsAgree/memory/index=none (0.00s)
+           pinned_property_index_test.go:985: composite ValidAt 1700: got {}, want {n1:0 n3:0}
+       --- FAIL: TestPinnedPropertyDoorsAgree/memory/index=seat-only (0.00s)
+           pinned_property_index_test.go:985: composite ValidAt 1700: got {}, want {n1:0 n3:0}
+       --- FAIL: TestPinnedPropertyDoorsAgree/memory-segments/index=none (0.00s)
+           pinned_property_index_test.go:985: composite ValidAt 1700: got {}, want {n1:0 n3:0}
+       --- FAIL: TestPinnedPropertyDoorsAgree/memory-segments/index=seat-only (0.00s)
+   => RED (caught)
+
+## M14: do not invalidate on Clear (badger)  (pkg/graph/store/badger/badgerstore.go)
+   --- FAIL: TestPinnedPropertyLookupLifecycle (0.88s)
+       --- FAIL: TestPinnedPropertyLookupLifecycle/badger-unflushed/reset (0.07s)
+           pinned_property_index_test.go:1330: Reset kept a sidecar: {RelSidecars:1 NodeSidecars:0 RelPostings:10 NodePostings:0 Builds:1 BuildDuration:27.851µs}
+       --- FAIL: TestPinnedPropertyLookupLifecycle/sharded/reset (0.09s)
+           pinned_property_index_test.go:1330: Reset kept a sidecar: {RelSidecars:2 NodeSidecars:0 RelPostings:10 NodePostings:0 Builds:2 BuildDuration:18.141µs}
+   FAIL
+   FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	7.120s
+   FAIL
+   ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	0.183s
+   --- FAIL: TestPropTxBuild_GenerationGuardDiscardsStaleScan (0.04s)
+       badgerstore_propertytxmembers_test.go:269: stale member 100:100 served after Clear
+       badgerstore_propertytxmembers_test.go:280: stats after a raced build = {RelSidecars:1 NodeSidecars:0 RelPostings:1 NodePostings:0 Builds:1 BuildDuration:4.276837ms}, want 0 postings and 1 installed build
+   FAIL
+   FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.296s
+   ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded	0.011s
+   FAIL
+   => RED (caught)
+
+## M15: do not invalidate on Clear (memory)  (pkg/graph/store/memory/memorystore.go)
+   --- FAIL: TestPinnedPropertyLookupLifecycle (0.82s)
+       --- FAIL: TestPinnedPropertyLookupLifecycle/memory/reset (0.01s)
+           pinned_property_index_test.go:1330: Reset kept a sidecar: {RelSidecars:1 NodeSidecars:0 RelPostings:10 NodePostings:0 Builds:1 BuildDuration:620ns}
+   FAIL
+   FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	6.186s
+   FAIL
+   ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	0.145s
+   ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.314s
+   ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded	0.011s
+   => RED (caught)
+
+## M16: do not invalidate on exact erasure (memory)  (pkg/graph/store/memory/memorystore_exact_erasure.go)
+   --- FAIL: TestPropertyTxMembersExactErasureDropsValues (0.06s)
+       --- FAIL: TestPropertyTxMembersExactErasureDropsValues/memory (0.00s)
+           property_tx_members_test.go:560: after erasure members(1) = {101:100 102:110}, want {102:110}
+   FAIL
+   FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	0.539s
+   ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.593s
+   ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded	0.010s
+   FAIL
+   => RED (caught)
+
+## M17: do not invalidate on retention purge (badger)  (pkg/graph/store/badger/badgerstore_retention_purge.go)
+   --- FAIL: TestPinnedPropertyLookupLifecycle (0.89s)
+       --- FAIL: TestPinnedPropertyLookupLifecycle/badger-unflushed/retention-purge (0.02s)
+           pinned_property_index_test.go:1351: purged rels' values stayed resident: {RelSidecars:1 NodeSidecars:0 RelPostings:10 NodePostings:0 Builds:1 BuildDuration:14.301µs}
+   FAIL
+   FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	6.443s
+   FAIL
+   => RED (caught)
+
+## M18: node: record a row under a label it does not carry (memory build ignores the label)  (pkg/graph/store/memory/memorystore_propertytxmembers.go)
+   --- FAIL: TestPinnedPropertyLookupLoadsOnlyEverMembers (0.07s)
+       --- FAIL: TestPinnedPropertyLookupLoadsOnlyEverMembers/memory/node (0.00s)
+           pinned_property_index_test.go:627: churn x1 {Limit:0 After:0 ValidAt:0 ValidStart:0 ValidEnd:0 TxAt:0 TxPin:1791576678804 IncludeEclipsed:false Depth:0 NoSort:false}: lookup loaded 30 chains, want 10 (the value's
+   FAIL
+   FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	9.348s
+   FAIL
+   --- FAIL: TestNodePropertyTxMembersEveryDoor (0.04s)
+       --- FAIL: TestNodePropertyTxMembersEveryDoor/memory (0.00s)
+           property_tx_members_test.go:448: lazy build members(1) = {201:100 202:110 203:120 204:140 205:50}
+   FAIL
+   FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	0.331s
+   ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.454s
+   ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded	0.031s
+   FAIL
+   => RED (caught)
+
