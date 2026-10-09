@@ -7,7 +7,9 @@ import (
 	"sync"
 	"testing"
 
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+	badgerv4 "github.com/dgraph-io/badger/v4"
 )
 
 // Backlog 8, badger arm of the property membership sidecars: the lazy build
@@ -346,5 +348,58 @@ func TestPropTxBuild_RebuildAfterReopen(t *testing.T) {
 	}
 	if st, _ := bs.PropertyTxMembershipStats(); st.RelSidecars != 1 || st.NodeSidecars != 1 || st.Builds != 2 || st.BuildDuration <= 0 {
 		t.Fatalf("stats after the lazy rebuilds = %+v", st)
+	}
+}
+
+// TestPropTxBuild_CorruptRowFailsClosed: a stored row the build cannot decode
+// fails the lookup (the sidecar must be a superset; skipping the row could
+// drop a member) and leaves the sidecar unbuilt, so a later lookup after the
+// row is repaired builds it. Faulty build caught: silently skipping
+// undecodable rows (the K1 builds' old behaviour). Covers a garbage current
+// row, a garbage history row and a garbage delta, for rels and nodes.
+func TestPropTxBuild_CorruptRowFailsClosed(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		key  []byte
+		val  []byte
+		node bool
+	}{
+		{"rel current", storepkg.RelKey(900), []byte{0xc1, 0x00}, false},
+		{"rel history", storepkg.HistRelKey(901, 0), []byte{0xc1, 0x00}, false},
+		{"rel history delta", storepkg.HistRelKey(902, 1), []byte{'D', 0xc1}, false},
+		{"node current", storepkg.NodeKey(903), []byte{0xc1, 0x00}, true},
+		{"node history delta", storepkg.HistNodeKey(904, 1), []byte{'D', 0xc1}, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			bs := newFlushParkStore(t, nil)
+			ptxSetup(t, bs)
+			if err := bs.PutRelationship(ptxRel(100, 1, 0, 100)); err != nil {
+				t.Fatal(err)
+			}
+			if err := bs.Flush(); err != nil {
+				t.Fatal(err)
+			}
+			if err := bs.db.Update(func(txn *badgerv4.Txn) error { return txn.Set(c.key, c.val) }); err != nil {
+				t.Fatal(err)
+			}
+			lookup := func() error {
+				if c.node {
+					return bs.ForEachNodePropertyTxMember(ptxLabel, "seat", ptxVK(1), func(types.NodeID, types.Instant) bool { return true })
+				}
+				return bs.ForEachRelPropertyTxMember(ptxT, "seat", ptxVK(1), func(types.RelID, types.Instant) bool { return true })
+			}
+			if err := lookup(); err == nil {
+				t.Fatal("a build over an undecodable row succeeded")
+			}
+			if st, _ := bs.PropertyTxMembershipStats(); st.RelSidecars != 0 || st.NodeSidecars != 0 || st.Builds != 0 {
+				t.Fatalf("a failed build was installed: %+v", st)
+			}
+			if err := bs.db.Update(func(txn *badgerv4.Txn) error { return txn.Delete(c.key) }); err != nil {
+				t.Fatal(err)
+			}
+			if err := lookup(); err != nil {
+				t.Fatalf("lookup after the repair: %v", err)
+			}
+		})
 	}
 }
