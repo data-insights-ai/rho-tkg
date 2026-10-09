@@ -4,7 +4,7 @@ Temporal Knowledge Graph v4 is a pure Go library providing the core graph engine
 
 ```
 Module:  github.com/data-insights-ai/rho-tkg/v4
-Go:      1.26.7
+Go:      1.26.9
 License: Apache-2.0
 ```
 

@@ -1,6 +1,6 @@
 module github.com/data-insights-ai/rho-tkg/v4
 
-go 1.26.7
+go 1.26.9
 
 require (
 	github.com/bds421/rho-snowflake-2026 v1.3.2
