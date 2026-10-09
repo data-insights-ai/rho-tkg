@@ -118,7 +118,7 @@ func waitDone(ch <-chan error, d time.Duration) (error, bool) {
 
 // An open-ended cascade that moves A off "a" must wait for the old value's
 // stripe. Catches: a cascade that takes only the new value's stripe.
-func TestCascadeUnique_HoldsOldValueStripe(t *testing.T) {
+func TestUniqueCascade_HoldsOldValueStripe(t *testing.T) {
 	c := newUniqueCascadeCore(t, nil)
 	a := addRefK(t, c, "a")
 	old := stripeOf(t, c, a, "a")
@@ -153,7 +153,7 @@ func TestCascadeUnique_HoldsOldValueStripe(t *testing.T) {
 // a UniqueCurrent value (no check binds it) — it must not block on one.
 // Catches: a fix that locks (and checks) every patch value under
 // UniqueCurrent, which would also refuse legal history duplicates.
-func TestCascadeUnique_BoundedCurrentScopeTakesNoStripe(t *testing.T) {
+func TestUniqueCascade_BoundedCurrentScopeTakesNoStripe(t *testing.T) {
 	c := newUniqueCascadeCore(t, nil)
 	a := addRefK(t, c, "a")
 	held := c.valueLocks.LockStripes([]uint8{stripeOf(t, c, a, "p")})
@@ -172,7 +172,7 @@ func TestCascadeUnique_BoundedCurrentScopeTakesNoStripe(t *testing.T) {
 // error (the unique check steps aside), and nothing is appended. Catches: a
 // check that reports the bad value as a unique violation or lets it reach a
 // store write.
-func TestCascadeUnique_InvalidPatchValueKeepsKernelError(t *testing.T) {
+func TestUniqueCascade_InvalidPatchValueKeepsKernelError(t *testing.T) {
 	c := newUniqueCascadeCore(t, nil)
 	a := addRefK(t, c, "a")
 	before, err := c.Nodes.History(a.ID())
@@ -197,7 +197,7 @@ func TestCascadeUnique_InvalidPatchValueKeepsKernelError(t *testing.T) {
 // and once A's write lands B is refused. Catches: a cascade that releases the
 // stripe after the check but before the write (B passes the index check
 // against A's old row and both end up holding "v").
-func TestCascadeUnique_StripeHeldAcrossStoreWrite(t *testing.T) {
+func TestUniqueCascade_StripeHeldAcrossStoreWrite(t *testing.T) {
 	st := &cascadeGateStore{Store: memory.New()}
 	c := newUniqueCascadeCore(t, st)
 	a := addRefK(t, c, "a")

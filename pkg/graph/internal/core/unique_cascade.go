@@ -14,31 +14,36 @@ import (
 //
 // SetNodeVersionInterval appends rows built from a props PATCH over the state
 // valid at each instant of [validFrom, validTo) (nodeCorrectionSegments). The
-// patch is judged the way the update doors judge a finalized write:
+// kernel judges its BUILT rows the way the update doors judge a finalized
+// write:
 //
-//   - UniqueCurrent binds the CURRENT row. Only an open-ended cascade
-//     (validTo == 0) replaces it: its open tail (the last correction piece,
-//     base + patch) takes the current slot. A constrained value the patch
-//     writes there is refused when ANOTHER current node holds it, and moving
-//     off a value frees it. A bounded cascade leaves the current row's value
-//     unchanged (the resumption re-asserts it), so its patch values are not
-//     checked against UniqueCurrent: history duplicates are legal.
-//   - UniqueForever binds every value ever written. Every constrained value
-//     the patch writes, on any piece, is refused when another entity owns it
-//     (or another current node holds it) and is claimed for the node when the
-//     whole patch passes.
+//   - UniqueCurrent binds the CURRENT row. When an appended row takes the
+//     current slot (the open tail of an open-ended cascade), every constrained
+//     value on it that differs from the replaced current row is refused when
+//     ANOTHER current node holds it; moving off a value frees it. A bounded
+//     cascade leaves the current row's value unchanged (the resumption
+//     re-asserts it), so its correction rows are not checked against
+//     UniqueCurrent: history duplicates are legal.
+//   - UniqueForever binds every value ever written. Every constrained value the
+//     patch writes on a correction row (any piece) is refused when another
+//     entity owns it (or another current node holds it) and is claimed for the
+//     node when every check passes. Values a row carries from its base row
+//     were written before and are not re-judged.
 //
-// Values the patch does not name, nil props, and a nil value (key delete)
-// introduce nothing and are not checked. A float on a constrained key is
-// refused with ErrUniqueUnsupportedType, as on the update doors.
+// A patch that names no constrained key, nil props, and a key delete introduce
+// nothing. A float on a constrained key is refused with
+// ErrUniqueUnsupportedType, as on the update doors.
 //
-// Locking (entity -> value -> idxMu): the cascade kernel calls this under the
-// node's entity lock, before any row is built; the value stripes of every
-// checked value (plus, for the open tail, the stripe of the current value it
-// replaces) are held until the kernel returns, i.e. across every store write,
-// so concurrent writers of one value serialize to exactly one winner. All four
-// doors (Temporal, GraphTx, BatchBuilder, ingest Session in strong and
-// concurrent mode) run the kernel, so all four enforce.
+// Placement: the kernel calls this after every row is built, versioned, hashed
+// and the current-slot replacement validated, right before its first store
+// write — so every kernel refusal (deleted entity, version overflow,
+// ErrTooManyProperties, hash, replacement) happens before any UniqueForever
+// claim, and only a store-write failure can leave a claim behind (as on the
+// update door). Locking (entity -> value -> idxMu): the stripes of every
+// checked value, plus the replaced current value's, are held until the kernel
+// returns, across every store write, so concurrent writers of one value
+// serialize to exactly one winner. All four doors (Temporal, GraphTx,
+// BatchBuilder, ingest Session in strong and concurrent mode) run the kernel.
 // =============================================================================
 
 type cascadeUniqueTuple struct {
@@ -49,48 +54,36 @@ type cascadeUniqueTuple struct {
 	scope    constraintspkg.UniqueScope
 }
 
-// enforceUniqueForCascade checks the props patch of a node cascade against the
-// node's unique constraints. current may be nil; history is the node's
-// history in store order (the same chain the kernel builds its rows from). On
-// success the caller defers the returned release; on error nothing is held
-// and nothing is claimed.
-func (c *Core) enforceUniqueForCascade(id types.NodeID, current *types.Node, history []*types.Node, newVF, newVT types.Instant, props map[string]any) (func(), error) {
+// enforceUniqueForCascade checks the rows a node cascade is about to write.
+// appended are the built rows; newCurrent is the row that takes the current
+// slot when curIsNew (current is the row it replaces, nil if none). A row is a
+// correction piece when its ValidFrom lies in [newVF, newVT) (newVT == 0:
+// open), else it is the resumption. On success the caller defers the
+// returned release; on error nothing is held and nothing is claimed.
+func (c *Core) enforceUniqueForCascade(id types.NodeID, current *types.Node, appended []*types.Node, newCurrent *types.Node, curIsNew bool, newVT types.Instant, props map[string]any) (func(), error) {
 	noop := func() {}
-	if len(props) == 0 || !c.hasUniqueConstraints.Load() {
+	if len(appended) == 0 || !c.hasUniqueConstraints.Load() {
 		return noop, nil
 	}
-	preChain := make([]*types.Node, 0, len(history)+1)
-	preChain = append(preChain, history...)
-	if current != nil {
-		preChain = append(preChain, current)
-	}
-	if len(preChain) == 0 {
-		return noop, nil
-	}
-	constrained := c.cascadeConstraintsFor(preChain, props)
+	constrained := c.cascadeConstraintsFor(appended)
 	if len(constrained) == 0 {
-		return noop, nil
-	}
-
-	template := current
-	if template == nil {
-		template = history[len(history)-1]
-	}
-	segs, err := c.nodeCorrectionSegments(preChain, template, newVF, newVT)
-	if err != nil {
-		// The kernel computes the same segments and surfaces this error.
 		return noop, nil
 	}
 
 	tuples := make(map[string]cascadeUniqueTuple)
 	var stripes []uint8
-	for i, seg := range segs {
-		// The open tail of an open-ended cascade becomes the current row.
-		isCurrent := newVT == 0 && i == len(segs)-1
-		row := seg.base.DeepCopy()
-		if !applyCascadePatch(row, props) {
-			return noop, nil // the kernel refuses the same patch with its own error
+	add := func(row *types.Node, labelTok uint16, key, valueKey string, scope constraintspkg.UniqueScope) {
+		sk := uniqueSeenKey(labelTok, key, valueKey)
+		if _, dup := tuples[sk]; dup {
+			return
 		}
+		raw, _ := row.GetProperty(key)
+		tuples[sk] = cascadeUniqueTuple{labelTok: labelTok, key: key, raw: raw, valueKey: valueKey, scope: scope}
+		stripes = append(stripes, uniqueValueStripe(labelTok, key, valueKey))
+	}
+	for _, row := range appended {
+		isCurrent := curIsNew && row == newCurrent
+		isCorrection := newVT == 0 || (row.Temporal() != nil && row.Temporal().ValidFrom < newVT)
 		for li := 0; li < row.LabelTokenCount(); li++ {
 			labelTok := row.LabelTokenRawAt(li)
 			for key, scope := range constrained[labelTok] {
@@ -98,23 +91,33 @@ func (c *Core) enforceUniqueForCascade(id types.NodeID, current *types.Node, his
 				if !found || valueKey == "" {
 					continue
 				}
+				oldKey := ""
+				if current != nil {
+					oldKey, _ = current.IndexablePropertyValueKey(key)
+				}
+				patched := false
+				if v, ok := props[key]; ok && v != nil && isCorrection {
+					patched = true
+				}
+				changesCurrent := isCurrent && valueKey != oldKey
+				if !changesCurrent && !patched {
+					continue // carried from a row written before: not re-judged
+				}
 				if isFloatValueKey(valueKey) {
 					return noop, fmt.Errorf("%w: label %q key %q holds a float value", ErrUniqueUnsupportedType, c.labels.Resolve(labelTok), key)
 				}
-				if !isCurrent && scope != constraintspkg.UniqueForever {
-					continue // a past slice is a legal history duplicate under UniqueCurrent
-				}
-				sk := uniqueSeenKey(labelTok, key, valueKey)
-				if _, dup := tuples[sk]; !dup {
-					raw, _ := row.GetProperty(key)
-					tuples[sk] = cascadeUniqueTuple{labelTok: labelTok, key: key, raw: raw, valueKey: valueKey, scope: scope}
-					stripes = append(stripes, uniqueValueStripe(labelTok, key, valueKey))
-				}
-				if isCurrent && current != nil {
-					if oldKey, ok := current.IndexablePropertyValueKey(key); ok && oldKey != "" && oldKey != valueKey {
+				if changesCurrent {
+					add(row, labelTok, key, valueKey, scope)
+					if oldKey != "" {
 						stripes = append(stripes, uniqueValueStripe(labelTok, key, oldKey))
 					}
+					continue
 				}
+				if scope == constraintspkg.UniqueForever {
+					add(row, labelTok, key, valueKey, scope)
+				}
+				// UniqueCurrent: a past slice (or the unchanged current value) is
+				// a legal history duplicate.
 			}
 		}
 	}
@@ -131,26 +134,27 @@ func (c *Core) enforceUniqueForCascade(id types.NodeID, current *types.Node, his
 	})
 
 	held := c.valueLocks.LockStripes(stripes)
-	release := func() { c.valueLocks.UnlockStripes(held) }
+	keep := false
+	defer func() {
+		if !keep {
+			c.valueLocks.UnlockStripes(held)
+		}
+	}()
 
 	// Pass 1: check every value read-only, so a refusal claims nothing.
 	for _, tp := range ordered {
 		matches, err := c.nodesByLabelAndProperty(tp.labelTok, tp.key, tp.raw, storepkg.QueryOpts{})
 		if err != nil {
-			release()
 			return noop, fmt.Errorf("graph: unique constraint lookup: %w", err)
 		}
 		for _, m := range matches {
-			if m.ID() == id {
-				continue
+			if m.ID() != id {
+				return noop, fmt.Errorf("%w: label %q key %q already held by node %d",
+					ErrUniqueViolation, c.labels.Resolve(tp.labelTok), tp.key, m.ID())
 			}
-			release()
-			return noop, fmt.Errorf("%w: label %q key %q already held by node %d",
-				ErrUniqueViolation, c.labels.Resolve(tp.labelTok), tp.key, m.ID())
 		}
 		if tp.scope == constraintspkg.UniqueForever {
 			if err := c.checkForeverOwnership(tp.labelTok, tp.key, tp.valueKey, id); err != nil {
-				release()
 				return noop, err
 			}
 		}
@@ -161,54 +165,38 @@ func (c *Core) enforceUniqueForCascade(id types.NodeID, current *types.Node, his
 			continue
 		}
 		if err := c.checkAndClaimForever(tp.labelTok, tp.key, tp.valueKey, id); err != nil {
-			release()
 			return noop, err
 		}
 	}
-	return release, nil
+	keep = true
+	return func() { c.valueLocks.UnlockStripes(held) }, nil
 }
 
-// cascadeConstraintsFor returns, per label token any row of the chain carries,
-// the constrained keys the patch WRITES (a non-nil value) with their scope.
-// Empty when the patch cannot introduce a constrained value.
-func (c *Core) cascadeConstraintsFor(chain []*types.Node, props map[string]any) map[uint16]map[string]constraintspkg.UniqueScope {
+// cascadeConstraintsFor returns, per label token the rows carry, the
+// constrained keys with their scope (a snapshot under uniqueMu).
+func (c *Core) cascadeConstraintsFor(rows []*types.Node) map[uint16]map[string]constraintspkg.UniqueScope {
 	c.uniqueMu.RLock()
 	defer c.uniqueMu.RUnlock()
 	var out map[uint16]map[string]constraintspkg.UniqueScope
-	for _, row := range chain {
+	for _, row := range rows {
 		for i := 0; i < row.LabelTokenCount(); i++ {
 			labelTok := row.LabelTokenRawAt(i)
 			if _, seen := out[labelTok]; seen {
 				continue
 			}
-			for key, st := range c.uniqueConstraints[labelTok] {
-				if v, ok := props[key]; !ok || v == nil {
-					continue
-				}
-				if out == nil {
-					out = make(map[uint16]map[string]constraintspkg.UniqueScope)
-				}
-				if out[labelTok] == nil {
-					out[labelTok] = make(map[string]constraintspkg.UniqueScope)
-				}
-				out[labelTok][key] = st.scope
+			byKey := c.uniqueConstraints[labelTok]
+			if len(byKey) == 0 {
+				continue
 			}
+			if out == nil {
+				out = make(map[uint16]map[string]constraintspkg.UniqueScope)
+			}
+			m := make(map[string]constraintspkg.UniqueScope, len(byKey))
+			for key, st := range byKey {
+				m[key] = st.scope
+			}
+			out[labelTok] = m
 		}
 	}
 	return out
-}
-
-// applyCascadePatch applies props to row the way buildNodeCorrectionRow does
-// (nil deletes a key). False when the patch does not apply.
-func applyCascadePatch(row *types.Node, props map[string]any) bool {
-	for key, val := range props {
-		if val == nil {
-			if _, err := row.DeleteProperty(key); err != nil {
-				return false
-			}
-		} else if err := row.SetProperty(key, val); err != nil {
-			return false
-		}
-	}
-	return true
 }

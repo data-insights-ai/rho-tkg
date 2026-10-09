@@ -131,14 +131,6 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 		return nil, nodeDeletedErr(id)
 	}
 
-	// Unique constraints (unique_cascade.go): the props patch is judged before
-	// any row is built; the value stripes stay held across every write below.
-	uniqueRelease, err := c.enforceUniqueForCascade(id, current, history, newVF, newVT, props)
-	if err != nil {
-		return nil, err
-	}
-	defer uniqueRelease()
-
 	maxVersion := current.Version()
 	for _, h := range history {
 		maxVersion = max(maxVersion, h.Version())
@@ -297,6 +289,14 @@ func (c *Core) cascadeNodeVersionInterval(ctx context.Context, id types.NodeID, 
 			return nil, fmt.Errorf("graph: cascade new current row: %w", err)
 		}
 	}
+	// Unique constraints (unique_cascade.go): the built rows are judged after
+	// every kernel check and before the first write; the value stripes stay
+	// held across every write below.
+	uniqueRelease, err := c.enforceUniqueForCascade(id, current, appended, newCurrent, curIsNew, newVT, props)
+	if err != nil {
+		return nil, err
+	}
+	defer uniqueRelease()
 	for _, r := range appended {
 		if r == newCurrent {
 			continue // written via ReplaceNode below

@@ -43,63 +43,68 @@ import (
 
 const ucKey = "k"
 
+// errUCDoorSetup marks a door failure outside the cascade op itself (begin,
+// queue, commit, a batch result of the wrong shape). The helpers return it
+// instead of calling t.Fatalf so they are safe on non-test goroutines.
+var errUCDoorSetup = errors.New("door setup")
+
 type ucDoor struct {
 	name string
 	// run applies one cascade through the door and returns the op-level error
-	// (the batch door asserts ErrBatchFailed at Execute and returns the op error).
-	run func(t *testing.T, g *graphpkg.Graph, id types.NodeID, vf, vt types.Instant, props map[string]any) error
+	// (the batch door checks ErrBatchFailed at Execute and returns the op error).
+	run func(g *graphpkg.Graph, id types.NodeID, vf, vt types.Instant, props map[string]any) error
 }
 
 func ucDoors() []ucDoor {
 	doors := []ucDoor{
-		{"temporal", func(t *testing.T, g *graphpkg.Graph, id types.NodeID, vf, vt types.Instant, props map[string]any) error {
+		{"temporal", func(g *graphpkg.Graph, id types.NodeID, vf, vt types.Instant, props map[string]any) error {
 			_, err := g.Temporal().SetNodeVersionInterval(context.Background(), id, vf, vt, props)
 			return err
 		}},
-		{"tx", func(t *testing.T, g *graphpkg.Graph, id types.NodeID, vf, vt types.Instant, props map[string]any) error {
+		{"tx", func(g *graphpkg.Graph, id types.NodeID, vf, vt types.Instant, props map[string]any) error {
 			tx, err := g.Tx().Begin()
 			if err != nil {
-				t.Fatalf("Tx.Begin: %v", err)
+				return fmt.Errorf("%w: Tx.Begin: %v", errUCDoorSetup, err)
 			}
 			_, opErr := tx.SetNodeVersionInterval(id, vf, vt, props)
 			// Commit either way: a refused op must have written nothing, so
 			// there is nothing a Rollback could hide.
 			if err := tx.Commit(); err != nil {
-				t.Fatalf("Tx.Commit: %v", err)
+				return fmt.Errorf("%w: Tx.Commit: %v (op err %v)", errUCDoorSetup, err, opErr)
 			}
 			return opErr
 		}},
-		{"batch", func(t *testing.T, g *graphpkg.Graph, id types.NodeID, vf, vt types.Instant, props map[string]any) error {
+		{"batch", func(g *graphpkg.Graph, id types.NodeID, vf, vt types.Instant, props map[string]any) error {
 			b, err := g.Batch().New()
 			if err != nil {
-				t.Fatalf("Batch.New: %v", err)
+				return fmt.Errorf("%w: Batch.New: %v", errUCDoorSetup, err)
 			}
 			if err := b.SetNodeVersionInterval(id, vf, vt, props); err != nil {
-				t.Fatalf("Batch queue: %v", err)
+				return fmt.Errorf("%w: Batch queue: %v", errUCDoorSetup, err)
 			}
 			res, err := b.Execute()
 			if err == nil {
 				return nil
 			}
 			if !errors.Is(err, graphpkg.ErrBatchFailed) {
-				t.Fatalf("Batch.Execute err = %v, want ErrBatchFailed", err)
+				return fmt.Errorf("%w: Batch.Execute err = %v, want ErrBatchFailed", errUCDoorSetup, err)
 			}
 			if res == nil || res.Failed != 1 || len(res.Errors) != 1 || res.Errors[0].Op != "SetNodeVersionInterval" {
-				t.Fatalf("Batch result = %+v, want one failed SetNodeVersionInterval op", res)
+				return fmt.Errorf("%w: Batch result = %+v, want one failed SetNodeVersionInterval op", errUCDoorSetup, res)
 			}
 			return res.Errors[0].Err
 		}},
 	}
 	for _, m := range ivModes {
 		m := m
-		doors = append(doors, ucDoor{"session-" + m.name, func(t *testing.T, g *graphpkg.Graph, id types.NodeID, vf, vt types.Instant, props map[string]any) error {
+		doors = append(doors, ucDoor{"session-" + m.name, func(g *graphpkg.Graph, id types.NodeID, vf, vt types.Instant, props map[string]any) error {
 			s, err := g.Ingest().NewSession(m.opts)
 			if err != nil {
-				t.Fatalf("NewSession: %v", err)
+				return fmt.Errorf("%w: NewSession: %v", errUCDoorSetup, err)
 			}
 			defer s.Close()
 			if err := s.SetNodeVersionInterval(id, vf, vt, props); err != nil {
-				t.Fatalf("Session queue: %v", err)
+				return fmt.Errorf("%w: Session queue: %v", errUCDoorSetup, err)
 			}
 			tok, err := s.Submit()
 			return ivOutcome(g, tok, err)
@@ -237,7 +242,7 @@ func TestUniqueCascade_OpenEndedOntoHeldValueRefused(t *testing.T) {
 		bn := ucAdd(t, g, map[string]any{ucKey: "b"})
 		before := ucState(t, g, bn.ID())
 
-		err := d.run(t, g, bn.ID(), ivT+100, 0, map[string]any{ucKey: "a", "other": int64(7)})
+		err := d.run(g, bn.ID(), ivT+100, 0, map[string]any{ucKey: "a", "other": int64(7)})
 		if !errors.Is(err, graphpkg.ErrUniqueViolation) {
 			t.Fatalf("cascade onto A's value: err = %v, want ErrUniqueViolation", err)
 		}
@@ -266,7 +271,7 @@ func TestUniqueCascade_PastIntervalOntoHeldValue(t *testing.T) {
 		bn := ucAdd(t, g, map[string]any{ucKey: "b"})
 		before := ucState(t, g, bn.ID())
 
-		err := d.run(t, g, bn.ID(), ivT+10, ivT+20, map[string]any{ucKey: "a"})
+		err := d.run(g, bn.ID(), ivT+10, ivT+20, map[string]any{ucKey: "a"})
 		if sc.forever {
 			if !errors.Is(err, graphpkg.ErrUniqueViolation) {
 				t.Fatalf("UniqueForever past patch onto an owned value: err = %v, want ErrUniqueViolation", err)
@@ -306,7 +311,7 @@ func TestUniqueCascade_FreeValuePasses(t *testing.T) {
 		bn := ucAdd(t, g, map[string]any{ucKey: "b"})
 		before := ucState(t, g, bn.ID())
 
-		if err := d.run(t, g, bn.ID(), ivT+100, 0, map[string]any{ucKey: "c"}); err != nil {
+		if err := d.run(g, bn.ID(), ivT+100, 0, map[string]any{ucKey: "c"}); err != nil {
 			t.Fatalf("cascade onto a free value: %v", err)
 		}
 		after := ucState(t, g, bn.ID())
@@ -330,7 +335,7 @@ func TestUniqueCascade_PastFreeValueClaimsForeverOnly(t *testing.T) {
 	forUC(t, func(t *testing.T, g *graphpkg.Graph, d ucDoor, sc ucScope) {
 		ucCreate(t, g, sc, ucKey)
 		bn := ucAdd(t, g, map[string]any{ucKey: "b"})
-		if err := d.run(t, g, bn.ID(), ivT+10, ivT+20, map[string]any{ucKey: "p"}); err != nil {
+		if err := d.run(g, bn.ID(), ivT+10, ivT+20, map[string]any{ucKey: "p"}); err != nil {
 			t.Fatalf("past patch to a free value: %v", err)
 		}
 		_, err := g.Nodes().Add(context.Background(), []string{"Ref"}, map[string]any{ucKey: "p"})
@@ -350,10 +355,10 @@ func TestUniqueCascade_SelfResetPasses(t *testing.T) {
 		ucCreate(t, g, sc, ucKey)
 		ucAdd(t, g, map[string]any{ucKey: "a"})
 		bn := ucAdd(t, g, map[string]any{ucKey: "b"})
-		if err := d.run(t, g, bn.ID(), ivT+100, 0, map[string]any{ucKey: "b", "n": int64(1)}); err != nil {
+		if err := d.run(g, bn.ID(), ivT+100, 0, map[string]any{ucKey: "b", "n": int64(1)}); err != nil {
 			t.Fatalf("open-ended self re-set: %v", err)
 		}
-		if err := d.run(t, g, bn.ID(), ivT+10, ivT+20, map[string]any{ucKey: "b", "n": int64(2)}); err != nil {
+		if err := d.run(g, bn.ID(), ivT+10, ivT+20, map[string]any{ucKey: "b", "n": int64(2)}); err != nil {
 			t.Fatalf("bounded self re-set: %v", err)
 		}
 		if st := ucState(t, g, bn.ID()); st.cur != "b" {
@@ -379,7 +384,7 @@ func TestUniqueCascade_MoveReleasesForCurrentOnly(t *testing.T) {
 		other := ucAdd(t, g, map[string]any{ucKey: "o"})
 
 		// Bounded move: A's current row still holds "a".
-		if err := d.run(t, g, a.ID(), ivT+10, ivT+20, map[string]any{ucKey: "a2"}); err != nil {
+		if err := d.run(g, a.ID(), ivT+10, ivT+20, map[string]any{ucKey: "a2"}); err != nil {
 			t.Fatalf("bounded move: %v", err)
 		}
 		if _, err := g.Nodes().Update(ctx, other.ID(), map[string]any{ucKey: "a"}); !errors.Is(err, graphpkg.ErrUniqueViolation) {
@@ -387,10 +392,10 @@ func TestUniqueCascade_MoveReleasesForCurrentOnly(t *testing.T) {
 		}
 
 		// Open-ended move of A to "a3", and key deletion on X.
-		if err := d.run(t, g, a.ID(), ivT+100, 0, map[string]any{ucKey: "a3"}); err != nil {
+		if err := d.run(g, a.ID(), ivT+100, 0, map[string]any{ucKey: "a3"}); err != nil {
 			t.Fatalf("open-ended move: %v", err)
 		}
-		if err := d.run(t, g, x.ID(), ivT+100, 0, map[string]any{ucKey: nil}); err != nil {
+		if err := d.run(g, x.ID(), ivT+100, 0, map[string]any{ucKey: nil}); err != nil {
 			t.Fatalf("open-ended key delete: %v", err)
 		}
 		if st := ucState(t, g, x.ID()); st.cur != nil {
@@ -418,13 +423,13 @@ func TestUniqueCascade_NilPropsAndKeyAbsentPass(t *testing.T) {
 		ucAdd(t, g, map[string]any{ucKey: "a"})
 		bn := ucAdd(t, g, map[string]any{ucKey: "b"})
 		before := ucState(t, g, bn.ID())
-		if err := d.run(t, g, bn.ID(), ivT+100, 0, nil); err != nil {
+		if err := d.run(g, bn.ID(), ivT+100, 0, nil); err != nil {
 			t.Fatalf("nil props: %v", err)
 		}
-		if err := d.run(t, g, bn.ID(), ivT+10, ivT+20, map[string]any{"other": int64(1)}); err != nil {
+		if err := d.run(g, bn.ID(), ivT+10, ivT+20, map[string]any{"other": int64(1)}); err != nil {
 			t.Fatalf("constrained key absent: %v", err)
 		}
-		if err := d.run(t, g, bn.ID(), ivT+300, 0, map[string]any{"other": int64(2)}); err != nil {
+		if err := d.run(g, bn.ID(), ivT+300, 0, map[string]any{"other": int64(2)}); err != nil {
 			t.Fatalf("constrained key absent, open-ended: %v", err)
 		}
 		after := ucState(t, g, bn.ID())
@@ -441,7 +446,7 @@ func TestUniqueCascade_FloatRefused(t *testing.T) {
 		ucCreate(t, g, sc, ucKey)
 		bn := ucAdd(t, g, map[string]any{ucKey: "b"})
 		before := ucState(t, g, bn.ID())
-		if err := d.run(t, g, bn.ID(), ivT+100, 0, map[string]any{ucKey: 1.5}); !errors.Is(err, graphpkg.ErrUniqueUnsupportedType) {
+		if err := d.run(g, bn.ID(), ivT+100, 0, map[string]any{ucKey: 1.5}); !errors.Is(err, graphpkg.ErrUniqueUnsupportedType) {
 			t.Fatalf("float patch: err = %v, want ErrUniqueUnsupportedType", err)
 		}
 		ucAssertUnchanged(t, g, bn.ID(), before, ivT+200)
@@ -459,7 +464,7 @@ func TestUniqueCascade_RefusalClaimsNothing(t *testing.T) {
 		ucAdd(t, g, map[string]any{ucKey: "a", "h": "ha"})
 		bn := ucAdd(t, g, map[string]any{ucKey: "b", "h": "hb"})
 		before := ucState(t, g, bn.ID())
-		err := d.run(t, g, bn.ID(), ivT+100, 0, map[string]any{ucKey: "free", "h": "ha"})
+		err := d.run(g, bn.ID(), ivT+100, 0, map[string]any{ucKey: "free", "h": "ha"})
 		if !errors.Is(err, graphpkg.ErrUniqueViolation) {
 			t.Fatalf("patch with one taken value: err = %v, want ErrUniqueViolation", err)
 		}
@@ -493,7 +498,7 @@ func TestUniqueCascade_ConstraintAfterDuplicate(t *testing.T) {
 					t.Fatalf("UniqueConstraints = %v, want none installed", got)
 				}
 				ucAdd(t, g, map[string]any{ucKey: "a"})
-				if err := d.run(t, g, bn.ID(), ivT+100, 0, map[string]any{ucKey: "a"}); err != nil {
+				if err := d.run(g, bn.ID(), ivT+100, 0, map[string]any{ucKey: "a"}); err != nil {
 					t.Fatalf("cascade without an installed constraint: %v", err)
 				}
 				if n := ucHolders(t, g, "a"); n != 2 {
@@ -604,7 +609,7 @@ func TestUniqueCascade_ConcurrentOneWinner(t *testing.T) {
 							go func(i int, id types.NodeID) {
 								defer wg.Done()
 								<-start
-								errs[i] = d.run(t, g, id, vf, vt, map[string]any{ucKey: v})
+								errs[i] = d.run(g, id, vf, vt, map[string]any{ucKey: v})
 							}(i, id)
 						}
 						close(start)
@@ -633,4 +638,51 @@ func TestUniqueCascade_ConcurrentOneWinner(t *testing.T) {
 			}
 		}
 	}
+}
+
+// A cascade on a hard-deleted node is refused (ErrEntityDeleted) and claims
+// nothing: a later create with the patch value passes in both scopes.
+// Catches: a claim made before the kernel's deleted-entity refusal (the
+// value would stay owned forever by a node that never wrote it).
+func TestUniqueCascade_DeletedNodeClaimsNothing(t *testing.T) {
+	t.Parallel()
+	forUC(t, func(t *testing.T, g *graphpkg.Graph, d ucDoor, sc ucScope) {
+		ctx := context.Background()
+		ucCreate(t, g, sc, ucKey)
+		a := ucAdd(t, g, map[string]any{ucKey: "a"})
+		if err := g.Nodes().Delete(ctx, a.ID()); err != nil {
+			t.Fatalf("Delete: %v", err)
+		}
+		if err := d.run(g, a.ID(), ivT+100, 0, map[string]any{ucKey: "z"}); !errors.Is(err, graphpkg.ErrEntityDeleted) {
+			t.Fatalf("cascade on a deleted node: err = %v, want ErrEntityDeleted", err)
+		}
+		if _, err := g.Nodes().Add(ctx, []string{"Ref"}, map[string]any{ucKey: "z"}); err != nil {
+			t.Errorf("Add with the refused patch value: %v (a refused cascade must claim nothing)", err)
+		}
+	})
+}
+
+// A patch the kernel refuses after the unique check could have run — here
+// ErrTooManyProperties, raised while the correction rows are built — claims
+// nothing: a later create with the patch value passes, and nothing is
+// appended. Catches: a UniqueForever claim made before the kernel's own
+// checks (the value stays owned by a node that never wrote it).
+func TestUniqueCascade_KernelFailureClaimsNothing(t *testing.T) {
+	t.Parallel()
+	forUC(t, func(t *testing.T, g *graphpkg.Graph, d ucDoor, sc ucScope) {
+		ucCreate(t, g, sc, ucKey)
+		bn := ucAdd(t, g, map[string]any{ucKey: "b"})
+		before := ucState(t, g, bn.ID())
+		patch := map[string]any{ucKey: "z"}
+		for i := 0; i < 1000; i++ { // default MaxPropertiesPerEntity is 1000
+			patch[fmt.Sprintf("p%04d", i)] = int64(i)
+		}
+		if err := d.run(g, bn.ID(), ivT+100, 0, patch); !errors.Is(err, graphpkg.ErrTooManyProperties) {
+			t.Fatalf("oversized patch: err = %v, want ErrTooManyProperties", err)
+		}
+		ucAssertUnchanged(t, g, bn.ID(), before, ivT+200)
+		if _, err := g.Nodes().Add(context.Background(), []string{"Ref"}, map[string]any{ucKey: "z"}); err != nil {
+			t.Errorf("Add with the value of a patch the kernel refused: %v (must claim nothing)", err)
+		}
+	})
 }
