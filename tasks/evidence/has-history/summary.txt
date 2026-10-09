@@ -16,7 +16,20 @@ Mutants (scratch runner applies one, runs the suites, restores; each file holds 
   m6 Clear keeps the set                          RED
   m7 tiered asks the owner shard only             RED
   m8 tiered cold shards build the set             RED  (survived the first run, test tightened)
-  10 of 10 red.
+  m9 ID overlay resolves set-vs-delete per ID     RED  (review fix 1: overlay test, store + graph differentials)
+  m10 failed Clear keeps a built empty set        RED  (review fix 3: injected drop failure)
+  m11 tiered swallows a reference-shard error     RED  (review fix 4)
+  13 of 13 red.
+
+Review fixes (red first):
+  red-4-id-overlay-per-id.txt   SET of v2 + DELETE of v1 buffered: first HasHistory, AllHistoryIDs and
+                                HistoryCount all drop the ID (20 of 20 fresh stores, node and rel)
+  red-5-failed-clear.txt        rows surviving a failed Clear read false
+  preexisting-compaction-export-import-failure.txt
+                                not HasHistory: an export after CompactHistory* (KeepVersions 1) of an entity
+                                whose newest history row is a bounded-cascade piece above its current slot
+                                (cur v6, history [v10]) fails import ("imported hash chain does not verify");
+                                found by the extended graph differential, reproduced with the overlay fix reverted
 
 Green:
   green-go-test-pkg.txt     go test ./pkg/... -count=1, exit 0
