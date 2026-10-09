@@ -283,6 +283,18 @@ func freeColdRelTemporalIndexes(store *BadgerStore, shard string) {
 	}
 }
 
+// syncColdShardIndexes syncs a lazily opened cold shard to the anchor:
+// composite definitions as the reference shard has them, no relationship
+// temporal index. It removes what an interrupted fan-out left on a shard that
+// was closed at the time (the API's own drop could not reach it). Best effort:
+// a failure leaves an extra or missing definition, which costs work but never
+// changes an answer, so it is logged, not returned.
+func (ts *Store) syncColdShardIndexes(store *BadgerStore, shard string) {
+	if err := ts.syncAnchoredIndexes(store, false); err != nil {
+		slog.Error("graph: sync cold shard indexes to the anchor", "shard", shard, "error", err)
+	}
+}
+
 // --- relationship-type temporal indexes ---
 
 // CreateRelTemporalIndex builds a temporal interval index over relType on the

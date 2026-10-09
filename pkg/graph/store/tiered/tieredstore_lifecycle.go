@@ -49,6 +49,7 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 					return nil, fmt.Errorf("graph: lazy-open cold shard %s: %w", es.name, err)
 				}
 				es.store = store
+				ts.syncColdShardIndexes(store, es.name)
 				// The general checkout, which write paths use. A shard that is
 				// open can be written to, so a sealed count must not outlive
 				// the close it described — persist the unseal, or a crash
@@ -80,6 +81,7 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 			return nil, fmt.Errorf("graph: lazy-open cold shard %s: %w", es.name, err)
 		}
 		es.store = store
+		ts.syncColdShardIndexes(store, es.name)
 		if es.dropCachedCounts(ts) {
 			ts.saveCatalogBestEffort("unseal shard counts on open")
 		}
@@ -137,6 +139,7 @@ func (es *EventShard) checkoutStoreForRead(ts *Store) (*BadgerStore, func(), err
 			return nil, noop, fmt.Errorf("graph: lazy-open cold shard %s: %w", es.name, err)
 		}
 		es.store = store
+		ts.syncColdShardIndexes(store, es.name)
 		es.readTransientOpen = true
 		ts.openColdShards.Add(1)
 		// READ-ONLY checkout: the shard cannot change through it, so the
