@@ -267,7 +267,7 @@ Most point and query reads acquire `g.mu.RLock()`: they are blocked while a tx/b
 - **Tx vs tx / batch:** serialized (`txMu`). Two transactions never interleave.
 - **Tx vs standalone reads:** every tx mutation is applied to the Store immediately. A concurrent standalone reader sees the transaction's uncommitted rows before `Commit` (dirty read), and sees them disappear again after `Rollback`.
 - **Tx vs standalone writes:** entity locks are taken and released per call, not held until commit. A standalone write can land on an entity between two calls of an open transaction. `Rollback` restores the transaction's pre-transaction snapshot of that entity and therefore **overwrites the standalone write** (lost update).
-- **Crash:** the tx's rows reach disk through the normal async flush (or per call under `SyncWrites`); a crash before `Commit` can leave part of the transaction persisted. The change-log is scoped: a rolled-back or uncommitted transaction emits no records, so replicas never see its rows.
+- **Crash:** the tx's rows reach disk through the normal async flush (or per call under `SyncWrites`); a crash before `Commit` can leave part of the transaction persisted. With `Config.DurableCommit`, `Commit` (and `Batch.Execute`, the strong ingest applier) does not return success before one durable flush — the pending buffer as one WriteBatch plus a WAL fsync on every open shard that took writes — so a crash after the return keeps the whole group; see "Durable-on-return commit" below. The change-log is scoped: a rolled-back or uncommitted transaction emits no records, so replicas never see its rows.
 
 This is the v4.1.0 performance trade-off (standalone mutations and reads on disjoint entities run in parallel with an open tx). Use `g.Tx()` when no standalone writer touches the same entities concurrently, or serialize those writers yourself; use `g.Batch()` when readers must never observe a partial group (it holds `g.mu.Lock()` for the whole execution). Isolated transactions (private write set applied atomically at commit, locks held to commit) are a v5 item.
 
@@ -437,6 +437,38 @@ evicted by design, so without a bound a sustained burst faster than
 flushes synchronously (backpressure); a failing backpressure flush surfaces
 its error to the writer and requeues the ops. `Store.PendingWriteCount()`
 exposes the pressure signal.
+
+### Durable-on-return commit
+
+`graph.Config.DurableCommit` (off by default; backlog 11, ai-soc request 9)
+makes `GraphTx.Commit`, `Tx().Run*`, `Batch.Execute` and the strong ingest
+applier call `store.DurableFlushCapability.DurableFlush` once per group, after
+the group is applied and the graph locks are released (readers and the next
+writer do not wait for the fsync). Badger's `DurableFlush` holds `flushMu`
+across the normal flush (the whole pending buffer, counters and change-log
+records in one WriteBatch) and a `db.Sync()` of the WAL; the sync runs only
+when a WriteBatch reached the WAL without an fsync since the last one (an
+`unsynced` flag set by every flush, background ones included), and never under
+`SyncWrites`. Tiered folds it over the reference shard, the open archive and
+the open event shards without lazy-opening a closed cold shard (it has nothing
+pending); sharded over every slot. A store without stable storage (memory,
+`BadgerInMemory`, in-memory tiered/sharded) fails `New` with
+`ErrCapabilityNotSupported`.
+
+What a caller may assume: after success, a crash keeps the whole group. Before
+the return, a crash can keep any subset — the background flush may already
+have written part of it, and the flush snapshot is a map, so Badger can split a
+buffer above its transaction size limit into several transactions in arbitrary
+order. A consumer that writes its cut record LAST in the group and recovers by
+"rows above the last durable cut are unfinished" is therefore safe while the
+flush that carries the cut fits one Badger transaction (about 15 % of
+`MemTableSize`, ≈ 9.6 MB at the 64 MB default — the flush carries the group
+plus any other write still pending); all-or-nothing on disk for larger flushes
+is v5. On a flush failure the door returns `ErrCommitNotDurable`: the group is
+committed in memory, its operations stay pending (requeued), and the next
+successful flush persists them; until then a crash can lose them. Rollback
+never flushes. Standalone mutations and concurrent-mode ingest `Submit` keep the
+async flush.
 
 ### Key Architecture
 

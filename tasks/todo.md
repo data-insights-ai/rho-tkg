@@ -6,9 +6,10 @@
    pending buffer to disk before returning success; every touched shard on tiered/sharded; memory store declines at
    New with ErrCapabilityNotSupported; default off byte-identical; Rollback never flushes; failed flush surfaces and
    the group stays pending. — check: tests in `pkg/graph/durable_commit*_test.go`, red/green in
-   `tasks/evidence/durable-commit/`. [ ]
-2. Latency flag on vs off on badger — check: benchmark numbers in CHANGELOG and report. [ ]
-3. Docs: AGENTS.md Configuration, docs/architecture.md, CHANGELOG `### Durable-on-return commit (Config.DurableCommit)`. [ ]
+   `tasks/evidence/durable-commit/`. [x] (red-graph.txt 28 red tests/subtests, green-graph.txt, green-full-pkg.txt EXIT=0,
+   mutant-m1..m6 each killed, coverage-new-code.txt >= 81 %)
+2. Latency flag on vs off on badger — check: benchmark numbers in CHANGELOG and report. [x] (bench.txt)
+3. Docs: AGENTS.md Configuration, docs/architecture.md, CHANGELOG `### Durable-on-return commit (Config.DurableCommit)`. [x]
 
 ## Ledger (written before code)
 
@@ -24,6 +25,15 @@
   ErrCapabilityNotSupported. Break-the-code: commit without flush, flush only one shard, flush on Rollback,
   flush when off, swallowed flush error, memory store accepted as a no-op.
 - Proof: tasks/evidence/durable-commit/{r0-before,red,green}-*.txt; benchmark numbers.
+
+## Review (item E)
+
+- Decisions: capability `store.DurableFlushCapability{DurableFlushSupported, DurableFlush}` (flush + WAL fsync,
+  fsync only when something reached the WAL unsynced); memory / in-memory stores decline at `New`; flush runs
+  after the graph locks are released; failure = `ErrCommitNotDurable` for a committed group, ops stay pending.
+- Tests written after the green run (tiered archive, first-error) were proven by mutants M5/M6, not red-first.
+- Open: concurrent-mode ingest `Submit` and standalone mutations are not covered; power-loss durability (fsync)
+  is proven only by the sync counter, the crash children prove process-crash durability.
 
 ---
 
