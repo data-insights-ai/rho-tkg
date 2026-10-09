@@ -903,6 +903,19 @@ func TestLatestStampsFallbackWithoutCapability(t *testing.T) {
 		t.Fatal(err)
 	}
 	check("re-imported", false)
+	// The node half of the fallback: a node with history rows, then deleted
+	// (its rel is cascaded away with it).
+	if _, err := g.Nodes().Update(ctx, z.ID(), map[string]any{"v": int64(9)}); err != nil {
+		t.Fatal(err)
+	}
+	check("node updated", false)
+	if err := g.Nodes().Delete(ctx, z.ID()); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, deleted, err := g.Nodes().LatestStamps(z.ID()); err != nil || !deleted {
+		t.Fatalf("fallback deleted node: deleted=%v, %v", deleted, err)
+	}
+	check("node deleted", true)
 	if _, _, _, err := g.Nodes().LatestStamps(types.NodeID(1 << 40)); !errors.Is(err, graphpkg.ErrNodeNotFound) {
 		t.Fatalf("fallback unknown node: %v", err)
 	}
