@@ -1,0 +1,16 @@
+--- FAIL: TestHistoryIDOverlay_SetAndDeleteOfDifferentVersionsSameID (2.26s)
+    --- FAIL: TestHistoryIDOverlay_SetAndDeleteOfDifferentVersionsSameID/node/both_pending (0.25s)
+        badgerstore_history_id_overlay_test.go:125: iter 0: first HasHistory=false, AllHistoryIDs=[], HistoryCount=0; want true / [77]? / 1
+        badgerstore_history_id_overlay_test.go:133: wrong in 20 of 20 fresh stores
+    --- FAIL: TestHistoryIDOverlay_SetAndDeleteOfDifferentVersionsSameID/node/set_flushing,_delete_pending (0.16s)
+        badgerstore_history_id_overlay_test.go:125: iter 0: first HasHistory=false, AllHistoryIDs=[], HistoryCount=0; want true / [77]? / 1
+        badgerstore_history_id_overlay_test.go:133: wrong in 20 of 20 fresh stores
+    --- FAIL: TestHistoryIDOverlay_SetAndDeleteOfDifferentVersionsSameID/rel/both_pending (0.17s)
+        badgerstore_history_id_overlay_test.go:125: iter 0: first HasHistory=false, AllHistoryIDs=[], HistoryCount=0; want true / [77]? / 1
+        badgerstore_history_id_overlay_test.go:133: wrong in 20 of 20 fresh stores
+    --- FAIL: TestHistoryIDOverlay_SetAndDeleteOfDifferentVersionsSameID/rel/set_flushing,_delete_pending (0.33s)
+        badgerstore_history_id_overlay_test.go:125: iter 0: first HasHistory=false, AllHistoryIDs=[], HistoryCount=0; want true / [77]? / 1
+        badgerstore_history_id_overlay_test.go:133: wrong in 20 of 20 fresh stores
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	2.380s
+FAIL

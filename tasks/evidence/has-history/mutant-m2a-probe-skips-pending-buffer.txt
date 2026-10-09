@@ -1,0 +1,57 @@
+$ go test ./pkg/graph/store/badger/ -run TestHistoryPresence -count=1
+--- FAIL: TestHistoryPresence_DeleteMaintenance (0.11s)
+    --- FAIL: TestHistoryPresence_DeleteMaintenance/node (0.06s)
+        badgerstore_history_presence_test.go:185: node full trim pending: has(30) = true, history has 0 rows
+    --- FAIL: TestHistoryPresence_DeleteMaintenance/rel (0.06s)
+        badgerstore_history_presence_test.go:185: rel full trim pending: has(30) = true, history has 0 rows
+--- FAIL: TestHistoryPresence_ProbeSeesFlushingDeletes (0.00s)
+    --- FAIL: TestHistoryPresence_ProbeSeesFlushingDeletes/node (0.00s)
+        badgerstore_history_presence_test.go:233: node delete parked: has(40) = true, history has 0 rows
+    --- FAIL: TestHistoryPresence_ProbeSeesFlushingDeletes/rel (0.00s)
+        badgerstore_history_presence_test.go:233: rel delete parked: has(40) = true, history has 0 rows
+--- FAIL: TestHistoryPresence_BuildGuardKeepsWritesDuringScan (0.01s)
+    --- FAIL: TestHistoryPresence_BuildGuardKeepsWritesDuringScan/node (0.01s)
+        badgerstore_history_presence_test.go:332: node lost its only row during the scan: has(70) = true, history has 0 rows
+    --- FAIL: TestHistoryPresence_BuildGuardKeepsWritesDuringScan/rel (0.01s)
+        badgerstore_history_presence_test.go:332: rel lost its only row during the scan: has(70) = true, history has 0 rows
+--- FAIL: TestHistoryPresence_ProbeOnly (0.01s)
+    --- FAIL: TestHistoryPresence_ProbeOnly/node (0.00s)
+        badgerstore_history_presence_test.go:394: node pending: has(90) = false, history has 1 rows
+    --- FAIL: TestHistoryPresence_ProbeOnly/rel (0.01s)
+        badgerstore_history_presence_test.go:394: rel pending: has(90) = false, history has 1 rows
+--- FAIL: TestHistoryPresence_RandomizedDifferential (1.89s)
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/node/seed=1 (0.22s)
+        badgerstore_history_presence_test.go:442: step 74 trimAll: has(5) = true, history has 0 rows
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/node/seed=2 (0.14s)
+        badgerstore_history_presence_test.go:442: step 76 trimSome: has(9) = true, history has 0 rows
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/node/seed=3 (0.19s)
+        badgerstore_history_presence_test.go:442: step 27 trimSome: has(22) = true, history has 0 rows
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/node/seed=4 (0.40s)
+        badgerstore_history_presence_test.go:442: step 92 trimSome: has(19) = true, history has 0 rows
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/rel/seed=1 (0.20s)
+        badgerstore_history_presence_test.go:442: step 74 trimAll: has(5) = true, history has 0 rows
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/rel/seed=2 (0.16s)
+        badgerstore_history_presence_test.go:442: step 76 trimSome: has(9) = true, history has 0 rows
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/rel/seed=3 (0.20s)
+        badgerstore_history_presence_test.go:442: step 27 trimSome: has(22) = true, history has 0 rows
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/rel/seed=4 (0.39s)
+        badgerstore_history_presence_test.go:442: step 92 trimSome: has(19) = true, history has 0 rows
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	2.761s
+FAIL
+exit=1
+
+$ go test ./pkg/graph/ -run TestHasHistoryDifferential -count=1
+--- FAIL: TestHasHistoryDifferential (13.28s)
+    --- FAIL: TestHasHistoryDifferential/badger-disk/seed=2 (0.17s)
+        has_history_test.go:371: step 8 txRollback: rel 797162555153515520 HasHistory=false store=false, History has 1 rows
+    --- FAIL: TestHasHistoryDifferential/badger-disk/seed=3 (0.46s)
+        has_history_test.go:371: step 18 txRollback: node 797162560197132288 HasHistory=false store=false, History has 1 rows
+    --- FAIL: TestHasHistoryDifferential/tiered-disk/seed=1 (0.91s)
+        has_history_test.go:371: step 59 compact: node 797162595703685120 HasHistory=false store=false, History has 1 rows
+    --- FAIL: TestHasHistoryDifferential/tiered-disk/seed=2 (1.17s)
+        has_history_test.go:371: step 56 compact: rel 797162625494975488 HasHistory=false store=false, History has 1 rows
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	13.313s
+FAIL
+exit=1

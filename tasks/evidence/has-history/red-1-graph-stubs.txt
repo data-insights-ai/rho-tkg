@@ -1,0 +1,44 @@
+--- FAIL: TestHasHistoryDifferential (1.33s)
+    --- FAIL: TestHasHistoryDifferential/memory/seed=1 (0.00s)
+        has_history_test.go:371: step 0 cascadeRel: rel 797135650244068352 HasHistory=false store=false, History has 2 rows
+    --- FAIL: TestHasHistoryDifferential/memory/seed=2 (0.00s)
+        has_history_test.go:371: step 0 closeOrLabel: node 797135650253340672 HasHistory=false store=false, History has 1 rows
+    --- FAIL: TestHasHistoryDifferential/memory/seed=3 (0.00s)
+        has_history_test.go:371: step 0 cascadeNode: node 797135650259795968 HasHistory=false store=false, History has 1 rows
+    --- FAIL: TestHasHistoryDifferential/badger-disk/seed=1 (0.07s)
+        has_history_test.go:371: step 0 cascadeRel: rel 797135651720037376 HasHistory=false store=false, History has 2 rows
+    --- FAIL: TestHasHistoryDifferential/badger-disk/seed=2 (0.07s)
+        has_history_test.go:371: step 0 closeOrLabel: node 797135653854085120 HasHistory=false store=false, History has 1 rows
+    --- FAIL: TestHasHistoryDifferential/badger-disk/seed=3 (0.07s)
+        has_history_test.go:371: step 0 cascadeNode: node 797135656206434304 HasHistory=false store=false, History has 1 rows
+    --- FAIL: TestHasHistoryDifferential/tiered-disk/seed=1 (0.26s)
+        has_history_test.go:371: step 0 cascadeRel: rel 797135663166587904 HasHistory=false store=false, History has 2 rows
+    --- FAIL: TestHasHistoryDifferential/tiered-disk/seed=2 (0.22s)
+        has_history_test.go:371: step 0 closeOrLabel: node 797135670112059392 HasHistory=false store=false, History has 1 rows
+    --- FAIL: TestHasHistoryDifferential/tiered-disk/seed=3 (0.22s)
+        has_history_test.go:371: step 0 cascadeNode: node 797135676766945280 HasHistory=false store=false, History has 1 rows
+    --- FAIL: TestHasHistoryDifferential/sharded-disk/seed=1 (0.16s)
+        has_history_test.go:371: step 0 cascadeRel: rel 797135683826746368 HasHistory=false store=false, History has 2 rows
+    --- FAIL: TestHasHistoryDifferential/sharded-disk/seed=2 (0.12s)
+        has_history_test.go:371: step 0 closeOrLabel: node 797135688004861952 HasHistory=false store=false, History has 1 rows
+    --- FAIL: TestHasHistoryDifferential/sharded-disk/seed=3 (0.12s)
+        has_history_test.go:371: step 0 cascadeNode: node 797135692050956288 HasHistory=false store=false, History has 1 rows
+--- FAIL: TestHasHistoryReplicaApply (0.01s)
+    --- FAIL: TestHasHistoryReplicaApply/memory (0.00s)
+        has_history_test.go:483: replica updated node: HasHistory = false, <nil>
+    --- FAIL: TestHasHistoryReplicaApply/badger (0.01s)
+        has_history_test.go:483: replica updated node: HasHistory = false, <nil>
+--- FAIL: TestHasHistoryDoorContract (0.03s)
+    --- FAIL: TestHasHistoryDoorContract/memory (0.00s)
+        has_history_test.go:533: updated node: HasHistory = false, <nil>; want true
+    --- FAIL: TestHasHistoryDoorContract/badger (0.01s)
+        has_history_test.go:533: updated node: HasHistory = false, <nil>; want true
+    --- FAIL: TestHasHistoryDoorContract/tiered (0.01s)
+        has_history_test.go:533: updated node: HasHistory = false, <nil>; want true
+    --- FAIL: TestHasHistoryDoorContract/sharded (0.01s)
+        has_history_test.go:533: updated node: HasHistory = false, <nil>; want true
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.404s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/nodes	0.003s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/rels	0.004s
+FAIL

@@ -1,0 +1,15 @@
+$ go test ./pkg/graph/store/badger/ -run TestHistoryPresence -count=1
+--- FAIL: TestHistoryPresence_BuildGuardKeepsWritesDuringScan (0.02s)
+    --- FAIL: TestHistoryPresence_BuildGuardKeepsWritesDuringScan/node (0.01s)
+        badgerstore_history_presence_test.go:332: node lost its only row during the scan: has(70) = true, history has 0 rows
+    --- FAIL: TestHistoryPresence_BuildGuardKeepsWritesDuringScan/rel (0.01s)
+        badgerstore_history_presence_test.go:332: rel lost its only row during the scan: has(70) = true, history has 0 rows
+--- FAIL: TestHistoryPresence_ConcurrentBuildWithWriters (0.02s)
+    --- FAIL: TestHistoryPresence_ConcurrentBuildWithWriters/node (0.01s)
+        badgerstore_history_presence_test.go:581: writer 2: has(1000400) right after its write = false, <nil>
+    --- FAIL: TestHistoryPresence_ConcurrentBuildWithWriters/rel (0.01s)
+        badgerstore_history_presence_test.go:581: writer 3: has(1000600) right after its write = false, <nil>
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	6.314s
+FAIL
+exit=1

@@ -1,0 +1,42 @@
+HasHistory (handover effective-read-cost 1b) — evidence index, 2026-10-09
+
+Red first (stubs answering false / owner-shard-only routing):
+  red-1-graph-stubs.txt               21 FAIL lines: differential (4 backends x 3 seeds), replica apply, door contract
+  red-2-badger-stubs.txt              41 FAIL lines: every badger presence test, node and rel
+  red-3-tiered-owner-shard-only.txt   routing shapes C and cross-shard deleted red
+
+Mutants (scratch runner applies one, runs the suites, restores; each file holds the run):
+  m1 no delete maintenance                       RED  (badger store tests + graph differential)
+  m2a probe skips the pending buffer              RED
+  m2b build scans committed keys only             RED
+  m3a build scan overrides notes                  RED  (build-guard hook test)
+  m3b tracking starts after the scan              RED  (build-guard hook test)
+  m4 probe installs without the per-ID stamp      RED  (probe hook test; survived the first run, test added)
+  m5 Clear does not exclude builds                RED
+  m6 Clear keeps the set                          RED
+  m7 tiered asks the owner shard only             RED
+  m8 tiered cold shards build the set             RED  (survived the first run, test tightened)
+  m9 ID overlay resolves set-vs-delete per ID     RED  (review fix 1: overlay test, store + graph differentials)
+  m10 failed Clear keeps a built empty set        RED  (review fix 3: injected drop failure)
+  m11 tiered swallows a reference-shard error     RED  (review fix 4)
+  13 of 13 red.
+
+Review fixes (red first):
+  red-4-id-overlay-per-id.txt   SET of v2 + DELETE of v1 buffered: first HasHistory, AllHistoryIDs and
+                                HistoryCount all drop the ID (20 of 20 fresh stores, node and rel)
+  red-5-failed-clear.txt        rows surviving a failed Clear read false
+  preexisting-compaction-export-import-failure.txt
+                                not HasHistory: an export after CompactHistory* (KeepVersions 1) of an entity
+                                whose newest history row is a bounded-cascade piece above its current slot
+                                (cur v6, history [v10]) fails import ("imported hash chain does not verify");
+                                found by the extended graph differential, reproduced with the overlay fix reverted
+
+Green:
+  green-go-test-pkg.txt     go test ./pkg/... -count=1, exit 0
+  green-race.txt            go test -race badger, memory, tiered, sharded, core: exit 0
+  green-badger-race.txt     presence tests under -race, verbose
+  coverage-new-code.txt     per-function coverage of the new code (tiered helpers raised after this run)
+
+Benchmarks:
+  bench-store-hashistory.txt     store level, badger on disk reopened, 200 K / 1 M entities, 0.1 % / 1 %
+  bench-core-history-plain.txt   ./bench core doors, -count=3

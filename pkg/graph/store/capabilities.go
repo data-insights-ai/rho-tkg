@@ -162,6 +162,19 @@ type HistoryCountCapability interface {
 	RelHistoryCount() (int, error)
 }
 
+// HistoryPresenceCapability is OPTIONAL: whether one entity has at least one
+// history row, without reading the rows. The answer equals
+// len(GetNodeHistory(id)) > 0 (len(GetRelHistory(id)) > 0) at every moment,
+// pending writes included; an invalid id returns the same error. Memory reads
+// its history map; badger keeps a RAM set of the IDs with history rows, built
+// once by a key-only scan and maintained where every history key enters the
+// write buffer; sharded routes by slot; tiered routes like GetNodeHistory /
+// GetRelHistory. A store without it is answered with len(History(id)) > 0.
+type HistoryPresenceCapability interface {
+	HasNodeHistory(id types.NodeID) (bool, error)
+	HasRelHistory(id types.RelID) (bool, error)
+}
+
 // ReadCostCapability is OPTIONAL: the store's ReadCosts. A store without it
 // states none.
 type ReadCostCapability interface {

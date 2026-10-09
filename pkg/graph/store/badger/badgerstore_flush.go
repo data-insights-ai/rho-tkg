@@ -24,7 +24,7 @@ func (bs *Store) appendOps(ops ...writeOp) {
 	bs.wbMu.Lock()
 	for _, op := range ops {
 		bs.pending[string(op.key)] = op
-		bs.noteHistoryKey(op.key)
+		bs.noteHistoryKey(op)
 	}
 	bs.wbMu.Unlock()
 }
