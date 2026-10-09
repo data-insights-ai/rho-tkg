@@ -40,6 +40,14 @@ Removals and breaking changes land only at major-version boundaries or after a d
   documented for one day, and both known consumers (sigma-tkgd, ai-soc) were told beforehand and adapted. The
   state doors (`NodeAtTx` / `RelAtTx`, `ByLabel` / `ByType` with `ValidAt` + `TxAt`) did not change meaning.
   Future behaviour changes follow the ritual above.
+- **Unreleased (backlog 38), a backfilled re-import of a deleted ID before the ID's recorded history.**
+  `Nodes().Import` / `Rels().Import` / `Nodes().AddByIDIfAbsent` and the `GraphTx` twins with a `tkg_tx_from` at
+  or below a `TxFrom` / `TxTo` / `DeletedAt` of the ID's history now return `ErrTxOrder` (wraps
+  `ErrInvalidTxFrom`) instead of storing the row. Shipped without the deprecation period because the accepted
+  input stored a row the doors could not read consistently (the valid-time doors ended it at the earlier
+  delete, the as-of doors and `Get` answered it), and no stored stamp can place it once a cascade demotes it.
+  The refusal applies `UpdateWithTx` / `DeleteWithTx`'s existing ordering rule; creates of IDs without history
+  and every plain door are unchanged. Chains stored before keep reading as before.
 
 ## Experimental Surfaces
 
