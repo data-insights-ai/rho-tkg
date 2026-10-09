@@ -2,6 +2,7 @@ package badger
 
 import (
 	"fmt"
+	"runtime"
 	"testing"
 	"time"
 
@@ -16,7 +17,9 @@ import (
 //
 //   - hit / miss: an entity with / without history, set already built;
 //   - build: the one-time cost of the first call (key-only scan of the
-//     history keyspace plus the install), the set reset before each call.
+//     history keyspace plus the install), the set reset before each call,
+//     and setB/id, the live heap the built set retains per ID (GC before and
+//     after one build).
 //
 // The 1 M fixtures are skipped under -short.
 //
@@ -42,7 +45,22 @@ func benchHasHistory(b *testing.B, node bool) {
 					has = func(id int64) (bool, error) { return bs.HasNodeHistory(types.NodeID(snowflake.ID(id))) }
 				}
 				b.Run("build", func(b *testing.B) {
+					// Retained heap of the built set: live heap after GC around
+					// one build, per ID in the set (scan garbage collected).
+					resetHistoryPresenceForBench(bs, p)
+					var before, after runtime.MemStats
+					runtime.GC()
+					runtime.ReadMemStats(&before)
+					if got, err := has(int64(d.stride)); err != nil || !got {
+						b.Fatalf("build: %v, %v", got, err)
+					}
+					runtime.GC()
+					runtime.ReadMemStats(&after)
+					st := bs.HistoryPresenceStats()
+					setIDs := st.NodeIDs + st.RelIDs
+					setBytesPerID := float64(int64(after.HeapAlloc)-int64(before.HeapAlloc)) / float64(setIDs)
 					b.ReportAllocs()
+					b.ResetTimer()
 					for i := 0; i < b.N; i++ {
 						b.StopTimer()
 						resetHistoryPresenceForBench(bs, p)
@@ -51,8 +69,8 @@ func benchHasHistory(b *testing.B, node bool) {
 							b.Fatalf("build: %v, %v", got, err)
 						}
 					}
-					st := bs.HistoryPresenceStats()
-					b.ReportMetric(float64(st.NodeIDs+st.RelIDs), "ids")
+					b.ReportMetric(float64(setIDs), "ids")
+					b.ReportMetric(setBytesPerID, "setB/id") // after the loop: ResetTimer drops reported metrics
 				})
 				hits := make([]int64, 0, 1024)
 				for id := d.stride; id <= size && len(hits) < 1024; id += d.stride {

@@ -38,8 +38,9 @@ var _ storecontract.HistoryPresenceCapability = (*Store)(nil)
 // a scan never straddles a wipe, and drops the set with the write buffer; the
 // next call rebuilds it.
 //
-// RAM: O(IDs with history), about 25-40 B per ID in Go maps (map growth); not built until the
-// first HasNodeHistory / HasRelHistory call (HistoryPresenceStats reports it).
+// RAM: O(IDs with history), measured 30-52 B per ID (30 B at 10 K IDs, map
+// growth; setB/id in BenchmarkRelHasHistory); not built until the first
+// HasNodeHistory / HasRelHistory call (HistoryPresenceStats reports it).
 type historyPresence struct {
 	buildMu sync.Mutex // serializes builds; Clear holds it for its whole run
 	built   atomic.Bool
@@ -85,7 +86,7 @@ func (p *historyPresence) resetLocked() {
 
 // HistoryPresenceStats reports the RAM history-presence sets: whether each
 // kind's set is built and how many IDs it holds (IDs with history plus IDs
-// awaiting a probe after a history delete). The set costs about 25-40 B per ID.
+// awaiting a probe after a history delete). The set costs 30-52 B per ID (measured).
 type HistoryPresenceStats struct {
 	NodesBuilt bool
 	RelsBuilt  bool

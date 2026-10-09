@@ -25,11 +25,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   included), maintained where every history key enters the write buffer (`noteHistoryKey`, under `wbMu`): a SET
   adds the ID, a DELETE marks it for a per-ID key probe on the next read. Writes during the build's scan and
   during a probe are kept by a per-ID write generation (lessons 63 / 74, deterministic hook tests), and `Clear`
-  excludes builds. RAM: about 25-40 B per ID with history (10 K IDs: about 0.3 MB), reported by
-  `badger.Store.HistoryPresenceStats()`. Measured (`BenchmarkRelHasHistory` / `BenchmarkNodeHasHistory`, badger on
+  excludes builds and drops the set (the next call rebuilds; a failed drop leaves no stale set). RAM, measured
+  (live heap after GC around one build, `setB/id` in the build benchmark): 30 B per ID at 10 K IDs, 40 B at
+  2 K, 52 B at 200 (10 K IDs: about 0.3 MB); the set size is reported by `badger.Store.HistoryPresenceStats()`. Measured (`BenchmarkRelHasHistory` / `BenchmarkNodeHasHistory`, badger on
   disk, reopened, set built): 9-15 ns and 0 allocs for a hit or a miss at 200 K and 1 M entities with history on
-  0.1 % or 1 % of them; the build costs about 1-2 us per ID with history (1 M entities at 1 %: 9 ms rel, 19 ms
-  node). Core door on the `./bench` fixture (`BenchmarkRelHasHistory`, registered in the bench gate beside the new
+  0.1 % or 1 % of them; the build costs about 1-2 us per ID with history (1 M entities at 1 %: 9-12 ms rel,
+  19-22 ms node; two runs on a 32-core host at load average 12-25).
+
+### Fixed
+
+- **Badger history ID walks no longer drop an ID whose write buffer holds a SET of one history version and a
+  DELETE of another.** The buffered-write overlay of `AllNodeHistoryIDs(From)` / `AllRelHistoryIDs(From)`,
+  `ForEachNodeHistoryID` / `ForEachRelHistoryID` and `NodeHistoryCount` / `RelHistoryCount` resolved
+  set-versus-delete per ID, so a buffered DELETE of hist(X, 1) erased the buffered SET of hist(X, 2) and the
+  committed v1 was masked: X vanished from the walks and the counts until the next flush (since 5b875bc). Reached
+  by `Truncate*History(id, 1)` after a fresh version, replica apply of a truncate record and import-merge
+  truncate-then-rewrite; found in review of `HasHistory`, whose first build used the same walk. Now resolved per
+  key, then mapped to IDs (`TestHistoryIDOverlay_SetAndDeleteOfDifferentVersionsSameID`: both ops pending, SET
+  pending with the DELETE in flight and the reverse, a DELETE of the same key after its SET still masks; the
+  randomized differentials now buffer several ops per ID before the first call after a reopen or `Clear`). Core door on the `./bench` fixture (`BenchmarkRelHasHistory`, registered in the bench gate beside the new
   `BenchmarkRelHistoryPlain`): 19-26 ns, 0 allocs, against 1.0-1.2 us and 12 allocs for `Rels().History` of a plain
   relationship on badger. Additive surface: `nodes.Ops` and `rels.Ops` gain `HasHistory`.
 
