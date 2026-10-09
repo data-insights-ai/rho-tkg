@@ -1,0 +1,102 @@
+=== RUN   TestAsOfBackfilledReImportOfDeletedID
+=== PAUSE TestAsOfBackfilledReImportOfDeletedID
+=== RUN   TestReImportRetentionPurge
+=== PAUSE TestReImportRetentionPurge
+=== RUN   TestReImportOldChainReadsAsBefore
+=== PAUSE TestReImportOldChainReadsAsBefore
+=== RUN   TestTxBackfillNode_OrderEqualReversed
+=== PAUSE TestTxBackfillNode_OrderEqualReversed
+=== RUN   TestTxBackfillRel_OrderEqualReversed
+=== PAUSE TestTxBackfillRel_OrderEqualReversed
+=== CONT  TestAsOfBackfilledReImportOfDeletedID
+=== CONT  TestReImportRetentionPurge
+=== RUN   TestAsOfBackfilledReImportOfDeletedID/memory/node
+=== CONT  TestTxBackfillNode_OrderEqualReversed
+=== RUN   TestReImportRetentionPurge/memory/rel=false
+=== CONT  TestTxBackfillRel_OrderEqualReversed
+=== CONT  TestReImportOldChainReadsAsBefore
+=== RUN   TestTxBackfillNode_OrderEqualReversed/memory/current
+=== RUN   TestReImportOldChainReadsAsBefore/memory/node
+=== RUN   TestTxBackfillRel_OrderEqualReversed/memory/current
+=== RUN   TestAsOfBackfilledReImportOfDeletedID/memory/rel
+=== RUN   TestReImportRetentionPurge/memory/rel=true
+=== RUN   TestReImportRetentionPurge/badger/rel=false
+=== RUN   TestAsOfBackfilledReImportOfDeletedID/badger/node
+=== RUN   TestTxBackfillRel_OrderEqualReversed/memory/history_above_current
+=== RUN   TestTxBackfillNode_OrderEqualReversed/memory/history_above_current
+=== RUN   TestTxBackfillRel_OrderEqualReversed/badger/current
+=== RUN   TestTxBackfillNode_OrderEqualReversed/badger/current
+=== RUN   TestReImportRetentionPurge/badger/rel=true
+=== RUN   TestAsOfBackfilledReImportOfDeletedID/badger/rel
+=== RUN   TestReImportOldChainReadsAsBefore/memory/rel
+=== RUN   TestTxBackfillRel_OrderEqualReversed/badger/history_above_current
+=== RUN   TestTxBackfillNode_OrderEqualReversed/badger/history_above_current
+=== RUN   TestReImportRetentionPurge/sharded/rel=false
+=== RUN   TestAsOfBackfilledReImportOfDeletedID/sharded/node
+=== RUN   TestReImportOldChainReadsAsBefore/badger/node
+=== RUN   TestTxBackfillRel_OrderEqualReversed/sharded/current
+=== RUN   TestTxBackfillRel_OrderEqualReversed/sharded/history_above_current
+=== RUN   TestTxBackfillNode_OrderEqualReversed/sharded/current
+=== RUN   TestReImportRetentionPurge/sharded/rel=true
+=== RUN   TestAsOfBackfilledReImportOfDeletedID/sharded/rel
+=== RUN   TestReImportRetentionPurge/tiered/rel=false
+=== RUN   TestTxBackfillRel_OrderEqualReversed/tiered/current
+=== RUN   TestTxBackfillNode_OrderEqualReversed/sharded/history_above_current
+=== RUN   TestReImportRetentionPurge/tiered/rel=true
+--- PASS: TestReImportRetentionPurge (0.08s)
+    --- PASS: TestReImportRetentionPurge/memory/rel=false (0.00s)
+    --- PASS: TestReImportRetentionPurge/memory/rel=true (0.00s)
+    --- PASS: TestReImportRetentionPurge/badger/rel=false (0.00s)
+    --- PASS: TestReImportRetentionPurge/badger/rel=true (0.00s)
+    --- PASS: TestReImportRetentionPurge/sharded/rel=false (0.05s)
+    --- PASS: TestReImportRetentionPurge/sharded/rel=true (0.01s)
+    --- PASS: TestReImportRetentionPurge/tiered/rel=false (0.01s)
+    --- PASS: TestReImportRetentionPurge/tiered/rel=true (0.00s)
+=== RUN   TestAsOfBackfilledReImportOfDeletedID/tiered/node
+=== RUN   TestReImportOldChainReadsAsBefore/badger/rel
+=== RUN   TestAsOfBackfilledReImportOfDeletedID/tiered/rel
+=== RUN   TestTxBackfillRel_OrderEqualReversed/tiered/history_above_current
+=== RUN   TestTxBackfillNode_OrderEqualReversed/tiered/current
+--- PASS: TestTxBackfillRel_OrderEqualReversed (0.14s)
+    --- PASS: TestTxBackfillRel_OrderEqualReversed/memory/current (0.00s)
+    --- PASS: TestTxBackfillRel_OrderEqualReversed/memory/history_above_current (0.00s)
+    --- PASS: TestTxBackfillRel_OrderEqualReversed/badger/current (0.00s)
+    --- PASS: TestTxBackfillRel_OrderEqualReversed/badger/history_above_current (0.01s)
+    --- PASS: TestTxBackfillRel_OrderEqualReversed/sharded/current (0.01s)
+    --- PASS: TestTxBackfillRel_OrderEqualReversed/sharded/history_above_current (0.05s)
+    --- PASS: TestTxBackfillRel_OrderEqualReversed/tiered/current (0.05s)
+    --- PASS: TestTxBackfillRel_OrderEqualReversed/tiered/history_above_current (0.02s)
+--- PASS: TestAsOfBackfilledReImportOfDeletedID (0.16s)
+    --- PASS: TestAsOfBackfilledReImportOfDeletedID/memory/node (0.00s)
+    --- PASS: TestAsOfBackfilledReImportOfDeletedID/memory/rel (0.00s)
+    --- PASS: TestAsOfBackfilledReImportOfDeletedID/badger/node (0.00s)
+    --- PASS: TestAsOfBackfilledReImportOfDeletedID/badger/rel (0.00s)
+    --- PASS: TestAsOfBackfilledReImportOfDeletedID/sharded/node (0.05s)
+    --- PASS: TestAsOfBackfilledReImportOfDeletedID/sharded/rel (0.04s)
+    --- PASS: TestAsOfBackfilledReImportOfDeletedID/tiered/node (0.02s)
+    --- PASS: TestAsOfBackfilledReImportOfDeletedID/tiered/rel (0.04s)
+=== RUN   TestTxBackfillNode_OrderEqualReversed/tiered/history_above_current
+=== RUN   TestReImportOldChainReadsAsBefore/sharded/node
+--- PASS: TestTxBackfillNode_OrderEqualReversed (0.19s)
+    --- PASS: TestTxBackfillNode_OrderEqualReversed/memory/current (0.00s)
+    --- PASS: TestTxBackfillNode_OrderEqualReversed/memory/history_above_current (0.00s)
+    --- PASS: TestTxBackfillNode_OrderEqualReversed/badger/current (0.00s)
+    --- PASS: TestTxBackfillNode_OrderEqualReversed/badger/history_above_current (0.04s)
+    --- PASS: TestTxBackfillNode_OrderEqualReversed/sharded/current (0.02s)
+    --- PASS: TestTxBackfillNode_OrderEqualReversed/sharded/history_above_current (0.06s)
+    --- PASS: TestTxBackfillNode_OrderEqualReversed/tiered/current (0.04s)
+    --- PASS: TestTxBackfillNode_OrderEqualReversed/tiered/history_above_current (0.02s)
+=== RUN   TestReImportOldChainReadsAsBefore/sharded/rel
+=== RUN   TestReImportOldChainReadsAsBefore/tiered/node
+=== RUN   TestReImportOldChainReadsAsBefore/tiered/rel
+--- PASS: TestReImportOldChainReadsAsBefore (0.31s)
+    --- PASS: TestReImportOldChainReadsAsBefore/memory/node (0.01s)
+    --- PASS: TestReImportOldChainReadsAsBefore/memory/rel (0.01s)
+    --- PASS: TestReImportOldChainReadsAsBefore/badger/node (0.09s)
+    --- PASS: TestReImportOldChainReadsAsBefore/badger/rel (0.07s)
+    --- PASS: TestReImportOldChainReadsAsBefore/sharded/node (0.04s)
+    --- PASS: TestReImportOldChainReadsAsBefore/sharded/rel (0.04s)
+    --- PASS: TestReImportOldChainReadsAsBefore/tiered/node (0.03s)
+    --- PASS: TestReImportOldChainReadsAsBefore/tiered/rel (0.03s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.401s

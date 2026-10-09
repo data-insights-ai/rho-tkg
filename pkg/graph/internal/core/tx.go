@@ -88,13 +88,13 @@ type GraphTx struct {
 	updatedRels     []relSnapshot
 	deletedNodes    []deletedNodeSnapshot
 	deletedRels     []deletedRelSnapshot
-	labelSnapshot   []string               // registry names at BeginTx, restored on Rollback
-	relTypeSnapshot []string               // registry names at BeginTx, restored on Rollback
-	opSnapshot      opCounterSnapshot      // graph operation counters at BeginTx, restored on successful Rollback
-	pendingEvents   []eventspkg.Event      // buffered events — published on Commit, discarded on Rollback
-	snapshotSet     map[txSnapshotKey]bool // tracks already-snapshotted entities (first mutation only)
-	createdNodeSet  map[snowflake.ID]struct{}
-	createdRelSet   map[snowflake.ID]struct{}
+	labelSnapshot   []string                // registry names at BeginTx, restored on Rollback
+	relTypeSnapshot []string                // registry names at BeginTx, restored on Rollback
+	opSnapshot      opCounterSnapshot       // graph operation counters at BeginTx, restored on successful Rollback
+	pendingEvents   []eventspkg.Event       // buffered events — published on Commit, discarded on Rollback
+	snapshotSet     map[txSnapshotKey]bool  // tracks already-snapshotted entities (first mutation only)
+	createdNodeSet  map[snowflake.ID]uint32 // created ID -> the created row's version (a re-import continues its chain)
+	createdRelSet   map[snowflake.ID]uint32
 	deletedNodeSet  map[snowflake.ID]struct{}
 	deletedRelSet   map[snowflake.ID]struct{}
 	mu              sync.Mutex // protects done flag and snapshot tracking
@@ -210,8 +210,8 @@ func (c *Core) BeginTx() (*GraphTx, error) {
 		relTypeSnapshot: c.relTypes.ExportNames(),
 		opSnapshot:      c.snapshotOpCounters(),
 		snapshotSet:     make(map[txSnapshotKey]bool),
-		createdNodeSet:  make(map[snowflake.ID]struct{}),
-		createdRelSet:   make(map[snowflake.ID]struct{}),
+		createdNodeSet:  make(map[snowflake.ID]uint32),
+		createdRelSet:   make(map[snowflake.ID]uint32),
 		deletedNodeSet:  make(map[snowflake.ID]struct{}),
 		deletedRelSet:   make(map[snowflake.ID]struct{}),
 	}
@@ -416,27 +416,66 @@ func copyRelHistoryRows(history []*types.Relationship) []*types.Relationship {
 // trackCreated* records only entities that did not exist at transaction start.
 // Caller must hold tx.mu. Imported caller-specified IDs can reuse a row deleted
 // earlier in the same transaction; those replacements must not be deleted again
-// after rollback restores the original row.
-func (tx *GraphTx) trackCreatedNodeLocked(id snowflake.ID) {
+// after rollback restores the original row. The created row's version is
+// recorded: a re-import of an ID deleted before the transaction starts above
+// the earlier life's rows (backlog 38), and the rollback removes only the rows
+// from that version on (removeCreatedNodeHistory).
+func (tx *GraphTx) trackCreatedNodeLocked(id snowflake.ID, version uint32) {
 	if _, ok := tx.createdNodeSet[id]; ok {
 		return
 	}
 	if _, ok := tx.deletedNodeSet[id]; ok {
 		return
 	}
-	tx.createdNodeSet[id] = struct{}{}
+	tx.createdNodeSet[id] = version
 	tx.createdNodes = append(tx.createdNodes, id)
 }
 
-func (tx *GraphTx) trackCreatedRelLocked(id snowflake.ID) {
+func (tx *GraphTx) trackCreatedRelLocked(id snowflake.ID, version uint32) {
 	if _, ok := tx.createdRelSet[id]; ok {
 		return
 	}
 	if _, ok := tx.deletedRelSet[id]; ok {
 		return
 	}
-	tx.createdRelSet[id] = struct{}{}
+	tx.createdRelSet[id] = version
 	tx.createdRels = append(tx.createdRels, id)
+}
+
+// removeCreatedNodeHistory removes the history rows a created node wrote in the
+// transaction: every row from the created version on. Rows below it belong to
+// an earlier life of a re-imported ID and stay. Without the rollback-trim
+// capability the rows below are rewritten from a copy (the update snapshots'
+// path).
+func (tx *GraphTx) removeCreatedNodeHistory(id types.NodeID) error {
+	from := tx.createdNodeSet[id.SnowflakeID()]
+	if from == 0 {
+		return tx.g.truncateNodeHistoryScopedAware(tx.scopeToken, id, 0)
+	}
+	if tx.g.historyTrim != nil {
+		return tx.g.trimNodeHistoryFromScopedAware(tx.scopeToken, id, from)
+	}
+	history, err := tx.g.copyNodeHistory(id)
+	if err != nil {
+		return err
+	}
+	return tx.restoreNodeHistory(id, nodeHistoryBeforeVersion(history, from))
+}
+
+// removeCreatedRelHistory mirrors removeCreatedNodeHistory for relationships.
+func (tx *GraphTx) removeCreatedRelHistory(id types.RelID) error {
+	from := tx.createdRelSet[id.SnowflakeID()]
+	if from == 0 {
+		return tx.g.truncateRelHistoryScopedAware(tx.scopeToken, id, 0)
+	}
+	if tx.g.historyTrim != nil {
+		return tx.g.trimRelHistoryFromScopedAware(tx.scopeToken, id, from)
+	}
+	history, err := tx.g.copyRelHistory(id)
+	if err != nil {
+		return err
+	}
+	return tx.restoreRelHistory(id, relHistoryBeforeVersion(history, from))
 }
 
 func (tx *GraphTx) trackDeletedNodeLocked(id snowflake.ID) {
@@ -870,14 +909,14 @@ func (tx *GraphTx) Rollback() error {
 	for i := len(tx.createdRels) - 1; i >= 0; i-- {
 		rid := types.RelID(tx.createdRels[i])
 		capture(tx.g.deleteRelationshipScopedAware(tx.scopeToken, rid))
-		capture(tx.g.truncateRelHistoryScopedAware(tx.scopeToken, rid, 0))
+		capture(tx.removeCreatedRelHistory(rid))
 	}
 
 	// 7. Delete created nodes in reverse creation order (cascade).
 	for i := len(tx.createdNodes) - 1; i >= 0; i-- {
 		nid := types.NodeID(tx.createdNodes[i])
 		capture(tx.g.deleteNodeCascadeScopedAware(tx.scopeToken, nid))
-		capture(tx.g.truncateNodeHistoryScopedAware(tx.scopeToken, nid, 0))
+		capture(tx.removeCreatedNodeHistory(nid))
 	}
 
 	capture(tx.restoreRegistries())

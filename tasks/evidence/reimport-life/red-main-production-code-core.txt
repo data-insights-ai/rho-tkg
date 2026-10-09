@@ -1,0 +1,772 @@
+--- FAIL: TestReImportBackfillRefusalLeavesNoToken (0.30s)
+    --- FAIL: TestReImportBackfillRefusalLeavesNoToken/memory/node (0.00s)
+        reimport_life_test.go:360: [node] err = <nil>; want ErrTxOrder
+    --- FAIL: TestReImportBackfillRefusalLeavesNoToken/memory/rel (0.00s)
+        reimport_life_test.go:360: [rel] err = <nil>; want ErrTxOrder
+    --- FAIL: TestReImportBackfillRefusalLeavesNoToken/badger/node (0.01s)
+        reimport_life_test.go:360: [node] err = <nil>; want ErrTxOrder
+    --- FAIL: TestReImportBackfillRefusalLeavesNoToken/badger/rel (0.01s)
+        reimport_life_test.go:360: [rel] err = <nil>; want ErrTxOrder
+    --- FAIL: TestReImportBackfillRefusalLeavesNoToken/sharded/node (0.02s)
+        reimport_life_test.go:360: [node] err = <nil>; want ErrTxOrder
+    --- FAIL: TestReImportBackfillRefusalLeavesNoToken/sharded/rel (0.15s)
+        reimport_life_test.go:360: [rel] err = <nil>; want ErrTxOrder
+    --- FAIL: TestReImportBackfillRefusalLeavesNoToken/tiered/node (0.02s)
+        reimport_life_test.go:360: [node] err = <nil>; want ErrTxOrder
+    --- FAIL: TestReImportBackfillRefusalLeavesNoToken/tiered/rel (0.07s)
+        reimport_life_test.go:360: [rel] err = <nil>; want ErrTxOrder
+--- FAIL: TestReImportTxRollbackRestoresEarlierLife (0.48s)
+    --- FAIL: TestReImportTxRollbackRestoresEarlierLife/memory/node (0.00s)
+        reimport_life_test.go:471: [node rollback] a history row was lost or overwritten:
+              v0: x=0 vf=1000 vt=0 tx=1791574999399..1791574999400 del=0 upd=0 hash=38b8d100b15e prev= -> ""
+              v1: x=1 vf=2000 vt=1791574999402 tx=1791574999400..1791574999402 del=1791574999402 upd=1791574999400 hash=a297d27657f3 prev=38b8d100b15e -> ""
+             chain:
+    --- FAIL: TestReImportTxRollbackRestoresEarlierLife/memory/rel (0.00s)
+        reimport_life_test.go:471: [rel rollback] a history row was lost or overwritten:
+              v0: x=0 vf=1000 vt=0 tx=1791574999407..1791574999408 del=0 upd=0 hash=9a2e9d3038d6 prev= -> ""
+              v1: x=1 vf=2000 vt=1791574999410 tx=1791574999408..1791574999410 del=1791574999410 upd=1791574999408 hash=052618d4cde7 prev=9a2e9d3038d6 -> ""
+             chain:
+    --- FAIL: TestReImportTxRollbackRestoresEarlierLife/badger/node (0.02s)
+        reimport_life_test.go:471: [node rollback] a history row was lost or overwritten:
+              v0: x=0 vf=1000 vt=0 tx=1791574999409..1791574999410 del=0 upd=0 hash=57bb2869e206 prev= -> ""
+              v1: x=1 vf=2000 vt=1791574999412 tx=1791574999410..1791574999412 del=1791574999412 upd=1791574999410 hash=dc4b96fb0959 prev=57bb2869e206 -> ""
+             chain:
+    --- FAIL: TestReImportTxRollbackRestoresEarlierLife/badger/rel (0.02s)
+        reimport_life_test.go:471: [rel rollback] a history row was lost or overwritten:
+              v0: x=0 vf=1000 vt=0 tx=1791574999428..1791574999429 del=0 upd=0 hash=06ab81322359 prev= -> ""
+              v1: x=1 vf=2000 vt=1791574999431 tx=1791574999429..1791574999431 del=1791574999431 upd=1791574999429 hash=545ce682e130 prev=06ab81322359 -> ""
+             chain:
+    --- FAIL: TestReImportTxRollbackRestoresEarlierLife/sharded/node (0.05s)
+        reimport_life_test.go:471: [node rollback] a history row was lost or overwritten:
+              v0: x=0 vf=1000 vt=0 tx=1791574999486..1791574999487 del=0 upd=0 hash=a5b6b46094f3 prev= -> ""
+              v1: x=1 vf=2000 vt=1791574999489 tx=1791574999487..1791574999489 del=1791574999489 upd=1791574999487 hash=63e235679f6d prev=a5b6b46094f3 -> ""
+             chain:
+    --- FAIL: TestReImportTxRollbackRestoresEarlierLife/sharded/rel (0.12s)
+        reimport_life_test.go:471: [rel rollback] a history row was lost or overwritten:
+              v0: x=0 vf=1000 vt=0 tx=1791574999601..1791574999602 del=0 upd=0 hash=4618aac314b7 prev= -> ""
+              v1: x=1 vf=2000 vt=1791574999604 tx=1791574999602..1791574999604 del=1791574999604 upd=1791574999602 hash=6c57de34e7da prev=4618aac314b7 -> ""
+             chain:
+    --- FAIL: TestReImportTxRollbackRestoresEarlierLife/tiered/node (0.09s)
+        reimport_life_test.go:471: [node rollback] a history row was lost or overwritten:
+              v0: x=0 vf=1000 vt=0 tx=1791574999688..1791574999689 del=0 upd=0 hash=fb96cf4922ba prev= -> ""
+              v1: x=1 vf=2000 vt=1791574999691 tx=1791574999689..1791574999691 del=1791574999691 upd=1791574999689 hash=ff94c08a3b2e prev=fb96cf4922ba -> ""
+             chain:
+    --- FAIL: TestReImportTxRollbackRestoresEarlierLife/tiered/rel (0.17s)
+        reimport_life_test.go:471: [rel rollback] a history row was lost or overwritten:
+              v0: x=0 vf=1000 vt=0 tx=1791574999847..1791574999848 del=0 upd=0 hash=5ac2ae4a760b prev= -> ""
+              v1: x=1 vf=2000 vt=1791574999850 tx=1791574999848..1791574999850 del=1791574999850 upd=1791574999848 hash=11b996a00c58 prev=5ac2ae4a760b -> ""
+             chain:
+--- FAIL: TestReImportAboveCascadeRows (0.65s)
+    --- FAIL: TestReImportAboveCascadeRows/memory/node (0.00s)
+        reimport_life_test.go:186: [node] re-import version 0; want 5 (above the cascade rows)
+        reimport_life_test.go:189: [node update after re-import] a history row was lost or overwritten:
+              v0: x=0 vf=1000 vt=0 tx=1791574999397..1791574999398 del=0 upd=0 hash=8fc4026d6337 prev= -> "x=9 vf=5000 vt=0 tx=1791574999405..1791574999406 del=0 upd=0 hash=21efc2ebc895 prev="
+             chain:
+              v0 vf=5000 vt=0 tx=1791574999405..1791574999406 del=0 cur=false x=9
+              v1 vf=5000 vt=1791574999403 tx=1791574999398..1791574999403 del=1791574999403 cur=false x=1
+              v2 vf=3000 vt=5000 tx=1791574999400..0 del=0 cur=false x=0
+              v3 vf=2000 vt=3000 tx=1791574999400..0 del=0 cur=false x=2
+              v4 vf=500 vt=800 tx=1791574999401..0 del=0 cur=false x=3
+              v5 vf=0 vt=0 tx=1791574999406..0 del=0 cur=true x=5
+    --- FAIL: TestReImportAboveCascadeRows/memory/rel (0.00s)
+        reimport_life_test.go:186: [rel] re-import version 0; want 5 (above the cascade rows)
+        reimport_life_test.go:189: [rel update after re-import] a history row was lost or overwritten:
+              v0: x=0 vf=1000 vt=0 tx=1791574999406..1791574999407 del=0 upd=0 hash=82ecbea1cc49 prev= -> "x=9 vf=5000 vt=0 tx=1791574999415..1791574999416 del=0 upd=0 hash=feafd2f9194f prev="
+             chain:
+              v0 vf=5000 vt=0 tx=1791574999415..1791574999416 del=0 cur=false x=9
+              v1 vf=5000 vt=1791574999412 tx=1791574999407..1791574999412 del=1791574999412 cur=false x=1
+              v2 vf=3000 vt=5000 tx=1791574999409..0 del=0 cur=false x=0
+              v3 vf=2000 vt=3000 tx=1791574999409..0 del=0 cur=false x=2
+              v4 vf=500 vt=800 tx=1791574999410..0 del=0 cur=false x=3
+              v5 vf=0 vt=0 tx=1791574999416..0 del=0 cur=true x=5
+    --- FAIL: TestReImportAboveCascadeRows/badger/node (0.03s)
+        reimport_life_test.go:186: [node] re-import version 0; want 5 (above the cascade rows)
+        reimport_life_test.go:189: [node update after re-import] a history row was lost or overwritten:
+              v0: x=0 vf=1000 vt=0 tx=1791574999423..1791574999424 del=0 upd=0 hash=04aaa84e6e5b prev= -> "x=9 vf=5000 vt=0 tx=1791574999431..1791574999432 del=0 upd=0 hash=4d899db5cf35 prev="
+             chain:
+              v0 vf=5000 vt=0 tx=1791574999431..1791574999432 del=0 cur=false x=9
+              v1 vf=5000 vt=1791574999429 tx=1791574999424..1791574999429 del=1791574999429 cur=false x=1
+              v2 vf=3000 vt=5000 tx=1791574999426..0 del=0 cur=false x=0
+              v3 vf=2000 vt=3000 tx=1791574999426..0 del=0 cur=false x=2
+              v4 vf=500 vt=800 tx=1791574999427..0 del=0 cur=false x=3
+              v5 vf=0 vt=0 tx=1791574999432..0 del=0 cur=true x=5
+    --- FAIL: TestReImportAboveCascadeRows/badger/rel (0.04s)
+        reimport_life_test.go:186: [rel] re-import version 0; want 5 (above the cascade rows)
+        reimport_life_test.go:189: [rel update after re-import] a history row was lost or overwritten:
+              v0: x=0 vf=1000 vt=0 tx=1791574999454..1791574999455 del=0 upd=0 hash=b2e911c4503e prev= -> "x=9 vf=5000 vt=0 tx=1791574999463..1791574999464 del=0 upd=0 hash=7bf54a2e3646 prev="
+             chain:
+              v0 vf=5000 vt=0 tx=1791574999463..1791574999464 del=0 cur=false x=9
+              v1 vf=5000 vt=1791574999460 tx=1791574999455..1791574999460 del=1791574999460 cur=false x=1
+              v2 vf=3000 vt=5000 tx=1791574999457..0 del=0 cur=false x=0
+              v3 vf=2000 vt=3000 tx=1791574999457..0 del=0 cur=false x=2
+              v4 vf=500 vt=800 tx=1791574999458..0 del=0 cur=false x=3
+              v5 vf=0 vt=0 tx=1791574999464..0 del=0 cur=true x=5
+    --- FAIL: TestReImportAboveCascadeRows/sharded/node (0.05s)
+        reimport_life_test.go:186: [node] re-import version 0; want 5 (above the cascade rows)
+        reimport_life_test.go:189: [node update after re-import] a history row was lost or overwritten:
+              v0: x=0 vf=1000 vt=0 tx=1791574999494..1791574999495 del=0 upd=0 hash=83bdc05c61e7 prev= -> "x=9 vf=5000 vt=0 tx=1791574999502..1791574999503 del=0 upd=0 hash=ec94adc8aee5 prev="
+             chain:
+              v0 vf=5000 vt=0 tx=1791574999502..1791574999503 del=0 cur=false x=9
+              v1 vf=5000 vt=1791574999500 tx=1791574999495..1791574999500 del=1791574999500 cur=false x=1
+              v2 vf=3000 vt=5000 tx=1791574999497..0 del=0 cur=false x=0
+              v3 vf=2000 vt=3000 tx=1791574999497..0 del=0 cur=false x=2
+              v4 vf=500 vt=800 tx=1791574999498..0 del=0 cur=false x=3
+              v5 vf=0 vt=0 tx=1791574999503..0 del=0 cur=true x=5
+    --- FAIL: TestReImportAboveCascadeRows/sharded/rel (0.17s)
+        reimport_life_test.go:186: [rel] re-import version 0; want 5 (above the cascade rows)
+        reimport_life_test.go:189: [rel update after re-import] a history row was lost or overwritten:
+              v0: x=0 vf=1000 vt=0 tx=1791574999671..1791574999672 del=0 upd=0 hash=bfc9a7b0ca2b prev= -> "x=9 vf=5000 vt=0 tx=1791574999680..1791574999681 del=0 upd=0 hash=335356fed428 prev="
+             chain:
+              v0 vf=5000 vt=0 tx=1791574999680..1791574999681 del=0 cur=false x=9
+              v1 vf=5000 vt=1791574999677 tx=1791574999672..1791574999677 del=1791574999677 cur=false x=1
+              v2 vf=3000 vt=5000 tx=1791574999674..0 del=0 cur=false x=0
+              v3 vf=2000 vt=3000 tx=1791574999674..0 del=0 cur=false x=2
+              v4 vf=500 vt=800 tx=1791574999675..0 del=0 cur=false x=3
+              v5 vf=0 vt=0 tx=1791574999681..0 del=0 cur=true x=5
+    --- FAIL: TestReImportAboveCascadeRows/tiered/node (0.19s)
+        reimport_life_test.go:186: [node] re-import version 0; want 5 (above the cascade rows)
+        reimport_life_test.go:189: [node update after re-import] a history row was lost or overwritten:
+              v0: x=0 vf=1000 vt=0 tx=1791574999833..1791574999834 del=0 upd=0 hash=12e10927dbcf prev= -> "x=9 vf=5000 vt=0 tx=1791574999841..1791574999842 del=0 upd=0 hash=c40291208de9 prev="
+             chain:
+              v0 vf=5000 vt=0 tx=1791574999841..1791574999842 del=0 cur=false x=9
+              v1 vf=5000 vt=1791574999839 tx=1791574999834..1791574999839 del=1791574999839 cur=false x=1
+              v2 vf=3000 vt=5000 tx=1791574999836..0 del=0 cur=false x=0
+              v3 vf=2000 vt=3000 tx=1791574999836..0 del=0 cur=false x=2
+              v4 vf=500 vt=800 tx=1791574999837..0 del=0 cur=false x=3
+              v5 vf=0 vt=0 tx=1791574999842..0 del=0 cur=true x=5
+    --- FAIL: TestReImportAboveCascadeRows/tiered/rel (0.16s)
+        reimport_life_test.go:186: [rel] re-import version 0; want 5 (above the cascade rows)
+        reimport_life_test.go:189: [rel update after re-import] a history row was lost or overwritten:
+              v0: x=0 vf=1000 vt=0 tx=1791575000017..1791575000018 del=0 upd=0 hash=399ec16f5e38 prev= -> "x=9 vf=5000 vt=0 tx=1791575000026..1791575000027 del=0 upd=0 hash=efb5a6f46910 prev="
+             chain:
+              v0 vf=5000 vt=0 tx=1791575000026..1791575000027 del=0 cur=false x=9
+              v1 vf=5000 vt=1791575000023 tx=1791575000018..1791575000023 del=1791575000023 cur=false x=1
+              v2 vf=3000 vt=5000 tx=1791575000020..0 del=0 cur=false x=0
+              v3 vf=2000 vt=3000 tx=1791575000020..0 del=0 cur=false x=2
+              v4 vf=500 vt=800 tx=1791575000021..0 del=0 cur=false x=3
+              v5 vf=0 vt=0 tx=1791575000027..0 del=0 cur=true x=5
+--- FAIL: TestReImportAfterDeleteAheadOfClock (0.69s)
+    --- FAIL: TestReImportAfterDeleteAheadOfClock/memory/node (0.00s)
+        reimport_life_test.go:398: [node re-import and update] a history row was lost or overwritten:
+              v0: x=0 vf=1791578599399 vt=1791578599400 tx=1791574999400..1791578599400 del=1791578599400 upd=0 hash=64debaa69b1e prev= -> "x=9 vf=5000 vt=0 tx=1791574999404..1791574999405 del=0 upd=0 hash=07f6e8e17e30 prev="
+             chain:
+              v0 vf=5000 vt=0 tx=1791574999404..1791574999405 del=0 cur=false x=9
+              v1 vf=0 vt=0 tx=1791574999405..0 del=0 cur=true x=5
+    --- FAIL: TestReImportAfterDeleteAheadOfClock/memory/rel (0.00s)
+        reimport_life_test.go:398: [rel re-import and update] a history row was lost or overwritten:
+              v0: x=0 vf=1791578599404 vt=1791578599405 tx=1791574999405..1791578599405 del=1791578599405 upd=0 hash=055f4892f04f prev= -> "x=9 vf=5000 vt=0 tx=1791574999410..1791574999411 del=0 upd=0 hash=2120af3d5c71 prev="
+             chain:
+              v0 vf=5000 vt=0 tx=1791574999410..1791574999411 del=0 cur=false x=9
+              v1 vf=0 vt=0 tx=1791574999411..0 del=0 cur=true x=5
+    --- FAIL: TestReImportAfterDeleteAheadOfClock/badger/node (0.01s)
+        reimport_life_test.go:398: [node re-import and update] a history row was lost or overwritten:
+              v0: x=0 vf=1791578599408 vt=1791578599409 tx=1791574999409..1791578599409 del=1791578599409 upd=0 hash=aec659c99a1d prev= -> "x=9 vf=5000 vt=0 tx=1791574999413..1791574999414 del=0 upd=0 hash=329ba907cef8 prev="
+             chain:
+              v0 vf=5000 vt=0 tx=1791574999413..1791574999414 del=0 cur=false x=9
+              v1 vf=0 vt=0 tx=1791574999414..0 del=0 cur=true x=5
+    --- FAIL: TestReImportAfterDeleteAheadOfClock/badger/rel (0.01s)
+        reimport_life_test.go:398: [rel re-import and update] a history row was lost or overwritten:
+              v0: x=0 vf=1791578599419 vt=1791578599420 tx=1791574999420..1791578599420 del=1791578599420 upd=0 hash=16d3263a640c prev= -> "x=9 vf=5000 vt=0 tx=1791574999425..1791574999426 del=0 upd=0 hash=21db04ee4f00 prev="
+             chain:
+              v0 vf=5000 vt=0 tx=1791574999425..1791574999426 del=0 cur=false x=9
+              v1 vf=0 vt=0 tx=1791574999426..0 del=0 cur=true x=5
+    --- FAIL: TestReImportAfterDeleteAheadOfClock/sharded/node (0.20s)
+        reimport_life_test.go:398: [node re-import and update] a history row was lost or overwritten:
+              v0: x=0 vf=1791578599607 vt=1791578599608 tx=1791574999608..1791578599608 del=1791578599608 upd=0 hash=91f50821898b prev= -> "x=9 vf=5000 vt=0 tx=1791574999612..1791574999613 del=0 upd=0 hash=d74a3307e17e prev="
+             chain:
+              v0 vf=5000 vt=0 tx=1791574999612..1791574999613 del=0 cur=false x=9
+              v1 vf=0 vt=0 tx=1791574999613..0 del=0 cur=true x=5
+    --- FAIL: TestReImportAfterDeleteAheadOfClock/sharded/rel (0.16s)
+        reimport_life_test.go:398: [rel re-import and update] a history row was lost or overwritten:
+              v0: x=0 vf=1791578599765 vt=1791578599766 tx=1791574999766..1791578599766 del=1791578599766 upd=0 hash=73b24a902f14 prev= -> "x=9 vf=5000 vt=0 tx=1791574999771..1791574999772 del=0 upd=0 hash=7ad675bab60e prev="
+             chain:
+              v0 vf=5000 vt=0 tx=1791574999771..1791574999772 del=0 cur=false x=9
+              v1 vf=0 vt=0 tx=1791574999772..0 del=0 cur=true x=5
+    --- FAIL: TestReImportAfterDeleteAheadOfClock/tiered/node (0.20s)
+        reimport_life_test.go:398: [node re-import and update] a history row was lost or overwritten:
+              v0: x=0 vf=1791578599957 vt=1791578599958 tx=1791574999958..1791578599958 del=1791578599958 upd=0 hash=166ae3d5afa6 prev= -> "x=9 vf=5000 vt=0 tx=1791574999962..1791574999963 del=0 upd=0 hash=f474ac547b08 prev="
+             chain:
+              v0 vf=5000 vt=0 tx=1791574999962..1791574999963 del=0 cur=false x=9
+              v1 vf=0 vt=0 tx=1791574999963..0 del=0 cur=true x=5
+    --- FAIL: TestReImportAfterDeleteAheadOfClock/tiered/rel (0.11s)
+        reimport_life_test.go:398: [rel re-import and update] a history row was lost or overwritten:
+              v0: x=0 vf=1791578600070 vt=1791578600071 tx=1791575000071..1791578600071 del=1791578600071 upd=0 hash=7c237040cde7 prev= -> "x=9 vf=5000 vt=0 tx=1791575000076..1791575000077 del=0 upd=0 hash=3b248a1b1d82 prev="
+             chain:
+              v0 vf=5000 vt=0 tx=1791575000076..1791575000077 del=0 cur=false x=9
+              v1 vf=0 vt=0 tx=1791575000077..0 del=0 cur=true x=5
+--- FAIL: TestReImportCompactionAcrossLives (0.01s)
+    --- FAIL: TestReImportCompactionAcrossLives/keep=2 (0.68s)
+        --- FAIL: TestReImportCompactionAcrossLives/keep=2/memory/node (0.01s)
+            reimport_life_lifecycle_test.go:163: [node after compaction] T: Verify*Chain = false, <nil>; chain:
+                  v3 vf=6000 vt=1791574999410 tx=1791574999417..0 del=0 cur=false x=9
+                  v4 vf=5500 vt=6000 tx=1791574999417..0 del=0 cur=false x=4
+                  v5 vf=0 vt=1791575000419 tx=1791574999420..0 del=0 cur=true x=5
+        --- FAIL: TestReImportCompactionAcrossLives/keep=2/memory/rel (0.01s)
+            reimport_life_lifecycle_test.go:163: [rel after compaction] T: Verify*Chain = false, <nil>; chain:
+                  v3 vf=6000 vt=1791574999419 tx=1791574999427..0 del=0 cur=false x=9
+                  v4 vf=5500 vt=6000 tx=1791574999427..0 del=0 cur=false x=4
+                  v5 vf=0 vt=1791575000429 tx=1791574999430..0 del=0 cur=true x=5
+        --- FAIL: TestReImportCompactionAcrossLives/keep=2/badger/node (0.06s)
+            reimport_life_lifecycle_test.go:163: [node after compaction] T: Verify*Chain = false, <nil>; chain:
+                  v3 vf=6000 vt=1791574999431 tx=1791574999438..0 del=0 cur=false x=9
+                  v4 vf=5500 vt=6000 tx=1791574999438..0 del=0 cur=false x=4
+                  v5 vf=0 vt=1791575000440 tx=1791574999441..0 del=0 cur=true x=5
+        --- FAIL: TestReImportCompactionAcrossLives/keep=2/badger/rel (0.04s)
+            reimport_life_lifecycle_test.go:163: [rel after compaction] T: Verify*Chain = false, <nil>; chain:
+                  v3 vf=6000 vt=1791574999502 tx=1791574999510..0 del=0 cur=false x=9
+                  v4 vf=5500 vt=6000 tx=1791574999510..0 del=0 cur=false x=4
+                  v5 vf=0 vt=1791575000512 tx=1791574999513..0 del=0 cur=true x=5
+        --- FAIL: TestReImportCompactionAcrossLives/keep=2/tiered/node (0.12s)
+            reimport_life_lifecycle_test.go:163: [node after compaction] T: Verify*Chain = false, <nil>; chain:
+                  v3 vf=6000 vt=1791574999929 tx=1791574999936..0 del=0 cur=false x=9
+                  v4 vf=5500 vt=6000 tx=1791574999936..0 del=0 cur=false x=4
+                  v5 vf=0 vt=1791575000938 tx=1791574999939..0 del=0 cur=true x=5
+        --- FAIL: TestReImportCompactionAcrossLives/keep=2/tiered/rel (0.12s)
+            reimport_life_lifecycle_test.go:163: [rel after compaction] T: Verify*Chain = false, <nil>; chain:
+                  v3 vf=6000 vt=1791575000047 tx=1791575000055..0 del=0 cur=false x=9
+                  v4 vf=5500 vt=6000 tx=1791575000055..0 del=0 cur=false x=4
+                  v5 vf=0 vt=1791575001057 tx=1791575000058..0 del=0 cur=true x=5
+    --- FAIL: TestReImportCompactionAcrossLives/keep=1 (0.68s)
+        --- FAIL: TestReImportCompactionAcrossLives/keep=1/memory/node (0.00s)
+            reimport_life_lifecycle_test.go:163: [node after compaction] T: Verify*Chain = false, <nil>; chain:
+                  v4 vf=5500 vt=6000 tx=1791574999417..0 del=0 cur=false x=4
+                  v5 vf=0 vt=1791575000419 tx=1791574999420..0 del=0 cur=true x=5
+        --- FAIL: TestReImportCompactionAcrossLives/keep=1/memory/rel (0.01s)
+            reimport_life_lifecycle_test.go:163: [rel after compaction] T: Verify*Chain = false, <nil>; chain:
+                  v4 vf=5500 vt=6000 tx=1791574999431..0 del=0 cur=false x=4
+                  v5 vf=0 vt=1791575000433 tx=1791574999434..0 del=0 cur=true x=5
+        --- FAIL: TestReImportCompactionAcrossLives/keep=1/badger/node (0.06s)
+            reimport_life_lifecycle_test.go:163: [node after compaction] T: Verify*Chain = false, <nil>; chain:
+                  v4 vf=5500 vt=6000 tx=1791574999437..0 del=0 cur=false x=4
+                  v5 vf=0 vt=1791575000439 tx=1791574999440..0 del=0 cur=true x=5
+        --- FAIL: TestReImportCompactionAcrossLives/keep=1/badger/rel (0.04s)
+            reimport_life_lifecycle_test.go:163: [rel after compaction] T: Verify*Chain = false, <nil>; chain:
+                  v4 vf=5500 vt=6000 tx=1791574999506..0 del=0 cur=false x=4
+                  v5 vf=0 vt=1791575000508 tx=1791574999509..0 del=0 cur=true x=5
+        --- FAIL: TestReImportCompactionAcrossLives/keep=1/tiered/node (0.19s)
+            reimport_life_lifecycle_test.go:163: [node after compaction] T: Verify*Chain = false, <nil>; chain:
+                  v4 vf=5500 vt=6000 tx=1791574999948..0 del=0 cur=false x=4
+                  v5 vf=0 vt=1791575000950 tx=1791574999951..0 del=0 cur=true x=5
+        --- FAIL: TestReImportCompactionAcrossLives/keep=1/tiered/rel (0.12s)
+            reimport_life_lifecycle_test.go:163: [rel after compaction] T: Verify*Chain = false, <nil>; chain:
+                  v4 vf=5500 vt=6000 tx=1791575000068..0 del=0 cur=false x=4
+                  v5 vf=0 vt=1791575001070 tx=1791575000071..0 del=0 cur=true x=5
+    --- FAIL: TestReImportCompactionAcrossLives/keep=4 (0.84s)
+        --- FAIL: TestReImportCompactionAcrossLives/keep=4/memory/node (0.01s)
+            reimport_life_lifecycle_test.go:163: [node after compaction] T: Verify*Chain = false, <nil>; chain:
+                  v1 vf=2000 vt=1791574999410 tx=1791574999407..1791574999410 del=1791574999410 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791574999414..1791574999420 del=0 cur=false x=5
+                  v3 vf=6000 vt=1791574999410 tx=1791574999417..0 del=0 cur=false x=9
+                  v4 vf=5500 vt=6000 tx=1791574999417..0 del=0 cur=false x=4
+                  v5 vf=0 vt=1791575000419 tx=1791574999420..0 del=0 cur=true x=5
+        --- FAIL: TestReImportCompactionAcrossLives/keep=4/memory/rel (0.02s)
+            reimport_life_lifecycle_test.go:163: [rel after compaction] T: Verify*Chain = false, <nil>; chain:
+                  v1 vf=2000 vt=1791574999425 tx=1791574999422..1791574999425 del=1791574999425 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791574999430..1791574999436 del=0 cur=false x=5
+                  v3 vf=6000 vt=1791574999425 tx=1791574999433..0 del=0 cur=false x=9
+                  v4 vf=5500 vt=6000 tx=1791574999433..0 del=0 cur=false x=4
+                  v5 vf=0 vt=1791575000435 tx=1791574999436..0 del=0 cur=true x=5
+        --- FAIL: TestReImportCompactionAcrossLives/keep=4/badger/node (0.17s)
+            reimport_life_lifecycle_test.go:163: [node after compaction] T: Verify*Chain = false, <nil>; chain:
+                  v1 vf=2000 vt=1791574999549 tx=1791574999546..1791574999549 del=1791574999549 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791574999553..1791574999559 del=0 cur=false x=5
+                  v3 vf=6000 vt=1791574999549 tx=1791574999556..0 del=0 cur=false x=9
+                  v4 vf=5500 vt=6000 tx=1791574999556..0 del=0 cur=false x=4
+                  v5 vf=0 vt=1791575000558 tx=1791574999559..0 del=0 cur=true x=5
+        --- FAIL: TestReImportCompactionAcrossLives/keep=4/badger/rel (0.09s)
+            reimport_life_lifecycle_test.go:163: [rel after compaction] T: Verify*Chain = false, <nil>; chain:
+                  v1 vf=2000 vt=1791574999615 tx=1791574999612..1791574999615 del=1791574999615 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791574999620..1791574999626 del=0 cur=false x=5
+                  v3 vf=6000 vt=1791574999615 tx=1791574999623..0 del=0 cur=false x=9
+                  v4 vf=5500 vt=6000 tx=1791574999623..0 del=0 cur=false x=4
+                  v5 vf=0 vt=1791575000625 tx=1791574999626..0 del=0 cur=true x=5
+        --- FAIL: TestReImportCompactionAcrossLives/keep=4/tiered/node (0.22s)
+            reimport_life_lifecycle_test.go:163: [node after compaction] T: Verify*Chain = false, <nil>; chain:
+                  v1 vf=2000 vt=1791575000071 tx=1791575000068..1791575000071 del=1791575000071 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791575000075..1791575000081 del=0 cur=false x=5
+                  v3 vf=6000 vt=1791575000071 tx=1791575000078..0 del=0 cur=false x=9
+                  v4 vf=5500 vt=6000 tx=1791575000078..0 del=0 cur=false x=4
+                  v5 vf=0 vt=1791575001080 tx=1791575000081..0 del=0 cur=true x=5
+        --- FAIL: TestReImportCompactionAcrossLives/keep=4/tiered/rel (0.13s)
+            reimport_life_lifecycle_test.go:163: [rel after compaction] T: Verify*Chain = false, <nil>; chain:
+                  v1 vf=2000 vt=1791575000189 tx=1791575000186..1791575000189 del=1791575000189 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791575000194..1791575000200 del=0 cur=false x=5
+                  v3 vf=6000 vt=1791575000189 tx=1791575000197..0 del=0 cur=false x=9
+                  v4 vf=5500 vt=6000 tx=1791575000197..0 del=0 cur=false x=4
+                  v5 vf=0 vt=1791575001199 tx=1791575000200..0 del=0 cur=true x=5
+--- FAIL: TestReImportReplicaApply (0.87s)
+    --- FAIL: TestReImportReplicaApply/memory/rel=false (0.00s)
+        reimport_life_lifecycle_test.go:93: [node replica] T: Verify*Chain = false, <nil>; chain:
+              v0 vf=5000 vt=0 tx=1791574999405..1791574999407 del=0 cur=false x=9
+              v1 vf=2000 vt=1791574999403 tx=1791574999400..1791574999403 del=1791574999403 cur=false x=1
+              v2 vf=0 vt=0 tx=1791574999407..1791574999413 del=0 cur=false x=5
+              v3 vf=6000 vt=1791574999403 tx=1791574999410..0 del=0 cur=false x=9
+              v4 vf=5500 vt=6000 tx=1791574999410..0 del=0 cur=false x=4
+              v5 vf=0 vt=1791575000412 tx=1791574999413..0 del=0 cur=true x=5
+    --- FAIL: TestReImportReplicaApply/memory/rel=true (0.00s)
+        reimport_life_lifecycle_test.go:93: [rel replica] T: Verify*Chain = false, <nil>; chain:
+              v0 vf=5000 vt=0 tx=1791574999410..1791574999412 del=0 cur=false x=9
+              v1 vf=2000 vt=1791574999407 tx=1791574999404..1791574999407 del=1791574999407 cur=false x=1
+              v2 vf=0 vt=0 tx=1791574999412..1791574999418 del=0 cur=false x=5
+              v3 vf=6000 vt=1791574999407 tx=1791574999415..0 del=0 cur=false x=9
+              v4 vf=5500 vt=6000 tx=1791574999415..0 del=0 cur=false x=4
+              v5 vf=0 vt=1791575000417 tx=1791574999418..0 del=0 cur=true x=5
+    --- FAIL: TestReImportReplicaApply/badger/rel=false (0.02s)
+        reimport_life_lifecycle_test.go:93: [node replica] T: Verify*Chain = false, <nil>; chain:
+              v0 vf=5000 vt=0 tx=1791574999418..1791574999420 del=0 cur=false x=9
+              v1 vf=2000 vt=1791574999416 tx=1791574999413..1791574999416 del=1791574999416 cur=false x=1
+              v2 vf=0 vt=0 tx=1791574999420..1791574999426 del=0 cur=false x=5
+              v3 vf=6000 vt=1791574999416 tx=1791574999423..0 del=0 cur=false x=9
+              v4 vf=5500 vt=6000 tx=1791574999423..0 del=0 cur=false x=4
+              v5 vf=0 vt=1791575000425 tx=1791574999426..0 del=0 cur=true x=5
+    --- FAIL: TestReImportReplicaApply/badger/rel=true (0.22s)
+        reimport_life_lifecycle_test.go:93: [rel replica] T: Verify*Chain = false, <nil>; chain:
+              v0 vf=5000 vt=0 tx=1791574999635..1791574999637 del=0 cur=false x=9
+              v1 vf=2000 vt=1791574999632 tx=1791574999629..1791574999632 del=1791574999632 cur=false x=1
+              v2 vf=0 vt=0 tx=1791574999637..1791574999643 del=0 cur=false x=5
+              v3 vf=6000 vt=1791574999632 tx=1791574999640..0 del=0 cur=false x=9
+              v4 vf=5500 vt=6000 tx=1791574999640..0 del=0 cur=false x=4
+              v5 vf=0 vt=1791575000642 tx=1791574999643..0 del=0 cur=true x=5
+    --- FAIL: TestReImportReplicaApply/sharded/rel=false (0.28s)
+        reimport_life_lifecycle_test.go:93: [node replica] T: Verify*Chain = false, <nil>; chain:
+              v0 vf=5000 vt=0 tx=1791574999921..1791574999923 del=0 cur=false x=9
+              v1 vf=2000 vt=1791574999919 tx=1791574999916..1791574999919 del=1791574999919 cur=false x=1
+              v2 vf=0 vt=0 tx=1791574999923..1791574999929 del=0 cur=false x=5
+              v3 vf=6000 vt=1791574999919 tx=1791574999926..0 del=0 cur=false x=9
+              v4 vf=5500 vt=6000 tx=1791574999926..0 del=0 cur=false x=4
+              v5 vf=0 vt=1791575000928 tx=1791574999929..0 del=0 cur=true x=5
+    --- FAIL: TestReImportReplicaApply/sharded/rel=true (0.03s)
+        reimport_life_lifecycle_test.go:93: [rel replica] T: Verify*Chain = false, <nil>; chain:
+              v0 vf=5000 vt=0 tx=1791574999951..1791574999953 del=0 cur=false x=9
+              v1 vf=2000 vt=1791574999948 tx=1791574999945..1791574999948 del=1791574999948 cur=false x=1
+              v2 vf=0 vt=0 tx=1791574999953..1791574999959 del=0 cur=false x=5
+              v3 vf=6000 vt=1791574999948 tx=1791574999956..0 del=0 cur=false x=9
+              v4 vf=5500 vt=6000 tx=1791574999956..0 del=0 cur=false x=4
+              v5 vf=0 vt=1791575000958 tx=1791574999959..0 del=0 cur=true x=5
+    --- FAIL: TestReImportReplicaApply/tiered/rel=false (0.15s)
+        reimport_life_lifecycle_test.go:93: [node replica] T: Verify*Chain = false, <nil>; chain:
+              v0 vf=5000 vt=0 tx=1791575000104..1791575000106 del=0 cur=false x=9
+              v1 vf=2000 vt=1791575000102 tx=1791575000099..1791575000102 del=1791575000102 cur=false x=1
+              v2 vf=0 vt=0 tx=1791575000106..1791575000112 del=0 cur=false x=5
+              v3 vf=6000 vt=1791575000102 tx=1791575000109..0 del=0 cur=false x=9
+              v4 vf=5500 vt=6000 tx=1791575000109..0 del=0 cur=false x=4
+              v5 vf=0 vt=1791575001111 tx=1791575000112..0 del=0 cur=true x=5
+    --- FAIL: TestReImportReplicaApply/tiered/rel=true (0.16s)
+        reimport_life_lifecycle_test.go:93: [rel replica] T: Verify*Chain = false, <nil>; chain:
+              v0 vf=5000 vt=0 tx=1791575000265..1791575000267 del=0 cur=false x=9
+              v1 vf=2000 vt=1791575000262 tx=1791575000259..1791575000262 del=1791575000262 cur=false x=1
+              v2 vf=0 vt=0 tx=1791575000267..1791575000273 del=0 cur=false x=5
+              v3 vf=6000 vt=1791575000262 tx=1791575000270..0 del=0 cur=false x=9
+              v4 vf=5500 vt=6000 tx=1791575000270..0 del=0 cur=false x=4
+              v5 vf=0 vt=1791575001272 tx=1791575000273..0 del=0 cur=true x=5
+--- FAIL: TestReImportExportImportRoundTrip (0.87s)
+    --- FAIL: TestReImportExportImportRoundTrip/memory/rel=false (0.00s)
+        reimport_life_lifecycle_test.go:120: Import: import: node 797881086741479424: graph: corrupt export record: imported hash chain does not verify
+    --- FAIL: TestReImportExportImportRoundTrip/memory/rel=true (0.00s)
+        reimport_life_lifecycle_test.go:120: Import: import: rel 797881086837588992: graph: corrupt export record: imported hash chain does not verify
+    --- FAIL: TestReImportExportImportRoundTrip/badger/rel=false (0.02s)
+        reimport_life_lifecycle_test.go:120: Import: import: node 797881086958534656: graph: corrupt export record: imported hash chain does not verify
+    --- FAIL: TestReImportExportImportRoundTrip/badger/rel=true (0.25s)
+        reimport_life_lifecycle_test.go:120: Import: import: rel 797881091285976064: graph: corrupt export record: imported hash chain does not verify
+    --- FAIL: TestReImportExportImportRoundTrip/sharded/rel=false (0.11s)
+        reimport_life_lifecycle_test.go:120: Import: import: node 797881098347216896: graph: corrupt export record: imported hash chain does not verify
+    --- FAIL: TestReImportExportImportRoundTrip/sharded/rel=true (0.27s)
+        reimport_life_lifecycle_test.go:120: Import: import: rel 797881102471463936: graph: corrupt export record: imported hash chain does not verify
+    --- FAIL: TestReImportExportImportRoundTrip/tiered/rel=false (0.12s)
+        reimport_life_lifecycle_test.go:120: Import: import: node 797881109561081856: graph: corrupt export record: imported hash chain does not verify
+    --- FAIL: TestReImportExportImportRoundTrip/tiered/rel=true (0.09s)
+        reimport_life_lifecycle_test.go:120: Import: import: rel 797881113780388864: graph: corrupt export record: imported hash chain does not verify
+--- FAIL: TestReImportLifeOracle (0.01s)
+    --- FAIL: TestReImportLifeOracle/memory/seed=3674625 (0.00s)
+        reimport_life_oracle_test.go:269: reimportNode(797881087040946176, backfill t=1791574998415 <= max stamp 1791574998415): err = <nil>; want ErrTxOrder (log: addNode -> ok; addNode -> ok; addRel(R) -> ok; addRel(S) -> ok; deleteNode(797881087040946176) -> ok; addNode -> ok; reimportNode(797881087040946176, backfill t=1791574998415 <= max stamp 1791574998415) -> ok)
+    --- FAIL: TestReImportLifeOracle/tiered/seed=3674625 (0.05s)
+        reimport_life_oracle_test.go:269: reimportNode(797881087277203456, backfill t=1791574998422 <= max stamp 1791574998422): err = <nil>; want ErrTxOrder (log: addNode -> ok; addNode -> ok; addRel(R) -> ok; addRel(S) -> ok; deleteNode(797881087277203456) -> ok; addNode -> ok; reimportNode(797881087277203456, backfill t=1791574998422 <= max stamp 1791574998422) -> ok)
+    --- FAIL: TestReImportLifeOracle/sharded/seed=3674625 (0.05s)
+        reimport_life_oracle_test.go:269: reimportNode(797881087461687296, backfill t=1791574998427 <= max stamp 1791574998427): err = <nil>; want ErrTxOrder (log: addNode -> ok; addNode -> ok; addRel(R) -> ok; addRel(S) -> ok; deleteNode(797881087461687296) -> ok; addNode -> ok; reimportNode(797881087461687296, backfill t=1791574998427 <= max stamp 1791574998427) -> ok)
+    --- FAIL: TestReImportLifeOracle/memory/seed=3674623 (0.07s)
+        reimport_life_oracle_test.go:108: [op 10 deleteNode] history rows lost or overwritten:
+              n797881087036653568v0: vf=1870 vt=1791574998428 tx=1791574998411..1791574998428 del=1791574998428 upd=0 hash=522e477762e9 prev= -> "vf=4013 vt=5815 tx=1791574998430..1791574998474 del=1791574998474 upd=0 hash=b7e3cdb27f47 prev="
+             log: addNode -> ok; addNode -> ok; addRel(S) -> ok; addRel(S) -> ok; addRel(S) -> ok; deleteRel(797881087038981120) -> ok; removeLabel(797881087036358656,C) -> graph: node does not have the specified label; reimportRel(797881087038981120, plain) -> ok; addNode -> ok; updateNode(797881087198134272) -> ok; deleteNode(797881087036653568) -> ok; reimportNode(797881087036653568, plain) -> ok; cascadeRel(797881087047140352,[1124,1976)) -> ok; cascadeRel(797881087038981120,[4333,5955)) -> ok; deleteNode(797881087036653568) -> ok
+    --- FAIL: TestReImportLifeOracle/badger/seed=3674625 (0.11s)
+        reimport_life_oracle_test.go:269: reimportNode(797881090188443648, backfill t=1791574998510 <= max stamp 1791574998510): err = <nil>; want ErrTxOrder (log: addNode -> ok; addNode -> ok; addRel(R) -> ok; addRel(S) -> ok; deleteNode(797881090188443648) -> ok; addNode -> ok; reimportNode(797881090188443648, backfill t=1791574998510 <= max stamp 1791574998510) -> ok)
+    --- FAIL: TestReImportLifeOracle/memory/seed=3674624 (0.08s)
+        reimport_life_oracle_test.go:269: reimportRel(797881088666829824, backfill t=1791574998461 <= max stamp 1791574998473): err = <nil>; want ErrTxOrder (log: addNode -> ok; addNode -> ok; addRel(S) -> ok; addRel(S) -> ok; deleteRel(797881088667649024) -> ok; reimportRel(797881088667649024, backfill t=1791574998467 (max stamp 1791574998464)) -> ok; cascadeNode(797881088666304512,[2400,0)) -> ok; deleteRel(797881088666829824) -> ok; updateNode(797881088666304512) -> ok; addRel(S) -> ok; cascadeRel(797881089055392768,[1709,0)) -> ok; removeLabel(797881088666304512,A) -> graph: node does not have the specified label; deleteNode(797881088666304512) -> ok; removeLabel(797881088666533888,C) -> graph: entity already closed; reimportRel(797881088666829824, backfill t=1791574998461 <= max stamp 1791574998473) -> ok)
+    --- FAIL: TestReImportLifeOracle/memory/seed=3674622 (0.17s)
+        reimport_life_oracle_test.go:108: [op 14 updateRel] history rows lost or overwritten:
+              r797881086956110848v0: vf=2623 vt=0 tx=1791574998409..0 del=0 upd=0 hash=8b171532f03f prev= -> "vf=2642 vt=0 tx=1791574998422..1791574998578 del=0 upd=0 hash=b3c7420b92cb prev="
+             log: addNode -> ok; addNode -> ok; addRel(S) -> ok; addRel(R) -> ok; deleteNode(797881086955487232) -> ok; reimportNode(797881086955487232, plain) -> ok; cascadeRel(797881086956110848,[3186,4291)) -> ok; updateRel(797881086956110848) -> graph: tkg_valid_from must be greater than previous version's effective ValidFrom: 3518 <= prev 4291; deleteRel(797881086956110848) -> ok; reimportRel(797881086956110848, backfill t=1791574998422 (max stamp 1791574998419)) -> ok; addNode -> ok; addNode -> ok; addNode -> ok; updateNode(797881087344082944) -> ok; cascadeRel(797881086956471296,[668,0)) -> ok; deleteNode(797881087505563648) -> ok; addNode -> ok; updateRel(797881086956471296) -> ok; updateRel(797881086956110848) -> ok
+    --- FAIL: TestReImportLifeOracle/badger/seed=3674623 (0.35s)
+        reimport_life_oracle_test.go:108: [op 10 deleteNode] history rows lost or overwritten:
+              n797881087153143808v0: vf=1870 vt=1791574998502 tx=1791574998414..1791574998502 del=1791574998502 upd=0 hash=ba290c764b08 prev= -> "vf=4013 vt=5815 tx=1791574998539..1791574998747 del=1791574998747 upd=0 hash=34e37334d117 prev="
+             log: addNode -> ok; addNode -> ok; addRel(S) -> ok; addRel(S) -> ok; addRel(S) -> ok; deleteRel(797881087195251712) -> ok; removeLabel(797881087152652288,C) -> graph: node does not have the specified label; reimportRel(797881087195251712, plain) -> ok; addNode -> ok; updateNode(797881087860015104) -> ok; deleteNode(797881087153143808) -> ok; reimportNode(797881087153143808, plain) -> ok; cascadeRel(797881087261443072,[1124,1976)) -> ok; cascadeRel(797881087195251712,[4333,5955)) -> ok; deleteNode(797881087153143808) -> ok
+    --- FAIL: TestReImportLifeOracle/badger/seed=3674624 (0.37s)
+        reimport_life_oracle_test.go:269: reimportRel(797881087214683136, backfill t=1791574998416 <= max stamp 1791574998430): err = <nil>; want ErrTxOrder (log: addNode -> ok; addNode -> ok; addRel(S) -> ok; addRel(S) -> ok; deleteRel(797881087260328960) -> ok; reimportRel(797881087260328960, backfill t=1791574998422 (max stamp 1791574998419)) -> ok; cascadeNode(797881087208849408,[2400,0)) -> ok; deleteRel(797881087214683136) -> ok; updateNode(797881087208849408) -> ok; addRel(S) -> ok; cascadeRel(797881089658094592,[1709,0)) -> ok; removeLabel(797881087208849408,A) -> graph: node does not have the specified label; deleteNode(797881087208849408) -> ok; removeLabel(797881087211339776,C) -> graph: entity already closed; reimportRel(797881087214683136, backfill t=1791574998416 <= max stamp 1791574998430) -> ok)
+    --- FAIL: TestReImportLifeOracle/sharded/seed=3674624 (0.54s)
+        reimport_life_oracle_test.go:269: reimportRel(797881089847297024, backfill t=1791574998497 <= max stamp 1791574998520): err = <nil>; want ErrTxOrder (log: addNode -> ok; addNode -> ok; addRel(S) -> ok; addRel(S) -> ok; deleteRel(797881089851884544) -> ok; reimportRel(797881089851884544, backfill t=1791574998503 (max stamp 1791574998500)) -> ok; cascadeNode(797881089842708480,[2400,0)) -> ok; deleteRel(797881089847297024) -> ok; updateNode(797881089842708480) -> ok; addRel(S) -> ok; cascadeRel(797881091972957184,[1709,0)) -> ok; removeLabel(797881089842708480,A) -> graph: node does not have the specified label; deleteNode(797881089842708480) -> ok; removeLabel(797881089845264384,C) -> graph: entity already closed; reimportRel(797881089847297024, backfill t=1791574998497 <= max stamp 1791574998520) -> ok)
+    --- FAIL: TestReImportLifeOracle/tiered/seed=3674624 (0.59s)
+        reimport_life_oracle_test.go:269: reimportRel(797881087402345472, backfill t=1791574998423 <= max stamp 1791574998458): err = <nil>; want ErrTxOrder (log: addNode -> ok; addNode -> ok; addRel(S) -> ok; addRel(S) -> ok; deleteRel(797881087404344320) -> ok; reimportRel(797881087404344320, backfill t=1791574998429 (max stamp 1791574998426)) -> ok; cascadeNode(797881087400411136,[2400,0)) -> ok; deleteRel(797881087402345472) -> ok; updateNode(797881087400411136) -> ok; addRel(S) -> ok; cascadeRel(797881091581772800,[1709,0)) -> ok; removeLabel(797881087400411136,A) -> graph: node does not have the specified label; deleteNode(797881087400411136) -> ok; removeLabel(797881087401656320,C) -> graph: entity already closed; reimportRel(797881087402345472, backfill t=1791574998423 <= max stamp 1791574998458) -> ok)
+    --- FAIL: TestReImportLifeOracle/tiered/seed=3674623 (0.64s)
+        reimport_life_oracle_test.go:108: [op 10 deleteNode] history rows lost or overwritten:
+              n797881093507186688v0: vf=1870 vt=1791574998730 tx=1791574998608..1791574998730 del=1791574998730 upd=0 hash=eb713347841b prev= -> "vf=4013 vt=5815 tx=1791574998784..1791574999040 del=1791574999040 upd=0 hash=035a6778b0e5 prev="
+             log: addNode -> ok; addNode -> ok; addRel(S) -> ok; addRel(S) -> ok; addRel(S) -> ok; deleteRel(797881093514593280) -> ok; removeLabel(797881093506859008,C) -> graph: node does not have the specified label; reimportRel(797881093514593280, plain) -> ok; addNode -> ok; updateNode(797881095510425600) -> ok; deleteNode(797881093507186688) -> ok; reimportNode(797881093507186688, plain) -> ok; cascadeRel(797881093529043968,[1124,1976)) -> ok; cascadeRel(797881093514593280,[4333,5955)) -> ok; deleteNode(797881093507186688) -> ok
+    --- FAIL: TestReImportLifeOracle/sharded/seed=3674623 (0.66s)
+        reimport_life_oracle_test.go:108: [op 10 deleteNode] history rows lost or overwritten:
+              n797881093389025280v0: vf=1870 vt=1791574998731 tx=1791574998604..1791574998731 del=1791574998731 upd=0 hash=26fd36dd4f09 prev= -> "vf=4013 vt=5815 tx=1791574998776..1791574999056 del=1791574999056 upd=0 hash=234ec067286d prev="
+             log: addNode -> ok; addNode -> ok; addRel(S) -> ok; addRel(S) -> ok; addRel(S) -> ok; deleteRel(797881093395383296) -> ok; removeLabel(797881093388009472,C) -> graph: node does not have the specified label; reimportRel(797881093395383296, plain) -> ok; addNode -> ok; updateNode(797881095339212800) -> ok; deleteNode(797881093389025280) -> ok; reimportNode(797881093389025280, plain) -> ok; cascadeRel(797881093425071104,[1124,1976)) -> ok; cascadeRel(797881093395383296,[4333,5955)) -> ok; deleteNode(797881093389025280) -> ok
+    --- FAIL: TestReImportLifeOracle/badger/seed=3674622 (0.76s)
+        reimport_life_oracle_test.go:108: [op 14 updateRel] history rows lost or overwritten:
+              r797881087215698944v0: vf=2623 vt=0 tx=1791574998416..0 del=0 upd=0 hash=8e522c16afcd prev= -> "vf=2642 vt=0 tx=1791574998458..1791574999165 del=0 upd=0 hash=2359c89f8e34 prev="
+             log: addNode -> ok; addNode -> ok; addRel(S) -> ok; addRel(R) -> ok; deleteNode(797881087213797376) -> ok; reimportNode(797881087213797376, plain) -> ok; cascadeRel(797881087215698944,[3186,4291)) -> ok; updateRel(797881087215698944) -> graph: tkg_valid_from must be greater than previous version's effective ValidFrom: 3518 <= prev 4291; deleteRel(797881087215698944) -> ok; reimportRel(797881087215698944, backfill t=1791574998458 (max stamp 1791574998445)) -> ok; addNode -> ok; addNode -> ok; addNode -> ok; updateNode(797881090662858752) -> ok; cascadeRel(797881087258952704,[668,0)) -> ok; deleteNode(797881092241653760) -> ok; addNode -> ok; updateRel(797881087258952704) -> ok; updateRel(797881087215698944) -> ok
+    --- FAIL: TestReImportLifeOracle/tiered/seed=3674622 (0.97s)
+        reimport_life_oracle_test.go:108: [op 14 updateRel] history rows lost or overwritten:
+              r797881089854014464v0: vf=2623 vt=0 tx=1791574998497..0 del=0 upd=0 hash=d36309bec310 prev= -> "vf=2642 vt=0 tx=1791574998567..1791574999370 del=0 upd=0 hash=010aa659dda3 prev="
+             log: addNode -> ok; addNode -> ok; addRel(S) -> ok; addRel(R) -> ok; deleteNode(797881089853489152) -> ok; reimportNode(797881089853489152, plain) -> ok; cascadeRel(797881089854014464,[3186,4291)) -> ok; updateRel(797881089854014464) -> graph: tkg_valid_from must be greater than previous version's effective ValidFrom: 3518 <= prev 4291; deleteRel(797881089854014464) -> ok; reimportRel(797881089854014464, backfill t=1791574998567 (max stamp 1791574998553)) -> ok; addNode -> ok; addNode -> ok; addNode -> ok; updateNode(797881095052492800) -> ok; cascadeRel(797881089858176000,[668,0)) -> ok; deleteNode(797881096616181760) -> ok; addNode -> ok; updateRel(797881089858176000) -> ok; updateRel(797881089854014464) -> ok
+    --- FAIL: TestReImportLifeOracle/sharded/seed=3674622 (1.01s)
+        reimport_life_oracle_test.go:108: [op 14 updateRel] history rows lost or overwritten:
+              r797881087395562496v0: vf=2623 vt=0 tx=1791574998422..0 del=0 upd=0 hash=7ba9edf567fc prev= -> "vf=2642 vt=0 tx=1791574998477..1791574999415 del=0 upd=0 hash=65afeee5fdf5 prev="
+             log: addNode -> ok; addNode -> ok; addRel(S) -> ok; addRel(R) -> ok; deleteNode(797881087394938880) -> ok; reimportNode(797881087394938880, plain) -> ok; cascadeRel(797881087395562496,[3186,4291)) -> ok; updateRel(797881087395562496) -> graph: tkg_valid_from must be greater than previous version's effective ValidFrom: 3518 <= prev 4291; deleteRel(797881087395562496) -> ok; reimportRel(797881087395562496, backfill t=1791574998477 (max stamp 1791574998466)) -> ok; addNode -> ok; addNode -> ok; addNode -> ok; updateNode(797881091227844608) -> ok; cascadeRel(797881087412470784,[668,0)) -> ok; deleteNode(797881094289358848) -> ok; addNode -> ok; updateRel(797881087412470784) -> ok; updateRel(797881087395562496) -> ok
+--- FAIL: TestReImportBackfillMustFollowTheChain (1.10s)
+    --- FAIL: TestReImportBackfillMustFollowTheChain/memory/node (0.01s)
+        --- FAIL: TestReImportBackfillMustFollowTheChain/memory/node/Nodes.Import (0.00s)
+            reimport_life_test.go:292: [node Nodes.Import t=1791574999404 D=1791574999407] err = <nil>; want ErrTxOrder (and ErrInvalidTxFrom)
+        --- FAIL: TestReImportBackfillMustFollowTheChain/memory/node/Nodes.AddByIDIfAbsent (0.00s)
+            reimport_life_test.go:292: [node Nodes.AddByIDIfAbsent t=1791574999407 D=1791574999410] err = <nil>; want ErrTxOrder (and ErrInvalidTxFrom)
+        --- FAIL: TestReImportBackfillMustFollowTheChain/memory/node/GraphTx.ImportNodeWithID (0.00s)
+            reimport_life_test.go:292: [node GraphTx.ImportNodeWithID t=1791574999410 D=1791574999413] err = <nil>; want ErrTxOrder (and ErrInvalidTxFrom)
+    --- FAIL: TestReImportBackfillMustFollowTheChain/memory/rel (0.01s)
+        --- FAIL: TestReImportBackfillMustFollowTheChain/memory/rel/Rels.Import (0.00s)
+            reimport_life_test.go:292: [rel Rels.Import t=1791574999414 D=1791574999417] err = <nil>; want ErrTxOrder (and ErrInvalidTxFrom)
+        --- FAIL: TestReImportBackfillMustFollowTheChain/memory/rel/GraphTx.ImportRelationshipWithID (0.00s)
+            reimport_life_test.go:292: [rel GraphTx.ImportRelationshipWithID t=1791574999419 D=1791574999422] err = <nil>; want ErrTxOrder (and ErrInvalidTxFrom)
+    --- FAIL: TestReImportBackfillMustFollowTheChain/badger/node (0.20s)
+        --- FAIL: TestReImportBackfillMustFollowTheChain/badger/node/Nodes.Import (0.15s)
+            reimport_life_test.go:292: [node Nodes.Import t=1791574999541 D=1791574999544] err = <nil>; want ErrTxOrder (and ErrInvalidTxFrom)
+        --- FAIL: TestReImportBackfillMustFollowTheChain/badger/node/Nodes.AddByIDIfAbsent (0.03s)
+            reimport_life_test.go:292: [node Nodes.AddByIDIfAbsent t=1791574999583 D=1791574999586] err = <nil>; want ErrTxOrder (and ErrInvalidTxFrom)
+        --- FAIL: TestReImportBackfillMustFollowTheChain/badger/node/GraphTx.ImportNodeWithID (0.02s)
+            reimport_life_test.go:292: [node GraphTx.ImportNodeWithID t=1791574999608 D=1791574999611] err = <nil>; want ErrTxOrder (and ErrInvalidTxFrom)
+    --- FAIL: TestReImportBackfillMustFollowTheChain/badger/rel (0.23s)
+        --- FAIL: TestReImportBackfillMustFollowTheChain/badger/rel/Rels.Import (0.10s)
+            reimport_life_test.go:292: [rel Rels.Import t=1791574999771 D=1791574999774] err = <nil>; want ErrTxOrder (and ErrInvalidTxFrom)
+        --- FAIL: TestReImportBackfillMustFollowTheChain/badger/rel/GraphTx.ImportRelationshipWithID (0.07s)
+            reimport_life_test.go:292: [rel GraphTx.ImportRelationshipWithID t=1791574999835 D=1791574999838] err = <nil>; want ErrTxOrder (and ErrInvalidTxFrom)
+    --- FAIL: TestReImportBackfillMustFollowTheChain/sharded/node (0.38s)
+        --- FAIL: TestReImportBackfillMustFollowTheChain/sharded/node/Nodes.Import (0.10s)
+            reimport_life_test.go:292: [node Nodes.Import t=1791575000089 D=1791575000092] err = <nil>; want ErrTxOrder (and ErrInvalidTxFrom)
+        --- FAIL: TestReImportBackfillMustFollowTheChain/sharded/node/Nodes.AddByIDIfAbsent (0.07s)
+            reimport_life_test.go:292: [node Nodes.AddByIDIfAbsent t=1791575000162 D=1791575000165] err = <nil>; want ErrTxOrder (and ErrInvalidTxFrom)
+        --- FAIL: TestReImportBackfillMustFollowTheChain/sharded/node/GraphTx.ImportNodeWithID (0.06s)
+            reimport_life_test.go:292: [node GraphTx.ImportNodeWithID t=1791575000217 D=1791575000220] err = <nil>; want ErrTxOrder (and ErrInvalidTxFrom)
+    --- FAIL: TestReImportBackfillMustFollowTheChain/sharded/rel (0.10s)
+        --- FAIL: TestReImportBackfillMustFollowTheChain/sharded/rel/Rels.Import (0.02s)
+            reimport_life_test.go:292: [rel Rels.Import t=1791575000283 D=1791575000286] err = <nil>; want ErrTxOrder (and ErrInvalidTxFrom)
+        --- FAIL: TestReImportBackfillMustFollowTheChain/sharded/rel/GraphTx.ImportRelationshipWithID (0.05s)
+            reimport_life_test.go:292: [rel GraphTx.ImportRelationshipWithID t=1791575000330 D=1791575000333] err = <nil>; want ErrTxOrder (and ErrInvalidTxFrom)
+    --- FAIL: TestReImportBackfillMustFollowTheChain/tiered/node (0.09s)
+        --- FAIL: TestReImportBackfillMustFollowTheChain/tiered/node/Nodes.Import (0.02s)
+            reimport_life_test.go:292: [node Nodes.Import t=1791575000377 D=1791575000380] err = <nil>; want ErrTxOrder (and ErrInvalidTxFrom)
+        --- FAIL: TestReImportBackfillMustFollowTheChain/tiered/node/Nodes.AddByIDIfAbsent (0.02s)
+            reimport_life_test.go:292: [node Nodes.AddByIDIfAbsent t=1791575000391 D=1791575000394] err = <nil>; want ErrTxOrder (and ErrInvalidTxFrom)
+        --- FAIL: TestReImportBackfillMustFollowTheChain/tiered/node/GraphTx.ImportNodeWithID (0.03s)
+            reimport_life_test.go:292: [node GraphTx.ImportNodeWithID t=1791575000423 D=1791575000426] err = <nil>; want ErrTxOrder (and ErrInvalidTxFrom)
+    --- FAIL: TestReImportBackfillMustFollowTheChain/tiered/rel (0.07s)
+        --- FAIL: TestReImportBackfillMustFollowTheChain/tiered/rel/Rels.Import (0.04s)
+            reimport_life_test.go:292: [rel Rels.Import t=1791575000482 D=1791575000485] err = <nil>; want ErrTxOrder (and ErrInvalidTxFrom)
+        --- FAIL: TestReImportBackfillMustFollowTheChain/tiered/rel/GraphTx.ImportRelationshipWithID (0.01s)
+            reimport_life_test.go:292: [rel GraphTx.ImportRelationshipWithID t=1791575000496 D=1791575000499] err = <nil>; want ErrTxOrder (and ErrInvalidTxFrom)
+--- FAIL: TestReImportKeepsEveryLife (0.00s)
+    --- FAIL: TestReImportKeepsEveryLife/backfilled_after_D,_valid_after_D (1.06s)
+        --- FAIL: TestReImportKeepsEveryLife/backfilled_after_D,_valid_after_D/memory/node (0.02s)
+            reimport_life_test.go:111: [node] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [node re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [node update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791574999399..1791574999401 del=0 upd=0 hash=d6ae49c1a175 prev= -> "x=9 vf=1791575000404 vt=0 tx=1791574999405..1791575000405 del=0 upd=0 hash=ab6fda69d5c3 prev="
+                 chain:
+                  v0 vf=1791575000404 vt=0 tx=1791574999405..1791575000405 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791574999404 tx=1791574999401..1791574999404 del=1791574999404 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791575000405..0 del=0 cur=true x=5
+        --- FAIL: TestReImportKeepsEveryLife/backfilled_after_D,_valid_after_D/memory/rel (0.04s)
+            reimport_life_test.go:111: [rel] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [rel re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [rel update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791574999426..1791574999428 del=0 upd=0 hash=bc939f2446a7 prev= -> "x=9 vf=1791575000431 vt=0 tx=1791574999432..1791575000432 del=0 upd=0 hash=52f79e356b95 prev="
+                 chain:
+                  v0 vf=1791575000431 vt=0 tx=1791574999432..1791575000432 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791574999431 tx=1791574999428..1791574999431 del=1791574999431 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791575000432..0 del=0 cur=true x=5
+        --- FAIL: TestReImportKeepsEveryLife/backfilled_after_D,_valid_after_D/badger/node (0.14s)
+            reimport_life_test.go:111: [node] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [node re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [node update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791574999473..1791574999475 del=0 upd=0 hash=0641d0fb7bea prev= -> "x=9 vf=1791575000478 vt=0 tx=1791574999479..1791575000479 del=0 upd=0 hash=904579bd8b48 prev="
+                 chain:
+                  v0 vf=1791575000478 vt=0 tx=1791574999479..1791575000479 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791574999478 tx=1791574999475..1791574999478 del=1791574999478 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791575000479..0 del=0 cur=true x=5
+        --- FAIL: TestReImportKeepsEveryLife/backfilled_after_D,_valid_after_D/badger/rel (0.15s)
+            reimport_life_test.go:111: [rel] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [rel re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [rel update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791574999613..1791574999615 del=0 upd=0 hash=9432c881be2c prev= -> "x=9 vf=1791575000618 vt=0 tx=1791574999619..1791575000619 del=0 upd=0 hash=e5db001523e4 prev="
+                 chain:
+                  v0 vf=1791575000618 vt=0 tx=1791574999619..1791575000619 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791574999618 tx=1791574999615..1791574999618 del=1791574999618 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791575000619..0 del=0 cur=true x=5
+        --- FAIL: TestReImportKeepsEveryLife/backfilled_after_D,_valid_after_D/sharded/node (0.23s)
+            reimport_life_test.go:111: [node] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [node re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [node update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791574999772..1791574999774 del=0 upd=0 hash=a2ed307301ce prev= -> "x=9 vf=1791575000777 vt=0 tx=1791574999778..1791575000778 del=0 upd=0 hash=a395068fd329 prev="
+                 chain:
+                  v0 vf=1791575000777 vt=0 tx=1791574999778..1791575000778 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791574999777 tx=1791574999774..1791574999777 del=1791574999777 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791575000778..0 del=0 cur=true x=5
+        --- FAIL: TestReImportKeepsEveryLife/backfilled_after_D,_valid_after_D/sharded/rel (0.21s)
+            reimport_life_test.go:111: [rel] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [rel re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [rel update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791575000087..1791575000089 del=0 upd=0 hash=901f070990d7 prev= -> "x=9 vf=1791575001092 vt=0 tx=1791575000093..1791575001093 del=0 upd=0 hash=27967650b34f prev="
+                 chain:
+                  v0 vf=1791575001092 vt=0 tx=1791575000093..1791575001093 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791575000092 tx=1791575000089..1791575000092 del=1791575000092 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791575001093..0 del=0 cur=true x=5
+        --- FAIL: TestReImportKeepsEveryLife/backfilled_after_D,_valid_after_D/tiered/node (0.14s)
+            reimport_life_test.go:111: [node] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [node re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [node update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791575000273..1791575000275 del=0 upd=0 hash=c0655611c0a0 prev= -> "x=9 vf=1791575001278 vt=0 tx=1791575000279..1791575001279 del=0 upd=0 hash=1360f0699345 prev="
+                 chain:
+                  v0 vf=1791575001278 vt=0 tx=1791575000279..1791575001279 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791575000278 tx=1791575000275..1791575000278 del=1791575000278 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791575001279..0 del=0 cur=true x=5
+        --- FAIL: TestReImportKeepsEveryLife/backfilled_after_D,_valid_after_D/tiered/rel (0.11s)
+            reimport_life_test.go:111: [rel] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [rel re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [rel update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791575000370..1791575000372 del=0 upd=0 hash=4b6054023dd2 prev= -> "x=9 vf=1791575001375 vt=0 tx=1791575000376..1791575001376 del=0 upd=0 hash=202562653ef3 prev="
+                 chain:
+                  v0 vf=1791575001375 vt=0 tx=1791575000376..1791575001376 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791575000375 tx=1791575000372..1791575000375 del=1791575000375 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791575001376..0 del=0 cur=true x=5
+    --- FAIL: TestReImportKeepsEveryLife/plain_valid_after_D (1.08s)
+        --- FAIL: TestReImportKeepsEveryLife/plain_valid_after_D/memory/node (0.03s)
+            reimport_life_test.go:111: [node] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [node re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [node update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791574999399..1791574999401 del=0 upd=0 hash=a3c43c1d772f prev= -> "x=9 vf=1791575000404 vt=0 tx=1791574999451..1791575000405 del=0 upd=0 hash=de559c1e2c6f prev="
+                 chain:
+                  v0 vf=1791575000404 vt=0 tx=1791574999451..1791575000405 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791574999404 tx=1791574999401..1791574999404 del=1791574999404 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791575000405..0 del=0 cur=true x=5
+        --- FAIL: TestReImportKeepsEveryLife/plain_valid_after_D/memory/rel (0.07s)
+            reimport_life_test.go:111: [rel] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [rel re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [rel update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791574999430..1791574999432 del=0 upd=0 hash=bfed54f9253e prev= -> "x=9 vf=1791575000435 vt=0 tx=1791574999483..1791575000436 del=0 upd=0 hash=0c243fed895b prev="
+                 chain:
+                  v0 vf=1791575000435 vt=0 tx=1791574999483..1791575000436 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791574999435 tx=1791574999432..1791574999435 del=1791574999435 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791575000436..0 del=0 cur=true x=5
+        --- FAIL: TestReImportKeepsEveryLife/plain_valid_after_D/badger/node (0.11s)
+            reimport_life_test.go:111: [node] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [node re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [node update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791574999508..1791574999510 del=0 upd=0 hash=18b0b64ca3f4 prev= -> "x=9 vf=1791575000513 vt=0 tx=1791574999560..1791575000514 del=0 upd=0 hash=ad78c18c842b prev="
+                 chain:
+                  v0 vf=1791575000513 vt=0 tx=1791574999560..1791575000514 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791574999513 tx=1791574999510..1791574999513 del=1791574999513 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791575000514..0 del=0 cur=true x=5
+        --- FAIL: TestReImportKeepsEveryLife/plain_valid_after_D/badger/rel (0.13s)
+            reimport_life_test.go:111: [rel] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [rel re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [rel update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791574999627..1791574999629 del=0 upd=0 hash=3d1cd027eeae prev= -> "x=9 vf=1791575000632 vt=0 tx=1791574999680..1791575000633 del=0 upd=0 hash=4ce90faee31f prev="
+                 chain:
+                  v0 vf=1791575000632 vt=0 tx=1791574999680..1791575000633 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791574999632 tx=1791574999629..1791574999632 del=1791574999632 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791575000633..0 del=0 cur=true x=5
+        --- FAIL: TestReImportKeepsEveryLife/plain_valid_after_D/sharded/node (0.36s)
+            reimport_life_test.go:111: [node] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [node re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [node update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791574999901..1791574999903 del=0 upd=0 hash=7e4e79dff627 prev= -> "x=9 vf=1791575000906 vt=0 tx=1791574999953..1791575000907 del=0 upd=0 hash=244ea982f473 prev="
+                 chain:
+                  v0 vf=1791575000906 vt=0 tx=1791574999953..1791575000907 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791574999906 tx=1791574999903..1791574999906 del=1791574999906 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791575000907..0 del=0 cur=true x=5
+        --- FAIL: TestReImportKeepsEveryLife/plain_valid_after_D/sharded/rel (0.19s)
+            reimport_life_test.go:111: [rel] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [rel re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [rel update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791575000175..1791575000177 del=0 upd=0 hash=336fea401062 prev= -> "x=9 vf=1791575001180 vt=0 tx=1791575000228..1791575001181 del=0 upd=0 hash=4914bc501aba prev="
+                 chain:
+                  v0 vf=1791575001180 vt=0 tx=1791575000228..1791575001181 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791575000180 tx=1791575000177..1791575000180 del=1791575000180 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791575001181..0 del=0 cur=true x=5
+        --- FAIL: TestReImportKeepsEveryLife/plain_valid_after_D/tiered/node (0.10s)
+            reimport_life_test.go:111: [node] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [node re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [node update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791575000316..1791575000318 del=0 upd=0 hash=1b8edaeba5cb prev= -> "x=9 vf=1791575001321 vt=0 tx=1791575000368..1791575001322 del=0 upd=0 hash=eb506eb68d95 prev="
+                 chain:
+                  v0 vf=1791575001321 vt=0 tx=1791575000368..1791575001322 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791575000321 tx=1791575000318..1791575000321 del=1791575000321 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791575001322..0 del=0 cur=true x=5
+        --- FAIL: TestReImportKeepsEveryLife/plain_valid_after_D/tiered/rel (0.09s)
+            reimport_life_test.go:111: [rel] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [rel re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [rel update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791575000420..1791575000422 del=0 upd=0 hash=5ad7e1ebc52c prev= -> "x=9 vf=1791575001425 vt=0 tx=1791575000473..1791575001426 del=0 upd=0 hash=7f359ba26366 prev="
+                 chain:
+                  v0 vf=1791575001425 vt=0 tx=1791575000473..1791575001426 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791575000425 tx=1791575000422..1791575000425 del=1791575000425 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791575001426..0 del=0 cur=true x=5
+    --- FAIL: TestReImportKeepsEveryLife/backfilled_after_D,_valid_before_D (1.08s)
+        --- FAIL: TestReImportKeepsEveryLife/backfilled_after_D,_valid_before_D/memory/node (0.03s)
+            reimport_life_test.go:111: [node] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [node re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [node update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791574999399..1791574999401 del=0 upd=0 hash=b9a98c4bf6ed prev= -> "x=9 vf=5000 vt=0 tx=1791574999405..1791574999513 del=0 upd=0 hash=06ba6d5bb009 prev="
+                 chain:
+                  v0 vf=5000 vt=0 tx=1791574999405..1791574999513 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791574999404 tx=1791574999401..1791574999404 del=1791574999404 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791574999513..0 del=0 cur=true x=5
+        --- FAIL: TestReImportKeepsEveryLife/backfilled_after_D,_valid_before_D/memory/rel (0.04s)
+            reimport_life_test.go:111: [rel] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [rel re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [rel update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791574999427..1791574999429 del=0 upd=0 hash=1921e402abd3 prev= -> "x=9 vf=5000 vt=0 tx=1791574999433..1791574999542 del=0 upd=0 hash=ae90058acab8 prev="
+                 chain:
+                  v0 vf=5000 vt=0 tx=1791574999433..1791574999542 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791574999432 tx=1791574999429..1791574999432 del=1791574999432 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791574999542..0 del=0 cur=true x=5
+        --- FAIL: TestReImportKeepsEveryLife/backfilled_after_D,_valid_before_D/badger/node (0.17s)
+            reimport_life_test.go:111: [node] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [node re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [node update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791574999470..1791574999472 del=0 upd=0 hash=109d1dc291dc prev= -> "x=9 vf=5000 vt=0 tx=1791574999476..1791574999584 del=0 upd=0 hash=019b3b66cdfc prev="
+                 chain:
+                  v0 vf=5000 vt=0 tx=1791574999476..1791574999584 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791574999475 tx=1791574999472..1791574999475 del=1791574999475 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791574999584..0 del=0 cur=true x=5
+        --- FAIL: TestReImportKeepsEveryLife/backfilled_after_D,_valid_before_D/badger/rel (0.20s)
+            reimport_life_test.go:111: [rel] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [rel re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [rel update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791574999725..1791574999727 del=0 upd=0 hash=3a14c813c73e prev= -> "x=9 vf=5000 vt=0 tx=1791574999731..1791574999840 del=0 upd=0 hash=2b60dc8f204e prev="
+                 chain:
+                  v0 vf=5000 vt=0 tx=1791574999731..1791574999840 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791574999730 tx=1791574999727..1791574999730 del=1791574999730 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791574999840..0 del=0 cur=true x=5
+        --- FAIL: TestReImportKeepsEveryLife/backfilled_after_D,_valid_before_D/sharded/node (0.30s)
+            reimport_life_test.go:111: [node] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [node re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [node update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791574999954..1791574999956 del=0 upd=0 hash=cbd48138225b prev= -> "x=9 vf=5000 vt=0 tx=1791574999960..1791575000068 del=0 upd=0 hash=d09a1d4cb1b5 prev="
+                 chain:
+                  v0 vf=5000 vt=0 tx=1791574999960..1791575000068 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791574999959 tx=1791574999956..1791574999959 del=1791574999959 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791575000068..0 del=0 cur=true x=5
+        --- FAIL: TestReImportKeepsEveryLife/backfilled_after_D,_valid_before_D/sharded/rel (0.15s)
+            reimport_life_test.go:111: [rel] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [rel re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [rel update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791575000171..1791575000173 del=0 upd=0 hash=b5bbb7849a01 prev= -> "x=9 vf=5000 vt=0 tx=1791575000177..1791575000286 del=0 upd=0 hash=755c170e4b68 prev="
+                 chain:
+                  v0 vf=5000 vt=0 tx=1791575000177..1791575000286 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791575000176 tx=1791575000173..1791575000176 del=1791575000176 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791575000286..0 del=0 cur=true x=5
+        --- FAIL: TestReImportKeepsEveryLife/backfilled_after_D,_valid_before_D/tiered/node (0.10s)
+            reimport_life_test.go:111: [node] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [node re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [node update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791575000316..1791575000318 del=0 upd=0 hash=3354b1a7d279 prev= -> "x=9 vf=5000 vt=0 tx=1791575000322..1791575000430 del=0 upd=0 hash=3f58ecdba2f8 prev="
+                 chain:
+                  v0 vf=5000 vt=0 tx=1791575000322..1791575000430 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791575000321 tx=1791575000318..1791575000321 del=1791575000321 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791575000430..0 del=0 cur=true x=5
+        --- FAIL: TestReImportKeepsEveryLife/backfilled_after_D,_valid_before_D/tiered/rel (0.08s)
+            reimport_life_test.go:111: [rel] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [rel re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [rel update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791575000421..1791575000423 del=0 upd=0 hash=ed800613acb2 prev= -> "x=9 vf=5000 vt=0 tx=1791575000427..1791575000536 del=0 upd=0 hash=b3c1bdedd938 prev="
+                 chain:
+                  v0 vf=5000 vt=0 tx=1791575000427..1791575000536 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791575000426 tx=1791575000423..1791575000426 del=1791575000426 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791575000536..0 del=0 cur=true x=5
+    --- FAIL: TestReImportKeepsEveryLife/plain_valid_before_D (1.10s)
+        --- FAIL: TestReImportKeepsEveryLife/plain_valid_before_D/memory/node (0.03s)
+            reimport_life_test.go:111: [node] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [node re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [node update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791574999399..1791574999401 del=0 upd=0 hash=4485ff0fb14b prev= -> "x=9 vf=5000 vt=0 tx=1791574999451..1791574999512 del=0 upd=0 hash=773471467cbe prev="
+                 chain:
+                  v0 vf=5000 vt=0 tx=1791574999451..1791574999512 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791574999404 tx=1791574999401..1791574999404 del=1791574999404 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791574999512..0 del=0 cur=true x=5
+        --- FAIL: TestReImportKeepsEveryLife/plain_valid_before_D/memory/rel (0.08s)
+            reimport_life_test.go:111: [rel] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [rel re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [rel update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791574999426..1791574999428 del=0 upd=0 hash=9b26cc3ff3f2 prev= -> "x=9 vf=5000 vt=0 tx=1791574999479..1791574999540 del=0 upd=0 hash=30a5684cbef1 prev="
+                 chain:
+                  v0 vf=5000 vt=0 tx=1791574999479..1791574999540 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791574999431 tx=1791574999428..1791574999431 del=1791574999431 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791574999540..0 del=0 cur=true x=5
+        --- FAIL: TestReImportKeepsEveryLife/plain_valid_before_D/badger/node (0.23s)
+            reimport_life_test.go:111: [node] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [node re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [node update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791574999603..1791574999605 del=0 upd=0 hash=da4374933400 prev= -> "x=9 vf=5000 vt=0 tx=1791574999655..1791574999716 del=0 upd=0 hash=9102e965e8d4 prev="
+                 chain:
+                  v0 vf=5000 vt=0 tx=1791574999655..1791574999716 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791574999608 tx=1791574999605..1791574999608 del=1791574999608 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791574999716..0 del=0 cur=true x=5
+        --- FAIL: TestReImportKeepsEveryLife/plain_valid_before_D/badger/rel (0.23s)
+            reimport_life_test.go:111: [rel] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [rel re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [rel update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791574999841..1791574999843 del=0 upd=0 hash=13cae1b65b04 prev= -> "x=9 vf=5000 vt=0 tx=1791574999894..1791574999955 del=0 upd=0 hash=763d567dd9ef prev="
+                 chain:
+                  v0 vf=5000 vt=0 tx=1791574999894..1791574999955 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791574999846 tx=1791574999843..1791574999846 del=1791574999846 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791574999955..0 del=0 cur=true x=5
+        --- FAIL: TestReImportKeepsEveryLife/plain_valid_before_D/sharded/node (0.22s)
+            reimport_life_test.go:111: [node] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [node re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [node update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791575000066..1791575000068 del=0 upd=0 hash=58ac8af4d65f prev= -> "x=9 vf=5000 vt=0 tx=1791575000118..1791575000179 del=0 upd=0 hash=6f92ba98d9de prev="
+                 chain:
+                  v0 vf=5000 vt=0 tx=1791575000118..1791575000179 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791575000071 tx=1791575000068..1791575000071 del=1791575000071 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791575000179..0 del=0 cur=true x=5
+        --- FAIL: TestReImportKeepsEveryLife/plain_valid_before_D/sharded/rel (0.14s)
+            reimport_life_test.go:111: [rel] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [rel re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [rel update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791575000244..1791575000246 del=0 upd=0 hash=8d0e2c5fe721 prev= -> "x=9 vf=5000 vt=0 tx=1791575000297..1791575000358 del=0 upd=0 hash=d574259eaf46 prev="
+                 chain:
+                  v0 vf=5000 vt=0 tx=1791575000297..1791575000358 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791575000249 tx=1791575000246..1791575000249 del=1791575000249 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791575000358..0 del=0 cur=true x=5
+        --- FAIL: TestReImportKeepsEveryLife/plain_valid_before_D/tiered/node (0.10s)
+            reimport_life_test.go:111: [node] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [node re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [node update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791575000358..1791575000360 del=0 upd=0 hash=8866d3ba74bf prev= -> "x=9 vf=5000 vt=0 tx=1791575000410..1791575000471 del=0 upd=0 hash=a420835888c1 prev="
+                 chain:
+                  v0 vf=5000 vt=0 tx=1791575000410..1791575000471 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791575000363 tx=1791575000360..1791575000363 del=1791575000363 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791575000471..0 del=0 cur=true x=5
+        --- FAIL: TestReImportKeepsEveryLife/plain_valid_before_D/tiered/rel (0.06s)
+            reimport_life_test.go:111: [rel] re-import version 0; want 2 (one above the earlier life's top)
+            reimport_life_test.go:108: [rel re-import] the chain's top version is 1 after the write, was 1: the write did not append above the chain
+            reimport_life_test.go:119: [rel update] a history row was lost or overwritten:
+                  v0: x=0 vf=1000 vt=0 tx=1791575000456..1791575000458 del=0 upd=0 hash=3809a0d99d48 prev= -> "x=9 vf=5000 vt=0 tx=1791575000509..1791575000570 del=0 upd=0 hash=b7ecd8a8887d prev="
+                 chain:
+                  v0 vf=5000 vt=0 tx=1791575000509..1791575000570 del=0 cur=false x=9
+                  v1 vf=2000 vt=1791575000461 tx=1791575000458..1791575000461 del=1791575000461 cur=false x=1
+                  v2 vf=0 vt=0 tx=1791575000570..0 del=0 cur=true x=5
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	1.559s
+FAIL

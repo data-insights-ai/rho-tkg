@@ -486,8 +486,9 @@ func (c *Core) nodeEffectiveViaTemporalMeta(id types.NodeID, current *types.Node
 		chain = append(chain, current)
 	}
 	pieces := c.nodeEffectivePieces(chain, pin)
-	// Winners are told apart by origin, not by version: a re-imported ID's
-	// current row shares version numbers with the earlier life's history.
+	// Winners are told apart by origin, not by version: in a chain stored
+	// before backlog 38 a re-imported ID's current row shares version
+	// numbers with the earlier life's history.
 	hydrated := make(map[int]*types.Node)
 	hydrate := func(p effPiece[*types.Node]) (*types.Node, bool) {
 		if p.src >= len(metas) {
@@ -540,8 +541,9 @@ func (c *Core) relEffectiveViaTemporalMeta(id types.RelID, current *types.Relati
 		chain = append(chain, current)
 	}
 	pieces := c.relEffectivePieces(chain, pin)
-	// Winners are told apart by origin, not by version: a re-imported ID's
-	// current row shares version numbers with the earlier life's history.
+	// Winners are told apart by origin, not by version: in a chain stored
+	// before backlog 38 a re-imported ID's current row shares version
+	// numbers with the earlier life's history.
 	hydrated := make(map[int]*types.Relationship)
 	hydrate := func(p effPiece[*types.Relationship]) (*types.Relationship, bool) {
 		if p.src >= len(metas) {

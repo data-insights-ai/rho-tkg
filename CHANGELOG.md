@@ -6,6 +6,80 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **A backfilled re-import of a deleted ID must be recorded after the ID's chain: a `tkg_tx_from` at or below
+  any `TxFrom` / `TxTo` / `DeletedAt` of the ID's history is refused with `ErrTxOrder`** (wraps
+  `ErrInvalidTxFrom`; backlog 38). Doors: `Nodes().Import`, `Nodes().AddByIDIfAbsent`, `Rels().Import`,
+  `GraphTx.ImportNodeWithID` / `ImportRelationshipWithID` with the `tkg_tx_from` property. It is the ordering
+  rule `UpdateWithTx` / `DeleteWithTx` already apply. Nothing is written and no label or type token
+  is allocated. v4.43–v4.47 accepted such an import and stored a row that the valid-time doors read absent from
+  the delete on while the as-of doors read it present; no stamp can place it in the new life once a cascade
+  demotes it (the reasoning and the brute-force definition: `tasks/evidence/reimport-life/decision.md`). A
+  create of an ID without history keeps accepting any past instant; the plain door (no `tkg_tx_from`) is never
+  refused (what it returns changes, see Fixed). Seen by sigma-tkgd's `/admin/import` (`tx.ImportNodeWithID` /
+  `ImportRelationshipWithID` with the record's properties under `TKGD_ALLOW_TX_BACKFILL`): such a record on a
+  deleted ID now fails the request and rolls its transaction back; sigma-tkgd notified 2026-10-09.
+  **Migration:** a caller that replays a deleted ID's second life with its original instant passes
+  an instant after the delete (`DeletedAt` of the newest history row + 1), or imports without
+  `tkg_tx_from`. `docs/stability.md` lists the exception. Tests: `TestReImportBackfillMustFollowTheChain`
+  (t inside the first life, at the last update, at D-1, at D: refused on every door, four backends, node and
+  rel; D+1 accepted and every door agrees with the oracle), `TestReImportBackfillRefusalLeavesNoToken`,
+  `TestReImportContinuesTheChainFacade` (`errors.Is(graph.ErrTxOrder)` at the public layer). The fixtures that
+  used the refused input to build history stamps above the current row now write that stored shape directly
+  (`TestTxBackfillNode_OrderEqualReversed` / `Rel`, `TestAsOfBackfilledReImportOfDeletedID`) or use a bounded
+  cascade (`TestNodesWithTx_TxBatchIngestFacade`).
+
+### Fixed
+
+- **HIGH (data loss): a re-import of a deleted ID no longer overwrites the earlier life's history** (backlog 38
+  and the 2026-09-24 review entry "(HIGH?) Re-import of a deleted ID", pre-existing). `Import` (node and rel),
+  `Nodes().AddByIDIfAbsent` and the `GraphTx` twins restarted the entity at version 0; history is keyed by
+  version, so the first write that moved the re-imported row to history (Update, `CloseVersion`, a cascade, a
+  label change) stored it under the earlier life's version-0 key and the earlier row was gone: a pin taken
+  before that write answered differently after it (reviewer repro: `NodeAtTx(id, 1000, p1)` = `v0:x0` before
+  a close, "no version" after), `Verify*Chain` failed, and `IO().Import` of an export of the graph failed
+  (`imported hash chain does not verify`). A `GraphTx` rollback of a re-import deleted the earlier life's whole
+  history. Fix (`core/version_alloc.go` `lifeStart`): the re-import continues the ID's chain — its version is
+  one above the highest version stored for the ID (tombstone and cascade rows above it included), found under
+  the entity lock like every appended row, and its `PrevHash` is that row's hash, so the chain verifies across
+  lives; it is recorded after every stamp of the chain (a caller instant at or below them is refused, see
+  Changed; the plain door stamps its row at the clock, or one past the chain's largest stamp when that lies
+  ahead of the clock — a delete of a row whose valid start lies ahead is stamped after it — on that row only,
+  like the delete: the commit clock is not moved). A chain whose rows a retention purge removed after a
+  history compaction keeps its compaction stub; a re-import of that ID continues above the stub's trimmed
+  versions and links to its last trimmed hash (it restarted at version 0 under the stub and failed
+  `Verify*Chain`). Versions then grow in write order across lives and the read side's
+  life rule (a row's life = deletes recorded before its `TxFrom`) equals version order; the rule is unchanged
+  and still reads the chains stored before. The `GraphTx` rollback of a created ID removes the rows from the
+  created version on (`TrimNodeHistoryFrom`, or a rewrite of the rows below on stores without it) instead of
+  the whole history. Replica apply, `IO().Export`/`Import`, `ImportMerge`, compaction and retention purge copy
+  or trim rows as stored and need no change (tested). **Migration — what changes:** nothing is migrated and
+  no format changes. A re-import after this release returns a row whose `Version()` is the earlier life's top
+  + 1 (was 0) and whose `Integrity().PrevHash` names that row (was empty); a consumer that read `Version() ==
+  0` as "created" must use the create event or `AddByIDIfAbsent`'s `created` instead. Chains written by
+  v4.43–v4.47 keep their state: rows already overwritten stay lost, their `Verify*Chain` stays false, and every
+  door answers them as before (`TestReImportOldChainReadsAsBefore`, `TestAsOfBackfilledReImportOfDeletedID`,
+  guards green on main); a re-import onto such a chain starts above its highest stored version. Known limit
+  (the open 2026-09-24 item "Future transaction time from `validInstantAfter`", unchanged): after a delete
+  stamped ahead of the clock, the re-import's row is stamped ahead too, so pins taken now do not see it, and a
+  later plain Update of it is stamped at the clock, below the re-import. Tests (four backends, node and rel,
+  named and generic doors against the brute-force oracle, rule 15 pins): `TestReImportKeepsEveryLife` (plain
+  and backfilled-after-D re-imports, valid start before/after D, then update, bounded cascade, close, a second
+  delete and a third life), `TestReImportAboveCascadeRows`, `TestReImportAfterDeleteAheadOfClock`,
+  `TestReImportDoesNotAdvanceTheClock` (a delete 50 years ahead, a plain re-import, then an unrelated create
+  is stamped at the wall clock; badger on disk reopened: the unrelated row visible at a current pin),
+  `TestReImportTxRollbackRestoresEarlierLife`, `TestReImportTxRollbackCopyPathReportsFaults` (the copy path
+  of stores without the rollback-trim capability reports a failing read or put), `TestReImportReplicaApply`,
+  `TestReImportExportImportRoundTrip`, `TestReImportCompactionAcrossLives`, `TestReImportRetentionPurge`
+  (purge, then re-import and `Verify*Chain`, with and without a compaction before the purge),
+  `TestReImportLifeOracle` (generative: random ops with plain, accepted and refused re-imports; no history row
+  lost, pins stable, every door equals the oracle, chains verify), `TestLifeStartOf`, `TestStubLifeStart`.
+  Red on main: 10 of 12 core tests and the facade test; the purge-stub legs red on memory, badger and tiered;
+  mutants (allocator at 0, allocator above the tombstone only, write order or life ends ignoring the
+  tombstone, refusal off by one, plain door stamped at the clock, a commit-clock floor raise, no predecessor
+  hash, rollback truncating everything) each red: `tasks/evidence/reimport-life/`.
+
 ## [4.47.0] - 2026-10-09
 
 Minor release: the effective-timeline doors (`g.Temporal().NodeEffectiveTimeline` / `RelEffectiveTimeline` and the
