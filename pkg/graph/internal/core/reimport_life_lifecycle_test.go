@@ -169,34 +169,87 @@ func TestReImportCompactionAcrossLives(t *testing.T) {
 // TestReImportRetentionPurge: a retention purge removes a re-imported node
 // with both lives' history (and a relationship to it, both lives); the ID can
 // then be imported again. Tiered and sharded decline the purge.
+//
+// With a history compaction before the purge (compacted=true) the entity
+// carries a compaction stub; the purge removes the entity's rows and leaves
+// the stub: the next import of the ID continues the chain above the trimmed
+// versions (lifeStart from the stub). Before, it restarted at version 0 under
+// the stub and failed Verify*Chain ("a stub covering a genesis").
 func TestReImportRetentionPurge(t *testing.T) {
 	t.Parallel()
 	for _, be := range txbBackends() {
 		for _, rel := range []bool{false, true} {
-			t.Run(fmt.Sprintf("%s/rel=%v", be.name, rel), func(t *testing.T) {
-				g := be.open(t, true)
-				g.allowRetentionPurge = true
-				useTestClock(t, g)
-				e := newCCEnt(t, g, rel)
-				id, _, _ := rlTwoLives(e)
-				label := ccLabel
-				if rel {
-					label = "Ev" // purging the end node removes the relationship
-				}
-				_, err := g.Admin.PurgeExpiredNodes(context.Background(), PurgePolicy{Label: label, Mode: PurgeByAge, Before: e.pin() + 1})
-				if errors.Is(err, storepkg.ErrCapabilityNotSupported) {
-					return
-				}
-				if err != nil {
-					t.Fatalf("PurgeExpiredNodes: %v", err)
-				}
-				if rows := e.historyRows(id); len(rows) != 0 {
-					t.Fatalf("[%s] purge left %d history rows:%s", e.kind(), len(rows), e.chainString(id))
-				}
-				if _, err := e.getCurrent(id); !e.isAbsent(err) {
-					t.Fatalf("[%s] purge left the current row: %v", e.kind(), err)
-				}
-			})
+			for _, compacted := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/rel=%v/compacted=%v", be.name, rel, compacted), func(t *testing.T) {
+					g := be.open(t, true)
+					g.allowRetentionPurge = true
+					useTestClock(t, g)
+					e := newCCEnt(t, g, rel)
+					id, _, _ := rlTwoLives(e)
+					if compacted {
+						var err error
+						if rel {
+							_, err = g.Admin.CompactHistoryRels(context.Background(), RetentionPolicy{KeepVersions: 1})
+						} else {
+							_, err = g.Admin.CompactHistoryNodes(context.Background(), RetentionPolicy{KeepVersions: 1})
+						}
+						if errors.Is(err, storepkg.ErrCapabilityNotSupported) {
+							return
+						}
+						if err != nil {
+							t.Fatalf("compact: %v", err)
+						}
+					}
+					label := ccLabel
+					if rel {
+						label = "Ev" // purging the end node removes the relationship
+					}
+					_, err := g.Admin.PurgeExpiredNodes(context.Background(), PurgePolicy{Label: label, Mode: PurgeByAge, Before: e.pin() + 1})
+					if errors.Is(err, storepkg.ErrCapabilityNotSupported) {
+						return
+					}
+					if err != nil {
+						t.Fatalf("PurgeExpiredNodes: %v", err)
+					}
+					if rows := e.historyRows(id); len(rows) != 0 {
+						t.Fatalf("[%s] purge left %d history rows:%s", e.kind(), len(rows), e.chainString(id))
+					}
+					if _, err := e.getCurrent(id); !e.isAbsent(err) {
+						t.Fatalf("[%s] purge left the current row: %v", e.kind(), err)
+					}
+					// The ID can be imported again and its chain verifies:
+					// without a stub nothing is left to continue (version 0);
+					// with one, the chain continues above the trimmed versions
+					// and links to the last trimmed hash.
+					var want uint32
+					if compacted {
+						var stub compactionStub
+						var ok bool
+						var err error
+						if rel {
+							stub, ok, err = g.loadRelCompactionStub(types.RelID(id))
+						} else {
+							stub, ok, err = g.loadNodeCompactionStub(types.NodeID(id))
+						}
+						if err != nil || !ok {
+							t.Fatalf("fixture: no compaction stub after the purge (%v, %v)", ok, err)
+						}
+						want = stub.TrimmedThroughVersion + 1
+					}
+					if rel {
+						en, err := g.Nodes.Add(context.Background(), []string{"Ev2"}, map[string]any{"tkg_valid_from": types.Instant(1)})
+						if err != nil {
+							t.Fatalf("Add: %v", err)
+						}
+						e.end = en.ID()
+					}
+					if v := e.mustReimport(id, map[string]any{"tkg_valid_from": types.Instant(5000), "x": int64(9)}); v != want {
+						t.Fatalf("[%s] re-import after the purge: version %d, want %d", e.kind(), v, want)
+					}
+					e.mustUpdate(id, map[string]any{"x": int64(5)})
+					e.verifies("re-import after the purge", id)
+				})
+			}
 		}
 	}
 }
