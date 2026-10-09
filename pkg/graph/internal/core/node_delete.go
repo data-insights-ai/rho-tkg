@@ -95,7 +95,7 @@ func (n *NodeOps) Delete(ctx context.Context, id types.NodeID) error {
 		err           error
 	)
 	ep, closeErr := c.runUnderRLock(func() {
-		cascadeRelIDs, err = c.deleteNodeInternal(ctx, id)
+		cascadeRelIDs, err = c.deleteNodeInternal(ctx, id, 0)
 	})
 	if closeErr != nil {
 		return closeErr
@@ -106,7 +106,48 @@ func (n *NodeOps) Delete(ctx context.Context, id types.NodeID) error {
 	return err
 }
 
-// deleteNodeInternal is the lock-free implementation of NodeOps.Delete.
+// DeleteWithTx deletes a node and its relationships like Delete but stamps
+// every tombstone of the cascade — the node's and each relationship's — with
+// the caller's transaction instant: TxTo = DeletedAt = txTo, ValidTo clamped
+// to txTo when the row is open. Gates, in order: txTo must be a positive
+// instant not in the future (ErrInvalidTxFrom), then Config.AllowTxBackfill
+// (ErrTxBackfillDisabled); under the full entity lock txTo must follow every
+// TxFrom/TxTo recorded for the node and for each cascaded relationship and
+// their current versions' starts, and no recorded close may lie at or after
+// txTo on any of them (ErrTxOrder, wrapping ErrInvalidTxFrom). Any refusal
+// changes nothing. The commit clock is not moved by txTo.
+func (n *NodeOps) DeleteWithTx(ctx context.Context, id types.NodeID, txTo types.Instant) error {
+	c := n.c
+	if err := c.checkWritable(); err != nil {
+		return err
+	}
+	if err := checkCtx(ctx); err != nil {
+		return err
+	}
+	at, err := c.resolveCallerTxInstant(txTo)
+	if err != nil {
+		return err
+	}
+	defer c.notePastDatedWrite(at) // after the store write (as-of cache)
+	var cascadeRelIDs []types.RelID
+	ep, closeErr := c.runUnderRLock(func() {
+		cascadeRelIDs, err = c.deleteNodeInternal(ctx, id, at)
+	})
+	if closeErr != nil {
+		return closeErr
+	}
+	if err == nil && ep != nil {
+		dispatchEvent(ep, cascadeDeleteEvents(id, cascadeRelIDs, c.now())...)
+	}
+	return err
+}
+
+// deleteNodeInternal is the lock-free implementation of NodeOps.Delete and
+// NodeOps.DeleteWithTx. at == 0 stamps the cascade at
+// deleteInstantForNodeCascade (the plain doors); at != 0 is a caller instant
+// already gated by resolveCallerTxInstant, checked in Phase B under the full
+// entity lock (checkNodeCascadeCallerTx) and stamped verbatim on the node and
+// every cascaded relationship, never moved.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 //
 // Two-phase locking with TOCTOU retry:
@@ -114,7 +155,7 @@ func (n *NodeOps) Delete(ctx context.Context, id types.NodeID) error {
 //	Phase A (node lock only): confirm node exists, read adjacency, collect all entity IDs.
 //	Phase B (all entities locked): re-read node + adjacency, verify adjacency unchanged, then mutate.
 //	If adjacency changed between phases, retry from Phase A.
-func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID) ([]types.RelID, error) {
+func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID, at types.Instant) ([]types.RelID, error) {
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}
@@ -235,7 +276,7 @@ func (c *Core) deleteNodeInternal(ctx context.Context, id types.NodeID) ([]types
 				return
 			}
 
-			relIDs, phaseBErr = c.deleteNodeLocked(ctx, id, current, outRels2, inRels2)
+			relIDs, phaseBErr = c.deleteNodeLocked(ctx, id, current, outRels2, inRels2, at)
 			done = true
 		}()
 		if retry {
@@ -310,9 +351,22 @@ func sameIDSet(a, b []snowflake.ID) bool {
 // Builds tombstones for all connected rels and the node, then issues a single
 // atomic DeleteNodeWithHistory call (replaces PutRelVersion×N + PutNodeVersion +
 // DeleteNodeCascade with one compound store operation).
-func (c *Core) deleteNodeLocked(ctx context.Context, id types.NodeID, current *types.Node, outRels, inRels []*types.Relationship) ([]types.RelID, error) {
+//
+// at != 0 is a caller instant: the order and close rules run on the node and
+// on every cascaded relationship (the Phase-B rows) before the first write, and
+// at is the one instant of every tombstone. at == 0 is the plain doors'
+// deleteInstantForNodeCascade.
+func (c *Core) deleteNodeLocked(ctx context.Context, id types.NodeID, current *types.Node, outRels, inRels []*types.Relationship, at types.Instant) ([]types.RelID, error) {
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
+	}
+	if at != 0 {
+		rels := make([]*types.Relationship, 0, len(outRels)+len(inRels))
+		rels = append(rels, outRels...)
+		rels = append(rels, inRels...)
+		if err := c.checkNodeCascadeCallerTx(id, current, rels, at); err != nil {
+			return nil, err
+		}
 	}
 	if err := c.checkpointDirtyRegistriesBeforeMutation("delete node"); err != nil {
 		return nil, err
@@ -321,7 +375,10 @@ func (c *Core) deleteNodeLocked(ctx context.Context, id types.NodeID, current *t
 		return nil, err
 	}
 
-	now := c.deleteInstantForNodeCascade(current, outRels, inRels)
+	now := at
+	if now == 0 {
+		now = c.deleteInstantForNodeCascade(current, outRels, inRels)
+	}
 
 	// Build relationship tombstones (dedup self-loops).
 	var relTombstones []storepkg.RelTombstone

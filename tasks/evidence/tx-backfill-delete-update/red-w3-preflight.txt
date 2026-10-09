@@ -1,0 +1,38 @@
+# W3 RED (pre-flight): node unit tests against the merged W4 rel-only pre-flight behaviour (node ops neither trigger, nor are checked, nor count cascades), emulated by a temporary [:0] patch of batch_callertx_preflight.go, restored after this run
+    tx_backfill_node_unit_test.go:306: a chain 3 rows; want only good2's version at 1791520720313
+    tx_backfill_node_unit_test.go:201: [good node delete, bad node update] err = graph: batch execution had failed operations: 1 failed operation(s); want graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx
+    tx_backfill_node_unit_test.go:207: [good node delete, bad node update node 0] current node presence changed: before err=<nil>, after err=graph: node not found
+    tx_backfill_node_unit_test.go:207: [good node delete, bad node update node 0] current node presence changed: before err=<nil>, after err=graph: node not found
+    tx_backfill_node_unit_test.go:201: [good node delete, bad node update] err = graph: batch execution had failed operations: 1 failed operation(s); want graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx
+    tx_backfill_node_unit_test.go:306: a chain 3 rows; want only good2's version at 1791520720315
+    tx_backfill_node_unit_test.go:306: a chain 3 rows; want only good2's version at 1791520720317
+    tx_backfill_node_unit_test.go:207: [good node delete, bad node update node 0] current node presence changed: before err=<nil>, after err=graph: node not found
+    tx_backfill_node_unit_test.go:306: a chain 3 rows; want only good2's version at 1791520720362
+--- FAIL: TestTxBackfillNode_IngestCoalescedGroups (0.05s)
+    --- FAIL: TestTxBackfillNode_IngestCoalescedGroups/memory (0.00s)
+    --- FAIL: TestTxBackfillNode_IngestCoalescedGroups/badger (0.00s)
+    --- FAIL: TestTxBackfillNode_IngestCoalescedGroups/sharded (0.01s)
+    --- FAIL: TestTxBackfillNode_IngestCoalescedGroups/tiered (0.04s)
+    tx_backfill_node_unit_test.go:207: [good node delete, bad node update node 0] current node presence changed: before err=<nil>, after err=graph: node not found
+    tx_backfill_node_unit_test.go:201: [good node delete, bad node update] err = graph: batch execution had failed operations: 1 failed operation(s); want graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx
+    tx_backfill_node_unit_test.go:207: [good node delete, bad node update node 0] current node presence changed: before err=<nil>, after err=graph: node not found
+    tx_backfill_node_unit_test.go:207: [good node delete, bad node update node 0] current node presence changed: before err=<nil>, after err=graph: node not found
+    tx_backfill_node_unit_test.go:201: [good node delete, bad node update] err = graph: batch execution had failed operations: 1 failed operation(s); want graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx
+    tx_backfill_node_unit_test.go:207: [good node delete, bad node update node 0] current node presence changed: before err=<nil>, after err=graph: node not found
+    tx_backfill_node_unit_test.go:207: [good node delete, bad node update node 0] current node presence changed: before err=<nil>, after err=graph: node not found
+--- FAIL: TestTxBackfillNode_UnitPreflight (0.18s)
+    --- FAIL: TestTxBackfillNode_UnitPreflight/memory/Batch (0.00s)
+    --- FAIL: TestTxBackfillNode_UnitPreflight/memory/IngestStrong (0.00s)
+    --- FAIL: TestTxBackfillNode_UnitPreflight/memory/IngestConcurrent (0.00s)
+    --- FAIL: TestTxBackfillNode_UnitPreflight/badger/Batch (0.00s)
+    --- FAIL: TestTxBackfillNode_UnitPreflight/badger/IngestStrong (0.04s)
+    --- FAIL: TestTxBackfillNode_UnitPreflight/badger/IngestConcurrent (0.03s)
+    --- FAIL: TestTxBackfillNode_UnitPreflight/sharded/Batch (0.00s)
+    --- FAIL: TestTxBackfillNode_UnitPreflight/sharded/IngestStrong (0.01s)
+    --- FAIL: TestTxBackfillNode_UnitPreflight/sharded/IngestConcurrent (0.01s)
+    --- FAIL: TestTxBackfillNode_UnitPreflight/tiered/Batch (0.01s)
+    --- FAIL: TestTxBackfillNode_UnitPreflight/tiered/IngestStrong (0.04s)
+    --- FAIL: TestTxBackfillNode_UnitPreflight/tiered/IngestConcurrent (0.04s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.227s
+FAIL

@@ -30,8 +30,10 @@ type Ops interface {
 	DocValuesColumn(label, propertyKey string) (storepkg.DocValuesColumn, bool, error)
 	GetByIDs(ids []types.NodeID) ([]*types.Node, error)
 	Update(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error)
+	UpdateWithTx(ctx context.Context, id types.NodeID, updates map[string]any, txFrom types.Instant) (*types.Node, error)
 	UpdateInPlace(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error)
 	Delete(ctx context.Context, id types.NodeID) error
+	DeleteWithTx(ctx context.Context, id types.NodeID, txTo types.Instant) error
 	Import(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, error)
 	AddByIDIfAbsent(ctx context.Context, id types.NodeID, labels []string, props map[string]any) (*types.Node, bool, error)
 	GetOrCreateByKey(ctx context.Context, label, propertyKey string, value any, extraProps map[string]any) (*types.Node, bool, error)
@@ -221,6 +223,22 @@ func (a *API) Update(ctx context.Context, id types.NodeID, updates map[string]an
 	return ops.Update(ctx, id, updates)
 }
 
+// UpdateWithTx updates the node like Update but stamps the caller-supplied
+// txFrom as the transaction instant of the change: the superseded version's
+// TxTo and the new version's TxFrom and UpdatedAt are txFrom instead of the
+// system clock. Requires Config.AllowTxBackfill (ErrTxBackfillDisabled);
+// txFrom must be a positive instant not in the future (ErrInvalidTxFrom) and
+// must follow every stamp recorded for the node and the current version's
+// start, and the update must change something (ErrTxOrder, which wraps
+// ErrInvalidTxFrom). The commit clock is not moved.
+func (a *API) UpdateWithTx(ctx context.Context, id types.NodeID, updates map[string]any, txFrom types.Instant) (*types.Node, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return nil, err
+	}
+	return ops.UpdateWithTx(ctx, id, updates, txFrom)
+}
+
 // UpdateInPlace updates a node in place honoring ctx (no version chain entry).
 func (a *API) UpdateInPlace(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, error) {
 	ops, err := a.ready()
@@ -237,6 +255,24 @@ func (a *API) Delete(ctx context.Context, id types.NodeID) error {
 		return err
 	}
 	return ops.Delete(ctx, id)
+}
+
+// DeleteWithTx deletes the node and its relationships like Delete but ends
+// their belief at the caller-supplied transaction instant txTo: the node's and
+// every cascaded relationship's tombstone carry TxTo = DeletedAt = txTo, so a
+// read pinned before txTo still sees them and a read pinned at or after it
+// does not. Requires Config.AllowTxBackfill (ErrTxBackfillDisabled); txTo must
+// be a positive instant not in the future (ErrInvalidTxFrom) and must follow
+// every stamp recorded for the node and for each cascaded relationship and
+// their current versions' starts; a recorded close (ValidTo) at or after txTo
+// on any of them refuses (ErrTxOrder, which wraps ErrInvalidTxFrom). A refusal
+// changes nothing. The commit clock is not moved.
+func (a *API) DeleteWithTx(ctx context.Context, id types.NodeID, txTo types.Instant) error {
+	ops, err := a.ready()
+	if err != nil {
+		return err
+	}
+	return ops.DeleteWithTx(ctx, id, txTo)
 }
 
 // Import imports a node with a caller-supplied ID honoring ctx.

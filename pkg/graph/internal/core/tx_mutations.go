@@ -166,6 +166,14 @@ func (tx *GraphTx) noteRelCreateResultLocked(r *types.Relationship) {
 // Delegates the actual update to Graph.Nodes.Update.
 // Holds tx.mu for the whole call — see AddNode.
 func (tx *GraphTx) UpdateNode(id types.NodeID, updates map[string]any) (*types.Node, error) {
+	return tx.updateNodeAt(id, updates, 0)
+}
+
+// updateNodeAt is UpdateNode with a caller transaction instant at (0 = the
+// clock; see UpdateNodeWithTx). With at != 0 an empty map is refused after
+// the existence check and the read-only no-op shortcut is skipped, so the
+// kernel decides (order rule, no-op refusal) under the entity lock.
+func (tx *GraphTx) updateNodeAt(id types.NodeID, updates map[string]any, at types.Instant) (*types.Node, error) {
 	if err := tx.lockActiveCoreWrite(); err != nil {
 		return nil, err
 	}
@@ -173,6 +181,12 @@ func (tx *GraphTx) UpdateNode(id types.NodeID, updates map[string]any) (*types.N
 
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return nil, err
+	}
+	if len(updates) == 0 && at != 0 {
+		if _, err := tx.g.getCurrentNode(id); err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("%w: an update at t %d with no changes records nothing", ErrTxOrder, at)
 	}
 	if len(updates) == 0 {
 		// Empty-update no-op. Read directly from the store rather than via
@@ -192,7 +206,8 @@ func (tx *GraphTx) UpdateNode(id types.NodeID, updates map[string]any) (*types.N
 	if err != nil {
 		return nil, err
 	}
-	if preparedUpdateCanBeReadOnlyNoOp(prov, tmp) {
+	tmp.txAt = at
+	if at == 0 && preparedUpdateCanBeReadOnlyNoOp(prov, tmp) {
 		current, err := tx.g.getCurrentNode(id)
 		if err != nil {
 			return nil, err
@@ -349,6 +364,12 @@ func (tx *GraphTx) DeleteRelationshipProperty(id types.RelID, key string) error 
 // Delegates the actual deletion to Graph.Nodes.Delete.
 // Holds tx.mu for the whole call — see AddNode.
 func (tx *GraphTx) DeleteNode(id types.NodeID) error {
+	return tx.deleteNodeAt(id, 0)
+}
+
+// deleteNodeAt is DeleteNode with a caller transaction instant at (0 = the
+// clock; see DeleteNodeWithTx).
+func (tx *GraphTx) deleteNodeAt(id types.NodeID, at types.Instant) error {
 	if err := tx.lockActiveCoreWrite(); err != nil {
 		return err
 	}
@@ -411,7 +432,7 @@ func (tx *GraphTx) DeleteNode(id types.NodeID) error {
 	}
 
 	// Perform the actual deletion (internal — tx already holds c.mu.Lock).
-	cascadeRelIDs, err := tx.g.deleteNodeInternal(tx.doorCtx(), id)
+	cascadeRelIDs, err := tx.g.deleteNodeInternal(tx.doorCtx(), id, at)
 	if err != nil {
 		return err
 	}

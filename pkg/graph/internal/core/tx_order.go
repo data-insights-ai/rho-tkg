@@ -1,14 +1,16 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // Caller-supplied transaction instants on the END/SUPERSEDE doors
-// (Rels().DeleteWithTx, Rels().UpdateWithTx; the node and GraphTx twins reuse
-// these helpers). A create door's backfilled TxFrom only has to be a valid
+// (Rels().DeleteWithTx, Rels().UpdateWithTx, Nodes().DeleteWithTx,
+// Nodes().UpdateWithTx and their GraphTx, batch and ingest twins). A create door's backfilled TxFrom only has to be a valid
 // instant; an end or supersession at t must also fit the chain already
 // recorded, which is decided under the entity lock.
 
@@ -105,11 +107,75 @@ func (c *Core) checkRelCallerTx(id types.RelID, current *types.Relationship, t, 
 	return checkTxOrder(t, start, chain...)
 }
 
+// nodeChainTemporals returns the temporal metadata of every recorded version
+// of a node: its history plus current (when non-nil). Call under the node's
+// entity lock.
+func (c *Core) nodeChainTemporals(id types.NodeID, current *types.Node) ([]*types.TemporalMetadata, error) {
+	history, err := c.getNodeHistory(id)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*types.TemporalMetadata, 0, len(history)+1)
+	for _, h := range history {
+		out = append(out, h.Temporal())
+	}
+	if current != nil {
+		out = append(out, current.Temporal())
+	}
+	return out, nil
+}
+
+// nodeTxDeleteStart is the node twin of relTxDeleteStart: the later of the
+// effective valid-from and the current version's start.
+func (c *Core) nodeTxDeleteStart(n *types.Node) types.Instant {
+	return max(c.nodeValidFrom(n), c.nodeCurrentVersionStart(n))
+}
+
+// checkNodeCallerTx runs the order rule for a caller instant on node current
+// (under its entity lock); start is the door's version start.
+func (c *Core) checkNodeCallerTx(id types.NodeID, current *types.Node, t, start types.Instant) error {
+	chain, err := c.nodeChainTemporals(id, current)
+	if err != nil {
+		return err
+	}
+	return checkTxOrder(t, start, chain...)
+}
+
+// checkNodeCascadeCallerTx decides a caller-instant node delete before anything
+// is written: the order rule on the node and on every relationship the cascade
+// tombstones (each against its own chain and delete start), then the close
+// rule over all of them — one instant t ends every row, so one failure refuses
+// the whole delete. rels are the Phase-B rows, read under the full entity
+// lock. A Model-A foreign incoming stub (ADR-0010) has no local chain (its slot
+// belongs to another machine; the store removes it without a tombstone), so
+// it is not checked.
+func (c *Core) checkNodeCascadeCallerTx(id types.NodeID, current *types.Node, rels []*types.Relationship, t types.Instant) error {
+	if err := c.checkNodeCallerTx(id, current, t, c.nodeTxDeleteStart(current)); err != nil {
+		return err
+	}
+	tms := make([]*types.TemporalMetadata, 0, 1+len(rels))
+	tms = append(tms, current.Temporal())
+	for _, r := range rels {
+		chain, err := c.relChainTemporals(r.ID(), r)
+		if errors.Is(err, storepkg.ErrSlotNotLocal) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if err := checkTxOrder(t, c.relTxDeleteStart(r), chain...); err != nil {
+			return fmt.Errorf("cascaded relationship %d: %w", r.ID(), err)
+		}
+		tms = append(tms, r.Temporal())
+	}
+	return checkCallerDeleteCloses(t, tms...)
+}
+
 // checkRelCallerDelete is every refusal a caller-instant delete of current can
 // meet before it writes: the order rule (after the version start, which for a
 // delete includes the valid-from) and a recorded close at or after t. Shared
 // by the delete seam (deleteRelationshipInternal) and the Batch/ingest
-// pre-flight (precheckRelCallerTxOps), so the two cannot disagree. Call under
+// pre-flight (precheckCallerTxOps), so the two cannot disagree. Call under
 // the relationship's entity lock.
 func (c *Core) checkRelCallerDelete(id types.RelID, current *types.Relationship, at types.Instant) error {
 	if err := c.checkRelCallerTx(id, current, at, c.relTxDeleteStart(current)); err != nil {
@@ -123,7 +189,7 @@ func (c *Core) checkRelCallerDelete(id types.RelID, current *types.Relationship,
 // nothing (there is no version to stamp at t), a closed relationship, and a
 // tkg_valid_from not after the previous effective valid-from. Shared by the
 // update seam (updateRelationshipPreparedInternal) and the Batch/ingest
-// pre-flight (precheckRelCallerTxOps). Call under the relationship's entity
+// pre-flight (precheckCallerTxOps). Call under the relationship's entity
 // lock.
 func (c *Core) checkRelCallerUpdate(id types.RelID, current *types.Relationship, prov updateProvenance, tmp updateTemporal, updates map[string]any) error {
 	if err := c.checkRelCallerTx(id, current, tmp.txAt, c.relCurrentVersionStart(current)); err != nil {
@@ -137,6 +203,30 @@ func (c *Core) checkRelCallerUpdate(id types.RelID, current *types.Relationship,
 	}
 	if tmp.hasValidFrom && tmp.validFrom != 0 {
 		if prevEff := c.relValidFrom(current); tmp.validFrom <= prevEff {
+			return fmt.Errorf("%w: %d <= prev %d", ErrValidFromBeforePrevious, tmp.validFrom, prevEff)
+		}
+	}
+	return nil
+}
+
+// checkNodeCallerUpdate is the node twin of checkRelCallerUpdate: every
+// refusal a caller-instant update (tmp.txAt) of node current can meet before
+// it writes — the order rule, an update that changes nothing, a closed node,
+// and a tkg_valid_from not after the previous effective valid-from. Shared by
+// the update seam (updateNodePreparedInternal) and the Batch/ingest pre-flight
+// (precheckCallerTxOps). Call under the node's entity lock.
+func (c *Core) checkNodeCallerUpdate(id types.NodeID, current *types.Node, prov updateProvenance, tmp updateTemporal, updates map[string]any) error {
+	if err := c.checkNodeCallerTx(id, current, tmp.txAt, c.nodeCurrentVersionStart(current)); err != nil {
+		return err
+	}
+	if !nodePreparedUpdateMutates(current, prov, tmp, updates) {
+		return fmt.Errorf("%w: an update at t %d with no changes records nothing", ErrTxOrder, tmp.txAt)
+	}
+	if err := rejectClosedNodeMutation(current); err != nil {
+		return err
+	}
+	if tmp.hasValidFrom && tmp.validFrom != 0 {
+		if prevEff := c.nodeValidFrom(current); tmp.validFrom <= prevEff {
 			return fmt.Errorf("%w: %d <= prev %d", ErrValidFromBeforePrevious, tmp.validFrom, prevEff)
 		}
 	}

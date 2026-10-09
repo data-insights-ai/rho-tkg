@@ -63,7 +63,7 @@ type BatchBuilder struct {
 	rels         []pendingRel
 	nodeUpdates  []pendingNodeUpdate
 	relUpdates   []pendingRelUpdate
-	nodeDeletes  []types.NodeID
+	nodeDeletes  []pendingNodeDelete
 	relDeletes   []types.RelID
 	relTxDeletes []pendingRelTxDelete // DeleteRelationshipWithTx (batch_rel_withtx.go)
 	nodeCascades []pendingNodeCascade
@@ -168,6 +168,28 @@ func pendingPastDated(nodes []pendingNode, rels []pendingRel) types.Instant {
 type pendingNodeUpdate struct {
 	id     types.NodeID
 	update preparedUpdateProperties
+}
+
+// pendingNodeDelete is a queued node delete. at is the caller transaction
+// instant of a DeleteNodeWithTx (gated at queue time by
+// resolveCallerTxInstant; 0 = the plain DeleteNode, stamped by the clock).
+type pendingNodeDelete struct {
+	id types.NodeID
+	at types.Instant
+}
+
+// pendingNodeCallerTx returns the lowest caller transaction instant among the
+// queued node updates and deletes (0 = none) — the node twin of
+// pendingPastDated, reported by the applier after its store writes.
+func pendingNodeCallerTx(updates []pendingNodeUpdate, deletes []pendingNodeDelete) types.Instant {
+	var t types.Instant
+	for i := range updates {
+		t = minPastDated(t, updates[i].update.temporal.txAt)
+	}
+	for i := range deletes {
+		t = minPastDated(t, deletes[i].at)
+	}
+	return t
 }
 
 type pendingRelUpdate struct {

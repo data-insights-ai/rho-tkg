@@ -12,7 +12,8 @@ import (
 // UpdateWithTx). The queue door gates the instant (value, then
 // Config.AllowTxBackfill) and writes nothing; the applier (Batch.Execute — and
 // so the strong-mode ingest applier — or the concurrent ingest apply) runs a
-// pre-flight over every caller-instant op BEFORE any write of the unit and
+// pre-flight (precheckCallerTxOps, batch_callertx_preflight.go) over every
+// caller-instant op BEFORE any write of the unit and
 // refuses the WHOLE unit when one op would be refused, then applies each op
 // through the same seam the standalone doors use (deleteRelationshipInternal
 // with at, updateRelationshipPreparedInternal with updateTemporal.txAt), which
@@ -152,20 +153,6 @@ func (b *BatchBuilder) takeIngestGroup() *ingestGroup {
 	return g
 }
 
-// hasRelCallerTx reports whether the queued relationship ops carry a caller
-// transaction instant.
-func hasRelCallerTx(relUpdates []pendingRelUpdate, relTxDeletes []pendingRelTxDelete) bool {
-	if len(relTxDeletes) > 0 {
-		return true
-	}
-	for i := range relUpdates {
-		if relUpdates[i].update.temporal.txAt != 0 {
-			return true
-		}
-	}
-	return false
-}
-
 // relCallerPastDated is the lowest caller instant among the queued
 // relationship ops (0 = none), reported via notePastDatedWrite after the
 // unit's store writes.
@@ -178,76 +165,4 @@ func relCallerPastDated(relUpdates []pendingRelUpdate, relTxDeletes []pendingRel
 		t = minPastDated(t, relTxDeletes[i].at)
 	}
 	return t
-}
-
-// precheckRelCallerTxOps is the pre-flight of a unit (a Batch, an ingest
-// group) carrying caller-instant relationship ops. It runs before any write
-// of the unit and returns the first refusal as a BatchError naming the op, or
-// nil. Checks, per caller-instant op: it is the only op of the unit on its
-// relationship (creates, plain and caller-instant updates/deletes, cascades
-// count), the relationship exists, and the seam's own refusals
-// (checkRelCallerUpdate / checkRelCallerDelete) pass — under the
-// relationship's entity lock, as the seam runs them.
-//
-// Under Batch.Execute's exclusive lock nothing can land between this check and
-// the write, so a unit that passes is applied with every stamp at its t. The
-// concurrent ingest mode runs under the shared lock: a standalone write racing
-// the group can still make the seam refuse one op afterwards (that op alone
-// fails, as every concurrent-mode op is atomic per entity only).
-func (c *Core) precheckRelCallerTxOps(rels []pendingRel, relUpdates []pendingRelUpdate, relDeletes []types.RelID, relCascades []pendingRelCascade, relTxDeletes []pendingRelTxDelete) error {
-	if !hasRelCallerTx(relUpdates, relTxDeletes) {
-		return nil
-	}
-	touched := make(map[types.RelID]int, len(rels)+len(relUpdates)+len(relDeletes)+len(relCascades)+len(relTxDeletes))
-	for i := range rels {
-		touched[rels[i].rel.ID()]++
-	}
-	for i := range relUpdates {
-		touched[relUpdates[i].id]++
-	}
-	for _, id := range relDeletes {
-		touched[id]++
-	}
-	for i := range relCascades {
-		touched[relCascades[i].id]++
-	}
-	for i := range relTxDeletes {
-		touched[relTxDeletes[i].id]++
-	}
-	check := func(op string, id types.RelID, at types.Instant, run func(current *types.Relationship) error) error {
-		refuse := func(err error) error { return BatchError{Op: op, ID: types.EntityID(id), Err: err} }
-		if touched[id] > 1 {
-			return refuse(fmt.Errorf("%w: t %d: relationship %d carries another operation in this unit, whose apply order is not the queue order; put successive writes on one relationship in successive units", ErrTxOrder, at, id))
-		}
-		c.entityLocks.LockEntity(id.SnowflakeID())
-		defer c.entityLocks.UnlockEntity(id.SnowflakeID())
-		current, err := c.getCurrentRelationship(id)
-		if err != nil {
-			return refuse(err)
-		}
-		if err := run(current); err != nil {
-			return refuse(err)
-		}
-		return nil
-	}
-	for i := range relUpdates {
-		pu := &relUpdates[i]
-		if pu.update.temporal.txAt == 0 {
-			continue
-		}
-		if err := check("UpdateRelationshipWithTx", pu.id, pu.update.temporal.txAt, func(current *types.Relationship) error {
-			return c.checkRelCallerUpdate(pu.id, current, pu.update.provenance, pu.update.temporal, pu.update.properties)
-		}); err != nil {
-			return err
-		}
-	}
-	for i := range relTxDeletes {
-		d := relTxDeletes[i]
-		if err := check("DeleteRelationshipWithTx", d.id, d.at, func(current *types.Relationship) error {
-			return c.checkRelCallerDelete(d.id, current, d.at)
-		}); err != nil {
-			return err
-		}
-	}
-	return nil
 }

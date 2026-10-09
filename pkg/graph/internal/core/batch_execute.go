@@ -52,9 +52,9 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		return nil, ErrGraphClosed
 	}
 	b.done = true
-	// Caller-instant relationship ops: refuse the whole batch, before any
-	// write, when one of them would be refused (batch_rel_withtx.go).
-	if err := b.g.precheckRelCallerTxOps(b.rels, b.relUpdates, b.relDeletes, b.relCascades, b.relTxDeletes); err != nil {
+	// Caller-instant node and relationship ops: refuse the whole batch, before
+	// any write, when one of them would be refused (batch_callertx_preflight.go).
+	if err := b.g.precheckCallerTxOps(b.callerTxUnit()); err != nil {
 		b.g.mu.Unlock()
 		b.g.txMu.Unlock()
 		b.mu.Unlock()
@@ -64,6 +64,9 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	// past-dated write after this Execute's store writes (deferred — it runs
 	// after every write and every cleanup path below).
 	defer b.g.notePastDatedWrite(pendingPastDated(b.nodes, b.rels))
+	// Likewise the caller instants of the queued node updates/deletes
+	// (UpdateNodeWithTx, DeleteNodeWithTx).
+	defer b.g.notePastDatedWrite(pendingNodeCallerTx(b.nodeUpdates, b.nodeDeletes))
 	defer b.g.notePastDatedWrite(relCallerPastDated(b.relUpdates, b.relTxDeletes))
 
 	// Buffer events during batch execution; dispatch after c.mu.Unlock.
@@ -516,7 +519,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			err     error
 		)
 		if pu.update.originalLen == 0 {
-			_, mutated, err = b.g.updateNodeInternal(context.Background(), pu.id, pu.update.properties)
+			_, mutated, err = b.g.updateNodeAtInternal(context.Background(), pu.id, pu.update.properties, pu.update.temporal.txAt)
 		} else {
 			_, mutated, err = b.g.updateNodePreparedInternal(context.Background(), pu.id, pu.update.provenance, pu.update.temporal, pu.update.properties)
 		}
@@ -617,8 +620,9 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	}
 
 	// 6. Delete nodes (internal — batch already holds c.mu.Lock).
-	for _, id := range b.nodeDeletes {
-		cascadeRelIDs, err := b.g.deleteNodeInternal(context.Background(), id)
+	for _, pd := range b.nodeDeletes {
+		id := pd.id
+		cascadeRelIDs, err := b.g.deleteNodeInternal(context.Background(), id, pd.at)
 		if err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{

@@ -472,7 +472,83 @@ func (b *BatchBuilder) DeleteNode(id types.NodeID) error {
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return err
 	}
-	b.nodeDeletes = append(b.nodeDeletes, id)
+	b.nodeDeletes = append(b.nodeDeletes, pendingNodeDelete{id: id})
+	return nil
+}
+
+// DeleteNodeWithTx queues a node delete like DeleteNode whose cascade is
+// stamped with the caller's transaction instant txTo (see
+// Nodes().DeleteWithTx). txTo is gated at queue time — a positive instant not
+// in the future (ErrInvalidTxFrom), then Config.AllowTxBackfill
+// (ErrTxBackfillDisabled); the order and close rules (ErrTxOrder) run at
+// Execute in the whole-unit pre-flight (precheckCallerTxOps): one refused
+// caller-instant op refuses the whole batch with nothing written, and the
+// delete must be the only op of the batch on the node and on every
+// relationship it cascades.
+func (b *BatchBuilder) DeleteNodeWithTx(id types.NodeID, txTo types.Instant) error {
+	if err := b.lockOpen(); err != nil {
+		return err
+	}
+	defer b.mu.Unlock()
+
+	if err := b.g.checkOpen(); err != nil {
+		return err
+	}
+	rtok := b.g.mu.RLockShard(uint(b.genLane))
+	defer b.g.mu.RUnlockShard(rtok)
+	if b.g.closed.Load() {
+		return ErrGraphClosed
+	}
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return err
+	}
+	at, err := b.g.resolveCallerTxInstant(txTo)
+	if err != nil {
+		return err
+	}
+	b.nodeDeletes = append(b.nodeDeletes, pendingNodeDelete{id: id, at: at})
+	return nil
+}
+
+// UpdateNodeWithTx queues a node update like UpdateNode stamped with the
+// caller's transaction instant txFrom (see Nodes().UpdateWithTx). txFrom is
+// gated at queue time (ErrInvalidTxFrom, then ErrTxBackfillDisabled); an
+// empty update is refused now (ErrTxOrder). The order rule and an update that
+// changes nothing are decided in Execute's whole-unit pre-flight
+// (precheckCallerTxOps): one refused caller-instant op refuses the whole batch
+// with nothing written, and the update must be the only op of the batch on
+// the node.
+func (b *BatchBuilder) UpdateNodeWithTx(id types.NodeID, updates map[string]any, txFrom types.Instant) error {
+	if err := b.lockOpen(); err != nil {
+		return err
+	}
+	defer b.mu.Unlock()
+
+	if err := b.g.checkOpen(); err != nil {
+		return err
+	}
+	rtok := b.g.mu.RLockShard(uint(b.genLane))
+	defer b.g.mu.RUnlockShard(rtok)
+	if b.g.closed.Load() {
+		return ErrGraphClosed
+	}
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return err
+	}
+	at, err := b.g.resolveCallerTxInstant(txFrom)
+	if err != nil {
+		return err
+	}
+	if len(updates) == 0 {
+		// As UpdateRelationshipWithTx: no version to stamp at t.
+		return fmt.Errorf("%w: an update at t %d with no changes records nothing", ErrTxOrder, at)
+	}
+	queuedUpdate, err := b.g.prepareQueuedUpdateProperties(updates, "batch update node")
+	if err != nil {
+		return err
+	}
+	queuedUpdate.temporal.txAt = at
+	b.nodeUpdates = append(b.nodeUpdates, pendingNodeUpdate{id: id, update: queuedUpdate})
 	return nil
 }
 

@@ -104,7 +104,7 @@ type ingestGroup struct {
 	rels         []pendingRel
 	nodeUpdates  []pendingNodeUpdate
 	relUpdates   []pendingRelUpdate
-	nodeDeletes  []types.NodeID
+	nodeDeletes  []pendingNodeDelete
 	relDeletes   []types.RelID
 	relTxDeletes []pendingRelTxDelete
 	nodeCascades []pendingNodeCascade
@@ -229,13 +229,13 @@ func (a *ingestApplier) drainRemaining() {
 
 // applyCommitGroup applies the drained groups in seq order. Groups are
 // coalesced into one Batch.Execute (applyCommitSegment), except a group that
-// carries a caller-instant relationship op (batch_rel_withtx.go): it is
+// carries a caller-instant node or relationship op (batch_callertx_preflight.go): it is
 // applied in a unit of its own, so its whole-unit pre-flight refusal fails
 // that group only and never a sibling producer's group.
 func (a *ingestApplier) applyCommitGroup(batch []*ingestGroup) {
 	start := 0
 	for i, g := range batch {
-		if !hasRelCallerTx(g.relUpdates, g.relTxDeletes) {
+		if !g.callerTxUnit().hasCallerTx() {
 			continue
 		}
 		if i > start {
@@ -290,8 +290,8 @@ func (a *ingestApplier) applyCommitSegment(batch []*ingestGroup) {
 		for _, pu := range g.relUpdates {
 			idToGroup[types.EntityID(pu.id)] = g
 		}
-		for _, id := range g.nodeDeletes {
-			idToGroup[types.EntityID(id)] = g
+		for _, pd := range g.nodeDeletes {
+			idToGroup[types.EntityID(pd.id)] = g
 		}
 		for _, id := range g.relDeletes {
 			idToGroup[types.EntityID(id)] = g
@@ -851,6 +851,29 @@ func (s *Session) DeleteNode(id types.NodeID) error {
 	}
 	defer s.mu.Unlock()
 	return s.b.DeleteNode(id)
+}
+
+// DeleteNodeWithTx accumulates a cascade node delete stamped with the caller's
+// transaction instant txTo (see BatchBuilder.DeleteNodeWithTx: gated now, the
+// order and close rules in the apply unit's pre-flight). A group carrying a
+// caller-instant op is applied on its own, never coalesced with sibling
+// groups, so its refusal fails that group only.
+func (s *Session) DeleteNodeWithTx(id types.NodeID, txTo types.Instant) error {
+	if err := s.lockOpen(); err != nil {
+		return err
+	}
+	defer s.mu.Unlock()
+	return s.b.DeleteNodeWithTx(id, txTo)
+}
+
+// UpdateNodeWithTx accumulates a node update stamped with the caller's
+// transaction instant txFrom (see BatchBuilder.UpdateNodeWithTx).
+func (s *Session) UpdateNodeWithTx(id types.NodeID, updates map[string]any, txFrom types.Instant) error {
+	if err := s.lockOpen(); err != nil {
+		return err
+	}
+	defer s.mu.Unlock()
+	return s.b.UpdateNodeWithTx(id, updates, txFrom)
 }
 
 // DeleteRelationship accumulates a relationship delete.

@@ -71,13 +71,15 @@ func (c *Core) applyIngestGroupConcurrent(g *ingestGroup, lane uint16) error {
 	// Prepare gated any backfilled TxFrom without writing; report the
 	// past-dated write after the group's store writes below (deferred).
 	defer c.notePastDatedWrite(pendingPastDated(g.nodes, g.rels))
+	defer c.notePastDatedWrite(pendingNodeCallerTx(g.nodeUpdates, g.nodeDeletes))
 	defer c.notePastDatedWrite(relCallerPastDated(g.relUpdates, g.relTxDeletes))
 
 	var refused error
 	ep, closeErr := c.runUnderRLockShard(uint(lane), func() {
-		// Caller-instant relationship ops: refuse the whole group, before any
-		// write, when one of them would be refused (batch_rel_withtx.go).
-		if refused = c.precheckRelCallerTxOps(g.rels, g.relUpdates, g.relDeletes, g.relCascades, g.relTxDeletes); refused != nil {
+		// Caller-instant node and relationship ops: refuse the whole group,
+		// before any write, when one of them would be refused
+		// (batch_callertx_preflight.go).
+		if refused = c.precheckCallerTxOps(g.callerTxUnit()); refused != nil {
 			return
 		}
 		unavailable := c.applyConcurrentNodeCreates(g.nodes, fail, emit)
@@ -390,7 +392,7 @@ func (c *Core) applyConcurrentUpdatesAndDeletes(
 			err     error
 		)
 		if pu.update.originalLen == 0 {
-			_, mutated, err = c.updateNodeInternal(ctx, pu.id, pu.update.properties)
+			_, mutated, err = c.updateNodeAtInternal(ctx, pu.id, pu.update.properties, pu.update.temporal.txAt)
 		} else {
 			_, mutated, err = c.updateNodePreparedInternal(ctx, pu.id, pu.update.provenance, pu.update.temporal, pu.update.properties)
 		}
@@ -448,8 +450,9 @@ func (c *Core) applyConcurrentUpdatesAndDeletes(
 		}
 	}
 
-	for _, id := range g.nodeDeletes {
-		cascadeRelIDs, err := c.deleteNodeInternal(ctx, id)
+	for _, pd := range g.nodeDeletes {
+		id := pd.id
+		cascadeRelIDs, err := c.deleteNodeInternal(ctx, id, pd.at)
 		if err != nil {
 			fail("DeleteNode", types.EntityID(id), err)
 		} else {
