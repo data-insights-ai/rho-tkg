@@ -189,20 +189,19 @@ func runRelPruneEquivalence(t *testing.T, newStore func(t *testing.T) storepkg.M
 	}
 }
 
-// TestRelTypeTemporalCandidatePruneTieredDeclines pins the rel-side mirror of
-// TestTemporalCandidatePruneTieredDeclines: the tiered store does not implement
-// RelTypeTemporalCandidateCapability, so core wires
-// c.relTypeTemporalCandidates = nil and every rel-type temporal scan takes the
-// full-history fold. A CreateRelTemporal call against tiered must therefore fail
-// closed with ErrCapabilityNotSupported.
-func TestRelTypeTemporalCandidatePruneTieredDeclines(t *testing.T) {
+// TestRelTypeTemporalCandidatePruneTieredWired pins backlog 10: the tiered
+// store implements RelTypeTemporalCandidateCapability (per-shard envelope
+// indexes, tiered/shard_index_fanout.go), so core wires the prune and
+// CreateRelTemporal succeeds. The answers are pinned against badger in
+// tiered_indexes_parity_test.go.
+func TestRelTypeTemporalCandidatePruneTieredWired(t *testing.T) {
 	t.Parallel()
 	g, _ := newTestTieredGraph(t)
 
-	if g.relTypeTemporalCandidates != nil {
-		t.Fatal("tiered store must DECLINE RelTypeTemporalCandidateCapability (got non-nil)")
+	if g.relTypeTemporalCandidates == nil {
+		t.Fatal("tiered store must wire RelTypeTemporalCandidateCapability (got nil)")
 	}
-	if err := g.Index.CreateRelTemporal("Knows"); err == nil {
-		t.Fatal("CreateRelTemporal on tiered store: want ErrCapabilityNotSupported, got nil")
+	if err := g.Index.CreateRelTemporal("Knows"); err != nil {
+		t.Fatalf("CreateRelTemporal on tiered store: %v", err)
 	}
 }

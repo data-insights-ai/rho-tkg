@@ -5,16 +5,13 @@ import (
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 )
 
-// Query-planner index-existence/config introspection (BACKLOG 21b) for the
-// three index kinds the tiered store actually supports (property indexes on
-// reference labels, temporal indexes, vector indexes). Relationship property
-// indexes and composite indexes are NOT implemented here: tiered declines
-// both entirely (see RelPropertyIndexCapability / CompositeIndexCapability
-// doc comments), so it correctly does not satisfy
-// RelPropertyIndexIntrospectionCapability or
-// CompositeIndexIntrospectionCapability — the core-level type assertion
-// fails and callers get store.ErrCapabilityNotSupported, consistent with
-// Create/DropRelPropertyIndex's own decline.
+// Query-planner index-existence/config introspection (BACKLOG 21b) for
+// property indexes on reference labels, temporal indexes and vector indexes.
+// Composite introspection lives with the composite fan-out
+// (shard_index_fanout.go). Relationship property indexes are NOT implemented:
+// tiered declines them (see RelPropertyIndexCapability), so it does not
+// satisfy RelPropertyIndexIntrospectionCapability and callers get
+// store.ErrCapabilityNotSupported, consistent with Create/DropRelPropertyIndex.
 
 var (
 	_ storecontract.PropertyIndexIntrospectionCapability = (*Store)(nil)

@@ -339,6 +339,11 @@ type Store struct {
 	tempIdxLabels []uint16
 	hfIdxBuckets  map[uint16]time.Duration
 
+	// shardIdxMu serialises the per-shard index fan-outs whose definitions the
+	// reference shard anchors (relationship temporal, composite —
+	// shard_index_fanout.go). Taken after ts.mu.
+	shardIdxMu sync.Mutex
+
 	// Vector indexes — in-memory brute-force k-NN index spanning all shards.
 	// In-memory; CreateVectorIndex rebuilds entries from current node properties.
 	vectorIdxMu   sync.RWMutex
@@ -781,6 +786,20 @@ func New(cfg Config) (*Store, error) {
 			}
 			_ = refStore.Close()
 			return nil, fmt.Errorf("graph: load vector indexes: %w", err)
+		}
+		// Relationship temporal and composite indexes: every open shard
+		// carries exactly the reference shard's definitions (an interrupted
+		// fan-out DDL is repaired here).
+		for _, shard := range ts.openTemporalIndexShardStores() {
+			if err := ts.syncAnchoredIndexes(shard); err != nil {
+				for _, es := range ts.eventShards {
+					if es.store != nil {
+						_ = es.store.Close()
+					}
+				}
+				_ = refStore.Close()
+				return nil, fmt.Errorf("graph: sync shard indexes: %w", err)
+			}
 		}
 	}
 

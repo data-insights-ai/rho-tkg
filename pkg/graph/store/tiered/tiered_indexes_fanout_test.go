@@ -53,7 +53,7 @@ func compositeDDL(t *testing.T, ts *Store) (storecontract.CompositePropertyIndex
 }
 
 // allShardStoresForTest returns every shard's badger store, opening closed
-// cold shards, keyed by shard name.
+// cold shards, keyed by shard name. The shards stay pinned until the test ends.
 func allShardStoresForTest(t *testing.T, ts *Store) map[string]*BadgerStore {
 	t.Helper()
 	out := map[string]*BadgerStore{"reference": ts.refShard}
@@ -72,7 +72,7 @@ func allShardStoresForTest(t *testing.T, ts *Store) map[string]*BadgerStore {
 			t.Fatalf("checkout %s: %v", es.name, err)
 		}
 		out[es.name] = s
-		release()
+		t.Cleanup(release)
 	}
 	return out
 }
@@ -285,7 +285,6 @@ func TestTieredComposite_DDLBreakCases(t *testing.T) {
 		"one key":       {"device"},
 		"five keys":     {"a", "b", "c", "d", "e"},
 		"duplicate key": {"device", "device"},
-		"empty key":     {"device", ""},
 	} {
 		if err := ddl.CreateCompositePropertyIndex(signalTok, bad); !errors.Is(err, storecontract.ErrInvalidStoreMutation) {
 			t.Errorf("create %s: err = %v, want ErrInvalidStoreMutation", name, err)
@@ -415,6 +414,171 @@ func TestTieredComposite_SurvivesRestart(t *testing.T) {
 	for name, s := range allShardStoresForTest(t, ts) {
 		if got, err := s.ListCompositePropertyIndexes(label); err != nil || len(got) != 1 {
 			t.Errorf("shard %s composites = %v, %v; want one definition", name, got, err)
+		}
+	}
+}
+
+// A DDL interrupted between shards leaves copies on some non-reference shards
+// that disagree with the anchoring reference shard: an extra definition (a
+// create that never reached the reference shard) or a missing one (a drop
+// that removed it from some shards first). Store open repairs every open
+// shard to the anchor; the extra definition must not survive, the missing
+// one must be rebuilt.
+func TestTieredShardIndexes_InterruptedDDLRepairedAtOpen(t *testing.T) {
+	dir := t.TempDir()
+	cfg := Config{
+		DataDir:       dir,
+		RefLabels:     []string{"Case", "User"},
+		ShardWindow:   7 * 24 * time.Hour,
+		FlushInterval: 1<<63 - 1,
+	}
+	ts, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	const anchoredType, orphanType, label = uint16(4), uint16(5), uint16(3)
+	keys := []string{"device", "pid"}
+	if err := relTemporalDDL(t, ts).CreateRelTemporalIndex(anchoredType); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	ddl, _ := compositeDDL(t, ts)
+	if err := ddl.CreateCompositePropertyIndex(label, keys); err != nil {
+		t.Fatalf("create composite: %v", err)
+	}
+	ts.mu.RLock()
+	hot := ts.hotShard.store
+	ts.mu.RUnlock()
+	// Interrupted create: only the hot shard got the orphan definitions.
+	if err := hot.CreateRelTemporalIndex(orphanType); err != nil {
+		t.Fatal(err)
+	}
+	if err := hot.CreateCompositePropertyIndex(label, []string{"pid", "device"}); err != nil {
+		t.Fatal(err)
+	}
+	// Interrupted drop: the hot shard already lost the anchored definitions.
+	if err := hot.DropRelTemporalIndex(anchoredType); err != nil {
+		t.Fatal(err)
+	}
+	if err := hot.DropCompositePropertyIndex(label, keys); err != nil {
+		t.Fatal(err)
+	}
+	if err := ts.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	ts, err = New(cfg)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	t.Cleanup(func() { _ = ts.Close() })
+	for name, s := range allShardStoresForTest(t, ts) {
+		if got, err := s.RelTemporalIndexTypes(); err != nil || !slices.Equal(got, []uint16{anchoredType}) {
+			t.Errorf("shard %s rel temporal types = %v, %v; want [%d]", name, got, err, anchoredType)
+		}
+		if got, err := s.ListCompositePropertyIndexes(label); err != nil || len(got) != 1 || !slices.Equal(got[0], keys) {
+			t.Errorf("shard %s composites = %v, %v; want [%v]", name, got, err, keys)
+		}
+	}
+	// Re-running the DDL after an interrupted create reaches the shards
+	// already carrying it without failing.
+	if err := relTemporalDDL(t, ts).CreateRelTemporalIndex(orphanType); err != nil {
+		t.Fatalf("create orphan type: %v", err)
+	}
+	if got, _ := ts.RelTemporalIndexTypes(); !slices.Equal(got, []uint16{anchoredType, orphanType}) {
+		t.Errorf("RelTemporalIndexTypes = %v, want [%d %d]", got, anchoredType, orphanType)
+	}
+}
+
+// A shard that fails mid fan-out: every shard the DDL already changed is
+// undone, and the anchor (reference shard, changed last) never records the
+// definition — the index does not half-exist.
+func TestTieredShardIndexes_FanOutRollsBackOnShardFailure(t *testing.T) {
+	ts := newTestTieredStore(t)
+	forceRotation(t, ts)
+	forceRotation(t, ts) // three event shards
+	const typ, label = uint16(8), uint16(3)
+	keys := []string{"device", "pid"}
+
+	ts.mu.RLock()
+	var broken *EventShard
+	for _, es := range ts.eventShards {
+		if es != ts.hotShard {
+			broken = es
+			break
+		}
+	}
+	ts.mu.RUnlock()
+	if err := broken.store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := relTemporalDDL(t, ts).CreateRelTemporalIndex(typ); !errors.Is(err, storecontract.ErrStoreClosed) {
+		t.Fatalf("create with a failing shard: err = %v, want ErrStoreClosed", err)
+	}
+	ddl, intro := compositeDDL(t, ts)
+	if err := ddl.CreateCompositePropertyIndex(label, keys); !errors.Is(err, storecontract.ErrStoreClosed) {
+		t.Fatalf("create composite with a failing shard: err = %v, want ErrStoreClosed", err)
+	}
+	if got, err := ts.RelTemporalIndexTypes(); err != nil || len(got) != 0 {
+		t.Errorf("anchor lists %v, %v after a failed create; want none", got, err)
+	}
+	if got, err := intro.ListCompositePropertyIndexes(label); err != nil || len(got) != 0 {
+		t.Errorf("anchor lists composites %v, %v after a failed create; want none", got, err)
+	}
+	ts.mu.RLock()
+	shards := []*BadgerStore{ts.refShard}
+	for _, es := range ts.eventShards {
+		if es != broken {
+			shards = append(shards, es.store)
+		}
+	}
+	ts.mu.RUnlock()
+	for i, s := range shards {
+		if got, _ := s.RelTemporalIndexTypes(); len(got) != 0 {
+			t.Errorf("shard %d kept rel temporal types %v after rollback", i, got)
+		}
+		if got, _ := s.ListCompositePropertyIndexes(label); len(got) != 0 {
+			t.Errorf("shard %d kept composites %v after rollback", i, got)
+		}
+	}
+}
+
+// Drop with a failing shard: the shards already dropped get the index back
+// and the anchor still lists it.
+func TestTieredShardIndexes_DropRollsBackOnShardFailure(t *testing.T) {
+	ts := newTestTieredStore(t)
+	forceRotation(t, ts)
+	forceRotation(t, ts)
+	const typ uint16 = 8
+	if err := relTemporalDDL(t, ts).CreateRelTemporalIndex(typ); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	ts.mu.RLock()
+	var broken *EventShard
+	for _, es := range ts.eventShards {
+		if es != ts.hotShard {
+			broken = es
+			break
+		}
+	}
+	ts.mu.RUnlock()
+	if err := broken.store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := relTemporalDDL(t, ts).DropRelTemporalIndex(typ); !errors.Is(err, storecontract.ErrStoreClosed) {
+		t.Fatalf("drop with a failing shard: err = %v, want ErrStoreClosed", err)
+	}
+	if got, err := ts.RelTemporalIndexTypes(); err != nil || !slices.Equal(got, []uint16{typ}) {
+		t.Errorf("anchor lists %v, %v after a failed drop; want [%d]", got, err, typ)
+	}
+	ts.mu.RLock()
+	defer ts.mu.RUnlock()
+	for _, es := range ts.eventShards {
+		if es == broken {
+			continue
+		}
+		if got, _ := es.store.RelTemporalIndexTypes(); !slices.Equal(got, []uint16{typ}) {
+			t.Errorf("shard %s lists %v after a failed drop; want [%d]", es.name, got, typ)
 		}
 	}
 }

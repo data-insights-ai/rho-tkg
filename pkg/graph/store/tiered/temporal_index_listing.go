@@ -20,12 +20,3 @@ func (ts *Store) TemporalIndexLabels() ([]uint16, error) {
 	slices.Sort(out)
 	return out, nil
 }
-
-// RelTemporalIndexTypes lists none: the tiered store has no
-// relationship-type temporal indexes (CreateRelTemporalIndex declines).
-func (ts *Store) RelTemporalIndexTypes() ([]uint16, error) {
-	if err := ts.checkOpen(); err != nil {
-		return nil, err
-	}
-	return nil, nil
-}

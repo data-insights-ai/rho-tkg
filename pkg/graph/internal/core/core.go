@@ -108,7 +108,7 @@ type Core struct {
 	// Sound for any store: an id the index does not cover is never pruned.
 	temporalCandidates storepkg.TemporalCandidateCapability
 	// relTypeTemporalCandidates — BACKLOG 21c, the rel-type-keyed mirror of
-	// temporalCandidates. nil = store declines (tiered, sharded today), so the
+	// temporalCandidates. nil = store declines (no rel-type temporal index), so the
 	// rel-by-type temporal query resolves every candidate (correct,
 	// unaccelerated). Same sound-superset contract.
 	relTypeTemporalCandidates storepkg.RelTypeTemporalCandidateCapability

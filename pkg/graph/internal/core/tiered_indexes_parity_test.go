@@ -509,3 +509,142 @@ func TestTieredComposite_ExactSetsAcrossShardsUpdateDeleteCold(t *testing.T) {
 		t.Errorf("after drop lookup = %v, want [dupA dupB]", got)
 	}
 }
+
+// ArchiveNode moves a reference relationship's row to the archive and leaves
+// its history on the reference shard; RestoreNode moves the row back. After
+// that round trip the reference shard's envelope covers only the restored
+// current row, so it must not prune: the moved row's past version still
+// answers at t=1500 (two-phase), exactly as on badger.
+func TestTieredRelTemporalPrune_ArchiveRestoreKeepsHistory(t *testing.T) {
+	bc, bs := newBadgerCoreForIndexes(t)
+	tc, ts := newDiskTieredCoreForIndexes(t)
+	bw, tw := newRelTemporalWorld(bc, bs), newRelTemporalWorld(tc, ts)
+	for _, w := range []*relTemporalWorld{bw, tw} {
+		w.node(t, "c1", "Case")
+		w.node(t, "c2", "Case")
+		w.rel(t, "refMoved", "c1", "c2", 1000, 0)
+		w.rel(t, "refClosed", "c1", "c2", 1000, 2000)
+		if err := w.c.Index.CreateRelTemporal("HOP"); err != nil {
+			t.Fatalf("CreateRelTemporal: %v", err)
+		}
+		if _, err := w.c.Temporal.SetRelVersionInterval(context.Background(), w.ids["refMoved"], 5000, 0, nil); err != nil {
+			t.Fatalf("move interval: %v", err)
+		}
+	}
+	if err := ts.ArchiveNode(tw.nodes["c1"].ID()); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+	if err := ts.RestoreNode(tw.nodes["c1"].ID()); err != nil {
+		t.Fatalf("RestoreNode: %v", err)
+	}
+	if b, _ := bw.c.Temporal.RelsByTypeAt("HOP", 1500); !slices.Contains(bw.relNames(b), "refMoved") {
+		t.Fatalf("oracle: badger RelsByTypeAt(1500) = %v, want refMoved's past version", bw.relNames(b))
+	}
+	for _, at := range []types.Instant{1500, 2500, 6000} {
+		b, err := bw.c.Temporal.RelsByTypeAt("HOP", at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tt, err := tw.c.Temporal.RelsByTypeAt("HOP", at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bn, tn := bw.relNames(b), tw.relNames(tt); !slices.Equal(bn, tn) {
+			t.Errorf("RelsByTypeAt(%d): tiered %v, badger %v", at, tn, bn)
+		}
+		kept, ok := tw.prune(t, storepkg.QueryOpts{ValidAt: at})
+		if !ok || !slices.Contains(kept, "refMoved") {
+			t.Errorf("prune at %d = %v (ok=%v), must keep refMoved", at, kept, ok)
+		}
+	}
+}
+
+// Composite lookups follow the shard walk of the single-key door: the
+// archive answers at DepthAll only, warm event shards drop out at DepthHot,
+// and Limit/After page the merged ID order.
+func TestTieredComposite_ArchiveDepthAndPaging(t *testing.T) {
+	tc, ts := newDiskTieredCoreForIndexes(t)
+	ctx := context.Background()
+	names := map[types.NodeID]string{}
+	add := func(name, label string) *types.Node {
+		t.Helper()
+		n, err := tc.Nodes.Add(ctx, []string{label}, map[string]any{"name": name, "device": "d", "pid": int64(1)})
+		if err != nil {
+			t.Fatalf("add %s: %v", name, err)
+		}
+		names[n.ID()] = name
+		return n
+	}
+	keys := []string{"device", "pid"}
+	for _, label := range []string{"Case", "Signal"} {
+		if err := tc.Index.CreateComposite(label, keys); err != nil {
+			t.Fatalf("CreateComposite %s: %v", label, err)
+		}
+	}
+	add("caseLive", "Case")
+	archived := add("caseArchived", "Case")
+	add("sigWarm", "Signal")
+	if err := ts.ArchiveNode(archived.ID()); err != nil {
+		t.Fatalf("ArchiveNode: %v", err)
+	}
+	time.Sleep(2 * time.Millisecond)
+	if err := ts.RotateHotShard(); err != nil {
+		t.Fatalf("rotate: %v", err)
+	}
+	time.Sleep(2 * time.Millisecond)
+	add("sigHot", "Signal")
+
+	lookup := func(label string, opts storepkg.QueryOpts) []string {
+		t.Helper()
+		nodes, err := tc.Nodes.ByLabelAndProperties(label, map[string]any{"device": "d", "pid": int64(1)}, opts)
+		if err != nil {
+			t.Fatalf("ByLabelAndProperties(%s, %+v): %v", label, opts, err)
+		}
+		out := make([]string, 0, len(nodes))
+		for _, n := range nodes {
+			out = append(out, names[n.ID()])
+		}
+		return out
+	}
+	if got := lookup("Case", storepkg.QueryOpts{}); !slices.Equal(got, []string{"caseLive", "caseArchived"}) {
+		t.Errorf("Case DepthAll = %v, want [caseLive caseArchived]", got)
+	}
+	if got := lookup("Case", storepkg.QueryOpts{Depth: storepkg.DepthHot}); !slices.Equal(got, []string{"caseLive"}) {
+		t.Errorf("Case DepthHot = %v, want [caseLive] (archive answers at DepthAll only)", got)
+	}
+	if got := lookup("Signal", storepkg.QueryOpts{}); !slices.Equal(got, []string{"sigWarm", "sigHot"}) {
+		t.Errorf("Signal DepthAll = %v, want [sigWarm sigHot]", got)
+	}
+	if got := lookup("Signal", storepkg.QueryOpts{Depth: storepkg.DepthHot}); !slices.Equal(got, []string{"sigHot"}) {
+		t.Errorf("Signal DepthHot = %v, want [sigHot]", got)
+	}
+	first := lookup("Signal", storepkg.QueryOpts{Limit: 1})
+	if !slices.Equal(first, []string{"sigWarm"}) {
+		t.Fatalf("Signal Limit 1 = %v, want [sigWarm]", first)
+	}
+	var warmID types.NodeID
+	for id, n := range names {
+		if n == "sigWarm" {
+			warmID = id
+		}
+	}
+	if got := lookup("Signal", storepkg.QueryOpts{Limit: 1, After: types.EntityID(warmID)}); !slices.Equal(got, []string{"sigHot"}) {
+		t.Errorf("Signal page 2 = %v, want [sigHot]", got)
+	}
+
+	// Store-level break cases on the tiered door itself.
+	tok, _ := tc.labels.Lookup("Signal")
+	values := map[string]any{"device": "d", "pid": int64(1)}
+	if _, err := ts.NodesByLabelAndProperties(0, values, storepkg.QueryOpts{}); !errors.Is(err, storepkg.ErrInvalidStoreMutation) {
+		t.Errorf("label 0: err = %v, want ErrInvalidStoreMutation", err)
+	}
+	if _, err := ts.NodesByLabelAndProperties(tok, values, storepkg.QueryOpts{Limit: -1}); !errors.Is(err, storepkg.ErrInvalidQueryLimit) {
+		t.Errorf("negative limit: err = %v, want ErrInvalidQueryLimit", err)
+	}
+	if _, err := ts.NodesByLabelAndProperties(tok, values, storepkg.QueryOpts{Depth: 99}); !errors.Is(err, storepkg.ErrInvalidShardDepth) {
+		t.Errorf("unknown depth: err = %v, want ErrInvalidShardDepth", err)
+	}
+	if _, err := ts.NodesByLabelAndProperties(tok, map[string]any{"device": "d"}, storepkg.QueryOpts{}); err == nil {
+		t.Error("one-key values: want an error, got nil")
+	}
+}
