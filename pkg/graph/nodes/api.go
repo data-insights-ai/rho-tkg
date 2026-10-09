@@ -71,6 +71,7 @@ type Ops interface {
 
 	CloseVersion(ctx context.Context, id types.NodeID, t types.Instant) error
 	History(id types.NodeID) ([]*types.Node, error)
+	HasHistory(id types.NodeID) (bool, error)
 	VersionAfter(id types.NodeID, version uint32) (*types.Node, error)
 	VersionBefore(id types.NodeID, version uint32) (*types.Node, error)
 
@@ -709,6 +710,21 @@ func (a *API) History(id types.NodeID) ([]*types.Node, error) {
 		return nil, err
 	}
 	return ops.History(id)
+}
+
+// HasHistory reports whether the node has at least one history row (it was
+// updated, cascaded, closed or deleted and the store still holds that history),
+// without reading the rows: it equals len(History(id)) > 0 at every moment.
+// False for a node with only its current row or an unknown ID. A badger store
+// answers from a RAM set of the IDs with history, built by one key-only scan on
+// the first call. Errors: ErrNilGraph, ErrGraphClosed, an invalid ID
+// (ErrInvalidStoreMutation).
+func (a *API) HasHistory(id types.NodeID) (bool, error) {
+	ops, err := a.ready()
+	if err != nil {
+		return false, err
+	}
+	return ops.HasHistory(id)
 }
 
 // VersionAfter returns the next version for the given node.
