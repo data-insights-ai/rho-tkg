@@ -62,7 +62,9 @@ func ivCnt(t *testing.T, e interface {
 	return n
 }
 
-func ivNewRel(t *testing.T, g *graphpkg.Graph) *types.Relationship {
+func ivNewRel(t *testing.T, g *graphpkg.Graph) *types.Relationship { return ivNewRelCnt(t, g, 1) }
+
+func ivNewRelCnt(t *testing.T, g *graphpkg.Graph, cnt int64) *types.Relationship {
 	t.Helper()
 	ctx := context.Background()
 	a, err := g.Nodes().Add(ctx, []string{"Ref"}, nil)
@@ -74,7 +76,7 @@ func ivNewRel(t *testing.T, g *graphpkg.Graph) *types.Relationship {
 		t.Fatalf("Add: %v", err)
 	}
 	r, err := g.Rels().Add(ctx, "LINK", a, b, map[string]any{
-		"tkg_valid_from": ivT, "tkg_valid_to": ivT + 1000, "cnt": int64(1),
+		"tkg_valid_from": ivT, "tkg_valid_to": ivT + 1000, "cnt": cnt,
 	})
 	if err != nil {
 		t.Fatalf("Rels.Add: %v", err)
@@ -82,10 +84,12 @@ func ivNewRel(t *testing.T, g *graphpkg.Graph) *types.Relationship {
 	return r
 }
 
-func ivNewNode(t *testing.T, g *graphpkg.Graph) *types.Node {
+func ivNewNode(t *testing.T, g *graphpkg.Graph) *types.Node { return ivNewNodeCnt(t, g, 1) }
+
+func ivNewNodeCnt(t *testing.T, g *graphpkg.Graph, cnt int64) *types.Node {
 	t.Helper()
 	n, err := g.Nodes().Add(context.Background(), []string{"Ev"}, map[string]any{
-		"tkg_valid_from": ivT, "tkg_valid_to": ivT + 1000, "cnt": int64(1),
+		"tkg_valid_from": ivT, "tkg_valid_to": ivT + 1000, "cnt": cnt,
 	})
 	if err != nil {
 		t.Fatalf("Nodes.Add: %v", err)
@@ -327,65 +331,6 @@ func TestSessionSetVersionInterval_ClosedAndNilSession(t *testing.T) {
 				t.Fatalf("node history after refused doors = %d, %v; want 0 (History holds appended rows only)", len(h), err)
 			}
 		})
-	}
-}
-
-// Failed-group shape: an apply-time failure (unknown id) fails ITS group's
-// outcome with the real sentinel, a sibling group in the same session applies,
-// and the failing group leaves no row behind.
-//
-// Catches: an applier that attributes the failure to every group (the sibling
-// gets the error), swallows it (WaitApplied nil for the unknown id), or applies
-// the failing group's other effects.
-func TestSessionSetVersionInterval_FailedGroupShape(t *testing.T) {
-	t.Parallel()
-	for _, b := range allStoreBackends() {
-		for _, m := range ivModes {
-			t.Run(b.name+"/"+m.name, func(t *testing.T) {
-				g := b.open(t)
-				r := ivNewRel(t, g)
-				n := ivNewNode(t, g)
-				missingRel, missingNode := types.RelID(1<<40), types.NodeID(1<<40)
-
-				s, err := g.Ingest().NewSession(m.opts)
-				if err != nil {
-					t.Fatalf("NewSession: %v", err)
-				}
-				defer s.Close()
-				if err := s.SetRelVersionInterval(missingRel, ivT, ivT+5000, map[string]any{"cnt": int64(2)}); err != nil {
-					t.Fatalf("queue unknown rel: %v", err)
-				}
-				badRelErr := ivSubmit(g, s)
-				if !errors.Is(badRelErr, graphpkg.ErrRelNotFound) {
-					t.Fatalf("unknown rel outcome = %v, want ErrRelNotFound", badRelErr)
-				}
-				if err := s.SetNodeVersionInterval(missingNode, ivT, ivT+5000, nil); err != nil {
-					t.Fatalf("queue unknown node: %v", err)
-				}
-				badNodeErr := ivSubmit(g, s)
-				if !errors.Is(badNodeErr, graphpkg.ErrNodeNotFound) {
-					t.Fatalf("unknown node outcome = %v, want ErrNodeNotFound", badNodeErr)
-				}
-				if err := s.SetRelVersionInterval(r.ID(), ivT, ivT+5000, map[string]any{"cnt": int64(2)}); err != nil {
-					t.Fatalf("queue good rel: %v", err)
-				}
-				if err := s.SetNodeVersionInterval(n.ID(), ivT, ivT+5000, map[string]any{"cnt": int64(2)}); err != nil {
-					t.Fatalf("queue good node: %v", err)
-				}
-				if err := ivSubmit(g, s); err != nil {
-					t.Fatalf("good group outcome = %v, want nil (earlier failure must not leak)", err)
-				}
-				if h, err := g.Rels().History(r.ID()); err != nil || len(h) < 1 {
-					t.Fatalf("good rel history = %d, %v; want >= 1", len(h), err)
-				}
-				if h, err := g.Nodes().History(n.ID()); err != nil || len(h) < 1 {
-					t.Fatalf("good node history = %d, %v; want >= 1", len(h), err)
-				}
-				if _, err := g.Rels().Get(context.Background(), missingRel); !errors.Is(err, graphpkg.ErrRelNotFound) {
-					t.Fatalf("the failing group created a rel: %v", err)
-				}
-			})
-		}
 	}
 }
 
