@@ -130,7 +130,11 @@ func TestScanHistoryTopsAndProbeMatchHistory(t *testing.T) {
 			ids := make([]int64, n)
 			for e := range ids {
 				ids[e] = k.id(e)
-				for v := 0; v < rng.IntN(6); v++ { // 0 rows: no history; 1 row: single-row path
+				rows := rng.IntN(6) // 0 rows: no history; 1 row: single-row path
+				if e%9 == 0 {
+					rows = historyForwardRows + 1 + rng.IntN(8) // deeper than the forward walk: reverse-seek path
+				}
+				for v := 0; v < rows; v++ {
 					k.put(t, bs, ids[e], uint32(v), types.Instant(10+v), false)
 				}
 			}
@@ -139,7 +143,7 @@ func TestScanHistoryTopsAndProbeMatchHistory(t *testing.T) {
 			}
 			for e, id := range ids {
 				switch rng.IntN(5) {
-				case 0: // pending rows above the committed ones
+				case 0: // pending rows above the committed ones (the highest version may be pending)
 					k.put(t, bs, id, 7+uint32(rng.IntN(3)), 50, false)
 				case 1: // pending trim (masks committed keys, may empty the ID)
 					if err := k.trim(bs, id, uint32(rng.IntN(4))); err != nil {

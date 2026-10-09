@@ -333,6 +333,11 @@ func (bs *Store) buildHistoryPresence(p *historyPresence, kind byte) error {
 	return nil
 }
 
+// historyForwardRows is how many rows of one ID the presence build's key scan
+// walks forward before it switches to a reverse seek for the ID's top (a Next
+// costs about a tenth of the two seeks the reverse path needs).
+const historyForwardRows = 16
+
 // idTop is one scanned ID with its highest history version (clamped).
 type idTop struct {
 	id  snowflake.ID
@@ -342,8 +347,8 @@ type idTop struct {
 // scanHistoryTops returns every ID with a history row and its highest version:
 // the buffered writes (overlay captured BEFORE the badger view, lesson 64) and
 // the committed keys, key-only. A pending delete masks its committed key.
-// Single-row IDs cost one Next; for the others a reverse seek to the end of the
-// ID's key range finds the top, and a seek to the next ID skips the rest.
+// An ID of up to historyForwardRows rows is walked forward; a deeper one costs a
+// reverse seek to the end of its key range and a seek to the next ID.
 func (bs *Store) scanHistoryTops(kind byte) ([]idTop, error) {
 	sets := make(map[string]struct{})
 	deletes := make(map[string]struct{})
@@ -388,27 +393,43 @@ func (bs *Store) scanHistoryTops(kind byte) ([]idTop, error) {
 				continue
 			}
 			id := storepkg.ParseIDFromKey(key, 1)
-			first := historyVersionFromKey(key)
-			_, firstDeleted := deletes[string(key)]
 			copy(idPrefix, key[:9])
-			fit.Next()
+			// Walk the ID's rows forward (ascending versions: the last row
+			// no delete masks is the top). Past historyForwardRows rows a
+			// reverse seek to the end of the ID's range and a seek to the next
+			// ID are cheaper than walking on.
 			var top uint64
-			found := false
-			if fit.ValidForPrefix(prefix) && len(fit.Item().Key()) == storepkg.SizeHistKey && bytes.Equal(fit.Item().Key()[:9], idPrefix) {
-				top, found = committedHistoryTop(rit, idPrefix, end, deletes)
-				next := historyIDSeekKey(kind, id)
-				if next == nil {
-					if found {
-						out = append(out, idTop{id: id, top: clampTop(top)})
-					}
+			found, deep := false, false
+			rows := 0
+			for ; fit.ValidForPrefix(prefix); fit.Next() {
+				k := fit.Item().Key()
+				if len(k) != storepkg.SizeHistKey {
+					continue
+				}
+				if !bytes.Equal(k[:9], idPrefix) {
 					break
 				}
-				fit.Seek(next)
-			} else {
-				top, found = first, !firstDeleted
+				if rows == historyForwardRows {
+					deep = true
+					break
+				}
+				rows++
+				if _, deleted := deletes[string(k)]; !deleted {
+					top, found = historyVersionFromKey(k), true
+				}
+			}
+			if deep {
+				top, found = committedHistoryTop(rit, idPrefix, end, deletes)
 			}
 			if found {
 				out = append(out, idTop{id: id, top: clampTop(top)})
+			}
+			if deep {
+				next := historyIDSeekKey(kind, id)
+				if next == nil {
+					break
+				}
+				fit.Seek(next)
 			}
 		}
 		return nil
