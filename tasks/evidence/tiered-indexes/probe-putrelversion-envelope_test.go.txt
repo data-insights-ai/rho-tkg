@@ -1,0 +1,31 @@
+package badger
+
+import (
+	"testing"
+
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+)
+
+func TestProbePutRelVersionEnvelope(t *testing.T) {
+	bs := newTestBadgerStoreInMemory(t)
+	const relType, label = uint16(6), uint16(1)
+	_ = bs.PutNode(types.NewNode(types.NodeID(1), label, nil))
+	_ = bs.PutNode(types.NewNode(types.NodeID(2), label, nil))
+	if err := bs.CreateRelTemporalIndex(relType); err != nil {
+		t.Fatal(err)
+	}
+	r := types.NewRelationship(types.RelID(101), relType, types.NodeID(1), types.NodeID(2))
+	r.SetTemporal(&types.TemporalMetadata{ValidFrom: 3000})
+	r.SetVersion(2)
+	if err := bs.PutRelationship(r); err != nil {
+		t.Fatal(err)
+	}
+	h := types.NewRelationship(types.RelID(101), relType, types.NodeID(1), types.NodeID(2))
+	h.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 2000})
+	h.SetVersion(1)
+	if err := bs.PutRelVersion(101, 1, h); err != nil {
+		t.Fatal(err)
+	}
+	kept, ok := bs.PruneRelTypeTemporalCandidates(relType, []types.RelID{101}, QueryOpts{ValidAt: 1500})
+	t.Logf("probe: kept=%v ok=%v (history row valid at 1500 exists)", kept, ok)
+}

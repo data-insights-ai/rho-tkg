@@ -161,7 +161,7 @@ func (a *API) DeleteComposite(label string, keys []string) error {
 // return false. O(definitions on the label); there is NO index-DDL
 // epoch/invalidation signal, so call it per plan rather than caching across
 // DDL you do not control. Backends without composite-index introspection
-// (tiered, wrappers) return store.ErrCapabilityNotSupported.
+// (wrappers) return store.ErrCapabilityNotSupported.
 func (a *API) HasComposite(label string, keys []string) (bool, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -244,7 +244,7 @@ func (a *API) ListTemporal() ([]string, error) {
 }
 
 // ListRelTemporal returns the relationship types carrying a temporal interval
-// index (CreateRelTemporal), sorted by name; none on tiered.
+// index (CreateRelTemporal), sorted by name.
 func (a *API) ListRelTemporal() ([]string, error) {
 	ops, err := a.ready()
 	if err != nil {
@@ -266,7 +266,8 @@ func (a *API) HasRelTemporal(typeName string) (bool, error) {
 
 // CreateRelTemporal creates a temporal interval index on relationships with
 // the given rel type (BACKLOG 21c). Returns storepkg.ErrCapabilityNotSupported
-// on stores that decline the capability (tiered; memory, badger and sharded implement it).
+// on stores that decline the capability (memory, badger, sharded and tiered
+// implement it).
 func (a *API) CreateRelTemporal(typeName string) error {
 	ops, err := a.ready()
 	if err != nil {

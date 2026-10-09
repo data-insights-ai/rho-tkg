@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -232,11 +233,22 @@ func (bs *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 	// the cascade's bounded-correction append door. The op and its record are
 	// enqueued together under one wbMu critical section (appendOpsLoggedRouted)
 	// for snapshot atomicity.
+	// A live or already-covered relationship's rel-type temporal envelope
+	// covers every row it has had since the index existed (a delete keeps the
+	// envelope), so this version's interval joins it (an imported or restored
+	// past version stays findable). An uncovered relationship without a current
+	// row stays uncovered and is never pruned — extending it here would vouch
+	// for this one version while its other rows stay outside.
 	err = bs.enqueueVersionAgainstLazyBuilds(
-		func() bool { return bs.relTypeMembersBuilt.Load() || bs.relBeliefWatermarkBuilt.Load() },
+		func() bool {
+			return bs.relTypeMembersBuilt.Load() || bs.relBeliefWatermarkBuilt.Load() || len(bs.relTypeTemporalIndexes) > 0
+		},
 		func() {
 			bs.recordRelTypeMemberLocked(r)
 			bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r))
+			if _, live := bs.relIDs[rid]; live || indexpkg.RelCoveredInTemporalIndexes(bs.relTypeTemporalIndexes, r, id) {
+				bs.maintainRelTypeTemporalIndexesAdd(r, id)
+			}
 		},
 		func() error {
 			return bs.appendOpsLoggedRouted(storecontract.ChangeRelHistoryVersion, logPayload, token, writeOp{opType: writeOpSet, key: key, value: data})

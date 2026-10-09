@@ -301,12 +301,13 @@ func TestCompositeIntrospection_BadgerReopen(t *testing.T) {
 	}
 }
 
-// The introspection capability is optional: tiered declines composite indexes
-// entirely, and the type-class counters FOLD across shards there instead.
+// Tiered builds composite indexes per shard (backlog 10), so introspection
+// answers (an unregistered label lists none), and the type-class counters
+// FOLD across shards there.
 func TestSigmaR3_TieredBehavior(t *testing.T) {
 	g := newTieredTestCore(t)
-	if _, err := g.Index.ListComposites("A"); !errors.Is(err, storepkg.ErrCapabilityNotSupported) {
-		t.Fatalf("tiered ListComposites err = %v, want ErrCapabilityNotSupported", err)
+	if got, err := g.Index.ListComposites("A"); err != nil || len(got) != 0 {
+		t.Fatalf("tiered ListComposites = %v, %v; want empty, nil", got, err)
 	}
 	ctx := context.Background()
 	if _, err := g.Nodes.Add(ctx, []string{"Ref"}, map[string]any{"v": int64(1)}); err != nil {

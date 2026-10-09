@@ -154,6 +154,9 @@ func (ms *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 				return zero, err
 			}
 			delete(ms.relHistory, relID) // purge the rel's whole history too
+			// Nothing of the relationship is left for its rel-type temporal
+			// envelope to cover (a plain delete keeps it; a purge does not).
+			indexpkg.PurgeRelFromAllTemporalIndexes(ms.relTypeTemporalIndexes, relID.SnowflakeID())
 		}
 
 		ms.removeNodeLabelIndexes(nid, n)

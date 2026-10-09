@@ -1,0 +1,6 @@
+=== RUN   TestIndexBudgetStructures
+    index_budget_test.go:51: rel temporal index: rows=4000000 resident 156.0 B/row
+    index_budget_test.go:68: composite index (3 keys, distinct tuples): rows=4000000 resident 309.6 B/row
+--- PASS: TestIndexBudgetStructures (5.66s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index	5.788s

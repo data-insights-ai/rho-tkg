@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"maps"
 	"slices"
+	"sync/atomic"
 
 	badgerv4 "github.com/dgraph-io/badger/v4"
 	"github.com/vmihailenco/msgpack/v5"
@@ -23,12 +24,16 @@ import (
 // doc comment (badgerstore.go) for the RAM-only / not-persisted-across-reopen
 // scope decision.
 //
-// Simpler single-phase build than CreateTemporalIndex's 3-phase
-// lock-free-backfill dance: the whole scan runs under one bs.idxMu.Lock, so
-// CreateRelTemporalIndex blocks concurrent relationship writes on this store
-// for the duration of the backfill. This is a deliberate, documented
-// throughput trade-off for what is an infrequent administrative DDL call, not
-// a per-request hot path — see CHANGELOG BACKLOG 21c.
+// Simpler build than CreateTemporalIndex's 3-phase dance: the relationship IDs
+// are snapshotted under idxMu, the index is built from them WITHOUT the lock,
+// and then installed under idxMu. A relationship written or updated between
+// the snapshot and the install is not folded in (the write path's
+// maintenance finds no index yet) — a known race, backlog item 22.
+
+// relTemporalBuildsTotal counts relationship temporal index builds across
+// every store in the process, including short-lived ones such as a recovery
+// probe (RelTemporalIndexBuildsTotalForTest).
+var relTemporalBuildsTotal atomic.Int64
 
 // CreateRelTemporalIndex creates a temporal interval index on relationships
 // with the given rel-type token. Scans existing relationships of that type
@@ -71,6 +76,8 @@ func (bs *Store) CreateRelTemporalIndex(relType uint16) error {
 // of rids into a fresh envelope index. A relationship deleted meanwhile is
 // skipped.
 func (bs *Store) buildRelTypeTemporalIndex(rids []types.RelID) (*indexpkg.TemporalIndex, error) {
+	bs.relTemporalBuilds.Add(1)
+	relTemporalBuildsTotal.Add(1)
 	ti := indexpkg.NewTemporalIndex()
 	for _, rid := range rids {
 		r, err := bs.prefetchRelScan(rid)
@@ -159,6 +166,21 @@ func (bs *Store) loadRelTypeTemporalIndexes() error {
 	return nil
 }
 
+// discardRelTypeTemporalIndexDefs deletes the persisted rel-type temporal
+// index definitions without building them (Config.DropRelTemporalIndexesAtOpen).
+// A read-only open leaves the key alone; it only skips the rebuild.
+func (bs *Store) discardRelTypeTemporalIndexDefs() error {
+	if bs.readOnly {
+		return nil
+	}
+	if err := bs.db.Update(func(txn *badgerv4.Txn) error {
+		return txn.Delete(storepkg.RelTypeTemporalIndexDefsKey)
+	}); err != nil {
+		return fmt.Errorf("graph: discard relationship temporal index definitions: %w", err)
+	}
+	return nil
+}
+
 // DropRelTemporalIndex removes a rel-type temporal index.
 // Returns ErrTemporalIndexNotFound if no index exists.
 func (bs *Store) DropRelTemporalIndex(relType uint16) error {
@@ -193,9 +215,12 @@ func (bs *Store) maintainRelTypeTemporalIndexesRemove(r *types.Relationship, id 
 	indexpkg.RemoveRelFromTemporalIndexes(bs.relTypeTemporalIndexes, r, id)
 }
 
-// maintainRelTypeTemporalIndexesPurge is the shared-seam brute-force removal
-// (deleteRelByInfo carries no temporal metadata), mirroring
-// maintainRelPropertyIndexesPurge.
+// maintainRelTypeTemporalIndexesPurge removes a relationship from every
+// rel-type temporal envelope. Exact erasure and the retention purge doors
+// (PurgeRelationshipByInfo, PurgeAdjacentRelsForNode) call it — there every row
+// of the relationship, history included, is gone. A plain delete keeps the
+// envelope (append-only): the history stays and the envelope stays a sound
+// superset of it.
 func (bs *Store) maintainRelTypeTemporalIndexesPurge(id snowflake.ID) {
 	indexpkg.PurgeRelFromAllTemporalIndexes(bs.relTypeTemporalIndexes, id)
 }

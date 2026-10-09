@@ -1,0 +1,6 @@
+=== RUN   TestIndexBudget
+    index_budget_test.go:55: rel temporal index: size=3.15M HOP=408282 | resident 344.5 B/rel, 0.27 objects/rel | build 19.14s (0.02 M rels/s)
+    index_budget_test.go:56: composite index (3 keys): nodes=400000 | resident 49.0 B/node, 2.31 objects/node | build 3.37s (0.12 M nodes/s)
+--- PASS: TestIndexBudget (37.37s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/bench	37.416s

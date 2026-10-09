@@ -336,6 +336,7 @@ func (bs *Store) PurgeRelationshipByInfo(rel storecontract.PurgedRel) error {
 			StartID: rel.StartID.SnowflakeID(),
 			EndID:   rel.EndID.SnowflakeID(),
 		})
+		bs.maintainRelTypeTemporalIndexesPurge(rid.SnowflakeID()) // history goes too: nothing left to cover
 		histKeys, _, herr := bs.historyTruncateDeleteKeys(storepkg.HistRelPrefix(rid.SnowflakeID()), 0)
 		if herr != nil {
 			bs.idxMu.Unlock()
@@ -411,6 +412,7 @@ func (bs *Store) PurgeAdjacentRelsForNode(nodeID types.NodeID) (int, error) {
 			return removed, err
 		}
 		bs.deleteRelByInfo(relDeleteInfoFromRelationship(r))
+		bs.maintainRelTypeTemporalIndexesPurge(rid.SnowflakeID()) // history goes too: nothing left to cover
 		removed++
 		relHistKeys, _, herr := bs.historyTruncateDeleteKeys(storepkg.HistRelPrefix(rid.SnowflakeID()), 0)
 		if herr != nil {

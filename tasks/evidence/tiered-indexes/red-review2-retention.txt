@@ -1,0 +1,12 @@
+=== RUN   TestRelTypeTemporalIndex_RetentionPurgeRemovesEnvelope
+    badgerstore_reltype_temporal_retention_test.go:53: retention-purged relationship 101 still has an envelope entry
+    badgerstore_reltype_temporal_retention_test.go:53: retention-purged relationship 102 still has an envelope entry
+--- FAIL: TestRelTypeTemporalIndex_RetentionPurgeRemovesEnvelope (0.02s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.023s
+=== RUN   TestRelTypeTemporalIndex_RetentionPurgeRemovesEnvelope
+    memorystore_reltype_temporal_retention_test.go:47: retention-purged relationship 101 still has an envelope entry
+--- FAIL: TestRelTypeTemporalIndex_RetentionPurgeRemovesEnvelope (0.00s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	0.005s
+FAIL

@@ -36,7 +36,7 @@ bottom.
 | Outgoing / incoming degree | `g.Rels().OutgoingDegree(id, type)` / `IncomingDegree(id, type)` | O(1) via `DegreeCapability`, else O(degree) | O(1) — single-shard lookup on the node's owning shard | never — always answers (fast path or fallback) |
 | Node / relationship mutation epoch | `g.Nodes().NodeMutationEpoch()` / `g.Rels().RelMutationEpoch()` | O(1) | O(1) where supported | returns 0 (not an error) when the backend lacks the DocValues capability |
 | Pinned adjacency (transaction-time) | `g.Rels().OutgoingForNodesAtTx(nodeIDs, type, txAt)` / `IncomingForNodesAtTx(...)` | adjacency index + O(deleted rels) fold, not a full `ByType` history scan | same adjacency-index push-down per shard | `txAt == 0` delegates to `OutgoingForNodes`/`IncomingForNodes` (no TX filter) |
-| Composite (multi-key) equality lookup | `g.Nodes().ByLabelAndProperties(label, values, opts)` | O(matches) with a matching `g.Index().CreateComposite` definition; else O(label size) scan+filter | O(label size) scan+filter — v1 has no accelerated composite index on tiered | never errors; falls back to scan+filter when no exact-key-set definition exists (see "Composite property indexes" below) |
+| Composite (multi-key) equality lookup | `g.Nodes().ByLabelAndProperties(label, values, opts)` | O(matches) with a matching `g.Index().CreateComposite` definition; else O(label size) scan+filter | O(matches) per shard with a matching definition (every shard builds its own), folded across the shards in the query's depth; else scan+filter per shard | never errors; falls back to scan+filter when no exact-key-set definition exists (see "Composite property indexes" below) |
 
 | Pinned adjacency — bitemporal (TxAt) | `g.Rels().OutgoingForNodesAtTx(nodeIDs, type, txAt)` / `IncomingForNodesAtTx(...)` | adjacency index + O(deleted rels) fold, not a full `ByType` history scan | same adjacency-index push-down per shard | `txAt == 0` delegates to `OutgoingForNodes`/`IncomingForNodes` (no TX filter); **valid-at-now filter — drops past-valid edges**, see below |
 | Pinned adjacency — belief-state (TxPin) | `g.Rels().OutgoingForNodesAtPin(nodeIDs, type, pin)` / `IncomingForNodesAtPin(...)` | adjacency index + O(deleted rels) fold; agrees with `ByType{TxPin}` filtered by endpoint by construction | same adjacency-index push-down per shard | `pin == 0` delegates to `OutgoingForNodes`/`IncomingForNodes`; a seed absent from the belief state at the pin is skipped silently (no `ErrNodeNotFound`) |
@@ -516,14 +516,11 @@ already small.
   entries are a documented follow-up.
 - **Node-only.** Mirrors the existing single-key `PropertyIndexCapability`,
   which has no relationship equivalent in this library today.
-- **Tiered declines the acceleration in v1.** `tiered.Store` does not
-  implement `CompositePropertyIndexCapability` — `g.Index().CreateComposite`
-  on a tiered-backed graph returns `ErrCapabilityNotSupported`, and
-  `g.Nodes().ByLabelAndProperties` answers via the graph-layer mandatory
-  fallback (a label scan + post-filter using the mandatory `NodesByLabel`
-  surface) — correct, just unaccelerated. Reference-label-scoped tiered
-  acceleration (mirroring the single-key index's `ErrEventPropertyIndex`
-  gate) is a documented follow-up.
+- **Tiered builds it per shard (backlog 10).** `tiered.Store` fans the
+  definition out to every shard (reference, archive, every event shard, and
+  the hot shard a later rotation opens) and folds the per-shard matches;
+  event labels are allowed. Each shard keeps its entries in RAM and rebuilds
+  them when it opens (~310 B per indexed node with distinct tuples).
 
 ### Key-set identity, not key-order identity
 

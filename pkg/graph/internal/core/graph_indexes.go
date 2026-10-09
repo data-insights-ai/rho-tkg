@@ -170,7 +170,7 @@ func (i *IndexOps) DeleteComposite(label string, keys []string) error {
 // cheap enough to call per query plan; there is NO index-DDL
 // epoch/invalidation signal, so callers should not cache the answer across
 // DDL they do not control. Backends without composite-index introspection
-// (tiered, wrappers) return storepkg.ErrCapabilityNotSupported.
+// (wrappers) return storepkg.ErrCapabilityNotSupported.
 func (i *IndexOps) ListComposites(label string) ([][]string, error) {
 	c := i.c
 	var out [][]string

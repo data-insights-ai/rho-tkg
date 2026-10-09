@@ -94,10 +94,9 @@ func (i *IndexOps) DeleteRelProperty(typeName, propertyKey string) error {
 //
 // The relationship mirror of graph_indexes.go's CreateTemporal / DeleteTemporal,
 // keyed by rel type instead of label. Backed by the optional
-// store.RelTypeTemporalIndexCapability. Memory, badger and sharded (fanned out to
-// every shard) implement it; tiered declines (the BACKLOG 20g precedent for tiered
-// rel-side capability declines), so CreateRelTemporal returns
-// storepkg.ErrCapabilityNotSupported there.
+// store.RelTypeTemporalIndexCapability. Memory and badger implement it;
+// sharded and tiered build it on every shard (backlog 10). A store without
+// it makes CreateRelTemporal return storepkg.ErrCapabilityNotSupported.
 
 // CreateRelTemporal creates a temporal interval index on relationships with the
 // given rel type. Resolves or creates the rel-type token so the index applies

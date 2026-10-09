@@ -37,8 +37,7 @@ func (i *IndexOps) ListTemporal() ([]string, error) {
 }
 
 // ListRelTemporal returns the relationship types that carry a temporal
-// interval index (CreateRelTemporal), sorted by name; none on a store without
-// relationship-type temporal indexes (tiered). Backends without the listing
+// interval index (CreateRelTemporal), sorted by name. Backends without the listing
 // return store.ErrCapabilityNotSupported.
 func (i *IndexOps) ListRelTemporal() ([]string, error) {
 	c := i.c

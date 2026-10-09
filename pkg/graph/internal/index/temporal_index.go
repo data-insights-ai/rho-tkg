@@ -525,6 +525,17 @@ func ExtendRelInTemporalIndexes(idxs map[uint16]*TemporalIndex, r *types.Relatio
 	}
 }
 
+// RelCoveredInTemporalIndexes reports whether the temporal index covering r's
+// type already holds an envelope for id. Caller must hold the store's lock.
+func RelCoveredInTemporalIndexes(idxs map[uint16]*TemporalIndex, r *types.Relationship, id snowflake.ID) bool {
+	ti, ok := idxs[r.TypeToken().Value()]
+	if !ok {
+		return false
+	}
+	_, _, covered := ti.EnvelopeOf(id)
+	return covered
+}
+
 // RemoveRelFromTemporalIndexes is a NO-OP, mirroring RemoveNodeFromTemporalIndexes
 // — see that function's doc comment for the full append-only-envelope rationale.
 func RemoveRelFromTemporalIndexes(_ map[uint16]*TemporalIndex, _ *types.Relationship, _ snowflake.ID) {

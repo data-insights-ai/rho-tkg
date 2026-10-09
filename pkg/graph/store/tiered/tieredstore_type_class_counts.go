@@ -8,9 +8,7 @@ import (
 // store.NodePropertyTypeClassCountsCapability by folding the exact per-shard
 // counters across the reference shard, the archive (when open), and every
 // event shard — the same shard walk as NodeCountByLabelAndPropertyKey, so the
-// two capabilities agree on which rows are counted. Composite-index
-// introspection is NOT implemented (tiered declines composite indexes
-// entirely).
+// two capabilities agree on which rows are counted.
 func (ts *Store) NodePropertyTypeClassCounts(token uint16, propertyKey string) (storecontract.PropertyTypeClassCounts, error) {
 	var total storecontract.PropertyTypeClassCounts
 	if err := ts.checkOpen(); err != nil {

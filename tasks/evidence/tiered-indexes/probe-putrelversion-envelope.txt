@@ -1,0 +1,5 @@
+=== RUN   TestProbePutRelVersionEnvelope
+    zz_probe_putrelversion_test.go:30: probe: kept=[] ok=true (history row valid at 1500 exists)
+--- PASS: TestProbePutRelVersionEnvelope (0.00s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.006s

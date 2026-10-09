@@ -1,0 +1,14 @@
+=== RUN   TestTieredRelTemporalPrune_DemotePromoteParityWithBadger
+2026/10/09 13:40:11 INFO graph: applied shard tier changes at open demoted=1 promoted=0 unsealed=0
+    tiered_rel_temporal_bound_test.go:114: cold at 1500: tiered prune = [closed crossER crossRE deleted moved] (ok=true), want [closed crossER crossRE deleted moved open]
+    tiered_rel_temporal_bound_test.go:114: cold at 2500: tiered prune = [deleted moved] (ok=true), want [closed crossER deleted moved open]
+    tiered_rel_temporal_bound_test.go:114: cold at 3500: tiered prune = [deleted moved open] (ok=true), want [closed crossER deleted moved open]
+    tiered_rel_temporal_bound_test.go:114: cold at 6500: tiered prune = [deleted late lateCross moved open] (ok=true), want [closed crossER deleted late lateCross moved open]
+    tiered_rel_temporal_bound_test.go:114: cold during 2100-2900: tiered prune = [deleted moved] (ok=true), want [closed crossER deleted moved open]
+    tiered_rel_temporal_bound_test.go:114: cold during 6100-6200: tiered prune = [deleted late lateCross moved open] (ok=true), want [closed crossER deleted late lateCross moved open]
+    tiered_rel_temporal_bound_test.go:121: reopened cold shard lists [1] (err <nil>), want no relationship temporal index
+2026/10/09 13:40:11 INFO graph: applied shard tier changes at open demoted=0 promoted=1 unsealed=0
+--- FAIL: TestTieredRelTemporalPrune_DemotePromoteParityWithBadger (0.89s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.960s
+FAIL

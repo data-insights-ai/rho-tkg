@@ -638,9 +638,12 @@ func (bs *Store) deleteRelByInfo(info RelDeleteInfo) {
 	delete(bs.relIDs, rid)
 	bs.ords.dropRel(rid)
 	bs.deleteRelRevLocked(rid)
-	delete(bs.relValidIdx, rid)                                    // drop the inline valid-time stamp
-	bs.maintainRelPropertyIndexesPurge(info.ID)                    // brute-force (RelDeleteInfo has no property values)
-	bs.maintainRelTypeTemporalIndexesPurge(info.ID)                // BACKLOG 21c
+	delete(bs.relValidIdx, rid)                 // drop the inline valid-time stamp
+	bs.maintainRelPropertyIndexesPurge(info.ID) // brute-force (RelDeleteInfo has no property values)
+	// The rel-type temporal envelope is append-only, as memory's delete keeps
+	// it: the deleted row's history stays on this store, and a rolled-back
+	// delete restores the current row without re-adding the history versions,
+	// so purging here would drop past versions from valid-time queries.
 	bs.removeRelPropertyTypeClassCountsByID(info.ID, info.RelType) // decrement via memoized contribution (the single delete seam)
 	bs.removeRelPropertyStatsCountsByID(info.ID, info.RelType)     // same memoized-delete seam for NDV+min/max
 

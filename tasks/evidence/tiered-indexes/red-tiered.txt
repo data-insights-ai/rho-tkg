@@ -1,0 +1,32 @@
+=== RUN   TestTieredIndexes_CapabilityFlagsMatchSharded
+    tiered_indexes_fanout_test.go:100: RelTypeTemporalIndexCapability: tiered=false sharded=true
+    tiered_indexes_fanout_test.go:101: RelTypeTemporalCandidateCapability: tiered=false sharded=true
+    tiered_indexes_fanout_test.go:102: CompositePropertyIndexCapability: tiered=false sharded=true
+    tiered_indexes_fanout_test.go:103: CompositeIndexIntrospectionCapability: tiered=false sharded=true
+    tiered_indexes_fanout_test.go:108: CapabilitiesOf index flags: tiered {PropertyIndex:true RelPropertyIndex:true CompositePropertyIndex:false TemporalIndex:true VectorIndex:true VectorIndexOptions:true FilteredVectorSearch:true HighFrequencyIndex:true PropertyKeyStats:true PropertyStats:true}, sharded {PropertyIndex:true RelPropertyIndex:true CompositePropertyIndex:true TemporalIndex:true VectorIndex:true VectorIndexOptions:true FilteredVectorSearch:true HighFrequencyIndex:true PropertyKeyStats:true PropertyStats:false}
+    tiered_indexes_fanout_test.go:111: CapabilitiesOf(tiered).IndexAcceleration.CompositePropertyIndex = false, want true
+--- FAIL: TestTieredIndexes_CapabilityFlagsMatchSharded (0.01s)
+=== RUN   TestTieredRelTemporalIndex_DDLBreakCases
+    tiered_indexes_fanout_test.go:117: tiered.Store does not implement RelTypeTemporalIndexCapability
+--- FAIL: TestTieredRelTemporalIndex_DDLBreakCases (0.00s)
+=== RUN   TestTieredRelTemporalIndex_PruneDeclinesWithoutFilterOrIndex
+    tiered_indexes_fanout_test.go:168: tiered.Store does not implement RelTypeTemporalCandidateCapability
+--- FAIL: TestTieredRelTemporalIndex_PruneDeclinesWithoutFilterOrIndex (0.01s)
+=== RUN   TestTieredRelTemporalIndex_EveryShardAndNewHotShard
+    tiered_indexes_fanout_test.go:199: tiered.Store does not implement RelTypeTemporalIndexCapability
+--- FAIL: TestTieredRelTemporalIndex_EveryShardAndNewHotShard (0.11s)
+=== RUN   TestTieredRelTemporalIndex_SurvivesRestartAndColdReopen
+    tiered_indexes_fanout_test.go:240: tiered.Store does not implement RelTypeTemporalIndexCapability
+--- FAIL: TestTieredRelTemporalIndex_SurvivesRestartAndColdReopen (0.24s)
+=== RUN   TestTieredComposite_DDLBreakCases
+    tiered_indexes_fanout_test.go:281: tiered.Store does not implement CompositePropertyIndexCapability
+--- FAIL: TestTieredComposite_DDLBreakCases (0.03s)
+=== RUN   TestTieredComposite_EveryShardAndNewHotShard
+    tiered_indexes_fanout_test.go:361: tiered.Store does not implement CompositePropertyIndexCapability
+--- FAIL: TestTieredComposite_EveryShardAndNewHotShard (0.02s)
+=== RUN   TestTieredComposite_SurvivesRestart
+    tiered_indexes_fanout_test.go:397: tiered.Store does not implement CompositePropertyIndexCapability
+--- FAIL: TestTieredComposite_SurvivesRestart (0.16s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.659s
+FAIL

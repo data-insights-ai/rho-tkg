@@ -1,0 +1,6 @@
+=== RUN   TestTieredColdLazyOpen_SkipsSyncDuringFanOut
+    tiered_cold_sync_fanout_test.go:68: during a fan-out the lazy open synced the shard: composites = [], want [[pid device]] untouched
+--- FAIL: TestTieredColdLazyOpen_SkipsSyncDuringFanOut (0.36s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.367s
+FAIL

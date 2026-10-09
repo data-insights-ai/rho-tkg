@@ -79,7 +79,11 @@ func (ts *Store) rotateHotShardLocked() error {
 
 	// Set up tracked temporal indexes on the new hot shard before it begins
 	// accepting writes.
-	if err := ts.applyTrackedTemporalIndexes(newStore); err != nil {
+	err = ts.applyTrackedTemporalIndexes(newStore)
+	if err == nil {
+		err = ts.syncAnchoredIndexes(newStore, true)
+	}
+	if err != nil {
 		if cerr := newStore.Close(); cerr != nil {
 			slog.Error("graph: rollback close new hot shard after index setup failure", "shard", newName, "error", cerr)
 		}
@@ -165,6 +169,7 @@ func (ts *Store) rotateHotShardLocked() error {
 		// Do NOT close the store here — let idle-close handle it safely
 		// (avoids closing while in-flight reads hold pointers from
 		// snapshots).
+		freeColdRelTemporalIndexes(es.store, es.name)
 	}
 
 	// BACKLOG 19h: if a change-log scope is currently open (a tx/batch mid-flight
@@ -365,6 +370,10 @@ func (ts *Store) openRefArchive() error {
 		return fmt.Errorf("graph: open ref archive: %w", err)
 	}
 	if err := ts.applyTrackedTemporalIndexes(store); err != nil {
+		_ = store.Close()
+		return fmt.Errorf("graph: initialise ref archive indexes: %w", err)
+	}
+	if err := ts.syncAnchoredIndexes(store, false); err != nil {
 		_ = store.Close()
 		return fmt.Errorf("graph: initialise ref archive indexes: %w", err)
 	}

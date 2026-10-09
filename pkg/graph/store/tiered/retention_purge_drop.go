@@ -215,7 +215,7 @@ func (ts *Store) dropOneShard(es *EventShard, labelToken uint16) (storecontract.
 		// instead of being silently stranded in memory despite its data
 		// surviving on disk.
 		es.shardMu.Lock()
-		store, reopenErr := ts.openBadgerStoreWithRecovery(es.path)
+		store, reopenErr := ts.openShardStoreWithRecovery(es.path, es.currentTier() == TierCold)
 		if reopenErr == nil {
 			es.store = store
 		}
