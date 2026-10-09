@@ -5,8 +5,8 @@ package memory
 
 import (
 	"sync"
-	"time"
 	"sync/atomic"
+	"time"
 
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segdir"
