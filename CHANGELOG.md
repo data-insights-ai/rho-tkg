@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.44.1] - 2026-10-09
+
+Patch release: the badger history iterators are bounded to the entity's key prefix (requested by
+sigma-tkgd, `tasks/handover-effective-read-cost-20261009.md`, fix 1a). Gates on the released tree:
+`make ci-docker` exit 0; sigma-tkgd, ai-soc engine and agent-bookkeeping build and vet against it.
+
 ### Fixed
 
 - **Badger history reads no longer prefetch other entities' history rows.** `GetRelHistory` /
