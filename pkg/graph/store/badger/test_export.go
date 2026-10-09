@@ -215,4 +215,4 @@ func (bs *Store) GCDoneForTest() <-chan struct{}    { return bs.gcDone }
 
 // DurableSyncCountForTest reports how many write-ahead-log fsyncs DurableFlush
 // has issued. Exported solely for tests; not for production use.
-func (bs *Store) DurableSyncCountForTest() int64 { return 0 }
+func (bs *Store) DurableSyncCountForTest() int64 { return bs.durableSyncs.Load() }

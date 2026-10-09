@@ -282,6 +282,10 @@ func (bs *Store) flushIndexLocked(keepIndexLock bool) error {
 		requeue()
 		return fmt.Errorf("graph: write batch flush: %w", err)
 	}
+	if !bs.syncWrites {
+		// In the WAL but not fsynced: the next DurableFlush must sync.
+		bs.unsynced.Store(true)
+	}
 
 	// Commit succeeded: the rows are now durable in Badger, so overlay readers
 	// (history / label-disk / adjacency-disk via rangePending/lookupPending) must
