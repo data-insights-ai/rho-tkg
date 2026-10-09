@@ -377,7 +377,7 @@ func TestUniqueCascade_StoreWriteFailureWithdrawPersistFailureKeepsClaim(t *test
 	st.mu.Lock()
 	st.failMeta = true
 	st.mu.Unlock()
-	hold := &cascadeUniqueHold{c: c, id: a.ID(), claims: []cascadeUniqueTuple{{labelTok: tok, key: "k", valueKey: vk}}}
+	hold := &uniqueHold{c: c, id: a.ID(), claims: []uniqueCheckTuple{{labelTok: tok, key: "k", valueKey: vk}}}
 	err = hold.writeFailed(nil, errInjectedWrite)
 	if !errors.Is(err, errInjectedWrite) || err.Error() == errInjectedWrite.Error() {
 		t.Fatalf("writeFailed with a failing persist: err = %v, want the write failure joined with the withdrawal failure", err)
