@@ -482,13 +482,15 @@ type Store struct {
 
 	// Property membership sidecars (backlog 8, badgerstore_propertytxmembers.go):
 	// one per declared property index a temporal lookup asked for. relPropTx /
-	// nodePropTx and propTxGen are guarded by idxMu; propTxBuildMu serializes
-	// the lazy builds (order: propTxBuildMu -> idxMu). propTxBuilds /
+	// nodePropTx and propTxGen are guarded by idxMu; propTxBuildMus holds one
+	// mutex per sidecar ((type|label, key)) that serializes ITS lazy builds, so a
+	// build of one index never delays a lookup on another (order: a build mutex
+	// -> idxMu; no build mutex is taken under another). propTxBuilds /
 	// propTxBuildNanos feed PropertyTxMembershipStats.
 	relPropTx        map[indexpkg.RelPropertyIndexKey]*propTxSidecar[types.RelID]
 	nodePropTx       map[indexpkg.PropertyIndexKey]*propTxSidecar[types.NodeID]
 	propTxGen        uint64
-	propTxBuildMu    sync.Mutex
+	propTxBuildMus   sync.Map // propTxBuildKey -> *sync.Mutex
 	propTxBuilds     atomic.Int64
 	propTxBuildNanos atomic.Int64
 

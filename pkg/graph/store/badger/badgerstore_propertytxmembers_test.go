@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -478,5 +479,62 @@ func TestPropTxBuild_ConcurrentWritersStress(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// TestPropTxBuild_OtherKeyNotBlockedByRunningBuild: one sidecar's build
+// (seconds at 1 M rows) must not hold up a lookup on another (type, key)
+// whose sidecar is built or builds on its own. Faulty implementation caught:
+// one store-wide build mutex. Key A's build is parked inside its scan; a
+// lookup on key B (built before) and a first lookup on key C (it builds)
+// must both complete while A is parked. The deadline only bounds the
+// failure; nothing waits on time on the passing path.
+func TestPropTxBuild_OtherKeyNotBlockedByRunningBuild(t *testing.T) {
+	bs := newFlushParkStore(t, nil)
+	ptxSetup(t, bs)
+	for _, k := range []string{"zone", "lane"} {
+		if err := bs.CreateRelPropertyIndex(ptxT, k); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := bs.PutRelationship(ptxRel(100, 1, 0, 100)); err != nil {
+		t.Fatal(err)
+	}
+	lookup := func(key string) error {
+		return bs.ForEachRelPropertyTxMember(ptxT, key, ptxVK(1), func(types.RelID, types.Instant) bool { return true })
+	}
+	if err := lookup("zone"); err != nil { // key B built before A starts
+		t.Fatal(err)
+	}
+	entered, release := make(chan struct{}), make(chan struct{})
+	var parked atomic.Bool // not sync.Once: Once.Do blocks the other callers
+	bs.propTxScanTestHook = func() {
+		if parked.CompareAndSwap(false, true) {
+			close(entered)
+			<-release
+		}
+	}
+	defer func() { bs.propTxScanTestHook = nil }()
+	aDone := make(chan error, 1)
+	go func() { aDone <- lookup("seat") }() // key A: parks inside its build
+	<-entered
+	for _, key := range []string{"zone", "lane"} {
+		done := make(chan error, 1)
+		go func() { done <- lookup(key) }()
+		select {
+		case err := <-done:
+			if err != nil {
+				close(release)
+				t.Fatalf("lookup %s: %v", key, err)
+			}
+		case <-time.After(10 * time.Second):
+			close(release)
+			<-done
+			t.Fatalf("lookup on %s waited for the build of another key", key)
+		}
+	}
+	close(release)
+	if err := <-aDone; err != nil {
+		t.Fatalf("key A lookup: %v", err)
 	}
 }

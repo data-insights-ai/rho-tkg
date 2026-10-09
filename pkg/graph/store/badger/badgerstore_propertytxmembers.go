@@ -2,6 +2,7 @@ package badger
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -36,7 +37,7 @@ var (
 // is TRACKING (doors record into it); built marks it readable.
 //
 // Lazy build without blocking writers (the history-presence protocol, lessons
-// 63, 64, 74): under propTxBuildMu the build turns tracking on under
+// 63, 64, 74): under its own build mutex (one per sidecar) the build turns tracking on under
 // idxMu.Lock and reads the invalidation generation, releases idxMu, captures
 // the write-buffer overlay, then scans the committed current and history
 // keyspaces in one badger view. A row written before tracking was on is in the
@@ -210,12 +211,30 @@ func (bs *Store) ForEachNodePropertyTxMember(labelToken uint16, propertyKey, val
 	return fmt.Errorf("graph: node property membership: lookup raced %d invalidations: %w", propTxBuildAttempts, ErrIndexNotFound)
 }
 
+// propTxBuildKey names one sidecar for its build mutex.
+type propTxBuildKey struct {
+	node  bool
+	token uint16
+	key   string
+}
+
+// propTxBuildLock returns the build mutex of one sidecar (created on first use;
+// one per (type|label, key) ever looked up, so bounded by the declared indexes).
+func (bs *Store) propTxBuildLock(k propTxBuildKey) *sync.Mutex {
+	if mu, ok := bs.propTxBuildMus.Load(k); ok {
+		return mu.(*sync.Mutex)
+	}
+	mu, _ := bs.propTxBuildMus.LoadOrStore(k, &sync.Mutex{})
+	return mu.(*sync.Mutex)
+}
+
 // buildRelPropTx builds the sidecar for key (see the file comment). It
 // returns nil when the sidecar is built (by this call or a racing one) and
 // ErrIndexNotFound when the index went away.
 func (bs *Store) buildRelPropTx(key indexpkg.RelPropertyIndexKey) error {
-	bs.propTxBuildMu.Lock()
-	defer bs.propTxBuildMu.Unlock()
+	mu := bs.propTxBuildLock(propTxBuildKey{token: key.RelTypeToken, key: key.PropertyKey})
+	mu.Lock()
+	defer mu.Unlock()
 	for attempt := 0; attempt < propTxBuildAttempts; attempt++ {
 		bs.idxMu.Lock()
 		if !bs.relPropIndexUsableLocked(key) {
@@ -265,8 +284,9 @@ func (bs *Store) buildRelPropTx(key indexpkg.RelPropertyIndexKey) error {
 
 // buildNodePropTx is buildRelPropTx for a node property index.
 func (bs *Store) buildNodePropTx(key indexpkg.PropertyIndexKey) error {
-	bs.propTxBuildMu.Lock()
-	defer bs.propTxBuildMu.Unlock()
+	mu := bs.propTxBuildLock(propTxBuildKey{node: true, token: key.LabelToken, key: key.PropertyKey})
+	mu.Lock()
+	defer mu.Unlock()
 	for attempt := 0; attempt < propTxBuildAttempts; attempt++ {
 		bs.idxMu.Lock()
 		if !bs.nodePropIndexUsableLocked(key) {

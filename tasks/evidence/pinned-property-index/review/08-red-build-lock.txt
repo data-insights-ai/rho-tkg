@@ -1,0 +1,6 @@
+# red: the per-sidecar lock replaced by one store-wide mutex (the pre-fix behaviour), corrected test hook
+    badgerstore_propertytxmembers_test.go:533: lookup on lane waited for the build of another key
+--- FAIL: TestPropTxBuild_OtherKeyNotBlockedByRunningBuild (10.00s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	10.009s
+FAIL
