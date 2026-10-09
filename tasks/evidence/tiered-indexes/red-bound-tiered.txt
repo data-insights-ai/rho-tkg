@@ -1,0 +1,12 @@
+=== RUN   TestTieredRelTemporalIndex_ColdDemotionFreesIndex
+    tiered_rel_temporal_bound_test.go:68: cold shard still lists [4] (err <nil>), want its index freed
+    tiered_rel_temporal_bound_test.go:70: badger.Store has no RelTemporalIndexBuildsForTest hook
+--- FAIL: TestTieredRelTemporalIndex_ColdDemotionFreesIndex (0.03s)
+=== RUN   TestTieredRelTemporalIndex_ColdShardsNeverBuildUntilPromoted
+2026/10/09 13:40:08 INFO graph: applied shard tier changes at open demoted=1 promoted=0 unsealed=0
+    tiered_rel_temporal_bound_test.go:142: the create opened the cold shard
+    tiered_rel_temporal_bound_test.go:148: badger.Store has no RelTemporalIndexBuildsForTest hook
+--- FAIL: TestTieredRelTemporalIndex_ColdShardsNeverBuildUntilPromoted (0.44s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	0.515s
+FAIL

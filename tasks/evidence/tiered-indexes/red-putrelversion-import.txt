@@ -1,0 +1,15 @@
+=== RUN   TestRelTemporalIndex_ImportedHistoryVersionStaysFindable
+=== RUN   TestRelTemporalIndex_ImportedHistoryVersionStaysFindable/memory
+    reltype_temporal_import_history_test.go:102: RelsByTypeAt(1500) after import = [], want [moved]
+    reltype_temporal_import_history_test.go:109: ByType{ValidAt:1500} after import = [], want [moved]
+    reltype_temporal_import_history_test.go:116: ByType{1200-1300} after import = [], want [moved]
+=== RUN   TestRelTemporalIndex_ImportedHistoryVersionStaysFindable/badger
+    reltype_temporal_import_history_test.go:102: RelsByTypeAt(1500) after import = [], want [moved]
+    reltype_temporal_import_history_test.go:109: ByType{ValidAt:1500} after import = [], want [moved]
+    reltype_temporal_import_history_test.go:116: ByType{1200-1300} after import = [], want [moved]
+--- FAIL: TestRelTemporalIndex_ImportedHistoryVersionStaysFindable (0.00s)
+    --- FAIL: TestRelTemporalIndex_ImportedHistoryVersionStaysFindable/memory (0.00s)
+    --- FAIL: TestRelTemporalIndex_ImportedHistoryVersionStaysFindable/badger (0.00s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.009s
+FAIL
