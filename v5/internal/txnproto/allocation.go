@@ -3,6 +3,7 @@ package txnproto
 import (
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"math"
 	"slices"
 
@@ -97,7 +98,7 @@ func grantKey(r idalloc.GrantRequest) string {
 	return hex.EncodeToString(h[:])
 }
 func grantRequestValid(r idalloc.GrantRequest) bool {
-	return r.Graph != (idalloc.GraphID{}) && r.Session.ID != ([16]byte{}) && r.Session.Incarnation != ([16]byte{}) && r.Session.Epoch > 0 && r.Sequence > 0 && r.Count > 0 && r.Count <= idalloc.MaxBlockSize
+	return idalloc.ValidateGrantRequest(r) == nil
 }
 func grantBlock(g GrantWire) (idalloc.Grant, error) {
 	a, e := idalloc.NewAuthority(g.Owner, g.Epoch)
@@ -105,10 +106,11 @@ func grantBlock(g GrantWire) (idalloc.Grant, error) {
 		return idalloc.Grant{}, e
 	}
 	r := idalloc.Request{Graph: g.Request.Graph, Authority: a, Sequence: g.Sequence, Count: g.Request.Count}
-	if !grantRequestValid(g.Request) || g.Sequence == 0 || g.First < g.Sequence || g.Last < g.First || g.Last-g.First != g.Request.Count-1 {
-		return idalloc.Grant{}, ErrInvalid
+	result := idalloc.Grant{Request: g.Request, Reservation: idalloc.Reservation{Request: r, First: g.First, Last: g.Last}}
+	if err := idalloc.ValidateGrant(result); err != nil {
+		return idalloc.Grant{}, errors.Join(ErrInvalid, err)
 	}
-	return idalloc.Grant{Request: g.Request, Reservation: idalloc.Reservation{Request: r, First: g.First, Last: g.Last}}, nil
+	return result, nil
 }
 func isAllocationQuery(kind string) bool {
 	return kind == AllocatorState || kind == RecipientState || kind == RecipientAck || kind == GrantState

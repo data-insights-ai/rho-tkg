@@ -2,6 +2,7 @@ package idalloc
 
 import (
 	"context"
+	"errors"
 	"sync"
 )
 
@@ -41,7 +42,7 @@ type Recipient struct {
 // NewRecipient initializes a volatile recipient after durable session activation.
 // This primitive cannot itself establish that activation or quorum durability.
 func NewRecipient(graph GraphID, session RecipientSession) (*Recipient, error) {
-	if graph == (GraphID{}) || session.ID == ([16]byte{}) || session.Incarnation == ([16]byte{}) || session.Epoch == 0 {
+	if graph == (GraphID{}) || ValidateRecipientSession(session) != nil {
 		return nil, ErrInvalid
 	}
 	return &Recipient{graph: graph, session: session}, nil
@@ -72,7 +73,10 @@ func (i *Recipient) Acquire(ctx context.Context, r GrantRequest, deliver func(Gr
 		return nil, err
 	}
 	b := g.Reservation
-	if g.Request != r || b.Request.Graph != r.Graph || b.Request.Count != r.Count || !b.validFor(b.Request) || b.First <= i.high {
+	if err := ValidateGrant(g); err != nil {
+		return nil, errors.Join(ErrPayloadMismatch, err)
+	}
+	if g.Request != r || b.First <= i.high {
 		return nil, ErrPayloadMismatch
 	}
 	i.high = b.Last
