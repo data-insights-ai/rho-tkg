@@ -278,6 +278,11 @@ func (bs *Store) flushIndexLocked(keepIndexLock bool) error {
 		requeue()
 		return fmt.Errorf("graph: write batch flush: %w", badgerv4.ErrDBClosed)
 	}
+	if injected := bs.failNextFlush.Swap(nil); injected != nil { // test seam
+		wb.Cancel()
+		requeue()
+		return fmt.Errorf("graph: write batch flush: %w", *injected)
+	}
 	if err := wb.Flush(); err != nil {
 		requeue()
 		return fmt.Errorf("graph: write batch flush: %w", err)

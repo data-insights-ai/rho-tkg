@@ -1,6 +1,7 @@
 package graph_test
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -35,6 +36,7 @@ const (
 	dcEnvBackend = "TKG_DC_BACKEND"
 	dcEnvDoor    = "TKG_DC_DOOR"
 	dcEnvDurable = "TKG_DC_DURABLE"
+	dcEnvFlush   = "TKG_DC_FLUSH"
 
 	// dcSignals is N: the group is one "Ref" node, N "Signal" nodes, one LINK
 	// relationship Ref->Signal[0], and a "Cut" node written LAST (the consumer's
@@ -184,7 +186,15 @@ func TestDurableCommitCrashChild(t *testing.T) {
 	if os.Getenv(dcEnvMode) != "1" {
 		t.Skip("crash child: run only by the durable-commit parent tests")
 	}
-	cfg, err := dcOpenStore(os.Getenv(dcEnvBackend), os.Getenv(dcEnvDir), time.Hour)
+	flushInterval := time.Hour
+	if v := os.Getenv(dcEnvFlush); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			os.Exit(7)
+		}
+		flushInterval = d
+	}
+	cfg, err := dcOpenStore(os.Getenv(dcEnvBackend), os.Getenv(dcEnvDir), flushInterval)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "open:", err)
 		os.Exit(2)
@@ -201,7 +211,29 @@ func TestDurableCommitCrashChild(t *testing.T) {
 		fmt.Fprintln(os.Stderr, "graph.New:", err)
 		os.Exit(3)
 	}
-	if err := dcWriteGroup(g, os.Getenv(dcEnvDoor)); err != nil {
+	door := os.Getenv(dcEnvDoor)
+	if door == "tx-fail" || door == "tx-fail-retry" {
+		// The store's real flush fails once (requeue path): the commit reports
+		// ErrCommitNotDurable; "-retry" then commits an empty tx, whose durable
+		// flush must persist the requeued group.
+		bs, ok := cfg.Store.(*badger.Store)
+		if !ok {
+			os.Exit(8)
+		}
+		bs.FailNextFlushForTest(errors.New("injected flush failure"))
+		if err := dcWriteGroup(g, "tx"); !errors.Is(err, graphpkg.ErrCommitNotDurable) {
+			fmt.Fprintln(os.Stderr, "tx with a failing flush: want ErrCommitNotDurable, got", err)
+			os.Exit(9)
+		}
+		if door == "tx-fail-retry" {
+			if err := g.Tx().Run(func(*graphpkg.GraphTx) error { return nil }); err != nil {
+				fmt.Fprintln(os.Stderr, "retry:", err)
+				os.Exit(10)
+			}
+		}
+		os.Exit(0)
+	}
+	if err := dcWriteGroup(g, door); err != nil {
 		fmt.Fprintln(os.Stderr, "door:", err)
 		os.Exit(4)
 	}
@@ -212,10 +244,17 @@ func TestDurableCommitCrashChild(t *testing.T) {
 // directory, reopens it, and returns the node and relationship counts on disk.
 func dcCrashCounts(t *testing.T, backend, door string, durable bool) (nodes, rels int) {
 	t.Helper()
+	return dcCrashCountsFlush(t, backend, door, durable, "")
+}
+
+// dcCrashCountsFlush is dcCrashCounts with the child's background flush
+// interval (a time.Duration string; empty = an hour).
+func dcCrashCountsFlush(t *testing.T, backend, door string, durable bool, flushInterval string) (nodes, rels int) {
+	t.Helper()
 	dir := t.TempDir()
 	cmd := exec.Command(os.Args[0], "-test.run=^TestDurableCommitCrashChild$", "-test.count=1")
 	cmd.Env = append(os.Environ(), dcEnvMode+"=1", dcEnvDir+"="+dir, dcEnvBackend+"="+backend,
-		dcEnvDoor+"="+door, dcEnvDurable+"="+boolDigit(durable))
+		dcEnvDoor+"="+door, dcEnvDurable+"="+boolDigit(durable), dcEnvFlush+"="+flushInterval)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("crash child %s/%s durable=%v failed: %v\n%s", backend, door, durable, err, out)
 	}
@@ -252,7 +291,6 @@ type flushSpyStore struct {
 	*badger.Store
 	flushes        atomic.Int64
 	durableFlushes atomic.Int64
-	failDurable    atomic.Int64 // DurableFlush calls still to fail (durable_commit_test.go)
 }
 
 func (s *flushSpyStore) Flush() error {

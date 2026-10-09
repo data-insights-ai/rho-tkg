@@ -54,6 +54,56 @@ func TestDurableFlush_DoesNotOpenClosedColdShard(t *testing.T) {
 	assertColdShardClosedForTest(t, cold, "DurableFlush")
 }
 
+// Catches: rows written to an event shard that is closed (idle or transient
+// cold close) between the write and the durable flush being lost, or the
+// durable flush failing on that closed shard. The shard's own Close flushed the
+// rows; DurableFlush skips it without error and the rows are on disk.
+func TestDurableFlush_ShardClosedBetweenWriteAndFlushKeepsRows(t *testing.T) {
+	dir := t.TempDir()
+	cfg := Config{DataDir: dir, RefLabels: []string{"Case"}, ShardWindow: 7 * 24 * time.Hour, FlushInterval: 1<<63 - 1}
+	ts, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	reg := registrypkg.NewLabelRegistry()
+	ts.SetLabelRegistry(reg)
+	signalTok, _ := reg.GetOrCreate("Signal")
+	n := types.NewNode(types.NodeID(tieredNodeGen(t).Generate()), signalTok, nil)
+	if err := ts.PutNode(n); err != nil {
+		t.Fatalf("PutNode: %v", err)
+	}
+	if ts.HotShardForTest().Store().PendingWriteCount() == 0 {
+		t.Fatal("setup: the row is not pending")
+	}
+	coldName := ts.HotShardForTest().Name()
+	forceRotation(t, ts)
+	demoteToCold(ts, coldName)
+	cold := ts.EventShardsForTest()[coldName]
+	cold.LockShardMuForTest()
+	if err := cold.Store().Close(); err != nil {
+		cold.UnlockShardMuForTest()
+		t.Fatalf("close the shard holding the pending row: %v", err)
+	}
+	cold.SetStoreForTest(nil)
+	cold.UnlockShardMuForTest()
+
+	if err := ts.DurableFlush(); err != nil {
+		t.Fatalf("DurableFlush with a closed shard: %v", err)
+	}
+	if err := ts.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	ts2, err := New(cfg)
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer func() { _ = ts2.Close() }()
+	ts2.SetLabelRegistry(reg)
+	if _, err := ts2.GetNode(n.ID()); err != nil {
+		t.Fatalf("row written before its shard closed is gone after reopen: %v", err)
+	}
+}
+
 func newDurableTieredStore(t *testing.T) (*Store, uint16, uint16) {
 	t.Helper()
 	ts, err := New(Config{

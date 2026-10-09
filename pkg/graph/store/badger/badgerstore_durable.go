@@ -30,6 +30,9 @@ func (bs *Store) DurableFlush() error {
 	if err := bs.checkOpen(); err != nil {
 		return err
 	}
+	if bs.testHookDurableAfterCheckOpen != nil {
+		bs.testHookDurableAfterCheckOpen()
+	}
 	if bs.inMemory {
 		return fmt.Errorf("graph: durable flush of an in-memory store: %w", storecontract.ErrCapabilityNotSupported)
 	}
@@ -44,6 +47,10 @@ func (bs *Store) DurableFlush() error {
 	}
 	// No dbClosed re-check: checkOpen passed and Close marks dbClosed only
 	// after its own final flush, which waits for the flushMu held here.
+	if injected := bs.failNextSync.Swap(nil); injected != nil { // test seam
+		bs.unsynced.Store(true)
+		return fmt.Errorf("graph: durable flush: sync write-ahead log: %w", *injected)
+	}
 	if err := bs.db.Sync(); err != nil {
 		bs.unsynced.Store(true)
 		return fmt.Errorf("graph: durable flush: sync write-ahead log: %w", err)

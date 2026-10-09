@@ -1,0 +1,26 @@
+=== RUN   TestDurableFlush_CloseAfterCheckOpenReturnsStoreClosed
+--- FAIL: TestDurableFlush_CloseAfterCheckOpenReturnsStoreClosed (0.09s)
+panic: runtime error: invalid memory address or nil pointer dereference [recovered, repanicked]
+[signal SIGSEGV: segmentation violation code=0x1 addr=0x0 pc=0xc6c24a]
+
+goroutine 8 [running]:
+testing.tRunner.func1.2({0x10f2cc0, 0x1961940})
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.7.linux-amd64/src/testing/testing.go:1974 +0x419
+testing.tRunner.func1()
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.7.linux-amd64/src/testing/testing.go:1977 +0x67f
+panic({0x10f2cc0?, 0x1961940?})
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.7.linux-amd64/src/runtime/panic.go:860 +0x13a
+github.com/dgraph-io/badger/v4.(*memTable).SyncWAL(0x0)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/memtable.go:156 +0x2a
+github.com/dgraph-io/badger/v4.(*DB).Sync(0xc0003b0008)
+	/home/renework2023/go/pkg/mod/github.com/dgraph-io/badger/v4@v4.9.2/db.go:706 +0x99
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.(*Store).DurableFlush(0xc0002e2008)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-a0a285d00436b075e/pkg/graph/store/badger/badgerstore_durable.go:50 +0x2d7
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.TestDurableFlush_CloseAfterCheckOpenReturnsStoreClosed(0xc0001e4b48)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-a0a285d00436b075e/pkg/graph/store/badger/badgerstore_durable_test.go:30 +0x277
+testing.tRunner(0xc0001e4b48, 0x1214728)
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.7.linux-amd64/src/testing/testing.go:2036 +0x21d
+created by testing.(*T).Run in goroutine 1
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.7.linux-amd64/src/testing/testing.go:2101 +0xb13
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.108s
+FAIL

@@ -796,6 +796,13 @@ type Store struct {
 	// syncs (DurableSyncCountForTest).
 	unsynced     atomic.Bool
 	durableSyncs atomic.Int64
+	// Test seams (nil in production): failNextFlush makes the next WriteBatch
+	// commit fail through the real requeue path (FailNextFlushForTest);
+	// testHookDurableAfterCheckOpen runs inside DurableFlush right after its
+	// checkOpen, so a test can interleave Close there.
+	failNextFlush                 atomic.Pointer[error]
+	failNextSync                  atomic.Pointer[error]
+	testHookDurableAfterCheckOpen func()
 
 	// Change-log (op-log) — opt-in via Config.ChangeLog. logEnabled gates ALL
 	// record production (zero overhead when off). logSeq is the monotonic LSN
