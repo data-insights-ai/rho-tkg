@@ -82,7 +82,7 @@ func TestTxBackfillRel_PlainDoorsUnchanged(t *testing.T) {
 				// clock window around the call.
 				g := be.open(t, false)
 				r := txbPlainRel(t, g, map[string]any{"tkg_valid_from": dcY2020, "w": int64(1)})
-				lo, _ := g.Temporal.PeekTx()
+				lo, _ := g.Temporal.NowTx() // reserved: the stamp under test is strictly above it
 				if err := d.upd(t, g, r.ID(), map[string]any{"w": int64(2)}); err != nil {
 					t.Fatalf("update: %v", err)
 				}
@@ -117,7 +117,7 @@ func TestTxBackfillRel_PlainDoorsUnchanged(t *testing.T) {
 				if err := g.Rels.CloseVersion(context.Background(), r.ID(), future); err != nil {
 					t.Fatalf("CloseVersion: %v", err)
 				}
-				lo, _ := g.Temporal.PeekTx()
+				lo, _ := g.Temporal.NowTx() // reserved: the stamp under test is strictly above it
 				if err := d.del(t, g, r.ID()); err != nil {
 					t.Fatalf("delete: %v", err)
 				}

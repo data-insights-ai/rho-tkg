@@ -66,6 +66,7 @@ func (r *RelOps) UpdateWithTx(ctx context.Context, id types.RelID, updates map[s
 	if err != nil {
 		return nil, err
 	}
+	defer c.notePastDatedWrite(at) // after the store write (as-of cache)
 	var (
 		rel     *types.Relationship
 		mutated bool

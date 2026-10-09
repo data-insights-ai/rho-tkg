@@ -84,6 +84,7 @@ func (r *RelOps) DeleteWithTx(ctx context.Context, id types.RelID, txTo types.In
 	if err != nil {
 		return err
 	}
+	defer c.notePastDatedWrite(at) // after the store write (as-of cache)
 	ep, closeErr := c.runUnderRLock(func() {
 		err = c.deleteRelationshipInternal(ctx, id, at)
 	})

@@ -770,9 +770,11 @@ type Config struct {
 	// import scope" gate from §4.1 — enable it only in a controlled re-ingest
 	// so a documented historical Erkenntniszeit (e.g. 2026-01-15 12:00) is
 	// reproducible via AS OF SYSTEM TIME; leave off in production, where any
-	// tkg_tx_from is rejected with ErrTxBackfillDisabled. Backfill applies to
-	// CREATES only — updates/deletes keep the monotonic system TxFrom (a
-	// correction recorded now is stamped now). TxFrom is not part of the
+	// tkg_tx_from is rejected with ErrTxBackfillDisabled. The plain update and
+	// delete doors keep the monotonic system clock (a correction recorded now
+	// is stamped now); only the explicit Rels().DeleteWithTx / UpdateWithTx
+	// doors end or supersede belief at a caller instant, under the same gate
+	// and an order check against the recorded chain (ErrTxOrder). TxFrom is not part of the
 	// integrity hash, so a backfilled row still verifies and replicates verbatim.
 	AllowTxBackfill bool
 

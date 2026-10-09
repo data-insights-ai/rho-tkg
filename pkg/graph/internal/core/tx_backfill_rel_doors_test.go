@@ -509,7 +509,7 @@ func TestTxBackfillRel_UpdateStamps(t *testing.T) {
 			if w, _ := chain[1].GetProperty("w"); w != int64(2) {
 				t.Fatalf("w = %v; want 2", w)
 			}
-			lo, _ := g.Temporal.PeekTx()
+			lo, _ := g.Temporal.NowTx() // reserved: the stamp under test is strictly above it
 			if _, err := g.Rels.Update(ctx, f.id, map[string]any{"w": int64(3)}); err != nil {
 				t.Fatalf("plain Update: %v", err)
 			}
@@ -713,7 +713,10 @@ func assertTxChainMonotone(t *testing.T, phase string, chain []*types.Relationsh
 // clock while UpdateWithTx / DeleteWithTx stamp t read from the clock just
 // before; a check done before the lock lets a plain write land in between and
 // the caller-instant write then stamps a TxFrom below its predecessor's (an
-// inverted chain). Every successful WithTx write must carry its own t.
+// inverted chain). Every successful WithTx write must carry its own t, taken
+// from NowTx (a reserved instant: not in the future, unique). A t from
+// PeekTx()+1 is not usable — within one millisecond it can lie above the
+// clock and is then rightly refused as future.
 func TestTxBackfillRel_RaceClock(t *testing.T) {
 	t.Parallel()
 	const writers, rounds = 4, 40
@@ -743,8 +746,9 @@ func TestTxBackfillRel_RaceClock(t *testing.T) {
 				go func(w int) {
 					defer wg.Done()
 					for i := 0; i < rounds; i++ {
-						peek, _ := g.Temporal.PeekTx()
-						at := peek + 1
+						// NowTx reserves t: never in the future, and no
+						// other write is stamped with it.
+						at, _ := g.Temporal.NowTx()
 						got, err := g.Rels.UpdateWithTx(ctx, upd.ID(), map[string]any{"w": int64(-(w*1000 + i + 1))}, at)
 						switch {
 						case err == nil && got.Temporal().TxFrom != at:
@@ -753,16 +757,15 @@ func TestTxBackfillRel_RaceClock(t *testing.T) {
 							errc <- fmt.Errorf("UpdateWithTx: %w", err)
 						}
 						if w == 0 && i == rounds/2 {
-							peek, _ = g.Temporal.PeekTx()
 							for {
-								err := g.Rels.DeleteWithTx(ctx, del.ID(), peek+1)
+								at, _ := g.Temporal.NowTx()
+								err := g.Rels.DeleteWithTx(ctx, del.ID(), at)
 								if err == nil || !errors.Is(err, ErrTxOrder) {
 									if err != nil {
 										errc <- fmt.Errorf("DeleteWithTx: %w", err)
 									}
 									break
 								}
-								peek, _ = g.Temporal.PeekTx()
 							}
 						}
 					}
@@ -774,10 +777,10 @@ func TestTxBackfillRel_RaceClock(t *testing.T) {
 				t.Fatal(err)
 			}
 			// Counterpart: a quiet UpdateWithTx at the next instant lands at t.
-			peek, _ := g.Temporal.PeekTx()
-			got, err := g.Rels.UpdateWithTx(ctx, upd.ID(), map[string]any{"w": int64(1 << 40)}, peek+1)
-			if err != nil || got.Temporal().TxFrom != peek+1 {
-				t.Fatalf("quiet UpdateWithTx(t=%d) = %v, %v; want TxFrom = t", peek+1, got, err)
+			at, _ := g.Temporal.NowTx()
+			got, err := g.Rels.UpdateWithTx(ctx, upd.ID(), map[string]any{"w": int64(1 << 40)}, at)
+			if err != nil || got.Temporal().TxFrom != at {
+				t.Fatalf("quiet UpdateWithTx(t=%d) = %v, %v; want TxFrom = t", at, got, err)
 			}
 			assertTxChainMonotone(t, "update rel", txbChain(t, g, upd.ID()))
 			chain := txbChain(t, g, del.ID())
