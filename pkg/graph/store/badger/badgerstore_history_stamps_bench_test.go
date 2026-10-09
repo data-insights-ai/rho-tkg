@@ -7,6 +7,7 @@ import (
 	"time"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -153,4 +154,43 @@ func seedStampsBenchStore(b *testing.B, node bool, stride, entities int) *Store 
 	}
 	b.Cleanup(func() { _ = bs.Close() })
 	return bs
+}
+
+// BenchmarkHistoryStampsNote measures what a built sidecar adds to every
+// history write under the write-buffer lock: one note (decode the row's
+// stamps by the zero-alloc temporal scanner, fold them into the ID's entry).
+// "untracked" is the cost before the first LatestStamps call.
+//
+//	go test ./pkg/graph/store/badger/ -run '^$' -bench 'BenchmarkHistoryStampsNote' -benchmem
+func BenchmarkHistoryStampsNote(b *testing.B) {
+	r := types.NewRelationship(types.RelID(snowflake.ID(42)), 5, types.NodeID(1), types.NodeID(2))
+	r.SetTemporal(&types.TemporalMetadata{ValidFrom: 1, TxFrom: 1_000, TxTo: 2_000})
+	if err := r.SetProperty("w", int64(7)); err != nil {
+		b.Fatal(err)
+	}
+	value, err := storepkg.MarshalRelWire(r)
+	if err != nil {
+		b.Fatal(err)
+	}
+	for _, tracking := range []bool{false, true} {
+		name := "untracked"
+		if tracking {
+			name = "built"
+		}
+		b.Run(name, func(b *testing.B) {
+			var p historyStamps
+			if tracking {
+				p.has = make(map[snowflake.ID]stampEntry)
+				p.unknown = make(map[snowflake.ID]uint64)
+				p.tracking = true
+				p.built.Store(true)
+			}
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				version := uint64(i)
+				op := writeOp{opType: writeOpSet, key: storepkg.HistRelKey(snowflake.ID(42), version), value: value}
+				p.note(snowflake.ID(42), version, op, false)
+			}
+		})
+	}
 }

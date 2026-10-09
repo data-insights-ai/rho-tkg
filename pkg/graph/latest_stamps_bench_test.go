@@ -150,3 +150,58 @@ func benchRelHistory(b *testing.B, g *graphpkg.Graph, id types.RelID) []*types.R
 	}
 	return h
 }
+
+// BenchmarkUpdateStampsMaintenance measures the write-path cost of the badger
+// history-stamps sidecar: Rels().Update (one history row per call) before the
+// first LatestStamps call (sidecar not tracking) and after it (every history
+// write decodes its row's stamps under the write-buffer lock).
+//
+//	go test ./pkg/graph/ -run '^$' -bench 'BenchmarkUpdateStampsMaintenance' -benchmem -count 5
+func BenchmarkUpdateStampsMaintenance(b *testing.B) {
+	for _, built := range []bool{false, true} {
+		name := "unbuilt"
+		if built {
+			name = "built"
+		}
+		b.Run("badger/"+name, func(b *testing.B) {
+			ctx := context.Background()
+			bs, err := badger.New(badger.Config{Dir: b.TempDir(), FlushInterval: 50 * time.Millisecond})
+			if err != nil {
+				b.Fatal(err)
+			}
+			g, err := graphpkg.New(graphpkg.Config{Store: bs})
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.Cleanup(func() { _ = g.Close() })
+			n1, err := g.Nodes().Add(ctx, []string{"Host"}, nil)
+			if err != nil {
+				b.Fatal(err)
+			}
+			n2, err := g.Nodes().Add(ctx, []string{"Host"}, nil)
+			if err != nil {
+				b.Fatal(err)
+			}
+			ids := make([]types.RelID, 0, 1000)
+			for i := 0; i < 1000; i++ {
+				r, err := g.Rels().AddByID(ctx, "SEEN", n1.ID(), n2.ID(), map[string]any{"w": int64(i)})
+				if err != nil {
+					b.Fatal(err)
+				}
+				ids = append(ids, r.ID())
+			}
+			if built {
+				if _, _, _, err := g.Rels().LatestStamps(ids[0]); err != nil {
+					b.Fatal(err)
+				}
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if _, err := g.Rels().Update(ctx, ids[i%len(ids)], map[string]any{"w": int64(-i)}); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
