@@ -1,0 +1,44 @@
+=== m1
+--- FAIL: TestReImportAfterDeleteAheadOfClock (0.37s)
+--- FAIL: TestReImportTxRollbackRestoresEarlierLife (0.39s)
+--- FAIL: TestReImportAboveCascadeRows (0.57s)
+--- FAIL: TestReImportReplicaApply (0.62s)
+--- FAIL: TestReImportExportImportRoundTrip (0.70s)
+--- FAIL: TestReImportCompactionAcrossLives (0.00s)
+--- FAIL: TestReImportLifeOracle (0.00s)
+--- FAIL: TestReImportKeepsEveryLife (0.00s)
+--- FAIL: TestReImportBackfillMustFollowTheChain (1.19s)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	1.522s
+=== m2
+--- FAIL: TestReImportAboveCascadeRows (0.52s)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	5.992s
+=== m3
+--- FAIL: TestReImportOldChainReadsAsBefore (0.91s)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	6.139s
+=== m3b
+--- FAIL: TestReImportKeepsEveryLife (0.01s)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	6.746s
+=== m4
+--- FAIL: TestReImportBackfillRefusalLeavesNoToken (0.17s)
+--- FAIL: TestReImportBackfillMustFollowTheChain (1.12s)
+--- FAIL: TestReImportLifeOracle (0.00s)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	5.759s
+=== m5
+--- FAIL: TestReImportAfterDeleteAheadOfClock (0.48s)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	16.786s
+=== m6
+--- FAIL: TestReImportReplicaApply (0.58s)
+--- FAIL: TestReImportCompactionAcrossLives (0.00s)
+--- FAIL: TestReImportAfterDeleteAheadOfClock (0.74s)
+--- FAIL: TestReImportExportImportRoundTrip (0.75s)
+--- FAIL: TestReImportKeepsEveryLife (0.00s)
+--- FAIL: TestReImportAboveCascadeRows (1.11s)
+--- FAIL: TestReImportBackfillMustFollowTheChain (1.43s)
+--- FAIL: TestReImportLifeOracle (0.01s)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	3.697s
+=== m7
+--- FAIL: TestReImportTxRollbackRestoresEarlierLife (0.17s)
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	5.841s
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.057s
+FAIL

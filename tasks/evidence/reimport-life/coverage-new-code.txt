@@ -1,0 +1,8 @@
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core/tx.go:423:				trackCreatedNodeLocked				66.7%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core/tx.go:434:				trackCreatedRelLocked				66.7%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core/tx.go:450:				removeCreatedNodeHistory			77.8%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core/tx.go:466:				removeCreatedRelHistory				77.8%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core/version_alloc.go:169:			lifeStartOf					100.0%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core/version_alloc.go:196:			begin						100.0%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core/version_alloc.go:209:			nodeLifeStart					100.0%
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core/version_alloc.go:224:			relLifeStart					92.9%
