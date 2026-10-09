@@ -217,7 +217,7 @@ Both generator sets (nodes and relationships) are initialized with explicit para
 
 Each concurrent graph instance **must** use a different `Config.SnowflakeNodeID` (0-15).
 
-The epoch and layout have ONE definition, `pkg/internal/idlayout` (re-exported by `pkg/graph/internal/snowflake`), shared by every graph in the process. The mint instant of an ID — the derived valid-from of a row with `ValidFrom == 0` — is `idlayout.MintInstantMillis`, public as `types.NodeID.MintInstant()` / `types.RelID.MintInstant()`; the resolver (`storeutil.EntityValidFrom`, `SnowflakeInstant`) calls the same function. Never decode time bits anywhere else.
+The epoch and layout have ONE definition, `pkg/internal/idlayout` (re-exported by `pkg/graph/internal/snowflake`), shared by every graph in the process. The mint instant of an ID — the derived valid-from of a row with `ValidFrom == 0` — is `idlayout.MintInstantMillis`, public as `types.NodeID.MintInstant()` / `types.RelID.MintInstant()`; the resolver (`storeutil.EntityValidFrom`, `SnowflakeInstant`) calls the same function. Never derive an ID-based Instant anywhere else (the `tkg_created_at` fallback uses it too); store routing by time window and lock sharding read the time bits for placement, not for an Instant.
 
 ## Design Rules
 

@@ -18,7 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (odd node field), monotone in ID order, a pure function of the ID and the package-level epoch and layout (every graph
   in a process shares them; no `Config` is consulted), allocation-free, and never panics: a zero or negative ID, which no
   generator mints, returns 0 (unset) rather than the epoch or a pre-epoch instant (this also makes the resolver's derived
-  start for such an ID 0, where it was the epoch; non-positive IDs are never persisted, `ErrInvalidStoreMutation`).
+  start for such an ID 0, where it was the epoch; non-positive IDs are never persisted, `ErrInvalidStoreMutation`). The `tkg_created_at` shadow fallback (no explicit `CreatedAt`) uses the same function.
   Decision on the home: `pkg/types` already imports the snowflake library (`SnowflakeID()`), and the methods return
   `types.Instant`, so no dependency leaks (AGENTS.md rule 12); the layout constants moved from
   `pkg/graph/internal/snowflake` into the new `pkg/internal/idlayout` (importable by `pkg/types` and `pkg/graph/**`,

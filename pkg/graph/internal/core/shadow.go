@@ -65,7 +65,7 @@ func (c *Core) nodePropertyUnlocked(n *types.Node, key string) (any, bool) {
 		if tm := n.Temporal(); tm != nil && tm.CreatedAt != 0 {
 			return tm.CreatedAt, true
 		}
-		return types.Instant(c.nodeIDGen.CreatedAt(n.ID().SnowflakeID()).UnixMilli()), true
+		return n.ID().MintInstant(), true
 	case types.ShadowUpdatedAt:
 		if tm := n.Temporal(); tm != nil {
 			return tm.UpdatedAt, true
@@ -195,7 +195,7 @@ func (c *Core) relPropertyUnlocked(rel *types.Relationship, key string) (any, bo
 		if tm := rel.Temporal(); tm != nil && tm.CreatedAt != 0 {
 			return tm.CreatedAt, true
 		}
-		return types.Instant(c.relIDGen.CreatedAt(rel.ID().SnowflakeID()).UnixMilli()), true
+		return rel.ID().MintInstant(), true
 	case types.ShadowUpdatedAt:
 		if tm := rel.Temporal(); tm != nil {
 			return tm.UpdatedAt, true
