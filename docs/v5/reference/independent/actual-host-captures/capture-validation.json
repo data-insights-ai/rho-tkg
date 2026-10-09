@@ -1,0 +1,207 @@
+{
+  "artifact_sha256": {
+    "README.md": "c83d89d9c7adbf892ba56760e4d1c3555ad5c03d382f8e8c56f17930f5b4195f",
+    "captures-normal/absent-key-cross-write-skew.json": "6d63962f4c117995dad8e713d52c262a3baa0c7d62db8d5e9d8a1ce1e426ab62",
+    "captures-normal/conflicting-same-observed-view-retry.json": "4096016afa89ac59d027a8b5981193cf9603a6984b1f8e3776d6d774daf73a80",
+    "captures-normal/empty-range-phantom-cross-write-skew.json": "9a6bd2b7e8f8b1006eb410a795b0ab45035b04db6df498a183a582441eef1374",
+    "captures-normal/independent-concurrent-partitions.json": "f540d3615b51bf6f609d0c0b829bb4c0ed01e259bbc7d6b6d90e2c02cd1d7095",
+    "captures-normal/partial-install-old-cut-correction-outside-coordinator.json": "7f2b1a12a05eae4934f49b53c1a69052185057db9e617ee4b9f7645b43d1fa6f",
+    "captures-race/absent-key-cross-write-skew.json": "61cf3a4daa0ad0d758162d2780e75afe7124bfbd5b63a4464f922ea1b9cfa52b",
+    "captures-race/conflicting-same-observed-view-retry.json": "5c73f78193eadcc2ca7784827bc83492d40bf98ac587c76c8590ca6b8da6ec83",
+    "captures-race/empty-range-phantom-cross-write-skew.json": "8b1fb29d915da378a298bdfa5cccb7741c4bf6b76e0d0cc9f08baf3c1d9a4aeb",
+    "captures-race/independent-concurrent-partitions.json": "a6658e9570f268f35452da198193bd99019b50fc74e8024b4e558f0230666ee8",
+    "captures-race/partial-install-old-cut-correction-outside-coordinator.json": "fcf703c6ebbb9f395d1d3adac23b6eaa4ca56fad120a112a1c669b8aa8104bf3",
+    "check_captures.py": "58b11c8f3f1071b0f332b6bdccefb212ac2a388c0069f3d5c1bf3b17543ea77d",
+    "independent-host-capture.patch": "f84d6e8b2995b992b450349cd5198c0286cdb40480f05ddd33a36338db782e8d",
+    "source-validation.json": "877e127833c882c0e5955efe5ba2c265b15db49fa151593ae7a3597cd80d3389"
+  },
+  "canonical_oracle_sha256": "a132b4e4981f3dcea485b7ee5dea0df48a906cdfcda4a75bec5ff9f1a5589d3a",
+  "full_evidence_audit_run": false,
+  "go_rerun_during_packaging": false,
+  "portability_checks": {
+    "arbitrary_cwd": "both packaged sets passed from root directory",
+    "canonical_package_output_refused": true,
+    "default_output": "new external system temporary file",
+    "fresh_raw_capture_reproduction": "5 historical raw observation copies accepted with externally verified 101 tracked source bytes; no new Go run claimed",
+    "package_bytes_unchanged_by_checker": true,
+    "private_absolute_paths_absent": true
+  },
+  "prior_source_claim_coverage_artifacts_removed": true,
+  "runs": {
+    "normal": {
+      "actual_histories": [
+        {
+          "accepted": true,
+          "capture_file": "absent-key-cross-write-skew.json",
+          "capture_sha256": "6d63962f4c117995dad8e713d52c262a3baa0c7d62db8d5e9d8a1ce1e426ab62",
+          "name": "absent-key-cross-write-skew",
+          "orders_tried": 1,
+          "serial_witness": [
+            "left"
+          ]
+        },
+        {
+          "accepted": true,
+          "capture_file": "conflicting-same-observed-view-retry.json",
+          "capture_sha256": "4096016afa89ac59d027a8b5981193cf9603a6984b1f8e3776d6d774daf73a80",
+          "name": "conflicting-same-observed-view-retry",
+          "orders_tried": 6,
+          "serial_witness": [
+            "seed",
+            "right",
+            "retry-distinct-request"
+          ]
+        },
+        {
+          "accepted": true,
+          "capture_file": "empty-range-phantom-cross-write-skew.json",
+          "capture_sha256": "9a6bd2b7e8f8b1006eb410a795b0ab45035b04db6df498a183a582441eef1374",
+          "name": "empty-range-phantom-cross-write-skew",
+          "orders_tried": 1,
+          "serial_witness": [
+            "left"
+          ]
+        },
+        {
+          "accepted": true,
+          "capture_file": "independent-concurrent-partitions.json",
+          "capture_sha256": "f540d3615b51bf6f609d0c0b829bb4c0ed01e259bbc7d6b6d90e2c02cd1d7095",
+          "name": "independent-concurrent-partitions",
+          "orders_tried": 1,
+          "serial_witness": [
+            "left",
+            "right"
+          ]
+        },
+        {
+          "accepted": true,
+          "capture_file": "partial-install-old-cut-correction-outside-coordinator.json",
+          "capture_sha256": "7f2b1a12a05eae4934f49b53c1a69052185057db9e617ee4b9f7645b43d1fa6f",
+          "name": "partial-install-old-cut-correction-outside-coordinator",
+          "orders_tried": 2,
+          "serial_witness": [
+            "edge",
+            "correction"
+          ]
+        }
+      ],
+      "synthetic_sensitivity_controls": [
+        {
+          "kind": "oracle sensitivity control; not actual Host capture",
+          "name": "two-stale-predicate-reads-commit-cycle",
+          "rejected": true
+        },
+        {
+          "kind": "oracle sensitivity control; not actual Host capture",
+          "name": "two-stale-predicate-reads-commit-cycle",
+          "rejected": true
+        },
+        {
+          "kind": "oracle sensitivity control; not actual Host capture",
+          "name": "partial-cross-partition-answer",
+          "rejected": true
+        },
+        {
+          "kind": "oracle sensitivity control; not actual Host capture",
+          "name": "current-map-substituted-at-old-cut",
+          "rejected": true
+        },
+        {
+          "kind": "oracle sensitivity control; not actual Host capture",
+          "name": "extra-phantom-output-key",
+          "rejected": true
+        }
+      ]
+    },
+    "race": {
+      "actual_histories": [
+        {
+          "accepted": true,
+          "capture_file": "absent-key-cross-write-skew.json",
+          "capture_sha256": "61cf3a4daa0ad0d758162d2780e75afe7124bfbd5b63a4464f922ea1b9cfa52b",
+          "name": "absent-key-cross-write-skew",
+          "orders_tried": 1,
+          "serial_witness": [
+            "left"
+          ]
+        },
+        {
+          "accepted": true,
+          "capture_file": "conflicting-same-observed-view-retry.json",
+          "capture_sha256": "5c73f78193eadcc2ca7784827bc83492d40bf98ac587c76c8590ca6b8da6ec83",
+          "name": "conflicting-same-observed-view-retry",
+          "orders_tried": 5,
+          "serial_witness": [
+            "seed",
+            "left",
+            "retry-distinct-request"
+          ]
+        },
+        {
+          "accepted": true,
+          "capture_file": "empty-range-phantom-cross-write-skew.json",
+          "capture_sha256": "8b1fb29d915da378a298bdfa5cccb7741c4bf6b76e0d0cc9f08baf3c1d9a4aeb",
+          "name": "empty-range-phantom-cross-write-skew",
+          "orders_tried": 1,
+          "serial_witness": [
+            "left"
+          ]
+        },
+        {
+          "accepted": true,
+          "capture_file": "independent-concurrent-partitions.json",
+          "capture_sha256": "a6658e9570f268f35452da198193bd99019b50fc74e8024b4e558f0230666ee8",
+          "name": "independent-concurrent-partitions",
+          "orders_tried": 1,
+          "serial_witness": [
+            "left",
+            "right"
+          ]
+        },
+        {
+          "accepted": true,
+          "capture_file": "partial-install-old-cut-correction-outside-coordinator.json",
+          "capture_sha256": "fcf703c6ebbb9f395d1d3adac23b6eaa4ca56fad120a112a1c669b8aa8104bf3",
+          "name": "partial-install-old-cut-correction-outside-coordinator",
+          "orders_tried": 2,
+          "serial_witness": [
+            "edge",
+            "correction"
+          ]
+        }
+      ],
+      "synthetic_sensitivity_controls": [
+        {
+          "kind": "oracle sensitivity control; not actual Host capture",
+          "name": "two-stale-predicate-reads-commit-cycle",
+          "rejected": true
+        },
+        {
+          "kind": "oracle sensitivity control; not actual Host capture",
+          "name": "two-stale-predicate-reads-commit-cycle",
+          "rejected": true
+        },
+        {
+          "kind": "oracle sensitivity control; not actual Host capture",
+          "name": "partial-cross-partition-answer",
+          "rejected": true
+        },
+        {
+          "kind": "oracle sensitivity control; not actual Host capture",
+          "name": "current-map-substituted-at-old-cut",
+          "rejected": true
+        },
+        {
+          "kind": "oracle sensitivity control; not actual Host capture",
+          "name": "extra-phantom-output-key",
+          "rejected": true
+        }
+      ]
+    }
+  },
+  "schema": "rho-reviewed-portable-actual-host-capture-validation",
+  "scope": "review data; actual copied Host behavior plus independent mathematical search; no whole V2/production graph/full Evidence acceptance",
+  "unchanged_patch_matches_reviewed_external_sha256": true,
+  "unchanged_read_mapping_and_serial_sensitivity_functions": true,
+  "version": 1
+}

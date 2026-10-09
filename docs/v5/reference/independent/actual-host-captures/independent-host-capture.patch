@@ -1,0 +1,458 @@
+diff --git a/v5/internal/txnproto/independent_host_capture_test.go b/v5/internal/txnproto/independent_host_capture_test.go
+new file mode 100644
+--- /dev/null
++++ b/v5/internal/txnproto/independent_host_capture_test.go
+@@ -0,0 +1,453 @@
++package txnproto
++
++// External review bridge only. Expected state comes from the unchanged Python
++// mathematical serial search, never the stock modelValid/modelAt helpers.
++import (
++	"encoding/json"
++	"errors"
++	"os"
++	"path/filepath"
++	"reflect"
++	"slices"
++	"sync"
++	"testing"
++)
++
++type hostCapture struct {
++	n            *network
++	name         string
++	transactions map[string]any
++	submitted    map[string]Tx
++	rounds       map[string]uint64
++	decisions    map[string]any
++	observations []any
++	finals       []any
++	raw          []any
++	guards       []any
++}
++
++func captureNetwork(t *testing.T, name string) *hostCapture {
++	return &hostCapture{n: newNetwork(t), name: name, transactions: map[string]any{}, submitted: map[string]Tx{}, rounds: map[string]uint64{}, decisions: map[string]any{}, observations: []any{}, finals: []any{}, raw: []any{}, guards: []any{}}
++}
++func hostID(g uint8) uint64                { return 1 + 3*uint64(g) }
++func groupName(g uint8) string             { return []string{"A", "B"}[g] }
++func synthetic(g uint8, key string) string { return groupName(g) + "/" + key }
++func (c *hostCapture) read(t *testing.T, g uint8, q Query) Proof {
++	t.Helper()
++	p := c.n.read(t, hostID(g), q)
++	c.raw = append(c.raw, map[string]any{"kind": "completed-host-read", "host": hostID(g), "query": q, "read_id": p.readID, "view": p.View()})
++	return p
++}
++func (c *hostCapture) current(t *testing.T, g uint8) Proof { return c.read(t, g, Query{Kind: Current}) }
++func (c *hostCapture) submit(t *testing.T, g uint8, p Proposal, e error) {
++	t.Helper()
++	if e != nil {
++		t.Fatal(e)
++	}
++	c.raw = append(c.raw, map[string]any{"kind": "host-submit-acceptance-only", "host": hostID(g), "command": p.command})
++	c.n.submit(t, hostID(g), p, nil)
++}
++func observedKey(g uint8, p Proof, key string) map[string]any {
++	value, exists := p.View().State.Values[key]
++	var scalar any
++	if exists {
++		scalar = value.Value
++	}
++	return map[string]any{"kind": "key", "key": synthetic(g, key), "exists": exists, "value": scalar}
++}
++func observedRange(g uint8, p Proof, lo, hi string) map[string]any {
++	values := map[string]int64{}
++	for key, value := range p.View().State.Values {
++		if lo <= key && key < hi {
++			values[synthetic(g, key)] = value.Value
++		}
++	}
++	return map[string]any{"kind": "range", "lo": synthetic(g, lo), "hi": synthetic(g, hi), "values": values}
++}
++
++// Every participant generation and named key version is copied from an actual
++// completed Current proof. Range results enumerate that complete owned map;
++// the native submitted footprint is the whole partition Generation.
++func (c *hostCapture) construct(t *testing.T, id string, coord uint8, views map[uint8]Proof, effects map[uint8][]Effect, keys map[uint8][]string, ranges map[uint8][2]string) Tx {
++	t.Helper()
++	groups := []uint8{}
++	for g := range views {
++		groups = append(groups, g)
++	}
++	slices.Sort(groups)
++	ps := []Participant{}
++	reads := []any{}
++	writes := map[string]any{}
++	epochs := map[string]uint64{}
++	names := []string{}
++	bindings := []any{}
++	for _, g := range groups {
++		p := views[g]
++		v := p.View()
++		if v.Kind != Current || v.Group != g || v.State == nil {
++			t.Fatal("not a completed current view")
++		}
++		part := Participant{Group: g, Epoch: v.Epoch, Generation: v.State.Generation, Effects: slices.Clone(effects[g])}
++		names = append(names, groupName(g))
++		epochs[groupName(g)] = v.Epoch
++		for _, key := range keys[g] {
++			value := v.State.Values[key]
++			part.Reads = append(part.Reads, Read{Key: key, Version: value.Version})
++			reads = append(reads, observedKey(g, p, key))
++		}
++		slices.SortFunc(part.Reads, func(a, b Read) int {
++			if a.Key < b.Key {
++				return -1
++			}
++			if a.Key > b.Key {
++				return 1
++			}
++			return 0
++		})
++		if r, ok := ranges[g]; ok {
++			reads = append(reads, observedRange(g, p, r[0], r[1]))
++		}
++		for _, e := range part.Effects {
++			if e.Delete {
++				writes[synthetic(g, e.Key)] = map[string]any{"op": "delete"}
++			} else {
++				writes[synthetic(g, e.Key)] = map[string]any{"op": "put", "value": e.Value}
++			}
++		}
++		ps = append(ps, part)
++		bindings = append(bindings, map[string]any{"participant": part, "read_id": p.readID, "query": p.question, "view": v})
++	}
++	x := tx(id, coord, ps...)
++	if _, exists := c.transactions[id]; exists {
++		t.Fatal("duplicate transaction identity")
++	}
++	c.submitted[id] = x
++	c.transactions[id] = map[string]any{"participants": names, "coordinator": groupName(coord), "epochs": epochs, "request_key": x.Request, "reads": reads, "writes": writes}
++	c.raw = append(c.raw, map[string]any{"kind": "constructed-transaction", "submitted_input": x, "bound_actual_views": bindings})
++	return x
++}
++func (c *hostCapture) decided(t *testing.T, x Tx) Proof {
++	t.Helper()
++	p := c.read(t, x.Coordinator, Query{Kind: Decided, TxID: x.ID})
++	v := p.View()
++	if v.Tx == nil || !reflect.DeepEqual(*v.Tx, x) || v.Decision == nil {
++		t.Fatal("decision/input binding mismatch")
++	}
++	d := v.Decision
++	c.decisions[x.ID] = map[string]any{"commit": d.Commit, "round": d.Round, "reason": d.Reason, "request": x.Request, "proof_view": v, "read_id": p.readID}
++	if d.Commit {
++		c.rounds[x.ID] = d.Round
++	}
++	return p
++}
++func (c *hostCapture) local(t *testing.T, x Tx) Proof {
++	p, e := Local(x)
++	c.submit(t, x.Coordinator, p, e)
++	return c.decided(t, x)
++}
++func (c *hostCapture) concurrentLocals(t *testing.T, xs ...Tx) []Proof {
++	t.Helper()
++	type submittedEvent struct {
++		g     uint8
++		event Event
++		err   error
++	}
++	out := make(chan submittedEvent, len(xs))
++	var wg sync.WaitGroup
++	for _, x := range xs {
++		p, e := Local(x)
++		if e != nil {
++			t.Fatal(e)
++		}
++		c.raw = append(c.raw, map[string]any{"kind": "host-submit-acceptance-only", "host": hostID(x.Coordinator), "command": p.command})
++		wg.Go(func() {
++			event, err := c.n.hosts[hostID(x.Coordinator)].Submit(p)
++			out <- submittedEvent{x.Coordinator, event, err}
++		})
++	}
++	wg.Wait()
++	close(out)
++	for event := range out {
++		c.n.run(t, hostID(event.g), event.event, event.err)
++	}
++	proofs := []Proof{}
++	for _, x := range xs {
++		proofs = append(proofs, c.decided(t, x))
++	}
++	return proofs
++}
++func (c *hostCapture) register(t *testing.T, x Tx) Proof {
++	p, e := Register(x)
++	c.submit(t, x.Coordinator, p, e)
++	return c.read(t, x.Coordinator, Query{Kind: Registration, TxID: x.ID})
++}
++func (c *hostCapture) prepare(t *testing.T, g uint8, r, prior Proof) Proof {
++	p, e := Prepare(r, prior)
++	c.submit(t, g, p, e)
++	return c.read(t, g, Query{Kind: Prepared, TxID: r.View().Tx.ID})
++}
++func (c *hostCapture) record(t *testing.T, coord uint8, v Proof) {
++	p, e := RecordVote(v)
++	c.submit(t, coord, p, e)
++}
++func (c *hostCapture) finish(t *testing.T, x Tx, r Proof, commit bool) Proof {
++	p, e := Decide(r, commit)
++	c.submit(t, x.Coordinator, p, e)
++	return c.decided(t, x)
++}
++func (c *hostCapture) resolve(t *testing.T, g uint8, d Proof) {
++	p, e := Resolve(d)
++	c.submit(t, g, p, e)
++}
++func (c *hostCapture) distributed(t *testing.T, x Tx) Proof {
++	t.Helper()
++	r := c.register(t, x)
++	var prior Proof
++	yes := true
++	for _, p := range x.Participants {
++		prior = c.prepare(t, p.Group, r, prior)
++		c.record(t, x.Coordinator, prior)
++		yes = yes && prior.View().Vote.Yes
++		if !yes {
++			break
++		}
++	}
++	d := c.finish(t, x, r, yes)
++	for _, p := range x.Participants {
++		c.resolve(t, p.Group, d)
++	}
++	return d
++}
++func (c *hostCapture) certificate(t *testing.T, g uint8, round uint64) Proof {
++	p, e := Fence(round)
++	c.submit(t, g, p, e)
++	p, e = Certify(round)
++	c.submit(t, g, p, e)
++	return c.read(t, g, Query{Kind: Certified, Round: round})
++}
++func (c *hostCapture) cut(t *testing.T, round uint64, scope ...uint8) Cut {
++	t.Helper()
++	ps := []Proof{}
++	for _, g := range scope {
++		ps = append(ps, c.certificate(t, g, round))
++	}
++	cut, e := AssembleCut(scope, ps)
++	if e != nil {
++		t.Fatal(e)
++	}
++	return cut
++}
++func (c *hostCapture) observe(t *testing.T, cut Cut, round uint64, scope ...uint8) {
++	t.Helper()
++	values := map[string]int64{}
++	names := []string{}
++	certificates := []View{}
++	for _, proof := range cut.proofs {
++		certificates = append(certificates, proof.View())
++	}
++	for _, g := range scope {
++		s, e := c.n.hosts[hostID(g)].At(cut)
++		if e != nil {
++			t.Fatal(e)
++		}
++		names = append(names, groupName(g))
++		for key, v := range s.Values {
++			values[synthetic(g, key)] = v.Value
++		}
++		c.raw = append(c.raw, map[string]any{"kind": "host-at", "host": hostID(g), "round": round, "snapshot": s, "cut_certificates": certificates})
++	}
++	c.observations = append(c.observations, map[string]any{"event": len(c.raw), "round": round, "scope": names, "values": values})
++}
++func (c *hostCapture) final(t *testing.T) {
++	t.Helper()
++	values := map[string]int64{}
++	for g := uint8(0); g < 2; g++ {
++		v := c.current(t, g).View()
++		for key, value := range v.State.Values {
++			values[synthetic(g, key)] = value.Value
++		}
++	}
++	c.finals = append(c.finals, map[string]any{"event": len(c.raw), "scope": []string{"A", "B"}, "values": values})
++}
++func (c *hostCapture) write(t *testing.T) {
++	t.Helper()
++	c.final(t)
++	committed := []string{}
++	for id := range c.rounds {
++		committed = append(committed, id)
++	}
++	slices.Sort(committed)
++	document := map[string]any{"schema_version": 1, "name": c.name, "history": map[string]any{"name": c.name, "initial": map[string]any{}, "transactions": c.transactions}, "committed": committed, "rounds": c.rounds, "decisions": c.decisions, "observations": c.observations, "finals": c.finals, "guard_observations": c.guards, "raw_actual_evidence": c.raw, "mapping": map[string]any{"keys": "A/<native-key> or B/<native-key>; groups fixed at 0/1", "reads": "values and explicit presence from completed Host.Current owned maps; range enumeration in review client", "native_range_footprint": "entire participant generation, not a native named range selector", "revisions": "not checked by mathematical search; raw native Value.Version/TxID and Participant.Reads retained", "scope": "mathematical serial-map validation; no Evidence/quorum receipt/durable event completeness declaration"}}
++	dir := os.Getenv("RHO_SERIAL_CAPTURE_DIR")
++	if dir == "" {
++		t.Fatal("set external RHO_SERIAL_CAPTURE_DIR")
++	}
++	if e := os.MkdirAll(dir, 0700); e != nil {
++		t.Fatal(e)
++	}
++	data, e := json.MarshalIndent(document, "", "  ")
++	if e != nil {
++		t.Fatal(e)
++	}
++	if e = os.WriteFile(filepath.Join(dir, c.name+".json"), append(data, '\n'), 0600); e != nil {
++		t.Fatal(e)
++	}
++}
++
++func TestIndependentActualHostSerialCapture(t *testing.T) {
++	t.Run("conflicting-same-observed-view-retry", func(t *testing.T) {
++		c := captureNetwork(t, t.Name())
++		c.name = "conflicting-same-observed-view-retry"
++		seed := c.construct(t, "seed", 0, map[uint8]Proof{0: c.current(t, 0)}, map[uint8][]Effect{0: {{Key: "x", Value: 10}}}, nil, nil)
++		c.local(t, seed)
++		base := c.current(t, 0)
++		x := c.construct(t, "left", 0, map[uint8]Proof{0: base}, map[uint8][]Effect{0: {{Key: "x", Value: 11}}}, map[uint8][]string{0: {"x"}}, nil)
++		y := c.construct(t, "right", 0, map[uint8]Proof{0: base}, map[uint8][]Effect{0: {{Key: "x", Value: 12}}}, map[uint8][]string{0: {"x"}}, nil)
++		decisions := c.concurrentLocals(t, x, y)
++		commits := 0
++		for _, d := range decisions {
++			if d.View().Decision.Commit {
++				commits++
++			}
++		}
++		if commits != 1 {
++			t.Fatalf("expected exactly one commit, got %d", commits)
++		}
++		fresh := c.current(t, 0)
++		retry := c.construct(t, "retry-distinct-request", 0, map[uint8]Proof{0: fresh}, map[uint8][]Effect{0: {{Key: "x", Value: 13}}}, map[uint8][]string{0: {"x"}}, nil)
++		d := c.local(t, retry)
++		if !d.View().Decision.Commit {
++			t.Fatal("refreshed distinct request aborted")
++		}
++		round := d.View().Decision.Round
++		c.observe(t, c.cut(t, round, 0, 1), round, 0, 1)
++		c.write(t)
++	})
++	t.Run("independent-concurrent-partitions", func(t *testing.T) {
++		c := captureNetwork(t, "independent-concurrent-partitions")
++		a, b := c.current(t, 0), c.current(t, 1)
++		x := c.construct(t, "left", 0, map[uint8]Proof{0: a}, map[uint8][]Effect{0: {{Key: "x", Value: 1}}}, nil, nil)
++		y := c.construct(t, "right", 1, map[uint8]Proof{1: b}, map[uint8][]Effect{1: {{Key: "x", Value: 2}}}, nil, nil)
++		ds := c.concurrentLocals(t, x, y)
++		for _, d := range ds {
++			if !d.View().Decision.Commit {
++				t.Fatal("independent transaction aborted")
++			}
++		}
++		round := max(ds[0].View().Decision.Round, ds[1].View().Decision.Round)
++		c.observe(t, c.cut(t, round, 0, 1), round, 0, 1)
++		c.write(t)
++	})
++	for _, rangeRead := range []bool{false, true} {
++		name := "absent-key-cross-write-skew"
++		if rangeRead {
++			name = "empty-range-phantom-cross-write-skew"
++		}
++		t.Run(name, func(t *testing.T) {
++			c := captureNetwork(t, name)
++			a, b := c.current(t, 0), c.current(t, 1)
++			views := map[uint8]Proof{0: a, 1: b}
++			keys := map[uint8][]string{0: {"item/a"}, 1: {"item/b"}}
++			ranges := map[uint8][2]string(nil)
++			if rangeRead {
++				keys = nil
++				ranges = map[uint8][2]string{0: {"item/", "item0"}, 1: {"item/", "item0"}}
++			}
++			x := c.construct(t, "left", 0, views, map[uint8][]Effect{0: {{Key: "item/a", Value: 1}}}, keys, ranges)
++			y := c.construct(t, "right", 1, views, map[uint8][]Effect{1: {{Key: "item/b", Value: 1}}}, keys, ranges)
++			rx, ry := c.register(t, x), c.register(t, y)
++			ax := c.prepare(t, 0, rx, Proof{})
++			c.record(t, 0, ax)
++			ay := c.prepare(t, 0, ry, Proof{})
++			c.record(t, 1, ay)
++			if !ax.View().Vote.Yes || ay.View().Vote.Yes {
++				t.Fatal("predicate conflict failed to serialize")
++			}
++			aborted := c.finish(t, y, ry, false)
++			c.resolve(t, 0, aborted)
++			c.resolve(t, 1, aborted)
++			bx := c.prepare(t, 1, rx, ax)
++			c.record(t, 0, bx)
++			d := c.finish(t, x, rx, true)
++			c.resolve(t, 0, d)
++			c.resolve(t, 1, d)
++			// Retry from the same stale absent/empty observations after the winner resolves.
++			stale := c.construct(t, "stale-distinct-request", 1, views, map[uint8][]Effect{1: {{Key: "item/b", Value: 2}}}, keys, ranges)
++			staleDecision := c.distributed(t, stale)
++			if staleDecision.View().Decision.Commit {
++				t.Fatal("stale predicate committed")
++			}
++			round := d.View().Decision.Round
++			c.observe(t, c.cut(t, round, 0, 1), round, 0, 1)
++			c.write(t)
++		})
++	}
++	t.Run("partial-install-old-cut-correction-outside-coordinator", func(t *testing.T) {
++		c := captureNetwork(t, "partial-install-old-cut-correction-outside-coordinator")
++		a, b := c.current(t, 0), c.current(t, 1)
++		x := c.construct(t, "edge", 1, map[uint8]Proof{0: a, 1: b}, map[uint8][]Effect{0: {{Key: "edge", Value: 5}, {Key: "out/old", Value: 5}}, 1: {{Key: "in/old", Value: 5}}}, nil, nil)
++		r := c.register(t, x)
++		av := c.prepare(t, 0, r, Proof{})
++		bv := c.prepare(t, 1, r, av)
++		c.record(t, 1, av)
++		c.record(t, 1, bv)
++		// Submit decision, then deliberately obtain no client decision response before
++		// A-only authoritative collection. Coordinator durable state is later observed.
++		p, e := Decide(r, true)
++		c.submit(t, 1, p, e)
++		ca := c.read(t, 0, Query{Kind: Collection})
++		round, e := ChooseRound([]Proof{ca}, nil, 0)
++		if !errors.Is(e, ErrUnavailable) || round != 0 {
++			t.Fatal("missing outside-scope authority accepted", round, e)
++		}
++		c.guards = append(c.guards, map[string]any{"kind": "choose-round-missing-outside-coordinator", "error": e.Error(), "round": round, "output_exact_empty": round == 0})
++		d := c.decided(t, x)
++		round, e = ChooseRound([]Proof{ca}, []Proof{d}, 0)
++		if e != nil || round < d.View().Decision.Round {
++			t.Fatal("outside coordinator round missing", round, e)
++		}
++		c.guards = append(c.guards, map[string]any{"kind": "choose-round-recovered-outside-coordinator", "round": round, "collection": ca.View(), "decision": d.View(), "client_decision_response_before_collection": false})
++		c.resolve(t, 0, d)
++		for g := uint8(0); g < 2; g++ {
++			p, e = Fence(round)
++			c.submit(t, g, p, e)
++			p, e = Certify(round)
++			c.submit(t, g, p, e)
++		}
++		// Failed authoritative certificate response must contain no usable Proof.
++		c.n.replies[4] = nil
++		event, err := c.n.hosts[4].Read(Query{Kind: Certified, Round: round})
++		c.n.run(t, 4, event, err)
++		var failed *Reply
++		for _, reply := range c.n.replies[4] {
++			if reply.ReadID == event.ReadID {
++				failed = new(reply)
++			}
++		}
++		if failed == nil || !errors.Is(failed.Err, ErrPending) || !reflect.DeepEqual(failed.Proof, Proof{}) {
++			t.Fatalf("partial install certificate output: %+v", failed)
++		}
++		c.guards = append(c.guards, map[string]any{"kind": "partial-install-certificate", "error": failed.Err.Error(), "proof_exact_empty": reflect.DeepEqual(failed.Proof, Proof{}), "proof_view": failed.Proof.View(), "read_id": failed.ReadID})
++		c.resolve(t, 1, d)
++		old := c.cut(t, round, 0, 1)
++		c.observe(t, old, round, 0, 1)
++		a, b = c.current(t, 0), c.current(t, 1)
++		correction := c.construct(t, "correction", 1, map[uint8]Proof{0: a, 1: b}, map[uint8][]Effect{0: {{Key: "edge", Value: 6}, {Key: "out/new", Value: 6}, {Key: "out/old", Delete: true}}, 1: {{Key: "in/new", Value: 6}, {Key: "in/old", Delete: true}}}, map[uint8][]string{0: {"edge", "out/old"}, 1: {"in/old"}}, nil)
++		corrected := c.distributed(t, correction)
++		freshRound := corrected.View().Decision.Round
++		fresh := c.cut(t, freshRound, 0, 1)
++		c.observe(t, fresh, freshRound, 0, 1)
++		c.observe(t, old, round, 0, 1)
++		for _, id := range []uint64{1, 4} {
++			if e := c.n.hosts[id].SaveCheckpoint(); e != nil {
++				t.Fatal(e)
++			}
++			c.n.reopen(t, id)
++		}
++		c.observe(t, old, round, 0, 1)
++		c.observe(t, fresh, freshRound, 0, 1)
++		c.n.elect(t, 1)
++		c.n.elect(t, 4)
++		c.write(t)
++	})
++}

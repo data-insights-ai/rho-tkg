@@ -118,3 +118,12 @@ complete broader repository CI, consumer or distributed phase acceptance.
 Canonical Go differential, graph/API, durable fault and consumer integration
 remain pending. These model results alone do not complete V0, V1 or V2. Keep
 current acceptance and remaining work in the backlog only.
+
+[`actual-host-captures/`](actual-host-captures/README.md) contains a reviewed,
+portable bridge from five actual synthetic-key Host histories to unchanged
+mathematical `serial_witness` search, with normal/race captures and complete maps.
+Its unapplied Go test patch requires stock fixtures and an explicit external
+`RHO_SERIAL_CAPTURE_DIR`; the portable checker writes outside the package.
+Copied transport-overlay behavior and parent archived-commit stock checks remain
+separate evidence. Full protocol Evidence, Fresh orchestration, ownership moves
+and whole V2/production graph acceptance are not claimed.

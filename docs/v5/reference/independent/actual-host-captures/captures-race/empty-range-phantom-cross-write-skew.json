@@ -1,0 +1,5470 @@
+{
+  "committed": [
+    "left"
+  ],
+  "decisions": {
+    "left": {
+      "commit": true,
+      "proof_view": {
+        "Certificate": null,
+        "Decision": {
+          "Commit": true,
+          "Digest": [
+            100,
+            170,
+            229,
+            124,
+            46,
+            132,
+            167,
+            166,
+            90,
+            190,
+            42,
+            166,
+            190,
+            85,
+            53,
+            81,
+            166,
+            84,
+            20,
+            48,
+            178,
+            95,
+            147,
+            35,
+            19,
+            125,
+            97,
+            199,
+            105,
+            239,
+            215,
+            95
+          ],
+          "Reason": "",
+          "Round": 1,
+          "Votes": [
+            {
+              "Digest": [
+                100,
+                170,
+                229,
+                124,
+                46,
+                132,
+                167,
+                166,
+                90,
+                190,
+                42,
+                166,
+                190,
+                85,
+                53,
+                81,
+                166,
+                84,
+                20,
+                48,
+                178,
+                95,
+                147,
+                35,
+                19,
+                125,
+                97,
+                199,
+                105,
+                239,
+                215,
+                95
+              ],
+              "Effects": [
+                175,
+                245,
+                212,
+                50,
+                32,
+                18,
+                247,
+                96,
+                95,
+                241,
+                244,
+                240,
+                1,
+                102,
+                22,
+                200,
+                90,
+                176,
+                203,
+                6,
+                45,
+                99,
+                97,
+                74,
+                137,
+                135,
+                216,
+                143,
+                221,
+                215,
+                167,
+                127
+              ],
+              "Epoch": 7,
+              "Floor": 0,
+              "Group": 0,
+              "Reason": "",
+              "Yes": true
+            },
+            {
+              "Digest": [
+                100,
+                170,
+                229,
+                124,
+                46,
+                132,
+                167,
+                166,
+                90,
+                190,
+                42,
+                166,
+                190,
+                85,
+                53,
+                81,
+                166,
+                84,
+                20,
+                48,
+                178,
+                95,
+                147,
+                35,
+                19,
+                125,
+                97,
+                199,
+                105,
+                239,
+                215,
+                95
+              ],
+              "Effects": [
+                122,
+                104,
+                2,
+                162,
+                219,
+                91,
+                134,
+                111,
+                186,
+                78,
+                17,
+                90,
+                117,
+                75,
+                163,
+                66,
+                84,
+                142,
+                195,
+                25,
+                97,
+                93,
+                154,
+                100,
+                64,
+                177,
+                190,
+                239,
+                73,
+                125,
+                185,
+                120
+              ],
+              "Epoch": 11,
+              "Floor": 0,
+              "Group": 1,
+              "Reason": "",
+              "Yes": true
+            }
+          ]
+        },
+        "Epoch": 7,
+        "Floor": 0,
+        "Graph": "fixture",
+        "Group": 0,
+        "Index": 9,
+        "Kind": "decided",
+        "Pending": null,
+        "State": null,
+        "Topology": 1,
+        "Tx": {
+          "Coordinator": 0,
+          "Dependency": 0,
+          "Graph": "fixture",
+          "ID": "left",
+          "Participants": [
+            {
+              "Effects": [
+                {
+                  "Delete": false,
+                  "Key": "item/a",
+                  "Value": 1
+                }
+              ],
+              "Epoch": 7,
+              "Generation": 0,
+              "Group": 0,
+              "Reads": null
+            },
+            {
+              "Effects": null,
+              "Epoch": 11,
+              "Generation": 0,
+              "Group": 1,
+              "Reads": null
+            }
+          ],
+          "Request": "request/left",
+          "Topology": 1
+        },
+        "Vote": null
+      },
+      "read_id": {
+        "Sequence": 5,
+        "Session": [
+          226,
+          119,
+          216,
+          97,
+          122,
+          98,
+          251,
+          78,
+          181,
+          140,
+          253,
+          99,
+          17,
+          125,
+          255,
+          64
+        ]
+      },
+      "reason": "",
+      "request": "request/left",
+      "round": 1
+    },
+    "right": {
+      "commit": false,
+      "proof_view": {
+        "Certificate": null,
+        "Decision": {
+          "Commit": false,
+          "Digest": [
+            178,
+            224,
+            246,
+            190,
+            72,
+            7,
+            94,
+            57,
+            72,
+            209,
+            63,
+            225,
+            166,
+            112,
+            191,
+            3,
+            187,
+            47,
+            234,
+            193,
+            214,
+            255,
+            250,
+            51,
+            91,
+            228,
+            220,
+            89,
+            57,
+            179,
+            71,
+            90
+          ],
+          "Reason": "",
+          "Round": 0,
+          "Votes": [
+            {
+              "Digest": [
+                178,
+                224,
+                246,
+                190,
+                72,
+                7,
+                94,
+                57,
+                72,
+                209,
+                63,
+                225,
+                166,
+                112,
+                191,
+                3,
+                187,
+                47,
+                234,
+                193,
+                214,
+                255,
+                250,
+                51,
+                91,
+                228,
+                220,
+                89,
+                57,
+                179,
+                71,
+                90
+              ],
+              "Effects": [
+                7,
+                185,
+                133,
+                113,
+                128,
+                172,
+                84,
+                140,
+                71,
+                255,
+                148,
+                249,
+                253,
+                168,
+                26,
+                87,
+                245,
+                42,
+                68,
+                60,
+                148,
+                17,
+                236,
+                173,
+                188,
+                25,
+                59,
+                206,
+                46,
+                33,
+                9,
+                249
+              ],
+              "Epoch": 7,
+              "Floor": 0,
+              "Group": 0,
+              "Reason": "txnproto: validation/conflict; new request required",
+              "Yes": false
+            }
+          ]
+        },
+        "Epoch": 11,
+        "Floor": 0,
+        "Graph": "fixture",
+        "Group": 1,
+        "Index": 5,
+        "Kind": "decided",
+        "Pending": null,
+        "State": null,
+        "Topology": 1,
+        "Tx": {
+          "Coordinator": 1,
+          "Dependency": 0,
+          "Graph": "fixture",
+          "ID": "right",
+          "Participants": [
+            {
+              "Effects": null,
+              "Epoch": 7,
+              "Generation": 0,
+              "Group": 0,
+              "Reads": null
+            },
+            {
+              "Effects": [
+                {
+                  "Delete": false,
+                  "Key": "item/b",
+                  "Value": 1
+                }
+              ],
+              "Epoch": 11,
+              "Generation": 0,
+              "Group": 1,
+              "Reads": null
+            }
+          ],
+          "Request": "request/right",
+          "Topology": 1
+        },
+        "Vote": null
+      },
+      "read_id": {
+        "Sequence": 3,
+        "Session": [
+          163,
+          23,
+          108,
+          203,
+          52,
+          203,
+          142,
+          232,
+          194,
+          201,
+          170,
+          81,
+          201,
+          243,
+          199,
+          224
+        ]
+      },
+      "reason": "",
+      "request": "request/right",
+      "round": 0
+    },
+    "stale-distinct-request": {
+      "commit": false,
+      "proof_view": {
+        "Certificate": null,
+        "Decision": {
+          "Commit": false,
+          "Digest": [
+            74,
+            30,
+            155,
+            68,
+            139,
+            212,
+            2,
+            77,
+            208,
+            38,
+            51,
+            86,
+            106,
+            202,
+            20,
+            132,
+            26,
+            220,
+            88,
+            133,
+            211,
+            225,
+            72,
+            107,
+            152,
+            87,
+            154,
+            162,
+            26,
+            247,
+            141,
+            126
+          ],
+          "Reason": "",
+          "Round": 0,
+          "Votes": [
+            {
+              "Digest": [
+                74,
+                30,
+                155,
+                68,
+                139,
+                212,
+                2,
+                77,
+                208,
+                38,
+                51,
+                86,
+                106,
+                202,
+                20,
+                132,
+                26,
+                220,
+                88,
+                133,
+                211,
+                225,
+                72,
+                107,
+                152,
+                87,
+                154,
+                162,
+                26,
+                247,
+                141,
+                126
+              ],
+              "Effects": [
+                7,
+                185,
+                133,
+                113,
+                128,
+                172,
+                84,
+                140,
+                71,
+                255,
+                148,
+                249,
+                253,
+                168,
+                26,
+                87,
+                245,
+                42,
+                68,
+                60,
+                148,
+                17,
+                236,
+                173,
+                188,
+                25,
+                59,
+                206,
+                46,
+                33,
+                9,
+                249
+              ],
+              "Epoch": 7,
+              "Floor": 1,
+              "Group": 0,
+              "Reason": "txnproto: validation/conflict; new request required",
+              "Yes": false
+            }
+          ]
+        },
+        "Epoch": 11,
+        "Floor": 0,
+        "Graph": "fixture",
+        "Group": 1,
+        "Index": 11,
+        "Kind": "decided",
+        "Pending": null,
+        "State": null,
+        "Topology": 1,
+        "Tx": {
+          "Coordinator": 1,
+          "Dependency": 0,
+          "Graph": "fixture",
+          "ID": "stale-distinct-request",
+          "Participants": [
+            {
+              "Effects": null,
+              "Epoch": 7,
+              "Generation": 0,
+              "Group": 0,
+              "Reads": null
+            },
+            {
+              "Effects": [
+                {
+                  "Delete": false,
+                  "Key": "item/b",
+                  "Value": 2
+                }
+              ],
+              "Epoch": 11,
+              "Generation": 0,
+              "Group": 1,
+              "Reads": null
+            }
+          ],
+          "Request": "request/stale-distinct-request",
+          "Topology": 1
+        },
+        "Vote": null
+      },
+      "read_id": {
+        "Sequence": 6,
+        "Session": [
+          163,
+          23,
+          108,
+          203,
+          52,
+          203,
+          142,
+          232,
+          194,
+          201,
+          170,
+          81,
+          201,
+          243,
+          199,
+          224
+        ]
+      },
+      "reason": "",
+      "request": "request/stale-distinct-request",
+      "round": 0
+    }
+  },
+  "finals": [
+    {
+      "event": 45,
+      "scope": [
+        "A",
+        "B"
+      ],
+      "values": {
+        "A/item/a": 1
+      }
+    }
+  ],
+  "guard_observations": [],
+  "history": {
+    "initial": {},
+    "name": "empty-range-phantom-cross-write-skew",
+    "transactions": {
+      "left": {
+        "coordinator": "A",
+        "epochs": {
+          "A": 7,
+          "B": 11
+        },
+        "participants": [
+          "A",
+          "B"
+        ],
+        "reads": [
+          {
+            "hi": "A/item0",
+            "kind": "range",
+            "lo": "A/item/",
+            "values": {}
+          },
+          {
+            "hi": "B/item0",
+            "kind": "range",
+            "lo": "B/item/",
+            "values": {}
+          }
+        ],
+        "request_key": "request/left",
+        "writes": {
+          "A/item/a": {
+            "op": "put",
+            "value": 1
+          }
+        }
+      },
+      "right": {
+        "coordinator": "B",
+        "epochs": {
+          "A": 7,
+          "B": 11
+        },
+        "participants": [
+          "A",
+          "B"
+        ],
+        "reads": [
+          {
+            "hi": "A/item0",
+            "kind": "range",
+            "lo": "A/item/",
+            "values": {}
+          },
+          {
+            "hi": "B/item0",
+            "kind": "range",
+            "lo": "B/item/",
+            "values": {}
+          }
+        ],
+        "request_key": "request/right",
+        "writes": {
+          "B/item/b": {
+            "op": "put",
+            "value": 1
+          }
+        }
+      },
+      "stale-distinct-request": {
+        "coordinator": "B",
+        "epochs": {
+          "A": 7,
+          "B": 11
+        },
+        "participants": [
+          "A",
+          "B"
+        ],
+        "reads": [
+          {
+            "hi": "A/item0",
+            "kind": "range",
+            "lo": "A/item/",
+            "values": {}
+          },
+          {
+            "hi": "B/item0",
+            "kind": "range",
+            "lo": "B/item/",
+            "values": {}
+          }
+        ],
+        "request_key": "request/stale-distinct-request",
+        "writes": {
+          "B/item/b": {
+            "op": "put",
+            "value": 2
+          }
+        }
+      }
+    }
+  },
+  "mapping": {
+    "keys": "A/<native-key> or B/<native-key>; groups fixed at 0/1",
+    "native_range_footprint": "entire participant generation, not a native named range selector",
+    "reads": "values and explicit presence from completed Host.Current owned maps; range enumeration in review client",
+    "revisions": "not checked by mathematical search; raw native Value.Version/TxID and Participant.Reads retained",
+    "scope": "mathematical serial-map validation; no Evidence/quorum receipt/durable event completeness declaration"
+  },
+  "name": "empty-range-phantom-cross-write-skew",
+  "observations": [
+    {
+      "event": 43,
+      "round": 1,
+      "scope": [
+        "A",
+        "B"
+      ],
+      "values": {
+        "A/item/a": 1
+      }
+    }
+  ],
+  "raw_actual_evidence": [
+    {
+      "host": 1,
+      "kind": "completed-host-read",
+      "query": {
+        "Kind": "current",
+        "Round": 0,
+        "TxID": ""
+      },
+      "read_id": {
+        "Sequence": 1,
+        "Session": [
+          226,
+          119,
+          216,
+          97,
+          122,
+          98,
+          251,
+          78,
+          181,
+          140,
+          253,
+          99,
+          17,
+          125,
+          255,
+          64
+        ]
+      },
+      "view": {
+        "Certificate": null,
+        "Decision": null,
+        "Epoch": 7,
+        "Floor": 0,
+        "Graph": "fixture",
+        "Group": 0,
+        "Index": 2,
+        "Kind": "current",
+        "Pending": null,
+        "State": {
+          "Generation": 0,
+          "Values": {}
+        },
+        "Topology": 1,
+        "Tx": null,
+        "Vote": null
+      }
+    },
+    {
+      "host": 4,
+      "kind": "completed-host-read",
+      "query": {
+        "Kind": "current",
+        "Round": 0,
+        "TxID": ""
+      },
+      "read_id": {
+        "Sequence": 1,
+        "Session": [
+          163,
+          23,
+          108,
+          203,
+          52,
+          203,
+          142,
+          232,
+          194,
+          201,
+          170,
+          81,
+          201,
+          243,
+          199,
+          224
+        ]
+      },
+      "view": {
+        "Certificate": null,
+        "Decision": null,
+        "Epoch": 11,
+        "Floor": 0,
+        "Graph": "fixture",
+        "Group": 1,
+        "Index": 2,
+        "Kind": "current",
+        "Pending": null,
+        "State": {
+          "Generation": 0,
+          "Values": {}
+        },
+        "Topology": 1,
+        "Tx": null,
+        "Vote": null
+      }
+    },
+    {
+      "bound_actual_views": [
+        {
+          "participant": {
+            "Effects": [
+              {
+                "Delete": false,
+                "Key": "item/a",
+                "Value": 1
+              }
+            ],
+            "Epoch": 7,
+            "Generation": 0,
+            "Group": 0,
+            "Reads": null
+          },
+          "query": {
+            "Kind": "current",
+            "Round": 0,
+            "TxID": ""
+          },
+          "read_id": {
+            "Sequence": 1,
+            "Session": [
+              226,
+              119,
+              216,
+              97,
+              122,
+              98,
+              251,
+              78,
+              181,
+              140,
+              253,
+              99,
+              17,
+              125,
+              255,
+              64
+            ]
+          },
+          "view": {
+            "Certificate": null,
+            "Decision": null,
+            "Epoch": 7,
+            "Floor": 0,
+            "Graph": "fixture",
+            "Group": 0,
+            "Index": 2,
+            "Kind": "current",
+            "Pending": null,
+            "State": {
+              "Generation": 0,
+              "Values": {}
+            },
+            "Topology": 1,
+            "Tx": null,
+            "Vote": null
+          }
+        },
+        {
+          "participant": {
+            "Effects": null,
+            "Epoch": 11,
+            "Generation": 0,
+            "Group": 1,
+            "Reads": null
+          },
+          "query": {
+            "Kind": "current",
+            "Round": 0,
+            "TxID": ""
+          },
+          "read_id": {
+            "Sequence": 1,
+            "Session": [
+              163,
+              23,
+              108,
+              203,
+              52,
+              203,
+              142,
+              232,
+              194,
+              201,
+              170,
+              81,
+              201,
+              243,
+              199,
+              224
+            ]
+          },
+          "view": {
+            "Certificate": null,
+            "Decision": null,
+            "Epoch": 11,
+            "Floor": 0,
+            "Graph": "fixture",
+            "Group": 1,
+            "Index": 2,
+            "Kind": "current",
+            "Pending": null,
+            "State": {
+              "Generation": 0,
+              "Values": {}
+            },
+            "Topology": 1,
+            "Tx": null,
+            "Vote": null
+          }
+        }
+      ],
+      "kind": "constructed-transaction",
+      "submitted_input": {
+        "Coordinator": 0,
+        "Dependency": 0,
+        "Graph": "fixture",
+        "ID": "left",
+        "Participants": [
+          {
+            "Effects": [
+              {
+                "Delete": false,
+                "Key": "item/a",
+                "Value": 1
+              }
+            ],
+            "Epoch": 7,
+            "Generation": 0,
+            "Group": 0,
+            "Reads": null
+          },
+          {
+            "Effects": null,
+            "Epoch": 11,
+            "Generation": 0,
+            "Group": 1,
+            "Reads": null
+          }
+        ],
+        "Request": "request/left",
+        "Topology": 1
+      }
+    },
+    {
+      "bound_actual_views": [
+        {
+          "participant": {
+            "Effects": null,
+            "Epoch": 7,
+            "Generation": 0,
+            "Group": 0,
+            "Reads": null
+          },
+          "query": {
+            "Kind": "current",
+            "Round": 0,
+            "TxID": ""
+          },
+          "read_id": {
+            "Sequence": 1,
+            "Session": [
+              226,
+              119,
+              216,
+              97,
+              122,
+              98,
+              251,
+              78,
+              181,
+              140,
+              253,
+              99,
+              17,
+              125,
+              255,
+              64
+            ]
+          },
+          "view": {
+            "Certificate": null,
+            "Decision": null,
+            "Epoch": 7,
+            "Floor": 0,
+            "Graph": "fixture",
+            "Group": 0,
+            "Index": 2,
+            "Kind": "current",
+            "Pending": null,
+            "State": {
+              "Generation": 0,
+              "Values": {}
+            },
+            "Topology": 1,
+            "Tx": null,
+            "Vote": null
+          }
+        },
+        {
+          "participant": {
+            "Effects": [
+              {
+                "Delete": false,
+                "Key": "item/b",
+                "Value": 1
+              }
+            ],
+            "Epoch": 11,
+            "Generation": 0,
+            "Group": 1,
+            "Reads": null
+          },
+          "query": {
+            "Kind": "current",
+            "Round": 0,
+            "TxID": ""
+          },
+          "read_id": {
+            "Sequence": 1,
+            "Session": [
+              163,
+              23,
+              108,
+              203,
+              52,
+              203,
+              142,
+              232,
+              194,
+              201,
+              170,
+              81,
+              201,
+              243,
+              199,
+              224
+            ]
+          },
+          "view": {
+            "Certificate": null,
+            "Decision": null,
+            "Epoch": 11,
+            "Floor": 0,
+            "Graph": "fixture",
+            "Group": 1,
+            "Index": 2,
+            "Kind": "current",
+            "Pending": null,
+            "State": {
+              "Generation": 0,
+              "Values": {}
+            },
+            "Topology": 1,
+            "Tx": null,
+            "Vote": null
+          }
+        }
+      ],
+      "kind": "constructed-transaction",
+      "submitted_input": {
+        "Coordinator": 1,
+        "Dependency": 0,
+        "Graph": "fixture",
+        "ID": "right",
+        "Participants": [
+          {
+            "Effects": null,
+            "Epoch": 7,
+            "Generation": 0,
+            "Group": 0,
+            "Reads": null
+          },
+          {
+            "Effects": [
+              {
+                "Delete": false,
+                "Key": "item/b",
+                "Value": 1
+              }
+            ],
+            "Epoch": 11,
+            "Generation": 0,
+            "Group": 1,
+            "Reads": null
+          }
+        ],
+        "Request": "request/right",
+        "Topology": 1
+      }
+    },
+    {
+      "command": {
+        "Commit": false,
+        "Kind": "register",
+        "Prior": null,
+        "Remote": null,
+        "Round": 0,
+        "Tx": {
+          "Coordinator": 0,
+          "Dependency": 0,
+          "Graph": "fixture",
+          "ID": "left",
+          "Participants": [
+            {
+              "Effects": [
+                {
+                  "Delete": false,
+                  "Key": "item/a",
+                  "Value": 1
+                }
+              ],
+              "Epoch": 7,
+              "Generation": 0,
+              "Group": 0,
+              "Reads": null
+            },
+            {
+              "Effects": null,
+              "Epoch": 11,
+              "Generation": 0,
+              "Group": 1,
+              "Reads": null
+            }
+          ],
+          "Request": "request/left",
+          "Topology": 1
+        },
+        "Version": 1
+      },
+      "host": 1,
+      "kind": "host-submit-acceptance-only"
+    },
+    {
+      "host": 1,
+      "kind": "completed-host-read",
+      "query": {
+        "Kind": "registration",
+        "Round": 0,
+        "TxID": "left"
+      },
+      "read_id": {
+        "Sequence": 2,
+        "Session": [
+          226,
+          119,
+          216,
+          97,
+          122,
+          98,
+          251,
+          78,
+          181,
+          140,
+          253,
+          99,
+          17,
+          125,
+          255,
+          64
+        ]
+      },
+      "view": {
+        "Certificate": null,
+        "Decision": null,
+        "Epoch": 7,
+        "Floor": 0,
+        "Graph": "fixture",
+        "Group": 0,
+        "Index": 3,
+        "Kind": "registration",
+        "Pending": null,
+        "State": null,
+        "Topology": 1,
+        "Tx": {
+          "Coordinator": 0,
+          "Dependency": 0,
+          "Graph": "fixture",
+          "ID": "left",
+          "Participants": [
+            {
+              "Effects": [
+                {
+                  "Delete": false,
+                  "Key": "item/a",
+                  "Value": 1
+                }
+              ],
+              "Epoch": 7,
+              "Generation": 0,
+              "Group": 0,
+              "Reads": null
+            },
+            {
+              "Effects": null,
+              "Epoch": 11,
+              "Generation": 0,
+              "Group": 1,
+              "Reads": null
+            }
+          ],
+          "Request": "request/left",
+          "Topology": 1
+        },
+        "Vote": null
+      }
+    },
+    {
+      "command": {
+        "Commit": false,
+        "Kind": "register",
+        "Prior": null,
+        "Remote": null,
+        "Round": 0,
+        "Tx": {
+          "Coordinator": 1,
+          "Dependency": 0,
+          "Graph": "fixture",
+          "ID": "right",
+          "Participants": [
+            {
+              "Effects": null,
+              "Epoch": 7,
+              "Generation": 0,
+              "Group": 0,
+              "Reads": null
+            },
+            {
+              "Effects": [
+                {
+                  "Delete": false,
+                  "Key": "item/b",
+                  "Value": 1
+                }
+              ],
+              "Epoch": 11,
+              "Generation": 0,
+              "Group": 1,
+              "Reads": null
+            }
+          ],
+          "Request": "request/right",
+          "Topology": 1
+        },
+        "Version": 1
+      },
+      "host": 4,
+      "kind": "host-submit-acceptance-only"
+    },
+    {
+      "host": 4,
+      "kind": "completed-host-read",
+      "query": {
+        "Kind": "registration",
+        "Round": 0,
+        "TxID": "right"
+      },
+      "read_id": {
+        "Sequence": 2,
+        "Session": [
+          163,
+          23,
+          108,
+          203,
+          52,
+          203,
+          142,
+          232,
+          194,
+          201,
+          170,
+          81,
+          201,
+          243,
+          199,
+          224
+        ]
+      },
+      "view": {
+        "Certificate": null,
+        "Decision": null,
+        "Epoch": 11,
+        "Floor": 0,
+        "Graph": "fixture",
+        "Group": 1,
+        "Index": 3,
+        "Kind": "registration",
+        "Pending": null,
+        "State": null,
+        "Topology": 1,
+        "Tx": {
+          "Coordinator": 1,
+          "Dependency": 0,
+          "Graph": "fixture",
+          "ID": "right",
+          "Participants": [
+            {
+              "Effects": null,
+              "Epoch": 7,
+              "Generation": 0,
+              "Group": 0,
+              "Reads": null
+            },
+            {
+              "Effects": [
+                {
+                  "Delete": false,
+                  "Key": "item/b",
+                  "Value": 1
+                }
+              ],
+              "Epoch": 11,
+              "Generation": 0,
+              "Group": 1,
+              "Reads": null
+            }
+          ],
+          "Request": "request/right",
+          "Topology": 1
+        },
+        "Vote": null
+      }
+    },
+    {
+      "command": {
+        "Commit": false,
+        "Kind": "prepare",
+        "Prior": null,
+        "Remote": {
+          "Certificate": null,
+          "Decision": null,
+          "Epoch": 7,
+          "Floor": 0,
+          "Graph": "fixture",
+          "Group": 0,
+          "Index": 3,
+          "Kind": "registration",
+          "Pending": null,
+          "State": null,
+          "Topology": 1,
+          "Tx": {
+            "Coordinator": 0,
+            "Dependency": 0,
+            "Graph": "fixture",
+            "ID": "left",
+            "Participants": [
+              {
+                "Effects": [
+                  {
+                    "Delete": false,
+                    "Key": "item/a",
+                    "Value": 1
+                  }
+                ],
+                "Epoch": 7,
+                "Generation": 0,
+                "Group": 0,
+                "Reads": null
+              },
+              {
+                "Effects": null,
+                "Epoch": 11,
+                "Generation": 0,
+                "Group": 1,
+                "Reads": null
+              }
+            ],
+            "Request": "request/left",
+            "Topology": 1
+          },
+          "Vote": null
+        },
+        "Round": 0,
+        "Tx": null,
+        "Version": 1
+      },
+      "host": 1,
+      "kind": "host-submit-acceptance-only"
+    },
+    {
+      "host": 1,
+      "kind": "completed-host-read",
+      "query": {
+        "Kind": "prepared",
+        "Round": 0,
+        "TxID": "left"
+      },
+      "read_id": {
+        "Sequence": 3,
+        "Session": [
+          226,
+          119,
+          216,
+          97,
+          122,
+          98,
+          251,
+          78,
+          181,
+          140,
+          253,
+          99,
+          17,
+          125,
+          255,
+          64
+        ]
+      },
+      "view": {
+        "Certificate": null,
+        "Decision": null,
+        "Epoch": 7,
+        "Floor": 0,
+        "Graph": "fixture",
+        "Group": 0,
+        "Index": 4,
+        "Kind": "prepared",
+        "Pending": null,
+        "State": null,
+        "Topology": 1,
+        "Tx": {
+          "Coordinator": 0,
+          "Dependency": 0,
+          "Graph": "fixture",
+          "ID": "left",
+          "Participants": [
+            {
+              "Effects": [
+                {
+                  "Delete": false,
+                  "Key": "item/a",
+                  "Value": 1
+                }
+              ],
+              "Epoch": 7,
+              "Generation": 0,
+              "Group": 0,
+              "Reads": null
+            },
+            {
+              "Effects": null,
+              "Epoch": 11,
+              "Generation": 0,
+              "Group": 1,
+              "Reads": null
+            }
+          ],
+          "Request": "request/left",
+          "Topology": 1
+        },
+        "Vote": {
+          "Digest": [
+            100,
+            170,
+            229,
+            124,
+            46,
+            132,
+            167,
+            166,
+            90,
+            190,
+            42,
+            166,
+            190,
+            85,
+            53,
+            81,
+            166,
+            84,
+            20,
+            48,
+            178,
+            95,
+            147,
+            35,
+            19,
+            125,
+            97,
+            199,
+            105,
+            239,
+            215,
+            95
+          ],
+          "Effects": [
+            175,
+            245,
+            212,
+            50,
+            32,
+            18,
+            247,
+            96,
+            95,
+            241,
+            244,
+            240,
+            1,
+            102,
+            22,
+            200,
+            90,
+            176,
+            203,
+            6,
+            45,
+            99,
+            97,
+            74,
+            137,
+            135,
+            216,
+            143,
+            221,
+            215,
+            167,
+            127
+          ],
+          "Epoch": 7,
+          "Floor": 0,
+          "Group": 0,
+          "Reason": "",
+          "Yes": true
+        }
+      }
+    },
+    {
+      "command": {
+        "Commit": false,
+        "Kind": "vote",
+        "Prior": null,
+        "Remote": {
+          "Certificate": null,
+          "Decision": null,
+          "Epoch": 7,
+          "Floor": 0,
+          "Graph": "fixture",
+          "Group": 0,
+          "Index": 4,
+          "Kind": "prepared",
+          "Pending": null,
+          "State": null,
+          "Topology": 1,
+          "Tx": {
+            "Coordinator": 0,
+            "Dependency": 0,
+            "Graph": "fixture",
+            "ID": "left",
+            "Participants": [
+              {
+                "Effects": [
+                  {
+                    "Delete": false,
+                    "Key": "item/a",
+                    "Value": 1
+                  }
+                ],
+                "Epoch": 7,
+                "Generation": 0,
+                "Group": 0,
+                "Reads": null
+              },
+              {
+                "Effects": null,
+                "Epoch": 11,
+                "Generation": 0,
+                "Group": 1,
+                "Reads": null
+              }
+            ],
+            "Request": "request/left",
+            "Topology": 1
+          },
+          "Vote": {
+            "Digest": [
+              100,
+              170,
+              229,
+              124,
+              46,
+              132,
+              167,
+              166,
+              90,
+              190,
+              42,
+              166,
+              190,
+              85,
+              53,
+              81,
+              166,
+              84,
+              20,
+              48,
+              178,
+              95,
+              147,
+              35,
+              19,
+              125,
+              97,
+              199,
+              105,
+              239,
+              215,
+              95
+            ],
+            "Effects": [
+              175,
+              245,
+              212,
+              50,
+              32,
+              18,
+              247,
+              96,
+              95,
+              241,
+              244,
+              240,
+              1,
+              102,
+              22,
+              200,
+              90,
+              176,
+              203,
+              6,
+              45,
+              99,
+              97,
+              74,
+              137,
+              135,
+              216,
+              143,
+              221,
+              215,
+              167,
+              127
+            ],
+            "Epoch": 7,
+            "Floor": 0,
+            "Group": 0,
+            "Reason": "",
+            "Yes": true
+          }
+        },
+        "Round": 0,
+        "Tx": null,
+        "Version": 1
+      },
+      "host": 1,
+      "kind": "host-submit-acceptance-only"
+    },
+    {
+      "command": {
+        "Commit": false,
+        "Kind": "prepare",
+        "Prior": null,
+        "Remote": {
+          "Certificate": null,
+          "Decision": null,
+          "Epoch": 11,
+          "Floor": 0,
+          "Graph": "fixture",
+          "Group": 1,
+          "Index": 3,
+          "Kind": "registration",
+          "Pending": null,
+          "State": null,
+          "Topology": 1,
+          "Tx": {
+            "Coordinator": 1,
+            "Dependency": 0,
+            "Graph": "fixture",
+            "ID": "right",
+            "Participants": [
+              {
+                "Effects": null,
+                "Epoch": 7,
+                "Generation": 0,
+                "Group": 0,
+                "Reads": null
+              },
+              {
+                "Effects": [
+                  {
+                    "Delete": false,
+                    "Key": "item/b",
+                    "Value": 1
+                  }
+                ],
+                "Epoch": 11,
+                "Generation": 0,
+                "Group": 1,
+                "Reads": null
+              }
+            ],
+            "Request": "request/right",
+            "Topology": 1
+          },
+          "Vote": null
+        },
+        "Round": 0,
+        "Tx": null,
+        "Version": 1
+      },
+      "host": 1,
+      "kind": "host-submit-acceptance-only"
+    },
+    {
+      "host": 1,
+      "kind": "completed-host-read",
+      "query": {
+        "Kind": "prepared",
+        "Round": 0,
+        "TxID": "right"
+      },
+      "read_id": {
+        "Sequence": 4,
+        "Session": [
+          226,
+          119,
+          216,
+          97,
+          122,
+          98,
+          251,
+          78,
+          181,
+          140,
+          253,
+          99,
+          17,
+          125,
+          255,
+          64
+        ]
+      },
+      "view": {
+        "Certificate": null,
+        "Decision": null,
+        "Epoch": 7,
+        "Floor": 0,
+        "Graph": "fixture",
+        "Group": 0,
+        "Index": 6,
+        "Kind": "prepared",
+        "Pending": null,
+        "State": null,
+        "Topology": 1,
+        "Tx": {
+          "Coordinator": 1,
+          "Dependency": 0,
+          "Graph": "fixture",
+          "ID": "right",
+          "Participants": [
+            {
+              "Effects": null,
+              "Epoch": 7,
+              "Generation": 0,
+              "Group": 0,
+              "Reads": null
+            },
+            {
+              "Effects": [
+                {
+                  "Delete": false,
+                  "Key": "item/b",
+                  "Value": 1
+                }
+              ],
+              "Epoch": 11,
+              "Generation": 0,
+              "Group": 1,
+              "Reads": null
+            }
+          ],
+          "Request": "request/right",
+          "Topology": 1
+        },
+        "Vote": {
+          "Digest": [
+            178,
+            224,
+            246,
+            190,
+            72,
+            7,
+            94,
+            57,
+            72,
+            209,
+            63,
+            225,
+            166,
+            112,
+            191,
+            3,
+            187,
+            47,
+            234,
+            193,
+            214,
+            255,
+            250,
+            51,
+            91,
+            228,
+            220,
+            89,
+            57,
+            179,
+            71,
+            90
+          ],
+          "Effects": [
+            7,
+            185,
+            133,
+            113,
+            128,
+            172,
+            84,
+            140,
+            71,
+            255,
+            148,
+            249,
+            253,
+            168,
+            26,
+            87,
+            245,
+            42,
+            68,
+            60,
+            148,
+            17,
+            236,
+            173,
+            188,
+            25,
+            59,
+            206,
+            46,
+            33,
+            9,
+            249
+          ],
+          "Epoch": 7,
+          "Floor": 0,
+          "Group": 0,
+          "Reason": "txnproto: validation/conflict; new request required",
+          "Yes": false
+        }
+      }
+    },
+    {
+      "command": {
+        "Commit": false,
+        "Kind": "vote",
+        "Prior": null,
+        "Remote": {
+          "Certificate": null,
+          "Decision": null,
+          "Epoch": 7,
+          "Floor": 0,
+          "Graph": "fixture",
+          "Group": 0,
+          "Index": 6,
+          "Kind": "prepared",
+          "Pending": null,
+          "State": null,
+          "Topology": 1,
+          "Tx": {
+            "Coordinator": 1,
+            "Dependency": 0,
+            "Graph": "fixture",
+            "ID": "right",
+            "Participants": [
+              {
+                "Effects": null,
+                "Epoch": 7,
+                "Generation": 0,
+                "Group": 0,
+                "Reads": null
+              },
+              {
+                "Effects": [
+                  {
+                    "Delete": false,
+                    "Key": "item/b",
+                    "Value": 1
+                  }
+                ],
+                "Epoch": 11,
+                "Generation": 0,
+                "Group": 1,
+                "Reads": null
+              }
+            ],
+            "Request": "request/right",
+            "Topology": 1
+          },
+          "Vote": {
+            "Digest": [
+              178,
+              224,
+              246,
+              190,
+              72,
+              7,
+              94,
+              57,
+              72,
+              209,
+              63,
+              225,
+              166,
+              112,
+              191,
+              3,
+              187,
+              47,
+              234,
+              193,
+              214,
+              255,
+              250,
+              51,
+              91,
+              228,
+              220,
+              89,
+              57,
+              179,
+              71,
+              90
+            ],
+            "Effects": [
+              7,
+              185,
+              133,
+              113,
+              128,
+              172,
+              84,
+              140,
+              71,
+              255,
+              148,
+              249,
+              253,
+              168,
+              26,
+              87,
+              245,
+              42,
+              68,
+              60,
+              148,
+              17,
+              236,
+              173,
+              188,
+              25,
+              59,
+              206,
+              46,
+              33,
+              9,
+              249
+            ],
+            "Epoch": 7,
+            "Floor": 0,
+            "Group": 0,
+            "Reason": "txnproto: validation/conflict; new request required",
+            "Yes": false
+          }
+        },
+        "Round": 0,
+        "Tx": null,
+        "Version": 1
+      },
+      "host": 4,
+      "kind": "host-submit-acceptance-only"
+    },
+    {
+      "command": {
+        "Commit": false,
+        "Kind": "decide",
+        "Prior": null,
+        "Remote": {
+          "Certificate": null,
+          "Decision": null,
+          "Epoch": 11,
+          "Floor": 0,
+          "Graph": "fixture",
+          "Group": 1,
+          "Index": 3,
+          "Kind": "registration",
+          "Pending": null,
+          "State": null,
+          "Topology": 1,
+          "Tx": {
+            "Coordinator": 1,
+            "Dependency": 0,
+            "Graph": "fixture",
+            "ID": "right",
+            "Participants": [
+              {
+                "Effects": null,
+                "Epoch": 7,
+                "Generation": 0,
+                "Group": 0,
+                "Reads": null
+              },
+              {
+                "Effects": [
+                  {
+                    "Delete": false,
+                    "Key": "item/b",
+                    "Value": 1
+                  }
+                ],
+                "Epoch": 11,
+                "Generation": 0,
+                "Group": 1,
+                "Reads": null
+              }
+            ],
+            "Request": "request/right",
+            "Topology": 1
+          },
+          "Vote": null
+        },
+        "Round": 0,
+        "Tx": null,
+        "Version": 1
+      },
+      "host": 4,
+      "kind": "host-submit-acceptance-only"
+    },
+    {
+      "host": 4,
+      "kind": "completed-host-read",
+      "query": {
+        "Kind": "decided",
+        "Round": 0,
+        "TxID": "right"
+      },
+      "read_id": {
+        "Sequence": 3,
+        "Session": [
+          163,
+          23,
+          108,
+          203,
+          52,
+          203,
+          142,
+          232,
+          194,
+          201,
+          170,
+          81,
+          201,
+          243,
+          199,
+          224
+        ]
+      },
+      "view": {
+        "Certificate": null,
+        "Decision": {
+          "Commit": false,
+          "Digest": [
+            178,
+            224,
+            246,
+            190,
+            72,
+            7,
+            94,
+            57,
+            72,
+            209,
+            63,
+            225,
+            166,
+            112,
+            191,
+            3,
+            187,
+            47,
+            234,
+            193,
+            214,
+            255,
+            250,
+            51,
+            91,
+            228,
+            220,
+            89,
+            57,
+            179,
+            71,
+            90
+          ],
+          "Reason": "",
+          "Round": 0,
+          "Votes": [
+            {
+              "Digest": [
+                178,
+                224,
+                246,
+                190,
+                72,
+                7,
+                94,
+                57,
+                72,
+                209,
+                63,
+                225,
+                166,
+                112,
+                191,
+                3,
+                187,
+                47,
+                234,
+                193,
+                214,
+                255,
+                250,
+                51,
+                91,
+                228,
+                220,
+                89,
+                57,
+                179,
+                71,
+                90
+              ],
+              "Effects": [
+                7,
+                185,
+                133,
+                113,
+                128,
+                172,
+                84,
+                140,
+                71,
+                255,
+                148,
+                249,
+                253,
+                168,
+                26,
+                87,
+                245,
+                42,
+                68,
+                60,
+                148,
+                17,
+                236,
+                173,
+                188,
+                25,
+                59,
+                206,
+                46,
+                33,
+                9,
+                249
+              ],
+              "Epoch": 7,
+              "Floor": 0,
+              "Group": 0,
+              "Reason": "txnproto: validation/conflict; new request required",
+              "Yes": false
+            }
+          ]
+        },
+        "Epoch": 11,
+        "Floor": 0,
+        "Graph": "fixture",
+        "Group": 1,
+        "Index": 5,
+        "Kind": "decided",
+        "Pending": null,
+        "State": null,
+        "Topology": 1,
+        "Tx": {
+          "Coordinator": 1,
+          "Dependency": 0,
+          "Graph": "fixture",
+          "ID": "right",
+          "Participants": [
+            {
+              "Effects": null,
+              "Epoch": 7,
+              "Generation": 0,
+              "Group": 0,
+              "Reads": null
+            },
+            {
+              "Effects": [
+                {
+                  "Delete": false,
+                  "Key": "item/b",
+                  "Value": 1
+                }
+              ],
+              "Epoch": 11,
+              "Generation": 0,
+              "Group": 1,
+              "Reads": null
+            }
+          ],
+          "Request": "request/right",
+          "Topology": 1
+        },
+        "Vote": null
+      }
+    },
+    {
+      "command": {
+        "Commit": false,
+        "Kind": "resolve",
+        "Prior": null,
+        "Remote": {
+          "Certificate": null,
+          "Decision": {
+            "Commit": false,
+            "Digest": [
+              178,
+              224,
+              246,
+              190,
+              72,
+              7,
+              94,
+              57,
+              72,
+              209,
+              63,
+              225,
+              166,
+              112,
+              191,
+              3,
+              187,
+              47,
+              234,
+              193,
+              214,
+              255,
+              250,
+              51,
+              91,
+              228,
+              220,
+              89,
+              57,
+              179,
+              71,
+              90
+            ],
+            "Reason": "",
+            "Round": 0,
+            "Votes": [
+              {
+                "Digest": [
+                  178,
+                  224,
+                  246,
+                  190,
+                  72,
+                  7,
+                  94,
+                  57,
+                  72,
+                  209,
+                  63,
+                  225,
+                  166,
+                  112,
+                  191,
+                  3,
+                  187,
+                  47,
+                  234,
+                  193,
+                  214,
+                  255,
+                  250,
+                  51,
+                  91,
+                  228,
+                  220,
+                  89,
+                  57,
+                  179,
+                  71,
+                  90
+                ],
+                "Effects": [
+                  7,
+                  185,
+                  133,
+                  113,
+                  128,
+                  172,
+                  84,
+                  140,
+                  71,
+                  255,
+                  148,
+                  249,
+                  253,
+                  168,
+                  26,
+                  87,
+                  245,
+                  42,
+                  68,
+                  60,
+                  148,
+                  17,
+                  236,
+                  173,
+                  188,
+                  25,
+                  59,
+                  206,
+                  46,
+                  33,
+                  9,
+                  249
+                ],
+                "Epoch": 7,
+                "Floor": 0,
+                "Group": 0,
+                "Reason": "txnproto: validation/conflict; new request required",
+                "Yes": false
+              }
+            ]
+          },
+          "Epoch": 11,
+          "Floor": 0,
+          "Graph": "fixture",
+          "Group": 1,
+          "Index": 5,
+          "Kind": "decided",
+          "Pending": null,
+          "State": null,
+          "Topology": 1,
+          "Tx": {
+            "Coordinator": 1,
+            "Dependency": 0,
+            "Graph": "fixture",
+            "ID": "right",
+            "Participants": [
+              {
+                "Effects": null,
+                "Epoch": 7,
+                "Generation": 0,
+                "Group": 0,
+                "Reads": null
+              },
+              {
+                "Effects": [
+                  {
+                    "Delete": false,
+                    "Key": "item/b",
+                    "Value": 1
+                  }
+                ],
+                "Epoch": 11,
+                "Generation": 0,
+                "Group": 1,
+                "Reads": null
+              }
+            ],
+            "Request": "request/right",
+            "Topology": 1
+          },
+          "Vote": null
+        },
+        "Round": 0,
+        "Tx": null,
+        "Version": 1
+      },
+      "host": 1,
+      "kind": "host-submit-acceptance-only"
+    },
+    {
+      "command": {
+        "Commit": false,
+        "Kind": "resolve",
+        "Prior": null,
+        "Remote": {
+          "Certificate": null,
+          "Decision": {
+            "Commit": false,
+            "Digest": [
+              178,
+              224,
+              246,
+              190,
+              72,
+              7,
+              94,
+              57,
+              72,
+              209,
+              63,
+              225,
+              166,
+              112,
+              191,
+              3,
+              187,
+              47,
+              234,
+              193,
+              214,
+              255,
+              250,
+              51,
+              91,
+              228,
+              220,
+              89,
+              57,
+              179,
+              71,
+              90
+            ],
+            "Reason": "",
+            "Round": 0,
+            "Votes": [
+              {
+                "Digest": [
+                  178,
+                  224,
+                  246,
+                  190,
+                  72,
+                  7,
+                  94,
+                  57,
+                  72,
+                  209,
+                  63,
+                  225,
+                  166,
+                  112,
+                  191,
+                  3,
+                  187,
+                  47,
+                  234,
+                  193,
+                  214,
+                  255,
+                  250,
+                  51,
+                  91,
+                  228,
+                  220,
+                  89,
+                  57,
+                  179,
+                  71,
+                  90
+                ],
+                "Effects": [
+                  7,
+                  185,
+                  133,
+                  113,
+                  128,
+                  172,
+                  84,
+                  140,
+                  71,
+                  255,
+                  148,
+                  249,
+                  253,
+                  168,
+                  26,
+                  87,
+                  245,
+                  42,
+                  68,
+                  60,
+                  148,
+                  17,
+                  236,
+                  173,
+                  188,
+                  25,
+                  59,
+                  206,
+                  46,
+                  33,
+                  9,
+                  249
+                ],
+                "Epoch": 7,
+                "Floor": 0,
+                "Group": 0,
+                "Reason": "txnproto: validation/conflict; new request required",
+                "Yes": false
+              }
+            ]
+          },
+          "Epoch": 11,
+          "Floor": 0,
+          "Graph": "fixture",
+          "Group": 1,
+          "Index": 5,
+          "Kind": "decided",
+          "Pending": null,
+          "State": null,
+          "Topology": 1,
+          "Tx": {
+            "Coordinator": 1,
+            "Dependency": 0,
+            "Graph": "fixture",
+            "ID": "right",
+            "Participants": [
+              {
+                "Effects": null,
+                "Epoch": 7,
+                "Generation": 0,
+                "Group": 0,
+                "Reads": null
+              },
+              {
+                "Effects": [
+                  {
+                    "Delete": false,
+                    "Key": "item/b",
+                    "Value": 1
+                  }
+                ],
+                "Epoch": 11,
+                "Generation": 0,
+                "Group": 1,
+                "Reads": null
+              }
+            ],
+            "Request": "request/right",
+            "Topology": 1
+          },
+          "Vote": null
+        },
+        "Round": 0,
+        "Tx": null,
+        "Version": 1
+      },
+      "host": 4,
+      "kind": "host-submit-acceptance-only"
+    },
+    {
+      "command": {
+        "Commit": false,
+        "Kind": "prepare",
+        "Prior": {
+          "Certificate": null,
+          "Decision": null,
+          "Epoch": 7,
+          "Floor": 0,
+          "Graph": "fixture",
+          "Group": 0,
+          "Index": 4,
+          "Kind": "prepared",
+          "Pending": null,
+          "State": null,
+          "Topology": 1,
+          "Tx": {
+            "Coordinator": 0,
+            "Dependency": 0,
+            "Graph": "fixture",
+            "ID": "left",
+            "Participants": [
+              {
+                "Effects": [
+                  {
+                    "Delete": false,
+                    "Key": "item/a",
+                    "Value": 1
+                  }
+                ],
+                "Epoch": 7,
+                "Generation": 0,
+                "Group": 0,
+                "Reads": null
+              },
+              {
+                "Effects": null,
+                "Epoch": 11,
+                "Generation": 0,
+                "Group": 1,
+                "Reads": null
+              }
+            ],
+            "Request": "request/left",
+            "Topology": 1
+          },
+          "Vote": {
+            "Digest": [
+              100,
+              170,
+              229,
+              124,
+              46,
+              132,
+              167,
+              166,
+              90,
+              190,
+              42,
+              166,
+              190,
+              85,
+              53,
+              81,
+              166,
+              84,
+              20,
+              48,
+              178,
+              95,
+              147,
+              35,
+              19,
+              125,
+              97,
+              199,
+              105,
+              239,
+              215,
+              95
+            ],
+            "Effects": [
+              175,
+              245,
+              212,
+              50,
+              32,
+              18,
+              247,
+              96,
+              95,
+              241,
+              244,
+              240,
+              1,
+              102,
+              22,
+              200,
+              90,
+              176,
+              203,
+              6,
+              45,
+              99,
+              97,
+              74,
+              137,
+              135,
+              216,
+              143,
+              221,
+              215,
+              167,
+              127
+            ],
+            "Epoch": 7,
+            "Floor": 0,
+            "Group": 0,
+            "Reason": "",
+            "Yes": true
+          }
+        },
+        "Remote": {
+          "Certificate": null,
+          "Decision": null,
+          "Epoch": 7,
+          "Floor": 0,
+          "Graph": "fixture",
+          "Group": 0,
+          "Index": 3,
+          "Kind": "registration",
+          "Pending": null,
+          "State": null,
+          "Topology": 1,
+          "Tx": {
+            "Coordinator": 0,
+            "Dependency": 0,
+            "Graph": "fixture",
+            "ID": "left",
+            "Participants": [
+              {
+                "Effects": [
+                  {
+                    "Delete": false,
+                    "Key": "item/a",
+                    "Value": 1
+                  }
+                ],
+                "Epoch": 7,
+                "Generation": 0,
+                "Group": 0,
+                "Reads": null
+              },
+              {
+                "Effects": null,
+                "Epoch": 11,
+                "Generation": 0,
+                "Group": 1,
+                "Reads": null
+              }
+            ],
+            "Request": "request/left",
+            "Topology": 1
+          },
+          "Vote": null
+        },
+        "Round": 0,
+        "Tx": null,
+        "Version": 1
+      },
+      "host": 4,
+      "kind": "host-submit-acceptance-only"
+    },
+    {
+      "host": 4,
+      "kind": "completed-host-read",
+      "query": {
+        "Kind": "prepared",
+        "Round": 0,
+        "TxID": "left"
+      },
+      "read_id": {
+        "Sequence": 4,
+        "Session": [
+          163,
+          23,
+          108,
+          203,
+          52,
+          203,
+          142,
+          232,
+          194,
+          201,
+          170,
+          81,
+          201,
+          243,
+          199,
+          224
+        ]
+      },
+      "view": {
+        "Certificate": null,
+        "Decision": null,
+        "Epoch": 11,
+        "Floor": 0,
+        "Graph": "fixture",
+        "Group": 1,
+        "Index": 7,
+        "Kind": "prepared",
+        "Pending": null,
+        "State": null,
+        "Topology": 1,
+        "Tx": {
+          "Coordinator": 0,
+          "Dependency": 0,
+          "Graph": "fixture",
+          "ID": "left",
+          "Participants": [
+            {
+              "Effects": [
+                {
+                  "Delete": false,
+                  "Key": "item/a",
+                  "Value": 1
+                }
+              ],
+              "Epoch": 7,
+              "Generation": 0,
+              "Group": 0,
+              "Reads": null
+            },
+            {
+              "Effects": null,
+              "Epoch": 11,
+              "Generation": 0,
+              "Group": 1,
+              "Reads": null
+            }
+          ],
+          "Request": "request/left",
+          "Topology": 1
+        },
+        "Vote": {
+          "Digest": [
+            100,
+            170,
+            229,
+            124,
+            46,
+            132,
+            167,
+            166,
+            90,
+            190,
+            42,
+            166,
+            190,
+            85,
+            53,
+            81,
+            166,
+            84,
+            20,
+            48,
+            178,
+            95,
+            147,
+            35,
+            19,
+            125,
+            97,
+            199,
+            105,
+            239,
+            215,
+            95
+          ],
+          "Effects": [
+            122,
+            104,
+            2,
+            162,
+            219,
+            91,
+            134,
+            111,
+            186,
+            78,
+            17,
+            90,
+            117,
+            75,
+            163,
+            66,
+            84,
+            142,
+            195,
+            25,
+            97,
+            93,
+            154,
+            100,
+            64,
+            177,
+            190,
+            239,
+            73,
+            125,
+            185,
+            120
+          ],
+          "Epoch": 11,
+          "Floor": 0,
+          "Group": 1,
+          "Reason": "",
+          "Yes": true
+        }
+      }
+    },
+    {
+      "command": {
+        "Commit": false,
+        "Kind": "vote",
+        "Prior": null,
+        "Remote": {
+          "Certificate": null,
+          "Decision": null,
+          "Epoch": 11,
+          "Floor": 0,
+          "Graph": "fixture",
+          "Group": 1,
+          "Index": 7,
+          "Kind": "prepared",
+          "Pending": null,
+          "State": null,
+          "Topology": 1,
+          "Tx": {
+            "Coordinator": 0,
+            "Dependency": 0,
+            "Graph": "fixture",
+            "ID": "left",
+            "Participants": [
+              {
+                "Effects": [
+                  {
+                    "Delete": false,
+                    "Key": "item/a",
+                    "Value": 1
+                  }
+                ],
+                "Epoch": 7,
+                "Generation": 0,
+                "Group": 0,
+                "Reads": null
+              },
+              {
+                "Effects": null,
+                "Epoch": 11,
+                "Generation": 0,
+                "Group": 1,
+                "Reads": null
+              }
+            ],
+            "Request": "request/left",
+            "Topology": 1
+          },
+          "Vote": {
+            "Digest": [
+              100,
+              170,
+              229,
+              124,
+              46,
+              132,
+              167,
+              166,
+              90,
+              190,
+              42,
+              166,
+              190,
+              85,
+              53,
+              81,
+              166,
+              84,
+              20,
+              48,
+              178,
+              95,
+              147,
+              35,
+              19,
+              125,
+              97,
+              199,
+              105,
+              239,
+              215,
+              95
+            ],
+            "Effects": [
+              122,
+              104,
+              2,
+              162,
+              219,
+              91,
+              134,
+              111,
+              186,
+              78,
+              17,
+              90,
+              117,
+              75,
+              163,
+              66,
+              84,
+              142,
+              195,
+              25,
+              97,
+              93,
+              154,
+              100,
+              64,
+              177,
+              190,
+              239,
+              73,
+              125,
+              185,
+              120
+            ],
+            "Epoch": 11,
+            "Floor": 0,
+            "Group": 1,
+            "Reason": "",
+            "Yes": true
+          }
+        },
+        "Round": 0,
+        "Tx": null,
+        "Version": 1
+      },
+      "host": 1,
+      "kind": "host-submit-acceptance-only"
+    },
+    {
+      "command": {
+        "Commit": true,
+        "Kind": "decide",
+        "Prior": null,
+        "Remote": {
+          "Certificate": null,
+          "Decision": null,
+          "Epoch": 7,
+          "Floor": 0,
+          "Graph": "fixture",
+          "Group": 0,
+          "Index": 3,
+          "Kind": "registration",
+          "Pending": null,
+          "State": null,
+          "Topology": 1,
+          "Tx": {
+            "Coordinator": 0,
+            "Dependency": 0,
+            "Graph": "fixture",
+            "ID": "left",
+            "Participants": [
+              {
+                "Effects": [
+                  {
+                    "Delete": false,
+                    "Key": "item/a",
+                    "Value": 1
+                  }
+                ],
+                "Epoch": 7,
+                "Generation": 0,
+                "Group": 0,
+                "Reads": null
+              },
+              {
+                "Effects": null,
+                "Epoch": 11,
+                "Generation": 0,
+                "Group": 1,
+                "Reads": null
+              }
+            ],
+            "Request": "request/left",
+            "Topology": 1
+          },
+          "Vote": null
+        },
+        "Round": 0,
+        "Tx": null,
+        "Version": 1
+      },
+      "host": 1,
+      "kind": "host-submit-acceptance-only"
+    },
+    {
+      "host": 1,
+      "kind": "completed-host-read",
+      "query": {
+        "Kind": "decided",
+        "Round": 0,
+        "TxID": "left"
+      },
+      "read_id": {
+        "Sequence": 5,
+        "Session": [
+          226,
+          119,
+          216,
+          97,
+          122,
+          98,
+          251,
+          78,
+          181,
+          140,
+          253,
+          99,
+          17,
+          125,
+          255,
+          64
+        ]
+      },
+      "view": {
+        "Certificate": null,
+        "Decision": {
+          "Commit": true,
+          "Digest": [
+            100,
+            170,
+            229,
+            124,
+            46,
+            132,
+            167,
+            166,
+            90,
+            190,
+            42,
+            166,
+            190,
+            85,
+            53,
+            81,
+            166,
+            84,
+            20,
+            48,
+            178,
+            95,
+            147,
+            35,
+            19,
+            125,
+            97,
+            199,
+            105,
+            239,
+            215,
+            95
+          ],
+          "Reason": "",
+          "Round": 1,
+          "Votes": [
+            {
+              "Digest": [
+                100,
+                170,
+                229,
+                124,
+                46,
+                132,
+                167,
+                166,
+                90,
+                190,
+                42,
+                166,
+                190,
+                85,
+                53,
+                81,
+                166,
+                84,
+                20,
+                48,
+                178,
+                95,
+                147,
+                35,
+                19,
+                125,
+                97,
+                199,
+                105,
+                239,
+                215,
+                95
+              ],
+              "Effects": [
+                175,
+                245,
+                212,
+                50,
+                32,
+                18,
+                247,
+                96,
+                95,
+                241,
+                244,
+                240,
+                1,
+                102,
+                22,
+                200,
+                90,
+                176,
+                203,
+                6,
+                45,
+                99,
+                97,
+                74,
+                137,
+                135,
+                216,
+                143,
+                221,
+                215,
+                167,
+                127
+              ],
+              "Epoch": 7,
+              "Floor": 0,
+              "Group": 0,
+              "Reason": "",
+              "Yes": true
+            },
+            {
+              "Digest": [
+                100,
+                170,
+                229,
+                124,
+                46,
+                132,
+                167,
+                166,
+                90,
+                190,
+                42,
+                166,
+                190,
+                85,
+                53,
+                81,
+                166,
+                84,
+                20,
+                48,
+                178,
+                95,
+                147,
+                35,
+                19,
+                125,
+                97,
+                199,
+                105,
+                239,
+                215,
+                95
+              ],
+              "Effects": [
+                122,
+                104,
+                2,
+                162,
+                219,
+                91,
+                134,
+                111,
+                186,
+                78,
+                17,
+                90,
+                117,
+                75,
+                163,
+                66,
+                84,
+                142,
+                195,
+                25,
+                97,
+                93,
+                154,
+                100,
+                64,
+                177,
+                190,
+                239,
+                73,
+                125,
+                185,
+                120
+              ],
+              "Epoch": 11,
+              "Floor": 0,
+              "Group": 1,
+              "Reason": "",
+              "Yes": true
+            }
+          ]
+        },
+        "Epoch": 7,
+        "Floor": 0,
+        "Graph": "fixture",
+        "Group": 0,
+        "Index": 9,
+        "Kind": "decided",
+        "Pending": null,
+        "State": null,
+        "Topology": 1,
+        "Tx": {
+          "Coordinator": 0,
+          "Dependency": 0,
+          "Graph": "fixture",
+          "ID": "left",
+          "Participants": [
+            {
+              "Effects": [
+                {
+                  "Delete": false,
+                  "Key": "item/a",
+                  "Value": 1
+                }
+              ],
+              "Epoch": 7,
+              "Generation": 0,
+              "Group": 0,
+              "Reads": null
+            },
+            {
+              "Effects": null,
+              "Epoch": 11,
+              "Generation": 0,
+              "Group": 1,
+              "Reads": null
+            }
+          ],
+          "Request": "request/left",
+          "Topology": 1
+        },
+        "Vote": null
+      }
+    },
+    {
+      "command": {
+        "Commit": false,
+        "Kind": "resolve",
+        "Prior": null,
+        "Remote": {
+          "Certificate": null,
+          "Decision": {
+            "Commit": true,
+            "Digest": [
+              100,
+              170,
+              229,
+              124,
+              46,
+              132,
+              167,
+              166,
+              90,
+              190,
+              42,
+              166,
+              190,
+              85,
+              53,
+              81,
+              166,
+              84,
+              20,
+              48,
+              178,
+              95,
+              147,
+              35,
+              19,
+              125,
+              97,
+              199,
+              105,
+              239,
+              215,
+              95
+            ],
+            "Reason": "",
+            "Round": 1,
+            "Votes": [
+              {
+                "Digest": [
+                  100,
+                  170,
+                  229,
+                  124,
+                  46,
+                  132,
+                  167,
+                  166,
+                  90,
+                  190,
+                  42,
+                  166,
+                  190,
+                  85,
+                  53,
+                  81,
+                  166,
+                  84,
+                  20,
+                  48,
+                  178,
+                  95,
+                  147,
+                  35,
+                  19,
+                  125,
+                  97,
+                  199,
+                  105,
+                  239,
+                  215,
+                  95
+                ],
+                "Effects": [
+                  175,
+                  245,
+                  212,
+                  50,
+                  32,
+                  18,
+                  247,
+                  96,
+                  95,
+                  241,
+                  244,
+                  240,
+                  1,
+                  102,
+                  22,
+                  200,
+                  90,
+                  176,
+                  203,
+                  6,
+                  45,
+                  99,
+                  97,
+                  74,
+                  137,
+                  135,
+                  216,
+                  143,
+                  221,
+                  215,
+                  167,
+                  127
+                ],
+                "Epoch": 7,
+                "Floor": 0,
+                "Group": 0,
+                "Reason": "",
+                "Yes": true
+              },
+              {
+                "Digest": [
+                  100,
+                  170,
+                  229,
+                  124,
+                  46,
+                  132,
+                  167,
+                  166,
+                  90,
+                  190,
+                  42,
+                  166,
+                  190,
+                  85,
+                  53,
+                  81,
+                  166,
+                  84,
+                  20,
+                  48,
+                  178,
+                  95,
+                  147,
+                  35,
+                  19,
+                  125,
+                  97,
+                  199,
+                  105,
+                  239,
+                  215,
+                  95
+                ],
+                "Effects": [
+                  122,
+                  104,
+                  2,
+                  162,
+                  219,
+                  91,
+                  134,
+                  111,
+                  186,
+                  78,
+                  17,
+                  90,
+                  117,
+                  75,
+                  163,
+                  66,
+                  84,
+                  142,
+                  195,
+                  25,
+                  97,
+                  93,
+                  154,
+                  100,
+                  64,
+                  177,
+                  190,
+                  239,
+                  73,
+                  125,
+                  185,
+                  120
+                ],
+                "Epoch": 11,
+                "Floor": 0,
+                "Group": 1,
+                "Reason": "",
+                "Yes": true
+              }
+            ]
+          },
+          "Epoch": 7,
+          "Floor": 0,
+          "Graph": "fixture",
+          "Group": 0,
+          "Index": 9,
+          "Kind": "decided",
+          "Pending": null,
+          "State": null,
+          "Topology": 1,
+          "Tx": {
+            "Coordinator": 0,
+            "Dependency": 0,
+            "Graph": "fixture",
+            "ID": "left",
+            "Participants": [
+              {
+                "Effects": [
+                  {
+                    "Delete": false,
+                    "Key": "item/a",
+                    "Value": 1
+                  }
+                ],
+                "Epoch": 7,
+                "Generation": 0,
+                "Group": 0,
+                "Reads": null
+              },
+              {
+                "Effects": null,
+                "Epoch": 11,
+                "Generation": 0,
+                "Group": 1,
+                "Reads": null
+              }
+            ],
+            "Request": "request/left",
+            "Topology": 1
+          },
+          "Vote": null
+        },
+        "Round": 0,
+        "Tx": null,
+        "Version": 1
+      },
+      "host": 1,
+      "kind": "host-submit-acceptance-only"
+    },
+    {
+      "command": {
+        "Commit": false,
+        "Kind": "resolve",
+        "Prior": null,
+        "Remote": {
+          "Certificate": null,
+          "Decision": {
+            "Commit": true,
+            "Digest": [
+              100,
+              170,
+              229,
+              124,
+              46,
+              132,
+              167,
+              166,
+              90,
+              190,
+              42,
+              166,
+              190,
+              85,
+              53,
+              81,
+              166,
+              84,
+              20,
+              48,
+              178,
+              95,
+              147,
+              35,
+              19,
+              125,
+              97,
+              199,
+              105,
+              239,
+              215,
+              95
+            ],
+            "Reason": "",
+            "Round": 1,
+            "Votes": [
+              {
+                "Digest": [
+                  100,
+                  170,
+                  229,
+                  124,
+                  46,
+                  132,
+                  167,
+                  166,
+                  90,
+                  190,
+                  42,
+                  166,
+                  190,
+                  85,
+                  53,
+                  81,
+                  166,
+                  84,
+                  20,
+                  48,
+                  178,
+                  95,
+                  147,
+                  35,
+                  19,
+                  125,
+                  97,
+                  199,
+                  105,
+                  239,
+                  215,
+                  95
+                ],
+                "Effects": [
+                  175,
+                  245,
+                  212,
+                  50,
+                  32,
+                  18,
+                  247,
+                  96,
+                  95,
+                  241,
+                  244,
+                  240,
+                  1,
+                  102,
+                  22,
+                  200,
+                  90,
+                  176,
+                  203,
+                  6,
+                  45,
+                  99,
+                  97,
+                  74,
+                  137,
+                  135,
+                  216,
+                  143,
+                  221,
+                  215,
+                  167,
+                  127
+                ],
+                "Epoch": 7,
+                "Floor": 0,
+                "Group": 0,
+                "Reason": "",
+                "Yes": true
+              },
+              {
+                "Digest": [
+                  100,
+                  170,
+                  229,
+                  124,
+                  46,
+                  132,
+                  167,
+                  166,
+                  90,
+                  190,
+                  42,
+                  166,
+                  190,
+                  85,
+                  53,
+                  81,
+                  166,
+                  84,
+                  20,
+                  48,
+                  178,
+                  95,
+                  147,
+                  35,
+                  19,
+                  125,
+                  97,
+                  199,
+                  105,
+                  239,
+                  215,
+                  95
+                ],
+                "Effects": [
+                  122,
+                  104,
+                  2,
+                  162,
+                  219,
+                  91,
+                  134,
+                  111,
+                  186,
+                  78,
+                  17,
+                  90,
+                  117,
+                  75,
+                  163,
+                  66,
+                  84,
+                  142,
+                  195,
+                  25,
+                  97,
+                  93,
+                  154,
+                  100,
+                  64,
+                  177,
+                  190,
+                  239,
+                  73,
+                  125,
+                  185,
+                  120
+                ],
+                "Epoch": 11,
+                "Floor": 0,
+                "Group": 1,
+                "Reason": "",
+                "Yes": true
+              }
+            ]
+          },
+          "Epoch": 7,
+          "Floor": 0,
+          "Graph": "fixture",
+          "Group": 0,
+          "Index": 9,
+          "Kind": "decided",
+          "Pending": null,
+          "State": null,
+          "Topology": 1,
+          "Tx": {
+            "Coordinator": 0,
+            "Dependency": 0,
+            "Graph": "fixture",
+            "ID": "left",
+            "Participants": [
+              {
+                "Effects": [
+                  {
+                    "Delete": false,
+                    "Key": "item/a",
+                    "Value": 1
+                  }
+                ],
+                "Epoch": 7,
+                "Generation": 0,
+                "Group": 0,
+                "Reads": null
+              },
+              {
+                "Effects": null,
+                "Epoch": 11,
+                "Generation": 0,
+                "Group": 1,
+                "Reads": null
+              }
+            ],
+            "Request": "request/left",
+            "Topology": 1
+          },
+          "Vote": null
+        },
+        "Round": 0,
+        "Tx": null,
+        "Version": 1
+      },
+      "host": 4,
+      "kind": "host-submit-acceptance-only"
+    },
+    {
+      "bound_actual_views": [
+        {
+          "participant": {
+            "Effects": null,
+            "Epoch": 7,
+            "Generation": 0,
+            "Group": 0,
+            "Reads": null
+          },
+          "query": {
+            "Kind": "current",
+            "Round": 0,
+            "TxID": ""
+          },
+          "read_id": {
+            "Sequence": 1,
+            "Session": [
+              226,
+              119,
+              216,
+              97,
+              122,
+              98,
+              251,
+              78,
+              181,
+              140,
+              253,
+              99,
+              17,
+              125,
+              255,
+              64
+            ]
+          },
+          "view": {
+            "Certificate": null,
+            "Decision": null,
+            "Epoch": 7,
+            "Floor": 0,
+            "Graph": "fixture",
+            "Group": 0,
+            "Index": 2,
+            "Kind": "current",
+            "Pending": null,
+            "State": {
+              "Generation": 0,
+              "Values": {}
+            },
+            "Topology": 1,
+            "Tx": null,
+            "Vote": null
+          }
+        },
+        {
+          "participant": {
+            "Effects": [
+              {
+                "Delete": false,
+                "Key": "item/b",
+                "Value": 2
+              }
+            ],
+            "Epoch": 11,
+            "Generation": 0,
+            "Group": 1,
+            "Reads": null
+          },
+          "query": {
+            "Kind": "current",
+            "Round": 0,
+            "TxID": ""
+          },
+          "read_id": {
+            "Sequence": 1,
+            "Session": [
+              163,
+              23,
+              108,
+              203,
+              52,
+              203,
+              142,
+              232,
+              194,
+              201,
+              170,
+              81,
+              201,
+              243,
+              199,
+              224
+            ]
+          },
+          "view": {
+            "Certificate": null,
+            "Decision": null,
+            "Epoch": 11,
+            "Floor": 0,
+            "Graph": "fixture",
+            "Group": 1,
+            "Index": 2,
+            "Kind": "current",
+            "Pending": null,
+            "State": {
+              "Generation": 0,
+              "Values": {}
+            },
+            "Topology": 1,
+            "Tx": null,
+            "Vote": null
+          }
+        }
+      ],
+      "kind": "constructed-transaction",
+      "submitted_input": {
+        "Coordinator": 1,
+        "Dependency": 0,
+        "Graph": "fixture",
+        "ID": "stale-distinct-request",
+        "Participants": [
+          {
+            "Effects": null,
+            "Epoch": 7,
+            "Generation": 0,
+            "Group": 0,
+            "Reads": null
+          },
+          {
+            "Effects": [
+              {
+                "Delete": false,
+                "Key": "item/b",
+                "Value": 2
+              }
+            ],
+            "Epoch": 11,
+            "Generation": 0,
+            "Group": 1,
+            "Reads": null
+          }
+        ],
+        "Request": "request/stale-distinct-request",
+        "Topology": 1
+      }
+    },
+    {
+      "command": {
+        "Commit": false,
+        "Kind": "register",
+        "Prior": null,
+        "Remote": null,
+        "Round": 0,
+        "Tx": {
+          "Coordinator": 1,
+          "Dependency": 0,
+          "Graph": "fixture",
+          "ID": "stale-distinct-request",
+          "Participants": [
+            {
+              "Effects": null,
+              "Epoch": 7,
+              "Generation": 0,
+              "Group": 0,
+              "Reads": null
+            },
+            {
+              "Effects": [
+                {
+                  "Delete": false,
+                  "Key": "item/b",
+                  "Value": 2
+                }
+              ],
+              "Epoch": 11,
+              "Generation": 0,
+              "Group": 1,
+              "Reads": null
+            }
+          ],
+          "Request": "request/stale-distinct-request",
+          "Topology": 1
+        },
+        "Version": 1
+      },
+      "host": 4,
+      "kind": "host-submit-acceptance-only"
+    },
+    {
+      "host": 4,
+      "kind": "completed-host-read",
+      "query": {
+        "Kind": "registration",
+        "Round": 0,
+        "TxID": "stale-distinct-request"
+      },
+      "read_id": {
+        "Sequence": 5,
+        "Session": [
+          163,
+          23,
+          108,
+          203,
+          52,
+          203,
+          142,
+          232,
+          194,
+          201,
+          170,
+          81,
+          201,
+          243,
+          199,
+          224
+        ]
+      },
+      "view": {
+        "Certificate": null,
+        "Decision": null,
+        "Epoch": 11,
+        "Floor": 0,
+        "Graph": "fixture",
+        "Group": 1,
+        "Index": 9,
+        "Kind": "registration",
+        "Pending": null,
+        "State": null,
+        "Topology": 1,
+        "Tx": {
+          "Coordinator": 1,
+          "Dependency": 0,
+          "Graph": "fixture",
+          "ID": "stale-distinct-request",
+          "Participants": [
+            {
+              "Effects": null,
+              "Epoch": 7,
+              "Generation": 0,
+              "Group": 0,
+              "Reads": null
+            },
+            {
+              "Effects": [
+                {
+                  "Delete": false,
+                  "Key": "item/b",
+                  "Value": 2
+                }
+              ],
+              "Epoch": 11,
+              "Generation": 0,
+              "Group": 1,
+              "Reads": null
+            }
+          ],
+          "Request": "request/stale-distinct-request",
+          "Topology": 1
+        },
+        "Vote": null
+      }
+    },
+    {
+      "command": {
+        "Commit": false,
+        "Kind": "prepare",
+        "Prior": null,
+        "Remote": {
+          "Certificate": null,
+          "Decision": null,
+          "Epoch": 11,
+          "Floor": 0,
+          "Graph": "fixture",
+          "Group": 1,
+          "Index": 9,
+          "Kind": "registration",
+          "Pending": null,
+          "State": null,
+          "Topology": 1,
+          "Tx": {
+            "Coordinator": 1,
+            "Dependency": 0,
+            "Graph": "fixture",
+            "ID": "stale-distinct-request",
+            "Participants": [
+              {
+                "Effects": null,
+                "Epoch": 7,
+                "Generation": 0,
+                "Group": 0,
+                "Reads": null
+              },
+              {
+                "Effects": [
+                  {
+                    "Delete": false,
+                    "Key": "item/b",
+                    "Value": 2
+                  }
+                ],
+                "Epoch": 11,
+                "Generation": 0,
+                "Group": 1,
+                "Reads": null
+              }
+            ],
+            "Request": "request/stale-distinct-request",
+            "Topology": 1
+          },
+          "Vote": null
+        },
+        "Round": 0,
+        "Tx": null,
+        "Version": 1
+      },
+      "host": 1,
+      "kind": "host-submit-acceptance-only"
+    },
+    {
+      "host": 1,
+      "kind": "completed-host-read",
+      "query": {
+        "Kind": "prepared",
+        "Round": 0,
+        "TxID": "stale-distinct-request"
+      },
+      "read_id": {
+        "Sequence": 6,
+        "Session": [
+          226,
+          119,
+          216,
+          97,
+          122,
+          98,
+          251,
+          78,
+          181,
+          140,
+          253,
+          99,
+          17,
+          125,
+          255,
+          64
+        ]
+      },
+      "view": {
+        "Certificate": null,
+        "Decision": null,
+        "Epoch": 7,
+        "Floor": 0,
+        "Graph": "fixture",
+        "Group": 0,
+        "Index": 11,
+        "Kind": "prepared",
+        "Pending": null,
+        "State": null,
+        "Topology": 1,
+        "Tx": {
+          "Coordinator": 1,
+          "Dependency": 0,
+          "Graph": "fixture",
+          "ID": "stale-distinct-request",
+          "Participants": [
+            {
+              "Effects": null,
+              "Epoch": 7,
+              "Generation": 0,
+              "Group": 0,
+              "Reads": null
+            },
+            {
+              "Effects": [
+                {
+                  "Delete": false,
+                  "Key": "item/b",
+                  "Value": 2
+                }
+              ],
+              "Epoch": 11,
+              "Generation": 0,
+              "Group": 1,
+              "Reads": null
+            }
+          ],
+          "Request": "request/stale-distinct-request",
+          "Topology": 1
+        },
+        "Vote": {
+          "Digest": [
+            74,
+            30,
+            155,
+            68,
+            139,
+            212,
+            2,
+            77,
+            208,
+            38,
+            51,
+            86,
+            106,
+            202,
+            20,
+            132,
+            26,
+            220,
+            88,
+            133,
+            211,
+            225,
+            72,
+            107,
+            152,
+            87,
+            154,
+            162,
+            26,
+            247,
+            141,
+            126
+          ],
+          "Effects": [
+            7,
+            185,
+            133,
+            113,
+            128,
+            172,
+            84,
+            140,
+            71,
+            255,
+            148,
+            249,
+            253,
+            168,
+            26,
+            87,
+            245,
+            42,
+            68,
+            60,
+            148,
+            17,
+            236,
+            173,
+            188,
+            25,
+            59,
+            206,
+            46,
+            33,
+            9,
+            249
+          ],
+          "Epoch": 7,
+          "Floor": 1,
+          "Group": 0,
+          "Reason": "txnproto: validation/conflict; new request required",
+          "Yes": false
+        }
+      }
+    },
+    {
+      "command": {
+        "Commit": false,
+        "Kind": "vote",
+        "Prior": null,
+        "Remote": {
+          "Certificate": null,
+          "Decision": null,
+          "Epoch": 7,
+          "Floor": 0,
+          "Graph": "fixture",
+          "Group": 0,
+          "Index": 11,
+          "Kind": "prepared",
+          "Pending": null,
+          "State": null,
+          "Topology": 1,
+          "Tx": {
+            "Coordinator": 1,
+            "Dependency": 0,
+            "Graph": "fixture",
+            "ID": "stale-distinct-request",
+            "Participants": [
+              {
+                "Effects": null,
+                "Epoch": 7,
+                "Generation": 0,
+                "Group": 0,
+                "Reads": null
+              },
+              {
+                "Effects": [
+                  {
+                    "Delete": false,
+                    "Key": "item/b",
+                    "Value": 2
+                  }
+                ],
+                "Epoch": 11,
+                "Generation": 0,
+                "Group": 1,
+                "Reads": null
+              }
+            ],
+            "Request": "request/stale-distinct-request",
+            "Topology": 1
+          },
+          "Vote": {
+            "Digest": [
+              74,
+              30,
+              155,
+              68,
+              139,
+              212,
+              2,
+              77,
+              208,
+              38,
+              51,
+              86,
+              106,
+              202,
+              20,
+              132,
+              26,
+              220,
+              88,
+              133,
+              211,
+              225,
+              72,
+              107,
+              152,
+              87,
+              154,
+              162,
+              26,
+              247,
+              141,
+              126
+            ],
+            "Effects": [
+              7,
+              185,
+              133,
+              113,
+              128,
+              172,
+              84,
+              140,
+              71,
+              255,
+              148,
+              249,
+              253,
+              168,
+              26,
+              87,
+              245,
+              42,
+              68,
+              60,
+              148,
+              17,
+              236,
+              173,
+              188,
+              25,
+              59,
+              206,
+              46,
+              33,
+              9,
+              249
+            ],
+            "Epoch": 7,
+            "Floor": 1,
+            "Group": 0,
+            "Reason": "txnproto: validation/conflict; new request required",
+            "Yes": false
+          }
+        },
+        "Round": 0,
+        "Tx": null,
+        "Version": 1
+      },
+      "host": 4,
+      "kind": "host-submit-acceptance-only"
+    },
+    {
+      "command": {
+        "Commit": false,
+        "Kind": "decide",
+        "Prior": null,
+        "Remote": {
+          "Certificate": null,
+          "Decision": null,
+          "Epoch": 11,
+          "Floor": 0,
+          "Graph": "fixture",
+          "Group": 1,
+          "Index": 9,
+          "Kind": "registration",
+          "Pending": null,
+          "State": null,
+          "Topology": 1,
+          "Tx": {
+            "Coordinator": 1,
+            "Dependency": 0,
+            "Graph": "fixture",
+            "ID": "stale-distinct-request",
+            "Participants": [
+              {
+                "Effects": null,
+                "Epoch": 7,
+                "Generation": 0,
+                "Group": 0,
+                "Reads": null
+              },
+              {
+                "Effects": [
+                  {
+                    "Delete": false,
+                    "Key": "item/b",
+                    "Value": 2
+                  }
+                ],
+                "Epoch": 11,
+                "Generation": 0,
+                "Group": 1,
+                "Reads": null
+              }
+            ],
+            "Request": "request/stale-distinct-request",
+            "Topology": 1
+          },
+          "Vote": null
+        },
+        "Round": 0,
+        "Tx": null,
+        "Version": 1
+      },
+      "host": 4,
+      "kind": "host-submit-acceptance-only"
+    },
+    {
+      "host": 4,
+      "kind": "completed-host-read",
+      "query": {
+        "Kind": "decided",
+        "Round": 0,
+        "TxID": "stale-distinct-request"
+      },
+      "read_id": {
+        "Sequence": 6,
+        "Session": [
+          163,
+          23,
+          108,
+          203,
+          52,
+          203,
+          142,
+          232,
+          194,
+          201,
+          170,
+          81,
+          201,
+          243,
+          199,
+          224
+        ]
+      },
+      "view": {
+        "Certificate": null,
+        "Decision": {
+          "Commit": false,
+          "Digest": [
+            74,
+            30,
+            155,
+            68,
+            139,
+            212,
+            2,
+            77,
+            208,
+            38,
+            51,
+            86,
+            106,
+            202,
+            20,
+            132,
+            26,
+            220,
+            88,
+            133,
+            211,
+            225,
+            72,
+            107,
+            152,
+            87,
+            154,
+            162,
+            26,
+            247,
+            141,
+            126
+          ],
+          "Reason": "",
+          "Round": 0,
+          "Votes": [
+            {
+              "Digest": [
+                74,
+                30,
+                155,
+                68,
+                139,
+                212,
+                2,
+                77,
+                208,
+                38,
+                51,
+                86,
+                106,
+                202,
+                20,
+                132,
+                26,
+                220,
+                88,
+                133,
+                211,
+                225,
+                72,
+                107,
+                152,
+                87,
+                154,
+                162,
+                26,
+                247,
+                141,
+                126
+              ],
+              "Effects": [
+                7,
+                185,
+                133,
+                113,
+                128,
+                172,
+                84,
+                140,
+                71,
+                255,
+                148,
+                249,
+                253,
+                168,
+                26,
+                87,
+                245,
+                42,
+                68,
+                60,
+                148,
+                17,
+                236,
+                173,
+                188,
+                25,
+                59,
+                206,
+                46,
+                33,
+                9,
+                249
+              ],
+              "Epoch": 7,
+              "Floor": 1,
+              "Group": 0,
+              "Reason": "txnproto: validation/conflict; new request required",
+              "Yes": false
+            }
+          ]
+        },
+        "Epoch": 11,
+        "Floor": 0,
+        "Graph": "fixture",
+        "Group": 1,
+        "Index": 11,
+        "Kind": "decided",
+        "Pending": null,
+        "State": null,
+        "Topology": 1,
+        "Tx": {
+          "Coordinator": 1,
+          "Dependency": 0,
+          "Graph": "fixture",
+          "ID": "stale-distinct-request",
+          "Participants": [
+            {
+              "Effects": null,
+              "Epoch": 7,
+              "Generation": 0,
+              "Group": 0,
+              "Reads": null
+            },
+            {
+              "Effects": [
+                {
+                  "Delete": false,
+                  "Key": "item/b",
+                  "Value": 2
+                }
+              ],
+              "Epoch": 11,
+              "Generation": 0,
+              "Group": 1,
+              "Reads": null
+            }
+          ],
+          "Request": "request/stale-distinct-request",
+          "Topology": 1
+        },
+        "Vote": null
+      }
+    },
+    {
+      "command": {
+        "Commit": false,
+        "Kind": "resolve",
+        "Prior": null,
+        "Remote": {
+          "Certificate": null,
+          "Decision": {
+            "Commit": false,
+            "Digest": [
+              74,
+              30,
+              155,
+              68,
+              139,
+              212,
+              2,
+              77,
+              208,
+              38,
+              51,
+              86,
+              106,
+              202,
+              20,
+              132,
+              26,
+              220,
+              88,
+              133,
+              211,
+              225,
+              72,
+              107,
+              152,
+              87,
+              154,
+              162,
+              26,
+              247,
+              141,
+              126
+            ],
+            "Reason": "",
+            "Round": 0,
+            "Votes": [
+              {
+                "Digest": [
+                  74,
+                  30,
+                  155,
+                  68,
+                  139,
+                  212,
+                  2,
+                  77,
+                  208,
+                  38,
+                  51,
+                  86,
+                  106,
+                  202,
+                  20,
+                  132,
+                  26,
+                  220,
+                  88,
+                  133,
+                  211,
+                  225,
+                  72,
+                  107,
+                  152,
+                  87,
+                  154,
+                  162,
+                  26,
+                  247,
+                  141,
+                  126
+                ],
+                "Effects": [
+                  7,
+                  185,
+                  133,
+                  113,
+                  128,
+                  172,
+                  84,
+                  140,
+                  71,
+                  255,
+                  148,
+                  249,
+                  253,
+                  168,
+                  26,
+                  87,
+                  245,
+                  42,
+                  68,
+                  60,
+                  148,
+                  17,
+                  236,
+                  173,
+                  188,
+                  25,
+                  59,
+                  206,
+                  46,
+                  33,
+                  9,
+                  249
+                ],
+                "Epoch": 7,
+                "Floor": 1,
+                "Group": 0,
+                "Reason": "txnproto: validation/conflict; new request required",
+                "Yes": false
+              }
+            ]
+          },
+          "Epoch": 11,
+          "Floor": 0,
+          "Graph": "fixture",
+          "Group": 1,
+          "Index": 11,
+          "Kind": "decided",
+          "Pending": null,
+          "State": null,
+          "Topology": 1,
+          "Tx": {
+            "Coordinator": 1,
+            "Dependency": 0,
+            "Graph": "fixture",
+            "ID": "stale-distinct-request",
+            "Participants": [
+              {
+                "Effects": null,
+                "Epoch": 7,
+                "Generation": 0,
+                "Group": 0,
+                "Reads": null
+              },
+              {
+                "Effects": [
+                  {
+                    "Delete": false,
+                    "Key": "item/b",
+                    "Value": 2
+                  }
+                ],
+                "Epoch": 11,
+                "Generation": 0,
+                "Group": 1,
+                "Reads": null
+              }
+            ],
+            "Request": "request/stale-distinct-request",
+            "Topology": 1
+          },
+          "Vote": null
+        },
+        "Round": 0,
+        "Tx": null,
+        "Version": 1
+      },
+      "host": 1,
+      "kind": "host-submit-acceptance-only"
+    },
+    {
+      "command": {
+        "Commit": false,
+        "Kind": "resolve",
+        "Prior": null,
+        "Remote": {
+          "Certificate": null,
+          "Decision": {
+            "Commit": false,
+            "Digest": [
+              74,
+              30,
+              155,
+              68,
+              139,
+              212,
+              2,
+              77,
+              208,
+              38,
+              51,
+              86,
+              106,
+              202,
+              20,
+              132,
+              26,
+              220,
+              88,
+              133,
+              211,
+              225,
+              72,
+              107,
+              152,
+              87,
+              154,
+              162,
+              26,
+              247,
+              141,
+              126
+            ],
+            "Reason": "",
+            "Round": 0,
+            "Votes": [
+              {
+                "Digest": [
+                  74,
+                  30,
+                  155,
+                  68,
+                  139,
+                  212,
+                  2,
+                  77,
+                  208,
+                  38,
+                  51,
+                  86,
+                  106,
+                  202,
+                  20,
+                  132,
+                  26,
+                  220,
+                  88,
+                  133,
+                  211,
+                  225,
+                  72,
+                  107,
+                  152,
+                  87,
+                  154,
+                  162,
+                  26,
+                  247,
+                  141,
+                  126
+                ],
+                "Effects": [
+                  7,
+                  185,
+                  133,
+                  113,
+                  128,
+                  172,
+                  84,
+                  140,
+                  71,
+                  255,
+                  148,
+                  249,
+                  253,
+                  168,
+                  26,
+                  87,
+                  245,
+                  42,
+                  68,
+                  60,
+                  148,
+                  17,
+                  236,
+                  173,
+                  188,
+                  25,
+                  59,
+                  206,
+                  46,
+                  33,
+                  9,
+                  249
+                ],
+                "Epoch": 7,
+                "Floor": 1,
+                "Group": 0,
+                "Reason": "txnproto: validation/conflict; new request required",
+                "Yes": false
+              }
+            ]
+          },
+          "Epoch": 11,
+          "Floor": 0,
+          "Graph": "fixture",
+          "Group": 1,
+          "Index": 11,
+          "Kind": "decided",
+          "Pending": null,
+          "State": null,
+          "Topology": 1,
+          "Tx": {
+            "Coordinator": 1,
+            "Dependency": 0,
+            "Graph": "fixture",
+            "ID": "stale-distinct-request",
+            "Participants": [
+              {
+                "Effects": null,
+                "Epoch": 7,
+                "Generation": 0,
+                "Group": 0,
+                "Reads": null
+              },
+              {
+                "Effects": [
+                  {
+                    "Delete": false,
+                    "Key": "item/b",
+                    "Value": 2
+                  }
+                ],
+                "Epoch": 11,
+                "Generation": 0,
+                "Group": 1,
+                "Reads": null
+              }
+            ],
+            "Request": "request/stale-distinct-request",
+            "Topology": 1
+          },
+          "Vote": null
+        },
+        "Round": 0,
+        "Tx": null,
+        "Version": 1
+      },
+      "host": 4,
+      "kind": "host-submit-acceptance-only"
+    },
+    {
+      "command": {
+        "Commit": false,
+        "Kind": "fence",
+        "Prior": null,
+        "Remote": null,
+        "Round": 1,
+        "Tx": null,
+        "Version": 1
+      },
+      "host": 1,
+      "kind": "host-submit-acceptance-only"
+    },
+    {
+      "command": {
+        "Commit": false,
+        "Kind": "certify",
+        "Prior": null,
+        "Remote": null,
+        "Round": 1,
+        "Tx": null,
+        "Version": 1
+      },
+      "host": 1,
+      "kind": "host-submit-acceptance-only"
+    },
+    {
+      "host": 1,
+      "kind": "completed-host-read",
+      "query": {
+        "Kind": "certified",
+        "Round": 1,
+        "TxID": ""
+      },
+      "read_id": {
+        "Sequence": 7,
+        "Session": [
+          226,
+          119,
+          216,
+          97,
+          122,
+          98,
+          251,
+          78,
+          181,
+          140,
+          253,
+          99,
+          17,
+          125,
+          255,
+          64
+        ]
+      },
+      "view": {
+        "Certificate": {
+          "Index": 14,
+          "Round": 1
+        },
+        "Decision": null,
+        "Epoch": 7,
+        "Floor": 0,
+        "Graph": "fixture",
+        "Group": 0,
+        "Index": 14,
+        "Kind": "certified",
+        "Pending": null,
+        "State": null,
+        "Topology": 1,
+        "Tx": null,
+        "Vote": null
+      }
+    },
+    {
+      "command": {
+        "Commit": false,
+        "Kind": "fence",
+        "Prior": null,
+        "Remote": null,
+        "Round": 1,
+        "Tx": null,
+        "Version": 1
+      },
+      "host": 4,
+      "kind": "host-submit-acceptance-only"
+    },
+    {
+      "command": {
+        "Commit": false,
+        "Kind": "certify",
+        "Prior": null,
+        "Remote": null,
+        "Round": 1,
+        "Tx": null,
+        "Version": 1
+      },
+      "host": 4,
+      "kind": "host-submit-acceptance-only"
+    },
+    {
+      "host": 4,
+      "kind": "completed-host-read",
+      "query": {
+        "Kind": "certified",
+        "Round": 1,
+        "TxID": ""
+      },
+      "read_id": {
+        "Sequence": 7,
+        "Session": [
+          163,
+          23,
+          108,
+          203,
+          52,
+          203,
+          142,
+          232,
+          194,
+          201,
+          170,
+          81,
+          201,
+          243,
+          199,
+          224
+        ]
+      },
+      "view": {
+        "Certificate": {
+          "Index": 14,
+          "Round": 1
+        },
+        "Decision": null,
+        "Epoch": 11,
+        "Floor": 0,
+        "Graph": "fixture",
+        "Group": 1,
+        "Index": 14,
+        "Kind": "certified",
+        "Pending": null,
+        "State": null,
+        "Topology": 1,
+        "Tx": null,
+        "Vote": null
+      }
+    },
+    {
+      "cut_certificates": [
+        {
+          "Certificate": {
+            "Index": 14,
+            "Round": 1
+          },
+          "Decision": null,
+          "Epoch": 7,
+          "Floor": 0,
+          "Graph": "fixture",
+          "Group": 0,
+          "Index": 14,
+          "Kind": "certified",
+          "Pending": null,
+          "State": null,
+          "Topology": 1,
+          "Tx": null,
+          "Vote": null
+        },
+        {
+          "Certificate": {
+            "Index": 14,
+            "Round": 1
+          },
+          "Decision": null,
+          "Epoch": 11,
+          "Floor": 0,
+          "Graph": "fixture",
+          "Group": 1,
+          "Index": 14,
+          "Kind": "certified",
+          "Pending": null,
+          "State": null,
+          "Topology": 1,
+          "Tx": null,
+          "Vote": null
+        }
+      ],
+      "host": 1,
+      "kind": "host-at",
+      "round": 1,
+      "snapshot": {
+        "Generation": 0,
+        "Values": {
+          "item/a": {
+            "Deleted": false,
+            "Round": 1,
+            "TxID": "left",
+            "Value": 1,
+            "Version": 1
+          }
+        }
+      }
+    },
+    {
+      "cut_certificates": [
+        {
+          "Certificate": {
+            "Index": 14,
+            "Round": 1
+          },
+          "Decision": null,
+          "Epoch": 7,
+          "Floor": 0,
+          "Graph": "fixture",
+          "Group": 0,
+          "Index": 14,
+          "Kind": "certified",
+          "Pending": null,
+          "State": null,
+          "Topology": 1,
+          "Tx": null,
+          "Vote": null
+        },
+        {
+          "Certificate": {
+            "Index": 14,
+            "Round": 1
+          },
+          "Decision": null,
+          "Epoch": 11,
+          "Floor": 0,
+          "Graph": "fixture",
+          "Group": 1,
+          "Index": 14,
+          "Kind": "certified",
+          "Pending": null,
+          "State": null,
+          "Topology": 1,
+          "Tx": null,
+          "Vote": null
+        }
+      ],
+      "host": 4,
+      "kind": "host-at",
+      "round": 1,
+      "snapshot": {
+        "Generation": 0,
+        "Values": {}
+      }
+    },
+    {
+      "host": 1,
+      "kind": "completed-host-read",
+      "query": {
+        "Kind": "current",
+        "Round": 0,
+        "TxID": ""
+      },
+      "read_id": {
+        "Sequence": 8,
+        "Session": [
+          226,
+          119,
+          216,
+          97,
+          122,
+          98,
+          251,
+          78,
+          181,
+          140,
+          253,
+          99,
+          17,
+          125,
+          255,
+          64
+        ]
+      },
+      "view": {
+        "Certificate": null,
+        "Decision": null,
+        "Epoch": 7,
+        "Floor": 0,
+        "Graph": "fixture",
+        "Group": 0,
+        "Index": 14,
+        "Kind": "current",
+        "Pending": null,
+        "State": {
+          "Generation": 1,
+          "Values": {
+            "item/a": {
+              "Deleted": false,
+              "Round": 1,
+              "TxID": "left",
+              "Value": 1,
+              "Version": 1
+            }
+          }
+        },
+        "Topology": 1,
+        "Tx": null,
+        "Vote": null
+      }
+    },
+    {
+      "host": 4,
+      "kind": "completed-host-read",
+      "query": {
+        "Kind": "current",
+        "Round": 0,
+        "TxID": ""
+      },
+      "read_id": {
+        "Sequence": 8,
+        "Session": [
+          163,
+          23,
+          108,
+          203,
+          52,
+          203,
+          142,
+          232,
+          194,
+          201,
+          170,
+          81,
+          201,
+          243,
+          199,
+          224
+        ]
+      },
+      "view": {
+        "Certificate": null,
+        "Decision": null,
+        "Epoch": 11,
+        "Floor": 0,
+        "Graph": "fixture",
+        "Group": 1,
+        "Index": 14,
+        "Kind": "current",
+        "Pending": null,
+        "State": {
+          "Generation": 0,
+          "Values": {}
+        },
+        "Topology": 1,
+        "Tx": null,
+        "Vote": null
+      }
+    }
+  ],
+  "rounds": {
+    "left": 1
+  },
+  "schema_version": 1,
+  "source_hashes": {
+    "adapter_sha256": "6d538a8f991f5c177547eaaf924547cd03976b0dee60eddc1419e6a421591e10",
+    "head_at_snapshot": "844e06589eeeab1adb2b9c4a605b8acc42083228",
+    "oracle_sha256": "a132b4e4981f3dcea485b7ee5dea0df48a906cdfcda4a75bec5ff9f1a5589d3a",
+    "original_external_capture_sha256": "1310aadb68a5d8c2787e5a52e40b360d406bed797ecf48b9be2829c591b5b33d",
+    "source_kind": "SHA-pinned copied transport overlay behavioral evidence; not archived-commit test",
+    "tracked_files_manifest_sha256": "86b74119c56acd58cd3ca4f49254a4e46faca830f1f3e17fb374eedcee25a32a",
+    "tracked_source_files": 101,
+    "tracked_source_validation": "../source-validation.json"
+  }
+}

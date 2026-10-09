@@ -1,0 +1,1229 @@
+{
+  "committed": [
+    "left",
+    "right"
+  ],
+  "decisions": {
+    "left": {
+      "commit": true,
+      "proof_view": {
+        "Certificate": null,
+        "Decision": {
+          "Commit": true,
+          "Digest": [
+            242,
+            220,
+            49,
+            67,
+            226,
+            36,
+            189,
+            43,
+            58,
+            252,
+            171,
+            202,
+            66,
+            45,
+            39,
+            169,
+            49,
+            16,
+            0,
+            222,
+            184,
+            92,
+            16,
+            224,
+            19,
+            14,
+            224,
+            183,
+            241,
+            195,
+            5,
+            77
+          ],
+          "Reason": "",
+          "Round": 1,
+          "Votes": null
+        },
+        "Epoch": 7,
+        "Floor": 0,
+        "Graph": "fixture",
+        "Group": 0,
+        "Index": 3,
+        "Kind": "decided",
+        "Pending": null,
+        "State": null,
+        "Topology": 1,
+        "Tx": {
+          "Coordinator": 0,
+          "Dependency": 0,
+          "Graph": "fixture",
+          "ID": "left",
+          "Participants": [
+            {
+              "Effects": [
+                {
+                  "Delete": false,
+                  "Key": "x",
+                  "Value": 1
+                }
+              ],
+              "Epoch": 7,
+              "Generation": 0,
+              "Group": 0,
+              "Reads": null
+            }
+          ],
+          "Request": "request/left",
+          "Topology": 1
+        },
+        "Vote": null
+      },
+      "read_id": {
+        "Sequence": 2,
+        "Session": [
+          197,
+          252,
+          117,
+          158,
+          134,
+          130,
+          210,
+          16,
+          221,
+          55,
+          66,
+          143,
+          205,
+          135,
+          32,
+          12
+        ]
+      },
+      "reason": "",
+      "request": "request/left",
+      "round": 1
+    },
+    "right": {
+      "commit": true,
+      "proof_view": {
+        "Certificate": null,
+        "Decision": {
+          "Commit": true,
+          "Digest": [
+            210,
+            79,
+            193,
+            186,
+            12,
+            214,
+            208,
+            163,
+            106,
+            127,
+            229,
+            176,
+            146,
+            153,
+            34,
+            111,
+            58,
+            166,
+            245,
+            167,
+            15,
+            87,
+            206,
+            222,
+            153,
+            87,
+            66,
+            224,
+            99,
+            141,
+            10,
+            147
+          ],
+          "Reason": "",
+          "Round": 1,
+          "Votes": null
+        },
+        "Epoch": 11,
+        "Floor": 0,
+        "Graph": "fixture",
+        "Group": 1,
+        "Index": 3,
+        "Kind": "decided",
+        "Pending": null,
+        "State": null,
+        "Topology": 1,
+        "Tx": {
+          "Coordinator": 1,
+          "Dependency": 0,
+          "Graph": "fixture",
+          "ID": "right",
+          "Participants": [
+            {
+              "Effects": [
+                {
+                  "Delete": false,
+                  "Key": "x",
+                  "Value": 2
+                }
+              ],
+              "Epoch": 11,
+              "Generation": 0,
+              "Group": 1,
+              "Reads": null
+            }
+          ],
+          "Request": "request/right",
+          "Topology": 1
+        },
+        "Vote": null
+      },
+      "read_id": {
+        "Sequence": 2,
+        "Session": [
+          133,
+          32,
+          160,
+          48,
+          219,
+          140,
+          59,
+          125,
+          177,
+          236,
+          21,
+          109,
+          13,
+          160,
+          135,
+          17
+        ]
+      },
+      "reason": "",
+      "request": "request/right",
+      "round": 1
+    }
+  },
+  "finals": [
+    {
+      "event": 18,
+      "scope": [
+        "A",
+        "B"
+      ],
+      "values": {
+        "A/x": 1,
+        "B/x": 2
+      }
+    }
+  ],
+  "guard_observations": [],
+  "history": {
+    "initial": {},
+    "name": "independent-concurrent-partitions",
+    "transactions": {
+      "left": {
+        "coordinator": "A",
+        "epochs": {
+          "A": 7
+        },
+        "participants": [
+          "A"
+        ],
+        "reads": [],
+        "request_key": "request/left",
+        "writes": {
+          "A/x": {
+            "op": "put",
+            "value": 1
+          }
+        }
+      },
+      "right": {
+        "coordinator": "B",
+        "epochs": {
+          "B": 11
+        },
+        "participants": [
+          "B"
+        ],
+        "reads": [],
+        "request_key": "request/right",
+        "writes": {
+          "B/x": {
+            "op": "put",
+            "value": 2
+          }
+        }
+      }
+    }
+  },
+  "mapping": {
+    "keys": "A/<native-key> or B/<native-key>; groups fixed at 0/1",
+    "native_range_footprint": "entire participant generation, not a native named range selector",
+    "reads": "values and explicit presence from completed Host.Current owned maps; range enumeration in review client",
+    "revisions": "not checked by mathematical search; raw native Value.Version/TxID and Participant.Reads retained",
+    "scope": "mathematical serial-map validation; no Evidence/quorum receipt/durable event completeness declaration"
+  },
+  "name": "independent-concurrent-partitions",
+  "observations": [
+    {
+      "event": 16,
+      "round": 1,
+      "scope": [
+        "A",
+        "B"
+      ],
+      "values": {
+        "A/x": 1,
+        "B/x": 2
+      }
+    }
+  ],
+  "raw_actual_evidence": [
+    {
+      "host": 1,
+      "kind": "completed-host-read",
+      "query": {
+        "Kind": "current",
+        "Round": 0,
+        "TxID": ""
+      },
+      "read_id": {
+        "Sequence": 1,
+        "Session": [
+          197,
+          252,
+          117,
+          158,
+          134,
+          130,
+          210,
+          16,
+          221,
+          55,
+          66,
+          143,
+          205,
+          135,
+          32,
+          12
+        ]
+      },
+      "view": {
+        "Certificate": null,
+        "Decision": null,
+        "Epoch": 7,
+        "Floor": 0,
+        "Graph": "fixture",
+        "Group": 0,
+        "Index": 2,
+        "Kind": "current",
+        "Pending": null,
+        "State": {
+          "Generation": 0,
+          "Values": {}
+        },
+        "Topology": 1,
+        "Tx": null,
+        "Vote": null
+      }
+    },
+    {
+      "host": 4,
+      "kind": "completed-host-read",
+      "query": {
+        "Kind": "current",
+        "Round": 0,
+        "TxID": ""
+      },
+      "read_id": {
+        "Sequence": 1,
+        "Session": [
+          133,
+          32,
+          160,
+          48,
+          219,
+          140,
+          59,
+          125,
+          177,
+          236,
+          21,
+          109,
+          13,
+          160,
+          135,
+          17
+        ]
+      },
+      "view": {
+        "Certificate": null,
+        "Decision": null,
+        "Epoch": 11,
+        "Floor": 0,
+        "Graph": "fixture",
+        "Group": 1,
+        "Index": 2,
+        "Kind": "current",
+        "Pending": null,
+        "State": {
+          "Generation": 0,
+          "Values": {}
+        },
+        "Topology": 1,
+        "Tx": null,
+        "Vote": null
+      }
+    },
+    {
+      "bound_actual_views": [
+        {
+          "participant": {
+            "Effects": [
+              {
+                "Delete": false,
+                "Key": "x",
+                "Value": 1
+              }
+            ],
+            "Epoch": 7,
+            "Generation": 0,
+            "Group": 0,
+            "Reads": null
+          },
+          "query": {
+            "Kind": "current",
+            "Round": 0,
+            "TxID": ""
+          },
+          "read_id": {
+            "Sequence": 1,
+            "Session": [
+              197,
+              252,
+              117,
+              158,
+              134,
+              130,
+              210,
+              16,
+              221,
+              55,
+              66,
+              143,
+              205,
+              135,
+              32,
+              12
+            ]
+          },
+          "view": {
+            "Certificate": null,
+            "Decision": null,
+            "Epoch": 7,
+            "Floor": 0,
+            "Graph": "fixture",
+            "Group": 0,
+            "Index": 2,
+            "Kind": "current",
+            "Pending": null,
+            "State": {
+              "Generation": 0,
+              "Values": {}
+            },
+            "Topology": 1,
+            "Tx": null,
+            "Vote": null
+          }
+        }
+      ],
+      "kind": "constructed-transaction",
+      "submitted_input": {
+        "Coordinator": 0,
+        "Dependency": 0,
+        "Graph": "fixture",
+        "ID": "left",
+        "Participants": [
+          {
+            "Effects": [
+              {
+                "Delete": false,
+                "Key": "x",
+                "Value": 1
+              }
+            ],
+            "Epoch": 7,
+            "Generation": 0,
+            "Group": 0,
+            "Reads": null
+          }
+        ],
+        "Request": "request/left",
+        "Topology": 1
+      }
+    },
+    {
+      "bound_actual_views": [
+        {
+          "participant": {
+            "Effects": [
+              {
+                "Delete": false,
+                "Key": "x",
+                "Value": 2
+              }
+            ],
+            "Epoch": 11,
+            "Generation": 0,
+            "Group": 1,
+            "Reads": null
+          },
+          "query": {
+            "Kind": "current",
+            "Round": 0,
+            "TxID": ""
+          },
+          "read_id": {
+            "Sequence": 1,
+            "Session": [
+              133,
+              32,
+              160,
+              48,
+              219,
+              140,
+              59,
+              125,
+              177,
+              236,
+              21,
+              109,
+              13,
+              160,
+              135,
+              17
+            ]
+          },
+          "view": {
+            "Certificate": null,
+            "Decision": null,
+            "Epoch": 11,
+            "Floor": 0,
+            "Graph": "fixture",
+            "Group": 1,
+            "Index": 2,
+            "Kind": "current",
+            "Pending": null,
+            "State": {
+              "Generation": 0,
+              "Values": {}
+            },
+            "Topology": 1,
+            "Tx": null,
+            "Vote": null
+          }
+        }
+      ],
+      "kind": "constructed-transaction",
+      "submitted_input": {
+        "Coordinator": 1,
+        "Dependency": 0,
+        "Graph": "fixture",
+        "ID": "right",
+        "Participants": [
+          {
+            "Effects": [
+              {
+                "Delete": false,
+                "Key": "x",
+                "Value": 2
+              }
+            ],
+            "Epoch": 11,
+            "Generation": 0,
+            "Group": 1,
+            "Reads": null
+          }
+        ],
+        "Request": "request/right",
+        "Topology": 1
+      }
+    },
+    {
+      "command": {
+        "Commit": false,
+        "Kind": "local",
+        "Prior": null,
+        "Remote": null,
+        "Round": 0,
+        "Tx": {
+          "Coordinator": 0,
+          "Dependency": 0,
+          "Graph": "fixture",
+          "ID": "left",
+          "Participants": [
+            {
+              "Effects": [
+                {
+                  "Delete": false,
+                  "Key": "x",
+                  "Value": 1
+                }
+              ],
+              "Epoch": 7,
+              "Generation": 0,
+              "Group": 0,
+              "Reads": null
+            }
+          ],
+          "Request": "request/left",
+          "Topology": 1
+        },
+        "Version": 1
+      },
+      "host": 1,
+      "kind": "host-submit-acceptance-only"
+    },
+    {
+      "command": {
+        "Commit": false,
+        "Kind": "local",
+        "Prior": null,
+        "Remote": null,
+        "Round": 0,
+        "Tx": {
+          "Coordinator": 1,
+          "Dependency": 0,
+          "Graph": "fixture",
+          "ID": "right",
+          "Participants": [
+            {
+              "Effects": [
+                {
+                  "Delete": false,
+                  "Key": "x",
+                  "Value": 2
+                }
+              ],
+              "Epoch": 11,
+              "Generation": 0,
+              "Group": 1,
+              "Reads": null
+            }
+          ],
+          "Request": "request/right",
+          "Topology": 1
+        },
+        "Version": 1
+      },
+      "host": 4,
+      "kind": "host-submit-acceptance-only"
+    },
+    {
+      "host": 1,
+      "kind": "completed-host-read",
+      "query": {
+        "Kind": "decided",
+        "Round": 0,
+        "TxID": "left"
+      },
+      "read_id": {
+        "Sequence": 2,
+        "Session": [
+          197,
+          252,
+          117,
+          158,
+          134,
+          130,
+          210,
+          16,
+          221,
+          55,
+          66,
+          143,
+          205,
+          135,
+          32,
+          12
+        ]
+      },
+      "view": {
+        "Certificate": null,
+        "Decision": {
+          "Commit": true,
+          "Digest": [
+            242,
+            220,
+            49,
+            67,
+            226,
+            36,
+            189,
+            43,
+            58,
+            252,
+            171,
+            202,
+            66,
+            45,
+            39,
+            169,
+            49,
+            16,
+            0,
+            222,
+            184,
+            92,
+            16,
+            224,
+            19,
+            14,
+            224,
+            183,
+            241,
+            195,
+            5,
+            77
+          ],
+          "Reason": "",
+          "Round": 1,
+          "Votes": null
+        },
+        "Epoch": 7,
+        "Floor": 0,
+        "Graph": "fixture",
+        "Group": 0,
+        "Index": 3,
+        "Kind": "decided",
+        "Pending": null,
+        "State": null,
+        "Topology": 1,
+        "Tx": {
+          "Coordinator": 0,
+          "Dependency": 0,
+          "Graph": "fixture",
+          "ID": "left",
+          "Participants": [
+            {
+              "Effects": [
+                {
+                  "Delete": false,
+                  "Key": "x",
+                  "Value": 1
+                }
+              ],
+              "Epoch": 7,
+              "Generation": 0,
+              "Group": 0,
+              "Reads": null
+            }
+          ],
+          "Request": "request/left",
+          "Topology": 1
+        },
+        "Vote": null
+      }
+    },
+    {
+      "host": 4,
+      "kind": "completed-host-read",
+      "query": {
+        "Kind": "decided",
+        "Round": 0,
+        "TxID": "right"
+      },
+      "read_id": {
+        "Sequence": 2,
+        "Session": [
+          133,
+          32,
+          160,
+          48,
+          219,
+          140,
+          59,
+          125,
+          177,
+          236,
+          21,
+          109,
+          13,
+          160,
+          135,
+          17
+        ]
+      },
+      "view": {
+        "Certificate": null,
+        "Decision": {
+          "Commit": true,
+          "Digest": [
+            210,
+            79,
+            193,
+            186,
+            12,
+            214,
+            208,
+            163,
+            106,
+            127,
+            229,
+            176,
+            146,
+            153,
+            34,
+            111,
+            58,
+            166,
+            245,
+            167,
+            15,
+            87,
+            206,
+            222,
+            153,
+            87,
+            66,
+            224,
+            99,
+            141,
+            10,
+            147
+          ],
+          "Reason": "",
+          "Round": 1,
+          "Votes": null
+        },
+        "Epoch": 11,
+        "Floor": 0,
+        "Graph": "fixture",
+        "Group": 1,
+        "Index": 3,
+        "Kind": "decided",
+        "Pending": null,
+        "State": null,
+        "Topology": 1,
+        "Tx": {
+          "Coordinator": 1,
+          "Dependency": 0,
+          "Graph": "fixture",
+          "ID": "right",
+          "Participants": [
+            {
+              "Effects": [
+                {
+                  "Delete": false,
+                  "Key": "x",
+                  "Value": 2
+                }
+              ],
+              "Epoch": 11,
+              "Generation": 0,
+              "Group": 1,
+              "Reads": null
+            }
+          ],
+          "Request": "request/right",
+          "Topology": 1
+        },
+        "Vote": null
+      }
+    },
+    {
+      "command": {
+        "Commit": false,
+        "Kind": "fence",
+        "Prior": null,
+        "Remote": null,
+        "Round": 1,
+        "Tx": null,
+        "Version": 1
+      },
+      "host": 1,
+      "kind": "host-submit-acceptance-only"
+    },
+    {
+      "command": {
+        "Commit": false,
+        "Kind": "certify",
+        "Prior": null,
+        "Remote": null,
+        "Round": 1,
+        "Tx": null,
+        "Version": 1
+      },
+      "host": 1,
+      "kind": "host-submit-acceptance-only"
+    },
+    {
+      "host": 1,
+      "kind": "completed-host-read",
+      "query": {
+        "Kind": "certified",
+        "Round": 1,
+        "TxID": ""
+      },
+      "read_id": {
+        "Sequence": 3,
+        "Session": [
+          197,
+          252,
+          117,
+          158,
+          134,
+          130,
+          210,
+          16,
+          221,
+          55,
+          66,
+          143,
+          205,
+          135,
+          32,
+          12
+        ]
+      },
+      "view": {
+        "Certificate": {
+          "Index": 5,
+          "Round": 1
+        },
+        "Decision": null,
+        "Epoch": 7,
+        "Floor": 0,
+        "Graph": "fixture",
+        "Group": 0,
+        "Index": 5,
+        "Kind": "certified",
+        "Pending": null,
+        "State": null,
+        "Topology": 1,
+        "Tx": null,
+        "Vote": null
+      }
+    },
+    {
+      "command": {
+        "Commit": false,
+        "Kind": "fence",
+        "Prior": null,
+        "Remote": null,
+        "Round": 1,
+        "Tx": null,
+        "Version": 1
+      },
+      "host": 4,
+      "kind": "host-submit-acceptance-only"
+    },
+    {
+      "command": {
+        "Commit": false,
+        "Kind": "certify",
+        "Prior": null,
+        "Remote": null,
+        "Round": 1,
+        "Tx": null,
+        "Version": 1
+      },
+      "host": 4,
+      "kind": "host-submit-acceptance-only"
+    },
+    {
+      "host": 4,
+      "kind": "completed-host-read",
+      "query": {
+        "Kind": "certified",
+        "Round": 1,
+        "TxID": ""
+      },
+      "read_id": {
+        "Sequence": 3,
+        "Session": [
+          133,
+          32,
+          160,
+          48,
+          219,
+          140,
+          59,
+          125,
+          177,
+          236,
+          21,
+          109,
+          13,
+          160,
+          135,
+          17
+        ]
+      },
+      "view": {
+        "Certificate": {
+          "Index": 5,
+          "Round": 1
+        },
+        "Decision": null,
+        "Epoch": 11,
+        "Floor": 0,
+        "Graph": "fixture",
+        "Group": 1,
+        "Index": 5,
+        "Kind": "certified",
+        "Pending": null,
+        "State": null,
+        "Topology": 1,
+        "Tx": null,
+        "Vote": null
+      }
+    },
+    {
+      "cut_certificates": [
+        {
+          "Certificate": {
+            "Index": 5,
+            "Round": 1
+          },
+          "Decision": null,
+          "Epoch": 7,
+          "Floor": 0,
+          "Graph": "fixture",
+          "Group": 0,
+          "Index": 5,
+          "Kind": "certified",
+          "Pending": null,
+          "State": null,
+          "Topology": 1,
+          "Tx": null,
+          "Vote": null
+        },
+        {
+          "Certificate": {
+            "Index": 5,
+            "Round": 1
+          },
+          "Decision": null,
+          "Epoch": 11,
+          "Floor": 0,
+          "Graph": "fixture",
+          "Group": 1,
+          "Index": 5,
+          "Kind": "certified",
+          "Pending": null,
+          "State": null,
+          "Topology": 1,
+          "Tx": null,
+          "Vote": null
+        }
+      ],
+      "host": 1,
+      "kind": "host-at",
+      "round": 1,
+      "snapshot": {
+        "Generation": 0,
+        "Values": {
+          "x": {
+            "Deleted": false,
+            "Round": 1,
+            "TxID": "left",
+            "Value": 1,
+            "Version": 1
+          }
+        }
+      }
+    },
+    {
+      "cut_certificates": [
+        {
+          "Certificate": {
+            "Index": 5,
+            "Round": 1
+          },
+          "Decision": null,
+          "Epoch": 7,
+          "Floor": 0,
+          "Graph": "fixture",
+          "Group": 0,
+          "Index": 5,
+          "Kind": "certified",
+          "Pending": null,
+          "State": null,
+          "Topology": 1,
+          "Tx": null,
+          "Vote": null
+        },
+        {
+          "Certificate": {
+            "Index": 5,
+            "Round": 1
+          },
+          "Decision": null,
+          "Epoch": 11,
+          "Floor": 0,
+          "Graph": "fixture",
+          "Group": 1,
+          "Index": 5,
+          "Kind": "certified",
+          "Pending": null,
+          "State": null,
+          "Topology": 1,
+          "Tx": null,
+          "Vote": null
+        }
+      ],
+      "host": 4,
+      "kind": "host-at",
+      "round": 1,
+      "snapshot": {
+        "Generation": 0,
+        "Values": {
+          "x": {
+            "Deleted": false,
+            "Round": 1,
+            "TxID": "right",
+            "Value": 2,
+            "Version": 1
+          }
+        }
+      }
+    },
+    {
+      "host": 1,
+      "kind": "completed-host-read",
+      "query": {
+        "Kind": "current",
+        "Round": 0,
+        "TxID": ""
+      },
+      "read_id": {
+        "Sequence": 4,
+        "Session": [
+          197,
+          252,
+          117,
+          158,
+          134,
+          130,
+          210,
+          16,
+          221,
+          55,
+          66,
+          143,
+          205,
+          135,
+          32,
+          12
+        ]
+      },
+      "view": {
+        "Certificate": null,
+        "Decision": null,
+        "Epoch": 7,
+        "Floor": 0,
+        "Graph": "fixture",
+        "Group": 0,
+        "Index": 5,
+        "Kind": "current",
+        "Pending": null,
+        "State": {
+          "Generation": 1,
+          "Values": {
+            "x": {
+              "Deleted": false,
+              "Round": 1,
+              "TxID": "left",
+              "Value": 1,
+              "Version": 1
+            }
+          }
+        },
+        "Topology": 1,
+        "Tx": null,
+        "Vote": null
+      }
+    },
+    {
+      "host": 4,
+      "kind": "completed-host-read",
+      "query": {
+        "Kind": "current",
+        "Round": 0,
+        "TxID": ""
+      },
+      "read_id": {
+        "Sequence": 4,
+        "Session": [
+          133,
+          32,
+          160,
+          48,
+          219,
+          140,
+          59,
+          125,
+          177,
+          236,
+          21,
+          109,
+          13,
+          160,
+          135,
+          17
+        ]
+      },
+      "view": {
+        "Certificate": null,
+        "Decision": null,
+        "Epoch": 11,
+        "Floor": 0,
+        "Graph": "fixture",
+        "Group": 1,
+        "Index": 5,
+        "Kind": "current",
+        "Pending": null,
+        "State": {
+          "Generation": 1,
+          "Values": {
+            "x": {
+              "Deleted": false,
+              "Round": 1,
+              "TxID": "right",
+              "Value": 2,
+              "Version": 1
+            }
+          }
+        },
+        "Topology": 1,
+        "Tx": null,
+        "Vote": null
+      }
+    }
+  ],
+  "rounds": {
+    "left": 1,
+    "right": 1
+  },
+  "schema_version": 1,
+  "source_hashes": {
+    "adapter_sha256": "6d538a8f991f5c177547eaaf924547cd03976b0dee60eddc1419e6a421591e10",
+    "head_at_snapshot": "844e06589eeeab1adb2b9c4a605b8acc42083228",
+    "oracle_sha256": "a132b4e4981f3dcea485b7ee5dea0df48a906cdfcda4a75bec5ff9f1a5589d3a",
+    "original_external_capture_sha256": "aed5199258776e153be0c12bc7e8def8d1356a688e2f7511e0ceebb7b6592f51",
+    "source_kind": "SHA-pinned copied transport overlay behavioral evidence; not archived-commit test",
+    "tracked_files_manifest_sha256": "86b74119c56acd58cd3ca4f49254a4e46faca830f1f3e17fb374eedcee25a32a",
+    "tracked_source_files": 101,
+    "tracked_source_validation": "../source-validation.json"
+  }
+}
