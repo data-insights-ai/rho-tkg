@@ -2,6 +2,7 @@ package badger
 
 import (
 	"errors"
+	"math"
 	"sort"
 
 	snowflake "github.com/bds421/rho-snowflake-2026"
@@ -342,6 +343,44 @@ func (bs *Store) relDeletedAt(id snowflake.ID) historyDeletedAt {
 	}
 }
 
+// liveHistoryKeyExists reports whether a history key is present: a buffered
+// write (pending, or flushing mid-commit) decides, else a badger point read of
+// the key (no value read). Same commit-window ordering as GetNodeVersion: the
+// buffer is consulted before the read transaction opens (lesson 64).
+func (bs *Store) liveHistoryKeyExists(key []byte) (bool, error) {
+	if op, ok := bs.lookupPending(string(key)); ok {
+		return op.opType != writeOpDelete, nil
+	}
+	err := bs.db.View(func(txn *badgerv4.Txn) error {
+		_, err := txn.Get(key)
+		return err
+	})
+	if errors.Is(err, badgerv4.ErrKeyNotFound) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+// snapshotHistoryKeyExists is liveHistoryKeyExists for the bulk as-of scans:
+// the overlay captured once before the shared transaction decides, else the
+// shared transaction's point read.
+func snapshotHistoryKeyExists(txn *badgerv4.Txn, overlay historyOverlaySnapshot) func(key []byte) (bool, error) {
+	return func(key []byte) (bool, error) {
+		k := string(key)
+		if _, ok := overlay.entries[k]; ok {
+			return true, nil
+		}
+		if _, ok := overlay.deletes[k]; ok {
+			return false, nil
+		}
+		_, err := txn.Get(key)
+		if errors.Is(err, badgerv4.ErrKeyNotFound) {
+			return false, nil
+		}
+		return err == nil, err
+	}
+}
+
 // selectAsOfScan applies storeutil.SelectAsOfWithCurrent's rule to one
 // entity's history, visited newest-version-first by scan (the
 // reverseScanHistoryVersion contract), and the live current row (cur, nil
@@ -359,8 +398,19 @@ func (bs *Store) relDeletedAt(id snowflake.ID) historyDeletedAt {
 //
 // Equivalence with SelectAsOfWithCurrent is pinned by the badger as-of
 // equivalence tests over generated chains.
-func selectAsOfScan(scan func(consider func(version uint64, val []byte) (bool, error)) error, cur *types.TemporalMetadata, curVersion uint32, txTime types.Instant, window historyTxWindow, deletedAt historyDeletedAt) (asOfPick, error) {
+func selectAsOfScan(scan func(consider func(version uint64, val []byte) (bool, error)) error, cur *types.TemporalMetadata, curVersion uint32, txTime types.Instant, window historyTxWindow, deletedAt historyDeletedAt, exists func(version uint64) (bool, error)) (asOfPick, error) {
 	if cur != nil && cur.TxFrom > 0 && cur.TxFrom <= txTime && cur.TxTo == 0 {
+		// Fast path: versions are allocated densely (core version_alloc.go), so
+		// a row above the current version exists iff version cur+1 does — one
+		// point probe instead of a reverse scan.
+		if curVersion == math.MaxUint32 {
+			return asOfPick{found: true, fromCurrent: true}, nil
+		}
+		if above, err := exists(uint64(curVersion) + 1); err != nil {
+			return asOfPick{}, err
+		} else if !above {
+			return asOfPick{found: true, fromCurrent: true}, nil
+		}
 		pick := asOfPick{found: true, fromCurrent: true}
 		var aboveTxTo int64
 		err := scan(func(version uint64, val []byte) (bool, error) {
@@ -453,20 +503,20 @@ func (bs *Store) NodeAsOf(nid types.NodeID, txTime types.Instant) (*types.Node, 
 	scan := func(consider func(version uint64, val []byte) (bool, error)) error {
 		return bs.reverseScanHistoryVersion(prefix, consider)
 	}
-	return bs.nodeAsOfPick(id, current, txTime, scan)
+	return bs.nodeAsOfPick(id, current, txTime, scan, bs.liveHistoryKeyExists)
 }
 
 // nodeAsOfPick runs selectAsOfScan for one node and materializes the winner:
 // the current row (GetNode / getNodeInTxn already returned a copy) or the
 // winning history row, fully reconstructed (its anchor point-read if it is a
 // delta).
-func (bs *Store) nodeAsOfPick(id snowflake.ID, current *types.Node, txTime types.Instant, scan func(consider func(version uint64, val []byte) (bool, error)) error) (*types.Node, error) {
+func (bs *Store) nodeAsOfPick(id snowflake.ID, current *types.Node, txTime types.Instant, scan func(consider func(version uint64, val []byte) (bool, error)) error, exists func(key []byte) (bool, error)) (*types.Node, error) {
 	var cur *types.TemporalMetadata
 	var curVersion uint32
 	if current != nil {
 		cur, curVersion = current.Temporal(), current.Version()
 	}
-	pick, err := selectAsOfScan(scan, cur, curVersion, txTime, bs.nodeTxWindow(id), bs.nodeDeletedAt(id))
+	pick, err := selectAsOfScan(scan, cur, curVersion, txTime, bs.nodeTxWindow(id), bs.nodeDeletedAt(id), func(v uint64) (bool, error) { return exists(storepkg.HistNodeKey(id, v)) })
 	if err != nil {
 		return nil, err
 	}
@@ -497,17 +547,17 @@ func (bs *Store) RelAsOf(rid types.RelID, txTime types.Instant) (*types.Relation
 	scan := func(consider func(version uint64, val []byte) (bool, error)) error {
 		return bs.reverseScanHistoryVersion(prefix, consider)
 	}
-	return bs.relAsOfPick(id, current, txTime, scan)
+	return bs.relAsOfPick(id, current, txTime, scan, bs.liveHistoryKeyExists)
 }
 
 // relAsOfPick mirrors nodeAsOfPick for relationships.
-func (bs *Store) relAsOfPick(id snowflake.ID, current *types.Relationship, txTime types.Instant, scan func(consider func(version uint64, val []byte) (bool, error)) error) (*types.Relationship, error) {
+func (bs *Store) relAsOfPick(id snowflake.ID, current *types.Relationship, txTime types.Instant, scan func(consider func(version uint64, val []byte) (bool, error)) error, exists func(key []byte) (bool, error)) (*types.Relationship, error) {
 	var cur *types.TemporalMetadata
 	var curVersion uint32
 	if current != nil {
 		cur, curVersion = current.Temporal(), current.Version()
 	}
-	pick, err := selectAsOfScan(scan, cur, curVersion, txTime, bs.relTxWindow(id), bs.relDeletedAt(id))
+	pick, err := selectAsOfScan(scan, cur, curVersion, txTime, bs.relTxWindow(id), bs.relDeletedAt(id), func(v uint64) (bool, error) { return exists(storepkg.HistRelKey(id, v)) })
 	if err != nil {
 		return nil, err
 	}
@@ -543,7 +593,7 @@ func (bs *Store) nodeAsOfInTxn(snap *scanSnapshot, nid types.NodeID, txTime type
 	scan := func(consider func(version uint64, val []byte) (bool, error)) error {
 		return bs.reverseScanHistoryVersionInTxnSnapshot(snap.anyTxn(), prefix, overlay, consider)
 	}
-	return bs.nodeAsOfPick(id, current, txTime, scan)
+	return bs.nodeAsOfPick(id, current, txTime, scan, snapshotHistoryKeyExists(snap.anyTxn(), overlay))
 }
 
 // relAsOfInTxn mirrors nodeAsOfInTxn for relationships.
@@ -557,7 +607,7 @@ func (bs *Store) relAsOfInTxn(snap *scanSnapshot, rid types.RelID, txTime types.
 	scan := func(consider func(version uint64, val []byte) (bool, error)) error {
 		return bs.reverseScanHistoryVersionInTxnSnapshot(snap.anyTxn(), prefix, overlay, consider)
 	}
-	return bs.relAsOfPick(id, current, txTime, scan)
+	return bs.relAsOfPick(id, current, txTime, scan, snapshotHistoryKeyExists(snap.anyTxn(), overlay))
 }
 
 // NodesAsOf returns every node version visible at txTime: the union of live

@@ -32,6 +32,13 @@ func (c *Core) nodeHasHistoryAbove(id types.NodeID, v uint32) (bool, error) {
 	if v == math.MaxUint32 {
 		return false, nil
 	}
+	if p, ok := c.store.(storepkg.HistoryPresenceCapability); ok {
+		// An entity without history rows has none above v (a RAM lookup on
+		// badger, no key read).
+		if has, err := p.HasNodeHistory(id); err != nil || !has {
+			return false, err
+		}
+	}
 	_, err := c.getNodeVersion(id, v+1)
 	switch {
 	case err == nil:
@@ -49,6 +56,14 @@ func (c *Core) nodeHasHistoryAbove(id types.NodeID, v uint32) (bool, error) {
 func (c *Core) relHasHistoryAbove(id types.RelID, v uint32) (bool, error) {
 	if v == math.MaxUint32 {
 		return false, nil
+	}
+	if p, ok := c.store.(storepkg.HistoryPresenceCapability); ok {
+		if has, err := p.HasRelHistory(id); err != nil || !has {
+			if errors.Is(err, storepkg.ErrSlotNotLocal) {
+				return false, nil
+			}
+			return false, err
+		}
 	}
 	_, err := c.getRelVersion(id, v+1)
 	switch {
