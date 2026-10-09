@@ -787,11 +787,16 @@ func New(cfg Config) (*Store, error) {
 			_ = refStore.Close()
 			return nil, fmt.Errorf("graph: load vector indexes: %w", err)
 		}
-		// Relationship temporal and composite indexes: every open shard
-		// carries exactly the reference shard's definitions (an interrupted
-		// fan-out DDL is repaired here).
-		for _, shard := range ts.openTemporalIndexShardStores() {
-			if err := ts.syncAnchoredIndexes(shard); err != nil {
+		// Relationship temporal and composite indexes: every open event shard
+		// (hot and warm, including one promoted above) carries exactly the
+		// reference shard's definitions — a promoted shard rebuilds its
+		// relationship temporal index here, and an interrupted fan-out DDL is
+		// repaired. Cold shards are not open and keep no rel temporal index.
+		for _, es := range ts.eventShards {
+			if es.store == nil || es.currentTier() == TierCold {
+				continue
+			}
+			if err := ts.syncAnchoredIndexes(es.store, true); err != nil {
 				for _, es := range ts.eventShards {
 					if es.store != nil {
 						_ = es.store.Close()
@@ -1260,7 +1265,7 @@ func (ts *Store) clearEventShard(es *EventShard) error {
 		es.readTransientOpen = false
 	}
 
-	store, err := ts.openBadgerStore(es.path, false)
+	store, err := NewBadgerStore(ts.shardCfg(es.path, false, es.currentTier() == TierCold))
 	if err != nil {
 		return err
 	}
@@ -1378,6 +1383,25 @@ func (ts *Store) badgerCfg(name string, readOnly bool) BadgerStoreConfig {
 // is recovered by a read-write open, but the returned handle must be mutable:
 // existing event entities keep routing to their owner shard after rotation.
 func (ts *Store) openBadgerStoreWithRecovery(name string) (*BadgerStore, error) {
+	return ts.openShardStoreWithRecovery(name, false)
+}
+
+// openColdBadgerStoreWithRecovery opens a COLD event shard: like
+// openBadgerStoreWithRecovery, but the shard's relationship temporal index
+// definitions are discarded instead of rebuilt (a cold shard keeps none —
+// the hot + warm bound, shard_index_fanout.go).
+func (ts *Store) openColdBadgerStoreWithRecovery(name string) (*BadgerStore, error) {
+	return ts.openShardStoreWithRecovery(name, true)
+}
+
+// shardCfg is badgerCfg plus the cold-shard option.
+func (ts *Store) shardCfg(name string, readOnly, cold bool) BadgerStoreConfig {
+	cfg := ts.badgerCfg(name, readOnly)
+	cfg.DropRelTemporalIndexesAtOpen = cold
+	return cfg
+}
+
+func (ts *Store) openShardStoreWithRecovery(name string, cold bool) (*BadgerStore, error) {
 	// Flush any oversized WAL BEFORE the read-only probe. A read-only open
 	// replays WALs into the same MemTableSize-bounded arena as a writable one
 	// (badger openMemTables runs before its read-only branch), so an oversized
@@ -1386,21 +1410,21 @@ func (ts *Store) openBadgerStoreWithRecovery(name string) (*BadgerStore, error) 
 	// this the probe would abort recovery before the writable open is ever
 	// tried. Idempotent and a no-op on clean dirs, stock memtable sizes, and
 	// in-memory shards.
-	if err := badger.MigrateOversizedWAL(ts.badgerCfg(name, false)); err != nil {
+	if err := badger.MigrateOversizedWAL(ts.shardCfg(name, false, cold)); err != nil {
 		return nil, fmt.Errorf("graph: WAL migration %s: %w", name, err)
 	}
-	probe, err := ts.openBadgerStore(name, true)
+	probe, err := NewBadgerStore(ts.shardCfg(name, true, cold))
 	if err == nil {
 		if err := probe.Close(); err != nil {
 			return nil, fmt.Errorf("graph: recovery probe close %s: %w", name, err)
 		}
-		return ts.openBadgerStore(name, false)
+		return NewBadgerStore(ts.shardCfg(name, false, cold))
 	}
 	if !isTruncateNeeded(err) {
 		return nil, err
 	}
 	slog.Warn("graph: recovering corrupt WAL by truncation", "shard", name)
-	return ts.openBadgerStore(name, false)
+	return NewBadgerStore(ts.shardCfg(name, false, cold))
 }
 
 // isTruncateNeeded checks whether the error indicates a Badger WAL truncation

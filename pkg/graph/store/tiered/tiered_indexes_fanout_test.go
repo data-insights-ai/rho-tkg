@@ -253,7 +253,8 @@ func TestTieredRelTemporalIndex_SurvivesRestartAndColdReopen(t *testing.T) {
 		t.Fatalf("after restart RelTemporalIndexTypes = %v, %v; want [%d]", got, err, typ)
 	}
 	// Close the first shard as an idle cold shard would be; the lazy reopen
-	// must bring its definition back.
+	// opens it cold, without its relationship temporal index (hot + warm
+	// bound), while every other shard keeps it.
 	demoteToCold(ts, first)
 	ts.mu.RLock()
 	es := ts.eventShards[first]
@@ -269,8 +270,12 @@ func TestTieredRelTemporalIndex_SurvivesRestartAndColdReopen(t *testing.T) {
 	es.shardMu.Unlock()
 	forceRotation(t, ts)
 	for name, s := range allShardStoresForTest(t, ts) {
-		if got, err := s.RelTemporalIndexTypes(); err != nil || !slices.Equal(got, []uint16{typ}) {
-			t.Errorf("shard %s RelTemporalIndexTypes = %v, %v; want [%d]", name, got, err, typ)
+		want := []uint16{typ}
+		if name == first {
+			want = []uint16{}
+		}
+		if got, err := s.RelTemporalIndexTypes(); err != nil || !slices.Equal(got, want) {
+			t.Errorf("shard %s RelTemporalIndexTypes = %v, %v; want %v", name, got, err, want)
 		}
 	}
 }

@@ -3,6 +3,7 @@ package tiered
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 
 	storecontract "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -11,9 +12,11 @@ import (
 
 // Relationship-type temporal indexes and composite node indexes (backlog 10,
 // ai-soc request 3) — the sharded store's fan-out shape on the tiered store:
+// each shard it covers builds and maintains its own badger index over its own
+// rows, and the tiered store folds the per-shard answers. Composites cover
 // every shard (reference, archive, every event shard, cold shards opened for
-// the DDL) builds and maintains its own badger index over its own rows, and
-// the tiered store folds the per-shard answers. Nothing moves on rotation: a
+// the DDL); the relationship temporal index covers the reference, hot and
+// warm shards only (the bound below). Nothing moves on rotation: a
 // relationship or node stays on the shard it was written to, and so does its
 // index entry. A shard's index lives exactly as badger keeps it — the
 // definition persists in the shard, the entries are RAM-resident and rebuilt
@@ -28,9 +31,22 @@ import (
 // a shard that opens later (the hot shard a rotation creates, the archive)
 // and repairs every open shard at store open.
 //
+// HOT + WARM BOUND for the relationship temporal index: it lives on the
+// reference shard and the hot and warm event shards only. A rotation that
+// demotes a shard to cold frees the shard's index (freeColdRelTemporalIndexes),
+// a cold shard opens with its definitions discarded rather than rebuilt
+// (openColdBadgerStoreWithRecovery), the DDL never opens a cold shard for it
+// and skips the archive (the prune never consults either), and a promotion
+// back to warm (PromoteColdShardsAtOpen) rebuilds it from the anchor at open.
+// A cold shard's relationships are therefore never pruned: answers are
+// unchanged, only the acceleration is bounded. Composite indexes stay on
+// every shard.
+//
 // Sizing (CHANGELOG, measured): the rel temporal index costs ~156 B per
-// indexed relationship and a 3-key composite ~310 B per indexed node, per
-// open shard; a reopened shard rebuilds at ~0.02 M rels/s.
+// indexed relationship on each hot or warm shard (≈ 5.8–9.2 GB per indexed
+// type at ai-soc's rate with ColdAfter = 1 day), a 3-key composite ~310 B
+// per indexed node per open shard; a promoted or reopened warm shard rebuilds
+// at ~0.02 M rels/s.
 
 var (
 	_ storecontract.RelTypeTemporalIndexCapability        = (*Store)(nil)
@@ -41,17 +57,21 @@ var (
 
 // anchoredIndex describes one per-shard index definition for the fan-out.
 type anchoredIndex struct {
-	what    string
-	has     func(*BadgerStore) (bool, error)
-	create  func(*BadgerStore) error
-	drop    func(*BadgerStore) error
-	exists  error // the badger create's duplicate sentinel
-	missing error // the badger drop's not-found sentinel
+	what string
+	// hotWarmOnly: the fan-out reaches the reference shard and the hot and
+	// warm event shards only (never the archive, never a cold shard).
+	hotWarmOnly bool
+	has         func(*BadgerStore) (bool, error)
+	create      func(*BadgerStore) error
+	drop        func(*BadgerStore) error
+	exists      error // the badger create's duplicate sentinel
+	missing     error // the badger drop's not-found sentinel
 }
 
 func relTemporalIndexDef(relType uint16) anchoredIndex {
 	return anchoredIndex{
-		what: "relationship temporal index",
+		what:        "relationship temporal index",
+		hotWarmOnly: true,
 		has: func(s *BadgerStore) (bool, error) {
 			toks, err := s.RelTemporalIndexTypes()
 			return slices.Contains(toks, relType), err
@@ -100,6 +120,13 @@ func (ts *Store) fanOutAnchoredIndex(def anchoredIndex, create bool) error {
 		return err
 	}
 	refs := ts.temporalIndexShardRefsLocked()
+	if def.hotWarmOnly {
+		// ts.mu (held) excludes rotation, the only door that changes a tier
+		// on a live store.
+		refs = slices.DeleteFunc(refs, func(r temporalIndexShardRef) bool {
+			return r.archive || (r.event != nil && r.event.currentTier() == TierCold)
+		})
+	}
 	ts.shardIdxMu.Lock()
 	defer ts.shardIdxMu.Unlock()
 
@@ -159,18 +186,23 @@ func (ts *Store) fanOutAnchoredIndex(def anchoredIndex, create bool) error {
 }
 
 // syncAnchoredIndexes makes store carry exactly the reference shard's
-// relationship temporal and composite definitions: it creates the missing
-// ones (a hot shard a rotation opens, the archive, a shard an interrupted
-// create skipped) and drops the extra ones (a shard an interrupted create
-// reached before it failed). Creating builds the index from the shard's rows.
-func (ts *Store) syncAnchoredIndexes(store *BadgerStore) error {
+// composite definitions and — when relTemporal (a hot or warm event shard) —
+// its relationship temporal definitions; with relTemporal false (the archive)
+// it carries no relationship temporal index. It creates the missing ones (a
+// hot shard a rotation opens, a promoted shard, a shard an interrupted create
+// skipped) and drops the extra ones (a shard an interrupted create reached
+// before it failed). Creating builds the index from the shard's rows.
+func (ts *Store) syncAnchoredIndexes(store *BadgerStore, relTemporal bool) error {
 	ref := ts.refShard
 	if store == nil || ref == nil || store == ref {
 		return nil
 	}
-	want, err := ref.RelTemporalIndexTypes()
-	if err != nil {
-		return fmt.Errorf("graph: read anchored relationship temporal indexes: %w", err)
+	var want []uint16
+	if relTemporal {
+		var err error
+		if want, err = ref.RelTemporalIndexTypes(); err != nil {
+			return fmt.Errorf("graph: read anchored relationship temporal indexes: %w", err)
+		}
 	}
 	have, err := store.RelTemporalIndexTypes()
 	if err != nil {
@@ -225,10 +257,32 @@ func (ts *Store) syncAnchoredIndexes(store *BadgerStore) error {
 	return nil
 }
 
+// freeColdRelTemporalIndexes drops every relationship temporal index of a
+// shard that was just demoted to cold (the hot + warm bound): its entries and
+// its persisted definition go, so neither RAM nor a later reopen pays for
+// them. Best effort — a failure leaves an index the prune may still use, which
+// is sound — so it is logged, not returned. store may be nil (not open).
+func freeColdRelTemporalIndexes(store *BadgerStore, shard string) {
+	if store == nil {
+		return
+	}
+	toks, err := store.RelTemporalIndexTypes()
+	if err != nil {
+		slog.Error("graph: free cold shard relationship temporal indexes", "shard", shard, "error", err)
+		return
+	}
+	for _, tok := range toks {
+		if err := store.DropRelTemporalIndex(tok); err != nil && !errors.Is(err, ErrTemporalIndexNotFound) {
+			slog.Error("graph: free cold shard relationship temporal index", "shard", shard, "type", tok, "error", err)
+		}
+	}
+}
+
 // --- relationship-type temporal indexes ---
 
-// CreateRelTemporalIndex builds a temporal interval index over relType on
-// every shard. Returns ErrTemporalIndexExists if it already exists.
+// CreateRelTemporalIndex builds a temporal interval index over relType on the
+// reference shard and every hot and warm event shard (hot + warm bound).
+// Returns ErrTemporalIndexExists if it already exists.
 func (ts *Store) CreateRelTemporalIndex(relType uint16) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
@@ -239,8 +293,8 @@ func (ts *Store) CreateRelTemporalIndex(relType uint16) error {
 	return ts.fanOutAnchoredIndex(relTemporalIndexDef(relType), true)
 }
 
-// DropRelTemporalIndex removes the rel-type temporal index from every shard.
-// Returns ErrTemporalIndexNotFound if no such index exists.
+// DropRelTemporalIndex removes the rel-type temporal index from the shards
+// carrying it. Returns ErrTemporalIndexNotFound if no such index exists.
 func (ts *Store) DropRelTemporalIndex(relType uint16) error {
 	if err := ts.checkOpen(); err != nil {
 		return err
@@ -271,9 +325,9 @@ func (ts *Store) RelTemporalIndexTypes() ([]uint16, error) {
 // them; an id no consulted shard covers is kept. Each consulted shard prunes
 // the ids it covers, and an id any shard drops is dropped.
 //
-// Consulted: the event shards in opts.Depth that are already open — the prune
-// never opens a cold shard (the query's own candidate scan does, and a shard
-// it opened stays open under MaxOpenColdShards), and leaving a shard out only
+// Consulted: the event shards in opts.Depth that are already open. A cold
+// shard carries no relationship temporal index (hot + warm bound), so its ids
+// are always kept; the prune never opens a shard, and leaving a shard out only
 // keeps its ids. The reference shard is consulted only while no archive shard
 // exists: ArchiveNode moves a relationship's row to the archive and leaves its
 // history on the reference shard, so neither shard's envelope then covers all

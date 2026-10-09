@@ -42,7 +42,7 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 		if es.currentTier() == TierCold {
 			es.shardMu.Lock()
 			if es.store == nil {
-				store, err := ts.openBadgerStoreWithRecovery(es.path)
+				store, err := ts.openColdBadgerStoreWithRecovery(es.path)
 				if err != nil {
 					es.activeReqs.Add(-1)
 					es.shardMu.Unlock()
@@ -74,7 +74,7 @@ func (es *EventShard) checkoutStore(ts *Store) (*BadgerStore, error) {
 		return nil, ErrStoreClosed
 	}
 	if es.store == nil {
-		store, err := ts.openBadgerStoreWithRecovery(es.path)
+		store, err := ts.openColdBadgerStoreWithRecovery(es.path)
 		if err != nil {
 			es.shardMu.Unlock()
 			return nil, fmt.Errorf("graph: lazy-open cold shard %s: %w", es.name, err)
@@ -131,7 +131,7 @@ func (es *EventShard) checkoutStoreForRead(ts *Store) (*BadgerStore, func(), err
 		return nil, noop, ErrStoreClosed
 	}
 	if es.store == nil {
-		store, err := ts.openBadgerStoreWithRecovery(es.path)
+		store, err := ts.openColdBadgerStoreWithRecovery(es.path)
 		if err != nil {
 			es.shardMu.Unlock()
 			return nil, noop, fmt.Errorf("graph: lazy-open cold shard %s: %w", es.name, err)

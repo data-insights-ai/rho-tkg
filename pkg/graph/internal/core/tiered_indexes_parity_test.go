@@ -195,8 +195,10 @@ func pruneCases() []pruneCase {
 }
 
 // assertRelTemporalParity checks the prune (literal set on both stores) and
-// every query door (tiered == badger) for each case.
-func assertRelTemporalParity(t *testing.T, stage string, bw, tw *relTemporalWorld) {
+// every query door (tiered == badger) for each case. coldRows are the rows
+// whose shard is cold: tiered keeps no relationship temporal index there (the
+// hot + warm bound), so its prune keeps them whatever the filter.
+func assertRelTemporalParity(t *testing.T, stage string, bw, tw *relTemporalWorld, coldRows ...string) {
 	t.Helper()
 	for _, pc := range pruneCases() {
 		bKept, bOK := bw.prune(t, pc.opts)
@@ -204,8 +206,15 @@ func assertRelTemporalParity(t *testing.T, stage string, bw, tw *relTemporalWorl
 		if !bOK || !slices.Equal(bKept, pc.want) {
 			t.Errorf("%s %s: badger prune = %v (ok=%v), want %v", stage, pc.name, bKept, bOK, pc.want)
 		}
-		if !tOK || !slices.Equal(tKept, pc.want) {
-			t.Errorf("%s %s: tiered prune = %v (ok=%v), want %v", stage, pc.name, tKept, tOK, pc.want)
+		tWant := slices.Clone(pc.want)
+		for _, r := range coldRows {
+			if !slices.Contains(tWant, r) {
+				tWant = append(tWant, r)
+			}
+		}
+		sort.Strings(tWant)
+		if !tOK || !slices.Equal(tKept, tWant) {
+			t.Errorf("%s %s: tiered prune = %v (ok=%v), want %v", stage, pc.name, tKept, tOK, tWant)
 		}
 
 		bRels, err := bw.c.Rels.ByType("HOP", pc.opts)
@@ -301,8 +310,9 @@ func TestTieredRelTemporalPrune_ParityWithBadger_RotationColdRepair(t *testing.T
 	assertMovedRemembered(t, "after rotation", tw)
 
 	// Cold checkout: the first shard is demoted and closed as an idle cold
-	// shard would be. The doors reopen it (and its index rebuilds from the
-	// persisted definition); then the prune consults it again.
+	// shard would be. The doors reopen it — as a cold shard, without its
+	// relationship temporal index (hot + warm bound) — so its rows are kept by
+	// the prune and every door still answers as badger.
 	demoteToCold(ts, first)
 	closeEventShardStore(t, eventShardByName(t, ts, first))
 	if _, err := tc.Rels.ByType("HOP", storepkg.QueryOpts{ValidAt: 1500}); err != nil {
@@ -311,7 +321,8 @@ func TestTieredRelTemporalPrune_ParityWithBadger_RotationColdRepair(t *testing.T
 	if eventShardByName(t, ts, first).Store() == nil {
 		t.Fatal("cold shard not reopened by the read")
 	}
-	assertRelTemporalParity(t, "after cold checkout", bw, tw)
+	coldRows := []string{"closed", "crossER", "deleted", "moved", "open"}
+	assertRelTemporalParity(t, "after cold checkout", bw, tw, coldRows...)
 	assertMovedRemembered(t, "after cold checkout", tw)
 
 	if _, err := ts.RunRepair(); err != nil {
@@ -326,7 +337,7 @@ func TestTieredRelTemporalPrune_ParityWithBadger_RotationColdRepair(t *testing.T
 			t.Fatalf("VerifyShard(%s) = %+v, want no failures", name, res)
 		}
 	}
-	assertRelTemporalParity(t, "after repair and verify", bw, tw)
+	assertRelTemporalParity(t, "after repair and verify", bw, tw, coldRows...)
 	if got, err := tc.Index.ListRelTemporal(); err != nil || !slices.Equal(got, []string{"HOP"}) {
 		t.Errorf("ListRelTemporal = %v, %v; want [HOP]", got, err)
 	}

@@ -71,6 +71,7 @@ func (bs *Store) CreateRelTemporalIndex(relType uint16) error {
 // of rids into a fresh envelope index. A relationship deleted meanwhile is
 // skipped.
 func (bs *Store) buildRelTypeTemporalIndex(rids []types.RelID) (*indexpkg.TemporalIndex, error) {
+	bs.relTemporalBuilds.Add(1)
 	ti := indexpkg.NewTemporalIndex()
 	for _, rid := range rids {
 		r, err := bs.prefetchRelScan(rid)
@@ -155,6 +156,21 @@ func (bs *Store) loadRelTypeTemporalIndexes() error {
 		bs.idxMu.Lock()
 		bs.relTypeTemporalIndexes[tok] = ti
 		bs.idxMu.Unlock()
+	}
+	return nil
+}
+
+// discardRelTypeTemporalIndexDefs deletes the persisted rel-type temporal
+// index definitions without building them (Config.DropRelTemporalIndexesAtOpen).
+// A read-only open leaves the key alone; it only skips the rebuild.
+func (bs *Store) discardRelTypeTemporalIndexDefs() error {
+	if bs.readOnly {
+		return nil
+	}
+	if err := bs.db.Update(func(txn *badgerv4.Txn) error {
+		return txn.Delete(storepkg.RelTypeTemporalIndexDefsKey)
+	}); err != nil {
+		return fmt.Errorf("graph: discard relationship temporal index definitions: %w", err)
 	}
 	return nil
 }

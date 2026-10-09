@@ -174,6 +174,13 @@ type Config struct {
 	// PropertyIndexOnDiskBuiltKey pattern) — no manual migration step is
 	// required. Ignored when Store is provided explicitly.
 	TemporalIndexOnDisk bool
+	// DropRelTemporalIndexesAtOpen deletes the persisted relationship-type
+	// temporal index definitions at open instead of rebuilding them (a
+	// read-only open only skips the rebuild). The tiered store opens its cold
+	// shards this way: a cold shard keeps no relationship temporal index, so a
+	// lazy open never pays the per-row rebuild. Ignored when Store is provided
+	// explicitly.
+	DropRelTemporalIndexesAtOpen bool
 	// ColumnsOnDisk persists built columnar snapshots so a cold store, or one whose
 	// in-RAM snapshot was dropped, can decode a column instead of re-reading every
 	// entity. OFF by default; on, it changes nothing a caller can observe except
@@ -740,6 +747,10 @@ type Store struct {
 	// data is rebuilt on open (loadRelTypeTemporalIndexes; through v4.41 the
 	// definitions were not persisted and a reopen dropped the index).
 	relTypeTemporalIndexes map[uint16]*indexpkg.TemporalIndex
+	// relTemporalBuilds counts relationship temporal index builds (create and
+	// rebuild at open) — a timing-independent hook for the tiered cold-shard
+	// tests (RelTemporalIndexBuildsForTest).
+	relTemporalBuilds atomic.Int64
 
 	// Index-rebuild diagnostics — record count of node entries that the
 	// loadIndexes pass tolerated as missing/corrupt. Surfaced via
@@ -1113,7 +1124,11 @@ func New(cfg Config) (*Store, error) {
 		}
 	}
 
-	if err := bs.loadRelTypeTemporalIndexes(); err != nil {
+	relTemporalLoad := bs.loadRelTypeTemporalIndexes
+	if cfg.DropRelTemporalIndexesAtOpen {
+		relTemporalLoad = bs.discardRelTypeTemporalIndexDefs
+	}
+	if err := relTemporalLoad(); err != nil {
 		_ = db.Close() // best-effort cleanup
 		return nil, err
 	}

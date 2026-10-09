@@ -81,7 +81,7 @@ func (ts *Store) rotateHotShardLocked() error {
 	// accepting writes.
 	err = ts.applyTrackedTemporalIndexes(newStore)
 	if err == nil {
-		err = ts.syncAnchoredIndexes(newStore)
+		err = ts.syncAnchoredIndexes(newStore, true)
 	}
 	if err != nil {
 		if cerr := newStore.Close(); cerr != nil {
@@ -169,6 +169,7 @@ func (ts *Store) rotateHotShardLocked() error {
 		// Do NOT close the store here — let idle-close handle it safely
 		// (avoids closing while in-flight reads hold pointers from
 		// snapshots).
+		freeColdRelTemporalIndexes(es.store, es.name)
 	}
 
 	// BACKLOG 19h: if a change-log scope is currently open (a tx/batch mid-flight
@@ -372,7 +373,7 @@ func (ts *Store) openRefArchive() error {
 		_ = store.Close()
 		return fmt.Errorf("graph: initialise ref archive indexes: %w", err)
 	}
-	if err := ts.syncAnchoredIndexes(store); err != nil {
+	if err := ts.syncAnchoredIndexes(store, false); err != nil {
 		_ = store.Close()
 		return fmt.Errorf("graph: initialise ref archive indexes: %w", err)
 	}

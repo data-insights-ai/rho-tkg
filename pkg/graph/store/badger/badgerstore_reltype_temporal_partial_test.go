@@ -115,6 +115,73 @@ func TestRelTypeTemporalIndex_PutRelVersionExtendsLiveOnly(t *testing.T) {
 	}
 }
 
+// Config.DropRelTemporalIndexesAtOpen: the persisted rel-type temporal index
+// definitions are discarded at open without a build (the tiered cold-shard
+// open), a read-only open with it only skips the build, and a later plain
+// open finds no definition to rebuild.
+func TestDropRelTemporalIndexesAtOpen_DiscardsWithoutBuilding(t *testing.T) {
+	dir := t.TempDir()
+	bs, err := New(Config{Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := bs.PutNode(types.NewNode(types.NodeID(1), 1, nil)); err != nil {
+		t.Fatal(err)
+	}
+	for _, typ := range []uint16{6, 7} {
+		if err := bs.CreateRelTemporalIndex(typ); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := bs.RelTemporalIndexBuildsForTest(); got != 2 {
+		t.Fatalf("builds after two creates = %d, want 2", got)
+	}
+	if err := bs.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	ro, err := New(Config{Dir: dir, ReadOnly: true, DropRelTemporalIndexesAtOpen: true})
+	if err != nil {
+		t.Fatalf("read-only open: %v", err)
+	}
+	if got, _ := ro.RelTemporalIndexTypes(); len(got) != 0 || ro.RelTemporalIndexBuildsForTest() != 0 {
+		t.Errorf("read-only discard open lists %v after %d builds, want none and 0", got, ro.RelTemporalIndexBuildsForTest())
+	}
+	if err := ro.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	plain, err := New(Config{Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := plain.RelTemporalIndexTypes(); !slices.Equal(got, []uint16{6, 7}) || plain.RelTemporalIndexBuildsForTest() != 2 {
+		t.Errorf("plain open after a read-only discard lists %v after %d builds, want [6 7] and 2 (read-only keeps the definitions)", got, plain.RelTemporalIndexBuildsForTest())
+	}
+	if err := plain.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	cold, err := New(Config{Dir: dir, DropRelTemporalIndexesAtOpen: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := cold.RelTemporalIndexTypes(); len(got) != 0 || cold.RelTemporalIndexBuildsForTest() != 0 {
+		t.Errorf("discard open lists %v after %d builds, want none and 0", got, cold.RelTemporalIndexBuildsForTest())
+	}
+	if err := cold.Close(); err != nil {
+		t.Fatal(err)
+	}
+	again, err := New(Config{Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = again.Close() })
+	if got, _ := again.RelTemporalIndexTypes(); len(got) != 0 || again.RelTemporalIndexBuildsForTest() != 0 {
+		t.Errorf("plain open after a discard lists %v after %d builds, want none and 0", got, again.RelTemporalIndexBuildsForTest())
+	}
+}
+
 // CompositePropertyIndexDefs (direct test, rule 1): every definition across
 // labels, copies, dropped definitions and labels gone, closed store refused.
 func TestCompositePropertyIndexDefs_ListsEveryLabel(t *testing.T) {
