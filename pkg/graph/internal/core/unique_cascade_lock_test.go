@@ -168,6 +168,30 @@ func TestCascadeUnique_BoundedCurrentScopeTakesNoStripe(t *testing.T) {
 	}
 }
 
+// A patch value the row builder rejects is refused with the kernel's own
+// error (the unique check steps aside), and nothing is appended. Catches: a
+// check that reports the bad value as a unique violation or lets it reach a
+// store write.
+func TestCascadeUnique_InvalidPatchValueKeepsKernelError(t *testing.T) {
+	c := newUniqueCascadeCore(t, nil)
+	a := addRefK(t, c, "a")
+	before, err := c.Nodes.History(a.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = c.Temporal.SetNodeVersionInterval(context.Background(), a.ID(), lockTestT+100, 0, map[string]any{"k": make(chan int)})
+	if err == nil || errors.Is(err, ErrUniqueViolation) {
+		t.Fatalf("invalid patch value: err = %v, want the kernel's property error", err)
+	}
+	after, err := c.Nodes.History(a.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != len(before) {
+		t.Fatalf("History %d -> %d rows after a refused patch", len(before), len(after))
+	}
+}
+
 // The stripe is held across the store write: while A's open-ended cascade
 // onto "v" is parked inside ReplaceNode, an Update of B onto "v" must wait,
 // and once A's write lands B is refused. Catches: a cascade that releases the
