@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.46.0] - 2026-10-09
+
+Minor release: cascade correctness (one version allocator for every appended row, appended rows carry no
+`TxTo`/`DeletedAt`, `ErrEntityDeleted`, GraphTx rollback keeps cascade rows, delete after a bounded cascade ends
+the entity in every read door, compaction keeps the hash anchors), the pin-stable as-of rule, `HasHistory`,
+`CreateUnique` on `SetNodeVersionInterval` patches, bulk as-of presence, `Config.DurableCommit` fixes and the
+history-presence overlay fix. **Read this before upgrading from 4.45.x: the record doors `NodeAsOf` / `RelAsOf`
+/ `NodesAsOf` / `RelsAsOf` and the `TxPin` scans answer "the newest row recorded by the pin", which after a
+bounded cascade is the corrected slice and no longer the current row; for "the state at valid time t as recorded at
+the pin" call `NodeAtTx` / `RelAtTx` or `ByLabel` / `ByType` with `ValidAt` + `TxAt` (see `### Changed` and the
+documented exception in `docs/stability.md`).** Gates on the released tree: `make ci-docker` exit 0; sigma-tkgd,
+ai-soc engine and agent-bookkeeping build and vet against it.
+
 ### Added
 
 - **`g.Nodes().HasHistory(id)` / `g.Rels().HasHistory(id) (bool, error)`: whether an entity has a history row,
