@@ -472,6 +472,20 @@ func (tx *GraphTx) DeleteRelationship(id types.RelID) error {
 	return nil
 }
 
+// --- Relationship doors at a caller transaction instant (W4) ---------------
+
+// DeleteRelationshipWithTx — RED STUB (W4): delegates to the plain door.
+func (tx *GraphTx) DeleteRelationshipWithTx(id types.RelID, txTo types.Instant) error {
+	return tx.DeleteRelationship(id)
+}
+
+// UpdateRelationshipWithTx — RED STUB (W4): delegates to the plain door.
+func (tx *GraphTx) UpdateRelationshipWithTx(id types.RelID, updates map[string]any, txFrom types.Instant) (*types.Relationship, error) {
+	return tx.UpdateRelationship(id, updates)
+}
+
+// --- end of the W4 relationship caller-instant block -----------------------
+
 func (tx *GraphTx) deletedNodeHistorySnapshot(id types.NodeID, node *types.Node) ([]*types.Node, uint32, bool, error) {
 	if tx.g.historyTrim == nil {
 		history, err := tx.g.copyNodeHistory(id)

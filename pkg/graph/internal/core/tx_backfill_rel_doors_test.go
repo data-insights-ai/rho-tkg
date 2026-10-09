@@ -72,7 +72,13 @@ type txbDoor struct {
 	run  func(g *Core, id types.RelID, at types.Instant) error
 }
 
+// txbDoors is every caller-instant relationship door: the standalone pair
+// plus the GraphTx, Batch and ingest twins (txbW4Doors).
 func txbDoors() []txbDoor {
+	return append(txbStandaloneDoors(), txbW4Doors()...)
+}
+
+func txbStandaloneDoors() []txbDoor {
 	return []txbDoor{
 		{"DeleteWithTx", func(g *Core, id types.RelID, at types.Instant) error {
 			return g.Rels.DeleteWithTx(context.Background(), id, at)

@@ -1,0 +1,370 @@
+# W4 RED — GraphTx/Batch/ingest rel WithTx doors stubbed to the plain path (base 64b04c2 + stubs), 2026-10-09
+# go test ./pkg/graph/internal/core/ -run TestTxBackfillRel -count=1
+# Shared door-table tests (GateOff, InvalidInstant, Order*, DoorsReportPastDatedWrite) stop at the first failing W4 door;
+# the W4 tests run one subtest per door x backend and show every door red.
+--- FAIL: TestTxBackfillRel_GateOff (0.07s)
+    --- FAIL: TestTxBackfillRel_GateOff/memory (0.00s)
+        tx_backfill_rel_doors_test.go:146: [GraphTx.DeleteRelationshipWithTx t=1791526759535] err = <nil>; want ErrTxBackfillDisabled only
+    --- FAIL: TestTxBackfillRel_GateOff/badger (0.01s)
+        tx_backfill_rel_doors_test.go:146: [GraphTx.DeleteRelationshipWithTx t=1791526759542] err = <nil>; want ErrTxBackfillDisabled only
+    --- FAIL: TestTxBackfillRel_GateOff/sharded (0.03s)
+        tx_backfill_rel_doors_test.go:146: [GraphTx.DeleteRelationshipWithTx t=1791526759561] err = <nil>; want ErrTxBackfillDisabled only
+    --- FAIL: TestTxBackfillRel_GateOff/tiered (0.03s)
+        tx_backfill_rel_doors_test.go:146: [GraphTx.DeleteRelationshipWithTx t=1791526759589] err = <nil>; want ErrTxBackfillDisabled only
+--- FAIL: TestTxBackfillRelW4_IngestCoalescedGroups (0.20s)
+    --- FAIL: TestTxBackfillRelW4_IngestCoalescedGroups/memory (0.00s)
+        tx_backfill_rel_w4_test.go:630: refused group err = <nil>; want ErrTxOrder
+    --- FAIL: TestTxBackfillRelW4_IngestCoalescedGroups/badger (0.01s)
+        tx_backfill_rel_w4_test.go:630: refused group err = <nil>; want ErrTxOrder
+    --- FAIL: TestTxBackfillRelW4_IngestCoalescedGroups/sharded (0.10s)
+        tx_backfill_rel_w4_test.go:630: refused group err = <nil>; want ErrTxOrder
+    --- FAIL: TestTxBackfillRelW4_IngestCoalescedGroups/tiered (0.09s)
+        tx_backfill_rel_w4_test.go:630: refused group err = <nil>; want ErrTxOrder
+--- FAIL: TestTxBackfillRel_OrderEqualReversed (0.44s)
+    --- FAIL: TestTxBackfillRel_OrderEqualReversed/memory/current (0.00s)
+        tx_backfill_rel_doors_test.go:253: [GraphTx.DeleteRelationshipWithTx t=1791519558533 TxFrom=1791519558533] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRel_OrderEqualReversed/memory/history_above_current (0.00s)
+        tx_backfill_rel_doors_test.go:307: [GraphTx.DeleteRelationshipWithTx t=1791519558553] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRel_OrderEqualReversed/badger/current (0.01s)
+        tx_backfill_rel_doors_test.go:253: [GraphTx.DeleteRelationshipWithTx t=1791519558539 TxFrom=1791519558539] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRel_OrderEqualReversed/badger/history_above_current (0.01s)
+        tx_backfill_rel_doors_test.go:307: [GraphTx.DeleteRelationshipWithTx t=1791519558564] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRel_OrderEqualReversed/sharded/current (0.11s)
+        tx_backfill_rel_doors_test.go:253: [GraphTx.DeleteRelationshipWithTx t=1791519558662 TxFrom=1791519558662] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRel_OrderEqualReversed/sharded/history_above_current (0.12s)
+        tx_backfill_rel_doors_test.go:307: [GraphTx.DeleteRelationshipWithTx t=1791519558803] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRel_OrderEqualReversed/tiered/current (0.10s)
+        tx_backfill_rel_doors_test.go:253: [GraphTx.DeleteRelationshipWithTx t=1791519558882 TxFrom=1791519558882] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRel_OrderEqualReversed/tiered/history_above_current (0.08s)
+        tx_backfill_rel_doors_test.go:307: [GraphTx.DeleteRelationshipWithTx t=1791519558982] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+--- FAIL: TestTxBackfillRel_InvalidInstant (0.50s)
+    --- FAIL: TestTxBackfillRel_InvalidInstant/memory/gate=true (0.00s)
+        tx_backfill_rel_doors_test.go:197: [GraphTx.DeleteRelationshipWithTx/zero] err = <nil>; want ErrInvalidTxFrom only
+    --- FAIL: TestTxBackfillRel_InvalidInstant/memory/gate=false (0.00s)
+        tx_backfill_rel_doors_test.go:197: [GraphTx.DeleteRelationshipWithTx/zero] err = <nil>; want ErrInvalidTxFrom only
+    --- FAIL: TestTxBackfillRel_InvalidInstant/badger/gate=true (0.02s)
+        tx_backfill_rel_doors_test.go:197: [GraphTx.DeleteRelationshipWithTx/zero] err = <nil>; want ErrInvalidTxFrom only
+    --- FAIL: TestTxBackfillRel_InvalidInstant/badger/gate=false (0.01s)
+        tx_backfill_rel_doors_test.go:197: [GraphTx.DeleteRelationshipWithTx/zero] err = <nil>; want ErrInvalidTxFrom only
+    --- FAIL: TestTxBackfillRel_InvalidInstant/sharded/gate=true (0.18s)
+        tx_backfill_rel_doors_test.go:197: [GraphTx.DeleteRelationshipWithTx/zero] err = <nil>; want ErrInvalidTxFrom only
+    --- FAIL: TestTxBackfillRel_InvalidInstant/sharded/gate=false (0.10s)
+        tx_backfill_rel_doors_test.go:197: [GraphTx.DeleteRelationshipWithTx/zero] err = <nil>; want ErrInvalidTxFrom only
+    --- FAIL: TestTxBackfillRel_InvalidInstant/tiered/gate=true (0.09s)
+        tx_backfill_rel_doors_test.go:197: [GraphTx.DeleteRelationshipWithTx/zero] err = <nil>; want ErrInvalidTxFrom only
+    --- FAIL: TestTxBackfillRel_InvalidInstant/tiered/gate=false (0.09s)
+        tx_backfill_rel_doors_test.go:197: [GraphTx.DeleteRelationshipWithTx/zero] err = <nil>; want ErrInvalidTxFrom only
+--- FAIL: TestTxBackfillRelW4_TxRollbackEquiv (0.54s)
+    --- FAIL: TestTxBackfillRelW4_TxRollbackEquiv/memory/DeleteRelationshipWithTx (0.00s)
+        tx_backfill_rel_w4_test.go:325: in-tx RelAsOf(t) err = <nil>; want ErrNoVersionAsOf (belief ended at t)
+    --- FAIL: TestTxBackfillRelW4_TxRollbackEquiv/memory/UpdateRelationshipWithTx (0.00s)
+        tx_backfill_rel_w4_test.go:325: in-tx RelAsOf(t) w=1 TxFrom=1791519558533; want 77 at 1791519559533
+    --- FAIL: TestTxBackfillRelW4_TxRollbackEquiv/badger/DeleteRelationshipWithTx (0.01s)
+        tx_backfill_rel_w4_test.go:325: in-tx RelAsOf(t) err = <nil>; want ErrNoVersionAsOf (belief ended at t)
+    --- FAIL: TestTxBackfillRelW4_TxRollbackEquiv/badger/UpdateRelationshipWithTx (0.10s)
+        tx_backfill_rel_w4_test.go:325: in-tx RelAsOf(t) w=1 TxFrom=1791519558635; want 77 at 1791519559635
+    --- FAIL: TestTxBackfillRelW4_TxRollbackEquiv/sharded/DeleteRelationshipWithTx (0.09s)
+        tx_backfill_rel_w4_test.go:325: in-tx RelAsOf(t) err = <nil>; want ErrNoVersionAsOf (belief ended at t)
+    --- FAIL: TestTxBackfillRelW4_TxRollbackEquiv/sharded/UpdateRelationshipWithTx (0.14s)
+        tx_backfill_rel_w4_test.go:325: in-tx RelAsOf(t) w=1 TxFrom=1791519558865; want 77 at 1791519559865
+    --- FAIL: TestTxBackfillRelW4_TxRollbackEquiv/tiered/DeleteRelationshipWithTx (0.11s)
+        tx_backfill_rel_w4_test.go:325: in-tx RelAsOf(t) err = <nil>; want ErrNoVersionAsOf (belief ended at t)
+    --- FAIL: TestTxBackfillRelW4_TxRollbackEquiv/tiered/UpdateRelationshipWithTx (0.08s)
+        tx_backfill_rel_w4_test.go:325: in-tx RelAsOf(t) w=1 TxFrom=1791519559058; want 77 at 1791519560058
+--- FAIL: TestTxBackfillRel_OrderValidStart (0.61s)
+    --- FAIL: TestTxBackfillRel_OrderValidStart/memory/explicit_valid_from (0.00s)
+        tx_backfill_rel_doors_test.go:334: [GraphTx.DeleteRelationshipWithTx t=1791519558586 ValidFrom=1791519558636] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRel_OrderValidStart/memory/derived_valid_from (0.00s)
+        tx_backfill_rel_doors_test.go:355: [GraphTx.DeleteRelationshipWithTx t=1791519558589 derived=1791526758539] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRel_OrderValidStart/memory/updated_at_above_tx_from (0.00s)
+        tx_backfill_rel_doors_test.go:389: [GraphTx.DeleteRelationshipWithTx t=1791530418589 UpdatedAt=1791530418639] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRel_OrderValidStart/badger/explicit_valid_from (0.02s)
+        tx_backfill_rel_doors_test.go:334: [GraphTx.DeleteRelationshipWithTx t=1791519558596 ValidFrom=1791519558646] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRel_OrderValidStart/badger/derived_valid_from (0.01s)
+        tx_backfill_rel_doors_test.go:355: [GraphTx.DeleteRelationshipWithTx t=1791519558611 derived=1791526758561] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRel_OrderValidStart/badger/updated_at_above_tx_from (0.02s)
+        tx_backfill_rel_doors_test.go:389: [GraphTx.DeleteRelationshipWithTx t=1791530418630 UpdatedAt=1791530418680] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRel_OrderValidStart/sharded/explicit_valid_from (0.05s)
+        tx_backfill_rel_doors_test.go:334: [GraphTx.DeleteRelationshipWithTx t=1791519558677 ValidFrom=1791519558727] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRel_OrderValidStart/sharded/derived_valid_from (0.09s)
+        tx_backfill_rel_doors_test.go:355: [GraphTx.DeleteRelationshipWithTx t=1791519558772 derived=1791526758723] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRel_OrderValidStart/sharded/updated_at_above_tx_from (0.17s)
+        tx_backfill_rel_doors_test.go:389: [GraphTx.DeleteRelationshipWithTx t=1791530418938 UpdatedAt=1791530418988] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRel_OrderValidStart/tiered/explicit_valid_from (0.10s)
+        tx_backfill_rel_doors_test.go:334: [GraphTx.DeleteRelationshipWithTx t=1791519559041 ValidFrom=1791519559091] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRel_OrderValidStart/tiered/derived_valid_from (0.08s)
+        tx_backfill_rel_doors_test.go:355: [GraphTx.DeleteRelationshipWithTx t=1791519559117 derived=1791526759067] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRel_OrderValidStart/tiered/updated_at_above_tx_from (0.07s)
+        tx_backfill_rel_doors_test.go:389: [GraphTx.DeleteRelationshipWithTx t=1791530419189 UpdatedAt=1791530419239] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+--- FAIL: TestTxBackfillRelW4_BatchIngestDoors (0.69s)
+    --- FAIL: TestTxBackfillRelW4_BatchIngestDoors/memory/Batch (0.00s)
+        tx_backfill_rel_w4_test.go:529: [mixed, B at its TxFrom] err = <nil>; want graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future)
+    --- FAIL: TestTxBackfillRelW4_BatchIngestDoors/memory/IngestStrong (0.00s)
+        tx_backfill_rel_w4_test.go:529: [mixed, B at its TxFrom] err = <nil>; want graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future)
+    --- FAIL: TestTxBackfillRelW4_BatchIngestDoors/memory/IngestConcurrent (0.00s)
+        tx_backfill_rel_w4_test.go:529: [mixed, B at its TxFrom] err = <nil>; want graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future)
+    --- FAIL: TestTxBackfillRelW4_BatchIngestDoors/badger/Batch (0.02s)
+        tx_backfill_rel_w4_test.go:529: [mixed, B at its TxFrom] err = <nil>; want graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future)
+    --- FAIL: TestTxBackfillRelW4_BatchIngestDoors/badger/IngestStrong (0.01s)
+        tx_backfill_rel_w4_test.go:529: [mixed, B at its TxFrom] err = <nil>; want graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future)
+    --- FAIL: TestTxBackfillRelW4_BatchIngestDoors/badger/IngestConcurrent (0.10s)
+        tx_backfill_rel_w4_test.go:529: [mixed, B at its TxFrom] err = <nil>; want graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future)
+    --- FAIL: TestTxBackfillRelW4_BatchIngestDoors/sharded/Batch (0.15s)
+        tx_backfill_rel_w4_test.go:529: [mixed, B at its TxFrom] err = <nil>; want graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future)
+    --- FAIL: TestTxBackfillRelW4_BatchIngestDoors/sharded/IngestStrong (0.11s)
+        tx_backfill_rel_w4_test.go:529: [mixed, B at its TxFrom] err = <nil>; want graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future)
+    --- FAIL: TestTxBackfillRelW4_BatchIngestDoors/sharded/IngestConcurrent (0.10s)
+        tx_backfill_rel_w4_test.go:529: [mixed, B at its TxFrom] err = <nil>; want graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future)
+    --- FAIL: TestTxBackfillRelW4_BatchIngestDoors/tiered/Batch (0.08s)
+        tx_backfill_rel_w4_test.go:529: [mixed, B at its TxFrom] err = <nil>; want graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future)
+    --- FAIL: TestTxBackfillRelW4_BatchIngestDoors/tiered/IngestStrong (0.06s)
+        tx_backfill_rel_w4_test.go:529: [mixed, B at its TxFrom] err = <nil>; want graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future)
+    --- FAIL: TestTxBackfillRelW4_BatchIngestDoors/tiered/IngestConcurrent (0.05s)
+        tx_backfill_rel_w4_test.go:529: [mixed, B at its TxFrom] err = <nil>; want graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future)
+--- FAIL: TestTxBackfillRelW4_ScheduledCloseAfterT (0.79s)
+    --- FAIL: TestTxBackfillRelW4_ScheduledCloseAfterT/memory/GraphTx.DeleteRelationshipWithTx (0.00s)
+        tx_backfill_rel_w4_test.go:201: [t=1791530359032 close=1791530359033] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRelW4_ScheduledCloseAfterT/memory/Batch.DeleteRelationshipWithTx (0.00s)
+        tx_backfill_rel_w4_test.go:201: [t=1791530359032 close=1791530359033] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRelW4_ScheduledCloseAfterT/memory/IngestStrong.DeleteRelationshipWithTx (0.00s)
+        tx_backfill_rel_w4_test.go:201: [t=1791530359032 close=1791530359033] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRelW4_ScheduledCloseAfterT/memory/IngestConcurrent.DeleteRelationshipWithTx (0.00s)
+        tx_backfill_rel_w4_test.go:201: [t=1791530359035 close=1791530359036] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRelW4_ScheduledCloseAfterT/badger/GraphTx.DeleteRelationshipWithTx (0.01s)
+        tx_backfill_rel_w4_test.go:201: [t=1791530359038 close=1791530359039] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRelW4_ScheduledCloseAfterT/badger/Batch.DeleteRelationshipWithTx (0.01s)
+        tx_backfill_rel_w4_test.go:201: [t=1791530359045 close=1791530359046] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRelW4_ScheduledCloseAfterT/badger/IngestStrong.DeleteRelationshipWithTx (0.01s)
+        tx_backfill_rel_w4_test.go:201: [t=1791530359060 close=1791530359061] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRelW4_ScheduledCloseAfterT/badger/IngestConcurrent.DeleteRelationshipWithTx (0.10s)
+        tx_backfill_rel_w4_test.go:201: [t=1791530359160 close=1791530359161] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRelW4_ScheduledCloseAfterT/sharded/GraphTx.DeleteRelationshipWithTx (0.11s)
+        tx_backfill_rel_w4_test.go:201: [t=1791530359267 close=1791530359268] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRelW4_ScheduledCloseAfterT/sharded/Batch.DeleteRelationshipWithTx (0.11s)
+        tx_backfill_rel_w4_test.go:201: [t=1791530359370 close=1791530359371] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRelW4_ScheduledCloseAfterT/sharded/IngestStrong.DeleteRelationshipWithTx (0.10s)
+        tx_backfill_rel_w4_test.go:201: [t=1791530359472 close=1791530359473] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRelW4_ScheduledCloseAfterT/sharded/IngestConcurrent.DeleteRelationshipWithTx (0.09s)
+        tx_backfill_rel_w4_test.go:201: [t=1791530359559 close=1791530359560] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRelW4_ScheduledCloseAfterT/tiered/GraphTx.DeleteRelationshipWithTx (0.08s)
+        tx_backfill_rel_w4_test.go:201: [t=1791530359644 close=1791530359645] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRelW4_ScheduledCloseAfterT/tiered/Batch.DeleteRelationshipWithTx (0.06s)
+        tx_backfill_rel_w4_test.go:201: [t=1791530359707 close=1791530359708] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRelW4_ScheduledCloseAfterT/tiered/IngestStrong.DeleteRelationshipWithTx (0.05s)
+        tx_backfill_rel_w4_test.go:201: [t=1791530359759 close=1791530359760] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRelW4_ScheduledCloseAfterT/tiered/IngestConcurrent.DeleteRelationshipWithTx (0.05s)
+        tx_backfill_rel_w4_test.go:201: [t=1791530359814 close=1791530359815] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+--- FAIL: TestTxBackfillRelW4_CloseCollision (0.80s)
+    --- FAIL: TestTxBackfillRelW4_CloseCollision/memory/GraphTx.DeleteRelationshipWithTx (0.00s)
+        tx_backfill_rel_w4_test.go:163: [t == ValidTo] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRelW4_CloseCollision/memory/Batch.DeleteRelationshipWithTx (0.00s)
+        tx_backfill_rel_w4_test.go:163: [t == ValidTo] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRelW4_CloseCollision/memory/IngestStrong.DeleteRelationshipWithTx (0.00s)
+        tx_backfill_rel_w4_test.go:163: [t == ValidTo] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRelW4_CloseCollision/memory/IngestConcurrent.DeleteRelationshipWithTx (0.00s)
+        tx_backfill_rel_w4_test.go:163: [t == ValidTo] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRelW4_CloseCollision/badger/GraphTx.DeleteRelationshipWithTx (0.01s)
+        tx_backfill_rel_w4_test.go:163: [t == ValidTo] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRelW4_CloseCollision/badger/Batch.DeleteRelationshipWithTx (0.10s)
+        tx_backfill_rel_w4_test.go:163: [t == ValidTo] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRelW4_CloseCollision/badger/IngestStrong.DeleteRelationshipWithTx (0.01s)
+        tx_backfill_rel_w4_test.go:163: [t == ValidTo] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRelW4_CloseCollision/badger/IngestConcurrent.DeleteRelationshipWithTx (0.08s)
+        tx_backfill_rel_w4_test.go:163: [t == ValidTo] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRelW4_CloseCollision/sharded/GraphTx.DeleteRelationshipWithTx (0.15s)
+        tx_backfill_rel_w4_test.go:163: [t == ValidTo] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRelW4_CloseCollision/sharded/Batch.DeleteRelationshipWithTx (0.10s)
+        tx_backfill_rel_w4_test.go:163: [t == ValidTo] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRelW4_CloseCollision/sharded/IngestStrong.DeleteRelationshipWithTx (0.08s)
+        tx_backfill_rel_w4_test.go:163: [t == ValidTo] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRelW4_CloseCollision/sharded/IngestConcurrent.DeleteRelationshipWithTx (0.05s)
+        tx_backfill_rel_w4_test.go:163: [t == ValidTo] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRelW4_CloseCollision/tiered/GraphTx.DeleteRelationshipWithTx (0.06s)
+        tx_backfill_rel_w4_test.go:163: [t == ValidTo] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRelW4_CloseCollision/tiered/Batch.DeleteRelationshipWithTx (0.06s)
+        tx_backfill_rel_w4_test.go:163: [t == ValidTo] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRelW4_CloseCollision/tiered/IngestStrong.DeleteRelationshipWithTx (0.05s)
+        tx_backfill_rel_w4_test.go:163: [t == ValidTo] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+    --- FAIL: TestTxBackfillRelW4_CloseCollision/tiered/IngestConcurrent.DeleteRelationshipWithTx (0.05s)
+        tx_backfill_rel_w4_test.go:163: [t == ValidTo] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+--- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite (1.20s)
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/memory/GraphTx.DeleteRelationshipWithTx (0.00s)
+        tx_backfill_rel_doors_test.go:829: GraphTx.DeleteRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/memory/GraphTx.UpdateRelationshipWithTx (0.00s)
+        tx_backfill_rel_doors_test.go:829: GraphTx.UpdateRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/memory/Batch.DeleteRelationshipWithTx (0.00s)
+        tx_backfill_rel_doors_test.go:829: Batch.DeleteRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/memory/Batch.UpdateRelationshipWithTx (0.00s)
+        tx_backfill_rel_doors_test.go:829: Batch.UpdateRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/memory/IngestStrong.DeleteRelationshipWithTx (0.00s)
+        tx_backfill_rel_doors_test.go:829: IngestStrong.DeleteRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/memory/IngestStrong.UpdateRelationshipWithTx (0.00s)
+        tx_backfill_rel_doors_test.go:829: IngestStrong.UpdateRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/memory/IngestConcurrent.DeleteRelationshipWithTx (0.00s)
+        tx_backfill_rel_doors_test.go:829: IngestConcurrent.DeleteRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/memory/IngestConcurrent.UpdateRelationshipWithTx (0.00s)
+        tx_backfill_rel_doors_test.go:829: IngestConcurrent.UpdateRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/badger/GraphTx.DeleteRelationshipWithTx (0.10s)
+        tx_backfill_rel_doors_test.go:829: GraphTx.DeleteRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/badger/GraphTx.UpdateRelationshipWithTx (0.07s)
+        tx_backfill_rel_doors_test.go:829: GraphTx.UpdateRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/badger/Batch.DeleteRelationshipWithTx (0.05s)
+        tx_backfill_rel_doors_test.go:829: Batch.DeleteRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/badger/Batch.UpdateRelationshipWithTx (0.03s)
+        tx_backfill_rel_doors_test.go:829: Batch.UpdateRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/badger/IngestStrong.DeleteRelationshipWithTx (0.05s)
+        tx_backfill_rel_doors_test.go:829: IngestStrong.DeleteRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/badger/IngestStrong.UpdateRelationshipWithTx (0.05s)
+        tx_backfill_rel_doors_test.go:829: IngestStrong.UpdateRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/badger/IngestConcurrent.DeleteRelationshipWithTx (0.05s)
+        tx_backfill_rel_doors_test.go:829: IngestConcurrent.DeleteRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/badger/IngestConcurrent.UpdateRelationshipWithTx (0.04s)
+        tx_backfill_rel_doors_test.go:829: IngestConcurrent.UpdateRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/sharded/GraphTx.DeleteRelationshipWithTx (0.06s)
+        tx_backfill_rel_doors_test.go:829: GraphTx.DeleteRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/sharded/GraphTx.UpdateRelationshipWithTx (0.04s)
+        tx_backfill_rel_doors_test.go:829: GraphTx.UpdateRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/sharded/Batch.DeleteRelationshipWithTx (0.04s)
+        tx_backfill_rel_doors_test.go:829: Batch.DeleteRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/sharded/Batch.UpdateRelationshipWithTx (0.04s)
+        tx_backfill_rel_doors_test.go:829: Batch.UpdateRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/sharded/IngestStrong.DeleteRelationshipWithTx (0.03s)
+        tx_backfill_rel_doors_test.go:829: IngestStrong.DeleteRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/sharded/IngestStrong.UpdateRelationshipWithTx (0.03s)
+        tx_backfill_rel_doors_test.go:829: IngestStrong.UpdateRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/sharded/IngestConcurrent.DeleteRelationshipWithTx (0.03s)
+        tx_backfill_rel_doors_test.go:829: IngestConcurrent.DeleteRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/sharded/IngestConcurrent.UpdateRelationshipWithTx (0.03s)
+        tx_backfill_rel_doors_test.go:829: IngestConcurrent.UpdateRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/tiered/GraphTx.DeleteRelationshipWithTx (0.03s)
+        tx_backfill_rel_doors_test.go:829: GraphTx.DeleteRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/tiered/GraphTx.UpdateRelationshipWithTx (0.03s)
+        tx_backfill_rel_doors_test.go:829: GraphTx.UpdateRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/tiered/Batch.DeleteRelationshipWithTx (0.03s)
+        tx_backfill_rel_doors_test.go:829: Batch.DeleteRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/tiered/Batch.UpdateRelationshipWithTx (0.03s)
+        tx_backfill_rel_doors_test.go:829: Batch.UpdateRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/tiered/IngestStrong.DeleteRelationshipWithTx (0.03s)
+        tx_backfill_rel_doors_test.go:829: IngestStrong.DeleteRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/tiered/IngestStrong.UpdateRelationshipWithTx (0.03s)
+        tx_backfill_rel_doors_test.go:829: IngestStrong.UpdateRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/tiered/IngestConcurrent.DeleteRelationshipWithTx (0.03s)
+        tx_backfill_rel_doors_test.go:829: IngestConcurrent.DeleteRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+    --- FAIL: TestTxBackfillRel_DoorsReportPastDatedWrite/tiered/IngestConcurrent.UpdateRelationshipWithTx (0.02s)
+        tx_backfill_rel_doors_test.go:829: IngestConcurrent.UpdateRelationshipWithTx at a past t left the as-of gen at 1 — the door does not report its past-dated write
+--- FAIL: TestTxBackfillRelW4_DoorEquivalence (1.37s)
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/memory/GraphTx.DeleteRelationshipWithTx (0.00s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515958536 ValidTo:1791519559536 TxFrom:1791519558536 TxTo:1791519559536 CreatedAt:0 UpdatedAt:0 DeletedAt:1791519559536 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515958536 ValidTo:1791526758539 TxFrom:1791519558536 TxTo:1791526758539 CreatedAt:0 UpdatedAt:0 DeletedAt:1791526758539 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: GraphTx.DeleteRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/memory/GraphTx.UpdateRelationshipWithTx (0.00s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515958539 ValidTo:0 TxFrom:1791519558539 TxTo:1791519559539 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515958539 ValidTo:0 TxFrom:1791519558539 TxTo:1791526758542 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:393: row 1: standalone {ValidFrom:0 ValidTo:0 TxFrom:1791519559539 TxTo:0 CreatedAt:0 UpdatedAt:1791519559539 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:0 ValidTo:0 TxFrom:1791526758542 TxTo:0 CreatedAt:0 UpdatedAt:1791526758542 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: GraphTx.UpdateRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/memory/Batch.DeleteRelationshipWithTx (0.00s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515958539 ValidTo:1791519559539 TxFrom:1791519558539 TxTo:1791519559539 CreatedAt:0 UpdatedAt:0 DeletedAt:1791519559539 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515958539 ValidTo:1791526758542 TxFrom:1791519558539 TxTo:1791526758542 CreatedAt:0 UpdatedAt:0 DeletedAt:1791526758542 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: Batch.DeleteRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/memory/Batch.UpdateRelationshipWithTx (0.00s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515958540 ValidTo:0 TxFrom:1791519558540 TxTo:1791519559540 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515958540 ValidTo:0 TxFrom:1791519558540 TxTo:1791526758543 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:393: row 1: standalone {ValidFrom:0 ValidTo:0 TxFrom:1791519559540 TxTo:0 CreatedAt:0 UpdatedAt:1791519559540 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:0 ValidTo:0 TxFrom:1791526758543 TxTo:0 CreatedAt:0 UpdatedAt:1791526758543 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: Batch.UpdateRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/memory/IngestStrong.DeleteRelationshipWithTx (0.00s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515958540 ValidTo:1791519559540 TxFrom:1791519558540 TxTo:1791519559540 CreatedAt:0 UpdatedAt:0 DeletedAt:1791519559540 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515958540 ValidTo:1791526758543 TxFrom:1791519558540 TxTo:1791526758543 CreatedAt:0 UpdatedAt:0 DeletedAt:1791526758543 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: IngestStrong.DeleteRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/memory/IngestStrong.UpdateRelationshipWithTx (0.00s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515958540 ValidTo:0 TxFrom:1791519558540 TxTo:1791519559540 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515958540 ValidTo:0 TxFrom:1791519558540 TxTo:1791526758543 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:393: row 1: standalone {ValidFrom:0 ValidTo:0 TxFrom:1791519559540 TxTo:0 CreatedAt:0 UpdatedAt:1791519559540 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:0 ValidTo:0 TxFrom:1791526758543 TxTo:0 CreatedAt:0 UpdatedAt:1791526758543 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: IngestStrong.UpdateRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/memory/IngestConcurrent.DeleteRelationshipWithTx (0.00s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515958541 ValidTo:1791519559541 TxFrom:1791519558541 TxTo:1791519559541 CreatedAt:0 UpdatedAt:0 DeletedAt:1791519559541 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515958541 ValidTo:1791526758543 TxFrom:1791519558541 TxTo:1791526758543 CreatedAt:0 UpdatedAt:0 DeletedAt:1791526758543 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: IngestConcurrent.DeleteRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/memory/IngestConcurrent.UpdateRelationshipWithTx (0.00s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515958542 ValidTo:0 TxFrom:1791519558542 TxTo:1791519559542 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515958542 ValidTo:0 TxFrom:1791519558542 TxTo:1791526758544 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:393: row 1: standalone {ValidFrom:0 ValidTo:0 TxFrom:1791519559542 TxTo:0 CreatedAt:0 UpdatedAt:1791519559542 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:0 ValidTo:0 TxFrom:1791526758544 TxTo:0 CreatedAt:0 UpdatedAt:1791526758544 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: IngestConcurrent.UpdateRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/badger/GraphTx.DeleteRelationshipWithTx (0.02s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515958546 ValidTo:1791519559546 TxFrom:1791519558546 TxTo:1791519559546 CreatedAt:0 UpdatedAt:0 DeletedAt:1791519559546 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515958546 ValidTo:1791526758557 TxFrom:1791519558546 TxTo:1791526758557 CreatedAt:0 UpdatedAt:0 DeletedAt:1791526758557 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: GraphTx.DeleteRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/badger/GraphTx.UpdateRelationshipWithTx (0.18s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515958657 ValidTo:0 TxFrom:1791519558657 TxTo:1791519559657 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515958657 ValidTo:0 TxFrom:1791519558657 TxTo:1791526758725 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:393: row 1: standalone {ValidFrom:0 ValidTo:0 TxFrom:1791519559657 TxTo:0 CreatedAt:0 UpdatedAt:1791519559657 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:0 ValidTo:0 TxFrom:1791526758725 TxTo:0 CreatedAt:0 UpdatedAt:1791526758725 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: GraphTx.UpdateRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/badger/Batch.DeleteRelationshipWithTx (0.07s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515958767 ValidTo:1791519559767 TxFrom:1791519558767 TxTo:1791519559767 CreatedAt:0 UpdatedAt:0 DeletedAt:1791519559767 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515958767 ValidTo:1791526758798 TxFrom:1791519558767 TxTo:1791526758798 CreatedAt:0 UpdatedAt:0 DeletedAt:1791526758798 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: Batch.DeleteRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/badger/Batch.UpdateRelationshipWithTx (0.11s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515958856 ValidTo:0 TxFrom:1791519558856 TxTo:1791519559856 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515958856 ValidTo:0 TxFrom:1791519558856 TxTo:1791526758904 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:393: row 1: standalone {ValidFrom:0 ValidTo:0 TxFrom:1791519559856 TxTo:0 CreatedAt:0 UpdatedAt:1791519559856 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:0 ValidTo:0 TxFrom:1791526758904 TxTo:0 CreatedAt:0 UpdatedAt:1791526758904 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: Batch.UpdateRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/badger/IngestStrong.DeleteRelationshipWithTx (0.08s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515958950 ValidTo:1791519559950 TxFrom:1791519558950 TxTo:1791519559950 CreatedAt:0 UpdatedAt:0 DeletedAt:1791519559950 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515958950 ValidTo:1791526758991 TxFrom:1791519558950 TxTo:1791526758991 CreatedAt:0 UpdatedAt:0 DeletedAt:1791526758991 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: IngestStrong.DeleteRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/badger/IngestStrong.UpdateRelationshipWithTx (0.08s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515959030 ValidTo:0 TxFrom:1791519559030 TxTo:1791519560030 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515959030 ValidTo:0 TxFrom:1791519559030 TxTo:1791526759072 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:393: row 1: standalone {ValidFrom:0 ValidTo:0 TxFrom:1791519560030 TxTo:0 CreatedAt:0 UpdatedAt:1791519560030 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:0 ValidTo:0 TxFrom:1791526759072 TxTo:0 CreatedAt:0 UpdatedAt:1791526759072 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: IngestStrong.UpdateRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/badger/IngestConcurrent.DeleteRelationshipWithTx (0.08s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515959121 ValidTo:1791519560121 TxFrom:1791519559121 TxTo:1791519560121 CreatedAt:0 UpdatedAt:0 DeletedAt:1791519560121 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515959121 ValidTo:1791526759152 TxFrom:1791519559121 TxTo:1791526759152 CreatedAt:0 UpdatedAt:0 DeletedAt:1791526759152 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: IngestConcurrent.DeleteRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/badger/IngestConcurrent.UpdateRelationshipWithTx (0.05s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515959182 ValidTo:0 TxFrom:1791519559182 TxTo:1791519560182 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515959182 ValidTo:0 TxFrom:1791519559182 TxTo:1791526759205 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:393: row 1: standalone {ValidFrom:0 ValidTo:0 TxFrom:1791519560182 TxTo:0 CreatedAt:0 UpdatedAt:1791519560182 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:0 ValidTo:0 TxFrom:1791526759205 TxTo:0 CreatedAt:0 UpdatedAt:1791526759205 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: IngestConcurrent.UpdateRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/sharded/GraphTx.DeleteRelationshipWithTx (0.11s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515959259 ValidTo:1791519560259 TxFrom:1791519559259 TxTo:1791519560259 CreatedAt:0 UpdatedAt:0 DeletedAt:1791519560259 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515959259 ValidTo:1791526759311 TxFrom:1791519559259 TxTo:1791526759311 CreatedAt:0 UpdatedAt:0 DeletedAt:1791526759311 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: GraphTx.DeleteRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/sharded/GraphTx.UpdateRelationshipWithTx (0.06s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515959346 ValidTo:0 TxFrom:1791519559346 TxTo:1791519560346 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515959346 ValidTo:0 TxFrom:1791519559346 TxTo:1791526759376 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:393: row 1: standalone {ValidFrom:0 ValidTo:0 TxFrom:1791519560346 TxTo:0 CreatedAt:0 UpdatedAt:1791519560346 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:0 ValidTo:0 TxFrom:1791526759376 TxTo:0 CreatedAt:0 UpdatedAt:1791526759376 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: GraphTx.UpdateRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/sharded/Batch.DeleteRelationshipWithTx (0.05s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515959403 ValidTo:1791519560403 TxFrom:1791519559403 TxTo:1791519560403 CreatedAt:0 UpdatedAt:0 DeletedAt:1791519560403 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515959403 ValidTo:1791526759429 TxFrom:1791519559403 TxTo:1791526759429 CreatedAt:0 UpdatedAt:0 DeletedAt:1791526759429 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: Batch.DeleteRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/sharded/Batch.UpdateRelationshipWithTx (0.06s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515959456 ValidTo:0 TxFrom:1791519559456 TxTo:1791519560456 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515959456 ValidTo:0 TxFrom:1791519559456 TxTo:1791526759485 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:393: row 1: standalone {ValidFrom:0 ValidTo:0 TxFrom:1791519560456 TxTo:0 CreatedAt:0 UpdatedAt:1791519560456 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:0 ValidTo:0 TxFrom:1791526759485 TxTo:0 CreatedAt:0 UpdatedAt:1791526759485 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: Batch.UpdateRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/sharded/IngestStrong.DeleteRelationshipWithTx (0.05s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515959514 ValidTo:1791519560514 TxFrom:1791519559514 TxTo:1791519560514 CreatedAt:0 UpdatedAt:0 DeletedAt:1791519560514 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515959514 ValidTo:1791526759540 TxFrom:1791519559514 TxTo:1791526759540 CreatedAt:0 UpdatedAt:0 DeletedAt:1791526759540 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: IngestStrong.DeleteRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/sharded/IngestStrong.UpdateRelationshipWithTx (0.06s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515959570 ValidTo:0 TxFrom:1791519559570 TxTo:1791519560570 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515959570 ValidTo:0 TxFrom:1791519559570 TxTo:1791526759601 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:393: row 1: standalone {ValidFrom:0 ValidTo:0 TxFrom:1791519560570 TxTo:0 CreatedAt:0 UpdatedAt:1791519560570 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:0 ValidTo:0 TxFrom:1791526759601 TxTo:0 CreatedAt:0 UpdatedAt:1791526759601 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: IngestStrong.UpdateRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/sharded/IngestConcurrent.DeleteRelationshipWithTx (0.06s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515959632 ValidTo:1791519560632 TxFrom:1791519559632 TxTo:1791519560632 CreatedAt:0 UpdatedAt:0 DeletedAt:1791519560632 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515959632 ValidTo:1791526759660 TxFrom:1791519559632 TxTo:1791526759660 CreatedAt:0 UpdatedAt:0 DeletedAt:1791526759660 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: IngestConcurrent.DeleteRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/sharded/IngestConcurrent.UpdateRelationshipWithTx (0.06s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515959692 ValidTo:0 TxFrom:1791519559692 TxTo:1791519560692 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515959692 ValidTo:0 TxFrom:1791519559692 TxTo:1791526759718 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:393: row 1: standalone {ValidFrom:0 ValidTo:0 TxFrom:1791519560692 TxTo:0 CreatedAt:0 UpdatedAt:1791519560692 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:0 ValidTo:0 TxFrom:1791526759718 TxTo:0 CreatedAt:0 UpdatedAt:1791526759718 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: IngestConcurrent.UpdateRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/tiered/GraphTx.DeleteRelationshipWithTx (0.02s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515959735 ValidTo:1791519560735 TxFrom:1791519559735 TxTo:1791519560735 CreatedAt:0 UpdatedAt:0 DeletedAt:1791519560735 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515959735 ValidTo:1791526759746 TxFrom:1791519559735 TxTo:1791526759746 CreatedAt:0 UpdatedAt:0 DeletedAt:1791526759746 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: GraphTx.DeleteRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/tiered/GraphTx.UpdateRelationshipWithTx (0.02s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515959757 ValidTo:0 TxFrom:1791519559757 TxTo:1791519560757 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515959757 ValidTo:0 TxFrom:1791519559757 TxTo:1791526759767 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:393: row 1: standalone {ValidFrom:0 ValidTo:0 TxFrom:1791519560757 TxTo:0 CreatedAt:0 UpdatedAt:1791519560757 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:0 ValidTo:0 TxFrom:1791526759767 TxTo:0 CreatedAt:0 UpdatedAt:1791526759767 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: GraphTx.UpdateRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/tiered/Batch.DeleteRelationshipWithTx (0.02s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515959779 ValidTo:1791519560779 TxFrom:1791519559779 TxTo:1791519560779 CreatedAt:0 UpdatedAt:0 DeletedAt:1791519560779 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515959779 ValidTo:1791526759791 TxFrom:1791519559779 TxTo:1791526759791 CreatedAt:0 UpdatedAt:0 DeletedAt:1791526759791 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: Batch.DeleteRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/tiered/Batch.UpdateRelationshipWithTx (0.02s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515959802 ValidTo:0 TxFrom:1791519559802 TxTo:1791519560802 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515959802 ValidTo:0 TxFrom:1791519559802 TxTo:1791526759814 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:393: row 1: standalone {ValidFrom:0 ValidTo:0 TxFrom:1791519560802 TxTo:0 CreatedAt:0 UpdatedAt:1791519560802 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:0 ValidTo:0 TxFrom:1791526759814 TxTo:0 CreatedAt:0 UpdatedAt:1791526759814 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: Batch.UpdateRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/tiered/IngestStrong.DeleteRelationshipWithTx (0.02s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515959825 ValidTo:1791519560825 TxFrom:1791519559825 TxTo:1791519560825 CreatedAt:0 UpdatedAt:0 DeletedAt:1791519560825 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515959825 ValidTo:1791526759836 TxFrom:1791519559825 TxTo:1791526759836 CreatedAt:0 UpdatedAt:0 DeletedAt:1791526759836 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: IngestStrong.DeleteRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/tiered/IngestStrong.UpdateRelationshipWithTx (0.02s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515959847 ValidTo:0 TxFrom:1791519559847 TxTo:1791519560847 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515959847 ValidTo:0 TxFrom:1791519559847 TxTo:1791526759858 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:393: row 1: standalone {ValidFrom:0 ValidTo:0 TxFrom:1791519560847 TxTo:0 CreatedAt:0 UpdatedAt:1791519560847 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:0 ValidTo:0 TxFrom:1791526759858 TxTo:0 CreatedAt:0 UpdatedAt:1791526759858 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: IngestStrong.UpdateRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/tiered/IngestConcurrent.DeleteRelationshipWithTx (0.02s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515959870 ValidTo:1791519560870 TxFrom:1791519559870 TxTo:1791519560870 CreatedAt:0 UpdatedAt:0 DeletedAt:1791519560870 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515959870 ValidTo:1791526759879 TxFrom:1791519559870 TxTo:1791526759879 CreatedAt:0 UpdatedAt:0 DeletedAt:1791526759879 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: IngestConcurrent.DeleteRelationshipWithTx writes different bytes than the standalone door
+    --- FAIL: TestTxBackfillRelW4_DoorEquivalence/tiered/IngestConcurrent.UpdateRelationshipWithTx (0.02s)
+        tx_backfill_rel_w4_test.go:393: row 0: standalone {ValidFrom:1791515959891 ValidTo:0 TxFrom:1791519559891 TxTo:1791519560891 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:1791515959891 ValidTo:0 TxFrom:1791519559891 TxTo:1791526759900 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:393: row 1: standalone {ValidFrom:0 ValidTo:0 TxFrom:1791519560891 TxTo:0 CreatedAt:0 UpdatedAt:1791519560891 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} | door {ValidFrom:0 ValidTo:0 TxFrom:1791526759900 TxTo:0 CreatedAt:0 UpdatedAt:1791526759900 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0}
+        tx_backfill_rel_w4_test.go:395: IngestConcurrent.UpdateRelationshipWithTx writes different bytes than the standalone door
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	1.485s
+FAIL
