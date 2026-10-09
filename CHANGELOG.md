@@ -6,7 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-Additive surface for a minor release (4.44.0 when released): `nodes.Ops` and `rels.Ops` gain
+## [4.44.0] - 2026-10-09
+
+Minor release: transaction-time endings and supersessions at a caller instant (`DeleteWithTx` /
+`UpdateWithTx` on every write door, `ErrTxOrder`), one-tick valid intervals visible on every temporal
+door, column and range scans answering temporal `QueryOpts` exactly, ingest session interval
+corrections, the opt-in `Config.DurableCommit`, Go 1.26.9. Gates on the released tree: `make ci-docker`
+(fmt-check, vet, lint-docker, build, test-race, security-docker, vulncheck-docker, cover-gate 86.6 %,
+check-metakv-reap) exit 0; sigma-tkgd, ai-soc engine and agent-bookkeeping build and vet against it.
+
+Additive surface for this minor release: `nodes.Ops` and `rels.Ops` gain
 methods, so an out-of-tree implementation of either interface must add them (none of the known
 dependents — sigma-tkgd, ai-soc engine, agent-bookkeeping — implements them). Migration: upgrade replicas before any writer uses the new doors — a replica
 reproduces the stamps from the change feed and reports the past-dated tombstones to its as-of cache.
