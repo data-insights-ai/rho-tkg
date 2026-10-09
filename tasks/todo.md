@@ -13,6 +13,8 @@ Spec: `tasks/handover-tx-backfill-delete-update-20261009.md` (§6 overrides §2-
    engine, agent-bookkeeping against the merged tree (`replace` in a scratch copy, never committed there). [ ]
 4. "then lets go.. spawn parallel opus agents in worktrees" — check: branches merged into main, worktrees
    removed, `make test-race` + `make cover` (new code >= 80 %) green on main. [ ]
+5. "spawn a parallel sonnet agent which analyses what the other agents are doing and report if some agent
+   diverges" — check: watchdog running per phase; every DIVERGENCE message acted on and noted in Review. [ ]
 
 ## Plan (Opus agents, git worktrees, merged by me)
 
@@ -21,7 +23,7 @@ Phase 1 (parallel)
       rel delete, caller instant on rel update (all update doors via the temporal path), close-collision refusal
       only for a caller instant, no-op update keeps t (refuse), `rels.Ops` + fakes, `Rels().DeleteWithTx/UpdateWithTx`.
       Red tests R0(rels) R1-R8 R10 R11(rels), all 4 backends.
-- [ ] W2 asof-cache: bump AFTER the store write (move out of `resolveBackfillTxFrom` into a post-write call at
+- [x] W2 asof-cache (merged c688821; 55 subtests green on main, red: evidence/red-w2*.txt): bump AFTER the store write (move out of `resolveBackfillTxFrom` into a post-write call at
       every backfill door); replica `applyNodeDeleteLocked`/`applyRelDeleteLocked` report min(TxTo, DeletedAt).
       Red tests R14 (AddWithTx today), R13 (crafted delete records via ApplyChange).
 
