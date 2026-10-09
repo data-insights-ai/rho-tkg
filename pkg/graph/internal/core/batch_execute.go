@@ -23,7 +23,9 @@ import (
 // operations fail, the result contains per-operation errors and the returned
 // error wraps ErrBatchFailed so callers that only check err still see failure.
 // A builder can be executed once; calls after execution begins return
-// ErrBatchDone.
+// ErrBatchDone. With Config.DurableCommit the group is made durable (one store
+// DurableFlush) before Execute returns; a flush failure is a whole-batch error
+// wrapping ErrCommitNotDurable (nil result) for a group that is committed.
 func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	if err := b.lockOpen(); err != nil {
 		return nil, err
@@ -681,6 +683,15 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	unlocked = true
 	b.mu.Unlock()
 	builderUnlocked = true
+
+	// Config.DurableCommit: make the group durable before returning success.
+	// A failure is a whole-batch error like a failed group commit above (the
+	// ingest applier then fails every submitter of the group).
+	if groupErr == nil {
+		if err := b.g.flushDurableCommit(); err != nil {
+			groupErr = fmt.Errorf("graph: durable commit: %w", err)
+		}
+	}
 
 	// Dispatch buffered events outside all locks as one publisher batch so
 	// async buses preserve priority order across the full Execute result.

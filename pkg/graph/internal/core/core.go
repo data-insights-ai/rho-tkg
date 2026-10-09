@@ -164,6 +164,10 @@ type Core struct {
 	// allowExactErasure gates the bounded legal-erasure admin door. Off by
 	// default; unlike Reset, scope is explicit and fail-closed.
 	allowExactErasure bool
+	// durableFlush is set when Config.DurableCommit is on: every commit group
+	// (GraphTx.Commit, Batch.Execute) calls it once before returning success
+	// (flushDurableCommit). Nil = off, no flush on commit.
+	durableFlush storepkg.DurableFlushCapability
 	// allowTxBackfill enables the privileged transaction-time backfill door:
 	// when true, create doors honor a caller-supplied tkg_tx_from (or
 	// AddWithTx) instead of stamping c.now(), so a re-ingest can faithfully
@@ -1803,6 +1807,18 @@ func New(config Config) (*Core, error) {
 	}
 
 	c.store = store
+	if config.DurableCommit {
+		// The flag promises durability; a store without stable storage
+		// declines instead of turning it into a silent no-op.
+		df, ok := store.(storepkg.DurableFlushCapability)
+		if !ok || !df.DurableFlushSupported() {
+			if config.Store == nil {
+				_ = store.Close()
+			}
+			return nil, fmt.Errorf("graph: Config.DurableCommit needs a store with stable storage (a disk badger, tiered or sharded store): %w", storepkg.ErrCapabilityNotSupported)
+		}
+		c.durableFlush = df
+	}
 	c.preEncodedPut = nativePreEncodedPut(store)
 	// Ownership-transfer put (lever #2) is independent of the §4.5 pre-encode
 	// gate (which is badger-only): any store implementing the capability honors
