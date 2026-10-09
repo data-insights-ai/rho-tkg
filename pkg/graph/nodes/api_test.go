@@ -35,6 +35,8 @@ func TestAPINilReceiversReturnErrNilGraphOrZero(t *testing.T) {
 		{name: "UpdateInPlaceWithContext", run: func() error { _, err := nilAPI.UpdateInPlace(ctx, id, nil); return err }},
 		{name: "Delete", run: func() error { return nilAPI.Delete(context.Background(), id) }},
 		{name: "DeleteWithContext", run: func() error { return nilAPI.Delete(ctx, id) }},
+		{name: "DeleteWithTx", run: func() error { return nilAPI.DeleteWithTx(ctx, id, 1000) }},
+		{name: "UpdateWithTx", run: func() error { _, err := nilAPI.UpdateWithTx(ctx, id, nil, 1000); return err }},
 		{name: "Import", run: func() error { _, err := nilAPI.Import(ctx, id, []string{"Node"}, nil); return err }},
 		{name: "AddByIDIfAbsent", run: func() error { _, _, err := nilAPI.AddByIDIfAbsent(ctx, id, []string{"Node"}, nil); return err }},
 		{name: "GetOrCreateByKey", run: func() error { _, _, err := nilAPI.GetOrCreateByKey(ctx, "Node", "name", "Ada", nil); return err }},
@@ -136,6 +138,8 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 		{name: "UpdateInPlaceWithContext", run: func() error { _, err := api.UpdateInPlace(ctx, id, nil); return err }},
 		{name: "Delete", run: func() error { return api.Delete(context.Background(), id) }},
 		{name: "DeleteWithContext", run: func() error { return api.Delete(ctx, id) }},
+		{name: "DeleteWithTx", run: func() error { return api.DeleteWithTx(ctx, id, 1000) }},
+		{name: "UpdateWithTx", run: func() error { _, err := api.UpdateWithTx(ctx, id, nil, 1000); return err }},
 		{name: "Import", run: func() error { _, err := api.Import(ctx, id, []string{"Node"}, nil); return err }},
 		{name: "AddByIDIfAbsent", run: func() error { _, _, err := api.AddByIDIfAbsent(ctx, id, []string{"Node"}, nil); return err }},
 		{name: "GetOrCreateByKey", run: func() error { _, _, err := api.GetOrCreateByKey(ctx, "Node", "name", "Ada", nil); return err }},
@@ -198,7 +202,7 @@ func TestAPIForwardsEveryMethod(t *testing.T) {
 	wantCalls := []string{
 		"Add", "Add", "AddWithTx", "Get", "Get", "Lend", "GetByIDs",
 		"Update", "Update", "UpdateInPlace", "UpdateInPlace",
-		"Delete", "Delete", "Import", "AddByIDIfAbsent", "GetOrCreateByKey", "All", "ForEach", "ForEach", "ByLabel", "ByLabelAndProperty", "ByLabelAndProperties",
+		"Delete", "Delete", "DeleteWithTx", "UpdateWithTx", "Import", "AddByIDIfAbsent", "GetOrCreateByKey", "All", "ForEach", "ForEach", "ByLabel", "ByLabelAndProperty", "ByLabelAndProperties",
 		"Count", "CountByLabel", "SetProperty", "DeleteProperty",
 		"CompareAndSetProperty", "CompareAndSetProperty",
 		"AddLabel", "RemoveLabel", "CloseVersion", "History", "VersionAfter", "VersionBefore",
@@ -234,6 +238,9 @@ type nodeOpsSpy struct {
 	lastLabel string
 	lastKey   string
 	lastOpts  storepkg.QueryOpts
+	lastTx    types.Instant
+
+	lastUpdates map[string]any
 }
 
 func (s *nodeOpsSpy) record(name string) { s.calls = append(s.calls, name) }
@@ -313,6 +320,21 @@ func (s *nodeOpsSpy) Delete(ctx context.Context, id types.NodeID) error {
 	s.record("Delete")
 	s.lastID = id
 	return s.err
+}
+
+func (s *nodeOpsSpy) DeleteWithTx(ctx context.Context, id types.NodeID, txTo types.Instant) error {
+	s.record("DeleteWithTx")
+	s.lastID = id
+	s.lastTx = txTo
+	return s.err
+}
+
+func (s *nodeOpsSpy) UpdateWithTx(ctx context.Context, id types.NodeID, updates map[string]any, txFrom types.Instant) (*types.Node, error) {
+	s.record("UpdateWithTx")
+	s.lastID = id
+	s.lastTx = txFrom
+	s.lastUpdates = updates
+	return nil, s.err
 }
 
 func (s *nodeOpsSpy) DeleteWithContext(ctx context.Context, id types.NodeID) error {
@@ -612,5 +634,38 @@ func TestCountByLabelAtForwards(t *testing.T) {
 	}
 	if len(spy.calls) != 1 || spy.calls[0] != "CountByLabelAt" {
 		t.Fatalf("calls = %v", spy.calls)
+	}
+}
+
+// The caller-instant doors must hand the instant, id and update map to the ops
+// verbatim. Catches a facade that drops the instant (forwards 0, which the
+// core reads as invalid), swaps it for the clock, forwards to the plain
+// Delete/Update, or rewrites the update map (e.g. injecting a reserved
+// tkg_tx_from/tkg_tx_to property instead of passing the argument).
+func TestAPIWithTxDoorsForwardInstantVerbatim(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name string
+		at   types.Instant
+	}{{"min", 1}, {"typical", 1767268800000}, {"negative passes through to core validation", -7}} {
+		ops := &nodeOpsSpy{}
+		api := New(ops)
+		if err := api.DeleteWithTx(ctx, 42, tc.at); err != nil {
+			t.Fatalf("%s: DeleteWithTx: %v", tc.name, err)
+		}
+		if len(ops.calls) != 1 || ops.calls[0] != "DeleteWithTx" || ops.lastID != 42 || ops.lastTx != tc.at {
+			t.Fatalf("%s: DeleteWithTx forwarded calls=%v id=%v at=%d; want [DeleteWithTx] 42 %d", tc.name, ops.calls, ops.lastID, ops.lastTx, tc.at)
+		}
+		upd := map[string]any{"w": int64(2)}
+		if _, err := api.UpdateWithTx(ctx, 44, upd, tc.at); err != nil {
+			t.Fatalf("%s: UpdateWithTx: %v", tc.name, err)
+		}
+		if len(ops.calls) != 2 || ops.calls[1] != "UpdateWithTx" || ops.lastID != 44 || ops.lastTx != tc.at {
+			t.Fatalf("%s: UpdateWithTx forwarded calls=%v id=%v at=%d; want [.. UpdateWithTx] 44 %d", tc.name, ops.calls, ops.lastID, ops.lastTx, tc.at)
+		}
+		if len(ops.lastUpdates) != 1 || ops.lastUpdates["w"] != int64(2) {
+			t.Fatalf("%s: UpdateWithTx forwarded updates %v; want exactly {w:2}", tc.name, ops.lastUpdates)
+		}
 	}
 }

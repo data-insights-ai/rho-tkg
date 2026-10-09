@@ -476,6 +476,16 @@ func (b *BatchBuilder) DeleteNode(id types.NodeID) error {
 	return nil
 }
 
+// DeleteNodeWithTx — RED STUB: routed to the plain queue door until the seam lands.
+func (b *BatchBuilder) DeleteNodeWithTx(id types.NodeID, txTo types.Instant) error {
+	return b.DeleteNode(id)
+}
+
+// UpdateNodeWithTx — RED STUB: routed to the plain queue door until the seam lands.
+func (b *BatchBuilder) UpdateNodeWithTx(id types.NodeID, updates map[string]any, txFrom types.Instant) error {
+	return b.UpdateNode(id, updates)
+}
+
 // DeleteRelationship queues a relationship for deletion.
 // Returns ErrBatchDone if Execute has already started, or ErrGraphClosed if
 // the underlying graph has been closed since the builder was constructed.

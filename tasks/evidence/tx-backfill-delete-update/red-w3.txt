@@ -1,0 +1,59 @@
+# W3 RED on 64b04c2 + tests: node doors stubbed to the plain path (RED STUB bodies in node_delete.go, node_update.go, batch_queue.go, ingest.go, tx_mutations_node_withtx.go)
+# go test  ./pkg/graph/internal/core/ ./pkg/graph/ ./pkg/graph/nodes/ -run 'TestTxBackfillNode_|TestNodesWithTx_|TestAPIWithTxDoorsForwardInstantVerbatim|TestAPIForwardsEveryMethod|TestAPINilReceivers' -v
+## top-level results
+--- FAIL: TestTxBackfillNode_PrimaryCacheStale (0.47s)
+--- FAIL: TestTxBackfillNode_ReplicaDropsNode (0.19s)
+--- FAIL: TestTxBackfillNode_CascadeForeignStub (0.14s)
+--- FAIL: TestTxBackfillNode_Duplicates (0.15s)
+--- FAIL: TestTxBackfillNode_GateOff (0.29s)
+--- FAIL: TestTxBackfillNode_RaceClock (0.29s)
+--- FAIL: TestTxBackfillNode_InvalidInstant (0.35s)
+--- FAIL: TestTxBackfillNode_ScheduledCloseAfterT (0.45s)
+--- FAIL: TestTxBackfillNode_CloseCollision (0.58s)
+--- FAIL: TestTxBackfillNode_OrderEqualReversed (0.59s)
+--- FAIL: TestTxBackfillNode_OrderValidStart (0.72s)
+--- FAIL: TestTxBackfillNode_UpdateStamps (0.92s)
+--- FAIL: TestTxBackfillNode_NoopUpdateRefuses (0.93s)
+--- FAIL: TestTxBackfillNode_TxRollbackEquiv (0.95s)
+--- FAIL: TestTxBackfillNode_DeleteIgnoresT (0.95s)
+--- PASS: TestTxBackfillNode_PlainDoorsUnchanged (1.60s)
+--- FAIL: TestTxBackfillNode_CascadeOrder (1.80s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	2.511s
+--- FAIL: TestNodesWithTx_FacadeRefusesAndStampsT (0.06s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.086s
+--- PASS: TestAPINilReceiversReturnErrNilGraphOrZero (0.00s)
+--- PASS: TestAPIWithTxDoorsForwardInstantVerbatim (0.00s)
+--- PASS: TestAPIForwardsEveryMethod (0.00s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/nodes	0.008s
+FAIL
+
+## subtest counts
+FAIL subtests: 284
+PASS subtests: 72
+
+## first failure message per test site
+nodes_withtx_test.go:57: DeleteWithTx(t=0) err = <nil>; want ErrInvalidTxFrom, ErrTxOrder=false
+tx_backfill_node_doors_test.go:217: [standalone/DeleteWithTx t=1791526914214] err = <nil>; want ErrTxBackfillDisabled only
+tx_backfill_node_doors_test.go:267: [standalone/DeleteWithTx/zero] err = <nil>; want ErrInvalidTxFrom only
+tx_backfill_node_doors_test.go:323: [standalone/DeleteWithTx t=1791519713215 TxFrom=1791519713215] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+tx_backfill_node_doors_test.go:373: [standalone/DeleteWithTx t=1791519713235] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+tx_backfill_node_doors_test.go:401: [standalone/DeleteWithTx t=1791519713264 ValidFrom=1791519713314] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+tx_backfill_node_doors_test.go:422: [standalone/DeleteWithTx t=1791519713264 derived=1791526913214] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+tx_backfill_node_doors_test.go:456: [standalone/DeleteWithTx t=1791530523264 UpdatedAt=1791530523314] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+tx_backfill_node_doors_test.go:491: node tombstone {ValidFrom:1791516113214 ValidTo:1791526913234 TxFrom:1791519713214 TxTo:1791526913234 CreatedAt:0 UpdatedAt:0 DeletedAt:1791526913234 CreatedBy: UpdatedBy: baseEntityID:0}; want TxFrom=1791519713214 TxTo = DeletedAt = ValidTo = 1791519714214
+tx_backfill_node_doors_test.go:582: chain prev {ValidFrom:1791516113214 ValidTo:0 TxFrom:1791519713214 TxTo:1791526913224 CreatedAt:0 UpdatedAt:0 DeletedAt:0 CreatedBy: UpdatedBy: baseEntityID:0} cur {ValidFrom:0 ValidTo:0 TxFrom:1791526913224 TxTo:0 CreatedAt:0 UpdatedAt:1791526913224 DeletedAt:0 C
+tx_backfill_node_doors_test.go:639: [t == ValidTo] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+tx_backfill_node_doors_test.go:691: [t=1791530513713 close=1791530513714] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+tx_backfill_node_doors_test.go:773: [rel_created_after_t] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+tx_backfill_node_doors_test.go:789: cascaded rel 796305431454319616 tombstone {ValidFrom:1791516113215 ValidTo:1791526913229 TxFrom:1791519713215 TxTo:1791526913229 CreatedAt:0 UpdatedAt:0 DeletedAt:1791526913229 CreatedBy: UpdatedBy: baseEntityID:0}; want TxTo = DeletedAt = ValidTo = 1791519714215
+tx_backfill_node_doors_test.go:872: [same t map[w:2]] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+tx_backfill_node_doors_test.go:899: [nil] err = <nil>; want ErrTxOrder (wrapping ErrInvalidTxFrom)
+tx_backfill_node_doors_test.go:993: UpdateWithTx(t=1791526913218) stamped TxFrom 1791526913222
+tx_backfill_node_txcache_test.go:111: inside the tx the delete stamped 1791526913226; want t = 1791519714214
+tx_backfill_node_txcache_test.go:136: committed twin vs standalone door: graphs not equivalent (want 1147 body bytes, got 1147)
+tx_backfill_node_txcache_test.go:244: the door never reached the backfill gate (hook did not run)
+tx_backfill_node_txcache_test.go:313: replica pin after the delete: members [796305425158635520 796305425159815168], want exactly [796305425159815168]
+tx_backfill_node_txcache_test.go:327: replica k at pin after the update at t = 1; want 7
+tx_backfill_node_txcache_test.go:376: node tombstone TxTo 1791526913348; want 1791519714337

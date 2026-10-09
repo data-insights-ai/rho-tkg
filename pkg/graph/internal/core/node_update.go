@@ -43,6 +43,11 @@ func (n *NodeOps) Update(ctx context.Context, id types.NodeID, updates map[strin
 	return node, err
 }
 
+// UpdateWithTx — RED STUB: routed to the plain door until the seam lands.
+func (n *NodeOps) UpdateWithTx(ctx context.Context, id types.NodeID, updates map[string]any, txFrom types.Instant) (*types.Node, error) {
+	return n.Update(ctx, id, updates)
+}
+
 // updateNodeInternal is the lock-free implementation of NodeOps.Update.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 func (c *Core) updateNodeInternal(ctx context.Context, id types.NodeID, updates map[string]any) (*types.Node, bool, error) {

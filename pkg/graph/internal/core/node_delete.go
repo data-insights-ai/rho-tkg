@@ -106,6 +106,11 @@ func (n *NodeOps) Delete(ctx context.Context, id types.NodeID) error {
 	return err
 }
 
+// DeleteWithTx — RED STUB: routed to the plain door until the seam lands.
+func (n *NodeOps) DeleteWithTx(ctx context.Context, id types.NodeID, txTo types.Instant) error {
+	return n.Delete(ctx, id)
+}
+
 // deleteNodeInternal is the lock-free implementation of NodeOps.Delete.
 // Callers must hold c.mu.RLock (standalone) or c.mu.Lock (tx/batch).
 //

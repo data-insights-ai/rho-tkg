@@ -826,6 +826,16 @@ func (s *Session) DeleteNode(id types.NodeID) error {
 	return s.b.DeleteNode(id)
 }
 
+// DeleteNodeWithTx — RED STUB: routed to the plain door until the seam lands.
+func (s *Session) DeleteNodeWithTx(id types.NodeID, txTo types.Instant) error {
+	return s.DeleteNode(id)
+}
+
+// UpdateNodeWithTx — RED STUB: routed to the plain door until the seam lands.
+func (s *Session) UpdateNodeWithTx(id types.NodeID, updates map[string]any, txFrom types.Instant) error {
+	return s.UpdateNode(id, updates)
+}
+
 // DeleteRelationship accumulates a relationship delete.
 func (s *Session) DeleteRelationship(id types.RelID) error {
 	if err := s.lockOpen(); err != nil {
