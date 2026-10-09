@@ -6,6 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Ingest session interval corrections: `Session.SetNodeVersionInterval` /
+  `Session.SetRelVersionInterval` grow a valid interval through the ingest session.** Requested by ai-soc (a burst fact `[vs, ve)` grows to `[vs, ve')` as new
+  events arrive; the producer already writes through the session and had to leave it for the
+  standalone `Temporal()` door to record the correction). The two methods queue the same
+  append-only cascade `Temporal().SetNodeVersionInterval` / `SetRelVersionInterval` and the
+  `BatchBuilder` doors run, and are applied by the same kernel in strong and concurrent mode: the
+  correction is expressed by fresh rows stamped `TxFrom = now`, so `NodeAtTx` / `RelAtTx` pinned
+  before the apply still see `[vs, ve)` and the old values, and a pin after it sees `[vs, ve')`
+  with the new ones. `props` is a patch over the state valid at each instant (nil keeps every
+  property) and is copied at queue time. `Get` keeps returning the head row, and `RelAsOf` /
+  `NodeAsOf` at a pin after the correction still answer that head row; the appended rows appear in
+  `History` and in `*AtTx` reads. Refusals: an interval with `validFrom == 0` or `validTo != 0 &&
+  validFrom >= validTo` returns `ErrInvalidTimeRange` at queue time and a zero or negative id an
+  `ErrInvalidStoreMutation` error, both with nothing queued; an unknown id fails its own group at
+  apply with `ErrNodeNotFound` / `ErrRelNotFound` (the group's `Submit` / `WaitApplied` result)
+  while sibling groups commit; a closed or nil session returns `ErrIngestClosed` /
+  `ErrNilSession`. Tests: `TestSessionSetRelVersionInterval_TwoPhase` and the node twin (memory,
+  badger, tiered, sharded; strong sync, strong async, concurrent), `TestSessionSetVersionInterval_*`,
+  `TestSessionIntervalDoors_MatchStandaloneAndBatch`. Known gap, on all four doors alike
+  (`Temporal()`, `GraphTx`, `BatchBuilder`, `Session`): `SetNodeVersionInterval` does not check
+  unique constraints, so its props patch can give a node a value another node holds
+  (`tasks/backlog.md` item 12).
+
+### Changed
+
+- **Comments and docs only.** The change-feed comment no longer says a rolled-back transaction appears as forward plus
+  compensating operations: since the scoped log a rolled-back or uncommitted `GraphTx` emits no
+  records (and `TxChangeLogScope` is implemented by tiered and sharded as well). The op-log
+  section of `docs/architecture.md` says so; lesson 55 notes it is superseded for `GraphTx`.
+- `CreateRelTemporal` is documented as declined on tiered only (sharded implements it).
+- `CreateUnique` lists the doors its enforcement covers: the standalone node doors, the batch,
+  `GraphTx` and the ingest session in both modes, and says `SetNodeVersionInterval` is not checked.
+
 ## [4.43.0] - 2026-10-08
 
 Minor release: the sigma-tkgd store requests, round 3 (Cypher port onto the shared IR):

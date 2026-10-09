@@ -1,0 +1,21 @@
+--- FAIL: TestSessionSetVersionInterval_GraphClosed (0.00s)
+    ingest_interval_doors_test.go:227: SetNodeVersionInterval after graph close = stub: session interval door not implemented, want ErrGraphClosed
+    ingest_interval_doors_test.go:230: SetRelVersionInterval after graph close = stub: session interval door not implemented, want ErrGraphClosed
+--- FAIL: TestSessionSetVersionInterval_QueueErrorsCore (0.00s)
+    ingest_interval_doors_test.go:186: from>=to: SetNodeVersionInterval = stub: session interval door not implemented, want graph: invalid time range
+    ingest_interval_doors_test.go:189: from>=to: SetRelVersionInterval = stub: session interval door not implemented, want graph: invalid time range
+    ingest_interval_doors_test.go:186: from zero: SetNodeVersionInterval = stub: session interval door not implemented, want graph: invalid time range
+    ingest_interval_doors_test.go:189: from zero: SetRelVersionInterval = stub: session interval door not implemented, want graph: invalid time range
+    ingest_interval_doors_test.go:186: zero id: SetNodeVersionInterval = stub: session interval door not implemented, want graph: invalid store mutation
+    ingest_interval_doors_test.go:189: zero id: SetRelVersionInterval = stub: session interval door not implemented, want graph: invalid store mutation
+    ingest_interval_doors_test.go:186: negative id: SetNodeVersionInterval = stub: session interval door not implemented, want graph: invalid store mutation
+    ingest_interval_doors_test.go:189: negative id: SetRelVersionInterval = stub: session interval door not implemented, want graph: invalid store mutation
+    ingest_interval_doors_test.go:199: closed SetNodeVersionInterval = stub: session interval door not implemented, want ErrIngestClosed
+    ingest_interval_doors_test.go:202: closed SetRelVersionInterval = stub: session interval door not implemented, want ErrIngestClosed
+    ingest_interval_doors_test.go:206: nil SetNodeVersionInterval = stub: session interval door not implemented, want ErrNilSession
+    ingest_interval_doors_test.go:209: nil SetRelVersionInterval = stub: session interval door not implemented, want ErrNilSession
+--- FAIL: TestSessionIntervalDoors_MatchStandaloneAndBatch (0.00s)
+    ingest_interval_doors_test.go:128: session-strong-sync: stub: session interval door not implemented
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.018s
+FAIL
