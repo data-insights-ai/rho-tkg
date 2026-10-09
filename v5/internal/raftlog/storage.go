@@ -52,21 +52,27 @@ type Config struct {
 	Create      bool
 	Limits      Limits
 	Application ApplicationPolicy
+	Transfer    ApplicationTransferConfig
 }
 
 // Store implements durable raft.Storage with bounded reads and no per-entry RAM index.
 // Fatal Pebble WAL/storage errors terminate the embedding process; this candidate
 // fail-stop tradeoff requires evaluation before engine selection.
 type Store struct {
-	mu                sync.Mutex
-	db                *pebble.DB
-	limits            Limits
-	meta              metadata
-	poison            error
-	canInitialize     bool
-	closed            bool
-	views, viewBytes  int
-	applicationPolicy ApplicationPolicy
+	mu                            sync.Mutex
+	db                            *pebble.DB
+	limits                        Limits
+	meta                          metadata
+	poison                        error
+	canInitialize                 bool
+	closed                        bool
+	views, viewBytes              int
+	applicationPolicy             ApplicationPolicy
+	applicationExports            map[*ApplicationExport]struct{}
+	applicationImport             *ApplicationImport
+	pinnedApplicationBytes        uint64
+	applicationVerifier           bool
+	applicationVerifierImageBytes int
 }
 
 var _ raft.Storage = (*Store)(nil)
@@ -89,6 +95,9 @@ func Open(c Config) (*Store, error) {
 	if err := c.Application.validate(c.Limits); err != nil {
 		return nil, err
 	}
+	if err := c.Transfer.validate(c.Application); err != nil {
+		return nil, err
+	}
 	if c.FS == nil {
 		c.FS = vfs.Default
 	}
@@ -99,7 +108,7 @@ func Open(c Config) (*Store, error) {
 	s := &Store{db: db, limits: c.Limits, canInitialize: c.Create, applicationPolicy: c.Application}
 	fail := func(err error) (*Store, error) { return nil, errors.Join(err, db.Close()) }
 	if c.Create {
-		s.meta = metadata{Hard: &pb.HardState{}, Conf: &pb.ConfState{}, Snap: &pb.Snapshot{}, ImageHash: sha256.Sum256(nil), SnapHash: sha256.Sum256(nil), App: applicationMetadata{Policy: c.Application}}
+		s.meta = metadata{Hard: &pb.HardState{}, Conf: &pb.ConfState{}, Snap: &pb.Snapshot{}, ImageHash: sha256.Sum256(nil), SnapHash: sha256.Sum256(nil), App: applicationMetadata{Policy: c.Application}, Transfer: c.Transfer}
 		b := db.NewBatch()
 		_ = b.Set(imageKey, nil, nil)
 		_ = b.Set(snapshotKey, nil, nil)
@@ -119,7 +128,7 @@ func Open(c Config) (*Store, error) {
 		if err := errors.Join(decodeErr, closeErr); err != nil {
 			return fail(err)
 		}
-		if m.App.Policy != c.Application {
+		if m.App.Policy != c.Application || m.Transfer != c.Transfer {
 			return fail(ErrInvalid)
 		}
 		if err := s.validate(m); err != nil {
@@ -144,6 +153,11 @@ func Open(c Config) (*Store, error) {
 			if err != nil || hash != m.LastHash || last.GetTerm() < first.GetTerm() || last.GetTerm() > m.Hard.GetTerm() {
 				return fail(errors.Join(ErrCorrupt, err))
 			}
+		}
+	}
+	if c.Transfer.enabled() && !c.Create {
+		if err := s.cleanupApplicationImport(); err != nil {
+			return fail(err)
 		}
 	}
 	return s, nil
@@ -178,6 +192,9 @@ func validateConf(cs *pb.ConfState, last uint64) error {
 }
 
 func (s *Store) validate(m metadata) error {
+	if err := m.Transfer.validate(m.App.Policy); err != nil {
+		return err
+	}
 	if err := s.validateApplicationMeta(m); err != nil {
 		return err
 	}
@@ -272,7 +289,7 @@ func (s *Store) Initialize(voters []uint64, image []byte) error {
 	if err := validateConf(cs, 1); err != nil {
 		return err
 	}
-	m := metadata{App: s.meta.App, Base: 1, BaseTerm: 1, Last: 1, Applied: 1, Hard: &pb.HardState{Term: new(uint64(1)), Commit: new(uint64(1))}, Conf: cs, ImageBytes: uint64(len(image)), SnapBytes: uint64(len(image)), ImageHash: sha256.Sum256(image), SnapHash: sha256.Sum256(image), Snap: &pb.Snapshot{Metadata: &pb.SnapshotMetadata{Index: new(uint64(1)), Term: new(uint64(1)), ConfState: proto.Clone(cs).(*pb.ConfState)}}}
+	m := metadata{App: s.meta.App, Transfer: s.meta.Transfer, Base: 1, BaseTerm: 1, Last: 1, Applied: 1, Hard: &pb.HardState{Term: new(uint64(1)), Commit: new(uint64(1))}, Conf: cs, ImageBytes: uint64(len(image)), SnapBytes: uint64(len(image)), ImageHash: sha256.Sum256(image), SnapHash: sha256.Sum256(image), Snap: &pb.Snapshot{Metadata: &pb.SnapshotMetadata{Index: new(uint64(1)), Term: new(uint64(1)), ConfState: proto.Clone(cs).(*pb.ConfState)}}}
 	b := s.db.NewBatch()
 	if err := b.Set(imageKey, image, nil); err != nil {
 		_ = b.Close()
@@ -930,7 +947,17 @@ func (s *Store) Close() error {
 		return nil
 	}
 	s.closed = true
-	return s.db.Close()
+	var err error
+	for e := range s.applicationExports {
+		err = errors.Join(err, e.closeLocked())
+	}
+	if i := s.applicationImport; i != nil {
+		i.closed = true
+		i.manifest.Image = nil
+		i.state.last = nil
+		s.applicationImport = nil
+	}
+	return errors.Join(err, s.db.Close())
 }
 
 // Limits returns this store's immutable adapter configuration.

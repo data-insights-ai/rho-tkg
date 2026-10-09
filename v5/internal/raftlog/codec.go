@@ -83,12 +83,16 @@ type metadata struct {
 	Conf                                                                     *pb.ConfState
 	Snap                                                                     *pb.Snapshot
 	App                                                                      applicationMetadata
+	Transfer                                                                 ApplicationTransferConfig
 }
 
 func encodeMeta(m metadata) ([]byte, error) {
 	magic := "RLM2"
 	if m.App.Policy.Enabled() {
 		magic = "RLM3"
+	}
+	if m.Transfer.enabled() {
+		magic = "RLM4"
 	}
 	b := append([]byte(magic), make([]byte, 32)...)
 	for _, n := range []uint64{m.Base, m.BaseTerm, m.Last, m.Applied, m.LogBytes, m.LogCount, m.ImageBytes, m.SnapBytes} {
@@ -109,6 +113,9 @@ func encodeMeta(m metadata) ([]byte, error) {
 	if m.App.Policy.Enabled() {
 		b = appendApplicationMeta(b, m.App)
 	}
+	if m.Transfer.enabled() {
+		b = appendTransferConfig(b, m.Transfer)
+	}
 	h := sha256.Sum256(b[36:])
 	copy(b[4:36], h[:])
 	return b, nil
@@ -116,10 +123,11 @@ func encodeMeta(m metadata) ([]byte, error) {
 
 func decodeMeta(b []byte, l Limits) (metadata, error) {
 	m := metadata{Hard: &pb.HardState{}, Conf: &pb.ConfState{}, Snap: &pb.Snapshot{}}
-	if len(b) < 252 || len(b) > 65536 || (string(b[:4]) != "RLM2" && string(b[:4]) != "RLM3") {
+	if len(b) < 252 || len(b) > 65536 || (string(b[:4]) != "RLM2" && string(b[:4]) != "RLM3" && string(b[:4]) != "RLM4") {
 		return m, ErrCorrupt
 	}
-	version3 := string(b[:4]) == "RLM3"
+	version4 := string(b[:4]) == "RLM4"
+	version3 := string(b[:4]) == "RLM3" || version4
 	h := sha256.Sum256(b[36:])
 	if !bytes.Equal(b[4:36], h[:]) {
 		return m, ErrCorrupt
@@ -158,6 +166,13 @@ func decodeMeta(b []byte, l Limits) (metadata, error) {
 		}
 		if !m.App.Policy.Enabled() {
 			return m, ErrCorrupt
+		}
+	}
+	if version4 {
+		var err error
+		m.Transfer, b, err = decodeTransferConfig(b)
+		if err != nil {
+			return m, err
 		}
 	}
 	if len(b) != 0 || m.ImageBytes > unsignedLimit(l.MaxSnapshotBytes) || m.SnapBytes > unsignedLimit(l.MaxSnapshotBytes) || len(m.Snap.GetData()) != 0 {
