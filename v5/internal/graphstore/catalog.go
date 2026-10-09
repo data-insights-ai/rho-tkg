@@ -104,11 +104,12 @@ func (c *Catalog) Root() (Root, error) {
 }
 
 type reader struct {
-	c           *Catalog
-	ctx         context.Context
-	stage       *Stage
-	pending     map[string]raftlog.KV
-	rows, bytes int
+	c                 *Catalog
+	ctx               context.Context
+	stage             *Stage
+	pending           map[string]raftlog.KV
+	rows, bytes       int
+	maxRows, maxBytes int // optional operation caps; zero preserves catalog policy
 }
 
 func (c *Catalog) reader(ctx context.Context) (*reader, error) {
@@ -119,6 +120,12 @@ func (c *Catalog) reader(ctx context.Context) (*reader, error) {
 }
 func (q *reader) get(key []byte) ([]byte, bool, error) {
 	l := q.c.limits
+	if q.maxRows > 0 {
+		l.MaxReadRows = min(l.MaxReadRows, q.maxRows)
+	}
+	if q.maxBytes > 0 {
+		l.MaxReadBytes = min(l.MaxReadBytes, q.maxBytes)
+	}
 	if err := q.ctx.Err(); err != nil {
 		return nil, false, err
 	}
@@ -135,7 +142,7 @@ func (q *reader) get(key []byte) ([]byte, bool, error) {
 		row, found = q.stage.writes[string(key)]
 	}
 	if !found {
-		maxBytes := min(l.MaxRecordBytes+len(key), l.MaxReadBytes-q.bytes-64)
+		maxBytes := min(l.MaxRecordBytes+len(key), l.MaxReadBytes-q.bytes-64, q.c.view.ReadLimits().Bytes)
 		var err error
 		row, found, err = q.c.view.Get(q.ctx, key, maxBytes)
 		if err != nil {
@@ -331,11 +338,7 @@ func (q *reader) value(ref ValueRef) (ValueEntry, []byte, bool, error) {
 			d := s.Axis().Descriptor()
 			extra += 27 + len(d.Reference) + len(d.CanonicalUnit)
 		}
-		if extra > q.c.limits.MaxReadBytes-q.bytes {
-			err = ErrResourceLimit
-		} else {
-			q.bytes += extra
-		}
+		err = q.materialize(extra)
 	}
 	return entry, key, err == nil, err
 }
@@ -811,7 +814,11 @@ func callerError(err error) error {
 }
 
 func (q *reader) materialize(bytes int) error {
-	if bytes < 0 || bytes > q.c.limits.MaxReadBytes-q.bytes {
+	limit := q.c.limits.MaxReadBytes
+	if q.maxBytes > 0 {
+		limit = min(limit, q.maxBytes)
+	}
+	if bytes < 0 || bytes > limit-q.bytes {
 		return ErrResourceLimit
 	}
 	q.bytes += bytes
