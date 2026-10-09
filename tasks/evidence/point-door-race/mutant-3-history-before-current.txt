@@ -1,0 +1,92 @@
+diff --git a/pkg/graph/internal/core/temporal.go b/pkg/graph/internal/core/temporal.go
+index bc46e66..c0b6588 100644
+--- a/pkg/graph/internal/core/temporal.go
++++ b/pkg/graph/internal/core/temporal.go
+@@ -1235,14 +1235,14 @@ func (c *Core) findNodeVersionMatchingDuring(id types.NodeID, start, end types.I
+ // Callers must resolve end == 0 to a concrete bound via resolveOpenEndInstant
+ // before invoking.
+ func (c *Core) findNodeVersionMatchingDuringTx(id types.NodeID, start, end, txAt types.Instant, pred func(*types.Node) bool) (*types.Node, error) {
+-	current, err := c.getCurrentNode(id)
+-	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
++	history, err := c.getNodeHistory(id)
++	if err != nil {
+ 		return nil, err
+ 	}
+ 	c.afterCurrentRead(int64(id))
+ 
+-	history, err := c.getNodeHistory(id)
+-	if err != nil {
++	current, err := c.getCurrentNode(id)
++	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
+ 		return nil, err
+ 	}
+ 
+--- FAIL: TestPointDoorRace_MoveBetweenChainReads (0.78s)
+    --- FAIL: TestPointDoorRace_MoveBetweenChainReads/memory/node (0.00s)
+        point_door_race_move_test.go:172: NodesDuringTx/Update/prior=false with the move between the chain reads:
+            got  "" (<nil>)
+            want "v0 x=0 vf=1000 vt=0 tx=1791567231798"
+        point_door_race_move_test.go:172: NodesDuringTx/CloseVersion/prior=false with the move between the chain reads:
+            got  "" (<nil>)
+            want "v0 x=0 vf=1000 vt=0 tx=1791567231808"
+        point_door_race_move_test.go:172: NodesDuringTx/Delete/prior=false with the move between the chain reads:
+            got  "" (<nil>)
+            want "v0 x=0 vf=1000 vt=0 tx=1791567231818"
+        point_door_race_move_test.go:172: NodesDuringTx/SetVersionInterval/prior=false with the move between the chain reads:
+            got  "" (<nil>)
+            want "v0 x=0 vf=1000 vt=0 tx=1791567231826"
+    --- FAIL: TestPointDoorRace_MoveBetweenChainReads/badger/node (0.01s)
+        point_door_race_move_test.go:172: NodesDuringTx/Update/prior=false with the move between the chain reads:
+            got  "" (<nil>)
+            want "v0 x=0 vf=1000 vt=0 tx=1791567231803"
+        point_door_race_move_test.go:172: NodesDuringTx/CloseVersion/prior=false with the move between the chain reads:
+            got  "" (<nil>)
+            want "v0 x=0 vf=1000 vt=0 tx=1791567231813"
+        point_door_race_move_test.go:172: NodesDuringTx/Delete/prior=false with the move between the chain reads:
+            got  "" (<nil>)
+            want "v0 x=0 vf=1000 vt=0 tx=1791567231823"
+        point_door_race_move_test.go:172: NodesDuringTx/SetVersionInterval/prior=false with the move between the chain reads:
+            got  "" (<nil>)
+            want "v0 x=0 vf=1000 vt=0 tx=1791567231831"
+    --- FAIL: TestPointDoorRace_MoveBetweenChainReads/badger-disk/node (0.28s)
+        point_door_race_move_test.go:172: NodesDuringTx/Update/prior=false with the move between the chain reads:
+            got  "" (<nil>)
+            want "v0 x=0 vf=1000 vt=0 tx=1791567231933"
+        point_door_race_move_test.go:172: NodesDuringTx/CloseVersion/prior=false with the move between the chain reads:
+            got  "" (<nil>)
+            want "v0 x=0 vf=1000 vt=0 tx=1791567231943"
+        point_door_race_move_test.go:172: NodesDuringTx/Delete/prior=false with the move between the chain reads:
+            got  "" (<nil>)
+            want "v0 x=0 vf=1000 vt=0 tx=1791567231953"
+        point_door_race_move_test.go:172: NodesDuringTx/SetVersionInterval/prior=false with the move between the chain reads:
+            got  "" (<nil>)
+            want "v0 x=0 vf=1000 vt=0 tx=1791567231961"
+    --- FAIL: TestPointDoorRace_MoveBetweenChainReads/tiered/node (0.05s)
+        point_door_race_move_test.go:172: NodesDuringTx/Update/prior=false with the move between the chain reads:
+            got  "" (<nil>)
+            want "v0 x=0 vf=1000 vt=0 tx=1791567232478"
+        point_door_race_move_test.go:172: NodesDuringTx/CloseVersion/prior=false with the move between the chain reads:
+            got  "" (<nil>)
+            want "v0 x=0 vf=1000 vt=0 tx=1791567232488"
+        point_door_race_move_test.go:172: NodesDuringTx/Delete/prior=false with the move between the chain reads:
+            got  "" (<nil>)
+            want "v0 x=0 vf=1000 vt=0 tx=1791567232498"
+        point_door_race_move_test.go:172: NodesDuringTx/SetVersionInterval/prior=false with the move between the chain reads:
+            got  "" (<nil>)
+            want "v0 x=0 vf=1000 vt=0 tx=1791567232506"
+    --- FAIL: TestPointDoorRace_MoveBetweenChainReads/sharded/node (0.02s)
+        point_door_race_move_test.go:172: NodesDuringTx/Update/prior=false with the move between the chain reads:
+            got  "" (<nil>)
+            want "v0 x=0 vf=1000 vt=0 tx=1791567232510"
+        point_door_race_move_test.go:172: NodesDuringTx/CloseVersion/prior=false with the move between the chain reads:
+            got  "" (<nil>)
+            want "v0 x=0 vf=1000 vt=0 tx=1791567232520"
+        point_door_race_move_test.go:172: NodesDuringTx/Delete/prior=false with the move between the chain reads:
+            got  "" (<nil>)
+            want "v0 x=0 vf=1000 vt=0 tx=1791567232530"
+        point_door_race_move_test.go:172: NodesDuringTx/SetVersionInterval/prior=false with the move between the chain reads:
+            got  "" (<nil>)
+            want "v0 x=0 vf=1000 vt=0 tx=1791567232538"
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.815s
+FAIL

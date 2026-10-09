@@ -1,0 +1,94 @@
+diff --git a/pkg/graph/internal/core/txtime.go b/pkg/graph/internal/core/txtime.go
+index f4144c5..5e70dcf 100644
+--- a/pkg/graph/internal/core/txtime.go
++++ b/pkg/graph/internal/core/txtime.go
+@@ -68,19 +68,24 @@ func (c *Core) nodeAsOfLocked(id types.NodeID, txTime types.Instant) (*types.Nod
+ 		return c.nodeCapabilityVisibleAtTxTime(n, txTime), nil
+ 	}
+ 
+-	// Try current node first.
++	histFirst, err := c.getNodeHistory(id)
++	if err != nil {
++		return nil, err
++	}
++	c.afterCurrentRead(int64(id))
+ 	current, err := c.getCurrentNode(id)
+ 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
+ 		return nil, err
+ 	}
+-	c.afterCurrentRead(int64(id))
+ 	if current != nil {
+ 		if tm := current.Temporal(); tm != nil && tm.TxFrom > 0 && tm.TxFrom <= txTime && tm.TxTo == 0 {
+ 			// Fast path: no history row above the current version (versions
+ 			// are dense, version_alloc.go), so nothing can outrank it.
+-			above, err := c.nodeHasHistoryAbove(id, current.Version())
+-			if err != nil {
+-				return nil, err
++			above := false
++			for _, h := range histFirst {
++				if h.Version() > current.Version() {
++					above = true
++				}
+ 			}
+ 			if !above {
+ 				return nodeVisibleAtTxTime(current, txTime), nil
+@@ -92,10 +97,7 @@ func (c *Core) nodeAsOfLocked(id types.NodeID, txTime types.Instant) (*types.Nod
+ 	// the as-of rule (storeutil.SelectAsOfWithCurrent: newest row recorded by
+ 	// the pin, retraction, tombstone life end) that resolveNodeChain
+ 	// concentrates, over history ‖ current with the current row flagged.
+-	hist, err := c.getNodeHistory(id)
+-	if err != nil {
+-		return nil, err
+-	}
++	hist := histFirst
+ 	chain := hist
+ 	if current != nil {
+ 		chain = append(append(make([]*types.Node, 0, len(hist)+1), hist...), current)
+--- FAIL: TestPointDoorRace_MoveBetweenChainReads (0.88s)
+    --- FAIL: TestPointDoorRace_MoveBetweenChainReads/tiered/node (0.08s)
+        point_door_race_move_test.go:172: NodeAsOf/Update/prior=false with the move between the chain reads:
+            got  "" (graph: no entity version recorded at the given transaction time)
+            want "v0 x=0 vf=1000 vt=0 tx=1791567264437"
+        point_door_race_move_test.go:172: NodeAsOf/Update/prior=true with the move between the chain reads:
+            got  "" (graph: no entity version recorded at the given transaction time)
+            want "v1 x=-1 vf=0 vt=0 tx=1791567264442"
+        point_door_race_move_test.go:172: NodeAsOf/CloseVersion/prior=false with the move between the chain reads:
+            got  "" (graph: no entity version recorded at the given transaction time)
+            want "v0 x=0 vf=1000 vt=0 tx=1791567264447"
+        point_door_race_move_test.go:172: NodeAsOf/CloseVersion/prior=true with the move between the chain reads:
+            got  "" (graph: no entity version recorded at the given transaction time)
+            want "v1 x=-1 vf=0 vt=0 tx=1791567264452"
+        point_door_race_move_test.go:172: NodeAsOf/Delete/prior=false with the move between the chain reads:
+            got  "" (graph: no entity version recorded at the given transaction time)
+            want "v0 x=0 vf=1000 vt=0 tx=1791567264457"
+        point_door_race_move_test.go:172: NodeAsOf/Delete/prior=true with the move between the chain reads:
+            got  "" (graph: no entity version recorded at the given transaction time)
+            want "v1 x=-1 vf=0 vt=0 tx=1791567264461"
+        point_door_race_move_test.go:172: NodeAsOf/SetVersionInterval/prior=false with the move between the chain reads:
+            got  "" (graph: no entity version recorded at the given transaction time)
+            want "v0 x=0 vf=1000 vt=0 tx=1791567264465"
+    --- FAIL: TestPointDoorRace_MoveBetweenChainReads/sharded/node (0.04s)
+        point_door_race_move_test.go:172: NodeAsOf/Update/prior=false with the move between the chain reads:
+            got  "" (graph: no entity version recorded at the given transaction time)
+            want "v0 x=0 vf=1000 vt=0 tx=1791567264495"
+        point_door_race_move_test.go:172: NodeAsOf/Update/prior=true with the move between the chain reads:
+            got  "" (graph: no entity version recorded at the given transaction time)
+            want "v1 x=-1 vf=0 vt=0 tx=1791567264500"
+        point_door_race_move_test.go:172: NodeAsOf/CloseVersion/prior=false with the move between the chain reads:
+            got  "" (graph: no entity version recorded at the given transaction time)
+            want "v0 x=0 vf=1000 vt=0 tx=1791567264505"
+        point_door_race_move_test.go:172: NodeAsOf/CloseVersion/prior=true with the move between the chain reads:
+            got  "" (graph: no entity version recorded at the given transaction time)
+            want "v1 x=-1 vf=0 vt=0 tx=1791567264510"
+        point_door_race_move_test.go:172: NodeAsOf/Delete/prior=false with the move between the chain reads:
+            got  "" (graph: no entity version recorded at the given transaction time)
+            want "v0 x=0 vf=1000 vt=0 tx=1791567264515"
+        point_door_race_move_test.go:172: NodeAsOf/Delete/prior=true with the move between the chain reads:
+            got  "" (graph: no entity version recorded at the given transaction time)
+            want "v1 x=-1 vf=0 vt=0 tx=1791567264519"
+        point_door_race_move_test.go:172: NodeAsOf/SetVersionInterval/prior=false with the move between the chain reads:
+            got  "" (graph: no entity version recorded at the given transaction time)
+            want "v0 x=0 vf=1000 vt=0 tx=1791567264523"
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.924s
+FAIL

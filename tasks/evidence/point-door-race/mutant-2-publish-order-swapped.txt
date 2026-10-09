@@ -1,0 +1,272 @@
+diff --git a/pkg/graph/store/badger/badgerstore_flush.go b/pkg/graph/store/badger/badgerstore_flush.go
+index 1bc026e..49cd6ff 100644
+--- a/pkg/graph/store/badger/badgerstore_flush.go
++++ b/pkg/graph/store/badger/badgerstore_flush.go
+@@ -49,11 +49,11 @@ func (bs *Store) appendOps(ops ...writeOp) {
+ // pin before the move answered "absent". Both halves stay inside one idxMu
+ // section, so a flush (idxMu.RLock) still commits them in one WriteBatch.
+ func (bs *Store) publishMoveLocked(ops []writeOp, publishCurrent func()) {
+-	bs.appendOps(ops...)
++	publishCurrent()
+ 	if bs.moveTestHook != nil {
+ 		bs.moveTestHook()
+ 	}
+-	publishCurrent()
++	bs.appendOps(ops...)
+ }
+ 
+ // flushIfNeeded is the post-mutation flush hook called by every write path
+--- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent (1.38s)
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/in-memory/ReplaceNodeWithHistory (0.00s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of ReplaceNodeWithHistory: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/in-memory/AddNodeLabelTokenWithHistory (0.00s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of AddNodeLabelTokenWithHistory: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/in-memory/RemoveNodeLabelTokenWithHistory (0.00s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of RemoveNodeLabelTokenWithHistory: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/in-memory/DeleteNodeWithHistory/node (0.03s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of DeleteNodeWithHistory/node: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/in-memory/DeleteNodeWithHistory/rel (0.03s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of DeleteNodeWithHistory/rel: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/in-memory/ReplaceRelWithHistory (0.01s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of ReplaceRelWithHistory: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/in-memory/DeleteRelWithHistory (0.01s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of DeleteRelWithHistory: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/on-disk/ReplaceNodeWithHistory (0.18s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of ReplaceNodeWithHistory: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/on-disk/AddNodeLabelTokenWithHistory (0.18s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of AddNodeLabelTokenWithHistory: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/on-disk/RemoveNodeLabelTokenWithHistory (0.20s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of RemoveNodeLabelTokenWithHistory: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/on-disk/DeleteNodeWithHistory/node (0.18s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of DeleteNodeWithHistory/node: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/on-disk/DeleteNodeWithHistory/rel (0.17s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of DeleteNodeWithHistory/rel: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/on-disk/ReplaceRelWithHistory (0.16s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of ReplaceRelWithHistory: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/on-disk/DeleteRelWithHistory (0.17s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of DeleteRelWithHistory: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/flushed/ReplaceNodeWithHistory (0.01s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of ReplaceNodeWithHistory: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/flushed/AddNodeLabelTokenWithHistory (0.00s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of AddNodeLabelTokenWithHistory: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/flushed/RemoveNodeLabelTokenWithHistory (0.01s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of RemoveNodeLabelTokenWithHistory: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/flushed/DeleteNodeWithHistory/node (0.00s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of DeleteNodeWithHistory/node: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/flushed/DeleteNodeWithHistory/rel (0.01s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of DeleteNodeWithHistory/rel: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/flushed/ReplaceRelWithHistory (0.01s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of ReplaceRelWithHistory: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/flushed/DeleteRelWithHistory (0.01s)
+        badgerstore_move_publish_order_test.go:291: mid-move read of DeleteRelWithHistory: moved row v0 in neither the current row nor GetHistory
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	1.400s
+FAIL
+--- FAIL: TestPointDoorRace_UnderMovingWriters (1.10s)
+    --- FAIL: TestPointDoorRace_UnderMovingWriters/badger/rel (0.05s)
+        point_door_race_test.go:502: pdr-miss door=RelAsOf count=1
+        point_door_race_test.go:503: RelAsOf: 1 misses under concurrent writers; first:
+            error: E15: graph: no entity version recorded at the given transaction time
+    --- FAIL: TestPointDoorRace_UnderMovingWriters/sharded/node (0.08s)
+        point_door_race_test.go:502: pdr-miss door=NodeAsOf count=1
+        point_door_race_test.go:503: NodeAsOf: 1 misses under concurrent writers; first:
+            error: E16: graph: no entity version recorded at the given transaction time
+        point_door_race_test.go:502: pdr-miss door=NodeAtTx count=1
+        point_door_race_test.go:503: NodeAtTx: 1 misses under concurrent writers; first:
+            error: E14: graph: no version valid at the given time
+--- FAIL: TestPointDoorRace_UnderMovingWriters (1.05s)
+    --- FAIL: TestPointDoorRace_UnderMovingWriters/badger-disk/rel (0.37s)
+        point_door_race_test.go:502: pdr-miss door=RelAsOf count=1
+        point_door_race_test.go:503: RelAsOf: 1 misses under concurrent writers; first:
+            error: E15: graph: no entity version recorded at the given transaction time
+    --- FAIL: TestPointDoorRace_UnderMovingWriters/sharded/node (0.06s)
+        point_door_race_test.go:502: pdr-miss door=NodesAsOf count=1
+        point_door_race_test.go:503: NodesAsOf: 1 misses under concurrent writers; first:
+            got  E01=v1 x=-1 vf=0 vt=0 tx=1791567197040 | E02=v0 x=0 vf=1000 vt=0 tx=1791567197042 | E03=v1 x=-1 vf=0 vt=0 tx=1791567197044 | E04=v0 x=0 vf=1000 vt=0 tx=1791567197046 | E05=v1 x=-1 vf=0 vt=0 tx=1791567197048 | E06=v0 x=0 vf=1000 vt=0 tx=1791567197050 | E07=v1 x=-1 vf=0 vt=0 tx=1791567197052 | E08=v0 x=0 vf=1000 vt=0 tx=1791567197054 | E09=v1 x=-1 vf=0 vt=0 tx=1791567197056 | E10=v0 x=0 vf=1000 vt=0 tx=1791567197058 | E11=v1 x=-1 vf=0 vt=0 tx=1791567197060 | E12=v0 x=0 vf=1000 vt=0 tx=1791567197062 | E13=v1 x=-1 vf=0 vt=0 tx=1791567197064 | E14=v0 x=0 vf=1000 vt=0 tx=1791567197066 | E15=v1 x=-1 vf=0 vt=0 tx=1791567197068 | E16=v0 x=0 vf=1000 vt=0 tx=1791567197070 | E17=v1 x=-1 vf=0 vt=0 tx=1791567197072 | E18=v0 x=0 vf=1000 vt=0 tx=1791567197074 | E19=v1 x=-1 vf=0 vt=0 tx=1791567197076
+            want E00=v0 x=0 vf=1000 vt=0 tx=1791567197038 | E01=v1 x=-1 vf=0 vt=0 tx=1791567197040 | E02=v0 x=0 vf=1000 vt=0 tx=1791567197042 | E03=v1 x=-1 vf=0 vt=0 tx=1791567197044 | E04=v0 x=0 vf=1000 vt=0 tx=1791567197046 | E05=v1 x=-1 vf=0 vt=0 tx=1791567197048 | E06=v0 x=0 vf=1000 vt=0 tx=1791567197050 | E07=v1 x=-1 vf=0 vt=0 tx=1791567197052 | E08=v0 x=0 vf=1000 vt=0 tx=1791567197054 | E09=v1 x=-1 vf=0 vt=0 tx=1791567197056 | E10=v0 x=0 vf=1000 vt=0 tx=1791567197058 | E11=v1 x=-1 vf=0 vt=0 tx=1791567197060 | E12=v0 x=0 vf=1000 vt=0 tx=1791567197062 | E13=v1 x=-1 vf=0 vt=0 tx=1791567197064 | E14=v0 x=0 vf=1000 vt=0 tx=1791567197066 | E15=v1 x=-1 vf=0 vt=0 tx=1791567197068 | E16=v0 x=0 vf=1000 vt=0 tx=1791567197070 | E17=v1 x=-1 vf=0 vt=0 tx=1791567197072 | E18=v0 x=0 vf=1000 vt=0 tx=1791567197074 | E19=v1 x=-1 vf=0 vt=0 tx=1791567197076
+        point_door_race_test.go:502: pdr-miss door=NodesAtTx count=1
+        point_door_race_test.go:503: NodesAtTx: 1 misses under concurrent writers; first:
+            got  E00=v0 x=0 vf=1000 vt=0 tx=1791567197038 | E01=v0 x=0 vf=1000 vt=0 tx=1791567197039 | E02=v0 x=0 vf=1000 vt=0 tx=1791567197042 | E03=v0 x=0 vf=1000 vt=0 tx=1791567197043 | E04=v0 x=0 vf=1000 vt=0 tx=1791567197046 | E05=v0 x=0 vf=1000 vt=0 tx=1791567197047 | E06=v0 x=0 vf=1000 vt=0 tx=1791567197050 | E07=v0 x=0 vf=1000 vt=0 tx=1791567197051 | E08=v0 x=0 vf=1000 vt=0 tx=1791567197054 | E09=v0 x=0 vf=1000 vt=0 tx=1791567197055 | E10=v0 x=0 vf=1000 vt=0 tx=1791567197058 | E11=v0 x=0 vf=1000 vt=0 tx=1791567197059 | E12=v0 x=0 vf=1000 vt=0 tx=1791567197062 | E13=v0 x=0 vf=1000 vt=0 tx=1791567197063 | E14=v0 x=0 vf=1000 vt=0 tx=1791567197066 | E15=v0 x=0 vf=1000 vt=0 tx=1791567197067 | E17=v0 x=0 vf=1000 vt=0 tx=1791567197071 | E18=v0 x=0 vf=1000 vt=0 tx=1791567197074 | E19=v0 x=0 vf=1000 vt=0 tx=1791567197075
+            want E00=v0 x=0 vf=1000 vt=0 tx=1791567197038 | E01=v0 x=0 vf=1000 vt=0 tx=1791567197039 | E02=v0 x=0 vf=1000 vt=0 tx=1791567197042 | E03=v0 x=0 vf=1000 vt=0 tx=1791567197043 | E04=v0 x=0 vf=1000 vt=0 tx=1791567197046 | E05=v0 x=0 vf=1000 vt=0 tx=1791567197047 | E06=v0 x=0 vf=1000 vt=0 tx=1791567197050 | E07=v0 x=0 vf=1000 vt=0 tx=1791567197051 | E08=v0 x=0 vf=1000 vt=0 tx=1791567197054 | E09=v0 x=0 vf=1000 vt=0 tx=1791567197055 | E10=v0 x=0 vf=1000 vt=0 tx=1791567197058 | E11=v0 x=0 vf=1000 vt=0 tx=1791567197059 | E12=v0 x=0 vf=1000 vt=0 tx=1791567197062 | E13=v0 x=0 vf=1000 vt=0 tx=1791567197063 | E14=v0 x=0 vf=1000 vt=0 tx=1791567197066 | E15=v0 x=0 vf=1000 vt=0 tx=1791567197067 | E16=v0 x=0 vf=1000 vt=0 tx=1791567197070 | E17=v0 x=0 vf=1000 vt=0 tx=1791567197071 | E18=v0 x=0 vf=1000 vt=0 tx=1791567197074 | E19=v0 x=0 vf=1000 vt=0 tx=1791567197075
+    --- FAIL: TestPointDoorRace_UnderMovingWriters/sharded/rel (0.12s)
+        point_door_race_test.go:502: pdr-miss door=RelAtTx count=1
+        point_door_race_test.go:503: RelAtTx: 1 misses under concurrent writers; first:
+            error: E02: graph: relationship not found
+--- FAIL: TestPointDoorRace_UnderMovingWriters (0.96s)
+    --- FAIL: TestPointDoorRace_UnderMovingWriters/badger/node (0.03s)
+        point_door_race_test.go:502: pdr-miss door=ByLabel{ValidAt,TxAt} count=1
+        point_door_race_test.go:503: ByLabel{ValidAt,TxAt}: 1 misses under concurrent writers; first:
+            got  E00=v0 x=0 vf=1000 vt=0 tx=1791567197943 | E01=v0 x=0 vf=1000 vt=0 tx=1791567197944 | E02=v0 x=0 vf=1000 vt=0 tx=1791567197947 | E03=v0 x=0 vf=1000 vt=0 tx=1791567197948 | E04=v0 x=0 vf=1000 vt=0 tx=1791567197951 | E05=v0 x=0 vf=1000 vt=0 tx=1791567197952 | E06=v0 x=0 vf=1000 vt=0 tx=1791567197955 | E07=v0 x=0 vf=1000 vt=0 tx=1791567197956 | E08=v0 x=0 vf=1000 vt=0 tx=1791567197959 | E09=v0 x=0 vf=1000 vt=0 tx=1791567197960 | E10=v0 x=0 vf=1000 vt=0 tx=1791567197963 | E11=v0 x=0 vf=1000 vt=0 tx=1791567197964 | E12=v0 x=0 vf=1000 vt=0 tx=1791567197967 | E13=v0 x=0 vf=1000 vt=0 tx=1791567197968 | E14=v0 x=0 vf=1000 vt=0 tx=1791567197971 | E15=v0 x=0 vf=1000 vt=0 tx=1791567197972 | E17=v0 x=0 vf=1000 vt=0 tx=1791567197976 | E18=v0 x=0 vf=1000 vt=0 tx=1791567197979 | E19=v0 x=0 vf=1000 vt=0 tx=1791567197980
+            want E00=v0 x=0 vf=1000 vt=0 tx=1791567197943 | E01=v0 x=0 vf=1000 vt=0 tx=1791567197944 | E02=v0 x=0 vf=1000 vt=0 tx=1791567197947 | E03=v0 x=0 vf=1000 vt=0 tx=1791567197948 | E04=v0 x=0 vf=1000 vt=0 tx=1791567197951 | E05=v0 x=0 vf=1000 vt=0 tx=1791567197952 | E06=v0 x=0 vf=1000 vt=0 tx=1791567197955 | E07=v0 x=0 vf=1000 vt=0 tx=1791567197956 | E08=v0 x=0 vf=1000 vt=0 tx=1791567197959 | E09=v0 x=0 vf=1000 vt=0 tx=1791567197960 | E10=v0 x=0 vf=1000 vt=0 tx=1791567197963 | E11=v0 x=0 vf=1000 vt=0 tx=1791567197964 | E12=v0 x=0 vf=1000 vt=0 tx=1791567197967 | E13=v0 x=0 vf=1000 vt=0 tx=1791567197968 | E14=v0 x=0 vf=1000 vt=0 tx=1791567197971 | E15=v0 x=0 vf=1000 vt=0 tx=1791567197972 | E16=v0 x=0 vf=1000 vt=0 tx=1791567197975 | E17=v0 x=0 vf=1000 vt=0 tx=1791567197976 | E18=v0 x=0 vf=1000 vt=0 tx=1791567197979 | E19=v0 x=0 vf=1000 vt=0 tx=1791567197980
+        point_door_race_test.go:502: pdr-miss door=NodesDuringTx count=1
+        point_door_race_test.go:503: NodesDuringTx: 1 misses under concurrent writers; first:
+            got  E00=v0 x=0 vf=1000 vt=0 tx=1791567197943 | E01=v0 x=0 vf=1000 vt=0 tx=1791567197944 | E02=v0 x=0 vf=1000 vt=0 tx=1791567197947 | E03=v0 x=0 vf=1000 vt=0 tx=1791567197948 | E04=v0 x=0 vf=1000 vt=0 tx=1791567197951 | E05=v0 x=0 vf=1000 vt=0 tx=1791567197952 | E06=v0 x=0 vf=1000 vt=0 tx=1791567197955 | E07=v0 x=0 vf=1000 vt=0 tx=1791567197956 | E08=v0 x=0 vf=1000 vt=0 tx=1791567197959 | E09=v0 x=0 vf=1000 vt=0 tx=1791567197960 | E10=v0 x=0 vf=1000 vt=0 tx=1791567197963 | E11=v0 x=0 vf=1000 vt=0 tx=1791567197964 | E12=v0 x=0 vf=1000 vt=0 tx=1791567197967 | E13=v0 x=0 vf=1000 vt=0 tx=1791567197968 | E14=v0 x=0 vf=1000 vt=0 tx=1791567197971 | E15=v0 x=0 vf=1000 vt=0 tx=1791567197972 | E17=v0 x=0 vf=1000 vt=0 tx=1791567197976 | E18=v0 x=0 vf=1000 vt=0 tx=1791567197979 | E19=v0 x=0 vf=1000 vt=0 tx=1791567197980
+            want E00=v0 x=0 vf=1000 vt=0 tx=1791567197943 | E01=v0 x=0 vf=1000 vt=0 tx=1791567197944 | E02=v0 x=0 vf=1000 vt=0 tx=1791567197947 | E03=v0 x=0 vf=1000 vt=0 tx=1791567197948 | E04=v0 x=0 vf=1000 vt=0 tx=1791567197951 | E05=v0 x=0 vf=1000 vt=0 tx=1791567197952 | E06=v0 x=0 vf=1000 vt=0 tx=1791567197955 | E07=v0 x=0 vf=1000 vt=0 tx=1791567197956 | E08=v0 x=0 vf=1000 vt=0 tx=1791567197959 | E09=v0 x=0 vf=1000 vt=0 tx=1791567197960 | E10=v0 x=0 vf=1000 vt=0 tx=1791567197963 | E11=v0 x=0 vf=1000 vt=0 tx=1791567197964 | E12=v0 x=0 vf=1000 vt=0 tx=1791567197967 | E13=v0 x=0 vf=1000 vt=0 tx=1791567197968 | E14=v0 x=0 vf=1000 vt=0 tx=1791567197971 | E15=v0 x=0 vf=1000 vt=0 tx=1791567197972 | E16=v0 x=0 vf=1000 vt=0 tx=1791567197975 | E17=v0 x=0 vf=1000 vt=0 tx=1791567197976 | E18=v0 x=0 vf=1000 vt=0 tx=1791567197979 | E19=v0 x=0 vf=1000 vt=0 tx=1791567197980
+    --- FAIL: TestPointDoorRace_UnderMovingWriters/badger/rel (0.05s)
+        point_door_race_test.go:502: pdr-miss door=RelAsOf count=1
+        point_door_race_test.go:503: RelAsOf: 1 misses under concurrent writers; first:
+            error: E11: graph: no entity version recorded at the given transaction time
+    --- FAIL: TestPointDoorRace_UnderMovingWriters/badger-disk/rel (0.35s)
+        point_door_race_test.go:502: pdr-miss door=RelAsOf count=4
+        point_door_race_test.go:503: RelAsOf: 4 misses under concurrent writers; first:
+            error: E04: graph: no entity version recorded at the given transaction time
+        point_door_race_test.go:502: pdr-miss door=RelAtTx count=3
+        point_door_race_test.go:503: RelAtTx: 3 misses under concurrent writers; first:
+            error: E02: graph: relationship not found
+    --- FAIL: TestPointDoorRace_UnderMovingWriters/sharded/node (0.05s)
+        point_door_race_test.go:502: pdr-miss door=NodeAtTx count=1
+        point_door_race_test.go:503: NodeAtTx: 1 misses under concurrent writers; first:
+            error: E14: graph: no version valid at the given time
+    --- FAIL: TestPointDoorRace_UnderMovingWriters/sharded/rel (0.11s)
+        point_door_race_test.go:502: pdr-miss door=RelAsOf count=1
+        point_door_race_test.go:503: RelAsOf: 1 misses under concurrent writers; first:
+            error: E02: graph: no entity version recorded at the given transaction time
+        point_door_race_test.go:502: pdr-miss door=RelAtTx count=1
+        point_door_race_test.go:503: RelAtTx: 1 misses under concurrent writers; first:
+            error: E02: graph: relationship not found
+        point_door_race_test.go:502: pdr-miss door=RelsAsOf count=1
+        point_door_race_test.go:503: RelsAsOf: 1 misses under concurrent writers; first:
+            got  E00=v0 x=0 vf=1000 vt=0 tx=1791567198864 | E01=v1 x=-1 vf=0 vt=0 tx=1791567198866 | E02=v0 x=0 vf=1000 vt=0 tx=1791567198868 | E03=v1 x=-1 vf=0 vt=0 tx=1791567198870 | E04=v0 x=0 vf=1000 vt=0 tx=1791567198872 | E05=v1 x=-1 vf=0 vt=0 tx=1791567198874 | E06=v0 x=0 vf=1000 vt=0 tx=1791567198876 | E07=v1 x=-1 vf=0 vt=0 tx=1791567198878 | E08=v0 x=0 vf=1000 vt=0 tx=1791567198880 | E10=v0 x=0 vf=1000 vt=0 tx=1791567198884 | E11=v1 x=-1 vf=0 vt=0 tx=1791567198886 | E12=v0 x=0 vf=1000 vt=0 tx=1791567198888 | E13=v1 x=-1 vf=0 vt=0 tx=1791567198890 | E14=v0 x=0 vf=1000 vt=0 tx=1791567198892 | E15=v1 x=-1 vf=0 vt=0 tx=1791567198894 | E16=v0 x=0 vf=1000 vt=0 tx=1791567198896 | E17=v1 x=-1 vf=0 vt=0 tx=1791567198898 | E18=v0 x=0 vf=1000 vt=0 tx=1791567198900 | E19=v1 x=-1 vf=0 vt=0 tx=1791567198902
+            want E00=v0 x=0 vf=1000 vt=0 tx=1791567198864 | E01=v1 x=-1 vf=0 vt=0 tx=1791567198866 | E02=v0 x=0 vf=1000 vt=0 tx=1791567198868 | E03=v1 x=-1 vf=0 vt=0 tx=1791567198870 | E04=v0 x=0 vf=1000 vt=0 tx=1791567198872 | E05=v1 x=-1 vf=0 vt=0 tx=1791567198874 | E06=v0 x=0 vf=1000 vt=0 tx=1791567198876 | E07=v1 x=-1 vf=0 vt=0 tx=1791567198878 | E08=v0 x=0 vf=1000 vt=0 tx=1791567198880 | E09=v1 x=-1 vf=0 vt=0 tx=1791567198882 | E10=v0 x=0 vf=1000 vt=0 tx=1791567198884 | E11=v1 x=-1 vf=0 vt=0 tx=1791567198886 | E12=v0 x=0 vf=1000 vt=0 tx=1791567198888 | E13=v1 x=-1 vf=0 vt=0 tx=1791567198890 | E14=v0 x=0 vf=1000 vt=0 tx=1791567198892 | E15=v1 x=-1 vf=0 vt=0 tx=1791567198894 | E16=v0 x=0 vf=1000 vt=0 tx=1791567198896 | E17=v1 x=-1 vf=0 vt=0 tx=1791567198898 | E18=v0 x=0 vf=1000 vt=0 tx=1791567198900 | E19=v1 x=-1 vf=0 vt=0 tx=1791567198902
+        point_door_race_test.go:502: pdr-miss door=RelsAtTx count=1
+        point_door_race_test.go:503: RelsAtTx: 1 misses under concurrent writers; first:
+            got  E01=v0 x=0 vf=1000 vt=0 tx=1791567198865 | E02=v0 x=0 vf=1000 vt=0 tx=1791567198868 | E03=v0 x=0 vf=1000 vt=0 tx=1791567198869 | E04=v0 x=0 vf=1000 vt=0 tx=1791567198872 | E05=v0 x=0 vf=1000 vt=0 tx=1791567198873 | E06=v0 x=0 vf=1000 vt=0 tx=1791567198876 | E07=v0 x=0 vf=1000 vt=0 tx=1791567198877 | E08=v0 x=0 vf=1000 vt=0 tx=1791567198880 | E09=v0 x=0 vf=1000 vt=0 tx=1791567198881 | E10=v0 x=0 vf=1000 vt=0 tx=1791567198884 | E11=v0 x=0 vf=1000 vt=0 tx=1791567198885 | E12=v0 x=0 vf=1000 vt=0 tx=1791567198888 | E13=v0 x=0 vf=1000 vt=0 tx=1791567198889 | E14=v0 x=0 vf=1000 vt=0 tx=1791567198892 | E15=v0 x=0 vf=1000 vt=0 tx=1791567198893 | E16=v0 x=0 vf=1000 vt=0 tx=1791567198896 | E17=v0 x=0 vf=1000 vt=0 tx=1791567198897 | E18=v0 x=0 vf=1000 vt=0 tx=1791567198900 | E19=v0 x=0 vf=1000 vt=0 tx=1791567198901
+            want E00=v0 x=0 vf=1000 vt=0 tx=1791567198864 | E01=v0 x=0 vf=1000 vt=0 tx=1791567198865 | E02=v0 x=0 vf=1000 vt=0 tx=1791567198868 | E03=v0 x=0 vf=1000 vt=0 tx=1791567198869 | E04=v0 x=0 vf=1000 vt=0 tx=1791567198872 | E05=v0 x=0 vf=1000 vt=0 tx=1791567198873 | E06=v0 x=0 vf=1000 vt=0 tx=1791567198876 | E07=v0 x=0 vf=1000 vt=0 tx=1791567198877 | E08=v0 x=0 vf=1000 vt=0 tx=1791567198880 | E09=v0 x=0 vf=1000 vt=0 tx=1791567198881 | E10=v0 x=0 vf=1000 vt=0 tx=1791567198884 | E11=v0 x=0 vf=1000 vt=0 tx=1791567198885 | E12=v0 x=0 vf=1000 vt=0 tx=1791567198888 | E13=v0 x=0 vf=1000 vt=0 tx=1791567198889 | E14=v0 x=0 vf=1000 vt=0 tx=1791567198892 | E15=v0 x=0 vf=1000 vt=0 tx=1791567198893 | E16=v0 x=0 vf=1000 vt=0 tx=1791567198896 | E17=v0 x=0 vf=1000 vt=0 tx=1791567198897 | E18=v0 x=0 vf=1000 vt=0 tx=1791567198900 | E19=v0 x=0 vf=1000 vt=0 tx=1791567198901
+        point_door_race_test.go:502: pdr-miss door=RelsDuringTx count=1
+        point_door_race_test.go:503: RelsDuringTx: 1 misses under concurrent writers; first:
+            got  E00=v0 x=0 vf=1000 vt=0 tx=1791567198864 | E01=v0 x=0 vf=1000 vt=0 tx=1791567198865 | E02=v0 x=0 vf=1000 vt=0 tx=1791567198868 | E03=v0 x=0 vf=1000 vt=0 tx=1791567198869 | E04=v0 x=0 vf=1000 vt=0 tx=1791567198872 | E05=v0 x=0 vf=1000 vt=0 tx=1791567198873 | E07=v0 x=0 vf=1000 vt=0 tx=1791567198877 | E08=v0 x=0 vf=1000 vt=0 tx=1791567198880 | E09=v0 x=0 vf=1000 vt=0 tx=1791567198881 | E10=v0 x=0 vf=1000 vt=0 tx=1791567198884 | E11=v0 x=0 vf=1000 vt=0 tx=1791567198885 | E12=v0 x=0 vf=1000 vt=0 tx=1791567198888 | E13=v0 x=0 vf=1000 vt=0 tx=1791567198889 | E14=v0 x=0 vf=1000 vt=0 tx=1791567198892 | E15=v0 x=0 vf=1000 vt=0 tx=1791567198893 | E16=v0 x=0 vf=1000 vt=0 tx=1791567198896 | E17=v0 x=0 vf=1000 vt=0 tx=1791567198897 | E18=v0 x=0 vf=1000 vt=0 tx=1791567198900 | E19=v0 x=0 vf=1000 vt=0 tx=1791567198901
+            want E00=v0 x=0 vf=1000 vt=0 tx=1791567198864 | E01=v0 x=0 vf=1000 vt=0 tx=1791567198865 | E02=v0 x=0 vf=1000 vt=0 tx=1791567198868 | E03=v0 x=0 vf=1000 vt=0 tx=1791567198869 | E04=v0 x=0 vf=1000 vt=0 tx=1791567198872 | E05=v0 x=0 vf=1000 vt=0 tx=1791567198873 | E06=v0 x=0 vf=1000 vt=0 tx=1791567198876 | E07=v0 x=0 vf=1000 vt=0 tx=1791567198877 | E08=v0 x=0 vf=1000 vt=0 tx=1791567198880 | E09=v0 x=0 vf=1000 vt=0 tx=1791567198881 | E10=v0 x=0 vf=1000 vt=0 tx=1791567198884 | E11=v0 x=0 vf=1000 vt=0 tx=1791567198885 | E12=v0 x=0 vf=1000 vt=0 tx=1791567198888 | E13=v0 x=0 vf=1000 vt=0 tx=1791567198889 | E14=v0 x=0 vf=1000 vt=0 tx=1791567198892 | E15=v0 x=0 vf=1000 vt=0 tx=1791567198893 | E16=v0 x=0 vf=1000 vt=0 tx=1791567198896 | E17=v0 x=0 vf=1000 vt=0 tx=1791567198897 | E18=v0 x=0 vf=1000 vt=0 tx=1791567198900 | E19=v0 x=0 vf=1000 vt=0 tx=1791567198901
+--- FAIL: TestPointDoorRace_UnderMovingWriters (0.86s)
+    --- FAIL: TestPointDoorRace_UnderMovingWriters/badger/node (0.02s)
+        point_door_race_test.go:502: pdr-miss door=NodeAsOf count=3
+        point_door_race_test.go:503: NodeAsOf: 3 misses under concurrent writers; first:
+            error: E09: graph: no entity version recorded at the given transaction time
+        point_door_race_test.go:502: pdr-miss door=NodesAtTx count=1
+        point_door_race_test.go:503: NodesAtTx: 1 misses under concurrent writers; first:
+            got  E00=v0 x=0 vf=1000 vt=0 tx=1791567199686 | E01=v0 x=0 vf=1000 vt=0 tx=1791567199687 | E02=v0 x=0 vf=1000 vt=0 tx=1791567199690 | E03=v0 x=0 vf=1000 vt=0 tx=1791567199691 | E04=v0 x=0 vf=1000 vt=0 tx=1791567199694 | E05=v0 x=0 vf=1000 vt=0 tx=1791567199695 | E07=v0 x=0 vf=1000 vt=0 tx=1791567199699 | E08=v0 x=0 vf=1000 vt=0 tx=1791567199702 | E09=v0 x=0 vf=1000 vt=0 tx=1791567199703 | E10=v0 x=0 vf=1000 vt=0 tx=1791567199706 | E11=v0 x=0 vf=1000 vt=0 tx=1791567199707 | E12=v0 x=0 vf=1000 vt=0 tx=1791567199710 | E13=v0 x=0 vf=1000 vt=0 tx=1791567199711 | E14=v0 x=0 vf=1000 vt=0 tx=1791567199714 | E15=v0 x=0 vf=1000 vt=0 tx=1791567199715 | E16=v0 x=0 vf=1000 vt=0 tx=1791567199718 | E17=v0 x=0 vf=1000 vt=0 tx=1791567199719 | E18=v0 x=0 vf=1000 vt=0 tx=1791567199722 | E19=v0 x=0 vf=1000 vt=0 tx=1791567199723
+            want E00=v0 x=0 vf=1000 vt=0 tx=1791567199686 | E01=v0 x=0 vf=1000 vt=0 tx=1791567199687 | E02=v0 x=0 vf=1000 vt=0 tx=1791567199690 | E03=v0 x=0 vf=1000 vt=0 tx=1791567199691 | E04=v0 x=0 vf=1000 vt=0 tx=1791567199694 | E05=v0 x=0 vf=1000 vt=0 tx=1791567199695 | E06=v0 x=0 vf=1000 vt=0 tx=1791567199698 | E07=v0 x=0 vf=1000 vt=0 tx=1791567199699 | E08=v0 x=0 vf=1000 vt=0 tx=1791567199702 | E09=v0 x=0 vf=1000 vt=0 tx=1791567199703 | E10=v0 x=0 vf=1000 vt=0 tx=1791567199706 | E11=v0 x=0 vf=1000 vt=0 tx=1791567199707 | E12=v0 x=0 vf=1000 vt=0 tx=1791567199710 | E13=v0 x=0 vf=1000 vt=0 tx=1791567199711 | E14=v0 x=0 vf=1000 vt=0 tx=1791567199714 | E15=v0 x=0 vf=1000 vt=0 tx=1791567199715 | E16=v0 x=0 vf=1000 vt=0 tx=1791567199718 | E17=v0 x=0 vf=1000 vt=0 tx=1791567199719 | E18=v0 x=0 vf=1000 vt=0 tx=1791567199722 | E19=v0 x=0 vf=1000 vt=0 tx=1791567199723
+        point_door_race_test.go:502: pdr-miss door=NodesDuringTx count=2
+        point_door_race_test.go:503: NodesDuringTx: 2 misses under concurrent writers; first:
+            got  E00=v0 x=0 vf=1000 vt=0 tx=1791567199686 | E01=v0 x=0 vf=1000 vt=0 tx=1791567199687 | E02=v0 x=0 vf=1000 vt=0 tx=1791567199690 | E03=v0 x=0 vf=1000 vt=0 tx=1791567199691 | E04=v0 x=0 vf=1000 vt=0 tx=1791567199694 | E05=v0 x=0 vf=1000 vt=0 tx=1791567199695 | E06=v0 x=0 vf=1000 vt=0 tx=1791567199698 | E07=v0 x=0 vf=1000 vt=0 tx=1791567199699 | E08=v0 x=0 vf=1000 vt=0 tx=1791567199702 | E09=v0 x=0 vf=1000 vt=0 tx=1791567199703 | E10=v0 x=0 vf=1000 vt=0 tx=1791567199706 | E11=v0 x=0 vf=1000 vt=0 tx=1791567199707 | E12=v0 x=0 vf=1000 vt=0 tx=1791567199710 | E13=v0 x=0 vf=1000 vt=0 tx=1791567199711 | E15=v0 x=0 vf=1000 vt=0 tx=1791567199715 | E16=v0 x=0 vf=1000 vt=0 tx=1791567199718 | E17=v0 x=0 vf=1000 vt=0 tx=1791567199719 | E18=v0 x=0 vf=1000 vt=0 tx=1791567199722 | E19=v0 x=0 vf=1000 vt=0 tx=1791567199723
+            want E00=v0 x=0 vf=1000 vt=0 tx=1791567199686 | E01=v0 x=0 vf=1000 vt=0 tx=1791567199687 | E02=v0 x=0 vf=1000 vt=0 tx=1791567199690 | E03=v0 x=0 vf=1000 vt=0 tx=1791567199691 | E04=v0 x=0 vf=1000 vt=0 tx=1791567199694 | E05=v0 x=0 vf=1000 vt=0 tx=1791567199695 | E06=v0 x=0 vf=1000 vt=0 tx=1791567199698 | E07=v0 x=0 vf=1000 vt=0 tx=1791567199699 | E08=v0 x=0 vf=1000 vt=0 tx=1791567199702 | E09=v0 x=0 vf=1000 vt=0 tx=1791567199703 | E10=v0 x=0 vf=1000 vt=0 tx=1791567199706 | E11=v0 x=0 vf=1000 vt=0 tx=1791567199707 | E12=v0 x=0 vf=1000 vt=0 tx=1791567199710 | E13=v0 x=0 vf=1000 vt=0 tx=1791567199711 | E14=v0 x=0 vf=1000 vt=0 tx=1791567199714 | E15=v0 x=0 vf=1000 vt=0 tx=1791567199715 | E16=v0 x=0 vf=1000 vt=0 tx=1791567199718 | E17=v0 x=0 vf=1000 vt=0 tx=1791567199719 | E18=v0 x=0 vf=1000 vt=0 tx=1791567199722 | E19=v0 x=0 vf=1000 vt=0 tx=1791567199723
+    --- FAIL: TestPointDoorRace_UnderMovingWriters/badger/rel (0.02s)
+        point_door_race_test.go:502: pdr-miss door=RelAsOf count=3
+        point_door_race_test.go:503: RelAsOf: 3 misses under concurrent writers; first:
+            error: E06: graph: no entity version recorded at the given transaction time
+    --- FAIL: TestPointDoorRace_UnderMovingWriters/badger-disk/node (0.26s)
+        point_door_race_test.go:502: pdr-miss door=NodeAsOf count=1
+        point_door_race_test.go:503: NodeAsOf: 1 misses under concurrent writers; first:
+            error: E09: graph: no entity version recorded at the given transaction time
+    --- FAIL: TestPointDoorRace_UnderMovingWriters/sharded/node (0.03s)
+        point_door_race_test.go:502: pdr-miss door=NodeAsOf count=4
+        point_door_race_test.go:503: NodeAsOf: 4 misses under concurrent writers; first:
+            error: E04: graph: no entity version recorded at the given transaction time
+        point_door_race_test.go:502: pdr-miss door=NodesAsOf count=1
+        point_door_race_test.go:503: NodesAsOf: 1 misses under concurrent writers; first:
+            got  E00=v0 x=0 vf=1000 vt=0 tx=1791567200424 | E01=v1 x=-1 vf=0 vt=0 tx=1791567200426 | E02=v0 x=0 vf=1000 vt=0 tx=1791567200428 | E03=v1 x=-1 vf=0 vt=0 tx=1791567200430 | E04=v0 x=0 vf=1000 vt=0 tx=1791567200432 | E05=v1 x=-1 vf=0 vt=0 tx=1791567200434 | E06=v0 x=0 vf=1000 vt=0 tx=1791567200436 | E07=v1 x=-1 vf=0 vt=0 tx=1791567200438 | E08=v0 x=0 vf=1000 vt=0 tx=1791567200440 | E09=v1 x=-1 vf=0 vt=0 tx=1791567200442 | E10=v0 x=0 vf=1000 vt=0 tx=1791567200444 | E11=v1 x=-1 vf=0 vt=0 tx=1791567200446 | E12=v0 x=0 vf=1000 vt=0 tx=1791567200448 | E14=v0 x=0 vf=1000 vt=0 tx=1791567200452 | E15=v1 x=-1 vf=0 vt=0 tx=1791567200454 | E16=v0 x=0 vf=1000 vt=0 tx=1791567200456 | E17=v1 x=-1 vf=0 vt=0 tx=1791567200458 | E18=v0 x=0 vf=1000 vt=0 tx=1791567200460 | E19=v1 x=-1 vf=0 vt=0 tx=1791567200462
+            want E00=v0 x=0 vf=1000 vt=0 tx=1791567200424 | E01=v1 x=-1 vf=0 vt=0 tx=1791567200426 | E02=v0 x=0 vf=1000 vt=0 tx=1791567200428 | E03=v1 x=-1 vf=0 vt=0 tx=1791567200430 | E04=v0 x=0 vf=1000 vt=0 tx=1791567200432 | E05=v1 x=-1 vf=0 vt=0 tx=1791567200434 | E06=v0 x=0 vf=1000 vt=0 tx=1791567200436 | E07=v1 x=-1 vf=0 vt=0 tx=1791567200438 | E08=v0 x=0 vf=1000 vt=0 tx=1791567200440 | E09=v1 x=-1 vf=0 vt=0 tx=1791567200442 | E10=v0 x=0 vf=1000 vt=0 tx=1791567200444 | E11=v1 x=-1 vf=0 vt=0 tx=1791567200446 | E12=v0 x=0 vf=1000 vt=0 tx=1791567200448 | E13=v1 x=-1 vf=0 vt=0 tx=1791567200450 | E14=v0 x=0 vf=1000 vt=0 tx=1791567200452 | E15=v1 x=-1 vf=0 vt=0 tx=1791567200454 | E16=v0 x=0 vf=1000 vt=0 tx=1791567200456 | E17=v1 x=-1 vf=0 vt=0 tx=1791567200458 | E18=v0 x=0 vf=1000 vt=0 tx=1791567200460 | E19=v1 x=-1 vf=0 vt=0 tx=1791567200462
+--- FAIL: TestPointDoorRace_UnderMovingWriters (0.86s)
+    --- FAIL: TestPointDoorRace_UnderMovingWriters/badger/rel (0.02s)
+        point_door_race_test.go:502: pdr-miss door=Rels.All{TxPin} count=1
+        point_door_race_test.go:503: Rels.All{TxPin}: 1 misses under concurrent writers; first:
+            got  E00=v0 x=0 vf=1000 vt=0 tx=1791567201268 | E01=v1 x=-1 vf=0 vt=0 tx=1791567201270 | E02=v0 x=0 vf=1000 vt=0 tx=1791567201272 | E03=v1 x=-1 vf=0 vt=0 tx=1791567201274 | E04=v0 x=0 vf=1000 vt=0 tx=1791567201276 | E05=v1 x=-1 vf=0 vt=0 tx=1791567201278 | E06=v0 x=0 vf=1000 vt=0 tx=1791567201280 | E07=v1 x=-1 vf=0 vt=0 tx=1791567201282 | E08=v0 x=0 vf=1000 vt=0 tx=1791567201284 | E09=v1 x=-1 vf=0 vt=0 tx=1791567201286 | E10=v0 x=0 vf=1000 vt=0 tx=1791567201288 | E11=v1 x=-1 vf=0 vt=0 tx=1791567201290 | E12=v0 x=0 vf=1000 vt=0 tx=1791567201292 | E13=v1 x=-1 vf=0 vt=0 tx=1791567201294 | E14=v0 x=0 vf=1000 vt=0 tx=1791567201296 | E15=v1 x=-1 vf=0 vt=0 tx=1791567201298 | E17=v1 x=-1 vf=0 vt=0 tx=1791567201302 | E18=v0 x=0 vf=1000 vt=0 tx=1791567201304 | E19=v1 x=-1 vf=0 vt=0 tx=1791567201306
+            want E00=v0 x=0 vf=1000 vt=0 tx=1791567201268 | E01=v1 x=-1 vf=0 vt=0 tx=1791567201270 | E02=v0 x=0 vf=1000 vt=0 tx=1791567201272 | E03=v1 x=-1 vf=0 vt=0 tx=1791567201274 | E04=v0 x=0 vf=1000 vt=0 tx=1791567201276 | E05=v1 x=-1 vf=0 vt=0 tx=1791567201278 | E06=v0 x=0 vf=1000 vt=0 tx=1791567201280 | E07=v1 x=-1 vf=0 vt=0 tx=1791567201282 | E08=v0 x=0 vf=1000 vt=0 tx=1791567201284 | E09=v1 x=-1 vf=0 vt=0 tx=1791567201286 | E10=v0 x=0 vf=1000 vt=0 tx=1791567201288 | E11=v1 x=-1 vf=0 vt=0 tx=1791567201290 | E12=v0 x=0 vf=1000 vt=0 tx=1791567201292 | E13=v1 x=-1 vf=0 vt=0 tx=1791567201294 | E14=v0 x=0 vf=1000 vt=0 tx=1791567201296 | E15=v1 x=-1 vf=0 vt=0 tx=1791567201298 | E16=v0 x=0 vf=1000 vt=0 tx=1791567201300 | E17=v1 x=-1 vf=0 vt=0 tx=1791567201302 | E18=v0 x=0 vf=1000 vt=0 tx=1791567201304 | E19=v1 x=-1 vf=0 vt=0 tx=1791567201306
+    --- FAIL: TestPointDoorRace_UnderMovingWriters/badger-disk/rel (0.34s)
+        point_door_race_test.go:502: pdr-miss door=RelAsOf count=1
+        point_door_race_test.go:503: RelAsOf: 1 misses under concurrent writers; first:
+            error: E09: graph: no entity version recorded at the given transaction time
+    --- FAIL: TestPointDoorRace_UnderMovingWriters/sharded/rel (0.09s)
+        point_door_race_test.go:502: pdr-miss door=RelAsOf count=1
+        point_door_race_test.go:503: RelAsOf: 1 misses under concurrent writers; first:
+            error: E06: graph: no entity version recorded at the given transaction time
+        point_door_race_test.go:502: pdr-miss door=RelsAsOf count=1
+        point_door_race_test.go:503: RelsAsOf: 1 misses under concurrent writers; first:
+            got  E00=v0 x=0 vf=1000 vt=0 tx=1791567202070 | E01=v1 x=-1 vf=0 vt=0 tx=1791567202072 | E02=v0 x=0 vf=1000 vt=0 tx=1791567202074 | E03=v1 x=-1 vf=0 vt=0 tx=1791567202076 | E04=v0 x=0 vf=1000 vt=0 tx=1791567202078 | E05=v1 x=-1 vf=0 vt=0 tx=1791567202080 | E06=v0 x=0 vf=1000 vt=0 tx=1791567202082 | E07=v1 x=-1 vf=0 vt=0 tx=1791567202084 | E08=v0 x=0 vf=1000 vt=0 tx=1791567202086 | E09=v1 x=-1 vf=0 vt=0 tx=1791567202088 | E10=v0 x=0 vf=1000 vt=0 tx=1791567202090 | E11=v1 x=-1 vf=0 vt=0 tx=1791567202092 | E12=v0 x=0 vf=1000 vt=0 tx=1791567202094 | E13=v1 x=-1 vf=0 vt=0 tx=1791567202096 | E15=v1 x=-1 vf=0 vt=0 tx=1791567202100 | E16=v0 x=0 vf=1000 vt=0 tx=1791567202102 | E17=v1 x=-1 vf=0 vt=0 tx=1791567202104 | E18=v0 x=0 vf=1000 vt=0 tx=1791567202106 | E19=v1 x=-1 vf=0 vt=0 tx=1791567202108
+            want E00=v0 x=0 vf=1000 vt=0 tx=1791567202070 | E01=v1 x=-1 vf=0 vt=0 tx=1791567202072 | E02=v0 x=0 vf=1000 vt=0 tx=1791567202074 | E03=v1 x=-1 vf=0 vt=0 tx=1791567202076 | E04=v0 x=0 vf=1000 vt=0 tx=1791567202078 | E05=v1 x=-1 vf=0 vt=0 tx=1791567202080 | E06=v0 x=0 vf=1000 vt=0 tx=1791567202082 | E07=v1 x=-1 vf=0 vt=0 tx=1791567202084 | E08=v0 x=0 vf=1000 vt=0 tx=1791567202086 | E09=v1 x=-1 vf=0 vt=0 tx=1791567202088 | E10=v0 x=0 vf=1000 vt=0 tx=1791567202090 | E11=v1 x=-1 vf=0 vt=0 tx=1791567202092 | E12=v0 x=0 vf=1000 vt=0 tx=1791567202094 | E13=v1 x=-1 vf=0 vt=0 tx=1791567202096 | E14=v0 x=0 vf=1000 vt=0 tx=1791567202098 | E15=v1 x=-1 vf=0 vt=0 tx=1791567202100 | E16=v0 x=0 vf=1000 vt=0 tx=1791567202102 | E17=v1 x=-1 vf=0 vt=0 tx=1791567202104 | E18=v0 x=0 vf=1000 vt=0 tx=1791567202106 | E19=v1 x=-1 vf=0 vt=0 tx=1791567202108
+        point_door_race_test.go:502: pdr-miss door=RelsAtTx count=1
+        point_door_race_test.go:503: RelsAtTx: 1 misses under concurrent writers; first:
+            got  E00=v0 x=0 vf=1000 vt=0 tx=1791567202070 | E01=v0 x=0 vf=1000 vt=0 tx=1791567202071 | E02=v0 x=0 vf=1000 vt=0 tx=1791567202074 | E03=v0 x=0 vf=1000 vt=0 tx=1791567202075 | E04=v0 x=0 vf=1000 vt=0 tx=1791567202078 | E05=v0 x=0 vf=1000 vt=0 tx=1791567202079 | E07=v0 x=0 vf=1000 vt=0 tx=1791567202083 | E08=v0 x=0 vf=1000 vt=0 tx=1791567202086 | E09=v0 x=0 vf=1000 vt=0 tx=1791567202087 | E10=v0 x=0 vf=1000 vt=0 tx=1791567202090 | E11=v0 x=0 vf=1000 vt=0 tx=1791567202091 | E12=v0 x=0 vf=1000 vt=0 tx=1791567202094 | E13=v0 x=0 vf=1000 vt=0 tx=1791567202095 | E14=v0 x=0 vf=1000 vt=0 tx=1791567202098 | E15=v0 x=0 vf=1000 vt=0 tx=1791567202099 | E16=v0 x=0 vf=1000 vt=0 tx=1791567202102 | E17=v0 x=0 vf=1000 vt=0 tx=1791567202103 | E18=v0 x=0 vf=1000 vt=0 tx=1791567202106 | E19=v0 x=0 vf=1000 vt=0 tx=1791567202107
+            want E00=v0 x=0 vf=1000 vt=0 tx=1791567202070 | E01=v0 x=0 vf=1000 vt=0 tx=1791567202071 | E02=v0 x=0 vf=1000 vt=0 tx=1791567202074 | E03=v0 x=0 vf=1000 vt=0 tx=1791567202075 | E04=v0 x=0 vf=1000 vt=0 tx=1791567202078 | E05=v0 x=0 vf=1000 vt=0 tx=1791567202079 | E06=v0 x=0 vf=1000 vt=0 tx=1791567202082 | E07=v0 x=0 vf=1000 vt=0 tx=1791567202083 | E08=v0 x=0 vf=1000 vt=0 tx=1791567202086 | E09=v0 x=0 vf=1000 vt=0 tx=1791567202087 | E10=v0 x=0 vf=1000 vt=0 tx=1791567202090 | E11=v0 x=0 vf=1000 vt=0 tx=1791567202091 | E12=v0 x=0 vf=1000 vt=0 tx=1791567202094 | E13=v0 x=0 vf=1000 vt=0 tx=1791567202095 | E14=v0 x=0 vf=1000 vt=0 tx=1791567202098 | E15=v0 x=0 vf=1000 vt=0 tx=1791567202099 | E16=v0 x=0 vf=1000 vt=0 tx=1791567202102 | E17=v0 x=0 vf=1000 vt=0 tx=1791567202103 | E18=v0 x=0 vf=1000 vt=0 tx=1791567202106 | E19=v0 x=0 vf=1000 vt=0 tx=1791567202107
+--- FAIL: TestPointDoorRace_UnderMovingWriters (1.03s)
+    --- FAIL: TestPointDoorRace_UnderMovingWriters/badger/node (0.03s)
+        point_door_race_test.go:502: pdr-miss door=NodeAsOf count=2
+        point_door_race_test.go:503: NodeAsOf: 2 misses under concurrent writers; first:
+            error: E00: graph: no entity version recorded at the given transaction time
+    --- FAIL: TestPointDoorRace_UnderMovingWriters/badger-disk/node (0.36s)
+        point_door_race_test.go:502: pdr-miss door=Nodes.All{TxPin} count=1
+        point_door_race_test.go:503: Nodes.All{TxPin}: 1 misses under concurrent writers; first:
+            got  E00=v0 x=0 vf=1000 vt=0 tx=1791567203216 | E01=v1 x=-1 vf=0 vt=0 tx=1791567203218 | E02=v0 x=0 vf=1000 vt=0 tx=1791567203220 | E03=v1 x=-1 vf=0 vt=0 tx=1791567203222 | E04=v0 x=0 vf=1000 vt=0 tx=1791567203224 | E05=v1 x=-1 vf=0 vt=0 tx=1791567203226 | E06=v0 x=0 vf=1000 vt=0 tx=1791567203228 | E07=v1 x=-1 vf=0 vt=0 tx=1791567203230 | E08=v0 x=0 vf=1000 vt=0 tx=1791567203232 | E09=v1 x=-1 vf=0 vt=0 tx=1791567203234 | E10=v0 x=0 vf=1000 vt=0 tx=1791567203236 | E11=v1 x=-1 vf=0 vt=0 tx=1791567203238 | E12=v0 x=0 vf=1000 vt=0 tx=1791567203240 | E13=v1 x=-1 vf=0 vt=0 tx=1791567203242 | E14=v0 x=0 vf=1000 vt=0 tx=1791567203244 | E15=v1 x=-1 vf=0 vt=0 tx=1791567203246 | E16=v0 x=0 vf=1000 vt=0 tx=1791567203248 | E18=v0 x=0 vf=1000 vt=0 tx=1791567203252 | E19=v1 x=-1 vf=0 vt=0 tx=1791567203254
+            want E00=v0 x=0 vf=1000 vt=0 tx=1791567203216 | E01=v1 x=-1 vf=0 vt=0 tx=1791567203218 | E02=v0 x=0 vf=1000 vt=0 tx=1791567203220 | E03=v1 x=-1 vf=0 vt=0 tx=1791567203222 | E04=v0 x=0 vf=1000 vt=0 tx=1791567203224 | E05=v1 x=-1 vf=0 vt=0 tx=1791567203226 | E06=v0 x=0 vf=1000 vt=0 tx=1791567203228 | E07=v1 x=-1 vf=0 vt=0 tx=1791567203230 | E08=v0 x=0 vf=1000 vt=0 tx=1791567203232 | E09=v1 x=-1 vf=0 vt=0 tx=1791567203234 | E10=v0 x=0 vf=1000 vt=0 tx=1791567203236 | E11=v1 x=-1 vf=0 vt=0 tx=1791567203238 | E12=v0 x=0 vf=1000 vt=0 tx=1791567203240 | E13=v1 x=-1 vf=0 vt=0 tx=1791567203242 | E14=v0 x=0 vf=1000 vt=0 tx=1791567203244 | E15=v1 x=-1 vf=0 vt=0 tx=1791567203246 | E16=v0 x=0 vf=1000 vt=0 tx=1791567203248 | E17=v1 x=-1 vf=0 vt=0 tx=1791567203250 | E18=v0 x=0 vf=1000 vt=0 tx=1791567203252 | E19=v1 x=-1 vf=0 vt=0 tx=1791567203254
+    --- FAIL: TestPointDoorRace_UnderMovingWriters/badger-disk/rel (0.36s)
+        point_door_race_test.go:502: pdr-miss door=RelAsOf count=1
+        point_door_race_test.go:503: RelAsOf: 1 misses under concurrent writers; first:
+            error: E03: graph: no entity version recorded at the given transaction time
+        point_door_race_test.go:502: pdr-miss door=RelAtTx count=1
+        point_door_race_test.go:503: RelAtTx: 1 misses under concurrent writers; first:
+            error: E02: graph: relationship not found
+    --- FAIL: TestPointDoorRace_UnderMovingWriters/sharded/node (0.05s)
+        point_door_race_test.go:502: pdr-miss door=NodeAsOf count=1
+        point_door_race_test.go:503: NodeAsOf: 1 misses under concurrent writers; first:
+            error: E02: graph: no entity version recorded at the given transaction time
+        point_door_race_test.go:502: pdr-miss door=NodeAtTx count=1
+        point_door_race_test.go:503: NodeAtTx: 1 misses under concurrent writers; first:
+            error: E02: graph: node not found
+    --- FAIL: TestPointDoorRace_UnderMovingWriters/sharded/rel (0.12s)
+        point_door_race_test.go:502: pdr-miss door=RelAsOf count=1
+        point_door_race_test.go:503: RelAsOf: 1 misses under concurrent writers; first:
+            error: E00: graph: no entity version recorded at the given transaction time
+        point_door_race_test.go:502: pdr-miss door=RelsDuringTx count=1
+        point_door_race_test.go:503: RelsDuringTx: 1 misses under concurrent writers; first:
+            got  E00=v0 x=0 vf=1000 vt=0 tx=1791567203995 | E01=v0 x=0 vf=1000 vt=0 tx=1791567203996 | E02=v0 x=0 vf=1000 vt=0 tx=1791567203999 | E03=v0 x=0 vf=1000 vt=0 tx=1791567204000 | E04=v0 x=0 vf=1000 vt=0 tx=1791567204003 | E05=v0 x=0 vf=1000 vt=0 tx=1791567204004 | E06=v0 x=0 vf=1000 vt=0 tx=1791567204007 | E07=v0 x=0 vf=1000 vt=0 tx=1791567204008 | E08=v0 x=0 vf=1000 vt=0 tx=1791567204011 | E09=v0 x=0 vf=1000 vt=0 tx=1791567204012 | E11=v0 x=0 vf=1000 vt=0 tx=1791567204016 | E12=v0 x=0 vf=1000 vt=0 tx=1791567204019 | E13=v0 x=0 vf=1000 vt=0 tx=1791567204020 | E14=v0 x=0 vf=1000 vt=0 tx=1791567204023 | E15=v0 x=0 vf=1000 vt=0 tx=1791567204024 | E16=v0 x=0 vf=1000 vt=0 tx=1791567204027 | E17=v0 x=0 vf=1000 vt=0 tx=1791567204028 | E18=v0 x=0 vf=1000 vt=0 tx=1791567204031 | E19=v0 x=0 vf=1000 vt=0 tx=1791567204032
+            want E00=v0 x=0 vf=1000 vt=0 tx=1791567203995 | E01=v0 x=0 vf=1000 vt=0 tx=1791567203996 | E02=v0 x=0 vf=1000 vt=0 tx=1791567203999 | E03=v0 x=0 vf=1000 vt=0 tx=1791567204000 | E04=v0 x=0 vf=1000 vt=0 tx=1791567204003 | E05=v0 x=0 vf=1000 vt=0 tx=1791567204004 | E06=v0 x=0 vf=1000 vt=0 tx=1791567204007 | E07=v0 x=0 vf=1000 vt=0 tx=1791567204008 | E08=v0 x=0 vf=1000 vt=0 tx=1791567204011 | E09=v0 x=0 vf=1000 vt=0 tx=1791567204012 | E10=v0 x=0 vf=1000 vt=0 tx=1791567204015 | E11=v0 x=0 vf=1000 vt=0 tx=1791567204016 | E12=v0 x=0 vf=1000 vt=0 tx=1791567204019 | E13=v0 x=0 vf=1000 vt=0 tx=1791567204020 | E14=v0 x=0 vf=1000 vt=0 tx=1791567204023 | E15=v0 x=0 vf=1000 vt=0 tx=1791567204024 | E16=v0 x=0 vf=1000 vt=0 tx=1791567204027 | E17=v0 x=0 vf=1000 vt=0 tx=1791567204028 | E18=v0 x=0 vf=1000 vt=0 tx=1791567204031 | E19=v0 x=0 vf=1000 vt=0 tx=1791567204032
+--- FAIL: TestPointDoorRace_UnderMovingWriters (1.01s)
+    --- FAIL: TestPointDoorRace_UnderMovingWriters/badger/rel (0.02s)
+        point_door_race_test.go:502: pdr-miss door=RelsDuringTx count=1
+        point_door_race_test.go:503: RelsDuringTx: 1 misses under concurrent writers; first:
+            got  E00=v0 x=0 vf=1000 vt=0 tx=1791567204923 | E01=v0 x=0 vf=1000 vt=0 tx=1791567204924 | E02=v0 x=0 vf=1000 vt=0 tx=1791567204927 | E03=v0 x=0 vf=1000 vt=0 tx=1791567204928 | E04=v0 x=0 vf=1000 vt=0 tx=1791567204931 | E05=v0 x=0 vf=1000 vt=0 tx=1791567204932 | E07=v0 x=0 vf=1000 vt=0 tx=1791567204936 | E08=v0 x=0 vf=1000 vt=0 tx=1791567204939 | E09=v0 x=0 vf=1000 vt=0 tx=1791567204940 | E10=v0 x=0 vf=1000 vt=0 tx=1791567204943 | E11=v0 x=0 vf=1000 vt=0 tx=1791567204944 | E12=v0 x=0 vf=1000 vt=0 tx=1791567204947 | E13=v0 x=0 vf=1000 vt=0 tx=1791567204948 | E14=v0 x=0 vf=1000 vt=0 tx=1791567204951 | E15=v0 x=0 vf=1000 vt=0 tx=1791567204952 | E16=v0 x=0 vf=1000 vt=0 tx=1791567204955 | E17=v0 x=0 vf=1000 vt=0 tx=1791567204956 | E18=v0 x=0 vf=1000 vt=0 tx=1791567204959 | E19=v0 x=0 vf=1000 vt=0 tx=1791567204960
+            want E00=v0 x=0 vf=1000 vt=0 tx=1791567204923 | E01=v0 x=0 vf=1000 vt=0 tx=1791567204924 | E02=v0 x=0 vf=1000 vt=0 tx=1791567204927 | E03=v0 x=0 vf=1000 vt=0 tx=1791567204928 | E04=v0 x=0 vf=1000 vt=0 tx=1791567204931 | E05=v0 x=0 vf=1000 vt=0 tx=1791567204932 | E06=v0 x=0 vf=1000 vt=0 tx=1791567204935 | E07=v0 x=0 vf=1000 vt=0 tx=1791567204936 | E08=v0 x=0 vf=1000 vt=0 tx=1791567204939 | E09=v0 x=0 vf=1000 vt=0 tx=1791567204940 | E10=v0 x=0 vf=1000 vt=0 tx=1791567204943 | E11=v0 x=0 vf=1000 vt=0 tx=1791567204944 | E12=v0 x=0 vf=1000 vt=0 tx=1791567204947 | E13=v0 x=0 vf=1000 vt=0 tx=1791567204948 | E14=v0 x=0 vf=1000 vt=0 tx=1791567204951 | E15=v0 x=0 vf=1000 vt=0 tx=1791567204952 | E16=v0 x=0 vf=1000 vt=0 tx=1791567204955 | E17=v0 x=0 vf=1000 vt=0 tx=1791567204956 | E18=v0 x=0 vf=1000 vt=0 tx=1791567204959 | E19=v0 x=0 vf=1000 vt=0 tx=1791567204960
+    --- FAIL: TestPointDoorRace_UnderMovingWriters/badger-disk/node (0.32s)
+        point_door_race_test.go:502: pdr-miss door=NodeAsOf count=1
+        point_door_race_test.go:503: NodeAsOf: 1 misses under concurrent writers; first:
+            error: E06: graph: no entity version recorded at the given transaction time
+        point_door_race_test.go:502: pdr-miss door=NodeAtTx count=1
+        point_door_race_test.go:503: NodeAtTx: 1 misses under concurrent writers; first:
+            error: E06: graph: no version valid at the given time
+    --- FAIL: TestPointDoorRace_UnderMovingWriters/badger-disk/rel (0.36s)
+        point_door_race_test.go:502: pdr-miss door=RelsAtTx count=2
+        point_door_race_test.go:503: RelsAtTx: 2 misses under concurrent writers; first:
+            got  E01=v0 x=0 vf=1000 vt=0 tx=1791567205378 | E02=v0 x=0 vf=1000 vt=0 tx=1791567205381 | E03=v0 x=0 vf=1000 vt=0 tx=1791567205382 | E04=v0 x=0 vf=1000 vt=0 tx=1791567205385 | E05=v0 x=0 vf=1000 vt=0 tx=1791567205386 | E06=v0 x=0 vf=1000 vt=0 tx=1791567205389 | E07=v0 x=0 vf=1000 vt=0 tx=1791567205390 | E08=v0 x=0 vf=1000 vt=0 tx=1791567205393 | E09=v0 x=0 vf=1000 vt=0 tx=1791567205394 | E10=v0 x=0 vf=1000 vt=0 tx=1791567205397 | E11=v0 x=0 vf=1000 vt=0 tx=1791567205398 | E12=v0 x=0 vf=1000 vt=0 tx=1791567205401 | E13=v0 x=0 vf=1000 vt=0 tx=1791567205402 | E14=v0 x=0 vf=1000 vt=0 tx=1791567205405 | E15=v0 x=0 vf=1000 vt=0 tx=1791567205406 | E16=v0 x=0 vf=1000 vt=0 tx=1791567205409 | E17=v0 x=0 vf=1000 vt=0 tx=1791567205410 | E18=v0 x=0 vf=1000 vt=0 tx=1791567205413 | E19=v0 x=0 vf=1000 vt=0 tx=1791567205414
+            want E00=v0 x=0 vf=1000 vt=0 tx=1791567205377 | E01=v0 x=0 vf=1000 vt=0 tx=1791567205378 | E02=v0 x=0 vf=1000 vt=0 tx=1791567205381 | E03=v0 x=0 vf=1000 vt=0 tx=1791567205382 | E04=v0 x=0 vf=1000 vt=0 tx=1791567205385 | E05=v0 x=0 vf=1000 vt=0 tx=1791567205386 | E06=v0 x=0 vf=1000 vt=0 tx=1791567205389 | E07=v0 x=0 vf=1000 vt=0 tx=1791567205390 | E08=v0 x=0 vf=1000 vt=0 tx=1791567205393 | E09=v0 x=0 vf=1000 vt=0 tx=1791567205394 | E10=v0 x=0 vf=1000 vt=0 tx=1791567205397 | E11=v0 x=0 vf=1000 vt=0 tx=1791567205398 | E12=v0 x=0 vf=1000 vt=0 tx=1791567205401 | E13=v0 x=0 vf=1000 vt=0 tx=1791567205402 | E14=v0 x=0 vf=1000 vt=0 tx=1791567205405 | E15=v0 x=0 vf=1000 vt=0 tx=1791567205406 | E16=v0 x=0 vf=1000 vt=0 tx=1791567205409 | E17=v0 x=0 vf=1000 vt=0 tx=1791567205410 | E18=v0 x=0 vf=1000 vt=0 tx=1791567205413 | E19=v0 x=0 vf=1000 vt=0 tx=1791567205414
+--- FAIL: TestPointDoorRace_UnderMovingWriters (1.08s)
+    --- FAIL: TestPointDoorRace_UnderMovingWriters/sharded/rel (0.12s)
+        point_door_race_test.go:502: pdr-miss door=ByType{ValidAt,TxAt} count=1
+        point_door_race_test.go:503: ByType{ValidAt,TxAt}: 1 misses under concurrent writers; first:
+            got  E01=v0 x=0 vf=1000 vt=0 tx=1791567207772 | E02=v0 x=0 vf=1000 vt=0 tx=1791567207775 | E03=v0 x=0 vf=1000 vt=0 tx=1791567207776 | E04=v0 x=0 vf=1000 vt=0 tx=1791567207779 | E05=v0 x=0 vf=1000 vt=0 tx=1791567207780 | E06=v0 x=0 vf=1000 vt=0 tx=1791567207783 | E07=v0 x=0 vf=1000 vt=0 tx=1791567207784 | E08=v0 x=0 vf=1000 vt=0 tx=1791567207787 | E09=v0 x=0 vf=1000 vt=0 tx=1791567207788 | E10=v0 x=0 vf=1000 vt=0 tx=1791567207791 | E11=v0 x=0 vf=1000 vt=0 tx=1791567207792 | E12=v0 x=0 vf=1000 vt=0 tx=1791567207795 | E13=v0 x=0 vf=1000 vt=0 tx=1791567207796 | E14=v0 x=0 vf=1000 vt=0 tx=1791567207799 | E15=v0 x=0 vf=1000 vt=0 tx=1791567207800 | E16=v0 x=0 vf=1000 vt=0 tx=1791567207803 | E17=v0 x=0 vf=1000 vt=0 tx=1791567207804 | E18=v0 x=0 vf=1000 vt=0 tx=1791567207807 | E19=v0 x=0 vf=1000 vt=0 tx=1791567207808
+            want E00=v0 x=0 vf=1000 vt=0 tx=1791567207771 | E01=v0 x=0 vf=1000 vt=0 tx=1791567207772 | E02=v0 x=0 vf=1000 vt=0 tx=1791567207775 | E03=v0 x=0 vf=1000 vt=0 tx=1791567207776 | E04=v0 x=0 vf=1000 vt=0 tx=1791567207779 | E05=v0 x=0 vf=1000 vt=0 tx=1791567207780 | E06=v0 x=0 vf=1000 vt=0 tx=1791567207783 | E07=v0 x=0 vf=1000 vt=0 tx=1791567207784 | E08=v0 x=0 vf=1000 vt=0 tx=1791567207787 | E09=v0 x=0 vf=1000 vt=0 tx=1791567207788 | E10=v0 x=0 vf=1000 vt=0 tx=1791567207791 | E11=v0 x=0 vf=1000 vt=0 tx=1791567207792 | E12=v0 x=0 vf=1000 vt=0 tx=1791567207795 | E13=v0 x=0 vf=1000 vt=0 tx=1791567207796 | E14=v0 x=0 vf=1000 vt=0 tx=1791567207799 | E15=v0 x=0 vf=1000 vt=0 tx=1791567207800 | E16=v0 x=0 vf=1000 vt=0 tx=1791567207803 | E17=v0 x=0 vf=1000 vt=0 tx=1791567207804 | E18=v0 x=0 vf=1000 vt=0 tx=1791567207807 | E19=v0 x=0 vf=1000 vt=0 tx=1791567207808
+        point_door_race_test.go:502: pdr-miss door=RelAtTx count=1
+        point_door_race_test.go:503: RelAtTx: 1 misses under concurrent writers; first:
+            error: E02: graph: relationship not found
+--- FAIL: TestPointDoorRace_UnderMovingWriters (1.03s)
+    --- FAIL: TestPointDoorRace_UnderMovingWriters/sharded/node (0.04s)
+        point_door_race_test.go:502: pdr-miss door=NodeAsOf count=1
+        point_door_race_test.go:503: NodeAsOf: 1 misses under concurrent writers; first:
+            error: E10: graph: no entity version recorded at the given transaction time
+        point_door_race_test.go:502: pdr-miss door=NodeAtTx count=1
+        point_door_race_test.go:503: NodeAtTx: 1 misses under concurrent writers; first:
+            error: E10: graph: no version valid at the given time
+    --- FAIL: TestPointDoorRace_UnderMovingWriters/sharded/rel (0.13s)
+        point_door_race_test.go:502: pdr-miss door=RelAsOf count=1
+        point_door_race_test.go:503: RelAsOf: 1 misses under concurrent writers; first:
+            error: E06: graph: no entity version recorded at the given transaction time
+--- FAIL: TestPointDoorRace_UnderMovingWriters (1.10s)
+    --- FAIL: TestPointDoorRace_UnderMovingWriters/badger/node (0.03s)
+        point_door_race_test.go:502: pdr-miss door=NodeAsOf count=2
+        point_door_race_test.go:503: NodeAsOf: 2 misses under concurrent writers; first:
+            error: E06: graph: no entity version recorded at the given transaction time
+    --- FAIL: TestPointDoorRace_UnderMovingWriters/badger-disk/rel (0.48s)
+        point_door_race_test.go:502: pdr-miss door=RelAtTx count=1
+        point_door_race_test.go:503: RelAtTx: 1 misses under concurrent writers; first:
+            error: E12: graph: relationship not found
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	18.287s
+FAIL

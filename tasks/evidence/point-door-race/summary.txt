@@ -1,0 +1,32 @@
+Point-door race (backlog 32) — evidence index, 2026-10-09
+
+RED (main 7e8eee9, or the seam commit 12d0400 = main + nil hooks)
+  red-1-stress-main.txt                    TestPointDoorRace_UnderMovingWriters -count=30 on main: 30 of 30 runs red
+  red-1c-stress-with-record-doors-main.txt the same with the record doors (Get, History) added, -count=30, badger
+                                           sources of main: red; Get/History 0 misses
+  per-door-table-main.md                   misses (failing subtests) per door x backend, both runs combined;
+                                           memory: 0 misses; badger NodesAsOf (bulk, one idxMu.RLock): 0
+  red-2-badger-publish-order-main.txt      TestWithHistoryDoorsPublishHistoryBeforeCurrent: 21 of 21 red (7 doors x
+                                           in-memory / on-disk / flushed)
+
+GUARD (green on main, labelled as such)
+  guard-1-move-between-chain-reads-main.txt TestPointDoorRace_MoveBetweenChainReads: a whole move between a core
+                                           resolver's current read and history read answers the pre-move row on
+                                           every backend (proves the current-first read order; catches mutant 3/3b)
+
+GREEN (fix d4636cd)
+  green-1-stress.txt, green-1b-stress-race.txt (-race, -count=20), green-1c-stress-with-record-doors.txt (-count=30)
+  green-2-badger-publish-order.txt         21 of 21 green
+  green-gates-build.txt, green-full-suite.txt, green-race.txt
+
+MUTANTS (each file: the diff, then the runs)
+  mutant-1-one-door-unfixed                ReplaceRelWithHistory back to cache-first: that door red in the store test
+                                           (3 flavours), rel doors red in the stress test
+  mutant-2-publish-order-swapped           publishMoveLocked cache first: 21 of 21 store cases red, stress red
+  mutant-3-history-before-current          interval resolver reads history first: guard red on every backend
+  mutant-3b-asof-history-before-current    as-of resolver reads history first: guard red (tiered, sharded: the
+                                           backends that run the core as-of resolver)
+
+BENCH
+  bench-ab-before.txt / bench-ab-after.txt interleaved A/B, 6 runs each, main vs fix; bench-compare.md medians
+  bench-before-main.txt / bench-after.txt  first, non-interleaved runs (host load 17: not used for the verdict)

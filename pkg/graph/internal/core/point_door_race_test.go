@@ -333,8 +333,9 @@ func pdrFresh(e *ccEnt) (int64, error) {
 // entity's current row by op (i % 5): Update, CloseVersion, Delete,
 // SetVersionInterval cascade, Update then Delete; later rounds Update the
 // open survivors, Delete the closed ones and re-create, churn and delete a
-// fresh entity for every deleted one.
-func pdrWrite(e *ccEnt, ids []int64, closeAt types.Instant, w, writers, rounds int) error {
+// fresh entity for every deleted one. deleting[id] is set before a tracked
+// entity's delete starts (the record doors' Get may answer not-found after it).
+func pdrWrite(e *ccEnt, ids []int64, deleting map[int64]*atomic.Bool, closeAt types.Instant, w, writers, rounds int) error {
 	deleted := map[int64]bool{}
 	closed := map[int64]bool{}
 	for round := 0; round < rounds; round++ {
@@ -368,12 +369,14 @@ func pdrWrite(e *ccEnt, ids []int64, closeAt types.Instant, w, writers, rounds i
 				err = e.closeAt(id, closeAt)
 				closed[id] = true
 			case 2:
+				deleting[id].Store(true)
 				err = e.del(id)
 				deleted[id] = true
 			case 3:
 				err = e.cascade(id, 2000, 3000, map[string]any{"x": int64(1000 + i)})
 			case 4:
 				if err = e.update(id, map[string]any{"x": int64(2000 + i)}); err == nil {
+					deleting[id].Store(true)
 					err = e.del(id)
 					deleted[id] = true
 				}
@@ -384,6 +387,77 @@ func pdrWrite(e *ccEnt, ids []int64, closeAt types.Instant, w, writers, rounds i
 		}
 	}
 	return nil
+}
+
+// pdrRecords checks the record doors one reader sees under the writers: Get
+// fails only with not-found and only once the entity's delete started, and
+// never goes back to an older version; History never loses a version it
+// showed (append-only).
+type pdrRecords struct {
+	e        *ccEnt
+	deleting map[int64]*atomic.Bool
+	version  map[int64]uint32
+	history  map[int64]map[uint32]bool
+}
+
+func (r *pdrRecords) check(id int64) (door, msg string) {
+	if r.version == nil {
+		r.version = map[int64]uint32{}
+		r.history = map[int64]map[uint32]bool{}
+	}
+	name := r.e.names[id]
+	get, historyDoor := "Nodes.Get", "Nodes.History"
+	var version uint32
+	var err error
+	var hist []uint32
+	if r.e.rel {
+		get, historyDoor = "Rels.Get", "Rels.History"
+		var rel *types.Relationship
+		if rel, err = r.e.g.Rels.Get(r.e.ctx, types.RelID(id)); err == nil {
+			version = rel.Version()
+		}
+		rows, herr := r.e.g.Rels.History(types.RelID(id))
+		if herr != nil {
+			return historyDoor, name + ": " + herr.Error()
+		}
+		for _, h := range rows {
+			hist = append(hist, h.Version())
+		}
+	} else {
+		var n *types.Node
+		if n, err = r.e.g.Nodes.Get(r.e.ctx, types.NodeID(id)); err == nil {
+			version = n.Version()
+		}
+		rows, herr := r.e.g.Nodes.History(types.NodeID(id))
+		if herr != nil {
+			return historyDoor, name + ": " + herr.Error()
+		}
+		for _, h := range rows {
+			hist = append(hist, h.Version())
+		}
+	}
+	switch {
+	case err != nil && !errors.Is(err, r.e.notFound()):
+		return get, name + ": " + err.Error()
+	case err != nil && !r.deleting[id].Load():
+		return get, name + ": not found before its delete started"
+	case err == nil && version < r.version[id]:
+		return get, fmt.Sprintf("%s: v%d after v%d", name, version, r.version[id])
+	}
+	if err == nil {
+		r.version[id] = version
+	}
+	seen := map[uint32]bool{}
+	for _, v := range hist {
+		seen[v] = true
+	}
+	for v := range r.history[id] {
+		if !seen[v] {
+			return historyDoor, fmt.Sprintf("%s: lost history v%d", name, v)
+		}
+	}
+	r.history[id] = seen
+	return "", ""
 }
 
 // pdrMisses counts per door how often a reader saw a pinned door answer differ
@@ -411,8 +485,9 @@ func (m *pdrMisses) add(door, msg string) {
 // TestPointDoorRace_UnderMovingWriters is the backlog-32 stress test: writer
 // goroutines move the tracked entities' current rows (Update, CloseVersion,
 // Delete, SetVersionInterval cascade, re-create) while reader goroutines call
-// every point and scan door at a pin taken before the writers started. Zero
-// misses allowed; the per-door counts are logged ("pdr-miss") for the table.
+// every point and scan door at a pin taken before the writers started, and the
+// record doors (Get, History). Zero misses allowed; the per-door counts are
+// logged ("pdr-miss") for the table.
 func TestPointDoorRace_UnderMovingWriters(t *testing.T) {
 	const (
 		entities = 20
@@ -436,6 +511,10 @@ func TestPointDoorRace_UnderMovingWriters(t *testing.T) {
 			want[d.name] = got
 		}
 
+		deleting := make(map[int64]*atomic.Bool, len(ids))
+		for _, id := range ids {
+			deleting[id] = &atomic.Bool{}
+		}
 		var misses pdrMisses
 		var writing atomic.Bool
 		writing.Store(true)
@@ -444,7 +523,13 @@ func TestPointDoorRace_UnderMovingWriters(t *testing.T) {
 			readersWG.Add(1)
 			go func() {
 				defer readersWG.Done()
+				rec := pdrRecords{e: e, deleting: deleting}
 				for writing.Load() {
+					for _, id := range ids {
+						if door, msg := rec.check(id); door != "" {
+							misses.add(door, msg)
+						}
+					}
 					for _, d := range doors {
 						got, err := d.eval()
 						switch {
@@ -464,7 +549,7 @@ func TestPointDoorRace_UnderMovingWriters(t *testing.T) {
 			writersWG.Add(1)
 			go func(w int) {
 				defer writersWG.Done()
-				werrs <- pdrWrite(e, ids, pin+1_000_000, w, writers, rounds)
+				werrs <- pdrWrite(e, ids, deleting, pin+1_000_000, w, writers, rounds)
 			}(w)
 		}
 		writersWG.Wait()
