@@ -409,12 +409,12 @@ func pinnedRelBackends() []pinnedRelBackend {
 }
 
 type pinnedRelFixture struct {
-	g         *graph.Graph
-	pin       types.Instant
-	target    string // the type the lookups ask for
-	seatWant  int    // current matches of seat=0
-	grpWant   int    // current matches of grp=0
-	buildMs   float64
+	g        *graph.Graph
+	pin      types.Instant
+	target   string // the type the lookups ask for
+	seatWant int    // current matches of seat=0
+	grpWant  int    // current matches of grp=0
+	buildMs  float64
 }
 
 func buildPinnedRelFixture(tb testing.TB, be pinnedRelBackend, n int, prof pinnedRelProfile) *pinnedRelFixture {
