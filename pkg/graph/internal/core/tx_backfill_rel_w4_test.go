@@ -103,20 +103,20 @@ func txbW4Doors() []txbDoor {
 	doors := []txbDoor{
 		{"GraphTx.DeleteRelationshipWithTx", func(g *Core, id types.RelID, at types.Instant) error {
 			return txbTxCommitDo(g, func(tx *GraphTx) error { return tx.DeleteRelationshipWithTx(id, at) })
-		}},
+		}, 1},
 		{"GraphTx.UpdateRelationshipWithTx", func(g *Core, id types.RelID, at types.Instant) error {
 			return txbTxCommitDo(g, func(tx *GraphTx) error {
 				_, err := tx.UpdateRelationshipWithTx(id, txbW4Update(at), at)
 				return err
 			})
-		}},
+		}, 1},
 	}
 	for _, m := range txbQueueModes() {
 		doors = append(doors,
-			txbDoor{m.name + ".DeleteRelationshipWithTx", func(g *Core, id types.RelID, at types.Instant) error {
+			txbDoor{name: m.name + ".DeleteRelationshipWithTx", run: func(g *Core, id types.RelID, at types.Instant) error {
 				return m.apply(g, func(q txbQueue) error { return q.DeleteRelationshipWithTx(id, at) })
 			}},
-			txbDoor{m.name + ".UpdateRelationshipWithTx", func(g *Core, id types.RelID, at types.Instant) error {
+			txbDoor{name: m.name + ".UpdateRelationshipWithTx", run: func(g *Core, id types.RelID, at types.Instant) error {
 				return m.apply(g, func(q txbQueue) error { return q.UpdateRelationshipWithTx(id, txbW4Update(at), at) })
 			}},
 		)
@@ -428,10 +428,11 @@ func txbR16Fixture(t *testing.T, g *Core) txbR16Fix {
 //     fails its order check — partial t stamps;
 //   - the queued create's caller-visible skeleton left with a TxFrom after
 //     the refusal (AGENTS.md "Batch relationship failure rollback");
-//   - two writes on one relationship in one unit: Execute runs updates before
-//     deletes, so the queue order is not the apply order — a plain update
-//     stamped with the clock before a caller-instant delete, or two updates
-//     at t1 < t2, cannot be ordered and are refused, not partly applied;
+//   - two writes on one relationship in one unit: each passes alone against
+//     the stored chain, but applied in sequence the later one fails after the
+//     earlier was stamped (two caller-instant updates in reversed order; a
+//     plain update stamped with the clock before a caller-instant delete) —
+//     refused as a unit, not partly applied;
 //   - a caller instant on a relationship created in the same unit;
 //   - a no-op update at t (equal value; empty map) silently dropped;
 //   - a missing relationship applied as a partial batch.
@@ -480,11 +481,14 @@ func TestTxBackfillRelW4_BatchIngestDoors(t *testing.T) {
 						}
 						return q.DeleteRelationshipWithTx(f.b.id, f.b.base)
 					}, ErrTxOrder, fmt.Sprint(f.b.base)},
-					{"two caller-instant updates on A", func(q txbQueue, _ **types.Relationship) error {
-						if err := q.UpdateRelationshipWithTx(f.a.id, map[string]any{"w": int64(2)}, tA); err != nil {
+					// Each update alone passes against the stored chain; applied
+					// in queue order the second (t below the first) fails after
+					// the first was stamped — a partial past.
+					{"two caller-instant updates on A, reversed", func(q txbQueue, _ **types.Relationship) error {
+						if err := q.UpdateRelationshipWithTx(f.a.id, map[string]any{"w": int64(2)}, tA+10); err != nil {
 							return err
 						}
-						return q.UpdateRelationshipWithTx(f.a.id, map[string]any{"w": int64(3)}, tA+10)
+						return q.UpdateRelationshipWithTx(f.a.id, map[string]any{"w": int64(3)}, tA)
 					}, ErrTxOrder, ""},
 					{"plain update then caller-instant delete of A", func(q txbQueue, _ **types.Relationship) error {
 						if err := q.UpdateRelationship(f.a.id, map[string]any{"w": int64(2)}); err != nil {

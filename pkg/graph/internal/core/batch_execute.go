@@ -52,10 +52,19 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		return nil, ErrGraphClosed
 	}
 	b.done = true
+	// Caller-instant relationship ops: refuse the whole batch, before any
+	// write, when one of them would be refused (batch_rel_withtx.go).
+	if err := b.g.precheckRelCallerTxOps(b.rels, b.relUpdates, b.relDeletes, b.relCascades, b.relTxDeletes); err != nil {
+		b.g.mu.Unlock()
+		b.g.txMu.Unlock()
+		b.mu.Unlock()
+		return nil, fmt.Errorf("%w: refused before any write: %w", ErrBatchFailed, err)
+	}
 	// The queue doors gated any backfilled TxFrom without writing; report the
 	// past-dated write after this Execute's store writes (deferred — it runs
 	// after every write and every cleanup path below).
 	defer b.g.notePastDatedWrite(pendingPastDated(b.nodes, b.rels))
+	defer b.g.notePastDatedWrite(relCallerPastDated(b.relUpdates, b.relTxDeletes))
 
 	// Buffer events during batch execution; dispatch after c.mu.Unlock.
 	var batchEvents []eventspkg.Event
@@ -590,6 +599,20 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		} else {
 			result.Deleted++
 			b.g.publishEvent(eventspkg.EventRelDelete, types.EntityID(id), b.g.now(), eventspkg.PriorityCritical)
+		}
+	}
+	// 5b. Delete relationships at a caller instant (passed the pre-flight).
+	for _, d := range b.relTxDeletes {
+		if err := b.g.deleteRelationshipInternal(context.Background(), d.id, d.at); err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, BatchError{
+				Op:  "DeleteRelationshipWithTx",
+				ID:  types.EntityID(d.id),
+				Err: err,
+			})
+		} else {
+			result.Deleted++
+			b.g.publishEvent(eventspkg.EventRelDelete, types.EntityID(d.id), b.g.now(), eventspkg.PriorityCritical)
 		}
 	}
 

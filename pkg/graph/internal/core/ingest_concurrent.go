@@ -71,14 +71,24 @@ func (c *Core) applyIngestGroupConcurrent(g *ingestGroup, lane uint16) error {
 	// Prepare gated any backfilled TxFrom without writing; report the
 	// past-dated write after the group's store writes below (deferred).
 	defer c.notePastDatedWrite(pendingPastDated(g.nodes, g.rels))
+	defer c.notePastDatedWrite(relCallerPastDated(g.relUpdates, g.relTxDeletes))
 
+	var refused error
 	ep, closeErr := c.runUnderRLockShard(uint(lane), func() {
+		// Caller-instant relationship ops: refuse the whole group, before any
+		// write, when one of them would be refused (batch_rel_withtx.go).
+		if refused = c.precheckRelCallerTxOps(g.rels, g.relUpdates, g.relDeletes, g.relCascades, g.relTxDeletes); refused != nil {
+			return
+		}
 		unavailable := c.applyConcurrentNodeCreates(g.nodes, fail, emit)
 		c.applyConcurrentRelCreates(g.rels, unavailable, fail, emit)
 		c.applyConcurrentUpdatesAndDeletes(g, fail, emit)
 	})
 	if closeErr != nil {
 		return closeErr
+	}
+	if refused != nil {
+		return fmt.Errorf("graph: concurrent ingest group refused before any write: %w", refused)
 	}
 	if ep != nil {
 		for _, e := range events {
@@ -428,6 +438,13 @@ func (c *Core) applyConcurrentUpdatesAndDeletes(
 			fail("DeleteRelationship", types.EntityID(id), err)
 		} else {
 			emit(eventspkg.EventRelDelete, types.EntityID(id), c.now(), eventspkg.PriorityCritical)
+		}
+	}
+	for _, d := range g.relTxDeletes {
+		if err := c.deleteRelationshipInternal(ctx, d.id, d.at); err != nil {
+			fail("DeleteRelationshipWithTx", types.EntityID(d.id), err)
+		} else {
+			emit(eventspkg.EventRelDelete, types.EntityID(d.id), c.now(), eventspkg.PriorityCritical)
 		}
 	}
 

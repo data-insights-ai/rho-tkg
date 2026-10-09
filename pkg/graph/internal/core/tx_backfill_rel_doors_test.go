@@ -70,6 +70,10 @@ func txbBackfillRel(t *testing.T, g *Core) txbBackfillFix {
 type txbDoor struct {
 	name string
 	run  func(g *Core, id types.RelID, at types.Instant) error
+	// clockReads is how many commit-clock instants the door's wrapper takes
+	// before the door gates t (BeginTx takes one), so "clock+1" stays the
+	// first future instant the door itself sees.
+	clockReads types.Instant
 }
 
 // txbDoors is every caller-instant relationship door: the standalone pair
@@ -80,10 +84,10 @@ func txbDoors() []txbDoor {
 
 func txbStandaloneDoors() []txbDoor {
 	return []txbDoor{
-		{"DeleteWithTx", func(g *Core, id types.RelID, at types.Instant) error {
+		{name: "DeleteWithTx", run: func(g *Core, id types.RelID, at types.Instant) error {
 			return g.Rels.DeleteWithTx(context.Background(), id, at)
 		}},
-		{"UpdateWithTx", func(g *Core, id types.RelID, at types.Instant) error {
+		{name: "UpdateWithTx", run: func(g *Core, id types.RelID, at types.Instant) error {
 			_, err := g.Rels.UpdateWithTx(context.Background(), id, map[string]any{"w": int64(1000 + at%1000)}, at)
 			return err
 		}},
@@ -187,7 +191,7 @@ func TestTxBackfillRel_InvalidInstant(t *testing.T) {
 					}{
 						{"zero", func() types.Instant { next(); return 0 }},
 						{"negative", func() types.Instant { next(); return -1 }},
-						{"clock+1", func() types.Instant { return next() + 1 }},
+						{"clock+1", func() types.Instant { return next() + 1 + d.clockReads }},
 						{"MaxInt64", func() types.Instant { next(); return math.MaxInt64 }},
 					} {
 						phase := d.name + "/" + tc.name
