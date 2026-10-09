@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [4.45.0] - 2026-10-09
+
+Minor release: the tiered store gains composite indexes and relationship temporal indexes (ai-soc
+request 3), and the relationship temporal index no longer prunes a valid row after a rolled-back
+delete, an imported history version or a retention purge. Gates on the released tree: `make ci-docker`
+exit 0; sigma-tkgd, ai-soc engine and agent-bookkeeping build and vet against it.
+
 ### Added
 
 - **Tiered store: composite and relationship temporal indexes (backlog 10, ai-soc request 3).**
