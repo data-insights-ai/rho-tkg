@@ -46,7 +46,8 @@ func (h *historyCount) get(epoch uint64, count func() (int, error)) (int, error)
 
 // noteHistoryKey advances the history epoch of op's kind when op's key is a
 // node or relationship history key, and records the op in that kind's history
-// presence set (badgerstore_history_presence.go). Every history row write and
+// presence set (badgerstore_history_presence.go) and history-stamps sidecar
+// (badgerstore_history_stamps.go). Every history row write and
 // delete enters the write buffer through appendOps / appendOpsLoggedRouted,
 // which call this under wbMu with the op.
 func (bs *Store) noteHistoryKey(op writeOp) {
@@ -58,12 +59,16 @@ func (bs *Store) noteHistoryKey(op writeOp) {
 	case storepkg.KeyHistNode:
 		bs.histNodeEpoch.Add(1)
 		if len(key) == storepkg.SizeHistKey {
-			bs.histNodePresence.note(storepkg.ParseIDFromKey(key, 1), historyVersionFromKey(key), op.opType == writeOpDelete)
+			id, version := storepkg.ParseIDFromKey(key, 1), historyVersionFromKey(key)
+			bs.histNodePresence.note(id, version, op.opType == writeOpDelete)
+			bs.histNodeStamps.note(id, version, op, true)
 		}
 	case storepkg.KeyHistRel:
 		bs.histRelEpoch.Add(1)
 		if len(key) == storepkg.SizeHistKey {
-			bs.histRelPresence.note(storepkg.ParseIDFromKey(key, 1), historyVersionFromKey(key), op.opType == writeOpDelete)
+			id, version := storepkg.ParseIDFromKey(key, 1), historyVersionFromKey(key)
+			bs.histRelPresence.note(id, version, op.opType == writeOpDelete)
+			bs.histRelStamps.note(id, version, op, false)
 		}
 	}
 }
