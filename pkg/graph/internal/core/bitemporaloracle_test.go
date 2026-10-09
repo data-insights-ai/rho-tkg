@@ -342,7 +342,7 @@ func capAtLifeEnd(vEnd, life types.Instant) types.Instant {
 //
 //   - current arm: a live current row recorded by txTime and open in tx-time
 //     (TxTo==0) answers — unless a history row with a HIGHER version was
-//     recorded after it and by txTime (a bounded cascade that left the current
+//     recorded at or after it and by txTime (a bounded cascade that left the current
 //     row in its slot appends such rows): the highest such row answers, absent
 //     if it was retracted by txTime. Answering the current row while it is
 //     current and that row once it is superseded made the answer at a pin
@@ -367,7 +367,7 @@ func (e *oracleEntity) asOfVisible(txTime types.Instant) (oracleRow, bool) {
 		if cur.txFrom > 0 && cur.txFrom <= txTime && cur.txTo == 0 {
 			best, above := cur, false
 			for _, r := range e.rows[:n] {
-				if r.version > best.version && r.txFrom > cur.txFrom && r.txFrom <= txTime {
+				if r.version > best.version && r.txFrom >= cur.txFrom && r.txFrom <= txTime {
 					best, above = r, true
 				}
 			}

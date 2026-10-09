@@ -348,7 +348,7 @@ func (bs *Store) relDeletedAt(id snowflake.ID) historyDeletedAt {
 // when none). It stops as soon as the rule is decided:
 //
 //   - current arm (cur recorded by txTime, TxTo == 0): only the versions above
-//     cur's are visited; the first recorded after cur and by txTime outranks
+//     cur's are visited; the first recorded at or after cur and by txTime outranks
 //     cur (a cascade row written while cur kept the current slot);
 //   - history arm: the first version recorded by txTime is the newest; absent
 //     if it was retracted by txTime; otherwise the scan continues to the first
@@ -371,7 +371,7 @@ func selectAsOfScan(scan func(consider func(version uint64, val []byte) (bool, e
 			if err != nil {
 				return false, err
 			}
-			if tf > int64(cur.TxFrom) && types.Instant(tf) <= txTime {
+			if tf >= int64(cur.TxFrom) && types.Instant(tf) <= txTime {
 				pick = asOfPick{found: true, version: version, raw: append([]byte(nil), val...)}
 				aboveTxTo = tt
 				return true, nil

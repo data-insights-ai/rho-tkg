@@ -32,7 +32,11 @@ func genCascadeAsofChain(rng *rand.Rand) []asofVersion {
 	tx := types.Instant(1 + rng.IntN(10))
 	for i := range chain {
 		chain[i] = asofVersion{version: uint32(i), txFrom: tx}
-		tx += types.Instant(1 + rng.IntN(20))
+		step := types.Instant(1 + rng.IntN(20))
+		if i >= s && rng.IntN(3) == 0 {
+			step = 0 // the next row is from the same write (a pre-v4.46 cascade numbered pieces above the slot row)
+		}
+		tx += step
 	}
 	for i := 0; i < s; i++ {
 		chain[i].txTo = chain[i+1].txFrom

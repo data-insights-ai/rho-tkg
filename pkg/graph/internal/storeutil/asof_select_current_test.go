@@ -43,6 +43,16 @@ func TestSelectAsOfWithCurrent_Table(t *testing.T) {
 			wantFound: true, wantVer: 2,
 		},
 		{
+			// A chain written before v4.46: the cascade numbered its piece above
+			// the resumption that took the slot, in the same write (equal
+			// TxFrom). The piece answers before and after a later write.
+			name:      "row above the current version recorded in the same write: that row",
+			history:   []fakeRow{row(0, 10, 0, 0), row(2, 20, 0, 0)},
+			current:   cur(1, 20, 0),
+			pin:       100,
+			wantFound: true, wantVer: 2,
+		},
+		{
 			// Catches an arm that takes every row above the current version.
 			name:      "row above the current version recorded after the pin: current",
 			history:   []fakeRow{row(2, 50, 0, 0)},

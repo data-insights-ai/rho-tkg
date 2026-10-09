@@ -38,12 +38,14 @@ func SelectAsOf[T TemporalRow](history []T, pin types.Instant) (T, bool) {
 //     stamp (lesson 62).
 //   - Current arm: a live current row that is a candidate and not retracted
 //     (TxTo == 0) answers unless a history row ABOVE its version was recorded
-//     after it and by the pin — the rows a bounded SetVersionInterval appends
-//     while the current row keeps the store's current slot (backlog 18). That
-//     row is then the newest row recorded by the pin, before AND after a later
-//     write supersedes the current row, so the answer at a pin never depends
-//     on later writes. History rows above the current version recorded
-//     before it (a re-imported ID's earlier life) never answer for it.
+//     at or after it and by the pin — the rows a bounded SetVersionInterval
+//     appends while the current row keeps the store's current slot (backlog
+//     18; "at" covers chains written before v4.46, whose cascade numbered its
+//     pieces above the resumption that took the slot, in the same write).
+//     That row is then the newest row recorded by the pin, before AND after a
+//     later write supersedes the current row, so the answer at a pin never
+//     depends on later writes. History rows above the current version
+//     recorded before it (a re-imported ID's earlier life) never answer for it.
 //   - Retraction: if the newest row was superseded or hard-deleted by the pin
 //     (TxTo != 0 && TxTo <= pin, or DeletedAt != 0 && DeletedAt <= pin) the
 //     entity is ABSENT; the selector never falls through to an older still-open
@@ -66,7 +68,7 @@ func SelectAsOfWithCurrent[T TemporalRow](history []T, current T, hasCurrent boo
 			best, above := current, false
 			for _, h := range history {
 				tm := h.Temporal()
-				if tm == nil || h.Version() <= best.Version() || tm.TxFrom <= ctm.TxFrom || tm.TxFrom > pin {
+				if tm == nil || h.Version() <= best.Version() || tm.TxFrom < ctm.TxFrom || tm.TxFrom > pin {
 					continue
 				}
 				best, above = h, true
