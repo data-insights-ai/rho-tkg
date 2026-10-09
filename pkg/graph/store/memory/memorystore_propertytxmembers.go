@@ -28,6 +28,23 @@ import (
 // erasure drop the sidecars (an erased value must not survive in RAM); the
 // next lookup rebuilds them. Truncation and compaction keep them (a superset).
 
+// recordRelRowLocked records one relationship row the store keeps (current or
+// history) into every lazily built membership sidecar: the K1 rel-type set and
+// the property sets. Every row, not only creates: a row's TxFrom lowers the
+// member's first-TxFrom bound (an unstamped row makes it 0), so a door that
+// rewrites or demotes a row must be seen too. Caller holds ms.mu (write).
+func (ms *Store) recordRelRowLocked(r *types.Relationship) {
+	ms.recordRelTypeMemberLocked(r)
+	ms.recordRelPropTxLocked(r)
+}
+
+// recordNodeRowLocked is recordRelRowLocked for node rows (K1 label set and
+// node property sets). Caller holds ms.mu (write).
+func (ms *Store) recordNodeRowLocked(n *types.Node) {
+	ms.recordNodeLabelMembersLocked(n)
+	ms.recordNodePropTxLocked(n)
+}
+
 // recordRelPropTxLocked records r's indexable values into the built rel
 // sidecars of its type. Caller holds ms.mu (write).
 func (ms *Store) recordRelPropTxLocked(r *types.Relationship) {

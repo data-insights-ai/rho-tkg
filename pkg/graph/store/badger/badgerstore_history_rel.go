@@ -100,7 +100,7 @@ func (bs *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 	bs.bumpRelRevLocked(rid)                                   // this door always re-reads via getRelLocked above, but must still bump so a concurrent ReplaceRelationship's prefetch detects this write (BACKLOG 18b)
 	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(current))   // BACKLOG 10c
 	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(prevState)) // BACKLOG 10c — the demoted history row
-	bs.recordRelPropTxLocked(prevState)                        // backlog 8 — and its property values
+	bs.recordRelRowLocked(prevState)                           // backlog 8 — and its property values
 	bs.maintainRelPropertyIndexesAdd(current, id)
 	bs.maintainRelTypeTemporalIndexesAdd(current, id) // BACKLOG 21c
 	bs.addRelPropertyTypeClassCounts(current)
@@ -180,7 +180,7 @@ func (bs *Store) deleteRelWithHistoryRouted(rid types.RelID, prevVersion uint32,
 	}
 	info := relDeleteInfoFromRelationship(r)
 	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(tombstone)) // BACKLOG 10c
-	bs.recordRelPropTxLocked(tombstone)                        // backlog 8
+	bs.recordRelRowLocked(tombstone)                           // backlog 8
 	// The tombstone first, then the removal (appends its delete ops to pending
 	// under the lock; no record — emitted here).
 	bs.publishMoveLocked([]writeOp{{opType: writeOpSet, key: histKey, value: tombData}}, func() { bs.deleteRelByInfo(info) })
@@ -248,7 +248,7 @@ func (bs *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 		func() {
 			bs.recordRelTypeMemberLocked(r)
 			bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r))
-			bs.recordRelPropTxLocked(r) // backlog 8: tracking or built property sidecars
+			bs.recordRelRowLocked(r) // backlog 8: tracking or built property sidecars
 			if _, live := bs.relIDs[rid]; live || indexpkg.RelCoveredInTemporalIndexes(bs.relTypeTemporalIndexes, r, id) {
 				bs.maintainRelTypeTemporalIndexesAdd(r, id)
 			}

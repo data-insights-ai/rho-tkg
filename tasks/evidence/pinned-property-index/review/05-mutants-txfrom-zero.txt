@@ -1,0 +1,42 @@
+## M3: MergeFirstTx lets a later stamp replace 0 (property sidecars)
+   --- FAIL: TestUnstampedRowKeepsMembershipBoundAtZero (0.01s)
+       --- FAIL: TestUnstampedRowKeepsMembershipBoundAtZero/memory/warm=false/node (0.00s)
+       --- FAIL: TestUnstampedRowKeepsMembershipBoundAtZero/memory/warm=false/rel (0.00s)
+       --- FAIL: TestUnstampedRowKeepsMembershipBoundAtZero/memory/warm=true/node (0.00s)
+       --- FAIL: TestUnstampedRowKeepsMembershipBoundAtZero/memory/warm=true/rel (0.00s)
+       --- FAIL: TestUnstampedRowKeepsMembershipBoundAtZero/badger/warm=false/node (0.00s)
+   => RED (caught)
+
+## K1 memory label merge back to 'prev == 0 -> replace'
+   --- FAIL: TestUnstampedRowKeepsMembershipBoundAtZero (0.01s)
+       --- FAIL: TestUnstampedRowKeepsMembershipBoundAtZero/memory/warm=false/node (0.00s)
+       --- FAIL: TestUnstampedRowKeepsMembershipBoundAtZero/memory/warm=true/node (0.00s)
+   FAIL
+   FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	6.493s
+   FAIL
+   => RED (caught)
+
+## K1 badger rel-type wire merge back to 'p == 0 -> replace'
+   --- FAIL: TestUnstampedRowKeepsMembershipBoundAtZero (0.03s)
+       --- FAIL: TestUnstampedRowKeepsMembershipBoundAtZero/badger/warm=false/rel (0.00s)
+   FAIL
+   FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	5.879s
+   FAIL
+   => RED (caught)
+
+## K1 memory: rows recorded only at create (no row seam)
+   --- FAIL: TestUnstampedRowKeepsMembershipBoundAtZero (0.01s)
+       --- FAIL: TestUnstampedRowKeepsMembershipBoundAtZero/memory/warm=true/rel (0.00s)
+   FAIL
+   FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	6.379s
+   FAIL
+   => RED (caught)
+
+## K1 badger: node rows recorded only at label doors (no row seam)
+   --- FAIL: TestUnstampedRowKeepsMembershipBoundAtZero (0.02s)
+       --- FAIL: TestUnstampedRowKeepsMembershipBoundAtZero/badger/warm=true/node (0.00s)
+   FAIL
+   FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	6.153s
+   FAIL
+   => RED (caught)
+

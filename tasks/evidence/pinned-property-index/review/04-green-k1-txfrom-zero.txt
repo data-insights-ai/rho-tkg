@@ -1,0 +1,11 @@
+--- PASS: TestUnstampedRowKeepsMembershipBoundAtZero (0.05s)
+    --- PASS: TestUnstampedRowKeepsMembershipBoundAtZero/memory/warm=false/node (0.00s)
+    --- PASS: TestUnstampedRowKeepsMembershipBoundAtZero/memory/warm=false/rel (0.00s)
+    --- PASS: TestUnstampedRowKeepsMembershipBoundAtZero/memory/warm=true/node (0.00s)
+    --- PASS: TestUnstampedRowKeepsMembershipBoundAtZero/memory/warm=true/rel (0.00s)
+    --- PASS: TestUnstampedRowKeepsMembershipBoundAtZero/badger/warm=false/node (0.00s)
+    --- PASS: TestUnstampedRowKeepsMembershipBoundAtZero/badger/warm=false/rel (0.01s)
+    --- PASS: TestUnstampedRowKeepsMembershipBoundAtZero/badger/warm=true/node (0.00s)
+    --- PASS: TestUnstampedRowKeepsMembershipBoundAtZero/badger/warm=true/rel (0.04s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.063s

@@ -1,6 +1,7 @@
 package memory
 
 import (
+	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -27,7 +28,8 @@ import (
 
 // recordLabelMemberLocked records node id as an ever-member of tok with the
 // given acquisition transaction time, keeping the earliest (lowest) firstTxFrom
-// seen. No-op until the sidecar is built. Caller holds ms.mu.
+// seen; 0 (an unstamped row, visible to a TxAt read at every pin) is "unknown"
+// and is never raised (index.MergeFirstTx). No-op until the sidecar is built. Caller holds ms.mu.
 func (ms *Store) recordLabelMemberLocked(tok uint16, id types.NodeID, txFrom types.Instant) {
 	if ms.labelTxMembers == nil {
 		return // not built yet — the lazy build will capture current state
@@ -37,7 +39,9 @@ func (ms *Store) recordLabelMemberLocked(tok uint16, id types.NodeID, txFrom typ
 		set = make(map[types.NodeID]types.Instant)
 		ms.labelTxMembers[tok] = set
 	}
-	if prev, ok := set[id]; !ok || (txFrom != 0 && (prev == 0 || txFrom < prev)) {
+	if prev, ok := set[id]; ok {
+		set[id] = indexpkg.MergeFirstTx(prev, txFrom)
+	} else {
 		set[id] = txFrom
 	}
 }
@@ -74,7 +78,9 @@ func (ms *Store) recordRelTypeMemberLocked(r *types.Relationship) {
 		set = make(map[types.RelID]types.Instant)
 		ms.relTypeTxMembers[tok] = set
 	}
-	if prev, ok := set[id]; !ok || (tx != 0 && (prev == 0 || tx < prev)) {
+	if prev, ok := set[id]; ok {
+		set[id] = indexpkg.MergeFirstTx(prev, tx)
+	} else {
 		set[id] = tx
 	}
 }
