@@ -50,7 +50,9 @@ func SelectAsOf[T TemporalRow](history []T, pin types.Instant) (T, bool) {
 //     That row is then the newest row recorded by the pin, before AND after a
 //     later write supersedes the current row, so the answer at a pin never
 //     depends on later writes. History rows above the current version
-//     recorded before it (a re-imported ID's earlier life) never answer for it,
+//     recorded before it (a re-imported ID's earlier life, in a chain stored
+//     before backlog 38: a re-import now starts above every version of the
+//     chain) never answer for it,
 //     and none of them does once one carries a retraction (TxTo at or after
 //     its TxFrom): a live current row never has a superseded or deleted row
 //     above it, so those rows are an earlier life even when a backfilled
@@ -97,8 +99,9 @@ func SelectAsOfWithCurrent[T TemporalRow](history []T, current T, hasCurrent boo
 			// Rows above the current version that carry a retraction (TxTo at
 			// or after their TxFrom) belong to an earlier life of the ID — a
 			// live current row never has a superseded or deleted row above
-			// it — so none of them answers for the current one (a re-import,
-			// possibly with a backfilled TxFrom inside that life).
+			// it — so none of them answers for the current one (a re-import
+			// stored before backlog 38, possibly with a backfilled TxFrom
+			// inside that life).
 			for _, h := range seq[:len(seq)-1] {
 				if tm := h.Temporal(); tm != nil && tm.TxTo != 0 && tm.TxTo >= tm.TxFrom {
 					return current, true

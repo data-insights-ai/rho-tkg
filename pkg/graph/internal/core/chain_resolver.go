@@ -129,12 +129,15 @@ func versionOrdered[T storeutil.TemporalRow](chain []T) []T {
 // chainWriteOrder is the comparator of a chain's write order: by life, then
 // ascending version. A life is the span up to a hard delete the chain holds
 // (lifeEnds); a row's life is the number of deletes recorded before it. A
-// re-imported ID numbers its versions from the import's version again, so
+// re-import stored before backlog 38 numbered its versions from 0 again, so
 // ordering by version alone interleaved the two lives and tiled an earlier
 // life's row after the re-imported one: the full chain fold lost the
 // re-imported row at the instants that row covered, while the point door's
 // current-row shortcut answered it (tiered and sharded disagreed with memory
-// and badger).
+// and badger). Since backlog 38 a re-import starts above the chain's highest
+// version and is recorded after every stamp of the chain (lifeStart,
+// version_alloc.go), so on chains written now this order is version order;
+// the life rule stays for the chains stored before.
 func chainWriteOrder[T storeutil.TemporalRow](chain []T) func(a, b T) int {
 	var deaths []types.Instant
 	for _, r := range chain {

@@ -31,8 +31,9 @@ func (c *Core) resolveCallerTxInstant(t types.Instant) (types.Instant, error) {
 // effective start, see relTxDeleteStart / relCurrentVersionStart) and after
 // every TxFrom and TxTo recorded on the entity's chain — history AND current,
 // because TxFrom is not co-monotonic with version (lesson 62: a validInstantAfter
-// bump or a backfilled re-import can leave a history stamp above the current
-// row's). Entity-agnostic; the caller passes the chain's temporal metadata.
+// bump, or a backfilled re-import in a chain stored before backlog 38, can
+// leave a history stamp above the current row's). Entity-agnostic; the caller
+// passes the chain's temporal metadata.
 // Must run under the entity lock so no write lands between check and stamp.
 // The error wraps ErrTxOrder and names the binding (largest) stamp.
 func checkTxOrder(t, start types.Instant, chain ...*types.TemporalMetadata) error {

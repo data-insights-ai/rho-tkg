@@ -566,8 +566,9 @@ func (c *Core) nodeAtFullChain(id types.NodeID, current *types.Node, validAt, tx
 // nodeRowAtTx) — the row a resolve over the hydrated chain would select, since
 // selection reads only Version/ID/Temporal, which skeleton and full row share
 // verbatim. A skeleton never leaves this function. The winner's origin is
-// told by its (version, TxFrom), not its version alone: a re-imported ID's
-// current row shares version numbers with the earlier life's history. handled=false declines the fast path (winner hydration failed,
+// told by its (version, TxFrom), not its version alone: in a chain stored
+// before backlog 38 a re-imported ID's current row shares version numbers
+// with the earlier life's history. handled=false declines the fast path (winner hydration failed,
 // e.g. a concurrent trim landed between the two reads) and the caller falls
 // back to the full-chain fold — an accelerator can be slower, never wrong.
 func (c *Core) nodeAtViaTemporalMeta(id types.NodeID, current *types.Node, validAt, txAt types.Instant) (*types.Node, bool, error) {
@@ -627,7 +628,8 @@ func (c *Core) nodeAtViaTemporalMeta(id types.NodeID, current *types.Node, valid
 }
 
 // skeletonKey identifies a history row among a chain's skeletons: version and
-// TxFrom (a re-import reuses versions, never the instant of the same write).
+// TxFrom (a re-import stored before backlog 38 reuses versions, never the
+// instant of the same write).
 type skeletonKey struct {
 	version uint32
 	txFrom  types.Instant

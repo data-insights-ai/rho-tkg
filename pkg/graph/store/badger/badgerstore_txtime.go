@@ -477,7 +477,8 @@ func selectAsOfScan(scan func(consider func(version uint64, val []byte) (bool, e
 		}
 		// Every version above cur's is visited: a row there carrying a
 		// retraction (TxTo at or after its TxFrom) belongs to an earlier life
-		// of the ID (a re-import), and then none of them answers for cur.
+		// of the ID (a re-import stored before backlog 38), and then none of
+		// them answers for cur.
 		var run []asOfRow
 		broken, earlierLife := false, false
 		err := scan(func(version uint64, val []byte) (bool, error) {
