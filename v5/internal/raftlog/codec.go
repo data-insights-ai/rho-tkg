@@ -82,10 +82,15 @@ type metadata struct {
 	Hard                                                                     *pb.HardState
 	Conf                                                                     *pb.ConfState
 	Snap                                                                     *pb.Snapshot
+	App                                                                      applicationMetadata
 }
 
 func encodeMeta(m metadata) ([]byte, error) {
-	b := append([]byte("RLM2"), make([]byte, 32)...)
+	magic := "RLM2"
+	if m.App.Policy.Enabled() {
+		magic = "RLM3"
+	}
+	b := append([]byte(magic), make([]byte, 32)...)
 	for _, n := range []uint64{m.Base, m.BaseTerm, m.Last, m.Applied, m.LogBytes, m.LogCount, m.ImageBytes, m.SnapBytes} {
 		b = binary.BigEndian.AppendUint64(b, n)
 	}
@@ -101,6 +106,9 @@ func encodeMeta(m metadata) ([]byte, error) {
 		b = binary.BigEndian.AppendUint64(b, uint64(len(v)))
 		b = append(b, v...)
 	}
+	if m.App.Policy.Enabled() {
+		b = appendApplicationMeta(b, m.App)
+	}
 	h := sha256.Sum256(b[36:])
 	copy(b[4:36], h[:])
 	return b, nil
@@ -108,9 +116,10 @@ func encodeMeta(m metadata) ([]byte, error) {
 
 func decodeMeta(b []byte, l Limits) (metadata, error) {
 	m := metadata{Hard: &pb.HardState{}, Conf: &pb.ConfState{}, Snap: &pb.Snapshot{}}
-	if len(b) < 252 || len(b) > 65536 || string(b[:4]) != "RLM2" {
+	if len(b) < 252 || len(b) > 65536 || (string(b[:4]) != "RLM2" && string(b[:4]) != "RLM3") {
 		return m, ErrCorrupt
 	}
+	version3 := string(b[:4]) == "RLM3"
 	h := sha256.Sum256(b[36:])
 	if !bytes.Equal(b[4:36], h[:]) {
 		return m, ErrCorrupt
@@ -140,6 +149,16 @@ func decodeMeta(b []byte, l Limits) (metadata, error) {
 			return m, ErrCorrupt
 		}
 		b = tail
+	}
+	if version3 {
+		var err error
+		m.App, b, err = decodeApplicationMeta(b)
+		if err != nil {
+			return m, err
+		}
+		if !m.App.Policy.Enabled() {
+			return m, ErrCorrupt
+		}
 	}
 	if len(b) != 0 || m.ImageBytes > unsignedLimit(l.MaxSnapshotBytes) || m.SnapBytes > unsignedLimit(l.MaxSnapshotBytes) || len(m.Snap.GetData()) != 0 {
 		return m, ErrCorrupt

@@ -47,23 +47,26 @@ func (l Limits) Validate() error {
 
 // Config selects explicit first-open-only creation; recovery never creates a missing DB.
 type Config struct {
-	Dir    string
-	FS     vfs.FS
-	Create bool
-	Limits Limits
+	Dir         string
+	FS          vfs.FS
+	Create      bool
+	Limits      Limits
+	Application ApplicationPolicy
 }
 
 // Store implements durable raft.Storage with bounded reads and no per-entry RAM index.
 // Fatal Pebble WAL/storage errors terminate the embedding process; this candidate
 // fail-stop tradeoff requires evaluation before engine selection.
 type Store struct {
-	mu            sync.Mutex
-	db            *pebble.DB
-	limits        Limits
-	meta          metadata
-	poison        error
-	canInitialize bool
-	closed        bool
+	mu                sync.Mutex
+	db                *pebble.DB
+	limits            Limits
+	meta              metadata
+	poison            error
+	canInitialize     bool
+	closed            bool
+	views, viewBytes  int
+	applicationPolicy ApplicationPolicy
 }
 
 var _ raft.Storage = (*Store)(nil)
@@ -83,6 +86,9 @@ func Open(c Config) (*Store, error) {
 	if err := c.Limits.Validate(); err != nil {
 		return nil, err
 	}
+	if err := c.Application.validate(c.Limits); err != nil {
+		return nil, err
+	}
 	if c.FS == nil {
 		c.FS = vfs.Default
 	}
@@ -90,10 +96,10 @@ func Open(c Config) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Store{db: db, limits: c.Limits, canInitialize: c.Create}
+	s := &Store{db: db, limits: c.Limits, canInitialize: c.Create, applicationPolicy: c.Application}
 	fail := func(err error) (*Store, error) { return nil, errors.Join(err, db.Close()) }
 	if c.Create {
-		s.meta = metadata{Hard: &pb.HardState{}, Conf: &pb.ConfState{}, Snap: &pb.Snapshot{}, ImageHash: sha256.Sum256(nil), SnapHash: sha256.Sum256(nil)}
+		s.meta = metadata{Hard: &pb.HardState{}, Conf: &pb.ConfState{}, Snap: &pb.Snapshot{}, ImageHash: sha256.Sum256(nil), SnapHash: sha256.Sum256(nil), App: applicationMetadata{Policy: c.Application}}
 		b := db.NewBatch()
 		_ = b.Set(imageKey, nil, nil)
 		_ = b.Set(snapshotKey, nil, nil)
@@ -113,10 +119,18 @@ func Open(c Config) (*Store, error) {
 		if err := errors.Join(decodeErr, closeErr); err != nil {
 			return fail(err)
 		}
+		if m.App.Policy != c.Application {
+			return fail(ErrInvalid)
+		}
 		if err := s.validate(m); err != nil {
 			return fail(fmt.Errorf("%w: metadata: %v", ErrCorrupt, err))
 		}
 		s.meta = m
+		if c.Application.Enabled() && m.Applied > 0 {
+			if err := s.verifyApplicationRoot(m.Applied); err != nil {
+				return fail(err)
+			}
+		}
 		if err := s.checkEntryBounds(); err != nil {
 			return fail(err)
 		}
@@ -164,6 +178,9 @@ func validateConf(cs *pb.ConfState, last uint64) error {
 }
 
 func (s *Store) validate(m metadata) error {
+	if err := s.validateApplicationMeta(m); err != nil {
+		return err
+	}
 	if len(m.Hard.ProtoReflect().GetUnknown()) != 0 || len(m.Snap.ProtoReflect().GetUnknown()) != 0 || len(m.Snap.GetMetadata().ProtoReflect().GetUnknown()) != 0 {
 		return ErrInvalid
 	}
@@ -234,6 +251,14 @@ func (s *Store) Initialize(voters []uint64, image []byte) error {
 	if !s.canInitialize || s.meta.Last != 0 || s.meta.Hard.GetTerm() != 0 || s.meta.Applied != 0 {
 		return ErrInvalid
 	}
+	if s.meta.App.Policy.Enabled() {
+		if !localConfiguration(&pb.ConfState{Voters: voters}, s.meta.App.Policy.LocalVoter) {
+			return ErrInvalid
+		}
+		if len(image) > s.meta.App.Policy.MaxImageBytes {
+			return ErrLimit
+		}
+	}
 	if len(image) > s.limits.MaxSnapshotBytes {
 		return ErrLimit
 	}
@@ -247,7 +272,7 @@ func (s *Store) Initialize(voters []uint64, image []byte) error {
 	if err := validateConf(cs, 1); err != nil {
 		return err
 	}
-	m := metadata{Base: 1, BaseTerm: 1, Last: 1, Applied: 1, Hard: &pb.HardState{Term: new(uint64(1)), Commit: new(uint64(1))}, Conf: cs, ImageBytes: uint64(len(image)), SnapBytes: uint64(len(image)), ImageHash: sha256.Sum256(image), SnapHash: sha256.Sum256(image), Snap: &pb.Snapshot{Metadata: &pb.SnapshotMetadata{Index: new(uint64(1)), Term: new(uint64(1)), ConfState: proto.Clone(cs).(*pb.ConfState)}}}
+	m := metadata{App: s.meta.App, Base: 1, BaseTerm: 1, Last: 1, Applied: 1, Hard: &pb.HardState{Term: new(uint64(1)), Commit: new(uint64(1))}, Conf: cs, ImageBytes: uint64(len(image)), SnapBytes: uint64(len(image)), ImageHash: sha256.Sum256(image), SnapHash: sha256.Sum256(image), Snap: &pb.Snapshot{Metadata: &pb.SnapshotMetadata{Index: new(uint64(1)), Term: new(uint64(1)), ConfState: proto.Clone(cs).(*pb.ConfState)}}}
 	b := s.db.NewBatch()
 	if err := b.Set(imageKey, image, nil); err != nil {
 		_ = b.Close()
@@ -256,6 +281,12 @@ func (s *Store) Initialize(voters []uint64, image []byte) error {
 	if err := b.Set(snapshotKey, image, nil); err != nil {
 		_ = b.Close()
 		return err
+	}
+	if m.App.Policy.Enabled() {
+		if err := s.addInitialApplication(b, &m, image); err != nil {
+			_ = b.Close()
+			return err
+		}
 	}
 	if err := s.commit(m, b); err != nil {
 		return err
@@ -450,6 +481,22 @@ func (s *Store) Persist(rd raft.Ready) (err error) {
 	if err := s.check(); err != nil {
 		return err
 	}
+	if s.meta.App.Policy.Enabled() {
+		if s.meta.Applied == 0 && (!raft.IsEmptyHardState(rd.HardState) || len(rd.Entries) > 0 || !raft.IsEmptySnap(rd.Snapshot)) {
+			return ErrInvalid
+		}
+		if !raft.IsEmptySnap(rd.Snapshot) {
+			return ErrInvalid
+		}
+		for _, e := range rd.Entries {
+			if e == nil || e.GetType() != pb.EntryNormal {
+				return ErrInvalid
+			}
+		}
+		if !raft.IsEmptyHardState(rd.HardState) && rd.GetVote() != 0 && rd.GetVote() != s.meta.App.Policy.LocalVoter {
+			return ErrInvalid
+		}
+	}
 	if len(rd.HardState.ProtoReflect().GetUnknown()) != 0 || len(rd.Snapshot.ProtoReflect().GetUnknown()) != 0 || len(rd.Snapshot.GetMetadata().ProtoReflect().GetUnknown()) != 0 {
 		return ErrInvalid
 	}
@@ -572,6 +619,12 @@ func (s *Store) Persist(rd raft.Ready) (err error) {
 				return ErrCorrupt
 			}
 			m.LogBytes -= removed
+			if m.App.Policy.Enabled() {
+				if removed > m.App.TailBytes {
+					return ErrCorrupt
+				}
+				m.App.TailBytes -= removed
+			}
 			if err := batch.DeleteRange(entryKey(first), entryEnd, nil); err != nil {
 				return err
 			}
@@ -597,6 +650,9 @@ func (s *Store) Persist(rd raft.Ready) (err error) {
 		m.Last = rd.Entries[len(rd.Entries)-1].GetIndex()
 		m.LastHash = prev
 		m.LogBytes += addedBytes
+		if m.App.Policy.Enabled() {
+			m.App.TailBytes += addedBytes
+		}
 		m.LogCount = m.Last - m.Base
 	}
 	if m.LogBytes > s.limits.MaxRetainedBytes || m.LogCount > s.limits.MaxRetainedEntries {
@@ -686,6 +742,11 @@ func (s *Store) SaveCheckpoint(index uint64, cs *pb.ConfState, image []byte) err
 	if err := s.check(); err != nil {
 		return err
 	}
+	if s.meta.App.Policy.Enabled() {
+		if index == 0 || index != s.meta.Applied || !localConfiguration(cs, s.meta.App.Policy.LocalVoter) || sha256.Sum256(image) != s.meta.ImageHash {
+			return ErrInvalid
+		}
+	}
 	if index < s.meta.Applied || index > s.meta.Hard.GetCommit() {
 		return ErrInvalid
 	}
@@ -718,6 +779,15 @@ func (s *Store) PublishSnapshot() error {
 		return err
 	}
 	m := s.meta
+	if m.App.Policy.Enabled() {
+		if m.App.Through != m.Applied {
+			return ErrCorrupt
+		}
+		if err := s.verifyApplicationRoot(m.Applied); err != nil {
+			s.poison = err
+			return err
+		}
+	}
 	if m.Applied <= m.Base {
 		return raft.ErrSnapOutOfDate
 	}

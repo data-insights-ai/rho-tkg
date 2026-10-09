@@ -47,6 +47,15 @@ type Machine interface {
 	Checkpoint(maxBytes int) ([]byte, error)
 }
 
+// ApplicationMachine stages private bytes for the same-store durable KV/root
+// capability. Stage must honor the supplied budget before allocating output;
+// storage rechecks framing and totals. Restore publishes only the synced root.
+// This provisional integration is restricted to a durable singleton voter.
+type ApplicationMachine interface {
+	Restore(index uint64, image []byte) error
+	Stage(Entry, raftlog.ApplicationBudget) (raftlog.ApplicationBatch, error)
+}
+
 // Packet is owned serialized consensus traffic. The embedding application may
 // deliver/drop/duplicate/reorder it after the method returns. Snapshot delivery
 // failure must be reported through ReportSnapshot; enqueue is not durable receipt.
@@ -77,6 +86,7 @@ type Config struct {
 	ID                                    uint64
 	Store                                 *raftlog.Store
 	Machine                               Machine
+	ApplicationMachine                    ApplicationMachine
 	Limits                                raftlog.Limits
 	ElectionTick, HeartbeatTick           int
 	MaxInflightMessages                   int
@@ -86,25 +96,33 @@ type Config struct {
 
 // Driver serializes all RawNode operations and application callbacks.
 type Driver struct {
-	mu         sync.Mutex
-	raw        *raft.RawNode
-	store      *raftlog.Store
-	machine    Machine
-	config     Config
-	applied    uint64
-	conf       *pb.ConfState
-	stopped    error
-	readNonce  [16]byte
-	readSeq    uint64
-	reads      map[string]*pendingRead
-	readBytes  int
-	lastLeader uint64
+	mu                 sync.Mutex
+	raw                *raft.RawNode
+	store              *raftlog.Store
+	machine            Machine
+	applicationMachine ApplicationMachine
+	config             Config
+	applied            uint64
+	conf               *pb.ConfState
+	stopped            error
+	readNonce          [16]byte
+	readSeq            uint64
+	reads              map[string]*pendingRead
+	readBytes          int
+	lastLeader         uint64
 }
 
 // Open restores the durable checkpoint and uses its index/membership together.
 // It never bootstraps; first-open Initialize is an explicit separate store action.
 func Open(c Config) (*Driver, error) {
-	if c.Store == nil || isNilMachine(c.Machine) || c.ID == 0 || raft.IsLocalMsgTarget(c.ID) {
+	// Normalize unused typed-nil providers before storing interface fields.
+	if isNilMachine(c.Machine) {
+		c.Machine = nil
+	}
+	if isNilMachine(c.ApplicationMachine) {
+		c.ApplicationMachine = nil
+	}
+	if c.Store == nil || isNilMachine(c.Machine) == isNilMachine(c.ApplicationMachine) || c.ID == 0 || raft.IsLocalMsgTarget(c.ID) {
 		return nil, ErrInvalid
 	}
 	if c.Limits == (raftlog.Limits{}) {
@@ -147,17 +165,27 @@ func Open(c Config) (*Driver, error) {
 	if err != nil {
 		return nil, err
 	}
+	app := c.Store.ApplicationLimits()
+	if app.Enabled() != !isNilMachine(c.ApplicationMachine) || app.Enabled() && (c.ID != app.LocalVoter || len(cs.GetVoters()) != 1 || cs.GetVoters()[0] != c.ID || len(cs.GetVotersOutgoing()) != 0 || len(cs.GetLearners()) != 0 || len(cs.GetLearnersNext()) != 0 || cs.GetAutoLeave()) {
+		return nil, ErrInvalid
+	}
 	if len(cs.GetVoters()) == 0 {
 		return nil, ErrInvalid
 	}
-	if err := c.Machine.Restore(index, image); err != nil {
-		return nil, err
+	var restoreErr error
+	if app.Enabled() {
+		restoreErr = c.ApplicationMachine.Restore(index, image)
+	} else {
+		restoreErr = c.Machine.Restore(index, image)
+	}
+	if restoreErr != nil {
+		return nil, restoreErr
 	}
 	raw, err := raft.NewRawNode(&raft.Config{ID: c.ID, Storage: c.Store, Applied: index, ElectionTick: c.ElectionTick, HeartbeatTick: c.HeartbeatTick, AsyncStorageWrites: false, ReadOnlyOption: raft.ReadOnlySafe, CheckQuorum: true, PreVote: true, MaxSizePerMsg: cReadBytes(c.Limits.MaxReadBytes), MaxCommittedSizePerReady: cReadBytes(c.Limits.MaxReadBytes), MaxUncommittedEntriesSize: c.MaxUncommittedBytes, MaxInflightMsgs: c.MaxInflightMessages, MaxInflightBytes: c.MaxInflightBytes, StepDownOnRemoval: true})
 	if err != nil {
 		return nil, err
 	}
-	d := &Driver{raw: raw, store: c.Store, machine: c.Machine, config: c, applied: index, conf: cs, reads: make(map[string]*pendingRead)}
+	d := &Driver{raw: raw, store: c.Store, machine: c.Machine, applicationMachine: c.ApplicationMachine, config: c, applied: index, conf: cs, reads: make(map[string]*pendingRead)}
 	if _, err := rand.Read(d.readNonce[:]); err != nil {
 		return nil, err
 	}
@@ -207,6 +235,14 @@ func (d *Driver) Propose(data []byte) (Output, error) {
 	if len(data) > d.config.Limits.MaxEntryBytes-74 {
 		return Output{}, ErrLimit
 	}
+	if d.applicationMachine != nil {
+		if err := d.store.ReclaimApplication(); err != nil {
+			return d.stop(err)
+		}
+		if err := d.store.AdmitApplication(len(data)); err != nil {
+			return Output{}, err
+		}
+	}
 	if err := d.raw.Propose(bytes.Clone(data)); err != nil {
 		return Output{}, err
 	}
@@ -219,6 +255,9 @@ func (d *Driver) Step(p Packet) (Output, error) {
 	defer d.mu.Unlock()
 	if err := d.check(); err != nil {
 		return Output{}, err
+	}
+	if d.applicationMachine != nil {
+		return Output{}, ErrInvalid
 	}
 	if len(p.Payload) > d.config.MaxPacketBytes {
 		return Output{}, ErrLimit
@@ -258,7 +297,7 @@ type pendingRead struct {
 	resolved, cancelled bool
 }
 
-func isNilMachine(m Machine) bool {
+func isNilMachine(m any) bool {
 	if m == nil {
 		return true
 	}
@@ -347,6 +386,9 @@ func (d *Driver) ReportUnreachable(id uint64) (Output, error) {
 	if err := d.check(); err != nil {
 		return Output{}, err
 	}
+	if d.applicationMachine != nil {
+		return Output{}, ErrInvalid
+	}
 	d.raw.ReportUnreachable(id)
 	return d.drain()
 }
@@ -357,6 +399,9 @@ func (d *Driver) ReportSnapshot(id uint64, success bool) (Output, error) {
 	defer d.mu.Unlock()
 	if err := d.check(); err != nil {
 		return Output{}, err
+	}
+	if d.applicationMachine != nil {
+		return Output{}, ErrInvalid
 	}
 	status := raft.SnapshotFailure
 	if success {
@@ -373,6 +418,9 @@ func (d *Driver) TransferLeader(id uint64) (Output, error) {
 	if err := d.check(); err != nil {
 		return Output{}, err
 	}
+	if d.applicationMachine != nil {
+		return Output{}, ErrInvalid
+	}
 	d.raw.TransferLeader(id)
 	return d.drain()
 }
@@ -384,6 +432,9 @@ func (d *Driver) ProposeConfChange(change pb.ConfChangeI) (Output, error) {
 	defer d.mu.Unlock()
 	if err := d.check(); err != nil {
 		return Output{}, err
+	}
+	if d.applicationMachine != nil {
+		return Output{}, ErrInvalid
 	}
 	if change == nil {
 		return Output{}, ErrInvalid
@@ -460,6 +511,9 @@ func (d *Driver) drain() (Output, error) {
 			d.readBytes = 0
 			d.lastLeader = rd.Lead
 		}
+		if err := d.checkApplicationReady(rd); err != nil {
+			return d.stop(err)
+		}
 		if err := d.store.Persist(rd); err != nil {
 			return d.stop(err)
 		}
@@ -480,7 +534,19 @@ func (d *Driver) drain() (Output, error) {
 			}
 			switch e.GetType() {
 			case pb.EntryNormal:
-				if err := d.machine.Apply(Entry{Index: e.GetIndex(), Term: e.GetTerm(), Data: bytes.Clone(e.GetData())}); err != nil {
+				entry := Entry{Index: e.GetIndex(), Term: e.GetTerm(), Data: bytes.Clone(e.GetData())}
+				if d.applicationMachine != nil {
+					b, err := d.applicationMachine.Stage(entry, d.store.ApplicationBudget())
+					if err != nil {
+						return d.stop(err)
+					}
+					if err := d.store.InstallApplication(entry.Index, b); err != nil {
+						return d.stop(err)
+					}
+					if err := d.applicationMachine.Restore(entry.Index, bytes.Clone(b.Image)); err != nil {
+						return d.stop(err)
+					}
+				} else if err := d.machine.Apply(entry); err != nil {
 					return d.stop(err)
 				}
 			case pb.EntryConfChange:
@@ -508,6 +574,11 @@ func (d *Driver) drain() (Output, error) {
 				return d.stop(raftlog.ErrCorrupt)
 			}
 			d.applied = e.GetIndex()
+		}
+		if d.applicationMachine != nil {
+			if err := d.store.ReclaimApplication(); err != nil {
+				return d.stop(err)
+			}
 		}
 		for _, m := range rd.Messages {
 			n := proto.Size(m)
@@ -557,6 +628,16 @@ func (d *Driver) SaveCheckpoint() error {
 	if err := d.check(); err != nil {
 		return err
 	}
+	if d.applicationMachine != nil {
+		index, _, err := d.store.Checkpoint()
+		if err == nil && index != d.applied {
+			err = raftlog.ErrCorrupt
+		}
+		if err != nil {
+			d.stopped = err
+		}
+		return err
+	}
 	image, err := d.machine.Checkpoint(d.config.Limits.MaxSnapshotBytes)
 	if err == nil && len(image) > d.config.Limits.MaxSnapshotBytes {
 		err = ErrLimit
@@ -586,4 +667,29 @@ func cReadBytes(n int) uint64 {
 		return 0
 	}
 	return uint64(n)
+}
+
+// checkApplicationReady is a second guard BEFORE destructive persistence, even
+// if a caller bypasses Step and injects directly into the underlying RawNode.
+func (d *Driver) checkApplicationReady(rd raft.Ready) error {
+	if d.applicationMachine == nil {
+		return nil
+	}
+	if !raft.IsEmptySnap(rd.Snapshot) {
+		return ErrInvalid
+	}
+	for _, e := range rd.Entries {
+		if e == nil || e.GetType() != pb.EntryNormal {
+			return ErrInvalid
+		}
+	}
+	for _, e := range rd.CommittedEntries {
+		if e == nil || e.GetType() != pb.EntryNormal {
+			return ErrInvalid
+		}
+	}
+	if len(rd.Messages) != 0 {
+		return ErrInvalid
+	}
+	return nil
 }
