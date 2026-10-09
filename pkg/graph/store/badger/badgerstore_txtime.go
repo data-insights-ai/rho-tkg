@@ -281,9 +281,9 @@ type asOfPick struct {
 // otherwise (delta rows, legacy v1 rows).
 type historyTxWindow func(version uint64, val []byte) (txFrom, txTo int64, err error)
 
-// historyDeletedAt decodes a history row's DeletedAt (only for the one row the
-// tombstone rule inspects).
-type historyDeletedAt func(version uint64, val []byte) (types.Instant, error)
+// historyTemporal decodes a history row's temporal block (only for the rows
+// the write-run and tombstone rules inspect); nil when the row has none.
+type historyTemporal func(version uint64, val []byte) (*types.TemporalMetadata, error)
 
 func (bs *Store) nodeTxWindow(id snowflake.ID) historyTxWindow {
 	return func(version uint64, val []byte) (int64, int64, error) {
@@ -323,23 +323,23 @@ func (bs *Store) relTxWindow(id snowflake.ID) historyTxWindow {
 	}
 }
 
-func (bs *Store) nodeDeletedAt(id snowflake.ID) historyDeletedAt {
-	return func(version uint64, val []byte) (types.Instant, error) {
+func (bs *Store) nodeRowTemporal(id snowflake.ID) historyTemporal {
+	return func(version uint64, val []byte) (*types.TemporalMetadata, error) {
 		n, err := bs.historyNodeTemporal(id, version, val)
-		if err != nil || n.Temporal() == nil {
-			return 0, err
+		if err != nil {
+			return nil, err
 		}
-		return n.Temporal().DeletedAt, nil
+		return n.Temporal(), nil
 	}
 }
 
-func (bs *Store) relDeletedAt(id snowflake.ID) historyDeletedAt {
-	return func(version uint64, val []byte) (types.Instant, error) {
+func (bs *Store) relRowTemporal(id snowflake.ID) historyTemporal {
+	return func(version uint64, val []byte) (*types.TemporalMetadata, error) {
 		r, err := bs.historyRelTemporal(id, version, val)
-		if err != nil || r.Temporal() == nil {
-			return 0, err
+		if err != nil {
+			return nil, err
 		}
-		return r.Temporal().DeletedAt, nil
+		return r.Temporal(), nil
 	}
 }
 
@@ -359,6 +359,18 @@ func (bs *Store) liveHistoryKeyExists(key []byte) (bool, error) {
 		return false, nil
 	}
 	return err == nil, err
+}
+
+// historyKeyExistsWithPresence is liveHistoryKeyExists behind the entity's
+// history presence (HasNodeHistory / HasRelHistory, a RAM lookup): an entity
+// without history rows has no key to read, so the point read is skipped.
+func (bs *Store) historyKeyExistsWithPresence(has bool, err error) func(key []byte) (bool, error) {
+	return func(key []byte) (bool, error) {
+		if err != nil || !has {
+			return false, err
+		}
+		return bs.liveHistoryKeyExists(key)
+	}
 }
 
 // snapshotHistoryKeyExists is liveHistoryKeyExists for the bulk as-of scans:
@@ -381,28 +393,60 @@ func snapshotHistoryKeyExists(txn *badgerv4.Txn, overlay historyOverlaySnapshot)
 	}
 }
 
+// asOfRow is one visited history row of selectAsOfScan (raw copied: the scan's
+// value is only valid inside its callback).
+type asOfRow struct {
+	version uint64
+	tf, tt  int64
+	raw     []byte
+}
+
 // selectAsOfScan applies storeutil.SelectAsOfWithCurrent's rule to one
 // entity's history, visited newest-version-first by scan (the
 // reverseScanHistoryVersion contract), and the live current row (cur, nil
 // when none). It stops as soon as the rule is decided:
 //
-//   - current arm (cur recorded by txTime, TxTo == 0): only the versions above
-//     cur's are visited; the first recorded at or after cur and by txTime outranks
-//     cur (a cascade row written while cur kept the current slot);
-//   - history arm: the first version recorded by txTime is the newest; absent
-//     if it was retracted by txTime; otherwise the scan continues to the first
-//     lower version carrying a TxTo (the row that held the current slot) and
-//     the entity is absent if that row is a tombstone deleted after the newest
-//     was recorded and by txTime. A hard delete stamps TxTo == DeletedAt, so
-//     only a row whose TxTo lies in that window is decoded for its DeletedAt.
+//   - current arm (cur recorded by txTime, TxTo == 0): exists(curVersion+1)
+//     decides whether any row sits above the current version (versions are
+//     allocated densely); if one does, the versions above cur's are visited
+//     and the first recorded at or after cur and by txTime outranks cur,
+//     together with the rest of its write (the run sharing its TxFrom, cur
+//     included when the run reaches it);
+//   - history arm: the first version recorded by txTime is the newest; the run
+//     of rows sharing its TxFrom is collected, and the scan continues to the
+//     first lower row whose TxTo is at or after its TxFrom (the row that held
+//     the current slot): the entity is absent if it is a tombstone deleted
+//     after the newest was recorded and by txTime. A hard delete stamps TxTo ==
+//     DeletedAt, so only a row whose TxTo lies in that window is decoded.
 //
-// Equivalence with SelectAsOfWithCurrent is pinned by the badger as-of
-// equivalence tests over generated chains.
-func selectAsOfScan(scan func(consider func(version uint64, val []byte) (bool, error)) error, cur *types.TemporalMetadata, curVersion uint32, txTime types.Instant, window historyTxWindow, deletedAt historyDeletedAt, exists func(version uint64) (bool, error)) (asOfPick, error) {
+// The answer of a run is its highest row whose own valid interval is open at
+// txTime (decoded per row, newest first), else its newest row. Equivalence
+// with SelectAsOfWithCurrent is pinned by the badger as-of equivalence tests
+// over generated chains.
+func selectAsOfScan(scan func(consider func(version uint64, val []byte) (bool, error)) error, cur *types.TemporalMetadata, curVersion uint32, txTime types.Instant, window historyTxWindow, temporal historyTemporal, exists func(version uint64) (bool, error)) (asOfPick, error) {
+	// answer picks within a run (newest first); withCur appends the current
+	// row as the run's last member.
+	answer := func(run []asOfRow, withCur bool) (asOfPick, *types.TemporalMetadata, error) {
+		for _, r := range run {
+			tm, err := temporal(r.version, r.raw)
+			if err != nil {
+				return asOfPick{}, nil, err
+			}
+			if tm != nil && storepkg.OwnOpenAtTxTime(tm, txTime) {
+				return asOfPick{found: true, version: r.version, raw: r.raw}, tm, nil
+			}
+		}
+		if withCur && storepkg.OwnOpenAtTxTime(cur, txTime) {
+			return asOfPick{found: true, fromCurrent: true}, cur, nil
+		}
+		tm, err := temporal(run[0].version, run[0].raw)
+		return asOfPick{found: true, version: run[0].version, raw: run[0].raw}, tm, err
+	}
+	retracted := func(tm *types.TemporalMetadata) bool {
+		return tm != nil && ((tm.TxTo != 0 && tm.TxTo <= txTime) || (tm.DeletedAt != 0 && tm.DeletedAt <= txTime))
+	}
+
 	if cur != nil && cur.TxFrom > 0 && cur.TxFrom <= txTime && cur.TxTo == 0 {
-		// Fast path: versions are allocated densely (core version_alloc.go), so
-		// a row above the current version exists iff version cur+1 does — one
-		// point probe instead of a reverse scan.
 		if curVersion == math.MaxUint32 {
 			return asOfPick{found: true, fromCurrent: true}, nil
 		}
@@ -411,8 +455,8 @@ func selectAsOfScan(scan func(consider func(version uint64, val []byte) (bool, e
 		} else if !above {
 			return asOfPick{found: true, fromCurrent: true}, nil
 		}
-		pick := asOfPick{found: true, fromCurrent: true}
-		var aboveTxTo int64
+		var run []asOfRow
+		broken := false
 		err := scan(func(version uint64, val []byte) (bool, error) {
 			if version <= uint64(curVersion) {
 				return true, nil
@@ -421,62 +465,85 @@ func selectAsOfScan(scan func(consider func(version uint64, val []byte) (bool, e
 			if err != nil {
 				return false, err
 			}
-			if tf >= int64(cur.TxFrom) && types.Instant(tf) <= txTime {
-				pick = asOfPick{found: true, version: version, raw: append([]byte(nil), val...)}
-				aboveTxTo = tt
-				return true, nil
+			if len(run) == 0 {
+				if tf >= int64(cur.TxFrom) && types.Instant(tf) <= txTime {
+					run = append(run, asOfRow{version: version, tf: tf, tt: tt, raw: append([]byte(nil), val...)})
+				}
+				return false, nil
 			}
-			return false, nil
+			if tf == run[0].tf {
+				run = append(run, asOfRow{version: version, tf: tf, tt: tt, raw: append([]byte(nil), val...)})
+				return false, nil
+			}
+			broken = true
+			return true, nil
 		})
 		if err != nil {
 			return asOfPick{}, err
 		}
-		if !pick.fromCurrent && aboveTxTo != 0 && types.Instant(aboveTxTo) <= txTime {
+		if len(run) == 0 {
+			return asOfPick{found: true, fromCurrent: true}, nil
+		}
+		pick, tm, err := answer(run, !broken && int64(cur.TxFrom) == run[0].tf)
+		if err != nil {
+			return asOfPick{}, err
+		}
+		if retracted(tm) {
 			return asOfPick{}, nil
 		}
 		return pick, nil
 	}
 
 	var (
-		pick    asOfPick
-		newestF int64
-		absent  bool
+		run          []asOfRow
+		inRun        = true
+		slotDecided  bool
+		lifeEnded    bool
+		newestTxFrom int64
 	)
 	err := scan(func(version uint64, val []byte) (bool, error) {
 		tf, tt, err := window(version, val)
 		if err != nil {
 			return false, err
 		}
-		if !pick.found {
+		if len(run) == 0 {
 			if tf == 0 || types.Instant(tf) > txTime {
 				return false, nil // recorded after the pin — keep scanning older versions
 			}
-			if tt != 0 && types.Instant(tt) <= txTime {
-				absent = true // the newest row was retracted by the pin
-				return true, nil
-			}
-			pick = asOfPick{found: true, version: version, raw: append([]byte(nil), val...)}
-			newestF = tf
+			run = append(run, asOfRow{version: version, tf: tf, tt: tt, raw: append([]byte(nil), val...)})
+			newestTxFrom = tf
 			return false, nil
 		}
-		if tt == 0 {
-			return false, nil // never held the current slot — keep looking for the row that did
+		if inRun && tf == newestTxFrom {
+			run = append(run, asOfRow{version: version, tf: tf, tt: tt, raw: append([]byte(nil), val...)})
+		} else {
+			inRun = false
 		}
-		if tt > newestF && types.Instant(tt) <= txTime {
-			d, err := deletedAt(version, val)
-			if err != nil {
-				return false, err
-			}
-			if d != 0 && int64(d) > newestF && d <= txTime {
-				absent = true // the slot holder's life ended in a delete after the newest row
+		if !slotDecided && tt != 0 && tt >= tf {
+			slotDecided = true
+			if tt > newestTxFrom && types.Instant(tt) <= txTime {
+				tm, err := temporal(version, val)
+				if err != nil {
+					return false, err
+				}
+				if tm != nil && tm.DeletedAt != 0 && int64(tm.DeletedAt) > newestTxFrom && tm.DeletedAt <= txTime {
+					lifeEnded = true
+				}
 			}
 		}
-		return true, nil
+		return slotDecided && !inRun, nil
 	})
 	if err != nil {
 		return asOfPick{}, err
 	}
-	if absent {
+	if len(run) == 0 || lifeEnded {
+		return asOfPick{}, nil
+	}
+	pick, tm, err := answer(run, false)
+	if err != nil {
+		return asOfPick{}, err
+	}
+	if retracted(tm) {
 		return asOfPick{}, nil
 	}
 	return pick, nil
@@ -503,7 +570,7 @@ func (bs *Store) NodeAsOf(nid types.NodeID, txTime types.Instant) (*types.Node, 
 	scan := func(consider func(version uint64, val []byte) (bool, error)) error {
 		return bs.reverseScanHistoryVersion(prefix, consider)
 	}
-	return bs.nodeAsOfPick(id, current, txTime, scan, bs.liveHistoryKeyExists)
+	return bs.nodeAsOfPick(id, current, txTime, scan, func(key []byte) (bool, error) { return bs.historyKeyExistsWithPresence(bs.HasNodeHistory(nid))(key) })
 }
 
 // nodeAsOfPick runs selectAsOfScan for one node and materializes the winner:
@@ -516,7 +583,7 @@ func (bs *Store) nodeAsOfPick(id snowflake.ID, current *types.Node, txTime types
 	if current != nil {
 		cur, curVersion = current.Temporal(), current.Version()
 	}
-	pick, err := selectAsOfScan(scan, cur, curVersion, txTime, bs.nodeTxWindow(id), bs.nodeDeletedAt(id), func(v uint64) (bool, error) { return exists(storepkg.HistNodeKey(id, v)) })
+	pick, err := selectAsOfScan(scan, cur, curVersion, txTime, bs.nodeTxWindow(id), bs.nodeRowTemporal(id), func(v uint64) (bool, error) { return exists(storepkg.HistNodeKey(id, v)) })
 	if err != nil {
 		return nil, err
 	}
@@ -547,7 +614,7 @@ func (bs *Store) RelAsOf(rid types.RelID, txTime types.Instant) (*types.Relation
 	scan := func(consider func(version uint64, val []byte) (bool, error)) error {
 		return bs.reverseScanHistoryVersion(prefix, consider)
 	}
-	return bs.relAsOfPick(id, current, txTime, scan, bs.liveHistoryKeyExists)
+	return bs.relAsOfPick(id, current, txTime, scan, func(key []byte) (bool, error) { return bs.historyKeyExistsWithPresence(bs.HasRelHistory(rid))(key) })
 }
 
 // relAsOfPick mirrors nodeAsOfPick for relationships.
@@ -557,7 +624,7 @@ func (bs *Store) relAsOfPick(id snowflake.ID, current *types.Relationship, txTim
 	if current != nil {
 		cur, curVersion = current.Temporal(), current.Version()
 	}
-	pick, err := selectAsOfScan(scan, cur, curVersion, txTime, bs.relTxWindow(id), bs.relDeletedAt(id), func(v uint64) (bool, error) { return exists(storepkg.HistRelKey(id, v)) })
+	pick, err := selectAsOfScan(scan, cur, curVersion, txTime, bs.relTxWindow(id), bs.relRowTemporal(id), func(v uint64) (bool, error) { return exists(storepkg.HistRelKey(id, v)) })
 	if err != nil {
 		return nil, err
 	}

@@ -5,6 +5,7 @@ package memory
 
 import (
 	"fmt"
+	"math"
 	"sort"
 
 	indexpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index"
@@ -1154,13 +1155,15 @@ func relAsOfLocked(current *types.Relationship, history map[uint32]*types.Relati
 
 // historyHasVersionAbove reports whether a version-keyed history map holds a
 // version above v (a cascade row written while the current row kept its slot).
+// Versions are allocated densely (core version_alloc.go), so version v+1
+// decides — one map lookup, the probe the badger store and the core fallback
+// make too.
 func historyHasVersionAbove[T any](history map[uint32]T, v uint32) bool {
-	for hv := range history {
-		if hv > v {
-			return true
-		}
+	if v == math.MaxUint32 {
+		return false
 	}
-	return false
+	_, ok := history[v+1]
+	return ok
 }
 
 // nodeHistoryVersionSlice flattens a version-keyed history map into the slice

@@ -147,6 +147,71 @@ func TestSelectAsOfWithCurrent_Table(t *testing.T) {
 			wantFound: false,
 		},
 	}
+	vt := func(r fakeRow, validTo types.Instant) fakeRow {
+		tm := *r.tm
+		tm.ValidTo = validTo
+		r.tm = &tm
+		return r
+	}
+	curVT := func(r fakeRow) *fakeRow { return &r }
+	tests = append(tests, []struct {
+		name      string
+		history   []fakeRow
+		current   *fakeRow
+		pin       types.Instant
+		wantFound bool
+		wantVer   uint32
+	}{
+		{
+			// Pre-v4.46 bounded cascade: resumption v1 took the slot, piece v2
+			// numbered above it in the same write. Catches answering the piece.
+			name:      "old cascade, same write: the open resumption (current) answers",
+			history:   []fakeRow{row(0, 10, 0, 0), vt(row(2, 20, 0, 0), 30)},
+			current:   cur(1, 20, 0),
+			pin:       100,
+			wantFound: true, wantVer: 1,
+		},
+		{
+			// The same chain after a later update (v3 at 40), read at 30.
+			name:      "old cascade, history arm: the open resumption answers at a pin before the update",
+			history:   []fakeRow{row(0, 10, 0, 0), row(1, 20, 40, 0), vt(row(2, 20, 0, 0), 30)},
+			current:   cur(3, 40, 0),
+			pin:       30,
+			wantFound: true, wantVer: 1,
+		},
+		{
+			// Catches a run that answers a bounded row when another is open: the
+			// first open row from the top wins.
+			name:      "a run without an open row answers its newest row",
+			history:   []fakeRow{vt(row(2, 20, 0, 0), 30), vt(row(3, 20, 0, 0), 40)},
+			current:   curVT(vt(row(1, 10, 0, 0), 25)),
+			pin:       100,
+			wantFound: true, wantVer: 3,
+		},
+		{
+			// Pre-v4.46 resumption v2 copied v0's TxTo (15 < its TxFrom 20);
+			// the slot holder v1 was deleted at 50. Catches a walk that stops
+			// at v2.
+			name:      "copied TxTo is passed over: the tombstone below ends the life",
+			history:   []fakeRow{row(0, 10, 15, 0), vt(row(1, 15, 50, 50), 50), vt(row(2, 20, 15, 0), 30), vt(row(3, 20, 0, 0), 30)},
+			pin:       100,
+			wantFound: false,
+		},
+		{
+			name:      "copied TxTo, pin before the delete: the newest row",
+			history:   []fakeRow{row(0, 10, 15, 0), vt(row(1, 15, 50, 50), 50), vt(row(2, 20, 15, 0), 30), vt(row(3, 20, 0, 0), 30)},
+			pin:       40,
+			wantFound: true, wantVer: 3,
+		},
+		{
+			// At a pin before the delete, the tombstone's delete-stamped ValidTo
+			// is open again (lesson 60) and it answers for its write.
+			name:      "a tombstone open at a pin before its delete answers for its write",
+			history:   []fakeRow{row(0, 10, 0, 0), vt(row(1, 20, 50, 50), 50), vt(row(2, 20, 0, 0), 30)},
+			pin:       40,
+			wantFound: true, wantVer: 1,
+		},
+	}...)
 	for _, tc := range tests {
 		for _, reversed := range []bool{false, true} {
 			hist := slices.Clone(tc.history)

@@ -40,12 +40,32 @@ func genCascadeAsofChain(rng *rand.Rand) []asofVersion {
 	}
 	for i := 0; i < s; i++ {
 		chain[i].txTo = chain[i+1].txFrom
+		if rng.IntN(3) == 0 {
+			chain[i].validTo = types.Instant(2 + rng.IntN(100)) // a closed row
+		}
+	}
+	for i := s + 1; i < n; i++ {
+		// Cascade rows are bounded; a pre-v4.46 resumption copied its source
+		// row's TxTo (below its own TxFrom).
+		chain[i].validTo = types.Instant(2 + rng.IntN(100))
+		if rng.IntN(4) == 0 {
+			chain[i].txTo = chain[0].txFrom
+			if chain[i].txTo >= chain[i].txFrom {
+				chain[i].txTo = 0
+			}
+		}
+	}
+	if rng.IntN(4) == 0 {
+		chain[s].validTo = types.Instant(2 + rng.IntN(100)) // a closed slot row
 	}
 	if rng.IntN(2) == 0 {
 		chain[s].current = true
 	} else {
 		d := tx + types.Instant(rng.IntN(20))
 		chain[s].txTo, chain[s].deletedAt = d, d
+		if chain[s].validTo == 0 {
+			chain[s].validTo = d // the delete stamps an open row's ValidTo
+		}
 	}
 	return chain
 }
