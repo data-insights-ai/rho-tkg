@@ -4,10 +4,15 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os"
+	"strconv"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -313,6 +318,274 @@ func BenchmarkPinnedScanScaling(b *testing.B) {
 								b.Fatalf("got %d nodes, want a value in (0, %d]", len(nodes), len(fx.isL))
 							}
 						}
+					})
+				})
+			}
+		}
+	}
+}
+
+// --- Backlog 8: pinned relationship property lookups ---
+//
+// BenchmarkPinnedRelPropertyLookup measures Rels().ByTypeAndProperty with a
+// transaction-time pin (sigma-tkgd's seat-scoped lookup) against the same
+// lookup without a pin, over N relationships spread across 1 or 5 types, for a
+// value with 200 current matches ("seat") and a broad one carried by 5 % of
+// the type ("grp"). Profiles:
+//
+//	nochurn       — every rel at its first version
+//	sigma         — 20 % of the rels revised (seat moves to the next value) and
+//	                5 % deleted, across all types (sigma's 1 M profile shape)
+//	unrelated-x1  — N/10 revisions on the OTHER types only (5 types)
+//	unrelated-x10 — N revisions on the other types only (10x the churn)
+//
+// The pinned sub-benchmark reports the lazy sidecar build of the first pinned
+// lookup (build-ms); the timed loop is the steady state. Bytes per posting are
+// measured on the structure itself (BenchmarkPropertyTxMembersBytesPerPosting in
+// pkg/graph/internal/index): a heap delta around a badger lookup is noise. Sizes: RHO_TKG_PINNED_REL_SIZES (comma list,
+// default 20000 — the bench-gate canary; the measured report used
+// 100000,1000000). Fixture writes go through g.Batch() in groups.
+
+type pinnedRelProfile struct {
+	name          string
+	types         int
+	reviseFrac    float64
+	deleteFrac    float64
+	unrelatedMult int // revisions on the non-target types, in units of N/10
+}
+
+var pinnedRelProfiles = []pinnedRelProfile{
+	{name: "1type/nochurn", types: 1},
+	{name: "1type/sigma", types: 1, reviseFrac: 0.20, deleteFrac: 0.05},
+	{name: "5types/nochurn", types: 5},
+	{name: "5types/sigma", types: 5, reviseFrac: 0.20, deleteFrac: 0.05},
+	{name: "5types/unrelated-x1", types: 5, unrelatedMult: 1},
+	{name: "5types/unrelated-x10", types: 5, unrelatedMult: 10},
+}
+
+func pinnedRelSizes(tb testing.TB) []int {
+	raw := os.Getenv("RHO_TKG_PINNED_REL_SIZES")
+	if raw == "" {
+		return []int{20_000}
+	}
+	var out []int
+	for _, f := range strings.Split(raw, ",") {
+		n, err := strconv.Atoi(strings.TrimSpace(f))
+		if err != nil || n < 1000 {
+			tb.Fatalf("RHO_TKG_PINNED_REL_SIZES: bad size %q", f)
+		}
+		out = append(out, n)
+	}
+	return out
+}
+
+type pinnedRelBackend struct {
+	name string
+	open func(tb testing.TB) *graph.Graph
+}
+
+func pinnedRelBackends() []pinnedRelBackend {
+	open := func(tb testing.TB, cfg graph.Config) *graph.Graph {
+		g, err := graph.New(cfg)
+		if err != nil {
+			tb.Fatalf("graph.New: %v", err)
+		}
+		tb.Cleanup(func() { _ = g.Close() })
+		return g
+	}
+	return []pinnedRelBackend{
+		{name: "memory", open: func(tb testing.TB) *graph.Graph { return open(tb, graph.Config{SnowflakeNodeID: 4}) }},
+		{name: "badger", open: func(tb testing.TB) *graph.Graph {
+			return open(tb, graph.Config{SnowflakeNodeID: 5, BadgerInMemory: true})
+		}},
+		{name: "sharded", open: func(tb testing.TB) *graph.Graph {
+			st, err := sharded.New(sharded.Config{InMemory: true, BaseSlot: 0, SlotCount: 2})
+			if err != nil {
+				tb.Fatalf("sharded.New: %v", err)
+			}
+			return open(tb, graph.Config{Store: st})
+		}},
+	}
+}
+
+type pinnedRelFixture struct {
+	g         *graph.Graph
+	pin       types.Instant
+	target    string // the type the lookups ask for
+	seatWant  int    // current matches of seat=0
+	grpWant   int    // current matches of grp=0
+	buildMs   float64
+}
+
+func buildPinnedRelFixture(tb testing.TB, be pinnedRelBackend, n int, prof pinnedRelProfile) *pinnedRelFixture {
+	tb.Helper()
+	ctx := benchCtx()
+	g := be.open(tb)
+	a, err := g.Nodes().Add(ctx, []string{"P"}, nil)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	c, err := g.Nodes().Add(ctx, []string{"P"}, nil)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	perType := n / prof.types
+	values := perType / 200
+	if values < 1 {
+		values = 1
+	}
+	typeName := func(k int) string { return fmt.Sprintf("T%d", k) }
+	for k := 0; k < prof.types; k++ {
+		if err := g.Index().CreateRelProperty(typeName(k), "seat"); err != nil {
+			tb.Fatal(err)
+		}
+	}
+	if err := g.Index().CreateRelProperty(typeName(0), "grp"); err != nil {
+		tb.Fatal(err)
+	}
+	const group = 10_000
+	ids := make([][]types.RelID, prof.types)
+	seat := make(map[types.RelID]int, n)
+	for k := 0; k < prof.types; k++ {
+		for start := 0; start < perType; start += group {
+			end := min(start+group, perType)
+			var rels []*types.Relationship
+			if _, err := g.Batch().Run(func(bb *graph.BatchBuilder) error {
+				for i := start; i < end; i++ {
+					r, err := bb.AddRelationship(typeName(k), a, c, map[string]any{"seat": int64(i % values), "grp": int64(i % 20)})
+					if err != nil {
+						return err
+					}
+					rels = append(rels, r)
+				}
+				return nil
+			}); err != nil {
+				tb.Fatalf("batch add: %v", err)
+			}
+			for i, r := range rels {
+				ids[k] = append(ids[k], r.ID())
+				seat[r.ID()] = (start + i) % values
+			}
+		}
+	}
+	update := func(batch []types.RelID) {
+		if _, err := g.Batch().Run(func(bb *graph.BatchBuilder) error {
+			for _, id := range batch {
+				seat[id] = (seat[id] + 1) % values
+				if err := bb.UpdateRelationship(id, map[string]any{"seat": int64(seat[id])}); err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
+			tb.Fatalf("batch update: %v", err)
+		}
+	}
+	inGroups := func(all []types.RelID, fn func([]types.RelID)) {
+		for start := 0; start < len(all); start += group {
+			fn(all[start:min(start+group, len(all))])
+		}
+	}
+	// sigma: every 5th rel of every type revised, every 20th deleted.
+	if prof.reviseFrac > 0 {
+		for k := range ids {
+			var pick []types.RelID
+			for i, id := range ids[k] {
+				if i%5 == 1 {
+					pick = append(pick, id)
+				}
+			}
+			inGroups(pick, update)
+		}
+	}
+	if prof.deleteFrac > 0 {
+		for k := range ids {
+			var pick []types.RelID
+			for i, id := range ids[k] {
+				if i%20 == 3 {
+					pick = append(pick, id)
+				}
+			}
+			inGroups(pick, func(batch []types.RelID) {
+				if _, err := g.Batch().Run(func(bb *graph.BatchBuilder) error {
+					for _, id := range batch {
+						if err := bb.DeleteRelationship(id); err != nil {
+							return err
+						}
+					}
+					return nil
+				}); err != nil {
+					tb.Fatalf("batch delete: %v", err)
+				}
+			})
+		}
+	}
+	// Unrelated churn: revisions on the other types only, round-robin.
+	if revs := prof.unrelatedMult * n / 10; revs > 0 && prof.types > 1 {
+		var others []types.RelID
+		for k := 1; k < prof.types; k++ {
+			others = append(others, ids[k]...)
+		}
+		var pick []types.RelID
+		for i := 0; i < revs; i++ {
+			pick = append(pick, others[i%len(others)])
+		}
+		inGroups(pick, update)
+	}
+	pin, err := g.Temporal().NowTx()
+	if err != nil {
+		tb.Fatal(err)
+	}
+	fx := &pinnedRelFixture{g: g, pin: pin, target: typeName(0)}
+	cur, err := g.Rels().ByTypeAndProperty(fx.target, "seat", int64(0), storepkg.QueryOpts{})
+	if err != nil {
+		tb.Fatal(err)
+	}
+	fx.seatWant = len(cur)
+	cur, err = g.Rels().ByTypeAndProperty(fx.target, "grp", int64(0), storepkg.QueryOpts{})
+	if err != nil {
+		tb.Fatal(err)
+	}
+	fx.grpWant = len(cur)
+
+	// The first pinned lookup per key builds its sidecar lazily: time it.
+	start := time.Now()
+	rels, err := g.Rels().ByTypeAndProperty(fx.target, "seat", int64(0), storepkg.QueryOpts{TxPin: pin})
+	fx.buildMs = float64(time.Since(start).Microseconds()) / 1000
+	if err != nil || len(rels) != fx.seatWant {
+		tb.Fatalf("warm-up pinned lookup: %d rels (want %d), %v", len(rels), fx.seatWant, err)
+	}
+	if _, err := g.Rels().ByTypeAndProperty(fx.target, "grp", int64(0), storepkg.QueryOpts{TxPin: pin}); err != nil {
+		tb.Fatal(err)
+	}
+	return fx
+}
+
+// BenchmarkPinnedRelPropertyLookup — see the block comment above.
+func BenchmarkPinnedRelPropertyLookup(b *testing.B) {
+	for _, n := range pinnedRelSizes(b) {
+		for _, be := range pinnedRelBackends() {
+			for _, prof := range pinnedRelProfiles {
+				b.Run(fmt.Sprintf("%s/%d/%s", be.name, n, prof.name), func(b *testing.B) {
+					fx := buildPinnedRelFixture(b, be, n, prof)
+					lookup := func(b *testing.B, key string, want int, opts storepkg.QueryOpts) {
+						b.ReportAllocs()
+						for b.Loop() {
+							rels, err := fx.g.Rels().ByTypeAndProperty(fx.target, key, int64(0), opts)
+							if err != nil || len(rels) != want {
+								b.Fatalf("%s lookup: %d rels (want %d), %v", key, len(rels), want, err)
+							}
+						}
+					}
+					b.Run("matches200/pinned", func(b *testing.B) {
+						lookup(b, "seat", fx.seatWant, storepkg.QueryOpts{TxPin: fx.pin})
+						b.ReportMetric(fx.buildMs, "build-ms")
+					})
+					b.Run("matches200/current", func(b *testing.B) {
+						lookup(b, "seat", fx.seatWant, storepkg.QueryOpts{})
+					})
+					b.Run("broad/pinned", func(b *testing.B) {
+						lookup(b, "grp", fx.grpWant, storepkg.QueryOpts{TxPin: fx.pin})
 					})
 				})
 			}

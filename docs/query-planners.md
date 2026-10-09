@@ -37,6 +37,7 @@ bottom.
 | Node / relationship mutation epoch | `g.Nodes().NodeMutationEpoch()` / `g.Rels().RelMutationEpoch()` | O(1) | O(1) where supported | returns 0 (not an error) when the backend lacks the DocValues capability |
 | Pinned adjacency (transaction-time) | `g.Rels().OutgoingForNodesAtTx(nodeIDs, type, txAt)` / `IncomingForNodesAtTx(...)` | adjacency index + O(deleted rels) fold, not a full `ByType` history scan | same adjacency-index push-down per shard | `txAt == 0` delegates to `OutgoingForNodes`/`IncomingForNodes` (no TX filter) |
 | Composite (multi-key) equality lookup | `g.Nodes().ByLabelAndProperties(label, values, opts)` | O(matches) with a matching `g.Index().CreateComposite` definition; else O(label size) scan+filter | O(matches) per shard with a matching definition (every shard builds its own), folded across the shards in the query's depth; else scan+filter per shard | never errors; falls back to scan+filter when no exact-key-set definition exists (see "Composite property indexes" below) |
+| Temporal property lookup | `g.Rels().ByTypeAndProperty` / `g.Nodes().ByLabelAndProperty(ies)` with a temporal filter, the named `*PropertyAt` / `*PropertyDuring` doors | O(the value's ever-members) with a declared index (property membership sidecar, built lazily once); else O(all history) | O(all history) (tiered declines the sidecar) | never — without the sidecar the full-history fold answers the same |
 
 | Pinned adjacency — bitemporal (TxAt) | `g.Rels().OutgoingForNodesAtTx(nodeIDs, type, txAt)` / `IncomingForNodesAtTx(...)` | adjacency index + O(deleted rels) fold, not a full `ByType` history scan | same adjacency-index push-down per shard | `txAt == 0` delegates to `OutgoingForNodes`/`IncomingForNodes` (no TX filter); **valid-at-now filter — drops past-valid edges**, see below |
 | Pinned adjacency — belief-state (TxPin) | `g.Rels().OutgoingForNodesAtPin(nodeIDs, type, pin)` / `IncomingForNodesAtPin(...)` | adjacency index + O(deleted rels) fold; agrees with `ByType{TxPin}` filtered by endpoint by construction | same adjacency-index push-down per shard | `pin == 0` delegates to `OutgoingForNodes`/`IncomingForNodes`; a seed absent from the belief state at the pin is skipped silently (no `ErrNodeNotFound`) |
@@ -634,6 +635,47 @@ Both families push the live-adjacency probe down per shard on `tiered.Store`
 (cross-shard endpoints supported) and fold in deleted relationships via the same
 `DeletedIterationCapability` the single-node `OutgoingRelsAt`/`IncomingRelsAt`
 doors use.
+
+## Temporal property lookups — the property membership sidecar
+
+A property lookup with a temporal filter — `g.Rels().ByTypeAndProperty` /
+`g.Nodes().ByLabelAndProperty` / `ByLabelAndProperties` with `TxPin`, `TxAt`,
+`ValidAt` or `ValidStart`+`ValidEnd`, and the named
+`g.Temporal().RelsByTypePropertyAt` / `RelsByTypePropertyDuring` /
+`NodesByLabelPropertyAt` / `NodesByLabelPropertyDuring` — cannot answer from
+the property index alone: the index holds CURRENT values, and a rel that
+carried the value in an older version (or was deleted) matches at a pin
+before the change. Each candidate is resolved through the same chain resolver
+as every other temporal door and the predicate is re-checked on the resolved
+version; the question is only which candidates to resolve.
+
+| Store | Candidates | Cost |
+|---|---|---|
+| memory, badger, sharded, with a DECLARED index on `(type, key)` / `(label, key)` | current index matches ∪ the value's ever-members from the store's property membership sidecar, minus members whose earliest row carrying the value was recorded after the effective pin (`TxPin`, else `TxAt`; a pure valid-time read prunes nothing) | O(rels that ever carried the value × their versions) |
+| no declared index, tiered, a wrapper store | current matches ∪ every ID with a history row (the full fold) | O(all history of the graph) |
+
+Both rows return the same answer (the sidecar is a sound superset; the
+resolver rejects the rest). `ByLabelAndProperties` intersects the sidecar
+sets of the keys that have a declared single-key index; keys without one
+constrain nothing.
+
+The sidecar (`store.RelPropertyTxMembershipCapability` /
+`NodePropertyTxMembershipCapability`) maps `(scope, key, value)` to every
+entity whose rows ever carried the value — under the type, or for nodes under
+the label IN THE SAME ROW — with the lowest TxFrom of those rows. It is
+append-only (a later value change, delete, truncation or compaction never
+removes a posting), RAM-only and LAZY: built on the first temporal lookup for
+the `(scope, key)` after open (O(history) once: one scan of the current and
+history rows), then recorded at every row write. Clear / `Admin().Reset()`,
+an index drop, retention purge and exact erasure drop the sidecars; the next
+lookup rebuilds them. On badger the build does not hold the write lock: it
+turns recording on, captures the write buffer, scans the committed keyspaces
+and installs the scan only if no drop happened meanwhile.
+`PropertyTxMembershipStats()` (store capability) reports built sidecars,
+postings, builds and summed build time.
+
+Measured (backlog 8, `BenchmarkPinnedRelPropertyLookup`): see CHANGELOG
+`[Unreleased]` "Pinned property lookups cost the matches".
 
 ## The capability story for external stores
 

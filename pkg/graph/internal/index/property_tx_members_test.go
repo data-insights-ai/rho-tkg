@@ -1,7 +1,10 @@
 package index
 
 import (
+	"fmt"
+	"runtime"
 	"sort"
+	"strconv"
 	"testing"
 
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
@@ -137,5 +140,35 @@ func TestPropertyTxMembersNil(t *testing.T) {
 	NewPropertyTxMembers[int]().Merge(nil)
 	if m.Members("a") != nil || m.Postings() != 0 {
 		t.Fatal("nil sidecar is not empty")
+	}
+}
+
+// BenchmarkPropertyTxMembersBytesPerPosting measures the resident heap of the
+// sidecar per posting (backlog 8 sizing decision) at 1 M and 10 M postings:
+// 200 postings per value (sigma's selective value), 20 000 per value (broad),
+// and every value distinct (worst case). Reported as B/posting.
+func BenchmarkPropertyTxMembersBytesPerPosting(b *testing.B) {
+	for _, c := range []struct{ postings, perValue int }{
+		{1_000_000, 200}, {1_000_000, 20_000}, {1_000_000, 1},
+		{10_000_000, 200}, {10_000_000, 1},
+	} {
+		b.Run(fmt.Sprintf("postings=%d/perValue=%d", c.postings, c.perValue), func(b *testing.B) {
+			var bytes float64
+			for b.Loop() {
+				runtime.GC()
+				var before, after runtime.MemStats
+				runtime.ReadMemStats(&before)
+				m := NewPropertyTxMembers[int64]()
+				values := c.postings / c.perValue
+				for i := 0; i < c.postings; i++ {
+					m.Record("i64:"+strconv.Itoa(i%values), 797840942263141376+int64(i)*4096, types.Instant(1791573773723+int64(i)))
+				}
+				runtime.GC()
+				runtime.ReadMemStats(&after)
+				bytes = float64(after.HeapAlloc-before.HeapAlloc) / float64(c.postings)
+				runtime.KeepAlive(m)
+			}
+			b.ReportMetric(bytes, "B/posting")
+		})
 	}
 }

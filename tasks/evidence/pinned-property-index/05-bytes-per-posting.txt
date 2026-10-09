@@ -1,0 +1,5 @@
+BenchmarkPropertyTxMembersBytesPerPosting/postings=1000000/perValue=200-32         	       1	 143648822 ns/op	        25.25 B/posting
+BenchmarkPropertyTxMembersBytesPerPosting/postings=1000000/perValue=20000-32       	       1	 121571357 ns/op	        29.56 B/posting
+BenchmarkPropertyTxMembersBytesPerPosting/postings=1000000/perValue=1-32           	       1	 305360485 ns/op	       116.4 B/posting
+BenchmarkPropertyTxMembersBytesPerPosting/postings=10000000/perValue=200-32        	       1	2362826893 ns/op	        25.15 B/posting
+BenchmarkPropertyTxMembersBytesPerPosting/postings=10000000/perValue=1-32          	       1	4207800611 ns/op	        96.60 B/posting
