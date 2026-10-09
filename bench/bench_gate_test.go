@@ -42,7 +42,6 @@ func TestBenchGateIgnoresCustomMetricBlocks(t *testing.T) {
 	}
 }
 
-
 // The PinnedRelPropertyLookup family is gated on allocs/op (+10 %) ALONE by
 // default: on a shared host its time rows swung +42..+178 % between identical
 // runs while allocs/op did not move, and the regression it exists to catch —
