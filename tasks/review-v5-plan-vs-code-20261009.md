@@ -124,6 +124,9 @@ shapes; the plan's isolated reconciliation is right, the levers above make its e
 
 ## 5. Consumer requests (ai-soc, 2026-10-09) and their disposition
 
+Dispositions below are the state when answered; René's decisions of the same day (3 yes, 4 withdrawn, 5 no,
+7 group-instant no, 9 yes) are recorded in `tasks/backlog.md` items 9-11 and its DECIDED NO line, which win.
+
 Answered to ai-soc-main-e7 in full; summary:
 
 | # | Request | Finding | Disposition |
