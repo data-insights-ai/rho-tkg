@@ -1,14 +1,16 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
 // Caller-supplied transaction instants on the END/SUPERSEDE doors
-// (Rels().DeleteWithTx, Rels().UpdateWithTx; the node and GraphTx twins reuse
-// these helpers). A create door's backfilled TxFrom only has to be a valid
+// (Rels().DeleteWithTx, Rels().UpdateWithTx, Nodes().DeleteWithTx,
+// Nodes().UpdateWithTx and their GraphTx, batch and ingest twins). A create door's backfilled TxFrom only has to be a valid
 // instant; an end or supersession at t must also fit the chain already
 // recorded, which is decided under the entity lock.
 
@@ -103,4 +105,68 @@ func (c *Core) checkRelCallerTx(id types.RelID, current *types.Relationship, t, 
 		return err
 	}
 	return checkTxOrder(t, start, chain...)
+}
+
+// nodeChainTemporals returns the temporal metadata of every recorded version
+// of a node: its history plus current (when non-nil). Call under the node's
+// entity lock.
+func (c *Core) nodeChainTemporals(id types.NodeID, current *types.Node) ([]*types.TemporalMetadata, error) {
+	history, err := c.getNodeHistory(id)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*types.TemporalMetadata, 0, len(history)+1)
+	for _, h := range history {
+		out = append(out, h.Temporal())
+	}
+	if current != nil {
+		out = append(out, current.Temporal())
+	}
+	return out, nil
+}
+
+// nodeTxDeleteStart is the node twin of relTxDeleteStart: the later of the
+// effective valid-from and the current version's start.
+func (c *Core) nodeTxDeleteStart(n *types.Node) types.Instant {
+	return max(c.nodeValidFrom(n), c.nodeCurrentVersionStart(n))
+}
+
+// checkNodeCallerTx runs the order rule for a caller instant on node current
+// (under its entity lock); start is the door's version start.
+func (c *Core) checkNodeCallerTx(id types.NodeID, current *types.Node, t, start types.Instant) error {
+	chain, err := c.nodeChainTemporals(id, current)
+	if err != nil {
+		return err
+	}
+	return checkTxOrder(t, start, chain...)
+}
+
+// checkNodeCascadeCallerTx decides a caller-instant node delete before anything
+// is written: the order rule on the node and on every relationship the cascade
+// tombstones (each against its own chain and delete start), then the close
+// rule over all of them — one instant t ends every row, so one failure refuses
+// the whole delete. rels are the Phase-B rows, read under the full entity
+// lock. A Model-A foreign incoming stub (ADR-0010) has no local chain (its slot
+// belongs to another machine; the store removes it without a tombstone), so
+// it is not checked.
+func (c *Core) checkNodeCascadeCallerTx(id types.NodeID, current *types.Node, rels []*types.Relationship, t types.Instant) error {
+	if err := c.checkNodeCallerTx(id, current, t, c.nodeTxDeleteStart(current)); err != nil {
+		return err
+	}
+	tms := make([]*types.TemporalMetadata, 0, 1+len(rels))
+	tms = append(tms, current.Temporal())
+	for _, r := range rels {
+		chain, err := c.relChainTemporals(r.ID(), r)
+		if errors.Is(err, storepkg.ErrSlotNotLocal) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if err := checkTxOrder(t, c.relTxDeleteStart(r), chain...); err != nil {
+			return fmt.Errorf("cascaded relationship %d: %w", r.ID(), err)
+		}
+		tms = append(tms, r.Temporal())
+	}
+	return checkCallerDeleteCloses(t, tms...)
 }

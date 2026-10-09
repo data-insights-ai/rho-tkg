@@ -472,18 +472,74 @@ func (b *BatchBuilder) DeleteNode(id types.NodeID) error {
 	if err := storepkg.ValidateNodeID(id); err != nil {
 		return err
 	}
-	b.nodeDeletes = append(b.nodeDeletes, id)
+	b.nodeDeletes = append(b.nodeDeletes, pendingNodeDelete{id: id})
 	return nil
 }
 
-// DeleteNodeWithTx — RED STUB: routed to the plain queue door until the seam lands.
+// DeleteNodeWithTx queues a node delete like DeleteNode whose cascade is
+// stamped with the caller's transaction instant txTo (see
+// Nodes().DeleteWithTx). txTo is gated at queue time — a positive instant not
+// in the future (ErrInvalidTxFrom), then Config.AllowTxBackfill
+// (ErrTxBackfillDisabled); the order and close rules (ErrTxOrder) run at
+// Execute under the entity locks and fail that operation only.
 func (b *BatchBuilder) DeleteNodeWithTx(id types.NodeID, txTo types.Instant) error {
-	return b.DeleteNode(id)
+	if err := b.lockOpen(); err != nil {
+		return err
+	}
+	defer b.mu.Unlock()
+
+	if err := b.g.checkOpen(); err != nil {
+		return err
+	}
+	rtok := b.g.mu.RLockShard(uint(b.genLane))
+	defer b.g.mu.RUnlockShard(rtok)
+	if b.g.closed.Load() {
+		return ErrGraphClosed
+	}
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return err
+	}
+	at, err := b.g.resolveCallerTxInstant(txTo)
+	if err != nil {
+		return err
+	}
+	b.nodeDeletes = append(b.nodeDeletes, pendingNodeDelete{id: id, at: at})
+	return nil
 }
 
-// UpdateNodeWithTx — RED STUB: routed to the plain queue door until the seam lands.
+// UpdateNodeWithTx queues a node update like UpdateNode stamped with the
+// caller's transaction instant txFrom (see Nodes().UpdateWithTx). txFrom is
+// gated at queue time (ErrInvalidTxFrom, then ErrTxBackfillDisabled); the
+// order rule and the no-op refusal (ErrTxOrder) run at Execute under the
+// entity lock and fail that operation only.
 func (b *BatchBuilder) UpdateNodeWithTx(id types.NodeID, updates map[string]any, txFrom types.Instant) error {
-	return b.UpdateNode(id, updates)
+	if err := b.lockOpen(); err != nil {
+		return err
+	}
+	defer b.mu.Unlock()
+
+	if err := b.g.checkOpen(); err != nil {
+		return err
+	}
+	rtok := b.g.mu.RLockShard(uint(b.genLane))
+	defer b.g.mu.RUnlockShard(rtok)
+	if b.g.closed.Load() {
+		return ErrGraphClosed
+	}
+	if err := storepkg.ValidateNodeID(id); err != nil {
+		return err
+	}
+	at, err := b.g.resolveCallerTxInstant(txFrom)
+	if err != nil {
+		return err
+	}
+	queuedUpdate, err := b.g.prepareQueuedUpdateProperties(updates, "batch update node")
+	if err != nil {
+		return err
+	}
+	queuedUpdate.temporal.txAt = at
+	b.nodeUpdates = append(b.nodeUpdates, pendingNodeUpdate{id: id, update: queuedUpdate})
+	return nil
 }
 
 // DeleteRelationship queues a relationship for deletion.

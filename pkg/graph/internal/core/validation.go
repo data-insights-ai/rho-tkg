@@ -332,9 +332,10 @@ type updateProvenance struct {
 // The collective `present` flag gates the "this update is non-empty" check.
 //
 // txAt is not parsed from the map: it is a caller transaction instant set by
-// an update door (Rels().UpdateWithTx) after resolveCallerTxInstant gated it.
-// 0 = stamp the clock. Every update door funnels its prepared update through
-// updateRelationshipPreparedInternal, so a door that sets txAt inherits the
+// an update door (Rels().UpdateWithTx, Nodes().UpdateWithTx and twins) after
+// resolveCallerTxInstant gated it. 0 = stamp the clock. Every update door
+// funnels its prepared update through updateRelationshipPreparedInternal or
+// updateNodePreparedInternal, so a door that sets txAt inherits the
 // order check and the stamps; txAt does not count toward `present` (it is not
 // a change by itself — an update at txAt that changes nothing is refused).
 type updateTemporal struct {

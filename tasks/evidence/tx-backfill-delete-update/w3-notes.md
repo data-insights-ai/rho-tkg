@@ -13,3 +13,52 @@
 | dupes/race | no | R10 `Duplicates`, R11 `RaceClock` | second delete, same t twice; plain Updates racing the doors (-race) | `red-w3.txt` |
 | GraphTx | no | R12 `TxRollbackEquiv` | rollback restores export bytes and pins; commit equals the standalone door's bytes | `red-w3.txt` |
 | cache | partly (W2: replica delete apply, notePastDatedWrite) | R13 `ReplicaDropsNode`, R14 `PrimaryCacheStale` | replica warm P >= t drops the node after the apply; primary warm pin + build between gate and write | `red-w3.txt` |
+
+Proof: `r0-before-w3.txt` (72 R0 subtests green on 64b04c2), `red-w3.txt` (284 subtests red against the
+stubs, every failure behavioural), `green-w3.txt` (356 subtests green under -race), `make test-race` green.
+
+## What landed
+
+- Doors: `Nodes().DeleteWithTx/UpdateWithTx` (`nodes.Ops` + spy), `GraphTx.DeleteNodeWithTx/UpdateNodeWithTx`
+  (`tx_mutations_node_withtx.go`; bodies shared with the plain twins via `deleteNodeAt`/`updateNodeAt`),
+  `BatchBuilder.DeleteNodeWithTx/UpdateNodeWithTx`, `Session.DeleteNodeWithTx/UpdateNodeWithTx` (ingest sync and
+  concurrent). Batch/ingest gate at queue time; the order/close/no-op rules run at apply under the entity locks
+  and fail that op only. The GraphTx twins gate before the tx lock (value, then privilege), as the standalone
+  doors gate before c.mu.
+- Seams: `deleteNodeInternal(ctx, id, at)` -> `deleteNodeLocked(..., at)`; `updateNodeAtInternal(ctx, id, m, at)`
+  and `updateTemporal.txAt` consumed by `updateNodePreparedInternal`. at == 0 = today (R0 green before and after).
+- Cascade: `checkNodeCascadeCallerTx` (tx_order.go) — order rule on the node (`nodeTxDeleteStart`) and every
+  Phase-B rel (`relTxDeleteStart`, own chain), then `checkCallerDeleteCloses` over all rows, all before the
+  first write; one instant for every tombstone. Foreign incoming stubs (ADR-0010, slot not local) are skipped
+  (no local chain, no tombstone). No store change: memory/badger/sharded/tiered all write the core's tombstones
+  (tiered cross-shard Ref<->Ev and shard-local Ref->Ref both covered in R9's counterpart).
+- Cache: standalone/GraphTx doors `defer notePastDatedWrite(at)` after the gate; batch Execute and the concurrent
+  ingest apply report `pendingNodeCallerTx(nodeUpdates, nodeDeletes)` (a separate defer line beside W2's
+  `pendingPastDated`, to keep the W4 merge apart).
+- `nodeDeletes` became `[]pendingNodeDelete{id, at}` in BatchBuilder and ingestGroup (W4 may change the adjacent
+  `relDeletes` line: a trivial textual conflict).
+
+## Mutation checks (each reverted after the run)
+
+| Mutation | Caught by |
+|---|---|
+| cascade check skips the rels (`range rels[:0]`) | R9 CascadeOrder, R7 CloseCollision/cascaded_rel, R8 ScheduledCloseAfterT/cascaded_rel |
+| foreign stub not skipped | CascadeForeignStub (`entity slot not local ... slot 11`) |
+| batch/ingest-sync apply does not report the node instants | R14 PrimaryCacheStale batch/* and ingest_sync/* on all 4 backends |
+
+## Test-fixture corrections after the first implementation run (not code bugs)
+
+- R2 `clock+1` for the GraphTx twin: BeginTx reserves one instant (StartInstant), so the twin's clock read is
+  x+1; the first future instant is x+2 for that door.
+- R13 replica fixture: the cascaded rel needed an explicit valid-from — with a derived one (mint time = now) the
+  cascade rightly refused t (R9 behaviour).
+- Self-loops are rejected by default validation; R9's counterpart uses a second inbound rel and a Ref->Ref rel.
+
+## Open for phase 3
+
+- docs/api.md (node doors, batch/ingest node doors), CHANGELOG, lesson 59 amendment (W5).
+- R15 cross-backend oracle with backdated node ends; R11 over the GraphTx/batch/ingest node doors (only the
+  standalone node doors race here).
+- Replay note (as W1): an UpdateWithTx without `tkg_valid_from` resets ValidFrom; a later DeleteWithTx at a t
+  before the derived start refuses. A cascade also refuses when ANY cascaded rel's derived valid-from (its mint
+  time) lies after t — replays must pass `tkg_valid_from` on rel creates too.

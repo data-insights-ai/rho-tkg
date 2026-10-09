@@ -104,7 +104,7 @@ type ingestGroup struct {
 	rels         []pendingRel
 	nodeUpdates  []pendingNodeUpdate
 	relUpdates   []pendingRelUpdate
-	nodeDeletes  []types.NodeID
+	nodeDeletes  []pendingNodeDelete
 	relDeletes   []types.RelID
 	nodeCascades []pendingNodeCascade
 	relCascades  []pendingRelCascade
@@ -266,8 +266,8 @@ func (a *ingestApplier) applyCommitGroup(batch []*ingestGroup) {
 		for _, pu := range g.relUpdates {
 			idToGroup[types.EntityID(pu.id)] = g
 		}
-		for _, id := range g.nodeDeletes {
-			idToGroup[types.EntityID(id)] = g
+		for _, pd := range g.nodeDeletes {
+			idToGroup[types.EntityID(pd.id)] = g
 		}
 		for _, id := range g.relDeletes {
 			idToGroup[types.EntityID(id)] = g
@@ -826,14 +826,25 @@ func (s *Session) DeleteNode(id types.NodeID) error {
 	return s.b.DeleteNode(id)
 }
 
-// DeleteNodeWithTx — RED STUB: routed to the plain door until the seam lands.
+// DeleteNodeWithTx accumulates a cascade node delete stamped with the caller's
+// transaction instant txTo (see BatchBuilder.DeleteNodeWithTx: gated now, the
+// order and close rules at apply).
 func (s *Session) DeleteNodeWithTx(id types.NodeID, txTo types.Instant) error {
-	return s.DeleteNode(id)
+	if err := s.lockOpen(); err != nil {
+		return err
+	}
+	defer s.mu.Unlock()
+	return s.b.DeleteNodeWithTx(id, txTo)
 }
 
-// UpdateNodeWithTx — RED STUB: routed to the plain door until the seam lands.
+// UpdateNodeWithTx accumulates a node update stamped with the caller's
+// transaction instant txFrom (see BatchBuilder.UpdateNodeWithTx).
 func (s *Session) UpdateNodeWithTx(id types.NodeID, updates map[string]any, txFrom types.Instant) error {
-	return s.UpdateNode(id, updates)
+	if err := s.lockOpen(); err != nil {
+		return err
+	}
+	defer s.mu.Unlock()
+	return s.b.UpdateNodeWithTx(id, updates, txFrom)
 }
 
 // DeleteRelationship accumulates a relationship delete.

@@ -56,6 +56,9 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	// past-dated write after this Execute's store writes (deferred — it runs
 	// after every write and every cleanup path below).
 	defer b.g.notePastDatedWrite(pendingPastDated(b.nodes, b.rels))
+	// Likewise the caller instants of the queued node updates/deletes
+	// (UpdateNodeWithTx, DeleteNodeWithTx).
+	defer b.g.notePastDatedWrite(pendingNodeCallerTx(b.nodeUpdates, b.nodeDeletes))
 
 	// Buffer events during batch execution; dispatch after c.mu.Unlock.
 	var batchEvents []eventspkg.Event
@@ -507,7 +510,7 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 			err     error
 		)
 		if pu.update.originalLen == 0 {
-			_, mutated, err = b.g.updateNodeInternal(context.Background(), pu.id, pu.update.properties)
+			_, mutated, err = b.g.updateNodeAtInternal(context.Background(), pu.id, pu.update.properties, pu.update.temporal.txAt)
 		} else {
 			_, mutated, err = b.g.updateNodePreparedInternal(context.Background(), pu.id, pu.update.provenance, pu.update.temporal, pu.update.properties)
 		}
@@ -594,8 +597,9 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	}
 
 	// 6. Delete nodes (internal — batch already holds c.mu.Lock).
-	for _, id := range b.nodeDeletes {
-		cascadeRelIDs, err := b.g.deleteNodeInternal(context.Background(), id)
+	for _, pd := range b.nodeDeletes {
+		id := pd.id
+		cascadeRelIDs, err := b.g.deleteNodeInternal(context.Background(), id, pd.at)
 		if err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, BatchError{

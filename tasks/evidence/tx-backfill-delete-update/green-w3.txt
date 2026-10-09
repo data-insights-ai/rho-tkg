@@ -1,0 +1,33 @@
+# W3 GREEN under -race: node doors implemented (seam at deleteNodeLocked/updateNodePreparedInternal); make test-race exit 0 (81 packages ok)
+# go test -race ./pkg/graph/internal/core/ ./pkg/graph/ ./pkg/graph/nodes/ -run 'TestTxBackfillNode_|TestNodesWithTx_|TestAPIWithTxDoorsForwardInstantVerbatim|TestAPIForwardsEveryMethod|TestAPINilReceivers' -v
+## top-level results
+--- PASS: TestTxBackfillNode_PrimaryCacheStale (1.10s)
+--- PASS: TestTxBackfillNode_ReplicaDropsNode (0.51s)
+--- PASS: TestTxBackfillNode_CascadeForeignStub (0.13s)
+--- PASS: TestTxBackfillNode_GateOff (0.47s)
+--- PASS: TestTxBackfillNode_Duplicates (0.54s)
+--- PASS: TestTxBackfillNode_ScheduledCloseAfterT (0.78s)
+--- PASS: TestTxBackfillNode_CloseCollision (0.86s)
+--- PASS: TestTxBackfillNode_InvalidInstant (1.00s)
+--- PASS: TestTxBackfillNode_OrderValidStart (1.12s)
+--- PASS: TestTxBackfillNode_OrderEqualReversed (1.21s)
+--- PASS: TestTxBackfillNode_NoopUpdateRefuses (1.61s)
+--- PASS: TestTxBackfillNode_UpdateStamps (1.65s)
+--- PASS: TestTxBackfillNode_DeleteIgnoresT (1.83s)
+--- PASS: TestTxBackfillNode_TxRollbackEquiv (1.88s)
+--- PASS: TestTxBackfillNode_RaceClock (2.84s)
+--- PASS: TestTxBackfillNode_PlainDoorsUnchanged (3.64s)
+--- PASS: TestTxBackfillNode_CascadeOrder (4.47s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	7.379s
+--- PASS: TestNodesWithTx_FacadeRefusesAndStampsT (0.10s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	1.166s
+--- PASS: TestAPINilReceiversReturnErrNilGraphOrZero (0.00s)
+--- PASS: TestAPIWithTxDoorsForwardInstantVerbatim (0.00s)
+--- PASS: TestAPIForwardsEveryMethod (0.00s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/nodes	1.022s
+
+## subtest counts
+FAIL subtests: 0
+PASS subtests: 356
+
+## first failure message per test site

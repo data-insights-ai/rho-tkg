@@ -71,6 +71,7 @@ func (c *Core) applyIngestGroupConcurrent(g *ingestGroup, lane uint16) error {
 	// Prepare gated any backfilled TxFrom without writing; report the
 	// past-dated write after the group's store writes below (deferred).
 	defer c.notePastDatedWrite(pendingPastDated(g.nodes, g.rels))
+	defer c.notePastDatedWrite(pendingNodeCallerTx(g.nodeUpdates, g.nodeDeletes))
 
 	ep, closeErr := c.runUnderRLockShard(uint(lane), func() {
 		unavailable := c.applyConcurrentNodeCreates(g.nodes, fail, emit)
@@ -380,7 +381,7 @@ func (c *Core) applyConcurrentUpdatesAndDeletes(
 			err     error
 		)
 		if pu.update.originalLen == 0 {
-			_, mutated, err = c.updateNodeInternal(ctx, pu.id, pu.update.properties)
+			_, mutated, err = c.updateNodeAtInternal(ctx, pu.id, pu.update.properties, pu.update.temporal.txAt)
 		} else {
 			_, mutated, err = c.updateNodePreparedInternal(ctx, pu.id, pu.update.provenance, pu.update.temporal, pu.update.properties)
 		}
@@ -431,8 +432,9 @@ func (c *Core) applyConcurrentUpdatesAndDeletes(
 		}
 	}
 
-	for _, id := range g.nodeDeletes {
-		cascadeRelIDs, err := c.deleteNodeInternal(ctx, id)
+	for _, pd := range g.nodeDeletes {
+		id := pd.id
+		cascadeRelIDs, err := c.deleteNodeInternal(ctx, id, pd.at)
 		if err != nil {
 			fail("DeleteNode", types.EntityID(id), err)
 		} else {
