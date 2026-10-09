@@ -1,0 +1,10 @@
+M1a-skip-temporal-door: RED (killed), 49 failing (sub)tests
+M1b-skip-tx-door: RED (killed), 46 failing (sub)tests
+M1c-skip-batch-door(also-session-strong): RED (killed), 151 failing (sub)tests
+M1d-skip-session-concurrent-door: RED (killed), 55 failing (sub)tests
+M2-only-new-value-stripe: RED (killed), 1 failing (sub)tests
+M3-release-before-store-write: RED (killed), 6 failing (sub)tests
+M5-keep-claims-on-write-failure: RED (killed), 2 failing (sub)tests
+M6-withdraw-ignoring-written-rows: RED (killed), 1 failing (sub)tests
+M7-withdraw-persist-failure-drops-memory-claim: RED (killed), 1 failing (sub)tests
+M4-claim-before-kernel-checks: RED (killed), 44 failing (sub)tests
