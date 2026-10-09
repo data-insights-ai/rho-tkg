@@ -8,6 +8,59 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`g.Temporal().NodeEffectiveTimeline(id, pin)` / `RelEffectiveTimeline(id, pin)`: the entity's state over
+  valid time as recorded at a pin, in one call** (handover `tasks/handover-effective-read-cost-20261009.md` fix
+  1c). Returns `[]temporal.NodeSegment` / `[]temporal.RelSegment` (`{ValidFrom, ValidTo, Node|Rel}`): ascending by
+  `ValidFrom`, non-overlapping, half-open `[ValidFrom, ValidTo)` (`ValidTo == 0` open-ended), gaps omitted,
+  adjacent segments holding different rows. For every valid instant `t` the segment containing `t` holds the row
+  `NodeAtTx(id, t, pin)` / `RelAtTx` returns, and none contains `t` where that door answers `ErrNoVersionValidAt`
+  — the state door's interval form (`NodeAsOf` stays the record door: the newest row recorded by a pin).
+  `ValidFrom` is the effective start and never 0: a row without a recorded valid-from (a plain create without
+  `tkg_valid_from`, an `AddWithTx` backfill) starts at the ID's mint instant (`storeutil.SnowflakeInstant`), a
+  later version without one at its `UpdatedAt`; a deleted entity's last segment ends at the delete instant; an
+  entity created after the pin returns nil, nil. Rows are shared frozen pointers (DeepCopy to mutate). Errors:
+  pin `<= 0` → `ErrInvalidTimeRange`; a pin above the commit clock (`PeekTx`) → the new `ErrTxPinTooNew`; below
+  compacted knowledge or a retention watermark → `ErrHistoryCompacted` / `ErrRetentionExpired` (as `NodeAtTx`);
+  unknown ID → `ErrNodeNotFound` / `ErrRelNotFound`. How: the chain is loaded once (per-version skeletons on
+  badger), cut at every row's own and positional bounds, life end and supersession end, and each piece is resolved
+  by the point resolver itself at its start; only the rows that answer are decoded. A plain entity costs its row
+  read and the history presence bit. The read holds the entity lock, so a concurrent Update / Delete cannot make
+  the entity read as unknown. The point doors (`NodeAtTx` / `RelAtTx` and the scans built on them) do not take it and can
+  still miss an entity for the duration of such a write on badger and sharded (pre-existing, found here; evidence
+  `tasks/evidence/effective-timeline/finding-point-door-race-*`).
+- **Scan forms (backlog 27): `g.Temporal().ForEachRelEffectiveByType(typeName, pin, fn)` /
+  `ForEachNodeEffectiveByLabel(label, pin, fn)`** stream the timeline of every relationship of the type (node that
+  carried the label) recorded by the pin — including entities deleted before the pin, which `ByType{TxPin}` /
+  `ByLabel{TxPin}` drop — limited to the segments whose row carries the type / label: at every valid instant `t`
+  the segments containing `t` are exactly `ByType(typeName, {ValidAt: t, TxAt: pin})` (`ByLabel` for nodes; a node
+  that gained the label is listed from the gaining row's start). Segments of one entity are contiguous and
+  ascending; entity order is unspecified; `fn` returning false stops the scan; `fn` runs without graph locks.
+  Candidates and gates are the pinned `ByType` / `ByLabel`'s (the graph's compaction and retention watermarks fail
+  the whole scan, checked before an unknown type or label returns nothing); nil `fn` → `ErrNilCallback`.
+- Tests (`tasks/evidence/effective-timeline/`): `TestEffectiveTimeline_PointwiseOracle` checks the pointwise rule on
+  the cross-backend oracle's chains (creates, backfills, updates, label changes, bounded / open / one-tick
+  cascades, closes, deletes, `DeleteWithTx` / `UpdateWithTx` through every door family) plus GraphTx rollbacks,
+  re-imports of deleted IDs and a compaction, at every recorded instant of each entity as a pin, memory, badger,
+  sharded and tiered, node and relationship (3.1 M point comparisons at 187 K entity-pin pairs in `-short`);
+  `TestEffectiveTimeline_ScanMatchesGenericDoor` the scan forms against `ByType` / `ByLabel{ValidAt, TxAt}` on the
+  same chains; derived start, shapes, errors, compaction / retention gates, deleted-entity scan sets, merge and
+  concurrent writers (`-race`). Ten mutants (segment end off by one, scan skipping deleted entities, raw valid-from
+  as the start, no merge, current knowledge instead of the pin, skeleton winner not hydrated, future pin accepted,
+  scan gates skipped, no entity lock, no supersession cap) are each red. Measured (`./bench`, 200 K relationships,
+  1 % with a bounded correction, 3 runs, 32-core host at load 16-22, medians; `RelEffectiveLoop` is the consumer's
+  loop it replaces — `Get` + `History` + `RelAtTx` per row bound):
+
+  | | badger timeline | badger loop | memory timeline | memory loop |
+  |---|---|---|---|---|
+  | plain rel, random over 200 K (row read cold) | 7.5 us, 41 allocs | 10.1 us, 63 allocs | 0.71 us, 10 allocs | 1.02 us, 12 allocs |
+  | plain rel, 64 hot rows | 0.58 us, 9 allocs | 3.0 us, 30 allocs | 0.57 us, 10 allocs | 0.50 us, 12 allocs |
+  | rel with a bounded correction (3 segments) | 21.8 us, 122 allocs | 39.6 us, 263 allocs | 2.3 us, 24 allocs | 4.3 us, 62 allocs |
+
+  The badger plain cold cost is the row read (92 % of the profile). `ForEachRelEffectiveByType` over the 200 K:
+  memory 1.3 us per relationship, badger 13-17 us (the pinned `ByType` candidate gather decodes every current row,
+  then each relationship's row is read again under its lock). Bench gate: `RelEffectiveTimeline`,
+  `RelEffectiveLoop`, `ForEachRelEffectiveByType`. Additive surface: `temporal.Ops` gains the four methods.
+
 - **`g.Nodes().HasHistory(id)` / `g.Rels().HasHistory(id) (bool, error)`: whether an entity has a history row,
   without reading one** (handover `tasks/handover-effective-read-cost-20261009.md` fix 1b, backlog 20). sigma-tkgd's
   effective-state read on a pinned scan called `History` once per entity to learn whether the current row alone
@@ -66,6 +119,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **A row an Update or `CloseVersion` replaced no longer answers beyond its successor's start once a cascade made
+  the chain non-monotonic** (consumer report, sigma-tkgd, effective timeline). Add vf=1000 → `CloseVersion(4000)`
+  → bounded `SetVersionInterval` inside `[1000,4000)`: `NodeAt` / `NodeAtTx(t, pin)` / `RelAt*`, `NodesAt[Tx]` /
+  `RelsAt[Tx]`, `ByLabel` / `ByType{ValidAt, TxAt}` and `Snapshot` answered the pre-close row at every `t >= 4000`
+  (also after a delete of such a chain, and after an Update with a `tkg_valid_to` followed by a bounded cascade).
+  The point resolver's own-bounds arm read every row over its own interval, so the replaced row's open interval
+  answered wherever the replacing row did not reach; it now ends a replaced row (a `TxTo` after its `TxFrom`, no
+  tombstone) at the valid start of the row recorded at that `TxTo`, when that row is recorded by the pin
+  (`supersessionEnds`, `chain_supersession.go`). Read seam only; repairs existing chains; pins before the
+  replacement are unchanged. Tests: `TestAtTxEndsAtClose` / `TestAtTxEndsAtDelete` (four backends, node and rel,
+  every delete door, the point, `*AtTx`, generic `{ValidAt, TxAt}`, interval and scan-form doors; consumer report
+  (2), a delete instant, holds on main and stays as a guard), and the cross-backend oracle (its model states the
+  same rule and is red without it).
+- **A re-imported ID's rows order after the earlier life's**: a re-import numbers its versions from 0 again, and
+  the resolver's version-ordered chain interleaved the two lives, so where the re-import's valid start lay before
+  the first life's later rows tiered and sharded (full chain fold) answered the first life's row while memory and
+  badger (current-row shortcut) answered the re-imported row. The chain is ordered by life (deletes recorded before
+  the row), then version (`chainWriteOrder`); every backend answers the re-imported row from its valid start on.
+  Test: `TestAtTxReImportOverlapsEarlierLife`.
 - **One version allocator: a write after a bounded cascade no longer reuses a cascade row's version** (backlog
   18). The cascade gave its rows `maxVersion+1` while Update, `CloseVersion`, label add/remove and property CAS
   used `current.Version()+1`, so the chain held two rows with one version and a later delete changed the TxAt
