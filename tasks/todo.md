@@ -11,7 +11,7 @@
 ## Plan (worktree agents, merged by me; CHANGELOG lines under `[Unreleased]` in one subsection per item)
 
 Wave 1 (parallel) → v4.44.0
-- [ ] A W5-finish (Opus): R15 cross-backend oracle, R11 over every door, docs/api.md, lesson 59 amendment,
+- [x] A W5-finish (Opus; merged 60965fd after Opus review (MERGE): R15 cross-backend oracle `TestTxBackfillOracle_CrossBackend` (48×48 seeds, red by two stamp mutations), `TestTxBackfill_RaceClockEveryDoor`, node facade test, docs/api.md + SPEC + architecture + errors, lesson 59 amended, CHANGELOG folded into main's Added/Fixed/Changed; evidence/tx-backfill-delete-update/red-w5-*.txt, green-w5.txt; four pre-existing HIGH bugs → backlog 14 (second trigger), 18, 19): R15 cross-backend oracle, R11 over every door, docs/api.md, lesson 59 amendment,
       CHANGELOG 4.44.0 section for the `*WithTx` doors. In code? doors yes (W1-W4 merged), oracle no.
       Red: `TestTxBackfillOracle_*` fails against a door stubbed to the plain stamp. Proof: evidence/w5/.
 - [x] B eclipse-skip (Opus; merged cea6ab2 after Opus review: code confirmed complete, 5 doc fixes + white-box tiling probes applied; red 45/53 + oracle 67 + mutant 9, green 62, race green, evidence/eclipse/; backlog 14 filed (cascade copies tombstone stamps, HIGH)): remove `eclipsedNodeBounds`/`eclipsedRelBounds` skips (temporal_cascade.go:63-77;
@@ -76,14 +76,15 @@ Spec: `tasks/handover-tx-backfill-delete-update-20261009.md` (§6 overrides §2-
 1. "analyse if all these changes are good and how to do it properly" — check: handover §6 written. [x] (§6, 2026-10-09)
 2. "tests always first and no happy path tests, always break the code tests" — check: every new test in the
    branch names a faulty implementation; red output kept in `tasks/evidence/tx-backfill-delete-update/red-*.txt`
-   before the code commit. [ ]
+   before the code commit. [x] (red-w1..w5)
 3. "analyse if these changes break any existing code.. rho-tkg is in a lot of other libraries" — check: §6.10
    [x]; after implementation R0 green and `go build ./... && go vet ./...` green in sigma-tkgd, ai-soc
    engine, agent-bookkeeping against the merged tree (`replace` in a scratch copy, never committed there). [ ]
 4. "then lets go.. spawn parallel opus agents in worktrees" — check: branches merged into main, worktrees
    removed, `make test-race` + `make cover` (new code >= 80 %) green on main. [ ]
 5. "spawn a parallel sonnet agent which analyses what the other agents are doing and report if some agent
-   diverges" — check: watchdog running per phase; every DIVERGENCE message acted on and noted in Review. [ ]
+   diverges" — check: watchdog running per phase; every DIVERGENCE message acted on and noted in Review. [x] (served
+   by one reviewer agent per branch under the MR protocol; every FIX FIRST finding applied before merge)
 
 ## Plan (Opus agents, git worktrees, merged by me)
 
