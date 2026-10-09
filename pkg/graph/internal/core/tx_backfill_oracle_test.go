@@ -852,7 +852,7 @@ func (o *txbOracle) answers(probes []probe, pins []types.Instant) []string {
 // txbOracleRun drives one seeded sequence on one backend and returns its
 // canonical chains and door answers; probes and pins come from the first
 // backend's run (nil: build them here).
-func txbOracleRun(t *testing.T, be txbBackend, seed uint64, nOps int, probes []probe, pins []types.Instant) (canon string, answers []string, outProbes []probe, outPins []types.Instant, o *txbOracle) {
+func txbOracleRun(t *testing.T, be txbBackend, seed uint64, nOps int, x0 types.Instant, probes []probe, pins []types.Instant) (canon string, answers []string, outProbes []probe, outPins []types.Instant, o *txbOracle) {
 	g := be.open(t, true)
 	if !g.bitemporalMigrated {
 		t.Fatalf("%s: expected bitemporalMigrated=true; oracle assumptions invalid", be.name)
@@ -861,9 +861,9 @@ func txbOracleRun(t *testing.T, be txbBackend, seed uint64, nOps int, probes []p
 	g.SetClockForTest(t, clk.Now)
 	rng := rand.New(rand.NewPCG(seed, seed^0x9E3779B97F4A7C15))
 	o = &txbOracle{world: newWorld(t, g, rng), be: be.name, clk: clk, accepted: map[string]int{}}
-	// Above the wall clock (snowflake mint times, the derived valid-from
-	// fallback), the same on every backend.
-	o.x = types.Instant(time.Now().Add(time.Hour).UnixMilli()/1_000_000*1_000_000 + 1_000_000)
+	// x0 lies above the wall clock (snowflake mint times, the derived
+	// valid-from fallback) and is the same for every backend of a seed.
+	o.x = x0
 	o.tick()
 	o.setup()
 	for i := 0; i < nOps; i++ {
@@ -927,6 +927,10 @@ func TestTxBackfillOracle_CrossBackend(t *testing.T) {
 		seeds = n
 	}
 	const base uint64 = 0x7B_0D_15 // "tx-bf-15"
+	// One test clock origin for every backend: read per backend, the wall
+	// clock could cross a rounding boundary between two runs of a seed and
+	// shift every stamp of the later backend.
+	x0 := types.Instant(time.Now().Add(time.Hour).UnixMilli()/1_000_000*1_000_000 + 1_000_000)
 	accepted := map[string]int{}
 	refused, strict, loose := 0, 0, 0
 	for i := 0; i < seeds; i++ {
@@ -939,7 +943,7 @@ func TestTxBackfillOracle_CrossBackend(t *testing.T) {
 				pins       []types.Instant
 			)
 			for bi, be := range txbBackends() {
-				canon, answers, p, pn, o := txbOracleRun(t, be, seed, nOps, probes, pins)
+				canon, answers, p, pn, o := txbOracleRun(t, be, seed, nOps, x0, probes, pins)
 				if bi == 0 {
 					refCanon, refAnswers, probes, pins = canon, answers, p, pn
 					for k, v := range o.accepted {
