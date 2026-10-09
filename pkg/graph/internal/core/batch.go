@@ -146,6 +146,21 @@ type pendingRel struct {
 	backfillTxFrom types.Instant
 }
 
+// pendingPastDated returns the lowest backfilled TxFrom among the queued creates
+// (0 = none). The queue doors gate a backfill but write nothing; the applier
+// (Execute, the concurrent ingest apply) reports it via notePastDatedWrite once
+// its store writes have landed.
+func pendingPastDated(nodes []pendingNode, rels []pendingRel) types.Instant {
+	var t types.Instant
+	for i := range nodes {
+		t = minPastDated(t, nodes[i].backfillTxFrom)
+	}
+	for i := range rels {
+		t = minPastDated(t, rels[i].backfillTxFrom)
+	}
+	return t
+}
+
 type pendingNodeUpdate struct {
 	id     types.NodeID
 	update preparedUpdateProperties

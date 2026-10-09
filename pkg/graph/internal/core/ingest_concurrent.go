@@ -68,6 +68,9 @@ func (c *Core) applyIngestGroupConcurrent(g *ingestGroup, lane uint16) error {
 	emit := func(typ eventspkg.EventType, id types.EntityID, ts types.Instant, prio eventspkg.EventPriority) {
 		events = append(events, bufferedIngestEvent{typ: typ, id: id, ts: ts, prio: prio})
 	}
+	// Prepare gated any backfilled TxFrom without writing; report the
+	// past-dated write after the group's store writes below (deferred).
+	defer c.notePastDatedWrite(pendingPastDated(g.nodes, g.rels))
 
 	ep, closeErr := c.runUnderRLockShard(uint(lane), func() {
 		unavailable := c.applyConcurrentNodeCreates(g.nodes, fail, emit)

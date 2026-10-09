@@ -249,6 +249,11 @@ func checkCtx(ctx context.Context) error {
 // malformed value is rejected as malformed regardless of privilege. Backfill is
 // create-only and TxFrom is not part of the integrity hash, so honoring a valid
 // override never affects the hash chain (§4.1).
+//
+// It does NOT touch the as-of column cache: a past-dated write is reported by
+// the door AFTER its store write (notePastDatedWrite, deferred right after this
+// call or run after the door's last write). A bump here, before the write, let a
+// concurrent as-of build cache the pre-write belief under the new epoch (R14).
 func (c *Core) resolveBackfillTxFrom(txFrom types.Instant) (types.Instant, error) {
 	if txFrom == 0 {
 		return 0, nil
@@ -259,10 +264,9 @@ func (c *Core) resolveBackfillTxFrom(txFrom types.Instant) (types.Instant, error
 	if !c.allowTxBackfill {
 		return 0, ErrTxBackfillDisabled
 	}
-	// A backfill stamps a PAST transaction time, inserting a version below the
-	// forward frontier — the one primary-side write that can change an as-of belief
-	// at a past txAt. Invalidate the as-of column cache.
-	c.asOfColumns.bump()
+	if c.backfillGateHook != nil {
+		c.backfillGateHook()
+	}
 	return txFrom, nil
 }
 

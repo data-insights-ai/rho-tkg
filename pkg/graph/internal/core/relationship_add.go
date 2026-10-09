@@ -154,6 +154,7 @@ func (c *Core) createRelationshipLocked(ctx context.Context, typeName string, st
 	if err != nil {
 		return nil, err
 	}
+	defer c.notePastDatedWrite(prep.txFrom) // after the store write (as-of cache)
 
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
@@ -235,6 +236,7 @@ func (c *Core) addRelationshipByIDIfAbsentInternal(ctx context.Context, typeName
 	if err != nil {
 		return nil, false, err
 	}
+	defer c.notePastDatedWrite(prep.txFrom) // after the store write (as-of cache)
 
 	if err := checkCtx(ctx); err != nil {
 		return nil, false, err

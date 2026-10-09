@@ -118,6 +118,9 @@ func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[s
 	if err != nil {
 		return nil, err
 	}
+	// Report a past-dated write AFTER the store write below (deferred: it runs
+	// once the row — or its rollback — has landed). No-op without an override.
+	defer c.notePastDatedWrite(txFromOverride)
 	if err := c.validateProperties(props); err != nil {
 		return nil, err
 	}
@@ -381,6 +384,9 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 	if err != nil {
 		return nil, err
 	}
+	// Report a past-dated write AFTER the store write below (deferred: it runs
+	// once the row — or its rollback — has landed). No-op without an override.
+	defer c.notePastDatedWrite(txFromOverride)
 	if err := c.validateProperties(props); err != nil {
 		return nil, err
 	}
