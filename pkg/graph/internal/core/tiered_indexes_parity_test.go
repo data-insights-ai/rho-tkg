@@ -181,16 +181,17 @@ type pruneCase struct {
 }
 
 // pruneCases lists the literal kept sets once both phases are written: an
-// envelope keeps every row whose union of intervals can overlap the probe;
-// the deleted row is no longer covered by any index and is always kept.
+// envelope keeps every row whose union of intervals can overlap the probe.
+// The deleted row keeps its envelope (append-only — its history stays on the
+// store), so it is kept exactly where [1000, 2000) overlaps the probe.
 func pruneCases() []pruneCase {
 	return []pruneCase{
 		{"at 1500", storepkg.QueryOpts{ValidAt: 1500}, []string{"closed", "crossER", "crossRE", "deleted", "moved"}},
-		{"at 2500", storepkg.QueryOpts{ValidAt: 2500}, []string{"deleted", "moved"}},
-		{"at 3500", storepkg.QueryOpts{ValidAt: 3500}, []string{"deleted", "moved", "open"}},
-		{"at 6500", storepkg.QueryOpts{ValidAt: 6500}, []string{"deleted", "late", "lateCross", "moved", "open"}},
-		{"during 2100-2900", storepkg.QueryOpts{ValidStart: 2100, ValidEnd: 2900}, []string{"deleted", "moved"}},
-		{"during 6100-6200", storepkg.QueryOpts{ValidStart: 6100, ValidEnd: 6200}, []string{"deleted", "late", "lateCross", "moved", "open"}},
+		{"at 2500", storepkg.QueryOpts{ValidAt: 2500}, []string{"moved"}},
+		{"at 3500", storepkg.QueryOpts{ValidAt: 3500}, []string{"moved", "open"}},
+		{"at 6500", storepkg.QueryOpts{ValidAt: 6500}, []string{"late", "lateCross", "moved", "open"}},
+		{"during 2100-2900", storepkg.QueryOpts{ValidStart: 2100, ValidEnd: 2900}, []string{"moved"}},
+		{"during 6100-6200", storepkg.QueryOpts{ValidStart: 6100, ValidEnd: 6200}, []string{"late", "lateCross", "moved", "open"}},
 	}
 }
 

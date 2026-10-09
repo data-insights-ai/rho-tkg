@@ -644,12 +644,13 @@ func (ms *Store) putRelVersionRouted(rid types.RelID, version uint32, r *types.R
 	}
 	inner[version] = ms.historyRel(r)
 	ms.recordRelTypeMemberLocked(r) // transaction-time rel-type membership (history version)
-	// A live relationship's envelope covers every row it has had since the
-	// index existed, so this version's interval joins it (an imported or
-	// restored past version stays findable). A relationship without a current
-	// row is not covered at all and is never pruned — extending it here would
-	// vouch for this one version while its other history rows stay outside.
-	if _, live := ms.rels[rid]; live {
+	// A live or already-covered relationship's envelope covers every row it
+	// has had since the index existed (a delete keeps the envelope), so this
+	// version's interval joins it (an imported or restored past version stays
+	// findable). An uncovered relationship without a current row stays
+	// uncovered and is never pruned — extending it here would vouch for this
+	// one version while its other history rows stay outside.
+	if _, live := ms.rels[rid]; live || indexpkg.RelCoveredInTemporalIndexes(ms.relTypeTemporalIndexes, r, rid.SnowflakeID()) {
 		indexpkg.AddRelToTemporalIndexes(ms.relTypeTemporalIndexes, r, rid.SnowflakeID())
 	}
 	ms.bumpRelBeliefWatermarkLocked(rid, relTxFrom(r)) // BACKLOG 10c — the cascade's bounded-correction append door

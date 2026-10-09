@@ -216,9 +216,11 @@ func (bs *Store) maintainRelTypeTemporalIndexesRemove(r *types.Relationship, id 
 	indexpkg.RemoveRelFromTemporalIndexes(bs.relTypeTemporalIndexes, r, id)
 }
 
-// maintainRelTypeTemporalIndexesPurge is the shared-seam brute-force removal
-// (deleteRelByInfo carries no temporal metadata), mirroring
-// maintainRelPropertyIndexesPurge.
+// maintainRelTypeTemporalIndexesPurge removes a relationship from every
+// rel-type temporal envelope. Only exact erasure calls it — there every row of
+// the relationship, history included, is gone. A plain delete keeps the
+// envelope (append-only): the history stays and the envelope stays a sound
+// superset of it.
 func (bs *Store) maintainRelTypeTemporalIndexesPurge(id snowflake.ID) {
 	indexpkg.PurgeRelFromAllTemporalIndexes(bs.relTypeTemporalIndexes, id)
 }

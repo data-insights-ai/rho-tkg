@@ -127,6 +127,9 @@ func TestTieredRelTemporalPrune_DemotePromoteParityWithBadger(t *testing.T) {
 	if tier := eventShardByName(t, ts, first).Tier(); tier != tiered.TierWarm {
 		t.Fatalf("shard %s tier %s after promotion, want warm", first, tier)
 	}
-	assertRelTemporalParity(t, "after promotion", bw, tw)
+	// A rebuild folds the live rows and their history; a deleted relationship
+	// is not among them (badger's own reopen rebuilds the same way), so the
+	// promoted shard keeps it — uncovered, never pruned, the resolver decides.
+	assertRelTemporalParity(t, "after promotion", bw, tw, "deleted")
 	assertMovedRemembered(t, "after promotion", tw)
 }

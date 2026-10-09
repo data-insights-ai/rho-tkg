@@ -249,7 +249,8 @@ func (bs *Store) DeleteRelEntityAndOut(id snowflake.ID) (RelDeleteInfo, error) {
 	// so the precise value-based removal is used rather than the brute-force
 	// purge deleteRelByInfo falls back to when only RelDeleteInfo is known.
 	bs.maintainRelPropertyIndexesRemove(r, id)
-	bs.maintainRelTypeTemporalIndexesPurge(id) // the row leaves this shard: no envelope may vouch for it
+	// The rel-type temporal envelope stays (append-only): the row's history
+	// stays on this shard, and the tiered rollback re-puts the row without it.
 	bs.removeRelPropertyTypeClassCountsByID(id, info.RelType)
 
 	ops := []writeOp{
