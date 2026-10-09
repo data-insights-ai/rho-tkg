@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	badgerpkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -120,9 +121,12 @@ func pdrEntityDoors(e *ccEnt, pin types.Instant) map[string]func(id int64) (stri
 // (chainReadHook), on every backend and every per-entity resolver: the door
 // must answer the pre-move row. Breaks: a resolver that reads history before
 // the current row (history before the move + current after it = the moved row
-// in neither read). A resolver whose backend answers in one store call (the
-// badger native as-of door) has no such window; the test asserts the hook
-// fired everywhere else.
+// in neither read). The as-of door on badger is the store's own NodeAsOf /
+// RelAsOf, which reads the current row and then scans history in two
+// lock-free reads inside the store: the move lands there through the store's
+// asOfAfterCurrentTestHook. Only memory's native as-of door reads both under
+// one store lock and has no window; the test asserts a hook fired everywhere
+// else.
 func TestPointDoorRace_MoveBetweenChainReads(t *testing.T) {
 	pdrRun(t, func(t *testing.T, e *ccEnt) {
 		closeAt := e.pin() + 1_000_000
@@ -147,8 +151,8 @@ func TestPointDoorRace_MoveBetweenChainReads(t *testing.T) {
 					}
 					fired := false
 					var werr error
-					e.g.chainReadHook = func(hid int64) {
-						if hid != id || fired {
+					move := func() {
+						if fired {
 							return
 						}
 						fired = true
@@ -156,17 +160,30 @@ func TestPointDoorRace_MoveBetweenChainReads(t *testing.T) {
 						go func() { done <- pdrMove(e, id, op, closeAt) }()
 						werr = <-done
 					}
+					e.g.chainReadHook = func(hid int64) {
+						if hid == id {
+							move()
+						}
+					}
+					native := e.g.txTimeQuery != nil && strings.HasSuffix(door, "AsOf")
+					bs, nativeBadger := e.g.store.(*badgerpkg.Store)
+					if native && nativeBadger {
+						bs.SetAsOfAfterCurrentTestHookForTest(move)
+					}
 					got, err := eval(id)
 					e.g.chainReadHook = nil
+					if nativeBadger {
+						bs.SetAsOfAfterCurrentTestHookForTest(nil)
+					}
 					if werr != nil {
 						t.Fatalf("%s %s: %v", door, op, werr)
 					}
-					native := e.g.txTimeQuery != nil && strings.HasSuffix(door, "AsOf")
+					oneLockedCall := native && !nativeBadger // memory's as-of door
 					switch {
-					case !fired && !native:
+					case !fired && !oneLockedCall:
 						t.Errorf("%s/%s/prior=%v: the move hook never fired", door, op, prior)
-					case fired && native:
-						t.Errorf("%s/%s/prior=%v: the native as-of door assembled a chain in core", door, op, prior)
+					case fired && oneLockedCall:
+						t.Errorf("%s/%s/prior=%v: memory's native as-of door assembled a chain in core", door, op, prior)
 					}
 					if err != nil || got != want {
 						t.Errorf("%s/%s/prior=%v with the move between the chain reads:\ngot  %q (%v)\nwant %q", door, op, prior, got, err, want)

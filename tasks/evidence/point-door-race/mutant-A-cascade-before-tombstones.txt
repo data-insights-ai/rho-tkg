@@ -1,0 +1,34 @@
+applied A-cascade-before-tombstones to badgerstore_node_batch.go
+diff --git a/pkg/graph/store/badger/badgerstore_node_batch.go b/pkg/graph/store/badger/badgerstore_node_batch.go
+index ba3e609..92c0121 100644
+--- a/pkg/graph/store/badger/badgerstore_node_batch.go
++++ b/pkg/graph/store/badger/badgerstore_node_batch.go
+@@ -175,7 +175,8 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePr
+ 	if history == nil {
+ 		apply()
+ 	} else {
+-		bs.publishMoveLocked(history, apply)
++		apply()
++		bs.publishMoveLocked(history, func() {})
+ 	}
+ 	return toDelete, corruptErr, nil
+ }
+--- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent (1.25s)
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/in-memory/DeleteNodeWithHistory/node (0.03s)
+        badgerstore_move_publish_order_test.go:308: mid-move read of DeleteNodeWithHistory/node: hook 2: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/in-memory/DeleteNodeWithHistory/rel (0.03s)
+        badgerstore_move_publish_order_test.go:308: mid-move read of DeleteNodeWithHistory/rel: hook 1: moved row v0 in neither the current row nor GetHistory
+        badgerstore_move_publish_order_test.go:308: mid-move read of DeleteNodeWithHistory/rel: hook 2: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/on-disk/DeleteNodeWithHistory/node (0.17s)
+        badgerstore_move_publish_order_test.go:308: mid-move read of DeleteNodeWithHistory/node: hook 2: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/on-disk/DeleteNodeWithHistory/rel (0.16s)
+        badgerstore_move_publish_order_test.go:308: mid-move read of DeleteNodeWithHistory/rel: hook 1: moved row v0 in neither the current row nor GetHistory
+        badgerstore_move_publish_order_test.go:308: mid-move read of DeleteNodeWithHistory/rel: hook 2: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/flushed/DeleteNodeWithHistory/node (0.01s)
+        badgerstore_move_publish_order_test.go:308: mid-move read of DeleteNodeWithHistory/node: hook 2: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/flushed/DeleteNodeWithHistory/rel (0.01s)
+        badgerstore_move_publish_order_test.go:308: mid-move read of DeleteNodeWithHistory/rel: hook 1: moved row v0 in neither the current row nor GetHistory
+        badgerstore_move_publish_order_test.go:308: mid-move read of DeleteNodeWithHistory/rel: hook 2: moved row v0 in neither the current row nor GetHistory
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	2.442s
+FAIL

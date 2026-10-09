@@ -1,0 +1,25 @@
+applied D-rel-delete-before-tombstone to badgerstore_history_rel.go
+diff --git a/pkg/graph/store/badger/badgerstore_history_rel.go b/pkg/graph/store/badger/badgerstore_history_rel.go
+index e757481..dcc34f1 100644
+--- a/pkg/graph/store/badger/badgerstore_history_rel.go
++++ b/pkg/graph/store/badger/badgerstore_history_rel.go
+@@ -181,7 +181,8 @@ func (bs *Store) deleteRelWithHistoryRouted(rid types.RelID, prevVersion uint32,
+ 	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(tombstone)) // BACKLOG 10c
+ 	// The tombstone first, then the removal (appends its delete ops to pending
+ 	// under the lock; no record — emitted here).
+-	bs.publishMoveLocked([]writeOp{{opType: writeOpSet, key: histKey, value: tombData}}, func() { bs.deleteRelByInfo(info) })
++	bs.deleteRelByInfo(info)
++	bs.publishMoveLocked([]writeOp{{opType: writeOpSet, key: histKey, value: tombData}}, func() {})
+ 	logErr := bs.logChangeRoutedRaw(storecontract.ChangeRelDelete, delPayload, token)
+ 	bs.idxMu.Unlock()
+ 	if logErr != nil {
+--- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent (1.18s)
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/in-memory/DeleteRelWithHistory (0.01s)
+        badgerstore_move_publish_order_test.go:308: mid-move read of DeleteRelWithHistory: hook 1: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/on-disk/DeleteRelWithHistory (0.15s)
+        badgerstore_move_publish_order_test.go:308: mid-move read of DeleteRelWithHistory: hook 1: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/flushed/DeleteRelWithHistory (0.01s)
+        badgerstore_move_publish_order_test.go:308: mid-move read of DeleteRelWithHistory: hook 1: moved row v0 in neither the current row nor GetHistory
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	2.323s
+FAIL

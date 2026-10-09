@@ -1,0 +1,118 @@
+applied C-native-asof-history-first to badgerstore_txtime.go
+diff --git a/pkg/graph/store/badger/badgerstore_txtime.go b/pkg/graph/store/badger/badgerstore_txtime.go
+index e563f67..f2213e5 100644
+--- a/pkg/graph/store/badger/badgerstore_txtime.go
++++ b/pkg/graph/store/badger/badgerstore_txtime.go
+@@ -590,15 +590,32 @@ func (bs *Store) NodeAsOf(nid types.NodeID, txTime types.Instant) (*types.Node,
+ 	// Read it BEFORE the history scan: a with-history door publishes the moved
+ 	// row to history before it changes the cache (publishMoveLocked), so this
+ 	// order sees the row at least once (backlog 32).
++	id := nid.SnowflakeID()
++	prefix := storepkg.HistNodePrefix(id)
++	type mutRow struct {
++		v   uint64
++		val []byte
++	}
++	var mutRows []mutRow
++	if err := bs.reverseScanHistoryVersion(prefix, func(v uint64, val []byte) (bool, error) {
++		mutRows = append(mutRows, mutRow{v, append([]byte(nil), val...)})
++		return false, nil
++	}); err != nil {
++		return nil, err
++	}
++	bs.afterAsOfCurrentRead()
+ 	current, err := bs.GetNode(nid)
+ 	if err != nil && !errors.Is(err, ErrNodeNotFound) {
+ 		return nil, err
+ 	}
+-	bs.afterAsOfCurrentRead()
+-	id := nid.SnowflakeID()
+-	prefix := storepkg.HistNodePrefix(id)
+ 	scan := func(consider func(version uint64, val []byte) (bool, error)) error {
+-		return bs.reverseScanHistoryVersion(prefix, consider)
++		for _, r := range mutRows {
++			stop, err := consider(r.v, r.val)
++			if err != nil || stop {
++				return err
++			}
++		}
++		return nil
+ 	}
+ 	exists := func(version uint64) (bool, error) {
+ 		return bs.historyKeyExistsWithPresence(bs.HasNodeHistory(nid))(storepkg.HistNodeKey(id, version))
+--- FAIL: TestNativeAsOfReadsCurrentBeforeHistory (1.15s)
+    --- FAIL: TestNativeAsOfReadsCurrentBeforeHistory/in-memory/ReplaceNodeWithHistory (0.01s)
+        badgerstore_move_publish_order_test.go:355: AsOf(pin before the move) with the move between the reads: graph: version not found
+    --- FAIL: TestNativeAsOfReadsCurrentBeforeHistory/in-memory/AddNodeLabelTokenWithHistory (0.01s)
+        badgerstore_move_publish_order_test.go:355: AsOf(pin before the move) with the move between the reads: graph: version not found
+    --- FAIL: TestNativeAsOfReadsCurrentBeforeHistory/in-memory/RemoveNodeLabelTokenWithHistory (0.01s)
+        badgerstore_move_publish_order_test.go:355: AsOf(pin before the move) with the move between the reads: graph: version not found
+    --- FAIL: TestNativeAsOfReadsCurrentBeforeHistory/in-memory/DeleteNodeWithHistory/node (0.00s)
+        badgerstore_move_publish_order_test.go:355: AsOf(pin before the move) with the move between the reads: graph: version not found
+    --- FAIL: TestNativeAsOfReadsCurrentBeforeHistory/on-disk/ReplaceNodeWithHistory (0.16s)
+        badgerstore_move_publish_order_test.go:355: AsOf(pin before the move) with the move between the reads: graph: version not found
+    --- FAIL: TestNativeAsOfReadsCurrentBeforeHistory/on-disk/AddNodeLabelTokenWithHistory (0.16s)
+        badgerstore_move_publish_order_test.go:355: AsOf(pin before the move) with the move between the reads: graph: version not found
+    --- FAIL: TestNativeAsOfReadsCurrentBeforeHistory/on-disk/RemoveNodeLabelTokenWithHistory (0.15s)
+        badgerstore_move_publish_order_test.go:355: AsOf(pin before the move) with the move between the reads: graph: version not found
+    --- FAIL: TestNativeAsOfReadsCurrentBeforeHistory/on-disk/DeleteNodeWithHistory/node (0.15s)
+        badgerstore_move_publish_order_test.go:355: AsOf(pin before the move) with the move between the reads: graph: version not found
+    --- FAIL: TestNativeAsOfReadsCurrentBeforeHistory/flushed/ReplaceNodeWithHistory (0.01s)
+        badgerstore_move_publish_order_test.go:355: AsOf(pin before the move) with the move between the reads: graph: version not found
+    --- FAIL: TestNativeAsOfReadsCurrentBeforeHistory/flushed/AddNodeLabelTokenWithHistory (0.01s)
+        badgerstore_move_publish_order_test.go:355: AsOf(pin before the move) with the move between the reads: graph: version not found
+    --- FAIL: TestNativeAsOfReadsCurrentBeforeHistory/flushed/RemoveNodeLabelTokenWithHistory (0.01s)
+        badgerstore_move_publish_order_test.go:355: AsOf(pin before the move) with the move between the reads: graph: version not found
+    --- FAIL: TestNativeAsOfReadsCurrentBeforeHistory/flushed/DeleteNodeWithHistory/node (0.01s)
+        badgerstore_move_publish_order_test.go:355: AsOf(pin before the move) with the move between the reads: graph: version not found
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	2.371s
+FAIL
+--- FAIL: TestPointDoorRace_MoveBetweenChainReads (0.80s)
+    --- FAIL: TestPointDoorRace_MoveBetweenChainReads/badger/node (0.01s)
+        point_door_race_move_test.go:189: NodeAsOf/Update/prior=false with the move between the chain reads:
+            got  "" (graph: no entity version recorded at the given transaction time)
+            want "v0 x=0 vf=1000 vt=0 tx=1791570603354"
+        point_door_race_move_test.go:189: NodeAsOf/Update/prior=true with the move between the chain reads:
+            got  "" (graph: no entity version recorded at the given transaction time)
+            want "v1 x=-1 vf=0 vt=0 tx=1791570603359"
+        point_door_race_move_test.go:189: NodeAsOf/CloseVersion/prior=false with the move between the chain reads:
+            got  "" (graph: no entity version recorded at the given transaction time)
+            want "v0 x=0 vf=1000 vt=0 tx=1791570603364"
+        point_door_race_move_test.go:189: NodeAsOf/CloseVersion/prior=true with the move between the chain reads:
+            got  "" (graph: no entity version recorded at the given transaction time)
+            want "v1 x=-1 vf=0 vt=0 tx=1791570603369"
+        point_door_race_move_test.go:189: NodeAsOf/Delete/prior=false with the move between the chain reads:
+            got  "" (graph: no entity version recorded at the given transaction time)
+            want "v0 x=0 vf=1000 vt=0 tx=1791570603374"
+        point_door_race_move_test.go:189: NodeAsOf/Delete/prior=true with the move between the chain reads:
+            got  "" (graph: no entity version recorded at the given transaction time)
+            want "v1 x=-1 vf=0 vt=0 tx=1791570603378"
+        point_door_race_move_test.go:189: NodeAsOf/SetVersionInterval/prior=false with the move between the chain reads:
+            got  "" (graph: no entity version recorded at the given transaction time)
+            want "v0 x=0 vf=1000 vt=0 tx=1791570603382"
+    --- FAIL: TestPointDoorRace_MoveBetweenChainReads/badger-disk/node (0.30s)
+        point_door_race_move_test.go:189: NodeAsOf/Update/prior=false with the move between the chain reads:
+            got  "" (graph: no entity version recorded at the given transaction time)
+            want "v0 x=0 vf=1000 vt=0 tx=1791570603486"
+        point_door_race_move_test.go:189: NodeAsOf/Update/prior=true with the move between the chain reads:
+            got  "" (graph: no entity version recorded at the given transaction time)
+            want "v1 x=-1 vf=0 vt=0 tx=1791570603491"
+        point_door_race_move_test.go:189: NodeAsOf/CloseVersion/prior=false with the move between the chain reads:
+            got  "" (graph: no entity version recorded at the given transaction time)
+            want "v0 x=0 vf=1000 vt=0 tx=1791570603496"
+        point_door_race_move_test.go:189: NodeAsOf/CloseVersion/prior=true with the move between the chain reads:
+            got  "" (graph: no entity version recorded at the given transaction time)
+            want "v1 x=-1 vf=0 vt=0 tx=1791570603501"
+        point_door_race_move_test.go:189: NodeAsOf/Delete/prior=false with the move between the chain reads:
+            got  "" (graph: no entity version recorded at the given transaction time)
+            want "v0 x=0 vf=1000 vt=0 tx=1791570603506"
+        point_door_race_move_test.go:189: NodeAsOf/Delete/prior=true with the move between the chain reads:
+            got  "" (graph: no entity version recorded at the given transaction time)
+            want "v1 x=-1 vf=0 vt=0 tx=1791570603510"
+        point_door_race_move_test.go:189: NodeAsOf/SetVersionInterval/prior=false with the move between the chain reads:
+            got  "" (graph: no entity version recorded at the given transaction time)
+            want "v0 x=0 vf=1000 vt=0 tx=1791570603514"
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.829s
+FAIL
