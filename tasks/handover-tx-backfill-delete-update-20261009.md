@@ -15,7 +15,7 @@ Nothing ends belief at a caller instant: `Delete(ctx, id)` takes none (`rels/api
 `now` (`internal/core/relationship_update.go:151`, `:166-176`). `docs/api.md:79` states it: "Backfill is
 CREATE-only — updates/deletes keep the monotonic system TxFrom". The AI-SOC therefore models an ending as an
 extra `ENDED` relationship read by its rules (ai-soc `release/v5.0.0` `strata/base/base.go:353-371`), which
-belongs in the store, not in a consumer's program.
+belongs in the store, not in a consumer's program (citation corrected in §6.9).
 
 ## 2. API
 
@@ -77,27 +77,69 @@ instant travels only as the argument, as `tx_from` does for creates (sigma `wire
 | `internal/core/tx_mutations.go:438-473`, `:224` | the `GraphTx` twins (snapshot and rollback unchanged) |
 | `internal/core/context.go:252-267` | reuse `resolveBackfillTxFrom` for `TxTo`; rename or document |
 | `docs/api.md:79`, `:82`, `:169` | the doors, and "Backfill is CREATE-only" becomes "creates, deletes and updates" |
-| `CHANGELOG.md` `[Unreleased]` | patch version; migration: none, opt-in by the gate |
+| `CHANGELOG.md` `[Unreleased]` | minor version 4.44.0 (additive surface, `CHANGELOG.md:1702-1704`; `rels.Ops`/`nodes.Ops` gain methods); migration: upgrade replicas before any writer uses the doors |
 
-## 5. Acceptance tests to write first (red), two-phase per AGENTS.md rule 15
+## 5. Red tests, written and run before any code (break-the-code only, AGENTS.md rules 15/16)
 
-1. Gate: without `AllowTxBackfill` both doors return `ErrTxBackfillDisabled` and change nothing (row
-   still current, history length unchanged); with it, `t <= 0` and `t > now` return `ErrInvalidTxFrom`.
-2. Ordering: `t == TxFrom`, `t < TxFrom`, `t` below an earlier version's `TxTo` are refused; `t` one
-   millisecond after `TxFrom` is accepted.
-3. Pins around `t`: after `DeleteWithTx(id, t)`, `RelAsOf(id, t-1)` returns the row with its original
-   `ValidTo`; `RelAsOf(id, t)` and `RelAsOf(id, NowTx())` return `ErrNoVersionAsOf`; `RelsAsOf(t-1)`
-   contains it and `RelsAsOf(t)` does not; `Rels().ByType(type, QueryOpts{TxPin: t-1})` includes it.
-4. Update: after `UpdateWithTx(id, props, t)`, `RelAsOf(id, t-1)` is the old version, `RelAsOf(id, t)` the
-   new one; `History(id)` shows `TxTo = t` on the old row; a later plain `Update` stamps the clock, above `t`.
-5. Close collision: a row whose `ValidTo == t` is refused by `DeleteWithTx(id, t)`; `t+1` succeeds.
-6. Cascade: `Nodes().DeleteWithTx(node, t)` stamps every cascaded relationship with the same `t`, and a pin
-   at `t-1` returns the node and its relationships.
-7. Every backend table-driven (memory, badger in memory, sharded, tiered with a cross-shard relationship),
-   and under `-race`; a replica fed through `ApplyChanges` reproduces the same `RelAsOf` answers at `t-1`,
-   `t` and `now`; `VerifyRelChain` passes after both doors.
-8. Standalone and `GraphTx` doors give byte-identical rows (door equivalence, as
-   `batch_door_equivalence_test.go` does for creates); rollback after `DeleteRelationshipWithTx` restores
-   the row and its history.
+No happy-path tests. Each test names the faulty implementation it catches; an accepted case appears only as
+the counterpart assertion inside a refusal test. Every refusal asserts nothing changed (row, `History` length,
+TxFrom/TxTo identical). Every test is table-driven over memory, badger, sharded, tiered (cross-shard rel).
+
+| # | Test | Breaks with | Catches |
+|---|---|---|---|
+| R0 | `PlainDoorsUnchanged` | plain `Delete`/`Update`/`GraphTx` delete before vs after the refactor, incl. `ValidTo == now` close collision | refactor changes today's stamps or stops moving the instant |
+| R1 | `Gate_Off` | gate off, valid t; rels, nodes, standalone and `GraphTx` | gate checked after the write; gate missing on a twin |
+| R2 | `InvalidInstant` | t = 0, -1, now+1, MaxInt64; gate on and off | 0 read as "use the clock"; no upper bound; gate before value |
+| R3 | `OrderEqualReversed` | t = TxFrom, TxFrom-1, below an older TxTo, below a history TxFrom (lesson 62 fixture); counterpart TxFrom+1 stored exactly | rule checks only the current row; `>=` instead of `>` |
+| R4 | `OrderValidStart` | explicit and derived ValidFrom >= t; `UpdateWithTx` at t <= current `UpdatedAt`; expects `ErrTxOrder`, not `ErrInvalidStoreMutation` | inverted valid interval; store error leaking |
+| R5 | `IgnoresT` | TxTo = DeletedAt = t in History; `RelAsOf` at t-1 / t / NowTx; `RelsAsOf(t)` must NOT contain it; exact set at t-1; ByType TxPin t-1 | stamps now; off-by-one at the pin |
+| R6 | `UpdateStamps` | old TxTo = t, new TxFrom = UpdatedAt = t (field compare); next plain Update > t | prev.TxTo = now; UpdatedAt left at now |
+| R7 | `CloseCollision` | ValidTo == t on the rel and on a cascaded rel | t moved silently |
+| R8 | `ScheduledCloseAfterT` | pin t-1 shows the decided ValidTo (clamp then normalizer reopen, `txtime.go:468-479`) | close lost by the clamp |
+| R9 | `CascadeOrder` | a cascaded rel with TxFrom > t refuses the whole delete; counterpart: all tombstones carry t, exact node+rel set at t-1 | cascade stamps rels with now; only the node checked |
+| R10 | `Duplicates` | `DeleteWithTx` twice: `ErrRelNotFound`, history +1 only; `UpdateWithTx` same t twice: `ErrTxOrder` | double tombstone / version |
+| R11 | `RaceClock` (-race) | N plain Updates racing the WithTx doors; TxFrom strictly rising, prev.TxTo == next.TxFrom | order check outside the entity lock |
+| R12 | `TxRollbackEquiv` | rollback: export bytes and pins identical; commit: bytes equal the standalone door | twin skips snapshot or diverges |
+| R13 | `ReplicaDiverge` | export bytes and pins t-1/t/now; warm replica `CountByLabelAt(P >= t)` and `DocValuesSnapshotAsOf` drop the node after apply | replica delete apply never bumps the as-of cache |
+| R14 | `PrimaryCacheStale` | warm cached pin, node `DeleteWithTx`, count drops; hook interleaves a build between bump and write | bump before the write |
+| R15 | `CrossBackendOracle` | bitemporal oracle with backdated ends; exact set diff per pin | backend divergence |
+| R16 | `NoopIgnoresT` / `BatchIngestDoors` | unchanged or empty props; batch and concurrent ingest doors | t silently dropped; door gap |
 
 Run `make test-race` and `make cover`; new code at or above 80 %.
+
+## 6. Review corrections (2026-10-09, two Opus reviews: internal + dependents). These override §2-§4.
+
+1. Ordering rule, under the entity lock: t > max(TxFrom, TxTo) over the whole chain AND t > the version's
+   effective start (`rel/nodeCurrentVersionStart`, `UpdatedAt`); same check on every cascaded rel. Otherwise
+   valid time inverts (derived ValidFrom, `relationship_add.go:314-323`) or the store rejects
+   (`store/invariants.go:297-302`). Replay creates must therefore pass `tkg_valid_from` with `AddWithTx`.
+2. Error: new `ErrTxOrder` that wraps `ErrInvalidTxFrom` (`errors.Is` matches both, so sigma's map,
+   `wire/errors.go:121-124`, stays a validation error); its message names the conflicting stamp.
+3. `t == 0` guarded in the facade (`resolveBackfillTxFrom` returns `(0, nil)`, `context.go:253`).
+4. The close-collision refusal is keyed on "caller instant given"; plain `Delete` keeps moving the instant
+   (`temporal.go:107-118`).
+5. As-of cache: bump after the store write, not before (`context.go:265`); `applyNodeDeleteLocked` /
+   `applyRelDeleteLocked` (`apply_record.go:579-649`) report the tombstone's min(TxTo, DeletedAt) as a
+   past-dated write.
+6. No-op update path (`relationship_update.go:96-99`, empty map) must not drop t: refuse or stamp.
+7. Doors: batch (`batch_execute.go:532,579`) and concurrent ingest (`ingest_concurrent.go:399,424`) get the
+   same seam or an explicit refusal plus a doc line. Seam choice: `at` on `deleteRelationshipInternal` /
+   `deleteNodeLocked`; for update, a gated caller instant in the temporal path so all 4 update doors inherit it.
+8. File table adds: `rels.Ops`/`nodes.Ops` (`rels/api.go:25`, `nodes/api.go:25`) and their fakes in
+   `*/api_test.go`; comments at `core.go:758`, `context.go:250`, `compaction.go:420-422`,
+   `docvalues_asof_cache.go:19-23`, `changelog.go:239,271`; amend lesson 59.
+9. Citations fixed: `core.go:745-756` → 750-761; `relationship_update.go:166-176` → 166-179;
+   `node_update.go:174` → :155 (instant) and :171-184 (stamps); `core.go:367` is the commit-clock comment, not
+   zero-width; `docs/api.md:169` is CloseVersion; the ai-soc `ENDED` workaround is on branch
+   `arch-consolidate` (efe22d7f, superseded WIP), not `release/v5.0.0`.
+10. Dependents (none implement `Ops`/`GraphTx`; no wire change): sigma-tkgd v4.43.0, ai-soc engine v4.41.0,
+    agent-bookkeeping v4.40.0, all build/vet green; ai-soc engine/cutexec `replace`s the live rho-tkg tree
+    (picks up uncommitted edits; baseline already red on go 1.27.1). sigma's pinned-read promise
+    (`sharedrun/run.go:70-76`) and Tyla EDB cache (`policy/tyla_limits.go:78`) need invalidation once sigma
+    calls the doors.
+11. Open, unverified: a backfilled t below the retention purge watermark is unguarded (reads fail closed);
+    a rel version at t may reference endpoint versions recorded after t.
+
+Implementation order: R0, R2-R6 red → seam + `checkTxOrder` + `ErrTxOrder` → R7/R8 → node twins + cascade
+(R9) → cache after write + replica applies (R13/R14) → GraphTx, batch, ingest (R12/R16) → R10, R11, R15
+under `make test-race` → docs, comments, lesson 59, CHANGELOG 4.44.0, `make cover`.

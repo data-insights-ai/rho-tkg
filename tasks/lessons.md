@@ -2421,3 +2421,17 @@ The 4.36.0 temporal fix enveloped one kind and left the others (backlog item 3).
 - **Rule:** an envelope adds wire depth; apply the property depth limit to the
   reconstructed value, never to the raw wire value, and bound the raw walk by
   the decode limit instead.
+
+## 77. A Handover's Test List Is Break-The-Code Only, Written Red First
+
+The tx-backfill handover (2026-10-09) listed acceptance cases as tests of their
+own ("t one millisecond after TxFrom is accepted", "t+1 succeeds"). The user
+corrected it: tests always come first, and none of them is a happy-path test.
+
+- **Rule:** every planned test names the faulty implementation it catches
+  ("ignores t and stamps now", "moves t silently") and the input that breaks it
+  (zero, negative, future, equal, reversed, duplicate, boundary t-1/t/t+1,
+  concurrent, rollback, replica, per backend). The accepted case appears only
+  as the counterpart assertion inside such a test.
+- **Rule:** a handover's §tests is written before its §file changes and is run
+  red before the first line of code.
