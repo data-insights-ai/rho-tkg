@@ -1,0 +1,776 @@
+--- a/v5/internal/raftlog/application.go
++++ b/v5/internal/raftlog/application.go
+@@ -448,6 +448,8 @@
+ type ReadBudget struct{ Rows, Bytes int }
+ 
+ // ApplicationPage owns copied rows and a last-visited logical key continuation.
++// Bytes conservatively covers both visited-key work and retained output, including
++// the Rows backing capacity; it is not a heap/RSS or allocator-size measurement.
+ // Next must be reused with the same view/range. Complete is explicit; empty
+ // output can have a continuation when a page contains only tombstones.
+ type ApplicationPage struct {
+@@ -509,7 +511,7 @@
+ 	fits := len(data) <= p.MaxViewBytes-s.viewBytes
+ 	var owned []byte
+ 	if inspectErr == nil && fits {
+-		owned = bytes.Clone(data)
++		owned = copyApplicationBytes(data)
+ 	}
+ 	if err := errors.Join(inspectErr, closer.Close()); err != nil {
+ 		s.poison = err
+@@ -546,12 +548,13 @@
+ func (v *ApplicationView) unlock() { v.s.mu.Unlock(); v.mu.Unlock() }
+ 
+ // Root returns owned root bytes after checking both view and store lifetime.
++// The image has exact capacity within MaxImageBytes; root metadata is fixed-size.
+ func (v *ApplicationView) Root() (ApplicationRoot, error) {
+ 	if err := v.lock(context.Background()); err != nil {
+ 		return ApplicationRoot{}, err
+ 	}
+ 	defer v.unlock()
+-	return ApplicationRoot{v.index, bytes.Clone(v.image), sha256.Sum256(v.image)}, nil
++	return ApplicationRoot{v.index, copyApplicationBytes(v.image), sha256.Sum256(v.image)}, nil
+ }
+ 
+ // Close releases root accounting and is safe to repeat, including after Store.Close.
+@@ -578,6 +581,8 @@
+ 
+ // Get returns exact old/current content, including an explicit tombstone.
+ // found=false means never written at this root; Deleted distinguishes retraction.
++// maxBytes bounds key/value payload length; exact-cap copies and the policy
++// headroom additionally bound the complete owned KV output.
+ func (v *ApplicationView) Get(ctx context.Context, key []byte, maxBytes int) (out KV, found bool, err error) {
+ 	if err = v.lock(ctx); err != nil {
+ 		return KV{}, false, err
+@@ -616,7 +621,7 @@
+ 	if len(key)+len(value) > maxBytes {
+ 		return KV{}, false, ErrLimit
+ 	}
+-	return KV{bytes.Clone(key), bytes.Clone(value), deleted}, true, nil
++	return KV{copyApplicationBytes(key), copyApplicationBytes(value), deleted}, true, nil
+ }
+ func (v *ApplicationView) fail(err error) error {
+ 	if err != nil {
+@@ -629,7 +634,8 @@
+ // decoding history or building a resident key map. Tombstones are omitted but
+ // budgeted. nil upper is unbounded; nil lower starts the namespace. after must
+ // be empty or a key in this exact range. Owned bytes include keys/Next and a
+-// conservative 64-byte row header; one bounded lookahead is borrowed internally.
++// conservative 64-byte header for each retained row-capacity slot; one bounded
++// lookahead is borrowed internally.
+ func (v *ApplicationView) Scan(ctx context.Context, lower, upper, after []byte, b ReadBudget) (page ApplicationPage, err error) {
+ 	if err = v.lock(ctx); err != nil {
+ 		return page, err
+@@ -665,6 +671,9 @@
+ 	if len(after) > 0 {
+ 		seek = appNextPrefix(appPrefix(after))
+ 	}
++	// Work includes every visited key. Owned output additionally reserves the
++	// complete Rows backing array, including capacity beyond its length.
++	workBytes, outputBytes := 0, 0
+ 	for valid := it.SeekGE(seek); valid; {
+ 		if e := ctx.Err(); e != nil {
+ 			return ApplicationPage{}, e
+@@ -697,19 +706,38 @@
+ 		// after this view. Otherwise an old empty root could scan an unbounded
+ 		// later database in a single Rows=1 call.
+ 		cost := len(key) + len(value) + 64
+-		needed := cost + len(key)
+-		if page.Visited >= b.Rows || needed > b.Bytes-page.Bytes {
++		emit := visible && !deleted
++		rowBytes, capacity := 0, cap(page.Rows)
++		if emit {
++			rowBytes = len(key) + len(value)
++			if len(page.Rows) == capacity {
++				// Grow geometrically where room permits, but never retain an
++				// uncharged backing array. Header accounting is conservative
++				// on supported Go architectures; byte copies have exact cap.
++				available := b.Bytes - (outputBytes - 64*capacity) - rowBytes - len(key)
++				capacity = min(max(1, 2*capacity), available/64, b.Rows)
++			}
++		}
++		owned := outputBytes + 64*(capacity-cap(page.Rows)) + rowBytes + len(key)
++		if page.Visited >= b.Rows || cost+len(key) > b.Bytes-workBytes || emit && capacity < len(page.Rows)+1 || owned > b.Bytes {
+ 			if page.Visited == 0 {
+ 				return ApplicationPage{}, ErrLimit
+ 			}
+-			page.Bytes += len(page.Next)
++			page.Bytes = max(workBytes+len(page.Next), outputBytes+len(page.Next))
+ 			return page, nil
+ 		}
+ 		page.Visited++
+-		page.Bytes += cost
+-		page.Next = bytes.Clone(key)
+-		if visible && !deleted {
+-			page.Rows = append(page.Rows, KV{Key: bytes.Clone(key), Value: bytes.Clone(value)})
++		workBytes += cost
++		page.Next = copyApplicationBytes(key)
++		if emit {
++			if capacity > cap(page.Rows) {
++				rows := make([]KV, len(page.Rows), capacity)
++				copy(rows, page.Rows)
++				outputBytes += 64 * (capacity - cap(page.Rows))
++				page.Rows = rows
++			}
++			page.Rows = append(page.Rows, KV{Key: copyApplicationBytes(key), Value: copyApplicationBytes(value)})
++			outputBytes += rowBytes
+ 		}
+ 		valid = it.SeekGE(appNextPrefix(prefix))
+ 	}
+@@ -718,7 +746,19 @@
+ 	}
+ 	page.Complete = true
+ 	page.Next = nil
++	page.Bytes = max(workBytes, outputBytes)
+ 	return page, nil
++}
++
++// copyApplicationBytes owns only the requested length; unlike append/Clone,
++// it exposes no spare byte capacity in returned application output.
++func copyApplicationBytes(src []byte) []byte {
++	if src == nil {
++		return nil
++	}
++	dst := make([]byte, len(src))
++	copy(dst, src)
++	return dst
+ }
+ 
+ // ApplicationRecord retrieves a retained complete change/outcome envelope at a
+@@ -761,7 +801,7 @@
+ 	data, deleted, inspectErr := inspectAppFrame(key, raw, limit)
+ 	var out []byte
+ 	if inspectErr == nil && !deleted && len(data) <= maxBytes {
+-		out = bytes.Clone(data)
++		out = copyApplicationBytes(data)
+ 	}
+ 	if deleted {
+ 		inspectErr = ErrCorrupt
+--- /dev/null
++++ b/v5/internal/raftlog/independent_application_review_test.go
+@@ -0,0 +1,496 @@
++package raftlog
++
++import (
++	"bytes"
++	"context"
++	"crypto/sha256"
++	"errors"
++	"fmt"
++	"maps"
++	"testing"
++	"unsafe"
++
++	"github.com/cockroachdb/pebble/v2"
++	"github.com/cockroachdb/pebble/v2/vfs"
++	"github.com/cockroachdb/pebble/v2/vfs/errorfs"
++)
++
++// A policy accepted at open must let Scan return an installed maximum-sized row.
++func TestIndependentMaximumAcceptedRowMustBeScannable(t *testing.T) {
++	p := DefaultApplicationPolicy(1)
++	p.MaxKeyBytes = 1
++	p.MaxValueBytes = 1
++	p.MaxImageBytes = 16
++	p.MaxChangeBytes = 16
++	p.MaxOutcomeBytes = 16
++	p.MaxViewBytes = 16
++	p.MaxPageBytes = p.MaxKeyBytes + p.MaxValueBytes + appFrameBytes
++	if err := p.Validate(DefaultLimits()); !errors.Is(err, ErrInvalid) {
++		t.Fatal("undersized policy accepted", err)
++	}
++	p.MaxPageBytes = 2*p.MaxKeyBytes + p.MaxValueBytes + 64
++	if err := p.Validate(DefaultLimits()); err != nil {
++		t.Fatal(err)
++	}
++	s := openApplication(t, vfs.NewMem(), p)
++	applyApplication(t, s, "max", KV{Key: []byte("a"), Value: make([]byte, p.MaxValueBytes)})
++	v := viewApplication(t, s, 2)
++	if _, ok, err := v.Get(t.Context(), []byte("a"), p.MaxPageBytes); err != nil || !ok {
++		t.Fatal(ok, err)
++	}
++	page, err := v.Scan(t.Context(), nil, nil, nil, ReadBudget{1, p.MaxPageBytes})
++	if err != nil || !page.Complete || len(page.Rows) != 1 {
++		t.Fatalf("accepted legal row cannot be scanned: MaxPageBytes=%d scan requires=%d page=%+v err=%v", p.MaxPageBytes, 2*p.MaxKeyBytes+p.MaxValueBytes+64, page, err)
++	}
++}
++
++// Slice capacity remains owned by the result even though it is outside len(Rows).
++// This is a lower bound on owned output, excluding allocator rounding/temporary work.
++func TestIndependentScanOwnedOutputMustFitByteBudget(t *testing.T) {
++	s := openApplication(t, vfs.NewMem(), DefaultApplicationPolicy(1))
++	var writes []KV
++	for i := range 10 {
++		writes = append(writes, KV{Key: []byte{byte('a' + i)}})
++	}
++	applyApplication(t, s, "many", writes...)
++	v := viewApplication(t, s, 2)
++	b := ReadBudget{10, 651}
++	page, err := v.Scan(t.Context(), nil, nil, nil, b)
++	if err != nil || !page.Complete || len(page.Rows) != 10 {
++		t.Fatal(page, err)
++	}
++	owned := cap(page.Rows)*int(unsafe.Sizeof(KV{})) + cap(page.Next)
++	for _, r := range page.Rows {
++		owned += len(r.Key) + len(r.Value)
++	}
++	if owned > b.Bytes {
++		t.Fatalf("owned result exceeds budget: owned minimum=%d budget=%d reported=%d rows=%d capacity=%d", owned, b.Bytes, page.Bytes, len(page.Rows), cap(page.Rows))
++	}
++}
++
++func independentLogicalLedger(t *testing.T, s *Store) (uint64, uint64) {
++	t.Helper()
++	it, err := s.db.NewIter(&pebble.IterOptions{LowerBound: []byte{appDataTag}, UpperBound: []byte{appOutcomeTag + 1}})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer func() {
++		if err := it.Close(); err != nil {
++			t.Error(err)
++		}
++	}()
++	var n, count uint64
++	for ok := it.First(); ok; ok = it.Next() {
++		n += uint64(len(it.Key()) + len(it.Value()))
++		count++
++	}
++	if err := it.Error(); err != nil {
++		t.Fatal(err)
++	}
++	return n, count
++}
++
++func TestIndependentApplicationExactLedgerAndRefusal(t *testing.T) {
++	fs := vfs.NewCrashableMem()
++	p := DefaultApplicationPolicy(1)
++	p.ReclaimEntries = 2
++	s := openApplication(t, fs, p)
++	applyApplication(t, s, "second", KV{Key: []byte{0, 0, 'a'}, Value: []byte("one")}, KV{Key: []byte("z"), Deleted: true})
++	beforeBytes, beforeCount := independentLogicalLedger(t, s)
++	use, err := s.ApplicationUsage()
++	if err != nil || beforeBytes != use.RetainedBytes || beforeCount != use.RetainedRecords {
++		t.Fatal(beforeBytes, beforeCount, use, err)
++	}
++	persist(t, s, 2, 3, ent(3, 2, "pending"))
++	_, image, err := s.Checkpoint()
++	if err != nil {
++		t.Fatal(err)
++	}
++	good := ApplicationBatch{BaseIndex: 2, BaseImageHash: sha256.Sum256(image), Image: []byte("third"), Writes: []KV{{Key: []byte("a"), Value: []byte("three")}}}
++	for _, scenario := range []string{"key", "image", "change", "outcome", "order", "index", "hash"} {
++		b := good
++		want := ErrLimit
++		index := uint64(3)
++		switch scenario {
++		case "key":
++			b.Writes = []KV{{Key: make([]byte, p.MaxKeyBytes+1)}}
++		case "image":
++			b.Image = make([]byte, p.MaxImageBytes+1)
++		case "change":
++			b.Changes = make([]byte, p.MaxChangeBytes+1)
++		case "outcome":
++			b.Outcome = make([]byte, p.MaxOutcomeBytes+1)
++		case "order":
++			b.Writes = []KV{{Key: []byte("z")}, {Key: []byte("a")}}
++			want = ErrInvalid
++		case "index":
++			index = 4
++			want = ErrInvalid
++		case "hash":
++			b.BaseImageHash = [32]byte{1}
++			want = ErrInvalid
++		}
++		metadataBefore, _ := encodeMeta(s.meta)
++		if err := s.InstallApplication(index, b); !errors.Is(err, want) {
++			t.Fatal(scenario, err)
++		}
++		metadataAfter, _ := encodeMeta(s.meta)
++		n, count := independentLogicalLedger(t, s)
++		if !bytes.Equal(metadataBefore, metadataAfter) || n != beforeBytes || count != beforeCount {
++			t.Fatal("refusal mutated store", scenario)
++		}
++	}
++	if err := s.InstallApplication(3, good); err != nil {
++		t.Fatal(err)
++	}
++	if err := s.ReclaimApplication(); err != nil {
++		t.Fatal(err)
++	}
++	n, count := independentLogicalLedger(t, s)
++	use, err = s.ApplicationUsage()
++	if err != nil || n != use.RetainedBytes || count != use.RetainedRecords || use.TailBytes != 0 {
++		t.Fatal(n, count, use, err)
++	}
++	r, err := Open(Config{Dir: "app", FS: fs.CrashClone(vfs.CrashCloneCfg{}), Application: p})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer r.Close()
++	if err := r.ScrubApplication(t.Context()); err != nil {
++		t.Fatal(err)
++	}
++	if idx, image, err := r.Checkpoint(); err != nil || idx != 3 || string(image) != "third" {
++		t.Fatal(idx, string(image), err)
++	}
++	getApplication(t, viewApplication(t, r, 2), string([]byte{0, 0, 'a'}), "one", true, false)
++	getApplication(t, viewApplication(t, r, 3), "a", "three", true, false)
++}
++
++func TestIndependentHistoricalScanExactReference(t *testing.T) {
++	s := openApplication(t, vfs.NewMem(), DefaultApplicationPolicy(1))
++	var models []map[string]KV
++	model := map[string]KV{}
++	models = append(models, model)
++	for step := range 12 {
++		next := maps.Clone(model)
++		var writes []KV
++		for k := range 15 {
++			if (step+k)%3 != 0 {
++				continue
++			}
++			key := fmt.Sprintf("%02d", k)
++			row := KV{Key: []byte(key), Value: []byte(fmt.Sprintf("%d:%d", step, k))}
++			if (step+k)%4 == 0 {
++				row.Value = nil
++				row.Deleted = true
++			}
++			writes = append(writes, row)
++			next[key] = row
++		}
++		applyApplication(t, s, fmt.Sprintf("step%d", step), writes...)
++		model = next
++		models = append(models, model)
++	}
++	for ordinal, m := range models {
++		v := viewApplication(t, s, uint64(ordinal+1))
++		seen := map[string]string{}
++		var after []byte
++		for pages := 0; ; pages++ {
++			if pages > 16 {
++				t.Fatal("cursor stalled")
++			}
++			page, err := v.Scan(t.Context(), []byte("03"), []byte("12"), after, ReadBudget{2, 200})
++			if err != nil || page.Visited > 2 || page.Bytes > 200 {
++				t.Fatal(page, err)
++			}
++			for _, r := range page.Rows {
++				key := string(r.Key)
++				if _, dup := seen[key]; dup {
++					t.Fatal("duplicate", key)
++				}
++				seen[key] = string(r.Value)
++			}
++			if page.Complete {
++				break
++			}
++			if bytes.Compare(page.Next, after) <= 0 {
++				t.Fatal("cursor regressed")
++			}
++			after = page.Next
++		}
++		want := map[string]string{}
++		for k, row := range m {
++			if k >= "03" && k < "12" && !row.Deleted {
++				want[k] = string(row.Value)
++			}
++		}
++		if len(seen) != len(want) {
++			t.Fatal(ordinal, seen, want)
++		}
++		for k, value := range want {
++			if got, ok := seen[k]; !ok || got != value {
++				t.Fatal(ordinal, k, got, value)
++			}
++		}
++	}
++}
++
++func TestIndependentApplicationReadFaultPoisons(t *testing.T) {
++	for _, operation := range []string{"Get", "Scan", "Scrub", "Record"} {
++		t.Run(operation, func(t *testing.T) {
++			toggle := &errorfs.Toggle{Injector: errorfs.InjectorFunc(func(op errorfs.Op) error {
++				if op.Kind == errorfs.OpFileReadAt {
++					return errorfs.ErrInjected
++				}
++				return nil
++			})}
++			l := DefaultLimits()
++			l.CacheBytes = 1
++			s, err := Open(Config{Dir: "fault", FS: errorfs.Wrap(vfs.NewMem(), toggle), Create: true, Limits: l, Application: DefaultApplicationPolicy(1)})
++			if err != nil {
++				t.Fatal(err)
++			}
++			t.Cleanup(func() {
++				toggle.Off()
++				if err := s.Close(); err != nil {
++					t.Error(err)
++				}
++			})
++			if err := s.Initialize([]uint64{1}, nil); err != nil {
++				t.Fatal(err)
++			}
++			applyApplication(t, s, "root", KV{Key: []byte("a"), Value: []byte("value")})
++			v := viewApplication(t, s, 2)
++			if err := s.db.Flush(); err != nil {
++				t.Fatal(err)
++			}
++			toggle.On()
++			switch operation {
++			case "Get":
++				_, _, err = v.Get(t.Context(), []byte("a"), 128)
++			case "Scan":
++				_, err = v.Scan(t.Context(), nil, nil, nil, ReadBudget{1, 128})
++			case "Scrub":
++				err = s.ScrubApplication(t.Context())
++			case "Record":
++				_, err = s.ApplicationRecord(t.Context(), 2, false, 128)
++			}
++			if !errors.Is(err, errorfs.ErrInjected) {
++				t.Fatal("I/O fixture did not reach reader", operation, err)
++			}
++			if _, err := s.ApplicationUsage(); !errors.Is(err, ErrPoisoned) || !errors.Is(err, errorfs.ErrInjected) {
++				t.Fatal("read error failed to poison", err)
++			}
++		})
++	}
++}
++
++func TestIndependentPageBudgetBoundaries(t *testing.T) {
++	for _, valueBytes := range []int{1, 128, 1 << 20} {
++		t.Run(fmt.Sprint(valueBytes), func(t *testing.T) {
++			p := DefaultApplicationPolicy(1)
++			p.MaxKeyBytes = 128
++			p.MaxValueBytes = valueBytes
++			p.MaxImageBytes = 16
++			p.MaxChangeBytes = 16
++			p.MaxOutcomeBytes = 16
++			p.MaxViewBytes = 16
++			p.MaxPageBytes = 2*p.MaxKeyBytes + p.MaxValueBytes + 64
++			smaller := p
++			smaller.MaxPageBytes--
++			fs := vfs.NewMem()
++			if s, err := Open(Config{Dir: "rejected", FS: fs, Create: true, Application: smaller}); !errors.Is(err, ErrInvalid) {
++				if s != nil {
++					s.Close()
++				}
++				t.Fatal("one-byte-small page policy accepted", err)
++			}
++			if _, err := fs.Stat("rejected"); err == nil {
++				t.Fatal("policy refusal created durable directory")
++			}
++			s := openApplication(t, fs, p)
++			key := bytes.Repeat([]byte{'a'}, p.MaxKeyBytes)
++			applyApplication(t, s, "max", KV{Key: key, Value: make([]byte, valueBytes)})
++			v := viewApplication(t, s, 2)
++			before, _ := encodeMeta(s.meta)
++			if _, err := v.Scan(t.Context(), nil, nil, nil, ReadBudget{1, p.MaxPageBytes - 1}); !errors.Is(err, ErrLimit) {
++				t.Fatal("short read budget accepted", err)
++			}
++			after, _ := encodeMeta(s.meta)
++			if !bytes.Equal(before, after) {
++				t.Fatal("read refusal mutated durable state")
++			}
++			page, err := v.Scan(t.Context(), nil, nil, nil, ReadBudget{1, p.MaxPageBytes})
++			if err != nil || !page.Complete || len(page.Rows) != 1 || page.Bytes > p.MaxPageBytes {
++				t.Fatal(page, err)
++			}
++			if cap(page.Rows[0].Key) != len(key) || cap(page.Rows[0].Value) != valueBytes {
++				t.Fatal("returned bytes expose spare capacity")
++			}
++			ctx, cancel := context.WithCancel(t.Context())
++			cancel()
++			if _, err := v.Scan(ctx, nil, nil, nil, ReadBudget{1, p.MaxPageBytes}); !errors.Is(err, context.Canceled) {
++				t.Fatal(err)
++			}
++		})
++	}
++}
++
++func TestIndependentCompleteEnvelopeReadHeadroom(t *testing.T) {
++	for _, outcome := range []bool{false, true} {
++		t.Run(fmt.Sprint(outcome), func(t *testing.T) {
++			p := DefaultApplicationPolicy(1)
++			if outcome {
++				p.MaxOutcomeBytes = p.MaxPageBytes + 1
++			} else {
++				p.MaxChangeBytes = p.MaxPageBytes + 1
++			}
++			p.MaxInstallBytes = 8 << 20
++			if err := p.Validate(DefaultLimits()); !errors.Is(err, ErrInvalid) {
++				t.Fatal("unreadable envelope policy accepted", err)
++			}
++			p.MaxPageBytes++
++			if err := p.Validate(DefaultLimits()); err != nil {
++				t.Fatal(err)
++			}
++			s := openApplication(t, vfs.NewMem(), p)
++			persist(t, s, 2, 2, ent(2, 2, "record"))
++			batch := ApplicationBatch{BaseIndex: 1, BaseImageHash: sha256.Sum256([]byte("initial")), Image: []byte("two")}
++			payload := make([]byte, p.MaxPageBytes)
++			if outcome {
++				batch.Outcome = payload
++			} else {
++				batch.Changes = payload
++			}
++			if err := s.InstallApplication(2, batch); err != nil {
++				t.Fatal(err)
++			}
++			if _, err := s.ApplicationRecord(t.Context(), 2, outcome, p.MaxPageBytes-1); !errors.Is(err, ErrLimit) {
++				t.Fatal(err)
++			}
++			record, err := s.ApplicationRecord(t.Context(), 2, outcome, p.MaxPageBytes)
++			if err != nil || len(record) != len(payload) {
++				t.Fatal(len(record), err)
++			}
++		})
++	}
++}
++
++// The policy's global owned-output promise applies to point reads as well as
++// scans. Count exposed Go capacities, not allocator size classes or heap/RSS.
++func TestIndependentGetOwnedOutputMustFitPolicy(t *testing.T) {
++	p := DefaultApplicationPolicy(1)
++	p.MaxKeyBytes = 1
++	p.MaxValueBytes = 37
++	p.MaxPageBytes = 103
++	p.MaxImageBytes = 16
++	p.MaxChangeBytes = 103
++	p.MaxOutcomeBytes = 103
++	if err := p.Validate(DefaultLimits()); err != nil {
++		t.Fatal(err)
++	}
++	s := openApplication(t, vfs.NewMem(), p)
++	applyApplication(t, s, "odd", KV{Key: []byte("a"), Value: make([]byte, 37)})
++	v := viewApplication(t, s, 2)
++	row, found, err := v.Get(t.Context(), []byte("a"), 103)
++	if err != nil || !found || len(row.Key) != 1 || len(row.Value) != 37 {
++		t.Fatal(row, found, err)
++	}
++	header := int(unsafe.Sizeof(row))
++	owned := header + cap(row.Key) + cap(row.Value)
++	if owned > p.MaxPageBytes {
++		t.Fatalf("Get owned output exceeds policy: header=%d key cap=%d value cap=%d owned=%d MaxPageBytes=%d", header, cap(row.Key), cap(row.Value), owned, p.MaxPageBytes)
++	}
++	if cap(row.Key) != len(row.Key) || cap(row.Value) != len(row.Value) {
++		t.Fatal("Get exposes unaccounted spare capacity")
++	}
++	row.Key[0] = 'b'
++	row.Value[0] = 7
++	again, found, err := v.Get(t.Context(), []byte("a"), 103)
++	if err != nil || !found || string(again.Key) != "a" || again.Value[0] != 0 {
++		t.Fatal("Get aliases immutable store bytes", again, found, err)
++	}
++}
++
++func TestIndependentRecordOwnedOutputMustFitPolicy(t *testing.T) {
++	for _, outcome := range []bool{false, true} {
++		t.Run(fmt.Sprint(outcome), func(t *testing.T) {
++			p := DefaultApplicationPolicy(1)
++			p.MaxKeyBytes = 1
++			p.MaxValueBytes = 37
++			p.MaxPageBytes = 103
++			p.MaxImageBytes = 16
++			p.MaxChangeBytes = 103
++			p.MaxOutcomeBytes = 103
++			if err := p.Validate(DefaultLimits()); err != nil {
++				t.Fatal(err)
++			}
++			s := openApplication(t, vfs.NewMem(), p)
++			persist(t, s, 2, 2, ent(2, 2, "odd"))
++			batch := ApplicationBatch{BaseIndex: 1, BaseImageHash: sha256.Sum256([]byte("initial")), Image: []byte("odd"), Changes: make([]byte, 103), Outcome: make([]byte, 103)}
++			if err := s.InstallApplication(2, batch); err != nil {
++				t.Fatal(err)
++			}
++			record, err := s.ApplicationRecord(t.Context(), 2, outcome, 103)
++			if err != nil || len(record) != 103 {
++				t.Fatal(len(record), err)
++			}
++			if cap(record) > p.MaxPageBytes {
++				t.Fatalf("record owned byte capacity exceeds policy: len=%d cap=%d MaxPageBytes=%d", len(record), cap(record), p.MaxPageBytes)
++			}
++			record[0] = 7
++			again, err := s.ApplicationRecord(t.Context(), 2, outcome, 103)
++			if err != nil || again[0] != 0 {
++				t.Fatal("record aliases immutable store bytes", err)
++			}
++		})
++	}
++}
++
++func TestIndependentViewAndRootImageCapacities(t *testing.T) {
++	for _, retained := range []bool{false, true} {
++		t.Run(fmt.Sprint(retained), func(t *testing.T) {
++			p := DefaultApplicationPolicy(1)
++			p.MaxImageBytes = 3
++			p.MaxViewBytes = 3
++			if err := p.Validate(DefaultLimits()); err != nil {
++				t.Fatal(err)
++			}
++			s, err := Open(Config{Dir: "tiny-root", FS: vfs.NewMem(), Create: true, Application: p})
++			if err != nil {
++				t.Fatal(err)
++			}
++			t.Cleanup(func() {
++				if err := s.Close(); err != nil {
++					t.Error(err)
++				}
++			})
++			if err := s.Initialize([]uint64{1}, []byte("abc")); err != nil {
++				t.Fatal(err)
++			}
++			v := viewApplication(t, s, 1)
++			usage, err := s.ApplicationUsage()
++			if err != nil || usage.ViewBytes != 3 {
++				t.Fatal(usage, err)
++			}
++			if retained {
++				if cap(v.image) > p.MaxViewBytes {
++					t.Fatalf("retained view image exceeds live-root budget: len=%d cap=%d charged=%d MaxViewBytes=%d", len(v.image), cap(v.image), usage.ViewBytes, p.MaxViewBytes)
++				}
++			} else {
++				root, err := v.Root()
++				if err != nil {
++					t.Fatal(err)
++				}
++				if cap(root.Image) > p.MaxImageBytes {
++					t.Fatalf("returned root image exceeds image limit: len=%d cap=%d MaxImageBytes=%d", len(root.Image), cap(root.Image), p.MaxImageBytes)
++				}
++				root.Image[0] = 'x'
++				again, err := v.Root()
++				if err != nil || string(again.Image) != "abc" {
++					t.Fatal("root aliases retained image", again, err)
++				}
++			}
++		})
++	}
++}
+--- /dev/null
++++ b/v5/internal/replica/independent_application_review_test.go
+@@ -0,0 +1,126 @@
++package replica
++
++import (
++	"bytes"
++	"crypto/sha256"
++	"errors"
++	"testing"
++
++	"github.com/cockroachdb/pebble/v2/vfs"
++	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
++)
++
++// observeApplication checks durable bytes rather than trusting callback ordering.
++type observeApplication struct {
++	applicationFixture
++	t                *testing.T
++	store            *raftlog.Store
++	bad              bool
++	stages, restores int
++}
++
++func (m *observeApplication) Stage(e Entry, b raftlog.ApplicationBudget) (raftlog.ApplicationBatch, error) {
++	before, image, err := m.store.Checkpoint()
++	if err != nil || before != m.index || !bytes.Equal(image, m.image) {
++		m.t.Fatalf("Stage saw unpublished checkpoint: %d/%d %v", before, m.index, err)
++	}
++	if e.Index != before+1 {
++		m.t.Fatal("stage order", e.Index, before)
++	}
++	if _, err := m.store.ApplicationView(e.Index); !errors.Is(err, raftlog.ErrInvalid) {
++		m.t.Fatal("unpublished view exists", err)
++	}
++	batch, err := m.applicationFixture.Stage(e, b)
++	if err != nil {
++		return batch, err
++	}
++	if beforeAfter, imageAfter, err := m.store.Checkpoint(); err != nil || beforeAfter != before || !bytes.Equal(image, imageAfter) {
++		m.t.Fatal("Stage changed durable root", err)
++	}
++	m.stages++
++	if m.bad && len(e.Data) > 0 {
++		batch.Writes = append(batch.Writes, raftlog.KV{Key: []byte("a"), Value: command(999)})
++	}
++	return batch, nil
++}
++func (m *observeApplication) Restore(index uint64, image []byte) error {
++	actual, stored, err := m.store.Checkpoint()
++	if err != nil || actual != index || !bytes.Equal(image, stored) {
++		m.t.Fatal("Restore ran before durable image", actual, index, err)
++	}
++	view, err := m.store.ApplicationView(index)
++	if err != nil {
++		m.t.Fatal(err)
++	}
++	root, err := view.Root()
++	if err != nil {
++		m.t.Fatal(err)
++	}
++	if root.Index != index || root.ImageHash != sha256.Sum256(image) || !bytes.Equal(root.Image, image) {
++		m.t.Fatal("Restore saw mixed root", root, index)
++	}
++	if err := view.Close(); err != nil {
++		m.t.Fatal(err)
++	}
++	m.restores++
++	return m.applicationFixture.Restore(index, image)
++}
++func TestIndependentApplicationPrivateStageAndPublication(t *testing.T) {
++	fs := vfs.NewCrashableMem()
++	p := raftlog.DefaultApplicationPolicy(1)
++	s, err := raftlog.Open(raftlog.Config{Dir: "observed", FS: fs, Create: true, Application: p})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := s.Initialize([]uint64{1}, nil); err != nil {
++		t.Fatal(err)
++	}
++	m := &observeApplication{t: t, store: s}
++	d, err := Open(Config{ID: 1, Store: s, ApplicationMachine: m})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer d.Close()
++	packets(t, d.Campaign)
++	packets(t, func() (Output, error) { return d.Propose(command(7)) })
++	good := d.Applied()
++	fixtureRead(t, s, good, 7, false)
++	beforeStages, beforeRestores := m.stages, m.restores
++	m.bad = true
++	out, err := d.Propose(command(11))
++	if !errors.Is(err, raftlog.ErrInvalid) || out.Applied != 0 || len(out.Reads) != 0 || len(out.Packets) != 0 {
++		t.Fatal("invalid staged batch produced output", out, err)
++	}
++	if m.stages != beforeStages+1 || m.restores != beforeRestores || m.value != 7 {
++		t.Fatal("invalid batch published volatile state", m.stages, m.restores, m.value)
++	}
++	if _, err := d.Tick(); !errors.Is(err, ErrStopped) {
++		t.Fatal(err)
++	}
++	checkpoint, image, err := s.Checkpoint()
++	if err != nil || checkpoint != good || !bytes.Equal(image, command(7)) {
++		t.Fatal(checkpoint, image, err)
++	}
++	fixtureRead(t, s, good, 7, false)
++	if _, err := s.ApplicationView(good + 1); !errors.Is(err, raftlog.ErrInvalid) {
++		t.Fatal("bad install left root", err)
++	}
++	r, err := raftlog.Open(raftlog.Config{Dir: "observed", FS: fs.CrashClone(vfs.CrashCloneCfg{}), Application: p})
++	if err != nil {
++		t.Fatal(err)
++	}
++	recovered := &applicationFixture{}
++	restarted, err := Open(Config{ID: 1, Store: r, ApplicationMachine: recovered})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer restarted.Close()
++	packets(t, restarted.Tick)
++	if recovered.value != 18 {
++		t.Fatal("failed install lost/repeated committed command", recovered.value)
++	}
++	fixtureRead(t, r, restarted.Applied(), 18, false)
++	if err := r.ScrubApplication(t.Context()); err != nil {
++		t.Fatal(err)
++	}
++}

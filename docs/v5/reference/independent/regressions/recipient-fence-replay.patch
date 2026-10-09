@@ -1,0 +1,1302 @@
+diff --git a/v5/internal/txnproto/allocation.go b/v5/internal/txnproto/allocation.go
+index 0172b7e..f68aba3 100644
+--- a/v5/internal/txnproto/allocation.go
++++ b/v5/internal/txnproto/allocation.go
+@@ -415,5 +415,6 @@ func (m *Machine) allocationTransition(s *state, a allocationCommand) (bool, err
+ 		}
+ 		old := s.Recipients[recipientKey(r.Session.ID)]
+-		if recipientMatches(old, r) && old.Phase == "fenced" {
++		// A delayed same-session fence cannot undo its completed activation.
++		if recipientMatches(old, r) && (old.Phase == "fenced" || old.Phase == "active") {
+ 			return false, nil
+ 		}
+diff --git a/v5/internal/idalloc/independent_recipient_test.go b/v5/internal/idalloc/independent_recipient_test.go
+new file mode 100644
+index 0000000..0859a99
+--- /dev/null
++++ b/v5/internal/idalloc/independent_recipient_test.go
+@@ -0,0 +1,254 @@
++package idalloc
++
++import (
++	"errors"
++	"math"
++	"math/rand/v2"
++	"sync"
++	"testing"
++)
++
++// This is an independent arithmetic/lifecycle model. The callback models the
++// trusted durable boundary; it does not claim Raft, disk or process evidence.
++func TestIndependentRecipientModelTwoWritersFaultsAndRestart(t *testing.T) {
++	graph := GraphID{71}
++	authority, err := NewAuthority([16]byte{72}, 1)
++	if err != nil {
++		t.Fatal(err)
++	}
++	state, err := NewState(graph, authority, 8)
++	if err != nil {
++		t.Fatal(err)
++	}
++	type writer struct {
++		session   RecipientSession
++		recipient *Recipient
++		seq       uint64
++		cursors   []*Cursor
++	}
++	writers := [2]writer{}
++	for index := range writers {
++		w := &writers[index]
++		w.session = RecipientSession{ID: [16]byte{byte(index + 1)}, Incarnation: [16]byte{byte(index + 10)}, Epoch: 1}
++		w.recipient, err = NewRecipient(graph, w.session)
++		if err != nil {
++			t.Fatal(err)
++		}
++	}
++	rng := rand.New(rand.NewPCG(456, 789))
++	var modelHigh, globalSeq uint64
++	seen := map[uint64]bool{}
++	var abandoned uint64
++	for step := range 400 {
++		which := rng.IntN(2)
++		w := &writers[which]
++		if step%29 == 0 && step != 0 {
++			// Restart changes only this session; all reserved tails are discarded.
++			for _, c := range w.cursors {
++				b, e := c.Block()
++				if e != nil {
++					t.Fatal(e)
++				}
++				abandoned += b.Last - b.First + 1
++			}
++			w.cursors = nil
++			w.session.Epoch++
++			w.session.Incarnation[1]++
++			w.recipient, err = NewRecipient(graph, w.session)
++			if err != nil {
++				t.Fatal(err)
++			}
++			w.seq = 0
++			// Service authority rotation is independent of the other cached writer.
++			nextAuthority, e := NewAuthority([16]byte{byte(step)}, authority.Epoch()+1)
++			if e != nil {
++				t.Fatal(e)
++			}
++			state, e = Transfer(&state, authority, nextAuthority)
++			if e != nil {
++				t.Fatal(e)
++			}
++			authority = nextAuthority
++			globalSeq = 0
++		}
++		if len(w.cursors) > 0 && rng.IntN(3) == 0 {
++			c := w.cursors[rng.IntN(len(w.cursors))]
++			id, e := c.Next()
++			if errors.Is(e, ErrExhausted) {
++				continue
++			}
++			if e != nil || id == 0 || id > modelHigh || seen[id] {
++				t.Fatalf("step %d duplicate/outside reservation id=%d high=%d err=%v", step, id, modelHigh, e)
++			}
++			seen[id] = true
++			continue
++		}
++		w.seq++
++		count := uint64(rng.IntN(8) + 1)
++		request := GrantRequest{Graph: graph, Session: w.session, Sequence: w.seq, Count: count}
++		before := modelHigh
++		fault := rng.IntN(6)
++		committed := fault != 0
++		calls := 0
++		cursor, e := w.recipient.Acquire(t.Context(), request, func(r GrantRequest) (Grant, error) {
++			calls++
++			if !committed {
++				return Grant{}, ErrUnknown
++			}
++			globalSeq++
++			next, b, replay, reserveErr := Reserve(&state, Request{Graph: graph, Authority: authority, Sequence: globalSeq, Count: count})
++			if reserveErr != nil || replay {
++				t.Fatalf("reserve %v replay=%v", reserveErr, replay)
++			}
++			state = next
++			modelHigh += count
++			if b.First != before+1 || b.Last != modelHigh {
++				t.Fatalf("range %+v expected [%d,%d]", b, before+1, modelHigh)
++			}
++			if fault == 1 {
++				abandoned += count
++				return Grant{}, ErrUnknown
++			}
++			return Grant{Request: r, Reservation: b}, nil
++		})
++		if fault < 2 {
++			if cursor != nil || !errors.Is(e, ErrUnknown) {
++				t.Fatal(cursor, e)
++			}
++		} else {
++			if e != nil {
++				t.Fatal(e)
++			}
++			w.cursors = append(w.cursors, cursor)
++		}
++		if _, e = w.recipient.Acquire(t.Context(), request, func(GrantRequest) (Grant, error) { calls++; return Grant{}, nil }); !errors.Is(e, ErrAlreadyReserved) {
++			t.Fatal("replay", e)
++		}
++		if calls != 1 {
++			t.Fatal("replay entered callback")
++		}
++		image, e := MarshalCheckpoint(&state)
++		if e != nil {
++			t.Fatal(e)
++		}
++		state, e = DecodeCheckpoint(image)
++		if e != nil {
++			t.Fatal(e)
++		}
++		view, e := Inspect(&state)
++		if e != nil || view.HighWater != modelHigh {
++			t.Fatal(view, e)
++		}
++	}
++	for index := range writers {
++		for _, c := range writers[index].cursors {
++			for {
++				id, e := c.Next()
++				if errors.Is(e, ErrExhausted) {
++					break
++				}
++				if e != nil || seen[id] {
++					t.Fatal("duplicate on tail", id, e)
++				}
++				seen[id] = true
++			}
++		}
++	}
++	if abandoned == 0 || len(seen) == 0 {
++		t.Fatal("model did not exercise gaps/minting")
++	}
++	t.Logf("400 schedules, high=%d unique minted=%d discarded block accounting=%d", modelHigh, len(seen), abandoned)
++}
++
++func TestIndependentRecipientBindingBoundaryAndConcurrentExactSet(t *testing.T) {
++	graph := GraphID{1}
++	session := RecipientSession{ID: [16]byte{2}, Incarnation: [16]byte{3}, Epoch: 1}
++	authority, e := NewAuthority([16]byte{4}, 1)
++	if e != nil {
++		t.Fatal(e)
++	}
++	state, e := NewState(graph, authority, MaxBlockSize)
++	if e != nil {
++		t.Fatal(e)
++	}
++	state.high = math.MaxUint64 - 64
++	request := GrantRequest{Graph: graph, Session: session, Sequence: math.MaxUint64, Count: 64}
++	_, block, _, e := Reserve(&state, Request{Graph: graph, Authority: authority, Sequence: 1, Count: 64})
++	if e != nil {
++		t.Fatal(e)
++	}
++	for _, field := range []string{"graph", "session-id", "incarnation", "epoch", "sequence", "count", "zero-range"} {
++		t.Run(field, func(t *testing.T) {
++			recipient, e := NewRecipient(graph, session)
++			if e != nil {
++				t.Fatal(e)
++			}
++			grant := Grant{Request: request, Reservation: block}
++			switch field {
++			case "graph":
++				grant.Request.Graph[0]++
++			case "session-id":
++				grant.Request.Session.ID[0]++
++			case "incarnation":
++				grant.Request.Session.Incarnation[0]++
++			case "epoch":
++				grant.Request.Session.Epoch++
++			case "sequence":
++				grant.Request.Sequence--
++			case "count":
++				grant.Reservation.Request.Count--
++			case "zero-range":
++				grant.Reservation.First = 0
++			}
++			if _, e = recipient.Acquire(t.Context(), request, func(GrantRequest) (Grant, error) { return grant, nil }); !errors.Is(e, ErrPayloadMismatch) {
++				t.Fatal(e)
++			}
++		})
++	}
++	recipient, e := NewRecipient(graph, session)
++	if e != nil {
++		t.Fatal(e)
++	}
++	cursor, e := recipient.Acquire(t.Context(), request, func(GrantRequest) (Grant, error) { return Grant{Request: request, Reservation: block}, nil })
++	if e != nil {
++		t.Fatal(e)
++	}
++	ids := make(chan uint64, 64)
++	failures := make(chan error, 8)
++	var wg sync.WaitGroup
++	for range 8 {
++		wg.Go(func() {
++			for range 8 {
++				id, e := cursor.Next()
++				if e != nil {
++					failures <- e
++					return
++				}
++				ids <- id
++			}
++		})
++	}
++	wg.Wait()
++	close(ids)
++	if len(failures) > 0 {
++		t.Fatal(<-failures)
++	}
++	seen := map[uint64]bool{}
++	for id := range ids {
++		if id < math.MaxUint64-63 || seen[id] {
++			t.Fatal(id)
++		}
++		seen[id] = true
++	}
++	if len(seen) != 64 || !seen[math.MaxUint64] {
++		t.Fatal("inexact terminal set", len(seen))
++	}
++	if id, e := cursor.Next(); id != 0 || !errors.Is(e, ErrExhausted) {
++		t.Fatal("wrapped", id, e)
++	}
++	wrapped := request
++	wrapped.Sequence = 0
++	if _, e = recipient.Acquire(t.Context(), wrapped, func(GrantRequest) (Grant, error) { t.Fatal("wrapped request delivered"); return Grant{}, nil }); !errors.Is(e, ErrInvalid) {
++		t.Fatal(e)
++	}
++}
+diff --git a/v5/internal/txnproto/independent_writer_test.go b/v5/internal/txnproto/independent_writer_test.go
+new file mode 100644
+index 0000000..7b75c9c
+--- /dev/null
++++ b/v5/internal/txnproto/independent_writer_test.go
+@@ -0,0 +1,615 @@
++package txnproto
++
++import (
++	"context"
++	"errors"
++	"fmt"
++	"testing"
++
++	"github.com/cockroachdb/pebble/v2/vfs"
++	"github.com/data-insights-ai/rho-tkg/v5/internal/idalloc"
++	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
++)
++
++// These tests use completed Host.Read barriers and actual replicated application
++// entries, rather than a synthetic durable callback or caller quorum boolean.
++func TestIndependentDelayedCommittedGrantAfterRecipientRotation(t *testing.T) {
++	n := allocationNetwork(t)
++	p, e := n.hosts[1].TransferAllocator(n.read(t, 1, Query{Kind: AllocatorState}))
++	n.submit(t, 1, p, e)
++	original := activateRecipient(t, n, 1, [16]byte{31})
++	other := activateRecipient(t, n, 4, [16]byte{32})
++	otherCursor, otherProof := acquire(t, n, other, 1, 4)
++	var delayed Reply
++	var replacement *RecipientHandle
++	_, e = original.Acquire(t.Context(), 1, 3, func(ctx context.Context, intent Proposal, q Query) (Reply, error) {
++		var err error
++		delayed, err = allocationTransport(t, n, 1)(ctx, intent, q)
++		if err != nil {
++			return Reply{}, err
++		}
++		replacement = activateRecipient(t, n, 1, original.session.ID)
++		return delayed, nil
++	})
++	if !errors.Is(e, ErrStale) {
++		t.Fatal("delayed old-session response opened cursor", e)
++	}
++	high := n.read(t, 1, Query{Kind: AllocatorState}).View().Allocator.HighWater
++	if high != 7 {
++		t.Fatal("unknown reservation not retained", high)
++	}
++	fresh, freshProof := acquire(t, n, replacement, 1, 2)
++	if freshProof.View().Grant.First != 8 {
++		t.Fatal("old range reused", freshProof.View().Grant)
++	}
++	if id, e := fresh.Next(); e != nil || id != 8 {
++		t.Fatal(id, e)
++	}
++	// A service outage cannot revoke a disjoint B block or add per-ID requests.
++	for _, id := range []uint64{1, 2, 3} {
++		n.drop[id] = true
++	}
++	for j := range 4 {
++		id, e := otherCursor.Next()
++		if e != nil || id != uint64(j+1) {
++			t.Fatal("other block invalidated", id, e)
++		}
++		x := tx(fmt.Sprintf("independent-cached-%d", j), 1, participant(1, uint64(j), Effect{Key: fmt.Sprintf("row%d", j), Value: int64(id)}))
++		p, e = LocalIDs(x, otherProof, []uint64{id})
++		n.submit(t, 4, p, e)
++		if n.hosts[4].machine.last != nil {
++			t.Fatal(n.hosts[4].machine.last)
++		}
++		if !n.read(t, 4, Query{Kind: Decided, TxID: x.ID}).View().Decision.Commit {
++			t.Fatal("cached local commit not committed")
++		}
++	}
++	if _, e = otherCursor.Next(); !errors.Is(e, idalloc.ErrExhausted) {
++		t.Fatal(e)
++	}
++	got := n.read(t, 4, Query{Kind: Current}).View().State
++	exact(t, *got, map[string]int64{"row0": 1, "row1": 2, "row2": 3, "row3": 4})
++	t.Log("late committed range [5,7] abandoned; replacement [8,9]; B exact [1,4] committed without A")
++}
++
++func independentReopenAllocation(t *testing.T, n *network, id uint64, checkpoint bool) {
++	t.Helper()
++	if checkpoint {
++		if e := n.hosts[id].SaveCheckpoint(); e != nil {
++			t.Fatal(e)
++		}
++	}
++	oldSession := n.hosts[id].readSession
++	crash := n.files[id].CrashClone(vfs.CrashCloneCfg{})
++	if e := n.hosts[id].Close(); e != nil {
++		t.Fatal(e)
++	}
++	store, e := raftlog.Open(raftlog.Config{Dir: fmt.Sprint(id), FS: crash})
++	if e != nil {
++		t.Fatal(e)
++	}
++	host, e := OpenHost(allocationConfig(uint8((id-1)/3)), store, id)
++	if e != nil {
++		t.Fatal(e)
++	}
++	if host.readSession == oldSession {
++		t.Fatal("reopen reused incarnation")
++	}
++	n.hosts[id] = host
++	n.files[id] = crash
++	n.elect(t, id)
++}
++
++func independentActivateRecoveredHome(t *testing.T, n *network, home uint64, key [16]byte) *RecipientHandle {
++	t.Helper()
++	current := n.read(t, home, Query{Kind: RecipientState, RecipientID: key})
++	p, e := n.hosts[home].BeginRecipient(key, current)
++	n.submit(t, 1, p, e)
++	begin := n.read(t, 1, Query{Kind: RecipientState, RecipientID: key})
++	for _, dest := range []uint64{1, 4} {
++		p, e = FenceRecipient(begin)
++		n.submit(t, dest, p, e)
++	}
++	b := n.read(t, 4, Query{Kind: RecipientState, RecipientID: key})
++	p, e = RecordRecipientFence(b)
++	n.submit(t, 1, p, e)
++	a := n.read(t, 1, Query{Kind: RecipientState, RecipientID: key})
++	ack := n.read(t, 1, Query{Kind: RecipientAck, RecipientID: key})
++	p, e = ActivateRecipient(a, ack)
++	n.submit(t, 1, p, e)
++	active := n.read(t, 1, Query{Kind: RecipientState, RecipientID: key})
++	p, e = PublishRecipient(active)
++	n.submit(t, 4, p, e)
++	handle, e := n.hosts[home].OpenRecipient(n.read(t, home, Query{Kind: RecipientState, RecipientID: key}))
++	if e != nil {
++		t.Fatal(e)
++	}
++	return handle
++}
++
++func TestIndependentWriterRestartLogReplayAndOwnHomeProof(t *testing.T) {
++	for _, checkpoint := range []bool{false, true} {
++		t.Run(fmt.Sprintf("checkpoint=%v", checkpoint), func(t *testing.T) {
++			n := allocationNetwork(t)
++			p, e := n.hosts[1].TransferAllocator(n.read(t, 1, Query{Kind: AllocatorState}))
++			n.submit(t, 1, p, e)
++			writerA := activateRecipient(t, n, 1, [16]byte{41})
++			writerB := activateRecipient(t, n, 4, [16]byte{42})
++			cursorA, proofA := acquire(t, n, writerA, 1, 4)
++			cursorB, proofB := acquire(t, n, writerB, 1, 4)
++			firstB, e := cursorB.Next()
++			if e != nil || firstB != 5 {
++				t.Fatal(firstB, e)
++			}
++			oldActive := n.read(t, 4, Query{Kind: RecipientState, RecipientID: writerB.session.ID})
++			independentReopenAllocation(t, n, 4, checkpoint)
++			if _, e = n.hosts[4].OpenRecipient(oldActive); !errors.Is(e, ErrStale) {
++				t.Fatal("old process proof reopened recipient", e)
++			}
++			if _, e = n.hosts[4].OpenRecipient(n.read(t, 4, Query{Kind: RecipientState, RecipientID: writerB.session.ID})); !errors.Is(e, ErrStale) {
++				t.Fatal("inspection revived old incarnation", e)
++			}
++			newB := independentActivateRecoveredHome(t, n, 4, writerB.session.ID)
++			newCursor, newProof := acquire(t, n, newB, 1, 2)
++			if newProof.View().Grant.First != 9 || newB.session.Epoch != 2 || newB.session.Incarnation == writerB.session.Incarnation {
++				t.Fatal("restart reused reserved tail/session", newProof.View().Grant, newB.session)
++			}
++			stale := tx("independent-old-B", 1, participant(1, 0, Effect{Key: "phantom", Value: 99}))
++			p, e = LocalIDs(stale, proofB, []uint64{firstB})
++			n.submit(t, 4, p, e)
++			if !errors.Is(n.hosts[4].machine.last, ErrStale) {
++				t.Fatal("old cached grant committed", n.hosts[4].machine.last)
++			}
++			for j := range 4 {
++				id, e := cursorA.Next()
++				if e != nil || id != uint64(j+1) {
++					t.Fatal("A tail changed across B restart", id, e)
++				}
++				x := tx(fmt.Sprintf("independent-A-%d", j), 0, participant(0, uint64(j), Effect{Key: fmt.Sprintf("a%d", j), Value: int64(id)}))
++				p, e = LocalIDs(x, proofA, []uint64{id})
++				n.submit(t, 1, p, e)
++				if n.hosts[1].machine.last != nil {
++					t.Fatal("A grant invalidated", n.hosts[1].machine.last)
++				}
++			}
++			id, e := newCursor.Next()
++			if e != nil || id != 9 {
++				t.Fatal(id, e)
++			}
++			x := tx("independent-new-B", 1, participant(1, 0, Effect{Key: "fresh", Value: int64(id)}))
++			p, e = LocalIDs(x, newProof, []uint64{id})
++			n.submit(t, 4, p, e)
++			if n.hosts[4].machine.last != nil {
++				t.Fatal(n.hosts[4].machine.last)
++			}
++			exact(t, *n.read(t, 4, Query{Kind: Current}).View().State, map[string]int64{"fresh": 9})
++			t.Log("A [1,4] remains usable; B partial [5,8] retired; new B [9,10]; phantom absent")
++		})
++	}
++}
++
++func TestIndependentSixProcessUncheckpointedWriterRestart(t *testing.T) {
++	n := newProcessClusterMode(t, true)
++	service := n.read(1, Query{Kind: AllocatorState})
++	n.submit(1, n.build(1, processRequest{Op: "service", Handle: service.Handle}))
++	writerA := n.recipient(1, [16]byte{51})
++	writerB := n.recipient(4, [16]byte{52})
++	cursorA, proofA := n.acquireIDs(1, writerA, 1, 4, false)
++	cursorB, proofB := n.acquireIDs(4, writerB, 1, 4, false)
++	oldID := n.run(4, processRequest{Op: "mint", Handle: cursorB}).ID
++	if oldID != 5 {
++		t.Fatal(oldID)
++	}
++	n.stage = "independent-uncheckpointed-writer-SIGKILL"
++	n.crashReopen(4)
++	if got := n.rpc(4, processRequest{Op: "mint", Handle: cursorB}); !errors.Is(processErr(got.Err), ErrUnavailable) {
++		t.Fatal("cursor restored", got.Err)
++	}
++	writerB = n.recipient(4, [16]byte{52})
++	_, fresh := n.acquireIDs(4, writerB, 1, 2, false)
++	if fresh.View.Grant.First != 9 || fresh.View.Grant.Request.Session.Epoch != 2 {
++		t.Fatal("uncheckpointed replay reused tail", fresh.View.Grant)
++	}
++	oldProof := n.read(4, proofB.Query)
++	oldTx := tx("independent-process-old", 1, participant(1, 0, Effect{Key: "phantom", Value: 99}))
++	n.submit(4, n.build(4, processRequest{Op: "local-ids", Handle: oldProof.Handle, Tx: oldTx, IDs: []uint64{oldID}}))
++	if got := n.rpc(4, processRequest{Op: "last"}); !errors.Is(processErr(got.Err), ErrStale) {
++		t.Fatal("old process claim committed", got.Err)
++	}
++	id := n.run(1, processRequest{Op: "mint", Handle: cursorA}).ID
++	if id != 1 {
++		t.Fatal("other process cached range changed", id)
++	}
++	x := tx("independent-process-cached", 0, participant(0, 0, Effect{Key: "cached", Value: int64(id)}))
++	n.submit(1, n.build(1, processRequest{Op: "local-ids", Handle: proofA.Handle, Tx: x, IDs: []uint64{id}}))
++	if !n.read(1, Query{Kind: Decided, TxID: x.ID}).View.Decision.Commit {
++		t.Fatal("surviving process could not commit")
++	}
++	exact(t, *n.read(4, Query{Kind: Current}).View.State, map[string]int64{})
++	exact(t, *n.read(1, Query{Kind: Current}).View.State, map[string]int64{"cached": 1})
++	t.Logf("six actual processes: uncheckpointed B killed/replayed; old [5,8] fenced; new [9,10]; A [1,4] commits; events=%d", n.steps)
++}
++
++func TestIndependentRetainedGrantReplayDoesNotAllocateAfterLaterRefills(t *testing.T) {
++	n := allocationNetwork(t)
++	p, e := n.hosts[1].TransferAllocator(n.read(t, 1, Query{Kind: AllocatorState}))
++	n.submit(t, 1, p, e)
++	h := activateRecipient(t, n, 4, [16]byte{61})
++	_, old := acquire(t, n, h, 1, 2)
++	for sequence := uint64(2); sequence <= 4; sequence++ {
++		acquire(t, n, h, sequence, 2)
++	}
++	high := n.read(t, 1, Query{Kind: AllocatorState}).View().Allocator.HighWater
++	r := old.View().Grant.Request
++	intent, e := allocationProposal(allocationCommand{Op: "reserve", Request: &r})
++	if e != nil {
++		t.Fatal(e)
++	}
++	p, e = n.hosts[1].AuthorizeReserve(intent, n.read(t, 1, Query{Kind: AllocatorState}))
++	n.submit(t, 1, p, e)
++	same := n.read(t, 1, grantQuery(r))
++	if *same.View().Grant != *old.View().Grant || n.read(t, 1, Query{Kind: AllocatorState}).View().Allocator.HighWater != high {
++		t.Fatal("retained replay changed block/high-water")
++	}
++	if _, e = h.Acquire(t.Context(), 1, 2, func(context.Context, Proposal, Query) (Reply, error) {
++		t.Fatal("old request redelivered")
++		return Reply{}, nil
++	}); !errors.Is(e, idalloc.ErrAlreadyReserved) {
++		t.Fatal(e)
++	}
++	r.Count++
++	intent, e = allocationProposal(allocationCommand{Op: "reserve", Request: &r})
++	if e != nil {
++		t.Fatal(e)
++	}
++	p, e = n.hosts[1].AuthorizeReserve(intent, n.read(t, 1, Query{Kind: AllocatorState}))
++	n.submit(t, 1, p, e)
++	if !errors.Is(n.hosts[1].machine.last, ErrMismatch) {
++		t.Fatal("old retained identity changed payload", n.hosts[1].machine.last)
++	}
++	if n.read(t, 1, Query{Kind: AllocatorState}).View().Allocator.HighWater != 8 {
++		t.Fatal("replay advanced high-water")
++	}
++	t.Log("service reducer keeps latest receipt; protocol retained grant sequence 1 unchanged after refills 2..4")
++}
++
++func TestIndependentPublicBoundariesAndActualSessionEvidence(t *testing.T) {
++	n := allocationNetwork(t)
++	service := n.read(t, 1, Query{Kind: AllocatorState})
++	p, e := n.hosts[1].TransferAllocator(service)
++	n.submit(t, 1, p, e)
++	h := activateRecipient(t, n, 4, [16]byte{71})
++	active := n.read(t, 4, Query{Kind: RecipientState, RecipientID: h.session.ID})
++	var nilHost *Host
++	var nilHandle *RecipientHandle
++	for _, call := range []func() error{
++		func() error { _, e := nilHost.OpenRecipient(active); return e },
++		func() error { _, e := nilHost.TransferAllocator(service); return e },
++		func() error { _, e := nilHost.BeginRecipient([16]byte{1}, Proof{}); return e },
++		func() error { _, e := nilHost.AuthorizeReserve(Proposal{}, service); return e },
++		func() error { _, e := nilHandle.Acquire(t.Context(), 1, 1, allocationTransport(t, n, 4)); return e },
++		func() error { _, e := h.Acquire(nil, 1, 1, allocationTransport(t, n, 4)); return e }, //nolint:staticcheck // Required nil-input contract.
++		func() error { _, e := h.Acquire(t.Context(), 1, 1, nil); return e },
++		func() error { _, e := n.hosts[4].BeginRecipient([16]byte{}, Proof{}); return e },
++	} {
++		if e := call(); !errors.Is(e, ErrInvalid) {
++			t.Fatal(e)
++		}
++	}
++	if _, e = n.hosts[4].OpenRecipient(active); !errors.Is(e, idalloc.ErrAlreadyReserved) {
++		t.Fatal("second live session opened", e)
++	}
++	if _, e = n.hosts[1].OpenRecipient(active); !errors.Is(e, ErrStale) {
++		t.Fatal("other host opened session", e)
++	}
++	if _, e = n.hosts[4].BeginRecipient(h.session.ID, service); !errors.Is(e, ErrStale) {
++		t.Fatal("allocator evidence used as recipient", e)
++	}
++	if _, e = n.hosts[4].BeginRecipient([16]byte{99}, active); !errors.Is(e, ErrStale) {
++		t.Fatal("proof did not bind recipient ID", e)
++	}
++	for _, call := range []func() error{
++		func() error { _, e := FenceRecipient(service); return e },
++		func() error { _, e := ActivateRecipient(service, active); return e },
++		func() error { _, e := PublishRecipient(service); return e },
++		func() error { _, e := InstallGrant(active); return e },
++		func() error { _, e := RecordRecipientFence(service); return e },
++	} {
++		if e := call(); !errors.Is(e, ErrUnavailable) {
++			t.Fatal("wrong evidence kind accepted", e)
++		}
++	}
++	if _, e = n.hosts[1].AuthorizeReserve(Proposal{}, service); !errors.Is(e, ErrInvalid) {
++		t.Fatal(e)
++	}
++	if _, e = n.hosts[1].AuthorizeReserve(Proposal{}, active); !errors.Is(e, ErrInvalid) {
++		t.Fatal(e)
++	}
++	for _, request := range []struct{ sequence, count uint64 }{{0, 1}, {1, 0}, {1, idalloc.MaxBlockSize + 1}} {
++		if _, e = h.Acquire(t.Context(), request.sequence, request.count, func(context.Context, Proposal, Query) (Reply, error) {
++			t.Fatal("invalid request submitted")
++			return Reply{}, nil
++		}); !errors.Is(e, idalloc.ErrInvalid) {
++			t.Fatal(e)
++		}
++	}
++	ctx, cancel := context.WithCancel(t.Context())
++	cancel()
++	if _, e = h.Acquire(ctx, 1, 1, func(context.Context, Proposal, Query) (Reply, error) {
++		t.Fatal("cancelled request submitted")
++		return Reply{}, nil
++	}); !errors.Is(e, context.Canceled) {
++		t.Fatal(e)
++	}
++	// The cancellation did not burn sequence 1; real quorum evidence grants it.
++	_, grant := acquire(t, n, h, 1, 1)
++	if grant.View().Grant.First != 1 {
++		t.Fatal(grant.View())
++	}
++	for _, call := range []func() error{
++		func() error { _, e := RegisterIDs(tx("no-grant", 0, participant(0, 0)), active, []uint64{1}); return e },
++		func() error { _, e := LocalIDs(tx("no-grant", 0, participant(0, 0)), active, []uint64{1}); return e },
++	} {
++		if e := call(); !errors.Is(e, ErrUnavailable) {
++			t.Fatal(e)
++		}
++	}
++	if e = n.hosts[4].Close(); e != nil {
++		t.Fatal(e)
++	}
++	for _, call := range []func() error{
++		func() error { _, e := n.hosts[4].OpenRecipient(active); return e },
++		func() error { _, e := n.hosts[4].BeginRecipient(h.session.ID, active); return e },
++		func() error { _, e := n.hosts[4].TransferAllocator(service); return e },
++		func() error { _, e := n.hosts[4].AuthorizeReserve(Proposal{}, service); return e },
++	} {
++		if e := call(); !errors.Is(e, ErrUnavailable) {
++			t.Fatal("closed host remained active", e)
++		}
++	}
++	if _, e = h.Acquire(t.Context(), 2, 1, func(context.Context, Proposal, Query) (Reply, error) {
++		t.Fatal("closed host submitted")
++		return Reply{}, nil
++	}); !errors.Is(e, ErrStale) {
++		t.Fatal(e)
++	}
++}
++
++func TestIndependentReplyTamperingUnknownAndRecovery(t *testing.T) {
++	for _, fault := range []string{"transport-before", "transport-after", "reply-error", "query-count", "read-sequence", "read-session", "prior-proof"} {
++		t.Run(fault, func(t *testing.T) {
++			n := allocationNetwork(t)
++			p, e := n.hosts[1].TransferAllocator(n.read(t, 1, Query{Kind: AllocatorState}))
++			n.submit(t, 1, p, e)
++			h := activateRecipient(t, n, 4, [16]byte{81})
++			prior := n.read(t, 4, Query{Kind: RecipientState, RecipientID: h.session.ID})
++			_, e = h.Acquire(t.Context(), 1, 2, func(ctx context.Context, p Proposal, q Query) (Reply, error) {
++				if fault == "transport-before" {
++					return Reply{}, ErrUnavailable
++				}
++				reply, e := allocationTransport(t, n, 4)(ctx, p, q)
++				if e != nil {
++					return Reply{}, e
++				}
++				switch fault {
++				case "transport-after":
++					return Reply{}, ErrUnavailable
++				case "reply-error":
++					reply.Err = ErrUnavailable
++				case "query-count":
++					reply.Query.Count++
++				case "read-sequence":
++					reply.ReadID.Sequence++
++				case "read-session":
++					reply.ReadID.Session[0]++
++				case "prior-proof":
++					reply.Proof = prior
++				}
++				return reply, nil
++			})
++			want := ErrMismatch
++			if fault == "transport-before" || fault == "transport-after" || fault == "reply-error" {
++				want = idalloc.ErrUnknown
++			}
++			if !errors.Is(e, want) {
++				t.Fatal("bad delivery accepted", e, want)
++			}
++			if _, e = h.Acquire(t.Context(), 1, 2, func(context.Context, Proposal, Query) (Reply, error) {
++				t.Fatal("uncertain attempt redelivered")
++				return Reply{}, nil
++			}); !errors.Is(e, idalloc.ErrAlreadyReserved) {
++				t.Fatal(e)
++			}
++			cursor, g := acquire(t, n, h, 2, 2)
++			expected := uint64(3)
++			if fault == "transport-before" {
++				expected = 1
++			}
++			id, e := cursor.Next()
++			if e != nil || id != expected || g.View().Grant.First != expected {
++				t.Fatal("uncertain range reused", id, e, g.View().Grant)
++			}
++			exact(t, *n.read(t, 4, Query{Kind: Current}).View().State, map[string]int64{})
++		})
++	}
++}
++
++func TestIndependentSessionSequenceBoundsAndCoordinatorRequestBinding(t *testing.T) {
++	n := allocationNetwork(t)
++	p, e := n.hosts[1].TransferAllocator(n.read(t, 1, Query{Kind: AllocatorState}))
++	n.submit(t, 1, p, e)
++	a := activateRecipient(t, n, 1, [16]byte{91})
++	b := activateRecipient(t, n, 4, [16]byte{92})
++	if a.session.ID == b.session.ID || a.session.Incarnation == b.session.Incarnation || a.session.Epoch != 1 || b.session.Epoch != 1 {
++		t.Fatal("writers share session")
++	}
++	// A recipient's max sequence does not consume the graph's max sequence.
++	_, g := acquire(t, n, b, ^uint64(0), 1)
++	if g.View().Grant.Sequence != 1 || g.View().Grant.Request.Sequence != ^uint64(0) {
++		t.Fatal("session and global sequences mixed", g.View().Grant)
++	}
++	if _, e = b.Acquire(t.Context(), 0, 1, func(context.Context, Proposal, Query) (Reply, error) {
++		t.Fatal("wrapped request submitted")
++		return Reply{}, nil
++	}); !errors.Is(e, idalloc.ErrInvalid) {
++		t.Fatal(e)
++	}
++	_, other := acquire(t, n, a, 1, 2)
++	if other.View().Grant.First != 2 {
++		t.Fatal("other writer sequence blocked", other.View().Grant)
++	}
++	x := tx("independent-bound-request", 0, participant(0, 0, Effect{Key: "one", Value: 2}))
++	p, e = LocalIDs(x, other, []uint64{2})
++	n.submit(t, 1, p, e)
++	if n.hosts[1].machine.last != nil {
++		t.Fatal(n.hosts[1].machine.last)
++	}
++	changed := x
++	changed.ID = "independent-reused-request"
++	changed.Participants = []Participant{participant(0, 1, Effect{Key: "phantom", Value: 3})}
++	p, e = LocalIDs(changed, other, []uint64{3})
++	n.submit(t, 1, p, e)
++	if !errors.Is(n.hosts[1].machine.last, ErrMismatch) {
++		t.Fatal("coordinator request rebound", n.hosts[1].machine.last)
++	}
++	changed = x
++	changed.Request = "different-request"
++	p, e = LocalIDs(changed, other, []uint64{2})
++	n.submit(t, 1, p, e)
++	if !errors.Is(n.hosts[1].machine.last, ErrMismatch) {
++		t.Fatal("transaction identity rebound", n.hosts[1].machine.last)
++	}
++	changed = x
++	changed.ID = "foreign-graph"
++	changed.Request = "foreign-graph"
++	changed.Graph = "another-graph"
++	p, e = LocalIDs(changed, other, []uint64{3})
++	n.submit(t, 1, p, e)
++	if !errors.Is(n.hosts[1].machine.last, ErrStale) {
++		t.Fatal("grant crossed graph", n.hosts[1].machine.last)
++	}
++	// Publicly invalid version is rejected before proposing any replicated work.
++	p.command.Version++
++	if _, e = n.hosts[1].Submit(p); !errors.Is(e, ErrInvalid) {
++		t.Fatal("wrong protocol version accepted", e)
++	}
++	exact(t, *n.read(t, 1, Query{Kind: Current}).View().State, map[string]int64{"one": 2})
++	t.Log("distinct home sessions, recipient max sequence/global sequence 1, immutable coordinator request/Tx identity, foreign graph absent")
++}
++
++func TestIndependentUnavailableAuthorityAndDefiniteCountRejection(t *testing.T) {
++	n := allocationNetwork(t)
++	p, e := n.hosts[1].TransferAllocator(n.read(t, 1, Query{Kind: AllocatorState}))
++	n.submit(t, 1, p, e)
++	h := activateRecipient(t, n, 4, [16]byte{101})
++	// Count is locally bounded, but exceeds this graph's committed block bound.
++	_, e = h.Acquire(t.Context(), 1, 17, func(_ context.Context, intent Proposal, _ Query) (Reply, error) {
++		p, e := n.hosts[1].AuthorizeReserve(intent, n.read(t, 1, Query{Kind: AllocatorState}))
++		if e != nil {
++			return Reply{}, e
++		}
++		n.submit(t, 1, p, nil)
++		if !errors.Is(n.hosts[1].machine.last, idalloc.ErrInvalid) {
++			t.Fatal("graph block maximum ignored", n.hosts[1].machine.last)
++		}
++		return Reply{}, n.hosts[1].machine.last
++	})
++	if !errors.Is(e, idalloc.ErrUnknown) || !errors.Is(e, idalloc.ErrInvalid) {
++		t.Fatal(e)
++	}
++	if n.read(t, 1, Query{Kind: AllocatorState}).View().Allocator.HighWater != 0 {
++		t.Fatal("rejected block consumed range")
++	}
++	cursor, g := acquire(t, n, h, 2, 16)
++	if g.View().Grant.First != 1 || g.View().Grant.Last != 16 {
++		t.Fatal(g.View().Grant)
++	}
++	service := n.read(t, 1, Query{Kind: AllocatorState})
++	for _, id := range []uint64{1, 2, 3} {
++		n.drop[id] = true
++	}
++	_, e = h.Acquire(t.Context(), 3, 1, func(_ context.Context, intent Proposal, q Query) (Reply, error) {
++		p, e := n.hosts[1].AuthorizeReserve(intent, service)
++		if e != nil {
++			return Reply{}, e
++		}
++		out, e := n.hosts[1].Submit(p)
++		n.run(t, 1, out, e)
++		n.replies[1] = nil
++		out, e = n.hosts[1].Read(q)
++		n.run(t, 1, out, e)
++		for _, reply := range n.replies[1] {
++			if reply.ReadID == out.ReadID && reply.Err == nil {
++				t.Fatal("new grant proof while allocator quorum unavailable")
++			}
++		}
++		return Reply{}, ErrUnavailable
++	})
++	if !errors.Is(e, idalloc.ErrUnknown) {
++		t.Fatal("unavailable authority minted", e)
++	}
++	if _, e = h.Acquire(t.Context(), 3, 1, func(context.Context, Proposal, Query) (Reply, error) {
++		t.Fatal("uncertain request resubmitted")
++		return Reply{}, nil
++	}); !errors.Is(e, idalloc.ErrAlreadyReserved) {
++		t.Fatal(e)
++	}
++	id, e := cursor.Next()
++	if e != nil || id != 1 {
++		t.Fatal("quorum loss revoked cached range", id, e)
++	}
++	for _, id := range []uint64{1, 2, 3} {
++		delete(n.drop, id)
++	}
++	n.elect(t, 1)
++	high := n.read(t, 1, Query{Kind: AllocatorState}).View().Allocator.HighWater
++	if high < 16 || high > 17 {
++		t.Fatal("unknown attempt corrupted high-water", high)
++	}
++	_, later := acquire(t, n, h, 4, 1)
++	if later.View().Grant.First != high+1 {
++		t.Fatal("post-outage overlapping range", later.View().Grant, high)
++	}
++	t.Logf("bound rejection reserves nothing; unavailable refill burns attempt; cached ID1 stays local; post-recovery high=%d", high)
++}
++
++func TestIndependentDelayedFenceCannotRegressActiveRecipient(t *testing.T) {
++	n := allocationNetwork(t)
++	p, e := n.hosts[1].TransferAllocator(n.read(t, 1, Query{Kind: AllocatorState}))
++	n.submit(t, 1, p, e)
++	key := [16]byte{111}
++	beginProposal, e := n.hosts[1].BeginRecipient(key, Proof{})
++	n.submit(t, 1, beginProposal, e)
++	begin := n.read(t, 1, Query{Kind: RecipientState, RecipientID: key})
++	fence, e := FenceRecipient(begin)
++	if e != nil {
++		t.Fatal(e)
++	}
++	n.submit(t, 1, fence, nil)
++	n.submit(t, 4, fence, nil)
++	a := n.read(t, 1, Query{Kind: RecipientState, RecipientID: key})
++	b := n.read(t, 4, Query{Kind: RecipientState, RecipientID: key})
++	p, e = ActivateRecipient(a, b)
++	n.submit(t, 1, p, e)
++	active := n.read(t, 1, Query{Kind: RecipientState, RecipientID: key})
++	p, e = PublishRecipient(active)
++	n.submit(t, 4, p, e)
++	h, e := n.hosts[1].OpenRecipient(active)
++	if e != nil {
++		t.Fatal(e)
++	}
++	cursor, grant := acquire(t, n, h, 1, 2)
++	// A delayed duplicate of the legitimately committed begin's fence is still
++	// old work. It cannot undo activation, zero LastSequence, or revoke this grant.
++	n.submit(t, 1, fence, nil)
++	after := n.read(t, 1, Query{Kind: RecipientState, RecipientID: key}).View().Recipient
++	id, mintErr := cursor.Next()
++	write := tx("independent-delayed-fence-cached", 0, participant(0, 0, Effect{Key: "cached", Value: int64(id)}))
++	p, e = LocalIDs(write, grant, []uint64{id})
++	n.submit(t, 1, p, e)
++	writeErr := n.hosts[1].machine.last
++	_, refillErr := h.Acquire(t.Context(), 2, 1, allocationTransport(t, n, 1))
++	if after.Phase != "active" || after.LastSequence != 1 || after.Session != active.View().Recipient.Session || id != grant.View().Grant.First || mintErr != nil || writeErr != nil || refillErr != nil {
++		t.Fatalf("delayed fence regressed active recipient: phase=%s sequence=%d session=%+v; grant [%d,%d]; mint=%d/%v cached-write=%v refill=%v", after.Phase, after.LastSequence, after.Session, grant.View().Grant.First, grant.View().Grant.Last, id, mintErr, writeErr, refillErr)
++	}
++}
+diff --git a/v5/internal/txnproto/independent_fence_replay_test.go b/v5/internal/txnproto/independent_fence_replay_test.go
+new file mode 100644
+index 0000000..3ef1421
+--- /dev/null
++++ b/v5/internal/txnproto/independent_fence_replay_test.go
+@@ -0,0 +1,281 @@
++package txnproto
++
++import (
++	"errors"
++	"fmt"
++	"testing"
++
++	"github.com/data-insights-ai/rho-tkg/v5/internal/idalloc"
++)
++
++// The proof/proposals below come from completed quorum reads. Replays are
++// delivered through Host.Submit and committed by the real replicated reducer.
++func TestIndependentFenceReplayBothHomesThroughRestart(t *testing.T) {
++	for _, home := range []uint64{1, 4} {
++		t.Run(fmt.Sprintf("home=%d", home), func(t *testing.T) {
++			n := allocationNetwork(t)
++			p, e := n.hosts[1].TransferAllocator(n.read(t, 1, Query{Kind: AllocatorState}))
++			n.submit(t, 1, p, e)
++			key := [16]byte{121}
++			beginProposal, e := n.hosts[home].BeginRecipient(key, Proof{})
++			n.submit(t, 1, beginProposal, e)
++			begin := n.read(t, 1, Query{Kind: RecipientState, RecipientID: key})
++			fencePending, e := FenceRecipient(begin)
++			if e != nil {
++				t.Fatal(e)
++			}
++			for _, dest := range []uint64{1, 4} {
++				n.submit(t, dest, fencePending, nil)
++				before := n.read(t, dest, Query{Kind: RecipientState, RecipientID: key}).View().Recipient
++				n.submit(t, dest, fencePending, nil)
++				after := n.read(t, dest, Query{Kind: RecipientState, RecipientID: key}).View().Recipient
++				if digest(before) != digest(after) || after.Phase != "fenced" {
++					t.Fatal("pre-activation duplicate changed fence", dest, before, after)
++				}
++			}
++			// The old begin can arrive after its fence, without moving it back to pending.
++			n.submit(t, 1, beginProposal, nil)
++			a := n.read(t, 1, Query{Kind: RecipientState, RecipientID: key})
++			b := n.read(t, 4, Query{Kind: RecipientState, RecipientID: key})
++			if a.View().Recipient.Phase != "fenced" {
++				t.Fatal("begin replay regressed fence")
++			}
++			fenceFenced, e := FenceRecipient(a)
++			if e != nil {
++				t.Fatal(e)
++			}
++			for _, dest := range []uint64{1, 4} {
++				n.submit(t, dest, fenceFenced, nil)
++			}
++			p, e = ActivateRecipient(a, b)
++			n.submit(t, 1, p, e)
++			active := n.read(t, 1, Query{Kind: RecipientState, RecipientID: key})
++			p, e = PublishRecipient(active)
++			n.submit(t, 4, p, e)
++			handle, e := n.hosts[home].OpenRecipient(n.read(t, home, Query{Kind: RecipientState, RecipientID: key}))
++			if e != nil {
++				t.Fatal(e)
++			}
++			cursor, grant := acquire(t, n, handle, 1, 4)
++			otherHome := uint64(5) - home
++			other := activateRecipient(t, n, otherHome, [16]byte{122})
++			otherCursor, otherGrant := acquire(t, n, other, 1, 4)
++			before := [2]*RecipientRecord{}
++			for index, dest := range []uint64{1, 4} {
++				before[index] = n.read(t, dest, Query{Kind: RecipientState, RecipientID: key}).View().Recipient
++			}
++			n.submit(t, 1, beginProposal, nil)
++			// Both source pending and source fenced observations are delayed duplicates.
++			for _, fence := range []Proposal{fenceFenced, fencePending, fenceFenced, fencePending} {
++				for _, dest := range []uint64{4, 1} {
++					n.submit(t, dest, fence, nil)
++				}
++			}
++			for index, dest := range []uint64{1, 4} {
++				after := n.read(t, dest, Query{Kind: RecipientState, RecipientID: key}).View().Recipient
++				if digest(before[index]) != digest(after) || after.Phase != "active" {
++					t.Fatal("post-activation replay changed phase/sequence/budget/session", dest, before[index], after)
++				}
++			}
++			if n.read(t, 1, Query{Kind: AllocatorState}).View().Allocator.HighWater != 8 {
++				t.Fatal("fence replay changed global high-water")
++			}
++			seen := map[uint64]bool{}
++			mint := func(c *idalloc.Cursor, want uint64) uint64 {
++				t.Helper()
++				id, e := c.Next()
++				if e != nil || id != want || seen[id] {
++					t.Fatal("duplicate/reused mint", id, want, e)
++				}
++				seen[id] = true
++				return id
++			}
++			commit := func(dest uint64, g Proof, id uint64, name string, generation uint64) {
++				t.Helper()
++				group := uint8((dest - 1) / 3)
++				x := tx(name, group, participant(group, generation, Effect{Key: name, Value: int64(id)}))
++				p, e := LocalIDs(x, g, []uint64{id})
++				n.submit(t, dest, p, e)
++				if n.hosts[dest].machine.last != nil || !n.read(t, dest, Query{Kind: Decided, TxID: x.ID}).View().Decision.Commit {
++					t.Fatal("cached claim rejected", dest, n.hosts[dest].machine.last)
++				}
++			}
++			first := mint(cursor, 1)
++			commit(home, grant, first, "before-restart", 0)
++			second := mint(otherCursor, 5)
++			commit(otherHome, otherGrant, second, "other-before", 0)
++			// A retained request's count cannot change after delayed fence replays.
++			bad := grant.View().Grant.Request
++			bad.Count++
++			intent, e := allocationProposal(allocationCommand{Op: "reserve", Request: &bad})
++			if e != nil {
++				t.Fatal(e)
++			}
++			p, e = n.hosts[1].AuthorizeReserve(intent, n.read(t, 1, Query{Kind: AllocatorState}))
++			n.submit(t, 1, p, e)
++			if !errors.Is(n.hosts[1].machine.last, ErrMismatch) || n.read(t, 1, Query{Kind: AllocatorState}).View().Allocator.HighWater != 8 {
++				t.Fatal("payload mismatch changed retained range")
++			}
++			independentReopenAllocation(t, n, home, false)
++			replacement := independentActivateRecoveredHome(t, n, home, key)
++			if home == 1 {
++				p, e = n.hosts[1].TransferAllocator(n.read(t, 1, Query{Kind: AllocatorState}))
++				n.submit(t, 1, p, e)
++			}
++			fresh, freshGrant := acquire(t, n, replacement, 1, 2)
++			if freshGrant.View().Grant.First != 9 || replacement.session.Epoch != 2 {
++				t.Fatal("restart reused old block", freshGrant.View().Grant, replacement.session)
++			}
++			current := [2]*RecipientRecord{}
++			for index, dest := range []uint64{1, 4} {
++				current[index] = n.read(t, dest, Query{Kind: RecipientState, RecipientID: key}).View().Recipient
++			}
++			n.submit(t, 1, beginProposal, nil)
++			if !errors.Is(n.hosts[1].machine.last, ErrStale) {
++				t.Fatal("old-session begin accepted after new activation", n.hosts[1].machine.last)
++			}
++			for _, fence := range []Proposal{fencePending, fenceFenced} {
++				for _, dest := range []uint64{1, 4} {
++					n.submit(t, dest, fence, nil)
++					if !errors.Is(n.hosts[dest].machine.last, ErrStale) {
++						t.Fatal("old-session fence accepted", dest, n.hosts[dest].machine.last)
++					}
++				}
++			}
++			for index, dest := range []uint64{1, 4} {
++				if digest(current[index]) != digest(n.read(t, dest, Query{Kind: RecipientState, RecipientID: key}).View().Recipient) {
++					t.Fatal("old-session delivery changed current session", dest)
++				}
++			}
++			stale := tx("phantom", uint8((home-1)/3), participant(uint8((home-1)/3), 1, Effect{Key: "phantom", Value: 99}))
++			p, e = LocalIDs(stale, grant, []uint64{first})
++			n.submit(t, home, p, e)
++			if !errors.Is(n.hosts[home].machine.last, ErrStale) {
++				t.Fatal("old cached grant survived recovery", n.hosts[home].machine.last)
++			}
++			id := mint(fresh, 9)
++			commit(home, freshGrant, id, "after-restart", 1)
++			for j := range 3 {
++				id := mint(otherCursor, uint64(j+6))
++				commit(otherHome, otherGrant, id, fmt.Sprintf("other-tail%d", j), uint64(j+1))
++			}
++			if len(seen) != 6 {
++				t.Fatal("inexact unique set", seen)
++			}
++			exact(t, *n.read(t, home, Query{Kind: Current}).View().State, map[string]int64{"before-restart": 1, "after-restart": 9})
++			exact(t, *n.read(t, otherHome, Query{Kind: Current}).View().State, map[string]int64{"other-before": 5, "other-tail0": 6, "other-tail1": 7, "other-tail2": 8})
++			t.Log("both groups retain active phase and sequence under duplicate/reordered fences; newer session rejects old begin/fence; cached other writer survives uncheckpointed restart")
++		})
++	}
++}
++
++func TestIndependentAllocationRejectionsPreserveCommittedState(t *testing.T) {
++	n := allocationNetwork(t)
++	p, e := n.hosts[1].TransferAllocator(n.read(t, 1, Query{Kind: AllocatorState}))
++	n.submit(t, 1, p, e)
++	h := activateRecipient(t, n, 4, [16]byte{131})
++	service := n.read(t, 1, Query{Kind: AllocatorState})
++	activeA := n.read(t, 1, Query{Kind: RecipientState, RecipientID: h.session.ID})
++	activeB := n.read(t, 4, Query{Kind: RecipientState, RecipientID: h.session.ID})
++	beforeA, beforeB := activeA.View().Recipient, activeB.View().Recipient
++	// Valid source-produced proposals delivered to a group that cannot own that
++	// transition must fail, rather than silently installing local copies.
++	cases := []struct {
++		name  string
++		dest  uint64
++		build func() (Proposal, error)
++	}{
++		{"service-at-B", 4, func() (Proposal, error) { return n.hosts[1].TransferAllocator(service) }},
++		{"begin-at-B", 4, func() (Proposal, error) { return n.hosts[4].BeginRecipient(h.session.ID, activeB) }},
++		{"activate-at-B", 4, func() (Proposal, error) { return ActivateRecipient(activeA, activeB) }},
++		{"publish-at-A", 1, func() (Proposal, error) { return PublishRecipient(activeA) }},
++		{"ack-at-B", 4, func() (Proposal, error) { return RecordRecipientFence(activeB) }},
++		{"fence-active-observation", 1, func() (Proposal, error) { return FenceRecipient(activeA) }},
++	}
++	for _, test := range cases {
++		p, e := test.build()
++		n.submit(t, test.dest, p, e)
++		if !errors.Is(n.hosts[test.dest].machine.last, ErrStale) {
++			t.Fatal(test.name, n.hosts[test.dest].machine.last)
++		}
++	}
++	request := idalloc.GrantRequest{Graph: n.hosts[1].machine.config.Namespace, Session: h.session, Sequence: 1, Count: 1}
++	intent, e := allocationProposal(allocationCommand{Op: "reserve", Request: &request})
++	if e != nil {
++		t.Fatal(e)
++	}
++	if _, e = n.hosts[1].AuthorizeReserve(intent, activeA); !errors.Is(e, ErrStale) {
++		t.Fatal("recipient proof certified service", e)
++	}
++	if _, e = n.hosts[4].AuthorizeReserve(intent, service); !errors.Is(e, ErrStale) {
++		t.Fatal("B authorized reservation service", e)
++	}
++	p, e = n.hosts[1].AuthorizeReserve(intent, service)
++	n.submit(t, 4, p, e)
++	if !errors.Is(n.hosts[4].machine.last, ErrStale) {
++		t.Fatal("B reserved a global range", n.hosts[4].machine.last)
++	}
++	for _, query := range []Query{
++		{Kind: AllocatorState, Count: 1},
++		{Kind: RecipientState},
++		{Kind: RecipientState, RecipientID: h.session.ID, Sequence: 1},
++		{Kind: GrantState, RecipientID: h.session.ID, Incarnation: h.session.Incarnation, RecipientEpoch: 1, Sequence: 1},
++		{Kind: AllocatorState, TxID: "unexpected"},
++	} {
++		if _, e = n.hosts[1].Read(query); !errors.Is(e, ErrInvalid) {
++			t.Fatal("invalid allocation query accepted", query, e)
++		}
++	}
++	answerError := func(dest uint64, q Query, want error) {
++		t.Helper()
++		n.replies[dest] = nil
++		out, e := n.hosts[dest].Read(q)
++		n.run(t, dest, out, e)
++		for _, reply := range n.replies[dest] {
++			if reply.ReadID == out.ReadID {
++				if !errors.Is(reply.Err, want) {
++					t.Fatal("read error", q, reply.Err, want)
++				}
++				return
++			}
++		}
++		t.Fatal("no completed read for rejected question", q)
++	}
++	answerError(4, Query{Kind: AllocatorState}, ErrUnavailable)
++	answerError(4, Query{Kind: RecipientAck, RecipientID: h.session.ID}, ErrUnavailable)
++	answerError(1, Query{Kind: RecipientState, RecipientID: [16]byte{255}}, ErrUnavailable)
++	answerError(1, grantQuery(request), ErrUnavailable)
++	if digest(beforeA) != digest(n.read(t, 1, Query{Kind: RecipientState, RecipientID: h.session.ID}).View().Recipient) || digest(beforeB) != digest(n.read(t, 4, Query{Kind: RecipientState, RecipientID: h.session.ID}).View().Recipient) {
++		t.Fatal("rejected commands changed committed sessions")
++	}
++	if n.read(t, 1, Query{Kind: AllocatorState}).View().Allocator.HighWater != 0 {
++		t.Fatal("rejected commands advanced allocation")
++	}
++	_, grant := acquire(t, n, h, 1, 2)
++	mismatched := grant.View().Grant.Request
++	mismatched.Count++
++	answerError(1, grantQuery(mismatched), ErrMismatch)
++	invalidTx := tx("invalid", 1, participant(1, 0))
++	invalidTx.Request = ""
++	if _, e = LocalIDs(invalidTx, grant, []uint64{1}); !errors.Is(e, ErrInvalid) {
++		t.Fatal("malformed transaction reached proposal", e)
++	}
++	claimed := tx("claimed", 1, participant(1, 0))
++	claimed.Claim = &IDClaim{}
++	if _, e = RegisterIDs(claimed, grant, []uint64{1}); !errors.Is(e, ErrInvalid) {
++		t.Fatal("supplied claim rebound", e)
++	}
++	if _, e = LocalIDs(tx("cross-local", 0, participant(0, 0), participant(1, 0)), grant, []uint64{1}); !errors.Is(e, ErrInvalid) {
++		t.Fatal("multi-group local accepted", e)
++	}
++	for index, ids := range [][]uint64{nil, {0}, {3}, {1, 1}, {2, 1}} {
++		x := tx(fmt.Sprintf("invalid-IDs-%d", index), 1, participant(1, 0, Effect{Key: "phantom", Value: 99}))
++		p, e := LocalIDs(x, grant, ids)
++		n.submit(t, 4, p, e)
++		if !errors.Is(n.hosts[4].machine.last, ErrInvalid) {
++			t.Fatal("invalid range/order claim accepted", ids, n.hosts[4].machine.last)
++		}
++	}
++	exact(t, *n.read(t, 1, Query{Kind: Current}).View().State, map[string]int64{})
++	exact(t, *n.read(t, 4, Query{Kind: Current}).View().State, map[string]int64{})
++}
+diff --git a/v5/internal/txnproto/independent_fence_recovery_test.go b/v5/internal/txnproto/independent_fence_recovery_test.go
+new file mode 100644
+index 0000000..eec6bea
+--- /dev/null
++++ b/v5/internal/txnproto/independent_fence_recovery_test.go
+@@ -0,0 +1,116 @@
++package txnproto
++
++import (
++	"errors"
++	"testing"
++)
++
++// A can complete activation while B's publication is lost. The owner's recovery
++// change allows the next incarnation to fence B's still-fenced prior incarnation.
++// The replay fix must preserve that valid transition, rather than treating any
++// fenced record as globally terminal regardless of session.
++func TestIndependentReplayFixPreservesPriorFencedRecipientRecovery(t *testing.T) {
++	n := allocationNetwork(t)
++	p, e := n.hosts[1].TransferAllocator(n.read(t, 1, Query{Kind: AllocatorState}))
++	n.submit(t, 1, p, e)
++	other := activateRecipient(t, n, 4, [16]byte{142})
++	otherCursor, otherGrant := acquire(t, n, other, 1, 4)
++	key := [16]byte{141}
++	firstBegin, e := n.hosts[1].BeginRecipient(key, Proof{})
++	n.submit(t, 1, firstBegin, e)
++	first := n.read(t, 1, Query{Kind: RecipientState, RecipientID: key})
++	firstFence, e := FenceRecipient(first)
++	if e != nil {
++		t.Fatal(e)
++	}
++	for _, dest := range []uint64{1, 4} {
++		n.submit(t, dest, firstFence, nil)
++	}
++	a := n.read(t, 1, Query{Kind: RecipientState, RecipientID: key})
++	b := n.read(t, 4, Query{Kind: RecipientState, RecipientID: key})
++	p, e = ActivateRecipient(a, b)
++	n.submit(t, 1, p, e)
++	active := n.read(t, 1, Query{Kind: RecipientState, RecipientID: key})
++	// Omit PublishRecipient deliberately: A is active while B remains fenced.
++	if active.View().Recipient.Phase != "active" || n.read(t, 4, Query{Kind: RecipientState, RecipientID: key}).View().Recipient.Phase != "fenced" {
++		t.Fatal("publication-loss fixture not reached")
++	}
++	p, e = n.hosts[1].BeginRecipient(key, active)
++	n.submit(t, 1, p, e)
++	second := n.read(t, 1, Query{Kind: RecipientState, RecipientID: key})
++	if second.View().Recipient.Session.Epoch != 2 || second.View().Recipient.Phase != "pending" {
++		t.Fatal("replacement pending not committed")
++	}
++	secondFence, e := FenceRecipient(second)
++	if e != nil {
++		t.Fatal(e)
++	}
++	for _, dest := range []uint64{4, 1} {
++		n.submit(t, dest, secondFence, nil)
++		if n.hosts[dest].machine.last != nil {
++			t.Fatal("valid prior-fenced recovery rejected", dest, n.hosts[dest].machine.last)
++		}
++	}
++	a = n.read(t, 1, Query{Kind: RecipientState, RecipientID: key})
++	b = n.read(t, 4, Query{Kind: RecipientState, RecipientID: key})
++	if b.View().Recipient.Session.Epoch != 2 || b.View().Recipient.Phase != "fenced" {
++		t.Fatal("prior fenced session was not replaced", b.View().Recipient)
++	}
++	p, e = ActivateRecipient(a, b)
++	n.submit(t, 1, p, e)
++	active = n.read(t, 1, Query{Kind: RecipientState, RecipientID: key})
++	p, e = PublishRecipient(active)
++	n.submit(t, 4, p, e)
++	handle, e := n.hosts[1].OpenRecipient(active)
++	if e != nil {
++		t.Fatal(e)
++	}
++	cursor, grant := acquire(t, n, handle, 1, 2)
++	before := [2]*RecipientRecord{}
++	for index, dest := range []uint64{1, 4} {
++		before[index] = n.read(t, dest, Query{Kind: RecipientState, RecipientID: key}).View().Recipient
++	}
++	// Same-session late fence is harmless; the previous session cannot overwrite it.
++	for _, dest := range []uint64{1, 4} {
++		n.submit(t, dest, secondFence, nil)
++		if n.hosts[dest].machine.last != nil {
++			t.Fatal("same-session replay rejected", dest, n.hosts[dest].machine.last)
++		}
++		n.submit(t, dest, firstFence, nil)
++		if !errors.Is(n.hosts[dest].machine.last, ErrStale) {
++			t.Fatal("old session fence accepted", dest, n.hosts[dest].machine.last)
++		}
++	}
++	n.submit(t, 1, firstBegin, nil)
++	if !errors.Is(n.hosts[1].machine.last, ErrStale) {
++		t.Fatal("old begin accepted")
++	}
++	for index, dest := range []uint64{1, 4} {
++		if digest(before[index]) != digest(n.read(t, dest, Query{Kind: RecipientState, RecipientID: key}).View().Recipient) {
++			t.Fatal("replayed fence changed recovered session", dest)
++		}
++	}
++	id, e := cursor.Next()
++	if e != nil || id != 5 {
++		t.Fatal(id, e)
++	}
++	x := tx("recovered-current", 0, participant(0, 0, Effect{Key: "new", Value: int64(id)}))
++	p, e = LocalIDs(x, grant, []uint64{id})
++	n.submit(t, 1, p, e)
++	if n.hosts[1].machine.last != nil {
++		t.Fatal("new recovered grant rejected", n.hosts[1].machine.last)
++	}
++	otherID, e := otherCursor.Next()
++	if e != nil || otherID != 1 {
++		t.Fatal("independent cached writer invalidated", otherID, e)
++	}
++	x = tx("recovered-other", 1, participant(1, 0, Effect{Key: "other", Value: int64(otherID)}))
++	p, e = LocalIDs(x, otherGrant, []uint64{otherID})
++	n.submit(t, 4, p, e)
++	if n.hosts[4].machine.last != nil {
++		t.Fatal("other writer rejected", n.hosts[4].machine.last)
++	}
++	exact(t, *n.read(t, 1, Query{Kind: Current}).View().State, map[string]int64{"new": 5})
++	exact(t, *n.read(t, 4, Query{Kind: Current}).View().State, map[string]int64{"other": 1})
++	t.Log("A-active/B-fenced publication loss recovers epoch2; same-session replay is idempotent, old-session replay stale, disjoint cached writer remains valid")
++}

@@ -1,0 +1,219 @@
+{
+  "affected_files_sha256": {
+    "v5/internal/raftlog/application.go": {
+      "candidate": "e7a86c3861fe167d962ec04539bb6dd7d60b39b799caa4dae0c6b74cb3881217",
+      "stock": "5d06233d9f9e47f01ca3835f12bc795800762f92b110588dec70929fa4fb5552"
+    },
+    "v5/internal/raftlog/independent_application_review_test.go": {
+      "candidate": "1bb15fc2632e476b43def00a5359b5584ac68218bd93ce27b4becad42f70838a",
+      "stock": null
+    },
+    "v5/internal/replica/independent_application_review_test.go": {
+      "candidate": "dc081a9c585c1a65d46be5df24b3c49b9fd5d99f8970f5769a769fe7a0d67ad6",
+      "stock": null
+    }
+  },
+  "canonical_application_performed": false,
+  "copy_paths": [
+    {
+      "accounting": "Separate visited-key work from full retained Rows backing capacity, key/value buffers and continuation. Conservative64-byte row slots; exact-cap byte copies. Tombstones/future-only keys still consume work.",
+      "bound": "ReadBudget.Bytes / MaxPageBytes",
+      "path": "Scan"
+    },
+    {
+      "accounting": "Before: actual56-byte KV header plus visible key/value capacities8+48 gives112>103. Buffers alone total56, so the header distinction is explicit. After: exact capacities1+37 plus56-byte header gives94; conservative64-byte header gives102.",
+      "bound": "MaxPageBytes for complete KV output; maxBytes remains key/value payload length",
+      "path": "Get"
+    },
+    {
+      "accounting": "Before: length103/capacity112 exceeds103 without a header or allocator-size estimate. After: byte capacity103.",
+      "bound": "maxBytes and MaxPageBytes for complete change/outcome byte buffers",
+      "path": "ApplicationRecord"
+    },
+    {
+      "accounting": "Logical ViewBytes correctly charges length3; old visible capacity8 exceeds image-buffer allowance3. Exact-cap creation makes charged length and retained capacity both3; counters and admission stay unchanged.",
+      "bound": "aggregate MaxViewBytes for retained image buffers",
+      "path": "ApplicationView"
+    },
+    {
+      "accounting": "Before: image length3/capacity8. After: image capacity3. Fixed root metadata and physical allocator rounding are separate.",
+      "bound": "MaxImageBytes for returned image; separate from Scan/MaxPage accounting",
+      "path": "Root"
+    }
+  ],
+  "current_applicability": {
+    "application_go_sha256": "5d06233d9f9e47f01ca3835f12bc795800762f92b110588dec70929fa4fb5552",
+    "command": "git apply --check docs/v5/reference/independent/regressions/application-output-capacity.patch",
+    "cwd": ".",
+    "exit": 0,
+    "head": "de9e0b7a4e886abd36c9d6cc6d1f52f0fd32a4c8",
+    "mutated_canonical": false
+  },
+  "parent_focused_race": {
+    "command": "GOTOOLCHAIN=go1.26.9 GOWORK=off go test -race -count=1 -run '^TestIndependent(GetOwnedOutputMustFitPolicy|RecordOwnedOutputMustFitPolicy|ViewAndRootImageCapacities|ScanOwnedOutputMustFitByteBudget)$' ./internal/raftlog",
+    "cwd": "v5",
+    "evidence": "parent tool/session transcript; no standalone log hash",
+    "exit": 0,
+    "scope": "accepted isolated candidate; separate from complete scoped normal/race/vet/coverage",
+    "seconds": 1.383
+  },
+  "patch": "application-output-capacity.patch",
+  "patch_sha256": "9dd7250ac0a0affc9ae7419852c3dda69b4bc0da77412880bd17a34c6ee330f8",
+  "preserved_semantics": [
+    "Nil source copies remain nil; nonnil empty copies remain nonnil empty.",
+    "Empty present values remain distinct from tombstones; immutable old/current views and owned copies remain.",
+    "Maximum supported key/value sizes, policy headroom and uninitialized admission guards remain.",
+    "No payload-length admission changes; same-store atomic publication, poisoning and fail-stop behavior remain."
+  ],
+  "proof_limits": [
+    "Visible Go slice capacity and conservative output/image accounting only; allocator size classes, temporary working buffers, heap/RSS and OS cache are distinct.",
+    "Logical retained KV bytes, checkpoint/snapshot copies, Stage inputs/callback allocations and physical WAL/SST/compaction costs remain separate.",
+    "Singleton voter only; no production graph ApplicationMachine, transferable application snapshots or multiple-partition application store.",
+    "No global pooled budgets, production graph/index/CDC integration, capacity verdict or V2/V3 completion."
+  ],
+  "red_before_fix": [
+    {
+      "command": "go test -count=1 -v -run '^TestIndependent' ./internal/raftlog ./internal/replica",
+      "compiler": "go1.26.9",
+      "cwd": "v5",
+      "log_sha256": "5e9f35799c09879c48a505d601c79f83e78570edbb92c1c0ccdea40c8f6f0ba4",
+      "observed": {
+        "Scan": {
+          "budget": 651,
+          "owned_minimum_bytes": 1018,
+          "reported_bytes": 650,
+          "row_capacity": 18,
+          "rows": 10
+        },
+        "other_failure": "Small scan value exposes spare capacity; row/policy headroom checks pass."
+      },
+      "result": "failed as required",
+      "source_commit": "c99e1dcd13324af0ba2473b27727d4f765e60a96"
+    },
+    {
+      "command": "go test -count=1 -v -run '^TestIndependent(Get|Record)OwnedOutputMustFitPolicy$' ./internal/raftlog",
+      "compiler": "go1.26.9",
+      "cwd": "v5",
+      "log_sha256": "b585c3511d4421a35fe7b01bc506f2dbf6da2149e9b102f14203bdd12ccfe4cd",
+      "observed": {
+        "ApplicationRecord": {
+          "MaxPageBytes": 103,
+          "both_change_and_outcome": true,
+          "capacity": 112,
+          "length": 103
+        },
+        "Get": {
+          "MaxPageBytes": 103,
+          "full_KV_owned_bytes": 112,
+          "header_bytes": 56,
+          "key_capacity": 8,
+          "value_capacity": 48
+        }
+      },
+      "result": "failed as required",
+      "source_commit": "c99e1dcd13324af0ba2473b27727d4f765e60a96"
+    },
+    {
+      "command": "go test -count=1 -v -run '^TestIndependentViewAndRootImageCapacities$' ./internal/raftlog",
+      "compiler": "go1.26.9",
+      "cwd": "v5",
+      "log_sha256": "b3a474e52b2147c163dedbf3c8bf36c509c6a02f18bef7c1082637b2404762c2",
+      "observed": {
+        "ApplicationView": {
+          "MaxViewBytes": 3,
+          "capacity": 8,
+          "charged_ViewBytes": 3,
+          "length": 3
+        },
+        "Root_image": {
+          "MaxImageBytes": 3,
+          "capacity": 8,
+          "length": 3
+        }
+      },
+      "result": "failed as required",
+      "source_commit": "c99e1dcd13324af0ba2473b27727d4f765e60a96"
+    }
+  ],
+  "schema_version": 1,
+  "scope": "singleton application-store output/image capacities; portable review data only",
+  "scoped_validation": {
+    "actual_environment": {
+      "GOPROXY": "off",
+      "GOSUMDB": "off",
+      "GOTOOLCHAIN": "local",
+      "GOWORK": "off"
+    },
+    "command_normalization": "Actual commands used the direct cached Go1.26.9 compiler; executable is represented as go. Coverage destination normalized to a module-local filename. Flags and package scopes are unchanged.",
+    "commands": [
+      {
+        "command": "go test -count=1 ./internal/raftlog ./internal/replica",
+        "compiler": "go1.26.9",
+        "cwd": "v5",
+        "exit": 0,
+        "kind": "normal",
+        "log_sha256": "ae3e201b4d7a89092fbbd0d3b75617c14822ad0c631a9e16beb0a01939bc8e51"
+      },
+      {
+        "command": "go test -race -count=1 ./internal/raftlog ./internal/replica",
+        "compiler": "go1.26.9",
+        "cwd": "v5",
+        "exit": 0,
+        "kind": "race",
+        "log_sha256": "191a41d59f351a3e2982200e7874b5b170c133357159ec11cdbe447c7542d0c0"
+      },
+      {
+        "command": "go vet ./internal/raftlog ./internal/replica",
+        "compiler": "go1.26.9",
+        "cwd": "v5",
+        "exit": 0,
+        "kind": "vet",
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "command": "go test -count=1 -coverprofile=application-output-capacity.cover.out ./internal/raftlog ./internal/replica",
+        "compiler": "go1.26.9",
+        "cwd": "v5",
+        "exit": 0,
+        "kind": "coverage",
+        "log_sha256": "438cc296834fed98f2ad7644057092160a5e7ffc43a09ff8471b3618967d63db"
+      }
+    ],
+    "compiler": "go1.26.9 darwin/arm64",
+    "coverage_percent": {
+      "application_go": 90.64885496183206,
+      "combined": 86.8,
+      "raftlog": 86.1,
+      "replica": 88.6
+    },
+    "stock_plus_bundled_independent_tests": "passed",
+    "zero_coverage_functions": []
+  },
+  "source_commit": "c99e1dcd13324af0ba2473b27727d4f765e60a96",
+  "source_files_sha256": {
+    "v5/go.mod": "3bf8baf02d354420ddf87b8865f20b854bb606f04e0f0988f0f9eed2d89e8a24",
+    "v5/go.sum": "5679a7aa94d5ee71f5737dea65a4fa71ed69109c45b877b1dd1639ae5e6e60f0",
+    "v5/internal/raftlog/application.go": "5d06233d9f9e47f01ca3835f12bc795800762f92b110588dec70929fa4fb5552",
+    "v5/internal/raftlog/application_test.go": "a2b4f1d3db1ba83407249e744086a6cb92e4f1fd5abdb7383a9f0698afc1c0a0",
+    "v5/internal/raftlog/codec.go": "2acdc00fb9691af10ea8a77e85800fba52aa631636fb560895cd4d0b0763e60b",
+    "v5/internal/raftlog/errors.go": "fa16afd2e3605992551f41a70d41a0f8773617f6b1a91a8210fa8a7d4944db22",
+    "v5/internal/raftlog/ledger_test.go": "821a41227962d727298832bfba59948f8e26c7ab05b51c0caae51f0f27051d8b",
+    "v5/internal/raftlog/storage.go": "e68f18c2206ebfd6c83b3188471294a3a3290db962455d36036eeb96045b6a5f",
+    "v5/internal/raftlog/storage_test.go": "fa3aa1fc43440b3c6f0d47acd6ec8f558e7f0f76a9397ea1bb6072ad2831c242",
+    "v5/internal/raftlog/term_test.go": "2049efce6d8901a6afda47dc70ec846532c257ce6475a73c640bf6d2f8cd59bb",
+    "v5/internal/replica/application_test.go": "c6cbcb2a63a10b27080a9a91d218b94c690fea1ac30ede5b3e8f65f6f66308d7",
+    "v5/internal/replica/config_unknown_test.go": "73310999b229433b296f0783d58dba6f51d35b679669fb2a6ec564b80f5b86d7",
+    "v5/internal/replica/driver.go": "4c1acfac673a92d6d50c98a77c0f283e60ae22a6632679eca7d248b73a070318",
+    "v5/internal/replica/driver_test.go": "b4bd5b9dc48ed812c546e5d2339693de063a0b05ad68f1a8ef032f086f17d561",
+    "v5/internal/replica/fatal_test.go": "5d654eb160aa20930647b994d907f41ffdc89c5ea94f96dad0e0727a2ba8c0ef",
+    "v5/internal/replica/wire.go": "a4275a44ffeb3ae46a539d2479eeb31977f38799c3f374e75bdd3c6d3d0209af",
+    "v5/internal/replica/wire_test.go": "7f179f13f7625583dd1b0d0ec91b6e19c54bef5136286b4160ae0eba0c6e5ed1"
+  },
+  "status": "PENDING CANONICAL INTEGRATION",
+  "subsequent_live_driver_drift": {
+    "archived_sha256": "4c1acfac673a92d6d50c98a77c0f283e60ae22a6632679eca7d248b73a070318",
+    "claim": "Full scoped results prove archived c99 sources plus this candidate, not later live Driver changes.",
+    "excluded_from_frozen_candidate_checks": true,
+    "observed_live_sha256": "e81d8de8b0b28a13045956398bdbc8725aa36d26e7f56430c9ea536390712173"
+  }
+}

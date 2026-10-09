@@ -1,0 +1,212 @@
+{
+  "affected_files_sha256": {
+    "v5/internal/idalloc/independent_recipient_test.go": {
+      "added": "400eb3ed54d6e37d97f91f464120a3dd671118880d48b928b1ffbfa6a2b4ada4"
+    },
+    "v5/internal/txnproto/allocation.go": {
+      "patched": "23c2c0855171aef00a2196776a8addbb2969c59a9910c286202b0be43694017b",
+      "stock": "1c0b88d4638c3c50b0e641a79a621a781ecc9b420c611afe00a015d304a273ef"
+    },
+    "v5/internal/txnproto/independent_fence_recovery_test.go": {
+      "added": "901eec25198eea6bda3906ad92b9d6083ef924402c6223ca0fe5ba387125f7d9"
+    },
+    "v5/internal/txnproto/independent_fence_replay_test.go": {
+      "added": "e0670f50edac89d68771f24063f3489288b835c6e9179dfd1f0cd4de967542af"
+    },
+    "v5/internal/txnproto/independent_writer_test.go": {
+      "added": "88824bec20ec9dd86f3d643298a2e9a2e3fd91d122b315c7d5f77496e7f0d581"
+    }
+  },
+  "behavior": {
+    "adjacent_owner_change_preserved": "B may fence a prior fenced predecessor during recovery. Real A-active/B-fenced publication-loss evidence recovers the next epoch through pending/fenced/active; same-session replay stays monotone and older begin/fence messages remain stale.",
+    "failure": "Legitimate delayed same-session fence replay at A regresses active to fenced and LastSequence 1 to 0; cached mint remains unique but cached write and refill become stale. B originally rejects the same replay.",
+    "fix": "After actual allocation-proof validation, a fully matching session already fenced or active is idempotent. Full session, incarnation, epoch, home and predecessor matching remains mandatory; new sessions still run predecessor, pending-work and budget checks."
+  },
+  "canonical_application_performed": false,
+  "current_applicability": {
+    "allocation_sha256": "1c0b88d4638c3c50b0e641a79a621a781ecc9b420c611afe00a015d304a273ef",
+    "command": "git apply --check docs/v5/reference/independent/regressions/recipient-fence-replay.patch",
+    "cwd": ".",
+    "distinct_from": "frozen-copy behavioral validation and parent focused race",
+    "exit": 0,
+    "head": "de9e0b7a4e886abd36c9d6cc6d1f52f0fd32a4c8",
+    "mutated_canonical": false
+  },
+  "evidence_cases": [
+    "400-event two-writer arithmetic/unknown-outcome/restart model; two deliberate mutants rejected",
+    "Exact concurrent final uint64 block without wrap; graph/session/version/payload/correlation rejection",
+    "Actual Host-produced request-bound quorum evidence, unavailable allocator and late reservation commitment",
+    "Stock six-process recovery and independent uncheckpointed writer SIGKILL/reopen; disjoint cached writer remains usable",
+    "Both-group same-session fence replay before/after activation; old-session begin/fence after newer activation",
+    "A-active/B-fenced lost publication recovers a newer session without weakening predecessor checks",
+    "Wrong-group transitions, malformed queries and ID claims leave committed state unchanged"
+  ],
+  "go_implementation_and_test_changes": "delegated; never applied by this review artifact",
+  "older_frozen_candidate": {
+    "coverage_percent": {
+      "combined": 87.5,
+      "idalloc": 99.4,
+      "txnproto": 86.0
+    },
+    "does_not_establish": "compatibility with the later B predecessor recovery change",
+    "full_scoped_stock_plus_independent_race_and_vet": "passed",
+    "source_head": "f46ac89853fd7666284c72c312ecf3a2fd200861",
+    "source_manifest_sha256": "2ac6adb961ac68f38d6dc581f8a5c75182df2fd5b740d56b47ed8ca986d68d85"
+  },
+  "parent_focused_race": [
+    {
+      "command": "GOTOOLCHAIN=go1.26.9 GOWORK=off go test -race -count=1 -run '^TestIndependent(DelayedFenceCannotRegressActiveRecipient|FenceReplayBothHomesThroughRestart|AllocationRejectionsPreserveCommittedState)$' ./internal/txnproto",
+      "cwd": "v5",
+      "evidence": "parent tool/session transcript; no standalone log hash",
+      "exit": 0,
+      "scope": "older frozen candidate; not refreshed current stock",
+      "seconds": 2.079
+    },
+    {
+      "command": "GOTOOLCHAIN=go1.26.9 GOWORK=off go test -race -count=1 -run '^TestIndependent(DelayedFenceCannotRegressActiveRecipient|FenceReplayBothHomesThroughRestart|AllocationRejectionsPreserveCommittedState|ReplayFixPreservesPriorFencedRecipientRecovery)$' ./internal/txnproto",
+      "cwd": "v5",
+      "evidence": "parent tool/session transcript; no standalone log hash",
+      "exit": 0,
+      "scope": "refreshed candidate; 38 scoped de9 Git stock blobs matched, allocation.go reviewed fix is sole expected stock difference",
+      "seconds": 2.212
+    }
+  ],
+  "patch": "recipient-fence-replay.patch",
+  "patch_sha256": "dd01c3a40b84878912ff66eb43c4a0a6a2c58c63e0c19acf932626d8fba1238c",
+  "production_files_changed": [
+    "v5/internal/txnproto/allocation.go"
+  ],
+  "proof_limits": [
+    "Callback model cannot establish durable activation or globally disjoint reservations without its trusted embedding; actual Host integration is tested separately.",
+    "Global maximum allocation-state boundaries are model/fixture evidence, not an end-to-end run allocating 2^64 IDs.",
+    "Finite retained metadata and epoch fencing only; no wall-clock lease expiry or scalable reclamation.",
+    "Scalar committed replicated-entry/process-kill proof only; no production graph assembly, multi-host or power-loss durability, catalog ownership transfer, full V2/V5, substrate-selection or capacity verdict."
+  ],
+  "red_before_fix": {
+    "command": "GOTOOLCHAIN=go1.26.9 go test -race -count=1 -v ./internal/txnproto -run '^TestIndependentDelayedFenceCannotRegressActiveRecipient$'",
+    "log_sha256": "de0754a412d6dcfad7e8fa0d126ef4451bb2a0d41da7960664c786b3dfd2c09e",
+    "observed": {
+      "cached_mint": 1,
+      "cached_write": "ErrStale",
+      "grant": [
+        1,
+        2
+      ],
+      "last_sequence": 0,
+      "phase": "fenced",
+      "refill": "ErrStale"
+    },
+    "original_allocation_sha256": "36d346811c4fba791c8b1a961de360cfd6cc23549b454aa8794b783b3f706b77",
+    "original_copy_head": "f46ac89853fd7666284c72c312ecf3a2fd200861",
+    "result": "failed as required",
+    "test": "TestIndependentDelayedFenceCannotRegressActiveRecipient",
+    "toolchain": "go1.26.9"
+  },
+  "refreshed_candidate": {
+    "captured_head": "c99e1dcd13324af0ba2473b27727d4f765e60a96",
+    "command_path_normalization": "Coverage destination normalized to a module-local filename; other flags and package scopes unchanged.",
+    "commands": [
+      {
+        "command": "GOTOOLCHAIN=go1.26.9 go test -count=1 -v ./internal/idalloc ./internal/txnproto",
+        "cwd": "v5",
+        "exit": 0
+      },
+      {
+        "command": "GOTOOLCHAIN=go1.26.9 go test -race -count=1 -coverprofile=recipient-fence-replay.cover.out ./internal/idalloc ./internal/txnproto",
+        "cwd": "v5",
+        "exit": 0
+      },
+      {
+        "command": "GOTOOLCHAIN=go1.26.9 go vet ./internal/idalloc ./internal/txnproto",
+        "cwd": "v5",
+        "exit": 0
+      }
+    ],
+    "coverage_percent": {
+      "combined": 89.7,
+      "idalloc": 99.4,
+      "idalloc/recipient.go": 100.0,
+      "txnproto": 88.5,
+      "txnproto/allocation.go": 87.5,
+      "txnproto/recipient.go": 90.8
+    },
+    "every_affected_public_method": "directly tested; at least 83.3 percent covered",
+    "log_sha256": {
+      "normal": "e5515aef7d9a88c895284715924979aca78ce0ca7b6192db00f7edcf47655d8b",
+      "race_coverage": "7e2fbda2119f5888e4373cb5d5f613bf28be44711c831a7421fa0ec29abbde6f",
+      "vet": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "normal": "passed",
+    "race": "passed",
+    "source_manifest_sha256": "a1ed5206e4719ff227fad5da84726c20be7ab230e27facf519ea0162aea1a030",
+    "stock_byte_basis": "38 scoped de9e0b7 Git blobs plus this reviewed fix and bundled independent tests",
+    "vet": "passed"
+  },
+  "refreshed_stock_git_blob_verification": {
+    "all_pre_patch_bytes_match": true,
+    "commit": "de9e0b7a4e886abd36c9d6cc6d1f52f0fd32a4c8",
+    "expected_tested_stock_difference": [
+      "v5/internal/txnproto/allocation.go"
+    ],
+    "files_sha256": {
+      "v5/go.mod": "3bf8baf02d354420ddf87b8865f20b854bb606f04e0f0988f0f9eed2d89e8a24",
+      "v5/go.sum": "5679a7aa94d5ee71f5737dea65a4fa71ed69109c45b877b1dd1639ae5e6e60f0",
+      "v5/internal/idalloc/allocator.go": "1cae3f18aa0b268de54d6930c4bf4184f7b83a5ee6bebd1838cbfa9d82e33cab",
+      "v5/internal/idalloc/allocator_test.go": "c5fb74d88e036499c49fcbcff5b55a0defd8312950fbde85f98b503da463426a",
+      "v5/internal/idalloc/checkpoint.go": "1964c3af5e46bec632ddb4c21020c39c939684fd70f6d10bb6e3c4f5462baa93",
+      "v5/internal/idalloc/checkpoint_test.go": "67f5892851e0da9d457481f1d196fae6cfafaf5f7c0b3f97493b84b7316e6590",
+      "v5/internal/idalloc/receipt_validation_test.go": "85b5f8db37e3b816070c800dd3caee7b6508f514f12210be31afe13918c3069a",
+      "v5/internal/idalloc/recipient.go": "e45b86b33f7a1f31b8340f0c99f3b6f50194daad706aa8aaec9d334ea82a733b",
+      "v5/internal/idalloc/recipient_test.go": "bfb80e9624bf021856896822c4be6547cf4376686ce395fb5e2c79721bb63599",
+      "v5/internal/raftlog/application.go": "5d06233d9f9e47f01ca3835f12bc795800762f92b110588dec70929fa4fb5552",
+      "v5/internal/raftlog/application_test.go": "a2b4f1d3db1ba83407249e744086a6cb92e4f1fd5abdb7383a9f0698afc1c0a0",
+      "v5/internal/raftlog/codec.go": "2acdc00fb9691af10ea8a77e85800fba52aa631636fb560895cd4d0b0763e60b",
+      "v5/internal/raftlog/errors.go": "fa16afd2e3605992551f41a70d41a0f8773617f6b1a91a8210fa8a7d4944db22",
+      "v5/internal/raftlog/ledger_test.go": "821a41227962d727298832bfba59948f8e26c7ab05b51c0caae51f0f27051d8b",
+      "v5/internal/raftlog/storage.go": "e68f18c2206ebfd6c83b3188471294a3a3290db962455d36036eeb96045b6a5f",
+      "v5/internal/raftlog/storage_test.go": "fa3aa1fc43440b3c6f0d47acd6ec8f558e7f0f76a9397ea1bb6072ad2831c242",
+      "v5/internal/raftlog/term_test.go": "2049efce6d8901a6afda47dc70ec846532c257ce6475a73c640bf6d2f8cd59bb",
+      "v5/internal/replica/application_test.go": "c6cbcb2a63a10b27080a9a91d218b94c690fea1ac30ede5b3e8f65f6f66308d7",
+      "v5/internal/replica/config_unknown_test.go": "73310999b229433b296f0783d58dba6f51d35b679669fb2a6ec564b80f5b86d7",
+      "v5/internal/replica/driver.go": "4c1acfac673a92d6d50c98a77c0f283e60ae22a6632679eca7d248b73a070318",
+      "v5/internal/replica/driver_test.go": "b4bd5b9dc48ed812c546e5d2339693de063a0b05ad68f1a8ef032f086f17d561",
+      "v5/internal/replica/fatal_test.go": "5d654eb160aa20930647b994d907f41ffdc89c5ea94f96dad0e0727a2ba8c0ef",
+      "v5/internal/replica/wire.go": "a4275a44ffeb3ae46a539d2479eeb31977f38799c3f374e75bdd3c6d3d0209af",
+      "v5/internal/replica/wire_test.go": "7f179f13f7625583dd1b0d0ec91b6e19c54bef5136286b4160ae0eba0c6e5ed1",
+      "v5/internal/txnproto/allocation.go": "1c0b88d4638c3c50b0e641a79a621a781ecc9b420c611afe00a015d304a273ef",
+      "v5/internal/txnproto/allocation_process_test.go": "dbd838c196cd26e2f0ef5975c3fe9d2b0d138728b62febfa3c1867134df550b3",
+      "v5/internal/txnproto/allocation_test.go": "bfc5beeae758786f917ce08d2b57afb5f2804323b8c8e83539bc878ea18e2641",
+      "v5/internal/txnproto/budget.go": "f46c5c184e612036eaf4030be39ea3b63daea72a12790c153e7e308ad1b0264e",
+      "v5/internal/txnproto/cut.go": "b9fcd460c8c183fd48a60fc260ccaf43dfc7b486390eebc6a861fb70f77a674a",
+      "v5/internal/txnproto/host.go": "c7eda807ea57bd48bf86dd5c1442b9edd8b9149a3c02cb6537322bbc6219c59c",
+      "v5/internal/txnproto/host_test.go": "74514ed0b474bdf7d2e63f021b580d7542c964fa30b5b7c8837aeb2868399afe",
+      "v5/internal/txnproto/machine.go": "d014e14486e35e2d8be1a2c2a7d1521e39f2db84ca907ab20a37385d97c724cb",
+      "v5/internal/txnproto/oracle_test.go": "d137f1298065842b3bc9926e95c69460f78eabb43248fc5544acd28b9a61efdf",
+      "v5/internal/txnproto/process_test.go": "2fe010e129b5a7dfa8ec4c64a6f0ffe3050184c9df584db7b91ac55f1680b59f",
+      "v5/internal/txnproto/protocol_test.go": "265ef95c8440965f4cadea23a9efdaf9140c6f0a528165cb98c727022f546290",
+      "v5/internal/txnproto/read_identity_test.go": "0083c0506cd183b6d7a2836957878984088f4254e971387f7128367becd27253",
+      "v5/internal/txnproto/recipient.go": "bb193eee496dd35c88f02528ae4f8df7500802a28168fa680eb74cc98c832761",
+      "v5/internal/txnproto/types.go": "d4afc215db4569cdd29720e842368c6cea77ecfbbf26ade5725e1d94e55ac3b3"
+    },
+    "scope": [
+      "v5/internal/idalloc",
+      "v5/internal/txnproto",
+      "v5/internal/raftlog",
+      "v5/internal/replica",
+      "v5/go.mod",
+      "v5/go.sum"
+    ],
+    "stock_files": 38,
+    "unexpected_tested_stock_mismatches": [],
+    "verification_method": "Compared git show COMMIT:path byte SHA256 with the refreshed copy. Original allocation bytes restored separately and hash-checked against the pre-patch manifest. No unmodified/full Git-archive test claim."
+  },
+  "schema_version": 1,
+  "scope": "functional database ID allocation correctness; portable review data only",
+  "status": "PENDING CANONICAL INTEGRATION",
+  "test_files_added": [
+    "v5/internal/idalloc/independent_recipient_test.go",
+    "v5/internal/txnproto/independent_writer_test.go",
+    "v5/internal/txnproto/independent_fence_replay_test.go",
+    "v5/internal/txnproto/independent_fence_recovery_test.go"
+  ]
+}

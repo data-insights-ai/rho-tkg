@@ -94,3 +94,30 @@ and reimplementing the three fixes at `e5712e1651ee22ca142b5978d400649d8e0f5744`
 The supplied external patches were not applied. The current independent model
 corpus is revision 3 with 42 records; its larger count does not revise that
 historical mapping or establish broader consumer/distributed phase acceptance.
+
+
+`recipient-fence-replay.patch` is **PENDING CANONICAL INTEGRATION** review data;
+its production and test changes remain delegated. The five-file candidate makes
+same-session fencing monotone after activation while preserving B recovery from
+a fenced predecessor. Genuine Host proofs cover both groups, replay ordering,
+publication loss, restart and independent cached writers. All 38 refreshed scoped
+stock files match `de9e0b7` Git blobs before the reviewed one-condition change.
+Scoped stock-plus-independent Go 1.26.9 normal/race/vet checks passed; combined
+coverage is 89.7%. Parent focused race and read-only applicability are recorded
+separately in [validation](recipient-fence-replay-validation.json), alongside the
+red-before-fix result, patch/file hashes and proof limits. This directory applies
+no patch; scalar process evidence does not establish production graph assembly,
+lease expiry, cross-host/power-loss durability or full V2/V5 acceptance.
+
+
+`application-output-capacity.patch` is **PENDING CANONICAL INTEGRATION** review
+data. It bounds Scan row capacity and uses exact-capacity copies for Get, complete
+change/outcome records, retained view images and returned root images, preserving
+nil/empty, tombstone, policy-headroom and fail-stop semantics. Full scoped stock
+plus bundled independent Go 1.26.9 normal/race/vet/coverage checks pass against
+`c99e1dc`; application storage coverage is 90.6%. Later live Driver changes are
+excluded. [Validation](application-output-capacity-validation.json) records actual
+visible-capacity failures, exact source/patch hashes, read-only applicability and
+parent focused race separately. Image bounds remain distinct from page budgets,
+logical retained storage and physical heap/RSS. No patch is applied here;
+production graph integration and V2/V3 acceptance remain open.
