@@ -472,6 +472,13 @@ func (a *API) RelsDuringTx(from, to, txAt types.Instant) ([]*types.Relationship,
 // then-valid values, not the current ones. Append-only: reads pinned to an
 // earlier transaction time still see the uncorrected belief. Returns the
 // appended version covering validFrom.
+//
+// Unique constraints judge the patch like an update: an open-ended call
+// (validTo == 0) replaces the current row, so a constrained value another
+// current node holds is refused (UniqueCurrent and UniqueForever); a bounded
+// call leaves the current row's value, so only UniqueForever (a value owned by
+// another entity) refuses it. A refusal returns ErrUniqueViolation and appends
+// nothing; a float on a constrained key returns ErrUniqueUnsupportedType.
 func (a *API) SetNodeVersionInterval(ctx context.Context, id types.NodeID, validFrom, validTo types.Instant, props map[string]any) (*types.Node, error) {
 	ops, err := a.ready()
 	if err != nil {

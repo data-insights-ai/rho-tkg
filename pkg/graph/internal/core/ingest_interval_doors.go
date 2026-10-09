@@ -19,9 +19,10 @@ import "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 // interval) fails the group that queued it with the real sentinel and leaves
 // that group's other ops to commit (partial success, as the Batch door).
 //
-// Not checked: unique constraints. The props patch can give the node a value
-// another node holds under CreateUnique; the cascade kernel has no
-// enforceUniqueForNode call on any of its four doors (tasks/backlog.md item 12).
+// Unique constraints: the kernel judges the props patch before any row is
+// built (enforceUniqueForCascade, unique_cascade.go), so a refused patch fails
+// its own op with ErrUniqueViolation, appends nothing, and the group's other
+// ops commit, as an UpdateNode violation does.
 
 // SetNodeVersionInterval accumulates a valid-time correction for node id over
 // [validFrom, validTo) (validTo == 0 means open-ended). props is a PATCH over
