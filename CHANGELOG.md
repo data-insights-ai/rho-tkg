@@ -21,20 +21,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   fixed: `Nodes.Add` / `AddWithTx` / `Import` / `AddByIDIfAbsent` / `GetOrCreateByKey` / `Update` /
   `UpdateWithTx` / `UpdateInPlace` / `CompareAndSetProperty` / `AddLabel`; `GraphTx.AddNode` /
   `ImportNodeWithID` / `GetOrCreateByKey` / `UpdateNode` / `UpdateNodeWithTx` / `AddNodeLabel`;
-  `BatchBuilder.AddNode` (the batch pre-check's claims are withdrawn when the batch write fails) / `UpdateNode` /
-  `UpdateNodeWithTx`; the ingest `Session` in strong and concurrent mode. The cascade and the node doors share
+  `BatchBuilder.AddNode` / `AddNodes` (the batch pre-check's claims are withdrawn when the batch write fails) /
+  `UpdateNode` / `UpdateNodeWithTx`; the ingest `Session` (`AddNode`, `AddNodes`, `UpdateNode`, `UpdateNodeWithTx`)
+  in strong and concurrent mode. The cascade and the node doors share
   one claim hold (`uniqueHold`, `internal/core/unique_hold.go`); claims are made in a deterministic order. Group
   semantics are unchanged: the failed op fails its own op, the other ops of the batch or group commit. Limit
   (unchanged): the claim is persisted in its own MetaKV write before the row write, so a crash between the two
   still leaves the claim without the row (`ReleaseOwnership` frees it); closing that needs one atomic
   MetaKV + store commit (v5 PLAN §5.2). Tests: `TestUniqueClaims_*` (memory, badger, tiered, sharded, each
-  behind a fault-injecting store decorator × 28 doors: store write failing before the row is stored, a
+  behind a fault-injecting store decorator × 32 doors: store write failing before the row is stored, a
   failing second claim, two concurrent writers of one value whose first write fails, group semantics; red
-  before the fix: 112 + 112 + 112 + 32 subtests), guards for a store that fails after storing, a value owned
+  before the fix: 128 + 128 + 128 + 32 subtests), guards for a store that fails after storing, a value owned
   before the call and an unreadable stored row, and the core lock test (stripe held across the withdrawal).
   Mutants (withdraw nothing; withdraw a value a stored row carries; release the stripe before the withdrawal;
-  skip the second-claim rollback; withdraw a pre-owned value; withdraw when the row is unreadable): each red.
-  Evidence under `tasks/evidence/unique-claims/`.
+  skip the second-claim rollback; withdraw a pre-owned value; withdraw when the row is unreadable; release
+  without defer): each red, its diff at the top of its evidence file. Evidence under
+  `tasks/evidence/unique-claims/`.
+
+- **A panicking store put in a concurrent-ingest create no longer leaves its value stripes locked**
+  (pre-existing, found in the backlog 29 review). The per-node create of a unique-constrained concurrent
+  group released the stripes with a plain call after the put, so a panic left them held and the next writer
+  of the value blocked forever. The release is now deferred (after the withdrawal of a failed write); a
+  panic keeps the claim, as on the standalone doors. Test:
+  `TestUniqueClaims_ConcurrentIngestPutPanicReleasesStripes` (red before).
 
 ## [4.48.0] - 2026-10-10
 
