@@ -31,6 +31,9 @@ func FuzzRecordCanonicalRoundTrip(f *testing.F) {
 		f.Add(recordWire(f, mustRecord(f, s)))
 	}
 	f.Add([]byte{})
+	relation := testSpec(f, 3, Placement{Kind: NoAssociation})
+	relation.Interpretation = AssertedRelation
+	f.Add(recordWire(f, mustRecord(f, relation)))
 	f.Fuzz(func(t *testing.T, input []byte) {
 		if len(input) > 4096 {
 			return

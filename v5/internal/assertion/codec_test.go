@@ -17,6 +17,9 @@ func TestRecordCanonicalRoundTripAllPlacementsProfilesAndKnowledge(t *testing.T)
 	for _, s := range []Spec{axisless, symbolic} {
 		assertRoundTrip(t, s, temporal.Axis{})
 	}
+	relation := axisless
+	relation.Interpretation = AssertedRelation
+	assertRoundTrip(t, relation, temporal.Axis{}) // relationship lookup belongs to attachment
 	for _, profile := range []temporal.Profile{temporal.ProfileIntegerZ, temporal.ProfileRationalQ, temporal.ProfileLexicographicQN} {
 		axis := testAxis(t, profile, 1, "native")
 		point := testPoint(t, axis, 12)

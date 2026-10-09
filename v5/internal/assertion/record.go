@@ -29,7 +29,7 @@ func validComponent(k graphstate.ComponentKey) bool {
 }
 
 func validateSpec(s Spec, l Limits) error {
-	if s.Ref.Graph == (graphstate.GraphID{}) || s.Ref.ID == 0 || s.Revision.ID() == 0 || s.Interpretation < Occurrence || s.Interpretation > Derived {
+	if s.Ref.Graph == (graphstate.GraphID{}) || s.Ref.ID == 0 || s.Revision.ID() == 0 || s.Interpretation < Occurrence || s.Interpretation > AssertedRelation {
 		return ErrInvalid
 	}
 	if s.Previous == s.Revision.ID() || s.Retracted && s.Previous == 0 {

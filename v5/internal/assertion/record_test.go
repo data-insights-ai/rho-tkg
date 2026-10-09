@@ -310,7 +310,7 @@ func TestRejectsInactiveFieldsMalformedTargetsAndKnowledgeAxes(t *testing.T) {
 		{"identity-zero", func(s *Spec) { s.Ref.ID = 0 }, ErrInvalid},
 		{"revision-zero", func(s *Spec) { s.Revision = state.Revision{} }, ErrInvalid},
 		{"interpretation-zero", func(s *Spec) { s.Interpretation = 0 }, ErrInvalid},
-		{"sixth-interpretation", func(s *Spec) { s.Interpretation = 6 }, ErrInvalid},
+		{"unknown-interpretation", func(s *Spec) { s.Interpretation = 7 }, ErrInvalid},
 		{"self-predecessor", func(s *Spec) { s.Previous = 1 }, ErrPredecessor},
 		{"initial-retraction", func(s *Spec) { s.Retracted = true }, ErrPredecessor},
 		{"unknown-target", func(s *Spec) { s.Target.Kind = 9 }, ErrInvalid},

@@ -60,6 +60,11 @@ const (
 	Observation
 	Constraint
 	Derived
+	// AssertedRelation preserves an explicitly supplied relationship fact,
+	// distinct from a restriction on possible values/placements (Constraint).
+	// Endpoints/predicate remain graph data. No ordering or inference follows;
+	// attachment must verify that the target is a graph relationship.
+	AssertedRelation
 )
 
 // TemporalRole names the meaning of an asserted placement association.
