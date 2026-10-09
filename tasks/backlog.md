@@ -88,7 +88,8 @@ is integrated locally. `python3 -B docs/v5/reference/independent/check.py` passe
 case records (corpus revision 3), 18,192 interval pairs, 600 component mutations,
 88 accepted protocol histories and 39 required refusals. Generated artifacts
 are deterministic. These are independent mathematical/declarative checks;
-production differential adapters, durable capture and phase acceptance remain open.
+remaining production differential/attachment doors, durable capture and phase
+acceptance remain open.
 
 The historical independent revised component/primitive comparison against a
 SHA-pinned schema-owner overlay passed 22 of the 42 records, with 16 required integrations
@@ -96,13 +97,25 @@ and four declarative obligations explicitly open. The unchanged full E02
 same-name node/relationship property golden and new E19 strict-life correction
 case passed. Owner-qualified schema support is committed as `844e065`; that
 does not make the overlay comparison or its supplementary tests canonical.
-The canonical native differential adapter remains in progress.
+This historical 22/42 comparison is separate from the accepted canonical native
+adapter described below.
 Its supplementary tests checked 64 complete historical answers, 12 atomic
 refusals and four candidate faults with 128 retained-answer rechecks; scoped
 normal/race/vet passed at 85.9% graphstate coverage. These remain historical
 overlay evidence, not engine or V1 acceptance. Remaining native doors include
 interpretation/role metadata, graph-qualified references, descriptor/knowledge/
-rational graph values and default Instant/unit adapters.
+rational graph values and public default-axis/import adapters.
+
+The canonical revised-corpus adapter is accepted locally as `ac45629`: 14
+native executable contracts, seven byte-preservation-only cases, five real
+unsupported-predicate refusals and 16 pending records. Nominal/opaque refusals
+are explicitly type-level probes. Four graph cases use immutable test map
+views, not durable storage or certified cuts. The original historical 16/52
+and independent 42-case revision-3 corpus remain unchanged. Independent isolated
+v5 build/vet/race/coverage and pinned lint/security/vulnerability gates pass
+(90.0% total coverage; 115 source/config/fixture hashes checked). Remaining
+attachments, public APIs, store/cut integration and import/unit mapping remain
+open; this closes no V0–V7 phase gate.
 
 Three independent regression findings are resolved by local commit `e5712e1`:
 unreachable allocator receipts (`first < sequence`), omitted ScopeValue axis
@@ -137,15 +150,47 @@ and [validation](../docs/v5/reference/independent/regressions/application-output
 remain immutable historical evidence against `c99e1dc`, not current-source patches.
 These are caller-visible capacities, not physical heap/RSS measurements.
 
-**Open — recipient fence replay:** in `de9e0b7`, a delayed duplicate
-writer-allocation fence can regress the same active recipient to fenced and
-reset its last sequence. Genuine Host proofs on both groups reproduce it.
+Recipient fence replay is resolved locally as `a4d2330`: after genuine proof
+validation, delayed same-session fences cannot regress active phase or reset
+sequence. Independent isolated v5 gates pass with 100% changed-block coverage;
+a source-owned six-process uncheckpointed SIGKILL/reopen regression passes.
 The [portable recipient replay patch](../docs/v5/reference/independent/regressions/recipient-fence-replay.patch)
 and [validation](../docs/v5/reference/independent/regressions/recipient-fence-replay-validation.json)
-record an isolated phase-monotonicity fix passing stock-plus-independent
-normal/race/vet and parent focused race, preserving prior-fenced B recovery.
-The 38 stock files matched `de9e0b7`; integration and current-source review
-remain pending. It is not yet resolved in canonical source.
+remain immutable historical review evidence against `de9e0b7`, not patches to
+reapply. Full graph identity reuse/fencing and V2 acceptance remain open.
+
+`State.Slice` (`4d22038`) is an independently validated immutable bounded
+primitive (92.9% direct coverage, 89.8% nested-module total). It preserves full
+cells and gaps and checks source/window/working/output policy. A 64→4,096-piece
+benchmark shows constant allocations and logarithmic seeking; it is not a
+full-engine or comparative capacity result.
+
+Explicit numerical helpers `ConvertUnits`/`InstantMillis` are accepted locally
+as `22f80a4`. They provide bounded exact identical-unit or microsecond/millisecond
+scalar conversion and signed int64 integral-millisecond encoding, with explicit
+fraction/range/domain/mapping refusals. Reference/origin identity remains the
+caller's responsibility. Parent isolated full v5 build/vet/race/coverage and
+pinned Docker lint/security/vulnerability gates pass; 119 snapshot sources
+match. Common microbenchmark paths allocate zero, without a production capacity
+claim. Public default graph axis/Instant and importer integration remain open.
+The revised adapter split stays 14 native / 7 preservation / 5 refusal / 16
+pending until a separately reviewed adapter update.
+
+`ApplicationPolicy.Preflight` (`738719e`) is a pure shared batch shape/work
+check with logical retained-byte/record output and zero usage on error. Concrete
+valid Raft limits are required; quota reservation, root freshness and committed
+eligibility remain installation/admission responsibilities. Parent raftlog race,
+v5 build/vet/coverage and pinned gates pass (Preflight 100%, total 89.9%).
+
+Historical [actual Host captures](../docs/v5/reference/independent/actual-host-captures/README.md)
+are preserved as `06c7fa2`. The parent matched the historical sources against
+archived `1a446a8`, applied the unchanged review patch independently and reran
+normal/race capture tests and vet. Each run's five histories, 14 decisions,
+nine complete observations and five final maps pass the unchanged serial-history
+oracle; five synthetic sensitivity alterations are refused. These use simulation
+and CrashableMemFS, not real process durability or full `Evidence.check`.
+They do not establish current-engine or full V2 acceptance; the historical
+16-case/52-assertion fixture remains unchanged.
 
 Local accepted prerequisites also include bounded state/change codecs
 (`a00a544`), the native FoundationDB functional comparator (`04d4fb3`),
@@ -155,8 +200,8 @@ six-process scalar protocol (`de9e0b7`). Application storage is singleton-voter
 only with retained-data quota backpressure; application GC, transferable
 snapshots and production graph assembly remain open. Allocation-service
 authority is separate from recipient/session epochs; production graph identity
-reuse validation remains open. Native 42-case differential integration and
-production graphstore design are in progress, not accepted.
+reuse validation remains open. Production graphstore design remains unaccepted;
+public default graph axis/Instant and importer integration remain open.
 
 Reviewed foundations are committed locally as `6ef233c`; the coordinate block
 candidate is `fa0c982`. Neither is a v5 release or phase-completion claim.
@@ -194,11 +239,11 @@ storage paths stop the embedding process; persistent Create/EIO and ENOSPC reope
 faults required a supervisor deadline, with actual injection markers and the
 prior acknowledged prefix preserved. This tradeoff remains part of selection.
 
-Current candidate checkpoint through `eb2f421`: independent nested-module
+Earlier candidate checkpoint through `eb2f421`: independent nested-module
 build/vet/full race/coverage and pinned Docker lint/gosec/govulncheck pass
 (89.7% total coverage; zero reachable vulnerabilities, two imported-package
 and two required-module advisories unreachable). This supersedes earlier
-scoped validation only for current-candidate checks; historical artifacts stay
+scoped validation only for that candidate; historical artifacts stay
 unchanged. Final full-root+v5 CI, physical capacity, distributed matrix and
 consumer acceptance remain pending. Every V0–V7 phase gate remains open.
 

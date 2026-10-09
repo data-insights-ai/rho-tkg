@@ -46,8 +46,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   preserves the historical 16-case/52-assertion subset and checks 42 revised
   cases, 18,192 interval pairs, 600 component mutations and 88 accepted/39
   refused protocol histories. Owner-qualified node/relationship property
-  schemas (`844e065`) resolve same-name schema collisions. Production native
-  differential coverage and full V0/V1 acceptance remain open.
+  schemas (`844e065`) resolve same-name schema collisions. The revised native
+  adapter (`ac45629`) checks 14 executable contracts, seven preservation-only
+  cases and five unsupported-predicate refusals; 16 cases remain pending.
+  Nominal/opaque refusals are type-level probes; four graph cases use immutable
+  test maps, not durable storage or cuts. Full V0/V1 acceptance remains open.
+
+- **Explicit exact unit and millisecond conversions** (`22f80a4`):
+  `ConvertUnits` converts unbound scalar values into a caller-qualified axis,
+  preserving identical units and exactly scaling microseconds/milliseconds.
+  Z refuses fractional results, Q preserves them and Q×N refuses scalar input;
+  unsupported mappings require an explicit rule. `InstantMillis` encodes exact
+  integral millisecond positions as signed int64, with distinct fraction/range
+  refusals. Neither helper establishes a default graph axis, reference origin
+  or completed importer.
+
+- **Immutable bounded component slicing** (`4d22038`): `State.Slice` restricts
+  a component to an exact temporal window while preserving nulls, retractions,
+  revision/provenance and never-asserted gaps. Source, window, working metadata
+  and output must fit policy; refusals return no partial state. Ordinary-policy
+  slicing seeks the source with logarithmic searches; tighter temporal caps may
+  revalidate it. This primitive does not establish engine capacity acceptance.
 
 - **Atomic retained v5 application storage** (`c99e1dc`): immutable KV versions,
   roots, complete change/outcome envelopes and the applied checkpoint commit in
@@ -58,12 +77,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   caller-visible capacity bounds, not physical allocator, heap or RSS accounting.
   This storage prerequisite is not a durable production graph engine.
 
+- **Pure application batch preflight** (`738719e`):
+  `ApplicationPolicy.Preflight(batch, concreteRaftLimits)` shares installation
+  shape/work accounting and reports logical retained bytes/records, returning
+  zero usage on error. It neither reserves quota nor certifies freshness;
+  serialized admission and installation remain authoritative.
+
 - **Independently fenced v5 ID recipients** (`de9e0b7`): the actual two-group,
   six-process scalar protocol separates allocation-service authority from
   recipient/session epochs and permits cached local issuance during allocator
   unavailability. Receipt-floor, ScopeValue axis-byte and Host read-identity
-  regressions are fixed (`e5712e1`). Production graph identity reuse validation
-  and delayed same-session fence replay remain open in `tasks/backlog.md`.
+  regressions are fixed (`e5712e1`). Delayed same-session fence replay now
+  preserves active phase and sequence after genuine proof validation
+  (`a4d2330`), including uncheckpointed SIGKILL/reopen coverage. Production
+  graph identity reuse validation remains open in `tasks/backlog.md`.
 
 - **Native FoundationDB functional comparator** (`04d4fb3`): comparison of the
   bounded transaction prototype is reproducible; comparative capacity/fault
