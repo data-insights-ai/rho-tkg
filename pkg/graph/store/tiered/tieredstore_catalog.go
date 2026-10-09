@@ -72,7 +72,7 @@ func (ts *Store) rotateHotShardLocked() error {
 
 	// Open the new shard's badger store. Failure here is also benign:
 	// the catalog has not been mutated yet.
-	newStore, err := ts.openBadgerStore(newDir, false)
+	newStore, err := ts.openBadgerStore(newDir)
 	if err != nil {
 		return fmt.Errorf("graph: open new hot shard: %w", err)
 	}
@@ -365,7 +365,7 @@ func (ts *Store) openRefArchive() error {
 	if ts.refArchive.Load() != nil {
 		return nil
 	}
-	store, err := ts.openBadgerStore("archive", false) // NOT read-only: archive needs writes
+	store, err := ts.openBadgerStore("archive") // writable: archive needs writes
 	if err != nil {
 		return fmt.Errorf("graph: open ref archive: %w", err)
 	}

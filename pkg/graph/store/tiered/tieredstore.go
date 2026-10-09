@@ -389,7 +389,7 @@ func (ts *Store) openWarmShards(cfg Config, entries []ShardEntry, warmIdx []int,
 				var warmStore *BadgerStore
 				var err error
 				if cfg.InMemory {
-					warmStore, err = ts.openBadgerStore(entry.Path, false)
+					warmStore, err = ts.openBadgerStore(entry.Path)
 				} else {
 					warmStore, err = ts.openBadgerStoreWithRecovery(entry.Path)
 				}
@@ -545,7 +545,7 @@ func New(cfg Config) (*Store, error) {
 	}
 
 	// Open reference shard.
-	refStore, err := ts.openBadgerStore("reference", false)
+	refStore, err := ts.openBadgerStore("reference")
 	if err != nil {
 		return nil, fmt.Errorf("graph: open reference shard: %w", err)
 	}
@@ -600,7 +600,7 @@ func New(cfg Config) (*Store, error) {
 	if !cfg.InMemory {
 		hotDir = filepath.Join("events", hotName)
 	}
-	hotStore, err := ts.openBadgerStore(hotDir, false)
+	hotStore, err := ts.openBadgerStore(hotDir)
 	if err != nil {
 		_ = refStore.Close() // best-effort cleanup; returning primary error
 		return nil, fmt.Errorf("graph: open hot event shard: %w", err)
@@ -1305,9 +1305,10 @@ func (ts *Store) resetCatalogAfterClear() error {
 
 // openBadgerStore creates a new BadgerStore with the configured defaults.
 // For disk-backed stores, name is the relative path under DataDir.
-// readOnly opens Badger in read-only mode (no flushLoop, no gcLoop).
-func (ts *Store) openBadgerStore(name string, readOnly bool) (*BadgerStore, error) {
-	return NewBadgerStore(ts.badgerCfg(name, readOnly))
+// The shard is always opened writable; read-only opens go through badgerCfg
+// (the recovery probe).
+func (ts *Store) openBadgerStore(name string) (*BadgerStore, error) {
+	return NewBadgerStore(ts.badgerCfg(name, false))
 }
 
 // badgerCfg builds the per-shard BadgerStoreConfig from the tiered store's
