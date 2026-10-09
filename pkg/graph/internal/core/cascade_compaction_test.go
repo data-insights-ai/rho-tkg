@@ -37,6 +37,10 @@ func TestCompactionKeepsPrevHashAnchors(t *testing.T) {
 					useTestClock(t, g)
 					e := newCCEnt(t, g, rel)
 					id := e.add("T", 1000, nil)
+					// Two plain versions first: rows below every cascade base, which a
+					// keep rule that respects the hash links can still trim.
+					e.mustUpdate(id, map[string]any{"tkg_valid_from": types.Instant(1100), "x": int64(2)})
+					e.mustUpdate(id, map[string]any{"tkg_valid_from": types.Instant(1200), "x": int64(3)})
 					sh.apply(e, id)
 					if err := e.update(id, map[string]any{"tkg_valid_from": types.Instant(9000), "x": int64(7)}); err != nil && !errors.Is(err, ErrAlreadyClosed) {
 						t.Fatalf("update: %v", err)
@@ -57,6 +61,12 @@ func TestCompactionKeepsPrevHashAnchors(t *testing.T) {
 					after := len(e.chain(id))
 					if sh.name == "plain-updates" && after != 2 {
 						t.Fatalf("plain update chain kept %d rows; want 2 (current + KeepVersions 1):%s", after, e.chainString(id))
+					}
+					// A no-op compaction fails: the rows below every cascade base
+					// go. Exception: a cascade starting at the genesis valid-from
+					// uses every version as a base of a kept piece.
+					if sh.name != "at-genesis-vf" && after >= before {
+						t.Fatalf("compaction trimmed nothing (rows %d -> %d):%s", before, after, e.chainString(id))
 					}
 					verify := func(phase string, g *Core) {
 						t.Helper()

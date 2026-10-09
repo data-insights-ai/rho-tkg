@@ -1,0 +1,5 @@
+--- FAIL: TestAnchorSafeTrim_Table (0.00s)
+    compaction_anchor_test.go:75: unverifiable before: the policy's trim stands: anchorSafeTrim = 0; want 2
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.005s
+FAIL
