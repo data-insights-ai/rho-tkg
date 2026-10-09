@@ -44,6 +44,11 @@ func (bs *Store) DBForTest() *badgerv4.DB { return bs.db }
 // production use.
 func (bs *Store) RelTemporalIndexBuildsForTest() int64 { return bs.relTemporalBuilds.Load() }
 
+// RelTemporalIndexBuildsTotalForTest reports relationship temporal index
+// builds across every store opened in this process (a recovery probe
+// included). Not for production use.
+func RelTemporalIndexBuildsTotalForTest() int64 { return relTemporalBuildsTotal.Load() }
+
 // PropertyIndexOnDiskForTest reports whether this shard was opened with
 // Config.PropertyIndexOnDisk set. Exported so tiered-store tests can assert
 // the tiered Config.PropertyIndexOnDisk pass-through actually reached a

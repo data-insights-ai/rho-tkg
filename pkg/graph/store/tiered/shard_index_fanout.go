@@ -152,8 +152,13 @@ func (ts *Store) fanOutAnchoredIndex(def anchoredIndex, create bool) error {
 		verb = "drop"
 	}
 	changed := make([]temporalIndexShardRef, 0, len(refs))
-	for _, ref := range anchorLast(refs) {
+	for pos, ref := range anchorLast(refs) {
 		err := ts.withTemporalIndexShard(ref, func(ns namedStore) error {
+			if ts.shardIdxFault != nil {
+				if err := ts.shardIdxFault(pos, ns.name); err != nil {
+					return fmt.Errorf("graph: %s %s on shard %q: %w", verb, def.what, ns.name, err)
+				}
+			}
 			if err := do(ns.store); err != nil {
 				// An interrupted earlier DDL can leave a non-reference shard
 				// already in the target state.

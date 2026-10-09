@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"maps"
 	"slices"
+	"sync/atomic"
 
 	badgerv4 "github.com/dgraph-io/badger/v4"
 	"github.com/vmihailenco/msgpack/v5"
@@ -29,6 +30,11 @@ import (
 // for the duration of the backfill. This is a deliberate, documented
 // throughput trade-off for what is an infrequent administrative DDL call, not
 // a per-request hot path — see CHANGELOG BACKLOG 21c.
+
+// relTemporalBuildsTotal counts relationship temporal index builds across
+// every store in the process, including short-lived ones such as a recovery
+// probe (RelTemporalIndexBuildsTotalForTest).
+var relTemporalBuildsTotal atomic.Int64
 
 // CreateRelTemporalIndex creates a temporal interval index on relationships
 // with the given rel-type token. Scans existing relationships of that type
@@ -72,6 +78,7 @@ func (bs *Store) CreateRelTemporalIndex(relType uint16) error {
 // skipped.
 func (bs *Store) buildRelTypeTemporalIndex(rids []types.RelID) (*indexpkg.TemporalIndex, error) {
 	bs.relTemporalBuilds.Add(1)
+	relTemporalBuildsTotal.Add(1)
 	ti := indexpkg.NewTemporalIndex()
 	for _, rid := range rids {
 		r, err := bs.prefetchRelScan(rid)

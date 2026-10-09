@@ -343,6 +343,10 @@ type Store struct {
 	// reference shard anchors (relationship temporal, composite —
 	// shard_index_fanout.go). Taken after ts.mu.
 	shardIdxMu sync.Mutex
+	// shardIdxFault, when set (tests only), is consulted before each shard
+	// step of an anchored fan-out with the step's position (the reference
+	// shard is last) and shard name; a non-nil error fails that step.
+	shardIdxFault func(pos int, shard string) error
 
 	// Vector indexes — in-memory brute-force k-NN index spanning all shards.
 	// In-memory; CreateVectorIndex rebuilds entries from current node properties.

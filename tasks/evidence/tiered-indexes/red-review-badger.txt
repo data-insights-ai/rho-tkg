@@ -1,0 +1,9 @@
+=== RUN   TestRelTypeTemporalIndex_PartialDoorsMaintainEnvelope
+    badgerstore_reltype_temporal_partial_test.go:61: deleted cross-shard row envelope = [0,0) covered=false, want [1000,2000) kept
+--- FAIL: TestRelTypeTemporalIndex_PartialDoorsMaintainEnvelope (0.00s)
+=== RUN   TestRelTypeTemporalIndex_DeleteThenReputKeepsHistoryCovered
+    badgerstore_reltype_temporal_partial_test.go:97: at 1500 kept [] (ok=true), want [101]: version 1 is still on the shard
+--- FAIL: TestRelTypeTemporalIndex_DeleteThenReputKeepsHistoryCovered (0.00s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.021s
+FAIL

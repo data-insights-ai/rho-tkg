@@ -49,19 +49,52 @@ func TestRelTypeTemporalIndex_PartialDoorsMaintainEnvelope(t *testing.T) {
 		t.Errorf("during 1900-3100 kept %v, want %v", kept, ids)
 	}
 
-	// Delete: the row is gone from this shard, so no envelope may vouch for it.
+	// Delete: the row's history stays on this shard, so the envelope stays a
+	// sound superset of its rows and is kept (append-only, as memory's delete).
 	if _, err := bs.DeleteRelEntityAndOut(101); err != nil {
 		t.Fatalf("DeleteRelEntityAndOut: %v", err)
 	}
 	bs.idxMu.RLock()
-	_, _, covered := bs.relTypeTemporalIndexes[relType].EnvelopeOf(101)
+	from, to, covered := bs.relTypeTemporalIndexes[relType].EnvelopeOf(101)
 	bs.idxMu.RUnlock()
-	if covered {
-		t.Error("deleted cross-shard row still covered by the envelope")
+	if !covered || from != 1000 || to != 2000 {
+		t.Errorf("deleted cross-shard row envelope = [%d,%d) covered=%v, want [1000,2000) kept", from, to, covered)
 	}
-	kept, _ = bs.PruneRelTypeTemporalCandidates(relType, ids, QueryOpts{ValidAt: 2500})
-	if !slices.Equal(kept, []types.RelID{101}) {
-		t.Errorf("after delete at 2500 kept %v, want [101] (uncovered ids are always kept)", kept)
+}
+
+// The tiered split-write rollback (DeleteRelIncoming fails after
+// DeleteRelEntityAndOut) puts the row back with PutRelEntityAndOut while its
+// history versions never left the shard. The envelope must still cover them.
+func TestRelTypeTemporalIndex_DeleteThenReputKeepsHistoryCovered(t *testing.T) {
+	bs := newTestBadgerStoreInMemory(t)
+	const relType, label = uint16(6), uint16(1)
+	if err := bs.PutNode(types.NewNode(types.NodeID(1), label, nil)); err != nil {
+		t.Fatal(err)
+	}
+	if err := bs.CreateRelTemporalIndex(relType); err != nil {
+		t.Fatal(err)
+	}
+	cur := types.NewRelationship(101, relType, types.NodeID(1), types.NodeID(99))
+	cur.SetTemporal(&types.TemporalMetadata{ValidFrom: 5000})
+	cur.SetVersion(2)
+	if err := bs.PutRelEntityAndOut(cur); err != nil {
+		t.Fatal(err)
+	}
+	past := types.NewRelationship(101, relType, types.NodeID(1), types.NodeID(99))
+	past.SetTemporal(&types.TemporalMetadata{ValidFrom: 1000, ValidTo: 5000})
+	past.SetVersion(1)
+	if err := bs.PutRelVersion(101, 1, past); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bs.DeleteRelEntityAndOut(101); err != nil {
+		t.Fatal(err)
+	}
+	if err := bs.PutRelEntityAndOut(cur); err != nil {
+		t.Fatalf("re-put: %v", err)
+	}
+	kept, ok := bs.PruneRelTypeTemporalCandidates(relType, []types.RelID{101}, QueryOpts{ValidAt: 1500})
+	if !ok || !slices.Equal(kept, []types.RelID{101}) {
+		t.Errorf("at 1500 kept %v (ok=%v), want [101]: version 1 is still on the shard", kept, ok)
 	}
 }
 

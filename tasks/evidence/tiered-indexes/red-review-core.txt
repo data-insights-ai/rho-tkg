@@ -1,0 +1,13 @@
+=== RUN   TestRelTemporalIndex_RolledBackDeleteKeepsPastVersion
+=== RUN   TestRelTemporalIndex_RolledBackDeleteKeepsPastVersion/memory
+=== RUN   TestRelTemporalIndex_RolledBackDeleteKeepsPastVersion/badger_without_index
+=== RUN   TestRelTemporalIndex_RolledBackDeleteKeepsPastVersion/badger_with_index
+    reltype_temporal_delete_rollback_test.go:76: RelsByTypeAt(1500) after rolled-back delete = 0 rows, want the moved row's past version
+    reltype_temporal_delete_rollback_test.go:83: ByType{ValidAt:1500} after rolled-back delete = 0 rows, want 1
+--- FAIL: TestRelTemporalIndex_RolledBackDeleteKeepsPastVersion (0.02s)
+    --- PASS: TestRelTemporalIndex_RolledBackDeleteKeepsPastVersion/memory (0.00s)
+    --- PASS: TestRelTemporalIndex_RolledBackDeleteKeepsPastVersion/badger_without_index (0.01s)
+    --- FAIL: TestRelTemporalIndex_RolledBackDeleteKeepsPastVersion/badger_with_index (0.01s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.034s
+FAIL

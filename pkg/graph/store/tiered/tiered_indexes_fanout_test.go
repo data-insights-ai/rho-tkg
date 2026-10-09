@@ -494,96 +494,80 @@ func TestTieredShardIndexes_InterruptedDDLRepairedAtOpen(t *testing.T) {
 	}
 }
 
-// A shard that fails mid fan-out: every shard the DDL already changed is
-// undone, and the anchor (reference shard, changed last) never records the
-// definition — the index does not half-exist.
+// A shard step that fails mid fan-out: every shard the DDL already changed is
+// undone and the anchor (reference shard, changed last) is left as before —
+// the index does not half-exist and does not half-vanish. The failure is
+// injected at the LAST non-reference step (all other event shards already
+// changed) and at the reference step (every event shard changed), for create
+// and drop of both index kinds.
 func TestTieredShardIndexes_FanOutRollsBackOnShardFailure(t *testing.T) {
-	ts := newTestTieredStore(t)
-	forceRotation(t, ts)
-	forceRotation(t, ts) // three event shards
+	errInjected := errors.New("injected shard failure")
 	const typ, label = uint16(8), uint16(3)
 	keys := []string{"device", "pid"}
-
-	ts.mu.RLock()
-	var broken *EventShard
-	for _, es := range ts.eventShards {
-		if es != ts.hotShard {
-			broken = es
-			break
-		}
+	type kind struct {
+		name   string
+		create func(*Store) error
+		drop   func(*Store) error
+		lists  func(*BadgerStore) bool
 	}
-	ts.mu.RUnlock()
-	if err := broken.store.Close(); err != nil {
-		t.Fatal(err)
+	kinds := []kind{
+		{"rel temporal",
+			func(ts *Store) error { return ts.CreateRelTemporalIndex(typ) },
+			func(ts *Store) error { return ts.DropRelTemporalIndex(typ) },
+			func(s *BadgerStore) bool { got, _ := s.RelTemporalIndexTypes(); return slices.Contains(got, typ) }},
+		{"composite",
+			func(ts *Store) error { return ts.CreateCompositePropertyIndex(label, keys) },
+			func(ts *Store) error { return ts.DropCompositePropertyIndex(label, keys) },
+			func(s *BadgerStore) bool { got, _ := s.ListCompositePropertyIndexes(label); return len(got) == 1 }},
 	}
-
-	if err := relTemporalDDL(t, ts).CreateRelTemporalIndex(typ); !errors.Is(err, storecontract.ErrStoreClosed) {
-		t.Fatalf("create with a failing shard: err = %v, want ErrStoreClosed", err)
-	}
-	ddl, intro := compositeDDL(t, ts)
-	if err := ddl.CreateCompositePropertyIndex(label, keys); !errors.Is(err, storecontract.ErrStoreClosed) {
-		t.Fatalf("create composite with a failing shard: err = %v, want ErrStoreClosed", err)
-	}
-	if got, err := ts.RelTemporalIndexTypes(); err != nil || len(got) != 0 {
-		t.Errorf("anchor lists %v, %v after a failed create; want none", got, err)
-	}
-	if got, err := intro.ListCompositePropertyIndexes(label); err != nil || len(got) != 0 {
-		t.Errorf("anchor lists composites %v, %v after a failed create; want none", got, err)
-	}
-	ts.mu.RLock()
-	shards := []*BadgerStore{ts.refShard}
-	for _, es := range ts.eventShards {
-		if es != broken {
-			shards = append(shards, es.store)
-		}
-	}
-	ts.mu.RUnlock()
-	for i, s := range shards {
-		if got, _ := s.RelTemporalIndexTypes(); len(got) != 0 {
-			t.Errorf("shard %d kept rel temporal types %v after rollback", i, got)
-		}
-		if got, _ := s.ListCompositePropertyIndexes(label); len(got) != 0 {
-			t.Errorf("shard %d kept composites %v after rollback", i, got)
-		}
-	}
-}
-
-// Drop with a failing shard: the shards already dropped get the index back
-// and the anchor still lists it.
-func TestTieredShardIndexes_DropRollsBackOnShardFailure(t *testing.T) {
-	ts := newTestTieredStore(t)
-	forceRotation(t, ts)
-	forceRotation(t, ts)
-	const typ uint16 = 8
-	if err := relTemporalDDL(t, ts).CreateRelTemporalIndex(typ); err != nil {
-		t.Fatalf("create: %v", err)
-	}
-	ts.mu.RLock()
-	var broken *EventShard
-	for _, es := range ts.eventShards {
-		if es != ts.hotShard {
-			broken = es
-			break
-		}
-	}
-	ts.mu.RUnlock()
-	if err := broken.store.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := relTemporalDDL(t, ts).DropRelTemporalIndex(typ); !errors.Is(err, storecontract.ErrStoreClosed) {
-		t.Fatalf("drop with a failing shard: err = %v, want ErrStoreClosed", err)
-	}
-	if got, err := ts.RelTemporalIndexTypes(); err != nil || !slices.Equal(got, []uint16{typ}) {
-		t.Errorf("anchor lists %v, %v after a failed drop; want [%d]", got, err, typ)
-	}
-	ts.mu.RLock()
-	defer ts.mu.RUnlock()
-	for _, es := range ts.eventShards {
-		if es == broken {
-			continue
-		}
-		if got, _ := es.store.RelTemporalIndexTypes(); !slices.Equal(got, []uint16{typ}) {
-			t.Errorf("shard %s lists %v after a failed drop; want [%d]", es.name, got, typ)
+	for _, k := range kinds {
+		for _, at := range []string{"last event shard", "reference"} {
+			for _, create := range []bool{true, false} {
+				verb := map[bool]string{true: "create", false: "drop"}[create]
+				t.Run(k.name+"/"+verb+"/"+at, func(t *testing.T) {
+					ts := newTestTieredStore(t)
+					forceRotation(t, ts)
+					forceRotation(t, ts) // three event shards
+					if !create {
+						if err := k.create(ts); err != nil {
+							t.Fatalf("setup create: %v", err)
+						}
+					}
+					steps := 0
+					ts.mu.RLock()
+					total := 1 + len(ts.eventShards) // reference + event shards, no archive
+					ts.mu.RUnlock()
+					ts.shardIdxFault = func(pos int, shard string) error {
+						steps++
+						if (at == "reference" && shard == "reference") ||
+							(at == "last event shard" && pos == total-2) {
+							return errInjected
+						}
+						return nil
+					}
+					op := k.create
+					if !create {
+						op = k.drop
+					}
+					if err := op(ts); !errors.Is(err, errInjected) {
+						t.Fatalf("%s with a failing step: err = %v, want the injected error", verb, err)
+					}
+					wantSteps := total
+					if at == "last event shard" {
+						wantSteps = total - 1
+					}
+					if steps != wantSteps {
+						t.Fatalf("fan-out ran %d steps before failing, want %d", steps, wantSteps)
+					}
+					ts.shardIdxFault = nil
+					// Every shard is back to its state before the DDL.
+					for name, s := range allShardStoresForTest(t, ts) {
+						if got := k.lists(s); got != !create {
+							t.Errorf("shard %s carries the index = %v after a failed %s, want %v", name, got, verb, !create)
+						}
+					}
+				})
+			}
 		}
 	}
 }

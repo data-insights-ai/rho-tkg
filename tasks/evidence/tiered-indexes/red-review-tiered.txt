@@ -1,0 +1,9 @@
+=== RUN   TestTieredColdLazyOpen_SyncsToAnchor
+    tiered_cold_sync_test.go:65: lazily opened cold shard composites = [[pid device]] (err <nil>), want [[device pid]]
+--- FAIL: TestTieredColdLazyOpen_SyncsToAnchor (0.47s)
+=== RUN   TestTieredRelTemporalIndex_WarmOpenBuildsOnce
+    tiered_rel_temporal_open_test.go:40: reopen built 4 relationship temporal indexes, want 3 (reference, warm, hot)
+--- FAIL: TestTieredRelTemporalIndex_WarmOpenBuildsOnce (0.70s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	1.213s
+FAIL
