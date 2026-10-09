@@ -31,9 +31,9 @@ Wave 1 (parallel) → v4.44.0
       beside :830-880), red forwarding + two-phase test through the session; stale comments
       store/changefeed.go:154-158, index/api.go:267-269 (+ core/graph_rel_indexes.go:97-100),
       constraints/unique.go:74-75. Proof: evidence/ingest-doors/.
-- [ ] Merge A-D, `make ci-docker`, consumer `go build ./... && go vet ./...` (sigma-tkgd, ai-soc engine,
-      agent-bookkeeping with a scratch `replace`), release v4.44.0 (CHANGELOG, AGENTS.md version pin, README line,
-      docs-consistency tests), tag, push.
+- [x] Merge A-D (+E), `make ci-docker` exit 0 on 3691294 (lint: 12 findings from the branches fixed in e5a2121;
+      vulncheck: 5 stdlib net/http advisories → go 1.26.9; cover-gate 86.6 %), consumers build+vet (scratch
+      `replace`, sigma-tkgd / ai-soc engine / agent-bookkeeping), release v4.44.0 = f7cd0ba, tag pushed.
 
 Wave 2 (parallel, start now, merge after wave 1) → v4.45.0
 - [x] E durable-on-return commit (Opus, backlog 11; merged after Opus review: Close race (SIGSEGV) fixed with a hook test, power-loss limit on memtable switch documented + backlog 15, LSN/result kept on ErrCommitNotDurable, requeue path exercised, 6 mutants with diffs, crash children on badger/tiered/sharded incl. default flush interval; evidence/durable-commit/; latency 2 ms/fsync per commit): opt-in `Config.DurableCommit`; `GraphTx.Commit` and
@@ -43,7 +43,11 @@ Wave 2 (parallel, start now, merge after wave 1) → v4.45.0
 - [ ] F tiered composite + rel temporal indexes (Opus, backlog 10): measure one-entry-per-row budget on a week of
       raw edges first, then per-shard fan-out mirroring sharded; rotation, cold checkout and repair move/rebuild
       entries. Red: two-phase over rotation, parity with badger. Proof: evidence/tiered-indexes/.
-- [ ] Watchdog (Sonnet): reads every worktree's log/diff every few minutes; reports DIVERGENCE (scope creep,
+- [x] Origin watch (René 2026-10-09: "Monitor github, Markus is working on the v5"): Monitor task running
+      `scratchpad/watch-origin.sh` (polls origin every 60 s; emits pushes by anyone but git user "dev team",
+      new/deleted branches and tags, PR and issue changes); re-armed every 30 min while the session lives.
+      Baseline: origin/main c554251, origin/v5 b1193dc (docs only), PRs #1-#7 closed/merged.
+- [x] Watchdog (Sonnet): reads every worktree's log/diff every few minutes; reports DIVERGENCE (scope creep,
       happy-path-only tests, attribution lines, pushes) to me.
 
 ## Review
@@ -79,9 +83,9 @@ Spec: `tasks/handover-tx-backfill-delete-update-20261009.md` (§6 overrides §2-
    before the code commit. [x] (red-w1..w5)
 3. "analyse if these changes break any existing code.. rho-tkg is in a lot of other libraries" — check: §6.10
    [x]; after implementation R0 green and `go build ./... && go vet ./...` green in sigma-tkgd, ai-soc
-   engine, agent-bookkeeping against the merged tree (`replace` in a scratch copy, never committed there). [ ]
+   engine, agent-bookkeeping against the merged tree (`replace` in a scratch copy, never committed there). [x] (v4.44.0)
 4. "then lets go.. spawn parallel opus agents in worktrees" — check: branches merged into main, worktrees
-   removed, `make test-race` + `make cover` (new code >= 80 %) green on main. [ ]
+   removed, `make test-race` + `make cover` (new code >= 80 %) green on main. [x] (ci-docker on 3691294, 86.6 %)
 5. "spawn a parallel sonnet agent which analyses what the other agents are doing and report if some agent
    diverges" — check: watchdog running per phase; every DIVERGENCE message acted on and noted in Review. [x] (served
    by one reviewer agent per branch under the MR protocol; every FIX FIRST finding applied before merge)
@@ -137,7 +141,7 @@ Phase 3
         (t = TxFrom, TxFrom-1, below a history TxTo; errors.Is graph.ErrTxOrder and ErrInvalidTxFrom). Break: a
         door forwarded to its plain twin.
 - [ ] Review agent per AGENTS.md MR protocol on the merged diff; fixes applied.
-- [ ] Dependents build/vet against the merged tree (request 3).
+- [x] Dependents build/vet against the merged tree (request 3; v4.44.0).
 
 Commits: no agent attribution lines (user rule 2026-10-02). No push, no tag.
 

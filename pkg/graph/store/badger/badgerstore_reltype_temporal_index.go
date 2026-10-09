@@ -28,7 +28,7 @@ import (
 // are snapshotted under idxMu, the index is built from them WITHOUT the lock,
 // and then installed under idxMu. A relationship written or updated between
 // the snapshot and the install is not folded in (the write path's
-// maintenance finds no index yet) — a known race, backlog item 21.
+// maintenance finds no index yet) — a known race, backlog item 22.
 
 // relTemporalBuildsTotal counts relationship temporal index builds across
 // every store in the process, including short-lived ones such as a recovery
