@@ -134,3 +134,28 @@ reviewed historical default-Instant/scalar-unit alternative and complete
 seven-record extraction evidence. Owner drafts now differ; source review and
 integration are pending. This data does not apply a patch or establish a
 clock/reference/interval conversion or full phase/release verdict.
+
+[`candidates/entity-declarations/`](candidates/entity-declarations/README.md)
+contains unchanged reviewed entity interpretation/native-axis role patch data,
+three complete golden records, 32 lifecycle answers and compact source/coverage
+validation. Its c01279c full-corpus 25/13/4 accounting is historical; owner unit
+APIs subsequently changed. The Go patches remain unapplied, including the
+intentionally red historical adapter. Graphstore codec/assembly and durable
+metadata preservation require separate integration evidence; no layout or
+V1/production graph completion is claimed.
+
+
+[`comparison-inputs/`](comparison-inputs/README.md) is a reviewed reference
+prerequisite: deterministic synthetic graph/workload inputs, exact independent
+answers, strict dataset-bound export normalization and a small canonical fixture.
+Its own checker runs from any working directory and updates its compact validation
+only with explicit `--write-validation`. Seventeen tests, 93 complete outputs and
+three rejected code mutants establish bounded reference correctness, including
+complete dataset inventory, byte/row/checksum ledgers and recomputed input identity
+before export equality. Supplied specifications still require trusted reference
+pins; staged
+current queries and retained-history lanes remain distinct. Source signal rows
+are unavailable for the graph-only fixture. No vendor adapter, benchmark harness,
+comparative performance result or V7 acceptance is established. Run its checker
+separately; the main checker below hashes reference artifacts and retains its
+existing mathematical/declarative validation scope.

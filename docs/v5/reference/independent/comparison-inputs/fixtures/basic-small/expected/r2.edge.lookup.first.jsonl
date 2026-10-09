@@ -1,0 +1,1 @@
+{"id":"e:0000000000000000","kind":"edge","properties":{"p_bool":{"type":"bool","value":false},"p_f64":{"bits":"0000000000000000","type":"f64"},"p_i64":{"type":"i64","value":"-9223372036854775808"},"p_text":{"type":"text","value":"edge updated café"}},"source":"n:0000000000000000","target":"n:0000000000000001","type":"HOP"}

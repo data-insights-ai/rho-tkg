@@ -1,0 +1,12 @@
+{
+  "mapping_version": "basic-graph-v1",
+  "reference_sha256": {
+    "docs/v5/PLAN.md": "0f7c3ef438545656a490f02869fb8a7e859cbc9ff66763de1b1199da74b711df",
+    "docs/v5/reference/graph-db-comparison.json": "12523467e9e441e18b9d13752a6f5f894233036c3d77fdb4a4c402d842f3825e",
+    "go.mod": "412e37f9e5829b7fa6e70edc7c38cf89a8754055bc3113b4c986721a3aba095d",
+    "v5/go.mod": "3bf8baf02d354420ddf87b8865f20b854bb606f04e0f0988f0f9eed2d89e8a24"
+  },
+  "repository_head": "de9e0b7a4e886abd36c9d6cc6d1f52f0fd32a4c8",
+  "schema_version": 1,
+  "scope": "Deterministic synthetic comparison inputs and independent exact-answer reference only; no vendor adapter or benchmark acceptance."
+}

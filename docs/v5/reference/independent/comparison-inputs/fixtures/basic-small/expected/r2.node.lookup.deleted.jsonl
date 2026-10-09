@@ -1,0 +1,1 @@
+{"id":"n:000000000000001f","kind":"node","labels":["Entity","Label1"],"properties":{"p_bool":{"type":"bool","value":true},"p_f64":{"bits":"3ff8000000000000","type":"f64"},"p_i64":{"type":"i64","value":"-1"},"p_optional":{"type":"i64","value":"14"},"p_text":{"type":"text","value":"node:31:seed=0:café\nquoted=\"yes\""}}}
