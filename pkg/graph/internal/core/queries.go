@@ -243,6 +243,9 @@ type nodeRangeScanner interface {
 // version of every label member, kept when its value AT THE PIN is in range, in
 // ID order — the same value-at-t the ordered sibling uses. It needs no property
 // index, so it never returns ErrIndexNotFound, and it never filters current rows.
+// Under ValidStart+ValidEnd the range is tested on the ONE version ByLabel
+// resolves (the most recent overlapping one), unlike ByLabelAndProperty, which
+// matches a value held anywhere in the interval (backlog item 16).
 func (n *NodeOps) ForEachByLabelPropertyRange(label, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Node) bool) error {
 	c := n.c
 	if err := c.checkOpen(); err != nil {
@@ -2222,7 +2225,9 @@ type relRangeScanner interface {
 // isolation and frozen-row contract as ForEachByType. A TEMPORAL QueryOpts is
 // served by a full fold over ByType's resolved versions (forEachRelInRangeTemporal),
 // the mirror of NodeOps.ForEachByLabelPropertyRange: value at the pin, ID order,
-// no property index needed, never current rows.
+// no property index needed, never current rows. Under ValidStart+ValidEnd the
+// range is tested on the version ByType resolves (the most recent overlapping
+// one), unlike ByTypeAndProperty's anywhere-in-the-interval match (backlog 16).
 func (r *RelOps) ForEachByTypePropertyRange(typeName, propKey string, min, max float64, inclMin, inclMax bool, opts storepkg.QueryOpts, fn func(*types.Relationship) bool) error {
 	c := r.c
 	if err := c.checkOpen(); err != nil {
