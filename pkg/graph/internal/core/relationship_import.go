@@ -128,6 +128,15 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 	} else if !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, fmt.Errorf("graph: rel-id collision probe: %w", err)
 	}
+	// A deleted ID's chain continues (backlog 38, version_alloc.go): decided
+	// before the type token is allocated.
+	life, err := c.relLifeStart(id)
+	if err != nil {
+		return nil, err
+	}
+	if err := life.begin(c, txFromOverride); err != nil {
+		return nil, err
+	}
 
 	var fromHash, toHash string
 	if c.constraints.Len() > 0 {
@@ -171,13 +180,14 @@ func (c *Core) importRelWithIDInternal(ctx context.Context, id types.RelID, type
 		if err := r.SetOwnedProperties(ps); err != nil {
 			return nil, nil, fmt.Errorf("graph: relationship import properties: %w", err)
 		}
+		r.SetVersion(life.version)
 		hash, err := integrity.ComputeRelHashChecked(r, typeName)
 		if err != nil {
 			return nil, nil, fmt.Errorf("graph: compute relationship hash: %w", err)
 		}
 		ig := &types.RelIntegrity{
 			Hash:               hash,
-			PrevHash:           "",
+			PrevHash:           life.prevHash,
 			AuthorID:           authorID,
 			Signature:          sig,
 			AuthorizedBy:       authorizedBy,

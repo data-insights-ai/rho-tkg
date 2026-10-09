@@ -416,6 +416,17 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 	} else if !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, fmt.Errorf("graph: node-id collision probe: %w", err)
 	}
+	// A deleted ID's chain continues: the new life starts above its highest
+	// version and after its stamps (backlog 38, version_alloc.go). Decided
+	// before any token is allocated, so a refused caller instant leaves
+	// nothing behind.
+	life, err := c.nodeLifeStart(id)
+	if err != nil {
+		return nil, err
+	}
+	if err := life.begin(c, txFromOverride); err != nil {
+		return nil, err
+	}
 
 	primaryToken, extraTokens, labelSnapshot, allocatedLabels, labelsLocked, err := c.getOrCreateLabelsWithSnapshot(labels)
 	if err != nil {
@@ -460,6 +471,7 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 	if err := n.SetOwnedProperties(ps); err != nil {
 		return nil, finishLabels(fmt.Errorf("graph: node properties: %w", err))
 	}
+	n.SetVersion(life.version)
 
 	canonicalLabels := labels
 	if len(labels) != 1 {
@@ -471,7 +483,7 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 	}
 	n.SetIntegrity(&types.NodeIntegrity{
 		Hash:               hash,
-		PrevHash:           "",
+		PrevHash:           life.prevHash,
 		AuthorID:           authorID,
 		Signature:          sig,
 		AuthorizedBy:       authorizedBy,
