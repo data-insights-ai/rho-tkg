@@ -30,7 +30,7 @@ type asofVersion struct {
 	txTo      types.Instant
 	deletedAt types.Instant
 	validTo   types.Instant // 0 = own interval open
-	current   bool // stored as the live current row (PutNode/PutRelationship), not history
+	current   bool          // stored as the live current row (PutNode/PutRelationship), not history
 }
 
 // genAsofChain produces a random but invariant-respecting version chain: strictly
