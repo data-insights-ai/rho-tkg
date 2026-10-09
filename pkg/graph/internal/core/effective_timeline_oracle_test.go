@@ -191,6 +191,15 @@ func etStamps(tms []*types.TemporalMetadata, mint types.Instant) []types.Instant
 	return out
 }
 
+// etSameRefusal: the timeline refused a pin with a compaction / retention
+// sentinel and the point door refused it with the same one.
+func etSameRefusal(err, perr error) bool {
+	if perr == nil || (!errors.Is(err, perr) && !errors.Is(perr, err)) {
+		return false
+	}
+	return errors.Is(err, ErrHistoryCompacted) || errors.Is(err, ErrRetentionExpired)
+}
+
 // etChecker runs the pointwise property for one graph.
 type etChecker struct {
 	t      *testing.T
@@ -259,7 +268,7 @@ func (k *etChecker) node(id types.NodeID, extraPins []types.Instant, maxPin type
 		segsRaw, err := k.g.Temporal.NodeEffectiveTimeline(id, pin)
 		if err != nil {
 			_, perr := k.g.Temporal.NodeAtTx(id, 1, pin)
-			if perr == nil || !(errors.Is(err, perr) || errors.Is(perr, err)) || (!errors.Is(err, ErrHistoryCompacted) && !errors.Is(err, ErrRetentionExpired)) {
+			if !etSameRefusal(err, perr) {
 				k.fail("node %v pin %d: timeline err %v, point door err %v", id, pin, err, perr)
 			}
 			k.errs++
@@ -301,7 +310,7 @@ func (k *etChecker) rel(id types.RelID, extraPins []types.Instant, maxPin types.
 		segsRaw, err := k.g.Temporal.RelEffectiveTimeline(id, pin)
 		if err != nil {
 			_, perr := k.g.Temporal.RelAtTx(id, 1, pin)
-			if perr == nil || !(errors.Is(err, perr) || errors.Is(perr, err)) || (!errors.Is(err, ErrHistoryCompacted) && !errors.Is(err, ErrRetentionExpired)) {
+			if !etSameRefusal(err, perr) {
 				k.fail("rel %v pin %d: timeline err %v, point door err %v", id, pin, err, perr)
 			}
 			k.errs++

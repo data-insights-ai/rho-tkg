@@ -1,0 +1,43 @@
+Effective timeline (handover effective-read-cost fix 1c, backlog 27) — evidence index, 2026-10-09
+
+RED (kept output)
+  red-1-life-end-main.txt            TestAtTxEndsAtClose / TestAtTxEndsAtDelete on main + the test: 56 subtests red
+                                     (close-then-bounded-cascade-inside, update-with-end-then-bounded-cascade,
+                                     close-bounded-inside-then-delete x5 delete doors; x4 backends x node/rel),
+                                     296 pass (consumer report 2 — beyond the delete instant — holds on main: guard)
+  red-1b-scan-doors-without-supersession-cap.txt
+                                     the same tests extended to ByLabel/ByType{ValidAt,TxAt}, NodesAtTx/RelsAtTx and
+                                     the scan forms, run with the fix removed: every scan door red (308 probe
+                                     mismatches each)
+  red-2-timeline-stub.txt            every TestEffectiveTimeline_* red against stub doors (9 tests, 107 FAIL lines)
+  red-3-reimport-overlap.txt         TestAtTxReImportOverlapsEarlierLife: sharded and tiered red (node, rel),
+                                     memory and badger pass (shortcut vs full fold disagree)
+
+MUTANTS (each red; file has the mutated text and the run)
+  mutant-0  no supersession cap                 TestAtTxEndsAt*, TestTxBackfillOracle_CrossBackend
+  mutant-1  segment end off by one              8 tests
+  mutant-2a/2b  scan skips deleted entities     ScanDeletedEntities, ScanMatchesGenericDoor, AtTxEndsAtDelete, ...
+  mutant-3  raw valid-from as the start         DerivedStart, PointwiseOracle
+  mutant-4  no merge                            MergeAdjacentSameRow, PointwiseOracle
+  mutant-5  current knowledge instead of pin    6 tests
+  mutant-6  skeleton winner not hydrated        6 tests
+  mutant-7  future pin accepted                 Errors
+  mutant-8  scan gates skipped                  CompactionAndRetention
+  mutant-9  no entity lock (-count=40)          ConcurrentWriters (19 subtests red)
+
+GREEN
+  green-1-life-end.txt               resolver fix 1 (supersession cap): life-end tests + both oracles
+  green-2-timeline-and-reimport.txt  all new tests + both oracles after the re-import fix
+  green-3-timeline.txt               TestEffectiveTimeline_* + TestAtTx*: 3,087,521 pointwise checks at 187,173
+                                     (entity, pin) pairs, 112,336 segments, 12,505 refused (compacted) pins
+  green-full-suite.txt               go test ./pkg/... -count=1: 34 packages ok
+  green-race.txt                     -race on core, storeutil, store/..., pkg/graph, nodes, rels, temporal
+
+BENCH
+  bench-200k.txt, bench-200k-hot.txt (see CHANGELOG [Unreleased] Added for the medians)
+
+FINDING (pre-existing, not fixed here)
+  finding-point-door-race-under-writers.txt / finding-point-door-race-probe.go.txt:
+  NodeAtTx / RelAtTx at a fixed pin miss an entity (ErrNotFound / no version) while a concurrent
+  Update / CloseVersion / Delete moves its current row to history — badger and sharded, 40 misses in 30 runs.
+  The effective-timeline doors hold the entity lock and are stable (mutant-9 shows the same race without it).
