@@ -19,8 +19,8 @@ import "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 // interval) fails the group that queued it with the real sentinel and leaves
 // that group's other ops to commit (partial success, as the Batch door).
 //
-// Unique constraints: the kernel judges the props patch before any row is
-// built (enforceUniqueForCascade, unique_cascade.go), so a refused patch fails
+// Unique constraints: the kernel judges its built rows right before its first
+// store write (enforceUniqueForCascade, unique_cascade.go), so a refused patch fails
 // its own op with ErrUniqueViolation, appends nothing, and the group's other
 // ops commit, as an UpdateNode violation does.
 
