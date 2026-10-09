@@ -25,10 +25,10 @@ import (
 // including the two-phase transaction-time checks (rule 15, lesson 46): a pin
 // taken before the correction must still see the uncorrected belief.
 
-// cpU scales the fixture's "year" instants to milliseconds-ish spacing. Raw
-// adjacent integers would make a one-year piece [2024, 2025) exactly 1 wide —
-// indistinguishable from the cascade's eclipse sentinel (ValidTo ==
-// ValidFrom+1), which the resolver deliberately skips.
+// cpU scales the fixture's "year" instants to milliseconds-ish spacing so a
+// one-year piece [2024, 2025) is 1000 wide. (It was required while a 1-wide
+// row was skipped as the old cascade's eclipse sentinel; one-tick spans are
+// ordinary now — see one_tick_span_test.go.)
 const cpU = 1000
 
 // cpState is the expected (city, name) projection of one resolved version. An
@@ -409,7 +409,7 @@ func TestCascadePatch_NilDeletesOnlyInsideInterval(t *testing.T) {
 }
 
 // 6. Gap segments (no version valid — here before the entity's first
-// valid-from) keep the pre-fix base: the most recent non-eclipsed version.
+// valid-from) keep the pre-fix base: the most recent version.
 // A correction straddling the gap and the first version uses the gap base for
 // the gap piece and the then-valid version for the rest.
 func TestCascadePatch_GapSegmentUsesMostRecentVersion(t *testing.T) {

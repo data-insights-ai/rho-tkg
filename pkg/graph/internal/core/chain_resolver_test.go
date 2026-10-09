@@ -80,20 +80,20 @@ func TestResolveNodeChain_Point(t *testing.T) {
 // TestResolveChainRelating_WhiteBox exercises the probeRelate seam directly,
 // including the defense-in-depth branches the door short-circuits away from: the
 // empty-set guard (the door rejects rels==0 before the resolver, but a future
-// direct caller must be safe), the eclipsed 1-instant tombstone-tile skip, and
-// the RelateOpen open-end classification. Query interval b = [100,200).
+// direct caller must be safe), a one-tick [50,51) row taking part as an
+// ordinary span, and the RelateOpen open-end classification. Query interval
+// b = [100,200).
 func TestResolveChainRelating_WhiteBox(t *testing.T) {
 	c := resolverTestCore()
 
-	// Chain: v0 closed [10,50) (Before b), then an ECLIPSED 1-instant tile at 50
-	// (must be skipped), then v1 open [60,∞) (Contains b). Tiling: v0's end comes
-	// from the eclipsed tile's ValidFrom — but the resolver skips eclipsed rows for
-	// vEnd derivation too, so v0 tiles to v1's ValidFrom 60. That still leaves v0
-	// [10,60) Before b, so both {Before} and {Contains} have a distinct match.
+	// Chain: v0 [10,50) (tiles to v1's ValidFrom), v1 a one-tick [50,51), v2
+	// open [60,∞) (Contains b). The one-tick row is an ordinary span — it was
+	// once skipped as the pre-994df82 cascade's "eclipse" sentinel — so it is
+	// the newest version Before b and the only one Equal to [50,51).
 	build := func() []*types.Node {
 		return []*types.Node{
 			rcNode(1, 0, &types.TemporalMetadata{ValidFrom: 10, TxFrom: 10}),
-			rcNode(1, 1, &types.TemporalMetadata{ValidFrom: 50, UpdatedAt: 50, ValidTo: 51, TxFrom: 50}), // eclipsed
+			rcNode(1, 1, &types.TemporalMetadata{ValidFrom: 50, UpdatedAt: 50, ValidTo: 51, TxFrom: 50}), // one tick
 			rcNode(1, 2, &types.TemporalMetadata{ValidFrom: 60, UpdatedAt: 60, TxFrom: 60}),
 		}
 	}
@@ -103,8 +103,8 @@ func TestResolveChainRelating_WhiteBox(t *testing.T) {
 		t.Fatalf("empty set: err = %v, want ErrNoVersionValidAt", err)
 	}
 
-	// {Contains}: the open head [60,∞) envelopes [100,200); the eclipsed tile is
-	// skipped, proving the skip does not spuriously match.
+	// {Contains}: the open head [60,∞) envelopes [100,200); the one-tick row
+	// does not spuriously match.
 	got, err := c.resolveNodeChain(build(), chainProbe{kind: probeRelate, validStart: 100, validEnd: 200, rels: types.Contains.Set()}, nil)
 	if err != nil {
 		t.Fatalf("{Contains}: unexpected err %v", err)
@@ -113,13 +113,32 @@ func TestResolveChainRelating_WhiteBox(t *testing.T) {
 		t.Fatalf("{Contains}: version = %d, want 2 (open head)", got.Version())
 	}
 
-	// {Before}: only the older tile [10,60) qualifies (predicate-anywhere).
+	// {Before}: the newest Before version is the one-tick row (a resolver that
+	// skips it answers v0).
 	got, err = c.resolveNodeChain(build(), chainProbe{kind: probeRelate, validStart: 100, validEnd: 200, rels: types.Before.Set()}, nil)
 	if err != nil {
 		t.Fatalf("{Before}: unexpected err %v", err)
 	}
+	if got.Version() != 1 {
+		t.Fatalf("{Before}: version = %d, want 1 (one-tick row)", got.Version())
+	}
+	// {Before} with a predicate rejecting v1: predicate-anywhere falls through
+	// to v0 [10,50).
+	notV1 := func(n *types.Node) bool { return n.Version() != 1 }
+	got, err = c.resolveNodeChain(build(), chainProbe{kind: probeRelate, validStart: 100, validEnd: 200, rels: types.Before.Set()}, notV1)
+	if err != nil {
+		t.Fatalf("{Before}+pred: unexpected err %v", err)
+	}
 	if got.Version() != 0 {
-		t.Fatalf("{Before}: version = %d, want 0 (older tile)", got.Version())
+		t.Fatalf("{Before}+pred: version = %d, want 0 (older tile)", got.Version())
+	}
+	// {Equals [50,51)}: exactly the one-tick row.
+	got, err = c.resolveNodeChain(build(), chainProbe{kind: probeRelate, validStart: 50, validEnd: 51, rels: types.Equals.Set()}, nil)
+	if err != nil {
+		t.Fatalf("{Equals [50,51)}: unexpected err %v", err)
+	}
+	if got.Version() != 1 {
+		t.Fatalf("{Equals [50,51)}: version = %d, want 1", got.Version())
 	}
 
 	// {During}: no version is inside b → ErrNoVersionValidAt.
@@ -127,11 +146,11 @@ func TestResolveChainRelating_WhiteBox(t *testing.T) {
 		t.Fatalf("{During}: err = %v, want ErrNoVersionValidAt", err)
 	}
 
-	// Relationship mirror (rule 2): same shape, {Before} finds the older tile.
+	// Relationship mirror (rule 2): same shape, {Before} finds the one-tick row.
 	buildR := func() []*types.Relationship {
 		return []*types.Relationship{
 			rcRel(1, 0, &types.TemporalMetadata{ValidFrom: 10, TxFrom: 10}),
-			rcRel(1, 1, &types.TemporalMetadata{ValidFrom: 50, UpdatedAt: 50, ValidTo: 51, TxFrom: 50}), // eclipsed
+			rcRel(1, 1, &types.TemporalMetadata{ValidFrom: 50, UpdatedAt: 50, ValidTo: 51, TxFrom: 50}), // one tick
 			rcRel(1, 2, &types.TemporalMetadata{ValidFrom: 60, UpdatedAt: 60, TxFrom: 60}),
 		}
 	}
@@ -142,8 +161,15 @@ func TestResolveChainRelating_WhiteBox(t *testing.T) {
 	if err != nil {
 		t.Fatalf("rel {Before}: unexpected err %v", err)
 	}
-	if gotR.Version() != 0 {
-		t.Fatalf("rel {Before}: version = %d, want 0", gotR.Version())
+	if gotR.Version() != 1 {
+		t.Fatalf("rel {Before}: version = %d, want 1 (one-tick row)", gotR.Version())
+	}
+	gotR, err = c.resolveRelChain(buildR(), chainProbe{kind: probeRelate, validStart: 50, validEnd: 51, rels: types.Equals.Set()}, nil)
+	if err != nil {
+		t.Fatalf("rel {Equals [50,51)}: unexpected err %v", err)
+	}
+	if gotR.Version() != 1 {
+		t.Fatalf("rel {Equals [50,51)}: version = %d, want 1", gotR.Version())
 	}
 	gotR, err = c.resolveRelChain(buildR(), chainProbe{kind: probeRelate, validStart: 100, validEnd: 200, rels: types.Contains.Set()}, nil)
 	if err != nil {

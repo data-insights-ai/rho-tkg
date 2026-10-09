@@ -79,10 +79,10 @@ type QueryOpts struct {
 	// it was believed at T".
 	TxPin types.Instant
 
-	// IncludeEclipsed includes history rows that were superseded by a cascade
-	// edit (Phase 3+). Default false: eclipsed rows are skipped for valid-time
-	// queries. Reserved field; pre-cascade builds treat all history rows as
-	// non-eclipsed.
+	// IncludeEclipsed is reserved and has no effect. No row is skipped for
+	// valid-time queries: a cascade correction appends newer beliefs and
+	// leaves covered rows in place (they answer at earlier TxAt pins), and a
+	// one-tick [t, t+1) row is an ordinary span. Kept for API compatibility.
 	IncludeEclipsed bool
 
 	// Depth controls which shard tiers to query. 0 (DepthAll) = all tiers.

@@ -1,0 +1,1836 @@
+--- FAIL: TestBitemporalOracle_BadgerCommitWindow (0.49s)
+    --- FAIL: TestBitemporalOracle_BadgerCommitWindow/iter=0/seed=762335780452 (0.01s)
+        bitemporaloracle_test.go:1077: MISMATCH [Rels.All(interval)] seed=762335780452 backend=badger-commit-window
+            probe: interval[2192,4377) txAt=0
+            oracle: {796849698604221440#v0, 796849698607268864#v0, 796849698619622400#v0, 796849698622080000#v0}
+            door:   {796849698607268864#v0, 796849698619622400#v0, 796849698622080000#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(S) -> ok
+               4. backfillNode(tx=1791543503279) -> ok
+               5. deleteNode(796849698601271296) -> ok
+               6. cascadeRel(796849698604221440,[1134,0)) -> graph: relationship not found: cascade requires at least one non-eclipsed version
+               7. updateNode(796849698609364992) -> graph: entity already closed
+               8. cascadeRel(796849698607268864,[1816,0)) -> ok
+               9. removeLabel(796849698602942464,A) -> ok
+              10. deleteNode(796849698609364992) -> ok
+              11. deleteRel(796849698604221440) -> ok
+              12. addLabel(796849698602942464,C) -> ok
+              13. addRel(S) -> ok
+              14. cascadeNode(796849698602942464,[2412,3740)) -> ok
+              15. updateNode(796849698602942464) -> ok
+              16. backfillNode(tx=1791543476669) -> ok
+              17. updateNode(796849698602942464) -> graph: tkg_valid_from must be greater than previous version's effective ValidFrom: 3845 <= prev 1791543522930
+              18. updateNode(796849698621587456) -> graph: entity already closed
+              19. addRel(S) -> ok
+              20. addRel(R) -> ok
+              21. addLabel(796849698621587456,A) -> graph: entity already closed
+            
+    --- FAIL: TestBitemporalOracle_BadgerCommitWindow/iter=7/seed=762335780459 (0.03s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=762335780459 backend=badger-commit-window
+            probe: interval[1403,1791543523333) txAt=1791543523338
+            oracle: {796849711116386304#v0, 796849711118286848#v0, 796849711119073280#v0, 796849711121334272#v0, 796849711126642688#v2, 796849711126904832#v0, 796849711128018944#v0, 796849711129853952#v0}
+            door:   {796849711116386304#v0, 796849711118286848#v0, 796849711119073280#v0, 796849711121334272#v0, 796849711126642688#v2, 796849711126904832#v0, 796849711128018944#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(R) -> ok
+               4. addNode -> ok
+               5. addNode -> ok
+               6. deleteNode(796849711119073280) -> ok
+               7. addNode -> ok
+               8. addRel(R) -> ok
+               9. updateRel(796849711128282112) -> ok
+              10. deleteRel(796849711128282112) -> ok
+              11. updateNode(796849711126642688) -> ok
+              12. addNode -> ok
+              13. removeLabel(796849711126642688,A) -> graph: node does not have the specified label
+              14. addLabel(796849711126642688,A) -> ok
+              15. deleteNode(796849711121334272) -> ok
+              16. deleteRel(796849711123072000) -> ok
+              17. addRel(S) -> ok
+              18. cascadeNode(796849711129853952,[4047,0)) -> graph: node not found: cascade requires at least one non-eclipsed version
+              19. updateRel(796849711131001856) -> graph: entity already closed
+              20. addRel(R) -> ok
+              21. removeLabel(796849711126904832,A) -> ok
+            
+    --- FAIL: TestBitemporalOracle_BadgerCommitWindow/iter=8/seed=762335780460 (0.02s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=762335780460 backend=badger-commit-window
+            probe: interval[1376,2345) txAt=1791544523357
+            oracle: {796849711905210368#v0, 796849711908225024#v0, 796849711910158336#v0, 796849711914975232#v0}
+            door:   {796849711905210368#v0, 796849711908225024#v0, 796849711910158336#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(S) -> ok
+               4. addRel(R) -> ok
+               5. deleteRel(796849711916811264) -> ok
+               6. cascadeNode(796849711910158336,[1443,1925)) -> ok
+               7. updateNode(796849711914975232) -> graph: entity already closed
+               8. deleteRel(796849711920579584) -> ok
+               9. addRel(S) -> ok
+              10. deleteNode(796849711910158336) -> ok
+              11. addRel(S) -> ok
+              12. updateNode(796849711914975232) -> graph: entity already closed
+              13. cascadeRel(796849711924675584,[3884,0)) -> ok
+              14. addRel(R) -> ok
+              15. addNode -> ok
+              16. addLabel(796849711926312960,B) -> ok
+              17. cascadeRel(796849711918973952,[3545,5602)) -> ok
+              18. deleteRel(796849711923856384) -> ok
+              19. updateNode(796849711914975232) -> graph: entity already closed
+              20. updateRel(796849711924675584) -> ok
+              21. updateNode(796849711914975232) -> graph: entity already closed
+            
+--- FAIL: TestResolveChainRelating_WhiteBox (0.00s)
+    chain_resolver_test.go:123: {Before}: version = 0, want 1 (one-tick row)
+--- FAIL: TestBitemporalOracleHarness (15.55s)
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253145 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Rels.All(interval)] seed=47645253145 backend=memory
+            probe: interval[3121,1791543524273) txAt=1791544524282
+            oracle: {796849742190511104#v1, 796849742193230848#v0}
+            door:   {796849742190511104#v1}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(R) -> ok
+               4. addNode -> ok
+               5. backfillNode(tx=1791543489265) -> ok
+               6. deleteRel(796849742189954048) -> ok
+               7. removeLabel(796849742189756416,C) -> graph: node does not have the specified label
+               8. updateNode(796849742190706688) -> ok
+               9. updateRel(796849742190511104) -> graph: entity already closed
+              10. addLabel(796849742190706688,B) -> ok
+              11. removeLabel(796849742189625344,B) -> graph: cannot remove the last label from a node
+              12. updateNode(796849742189625344) -> graph: entity already closed
+              13. removeLabel(796849742190870528,B) -> graph: node does not have the specified label
+              14. addRel(S) -> ok
+              15. updateNode(796849742189756416) -> ok
+              16. deleteNode(796849742190870528) -> ok
+              17. cascadeNode(796849742189625344,[2347,0)) -> graph: node not found: cascade requires at least one non-eclipsed version
+              18. updateNode(796849742190706688) -> ok
+              19. cascadeRel(796849742190511104,[2441,3470)) -> ok
+              20. updateRel(796849742190511104) -> graph: entity already closed
+              21. cascadeRel(796849742193230848,[4029,5336)) -> graph: relationship not found: cascade requires at least one non-eclipsed version
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253148 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Rels.All(interval)] seed=47645253148 backend=memory
+            probe: interval[2187,5972) txAt=1791544524472
+            oracle: {796849748388643840#v6, 796849748388938752#v0, 796849748390577152#v0, 796849748391396352#v0}
+            door:   {796849748388643840#v6, 796849748390577152#v0, 796849748391396352#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(R) -> ok
+               4. cascadeRel(796849748388643840,[2886,4960)) -> ok
+               5. deleteNode(796849748388380672) -> ok
+               6. updateRel(796849748388643840) -> graph: tkg_valid_from must be greater than previous version's effective ValidFrom: 2554 <= prev 4960
+               7. removeLabel(796849748388511744,A) -> graph: node does not have the specified label
+               8. cascadeRel(796849748388643840,[1782,0)) -> ok
+               9. addLabel(796849748388511744,C) -> ok
+              10. backfillNode(tx=1791543496648) -> ok
+              11. addNode -> ok
+              12. addRel(R) -> ok
+              13. backfillNode(tx=1791543482617) -> ok
+              14. cascadeNode(796849748388511744,[1834,3637)) -> ok
+              15. updateNode(796849748388511744) -> ok
+              16. addLabel(796849748390641664,B) -> ok
+              17. deleteNode(796849748390445056) -> ok
+              18. addLabel(796849748388511744,A) -> ok
+              19. addRel(S) -> ok
+              20. cascadeRel(796849748388938752,[2744,3289)) -> graph: relationship not found: cascade requires at least one non-eclipsed version
+              21. updateRel(796849748390577152) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253155 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253155 backend=memory
+            probe: interval[1394,1791543525181) txAt=0
+            oracle: {796849772364660736#v0, 796849772365873152#v0, 796849772366069760#v1, 796849772366331904#v0, 796849772368101376#v0, 796849772370591744#v0, 796849772370722816#v0, 796849772370853888#v0, 796849772370952192#v0, 796849772372033536#v0}
+            door:   {796849772364660736#v0, 796849772365873152#v0, 796849772366069760#v1, 796849772366331904#v0, 796849772370591744#v0, 796849772370722816#v0, 796849772370853888#v0, 796849772370952192#v0, 796849772372033536#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(R) -> ok
+               4. deleteRel(796849772367479808) -> ok
+               5. addNode -> ok
+               6. cascadeRel(796849772366562304,[3462,5156)) -> ok
+               7. cascadeRel(796849772366562304,[1296,1769)) -> ok
+               8. cascadeNode(796849772366069760,[3583,0)) -> ok
+               9. deleteNode(796849772366331904) -> ok
+              10. backfillNode(tx=1791543495199) -> ok
+              11. backfillNode(tx=1791543492322) -> ok
+              12. addNode -> ok
+              13. backfillNode(tx=1791543510365) -> ok
+              14. cascadeRel(796849772366562304,[3030,3976)) -> ok
+              15. removeLabel(796849772370722816,B) -> ok
+              16. cascadeRel(796849772366562304,[1199,2412)) -> ok
+              17. backfillNode(tx=1791543491028) -> ok
+              18. removeLabel(796849772370591744,A) -> ok
+              19. cascadeRel(796849772366562304,[1022,0)) -> ok
+              20. deleteNode(796849772370722816) -> ok
+              21. updateNode(796849772370952192) -> graph: entity already closed
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253160 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Rels.All(interval)] seed=47645253160 backend=memory
+            probe: interval[2459,1791543525764) txAt=1791544525770
+            oracle: {796849790791353344#v0, 796849790791844864#v3, 796849790796039168#v0}
+            door:   {796849790791353344#v0, 796849790791844864#v3}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(S) -> ok
+               4. deleteNode(796849790791024640) -> ok
+               5. cascadeRel(796849790791844864,[1495,0)) -> ok
+               6. cascadeRel(796849790791844864,[543,0)) -> ok
+               7. addNode -> ok
+               8. updateNode(796849790793613312) -> ok
+               9. deleteNode(796849790793613312) -> ok
+              10. backfillNode(tx=1791543509609) -> ok
+              11. updateRel(796849790791353344) -> graph: entity already closed
+              12. backfillNode(tx=1791543501659) -> ok
+              13. cascadeNode(796849790794039296,[2459,0)) -> ok
+              14. cascadeRel(796849790791844864,[1712,3358)) -> ok
+              15. updateNode(796849790791188480) -> graph: entity already closed
+              16. updateRel(796849790791844864) -> ok
+              17. deleteRel(796849790791844864) -> ok
+              18. removeLabel(796849790794235904,B) -> ok
+              19. addLabel(796849790794235904,B) -> ok
+              20. addRel(S) -> ok
+              21. addLabel(796849790794235904,C) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253161 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253161 backend=memory
+            probe: interval[666,2367) txAt=1791543525767
+            oracle: {796849790857150464#v0, 796849790857641984#v0, 796849790857871360#v0, 796849790858133504#v0, 796849790859051008#v1}
+            door:   {796849790857150464#v0, 796849790857641984#v0, 796849790857871360#v0, 796849790858133504#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(R) -> ok
+               4. addRel(R) -> ok
+               5. backfillNode(tx=1791543475937) -> ok
+               6. addNode -> ok
+               7. cascadeRel(796849790858396672,[2793,0)) -> ok
+               8. updateNode(796849790858133504) -> graph: entity already closed
+               9. updateRel(796849790858396672) -> ok
+              10. updateRel(796849790858396672) -> graph: tkg_valid_from must be greater than previous version's effective ValidFrom: 3201 <= prev 1791543525746
+              11. cascadeNode(796849790859051008,[666,667)) -> ok
+              12. updateNode(796849790857871360) -> graph: entity already closed
+              13. deleteRel(796849790858757120) -> ok
+              14. addLabel(796849790859051008,A) -> ok
+              15. cascadeRel(796849790858888192,[1901,0)) -> ok
+              16. updateNode(796849790857871360) -> graph: entity already closed
+              17. backfillNode(tx=1791543514968) -> ok
+              18. deleteNode(796849790858133504) -> ok
+              19. addRel(R) -> ok
+              20. deleteNode(796849790859247616) -> ok
+              21. cascadeNode(796849790859051008,[4173,0)) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253163 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253163 backend=memory
+            probe: interval[1173,1791543497537) txAt=0
+            oracle: {796849795692298240#v0, 796849795693412352#v0, 796849795693674496#v0, 796849795693871104#v2, 796849795697246208#v0, 796849795699113984#v0}
+            door:   {796849795692298240#v0, 796849795693412352#v0, 796849795693674496#v0, 796849795693871104#v2, 796849795697246208#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(R) -> ok
+               4. cascadeNode(796849795693871104,[2153,0)) -> ok
+               5. updateRel(796849795694887936) -> graph: entity already closed
+               6. addRel(S) -> ok
+               7. cascadeNode(796849795693871104,[1173,3150)) -> ok
+               8. updateNode(796849795693871104) -> ok
+               9. addLabel(796849795693871104,C) -> ok
+              10. backfillNode(tx=1791543489214) -> ok
+              11. deleteNode(796849795697246208) -> ok
+              12. addRel(S) -> ok
+              13. addLabel(796849795693871104,A) -> ok
+              14. deleteRel(796849795694887936) -> ok
+              15. updateRel(796849795697738752) -> ok
+              16. updateNode(796849795693674496) -> graph: entity already closed
+              17. backfillNode(tx=1791543497539) -> ok
+              18. removeLabel(796849795693674496,B) -> graph: entity already closed
+              19. cascadeRel(796849795696460800,[3945,4472)) -> ok
+              20. removeLabel(796849795693674496,C) -> graph: entity already closed
+              21. cascadeRel(796849795694134272,[957,0)) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253165 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Rels.All(interval)] seed=47645253165 backend=memory
+            probe: interval[2671,5227) txAt=0
+            oracle: {796849800314586112#v0, 796849800315339776#v0, 796849800331592704#v0, 796849800332051456#v0, 796849800332575744#v0}
+            door:   {796849800314586112#v0, 796849800315339776#v0, 796849800331592704#v0, 796849800332051456#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(R) -> ok
+               4. backfillNode(tx=1791543480407) -> ok
+               5. updateNode(796849800314093568) -> ok
+               6. deleteRel(796849800314586112) -> ok
+               7. addRel(S) -> ok
+               8. addRel(S) -> ok
+               9. removeLabel(796849800315600896,B) -> graph: node does not have the specified label
+              10. addRel(S) -> ok
+              11. deleteNode(796849800314093568) -> ok
+              12. addNode -> ok
+              13. addLabel(796849800315600896,A) -> ok
+              14. backfillNode(tx=1791543510302) -> ok
+              15. addNode -> ok
+              16. updateRel(796849800331592704) -> ok
+              17. deleteRel(796849800332051456) -> ok
+              18. removeLabel(796849800314322944,C) -> graph: cannot remove the last label from a node
+              19. cascadeNode(796849800334868480,[6001,7376)) -> ok
+              20. deleteNode(796849800315600896) -> ok
+              21. updateNode(796849800334868480) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253168 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253168 backend=memory
+            probe: interval[4727,1791543526374) txAt=0
+            oracle: {796849810792284160#v0, 796849810793889792#v0, 796849810794250240#v0, 796849810794348544#v10, 796849810800148480#v1, 796849810800869376#v1, 796849810802147328#v0}
+            door:   {796849810792284160#v0, 796849810793889792#v0, 796849810794250240#v0, 796849810794348544#v10, 796849810800148480#v1, 796849810800869376#v1}
+            op log (19):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(S) -> ok
+               4. cascadeNode(796849810794348544,[2387,3245)) -> ok
+               5. deleteRel(796849810795332608) -> ok
+               6. deleteRel(796849810796217344) -> ok
+               7. cascadeNode(796849810794348544,[2177,0)) -> ok
+               8. cascadeNode(796849810794348544,[2479,4432)) -> ok
+               9. removeLabel(796849810794348544,C) -> graph: node does not have the specified label
+              10. addNode -> ok
+              11. updateNode(796849810800148480) -> ok
+              12. addNode -> ok
+              13. removeLabel(796849810794348544,C) -> graph: node does not have the specified label
+              14. cascadeNode(796849810794348544,[3665,0)) -> ok
+              15. addRel(S) -> ok
+              16. updateRel(796849810801492992) -> graph: entity already closed
+              17. updateNode(796849810800869376) -> ok
+              18. addNode -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253169 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Rels.All(interval)] seed=47645253169 backend=memory
+            probe: interval[2636,2814) txAt=1791544526382
+            oracle: {796849810901042176#v0, 796849810901533696#v0, 796849810904515584#v1}
+            door:   {796849810901042176#v0, 796849810904515584#v1}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(R) -> ok
+               4. updateRel(796849810901042176) -> graph: entity already closed
+               5. cascadeRel(796849810901042176,[1674,0)) -> ok
+               6. deleteRel(796849810901042176) -> ok
+               7. addNode -> ok
+               8. updateNode(796849810900615168) -> ok
+               9. addRel(R) -> ok
+              10. removeLabel(796849810900811776,A) -> graph: node does not have the specified label
+              11. cascadeRel(796849810904515584,[1589,0)) -> ok
+              12. addRel(S) -> ok
+              13. deleteNode(796849810904186880) -> ok
+              14. cascadeNode(796849810900615168,[4447,0)) -> ok
+              15. removeLabel(796849810900615168,C) -> graph: node does not have the specified label
+              16. addRel(S) -> ok
+              17. cascadeNode(796849810900811776,[3742,0)) -> ok
+              18. addRel(R) -> ok
+              19. updateNode(796849810900811776) -> ok
+              20. deleteRel(796849810905891840) -> ok
+              21. addLabel(796849810900615168,A) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253173 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Rels.All(interval)] seed=47645253173 backend=memory
+            probe: interval[2386,3065) txAt=1791544526848
+            oracle: {796849826300003328#v0, 796849826302592000#v1}
+            door:   {796849826300003328#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(R) -> ok
+               4. updateNode(796849826299609088) -> ok
+               5. deleteNode(796849826299609088) -> ok
+               6. cascadeNode(796849826299805696,[2386,3077)) -> ok
+               7. addLabel(796849826299805696,A) -> graph: entity already closed
+               8. addRel(S) -> ok
+               9. addLabel(796849826299805696,B) -> graph: entity already closed
+              10. deleteRel(796849826300003328) -> ok
+              11. backfillNode(tx=1791543470582) -> ok
+              12. addLabel(796849826303016960,A) -> ok
+              13. addLabel(796849826303016960,C) -> ok
+              14. cascadeRel(796849826302592000,[2900,2901)) -> ok
+              15. updateNode(796849826299805696) -> graph: entity already closed
+              16. addLabel(796849826299805696,C) -> ok
+              17. deleteNode(796849826299805696) -> ok
+              18. deleteRel(796849826302592000) -> ok
+              19. cascadeNode(796849826303016960,[1322,0)) -> ok
+              20. addLabel(796849826303016960,B) -> ok
+              21. cascadeNode(796849826303016960,[2990,0)) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253177 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [NodesAtTx] seed=47645253177 backend=memory
+            probe: point validAt=4494 txAt=1791543527379
+            oracle: {796849844252246016#v0, 796849844253163520#v0, 796849844253360128#v0, 796849844253556736#v0, 796849844255031296#v0, 796849844256505856#v0}
+            door:   {796849844252246016#v0, 796849844253163520#v0, 796849844253360128#v0, 796849844253556736#v0, 796849844255031296#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(R) -> ok
+               4. addRel(R) -> ok
+               5. deleteRel(796849844254376960) -> ok
+               6. addRel(S) -> ok
+               7. backfillNode(tx=1791543517424) -> ok
+               8. addLabel(796849844255031296,C) -> ok
+               9. cascadeNode(796849844253360128,[3748,0)) -> ok
+              10. addLabel(796849844253556736,A) -> ok
+              11. backfillNode(tx=1791543484918) -> ok
+              12. cascadeRel(796849844253754368,[4839,5769)) -> ok
+              13. updateRel(796849844254868480) -> graph: entity already closed
+              14. removeLabel(796849844256505856,B) -> graph: node does not have the specified label
+              15. cascadeNode(796849844253360128,[4359,0)) -> ok
+              16. addRel(R) -> ok
+              17. backfillNode(tx=1791543480560) -> ok
+              18. backfillNode(tx=1791543520303) -> ok
+              19. deleteRel(796849844254245888) -> ok
+              20. addRel(R) -> ok
+              21. addNode -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253178 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253178 backend=memory
+            probe: interval[1493,1791543481365) txAt=1791543527388
+            oracle: {796849844277018624#v0, 796849844277280768#v0, 796849844277411840#v0, 796849844277575680#v0, 796849844279574528#v0, 796849844281081856#v0, 796849844281638912#v0}
+            door:   {796849844277018624#v0, 796849844277280768#v0, 796849844277575680#v0, 796849844279574528#v0, 796849844281081856#v0, 796849844281638912#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(S) -> ok
+               4. addRel(R) -> ok
+               5. updateNode(796849844277575680) -> ok
+               6. cascadeRel(796849844278264832,[1593,2595)) -> ok
+               7. addLabel(796849844277411840,A) -> graph: entity already closed
+               8. addNode -> ok
+               9. addRel(R) -> ok
+              10. updateRel(796849844279673856) -> ok
+              11. updateNode(796849844277411840) -> graph: entity already closed
+              12. removeLabel(796849844277575680,C) -> ok
+              13. addRel(S) -> ok
+              14. updateRel(796849844280296448) -> graph: entity already closed
+              15. addLabel(796849844279574528,A) -> ok
+              16. addRel(S) -> ok
+              17. cascadeNode(796849844279574528,[2932,3920)) -> ok
+              18. backfillNode(tx=1791543521072) -> ok
+              19. updateRel(796849844279673856) -> ok
+              20. deleteNode(796849844277411840) -> ok
+              21. backfillNode(tx=1791543481367) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253179 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253179 backend=memory
+            probe: interval[2068,1791543527394) txAt=1791544527404
+            oracle: {796849844377911296#v0, 796849844378632192#v0, 796849844378992640#v0, 796849844379189248#v0, 796849844380565504#v0, 796849844381024256#v0, 796849844382564352#v0, 796849844385349632#v0, 796849844385579008#v0, 796849844385873920#v0}
+            door:   {796849844377911296#v0, 796849844378632192#v0, 796849844378992640#v0, 796849844380565504#v0, 796849844381024256#v0, 796849844382564352#v0, 796849844385349632#v0, 796849844385579008#v0, 796849844385873920#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(R) -> ok
+               4. backfillNode(tx=1791543473024) -> ok
+               5. addNode -> ok
+               6. deleteRel(796849844380140544) -> ok
+               7. updateRel(796849844379485184) -> ok
+               8. deleteNode(796849844381024256) -> ok
+               9. addLabel(796849844380565504,A) -> ok
+              10. backfillNode(tx=1791543512589) -> ok
+              11. cascadeRel(796849844379485184,[3003,0)) -> ok
+              12. updateRel(796849844379485184) -> ok
+              13. addLabel(796849844382564352,A) -> ok
+              14. updateRel(796849844379485184) -> graph: tkg_valid_from must be greater than previous version's effective ValidFrom: 4406 <= prev 1791543527379
+              15. addNode -> ok
+              16. addNode -> ok
+              17. deleteNode(796849844378992640) -> ok
+              18. addNode -> ok
+              19. updateRel(796849844379485184) -> graph: tkg_valid_from must be greater than previous version's effective ValidFrom: 5773 <= prev 1791543527379
+              20. cascadeRel(796849844379485184,[2955,4510)) -> ok
+              21. deleteRel(796849844379485184) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253184 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253184 backend=memory
+            probe: interval[4636,1791543527960) txAt=1791544527966
+            oracle: {796849862702235648#v0, 796849862703480832#v0, 796849862705676288#v2, 796849862709116928#v0, 796849862709444608#v0, 796849862709575680#v0, 796849862710132736#v0, 796849862710329344#v0}
+            door:   {796849862702235648#v0, 796849862703480832#v0, 796849862705676288#v2, 796849862709116928#v0, 796849862709444608#v0, 796849862709575680#v0, 796849862710132736#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(S) -> ok
+               4. deleteNode(796849862704005120) -> ok
+               5. backfillNode(tx=1791543524873) -> ok
+               6. removeLabel(796849862705676288,B) -> graph: node does not have the specified label
+               7. updateRel(796849862704235520) -> ok
+               8. cascadeRel(796849862704890880,[3407,3408)) -> ok
+               9. updateRel(796849862704890880) -> ok
+              10. deleteNode(796849862703742976) -> ok
+              11. cascadeNode(796849862705676288,[3900,0)) -> ok
+              12. addNode -> ok
+              13. updateRel(796849862704235520) -> ok
+              14. addNode -> ok
+              15. addNode -> ok
+              16. updateRel(796849862704890880) -> ok
+              17. updateNode(796849862705676288) -> ok
+              18. addNode -> ok
+              19. backfillNode(tx=1791543487111) -> ok
+              20. updateRel(796849862704235520) -> graph: tkg_valid_from must be greater than previous version's effective ValidFrom: 5565 <= prev 1791543527938
+              21. updateNode(796849862709575680) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253186 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253186 backend=memory
+            probe: interval[1691,1791543528105) txAt=1791544528104
+            oracle: {796849867470733312#v0, 796849867471618048#v0, 796849867471847424#v0, 796849867472044032#v10, 796849867474960384#v0, 796849867477155840#v0}
+            door:   {796849867470733312#v0, 796849867471618048#v0, 796849867472044032#v10, 796849867474960384#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(R) -> ok
+               4. removeLabel(796849867471847424,C) -> graph: node does not have the specified label
+               5. addRel(R) -> ok
+               6. cascadeNode(796849867472044032,[2256,2841)) -> ok
+               7. cascadeNode(796849867472044032,[1691,2759)) -> ok
+               8. updateRel(796849867472208896) -> graph: entity already closed
+               9. backfillNode(tx=1791543518735) -> ok
+              10. addLabel(796849867472044032,B) -> ok
+              11. cascadeRel(796849867472733184,[1651,1888)) -> ok
+              12. updateRel(796849867472733184) -> ok
+              13. addRel(S) -> ok
+              14. cascadeRel(796849867475715072,[3602,4485)) -> ok
+              15. addRel(S) -> ok
+              16. cascadeNode(796849867472044032,[924,0)) -> ok
+              17. removeLabel(796849867472044032,C) -> graph: node does not have the specified label
+              18. cascadeNode(796849867471847424,[3360,0)) -> graph: node not found: cascade requires at least one non-eclipsed version
+              19. addRel(R) -> ok
+              20. removeLabel(796849867471847424,A) -> graph: entity already closed
+              21. addNode -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253187 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [RelsAtTx] seed=47645253187 backend=memory
+            probe: point validAt=2578 txAt=1791543528104
+            oracle: {796849867570906112#v0}
+            door:   {}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(S) -> ok
+               4. removeLabel(796849867570577408,C) -> graph: cannot remove the last label from a node
+               5. cascadeRel(796849867570906112,[637,1168)) -> graph: relationship not found: cascade requires at least one non-eclipsed version
+               6. updateRel(796849867571856384) -> ok
+               7. deleteRel(796849867571856384) -> ok
+               8. removeLabel(796849867570577408,C) -> graph: cannot remove the last label from a node
+               9. backfillNode(tx=1791543523890) -> ok
+              10. updateRel(796849867570906112) -> graph: entity already closed
+              11. backfillNode(tx=1791543490195) -> ok
+              12. removeLabel(796849867573526528,A) -> graph: node does not have the specified label
+              13. cascadeNode(796849867574050816,[709,0)) -> ok
+              14. removeLabel(796849867573526528,B) -> ok
+              15. addNode -> ok
+              16. addNode -> ok
+              17. updateRel(796849867570906112) -> graph: entity already closed
+              18. deleteNode(796849867570249728) -> ok
+              19. deleteNode(796849867574050816) -> ok
+              20. addRel(S) -> ok
+              21. backfillNode(tx=1791543484143) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253191 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253191 backend=memory
+            probe: interval[2707,1791543528520) txAt=1791544528538
+            oracle: {796849881453559808#v0, 796849881455230976#v0, 796849881455427584#v1, 796849881455689728#v0, 796849881457491968#v0, 796849881458016256#v1, 796849881458311168#v0, 796849881460113408#v1, 796849881460932608#v0}
+            door:   {796849881453559808#v0, 796849881455230976#v0, 796849881455427584#v1, 796849881455689728#v0, 796849881457491968#v0, 796849881458016256#v1, 796849881458311168#v0, 796849881460113408#v1}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(R) -> ok
+               4. addLabel(796849881455427584,A) -> ok
+               5. cascadeRel(796849881455887360,[2550,0)) -> graph: relationship not found: cascade requires at least one non-eclipsed version
+               6. backfillNode(tx=1791543496019) -> ok
+               7. deleteNode(796849881455427584) -> ok
+               8. removeLabel(796849881455689728,B) -> graph: node does not have the specified label
+               9. addNode -> ok
+              10. addRel(R) -> ok
+              11. backfillNode(tx=1791543472536) -> ok
+              12. updateNode(796849881458311168) -> graph: entity already closed
+              13. updateRel(796849881458148352) -> ok
+              14. cascadeRel(796849881458148352,[638,2589)) -> ok
+              15. backfillNode(tx=1791543471656) -> ok
+              16. cascadeNode(796849881458016256,[3941,5893)) -> ok
+              17. deleteRel(796849881455887360) -> ok
+              18. cascadeNode(796849881460113408,[4077,5334)) -> ok
+              19. addRel(S) -> ok
+              20. backfillNode(tx=1791543507285) -> ok
+              21. addLabel(796849881460113408,A) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253193 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Rels.All(interval)] seed=47645253193 backend=memory
+            probe: interval[1850,2959) txAt=1791543528617
+            oracle: {796849884538504192#v0}
+            door:   {}
+            op log (20):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(R) -> ok
+               4. backfillNode(tx=1791543503966) -> ok
+               5. updateNode(796849884539387904) -> ok
+               6. addLabel(796849884539387904,A) -> ok
+               7. addLabel(796849884538142720,C) -> ok
+               8. cascadeNode(796849884538273792,[1048,2959)) -> ok
+               9. addLabel(796849884538142720,C) -> ok
+              10. updateRel(796849884538504192) -> graph: entity already closed
+              11. backfillNode(tx=1791543501758) -> ok
+              12. deleteRel(796849884539192320) -> ok
+              13. cascadeNode(796849884541812736,[1850,2920)) -> ok
+              14. updateRel(796849884538504192) -> graph: entity already closed
+              15. deleteRel(796849884538504192) -> ok
+              16. removeLabel(796849884541812736,C) -> ok
+              17. addLabel(796849884539387904,A) -> ok
+              18. backfillNode(tx=1791543490735) -> ok
+              19. addNode -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253195 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [NodesAtTx] seed=47645253195 backend=memory
+            probe: point validAt=5237 txAt=1791543528715
+            oracle: {796849887879397376#v0, 796849887880380416#v0, 796849887880740864#v0, 796849887883591680#v0, 796849887885131776#v0, 796849887885262848#v0}
+            door:   {796849887879397376#v0, 796849887880380416#v0, 796849887880740864#v0, 796849887883591680#v0, 796849887885131776#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(R) -> ok
+               4. cascadeRel(796849887880971264,[2122,0)) -> ok
+               5. deleteNode(796849887880544256) -> ok
+               6. backfillNode(tx=1791543483699) -> ok
+               7. updateRel(796849887881528320) -> graph: entity already closed
+               8. addNode -> ok
+               9. updateRel(796849887881528320) -> graph: entity already closed
+              10. deleteRel(796849887881528320) -> ok
+              11. deleteRel(796849887880971264) -> ok
+              12. cascadeNode(796849887880740864,[3696,0)) -> ok
+              13. addNode -> ok
+              14. addNode -> ok
+              15. backfillNode(tx=1791543521535) -> ok
+              16. backfillNode(tx=1791543468188) -> ok
+              17. addRel(S) -> ok
+              18. backfillNode(tx=1791543481431) -> ok
+              19. addRel(S) -> ok
+              20. updateNode(796849887884902400) -> ok
+              21. updateRel(796849887885394944) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253199 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Rels.All(interval)] seed=47645253199 backend=memory
+            probe: interval[1504,3195) txAt=1791544529032
+            oracle: {796849897609331712#v0, 796849897609659392#v0}
+            door:   {796849897609659392#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(S) -> ok
+               4. addRel(S) -> ok
+               5. cascadeNode(796849897609134080,[1782,3464)) -> ok
+               6. addNode -> ok
+               7. cascadeRel(796849897609331712,[505,1157)) -> graph: relationship not found: cascade requires at least one non-eclipsed version
+               8. addRel(S) -> ok
+               9. deleteNode(796849897610608640) -> ok
+              10. backfillNode(tx=1791543507159) -> ok
+              11. addRel(S) -> ok
+              12. addNode -> ok
+              13. cascadeRel(796849897609659392,[1504,0)) -> ok
+              14. updateNode(796849897609134080) -> ok
+              15. backfillNode(tx=1791543473060) -> ok
+              16. removeLabel(796849897609232384,B) -> graph: node does not have the specified label
+              17. cascadeNode(796849897609134080,[1589,0)) -> ok
+              18. updateRel(796849897611199488) -> ok
+              19. deleteRel(796849897609790464) -> ok
+              20. updateNode(796849897609134080) -> ok
+              21. addLabel(796849897609134080,C) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253202 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253202 backend=memory
+            probe: interval[3637,4489) txAt=0
+            oracle: {796849903765553152#v0, 796849903767879680#v0, 796849903768240128#v0, 796849903768633344#v0, 796849903773941760#v0, 796849903774760960#v1}
+            door:   {796849903765553152#v0, 796849903767879680#v0, 796849903768240128#v0, 796849903768633344#v0, 796849903774760960#v1}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(S) -> ok
+               4. cascadeRel(796849903770141696,[1341,1342)) -> ok
+               5. deleteNode(796849903768633344) -> ok
+               6. cascadeRel(796849903768994816,[757,0)) -> ok
+               7. addRel(R) -> ok
+               8. addRel(S) -> ok
+               9. addRel(S) -> ok
+              10. backfillNode(tx=1791543494735) -> ok
+              11. deleteRel(796849903770141696) -> ok
+              12. cascadeRel(796849903773549568,[2610,0)) -> graph: relationship not found: cascade requires at least one non-eclipsed version
+              13. deleteRel(796849903773844480) -> ok
+              14. addNode -> ok
+              15. deleteNode(796849903773941760) -> ok
+              16. cascadeNode(796849903774760960,[2207,0)) -> ok
+              17. deleteRel(796849903768994816) -> ok
+              18. backfillNode(tx=1791543520506) -> ok
+              19. deleteRel(796849903773549568) -> ok
+              20. updateRel(796849903773713408) -> ok
+              21. deleteRel(796849903773713408) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253203 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253203 backend=memory
+            probe: interval[1378,2819) txAt=0
+            oracle: {796849903851470848#v0, 796849903851995136#v0, 796849903852290048#v0, 796849903852617728#v4, 796849903854288896#v1}
+            door:   {796849903851470848#v0, 796849903851995136#v0, 796849903852290048#v0, 796849903852617728#v4}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(S) -> ok
+               4. addRel(S) -> ok
+               5. deleteNode(796849903852290048) -> ok
+               6. backfillNode(tx=1791543492698) -> ok
+               7. updateNode(796849903852617728) -> graph: entity already closed
+               8. cascadeRel(796849903853405184,[2253,2254)) -> ok
+               9. addRel(R) -> ok
+              10. deleteRel(796849903855993856) -> ok
+              11. cascadeNode(796849903852617728,[2747,0)) -> ok
+              12. cascadeNode(796849903852617728,[1378,0)) -> ok
+              13. addLabel(796849903852617728,B) -> ok
+              14. addLabel(796849903852617728,A) -> ok
+              15. updateRel(796849903852782592) -> graph: entity already closed
+              16. cascadeNode(796849903854288896,[2770,2771)) -> ok
+              17. updateRel(796849903853798400) -> ok
+              18. updateRel(796849903853798400) -> ok
+              19. updateNode(796849903852617728) -> graph: tkg_valid_from must be greater than previous version's effective ValidFrom: 3413 <= prev 1791543529194
+              20. deleteNode(796849903852617728) -> ok
+              21. removeLabel(796849903854288896,B) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253206 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Rels.All(interval)] seed=47645253206 backend=memory
+            probe: interval[791,3933) txAt=1791544529396
+            oracle: {796849909777368064#v0, 796849909777630208#v1, 796849909777728512#v0}
+            door:   {796849909777368064#v0, 796849909777630208#v1}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(S) -> ok
+               4. addRel(R) -> ok
+               5. deleteNode(796849909777268736) -> ok
+               6. deleteRel(796849909777368064) -> ok
+               7. updateRel(796849909777630208) -> ok
+               8. cascadeNode(796849909777137664,[1272,0)) -> ok
+               9. cascadeRel(796849909777728512,[1542,0)) -> graph: relationship not found: cascade requires at least one non-eclipsed version
+              10. updateRel(796849909777728512) -> graph: entity already closed
+              11. updateRel(796849909777728512) -> graph: entity already closed
+              12. removeLabel(796849909777137664,C) -> graph: node does not have the specified label
+              13. cascadeRel(796849909777728512,[2313,2731)) -> graph: relationship not found: cascade requires at least one non-eclipsed version
+              14. addNode -> ok
+              15. deleteNode(796849909779202048) -> ok
+              16. addLabel(796849909777137664,C) -> ok
+              17. addRel(S) -> ok
+              18. addLabel(796849909777137664,B) -> ok
+              19. removeLabel(796849909777137664,C) -> ok
+              20. addNode -> ok
+              21. cascadeNode(796849909777137664,[610,791)) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253209 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Rels.All(interval)] seed=47645253209 backend=memory
+            probe: interval[2578,1791543529525) txAt=1791544529528
+            oracle: {796849914273498112#v0, 796849914273858560#v0}
+            door:   {796849914273858560#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(R) -> ok
+               4. removeLabel(796849914273333248,C) -> graph: node does not have the specified label
+               5. addNode -> ok
+               6. addNode -> ok
+               7. deleteRel(796849914273858560) -> ok
+               8. removeLabel(796849914274185216,B) -> graph: node does not have the specified label
+               9. addLabel(796849914273333248,C) -> graph: entity already closed
+              10. updateRel(796849914273498112) -> graph: entity already closed
+              11. addLabel(796849914274054144,C) -> graph: entity already closed
+              12. backfillNode(tx=1791543526452) -> ok
+              13. removeLabel(796849914274054144,B) -> graph: entity already closed
+              14. backfillNode(tx=1791543480243) -> ok
+              15. cascadeNode(796849914273431552,[575,2550)) -> ok
+              16. addNode -> ok
+              17. updateRel(796849914273498112) -> graph: entity already closed
+              18. updateNode(796849914273431552) -> graph: entity already closed
+              19. deleteRel(796849914273498112) -> ok
+              20. removeLabel(796849914273333248,C) -> graph: node does not have the specified label
+              21. removeLabel(796849914275561472,A) -> graph: node does not have the specified label
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253213 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253213 backend=memory
+            probe: interval[2303,3826) txAt=0
+            oracle: {796849922148859904#v0, 796849922149515264#v0, 796849922149613568#v2, 796849922149679104#v0, 796849922151940096#v0}
+            door:   {796849922148859904#v0, 796849922149515264#v0, 796849922149613568#v2, 796849922149679104#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(R) -> ok
+               4. addRel(R) -> ok
+               5. deleteRel(796849922150827008) -> ok
+               6. cascadeNode(796849922149613568,[3363,4270)) -> ok
+               7. backfillNode(tx=1791543486983) -> ok
+               8. cascadeNode(796849922151940096,[3312,4694)) -> graph: node not found: cascade requires at least one non-eclipsed version
+               9. deleteNode(796849922149679104) -> ok
+              10. addRel(R) -> ok
+              11. addLabel(796849922151940096,A) -> graph: entity already closed
+              12. addRel(S) -> ok
+              13. deleteRel(796849922152334336) -> ok
+              14. backfillNode(tx=1791543516558) -> ok
+              15. removeLabel(796849922152628224,B) -> graph: node does not have the specified label
+              16. deleteNode(796849922149613568) -> ok
+              17. removeLabel(796849922151940096,C) -> graph: cannot remove the last label from a node
+              18. updateNode(796849922151940096) -> graph: entity already closed
+              19. cascadeRel(796849922150728704,[2128,2631)) -> ok
+              20. updateRel(796849922152465408) -> graph: entity already closed
+              21. updateRel(796849922152465408) -> graph: entity already closed
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253216 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253216 backend=memory
+            probe: interval[3317,1791543529942) txAt=0
+            oracle: {796849927463501824#v0, 796849927464157184#v0, 796849927464288256#v3, 796849927464353792#v1, 796849927467204608#v1, 796849927468056576#v0}
+            door:   {796849927463501824#v0, 796849927464157184#v0, 796849927464288256#v3, 796849927464353792#v1, 796849927467204608#v1}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(S) -> ok
+               4. cascadeNode(796849927464288256,[2432,0)) -> ok
+               5. updateRel(796849927464485888) -> ok
+               6. deleteRel(796849927464485888) -> ok
+               7. addLabel(796849927464353792,C) -> ok
+               8. updateNode(796849927464288256) -> ok
+               9. addRel(R) -> ok
+              10. updateNode(796849927464288256) -> graph: tkg_valid_from must be greater than previous version's effective ValidFrom: 4100 <= prev 1791543529915
+              11. removeLabel(796849927464353792,C) -> graph: cannot remove the last label from a node
+              12. updateNode(796849927464353792) -> ok
+              13. addRel(S) -> ok
+              14. backfillNode(tx=1791543524519) -> ok
+              15. removeLabel(796849927467204608,A) -> ok
+              16. deleteRel(796849927467074560) -> ok
+              17. updateRel(796849927466550272) -> graph: entity already closed
+              18. addNode -> ok
+              19. addLabel(796849927464288256,B) -> ok
+              20. addRel(S) -> ok
+              21. deleteRel(796849927468319744) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253217 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253217 backend=memory
+            probe: interval[1561,1782) txAt=1791544529944
+            oracle: {796849927501578240#v0, 796849927501840384#v0, 796849927501905920#v5, 796849927502004224#v2}
+            door:   {796849927501578240#v0, 796849927501840384#v0, 796849927501905920#v5}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(S) -> ok
+               4. updateNode(796849927502004224) -> ok
+               5. cascadeNode(796849927502004224,[1781,1782)) -> ok
+               6. deleteNode(796849927502004224) -> ok
+               7. cascadeNode(796849927501905920,[1063,1427)) -> ok
+               8. cascadeNode(796849927501905920,[515,2518)) -> ok
+               9. updateNode(796849927501905920) -> ok
+              10. deleteNode(796849927501905920) -> ok
+              11. addNode -> ok
+              12. updateNode(796849927503511552) -> ok
+              13. cascadeRel(796849927502267392,[678,0)) -> ok
+              14. deleteRel(796849927502070784) -> ok
+              15. updateNode(796849927503511552) -> ok
+              16. deleteNode(796849927503511552) -> ok
+              17. cascadeRel(796849927502267392,[1045,0)) -> ok
+              18. addRel(R) -> ok
+              19. backfillNode(tx=1791543479562) -> ok
+              20. deleteRel(796849927504233472) -> ok
+              21. addLabel(796849927504330752,B) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253224 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Rels.All(interval)] seed=47645253224 backend=memory
+            probe: interval[2707,1791543530496) txAt=0
+            oracle: {796849946306479104#v1, 796849946307167232#v0}
+            door:   {796849946306479104#v1}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(S) -> ok
+               4. removeLabel(796849946306084864,A) -> graph: cannot remove the last label from a node
+               5. cascadeRel(796849946307167232,[786,0)) -> graph: relationship not found: cascade requires at least one non-eclipsed version
+               6. backfillNode(tx=1791543506476) -> ok
+               7. removeLabel(796849946306248704,B) -> graph: node does not have the specified label
+               8. cascadeRel(796849946307167232,[2602,0)) -> graph: relationship not found: cascade requires at least one non-eclipsed version
+               9. addNode -> ok
+              10. removeLabel(796849946308018176,B) -> graph: node does not have the specified label
+              11. removeLabel(796849946306248704,A) -> graph: node does not have the specified label
+              12. cascadeRel(796849946307167232,[1810,0)) -> graph: relationship not found: cascade requires at least one non-eclipsed version
+              13. deleteNode(796849946306084864) -> ok
+              14. updateRel(796849946307167232) -> graph: entity already closed
+              15. cascadeNode(796849946308509696,[726,2227)) -> ok
+              16. addNode -> ok
+              17. backfillNode(tx=1791543524140) -> ok
+              18. removeLabel(796849946308509696,B) -> graph: node does not have the specified label
+              19. cascadeNode(796849946308509696,[2294,0)) -> ok
+              20. cascadeRel(796849946306479104,[2511,2855)) -> ok
+              21. removeLabel(796849946310836224,C) -> graph: node does not have the specified label
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253229 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253229 backend=memory
+            probe: interval[1932,1791543531275) txAt=1791544531274
+            oracle: {796849971492683776#v0, 796849971493732352#v0, 796849971494060032#v0, 796849971494289408#v0, 796849971496910848#v0, 796849971499597824#v0}
+            door:   {796849971492683776#v0, 796849971493732352#v0, 796849971494060032#v0, 796849971496910848#v0, 796849971499597824#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(R) -> ok
+               4. cascadeRel(796849971495273472,[1655,1761)) -> ok
+               5. backfillNode(tx=1791543473536) -> ok
+               6. updateRel(796849971495273472) -> graph: entity already closed
+               7. addLabel(796849971496910848,B) -> ok
+               8. addLabel(796849971496910848,C) -> ok
+               9. updateRel(796849971495273472) -> graph: entity already closed
+              10. deleteNode(796849971494289408) -> ok
+              11. removeLabel(796849971496910848,A) -> graph: node does not have the specified label
+              12. updateRel(796849971495273472) -> graph: entity already closed
+              13. cascadeRel(796849971494585344,[3722,4615)) -> graph: relationship not found: cascade requires at least one non-eclipsed version
+              14. addNode -> ok
+              15. removeLabel(796849971496910848,A) -> graph: node does not have the specified label
+              16. addRel(R) -> ok
+              17. removeLabel(796849971496910848,C) -> graph: entity already closed
+              18. addRel(S) -> ok
+              19. addRel(S) -> ok
+              20. cascadeNode(796849971499597824,[1932,0)) -> ok
+              21. cascadeRel(796849971500090368,[2882,3368)) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253233 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Rels.All(interval)] seed=47645253233 backend=memory
+            probe: interval[2523,1791543531856) txAt=1791544531854
+            oracle: {796849990325699584#v0, 796849990326354944#v3, 796849990326879232#v0}
+            door:   {796849990326354944#v3, 796849990326879232#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(S) -> ok
+               4. updateRel(796849990326354944) -> graph: entity already closed
+               5. addRel(R) -> ok
+               6. deleteNode(796849990325207040) -> ok
+               7. cascadeRel(796849990326354944,[2651,0)) -> ok
+               8. deleteNode(796849990325370880) -> ok
+               9. deleteRel(796849990326879232) -> ok
+              10. addNode -> ok
+              11. cascadeRel(796849990326354944,[1702,0)) -> ok
+              12. deleteNode(796849990329368576) -> ok
+              13. addNode -> ok
+              14. updateRel(796849990325699584) -> graph: entity already closed
+              15. updateRel(796849990325699584) -> graph: entity already closed
+              16. cascadeNode(796849990329991168,[1816,0)) -> ok
+              17. addNode -> ok
+              18. updateRel(796849990326354944) -> ok
+              19. removeLabel(796849990330712064,C) -> graph: node does not have the specified label
+              20. cascadeNode(796849990330712064,[2207,0)) -> ok
+              21. cascadeNode(796849990329991168,[1205,0)) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253234 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Rels.All(interval)] seed=47645253234 backend=memory
+            probe: interval[2189,1791543531834) txAt=0
+            oracle: {796849990385959936#v0, 796849990386287616#v0, 796849990386779136#v0, 796849990387074048#v0, 796849990387729408#v0}
+            door:   {796849990385959936#v0, 796849990386287616#v0, 796849990387074048#v0, 796849990387729408#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(R) -> ok
+               4. addNode -> ok
+               5. removeLabel(796849990385500160,C) -> graph: entity already closed
+               6. addRel(R) -> ok
+               7. deleteNode(796849990385762304) -> ok
+               8. addRel(S) -> ok
+               9. cascadeRel(796849990387074048,[1367,2189)) -> ok
+              10. addRel(S) -> ok
+              11. updateNode(796849990386515968) -> graph: entity already closed
+              12. removeLabel(796849990386515968,A) -> graph: entity already closed
+              13. updateNode(796849990386515968) -> graph: entity already closed
+              14. removeLabel(796849990385500160,C) -> graph: entity already closed
+              15. deleteRel(796849990387729408) -> ok
+              16. addNode -> ok
+              17. updateRel(796849990385959936) -> ok
+              18. updateNode(796849990388318208) -> ok
+              19. removeLabel(796849990386515968,C) -> graph: node does not have the specified label
+              20. removeLabel(796849990386515968,C) -> graph: node does not have the specified label
+              21. deleteNode(796849990386515968) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253237 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253237 backend=memory
+            probe: interval[2699,1791543532139) txAt=1791543532126
+            oracle: {796849999326609408#v0, 796849999327756288#v0, 796849999327952896#v1, 796849999328149504#v0, 796849999330672640#v0, 796849999332671488#v0, 796849999333228544#v0, 796849999334309888#v0}
+            door:   {796849999326609408#v0, 796849999327756288#v0, 796849999327952896#v1, 796849999328149504#v0, 796849999330672640#v0, 796849999333228544#v0, 796849999334309888#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(S) -> ok
+               4. deleteRel(796849999329068032) -> ok
+               5. deleteNode(796849999328149504) -> ok
+               6. addNode -> ok
+               7. cascadeRel(796849999328445440,[2698,2699)) -> ok
+               8. removeLabel(796849999327952896,C) -> ok
+               9. backfillNode(tx=1791543471306) -> ok
+              10. cascadeRel(796849999328445440,[1662,2057)) -> ok
+              11. backfillNode(tx=1791543471712) -> ok
+              12. cascadeNode(796849999327952896,[1309,2123)) -> ok
+              13. addRel(S) -> ok
+              14. backfillNode(tx=1791543480636) -> ok
+              15. updateRel(796849999328445440) -> ok
+              16. addRel(S) -> ok
+              17. cascadeNode(796849999334309888,[1969,0)) -> ok
+              18. addNode -> ok
+              19. updateRel(796849999334114304) -> ok
+              20. addRel(S) -> ok
+              21. cascadeNode(796849999330672640,[2370,3163)) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253242 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Rels.All(interval)] seed=47645253242 backend=memory
+            probe: interval[1647,1791543532589) txAt=1791543532594
+            oracle: {796850014655939584#v1, 796850014656332800#v0, 796850014658003968#v0}
+            door:   {796850014655939584#v1, 796850014658003968#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(S) -> ok
+               4. addLabel(796850014655774720,A) -> ok
+               5. deleteNode(796850014655643648) -> ok
+               6. backfillNode(tx=1791543525135) -> ok
+               7. addNode -> ok
+               8. cascadeRel(796850014655939584,[2294,2876)) -> ok
+               9. deleteRel(796850014656332800) -> ok
+              10. addRel(R) -> ok
+              11. deleteNode(796850014656954368) -> ok
+              12. deleteNode(796850014655774720) -> ok
+              13. cascadeNode(796850014657052672,[1198,0)) -> ok
+              14. backfillNode(tx=1791543484972) -> ok
+              15. cascadeNode(796850014657052672,[4161,0)) -> ok
+              16. deleteRel(796850014655939584) -> ok
+              17. updateNode(796850014658560000) -> graph: entity already closed
+              18. removeLabel(796850014657052672,A) -> ok
+              19. addNode -> ok
+              20. addLabel(796850014657052672,A) -> ok
+              21. addLabel(796850014657052672,C) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253249 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253249 backend=memory
+            probe: interval[1905,1791543533152) txAt=1791544533163
+            oracle: {796850033296998400#v0, 796850033298210816#v0, 796850033298407424#v0, 796850033298636800#v0, 796850033299980288#v0, 796850033302306816#v0}
+            door:   {796850033296998400#v0, 796850033298210816#v0, 796850033298407424#v0, 796850033299980288#v0, 796850033302306816#v0}
+            op log (15):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(S) -> ok
+               4. backfillNode(tx=1791543488584) -> ok
+               5. deleteNode(796850033299980288) -> ok
+               6. addRel(S) -> ok
+               7. cascadeRel(796850033299817472,[1261,0)) -> ok
+               8. addNode -> ok
+               9. deleteNode(796850033302306816) -> ok
+              10. deleteNode(796850033298407424) -> ok
+              11. deleteNode(796850033298636800) -> ok
+              12. deleteRel(796850033300702208) -> ok
+              13. cascadeRel(796850033298998272,[2904,4989)) -> ok
+              14. cascadeRel(796850033299817472,[4265,4375)) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253250 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Rels.All(interval)] seed=47645253250 backend=memory
+            probe: interval[2234,1791543533145) txAt=0
+            oracle: {796850033348510720#v0, 796850033349002240#v0, 796850033349198848#v0, 796850033350706176#v1, 796850033351001088#v0, 796850033351558144#v0}
+            door:   {796850033348510720#v0, 796850033349002240#v0, 796850033349198848#v0, 796850033350706176#v1, 796850033351001088#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(S) -> ok
+               4. addRel(S) -> ok
+               5. updateNode(796850033348116480) -> ok
+               6. updateNode(796850033348280320) -> ok
+               7. deleteRel(796850033349002240) -> ok
+               8. addRel(S) -> ok
+               9. backfillNode(tx=1791543480465) -> ok
+              10. addRel(S) -> ok
+              11. addLabel(796850033348116480,A) -> ok
+              12. deleteRel(796850033348510720) -> ok
+              13. deleteRel(796850033351001088) -> ok
+              14. addRel(R) -> ok
+              15. cascadeNode(796850033350836224,[1669,2149)) -> ok
+              16. updateNode(796850033348116480) -> graph: tkg_valid_from must be greater than previous version's effective ValidFrom: 5175 <= prev 1791543533146
+              17. deleteNode(796850033348280320) -> ok
+              18. deleteRel(796850033351558144) -> ok
+              19. addNode -> ok
+              20. backfillNode(tx=1791543504406) -> ok
+              21. cascadeRel(796850033350706176,[5898,6296)) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253252 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Rels.All(interval)] seed=47645253252 backend=memory
+            probe: interval[2829,4368) txAt=0
+            oracle: {796850036909933568#v0, 796850036910523392#v0, 796850036912129024#v0}
+            door:   {796850036909933568#v0, 796850036912129024#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(S) -> ok
+               4. addLabel(796850036909670400,A) -> ok
+               5. cascadeRel(796850036910523392,[945,2662)) -> graph: relationship not found: cascade requires at least one non-eclipsed version
+               6. addNode -> ok
+               7. addNode -> ok
+               8. deleteRel(796850036909933568) -> ok
+               9. deleteNode(796850036909670400) -> ok
+              10. addRel(R) -> ok
+              11. addLabel(796850036909539328,C) -> ok
+              12. cascadeRel(796850036912129024,[1881,2568)) -> ok
+              13. addLabel(796850036911210496,B) -> ok
+              14. deleteNode(796850036911210496) -> ok
+              15. backfillNode(tx=1791543514914) -> ok
+              16. addRel(R) -> ok
+              17. removeLabel(796850036913766400,C) -> graph: node does not have the specified label
+              18. updateRel(796850036913865728) -> ok
+              19. addRel(S) -> ok
+              20. addLabel(796850036911341568,C) -> ok
+              21. removeLabel(796850036911341568,B) -> graph: node does not have the specified label
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253256 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253256 backend=memory
+            probe: interval[2127,3723) txAt=1791544533637
+            oracle: {796850048706707456#v0, 796850048707395584#v0, 796850048707559424#v0, 796850048707657728#v0, 796850048710344704#v1}
+            door:   {796850048706707456#v0, 796850048707395584#v0, 796850048707559424#v0, 796850048707657728#v0}
+            op log (19):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(S) -> ok
+               4. updateNode(796850048707559424) -> graph: entity already closed
+               5. addRel(R) -> ok
+               6. deleteNode(796850048707559424) -> ok
+               7. addRel(R) -> ok
+               8. updateNode(796850048707657728) -> ok
+               9. addLabel(796850048707657728,B) -> ok
+              10. cascadeRel(796850048708379648,[1867,0)) -> ok
+              11. deleteNode(796850048707657728) -> ok
+              12. deleteRel(796850048707789824) -> ok
+              13. addRel(S) -> ok
+              14. addNode -> ok
+              15. backfillNode(tx=1791543507616) -> ok
+              16. cascadeRel(796850048708379648,[1437,2949)) -> ok
+              17. cascadeNode(796850048710344704,[3539,3540)) -> ok
+              18. addNode -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253257 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253257 backend=memory
+            probe: interval[1808,4349) txAt=1791544533637
+            oracle: {796850048744620032#v0, 796850048744816640#v0, 796850048745078784#v0, 796850048746717184#v0}
+            door:   {796850048744620032#v0, 796850048744816640#v0, 796850048746717184#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(S) -> ok
+               4. addRel(R) -> ok
+               5. updateRel(796850048745505792) -> ok
+               6. updateRel(796850048745407488) -> graph: entity already closed
+               7. deleteRel(796850048745505792) -> ok
+               8. deleteRel(796850048745407488) -> ok
+               9. cascadeRel(796850048745210880,[2601,0)) -> ok
+              10. addLabel(796850048744980480,C) -> ok
+              11. addNode -> ok
+              12. backfillNode(tx=1791543511827) -> ok
+              13. addNode -> ok
+              14. deleteNode(796850048746717184) -> ok
+              15. cascadeRel(796850048745210880,[3405,5075)) -> ok
+              16. updateNode(796850048745078784) -> graph: entity already closed
+              17. cascadeRel(796850048745210880,[4835,0)) -> ok
+              18. addLabel(796850048746881024,A) -> ok
+              19. updateRel(796850048745210880) -> ok
+              20. removeLabel(796850048745078784,B) -> graph: node does not have the specified label
+              21. addLabel(796850048746979328,C) -> graph: entity already closed
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253260 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253260 backend=memory
+            probe: interval[2804,4282) txAt=1791544533877
+            oracle: {796850056444379136#v0, 796850056445165568#v0, 796850056445329408#v2, 796850056445526016#v0, 796850056447590400#v0, 796850056448081920#v0, 796850056449064960#v1}
+            door:   {796850056444379136#v0, 796850056445165568#v0, 796850056445329408#v2, 796850056445526016#v0, 796850056448081920#v0, 796850056449064960#v1}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(S) -> ok
+               4. deleteRel(796850056445789184) -> ok
+               5. cascadeNode(796850056445329408,[2804,0)) -> ok
+               6. backfillNode(tx=1791543474744) -> ok
+               7. updateRel(796850056446215168) -> ok
+               8. addNode -> ok
+               9. deleteNode(796850056448081920) -> ok
+              10. cascadeNode(796850056445329408,[2813,3368)) -> ok
+              11. deleteRel(796850056446215168) -> ok
+              12. removeLabel(796850056447590400,C) -> graph: node does not have the specified label
+              13. addNode -> ok
+              14. deleteNode(796850056445526016) -> ok
+              15. deleteNode(796850056447590400) -> ok
+              16. addNode -> ok
+              17. addLabel(796850056449064960,B) -> ok
+              18. cascadeNode(796850056449064960,[1384,0)) -> ok
+              19. addRel(S) -> ok
+              20. backfillNode(tx=1791543476701) -> ok
+              21. cascadeRel(796850056449328128,[4003,4369)) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253262 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [RelsAtTx] seed=47645253262 backend=memory
+            probe: point validAt=3613 txAt=1791544533998
+            oracle: {796850060501419008#v0, 796850060502533120#v5, 796850060504859648#v0, 796850060505777152#v1}
+            door:   {796850060501419008#v0, 796850060502533120#v5, 796850060505777152#v1}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(S) -> ok
+               4. deleteRel(796850060501419008) -> ok
+               5. removeLabel(796850060500664320,C) -> graph: cannot remove the last label from a node
+               6. cascadeRel(796850060502533120,[3575,0)) -> ok
+               7. removeLabel(796850060500664320,B) -> graph: node does not have the specified label
+               8. cascadeRel(796850060502533120,[2489,3726)) -> ok
+               9. addRel(S) -> ok
+              10. addLabel(796850060500959232,B) -> ok
+              11. addRel(R) -> ok
+              12. addLabel(796850060500959232,A) -> ok
+              13. updateRel(796850060505351168) -> ok
+              14. addRel(R) -> ok
+              15. cascadeRel(796850060505351168,[2535,2785)) -> ok
+              16. backfillNode(tx=1791543474443) -> ok
+              17. removeLabel(796850060500664320,B) -> graph: node does not have the specified label
+              18. deleteNode(796850060506038272) -> ok
+              19. cascadeRel(796850060505777152,[2052,0)) -> ok
+              20. backfillNode(tx=1791543528987) -> ok
+              21. addRel(S) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253263 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253263 backend=memory
+            probe: interval[3322,1791543533990) txAt=1791544533993
+            oracle: {796850060520882176#v0, 796850060521013248#v0, 796850060521144320#v1, 796850060521275392#v3, 796850060523274240#v0, 796850060523339776#v0}
+            door:   {796850060520882176#v0, 796850060521013248#v0, 796850060521144320#v1, 796850060521275392#v3, 796850060523274240#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(S) -> ok
+               4. addRel(S) -> ok
+               5. addNode -> ok
+               6. addLabel(796850060521275392,A) -> ok
+               7. cascadeNode(796850060521734144,[1533,0)) -> graph: node not found: cascade requires at least one non-eclipsed version
+               8. addLabel(796850060521275392,C) -> graph: entity already closed
+               9. cascadeNode(796850060521275392,[1099,0)) -> ok
+              10. cascadeNode(796850060521144320,[1966,3663)) -> ok
+              11. deleteRel(796850060521341952) -> ok
+              12. addNode -> ok
+              13. addNode -> ok
+              14. updateNode(796850060523339776) -> graph: entity already closed
+              15. removeLabel(796850060521734144,C) -> graph: node does not have the specified label
+              16. updateNode(796850060523274240) -> graph: entity already closed
+              17. removeLabel(796850060521275392,B) -> ok
+              18. deleteRel(796850060521505792) -> ok
+              19. removeLabel(796850060521144320,B) -> graph: node does not have the specified label
+              20. addLabel(796850060523339776,C) -> ok
+              21. cascadeNode(796850060521275392,[3064,0)) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253267 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253267 backend=memory
+            probe: interval[5073,1791543511364) txAt=0
+            oracle: {796850069481717760#v0, 796850069482307584#v0, 796850069482602496#v0, 796850069485060096#v0, 796850069485125632#v0, 796850069485223936#v0, 796850069485486080#v0}
+            door:   {796850069481717760#v0, 796850069482307584#v0, 796850069482602496#v0, 796850069485060096#v0, 796850069485125632#v0, 796850069485223936#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(S) -> ok
+               4. updateRel(796850069483029504) -> ok
+               5. cascadeNode(796850069482602496,[2167,0)) -> ok
+               6. deleteNode(796850069482602496) -> ok
+               7. deleteRel(796850069483029504) -> ok
+               8. addLabel(796850069482438656,B) -> graph: entity already closed
+               9. deleteNode(796850069482438656) -> ok
+              10. backfillNode(tx=1791543485679) -> ok
+              11. updateRel(796850069482734592) -> graph: entity already closed
+              12. updateRel(796850069482734592) -> graph: entity already closed
+              13. cascadeNode(796850069484535808,[1802,0)) -> ok
+              14. cascadeRel(796850069482734592,[3962,0)) -> ok
+              15. addNode -> ok
+              16. addNode -> ok
+              17. backfillNode(tx=1791543511362) -> ok
+              18. updateRel(796850069482734592) -> ok
+              19. updateRel(796850069482734592) -> graph: tkg_valid_from must be greater than previous version's effective ValidFrom: 4828 <= prev 1791543534249
+              20. deleteRel(796850069482734592) -> ok
+              21. backfillNode(tx=1791543473516) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253276 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [RelsAtTx] seed=47645253276 backend=memory
+            probe: point validAt=2456 txAt=1791543535012
+            oracle: {796850094149698560#v0, 796850094150124544#v0}
+            door:   {796850094149698560#v0}
+            op log (21):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(R) -> ok
+               4. deleteRel(796850094150124544) -> ok
+               5. addRel(S) -> ok
+               6. removeLabel(796850094149500928,C) -> graph: cannot remove the last label from a node
+               7. addRel(S) -> ok
+               8. backfillNode(tx=1791543528325) -> ok
+               9. addLabel(796850094149271552,A) -> ok
+              10. deleteNode(796850094149500928) -> ok
+              11. updateRel(796850094150583296) -> ok
+              12. cascadeRel(796850094149698560,[1468,0)) -> ok
+              13. deleteRel(796850094149698560) -> ok
+              14. deleteRel(796850094150583296) -> ok
+              15. addLabel(796850094150942720,C) -> ok
+              16. deleteNode(796850094149271552) -> ok
+              17. deleteNode(796850094150942720) -> ok
+              18. addNode -> ok
+              19. deleteNode(796850094153564160) -> ok
+              20. deleteRel(796850094150845440) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253278 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Rels.All(interval)] seed=47645253278 backend=memory
+            probe: interval[1613,1614) txAt=0
+            oracle: {796850097097606144#v1}
+            door:   {}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(R) -> ok
+               4. updateNode(796850097096753152) -> ok
+               5. updateNode(796850097096753152) -> ok
+               6. deleteNode(796850097096753152) -> ok
+               7. backfillNode(tx=1791543492914) -> ok
+               8. addNode -> ok
+               9. backfillNode(tx=1791543522561) -> ok
+              10. cascadeNode(796850097096589312,[4342,0)) -> ok
+              11. cascadeRel(796850097096983552,[3366,0)) -> ok
+              12. addLabel(796850097100193792,C) -> graph: entity already closed
+              13. cascadeRel(796850097097606144,[1613,1614)) -> ok
+              14. cascadeNode(796850097100193792,[3617,0)) -> ok
+              15. cascadeRel(796850097097606144,[3339,0)) -> ok
+              16. deleteRel(796850097097606144) -> ok
+              17. removeLabel(796850097100095488,B) -> graph: node does not have the specified label
+              18. updateNode(796850097099997184) -> graph: entity already closed
+              19. addNode -> ok
+              20. removeLabel(796850097100095488,B) -> graph: node does not have the specified label
+              21. updateNode(796850097100193792) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253286 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253286 backend=memory
+            probe: interval[2822,1791543535627) txAt=1791544535645
+            oracle: {796850114689204224#v0, 796850114689630208#v0, 796850114689728512#v0, 796850114689826816#v0, 796850114690809856#v0, 796850114692186112#v0}
+            door:   {796850114689204224#v0, 796850114689630208#v0, 796850114689728512#v0, 796850114689826816#v0, 796850114690809856#v0}
+            op log (17):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(S) -> ok
+               4. deleteNode(796850114689826816) -> ok
+               5. updateNode(796850114689728512) -> graph: entity already closed
+               6. updateRel(796850114689926144) -> graph: entity already closed
+               7. deleteNode(796850114689728512) -> ok
+               8. addNode -> ok
+               9. deleteNode(796850114690809856) -> ok
+              10. cascadeRel(796850114690253824,[3166,4999)) -> ok
+              11. addRel(S) -> ok
+              12. updateRel(796850114691728384) -> ok
+              13. updateRel(796850114691728384) -> graph: tkg_valid_from must be greater than previous version's effective ValidFrom: 3811 <= prev 1791543535629
+              14. cascadeRel(796850114689926144,[3566,0)) -> ok
+              15. backfillNode(tx=1791543515609) -> ok
+              16. deleteRel(796850114691728384) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253291 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253291 backend=memory
+            probe: interval[3100,1791543535939) txAt=1791544535963
+            oracle: {796850124889161728#v0, 796850124889784320#v0, 796850124889882624#v0, 796850124889948160#v3, 796850124891914240#v1, 796850124893782016#v0, 796850124893945856#v0}
+            door:   {796850124889161728#v0, 796850124889784320#v0, 796850124889882624#v0, 796850124889948160#v3, 796850124891914240#v1, 796850124893782016#v0}
+            op log (20):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(S) -> ok
+               4. cascadeRel(796850124890604544,[2229,0)) -> ok
+               5. deleteRel(796850124890145792) -> ok
+               6. addNode -> ok
+               7. addLabel(796850124889948160,C) -> ok
+               8. cascadeRel(796850124890604544,[560,0)) -> ok
+               9. cascadeNode(796850124891914240,[3213,4991)) -> ok
+              10. removeLabel(796850124889882624,B) -> graph: node does not have the specified label
+              11. addLabel(796850124889948160,A) -> ok
+              12. updateRel(796850124890604544) -> ok
+              13. cascadeNode(796850124889948160,[1457,0)) -> ok
+              14. deleteRel(796850124890604544) -> ok
+              15. removeLabel(796850124889948160,C) -> ok
+              16. updateNode(796850124889948160) -> ok
+              17. addNode -> ok
+              18. addLabel(796850124891914240,C) -> ok
+              19. addNode -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253292 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253292 backend=memory
+            probe: interval[2910,1791543535956) txAt=0
+            oracle: {796850124938575872#v0, 796850124938870784#v0, 796850124939034624#v0, 796850124939198464#v1, 796850124942475264#v0, 796850124942835712#v0, 796850124942934016#v0}
+            door:   {796850124938575872#v0, 796850124938870784#v0, 796850124939034624#v0, 796850124939198464#v1, 796850124942475264#v0, 796850124942934016#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(S) -> ok
+               4. cascadeRel(796850124939330560,[2374,2375)) -> ok
+               5. removeLabel(796850124939034624,C) -> graph: node does not have the specified label
+               6. cascadeNode(796850124939034624,[1641,0)) -> ok
+               7. deleteNode(796850124939034624) -> ok
+               8. addLabel(796850124939198464,B) -> ok
+               9. updateNode(796850124939198464) -> ok
+              10. addLabel(796850124939198464,B) -> ok
+              11. updateRel(796850124939854848) -> ok
+              12. deleteNode(796850124939198464) -> ok
+              13. backfillNode(tx=1791543494615) -> ok
+              14. updateRel(796850124939330560) -> ok
+              15. backfillNode(tx=1791543485761) -> ok
+              16. backfillNode(tx=1791543507023) -> ok
+              17. deleteNode(796850124942835712) -> ok
+              18. deleteNode(796850124942475264) -> ok
+              19. addRel(S) -> ok
+              20. cascadeNode(796850124942934016,[3592,3593)) -> ok
+              21. deleteRel(796850124939854848) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253293 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253293 backend=memory
+            probe: interval[3066,1791543535963) txAt=1791544535966
+            oracle: {796850124987170816#v0, 796850124987432960#v0, 796850124987498496#v4, 796850124987596800#v0, 796850124989366272#v0, 796850124989497344#v0}
+            door:   {796850124987170816#v0, 796850124987432960#v0, 796850124987498496#v4, 796850124987596800#v0, 796850124989497344#v0}
+            op log (21):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(R) -> ok
+               4. deleteRel(796850124987728896) -> ok
+               5. cascadeNode(796850124987498496,[2060,2285)) -> ok
+               6. cascadeNode(796850124987498496,[2513,0)) -> ok
+               7. cascadeRel(796850124987925504,[1282,0)) -> ok
+               8. updateNode(796850124987498496) -> ok
+               9. deleteNode(796850124987596800) -> ok
+              10. deleteNode(796850124987498496) -> ok
+              11. updateRel(796850124987925504) -> ok
+              12. addNode -> ok
+              13. addLabel(796850124989366272,B) -> graph: entity already closed
+              14. addNode -> ok
+              15. deleteRel(796850124987925504) -> ok
+              16. addLabel(796850124989497344,A) -> ok
+              17. cascadeNode(796850124989497344,[1570,2311)) -> ok
+              18. cascadeNode(796850124989497344,[3066,3067)) -> ok
+              19. removeLabel(796850124989366272,B) -> graph: node does not have the specified label
+              20. addLabel(796850124989366272,C) -> graph: entity already closed
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253294 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253294 backend=memory
+            probe: interval[3020,1791543535971) txAt=0
+            oracle: {796850125029179392#v0, 796850125029343232#v0, 796850125029507072#v6, 796850125029900288#v0, 796850125030490112#v1, 796850125031604224#v0, 796850125031702528#v0, 796850125031800832#v0}
+            door:   {796850125029179392#v0, 796850125029343232#v0, 796850125029507072#v6, 796850125029900288#v0, 796850125030490112#v1, 796850125031604224#v0, 796850125031702528#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(S) -> ok
+               4. backfillNode(tx=1791543514908) -> ok
+               5. cascadeRel(796850125029803008,[3020,4375)) -> ok
+               6. addLabel(796850125029441536,A) -> graph: entity already closed
+               7. addNode -> ok
+               8. cascadeNode(796850125030490112,[3352,4938)) -> ok
+               9. deleteNode(796850125029900288) -> ok
+              10. addLabel(796850125029441536,B) -> ok
+              11. updateRel(796850125029803008) -> graph: entity already closed
+              12. addRel(R) -> ok
+              13. deleteNode(796850125030490112) -> ok
+              14. deleteNode(796850125029441536) -> ok
+              15. updateNode(796850125029507072) -> ok
+              16. updateNode(796850125029507072) -> ok
+              17. cascadeNode(796850125029507072,[1611,0)) -> ok
+              18. addNode -> ok
+              19. deleteRel(796850125029639168) -> ok
+              20. backfillNode(tx=1791543534778) -> ok
+              21. addNode -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253298 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253298 backend=memory
+            probe: interval[2147,1791543525608) txAt=1791543536262
+            oracle: {796850134888611840#v0, 796850134890151936#v0, 796850134890283008#v0, 796850134890414080#v2, 796850134891233280#v0, 796850134892937216#v0, 796850134893133824#v0, 796850134893363200#v0, 796850134893756416#v0}
+            door:   {796850134888611840#v0, 796850134890151936#v0, 796850134890283008#v0, 796850134890414080#v2, 796850134891233280#v0, 796850134892937216#v0, 796850134893363200#v0, 796850134893756416#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(R) -> ok
+               4. addNode -> ok
+               5. cascadeNode(796850134890414080,[922,0)) -> ok
+               6. updateNode(796850134890414080) -> ok
+               7. deleteRel(796850134890644480) -> ok
+               8. backfillNode(tx=1791543480030) -> ok
+               9. addLabel(796850134891233280,B) -> ok
+              10. backfillNode(tx=1791543476131) -> ok
+              11. addRel(S) -> ok
+              12. addNode -> ok
+              13. cascadeRel(796850134891103232,[3810,0)) -> ok
+              14. backfillNode(tx=1791543525610) -> ok
+              15. cascadeRel(796850134891103232,[2227,2929)) -> ok
+              16. addNode -> ok
+              17. updateNode(796850134890283008) -> graph: entity already closed
+              18. deleteNode(796850134890283008) -> ok
+              19. deleteRel(796850134893233152) -> ok
+              20. addLabel(796850134893133824,B) -> graph: entity already closed
+              21. removeLabel(796850134893985792,C) -> graph: entity already closed
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253299 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Rels.All(interval)] seed=47645253299 backend=memory
+            probe: interval[1921,1791543517101) txAt=0
+            oracle: {796850134951003136#v0, 796850134951298048#v0, 796850134952346624#v0, 796850134952707072#v0, 796850134953493504#v0}
+            door:   {796850134951298048#v0, 796850134952346624#v0, 796850134952707072#v0, 796850134953493504#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(S) -> ok
+               4. cascadeRel(796850134951003136,[1403,0)) -> graph: relationship not found: cascade requires at least one non-eclipsed version
+               5. backfillNode(tx=1791543476889) -> ok
+               6. updateNode(796850134950838272) -> ok
+               7. backfillNode(tx=1791543517099) -> ok
+               8. addRel(R) -> ok
+               9. deleteRel(796850134951003136) -> ok
+              10. removeLabel(796850134951526400,B) -> graph: cannot remove the last label from a node
+              11. deleteNode(796850134950641664) -> ok
+              12. addRel(S) -> ok
+              13. backfillNode(tx=1791543514516) -> ok
+              14. cascadeNode(796850134952280064,[1243,1922)) -> ok
+              15. deleteNode(796850134952804352) -> ok
+              16. cascadeNode(796850134952280064,[5147,6254)) -> ok
+              17. removeLabel(796850134950838272,A) -> ok
+              18. updateRel(796850134952707072) -> graph: entity already closed
+              19. addRel(S) -> ok
+              20. addNode -> ok
+              21. updateRel(796850134953493504) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253300 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [RelsAtTx] seed=47645253300 backend=memory
+            probe: point validAt=5456 txAt=1791543536282
+            oracle: {796850135077028864#v2, 796850135077979136#v0, 796850135081190400#v2, 796850135082435584#v0, 796850135083090944#v0, 796850135084860416#v0}
+            door:   {796850135077028864#v2, 796850135077979136#v0, 796850135081190400#v2, 796850135082435584#v0, 796850135083090944#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(S) -> ok
+               4. updateNode(796850135076569088) -> ok
+               5. updateRel(796850135077028864) -> ok
+               6. addRel(S) -> ok
+               7. updateRel(796850135077028864) -> ok
+               8. deleteRel(796850135077979136) -> ok
+               9. addRel(S) -> ok
+              10. deleteNode(796850135075979264) -> ok
+              11. addRel(S) -> ok
+              12. cascadeRel(796850135081190400,[1146,0)) -> ok
+              13. deleteRel(796850135083090944) -> ok
+              14. addLabel(796850135076569088,B) -> ok
+              15. backfillNode(tx=1791543510140) -> ok
+              16. updateRel(796850135081190400) -> ok
+              17. addRel(S) -> ok
+              18. addRel(R) -> ok
+              19. addLabel(796850135084400640,B) -> ok
+              20. deleteRel(796850135081190400) -> ok
+              21. cascadeNode(796850135076569088,[1935,0)) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253302 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Rels.All(interval)] seed=47645253302 backend=memory
+            probe: interval[3521,1791543503227) txAt=1791543536384
+            oracle: {796850138549093376#v0, 796850138549617664#v0, 796850138552992768#v0, 796850138553123840#v0}
+            door:   {796850138549093376#v0, 796850138549617664#v0, 796850138552992768#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(S) -> ok
+               4. backfillNode(tx=1791543503225) -> ok
+               5. addLabel(796850138548928512,C) -> ok
+               6. cascadeNode(796850138548928512,[2005,0)) -> ok
+               7. deleteRel(796850138549617664) -> ok
+               8. cascadeNode(796850138549977088,[667,0)) -> ok
+               9. addNode -> ok
+              10. removeLabel(796850138552139776,A) -> ok
+              11. backfillNode(tx=1791543493501) -> ok
+              12. addRel(R) -> ok
+              13. addRel(R) -> ok
+              14. cascadeNode(796850138549977088,[2285,2687)) -> ok
+              15. deleteNode(796850138552500224) -> ok
+              16. deleteNode(796850138548928512) -> ok
+              17. cascadeRel(796850138553123840,[3680,0)) -> graph: relationship not found: cascade requires at least one non-eclipsed version
+              18. backfillNode(tx=1791543500520) -> ok
+              19. addLabel(796850138554171392,A) -> graph: entity already closed
+              20. deleteRel(796850138553123840) -> ok
+              21. deleteNode(796850138549977088) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253303 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Rels.All(interval)] seed=47645253303 backend=memory
+            probe: interval[2713,1791543504143) txAt=1791544536381
+            oracle: {796850138631799808#v0, 796850138632586240#v0, 796850138637599744#v0}
+            door:   {796850138631799808#v0, 796850138632586240#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(R) -> ok
+               4. backfillNode(tx=1791543504141) -> ok
+               5. deleteRel(796850138631799808) -> ok
+               6. removeLabel(796850138631274496,A) -> graph: node does not have the specified label
+               7. backfillNode(tx=1791543516829) -> ok
+               8. addLabel(796850138633601024,C) -> ok
+               9. cascadeNode(796850138631274496,[2611,0)) -> ok
+              10. updateNode(796850138631536640) -> graph: entity already closed
+              11. updateRel(796850138632586240) -> graph: entity already closed
+              12. backfillNode(tx=1791543498020) -> ok
+              13. updateRel(796850138632586240) -> graph: entity already closed
+              14. addNode -> ok
+              15. removeLabel(796850138633601024,B) -> ok
+              16. addNode -> ok
+              17. updateRel(796850138632586240) -> graph: entity already closed
+              18. backfillNode(tx=1791543503087) -> ok
+              19. removeLabel(796850138636681216,B) -> ok
+              20. updateRel(796850138632586240) -> graph: entity already closed
+              21. addRel(S) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253308 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Rels.All(interval)] seed=47645253308 backend=memory
+            probe: interval[4537,1791543536851) txAt=1791544536862
+            oracle: {796850154198696960#v1, 796850154201613312#v0, 796850154201711616#v0, 796850154202104832#v0}
+            door:   {796850154198696960#v1, 796850154201711616#v0, 796850154202104832#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(R) -> ok
+               4. backfillNode(tx=1791543501641) -> ok
+               5. cascadeNode(796850154198335488,[1676,2360)) -> ok
+               6. addNode -> ok
+               7. backfillNode(tx=1791543519554) -> ok
+               8. updateRel(796850154198696960) -> ok
+               9. updateNode(796850154198466560) -> ok
+              10. backfillNode(tx=1791543504752) -> ok
+              11. addLabel(796850154199318528,B) -> graph: entity already closed
+              12. addLabel(796850154198466560,B) -> ok
+              13. addRel(R) -> ok
+              14. addRel(S) -> ok
+              15. updateNode(796850154200268800) -> ok
+              16. cascadeRel(796850154201613312,[5402,0)) -> graph: relationship not found: cascade requires at least one non-eclipsed version
+              17. addRel(S) -> ok
+              18. deleteRel(796850154201711616) -> ok
+              19. removeLabel(796850154198466560,C) -> ok
+              20. addLabel(796850154198466560,A) -> ok
+              21. deleteRel(796850154201613312) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253309 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [NodesAtTx] seed=47645253309 backend=memory
+            probe: point validAt=5206 txAt=1791543536853
+            oracle: {796850154255515648#v0, 796850154255810560#v0, 796850154256760832#v0, 796850154258497536#v0}
+            door:   {796850154255515648#v0, 796850154255810560#v0, 796850154256760832#v0}
+            op log (20):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(R) -> ok
+               4. deleteRel(796850154256237568) -> ok
+               5. backfillNode(tx=1791543477214) -> ok
+               6. deleteNode(796850154255941632) -> ok
+               7. deleteRel(796850154256532480) -> ok
+               8. addLabel(796850154256760832,C) -> ok
+               9. addLabel(796850154256760832,C) -> ok
+              10. addLabel(796850154256105472,B) -> graph: entity already closed
+              11. addRel(R) -> ok
+              12. cascadeNode(796850154256105472,[2843,4759)) -> ok
+              13. deleteRel(796850154257384448) -> ok
+              14. addRel(R) -> ok
+              15. addRel(S) -> ok
+              16. deleteNode(796850154256760832) -> ok
+              17. addLabel(796850154256105472,C) -> graph: entity already closed
+              18. backfillNode(tx=1791543476818) -> ok
+              19. addNode -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253311 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253311 backend=memory
+            probe: interval[1777,1791543536945) txAt=1791544536956
+            oracle: {796850157375848448#v0, 796850157377355776#v0, 796850157377585152#v3, 796850157377716224#v2, 796850157380632576#v0, 796850157381648384#v0, 796850157383024640#v0, 796850157383122944#v0}
+            door:   {796850157375848448#v0, 796850157377355776#v0, 796850157377585152#v3, 796850157377716224#v2, 796850157380632576#v0, 796850157383024640#v0, 796850157383122944#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(R) -> ok
+               4. cascadeNode(796850157377716224,[2074,0)) -> ok
+               5. addNode -> ok
+               6. addRel(R) -> ok
+               7. addLabel(796850157377585152,C) -> ok
+               8. updateNode(796850157377716224) -> ok
+               9. backfillNode(tx=1791543478112) -> ok
+              10. deleteRel(796850157378077696) -> ok
+              11. cascadeRel(796850157380764672,[1139,0)) -> ok
+              12. cascadeNode(796850157377585152,[2442,0)) -> ok
+              13. addRel(S) -> ok
+              14. addNode -> ok
+              15. backfillNode(tx=1791543509081) -> ok
+              16. addRel(S) -> ok
+              17. cascadeNode(796850157377585152,[1777,0)) -> ok
+              18. cascadeRel(796850157383222272,[592,0)) -> ok
+              19. removeLabel(796850157383122944,A) -> ok
+              20. addLabel(796850157381648384,B) -> ok
+              21. deleteNode(796850157377716224) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253316 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253316 backend=memory
+            probe: interval[1119,4992) txAt=1791544537336
+            oracle: {796850169757073408#v0, 796850169758941184#v0, 796850169759170560#v0, 796850169759334400#v0, 796850169762545664#v1, 796850169762971648#v0, 796850169763102720#v0}
+            door:   {796850169757073408#v0, 796850169758941184#v0, 796850169759170560#v0, 796850169759334400#v0, 796850169762545664#v1, 796850169763102720#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(S) -> ok
+               4. deleteRel(796850169759564800) -> ok
+               5. cascadeRel(796850169760154624,[1119,0)) -> ok
+               6. deleteRel(796850169760154624) -> ok
+               7. addNode -> ok
+               8. addRel(R) -> ok
+               9. addNode -> ok
+              10. backfillNode(tx=1791543489449) -> ok
+              11. removeLabel(796850169762545664,C) -> graph: node does not have the specified label
+              12. updateRel(796850169762743296) -> ok
+              13. updateNode(796850169762545664) -> ok
+              14. updateRel(796850169762743296) -> ok
+              15. updateRel(796850169762743296) -> ok
+              16. removeLabel(796850169759334400,A) -> graph: node does not have the specified label
+              17. deleteNode(796850169762971648) -> ok
+              18. addNode -> ok
+              19. addRel(S) -> ok
+              20. addRel(R) -> ok
+              21. removeLabel(796850169763102720,C) -> graph: node does not have the specified label
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253324 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253324 backend=memory
+            probe: interval[1299,3219) txAt=0
+            oracle: {796850194289885184#v0, 796850194290311168#v0, 796850194290475008#v0, 796850194290671616#v0}
+            door:   {796850194289885184#v0, 796850194290311168#v0, 796850194290671616#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(S) -> ok
+               4. cascadeNode(796850194290475008,[832,1198)) -> graph: node not found: cascade requires at least one non-eclipsed version
+               5. updateNode(796850194290671616) -> ok
+               6. removeLabel(796850194290475008,C) -> graph: entity already closed
+               7. cascadeNode(796850194290475008,[3621,0)) -> graph: node not found: cascade requires at least one non-eclipsed version
+               8. addRel(S) -> ok
+               9. updateRel(796850194290770944) -> ok
+              10. addNode -> ok
+              11. backfillNode(tx=1791543516855) -> ok
+              12. cascadeNode(796850194290475008,[2769,3264)) -> graph: node not found: cascade requires at least one non-eclipsed version
+              13. backfillNode(tx=1791543481902) -> ok
+              14. removeLabel(796850194292703232,C) -> graph: node does not have the specified label
+              15. deleteNode(796850194292801536) -> ok
+              16. removeLabel(796850194290671616,A) -> ok
+              17. cascadeRel(796850194291131392,[4787,4788)) -> ok
+              18. addLabel(796850194290671616,B) -> ok
+              19. cascadeRel(796850194292343808,[1028,0)) -> ok
+              20. backfillNode(tx=1791543493414) -> ok
+              21. cascadeRel(796850194292343808,[1299,0)) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253326 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253326 backend=memory
+            probe: interval[1353,1958) txAt=1791543538166
+            oracle: {796850197109342208#v0, 796850197109932032#v0, 796850197110325248#v5}
+            door:   {796850197109342208#v0, 796850197109932032#v0}
+            op log (21):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(S) -> ok
+               4. addRel(R) -> ok
+               5. cascadeNode(796850197110325248,[2154,0)) -> ok
+               6. addNode -> ok
+               7. removeLabel(796850197113044992,B) -> ok
+               8. cascadeNode(796850197110325248,[2044,0)) -> ok
+               9. updateRel(796850197111243776) -> ok
+              10. cascadeNode(796850197110325248,[1353,1354)) -> ok
+              11. removeLabel(796850197113044992,C) -> graph: cannot remove the last label from a node
+              12. addLabel(796850197113044992,B) -> ok
+              13. updateRel(796850197110916096) -> graph: entity already closed
+              14. cascadeRel(796850197111243776,[3872,0)) -> ok
+              15. updateRel(796850197111243776) -> ok
+              16. deleteRel(796850197111243776) -> ok
+              17. updateRel(796850197110916096) -> graph: entity already closed
+              18. deleteRel(796850197110457344) -> ok
+              19. deleteRel(796850197110916096) -> ok
+              20. addLabel(796850197110325248,C) -> ok
+            
+    --- FAIL: TestBitemporalOracleHarness/seed=47645253328 (0.00s)
+        bitemporaloracle_test.go:1077: MISMATCH [Nodes.All(interval)] seed=47645253328 backend=memory
+            probe: interval[3656,1791543538306) txAt=0
+            oracle: {796850201514082304#v0, 796850201515327488#v0, 796850201515524096#v4, 796850201515720704#v3, 796850201519947776#v0, 796850201521291264#v0}
+            door:   {796850201514082304#v0, 796850201515327488#v0, 796850201515524096#v4, 796850201515720704#v3, 796850201519947776#v0}
+            op log (22):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(R) -> ok
+               4. addRel(S) -> ok
+               5. updateNode(796850201515524096) -> ok
+               6. cascadeNode(796850201515720704,[2366,0)) -> ok
+               7. cascadeNode(796850201515524096,[666,0)) -> ok
+               8. updateNode(796850201515720704) -> ok
+               9. deleteNode(796850201515524096) -> ok
+              10. addLabel(796850201515720704,C) -> ok
+              11. addNode -> ok
+              12. addNode -> ok
+              13. cascadeNode(796850201515720704,[2374,3381)) -> ok
+              14. addRel(R) -> ok
+              15. addLabel(796850201519915008,A) -> graph: entity already closed
+              16. cascadeRel(796850201516540928,[1971,0)) -> ok
+              17. deleteRel(796850201520276480) -> ok
+              18. cascadeRel(796850201515885568,[3542,5123)) -> ok
+              19. deleteNode(796850201519915008) -> ok
+              20. backfillNode(tx=1791543519858) -> ok
+              21. deleteNode(796850201521291264) -> ok
+            
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	16.116s
+FAIL

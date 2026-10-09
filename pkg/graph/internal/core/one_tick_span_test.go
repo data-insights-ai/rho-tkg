@@ -781,3 +781,71 @@ func TestOneTickSpanVisible_CascadeWidthOnePiece(t *testing.T) {
 		})
 	}
 }
+
+// TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow pins the gap-piece
+// template once the eclipse filter is gone: on a hard-deleted entity (no
+// current row) the template is the NEWEST history row. A correction before the
+// entity's first valid-from is a gap piece whose content is the template plus
+// the patch, so it must carry v=2 (the last update), not v=1 — catching a
+// template taken from history[0], or a cascade that refuses a history-only
+// entity.
+func TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow(t *testing.T) {
+	t.Parallel()
+	for _, be := range txbBackends() {
+		t.Run(be.name+"/node", func(t *testing.T) {
+			g := be.open(t, false)
+			ctx := context.Background()
+			b := otsBase()
+			n, err := g.Nodes.Add(ctx, []string{"Span"}, map[string]any{"tkg_valid_from": b - 10_000, "v": int64(1)})
+			if err != nil {
+				t.Fatalf("Add: %v", err)
+			}
+			if _, err := g.Nodes.Update(ctx, n.ID(), map[string]any{"v": int64(2)}); err != nil {
+				t.Fatalf("Update: %v", err)
+			}
+			if err := g.Nodes.Delete(ctx, n.ID()); err != nil {
+				t.Fatalf("Delete: %v", err)
+			}
+			if _, err := g.Temporal.SetNodeVersionInterval(ctx, n.ID(), b-20_000, b-15_000, map[string]any{"w": "x"}); err != nil {
+				t.Fatalf("SetNodeVersionInterval on a deleted node: %v", err)
+			}
+			got, err := g.Temporal.NodeAt(n.ID(), b-17_000)
+			if err != nil {
+				t.Fatalf("NodeAt(gap piece): %v", err)
+			}
+			if v, w := otsNodeV(t, got, "v"), otsNodeV(t, got, "w"); v != int64(2) || w != "x" {
+				t.Fatalf("gap piece = v:%v w:%v, want v:2 w:x (template = newest history row)", v, w)
+			}
+			_, err = g.Temporal.NodeAt(n.ID(), b-15_000)
+			wantNoVersion(t, "NodeAt(gap piece end)", err)
+		})
+		t.Run(be.name+"/rel", func(t *testing.T) {
+			g := be.open(t, false)
+			ctx := context.Background()
+			b := otsBase()
+			s, e := otsEndpoints(t, g, b-30_000)
+			r, err := g.Rels.AddByID(ctx, "SPAN", s.ID(), e.ID(), map[string]any{"tkg_valid_from": b - 10_000, "v": int64(1)})
+			if err != nil {
+				t.Fatalf("AddByID: %v", err)
+			}
+			if _, err := g.Rels.Update(ctx, r.ID(), map[string]any{"v": int64(2)}); err != nil {
+				t.Fatalf("Update: %v", err)
+			}
+			if err := g.Rels.Delete(ctx, r.ID()); err != nil {
+				t.Fatalf("Delete: %v", err)
+			}
+			if _, err := g.Temporal.SetRelVersionInterval(ctx, r.ID(), b-20_000, b-15_000, map[string]any{"w": "x"}); err != nil {
+				t.Fatalf("SetRelVersionInterval on a deleted rel: %v", err)
+			}
+			got, err := g.Temporal.RelAt(r.ID(), b-17_000)
+			if err != nil {
+				t.Fatalf("RelAt(gap piece): %v", err)
+			}
+			if v, w := otsRelV(t, got, "v"), otsRelV(t, got, "w"); v != int64(2) || w != "x" {
+				t.Fatalf("gap piece = v:%v w:%v, want v:2 w:x (template = newest history row)", v, w)
+			}
+			_, err = g.Temporal.RelAt(r.ID(), b-15_000)
+			wantNoVersion(t, "RelAt(gap piece end)", err)
+		})
+	}
+}
