@@ -47,12 +47,16 @@ func TestRevisedExecutableNativeGoldenAnswers(t *testing.T) {
 				revisedRunHardKnowledge(t, record)
 			case "failure":
 				revisedRunAxisMismatch(t, record)
+			case "unit_mapping":
+				revisedRunUnitMapping(t, record)
+			case "codec_contract":
+				revisedRunInstantCodec(t, record)
 			default:
 				t.Fatal("native dispatcher has no complete contract", record.Kind)
 			}
 		})
 	}
-	if executed != 14 {
+	if executed != 21 {
 		t.Fatal("native acceptance count", executed)
 	}
 }

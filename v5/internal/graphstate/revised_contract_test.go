@@ -62,13 +62,13 @@ var revisedRules = map[string]revisedRule{
 	"E05-decline-nominal":                             {"knowledge", revisedRefusal, "Type-level refusal probe only: corpus supplies no source nominal coordinate."},
 	"E05-decline-opaque_correlated_constraint":        {"knowledge", revisedRefusal, "Type-level refusal probe using the complete uninterpreted record as opaque envelope payload."},
 	"E05-decline-unspecified":                         {"knowledge", revisedRefusal, "Native unspecified-evidence predicate refusal."},
-	"V0-units-us-to-ms-Z-1000":                        {"unit_mapping", revisedPending, "No declared native unit-conversion/import API."},
-	"V0-units-us-to-ms-Q-1":                           {"unit_mapping", revisedPending, "No declared native unit-conversion/import API."},
-	"V0-units-us-to-ms-Q-1001":                        {"unit_mapping", revisedPending, "No declared native unit-conversion/import API."},
-	"V0-units-us-to-ms-Z-1":                           {"unit_mapping", revisedPending, "No declared native unit-conversion/import refusal API."},
-	"V0-default-ms-identity":                          {"unit_mapping", revisedPending, "Default public Instant/import contract is not a general Integer coordinate."},
-	"V0-default-instant-codec-range":                  {"codec_contract", revisedPending, "General integer codecs do not implement the public int64 millisecond Instant contract."},
-	"V0-order-only-no-seconds":                        {"unit_mapping", revisedPending, "No public mapping negotiation; must not invent seconds for ordinal axes."},
+	"V0-units-us-to-ms-Z-1000":                        {"unit_mapping", revisedNative, "Numerical helper contract only; default graph axis, public Instant API and importer remain pending."},
+	"V0-units-us-to-ms-Q-1":                           {"unit_mapping", revisedNative, "Numerical helper contract only; default graph axis, public Instant API and importer remain pending."},
+	"V0-units-us-to-ms-Q-1001":                        {"unit_mapping", revisedNative, "Numerical helper contract only; default graph axis, public Instant API and importer remain pending."},
+	"V0-units-us-to-ms-Z-1":                           {"unit_mapping", revisedNative, "Numerical helper contract only; default graph axis, public Instant API and importer remain pending."},
+	"V0-default-ms-identity":                          {"unit_mapping", revisedNative, "Numerical helper contract only; default graph axis, public Instant API and importer remain pending."},
+	"V0-default-instant-codec-range":                  {"codec_contract", revisedNative, "Numerical helper contract only; default graph axis, public Instant API and importer remain pending."},
+	"V0-order-only-no-seconds":                        {"unit_mapping", revisedNative, "Numerical helper contract only; default graph axis, public Instant API and importer remain pending."},
 	"V6-one-tick-import-ambiguity":                    {"import_contract", revisedPending, "Importer/writer-provenance ambiguity reporting is not implemented here."},
 	"strict-symbolic-placement-decline":               {"failure", revisedPending, "No symbolic graph-placement attachment; translating it to Unplaced would change the input."},
 	"axis-conflicting-definition-empty":               {"failure", revisedNative, ""},
@@ -429,7 +429,7 @@ func TestRevisedCorpusAccountingDoesNotClaimPendingAcceptance(t *testing.T) {
 		}
 		t.Logf("%s: %s; %s", record.ID, rule.lane, rule.gap)
 	}
-	for lane, want := range map[revisedLane]int{revisedNative: 14, revisedPreservation: 7, revisedRefusal: 5, revisedPending: 16} {
+	for lane, want := range map[revisedLane]int{revisedNative: 21, revisedPreservation: 7, revisedRefusal: 5, revisedPending: 9} {
 		if counts[lane] != want {
 			t.Fatal("case accounting", counts)
 		}
