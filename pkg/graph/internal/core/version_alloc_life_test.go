@@ -5,6 +5,8 @@ import (
 	"math"
 	"testing"
 
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -69,5 +71,60 @@ func TestLifeStartOf(t *testing.T) {
 	}
 	if now := g.now(); now <= ahead.maxStamp {
 		t.Fatalf("plain begin left the clock at %d, not past the chain's stamp %d", now, ahead.maxStamp)
+	}
+}
+
+// lifeFaultStore fails the history reads the re-import allocator makes.
+// Embedding MandatoryStore hides HistoryPresenceCapability; lifePresenceStore
+// adds it back with a failing probe.
+type lifeFaultStore struct {
+	storepkg.MandatoryStore
+	err error
+}
+
+func (s *lifeFaultStore) GetNodeHistory(types.NodeID) ([]*types.Node, error) { return nil, s.err }
+func (s *lifeFaultStore) GetRelHistory(types.RelID) ([]*types.Relationship, error) {
+	return nil, s.err
+}
+
+type lifePresenceStore struct {
+	*lifeFaultStore
+}
+
+func (s *lifePresenceStore) HasNodeHistory(types.NodeID) (bool, error) { return false, s.err }
+func (s *lifePresenceStore) HasRelHistory(types.RelID) (bool, error)   { return false, s.err }
+
+// TestLifeStartStoreErrors: a failing history read refuses the re-import
+// (never "no history", which would restart at version 0 over the stored
+// rows); a relationship slot that is not local holds no history here.
+func TestLifeStartStoreErrors(t *testing.T) {
+	t.Parallel()
+	boom := errors.New("history read failed")
+	for _, presence := range []bool{false, true} {
+		for _, tc := range []struct {
+			err     error
+			wantErr bool
+			relOnly bool // ErrSlotNotLocal: the rel allocator answers "no history"
+		}{
+			{boom, true, false},
+			{storepkg.ErrSlotNotLocal, false, true},
+		} {
+			fs := &lifeFaultStore{MandatoryStore: memory.New(), err: tc.err}
+			c := &Core{store: fs}
+			if presence {
+				c.store = &lifePresenceStore{fs}
+			}
+			_, nerr := c.nodeLifeStart(7)
+			if !tc.relOnly && !errors.Is(nerr, tc.err) {
+				t.Fatalf("presence=%v node: err = %v; want %v", presence, nerr, tc.err)
+			}
+			ls, rerr := c.relLifeStart(9)
+			switch {
+			case tc.wantErr && !errors.Is(rerr, tc.err):
+				t.Fatalf("presence=%v rel: err = %v; want %v", presence, rerr, tc.err)
+			case !tc.wantErr && (rerr != nil || ls != (lifeStart{})):
+				t.Fatalf("presence=%v rel slot not local: %+v, %v; want no history", presence, ls, rerr)
+			}
+		}
 	}
 }
