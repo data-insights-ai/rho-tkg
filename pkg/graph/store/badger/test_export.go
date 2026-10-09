@@ -235,3 +235,12 @@ func (bs *Store) FailNextFlushForTest(err error) { bs.failNextFlush.Store(&err) 
 // FailNextDurableSyncForTest makes the next WAL fsync of DurableFlush fail with
 // err (the written rows stay marked unsynced). Not for production use.
 func (bs *Store) FailNextDurableSyncForTest(err error) { bs.failNextSync.Store(&err) }
+
+// SetMoveTestHookForTest installs moveTestHook (see the Store field): fn runs
+// inside every with-history door between the two halves of publishing the
+// move. Exported solely for tests; not for production use.
+func (bs *Store) SetMoveTestHookForTest(fn func()) { bs.moveTestHook = fn }
+
+// SetAsOfAfterCurrentTestHookForTest installs asOfAfterCurrentTestHook (see
+// the Store field). Exported solely for tests; not for production use.
+func (bs *Store) SetAsOfAfterCurrentTestHookForTest(fn func()) { bs.asOfAfterCurrentTestHook = fn }

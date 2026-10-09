@@ -587,10 +587,14 @@ func (bs *Store) NodeAsOf(nid types.NodeID, txTime types.Instant) (*types.Node, 
 
 	// Current row: cache-backed (GetNode), no pending check needed — current
 	// rows are written through the cache synchronously before the badger commit.
+	// Read it BEFORE the history scan: a with-history door publishes the moved
+	// row to history before it changes the cache (publishMoveLocked), so this
+	// order sees the row at least once (backlog 32).
 	current, err := bs.GetNode(nid)
 	if err != nil && !errors.Is(err, ErrNodeNotFound) {
 		return nil, err
 	}
+	bs.afterAsOfCurrentRead()
 	id := nid.SnowflakeID()
 	prefix := storepkg.HistNodePrefix(id)
 	scan := func(consider func(version uint64, val []byte) (bool, error)) error {
@@ -600,6 +604,14 @@ func (bs *Store) NodeAsOf(nid types.NodeID, txTime types.Instant) (*types.Node, 
 		return bs.historyKeyExistsWithPresence(bs.HasNodeHistory(nid))(storepkg.HistNodeKey(id, version))
 	}
 	return bs.nodeAsOfPick(id, current, txTime, scan, exists)
+}
+
+// afterAsOfCurrentRead runs asOfAfterCurrentTestHook (tests only) between a
+// point as-of door's current-row read and its history scan.
+func (bs *Store) afterAsOfCurrentRead() {
+	if h := bs.asOfAfterCurrentTestHook; h != nil {
+		h()
+	}
 }
 
 // nodeAsOfPick runs selectAsOfScan for one node and materializes the winner:
@@ -638,6 +650,7 @@ func (bs *Store) RelAsOf(rid types.RelID, txTime types.Instant) (*types.Relation
 	if err != nil && !errors.Is(err, ErrRelNotFound) {
 		return nil, err
 	}
+	bs.afterAsOfCurrentRead() // current row first, then history — see NodeAsOf
 	id := rid.SnowflakeID()
 	prefix := storepkg.HistRelPrefix(id)
 	scan := func(consider func(version uint64, val []byte) (bool, error)) error {

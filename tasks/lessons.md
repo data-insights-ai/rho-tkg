@@ -1996,14 +1996,30 @@ Rules:
   coalesce).
 - **Entity POINT reads (`GetNode`/`GetRelationship`) are exempt for a real
   reason, and it is worth stating why they don't need this:** every entity write
-  does `cache.Put` (dirty) BEFORE `appendOps`, and `markCacheFlushed` runs AFTER
-  the commit, so a row is dirty-in-cache for the whole window it is in
-  `flushing` — a cache HIT covers it, and a cache MISS means the row is clean =
-  already durable in Badger. The invariant "entity in `flushing` ⇒ dirty in
-  cache" is what makes the point-read cache-only path sound; the history/index
-  keyspaces have no such synchronous cache shadow, which is why only they were
-  exposed (the same "synchronous shadow for most consumers" observation as
-  lesson 54).
+  does `cache.Put` (dirty) and `appendOps` inside ONE `idxMu.Lock` section (the
+  flush snapshots under `idxMu.RLock`, so it never sees one without the other),
+  and `markCacheFlushed` runs AFTER the commit, so a row is dirty-in-cache for
+  the whole window it is in `flushing` — a cache HIT covers it, and a cache MISS
+  means the row is clean = already durable in Badger. The invariant "entity in
+  `flushing` ⇒ dirty in cache" is what makes the point-read cache-only path
+  sound; the history/index keyspaces have no such synchronous cache shadow,
+  which is why only they were exposed (the same "synchronous shadow for most
+  consumers" observation as lesson 54).
+- **Inside that section the ORDER still matters to readers that do not take
+  `idxMu` (`GetNode` on a cache hit; it takes `idxMu.RLock` only on a miss)
+  (backlog 32, 2026-10-09).** A with-history door changed the cache
+  (new current row) before it appended the moved row to the history overlay;
+  the core resolvers read current row, then history, in two lock-free calls, so
+  a reader between the two halves saw the new current row and a history
+  without the moved row — the pinned row in neither (NodeAtTx / NodeAsOf
+  "absent" at a pin before the write). "Atomic in the pending buffer" is
+  atomic for the flush, not for lock-free readers. Rule: when a write changes
+  two views that a lock-free reader reads one after the other, publish them in
+  the REVERSE of the reader's order (reader: current then history → writer:
+  history then current; `publishMoveLocked`), make the order one helper, and
+  test it with a hook between the writer's two halves
+  (`TestWithHistoryDoorsPublishHistoryBeforeCurrent`) plus one between the
+  reader's two reads (`TestPointDoorRace_MoveBetweenChainReads`).
 - **Test the WINDOW, not just the presence.** The existing flushing tests parked
   rows into `flushing` and never committed — they proved "consult flushing" but
   could never catch the scan→commit→clear drop. The deterministic reproduction

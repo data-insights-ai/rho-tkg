@@ -1,0 +1,24 @@
+diff --git a/pkg/graph/store/badger/badgerstore_node_batch.go b/pkg/graph/store/badger/badgerstore_node_batch.go
+index db635f9..d1d831c 100644
+--- a/pkg/graph/store/badger/badgerstore_node_batch.go
++++ b/pkg/graph/store/badger/badgerstore_node_batch.go
+@@ -165,6 +165,7 @@ func (bs *Store) cascadeDeleteInner(nid types.NodeID, prefetched cascadeDeletePr
+ 			return nil, nil, fmt.Errorf("graph: cascade purge orphan relationship %d: %w", relID.SnowflakeID(), err)
+ 		}
+ 		orphanKeys[i] = keys
++		bs.purgeOrphanRelIDLockedWithIndexKeys(relID, keys) // MUTANT: purge as read (the old order)
+ 	}
+ 
+ 	var corruptErr error
+--- FAIL: TestCascadeDeleteFatalPreflightAppliesNothing (0.01s)
+    --- FAIL: TestCascadeDeleteFatalPreflightAppliesNothing/DeleteNodeCascade (0.00s)
+        badgerstore_cascade_preflight_test.go:105: DeleteNodeCascade applied mutations before its fatal preflight error:
+            before node=true nodeIDs=true history=0 998:out=true,type=true,relIDs=true 999:out=true,type=true,relIDs=true relCount=2 type7=2 pending=0 log=0
+            after  node=true nodeIDs=true history=0 998:out=true,type=true,relIDs=true 999:out=false,type=false,relIDs=false relCount=1 type7=1 pending=3 log=0
+    --- FAIL: TestCascadeDeleteFatalPreflightAppliesNothing/DeleteNodeWithHistory (0.00s)
+        badgerstore_cascade_preflight_test.go:105: DeleteNodeWithHistory applied mutations before its fatal preflight error:
+            before node=true nodeIDs=true history=0 998:out=true,type=true,relIDs=true 999:out=true,type=true,relIDs=true relCount=2 type7=2 pending=0 log=0
+            after  node=true nodeIDs=true history=0 998:out=false,type=false,relIDs=false 999:out=true,type=true,relIDs=true relCount=1 type7=1 pending=3 log=0
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.014s
+FAIL

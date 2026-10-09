@@ -1,0 +1,12 @@
+--- PASS: TestPointDoorRace_MoveBetweenChainReads (0.39s)
+    --- PASS: TestPointDoorRace_MoveBetweenChainReads/memory/node (0.00s)
+    --- PASS: TestPointDoorRace_MoveBetweenChainReads/memory/rel (0.00s)
+    --- PASS: TestPointDoorRace_MoveBetweenChainReads/badger/node (0.01s)
+    --- PASS: TestPointDoorRace_MoveBetweenChainReads/badger/rel (0.02s)
+    --- PASS: TestPointDoorRace_MoveBetweenChainReads/badger-disk/node (0.08s)
+    --- PASS: TestPointDoorRace_MoveBetweenChainReads/badger-disk/rel (0.11s)
+    --- PASS: TestPointDoorRace_MoveBetweenChainReads/tiered/node (0.05s)
+    --- PASS: TestPointDoorRace_MoveBetweenChainReads/tiered/rel (0.05s)
+    --- PASS: TestPointDoorRace_MoveBetweenChainReads/sharded/node (0.02s)
+    --- PASS: TestPointDoorRace_MoveBetweenChainReads/sharded/rel (0.05s)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.423s

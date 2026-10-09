@@ -1240,6 +1240,7 @@ func (c *Core) findNodeVersionMatchingDuringTx(id types.NodeID, start, end, txAt
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
 	}
+	c.afterCurrentRead(int64(id))
 
 	history, err := c.getNodeHistory(id)
 	if err != nil {
@@ -1270,6 +1271,7 @@ func (c *Core) findRelVersionMatchingDuringTx(id types.RelID, start, end, txAt t
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, err
 	}
+	c.afterCurrentRead(int64(id))
 
 	history, err := c.getRelHistory(id)
 	if err != nil {
@@ -1301,6 +1303,7 @@ func (c *Core) findNodeVersionRelating(id types.NodeID, qStart, qEnd types.Insta
 	if err != nil && !errors.Is(err, storepkg.ErrNodeNotFound) {
 		return nil, err
 	}
+	c.afterCurrentRead(int64(id))
 
 	history, err := c.getNodeHistory(id)
 	if err != nil {
@@ -1326,6 +1329,7 @@ func (c *Core) findRelVersionRelating(id types.RelID, qStart, qEnd types.Instant
 	if err != nil && !errors.Is(err, storepkg.ErrRelNotFound) {
 		return nil, err
 	}
+	c.afterCurrentRead(int64(id))
 
 	history, err := c.getRelHistory(id)
 	if err != nil {

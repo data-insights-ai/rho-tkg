@@ -171,7 +171,7 @@ func (bs *Store) purgeNodesByLabel(labelToken uint16, chunk int, qualifies func(
 		// whose entity lives on another shard (an entity read here would miss it),
 		// which the tiered residue sweep needs.
 		purgedRels = append(purgedRels, bs.purgedRelsForNodeLocked(v)...)
-		deleted, corruptErr, fatalErr := bs.cascadeDeleteInner(v, pf)
+		deleted, corruptErr, fatalErr := bs.cascadeDeleteInner(v, pf, nil)
 		if fatalErr != nil {
 			if errors.Is(fatalErr, ErrNodeNotFound) {
 				continue // concurrently purged between prefetch and lock

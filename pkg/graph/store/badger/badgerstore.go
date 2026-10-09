@@ -740,6 +740,33 @@ type Store struct {
 	// capture (bulkPresence), must catch. Set only from the owning test.
 	bulkAsOfOverlayTestHook func()
 
+	// moveTestHook, when non-nil, is invoked (moveHook) by every with-history
+	// door (Replace*WithHistory, the label-token history doors,
+	// Delete*WithHistory) while it holds idxMu.Lock: between the two halves of
+	// publishing the move — the pending buffer (the history readers' overlay)
+	// and the entity cache (the GetNode / GetRelationship answer) — and again
+	// right after each change of a current slot (the cache put of a moved
+	// entity's new row, a relationship's removal, a cascade's removals), so a
+	// test sees every intermediate state whatever the order of the halves.
+	// Production leaves it nil; tests read the entity there through the
+	// lock-free point doors to prove a reader never sees the move half done
+	// (backlog 32). Set only from the owning test.
+	moveTestHook func()
+
+	// asOfAfterCurrentTestHook, when non-nil, is invoked by the point as-of
+	// doors (NodeAsOf / RelAsOf) between their current-row read and their
+	// history scan — the two lock-free reads whose order must be current row
+	// first (backlog 32). Production leaves it nil; tests land a whole move
+	// there. Set only from the owning test.
+	asOfAfterCurrentTestHook func()
+
+	// relIndexKeysTestErr, when non-nil, is consulted first by
+	// relationshipIndexKeysForRel (the fallible read of an orphan
+	// relationship's index keys); a non-nil return is that read's error.
+	// Production leaves it nil; tests fail one read of a cascade's preflight to
+	// prove a fatal error applies nothing. Set only from the owning test.
+	relIndexKeysTestErr func() error
+
 	// replaceRelPrefetchTestHook, when non-nil, is invoked by ReplaceRelationship
 	// right after prefetchRelWithRev returns and BEFORE idxMu.Lock() is acquired.
 	// Production leaves it nil (zero overhead); tests use it to deterministically

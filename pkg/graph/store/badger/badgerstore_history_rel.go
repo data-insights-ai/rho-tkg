@@ -97,7 +97,6 @@ func (bs *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 	bs.maintainRelTypeTemporalIndexesRemove(old, id) // BACKLOG 21c
 	bs.removeRelPropertyTypeClassCountsByID(id, old.TypeToken().Value())
 	bs.removeRelPropertyStatsCountsByID(id, old.TypeToken().Value())
-	bs.relCache.Put(id, bs.frozenRelRow(current))
 	bs.bumpRelRevLocked(rid)                                   // this door always re-reads via getRelLocked above, but must still bump so a concurrent ReplaceRelationship's prefetch detects this write (BACKLOG 18b)
 	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(current))   // BACKLOG 10c
 	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(prevState)) // BACKLOG 10c — the demoted history row
@@ -109,12 +108,12 @@ func (bs *Store) replaceRelWithHistoryRouted(current *types.Relationship, prevVe
 	// valid_to while leaving endpoints/type (and thus adjacency) unchanged.
 	bs.setRelValidStampLocked(rid, current)
 
-	// Single appendOps call — atomic in the pending buffer.
+	// Single appendOps call — atomic in the pending buffer — then the cache.
 	histKey := storepkg.HistRelKey(id, uint64(prevVersion))
-	bs.appendOps(
-		writeOp{opType: writeOpSet, key: storepkg.RelKey(id), value: data},
-		writeOp{opType: writeOpSet, key: histKey, value: histData},
-	)
+	bs.publishMoveLocked([]writeOp{
+		{opType: writeOpSet, key: storepkg.RelKey(id), value: data},
+		{opType: writeOpSet, key: histKey, value: histData},
+	}, func() { bs.putMovedRelLocked(id, current) })
 	logErr := bs.logChangeRoutedRaw(storecontract.ChangeRelPut, changePayload, token)
 	bs.idxMu.Unlock()
 	if logErr != nil {
@@ -179,9 +178,10 @@ func (bs *Store) deleteRelWithHistoryRouted(rid types.RelID, prevVersion uint32,
 		return err
 	}
 	info := relDeleteInfoFromRelationship(r)
-	bs.deleteRelByInfo(info)                                   // appends delete ops to pending under lock (no record — emitted here)
 	bs.bumpRelBeliefWatermarkLocked(rid, relTxFrom(tombstone)) // BACKLOG 10c
-	bs.appendOps(writeOp{opType: writeOpSet, key: histKey, value: tombData})
+	// The tombstone first, then the removal (appends its delete ops to pending
+	// under the lock; no record — emitted here).
+	bs.publishMoveLocked([]writeOp{{opType: writeOpSet, key: histKey, value: tombData}}, func() { bs.deleteRelByInfo(info) })
 	logErr := bs.logChangeRoutedRaw(storecontract.ChangeRelDelete, delPayload, token)
 	bs.idxMu.Unlock()
 	if logErr != nil {

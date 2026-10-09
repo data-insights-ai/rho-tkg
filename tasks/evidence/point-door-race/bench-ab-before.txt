@@ -1,0 +1,156 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkPointDoors/memory/NodeAtTx/hot-32         	 4443688	       268.2 ns/op	     320 B/op	       4 allocs/op
+BenchmarkPointDoors/memory/RelAtTx/hot-32          	 4659297	       253.9 ns/op	     352 B/op	       4 allocs/op
+BenchmarkPointDoors/memory/NodeAsOf/hot-32         	 5113478	       232.4 ns/op	     320 B/op	       4 allocs/op
+BenchmarkPointDoors/memory/NodeAtTx/cold-32        	 1770592	       730.1 ns/op	     708 B/op	      13 allocs/op
+BenchmarkPointDoors/memory/RelAtTx/cold-32         	 1724084	       790.8 ns/op	     772 B/op	      13 allocs/op
+BenchmarkPointDoors/memory/NodeAsOf/cold-32        	 2581144	       438.1 ns/op	     424 B/op	       6 allocs/op
+BenchmarkPointDoors/badger/NodeAtTx/hot-32         	 4509811	       259.7 ns/op	     323 B/op	       4 allocs/op
+BenchmarkPointDoors/badger/RelAtTx/hot-32          	 4472864	       226.9 ns/op	     353 B/op	       4 allocs/op
+BenchmarkPointDoors/badger/NodeAsOf/hot-32         	  789813	      1551 ns/op	    1104 B/op	      17 allocs/op
+BenchmarkPointDoors/badger/NodeAtTx/cold-32        	  178604	      5651 ns/op	    4257 B/op	      61 allocs/op
+BenchmarkPointDoors/badger/RelAtTx/cold-32         	  168711	      6631 ns/op	    5473 B/op	      63 allocs/op
+BenchmarkPointDoors/badger/NodeAsOf/cold-32        	  182826	      6059 ns/op	    4278 B/op	      61 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkMoveWrites/memory/Nodes.Update-32         	   20000	      2997 ns/op	    1921 B/op	      24 allocs/op
+BenchmarkMoveWrites/memory/Rels.Update-32          	   20000	      3612 ns/op	    2448 B/op	      27 allocs/op
+BenchmarkMoveWrites/badger/Nodes.Update-32         	   20000	      9069 ns/op	    4733 B/op	      58 allocs/op
+BenchmarkMoveWrites/badger/Rels.Update-32          	   20000	     15724 ns/op	    5924 B/op	      69 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkPointDoors/memory/NodeAtTx/hot-32         	 5160861	       228.5 ns/op	     320 B/op	       4 allocs/op
+BenchmarkPointDoors/memory/RelAtTx/hot-32          	 4989787	       241.8 ns/op	     352 B/op	       4 allocs/op
+BenchmarkPointDoors/memory/NodeAsOf/hot-32         	 5196726	       222.2 ns/op	     320 B/op	       4 allocs/op
+BenchmarkPointDoors/memory/NodeAtTx/cold-32        	 1884234	       631.7 ns/op	     708 B/op	      13 allocs/op
+BenchmarkPointDoors/memory/RelAtTx/cold-32         	 1798977	       665.5 ns/op	     772 B/op	      13 allocs/op
+BenchmarkPointDoors/memory/NodeAsOf/cold-32        	 3314059	       353.4 ns/op	     424 B/op	       6 allocs/op
+BenchmarkPointDoors/badger/NodeAtTx/hot-32         	 5135946	       222.9 ns/op	     324 B/op	       4 allocs/op
+BenchmarkPointDoors/badger/RelAtTx/hot-32          	 5496358	       215.6 ns/op	     353 B/op	       4 allocs/op
+BenchmarkPointDoors/badger/NodeAsOf/hot-32         	  745654	      1575 ns/op	    1104 B/op	      17 allocs/op
+BenchmarkPointDoors/badger/NodeAtTx/cold-32        	  199725	      6639 ns/op	    4263 B/op	      61 allocs/op
+BenchmarkPointDoors/badger/RelAtTx/cold-32         	  184556	      6452 ns/op	    5479 B/op	      63 allocs/op
+BenchmarkPointDoors/badger/NodeAsOf/cold-32        	  212541	      5631 ns/op	    4278 B/op	      61 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkMoveWrites/memory/Nodes.Update-32         	   20000	      2826 ns/op	    1922 B/op	      24 allocs/op
+BenchmarkMoveWrites/memory/Rels.Update-32          	   20000	      3227 ns/op	    2448 B/op	      27 allocs/op
+BenchmarkMoveWrites/badger/Nodes.Update-32         	   20000	      8043 ns/op	    4414 B/op	      57 allocs/op
+BenchmarkMoveWrites/badger/Rels.Update-32          	   20000	      8661 ns/op	    5378 B/op	      63 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkPointDoors/memory/NodeAtTx/hot-32         	 5178213	       237.6 ns/op	     320 B/op	       4 allocs/op
+BenchmarkPointDoors/memory/RelAtTx/hot-32          	 5048174	       236.8 ns/op	     352 B/op	       4 allocs/op
+BenchmarkPointDoors/memory/NodeAsOf/hot-32         	 5655024	       226.6 ns/op	     320 B/op	       4 allocs/op
+BenchmarkPointDoors/memory/NodeAtTx/cold-32        	 1930580	       631.9 ns/op	     708 B/op	      13 allocs/op
+BenchmarkPointDoors/memory/RelAtTx/cold-32         	 1793382	       666.9 ns/op	     772 B/op	      13 allocs/op
+BenchmarkPointDoors/memory/NodeAsOf/cold-32        	 3470631	       363.8 ns/op	     424 B/op	       6 allocs/op
+BenchmarkPointDoors/badger/NodeAtTx/hot-32         	 4630099	       220.0 ns/op	     324 B/op	       4 allocs/op
+BenchmarkPointDoors/badger/RelAtTx/hot-32          	 5465743	       218.5 ns/op	     353 B/op	       4 allocs/op
+BenchmarkPointDoors/badger/NodeAsOf/hot-32         	  886249	      1358 ns/op	    1104 B/op	      17 allocs/op
+BenchmarkPointDoors/badger/NodeAtTx/cold-32        	  211088	      5271 ns/op	    4267 B/op	      61 allocs/op
+BenchmarkPointDoors/badger/RelAtTx/cold-32         	  200907	      5646 ns/op	    5483 B/op	      63 allocs/op
+BenchmarkPointDoors/badger/NodeAsOf/cold-32        	  215070	      5392 ns/op	    4278 B/op	      61 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkMoveWrites/memory/Nodes.Update-32         	   20000	      2598 ns/op	    1922 B/op	      24 allocs/op
+BenchmarkMoveWrites/memory/Rels.Update-32          	   20000	      3478 ns/op	    2448 B/op	      27 allocs/op
+BenchmarkMoveWrites/badger/Nodes.Update-32         	   20000	      7335 ns/op	    4404 B/op	      54 allocs/op
+BenchmarkMoveWrites/badger/Rels.Update-32          	   20000	      9362 ns/op	    5664 B/op	      66 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkPointDoors/memory/NodeAtTx/hot-32         	 4861791	       238.7 ns/op	     320 B/op	       4 allocs/op
+BenchmarkPointDoors/memory/RelAtTx/hot-32          	 4817635	       245.4 ns/op	     352 B/op	       4 allocs/op
+BenchmarkPointDoors/memory/NodeAsOf/hot-32         	 4893495	       234.9 ns/op	     320 B/op	       4 allocs/op
+BenchmarkPointDoors/memory/NodeAtTx/cold-32        	 1337664	       909.3 ns/op	     708 B/op	      13 allocs/op
+BenchmarkPointDoors/memory/RelAtTx/cold-32         	 1779464	       760.8 ns/op	     772 B/op	      13 allocs/op
+BenchmarkPointDoors/memory/NodeAsOf/cold-32        	 2922721	       393.7 ns/op	     424 B/op	       6 allocs/op
+BenchmarkPointDoors/badger/NodeAtTx/hot-32         	 5051548	       225.9 ns/op	     323 B/op	       4 allocs/op
+BenchmarkPointDoors/badger/RelAtTx/hot-32          	 5090131	       231.1 ns/op	     353 B/op	       4 allocs/op
+BenchmarkPointDoors/badger/NodeAsOf/hot-32         	  807745	      1440 ns/op	    1104 B/op	      17 allocs/op
+BenchmarkPointDoors/badger/NodeAtTx/cold-32        	  221292	      5563 ns/op	    4260 B/op	      61 allocs/op
+BenchmarkPointDoors/badger/RelAtTx/cold-32         	  201420	      5869 ns/op	    5476 B/op	      63 allocs/op
+BenchmarkPointDoors/badger/NodeAsOf/cold-32        	  212096	      5176 ns/op	    4278 B/op	      61 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkMoveWrites/memory/Nodes.Update-32         	   20000	      2781 ns/op	    1922 B/op	      24 allocs/op
+BenchmarkMoveWrites/memory/Rels.Update-32          	   20000	      3793 ns/op	    2448 B/op	      27 allocs/op
+BenchmarkMoveWrites/badger/Nodes.Update-32         	   20000	      7382 ns/op	    4405 B/op	      56 allocs/op
+BenchmarkMoveWrites/badger/Rels.Update-32          	   20000	      8952 ns/op	    5624 B/op	      67 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkPointDoors/memory/NodeAtTx/hot-32         	 4718739	       236.8 ns/op	     320 B/op	       4 allocs/op
+BenchmarkPointDoors/memory/RelAtTx/hot-32          	 5098966	       215.7 ns/op	     352 B/op	       4 allocs/op
+BenchmarkPointDoors/memory/NodeAsOf/hot-32         	 5700406	       206.6 ns/op	     320 B/op	       4 allocs/op
+BenchmarkPointDoors/memory/NodeAtTx/cold-32        	 2304082	       562.1 ns/op	     708 B/op	      13 allocs/op
+BenchmarkPointDoors/memory/RelAtTx/cold-32         	 1865961	       623.8 ns/op	     772 B/op	      13 allocs/op
+BenchmarkPointDoors/memory/NodeAsOf/cold-32        	 3427818	       343.4 ns/op	     424 B/op	       6 allocs/op
+BenchmarkPointDoors/badger/NodeAtTx/hot-32         	 3587426	       308.6 ns/op	     326 B/op	       4 allocs/op
+BenchmarkPointDoors/badger/RelAtTx/hot-32          	 5862691	       210.0 ns/op	     353 B/op	       4 allocs/op
+BenchmarkPointDoors/badger/NodeAsOf/hot-32         	  869942	      1351 ns/op	    1104 B/op	      17 allocs/op
+BenchmarkPointDoors/badger/NodeAtTx/cold-32        	  226965	      5334 ns/op	    4271 B/op	      61 allocs/op
+BenchmarkPointDoors/badger/RelAtTx/cold-32         	  189334	      6195 ns/op	    5487 B/op	      63 allocs/op
+BenchmarkPointDoors/badger/NodeAsOf/cold-32        	  204601	      5653 ns/op	    4278 B/op	      61 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkMoveWrites/memory/Nodes.Update-32         	   20000	      2718 ns/op	    1921 B/op	      24 allocs/op
+BenchmarkMoveWrites/memory/Rels.Update-32          	   20000	      3381 ns/op	    2448 B/op	      27 allocs/op
+BenchmarkMoveWrites/badger/Nodes.Update-32         	   20000	      7736 ns/op	    4403 B/op	      55 allocs/op
+BenchmarkMoveWrites/badger/Rels.Update-32          	   20000	      9466 ns/op	    5363 B/op	      64 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkPointDoors/memory/NodeAtTx/hot-32         	 4662632	       484.4 ns/op	     320 B/op	       4 allocs/op
+BenchmarkPointDoors/memory/RelAtTx/hot-32          	 1750383	       617.0 ns/op	     352 B/op	       4 allocs/op
+BenchmarkPointDoors/memory/NodeAsOf/hot-32         	 2835511	       430.1 ns/op	     320 B/op	       4 allocs/op
+BenchmarkPointDoors/memory/NodeAtTx/cold-32        	 1000000	      1133 ns/op	     708 B/op	      13 allocs/op
+BenchmarkPointDoors/memory/RelAtTx/cold-32         	 1736120	       697.1 ns/op	     772 B/op	      13 allocs/op
+BenchmarkPointDoors/memory/NodeAsOf/cold-32        	 3215349	       377.0 ns/op	     424 B/op	       6 allocs/op
+BenchmarkPointDoors/badger/NodeAtTx/hot-32         	 5284178	       222.4 ns/op	     324 B/op	       4 allocs/op
+BenchmarkPointDoors/badger/RelAtTx/hot-32          	 4270082	       242.4 ns/op	     353 B/op	       4 allocs/op
+BenchmarkPointDoors/badger/NodeAsOf/hot-32         	  772630	      1508 ns/op	    1104 B/op	      17 allocs/op
+BenchmarkPointDoors/badger/NodeAtTx/cold-32        	  205543	      5706 ns/op	    4266 B/op	      61 allocs/op
+BenchmarkPointDoors/badger/RelAtTx/cold-32         	  200200	      6129 ns/op	    5482 B/op	      63 allocs/op
+BenchmarkPointDoors/badger/NodeAsOf/cold-32        	  210872	      5523 ns/op	    4278 B/op	      61 allocs/op
+PASS
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkMoveWrites/memory/Nodes.Update-32         	   20000	      2620 ns/op	    1921 B/op	      24 allocs/op
+BenchmarkMoveWrites/memory/Rels.Update-32          	   20000	      3410 ns/op	    2448 B/op	      27 allocs/op
+BenchmarkMoveWrites/badger/Nodes.Update-32         	   20000	      7129 ns/op	    4395 B/op	      52 allocs/op
+BenchmarkMoveWrites/badger/Rels.Update-32          	   20000	      8964 ns/op	    5569 B/op	      66 allocs/op
+PASS

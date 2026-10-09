@@ -28,6 +28,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   millisecond, round vs floor, node/rel node-field offset, 32-bit and high-bit truncation, missing or partial
   non-positive guard, allocation, resolver divergence); evidence under `tasks/evidence/mint-instant/`.
 
+### Fixed
+
+- **HIGH: pinned doors no longer miss an entity while a write moves its row to history** (backlog 32,
+  pre-existing, found by the effective-timeline pointwise test 2026-10-09). On badger, sharded and tiered
+  (badger shards) a reader at a FIXED pin could get `ErrNoVersionValidAt` / `ErrNoVersionAsOf` / not-found,
+  or a scan without the entity, for an entity that existed at the pin while a concurrent Update,
+  `CloseVersion`, label change, Delete or `SetVersionInterval` moved its current row into history. Doors seen
+  failing on main (2 × 30 stress runs, every backend, node and rel): `NodeAtTx`/`RelAtTx`,
+  `NodeAsOf`/`RelAsOf`, `NodesAtTx`/`RelsAtTx`, `NodesAsOf`/`RelsAsOf`, `NodesDuringTx`/`RelsDuringTx`,
+  `ByType{ValidAt,TxAt}`, `ByType{TxPin}`, `Nodes.All{TxPin}`/`Rels.All{TxPin}`; memory never failed. The
+  other pinned scans (`ByLabel` with `{ValidAt,TxAt}`, `{TxPin}`, an interval, `CountByLabelAt`/
+  `CountByTypeAt`) resolve candidates through the same resolvers and were exposed without a recorded miss
+  (`ByLabel{ValidAt,TxAt}` missed under a mutant). `Get` and `History` (one store call each), and the
+  current-knowledge doors `NodeAt`/`RelAt`, `NodesAt`/`RelsAt`, `ByLabel`/`ByType{ValidAt}` and the
+  `Relating` doors (checked for membership only), never missed. Cause: the per-entity resolvers read
+  the current row and then the history in two store calls without a snapshot or the entity lock, and every
+  badger with-history door (`Replace*WithHistory`, the label-token history doors, `Delete*WithHistory`)
+  changed the entity cache, which `GetNode`/`GetRelationship` answer from, before it appended the moved row
+  to the pending buffer the history readers overlay. Both happen under one `idxMu.Lock`, which the point
+  readers do not take on a cache hit (`GetNode` takes `idxMu.RLock` only on a miss), so a reader between the
+  two halves saw the new current row and a history without the moved row. Badger's own `NodeAsOf`/`RelAsOf`
+  read the current row and then scan history the same way. Fix: `publishMoveLocked` appends the batch first
+  and changes the cache last; the node delete publishes its node and relationship tombstones before the cascade removes the rows from the cache (the
+  cascade now reads orphan index keys in its preflight, so no mutation precedes a fallible read). The
+  resolvers keep reading the current row first (`chain_read.go`), so a reader sees the moved row at least
+  once. No lock on the read path. Cost: within noise. Paired runs after/before (reviewer, unpinned, 8 rounds):
+  `NodeAtTx` hot 1.034 (0.94-1.08), `RelAtTx` 0.987, `NodeAsOf` 0.975, `Nodes.Update` 0.972, `Rels.Update`
+  1.028; pinned to 4 CPUs, 10 rounds: `NodeAtTx` 214.8 -> 216.4 ns, `RelAtTx` 194.7 -> 194.1 ns. Tests:
+  `TestPointDoorRace_UnderMovingWriters` (writers vs readers of every door, all five backend flavours, zero
+  misses; record doors checked for monotone answers), `TestWithHistoryDoorsPublishHistoryBeforeCurrent`
+  (every badger with-history door paused between its two halves, in memory, on disk, flushed: 21 of 21 red
+  on main), `TestPointDoorRace_MoveBetweenChainReads` (a whole move between a resolver's two reads, every
+  backend, badger's native as-of door included; guard, green on main),
+  `TestNativeAsOfReadsCurrentBeforeHistory` (a whole move between badger's `NodeAsOf`/`RelAsOf` reads; guard),
+  `TestCascadeDeleteFatalPreflightAppliesNothing` (a failed orphan-key read in the delete's preflight applies
+  nothing; guard, red under the old purge-as-read order). Evidence and mutants (one door unfixed,
+  publication order swapped at the seam, interval and as-of resolvers reading history first, the cascade removing rows before its tombstones,
+  a relationship removed before its tombstone, the native as-of door scanning history first, orphans purged as
+  read: each red) under `tasks/evidence/point-door-race/`.
+
 ## [4.46.0] - 2026-10-09
 
 Minor release: cascade correctness (one version allocator for every appended row, appended rows carry no

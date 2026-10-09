@@ -1,0 +1,25 @@
+applied E-replace-cache-first to badgerstore_history_node.go
+diff --git a/pkg/graph/store/badger/badgerstore_history_node.go b/pkg/graph/store/badger/badgerstore_history_node.go
+index 498ca3c..7294f74 100644
+--- a/pkg/graph/store/badger/badgerstore_history_node.go
++++ b/pkg/graph/store/badger/badgerstore_history_node.go
+@@ -408,7 +408,8 @@ func (bs *Store) replaceNodeWithHistoryRouted(current *types.Node, prevVersion u
+ 		writeOp{opType: writeOpSet, key: storepkg.NodeKey(id), value: data},
+ 		writeOp{opType: writeOpSet, key: histKey, value: histData},
+ 	)
+-	bs.publishMoveLocked(ops, func() { bs.putMovedNodeLocked(id, current) })
++	bs.putMovedNodeLocked(id, current)
++	bs.publishMoveLocked(ops, func() {})
+ 	logErr := bs.logChangeRoutedRaw(storecontract.ChangeNodePut, changePayload, token)
+ 	bs.idxMu.Unlock()
+ 	if logErr != nil {
+--- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent (1.23s)
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/in-memory/ReplaceNodeWithHistory (0.00s)
+        badgerstore_move_publish_order_test.go:308: mid-move read of ReplaceNodeWithHistory: hook 1: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/on-disk/ReplaceNodeWithHistory (0.16s)
+        badgerstore_move_publish_order_test.go:308: mid-move read of ReplaceNodeWithHistory: hook 1: moved row v0 in neither the current row nor GetHistory
+    --- FAIL: TestWithHistoryDoorsPublishHistoryBeforeCurrent/flushed/ReplaceNodeWithHistory (0.01s)
+        badgerstore_move_publish_order_test.go:308: mid-move read of ReplaceNodeWithHistory: hook 1: moved row v0 in neither the current row nor GetHistory
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	2.420s
+FAIL

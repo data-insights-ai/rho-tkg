@@ -683,6 +683,7 @@ func (bs *Store) deleteRelByInfo(info RelDeleteInfo) {
 	bs.appendOps(ops...)
 	bs.relCount.Add(-1)
 	bs.getOrCreateTypeCounter(info.RelType).Add(-1)
+	bs.moveHook() // the relationship left its current slot (backlog 32 tests)
 }
 
 // RelationshipsByType returns relationships with the given type token, with optional pagination
