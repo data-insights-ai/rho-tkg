@@ -1,2 +1,2 @@
-ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	193.957s
-ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	196.149s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	130.545s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	194.605s
