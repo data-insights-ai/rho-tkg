@@ -21,7 +21,7 @@ Wave 1 (parallel) → v4.44.0
       4 backends; break cases: width 1 vs 2, boundary t and t+1, old pin after a width-1 correction.
       Proof: evidence/eclipse/red-*.txt, green-*.txt; backlog KNOWN LIMITATION closed; stale header
       temporal_cascade.go:18-27 rewritten.
-- [ ] C scan-temporal-opts (Opus): `ScanNodeColumns`/`ScanRelColumns` and `ForEachByLabelPropertyRange` filter
+- [x] C scan-temporal-opts (Opus; merged after Opus review: 5 findings fixed; all four doors answer temporal opts exactly via the ByLabel/ByType fold, ordered folds keep exclusive-bound values, spy over every Core read door; red 130 assertions + core spy, mutants after/limit/stop/watermarks, 34 pkgs green, race green except one load flake TestAdvanceClock_RejectsImplausibleFarFutureTarget (passes alone); evidence/scan-opts/; backlog 16 filed (range vs predicate-anywhere interval semantics)): `ScanNodeColumns`/`ScanRelColumns` and `ForEachByLabelPropertyRange` filter
       current rows and ignore `TxAt`/`TxPin` (memorystore_query.go:105-125, badger_column_scan.go:149-159,
       badgerstore_node_range_scan.go:88, temporal_filter.go:70-72). Red: two-door parity vs `ByLabel(opts)` after
       an update and a delete, per backend; break cases: ValidAt before the update, TxAt before the delete, TxPin.
