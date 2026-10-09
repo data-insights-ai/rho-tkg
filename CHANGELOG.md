@@ -164,7 +164,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   indexes/logs and engine costs are excluded: no vendor comparison or B/fact
   claim, and no V3 completion.
 
+- **Fresh sole-partition bootstrap** (`34725ee`): GR2 mode-2 roots declare
+  topology/schema version 1 and unavailable indexes (version 0). Fresh application
+  stores match configured transfer graph/partition and use the local voter;
+  initialized/recovered stores, primitive promotion and declared-root staging refuse.
+  No index handles or certified cut are granted.
+
+- **Application bank/generation foundation** (`9752e7c`): fresh-only RLM5
+  opt-in requires application+transfer configuration. Two banks pin captured
+  generations and bound aggregate logical bytes/records, including staging,
+  retired data and pending installs; stale `BaseGeneration` refuses at the same
+  index/hash. Bank B transfer works; activation, driver-fence
+  relaxation, multi-voter integration and physical RSS/disk acceptance stay open.
+
 ### Fixed
+
+- **v5 correctness follow-ups**: prospective metadata obeys `MaxReadyBytes`
+  across entry-free Ready/create/initialize/save/publish/reopen (`306606a`).
+  Uniqueness revisits matching immutable endpoint lives for LifeBound and skips
+  IdentityReference foreign-axis checks (`eb08a92`). Persisted component
+  addressability, checkpoint cells and both patch sides validate before
+  exposure/replay with operation-local full `ValueRef` caching; operational
+  sentinels do not poison the store (`0e4c96b`).
 
 - **v5 crash-test seams** (`0dd55f2`): children wait after successfully requesting
   self-SIGKILL; the scalar parent requires actual SIGKILL without deadline expiry.

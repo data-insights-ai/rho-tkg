@@ -282,6 +282,21 @@ independent suite also passes. The parent verified all 116 artifact hashes.
 This is a benchmark fixture/input-integrity prerequisite, not a vendor benchmark
 or space/latency acceptance result.
 
+The five follow-ups through `9752e7c` are accepted local foundations; their
+Ready/lifecycle/binding, bootstrap and generation contracts are in CHANGELOG Unreleased.
+Generation snapshot checks pin 1,966 inputs and pass Go 1.26.9 full v5
+race/vet/build/coverage (89.6%) and pinned lint/gosec/govulncheck; parent independent
+raftlog/replica/graphstore race coverage is 87.8%/90.5%/87.0%. All V0–V7 gates
+remain open, including activation, real indexes/cuts, multi-voter integration and
+physical capacity. Rho preserves/accesses data and database consistency; sigma reasons.
+
+Binding validation (`0e4c96b`) adds accepted correctness cost; optimization
+remains pending. Five interleaved Go 1.26.9/M4 Max/GOMAXPROCS=4
+MemFS/Pebble runs measured checkpoint reads 179.979→189.265 µs (+5.16%),
+4,096-point current reads 212.333→221.788 µs (+4.45%) and old-cut reads
+24.128→35.347 µs (+46.5%): same cells, +5 records/+1,477 charged bytes and
++81–82 allocations. Tail-31 timing ranges overlap; no speedup or V3 acceptance.
+
 Reviewed foundations are committed locally as `6ef233c`; the coordinate block
 candidate is `fa0c982`. Neither is a v5 release or phase-completion claim.
 
