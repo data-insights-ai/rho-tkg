@@ -277,11 +277,16 @@ func (c *Core) resolveNodeVersionAtCapped(chain []*types.Node, t types.Instant, 
 	// bound (nodeVersionBounds) — an untouched older row's ValidFrom must
 	// never truncate a newer, wider-reaching correction. See nodeOwnBounds'
 	// doc comment.
+	//
+	// A row a positional write (Update, CloseVersion, …) replaced ends where
+	// its successor starts (supersessionEnds): its own interval is no longer
+	// its claim once the successor is recorded.
+	superseded := supersessionEnds(chain, c.nodeSortValidFrom)
 	var best *types.Node
 	for i := range chain {
 		entry := chain[i]
 		vStart, vEnd := c.nodeOwnBounds(entry)
-		vEnd = caps.end(entry, vEnd)
+		vEnd = caps.end(entry, superseded.end(entry, vEnd))
 		if vStart <= t && (vEnd == 0 || vEnd > t) {
 			if best == nil || nodeBeliefNewerThan(entry, best) {
 				best = entry
@@ -556,12 +561,14 @@ func (c *Core) resolveRelVersionAtCapped(chain []*types.Relationship, t types.In
 		return nil, storepkg.ErrNoVersionValidAt
 	}
 
-	// BACKLOG 10b: own-interval bounds, not positional — see resolveNodeVersionAt.
+	// BACKLOG 10b: own-interval bounds, not positional — see resolveNodeVersionAt
+	// (also for the supersession cap).
+	superseded := supersessionEnds(chain, c.relSortValidFrom)
 	var best *types.Relationship
 	for i := range chain {
 		entry := chain[i]
 		vStart, vEnd := c.relOwnBounds(entry)
-		vEnd = caps.end(entry, vEnd)
+		vEnd = caps.end(entry, superseded.end(entry, vEnd))
 		if vStart <= t && (vEnd == 0 || vEnd > t) {
 			if best == nil || relBeliefNewerThan(entry, best) {
 				best = entry

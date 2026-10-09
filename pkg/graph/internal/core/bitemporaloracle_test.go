@@ -271,9 +271,13 @@ func (e *oracleEntity) pointVisible(validAt, txAt types.Instant) (oracleRow, boo
 	}
 	// Slow path (cascade): newest BELIEF covering version wins. BACKLOG 10b:
 	// own-interval bounds, not positional — see ownBounds.
+	// A row an Update / CloseVersion / label change replaced (TxTo after its
+	// TxFrom, no tombstone) ends where the row recorded at that TxTo starts —
+	// when that row is recorded by the pin (supersededEnd).
 	best := -1
 	for i := range chain {
 		vs, ve := e.ownBounds(chain[i])
+		ve = capAtLifeEnd(ve, e.supersededEnd(chain, chain[i]))
 		ve = capAtLifeEnd(ve, lifeEnd(chain, chain[i]))
 		if vs <= validAt && (ve == 0 || ve > validAt) {
 			if best < 0 || beliefNewer(chain[i], chain[best]) {
@@ -325,6 +329,29 @@ func lifeEnd(chain []oracleRow, r oracleRow) types.Instant {
 		}
 	}
 	return end
+}
+
+// supersededEnd is the valid start of the row that replaced r through a
+// positional write (the lowest version above r recorded at r's TxTo), 0 when r
+// was not replaced in this (txAt-filtered) chain: no TxTo, a tombstone, or a
+// TxTo copied below r's own TxFrom by a pre-4.46 cascade.
+func (e *oracleEntity) supersededEnd(chain []oracleRow, r oracleRow) types.Instant {
+	if r.txTo == 0 || r.deletedAt != 0 || r.txTo <= r.txFrom {
+		return 0
+	}
+	succ := -1
+	for i, x := range chain {
+		if x.txFrom == r.txTo && x.version > r.version && (succ < 0 || x.version < chain[succ].version) {
+			succ = i
+		}
+	}
+	if succ < 0 {
+		return 0
+	}
+	if s := e.effVF(chain[succ]); s > 0 {
+		return s
+	}
+	return 0
 }
 
 // capAtLifeEnd caps a valid end (0 = open) at a life end (0 = none).
