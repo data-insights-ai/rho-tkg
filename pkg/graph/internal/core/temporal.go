@@ -278,15 +278,19 @@ func (c *Core) resolveNodeVersionAtCapped(chain []*types.Node, t types.Instant, 
 	// never truncate a newer, wider-reaching correction. See nodeOwnBounds'
 	// doc comment.
 	//
-	// A row a positional write (Update, CloseVersion, …) replaced ends where
-	// its successor starts (supersessionEnds): its own interval is no longer
-	// its claim once the successor is recorded.
-	superseded := supersessionEnds(chain, c.nodeSortValidFrom)
+	// A replacing write (Update, CloseVersion, …) ends every older belief
+	// that started at or before its row's start, there (supersessionCaps).
+	sc := getSupersessionScratch()
+	defer putSupersessionScratch(sc)
+	superseded := supersessionCaps(chain, c.nodeSortValidFrom, sc)
 	var best *types.Node
 	for i := range chain {
 		entry := chain[i]
 		vStart, vEnd := c.nodeOwnBounds(entry)
-		vEnd = caps.end(entry, superseded.end(entry, vEnd))
+		if superseded != nil {
+			vEnd = capEnd(vEnd, superseded[i])
+		}
+		vEnd = caps.end(entry, vEnd)
 		if vStart <= t && (vEnd == 0 || vEnd > t) {
 			if best == nil || nodeBeliefNewerThan(entry, best) {
 				best = entry
@@ -579,12 +583,17 @@ func (c *Core) resolveRelVersionAtCapped(chain []*types.Relationship, t types.In
 
 	// BACKLOG 10b: own-interval bounds, not positional — see resolveNodeVersionAt
 	// (also for the supersession cap).
-	superseded := supersessionEnds(chain, c.relSortValidFrom)
+	sc := getSupersessionScratch()
+	defer putSupersessionScratch(sc)
+	superseded := supersessionCaps(chain, c.relSortValidFrom, sc)
 	var best *types.Relationship
 	for i := range chain {
 		entry := chain[i]
 		vStart, vEnd := c.relOwnBounds(entry)
-		vEnd = caps.end(entry, superseded.end(entry, vEnd))
+		if superseded != nil {
+			vEnd = capEnd(vEnd, superseded[i])
+		}
+		vEnd = caps.end(entry, vEnd)
 		if vStart <= t && (vEnd == 0 || vEnd > t) {
 			if best == nil || relBeliefNewerThan(entry, best) {
 				best = entry
