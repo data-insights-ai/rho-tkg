@@ -330,9 +330,17 @@ type updateProvenance struct {
 // Update map. Per-field presence flags distinguish "caller did not supply"
 // from "caller supplied 0" (which is a valid sentinel meaning "open/unset").
 // The collective `present` flag gates the "this update is non-empty" check.
+//
+// txAt is not parsed from the map: it is a caller transaction instant set by
+// an update door (Rels().UpdateWithTx) after resolveCallerTxInstant gated it.
+// 0 = stamp the clock. Every update door funnels its prepared update through
+// updateRelationshipPreparedInternal, so a door that sets txAt inherits the
+// order check and the stamps; txAt does not count toward `present` (it is not
+// a change by itself — an update at txAt that changes nothing is refused).
 type updateTemporal struct {
 	validFrom    types.Instant
 	validTo      types.Instant
+	txAt         types.Instant
 	hasValidFrom bool
 	hasValidTo   bool
 	present      bool

@@ -421,7 +421,7 @@ func (c *Core) applyConcurrentUpdatesAndDeletes(
 	}
 
 	for _, id := range g.relDeletes {
-		if err := c.deleteRelationshipInternal(ctx, id); err != nil {
+		if err := c.deleteRelationshipInternal(ctx, id, 0); err != nil {
 			fail("DeleteRelationship", types.EntityID(id), err)
 		} else {
 			emit(eventspkg.EventRelDelete, types.EntityID(id), c.now(), eventspkg.PriorityCritical)
