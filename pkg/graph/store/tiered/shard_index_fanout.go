@@ -289,7 +289,16 @@ func freeColdRelTemporalIndexes(store *BadgerStore, shard string) {
 // was closed at the time (the API's own drop could not reach it). Best effort:
 // a failure leaves an extra or missing definition, which costs work but never
 // changes an answer, so it is logged, not returned.
+//
+// Skipped while an anchored fan-out runs (shardIdxMu held): the anchor does
+// not yet reflect its half-applied DDL, so syncing would undo the fan-out's
+// work on this shard. Taking the mutex would reverse the lock order (callers
+// hold the shard's shardMu), so TryLock; the next lazy open heals the shard.
 func (ts *Store) syncColdShardIndexes(store *BadgerStore, shard string) {
+	if !ts.shardIdxMu.TryLock() {
+		return
+	}
+	defer ts.shardIdxMu.Unlock()
 	if err := ts.syncAnchoredIndexes(store, false); err != nil {
 		slog.Error("graph: sync cold shard indexes to the anchor", "shard", shard, "error", err)
 	}
