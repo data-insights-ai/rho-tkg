@@ -1,0 +1,10 @@
+--- PASS: TestBenchGateIgnoresCustomMetricBlocks (0.00s)
+--- PASS: TestBenchGateFamilyTimeSwingPassesByDefault (0.00s)
+--- PASS: TestBenchGateFamilyTimeSwingFailsWithTheCanaryOptIn (0.00s)
+--- PASS: TestBenchGateFamilyAllocsRegressionFails (0.00s)
+--- PASS: TestBenchGateNonFamilyTimeRegressionFails (0.00s)
+--- PASS: TestBenchGateStillCatchesTimeRegression (0.00s)
+--- PASS: TestBenchGateFamilyNoneTimeGatesEveryRow (0.00s)
+--- PASS: TestPinnedRelGateMatrixMatchesTheGate (0.00s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/bench	0.012s

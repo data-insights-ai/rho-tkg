@@ -1,0 +1,20 @@
+--- PASS: TestBenchGateIgnoresCustomMetricBlocks (0.00s)
+    bench_gate_test.go:68: testdata/gate/family-canaryswing.csv: a +200 % time swing on a family row with flat allocs failed the default gate: exit status 1
+        bench-compare: REGRESSION PinnedRelPropertyLookup/badger/20000/5types/unrelated-x10/matches200/pinned-32: baseline=0.000125432s current=0.00037153900000000005s (+196.21% > 30%)
+        bench-compare: REGRESSION geomean (time-gated rows): +31.54% > 30%
+--- FAIL: TestBenchGateFamilyTimeSwingPassesByDefault (0.00s)
+    bench_gate_test.go:76: a +200 % canary time swing with TIME_CANARY=canary passed the gate: err=<nil>
+--- FAIL: TestBenchGateFamilyTimeSwingFailsWithTheCanaryOptIn (0.00s)
+--- PASS: TestBenchGateFamilyAllocsRegressionFails (0.00s)
+    bench_gate_test.go:115: the geomean included the family's time rows: exit status 1
+        bench-compare: REGRESSION PinnedRelPropertyLookup/badger/20000/5types/unrelated-x10/matches200/pinned-32: baseline=0.000125432s current=0.00037153900000000005s (+196.21% > 30%)
+        bench-compare: REGRESSION geomean (time-gated rows): +31.54% > 30%
+--- FAIL: TestBenchGateNonFamilyTimeRegressionFails (0.00s)
+    bench_gate_test.go:123: a +43 % sec/op regression on a canary row with TIME_CANARY=canary passed the gate: err=<nil>
+--- FAIL: TestBenchGateStillCatchesTimeRegression (0.00s)
+--- PASS: TestBenchGateFamilyNoneTimeGatesEveryRow (0.00s)
+    bench_gate_test.go:159: bench-gate.awk has no documented_canary = "([^"]+)"
+--- FAIL: TestPinnedRelGateMatrixMatchesTheGate (0.00s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/bench	0.010s
+FAIL

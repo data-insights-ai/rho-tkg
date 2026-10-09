@@ -347,11 +347,11 @@ func BenchmarkPinnedScanScaling(b *testing.B) {
 //
 // Default (the bench-gate canary, RHO_TKG_PINNED_REL_SIZES unset): 20 000 rels,
 // memory and badger, every profile, matches200/{pinned,current} = 24 rows. The
-// gate (bench-gate.awk) checks all of them on allocs/op (+10 %) and only the 8
-// rows of 1type/sigma and 5types/unrelated-x10 on time: on a loaded runner the
-// time of identical code swings tens of percent (sharded and broad most), while
+// gate (bench-gate.awk) checks them on allocs/op (+10 %); their time is
+// reported, not gated, on shared hosts (identical code swung +42..+178 %, while
 // allocs/op does not move and the regression that matters — the lookup falling
-// back to the history fold — multiplies it. Setting RHO_TKG_PINNED_REL_SIZES
+// back to the history fold — multiplies it). TIME_CANARY=canary opts the 8 rows
+// of 1type/sigma and 5types/unrelated-x10 into the time gate on quiet runners. Setting RHO_TKG_PINNED_REL_SIZES
 // (comma list; the measured report used 100000,1000000) runs the full matrix:
 // sharded too, and the broad lookup.
 

@@ -48,10 +48,13 @@ echo "bench-compare: comparing $old (old) vs $new (new), threshold ${threshold}%
 # metric block in benchstat's CSV output; the next block's header line ends it,
 # whatever its unit — B/op, allocs/op or a custom b.ReportMetric unit such as
 # build-ms) and an ALLOCS gate (ALLOCS_THRESHOLD_PCT, default 10) for one
-# benchmark family (ALLOCS_GATE_FAMILY, default PinnedRelPropertyLookup) whose
-# rows outside the TIME_CANARY regex are gated on allocs/op only. A time-gated
-# row fails when its current sec/op exceeds the baseline by more than
-# $threshold percent; so does the geomean of the time-gated rows.
+# benchmark family (ALLOCS_GATE_FAMILY, default PinnedRelPropertyLookup): its
+# rows are allocs-gated; their time is reported, not gated, on shared hosts.
+# TIME_CANARY opts family rows back into the time gate (TIME_CANARY=canary:
+# the documented 8-row canary in bench-gate.awk, for quiet runners; any other
+# value: a regex). A time-gated row fails when its current sec/op exceeds the
+# baseline by more than $threshold percent; so does the geomean of the
+# time-gated rows.
 LC_ALL=C awk -v thr="$threshold" -v allocs_thr="${ALLOCS_THRESHOLD_PCT:-10}" \
   -v family="${ALLOCS_GATE_FAMILY:-}" -v canary="${TIME_CANARY:-}" \
   -f "$(dirname "$0")/bench-gate.awk" "$csv_report"

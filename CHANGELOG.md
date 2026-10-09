@@ -97,15 +97,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   as sec/op and identical code failed on a noisy one-shot sample. The check moved to `bench/bench-gate.awk`, ends the
   block at the next header line of any unit and runs with `LC_ALL=C` (a comma-decimal locale read `1.429e-05` as 1);
   tests `TestBenchGateIgnoresCustomMetricBlocks`, `TestBenchGateStillCatchesTimeRegression` over real benchstat CSV
-  fixtures in `bench/testdata/gate/`. `PinnedRelPropertyLookup` is gated on allocs/op (+10 %, `ALLOCS_THRESHOLD_PCT`) on all 24
-  rows of its default canary (memory and badger, every profile, matches200 pinned and current) and on time (30 %) only
-  for its 8 rows of 1type/sigma and 5types/unrelated-x10, with 5 samples: on a loaded host identical code swung up to
-  180 % in time on that family (median 37 % sharded, 8 % badger, 5 % memory) while allocs/op did not move, and the
-  regression that matters, the lookup falling back to the history fold, shows as 1,423 -> 106,555 allocs/op. Sharded
-  and the broad lookup run only with `RHO_TKG_PINNED_REL_SIZES`. The time geomean covers the time-gated rows only.
-  `ALLOCS_GATE_FAMILY=none` restores time gating of every row. Tests `TestBenchGateFamily*` (allocs-only row swinging
-  +200 % passes, allocs 1,423 -> 106,555 fails, a canary time regression fails) and `TestPinnedRelGateMatrixMatchesTheGate`
-  (the benchmark's default rows against the gate's own regexes).
+  fixtures in `bench/testdata/gate/`. `PinnedRelPropertyLookup` is allocs-gated (+10 %, `ALLOCS_THRESHOLD_PCT`, 5 samples) on the
+  24 rows of its default run (memory and badger, every profile, matches200 pinned and current); its time rows are
+  reported, not gated, on shared hosts: identical code swung +42..+178 % in time on that family while allocs/op did
+  not move, and the regression it exists to catch, the lookup falling back to the history fold, shows as 1,423 ->
+  106,555 allocs/op. Opt-in time canary for quiet runners: `TIME_CANARY=canary` (8 rows: memory and badger x
+  1type/sigma, 5types/unrelated-x10 x matches200; any other value is used as the regex). The time geomean covers the
+  time-gated rows only. Sharded and the broad lookup run only with `RHO_TKG_PINNED_REL_SIZES`.
+  `ALLOCS_GATE_FAMILY=none` time-gates every row. Tests `TestBenchGateFamily*`, `TestBenchGateNonFamilyTimeRegressionFails`
+  (a +200 % family time swing passes by default and fails with the canary opted in, allocs 1,423 -> 106,555 fails,
+  a non-family time regression fails) and `TestPinnedRelGateMatrixMatchesTheGate` (the benchmark's default rows
+  against the gate's own regexes).
 - **HIGH (data loss): a re-import of a deleted ID no longer overwrites the earlier life's history** (backlog 38
   and the 2026-09-24 review entry "(HIGH?) Re-import of a deleted ID", pre-existing). `Import` (node and rel),
   `Nodes().AddByIDIfAbsent` and the `GraphTx` twins restarted the entity at version 0; history is keyed by

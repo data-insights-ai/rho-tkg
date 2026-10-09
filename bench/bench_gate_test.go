@@ -42,45 +42,55 @@ func TestBenchGateIgnoresCustomMetricBlocks(t *testing.T) {
 	}
 }
 
-func TestBenchGateStillCatchesTimeRegression(t *testing.T) {
-	out, err := runGate(t, "testdata/gate/time-regression.csv")
+
+// The PinnedRelPropertyLookup family is gated on allocs/op (+10 %) ALONE by
+// default: on a shared host its time rows swung +42..+178 % between identical
+// runs while allocs/op did not move, and the regression it exists to catch —
+// the lookup falling back to the history fold — multiplies allocs (1,423 ->
+// 106,555). Its time rows are reported, not gated. canary=canary (the
+// TIME_CANARY bench-compare.sh passes through) opts its 8 canary rows back
+// into the time gate, for quiet runners. The family-* fixtures are real
+// benchstat CSV of the family-*.txt files beside them (5 samples each).
+
+func wantGateFailure(t *testing.T, out string, err error, what string) {
+	t.Helper()
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) || exit.ExitCode() != 1 {
-		t.Fatalf("a +43 %% sec/op regression passed the gate: err=%v\n%s", err, out)
-	}
-	if !strings.Contains(out, "REGRESSION PinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/current-32") {
-		t.Fatalf("gate output does not name the regressed benchmark:\n%s", out)
-	}
-	if strings.Contains(out, "matches200/pinned-32") {
-		t.Fatalf("gate flagged the unchanged benchmark (its build-ms moved):\n%s", out)
+		t.Fatalf("%s passed the gate: err=%v\n%s", what, err, out)
 	}
 }
 
-// The PinnedRelPropertyLookup family is gated on allocs/op (+10 %), and on time
-// only for its canary rows (memory and badger x {1type/sigma,
-// 5types/unrelated-x10} x matches200): its time rows swing tens of percent
-// between identical runs on a loaded runner, while allocs/op does not move,
-// and the regression that matters — the lookup falling back to the history
-// fold — multiplies allocs (1,423 -> 106,555). The family_* fixtures are real
-// benchstat CSV of the family-*.txt files beside them (5 samples each).
-
-// Faulty gate caught: gating every family row on time (an allocs-only row
-// swinging +200 % fails identical code).
-func TestBenchGateFamilyTimeSwingOnAllocsOnlyRowPasses(t *testing.T) {
-	out, err := runGate(t, "testdata/gate/family-timeswing.csv")
-	if err != nil {
-		t.Fatalf("a +200 %% time swing on an allocs-only family row with stable allocs failed the gate: %v\n%s", err, out)
+// Faulty gate caught: time-gating the family by default (identical code fails
+// on a canary row's +200 % swing).
+func TestBenchGateFamilyTimeSwingPassesByDefault(t *testing.T) {
+	for _, csv := range []string{"testdata/gate/family-canaryswing.csv", "testdata/gate/family-timeswing.csv"} {
+		if out, err := runGate(t, csv); err != nil {
+			t.Fatalf("%s: a +200 %% time swing on a family row with flat allocs failed the default gate: %v\n%s", csv, err, out)
+		}
 	}
+}
+
+// Faulty gate caught: an opt-in canary that does not re-enable the time gate.
+func TestBenchGateFamilyTimeSwingFailsWithTheCanaryOptIn(t *testing.T) {
+	out, err := runGate(t, "testdata/gate/family-canaryswing.csv", "canary=canary")
+	wantGateFailure(t, out, err, "a +200 % canary time swing with TIME_CANARY=canary")
+	if !strings.Contains(out, "REGRESSION PinnedRelPropertyLookup/badger/20000/5types/unrelated-x10/matches200/pinned-32") {
+		t.Fatalf("gate output does not name the canary row:\n%s", out)
+	}
+	// Only canary rows: the +200 % swing of the non-canary nochurn row is not gated.
+	if out, err := runGate(t, "testdata/gate/family-timeswing.csv", "canary=canary"); err != nil {
+		t.Fatalf("the opt-in canary time-gated a non-canary row: %v\n%s", err, out)
+	}
+	// An explicit regex works the same as the keyword.
+	out, err = runGate(t, "testdata/gate/family-canary-time.csv", "canary=unrelated-x10/matches200/")
+	wantGateFailure(t, out, err, "a +60 % time regression matching an explicit TIME_CANARY regex")
 }
 
 // Faulty gate caught: no allocs gate (the fold fallback keeps the time of a
 // small fixture under the threshold and passes).
 func TestBenchGateFamilyAllocsRegressionFails(t *testing.T) {
 	out, err := runGate(t, "testdata/gate/family-allocs.csv")
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) || exit.ExitCode() != 1 {
-		t.Fatalf("allocs 1,423 -> 106,555 on a family row passed the gate: err=%v\n%s", err, out)
-	}
+	wantGateFailure(t, out, err, "allocs 1,423 -> 106,555 on a family row")
 	if !strings.Contains(out, "ALLOCS REGRESSION PinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/pinned-32") {
 		t.Fatalf("gate output does not name the allocs regression:\n%s", out)
 	}
@@ -89,16 +99,33 @@ func TestBenchGateFamilyAllocsRegressionFails(t *testing.T) {
 	}
 }
 
-// Faulty gate caught: dropping the family from the time gate altogether (a
-// canary row regressing +60 % must still fail).
-func TestBenchGateFamilyCanaryTimeRegressionFails(t *testing.T) {
-	out, err := runGate(t, "testdata/gate/family-canary-time.csv")
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) || exit.ExitCode() != 1 {
-		t.Fatalf("a +60 %% time regression on a canary row passed the gate: err=%v\n%s", err, out)
+// Faulty gate caught: dropping the time gate for every row instead of the
+// family (a non-family row regressing +60 % must fail), or a geomean still
+// computed over the family's swinging rows.
+func TestBenchGateNonFamilyTimeRegressionFails(t *testing.T) {
+	out, err := runGate(t, "testdata/gate/family-nonfamily-time.csv")
+	wantGateFailure(t, out, err, "a +60 % time regression on a non-family row")
+	if !strings.Contains(out, "REGRESSION RelPropertyLookup10k/memory/indexed-32") {
+		t.Fatalf("gate output does not name the non-family row:\n%s", out)
 	}
-	if !strings.Contains(out, "REGRESSION PinnedRelPropertyLookup/badger/20000/5types/unrelated-x10/matches200/pinned-32") {
-		t.Fatalf("gate output does not name the canary row:\n%s", out)
+	if strings.Contains(out, "PinnedRelPropertyLookup") {
+		t.Fatalf("gate flagged a family row on time:\n%s", out)
+	}
+	if out, err := runGate(t, "testdata/gate/family-canaryswing.csv"); err != nil || strings.Contains(out, "geomean") {
+		t.Fatalf("the geomean included the family's time rows: %v\n%s", err, out)
+	}
+}
+
+// The first fixture's regression sits on a family canary row: reported by the
+// opt-in canary, not by the default gate.
+func TestBenchGateStillCatchesTimeRegression(t *testing.T) {
+	out, err := runGate(t, "testdata/gate/time-regression.csv", "canary=canary")
+	wantGateFailure(t, out, err, "a +43 % sec/op regression on a canary row with TIME_CANARY=canary")
+	if !strings.Contains(out, "REGRESSION PinnedRelPropertyLookup/memory/20000/1type/sigma/matches200/current-32") {
+		t.Fatalf("gate output does not name the regressed benchmark:\n%s", out)
+	}
+	if strings.Contains(out, "matches200/pinned-32") {
+		t.Fatalf("gate flagged the unchanged benchmark (its build-ms moved):\n%s", out)
 	}
 }
 
@@ -106,35 +133,38 @@ func TestBenchGateFamilyCanaryTimeRegressionFails(t *testing.T) {
 // (the escape hatch bench-compare.sh exposes as ALLOCS_GATE_FAMILY=none).
 func TestBenchGateFamilyNoneTimeGatesEveryRow(t *testing.T) {
 	out, err := runGate(t, "testdata/gate/family-timeswing.csv", "family=none")
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) || exit.ExitCode() != 1 || !strings.Contains(out, "REGRESSION PinnedRelPropertyLookup/memory/20000/1type/nochurn/matches200/pinned-32") {
-		t.Fatalf("family=none must time-gate the allocs-only row: err=%v\n%s", err, out)
+	wantGateFailure(t, out, err, "family=none with a +200 % row")
+	if !strings.Contains(out, "REGRESSION PinnedRelPropertyLookup/memory/20000/1type/nochurn/matches200/pinned-32") {
+		t.Fatalf("family=none must time-gate the family row:\n%s", out)
 	}
-	out, err = runGate(t, "testdata/gate/family-allocs.csv", "family=none")
-	if err != nil {
+	if out, err := runGate(t, "testdata/gate/family-allocs.csv", "family=none"); err != nil {
 		t.Fatalf("family=none must not allocs-gate: %v\n%s", err, out)
 	}
 }
 
 // TestPinnedRelGateMatrixMatchesTheGate ties the benchmark's default matrix to
-// the gate's defaults (read from bench-gate.awk itself): 24 allocs-gated rows,
-// of which exactly the 8 canary rows are time-gated, no sharded and no broad
-// row. Faulty set-ups caught: a canary regex that matches nothing (the family
-// silently loses its time gate), sharded or broad back in the default run, a
-// family regex that misses the benchmark.
+// the gate (regexes read from bench-gate.awk itself): 24 allocs-gated rows, no
+// time-gated one by default, exactly 8 with the documented opt-in canary, no
+// sharded and no broad row. Faulty set-ups caught: a family regex that misses
+// the benchmark, a documented canary that matches nothing or a non-canary
+// row, sharded or broad back in the default run.
 func TestPinnedRelGateMatrixMatchesTheGate(t *testing.T) {
 	src, err := os.ReadFile("bench-gate.awk")
 	if err != nil {
 		t.Fatal(err)
 	}
-	pick := func(name string) *regexp.Regexp {
-		m := regexp.MustCompile(`if \(` + name + ` == ""\) ` + name + ` = "([^"]+)"`).FindSubmatch(src)
+	pick := func(pattern string) *regexp.Regexp {
+		m := regexp.MustCompile(pattern).FindSubmatch(src)
 		if m == nil {
-			t.Fatalf("no default %s in bench-gate.awk", name)
+			t.Fatalf("bench-gate.awk has no %s", pattern)
 		}
 		return regexp.MustCompile(string(m[1]))
 	}
-	family, canary := pick("family"), pick("canary")
+	family := pick(`if \(family == ""\) family = "([^"]+)"`)
+	canary := pick(`documented_canary = "([^"]+)"`)
+	if regexp.MustCompile(`if \(canary == ""\) canary = "`).Match(src) {
+		t.Fatal("bench-gate.awk time-gates the family by default")
+	}
 	rows := pinnedRelRows([]int{20_000}, false)
 	if len(rows) != 24 {
 		t.Fatalf("default matrix has %d rows, want 24: %v", len(rows), rows)
@@ -151,12 +181,12 @@ func TestPinnedRelGateMatrixMatchesTheGate(t *testing.T) {
 		if canary.MatchString(name) {
 			timeGated++
 			if !strings.Contains(r, "1type/sigma") && !strings.Contains(r, "5types/unrelated-x10") {
-				t.Fatalf("canary matches the non-canary row %s", r)
+				t.Fatalf("the documented canary matches the non-canary row %s", r)
 			}
 		}
 	}
 	if timeGated != 8 {
-		t.Fatalf("%d time-gated rows, want 8", timeGated)
+		t.Fatalf("the documented canary time-gates %d rows, want 8", timeGated)
 	}
 	if full := pinnedRelRows([]int{20_000}, true); len(full) != 54 {
 		t.Fatalf("full matrix has %d rows, want 54", len(full))

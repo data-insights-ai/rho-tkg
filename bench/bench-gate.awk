@@ -9,24 +9,27 @@
 #  - TIME: the sec/op block (the first block; it ends at the next header line,
 #    whatever its unit — B/op, allocs/op or a custom b.ReportMetric unit such
 #    as build-ms). A row fails when its current sec/op exceeds the baseline by
-#    more than thr percent. Every row is time-gated EXCEPT rows of the
-#    allocs-gated family that do not match the canary regex. The aggregate
-#    "geomean" row is recomputed over the time-gated rows only (benchstat's own
-#    geomean also covers the excluded rows).
+#    more than thr percent. Rows of the allocs-gated family are NOT time-gated
+#    unless they match the opt-in canary. The aggregate "geomean" row is
+#    recomputed over the time-gated rows only (benchstat's own geomean also
+#    covers the family's rows).
 #  - ALLOCS: rows of the family (regex on the benchstat row name) fail when
 #    their current allocs/op exceed the baseline by more than allocs_thr
 #    percent.
-# Defaults: family = the PinnedRelPropertyLookup benchmarks (backlog 8), whose
-# time rows swing tens of percent between identical runs on a loaded runner
-# while allocs/op does not move, and whose real regression (the lookup falling
-# back to the history fold) multiplies allocs; canary = their 8 time-gated rows
-# (memory and badger x {1type/sigma, 5types/unrelated-x10} x matches200);
-# allocs_thr = 10. family=none disables the allocs gate and time-gates every
-# row.
+# Defaults: family = the PinnedRelPropertyLookup benchmarks (backlog 8):
+# allocs-gated; their time rows are reported, not gated — on a shared host
+# identical code swung +42..+178 % in time while allocs/op did not move, and
+# the regression they exist to catch (the lookup falling back to the history
+# fold) multiplies allocs (1,423 -> 106,555). allocs_thr = 10. canary is empty
+# (no family row time-gated); canary=canary opts in the documented 8-row time
+# canary below (memory and badger x {1type/sigma, 5types/unrelated-x10} x
+# matches200) for quiet runners, any other value is used as the regex.
+# family=none disables the allocs gate and time-gates every row.
 BEGIN {
   FS = ","
+  documented_canary = "^PinnedRelPropertyLookup/(memory|badger)/[0-9]+/(1type/sigma|5types/unrelated-x10)/matches200/"
   if (family == "") family = "^PinnedRelPropertyLookup/"
-  if (canary == "") canary = "^PinnedRelPropertyLookup/(memory|badger)/[0-9]+/(1type/sigma|5types/unrelated-x10)/matches200/"
+  if (canary == "canary") canary = documented_canary
   if (allocs_thr == "") allocs_thr = 10
   in_family_mode = (family != "none")
   logsum = 0; n = 0
@@ -36,7 +39,7 @@ BEGIN {
 /^,/ { block = ""; next }
 block == "time" && $1 != "" && $1 != "geomean" {
   name = $1
-  if (in_family_mode && name ~ family && name !~ canary) next
+  if (in_family_mode && name ~ family && (canary == "" || name !~ canary)) next
   base = $2 + 0
   cur  = $4 + 0
   if (base > 0 && cur > 0) {

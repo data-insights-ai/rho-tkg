@@ -5,7 +5,7 @@ name: Bench
 #  - bench-gate (pull_request, BLOCKING): the wired-up flip-to-blocking plan
 #    from bench/README.md. Benchmarks the PR's merge-base and HEAD on the
 #    SAME runner (same noise environment) with -count=3 (5 for
-#    PinnedRelPropertyLookup, which is also allocs-gated) — benchstat then
+#    PinnedRelPropertyLookup, which is allocs-gated, not time-gated) — benchstat then
 #    compares MEDIANS, absorbing single-sample scheduler spikes — and fails
 #    the check if any core scenario's median time regressed by more than
 #    REGRESSION_THRESHOLD_PCT (30% here; deliberately looser than the 15%
@@ -46,12 +46,12 @@ jobs:
       # measurement studies (PinnedScanScaling, ChangeLogTxSerialization).
       # "Ingest" is a deliberate prefix match covering every ingest variant.
       # PinnedRelPropertyLookup (backlog 8) runs as its own step with 5 samples
-      # (PINNED_REL_FILTER below), its default 20k canary of 24 rows: the gate
-      # checks all of them on allocs/op (+10 %, ALLOCS_THRESHOLD_PCT) and only
-      # the 8 rows memory|badger x {1type/sigma, 5types/unrelated-x10} x
-      # matches200 on time (30 %): identical code swings tens of percent in time
-      # on a shared runner while allocs/op does not move, and the regression that
-      # matters (the lookup falling back to the history fold) multiplies allocs.
+      # (PINNED_REL_FILTER below), its default 20k run of 24 rows: allocs-gated
+      # (+10 %, ALLOCS_THRESHOLD_PCT); its time rows are reported, not gated, on
+      # shared hosts — identical code swung +42..+178 % in time while allocs/op
+      # did not move, and the regression the family exists to catch (the lookup
+      # falling back to the history fold) multiplies allocs. Opt-in time canary
+      # for quiet runners: TIME_CANARY=canary (8 rows, see bench-gate.awk).
       # Sharded and the broad lookup run only with RHO_TKG_PINNED_REL_SIZES
       # (measurement sizes 100k / 1M). Rules in bench/bench-gate.awk.
       BENCH_FILTER: "Benchmark(PointReadHit|LabelScan10k|TwoHop|TemporalPoint|AsOfPin|Ingest|BulkAddNodes10k|ANNSearch10k|OrderedTopK|CompositeLookup|RelPropertyLookup10k|RelHistoryPlain|RelHasHistory|RelEffectiveTimeline|RelEffectiveLoop|ForEachRelEffectiveByType|NodeAtTxLongChain|NodeEffectiveTimelineLongChain)"
@@ -94,7 +94,7 @@ jobs:
         if: steps.bench_base.outputs.has_base == 'true'
         run: |
           {
-            echo "### bench gate — merge-base vs HEAD (medians of 3, 5 for PinnedRelPropertyLookup; time threshold ${REGRESSION_THRESHOLD_PCT}%, allocs-gated family +${ALLOCS_THRESHOLD_PCT:-10}% allocs/op)"
+            echo "### bench gate — merge-base vs HEAD (medians of 3, 5 for PinnedRelPropertyLookup; time threshold ${REGRESSION_THRESHOLD_PCT}%; PinnedRelPropertyLookup allocs-gated +${ALLOCS_THRESHOLD_PCT:-10}% allocs/op, time reported not gated)"
             echo '```'
             bash bench/bench-compare.sh bench-base.txt bench-head.txt bench-gate.csv 2>&1 | tee gate-output.txt
             status=${PIPESTATUS[0]}
@@ -167,5 +167,5 @@ jobs:
               echo "_No merge-base benchmark available — see bench-base.txt output above (likely this is the PR introducing bench/). Nothing to compare yet._"
             fi
             echo
-            echo "_Informational only — full suite incl. the measurement studies at a single -count=1 sample. The BLOCKING per-PR gate is the bench-gate job (core scenarios, medians of 3; PinnedRelPropertyLookup 5 and allocs-gated)._"
+            echo "_Informational only — full suite incl. the measurement studies at a single -count=1 sample. The BLOCKING per-PR gate is the bench-gate job (core scenarios, medians of 3; PinnedRelPropertyLookup 5, allocs-gated)._"
           } >> "$GITHUB_STEP_SUMMARY"
