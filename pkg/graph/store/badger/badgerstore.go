@@ -518,6 +518,9 @@ type Store struct {
 	// historyPresenceProbeHook, when non-nil, runs after a per-ID probe and
 	// before it installs its answer. Set only from the owning test.
 	historyPresenceProbeHook func()
+	// clearDropTestHook, when non-nil, runs in Clear right before the keyspace
+	// drop; a non-nil error is returned as the drop's failure. Test only.
+	clearDropTestHook func() error
 
 	// DocValues: cached per-label columnar snapshots + a global node-mutation
 	// epoch bumped on EVERY node write (incl. deletes). nextNodeRev above misses
@@ -2168,6 +2171,11 @@ func (bs *Store) Clear() error {
 	bs.hfIndexes = make(map[uint16]*indexpkg.HighFrequencyIndex)
 	bs.vectorIndexes = make(map[indexpkg.VectorIndexKey]*indexpkg.VectorIndex)
 
+	if bs.clearDropTestHook != nil {
+		if err := bs.clearDropTestHook(); err != nil {
+			return err
+		}
+	}
 	// When the change-log is enabled, wipe via DropPrefix while keeping
 	// LastLSNKey continuously durable (clearAndReanchorChangeLog), so a crash
 	// mid-Clear cannot reseed the LSN allocator to 0 and collide with a tailing

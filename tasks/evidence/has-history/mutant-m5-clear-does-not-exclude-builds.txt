@@ -1,10 +1,29 @@
 $ go test ./pkg/graph/store/badger/ -run TestHistoryPresence -count=1
---- FAIL: TestHistoryPresence_ClearDuringBuild (0.02s)
+--- FAIL: TestHistoryPresence_ClearDuringBuild (0.01s)
     --- FAIL: TestHistoryPresence_ClearDuringBuild/node (0.01s)
-        badgerstore_history_presence_test.go:380: node cleared while the build was in its window: has(80) = true, history has 0 rows
-    --- FAIL: TestHistoryPresence_ClearDuringBuild/rel (0.01s)
-        badgerstore_history_presence_test.go:380: rel cleared while the build was in its window: has(80) = true, history has 0 rows
-FAIL
-FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	5.996s
+panic: assignment to entry in nil map [recovered, repanicked]
+
+goroutine 2020 [running]:
+testing.tRunner.func1.2({0xbeec20, 0x1389630})
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:1974 +0x232
+testing.tRunner.func1()
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:1977 +0x349
+panic({0xbeec20?, 0x1389630?})
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/runtime/panic.go:860 +0x13a
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.(*Store).buildHistoryPresence(0xb3fa5746008, 0xb3fa5746160, 0x7)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-a89f184f285eccfe2/pkg/graph/store/badger/badgerstore_history_presence.go:229 +0x3b4
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.(*Store).hasHistory(0xb3fa5746008, 0xb3fa5746160, 0x7, 0x50)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-a89f184f285eccfe2/pkg/graph/store/badger/badgerstore_history_presence.go:148 +0x3e
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.(*Store).HasNodeHistory(0xb3fa5746008, 0x50)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-a89f184f285eccfe2/pkg/graph/store/badger/badgerstore_history_presence.go:129 +0xc5
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.presenceKinds.func3(0xb3fa553f8c8?, 0x1?)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-a89f184f285eccfe2/pkg/graph/store/badger/badgerstore_history_presence_test.go:38 +0x13
+github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger.TestHistoryPresence_ClearDuringBuild.func1(0xb3fa553f8c8)
+	/home/renework2023/Work/2026/datainsights/rho-tkg/.claude/worktrees/agent-a89f184f285eccfe2/pkg/graph/store/badger/badgerstore_history_presence_test.go:441 +0x17a
+testing.tRunner(0xb3fa553f8c8, 0xb3faac92000)
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2036 +0xea
+created by testing.(*T).Run in goroutine 2019
+	/home/renework2023/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.9.linux-amd64/src/testing/testing.go:2101 +0x4c5
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.694s
 FAIL
 exit=1

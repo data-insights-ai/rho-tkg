@@ -1,57 +1,57 @@
 $ go test ./pkg/graph/store/badger/ -run TestHistoryPresence -count=1
---- FAIL: TestHistoryPresence_Clear (0.02s)
-    --- FAIL: TestHistoryPresence_Clear/node (0.01s)
-        badgerstore_history_presence_test.go:283: node cleared: has(60) = true, history has 0 rows
+--- FAIL: TestHistoryPresence_Clear (0.03s)
+    --- FAIL: TestHistoryPresence_Clear/node (0.02s)
+        badgerstore_history_presence_test.go:283: stats right after clear: built=true ids=3, want the set dropped
     --- FAIL: TestHistoryPresence_Clear/rel (0.01s)
-        badgerstore_history_presence_test.go:283: rel cleared: has(60) = true, history has 0 rows
---- FAIL: TestHistoryPresence_ClearDuringBuild (0.42s)
+        badgerstore_history_presence_test.go:283: stats right after clear: built=true ids=3, want the set dropped
+--- FAIL: TestHistoryPresence_ClearDuringBuild (0.44s)
     --- FAIL: TestHistoryPresence_ClearDuringBuild/node (0.21s)
-        badgerstore_history_presence_test.go:380: node cleared while the build was in its window: has(80) = true, history has 0 rows
-    --- FAIL: TestHistoryPresence_ClearDuringBuild/rel (0.21s)
-        badgerstore_history_presence_test.go:380: rel cleared while the build was in its window: has(80) = true, history has 0 rows
---- FAIL: TestHistoryPresence_RandomizedDifferential (1.17s)
-    --- FAIL: TestHistoryPresence_RandomizedDifferential/node/seed=1 (0.10s)
-        badgerstore_history_presence_test.go:442: step 13 clear: has(3) = true, history has 0 rows
-    --- FAIL: TestHistoryPresence_RandomizedDifferential/node/seed=2 (0.11s)
-        badgerstore_history_presence_test.go:442: step 15 clear: has(6) = true, history has 0 rows
-    --- FAIL: TestHistoryPresence_RandomizedDifferential/node/seed=3 (0.11s)
-        badgerstore_history_presence_test.go:442: step 19 clear: has(3) = true, history has 0 rows
-    --- FAIL: TestHistoryPresence_RandomizedDifferential/node/seed=4 (0.27s)
-        badgerstore_history_presence_test.go:442: step 36 clear: has(5) = true, history has 0 rows
-    --- FAIL: TestHistoryPresence_RandomizedDifferential/rel/seed=1 (0.11s)
-        badgerstore_history_presence_test.go:442: step 13 clear: has(3) = true, history has 0 rows
-    --- FAIL: TestHistoryPresence_RandomizedDifferential/rel/seed=2 (0.11s)
-        badgerstore_history_presence_test.go:442: step 15 clear: has(6) = true, history has 0 rows
-    --- FAIL: TestHistoryPresence_RandomizedDifferential/rel/seed=3 (0.10s)
-        badgerstore_history_presence_test.go:442: step 19 clear: has(3) = true, history has 0 rows
-    --- FAIL: TestHistoryPresence_RandomizedDifferential/rel/seed=4 (0.25s)
-        badgerstore_history_presence_test.go:442: step 36 clear: has(5) = true, history has 0 rows
+        badgerstore_history_presence_test.go:448: node cleared while the build was in its window: has(80) = true, history has 0 rows
+    --- FAIL: TestHistoryPresence_ClearDuringBuild/rel (0.23s)
+        badgerstore_history_presence_test.go:448: rel cleared while the build was in its window: has(80) = true, history has 0 rows
+--- FAIL: TestHistoryPresence_RandomizedDifferential (2.84s)
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/node/seed=1 (0.12s)
+        badgerstore_history_presence_test.go:515: step 22 truncateKeep: has(6) = true, history has 0 rows
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/node/seed=2 (0.17s)
+        badgerstore_history_presence_test.go:515: step 41 flush: has(2) = true, history has 0 rows
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/node/seed=3 (0.08s)
+        badgerstore_history_presence_test.go:515: step 26 trimSome: has(2) = true, history has 0 rows
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/node/seed=4 (0.86s)
+        badgerstore_history_presence_test.go:515: step 157 put: has(3) = true, history has 0 rows
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/rel/seed=1 (0.21s)
+        badgerstore_history_presence_test.go:515: step 22 truncateKeep: has(6) = true, history has 0 rows
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/rel/seed=2 (0.23s)
+        badgerstore_history_presence_test.go:515: step 41 flush: has(2) = true, history has 0 rows
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/rel/seed=3 (0.14s)
+        badgerstore_history_presence_test.go:515: step 26 trimSome: has(2) = true, history has 0 rows
+    --- FAIL: TestHistoryPresence_RandomizedDifferential/rel/seed=4 (1.04s)
+        badgerstore_history_presence_test.go:515: step 157 put: has(3) = true, history has 0 rows
 FAIL
-FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	2.161s
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	4.043s
 FAIL
 exit=1
 
 $ go test ./pkg/graph/ -run TestHasHistoryDifferential -count=1
---- FAIL: TestHasHistoryDifferential (6.40s)
-    --- FAIL: TestHasHistoryDifferential/badger-disk/seed=1 (0.19s)
-        has_history_test.go:371: step 10 clear: node 797165233943674880 HasHistory=true store=true, History has 0 rows
-    --- FAIL: TestHasHistoryDifferential/badger-disk/seed=2 (0.59s)
-        has_history_test.go:371: step 74 clear: node 797165239394238464 HasHistory=true store=true, History has 0 rows
-    --- FAIL: TestHasHistoryDifferential/badger-disk/seed=3 (0.52s)
-        has_history_test.go:371: step 22 clear: node 797165259395596288 HasHistory=true store=true, History has 0 rows
-    --- FAIL: TestHasHistoryDifferential/tiered-disk/seed=1 (0.47s)
-        has_history_test.go:371: step 10 clear: node 797165279481069568 HasHistory=true store=true, History has 0 rows
-    --- FAIL: TestHasHistoryDifferential/tiered-disk/seed=2 (1.47s)
-        has_history_test.go:371: step 74 clear: node 797165293679771648 HasHistory=true store=true, History has 0 rows
-    --- FAIL: TestHasHistoryDifferential/tiered-disk/seed=3 (1.26s)
-        has_history_test.go:371: step 22 clear: node 797165341973839872 HasHistory=true store=true, History has 0 rows
-    --- FAIL: TestHasHistoryDifferential/sharded-disk/seed=1 (0.28s)
-        has_history_test.go:371: step 10 clear: node 797165383345340416 HasHistory=true store=true, History has 0 rows
-    --- FAIL: TestHasHistoryDifferential/sharded-disk/seed=2 (0.86s)
-        has_history_test.go:371: step 74 clear: node 797165391584493568 HasHistory=true store=true, History has 0 rows
-    --- FAIL: TestHasHistoryDifferential/sharded-disk/seed=3 (0.76s)
-        has_history_test.go:371: step 22 clear: node 797165419716804608 HasHistory=true store=true, History has 0 rows
+--- FAIL: TestHasHistoryDifferential (12.33s)
+    --- FAIL: TestHasHistoryDifferential/badger-disk/seed=1 (0.25s)
+        has_history_test.go:427: step 10 clear: node 797226366491099136 HasHistory=true store=true, History has 0 rows
+    --- FAIL: TestHasHistoryDifferential/badger-disk/seed=2 (1.51s)
+        has_history_test.go:427: step 87 clear: node 797226373511249920 HasHistory=true store=true, History has 0 rows
+    --- FAIL: TestHasHistoryDifferential/badger-disk/seed=3 (0.64s)
+        has_history_test.go:427: step 17 clear: node 797226423984685056 HasHistory=true store=true, History has 0 rows
+    --- FAIL: TestHasHistoryDifferential/tiered-disk/seed=1 (0.56s)
+        has_history_test.go:427: step 10 clear: node 797226448657678336 HasHistory=true store=true, History has 0 rows
+    --- FAIL: TestHasHistoryDifferential/tiered-disk/seed=2 (3.71s)
+        has_history_test.go:427: step 87 clear: node 797226466484420608 HasHistory=true store=true, History has 0 rows
+    --- FAIL: TestHasHistoryDifferential/tiered-disk/seed=3 (1.74s)
+        has_history_test.go:427: step 17 clear: node 797226589893033984 HasHistory=true store=true, History has 0 rows
+    --- FAIL: TestHasHistoryDifferential/sharded-disk/seed=1 (0.49s)
+        has_history_test.go:427: step 10 clear: node 797226645886140416 HasHistory=true store=true, History has 0 rows
+    --- FAIL: TestHasHistoryDifferential/sharded-disk/seed=2 (2.40s)
+        has_history_test.go:427: step 87 clear: node 797226667488051200 HasHistory=true store=true, History has 0 rows
+    --- FAIL: TestHasHistoryDifferential/sharded-disk/seed=3 (1.01s)
+        has_history_test.go:427: step 17 clear: node 797226740051738624 HasHistory=true store=true, History has 0 rows
 FAIL
-FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	6.434s
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	12.375s
 FAIL
 exit=1

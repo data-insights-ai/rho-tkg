@@ -257,8 +257,8 @@ func TestHistoryPresence_FailedFlushRequeue(t *testing.T) {
 	}
 }
 
-// Clear empties the set (a set that survives Clear answers true for wiped
-// IDs), and the set keeps working after it.
+// Clear drops the set (a set that survives Clear answers true for wiped IDs);
+// the next call rebuilds it and it keeps working.
 func TestHistoryPresence_Clear(t *testing.T) {
 	for _, k := range presenceKinds() {
 		t.Run(k.name, func(t *testing.T) {
@@ -279,6 +279,9 @@ func TestHistoryPresence_Clear(t *testing.T) {
 			if err := bs.Clear(); err != nil {
 				t.Fatal(err)
 			}
+			if built, n := k.built(bs.HistoryPresenceStats()); built || n != 0 {
+				t.Fatalf("stats right after clear: built=%v ids=%d, want the set dropped", built, n)
+			}
 			for _, id := range []int64{60, 61, 62} {
 				expectPresence(t, k, bs, "cleared", id, false)
 			}
@@ -289,6 +292,31 @@ func TestHistoryPresence_Clear(t *testing.T) {
 			if built, n := k.built(bs.HistoryPresenceStats()); !built || n != 1 {
 				t.Fatalf("stats after clear + one write: built=%v ids=%d, want true 1", built, n)
 			}
+		})
+	}
+}
+
+// A Clear whose keyspace drop fails leaves the committed rows in place; the
+// presence set must not stay built and empty (it reset before the drop), or
+// every entity whose rows survived reads false until it is written again.
+func TestHistoryPresence_FailedClearRebuilds(t *testing.T) {
+	for _, k := range presenceKinds() {
+		t.Run(k.name, func(t *testing.T) {
+			bs := newFlushParkStore(t, nil)
+			if err := k.put(bs, 110, 0); err != nil {
+				t.Fatal(err)
+			}
+			if err := bs.Flush(); err != nil {
+				t.Fatal(err)
+			}
+			expectPresence(t, k, bs, "built", 110, true)
+			bs.clearDropTestHook = func() error { return errors.New("injected drop failure") }
+			if err := bs.Clear(); err == nil {
+				t.Fatal("injected drop failure did not fail Clear")
+			}
+			bs.clearDropTestHook = nil
+			expectPresence(t, k, bs, "rows survived the failed Clear", 110, true)
+			expectPresence(t, k, bs, "never written", 111, false)
 		})
 	}
 }

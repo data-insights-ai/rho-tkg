@@ -35,7 +35,8 @@ var _ storecontract.HistoryPresenceCapability = (*Store)(nil)
 // scanned IDs that no note touched since tracking began. A note always wins
 // over the scan: it is newer than everything the scan saw for that ID, and an
 // ID without a note did not change while the scan ran. Clear holds buildMu, so
-// a scan never straddles a wipe, and resets the maps with the write buffer.
+// a scan never straddles a wipe, and drops the set with the write buffer; the
+// next call rebuilds it.
 //
 // RAM: O(IDs with history), about 25-40 B per ID in Go maps (map growth); not built until the
 // first HasNodeHistory / HasRelHistory call (HistoryPresenceStats reports it).
@@ -69,13 +70,16 @@ func (p *historyPresence) note(id snowflake.ID, isDelete bool) {
 	p.mu.Unlock()
 }
 
-// resetLocked empties the maps (Clear). Caller holds wbMu and buildMu.
+// resetLocked drops the set (Clear): the next call rebuilds it from what the
+// keyspace holds then. Clear resets before its drop, so a drop that fails
+// leaves rows behind; an unbuilt set rebuilds over them instead of answering
+// false for them forever. Calls during Clear block on buildMu, which Clear
+// holds. Caller holds wbMu and buildMu.
 func (p *historyPresence) resetLocked() {
 	p.mu.Lock()
-	if p.tracking {
-		p.has = make(map[snowflake.ID]struct{})
-		p.unknown = make(map[snowflake.ID]uint64)
-	}
+	p.built.Store(false)
+	p.tracking = false
+	p.has, p.unknown = nil, nil
 	p.mu.Unlock()
 }
 
