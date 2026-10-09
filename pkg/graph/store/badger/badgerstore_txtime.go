@@ -376,8 +376,11 @@ func (bs *Store) historyKeyExistsWithPresence(has bool, err error) func(key []by
 // snapshotHistoryKeyExists is liveHistoryKeyExists for the bulk as-of scans:
 // the overlay captured once before the shared transaction decides, else the
 // shared transaction's point read.
-func snapshotHistoryKeyExists(txn *badgerv4.Txn, overlay historyOverlaySnapshot) func(key []byte) (bool, error) {
+func (bs *Store) snapshotHistoryKeyExists(txn *badgerv4.Txn, overlay historyOverlaySnapshot) func(key []byte) (bool, error) {
 	return func(key []byte) (bool, error) {
+		if bs.bulkAsOfKeyProbeTestHook != nil {
+			bs.bulkAsOfKeyProbeTestHook()
+		}
 		k := string(key)
 		if _, ok := overlay.entries[k]; ok {
 			return true, nil
@@ -666,7 +669,7 @@ func (bs *Store) nodeAsOfInTxn(snap *scanSnapshot, nid types.NodeID, txTime type
 	scan := func(consider func(version uint64, val []byte) (bool, error)) error {
 		return bs.reverseScanHistoryVersionInTxnSnapshot(snap.anyTxn(), prefix, overlay, consider)
 	}
-	return bs.nodeAsOfPick(id, current, txTime, scan, snapshotHistoryKeyExists(snap.anyTxn(), overlay))
+	return bs.nodeAsOfPick(id, current, txTime, scan, bs.snapshotHistoryKeyExists(snap.anyTxn(), overlay))
 }
 
 // relAsOfInTxn mirrors nodeAsOfInTxn for relationships.
@@ -680,7 +683,7 @@ func (bs *Store) relAsOfInTxn(snap *scanSnapshot, rid types.RelID, txTime types.
 	scan := func(consider func(version uint64, val []byte) (bool, error)) error {
 		return bs.reverseScanHistoryVersionInTxnSnapshot(snap.anyTxn(), prefix, overlay, consider)
 	}
-	return bs.relAsOfPick(id, current, txTime, scan, snapshotHistoryKeyExists(snap.anyTxn(), overlay))
+	return bs.relAsOfPick(id, current, txTime, scan, bs.snapshotHistoryKeyExists(snap.anyTxn(), overlay))
 }
 
 // NodesAsOf returns every node version visible at txTime: the union of live
