@@ -1000,7 +1000,9 @@ func TestPinnedPropertyDoorsAgree(t *testing.T) {
 								t.Fatalf("rel %+v seat=%d: indexed %v != fold %v", opts, seat, generic, fold)
 							}
 							if tx == 0 {
-								named := rels(func() ([]*types.Relationship, error) { return g.Temporal.RelsByTypePropertyAt("T", "seat", seat, vf(at)) })
+								named := rels(func() ([]*types.Relationship, error) {
+									return g.Temporal.RelsByTypePropertyAt("T", "seat", seat, vf(at))
+								})
 								if !relVersionSetsEqual(generic, named) {
 									t.Fatalf("rel At %d seat=%d: generic %v != named %v", at, seat, generic, named)
 								}
