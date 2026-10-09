@@ -12,7 +12,10 @@ import "github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 // Node is a shared frozen row like the rows of the other plural reads: it
 // rejects mutation; call DeepCopy to get a mutable copy. Adjacent segments of
 // one entity hold different rows; two segments of one entity may alias the
-// same row when another row lies between them.
+// same row when another row lies between them. A segment names the stored
+// record that answers it: distinct rows with equal property content (a burst
+// grown by SetNodeVersionInterval with identical props) are never merged;
+// merge on content in the consumer if one interval is wanted.
 type NodeSegment struct {
 	ValidFrom, ValidTo types.Instant
 	Node               *types.Node
