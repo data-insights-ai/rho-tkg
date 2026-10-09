@@ -65,7 +65,10 @@ Wave 2 (parallel, start now, merge after wave 1) → v4.45.0
       test 3; BenchmarkRelHasHistory; evidence/has-history/.
 - [x] I unique bypass (Opus; merged cae3b5c after two review rounds: check on the built rows, claims withdrawn on failed write, backlog 12 closed; backlog 29 = same fault in the update door; backlog 12): enforce CreateUnique on `SetNodeVersionInterval` props patches on all four
       doors (Temporal, GraphTx, Batch, Session), UniqueCurrent and UniqueForever; evidence/unique-cascade/.
-- [ ] Then 1c `RelEffectiveTimeline` (after G merges), handover 1 (backlog 8), handover 2 (backlog 21).
+- [x] Bulk as-of presence (Sonnet→Opus rounds; merged d7049e5 after Opus review: top version per ID, forward-walk build 2.5–4× faster than main, N13 ordering hook, gap guard; evidence/bulk-asof-presence/)
+- [ ] J effective timeline + scan forms (Opus; candidate 7261cf9 handed to sigma; review a562a3ef… running): merge, then v4.46.0 gate and tag (or fold J into it).
+- [ ] K point as-of doors race (backlog 32; Opus a620e67d… running).
+- [ ] Next: handover 1 (backlog 8), LatestStamps (30), badger scan cost (33), update-door claims (29), state column doors (28), handover 2 (backlog 21).
 
 ## Review
 
