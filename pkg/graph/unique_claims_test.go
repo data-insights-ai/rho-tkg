@@ -404,8 +404,17 @@ func claimAssertHeld(t *testing.T, g *graphpkg.Graph, vals []claimKV, why string
 
 func forClaims(t *testing.T, scopes []bool, fn func(t *testing.T, g *graphpkg.Graph, f *claimFault, d claimDoor, forever bool)) {
 	t.Helper()
+	forClaimDoors(t, scopes, nil, fn)
+}
+
+// forClaimDoors is forClaims over the doors want accepts (nil: all).
+func forClaimDoors(t *testing.T, scopes []bool, want func(claimDoor) bool, fn func(t *testing.T, g *graphpkg.Graph, f *claimFault, d claimDoor, forever bool)) {
+	t.Helper()
 	for _, b := range claimBackends() {
 		for _, d := range claimDoors() {
+			if want != nil && !want(d) {
+				continue
+			}
 			for _, forever := range scopes {
 				b, d, forever := b, d, forever
 				sc := "current"
@@ -458,7 +467,8 @@ func TestUniqueClaims_StoreWriteFailureWithdrawsClaim(t *testing.T) {
 // GUARD (passes before the fix: nothing was withdrawn then). The store
 // reports the failure AFTER installing the row (a create's cleanup fails too,
 // so the partial node stays live): a stored row carries the values, so the
-// claims stay. Catches: a withdrawal that ignores what was stored.
+// claims stay — after the node moves off them, they are still barred.
+// Catches: a withdrawal that ignores what was stored.
 func TestUniqueClaims_WrittenRowKeepsClaim(t *testing.T) {
 	t.Parallel()
 	forClaims(t, []bool{true}, func(t *testing.T, g *graphpkg.Graph, f *claimFault, d claimDoor, _ bool) {
@@ -470,21 +480,38 @@ func TestUniqueClaims_WrittenRowKeepsClaim(t *testing.T) {
 		if !errors.Is(err, errClaimFault) {
 			t.Fatalf("call whose store write failed after storing: err = %v, want the injected fault", err)
 		}
+		// The stored row holds the values now; move it off them so only the
+		// UniqueForever ownership (not the current holder) can bar them.
+		ctx := context.Background()
+		moveOff := make(map[string]any, len(cs.newVal))
+		for _, kv := range cs.newVal {
+			moveOff[kv.key] = kv.val + "-moved"
+		}
 		switch d.kind {
 		case claimCreate:
-			if n := claimHolders(t, g, ucKey, cs.newVal[0].val); n != 1 {
-				t.Fatalf("precondition: holders of the stored partial create = %d, want 1", n)
+			rows, err := g.Nodes().ByLabelAndProperty("Ref", ucKey, cs.newVal[0].val, storepkg.QueryOpts{})
+			if err != nil || len(rows) != 1 {
+				t.Fatalf("precondition: stored partial create rows = %d (%v), want 1", len(rows), err)
+			}
+			if _, err := g.Nodes().Update(ctx, rows[0].ID(), moveOff); err != nil {
+				t.Fatalf("move the stored node off its values: %v", err)
 			}
 		case claimUpdate:
 			if st := claimState(t, g, cs.target); st.props[ucKey] != cs.newVal[0].val {
 				t.Fatalf("precondition: stored row %v, want %s=%s", st.props, ucKey, cs.newVal[0].val)
 			}
+			if _, err := g.Nodes().Update(ctx, cs.target, moveOff); err != nil {
+				t.Fatalf("move the stored node off its values: %v", err)
+			}
 		case claimLabel:
 			if st := claimState(t, g, cs.target); !st.hasRef {
 				t.Fatal("precondition: stored row lacks the added label")
 			}
+			if err := g.Nodes().RemoveLabel(ctx, cs.target, "Ref"); err != nil {
+				t.Fatalf("RemoveLabel: %v", err)
+			}
 		}
-		claimAssertHeld(t, g, cs.newVal, "a failed call whose row was stored")
+		claimAssertHeld(t, g, cs.newVal, "a failed call whose row was stored, then moved off")
 	})
 }
 
@@ -518,6 +545,52 @@ func TestUniqueClaims_SecondClaimFailureWithdrawsFirst(t *testing.T) {
 				claimAssertHeld(t, g, cs.oldVal[:1], "a failed second claim (value owned before the call)")
 			}
 		}
+	})
+}
+
+// (d) GUARD (passes before the fix: nothing was withdrawn then). A value the
+// node owned before the call but its stored row no longer carries — moved off
+// it (update doors) or label removed (label doors) — is written again and the
+// store write fails: the value stays owned by the node. Catches: a hold that
+// records every value it passes (also registry hits of the node itself) and
+// withdraws one the stored row does not carry.
+func TestUniqueClaims_PreOwnedValueKept(t *testing.T) {
+	t.Parallel()
+	// A create door's node owns nothing before the call.
+	notCreate := func(d claimDoor) bool { return d.kind != claimCreate }
+	forClaimDoors(t, []bool{true}, notCreate, func(t *testing.T, g *graphpkg.Graph, f *claimFault, d claimDoor, _ bool) {
+		ctx := context.Background()
+		claimConstrain(t, g, true)
+		const x0 = "pre-x0"
+		var target types.NodeID
+		switch d.kind {
+		case claimUpdate:
+			n, err := g.Nodes().Add(ctx, []string{"Ref"}, map[string]any{ucKey: x0})
+			if err != nil {
+				t.Fatal(err)
+			}
+			target = n.ID()
+			if err := d.run(g, target, map[string]any{ucKey: "pre-x1"}); err != nil {
+				t.Fatalf("move off %s: %v", x0, err)
+			}
+		case claimLabel:
+			n, err := g.Nodes().Add(ctx, []string{"Plain", "Ref"}, map[string]any{ucKey: x0})
+			if err != nil {
+				t.Fatal(err)
+			}
+			target = n.ID()
+			if err := g.Nodes().RemoveLabel(ctx, target, "Ref"); err != nil {
+				t.Fatalf("RemoveLabel: %v", err)
+			}
+		}
+		claimAssertHeld(t, g, []claimKV{{ucKey, x0}}, "the node moved off its owned value (precondition)")
+		f.armWrite(x0, false, false)
+		err := d.run(g, target, map[string]any{ucKey: x0})
+		f.disarm()
+		if !errors.Is(err, errClaimFault) {
+			t.Fatalf("write back to the owned value with a failing store write: err = %v, want the injected fault", err)
+		}
+		claimAssertHeld(t, g, []claimKV{{ucKey, x0}}, "a failed write back to a value the node owned before the call")
 	})
 }
 

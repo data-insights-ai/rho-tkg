@@ -175,3 +175,72 @@ func TestUniqueClaims_StripeHeldAcrossWithdrawal(t *testing.T) {
 		})
 	}
 }
+
+// errInjectedRead is the stored-row re-read failure readFailStore injects.
+var errInjectedRead = errors.New("injected stored-row read failure")
+
+// readFailStore fails the first ReplaceNodeWithHistory carrying k == value and
+// then every GetNode of that node, so the withdrawal cannot tell what is
+// stored.
+type readFailStore struct {
+	*memory.Store
+	mu     sync.Mutex
+	value  any
+	readID types.NodeID
+}
+
+func (s *readFailStore) ReplaceNodeWithHistory(n *types.Node, pv uint32, prev *types.Node) error {
+	s.mu.Lock()
+	fire := false
+	if v, ok := n.GetProperty("k"); ok && s.value != nil && v == s.value {
+		fire, s.value, s.readID = true, nil, n.ID()
+	}
+	s.mu.Unlock()
+	if fire {
+		return errInjectedWrite
+	}
+	return s.Store.ReplaceNodeWithHistory(n, pv, prev)
+}
+
+func (s *readFailStore) GetNode(id types.NodeID) (*types.Node, error) {
+	s.mu.Lock()
+	fail := s.readID != 0 && s.readID == id
+	s.mu.Unlock()
+	if fail {
+		return nil, errInjectedRead
+	}
+	return s.Store.GetNode(id)
+}
+
+func (s *readFailStore) NodesByLabelAndProperty(labelToken uint16, key string, value any, opts storepkg.QueryOpts) ([]*types.Node, error) {
+	return s.Store.NodesByLabelAndProperty(labelToken, key, value, opts)
+}
+
+// GUARD on the withdrawal's unreadable-row branch (written with it): when the
+// failed writer cannot re-read its stored row, it cannot prove the value was
+// not stored, so the claim stays (never admits a duplicate) and the door
+// returns the write failure joined with the read failure. Catches: a
+// withdrawal that treats an unreadable row as "nothing stored".
+func TestUniqueClaims_UnreadableStoredRowKeepsClaim(t *testing.T) {
+	st := &readFailStore{Store: memory.New()}
+	c, err := New(Config{Store: st})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = c.Close() })
+	ctx := context.Background()
+	if err := c.Constraints.CreateUniqueForever(ctx, "Ref", "k"); err != nil {
+		t.Fatalf("CreateUniqueForever: %v", err)
+	}
+	a := addRefK(t, c, "a")
+	st.mu.Lock()
+	st.value = "v"
+	st.mu.Unlock()
+	_, err = c.Nodes.Update(ctx, a.ID(), map[string]any{"k": "v"})
+	if !errors.Is(err, errInjectedWrite) || !errors.Is(err, errInjectedRead) {
+		t.Fatalf("Update with a failing write and an unreadable stored row: err = %v, want both injected failures", err)
+	}
+	if _, err := c.Nodes.Add(ctx, []string{"Ref"}, map[string]any{"k": "v"}); !errors.Is(err, ErrUniqueViolation) {
+		t.Fatalf("Add of the value after an unprovable withdrawal: err = %v, want ErrUniqueViolation (claim kept)", err)
+	}
+}
