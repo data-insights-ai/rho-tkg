@@ -152,8 +152,10 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 	// value already held by committed state OR by an earlier create in this same
 	// batch) are removed from the create set, surfaced as failed ops, and seeded
 	// into unavailableNodeIDs so dependent rels short-circuit.
+	var uniqueHolds []*uniqueHold // uniqueHolds[i] belongs to b.nodes[i] (nil: no constraint)
 	if b.g.hasUniqueConstraints.Load() && len(b.nodes) > 0 {
-		survivors, violators := b.g.partitionBatchNodesByUnique(b.nodes)
+		survivors, holds, violators := b.g.partitionBatchNodesByUnique(b.nodes)
+		uniqueHolds = holds
 		if len(violators) > 0 {
 			unavailableNodeIDs = make(map[types.NodeID]struct{}, len(violators))
 			for _, v := range violators {
@@ -310,17 +312,23 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 				// Preserve any unique-violation seeds already recorded above.
 				unavailableNodeIDs = make(map[types.NodeID]struct{}, len(b.nodes))
 			}
-			for _, pn := range b.nodes {
+			for i, pn := range b.nodes {
 				syncPendingNodeResult(pn)
 				id := pn.node.ID()
 				if unavailableNodeIDs != nil {
 					unavailableNodeIDs[id] = struct{}{}
 				}
+				nodeErr := err
+				if i < len(uniqueHolds) {
+					// After the partial-create cleanup: a node whose row is not
+					// stored owns nothing (item 29).
+					nodeErr = uniqueHolds[i].storeWriteFailed(err)
+				}
 				result.Failed++
 				result.Errors = append(result.Errors, BatchError{
 					Op:  "AddNode",
 					ID:  types.EntityID(id),
-					Err: err,
+					Err: nodeErr,
 				})
 			}
 			nodesCreateFinished = true

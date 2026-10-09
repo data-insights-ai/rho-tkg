@@ -19,7 +19,8 @@ const (
 	// duplicates; a value freed by supersession or delete is immediately
 	// reusable. This matches Neo4j uniqueness semantics.
 	UniqueCurrent UniqueScope = iota
-	// UniqueForever (value ownership) — reserved, not yet implemented.
+	// UniqueForever (value ownership): the first entity to hold a value owns
+	// it; every other node is barred from it forever (CreateUniqueForever).
 	UniqueForever
 	// UniqueValidOverlap (temporal uniqueness) — reserved, not yet implemented.
 	UniqueValidOverlap
@@ -48,7 +49,7 @@ type UniqueConstraint struct {
 	// PropertyKey is the property whose value must be unique across current
 	// nodes carrying Label.
 	PropertyKey string
-	// Scope is the uniqueness scope (v1: always UniqueCurrent).
+	// Scope is the uniqueness scope (UniqueCurrent or UniqueForever).
 	Scope UniqueScope
 }
 
@@ -102,6 +103,15 @@ func (a *API) CreateUnique(ctx context.Context, label, propertyKey string) error
 // delete, and reopen. Same install/validation semantics as CreateUnique (rejects
 // existing current duplicates with ErrUniqueViolationExisting; floats with
 // ErrUniqueUnsupportedType), then seeds ownership from existing current values.
+//
+// A write claims a value it introduces under the value lock and persists the
+// claim before its row write. When the call fails — its store write, or a later
+// claim of the same call — every claim the call made is withdrawn under the
+// same lock unless the node's stored row carries the value; a value the node
+// owned before the call stays owned. Two limits remain, both conservative
+// (never admit a duplicate) and freed with ReleaseOwnership: a crash between
+// the claim's persist and the row write (needs one atomic MetaKV + store
+// commit), and a claim made in a transaction that is later rolled back.
 func (a *API) CreateUniqueForever(ctx context.Context, label, propertyKey string) error {
 	ops, err := a.uniqueReady()
 	if err != nil {

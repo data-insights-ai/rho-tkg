@@ -1,0 +1,11 @@
+=== RUN   TestUniqueClaims_StripeHeldAcrossWithdrawal
+=== RUN   TestUniqueClaims_StripeHeldAcrossWithdrawal/Update
+    unique_claims_lock_test.go:166: writer B after A's failed write: finished=true err=graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798223372117114880 (UniqueForever), want nil (A never stored v)
+=== RUN   TestUniqueClaims_StripeHeldAcrossWithdrawal/session-concurrent-AddNode
+    unique_claims_lock_test.go:166: writer B after A's failed write: finished=true err=graph: concurrent ingest AddNode (798223372130156544): graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798223372129009664 (UniqueForever), want nil (A never stored v)
+--- FAIL: TestUniqueClaims_StripeHeldAcrossWithdrawal (0.00s)
+    --- FAIL: TestUniqueClaims_StripeHeldAcrossWithdrawal/Update (0.00s)
+    --- FAIL: TestUniqueClaims_StripeHeldAcrossWithdrawal/session-concurrent-AddNode (0.00s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.006s
+FAIL

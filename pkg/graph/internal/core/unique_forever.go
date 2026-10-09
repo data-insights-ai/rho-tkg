@@ -225,22 +225,16 @@ func (c *Core) reapUniqueForeverOwnersForReset() error {
 }
 
 // -----------------------------------------------------------------------------
-// Kernel branch — consulted by enforceUniqueForNodeHeld under the value stripe
+// Kernel branch — consulted through uniqueHold.claim (unique_hold.go) under the
+// value stripe (or the batch's exclusive c.mu.Lock)
 // -----------------------------------------------------------------------------
 
-// checkAndClaimForever consults the ownership registry for one UniqueForever
+// claimForever consults the ownership registry for one UniqueForever
 // constrained value, under the value stripe the caller already holds. Registry
 // hit + different entity => ErrUniqueViolation; same entity (any version) =>
-// pass; miss => claim (owner = selfID) and persist. Returns nil on pass/claim.
-func (c *Core) checkAndClaimForever(labelTok uint16, propKey, valueKey string, selfID types.NodeID) error {
-	_, err := c.claimForever(labelTok, propKey, valueKey, selfID)
-	return err
-}
-
-// claimForever is checkAndClaimForever reporting whether THIS call made the
-// claim (a miss) rather than finding selfID already the owner, so a caller
-// whose write then fails can withdraw exactly the claims it made
-// (withdrawForeverClaims).
+// pass, claimed=false; miss => claim (owner = selfID), persist, claimed=true.
+// Reporting whether THIS call made the claim lets a caller whose call then
+// fails withdraw exactly the claims it made (withdrawForeverClaims).
 func (c *Core) claimForever(labelTok uint16, propKey, valueKey string, selfID types.NodeID) (bool, error) {
 	key := foreverOwnerKey(labelTok, propKey, valueKey)
 	c.uniqueMu.Lock()
@@ -253,8 +247,11 @@ func (c *Core) claimForever(labelTok uint16, propKey, valueKey string, selfID ty
 			ErrUniqueViolation, c.labels.Resolve(labelTok), propKey, owner)
 	}
 	// Miss — claim under the stripe. Persist before returning so a crash does not
-	// lose the claim (the node write follows; a rare failed write leaves a
-	// conservative claim, correctable via ReleaseOwnership).
+	// lose the claim. The node write follows; when it (or a later claim of the
+	// same call) fails, the door withdraws the claim under the same stripe
+	// (uniqueHold). A crash between this persist and the row write still
+	// leaves the claim without the row (needs one atomic MetaKV + store commit,
+	// v5 PLAN §5.2; ReleaseOwnership frees it).
 	mk := c.metaKV
 	if mk == nil {
 		return false, fmt.Errorf("graph: unique-forever claim: %w", storepkg.ErrCapabilityNotSupported)
@@ -302,7 +299,7 @@ func (c *Core) withdrawForeverClaims(keys []string, selfID types.NodeID) error {
 	return nil
 }
 
-// checkForeverOwnership is the READ-ONLY sibling of checkAndClaimForever for
+// checkForeverOwnership is the READ-ONLY sibling of claimForever for
 // dry-run validation: it reports whether selfID could hold the value under a
 // UniqueForever constraint WITHOUT claiming or persisting. Registry hit +
 // different entity => ErrUniqueViolation; same entity or a miss => nil (a miss

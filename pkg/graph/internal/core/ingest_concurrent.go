@@ -198,14 +198,7 @@ func (c *Core) applyConcurrentNodeCreates(
 
 		// Unique-constrained graph: per-node door under the node's value stripes
 		// (check + write under the stripe, exactly the standalone create kernel).
-		release, err := c.enforceUniqueForNodeHeld(pn.node, nil, pn.node.ID(), nil)
-		if err != nil {
-			markFailed(pn, err)
-			continue
-		}
-		err = c.putGeneratedNode(context.Background(), pn.node)
-		release()
-		if err != nil {
+		if err := c.putConcurrentUniqueNode(pn); err != nil {
 			markFailed(pn, err)
 			continue
 		}
@@ -249,6 +242,24 @@ func (c *Core) applyConcurrentNodeCreates(
 		}
 	}
 	return unavailable
+}
+
+// putConcurrentUniqueNode creates one node of a unique-constrained concurrent
+// group the way the standalone create door does: check + claim under the
+// node's value stripes, the store write, and on a failed write the withdrawal
+// of the claims it made (item 29) — all before the deferred release, which
+// also runs when the write panics (the claim is then kept, as on the
+// standalone doors).
+func (c *Core) putConcurrentUniqueNode(pn *pendingNode) error {
+	hold, err := c.enforceUniqueForNodeHeld(pn.node, nil, pn.node.ID(), nil)
+	if err != nil {
+		return err
+	}
+	defer hold.release()
+	if err := c.putGeneratedNode(context.Background(), pn.node); err != nil {
+		return hold.storeWriteFailed(err)
+	}
+	return nil
 }
 
 // applyConcurrentRelCreates mirrors the strong-mode batch's rel-create section

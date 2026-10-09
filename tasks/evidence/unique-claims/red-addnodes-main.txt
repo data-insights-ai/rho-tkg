@@ -1,0 +1,536 @@
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst
+=== RUN   TestUniqueClaims_PreOwnedValueKept
+=== PAUSE TestUniqueClaims_PreOwnedValueKept
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner
+=== RUN   TestUniqueClaims_GroupSemantics
+=== PAUSE TestUniqueClaims_GroupSemantics
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim
+=== CONT  TestUniqueClaims_PreOwnedValueKept
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst
+=== CONT  TestUniqueClaims_GroupSemantics
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim
+--- PASS: TestUniqueClaims_GroupSemantics (0.00s)
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/memory/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/memory/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/memory/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/memory/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-concurrent-AddNodes/forever
+--- PASS: TestUniqueClaims_PreOwnedValueKept (0.00s)
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/memory/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/memory/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/memory/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/memory/session-concurrent-AddNodes/forever
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/session-concurrent-AddNodes/forever
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/session-concurrent-AddNodes/forever
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/session-concurrent-AddNodes/forever
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/batch-AddNodes/current
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/batch-AddNodes/current
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-sync-AddNodes/current
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-sync-AddNodes/current
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-async-AddNodes/current
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-async-AddNodes/current
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-concurrent-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-concurrent-AddNodes/current
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-concurrent-AddNodes/current
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/batch-AddNodes/current
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/batch-AddNodes/current
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/session-concurrent-AddNodes/forever
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/badger/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/badger/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-sync-AddNodes/current
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-sync-AddNodes/current
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-async-AddNodes/current
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-async-AddNodes/current
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/badger/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/badger/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/badger/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/badger/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/badger/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/badger/session-concurrent-AddNodes/forever
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/tiered/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/tiered/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-concurrent-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-concurrent-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-concurrent-AddNodes/current
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-concurrent-AddNodes/current
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/tiered/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/tiered/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/tiered/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/tiered/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/tiered/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/tiered/session-concurrent-AddNodes/forever
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/batch-AddNodes/current
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/batch-AddNodes/current
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-sync-AddNodes/current
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-sync-AddNodes/current
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-async-AddNodes/current
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-async-AddNodes/current
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-concurrent-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-concurrent-AddNodes/current
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-concurrent-AddNodes/current
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/session-concurrent-AddNodes/forever
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/batch-AddNodes/forever
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/session-strong-sync-AddNodes/forever
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/session-strong-sync-AddNodes/forever
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/session-concurrent-AddNodes/forever
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/batch-AddNodes/forever
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/session-strong-async-AddNodes/forever
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/session-concurrent-AddNodes/forever
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/batch-AddNodes/forever
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/session-concurrent-AddNodes/forever
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/session-strong-sync-AddNodes/forever
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/session-strong-async-AddNodes/forever
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/session-strong-async-AddNodes/forever
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/session-concurrent-AddNodes/forever
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/batch-AddNodes/forever
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/session-strong-async-AddNodes/forever
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/sharded/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-strong-async-AddNodes/forever
+=== NAME  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/batch-AddNodes/forever
+    unique_claims_test.go:662: round 0: unexpected err graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342494502912 (UniqueForever) (errs [graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342494502912 (UniqueForever) injected unique-claims fault])
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/batch-AddNodes/current
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/batch-AddNodes/current
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-sync-AddNodes/current
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-sync-AddNodes/current
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-async-AddNodes/current
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-async-AddNodes/current
+=== NAME  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/session-concurrent-AddNodes/forever
+    unique_claims_test.go:662: round 0: unexpected err graph: concurrent ingest AddNode (798298342559481856): graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342552141824 (UniqueForever) (errs [graph: concurrent ingest AddNode (798298342559481856): graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342552141824 (UniqueForever) graph: concurrent ingest AddNode (798298342552141824): injected unique-claims fault])
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-concurrent-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-concurrent-AddNodes/current
+=== NAME  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/session-strong-async-AddNodes/forever
+    unique_claims_test.go:669: Add k=same0 after a coalesced batch whose only stored candidate failed its write: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342576291840 (UniqueForever) (the call's claim must be withdrawn)
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/sharded/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-concurrent-AddNodes/current
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-concurrent-AddNodes/forever
+=== NAME  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/session-strong-async-AddNodes/forever
+    unique_claims_test.go:662: round 1: unexpected err graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342590283776 (UniqueForever) (errs [graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342590283776 (UniqueForever) injected unique-claims fault])
+=== NAME  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/session-strong-sync-AddNodes/forever
+    unique_claims_test.go:662: round 0: unexpected err graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342475694080 (UniqueForever) (errs [graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342475694080 (UniqueForever) injected unique-claims fault])
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/batch-AddNodes/forever
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-async-AddNodes/current
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/batch-AddNodes/current
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/batch-AddNodes/current
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-concurrent-AddNodes/current
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-concurrent-AddNodes/current
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-async-AddNodes/current
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-async-AddNodes/forever
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-sync-AddNodes/current
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-async-AddNodes/current
+=== NAME  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/batch-AddNodes/forever
+    unique_claims_test.go:463: Add k=a-k after a failed store write: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342610337792 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:463: Add m=a-m after a failed store write: graph: unique constraint violation: label "Ref" key "m" value permanently owned by node 798298342610337792 (UniqueForever) (the call's claim must be withdrawn)
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/batch-AddNodes/forever
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-sync-AddNodes/current
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/sharded/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/sharded/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/sharded/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/sharded/session-strong-async-AddNodes/forever
+=== NAME  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/session-strong-async-AddNodes/forever
+    unique_claims_test.go:662: round 0: unexpected err graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342634618880 (UniqueForever) (errs [graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342634618880 (UniqueForever) injected unique-claims fault])
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/batch-AddNodes/forever
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-sync-AddNodes/forever
+=== NAME  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/session-strong-sync-AddNodes/forever
+    unique_claims_test.go:662: round 0: unexpected err graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342638747648 (UniqueForever) (errs [graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342638747648 (UniqueForever) injected unique-claims fault])
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/sharded/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/sharded/session-concurrent-AddNodes/forever
+=== NAME  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/batch-AddNodes/forever
+    unique_claims_test.go:662: round 0: unexpected err graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342638583808 (UniqueForever) (errs [graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342638583808 (UniqueForever) injected unique-claims fault])
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-concurrent-AddNodes/forever
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-sync-AddNodes/forever
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-async-AddNodes/forever
+=== NAME  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-sync-AddNodes/forever
+    unique_claims_test.go:463: Add k=a-k after a failed store write: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342644973568 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:463: Add m=a-m after a failed store write: graph: unique constraint violation: label "Ref" key "m" value permanently owned by node 798298342644973568 (UniqueForever) (the call's claim must be withdrawn)
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/batch-AddNodes/forever
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-sync-AddNodes/current
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-sync-AddNodes/forever
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/batch-AddNodes/current
+=== NAME  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/session-concurrent-AddNodes/forever
+    unique_claims_test.go:662: round 0: unexpected err graph: concurrent ingest AddNode (798298342646317056): graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342644449280 (UniqueForever) (errs [graph: concurrent ingest AddNode (798298342646317056): graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342644449280 (UniqueForever) graph: concurrent ingest AddNode (798298342644449280): injected unique-claims fault])
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/batch-AddNodes/current
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-async-AddNodes/forever
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-concurrent-AddNodes/current
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-concurrent-AddNodes/forever
+=== NAME  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-async-AddNodes/forever
+    unique_claims_test.go:463: Add k=a-k after a failed store write: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342736756736 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:463: Add m=a-m after a failed store write: graph: unique constraint violation: label "Ref" key "m" value permanently owned by node 798298342736756736 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-concurrent-AddNodes/forever
+    unique_claims_test.go:463: Add k=a-k after a failed store write: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342745014272 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:463: Add m=a-m after a failed store write: graph: unique constraint violation: label "Ref" key "m" value permanently owned by node 798298342745014272 (UniqueForever) (the call's claim must be withdrawn)
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-concurrent-AddNodes/forever
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-concurrent-AddNodes/current
+=== NAME  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/session-strong-async-AddNodes/forever
+    unique_claims_test.go:662: round 0: unexpected err graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342764740608 (UniqueForever) (errs [graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342764740608 (UniqueForever) injected unique-claims fault])
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-concurrent-AddNodes/forever
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-async-AddNodes/current
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-async-AddNodes/forever
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-sync-AddNodes/current
+=== NAME  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-concurrent-AddNodes/forever
+    unique_claims_test.go:463: Add k=a-k after a failed store write: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342815924224 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:463: Add m=a-m after a failed store write: graph: unique constraint violation: label "Ref" key "m" value permanently owned by node 798298342815924224 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/session-strong-sync-AddNodes/forever
+    unique_claims_test.go:662: round 0: unexpected err graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342825558016 (UniqueForever) (errs [graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342825558016 (UniqueForever) injected unique-claims fault])
+=== NAME  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-async-AddNodes/forever
+    unique_claims_test.go:463: Add k=a-k after a failed store write: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342814187520 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:463: Add m=a-m after a failed store write: graph: unique constraint violation: label "Ref" key "m" value permanently owned by node 798298342814187520 (UniqueForever) (the call's claim must be withdrawn)
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-sync-AddNodes/forever
+=== NAME  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/session-concurrent-AddNodes/forever
+    unique_claims_test.go:662: round 0: unexpected err graph: concurrent ingest AddNode (798298342879428608): graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342877233152 (UniqueForever) (errs [graph: concurrent ingest AddNode (798298342879428608): graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342877233152 (UniqueForever) graph: concurrent ingest AddNode (798298342877233152): injected unique-claims fault])
+=== NAME  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/batch-AddNodes/forever
+    unique_claims_test.go:463: Add k=a-k after a failed store write: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342930579456 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:463: Add m=a-m after a failed store write: graph: unique constraint violation: label "Ref" key "m" value permanently owned by node 798298342930579456 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/session-strong-sync-AddNodes/forever
+    unique_claims_test.go:662: round 0: unexpected err graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342932217856 (UniqueForever) (errs [graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342932217856 (UniqueForever) injected unique-claims fault])
+=== NAME  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/session-concurrent-AddNodes/forever
+    unique_claims_test.go:662: round 0: unexpected err graph: concurrent ingest AddNode (798298342935494656): graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342933757952 (UniqueForever) (errs [graph: concurrent ingest AddNode (798298342935494656): graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342933757952 (UniqueForever) graph: concurrent ingest AddNode (798298342933757952): injected unique-claims fault])
+=== NAME  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-sync-AddNodes/forever
+    unique_claims_test.go:463: Add k=a-k after a failed store write: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298342947684352 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:463: Add m=a-m after a failed store write: graph: unique constraint violation: label "Ref" key "m" value permanently owned by node 798298342947684352 (UniqueForever) (the call's claim must be withdrawn)
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/batch-AddNodes/forever
+=== NAME  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-sync-AddNodes/forever
+    unique_claims_test.go:463: Add k=a-k after a failed store write: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343015088128 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:463: Add m=a-m after a failed store write: graph: unique constraint violation: label "Ref" key "m" value permanently owned by node 798298343015088128 (UniqueForever) (the call's claim must be withdrawn)
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-concurrent-AddNodes/forever
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/batch-AddNodes/forever
+    unique_claims_test.go:550: Add k=b0-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343023149056 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:550: Add k=b1-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343035174912 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:550: Add k=b2-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343036715008 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:550: Add m=b3-m after a failed second claim: graph: unique constraint violation: label "Ref" key "m" value permanently owned by node 798298343038648320 (UniqueForever) (the call's claim must be withdrawn)
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-strong-async-AddNodes/forever
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-strong-sync-AddNodes/forever
+=== NAME  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-concurrent-AddNodes/forever
+    unique_claims_test.go:463: Add k=a-k after a failed store write: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343064371200 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:463: Add m=a-m after a failed store write: graph: unique constraint violation: label "Ref" key "m" value permanently owned by node 798298343064371200 (UniqueForever) (the call's claim must be withdrawn)
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/batch-AddNodes/forever
+=== NAME  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-async-AddNodes/forever
+    unique_claims_test.go:463: Add k=a-k after a failed store write: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343065419776 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:463: Add m=a-m after a failed store write: graph: unique constraint violation: label "Ref" key "m" value permanently owned by node 798298343065419776 (UniqueForever) (the call's claim must be withdrawn)
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-concurrent-AddNodes/forever
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-strong-async-AddNodes/forever
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-strong-sync-AddNodes/forever
+=== NAME  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/batch-AddNodes/forever
+    unique_claims_test.go:662: round 0: unexpected err graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343103332352 (UniqueForever) (errs [graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343103332352 (UniqueForever) injected unique-claims fault])
+=== NAME  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-concurrent-AddNodes/forever
+    unique_claims_test.go:463: Add k=a-k after a failed store write: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343122239488 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:463: Add m=a-m after a failed store write: graph: unique constraint violation: label "Ref" key "m" value permanently owned by node 798298343122239488 (UniqueForever) (the call's claim must be withdrawn)
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/batch-AddNodes/forever
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/session-concurrent-AddNodes/forever
+=== NAME  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-sync-AddNodes/forever
+    unique_claims_test.go:463: Add k=a-k after a failed store write: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343166574592 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:463: Add m=a-m after a failed store write: graph: unique constraint violation: label "Ref" key "m" value permanently owned by node 798298343166574592 (UniqueForever) (the call's claim must be withdrawn)
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/session-strong-async-AddNodes/forever
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/session-strong-sync-AddNodes/forever
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/batch-AddNodes/forever
+    unique_claims_test.go:550: Add k=b0-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343248134144 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:550: Add k=b1-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343252918272 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:550: Add k=b2-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343256850432 (UniqueForever) (the call's claim must be withdrawn)
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/batch-AddNodes/forever
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-concurrent-AddNodes/forever
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/batch-AddNodes/forever
+    unique_claims_test.go:550: Add k=b3-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343259799552 (UniqueForever) (the call's claim must be withdrawn)
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-strong-async-AddNodes/forever
+=== NAME  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/session-strong-async-AddNodes/forever
+    unique_claims_test.go:662: round 0: unexpected err graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343260979200 (UniqueForever) (errs [graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343260979200 (UniqueForever) injected unique-claims fault])
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-concurrent-AddNodes/forever
+    unique_claims_test.go:550: Add k=b0-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343265304576 (UniqueForever) (the call's claim must be withdrawn)
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-strong-sync-AddNodes/forever
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-concurrent-AddNodes/forever
+    unique_claims_test.go:550: Add k=b1-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343269040128 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-strong-async-AddNodes/forever
+    unique_claims_test.go:550: Add k=b0-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343267958784 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-concurrent-AddNodes/forever
+    unique_claims_test.go:550: Add k=b2-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343270875136 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/batch-AddNodes/forever
+    unique_claims_test.go:463: Add k=a-k after a failed store write: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343268712448 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-strong-async-AddNodes/forever
+    unique_claims_test.go:550: Add k=b1-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343272054784 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-concurrent-AddNodes/forever
+    unique_claims_test.go:550: Add k=b3-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343273496576 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/batch-AddNodes/forever
+    unique_claims_test.go:463: Add m=a-m after a failed store write: graph: unique constraint violation: label "Ref" key "m" value permanently owned by node 798298343268712448 (UniqueForever) (the call's claim must be withdrawn)
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/memory/batch-AddNodes/forever
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-strong-sync-AddNodes/forever
+    unique_claims_test.go:550: Add m=b0-m after a failed second claim: graph: unique constraint violation: label "Ref" key "m" value permanently owned by node 798298343273431040 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-strong-async-AddNodes/forever
+    unique_claims_test.go:550: Add k=b2-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343275036672 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-strong-sync-AddNodes/forever
+    unique_claims_test.go:550: Add k=b1-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343277592576 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-strong-async-AddNodes/forever
+    unique_claims_test.go:550: Add k=b0-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343272513536 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:550: Add k=b1-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343283392512 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-strong-async-AddNodes/forever
+    unique_claims_test.go:550: Add k=b3-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343279394816 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-strong-sync-AddNodes/forever
+    unique_claims_test.go:550: Add k=b2-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343284768768 (UniqueForever) (the call's claim must be withdrawn)
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/badger/session-concurrent-AddNodes/forever
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/memory/session-strong-async-AddNodes/forever
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/badger/session-strong-async-AddNodes/forever
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-strong-sync-AddNodes/forever
+    unique_claims_test.go:550: Add m=b3-m after a failed second claim: graph: unique constraint violation: label "Ref" key "m" value permanently owned by node 798298343286833152 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-strong-async-AddNodes/forever
+    unique_claims_test.go:550: Add k=b2-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343287160832 (UniqueForever) (the call's claim must be withdrawn)
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/badger/session-strong-sync-AddNodes/forever
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-strong-async-AddNodes/forever
+    unique_claims_test.go:550: Add k=b3-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343291781120 (UniqueForever) (the call's claim must be withdrawn)
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/badger/batch-AddNodes/forever
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-strong-sync-AddNodes/forever
+    unique_claims_test.go:550: Add k=b0-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343300104192 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/batch-AddNodes/forever
+    unique_claims_test.go:662: round 0: unexpected err graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343305904128 (UniqueForever) (errs [graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343305904128 (UniqueForever) injected unique-claims fault])
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-strong-sync-AddNodes/forever
+    unique_claims_test.go:550: Add m=b1-m after a failed second claim: graph: unique constraint violation: label "Ref" key "m" value permanently owned by node 798298343306657792 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:550: Add k=b2-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343312195584 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:550: Add m=b3-m after a failed second claim: graph: unique constraint violation: label "Ref" key "m" value permanently owned by node 798298343315767296 (UniqueForever) (the call's claim must be withdrawn)
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/memory/session-concurrent-AddNodes/forever
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/memory/session-strong-sync-AddNodes/forever
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-concurrent-AddNodes/forever
+    unique_claims_test.go:550: Add k=b0-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343339458560 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:550: Add k=b1-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343344603136 (UniqueForever) (the call's claim must be withdrawn)
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/tiered/session-strong-sync-AddNodes/forever
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-concurrent-AddNodes/forever
+    unique_claims_test.go:550: Add k=b2-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343350730752 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/batch-AddNodes/forever
+    unique_claims_test.go:550: Add k=b0-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343354957824 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-concurrent-AddNodes/forever
+    unique_claims_test.go:550: Add k=b3-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343354662912 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/batch-AddNodes/forever
+    unique_claims_test.go:550: Add k=b1-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343361413120 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:550: Add m=b2-m after a failed second claim: graph: unique constraint violation: label "Ref" key "m" value permanently owned by node 798298343364001792 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:550: Add k=b3-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343366721536 (UniqueForever) (the call's claim must be withdrawn)
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/sharded/session-concurrent-AddNodes/forever
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/sharded/session-strong-async-AddNodes/forever
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/sharded/session-strong-sync-AddNodes/forever
+=== NAME  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/batch-AddNodes/forever
+    unique_claims_test.go:463: Add k=a-k after a failed store write: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343429832704 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:463: Add m=a-m after a failed store write: graph: unique constraint violation: label "Ref" key "m" value permanently owned by node 798298343429832704 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/session-strong-async-AddNodes/forever
+    unique_claims_test.go:550: Add k=b0-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343437828096 (UniqueForever) (the call's claim must be withdrawn)
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/sharded/batch-AddNodes/forever
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/session-strong-async-AddNodes/forever
+    unique_claims_test.go:550: Add k=b1-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343465287680 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:550: Add k=b2-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343469973504 (UniqueForever) (the call's claim must be withdrawn)
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/tiered/session-concurrent-AddNodes/forever
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-strong-async-AddNodes/forever
+    unique_claims_test.go:550: Add k=b0-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343501037568 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/session-strong-async-AddNodes/forever
+    unique_claims_test.go:550: Add k=b3-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343474987008 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-strong-async-AddNodes/forever
+    unique_claims_test.go:550: Add m=b1-m after a failed second claim: graph: unique constraint violation: label "Ref" key "m" value permanently owned by node 798298343514636288 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:550: Add k=b2-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343552417792 (UniqueForever) (the call's claim must be withdrawn)
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/tiered/session-strong-async-AddNodes/forever
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/tiered/batch-AddNodes/forever
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-strong-async-AddNodes/forever
+    unique_claims_test.go:550: Add k=b3-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343580106752 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/batch-AddNodes/forever
+    unique_claims_test.go:550: Add k=b0-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343610089472 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:550: Add k=b1-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343617527808 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:550: Add k=b2-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343622049792 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/session-strong-sync-AddNodes/forever
+    unique_claims_test.go:550: Add m=b0-m after a failed second claim: graph: unique constraint violation: label "Ref" key "m" value permanently owned by node 798298343618838528 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/batch-AddNodes/forever
+    unique_claims_test.go:550: Add k=b3-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343626473472 (UniqueForever) (the call's claim must be withdrawn)
+--- FAIL: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner (0.01s)
+    --- FAIL: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/batch-AddNodes/forever (0.00s)
+    --- FAIL: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/session-concurrent-AddNodes/forever (0.00s)
+    --- FAIL: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/session-strong-async-AddNodes/forever (0.00s)
+    --- FAIL: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/session-strong-sync-AddNodes/forever (0.01s)
+    --- FAIL: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/session-strong-async-AddNodes/forever (0.01s)
+    --- FAIL: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/batch-AddNodes/forever (0.01s)
+    --- FAIL: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/session-strong-sync-AddNodes/forever (0.01s)
+    --- FAIL: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/session-concurrent-AddNodes/forever (0.01s)
+    --- FAIL: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/session-strong-sync-AddNodes/forever (0.02s)
+    --- FAIL: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/session-concurrent-AddNodes/forever (0.02s)
+    --- FAIL: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/session-concurrent-AddNodes/forever (0.03s)
+    --- FAIL: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/batch-AddNodes/forever (0.03s)
+    --- FAIL: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/session-strong-async-AddNodes/forever (0.03s)
+    --- FAIL: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/session-strong-sync-AddNodes/forever (0.03s)
+    --- FAIL: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/session-strong-async-AddNodes/forever (0.04s)
+    --- FAIL: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/batch-AddNodes/forever (0.04s)
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/session-strong-sync-AddNodes/forever
+    unique_claims_test.go:550: Add k=b1-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343626309632 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:550: Add k=b2-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343637123072 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:550: Add m=b3-m after a failed second claim: graph: unique constraint violation: label "Ref" key "m" value permanently owned by node 798298343660421120 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/session-concurrent-AddNodes/forever
+    unique_claims_test.go:550: Add k=b0-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343692664832 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:550: Add k=b1-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343708229632 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:550: Add m=b2-m after a failed second claim: graph: unique constraint violation: label "Ref" key "m" value permanently owned by node 798298343715307520 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:550: Add m=b3-m after a failed second claim: graph: unique constraint violation: label "Ref" key "m" value permanently owned by node 798298343721172992 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-async-AddNodes/forever
+    unique_claims_test.go:463: Add k=a-k after a failed store write: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343734247424 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:463: Add m=a-m after a failed store write: graph: unique constraint violation: label "Ref" key "m" value permanently owned by node 798298343734247424 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-strong-sync-AddNodes/forever
+    unique_claims_test.go:550: Add m=b0-m after a failed second claim: graph: unique constraint violation: label "Ref" key "m" value permanently owned by node 798298343806992384 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:550: Add k=b1-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343853195264 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-concurrent-AddNodes/forever
+    unique_claims_test.go:550: Add k=b0-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343852572672 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-strong-sync-AddNodes/forever
+    unique_claims_test.go:550: Add k=b2-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343857061888 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-concurrent-AddNodes/forever
+    unique_claims_test.go:550: Add k=b1-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343861321728 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-strong-sync-AddNodes/forever
+    unique_claims_test.go:550: Add m=b3-m after a failed second claim: graph: unique constraint violation: label "Ref" key "m" value permanently owned by node 798298343859945472 (UniqueForever) (the call's claim must be withdrawn)
+=== NAME  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-concurrent-AddNodes/forever
+    unique_claims_test.go:550: Add k=b2-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343864991744 (UniqueForever) (the call's claim must be withdrawn)
+    unique_claims_test.go:550: Add k=b3-k after a failed second claim: graph: unique constraint violation: label "Ref" key "k" value permanently owned by node 798298343868792832 (UniqueForever) (the call's claim must be withdrawn)
+--- FAIL: TestUniqueClaims_StoreWriteFailureWithdrawsClaim (0.01s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-async-AddNodes/current (0.00s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-sync-AddNodes/current (0.00s)
+    --- FAIL: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-sync-AddNodes/forever (0.00s)
+    --- FAIL: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/batch-AddNodes/forever (0.00s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/batch-AddNodes/current (0.00s)
+    --- FAIL: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-async-AddNodes/forever (0.00s)
+    --- FAIL: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-concurrent-AddNodes/forever (0.00s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-concurrent-AddNodes/current (0.00s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-async-AddNodes/current (0.01s)
+    --- FAIL: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/batch-AddNodes/forever (0.01s)
+    --- FAIL: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-concurrent-AddNodes/forever (0.01s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-sync-AddNodes/current (0.01s)
+    --- FAIL: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-async-AddNodes/forever (0.01s)
+    --- FAIL: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-sync-AddNodes/forever (0.01s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-sync-AddNodes/current (0.01s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/batch-AddNodes/current (0.02s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/batch-AddNodes/current (0.02s)
+    --- FAIL: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-concurrent-AddNodes/forever (0.02s)
+    --- FAIL: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-async-AddNodes/forever (0.02s)
+    --- FAIL: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-concurrent-AddNodes/forever (0.02s)
+    --- FAIL: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-sync-AddNodes/forever (0.02s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-concurrent-AddNodes/current (0.02s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-concurrent-AddNodes/current (0.03s)
+    --- FAIL: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/batch-AddNodes/forever (0.03s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-concurrent-AddNodes/current (0.03s)
+    --- FAIL: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-sync-AddNodes/forever (0.03s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-async-AddNodes/current (0.03s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-sync-AddNodes/current (0.03s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-async-AddNodes/current (0.03s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/batch-AddNodes/current (0.03s)
+    --- FAIL: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/batch-AddNodes/forever (0.04s)
+    --- FAIL: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-async-AddNodes/forever (0.04s)
+--- FAIL: TestUniqueClaims_SecondClaimFailureWithdrawsFirst (0.02s)
+    --- FAIL: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/batch-AddNodes/forever (0.00s)
+    --- FAIL: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-concurrent-AddNodes/forever (0.00s)
+    --- FAIL: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-strong-async-AddNodes/forever (0.00s)
+    --- FAIL: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-strong-sync-AddNodes/forever (0.00s)
+    --- FAIL: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/batch-AddNodes/forever (0.01s)
+    --- FAIL: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-strong-async-AddNodes/forever (0.01s)
+    --- FAIL: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-strong-sync-AddNodes/forever (0.02s)
+    --- FAIL: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/batch-AddNodes/forever (0.01s)
+    --- FAIL: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-concurrent-AddNodes/forever (0.02s)
+    --- FAIL: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/session-strong-async-AddNodes/forever (0.02s)
+    --- FAIL: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/session-strong-sync-AddNodes/forever (0.02s)
+    --- FAIL: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/session-concurrent-AddNodes/forever (0.02s)
+    --- FAIL: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-strong-async-AddNodes/forever (0.02s)
+    --- FAIL: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/batch-AddNodes/forever (0.02s)
+    --- FAIL: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-strong-sync-AddNodes/forever (0.04s)
+    --- FAIL: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-concurrent-AddNodes/forever (0.04s)
+--- PASS: TestUniqueClaims_WrittenRowKeepsClaim (0.02s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/memory/batch-AddNodes/forever (0.00s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/memory/session-strong-async-AddNodes/forever (0.00s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/memory/session-concurrent-AddNodes/forever (0.00s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/memory/session-strong-sync-AddNodes/forever (0.00s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/badger/session-strong-sync-AddNodes/forever (0.01s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/badger/session-strong-async-AddNodes/forever (0.01s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/badger/session-concurrent-AddNodes/forever (0.02s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/badger/batch-AddNodes/forever (0.02s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/tiered/session-strong-sync-AddNodes/forever (0.02s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/sharded/session-concurrent-AddNodes/forever (0.03s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/tiered/session-concurrent-AddNodes/forever (0.02s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/sharded/session-strong-sync-AddNodes/forever (0.03s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/sharded/session-strong-async-AddNodes/forever (0.03s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/tiered/session-strong-async-AddNodes/forever (0.02s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/sharded/batch-AddNodes/forever (0.03s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/tiered/batch-AddNodes/forever (0.06s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.153s
+FAIL

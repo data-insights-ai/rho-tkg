@@ -548,17 +548,20 @@ func (c *Core) reapUniqueConstraintsForReset() error {
 // enforceUniqueForNode is consulted by the standalone create/update/CAS/label
 // doors after the finalized node state is built and BEFORE the store write. It
 // holds the value stripe(s) for every constrained value the node binds across
-// the index lookup and (via the returned release) the caller's store write, so
+// the index lookup and (via the returned hold) the caller's store write, so
 // two writers racing to claim the same value serialize to exactly one winner.
 //
 // prev (may be nil) is the pre-mutation state: when an update changes a
 // constrained value, the OLD value's stripe is also held so a concurrent
 // claimer of the freed value serializes with this write (ADR lock rule).
 //
-// Returns (noop, nil) fast when no constraints exist. On a violation or
-// unsupported (float) value it releases everything and returns the error; the
-// caller must NOT proceed with the write. On success the caller defers release.
-func (c *Core) enforceUniqueForNode(node *types.Node, prev *types.Node, selfID types.NodeID) (func(), error) {
+// Returns a no-op hold fast when no constraints exist. On a violation, an
+// unsupported (float) value or a failed claim it withdraws the claims it made,
+// releases everything and returns the error; the caller must NOT proceed with
+// the write. On success the caller defers hold.release() and answers a failed
+// store write with hold.storeWriteFailed(err) before returning (the deferred
+// release then runs after the withdrawal).
+func (c *Core) enforceUniqueForNode(node *types.Node, prev *types.Node, selfID types.NodeID) (*uniqueHold, error) {
 	return c.enforceUniqueForNodeHeld(node, prev, selfID, nil)
 }
 
@@ -568,21 +571,15 @@ func (c *Core) enforceUniqueForNode(node *types.Node, prev *types.Node, selfID t
 // caller's held stripe already serializes concurrent writers of any value that
 // maps to it (including hash collisions), so the check runs safely under it.
 // GetOrCreateByKey uses this to create a node while holding the keyed value's
-// stripe without self-deadlocking.
-func (c *Core) enforceUniqueForNodeHeld(node *types.Node, prev *types.Node, selfID types.NodeID, held []uint8) (func(), error) {
-	noop := func() {}
+// stripe without self-deadlocking. The returned hold releases only the stripes
+// this call locked.
+func (c *Core) enforceUniqueForNodeHeld(node *types.Node, prev *types.Node, selfID types.NodeID, held []uint8) (*uniqueHold, error) {
+	noop := &uniqueHold{}
 	if node == nil || !c.hasUniqueConstraints.Load() {
 		return noop, nil
 	}
 
-	type uniqueCheck struct {
-		labelTok uint16
-		key      string
-		raw      any
-		valueKey string
-		scope    constraintspkg.UniqueScope
-	}
-	var checks []uniqueCheck
+	var checks []uniqueCheckTuple
 	var stripes []uint8
 
 	c.uniqueMu.RLock()
@@ -607,7 +604,7 @@ func (c *Core) enforceUniqueForNodeHeld(node *types.Node, prev *types.Node, self
 				return noop, fmt.Errorf("%w: label %q key %q holds a float value", ErrUniqueUnsupportedType, c.labels.Resolve(labelTok), key)
 			}
 			raw, _ := node.GetProperty(key)
-			checks = append(checks, uniqueCheck{labelTok: labelTok, key: key, raw: raw, valueKey: valueKey, scope: st.scope})
+			checks = append(checks, uniqueCheckTuple{labelTok: labelTok, key: key, raw: raw, valueKey: valueKey, scope: st.scope})
 			stripes = append(stripes, uniqueValueStripe(labelTok, key, valueKey))
 			if prev != nil {
 				if oldKey, ok := prev.IndexablePropertyValueKey(key); ok && oldKey != "" && oldKey != valueKey {
@@ -621,26 +618,27 @@ func (c *Core) enforceUniqueForNodeHeld(node *types.Node, prev *types.Node, self
 	if len(checks) == 0 {
 		return noop, nil
 	}
+	// Deterministic claim order (the cascade's order): which claim of a call
+	// fails first never depends on map iteration.
+	sort.Slice(checks, func(i, j int) bool {
+		return uniqueSeenKey(checks[i].labelTok, checks[i].key, checks[i].valueKey) <
+			uniqueSeenKey(checks[j].labelTok, checks[j].key, checks[j].valueKey)
+	})
 
-	ordered := c.valueLocks.LockStripesExcept(stripes, held)
-	release := func() { c.valueLocks.UnlockStripes(ordered) }
+	hold := &uniqueHold{c: c, id: selfID, held: c.valueLocks.LockStripesExcept(stripes, held)}
 
 	// Pass 1: validate EVERY tuple read-only before claiming anything. A node
 	// can bind more than one constrained tuple (e.g. two UniqueForever keys,
-	// or one UniqueForever + one UniqueCurrent) — claiming a UniqueForever
-	// value as each tuple is checked, then failing on a LATER tuple, would
-	// abort the whole create/update while leaving the earlier tuple's claim
-	// durably persisted: the value becomes permanently owned by an entity
-	// that never came into existence (BACKLOG 9e). checkForeverOwnership is
-	// the same read-only check the dry-run door uses, so this pass can never
-	// itself leave a claim behind. All of `checks`' value stripes are already
-	// held for the whole call (LockStripesExcept above), so no concurrent
-	// writer can claim any of these exact values between this pass and the
-	// claim pass below.
+	// or one UniqueForever + one UniqueCurrent), so a refusal on a LATER tuple
+	// must not leave an earlier tuple's claim behind (BACKLOG 9e).
+	// checkForeverOwnership is the same read-only check the dry-run door uses.
+	// All of `checks`' value stripes are held for the whole call, so no
+	// concurrent writer can claim any of these exact values between this pass
+	// and the claim pass below.
 	for _, ck := range checks {
 		matches, err := c.nodesByLabelAndProperty(ck.labelTok, ck.key, ck.raw, storepkg.QueryOpts{})
 		if err != nil {
-			release()
+			hold.release()
 			return noop, fmt.Errorf("graph: unique constraint lookup: %w", err)
 		}
 		for _, m := range matches {
@@ -648,32 +646,34 @@ func (c *Core) enforceUniqueForNodeHeld(node *types.Node, prev *types.Node, self
 				continue // the node's own current index entry
 			}
 			winner := m.ID()
-			release()
+			hold.release()
 			return noop, fmt.Errorf("%w: label %q key %q already held by node %d",
 				ErrUniqueViolation, c.labels.Resolve(ck.labelTok), ck.key, winner)
 		}
 		if ck.scope == constraintspkg.UniqueForever {
 			if err := c.checkForeverOwnership(ck.labelTok, ck.key, ck.valueKey, selfID); err != nil {
-				release()
+				hold.release()
 				return noop, err
 			}
 		}
 	}
 	// Pass 2: every tuple passed its check — now durably claim each
-	// UniqueForever value. Registry hit + different entity => violation
-	// (only possible here via the same-tuple TOCTOU checkAndClaimForever
-	// itself still guards against); same entity (any version) => pass; miss
-	// => claim + persist. Barred forever, across delete and reopen.
+	// UniqueForever value (registry hit + different entity => violation; same
+	// entity, any version => pass, not recorded; miss => claim + persist,
+	// recorded in the hold). A claim that fails (its persist, item 29)
+	// withdraws the claims this pass already made, judged against the node's
+	// stored row, while the stripes are still held.
 	for _, ck := range checks {
 		if ck.scope != constraintspkg.UniqueForever {
 			continue
 		}
-		if err := c.checkAndClaimForever(ck.labelTok, ck.key, ck.valueKey, selfID); err != nil {
-			release()
+		if err := hold.claim(ck); err != nil {
+			err = hold.storeWriteFailed(err)
+			hold.release()
 			return noop, err
 		}
 	}
-	return release, nil
+	return hold, nil
 }
 
 // -----------------------------------------------------------------------------
@@ -701,7 +701,10 @@ func (co *ConstraintOps) CreateUnique(ctx context.Context, label, propertyKey st
 // constraints sub-API docs and ADR-0002 Decision 2.
 //
 // The ownership claim is made under the value lock and persisted immediately, so
-// it is durable and race-free. One consequence: a claim made inside a
+// it is durable and race-free. A call that then fails (its store write, or a
+// later claim) withdraws the claims it made under the same lock unless the
+// node's stored row carries the value (uniqueHold, unique_hold.go). A claim
+// made inside a
 // transaction that later ROLLS BACK is NOT auto-released (the durable claim is
 // not part of the tx snapshot) — the value stays barred (a dead entity ID owns
 // it). This is conservative (never admits a duplicate); an operator frees such a

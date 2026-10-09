@@ -1,0 +1,346 @@
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst
+=== RUN   TestUniqueClaims_PreOwnedValueKept
+=== PAUSE TestUniqueClaims_PreOwnedValueKept
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner
+=== RUN   TestUniqueClaims_GroupSemantics
+=== PAUSE TestUniqueClaims_GroupSemantics
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim
+=== CONT  TestUniqueClaims_PreOwnedValueKept
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst
+=== CONT  TestUniqueClaims_GroupSemantics
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/memory/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/memory/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-concurrent-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/batch-AddNodes/current
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/batch-AddNodes/current
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/memory/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/memory/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/memory/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/memory/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/memory/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/memory/session-concurrent-AddNodes/forever
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/badger/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/badger/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-sync-AddNodes/current
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-sync-AddNodes/current
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-async-AddNodes/current
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-async-AddNodes/current
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-concurrent-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-concurrent-AddNodes/current
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-concurrent-AddNodes/current
+--- PASS: TestUniqueClaims_PreOwnedValueKept (0.00s)
+--- PASS: TestUniqueClaims_GroupSemantics (0.00s)
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/badger/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/badger/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/badger/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/badger/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/badger/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/badger/session-concurrent-AddNodes/forever
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/tiered/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/tiered/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/tiered/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/tiered/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/tiered/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/tiered/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/session-concurrent-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/batch-AddNodes/current
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/batch-AddNodes/current
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-sync-AddNodes/current
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-sync-AddNodes/current
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-async-AddNodes/current
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-async-AddNodes/current
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/tiered/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/tiered/session-concurrent-AddNodes/forever
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/sharded/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/sharded/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/sharded/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/sharded/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/sharded/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/sharded/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/session-concurrent-AddNodes/forever
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/session-concurrent-AddNodes/forever
+=== RUN   TestUniqueClaims_WrittenRowKeepsClaim/sharded/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_WrittenRowKeepsClaim/sharded/session-concurrent-AddNodes/forever
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/memory/batch-AddNodes/forever
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/tiered/batch-AddNodes/forever
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/badger/batch-AddNodes/forever
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/memory/session-concurrent-AddNodes/forever
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/badger/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-concurrent-AddNodes/forever
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/tiered/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-concurrent-AddNodes/forever
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/sharded/session-concurrent-AddNodes/forever
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/sharded/batch-AddNodes/forever
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/tiered/session-strong-sync-AddNodes/forever
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/memory/session-strong-async-AddNodes/forever
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/badger/session-strong-async-AddNodes/forever
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/tiered/session-concurrent-AddNodes/forever
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/memory/session-strong-sync-AddNodes/forever
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/badger/session-concurrent-AddNodes/forever
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/sharded/session-strong-async-AddNodes/forever
+=== CONT  TestUniqueClaims_WrittenRowKeepsClaim/sharded/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-concurrent-AddNodes/forever
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-concurrent-AddNodes/current
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-concurrent-AddNodes/current
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/session-concurrent-AddNodes/forever
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-concurrent-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/batch-AddNodes/forever
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/batch-AddNodes/forever
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/session-strong-sync-AddNodes/forever
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/session-strong-sync-AddNodes/forever
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/session-strong-async-AddNodes/forever
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/session-concurrent-AddNodes/forever
+=== RUN   TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/session-concurrent-AddNodes/forever
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/batch-AddNodes/forever
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/session-concurrent-AddNodes/forever
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/batch-AddNodes/forever
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-strong-sync-AddNodes/forever
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/batch-AddNodes/forever
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-strong-async-AddNodes/forever
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-strong-sync-AddNodes/forever
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/session-strong-async-AddNodes/forever
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-concurrent-AddNodes/forever
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-concurrent-AddNodes/forever
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/batch-AddNodes/forever
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-strong-async-AddNodes/forever
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/batch-AddNodes/current
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/session-strong-async-AddNodes/forever
+=== CONT  TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-concurrent-AddNodes/forever
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/batch-AddNodes/forever
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/session-concurrent-AddNodes/forever
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/session-strong-sync-AddNodes/forever
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/batch-AddNodes/forever
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/batch-AddNodes/current
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-sync-AddNodes/current
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-sync-AddNodes/current
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-async-AddNodes/current
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-async-AddNodes/current
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-concurrent-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-concurrent-AddNodes/current
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-concurrent-AddNodes/current
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/session-strong-sync-AddNodes/forever
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/session-concurrent-AddNodes/forever
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/batch-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/batch-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/batch-AddNodes/current
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/batch-AddNodes/current
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-sync-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-sync-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-sync-AddNodes/current
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-sync-AddNodes/current
+=== CONT  TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/session-concurrent-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-async-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-async-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-async-AddNodes/current
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-async-AddNodes/current
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-concurrent-AddNodes/forever
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-concurrent-AddNodes/forever
+=== RUN   TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-concurrent-AddNodes/current
+=== PAUSE TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-concurrent-AddNodes/current
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/batch-AddNodes/forever
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/batch-AddNodes/forever
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-concurrent-AddNodes/current
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-async-AddNodes/forever
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/batch-AddNodes/forever
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/batch-AddNodes/forever
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-concurrent-AddNodes/current
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-concurrent-AddNodes/forever
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-async-AddNodes/current
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-async-AddNodes/forever
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-sync-AddNodes/current
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-sync-AddNodes/forever
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/batch-AddNodes/current
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-sync-AddNodes/forever
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-sync-AddNodes/current
+--- PASS: TestUniqueClaims_WrittenRowKeepsClaim (0.01s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/memory/session-concurrent-AddNodes/forever (0.00s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/memory/session-strong-async-AddNodes/forever (0.00s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/memory/batch-AddNodes/forever (0.00s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/memory/session-strong-sync-AddNodes/forever (0.00s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/badger/batch-AddNodes/forever (0.01s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/badger/session-concurrent-AddNodes/forever (0.01s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/badger/session-strong-async-AddNodes/forever (0.01s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/badger/session-strong-sync-AddNodes/forever (0.01s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/tiered/session-strong-async-AddNodes/forever (0.01s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/tiered/session-concurrent-AddNodes/forever (0.01s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/tiered/session-strong-sync-AddNodes/forever (0.01s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/tiered/batch-AddNodes/forever (0.02s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/sharded/session-concurrent-AddNodes/forever (0.02s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/sharded/session-strong-sync-AddNodes/forever (0.02s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/sharded/session-strong-async-AddNodes/forever (0.02s)
+    --- PASS: TestUniqueClaims_WrittenRowKeepsClaim/sharded/batch-AddNodes/forever (0.04s)
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-async-AddNodes/forever
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-concurrent-AddNodes/current
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-concurrent-AddNodes/forever
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-concurrent-AddNodes/forever
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-async-AddNodes/current
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-sync-AddNodes/forever
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-sync-AddNodes/current
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-sync-AddNodes/forever
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-async-AddNodes/forever
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-sync-AddNodes/current
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/batch-AddNodes/current
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-concurrent-AddNodes/current
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-concurrent-AddNodes/forever
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/batch-AddNodes/current
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/batch-AddNodes/current
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-async-AddNodes/current
+=== CONT  TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-async-AddNodes/current
+--- PASS: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner (0.01s)
+    --- PASS: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/batch-AddNodes/forever (0.00s)
+    --- PASS: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/session-strong-async-AddNodes/forever (0.00s)
+    --- PASS: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/session-concurrent-AddNodes/forever (0.00s)
+    --- PASS: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/memory/session-strong-sync-AddNodes/forever (0.00s)
+    --- PASS: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/batch-AddNodes/forever (0.01s)
+    --- PASS: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/session-strong-sync-AddNodes/forever (0.01s)
+    --- PASS: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/session-strong-async-AddNodes/forever (0.01s)
+    --- PASS: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/badger/session-concurrent-AddNodes/forever (0.03s)
+    --- PASS: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/session-concurrent-AddNodes/forever (0.03s)
+    --- PASS: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/session-strong-sync-AddNodes/forever (0.03s)
+    --- PASS: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/batch-AddNodes/forever (0.03s)
+    --- PASS: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/session-strong-async-AddNodes/forever (0.03s)
+    --- PASS: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/batch-AddNodes/forever (0.03s)
+    --- PASS: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/session-strong-async-AddNodes/forever (0.04s)
+    --- PASS: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/sharded/session-strong-sync-AddNodes/forever (0.04s)
+    --- PASS: TestUniqueClaims_ConcurrentFailedWriterLeavesNoOwner/tiered/session-concurrent-AddNodes/forever (0.09s)
+--- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim (0.02s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/batch-AddNodes/forever (0.00s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-async-AddNodes/forever (0.02s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-concurrent-AddNodes/current (0.02s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-concurrent-AddNodes/current (0.00s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-async-AddNodes/forever (0.00s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-async-AddNodes/current (0.00s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-concurrent-AddNodes/forever (0.00s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-sync-AddNodes/current (0.00s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/batch-AddNodes/current (0.00s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-concurrent-AddNodes/current (0.03s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/memory/session-strong-sync-AddNodes/forever (0.01s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/batch-AddNodes/forever (0.03s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-async-AddNodes/current (0.01s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/batch-AddNodes/current (0.03s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/batch-AddNodes/current (0.01s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/batch-AddNodes/forever (0.04s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/batch-AddNodes/forever (0.04s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-concurrent-AddNodes/current (0.02s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-sync-AddNodes/current (0.02s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-strong-sync-AddNodes/forever (0.02s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-async-AddNodes/current (0.02s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-sync-AddNodes/forever (0.04s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/batch-AddNodes/current (0.02s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-concurrent-AddNodes/forever (0.02s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-sync-AddNodes/current (0.04s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-async-AddNodes/forever (0.04s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/badger/session-concurrent-AddNodes/forever (0.03s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-async-AddNodes/forever (0.03s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-sync-AddNodes/current (0.03s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/tiered/session-strong-sync-AddNodes/forever (0.03s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-concurrent-AddNodes/forever (0.12s)
+    --- PASS: TestUniqueClaims_StoreWriteFailureWithdrawsClaim/sharded/session-strong-async-AddNodes/current (0.12s)
+--- PASS: TestUniqueClaims_SecondClaimFailureWithdrawsFirst (0.01s)
+    --- PASS: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/batch-AddNodes/forever (0.00s)
+    --- PASS: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-strong-async-AddNodes/forever (0.00s)
+    --- PASS: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-concurrent-AddNodes/forever (0.00s)
+    --- PASS: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/memory/session-strong-sync-AddNodes/forever (0.00s)
+    --- PASS: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/session-strong-sync-AddNodes/forever (0.01s)
+    --- PASS: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/session-concurrent-AddNodes/forever (0.01s)
+    --- PASS: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/batch-AddNodes/forever (0.03s)
+    --- PASS: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/badger/session-strong-async-AddNodes/forever (0.03s)
+    --- PASS: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/batch-AddNodes/forever (0.03s)
+    --- PASS: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-strong-sync-AddNodes/forever (0.03s)
+    --- PASS: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-strong-async-AddNodes/forever (0.03s)
+    --- PASS: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-strong-sync-AddNodes/forever (0.04s)
+    --- PASS: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-strong-async-AddNodes/forever (0.05s)
+    --- PASS: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/batch-AddNodes/forever (0.05s)
+    --- PASS: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/tiered/session-concurrent-AddNodes/forever (0.09s)
+    --- PASS: TestUniqueClaims_SecondClaimFailureWithdrawsFirst/sharded/session-concurrent-AddNodes/forever (0.13s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	0.263s
