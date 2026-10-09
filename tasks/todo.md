@@ -21,6 +21,16 @@ Phase 1 (parallel)
       rel delete, caller instant on rel update (all update doors via the temporal path), close-collision refusal
       only for a caller instant, no-op update keeps t (refuse), `rels.Ops` + fakes, `Rels().DeleteWithTx/UpdateWithTx`.
       Red tests R0(rels) R1-R8 R10 R11(rels), all 4 backends.
+      W1 ledger (worktree agent-abb0effa193edc7bc):
+      - in code? no: rel delete stamps `deleteInstantForRelationship` (relationship_delete.go:99), update stamps
+        `relVersionUpdateInstant` (relationship_update.go:151); no caller instant on either.
+      - R0 `TestTxBackfillRel_PlainDoorsUnchanged` (core, 4 backends) run BEFORE the refactor, kept green:
+        breaks if a refactor changes plain stamps (F+1 floor, clamp, close-collision move) on Delete/Update/GraphTx.
+      - R1-R11 `TestTxBackfillRel_*` (core, 4 backends) red against doors stubbed to the plain path; facade
+        `TestRelsWithTx_*` (pkg/graph) + rels spy. Proof: tasks/evidence/tx-backfill-delete-update/red-w1.txt,
+        green-w1.txt.
+      - R8 decision: a caller-instant delete refuses a recorded close at or after t (ErrTxOrder), so pin t-1 keeps
+        the believed ValidTo (one tombstone row cannot both clamp and keep it; backlog known limitation).
 - [ ] W2 asof-cache: bump AFTER the store write (move out of `resolveBackfillTxFrom` into a post-write call at
       every backfill door); replica `applyNodeDeleteLocked`/`applyRelDeleteLocked` report min(TxTo, DeletedAt).
       Red tests R14 (AddWithTx today), R13 (crafted delete records via ApplyChange).
