@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A failed node write no longer leaves its `UniqueForever` value owned** (MEDIUM, backlog 29, the cascade fault
+  of backlog 12 on the node doors). A claiming door claimed a `UniqueForever` value under the value stripe before
+  its store write and kept the claim when that write failed, or when a later claim of the same call failed to
+  persist: `Nodes.Update(A, k=z)` with a failing write left A at its old value, yet a later `Add k=z` failed with
+  "permanently owned by node A" (the documented "conservative claim, correctable via `ReleaseOwnership`"). Every
+  claiming door now withdraws the claims its call made when the call fails, before it releases the value stripe,
+  so a concurrent writer of the value is not refused by a claim that is being withdrawn: on a failed store write
+  the node's stored row is re-read and a claim stays only if that row carries the value (a store that failed
+  after installing the row, a partial create its cleanup could not remove; an unreadable row keeps every claim);
+  a failed second claim withdraws the first; a value the node owned before the call is never withdrawn. Doors
+  fixed: `Nodes.Add` / `AddWithTx` / `Import` / `AddByIDIfAbsent` / `GetOrCreateByKey` / `Update` /
+  `UpdateWithTx` / `UpdateInPlace` / `CompareAndSetProperty` / `AddLabel`; `GraphTx.AddNode` /
+  `ImportNodeWithID` / `GetOrCreateByKey` / `UpdateNode` / `UpdateNodeWithTx` / `AddNodeLabel`;
+  `BatchBuilder.AddNode` (the batch pre-check's claims are withdrawn when the batch write fails) / `UpdateNode` /
+  `UpdateNodeWithTx`; the ingest `Session` in strong and concurrent mode. The cascade and the node doors share
+  one claim hold (`uniqueHold`, `internal/core/unique_hold.go`); claims are made in a deterministic order. Group
+  semantics are unchanged: the failed op fails its own op, the other ops of the batch or group commit. Limit
+  (unchanged): the claim is persisted in its own MetaKV write before the row write, so a crash between the two
+  still leaves the claim without the row (`ReleaseOwnership` frees it); closing that needs one atomic
+  MetaKV + store commit (v5 PLAN §5.2). Tests: `TestUniqueClaims_*` (memory, badger, tiered, sharded, each
+  behind a fault-injecting store decorator × 28 doors: store write failing before the row is stored, a
+  failing second claim, two concurrent writers of one value whose first write fails, group semantics; red
+  before the fix: 112 + 112 + 112 + 32 subtests), guards for a store that fails after storing, a value owned
+  before the call and an unreadable stored row, and the core lock test (stripe held across the withdrawal).
+  Mutants (withdraw nothing; withdraw a value a stored row carries; release the stripe before the withdrawal;
+  skip the second-claim rollback; withdraw a pre-owned value; withdraw when the row is unreadable): each red.
+  Evidence under `tasks/evidence/unique-claims/`.
+
 ## [4.48.0] - 2026-10-10
 
 Minor release: pinned property lookups no longer scale with the history (the property tx-membership sidecar,

@@ -701,7 +701,10 @@ func (co *ConstraintOps) CreateUnique(ctx context.Context, label, propertyKey st
 // constraints sub-API docs and ADR-0002 Decision 2.
 //
 // The ownership claim is made under the value lock and persisted immediately, so
-// it is durable and race-free. One consequence: a claim made inside a
+// it is durable and race-free. A call that then fails (its store write, or a
+// later claim) withdraws the claims it made under the same lock unless the
+// node's stored row carries the value (uniqueHold, unique_hold.go). A claim
+// made inside a
 // transaction that later ROLLS BACK is NOT auto-released (the durable claim is
 // not part of the tx snapshot) — the value stays barred (a dead entity ID owns
 // it). This is conservative (never admits a duplicate); an operator frees such a
