@@ -103,6 +103,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   tombstone walk passes over it, so a delete after such a cascade ends the entity in the as-of doors as it does in
   `NodeAt`. Tests: `TestOldChain_BoundedCascadeResumptionTookSlot`, `TestOldChain_ResumptionWithCopiedTxToThenDelete`
   (rows written in the old shape through the store doors; four backends, node and rel).
+- **A backfilled re-import of a deleted ID reads present in the as-of doors.** With `AllowTxBackfill` and a
+  `TxFrom` inside the first life, the first life's rows above the re-imported current version outranked it and
+  `NodeAsOf(now)` read absent while `Get` and `NodeAt` read the imported row. Rows above the current version that
+  carry a retraction (`TxTo` at or after their `TxFrom`) are an earlier life and never answer for the current row.
+  Test: `TestAsOfBackfilledReImportOfDeletedID`.
 - **The chain resolver reads chains in version order** (lesson 73). `history ‖ current` is not version-ordered
   when a cascade left the current row below its rows; the resolver classified such a chain as a cascade chain while
   the row was current (a closed entity read valid again after a later gap correction) and as monotonic once a
@@ -117,8 +122,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the newest history versions; after a bounded cascade those are cascade rows linking to an older base row, and
   the current row links below them, so the trim left a chain that did not verify and an export of it failed import
   ("imported hash chain does not verify"). The trim count is lowered until the kept rows pass the chain-linkage
-  check with the stub the trim writes; the policy's bounds stay lower bounds on what is kept. Test:
-  `TestCompactionKeepsPrevHashAnchors` (memory, badger, tiered; sharded declines compaction).
+  check with the stub the trim writes (one pass over the chain); the policy's bounds stay lower bounds on what
+  is kept, and a chain whose links did not verify before compaction keeps the policy's trim. Tests:
+  `TestCompactionKeepsPrevHashAnchors` (memory, badger, tiered; sharded declines compaction; a compaction that
+  trims nothing fails), `TestAnchorSafeTrim_Table`.
 - **W5 oracle skips removed**: `TestTxBackfillOracle_CrossBackend` runs its strict pin checks and the GraphTx
   family on every chain (`txbTangled` / `txbNoTxRollback` deleted); green at `TXB_ORACLE_SEEDS=200` (1561 pin
   checks, 157 on chains with a row above the current one). Evidence: `tasks/evidence/cascade-correctness/`.

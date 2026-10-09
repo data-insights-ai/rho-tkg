@@ -19,3 +19,13 @@
 | M12 | count_at.go: TxPin count arm decides from the current row | TestAsOfLabelCountAfterCascadeBelowLabelChange | red, 3: "CountByLabelAt(X){TxPin}=2; want 1" (sharded, tiered) |
 | M13 | compaction.go: anchor check off | TestCompactionKeepsPrevHashAnchors | red, 31: "[after compaction] chain verify = false" |
 | M14 | badgerstore_txtime.go: point probe always "no row above" | TestBadgerAsOfCascadeShapesEquivalentToSelectAsOf | red, 1: "SelectAsOf v1, native (0)" |
+
+## Review round 2 (old chains, re-import, compaction one pass)
+
+| # | mutation | test(s) run | result |
+|---|---|---|---|
+| M15 | badgerstore_txtime.go: write-run rule off (`answer` never takes an own-open row) | TestBadgerAsOfCascadeShapesEquivalentToSelectAsOf | red: "node 72 pin 2: SelectAsOf v1, native (3)" |
+| M16 | asof_select.go: copied-TxTo skip off (`TxTo < TxFrom` rows count as slot holders) | TestOldChain_* | red, 6 subtests (memory, sharded, tiered; ResumptionWithCopiedTxToThenDelete) |
+| M17 | asof_select.go: write-run rule off (`openInWrite` never takes an own-open row) | TestOldChain_* | red, 6 subtests (BoundedCascadeResumptionTookSlot; memory, sharded, tiered) |
+| M18 | asof_select.go and badgerstore_txtime.go: earlier-life rule off | TestAsOfBackfilledReImportOfDeletedID | red, 8 of 8 |
+| M19 | compaction.go (old anchorSafeTrim, before 6ec5bf1) | TestAnchorSafeTrim_Table | red: "unverifiable before: anchorSafeTrim = 0; want 2" (red-r2-anchor-trim.txt) |
