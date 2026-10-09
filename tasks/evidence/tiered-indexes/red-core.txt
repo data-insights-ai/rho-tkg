@@ -1,0 +1,12 @@
+=== RUN   TestTieredRelTemporalPrune_ParityWithBadger_RotationColdRepair
+    tiered_indexes_parity_test.go:285: CreateRelTemporal on *tiered.Store: graph: store does not support this capability: RelTypeTemporalIndexCapability
+--- FAIL: TestTieredRelTemporalPrune_ParityWithBadger_RotationColdRepair (0.34s)
+=== RUN   TestTieredRelTemporalIndex_DropRemovesEverywhere
+    tiered_indexes_parity_test.go:340: CreateRelTemporal: graph: store does not support this capability: RelTypeTemporalIndexCapability
+--- FAIL: TestTieredRelTemporalIndex_DropRemovesEverywhere (0.41s)
+=== RUN   TestTieredComposite_ExactSetsAcrossShardsUpdateDeleteCold
+    tiered_indexes_parity_test.go:442: CreateComposite: graph: store does not support this capability: CompositePropertyIndexCapability
+--- FAIL: TestTieredComposite_ExactSetsAcrossShardsUpdateDeleteCold (0.41s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	1.348s
+FAIL

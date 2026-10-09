@@ -1,0 +1,8 @@
+=== RUN   TestRelTypeTemporalIndex_PartialDoorsMaintainEnvelope
+    badgerstore_reltype_temporal_partial_test.go:40: at 2500 kept [101 102] (ok=true), want none: both rows are covered and cannot overlap
+    badgerstore_reltype_temporal_partial_test.go:44: at 1500 kept [101 102], want [101]
+    badgerstore_reltype_temporal_partial_test.go:63: after delete at 2500 kept [101 102], want [101] (uncovered ids are always kept)
+--- FAIL: TestRelTypeTemporalIndex_PartialDoorsMaintainEnvelope (0.01s)
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.011s
+FAIL

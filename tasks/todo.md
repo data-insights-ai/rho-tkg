@@ -68,3 +68,30 @@ Commits: no agent attribution lines (user rule 2026-10-02). No push, no tag.
 ## Review
 
 (after phase 3)
+
+---
+
+# todo — item F: tiered composite + relationship temporal indexes (backlog 10, 2026-10-09)
+
+## User requests
+
+1. backlog 10 (ai-soc request 3, decided yes): tiered builds composite and rel temporal indexes — check:
+   red tests in `tasks/evidence/tiered-indexes/red-*.txt`, green in `green-*.txt`; `go test ./pkg/... -count=1`. [ ]
+2. "measure before building": resident bytes per indexed row + week projection — check:
+   `tasks/evidence/tiered-indexes/measure-*.txt`, numbers in CHANGELOG. [x] 156 B/row rel temporal, 310 B/row
+   composite (structure), rebuild 0.02 M rels/s (graph); a week (258-412 M rows) = 40-64 GB: does not fit.
+3. docs: CHANGELOG Unreleased subsection, architecture.md tiered sections, AGENTS.md TieredStore — check: diff. [ ]
+
+## Ledger (per step: in code? / red test / break cases / proof)
+
+- S1 rel temporal on tiered. In code? no: `store/tiered/temporal_index_listing.go:24-31` lists none, no
+  `CreateRelTemporalIndex`. Red: `TestTieredRelTemporalIndex_*` (tiered), `TestTieredRelTemporalPrune_ParityWithBadger*`
+  (core). Break cases: token 0, duplicate, drop unknown/twice, closed store, prune with no filter / no index.
+- S2 cross-shard rel rows not in the per-shard envelope. In code? no: `store/badger/badgerstore_partial.go:115`
+  (PutRelEntityAndOut maintains only the property index), `:250` (DeleteRelEntityAndOut no purge). Red: the E->R
+  rel in the parity scenario is kept by tiered, dropped by badger.
+- S3 composite on tiered. In code? no: `store/tiered/index_introspection.go:8-17`. Red: `TestTieredComposite_*`.
+  Break cases: token 0, 1 / 5 keys, duplicate key, tkg_ key, duplicate create, drop twice, closed store.
+- Decision: per-shard fan-out, ref shard is the anchor (definitions persist per badger shard as today); prune
+  consults the shards in the query's depth, skips ref/archive envelopes once an archive exists (archive moves
+  split a rel's rows between ref and archive). Bound (hot+warm only) proposed, not built.
