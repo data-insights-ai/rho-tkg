@@ -1641,6 +1641,13 @@ patterns:
   `TxFrom = now` site is a supersession write that must keep the clock. Before adding
   a caller override for a system-controlled field, enumerate its write sites and ask
   per-site "does the invariant I'm relaxing actually bind HERE?" — relax only those.
+  **Amended 2026-10-09 (DeleteWithTx / UpdateWithTx):** "binds here" is not "never
+  relax here" — a supersession door CAN take a caller instant once the invariant is
+  re-established as a check: `t` after every TxFrom/TxTo on the chain and after the
+  version start, under the entity lock (`checkTxOrder`, `ErrTxOrder`). The monotonic
+  clock was one way to keep the chain ordered; the explicit order check is another.
+  The instant travels as an argument, never as the reserved property, so the
+  create-only rule for `tkg_tx_from` still holds.
 
 - **Land the feature at the ONE shared seam so the whole door family inherits it —
   the constructive form of lesson 58.** Lesson 58 said "a contract that spans a
@@ -1654,6 +1661,19 @@ patterns:
   property and reuses `Add` — no second code path. When the family shares a kernel
   or an extraction helper, put the new bit THERE and the family-completeness
   obligation is discharged by construction.
+  **Amended 2026-10-09:** the end/supersede doors repeat it — one `at` seam on
+  `deleteRelationshipInternal` / `deleteNodeLocked` and one `updateTemporal.txAt` in
+  the temporal update path gave all ten doors (standalone, GraphTx, Batch, ingest
+  strong and concurrent; nodes and rels) the stamp. The seam is not the whole family
+  for a DEFERRED door, though: Batch / ingest apply creates, then updates, then
+  deletes, and keep going after one op fails, so a per-op refusal left a partial past
+  that no later write at an earlier `t` can repair. The fix is a whole-unit pre-flight
+  that runs the seam's OWN refusal functions (`checkRelCallerDelete`,
+  `checkNodeCallerUpdate`, … — extracted from the seams so the two cannot diverge)
+  over every caller-instant op of the unit before any write, plus "a caller-instant op
+  is the only op on its entity in the unit" (apply order is not queue order; node
+  deletes count the relationships they cascade). A privileged override in a queued
+  door needs its refusal decided for the whole unit, not per op.
 
 - **Gate a privileged write with a Config flag; make the malformed-input error take
   precedence over the disabled-gate error.** `Config.AllowTxBackfill` (off by
