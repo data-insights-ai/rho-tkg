@@ -181,6 +181,13 @@ type Config struct {
 	// lazy open never pays the per-row rebuild. Ignored when Store is provided
 	// explicitly.
 	DropRelTemporalIndexesAtOpen bool
+	// HistoryPresenceProbeOnly answers HasNodeHistory / HasRelHistory with a
+	// per-ID key probe (one bounded prefix seek, ~1-2 us) instead of building
+	// the RAM set of IDs with history on the first call. The tiered store opens
+	// its cold shards this way: a cold shard is often opened for one read and
+	// closed again, so a key scan of its whole history keyspace would cost more
+	// than the answers it serves. Ignored when Store is provided explicitly.
+	HistoryPresenceProbeOnly bool
 	// ColumnsOnDisk persists built columnar snapshots so a cold store, or one whose
 	// in-RAM snapshot was dropped, can decode a column instead of re-reading every
 	// entity. OFF by default; on, it changes nothing a caller can observe except
@@ -495,6 +502,22 @@ type Store struct {
 	histRelEpoch  atomic.Uint64
 	histNodeCount historyCount
 	histRelCount  historyCount
+
+	// History presence (store.HistoryPresenceCapability,
+	// badgerstore_history_presence.go): per kind, a RAM set of the IDs with
+	// history rows, built once by a key-only scan and maintained by
+	// noteHistoryKey under wbMu. historyPresenceProbeOnly (Config) never builds
+	// it and probes per ID instead.
+	histNodePresence         historyPresence
+	histRelPresence          historyPresence
+	historyPresenceProbeOnly bool
+	// historyPresenceBuildHook, when non-nil, runs after a presence build's key
+	// scan and before it installs the scanned IDs (the window lessons 63 / 74
+	// guard). Set only from the owning test.
+	historyPresenceBuildHook func()
+	// historyPresenceProbeHook, when non-nil, runs after a per-ID probe and
+	// before it installs its answer. Set only from the owning test.
+	historyPresenceProbeHook func()
 
 	// DocValues: cached per-label columnar snapshots + a global node-mutation
 	// epoch bumped on EVERY node write (incl. deletes). nextNodeRev above misses
@@ -1013,16 +1036,18 @@ func New(cfg Config) (*Store, error) {
 	}
 
 	bs := &Store{
-		db:         db,
-		nodeIDs:    make(map[types.NodeID]struct{}),
-		nodeHashes: make(map[types.NodeID]string),
-		nodeRevs:   make(map[types.NodeID]uint64),
-		relIDs:     make(map[types.RelID]struct{}),
-		relRevs:    make(map[types.RelID]uint64),
-		labelIdx:   make(map[uint16]map[types.NodeID]struct{}),
-		typeIdx:    make(map[uint16]map[types.RelID]struct{}),
-		outIdx:     make(map[types.NodeID]map[types.RelID]types.NodeID),
-		inIdx:      make(map[types.NodeID]map[types.RelID]inEdge),
+		db: db,
+
+		historyPresenceProbeOnly: cfg.HistoryPresenceProbeOnly,
+		nodeIDs:                  make(map[types.NodeID]struct{}),
+		nodeHashes:               make(map[types.NodeID]string),
+		nodeRevs:                 make(map[types.NodeID]uint64),
+		relIDs:                   make(map[types.RelID]struct{}),
+		relRevs:                  make(map[types.RelID]uint64),
+		labelIdx:                 make(map[uint16]map[types.NodeID]struct{}),
+		typeIdx:                  make(map[uint16]map[types.RelID]struct{}),
+		outIdx:                   make(map[types.NodeID]map[types.RelID]types.NodeID),
+		inIdx:                    make(map[types.NodeID]map[types.RelID]inEdge),
 		// relValidIdx is built LAZILY on the first temporal traversal — a graph
 		// that never does temporal adjacency (or a tiered store, which does not
 		// expose the capability) pays nothing for the per-rel stamps.
@@ -2016,6 +2041,14 @@ func (bs *Store) Clear() error {
 	bs.idxMu.Lock()
 	defer bs.idxMu.Unlock()
 
+	// No history-presence build may scan across the wipe (lock order:
+	// flushMu -> idxMu -> presence buildMu -> wbMu; a build takes only
+	// buildMu -> wbMu). The sets are reset with the write buffer below.
+	bs.histNodePresence.buildMu.Lock()
+	defer bs.histNodePresence.buildMu.Unlock()
+	bs.histRelPresence.buildMu.Lock()
+	defer bs.histRelPresence.buildMu.Unlock()
+
 	// Clear in-memory indexes.
 	bs.nodeIDs = make(map[types.NodeID]struct{})
 	bs.nodeHashes = make(map[types.NodeID]string)
@@ -2113,6 +2146,8 @@ func (bs *Store) Clear() error {
 	bs.pendingLog = nil
 	bs.histNodeEpoch.Add(1)
 	bs.histRelEpoch.Add(1)
+	bs.histNodePresence.resetLocked()
+	bs.histRelPresence.resetLocked()
 	// Drop any snapshot a just-completed flush parked (the success path clears it,
 	// but a leaked/in-flight snapshot must not survive the wipe below — otherwise
 	// rangePending would resurface pre-Clear history keys as phantom IDs).
