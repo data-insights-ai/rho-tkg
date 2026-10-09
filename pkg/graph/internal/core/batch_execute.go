@@ -52,6 +52,10 @@ func (b *BatchBuilder) Execute() (*BatchResult, error) {
 		return nil, ErrGraphClosed
 	}
 	b.done = true
+	// The queue doors gated any backfilled TxFrom without writing; report the
+	// past-dated write after this Execute's store writes (deferred — it runs
+	// after every write and every cleanup path below).
+	defer b.g.notePastDatedWrite(pendingPastDated(b.nodes, b.rels))
 
 	// Buffer events during batch execution; dispatch after c.mu.Unlock.
 	var batchEvents []eventspkg.Event

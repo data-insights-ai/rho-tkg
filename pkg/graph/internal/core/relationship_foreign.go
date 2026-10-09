@@ -89,6 +89,7 @@ func (c *Core) addRelationshipByIDForeignEndInternal(ctx context.Context, typeNa
 	if err != nil {
 		return nil, err
 	}
+	defer c.notePastDatedWrite(prep.txFrom) // after the store write (as-of cache)
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}

@@ -90,6 +90,11 @@ func (c *Core) addRelationshipsInternal(ctx context.Context, typeName string, re
 		}
 		specs[i].relCreatePrep = prep
 	}
+	var pastDated types.Instant
+	for i := range specs {
+		pastDated = minPastDated(pastDated, specs[i].txFrom)
+	}
+	defer c.notePastDatedWrite(pastDated) // after the batch store write (as-of cache)
 	if err := checkCtx(ctx); err != nil {
 		return nil, err
 	}

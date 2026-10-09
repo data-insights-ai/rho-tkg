@@ -226,6 +226,9 @@ func (n *NodeOps) ForEachDocValuesAsOf(label string, propKeys []string, txAt typ
 // Shared by DocValuesSnapshotAsOf + ForEachDocValuesAsOf. Epoch 0 — an as-of
 // column set carries no current-state staleness signal (see DocValuesSnapshotAsOf).
 func (c *Core) buildAsOfColumns(label string, propKeys []string, txAt types.Instant) (*indexpkg.LabelDocValues, error) {
+	// Register the pin BEFORE reading the epoch (asOfColumnCache.notePin): a
+	// replica apply stamped at or below it then bumps (noteWriteAt).
+	c.asOfColumns.notePin(txAt)
 	epoch := c.asOfColumns.currentEpoch()
 
 	// Cache hit: a column built for this (label, txAt) under the current epoch that

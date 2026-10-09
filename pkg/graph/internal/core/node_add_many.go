@@ -65,6 +65,11 @@ func (c *Core) addNodesInternal(ctx context.Context, labels []string, props []ma
 			return nil, fmt.Errorf("graph: node %d of %d: %w", i, len(props), err)
 		}
 	}
+	var pastDated types.Instant
+	for i := range prepared {
+		pastDated = minPastDated(pastDated, prepared[i].txFromOverride)
+	}
+	defer c.notePastDatedWrite(pastDated) // after the batch store write (as-of cache)
 
 	primaryToken, extraTokens, labelSnapshot, allocatedLabels, labelsLocked, err := c.getOrCreateLabelsWithSnapshot(labels)
 	if err != nil {
