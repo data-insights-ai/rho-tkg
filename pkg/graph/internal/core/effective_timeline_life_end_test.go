@@ -73,6 +73,26 @@ func lifeCloseShapes() []lifeShape {
 			e.mustUpdate(id, map[string]any{"tkg_valid_from": types.Instant(2000), "tkg_valid_to": types.Instant(4000), "x": int64(2)})
 			e.mustCascade(id, 2500, 3000, map[string]any{"x": int64(1)})
 		}, want: []lifeWindow{{1000, 4000}}},
+		// Review repros (a)-(c): a cascade BEFORE the close moved the genesis
+		// out of the current slot without a TxTo, so only the row the close
+		// replaced carries one; a later cascade makes the chain non-monotonic
+		// and the genesis must still end where the close's row starts.
+		{name: "cascade-close-cascade", apply: func(e *ccEnt, id int64) {
+			e.mustCascade(id, 2000, 3000, map[string]any{"x": int64(1)})
+			e.mustClose(id, 4000)
+			e.mustCascade(id, 1500, 1800, map[string]any{"x": int64(2)})
+		}, want: []lifeWindow{{1000, 4000}}},
+		{name: "open-cascade-close-cascade", apply: func(e *ccEnt, id int64) {
+			e.mustCascade(id, 2000, 0, map[string]any{"x": int64(1)})
+			e.mustClose(id, 4000)
+			e.mustCascade(id, 1500, 1800, map[string]any{"x": int64(2)})
+		}, want: []lifeWindow{{1000, 4000}}},
+		{name: "cascade-update-close-cascade", apply: func(e *ccEnt, id int64) {
+			e.mustCascade(id, 2000, 3000, map[string]any{"x": int64(1)})
+			e.mustUpdate(id, map[string]any{"tkg_valid_from": types.Instant(3500), "x": int64(3)})
+			e.mustClose(id, 4000)
+			e.mustCascade(id, 1500, 1800, map[string]any{"x": int64(2)})
+		}, want: []lifeWindow{{1000, 4000}}},
 		{name: "close-then-one-tick-at-the-end", apply: func(e *ccEnt, id int64) {
 			e.mustClose(id, 4000)
 			e.mustCascade(id, 4000, 4001, map[string]any{"x": int64(1)})
@@ -97,6 +117,11 @@ func lifeDeleteShapes() []lifeShape {
 		{name: "close-bounded-inside-then-delete", apply: func(e *ccEnt, id int64) {
 			e.mustClose(id, 4000)
 			e.mustCascade(id, 2000, 3000, map[string]any{"x": int64(1)})
+		}, want: []lifeWindow{{1000, 4000}}, delete: true},
+		{name: "cascade-close-cascade-then-delete", apply: func(e *ccEnt, id int64) {
+			e.mustCascade(id, 2000, 3000, map[string]any{"x": int64(1)})
+			e.mustClose(id, 4000)
+			e.mustCascade(id, 1500, 1800, map[string]any{"x": int64(2)})
 		}, want: []lifeWindow{{1000, 4000}}, delete: true},
 		{name: "close-gap-then-delete", apply: func(e *ccEnt, id int64) {
 			e.mustClose(id, 4000)
