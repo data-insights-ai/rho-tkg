@@ -1,3 +1,32 @@
+# todo — item E: durable-on-return commit, Config.DurableCommit (backlog 11, 2026-10-09)
+
+## User requests
+
+1. Opt-in `graph.Config.DurableCommit`: GraphTx.Commit, Batch.Execute (ingest strong applier), Tx().Run* flush the
+   pending buffer to disk before returning success; every touched shard on tiered/sharded; memory store declines at
+   New with ErrCapabilityNotSupported; default off byte-identical; Rollback never flushes; failed flush surfaces and
+   the group stays pending. — check: tests in `pkg/graph/durable_commit*_test.go`, red/green in
+   `tasks/evidence/durable-commit/`. [ ]
+2. Latency flag on vs off on badger — check: benchmark numbers in CHANGELOG and report. [ ]
+3. Docs: AGENTS.md Configuration, docs/architecture.md, CHANGELOG `### Durable-on-return commit (Config.DurableCommit)`. [ ]
+
+## Ledger (written before code)
+
+- in code? no. `GraphTx.Commit` (pkg/graph/internal/core/tx.go:627-685) and `Execute`
+  (batch_execute.go:640-699) never flush; only the strong applier's `EndGroupCommit` (batch_execute.go:669) flushes
+  without fsync; badger `flush()` (badgerstore_flush.go:144) never fsyncs unless `SyncWrites`; tiered `Flush`
+  (tieredstore_changelog.go:762) lazy-opens cold shards via `forEachOpenShard`.
+- R0 `TestDurableCommitOff_*` (compiles on main): flag off → a crash child after Commit/Execute leaves the rows absent
+  and the spy sees 0 store Flush calls. Run on main BEFORE any change (evidence r0-before.txt) and after.
+- Red tests (stubbed capability, returning nil): crash child badger GraphTx/Run/Batch/ingest, tiered two shards,
+  sharded two slots — rows present after os.Exit; DurableFlush count = 0 on Rollback and flag off; flush error
+  surfaces (errors.Is ErrCommitNotDurable + cause) and the next commit drains it; New + memory / BadgerInMemory →
+  ErrCapabilityNotSupported. Break-the-code: commit without flush, flush only one shard, flush on Rollback,
+  flush when off, swallowed flush error, memory store accepted as a no-op.
+- Proof: tasks/evidence/durable-commit/{r0-before,red,green}-*.txt; benchmark numbers.
+
+---
+
 # todo — reanalysis: v5 plan (Downloads/PLAN.md, RESEARCH-REVIEW.md, DISCUSSION.md) vs the code (2026-10-09, later)
 
 ## User requests
