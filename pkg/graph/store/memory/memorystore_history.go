@@ -1125,14 +1125,16 @@ func (ms *Store) RelsAsOf(txTime types.Instant) ([]*types.Relationship, error) {
 }
 
 func nodeAsOfLocked(current *types.Node, history map[uint32]*types.Node, txTime types.Instant) *types.Node {
-	if nodeMatchesTxTime(current, txTime) {
+	// Fast path: the live current row answers when it is recorded by the pin
+	// and no history row sits above its version (the rule's current arm with
+	// nothing to outrank it — no slice is built).
+	if nodeMatchesTxTime(current, txTime) && !historyHasVersionAbove(history, current.Version()) {
 		return current
 	}
-	// History arm: the shared as-of selection rule (newest belief by version with
-	// TxFrom<=txTime, absent if that decisive belief was retracted/deleted by the
-	// pin — lesson 62). The current fast path above already returned the live row
-	// when it is the answer, so history alone is the candidate set here.
-	best, ok := storeutil.SelectAsOf(nodeHistoryVersionSlice(history), txTime)
+	// The shared as-of selection rule (storeutil.SelectAsOfWithCurrent: the
+	// newest row recorded by the pin, absent if it was retracted/deleted by
+	// the pin or its life ended in a tombstone — lessons 62, backlog 18/20).
+	best, ok := storeutil.SelectAsOfWithCurrent(nodeHistoryVersionSlice(history), current, current != nil, txTime)
 	if !ok {
 		return nil
 	}
@@ -1140,14 +1142,25 @@ func nodeAsOfLocked(current *types.Node, history map[uint32]*types.Node, txTime 
 }
 
 func relAsOfLocked(current *types.Relationship, history map[uint32]*types.Relationship, txTime types.Instant) *types.Relationship {
-	if relMatchesTxTime(current, txTime) {
+	if relMatchesTxTime(current, txTime) && !historyHasVersionAbove(history, current.Version()) {
 		return current
 	}
-	best, ok := storeutil.SelectAsOf(relHistoryVersionSlice(history), txTime)
+	best, ok := storeutil.SelectAsOfWithCurrent(relHistoryVersionSlice(history), current, current != nil, txTime)
 	if !ok {
 		return nil
 	}
 	return best
+}
+
+// historyHasVersionAbove reports whether a version-keyed history map holds a
+// version above v (a cascade row written while the current row kept its slot).
+func historyHasVersionAbove[T any](history map[uint32]T, v uint32) bool {
+	for hv := range history {
+		if hv > v {
+			return true
+		}
+	}
+	return false
 }
 
 // nodeHistoryVersionSlice flattens a version-keyed history map into the slice

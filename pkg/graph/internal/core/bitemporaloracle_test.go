@@ -164,6 +164,15 @@ func (e *oracleEntity) bounds(chain []oracleRow, i int) (types.Instant, types.In
 // its ValidTo equals the DeletedAt stamp the interval re-opens (0). Rows are
 // copied by value, so the captured model is never mutated.
 func (e *oracleEntity) txFilter(txAt types.Instant) []oracleRow {
+	out := e.txFilterCaptureOrder(txAt)
+	// The resolver classifies a chain in ascending VERSION order (lesson 73):
+	// e.rows is history ‖ current, which is not version-ordered when a bounded
+	// cascade left the current row below the rows it appended.
+	sort.SliceStable(out, func(i, j int) bool { return out[i].version < out[j].version })
+	return out
+}
+
+func (e *oracleEntity) txFilterCaptureOrder(txAt types.Instant) []oracleRow {
 	if txAt == 0 {
 		return append([]oracleRow(nil), e.rows...)
 	}
@@ -253,6 +262,7 @@ func (e *oracleEntity) pointVisible(validAt, txAt types.Instant) (oracleRow, boo
 		// Fast path: newest covering version (highest effVF) wins.
 		for i := len(chain) - 1; i >= 0; i-- {
 			vs, ve := e.bounds(chain, i)
+			ve = capAtLifeEnd(ve, lifeEnd(chain, chain[i]))
 			if vs <= validAt && (ve == 0 || ve > validAt) {
 				return chain[i], true
 			}
@@ -264,6 +274,7 @@ func (e *oracleEntity) pointVisible(validAt, txAt types.Instant) (oracleRow, boo
 	best := -1
 	for i := range chain {
 		vs, ve := e.ownBounds(chain[i])
+		ve = capAtLifeEnd(ve, lifeEnd(chain, chain[i]))
 		if vs <= validAt && (ve == 0 || ve > validAt) {
 			if best < 0 || beliefNewer(chain[i], chain[best]) {
 				best = i
@@ -285,6 +296,12 @@ func (e *oracleEntity) intervalVisible(s, end, txAt types.Instant, pred func(ora
 	chain, _ := e.sortChain(e.txFilter(txAt)) // interval path always sorts
 	for i := len(chain) - 1; i >= 0; i-- {
 		vs, ve := e.bounds(chain, i)
+		if le := lifeEnd(chain, chain[i]); le != 0 && (ve == 0 || ve > le) {
+			if le <= vs {
+				continue // the delete ended this row's life before it began
+			}
+			ve = le
+		}
 		if vs < end && (ve == 0 || ve > s) {
 			if pred == nil || pred(chain[i]) {
 				return chain[i], true
@@ -294,38 +311,71 @@ func (e *oracleEntity) intervalVisible(s, end, txAt types.Instant, pred func(ora
 	return oracleRow{}, false
 }
 
+// lifeEnd is the instant r's life ended in a (txAt-filtered) chain: the first
+// hard delete (DeletedAt) recorded at or after r was recorded; 0 = no delete.
+// The valid-time doors end every row of that life at the delete (handover 2a),
+// not just the tombstoned row: an open genesis under a bounded correction
+// otherwise outlived the delete. A re-imported ID's later rows (recorded after
+// the delete) belong to the next life.
+func lifeEnd(chain []oracleRow, r oracleRow) types.Instant {
+	var end types.Instant
+	for _, x := range chain {
+		if x.deletedAt != 0 && x.deletedAt >= r.txFrom && (end == 0 || x.deletedAt < end) {
+			end = x.deletedAt
+		}
+	}
+	return end
+}
+
+// capAtLifeEnd caps a valid end (0 = open) at a life end (0 = none).
+func capAtLifeEnd(vEnd, life types.Instant) types.Instant {
+	if life != 0 && (vEnd == 0 || vEnd > life) {
+		return life
+	}
+	return vEnd
+}
+
 // asOfVisible resolves the named as-of SNAPSHOT door (NodesAsOf/RelsAsOf): the
-// record recorded-CURRENT at txTime. It is a distinct resolver from the
+// newest row recorded by txTime. It is a distinct resolver from the
 // point/interval doors (tx-time only, no valid-time), so it has its own oracle
-// clause. Mirrors the aligned backends (memory nodeAsOfLocked, badger native
-// reverse-scan, core fallback) exactly:
+// clause. An independent restatement of storeutil.SelectAsOfWithCurrent:
 //
-//   - current arm: a live current row wins iff it is open in tx-time and already
-//     committed at txTime (TxFrom>0 && TxFrom<=txTime && TxTo==0). It wins even
-//     when a later-TxFrom HISTORY row exists (a bounded cascade can append a
-//     higher-version row while leaving the live current unchanged) — both
-//     backends short-circuit on the live current before scanning history.
-//   - history arm (current absent OR not committed by txTime): the newest BELIEF
-//     recorded by txTime — the highest VERSION among history rows with
-//     TxFrom<=txTime. Recency is by version, NOT by TxFrom: an Update derives its
-//     TxFrom via validInstantAfter and can bump it ABOVE a later cascade row's
-//     plain c.now() stamp, so version order (allocation order) — not TxFrom order
-//     — is authoritative, mirroring the badger native reverse-scan. That belief
-//     is decisive: if it was retracted/deleted by txTime (TxTo!=0 && TxTo<=txTime,
-//     or DeletedAt!=0 && DeletedAt<=txTime) the entity is ABSENT — the resolver
-//     must NOT fall through to an older open-TxTo row (lesson 62). This is the
-//     bug the WP fixed: an append-only cascade demotes the prior current to
-//     history WITHOUT stamping its TxTo, so a hard delete leaving the corrected
-//     tile tombstoned used to resurrect the open-TxTo genesis on memory/tiered
-//     while badger correctly reported absent.
+//   - current arm: a live current row recorded by txTime and open in tx-time
+//     (TxTo==0) answers — unless a history row with a HIGHER version was
+//     recorded after it and by txTime (a bounded cascade that left the current
+//     row in its slot appends such rows): the highest such row answers, absent
+//     if it was retracted by txTime. Answering the current row while it is
+//     current and that row once it is superseded made the answer at a pin
+//     depend on a later write (backlog 18).
+//   - history arm (current absent or not recorded by txTime): the highest
+//     VERSION among history rows with TxFrom<=txTime. Recency is by version,
+//     NOT by TxFrom (lesson 62); versions are allocated in write order. That
+//     row is decisive: if it was retracted/deleted by txTime the entity is
+//     ABSENT — never fall through to an older open-TxTo row (lesson 62). And
+//     if the row that held the current slot when it was written — the
+//     highest-version lower row carrying a TxTo — was hard-deleted after it
+//     and by txTime, the entity is ABSENT (handover 2a: a delete after a
+//     bounded cascade).
 func (e *oracleEntity) asOfVisible(txTime types.Instant) (oracleRow, bool) {
+	retracted := func(r oracleRow) bool {
+		return (r.txTo != 0 && r.txTo <= txTime) || (r.deletedAt != 0 && r.deletedAt <= txTime)
+	}
 	n := len(e.rows)
 	if e.currentAlive {
 		cur := e.rows[n-1]
+		n-- // the history arm scans everything except the live current row
 		if cur.txFrom > 0 && cur.txFrom <= txTime && cur.txTo == 0 {
-			return cur, true
+			best, above := cur, false
+			for _, r := range e.rows[:n] {
+				if r.version > best.version && r.txFrom > cur.txFrom && r.txFrom <= txTime {
+					best, above = r, true
+				}
+			}
+			if above && retracted(best) {
+				return oracleRow{}, false
+			}
+			return best, true
 		}
-		n-- // history arm scans everything except the live current row
 	}
 	best := -1
 	for i := 0; i < n; i++ {
@@ -341,11 +391,20 @@ func (e *oracleEntity) asOfVisible(txTime types.Instant) (oracleRow, bool) {
 		return oracleRow{}, false
 	}
 	b := e.rows[best]
-	if b.txTo != 0 && b.txTo <= txTime { // decisive belief superseded by the pin
+	if retracted(b) { // decisive row superseded or deleted by the pin
 		return oracleRow{}, false
 	}
-	if b.deletedAt != 0 && b.deletedAt <= txTime { // decisive belief deleted by the pin
-		return oracleRow{}, false
+	slot := -1
+	for i := 0; i < n; i++ {
+		r := e.rows[i]
+		if r.txTo != 0 && r.version < b.version && (slot < 0 || r.version > e.rows[slot].version) {
+			slot = i
+		}
+	}
+	if slot >= 0 {
+		if d := e.rows[slot].deletedAt; d != 0 && d > b.txFrom && d <= txTime {
+			return oracleRow{}, false // the slot holder's life ended after b was recorded
+		}
 	}
 	return b, true
 }

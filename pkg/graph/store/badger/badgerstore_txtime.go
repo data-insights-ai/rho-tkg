@@ -17,99 +17,17 @@ import (
 // read by MATERIALIZING the entire version history of an entity (every version
 // decoded + deep-copied) and then linear-scanning it. These native methods
 // replace that with a bounded REVERSE scan: the history keys are ordered by
-// (entity, ascending version) and version tracks TxFrom monotonically, so a
-// reverse iterator visits versions newest-first and stops at the first version
-// visible at the query time — O(versions newer than the query) instead of
-// O(all versions). Adding the four methods directly to *Store auto-enables the
-// native path via nativeTransactionTimeQuery (core.go), no wiring change.
+// (entity, ascending version), so a reverse iterator visits versions
+// newest-first and stops as soon as the as-of rule is decided — O(versions
+// newer than the query, plus the one row that held the current slot) instead
+// of O(all versions). Adding the four methods directly to *Store auto-enables
+// the native path via nativeTransactionTimeQuery (core.go), no wiring change.
 //
-// Selection semantics mirror the memory backend exactly (memorystore_history.go
-// nodeAsOfLocked / nodeMatchesTxTime): the current row wins iff it is open in
-// transaction time and already committed at txTime; otherwise the visible
-// version is the highest-TxFrom history version with TxFrom <= txTime that was
-// not yet superseded at txTime. Temporal "rewinding" (TxTo / DeletedAt that
-// post-date txTime) is applied by the core layer, which also deep-copies the
-// returned entity (txTimeQueryCopy is true for non-memory natives), so these
-// methods return the raw selected version.
-
-// txTimeMatchesCurrent reports whether a current entity row is the version
-// visible at txTime: open in tx-time (TxTo == 0) and already committed
-// (0 < TxFrom <= txTime). Mirrors memory's nodeMatchesTxTime / relMatchesTxTime.
-func txTimeMatchesCurrent(tm *types.TemporalMetadata, txTime types.Instant) bool {
-	return tm != nil && tm.TxFrom > 0 && tm.TxFrom <= txTime && tm.TxTo == 0
-}
-
-// txTimeVersionVerdict classifies one history version during the reverse scan.
-type txTimeVersionVerdict int
-
-const (
-	txTimeSkip    txTimeVersionVerdict = iota // not committed yet at txTime (or no temporal) — keep scanning older
-	txTimeVisible                             // this version is visible at txTime — done
-	txTimeHidden                              // first committed-by-txTime version, but superseded — entity not visible, done
-)
-
-// classifyVersionAtTxTime decides a version's fate against txTime. The reverse
-// scan visits versions in descending TxFrom order; the FIRST version with
-// TxFrom <= txTime is decisive because transaction-time intervals of an entity's
-// versions are contiguous and non-overlapping (a superseding version's TxFrom
-// equals the superseded version's TxTo), so no older version can cover txTime if
-// this one does not. That is why the scan can stop early instead of materializing
-// the whole chain like the fallback.
-func classifyVersionAtTxTime(tm *types.TemporalMetadata, txTime types.Instant) txTimeVersionVerdict {
-	if tm == nil || tm.TxFrom == 0 || tm.TxFrom > txTime {
-		return txTimeSkip
-	}
-	if tm.TxTo == 0 || tm.TxTo > txTime {
-		return txTimeVisible
-	}
-	return txTimeHidden
-}
-
-// classifyTxWindowAtTxTime is classifyVersionAtTxTime on the raw tail ints —
-// the verdict needs ONLY TxFrom/TxTo, which is exactly what the v2 fixed
-// temporal tail carries, so a peeked pair classifies without a decode.
-func classifyTxWindowAtTxTime(txFrom, txTo int64, txTime types.Instant) txTimeVersionVerdict {
-	if txFrom == 0 || types.Instant(txFrom) > txTime {
-		return txTimeSkip
-	}
-	if txTo == 0 || types.Instant(txTo) > txTime {
-		return txTimeVisible
-	}
-	return txTimeHidden
-}
-
-// classifyHistoryNodeValueAtTxTime classifies a raw node history row against
-// txTime. A FULL (non-delta) v2 row is classified by PEEKING its fixed
-// transaction-time tail — no msgpack decode (the early-pin reverse walk used
-// to pay one full row decode PER WALKED VERSION just to read TxFrom/TxTo;
-// a requirement). Delta rows and legacy v1 rows fall back to the
-// temporal-meta decode, so every framing keeps the same verdict.
-func (bs *Store) classifyHistoryNodeValueAtTxTime(id snowflake.ID, version uint64, val []byte, txTime types.Instant) (txTimeVersionVerdict, error) {
-	if storepkg.HistoryValueKindOf(val) == storepkg.HistoryFull {
-		if tf, tt, ok := storepkg.PeekWireTemporalTail(val); ok {
-			return classifyTxWindowAtTxTime(tf, tt, txTime), nil
-		}
-	}
-	n, err := bs.historyNodeTemporal(id, version, val)
-	if err != nil {
-		return txTimeSkip, err
-	}
-	return classifyVersionAtTxTime(n.Temporal(), txTime), nil
-}
-
-// classifyHistoryRelValueAtTxTime mirrors classifyHistoryNodeValueAtTxTime.
-func (bs *Store) classifyHistoryRelValueAtTxTime(id snowflake.ID, version uint64, val []byte, txTime types.Instant) (txTimeVersionVerdict, error) {
-	if storepkg.HistoryValueKindOf(val) == storepkg.HistoryFull {
-		if tf, tt, ok := storepkg.PeekWireTemporalTail(val); ok {
-			return classifyTxWindowAtTxTime(tf, tt, txTime), nil
-		}
-	}
-	r, err := bs.historyRelTemporal(id, version, val)
-	if err != nil {
-		return txTimeSkip, err
-	}
-	return classifyVersionAtTxTime(r.Temporal(), txTime), nil
-}
+// Selection semantics are storeutil.SelectAsOfWithCurrent's (shared with the
+// memory backend and the core fallback; see selectAsOfScan). Temporal
+// "rewinding" (TxTo / DeletedAt that post-date txTime) is applied by the core
+// layer, which also deep-copies the returned entity (txTimeQueryCopy is true
+// for non-memory natives), so these methods return the raw selected version.
 
 // reverseScanHistoryVersion walks one entity's version history newest-first and
 // invokes consider(version, valueBytes) for each version in DESCENDING version
@@ -347,8 +265,175 @@ func (bs *Store) reverseScanHistoryVersionInTxnOverlay(txn *badgerv4.Txn, prefix
 	}
 }
 
+// asOfPick is the outcome of one entity's as-of selection over its history
+// reverse scan: the current row answers (fromCurrent), a history row answers
+// (version + its raw bytes, copied), or the entity is absent (!found).
+type asOfPick struct {
+	found       bool
+	fromCurrent bool
+	version     uint64
+	raw         []byte
+}
+
+// historyTxWindow returns a history row's TxFrom/TxTo, peeking the fixed v2
+// temporal tail when it can (no decode) and decoding the temporal block
+// otherwise (delta rows, legacy v1 rows).
+type historyTxWindow func(version uint64, val []byte) (txFrom, txTo int64, err error)
+
+// historyDeletedAt decodes a history row's DeletedAt (only for the one row the
+// tombstone rule inspects).
+type historyDeletedAt func(version uint64, val []byte) (types.Instant, error)
+
+func (bs *Store) nodeTxWindow(id snowflake.ID) historyTxWindow {
+	return func(version uint64, val []byte) (int64, int64, error) {
+		if storepkg.HistoryValueKindOf(val) == storepkg.HistoryFull {
+			if tf, tt, ok := storepkg.PeekWireTemporalTail(val); ok {
+				return tf, tt, nil
+			}
+		}
+		n, err := bs.historyNodeTemporal(id, version, val)
+		if err != nil {
+			return 0, 0, err
+		}
+		tm := n.Temporal()
+		if tm == nil {
+			return 0, 0, nil
+		}
+		return int64(tm.TxFrom), int64(tm.TxTo), nil
+	}
+}
+
+func (bs *Store) relTxWindow(id snowflake.ID) historyTxWindow {
+	return func(version uint64, val []byte) (int64, int64, error) {
+		if storepkg.HistoryValueKindOf(val) == storepkg.HistoryFull {
+			if tf, tt, ok := storepkg.PeekWireTemporalTail(val); ok {
+				return tf, tt, nil
+			}
+		}
+		r, err := bs.historyRelTemporal(id, version, val)
+		if err != nil {
+			return 0, 0, err
+		}
+		tm := r.Temporal()
+		if tm == nil {
+			return 0, 0, nil
+		}
+		return int64(tm.TxFrom), int64(tm.TxTo), nil
+	}
+}
+
+func (bs *Store) nodeDeletedAt(id snowflake.ID) historyDeletedAt {
+	return func(version uint64, val []byte) (types.Instant, error) {
+		n, err := bs.historyNodeTemporal(id, version, val)
+		if err != nil || n.Temporal() == nil {
+			return 0, err
+		}
+		return n.Temporal().DeletedAt, nil
+	}
+}
+
+func (bs *Store) relDeletedAt(id snowflake.ID) historyDeletedAt {
+	return func(version uint64, val []byte) (types.Instant, error) {
+		r, err := bs.historyRelTemporal(id, version, val)
+		if err != nil || r.Temporal() == nil {
+			return 0, err
+		}
+		return r.Temporal().DeletedAt, nil
+	}
+}
+
+// selectAsOfScan applies storeutil.SelectAsOfWithCurrent's rule to one
+// entity's history, visited newest-version-first by scan (the
+// reverseScanHistoryVersion contract), and the live current row (cur, nil
+// when none). It stops as soon as the rule is decided:
+//
+//   - current arm (cur recorded by txTime, TxTo == 0): only the versions above
+//     cur's are visited; the first recorded after cur and by txTime outranks
+//     cur (a cascade row written while cur kept the current slot);
+//   - history arm: the first version recorded by txTime is the newest; absent
+//     if it was retracted by txTime; otherwise the scan continues to the first
+//     lower version carrying a TxTo (the row that held the current slot) and
+//     the entity is absent if that row is a tombstone deleted after the newest
+//     was recorded and by txTime. A hard delete stamps TxTo == DeletedAt, so
+//     only a row whose TxTo lies in that window is decoded for its DeletedAt.
+//
+// Equivalence with SelectAsOfWithCurrent is pinned by the badger as-of
+// equivalence tests over generated chains.
+func selectAsOfScan(scan func(consider func(version uint64, val []byte) (bool, error)) error, cur *types.TemporalMetadata, curVersion uint32, txTime types.Instant, window historyTxWindow, deletedAt historyDeletedAt) (asOfPick, error) {
+	if cur != nil && cur.TxFrom > 0 && cur.TxFrom <= txTime && cur.TxTo == 0 {
+		pick := asOfPick{found: true, fromCurrent: true}
+		var aboveTxTo int64
+		err := scan(func(version uint64, val []byte) (bool, error) {
+			if version <= uint64(curVersion) {
+				return true, nil
+			}
+			tf, tt, err := window(version, val)
+			if err != nil {
+				return false, err
+			}
+			if tf > int64(cur.TxFrom) && types.Instant(tf) <= txTime {
+				pick = asOfPick{found: true, version: version, raw: append([]byte(nil), val...)}
+				aboveTxTo = tt
+				return true, nil
+			}
+			return false, nil
+		})
+		if err != nil {
+			return asOfPick{}, err
+		}
+		if !pick.fromCurrent && aboveTxTo != 0 && types.Instant(aboveTxTo) <= txTime {
+			return asOfPick{}, nil
+		}
+		return pick, nil
+	}
+
+	var (
+		pick    asOfPick
+		newestF int64
+		absent  bool
+	)
+	err := scan(func(version uint64, val []byte) (bool, error) {
+		tf, tt, err := window(version, val)
+		if err != nil {
+			return false, err
+		}
+		if !pick.found {
+			if tf == 0 || types.Instant(tf) > txTime {
+				return false, nil // recorded after the pin — keep scanning older versions
+			}
+			if tt != 0 && types.Instant(tt) <= txTime {
+				absent = true // the newest row was retracted by the pin
+				return true, nil
+			}
+			pick = asOfPick{found: true, version: version, raw: append([]byte(nil), val...)}
+			newestF = tf
+			return false, nil
+		}
+		if tt == 0 {
+			return false, nil // never held the current slot — keep looking for the row that did
+		}
+		if tt > newestF && types.Instant(tt) <= txTime {
+			d, err := deletedAt(version, val)
+			if err != nil {
+				return false, err
+			}
+			if d != 0 && int64(d) > newestF && d <= txTime {
+				absent = true // the slot holder's life ended in a delete after the newest row
+			}
+		}
+		return true, nil
+	})
+	if err != nil {
+		return asOfPick{}, err
+	}
+	if absent {
+		return asOfPick{}, nil
+	}
+	return pick, nil
+}
+
 // NodeAsOf returns the node version visible at txTime without materializing the
-// node's full history. See the file header for the algorithm and semantics.
+// node's full history. See the file header and selectAsOfScan for the rule.
 func (bs *Store) NodeAsOf(nid types.NodeID, txTime types.Instant) (*types.Node, error) {
 	if err := bs.checkOpen(); err != nil {
 		return nil, err
@@ -357,48 +442,41 @@ func (bs *Store) NodeAsOf(nid types.NodeID, txTime types.Instant) (*types.Node, 
 		return nil, err
 	}
 
-	// Current-row arm: cache-backed (GetNode), no pending check needed — current
+	// Current row: cache-backed (GetNode), no pending check needed — current
 	// rows are written through the cache synchronously before the badger commit.
 	current, err := bs.GetNode(nid)
 	if err != nil && !errors.Is(err, ErrNodeNotFound) {
 		return nil, err
 	}
-	if current != nil && txTimeMatchesCurrent(current.Temporal(), txTime) {
-		return current, nil // GetNode already returned a DeepCopy
-	}
-
-	// History arm: reverse-scan for the visible superseded version. Classify by
-	// temporal metadata only — a delta carries the full temporal block in its Meta,
-	// so no anchor read is needed during the scan; the winning version is fully
-	// reconstructed (point-reading its anchor if it is a delta) after the scan.
 	id := nid.SnowflakeID()
-	var winnerVersion uint64
-	var winnerRaw []byte
-	found := false
-	scanErr := bs.reverseScanHistoryVersion(storepkg.HistNodePrefix(id), func(version uint64, val []byte) (bool, error) {
-		verdict, err := bs.classifyHistoryNodeValueAtTxTime(id, version, val, txTime)
-		if err != nil {
-			return false, err
-		}
-		switch verdict {
-		case txTimeVisible:
-			winnerRaw = append([]byte(nil), val...)
-			winnerVersion = version
-			found = true
-			return true, nil
-		case txTimeHidden:
-			return true, nil // decisive: entity not visible at txTime
-		default:
-			return false, nil // keep scanning older versions
-		}
-	})
-	if scanErr != nil {
-		return nil, scanErr
+	prefix := storepkg.HistNodePrefix(id)
+	scan := func(consider func(version uint64, val []byte) (bool, error)) error {
+		return bs.reverseScanHistoryVersion(prefix, consider)
 	}
-	if !found {
+	return bs.nodeAsOfPick(id, current, txTime, scan)
+}
+
+// nodeAsOfPick runs selectAsOfScan for one node and materializes the winner:
+// the current row (GetNode / getNodeInTxn already returned a copy) or the
+// winning history row, fully reconstructed (its anchor point-read if it is a
+// delta).
+func (bs *Store) nodeAsOfPick(id snowflake.ID, current *types.Node, txTime types.Instant, scan func(consider func(version uint64, val []byte) (bool, error)) error) (*types.Node, error) {
+	var cur *types.TemporalMetadata
+	var curVersion uint32
+	if current != nil {
+		cur, curVersion = current.Temporal(), current.Version()
+	}
+	pick, err := selectAsOfScan(scan, cur, curVersion, txTime, bs.nodeTxWindow(id), bs.nodeDeletedAt(id))
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case !pick.found:
 		return nil, ErrVersionNotFound
+	case pick.fromCurrent:
+		return current, nil
 	}
-	return bs.decodeHistoryNodeValue(id, winnerVersion, winnerRaw)
+	return bs.decodeHistoryNodeValue(id, pick.version, pick.raw)
 }
 
 // RelAsOf returns the relationship version visible at txTime. Mirrors NodeAsOf.
@@ -414,89 +492,58 @@ func (bs *Store) RelAsOf(rid types.RelID, txTime types.Instant) (*types.Relation
 	if err != nil && !errors.Is(err, ErrRelNotFound) {
 		return nil, err
 	}
-	if current != nil && txTimeMatchesCurrent(current.Temporal(), txTime) {
+	id := rid.SnowflakeID()
+	prefix := storepkg.HistRelPrefix(id)
+	scan := func(consider func(version uint64, val []byte) (bool, error)) error {
+		return bs.reverseScanHistoryVersion(prefix, consider)
+	}
+	return bs.relAsOfPick(id, current, txTime, scan)
+}
+
+// relAsOfPick mirrors nodeAsOfPick for relationships.
+func (bs *Store) relAsOfPick(id snowflake.ID, current *types.Relationship, txTime types.Instant, scan func(consider func(version uint64, val []byte) (bool, error)) error) (*types.Relationship, error) {
+	var cur *types.TemporalMetadata
+	var curVersion uint32
+	if current != nil {
+		cur, curVersion = current.Temporal(), current.Version()
+	}
+	pick, err := selectAsOfScan(scan, cur, curVersion, txTime, bs.relTxWindow(id), bs.relDeletedAt(id))
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case !pick.found:
+		return nil, ErrVersionNotFound
+	case pick.fromCurrent:
 		return current, nil
 	}
-
-	id := rid.SnowflakeID()
-	var winnerVersion uint64
-	var winnerRaw []byte
-	found := false
-	scanErr := bs.reverseScanHistoryVersion(storepkg.HistRelPrefix(id), func(version uint64, val []byte) (bool, error) {
-		verdict, err := bs.classifyHistoryRelValueAtTxTime(id, version, val, txTime)
-		if err != nil {
-			return false, err
-		}
-		switch verdict {
-		case txTimeVisible:
-			winnerRaw = append([]byte(nil), val...)
-			winnerVersion = version
-			found = true
-			return true, nil
-		case txTimeHidden:
-			return true, nil
-		default:
-			return false, nil
-		}
-	})
-	if scanErr != nil {
-		return nil, scanErr
-	}
-	if !found {
-		return nil, ErrVersionNotFound
-	}
-	return bs.decodeHistoryRelValue(id, winnerVersion, winnerRaw)
+	return bs.decodeHistoryRelValue(id, pick.version, pick.raw)
 }
 
 // nodeAsOfInTxn is NodeAsOf's body reading through an ALREADY-OPEN read
 // transaction and an ALREADY-CAPTURED overlay snapshot instead of opening/
 // reading its own — used by NodesAsOf's single-transaction bulk scan
-// (BACKLOG 18k). Same selection algorithm and same error contract as NodeAsOf
+// (BACKLOG 18k). Same selection rule and same error contract as NodeAsOf
 // (ErrVersionNotFound on no visible version). See historyOverlaySnapshot for
 // why the overlay must be pre-captured rather than live-read per entity.
+//
+// Winner decode: the default (non-delta) path decodes from the copied raw
+// bytes alone, no txn needed. Under opt-in HistoryDeltaEncoding a delta
+// winner's anchor read opens its OWN nested transaction (legal — badger read
+// txns nest fine — just not yet folded into the shared txn; BACKLOG 18k design
+// section 6a defers that elimination as a follow-up since delta mode is
+// opt-in/default-off).
 func (bs *Store) nodeAsOfInTxn(snap *scanSnapshot, nid types.NodeID, txTime types.Instant, overlay historyOverlaySnapshot) (*types.Node, error) {
 	current, err := bs.getNodeInTxn(snap, nid)
 	if err != nil && !errors.Is(err, ErrNodeNotFound) {
 		return nil, err
 	}
-	if current != nil && txTimeMatchesCurrent(current.Temporal(), txTime) {
-		return current, nil
-	}
-
 	id := nid.SnowflakeID()
-	var winnerVersion uint64
-	var winnerRaw []byte
-	found := false
-	scanErr := bs.reverseScanHistoryVersionInTxnSnapshot(snap.anyTxn(), storepkg.HistNodePrefix(id), overlay, func(version uint64, val []byte) (bool, error) {
-		verdict, err := bs.classifyHistoryNodeValueAtTxTime(id, version, val, txTime)
-		if err != nil {
-			return false, err
-		}
-		switch verdict {
-		case txTimeVisible:
-			winnerRaw = append([]byte(nil), val...)
-			winnerVersion = version
-			found = true
-			return true, nil
-		case txTimeHidden:
-			return true, nil
-		default:
-			return false, nil
-		}
-	})
-	if scanErr != nil {
-		return nil, scanErr
+	prefix := storepkg.HistNodePrefix(id)
+	scan := func(consider func(version uint64, val []byte) (bool, error)) error {
+		return bs.reverseScanHistoryVersionInTxnSnapshot(snap.anyTxn(), prefix, overlay, consider)
 	}
-	if !found {
-		return nil, ErrVersionNotFound
-	}
-	// Winner decode: the default (non-delta) path decodes from winnerRaw alone,
-	// no txn needed. Under opt-in HistoryDeltaEncoding a delta winner's anchor
-	// read opens its OWN nested transaction here (legal — badger read txns
-	// nest fine — just not yet folded into the shared txn; BACKLOG 18k design
-	// section 6a defers that elimination as a follow-up since delta mode is
-	// opt-in/default-off).
-	return bs.decodeHistoryNodeValue(id, winnerVersion, winnerRaw)
+	return bs.nodeAsOfPick(id, current, txTime, scan)
 }
 
 // relAsOfInTxn mirrors nodeAsOfInTxn for relationships.
@@ -505,38 +552,12 @@ func (bs *Store) relAsOfInTxn(snap *scanSnapshot, rid types.RelID, txTime types.
 	if err != nil && !errors.Is(err, ErrRelNotFound) {
 		return nil, err
 	}
-	if current != nil && txTimeMatchesCurrent(current.Temporal(), txTime) {
-		return current, nil
-	}
-
 	id := rid.SnowflakeID()
-	var winnerVersion uint64
-	var winnerRaw []byte
-	found := false
-	scanErr := bs.reverseScanHistoryVersionInTxnSnapshot(snap.anyTxn(), storepkg.HistRelPrefix(id), overlay, func(version uint64, val []byte) (bool, error) {
-		verdict, err := bs.classifyHistoryRelValueAtTxTime(id, version, val, txTime)
-		if err != nil {
-			return false, err
-		}
-		switch verdict {
-		case txTimeVisible:
-			winnerRaw = append([]byte(nil), val...)
-			winnerVersion = version
-			found = true
-			return true, nil
-		case txTimeHidden:
-			return true, nil
-		default:
-			return false, nil
-		}
-	})
-	if scanErr != nil {
-		return nil, scanErr
+	prefix := storepkg.HistRelPrefix(id)
+	scan := func(consider func(version uint64, val []byte) (bool, error)) error {
+		return bs.reverseScanHistoryVersionInTxnSnapshot(snap.anyTxn(), prefix, overlay, consider)
 	}
-	if !found {
-		return nil, ErrVersionNotFound
-	}
-	return bs.decodeHistoryRelValue(id, winnerVersion, winnerRaw)
+	return bs.relAsOfPick(id, current, txTime, scan)
 }
 
 // NodesAsOf returns every node version visible at txTime: the union of live

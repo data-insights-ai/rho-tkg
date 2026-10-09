@@ -72,21 +72,31 @@ func (c *Core) nodeAsOfLocked(id types.NodeID, txTime types.Instant) (*types.Nod
 	}
 	if current != nil {
 		if tm := current.Temporal(); tm != nil && tm.TxFrom > 0 && tm.TxFrom <= txTime && tm.TxTo == 0 {
-			return nodeVisibleAtTxTime(current, txTime), nil
+			// Fast path: no history row above the current version (versions
+			// are dense, version_alloc.go), so nothing can outrank it.
+			above, err := c.nodeHasHistoryAbove(id, current.Version())
+			if err != nil {
+				return nil, err
+			}
+			if !above {
+				return nodeVisibleAtTxTime(current, txTime), nil
+			}
 		}
 	}
 
-	// Scan history through the single resolution seam. The {TxPin}-shaped probe
-	// runs the newest-belief-by-version selection + retraction rule (lesson 62)
-	// that resolveNodeChain concentrates. The fast path above already returned
-	// the current row when it is the answer, so any current row that reaches here
-	// is not a candidate at txTime (recorded later, or no TX stamp) and is
-	// correctly excluded by passing history alone.
+	// Resolve through the single resolution seam. The {TxPin}-shaped probe runs
+	// the as-of rule (storeutil.SelectAsOfWithCurrent: newest row recorded by
+	// the pin, retraction, tombstone life end) that resolveNodeChain
+	// concentrates, over history ‖ current with the current row flagged.
 	hist, err := c.getNodeHistory(id)
 	if err != nil {
 		return nil, err
 	}
-	return c.resolveNodeChain(hist, chainProbe{kind: probeAsOf, tx: txTime}, nil)
+	chain := hist
+	if current != nil {
+		chain = append(append(make([]*types.Node, 0, len(hist)+1), hist...), current)
+	}
+	return c.resolveNodeChain(chain, chainProbe{kind: probeAsOf, tx: txTime, asOfCurrent: current != nil}, nil)
 }
 
 // RelAsOf returns the relationship version that was current at the given
@@ -141,16 +151,26 @@ func (c *Core) relAsOfLocked(id types.RelID, txTime types.Instant) (*types.Relat
 	}
 	if current != nil {
 		if tm := current.Temporal(); tm != nil && tm.TxFrom > 0 && tm.TxFrom <= txTime && tm.TxTo == 0 {
-			return relVisibleAtTxTime(current, txTime), nil
+			above, err := c.relHasHistoryAbove(id, current.Version())
+			if err != nil {
+				return nil, err
+			}
+			if !above {
+				return relVisibleAtTxTime(current, txTime), nil
+			}
 		}
 	}
 
-	// Scan history through the single resolution seam — see nodeAsOfLocked.
+	// Resolve through the single resolution seam — see nodeAsOfLocked.
 	hist, err := c.getRelHistory(id)
 	if err != nil {
 		return nil, err
 	}
-	return c.resolveRelChain(hist, chainProbe{kind: probeAsOf, tx: txTime}, nil)
+	chain := hist
+	if current != nil {
+		chain = append(append(make([]*types.Relationship, 0, len(hist)+1), hist...), current)
+	}
+	return c.resolveRelChain(chain, chainProbe{kind: probeAsOf, tx: txTime, asOfCurrent: current != nil}, nil)
 }
 
 // NowTx returns the current transaction-time instant of the graph's commit
