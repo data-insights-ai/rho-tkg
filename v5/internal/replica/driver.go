@@ -38,6 +38,9 @@ const replicaTermCeiling uint64 = math.MaxUint64 - 1
 // Entry is an owned application record. Empty normal records are Raft no-ops;
 // configuration records advance Applied but are not application commands.
 type Entry struct {
+	// Generation is a receiver-local storage binding, zero in scalar/legacy mode.
+	// Stage must echo it as BaseGeneration, never encode it in replicated effects.
+	Generation  uint64
 	Index, Term uint64
 	Data        []byte
 }
@@ -597,6 +600,9 @@ func (d *Driver) drain() (Output, error) {
 			switch e.GetType() {
 			case pb.EntryNormal:
 				entry := Entry{Index: e.GetIndex(), Term: e.GetTerm(), Data: bytes.Clone(e.GetData())}
+				if d.applicationMachine != nil {
+					entry.Generation = d.store.ApplicationGeneration()
+				}
 				if d.applicationMachine != nil {
 					b, err := d.applicationMachine.Stage(entry, d.store.ApplicationBudget())
 					if err != nil {

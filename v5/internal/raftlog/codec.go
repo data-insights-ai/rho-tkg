@@ -27,6 +27,9 @@ func metadataBytes(m metadata) uint64 {
 	if m.Transfer.enabled() {
 		n += 4 + 40 + 80 + 48
 	}
+	if m.Gen.Limits.enabled() {
+		n += generationMetaBytes
+	}
 	return n
 }
 
@@ -108,6 +111,7 @@ type metadata struct {
 	Conf                                                                     *pb.ConfState
 	Snap                                                                     *pb.Snapshot
 	App                                                                      applicationMetadata
+	Gen                                                                      generationMetadata
 	Transfer                                                                 ApplicationTransferConfig
 }
 
@@ -118,6 +122,9 @@ func encodeMeta(m metadata) ([]byte, error) {
 	}
 	if m.Transfer.enabled() {
 		magic = "RLM4"
+	}
+	if m.Gen.Limits.enabled() {
+		magic = "RLM5"
 	}
 	b := append([]byte(magic), make([]byte, 32)...)
 	for _, n := range []uint64{m.Base, m.BaseTerm, m.Last, m.Applied, m.LogBytes, m.LogCount, m.ImageBytes, m.SnapBytes} {
@@ -141,6 +148,9 @@ func encodeMeta(m metadata) ([]byte, error) {
 	if m.Transfer.enabled() {
 		b = appendTransferConfig(b, m.Transfer)
 	}
+	if m.Gen.Limits.enabled() {
+		b = appendGenerationMeta(b, m.Gen)
+	}
 	h := sha256.Sum256(b[36:])
 	copy(b[4:36], h[:])
 	return b, nil
@@ -148,10 +158,11 @@ func encodeMeta(m metadata) ([]byte, error) {
 
 func decodeMeta(b []byte, l Limits) (metadata, error) {
 	m := metadata{Hard: &pb.HardState{}, Conf: &pb.ConfState{}, Snap: &pb.Snapshot{}}
-	if len(b) < metadataOverhead || len(b) > maxMetadataBytes || (string(b[:4]) != "RLM2" && string(b[:4]) != "RLM3" && string(b[:4]) != "RLM4") {
+	if len(b) < metadataOverhead || len(b) > maxMetadataBytes || (string(b[:4]) != "RLM2" && string(b[:4]) != "RLM3" && string(b[:4]) != "RLM4" && string(b[:4]) != "RLM5") {
 		return m, ErrCorrupt
 	}
-	version4 := string(b[:4]) == "RLM4"
+	version5 := string(b[:4]) == "RLM5"
+	version4 := string(b[:4]) == "RLM4" || version5
 	version3 := string(b[:4]) == "RLM3" || version4
 	h := sha256.Sum256(b[36:])
 	if !bytes.Equal(b[4:36], h[:]) {
@@ -199,6 +210,13 @@ func decodeMeta(b []byte, l Limits) (metadata, error) {
 	if version4 {
 		var err error
 		m.Transfer, b, err = decodeTransferConfig(b)
+		if err != nil {
+			return m, err
+		}
+	}
+	if version5 {
+		var err error
+		m.Gen, b, err = decodeGenerationMeta(b)
 		if err != nil {
 			return m, err
 		}

@@ -10,11 +10,16 @@ import (
 )
 
 // ApplicationImport owns the sole inactive application bank. Verified contents
-// are dormant; no method can activate them. Abort or reopen deletes this bank.
+// are dormant; no method can activate them. Abort revokes the session; a
+// generation-mode verifier keeps its captured bank until its final reference
+// is released. Reopen removes only the inactive bank after validating metadata.
 // Append uses at most one bounded chunk batch and one bounded frame lookahead;
 // transferred values are reframed for local keys. Network validation/cancellation
 // never poisons active data. Uncertain local durable failures remain fail-stop.
 type ApplicationImport struct {
+	bank                    byte
+	generation              uint64
+	ref                     *generationRef
 	s                       *Store
 	manifest                ApplicationSnapshotManifest
 	id                      [32]byte
@@ -57,23 +62,43 @@ func (s *Store) BeginApplicationImport(ctx context.Context, m ApplicationSnapsho
 	if b > tc.Limits.MaxStagedBytes || r > tc.Limits.MaxStagedRecords || b > s.meta.App.Policy.RetainedApplicationBytes || r > s.meta.App.Policy.RetainedApplicationRecords {
 		return nil, ErrLimit
 	}
+	prospective := s.meta
+	bank := byte(1)
+	if s.meta.Gen.Limits.enabled() {
+		var err error
+		prospective, bank, err = s.reserveGeneration(m)
+		if err != nil {
+			return nil, err
+		}
+	}
 	id, err := manifestID(m)
 	if err != nil {
 		return nil, err
 	}
-	i := &ApplicationImport{s: s, manifest: cloneSnapshotManifest(m), id: id, state: snapshotVerifier{digest: snapshotSeed(m)}}
+	i := &ApplicationImport{bank: bank, generation: prospective.Gen.Banks[bank].Generation, s: s, manifest: cloneSnapshotManifest(m), id: id, state: snapshotVerifier{digest: snapshotSeed(m)}}
 	batch := s.db.NewBatch()
 	if err := batch.Set(dormantKey, i.descriptor(), nil); err != nil {
 		return nil, errors.Join(err, batch.Close())
 	}
-	if err := s.commit(s.meta, batch); err != nil {
+	if err := s.commit(prospective, batch); err != nil {
 		return nil, err
 	}
+	ref, err := s.pinGeneration(bank)
+	if err != nil {
+		s.poison = err
+		return nil, err
+	}
+	i.ref = ref
 	s.applicationImport = i
 	return i, nil
 }
 func (i *ApplicationImport) descriptor() []byte {
 	b := append([]byte{'A', 'I', 1, 0}, i.id[:]...)
+	if i.generation != 0 {
+		b[2] = 2
+		b = binary.BigEndian.AppendUint64(b, uint64(i.bank))
+		b = binary.BigEndian.AppendUint64(b, i.generation)
+	}
 	for _, n := range []uint64{i.state.bytes, i.state.rows, i.sequence} {
 		b = binary.BigEndian.AppendUint64(b, n)
 	}
@@ -93,6 +118,9 @@ func (i *ApplicationImport) check(ctx context.Context) error {
 	}
 	if err := snapshotContext(ctx); err != nil {
 		return err
+	}
+	if i.s.meta.Gen.Limits.enabled() && (i.s.applicationImport != i || i.bank == i.s.activeBank() || i.s.meta.Gen.Banks[i.bank].Generation != i.generation || i.s.meta.Gen.Banks[i.bank].State != bankStaging) {
+		return ErrClosed
 	}
 	return i.s.check()
 }
@@ -153,6 +181,14 @@ func (i *ApplicationImport) Append(ctx context.Context, c ApplicationSnapshotChu
 	next.state = state
 	next.sequence++
 	next.final = c.Final
+	prospective := s.meta
+	if prospective.Gen.Limits.enabled() {
+		bank := &prospective.Gen.Banks[i.bank]
+		bank.Bytes, bank.Records = state.bytes, state.rows
+		if err := s.validateGenerationMeta(prospective); err != nil {
+			return err
+		}
+	}
 	batch := s.db.NewBatch()
 	fail := func(e error) error { return errors.Join(e, batch.Close()) }
 	err = walkSnapshotChunk(c.Data, i.manifest.Contract, func(k, v []byte) error {
@@ -160,7 +196,7 @@ func (i *ApplicationImport) Append(ctx context.Context, c ApplicationSnapshotChu
 			return err
 		}
 		local := copyApplicationBytes(k)
-		local[0] += 4
+		local[0] += i.bank * 4
 		// accept already verified the canonical frame; local physical key hashes
 		// are reconstructed rather than copied from the sender.
 		value, deleted, err := inspectAppFrame(k, v, len(v)-appFrameBytes)
@@ -175,7 +211,7 @@ func (i *ApplicationImport) Append(ctx context.Context, c ApplicationSnapshotChu
 	if err := batch.Set(dormantKey, next.descriptor(), nil); err != nil {
 		return fail(err)
 	}
-	if err := s.commit(s.meta, batch); err != nil {
+	if err := s.commit(prospective, batch); err != nil {
 		return err
 	}
 	*i = next
@@ -187,7 +223,7 @@ func (i *ApplicationImport) Append(ctx context.Context, c ApplicationSnapshotChu
 // covers one row/byte-bounded page, with one frame lookahead. It grants no
 // publication authority. A corrupted dormant
 // bank leaves the active generation usable and can be removed with Abort.
-func (i *ApplicationImport) Verify(ctx context.Context) error {
+func (i *ApplicationImport) Verify(ctx context.Context) (err error) {
 	if i == nil {
 		return ErrInvalid
 	}
@@ -209,6 +245,11 @@ func (i *ApplicationImport) Verify(ctx context.Context) error {
 		s.mu.Unlock()
 		return ErrLimit
 	}
+	ref, pinErr := s.pinGeneration(i.bank)
+	if pinErr != nil {
+		s.mu.Unlock()
+		return pinErr
+	}
 	i.verifying = true
 	s.applicationVerifier = true
 	s.applicationVerifierImageBytes = len(i.manifest.Image)
@@ -217,6 +258,7 @@ func (i *ApplicationImport) Verify(ctx context.Context) error {
 		i.verifying = false
 		s.applicationVerifier = false
 		s.applicationVerifierImageBytes = 0
+		err = errors.Join(err, s.releaseGeneration(ref))
 		s.mu.Unlock()
 	}()
 	m, hook := i.manifest, i.verifyPageHook
@@ -278,7 +320,7 @@ func (i *ApplicationImport) Verify(ctx context.Context) error {
 func (i *ApplicationImport) verifyPage(ctx context.Context, m ApplicationSnapshotManifest, state snapshotVerifier) (next snapshotVerifier, complete bool, err error) {
 	s := i.s
 	l := s.meta.Transfer.Limits
-	it, err := s.db.NewIter(&pebble.IterOptions{LowerBound: []byte{dormantDataTag}, UpperBound: dormantKey})
+	it, err := s.db.NewIter(&pebble.IterOptions{LowerBound: []byte{bankTag(i.bank, appDataTag)}, UpperBound: []byte{bankTag(i.bank, appOutcomeTag) + 1}})
 	if err != nil {
 		return state, false, err
 	}
@@ -286,7 +328,7 @@ func (i *ApplicationImport) verifyPage(ctx context.Context, m ApplicationSnapsho
 	valid := it.First()
 	if len(state.last) > 0 {
 		after := copyApplicationBytes(state.last)
-		after[0] += 4
+		after[0] += i.bank * 4
 		valid = it.SeekGE(after)
 		if valid && bytes.Equal(it.Key(), after) {
 			valid = it.Next()
@@ -313,7 +355,7 @@ func (i *ApplicationImport) verifyPage(ctx context.Context, m ApplicationSnapsho
 			return state, false, err
 		}
 		k := copyApplicationBytes(local)
-		k[0] -= 4
+		k[0] -= i.bank * 4
 		canonical := appFrame(k, value, deleted)
 		state, err = state.accept(m, k, canonical)
 		if err != nil {
@@ -342,7 +384,8 @@ func (i *ApplicationImport) Status() (ApplicationImportStatus, error) {
 	return ApplicationImportStatus{i.id, i.state.bytes, i.state.rows, i.sequence, i.final, i.verified}, nil
 }
 
-// Abort atomically removes only dormant keys and releases local session state.
+// Abort synchronously revokes only the dormant session. Generation-mode bank
+// deletion waits for captured verifier references; active keys are never removed.
 // It is safe to repeat, including after Store.Close; it never deletes active keys.
 func (i *ApplicationImport) Abort() error {
 	if i == nil {
@@ -362,16 +405,24 @@ func (i *ApplicationImport) Abort() error {
 	if err := s.check(); err != nil {
 		return err
 	}
-	if err := s.cleanupApplicationImport(); err != nil {
+	if s.meta.Gen.Limits.enabled() {
+		if err := s.retireImport(i); err != nil {
+			return err
+		}
+	} else if err := s.cleanupApplicationImport(); err != nil {
 		return err
 	}
 	i.closed = true
 	i.manifest.Image = nil
 	i.state.last = nil
 	s.applicationImport = nil
-	return nil
+	return s.releaseGeneration(i.ref)
 }
 func (s *Store) cleanupApplicationImport() error {
+	if s.meta.Gen.Limits.enabled() {
+		bank := byte(1) - s.activeBank()
+		return s.clearGenerationBank(bank, s.meta.Gen.Banks[bank].Generation)
+	}
 	batch := s.db.NewBatch()
 	if err := batch.DeleteRange([]byte{dormantDataTag}, dormantEnd, nil); err != nil {
 		return errors.Join(err, batch.Close())

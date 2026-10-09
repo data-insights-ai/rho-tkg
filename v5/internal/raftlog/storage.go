@@ -52,6 +52,7 @@ type Config struct {
 	Create      bool
 	Limits      Limits
 	Application ApplicationPolicy
+	Generations ApplicationGenerationLimits
 	Transfer    ApplicationTransferConfig
 }
 
@@ -67,6 +68,7 @@ type Store struct {
 	canInitialize                 bool
 	closed                        bool
 	views, viewBytes              int
+	generationRefs                [2]*generationRef
 	applicationPolicy             ApplicationPolicy
 	applicationExports            map[*ApplicationExport]struct{}
 	applicationImport             *ApplicationImport
@@ -98,7 +100,13 @@ func Open(c Config) (*Store, error) {
 	if err := c.Transfer.validate(c.Application); err != nil {
 		return nil, err
 	}
+	if err := c.Generations.validate(c.Application, c.Transfer); err != nil {
+		return nil, err
+	}
 	initial := metadata{Hard: &pb.HardState{}, Conf: &pb.ConfState{}, Snap: &pb.Snapshot{}, ImageHash: sha256.Sum256(nil), SnapHash: sha256.Sum256(nil), App: applicationMetadata{Policy: c.Application}, Transfer: c.Transfer}
+	if c.Generations.enabled() {
+		initial.Gen = generationMetadata{Limits: c.Generations, HighWater: 1, Banks: [2]applicationBank{{Generation: 1, State: bankActive}, {}}}
+	}
 	if c.Create {
 		if err := checkMetadataLimit(initial, c.Limits); err != nil {
 			return nil, err
@@ -134,7 +142,7 @@ func Open(c Config) (*Store, error) {
 		if err := errors.Join(decodeErr, closeErr); err != nil {
 			return fail(err)
 		}
-		if m.App.Policy != c.Application || m.Transfer != c.Transfer {
+		if m.App.Policy != c.Application || m.Transfer != c.Transfer || m.Gen.Limits != c.Generations {
 			return fail(ErrInvalid)
 		}
 		if err := s.validate(m); err != nil {
@@ -201,6 +209,9 @@ func (s *Store) validate(m metadata) error {
 	if err := m.Transfer.validate(m.App.Policy); err != nil {
 		return err
 	}
+	if err := s.validateGenerationMeta(m); err != nil {
+		return err
+	}
 	if err := s.validateApplicationMeta(m); err != nil {
 		return err
 	}
@@ -248,6 +259,10 @@ func (s *Store) commit(m metadata, batch *pebble.Batch) (err error) {
 			err = errors.Join(err, ErrPoisoned, closeErr)
 		}
 	}()
+	syncActiveGeneration(&m)
+	if err := s.validateGenerationMeta(m); err != nil {
+		return err
+	}
 	if err := checkMetadataLimit(m, s.limits); err != nil {
 		return err
 	}
@@ -298,7 +313,17 @@ func (s *Store) Initialize(voters []uint64, image []byte) error {
 	if err := validateConf(cs, 1); err != nil {
 		return err
 	}
-	m := metadata{App: s.meta.App, Transfer: s.meta.Transfer, Base: 1, BaseTerm: 1, Last: 1, Applied: 1, Hard: &pb.HardState{Term: new(uint64(1)), Commit: new(uint64(1))}, Conf: cs, ImageBytes: uint64(len(image)), SnapBytes: uint64(len(image)), Snap: &pb.Snapshot{Metadata: &pb.SnapshotMetadata{Index: new(uint64(1)), Term: new(uint64(1)), ConfState: cs}}}
+	m := metadata{Gen: s.meta.Gen, App: s.meta.App, Transfer: s.meta.Transfer, Base: 1, BaseTerm: 1, Last: 1, Applied: 1, Hard: &pb.HardState{Term: new(uint64(1)), Commit: new(uint64(1))}, Conf: cs, ImageBytes: uint64(len(image)), SnapBytes: uint64(len(image)), Snap: &pb.Snapshot{Metadata: &pb.SnapshotMetadata{Index: new(uint64(1)), Term: new(uint64(1)), ConfState: cs}}}
+	prospective := m
+	if m.App.Policy.Enabled() {
+		prospective.App.Bytes = uint64(3*(9+appFrameBytes) + len(image))
+		prospective.App.Records = 3
+		prospective.App.Through = 1
+		syncActiveGeneration(&prospective)
+	}
+	if err := s.validateGenerationMeta(prospective); err != nil {
+		return err
+	}
 	if err := checkMetadataLimit(m, s.limits); err != nil {
 		return err
 	}
@@ -569,6 +594,15 @@ func (s *Store) Persist(rd raft.Ready) (err error) {
 			return ErrLimit
 		}
 	}
+	if s.meta.Gen.Limits.enabled() && len(rd.Entries) > 0 {
+		last := rd.Entries[len(rd.Entries)-1].GetIndex()
+		if last < s.meta.Applied || last == math.MaxUint64 {
+			return ErrInvalid
+		}
+		if err := generationCharge(s.meta, last-s.meta.Applied); err != nil {
+			return err
+		}
+	}
 	if len(rd.Snapshot.GetData()) > s.limits.MaxSnapshotBytes {
 		return ErrLimit
 	}
@@ -701,6 +735,7 @@ func (s *Store) Persist(rd raft.Ready) (err error) {
 	if m.LogBytes > s.limits.MaxRetainedBytes || m.LogCount > s.limits.MaxRetainedEntries {
 		return ErrLimit
 	}
+	syncActiveGeneration(&m)
 	if err := s.validate(m); err != nil {
 		return err
 	}
@@ -990,6 +1025,8 @@ func (s *Store) Close() error {
 		i.manifest.Image = nil
 		i.state.last = nil
 		s.applicationImport = nil
+		err = errors.Join(err, s.releaseGeneration(i.ref))
+		i.ref = nil
 	}
 	return errors.Join(err, s.db.Close())
 }

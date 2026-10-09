@@ -60,7 +60,7 @@ func (m *applicationFixture) Stage(e Entry, b raftlog.ApplicationBudget) (raftlo
 	if len(e.Data) != 0 && len(e.Data) != 8 {
 		return raftlog.ApplicationBatch{}, ErrInvalid
 	}
-	result := raftlog.ApplicationBatch{BaseIndex: m.index, BaseImageHash: sha256.Sum256(m.image), Image: command(m.value)}
+	result := raftlog.ApplicationBatch{BaseGeneration: e.Generation, BaseIndex: m.index, BaseImageHash: sha256.Sum256(m.image), Image: command(m.value)}
 	if len(e.Data) != 0 {
 		n := binary.BigEndian.Uint64(e.Data)
 		result.Changes = append(command(m.value), command(m.value+n)...)

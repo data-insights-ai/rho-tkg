@@ -17,6 +17,9 @@ import (
 // framing/copy work is at most two page buffers plus that lookahead. There is no
 // whole-database image or retained iterator/key map. Store.Close invalidates handles.
 type ApplicationExport struct {
+	bank          byte
+	generation    uint64
+	ref           *generationRef
 	s             *Store
 	snapshot      *pebble.Snapshot
 	manifest      ApplicationSnapshotManifest
@@ -60,8 +63,18 @@ func (s *Store) BeginApplicationExport(ctx context.Context) (*ApplicationExport,
 		return nil, err
 	}
 	pin := s.meta.App.Bytes + s.meta.LogBytes + s.meta.ImageBytes + s.meta.SnapBytes + uint64(len(metaBytes)+3)
+	if s.meta.Gen.Limits.enabled() {
+		for j, b := range s.meta.Gen.Banks {
+			if byte(j) != s.activeBank() {
+				pin += b.Bytes
+			}
+		}
+	}
 	if i := s.applicationImport; i != nil {
-		pin += i.state.bytes + uint64(len(i.descriptor())+len(dormantKey))
+		if !s.meta.Gen.Limits.enabled() {
+			pin += i.state.bytes
+		}
+		pin += uint64(len(i.descriptor()) + len(dormantKey))
 	}
 	if len(s.applicationExports) >= tc.Limits.MaxExports || pin > tc.Limits.MaxPinnedLogicalBytes-s.pinnedApplicationBytes {
 		s.mu.Unlock()
@@ -97,7 +110,12 @@ func (s *Store) BeginApplicationExport(ctx context.Context) (*ApplicationExport,
 	for j := range m.NamespaceBytes {
 		m.NamespaceBytes[j] = expectedBytes
 	}
-	e := &ApplicationExport{s: s, snapshot: s.db.NewSnapshot(), manifest: m, pinBytes: pin}
+	ref, err := s.pinGeneration(s.activeBank())
+	if err != nil {
+		s.mu.Unlock()
+		return nil, err
+	}
+	e := &ApplicationExport{bank: s.activeBank(), generation: s.activeGeneration(), ref: ref, s: s, snapshot: s.db.NewSnapshot(), manifest: m, pinBytes: pin}
 	if s.applicationExports == nil {
 		s.applicationExports = make(map[*ApplicationExport]struct{})
 	}
@@ -202,6 +220,9 @@ func (e *ApplicationExport) Next(ctx context.Context, b ReadBudget) (chunk Appli
 	if err := s.check(); err != nil {
 		return chunk, err
 	}
+	if e.generation != 0 && s.meta.Gen.Banks[e.bank].Generation != e.generation {
+		return chunk, ErrClosed
+	}
 	if e.final {
 		return chunk, ErrInvalid
 	}
@@ -212,7 +233,7 @@ func (e *ApplicationExport) Next(ctx context.Context, b ReadBudget) (chunk Appli
 	if b.Rows > l.MaxChunkRows || b.Bytes > l.MaxChunkBytes {
 		return chunk, ErrLimit
 	}
-	it, err := e.snapshot.NewIter(&pebble.IterOptions{LowerBound: []byte{appDataTag}, UpperBound: []byte{appOutcomeTag + 1}})
+	it, err := e.snapshot.NewIter(&pebble.IterOptions{LowerBound: []byte{bankTag(e.bank, appDataTag)}, UpperBound: []byte{bankTag(e.bank, appOutcomeTag) + 1}})
 	if err != nil {
 		s.poison = err
 		return chunk, err
@@ -249,7 +270,18 @@ func (e *ApplicationExport) Next(ctx context.Context, b ReadBudget) (chunk Appli
 			}
 			break
 		}
-		data = appendBoundedSnapshot(data, k, v, b.Bytes)
+		if e.bank == 0 {
+			data = appendBoundedSnapshot(data, k, v, b.Bytes)
+		} else {
+			value, deleted, inspectErr := inspectAppFrame(k, v, len(v)-appFrameBytes)
+			if inspectErr != nil {
+				s.poison = inspectErr
+				return chunk, inspectErr
+			}
+			canonical := copyApplicationBytes(k)
+			canonical[0] -= e.bank * 4
+			data = appendBoundedSnapshot(data, canonical, appFrame(canonical, value, deleted), b.Bytes)
+		}
 		last = copyApplicationBytes(k)
 		rows++
 		valid = it.Next()
@@ -278,7 +310,10 @@ func (e *ApplicationExport) closeLocked() error {
 	e.after = nil
 	err := e.snapshot.Close()
 	e.snapshot = nil
-	return err
+	if err != nil {
+		e.s.poison = err
+	}
+	return errors.Join(err, e.s.releaseGeneration(e.ref))
 }
 
 // Close releases the backend snapshot and its ledgers; repeated calls are safe.
