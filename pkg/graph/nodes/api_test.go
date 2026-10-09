@@ -235,6 +235,8 @@ type nodeOpsSpy struct {
 	primaryLabel string
 	nextID       types.NodeID
 	hasHistory   bool
+	stamps       [2]types.Instant
+	deleted      bool
 
 	calls     []string
 	lastID    types.NodeID
@@ -559,6 +561,12 @@ func (s *nodeOpsSpy) HasHistory(id types.NodeID) (bool, error) {
 	return s.hasHistory, s.err
 }
 
+func (s *nodeOpsSpy) LatestStamps(id types.NodeID) (types.Instant, types.Instant, bool, error) {
+	s.record("LatestStamps")
+	s.lastID = id
+	return s.stamps[0], s.stamps[1], s.deleted, s.err
+}
+
 func (s *nodeOpsSpy) History(id types.NodeID) ([]*types.Node, error) {
 	s.record("History")
 	s.lastID = id
@@ -695,5 +703,33 @@ func TestAPIHasHistoryForwardsAnswer(t *testing.T) {
 	}
 	if got, err := New((*nodeOpsSpy)(nil)).HasHistory(1); got || !errors.Is(err, grapherr.ErrNilGraph) {
 		t.Fatalf("typed-nil HasHistory = %v, %v; want false, ErrNilGraph", got, err)
+	}
+}
+
+// LatestStamps forwards the id and returns the ops answer unchanged (both
+// stamps, the deleted flag, the error): a wrapper that swaps the stamps, drops
+// deleted or swaps the id fails here; a nil or typed-nil ops is ErrNilGraph.
+func TestAPILatestStampsForwardsAnswer(t *testing.T) {
+	t.Parallel()
+	for _, deleted := range []bool{true, false} {
+		spy := &nodeOpsSpy{stamps: [2]types.Instant{11, 22}, deleted: deleted}
+		from, to, gotDeleted, err := New(spy).LatestStamps(types.NodeID(77))
+		if err != nil || from != 11 || to != 22 || gotDeleted != deleted {
+			t.Fatalf("LatestStamps = (%d, %d, %v, %v); want (11, 22, %v, nil)", from, to, gotDeleted, err, deleted)
+		}
+		if spy.lastID != types.NodeID(77) || len(spy.calls) != 1 || spy.calls[0] != "LatestStamps" {
+			t.Fatalf("forwarded id %v calls %v", spy.lastID, spy.calls)
+		}
+	}
+	wantErr := errors.New("ops failed")
+	if _, _, _, err := New(&nodeOpsSpy{err: wantErr}).LatestStamps(1); !errors.Is(err, wantErr) {
+		t.Fatalf("ops error = %v, want %v", err, wantErr)
+	}
+	if _, _, _, err := New((*nodeOpsSpy)(nil)).LatestStamps(1); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("typed-nil LatestStamps = %v, want ErrNilGraph", err)
+	}
+	var nilAPI *API
+	if _, _, _, err := nilAPI.LatestStamps(1); !errors.Is(err, grapherr.ErrNilGraph) {
+		t.Fatalf("nil API LatestStamps = %v, want ErrNilGraph", err)
 	}
 }

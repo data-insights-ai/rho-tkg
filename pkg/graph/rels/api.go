@@ -80,6 +80,7 @@ type Ops interface {
 	CloseVersion(ctx context.Context, id types.RelID, t types.Instant) error
 	History(id types.RelID) ([]*types.Relationship, error)
 	HasHistory(id types.RelID) (bool, error)
+	LatestStamps(id types.RelID) (txFrom, txTo types.Instant, deleted bool, err error)
 	VersionAfter(id types.RelID, version uint32) (*types.Relationship, error)
 	VersionBefore(id types.RelID, version uint32) (*types.Relationship, error)
 
@@ -869,6 +870,19 @@ func (a *API) HasHistory(id types.RelID) (bool, error) {
 		return false, err
 	}
 	return ops.HasHistory(id)
+}
+
+// LatestStamps is Nodes().LatestStamps for relationships: the newest TxFrom
+// and TxTo-or-DeletedAt over the relationship's current row and every history
+// row, and whether it is deleted (rows but no current row). Errors:
+// ErrRelNotFound for an ID without any row, ErrNilGraph, ErrGraphClosed, an
+// invalid ID (ErrInvalidStoreMutation).
+func (a *API) LatestStamps(id types.RelID) (txFrom, txTo types.Instant, deleted bool, err error) {
+	ops, err := a.ready()
+	if err != nil {
+		return 0, 0, false, err
+	}
+	return ops.LatestStamps(id)
 }
 
 // VersionAfter returns the next version for the given relationship.
