@@ -369,7 +369,7 @@ func TestRelPropertyTxMembersEveryDoor(t *testing.T) {
 
 			stats, err := c.PropertyTxMembershipStats()
 			mustOK(t, "stats", err)
-			if stats.RelSidecars != 1 || stats.RelPostings < 12 || stats.Builds < 1 {
+			if stats.RelSidecars < 1 || stats.RelPostings < 12 || stats.Builds < 1 { // sharded: one per shard
 				t.Fatalf("stats after build = %+v", stats)
 			}
 
@@ -502,7 +502,7 @@ func TestNodePropertyTxMembersEveryDoor(t *testing.T) {
 			assertNodeSidecar(t, st, c, ids, true, "after re-create")
 			stats, err := c.PropertyTxMembershipStats()
 			mustOK(t, "stats", err)
-			if stats.NodeSidecars != 1 || stats.NodePostings == 0 {
+			if stats.NodeSidecars < 1 || stats.NodePostings == 0 {
 				t.Fatalf("stats = %+v", stats)
 			}
 			if err := c.ForEachNodePropertyTxMember(ptxLabelL, "seat", ptxVK(1), nil); !errors.Is(err, storecontract.ErrInvalidStoreMutation) {
