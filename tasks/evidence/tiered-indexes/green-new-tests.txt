@@ -1,0 +1,1299 @@
+=== RUN   TestTiered_ListShards_WithArchive
+--- PASS: TestTiered_ListShards_WithArchive (0.04s)
+=== RUN   TestTieredStoreClear_ClearsVectorIndexes
+=== PAUSE TestTieredStoreClear_ClearsVectorIndexes
+=== RUN   TestTieredStoreClear_VectorMetadataFailureDoesNotClearEntities
+--- PASS: TestTieredStoreClear_VectorMetadataFailureDoesNotClearEntities (0.18s)
+=== RUN   TestTieredStoreClear_TemporalMetadataFailureDoesNotClearEntities
+--- PASS: TestTieredStoreClear_TemporalMetadataFailureDoesNotClearEntities (0.18s)
+=== RUN   TestTieredStoreClear_CheckoutFailureRestoresIndexMetadata
+--- PASS: TestTieredStoreClear_CheckoutFailureRestoresIndexMetadata (0.26s)
+=== RUN   TestTieredStoreClear_ClearsHFITracking
+=== PAUSE TestTieredStoreClear_ClearsHFITracking
+=== RUN   TestTieredStoreClear_ClearsTempIdxLabels
+=== PAUSE TestTieredStoreClear_ClearsTempIdxLabels
+=== RUN   TestTieredStoreClear_ClearsClosedColdShard
+--- PASS: TestTieredStoreClear_ClearsClosedColdShard (0.53s)
+=== RUN   TestTieredStoreClear_DoesNotOpenClosedInMemoryColdShard
+--- PASS: TestTieredStoreClear_DoesNotOpenClosedInMemoryColdShard (0.04s)
+=== RUN   TestTieredStoreClearEventShard_PropagatesCheckoutError
+=== PAUSE TestTieredStoreClearEventShard_PropagatesCheckoutError
+=== RUN   TestTieredStoreClearEventShard_ClosedFailsClosed
+=== PAUSE TestTieredStoreClearEventShard_ClosedFailsClosed
+=== RUN   TestTieredStoreClear_ClearsRestartedWarmShard
+--- PASS: TestTieredStoreClear_ClearsRestartedWarmShard (0.74s)
+=== RUN   TestTieredStoreClear_ResetsCatalogVerificationCache
+=== PAUSE TestTieredStoreClear_ResetsCatalogVerificationCache
+=== RUN   TestTieredStoreClear_CatalogSaveFailureKeepsLiveCatalogCleared
+--- PASS: TestTieredStoreClear_CatalogSaveFailureKeepsLiveCatalogCleared (0.17s)
+=== RUN   TestTiered_RebuildCatalog_WithArchivePresent
+--- PASS: TestTiered_RebuildCatalog_WithArchivePresent (0.03s)
+=== RUN   TestTiered_CreateTemporalIndex_WithArchivePresent
+--- PASS: TestTiered_CreateTemporalIndex_WithArchivePresent (0.04s)
+=== RUN   TestTiered_CreateHighFrequencyIndex_WithArchivePresent
+--- PASS: TestTiered_CreateHighFrequencyIndex_WithArchivePresent (0.04s)
+=== RUN   TestTiered_DropTemporalIndex_WithArchivePresent
+--- PASS: TestTiered_DropTemporalIndex_WithArchivePresent (0.03s)
+=== RUN   TestTiered_DropHighFrequencyIndex_WithArchivePresent
+--- PASS: TestTiered_DropHighFrequencyIndex_WithArchivePresent (0.03s)
+=== RUN   TestTiered_GetRelVersion_RefLiveArchiveMissBranch
+--- PASS: TestTiered_GetRelVersion_RefLiveArchiveMissBranch (0.03s)
+=== RUN   TestTiered_GetRelVersion_ArchivedRel_FanoutBranch
+--- PASS: TestTiered_GetRelVersion_ArchivedRel_FanoutBranch (0.03s)
+=== RUN   TestTiered_GetNodeVersion_RefLiveArchiveMissBranch
+--- PASS: TestTiered_GetNodeVersion_RefLiveArchiveMissBranch (0.03s)
+=== RUN   TestTiered_GetRelHistory_AfterRestore_MergesRefAndArchive
+--- PASS: TestTiered_GetRelHistory_AfterRestore_MergesRefAndArchive (0.03s)
+=== RUN   TestTiered_GetNodeHistory_RefLiveWithArchivePresent
+--- PASS: TestTiered_GetNodeHistory_RefLiveWithArchivePresent (0.03s)
+=== RUN   TestTiered_GetRelHistory_RefLiveWithArchivePresent
+--- PASS: TestTiered_GetRelHistory_RefLiveWithArchivePresent (0.03s)
+=== RUN   TestTiered_VerifyShard_ArchiveShard
+--- PASS: TestTiered_VerifyShard_ArchiveShard (0.03s)
+=== RUN   TestTiered_VerifyShard_FailedChain
+--- PASS: TestTiered_VerifyShard_FailedChain (0.02s)
+=== RUN   TestTiered_VerifyShard_NilVerifierRejected
+--- PASS: TestTiered_VerifyShard_NilVerifierRejected (0.02s)
+=== RUN   TestTiered_VerifyShard_UnknownShard
+--- PASS: TestTiered_VerifyShard_UnknownShard (0.02s)
+=== RUN   TestTiered_VerifyShard_ReferenceShard
+--- PASS: TestTiered_VerifyShard_ReferenceShard (0.01s)
+=== RUN   TestTiered_TruncateNodeHistory_NegativeKeep
+--- PASS: TestTiered_TruncateNodeHistory_NegativeKeep (0.03s)
+=== RUN   TestTiered_TruncateRelHistory_NegativeKeep
+--- PASS: TestTiered_TruncateRelHistory_NegativeKeep (0.03s)
+=== RUN   TestTiered_PutRelationshipsBatch_CrossShard
+--- PASS: TestTiered_PutRelationshipsBatch_CrossShard (0.02s)
+=== RUN   TestTiered_PutRelationshipsBatch_DuplicateInBatchRejected
+--- PASS: TestTiered_PutRelationshipsBatch_DuplicateInBatchRejected (0.03s)
+=== RUN   TestTiered_PutRelationshipsBatch_MissingEndpoint
+--- PASS: TestTiered_PutRelationshipsBatch_MissingEndpoint (0.02s)
+=== RUN   TestTiered_ForEachNodeHistoryIDByDepth_AllTiers
+--- PASS: TestTiered_ForEachNodeHistoryIDByDepth_AllTiers (0.03s)
+=== RUN   TestTiered_ForEachRelHistoryIDByDepth_AllTiers
+--- PASS: TestTiered_ForEachRelHistoryIDByDepth_AllTiers (0.00s)
+=== RUN   TestTiered_NodeHistory_AfterRotation_HistoryFanout
+--- PASS: TestTiered_NodeHistory_AfterRotation_HistoryFanout (0.01s)
+=== RUN   TestTiered_RelHistory_AfterRotation_HistoryFanout
+--- PASS: TestTiered_RelHistory_AfterRotation_HistoryFanout (0.05s)
+=== RUN   TestTiered_AddNodeLabelToken_EventShard
+--- PASS: TestTiered_AddNodeLabelToken_EventShard (0.02s)
+=== RUN   TestTiered_RemoveNodeLabelToken_EventShard
+--- PASS: TestTiered_RemoveNodeLabelToken_EventShard (0.01s)
+=== RUN   TestTiered_AddNodeLabelTokenWithHistory_EventShard
+--- PASS: TestTiered_AddNodeLabelTokenWithHistory_EventShard (0.01s)
+=== RUN   TestTiered_RemoveNodeLabelTokenWithHistory_EventShard
+--- PASS: TestTiered_RemoveNodeLabelTokenWithHistory_EventShard (0.01s)
+=== RUN   TestTiered_ReplaceNodeWithHistory_EventShard
+--- PASS: TestTiered_ReplaceNodeWithHistory_EventShard (0.02s)
+=== RUN   TestTiered_ReplaceRelWithHistory_EventShard
+--- PASS: TestTiered_ReplaceRelWithHistory_EventShard (0.03s)
+=== RUN   TestTieredStore_ForEachNilCallbackReturnsInvalidMutation
+=== PAUSE TestTieredStore_ForEachNilCallbackReturnsInvalidMutation
+=== RUN   TestTieredStore_ForEachHistoryByDepthEmptyDoesNotCallCallback
+=== PAUSE TestTieredStore_ForEachHistoryByDepthEmptyDoesNotCallCallback
+=== RUN   TestTieredStore_ForEachNodeID_AllShards
+=== PAUSE TestTieredStore_ForEachNodeID_AllShards
+=== RUN   TestTieredStore_ForEachNodeID_EarlyStop
+=== PAUSE TestTieredStore_ForEachNodeID_EarlyStop
+=== RUN   TestTieredStore_ForEachNodeID_WithRotation
+=== PAUSE TestTieredStore_ForEachNodeID_WithRotation
+=== RUN   TestTieredStore_ForEachRelID_AllShards
+=== PAUSE TestTieredStore_ForEachRelID_AllShards
+=== RUN   TestTieredStore_ForEachRelID_RefArchiveAndEarlyStop
+--- PASS: TestTieredStore_ForEachRelID_RefArchiveAndEarlyStop (0.03s)
+=== RUN   TestTieredStore_ForEachNodeHistoryID
+=== PAUSE TestTieredStore_ForEachNodeHistoryID
+=== RUN   TestTieredStore_ForEachDeletedNodeID
+=== PAUSE TestTieredStore_ForEachDeletedNodeID
+=== RUN   TestTieredStore_ForEachDeletedRelID
+=== PAUSE TestTieredStore_ForEachDeletedRelID
+=== RUN   TestTieredStore_ForEachHistoryCallbacksDoNotExtendIterator
+--- PASS: TestTieredStore_ForEachHistoryCallbacksDoNotExtendIterator (0.04s)
+=== RUN   TestTieredStore_ForEachHistoryByDepthCallbacksDoNotExtendIterator
+--- PASS: TestTieredStore_ForEachHistoryByDepthCallbacksDoNotExtendIterator (0.02s)
+=== RUN   TestTieredStore_ForEachNodeHistoryIDByDepth_GatesArchive
+--- PASS: TestTieredStore_ForEachNodeHistoryIDByDepth_GatesArchive (0.03s)
+=== RUN   TestTieredStore_ForEachNodeHistoryIDByDepth_IncludesRestoredRefWithArchiveHistory
+--- PASS: TestTieredStore_ForEachNodeHistoryIDByDepth_IncludesRestoredRefWithArchiveHistory (0.03s)
+=== RUN   TestTieredStore_ForEachRelHistoryID
+=== PAUSE TestTieredStore_ForEachRelHistoryID
+=== RUN   TestTieredStore_ForEachCallbacksCanMutateStore
+--- PASS: TestTieredStore_ForEachCallbacksCanMutateStore (0.02s)
+=== RUN   TestTieredStore_ForEachRelHistoryIDByDepth_GatesArchive
+--- PASS: TestTieredStore_ForEachRelHistoryIDByDepth_GatesArchive (0.03s)
+=== RUN   TestTieredStore_ForEachRelHistoryIDByDepth_IncludesRestoredRefWithArchiveHistory
+--- PASS: TestTieredStore_ForEachRelHistoryIDByDepth_IncludesRestoredRefWithArchiveHistory (0.03s)
+=== RUN   TestTieredStore_ForEachRelID_EarlyStop
+=== PAUSE TestTieredStore_ForEachRelID_EarlyStop
+=== RUN   TestTieredStore_AllNodeHistoryIDsFrom_Empty
+--- PASS: TestTieredStore_AllNodeHistoryIDsFrom_Empty (0.03s)
+=== RUN   TestTieredStore_AllHistoryIDsFromRejectsInvalidPagination
+=== RUN   TestTieredStore_AllHistoryIDsFromRejectsInvalidPagination/node_negative_limit
+=== RUN   TestTieredStore_AllHistoryIDsFromRejectsInvalidPagination/node_negative_cursor
+=== RUN   TestTieredStore_AllHistoryIDsFromRejectsInvalidPagination/rel_negative_limit
+=== RUN   TestTieredStore_AllHistoryIDsFromRejectsInvalidPagination/rel_negative_cursor
+--- PASS: TestTieredStore_AllHistoryIDsFromRejectsInvalidPagination (0.02s)
+    --- PASS: TestTieredStore_AllHistoryIDsFromRejectsInvalidPagination/node_negative_limit (0.00s)
+    --- PASS: TestTieredStore_AllHistoryIDsFromRejectsInvalidPagination/node_negative_cursor (0.00s)
+    --- PASS: TestTieredStore_AllHistoryIDsFromRejectsInvalidPagination/rel_negative_limit (0.00s)
+    --- PASS: TestTieredStore_AllHistoryIDsFromRejectsInvalidPagination/rel_negative_cursor (0.00s)
+=== RUN   TestTieredStore_AllNodeHistoryIDsFrom_LimitZeroAllRemaining
+--- PASS: TestTieredStore_AllNodeHistoryIDsFrom_LimitZeroAllRemaining (0.02s)
+=== RUN   TestTieredStore_AllNodeHistoryIDsFrom_CursorMatchesUnpaginated
+--- PASS: TestTieredStore_AllNodeHistoryIDsFrom_CursorMatchesUnpaginated (0.02s)
+=== RUN   TestTieredStore_AllNodeHistoryIDsFrom_CrossShardDedup
+--- PASS: TestTieredStore_AllNodeHistoryIDsFrom_CrossShardDedup (0.02s)
+=== RUN   TestTieredStore_GetNodeHistory_MergesReferenceAndArchiveVersions
+--- PASS: TestTieredStore_GetNodeHistory_MergesReferenceAndArchiveVersions (0.03s)
+=== RUN   TestTieredStore_NodeHistoryVersionsFrom_MergesReferenceAndArchiveVersions
+--- PASS: TestTieredStore_NodeHistoryVersionsFrom_MergesReferenceAndArchiveVersions (0.03s)
+=== RUN   TestTieredStore_NodeHistoryReadersPropagateCurrentRowCorruption
+=== RUN   TestTieredStore_NodeHistoryReadersPropagateCurrentRowCorruption/GetNodeVersion
+=== RUN   TestTieredStore_NodeHistoryReadersPropagateCurrentRowCorruption/GetNodeHistory
+=== RUN   TestTieredStore_NodeHistoryReadersPropagateCurrentRowCorruption/NodeHistoryVersionsFrom
+=== RUN   TestTieredStore_NodeHistoryReadersPropagateCurrentRowCorruption/TruncateNodeHistory
+--- PASS: TestTieredStore_NodeHistoryReadersPropagateCurrentRowCorruption (0.02s)
+    --- PASS: TestTieredStore_NodeHistoryReadersPropagateCurrentRowCorruption/GetNodeVersion (0.00s)
+    --- PASS: TestTieredStore_NodeHistoryReadersPropagateCurrentRowCorruption/GetNodeHistory (0.00s)
+    --- PASS: TestTieredStore_NodeHistoryReadersPropagateCurrentRowCorruption/NodeHistoryVersionsFrom (0.00s)
+    --- PASS: TestTieredStore_NodeHistoryReadersPropagateCurrentRowCorruption/TruncateNodeHistory (0.00s)
+=== RUN   TestTieredStore_AllRelHistoryIDsFrom_Empty
+--- PASS: TestTieredStore_AllRelHistoryIDsFrom_Empty (0.02s)
+=== RUN   TestTieredStore_AllRelHistoryIDsFrom_LimitZeroAllRemaining
+--- PASS: TestTieredStore_AllRelHistoryIDsFrom_LimitZeroAllRemaining (0.01s)
+=== RUN   TestTieredStore_GetRelHistory_MergesReferenceAndArchiveVersions
+--- PASS: TestTieredStore_GetRelHistory_MergesReferenceAndArchiveVersions (0.04s)
+=== RUN   TestTieredStore_RelHistoryVersionsFrom_MergesReferenceAndArchiveVersions
+--- PASS: TestTieredStore_RelHistoryVersionsFrom_MergesReferenceAndArchiveVersions (0.05s)
+=== RUN   TestTieredStore_RelHistoryReadersPropagateCurrentRowCorruption
+=== RUN   TestTieredStore_RelHistoryReadersPropagateCurrentRowCorruption/GetRelVersion
+=== RUN   TestTieredStore_RelHistoryReadersPropagateCurrentRowCorruption/GetRelHistory
+=== RUN   TestTieredStore_RelHistoryReadersPropagateCurrentRowCorruption/RelHistoryVersionsFrom
+=== RUN   TestTieredStore_RelHistoryReadersPropagateCurrentRowCorruption/TruncateRelHistory
+--- PASS: TestTieredStore_RelHistoryReadersPropagateCurrentRowCorruption (0.03s)
+    --- PASS: TestTieredStore_RelHistoryReadersPropagateCurrentRowCorruption/GetRelVersion (0.00s)
+    --- PASS: TestTieredStore_RelHistoryReadersPropagateCurrentRowCorruption/GetRelHistory (0.00s)
+    --- PASS: TestTieredStore_RelHistoryReadersPropagateCurrentRowCorruption/RelHistoryVersionsFrom (0.00s)
+    --- PASS: TestTieredStore_RelHistoryReadersPropagateCurrentRowCorruption/TruncateRelHistory (0.00s)
+=== RUN   TestTieredStore_GetVersionFindsArchiveHistoryAfterRestore
+--- PASS: TestTieredStore_GetVersionFindsArchiveHistoryAfterRestore (0.03s)
+=== RUN   TestTiered_NodeHistoryVersionsFrom_EventShardLive_NoFanout
+--- PASS: TestTiered_NodeHistoryVersionsFrom_EventShardLive_NoFanout (0.02s)
+=== RUN   TestTiered_GetNodeVersion_EventShardLive_NotFound
+--- PASS: TestTiered_GetNodeVersion_EventShardLive_NotFound (0.02s)
+=== RUN   TestTiered_GetNodeHistory_EventShardLive_NoFanout
+--- PASS: TestTiered_GetNodeHistory_EventShardLive_NoFanout (0.02s)
+=== RUN   TestTiered_TruncateNodeHistory_EventShardLive_DelegatesToShard
+--- PASS: TestTiered_TruncateNodeHistory_EventShardLive_DelegatesToShard (0.02s)
+=== RUN   TestTiered_NodeHistoryVersionsFrom_DeletedEvent_FanoutBranch
+--- PASS: TestTiered_NodeHistoryVersionsFrom_DeletedEvent_FanoutBranch (0.02s)
+=== RUN   TestTiered_GetNodeHistory_DeletedEvent_FanoutBranch
+--- PASS: TestTiered_GetNodeHistory_DeletedEvent_FanoutBranch (0.02s)
+=== RUN   TestTiered_GetNodeVersion_DeletedEvent_HistoryFanout
+--- PASS: TestTiered_GetNodeVersion_DeletedEvent_HistoryFanout (0.02s)
+=== RUN   TestTiered_TruncateNodeHistory_DeletedEvent_FanoutBranch
+--- PASS: TestTiered_TruncateNodeHistory_DeletedEvent_FanoutBranch (0.02s)
+=== RUN   TestTiered_NodeHistoryVersionsFrom_RefLive_NoArchive
+--- PASS: TestTiered_NodeHistoryVersionsFrom_RefLive_NoArchive (0.03s)
+=== RUN   TestTiered_GetNodeHistory_RefLive_NoArchive
+--- PASS: TestTiered_GetNodeHistory_RefLive_NoArchive (0.02s)
+=== RUN   TestTiered_TruncateNodeHistory_RefLive_NoArchive
+--- PASS: TestTiered_TruncateNodeHistory_RefLive_NoArchive (0.02s)
+=== RUN   TestTiered_NodeHistoryVersionsFrom_Archive_MergesRefHistory
+--- PASS: TestTiered_NodeHistoryVersionsFrom_Archive_MergesRefHistory (0.03s)
+=== RUN   TestTiered_GetNodeHistory_Archive_MergesRefHistory
+--- PASS: TestTiered_GetNodeHistory_Archive_MergesRefHistory (0.04s)
+=== RUN   TestTiered_GetNodeVersion_Archive_FindsRefHistory
+--- PASS: TestTiered_GetNodeVersion_Archive_FindsRefHistory (0.04s)
+=== RUN   TestTiered_TruncateNodeHistory_Archive_MergesRefHistory
+--- PASS: TestTiered_TruncateNodeHistory_Archive_MergesRefHistory (0.03s)
+=== RUN   TestTiered_RelHistoryVersionsFrom_EventShardLive_NoFanout
+--- PASS: TestTiered_RelHistoryVersionsFrom_EventShardLive_NoFanout (0.02s)
+=== RUN   TestTiered_GetRelVersion_EventShardLive_NotFound
+--- PASS: TestTiered_GetRelVersion_EventShardLive_NotFound (0.03s)
+=== RUN   TestTiered_GetRelHistory_EventShardLive_NoFanout
+--- PASS: TestTiered_GetRelHistory_EventShardLive_NoFanout (0.03s)
+=== RUN   TestTiered_TruncateRelHistory_EventShardLive_DelegatesToShard
+--- PASS: TestTiered_TruncateRelHistory_EventShardLive_DelegatesToShard (0.02s)
+=== RUN   TestTiered_RelHistoryVersionsFrom_DeletedEvent_FanoutBranch
+--- PASS: TestTiered_RelHistoryVersionsFrom_DeletedEvent_FanoutBranch (0.02s)
+=== RUN   TestTiered_GetRelHistory_DeletedEvent_FanoutBranch
+--- PASS: TestTiered_GetRelHistory_DeletedEvent_FanoutBranch (0.02s)
+=== RUN   TestTiered_GetRelVersion_DeletedEvent_HistoryFanout
+--- PASS: TestTiered_GetRelVersion_DeletedEvent_HistoryFanout (0.02s)
+=== RUN   TestTiered_TruncateRelHistory_DeletedEvent_FanoutBranch
+--- PASS: TestTiered_TruncateRelHistory_DeletedEvent_FanoutBranch (0.03s)
+=== RUN   TestTiered_RelHistoryVersionsFrom_RefLive_NoArchive
+--- PASS: TestTiered_RelHistoryVersionsFrom_RefLive_NoArchive (0.03s)
+=== RUN   TestTiered_GetRelHistory_RefLive_NoArchive
+--- PASS: TestTiered_GetRelHistory_RefLive_NoArchive (0.02s)
+=== RUN   TestTiered_TruncateRelHistory_RefLive_NoArchive
+--- PASS: TestTiered_TruncateRelHistory_RefLive_NoArchive (0.03s)
+=== RUN   TestTieredStore_CheckedRoutersReturnStableArchivePlacement
+--- PASS: TestTieredStore_CheckedRoutersReturnStableArchivePlacement (0.06s)
+=== RUN   TestTieredStore_AllShardStoresWithLazyOpen_PinsColdShards
+--- PASS: TestTieredStore_AllShardStoresWithLazyOpen_PinsColdShards (0.04s)
+=== RUN   TestTieredStore_ResolveShardStore_PinsColdEventShard
+--- PASS: TestTieredStore_ResolveShardStore_PinsColdEventShard (0.04s)
+=== RUN   TestTieredStore_Close_WaitsForActiveCheckouts
+--- PASS: TestTieredStore_Close_WaitsForActiveCheckouts (0.04s)
+=== RUN   TestTieredStore_Close_WaitsForReferenceCheckout
+--- PASS: TestTieredStore_Close_WaitsForReferenceCheckout (0.04s)
+=== RUN   TestTieredStore_CheckoutArchiveLifecycle
+=== RUN   TestTieredStore_CheckoutArchiveLifecycle/nil_store
+=== RUN   TestTieredStore_CheckoutArchiveLifecycle/zero_value_store
+=== RUN   TestTieredStore_CheckoutArchiveLifecycle/absent_archive
+=== RUN   TestTieredStore_CheckoutArchiveLifecycle/background_error
+=== RUN   TestTieredStore_CheckoutArchiveLifecycle/closed_store
+--- PASS: TestTieredStore_CheckoutArchiveLifecycle (0.06s)
+    --- PASS: TestTieredStore_CheckoutArchiveLifecycle/nil_store (0.00s)
+    --- PASS: TestTieredStore_CheckoutArchiveLifecycle/zero_value_store (0.00s)
+    --- PASS: TestTieredStore_CheckoutArchiveLifecycle/absent_archive (0.02s)
+    --- PASS: TestTieredStore_CheckoutArchiveLifecycle/background_error (0.02s)
+    --- PASS: TestTieredStore_CheckoutArchiveLifecycle/closed_store (0.03s)
+=== RUN   TestTieredStore_CheckoutStore_RefusesAfterClose
+--- PASS: TestTieredStore_CheckoutStore_RefusesAfterClose (0.03s)
+=== RUN   TestTieredStore_Clear_DoesNotTouchClosingEventShard
+--- PASS: TestTieredStore_Clear_DoesNotTouchClosingEventShard (0.03s)
+=== RUN   TestTieredStore_ListShards_ReportsEventShardNotOpen_WhenClosing
+--- PASS: TestTieredStore_ListShards_ReportsEventShardNotOpen_WhenClosing (0.02s)
+=== RUN   TestTieredStore_RebuildCatalog_DoesNotTouchClosingEventShard
+--- PASS: TestTieredStore_RebuildCatalog_DoesNotTouchClosingEventShard (0.02s)
+=== RUN   TestTieredStore_Repair_MissingIncoming_AfterDeleteRelWithHistoryCrashWindow
+2026/10/09 13:32:07 WARN tiered store repair fixed cross-shard inconsistencies orphaned_in_entries=0 stale_in_entries=0 missing_in_entries=1 shards_scanned=2 cross_shard_rels_checked=1
+--- PASS: TestTieredStore_Repair_MissingIncoming_AfterDeleteRelWithHistoryCrashWindow (0.17s)
+=== RUN   TestTieredColdShardFastDrop_ConcurrentWriters
+--- PASS: TestTieredColdShardFastDrop_ConcurrentWriters (0.35s)
+=== RUN   TestTieredColdShardFastDrop_ChangeLogDeclines
+--- PASS: TestTieredColdShardFastDrop_ChangeLogDeclines (0.31s)
+=== RUN   TestTieredColdShardFastDrop_ConcurrentReads
+--- PASS: TestTieredColdShardFastDrop_ConcurrentReads (0.26s)
+=== RUN   TestTieredColdShardFastDrop_CloseDoesNotRaceEventShardsMap
+--- PASS: TestTieredColdShardFastDrop_CloseDoesNotRaceEventShardsMap (11.77s)
+=== RUN   TestTieredColdShardFastDrop_CatalogSaveFailureLeavesShardIntact
+--- PASS: TestTieredColdShardFastDrop_CatalogSaveFailureLeavesShardIntact (0.26s)
+=== RUN   TestTieredColdShardFastDrop_ForeignLabelDuringDrainBlocksTheDrop
+--- PASS: TestTieredColdShardFastDrop_ForeignLabelDuringDrainBlocksTheDrop (0.21s)
+=== RUN   TestTieredPurge_CrossShardEdgeSweep
+--- PASS: TestTieredPurge_CrossShardEdgeSweep (0.02s)
+=== RUN   TestTieredPurge_ByValidTo_CrossShardEdgeSweep
+--- PASS: TestTieredPurge_ByValidTo_CrossShardEdgeSweep (0.02s)
+=== RUN   TestTieredIndexes_CapabilityFlagsMatchSharded
+--- PASS: TestTieredIndexes_CapabilityFlagsMatchSharded (0.04s)
+=== RUN   TestTieredRelTemporalIndex_DDLBreakCases
+--- PASS: TestTieredRelTemporalIndex_DDLBreakCases (0.02s)
+=== RUN   TestTieredRelTemporalIndex_PruneDeclinesWithoutFilterOrIndex
+--- PASS: TestTieredRelTemporalIndex_PruneDeclinesWithoutFilterOrIndex (0.02s)
+=== RUN   TestTieredRelTemporalIndex_EveryShardAndNewHotShard
+--- PASS: TestTieredRelTemporalIndex_EveryShardAndNewHotShard (0.03s)
+=== RUN   TestTieredRelTemporalIndex_SurvivesRestartAndColdReopen
+--- PASS: TestTieredRelTemporalIndex_SurvivesRestartAndColdReopen (0.45s)
+=== RUN   TestTieredComposite_DDLBreakCases
+--- PASS: TestTieredComposite_DDLBreakCases (0.02s)
+=== RUN   TestTieredComposite_EveryShardAndNewHotShard
+--- PASS: TestTieredComposite_EveryShardAndNewHotShard (0.03s)
+=== RUN   TestTieredComposite_SurvivesRestart
+--- PASS: TestTieredComposite_SurvivesRestart (0.43s)
+=== RUN   TestTieredShardIndexes_InterruptedDDLRepairedAtOpen
+--- PASS: TestTieredShardIndexes_InterruptedDDLRepairedAtOpen (0.27s)
+=== RUN   TestTieredShardIndexes_FanOutRollsBackOnShardFailure
+--- PASS: TestTieredShardIndexes_FanOutRollsBackOnShardFailure (0.04s)
+=== RUN   TestTieredShardIndexes_DropRollsBackOnShardFailure
+--- PASS: TestTieredShardIndexes_DropRollsBackOnShardFailure (0.12s)
+=== RUN   TestTieredStore_ArchiveRestart
+--- PASS: TestTieredStore_ArchiveRestart (0.37s)
+=== RUN   TestTieredStore_ListShards_Initial
+--- PASS: TestTieredStore_ListShards_Initial (0.02s)
+=== RUN   TestTieredStore_ListShards_AfterRotation
+--- PASS: TestTieredStore_ListShards_AfterRotation (0.06s)
+=== RUN   TestTieredStore_ListShards_WithCold
+--- PASS: TestTieredStore_ListShards_WithCold (0.04s)
+=== RUN   TestTieredStore_ListShards_ClosedColdUsesCatalogStats
+--- PASS: TestTieredStore_ListShards_ClosedColdUsesCatalogStats (0.37s)
+=== RUN   TestTieredStore_ListShards_LiveStats
+--- PASS: TestTieredStore_ListShards_LiveStats (0.03s)
+=== RUN   TestTieredStore_RebuildCatalog
+--- PASS: TestTieredStore_RebuildCatalog (0.02s)
+=== RUN   TestTieredPutRelationship_CrossShardEmitsChangeRecords
+--- PASS: TestTieredPutRelationship_CrossShardEmitsChangeRecords (0.02s)
+=== RUN   TestTieredClose_LeakedEventShardCheckinTimesOutInsteadOfHanging
+--- PASS: TestTieredClose_LeakedEventShardCheckinTimesOutInsteadOfHanging (6.02s)
+=== RUN   TestTieredClose_LeakedRefShardCheckinTimesOutInsteadOfHanging
+--- PASS: TestTieredClose_LeakedRefShardCheckinTimesOutInsteadOfHanging (5.39s)
+=== RUN   TestTieredPutNode_ConcurrentSameIDCrossClassRace
+--- PASS: TestTieredPutNode_ConcurrentSameIDCrossClassRace (0.18s)
+=== RUN   TestTieredPutNode_GeneratedThenSuppliedDuplicateDetected
+--- PASS: TestTieredPutNode_GeneratedThenSuppliedDuplicateDetected (0.00s)
+=== RUN   TestTieredPutNode_ConcurrentDistinctIDsAcrossShards
+--- PASS: TestTieredPutNode_ConcurrentDistinctIDsAcrossShards (0.01s)
+=== RUN   TestTieredPutNode_LockNotStuckAfterFailedCreate
+--- PASS: TestTieredPutNode_LockNotStuckAfterFailedCreate (0.00s)
+=== RUN   TestTieredRelationship_ConcurrentSameIDSameShardRace
+--- PASS: TestTieredRelationship_ConcurrentSameIDSameShardRace (0.93s)
+=== RUN   TestTieredRelationship_ConcurrentSameIDCrossShardRace
+--- PASS: TestTieredRelationship_ConcurrentSameIDCrossShardRace (0.83s)
+=== RUN   TestTieredPutNodesBatch_ConcurrentOverlappingBatches
+--- PASS: TestTieredPutNodesBatch_ConcurrentOverlappingBatches (0.66s)
+=== RUN   TestTieredPutRelationshipsBatch_ConcurrentOverlappingBatches
+--- PASS: TestTieredPutRelationshipsBatch_ConcurrentOverlappingBatches (0.28s)
+=== RUN   TestTieredDocValues_ForEachDocValuesCrossShardExactSet
+--- PASS: TestTieredDocValues_ForEachDocValuesCrossShardExactSet (0.01s)
+=== RUN   TestTieredDocValues_ForEachDocValuesMultiCrossShardIntersection
+--- PASS: TestTieredDocValues_ForEachDocValuesMultiCrossShardIntersection (0.01s)
+=== RUN   TestTieredDocValues_Gate2StalenessMidScan
+--- PASS: TestTieredDocValues_Gate2StalenessMidScan (0.06s)
+=== RUN   TestTieredDocValues_NodeMutationEpochSumsAcrossShards
+--- PASS: TestTieredDocValues_NodeMutationEpochSumsAcrossShards (0.02s)
+=== RUN   TestTieredDocValues_EmptyLabelDeclines
+--- PASS: TestTieredDocValues_EmptyLabelDeclines (0.02s)
+=== RUN   TestTieredDocValues_NumericAndStringColumnTypesPreserved
+--- PASS: TestTieredDocValues_NumericAndStringColumnTypesPreserved (0.02s)
+=== RUN   TestTieredDocValues_MatchesPerNodeFallback
+--- PASS: TestTieredDocValues_MatchesPerNodeFallback (0.02s)
+=== RUN   TestTieredDocValues_UnbuildableColumnWithNonzeroMembersForcesWholeDecline
+--- PASS: TestTieredDocValues_UnbuildableColumnWithNonzeroMembersForcesWholeDecline (0.02s)
+=== RUN   TestTieredDocValues_ColdShardParticipation
+--- PASS: TestTieredDocValues_ColdShardParticipation (0.31s)
+=== RUN   TestTieredDocValues_DocValuesSnapshotPointLookup
+--- PASS: TestTieredDocValues_DocValuesSnapshotPointLookup (0.03s)
+=== RUN   TestTieredDocValues_ForEachDocValuesIncludesArchivedReferenceEntities
+--- PASS: TestTieredDocValues_ForEachDocValuesIncludesArchivedReferenceEntities (0.08s)
+=== RUN   TestTieredDocValues_NodeMutationEpochArchiveFold
+--- PASS: TestTieredDocValues_NodeMutationEpochArchiveFold (0.04s)
+=== RUN   TestTieredDocValues_ClosedStoreErrors
+--- PASS: TestTieredDocValues_ClosedStoreErrors (0.02s)
+=== RUN   TestTieredStore_GetNodesByIDsShardBatchedContract
+--- PASS: TestTieredStore_GetNodesByIDsShardBatchedContract (0.02s)
+=== RUN   TestTieredStore_GetByIDsSingleIDFastPathContract
+--- PASS: TestTieredStore_GetByIDsSingleIDFastPathContract (0.02s)
+=== RUN   TestTieredStore_GetRelationshipsByIDsShardBatchedContract
+--- PASS: TestTieredStore_GetRelationshipsByIDsShardBatchedContract (0.02s)
+=== RUN   TestTieredStore_GetRelationshipsByIDsIncludesArchivedRelationships
+--- PASS: TestTieredStore_GetRelationshipsByIDsIncludesArchivedRelationships (0.02s)
+=== RUN   TestTieredPropertyIndexOnDisk_ReachesEveryShard
+=== PAUSE TestTieredPropertyIndexOnDisk_ReachesEveryShard
+=== RUN   TestTieredPropertyIndexOnDisk_ReopenPersistence
+--- PASS: TestTieredPropertyIndexOnDisk_ReopenPersistence (0.26s)
+=== RUN   TestTieredPropertyIndexOnDisk_PersistedKeyspace
+=== PAUSE TestTieredPropertyIndexOnDisk_PersistedKeyspace
+=== RUN   TestTieredPropertyIndexOnDisk_EventLabelStillRejects
+=== PAUSE TestTieredPropertyIndexOnDisk_EventLabelStillRejects
+=== RUN   TestTieredPropertyIndexOnDisk_EqualityParityWithRAMMode
+=== PAUSE TestTieredPropertyIndexOnDisk_EqualityParityWithRAMMode
+=== RUN   TestTieredStoreNodePropertyStats_MinMaxSpanningRefAndEventShards
+--- PASS: TestTieredStoreNodePropertyStats_MinMaxSpanningRefAndEventShards (0.01s)
+=== RUN   TestTieredStoreNodePropertyStats_ArchiveShardFold
+--- PASS: TestTieredStoreNodePropertyStats_ArchiveShardFold (0.02s)
+=== RUN   TestTieredStoreNodePropertyStats_CrossShardCountsOnce
+--- PASS: TestTieredStoreNodePropertyStats_CrossShardCountsOnce (0.02s)
+=== RUN   TestTieredStoreNodePropertyStats_ColdShardFold
+--- PASS: TestTieredStoreNodePropertyStats_ColdShardFold (0.02s)
+=== RUN   TestTieredStoreNodePropertyStats_EmptyPairZeroValue
+--- PASS: TestTieredStoreNodePropertyStats_EmptyPairZeroValue (0.01s)
+=== RUN   TestTieredStoreNodePropertyStats_ShardSketchesShareEquivalentPrecision
+--- PASS: TestTieredStoreNodePropertyStats_ShardSketchesShareEquivalentPrecision (0.01s)
+=== RUN   TestTieredStoreRelPropertyIndex_Declines
+=== PAUSE TestTieredStoreRelPropertyIndex_Declines
+=== RUN   TestTieredStoreRelationshipsByTypeAndProperty_EmptyTypeReturnsNil
+=== PAUSE TestTieredStoreRelationshipsByTypeAndProperty_EmptyTypeReturnsNil
+=== RUN   TestTieredStore_Repair_OrphanedRelEndpointDoesNotAbortPass
+--- PASS: TestTieredStore_Repair_OrphanedRelEndpointDoesNotAbortPass (0.01s)
+=== RUN   TestTieredStore_Repair_OrphanedIncoming
+2026/10/09 13:32:38 WARN tiered store repair fixed cross-shard inconsistencies orphaned_in_entries=1 stale_in_entries=0 missing_in_entries=0 shards_scanned=2 cross_shard_rels_checked=0
+--- PASS: TestTieredStore_Repair_OrphanedIncoming (0.01s)
+=== RUN   TestTieredStore_Repair_OrphanedIncomingMissingEndNode
+2026/10/09 13:32:38 WARN tiered store repair fixed cross-shard inconsistencies orphaned_in_entries=1 stale_in_entries=0 missing_in_entries=0 shards_scanned=2 cross_shard_rels_checked=0
+--- PASS: TestTieredStore_Repair_OrphanedIncomingMissingEndNode (0.02s)
+=== RUN   TestTieredStore_Repair_MissingIncoming
+2026/10/09 13:32:38 WARN tiered store repair fixed cross-shard inconsistencies orphaned_in_entries=0 stale_in_entries=0 missing_in_entries=1 shards_scanned=2 cross_shard_rels_checked=1
+--- PASS: TestTieredStore_Repair_MissingIncoming (0.02s)
+=== RUN   TestTieredStore_Repair_MissingIncomingUsesPinnedArchiveSnapshot
+2026/10/09 13:32:38 WARN tiered store repair fixed cross-shard inconsistencies orphaned_in_entries=0 stale_in_entries=0 missing_in_entries=1 shards_scanned=3 cross_shard_rels_checked=1
+--- PASS: TestTieredStore_Repair_MissingIncomingUsesPinnedArchiveSnapshot (0.02s)
+=== RUN   TestTieredStore_Rotation
+--- PASS: TestTieredStore_Rotation (0.03s)
+=== RUN   TestTieredStore_RotationIdempotent
+--- PASS: TestTieredStore_RotationIdempotent (0.03s)
+=== RUN   TestTieredStore_WarmShardStillReadable
+--- PASS: TestTieredStore_WarmShardStillReadable (0.03s)
+=== RUN   TestTieredStore_WriteAfterRotation
+--- PASS: TestTieredStore_WriteAfterRotation (0.02s)
+=== RUN   TestTieredStore_RotationPreservesEventShards
+--- PASS: TestTieredStore_RotationPreservesEventShards (0.02s)
+=== RUN   TestTieredStore_ForceRotate
+--- PASS: TestTieredStore_ForceRotate (0.03s)
+=== RUN   TestTieredStore_RotateHotShardPublicCallSerializesConcurrentRotations
+--- PASS: TestTieredStore_RotateHotShardPublicCallSerializesConcurrentRotations (0.04s)
+=== RUN   TestTieredStore_OntologyRouting_RefNode
+--- PASS: TestTieredStore_OntologyRouting_RefNode (0.02s)
+=== RUN   TestTieredStore_OntologyRouting_ShardForNode
+--- PASS: TestTieredStore_OntologyRouting_ShardForNode (0.02s)
+=== RUN   TestTieredStore_OntologyRouting_UnknownDefaultsToEvent
+--- PASS: TestTieredStore_OntologyRouting_UnknownDefaultsToEvent (0.02s)
+=== RUN   TestTieredStore_ShardWindowStart_WeeklyISOWeekOne
+=== RUN   TestTieredStore_ShardWindowStart_WeeklyISOWeekOne/week_one_after_friday_jan_one
+=== RUN   TestTieredStore_ShardWindowStart_WeeklyISOWeekOne/previous_iso_year_spillover
+=== RUN   TestTieredStore_ShardWindowStart_WeeklyISOWeekOne/week_one_can_start_in_previous_calendar_year
+--- PASS: TestTieredStore_ShardWindowStart_WeeklyISOWeekOne (0.00s)
+    --- PASS: TestTieredStore_ShardWindowStart_WeeklyISOWeekOne/week_one_after_friday_jan_one (0.00s)
+    --- PASS: TestTieredStore_ShardWindowStart_WeeklyISOWeekOne/previous_iso_year_spillover (0.00s)
+    --- PASS: TestTieredStore_ShardWindowStart_WeeklyISOWeekOne/week_one_can_start_in_previous_calendar_year (0.00s)
+=== RUN   TestTieredStore_ShardWindowStart_SubDayWindows
+=== RUN   TestTieredStore_ShardWindowStart_SubDayWindows/hour
+=== RUN   TestTieredStore_ShardWindowStart_SubDayWindows/minute
+--- PASS: TestTieredStore_ShardWindowStart_SubDayWindows (0.00s)
+    --- PASS: TestTieredStore_ShardWindowStart_SubDayWindows/hour (0.00s)
+    --- PASS: TestTieredStore_ShardWindowStart_SubDayWindows/minute (0.00s)
+=== RUN   TestTieredStore_DepthHot
+--- PASS: TestTieredStore_DepthHot (0.02s)
+=== RUN   TestTieredStore_DepthWarm
+--- PASS: TestTieredStore_DepthWarm (0.02s)
+=== RUN   TestTieredStore_DepthAll
+--- PASS: TestTieredStore_DepthAll (0.02s)
+=== RUN   TestTieredStore_DepthZeroIsAll
+--- PASS: TestTieredStore_DepthZeroIsAll (0.02s)
+=== RUN   TestTieredStore_InvalidDepthRejected
+=== RUN   TestTieredStore_InvalidDepthRejected/AllNodes
+=== RUN   TestTieredStore_InvalidDepthRejected/AllNodeIDs
+=== RUN   TestTieredStore_InvalidDepthRejected/AllRelationships
+=== RUN   TestTieredStore_InvalidDepthRejected/AllRelIDs
+=== RUN   TestTieredStore_InvalidDepthRejected/NodesByLabel
+=== RUN   TestTieredStore_InvalidDepthRejected/ReferenceNodesByLabel
+=== RUN   TestTieredStore_InvalidDepthRejected/RelationshipsByType
+=== RUN   TestTieredStore_InvalidDepthRejected/NodesByLabelAndProperty
+=== RUN   TestTieredStore_InvalidDepthRejected/ReferenceNodesByLabelAndProperty
+=== RUN   TestTieredStore_InvalidDepthRejected/SearchNearestNodes
+=== RUN   TestTieredStore_InvalidDepthRejected/ForEachNodeHistoryIDByDepth
+=== RUN   TestTieredStore_InvalidDepthRejected/ForEachRelHistoryIDByDepth
+--- PASS: TestTieredStore_InvalidDepthRejected (0.01s)
+    --- PASS: TestTieredStore_InvalidDepthRejected/AllNodes (0.00s)
+    --- PASS: TestTieredStore_InvalidDepthRejected/AllNodeIDs (0.00s)
+    --- PASS: TestTieredStore_InvalidDepthRejected/AllRelationships (0.00s)
+    --- PASS: TestTieredStore_InvalidDepthRejected/AllRelIDs (0.00s)
+    --- PASS: TestTieredStore_InvalidDepthRejected/NodesByLabel (0.00s)
+    --- PASS: TestTieredStore_InvalidDepthRejected/ReferenceNodesByLabel (0.00s)
+    --- PASS: TestTieredStore_InvalidDepthRejected/RelationshipsByType (0.00s)
+    --- PASS: TestTieredStore_InvalidDepthRejected/NodesByLabelAndProperty (0.00s)
+    --- PASS: TestTieredStore_InvalidDepthRejected/ReferenceNodesByLabelAndProperty (0.00s)
+    --- PASS: TestTieredStore_InvalidDepthRejected/SearchNearestNodes (0.00s)
+    --- PASS: TestTieredStore_InvalidDepthRejected/ForEachNodeHistoryIDByDepth (0.00s)
+    --- PASS: TestTieredStore_InvalidDepthRejected/ForEachRelHistoryIDByDepth (0.00s)
+=== RUN   TestTieredStore_AllIDs_TemporalOpts
+--- PASS: TestTieredStore_AllIDs_TemporalOpts (0.01s)
+=== RUN   TestTieredStore_DepthCounters
+--- PASS: TestTieredStore_DepthCounters (0.03s)
+=== RUN   TestTieredStore_DepthRelationshipsByType
+--- PASS: TestTieredStore_DepthRelationshipsByType (0.03s)
+=== RUN   TestTieredStore_DepthAllRelIDs
+--- PASS: TestTieredStore_DepthAllRelIDs (0.04s)
+=== RUN   TestTieredStore_ColdShard_TimestampResolution
+--- PASS: TestTieredStore_ColdShard_TimestampResolution (0.03s)
+=== RUN   TestTieredStore_ShardForNodeID_Error
+--- PASS: TestTieredStore_ShardForNodeID_Error (0.02s)
+=== RUN   TestTieredStore_ShardForRelID_Error
+--- PASS: TestTieredStore_ShardForRelID_Error (0.02s)
+=== RUN   TestTieredStore_RoutingErrorInWrite
+--- PASS: TestTieredStore_RoutingErrorInWrite (0.02s)
+=== RUN   TestTieredStore_ShardForRelID_FindsInWarmShard
+--- PASS: TestTieredStore_ShardForRelID_FindsInWarmShard (0.04s)
+=== RUN   TestTieredStore_IsReferenceLabel
+--- PASS: TestTieredStore_IsReferenceLabel (0.01s)
+=== RUN   TestTieredNodesByLabel_ConcurrentReplaceAndFlush_NoDropNoStale
+--- PASS: TestTieredNodesByLabel_ConcurrentReplaceAndFlush_NoDropNoStale (0.06s)
+=== RUN   TestTieredTemporalIndexOnDisk_ReachesEveryShard
+=== PAUSE TestTieredTemporalIndexOnDisk_ReachesEveryShard
+=== RUN   TestTieredTemporalIndexOnDisk_ReopenPersistence
+--- PASS: TestTieredTemporalIndexOnDisk_ReopenPersistence (0.26s)
+=== RUN   TestTieredStore_PutGetNode_Ref
+--- PASS: TestTieredStore_PutGetNode_Ref (0.06s)
+=== RUN   TestTieredStore_PutGetNode_Event
+--- PASS: TestTieredStore_PutGetNode_Event (0.06s)
+=== RUN   TestTieredStore_NodeIntegrityHashCapabilities
+--- PASS: TestTieredStore_NodeIntegrityHashCapabilities (0.01s)
+=== RUN   TestTieredStore_NodeIntegrityHashClosedStore
+--- PASS: TestTieredStore_NodeIntegrityHashClosedStore (0.02s)
+=== RUN   TestTieredStore_RemoveNodeLabelToken_UpdatesIndexes
+--- PASS: TestTieredStore_RemoveNodeLabelToken_UpdatesIndexes (0.01s)
+=== RUN   TestTieredStore_RemoveNodeLabelTokenWithHistory_UpdatesIndexesAndHistory
+--- PASS: TestTieredStore_RemoveNodeLabelTokenWithHistory_UpdatesIndexesAndHistory (0.01s)
+=== RUN   TestTieredStore_AddNodeLabelToken_UpdatesIndexes
+--- PASS: TestTieredStore_AddNodeLabelToken_UpdatesIndexes (0.02s)
+=== RUN   TestTieredStore_AddNodeLabelTokenWithHistory_UpdatesIndexesAndHistory
+--- PASS: TestTieredStore_AddNodeLabelTokenWithHistory_UpdatesIndexesAndHistory (0.03s)
+=== RUN   TestTieredStore_RemoveNodeLabelToken_RejectsPrimaryClassMutation
+--- PASS: TestTieredStore_RemoveNodeLabelToken_RejectsPrimaryClassMutation (0.02s)
+=== RUN   TestTieredStore_NodeLabelTokenHelpersRejectInvalidDeltas
+--- PASS: TestTieredStore_NodeLabelTokenHelpersRejectInvalidDeltas (0.02s)
+=== RUN   TestTieredStore_PutNode_RejectsDuplicateIDAcrossClasses
+=== RUN   TestTieredStore_PutNode_RejectsDuplicateIDAcrossClasses/reference_then_event
+=== RUN   TestTieredStore_PutNode_RejectsDuplicateIDAcrossClasses/event_then_reference
+--- PASS: TestTieredStore_PutNode_RejectsDuplicateIDAcrossClasses (0.04s)
+    --- PASS: TestTieredStore_PutNode_RejectsDuplicateIDAcrossClasses/reference_then_event (0.02s)
+    --- PASS: TestTieredStore_PutNode_RejectsDuplicateIDAcrossClasses/event_then_reference (0.01s)
+=== RUN   TestTieredStore_DeleteNode_Ref
+--- PASS: TestTieredStore_DeleteNode_Ref (0.02s)
+=== RUN   TestTieredStore_ReplaceNode
+--- PASS: TestTieredStore_ReplaceNode (0.01s)
+=== RUN   TestTieredStore_ReplaceNode_RejectsPrimaryClassMutation
+--- PASS: TestTieredStore_ReplaceNode_RejectsPrimaryClassMutation (0.01s)
+=== RUN   TestTieredStore_ReplaceNode_RejectsSameClassLabelMutation
+--- PASS: TestTieredStore_ReplaceNode_RejectsSameClassLabelMutation (0.01s)
+=== RUN   TestTieredStore_SameShardRel_EventToEvent
+--- PASS: TestTieredStore_SameShardRel_EventToEvent (0.01s)
+=== RUN   TestTieredStore_SameShardRel_RefToRef
+--- PASS: TestTieredStore_SameShardRel_RefToRef (0.01s)
+=== RUN   TestTieredStore_CrossShardRel_EventToRef
+--- PASS: TestTieredStore_CrossShardRel_EventToRef (0.01s)
+=== RUN   TestTieredStore_CrossShardRel_RefToEvent
+--- PASS: TestTieredStore_CrossShardRel_RefToEvent (0.01s)
+=== RUN   TestTieredStore_CrossShardRel_IncomingRelationships
+--- PASS: TestTieredStore_CrossShardRel_IncomingRelationships (0.01s)
+=== RUN   TestTieredStore_CrossShardRel_OutgoingRelationships
+--- PASS: TestTieredStore_CrossShardRel_OutgoingRelationships (0.02s)
+=== RUN   TestTieredStore_CrossShardRel_Delete
+--- PASS: TestTieredStore_CrossShardRel_Delete (0.01s)
+=== RUN   TestTieredStore_CrossShardRel_EndpointNotFound
+--- PASS: TestTieredStore_CrossShardRel_EndpointNotFound (0.02s)
+=== RUN   TestTieredStore_AllNodes_MergesShards
+--- PASS: TestTieredStore_AllNodes_MergesShards (0.03s)
+=== RUN   TestTieredStore_AllRelationships_MergesShards
+--- PASS: TestTieredStore_AllRelationships_MergesShards (0.02s)
+=== RUN   TestTieredStore_NodeCount
+--- PASS: TestTieredStore_NodeCount (0.02s)
+=== RUN   TestTieredStore_RelationshipCount
+--- PASS: TestTieredStore_RelationshipCount (0.01s)
+=== RUN   TestTieredStore_NodeCountByLabel
+--- PASS: TestTieredStore_NodeCountByLabel (0.02s)
+=== RUN   TestTieredStore_NodesByLabel
+--- PASS: TestTieredStore_NodesByLabel (0.02s)
+=== RUN   TestTieredStore_DeleteNodeCascade_RefNodeWithCrossShardRels
+--- PASS: TestTieredStore_DeleteNodeCascade_RefNodeWithCrossShardRels (0.02s)
+=== RUN   TestTieredStore_DeleteNodeCascade_EventNodeWithCrossShardRels
+--- PASS: TestTieredStore_DeleteNodeCascade_EventNodeWithCrossShardRels (0.02s)
+=== RUN   TestTieredStore_DeleteNodeCascadeRollsBackPriorRelOnCrossShardFailure
+--- PASS: TestTieredStore_DeleteNodeCascadeRollsBackPriorRelOnCrossShardFailure (0.03s)
+=== RUN   TestTieredStore_VersionHistory_RefNode
+--- PASS: TestTieredStore_VersionHistory_RefNode (0.04s)
+=== RUN   TestTieredStore_VersionHistory_EventRel
+--- PASS: TestTieredStore_VersionHistory_EventRel (0.04s)
+=== RUN   TestTieredStore_AllNodeHistoryIDs_MergesShards
+--- PASS: TestTieredStore_AllNodeHistoryIDs_MergesShards (0.05s)
+=== RUN   TestTieredStore_PutNodesBatch_MixedRefEvent
+--- PASS: TestTieredStore_PutNodesBatch_MixedRefEvent (0.04s)
+=== RUN   TestTieredStore_PutNodesBatch_RejectsDuplicateIDAcrossClasses
+--- PASS: TestTieredStore_PutNodesBatch_RejectsDuplicateIDAcrossClasses (0.02s)
+=== RUN   TestTieredStore_RejectsZeroIDWrites
+--- PASS: TestTieredStore_RejectsZeroIDWrites (0.04s)
+=== RUN   TestTieredStore_PutNode_RejectsDuplicateIDInArchive
+--- PASS: TestTieredStore_PutNode_RejectsDuplicateIDInArchive (0.03s)
+=== RUN   TestTieredStore_DepthFilterPinsArchive
+--- PASS: TestTieredStore_DepthFilterPinsArchive (0.02s)
+=== RUN   TestTieredStore_DeleteNodesBatch
+--- PASS: TestTieredStore_DeleteNodesBatch (0.01s)
+=== RUN   TestTieredStore_DeleteNodesBatchRejectsConnectedRelationships
+--- PASS: TestTieredStore_DeleteNodesBatchRejectsConnectedRelationships (0.01s)
+=== RUN   TestTieredStore_DeleteNodesBatchRollbackRestoresDeletedBuckets
+--- PASS: TestTieredStore_DeleteNodesBatchRollbackRestoresDeletedBuckets (0.02s)
+=== RUN   TestTieredStore_DeleteNodesBatchDeduplicatesInput
+--- PASS: TestTieredStore_DeleteNodesBatchDeduplicatesInput (0.03s)
+=== RUN   TestTieredStore_PutRelationshipsBatch_MixedSameAndCross
+--- PASS: TestTieredStore_PutRelationshipsBatch_MixedSameAndCross (0.01s)
+=== RUN   TestTieredStore_PutRelationship_RejectsDuplicateIDAcrossShards
+--- PASS: TestTieredStore_PutRelationship_RejectsDuplicateIDAcrossShards (0.02s)
+=== RUN   TestTieredStore_PutRelationship_RejectsDuplicateIDInArchive
+--- PASS: TestTieredStore_PutRelationship_RejectsDuplicateIDInArchive (0.02s)
+=== RUN   TestTieredStore_PutRelationshipsBatch_RejectsDuplicateIDAcrossShards
+--- PASS: TestTieredStore_PutRelationshipsBatch_RejectsDuplicateIDAcrossShards (0.01s)
+=== RUN   TestTieredStore_PutRelationshipsBatch_ExistingDuplicateDoesNotPartiallyWrite
+--- PASS: TestTieredStore_PutRelationshipsBatch_ExistingDuplicateDoesNotPartiallyWrite (0.02s)
+=== RUN   TestTieredStore_PutRelationshipsBatch_MissingEndpointDoesNotPartiallyWrite
+=== RUN   TestTieredStore_PutRelationshipsBatch_MissingEndpointDoesNotPartiallyWrite/missing_start
+=== RUN   TestTieredStore_PutRelationshipsBatch_MissingEndpointDoesNotPartiallyWrite/missing_end
+--- PASS: TestTieredStore_PutRelationshipsBatch_MissingEndpointDoesNotPartiallyWrite (0.03s)
+    --- PASS: TestTieredStore_PutRelationshipsBatch_MissingEndpointDoesNotPartiallyWrite/missing_start (0.01s)
+    --- PASS: TestTieredStore_PutRelationshipsBatch_MissingEndpointDoesNotPartiallyWrite/missing_end (0.01s)
+=== RUN   TestTieredStore_PutRelationshipsBatch_RollsBackCrossShardOnSameShardBucketFailure
+--- PASS: TestTieredStore_PutRelationshipsBatch_RollsBackCrossShardOnSameShardBucketFailure (0.01s)
+=== RUN   TestTieredStore_PropertyIndex_RoutedByLabel
+--- PASS: TestTieredStore_PropertyIndex_RoutedByLabel (0.01s)
+=== RUN   TestTieredStore_Close_Idempotent
+--- PASS: TestTieredStore_Close_Idempotent (0.01s)
+=== RUN   TestTieredStore_Clear_AllShards
+--- PASS: TestTieredStore_Clear_AllShards (0.02s)
+=== RUN   TestTieredStore_EventShardsMap
+--- PASS: TestTieredStore_EventShardsMap (0.01s)
+=== RUN   TestTieredStore_AllNodeIDs_MergesShards
+--- PASS: TestTieredStore_AllNodeIDs_MergesShards (0.01s)
+=== RUN   TestTieredStore_AllRelIDs_MergesShards
+--- PASS: TestTieredStore_AllRelIDs_MergesShards (0.04s)
+=== RUN   TestTieredStore_AllNodes_Pagination
+--- PASS: TestTieredStore_AllNodes_Pagination (0.02s)
+=== RUN   TestTieredStore_DiskBacked_CreateAndReopen
+--- PASS: TestTieredStore_DiskBacked_CreateAndReopen (0.22s)
+=== RUN   TestTieredStore_MidWindowRestart
+--- PASS: TestTieredStore_MidWindowRestart (0.25s)
+=== RUN   TestTieredStore_GetNodesByIDs
+--- PASS: TestTieredStore_GetNodesByIDs (0.01s)
+=== RUN   TestTieredStore_GetRelationshipsByIDs
+--- PASS: TestTieredStore_GetRelationshipsByIDs (0.01s)
+=== RUN   TestTieredStore_RelationshipsByType_MergesShards
+--- PASS: TestTieredStore_RelationshipsByType_MergesShards (0.02s)
+=== RUN   TestTieredStore_RelCountByType
+--- PASS: TestTieredStore_RelCountByType (0.03s)
+=== RUN   TestTieredStore_ReplaceRelationship
+--- PASS: TestTieredStore_ReplaceRelationship (0.01s)
+=== RUN   TestTieredStore_ReplaceRelationshipRejectsIndexedFieldMutation
+--- PASS: TestTieredStore_ReplaceRelationshipRejectsIndexedFieldMutation (0.01s)
+=== RUN   TestTieredStore_TruncateHistory
+--- PASS: TestTieredStore_TruncateHistory (0.01s)
+=== RUN   TestTieredStore_TruncateNodeHistoryRejectsNegativeKeep
+--- PASS: TestTieredStore_TruncateNodeHistoryRejectsNegativeKeep (0.02s)
+=== RUN   TestTieredStore_GetNodeVersion
+--- PASS: TestTieredStore_GetNodeVersion (0.02s)
+=== RUN   TestTieredStore_GetRelVersion
+--- PASS: TestTieredStore_GetRelVersion (0.02s)
+=== RUN   TestTieredStore_ReplaceNodeWithHistory
+--- PASS: TestTieredStore_ReplaceNodeWithHistory (0.02s)
+=== RUN   TestTieredStore_ReplaceNodeWithHistory_RejectsPrimaryClassMutation
+--- PASS: TestTieredStore_ReplaceNodeWithHistory_RejectsPrimaryClassMutation (0.01s)
+=== RUN   TestTieredStore_ReplaceNodeWithHistory_RejectsSameClassLabelMutation
+--- PASS: TestTieredStore_ReplaceNodeWithHistory_RejectsSameClassLabelMutation (0.01s)
+=== RUN   TestTieredStore_ReplaceWithHistoryRejectsNilPayloads
+--- PASS: TestTieredStore_ReplaceWithHistoryRejectsNilPayloads (0.01s)
+=== RUN   TestTieredStore_ReplaceRelWithHistory
+--- PASS: TestTieredStore_ReplaceRelWithHistory (0.01s)
+=== RUN   TestTieredStore_DeleteRelationshipsBatch
+--- PASS: TestTieredStore_DeleteRelationshipsBatch (0.01s)
+=== RUN   TestTieredStore_AllRelHistoryIDs
+--- PASS: TestTieredStore_AllRelHistoryIDs (0.01s)
+=== RUN   TestTieredStore_TruncateRelHistory
+--- PASS: TestTieredStore_TruncateRelHistory (0.01s)
+=== RUN   TestTieredStore_TruncateRelHistoryRejectsNegativeKeep
+--- PASS: TestTieredStore_TruncateRelHistoryRejectsNegativeKeep (0.02s)
+=== RUN   TestTieredStore_PutRelCrossEventShards
+--- PASS: TestTieredStore_PutRelCrossEventShards (0.03s)
+=== RUN   TestTieredStore_DeleteRelCrossEventShards
+--- PASS: TestTieredStore_DeleteRelCrossEventShards (0.03s)
+=== RUN   TestTieredStore_OutgoingRelsCrossEventShards
+--- PASS: TestTieredStore_OutgoingRelsCrossEventShards (0.02s)
+=== RUN   TestTieredStore_IncomingRelsCrossEventShards
+--- PASS: TestTieredStore_IncomingRelsCrossEventShards (0.02s)
+=== RUN   TestTieredStore_RestartWithWarmShards
+--- PASS: TestTieredStore_RestartWithWarmShards (0.39s)
+=== RUN   TestTieredStore_RestartWarmShardWritable
+--- PASS: TestTieredStore_RestartWarmShardWritable (0.32s)
+=== RUN   TestTieredStore_RestartPreservesHotShard
+--- PASS: TestTieredStore_RestartPreservesHotShard (0.23s)
+=== RUN   TestTieredStore_RestartSnowflakeResolution
+--- PASS: TestTieredStore_RestartSnowflakeResolution (0.36s)
+=== RUN   TestTieredStore_ColdShard_LazyOpen
+--- PASS: TestTieredStore_ColdShard_LazyOpen (0.02s)
+=== RUN   TestTieredStore_ColdShard_IdleClose
+--- PASS: TestTieredStore_ColdShard_IdleClose (0.31s)
+=== RUN   TestTieredStore_ColdShard_IdleCloseErrorSurfaces
+2026/10/09 13:32:43 ERROR graph: flush failed error="graph: write batch flush: DB Closed"
+2026/10/09 13:32:43 ERROR tiered cold shard idle-close failed shard=2026-W41 err="graph: write batch flush: DB Closed"
+--- PASS: TestTieredStore_ColdShard_IdleCloseErrorSurfaces (0.15s)
+=== RUN   TestTieredStore_ColdShard_DemotionWarmToCold
+--- PASS: TestTieredStore_ColdShard_DemotionWarmToCold (0.04s)
+=== RUN   TestTieredStore_ColdShard_DemotionDuringRotation
+--- PASS: TestTieredStore_ColdShard_DemotionDuringRotation (0.11s)
+=== RUN   TestTieredStore_ColdShard_ColdRestart
+--- PASS: TestTieredStore_ColdShard_ColdRestart (0.47s)
+=== RUN   TestTieredStore_ColdShard_ConcurrentAccess
+--- PASS: TestTieredStore_ColdShard_ConcurrentAccess (0.07s)
+=== RUN   TestTieredStore_ParallelAllNodes
+--- PASS: TestTieredStore_ParallelAllNodes (0.04s)
+=== RUN   TestTieredStore_ParallelWithColdLazyOpen
+--- PASS: TestTieredStore_ParallelWithColdLazyOpen (0.04s)
+=== RUN   TestTieredStore_ParallelErrorPropagation
+--- PASS: TestTieredStore_ParallelErrorPropagation (0.02s)
+=== RUN   TestTieredStore_PropertyIndex_RefLabel
+--- PASS: TestTieredStore_PropertyIndex_RefLabel (0.02s)
+=== RUN   TestTieredStore_PropertyIndex_EventRejected
+--- PASS: TestTieredStore_PropertyIndex_EventRejected (0.02s)
+=== RUN   TestTieredStore_PropertyIndex_ErrorsIs
+--- PASS: TestTieredStore_PropertyIndex_ErrorsIs (0.00s)
+=== RUN   TestTieredStore_ColdShard_CheckoutAtomicUnderShardMu
+--- PASS: TestTieredStore_ColdShard_CheckoutAtomicUnderShardMu (0.04s)
+=== RUN   TestTieredStore_CloseWaitsForEventShardMutex
+--- PASS: TestTieredStore_CloseWaitsForEventShardMutex (0.10s)
+=== RUN   TestTieredStore_PostCloseRoutingReturnsStoreClosed
+--- PASS: TestTieredStore_PostCloseRoutingReturnsStoreClosed (0.01s)
+=== RUN   TestTieredStore_NodeCreateDuplicateProbeUsesCheckoutClosedGate
+--- PASS: TestTieredStore_NodeCreateDuplicateProbeUsesCheckoutClosedGate (0.03s)
+=== RUN   TestTieredStore_WarmShard_WALCorruptionRecovery
+    tieredstore_test.go:4745: warm shard: 2026-W41 at /tmp/TestTieredStore_WarmShard_WALCorruptionRecovery170531480/001/events/2026-W41
+2026/10/09 13:32:44 WARN graph: recovering corrupt WAL by truncation shard=events/2026-W41
+--- PASS: TestTieredStore_WarmShard_WALCorruptionRecovery (0.43s)
+=== RUN   TestTieredStore_ColdShard_WALCorruptionRecovery
+2026/10/09 13:32:45 WARN graph: recovering corrupt WAL by truncation shard=events/2026-W41
+--- PASS: TestTieredStore_ColdShard_WALCorruptionRecovery (0.46s)
+=== RUN   TestTieredStore_WALCorruption_NonTruncateError
+    tieredstore_test.go:4945: correctly propagated non-truncation error: graph: open warm shard 2026-W41: graph: WAL migration events/2026-W41: graph: scan /tmp/TestTieredStore_WALCorruption_NonTruncateError1882994388/001/events/2026-W41 for WAL files: open /tmp/TestTieredStore_WALCorruption_NonTruncateError1882994388/001/events/2026-W41: permission denied
+--- PASS: TestTieredStore_WALCorruption_NonTruncateError (0.33s)
+=== RUN   TestTieredStore_WALCorruption_DataIntegrity
+2026/10/09 13:32:46 WARN graph: recovering corrupt WAL by truncation shard=events/2026-W41
+--- PASS: TestTieredStore_WALCorruption_DataIntegrity (0.43s)
+=== RUN   TestTieredStore_WALCorruption_ConcurrentColdAccess
+2026/10/09 13:32:46 WARN graph: recovering corrupt WAL by truncation shard=events/2026-W41
+--- PASS: TestTieredStore_WALCorruption_ConcurrentColdAccess (0.58s)
+=== RUN   TestTieredStore_OutgoingRelationshipsForNodes
+--- PASS: TestTieredStore_OutgoingRelationshipsForNodes (0.01s)
+=== RUN   TestTieredStore_IncomingRelationshipsForNodes
+--- PASS: TestTieredStore_IncomingRelationshipsForNodes (0.03s)
+=== RUN   TestTieredStore_AdjacencyMissingNodeReturnsErrNodeNotFound
+--- PASS: TestTieredStore_AdjacencyMissingNodeReturnsErrNodeNotFound (0.03s)
+=== RUN   TestTieredStore_RestartedWarmShardPersistsNodeReplace
+--- PASS: TestTieredStore_RestartedWarmShardPersistsNodeReplace (0.55s)
+=== RUN   TestTieredStore_RestartedWarmShardPersistsRelationshipDelete
+--- PASS: TestTieredStore_RestartedWarmShardPersistsRelationshipDelete (0.53s)
+=== RUN   TestTieredStoreHighFrequencyIndex_InheritsOnRotate
+=== PAUSE TestTieredStoreHighFrequencyIndex_InheritsOnRotate
+=== RUN   TestTieredStoreTrackedTemporalIndexes_InheritOnLazyArchiveOpen
+=== PAUSE TestTieredStoreTrackedTemporalIndexes_InheritOnLazyArchiveOpen
+=== RUN   TestTieredStoreHighFrequencyIndex_ConflictsWithTrackedTemporalIndex
+=== PAUSE TestTieredStoreHighFrequencyIndex_ConflictsWithTrackedTemporalIndex
+=== RUN   TestTieredStoreHighFrequencyIndex_ConflictsWithUntrackedShardTemporalIndex
+=== PAUSE TestTieredStoreHighFrequencyIndex_ConflictsWithUntrackedShardTemporalIndex
+=== RUN   TestTieredStoreTemporalIndex_ConflictsWithUntrackedShardHighFrequencyIndex
+=== PAUSE TestTieredStoreTemporalIndex_ConflictsWithUntrackedShardHighFrequencyIndex
+=== RUN   TestTieredStoreTemporalIndex_RetriesSameKindPartialCreate
+=== PAUSE TestTieredStoreTemporalIndex_RetriesSameKindPartialCreate
+=== RUN   TestTieredStoreTemporalIndex_CreateIdempotentAndDropMissing
+=== PAUSE TestTieredStoreTemporalIndex_CreateIdempotentAndDropMissing
+=== RUN   TestTieredStoreTemporalIndex_DropMissingIgnoresBrokenSnapshotFile
+=== PAUSE TestTieredStoreTemporalIndex_DropMissingIgnoresBrokenSnapshotFile
+=== RUN   TestTieredStoreTemporalIndex_CreatePersistFailureRollsBack
+=== PAUSE TestTieredStoreTemporalIndex_CreatePersistFailureRollsBack
+=== RUN   TestTieredStoreTemporalIndex_CreateSnapshotFailureRollsBack
+=== PAUSE TestTieredStoreTemporalIndex_CreateSnapshotFailureRollsBack
+=== RUN   TestTieredStoreTemporalIndex_DropPersistFailureRestoresIndex
+=== PAUSE TestTieredStoreTemporalIndex_DropPersistFailureRestoresIndex
+=== RUN   TestTieredStoreHighFrequencyIndex_CreateIdempotentAndDropMissing
+=== PAUSE TestTieredStoreHighFrequencyIndex_CreateIdempotentAndDropMissing
+=== RUN   TestTieredStoreHighFrequencyIndex_DropMissingIgnoresBrokenSnapshotFile
+=== PAUSE TestTieredStoreHighFrequencyIndex_DropMissingIgnoresBrokenSnapshotFile
+=== RUN   TestTieredStoreHighFrequencyIndex_CreatePersistFailureRollsBack
+=== PAUSE TestTieredStoreHighFrequencyIndex_CreatePersistFailureRollsBack
+=== RUN   TestTieredStoreHighFrequencyIndex_CreateSnapshotFailureRollsBack
+=== PAUSE TestTieredStoreHighFrequencyIndex_CreateSnapshotFailureRollsBack
+=== RUN   TestTieredStoreHighFrequencyIndex_DropPersistFailureRestoresIndex
+=== PAUSE TestTieredStoreHighFrequencyIndex_DropPersistFailureRestoresIndex
+=== RUN   TestTieredStoreHighFrequencyIndex_DropSnapshotFailureLeavesIndex
+=== PAUSE TestTieredStoreHighFrequencyIndex_DropSnapshotFailureLeavesIndex
+=== RUN   TestTieredStoreTemporalIndex_RollsBackEarlierShardOnBackfillFailure
+--- PASS: TestTieredStoreTemporalIndex_RollsBackEarlierShardOnBackfillFailure (0.06s)
+=== RUN   TestTieredStoreHighFrequencyIndex_RollsBackEarlierShardOnBackfillFailure
+--- PASS: TestTieredStoreHighFrequencyIndex_RollsBackEarlierShardOnBackfillFailure (0.02s)
+=== RUN   TestTieredStoreTemporalIndexDrop_RollsBackEarlierShardOnLaterFailure
+--- PASS: TestTieredStoreTemporalIndexDrop_RollsBackEarlierShardOnLaterFailure (0.03s)
+=== RUN   TestTieredStoreHighFrequencyIndex_RetriesSameKindPartialCreate
+=== PAUSE TestTieredStoreHighFrequencyIndex_RetriesSameKindPartialCreate
+=== RUN   TestTieredStoreHighFrequencyIndexDrop_RollsBackEarlierShardOnLaterFailure
+--- PASS: TestTieredStoreHighFrequencyIndexDrop_RollsBackEarlierShardOnLaterFailure (0.05s)
+=== RUN   TestTieredStoreTrackedTemporalIndexes_SurviveRestart
+--- PASS: TestTieredStoreTrackedTemporalIndexes_SurviveRestart (0.37s)
+=== RUN   TestTieredStoreTrackedHighFrequencyDrop_SurvivesRestart
+--- PASS: TestTieredStoreTrackedHighFrequencyDrop_SurvivesRestart (0.34s)
+=== RUN   TestTieredStoreTrackedTemporalIndexes_ClearSurvivesRestart
+--- PASS: TestTieredStoreTrackedTemporalIndexes_ClearSurvivesRestart (0.44s)
+=== RUN   TestTieredStore_VectorIndex_CreateWithOptionsAppliesTuning
+=== PAUSE TestTieredStore_VectorIndex_CreateWithOptionsAppliesTuning
+=== RUN   TestTieredStore_VectorIndex_CreateWithOptionsZeroValueMatchesPlainCreate
+=== PAUSE TestTieredStore_VectorIndex_CreateWithOptionsZeroValueMatchesPlainCreate
+=== RUN   TestTieredStoreDeleteNodeWithHistory_RollsBackRelDeletesWhenNodeTombstoneFails
+=== PAUSE TestTieredStoreDeleteNodeWithHistory_RollsBackRelDeletesWhenNodeTombstoneFails
+=== RUN   TestTieredStore_DeleteRelationshipsBatch_EmptyInput
+=== PAUSE TestTieredStore_DeleteRelationshipsBatch_EmptyInput
+=== RUN   TestTieredStore_DeleteRelationshipsBatch_SameShardBucketed
+=== PAUSE TestTieredStore_DeleteRelationshipsBatch_SameShardBucketed
+=== RUN   TestTieredStore_DeleteRelationshipsBatch_CrossShardOnly
+=== PAUSE TestTieredStore_DeleteRelationshipsBatch_CrossShardOnly
+=== RUN   TestTieredStore_DeleteRelationshipsBatchDeduplicatesInput
+=== PAUSE TestTieredStore_DeleteRelationshipsBatchDeduplicatesInput
+=== RUN   TestTieredStore_DeleteRelationshipsBatch_Mixed
+=== PAUSE TestTieredStore_DeleteRelationshipsBatch_Mixed
+=== RUN   TestTieredStore_DeleteRelationshipsBatch_MissingID
+=== PAUSE TestTieredStore_DeleteRelationshipsBatch_MissingID
+=== RUN   TestTieredStore_DeleteRelationshipsBatchRollsBackPriorShardOnCrossShardFailure
+=== PAUSE TestTieredStore_DeleteRelationshipsBatchRollsBackPriorShardOnCrossShardFailure
+=== RUN   TestTieredStore_NodesByLabel_PaginationBounded
+=== PAUSE TestTieredStore_NodesByLabel_PaginationBounded
+=== RUN   TestTieredStore_PutNodesBatch_RollbackOnHotShardError
+=== PAUSE TestTieredStore_PutNodesBatch_RollbackOnHotShardError
+=== RUN   TestTieredStore_SaveLabelRegistry_Deprecated
+=== PAUSE TestTieredStore_SaveLabelRegistry_Deprecated
+=== RUN   TestTieredStore_SaveRelTypeRegistry_Deprecated
+=== PAUSE TestTieredStore_SaveRelTypeRegistry_Deprecated
+=== RUN   TestTieredStore_VectorIndex_CreateCleansPlaceholderOnScanError
+--- PASS: TestTieredStore_VectorIndex_CreateCleansPlaceholderOnScanError (0.02s)
+=== RUN   TestTieredStore_VectorIndex_CreateIgnoresCorruptUnrelatedLabelRow
+--- PASS: TestTieredStore_VectorIndex_CreateIgnoresCorruptUnrelatedLabelRow (0.01s)
+=== RUN   TestTieredStore_VectorIndex_CreateRejectsInvalidConfig
+=== RUN   TestTieredStore_VectorIndex_CreateRejectsInvalidConfig/zero_dims
+=== RUN   TestTieredStore_VectorIndex_CreateRejectsInvalidConfig/unsupported_metric
+--- PASS: TestTieredStore_VectorIndex_CreateRejectsInvalidConfig (0.03s)
+    --- PASS: TestTieredStore_VectorIndex_CreateRejectsInvalidConfig/zero_dims (0.00s)
+    --- PASS: TestTieredStore_VectorIndex_CreateRejectsInvalidConfig/unsupported_metric (0.00s)
+=== RUN   TestTieredStore_VectorIndex_SearchRejectsBuildingPlaceholder
+--- PASS: TestTieredStore_VectorIndex_SearchRejectsBuildingPlaceholder (0.03s)
+=== RUN   TestTieredStore_VectorIndex_CreateRejectsBackfillDimensionMismatch
+--- PASS: TestTieredStore_VectorIndex_CreateRejectsBackfillDimensionMismatch (0.02s)
+=== RUN   TestTieredStore_VectorIndex_RejectsNonFiniteVectors
+--- PASS: TestTieredStore_VectorIndex_RejectsNonFiniteVectors (0.04s)
+=== RUN   TestTieredStore_VectorIndex_PutNodeRejectsMaintenanceDimensionMismatch
+--- PASS: TestTieredStore_VectorIndex_PutNodeRejectsMaintenanceDimensionMismatch (0.05s)
+=== RUN   TestTieredStore_VectorIndex_SearchPropagatesCandidateCorruption
+--- PASS: TestTieredStore_VectorIndex_SearchPropagatesCandidateCorruption (0.05s)
+=== RUN   TestTieredStore_DeleteNodeWithHistoryPurgesVectorAfterCorruptShardCleanup
+--- PASS: TestTieredStore_DeleteNodeWithHistoryPurgesVectorAfterCorruptShardCleanup (0.02s)
+=== RUN   TestTieredStore_VectorIndex_DefinitionSurvivesRestart
+--- PASS: TestTieredStore_VectorIndex_DefinitionSurvivesRestart (0.30s)
+=== RUN   TestTieredStore_VectorIndex_NonDefaultOptionsSurviveRestart
+--- PASS: TestTieredStore_VectorIndex_NonDefaultOptionsSurviveRestart (0.25s)
+=== RUN   TestTieredStore_VectorIndex_LoadRejectsIndexedNodeDimensionMismatch
+--- PASS: TestTieredStore_VectorIndex_LoadRejectsIndexedNodeDimensionMismatch (0.36s)
+=== RUN   TestTieredStore_VectorIndex_DropDefinitionSurvivesRestart
+--- PASS: TestTieredStore_VectorIndex_DropDefinitionSurvivesRestart (0.39s)
+=== RUN   TestTieredStore_VectorIndex_ClearRemovesPersistedDefinition
+--- PASS: TestTieredStore_VectorIndex_ClearRemovesPersistedDefinition (0.46s)
+=== RUN   TestTieredStore_VectorIndex_PersistSkipsBuildingDefinition
+--- PASS: TestTieredStore_VectorIndex_PersistSkipsBuildingDefinition (0.19s)
+=== RUN   TestTieredStore_VectorIndex_LoadRejectsInvalidDefinition
+--- PASS: TestTieredStore_VectorIndex_LoadRejectsInvalidDefinition (0.23s)
+=== RUN   TestTieredStore_VectorIndex_LoadRejectsZeroLabelDefinition
+--- PASS: TestTieredStore_VectorIndex_LoadRejectsZeroLabelDefinition (0.18s)
+=== RUN   TestTieredStore_VectorIndex_LoadRejectsReservedPropertyDefinition
+--- PASS: TestTieredStore_VectorIndex_LoadRejectsReservedPropertyDefinition (0.17s)
+=== RUN   TestTieredStore_VectorIndex_LoadRejectsConflictingDuplicateDefinition
+--- PASS: TestTieredStore_VectorIndex_LoadRejectsConflictingDuplicateDefinition (0.15s)
+=== CONT  TestTieredStoreDeleteNodeWithHistory_RollsBackRelDeletesWhenNodeTombstoneFails
+=== CONT  TestTieredStoreHighFrequencyIndex_DropSnapshotFailureLeavesIndex
+=== CONT  TestTieredStoreClear_ClearsVectorIndexes
+=== CONT  TestTieredPropertyIndexOnDisk_EqualityParityWithRAMMode
+=== CONT  TestTieredStore_DeleteRelationshipsBatch_MissingID
+=== CONT  TestTieredStoreTemporalIndex_CreateIdempotentAndDropMissing
+=== CONT  TestTieredStore_PutNodesBatch_RollbackOnHotShardError
+=== CONT  TestTieredStore_NodesByLabel_PaginationBounded
+=== CONT  TestTieredStore_DeleteRelationshipsBatchRollsBackPriorShardOnCrossShardFailure
+=== CONT  TestTieredStore_SaveLabelRegistry_Deprecated
+=== CONT  TestTieredStore_VectorIndex_CreateWithOptionsZeroValueMatchesPlainCreate
+=== CONT  TestTieredStore_SaveRelTypeRegistry_Deprecated
+=== CONT  TestTieredStore_VectorIndex_CreateWithOptionsAppliesTuning
+=== CONT  TestTieredStoreHighFrequencyIndex_RetriesSameKindPartialCreate
+=== CONT  TestTieredPropertyIndexOnDisk_EventLabelStillRejects
+=== CONT  TestTieredPropertyIndexOnDisk_PersistedKeyspace
+=== CONT  TestTieredPropertyIndexOnDisk_ReachesEveryShard
+=== CONT  TestTieredStore_ForEachRelID_EarlyStop
+=== CONT  TestTieredStore_DeleteRelationshipsBatch_SameShardBucketed
+=== CONT  TestTieredStore_ForEachRelHistoryID
+=== CONT  TestTieredStore_DeleteRelationshipsBatch_Mixed
+=== CONT  TestTieredStore_ForEachDeletedRelID
+=== CONT  TestTieredStore_DeleteRelationshipsBatchDeduplicatesInput
+=== CONT  TestTieredStore_ForEachDeletedNodeID
+=== CONT  TestTieredStore_DeleteRelationshipsBatch_CrossShardOnly
+=== CONT  TestTieredStore_ForEachNodeHistoryID
+=== CONT  TestTieredStoreTemporalIndex_DropPersistFailureRestoresIndex
+=== CONT  TestTieredStore_ForEachRelID_AllShards
+=== CONT  TestTieredStoreHighFrequencyIndex_DropPersistFailureRestoresIndex
+=== CONT  TestTieredStoreHighFrequencyIndex_CreateSnapshotFailureRollsBack
+=== CONT  TestTieredStore_ForEachNodeID_WithRotation
+=== CONT  TestTieredStore_ForEachNodeID_EarlyStop
+=== RUN   TestTieredPropertyIndexOnDisk_ReachesEveryShard/enabled_reaches_reference,_hot,_and_warm_shards
+=== PAUSE TestTieredPropertyIndexOnDisk_ReachesEveryShard/enabled_reaches_reference,_hot,_and_warm_shards
+=== RUN   TestTieredPropertyIndexOnDisk_ReachesEveryShard/zero-value_Config_defaults_every_shard_to_RAM_mode
+=== PAUSE TestTieredPropertyIndexOnDisk_ReachesEveryShard/zero-value_Config_defaults_every_shard_to_RAM_mode
+=== CONT  TestTieredStoreHighFrequencyIndex_CreatePersistFailureRollsBack
+--- PASS: TestTieredStore_ForEachRelHistoryID (0.03s)
+=== CONT  TestTieredStoreHighFrequencyIndex_DropMissingIgnoresBrokenSnapshotFile
+--- PASS: TestTieredStore_ForEachNodeHistoryID (0.03s)
+=== CONT  TestTieredStoreHighFrequencyIndex_CreateIdempotentAndDropMissing
+--- PASS: TestTieredStore_VectorIndex_CreateWithOptionsZeroValueMatchesPlainCreate (0.04s)
+=== CONT  TestTieredStoreClearEventShard_PropagatesCheckoutError
+--- PASS: TestTieredStore_SaveRelTypeRegistry_Deprecated (0.04s)
+=== CONT  TestTieredStore_ForEachNodeID_AllShards
+--- PASS: TestTieredStoreHighFrequencyIndex_CreateSnapshotFailureRollsBack (0.04s)
+=== CONT  TestTieredStore_ForEachHistoryByDepthEmptyDoesNotCallCallback
+--- PASS: TestTieredStore_DeleteRelationshipsBatch_SameShardBucketed (0.04s)
+=== CONT  TestTieredStore_ForEachNilCallbackReturnsInvalidMutation
+--- PASS: TestTieredStoreDeleteNodeWithHistory_RollsBackRelDeletesWhenNodeTombstoneFails (0.04s)
+=== CONT  TestTieredStoreClear_ResetsCatalogVerificationCache
+--- PASS: TestTieredStore_ForEachDeletedNodeID (0.04s)
+=== CONT  TestTieredStoreClearEventShard_ClosedFailsClosed
+--- PASS: TestTieredStoreHighFrequencyIndex_RetriesSameKindPartialCreate (0.05s)
+=== CONT  TestTieredStoreHighFrequencyIndex_InheritsOnRotate
+--- PASS: TestTieredStoreClear_ClearsVectorIndexes (0.05s)
+=== CONT  TestTieredStoreTemporalIndex_RetriesSameKindPartialCreate
+--- PASS: TestTieredStoreHighFrequencyIndex_DropSnapshotFailureLeavesIndex (0.05s)
+=== CONT  TestTieredStore_DeleteRelationshipsBatch_EmptyInput
+--- PASS: TestTieredStoreClearEventShard_PropagatesCheckoutError (0.01s)
+=== CONT  TestTieredStoreTemporalIndex_ConflictsWithUntrackedShardHighFrequencyIndex
+--- PASS: TestTieredStoreTemporalIndex_CreateIdempotentAndDropMissing (0.05s)
+--- PASS: TestTieredStore_ForEachRelID_AllShards (0.04s)
+=== CONT  TestTieredStoreHighFrequencyIndex_ConflictsWithUntrackedShardTemporalIndex
+=== CONT  TestTieredStoreHighFrequencyIndex_ConflictsWithTrackedTemporalIndex
+--- PASS: TestTieredStore_VectorIndex_CreateWithOptionsAppliesTuning (0.05s)
+=== CONT  TestTieredStoreTrackedTemporalIndexes_InheritOnLazyArchiveOpen
+--- PASS: TestTieredPropertyIndexOnDisk_PersistedKeyspace (0.05s)
+=== CONT  TestTieredStoreTemporalIndex_DropMissingIgnoresBrokenSnapshotFile
+--- PASS: TestTieredPropertyIndexOnDisk_EventLabelStillRejects (0.07s)
+=== CONT  TestTieredStoreTemporalIndex_CreateSnapshotFailureRollsBack
+--- PASS: TestTieredStore_ForEachDeletedRelID (0.07s)
+--- PASS: TestTieredStore_ForEachHistoryByDepthEmptyDoesNotCallCallback (0.03s)
+--- PASS: TestTieredStore_ForEachNodeID_EarlyStop (0.07s)
+=== CONT  TestTieredStoreTemporalIndex_CreatePersistFailureRollsBack
+=== CONT  TestTieredStoreClear_ClearsTempIdxLabels
+--- PASS: TestTieredStore_DeleteRelationshipsBatch_Mixed (0.08s)
+=== CONT  TestTieredStoreRelPropertyIndex_Declines
+=== CONT  TestTieredStoreClear_ClearsHFITracking
+--- PASS: TestTieredStoreHighFrequencyIndex_DropMissingIgnoresBrokenSnapshotFile (0.06s)
+=== CONT  TestTieredTemporalIndexOnDisk_ReachesEveryShard
+--- PASS: TestTieredStore_DeleteRelationshipsBatch_CrossShardOnly (0.09s)
+=== CONT  TestTieredStoreRelationshipsByTypeAndProperty_EmptyTypeReturnsNil
+=== RUN   TestTieredTemporalIndexOnDisk_ReachesEveryShard/enabled_reaches_reference,_hot,_and_warm_shards
+=== PAUSE TestTieredTemporalIndexOnDisk_ReachesEveryShard/enabled_reaches_reference,_hot,_and_warm_shards
+=== RUN   TestTieredTemporalIndexOnDisk_ReachesEveryShard/zero-value_Config_defaults_every_shard_to_the_slow_path
+=== PAUSE TestTieredTemporalIndexOnDisk_ReachesEveryShard/zero-value_Config_defaults_every_shard_to_the_slow_path
+=== CONT  TestTieredPropertyIndexOnDisk_ReachesEveryShard/enabled_reaches_reference,_hot,_and_warm_shards
+--- PASS: TestTieredStore_ForEachNodeID_WithRotation (0.09s)
+=== CONT  TestTieredPropertyIndexOnDisk_ReachesEveryShard/zero-value_Config_defaults_every_shard_to_RAM_mode
+--- PASS: TestTieredStoreHighFrequencyIndex_CreateIdempotentAndDropMissing (0.10s)
+=== CONT  TestTieredTemporalIndexOnDisk_ReachesEveryShard/enabled_reaches_reference,_hot,_and_warm_shards
+--- PASS: TestTieredStore_SaveLabelRegistry_Deprecated (0.15s)
+=== CONT  TestTieredTemporalIndexOnDisk_ReachesEveryShard/zero-value_Config_defaults_every_shard_to_the_slow_path
+--- PASS: TestTieredStore_DeleteRelationshipsBatchRollsBackPriorShardOnCrossShardFailure (0.16s)
+--- PASS: TestTieredStore_ForEachRelID_EarlyStop (0.20s)
+--- PASS: TestTieredStoreHighFrequencyIndex_ConflictsWithTrackedTemporalIndex (0.17s)
+--- PASS: TestTieredStore_DeleteRelationshipsBatchDeduplicatesInput (0.22s)
+--- PASS: TestTieredStore_ForEachNilCallbackReturnsInvalidMutation (0.19s)
+--- PASS: TestTieredStore_DeleteRelationshipsBatch_MissingID (0.25s)
+--- PASS: TestTieredStoreHighFrequencyIndex_ConflictsWithUntrackedShardTemporalIndex (0.20s)
+--- PASS: TestTieredStore_NodesByLabel_PaginationBounded (0.26s)
+--- PASS: TestTieredStoreTemporalIndex_RetriesSameKindPartialCreate (0.21s)
+--- PASS: TestTieredStore_DeleteRelationshipsBatch_EmptyInput (0.21s)
+--- PASS: TestTieredTemporalIndexOnDisk_ReachesEveryShard (0.01s)
+    --- PASS: TestTieredTemporalIndexOnDisk_ReachesEveryShard/zero-value_Config_defaults_every_shard_to_the_slow_path (0.07s)
+    --- PASS: TestTieredTemporalIndexOnDisk_ReachesEveryShard/enabled_reaches_reference,_hot,_and_warm_shards (0.12s)
+--- PASS: TestTieredStore_ForEachNodeID_AllShards (0.22s)
+--- PASS: TestTieredStore_PutNodesBatch_RollbackOnHotShardError (0.26s)
+--- PASS: TestTieredStoreTemporalIndex_DropMissingIgnoresBrokenSnapshotFile (0.21s)
+--- PASS: TestTieredStoreTrackedTemporalIndexes_InheritOnLazyArchiveOpen (0.22s)
+--- PASS: TestTieredPropertyIndexOnDisk_EqualityParityWithRAMMode (0.29s)
+--- PASS: TestTieredStoreTemporalIndex_ConflictsWithUntrackedShardHighFrequencyIndex (0.24s)
+--- PASS: TestTieredStoreClearEventShard_ClosedFailsClosed (0.25s)
+--- PASS: TestTieredStoreClear_ResetsCatalogVerificationCache (0.26s)
+--- PASS: TestTieredStoreTemporalIndex_CreateSnapshotFailureRollsBack (0.23s)
+--- PASS: TestTieredStoreRelPropertyIndex_Declines (0.22s)
+--- PASS: TestTieredStoreHighFrequencyIndex_InheritsOnRotate (0.29s)
+--- PASS: TestTieredStoreRelationshipsByTypeAndProperty_EmptyTypeReturnsNil (0.25s)
+--- PASS: TestTieredStoreClear_ClearsHFITracking (0.27s)
+--- PASS: TestTieredPropertyIndexOnDisk_ReachesEveryShard (0.00s)
+    --- PASS: TestTieredPropertyIndexOnDisk_ReachesEveryShard/zero-value_Config_defaults_every_shard_to_RAM_mode (0.10s)
+    --- PASS: TestTieredPropertyIndexOnDisk_ReachesEveryShard/enabled_reaches_reference,_hot,_and_warm_shards (0.28s)
+--- PASS: TestTieredStoreTemporalIndex_CreatePersistFailureRollsBack (0.32s)
+--- PASS: TestTieredStoreClear_ClearsTempIdxLabels (0.35s)
+--- PASS: TestTieredStoreHighFrequencyIndex_DropPersistFailureRestoresIndex (0.43s)
+--- PASS: TestTieredStoreHighFrequencyIndex_CreatePersistFailureRollsBack (0.51s)
+--- PASS: TestTieredStoreTemporalIndex_DropPersistFailureRestoresIndex (0.52s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	50.167s
+=== RUN   TestTieredStore_OutgoingIncomingForNodesAtPin_CrossShard
+=== PAUSE TestTieredStore_OutgoingIncomingForNodesAtPin_CrossShard
+=== RUN   TestTieredStore_OutgoingIncomingForNodesAtTx_CrossShard
+=== PAUSE TestTieredStore_OutgoingIncomingForNodesAtTx_CrossShard
+=== RUN   TestTieredStore_AddNodeLabelToken
+--- PASS: TestTieredStore_AddNodeLabelToken (0.01s)
+=== RUN   TestTieredStore_AddNodeLabelTokenWithHistory
+--- PASS: TestTieredStore_AddNodeLabelTokenWithHistory (0.01s)
+=== RUN   TestTieredStore_PutRelationshipRollsBackIncomingOnEntityFailure
+--- PASS: TestTieredStore_PutRelationshipRollsBackIncomingOnEntityFailure (0.05s)
+=== RUN   TestSigmaR3_TieredBehavior
+--- PASS: TestSigmaR3_TieredBehavior (0.09s)
+=== RUN   TestRelTypeTemporalCandidatePruneTieredWired
+=== PAUSE TestRelTypeTemporalCandidatePruneTieredWired
+=== RUN   TestTieredRelTemporalPrune_ParityWithBadger_RotationColdRepair
+--- PASS: TestTieredRelTemporalPrune_ParityWithBadger_RotationColdRepair (0.59s)
+=== RUN   TestTieredRelTemporalIndex_DropRemovesEverywhere
+--- PASS: TestTieredRelTemporalIndex_DropRemovesEverywhere (0.43s)
+=== RUN   TestTieredComposite_ExactSetsAcrossShardsUpdateDeleteCold
+--- PASS: TestTieredComposite_ExactSetsAcrossShardsUpdateDeleteCold (0.54s)
+=== RUN   TestTieredRelTemporalPrune_ArchiveRestoreKeepsHistory
+--- PASS: TestTieredRelTemporalPrune_ArchiveRestoreKeepsHistory (0.33s)
+=== RUN   TestTieredComposite_ArchiveDepthAndPaging
+--- PASS: TestTieredComposite_ArchiveDepthAndPaging (0.41s)
+=== RUN   TestTieredWrapper_AdminOperationsUseCapabilities
+--- PASS: TestTieredWrapper_AdminOperationsUseCapabilities (0.03s)
+=== RUN   TestTieredWrapper_TxRollbackRewiresLabelRegistry
+--- PASS: TestTieredWrapper_TxRollbackRewiresLabelRegistry (0.02s)
+=== RUN   TestTieredWrapper_ImportRollbackRewiresLabelRegistry
+--- PASS: TestTieredWrapper_ImportRollbackRewiresLabelRegistry (0.03s)
+=== RUN   TestTieredStore_BulkQueries_IncludeArchive
+=== RUN   TestTieredStore_BulkQueries_IncludeArchive/AllNodes_includes_archived
+=== RUN   TestTieredStore_BulkQueries_IncludeArchive/NodeCount_includes_archived
+=== RUN   TestTieredStore_BulkQueries_IncludeArchive/ForEachNodeID_enumerates_archived
+--- PASS: TestTieredStore_BulkQueries_IncludeArchive (0.05s)
+    --- PASS: TestTieredStore_BulkQueries_IncludeArchive/AllNodes_includes_archived (0.00s)
+    --- PASS: TestTieredStore_BulkQueries_IncludeArchive/NodeCount_includes_archived (0.00s)
+    --- PASS: TestTieredStore_BulkQueries_IncludeArchive/ForEachNodeID_enumerates_archived (0.00s)
+=== RUN   TestTieredStore_HistoryAndBulkAPIs_ColdStartLazyOpenArchive
+=== RUN   TestTieredStore_HistoryAndBulkAPIs_ColdStartLazyOpenArchive/AllNodeHistoryIDs_lazy-opens_archive
+=== RUN   TestTieredStore_HistoryAndBulkAPIs_ColdStartLazyOpenArchive/AllNodes_lazy-opens_archive
+=== RUN   TestTieredStore_HistoryAndBulkAPIs_ColdStartLazyOpenArchive/NodeCount_counts_archived_after_restart
+--- PASS: TestTieredStore_HistoryAndBulkAPIs_ColdStartLazyOpenArchive (0.37s)
+    --- PASS: TestTieredStore_HistoryAndBulkAPIs_ColdStartLazyOpenArchive/AllNodeHistoryIDs_lazy-opens_archive (0.02s)
+    --- PASS: TestTieredStore_HistoryAndBulkAPIs_ColdStartLazyOpenArchive/AllNodes_lazy-opens_archive (0.00s)
+    --- PASS: TestTieredStore_HistoryAndBulkAPIs_ColdStartLazyOpenArchive/NodeCount_counts_archived_after_restart (0.00s)
+=== RUN   TestTieredStore_IndexedPublicQueries_IncludeArchive
+=== RUN   TestTieredStore_IndexedPublicQueries_IncludeArchive/NodesByLabel_surfaces_archived
+=== RUN   TestTieredStore_IndexedPublicQueries_IncludeArchive/NodesByLabelAndProperty_surfaces_archived
+=== RUN   TestTieredStore_IndexedPublicQueries_IncludeArchive/NodeCountByLabel_counts_archived
+=== RUN   TestTieredStore_IndexedPublicQueries_IncludeArchive/RelationshipsByType_surfaces_archived
+=== RUN   TestTieredStore_IndexedPublicQueries_IncludeArchive/RelCountByType_counts_archived
+--- PASS: TestTieredStore_IndexedPublicQueries_IncludeArchive (0.05s)
+    --- PASS: TestTieredStore_IndexedPublicQueries_IncludeArchive/NodesByLabel_surfaces_archived (0.00s)
+    --- PASS: TestTieredStore_IndexedPublicQueries_IncludeArchive/NodesByLabelAndProperty_surfaces_archived (0.00s)
+    --- PASS: TestTieredStore_IndexedPublicQueries_IncludeArchive/NodeCountByLabel_counts_archived (0.00s)
+    --- PASS: TestTieredStore_IndexedPublicQueries_IncludeArchive/RelationshipsByType_surfaces_archived (0.00s)
+    --- PASS: TestTieredStore_IndexedPublicQueries_IncludeArchive/RelCountByType_counts_archived (0.00s)
+=== RUN   TestTieredStore_BulkQueries_DepthGatesArchive
+=== RUN   TestTieredStore_BulkQueries_DepthGatesArchive/storepkg.DepthHot_excludes_archive
+=== RUN   TestTieredStore_BulkQueries_DepthGatesArchive/storepkg.DepthWarm_excludes_archive
+=== RUN   TestTieredStore_BulkQueries_DepthGatesArchive/storepkg.DepthAll_includes_archive
+=== RUN   TestTieredStore_BulkQueries_DepthGatesArchive/default_opts_(Depth=0=storepkg.DepthAll)_includes_archive
+--- PASS: TestTieredStore_BulkQueries_DepthGatesArchive (0.03s)
+    --- PASS: TestTieredStore_BulkQueries_DepthGatesArchive/storepkg.DepthHot_excludes_archive (0.00s)
+    --- PASS: TestTieredStore_BulkQueries_DepthGatesArchive/storepkg.DepthWarm_excludes_archive (0.00s)
+    --- PASS: TestTieredStore_BulkQueries_DepthGatesArchive/storepkg.DepthAll_includes_archive (0.00s)
+    --- PASS: TestTieredStore_BulkQueries_DepthGatesArchive/default_opts_(Depth=0=storepkg.DepthAll)_includes_archive (0.00s)
+=== RUN   TestTieredStore_AllCurrentIDAPIs_IncludeArchiveAtDepthAll
+=== RUN   TestTieredStore_AllCurrentIDAPIs_IncludeArchiveAtDepthAll/AllNodeIDs_default_includes_archive
+=== RUN   TestTieredStore_AllCurrentIDAPIs_IncludeArchiveAtDepthAll/AllNodeIDs_storepkg.DepthAll_includes_archive
+=== RUN   TestTieredStore_AllCurrentIDAPIs_IncludeArchiveAtDepthAll/AllNodeIDs_storepkg.DepthHot_excludes_archive
+=== RUN   TestTieredStore_AllCurrentIDAPIs_IncludeArchiveAtDepthAll/AllNodeIDs_storepkg.DepthWarm_excludes_archive
+=== RUN   TestTieredStore_AllCurrentIDAPIs_IncludeArchiveAtDepthAll/AllRelIDs_default_includes_archive
+=== RUN   TestTieredStore_AllCurrentIDAPIs_IncludeArchiveAtDepthAll/AllRelIDs_storepkg.DepthAll_includes_archive
+=== RUN   TestTieredStore_AllCurrentIDAPIs_IncludeArchiveAtDepthAll/AllRelIDs_storepkg.DepthHot_excludes_archive
+--- PASS: TestTieredStore_AllCurrentIDAPIs_IncludeArchiveAtDepthAll (0.15s)
+    --- PASS: TestTieredStore_AllCurrentIDAPIs_IncludeArchiveAtDepthAll/AllNodeIDs_default_includes_archive (0.00s)
+    --- PASS: TestTieredStore_AllCurrentIDAPIs_IncludeArchiveAtDepthAll/AllNodeIDs_storepkg.DepthAll_includes_archive (0.00s)
+    --- PASS: TestTieredStore_AllCurrentIDAPIs_IncludeArchiveAtDepthAll/AllNodeIDs_storepkg.DepthHot_excludes_archive (0.00s)
+    --- PASS: TestTieredStore_AllCurrentIDAPIs_IncludeArchiveAtDepthAll/AllNodeIDs_storepkg.DepthWarm_excludes_archive (0.00s)
+    --- PASS: TestTieredStore_AllCurrentIDAPIs_IncludeArchiveAtDepthAll/AllRelIDs_default_includes_archive (0.00s)
+    --- PASS: TestTieredStore_AllCurrentIDAPIs_IncludeArchiveAtDepthAll/AllRelIDs_storepkg.DepthAll_includes_archive (0.00s)
+    --- PASS: TestTieredStore_AllCurrentIDAPIs_IncludeArchiveAtDepthAll/AllRelIDs_storepkg.DepthHot_excludes_archive (0.00s)
+=== RUN   TestTieredStore_IndexedQueries_DepthGatesArchive
+=== RUN   TestTieredStore_IndexedQueries_DepthGatesArchive/NodesByLabel_default_includes_archive
+=== RUN   TestTieredStore_IndexedQueries_DepthGatesArchive/NodesByLabel_storepkg.DepthHot_excludes_archive
+=== RUN   TestTieredStore_IndexedQueries_DepthGatesArchive/NodesByLabelAndProperty_default_includes_archive
+=== RUN   TestTieredStore_IndexedQueries_DepthGatesArchive/NodesByLabelAndProperty_storepkg.DepthWarm_excludes_archive
+=== RUN   TestTieredStore_IndexedQueries_DepthGatesArchive/RelationshipsByType_default_includes_archive
+=== RUN   TestTieredStore_IndexedQueries_DepthGatesArchive/RelationshipsByType_storepkg.DepthHot_excludes_archive
+--- PASS: TestTieredStore_IndexedQueries_DepthGatesArchive (0.02s)
+    --- PASS: TestTieredStore_IndexedQueries_DepthGatesArchive/NodesByLabel_default_includes_archive (0.00s)
+    --- PASS: TestTieredStore_IndexedQueries_DepthGatesArchive/NodesByLabel_storepkg.DepthHot_excludes_archive (0.00s)
+    --- PASS: TestTieredStore_IndexedQueries_DepthGatesArchive/NodesByLabelAndProperty_default_includes_archive (0.00s)
+    --- PASS: TestTieredStore_IndexedQueries_DepthGatesArchive/NodesByLabelAndProperty_storepkg.DepthWarm_excludes_archive (0.00s)
+    --- PASS: TestTieredStore_IndexedQueries_DepthGatesArchive/RelationshipsByType_default_includes_archive (0.00s)
+    --- PASS: TestTieredStore_IndexedQueries_DepthGatesArchive/RelationshipsByType_storepkg.DepthHot_excludes_archive (0.00s)
+=== RUN   TestTieredStore_ForEachHistoryShard_PinsArchive
+--- PASS: TestTieredStore_ForEachHistoryShard_PinsArchive (0.03s)
+=== RUN   TestTieredStore_TemporalIndexCreate_CoversArchive
+--- PASS: TestTieredStore_TemporalIndexCreate_CoversArchive (0.03s)
+=== RUN   TestTieredStore_ResolveShardStore_PinsArchive
+--- PASS: TestTieredStore_ResolveShardStore_PinsArchive (0.04s)
+=== RUN   TestTieredStore_FindRelInAnyShardStore_ProbesArchive
+--- PASS: TestTieredStore_FindRelInAnyShardStore_ProbesArchive (0.03s)
+=== RUN   TestTieredStore_AllShardStoresWithLazyOpen_IncludesArchive
+--- PASS: TestTieredStore_AllShardStoresWithLazyOpen_IncludesArchive (0.07s)
+=== RUN   TestTieredStore_HighFrequencyIndexCreate_CoversArchive
+--- PASS: TestTieredStore_HighFrequencyIndexCreate_CoversArchive (0.07s)
+=== RUN   TestTieredStore_RemoveNodeLabel_PrimaryClassChange_Rejected
+--- PASS: TestTieredStore_RemoveNodeLabel_PrimaryClassChange_Rejected (0.03s)
+=== RUN   TestTieredStore_RemoveNodeLabel_NonPrimary_Allowed
+--- PASS: TestTieredStore_RemoveNodeLabel_NonPrimary_Allowed (0.03s)
+=== RUN   TestTieredStore_AddNodeLabel_SameClass_Allowed
+--- PASS: TestTieredStore_AddNodeLabel_SameClass_Allowed (0.05s)
+=== RUN   TestTieredStore_RemoveNodeLabel_PrimarySameClassPromotion_Allowed
+--- PASS: TestTieredStore_RemoveNodeLabel_PrimarySameClassPromotion_Allowed (0.03s)
+=== RUN   TestTieredStore_GetNodeVersion_AfterRefDelete
+--- PASS: TestTieredStore_GetNodeVersion_AfterRefDelete (0.03s)
+=== RUN   TestTieredStore_TruncateNodeHistory_AfterRefDelete
+--- PASS: TestTieredStore_TruncateNodeHistory_AfterRefDelete (0.03s)
+=== RUN   TestTieredStore_TruncateNodeHistory_UnknownID_NoError
+--- PASS: TestTieredStore_TruncateNodeHistory_UnknownID_NoError (0.03s)
+=== RUN   TestTieredStore_ArchivedNode_HistorySurvives
+=== RUN   TestTieredStore_ArchivedNode_HistorySurvives/GetNodeHistory_surfaces_pre-archive_versions
+=== RUN   TestTieredStore_ArchivedNode_HistorySurvives/GetNodeVersion_finds_pre-archive_version
+=== RUN   TestTieredStore_ArchivedNode_HistorySurvives/NodeHistoryVersionsFrom_pages_pre-archive_versions
+=== RUN   TestTieredStore_ArchivedNode_HistorySurvives/TruncateNodeHistory_does_not_silently_no-op_when_history_lives_on_refShard
+--- PASS: TestTieredStore_ArchivedNode_HistorySurvives (0.04s)
+    --- PASS: TestTieredStore_ArchivedNode_HistorySurvives/GetNodeHistory_surfaces_pre-archive_versions (0.00s)
+    --- PASS: TestTieredStore_ArchivedNode_HistorySurvives/GetNodeVersion_finds_pre-archive_version (0.00s)
+    --- PASS: TestTieredStore_ArchivedNode_HistorySurvives/NodeHistoryVersionsFrom_pages_pre-archive_versions (0.00s)
+    --- PASS: TestTieredStore_ArchivedNode_HistorySurvives/TruncateNodeHistory_does_not_silently_no-op_when_history_lives_on_refShard (0.00s)
+=== RUN   TestTieredStore_NodeHistoryVersionsFrom_RoutingBranches
+--- PASS: TestTieredStore_NodeHistoryVersionsFrom_RoutingBranches (0.08s)
+=== RUN   TestTieredStore_NodeHistoryVersionsFrom_PropagatesShardPageError
+--- PASS: TestTieredStore_NodeHistoryVersionsFrom_PropagatesShardPageError (0.01s)
+=== RUN   TestTieredStore_AllNodeHistoryIDs_IncludesRefArchive
+--- PASS: TestTieredStore_AllNodeHistoryIDs_IncludesRefArchive (0.03s)
+=== RUN   TestTieredStore_ShardForNodeIDChecked_PinsArchive
+--- PASS: TestTieredStore_ShardForNodeIDChecked_PinsArchive (0.07s)
+=== RUN   TestTieredStore_ArchiveNode_MigratesCrossShardRel_REtoE
+--- PASS: TestTieredStore_ArchiveNode_MigratesCrossShardRel_REtoE (0.06s)
+=== RUN   TestTieredStore_ArchiveNode_MigratesCrossShardRel_EtoR
+--- PASS: TestTieredStore_ArchiveNode_MigratesCrossShardRel_EtoR (0.04s)
+=== RUN   TestTieredStore_ArchiveNode_MigratesRefRefRel
+--- PASS: TestTieredStore_ArchiveNode_MigratesRefRefRel (0.04s)
+=== RUN   TestTieredStore_Clear_NoArchive_SkipsLazyOpen
+--- PASS: TestTieredStore_Clear_NoArchive_SkipsLazyOpen (0.04s)
+=== RUN   TestTieredStore_ShardForRelIDChecked_SameShardRef
+--- PASS: TestTieredStore_ShardForRelIDChecked_SameShardRef (0.03s)
+=== RUN   TestTieredStore_ShardForRelIDChecked_NotFoundReturnsCandidate
+--- PASS: TestTieredStore_ShardForRelIDChecked_NotFoundReturnsCandidate (0.02s)
+=== RUN   TestTieredStore_GetRelVersion_AfterCrossShardDelete
+--- PASS: TestTieredStore_GetRelVersion_AfterCrossShardDelete (0.01s)
+=== RUN   TestTieredStore_RelHistoryVersionsFrom_RoutingBranches
+--- PASS: TestTieredStore_RelHistoryVersionsFrom_RoutingBranches (0.08s)
+=== RUN   TestTieredStore_TruncateRelHistory_AfterCrossShardDelete
+--- PASS: TestTieredStore_TruncateRelHistory_AfterCrossShardDelete (0.01s)
+=== RUN   TestTieredStore_TruncateRelHistory_UnknownID_NoError
+--- PASS: TestTieredStore_TruncateRelHistory_UnknownID_NoError (0.03s)
+=== RUN   TestTieredStore_GetRelHistory_AfterPostRotationStartShardWentCold
+--- PASS: TestTieredStore_GetRelHistory_AfterPostRotationStartShardWentCold (0.03s)
+=== RUN   TestTieredStore_PublicRelationshipReads_LivePostRotationRelAfterStartShardCold
+--- PASS: TestTieredStore_PublicRelationshipReads_LivePostRotationRelAfterStartShardCold (0.03s)
+=== RUN   TestTieredStore_ShardForRelIDChecked_LiveColdRelPinsShardDuringRead
+--- PASS: TestTieredStore_ShardForRelIDChecked_LiveColdRelPinsShardDuringRead (0.52s)
+=== RUN   TestTieredStore_EmptyHistoryLookups_DoNotOpenColdShards
+=== RUN   TestTieredStore_EmptyHistoryLookups_DoNotOpenColdShards/Graph.Nodes.History_current_node
+=== RUN   TestTieredStore_EmptyHistoryLookups_DoNotOpenColdShards/Graph.Rels.History_current_rel
+=== RUN   TestTieredStore_EmptyHistoryLookups_DoNotOpenColdShards/Store.Nodes.GetVersion_missing_version
+=== RUN   TestTieredStore_EmptyHistoryLookups_DoNotOpenColdShards/Store.GetRelVersion_missing_version
+=== RUN   TestTieredStore_EmptyHistoryLookups_DoNotOpenColdShards/Store.TruncateNodeHistory_current_node
+=== RUN   TestTieredStore_EmptyHistoryLookups_DoNotOpenColdShards/Store.TruncateRelHistory_current_rel
+--- PASS: TestTieredStore_EmptyHistoryLookups_DoNotOpenColdShards (0.23s)
+    --- PASS: TestTieredStore_EmptyHistoryLookups_DoNotOpenColdShards/Graph.Nodes.History_current_node (0.02s)
+    --- PASS: TestTieredStore_EmptyHistoryLookups_DoNotOpenColdShards/Graph.Rels.History_current_rel (0.02s)
+    --- PASS: TestTieredStore_EmptyHistoryLookups_DoNotOpenColdShards/Store.Nodes.GetVersion_missing_version (0.09s)
+    --- PASS: TestTieredStore_EmptyHistoryLookups_DoNotOpenColdShards/Store.GetRelVersion_missing_version (0.02s)
+    --- PASS: TestTieredStore_EmptyHistoryLookups_DoNotOpenColdShards/Store.TruncateNodeHistory_current_node (0.04s)
+    --- PASS: TestTieredStore_EmptyHistoryLookups_DoNotOpenColdShards/Store.TruncateRelHistory_current_rel (0.03s)
+=== RUN   TestTieredStore_BatchGeneratedCreatesDoNotOpenClosedColdShards
+--- PASS: TestTieredStore_BatchGeneratedCreatesDoNotOpenClosedColdShards (0.02s)
+=== RUN   TestTieredStore_DeleteRelationship_CrossShardKeepsCheckoutAlive
+--- PASS: TestTieredStore_DeleteRelationship_CrossShardKeepsCheckoutAlive (0.02s)
+=== RUN   TestTieredStore_RelMutations_AfterStartShardCold
+=== RUN   TestTieredStore_RelMutations_AfterStartShardCold/UpdateRelationship_after_cold_demotion
+=== RUN   TestTieredStore_RelMutations_AfterStartShardCold/DeleteRelationship_full_lifecycle_after_cold_demotion
+--- PASS: TestTieredStore_RelMutations_AfterStartShardCold (0.05s)
+    --- PASS: TestTieredStore_RelMutations_AfterStartShardCold/UpdateRelationship_after_cold_demotion (0.02s)
+    --- PASS: TestTieredStore_RelMutations_AfterStartShardCold/DeleteRelationship_full_lifecycle_after_cold_demotion (0.03s)
+=== RUN   TestTieredStore_ShardForRelID_ProbesRefArchive
+=== RUN   TestTieredStore_ShardForRelID_ProbesRefArchive/shardForRelIDChecked_finds_rel_on_archive
+=== RUN   TestTieredStore_ShardForRelID_ProbesRefArchive/GetRelationship_finds_rel_on_archive
+--- PASS: TestTieredStore_ShardForRelID_ProbesRefArchive (0.02s)
+    --- PASS: TestTieredStore_ShardForRelID_ProbesRefArchive/shardForRelIDChecked_finds_rel_on_archive (0.00s)
+    --- PASS: TestTieredStore_ShardForRelID_ProbesRefArchive/GetRelationship_finds_rel_on_archive (0.00s)
+=== RUN   TestTieredStore_VerifyShard_ColdShardSurvivesIdleClose
+--- PASS: TestTieredStore_VerifyShard_ColdShardSurvivesIdleClose (0.03s)
+=== RUN   TestTieredStore_RunRepair_ColdShardsSurviveIdleClose
+--- PASS: TestTieredStore_RunRepair_ColdShardsSurviveIdleClose (0.03s)
+=== RUN   TestTieredStore_DeleteRelWithHistory_CrossShardHappyPath
+--- PASS: TestTieredStore_DeleteRelWithHistory_CrossShardHappyPath (0.01s)
+=== RUN   TestTieredStore_PutRelVersion_RoutesByRelID
+--- PASS: TestTieredStore_PutRelVersion_RoutesByRelID (0.03s)
+=== RUN   TestTieredStore_DeleteRelWithHistory_RollbackPrimitiveRestoresInEntry
+--- PASS: TestTieredStore_DeleteRelWithHistory_RollbackPrimitiveRestoresInEntry (0.02s)
+=== RUN   TestTieredStore_RegistryRoundTrip_ViaGraph
+--- PASS: TestTieredStore_RegistryRoundTrip_ViaGraph (0.49s)
+=== RUN   TestTieredStore_GraphGetByIDsSorted
+--- PASS: TestTieredStore_GraphGetByIDsSorted (0.02s)
+=== RUN   TestTieredStore_ParallelRelsByType
+--- PASS: TestTieredStore_ParallelRelsByType (0.02s)
+=== RUN   TestTieredStore_ArchiveNode
+--- PASS: TestTieredStore_ArchiveNode (0.05s)
+=== RUN   TestTieredStore_ArchiveWithRels
+--- PASS: TestTieredStore_ArchiveWithRels (0.02s)
+=== RUN   TestTieredStore_RestoreNode
+--- PASS: TestTieredStore_RestoreNode (0.02s)
+=== RUN   TestTieredStore_ArchiveLazyOpen
+--- PASS: TestTieredStore_ArchiveLazyOpen (0.08s)
+=== RUN   TestTieredStore_ArchiveReadRouting
+--- PASS: TestTieredStore_ArchiveReadRouting (0.02s)
+=== RUN   TestTieredStore_ArchiveDepthAll
+--- PASS: TestTieredStore_ArchiveDepthAll (0.02s)
+=== RUN   TestTieredStore_ArchiveEventNodeRejected
+--- PASS: TestTieredStore_ArchiveEventNodeRejected (0.02s)
+=== RUN   TestTieredStore_ForceRotate_ViaGraph
+--- PASS: TestTieredStore_ForceRotate_ViaGraph (0.04s)
+=== RUN   TestTieredStore_AdminNotTiered
+--- PASS: TestTieredStore_AdminNotTiered (0.01s)
+=== RUN   TestTieredStore_VerifyShard_Hot
+--- PASS: TestTieredStore_VerifyShard_Hot (0.02s)
+=== RUN   TestTieredStore_VerifyShard_ImmutableCached
+--- PASS: TestTieredStore_VerifyShard_ImmutableCached (0.02s)
+=== RUN   TestTieredStore_VerifyShard_Unknown
+--- PASS: TestTieredStore_VerifyShard_Unknown (0.03s)
+=== RUN   TestTieredStore_Repair_NoOrphans
+--- PASS: TestTieredStore_Repair_NoOrphans (0.02s)
+=== RUN   TestTieredStore_Repair_ViaGraph
+--- PASS: TestTieredStore_Repair_ViaGraph (0.02s)
+=== RUN   TestTieredStore_ColdShard_IdleCloseBlockedByActiveRequest
+--- PASS: TestTieredStore_ColdShard_IdleCloseBlockedByActiveRequest (0.03s)
+=== RUN   TestTieredStore_ColdShard_ConcurrentReadDuringIdleClose
+--- PASS: TestTieredStore_ColdShard_ConcurrentReadDuringIdleClose (0.04s)
+=== RUN   TestTieredStore_ShardForRelID_FindsRelOnColdShard
+--- PASS: TestTieredStore_ShardForRelID_FindsRelOnColdShard (0.02s)
+=== RUN   TestTieredStore_ArchiveNode_RollbackOnDeleteFailure
+--- PASS: TestTieredStore_ArchiveNode_RollbackOnDeleteFailure (0.02s)
+=== RUN   TestTieredStore_RestoreNode_RollbackOnDeleteFailure
+--- PASS: TestTieredStore_RestoreNode_RollbackOnDeleteFailure (0.09s)
+=== RUN   TestTieredStore_CreateTemporalIndex_Store
+=== PAUSE TestTieredStore_CreateTemporalIndex_Store
+=== RUN   TestTieredStore_DropTemporalIndex_Store
+=== PAUSE TestTieredStore_DropTemporalIndex_Store
+=== RUN   TestTieredStore_CreateHighFrequencyIndex_Store
+=== PAUSE TestTieredStore_CreateHighFrequencyIndex_Store
+=== RUN   TestTieredStore_DropHighFrequencyIndex_Store
+=== PAUSE TestTieredStore_DropHighFrequencyIndex_Store
+=== RUN   TestTieredStore_RemoveNodeLabelTokenWithHistory
+=== PAUSE TestTieredStore_RemoveNodeLabelTokenWithHistory
+=== RUN   TestTieredStore_RemoveNodeLabelToken
+--- PASS: TestTieredStore_RemoveNodeLabelToken (0.02s)
+=== RUN   TestTieredStore_VectorIndex_CreateAndSearch
+--- PASS: TestTieredStore_VectorIndex_CreateAndSearch (0.02s)
+=== RUN   TestTieredStore_VectorIndex_AlreadyExists
+--- PASS: TestTieredStore_VectorIndex_AlreadyExists (0.02s)
+=== RUN   TestTieredStore_VectorIndex_Drop
+--- PASS: TestTieredStore_VectorIndex_Drop (0.01s)
+=== CONT  TestTieredStore_OutgoingIncomingForNodesAtPin_CrossShard
+=== CONT  TestTieredStore_DropTemporalIndex_Store
+=== CONT  TestTieredStore_CreateTemporalIndex_Store
+=== CONT  TestTieredStore_OutgoingIncomingForNodesAtTx_CrossShard
+=== CONT  TestTieredStore_DropHighFrequencyIndex_Store
+=== CONT  TestTieredStore_RemoveNodeLabelTokenWithHistory
+=== CONT  TestRelTypeTemporalCandidatePruneTieredWired
+=== CONT  TestTieredStore_CreateHighFrequencyIndex_Store
+--- PASS: TestTieredStore_CreateHighFrequencyIndex_Store (0.02s)
+--- PASS: TestTieredStore_RemoveNodeLabelTokenWithHistory (0.02s)
+--- PASS: TestRelTypeTemporalCandidatePruneTieredWired (0.04s)
+--- PASS: TestTieredStore_DropHighFrequencyIndex_Store (0.04s)
+--- PASS: TestTieredStore_DropTemporalIndex_Store (0.04s)
+=== RUN   TestTieredStore_OutgoingIncomingForNodesAtTx_CrossShard/pin1
+=== RUN   TestTieredStore_OutgoingIncomingForNodesAtTx_CrossShard/pin2
+--- PASS: TestTieredStore_OutgoingIncomingForNodesAtTx_CrossShard (0.05s)
+    --- PASS: TestTieredStore_OutgoingIncomingForNodesAtTx_CrossShard/pin1 (0.00s)
+    --- PASS: TestTieredStore_OutgoingIncomingForNodesAtTx_CrossShard/pin2 (0.00s)
+--- PASS: TestTieredStore_CreateTemporalIndex_Store (0.06s)
+--- PASS: TestTieredStore_OutgoingIncomingForNodesAtPin_CrossShard (0.08s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	6.695s
+=== RUN   TestRelTypeTemporalIndex_PartialDoorsMaintainEnvelope
+--- PASS: TestRelTypeTemporalIndex_PartialDoorsMaintainEnvelope (0.04s)
+=== RUN   TestCompositePropertyIndexDefs_ListsEveryLabel
+--- PASS: TestCompositePropertyIndexDefs_ListsEveryLabel (0.00s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	0.081s

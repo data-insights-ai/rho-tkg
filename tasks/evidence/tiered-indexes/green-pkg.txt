@@ -1,0 +1,36 @@
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	51.839s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/admin	0.006s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/constraints	0.012s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/events	0.302s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/hash	0.006s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/index	0.008s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ingest	0.008s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/apiutil	0.004s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	55.654s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/generatedcreate	0.004s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/grapherr	0.004s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/index	23.860s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/integrity	0.004s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/locks	0.056s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/registry	0.115s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segdir	1.198s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/segment	8.186s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/snowflake	0.008s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/storeutil	0.607s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/io	0.102s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/nodes	0.018s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/ontology	0.011s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/rels	0.024s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/replication	0.780s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/resolve	0.006s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/stats	0.007s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store	0.840s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/badger	85.926s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/memory	68.015s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/sharded	8.221s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store/tiered	109.621s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/temporal	0.006s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/tier	0.012s
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/types	5.852s
+?   	github.com/data-insights-ai/rho-tkg/v4/pkg/types/internal/collisionone	[no test files]
+?   	github.com/data-insights-ai/rho-tkg/v4/pkg/types/internal/collisiontwo	[no test files]

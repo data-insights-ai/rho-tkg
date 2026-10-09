@@ -76,11 +76,15 @@ Commits: no agent attribution lines (user rule 2026-10-02). No push, no tag.
 ## User requests
 
 1. backlog 10 (ai-soc request 3, decided yes): tiered builds composite and rel temporal indexes — check:
-   red tests in `tasks/evidence/tiered-indexes/red-*.txt`, green in `green-*.txt`; `go test ./pkg/... -count=1`. [ ]
+   red tests in `tasks/evidence/tiered-indexes/red-*.txt`, green in `green-*.txt`; `go test ./pkg/... -count=1`. [x]
+   12 red -> green (`red-{tiered,core,badger}.txt`, `green-new-tests.txt`), 8 break tests added after (rollback,
+   interrupted-DDL repair, archive/restore prune, composite archive/depth/paging, badger defs listing);
+   `green-pkg.txt` and `green-race.txt` (tiered + core under -race) exit 0; shard_index_fanout.go 86.7 % covered.
 2. "measure before building": resident bytes per indexed row + week projection — check:
    `tasks/evidence/tiered-indexes/measure-*.txt`, numbers in CHANGELOG. [x] 156 B/row rel temporal, 310 B/row
    composite (structure), rebuild 0.02 M rels/s (graph); a week (258-412 M rows) = 40-64 GB: does not fit.
-3. docs: CHANGELOG Unreleased subsection, architecture.md tiered sections, AGENTS.md TieredStore — check: diff. [ ]
+3. docs: CHANGELOG Unreleased subsection, architecture.md tiered sections, AGENTS.md TieredStore — check: diff. [x]
+   (also docs/api.md, docs/query-planners.md, index/api.go, core comments)
 
 ## Ledger (per step: in code? / red test / break cases / proof)
 
@@ -95,3 +99,12 @@ Commits: no agent attribution lines (user rule 2026-10-02). No push, no tag.
 - Decision: per-shard fan-out, ref shard is the anchor (definitions persist per badger shard as today); prune
   consults the shards in the query's depth, skips ref/archive envelopes once an archive exists (archive moves
   split a rel's rows between ref and archive). Bound (hot+warm only) proposed, not built.
+
+## Review (item F)
+
+- Mutation checks: removing the split-write envelope maintenance fails the parity test (12 errors); consulting
+  the reference shard while an archive exists fails the archive/restore test (prune and RelsByTypeAt diverge).
+- Open: badger `PutRelVersion` does not extend the rel temporal envelope — probe
+  `evidence/tiered-indexes/probe-putrelversion-envelope.txt` (the store prune drops a rel whose history row
+  is valid at the probe; memory's `putRelVersionRouted`, memorystore_history.go:625-650, has no maintenance
+  either, by code read). The hot+warm bound is proposed, not built.

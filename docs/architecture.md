@@ -802,6 +802,8 @@ Cross-shard split writes use `badgerstore_partial.go` helpers: `putRelEntityAndO
 
 **Property indexes:** Restricted to reference entities only (`ErrEventPropertyIndex` for event labels).
 
+**Composite and relationship temporal indexes (`shard_index_fanout.go`, backlog 10):** per shard, as on sharded. Every shard — reference, archive, every event shard (cold ones opened for the DDL), the hot shard a later rotation opens — builds and maintains its own badger index over its own rows; nothing moves on rotation, and a reopened cold shard rebuilds its entries from the persisted definition. The reference shard anchors the definitions: create reaches it last, drop leaves it last, a failed fan-out undoes the shards it changed, `syncAnchoredIndexes` copies them onto a new hot shard / the archive and repairs every open shard at store open. Composite lookups fold the shards like `NodesByLabelAndProperty` (event labels allowed). The rel temporal candidate prune asks the already-open event shards in the query's depth and the reference shard only while no archive exists (`ArchiveNode` splits a relationship's row and history between reference and archive). Cost: ~156 B per indexed relationship and ~310 B per indexed node per open shard, rebuild ~0.02 M rels/s on open (CHANGELOG). Relationship property indexes stay declined.
+
 ### Admin & Repair (`tieredstore_admin.go`, `tieredstore_repair.go`)
 
 - `ForceRotate()` -- safe wrapper with internal locking
