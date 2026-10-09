@@ -34,6 +34,21 @@ capability not yet built. DO-NOT-BUILD = decided against; reopen criteria only.
 
 11. **Durable-on-return commit** (FEATURE, ai-soc request 9; DECIDED YES 2026-10-09, René, relayed by the ai-soc session): `GraphTx.Commit` and `Batch.Execute` flush the badger pending buffer before returning, one WriteBatch per call, so a crash can lose only whole uncommitted groups and `SyncWrites` is not needed per mutation. Today neither flushes (`core/tx.go`, `core/batch_execute.go`); the pending buffer is a map flushed in map order (`store/badger/badgerstore_flush.go:166-176`) and badger splits an oversized WriteBatch into several internal transactions, so without `SyncWrites` a crash can persist an arbitrary subset of a group. Design points: opt-in (`Config` flag or a commit option) vs default; the tiered and sharded stores flush every shard the group touched; a group above badger's transaction size limit is still split — document or refuse; an all-or-nothing on-disk guarantee stays v5 (PLAN §5.2). Red tests: crash-shaped (SIGKILL or a closed-without-flush store) after Commit returns shows the whole group; after a crash before Commit either the whole group or none is on disk is NOT promised and the test says so. Scheduling: René.
 
+14. **A correction on a deleted entity copies the tombstone stamps** (HIGH, pre-existing, found in the
+    review of the one-tick fix 2026-10-09; the reviewer confirmed it on memory, badger, sharded and
+    tiered). `correctionTemporal` (`core/temporal_cascade.go:486-496`) starts every correction piece
+    from the template's whole `TemporalMetadata`, `TxTo` and `DeletedAt` included (node `:516`, rel
+    `:546`), and the resumption rows (`:185`/`:195` node, `:654`/`:664` rel) keep the source row's
+    `TxTo`/`DeletedAt`. On a hard-deleted entity the template is the tombstone, so `Add` → `Delete` →
+    `SetNodeVersionInterval` appends a row with `TxTo = TxFrom - 1` and a `DeletedAt`:
+    `NodeAsOf(now)` reports the entity absent while `NodeAtTx(t, now)` returns the correction (two
+    doors disagree). Red test first, all four backends, node and rel: every appended row has
+    `TxTo == 0 || TxTo >= TxFrom`, and `NodeAsOf` / `NodeAtTx` (and rel mirrors) agree after the
+    cascade. **Decision needed (lesson 46):** a cascade on a deleted entity either undeletes (the
+    appended rows are a new, live belief) or is refused with a sentinel error. Not implemented.
+    `TestCascadeTemplate_DeletedEntityUsesNewestHistoryRow` pins today's behaviour (the cascade
+    succeeds, gap content from the newest history row); revise it with the decision.
+
 **DECIDED NO 2026-10-09 (René, relayed by the ai-soc session):** an index-provider "failure aborts the mutation" option (ai-soc request 5; ai-soc rebuilds from the change feed) and one instant per commit group (ai-soc request 7; the cut-record pin is enough). Reopen only with a consumer case the change feed or the cut-record pin cannot cover.
 
 **v5:** the next engine generation is planned on branch `v5` (`docs/v5/PLAN.md`, `RESEARCH-REVIEW.md`, `DISCUSSION.md` on branch `v5`, revised 2026-10-09 after `tasks/review-v5-plan-vs-code-20261009.md`; branch created 2026-10-09 from main `32568c4`). v4 keeps taking consumer features (decision René 2026-10-09, the earlier fixes-only rule is deleted). ADR-0011 S2+ waited for owner decision D6 in that plan. **DECIDED 2026-09-25 (René): S2 and S5 ship on v4 as v4.39.0**, because the AI-SOC cross-check needs them now (ADR-0011 §6 gate met: 24.0 / 24.8 / 25.7 B/HOP at 790 K / 3.15 M / 12.6 M); v5 carries the segments forward from this code.
