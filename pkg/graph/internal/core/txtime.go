@@ -14,13 +14,16 @@ import (
 // transaction time.
 var ErrNoVersionAsOf = errors.New("graph: no entity version recorded at the given transaction time")
 
-// NodeAsOf returns the node version that was current at the given transaction time.
+// NodeAsOf returns the newest row of node id recorded by transaction time
+// txTime (the as-of rule below). For the node's state at a valid instant t as
+// believed at a pin, call NodeAtTx(id, t, pin).
 //
-// Algorithm:
-//  1. Try current: if TxFrom > 0 && TxFrom <= txTime && TxTo == 0 → return it.
-//  2. Scan Nodes.History(id): find version where TxFrom > 0 && TxFrom <= txTime
-//     && (TxTo == 0 || TxTo > txTime) → return latest matching.
-//  3. None found → ErrNoVersionAsOf.
+// The rule is storeutil.SelectAsOfWithCurrent's: the newest row (highest
+// version) recorded by txTime; the live current row answers unless a row with
+// a higher version was recorded at or after it (a bounded cascade that left
+// the current row in its slot); absent when that row was superseded or deleted
+// by txTime, or when the row holding the current slot was deleted after it and
+// by txTime. None found → ErrNoVersionAsOf.
 func (t *TempOps) NodeAsOf(id types.NodeID, txTime types.Instant) (*types.Node, error) {
 	c := t.c
 	if err := c.checkOpen(); err != nil {
@@ -72,25 +75,36 @@ func (c *Core) nodeAsOfLocked(id types.NodeID, txTime types.Instant) (*types.Nod
 	}
 	if current != nil {
 		if tm := current.Temporal(); tm != nil && tm.TxFrom > 0 && tm.TxFrom <= txTime && tm.TxTo == 0 {
-			return nodeVisibleAtTxTime(current, txTime), nil
+			// Fast path: no history row above the current version (versions
+			// are dense, version_alloc.go), so nothing can outrank it.
+			above, err := c.nodeHasHistoryAbove(id, current.Version())
+			if err != nil {
+				return nil, err
+			}
+			if !above {
+				return nodeVisibleAtTxTime(current, txTime), nil
+			}
 		}
 	}
 
-	// Scan history through the single resolution seam. The {TxPin}-shaped probe
-	// runs the newest-belief-by-version selection + retraction rule (lesson 62)
-	// that resolveNodeChain concentrates. The fast path above already returned
-	// the current row when it is the answer, so any current row that reaches here
-	// is not a candidate at txTime (recorded later, or no TX stamp) and is
-	// correctly excluded by passing history alone.
+	// Resolve through the single resolution seam. The {TxPin}-shaped probe runs
+	// the as-of rule (storeutil.SelectAsOfWithCurrent: newest row recorded by
+	// the pin, retraction, tombstone life end) that resolveNodeChain
+	// concentrates, over history ‖ current with the current row flagged.
 	hist, err := c.getNodeHistory(id)
 	if err != nil {
 		return nil, err
 	}
-	return c.resolveNodeChain(hist, chainProbe{kind: probeAsOf, tx: txTime}, nil)
+	chain := hist
+	if current != nil {
+		chain = append(append(make([]*types.Node, 0, len(hist)+1), hist...), current)
+	}
+	return c.resolveNodeChain(chain, chainProbe{kind: probeAsOf, tx: txTime, asOfCurrent: current != nil}, nil)
 }
 
-// RelAsOf returns the relationship version that was current at the given
-// transaction time. Mirrors GetNodeAsOf for relationships.
+// RelAsOf returns the newest row of relationship id recorded by transaction
+// time txTime — NodeAsOf's rule for relationships. For the relationship's
+// state at a valid instant t as believed at a pin, call RelAtTx(id, t, pin).
 func (t *TempOps) RelAsOf(id types.RelID, txTime types.Instant) (*types.Relationship, error) {
 	c := t.c
 	if err := c.checkOpen(); err != nil {
@@ -141,16 +155,26 @@ func (c *Core) relAsOfLocked(id types.RelID, txTime types.Instant) (*types.Relat
 	}
 	if current != nil {
 		if tm := current.Temporal(); tm != nil && tm.TxFrom > 0 && tm.TxFrom <= txTime && tm.TxTo == 0 {
-			return relVisibleAtTxTime(current, txTime), nil
+			above, err := c.relHasHistoryAbove(id, current.Version())
+			if err != nil {
+				return nil, err
+			}
+			if !above {
+				return relVisibleAtTxTime(current, txTime), nil
+			}
 		}
 	}
 
-	// Scan history through the single resolution seam — see nodeAsOfLocked.
+	// Resolve through the single resolution seam — see nodeAsOfLocked.
 	hist, err := c.getRelHistory(id)
 	if err != nil {
 		return nil, err
 	}
-	return c.resolveRelChain(hist, chainProbe{kind: probeAsOf, tx: txTime}, nil)
+	chain := hist
+	if current != nil {
+		chain = append(append(make([]*types.Relationship, 0, len(hist)+1), hist...), current)
+	}
+	return c.resolveRelChain(chain, chainProbe{kind: probeAsOf, tx: txTime, asOfCurrent: current != nil}, nil)
 }
 
 // NowTx returns the current transaction-time instant of the graph's commit

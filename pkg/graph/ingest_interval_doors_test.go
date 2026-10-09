@@ -155,9 +155,13 @@ func TestSessionSetRelVersionInterval_TwoPhase(t *testing.T) {
 				if old, err := g.Temporal().RelAtTx(r.ID(), ivT+3000, pinBefore); err == nil && old != nil {
 					t.Fatalf("RelAtTx(T+3000, pinBefore) = %v; the extension leaked into the old belief", old)
 				}
-				// Documented behaviour: the correction rows are appended to the
-				// history; the head row (Get) is not rewritten, and RelAsOf at the
-				// pin still answers that head row, not the appended correction.
+				// The correction rows are appended to the history; the head row
+				// (Get, the closed cnt=1 row) is not rewritten. RelAsOf at the pin
+				// answers the newest row recorded by then — the appended
+				// correction (cnt 2), whose version is above the head row's. It
+				// first answered the head row while it was current and the
+				// correction once a later write superseded the head row: the
+				// answer at a pin depended on a later write (backlog 18).
 				asOf, err := g.Temporal().RelAsOf(r.ID(), pinAfter)
 				if err != nil {
 					t.Fatalf("RelAsOf(pinAfter): %v", err)
@@ -166,8 +170,12 @@ func TestSessionSetRelVersionInterval_TwoPhase(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Get: %v", err)
 				}
-				if asOf.Version() != cur.Version() || ivCnt(t, asOf, "RelAsOf(pinAfter)") != 1 {
-					t.Fatalf("RelAsOf(pinAfter) version %d != head row %d (cnt 1)", asOf.Version(), cur.Version())
+				top := cur.Version()
+				for _, h := range hist {
+					top = max(top, h.Version())
+				}
+				if asOf.Version() != top || top <= cur.Version() || ivCnt(t, asOf, "RelAsOf(pinAfter)") != 2 {
+					t.Fatalf("RelAsOf(pinAfter) version %d; want the appended correction v%d above head row v%d (cnt 2)", asOf.Version(), top, cur.Version())
 				}
 			})
 		}
@@ -239,8 +247,12 @@ func TestSessionSetNodeVersionInterval_TwoPhase(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Get: %v", err)
 				}
-				if asOf.Version() != cur.Version() || ivCnt(t, asOf, "NodeAsOf(pinAfter)") != 1 {
-					t.Fatalf("NodeAsOf(pinAfter) version %d != head row %d (cnt 1)", asOf.Version(), cur.Version())
+				top := cur.Version()
+				for _, h := range hist {
+					top = max(top, h.Version())
+				}
+				if asOf.Version() != top || top <= cur.Version() || ivCnt(t, asOf, "NodeAsOf(pinAfter)") != 2 {
+					t.Fatalf("NodeAsOf(pinAfter) version %d; want the appended correction v%d above head row v%d (cnt 2)", asOf.Version(), top, cur.Version())
 				}
 			})
 		}

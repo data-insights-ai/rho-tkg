@@ -1,0 +1,82 @@
+package core
+
+import (
+	"context"
+	"testing"
+
+	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
+)
+
+// ccBench2Graph: 2000 nodes, each updated `updates` times.
+func ccBench2Graph(b *testing.B, mem bool, updates int) (*Core, []types.NodeID) {
+	cfg := Config{BadgerInMemory: true}
+	if mem {
+		cfg = Config{}
+	}
+	g, err := New(cfg)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = g.Close() })
+	ctx := context.Background()
+	n := 2000
+	if updates > 10 {
+		n = 200
+	}
+	ids := make([]types.NodeID, n)
+	for i := range ids {
+		nd, err := g.Nodes.Add(ctx, []string{"C"}, map[string]any{"x": int64(i)})
+		if err != nil {
+			b.Fatal(err)
+		}
+		ids[i] = nd.ID()
+	}
+	for u := 0; u < updates; u++ {
+		for _, id := range ids {
+			if _, err := g.Nodes.Update(ctx, id, map[string]any{"x": int64(-1 - u)}); err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
+	return g, ids
+}
+
+func BenchmarkCC2NodeAsOfNow(b *testing.B) {
+	for _, c := range []struct {
+		name    string
+		mem     bool
+		updates int
+	}{{"badger/no-history", false, 0}, {"badger/with-history", false, 1}, {"memory/no-history", true, 0}, {"memory/100-versions", true, 100}} {
+		b.Run(c.name, func(b *testing.B) {
+			g, ids := ccBench2Graph(b, c.mem, c.updates)
+			now, _ := g.Temporal.NowTx()
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if _, err := g.Temporal.NodeAsOf(ids[i%len(ids)], now); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkCC2Update(b *testing.B) {
+	for _, c := range []struct {
+		name    string
+		mem     bool
+		updates int
+	}{{"badger/first-update", false, 0}, {"memory", true, 0}} {
+		b.Run(c.name, func(b *testing.B) {
+			g, ids := ccBench2Graph(b, c.mem, c.updates)
+			ctx := context.Background()
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if _, err := g.Nodes.Update(ctx, ids[i%len(ids)], map[string]any{"x": int64(i)}); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}

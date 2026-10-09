@@ -119,6 +119,9 @@ var (
 	ErrNameTooLong             = core.ErrNameTooLong
 	ErrSelfLoop                = core.ErrSelfLoop
 	ErrValidFromBeforePrevious = core.ErrValidFromBeforePrevious
+	// A cascade (SetNodeVersionInterval / SetRelVersionInterval) on a hard-deleted
+	// entity; also matches ErrNodeNotFound / ErrRelNotFound.
+	ErrEntityDeleted = core.ErrEntityDeleted
 	// Cross-machine (foreign-endpoint) edges (ADR-0010).
 	ErrForeignEndpointUnsupported = core.ErrForeignEndpointUnsupported
 	ErrForeignEndpointConstraint  = core.ErrForeignEndpointConstraint

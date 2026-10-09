@@ -169,7 +169,7 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 
 	// Capture pre-mutation state for version history (deep copy before any mutations).
 	prevVersion := current.Version()
-	nextVersion, err := nextEntityVersion(prevVersion)
+	nextVersion, err := c.nextRelVersion(id, current)
 	if err != nil {
 		return nil, false, err
 	}
@@ -237,7 +237,7 @@ func (c *Core) updateRelationshipPreparedInternal(ctx context.Context, id types.
 	}
 
 	// Set TxFrom on the new version (this is the commit time of the new version).
-	tm.TxFrom = now
+	stampAppendedRow(tm, now)
 
 	relTypeName := c.relTypeUnlocked(current)
 	hash, err := integrity.ComputeRelHashChecked(current, relTypeName)

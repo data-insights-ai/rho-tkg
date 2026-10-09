@@ -1,0 +1,108 @@
+--- FAIL: TestAsOfBackfilledReImportOfDeletedID (0.19s)
+    --- FAIL: TestAsOfBackfilledReImportOfDeletedID/memory/node (0.00s)
+        cascade_reimport_test.go:45: [node as-of now] want [B:v0 T:v0] on every door; got:
+             ByLabel{TxPin} = [B:v0]
+             CountByLabelAt{TxPin} = [B:v0]
+             NodeAsOf = [B:v0]
+             Nodes.All{TxPin} = [B:v0]
+             NodesAsOf = [B:v0]
+             chain T:
+              v0 vf=1000 vt=0 tx=1791558864261..1791558864263 del=0 cur=false x=0
+              v0 vf=7000 vt=0 tx=1791558864262..0 del=0 cur=true x=9
+              v1 vf=0 vt=1791558864265 tx=1791558864263..1791558864265 del=1791558864265 cur=false x=1
+             chain B:
+              v0 vf=1000 vt=0 tx=1791558864260..0 del=0 cur=true x=0
+    --- FAIL: TestAsOfBackfilledReImportOfDeletedID/memory/rel (0.00s)
+        cascade_reimport_test.go:45: [rel as-of now] want [B:v0 T:v0] on every door; got:
+             ByType{TxPin} = [B:v0]
+             CountByTypeAt{TxPin} = [B:v0]
+             RelAsOf = [B:v0]
+             Rels.All{TxPin} = [B:v0]
+             RelsAsOf = [B:v0]
+             chain T:
+              v0 vf=1000 vt=0 tx=1791558864263..1791558864265 del=0 cur=false x=0
+              v0 vf=7000 vt=0 tx=1791558864264..0 del=0 cur=true x=9
+              v1 vf=0 vt=1791558864267 tx=1791558864265..1791558864267 del=1791558864267 cur=false x=1
+             chain B:
+              v0 vf=1000 vt=0 tx=1791558864262..0 del=0 cur=true x=0
+    --- FAIL: TestAsOfBackfilledReImportOfDeletedID/badger/node (0.04s)
+        cascade_reimport_test.go:45: [node as-of now] want [B:v0 T:v0] on every door; got:
+             ByLabel{TxPin} = [B:v0]
+             CountByLabelAt{TxPin} = [B:v0]
+             NodeAsOf = [B:v0]
+             Nodes.All{TxPin} = [B:v0]
+             NodesAsOf = [B:v0]
+             chain T:
+              v0 vf=1000 vt=0 tx=1791558864295..1791558864297 del=0 cur=false x=0
+              v0 vf=7000 vt=0 tx=1791558864296..0 del=0 cur=true x=9
+              v1 vf=0 vt=1791558864299 tx=1791558864297..1791558864299 del=1791558864299 cur=false x=1
+             chain B:
+              v0 vf=1000 vt=0 tx=1791558864294..0 del=0 cur=true x=0
+    --- FAIL: TestAsOfBackfilledReImportOfDeletedID/badger/rel (0.00s)
+        cascade_reimport_test.go:45: [rel as-of now] want [B:v0 T:v0] on every door; got:
+             ByType{TxPin} = [B:v0]
+             CountByTypeAt{TxPin} = [B:v0]
+             RelAsOf = [B:v0]
+             Rels.All{TxPin} = [B:v0]
+             RelsAsOf = [B:v0]
+             chain T:
+              v0 vf=1000 vt=0 tx=1791558864302..1791558864304 del=0 cur=false x=0
+              v0 vf=7000 vt=0 tx=1791558864303..0 del=0 cur=true x=9
+              v1 vf=0 vt=1791558864306 tx=1791558864304..1791558864306 del=1791558864306 cur=false x=1
+             chain B:
+              v0 vf=1000 vt=0 tx=1791558864301..0 del=0 cur=true x=0
+    --- FAIL: TestAsOfBackfilledReImportOfDeletedID/sharded/node (0.04s)
+        cascade_reimport_test.go:45: [node as-of now] want [B:v0 T:v0] on every door; got:
+             ByLabel{TxPin} = [B:v0]
+             CountByLabelAt{TxPin} = [B:v0]
+             NodeAsOf = [B:v0]
+             Nodes.All{TxPin} = [B:v0]
+             NodesAsOf = [B:v0]
+             chain T:
+              v0 vf=1000 vt=0 tx=1791558864335..1791558864337 del=0 cur=false x=0
+              v0 vf=7000 vt=0 tx=1791558864336..0 del=0 cur=true x=9
+              v1 vf=0 vt=1791558864339 tx=1791558864337..1791558864339 del=1791558864339 cur=false x=1
+             chain B:
+              v0 vf=1000 vt=0 tx=1791558864334..0 del=0 cur=true x=0
+    --- FAIL: TestAsOfBackfilledReImportOfDeletedID/sharded/rel (0.00s)
+        cascade_reimport_test.go:45: [rel as-of now] want [B:v0 T:v0] on every door; got:
+             ByType{TxPin} = [B:v0]
+             CountByTypeAt{TxPin} = [B:v0]
+             RelAsOf = [B:v0]
+             Rels.All{TxPin} = [B:v0]
+             RelsAsOf = [B:v0]
+             chain T:
+              v0 vf=1000 vt=0 tx=1791558864341..1791558864343 del=0 cur=false x=0
+              v0 vf=7000 vt=0 tx=1791558864342..0 del=0 cur=true x=9
+              v1 vf=0 vt=1791558864345 tx=1791558864343..1791558864345 del=1791558864345 cur=false x=1
+             chain B:
+              v0 vf=1000 vt=0 tx=1791558864340..0 del=0 cur=true x=0
+    --- FAIL: TestAsOfBackfilledReImportOfDeletedID/tiered/node (0.04s)
+        cascade_reimport_test.go:45: [node as-of now] want [B:v0 T:v0] on every door; got:
+             ByLabel{TxPin} = [B:v0]
+             CountByLabelAt{TxPin} = [B:v0]
+             NodeAsOf = [B:v0]
+             Nodes.All{TxPin} = [B:v0]
+             NodesAsOf = [B:v0]
+             chain T:
+              v0 vf=1000 vt=0 tx=1791558864379..1791558864381 del=0 cur=false x=0
+              v0 vf=7000 vt=0 tx=1791558864380..0 del=0 cur=true x=9
+              v1 vf=0 vt=1791558864383 tx=1791558864381..1791558864383 del=1791558864383 cur=false x=1
+             chain B:
+              v0 vf=1000 vt=0 tx=1791558864378..0 del=0 cur=true x=0
+    --- FAIL: TestAsOfBackfilledReImportOfDeletedID/tiered/rel (0.07s)
+        cascade_reimport_test.go:45: [rel as-of now] want [B:v0 T:v0] on every door; got:
+             ByType{TxPin} = [B:v0]
+             CountByTypeAt{TxPin} = [B:v0]
+             RelAsOf = [B:v0]
+             Rels.All{TxPin} = [B:v0]
+             RelsAsOf = [B:v0]
+             chain T:
+              v0 vf=1000 vt=0 tx=1791558864448..1791558864450 del=0 cur=false x=0
+              v0 vf=7000 vt=0 tx=1791558864449..0 del=0 cur=true x=9
+              v1 vf=0 vt=1791558864452 tx=1791558864450..1791558864452 del=1791558864452 cur=false x=1
+             chain B:
+              v0 vf=1000 vt=0 tx=1791558864447..0 del=0 cur=true x=0
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.227s
+FAIL

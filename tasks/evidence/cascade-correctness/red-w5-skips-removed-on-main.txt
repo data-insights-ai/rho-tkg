@@ -1,0 +1,337 @@
+--- FAIL: TestTxBackfillOracle_CrossBackend (1.41s)
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064280 (0.00s)
+        tx_backfill_oracle_test.go:638: [memory] batch/Rels.UpdateWithTx(797194731294426112,t=1791558016984) closed=false: pin t-1 changed by the op:
+             before asof=v2 set=v2 pin=v2 txat=v3
+             after  asof=v5 set=v5 pin=v5 txat=v3
+             chain 
+              v0 vf=2361 vt=0 tx=1791558001005..1791558002000 del=0 upd=0
+              v1 vf=0 vt=0 tx=1791558002000..1791558006000 del=0 upd=1791558002000
+              v2 vf=0 vt=0 tx=1791558006000..1791558016984 del=0 upd=1791558006000
+              v3 vf=3158 vt=1791558002000 tx=1791558012000..1791558002000 del=0 upd=1791558012000
+              v4 vf=1506 vt=2361 tx=1791558012000..0 del=0 upd=1791558012000
+              v5 vf=2361 vt=3158 tx=1791558012000..0 del=0 upd=1791558012000
+              v3 vf=0 vt=0 tx=1791558016984..0 del=0 upd=1791558016984
+              currentAlive=true
+            op log (23):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(S) -> ok
+               4. linkNodes(R 797194731292327936->797194731293507584) -> ok
+               5. updateRel(797194731294426112) -> ok
+               6. linkNodes(S 797194731292327936->797194731293507584) -> ok
+               7. batch/Nodes.DeleteWithTx(797194731293376512,t=1791558001099) hood=[] -> ok
+               8. standalone/Nodes.DeleteWithTx(797194731293507584,t=1791558001001) hood=[797194731294589952 797194731295278080] -> graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791558001001 is not after the recorded TxFrom 1791558001003
+               9. updateRel(797194731294426112) -> ok
+              10. standalone/Nodes.UpdateWithTx(797194731293507584,t=1791558001002) closed=false -> graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791558001002 is not after the recorded TxFrom 1791558001003
+              11. closeRel(797194731295278080,3205) -> ok
+              12. batch/Nodes.UpdateWithTx(797194731293507584,t=1791558003722) closed=false -> ok
+              13. ingest_concurrent/Rels.DeleteWithTx(797194731293705216,t=1791558007041) -> ok
+              14. ingest_concurrent/Rels.DeleteWithTx(797194731294589952,t=1791558001258) -> ok
+              15. cascadeRel(797194731294426112,[1506,3158)) -> ok
+              16. backfillNode(tx=1791557985714) -> ok
+              17. closeNode(797194731293507584,3509) -> graph: invalid time range: close time 3509 must be after node valid-from 1791554052493
+              18. closeRel(797194731294426112,3680) -> graph: invalid time range: close time 3680 must be after relationship valid-from 1791554052493
+              19. standalone/Nodes.DeleteWithTx(797194731312218112,t=1791558002077) hood=[] -> ok
+              20. deleteNode(797194731293507584) -> ok
+              21. updateRel(797194731295278080) -> graph: relationship not found
+              22. batch/Rels.UpdateWithTx(797194731294426112,t=1791558016984) closed=false -> ok
+            
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064281 (0.00s)
+        tx_backfill_oracle_test.go:547: [memory] graphtx/Nodes.UpdateWithTx(797194731322867712,t=1791558012258) closed=false: pin t-1 changed by the op:
+             before asof=v1 set=v1 pin=v1 txat=v2
+             after  asof=v3 set=v3 pin=v3 txat=v2
+             chain 
+              v0 vf=2019 vt=0 tx=1791558001002..1791558010000 del=0 upd=0
+              v1 vf=0 vt=0 tx=1791558010000..1791558012258 del=0 upd=1791558010000
+              v2 vf=3205 vt=1791558010000 tx=1791558012000..1791558010000 del=0 upd=1791558012000
+              v3 vf=3204 vt=3205 tx=1791558012000..0 del=0 upd=1791558012000
+              v2 vf=0 vt=0 tx=1791558012258..0 del=0 upd=1791558012258
+              currentAlive=true
+            op log (19):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(S) -> ok
+               4. linkNodes(R 797194731322212352->797194731322966016) -> ok
+               5. linkNodes(R 797194731322966016->797194731322867712) -> ok
+               6. updateRel(797194731323163648) -> ok
+               7. ingest_sync/Rels.UpdateWithTx(797194731323425792,t=1791558001886) closed=true -> graph: batch execution had failed operations: refused before any write: batch UpdateRelationshipWithTx (ID 797194731323425792): graph: entity already closed
+               8. deleteRel(797194731323589632) -> ok
+               9. graphtx/Rels.UpdateWithTx(797194731323720704,t=1791558001998) closed=false -> graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791558001998 is not after the recorded TxFrom 1791558002000
+              10. cascadeRel(797194731323163648,[2134,3400)) -> ok
+              11. addLabel(797194731322867712,A) -> ok
+              12. ingest_sync/Nodes.DeleteWithTx(797194731322966016,t=1791558005319) hood=[797194731323720704] -> ok
+              13. addLabel(797194731322867712,C) -> ok
+              14. cascadeRel(797194731323720704,[1815,0)) -> graph: cascade refresh endpoint hashes: graph: refresh start-node hash: graph: node not found
+              15. cascadeNode(797194731322867712,[3204,3205)) -> ok
+              16. graphtx/Rels.DeleteWithTx(797194731323425792,t=1791558001139) -> ok
+              17. backfillNode(tx=1791557959143) -> ok
+              18. graphtx/Nodes.UpdateWithTx(797194731322867712,t=1791558012258) closed=false -> ok
+            
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064282 (0.00s)
+        tx_backfill_oracle_test.go:528: [memory] graphtx/Nodes.UpdateWithTx(797194731336335360,t=1791558013141) closed=true: a refused op changed the chain:
+             before
+             node 797194731336335360 alive=true
+              v1 vf=1642 vt=2152 tx=1791558005000..0 del=0 upd=1791558005000
+              v0 vf=1893 vt=2034 tx=1791558001003..0 del=0 upd=0
+             after
+             node 797194731336335360 alive=true
+              v0 vf=1893 vt=2034 tx=1791558001003..0 del=0 upd=0
+            op log (28):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(S) -> ok
+               4. linkNodes(R 797194731336269824->797194731336335360) -> ok
+               5. ingest_concurrent/Rels.DeleteWithTx(797194731336434688,t=1791558001115) -> ok
+               6. cascadeRel(797194731336664064,[1744,2788)) -> ok
+               7. deleteRel(797194731336598528) -> ok
+               8. cascadeNode(797194731336335360,[1642,2152)) -> ok
+               9. linkNodes(S 797194731336269824->797194731336335360) -> ok
+              10. closeNode(797194731336335360,3495) -> graph: entity already closed
+              11. cascadeRel(797194731336664064,[1518,2815)) -> ok
+              12. ingest_sync/Rels.UpdateWithTx(797194731336664064,t=1791558007999) closed=false -> graph: batch execution had failed operations: refused before any write: batch UpdateRelationshipWithTx (ID 797194731336664064): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791558007999 is not after the recorded TxFrom 1791558008000
+              13. backfillNode(tx=1791558000199) -> ok
+              14. deleteRel(797194731338040320) -> ok
+              15. closeRel(797194731336664064,4317) -> ok
+              16. addNode -> ok
+              17. addLabel(797194731339841536,B) -> graph: entity already closed
+              18. backfillNode(tx=1791557964620) -> ok
+              19. closeNode(797194731336335360,5180) -> graph: entity already closed
+              20. addNode -> ok
+              21. backfillNode(tx=1791557971317) -> ok
+              22. updateRel(797194731336664064) -> graph: entity already closed
+              23. updateNode(797194731340365824) -> graph: entity already closed
+              24. backfillNode(tx=1791557972310) -> ok
+              25. batch/Nodes.UpdateWithTx(797194731340365824,t=1791557993706) closed=true -> graph: batch execution had failed operations: refused before any write: batch UpdateNodeWithTx (ID 797194731340365824): graph: entity already closed
+              26. batch/Nodes.DeleteWithTx(797194731340300288,t=1791558020085) hood=[] -> ok
+              27. graphtx/Nodes.UpdateWithTx(797194731336335360,t=1791558013141) closed=true -> graph: entity already closed
+            
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064283 (0.00s)
+        tx_backfill_oracle_test.go:547: [memory] ingest_sync/Nodes.UpdateWithTx(797194731357044736,t=1791558030152) closed=false: pin t-1 changed by the op:
+             before asof=v0 set=v0 pin=v0 txat=v0
+             after  asof=v1 set=v1 pin=v1 txat=v0
+             chain 
+              v0 vf=5907 vt=0 tx=1791558022000..1791558030152 del=0 upd=0
+              v1 vf=3298 vt=4596 tx=1791558028000..0 del=0 upd=1791558028000
+              v1 vf=0 vt=0 tx=1791558030152..0 del=0 upd=1791558030152
+              currentAlive=true
+            op log (35):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(R) -> ok
+               4. linkNodes(S 797194731346395136->797194731346329600) -> ok
+               5. updateNode(797194731346329600) -> ok
+               6. backfillNode(tx=1791557971988) -> ok
+               7. graphtx/Rels.DeleteWithTx(797194731346756608,t=1791558003264) -> ok
+               8. deleteRel(797194731346494464) -> ok
+               9. ingest_concurrent/Rels.DeleteWithTx(797194731346625536,t=1791558001003) -> graph: concurrent ingest group refused before any write: batch DeleteRelationshipWithTx (ID 797194731346625536): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791558001003 is not after the recorded TxFrom 1791558001005
+              10. closeNode(797194731346395136,4410) -> ok
+              11. addLabel(797194731346395136,C) -> graph: entity already closed
+              12. deleteNode(797194731346395136) -> ok
+              13. backfillNode(tx=1791558000472) -> ok
+              14. ingest_sync/Rels.UpdateWithTx(797194731346625536,t=1791558007506) closed=true -> graph: batch execution had failed operations: refused before any write: batch UpdateRelationshipWithTx (ID 797194731346625536): graph: entity already closed
+              15. batch/Nodes.UpdateWithTx(797194731346984960,t=1791558008898) closed=false -> ok
+              16. linkNodes(S 797194731346100224->797194731346329600) -> ok
+              17. ingest_sync/Rels.UpdateWithTx(797194731346625536,t=1791558003086) closed=true -> graph: batch execution had failed operations: refused before any write: batch UpdateRelationshipWithTx (ID 797194731346625536): graph: entity already closed
+              18. closeRel(797194731352196096,5474) -> ok
+              19. graphtx/Rels.UpdateWithTx(797194731346625536,t=1791558004914) closed=true -> graph: entity already closed
+              20. ingest_sync/Rels.UpdateWithTx(797194731346625536,t=1791558012542) closed=true -> graph: batch execution had failed operations: refused before any write: batch UpdateRelationshipWithTx (ID 797194731346625536): graph: entity already closed
+              21. ingest_concurrent/Nodes.DeleteWithTx(797194731346329600,t=1791558015372) hood=[797194731352196096] -> ok
+              22. updateNode(797194731346984960) -> ok
+              23. graphtx/Rels.UpdateWithTx(797194731346625536,t=1791558001005) closed=true -> graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791558001005 is not after the recorded TxFrom 1791558001005
+              24. cascadeRel(797194731346625536,[3199,0)) -> ok
+              25. addNode -> ok
+              26. updateRel(797194731352196096) -> graph: relationship not found
+              27. cascadeRel(797194731346625536,[5743,0)) -> ok
+              28. standalone/Rels.UpdateWithTx(797194731346625536,t=1791558024719) closed=false -> ok
+              29. deleteNode(797194731349311488) -> ok
+              30. updateNode(797194731346984960) -> ok
+              31. cascadeNode(797194731357044736,[3298,4596)) -> ok
+              32. cascadeRel(797194731352196096,[974,1436)) -> graph: cascade refresh endpoint hashes: graph: refresh end-node hash: graph: node not found
+              33. cascadeNode(797194731346984960,[4726,5282)) -> ok
+              34. ingest_sync/Nodes.UpdateWithTx(797194731357044736,t=1791558030152) closed=false -> ok
+            
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064284 (0.00s)
+        tx_backfill_oracle_test.go:547: [memory] ingest_concurrent/Nodes.UpdateWithTx(797194731362942976,t=1791558003504) closed=false: pin t-1 changed by the op:
+             before asof=v0 set=v0 pin=v0 txat=v0
+             after  asof=v1 set=v1 pin=v1 txat=v0
+             chain 
+              v0 vf=2196 vt=0 tx=1791558001002..1791558003504 del=0 upd=0
+              v1 vf=798 vt=1673 tx=1791558002000..0 del=0 upd=1791558002000
+              v1 vf=0 vt=0 tx=1791558003504..0 del=0 upd=1791558003504
+              currentAlive=true
+            op log (8):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(S) -> ok
+               4. linkNodes(S 797194731362680832->797194731362942976) -> ok
+               5. cascadeNode(797194731362942976,[798,1673)) -> ok
+               6. ingest_sync/Nodes.DeleteWithTx(797194731363041280,t=1791558001018) hood=[] -> ok
+               7. ingest_concurrent/Nodes.UpdateWithTx(797194731362942976,t=1791558003504) closed=false -> ok
+            
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064285 (0.00s)
+        tx_backfill_oracle_test.go:582: [memory] ingest_concurrent/Rels.DeleteWithTx(797194731369169920,t=1791558007125): pin t-1 changed by the op:
+             before asof=v1 set=v1 pin=v1 txat=v1
+             after  asof=v3 set=v3 pin=v3 txat=v1
+             chain 
+              v0 vf=3779 vt=0 tx=1791558003000..0 del=0 upd=0
+              v1 vf=1693 vt=1791558007125 tx=1791558005000..1791558007125 del=1791558007125 upd=1791558005000
+              v2 vf=2383 vt=3779 tx=1791558006000..0 del=0 upd=1791558006000
+              v3 vf=2382 vt=2383 tx=1791558006000..0 del=0 upd=1791558006000
+              currentAlive=false
+            op log (14):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(S) -> ok
+               4. linkNodes(R 797194731368185856->797194731368448000) -> ok
+               5. addNode -> ok
+               6. linkNodes(R 797194731368185856->797194731369070592) -> ok
+               7. batch/Rels.DeleteWithTx(797194731368678400,t=1791558002489) -> ok
+               8. cascadeRel(797194731369169920,[1693,0)) -> ok
+               9. cascadeRel(797194731369169920,[2382,2383)) -> ok
+              10. batch/Rels.DeleteWithTx(797194731368809472,t=1791558004206) -> ok
+              11. linkNodes(S 797194731368448000->797194731369070592) -> ok
+              12. addLabel(797194731369070592,B) -> ok
+              13. ingest_concurrent/Rels.DeleteWithTx(797194731369169920,t=1791558007125) -> ok
+            
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064286 (0.00s)
+        tx_backfill_oracle_test.go:619: [memory] graphtx/Rels.UpdateWithTx(797194731375657984,t=1791558008773) closed=true: a refused op changed the chain:
+             before
+             rel 797194731375657984 alive=true
+              v1 vf=1912 vt=3241 tx=1791558002000..0 del=0 upd=1791558002000
+              v0 vf=2565 vt=2766 tx=1791558001004..0 del=0 upd=0
+             after
+             rel 797194731375657984 alive=true
+              v0 vf=2565 vt=2766 tx=1791558001004..0 del=0 upd=0
+            op log (13):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(S) -> ok
+               4. linkNodes(S 797194731375165440->797194731375427584) -> ok
+               5. cascadeRel(797194731375657984,[1912,3241)) -> ok
+               6. graphtx/Nodes.UpdateWithTx(797194731375427584,t=1791558002331) closed=true -> graph: entity already closed
+               7. ingest_concurrent/Nodes.DeleteWithTx(797194731375427584,t=1791558001002) hood=[797194731375887360] -> graph: concurrent ingest group refused before any write: batch DeleteNodeWithTx (ID 797194731375427584): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791558001002 is not after the recorded TxFrom 1791558001002
+               8. closeNode(797194731375427584,3836) -> graph: entity already closed
+               9. addLabel(797194731375525888,B) -> ok
+              10. backfillNode(tx=1791557970857) -> ok
+              11. ingest_concurrent/Rels.UpdateWithTx(797194731375657984,t=1791558003295) closed=true -> graph: concurrent ingest group refused before any write: batch UpdateRelationshipWithTx (ID 797194731375657984): graph: entity already closed
+              12. graphtx/Rels.UpdateWithTx(797194731375657984,t=1791558008773) closed=true -> graph: entity already closed
+            
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064287 (0.00s)
+        tx_backfill_oracle_test.go:485: [memory] batch/Nodes.DeleteWithTx(797194731382571008,t=1791558013592) hood=[797194731382932480]: pin t-1 changed by the op:
+             before asof=v2 set=v2 pin=v2 txat=v1
+             after  asof=v3 set=v3 pin=v3 txat=v1
+             chain 
+              v0 vf=2080 vt=0 tx=1791558001003..1791558003000 del=0 upd=0
+              v1 vf=3079 vt=0 tx=1791558003000..1791558004000 del=0 upd=1791558003000
+              v2 vf=3079 vt=3331 tx=1791558004000..1791558013592 del=1791558013592 upd=1791558004000
+              v3 vf=1021 vt=2061 tx=1791558013000..0 del=0 upd=1791558013000
+              currentAlive=false
+            op log (18):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(R) -> ok
+               4. linkNodes(R 797194731382472704->797194731382571008) -> ok
+               5. addLabel(797194731382472704,B) -> ok
+               6. updateNode(797194731382571008) -> ok
+               7. closeNode(797194731382571008,3331) -> ok
+               8. updateNode(797194731382472704) -> graph: tkg_valid_from must be greater than previous version's effective ValidFrom: 3496 <= prev 1791554052495
+               9. updateNode(797194731382571008) -> graph: entity already closed
+              10. standalone/Nodes.DeleteWithTx(797194731382472704,t=1791558002000) hood=[797194731382932480] -> graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791558002000 is not after the recorded version start 1791558002000
+              11. updateRel(797194731382932480) -> ok
+              12. batch/Nodes.UpdateWithTx(797194731382571008,t=1791558008733) closed=true -> graph: batch execution had failed operations: refused before any write: batch UpdateNodeWithTx (ID 797194731382571008): graph: entity already closed
+              13. addNode -> ok
+              14. addLabel(797194731386044416,C) -> ok
+              15. deleteRel(797194731382670336) -> ok
+              16. cascadeNode(797194731382571008,[1021,2061)) -> ok
+              17. batch/Nodes.DeleteWithTx(797194731382571008,t=1791558013592) hood=[797194731382932480] -> ok
+            
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064289 (0.00s)
+        tx_backfill_oracle_test.go:612: [memory] graphtx/Rels.UpdateWithTx(797194737147741184,t=1791558011998) closed=false: a refused op changed the chain:
+             before
+             rel 797194737147741184 alive=true
+              v0 vf=2961 vt=0 tx=1791558001005..0 del=0 upd=0
+              v1 vf=2624 vt=0 tx=1791558004000..1791558010000 del=0 upd=1791558004000
+              v3 vf=2838 vt=2961 tx=1791558012000..1791558010000 del=0 upd=1791558012000
+              v4 vf=2122 vt=2624 tx=1791558012000..0 del=0 upd=1791558012000
+              v5 vf=2624 vt=2838 tx=1791558012000..0 del=0 upd=1791558012000
+              v2 vf=0 vt=0 tx=1791558010000..0 del=0 upd=1791558010000
+             after
+             rel 797194737147741184 alive=true
+              v0 vf=2961 vt=0 tx=1791558001005..0 del=0 upd=0
+              v1 vf=2624 vt=0 tx=1791558004000..1791558010000 del=0 upd=1791558004000
+              v2 vf=0 vt=0 tx=1791558010000..0 del=0 upd=1791558010000
+            op log (17):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(S) -> ok
+               3. addRel(R) -> ok
+               4. linkNodes(R 797194737146822656->797194737147412480) -> ok
+               5. backfillNode(tx=1791557947258) -> ok
+               6. ingest_sync/Rels.DeleteWithTx(797194737147511808,t=1791558002556) -> ok
+               7. cascadeRel(797194737147741184,[2624,0)) -> ok
+               8. graphtx/Nodes.DeleteWithTx(797194737148002304,t=1791557950439) hood=[] -> ok
+               9. ingest_sync/Rels.UpdateWithTx(797194737147872256,t=1791558001004) closed=false -> graph: batch execution had failed operations: refused before any write: batch UpdateRelationshipWithTx (ID 797194737147872256): graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791558001004 is not after the recorded TxFrom 1791558001006
+              10. addNode -> ok
+              11. deleteRel(797194737147872256) -> ok
+              12. addNode -> ok
+              13. updateRel(797194737147741184) -> ok
+              14. addNode -> ok
+              15. cascadeRel(797194737147741184,[2122,2838)) -> ok
+              16. graphtx/Rels.UpdateWithTx(797194737147741184,t=1791558011998) closed=false -> graph: caller transaction instant does not follow the entity's recorded history (graph: backfilled tkg_tx_from must be a positive instant not in the future): t 1791558011998 is not after the recorded TxFrom 1791558012000
+            
+    --- FAIL: TestTxBackfillOracle_CrossBackend/seed=8064290 (0.00s)
+        tx_backfill_oracle_test.go:485: [memory] batch/Nodes.DeleteWithTx(797194737163337728,t=1791558026650) hood=[]: pin t-1 changed by the op:
+             before asof=v0 set=v0 pin=v0 txat=absent
+             after  asof=v1 set=v1 pin=v1 txat=absent
+             chain 
+              v0 vf=4961 vt=6388 tx=1791558016000..1791558026650 del=1791558026650 upd=0
+              v1 vf=3402 vt=4224 tx=1791558026000..0 del=0 upd=1791558026000
+              currentAlive=false
+            op log (35):
+               0. addNode -> ok
+               1. addNode -> ok
+               2. addRel(R) -> ok
+               3. addRel(S) -> ok
+               4. linkNodes(S 797194737157668864->797194737157537792) -> ok
+               5. closeNode(797194737157537792,3173) -> graph: entity already closed
+               6. standalone/Rels.DeleteWithTx(797194737157768192,t=1791558001498) -> ok
+               7. ingest_concurrent/Nodes.UpdateWithTx(797194737157537792,t=1791558001749) closed=true -> graph: concurrent ingest group refused before any write: batch UpdateNodeWithTx (ID 797194737157537792): graph: entity already closed
+               8. ingest_concurrent/Rels.DeleteWithTx(797194737157997568,t=1791558003487) -> ok
+               9. batch/Rels.UpdateWithTx(797194737157899264,t=1791558005906) closed=false -> ok
+              10. closeNode(797194737157668864,3329) -> ok
+              11. addLabel(797194737157668864,B) -> ok
+              12. backfillNode(tx=1791557999770) -> ok
+              13. addNode -> ok
+              14. addNode -> ok
+              15. closeNode(797194737157668864,4320) -> graph: entity already closed
+              16. cascadeNode(797194737162158080,[2882,4147)) -> ok
+              17. closeRel(797194737157899264,4493) -> graph: invalid time range: close time 4493 must be after relationship valid-from 1791554052672
+              18. graphtx/Rels.DeleteWithTx(797194737157899264,t=1791558014087) -> ok
+              19. addNode -> ok
+              20. backfillNode(tx=1791557980146) -> ok
+              21. linkNodes(R 797194737157275648->797194737157537792) -> ok
+              22. backfillNode(tx=1791557982872) -> ok
+              23. graphtx/Nodes.DeleteWithTx(797194737162027008,t=1791558018044) hood=[] -> ok
+              24. updateNode(797194737157537792) -> graph: entity already closed
+              25. batch/Rels.UpdateWithTx(797194737163535360,t=1791558021562) closed=true -> graph: batch execution had failed operations: refused before any write: batch UpdateRelationshipWithTx (ID 797194737163535360): graph: entity already closed
+              26. cascadeNode(797194737162158080,[2228,0)) -> ok
+              27. deleteNode(797194737163632640) -> ok
+              28. cascadeNode(797194737163337728,[3402,4224)) -> ok
+              29. deleteRel(797194737163535360) -> ok
+              30. addLabel(797194737162092544,A) -> ok
+              31. closeNode(797194737157537792,6205) -> graph: entity already closed
+              32. deleteNode(797194737162092544) -> ok
+              33. ingest_sync/Nodes.DeleteWithTx(797194737157668864,t=1791558019486) hood=[] -> ok
+              34. batch/Nodes.DeleteWithTx(797194737163337728,t=1791558026650) hood=[] -> ok
+            
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	1.483s
+FAIL

@@ -1,0 +1,42 @@
+goos: linux
+goarch: amd64
+pkg: github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core
+cpu: AMD Ryzen 9 7950X3D 16-Core Processor          
+BenchmarkCCUpdate/memory-32         	   20000	      2457 ns/op	    1624 B/op	      23 allocs/op
+BenchmarkCCUpdate/memory-32         	   20000	      2488 ns/op	    1621 B/op	      23 allocs/op
+BenchmarkCCUpdate/memory-32         	   20000	      2682 ns/op	    1621 B/op	      23 allocs/op
+BenchmarkCCUpdate/memory-32         	   20000	      2710 ns/op	    1621 B/op	      23 allocs/op
+BenchmarkCCUpdate/memory-32         	   20000	      2377 ns/op	    1621 B/op	      23 allocs/op
+BenchmarkCCUpdate/memory-32         	   20000	      2608 ns/op	    1621 B/op	      23 allocs/op
+BenchmarkCCUpdate/badger-32         	   20000	      5939 ns/op	    3413 B/op	      41 allocs/op
+BenchmarkCCUpdate/badger-32         	   20000	      5965 ns/op	    3414 B/op	      41 allocs/op
+BenchmarkCCUpdate/badger-32         	   20000	      5045 ns/op	    3331 B/op	      37 allocs/op
+BenchmarkCCUpdate/badger-32         	   20000	      6449 ns/op	    3398 B/op	      41 allocs/op
+BenchmarkCCUpdate/badger-32         	   20000	      4843 ns/op	    3293 B/op	      35 allocs/op
+BenchmarkCCUpdate/badger-32         	   20000	      4062 ns/op	    2967 B/op	      32 allocs/op
+BenchmarkCCNodeAsOf/memory/current-32         	   20000	       218.1 ns/op	     320 B/op	       4 allocs/op
+BenchmarkCCNodeAsOf/memory/current-32         	   20000	       294.1 ns/op	     320 B/op	       4 allocs/op
+BenchmarkCCNodeAsOf/memory/current-32         	   20000	       287.3 ns/op	     320 B/op	       4 allocs/op
+BenchmarkCCNodeAsOf/memory/current-32         	   20000	       357.0 ns/op	     320 B/op	       4 allocs/op
+BenchmarkCCNodeAsOf/memory/current-32         	   20000	       273.6 ns/op	     320 B/op	       4 allocs/op
+BenchmarkCCNodeAsOf/memory/current-32         	   20000	       237.2 ns/op	     320 B/op	       4 allocs/op
+BenchmarkCCNodeAsOf/memory/past-32            	   20000	       332.3 ns/op	     320 B/op	       4 allocs/op
+BenchmarkCCNodeAsOf/memory/past-32            	   20000	       358.2 ns/op	     320 B/op	       4 allocs/op
+BenchmarkCCNodeAsOf/memory/past-32            	   20000	       340.0 ns/op	     320 B/op	       4 allocs/op
+BenchmarkCCNodeAsOf/memory/past-32            	   20000	       431.0 ns/op	     320 B/op	       4 allocs/op
+BenchmarkCCNodeAsOf/memory/past-32            	   20000	       348.4 ns/op	     320 B/op	       4 allocs/op
+BenchmarkCCNodeAsOf/memory/past-32            	   20000	       438.2 ns/op	     320 B/op	       4 allocs/op
+BenchmarkCCNodeAsOf/badger/current-32         	   20000	       624.8 ns/op	     640 B/op	       8 allocs/op
+BenchmarkCCNodeAsOf/badger/current-32         	   20000	       331.6 ns/op	     640 B/op	       8 allocs/op
+BenchmarkCCNodeAsOf/badger/current-32         	   20000	       433.1 ns/op	     640 B/op	       8 allocs/op
+BenchmarkCCNodeAsOf/badger/current-32         	   20000	       425.8 ns/op	     640 B/op	       8 allocs/op
+BenchmarkCCNodeAsOf/badger/current-32         	   20000	       465.3 ns/op	     640 B/op	       8 allocs/op
+BenchmarkCCNodeAsOf/badger/current-32         	   20000	       350.5 ns/op	     640 B/op	       8 allocs/op
+BenchmarkCCNodeAsOf/badger/past-32            	   20000	      8312 ns/op	    3267 B/op	      46 allocs/op
+BenchmarkCCNodeAsOf/badger/past-32            	   20000	      8111 ns/op	    3261 B/op	      45 allocs/op
+BenchmarkCCNodeAsOf/badger/past-32            	   20000	      8362 ns/op	    3261 B/op	      45 allocs/op
+BenchmarkCCNodeAsOf/badger/past-32            	   20000	      7935 ns/op	    3261 B/op	      45 allocs/op
+BenchmarkCCNodeAsOf/badger/past-32            	   20000	      8264 ns/op	    3261 B/op	      45 allocs/op
+BenchmarkCCNodeAsOf/badger/past-32            	   20000	      8083 ns/op	    3265 B/op	      46 allocs/op
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	3.728s

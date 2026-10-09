@@ -1,0 +1,409 @@
+=== RUN   TestTxBackfillOracle_CrossBackend
+=== PAUSE TestTxBackfillOracle_CrossBackend
+=== CONT  TestTxBackfillOracle_CrossBackend
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064277
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064278
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064279
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064280
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064281
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064282
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064283
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064284
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064285
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064286
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064287
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064288
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064289
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064290
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064291
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064292
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064293
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064294
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064295
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064296
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064297
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064298
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064299
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064300
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064301
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064302
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064303
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064304
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064305
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064306
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064307
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064308
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064309
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064310
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064311
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064312
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064313
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064314
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064315
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064316
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064317
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064318
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064319
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064320
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064321
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064322
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064323
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064324
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064325
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064326
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064327
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064328
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064329
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064330
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064331
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064332
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064333
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064334
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064335
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064336
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064337
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064338
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064339
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064340
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064341
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064342
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064343
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064344
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064345
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064346
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064347
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064348
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064349
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064350
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064351
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064352
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064353
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064354
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064355
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064356
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064357
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064358
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064359
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064360
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064361
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064362
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064363
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064364
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064365
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064366
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064367
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064368
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064369
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064370
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064371
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064372
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064373
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064374
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064375
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064376
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064377
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064378
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064379
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064380
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064381
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064382
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064383
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064384
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064385
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064386
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064387
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064388
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064389
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064390
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064391
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064392
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064393
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064394
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064395
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064396
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064397
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064398
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064399
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064400
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064401
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064402
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064403
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064404
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064405
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064406
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064407
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064408
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064409
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064410
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064411
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064412
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064413
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064414
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064415
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064416
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064417
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064418
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064419
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064420
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064421
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064422
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064423
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064424
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064425
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064426
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064427
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064428
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064429
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064430
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064431
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064432
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064433
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064434
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064435
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064436
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064437
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064438
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064439
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064440
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064441
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064442
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064443
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064444
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064445
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064446
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064447
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064448
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064449
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064450
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064451
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064452
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064453
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064454
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064455
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064456
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064457
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064458
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064459
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064460
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064461
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064462
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064463
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064464
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064465
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064466
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064467
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064468
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064469
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064470
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064471
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064472
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064473
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064474
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064475
+=== RUN   TestTxBackfillOracle_CrossBackend/seed=8064476
+=== NAME  TestTxBackfillOracle_CrossBackend
+    tx_backfill_oracle_test.go:953: accepted map[batch/node-delete:102 batch/node-update:50 batch/rel-delete:78 batch/rel-update:43 graphtx/node-delete:84 graphtx/node-update:71 graphtx/rel-delete:79 graphtx/rel-update:54 ingest_concurrent/node-delete:92 ingest_concurrent/node-update:70 ingest_concurrent/rel-delete:74 ingest_concurrent/rel-update:53 ingest_sync/node-delete:96 ingest_sync/node-update:66 ingest_sync/rel-delete:84 ingest_sync/rel-update:44 standalone/node-delete:93 standalone/node-update:55 standalone/rel-delete:53 standalone/rel-update:51], refused 429, pin checks 1561 (157 on a chain with a row above the current one)
+--- PASS: TestTxBackfillOracle_CrossBackend (43.44s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064277 (0.35s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064278 (0.36s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064279 (0.23s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064280 (0.24s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064281 (0.19s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064282 (0.20s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064283 (0.36s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064284 (0.15s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064285 (0.26s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064286 (0.12s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064287 (0.15s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064288 (0.15s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064289 (0.24s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064290 (0.20s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064291 (0.14s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064292 (0.26s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064293 (0.29s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064294 (0.40s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064295 (0.23s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064296 (0.25s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064297 (0.26s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064298 (0.17s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064299 (0.19s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064300 (0.17s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064301 (0.17s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064302 (0.24s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064303 (0.42s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064304 (0.28s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064305 (0.19s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064306 (0.18s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064307 (0.20s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064308 (0.21s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064309 (0.21s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064310 (0.17s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064311 (0.19s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064312 (0.25s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064313 (0.62s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064314 (0.58s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064315 (0.28s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064316 (0.23s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064317 (0.18s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064318 (0.23s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064319 (0.26s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064320 (0.17s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064321 (0.21s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064322 (0.18s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064323 (0.44s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064324 (0.26s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064325 (0.25s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064326 (0.19s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064327 (0.18s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064328 (0.22s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064329 (0.27s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064330 (0.25s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064331 (0.24s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064332 (0.29s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064333 (0.23s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064334 (0.14s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064335 (0.16s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064336 (0.18s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064337 (0.15s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064338 (0.22s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064339 (0.19s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064340 (0.23s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064341 (0.22s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064342 (0.39s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064343 (0.25s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064344 (0.19s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064345 (0.18s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064346 (0.23s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064347 (0.18s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064348 (0.14s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064349 (0.22s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064350 (0.16s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064351 (0.20s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064352 (0.16s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064353 (0.11s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064354 (0.32s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064355 (0.20s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064356 (0.15s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064357 (0.15s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064358 (0.21s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064359 (0.22s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064360 (0.17s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064361 (0.16s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064362 (0.19s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064363 (0.17s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064364 (0.16s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064365 (0.18s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064366 (0.25s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064367 (0.17s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064368 (0.13s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064369 (0.20s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064370 (0.52s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064371 (0.47s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064372 (0.30s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064373 (0.21s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064374 (0.18s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064375 (0.31s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064376 (0.26s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064377 (0.19s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064378 (0.16s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064379 (0.28s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064380 (0.25s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064381 (0.19s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064382 (0.24s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064383 (0.17s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064384 (0.19s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064385 (0.14s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064386 (0.18s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064387 (0.18s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064388 (0.17s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064389 (0.19s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064390 (0.15s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064391 (0.17s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064392 (0.20s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064393 (0.24s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064394 (0.12s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064395 (0.23s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064396 (0.34s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064397 (0.17s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064398 (0.20s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064399 (0.17s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064400 (0.13s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064401 (0.18s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064402 (0.18s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064403 (0.18s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064404 (0.17s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064405 (0.25s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064406 (0.18s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064407 (0.20s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064408 (0.16s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064409 (0.20s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064410 (0.18s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064411 (0.17s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064412 (0.18s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064413 (0.20s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064414 (0.18s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064415 (0.17s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064416 (0.19s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064417 (0.19s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064418 (0.22s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064419 (0.20s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064420 (0.20s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064421 (0.18s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064422 (0.14s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064423 (0.18s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064424 (0.14s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064425 (0.17s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064426 (0.48s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064427 (0.50s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064428 (0.34s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064429 (0.21s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064430 (0.24s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064431 (0.16s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064432 (0.13s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064433 (0.16s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064434 (0.17s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064435 (0.25s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064436 (0.26s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064437 (0.22s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064438 (0.19s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064439 (0.29s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064440 (0.21s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064441 (0.20s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064442 (0.13s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064443 (0.13s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064444 (0.18s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064445 (0.18s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064446 (0.21s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064447 (0.21s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064448 (0.22s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064449 (0.18s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064450 (0.21s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064451 (0.19s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064452 (0.21s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064453 (0.19s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064454 (0.18s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064455 (0.16s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064456 (0.19s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064457 (0.20s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064458 (0.23s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064459 (0.20s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064460 (0.14s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064461 (0.16s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064462 (0.23s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064463 (0.20s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064464 (0.17s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064465 (0.22s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064466 (0.18s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064467 (0.17s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064468 (0.26s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064469 (0.17s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064470 (0.27s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064471 (0.23s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064472 (0.31s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064473 (0.11s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064474 (0.30s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064475 (0.23s)
+    --- PASS: TestTxBackfillOracle_CrossBackend/seed=8064476 (0.20s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	43.510s
+oracle exit 0

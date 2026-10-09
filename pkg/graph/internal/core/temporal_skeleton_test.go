@@ -2,10 +2,12 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"testing"
 
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -89,14 +91,12 @@ func TestSkeletonResolve_CascadeReopenDelete(t *testing.T) {
 	probes := []types.Instant{1, 535, 536, 1628, 1629, 2000, 2483, 2484, 3000, now, now + 1_000_000}
 	skeletonABNode(t, g, id, probes, []types.Instant{0, now})
 
-	// Exact-set pin (rule 16): far-future probe resolves the reopened cascade
-	// row (k=1), NOT no-match and NOT the closed genesis row.
-	got, err := g.Temporal.NodeAt(id, now+1_000_000)
-	if err != nil {
-		t.Fatalf("NodeAt(future): %v", err)
-	}
-	if v, _ := got.GetProperty("k"); fmt.Sprintf("%v", v) != "1" {
-		t.Fatalf("NodeAt(future) k = %v, want 1 (the cascade-reopened row)", v)
+	// The delete ends the node's valid life at the delete instant: a
+	// far-future probe finds no version (handover 2a). This test first pinned
+	// the cascade-reopened row (k=1) here — an open cascade row of a deleted
+	// node read as valid forever, which is the 2a bug, not a property.
+	if got, err := g.Temporal.NodeAt(id, now+1_000_000); !errors.Is(err, storepkg.ErrNoVersionValidAt) {
+		t.Fatalf("NodeAt(future) = %v, %v; want ErrNoVersionValidAt (deleted)", got, err)
 	}
 	// At validAt=2000 both the genesis row and the cascade row cover; the
 	// cascade row has the newer belief and must win.

@@ -59,6 +59,10 @@ type txbOracle struct {
 	intents  []txbIntent
 	accepted map[string]int
 	refused  int
+	// aboveCurrent counts caller-instant ops on an entity whose chain held a
+	// row above its current version (a cascade that left the current row in
+	// place) — the shapes the removed W5 skips excluded.
+	aboveCurrent int
 }
 
 // txbIntent is one accepted caller-instant op: what pins t-1 and t answered
@@ -69,7 +73,6 @@ type txbIntent struct {
 	nid          types.NodeID
 	rid          types.RelID
 	at           types.Instant
-	strict       bool
 	prev, atView string
 }
 
@@ -360,51 +363,32 @@ func txbWantView(v uint32) string {
 	return fmt.Sprintf("asof=%s set=%s pin=%s", s, s, s)
 }
 
-// txbTangled reports a chain the plain doors already left in a state whose
-// past answers depend on later writes — every case reproduced with plain doors
-// only (gate off) on all four backends, at v4.43.0 (4126bb1) and on this tree,
-// 2026-10-09; none is a property of the caller-instant doors:
-//
-//   - a row with a higher version than the current one: a bounded
-//     SetVersionInterval cascade appends it while the current row stays
-//     current. NodeAsOf / RelAsOf answer the current row at a pin only while
-//     it is current; once any write supersedes or deletes it, the history arm
-//     picks the higher-version cascade row for every pin after the cascade.
-//     A GraphTx rollback after an update or delete also drops that row
-//     (memory, badger);
-//   - two rows with one version: the next version-advancing write after such a
-//     cascade (Update, CloseVersion) reuses the cascade row's number, and the
-//     TxAt point door's answer at a pin before a later Delete then changes;
-//   - a row whose TxTo lies below its TxFrom, or a current row with a TxTo: a
-//     SetNodeVersionInterval on an updated and closed node writes cascade rows
-//     that inherit the archived row's TxTo, and a later Update keeps that TxTo
-//     on its new version.
-func txbTangled(e *oracleEntity) bool {
+// txbLive returns the live (current) row's version, 0 for a deleted entity.
+// Every chain gets the strict per-op checks: the W5 skips for chains the plain
+// doors left with a cascade row above the current one, two rows with one
+// version, or a retraction stamp on an appended row (txbTangled) and for the
+// GraphTx rollback of such chains (txbNoTxRollback) were removed with the
+// fixes for backlog 14, 18 and 19.
+func txbLive(e *oracleEntity) uint32 {
 	if !e.currentAlive {
-		return false
+		return 0
 	}
-	curRow := e.rows[len(e.rows)-1]
-	if curRow.txTo != 0 {
-		return true
-	}
-	seen := map[uint32]bool{}
-	for _, r := range e.rows {
-		if r.version > curRow.version || seen[r.version] || (r.txTo != 0 && r.txTo < r.txFrom) {
-			return true
-		}
-		seen[r.version] = true
-	}
-	return false
+	return e.rows[len(e.rows)-1].version
 }
 
-// txbLive returns the live row's version and whether the chain is tangled
-// (txbTangled): the strict per-op view checks then skip the entity; the stamp
-// checks, the oracle and the cross-backend comparison still run on it.
-func txbLive(e *oracleEntity) (uint32, bool) {
+// noteAbove counts an op on a live entity whose chain holds a row above its
+// current version.
+func (o *txbOracle) noteAbove(e *oracleEntity) {
+	cur := txbLive(e)
 	if !e.currentAlive {
-		return 0, false
+		return
 	}
-	return e.rows[len(e.rows)-1].version, txbTangled(e)
+	for _, r := range e.rows {
+		if r.version > cur {
+			o.aboveCurrent++
+			return
+		}
+	}
 }
 
 // txbTombstoneRel / txbTombstoneNode return the stamps of row version v (the
@@ -443,25 +427,6 @@ func (o *txbOracle) callerOp() {
 	}
 }
 
-// txbNoTxRollback maps the GraphTx family (index 1) to the standalone door
-// when an entity the op touches is tangled (txbTangled): the test's GraphTx
-// wrapper rolls back a refused call, and a GraphTx rollback after a
-// relationship update or delete drops a cascade row above the current one on
-// memory and badger — with the plain tx.UpdateRelationship /
-// tx.DeleteRelationship as well (reproduced at v4.43.0), so the backends would
-// diverge for a reason outside the caller-instant doors.
-func txbNoTxRollback(fam int, es ...*oracleEntity) int {
-	if fam != 1 {
-		return fam
-	}
-	for _, e := range es {
-		if txbTangled(e) {
-			return 0
-		}
-	}
-	return fam
-}
-
 // refusedOrder asserts a refusal of the ordering rule: errors.Is both
 // sentinels, never a store invariant error.
 func (o *txbOracle) refusedOrder(desc string, err error) {
@@ -484,12 +449,11 @@ func (o *txbOracle) nodeCallerDelete(fam int) {
 	for _, r := range hood {
 		ents = append(ents, captureRel(o.t, o.g, r, ""))
 	}
-	f := txbNodeFamilies()[txbNoTxRollback(fam, ents...)]
+	f := txbNodeFamilies()[fam]
 	vers := make([]uint32, len(ents))
-	strict := make([]bool, len(ents))
 	for i, e := range ents {
-		v, above := txbLive(e)
-		vers[i], strict[i] = v, !above
+		vers[i] = txbLive(e)
+		o.noteAbove(e)
 	}
 	lo, _ := txbBounds(ents...)
 	_, nodeMaxTx := txbBounds(node)
@@ -518,12 +482,12 @@ func (o *txbOracle) nodeCallerDelete(fam int) {
 	if tm := txbTombstoneNode(o, id, vers[0]); tm.TxTo != at || tm.DeletedAt != at {
 		o.fail("%s: node tombstone v%d TxTo=%d DeletedAt=%d; want both %d", desc, vers[0], tm.TxTo, tm.DeletedAt, at)
 	}
-	o.checkIntent(txbIntent{desc: desc, isNode: true, nid: id, at: at}, strict[0], prevNode, txbWantView(0))
+	o.checkIntent(txbIntent{desc: desc, isNode: true, nid: id, at: at}, prevNode, txbWantView(0))
 	for i, r := range hood {
 		if tm := txbTombstoneRel(o, r, vers[i+1]); tm.TxTo != at || tm.DeletedAt != at {
 			o.fail("%s: cascaded rel %v tombstone v%d TxTo=%d DeletedAt=%d; want both %d", desc, r, vers[i+1], tm.TxTo, tm.DeletedAt, at)
 		}
-		o.checkIntent(txbIntent{desc: desc + fmt.Sprintf(" cascaded %v", r), rid: r, at: at}, strict[i+1], prevRels[i], txbWantView(0))
+		o.checkIntent(txbIntent{desc: desc + fmt.Sprintf(" cascaded %v", r), rid: r, at: at}, prevRels[i], txbWantView(0))
 	}
 }
 
@@ -534,8 +498,9 @@ func (o *txbOracle) nodeCallerUpdate(fam int) {
 	}
 	id := alive[o.rng.IntN(len(alive))]
 	node := captureNode(o.t, o.g, id)
-	f := txbNodeFamilies()[txbNoTxRollback(fam, node)]
-	_, above := txbLive(node)
+	o.noteAbove(node)
+	f := txbNodeFamilies()[fam]
+
 	lo, maxTx := txbBounds(node)
 	at, ok := o.pickT(lo, maxTx)
 	cur, err := o.g.Nodes.Get(o.ctx, id)
@@ -579,7 +544,7 @@ func (o *txbOracle) nodeCallerUpdate(fam int) {
 			o.fail("%s: superseded v%d TxTo=%d; want %d", desc, h.Version(), h.Temporal().TxTo, at)
 		}
 	}
-	o.checkIntent(txbIntent{desc: desc, isNode: true, nid: id, at: at}, !above, prev, txbWantView(now.Version()))
+	o.checkIntent(txbIntent{desc: desc, isNode: true, nid: id, at: at}, prev, txbWantView(now.Version()))
 }
 
 func (o *txbOracle) relCallerDelete(fam int) {
@@ -589,8 +554,9 @@ func (o *txbOracle) relCallerDelete(fam int) {
 	}
 	id := live[o.rng.IntN(len(live))]
 	rel := captureRel(o.t, o.g, id, "")
-	f := txbRelFamilies()[txbNoTxRollback(fam, rel)]
-	ver, above := txbLive(rel)
+	o.noteAbove(rel)
+	f := txbRelFamilies()[fam]
+	ver := txbLive(rel)
 	lo, maxTx := txbBounds(rel)
 	at, ok := o.pickT(lo, maxTx)
 	desc := fmt.Sprintf("%s/Rels.DeleteWithTx(%v,t=%d)", f.name, id, at)
@@ -613,7 +579,7 @@ func (o *txbOracle) relCallerDelete(fam int) {
 	if tm := txbTombstoneRel(o, id, ver); tm.TxTo != at || tm.DeletedAt != at {
 		o.fail("%s: tombstone v%d TxTo=%d DeletedAt=%d; want both %d", desc, ver, tm.TxTo, tm.DeletedAt, at)
 	}
-	o.checkIntent(txbIntent{desc: desc, rid: id, at: at}, !above, prev, txbWantView(0))
+	o.checkIntent(txbIntent{desc: desc, rid: id, at: at}, prev, txbWantView(0))
 }
 
 func (o *txbOracle) relCallerUpdate(fam int) {
@@ -623,8 +589,9 @@ func (o *txbOracle) relCallerUpdate(fam int) {
 	}
 	id := live[o.rng.IntN(len(live))]
 	rel := captureRel(o.t, o.g, id, "")
-	f := txbRelFamilies()[txbNoTxRollback(fam, rel)]
-	_, above := txbLive(rel)
+	o.noteAbove(rel)
+	f := txbRelFamilies()[fam]
+
 	lo, maxTx := txbBounds(rel)
 	at, ok := o.pickT(lo, maxTx)
 	cur, err := o.g.Rels.Get(o.ctx, id)
@@ -668,7 +635,7 @@ func (o *txbOracle) relCallerUpdate(fam int) {
 			o.fail("%s: superseded v%d TxTo=%d; want %d", desc, h.Version(), h.Temporal().TxTo, at)
 		}
 	}
-	o.checkIntent(txbIntent{desc: desc, rid: id, at: at}, !above, prev, txbWantView(now.Version()))
+	o.checkIntent(txbIntent{desc: desc, rid: id, at: at}, prev, txbWantView(now.Version()))
 }
 
 // render is every row of node nid (if non-zero) and of rels, stamps and
@@ -726,14 +693,12 @@ func (o *txbOracle) view(in txbIntent, pin types.Instant) string {
 }
 
 // checkIntent: right after the op, pin t answers what the far-future pin
-// answers (the new belief) through every door, and — strict, unless a bounded
-// cascade row sits above the current row (txbLive) — pin t-1 still answers
-// the belief before the op and pin t answers exactly wantAt.
-func (o *txbOracle) checkIntent(in txbIntent, strict bool, prevBefore, wantAt string) {
+// answers (the new belief) through every door, pin t-1 still answers the
+// belief before the op, and pin t answers exactly wantAt.
+func (o *txbOracle) checkIntent(in txbIntent, prevBefore, wantAt string) {
 	o.t.Helper()
-	in.strict = strict
 	in.prev = o.view(in, in.at-1)
-	if strict && in.prev != prevBefore {
+	if in.prev != prevBefore {
 		o.fail("%s: pin t-1 changed by the op:\n before %s\n after  %s\n chain %s", in.desc, prevBefore, in.prev, o.chainString(in))
 	}
 	in.atView = o.view(in, in.at)
@@ -741,7 +706,7 @@ func (o *txbOracle) checkIntent(in txbIntent, strict bool, prevBefore, wantAt st
 	if in.atView != future {
 		o.fail("%s: pin t does not answer the new belief:\n pin t      %s\n far future %s", in.desc, in.atView, future)
 	}
-	if strict && !strings.HasPrefix(in.atView, wantAt+" ") {
+	if !strings.HasPrefix(in.atView, wantAt+" ") {
 		o.fail("%s: pin t answers %s; want %s", in.desc, in.atView, wantAt)
 	}
 	o.intents = append(o.intents, in)
@@ -871,11 +836,8 @@ func txbOracleRun(t *testing.T, be txbBackend, seed uint64, nOps int, x0 types.I
 	}
 	o.tick()
 	// Rule 15: what pins t-1 and t answered right after each op survives every
-	// later write (strict intents; see txbLive for the others).
+	// later write.
 	for _, in := range o.intents {
-		if !in.strict {
-			continue
-		}
 		if got := o.view(in, in.at-1); got != in.prev {
 			o.fail("%s: pin t-1 forgotten after later writes:\n then %s\n now  %s", in.desc, in.prev, got)
 		}
@@ -932,7 +894,7 @@ func TestTxBackfillOracle_CrossBackend(t *testing.T) {
 	// shift every stamp of the later backend.
 	x0 := types.Instant(time.Now().Add(time.Hour).UnixMilli()/1_000_000*1_000_000 + 1_000_000)
 	accepted := map[string]int{}
-	refused, strict, loose := 0, 0, 0
+	refused, intents, above := 0, 0, 0
 	for i := 0; i < seeds; i++ {
 		seed := base + uint64(i)
 		t.Run(fmt.Sprintf("seed=%d", seed), func(t *testing.T) {
@@ -950,13 +912,8 @@ func TestTxBackfillOracle_CrossBackend(t *testing.T) {
 						accepted[k] += v
 					}
 					refused += o.refused
-					for _, in := range o.intents {
-						if in.strict {
-							strict++
-						} else {
-							loose++
-						}
-					}
+					intents += len(o.intents)
+					above += o.aboveCurrent
 					continue
 				}
 				if canon != refCanon {
@@ -988,8 +945,10 @@ func TestTxBackfillOracle_CrossBackend(t *testing.T) {
 	if refused == 0 {
 		t.Errorf("generator never drew a refused t over %d seeds", seeds)
 	}
-	if strict < 4*loose {
-		t.Errorf("only %d of %d accepted ops got the strict pin checks", strict, strict+loose)
+	// The shapes the W5 skips once excluded — a caller-instant op on a chain
+	// with a cascade row above its current row — must be reached.
+	if above == 0 {
+		t.Errorf("generator never drew a caller-instant op on a chain with a row above the current one over %d seeds", seeds)
 	}
-	t.Logf("accepted %v, refused %d, strict pin checks %d of %d", accepted, refused, strict, strict+loose)
+	t.Logf("accepted %v, refused %d, pin checks %d (%d on a chain with a row above the current one)", accepted, refused, intents, above)
 }
