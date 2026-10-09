@@ -1,0 +1,6 @@
+M1a-skip-temporal-door: RED (killed), 48 failing (sub)tests
+M1b-skip-tx-door: RED (killed), 46 failing (sub)tests
+M1c-skip-batch-door(also-session-strong): RED (killed), 151 failing (sub)tests
+M1d-skip-session-concurrent-door: RED (killed), 55 failing (sub)tests
+M2-only-new-value-stripe: RED (killed), 1 failing (sub)tests
+M3-release-before-store-write: RED (killed), 10 failing (sub)tests

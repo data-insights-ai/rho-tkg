@@ -1,0 +1,23 @@
+=== mutant M2-only-new-value-stripe
+diff --git a/pkg/graph/internal/core/unique_cascade.go b/pkg/graph/internal/core/unique_cascade.go
+index 2793aa4..876128a 100644
+--- a/pkg/graph/internal/core/unique_cascade.go
++++ b/pkg/graph/internal/core/unique_cascade.go
+@@ -112,7 +112,7 @@ func (c *Core) enforceUniqueForCascade(id types.NodeID, current *types.Node, his
+ 				}
+ 				if isCurrent && current != nil {
+ 					if oldKey, ok := current.IndexablePropertyValueKey(key); ok && oldKey != "" && oldKey != valueKey {
+-						stripes = append(stripes, uniqueValueStripe(labelTok, key, oldKey))
++						_ = oldKey
+ 					}
+ 				}
+ 			}
+--- go test -run TestUniqueCascade_ ./pkg/graph/ (exit 0)
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph	3.874s
+--- go test -run TestCascadeUnique_ ./pkg/graph/internal/core/ (exit 1)
+--- FAIL: TestCascadeUnique_HoldsOldValueStripe (0.00s)
+    unique_cascade_lock_test.go:144: cascade finished (err=<nil>) while the OLD value's stripe was held: it must hold both stripes
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.157s
+FAIL
+=== M2-only-new-value-stripe: RED (killed), 1 failing (sub)tests
