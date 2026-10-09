@@ -1,0 +1,57 @@
+MUTANT internal/core/temporal.go
+--- old
+	if n.Version() != 0 && tm != nil && tm.UpdatedAt != 0 {
+		return tm.UpdatedAt
+	}
+	return c.nodeValidFrom(n)
+--- new
+	if n.Version() != 0 && tm != nil && tm.UpdatedAt != 0 {
+		return tm.UpdatedAt
+	}
+	return 0
+=== go test ./internal/core/ -run TestZero|TestEffectiveTimeline_DerivedStart
+--- FAIL: TestZeroValidFromIsUnsetInEveryDoor (0.16s)
+    --- FAIL: TestZeroValidFromIsUnsetInEveryDoor/memory/node (0.00s)
+        zero_valid_from_test.go:105: node add (mint 1791568795911):
+              ByLabel{ValidAt,TxAt}(valid 1) present=true, want false
+              NodesAtTx(valid 1) present=true, want false
+              AtTx(pin)(valid 1) present=true, want false
+              At(valid 1) present=true, want false
+              ByLabel{ValidAt}(valid 1) present=true, want false
+              NodesAt(valid 1) present=true, want false
+              At(valid 1791568795910) present=true, want false
+              ByLabel{ValidAt}(valid 1791568795910) present=true, want false
+              NodesAt(valid 1791568795910) present=true, want false
+              ByLabel{ValidAt,TxAt}(valid 1791568795910) present=true, want false
+              NodesAtTx(valid 1791568795910) present=true, want false
+              AtTx(pin)(valid 1791568795910) present=true, want false
+    --- FAIL: TestZeroValidFromIsUnsetInEveryDoor/badger/node (0.00s)
+        zero_valid_from_test.go:105: node add (mint 1791568795913):
+              NodesAt(valid 1) present=true, want false
+              ByLabel{ValidAt,TxAt}(valid 1) present=true, want false
+              NodesAtTx(valid 1) present=true, want false
+              AtTx(pin)(valid 1) present=true, want false
+              At(valid 1) present=true, want false
+              ByLabel{ValidAt}(valid 1) present=true, want false
+              NodesAtTx(valid 1791568795912) present=true, want false
+              AtTx(pin)(valid 1791568795912) present=true, want false
+              At(valid 1791568795912) present=true, want false
+              ByLabel{ValidAt}(valid 1791568795912) present=true, want false
+              NodesAt(valid 1791568795912) present=true, want false
+              ByLabel{ValidAt,TxAt}(valid 1791568795912) present=true, want false
+--- FAIL: TestEffectiveTimeline_DerivedStart (0.22s)
+    --- FAIL: TestEffectiveTimeline_DerivedStart/memory/node (0.00s)
+        --- FAIL: TestEffectiveTimeline_DerivedStart/memory/node/backfill=false (0.00s)
+            effective_timeline_test.go:147: point door disagrees around the mint instant 1791568795911
+        --- FAIL: TestEffectiveTimeline_DerivedStart/memory/node/backfill=true (0.00s)
+            effective_timeline_test.go:147: point door disagrees around the mint instant 1791568795911
+    --- FAIL: TestEffectiveTimeline_DerivedStart/badger/node (0.04s)
+        --- FAIL: TestEffectiveTimeline_DerivedStart/badger/node/backfill=false (0.04s)
+            effective_timeline_test.go:147: point door disagrees around the mint instant 1791568795945
+        --- FAIL: TestEffectiveTimeline_DerivedStart/badger/node/backfill=true (0.00s)
+            effective_timeline_test.go:147: point door disagrees around the mint instant 1791568795950
+FAIL
+FAIL	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.280s
+FAIL
+
+exit=1

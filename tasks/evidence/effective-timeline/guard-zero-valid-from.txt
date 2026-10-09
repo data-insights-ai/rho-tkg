@@ -1,0 +1,22 @@
+=== RUN   TestZeroValidFromIsUnsetInEveryDoor
+=== PAUSE TestZeroValidFromIsUnsetInEveryDoor
+=== CONT  TestZeroValidFromIsUnsetInEveryDoor
+=== RUN   TestZeroValidFromIsUnsetInEveryDoor/memory/node
+=== RUN   TestZeroValidFromIsUnsetInEveryDoor/memory/rel
+=== RUN   TestZeroValidFromIsUnsetInEveryDoor/badger/node
+=== RUN   TestZeroValidFromIsUnsetInEveryDoor/badger/rel
+=== RUN   TestZeroValidFromIsUnsetInEveryDoor/sharded/node
+=== RUN   TestZeroValidFromIsUnsetInEveryDoor/sharded/rel
+=== RUN   TestZeroValidFromIsUnsetInEveryDoor/tiered/node
+=== RUN   TestZeroValidFromIsUnsetInEveryDoor/tiered/rel
+--- PASS: TestZeroValidFromIsUnsetInEveryDoor (0.17s)
+    --- PASS: TestZeroValidFromIsUnsetInEveryDoor/memory/node (0.00s)
+    --- PASS: TestZeroValidFromIsUnsetInEveryDoor/memory/rel (0.00s)
+    --- PASS: TestZeroValidFromIsUnsetInEveryDoor/badger/node (0.00s)
+    --- PASS: TestZeroValidFromIsUnsetInEveryDoor/badger/rel (0.01s)
+    --- PASS: TestZeroValidFromIsUnsetInEveryDoor/sharded/node (0.04s)
+    --- PASS: TestZeroValidFromIsUnsetInEveryDoor/sharded/rel (0.01s)
+    --- PASS: TestZeroValidFromIsUnsetInEveryDoor/tiered/node (0.04s)
+    --- PASS: TestZeroValidFromIsUnsetInEveryDoor/tiered/rel (0.07s)
+PASS
+ok  	github.com/data-insights-ai/rho-tkg/v4/pkg/graph/internal/core	0.207s
