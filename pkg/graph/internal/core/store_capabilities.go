@@ -199,8 +199,8 @@ func (c *Core) nodesByLabelAndProperties(tok uint16, values map[string]any, opts
 	// Every in-tree backend already applies the same scan-and-filter
 	// internally when no composite index covers the requested key set;
 	// replicating it here ensures a MandatoryStore-only backend (or one that
-	// simply omits the optional capability, e.g. tiered in v1 — see
-	// docs/query-planners.md) still gets correct, if unaccelerated, results.
+	// simply omits the optional capability) still gets correct, if
+	// unaccelerated, results.
 	pageOpts := opts
 	pageOpts.Limit = 0
 	candidates, err := c.store.NodesByLabel(tok, pageOpts)

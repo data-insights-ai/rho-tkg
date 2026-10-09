@@ -24,12 +24,11 @@ import (
 // doc comment (badgerstore.go) for the RAM-only / not-persisted-across-reopen
 // scope decision.
 //
-// Simpler single-phase build than CreateTemporalIndex's 3-phase
-// lock-free-backfill dance: the whole scan runs under one bs.idxMu.Lock, so
-// CreateRelTemporalIndex blocks concurrent relationship writes on this store
-// for the duration of the backfill. This is a deliberate, documented
-// throughput trade-off for what is an infrequent administrative DDL call, not
-// a per-request hot path — see CHANGELOG BACKLOG 21c.
+// Simpler build than CreateTemporalIndex's 3-phase dance: the relationship IDs
+// are snapshotted under idxMu, the index is built from them WITHOUT the lock,
+// and then installed under idxMu. A relationship written or updated between
+// the snapshot and the install is not folded in (the write path's
+// maintenance finds no index yet) — a known race, backlog item 21.
 
 // relTemporalBuildsTotal counts relationship temporal index builds across
 // every store in the process, including short-lived ones such as a recovery
