@@ -12,7 +12,7 @@ Date 2026-10-09. From sigma-tkgd stream "effective" (pins v4.43.0). Verified at 
 ## 1. History cost on badger
 Path: `Rels().History` -> `getRelHistory` (core/store_fetch.go:157) -> `GetRelHistory` (store/badger/badgerstore_history_rel.go:319) ->
 `getRelHistoryByPrefix` (:346). `RelAtTx` gets there only when `relCurrentAnswersAt` declines (core/temporal_queries.go:475, 653) and the skeleton
-path (`badgerstore_temporalmeta.go:40`, PrefetchValues=false) fails. Cause: the iterator uses `DefaultIteratorOptions` + `PrefetchValues = true` and
+path (`badgerstore_temporalmeta.go:40`, PrefetchValues=false) declines. Cause: the iterator uses `DefaultIteratorOptions` + `PrefetchValues = true` and
 no `opts.Prefix` (:357-358; mirrors `_history_rel.go:464-465`, `_history_node.go:765-766`, `:877-878`). Badger prefetches up to 100 items after the Seek
 whether or not they share the prefix, so a lookup for an entity WITHOUT history reads values of other entities' history. Evidence: with only
 `opts.Prefix` added the cost is 1.7-1.8 us at every density; with prefetch off and no prefix it is flat 2.1-2.2 us. Also per call:
@@ -50,9 +50,9 @@ excludes it"), SelectAsOf's own doc and lesson 62, which assumed the delete hits
   absent; a valid-time probe >= the tombstone's clamped ValidTo finds no version. Lands in `SelectAsOf`, `resolveRelChain`/`resolveNodeChain`
   (chain_resolver.go:187), badger `RelAsOf`/`NodeAsOf` (a deleted entity reads its skeletons once, ~2-3 us; live ones skip) and the store predicates
   (rule 17: `MatchesPointInTime`, ByType with QueryOpts, column/segment scans). Hazard: re-import of a deleted ID is allowed (relationship_import.go:111;
-  backlog "Re-import of a deleted ID"), so the rule is per life: rows with TxFrom > DeletedAt are the next life.
-- **2b, not before v5:** the delete appends closing rows. Readers unchanged, but the change-log delete record and replica apply (apply_record.go:671)
-  must carry them and old data stays wrong; same family as backlog "Future-scheduled close, then delete".
+  backlog "Re-import of a deleted ID"), so the rule is per life: rows with TxFrom > DeletedAt are the next life. Same root as backlog 18 (cascade rows
+  take `maxVersion+1` above the current slot, temporal_cascade.go:119-128): design 2a together with 18's single version allocator.
+- **2b, not before v5:** delete appends closing rows; the change-log record and replica apply (apply_record.go:671) must carry them; old data stays wrong.
 
 **3. One-tick rows.** Fixed on main by `30cfea0` (CHANGELOG [Unreleased]). At v4.43.0 `SetRelVersionInterval` over `[v, v+1)` fails ("cascade requires at least one
 non-eclipsed version") and RelAt/RelsAt miss the row on all three backends; on main all pass. Ship in the next tag and tell sigma.
