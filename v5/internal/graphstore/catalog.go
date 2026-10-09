@@ -110,7 +110,8 @@ type reader struct {
 	stage             *Stage
 	pending           map[string]raftlog.KV
 	rows, bytes       int
-	maxRows, maxBytes int // optional operation caps; zero preserves catalog policy
+	indexes           *indexedStageState // operation-local copy; published only after shared caps
+	maxRows, maxBytes int                // optional operation caps; zero preserves catalog policy
 }
 
 func (c *Catalog) reader(ctx context.Context) (*reader, error) {
@@ -467,11 +468,12 @@ func (c *Catalog) LookupLocalValueIdentity(ctx context.Context, value graphstate
 // Its caller must use the validated host/materializer path for graph mutations.
 // It neither commits nor acknowledges and cannot install an arbitrary Delta.
 type Stage struct {
-	mu     sync.Mutex
-	c      *Catalog
-	writes map[string]raftlog.KV
-	bytes  int
-	closed bool
+	mu      sync.Mutex
+	c       *Catalog
+	writes  map[string]raftlog.KV
+	bytes   int
+	closed  bool
+	indexed *indexedStageState
 }
 
 // NewStage creates a bounded private staging handle. Close releases shared caps.
@@ -509,10 +511,19 @@ func (s *Stage) operation(ctx context.Context, fn func(*reader) error) error {
 	if err != nil {
 		return err
 	}
-	if s.c.root.topology != (topologyDeclaration{}) {
+	if s.c.root.topology != (topologyDeclaration{}) && s.indexed == nil {
 		return ErrTopologyUnsupported
 	}
 	q.stage = s
+	if s.indexed != nil {
+		// The operation-local authority copy is charged before allocation, separate
+		// from the retained stage allowance and pending-record staging ledger.
+		if err := q.materialize(indexedStageMetadataBytes); err != nil {
+			return err
+		}
+		state := *s.indexed
+		q.indexes = &state
+	}
 	q.pending = make(map[string]raftlog.KV)
 	if err := fn(q); err != nil {
 		return s.c.failure(err)
@@ -541,6 +552,7 @@ func (s *Stage) operation(ctx context.Context, fn func(*reader) error) error {
 	s.c.records += extraRecords
 	s.c.stageBytes += extraBytes
 	s.bytes += extraBytes
+	s.indexed = q.indexes
 	return nil
 }
 func (q *reader) put(key, value []byte) error {
@@ -803,6 +815,7 @@ func (s *Stage) Close() error {
 	s.c.stageBytes -= s.bytes
 	s.closed = true
 	s.writes = nil
+	s.indexed = nil
 	return nil
 }
 

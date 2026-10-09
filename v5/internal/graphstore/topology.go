@@ -13,7 +13,9 @@ var bootstrapTopology = topologyDeclaration{epoch: 1, schema: 1}
 
 // SinglePartitionTopology records an immutable graph-wide sole-partition
 // declaration from one retained root. IndexVersion zero explicitly means indexes
-// are unavailable. The declaration alone supplies neither a complete ReadView
+// are unavailable; nonzero versions identify format, never index coverage. The
+// private persisted descriptor states the actual coverage. The declaration
+// alone supplies neither a complete ReadView
 // nor a certified cut, graph writer, distributed lease or coverage proof.
 type SinglePartitionTopology struct {
 	Graph                                                                 graphstate.GraphID
@@ -39,7 +41,8 @@ func (r Root) SinglePartition() (SinglePartitionTopology, error) {
 // initialized or recovered stores refuse, including populated primitive v1
 // catalogs. It performs no promotion/migration, scan or logical-ID allocation.
 // A bound durable transfer identity must match the graph and partition.
-// Graphstore staging refuses this declaration until an index-aware writer exists.
+// Ordinary Catalog.NewStage refuses this declaration; private checked index
+// staging is a separate capability and does not admit public graph mutations.
 // Direct raftlog installation remains a trusted opaque application seam, whose
 // materializer must preserve the declared topology and maintain its real indexes.
 func BootstrapSinglePartition(s *raftlog.Store, n Namespace, ownershipEpoch uint64) error {

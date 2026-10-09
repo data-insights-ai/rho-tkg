@@ -560,7 +560,7 @@ func (c *Catalog) Associations(ctx context.Context, query AssociationQuery, afte
 	upper := associationPrefixEnd(lower)
 	var start []byte
 	if len(after) > 0 {
-		start, err = parseAssociationContinuation(after, c.root.namespace, root.Index, root.ImageHash, hash, lower, upper, a.limits.MaxReadBytes)
+		start, err = parseAssociationContinuation(after, c.root.namespace, root.Generation, root.Index, root.ImageHash, hash, lower, upper, a.limits.MaxReadBytes)
 		if err != nil {
 			return AssociationPage{}, err
 		}
@@ -613,7 +613,7 @@ func (c *Catalog) Associations(ctx context.Context, query AssociationQuery, afte
 		if len(page.Next) == 0 {
 			return AssociationPage{}, c.failure(ErrCorrupt)
 		}
-		out.Next = associationContinuation(c.root.namespace, root.Index, root.ImageHash, hash, page.Next)
+		out.Next = associationContinuation(c.root.namespace, root.Generation, root.Index, root.ImageHash, hash, page.Next)
 		if err := a.out(len(out.Next)); err != nil {
 			return AssociationPage{}, err
 		}

@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 
 	"github.com/data-insights-ai/rho-tkg/v5/internal/graphstate"
+	"github.com/data-insights-ai/rho-tkg/v5/internal/raftlog"
 	"github.com/data-insights-ai/rho-tkg/v5/internal/state"
 	"github.com/data-insights-ai/rho-tkg/v5/pkg/temporal"
 )
@@ -35,6 +36,7 @@ type pageReader struct {
 	work       PageWork
 	allocation *Root
 	binding    *storedComponentBinding
+	member     *graphstate.ComponentKey // operation-local proof from a checked key-tree path
 }
 
 // Binding/reference reuse is operation-local and charged before retention.
@@ -419,6 +421,8 @@ func (q *pageReader) findLeaf(m componentMeta, w temporal.Scope) (directoryPage,
 
 // NewPageReader creates a bounded cursor owner over a borrowed immutable view.
 // It is a local paging capability, not a distributed certified cut or lease.
+// Initialization copies only the fixed GR1/GR2 image (at most 140 bytes) and
+// bounded fixed identity-hash scratch, separately from operation LastWork.
 func NewPageReader(c *Catalog, l PageLimits) (*PageReader, error) {
 	if c == nil {
 		return nil, ErrInvalid
@@ -434,13 +438,19 @@ func NewPageReader(c *Catalog, l PageLimits) (*PageReader, error) {
 	if err != nil {
 		return nil, err
 	}
-	b := keyPrefix(c.root.namespace, componentRecord)
+	id := pageViewIdentity(c.root.namespace, root)
+	return &PageReader{c: c, limits: l, id: id, index: root.Index, cursors: make(map[graphstate.Cursor]continuation)}, nil
+}
+
+func pageViewIdentity(n Namespace, root raftlog.ApplicationRoot) graphstate.ViewID {
+	b := keyPrefix(n, componentRecord)
+	b = binary.BigEndian.AppendUint64(b, root.Generation)
 	b = binary.BigEndian.AppendUint64(b, root.Index)
 	b = append(b, root.ImageHash[:]...)
 	hash := sha256.Sum256(b)
 	var id graphstate.ViewID
 	copy(id[:], hash[:16])
-	return &PageReader{c: c, limits: l, id: id, index: root.Index, cursors: make(map[graphstate.Cursor]continuation)}, nil
+	return id
 }
 
 // Identity returns this local immutable-view identity; it does not certify a cut.

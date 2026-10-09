@@ -102,7 +102,7 @@ func (r Root) validate() error {
 	if r.owner == 0 || r.next == 0 || r.effect == ([32]byte{}) {
 		return ErrInvalid
 	}
-	if r.topology != (topologyDeclaration{}) && r.topology != bootstrapTopology {
+	if r.topology != (topologyDeclaration{}) && r.topology != bootstrapTopology && r.topology != keysOnlyTopology {
 		return ErrInvalid
 	}
 	return nil

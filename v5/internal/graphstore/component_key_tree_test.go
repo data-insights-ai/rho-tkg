@@ -53,7 +53,7 @@ func TestComponentKeyTreeByteSplitsAndResourceLimits(t *testing.T) {
 		t.Fatal("byte-full leaf was not split")
 	}
 	for _, key := range keys {
-		q := componentKeyReader(t, f, f.index)
+		q := readComponentKeyTree(t, f, f.index)
 		if found, err := q.hasComponentKey(tree, key, l); err != nil || !found {
 			t.Fatal("byte split lost key", err)
 		}
@@ -78,7 +78,7 @@ func TestComponentKeyTreeByteSplitsAndResourceLimits(t *testing.T) {
 	}
 	tight := l
 	tight.maxLevels = 1
-	if _, err := componentKeyReader(t, f, f.index).hasComponentKey(tree, keys[0], tight); !errors.Is(err, ErrResourceLimit) {
+	if _, err := readComponentKeyTree(t, f, f.index).hasComponentKey(tree, keys[0], tight); !errors.Is(err, ErrResourceLimit) {
 		t.Fatal("tighter height became corruption", err)
 	}
 	if _, _, s, err := stageComponentKeys(t, f, componentKeyTreeRoot{}, keys[:1], componentKeyTreeLimits{64, 3, 8, 64}); !errors.Is(err, ErrResourceLimit) {
@@ -86,7 +86,7 @@ func TestComponentKeyTreeByteSplitsAndResourceLimits(t *testing.T) {
 	} else if rows, err := s.Writes(); err != nil || len(rows) != 0 {
 		t.Fatal("single-key refusal left empty allocation", err)
 	}
-	q := componentKeyReader(t, f, f.index)
+	q := readComponentKeyTree(t, f, f.index)
 	if _, err := q.hasComponentKey(tree, graphstate.ComponentKey{}, l); !errors.Is(err, ErrInvalid) {
 		t.Fatal("invalid lookup key accepted", err)
 	}
@@ -108,7 +108,7 @@ func TestComponentKeyTreeChildBoundsAndCountsMustMatchReferencedPages(t *testing
 				keys = append(keys, graphstate.ComponentKey{Owner: 1, Life: 11, Kind: graphstate.ScalarProperty, Name: "a" + string(rune('a'+n))})
 			}
 			tree := commitComponentKeys(t, f, componentKeyTreeRoot{}, keys, l)
-			q := componentKeyReader(t, f, f.index)
+			q := readComponentKeyTree(t, f, f.index)
 			node, err := q.componentKeyTreeRoot(tree, l)
 			if err != nil || node.level < 1 {
 				t.Fatal(err)
@@ -141,7 +141,7 @@ func TestComponentKeyTreeChildBoundsAndCountsMustMatchReferencedPages(t *testing
 				t.Fatal(err)
 			}
 			f.root, f.index = commitRows(t, f.db, root, []raftlog.KV{{Key: physicalKey(root.namespace, componentKeyTreeRecord, node.id), Value: wire}})
-			if _, err := componentKeyReader(t, f, f.index).hasComponentKey(tree, keys[0], l); !errors.Is(err, ErrCorrupt) {
+			if _, err := readComponentKeyTree(t, f, f.index).hasComponentKey(tree, keys[0], l); !errors.Is(err, ErrCorrupt) {
 				t.Fatal("referenced child does not match its canonical metadata", err)
 			}
 		})
@@ -192,7 +192,7 @@ func commitComponentKeys(t *testing.T, f *pageFixture, tree componentKeyTreeRoot
 	return out
 }
 
-func componentKeyReader(t *testing.T, f *pageFixture, index uint64) *pageReader {
+func readComponentKeyTree(t *testing.T, f *pageFixture, index uint64) *pageReader {
 	t.Helper()
 	c := openCatalog(t, f.db, index, Limits{})
 	base, err := c.reader(t.Context())
@@ -224,7 +224,7 @@ func TestComponentKeyTreeSplitsRememberHistoricalAbsence(t *testing.T) {
 	if tree.level < 2 || tree.count != uint64(len(keys)) {
 		t.Fatalf("split lost keys: %+v", tree)
 	}
-	current := componentKeyReader(t, f, f.index)
+	current := readComponentKeyTree(t, f, f.index)
 	for _, key := range keys {
 		found, err := current.hasComponentKey(tree, key, l)
 		if err != nil || !found {
@@ -237,7 +237,7 @@ func TestComponentKeyTreeSplitsRememberHistoricalAbsence(t *testing.T) {
 		}
 	}
 	for _, key := range keys {
-		old := componentKeyReader(t, f, emptyIndex)
+		old := readComponentKeyTree(t, f, emptyIndex)
 		if found, err := old.hasComponentKey(empty, key, l); err != nil || found || old.work.Records != 1 {
 			t.Fatalf("historical empty root touched future pages: %+v %v", old.work, err)
 		}
@@ -245,7 +245,7 @@ func TestComponentKeyTreeSplitsRememberHistoricalAbsence(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := componentKeyReader(t, f, emptyIndex).hasComponentKey(tree, keys[0], l); !errors.Is(err, ErrCorrupt) {
+	if _, err := readComponentKeyTree(t, f, emptyIndex).hasComponentKey(tree, keys[0], l); !errors.Is(err, ErrCorrupt) {
 		t.Fatal("latest tree metadata accepted at historical root", err)
 	}
 }
@@ -272,7 +272,7 @@ func TestComponentKeyTreeDuplicateAndLateFailuresPreserveStaging(t *testing.T) {
 	if err != nil || len(writes) != 0 {
 		t.Fatal("late failure retained first insertion", err)
 	}
-	q := componentKeyReader(t, f, f.index)
+	q := readComponentKeyTree(t, f, f.index)
 	if found, err := q.hasComponentKey(tree, keys[1], l); err != nil || found {
 		t.Fatal("failed insert leaked", err)
 	}

@@ -159,24 +159,25 @@ func associationQueryBytes(q AssociationQuery, l AssociationLimits, maxName int)
 
 // Cursor identifies the complete canonical query and application index/hash,
 // namespace and last visited key. It owns only bounded bytes, not a server map.
-func associationContinuation(n Namespace, index uint64, imageHash, queryHash [32]byte, last []byte) []byte {
-	b := append([]byte{'A', 'C', 1}, n.Graph[:]...)
+func associationContinuation(n Namespace, generation, index uint64, imageHash, queryHash [32]byte, last []byte) []byte {
+	b := append([]byte{'A', 'C', 2}, n.Graph[:]...)
 	b = binary.BigEndian.AppendUint64(b, n.Partition)
+	b = binary.BigEndian.AppendUint64(b, generation)
 	b = binary.BigEndian.AppendUint64(b, index)
 	b = append(b, imageHash[:]...)
 	b = append(b, queryHash[:]...)
 	return exactCopy(appendField(b, last))
 }
 
-func parseAssociationContinuation(src []byte, n Namespace, index uint64, imageHash, queryHash [32]byte, lower, upper []byte, maxBytes int) ([]byte, error) {
-	const fixed = 103
+func parseAssociationContinuation(src []byte, n Namespace, generation, index uint64, imageHash, queryHash [32]byte, lower, upper []byte, maxBytes int) ([]byte, error) {
+	const fixed = 111
 	if len(src) > maxBytes {
 		return nil, ErrResourceLimit
 	}
-	if len(src) < fixed || !bytes.Equal(src[:3], []byte{'A', 'C', 1}) || !bytes.Equal(src[3:19], n.Graph[:]) || binary.BigEndian.Uint64(src[19:27]) != n.Partition || binary.BigEndian.Uint64(src[27:35]) != index || !bytes.Equal(src[35:67], imageHash[:]) || !bytes.Equal(src[67:99], queryHash[:]) {
+	if len(src) < fixed || !bytes.Equal(src[:3], []byte{'A', 'C', 2}) || !bytes.Equal(src[3:19], n.Graph[:]) || binary.BigEndian.Uint64(src[19:27]) != n.Partition || binary.BigEndian.Uint64(src[27:35]) != generation || binary.BigEndian.Uint64(src[35:43]) != index || !bytes.Equal(src[43:75], imageHash[:]) || !bytes.Equal(src[75:107], queryHash[:]) {
 		return nil, ErrInvalid
 	}
-	c := cursor{src[99:]}
+	c := cursor{src[107:]}
 	last, err := c.field(maxBytes)
 	if err != nil || c.done() != nil || len(last) != len(lower)+8 || !bytes.HasPrefix(last, lower) || bytes.Compare(last, upper) >= 0 || binary.BigEndian.Uint64(last[len(lower):]) == 0 {
 		return nil, ErrInvalid

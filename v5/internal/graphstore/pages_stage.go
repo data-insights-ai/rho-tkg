@@ -405,12 +405,28 @@ func (q *pageStage) installPatch(p graphstate.ComponentPatch) error {
 		if err != nil {
 			return err
 		}
-		return q.q.put(componentKey(q.root.namespace, p.Key), wire)
+		if err := q.q.put(componentKey(q.root.namespace, p.Key), wire); err != nil {
+			return err
+		}
+		if q.q.indexes != nil {
+			tree, err := q.insertComponentKey(q.q.indexes.descriptor.tree, p.Key, q.q.indexes.limits)
+			if err != nil {
+				return err
+			}
+			q.q.indexes.descriptor.tree = tree
+		}
+		return nil
 	}
 	return q.budget()
 }
 func validatePrivateRoot(s *Stage, r Root) error {
 	baseline := s.c.root
+	if s.indexed != nil {
+		if r != s.indexed.root {
+			return ErrInvalid
+		}
+		baseline = s.indexed.root
+	}
 	if r.namespace != baseline.namespace {
 		return ErrNamespace
 	}
@@ -456,6 +472,9 @@ func StageComponentPatches(ctx context.Context, s *Stage, root Root, patches []g
 		base.maxRows, base.maxBytes = l.MaxWorkRecords, l.MaxWorkBytes
 		q := pageStage{&pageReader{q: base, limits: l}, root}
 		q.allocation = &q.root
+		if err := q.budget(); err != nil {
+			return err
+		}
 		groups := make([]ComponentChangeGroup, 0, len(patches))
 		bytes := 0
 		for _, p := range patches {
@@ -483,6 +502,19 @@ func StageComponentPatches(ctx context.Context, s *Stage, root Root, patches []g
 				return err
 			}
 			groups = append(groups, group)
+		}
+		if err := q.budget(); err != nil {
+			return err
+		}
+		if base.indexes != nil {
+			base.indexes.root = q.root
+			wire, err := encodeComponentIndexDescriptor(base.indexes.descriptor, q.root, s.c.limits)
+			if err != nil {
+				return err
+			}
+			if err := base.put(componentIndexDescriptorKey(q.root.namespace), wire); err != nil {
+				return err
+			}
 		}
 		result = StagedComponents{q.root, groups, q.work}
 		return nil

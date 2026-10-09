@@ -260,7 +260,7 @@ func TestSinglePartitionRootMethodsPreserveDeclaration(t *testing.T) {
 		t.Fatal(err)
 	}
 	malformed = r
-	malformed.topology.index = 1
+	malformed.topology.index = 2
 	if _, err := EncodeRoot(malformed); !errors.Is(err, ErrInvalid) {
 		t.Fatal(err)
 	}
@@ -303,7 +303,7 @@ func TestSinglePartitionRootCodecFailClosed(t *testing.T) {
 	for _, tc := range []struct {
 		offset int
 		value  uint64
-	}{{20, 0}, {28, 0}, {44, 0}, {84, 0}, {84, 2}, {92, 0}, {92, 2}, {100, 1}} {
+	}{{20, 0}, {28, 0}, {44, 0}, {84, 0}, {84, 2}, {92, 0}, {92, 2}, {100, 2}} {
 		b := bytes.Clone(wire)
 		binary.BigEndian.PutUint64(b[tc.offset:], tc.value)
 		checksum := sha256.Sum256(b[:len(b)-32])
