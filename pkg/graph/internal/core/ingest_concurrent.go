@@ -198,13 +198,16 @@ func (c *Core) applyConcurrentNodeCreates(
 
 		// Unique-constrained graph: per-node door under the node's value stripes
 		// (check + write under the stripe, exactly the standalone create kernel).
-		release, err := c.enforceUniqueForNodeHeld(pn.node, nil, pn.node.ID(), nil)
+		hold, err := c.enforceUniqueForNodeHeld(pn.node, nil, pn.node.ID(), nil)
 		if err != nil {
 			markFailed(pn, err)
 			continue
 		}
 		err = c.putGeneratedNode(context.Background(), pn.node)
-		release()
+		if err != nil {
+			err = hold.storeWriteFailed(err) // under the stripes (item 29)
+		}
+		hold.release()
 		if err != nil {
 			markFailed(pn, err)
 			continue

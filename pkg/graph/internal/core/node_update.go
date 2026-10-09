@@ -276,11 +276,11 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 	// Unique-constraint enforcement (standalone update door). Entity lock held;
 	// take value stripe(s) across the check + write. prevState supplies the old
 	// value so a changed constrained value also holds the freed value's stripe.
-	uniqueRelease, uniqueErr := c.enforceUniqueForNode(current, prevState, id)
+	uniqueHold, uniqueErr := c.enforceUniqueForNode(current, prevState, id)
 	if uniqueErr != nil {
 		return nil, false, uniqueErr
 	}
-	defer uniqueRelease()
+	defer uniqueHold.release()
 
 	// Atomic replace + history — single store call prevents orphaned history
 	// entries. Routes through the BACKLOG 11f scoped sibling when ctx carries a
@@ -291,14 +291,14 @@ func (c *Core) updateNodePreparedInternal(ctx context.Context, id types.NodeID, 
 	if token, ok := scopeTokenFrom(ctx); ok && token != 0 {
 		if scoped, ok := c.store.(storepkg.ScopedReplaceCapability); ok {
 			if err := scoped.ReplaceNodeWithHistoryScoped(current, prevVersion, prevState, token); err != nil {
-				return nil, false, err
+				return nil, false, uniqueHold.storeWriteFailed(err)
 			}
 			c.opNodeUpdates.Add(1)
 			return current, true, nil
 		}
 	}
 	if err := c.store.ReplaceNodeWithHistory(current, prevVersion, prevState); err != nil {
-		return nil, false, err
+		return nil, false, uniqueHold.storeWriteFailed(err)
 	}
 
 	c.opNodeUpdates.Add(1)
@@ -468,15 +468,15 @@ func (c *Core) updateNodeInPlaceInternal(ctx context.Context, id types.NodeID, u
 	// lock held; take value stripe(s) across the check + write. prevState (nil
 	// when no constraints exist) supplies the old value so a changed constrained
 	// value also holds the freed value's stripe.
-	uniqueRelease, uniqueErr := c.enforceUniqueForNode(current, prevState, id)
+	uniqueHold, uniqueErr := c.enforceUniqueForNode(current, prevState, id)
 	if uniqueErr != nil {
 		return nil, false, uniqueErr
 	}
-	defer uniqueRelease()
+	defer uniqueHold.release()
 
 	// ReplaceNode instead of ReplaceNodeWithHistory — no history entry written.
 	if err := c.store.ReplaceNode(current); err != nil {
-		return nil, false, err
+		return nil, false, uniqueHold.storeWriteFailed(err)
 	}
 
 	c.opNodeUpdates.Add(1)

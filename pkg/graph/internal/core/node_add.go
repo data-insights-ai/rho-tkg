@@ -229,14 +229,17 @@ func (c *Core) addNodeInternal(ctx context.Context, labels []string, props map[s
 	// Unique-constraint enforcement (standalone create door). Hold the value
 	// stripe(s) across the index check + store write so concurrent same-value
 	// creates serialize to exactly one winner.
-	uniqueRelease, uniqueErr := c.enforceUniqueForNodeHeld(n, nil, id, heldStripes)
+	uniqueHold, uniqueErr := c.enforceUniqueForNodeHeld(n, nil, id, heldStripes)
 	if uniqueErr != nil {
 		return nil, finishLabels(uniqueErr)
 	}
-	defer uniqueRelease()
+	defer uniqueHold.release()
 
 	if err := c.putGeneratedNode(ctx, n); err != nil {
 		err, partialLive := finishNodeCreateError(err)
+		// After the partial-create cleanup: withdraw the UniqueForever claims
+		// unless the node's row is still stored (item 29).
+		err = uniqueHold.storeWriteFailed(err)
 		if partialLive {
 			c.opNodeAdds.Add(1)
 			return n, err
@@ -519,14 +522,15 @@ func (c *Core) importNodeWithIDInternal(ctx context.Context, id types.NodeID, la
 	// Unique-constraint enforcement (standalone import / AddByIDIfAbsent create
 	// door). The entity lock is already held above; take value stripe(s) after
 	// it (entity -> value order) across the check + PutNode.
-	uniqueRelease, uniqueErr := c.enforceUniqueForNode(n, nil, id)
+	uniqueHold, uniqueErr := c.enforceUniqueForNode(n, nil, id)
 	if uniqueErr != nil {
 		return nil, finishLabels(uniqueErr)
 	}
-	defer uniqueRelease()
+	defer uniqueHold.release()
 
 	if err := c.putImportedNode(ctx, n); err != nil {
 		err, partialLive := finishNodeCreateError(err)
+		err = uniqueHold.storeWriteFailed(err) // after the cleanup (item 29)
 		if partialLive {
 			c.opNodeAdds.Add(1)
 			return n, err

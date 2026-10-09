@@ -2,7 +2,9 @@ package core
 
 import (
 	"errors"
+	"fmt"
 
+	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
 	"github.com/data-insights-ai/rho-tkg/v4/pkg/types"
 )
 
@@ -16,6 +18,21 @@ import (
 // withdrawn). The door keeps the hold until its last store write returns and
 // answers a failed write with writeFailed BEFORE it releases the stripes, so a
 // concurrent writer of the value serializes behind the withdrawal.
+//
+// Doors: the SetNodeVersionInterval cascade (enforceUniqueForCascade, which
+// passes the rows it already wrote), and every door of enforceUniqueForNodeHeld
+// — Add/AddWithTx, Import/AddByIDIfAbsent, GetOrCreateByKey, Update/
+// UpdateWithTx, UpdateInPlace, CompareAndSetProperty, AddLabel, their GraphTx
+// twins, BatchBuilder UpdateNode and the concurrent ingest creates — plus the
+// batch create pre-check (partitionBatchNodesByUnique), which holds no stripes
+// (the batch's exclusive c.mu.Lock fences writers). The single-row doors
+// answer a failed write with storeWriteFailed, judging against the node's
+// stored row.
+//
+// Limit: the claim is persisted before the row write, in a separate MetaKV
+// write. A crash between the two leaves the claim without the row (barred,
+// correctable via ReleaseOwnership); closing that needs one atomic MetaKV +
+// store commit (v5 PLAN §5.2).
 // =============================================================================
 
 // uniqueHold is what a passing unique check hands its door. The zero value (no
@@ -67,6 +84,28 @@ func (h *uniqueHold) writeFailed(written []*types.Node, writeErr error) error {
 		return errors.Join(writeErr, err)
 	}
 	return writeErr
+}
+
+// storeWriteFailed is writeFailed for a door that writes one node row: the
+// rows that count as written are the node's stored current row, re-read under
+// the still-held stripes (and the door's entity lock). A store that reports a
+// failure after installing the row, or a partial create its cleanup could not
+// remove, therefore keeps the claim; a write that stored nothing withdraws it.
+// When the stored row cannot be read, every claim is kept (never admits a
+// duplicate) and the read failure is joined to writeErr.
+func (h *uniqueHold) storeWriteFailed(writeErr error) error {
+	if h.c == nil || len(h.claims) == 0 {
+		return writeErr
+	}
+	stored, err := h.c.getCurrentNode(h.id)
+	switch {
+	case err == nil:
+		return h.writeFailed([]*types.Node{stored}, writeErr)
+	case errors.Is(err, storepkg.ErrNodeNotFound):
+		return h.writeFailed(nil, writeErr)
+	default:
+		return errors.Join(writeErr, fmt.Errorf("graph: unique-forever withdraw: read stored node %d: %w", h.id, err))
+	}
 }
 
 // rowsCarryValue reports whether any row carries tp's label and value.

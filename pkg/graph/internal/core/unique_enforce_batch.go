@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"sort"
 
 	constraintspkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/constraints"
 	storepkg "github.com/data-insights-ai/rho-tkg/v4/pkg/graph/store"
@@ -94,12 +95,17 @@ func uniqueSeenKey(labelTok uint16, key, valueKey string) string {
 // not (violators). Runs under the batch's exclusive c.mu.Lock. A value is a
 // violation if it is already held by a committed CURRENT node OR by an EARLIER
 // pending node in the same batch.
-func (c *Core) partitionBatchNodesByUnique(nodes []pendingNode) ([]pendingNode, []batchNodeUniqueViolation) {
+//
+// holds[i] is the claim hold of survivors[i] (no stripes: the exclusive lock
+// fences writers). When the batch then fails to store the survivors, Execute
+// answers with holds[i].storeWriteFailed so a node that was never stored owns
+// nothing (item 29).
+func (c *Core) partitionBatchNodesByUnique(nodes []pendingNode) (survivors []pendingNode, holds []*uniqueHold, violators []batchNodeUniqueViolation) {
 	if !c.hasUniqueConstraints.Load() {
-		return nodes, nil
+		return nodes, nil, nil
 	}
-	survivors := make([]pendingNode, 0, len(nodes))
-	var violators []batchNodeUniqueViolation
+	survivors = make([]pendingNode, 0, len(nodes))
+	holds = make([]*uniqueHold, 0, len(nodes))
 	seen := make(map[string]types.NodeID) // seen-key -> first claiming node in this batch
 
 	for _, pn := range nodes {
@@ -160,16 +166,25 @@ func (c *Core) partitionBatchNodesByUnique(nodes []pendingNode) ([]pendingNode, 
 			continue
 		}
 		// Pass 2: every tuple passed — now durably claim each UniqueForever
-		// value. This reuses the same registry seam the standalone kernel
-		// uses (checkAndClaimForever takes c.uniqueMu; the batch's exclusive
-		// c.mu.Lock already fences out any concurrent standalone writer, so
-		// no value stripe is needed here).
+		// value through the shared claim hold (the batch's exclusive c.mu.Lock
+		// already fences out any concurrent standalone writer, so no value
+		// stripe is needed here). A claim that fails withdraws the claims this
+		// node already made (item 29). Deterministic order, as the kernel.
+		ordered := make([]uniqueCheckTuple, 0, len(tuples))
 		for _, tuple := range tuples {
+			ordered = append(ordered, tuple)
+		}
+		sort.Slice(ordered, func(i, j int) bool {
+			return uniqueSeenKey(ordered[i].labelTok, ordered[i].key, ordered[i].valueKey) <
+				uniqueSeenKey(ordered[j].labelTok, ordered[j].key, ordered[j].valueKey)
+		})
+		hold := &uniqueHold{c: c, id: pn.node.ID()}
+		for _, tuple := range ordered {
 			if tuple.scope != constraintspkg.UniqueForever {
 				continue
 			}
-			if err := c.checkAndClaimForever(tuple.labelTok, tuple.key, tuple.valueKey, pn.node.ID()); err != nil {
-				vErr = err
+			if err := hold.claim(tuple); err != nil {
+				vErr = hold.storeWriteFailed(err)
 				break
 			}
 		}
@@ -182,6 +197,7 @@ func (c *Core) partitionBatchNodesByUnique(nodes []pendingNode) ([]pendingNode, 
 			seen[seenKey] = pn.node.ID()
 		}
 		survivors = append(survivors, pn)
+		holds = append(holds, hold)
 	}
-	return survivors, violators
+	return survivors, holds, violators
 }
