@@ -36,7 +36,7 @@ Wave 1 (parallel) → v4.44.0
       docs-consistency tests), tag, push.
 
 Wave 2 (parallel, start now, merge after wave 1) → v4.45.0
-- [ ] E durable-on-return commit (Opus, backlog 11): opt-in `Config.DurableCommit`; `GraphTx.Commit` and
+- [x] E durable-on-return commit (Opus, backlog 11; merged after Opus review: Close race (SIGSEGV) fixed with a hook test, power-loss limit on memtable switch documented + backlog 15, LSN/result kept on ErrCommitNotDurable, requeue path exercised, 6 mutants with diffs, crash children on badger/tiered/sharded incl. default flush interval; evidence/durable-commit/; latency 2 ms/fsync per commit): opt-in `Config.DurableCommit`; `GraphTx.Commit` and
       `Batch.Execute` flush the pending buffer before returning, one WriteBatch per call, every touched shard on
       tiered/sharded. Red: close-without-flush / SIGKILL after Commit returns shows the whole group; default off
       unchanged; oversized group documented. Proof: evidence/durable-commit/.
