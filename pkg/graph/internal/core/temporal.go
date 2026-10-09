@@ -482,8 +482,8 @@ func (c *Core) nodeVersionBounds(chain []*types.Node, i int) (types.Instant, typ
 
 	// Determine version end. Use next's effective ValidFrom when set
 	// (timeline tiles cleanly); otherwise fall back to next.UpdatedAt.
-	for j := i + 1; j < len(chain); j++ {
-		next := chain[j]
+	if i+1 < len(chain) {
+		next := chain[i+1]
 		if tm := next.Temporal(); tm != nil && tm.ValidFrom != 0 {
 			vEnd = tm.ValidFrom
 		} else if tm := next.Temporal(); tm != nil && tm.UpdatedAt != 0 {
@@ -491,7 +491,6 @@ func (c *Core) nodeVersionBounds(chain []*types.Node, i int) (types.Instant, typ
 		} else {
 			vEnd = c.nodeValidFrom(next)
 		}
-		break
 	}
 	// vEnd == 0 means open-ended (no later version).
 
@@ -626,8 +625,8 @@ func (c *Core) relVersionBounds(chain []*types.Relationship, i int) (types.Insta
 		}
 	}
 
-	for j := i + 1; j < len(chain); j++ {
-		next := chain[j]
+	if i+1 < len(chain) {
+		next := chain[i+1]
 		if tm := next.Temporal(); tm != nil && tm.ValidFrom != 0 {
 			vEnd = tm.ValidFrom
 		} else if tm := next.Temporal(); tm != nil && tm.UpdatedAt != 0 {
@@ -635,7 +634,6 @@ func (c *Core) relVersionBounds(chain []*types.Relationship, i int) (types.Insta
 		} else {
 			vEnd = c.relValidFrom(next)
 		}
-		break
 	}
 
 	if tm := entry.Temporal(); tm != nil {

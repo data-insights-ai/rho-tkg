@@ -265,7 +265,7 @@ func TestSessionSetVersionInterval_SiblingAndChained(t *testing.T) {
 					pin1 := step(ivT+5000, 2)
 					time.Sleep(5 * time.Millisecond)
 					pin2 := step(ivT+9000, 3)
-					if !(pinBefore < pin1 && pin1 < pin2) {
+					if pinBefore >= pin1 || pin1 >= pin2 {
 						t.Fatalf("pins not increasing: before %d, 1 %d, 2 %d", pinBefore, pin1, pin2)
 					}
 

@@ -135,8 +135,8 @@ func (e *oracleEntity) bounds(chain []oracleRow, i int) (types.Instant, types.In
 		}
 	}
 
-	for j := i + 1; j < len(chain); j++ {
-		next := chain[j]
+	if i+1 < len(chain) {
+		next := chain[i+1]
 		switch {
 		case next.validFrom != 0:
 			vEnd = next.validFrom
@@ -145,7 +145,6 @@ func (e *oracleEntity) bounds(chain []oracleRow, i int) (types.Instant, types.In
 		default:
 			vEnd = e.sfFallback
 		}
-		break
 	}
 
 	if r.validFrom != 0 { // explicit ValidFrom override (migrated store)

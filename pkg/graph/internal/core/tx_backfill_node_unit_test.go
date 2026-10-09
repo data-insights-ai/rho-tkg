@@ -263,7 +263,7 @@ func TestTxBackfillNode_IngestCoalescedGroups(t *testing.T) {
 		t.Run(be.name, func(t *testing.T) {
 			g := be.open(t, true)
 			f := txbUnitFixture(t, g)
-			ap, err := g.ensureIngestApplier(defaultIngestGroupSize, 0)
+			ap, err := g.ensureIngestApplier(0)
 			if err != nil {
 				t.Fatalf("ensureIngestApplier: %v", err)
 			}

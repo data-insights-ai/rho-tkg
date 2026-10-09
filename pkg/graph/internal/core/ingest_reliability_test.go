@@ -183,7 +183,7 @@ func TestIngestEnqueueRejectsAfterStop(t *testing.T) {
 	}
 	defer c.Close()
 
-	a, err := c.ensureIngestApplier(defaultIngestGroupSize, 0)
+	a, err := c.ensureIngestApplier(0)
 	if err != nil {
 		t.Fatalf("ensureIngestApplier: %v", err)
 	}

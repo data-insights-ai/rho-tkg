@@ -170,7 +170,7 @@ func TestDurableCommit_OneDurableFlushPerGroup(t *testing.T) {
 		if got := spy.durableFlushes.Load() - before; got != 1 {
 			t.Errorf("%s: %d durable flushes for one group, want exactly 1", d.name, got)
 		}
-		if n := spy.Store.PendingWriteCount(); n != 0 {
+		if n := spy.PendingWriteCount(); n != 0 {
 			t.Errorf("%s: %d writes still pending after the door returned under DurableCommit", d.name, n)
 		}
 	}
@@ -217,7 +217,7 @@ func TestDurableCommit_RollbackDoesNotFlush(t *testing.T) {
 	if n := spy.durableFlushes.Load(); n != 0 {
 		t.Fatalf("%d durable flushes from Rollback / failed Run, want 0", n)
 	}
-	if spy.Store.PendingWriteCount() == 0 {
+	if spy.PendingWriteCount() == 0 {
 		t.Fatal("pending buffer empty after rollbacks — something flushed")
 	}
 }

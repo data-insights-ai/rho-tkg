@@ -737,7 +737,7 @@ func TestScanDoorsTemporalOpts_OrderedRangeNeverDropsAtExclusiveBound(t *testing
 // answers from the trimmed history or the purged range.
 func TestScanDoorsTemporalOpts_ColumnScansFailClosedBelowWatermarks(t *testing.T) {
 	ctx := context.Background()
-	scanErrs := func(t *testing.T, g *graphpkg.Graph, opts graphpkg.QueryOpts) (nodeOK bool, nodeErr error, relOK []bool, relErr []error) {
+	scanErrs := func(t *testing.T, g *graphpkg.Graph, opts graphpkg.QueryOpts) (nodeOK bool, relOK []bool, relErr []error, nodeErr error) {
 		t.Helper()
 		nodeOK, nodeErr = g.ScanNodeColumns(scanLabel, []string{scanNodeKey}, opts, func(*graphpkg.ColumnBatch) bool { return true })
 		for _, typ := range []string{scanRelType, ""} {
@@ -757,7 +757,7 @@ func TestScanDoorsTemporalOpts_ColumnScansFailClosedBelowWatermarks(t *testing.T
 		if !columnScanNative(b) {
 			return
 		}
-		nodeOK, nodeErr, relOK, relErr := scanErrs(t, g, opts)
+		nodeOK, relOK, relErr, nodeErr := scanErrs(t, g, opts)
 		if !nodeOK || !errors.Is(nodeErr, want) {
 			t.Errorf("%s: ScanNodeColumns ok=%v err=%v, want ok and %v", what, nodeOK, nodeErr, want)
 		}
