@@ -47,7 +47,7 @@ func (m *applicationFixture) Restore(index uint64, image []byte) error {
 	m.image = bytes.Clone(image)
 	m.index = index
 	if m.killRestore && m.value > 0 {
-		if err := syscall.Kill(os.Getpid(), syscall.SIGKILL); err != nil {
+		if err := killSelfForCrashTest(); err != nil {
 			return err
 		}
 	}
@@ -80,7 +80,7 @@ func (m *applicationFixture) Stage(e Entry, b raftlog.ApplicationBudget) (raftlo
 		m.installFault.On()
 	}
 	if m.killStage && len(e.Data) > 0 {
-		if err := syscall.Kill(os.Getpid(), syscall.SIGKILL); err != nil {
+		if err := killSelfForCrashTest(); err != nil {
 			return raftlog.ApplicationBatch{}, err
 		}
 	}
@@ -321,7 +321,7 @@ func TestApplicationDriverRealProcessKill(t *testing.T) {
 			if err := s.PublishSnapshot(); err != nil {
 				t.Fatal(err)
 			}
-			if err := syscall.Kill(os.Getpid(), syscall.SIGKILL); err != nil {
+			if err := killSelfForCrashTest(); err != nil {
 				t.Fatal(err)
 			}
 		}

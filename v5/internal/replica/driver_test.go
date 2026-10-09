@@ -580,7 +580,7 @@ func TestRealProcessKillAndReopen(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if err := syscall.Kill(os.Getpid(), syscall.SIGKILL); err != nil {
+		if err := killSelfForCrashTest(); err != nil {
 			t.Fatal(err)
 		}
 		return
@@ -594,8 +594,12 @@ func TestRealProcessKillAndReopen(t *testing.T) {
 			cmd.Env = append(os.Environ(), "RHO_RAFT_CRASH_MODE="+mode, "RHO_RAFT_CRASH_DIR="+dir)
 			output, err := cmd.CombinedOutput()
 			exit, ok := errors.AsType[*exec.ExitError](err)
-			if !ok || exit.Success() {
-				t.Fatalf("child was not killed: %v %s", err, output)
+			if !ok || ctx.Err() != nil {
+				t.Fatalf("kill seam did not complete: %v context=%v %s", err, ctx.Err(), output)
+			}
+			status, isStatus := exit.Sys().(syscall.WaitStatus)
+			if !isStatus || !status.Signaled() || status.Signal() != syscall.SIGKILL {
+				t.Fatalf("expected SIGKILL at %s seam: %v %s", mode, err, output)
 			}
 			s, err := raftlog.Open(raftlog.Config{Dir: dir})
 			if err != nil {
