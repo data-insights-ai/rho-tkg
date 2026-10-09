@@ -98,6 +98,12 @@ func Open(c Config) (*Store, error) {
 	if err := c.Transfer.validate(c.Application); err != nil {
 		return nil, err
 	}
+	initial := metadata{Hard: &pb.HardState{}, Conf: &pb.ConfState{}, Snap: &pb.Snapshot{}, ImageHash: sha256.Sum256(nil), SnapHash: sha256.Sum256(nil), App: applicationMetadata{Policy: c.Application}, Transfer: c.Transfer}
+	if c.Create {
+		if err := checkMetadataLimit(initial, c.Limits); err != nil {
+			return nil, err
+		}
+	}
 	if c.FS == nil {
 		c.FS = vfs.Default
 	}
@@ -108,7 +114,7 @@ func Open(c Config) (*Store, error) {
 	s := &Store{db: db, limits: c.Limits, canInitialize: c.Create, applicationPolicy: c.Application}
 	fail := func(err error) (*Store, error) { return nil, errors.Join(err, db.Close()) }
 	if c.Create {
-		s.meta = metadata{Hard: &pb.HardState{}, Conf: &pb.ConfState{}, Snap: &pb.Snapshot{}, ImageHash: sha256.Sum256(nil), SnapHash: sha256.Sum256(nil), App: applicationMetadata{Policy: c.Application}, Transfer: c.Transfer}
+		s.meta = initial
 		b := db.NewBatch()
 		_ = b.Set(imageKey, nil, nil)
 		_ = b.Set(snapshotKey, nil, nil)
@@ -242,6 +248,9 @@ func (s *Store) commit(m metadata, batch *pebble.Batch) (err error) {
 			err = errors.Join(err, ErrPoisoned, closeErr)
 		}
 	}()
+	if err := checkMetadataLimit(m, s.limits); err != nil {
+		return err
+	}
 	b, err := encodeMeta(m)
 	if err == nil {
 		err = batch.Set(metaKey, b, nil)
@@ -282,14 +291,21 @@ func (s *Store) Initialize(voters []uint64, image []byte) error {
 	if len(voters) > 256 {
 		return ErrLimit
 	}
-	cs := &pb.ConfState{Voters: append([]uint64(nil), voters...)}
+	cs := &pb.ConfState{Voters: voters}
 	if len(voters) == 0 {
 		return ErrInvalid
 	}
 	if err := validateConf(cs, 1); err != nil {
 		return err
 	}
-	m := metadata{App: s.meta.App, Transfer: s.meta.Transfer, Base: 1, BaseTerm: 1, Last: 1, Applied: 1, Hard: &pb.HardState{Term: new(uint64(1)), Commit: new(uint64(1))}, Conf: cs, ImageBytes: uint64(len(image)), SnapBytes: uint64(len(image)), ImageHash: sha256.Sum256(image), SnapHash: sha256.Sum256(image), Snap: &pb.Snapshot{Metadata: &pb.SnapshotMetadata{Index: new(uint64(1)), Term: new(uint64(1)), ConfState: proto.Clone(cs).(*pb.ConfState)}}}
+	m := metadata{App: s.meta.App, Transfer: s.meta.Transfer, Base: 1, BaseTerm: 1, Last: 1, Applied: 1, Hard: &pb.HardState{Term: new(uint64(1)), Commit: new(uint64(1))}, Conf: cs, ImageBytes: uint64(len(image)), SnapBytes: uint64(len(image)), Snap: &pb.Snapshot{Metadata: &pb.SnapshotMetadata{Index: new(uint64(1)), Term: new(uint64(1)), ConfState: cs}}}
+	if err := checkMetadataLimit(m, s.limits); err != nil {
+		return err
+	}
+	m.Conf = proto.Clone(cs).(*pb.ConfState)
+	m.Snap.Metadata.ConfState = proto.Clone(cs).(*pb.ConfState)
+	m.ImageHash = sha256.Sum256(image)
+	m.SnapHash = m.ImageHash
 	b := s.db.NewBatch()
 	if err := b.Set(imageKey, image, nil); err != nil {
 		_ = b.Close()
@@ -526,11 +542,21 @@ func (s *Store) Persist(rd raft.Ready) (err error) {
 	if len(rd.Entries) > 4096 {
 		return ErrLimit
 	}
-	small, err := encodeMeta(s.meta)
-	if err != nil {
+	prospective := s.meta
+	if !raft.IsEmptyHardState(rd.HardState) {
+		prospective.Hard = rd.HardState
+	}
+	if !raft.IsEmptySnap(rd.Snapshot) {
+		if err := validateConf(rd.Snapshot.GetMetadata().GetConfState(), rd.Snapshot.GetMetadata().GetIndex()); err != nil {
+			return err
+		}
+		prospective.Conf = rd.Snapshot.GetMetadata().GetConfState()
+		prospective.Snap = &pb.Snapshot{Metadata: rd.Snapshot.GetMetadata()}
+	}
+	if err := checkMetadataLimit(prospective, s.limits); err != nil {
 		return err
 	}
-	total := uint64(len(small) + 128)
+	total := metadataBytes(prospective) + readyEnvelopeBytes
 	for _, e := range rd.Entries {
 		if e == nil || len(e.ProtoReflect().GetUnknown()) != 0 {
 			return ErrInvalid
@@ -775,6 +801,10 @@ func (s *Store) SaveCheckpoint(index uint64, cs *pb.ConfState, image []byte) err
 	}
 	m := s.meta
 	m.Applied = index
+	m.Conf = cs
+	if err := checkMetadataLimit(m, s.limits); err != nil {
+		return err
+	}
 	m.Conf = proto.Clone(cs).(*pb.ConfState)
 	m.ImageBytes = uint64(len(image))
 	m.ImageHash = sha256.Sum256(image)
@@ -825,6 +855,10 @@ func (s *Store) PublishSnapshot() error {
 	m.Base, m.BaseTerm, m.BaseHash = m.Applied, e.GetTerm(), hash
 	m.LogBytes -= removed
 	m.LogCount = m.Last - m.Base
+	m.Snap = &pb.Snapshot{Metadata: &pb.SnapshotMetadata{Index: new(m.Applied), Term: new(e.GetTerm()), ConfState: m.Conf}}
+	if err := checkMetadataLimit(m, s.limits); err != nil {
+		return err
+	}
 	image, err := s.loadImage(imageKey, m.ImageBytes, m.ImageHash)
 	if err != nil {
 		s.poison = err
@@ -832,7 +866,7 @@ func (s *Store) PublishSnapshot() error {
 	}
 	m.SnapBytes = m.ImageBytes
 	m.SnapHash = m.ImageHash
-	m.Snap = &pb.Snapshot{Metadata: &pb.SnapshotMetadata{Index: new(m.Applied), Term: new(e.GetTerm()), ConfState: proto.Clone(m.Conf).(*pb.ConfState)}}
+	m.Snap.Metadata.ConfState = proto.Clone(m.Conf).(*pb.ConfState)
 	b := s.db.NewBatch()
 	if err := b.Set(snapshotKey, image, nil); err != nil {
 		_ = b.Close()

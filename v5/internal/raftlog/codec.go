@@ -13,6 +13,31 @@ import (
 
 const frameOverhead = 74 // Plus the nine-byte ordered entry key and Pebble's WAL/LSM overhead.
 
+const metadataOverhead = 252 // Magic, checksum, eight counters, four hashes and three blob lengths.
+const readyEnvelopeBytes = 128
+const maxMetadataBytes = 65536
+
+// metadataBytes measures the persisted envelope without serializing or cloning it.
+// Snapshot images are stored separately and must be absent from m.Snap.
+func metadataBytes(m metadata) uint64 {
+	n := uint64(metadataOverhead) + unsignedLimit(proto.Size(m.Hard)) + unsignedLimit(proto.Size(m.Conf)) + unsignedLimit(proto.Size(m.Snap))
+	if m.App.Policy.Enabled() {
+		n += 4 + 21*8
+	}
+	if m.Transfer.enabled() {
+		n += 4 + 40 + 80 + 48
+	}
+	return n
+}
+
+func checkMetadataLimit(m metadata, l Limits) error {
+	n := metadataBytes(m)
+	if n > maxMetadataBytes || n+readyEnvelopeBytes > unsignedLimit(l.MaxReadyBytes) {
+		return ErrLimit
+	}
+	return nil
+}
+
 func entryKey(index uint64) []byte {
 	key := make([]byte, 9)
 	key[0] = 1
@@ -123,7 +148,7 @@ func encodeMeta(m metadata) ([]byte, error) {
 
 func decodeMeta(b []byte, l Limits) (metadata, error) {
 	m := metadata{Hard: &pb.HardState{}, Conf: &pb.ConfState{}, Snap: &pb.Snapshot{}}
-	if len(b) < 252 || len(b) > 65536 || (string(b[:4]) != "RLM2" && string(b[:4]) != "RLM3" && string(b[:4]) != "RLM4") {
+	if len(b) < metadataOverhead || len(b) > maxMetadataBytes || (string(b[:4]) != "RLM2" && string(b[:4]) != "RLM3" && string(b[:4]) != "RLM4") {
 		return m, ErrCorrupt
 	}
 	version4 := string(b[:4]) == "RLM4"
@@ -131,6 +156,9 @@ func decodeMeta(b []byte, l Limits) (metadata, error) {
 	h := sha256.Sum256(b[36:])
 	if !bytes.Equal(b[4:36], h[:]) {
 		return m, ErrCorrupt
+	}
+	if uint64(len(b))+readyEnvelopeBytes > unsignedLimit(l.MaxReadyBytes) {
+		return m, ErrLimit
 	}
 	b = b[36:]
 	for _, p := range []*uint64{&m.Base, &m.BaseTerm, &m.Last, &m.Applied, &m.LogBytes, &m.LogCount, &m.ImageBytes, &m.SnapBytes} {
