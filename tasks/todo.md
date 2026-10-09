@@ -1,3 +1,18 @@
+# todo — reanalysis: v5 plan (Downloads/PLAN.md, RESEARCH-REVIEW.md, DISCUSSION.md) vs the code (2026-10-09, later)
+
+## User requests
+
+1. "reanalyse the full code and the new architecture change" — check: `tasks/review-v5-plan-vs-code-20261009.md`
+   exists, every claim carries file:line, agent findings cross-checked; summary in chat. [x] (2026-10-09)
+2. (ai-soc-main-e7 cross-session, on René's behalf) seven consumer requests — check: each answered take /
+   decline / already have in the reply and recorded in the review §5. [x] (eight items, sent 2026-10-09)
+
+Plan: five read-only survey agents (temporal model, storage, tx/consistency, access/indexes — Opus; consumer
+inventory — Sonnet); I read AGENTS.md, backlog, lessons 43/46/55/60/62/71/73, handovers, CHANGELOG head.
+No code changes in this task.
+
+---
+
 # todo — DeleteWithTx / UpdateWithTx behind AllowTxBackfill (2026-10-09)
 
 Spec: `tasks/handover-tx-backfill-delete-update-20261009.md` (§6 overrides §2-§4; §5 is the test list).
