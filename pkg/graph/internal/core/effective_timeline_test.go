@@ -611,8 +611,12 @@ func TestEffectiveTimeline_ScanMatchesGenericDoor(t *testing.T) {
 	t.Parallel()
 	x0 := etX0()
 	segments := 0
+	nSeeds := 4
+	if isRaceEnabled() {
+		nSeeds = 2 // stated bound under -race (see TestEffectiveTimeline_PointwiseOracle)
+	}
 	for _, be := range txbBackends() {
-		for i := 0; i < 4; i++ {
+		for i := 0; i < nSeeds; i++ {
 			seed := uint64(0x5CA7) + uint64(i)
 			t.Run(fmt.Sprintf("%s/seed=%d", be.name, seed), func(t *testing.T) {
 				_, _, _, pins, o := txbOracleRun(t, be, seed, 40, x0, nil, nil)

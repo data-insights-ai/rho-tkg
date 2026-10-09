@@ -1,6 +1,7 @@
 package core
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"slices"
@@ -61,27 +62,45 @@ type effPiece[T any] struct {
 	src      int
 }
 
-// chainKernel is the node or relationship arm of the point resolver.
+// chainKernel is the node or relationship arm of the point resolver: the
+// pieces resolveNodeVersionAtCapped (resolveRelVersionAtCapped) selects with.
 type chainKernel[T interface {
 	comparable
 	storeutil.TemporalRow
 }] struct {
 	rowAtTx   func(T, types.Instant) (T, bool)
 	sortVF    func(T) types.Instant
+	sortChain func([]T) bool
 	ownBounds func(T) (types.Instant, types.Instant)
 	posBounds func([]T, int) (types.Instant, types.Instant)
-	resolveAt func([]T, types.Instant, lifeEnds[T]) (T, error)
 }
 
-// effectivePieces cuts and resolves chain (history ‖ current, any order) at
-// pin. nil when nothing was recorded by the pin.
+// effInterval is one row's covering interval [s, e) (e == 0: open) in the
+// arm the resolver takes, with its selection priority (higher wins).
+type effInterval struct {
+	s, e types.Instant
+	pos  int // position in the resolver-ordered chain
+	prio int
+}
+
+// effectivePieces answers the point resolver for every valid instant at once:
+// nil when nothing was recorded by the pin.
+//
+// The resolver's input is filterNodeChainByTxAt(versionOrdered(chain), pin)
+// with its lifeEnds; built here row by row so each kept row remembers where it
+// came from. The resolver then classifies the chain once
+// (sortNodeChainForResolve) and, in either arm, answers at t the covering row
+// of highest priority: the monotonic arm the highest position whose positional
+// [vStart, vEnd) covers t, the own-bounds arm the newest belief whose own
+// interval, capped by supersessionCaps, covers t (both capped by the life
+// end). Those intervals are computed once here with the resolver's own bounds
+// functions, and one sweep over their bounds with a max-heap by priority yields
+// every piece: O(n log n) for a chain of n rows. Pieces with the same winner
+// merge; instants no interval covers are gaps.
 func effectivePieces[T interface {
 	comparable
 	storeutil.TemporalRow
 }](k *chainKernel[T], chain []T, pin types.Instant) []effPiece[T] {
-	// The input resolveNodeChain's point probe hands the resolver —
-	// filterNodeChainByTxAt(versionOrdered(chain), pin) — built row by row so
-	// each kept row remembers where it came from.
 	order := make([]int, len(chain))
 	for i := range order {
 		order[i] = i
@@ -89,72 +108,150 @@ func effectivePieces[T interface {
 	byWrite := chainWriteOrder(chain)
 	slices.SortStableFunc(order, func(a, b int) int { return byWrite(chain[a], chain[b]) })
 	filtered := make([]T, 0, len(chain))
-	origin := make([]int, 0, len(chain))
+	origin := make(map[T]int, len(chain))
 	for _, i := range order {
 		if r, ok := k.rowAtTx(chain[i], pin); ok {
 			filtered = append(filtered, r)
-			origin = append(origin, i)
+			origin[r] = i
 		}
 	}
 	if len(filtered) == 0 {
 		return nil
 	}
 	caps := chainLifeEnds(filtered)
-	superseded := supersessionEnds(filtered, k.sortVF)
-	cuts := make([]types.Instant, 0, 4*len(filtered)+len(caps)+len(superseded))
-	for i, r := range filtered {
-		s, e := k.ownBounds(r)
-		ps, pe := k.posBounds(filtered, i)
-		cuts = append(cuts, s, e, ps, pe)
-		if v, ok := caps[r]; ok {
-			cuts = append(cuts, v)
+
+	// The resolver's classification and order (it sorts its argument).
+	arr := slices.Clone(filtered)
+	cascade := k.sortChain(arr)
+	var superseded []types.Instant
+	if cascade {
+		sc := getSupersessionScratch()
+		defer putSupersessionScratch(sc)
+		superseded = supersessionCaps(arr, k.sortVF, sc)
+	}
+	ivs := make([]effInterval, 0, len(arr))
+	for i, r := range arr {
+		var s, e types.Instant
+		if cascade {
+			s, e = k.ownBounds(r)
+			if superseded != nil {
+				e = capEnd(e, superseded[i])
+			}
+		} else {
+			s, e = k.posBounds(arr, i)
 		}
-		if v, ok := superseded[r]; ok {
-			cuts = append(cuts, v)
+		e = caps.end(r, e)
+		if e != 0 && e <= s {
+			continue // covers nothing
+		}
+		ivs = append(ivs, effInterval{s: s, e: e, pos: i, prio: i})
+	}
+	if cascade {
+		// Newest belief wins: (TxFrom, version); among equals the earlier
+		// position (the resolver keeps the first it meets).
+		rank := make([]int, len(ivs))
+		for i := range rank {
+			rank[i] = i
+		}
+		slices.SortFunc(rank, func(a, b int) int {
+			ra, rb := arr[ivs[a].pos], arr[ivs[b].pos]
+			if c := cmp.Compare(beliefTx(ra.Temporal()), beliefTx(rb.Temporal())); c != 0 {
+				return c
+			}
+			if c := cmp.Compare(ra.Version(), rb.Version()); c != 0 {
+				return c
+			}
+			return cmp.Compare(ivs[b].pos, ivs[a].pos)
+		})
+		for p, i := range rank {
+			ivs[i].prio = p
+		}
+	}
+
+	cuts := make([]types.Instant, 0, 2*len(ivs))
+	for _, iv := range ivs {
+		cuts = append(cuts, iv.s)
+		if iv.e != 0 {
+			cuts = append(cuts, iv.e)
 		}
 	}
 	slices.Sort(cuts)
 	cuts = slices.Compact(cuts)
-	for len(cuts) > 0 && cuts[0] <= 0 { // 0 is an open end, not a bound
-		cuts = cuts[1:]
-	}
+	slices.SortFunc(ivs, func(a, b effInterval) int { return cmp.Compare(a.s, b.s) })
+
 	var out []effPiece[T]
-	scratch := make([]T, len(filtered))
+	h := effHeap{}
+	next := 0
 	for j, from := range cuts {
+		for next < len(ivs) && ivs[next].s <= from {
+			h.push(ivs[next])
+			next++
+		}
+		for len(h) > 0 && h[0].e != 0 && h[0].e <= from {
+			h.pop()
+		}
+		if len(h) == 0 {
+			continue // a gap
+		}
 		var to types.Instant
 		if j+1 < len(cuts) {
 			to = cuts[j+1]
 		}
-		// The resolver may sort its argument in place: a pristine copy per
-		// call (lesson 73).
-		copy(scratch, filtered)
-		w, err := k.resolveAt(scratch, from, caps)
-		if err != nil { // ErrNoVersionValidAt: a gap
-			continue
-		}
+		w := arr[h[0].pos]
 		if n := len(out); n > 0 && out[n-1].row == w && out[n-1].to == from {
 			out[n-1].to = to
 			continue
 		}
-		src := -1
-		for i, r := range filtered {
-			if r == w {
-				src = origin[i]
-				break
-			}
-		}
-		out = append(out, effPiece[T]{from: from, to: to, row: w, src: src})
+		out = append(out, effPiece[T]{from: from, to: to, row: w, src: origin[w]})
 	}
 	return out
+}
+
+// effHeap is a max-heap of intervals by priority.
+type effHeap []effInterval
+
+func (h *effHeap) push(iv effInterval) {
+	*h = append(*h, iv)
+	a := *h
+	for i := len(a) - 1; i > 0; {
+		p := (i - 1) / 2
+		if a[p].prio >= a[i].prio {
+			break
+		}
+		a[p], a[i] = a[i], a[p]
+		i = p
+	}
+}
+
+func (h *effHeap) pop() {
+	a := *h
+	n := len(a) - 1
+	a[0] = a[n]
+	a = a[:n]
+	for i := 0; ; {
+		l, r, m := 2*i+1, 2*i+2, i
+		if l < n && a[l].prio > a[m].prio {
+			m = l
+		}
+		if r < n && a[r].prio > a[m].prio {
+			m = r
+		}
+		if m == i {
+			break
+		}
+		a[i], a[m] = a[m], a[i]
+		i = m
+	}
+	*h = a
 }
 
 func (c *Core) nodeKernel() *chainKernel[*types.Node] {
 	return &chainKernel[*types.Node]{
 		rowAtTx:   nodeRowAtTx,
 		sortVF:    c.nodeSortValidFrom,
+		sortChain: c.sortNodeChainForResolve,
 		ownBounds: c.nodeOwnBounds,
 		posBounds: c.nodeVersionBounds,
-		resolveAt: c.resolveNodeVersionAtCapped,
 	}
 }
 
@@ -162,9 +259,9 @@ func (c *Core) relKernel() *chainKernel[*types.Relationship] {
 	return &chainKernel[*types.Relationship]{
 		rowAtTx:   relRowAtTx,
 		sortVF:    c.relSortValidFrom,
+		sortChain: c.sortRelChainForResolve,
 		ownBounds: c.relOwnBounds,
 		posBounds: c.relVersionBounds,
-		resolveAt: c.resolveRelVersionAtCapped,
 	}
 }
 

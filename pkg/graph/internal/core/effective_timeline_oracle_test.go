@@ -412,6 +412,12 @@ func TestEffectiveTimeline_PointwiseOracle(t *testing.T) {
 	if !testing.Short() {
 		seeds, nOps = 16, 48
 	}
+	// Under -race the property runs on 3 seeds per backend (about 10x slower
+	// per check; the full -race package run must stay well inside the default
+	// 10 min timeout). ET_ORACLE_SEEDS overrides either bound.
+	if isRaceEnabled() {
+		seeds = 3
+	}
 	if n, err := strconv.Atoi(os.Getenv("ET_ORACLE_SEEDS")); err == nil && n > 0 {
 		seeds = n
 	}
